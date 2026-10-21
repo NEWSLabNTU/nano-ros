@@ -765,7 +765,7 @@ On single-thread MCU: `Executor::open()` (current API) returns one in-tree execu
 
 **Priority space.** 0..31 default (`TX_MAX_PRIORITIES` configurable up to 1024). **Direction-flipped: 0 = highest** (same as Cortex-M NVIC, opposite of POSIX/FreeRTOS/NuttX). Ready queue = 32-entry array of FIFO buckets, one per priority.
 
-**Preemption threshold.** `tx_thread_preemption_threshold_change(thread, threshold, ...)` — thread w/ priority `P` and threshold `T ≤ P` can be preempted only by threads w/ priority `< T`. If `T == P` (default), normal preemption. If `T < P`, a *band* of higher-priority threads is suppressed → **non-preemptive groups** (Saksena-Wang scheduling). Useful for "all Normal-tier threads non-preemptive among themselves but preemptable by Critical".
+**Preemption threshold.** `tx_thread_preemption_change(thread, threshold, ...)` — thread w/ priority `P` and threshold `T ≤ P` can be preempted only by threads w/ priority `< T`. If `T == P` (default), normal preemption. If `T < P`, a *band* of higher-priority threads is suppressed → **non-preemptive groups** (Saksena-Wang scheduling). Useful for "all Normal-tier threads non-preemptive among themselves but preemptable by Critical".
 
 **Time slicing.** `tx_thread_time_slice_change(thread, slice, ...)` per-thread, in ticks. `0` = disabled (default).
 

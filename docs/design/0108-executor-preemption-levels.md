@@ -4,7 +4,7 @@ title: "One ordered ready set per core, N preemption levels derived from the con
 status: Draft
 since: 2026-10
 last-reviewed: 2026-10
-implements-tracked-by: []
+implements-tracked-by: [phase-509]
 amends: [rfc-0002, rfc-0107]
 supersedes: []
 superseded-by: null
@@ -13,6 +13,8 @@ superseded-by: null
 # RFC-0108 -- One ordered ready set per core, N preemption levels
 
 **Status:** Draft (2026-10-21). Proposal only; nothing here is implemented.
+The open questions of the first draft are decided (see Decisions); the work is
+tracked by [phase-509](../roadmap/phase-509-executor-preemption-levels.md).
 
 **Amends:** [RFC-0002](0002-rt-execution-model.md) (dispatch order inside an
 executor becomes the contract's rank, not registration order) and RFC-0107
@@ -50,13 +52,16 @@ This RFC separates the two:
   dispatches only work at or above its floor. N = 1 is fixed-priority
   non-preemptive scheduling; N = number of ranks is fully preemptive; anything
   between is preemption-threshold scheduling (Wang and Saksena 1999; Saksena
-  and Wang 2000) with contiguous non-preemptive groups.
+  and Wang 2000) with contiguous non-preemptive groups (bands). General
+  per-callback thresholds are a later, backward-compatible extension.
 - **N is derived:** one level per distinct rank by default; merged by the
   preemption-threshold rule when per-callback execution times exist; capped
-  by a per-image budget. Every member that loses its rank is reported.
+  by a per-image level count. Every member that loses its rank is reported.
 - **Each callback carries a task record** (release kind, deadline, budget).
   Event callbacks with no rate must declare a budget or a minimum
-  inter-arrival time, or the build reports them as unanalysable.
+  inter-arrival time. On a safety image (one whose contract supervises a
+  deadline) the build refuses them; elsewhere it reports them as
+  unanalysable.
 - **Scope:** one ready set never spans more than one core's scheduling
   domain. SMP runs one executor core shared by per-core schedulers;
   heterogeneous processors run separate images joined by a transport, with
@@ -193,10 +198,22 @@ the contract (rlm `ros-launch-manifest`), never written in `system.toml`.
      enforces budgets (Linux `SCHED_DEADLINE`, NuttX `SCHED_SPORADIC`; D6).
 - **Event callbacks with no rate** are the one place the contract must grow:
   an input needs `min_interarrival` or `budget` + `budget_period`
-  (an rlm schema change, a tag, a pin move). Until then the build emits an
-  `unanalysable` degradation naming each such callback. It is placed at the
-  least urgent level of its node's band, and it is never allowed to raise a
-  level's blocking term above a declared deadline without a report.
+  (an rlm schema change, a tag, a pin move). An input with neither key is
+  handled by the kind of image:
+  - **Safety image: refused.** The build fails and names each such callback
+    and the two keys that would fix it.
+  - **Any other image: reported.** The build emits an `unanalysable`
+    degradation naming each such callback. It is placed at the least urgent
+    level of its node's band, and it is never allowed to raise a level's
+    blocking term above a declared deadline without a report.
+- **A safety image** is an image whose contract supervises at least one
+  deadline: a node path carrying `supervise:` (`contracts.node_paths`). The
+  derivation already computes this set (`supervised_nodes`,
+  `derive.rs:72-80`) to place the supervisor, so the rule needs no new input.
+  An explicit knob was rejected: it is one more setting to forget, and an
+  image that supervises a deadline has already claimed a timing reaction that
+  an input with unbounded arrivals can break (its callbacks add blocking and
+  interference no analysis can bound).
 
 ### D2 -- Ordering: one ready set per core, keyed by priority
 
@@ -215,7 +232,9 @@ the contract (rlm `ros-launch-manifest`), never written in `system.toml`.
   ready set as it is now. Readiness that is pushed (RFC-0084 attributed slots,
   timers) is merged into the ready set as it arrives; a slot that must still
   be probed is probed at the top of the pass as today. So an urgent callback
-  made ready by a less urgent one runs before the rest of the pass.
+  made ready by a less urgent one runs before the rest of the pass. Whether
+  an unattributed slot is re-probed after every callback or once per pass is
+  deferred to P3, which measures the cost.
 - **Non-preemptive within a level** (run to completion), as today.
 
 This is step 1 of the plan, and it is useful with one thread: it makes the
@@ -238,12 +257,54 @@ island's single tier dispatch in rank order without any second thread.
   - N = number of distinct ranks: fixed-priority fully preemptive (the
     "one tier per distinct priority" rule);
   - 1 < N < ranks: non-preemptive groups (Saksena and Wang 2000).
-- **Why contiguous bands.** A non-contiguous group would put a band between
-  two members of one level. Its worker would then either run below that band
-  (a member waits behind less urgent work) or above it (a less urgent member
-  starts before the band). General thresholds need the worker to change its
-  own kernel priority per dispatch; this RFC does not take that step (open
-  question 1).
+- **Decision: contiguous bands are the level model.** Each worker owns a
+  consecutive range of ranks; its kernel priority is fixed; every member's
+  threshold is the most urgent rank of its band; its stack is sized for its
+  largest member. A non-contiguous group would put a band between two members
+  of one level, and its worker would then either run below that band (a member
+  waits behind less urgent work) or above it (a less urgent member starts
+  before the band).
+- **General per-callback thresholds are a later extension.** They allow
+  overlapping non-preemptive groups, at the cost of a priority raise and
+  restore on every dispatch and a worker pool sized by the deepest preemption
+  chain (the longest sequence of callbacks each of which may preempt the one
+  before) instead of by the band count. Triggers for taking it:
+  - a contract that can state non-preemption or shared-state relations between
+    callbacks (there is nowhere to state them today, so nothing could derive
+    an overlapping group); or
+  - a kernel with native thresholds (ThreadX `tx_thread_preemption_change`),
+    where the per-dispatch raise is the kernel's own operation.
+
+  Bands are the special case of thresholds in which every member's threshold
+  gamma is the most urgent rank of its band, so the extension is backward
+  compatible: an image derived with bands keeps its schedule under it.
+- **Worked example.** Four callbacks, lower number more urgent: H = 1, E = 2,
+  C = 3, L = 4. A running callback i is preempted by a ready j only when
+  rank(j) < gamma_i.
+  - **Bands {H, E} | {C, L}** (gamma_H = gamma_E = 1, gamma_C = gamma_L = 3):
+    E blocks H (a started E finishes before H), L blocks C, and H and E
+    preempt C and L.
+  - **A case bands cannot express:** C and L must not preempt each other
+    (say they share state), C and E must not preempt each other, but E must
+    preempt L. Thresholds gamma_H = 1, gamma_E = 2, gamma_C = 2, gamma_L = 3
+    express it: with L running, E (2 < 3) preempts and C (3 < 3 fails) waits;
+    with C running, E (2 < 2 fails) waits and H (1 < 2) preempts. The worst
+    chain is L, then E, then H: three workers for four callbacks.
+  - **Why every banding fails.** A banding is a choice of cuts at H|E, E|C and
+    C|L. "C and L do not preempt each other" forbids the cut C|L; "C and E do
+    not preempt each other" forbids the cut E|C; "E preempts L" needs a cut
+    between E and L, which is one of those two. All eight bandings:
+
+    | bands | fails because |
+    | --- | --- |
+    | {H, E, C, L} | E cannot preempt L |
+    | {H} \| {E, C, L} | E cannot preempt L |
+    | {H, E} \| {C, L} | E preempts C |
+    | {H, E, C} \| {L} | C preempts L |
+    | {H} \| {E} \| {C, L} | E preempts C |
+    | {H} \| {E, C} \| {L} | C preempts L |
+    | {H, E} \| {C} \| {L} | E preempts C, and C preempts L |
+    | {H} \| {E} \| {C} \| {L} | E preempts C, and C preempts L |
 - **Response time.** For a callback i in band b:
 
   `R_i = C_i + B_i + sum over j more urgent than i of ceil(R_i / T_j) * C_j`
@@ -259,6 +320,12 @@ island's single tier dispatch in rank order without any second thread.
   over levels of each level's largest member stack, which is the
   non-preemptive-group stack saving of Saksena and Wang 2000 and Gai et al.
   2001.
+- **Decision: worker stacks are derived per level** from the members, never
+  the platform's default thread stack (FreeRTOS's 262,144 B default, section
+  4). A level's stack is its largest member's stated stack (a `stack_bytes`
+  override, or a measured high-water recorded for it) plus the worker's own
+  frame. A member with no stated figure takes the port's per-callback default,
+  and the cost report (D4) names each member that did.
 - **What a level costs** [E]: a stack plus a worker record. The worker record
   is the dispatch half of RFC-0107's dispatcher, which that RFC bounds above by
   the 2,672 B `CppContext` [M]; the kernel thread object is 272 B [M]. The
@@ -284,10 +351,13 @@ so it is reproducible and reviewable at codegen time.
    deadline or a supervised route, until the count fits. Only when every
    remaining pair touches such a band is it merged, with a degradation naming
    the added blocking source.
-4. **The cap:** `max_levels` per image, a Kconfig symbol
-   (`CONFIG_NROS_EXECUTOR_MAX_LEVELS`) rendered from an image knob, read
-   directly on host and Rust roads. Defaults per platform in D6. The pool
-   width is a second, independent cap (RFC-0079 already compresses past it).
+4. **The cap is a count (decided):** `max_levels` per image, a Kconfig symbol
+   (`CONFIG_NROS_EXECUTOR_MAX_LEVELS`) rendered from an image knob, or the
+   platform's equivalent knob where there is no Kconfig, read directly on host
+   and Rust roads. Defaults per platform in D6. The pool width is a second,
+   independent cap (RFC-0079 already compresses past it). A byte budget per
+   memory region was rejected as the input: bytes are known only after a
+   target compile, so the derivation would depend on build order.
 5. **Report:** one `level-budget` degradation per member that loses its rank,
    naming the cap, the rank it would have had, and the band it shares. This
    also replaces rule 2's first-member-only report (section 2).
@@ -295,11 +365,17 @@ so it is reproducible and reviewable at codegen time.
    form one band at the authored priority, and derivation fills only what is
    unbound. `stack_bytes`, `core` and a priority pin stay expert overrides
    (RFC-0079 primitive reduction).
-7. **Cost report** after the target compile: per level its stack and worker
-   record, per core its scheduler and backing, as text and JSON. The image's
-   own guard (the island's linker assert) stays the authority; memory is
-   checked and reported, never an input, so the derivation does not depend on
-   build order.
+7. **Cost report** after the target compile: per region (DTCM, SRAM, ...)
+   and per level its stack and worker record, per core its scheduler and
+   backing, as text and JSON. It is a check, never an input. The image's own
+   guard (the island's linker assert) stays the authority, so the derivation
+   does not depend on build order.
+8. **Equal kernel priorities are merged.** On a time-slicing kernel (FreeRTOS
+   with `configUSE_TIME_SLICING`, Linux `SCHED_RR`) two levels or authored
+   tiers that would run at one kernel priority become one level (decided).
+   Separate threads at one priority buy no preemption between them, only
+   memory, and slicing would preempt a callback mid-run. Real-time levels run
+   with time slicing off (D6).
 
 ### D5 -- Multiple and heterogeneous processors
 
@@ -350,12 +426,14 @@ Each platform publishes a capability table that the derivation reads:
 | Linux / POSIX | one pthread per level, `SCHED_FIFO` | `SCHED_DEADLINE` (runtime, deadline, period; kernel CBS with admission) | `SCHED_DEADLINE` throttling | `sched_setaffinity` | `/proc`, `clock_gettime` per thread | 8 |
 | NuttX | one pthread per level, `SCHED_FIFO` | none | `SCHED_SPORADIC` (`CONFIG_SCHED_SPORADIC`: high and low priority, initial budget, replenishment period) | SMP affinity | `CONFIG_SCHED_CPULOAD` | 8 |
 | ThreadX | threads with a native preemption threshold (`tx_thread_preemption_change`), so a band can also be one thread per callback at the band's threshold | none | none (boundary checks) | SMP builds only | `TX_EXECUTION_PROFILE_ENABLE` | pool width |
-| FreeRTOS | one task per level | none | none (boundary checks only) | SMP builds only | `configGENERATE_RUN_TIME_STATS` | 4, with a stated stack (the 256 KiB default makes levels expensive) |
+| FreeRTOS | one task per level | none | none (boundary checks only) | SMP builds only | `configGENERATE_RUN_TIME_STATS` | 4; stacks derived per level (D3), never the 256 KiB task default |
 
-- **Ties on time-slicing kernels.** FreeRTOS time-slices equal priorities by
-  default (`configUSE_TIME_SLICING`), Linux under `SCHED_RR`. Levels never
-  share a kernel priority, so this only matters for authored tiers (open
-  question 5).
+- **Ties on time-slicing kernels (decided).** FreeRTOS time-slices equal
+  priorities by default (`configUSE_TIME_SLICING`), Linux under `SCHED_RR`.
+  Levels and authored tiers that share a kernel priority are merged into one
+  level (D4 rule 8), and real-time levels run with time slicing off:
+  `SCHED_FIFO`, never `SCHED_RR`, on Linux and NuttX, and
+  `configUSE_TIME_SLICING = 0` on FreeRTOS images with levels.
 - **Zephyr deadline mode** is useful for a different job: when EDF is the
   ordering key, the levels can sit at one static priority and be ordered by
   `k_thread_deadline_set` with the band's earliest deadline. Without budgets
@@ -409,13 +487,15 @@ These hold for every image, and they block the first board run with N > 1.
 - **RFC-0002 (RT execution model).** Amended. Its single-thread, registration-
   order model becomes rank order (D2); its multi-executor answer to
   preemption becomes levels (D3). Its SchedClass family (Fifo, Sporadic, Edf,
-  TimeTriggered) and the 110.F OS-priority worker pool stay as mechanisms.
+  TimeTriggered) stays as a mechanism. The 110.F OS-priority worker pool is
+  retired once the scheduler/worker split lands (alternative 4).
 - **RFC-0079 (priority is allocated).** Unchanged as the source of the rank
   and the address plan. What changes is what a rank is realised as: today a
   rank becomes a thread only through a tier; here a rank is the ordering key
   and a band of ranks becomes a level. The pool width still bounds N. The
   derived-only fields it lists (`preempt_threshold`, `time_slice_us`) get
-  their derivation here.
+  their derivation here: the threshold is the most urgent rank of the band,
+  and time slicing is off for every level.
 - **RFC-0106 (executor park).** Unchanged mechanism; the park moves from the
   executor to the worker (D7), and the session fan-out narrows to one
   worker per arrival where readiness is attributed.
@@ -462,17 +542,31 @@ These hold for every image, and they block the first board run with N > 1.
    context switch per release. The 110.F OS-priority pool
    (`executor/os_priority.rs:1-40`, at most `MAX_PRIORITY_LEVELS` = 8 workers,
    `:83`) is this design as an opt-in feature (`scheduler-os-priority`); levels
-   generalise it with a derived N (open question 6).
+   generalise it with a derived N. **Decided:** the pool
+   (`executor/os_priority.rs`, `executor/ready_set/os_priority.rs`, the
+   feature, and its clippy lane) is retired once the scheduler/worker split
+   (P6) lands, so two worker mechanisms never coexist.
 5. **Grouping per rate-monotonic class or per chain.** Per rate class drops
    the chain-aware refinement the ranker added and can invert the order
    against the rank; per chain forces one priority on members the ranker
    deliberately spread, and a node in two chains has no home. Per distinct rank
    keeps exactly the ranker's order.
+6. **General per-callback preemption thresholds now.** They express
+   overlapping non-preemptive groups that bands cannot (D3's worked example),
+   but they cost a priority raise and restore on every dispatch and a worker
+   pool sized by the deepest preemption chain, and no contract can state the
+   relations that would make an overlapping group necessary. Deferred as a
+   backward-compatible extension with named triggers (D3).
+7. **A byte budget per memory region as the level cap.** Rejected: bytes are
+   known only after a target compile. The per-region cost report checks the
+   result instead (D4).
 
 ## Phased plan
 
-Each nano-ros step is its own PR with its own tests. Steps P1-P5 do not depend
-on RFC-0107 steps 4-6; P6 onward do.
+Each nano-ros step is its own PR with its own tests; the work items, files
+and dependencies are in
+[phase-509](../roadmap/phase-509-executor-preemption-levels.md). Steps P1-P5
+do not depend on RFC-0107 steps 4-6; P6 onward do.
 
 1. **P1. Report every member that loses its rank.** `derive.rs:631-649` emits
    one degradation per disagreeing member. Test: an authored tier with members
@@ -487,19 +581,24 @@ on RFC-0107 steps 4-6; P6 onward do.
    unchanged; entry goldens re-blessed.
 3. **P3. Re-pick after every callback.** Pushed readiness and due timers join
    the ready set mid-pass. Test: callback A makes a more urgent B ready; B runs
-   before a less urgent C already pending in the same pass.
+   before a less urgent C already pending in the same pass. Measures the cost
+   of re-probing unattributed slots (XRCE, uORB) after every callback, which
+   settles the deferred re-probe question.
 4. **P4. The task record.** `nros-orchestration-ir` carries (kind, T or
    T_min, D, C, server Q/P) per callback from the contract; the `unanalysable`
-   degradation. rlm PR for `min_interarrival` and `budget` on inputs, a tag,
-   and a pin move. Tests: each release kind from a fixture contract; an
-   undeclared event input is reported by name.
+   degradation, and the refusal on a safety image. rlm PR for
+   `min_interarrival` and `budget` on inputs, a tag, and a pin move (the rlm
+   push and release are a separate approval). Tests: each release kind from a
+   fixture contract; an undeclared event input is reported by name, and
+   refused by name when the contract supervises a deadline.
 5. **P5. Level derivation and budget.** Rule 4 becomes D4: per-rank default,
    the C-based merge, the capped merge, `level-budget` degradations, the
    Kconfig knob, and the priority record's new `levels` field. Tests: two
    equal-rank nodes and one other give 2 levels; cap 2 over 3 ranks merges
    the least urgent pair; a protected band is skipped; cap 1 reports every
    member; with stated C the merge keeps every deadline in a fixture where
-   the naive merge misses one.
+   the naive merge misses one; two equal kernel priorities on a time-slicing
+   platform merge into one level.
 6. **P6. Scheduler and worker split in `nros-node`** (amended RFC-0107 step 4).
    `Executor` stays the one-level facade. Tests: one-level backing size
    unchanged; a host test with N workers on a deterministic platform mock
@@ -514,10 +613,11 @@ on RFC-0107 steps 4-6; P6 onward do.
 9. **P9. Zephyr runner on levels** (amended RFC-0107 step 5), the FFI, the
    entry packs and the cost report. Tests: a Zephyr QEMU fixture with 3
    levels checks the preemption order; the cost report's numbers equal the
-   generated sizes.
+   generated sizes, and the per-level stacks are derived from the members.
 10. **P10. The other runners** (Linux, NuttX, FreeRTOS, ThreadX via its native
     threshold), one PR each (amended RFC-0107 step 6). Kernel budget
     enforcement (`SCHED_DEADLINE`, `SCHED_SPORADIC`) follows per platform.
+11. **P11. Retire the OS-priority pool** (`scheduler-os-priority`) after P6.
 
 ### Island adoption and board check
 
@@ -530,8 +630,14 @@ on RFC-0107 steps 4-6; P6 onward do.
    Board: acts PASS; measure the handler's tick jitter against 14.84 ms [M].
 3. **I3. Pin bump to P5 and P9.** Remove the authored `[tiers.mrm]` and the
    `group_tiers`; expect three levels at 5, 7 and 8, no rule-2 degradation.
-   Record DTCM and SRAM [M] in place of this RFC's estimates. If the margins
-   are thin, `max_levels = 2` gives {handler}, {emergency, comfortable}.
+   Record DTCM and SRAM [M] in place of this RFC's estimates. **The 2-level
+   fallback is decided:** if the margins are thin, `max_levels = 2` gives
+   {`mrm_handler`} | {emergency operator, comfortable operator}. This keeps
+   the supervised path protected from both operators; it is also what D4
+   rule 3 produces, since it merges the least urgent pair and the handler's
+   band holds a supervised route. The measured `estop` split (the emergency
+   operator alone) was rejected: it protects the unsupervised 30 Hz operator
+   and leaves the handler behind the comfortable operator.
 4. **I4. Board check:** the island repo's `board-build` and `priority-check` recipes (N levels
    agree), the planning acts (encore, a, b, and the 300 ms overrun encore)
    every one PASS; route 1 judged only from the handler's level; SWT0 fires
@@ -639,36 +745,46 @@ on RFC-0107 steps 4-6; P6 onward do.
 21. S. K. Dhall, C. L. Liu. On a Real-Time Scheduling Problem. Operations
     Research 26(1), 1978, 127-140.
 
-## Open questions
+## Decisions (2026-10-21)
 
-1. **Contiguous bands only?** General preemption thresholds need a worker to
-   raise its own kernel priority to the threshold when it starts a callback
-   and drop it after. That admits non-contiguous groups and possibly fewer
-   levels, at a priority change per dispatch. Worth it, or keep contiguity?
-2. **The cost of re-picking (D2).** Re-picking from pushed readiness after
-   every callback is cheap; re-probing unattributed slots (XRCE, uORB) after
-   every callback is not. Probe once per pass for those, and say so?
-3. **EDF across levels.** With fixed-priority kernel levels, EDF orders only
-   within a level. Use Zephyr's deadline mode to order levels by deadline, or
-   keep EDF per level?
-4. **`max_levels` as a count, or a byte budget per memory region** declared by
-   the image? A count is reproducible; bytes are only known after a target
-   compile.
-5. **Authored tiers that share a kernel priority on a time-slicing kernel**
-   (FreeRTOS default, Linux `SCHED_RR`): merge them, or keep them apart?
-6. **Retire the 110.F OS-priority pool** (`scheduler-os-priority`), or keep it
-   as the "one thread per callback" opt-in beside levels?
-7. **Event inputs with no rate:** report and place at the band's bottom (this
-   draft), or refuse the build on a safety image?
-8. **Who splits an end-to-end deadline** across heterogeneous images (D5):
-   rlm, which sees the whole system, or each image's derivation, from a
-   segment budget the system states?
-9. **Where the response-time analysis lives:** `nros-orchestration-ir` (the
-   derivation already runs there) or rlm (the ranker already runs there)?
-10. **Island, two levels:** {handler} and {emergency, comfortable}, which
-    protects the supervised path, or the measured `estop` split, which protects
-    the 30 Hz operator?
+The first draft's open questions, as decided:
+
+1. **Level model: contiguous bands** (D3). General per-callback thresholds are
+   a later, backward-compatible extension, taken when a contract can state
+   non-preemption or shared-state relations between callbacks, or for a
+   kernel with native thresholds (ThreadX `tx_thread_preemption_change`).
+2. **The level cap is a count**, `CONFIG_NROS_EXECUTOR_MAX_LEVELS` or the
+   platform's equivalent knob (D4 rule 4). The per-region byte-cost report is
+   a check, never an input (D4 rule 7).
+3. **The opt-in OS-priority worker pool** (`executor/os_priority.rs`, feature
+   `scheduler-os-priority`) is retired once the scheduler/worker split (P6)
+   lands (alternative 4, P11).
+4. **Event inputs with no declared rate, minimum inter-arrival or budget** are
+   refused on a safety image and reported elsewhere. A safety image is one
+   whose contract supervises a deadline (`supervise:`) (D1).
+5. **Island 2-level fallback:** {`mrm_handler`} | {emergency operator,
+   comfortable operator}, which protects the supervised path from both
+   operators (island adoption, I3).
+6. **Equal kernel priorities are merged on time-slicing kernels** (FreeRTOS,
+   Linux `SCHED_RR`): separate threads at one priority only cost memory. Time
+   slicing is off for real-time levels (D4 rule 8, D6).
+7. **Worker stacks are derived per level** from the members, never the
+   platform's default thread stack (D3).
+
+### Deferred
+
+| question | decided when |
+| --- | --- |
+| The cost of re-probing unattributed slots (XRCE, uORB) after every callback, against probing them once per pass (D2) | In P3: the PR measures it and picks one, stating the number. |
+| EDF across levels: Zephyr's deadline mode to order levels by deadline, or EDF per level only (D6) | When an image first needs EDF with more than one level; not before P9. Until then EDF orders within a level. |
+| Who splits an end-to-end deadline across heterogeneous images: rlm, or each image's derivation from a stated segment budget (D5) | In the load-partitioning phase, which also assigns callbacks to cores. |
+| Where the response-time analysis lives: `nros-orchestration-ir` (the derivation runs there) or rlm (the ranker runs there) | In P5, the first step that needs the analysis (D4 rule 2). |
 
 ## Changelog
 
 - 2026-10-21: Draft.
+- 2026-10-21: Open questions decided (contiguous bands, a count cap, retire
+  the OS-priority pool, refuse unanalysable inputs on safety images, the
+  island fallback, merge equal priorities, derived stacks); the rest
+  deferred with a decision point; worked threshold example; P11; tracked by
+  phase-509.
