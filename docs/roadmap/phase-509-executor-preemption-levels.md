@@ -1,6 +1,6 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-21). In progress: P1-P6, P8 and P11 done.** The design is
+**Status (2026-10-21). In progress: P1-P8 and P11 done.** The design is
 [RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
 questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
@@ -444,12 +444,66 @@ only its band's worker; RFC-0108 D7).
 
 ### P7 -- Level identity and liveness API
 
-- [ ] Goal: the island's supervisor can own a route per level and feed the
+- [x] Goal: the island's supervisor can own a route per level and feed the
       watchdog only when every level is alive (RFC-0108 D8). Adds:
   - a generated `NROS_ENTRY_LEVEL_OF_<node>` next to the priority plan header;
   - a runtime level query on an executor handle;
   - the level index passed to spin hooks;
   - the "every level alive" aggregate from the per-sched-context alive slots.
+
+**Done (as built).**
+
+- **Identity.** An executor's worker carries its level (0 the most urgent;
+  `Executor::level` / `set_level`). Until P9 a level is a tier: a tier's
+  level is its urgency order among the image's tiers, equal priorities in
+  table order (`nros_node::executor::tier_level_by`). The Zephyr runners (C
+  `zephyr_run_tiers.c`, Rust `entry_tiers.rs`) place every tier's executor
+  by that rule before it spins and state the level count. An executor no
+  runner placed is level 0, which is every executor of a one-level image.
+- **The header.** `nros_priority_plan.h` gains `NROS_ENTRY_LEVEL_COUNT` and
+  one `NROS_ENTRY_LEVEL_OF_<node>` per node, by the same rule over the
+  same table order (`PriorityRecord::node_levels`); an entry with no
+  running tier is one level with every node at 0.
+- **Liveness.** `executor/level_liveness.rs` (new): a per-image registry
+  of 32-bit atomics. Every spin checks its level in with the low 32 bits
+  of its microsecond clock and a count (`level_last_spin_us`,
+  `level_spins`). The watchdog feed is `take_every_level_alive`: true only
+  when every level `0..level_count()` has checked in since the last true,
+  which it then clears; `every_level_alive` reads without clearing.
+- **FFI.** C++ ABI: `nros_cpp_executor_level`, `nros_cpp_executor_set_level`,
+  `nros_cpp_tier_level` (reads a runner's own tier array by stride),
+  `nros_cpp_set_level_count`, `nros_cpp_level_count`,
+  `nros_cpp_level_last_spin_us`, `nros_cpp_levels_alive`,
+  `nros_cpp_levels_take_alive`. C API: `rclc_executor_get_level`,
+  `rclc_executor_set_level`, `rclc_levels_max`, `rclc_levels_set_count`,
+  `rclc_levels_count`, `rclc_level_last_spin_us`, `rclc_levels_alive`,
+  `rclc_levels_take_alive`. Rust: the same through `nros::`.
+
+Deviations, recorded in RFC-0108 ("As built in P7"):
+
+- **No spin-hook ABI.** nano-ros has no spin-hook registration; a
+  supervisor hooks the spin by wrapping `nros_cpp_spin_once` (the island
+  does), and reads the level of the handle it was given with
+  `nros_cpp_executor_level`. That is the "level index passed to spin
+  hooks".
+- **The aggregate is not built from the per-sched-context alive slots.**
+  Those count dispatches per sched context inside one executor, and until
+  P9 the levels are separate executors on separate threads, so the
+  check-in is a per-image registry the spins write.
+- **The other runners** (POSIX, NuttX, FreeRTOS, ThreadX) do not place
+  levels yet: there every tier's executor reports level 0 until their P10
+  runner. The island's Zephyr runners do.
+- **C++ parity:** the C++ surface is the `nros_cpp_*` C ABI, which the
+  parity report does not hold against rclcpp; the C and Rust ledgers carry
+  the new rows.
+
+Tests: `level_liveness::tests` (`every_level_must_check_in_before_the_feed`,
+`a_tiers_level_is_its_urgency_order`),
+`an_executor_reports_its_level_and_checks_it_in_on_every_spin`; nros-cpp
+`level_tests` (`a_tiers_level_is_read_from_the_runners_array`,
+`the_alive_aggregate_waits_for_every_level`); priority record
+`the_header_names_each_nodes_level` and the island tier's
+`NROS_ENTRY_LEVEL_OF_MRM_HANDLER (0)`.
 
 **Touches:** the entry codegen (`lower.rs`, the priority plan header);
 `executor/spin.rs` (the spin hook signature); the C and C++ FFI

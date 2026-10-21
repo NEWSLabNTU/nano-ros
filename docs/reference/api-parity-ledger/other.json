@@ -1766,5 +1766,65 @@
   "rust:install_port_park": {
     "verdict": "extension",
     "why": "phase-436 W7 -- a board's Rust arm installs the platform's park primitive (the spin loop's wait-for-work seam) once at boot. A porting seam for the RTOS boards, not a client-library call; rclrs runs on a hosted OS and has nothing to install. Reached through the module re-export `pub use nros_node::executor::port_park;`, which the extraction walks reliably since issue 1986."
+  },
+  "c:level_last_spin_us": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- per-level liveness: when a level last spun, for a supervisor's spin-gap statistic (D8.2). ROS 2 has no executor liveness surface."
+  },
+  "c:levels_alive": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- whether every level of the image has spun since the last watchdog feed (D8.2). ROS 2 has no levels."
+  },
+  "c:levels_count": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- how many levels the image runs. ROS 2 has no levels."
+  },
+  "c:levels_max": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- the most levels an image can have (the check-in word's width). ROS 2 has no levels."
+  },
+  "c:levels_set_count": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- a runner states the image's level count before its levels spin, which the alive aggregate counts over. ROS 2 has no levels."
+  },
+  "c:levels_take_alive": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- the hardware-watchdog feed: true only when every level has spun since the last true, so a level stuck in a callback starves the watchdog while another spins on (D8.2). ROS 2 has no levels."
+  },
+  "rust:MAX_LEVELS": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- the most levels an image can have. rclrs has no levels."
+  },
+  "rust:every_level_alive": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- whether every level has spun since the last watchdog feed (D8.2). rclrs has no levels."
+  },
+  "rust:level_count": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- how many levels the image runs. rclrs has no levels."
+  },
+  "rust:level_last_spin_us": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- when a level last spun (D8.2). rclrs has no executor liveness surface."
+  },
+  "rust:level_spins": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- how many times a level has spun (D8.2). rclrs has no levels."
+  },
+  "rust:set_level_count": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- a board's tier runner states the image's level count before its levels spin. rclrs has no levels."
+  },
+  "rust:take_every_level_alive": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- the hardware-watchdog feed: true only when every level has spun since the last true (D8.2). rclrs has no levels."
+  },
+  "rust:tier_level": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- a tier's level, its urgency order among the image's tiers: the rule a runner places executors by and `nros codegen entry` writes `NROS_ENTRY_LEVEL_OF_<node>` by. rclrs has no levels."
+  },
+  "rust:tier_level_by": {
+    "verdict": "extension",
+    "why": "phase-509 P7 (RFC-0108 D8) -- `tier_level` over a runner's own tier array (a priority accessor), so a board need not copy its priorities out. rclrs has no levels."
   }
 }

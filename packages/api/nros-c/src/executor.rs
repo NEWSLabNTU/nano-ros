@@ -4364,6 +4364,117 @@ pub unsafe extern "C" fn rclc_executor_get_arena_capacity(
     get_executor(&mut *executor.cast_mut()).arena_capacity()
 }
 
+/// phase-509 P7 (RFC-0108 D8.1) — the level this executor runs, 0 the most
+/// urgent: the generated `NROS_ENTRY_LEVEL_OF_<node>` of the nodes it hosts.
+/// An executor its runner never placed is level 0, which is every executor of
+/// a one-level image. `RCL_RET_INVALID_ARGUMENT` for NULL or an executor that
+/// is not initialised.
+///
+/// # Safety
+/// `executor` must be NULL or a valid pointer; `level` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_get_level(
+    executor: *const rclc_executor_t,
+    level: *mut u8,
+) -> rcl_ret_t {
+    if executor.is_null() || level.is_null() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let e = &*executor;
+    if e.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+        && e.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
+    {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let executor = &raw const *e;
+    *level = get_executor(&mut *executor.cast_mut()).level();
+    RCL_RET_OK
+}
+
+/// phase-509 P7 — place this executor at `level` (0 the most urgent); its
+/// spins check in as that level. A runner calls it once per level before the
+/// level spins. `RCL_RET_INVALID_ARGUMENT` for NULL, an executor that is not
+/// initialised, or a level at or past `rclc_levels_max()`.
+///
+/// # Safety
+/// `executor` must be NULL or a valid pointer.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_set_level(
+    executor: *mut rclc_executor_t,
+    level: u8,
+) -> rcl_ret_t {
+    if executor.is_null() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let e = &*executor;
+    if e.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
+        && e.state != rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
+    {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    if get_executor(executor).set_level(level) {
+        RCL_RET_OK
+    } else {
+        RCL_RET_INVALID_ARGUMENT
+    }
+}
+
+/// phase-509 P7 — the most levels an image can have.
+#[unsafe(no_mangle)]
+pub extern "C" fn rclc_levels_max() -> u8 {
+    nros_node::executor::MAX_LEVELS as u8
+}
+
+/// phase-509 P7 (RFC-0108 D8.2) — state how many levels the image runs; an
+/// image that never does has one. `RCL_RET_INVALID_ARGUMENT` for 0 or more
+/// than `rclc_levels_max()`.
+#[unsafe(no_mangle)]
+pub extern "C" fn rclc_levels_set_count(n: u8) -> rcl_ret_t {
+    if nros_node::executor::set_level_count(n) {
+        RCL_RET_OK
+    } else {
+        RCL_RET_INVALID_ARGUMENT
+    }
+}
+
+/// phase-509 P7 — how many levels the image runs.
+#[unsafe(no_mangle)]
+pub extern "C" fn rclc_levels_count() -> u8 {
+    nros_node::executor::level_count()
+}
+
+/// phase-509 P7 — the low 32 bits of the executor clock, in microseconds, at
+/// `level`'s latest spin; false (and `*us` untouched) while it has not spun.
+/// Compare two with a wrapping difference.
+///
+/// # Safety
+/// `us` must be writable or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_level_last_spin_us(level: u8, us: *mut u32) -> bool {
+    match nros_node::executor::level_last_spin_us(level) {
+        Some(t) if !us.is_null() => {
+            *us = t;
+            true
+        }
+        _ => false,
+    }
+}
+
+/// phase-509 P7 (RFC-0108 D8.2) — whether every level of the image has spun
+/// since the last `rclc_levels_take_alive()` that returned true.
+#[unsafe(no_mangle)]
+pub extern "C" fn rclc_levels_alive() -> bool {
+    nros_node::executor::every_level_alive()
+}
+
+/// phase-509 P7 (RFC-0108 D8.2) — the watchdog feed: true when every level
+/// has spun since the last true, and the check-ins are then cleared; false,
+/// and nothing cleared, while any level has not.
+#[unsafe(no_mangle)]
+pub extern "C" fn rclc_levels_take_alive() -> bool {
+    nros_node::executor::take_every_level_alive()
+}
+
 /// Check if executor is valid (initialized).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_is_valid(executor: *const rclc_executor_t) -> bool {
