@@ -7753,7 +7753,7 @@ impl<'s> Executor<'s> {
     /// attribute an arrival (XRCE, uORB) after every callback, so one made
     /// ready by a callback runs in the same pass, in rank order, instead of
     /// at the next pass's scan. Pushed readiness joins mid-pass either way.
-    /// The default is [`REPROBE_EACH_CALLBACK_DEFAULT`]; the phase-509 P3
+    /// The default is `REPROBE_EACH_CALLBACK_DEFAULT` (in `executor/spin.rs`); the phase-509 P3
     /// host measurement that chose it is recorded beside that constant.
     pub fn set_reprobe_each_callback(&mut self, on: bool) {
         self.reprobe_each_callback = on;
