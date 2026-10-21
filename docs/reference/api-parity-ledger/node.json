@@ -161,14 +161,22 @@
     "why": "rclcpp has no node validity predicate because a `Node` that exists was constructed successfully or threw. With -fno-exceptions the object exists either way, so it has to be askable."
   },
   "cpp:Node::make_shared": {
-    "disposition": "adopt",
-    "verdict": "declined",
-    "why": "rclcpp's `SharedPtr` factory macro. No allocator; see `no-shared-ptr` in signature_rules.py."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "Absent on a freestanding build, where there is no `<memory>`"
+    },
+    "why": "phase-488 (2026-10-21), measured on the stock ros2/examples ports in `packages/api/nros-cpp/tests/compile/rclcpp-examples/` (edit counts in its `edits.json`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the build this name is for: on a hosted (`NROS_CPP_STD`) build `std::make_shared<rclcpp::Node>(...)` already compiled and already allocated, and the ported spin verbs already took the resulting `std::shared_ptr`. So `rclcpp::Node::make_shared(args...)` is that call under upstream's spelling, returning upstream's OWNING smart pointer -- no new allocation, no new lifetime rule. It removed the edit from 4 of the 13 stock examples (every `not_composable` and service/client `main`). THE BOUND: freestanding has no `<memory>`, so the name is absent there and the node is a value. What still costs an edit is assigning the TEMPORARY to a global `Node::SharedPtr` (`g_node = rclcpp::Node::make_shared(...)`), refused because `Node::SharedPtr` is a non-owning handle (phase-482 W2) and nothing would own the node; keep the shared_ptr in a local first. Previous text: rclcpp's `SharedPtr` factory macro. No allocator; see `no-shared-ptr` in signature_rules.py."
   },
   "cpp:Node::make_unique": {
-    "disposition": "adopt",
-    "verdict": "declined",
-    "why": "see `cpp:Node::make_shared`."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "Absent on a freestanding build, where there is no `<memory>`"
+    },
+    "why": "phase-488 (2026-10-21), measured on the stock ros2/examples ports in `packages/api/nros-cpp/tests/compile/rclcpp-examples/` (edit counts in its `edits.json`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the build this name is for: on a hosted (`NROS_CPP_STD`) build `std::make_shared<rclcpp::Node>(...)` already compiled and already allocated, and the ported spin verbs already took the resulting `std::shared_ptr`. So `rclcpp::Node::make_unique(args...)` is that call under upstream's spelling, returning upstream's OWNING smart pointer -- no new allocation, no new lifetime rule. It removed the edit from 4 of the 13 stock examples (every `not_composable` and service/client `main`). THE BOUND: freestanding has no `<memory>`, so the name is absent there and the node is a value. What still costs an edit is assigning the TEMPORARY to a global `Node::SharedPtr` (`g_node = rclcpp::Node::make_shared(...)`), refused because `Node::SharedPtr` is a non-owning handle (phase-482 W2) and nothing would own the node; keep the shared_ptr in a local first. Previous text: see `cpp:Node::make_shared`."
   },
   "cpp:Node::ok": {
     "verdict": "extension",

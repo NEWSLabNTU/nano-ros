@@ -2067,6 +2067,24 @@ const void *nros_cpp_node_get_logger(const struct nros_cpp_node_t *node);
 nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 
 /**
+ * Drain the ready set without waiting — rclcpp's `spin_some(max_duration)`
+ * (phase-488; the C++ half of the `cpp:Executor::spin_some` ledger row, whose
+ * Rust half is `nros_node::Executor::spin_some`).
+ *
+ * A forwarder to that Rust method, so the two languages share one drain: it
+ * re-runs a zero-timeout `spin_once` until a pass does no work, and checks
+ * `max_ms` BETWEEN passes (a floor, not a ceiling — a single long callback
+ * overruns it). `max_ms == 0` means no limit, rclcpp's own default. A
+ * non-zero `max_ms` on an executor with no clock is refused with
+ * `NROS_CPP_RET_UNSUPPORTED`, never turned into an unbounded drain (issue
+ * 0709); the Rust side logs why.
+ *
+ * # Safety
+ * `handle` must be a valid handle returned by `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_spin_some(void *handle, uint32_t max_ms);
+
+/**
  * Spin the executor for `duration_ms`, budgeted by WALL-CLOCK time.
  *
  * Issue 0329 — the single budgeted-spin entry point. `rclcpp::spin()` and

@@ -3648,6 +3648,42 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     NROS_CPP_RET_OK
 }
 
+/// Drain the ready set without waiting — rclcpp's `spin_some(max_duration)`
+/// (phase-488; the C++ half of the `cpp:Executor::spin_some` ledger row, whose
+/// Rust half is `nros_node::Executor::spin_some`).
+///
+/// A forwarder to that Rust method, so the two languages share one drain: it
+/// re-runs a zero-timeout `spin_once` until a pass does no work, and checks
+/// `max_ms` BETWEEN passes (a floor, not a ceiling — a single long callback
+/// overruns it). `max_ms == 0` means no limit, rclcpp's own default. A
+/// non-zero `max_ms` on an executor with no clock is refused with
+/// `NROS_CPP_RET_UNSUPPORTED`, never turned into an unbounded drain (issue
+/// 0709); the Rust side logs why.
+///
+/// # Safety
+/// `handle` must be a valid handle returned by `nros_cpp_init()`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_spin_some(handle: *mut c_void, max_ms: u32) -> nros_cpp_ret_t {
+    crate::census_finish_application_if_armed();
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    // Issue 0290 — the same re-entry refusal `nros_cpp_spin_once` makes.
+    let CppContext {
+        executor,
+        c: nros_c::rclc_executor_t { in_dispatch, .. },
+        ..
+    } = ctx;
+    let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
+        return NROS_CPP_RET_REENTRANT;
+    };
+    match executor.spin_some(core::time::Duration::from_millis(max_ms as u64)) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_UNSUPPORTED,
+    }
+}
+
 /// Spin the executor for `duration_ms`, budgeted by WALL-CLOCK time.
 ///
 /// Issue 0329 — the single budgeted-spin entry point. `rclcpp::spin()` and

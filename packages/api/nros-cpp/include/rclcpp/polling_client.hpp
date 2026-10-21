@@ -339,6 +339,23 @@ template <typename S> class PollClient {
         return Result(::rclcpp::ErrorCode::Unsupported);
     }
 
+#ifdef NROS_CPP_HAS_STD_CHRONO // hosted-family: chrono-interop
+    /// `wait_for_service(std::chrono::duration)` — phase-488, upstream's argument type.
+    /// The same wait as the millisecond form, with the budget rounded UP and
+    /// clamped to `UINT32_MAX` ms; a NEGATIVE duration (upstream's "forever")
+    /// is refused at the call. Still returns `Result`, whose explicit
+    /// `operator bool` keeps `while (!client->wait_for_service(1s))` compiling.
+    template <typename Rep, typename Period>
+    Result wait_for_service(::std::chrono::duration<Rep, Period> timeout) {
+        const int64_t ms = ::rclcpp::detail::chrono_wait_budget_ms(timeout);
+        if (ms < 0) {
+            NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT_RUNTIME);
+            return Result(::rclcpp::ErrorCode::Unsupported);
+        }
+        return wait_for_service(static_cast<uint32_t>(ms));
+    }
+#endif // NROS_CPP_HAS_STD_CHRONO
+
     /// Destructor -- releases the service client.
     ///
     /// Unconditional since phase-456 W9: every `PollClient<S>` owns an

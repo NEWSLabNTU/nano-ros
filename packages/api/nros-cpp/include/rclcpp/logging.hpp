@@ -313,6 +313,27 @@ template <typename T> struct refuse {
     "keep doing other work while you wait, poll PollClient::service_is_ready() from your own "     \
     "spin loop, or call the action form with a short budget inside a loop you control."
 
+// phase-488 — `rclcpp::executors::MultiThreadedExecutor`.
+#define NROS_RCLCPP_REFUSE_MULTI_THREADED_EXECUTOR                                                 \
+    "rclcpp::executors::MultiThreadedExecutor is REFUSED by nano-ros (RFC-0002, phase-488). An "   \
+    "executor dispatches on ONE task with run-to-completion callbacks, and nano-ros starts no "    \
+    "threads behind your back, so a worker pool is not a shape it has; callback groups are "       \
+    "therefore all mutually exclusive. Use rclcpp::executors::SingleThreadedExecutor (or "         \
+    "rclcpp::spin(node)). For parallelism, give the work its own TIER -- one executor per RTOS "   \
+    "task, declared in system.toml -- rather than its own callback group."
+
+// phase-488 — `SingleThreadedExecutor::add_node` on a node from another executor.
+#define NROS_RCLCPP_REFUSE_FOREIGN_EXECUTOR_NODE                                                   \
+    "add_node REFUSED: this node was created on an explicit rclcpp::Executor, not the process "    \
+    "executor; spin that Executor instead."
+
+// phase-488 — the runtime form, for the `std::chrono` overloads of the same two
+// helpers: a NEGATIVE duration is upstream's "wait forever", and a duration's
+// sign is only known at run time.
+#define NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT_RUNTIME                                                  \
+    "wait_for_service/wait_for_action_server(negative) REFUSED by nano-ros: no unbounded wait "    \
+    "(RFC-0021). Name a budget: wait_for_service(10s)."
+
 #define NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK                                             \
     "the shared_ptr service-callback shape is REFUSED by nano-ros (RFC-0089, phase-417 W2.c). "    \
     "rclcpp's create_service/create_client callback takes std::shared_ptr<Request> and "           \
@@ -324,6 +345,22 @@ template <typename T> struct refuse {
     "client -- a plain function pointer or a capture-less lambda -- or take the poll-style "       \
     "overload create_service<S>(name, qos) / create_client<S>(name, qos) and drain it from your "  \
     "spin loop."
+
+// phase-488 — what is still refused on the SERVICE side once the shared_ptr
+// handler shape is taken (hosted, function pointer or capture-less lambda).
+#define NROS_RCLCPP_REFUSE_SERVICE_CALLBACK_SHAPE                                                  \
+    "this service-callback shape is REFUSED by nano-ros (RFC-0089, phase-488). A service handler " \
+    "is stored in the executor arena as ONE function pointer, so it must be a plain function or "  \
+    "a CAPTURE-LESS lambda taking either void(const S::Request&, S::Response&) or upstream's "     \
+    "void([std::shared_ptr<rmw_request_id_t>,] std::shared_ptr<S::Request>, "                      \
+    "std::shared_ptr<S::Response>) (hosted builds). A capturing lambda or std::bind has state "    \
+    "the arena cannot hold: bind a member function with rclcpp::bind_service<S, C, &C::method>, "  \
+    "or reach your object through a global the way the stock minimal_service example does."
+
+// phase-488 — a shared_ptr service handler kept a request/response past its call.
+#define NROS_RCLCPP_REFUSE_RETAINED_SERVICE_PTR                                                    \
+    "service handler kept its request/response shared_ptr past the call: nano-ros lends them "     \
+    "from the dispatch frame (no heap). Copy the message instead."
 
 /// Bytes of name an `rclcpp::Logger` keeps (issue 1682). 128 is
 /// `nros_node::names::MAX_RESOLVED_NAME_LEN`, the longest name the stack
@@ -643,6 +680,24 @@ inline void say_refused(const char (&message)[N], const char* file, uint32_t lin
                   "the runtime site a short form that still names the alternative.");
     rclc_log_emit_at(log_handle(nullptr), RCLC_LOG_SEVERITY_ERROR, message, N - 1, file, line);
 }
+
+#if defined(NROS_CPP_HAS_STD_CHRONO) // hosted-family: chrono-interop
+/// phase-488 — a `std::chrono` wait budget as the millisecond count the
+/// `wait_for_service` / `wait_for_action_server` helpers take: rounded UP (a
+/// 1500 us budget must not become a 1 ms one), clamped to `UINT32_MAX`, and
+/// `-1` for a NEGATIVE duration — upstream's "wait forever", which the caller
+/// refuses with `NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT_RUNTIME`.
+template <typename Rep, typename Period>
+inline int64_t chrono_wait_budget_ms(::std::chrono::duration<Rep, Period> timeout) {
+    if (timeout < ::std::chrono::duration<Rep, Period>::zero()) return -1;
+    // `std::chrono::ceil` is C++17; these headers are C++14.
+    auto truncated = ::std::chrono::duration_cast<::std::chrono::milliseconds>(timeout);
+    if (truncated < timeout) truncated += ::std::chrono::milliseconds(1);
+    const auto ms = truncated.count();
+    return ms > static_cast<int64_t>(0xFFFFFFFFu) ? static_cast<int64_t>(0xFFFFFFFFu)
+                                                  : static_cast<int64_t>(ms);
+}
+#endif // NROS_CPP_HAS_STD_CHRONO
 
 /// **REFUSED** — the target of every `RCLCPP_*_THROTTLE` macro. Variadic so
 /// the macro can forward `logger`, `clock`, the period and the whole format

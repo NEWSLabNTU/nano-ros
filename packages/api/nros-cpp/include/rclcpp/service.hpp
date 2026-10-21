@@ -335,24 +335,33 @@ namespace rclcpp {
 template <typename S, typename F, typename>
 Result Node::create_service(Service<S>& out, const char* service_name, F callback,
                             const ::rclcpp::QoS& qos, const ::rclcpp::ServiceOptions& options) {
-    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
-
     // The user handler becomes the ARENA's context (phase-456 W3). The
     // conversion is still the compile error for a non-convertible `F`; what
     // changed is where the resulting pointer is stored — in the registration,
     // not in `out`, so `out` is no longer an object the arena knows by address.
     const typename Service<S>::TypedServiceFn user_fn =
         typename Service<S>::TypedServiceFn(callback);
+    return this->template register_service_<S>(out, service_name, &Service<S>::request_trampoline,
+                                               ::rclcpp::detail::fn_to_context(user_fn), qos,
+                                               options);
+}
+
+template <typename S>
+Result Node::register_service_(Service<S>& out, const char* service_name,
+                               bool (*trampoline)(const uint8_t*, size_t, uint8_t*, size_t, size_t*,
+                                                  void*),
+                               void* context, const ::rclcpp::QoS& qos,
+                               const ::rclcpp::ServiceOptions& options) {
+    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
 
     uint8_t sched = (options.sched_context == ::rclcpp::SCHED_CONTEXT_UNSET)
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
-    nros_cpp_ret_t ret = nros_cpp_service_server_register(
-        &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos,
-        reinterpret_cast<nros_cpp_service_request_callback_t>(&Service<S>::request_trampoline),
-        ::rclcpp::detail::fn_to_context(user_fn), sched, &handle);
+    nros_cpp_ret_t ret = nros_cpp_service_server_register(&handle_, service_name, S::TYPE_NAME,
+                                                          S::Request::TYPE_HASH, ffi_qos,
+                                                          trampoline, context, sched, &handle);
     if (ret == 0) {
         out.handle_id_ = handle;
         // phase-444 — remember the name for `get_service_name()`; the runtime
@@ -366,6 +375,153 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
     return Result(ret);
 }
 } // namespace rclcpp
+
+#include "rclcpp/logging.hpp" // phase-488 — NROS_RCLCPP_SAY_REFUSED for the shared_ptr handler
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+/// `rmw_request_id_t` — phase-488. The request header upstream's three-argument
+/// service handler receives. Declared so that handler's signature compiles;
+/// the dispatch path carries no writer GUID or sequence number to a server
+/// handler, so both fields are ZERO. A handler that ignores the header — the
+/// stock examples `(void)` it — loses nothing. Upstream's is a C typedef in
+/// `<rmw/types.h>`, which nano-ros does not ship.
+struct rmw_request_id_t {
+    int8_t writer_guid[16];
+    int64_t sequence_number;
+};
+
+namespace rclcpp {
+namespace detail {
+
+/// phase-488 — the shared_ptr service handler, WITHOUT a heap.
+///
+/// Upstream's `void(std::shared_ptr<Request>, std::shared_ptr<Response>)` is
+/// what stopped a stock service from porting, and the reason recorded for
+/// refusing it was a per-request heap allocation. It needs none: the request
+/// and response are the trampoline's own locals, exactly as for the reference
+/// shape, and each `shared_ptr` LENDS one of them through a no-op deleter. The
+/// shared_ptr's control block is the only object a `shared_ptr` must allocate,
+/// and its allocator here hands out a buffer in the same frame. So the
+/// delivery path is the reference shape's — deserialize, call, serialize — with
+/// an adapter around the call, and nothing reaches `malloc`.
+///
+/// What upstream allows and this cannot: KEEPING the pointer. The objects die
+/// with the frame, so after the handler returns each control block must be
+/// back to one owner. If the handler stored a copy, that check fails and the
+/// process aborts naming why — loud, never a dangling pointer.
+struct FrameBlock {
+    /// A `_Sp_counted_deleter` is a vtable pointer, two counters and the
+    /// pointer plus (empty) deleter and allocator — 32 bytes on libstdc++ and
+    /// libc++ for 64-bit. 96 is that with room; an implementation that needs
+    /// more aborts at the first dispatch, naming this buffer.
+    static const size_t CAPACITY = 96;
+    alignas(alignof(::std::max_align_t)) unsigned char bytes[CAPACITY];
+    bool used = false;
+};
+
+[[noreturn]] inline void abort_frame_block() {
+    RCLC_LOG_ERROR(log_handle(nullptr),
+                   "rclcpp: a shared_ptr control block does not fit FrameBlock::CAPACITY");
+    ::std::abort();
+}
+
+template <typename T> struct FrameBlockAllocator {
+    using value_type = T;
+    FrameBlock* block;
+    explicit FrameBlockAllocator(FrameBlock* b) : block(b) {}
+    template <typename U> FrameBlockAllocator(const FrameBlockAllocator<U>& o) : block(o.block) {}
+    T* allocate(size_t n) {
+        if (block->used || n * sizeof(T) > FrameBlock::CAPACITY ||
+            alignof(T) > alignof(::std::max_align_t)) {
+            abort_frame_block();
+        }
+        block->used = true;
+        return reinterpret_cast<T*>(block->bytes);
+    }
+    void deallocate(T*, size_t) { block->used = false; }
+    template <typename U> bool operator==(const FrameBlockAllocator<U>& o) const {
+        return block == o.block;
+    }
+    template <typename U> bool operator!=(const FrameBlockAllocator<U>& o) const {
+        return block != o.block;
+    }
+};
+
+struct LendDeleter {
+    template <typename T> void operator()(T*) const {}
+};
+
+template <typename T> inline ::std::shared_ptr<T> lend_from_frame(T* object, FrameBlock* block) {
+    return ::std::shared_ptr<T>(object, LendDeleter(), FrameBlockAllocator<T>(block));
+}
+
+template <typename S> struct shared_ptr_service_fn {
+    using Request = typename S::Request;
+    using Response = typename S::Response;
+    using two = void (*)(::std::shared_ptr<Request>, ::std::shared_ptr<Response>);
+    using three = void (*)(::std::shared_ptr<::rmw_request_id_t>, ::std::shared_ptr<Request>,
+                           ::std::shared_ptr<Response>);
+};
+
+/// Which shared_ptr handler shape `F` is: 3 (with the request header), 2, or 0
+/// (neither — still refused).
+template <typename S, typename F> struct service_ptr_shape {
+    static const int value =
+        ::rclcpp::tr::is_convertible<F, typename shared_ptr_service_fn<S>::three>::value ? 3
+        : ::rclcpp::tr::is_convertible<F, typename shared_ptr_service_fn<S>::two>::value ? 2
+                                                                                         : 0;
+};
+
+template <typename S, int Shape> struct shared_ptr_service_trampoline {
+    static bool call(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
+                     size_t* resp_len, void* ctx) {
+        using Fn = shared_ptr_service_fn<S>;
+        typename S::Request request;
+        if (S::Request::ffi_deserialize(req, req_len, &request) != 0) return false;
+        typename S::Response response;
+        ::rmw_request_id_t header = {};
+        {
+            FrameBlock request_block;
+            FrameBlock response_block;
+            FrameBlock header_block;
+            ::std::shared_ptr<typename S::Request> request_ptr =
+                lend_from_frame(&request, &request_block);
+            ::std::shared_ptr<typename S::Response> response_ptr =
+                lend_from_frame(&response, &response_block);
+            ::std::shared_ptr<::rmw_request_id_t> header_ptr =
+                lend_from_frame(&header, &header_block);
+            if (Shape == 3) {
+                fn_from_context<typename Fn::three>(ctx)(header_ptr, request_ptr, response_ptr);
+            } else {
+                fn_from_context<typename Fn::two>(ctx)(request_ptr, response_ptr);
+            }
+            if (request_ptr.use_count() != 1 || response_ptr.use_count() != 1 ||
+                header_ptr.use_count() != 1) {
+                NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_RETAINED_SERVICE_PTR);
+                ::std::abort();
+            }
+        }
+        size_t len = 0;
+        if (S::Response::ffi_serialize(&response, resp, resp_cap, &len) != 0) return false;
+        *resp_len = len;
+        return true;
+    }
+};
+
+/// The context the arena stores for shape `Shape`: the handler converted to
+/// that shape's function pointer.
+template <typename S, typename F>
+inline void* shared_ptr_service_context(F callback, ::rclcpp::tr::integral_constant<int, 3>) {
+    return fn_to_context(typename shared_ptr_service_fn<S>::three(callback));
+}
+template <typename S, typename F>
+inline void* shared_ptr_service_context(F callback, ::rclcpp::tr::integral_constant<int, 2>) {
+    return fn_to_context(typename shared_ptr_service_fn<S>::two(callback));
+}
+
+} // namespace detail
+} // namespace rclcpp
+#endif // NROS_CPP_HAS_SHARED_PTR
 
 namespace rclcpp {} // namespace rclcpp
 
