@@ -12,7 +12,7 @@ superseded-by: null
 
 # RFC-0108 -- One ordered ready set per core, N preemption levels
 
-**Status:** Draft (2026-10-21). Proposal only; nothing here is implemented.
+**Status:** Draft (2026-10-21). P1-P4 are built; the rest is a proposal.
 The open questions of the first draft are decided (see Decisions); the work is
 tracked by [phase-509](../roadmap/phase-509-executor-preemption-levels.md).
 
@@ -214,6 +214,31 @@ the contract (rlm `ros-launch-manifest`), never written in `system.toml`.
   image that supervises a deadline has already claimed a timing reaction that
   an input with unbounded arrivals can break (its callbacks add blocking and
   interference no analysis can bound).
+- **As built in P4** (`nros-orchestration-ir::task_record`; rlm v0.1.68).
+  Five points the table above left open:
+  - **Inputs are subscriptions and service servers.** Both take the keys
+    (`sub.<e>` and `srv.<e>`: `min_interarrival`, `budget` +
+    `budget_period`). A budget decides the kind (served) even beside a
+    `min_interarrival`. rlm refuses a budget without its period, a period
+    without its budget, a budget longer than its period, the keys under
+    `pub:`/`cli:`, and a `min_interarrival` above `1 / min_rate_hz`.
+  - **A rate bound** is the subscriber's `max_rate_hz` or the topic's
+    `rate_hz` (T_min = 1 / rate). A `min_rate_hz` is a floor the subscriber
+    needs and bounds nothing, so it releases nothing.
+  - **A service client's response** follows the node's own request, so it
+    inherits the release of the paths that issue it (`output: [<client>]`):
+    sporadic at the least T among them, unanalysable when one of them reads
+    an unbounded input or none is known. An action endpoint has no release
+    key in the grammar yet, so its callbacks are unanalysable.
+  - **D** is the least `max_latency` of the paths the callback runs (and a
+    server's `max_response`) when stated, else implicit: T, T_min or P. C is
+    the summed RFC-0078 bounds of those paths when every one declares one.
+  - **Where:** the refusal is `task_record::check_model`, on all three bake
+    roads (`codegen entry`, `codegen-system`, `nros::main!`), beside the FTTI
+    check. The report is an `unanalysable` degradation in the derived
+    schedule's record (`DerivedSchedule::tasks` carries the records). The
+    placement at the least urgent level of the node's band is P5's, with
+    levels.
 
 ### D2 -- Ordering: one ready set per core, keyed by priority
 
@@ -802,5 +827,9 @@ The first draft's open questions, as decided:
   phase-509.
 - 2026-10-21: P2 built; D2 amended: the rank is seeded per node, not per
   callback group (the derivation ranks nodes).
+- 2026-10-21: P4 built; D1 amended with the task record as built: inputs
+  are subscriptions and servers, a rate bound is `max_rate_hz` or the topic's
+  `rate_hz`, a client response inherits its requests' release, implicit
+  deadlines, and where the refusal and the report live (rlm v0.1.68).
 - 2026-10-21: P3 built; the deferred re-probe question settled (once per pass
   by default, D2, with the measurement); timers join at pass boundaries.

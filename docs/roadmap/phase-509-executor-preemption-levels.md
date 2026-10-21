@@ -1,6 +1,6 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-21). In progress: P1, P2 and P3 done.** The design is
+**Status (2026-10-21). In progress: P1, P2, P3 and P4 done.** The design is
 [RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
 questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
@@ -188,13 +188,46 @@ more urgent B; B runs before the pending C), `without_the_reprobe_an_unattribute
 
 ### P4 -- The task record and the rlm schema change
 
-- [ ] rlm (`ros-launch-manifest`): add `min_interarrival`, and `budget` +
-      `budget_period`, on inputs.
-- [ ] nano-ros: `nros-orchestration-ir` carries a task record per callback:
+- [x] rlm (`ros-launch-manifest`): add `min_interarrival`, and `budget` +
+      `budget_period`, on inputs. Done: rlm v0.1.68 (61a134f), on `sub.<e>`
+      and `srv.<e>`; the model carries `min_interarrival_ms`, `budget_ms`,
+      `budget_period_ms` on `SubContract` and `SrvContract`. play_launch
+      64b55e32 pins it and carries the keys into the model.
+- [x] nano-ros: `nros-orchestration-ir` carries a task record per callback:
       release kind (periodic / sporadic / served / unanalysable), T or T_min,
       D, C, and the server's Q/P. The `unanalysable` degradation; refusal on a
       safety image.
-- [ ] Pin bump to the rlm tag.
+- [x] Pin bump to the rlm tag (v0.1.68, `just bump-manifest`; play_launch
+      d109f2ec -> 64b55e32).
+
+**Done (as built).** `task_record.rs` (new): `task_records(model, wcet)`
+gives one `TaskRecord` per callback the model names (timer paths,
+subscriptions, service servers and clients, action endpoints), with its
+release kind, the source of its release, T or T_min, D (stated or implicit),
+C and Q/P. `check_model` refuses the unanalysable ones on a safety image; it
+runs on the three bake roads beside the FTTI check. `derive_tiers_with_named`
+carries the records (`DerivedSchedule::tasks`) and, on an image that
+supervises nothing, one `unanalysable` degradation per unanalysable callback,
+which the priority record lists. Points the plan left open, now in RFC-0108
+D1 ("As built in P4"):
+
+- A rate bound is the subscriber's `max_rate_hz` or the topic's `rate_hz`; a
+  `min_rate_hz` is a floor and releases nothing.
+- A service client's response inherits the release of the paths that issue
+  its request (`output: [<client>]`); an action endpoint is unanalysable
+  (the grammar has no key for it yet).
+- D is implicit (T, T_min or P) when no path or `max_response` states one.
+- No golden moves: the task record is not in the priority-plan JSON, and no
+  golden fixture has an unbounded input on a derived schedule.
+
+Tests: `each_release_kind_is_derived_from_the_contract`,
+`exec_time_comes_from_the_wcet_profile_and_is_never_invented`,
+`an_unbounded_input_is_reported_by_name_without_supervise`,
+`an_unbounded_input_is_refused_by_name_on_a_safety_image`,
+`a_client_inherits_the_release_of_the_paths_that_issue_its_requests`; rlm
+`an_inputs_release_bound_is_a_minimum_interarrival_or_a_budget` (accepts the
+keys, refuses a budget without a period) and the model round trip;
+play_launch `an_inputs_release_bound_reaches_the_model`.
 
 **Cross-repo step.** The rlm change goes to rlm `main` by fast-forward push
 and needs a release tag before nano-ros can pin it. The rlm push and the

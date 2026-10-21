@@ -1866,6 +1866,7 @@ mod tests {
             "/server/add".to_string(),
             SrvContract {
                 max_response_ms: Some(2.5),
+                ..Default::default()
             },
         );
         let model = SystemModel {
