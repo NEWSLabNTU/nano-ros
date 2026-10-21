@@ -1,6 +1,6 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-21). Planned; nothing started.** The design is
+**Status (2026-10-21). In progress: P1 done.** The design is
 [RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
 questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
@@ -36,9 +36,12 @@ the two concerns:
 
 ### P1 -- Report every member that loses its rank
 
-- [ ] Goal: rule 2 of tier derivation emits one `tier` degradation per member
+- [x] Goal: rule 2 of tier derivation emits one `tier` degradation per member
       whose rank differs from the tier's, not only the first
       (`derive.rs:631-649`, `members.iter().find(...)`).
+      Done: one degradation per member that loses its rank, each member once
+      however many of its groups the tier holds
+      (`every_member_that_loses_its_rank_is_reported`).
 
 **Touches:** `derive.rs` (rule 2, around `:611-680`).
 
