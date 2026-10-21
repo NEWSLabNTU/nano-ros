@@ -2275,27 +2275,11 @@ pub struct Executor<'s> {
     /// timer header, and for the same reason: a maximum that has not moved
     /// is the fault already reported, not a new one.
     pub(crate) jitter_reported_us: u64,
-    /// Declared minimum stack headroom in bytes for the thread this executor
-    /// spins on; `0` (default) disables the rule.
-    ///
-    /// An executor-level install rather than a contract field, because the
-    /// bound cannot be derived from anything already declared -- see
-    /// `check_stack_headroom`. The entry that spawned the thread is the one
-    /// that knows what it gave it, so that is where the number comes from.
-    pub(crate) min_stack_headroom_bytes: usize,
-    /// Lowest headroom already reported, so the rule fires on new lows only.
-    /// `usize::MAX` = nothing reported yet.
-    pub(crate) stack_headroom_reported: usize,
-    /// phase-436 E3 — a minimum is set but the port reports no stack data,
-    /// so `check_stack_headroom_rule` will skip every tick. Recorded when the
-    /// bound is set; see `stack_headroom_blind`.
-    pub(crate) stack_headroom_blind: bool,
-    /// phase-436 E4 — when the headroom query last ran (`None` = never; a
-    /// clockless build stores `Some(0)` to mean "has run"), spins since, and
-    /// how many queries actually reached the port.
-    pub(crate) stack_headroom_last_check_us: Option<u64>,
-    pub(crate) stack_headroom_spins_since_check: u32,
-    pub(crate) stack_headroom_checks: u32,
+    /// phase-509 P6 (RFC-0108 D3) -- this executor's one worker: its band
+    /// (every dispatch level), its park (RFC-0106) and its stack record. The
+    /// fields moved here from the executor unchanged; `Executor` is the
+    /// one-level facade over the scheduler / worker split.
+    pub(crate) worker: super::scheduler::Worker,
     /// The pacing quantum the spin loop was last driven at, in microseconds.
     /// This is the bound the jitter rule judges against -- the caller's own
     /// declared cadence, so nothing further has to be declared.
@@ -2315,26 +2299,6 @@ pub struct Executor<'s> {
     /// on the release grid and is worth one park granule; a self-paced one is
     /// judged from entry to entry and is worth a microsecond.
     pub(crate) spin_nominal_wait_paced: bool,
-    /// phase-436 — the bound the last park was computed with, in us, and the
-    /// source that won it. See `WakeSourceId`.
-    pub(crate) last_park_bound_us: u64,
-    pub(crate) last_park_source: WakeSourceId,
-    /// phase-436 W2 — the park bound after rounding UP to what the platform's
-    /// wake primitive can express. Kept beside the request rather than
-    /// replacing it: reporting both is what makes the rounding auditable
-    /// instead of silent (issue 1194).
-    pub(crate) last_park_achieved_us: u64,
-    /// phase-436 W6 — registered platform deadline sources, and how many are
-    /// live. Inline table: no allocator on the targets this exists for.
-    pub(crate) wake_sources: [Option<WakeSourceSlot>; MAX_WAKE_SOURCES],
-    pub(crate) wake_source_count: usize,
-    /// The single thing that actually blocks. Many sources say WHEN; one
-    /// primitive does the waiting.
-    pub(crate) park_primitive: Option<(ParkUntilFn, *mut core::ffi::c_void)>,
-    /// phase-436 W7.b (issue 1242) — the finest park the INSTALLED primitive
-    /// can actually express, in microseconds. `0` = none installed, fall back
-    /// to the `wake_wait_ms` ABI floor.
-    pub(crate) park_granularity_declared_us: u64,
     /// Wakes that were already past their nominal deadline, and wakes total.
     ///
     /// The maximum alone cannot distinguish one bad wake from a loop that is
@@ -2573,22 +2537,10 @@ impl<'s> Executor<'s> {
                 skipped: 0,
             },
             jitter_reported_us: 0,
-            min_stack_headroom_bytes: 0,
-            stack_headroom_reported: usize::MAX,
-            stack_headroom_blind: false,
-            stack_headroom_last_check_us: None,
-            stack_headroom_spins_since_check: 0,
-            stack_headroom_checks: 0,
+            worker: super::scheduler::Worker::one_level(),
             spin_nominal_us: 0,
             spin_nominal_declared_us: 0,
             spin_nominal_wait_paced: false,
-            last_park_bound_us: 0,
-            last_park_source: WakeSourceId::CallerBudget,
-            last_park_achieved_us: 0,
-            wake_sources: [None; MAX_WAKE_SOURCES],
-            wake_source_count: 0,
-            park_primitive: None,
-            park_granularity_declared_us: 0,
             late_wakes: 0,
             total_wakes: 0,
             late_wakes_beyond_granule: 0,
@@ -3939,12 +3891,12 @@ impl<'s> Executor<'s> {
         next: NextDeadlineFn,
         ctx: *mut core::ffi::c_void,
     ) -> Result<WakeSourceId, NodeError> {
-        if self.wake_source_count >= MAX_WAKE_SOURCES {
+        if self.worker.wake_source_count >= MAX_WAKE_SOURCES {
             return Err(NodeError::ExecutorFull);
         }
-        let idx = self.wake_source_count;
-        self.wake_sources[idx] = Some(WakeSourceSlot { next, ctx });
-        self.wake_source_count += 1;
+        let idx = self.worker.wake_source_count;
+        self.worker.wake_sources[idx] = Some(WakeSourceSlot { next, ctx });
+        self.worker.wake_source_count += 1;
         Ok(WakeSourceId::Platform(idx as u8))
     }
 
@@ -3960,8 +3912,8 @@ impl<'s> Executor<'s> {
         ctx: *mut core::ffi::c_void,
         granularity_us: u64,
     ) {
-        self.park_primitive = Some((park, ctx));
-        self.park_granularity_declared_us = granularity_us;
+        self.worker.park_primitive = Some((park, ctx));
+        self.worker.park_granularity_declared_us = granularity_us;
     }
 
     /// The wake primitive a port must hand its `ParkUntilFn` as `ctx`, or NULL
@@ -3982,7 +3934,7 @@ impl<'s> Executor<'s> {
 
     /// Whether a platform park primitive is installed.
     pub fn has_park_primitive(&self) -> bool {
-        self.park_primitive.is_some()
+        self.worker.park_primitive.is_some()
     }
 
     /// The bound and the source that produced it: the `min` over every
@@ -4024,7 +3976,7 @@ impl<'s> Executor<'s> {
             best = (due_us, WakeSourceId::RouteDeadline);
         }
 
-        for (i, slot) in self.wake_sources.iter().enumerate() {
+        for (i, slot) in self.worker.wake_sources.iter().enumerate() {
             let Some(slot) = slot else { continue };
             // SAFETY: the callback and ctx were supplied together by the port
             // through `register_wake_source` and outlive the executor by its
@@ -4042,7 +3994,7 @@ impl<'s> Executor<'s> {
 
     /// phase-436 — the bound the last park used, and which source won it.
     pub fn last_park(&self) -> (u64, WakeSourceId) {
-        (self.last_park_bound_us, self.last_park_source)
+        (self.worker.last_park_bound_us, self.worker.last_park_source)
     }
 
     /// phase-436 W2 — the park the platform was actually asked for, after
@@ -4052,7 +4004,7 @@ impl<'s> Executor<'s> {
     /// the platform's grid. Both are reported because a cadence that cannot be
     /// waited in must not be presented as if it were met.
     pub fn last_park_achieved_us(&self) -> u64 {
-        self.last_park_achieved_us
+        self.worker.last_park_achieved_us
     }
 
     /// phase-436 W3 (issue 1194) — the granularity the release-jitter
@@ -4112,11 +4064,11 @@ impl<'s> Executor<'s> {
     /// truncated, so a sub-millisecond deadline became a non-blocking receive
     /// and the loop spun hot until it passed.
     pub fn park_granularity_us(&self) -> u64 {
-        if self.park_granularity_declared_us != 0
-            && self.park_primitive.is_some()
+        if self.worker.park_granularity_declared_us != 0
+            && self.worker.park_primitive.is_some()
             && self.park_can_be_woken()
         {
-            self.park_granularity_declared_us
+            self.worker.park_granularity_declared_us
         } else {
             1_000
         }
@@ -4406,8 +4358,8 @@ impl<'s> Executor<'s> {
                 .store(0, core::sync::atomic::Ordering::Relaxed);
         }
         self.clear_release_jitter_stats();
-        self.stack_headroom_reported = usize::MAX;
-        self.stack_headroom_last_check_us = None;
+        self.worker.stack_headroom_reported = usize::MAX;
+        self.worker.stack_headroom_last_check_us = None;
         // Counted once per executor: here once it has spun, else by the first
         // spin (which counts an executor that is armed by then either way).
         #[cfg(nros_boot_report)]
@@ -4761,10 +4713,10 @@ impl<'s> Executor<'s> {
     }
 
     pub fn set_min_stack_headroom_bytes(&mut self, bytes: usize) {
-        self.min_stack_headroom_bytes = bytes;
+        self.worker.min_stack_headroom_bytes = bytes;
         // phase-436 E4 — a new bound is checked on the next spin, not up to an
         // interval later.
-        self.stack_headroom_last_check_us = None;
+        self.worker.stack_headroom_last_check_us = None;
         // phase-436 E3 — `check_stack_headroom_rule` treats a 0 from the port as
         // "not instrumented" and skips, which is right for the rule and wrong
         // for the reader: an armed rule that can never judge reports nothing,
@@ -4774,9 +4726,9 @@ impl<'s> Executor<'s> {
         // lands once per tier, next to the tier's other boot lines.
         // phase-436 E5 -- "does the port answer at all?" needs one byte, not
         // the whole unused region the full query would scan.
-        self.stack_headroom_blind =
+        self.worker.stack_headroom_blind =
             bytes != 0 && nros_platform_api::stack_unused_bytes_upto(1) == 0;
-        if self.stack_headroom_blind {
+        if self.worker.stack_headroom_blind {
             nros_log::log_warn!(
                 nros_log::get_logger("nros"),
                 "stack-headroom-runtime: a {} B minimum is set but this port reports no stack \
@@ -4793,7 +4745,7 @@ impl<'s> Executor<'s> {
     /// answers only with `CONFIG_INIT_STACKS && CONFIG_THREAD_STACK_INFO`;
     /// POSIX never does.
     pub fn stack_headroom_blind(&self) -> bool {
-        self.stack_headroom_blind
+        self.worker.stack_headroom_blind
     }
 
     /// Report a spin thread that has come closer to the end of its stack
@@ -4807,28 +4759,31 @@ impl<'s> Executor<'s> {
     /// reads at most that many bytes.
     /// Nothing at all when no minimum was declared.
     fn check_stack_headroom_rule(&mut self) {
-        if self.min_stack_headroom_bytes == 0 {
+        if self.worker.min_stack_headroom_bytes == 0 {
             return;
         }
-        self.stack_headroom_spins_since_check =
-            self.stack_headroom_spins_since_check.saturating_add(1);
+        self.worker.stack_headroom_spins_since_check = self
+            .worker
+            .stack_headroom_spins_since_check
+            .saturating_add(1);
         let now_us = self.now_us();
         if !super::monitor::stack_headroom_check_due(
             now_us,
-            self.stack_headroom_last_check_us,
-            self.stack_headroom_spins_since_check,
+            self.worker.stack_headroom_last_check_us,
+            self.worker.stack_headroom_spins_since_check,
         ) {
             return;
         }
-        self.stack_headroom_last_check_us = Some(now_us.unwrap_or(0));
-        self.stack_headroom_spins_since_check = 0;
-        self.stack_headroom_checks = self.stack_headroom_checks.saturating_add(1);
+        self.worker.stack_headroom_last_check_us = Some(now_us.unwrap_or(0));
+        self.worker.stack_headroom_spins_since_check = 0;
+        self.worker.stack_headroom_checks = self.worker.stack_headroom_checks.saturating_add(1);
         // phase-436 E5 -- the CAPPED query. The rule only asks whether
         // `min_stack_headroom_bytes` are unused, and a port that scans for
         // paint answers that by reading those bytes alone. Below the cap the
         // answer is the exact headroom, which is what a breach reports, so
         // no second, full scan is needed. E4's throttle still applies.
-        let unused = nros_platform_api::stack_unused_bytes_upto(self.min_stack_headroom_bytes);
+        let unused =
+            nros_platform_api::stack_unused_bytes_upto(self.worker.min_stack_headroom_bytes);
         // 0 means the port does not instrument stacks, not that the stack is
         // full. Reporting a violation there would be a fault invented from an
         // absence of data.
@@ -4837,8 +4792,8 @@ impl<'s> Executor<'s> {
         }
         if let Some(v) = super::monitor::check_stack_headroom(
             unused,
-            self.min_stack_headroom_bytes,
-            &mut self.stack_headroom_reported,
+            self.worker.min_stack_headroom_bytes,
+            &mut self.worker.stack_headroom_reported,
         ) {
             self.violations.record(v);
         }
@@ -11037,13 +10992,13 @@ impl<'s> Executor<'s> {
         // only point where the losing candidates are still in hand.
         let (park_bound_us, park_source) =
             self.next_wake_bound_attributed_us(grid_budget_us, session_us);
-        self.last_park_bound_us = park_bound_us;
-        self.last_park_source = park_source;
+        self.worker.last_park_bound_us = park_bound_us;
+        self.worker.last_park_source = park_source;
         // phase-436 W2 (issue 1193) — round UP to what the primitive can
         // express. The old `as_millis()` truncated, so a sub-millisecond
         // request became a zero park: the non-blocking path, a busy loop.
         let park_achieved_us = self.round_park_up_us(park_bound_us);
-        self.last_park_achieved_us = park_achieved_us;
+        self.worker.last_park_achieved_us = park_achieved_us;
 
         // phase-436 W6 — a port that installed a park primitive does its
         // waiting HERE, on the bound every source agreed on, and the transport
@@ -11064,7 +11019,7 @@ impl<'s> Executor<'s> {
         // 127.C.4 stall (a reliable stream whose ACK lands in a session nobody
         // drives). Those executors keep the receive-blocking wait below.
         let park_can_be_woken = self.park_can_be_woken();
-        let parked = match self.park_primitive {
+        let parked = match self.worker.park_primitive {
             Some((park, ctx)) if park_achieved_us > 0 && park_can_be_woken => {
                 // SAFETY: `park` and `ctx` were supplied together by the port
                 // through `set_park_primitive` and outlive the executor by its
@@ -11928,6 +11883,9 @@ impl<'s> Executor<'s> {
             } else {
                 let rank = self.slot_tags.get(i).map_or(0, |t| t.rank);
                 let level = super::sched_context::Priority::from_index(bucket).dispatch_level(rank);
+                // phase-509 P6 -- the one-level facade's worker runs every
+                // dispatch level, so nothing it scans is another band's.
+                debug_assert!(self.worker.band.contains(level));
                 let _ = fifo.insert_at(level, job);
             }
         }
