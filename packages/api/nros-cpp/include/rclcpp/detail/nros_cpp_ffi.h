@@ -2805,6 +2805,89 @@ nros_cpp_ret_t nros_cpp_executor_set_reaction_hook(void *handle,
                                                    void *ctx);
 
 /**
+ * phase-509 P7 (RFC-0108 D8.1) — the level this executor runs, 0 the most
+ * urgent, written to `*out_level`. It equals the generated
+ * `NROS_ENTRY_LEVEL_OF_<node>` (`nros_priority_plan.h`) of every node the
+ * executor hosts. An executor its runner never placed is level 0, which is
+ * every executor of a one-level image. A supervisor's spin hook (one that
+ * wraps `nros_cpp_spin_once`) reads the level of the handle it was given.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL;
+ * `out_level` must be writable.
+ */
+nros_cpp_ret_t nros_cpp_executor_level(void *handle, uint8_t *out_level);
+
+/**
+ * phase-509 P7 — place this executor at `level` (0 the most urgent), so
+ * [`nros_cpp_executor_level`] answers it and its spins check in as it. A
+ * runner calls it once per level before the level spins, with the index
+ * [`nros_cpp_tier_level`] gives its tier. `INVALID_ARGUMENT` at or past
+ * `NROS_CPP_MAX_LEVELS`.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL.
+ */
+nros_cpp_ret_t nros_cpp_executor_set_level(void *handle, uint8_t level);
+
+/**
+ * phase-509 P7 — the level of tier `index` of a runner's `n` tiers: its
+ * urgency order among their kernel priorities, 0 the most urgent, equal
+ * priorities in array order. The rule `nros codegen entry` uses for
+ * `NROS_ENTRY_LEVEL_OF_<node>`, so the two agree. The priorities are read
+ * from the runner's own tier array: `first_priority` points at tier 0's
+ * `int64_t` priority and `stride` is the array's element size, so a runner
+ * passes `&tiers[0].priority, sizeof(tiers[0])`. `smaller_is_urgent` is the
+ * kernel's direction (Zephyr, ThreadX: true). `-1` on NULL, a zero stride,
+ * or an index out of range.
+ *
+ * # Safety
+ * `first_priority` must point at the `priority` field of the first of `n`
+ * array elements `stride` bytes apart, or be NULL.
+ */
+int32_t nros_cpp_tier_level(const int64_t *first_priority,
+                            size_t stride,
+                            size_t n,
+                            size_t index,
+                            bool smaller_is_urgent);
+
+/**
+ * phase-509 P7 (RFC-0108 D8.2) — state how many levels the image runs. A
+ * runner calls it once, before its levels spin; an image that never does
+ * has one. `INVALID_ARGUMENT` for 0 or more than `NROS_CPP_MAX_LEVELS`.
+ */
+nros_cpp_ret_t nros_cpp_set_level_count(uint8_t n);
+
+/**
+ * phase-509 P7 — how many levels the image runs.
+ */
+uint8_t nros_cpp_level_count(void);
+
+/**
+ * phase-509 P7 — the low 32 bits of the executor clock, in microseconds, at
+ * `level`'s latest spin, written to `*out_us`; `NOT_FOUND` while it has not
+ * spun. Compare two with a wrapping difference.
+ *
+ * # Safety
+ * `out_us` must be writable.
+ */
+nros_cpp_ret_t nros_cpp_level_last_spin_us(uint8_t level, uint32_t *out_us);
+
+/**
+ * phase-509 P7 (RFC-0108 D8.2) — whether every level of the image has
+ * spun since the last [`nros_cpp_levels_take_alive`] that returned true.
+ */
+bool nros_cpp_levels_alive(void);
+
+/**
+ * phase-509 P7 (RFC-0108 D8.2) — the watchdog feed: true when every level
+ * has spun since the last true, and the check-ins are then cleared; false,
+ * and nothing cleared, while any level has not. A level stuck in a callback
+ * stops checking in, so the feed stops even while another level spins.
+ */
+bool nros_cpp_levels_take_alive(void);
+
+/**
  * phase-503 — microseconds from now to the earliest deadline of a pending
  * supervised route (0 when one is due), written to `*out_us`;
  * `UINT64_MAX` when no supervised route is waiting. A port supervising with

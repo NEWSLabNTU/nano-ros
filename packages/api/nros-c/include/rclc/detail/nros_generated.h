@@ -6244,6 +6244,71 @@ NROS_PUBLIC size_t rclc_executor_get_arena_used(const struct rclc_executor_t *ex
 NROS_PUBLIC size_t rclc_executor_get_arena_capacity(const struct rclc_executor_t *executor);
 
 /**
+ * phase-509 P7 (RFC-0108 D8.1) — the level this executor runs, 0 the most
+ * urgent: the generated `NROS_ENTRY_LEVEL_OF_<node>` of the nodes it hosts.
+ * An executor its runner never placed is level 0, which is every executor of
+ * a one-level image. `RCL_RET_INVALID_ARGUMENT` for NULL or an executor that
+ * is not initialised.
+ *
+ * # Safety
+ * `executor` must be NULL or a valid pointer; `level` must be writable.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_get_level(const struct rclc_executor_t *executor,
+                                  uint8_t *level);
+
+/**
+ * phase-509 P7 — place this executor at `level` (0 the most urgent); its
+ * spins check in as that level. A runner calls it once per level before the
+ * level spins. `RCL_RET_INVALID_ARGUMENT` for NULL, an executor that is not
+ * initialised, or a level at or past `rclc_levels_max()`.
+ *
+ * # Safety
+ * `executor` must be NULL or a valid pointer.
+ */
+NROS_PUBLIC rcl_ret_t rclc_executor_set_level(struct rclc_executor_t *executor, uint8_t level);
+
+/**
+ * phase-509 P7 — the most levels an image can have.
+ */
+NROS_PUBLIC uint8_t rclc_levels_max(void);
+
+/**
+ * phase-509 P7 (RFC-0108 D8.2) — state how many levels the image runs; an
+ * image that never does has one. `RCL_RET_INVALID_ARGUMENT` for 0 or more
+ * than `rclc_levels_max()`.
+ */
+NROS_PUBLIC rcl_ret_t rclc_levels_set_count(uint8_t n);
+
+/**
+ * phase-509 P7 — how many levels the image runs.
+ */
+NROS_PUBLIC uint8_t rclc_levels_count(void);
+
+/**
+ * phase-509 P7 — the low 32 bits of the executor clock, in microseconds, at
+ * `level`'s latest spin; false (and `*us` untouched) while it has not spun.
+ * Compare two with a wrapping difference.
+ *
+ * # Safety
+ * `us` must be writable or NULL.
+ */
+NROS_PUBLIC bool rclc_level_last_spin_us(uint8_t level, uint32_t *us);
+
+/**
+ * phase-509 P7 (RFC-0108 D8.2) — whether every level of the image has spun
+ * since the last `rclc_levels_take_alive()` that returned true.
+ */
+NROS_PUBLIC bool rclc_levels_alive(void);
+
+/**
+ * phase-509 P7 (RFC-0108 D8.2) — the watchdog feed: true when every level
+ * has spun since the last true, and the check-ins are then cleared; false,
+ * and nothing cleared, while any level has not.
+ */
+NROS_PUBLIC bool rclc_levels_take_alive(void);
+
+/**
  * Check if executor is valid (initialized).
  */
 NROS_PUBLIC bool rclc_executor_is_valid(const struct rclc_executor_t *executor);

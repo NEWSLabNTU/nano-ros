@@ -12,7 +12,7 @@ superseded-by: null
 
 # RFC-0108 -- One ordered ready set per core, N preemption levels
 
-**Status:** Draft (2026-10-21). P1-P6, P8 and P11 are built; the rest is a proposal.
+**Status:** Draft (2026-10-21). P1-P8 and P11 are built; the rest is a proposal.
 The open questions of the first draft are decided (see Decisions); the work is
 tracked by [phase-509](../roadmap/phase-509-executor-preemption-levels.md).
 
@@ -583,6 +583,17 @@ These hold for every image, and they block the first board run with N > 1.
 4. **Shared state between levels** follows RFC-0107's concurrency table; with
    levels on one core a critical section suffices, on SMP a spinlock.
 
+**As built in P7** (`nros-node` `executor/level_liveness.rs`, the C/C++
+FFI, `nros_priority_plan.h`). An executor's worker carries its level; until
+P9 a tier's level is its urgency order among the image's tiers, equal
+priorities in table order, and the Zephyr runners place each tier's
+executor by that rule while the header writes `NROS_ENTRY_LEVEL_OF_<node>`
+by it. The "every level alive" aggregate is a per-image registry that
+every spin checks into (the levels are separate executors until P9, so the
+per-sched-context alive slots, which live inside one executor, cannot hold
+it); `take_every_level_alive` is the watchdog feed. nano-ros has no
+spin-hook ABI: a supervisor wraps the spin and reads the handle's level.
+
 ## Relation to other RFCs
 
 - **RFC-0002 (RT execution model).** Amended. Its single-thread, registration-
@@ -908,3 +919,5 @@ The first draft's open questions, as decided:
 - 2026-10-21: P6 built; D7 amended with the scheduler / worker split as built
   (a worker picks only its own band).
 - 2026-10-21: P11 built; the OS-priority worker pool is retired (alternative 4).
+- 2026-10-21: P7 built; D8 amended with the level identity and liveness as
+  built (a per-image check-in registry; no spin-hook ABI).

@@ -1232,6 +1232,16 @@ pub use nros_node::executor::{
     TIER_TASK_TCB_U64S, TierTaskMemory, TierTaskMemoryRaw, TierTaskMemorySet,
 };
 
+/// phase-509 P7 (RFC-0108 D8) -- which level an executor is, and whether every
+/// level of the image is alive: what a supervisor that owns a route per level
+/// or feeds a watchdog reads, and what a board's tier runner states (the level
+/// count, and each tier's level by [`tier_level_by`]). Plain atomics in
+/// nros-node, so ungated.
+pub use nros_node::executor::{
+    MAX_LEVELS, every_level_alive, level_count, level_last_spin_us, level_spins, set_level_count,
+    take_every_level_alive, tier_level, tier_level_by,
+};
+
 pub use nros_node::NodeError;
 pub use nros_rmw::TransportError;
 

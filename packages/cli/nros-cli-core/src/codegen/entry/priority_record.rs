@@ -48,6 +48,9 @@ pub struct PriorityRecord<'a> {
     pub tiers: Option<&'a ResolvedTierTable>,
     /// What the derivation did, `None` when nothing was derived.
     pub derivation: Option<&'a EntryDerivation>,
+    /// phase-509 P7 -- the entry's nodes (bare names, as the tier table names
+    /// its members), for `NROS_ENTRY_LEVEL_OF_<node>`.
+    pub nodes: &'a [&'a str],
 }
 
 fn direction_str(d: Direction) -> &'static str {
@@ -97,6 +100,48 @@ impl PriorityRecord<'_> {
                 .collect(),
             _ => Vec::new(),
         }
+    }
+
+    /// phase-509 P7 (RFC-0108 D8.1) -- each node's level, 0 the most urgent,
+    /// and the level count. Until P9 a level is a tier: a running tier's
+    /// level is its urgency order among the running tiers, equal priorities
+    /// in table order, which is the order the runner's tier array has and
+    /// the rule its `nros_cpp_tier_level` / `nros::tier_level_by` applies. An
+    /// entry with no running tier is one level, every node at 0. A node no
+    /// running tier holds has no level here.
+    pub fn node_levels(&self) -> (u8, Vec<(String, u8)>) {
+        let tiers = self.running_tiers();
+        let smaller = self.plan.direction == Direction::SmallerIsUrgent;
+        if tiers.is_empty() {
+            return (1, self.nodes.iter().map(|n| (n.to_string(), 0)).collect());
+        }
+        let level_of = |i: usize| -> u8 {
+            let mine = tiers[i].1;
+            let ahead = tiers
+                .iter()
+                .enumerate()
+                .filter(|&(j, &(_, q))| {
+                    (if smaller { q < mine } else { q > mine }) || (q == mine && j < i)
+                })
+                .count();
+            u8::try_from(ahead).unwrap_or(u8::MAX)
+        };
+        let mut out: Vec<(String, u8)> = Vec::new();
+        if let Some(t) = self.tiers {
+            for (i, r) in t.tiers.iter().enumerate() {
+                for (node, _group) in &r.members {
+                    let l = level_of(i);
+                    match out.iter_mut().find(|(n, _)| n == node) {
+                        // A node with groups on several tiers: its most
+                        // urgent level.
+                        Some((_, have)) => *have = (*have).min(l),
+                        None => out.push((node.clone(), l)),
+                    }
+                }
+            }
+        }
+        out.sort();
+        (u8::try_from(tiers.len()).unwrap_or(u8::MAX), out)
     }
 
     /// The most urgent of the running tiers' priorities, in the plan's
@@ -217,6 +262,17 @@ impl PriorityRecord<'_> {
         }
         if let Some(p) = self.most_urgent_tier() {
             define("NROS_ENTRY_TIERS_MOST_URGENT_PRIORITY", p);
+        }
+        // phase-509 P7 (RFC-0108 D8.1) -- which level hosts each node, the
+        // level the runner places the node's executor at
+        // (`nros_cpp_executor_level`).
+        let (count, levels) = self.node_levels();
+        define("NROS_ENTRY_LEVEL_COUNT", i64::from(count));
+        for (node, l) in &levels {
+            define(
+                &format!("NROS_ENTRY_LEVEL_OF_{}", macro_name(node)),
+                i64::from(*l),
+            );
         }
         // RFC-0079 section 6: the priority for the supervisor of the
         // supervised deadlines, above the transport wherever the tiers sit.
@@ -450,6 +506,7 @@ mod tests {
             from_image: true,
             tiers: Some(&table),
             derivation: Some(&derivation),
+            nodes: &["mrm_handler"],
         };
         let j = rec.to_json();
         assert_eq!(j["plan"]["reserved"]["transport"], json!([4, 4]));
@@ -478,6 +535,71 @@ mod tests {
         assert_eq!(j["levels"], Value::Null, "nothing banded in this fixture");
         assert!(
             h.contains("#define NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY (4)"),
+            "{h}"
+        );
+        // phase-509 P7: one tier is one level, and it hosts the handler.
+        assert!(h.contains("#define NROS_ENTRY_LEVEL_COUNT (1)"), "{h}");
+        assert!(
+            h.contains("#define NROS_ENTRY_LEVEL_OF_MRM_HANDLER (0)"),
+            "{h}"
+        );
+    }
+
+    /// phase-509 P7 (RFC-0108 D8.1) -- one `NROS_ENTRY_LEVEL_OF_<node>` per
+    /// node: a running tier's level is its urgency order (Zephyr, smaller is
+    /// urgent), whatever its place in the table; an entry with no running
+    /// tier is one level with every node at 0.
+    #[test]
+    fn the_header_names_each_nodes_level() {
+        let plan = island_plan();
+        let mut handler = tier("hi", 5);
+        handler.members = vec![("mrm_handler".to_string(), "main".to_string())];
+        let mut ops = tier("lo", 7);
+        ops.members = vec![
+            (
+                "mrm_emergency_stop_operator".to_string(),
+                "main".to_string(),
+            ),
+            (
+                "mrm_comfortable_stop_operator".to_string(),
+                "main".to_string(),
+            ),
+        ];
+        // Table order is raw priority descending: the less urgent tier first.
+        let table = ResolvedTierTable {
+            tiers: vec![ops, handler],
+        };
+        let rec = PriorityRecord {
+            tier_key: "zephyr",
+            plan: &plan,
+            from_image: true,
+            tiers: Some(&table),
+            derivation: None,
+            nodes: &[
+                "mrm_handler",
+                "mrm_emergency_stop_operator",
+                "mrm_comfortable_stop_operator",
+            ],
+        };
+        let h = rec.to_header();
+        assert!(h.contains("#define NROS_ENTRY_LEVEL_COUNT (2)"), "{h}");
+        assert!(
+            h.contains("#define NROS_ENTRY_LEVEL_OF_MRM_HANDLER (0)"),
+            "{h}"
+        );
+        assert!(
+            h.contains("#define NROS_ENTRY_LEVEL_OF_MRM_EMERGENCY_STOP_OPERATOR (1)"),
+            "{h}"
+        );
+        assert!(
+            h.contains("#define NROS_ENTRY_LEVEL_OF_MRM_COMFORTABLE_STOP_OPERATOR (1)"),
+            "{h}"
+        );
+        let tierless = PriorityRecord { tiers: None, ..rec };
+        let h = tierless.to_header();
+        assert!(h.contains("#define NROS_ENTRY_LEVEL_COUNT (1)"), "{h}");
+        assert!(
+            h.contains("#define NROS_ENTRY_LEVEL_OF_MRM_EMERGENCY_STOP_OPERATOR (0)"),
             "{h}"
         );
     }
@@ -526,6 +648,7 @@ mod tests {
             from_image: true,
             tiers: None,
             derivation: Some(&derivation),
+            nodes: &[],
         };
         let j = rec.to_json();
         assert_eq!(j["levels"]["max_levels"], 2);
@@ -566,6 +689,7 @@ mod tests {
             from_image: true,
             tiers: Some(&table),
             derivation: None,
+            nodes: &[],
         };
         assert_eq!(rec.to_json()["tiers"], json!([]));
         let h = rec.to_header();
