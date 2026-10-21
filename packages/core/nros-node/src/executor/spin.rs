@@ -3891,10 +3891,10 @@ impl<'s> Executor<'s> {
         next: NextDeadlineFn,
         ctx: *mut core::ffi::c_void,
     ) -> Result<WakeSourceId, NodeError> {
-        if self.worker.wake_source_count >= MAX_WAKE_SOURCES {
+        if self.worker.wake_source_count as usize >= MAX_WAKE_SOURCES {
             return Err(NodeError::ExecutorFull);
         }
-        let idx = self.worker.wake_source_count;
+        let idx = self.worker.wake_source_count as usize;
         self.worker.wake_sources[idx] = Some(WakeSourceSlot { next, ctx });
         self.worker.wake_source_count += 1;
         Ok(WakeSourceId::Platform(idx as u8))
