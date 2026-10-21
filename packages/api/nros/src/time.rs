@@ -22,7 +22,7 @@
 //!   the executor and the wake primitives already rely on, so this adds no new
 //!   requirement. Resolution is whatever the platform delivers (issue #502:
 //!   sub-tick on FreeRTOS Cortex-M, tick-quantized on ThreadX).
-//! - **`std` without a port**: [`std::time::Instant`], anchored at first use.
+//! - **`std` without a port**: `std::time::Instant`, anchored at first use.
 //!   The claim that stood here — "real and shipped, the metadata probe compiles
 //!   node code with `std` and no port" — was WRONG. The probe links
 //!   `nros-platform-cffi` with `posix-c-port` and resolves `rmw-cffi`, so it
