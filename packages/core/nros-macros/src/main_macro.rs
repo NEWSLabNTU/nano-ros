@@ -1330,6 +1330,32 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             resolved_tiers = Some(table);
         }
 
+        // phase-509 P8 (RFC-0108 D8.3) -- refuse a blocking call whose server
+        // cannot preempt the client, the same refusal the CLI's entry emitter
+        // and codegen-system make. Until P9 a level is a tier; no table is one
+        // level.
+        {
+            use nros_orchestration_ir::blocking_calls::{ImageLevels, check_model};
+            let members = node_instances.iter().map(String::as_str);
+            let levels = match &resolved_tiers {
+                Some(t) => ImageLevels::from_tiers(
+                    t,
+                    nros_orchestration_ir::rtos_realizer::sched_caps_for(&rtos).low_number_is_high,
+                    members,
+                ),
+                None => ImageLevels::one_level(members),
+            };
+            let reports = check_model(&model, &levels).map_err(|e| {
+                syn::Error::new(
+                    model_lit.span(),
+                    format!("nros::main!: model `{}`: {e}", model_path.display()),
+                )
+            })?;
+            for f in &reports {
+                eprintln!("nros::main!: note - {}", f.render());
+            }
+        }
+
         // Lifecycle autostart + param-services capability from the model.
         // `lifecycle_code` is the u8 boot-transition level (0 none / 1
         // configure / 2 active), same encoding as `read_lifecycle_autostart`.

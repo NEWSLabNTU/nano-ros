@@ -477,6 +477,9 @@ pub fn run(args: Args) -> Result<()> {
     // against once the tier table (whose spin periods bound it) is resolved.
     let mut model_mode_switch: Vec<(u32, String)> = Vec::new();
     let mut switch_model: Option<ros_launch_manifest_model::SystemModel> = None;
+    // phase-509 P8 -- the model whose client/server pairs are checked against
+    // the tier table once it is resolved.
+    let mut call_model: Option<ros_launch_manifest_model::SystemModel> = None;
     // R-code.2 — convention discovery: with no explicit `--model`, a committed
     // `<bringup>/config/system_model.yaml` IS the model. Users (and every
     // vendor seam that shells this verb — the zephyr module, the pio
@@ -530,6 +533,7 @@ pub fn run(args: Args) -> Result<()> {
         // image, the same refusal the entry road makes.
         nros_orchestration_ir::task_record::check_model(&model)
             .map_err(|e| eyre::eyre!("codegen-system: model `{}`: {e}", model_path.display()))?;
+        call_model = Some(model.model.clone());
         // R1-N1 — contracted-publisher monitors ride the bake.
         model_monitors = crate::orchestration::model_ingest::monitor_rows(&model)?;
         // W3b.5 — subscriber age contracts ride alongside.
@@ -736,6 +740,21 @@ pub fn run(args: Args) -> Result<()> {
     // RFC-0052 W2 — bake-time reject for knobs the selected target can't honor.
     nros_orchestration_ir::validate_tier_platform_applicability(&tier_table, &target_rtos)
         .map_err(|e| eyre::eyre!(e))?;
+    // phase-509 P8 (RFC-0108 D8.3) -- a blocking call whose server cannot
+    // preempt the client, the same refusal the entry road and `nros::main!`
+    // make. Until P9 a level is a tier.
+    if let Some(model) = &call_model {
+        let levels = nros_orchestration_ir::blocking_calls::ImageLevels::from_tiers(
+            &tier_table,
+            nros_orchestration_ir::rtos_realizer::sched_caps_for(&target_rtos).low_number_is_high,
+            bringup.system.components.iter().map(|c| c.name.as_str()),
+        );
+        for f in nros_orchestration_ir::blocking_calls::check_model(model, &levels)
+            .map_err(|e| eyre::eyre!("codegen-system: {e}"))?
+        {
+            eprintln!("codegen-system: {}", f.render());
+        }
+    }
     // phase-462 W4c -- a mode's switch must fit its reaction budget at the
     // slowest tier's spin (the same refusal `nros::main!` and the entry road
     // make).

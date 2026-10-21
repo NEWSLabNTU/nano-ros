@@ -35,6 +35,9 @@ use thiserror::Error;
 // AND the `nros::main!` proc-macro) can DERIVE a schedule from the contract
 // layer, not just resolve authored tiers. No behavior change vs the old
 // `nros_cli_core::orchestration::{mapper_input, rtos_realizer}` location.
+/// phase-509 P8 (RFC-0108 D8.3) — refuse a blocking call to a level that
+/// cannot preempt the client.
+pub mod blocking_calls;
 pub mod type_descriptor_sizing;
 // issue 1676 — the contract-monitor rows, shared by the CLI's C/C++ emitters
 // and the `nros::main!` proc-macro (which cannot dep `nros-cli-core`).

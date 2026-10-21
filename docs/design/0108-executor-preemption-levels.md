@@ -12,7 +12,7 @@ superseded-by: null
 
 # RFC-0108 -- One ordered ready set per core, N preemption levels
 
-**Status:** Draft (2026-10-21). P1-P5 are built; the rest is a proposal.
+**Status:** Draft (2026-10-21). P1-P5 and P8 are built; the rest is a proposal.
 The open questions of the first draft are decided (see Decisions); the work is
 tracked by [phase-509](../roadmap/phase-509-executor-preemption-levels.md).
 
@@ -555,6 +555,19 @@ These hold for every image, and they block the first board run with N > 1.
    the client holds the worker). The build refuses it when the contract names
    the client and server; asynchronous calls (send now, drain the reply on a
    later release) are allowed. The island's calls are already asynchronous.
+
+   **As built in P8** (`nros-orchestration-ir::blocking_calls`; rlm
+   v0.1.69). The contract named clients and servers but not whether a
+   client waits, so the grammar gained `call: blocking | async` on a
+   `cli.<e>` endpoint and on `actions.<a>` (every client it lists). Only a
+   stated `blocking` is refused: at the client's own level as a deadlock,
+   at a level that cannot preempt it (less urgent, or another tier at the
+   same kernel priority) as an inversion. An unstated call to such a server
+   is reported, never refused, so existing contracts build unchanged. Until
+   P9 a level is a tier of the resolved table and a tierless image is one
+   level; a node no tier of a multi-tier image holds is reported, and a
+   server outside the image is not checked. The check runs on the three
+   bake roads after each resolves its tier table.
 4. **Shared state between levels** follows RFC-0107's concurrency table; with
    levels on one core a critical section suffices, on SMP a spinlock.
 
@@ -875,3 +888,5 @@ The first draft's open questions, as decided:
   by default, D2, with the measurement); timers join at pass boundaries.
 - 2026-10-21: P5 built; D4 amended with the level derivation as built; the
   deferred analysis-location question decided (`nros-orchestration-ir`).
+- 2026-10-21: P8 built; D8.3 amended with the call mode (rlm v0.1.69) and
+  what an unstated call does.
