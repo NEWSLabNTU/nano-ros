@@ -13,24 +13,14 @@ name = "declarative-safety-listener"
 path = "src/main.rs"
 
 [dependencies]
-# `std` is named because this bin calls `ExecutorNodeRuntime::spin()`, which is
-# `#[cfg(feature = "std")]`. It used to arrive by accident — `nros`'s `env`
-# capability listed `"std"`, so anything that pulled `env` into the graph
-# granted the standard library to everyone in it. That grant is gone
-# (ARCHITECTURE §2 clause (a): a capability REQUIRES the heap, it does not
-# grant it), so the dependency this bin always had is now written down.
+# phase-359 W10 stage B — `nros` has no `std` feature. `ExecutorNodeRuntime::
+# spin()`, which this hosted bin calls, stopped being `std`-gated in W10; `log`
+# is what the feature carried besides the heap.
 nros = { path = "../../../../api/nros", default-features = false, features = [
     "alloc",
-    "std",
+    "log",
     "rmw-cffi",
     "ros-humble",
-    # phase-359 W10 swept consumer manifests off `std`, and this bin was left
-    # calling `runtime.spin()` — which is `#[cfg(feature = "std")]` and
-    # documented "Hosted-only; on bare-metal the BSP wraps `spin_once` in its own
-    # loop". This is a HOSTED test bin that wants exactly that loop, so it keeps
-    # the hosted feature rather than open-coding a `spin_once` cadence the
-    # library already picked.
-    "std",
     "safety-e2e", "macros"] }
 nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [

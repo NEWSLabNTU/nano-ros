@@ -1377,7 +1377,7 @@ name = "p"
 default = ["lifecycle"]
 lifecycle = ["nros/lifecycle-services"]
 [dependencies]
-nros = { version = "*", features = ["std", "param-services"] }
+nros = { version = "*", features = ["alloc", "param-services"] }
 "#,
         );
         assert_eq!(manifest_infra(td.path()), (true, true));

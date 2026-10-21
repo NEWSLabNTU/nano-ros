@@ -2418,11 +2418,13 @@ fn decl_err_from_node(e: nros_node::NodeError) -> NodeDeclError {
             "node declaration failed — NodeError::{e:?}"
         );
     }
-    // no_std targets get the same diagnostic through the `log` facade (every
-    // RTOS board bridges it); without this the collapse left only an opaque
-    // `NodeRegister("<pkg>")` on embedded — e.g. a static subscriber-pool
-    // exhaustion (NROS_RMW_SUBSCRIBER_SLOTS) surfaced with no cause at all.
-    #[cfg(not(feature = "std"))]
+    // The same diagnostic through the `log` facade (every RTOS board bridges
+    // it); without this the collapse left only an opaque `NodeRegister("<pkg>")`
+    // on embedded — e.g. a static subscriber-pool exhaustion
+    // (NROS_RMW_SUBSCRIBER_SLOTS) surfaced with no cause at all. phase-359 W10
+    // stage B: this was `not(std)`, and `nros` has no `std` any more; on a host
+    // with a `log` logger installed the line appears twice, on an error path
+    // that only runs when a declaration is already failing.
     if !matches!(e, nros_node::NodeError::ExecutorFull) {
         log::error!("nros: node declaration failed — NodeError::{e:?}");
     }

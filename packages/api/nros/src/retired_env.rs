@@ -1,7 +1,7 @@
 //! phase-484 W8c — the RETIRED runtime env aliases and their canonical names.
 //!
-//! ONE table for both hosted env readers (`crate::env` and the `getenv` twin
-//! `crate::host_env`), so the two cannot disagree about which names refuse.
+//! ONE table, read by the hosted env reader (`crate::env`). It was shared by
+//! two readers until phase-359 W10 stage B merged them.
 //! A set retired name is [`BootConfigError::RetiredEnvVar`], never a silent
 //! skip: an ignored `ZENOH_LOCATOR` dials the backend's DEFAULT router, which
 //! reads as "no delivery" rather than as a configuration mistake.

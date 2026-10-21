@@ -63,10 +63,9 @@ ffi-size-markers = []
 # phase-308 — the process-global recorder non-Rust adapters feed (see
 # `src/metadata_mode.rs`). Host probe only: it never ships in firmware, and a
 # build that enables it also replaces the RMW with a backend that transports
-# nothing. REQUIRES `std` (the probe writes a file and exits) — it does not
-# imply it: the feature list is `[]` and the `compile_error!` beside
-# `metadata_mode` names `std` for the consumer to add. ARCHITECTURE.md §2
-# clause (a); `= ["std"]` would also make that guard unreachable.
+# nothing. REQUIRES `alloc` (issue 0687 follow-up: a heap-allocated global,
+# not a file — the file write is `nros-cpp`'s `metadata_hooks`); the
+# `compile_error!` beside `metadata_mode` names it. ARCHITECTURE.md §2 clause (a).
 #
 # phase-457 W3 -- and it turns on `nros-node/registration-observer`, so the
 # executor tells this recorder what each subscription registration says about
@@ -89,8 +88,13 @@ profile-mode = ["nros-node/profile-mode"]
 # `EnvRung`), which is what let `nros-node` drop the capability entirely.
 #
 # A hosted build that wants `from_env` says `env`; a target build says nothing
-# and never compiles it. Clause (a): it REQUIRES `std` (`compile_error!` below)
-# rather than granting it.
+# and never compiles it.
+#
+# phase-359 W10 stage B — it needs a PROCESS, not the standard library: the
+# reader is the C library's `getenv` (`src/env.rs`), so `env` builds wherever a
+# C library is linked (`target_os = "linux"` on this tree) and is a
+# `compile_error!` elsewhere. It needs `alloc` (`Context` owns its strings) and
+# says so with a `compile_error!` rather than enabling it (clause (a)).
 env = []
 
 # phase-427 W10 — forwards `nros-node`'s armed `#[deprecated]` on
@@ -99,19 +103,13 @@ env = []
 # comment for why the attribute is feature-armed at all.
 deprecate-node-name-setter = ["nros-node/deprecate-node-name-setter"]
 
-std = [
-    "alloc",
-    # phase-359 W10 — the core crates under this one have no `std` any more.
-    # What their `std` used to switch on is named here instead: the `log`
-    # facade in nros-node and nros-rmw, and nros-rmw-cffi's
-    # `NROS_RMW_TRACE_OPEN` trace.
-    "nros-node/log",
-    "nros-rmw/log",
-    "nros-rmw-cffi?/std",
-    # `config` refuses to build without the bridge's `std` (it parses TOML),
-    # and a consumer of the facade names `std` here, never on the bridge.
-    "nros-bridge?/std",
-]
+# phase-359 W10 stage B — there is no `std` feature. This crate is `core` /
+# `core+alloc` like the six under it; the hosted edge (`env`) reads through the
+# C library. What `std` used to switch on that is not the heap is named here:
+#
+# * `log` — the `log`-crate facade in nros-node and nros-rmw (their internal
+#   diagnostics reach whatever `log` logger the program installs).
+log = ["nros-node/log", "nros-rmw/log"]
 alloc = [
     "dep:portable-atomic-util",
     "nros-core/alloc",
@@ -120,6 +118,12 @@ alloc = [
     "nros-params/alloc",
     "nros-serdes/alloc",
     "nros-bridge?/alloc",
+    # phase-359 W10 stage B — and the C-ABI seam's heap half, which turns on
+    # `nros-core/platform-clock` (a C-ABI build always links a port). Every
+    # hosted image used to get it through `nros/std` -> `nros-rmw-cffi/std`;
+    # zenoh images still get it from `nros-rmw-zenoh`, XRCE / Cyclone ones only
+    # got it that way, and without it `Clock::system()` is a counter.
+    "nros-rmw-cffi?/alloc",
 ]
 
 # RMW vtable runtime registry. Every backend ships as a cffi shim
@@ -172,7 +176,10 @@ trace-callbacks = ["nros-node/trace-callbacks"]
 
 # Phase 128.G — bridge surface. `bridge` re-exports `nros_bridge`'s
 # Rust API (PubSubBridge etc.); `config` additionally pulls the TOML
-# loader (`run_from_config`).
+# loader (`run_from_config`), which parses TOML through serde and so needs the
+# bridge's own `std` — the consumer names `nros-bridge/std` at its dep-site;
+# the bridge's `compile_error!` says so (phase-359 W10 stage B: `nros` has no
+# `std` to forward it from).
 bridge = ["dep:nros-bridge"]
 config = ["bridge", "nros-bridge/config"]
 

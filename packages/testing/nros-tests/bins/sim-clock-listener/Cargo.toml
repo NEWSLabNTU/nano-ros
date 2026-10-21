@@ -17,7 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 nros = { path = "../../../../api/nros", default-features = false, features = [
-    "std", "alloc", "env",
+    "log", "alloc", "env",
     "rmw-cffi",
     # The two under test. `param-services` because `use_sim_time` is a
     # PARAMETER — the seam W3b hooks is `Executor::declare_parameter`, which

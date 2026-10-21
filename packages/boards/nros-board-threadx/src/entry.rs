@@ -670,11 +670,8 @@ where
     // `from_baked` read it, and the board dropped it here. Identity (name,
     // namespace) comes from the bake; the locator and domain stay the
     // board's, unchanged, and issue 1050's `rmw` rides the bake as before.
-    let exec_cfg = ::nros::ExecutorConfig::resolve(baked.over_board_defaults(
-        config.locator(),
-        config.domain_id(),
-        "nros_app",
-    ));
+    let exec_cfg =
+        resolve_boot(baked.over_board_defaults(config.locator(), config.domain_id(), "nros_app"));
 
     // #131 — register the linked zenoh CFFI backend before `Executor::open`.
     #[cfg(feature = "rmw-zenoh")]
@@ -1101,8 +1098,8 @@ where
 
     // Issue #98 / RFC-0045 — node name from the baked `.nros_boot_config`
     // (a launch that names the node overrides the board default); locator +
-    // domain_id come from the per-board `ThreadxConfig` (NOT env vars —
-    // embedded libc `getenv` has no host trampoline).
+    // domain_id come from the per-board `ThreadxConfig`, with the process
+    // environment on top on a Linux host (`resolve_boot`).
     let baked = boot_config
         .map(::nros::BootConfig::from_baked)
         .unwrap_or_default();
@@ -1113,11 +1110,8 @@ where
     // `from_baked` read it, and the board dropped it here. Identity (name,
     // namespace) comes from the bake; the locator and domain stay the
     // board's, unchanged, and issue 1050's `rmw` rides the bake as before.
-    let exec_cfg = ::nros::ExecutorConfig::resolve(baked.over_board_defaults(
-        config.locator(),
-        config.domain_id(),
-        "nros_app",
-    ));
+    let exec_cfg =
+        resolve_boot(baked.over_board_defaults(config.locator(), config.domain_id(), "nros_app"));
 
     // #131 — register the linked zenoh CFFI backend before `Executor::open`.
     // ThreadX is `target_os = "none"`: the `nros_rmw_register_backend!`
@@ -1493,5 +1487,26 @@ where
             B::println(format_args!("Application error: {:?}", e));
             B::exit_failure();
         }
+    }
+}
+
+/// The boot config, resolved from the baked rung (identity from the bake,
+/// locator and domain from the board) — with the process environment on top
+/// when this image is a Linux process.
+///
+/// phase-359 W10 stage B / issue 1763 — threadx-linux is `#![no_std]` but a
+/// Linux process with a C library, and its C / C++ images already honoured
+/// `$ROS_DOMAIN_ID` / `$NROS_LOCATOR` through `nros::env`. The Rust image read
+/// only `$NROS_LOCATOR`, through a reader of its own in the board crate, so one
+/// board answered "which domain" two ways. A target build (riscv64,
+/// `target_os = "none"`) has no environment and resolves the bake alone.
+fn resolve_boot(baked: ::nros::BootConfig<'_>) -> ::nros::ExecutorConfig<'_> {
+    #[cfg(target_os = "linux")]
+    {
+        ::nros::env::resolve_hosted(baked)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        ::nros::ExecutorConfig::resolve(baked)
     }
 }

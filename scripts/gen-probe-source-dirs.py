@@ -27,7 +27,7 @@ an over-watch that re-probes every component on a zpico edit. `cargo tree -p
 what a probe build is. The roots and features below are read off the two probe
 builders, not chosen:
 
-* the Rust harness (`metadata_build.rs`) depends on `nros` with `std`, and on
+* the Rust harness (`metadata_build.rs`) depends on `nros` with `alloc,log`, and on
   `nros-platform-cffi` with `posix-c-port`; `metadata-mode` is added because it
   is the feature that turns on `nros-node/registration-observer`, the code that
   reports `in_place`;
@@ -53,7 +53,7 @@ OUT = REPO / "packages" / "cli" / "probe-source-dirs.txt"
 
 # (package, features) — read off the probe builders; see the module doc.
 ROOTS = [
-    ("nros", "std,metadata-mode"),
+    ("nros", "alloc,log,metadata-mode"),
     ("nros-platform-cffi", "posix-c-port"),
     ("nros-cpp", "metadata-mode"),
     ("nros-c", ""),

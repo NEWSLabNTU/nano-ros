@@ -1566,7 +1566,7 @@ test-doc:
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     # phase-361 W3 — `std` explicit: `nros` no longer defaults to it, and the
     # doc examples are hosted.
-    cargo test $cargo_profile_args --doc -p nros --features std
+    cargo test $cargo_profile_args --doc -p nros --features alloc,env,log
     # Every OTHER crate's doctests, in both cargo workspaces. nextest never
     # runs doctests, so before this the `nros` line above was the only
     # doctest run anywhere, and ~20 runnable examples in nros-core,

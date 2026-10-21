@@ -402,15 +402,16 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   `nros ws seed-lock` for a script that runs cargo itself), never committed.
 - **`std` is being DELETED; write `core::`/`alloc::`, never `std::`** (ARCHITECTURE §2, phase-359).
   Terminal state of the core crates is `core` and `core+alloc` — `std` there is a second
-  implementation of the platform layer, not a convenience over it. Whose requirement it is decides
-  the spelling: a capability the CONSUMER picks REQUIRES `std` (`env` = `std::env` —
-  `compile_error!`, consumer names `std`); a purely INTERNAL one GRANTS it (`metadata-mode`'s own
-  code uses `Mutex`/`format!`, so making callers name `std` would turn an implementation detail
-  into a consumer-facing flavour). Corollary: **a capability that grants what it needs can never
-  reach its own guard** — `metadata-mode` carried an unreachable `compile_error!` for two phases.
-  And where a consumer GETS `std` is not uniform (`examples/linux/rust/*` inherit it from
-  `nros-board-linux`; `nros-tests/bins/*` must name it), so a manifest-READING sweep looks complete
-  while half the tree is red — build the candidates.
+  implementation of the platform layer, not a convenience over it. Seven of the nine have no `std`
+  feature at all (W10 stages A/B); `nros-c`/`nros-cpp` remain (stage C: their `std` is the
+  staticlib's libstd/panic flavour, which cmake reads). A capability needs what its FACILITY
+  needs: `env` is the process environment and reads through the C library's `getenv`
+  (`nros::env`, one reader for the std Linux board and the no_std host simulators), so it needs a
+  C library, not `std`. A capability REQUIRES what it needs (`compile_error!`) rather than granting
+  it — **a capability that grants what it needs can never reach its own guard** (`metadata-mode`
+  carried an unreachable `compile_error!` for two phases). A hosted image's `std` is its BINARY's
+  (a `main` crate, or a board whose root is not `#![no_std]`), never a core crate's.
+  A manifest-READING sweep of this looks complete while half the tree is red — build the candidates.
 - **Messages are generated** (`nros generate-rust` from `package.xml`) — never hand-write. Detail
   → RFC-0023 + [docs/guides/message-generation.md](docs/guides/message-generation.md).
 - Unused vars: `_name` + comment, or `#[allow(dead_code)]` for test struct fields.

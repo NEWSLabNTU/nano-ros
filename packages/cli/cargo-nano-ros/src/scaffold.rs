@@ -1019,7 +1019,7 @@ rmw-xrce = ["dep:nros-rmw-xrce-cffi", "nros-board-linux/rmw-xrce"]
 rmw-cyclonedds = ["nros/needs-type-descriptors", "dep:nros-rmw-cyclonedds-sys", "nros-board-linux/rmw-cyclonedds"]
 
 [dependencies]
-nros = {{ version = "*", default-features = false, features = ["std", "rmw-cffi", "{edition_feature}"] }}
+nros = {{ version = "*", default-features = false, features = ["alloc", "env", "log", "rmw-cffi", "{edition_feature}"] }}
 nros-platform-cffi = {{ version = "*", features = ["posix-c-port"] }}
 nros-board-linux = {{ version = "*", default-features = false }}
 nros-rmw-zenoh = {{ version = "*", default-features = false, features = ["std", "platform-posix", "{edition_feature}"], optional = true }}

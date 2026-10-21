@@ -30,7 +30,7 @@ nros-platform = { path = "@NROS_REPO_DIR@/packages/platform/nros-platform", defa
 # Codegen-emitted `run_plan.rs` defines a `register_dispatch` shim
 # typed `&mut ::nros::Executor`, so the Entry pkg depends on `nros`
 # directly — same platform features the Component pkg forwards.
-nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "std"] }
+nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "log"] }
 # Component pkg under test — enable the `posix` feature gate so its
 # `nros` dep links the POSIX platform backend.
 shared_node_pkg = { path = "../shared_node_pkg", features = ["posix"] }

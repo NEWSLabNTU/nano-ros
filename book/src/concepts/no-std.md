@@ -191,11 +191,15 @@ Adds boxed timer callbacks and `handle_request_boxed()` for large service replie
 
 **Desktop / Linux:**
 ```toml
-nros = { path = "…/nros", default-features = false, features = ["std", "rmw-cffi", "platform-posix"] }
+nros = { path = "…/nros", default-features = false, features = ["alloc", "env", "log", "rmw-cffi"] }
 nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-posix", "link-tcp", "ros-humble"] }
 nros-platform-cffi = { path = "…/nros-platform-cffi", features = ["posix-c-port"] }
 ```
 Full API including `spin()`, `spin_period()`, `from_env()`, system clock.
+`nros` has no `std` feature: your program is a hosted binary and has `std`
+itself, `env` reads the process environment (through the C library's
+`getenv`), and `log` routes nano-ros's own diagnostics to whatever `log`
+logger you install.
 For async, use an external runtime (tokio `current_thread` + `spawn_local` for background spin).
 
 **Desktop with parameter services:** add `param-services` to the

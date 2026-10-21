@@ -112,22 +112,24 @@ end**. Three consequences that come up constantly:
 > `check-std-census` is a ratchet that only turns one way and its target is
 > zero.
 >
-> **A capability the CONSUMER chooses requires `std`; it does not grant it.**
-> `env` is `ExecutorConfig::from_env`, i.e. `std::env` — it emits a
-> `compile_error!` naming the feature to add, and the consumer names `std`.
-> `env = ["std"]` is the spelling phase-359 W10 removed: it puts the standard
-> library into an image through a door nobody declared. Issue 0687 then moved
-> the capability itself: `env` lives on `nros` (`nros::env`, the hosted edge)
-> and NOT on the core, which takes resolved values (`ExecutorConfig::
-> resolve_with` + `EnvRung`). A capability whose facility exists on one platform
-> family belongs at the edge, not behind a per-port ABI stub.
+> **A capability needs what its FACILITY needs, and that is rarely `std`.**
+> `env` is the process environment, which belongs to the PROCESS, not to the
+> Rust standard library: since phase-359 W10 stage B it reads through the C
+> library's `getenv` (`nros::env`, the hosted edge), builds wherever a C library
+> is linked (`target_os = "linux"` on this tree) and is a `compile_error!`
+> elsewhere. It is the one reader for the `std` Linux board AND the `no_std`
+> host simulators (threadx-linux, freertos-posix — issue 1763), so a no_std
+> image inside a process honours `$ROS_DOMAIN_ID` like its std sibling. The
+> core still takes resolved values (`ExecutorConfig::resolve_with` + `EnvRung`,
+> issue 0687): a capability whose facility exists on one platform family
+> belongs at the edge, not behind a per-port ABI stub.
 >
-> **A purely INTERNAL requirement is the other way round, and the distinction is
-> the whole rule.** `metadata-mode` is `["std"]` because `metadata_mode.rs`
-> itself uses `std::sync::Mutex`, `Box::leak` and `format!` — nothing about that
-> is the consumer's choice, so making them name `std` by hand would turn an
-> implementation detail into a consumer-facing flavour. Ask *whose* requirement
-> it is: the caller's, or the code's.
+> **A capability REQUIRES what it needs; it does not grant it.** `env` needs
+> `alloc` and says so with a `compile_error!`; `env = ["alloc"]` would put a
+> heap into an image through a door nobody declared. The `std` of a hosted
+> image is its BINARY's: a `main` crate, or a board crate whose root is not
+> `#![no_std]` (`nros-board-linux`). `metadata-mode` needs only the heap
+> (issue 0687 follow-up: a portable mutex, `String`, `format!`).
 
 **Corollary worth remembering.** A capability that grants what it needs can never
 reach its own guard — `metadata-mode` carried a `compile_error!` for two phases

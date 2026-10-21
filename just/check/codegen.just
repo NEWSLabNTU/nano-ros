@@ -307,7 +307,7 @@ census-hooks-complete:
     gen_no_store="$(nros_scoped_target_dir check-census-hooks-no-store)"
     export CARGO_TARGET_DIR="$gen"
     python3 scripts/check-census-hooks-complete.py
-    cargo test -p nros --lib --features std,metadata-mode --quiet -- metadata_mode
+    cargo test -p nros --lib --features alloc,metadata-mode --quiet -- metadata_mode
     cargo test -p nros-rmw-metadata --quiet
     # issue 1532 — `census`, not `census_fixture`. The narrower filter left
     # `census_funnel_tests` out of the only lane that builds this feature set, so

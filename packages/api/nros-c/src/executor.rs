@@ -485,7 +485,7 @@ pub(crate) unsafe fn executor_init_on_support(
         return RCL_RET_ERROR;
     };
 
-    // `mut` only needed under `feature = "env"` where the
+    // `mut` only needed under `target_os = "linux"` where the
     // env-var-driven primary-identity block below mutates it;
     // on `no_std` (FreeRTOS / NuttX / ThreadX) the mutation
     // path compiles out and `-D unused-mut` would otherwise
@@ -507,10 +507,10 @@ pub(crate) unsafe fn executor_init_on_support(
     // names the same backend the support session opened
     // against. Mirror env-var resolution `open_session` uses so
     // primary picks line up.
-    // phase-359 W10 — `env`, not `std`: reading `$NROS_RMW` is the process
-    // environment CAPABILITY, the same one `ExecutorConfig::from_env`,
-    // `nros::init*` and `nros-node`'s selector already moved onto.
-    #[cfg(feature = "env")]
+    // phase-359 W10 — reading `$NROS_RMW` is the process environment, which
+    // every Linux process has (stage B: through `getenv`, `std` or not), the
+    // same reader the boot config above resolved through.
+    #[cfg(target_os = "linux")]
     {
         // issue 0687 — the shared selector. This used to read `$NROS_RMW`
         // directly AND pass an empty string through as the identity when it was

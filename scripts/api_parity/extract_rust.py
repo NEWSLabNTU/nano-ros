@@ -43,7 +43,9 @@ NROS_FEATURES = [
     "rmw-cffi",
     "macros",
     "alloc",
-    "std",
+    # phase-359 W10 stage B — `nros` has no `std` feature; `log` is what it
+    # carried besides the heap.
+    "log",
     "param-services",
     "lifecycle-services",
     "stream",

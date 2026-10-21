@@ -74,6 +74,17 @@ pub mod section;
 /// Zero on success; negative on error.
 pub type NrosRmwRet = rmw_ret_t;
 
+/// `$NROS_RMW_TRACE_OPEN` is set — read with the C library's `getenv`, so the
+/// open trace below needs no `std` (phase-359 W10 stage B).
+#[cfg(target_os = "linux")]
+fn trace_open_enabled() -> bool {
+    unsafe extern "C" {
+        fn getenv(name: *const core::ffi::c_char) -> *const core::ffi::c_char;
+    }
+    // SAFETY: the name is a NUL-terminated literal; only nullness is read.
+    unsafe { !getenv(c"NROS_RMW_TRACE_OPEN".as_ptr()).is_null() }
+}
+
 // Anchor every C-stub-transport symbol so they survive
 // `--gc-sections` when integration tests link against
 // `libnros_rmw_cffi`. Only compiled when the c-stub-test feature
@@ -2404,8 +2415,10 @@ impl CffiSession {
         // native_sim). The env gate stays: it decides whether to FORMAT, which
         // is the cost worth avoiding on a hot open path; the level would only
         // decide whether to emit.
-        #[cfg(feature = "std")]
-        if std::env::var_os("NROS_RMW_TRACE_OPEN").is_some() {
+        // phase-359 W10 stage B — through the C library, so the trace works on
+        // every hosted build and no longer needs this crate's `std`.
+        #[cfg(target_os = "linux")]
+        if trace_open_enabled() {
             nros_log::log_info!(
                 nros_log::get_logger("nros_rmw_cffi"),
                 "open: locator={locator:?} mode={mode} ret={ret} backend_data={:p}",

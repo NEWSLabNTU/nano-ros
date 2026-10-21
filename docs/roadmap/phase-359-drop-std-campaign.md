@@ -1,14 +1,12 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
-**Status (2026-10-21). W10 stage A landed: six of the nine crates have no
-`std` feature.** `nros-core`, `nros-rmw`, `nros-serdes`, `nros-params`,
-`nros-log` and `nros-node` are `core` / `core+alloc` with nothing else to
-ask for; their tests get `std` from the hosted harness (`cfg(test)`).
-`just check std-census` measures **17 cfg sites / 24 `std::` paths**, all in
-the three that remain: `nros` 5/14, `nros-c` 7/1, `nros-cpp` 5/9. Those are
-stages B and C under "What remains of W10" below — they are not the
-mechanical tail the earlier count suggested, because the C/C++ `std` is the
-STATICLIB's flavour (libstd's panic handler), carried by cmake.
+**Status (2026-10-21). W10 stages A and B landed: seven of the nine crates
+have no `std` feature.** `nros-core`, `nros-rmw`, `nros-serdes`,
+`nros-params`, `nros-log`, `nros-node` (stage A) and the `nros` facade
+(stage B) are `core` / `core+alloc`; their tests get `std` from the hosted
+harness (`cfg(test)`). `just check std-census` measures **12 cfg sites / 10
+`std::` paths**, all in `nros-c` 7/1 and `nros-cpp` 5/9 — stage C, whose
+`std` is the STATICLIB's flavour (libstd's panic handler), carried by cmake.
 
 **Status (2026-10-14).** 24 cfg / 24 paths; every one of the nine crates
 defaulted off `std` and all nine still declared it. (This line said 25
@@ -1324,32 +1322,48 @@ from `nros-core`, `nros-rmw`, `nros-serdes`, `nros-params`, `nros-log`,
 * six manifests that named a core crate's `std` directly (`nros-tests`,
   four of its bins, `nros-rmw-metadata`) name `alloc`.
 
-**Stage B — the facade. NEEDS A RULING before it is a sweep.** `nros` keeps a
-`std` feature that forwards `alloc` and `log` and gives `extern crate std` to
-its `env` code (`src/env.rs`, `init.rs`: 13 `std::env` paths plus
-`OnceLock`, `fs`, `process::id`). ARCHITECTURE §2 says `env` REQUIRES `std`
-and the consumer names it, and that nothing may enable `std` — which cannot
-both hold once `nros` has no `std` to name. Two ways out, and they differ in
-where the hosted code lives:
+**Stage B — DONE 2026-10-21: the facade, and ONE env reader.** Maintainer
+ruling the same day: the process environment belongs to the PROCESS, so the
+`env` capability reads it through the C library's `getenv` and needs a C
+library, not `std`. Options weighed and declined first: moving the reader to
+a hosted crate (it would have turned rclrs's `Context::default_from_env` /
+`Context::new` into a trait import, and a kept inherent method would have
+silently shadowed it), and `env` granting `std` (a door §2 forbids).
 
-1. **`env` grants `std` itself** (`#[cfg(feature = "env")] extern crate std`).
-   Smallest change: the 45 manifests that ask for `nros`'s `std` (17
-   `examples/linux/rust`, 21 under `nros-tests`, 4 `nros-bench`,
-   `nros-board-linux`, `nros-rmw-metadata`, the rustdoc driver; TOML-parsed,
-   so multi-line feature lists count) drop it and keep `env`. Amends §2's
-   "consumer names `std`" ruling of 2026-08-16, and leaves `std` code in a
-   crate the census tracks, behind a capability.
-2. **The reader moves to the hosted edge.** `ExecutorConfigEnvExt` and the
-   `init*` argv/env entry leave `nros` for a hosted crate (`nros-board-linux`
-   already is one, and the C/C++ hosted entry has its own). `nros` reaches
-   `core+alloc` like the six below it, and §2's rule stands as written.
-   Larger: every `from_env` caller's import path moves.
-
-Either way the CLI's two manifest emitters (`cargo-nano-ros/src/scaffold.rs`,
-`leaf_entity_env.rs`), `packs/scaffold/lib_nros.rs.jinja` and
-`check-flavour-lanes` (which reads a board's flavour off a `"std"` on its
-`nros` dep, so it would read `nros-board-linux` as `no_std`; the board crate
-itself has no `#![no_std]`, which is the fact to read instead) move with it.
+* `nros::env` merges the two readers that existed — `env.rs` on `std::env`
+  and issue 1763's `host_env.rs` on `getenv` — into the `getenv` one. It
+  exists on every `target_os = "linux"` build, so the C / C++ entries of the
+  `no_std` host simulators keep their env rung; the `env` FEATURE is the
+  user-facing half (`from_env`, `init*`, `Context::new`) and is a
+  `compile_error!` off Linux. `getenv` hands out `'static` strings, so the
+  `OnceLock` cache (and issue 0607's staleness) is gone.
+* `--params-file` is read with `fopen`/`fread`; `$RMW_IMPLEMENTATION` with
+  the same `getenv`.
+* threadx-linux's RUST image honoured `$NROS_LOCATOR` alone, through a board
+  reader of its own; its C / C++ images honoured the whole rung. Both
+  `nros-board-threadx` resolution sites now call `nros::env::resolve_hosted`
+  on a Linux host, so the domain, node name, namespace and selector reach
+  Rust images too.
+* `try_resolve_hosted` logs ONE line naming each field's source (`env`,
+  `baked`, `default`) — a misspelled variable otherwise does nothing, silently.
+* `nros` features: `std` deleted; `log` (`nros-node/log` + `nros-rmw/log`)
+  is what it carried besides the heap. The 45 manifests that named it name
+  `log` (plus `alloc` where `std` had implied it); `nros-c`/`nros-cpp`
+  forward `nros/log`. nros-rmw-cffi's `NROS_RMW_TRACE_OPEN` reads through
+  `getenv` instead of its `std`.
+* `nros/alloc` forwards `nros-rmw-cffi?/alloc`. `nros/std` used to reach
+  `nros-rmw-cffi/std -> alloc -> nros-core/platform-clock`, and that chain was
+  the ONLY thing giving an XRCE- or Cyclone-only hosted image (and the
+  `nros-c` test build) the port's wall clock — zenoh images get it from
+  `nros-rmw-zenoh`. Without it `Clock::system()` is the caller-advanced
+  counter: `required-features-tests` measured the C surface at
+  1.79e18 ns and the Rust one at 0. It is the heap axis forwarding to a
+  dependency, like `nros-bridge?/alloc` beside it.
+* `check-flavour-lanes` read a board's flavour off a `"std"` on its `nros`
+  dep; it reads the served board's own root (`#![no_std]` or not) and skips
+  build-dependencies. Same table as before.
+* ARCHITECTURE §2 and CLAUDE.md: the "consumer names `std` for `env`" rule
+  is replaced by "a capability needs what its FACILITY needs".
 
 **Stage C — `nros-c` / `nros-cpp`.** Their `std` is not a convenience: it is
 whether the STATICLIB links libstd, and so whose `#[panic_handler]` ends the

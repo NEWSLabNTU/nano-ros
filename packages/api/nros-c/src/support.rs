@@ -600,17 +600,14 @@ impl rclc_support_t {
 fn resolve_boot(
     baked: nros_node::BootConfig<'_>,
 ) -> Result<nros_node::ExecutorConfig<'_>, nros_node::BootConfigError> {
-    #[cfg(feature = "env")]
+    // Issue 1763 / phase-359 W10 stage B — every image inside a host process
+    // has an environment, `std` or not (threadx-linux, freertos-posix), and
+    // the one reader takes it through the C library's `getenv`.
+    #[cfg(target_os = "linux")]
     {
         nros::env::try_resolve_hosted(baked)
     }
-    // Issue 1763 — a `#![no_std]` image inside a host process still has an
-    // environment; read it with the C library's `getenv` (`nros::host_env`).
-    #[cfg(all(not(feature = "env"), target_os = "linux"))]
-    {
-        nros::host_env::try_resolve_hosted(baked)
-    }
-    #[cfg(all(not(feature = "env"), not(target_os = "linux")))]
+    #[cfg(not(target_os = "linux"))]
     {
         nros_node::ExecutorConfig::try_resolve(baked)
     }

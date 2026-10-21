@@ -507,7 +507,7 @@ Rust packages consume nano-ros one of two ways:
 [dependencies]
 nros = { path = "src/nano-ros/packages/api/nros",
          default-features = false,
-         features = ["std", "rmw-cffi", "platform-posix", "ros-humble"] }
+         features = ["alloc", "env", "log", "rmw-cffi", "ros-humble"] }
 ```
 
 A Rust package carries no build settings of its own — no target triple,

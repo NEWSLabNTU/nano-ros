@@ -59,7 +59,7 @@ path = "src/main.rs"
 
 [dependencies]
 nros = { version = "*", default-features = false,
-         features = ["std", "rmw-cffi", "ros-humble"] }
+         features = ["alloc", "env", "log", "rmw-cffi", "ros-humble"] }
 nros-rmw-zenoh = { version = "*",
                    features = ["std", "platform-posix", "ros-humble"] }
 
