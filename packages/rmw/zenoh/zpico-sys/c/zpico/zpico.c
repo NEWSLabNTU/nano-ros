@@ -1347,17 +1347,17 @@ static inline void _zpico_ring_unlock(zpico_ring_desc_t* r) {
     }
 }
 
-intptr_t zpico_ring_claim_head(zpico_ring_desc_t* r) {
+ptrdiff_t zpico_ring_claim_head(zpico_ring_desc_t* r) {
     if (r == NULL || r->head == NULL || r->slot_count == 0) {
         return -1;
     }
     _zpico_ring_lock(r);
     uintptr_t head = atomic_load_explicit((_Atomic uintptr_t*)r->head, memory_order_relaxed);
     uintptr_t tail = atomic_load_explicit((_Atomic uintptr_t*)r->tail, memory_order_acquire);
-    intptr_t slot = -1;
+    ptrdiff_t slot = -1;
     if (head != tail) {
         atomic_store_explicit((_Atomic uintptr_t*)r->claimed, head + 1, memory_order_relaxed);
-        slot = (intptr_t)(head % r->slot_count);
+        slot = (ptrdiff_t)(head % r->slot_count);
     }
     _zpico_ring_unlock(r);
     return slot;
