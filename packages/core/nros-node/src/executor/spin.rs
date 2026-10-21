@@ -1751,33 +1751,6 @@ pub struct Executor<'s> {
     /// gating per
     /// `SchedContext.tt_window_offset_us / tt_window_duration_us`.
     pub(crate) major_frame_us: u32,
-    /// Phase 110.F — per-OS-priority worker pool. Lazily populated
-    /// on first dispatch routing to a non-zero `os_pri`.
-    ///
-    /// phase-359 W10 — was `std::collections::HashMap<u8, OsPriorityWorker>`
-    /// behind `feature = "std"`, because the workers were `std::thread` +
-    /// `mpsc`. They are platform tasks now (`super::os_priority`), so the pool
-    /// needs only `alloc` and this capability is no longer std-only.
-    #[cfg(all(
-        feature = "alloc",
-        feature = "rmw-cffi",
-        feature = "scheduler-os-priority"
-    ))]
-    pub(crate) os_priority_pool: super::os_priority::OsPriorityPool,
-    /// Phase 110.F — caller-supplied `apply_policy` function pointer
-    /// each worker invokes at startup to elevate its OS priority.
-    /// `None` = the worker pool is disabled; entries bound to non-
-    /// zero `os_pri` SCs fall back to the cooperative path.
-    /// Mirrors `Executor::open_threaded`'s `apply_policy: fn(...)`
-    /// shape — keeps Executor non-generic over Platform.
-    // phase-359 W10 — the POLICY is separable from the POOL. Registering it
-    // needs nothing but the feature; hosting workers needs a platform
-    // (`rmw-cffi`, the same proxy `node_wake` uses). A build that can register
-    // but not host falls back to cooperative dispatch, so the public
-    // `register_os_priority_dispatcher` keeps its old availability.
-    #[cfg(all(feature = "alloc", feature = "scheduler-os-priority"))]
-    pub(crate) os_priority_apply_policy:
-        Option<fn(nros_platform_api::SchedPolicy) -> Result<(), nros_platform_api::SchedError>>,
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
     /// Node name for entities created via `register_subscription`/`register_service`.
@@ -2403,14 +2376,6 @@ impl<'s> Executor<'s> {
             #[cfg(feature = "alloc")]
             sporadic_atomic_states,
             major_frame_us: 0,
-            #[cfg(all(
-                feature = "alloc",
-                feature = "rmw-cffi",
-                feature = "scheduler-os-priority"
-            ))]
-            os_priority_pool: super::os_priority::OsPriorityPool::new(),
-            #[cfg(all(feature = "alloc", feature = "scheduler-os-priority"))]
-            os_priority_apply_policy: None,
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -4916,31 +4881,6 @@ impl<'s> Executor<'s> {
         Ok(())
     }
 
-    /// Phase 110.F — opt in to per-callback OS-priority dispatch.
-    /// Once registered, every `spin_once` cycle routes ready entries
-    /// whose bound SC has `os_pri > 0` onto a worker thread the OS
-    /// scheduler has elevated to that numeric priority. Workers are
-    /// spawned lazily on first use and self-halt when the Executor
-    /// drops.
-    ///
-    /// `apply_policy` is the same `fn(SchedPolicy) -> Result<(),
-    /// SchedError>` shape `open_threaded` takes — keeps the
-    /// Executor non-generic over Platform.
-    ///
-    /// Calling this with `apply_policy = noop` is fine for testing
-    /// (workers spawn but don't actually elevate priority); real
-    /// hard-RT use needs `CAP_SYS_NICE` on Linux or the equivalent
-    /// kernel config on RTOSes.
-    #[cfg(all(feature = "alloc", feature = "scheduler-os-priority"))]
-    pub fn register_os_priority_dispatcher(
-        &mut self,
-        apply_policy: fn(
-            nros_platform_api::SchedPolicy,
-        ) -> Result<(), nros_platform_api::SchedError>,
-    ) {
-        self.os_priority_apply_policy = Some(apply_policy);
-    }
-
     /// Phase 110.G — enable time-triggered dispatch by setting the
     /// executor's major-frame length. Once set, every `spin_once`
     /// cycle gates dispatch through each entry's bound SC's
@@ -7202,14 +7142,7 @@ impl<'s> Executor<'s> {
         // called, asked for this release). Mark it and let `finish_dispatch` do
         // the release when the callback returns. The handle stops resolving
         // now, so a second request answers `false` and nothing dispatches it.
-        //
-        // Issue 1705 — the same for an entry an OS-priority WORKER holds
-        // (`WORKER_QUEUED`): its callback may be running on the worker task, or
-        // its item may still be queued. The worker skips an item whose release
-        // is pending, and `reap_deferred_releases` completes the release once
-        // the worker has let go. This is also the whole of what a release
-        // requested FROM the worker thread does: one atomic flag, nothing the
-        // spin thread is touching.
+
         if let Some(tag) = self.slot_tags.get(index)
             && tag.flags() & super::types::SlotTag::IN_FLIGHT != 0
         {
@@ -7261,17 +7194,12 @@ impl<'s> Executor<'s> {
     }
 
     /// Issue 1705 — `slot`'s entry is not to be touched by the spin thread
-    /// this pass: an OS-priority worker holds it (`WORKER_QUEUED` — its item
-    /// is queued or its callback is running, so even READING its state for
-    /// readiness races the worker), or its release is pending (it is never
-    /// dispatched again).
+    /// this pass: its release is pending (it is never dispatched again).
     #[inline]
     fn slot_held(slot_tags: &[super::types::SlotTag], slot: usize) -> bool {
-        slot_tags.get(slot).is_some_and(|t| {
-            t.flags()
-                & (super::types::SlotTag::WORKER_QUEUED | super::types::SlotTag::RELEASE_PENDING)
-                != 0
-        })
+        slot_tags
+            .get(slot)
+            .is_some_and(|t| t.flags() & super::types::SlotTag::RELEASE_PENDING != 0)
     }
 
     /// phase-509 P3 (RFC-0108 D2) -- after a callback, merge what became
@@ -7285,8 +7213,8 @@ impl<'s> Executor<'s> {
     ///   a gate) does not join: it runs at most once per pass. An arrival for
     ///   one is kept for the next pass's scan.
     /// - A slot whose context gates its dispatch (a sporadic budget, a
-    ///   time-triggered window, an OS-priority worker) waits for the next
-    ///   pass, where the scan applies the gate.
+    ///   time-triggered window) waits for the next pass, where the scan
+    ///   applies the gate.
     fn merge_mid_pass(
         &mut self,
         fifo: &mut super::ready_set::RankedFifoSet<{ MAX_CALLBACK_SLOTS }>,
@@ -7363,19 +7291,7 @@ impl<'s> Executor<'s> {
             let priority = sc.map_or(super::sched_context::Priority::Normal, |sc| sc.priority);
             let windowed = self.major_frame_us > 0
                 && sc.is_some_and(|sc| sc.tt_window_duration_us.get().is_some());
-            #[cfg(all(
-                feature = "alloc",
-                feature = "rmw-cffi",
-                feature = "scheduler-os-priority"
-            ))]
-            let worker = sc.is_some_and(|sc| sc.os_pri > 0);
-            #[cfg(not(all(
-                feature = "alloc",
-                feature = "rmw-cffi",
-                feature = "scheduler-os-priority"
-            )))]
-            let worker = false;
-            if matches!(class, super::sched_context::SchedClass::Sporadic) || windowed || worker {
+            if matches!(class, super::sched_context::SchedClass::Sporadic) || windowed {
                 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
                 {
                     self.entity_recheck |= bit & attributed;
@@ -7422,7 +7338,7 @@ impl<'s> Executor<'s> {
 
     /// Issue 1667 / 1705 — finish a release that was deferred while a dispatch
     /// of the entry was in flight, if none is any more. A no-op while one still
-    /// is (a worker holding the entry): `reap_deferred_releases` retries.
+    /// is: `reap_deferred_releases` retries.
     fn complete_deferred_release(&mut self, slot: usize) {
         let Some(tag) = self.slot_tags.get(slot) else {
             return;
@@ -7441,16 +7357,16 @@ impl<'s> Executor<'s> {
         {
             // SAFETY: the release was requested through a generation-checked
             // handle, and `resolve_handle` has refused the slot since; no
-            // dispatch holds the entry (`IN_FLIGHT` is clear, read Acquire, so
-            // a worker's writes before it let go are visible).
+            // dispatch holds the entry (`IN_FLIGHT` is clear).
             let _ = unsafe { self.release_entry(slot, kind) };
         }
     }
 
     /// Issue 1705 — complete every deferred release whose last dispatch has
-    /// finished. A release deferred behind an OS-priority WORKER cannot be
-    /// completed by the worker (it may not touch the executor), so the spin
-    /// thread picks it up here, at the top of every `spin_once`.
+    /// finished. `finish_dispatch` completes one deferred behind a callback
+    /// on the spin thread when it returns; this is the backstop at the top
+    /// of every `spin_once` (it served the retired OS-priority worker pool,
+    /// whose worker could not touch the executor, phase-509 P11).
     pub(crate) fn reap_deferred_releases(&mut self) {
         for slot in 0..self.slot_tags.len() {
             if self.slot_tags[slot].flags() & super::types::SlotTag::RELEASE_PENDING != 0 {
@@ -10899,8 +10815,7 @@ impl<'s> Executor<'s> {
         first_error: &mut Option<TransportError>,
     ) -> SpinOnceResult {
         // Issue 1705 — releases deferred behind a dispatch that has since
-        // finished (an OS-priority worker's) are completed here, before this
-        // pass looks at the entries.
+        // finished are completed here, before this pass looks at the entries.
         self.reap_deferred_releases();
         // phase-436 W2 (issue 1193) — the budget is carried in MICROSECONDS.
         // This was `as_millis()`, which truncates: `from_micros(500)` became
@@ -11765,72 +11680,6 @@ impl<'s> Executor<'s> {
                     let _ = sc_idx; // polled-state path lives in
                     // `sporadic_states`; this branch is a no-op when
                     // the atomic path is enabled.
-                }
-            }
-            // Phase 110.F — per-callback OS priority routing. Entries
-            // bound to an SC with `os_pri > 0` dispatch onto a worker
-            // thread the OS has elevated to that priority; the
-            // cooperative path is skipped for those entries. Workers
-            // are spawned lazily.
-            #[cfg(all(
-                feature = "alloc",
-                feature = "rmw-cffi",
-                feature = "scheduler-os-priority"
-            ))]
-            {
-                let os_pri = self
-                    .sched_contexts
-                    .get(sc_idx)
-                    .and_then(|s| s.as_ref())
-                    .map(|sc| sc.os_pri)
-                    .unwrap_or(0);
-                if os_pri > 0
-                    && let Some(apply_policy) = self.os_priority_apply_policy
-                    && let Some(meta) = self.entries[i].as_ref()
-                {
-                    // Issue 1705 — a worker still holds this entry (its item is
-                    // queued or its callback is running). Sending it again, or
-                    // running it here, would put two threads in one
-                    // `try_process`; it gets its next turn once the worker lets
-                    // go.
-                    let tag = &self.slot_tags[i];
-                    if tag.set(super::types::SlotTag::WORKER_QUEUED)
-                        & super::types::SlotTag::WORKER_QUEUED
-                        != 0
-                    {
-                        continue;
-                    }
-                    let item = super::os_priority::WorkItem {
-                        arena_base: arena_ptr as usize,
-                        arena_offset: meta.offset,
-                        try_process: meta.try_process,
-                        delta_us,
-                        // phase-8 — the worker runs the leaf on a DIFFERENT
-                        // thread, so it has to carry the slot index with it;
-                        // nothing on the far side can recover it from the
-                        // arena address alone.
-                        desc_idx: i as u8,
-                        tag: tag as *const super::types::SlotTag as usize,
-                    };
-                    // phase-359 W10 — `try_dispatch` now reports whether the
-                    // entry was actually handed to a worker. It can decline:
-                    // the mailbox is bounded, the pool is capacity-limited, and
-                    // a platform without a wake primitive hosts no workers at
-                    // all. Previously the spawn was infallible (`.expect`) and
-                    // an unbounded `mpsc` never refused, so this branch always
-                    // `continue`d. Falling through to the cooperative path is
-                    // the honest answer to a decline — the callback still runs,
-                    // just without the OS priority guarantee, which is exactly
-                    // what an entry got before this feature existed.
-                    if self
-                        .os_priority_pool
-                        .try_dispatch(os_pri, apply_policy, item)
-                    {
-                        continue;
-                    }
-                    // Declined: no worker took it, so the bit set above is
-                    // released and the entry runs cooperatively.
-                    self.slot_tags[i].clear(super::types::SlotTag::WORKER_QUEUED);
                 }
             }
             // Phase 110.G — TT window gate, orthogonal to class.
@@ -15232,17 +15081,6 @@ impl Drop for ThreadHandle {
 // crossing is the same one; only the thing doing the crossing changed.
 #[cfg(feature = "alloc")]
 unsafe impl<'s> Send for Executor<'s> {}
-
-// =============================================================================
-// Phase 110.F — `OsPriorityWorker` + `WorkItem`
-// =============================================================================
-
-// phase-359 W10 — `OsPriorityWorker` / `WorkItem` moved to
-// `super::os_priority` and were rewritten off `std::thread` + `std::sync::mpsc`
-// + `HashMap` onto the platform task ABI, a bounded `heapless` mailbox and a
-// `NodeWake` doorbell. The capability is no longer std-only; see that module
-// for what changed semantically (bounded mailbox, capacity-limited pool, and
-// no pool on a platform without a wake primitive).
 
 impl<'s> Drop for Executor<'s> {
     fn drop(&mut self) {

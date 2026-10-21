@@ -248,20 +248,18 @@ pub struct SchedContext {
     pub budget_us: OptUs,
     pub deadline_us: OptUs,
     pub deadline_policy: DeadlinePolicy,
-    /// Phase 110.F — opt-in OS-level priority for per-callback
-    /// dispatch. `0` (default) means "no per-callback OS priority"
-    /// — the executor's cooperative dispatch path runs every
-    /// callback bound to this SC. Non-zero values trigger the
-    /// per-priority worker-pool path (registered via
-    /// `Executor::register_os_priority_dispatcher`); each callback
-    /// then runs on a worker thread the OS scheduler has elevated
-    /// to that numeric priority.
+    /// Phase 110.F — the OS-level priority this context's callbacks are meant
+    /// to run at: generated entries record their tier's kernel priority here
+    /// (`create_sched_context_from_policy`). `0` (default) means none.
     ///
-    /// Numeric meaning is platform-defined (POSIX 1..99 for
-    /// SCHED_FIFO; FreeRTOS 0..configMAX_PRIORITIES-1; Zephyr
-    /// direction-flipped). Chain-priority assignment + chain
-    /// grouping happen at the orchestration layer and are out of
-    /// executor scope.
+    /// Recorded, not acted on by the executor. The opt-in per-callback worker
+    /// pool that ran an `os_pri > 0` callback on an elevated thread is retired
+    /// (phase-509 P11): preemption is a level's, which runs at its band's
+    /// kernel priority (RFC-0108). The field stays, because the C and C++
+    /// sched-context configs carry it.
+    ///
+    /// Numeric meaning is platform-defined (POSIX 1..99 for SCHED_FIFO;
+    /// FreeRTOS 0..configMAX_PRIORITIES-1; Zephyr direction-flipped).
     pub os_pri: u8,
     /// Phase 110.G — time-triggered window offset within the
     /// executor's major frame. `None` (sentinel `0`) = always

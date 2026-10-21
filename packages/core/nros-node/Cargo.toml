@@ -85,8 +85,9 @@ scheduler-fifo = []
 scheduler-edf = []
 scheduler-bucketed = []
 scheduler-sporadic = []
-# Phase 110.F — opt-in PiCAS-style per-callback OS priority.
-scheduler-os-priority = []
+# Phase 110.F's opt-in per-callback OS-priority worker pool
+# (`scheduler-os-priority`) is retired: preemption levels (RFC-0108,
+# phase-509 P11) replace it.
 # Phase 110.G — opt-in ARINC-653 cyclic executive (time-triggered windows).
 scheduler-time-triggered = []
 

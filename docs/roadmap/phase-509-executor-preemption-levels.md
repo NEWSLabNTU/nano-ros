@@ -1,6 +1,6 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-21). In progress: P1, P2, P3, P4, P5, P6 and P8 done.** The design is
+**Status (2026-10-21). In progress: P1-P6, P8 and P11 done.** The design is
 [RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
 questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
@@ -569,8 +569,34 @@ platform's QEMU or host lane, and the derived stacks in the cost report.
 
 ### P11 -- Retire the OS-priority worker pool
 
-- [ ] Goal: remove the 110.F opt-in pool now that levels cover it (RFC-0108
+- [x] Goal: remove the 110.F opt-in pool now that levels cover it (RFC-0108
       alternative 4, decision 3).
+
+**Done (as built).** Removed: `executor/os_priority.rs`,
+`executor/ready_set/os_priority.rs`, `executor/worker_item.rs` (the pool's
+hand-off protocol, issue 1705) and its tests, the `scheduler-os-priority`
+feature, `Executor::register_os_priority_dispatcher`, the pool's fields
+and dispatch site in `spin.rs`, the executor-value allowance for it, the
+`SlotTag::WORKER_QUEUED` flag (`IN_FLIGHT` is `IN_DISPATCH` now), and the
+lane's `--features alloc,rmw-cffi,scheduler-os-priority` clippy line. The
+book page names tiers (and levels) for the bridge case instead.
+
+- **Users migrated:** the pool had no caller outside `nros-node` (no C or
+  C++ entry point, no example, no board). Its one test becomes
+  `an_os_pri_bound_callback_runs_on_the_spin_thread`.
+- **Kept:** `SchedContext::os_pri`, now documented as recorded and not
+  acted on: generated entries write the tier's kernel priority there, and
+  the C and C++ sched-context configs carry it (an ABI field). The
+  deferred-release machinery stays (`RELEASE_PENDING`,
+  `reap_deferred_releases` as the backstop): a release requested from
+  inside a callback still defers to its return.
+- **The api-parity ledger** had no row for the pool (its method was
+  feature-gated out of every extracted surface), so none was removed.
+- **References** to `scheduler-os-priority` remain only in records of the
+  past: this phase's and RFC-0108's description of the retirement, and the
+  completed phase-359 campaign's tables.
+
+Unsafe census: the removal is locked in (`--write-baseline`).
 
 **Touches:** `executor/os_priority.rs`, `executor/ready_set/os_priority.rs`,
 the `scheduler-os-priority` feature in `packages/core/nros-node/Cargo.toml`,

@@ -333,10 +333,10 @@ pub(crate) fn register(handle: usize, kind: EntryKind, name: TraceName<'_>) {
 ///
 /// O(1), allocation-free, lock-free; one relaxed-ordering pointer load plus
 /// the sink call. No state is kept across the pair, which is what makes it
-/// safe to fire from the OS-priority worker thread as well as the executor's
-/// own (`os_priority.rs` runs `try_process` on a different thread, so any
-/// depth counter or open-span slot here would have had to be per-thread from
-/// day one). Pairing is done offline by the decoder, keyed on the handle.
+/// safe to fire from any thread that dispatches (a preemption level's worker
+/// as well as the executor's own; any depth counter or open-span slot here
+/// would have to be per-thread). Pairing is done offline by the decoder,
+/// keyed on the handle.
 #[inline]
 pub(crate) fn start(handle: u8) {
     if let Some(sink) = sink() {

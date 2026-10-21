@@ -164,8 +164,8 @@ pub(crate) struct CallbackMeta {
     /// leaf. Threading the index in is the design's preferred fix over
     /// publishing an `offset -> index` map: it needs no side table, it cannot
     /// go stale if the arena moves, and attribution is exact at the point of
-    /// use. All three producers already have the index (the drain loop, the
-    /// trigger-fail timer sweep, and `os_priority::WorkItem`).
+    /// use. Both producers already have the index (the drain loop, the
+    /// trigger-fail timer sweep).
     ///
     /// Passed unconditionally rather than behind `feature = "trace-callbacks"`:
     /// a cfg-dependent function-pointer signature would have to be threaded

@@ -1234,9 +1234,9 @@ mod tests {
     /// target + feature detail — measured 1016 B on the `std` lane and 2048 B
     /// under `--all-features`, and the difference is almost entirely the primary
     /// session (`SessionStore` is 16 B over `MockSession`, 536 B over
-    /// `CffiSession`) plus `scheduler-os-priority`'s worker pool. Both of those
-    /// are allowed for BY NAME below, so what is left is a tight budget on the
-    /// header proper.
+    /// `CffiSession`) plus the retired OS-priority worker pool (phase-509 P11).
+    /// The session is allowed for BY NAME below, so what is left is a tight
+    /// budget on the header proper.
     ///
     /// It is a ceiling on the same number at every knob value, which is the
     /// property under test: 1016 B at BOTH the shipped defaults and the island's
@@ -1256,8 +1256,6 @@ mod tests {
         // looser ceiling for every build:
         //   * the primary session, held by value (that is what owning a session
         //     means), whose size is the backend's, not a knob's;
-        //   * `scheduler-os-priority`'s worker pool, a pair of `FnvIndexMap`s
-        //     sized by `MAX_PRIORITY_LEVELS` — an opt-in capability.
         //   * phase-436 W6's wake-source table, a fixed `MAX_WAKE_SOURCES`
         //     array of two-pointer slots. It is exempted for the same reason
         //     the two above are — it does not scale with `MAX_CBS` or
@@ -1344,24 +1342,6 @@ mod tests {
                     [super::super::monitor::MonitorState; super::super::monitor::MAX_MONITORS],
                 >()
                 .saturating_sub(size_of::<[super::super::monitor::MonitorState; 8]>());
-        #[cfg(all(
-            feature = "alloc",
-            feature = "rmw-cffi",
-            feature = "scheduler-os-priority"
-        ))]
-        {
-            ceiling += size_of::<super::super::os_priority::OsPriorityPool>();
-        }
-        // Issue 1938 -- the policy hook beside the pool: one optional fn
-        // pointer, which scales with nothing.
-        #[cfg(all(feature = "alloc", feature = "scheduler-os-priority"))]
-        {
-            ceiling += size_of::<
-                Option<
-                    fn(nros_platform_api::SchedPolicy) -> Result<(), nros_platform_api::SchedError>,
-                >,
-            >();
-        }
         // phase-397 W2/W3 -- the mask of entry slots whose backend accepted an
         // entity waker and the mask W3 re-probes: one `u64` each, whatever
         // MAX_CBS is (the ready word they describe is one machine word), plus

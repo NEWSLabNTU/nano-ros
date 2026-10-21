@@ -12,7 +12,7 @@ superseded-by: null
 
 # RFC-0108 -- One ordered ready set per core, N preemption levels
 
-**Status:** Draft (2026-10-21). P1-P6 and P8 are built; the rest is a proposal.
+**Status:** Draft (2026-10-21). P1-P6, P8 and P11 are built; the rest is a proposal.
 The open questions of the first draft are decided (see Decisions); the work is
 tracked by [phase-509](../roadmap/phase-509-executor-preemption-levels.md).
 
@@ -646,7 +646,10 @@ These hold for every image, and they block the first board run with N > 1.
    generalise it with a derived N. **Decided:** the pool
    (`executor/os_priority.rs`, `executor/ready_set/os_priority.rs`, the
    feature, and its clippy lane) is retired once the scheduler/worker split
-   (P6) lands, so two worker mechanisms never coexist.
+   (P6) lands, so two worker mechanisms never coexist. **Done in P11:** the
+   pool, its feature, its hand-off protocol and its tests are gone;
+   `SchedContext::os_pri` stays as a recorded field (the C/C++ configs
+   carry it) that nothing dispatches by.
 5. **Grouping per rate-monotonic class or per chain.** Per rate class drops
    the chain-aware refinement the ranker added and can invert the order
    against the rank; per chain forces one priority on members the ranker
@@ -904,3 +907,4 @@ The first draft's open questions, as decided:
   what an unstated call does.
 - 2026-10-21: P6 built; D7 amended with the scheduler / worker split as built
   (a worker picks only its own band).
+- 2026-10-21: P11 built; the OS-priority worker pool is retired (alternative 4).
