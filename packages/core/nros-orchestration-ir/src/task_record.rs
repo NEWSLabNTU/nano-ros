@@ -39,9 +39,9 @@
 //!
 //! An unanalysable callback is REFUSED on a safety image, an image whose
 //! contract supervises a deadline (a node path carrying `supervise:`,
-//! [`crate::derive::supervised_nodes`]): [`check_model`] fails, naming each
+//! [`crate::derive::supervised_nodes`]): [`check_model`](crate::task_record::check_model) fails, naming each
 //! callback and the two keys that would fix it. On any other image it is
-//! REPORTED: [`unanalysable_degradations`], which the derived schedule
+//! REPORTED: [`unanalysable_degradations`](crate::task_record::unanalysable_degradations), which the derived schedule
 //! carries in its degradation record.
 
 use std::collections::{BTreeMap, BTreeSet};
