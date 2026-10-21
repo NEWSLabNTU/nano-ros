@@ -372,7 +372,7 @@ pub fn task_records(model: &SystemModel, wcet: Option<&WcetProfile>) -> Vec<Task
             } else {
                 issuers
                     .iter()
-                    .map(|k| c.node_paths.get(*k).and_then(&path_spacing_ms))
+                    .map(|k| c.node_paths.get(*k).and_then(path_spacing_ms))
                     .collect::<Option<Vec<f64>>>()
                     .and_then(|ts| ts.into_iter().reduce(f64::min))
             };
