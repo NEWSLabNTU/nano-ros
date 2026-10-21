@@ -411,17 +411,17 @@ fn fix_for(t: &TaskRecord) -> String {
         .rsplit_once('/')
         .map(|(_, e)| e)
         .unwrap_or(&t.callback);
+    // The contract keys a node by its name, not its FQN.
+    let node = t.node.rsplit('/').next().unwrap_or(&t.node);
     match t.kind {
         CallbackKind::Subscription => format!(
             "declare `min_interarrival: <duration>` or `budget: <duration>` + \
-             `budget_period: <duration>` on `nodes.<{}>.sub.{ep}` (or a rate bound, \
-             `max_rate_hz` or the topic's `rate_hz`)",
-            t.node
+             `budget_period: <duration>` on `nodes.{node}.sub.{ep}` (or a rate bound, \
+             `max_rate_hz` or the topic's `rate_hz`)"
         ),
         CallbackKind::ServiceServer => format!(
             "declare `min_interarrival: <duration>` or `budget: <duration>` + \
-             `budget_period: <duration>` on `nodes.<{}>.srv.{ep}`",
-            t.node
+             `budget_period: <duration>` on `nodes.{node}.srv.{ep}`"
         ),
         CallbackKind::ServiceClient => format!(
             "its responses follow its requests: bound the paths that issue them \
@@ -790,7 +790,7 @@ mod tests {
             "`/n/unbounded` (subscription)",
             "`min_interarrival: <duration>`",
             "`budget: <duration>` + `budget_period: <duration>`",
-            "nodes.</n>.sub.unbounded",
+            "`nodes.n.sub.unbounded`",
             "`supervise:` on `/n`",
         ] {
             assert!(msg.contains(needle), "missing {needle:?} in:\n{msg}");
