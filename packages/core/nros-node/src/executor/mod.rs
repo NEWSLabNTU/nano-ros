@@ -86,24 +86,10 @@ pub(crate) mod wake_fanout;
 // phase-397 W2 -- the per-entity wake: an arrival names its slot and owner.
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
 pub(crate) mod entity_wake;
-// phase-359 W10 — the per-OS-priority worker pool, ported off `std::thread`
-// onto the platform task ABI so it is reachable on every platform.
-//
-// Deliberately the SAME predicate as `node_wake` above, which it imports:
-// spelling a second, hand-matched predicate here is how the two drift, and they
-// did — an `all(feature = …, any(has_rmw, test))` copy resolved true in a build
-// where `node_wake` resolved false. The feature half lives inside the file as
-// an inner `#![cfg]`, so there is one condition per fact and no pair to keep in
-// step.
-pub(crate) mod os_priority;
-// Issue 1705 — the worker hand-off protocol: compiled with the pool that uses
-// it, and in every unit-test build, which drives it without the pool. The
-// predicate is the file's inner `#![cfg]`, as for `os_priority`.
 #[cfg(any(has_rmw, test))]
 /// phase-436 W7 — installing a port's park primitive, with the wake-object
 /// constraint stated once instead of per board.
 pub mod port_park;
-pub(crate) mod worker_item;
 // phase-359 W10 — the allocate/spawn/join helper moved to
 // `nros_platform_api::task`, beside the ABI it wraps, once `nros-cpp` became a
 // third caller. Reached through a `use` below rather than a module here.

@@ -1,14 +1,10 @@
 //! phase-359 W10 — one place that spawns a platform task from Rust.
 //!
-//! Moved here from `nros-node::executor::platform_task`: three Rust callers now
-//! need it (`nros-node`'s worker pool and `open_threaded`, `nros-cpp`'s native
-//! tier runtime), and a helper for an ABI belongs beside the ABI rather than
-//! inside one of its consumers.
-//!
-//! Two executor-owned workers need a thread: the per-OS-priority pool
-//! (`os_priority` in `nros-node`'s executor) and the signalfd forwarder in `spin.rs`. Both were
-//! `std::thread`; both are platform tasks now, so the allocate-spawn-join
-//! sequence lives here rather than being written twice.
+//! Moved here from `nros-node::executor::platform_task`: Rust callers in two
+//! crates need it (`nros-node`'s `open_threaded` and signalfd forwarder,
+//! `nros-cpp`'s native tier runtime), and a helper for an ABI belongs beside
+//! the ABI rather than inside one of its consumers. (`nros-node`'s
+//! per-OS-priority worker pool used it too, until phase-509 P11 retired it.)
 //!
 //! The storage size is ASKED FOR (`nros_platform_task_storage_{size,align}`),
 //! never assumed. A hard-coded size is issue 0570 exactly: a Rust-side
@@ -16,9 +12,9 @@
 //! `pthread_attr_init` wrote the difference into the caller's frame. The probes
 //! exist so no caller has to guess.
 
-// Both consumers are feature-selected AND one is `target_os = "linux"`, so
-// there are reachable combinations (e.g. `signal-fd-wake` off-Linux with no
-// `scheduler-os-priority`) where this module compiles with no caller. Enumerating
+// Its consumers are feature-selected AND one is `target_os = "linux"`, so
+// there are reachable combinations (e.g. `signal-fd-wake` off-Linux) where
+// this module compiles with no caller. Enumerating
 // them in the `mod` gate would be a predicate nobody can keep correct; saying so
 // once here is the cheaper truth.
 #![allow(dead_code)]

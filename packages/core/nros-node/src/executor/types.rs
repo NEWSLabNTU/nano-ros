@@ -1060,15 +1060,14 @@ pub(crate) struct SlotTag {
     /// (`apply_node_default_sched`). It orders the occupant inside its sched
     /// context's bucket. 0 for an occupant registered without a node.
     pub(crate) rank: u8,
-    /// Issue 1667 / 1705 — [`SlotTag::IN_DISPATCH`],
-    /// [`SlotTag::RELEASE_PENDING`], [`SlotTag::WORKER_QUEUED`]. Rides in what
-    /// was the struct's padding byte, so the tag is still 4 bytes and no image's
-    /// executor backing moves.
+    /// Issue 1667 — [`SlotTag::IN_DISPATCH`], [`SlotTag::RELEASE_PENDING`].
+    /// Rides in what was the struct's padding byte, so the tag is still 4
+    /// bytes and no image's executor backing moves.
     ///
-    /// ATOMIC since issue 1705: an `os_pri`-bound entry is dispatched on an
-    /// OS-priority WORKER task, which clears `WORKER_QUEUED` when its callback
-    /// returns while the spin thread reads the same byte. Every other field is
-    /// touched by the spin thread alone.
+    /// Atomic since issue 1705, when the retired OS-priority worker pool
+    /// (phase-509 P11) cleared a flag from its own task. Only the spin thread
+    /// touches it now; the atomic stays, so a preemption level's worker
+    /// (RFC-0108, phase-509 P9) can take the same byte.
     flags: portable_atomic::AtomicU8,
 }
 
@@ -1080,19 +1079,11 @@ impl SlotTag {
     /// entry earlier would destroy the closure and the state the running
     /// callback is still using.
     pub(crate) const IN_DISPATCH: u8 = 1;
-    /// A deferred release is waiting for a running or queued dispatch to
-    /// finish. The handle already stops resolving, so nothing else reaches the
-    /// entry, and a worker that dequeues the entry's item skips it.
+    /// A deferred release is waiting for a running dispatch to finish. The
+    /// handle already stops resolving, so nothing else reaches the entry.
     pub(crate) const RELEASE_PENDING: u8 = 2;
-    /// Issue 1705 — the entry has been handed to an OS-priority worker and the
-    /// worker has not finished with it: the item is queued, or its callback is
-    /// running on the worker task. Set by the spin thread BEFORE the enqueue,
-    /// cleared by the worker AFTER `try_process` returns (Release), read by the
-    /// spin thread (Acquire). While set, a release is deferred, and the spin
-    /// thread neither re-sends the entry nor runs it cooperatively.
-    pub(crate) const WORKER_QUEUED: u8 = 4;
-    /// Either form of "a dispatch of this entry is not finished".
-    pub(crate) const IN_FLIGHT: u8 = Self::IN_DISPATCH | Self::WORKER_QUEUED;
+    /// A dispatch of this entry is not finished.
+    pub(crate) const IN_FLIGHT: u8 = Self::IN_DISPATCH;
 
     /// A tag for a slot whose occupant has `generation` and `owner`, with no
     /// flag set. For `executor/tests.rs`, under its own predicate.

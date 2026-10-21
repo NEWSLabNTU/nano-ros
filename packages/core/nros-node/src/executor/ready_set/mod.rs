@@ -34,8 +34,7 @@ pub(crate) struct Overflow;
 
 // Phase 192.8 — the bucketed dispatch (`spin_once`) drives the sets through
 // `insert` + `pop_next` only; `clear` / `is_empty` / `contains` are exercised
-// solely by this module's unit tests (the `scheduler-os-priority` stub that
-// also delegates them is itself dead), so they are `#[cfg(test)]` rather than
+// solely by this module's unit tests, so they are `#[cfg(test)]` rather than
 // kept alive with a blanket `#[allow(dead_code)]`.
 pub(crate) trait ReadySet {
     /// Insert a job. Idempotent: a second insert for the same
@@ -132,13 +131,6 @@ impl<const N: usize> ReadySet for FifoReadySet<N> {
         self.bits & (1u64 << idx) != 0
     }
 }
-
-// Phase 110.F — opt-in PiCAS-style per-callback OS priority. Stub
-// only; real dispatch lives outside the ReadySet abstraction
-// (worker-thread pool keyed by os_pri). See `os_priority` module
-// docs.
-#[cfg(feature = "scheduler-os-priority")]
-pub(crate) mod os_priority;
 
 // =============================================================================
 // Phase 110.B.a — `EdfReadySet<N>`

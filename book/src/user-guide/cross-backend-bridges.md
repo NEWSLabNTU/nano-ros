@@ -218,10 +218,11 @@ let egress = exec.node_builder("egress")
     .build()?;
 ```
 
-The PiCAS-style per-callback OS-priority dispatcher (gated
-behind the `scheduler-os-priority` feature) routes each Node's
-callbacks to its own OS priority slot so the slow backend cannot
-block the fast one.
+Each Node's callbacks run in its sched context's rank order inside the
+executor. For the slow backend not to delay the fast one at all, put the
+two Nodes in different tiers (a tier is one thread at its own priority;
+RFC-0108's preemption levels generalise it), so the fast Node's tier
+preempts the slow one's.
 
 ## Shipped examples
 

@@ -1630,35 +1630,17 @@ fn test_edf_dispatch_order() {
     assert_eq!(*order, alloc::vec![20, 10]);
 }
 
-/// Phase 110.F — an `os_pri`-bound callback is dispatched.
-///
-/// phase-359 W10 — read what this covers NOW. The worker pool moved off
-/// `std::thread` onto the platform task ABI, so it exists only where a platform
-/// provider is linked (`rmw-cffi`, the same proxy `node_wake` uses) — and this
-/// module is compiled `not(feature = "rmw-cffi")`, because a real backend would
-/// displace `MockSession`. So in THIS configuration there is no pool and the
-/// assertion below rides the cooperative fallback.
-///
-/// That is worth stating rather than leaving the old "via worker" wording to
-/// imply coverage that is no longer here: the fallback is what this proves, and
-/// the worker path now needs a platform-linked build to exercise. Registering
-/// the dispatcher still works everywhere, which is the other half of the
-/// contract and is what keeps this test meaningful.
-///
-/// Uses a no-op `apply_policy` (non-root tests can't lift to SCHED_FIFO).
-#[cfg(feature = "scheduler-os-priority")]
+/// Phase 110.F — an `os_pri`-bound callback is dispatched, on the spin
+/// thread. The opt-in worker pool that ran such a callback on an elevated
+/// thread is retired (phase-509 P11): `os_pri` is recorded, not acted on, and
+/// the callback runs in the ordinary pass like any other.
 #[test]
-fn test_os_priority_worker_dispatches_callback() {
+fn an_os_pri_bound_callback_runs_on_the_spin_thread() {
     use crate::executor::sched_context::{SchedClass, SchedContext};
-    use nros_platform_api::SchedPolicy;
-    fn apply_noop(_p: SchedPolicy) -> Result<(), nros_platform_api::SchedError> {
-        Ok(())
-    }
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
-    executor.register_os_priority_dispatcher(apply_noop);
     let nid = executor
-        .node_builder("test_os_priority_worker_dispatches_callback")
+        .node_builder("an_os_pri_bound_callback_runs_on_the_spin_thread")
         .build()
         .unwrap();
 
@@ -1685,17 +1667,12 @@ fn test_os_priority_worker_dispatches_callback() {
     let (d, n) = encode_test_msg(7);
     unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
 
-    // No pool in this configuration (see the doc comment), so the dispatch is
-    // synchronous on the cooperative path; the sleep remains only to keep the
-    // assertion valid if a pool ever IS present here.
+    // Synchronous: the callback has run when `spin_once` returns.
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
     assert_eq!(
         count.load(portable_atomic::Ordering::SeqCst),
         1,
-        "os_pri-bound callback must dispatch — via a worker where the platform \
-         hosts one, cooperatively where it does not"
+        "an os_pri-bound callback dispatches in the pass, on the spin thread"
     );
 }
 
@@ -13118,223 +13095,6 @@ fn a_callback_releasing_its_own_entry_is_deferred_until_it_returns() {
         .unwrap();
     assert_eq!(again.slot(), h.slot());
     assert!(executor.arena_used() <= high_water);
-}
-
-/// Issue 1705 — the OS-priority worker hand-off. `std`: the worker body runs on
-/// a `std::thread`, and the tests share statics behind a `std::sync::Mutex`.
-mod worker_release {
-    use super::*;
-
-    // Issue 1705 — an entry handed to an OS-priority WORKER. The tests drive the
-    // worker's real per-item body (`worker_item::run_work_item`) from a
-    // `std::thread`, which is what the pool runs on a platform task; the pool
-    // itself needs a platform this configuration does not link.
-    static WORKER_DROPS: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
-    static WORKER_CALLS: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
-    static WORKER_STARTED: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
-    static WORKER_GO: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
-    static WORKER_SAW: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
-    const WORKER_MARK: usize = 0x1705;
-
-    /// Serialises the tests below: they share the statics above.
-    static WORKER_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    unsafe extern "C" fn worker_blocking_cb(ctx: *mut core::ffi::c_void) {
-        use portable_atomic::Ordering::SeqCst;
-        WORKER_CALLS.fetch_add(1, SeqCst);
-        WORKER_STARTED.store(true, SeqCst);
-        while !WORKER_GO.load(SeqCst) {
-            std::thread::yield_now();
-        }
-        // Read the capture AFTER the spin thread released the entry: it must still
-        // be the capture.
-        WORKER_SAW.store(unsafe { *(ctx as *const usize).add(2) }, SeqCst);
-    }
-
-    unsafe extern "C" fn worker_cb_drop(ctx: *mut core::ffi::c_void) {
-        if unsafe { *(ctx as *const usize).add(2) } == WORKER_MARK {
-            WORKER_DROPS.fetch_add(1, portable_atomic::Ordering::SeqCst);
-        }
-    }
-
-    /// Register a capturing timer, and build the item the spin thread would hand
-    /// a worker for it, holding `WORKER_QUEUED` exactly as `spin_once` does.
-    fn worker_timer_and_item(
-        executor: &mut Executor<'static>,
-    ) -> (HandleId, super::worker_item::WorkItem) {
-        let capture: [usize; 3] = [0, 0, WORKER_MARK];
-        let bytes = unsafe {
-            core::slice::from_raw_parts(
-                capture.as_ptr() as *const u8,
-                core::mem::size_of_val(&capture),
-            )
-        };
-        let h = executor
-            .register_timer_c_capturing(
-                None,
-                TimerDuration::from_millis(1),
-                TimerClockSource::Steady,
-                worker_blocking_cb,
-                Some(bytes),
-                Some(worker_cb_drop),
-            )
-            .expect("register");
-        let slot = h.slot();
-        let meta = executor.entries[slot].as_ref().unwrap();
-        let tag = &executor.slot_tags[slot];
-        assert_eq!(
-            tag.set(super::types::SlotTag::WORKER_QUEUED) & super::types::SlotTag::WORKER_QUEUED,
-            0
-        );
-        let item = super::worker_item::WorkItem {
-            arena_base: executor.arena.as_mut_ptr() as usize,
-            arena_offset: meta.offset,
-            try_process: meta.try_process,
-            // Far past the 1 ms period, so the timer fires.
-            delta_us: 50_000,
-            desc_idx: slot as u8,
-            tag: tag as *const super::types::SlotTag as usize,
-        };
-        (h, item)
-    }
-
-    fn reset_worker_statics() {
-        use portable_atomic::Ordering::SeqCst;
-        WORKER_DROPS.store(0, SeqCst);
-        WORKER_CALLS.store(0, SeqCst);
-        WORKER_STARTED.store(false, SeqCst);
-        WORKER_GO.store(false, SeqCst);
-        WORKER_SAW.store(0, SeqCst);
-    }
-
-    /// The case the issue names: the spin thread releases an entry while its
-    /// callback is RUNNING on a worker. The release is deferred, `spin_once` does
-    /// not complete it while the worker holds the entry, and the capture is
-    /// destroyed once, after the callback returned.
-    #[test]
-    fn a_release_during_a_worker_dispatch_waits_for_the_worker() {
-        use portable_atomic::Ordering::SeqCst;
-        let _serial = WORKER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        reset_worker_statics();
-        let mut executor: Executor = executor_with_clock(MockSession::new());
-        let (h, item) = worker_timer_and_item(&mut executor);
-        let high_water = executor.arena_used();
-
-        let worker = std::thread::spawn(move || unsafe {
-            super::worker_item::run_work_item(&item);
-        });
-        while !WORKER_STARTED.load(SeqCst) {
-            std::thread::yield_now();
-        }
-
-        // The callback is running on the worker now.
-        assert!(
-            unsafe { executor.release_timer(h) },
-            "the release is accepted"
-        );
-        assert!(
-            !unsafe { executor.release_timer(h) },
-            "a second request is refused: the handle stopped resolving"
-        );
-        assert_eq!(executor.resolve_handle(h), None);
-        let _ = executor.spin_once(core::time::Duration::from_millis(0));
-        assert_eq!(
-            WORKER_DROPS.load(SeqCst),
-            0,
-            "spin_once dropped the entry while its callback was running on the worker"
-        );
-        assert!(
-            executor.entries[h.slot()].is_some(),
-            "the entry is kept while the worker holds it"
-        );
-
-        WORKER_GO.store(true, SeqCst);
-        worker.join().unwrap();
-        assert_eq!(
-            WORKER_SAW.load(SeqCst),
-            WORKER_MARK,
-            "the capture was intact"
-        );
-        assert_eq!(
-            WORKER_DROPS.load(SeqCst),
-            0,
-            "nothing dropped until the spin thread reaps"
-        );
-
-        let _ = executor.spin_once(core::time::Duration::from_millis(0));
-        assert_eq!(
-            WORKER_DROPS.load(SeqCst),
-            1,
-            "reaped once the worker let go"
-        );
-        assert!(executor.entries[h.slot()].is_none());
-        assert_eq!(WORKER_CALLS.load(SeqCst), 1);
-        let again = executor
-            .register_timer(TimerDuration::from_millis(1000), || {})
-            .unwrap();
-        assert_eq!(again.slot(), h.slot(), "the slot is free again");
-        assert!(executor.arena_used() <= high_water, "and so are its bytes");
-    }
-
-    /// A QUEUED item whose entry was released before the worker reached it is
-    /// never dispatched.
-    #[test]
-    fn a_queued_item_for_a_released_entry_is_never_dispatched() {
-        use portable_atomic::Ordering::SeqCst;
-        let _serial = WORKER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        reset_worker_statics();
-        WORKER_GO.store(true, SeqCst);
-        let mut executor: Executor = executor_with_clock(MockSession::new());
-        let (h, item) = worker_timer_and_item(&mut executor);
-
-        assert!(unsafe { executor.release_timer(h) });
-        assert!(
-            executor.entries[h.slot()].is_some(),
-            "deferred: the item is still queued"
-        );
-        // The worker dequeues it now.
-        unsafe { super::worker_item::run_work_item(&item) };
-        assert_eq!(
-            WORKER_CALLS.load(SeqCst),
-            0,
-            "the released entry was dispatched"
-        );
-
-        let _ = executor.spin_once(core::time::Duration::from_millis(0));
-        assert_eq!(WORKER_DROPS.load(SeqCst), 1);
-        assert!(executor.entries[h.slot()].is_none());
-    }
-
-    /// A release requested FROM the worker's own callback is one atomic flag: the
-    /// worker finishes, and the spin thread completes the release.
-    #[test]
-    fn a_release_from_inside_a_worker_callback_is_completed_by_the_spin_thread() {
-        use portable_atomic::Ordering::SeqCst;
-        let _serial = WORKER_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        reset_worker_statics();
-        let mut executor: Executor = executor_with_clock(MockSession::new());
-        let (h, item) = worker_timer_and_item(&mut executor);
-        let tag = &executor.slot_tags[h.slot()] as *const super::types::SlotTag as usize;
-
-        // The callback's `timer_.reset()`, reduced to what it does to the executor
-        // while the worker holds the entry: the deferral path of `release_entry`.
-        let worker = std::thread::spawn(move || unsafe {
-            let t = &*(tag as *const super::types::SlotTag);
-            assert_ne!(t.flags() & super::types::SlotTag::WORKER_QUEUED, 0);
-            t.set(super::types::SlotTag::RELEASE_PENDING);
-            WORKER_GO.store(true, SeqCst);
-            super::worker_item::run_work_item(&item);
-        });
-        worker.join().unwrap();
-        assert_eq!(
-            executor.resolve_handle(h),
-            None,
-            "the handle stopped resolving"
-        );
-        assert_eq!(WORKER_DROPS.load(SeqCst), 0);
-        let _ = executor.spin_once(core::time::Duration::from_millis(0));
-        assert_eq!(WORKER_DROPS.load(SeqCst), 1);
-    }
 }
 
 /// Releasing a capturing timer gives its capture back: a create/release loop
