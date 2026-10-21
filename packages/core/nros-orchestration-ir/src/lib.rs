@@ -91,14 +91,14 @@ pub mod rtos_realizer;
 pub mod sidecar_slots;
 // RFC-0079's table - a tier's spin period, derived from its members' releases.
 pub mod spin_period;
+/// phase-509 P4 (RFC-0108 D1) — the task record per callback, and the
+/// refusal of an unanalysable input on a safety image.
+pub mod task_record;
 // phase-462 W2 - the contract's `on_violation` and a tier's `deadline_policy`
 // are two statements about one fact, in `qos_agreement`'s shape. Here for the
 // same reason that one is: both producers of a baked tier table must ask, and
 // the proc-macro road cannot dep `nros-cli-core`.
 pub mod violation_agreement;
-/// phase-509 P4 (RFC-0108 D1) — the task record per callback, and the
-/// refusal of an unanalysable input on a safety image.
-pub mod task_record;
 /// RFC-0078 — declared WCETs, keyed per named measurement profile.
 pub mod wcet;
 
