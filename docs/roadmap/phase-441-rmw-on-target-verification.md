@@ -818,6 +818,9 @@ and the C, C++ and Rust loan docs stop claiming XRCE lends or uORB falls back
 with one copy. That meets 0814's "Acceptance for this half". Option 2 keeps the
 publish half, so by this item's own condition the embedded lending lane is
 next: the zenoh loan is compiled for embedded targets and run only on posix.
+That lane is [phase-510](phase-510-test-config-axis.md) W5: asking where it
+would go showed the matrix has no coordinate for a build configuration, so
+phase-510 adds one (RFC-0051 §7) before building the cell.
 
 ## What this phase does NOT promise
 
