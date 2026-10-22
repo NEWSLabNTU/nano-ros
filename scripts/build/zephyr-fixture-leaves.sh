@@ -29,7 +29,10 @@ Options:
   --sccache-disable 0|1     match NROS_ZEPHYR_SCCACHE_DISABLE (default: env or 0)
   --pristine auto|always|never
                             record desired pristine mode (default: env or auto)
-  --filter REGEX            filter against "board build_dir src conf_files id"
+  --filter REGEX            select a leaf when REGEX matches ANY ONE of its
+                            board, build_dir, src, conf file (each entry,
+                            repo-relative) or id — per field, never a joined
+                            line (issue 1325)
                             (default: $NROS_ZEPHYR_FIXTURE_FILTER). The same
                             variable narrows the west [[compile_check_fixture]]
                             rows in west-fixtures.sh (issue 1536). Selecting no
@@ -158,6 +161,8 @@ nros_root="$(cd "$nros_root" && pwd)"
 source "$nros_root/scripts/build/fixture-matrix.sh"
 # shellcheck source=scripts/build/cargo.sh
 source "$nros_root/scripts/build/cargo.sh"
+# shellcheck source=scripts/lib/fixture-filter.sh
+source "$nros_root/scripts/lib/fixture-filter.sh"
 
 if [ -z "$build_root" ]; then
     # issue 1596 — this checkout's build root, the one derivation. This used to
@@ -492,8 +497,10 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     fi
 
     target="fixture/$id"
-    filter_haystack="$board $build_name $src_rel $conf_files $id"
-    if [ -n "$fixture_filter" ] && ! [[ "$filter_haystack" =~ $fixture_filter ]]; then
+    # issue 1325 — per FIELD, repo-relative; never one joined string.
+    if [ -n "$fixture_filter" ] &&
+        ! nros_fixture_filter_selects "$fixture_filter" "$nros_root" \
+            "$board" "$build_name" "$src_rel" "$conf_files" "$id"; then
         continue
     fi
     if [ "$idlc_drop" = "1" ]; then

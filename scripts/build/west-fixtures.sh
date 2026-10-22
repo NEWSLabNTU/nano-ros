@@ -158,10 +158,11 @@ records="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
 # lane — and a lane narrowed to one leaf (live-peer's
 # `build-ws-rs-qos-entry-zenoh`) still built all of these and went red on them.
 #
-# Same variable, same REGEX semantics, same haystack SHAPE as the leaves'
-# (`board build_dir src conf_files id`), so one pattern means one thing across
-# both: here the build dir is `$id` (`west-fixtures/<id>`), the source is the
-# west application dir, and the conf slot carries the row's `west_extra`.
+# Same variable, same REGEX semantics, same matcher as the leaves'
+# (`nros_fixture_filter_selects`, per FIELD — issue 1325), so one pattern means
+# one thing across both: here the build dir is `$id` (`west-fixtures/<id>`),
+# the source is the west application dir, and the conf slot carries the row's
+# `west_extra`.
 #
 #   NROS_ZEPHYR_FIXTURE_FILTER=zephyr_self_pkg_sibling bash scripts/build/west-fixtures.sh
 #
@@ -171,6 +172,8 @@ records="$(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
 # half failed", and fail only when NEITHER half matched.
 fixture_filter="${NROS_ZEPHYR_FIXTURE_FILTER:-}"
 [ -z "$fixture_filter" ] || echo "west-fixtures: filter: $fixture_filter"
+# shellcheck source=scripts/lib/fixture-filter.sh
+source "$repo_root/scripts/lib/fixture-filter.sh"
 
 # issue 1777 — a Cyclone row's configure needs a host `idlc`, so ASK before
 # configuring one, the way the FreeRTOS/ThreadX lanes ask before their Cyclone
@@ -214,7 +217,8 @@ while IFS= read -r record; do
         <<< "$record"
     [ -n "$id" ] || continue
     if [ -n "$fixture_filter" ] &&
-        ! [[ "$board $id $src/$subdir $extra $id" =~ $fixture_filter ]]; then
+        ! nros_fixture_filter_selects "$fixture_filter" "$repo_root" \
+            "$board" "$id" "$src/$subdir" "$extra"; then
         continue
     fi
     total=$((total + 1))

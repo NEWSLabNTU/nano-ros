@@ -2,7 +2,7 @@
 id: 1325
 title: "`NROS_ZEPHYR_FIXTURE_FILTER` is matched against a haystack containing the
   ABSOLUTE checkout path, so a worktree named after an rmw selects all 54 leaves"
-status: open
+status: resolved
 type: bug
 area: [build, testing]
 severity: low
@@ -10,7 +10,7 @@ found: 2026-09-11
 related: [1010, phase-448, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 
@@ -64,3 +64,31 @@ control.
 Not a blocker for anything, and there is a working spelling today (`/xrce$`,
 which anchors on `$id`'s trailing rmw) — but it is a footgun whose cost is paid
 in build minutes, and the workaround has to be rediscovered each time.
+
+## Resolution (2026-10-22)
+
+Both builders now ask one helper, `nros_fixture_filter_selects`
+(`scripts/lib/fixture-filter.sh`). It tests the regex against each FIELD on its
+own, and against each `;`-separated entry of a list field (the conf files). It
+strips the checkout root from a value first, so where the checkout lives never
+reaches the filter. A row is selected when any piece matches.
+
+- `scripts/build/zephyr-fixture-leaves.sh`: fields `board build_dir src
+  conf_files id`, as before, now matched per field.
+- `scripts/build/west-fixtures.sh` had the same joined-string match (issue
+  1536 copied the leaves' haystack shape on purpose), so it had the cross-field
+  defect too. Its fields were already repo-relative. It uses the same helper.
+
+Measured from a checkout reached through a path named `448-xrce`:
+
+| filter | before | after |
+| --- | --- | --- |
+| `xrce` | 61 | 18 |
+| `/xrce$` | 18 | 18 |
+| `build-(c\|cpp)-.*-xrce` | 36 | 12 |
+| `build-rust-.*-zenoh` (normal path) | 6 | 6 |
+| `build-c-(talker\|listener)-zenoh` (normal path) | 2 | 2 |
+
+Gate `check fixture-filter-fields` (fast line) runs the real leaf emitter from
+such a path and holds the helper to the shapes `west-fixtures.sh` passes. With
+the old emitter put back, it fails: 61 against 18, and 24 cross-field picks.
