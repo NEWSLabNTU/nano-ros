@@ -2694,7 +2694,7 @@ fn plan_packages(
             ];
             // Issue 1304 — same seam as the workspace lane above; `nros_root` is
             // the root this arm already refuses to proceed without.
-            a.push(crate::builder::nano_ros_root_arg(&nros_root));
+            a.push(crate::builder::nano_ros_root_arg(nros_root));
             a.extend(args.native_args.iter().cloned());
             (
                 Driver::CMake,
