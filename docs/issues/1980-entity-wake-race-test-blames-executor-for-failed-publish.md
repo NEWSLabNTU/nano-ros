@@ -57,6 +57,28 @@ panicking, with `(None)` in the verdict, so the item 1 test fix applies
 unchanged. The red is also not limited to the tier-1 lane: the scheduled
 gate's build tier runs the same gate.
 
+### Third sighting, 2026-10-22
+
+- Run: host-tests 39716043967 (tier 1, schedule, 2026-10-22 03:17 UTC, main
+  at `350203f0b`).
+- Job: 119618277087, `tier-1 gates (just check)`. The failing recipe is again
+  `required-features-tests`, and the lane ends `ci tier1-gates FAILED at step 1
+  of 1 (check::default)`.
+- Only `case_1_drains_to_empty` failed, at 5.26 s; `case_2` passed (5.50 s).
+  The nextest summary reads `31 tests run: 30 passed, 1 failed` and the junit
+  rewrite reads `Real failures: 1 / 1`.
+- The same pair of panics, now at lines 510 and 478 (the file grew by three
+  lines):
+
+```
+DrainsToEmpty round 0: sample 3, published while a callback ran (None), was never dispatched (latest 2); an arrival that raced a dispatch was lost
+panicked at packages/testing/nros-tests/tests/entity_wake.rs:478:47:
+publish: Transport(PublishFailed)
+```
+
+Three sightings in four days, each with the publish failing first. This is a
+recurring tier-1 red, not a one-off.
+
 ## Reading
 
 The verdict blames the executor, but the evidence points at the publish. The
