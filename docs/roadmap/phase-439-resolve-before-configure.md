@@ -52,8 +52,14 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       `zephyr/.config` byte-identical. This meets A3.
 - [ ] **W9 — the smaller issues.**
       [#1413](../issues/1413-play-launch-parser-ref-lags-submodule-pin.md): the
-      index ref `27b6749b` is 315 commits behind the pin `0b44a695`; move it and
-      add the check the issue asks for.
+      index ref `27b6749b` is 315 commits behind the pin `0b44a695`, and it
+      cannot simply move: past `f7f6d2cf` the standalone CLI has no Python
+      backend, so a bump ships a parser that leaves `$(eval)` in an
+      `<arg default=…>` unexpanded, exit 0. `check-play-launch-parser-ref`
+      already holds the lag (ancestor-or-equal, with a `# ref-lag:` reason).
+      Closing it is upstream work in `NEWSLabNTU/play_launch` (a
+      Python-capable CLI, or `pyexec` staged beside it), so it is tracked here
+      and not worked here.
       [#1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md):
       reproduce on main; archive if only sidecar deletion is left, and file
       that case if it reproduces.
