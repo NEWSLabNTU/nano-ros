@@ -35,3 +35,15 @@ pub mod preflight;
 pub mod shared_target;
 pub mod west_app;
 pub mod zephyr;
+
+/// The configure argument that tells a generated project's
+/// `find_package(nano_ros)` which root to import (issue 1304).
+///
+/// `nano_rosConfig.cmake` sits at the SDK root, and since RFC-0103 D6 nothing
+/// exports `nano_ros_ROOT`, so every road that configures a project naming
+/// `find_package(nano_ros)` passes this. One spelling, because the west road
+/// was the one that did not (issue 1998).
+#[must_use]
+pub fn nano_ros_root_arg(nano_ros_root: &std::path::Path) -> String {
+    format!("-Dnano_ros_ROOT={}", nano_ros_root.display())
+}

@@ -1345,7 +1345,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // Before `native_args` so a caller's own `-Dnano_ros_ROOT` still
                 // wins: cmake takes the last definition on the line.
                 if let Some(nr) = &nano_ros_root {
-                    a.push(format!("-Dnano_ros_ROOT={}", nr.display()));
+                    a.push(crate::builder::nano_ros_root_arg(nr));
                 }
                 a.extend(args.native_args.iter().cloned());
                 cmake_configure = Some(Handoff::new("cmake", a).in_dir(&root));
@@ -1578,6 +1578,13 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // Kconfig on `undefined symbol NROS`.
                 if let Some(nr) = nano_ros_root.as_deref() {
                     resolved_opt.push(crate::builder::zephyr::module_arg(nr));
+                    // Issue 1998 -- and the root the generated app's
+                    // `find_package(nano_ros)` imports. The cmake roads pass it
+                    // (issue 1304); without it a west configure died with
+                    // "Could not find a package configuration file provided by
+                    // nano_ros". Before `cmake_extra`, so a caller's own
+                    // `-Dnano_ros_ROOT` still wins.
+                    resolved_opt.push(crate::builder::nano_ros_root_arg(nr));
                 }
                 if !west_opts.is_empty() || !cmake_extra.is_empty() || !resolved_opt.is_empty() {
                     // Everything after `--` is a cmake option for the app.
@@ -2020,7 +2027,7 @@ fn plan_single_package_cmake(
         Some(&nros_root),
     ));
     a.extend(board_rx_configure_args(descriptor));
-    a.push(format!("-Dnano_ros_ROOT={}", nros_root.display()));
+    a.push(crate::builder::nano_ros_root_arg(&nros_root));
     a.extend(args.native_args.iter().cloned());
     Ok(Some(vec![ResolvedBuild {
         qualified: qual,
@@ -2687,7 +2694,7 @@ fn plan_packages(
             ];
             // Issue 1304 — same seam as the workspace lane above; `nros_root` is
             // the root this arm already refuses to proceed without.
-            a.push(format!("-Dnano_ros_ROOT={}", nros_root.display()));
+            a.push(crate::builder::nano_ros_root_arg(&nros_root));
             a.extend(args.native_args.iter().cloned());
             (
                 Driver::CMake,
