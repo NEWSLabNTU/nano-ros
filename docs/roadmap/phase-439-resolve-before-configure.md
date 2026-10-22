@@ -1,6 +1,73 @@
 # Phase 439 — Resolve before configure
 
-**Status (2026-09-08). Opened from RFC-0094. W0 and W1 are the routing diff and
+**Status (2026-10-22). Re-assessed against `origin/main` (`4b4f372522`): the
+design still holds, and the remaining work is RFC-0094 A3.** D1, D2, D3, D5 and
+D6 are in the code, and D4 landed as knob VALUES in the cargo-directory key, not
+the digest (three sources since issue 1712). RFC-0103 builds on `resolved.toml`
+(`[locations]`), so the artifact is now load-bearing outside this phase. What
+is not done is A3: `nros_reconfigure_settle` is still called at three sites in
+`zephyr/cmake/nros_cargo_build.cmake` and two in
+`cmake/NanoRosCodegenCore.cmake`, so Zephyr still converges by the
+future-mtime arm.
+
+Three things moved since the 2026-09-10 measurement, and the remaining work
+items below start from them:
+
+* **#1252's premise may be out of date.** It says the message-bound composer
+  has no Rust twin for stage 3.5 to call. RFC-0100's sizing descriptor now
+  composes per-type wire bounds in Rust (`sizing_descriptor.rs`, over
+  `nros_message_bounds.json`). Whether that equals what
+  `nros_derive_message_bound_knobs` computes is unmeasured.
+* **The pass count is a month old.** Issue 1647 (`93780c2a5f`, 2026-10-03)
+  moved the bound fragment to configure time, and phase-484 reworked the knob
+  ladder. The "1 re-configure" figure has to be measured again before it is
+  used.
+* **#1121 is probably fixed elsewhere.** phase-454 W12 put `*.contract.yaml`
+  in `nros sync`'s input horizon (`ws.rs`, the launch-dir walk). Deleting a
+  sidecar moves no mtime, so that case is still open.
+
+This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
+#1252's acceptance build runs here.
+
+## Remaining work (2026-10-22)
+
+- [ ] **W5 — re-measure.** `Re-running CMake` count and the arms that fire, on a
+      clean build dir for `demo_bringup:zephyr` (`examples/workspaces/cpp`,
+      `native_sim/native/64`), with and without the stage 3.5 seed, using
+      #1252's reproduction. Record the numbers here and in #1252.
+- [ ] **W6 — the bound producer before configure ([#1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)).**
+      First measure whether the sizing descriptor's per-type facts produce the
+      same knobs as `nros_derive_message_bound_knobs` for the W5 image. If they
+      do, stage 3.5 writes the bound fragment and the cmake composer becomes
+      its reader. If not, record the difference in #1252 before designing a
+      third composer.
+- [ ] **W7 — one entity composer ([#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md)).**
+      The mid-configure producer reads the resolve instead of recomposing, with
+      the refusal guard its `nros-metadata.json` component set gives it today
+      (`tests/cmake-resolved-seed-tests.sh` case C stays green).
+- [ ] **W8 — delete the fixed point.** Only after W6 and W7 measure 0
+      re-configures: remove `nros_reconfigure_settle` and the future-mtime arm
+      in `cmake/NanoRosReconfigure.cmake`, with their tests. Control:
+      `check-knob-delivery` green before and after, delivered knobs and
+      `zephyr/.config` byte-identical. This meets A3.
+- [ ] **W9 — the smaller issues.**
+      [#1413](../issues/1413-play-launch-parser-ref-lags-submodule-pin.md): the
+      index ref `27b6749b` is 315 commits behind the pin `0b44a695`; move it and
+      add the check the issue asks for.
+      [#1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md):
+      reproduce on main; archive if only sidecar deletion is left, and file
+      that case if it reproduces.
+      [#1460](../issues/1460-sync-staged-model-vanishes-before-commit.md): the
+      staging name is still one fixed `<model>.yaml.resolving` per model;
+      reproduce, then make it unique per resolve.
+- [ ] **W10 — RFC-0094 text.** D4 says digest where the code keys on knob
+      values; D2's example names a `[zpico]` table where the schema has
+      `[executor]` and `[pools]`; status moves off Draft for the landed
+      decisions.
+
+The 2026-09-08 status follows.
+
+**Status (2026-09-08), superseded above. Opened from RFC-0094. W0 and W1 are the routing diff and
 the digest key — both are PRECONDITIONS and neither changes behaviour. W2–W4 are
 the three landings. **W0, W1, W3 and W4 have LANDED; W2 is PARTIALLY landed (the phase, its
 artifact, and the entity link's byte agreement — not the deletion). Remainder:
