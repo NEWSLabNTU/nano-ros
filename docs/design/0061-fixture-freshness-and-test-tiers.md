@@ -1,6 +1,6 @@
 # RFC-0061 — Fixture freshness by tool OUTPUT, and a tiered test ladder
 
-**Status:** Draft (2026-07-28; amended 2026-08-31 — see the breadth/depth amendment)
+**Status:** Draft (2026-07-28; amended 2026-08-31 — see the breadth/depth amendment; amended 2026-10-22 — the `config` axis, phase-510)
 **Supersedes nothing. Amends:** the fixture-freshness contract established by
 issue #182 (tool in the signature) and phase-300 W2.1 (git-index enumeration).
 **Motivated by:** a `just ci` run on 2026-07-28 that passed every code stage and
@@ -238,6 +238,7 @@ thing and therefore fail in different shapes:
 | `lang` × `rmw` | which ABI SEAM PAIR meets (FFI shim × backend vtable) | needs both sides present | **pairwise** |
 | `platform` | toolchain + libc + linker + allocator | only bites combined with a language | **pairwise with lang** (+ rmw for link/DCE) |
 | `kind` | entry vs carrier WIRING path | wiring-specific | **pairwise with platform** |
+| `config` | which BUILD of the code path (lending, multisession, wake mechanism — RFC-0051 §7a) | the build differs: `alloc` vs heap-free, allocator, toolchain | **pairwise with platform** (amendment 2026-10-22) |
 
 The table is derived from defects, not from theory:
 
@@ -252,6 +253,7 @@ The table is derived from defects, not from theory:
 | entry / carrier wiring | platform × kind | 0097, 0263 |
 | transport config mismatch | platform × rmw | archived 0135 |
 | threshold / timing / emulator | the whole cell | 0269, 0292, QEMU flake |
+| configuration × build | platform × config | **0814** (the loan path answered differently with and without `alloc`); 0652 / 0612 / 0667 (feature-gated targets nothing built) |
 
 Nothing in that catalogue requires `workload` × `platform`: an action-path bug
 fails on every platform.
@@ -418,6 +420,40 @@ depth=build` yields the literal string. Measured 2026-08-31.
 
 phase-410 restructures the workflows accordingly. This RFC keeps the ladder; it
 gains the axis the ladder was missing.
+
+## Amendment (2026-10-22, phase-510) — `config` is an axis, paired with platform
+
+RFC-0051 §7 adds a `config` axis to the cell: a SET of build-time switches that
+change the mechanism a workload runs through, not what it observes. Lending,
+multisession and the wake mechanisms are the first members. This amendment says
+how the tiers cover it.
+
+| tier | covers `config` |
+| --- | --- |
+| 1 | every `Config` value once, on the host — the same 1-wise rule as `workload` |
+| 2 | 1-wise: every value once, on any platform |
+| 2n | **pairwise with `platform`** — each value meets each platform once |
+| 3 | every configured cell |
+
+Why paired with platform and not 1-wise like `workload`: a configuration's
+defects are about the BUILD, and the build is what differs between platforms.
+Issue 0814 is the measured instance. The loan path's answer depended on whether
+`alloc` was on, which is a per-image fact, and the only lane that ran it was
+posix with `alloc`, so the heap-free answer and every embedded target went
+unexercised. A 1-wise cover would have picked one platform and could have
+picked that one.
+
+`config` is NOT paired with `workload`: a configuration modifies the code path a
+workload selects, and the catalogue above has no defect that needs a specific
+workload under a specific configuration. Tier 2n therefore grows by the
+platform × config pairs alone, which phase-510 measures before the nightly lane
+adopts it, as §Cost is coordinates required of every earlier change to the
+cover.
+
+What each tier may miss, extended: **tier 1** misses every
+configuration-on-target defect (the 0814 class), as it misses every
+platform-specific one; **tier 2** misses configuration × platform interactions
+until the nightly pairing runs.
 
 ## Operational corollaries
 

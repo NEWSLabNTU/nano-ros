@@ -3,8 +3,8 @@ rfc: 0051
 title: "Test-matrix architecture: one generated matrix, one output checker, one isolation allocator"
 status: Stable
 since: 2026-07
-last-reviewed: 2026-08-04
-implements-tracked-by: [phase-295]
+last-reviewed: 2026-10-22
+implements-tracked-by: [phase-295, phase-510]
 supersedes: []
 superseded-by: null
 ---
@@ -238,6 +238,115 @@ first-class `Lang` value, NOT a workload — the `Lang` enum in the shipped
 `matrix.rs` is `Rust | C | Cpp | Mixed`, and coverage/allocation treat it as a
 language coordinate. (OQ2 below marked resolved.)
 
+### 7. The configuration axis, the feature-lane registry, and cell-to-test binding (amendment 2026-10-22 — phase-510)
+
+§1's matrix answers "does the standard node deliver on this coordinate". It
+does not answer "does it deliver **built this way**": loan publish, a
+multi-session zenoh pool, trigger/wake dispatch, `signal_fd` wake, the
+component runtime, a custom transport. Those are cargo features, and today they
+live outside every table. A classification of all 195 `nros-tests` targets and
+149 per-crate test files (2026-10-22, recorded in phase-510) measured where
+that leaves them:
+
+- **6 targets nothing runs.** Four are behind a feature no lane enables:
+  `executor_arena_advisory` (missing from `required-features-tests`'s list),
+  `wake_latency_cortex_m3` (a file-level `cfg` with no `[[test]]` entry, so it
+  builds an empty binary), and `nros-rmw-zenoh`'s `session_config_keys` and
+  `status_events_matrix`. `fvp_smoke` is excluded from every runner, and
+  `nros-rmw-xrce-cffi`'s `register_smoke` sits in a crate `test-unit` excludes.
+- **About a dozen targets reached only by a one-off recipe**, never by a
+  tiered lane: `loan_e2e` and `zenoh_integration` (`test-zpico-multisession`),
+  `matched_events_live`, `board_import`, `fvp_runtime_ws`, the PX4 SITL tests.
+- **No coordinate for any build configuration.** The matrix cannot say
+  "lending on FreeRTOS: not covered", because it has no word for lending.
+  Issue 0814's history is the cost: the loan path answered differently with and
+  without a heap for months, and the posix-only test lane could not see it.
+- **48 runtime targets the matrix knows only implicitly**, through the fixture
+  resolver's row attribution. No cell names them, so "which test answers this
+  cell" is inferred from fixture paths.
+
+Three rules close this.
+
+**7a. `Config` is an axis, distinct from `Workload`.** A *workload* is what the
+test makes the image do; it changes what the test observes (a reply, a goal, a
+parameter read back). A *configuration* is how the image is built to do it; it
+changes the mechanism and must not change the observation. The test that tells
+them apart: if switching it off should change what the test asserts, it is a
+workload; if the same messages must still arrive by another path, it is a
+configuration. Lending is a configuration: a lending pubsub must deliver exactly
+what plain pubsub does.
+
+The name follows RFC-0066, which already calls this "a CONFIGURATION is a
+fixture axis". It is not `Capability`, which `lane_scope` uses for HOST
+capabilities a lane claims (issue 1758), and it is not RFC-0066's "feature",
+which is a node package.
+
+```rust
+pub enum Config {          // a build-time switch that changes the MECHANISM
+    Lending, Multisession, TriggerWake, SignalFdWake,
+    ComponentRuntime, CustomTransport, /* … phase-510 W0 decides the set */
+}
+pub struct Cell {
+    // … §1's fields …
+    pub config: &'static [Config],   // a SET; empty = the default build
+}
+```
+
+Three properties follow from the definition and are what make it a separate
+axis rather than more `Workload` values:
+
+- **It is a set.** Lending plus multisession is legal, and each modifies a
+  workload; a `Workload::LendingPubsub` would repeat Pubsub's assertions and
+  could not compose.
+- **Its defects are platform-shaped.** A configuration switch fails where the
+  build differs — `no_std`, no `alloc`, a different allocator or toolchain —
+  so its coverage pairs with `platform` (RFC-0061's selection table), where a
+  workload is 1-wise.
+- **Its absence is often principled.** "This backend cannot lend" (Cyclone,
+  XRCE, uORB, since issue 0814) is a `CarveOut` with a reason, the same E5
+  rule §1 applies to platforms — not a cell nobody wrote.
+
+A configured cell is backed by a fixture row whose build enables the
+configuration (the row states the cargo features or knobs), and by a test that
+asserts the workload's normal observation **plus** what the configuration is
+for. Delivery alone is not enough for a configuration whose point is a cost: a
+lending cell that only proves delivery passes whether or not the loan avoided
+the copy, which is the "green while every byte is still copied" lane issue 0814
+already rejected.
+
+**7b. One feature-lane registry.** Every cargo feature that gates a test
+target — a `[[test]] required-features` entry or a file-level
+`#![cfg(feature = …)]` — is named in ONE table that says which lane enables it
+and which targets it runs. `required-features-tests`, the inline feature runs
+in `test-all`, and `test-zpico-multisession` are generated from it rather than
+spelled by hand. Two kinds of feature are registered, and the registry records
+which:
+
+- a **product configuration** (lending, multisession), which also has a
+  `Config` value and matrix cells (7a);
+- a **test-harness gate** (`trigger-test`, `component-runtime-test`), which
+  only decides whether a test file compiles and needs no cell.
+
+The gate: a feature-gated test target that no registered lane enables FAILS.
+That is `check-required-features-reachable`'s rule widened from `[[test]]
+required-features` to file-level `cfg`s and to every crate, because 4 of the 6
+unreached targets above slipped through exactly that gap.
+
+**7c. Every runtime test is bound to a cell, as interop tests already are.**
+`interop::assert_test_bound` binds an interop test to its coordinate in both
+directions; matrix cells have no such binding. A runtime test target either
+binds to `matrix::CELLS` coordinates the same way, or is listed in a table of
+non-cell tests with the reason it has none (a static repo check, a docker
+edition test — RFC-0051's own E1 shape). A target in neither is a gate failure.
+The one-off-recipe-only class becomes visible by construction: such a target
+either has a cell, and so a tiered lane that selects it, or a recorded reason.
+
+**What this does not change.** `Kind` stays the wiring axis, `Tier` stays a
+property of the cell, and `interop::CELLS` keeps its shape — a configured
+interop cell is an `InteropCell` whose nano `Cell` carries a `config` set. The
+no-compile-in-tests rule (E1) is untouched: a configuration is a fixture-row
+property, built in the build stage.
+
 ## Coverage debt the matrix makes visible (initial tier assignments)
 
 - cyclonedds/xrce RUNTIME cells on RTOS platforms — today interop/bridge
@@ -281,3 +390,6 @@ language coordinate. (OQ2 below marked resolved.)
 3. How far to push cyclone/xrce runtime onto QEMU RTOS lanes vs declaring
    CarveOuts (cyclone needs POSIX+CPP; xrce needs an agent locator bake) —
    per-cell decisions live in the phase.
+4. Which cargo features are product configurations (a `Config` value with
+   cells) and which are test-harness gates (registry only)? §7 states the test;
+   the per-feature answer is phase-510 W0's.
