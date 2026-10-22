@@ -37,10 +37,20 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 22 | 12 | 24 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 11 | 11 | 22 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 35 | 34 | 67 % |
-//! | tier 3 | everything | 229 | 51 | 100 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 23 | 11 | 22 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 20 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config | 39 | 37 | 73 % |
+//! | tier 3 | everything | 231 | 51 | 100 % |
+//!
+//! Re-measured 2026-10-22 (phase-510 W6): the `config` axis joined the covers
+//! (RFC-0061 amendment 2026-10-22) — 1-wise in tiers 1 and 2, paired with
+//! `platform` alone in the nightly. Two configured cells exist: Linux
+//! `[Lending, Multisession]` and FreeRTOS `[Lending]`. Tiers 1 and 2 each pick
+//! the Linux one and got CHEAPER by a coordinate (the greedy cover reshuffled
+//! around the new single); the nightly picks both and costs 3 coordinates more
+//! (34 -> 37 of 51), which is the price RFC-0061 said to measure before the
+//! nightly adopted the pairing. The configured cells themselves add no
+//! coordinate: each shares its default-build sibling's.
 //!
 //! Re-measured 2026-10-22 (phase-510 W3/W4): eleven cells nothing delivered
 //! through left `Runtime` for `BuildOnly` once each cell had to name the test
@@ -350,6 +360,19 @@ enum Axis {
     Rmw,
     Workload,
     Kind,
+    /// RFC-0051 §7a / RFC-0061 amendment 2026-10-22 (phase-510 W6) — the
+    /// build configuration. SET-valued, so [`values`] yields one value per
+    /// member (`none` for the default build), and a cell with two
+    /// configurations covers both.
+    Config,
+}
+
+fn values(c: &Cell, a: Axis) -> Vec<String> {
+    match a {
+        Axis::Config if c.config.is_empty() => vec!["none".into()],
+        Axis::Config => c.config.iter().map(|k| format!("{k:?}")).collect(),
+        _ => vec![value(c, a)],
+    }
 }
 
 fn value(c: &Cell, a: Axis) -> String {
@@ -359,6 +382,7 @@ fn value(c: &Cell, a: Axis) -> String {
         Axis::Rmw => format!("{:?}", c.rmw),
         Axis::Workload => format!("{:?}", c.workload),
         Axis::Kind => format!("{:?}", c.kind),
+        Axis::Config => values(c, a).join("+"),
     }
 }
 
@@ -367,7 +391,11 @@ type Req = String;
 
 fn singles(c: &Cell, axes: &[Axis]) -> Vec<Req> {
     axes.iter()
-        .map(|&a| format!("1|{a:?}={}", value(c, a)))
+        .flat_map(|&a| {
+            values(c, a)
+                .into_iter()
+                .map(move |v| format!("1|{a:?}={v}"))
+        })
         .collect()
 }
 
@@ -375,10 +403,26 @@ fn pairs(c: &Cell, axes: &[Axis]) -> Vec<Req> {
     let mut out = Vec::new();
     for (i, &a) in axes.iter().enumerate() {
         for &b in &axes[i + 1..] {
-            out.push(format!("2|{a:?}={}|{b:?}={}", value(c, a), value(c, b)));
+            for va in values(c, a) {
+                for vb in values(c, b) {
+                    out.push(format!("2|{a:?}={va}|{b:?}={vb}"));
+                }
+            }
         }
     }
     out
+}
+
+/// RFC-0061 amendment 2026-10-22 — `config` pairs with `platform` ALONE in
+/// the nightly cover: a configuration's defects are build-shaped, which is
+/// what differs between platforms (issue 0814), and nothing in the defect
+/// catalogue needs it paired with lang, rmw, kind or workload. The default
+/// build (`none`) is excluded: every platform's cells already cover it.
+fn config_platform_pairs(c: &Cell) -> Vec<Req> {
+    c.config
+        .iter()
+        .map(|k| format!("2|Platform={:?}|Config={k:?}", c.platform))
+        .collect()
 }
 
 fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
@@ -391,13 +435,19 @@ fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
         // 10 cells and Linux-only however wide the pool got; with it, 12 cells
         // covering all three tier-1 platforms.
         CiLane::Tier1 => (
-            vec![Axis::Platform, Axis::Workload, Axis::Kind],
+            vec![Axis::Platform, Axis::Workload, Axis::Kind, Axis::Config],
             vec![Axis::Lang, Axis::Rmw],
         ),
         // 1-wise(platform, lang, rmw, kind) — every declared value once, no
         // pairing. 14 of 50 coordinates (gated by `documented_lane_table_is_live`).
         CiLane::Tier2 => (
-            vec![Axis::Platform, Axis::Lang, Axis::Rmw, Axis::Kind],
+            vec![
+                Axis::Platform,
+                Axis::Lang,
+                Axis::Rmw,
+                Axis::Kind,
+                Axis::Config,
+            ],
             vec![],
         ),
         // pairwise(platform × lang × rmw × kind); workload deliberately absent —
@@ -434,7 +484,11 @@ fn pool(lane: CiLane) -> Vec<&'static Cell> {
 
 fn reqs_of(c: &Cell, lane: CiLane) -> BTreeSet<Req> {
     let (s, p) = spec(lane);
-    singles(c, &s).into_iter().chain(pairs(c, &p)).collect()
+    let mut out: BTreeSet<Req> = singles(c, &s).into_iter().chain(pairs(c, &p)).collect();
+    if matches!(lane, CiLane::Tier2Nightly) {
+        out.extend(config_platform_pairs(c));
+    }
+    out
 }
 
 /// The cells this lane runs.
@@ -560,7 +614,8 @@ mod tests {
     }
 
     fn axis_values(cells: &[&'static Cell], a: Axis) -> BTreeSet<String> {
-        cells.iter().map(|c| value(c, a)).collect()
+        // Per MEMBER for the set-valued `Config` axis, as the cover reads it.
+        cells.iter().flat_map(|c| values(c, a)).collect()
     }
 
     #[test]
@@ -960,9 +1015,9 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 22, 12),
-            (CiLane::Tier2, 11, 11),
-            (CiLane::Tier2Nightly, 35, 34),
+            (CiLane::Tier1, 23, 11),
+            (CiLane::Tier2, 11, 10),
+            (CiLane::Tier2Nightly, 39, 37),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(

@@ -1,0 +1,49 @@
+[workspace]
+
+[package]
+name = "loan-copy-count"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "phase-510 W5 — loan publish on FreeRTOS + Cortex-M3 + zenoh-pico: delivery and payload copies, counted on target"
+
+[lib]
+
+# The measured image: publishes through `publish_raw`, then through
+# `try_loan` + `commit`, and counts the payload-sized copies each makes.
+[[bin]]
+name = "loan-copy-pub"
+path = "src/publisher.rs"
+test = false
+bench = false
+
+# Its peer: a plain raw subscription in a SECOND image (a same-session
+# pub->sub loops back in-process and would not prove the wire carried it).
+[[bin]]
+name = "loan-copy-sub"
+path = "src/subscriber.rs"
+test = false
+bench = false
+
+[package.metadata.nros.application]
+deploy = ["mps2-an385-freertos"]
+
+[dependencies]
+loan_copy_count_nros_selection = { path = "build/nros/selection" }
+nros = { path = "../../../../packages/api/nros", default-features = false, features = [
+    "rmw-cffi",
+] }
+# `rmw-lending` + the backend's `lending` are the configuration this bench
+# exists for (RFC-0051 §7a, `matrix::Config::Lending`): without both,
+# `try_lend_slot` finds no loan slot and refuses (issue 0814).
+nros-node = { path = "../../../../packages/core/nros-node", default-features = false, features = [
+    "alloc",
+    "rmw-cffi",
+    "rmw-lending",
+] }
+nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh", features = ["lending"] }
+cortex-m-semihosting = "0.5"
+
+[build-dependencies]
+nros-build-paths = { path = "../../../tooling/nros-build-paths" }

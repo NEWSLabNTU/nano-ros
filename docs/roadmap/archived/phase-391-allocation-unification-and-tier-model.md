@@ -854,7 +854,7 @@ probes have already passed that gate vacuously at `symbols read: 1`.
   `Box::new` per loan. As written, `lending` and `heap-free` are mutually
   exclusive for no inherent reason. Fixing it is a precondition for the loan
   API existing on the heap-free tier.
-- [issue 0814](../../issues/0814-lending-never-exercised-on-hardware.md) — the
+- [issue 0814](../../issues/archived/0814-lending-never-exercised-on-hardware.md) — the
   whole zero-copy surface is posix-test-only.
 - Whether `heap` survives as a storage mode at all. Payload buffers staying
   static means no payload field needs it; the question is whether infrastructure

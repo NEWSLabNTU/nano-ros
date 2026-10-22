@@ -1,6 +1,6 @@
 # Phase 510 — a configuration axis for the test matrix, one feature-lane registry, and every test bound to a cell
 
-**Status (2026-10-22). W0–W4 done; W5–W6 open.** Design is RFC-0051 §7
+**Status (2026-10-22). DONE — W0–W6 landed.** Issue 0814 is resolved by W5. Design is RFC-0051 §7
 (amendment 2026-10-22) and RFC-0061's amendment of the same date. This phase
 opened from phase-441 W8: the 0814 decision (option 2) keeps the loan publish
 half, which by W8's own condition calls for an embedded lending lane. Asking
@@ -334,6 +334,40 @@ Cyclone, XRCE and uORB lending cells are `CarveOut`s naming 0814 option 2.
 - The test measures zero payload copies through the loan and one through `publish_raw` on the same image.
 - 0814's title gap is closed, or narrowed with the measurement recorded there.
 
+**DONE 2026-10-22.** `packages/testing/nros-bench/loan-copy-count`: two
+MPS2-AN385 FreeRTOS images built with `nros-node/rmw-lending` and
+`nros-rmw-zenoh/lending`, one `[[fixture]]` row, a router on 7850 (in the
+FreeRTOS window, assigned to no baked cell). The publisher image publishes 20
+samples through `publish_raw`, then 20 through `try_loan` + `commit`, with
+`--wrap` on `memcpy` and the ARM EABI `__aeabi_memcpy*` helpers counting the
+payload-sized copies each publish call makes. A second image subscribes and
+counts each path's deliveries. The cell is `(FreertosMps2, Rust, Zenoh, Pubsub,
+Example) + [Lending]`, consumer `Consumer::LendingFreertos`
+(`tests/lending_freertos_e2e.rs`).
+
+Measured, 6 of 6 runs and identical in each:
+
+| Path | Publishes | Payload copies | Received by the second image |
+| --- | --- | --- | --- |
+| `publish_raw` | 20 | 40 (2 each) | 20 |
+| `try_loan` + `commit` | 20 | 20 (1 each) | 20 |
+
+None arrived truncated. **The acceptance above predicted "zero through the loan, one through
+`publish_raw`", which is the HOST's answer (0814's 2026-10-18 measurement), and
+the target's is one more on each path.** The extra copy is zenoh-pico encoding
+the payload into its non-expandable transmit buffer — the copy 0814's §2
+predicted and the host build did not make. So the loan saves exactly one copy
+per publish on this target, never all of them, and the test asserts that: the
+loan path makes at least one fewer payload copy per publish than `publish_raw`
+on the same image, every loan is granted, and the loan samples arrive whole.
+The counter's own floor is asserted too (`publish_raw` makes at least one copy
+per publish), so a counter that saw nothing could not pass the comparison
+vacuously.
+
+The backends that cannot lend have their lending cells as `CarveOut`s naming
+0814 option 2: `(Linux, Rust, Cyclonedds)`, `(Linux, Rust, Xrce)` and `(Px4, Cpp,
+Uorb)`, each `Pubsub, Example + [Lending]`.
+
 ### W6 — the tier covers adopt the axis
 
 Implement RFC-0061's 2026-10-22 amendment in `ci_lane.rs`:
@@ -346,6 +380,24 @@ Measure the 2n coordinate growth before turning it on, as §Cost is coordinates 
 - `lanes_touch_every_declared_value_of_every_axis_they_cover` covers `config`.
 - The 2n coordinate delta is measured and recorded in RFC-0061.
 
+**DONE 2026-10-22.** `ci_lane` has an `Axis::Config`, set-valued (one value
+per member, `none` for the default build). It is a single in tiers 1 and 2,
+and the nightly adds `platform × config` pairs for configured cells only.
+`lanes_touch_every_declared_value_of_every_axis_they_cover` reads it per
+member. Measured, against the covers before it:
+
+| Lane | Before (cells / coords) | After |
+| --- | --- | --- |
+| tier 1 | 22 / 12 | 23 / 11 |
+| tier 2 | 11 / 11 | 11 / 10 |
+| nightly | 35 / 34 | 39 / 37 |
+
+The configured cells add no coordinate (each shares its default-build
+sibling's); the deltas are the greedy cover reshuffling around the new
+requirements. Tiers 1 and 2 got a coordinate cheaper; the nightly is 3
+coordinates (6 points of the sweep) dearer, which is the price of pairing
+lending with each platform it has a cell on. Recorded in RFC-0061.
+
 ## Non-goals
 
 - Re-homing interop cells, or changing `Kind` / `Tier`.
@@ -355,6 +407,6 @@ Measure the 2n coordinate growth before turning it on, as §Cost is coordinates 
 ## Related
 
 - RFC-0051 §7, RFC-0061 amendment 2026-10-22, RFC-0066 (where "configuration" comes from).
-- [phase-441](phase-441-rmw-on-target-verification.md) W8, which opened this.
-- Issue [0814](../issues/0814-lending-never-exercised-on-hardware.md) (W5).
+- [phase-441](../phase-441-rmw-on-target-verification.md) W8, which opened this.
+- Issue [0814](../../issues/archived/0814-lending-never-exercised-on-hardware.md) (W5).
 - Issue 1758 (the no-skip rule every new lane keeps).

@@ -703,6 +703,9 @@ const NO_DELIVERY_TEST: &str = "builds; only rmw_coordinate_truth boots it (node
 /// resolved by no test. Unlocked by a Cyclone arm in that table.
 const ENTRY_E2E_IS_ZENOH_ONLY: &str = "builds; entry_e2e's exec table has no Cyclone arm (it booted \
      the zenoh image for this cell) — phase-510 W3";
+/// phase-510 W5 — a `Config::Lending` cell on a backend with no loan slot.
+const NO_LOAN_SLOT: &str = "the backend's vtable has no loan slot (Cyclone, XRCE, uORB): a loan \
+     is refused permanently in every build (issue 0814 option 2) — nothing to run";
 const XRCE_RTOS_CARVE: &str =
     "no XRCE agent-locator bake off Zephyr; rust-XRCE-on-bare-RTOS is not a shipped config";
 
@@ -721,6 +724,12 @@ pub const CELLS: &[Cell] = &[
     // and its subscriber, in the same process, must receive what it would
     // from a plain publish. Answered by `test-zpico-multisession`'s lane.
     cell(Linux, Rust, Zenoh,      Pubsub,  Example, Runtime).with(&[Config::Lending, Config::Multisession]),
+    // phase-510 W5 — lending where the backend cannot lend: its vtable leaves
+    // `borrow_loaned_message` NULL, and since issue 0814 (option 2) a loan
+    // there is a permanent refusal in every build, so there is nothing to run.
+    cell(Linux, Rust, Cyclonedds, Pubsub,  Example, CarveOut(NO_LOAN_SLOT)).with(&[Config::Lending]),
+    cell(Linux, Rust, Xrce,       Pubsub,  Example, CarveOut(NO_LOAN_SLOT)).with(&[Config::Lending]),
+    cell(Px4,   Cpp,  Uorb,       Pubsub,  Example, CarveOut(NO_LOAN_SLOT)).with(&[Config::Lending]),
     cell(Linux, C,    Zenoh,      Pubsub,  Example, Runtime),
     cell(Linux, Cpp,  Zenoh,      Pubsub,  Example, Runtime),
     // issue 1384 — `examples/linux/c/custom-platform`, the one in-tree caller
@@ -846,6 +855,11 @@ pub const CELLS: &[Cell] = &[
 
     // FreeRTOS / NuttX-arm / ThreadX-linux — the rtos_e2e 3×3 zenoh block.
     cell(FreertosMps2, Rust, Zenoh, Pubsub,  Example, Runtime),
+    // phase-510 W5 — the same pubsub BUILT with loan publish (RFC-0051 §7a), on
+    // the embedded target the loan's benefit is about (issue 0814): two images
+    // of `nros-bench/loan-copy-count`, delivery to the second and the payload
+    // copies counted on the first.
+    cell(FreertosMps2, Rust, Zenoh, Pubsub,  Example, Runtime).with(&[Config::Lending]),
     cell(FreertosMps2, C,    Zenoh, Pubsub,  Example, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, Pubsub,  Example, Runtime),
     // phase-482 W3 — the ported tutorial publisher on FreeRTOS.
@@ -1277,6 +1291,9 @@ pub enum Consumer {
     ParamLiveRead,
     /// `tests/loan_e2e.rs` — loan publish in a two-session process.
     LoanE2e,
+    /// `tests/lending_freertos_e2e.rs` — loan publish on FreeRTOS, delivery
+    /// and payload copies counted on target (phase-510 W5).
+    LendingFreertos,
 }
 
 impl Consumer {
@@ -1306,6 +1323,7 @@ impl Consumer {
         Consumer::CppCParamLiveRead,
         Consumer::ParamLiveRead,
         Consumer::LoanE2e,
+        Consumer::LendingFreertos,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -1335,6 +1353,7 @@ impl Consumer {
             Consumer::CppCParamLiveRead => "cpp_c_param_live_read_e2e",
             Consumer::ParamLiveRead => "param_live_read_e2e",
             Consumer::LoanE2e => "loan_e2e",
+            Consumer::LendingFreertos => "lending_freertos_e2e",
         }
     }
 }
@@ -1759,6 +1778,7 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
     if !cell.config.is_empty() {
         return match (cell.platform, cell.config) {
             (P::Linux, [Config::Lending, Config::Multisession]) => Some(LoanE2e),
+            (P::FreertosMps2, [Config::Lending]) => Some(LendingFreertos),
             _ => None,
         };
     }

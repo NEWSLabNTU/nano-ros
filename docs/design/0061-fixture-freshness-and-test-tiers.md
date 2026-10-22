@@ -450,6 +450,14 @@ platform × config pairs alone, which phase-510 measures before the nightly lane
 adopts it, as §Cost is coordinates required of every earlier change to the
 cover.
 
+**Measured (phase-510 W6, 2026-10-22).** With two configured cells — Linux
+`[Lending, Multisession]` and FreeRTOS `[Lending]` — tier 1 went 22 / 12 to
+23 / 11 (cells / coordinates), tier 2 11 / 11 to 11 / 10, and the nightly 35 /
+34 to 39 / 37 of 51: 3 coordinates, about 6 points of the sweep. The configured
+cells share their default-build siblings' coordinates, so none of the delta is
+a new fixture; it is the greedy cover reshuffling around the new requirements.
+Adopted at that price.
+
 What each tier may miss, extended: **tier 1** misses every
 configuration-on-target defect (the 0814 class), as it misses every
 platform-specific one; **tier 2** misses configuration × platform interactions

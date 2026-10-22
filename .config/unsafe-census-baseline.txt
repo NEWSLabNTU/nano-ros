@@ -18,6 +18,7 @@ condvar-contract-threadx-linux       1   0     0       1      0
 contract-monitor                     1   0     0       1      0
 heap-free-poc-mps2                   4   0     0       0      0
 lan9118-smoltcp                      3   1     0       0      0
+loan-copy-count                      4   0     0       5      0
 logging-smoke-nuttx-qemu-arm         1   0     0       1      0
 logging-smoke-threadx-linux          1   0     0       1      0
 logging-smoke-threadx-riscv64        1   0     0       1      0
