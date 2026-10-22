@@ -38,6 +38,27 @@ and has no `os error 17` anywhere in its log. That run used a different runner
 (`nano-ros-runner-newslab-server-241`), so it says nothing about the state of
 the 118 runner's tree.
 
+### Sighting, 2026-10-22: two more lanes, same runner
+
+The same `File exists (os error 17)` shows up in both jobs of the scheduled
+tier-2 run 39734065923 (2026-10-22 06:27 UTC, main at `f83b2a4e1`). Both jobs
+ran on `nano-ros-runner-newslab-118-server`.
+
+- Job 119675552774, `tier 2 (1-wise matrix)`: three hits, all on the
+  `examples/rv-virt-threadx/rust/*/build-{zenoh,cyclonedds}` leaves.
+- Job 119678607819, `tier 1 (cells)`: one hit, on
+  `examples/linux/cpp/talker/build-xrce`, which is the same leaf as the first
+  sighting. It fails `build-fixture-extras`, so the job never reaches the
+  cells.
+
+```
+error: failed to create directory `/home/runner/_work/nano-ros/nros-fixture-tree/examples/linux/cpp/talker/build-xrce/cargo`
+FAILED: [code=101] nano_ros/packages/api/nros-c/CMakeFiles/_cargo-build_nros_c ...
+```
+
+So the defect is not limited to the nightly. Every lane that shares the 118
+runner's fixture tree hits it, including ThreadX RISC-V Rust leaves.
+
 ## Cause
 
 Three facts from the code at `237ca8f39`, and one from the logs.
