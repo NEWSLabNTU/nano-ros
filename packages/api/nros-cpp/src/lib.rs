@@ -3505,9 +3505,20 @@ mod node_logger_name_tests {
     static SEEN_LEN: [AtomicUsize; SLOTS] = [const { AtomicUsize::new(0) }; SLOTS];
     static SEEN_N: AtomicUsize = AtomicUsize::new(0);
 
+    /// Every record this test emits carries it, and the sink keeps nothing
+    /// else. The sink is process-global, so under `cargo test` it also sees
+    /// what OTHER tests log while it is installed, and `nros_log::init`
+    /// replays the records sibling tests raised before any sink existed (the
+    /// early ring) — counting those made this test 6 records over 2 whenever
+    /// it was not first in its process (issue 1999).
+    const MARKER: &str = "w5 cpp marker";
+
     struct NameCapturingSink;
     impl nros_log::LogSink for NameCapturingSink {
         fn log(&self, record: &nros_log::Record<'_>) {
+            if record.message != MARKER {
+                return;
+            }
             let slot = SEEN_N.fetch_add(1, Ordering::SeqCst);
             if slot < SLOTS {
                 SEEN_PTR[slot].store(record.logger_name.as_ptr().cast_mut(), Ordering::SeqCst);
@@ -3578,13 +3589,13 @@ mod node_logger_name_tests {
             "a node whose logger is the catch-all names no node"
         );
 
-        nros_log::log_info!(talker_logger, "w5 cpp marker");
-        nros_log::log_info!(listener_logger, "w5 cpp marker");
+        nros_log::log_info!(talker_logger, "{}", MARKER);
+        nros_log::log_info!(listener_logger, "{}", MARKER);
 
         assert_eq!(
             SEEN_N.load(Ordering::SeqCst),
             2,
-            "expected exactly the two records this test emitted"
+            "expected exactly the two marker records this test emitted"
         );
         assert_eq!(captured_name(0), TALKER);
         assert_eq!(captured_name(1), LISTENER);
