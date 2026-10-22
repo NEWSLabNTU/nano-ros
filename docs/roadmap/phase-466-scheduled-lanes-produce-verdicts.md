@@ -270,7 +270,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | --- | --- |
 | [#1136](../issues/archived/1136-launch-args-keyword-removed-but-still-generated.md) | `host-tests`' integration job died at **Build workspace fixtures** for 30 runs because the CLI still emits the removed `LAUNCH_ARGS`. That is a scheduled lane with no verdict. |
 | [#1325](../issues/1325-zephyr-fixture-filter-matches-the-checkout-path.md) | `NROS_ZEPHYR_FIXTURE_FILTER` matches against a haystack that holds more than the leaf name, so the scheduled Zephyr fixture build selects the wrong set. |
-| [#1355](../issues/archived/1355-threadx-riscv64-builds-the-linux-threadx-port.md) | The `threadx_riscv64` nightly builds ThreadX's linux/gnu port for a target with no POSIX headers, so the lane has never reached a cell. |
+| [#1355](../issues/archived/1355-threadx-riscv64-builds-the-linux-threadx-port.md) | RESOLVED 2026-10-22: the port defect was long gone; the lane then went green without running its cells, because `just threadx_riscv64 test` never selected `rtos_e2e`. It does now, gated by `check platform-lane-cells`. |
 | [#1365](../issues/1365-tier2-self-hosted-runner-unregistered.md) | Tier-2 jobs wait for a self-hosted runner that is not registered, and the lane reports nothing. |
 | [#1375](../issues/1375-zephyr-native-sim-runner-link-misses-zpico-reply-slot.md) | The native_sim runner link cannot see the zpico reply-slot symbols, so every Zephyr fixture fails to link in tier 2. |
 | [#1459](../issues/1459-threadx-c-entry-undefined-network-wait.md) | `threadx_linux` C fixtures fail to link, which stops the scheduled lane in its build. |
