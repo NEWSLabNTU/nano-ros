@@ -434,7 +434,29 @@ fn build_env_watches(board_toml: Option<&str>) -> Vec<String> {
 /// Every `<root>/<dir>/nros-platform.toml` on a search path, in search order —
 /// the files [`PlatformsTree::load_search_path`] reads. Missing roots are
 /// skipped, as the loader skips them.
-fn platform_descriptor_files(search: &[PathBuf]) -> Vec<PathBuf> {
+///
+/// Issue 1494 — the ONE spelling of "which descriptors does a build read". Every
+/// build-time reader of a descriptor watches what this returns: [`BuildRungs`],
+/// `nros-zpico-build`'s runner (which had its own copy) and
+/// `nros-board-common`'s FreeRTOS arch-cflags read (which watched nothing, so
+/// an `[arch.*]` edit rebuilt no board).
+///
+/// Directories are ENUMERATED, never reconstructed from a platform name: a
+/// package directory is `nros-platform-<name>`, and rebuilding the path as
+/// `<root>/<name>/nros-platform.toml` silently matched nothing under
+/// `packages/platform` (issue 1039's follow-up). Only files that EXIST are
+/// returned — cargo treats a missing `rerun-if-changed` path as permanently
+/// dirty (issue 0966). A file shadowed by an earlier root is still returned:
+/// it costs an occasional rerun and cannot miss one.
+///
+/// What a watch over this CANNOT see, measured: a descriptor CREATED in a new
+/// directory. Answering a name that was refused needs no watch (a failed build
+/// script always re-runs), but one that SHADOWS a name an existing descriptor
+/// already answered re-runs nothing. Watching the root directory would cover it
+/// and is not done: cargo's directory watch is RECURSIVE, and
+/// `packages/platform` holds whole crates, so every platform source edit would
+/// re-run every reader's build script.
+pub fn platform_descriptor_files(search: &[PathBuf]) -> Vec<PathBuf> {
     let mut out = Vec::new();
     for root in search {
         let Ok(entries) = fs::read_dir(root) else {
@@ -3917,6 +3939,42 @@ mod tests {
         );
         // Nothing named: the two name watches still stand.
         assert_eq!(build_env_watches(None).len(), 2);
+    }
+
+    /// Issue 1494 — the WIRING, not the enumerator: a build that resolves a
+    /// rung declares a content watch on EVERY descriptor the real search path
+    /// holds, through the shared enumerator. The test above this pins
+    /// [`platform_descriptor_files`]; this one fails if `from_env_values`
+    /// stops calling it, or calls it over a different path than it loads from
+    /// (issue 0196 — a rule whose wiring nothing checks). Measured by hand on
+    /// `nros-params`: adding then removing a name in a descriptor's `names`
+    /// re-ran the build script both times with no `touch`.
+    #[test]
+    fn a_resolved_rung_watches_every_descriptor_on_its_search_path() {
+        let search = build_search_path();
+        let files = platform_descriptor_files(&search);
+        assert!(
+            files.len() >= 2,
+            "the in-tree search path should hold several descriptors: {files:?}"
+        );
+        let tree = PlatformsTree::load_search_path(&search).unwrap();
+        let name = tree.names().next().expect("some platform name").to_string();
+        let env = BuildEnv {
+            platform: Some(name.clone()),
+            board: None,
+            board_toml: None,
+        };
+        let mut got = Vec::new();
+        let rungs = BuildRungs::from_env_values(env, &mut |d| got.push(d));
+        assert!(rungs.is_some(), "`{name}` resolved no rung");
+        for file in &files {
+            let watch = format!("cargo:rerun-if-changed={}", file.display());
+            assert!(
+                got.contains(&watch),
+                "{} is unwatched: {got:?}",
+                file.display()
+            );
+        }
     }
 
     /// Issue 1401's second half — the platform descriptors a rung is read from

@@ -808,4 +808,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1494](../issues/1494-platform-descriptor-unwatched-by-build-rungs.md) | `BuildRungs` reads every platform descriptor and watches none of them. It is the ladder's own freshness. |
+| [#1494](../issues/archived/1494-platform-descriptor-unwatched-by-build-rungs.md) | RESOLVED 2026-10-22: `BuildRungs` already watched every descriptor (issue 1401's second half); the remaining work was one shared enumerator for every reader. A descriptor that newly SHADOWS an answered name is still unwatched, for a measured reason recorded in the issue. |
