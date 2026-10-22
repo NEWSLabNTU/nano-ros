@@ -689,6 +689,20 @@ const CYCLONE_RUST_RTOS_CARVE: &str =
 const ESP32_DORMANT: &str =
     "ESP32 support is dormant (issue 1525): code kept, nothing builds or tests it";
 
+/// phase-510 W3 — a workspace entry that BUILDS (its fixture row is in every
+/// lane that needs it) but whose DELIVERY no test asserts: the only runtime
+/// touch is `rmw_coordinate_truth`, which checks that the entry registers its
+/// node on the right RMW — registration, not a sample arriving. It was
+/// `Runtime` until a cell had to name the test that answers it (RFC-0051
+/// §7c). Unlocked by a consumer that boots the entry and counts deliveries.
+const NO_DELIVERY_TEST: &str = "builds; only rmw_coordinate_truth boots it (node registration, \
+     not delivery) — needs a consumer that asserts delivery (phase-510 W3)";
+/// phase-510 W3 — `entry_e2e` claimed this cell and booted the ZENOH image:
+/// its exec table is keyed without the RMW, so `build_zephyr_workspace_cpp_entry`
+/// answered for the Cyclone row too, and `workspace-zephyr-cpp-cyclonedds` was
+/// resolved by no test. Unlocked by a Cyclone arm in that table.
+const ENTRY_E2E_IS_ZENOH_ONLY: &str = "builds; entry_e2e's exec table has no Cyclone arm (it booted \
+     the zenoh image for this cell) — phase-510 W3";
 const XRCE_RTOS_CARVE: &str =
     "no XRCE agent-locator bake off Zephyr; rust-XRCE-on-bare-RTOS is not a shipped config";
 
@@ -702,6 +716,11 @@ pub const CELLS: &[Cell] = &[
     // ── Example kind: the classic pubsub/service/action pairs ──────────
     // Linux host (ephemeral isolation; all three RMWs have runtime lanes).
     cell(Linux, Rust, Zenoh,      Pubsub,  Example, Runtime),
+    // phase-510 W4 — the same pubsub BUILT with loan publish in a two-session
+    // pool (RFC-0051 §7a): `loan_e2e` publishes through `try_loan` + `commit`
+    // and its subscriber, in the same process, must receive what it would
+    // from a plain publish. Answered by `test-zpico-multisession`'s lane.
+    cell(Linux, Rust, Zenoh,      Pubsub,  Example, Runtime).with(&[Config::Lending, Config::Multisession]),
     cell(Linux, C,    Zenoh,      Pubsub,  Example, Runtime),
     cell(Linux, Cpp,  Zenoh,      Pubsub,  Example, Runtime),
     // issue 1384 — `examples/linux/c/custom-platform`, the one in-tree caller
@@ -990,20 +1009,20 @@ pub const CELLS: &[Cell] = &[
 
     // ── Workspace kind (Entry-pkg lanes; native-heavy today) ──────────
     cell(Linux, Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
-    cell(Linux, C,     Zenoh, EntryPubsub, Workspace, Runtime),
-    cell(Linux, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
-    cell(Linux, Mixed, Zenoh, EntryPubsub, Workspace, Runtime),
+    cell(Linux, C,     Zenoh, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    cell(Linux, Cpp,   Zenoh, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    cell(Linux, Mixed, Zenoh, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
     // phase-331 W4 (RFC-0066) — the RMW AXIS over the language workspaces.
     // Before this the workspace rows were 85/87 zenoh: the RMW seam was
     // exercised by single-node examples and essentially never by a workspace.
     // `mixed` is deliberately absent — its value is the language seam, not the
     // RMW seam. The rust cells already existed; only c/cpp were missing.
-    cell(Linux, Rust, Cyclonedds, EntryPubsub, Workspace, Runtime),
-    cell(Linux, C,    Cyclonedds, EntryPubsub, Workspace, Runtime),
-    cell(Linux, Cpp,  Cyclonedds, EntryPubsub, Workspace, Runtime),
-    cell(Linux, Rust, Xrce,       EntryPubsub, Workspace, Runtime),
-    cell(Linux, C,    Xrce,       EntryPubsub, Workspace, Runtime),
-    cell(Linux, Cpp,  Xrce,       EntryPubsub, Workspace, Runtime),
+    cell(Linux, Rust, Cyclonedds, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    cell(Linux, C,    Cyclonedds, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    cell(Linux, Cpp,  Cyclonedds, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    cell(Linux, Rust, Xrce,       EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    cell(Linux, C,    Xrce,       EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
+    cell(Linux, Cpp,  Xrce,       EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
     cell(ZephyrNativeSim, Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ZephyrNativeSim, C,     Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ZephyrNativeSim, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
@@ -1016,7 +1035,7 @@ pub const CELLS: &[Cell] = &[
     // is the assertion that caught it, and it is the reverse direction of the
     // pair -- the forward one was green throughout, because a cell that does
     // not exist cannot be missing a fixture.
-    cell(ZephyrNativeSim, Cpp,   Cyclonedds, EntryPubsub, Workspace, Runtime),
+    cell(ZephyrNativeSim, Cpp,   Cyclonedds, EntryPubsub, Workspace, BuildOnly(ENTRY_E2E_IS_ZENOH_ONLY)),
     cell(FreertosMps2, C,    Zenoh, EntryPubsub, Workspace, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, EntryPubsub, Workspace, Runtime),
     cell(FreertosMps2, Rust, Zenoh, EntryPubsub, Workspace, Runtime),
@@ -1057,7 +1076,7 @@ pub const CELLS: &[Cell] = &[
     cell(NuttxRiscv, Cpp, Zenoh, EntryPubsub, Workspace,
          BuildOnly("no nuttx-riscv C++ EntryPubsub workspace fixture/lane (RT-tiers only) \
                     — phase-295 W3.b finding, W6 wires it")),
-    cell(ThreadxLinux, Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
+    cell(ThreadxLinux, Rust,  Zenoh, EntryPubsub, Workspace, BuildOnly(NO_DELIVERY_TEST)),
     cell(ThreadxLinux, C,     Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ThreadxLinux, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ThreadxLinux, Mixed, Zenoh, EntryPubsub, Workspace, Runtime),
@@ -1209,87 +1228,648 @@ pub fn runtime_cells() -> impl Iterator<Item = &'static Cell> {
     CELLS.iter().filter(|c| matches!(c.tier, Tier::Runtime))
 }
 
-/// The five RFC-0051 "matrix consumer" test files (phase-329 W1). Each Runtime
-/// cell a W1 consumer runs is CLAIMED by exactly one of these; the consumer's
-/// test DERIVES its cases from `CELLS.filter(|c| w1_consumer_of(c) == Some(..))`
-/// instead of hand-listing `Cell{}` literals, so adding a cell to `CELLS` makes
-/// it run in the right consumer.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum W1Consumer {
+/// The test binary that answers each Runtime cell — RFC-0051 §7c, phase-510
+/// W3 (which generalised phase-329 W1's five-file `W1Consumer`).
+///
+/// Every Runtime cell has exactly ONE consumer ([`consumer_of`] is total over
+/// Runtime cells, gated by `every_runtime_cell_has_a_consumer`), and every
+/// consumer binds its cases to the cells it is assigned, in one of two ways:
+///
+/// * it DERIVES its cases from `CELLS.filter(|c| consumer_of(c) ==
+///   Some(..))`, so adding a cell makes it run (the phase-329 W1 shape:
+///   multihost, roundtrip, realtime tiers, entry, workspace features); or
+/// * it hand-lists them and asserts the list with [`assert_consumer_cases`],
+///   so a drift either way is a red, not a cell nobody runs.
+///
+/// `matrix_fixture_coverage::every_test_binary_is_a_consumer_an_interop_test_or_classified`
+/// holds the other half: every `tests/*.rs` binary is a consumer, an interop
+/// cell's test, or a [`NON_CELL_TESTS`] row with its reason.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Consumer {
     /// `tests/multihost_e2e.rs` — every `Multihost` cell.
     Multihost,
-    /// `tests/roundtrip_xprocess_e2e.rs` — native workspace `Service`/`Action`.
+    /// `tests/roundtrip_xprocess_e2e.rs` — workspace `Service`/`Action`.
     Roundtrip,
     /// `tests/realtime_tiers_e2e.rs` — every `RealtimeTiers` cell.
     RealtimeTiers,
-    /// `tests/entry_e2e.rs` — the RTOS `EntryPubsub` subset + zephyr-rust
+    /// `tests/entry_e2e.rs` — the RTOS zenoh `EntryPubsub` subset + zephyr
     /// feature entries.
     Entry,
     /// `tests/workspace_features_e2e.rs` — native feature workspaces.
     WorkspaceFeatures,
+    LinuxExamplePubsub,
+    LinuxExampleReqresp,
+    LinuxExampleExecutorBoundNode,
+    PortTemplates,
+    ZephyrCortexM,
+    Zephyr,
+    RtosE2e,
+    TypedCarrier,
+    ParamStoreCarve,
+    LinuxApi,
+    ThreadxRiscv64Qemu,
+    CRiscvNuttx,
+    Emulator,
+    DeployedNativeSystem,
+    BridgeNetwork,
+    FreertosPosix,
+    CppCParamLiveRead,
+    ParamLiveRead,
+    /// `tests/loan_e2e.rs` — loan publish in a two-session process.
+    LoanE2e,
 }
 
-/// Which W1 consumer owns this cell's runtime lane, if any. THE authoritative
-/// claim partition — disjoint by construction (one match arm each). `None` =
-/// covered by a not-yet-converted platform-e2e file (phase-329 W4) or a
-/// non-matrix suite, NOT a W1 consumer's responsibility.
-///
-/// `Multihost`, `RealtimeTiers`, and workspace `Service`/`Action` are FULLY
-/// owned (G5 asserts every Runtime cell of them is claimed). `EntryPubsub` and
-/// the native feature workloads are SHARED with W4 files, so only the subset a
-/// W1 consumer actually runs is claimed here.
-pub fn w1_consumer_of(cell: &Cell) -> Option<W1Consumer> {
-    use W1Consumer::*;
-    match (cell.platform, cell.lang, cell.workload, cell.kind) {
-        // multihost_e2e — every Multihost cell.
-        (_, _, Workload::Multihost, _) => Some(Multihost),
-        // realtime_tiers_e2e — every RealtimeTiers cell.
-        (_, _, Workload::RealtimeTiers, _) => Some(RealtimeTiers),
-        // roundtrip_xprocess_e2e — workspace service/action (all native today).
-        (_, _, Workload::Service | Workload::Action, Kind::Workspace) => Some(Roundtrip),
-        // entry_e2e — the RTOS EntryPubsub subset it actually boots (threadx /
-        // freertos / zephyr are C/C++/mixed; nuttx-arm is C + rust). The rust
-        // EntryPubsub cells on threadx/freertos/zephyr, nuttx-riscv, esp32, and
-        // native EntryPubsub are OTHER consumers — deliberately not claimed.
-        (PlatformId::ThreadxLinux, Lang::C | Lang::Cpp | Lang::Mixed, Workload::EntryPubsub, _) => {
-            Some(Entry)
+impl Consumer {
+    /// Every consumer, for the gates that iterate them.
+    pub const ALL: &'static [Consumer] = &[
+        Consumer::Multihost,
+        Consumer::Roundtrip,
+        Consumer::RealtimeTiers,
+        Consumer::Entry,
+        Consumer::WorkspaceFeatures,
+        Consumer::LinuxExamplePubsub,
+        Consumer::LinuxExampleReqresp,
+        Consumer::LinuxExampleExecutorBoundNode,
+        Consumer::PortTemplates,
+        Consumer::ZephyrCortexM,
+        Consumer::Zephyr,
+        Consumer::RtosE2e,
+        Consumer::TypedCarrier,
+        Consumer::ParamStoreCarve,
+        Consumer::LinuxApi,
+        Consumer::ThreadxRiscv64Qemu,
+        Consumer::CRiscvNuttx,
+        Consumer::Emulator,
+        Consumer::DeployedNativeSystem,
+        Consumer::BridgeNetwork,
+        Consumer::FreertosPosix,
+        Consumer::CppCParamLiveRead,
+        Consumer::ParamLiveRead,
+        Consumer::LoanE2e,
+    ];
+
+    /// The test binary (`tests/<binary>.rs`).
+    pub const fn binary(self) -> &'static str {
+        match self {
+            Consumer::Multihost => "multihost_e2e",
+            Consumer::Roundtrip => "roundtrip_xprocess_e2e",
+            Consumer::RealtimeTiers => "realtime_tiers_e2e",
+            Consumer::Entry => "entry_e2e",
+            Consumer::WorkspaceFeatures => "workspace_features_e2e",
+            Consumer::LinuxExamplePubsub => "linux_example_pubsub_e2e",
+            Consumer::LinuxExampleReqresp => "linux_example_reqresp_e2e",
+            Consumer::LinuxExampleExecutorBoundNode => "linux_example_executor_bound_node_e2e",
+            Consumer::PortTemplates => "port_templates_e2e",
+            Consumer::ZephyrCortexM => "zephyr_cortex_m_qemu",
+            Consumer::Zephyr => "zephyr",
+            Consumer::RtosE2e => "rtos_e2e",
+            Consumer::TypedCarrier => "typed_carrier_e2e",
+            Consumer::ParamStoreCarve => "param_store_carve",
+            Consumer::LinuxApi => "linux_api",
+            Consumer::ThreadxRiscv64Qemu => "threadx_riscv64_qemu",
+            Consumer::CRiscvNuttx => "c_riscv_nuttx_e2e",
+            Consumer::Emulator => "emulator",
+            Consumer::DeployedNativeSystem => "deployed_native_system_e2e",
+            Consumer::BridgeNetwork => "bridge_network_e2e",
+            Consumer::FreertosPosix => "freertos_posix",
+            Consumer::CppCParamLiveRead => "cpp_c_param_live_read_e2e",
+            Consumer::ParamLiveRead => "param_live_read_e2e",
+            Consumer::LoanE2e => "loan_e2e",
         }
-        // issue 1286 follow-up — the rv-virt pure-C workspace entry (QEMU virt).
-        (PlatformId::ThreadxRiscv64, Lang::C, Workload::EntryPubsub, _) => Some(Entry),
-        (PlatformId::FreertosMps2, Lang::C | Lang::Cpp | Lang::Mixed, Workload::EntryPubsub, _) => {
-            Some(Entry)
-        }
+    }
+}
+
+/// Why a `tests/*.rs` binary answers no matrix cell — RFC-0051 §7c.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum NonCell {
+    /// Reads repo files, or runs the `nros` CLI on in-tree inputs; no fixture.
+    Static,
+    /// Resolves a compile / cmake / west fixture by ID and asserts a build
+    /// artifact or verdict — coordinate-free.
+    CompileCheck,
+    /// The docker ROS-edition axis — a per-run global, not a cell (issue 0327).
+    Edition,
+    /// A harness-gated target in `.config/feature-lanes.toml` (RFC-0051 §7b).
+    FeatureLane,
+    /// Runtime, but every coordinate it touches has a different primary
+    /// consumer; the string says which, and what this one adds.
+    Secondary(&'static str),
+    /// Runtime over a coordinate (or a workload) the matrix does not model;
+    /// the string says which. Each is a candidate cell, not an exemption.
+    Unmodeled(&'static str),
+}
+
+/// Every `tests/*.rs` binary that is neither a [`Consumer`] nor an interop
+/// cell's test, with its reason (RFC-0051 §7c, phase-510 W3). The partition is
+/// gated: a binary in none of the three, or in two, fails
+/// `matrix_fixture_coverage::every_test_binary_is_a_consumer_an_interop_test_or_classified`.
+pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
+    (
+        "action_multigoal",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Action/Example — answered by linux_example_reqresp_e2e; this one asserts concurrent goals",
+        ),
+    ),
+    (
+        "action_raw_goal_e2e",
+        NonCell::Secondary(
+            "Linux/C/Zenoh/Action/Example — answered by linux_example_reqresp_e2e; this one asserts the raw-goal probe",
+        ),
+    ),
+    (
+        "actions",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Action/Example — answered by linux_example_reqresp_e2e",
+        ),
+    ),
+    (
+        "baremetal_run_plan_runtime",
+        NonCell::Unmodeled(
+            "QemuBaremetal/Rust/Zenoh/EntryPubsub/Workspace boot — no cell models it",
+        ),
+    ),
+    ("board_agnostic_run_plan", NonCell::CompileCheck),
+    ("board_import", NonCell::CompileCheck),
+    ("board_link_archives", NonCell::Static),
+    (
+        "borrowed_e2e",
+        NonCell::Unmodeled("borrowed-view serdes probe, no RMW — not a matrix workload"),
+    ),
+    (
+        "bridge_mixed_rmw",
+        NonCell::Secondary("Linux/Rust bridge — answered by the interop cell bridge-zenoh-to-xrce"),
+    ),
+    ("bringup_scaffold", NonCell::Static),
+    ("c_mixed_workspace", NonCell::CompileCheck),
+    ("c_rosidl_refusals", NonCell::CompileCheck),
+    (
+        "c_xrce_api",
+        NonCell::Secondary(
+            "Linux/C/Xrce/Pubsub/Example — answered by linux_example_pubsub_e2e; this one exercises the C XRCE API surface",
+        ),
+    ),
+    (
+        "cli_bringup_zephyr",
+        NonCell::Secondary(
+            "Zephyr native_sim workspace entry boot — answered by zephyr / entry_e2e",
+        ),
+    ),
+    ("cmake_add_subdirectory", NonCell::CompileCheck),
+    ("cmake_node_register_metadata", NonCell::CompileCheck),
+    ("cmake_node_register_misuse", NonCell::CompileCheck),
+    ("cmake_platform_matrix", NonCell::CompileCheck),
+    ("component_dispatch", NonCell::FeatureLane),
+    ("component_param", NonCell::FeatureLane),
+    ("component_runtime", NonCell::FeatureLane),
+    (
+        "condvar_contract_rtos",
+        NonCell::Unmodeled(
+            "the condvar platform contract on ThreadX/FreeRTOS — not a matrix workload",
+        ),
+    ),
+    ("context_create_executor", NonCell::FeatureLane),
+    ("contract_derived_chain_parity", NonCell::Static),
+    (
+        "contract_monitor_parity",
+        NonCell::Unmodeled("the contract monitor — not a matrix workload"),
+    ),
+    ("cpp_api_drift", NonCell::Static),
+    (
+        "cpp_lifecycle_node_wrapper_e2e",
+        NonCell::Secondary(
+            "Linux/Cpp/Zenoh/Lifecycle/Workspace — answered by workspace_features_e2e; this one asserts the rclcpp wrapper",
+        ),
+    ),
+    ("cross_libc_precedence_gate", NonCell::CompileCheck),
+    (
+        "custom_msg",
+        NonCell::Unmodeled(
+            "Linux/Rust/Zenoh/CustomMsg/Example — no Example cell (the Workspace Rust row is BuildOnly)",
+        ),
+    ),
+    (
+        "custom_transport_loopback",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Pubsub/Example under Config::CustomTransport — a feature lane until W4 gives it a configured cell",
+        ),
+    ),
+    (
+        "cyclone_slirp_pair",
+        NonCell::Unmodeled(
+            "two host processes over slirp to stock ros2 — the W2 recipe test, interop-shaped with no ic row",
+        ),
+    ),
+    ("cyclonedds_descriptors", NonCell::Static),
+    ("diagnostic_verbatim", NonCell::CompileCheck),
+    ("dispatch_strategy", NonCell::Static),
+    ("entity_wake", NonCell::FeatureLane),
+    ("entry_build", NonCell::CompileCheck),
+    (
+        "error_handling",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Pubsub/Example — answered by linux_example_pubsub_e2e; this one asserts error paths",
+        ),
+    ),
+    (
+        "esp32_emulator",
+        NonCell::Unmodeled("ESP32 is dormant (issue 1525): every Esp32Qemu cell is a CarveOut"),
+    ),
+    ("example_output_conformance", NonCell::Static),
+    ("example_portability", NonCell::Static),
+    ("example_shape", NonCell::Static),
+    ("examples_fixture_coverage", NonCell::Static),
+    ("exec_depend_drift_check", NonCell::Static),
+    ("exec_model_matrix", NonCell::Static),
+    (
+        "executor",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Pubsub/Example — answered by linux_example_pubsub_e2e; executor API tests",
+        ),
+    ),
+    ("executor_arena_advisory", NonCell::FeatureLane),
+    (
+        "executor_sizing_e2e",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/EntryPubsub/Workspace — answered by deployed_native_system_e2e; this one asserts sizing",
+        ),
+    ),
+    ("fixture_group_resolution", NonCell::Static),
+    ("fixture_source_coverage", NonCell::Static),
+    ("freertos_firmware_entry", NonCell::CompileCheck),
+    (
+        "freertos_qemu",
+        NonCell::Unmodeled(
+            "mps3-an536 Cyclone entry: the board is not a matrix axis value, and the FreertosMps2 Cpp Cyclone row is BuildOnly (S32Z270)",
+        ),
+    ),
+    (
+        "freertos_run_plan_runtime",
+        NonCell::Secondary(
+            "FreertosMps2/Rust/Zenoh/Pubsub/Example (same talker image) — answered by rtos_e2e",
+        ),
+    ),
+    ("ftti_detection_bounds", NonCell::Static),
+    (
+        "fvp_runtime_ws",
+        NonCell::Unmodeled(
+            "Fvp/Cpp/Cyclonedds/RealtimeTiers/Workspace — no cell; FVP runs only in verify-fvp-runtime",
+        ),
+    ),
+    (
+        "fvp_smoke",
+        NonCell::Unmodeled("the FVP board-import surface — no cell; runs in verify-fvp-runtime"),
+    ),
+    ("generated_message_code_compiles", NonCell::CompileCheck),
+    (
+        "image_config_workspace",
+        NonCell::Unmodeled("a per-image config knob probe — not a matrix workload"),
+    ),
+    (
+        "image_env_cmake_knob",
+        NonCell::Unmodeled("an image-env knob probe — not a matrix workload"),
+    ),
+    ("init_api", NonCell::Static),
+    ("integration_nuttx", NonCell::Static),
+    ("integration_px4", NonCell::CompileCheck),
+    ("interface_subset_linkage", NonCell::CompileCheck),
+    ("lane_build_covers_run", NonCell::Static),
+    ("lane_run_narrowing", NonCell::Static),
+    (
+        "large_msg",
+        NonCell::Secondary(
+            "Linux and QemuBaremetal Rust Pubsub — answered by linux_example_pubsub_e2e / emulator; this one asserts large payloads",
+        ),
+    ),
+    ("launch_py_resolves_as_shipped", NonCell::Static),
+    ("launch_synth", NonCell::Static),
+    ("legacy_files_forbidden", NonCell::Static),
+    (
+        "linux_async_roundtrip_e2e",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Service+Action/Example — answered by linux_example_reqresp_e2e; the async API",
+        ),
+    ),
+    (
+        "linux_entry_boot",
+        NonCell::Secondary(
+            "Linux/Rust/EntryPubsub/Workspace boot — answered by deployed_native_system_e2e",
+        ),
+    ),
+    ("linux_main_macro_forms", NonCell::CompileCheck),
+    ("linux_main_macro_misuse", NonCell::CompileCheck),
+    (
+        "linux_orchestration_tiers",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e",
+        ),
+    ),
+    ("loc_budgets", NonCell::Static),
+    (
+        "log_arena_knob",
+        NonCell::Unmodeled("a log-arena knob probe — not a matrix workload"),
+    ),
+    ("logging", NonCell::Static),
+    (
+        "logging_smoke",
+        NonCell::Unmodeled("Logging/Example on many platforms — no Example Logging cells exist"),
+    ),
+    ("macro_one_dep_resolves", NonCell::CompileCheck),
+    ("matrix_fixture_coverage", NonCell::Static),
+    ("mode_variants", NonCell::Static),
+    (
+        "multi_node",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Pubsub/Example — answered by linux_example_pubsub_e2e; several nodes in one process",
+        ),
+    ),
+    ("multihost_partition_bake", NonCell::Static),
+    (
+        "nano2nano",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Pubsub+Service+Action/Example — answered by the linux_example_* consumers",
+        ),
+    ),
+    ("nav2_compat", NonCell::CompileCheck),
+    ("negative_diagnostic_registry", NonCell::Static),
+    ("no_local_axis_tables", NonCell::Static),
+    ("non_goals_grep", NonCell::Static),
+    (
+        "nvidia_ivc_mock_wire_format",
+        NonCell::Unmodeled("the IVC mock link transport, no RMW — not a matrix workload"),
+    ),
+    ("on_violation_lowering", NonCell::Static),
+    ("orchestration_composable", NonCell::Static),
+    ("orchestration_conditionals", NonCell::Static),
+    ("orchestration_e2e", NonCell::Static),
+    ("orchestration_includes", NonCell::Static),
+    ("orchestration_set_remap_env", NonCell::Static),
+    (
+        "orchestration_tiers_freertos",
+        NonCell::Secondary(
+            "FreertosMps2/Rust/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e",
+        ),
+    ),
+    ("output_marker_gate", NonCell::Static),
+    (
+        "parameters_roundtrip",
+        NonCell::Unmodeled("Linux/C+Cpp/Zenoh/Params/Example — no cell models it"),
+    ),
+    ("pkg_index", NonCell::CompileCheck),
+    ("platform", NonCell::Static),
+    ("platform_header_compile", NonCell::CompileCheck),
+    (
+        "pool_exhaustion_threadx_linux",
+        NonCell::Unmodeled("session-pool exhaustion on ThreadX-Linux — not a matrix workload"),
+    ),
+    ("px4_bridge_compile", NonCell::CompileCheck),
+    (
+        "px4_xrce",
+        NonCell::Unmodeled("px4_msgs over XRCE via px4-stub — Px4 is modelled only as uORB"),
+    ),
+    ("qemu_patched_binary", NonCell::Static),
+    (
+        "qos",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Pubsub/Example — answered by linux_example_pubsub_e2e; QoS API",
+        ),
+    ),
+    (
+        "qos_overrides_runtime_delivery",
+        NonCell::Unmodeled("Linux/Rust/Zenoh/Qos/Example — no cell models it"),
+    ),
+    ("rclrs_talker_port", NonCell::FeatureLane),
+    (
+        "realtime_subnode_cpp_e2e",
+        NonCell::Secondary(
+            "Linux/Cpp/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e",
+        ),
+    ),
+    (
+        "realtime_subnode_cpp_portable_e2e",
+        NonCell::Secondary(
+            "Linux/Cpp/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e",
+        ),
+    ),
+    ("repo_root_is_unified", NonCell::Static),
+    (
+        "rmw_coordinate_truth",
+        NonCell::Secondary(
+            "boots every workspace row to check node registration on the right RMW — registration, not delivery, so it answers no cell",
+        ),
+    ),
+    ("ros_editions_bridge", NonCell::Edition),
+    ("ros_editions_codegen", NonCell::Edition),
+    ("ros_editions_e2e", NonCell::Edition),
+    ("ros_editions_nano_interop", NonCell::Edition),
+    ("ros_editions_smoke", NonCell::Edition),
+    (
+        "safety_e2e",
+        NonCell::Unmodeled(
+            "Linux/Rust+C+Cpp/Zenoh/Safety/Example — no cell models it (the Workspace rows are workspace_features_e2e)",
+        ),
+    ),
+    (
+        "sched_dims_applied_e2e",
+        NonCell::Secondary(
+            "the matrix::SCHED_CELLS consumer (RFC-0051 §6a); its RealtimeTiers cells are answered by realtime_tiers_e2e",
+        ),
+    ),
+    ("sched_dims_model_coverage", NonCell::Static),
+    ("schema_serializer_round_trip", NonCell::Static),
+    ("self_bringup", NonCell::Static),
+    ("serialized_size_bound", NonCell::Static),
+    (
+        "service_roundtrip_inprocess_e2e",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Service/Workspace — answered by roundtrip_xprocess_e2e; in-process variant",
+        ),
+    ),
+    (
+        "services",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Service/Example — answered by linux_example_reqresp_e2e",
+        ),
+    ),
+    ("signal_fd_wake", NonCell::FeatureLane),
+    (
+        "sim_time_clock_e2e",
+        NonCell::Unmodeled("sim-time /clock — not a matrix workload"),
+    ),
+    ("static_memory_declared_pools", NonCell::CompileCheck),
+    ("staticlib_duplicate_symbols", NonCell::CompileCheck),
+    ("subnode_freestanding_link", NonCell::CompileCheck),
+    ("system_toml_tiers_parse", NonCell::Static),
+    ("tier_filter", NonCell::FeatureLane),
+    ("time_to_ros_msg", NonCell::Static),
+    (
+        "trigger_conditions",
+        NonCell::Unmodeled("in-process guard/trigger conditions — not a matrix workload"),
+    ),
+    (
+        "violation_channel_e2e",
+        NonCell::Unmodeled("the violation channel on Zephyr C++ — not a matrix workload"),
+    ),
+    ("wake_latency", NonCell::FeatureLane),
+    ("weak_symbol_audit", NonCell::Static),
+    ("workspace_dirwalk_discovery", NonCell::Static),
+    ("workspace_lints_check", NonCell::Static),
+    (
+        "workspace_metadata",
+        NonCell::Secondary(
+            "Linux workspace EntryPubsub prebuilt/census checks — the Rust delivery is answered by deployed_native_system_e2e",
+        ),
+    ),
+    ("workspace_shadowing", NonCell::CompileCheck),
+    (
+        "xrce",
+        NonCell::Secondary(
+            "Linux/Rust/Xrce/Pubsub/Example (serial too) — answered by linux_example_pubsub_e2e",
+        ),
+    ),
+    ("xrce_concurrent_entities", NonCell::FeatureLane),
+    ("xrce_guard_wake", NonCell::FeatureLane),
+    ("zenoh_archive_symbols", NonCell::CompileCheck),
+    ("zenoh_header_parity", NonCell::CompileCheck),
+    ("zephyr_leaf_staleness", NonCell::Static),
+    ("zephyr_prjconf_requirements", NonCell::Static),
+    ("zephyr_self_pkg", NonCell::CompileCheck),
+    (
+        "zero_copy",
+        NonCell::Secondary(
+            "Linux/Rust/Zenoh/Pubsub/Example — answered by linux_example_pubsub_e2e; zero-copy receive",
+        ),
+    ),
+    ("zpico_build_matrix", NonCell::CompileCheck),
+];
+
+/// Which consumer answers this cell. THE assignment — disjoint by construction
+/// (the first matching arm wins, and the arms are ordered so none shadows a
+/// narrower one). Total over Runtime cells; `None` only for a BuildOnly or
+/// CarveOut cell nobody runs.
+pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
+    use Consumer::*;
+    use Kind as K;
+    use Lang as L;
+    use PlatformId as P;
+    use Rmw as R;
+    use Workload as W;
+    // A CONFIGURED cell is answered by the test of its configuration
+    // (RFC-0051 §7a): its default-build sibling's consumer runs the default
+    // build, which is exactly what the configuration is not.
+    if !cell.config.is_empty() {
+        return match (cell.platform, cell.config) {
+            (P::Linux, [Config::Lending, Config::Multisession]) => Some(LoanE2e),
+            _ => None,
+        };
+    }
+    match (cell.platform, cell.lang, cell.rmw, cell.workload, cell.kind) {
+        // ── the phase-329 W1 consumers, which derive their cases ──────────
+        (_, _, _, W::Multihost, _) => Some(Multihost),
+        (_, _, _, W::RealtimeTiers, _) => Some(RealtimeTiers),
+        (_, _, _, W::Service | W::Action, K::Workspace) => Some(Roundtrip),
+        // entry_e2e — the RTOS EntryPubsub subset it boots. ZENOH only: its
+        // exec table is keyed without the RMW, so a Cyclone cell here booted
+        // the zenoh image (phase-510 W3 found it on Zephyr C++).
+        (P::ThreadxLinux, L::C | L::Cpp | L::Mixed, R::Zenoh, W::EntryPubsub, _) => Some(Entry),
+        (P::ThreadxRiscv64, L::C, R::Zenoh, W::EntryPubsub, _) => Some(Entry),
+        (P::FreertosMps2, L::C | L::Cpp | L::Mixed, R::Zenoh, W::EntryPubsub, _) => Some(Entry),
+        (P::ZephyrNativeSim, L::C | L::Cpp | L::Mixed, R::Zenoh, W::EntryPubsub, _) => Some(Entry),
+        (P::NuttxArm, L::C | L::Rust, R::Zenoh, W::EntryPubsub, _) => Some(Entry),
         (
-            PlatformId::ZephyrNativeSim,
-            Lang::C | Lang::Cpp | Lang::Mixed,
-            Workload::EntryPubsub,
+            P::ZephyrNativeSim,
+            L::Rust,
             _,
+            W::Params | W::Qos | W::Lifecycle | W::Safety,
+            K::Workspace,
         ) => Some(Entry),
-        (PlatformId::NuttxArm, Lang::C | Lang::Rust, Workload::EntryPubsub, _) => Some(Entry),
-        // entry_e2e — zephyr-rust feature-workspace entries.
+        (P::ZephyrNativeSim, L::Cpp, _, W::Params, K::Workspace) => Some(Entry),
         (
-            PlatformId::ZephyrNativeSim,
-            Lang::Rust,
-            Workload::Params | Workload::Qos | Workload::Lifecycle | Workload::Safety,
-            Kind::Workspace,
-        ) => Some(Entry),
-        // entry_e2e — issue 1681's zephyr C++ params entry.
-        (PlatformId::ZephyrNativeSim, Lang::Cpp, Workload::Params, Kind::Workspace) => Some(Entry),
-        // workspace_features_e2e — native feature workspaces (Params is a
-        // separate W4 file, deliberately excluded).
-        (
-            PlatformId::Linux,
+            P::Linux,
             _,
-            Workload::CustomMsg
-            | Workload::Logging
-            | Workload::Qos
-            | Workload::Lifecycle
-            | Workload::Safety
-            | Workload::Remap,
-            Kind::Workspace,
+            _,
+            W::CustomMsg | W::Logging | W::Qos | W::Lifecycle | W::Safety | W::Remap,
+            K::Workspace,
         ) => Some(WorkspaceFeatures),
+        // ── consumers that hand-list their cases (`assert_consumer_cases`) ─
+        (P::Linux, _, _, W::Pubsub, K::Example) => Some(LinuxExamplePubsub),
+        (P::Linux, _, _, W::Service | W::Action, K::Example) => Some(LinuxExampleReqresp),
+        (P::Linux, _, _, W::ExecutorBoundNode, K::Example) => Some(LinuxExampleExecutorBoundNode),
+        (_, _, _, W::Port | W::PortSmoke | W::PortMonitor, K::Example) => Some(PortTemplates),
+        (P::ZephyrQemuCortexM, _, _, W::Pubsub | W::BootReport, K::Example) => Some(ZephyrCortexM),
+        (P::ZephyrNativeSim, _, _, W::Pubsub | W::Service | W::Action, K::Example) => Some(Zephyr),
+        (P::ZephyrNativeSim, L::Rust, R::Zenoh, W::EntryPubsub, K::Workspace) => Some(Zephyr),
+        (
+            P::FreertosMps2 | P::NuttxArm | P::ThreadxLinux | P::ThreadxRiscv64,
+            _,
+            R::Zenoh,
+            W::Pubsub | W::Service | W::Action,
+            K::Example,
+        ) => Some(RtosE2e),
+        (_, _, _, W::TypedCarrier, K::Example) => Some(TypedCarrier),
+        (_, _, _, W::Params, K::Example) => Some(ParamStoreCarve),
+        (P::ThreadxLinux, _, R::Cyclonedds, _, K::Example) => Some(LinuxApi),
+        (P::ThreadxRiscv64, _, _, W::Errno, K::Example) => Some(ThreadxRiscv64Qemu),
+        (P::ThreadxRiscv64, _, R::Cyclonedds, W::Pubsub, K::Example) => Some(ThreadxRiscv64Qemu),
+        (P::NuttxRiscv, _, _, W::Pubsub, K::Example) => Some(CRiscvNuttx),
+        (P::QemuBaremetal, _, _, _, K::Example) => Some(Emulator),
+        (P::Linux, L::Rust, R::Zenoh, W::EntryPubsub, K::Workspace) => Some(DeployedNativeSystem),
+        (P::FreertosMps2, L::Rust, R::Zenoh, W::EntryPubsub, K::Workspace) => Some(BridgeNetwork),
+        (P::FreertosPosix, _, _, W::EntryPubsub, K::Workspace) => Some(FreertosPosix),
+        (P::Linux, L::C | L::Cpp, _, W::Params, K::Workspace) => Some(CppCParamLiveRead),
+        (P::Linux, L::Rust, _, W::Params, K::Workspace) => Some(ParamLiveRead),
         _ => None,
     }
+}
+
+/// One cell's coordinate, as a consumer declares the cases it runs.
+pub type CellCoord = (PlatformId, Lang, Rmw, Workload, Kind);
+
+fn cell_key(coord: CellCoord, config: &[Config]) -> String {
+    if config.is_empty() {
+        format!("{coord:?}")
+    } else {
+        format!("{coord:?} +{config:?}")
+    }
+}
+
+/// The Runtime cells [`consumer_of`] assigns to `consumer`, as coordinates
+/// (with the configuration set, for a configured cell).
+pub fn consumer_cells(consumer: Consumer) -> std::collections::BTreeSet<String> {
+    runtime_cells()
+        .filter(|c| consumer_of(c) == Some(consumer))
+        .map(|c| cell_key((c.platform, c.lang, c.rmw, c.workload, c.kind), c.config))
+        .collect()
+}
+
+/// The binding a hand-listing consumer carries (RFC-0051 §7c): the cases it
+/// runs are exactly the Runtime cells assigned to it. A case with no cell
+/// runs a coordinate the matrix does not model; a cell with no case is a
+/// Runtime cell nobody runs. Both are reds here, with the coordinate named.
+pub fn assert_consumer_cases(consumer: Consumer, covered: &[CellCoord]) {
+    let configured: Vec<(CellCoord, &'static [Config])> =
+        covered.iter().map(|c| (*c, &[][..])).collect();
+    assert_consumer_config_cases(consumer, &configured);
+}
+
+/// [`assert_consumer_cases`] for a consumer that runs CONFIGURED cells: each
+/// case names its configuration set too (RFC-0051 §7a).
+pub fn assert_consumer_config_cases(
+    consumer: Consumer,
+    covered: &[(CellCoord, &'static [Config])],
+) {
+    let declared: std::collections::BTreeSet<String> =
+        covered.iter().map(|(c, k)| cell_key(*c, k)).collect();
+    let assigned = consumer_cells(consumer);
+    let unrun: Vec<_> = assigned.difference(&declared).collect();
+    let unmodeled: Vec<_> = declared.difference(&assigned).collect();
+    assert!(
+        unrun.is_empty() && unmodeled.is_empty(),
+        "`tests/{}.rs` ({consumer:?}) is out of step with matrix::CELLS:\n  \
+         Runtime cells assigned to it that it does not run: {unrun:?}\n  \
+         cases it runs that no Runtime cell assigned to it models: {unmodeled:?}\n\
+         Fix the case list, the cell's tier, or `consumer_of` (RFC-0051 §7c).",
+        consumer.binary()
+    );
 }
 
 // =============================================================================
@@ -1431,30 +2011,23 @@ mod tests {
     /// enforced at runtime (a claimed cell with no `exec_for` arm panics loudly
     /// in the consumer), since exec tables live in the per-test binaries.
     #[test]
-    fn g5_w1_consumers_claim_their_owned_workloads() {
-        for c in runtime_cells() {
-            let fully_owned = matches!(c.workload, Workload::Multihost | Workload::RealtimeTiers)
-                || (matches!(c.workload, Workload::Service | Workload::Action)
-                    && matches!(c.kind, Kind::Workspace));
-            if fully_owned {
-                assert!(
-                    w1_consumer_of(c).is_some(),
-                    "G5: Runtime cell {c:?} is in a W1-owned workload but no consumer claims it \
-                     — add it to `w1_consumer_of` and the consumer's `exec_for`"
-                );
-            }
-        }
-        for cons in [
-            W1Consumer::Multihost,
-            W1Consumer::Roundtrip,
-            W1Consumer::RealtimeTiers,
-            W1Consumer::Entry,
-            W1Consumer::WorkspaceFeatures,
-        ] {
+    fn every_runtime_cell_has_a_consumer() {
+        // RFC-0051 §7c — `consumer_of` is TOTAL over Runtime cells.
+        let unowned: Vec<_> = runtime_cells()
+            .filter(|c| consumer_of(c).is_none())
+            .collect();
+        assert!(
+            unowned.is_empty(),
+            "Runtime cell(s) no consumer answers — give each a `consumer_of` arm and a \
+             test that runs it, or a tier saying what unlocks it: {unowned:#?}"
+        );
+        // And every consumer still owns a cell — a tripwire against a
+        // consumer file whose workload/platform set vanished, so it runs nothing.
+        for &cons in Consumer::ALL {
             assert!(
-                runtime_cells().any(|c| w1_consumer_of(c) == Some(cons)),
-                "G5: consumer {cons:?} claims no Runtime cell — its workload/platform set \
-                 vanished from CELLS (a consumer file would silently run nothing)"
+                runtime_cells().any(|c| consumer_of(c) == Some(cons)),
+                "consumer {cons:?} (`tests/{}.rs`) claims no Runtime cell",
+                cons.binary()
             );
         }
     }
@@ -1507,6 +2080,9 @@ mod tests {
                 c.rmw.index(),
                 c.workload.port_offset(),
                 c.kind as u8,
+                // phase-510 — a configured cell shares its default-build
+                // sibling's coordinate; the configuration set tells them apart.
+                c.config.iter().map(|k| *k as u8).collect::<Vec<_>>(),
             );
             assert!(seen.insert(key), "duplicate cell: {c:?}");
         }

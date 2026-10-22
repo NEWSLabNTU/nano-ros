@@ -58,7 +58,7 @@ use nros_tests::{
         build_native_workspace_rust_service_client_entry,
         build_native_workspace_rust_service_server_entry, require_zenohd,
     },
-    matrix::{Cell as MCell, Kind as MK, Lang as ML, Tier as MT, Workload as MW},
+    matrix::{Cell as MCell, Lang as ML, Tier as MT, Workload as MW},
 };
 use std::{path::PathBuf, process::Command, time::Duration};
 
@@ -223,8 +223,8 @@ fn roundtrip_xprocess() {
     let cells: Vec<&MCell> = nros_tests::matrix::CELLS
         .iter()
         .filter(|c| {
-            matches!(c.kind, MK::Workspace)
-                && matches!(c.workload, MW::Service | MW::Action)
+            // RFC-0051 §7c — the assignment is `consumer_of`'s.
+            nros_tests::matrix::consumer_of(c) == Some(nros_tests::matrix::Consumer::Roundtrip)
                 && matches!(c.tier, MT::Runtime)
         })
         .collect();

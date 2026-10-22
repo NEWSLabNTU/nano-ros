@@ -308,3 +308,28 @@ fn run_cell(cell: &MCell) {
         rmw_str(cell.rmw)
     );
 }
+
+/// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::LinuxExamplePubsub,
+        &[
+            (P::Linux, L::C, R::Cyclonedds, W::Pubsub, K::Example),
+            (P::Linux, L::C, R::Xrce, W::Pubsub, K::Example),
+            (P::Linux, L::C, R::Zenoh, W::Pubsub, K::Example),
+            (P::Linux, L::Cpp, R::Cyclonedds, W::Pubsub, K::Example),
+            (P::Linux, L::Cpp, R::Xrce, W::Pubsub, K::Example),
+            (P::Linux, L::Cpp, R::Zenoh, W::Pubsub, K::Example),
+            (P::Linux, L::Rust, R::Cyclonedds, W::Pubsub, K::Example),
+            (P::Linux, L::Rust, R::Xrce, W::Pubsub, K::Example),
+            (P::Linux, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+        ],
+    );
+}

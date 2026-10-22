@@ -464,3 +464,37 @@ fn xrce_action_goal_sent_before_its_server_is_resent(#[case] lang: ML) {
         lang.as_str()
     );
 }
+
+/// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::LinuxExampleReqresp,
+        &[
+            (P::Linux, L::C, R::Cyclonedds, W::Action, K::Example),
+            (P::Linux, L::C, R::Cyclonedds, W::Service, K::Example),
+            (P::Linux, L::C, R::Xrce, W::Action, K::Example),
+            (P::Linux, L::C, R::Xrce, W::Service, K::Example),
+            (P::Linux, L::C, R::Zenoh, W::Action, K::Example),
+            (P::Linux, L::C, R::Zenoh, W::Service, K::Example),
+            (P::Linux, L::Cpp, R::Cyclonedds, W::Action, K::Example),
+            (P::Linux, L::Cpp, R::Cyclonedds, W::Service, K::Example),
+            (P::Linux, L::Cpp, R::Xrce, W::Action, K::Example),
+            (P::Linux, L::Cpp, R::Xrce, W::Service, K::Example),
+            (P::Linux, L::Cpp, R::Zenoh, W::Action, K::Example),
+            (P::Linux, L::Cpp, R::Zenoh, W::Service, K::Example),
+            (P::Linux, L::Rust, R::Cyclonedds, W::Action, K::Example),
+            (P::Linux, L::Rust, R::Cyclonedds, W::Service, K::Example),
+            (P::Linux, L::Rust, R::Xrce, W::Action, K::Example),
+            (P::Linux, L::Rust, R::Xrce, W::Service, K::Example),
+            (P::Linux, L::Rust, R::Zenoh, W::Action, K::Example),
+            (P::Linux, L::Rust, R::Zenoh, W::Service, K::Example),
+        ],
+    );
+}

@@ -1742,3 +1742,29 @@ fn test_threadx_linux_c_image_exit_status_is_the_apps() {
          board reporting failure for every app would pass the half above"
     );
 }
+
+/// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::LinuxApi,
+        &[
+            (P::ThreadxLinux, L::C, R::Cyclonedds, W::Action, K::Example),
+            (P::ThreadxLinux, L::C, R::Cyclonedds, W::Pubsub, K::Example),
+            (P::ThreadxLinux, L::C, R::Cyclonedds, W::Service, K::Example),
+            (
+                P::ThreadxLinux,
+                L::Cpp,
+                R::Cyclonedds,
+                W::Pubsub,
+                K::Example,
+            ),
+        ],
+    );
+}

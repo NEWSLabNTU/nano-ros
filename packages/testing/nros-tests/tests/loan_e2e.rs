@@ -281,3 +281,21 @@ fn loan_path_is_alloc_free_on_native_zenoh(zenohd_unique: ZenohRouter) {
     );
     eprintln!("loan zero-alloc trace: {N} publishes ⇒ {delta} allocs (budget {budget})",);
 }
+
+/// RFC-0051 §7a/§7c (phase-510 W4) — this file answers the one configured
+/// cell `(Linux, Rust, Zenoh, Pubsub, Example) + [Lending, Multisession]`.
+/// Fixture-free.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Config, Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_config_cases,
+    };
+    assert_consumer_config_cases(
+        Consumer::LoanE2e,
+        &[(
+            (P::Linux, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+            &[Config::Lending, Config::Multisession],
+        )],
+    );
+}

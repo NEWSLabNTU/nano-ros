@@ -1021,3 +1021,26 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
         "RTIC mixed-priority QEMU talker published 0 messages"
     );
 }
+
+/// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::Emulator,
+        &[
+            (P::QemuBaremetal, L::C, R::Zenoh, W::Action, K::Example),
+            (P::QemuBaremetal, L::C, R::Zenoh, W::Pubsub, K::Example),
+            (P::QemuBaremetal, L::C, R::Zenoh, W::Service, K::Example),
+            (P::QemuBaremetal, L::Cpp, R::Zenoh, W::Action, K::Example),
+            (P::QemuBaremetal, L::Cpp, R::Zenoh, W::Pubsub, K::Example),
+            (P::QemuBaremetal, L::Cpp, R::Zenoh, W::Service, K::Example),
+            (P::QemuBaremetal, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+        ],
+    );
+}

@@ -432,3 +432,41 @@ fn program_counter(registers: &str) -> Option<u32> {
         .collect();
     u32::from_str_radix(&hex, 16).ok()
 }
+
+/// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::ZephyrCortexM,
+        &[
+            (
+                P::ZephyrQemuCortexM,
+                L::C,
+                R::Zenoh,
+                W::BootReport,
+                K::Example,
+            ),
+            (P::ZephyrQemuCortexM, L::C, R::Zenoh, W::Pubsub, K::Example),
+            (
+                P::ZephyrQemuCortexM,
+                L::Cpp,
+                R::Zenoh,
+                W::Pubsub,
+                K::Example,
+            ),
+            (
+                P::ZephyrQemuCortexM,
+                L::Rust,
+                R::Zenoh,
+                W::Pubsub,
+                K::Example,
+            ),
+        ],
+    );
+}

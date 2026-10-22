@@ -11,7 +11,7 @@
 //! That file owns the RTOS `EntryPubsub` subset, and every cell in it is
 //! ZENOH: it starts a `ZenohRouter` on the cell's port and dials a
 //! `tcp/127.0.0.1:<port>` observer. CycloneDDS needs no router and has no
-//! locator, so those two steps have nothing to do here. `w1_consumer_of`
+//! locator, so those two steps have nothing to do here. `consumer_of`
 //! therefore leaves these cells unclaimed, which its own doc comment names as
 //! the shape for "covered by a platform-e2e file".
 //!
@@ -189,4 +189,34 @@ fn freertos_posix_cpp_entry_delivers_over_cyclonedds() {
     let domain = domain_of(PlatformId::FreertosPosix, Lang::Cpp, Workload::EntryPubsub);
     let out = run_entry(&entry.to_path_buf(), domain, "freertos-posix-cpp");
     assert_delivered(&out, INT32_TALKER_LOG_PREFIX, domain, "freertos-posix-cpp");
+}
+
+/// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::FreertosPosix,
+        &[
+            (
+                P::FreertosPosix,
+                L::C,
+                R::Cyclonedds,
+                W::EntryPubsub,
+                K::Workspace,
+            ),
+            (
+                P::FreertosPosix,
+                L::Cpp,
+                R::Cyclonedds,
+                W::EntryPubsub,
+                K::Workspace,
+            ),
+        ],
+    );
 }

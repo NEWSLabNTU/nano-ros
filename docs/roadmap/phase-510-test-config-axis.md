@@ -1,6 +1,6 @@
 # Phase 510 — a configuration axis for the test matrix, one feature-lane registry, and every test bound to a cell
 
-**Status (2026-10-22). W0–W2 done; W3–W6 open.** Design is RFC-0051 §7
+**Status (2026-10-22). W0–W4 done; W5–W6 open.** Design is RFC-0051 §7
 (amendment 2026-10-22) and RFC-0061's amendment of the same date. This phase
 opened from phase-441 W8: the 0814 decision (option 2) keeps the loan publish
 half, which by W8's own condition calls for an embedded lending lane. Asking
@@ -245,6 +245,48 @@ Gate: a runtime target in neither fails.
 
 **Acceptance.** The gate passes with all 94 matrix-scoped targets bound. Its negative control is a new unbound runtime test file, which it refuses.
 
+**DONE 2026-10-22.** A read of every Runtime cell against the tests that
+resolve its fixtures assigned each one its primary test. phase-329 W1's
+five-file `W1Consumer` grew into `matrix::Consumer`: 24 values, one per primary
+binary, with `consumer_of(cell)` the one assignment, by rule.
+
+- `every_runtime_cell_has_a_consumer` (lib) holds `consumer_of` total over
+  Runtime cells, and every consumer owning at least one.
+- The five W1 consumers derive their cases from `consumer_of`; multihost and
+  roundtrip used to spell their own predicate, and now do not. The other 18
+  carry a fixture-free `cases_bound_to_matrix_cells` that calls
+  `matrix::assert_consumer_cases` with their case list, so a cell added,
+  retiered or reassigned without its consumer's list moving is a red.
+- `matrix::NON_CELL_TESTS` gives each of the 150 other binaries its reason:
+  `Static` 51, `CompileCheck` 30, `Edition` 5, `FeatureLane` 12, `Secondary`
+  29 (each names its primary and what it adds) and `Unmodeled` 23 (each names
+  the coordinate or workload the matrix does not model — candidate cells, not
+  exemptions).
+- `every_test_binary_is_a_consumer_an_interop_test_or_classified`
+  (`matrix_fixture_coverage`, already in the gate lane) holds the partition of
+  `tests/*.rs` and each consumer's binding. Negative control: a new
+  `tests/zz_unbound_probe.rs` was refused, named.
+
+What binding found, beyond the 48:
+
+- **Eleven Runtime cells nothing delivered through.** Nine native workspace
+  `EntryPubsub` cells (C, C++, Mixed on zenoh; all three languages on Cyclone
+  and XRCE) and ThreadX-Linux Rust `EntryPubsub` were booted only by
+  `rmw_coordinate_truth`, which checks node registration, not delivery. They
+  are `BuildOnly(NO_DELIVERY_TEST)` now, with what unlocks them.
+- **`entry_e2e` ran the wrong image for one.** Its exec table is keyed without
+  the RMW, so the Zephyr C++ Cyclone entry cell booted the zenoh image, and
+  `workspace-zephyr-cpp-cyclonedds` was resolved by no test. `consumer_of`
+  assigns `entry_e2e` zenoh entries only; that cell is
+  `BuildOnly(ENTRY_E2E_IS_ZENOH_ONLY)`.
+- `ci_lane`'s documented table moved with it (nightly 36 -> 35 cells, same 34
+  coordinates), and its tier-3 cell figure, ungated, had read 206 for some time
+  where the matrix has 229 Runtime cells.
+
+`assert_test_bound` (interop) keys on four axes; the matrix binding keys on all
+five plus the configuration set, because Example and Workspace cells share
+(platform, lang, rmw, workload).
+
 ### W4 — retire the one-off-recipe-only class
 
 Each one-off-only target above either:
@@ -254,6 +296,24 @@ Each one-off-only target above either:
 `loan_e2e` and `zenoh_integration` get `Config::Multisession` (+ `Lending`) Linux cells. `ros_editions_*` stay off the matrix by the standing edition-axis ruling and are recorded so. `esp32_emulator` becomes a `CarveOut` naming issue 1525.
 
 **Acceptance.** No runtime target is reached only by a recipe outside the tier ladder, unless the W3 table says why.
+
+**DONE 2026-10-22.** Each one-off-only target, now:
+
+| Target | Where it runs, or why it has no tiered lane |
+| --- | --- |
+| `loan_e2e` | The configured cell `(Linux, Rust, Zenoh, Pubsub, Example) + [Lending, Multisession]`, consumer `Consumer::LoanE2e`, in `test-zpico-multisession` — a dependency of `test-all`, so on the tier ladder |
+| `nros-rmw-zenoh` `zenoh_integration` | The same multisession lane |
+| `nros-rmw-zenoh` `matched_events_live` | `required-features-tests` (W2), inside `check::build` |
+| `board_import` | `NonCell::CompileCheck` — a west fixture, not a runtime test |
+| `fvp_runtime_ws`, `fvp_smoke` | `NonCell::Unmodeled`: no FVP cell; both run in `verify-fvp-runtime` |
+| `esp32_emulator` | `NonCell::Unmodeled`: ESP32 is dormant (issue 1525) |
+| `ros_editions_*` | `NonCell::Edition`, the standing edition-axis ruling |
+| `nros-px4-sitl-test` (4) | Not a `nros-tests` binary: a separate crate whose tests need a PX4 SITL tree, run by `px4 test-*` and nothing else |
+
+A configured cell is answered by the test of its configuration, never by its
+default-build sibling's consumer (`consumer_of` checks `config` first), and the
+cell key carries the configuration set, so `cells_unique` and the bindings tell
+the two apart.
 
 ### W5 — the first embedded configuration cell: lending on FreeRTOS
 
