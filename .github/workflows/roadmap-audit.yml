@@ -18,6 +18,11 @@
 # log this workflow family renders lossily (steps as `UNKNOWN STEP`, whole lines
 # missing). A report nobody can read back is the same as no report.
 #
+# Issue 1489's section rides here too: an open work item naming API-parity
+# ledger keys the ledger has closed. Its verdict moves when a SIBLING phase
+# merges, so as a gate it would blame that sibling's PR; its negative control
+# runs on the fast line instead, inside `check-roadmap-claims`.
+#
 # MONTHLY, not nightly. The thing it watches moves at the speed of phases being
 # written, and a report that arrives faster than anyone acts on it becomes noise
 # — the same reason `pr-verdicts.yml` runs twice a day and not every hour.

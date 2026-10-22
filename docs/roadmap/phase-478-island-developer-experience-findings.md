@@ -328,7 +328,9 @@ as open whose defect is fixed. Checked 2026-10-05 on origin/main:
 | 1303, 1036, 1252 | open | open (I5) |
 | 0934, 0941, 1121, 1371, 1419, 1489 | open | open |
 
-Resolve 1120 per I5. Issue 1489 is the general form of this row.
+Resolve 1120 per I5. Issue 1489 is the general form of this row; it was
+resolved 2026-10-22 for the one artifact that can answer it mechanically, the
+API-parity ledger (a section of `just roadmap-audit`), and archived.
 
 ### T2 -- the fresh-worktree run, and `image-facts` on the island
 

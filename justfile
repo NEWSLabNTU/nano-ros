@@ -717,7 +717,9 @@ api-comparison *args:
 # phase-419 W3 — candidates for a roadmap verification pass. A REPORT, never a
 # gate: supersession, a reversed premise and a claim of absence all need
 # judgment, and W2's `check-roadmap-claims` already took everything that does
-# not. Exit 0 whatever it finds.
+# not. Exit 0 whatever it finds. Issue 1489 added a section: open work items
+# naming API-parity ledger keys the ledger has since closed — a report for the
+# same reason, since its verdict moves when a SIBLING phase merges.
 [group("docs")]
 roadmap-audit *ARGS:
     @python3 scripts/roadmap-audit.py {{ ARGS }}

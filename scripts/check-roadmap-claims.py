@@ -65,6 +65,8 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROADMAP = os.path.join("docs", "roadmap")
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import roadmap_ledger_claims  # noqa: E402  issue 1489 -- its self-test only
 BASELINE = os.path.join(".config", "roadmap-claims-baseline.txt")
 # Module-level so `check-baseline-shape` can hold the file to it.
 BASELINE_HEADER = (
@@ -319,6 +321,16 @@ def self_test(quiet=False):
             failures += 1
         elif not quiet:
             print("  ok    r3-annotated-resolved-is-clean")
+
+    # Issue 1489's rule -- an open work item read against the API-parity
+    # ledger -- is a REPORT (`just roadmap-audit`), because its verdict moves
+    # when a SIBLING phase merges and a gate would blame that sibling's pull
+    # request for a document it never touched. Its negative control is not
+    # like that: synthetic documents against a synthetic ledger, nothing read
+    # from the tree, milliseconds. So it rides here, on the fast line, where a
+    # rule that stopped firing is noticed on the next push rather than on the
+    # 1st of a month. `scripts/lib/roadmap_ledger_claims.py` has the reasons.
+    failures += roadmap_ledger_claims.self_test(quiet=quiet)
 
     if failures:
         print(f"check-roadmap-claims self-test: FAILED ({failures})")
