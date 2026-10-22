@@ -135,6 +135,10 @@ mod tests {
         !matches!(cell.platform, PlatformId::Linux)
             && matches!(cell.tier, Tier::Runtime)
             && !matches!(cell.kind, Kind::Interop)
+            // phase-510 — a CONFIGURED cell shares its default-build sibling's
+            // (platform, lang, workload) and so its formula port; its image is
+            // a different fixture, which carries its own locator.
+            && cell.config.is_empty()
     }
 
     /// THE RFC-0051 guarantee: the allocator is injective over every

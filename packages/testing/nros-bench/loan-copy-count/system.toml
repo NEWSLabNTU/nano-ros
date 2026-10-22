@@ -1,0 +1,16 @@
+# phase-510 W5 — the loan-copy bench's deployment (RFC-0098 D3). Same board
+# and network plan as the wake-latency bench beside it.
+[system]
+name = "loan_copy_count"
+rmw = "zenoh"
+domain_id = 0
+
+[image.mps2-an385-freertos]
+board = "freertos"
+# The router both images dial: 7850, in the FreeRTOS window and assigned to no
+# baked cell. `src/lib.rs` `LOCATOR` states the same for the images' own
+# `Config`, and `tests/lending_freertos_e2e.rs` starts the router there.
+locator = "tcp/10.0.2.2:7850"
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"

@@ -268,14 +268,14 @@ l3:
 # Tier 2 — phase-318 W4.d. Gate exactly the fixture COORDINATES the lane selected.
 #
 # The selection is 1-wise over platform x lang x rmw x kind (`nros_tests::ci_lane`),
-# computed from `matrix::CELLS` and emitted by `lane-coords`. 11 of 51 coordinates
+# computed from `matrix::CELLS` and emitted by `lane-coords`. 10 of 51 coordinates
 # (the count is gated by `ci_lane::tests::documented_lane_table_is_live`; do not
 # hand-edit it here — run `lane-coords tier2 | wc -l`).
 #
 # Why 1-wise and not pairwise, which is what this lane originally specified: cost
 # is COORDINATES, not cells, because cells share fixtures and fixtures are what
-# take hours. The pairwise cover is 35 of 229 cells (15 %) but 34 of 51
-# coordinates (67 %) — a middle tier costing 67 % of the sweep is one nobody runs,
+# take hours. The pairwise cover is 39 of 231 cells (17 %) but 37 of 51
+# coordinates (73 %) — a middle tier costing 73 % of the sweep is one nobody runs,
 # which is the failure mode RFC-0061 exists to fix. The pairwise coverage moved to
 # `ci-matrix-nightly` rather than being dropped: platform x lang is exactly where
 # the 0268 / 0245 / 0332 class lives.

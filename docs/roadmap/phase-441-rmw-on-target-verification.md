@@ -818,7 +818,7 @@ and the C, C++ and Rust loan docs stop claiming XRCE lends or uORB falls back
 with one copy. That meets 0814's "Acceptance for this half". Option 2 keeps the
 publish half, so by this item's own condition the embedded lending lane is
 next: the zenoh loan is compiled for embedded targets and run only on posix.
-That lane is [phase-510](phase-510-test-config-axis.md) W5: asking where it
+That lane is [phase-510](archived/phase-510-test-config-axis.md) W5: asking where it
 would go showed the matrix has no coordinate for a build configuration, so
 phase-510 adds one (RFC-0051 §7) before building the cell.
 
@@ -856,7 +856,7 @@ evidence, the item is *close it*.
 | [#1251](../issues/archived/1251-cyclone-slirp-needs-nat-profile.md) | a Cyclone peer for a QEMU guest cannot be loopback-pinned. It is W2's own residue and appears only as prerequisite #3 of a prose list |
 | [#0917](../issues/0917-an536-fragmented-sample-never-syncs.md) | re-homed 2026-10-12 from phase-358 (archived). Interrupt-driven RX landed, but the an536 FreeRTOS Cyclone target still never syncs a fragmented sample. Getting an on-target verdict on it is this phase's job |
 | [#0997](../issues/archived/0997-island-announces-spdp-once-then-lease-expires.md) | re-homed 2026-10-12 from phase-414 (archived). **Resolved 2026-10-18 on W6's cell**: no FreeRTOS task on the Cortex-R52 boards had an FPU context, so hard-float code clobbered other tasks' d-registers; Cyclone stamped its events `tsched = 0` and its SPDP/PMD events stopped rescheduling. Fixed in both R52 boards' FreeRTOS config, gated by `check-freertos-fpu-context`. |
-| [#0814](../issues/0814-lending-never-exercised-on-hardware.md) | re-homed 2026-10-13 from phase-433 (archived). The zero-copy lending surface is enabled only by a posix test crate, so no embedded target has run it. An on-target cell with lending on closes it. |
+| [#0814](../issues/archived/0814-lending-never-exercised-on-hardware.md) | re-homed 2026-10-13 from phase-433 (archived). The zero-copy lending surface is enabled only by a posix test crate, so no embedded target has run it. An on-target cell with lending on closes it. |
 
 ## Issues homed here (2026-10-17)
 

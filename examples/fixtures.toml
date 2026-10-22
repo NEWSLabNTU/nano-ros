@@ -2335,6 +2335,15 @@ lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-bench/wake-latency-cortex-m3"
 
+# phase-510 W5 — loan publish on FreeRTOS, delivery and payload copies counted
+# on target: the `(FreertosMps2, Rust, Zenoh, Pubsub, Example) + [Lending]` cell
+# (`tests/lending_freertos_e2e.rs`). Two bins, one row, like the bench above.
+[[fixture]]
+platform = "freertos"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-bench/loan-copy-count"
+
 [[fixture]]
 platform = "freertos"
 lang = "rust"

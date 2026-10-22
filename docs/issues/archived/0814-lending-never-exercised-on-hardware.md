@@ -2,13 +2,14 @@
 id: 814
 title: "The whole zero-copy surface sits behind `feature = \"lending\"`, which only
   a posix test crate ever enables"
-status: open
+status: resolved
+resolved: 2026-10-22
 type: test-gap
 area: rmw
 related: [issue-0812, issue-0813, issue-0781, issue-1400, issue-1369, issue-1422, phase-391, rfc-0010, rfc-0089, phase-394, phase-433, phase-460, phase-441, phase-510]
 ---
 
-**Home: [phase-441](../roadmap/phase-441-rmw-on-target-verification.md)**, re-homed 2026-10-13 from phase-433, archived that day. 433's on-target row is 441's subject, and this issue is the lending surface never exercised on an embedded target.
+**Home: [phase-441](../../roadmap/phase-441-rmw-on-target-verification.md)**, re-homed 2026-10-13 from phase-433, archived that day. 433's on-target row is 441's subject, and this issue is the lending surface never exercised on an embedded target.
 
 ## Problem
 
@@ -767,7 +768,39 @@ convenience, not a zero-copy claim.
 **What stays open is this issue's title.** Option 2 keeps the publish half, so
 phase-441 W8's condition for an embedded lending lane is met: the zenoh loan is
 compiled for embedded targets by the no-std ratchet and RUN only on posix.
-The lane is [phase-510](../roadmap/phase-510-test-config-axis.md) W5, as a
+The lane is [phase-510](../../roadmap/archived/phase-510-test-config-axis.md) W5, as a
 `config = [Lending]` matrix cell on FreeRTOS that asserts the copy count on
 target as well as delivery.
 
+## RESOLVED 2026-10-22 — the loan runs on an embedded target, and the copy it saves is measured there
+
+phase-510 W5 gave lending a matrix coordinate, `(FreertosMps2, Rust, Zenoh,
+Pubsub, Example) + [Lending]` (RFC-0051 §7a), and a test that answers it,
+`tests/lending_freertos_e2e.rs`. Two MPS2-AN385 FreeRTOS images built with
+`nros-node/rmw-lending` and `nros-rmw-zenoh/lending`
+(`packages/testing/nros-bench/loan-copy-count`): one publishes 20 samples
+through `publish_raw` and 20 through `try_loan` + `commit` and counts the
+payload-sized copies each makes (`--wrap` on `memcpy` and `__aeabi_memcpy*`,
+since a bare-metal image has no `LD_PRELOAD`); the other subscribes.
+
+Measured, 6 of 6 runs, identical:
+
+| Path | Publishes | Payload copies | Delivered to the second image |
+| --- | --- | --- | --- |
+| `publish_raw` | 20 | 40 | 20 |
+| `try_loan` + `commit` | 20 | 20 | 20 |
+
+So **on this target the loan saves exactly one payload copy per publish**,
+and is not zero-copy end to end. The copy left is zenoh-pico encoding into its
+non-expandable transmit buffer — §2's prediction, which the 2026-10-18 HOST
+measurement (1 copy raw, 0 loaned) did not reproduce, because the host build
+does not take that path. Both answers are now measured, each where it is true.
+The test asserts the saving rather than delivery alone: at least one fewer
+payload copy per publish through the loan, every loan granted, every sample
+whole, and a counter floor so a blind counter cannot pass.
+
+What this does not cover: real silicon (this is QEMU), and the other boards.
+The backends with no loan slot have their lending cells as `CarveOut`s naming
+option 2 above. The surface is still `lending`-gated, as the title says; what
+changed is that a lane enables it on an embedded target and RUNS it, which was
+the gap.
