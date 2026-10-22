@@ -594,3 +594,11 @@ sdk-lock-ignored:
 # file present before the build are not.
 unignored-build-writes:
     @bash scripts/build/unignored-writes.sh selftest
+
+# Issue 1325 -- `NROS_ZEPHYR_FIXTURE_FILTER` is matched per FIELD and
+# repo-relative, in both Zephyr builders, through one helper
+# (`scripts/lib/fixture-filter.sh`). A joined haystack let the checkout's own
+# path and cross-field `.*` select every leaf, silently and at build cost. The
+# gate runs the real leaf emitter from a checkout path named `448-xrce`.
+fixture-filter-fields:
+    @bash scripts/check-fixture-filter-fields.sh
