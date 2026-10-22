@@ -107,3 +107,18 @@ fn param_live_read_publishes_resolved_value(zenohd_unique: ZenohRouter) {
         );
     }
 }
+
+/// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::ParamLiveRead,
+        &[(P::Linux, L::Rust, R::Zenoh, W::Params, K::Workspace)],
+    );
+}

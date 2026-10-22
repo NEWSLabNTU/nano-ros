@@ -762,3 +762,102 @@ fn interop_bindings_g5_cells_are_lane_narrowable() {
         bad.join("\n")
     );
 }
+
+/// RFC-0051 §7c (phase-510 W3) — every `tests/*.rs` binary sits in exactly ONE
+/// of three places: it is a matrix [`Consumer`] (the test that answers some
+/// Runtime cells), the test of an `interop::CELLS` row, or a
+/// `matrix::NON_CELL_TESTS` row with the reason it answers no cell. A binary in
+/// none is a runtime test the matrix cannot see — the class phase-510 measured
+/// at 48 — and one in two is an assignment that says two things.
+///
+/// And each consumer carries its binding: a hand-listing consumer calls
+/// `assert_consumer_cases(Consumer::X, …)`, a deriving one filters
+/// `consumer_of(c) == Some(Consumer::X)`. A consumer whose file does neither
+/// would let its case list drift from the cells assigned to it.
+#[test]
+fn every_test_binary_is_a_consumer_an_interop_test_or_classified() {
+    use nros_tests::matrix::{Consumer, NON_CELL_TESTS};
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests");
+    let binaries: BTreeSet<String> = std::fs::read_dir(&dir)
+        .expect("read tests/")
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "rs"))
+        .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .collect();
+    assert!(
+        binaries.len() > 100,
+        "tests/ scan found only {} binaries",
+        binaries.len()
+    );
+
+    let mut owner: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for &c in Consumer::ALL {
+        owner
+            .entry(c.binary().to_string())
+            .or_default()
+            .push(format!("Consumer::{c:?}"));
+    }
+    let interop: BTreeSet<&str> = nros_tests::interop::CELLS
+        .iter()
+        .map(|c| c.test)
+        .filter(|t| *t != nros_tests::interop::NO_TEST)
+        .collect();
+    for t in &interop {
+        owner
+            .entry(t.to_string())
+            .or_default()
+            .push("interop::CELLS".into());
+    }
+    for (b, _) in NON_CELL_TESTS {
+        owner
+            .entry(b.to_string())
+            .or_default()
+            .push("NON_CELL_TESTS".into());
+    }
+
+    let mut problems = Vec::new();
+    for b in &binaries {
+        match owner.get(b).map(|v| v.as_slice()) {
+            None | Some([]) => problems.push(format!(
+                "tests/{b}.rs is in no table: make it a matrix Consumer (a cell names it), \
+                 an interop::CELLS test, or a NON_CELL_TESTS row with its reason"
+            )),
+            Some([_]) => {}
+            // One binary, one role.
+            Some(many) => problems.push(format!(
+                "tests/{b}.rs is claimed {} times: {many:?}",
+                many.len()
+            )),
+        }
+    }
+    for b in owner.keys() {
+        if !binaries.contains(b) {
+            problems.push(format!(
+                "{b} is named by {:?} but tests/{b}.rs does not exist",
+                owner[b]
+            ));
+        }
+    }
+    for &c in Consumer::ALL {
+        let text =
+            std::fs::read_to_string(dir.join(format!("{}.rs", c.binary()))).unwrap_or_default();
+        let named = text.contains(&format!("Consumer::{c:?}"));
+        let binds = text.contains("assert_consumer_cases(")
+            || text.contains("assert_consumer_config_cases(")
+            || text.contains("consumer_of(");
+        if !(named && binds) {
+            problems.push(format!(
+                "tests/{}.rs is the consumer for {c:?} but carries no binding: call \
+                 `assert_consumer_cases(Consumer::{c:?}, …)` or derive its cases from \
+                 `consumer_of(c) == Some(Consumer::{c:?})`",
+                c.binary()
+            ));
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "RFC-0051 §7c partition:\n  {}",
+        problems.join("\n  ")
+    );
+}

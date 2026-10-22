@@ -64,8 +64,8 @@ use nros_tests::{
         build_zephyr_workspace_rust_realtime_entry, freertos, is_qemu_available, require_zenohd,
     },
     matrix::{
-        Cell as MCell, Lang as ML, PlatformId as MP, Tier as MT, W1Consumer, Workload as MW,
-        w1_consumer_of,
+        Cell as MCell, Consumer, Lang as ML, PlatformId as MP, Tier as MT, Workload as MW,
+        consumer_of,
     },
 };
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -597,7 +597,7 @@ fn anchor_timeout(boot: Boot) -> Duration {
 // =============================================================================
 
 /// THE realtime-tiers matrix consumer (phase-329 W1). Iterates every cell
-/// `w1_consumer_of` assigns to `RealtimeTiers`, expands each to its execution
+/// `consumer_of` assigns to `RealtimeTiers`, expands each to its execution
 /// row(s) via [`exec_for`] (the `(Linux, Cpp)` cell yields two — component +
 /// #124 rclcpp), and runs each in one process, catching per-row skips/failures
 /// so one missing fixture never aborts the rest.
@@ -606,7 +606,7 @@ fn realtime_tiers() {
     let cells: Vec<&MCell> = nros_tests::matrix::CELLS
         .iter()
         .filter(|c| {
-            w1_consumer_of(c) == Some(W1Consumer::RealtimeTiers) && matches!(c.tier, MT::Runtime)
+            consumer_of(c) == Some(Consumer::RealtimeTiers) && matches!(c.tier, MT::Runtime)
         })
         .collect();
     assert!(

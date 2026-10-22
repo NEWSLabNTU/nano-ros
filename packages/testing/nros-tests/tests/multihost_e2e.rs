@@ -57,7 +57,7 @@ use nros_tests::{
         build_native_workspace_rust_entry_robot1, build_native_workspace_rust_entry_robot2,
         build_zephyr_workspace_rust_multihost_robot1_entry, require_zenohd,
     },
-    matrix::{Cell as MCell, Kind as MK, Lang as ML, PlatformId as MP, Tier as MT, Workload as MW},
+    matrix::{Cell as MCell, Lang as ML, PlatformId as MP, Tier as MT, Workload as MW},
 };
 use std::{path::PathBuf, process::Command, time::Duration};
 
@@ -252,8 +252,9 @@ fn multihost() {
     let cells: Vec<&MCell> = nros_tests::matrix::CELLS
         .iter()
         .filter(|c| {
-            matches!(c.workload, MW::Multihost)
-                && matches!(c.kind, MK::Workspace)
+            // RFC-0051 §7c — the assignment is `consumer_of`'s, not a second
+            // predicate spelled here.
+            nros_tests::matrix::consumer_of(c) == Some(nros_tests::matrix::Consumer::Multihost)
                 && matches!(c.tier, MT::Runtime)
         })
         .collect();

@@ -167,3 +167,21 @@ fn mixed_c_cpp_param_declare_and_read_cross_languages(zenohd_unique: ZenohRouter
         "expected >=3 cross-language publishes of {CROSSED}, got {n}"
     );
 }
+
+/// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::CppCParamLiveRead,
+        &[
+            (P::Linux, L::C, R::Zenoh, W::Params, K::Workspace),
+            (P::Linux, L::Cpp, R::Zenoh, W::Params, K::Workspace),
+        ],
+    );
+}

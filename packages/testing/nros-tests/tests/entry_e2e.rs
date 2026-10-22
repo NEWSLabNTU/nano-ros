@@ -69,8 +69,8 @@ use nros_tests::{
         threadx_riscv64,
     },
     matrix::{
-        Cell as MCell, Lang as ML, PlatformId as MP, Tier as MT, W1Consumer, Workload as MW,
-        w1_consumer_of,
+        Cell as MCell, Consumer, Lang as ML, PlatformId as MP, Tier as MT, Workload as MW,
+        consumer_of,
     },
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
 };
@@ -170,7 +170,7 @@ fn wl_str(w: MW) -> &'static str {
 }
 
 /// Map an entry_e2e-claimed coordinate to its execution data. An unmapped
-/// coordinate is a HARD panic: adding a cell that `w1_consumer_of` assigns to
+/// coordinate is a HARD panic: adding a cell that `consumer_of` assigns to
 /// `Entry` forces an arm here (phase-329 W1). The RTOS EntryPubsub cells the
 /// other consumers own never reach this (they are not claimed).
 fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
@@ -341,7 +341,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
         },
         (p, l, w) => panic!(
             "entry_e2e: no execution mapping for matrix cell {p:?}/{l:?}/{w:?} — add an \
-             `exec_for` arm (phase-329 W1: a cell w1_consumer_of assigns to Entry must wire here)"
+             `exec_for` arm (phase-329 W1: a cell consumer_of assigns to Entry must wire here)"
         ),
     }
 }
@@ -642,7 +642,7 @@ fn guest_diagnosis(guest: &mut Guest) -> String {
 }
 
 /// THE Entry-pkg matrix consumer (phase-329 W1). Iterates every cell
-/// `w1_consumer_of` assigns to `Entry` — the RTOS `EntryPubsub` subset it boots
+/// `consumer_of` assigns to `Entry` — the RTOS `EntryPubsub` subset it boots
 /// plus the zephyr-rust feature entries — derived from `matrix::CELLS`, and runs
 /// each in one process. Per-cell skips/failures are caught so one missing
 /// fixture never aborts the rest.
@@ -651,7 +651,7 @@ fn guest_diagnosis(guest: &mut Guest) -> String {
 fn entry_matrix() {
     let cells: Vec<&MCell> = nros_tests::matrix::CELLS
         .iter()
-        .filter(|c| w1_consumer_of(c) == Some(W1Consumer::Entry) && matches!(c.tier, MT::Runtime))
+        .filter(|c| consumer_of(c) == Some(Consumer::Entry) && matches!(c.tier, MT::Runtime))
         .collect();
     assert!(
         !cells.is_empty(),

@@ -1538,3 +1538,52 @@ fn test_rtos_action_e2e(
 fn _unused_type_anchor() -> Option<TestError> {
     None
 }
+
+/// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::RtosE2e,
+        &[
+            (P::FreertosMps2, L::C, R::Zenoh, W::Action, K::Example),
+            (P::FreertosMps2, L::C, R::Zenoh, W::Pubsub, K::Example),
+            (P::FreertosMps2, L::C, R::Zenoh, W::Service, K::Example),
+            (P::FreertosMps2, L::Cpp, R::Zenoh, W::Action, K::Example),
+            (P::FreertosMps2, L::Cpp, R::Zenoh, W::Pubsub, K::Example),
+            (P::FreertosMps2, L::Cpp, R::Zenoh, W::Service, K::Example),
+            (P::FreertosMps2, L::Rust, R::Zenoh, W::Action, K::Example),
+            (P::FreertosMps2, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+            (P::FreertosMps2, L::Rust, R::Zenoh, W::Service, K::Example),
+            (P::NuttxArm, L::C, R::Zenoh, W::Action, K::Example),
+            (P::NuttxArm, L::C, R::Zenoh, W::Pubsub, K::Example),
+            (P::NuttxArm, L::C, R::Zenoh, W::Service, K::Example),
+            (P::NuttxArm, L::Cpp, R::Zenoh, W::Action, K::Example),
+            (P::NuttxArm, L::Cpp, R::Zenoh, W::Pubsub, K::Example),
+            (P::NuttxArm, L::Cpp, R::Zenoh, W::Service, K::Example),
+            (P::NuttxArm, L::Rust, R::Zenoh, W::Action, K::Example),
+            (P::NuttxArm, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+            (P::NuttxArm, L::Rust, R::Zenoh, W::Service, K::Example),
+            (P::ThreadxLinux, L::C, R::Zenoh, W::Action, K::Example),
+            (P::ThreadxLinux, L::C, R::Zenoh, W::Pubsub, K::Example),
+            (P::ThreadxLinux, L::C, R::Zenoh, W::Service, K::Example),
+            (P::ThreadxLinux, L::Cpp, R::Zenoh, W::Action, K::Example),
+            (P::ThreadxLinux, L::Cpp, R::Zenoh, W::Pubsub, K::Example),
+            (P::ThreadxLinux, L::Cpp, R::Zenoh, W::Service, K::Example),
+            (P::ThreadxLinux, L::Rust, R::Zenoh, W::Action, K::Example),
+            (P::ThreadxLinux, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+            (P::ThreadxLinux, L::Rust, R::Zenoh, W::Service, K::Example),
+            (P::ThreadxRiscv64, L::C, R::Zenoh, W::Pubsub, K::Example),
+            (P::ThreadxRiscv64, L::C, R::Zenoh, W::Service, K::Example),
+            (P::ThreadxRiscv64, L::Cpp, R::Zenoh, W::Pubsub, K::Example),
+            (P::ThreadxRiscv64, L::Cpp, R::Zenoh, W::Service, K::Example),
+            (P::ThreadxRiscv64, L::Rust, R::Zenoh, W::Pubsub, K::Example),
+            (P::ThreadxRiscv64, L::Rust, R::Zenoh, W::Service, K::Example),
+        ],
+    );
+}

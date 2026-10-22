@@ -75,7 +75,7 @@ use nros_tests::{
         build_native_workspace_rust_safety_listener_entry,
         build_native_workspace_rust_safety_talker_entry, require_zenohd,
     },
-    matrix::{Cell as MCell, Lang as ML, Tier as MT, W1Consumer, Workload as MW, w1_consumer_of},
+    matrix::{Cell as MCell, Consumer, Lang as ML, Tier as MT, Workload as MW, consumer_of},
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
 };
 use rstest::rstest;
@@ -169,7 +169,7 @@ fn wl_str(w: MW) -> &'static str {
 
 /// Map a native workspace-feature `(lang, workload)` coordinate to its execution
 /// data. An unmapped coordinate is a HARD panic: adding a cell that
-/// `w1_consumer_of` assigns to `WorkspaceFeatures` forces an arm here
+/// `consumer_of` assigns to `WorkspaceFeatures` forces an arm here
 /// (phase-329 W1).
 fn exec_for(lang: ML, workload: MW) -> Exec {
     match (lang, workload) {
@@ -417,14 +417,14 @@ fn resolve(r: Resolver, lang: &str, workload: &str, role: &str) -> PathBuf {
 // =============================================================================
 
 /// THE native workspace-feature matrix consumer (phase-329 W1). Iterates every
-/// cell `w1_consumer_of` assigns to `WorkspaceFeatures` (native
+/// cell `consumer_of` assigns to `WorkspaceFeatures` (native
 /// CustomMsg/Logging/Qos/Lifecycle/Safety/Remap) — derived from `matrix::CELLS`
 /// — and runs each in one process, catching per-cell skips/failures so one
 /// missing fixture never aborts the rest.
 /// The cells this file consumes — ONE definition, shared by the per-case lookup
 /// and the coverage tripwire so they cannot disagree.
 fn is_wsfeature_cell(c: &MCell) -> bool {
-    w1_consumer_of(c) == Some(W1Consumer::WorkspaceFeatures) && matches!(c.tier, MT::Runtime)
+    consumer_of(c) == Some(Consumer::WorkspaceFeatures) && matches!(c.tier, MT::Runtime)
 }
 
 /// The `(lang, workload)` pairs the `#[case]`s declare. Every cell here is
