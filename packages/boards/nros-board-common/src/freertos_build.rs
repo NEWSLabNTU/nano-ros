@@ -104,6 +104,13 @@ fn resolve_cflags() -> String {
              explicitly."
         )
     });
+    // issue 1494 — these flags are READ from the descriptors, so the
+    // descriptors are build inputs: without a watch an `[arch.*]` edit rebuilt
+    // no board until something unrelated re-ran this script. The shared
+    // enumerator, never a second copy of it.
+    for file in crate::platform_config::platform_descriptor_files(&roots) {
+        println!("cargo:rerun-if-changed={}", file.display());
+    }
     match arch_flags::cflags_for_target(&roots, PLATFORM, &target) {
         Ok(Some(flags)) => flags.join(" "),
         Ok(None) => panic!(
