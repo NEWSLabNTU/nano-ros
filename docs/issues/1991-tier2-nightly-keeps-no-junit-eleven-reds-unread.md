@@ -77,6 +77,21 @@ tier-2 sighting in issue 1988. Their text is not available here.
 | 13 | `emulator test_qemu_wcet_benchmark` | FAIL ×3 (1.39 s, 0.61 s, 0.41 s) |
 | 14 | `entry_e2e entry_matrix` | FAIL 100.7 s |
 
+### Sighting, 2026-10-22
+
+- Run: nightly 39726654020 (schedule, 05:12 UTC, main at `3feb834d1`).
+- Job: 119651990002, `tier 2 nightly (pairwise cover)`, on
+  `nano-ros-runner-newslab-118-server`.
+
+The run got past the build this time and still left its failures unread:
+
+```
+     Summary [ 198.758s] 3168 tests run: 2941 passed, 227 failed, 7 skipped
+Real failures: 12 / 12 total failures
+```
+
+There is still no junit artifact. The 12 are counted and not named.
+
 ## Reading
 
 What the durations and neighbours show, and nothing more:
