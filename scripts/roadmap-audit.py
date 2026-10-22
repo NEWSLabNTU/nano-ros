@@ -44,6 +44,17 @@ WHAT IT LOOKS FOR, and why each is here
                all of them. Eight of the thirteen oldest were stale on
                2026-09-04, which is the ratio that motivates the pass.
 
+  ledger       (issue 1489) An OPEN work item names API-parity ledger keys
+               the ledger has since closed -- the work landed through a
+               sibling phase that had no reason to edit this one. The binding
+               is the backticked keys the item already names, never an
+               authored map; a phase whose open items name none is counted as
+               NOT APPLICABLE rather than passed. A report, not a gate, because
+               its truth moves when ANOTHER phase merges -- the rule and that
+               decision are in `scripts/lib/roadmap_ledger_claims.py`, whose
+               negative control runs on the fast line via
+               `check-roadmap-claims`.
+
 The three judgment classes W2 cannot reach at all -- supersession, a reversed
 premise, a claim of absence -- have no heuristic here on purpose. The phase doc
 carries them as worked examples instead, because each was found by a different
@@ -58,6 +69,8 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROADMAP = os.path.join(ROOT, "docs", "roadmap")
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import roadmap_ledger_claims  # noqa: E402  issue 1489
 
 STATUS = re.compile(r"^\s*(?:\*\*|##\s*)?Status\b", re.I)
 DATE = re.compile(r"(20\d{2})-(\d{2})-(\d{2})")
@@ -193,6 +206,14 @@ def main(argv):
     ap.add_argument("--markdown", action="store_true", help="emit a report body")
     args = ap.parse_args(argv[1:])
 
+    # The ledger rule's negative control first: a report whose rule stopped
+    # firing would print "0 stale" forever. A failed self-test is this script
+    # being broken, which is the one thing that exits non-zero here.
+    if roadmap_ledger_claims.self_test():
+        print("roadmap-audit: the ledger-claims self-test failed — the rule is broken.")
+        return 1
+    ledger_claims = roadmap_ledger_claims.audit()
+
     rows = audit(args.max_age_days)
     total = len([f for f in os.listdir(ROADMAP) if f.endswith(".md")])
 
@@ -209,6 +230,7 @@ def main(argv):
                 f"| {', '.join(f'`{p}`' for p in paths[:3]) or '—'} "
                 f"| {', '.join(iss) or '—'} | {age if age is not None else '—'}d |"
             )
+        print(roadmap_ledger_claims.render(ledger_claims, markdown=True))
         return 0
 
     print(f"roadmap-audit: {len(rows)} of {total} active phase(s) carry a candidate signal.")
@@ -221,6 +243,7 @@ def main(argv):
             print(f"     dead paths:         {', '.join(paths[:5])}")
         if iss:
             print(f"     resolved issues:    {', '.join(iss)}")
+    print(roadmap_ledger_claims.render(ledger_claims))
     print(
         "\nThe three classes this cannot reach — supersession, a reversed premise,\n"
         "a claim of absence — are worked examples in phase-419 W3, not heuristics."

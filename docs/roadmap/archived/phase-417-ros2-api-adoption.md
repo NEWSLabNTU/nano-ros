@@ -1968,11 +1968,33 @@ the identical job for `cpp:Node::*`, which is why not one `cpp:Node::*` graph
 row is a gap. **Take this group first if the goal is rows closed per line
 written.**
 
+**G1 LANDED 2026-09-21**, by phase-444, which did not edit this list (issue
+1489). Sixteen rows moved off `gap` in `bc7be55e0` and the two Rust
+`*_info_by_topic` rows in `f7bc19dd6`; re-read against the ledger 2026-10-22.
+C: `c:get_client_names_and_types_by_node`,
+`c:get_publisher_names_and_types_by_node`,
+`c:get_service_names_and_types_by_node`,
+`c:get_subscriber_names_and_types_by_node`, `c:get_publishers_info_by_topic`,
+`c:get_subscriptions_info_by_topic` (all `divergence`). Rust:
+`rust:Node::get_client_names_and_types_by_node`, `rust:Node::get_node_names`,
+`rust:Node::get_node_names_with_enclaves`,
+`rust:Node::get_publisher_names_and_types_by_node`,
+`rust:Node::get_service_names_and_types`,
+`rust:Node::get_service_names_and_types_by_node`,
+`rust:Node::get_subscription_names_and_types_by_node`,
+`rust:Node::get_topic_names_and_types`, `rust:Node::get_publishers_info_by_topic`,
+`rust:Node::get_subscriptions_info_by_topic` (`divergence`), and
+`rust:Node::count_publishers` / `rust:Node::count_subscriptions` (row deleted:
+the name now matches).
+
 **G2 — the two `wait_for_*` helpers. 2 rows (C). CHEAP.** The count they wait on
 has shipped since phase-381 W4; what is missing is the loop, shaped like
 `nros_client_wait_for_service` — take the executor and drive it, so the timeout
 is reliable on a single-threaded transport (RFC-0021). Assert a LOWER bound on
 the wait in its test: an upper-bound-only one passes a spin that never waited.
+
+**G2 LANDED 2026-09-21** in `c902f7f9d` (phase-444): `c:wait_for_publishers`
+and `c:wait_for_subscribers` are `divergence`.
 
 **G3 — granted-QoS read-back. 5 rows here, moving with 8 siblings that already
 carry `adopt` — 13 rows as one item. MEDIUM, and it is the group most likely to
@@ -1985,6 +2007,20 @@ tree writes an `UNKNOWN` today. Shipping the accessor without that half ships
 the inverted meaning the existing `adopt` rows warn about. Budget two items:
 retain+expose, then a backend answer for zenoh.
 
+**G3 LANDED 2026-09-21** in `8aed6be82` (issue 1437), with `3527dc794` and
+`38cf5c33d` as its two fixes. All thirteen rows are off `gap`:
+`c:publisher_get_actual_qos`, `c:subscription_get_actual_qos`,
+`c:client_request_publisher_get_actual_qos`,
+`c:client_response_subscription_get_actual_qos`,
+`c:service_request_subscription_get_actual_qos`,
+`c:service_response_publisher_get_actual_qos` (`divergence`), and
+`cpp:Publisher::get_actual_qos`, `cpp:Subscription::get_actual_qos`,
+`cpp:Client::get_request_publisher_actual_qos`,
+`cpp:Client::get_response_subscription_actual_qos`,
+`cpp:Service::get_request_subscription_actual_qos`,
+`cpp:Service::get_response_publisher_actual_qos` (row deleted in `8aed6be82`)
+and `rust:Subscription::qos` (row deleted in `3527dc794`).
+
 **G4 — matched-endpoint counts. 5 rows (C 2, C++ 2, Rust 1). CHEAP, with an
 envelope.** `count_{publishers,subscribers}(topic)` ships; the accessors are
 thin. `adopt-bounded` because upstream counts endpoints MATCHED to this entity
@@ -1992,12 +2028,23 @@ and a topic-wide count includes one whose QoS does not match — that sentence
 belongs in the doc comment, which is the whole difference between this group and
 G1.
 
+**G4 LANDED 2026-09-21** in `f7bc19dd6` (phase-444):
+`c:publisher_get_subscription_count`, `c:subscription_get_publisher_count`,
+`cpp:Publisher::get_subscription_count`, `cpp:Subscription::get_publisher_count`
+and `rust:Publisher::get_subscription_count` are `divergence` + `adopt-bounded`.
+
 **G5 — entity-name read-back. 6 rows (C++ 2, Rust 4). CHEAP then SMALL.** The
 C++ half copies what `nros-cpp`'s `Publisher` already does — store the name
 C++-side, no FFI hop. The Rust half is `adopt-bounded` for a structural reason:
 the handle is a bare arena index (`PublisherHandle { index, _marker }`), so
 rclrs's `&self`-only signature cannot reach the string and the accessor takes
 the node or executor.
+
+**G5 LANDED 2026-09-21** in `97b4ed5b8` (phase-444): `rust:Client::service_name`,
+`rust:Service::service_name` and `rust:Publisher::topic_name` are `divergence`;
+the rows for `cpp:Client::get_service_name`, `cpp:Service::get_service_name`
+and `rust:Subscription::topic_name` were deleted because the names now
+match.
 
 **G6 — the cheap singletons. 8 rows. CHEAPEST group in the pass; one wave.**
 `cpp:Timer::is_ready` and `cpp:Timer::time_until_trigger` (both C halves shipped
@@ -2081,6 +2128,19 @@ separately.**
 | `cpp:Client::prune_pending_requests` + 2 siblings | the three verbs over the BOUNDED request table; `remove_pending_request` is cheapest because the sequence number the take path returns is already the key | SMALL, move together |
 | `rust:Time::to_ros_msg` | blocked on a DECISION, not on a body — but **not the decision this row named**; see below | trivial after the decision, and the decision is bigger than the row |
 
+**G8 CLOSED in the ledger by 2026-10-01** (re-read 2026-10-22, issue 1489).
+Not one wave, and not all shipped. SHIPPED, now `divergence`:
+`c:node_get_graph_guard_condition` (`23694859b`, phase-467 Row 8),
+`rust:Logger::set_default_level` (`9600dfc4e`, phase-467),
+`cpp:Publisher::get_gid` (`68223240e`, phase-467), `rust:Time::to_ros_msg`
+(`47a23daa3`, phase-467 Q3), and `c:lifecycle_change_state` (`9815a7247`,
+issue 1587). DECLINED by phase-444's ledger re-read in `30e998e55`:
+`cpp:Client::prune_pending_requests`, `cpp:Client::prune_requests_older_than`
+and `cpp:Client::remove_pending_request`. `rust:BOOT_SET_NAMESPACE`'s row was
+deleted in `e0055f50a` (issue 1463), because all three legs of its reason had
+become false. The issue 1428 discussion below is still the record of the
+`Time::to_ros_msg` premise.
+
 **The `Time::to_ros_msg` row's premise was measured and is wrong** (2026-09-21).
 It asked "does `builtin-interfaces` join the pre-generated core set?" — it
 joined three times. `packages/interfaces/*` IS that set, and codegen emitted
@@ -2120,6 +2180,13 @@ becomes `adopt` the day a `RosoutSink` exists and not before), and
 `c:take_{request,response}_with_info` (`absent`; the sequence number is there,
 the timestamps are not, and `take_with_info` is NULL in every backend — if
 anyone needs them the item is a BACKEND one and the row reopens).
+
+**G9 CLOSED in the ledger** (re-read 2026-10-22, issue 1489). The five
+`can_loan_messages` rows are `declined` (`d5492af85`), and so are
+`c:take_request_with_info` / `c:take_response_with_info` (`30e998e55`).
+`c:logging_rosout_enabled` is `divergence` since issue 1589 (`6028fd929`).
+The two `cpp:LifecycleNode::create_*` rows in the paragraph below are
+`divergence` + `adopt-bounded`.
 
 **And one item that costs about ten lines and is not in any group above.** The
 two `cpp:LifecycleNode::create_*` rows were stamped `refuse-loud` in this pass
