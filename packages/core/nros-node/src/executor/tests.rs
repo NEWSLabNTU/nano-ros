@@ -11542,6 +11542,10 @@ fn two_nodes_on_one_executor_emit_under_their_own_names() {
 
     // Names unique to this test: the sink is process-global and sibling tests
     // in this binary emit through the catch-all logger while it is installed.
+    // The marker filter below makes their EXTRA records harmless. A MISSING
+    // marker record is issue 2000, not this test: nros-log's recursion guard
+    // is process-wide, so a record emitted while a sibling test thread is
+    // inside a sink is dropped.
     const TALKER: &str = "w5_two_names_talker";
     const LISTENER: &str = "w5_two_names_listener";
 
