@@ -1,7 +1,7 @@
 ---
 id: 1988
 title: "Three tier-2 tests grep for `log::trace!`/`debug!` markers that #1949's threshold now drops, and `RUST_LOG=trace` no longer brings them back"
-status: open
+status: resolved
 type: bug
 area: [testing, logging, zenoh]
 severity: medium
@@ -85,3 +85,29 @@ Two sites are defensible:
 Whichever lands, a check should cover a test that sets `RUST_LOG` against
 an image that ignores it, so the next threshold change cannot silence a
 marker unnoticed.
+
+## Resolution (2026-10-22)
+
+Site 1: the host board honours a runtime level again. `nros-board-linux`'s
+stdout `log` sink, when it is the sink installed, reads `RUST_LOG` and moves
+nros-log's process default threshold (`Logger::set_default_level`) to the bare
+level it states — env_logger's global directive, last one winning, `off` as
+`Fatal`. #1949's quiet `Info` default is unchanged when `RUST_LOG` is unset. An
+application that installed `env_logger` keeps reading the variable itself.
+
+Per-target directives (`nros_rmw_zenoh=trace`) are deliberately ignored, and
+the parser's doc says why: a `log` target is a `::` module path while nros-log's
+hierarchy is dotted, so an exact-name logger would match one module rather than
+the prefix env_logger means — a directive that half-works reads as working.
+
+Verified: `rust_log_states_a_default_level_only_through_a_bare_level` (unit,
+pure, so it does not move the process default the 1949 test reads). End to end
+on fresh `just build-test-fixtures lane=linux` fixtures, the three tests this
+issue measured pass: `test_qos_keyexpr_encoding`, `test_gid_consistency`,
+`test_sequence_number_increment`, 3/3. The same three fail on `main` in
+run-matrix 39555555017, both tiers.
+
+Not done: site 2 (the tests reading facts from an observable rather than log
+text) and the check the issue asks for. The three tier-2 tests ARE that check
+now — each sets `RUST_LOG` against an image that must honour it — and they run
+in the scheduled lane that caught this.

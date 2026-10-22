@@ -1301,8 +1301,47 @@ fn install_stdout_log_bridge() {
     INIT.call_once(|| {
         if log::set_logger(&LOGGER).is_ok() {
             log::set_max_level(log::LevelFilter::Trace);
+            // Issue 1988: `RUST_LOG` is the host's runtime level, and #1949's
+            // threshold had left nothing reading it. Only when THIS sink is
+            // installed — an application that installed `env_logger` reads
+            // the variable itself.
+            if let Some(level) = std::env::var("RUST_LOG")
+                .ok()
+                .as_deref()
+                .and_then(rust_log_default_level)
+            {
+                nros_log::Logger::set_default_level(level);
+            }
         }
     });
+}
+
+/// The default threshold a `RUST_LOG` value states, if it states one.
+///
+/// Issue 1988. Honours env_logger's GLOBAL directive — a bare level among the
+/// comma-separated directives (`trace`, `info,foo=debug`); the last one wins,
+/// and `off` maps to `Fatal`, which no `log` record reaches. Per-target
+/// directives (`foo=debug`, a bare `foo`) are IGNORED: a `log` target is a
+/// `::` module path and nros-log's hierarchy is dotted, so an exact-name
+/// logger would match one module, not the prefix env_logger means, and a
+/// directive that half-works reads as working. A `/regex` suffix is dropped.
+fn rust_log_default_level(value: &str) -> Option<nros_log::Severity> {
+    use nros_log::Severity;
+    let spec = value.split('/').next().unwrap_or("");
+    let mut level = None;
+    for directive in spec.split(',').map(str::trim) {
+        let found = match directive.to_ascii_lowercase().as_str() {
+            "trace" => Severity::Trace,
+            "debug" => Severity::Debug,
+            "info" => Severity::Info,
+            "warn" => Severity::Warn,
+            "error" => Severity::Error,
+            "off" => Severity::Fatal,
+            _ => continue,
+        };
+        level = Some(found);
+    }
+    level
 }
 
 #[cfg(test)]
@@ -1334,6 +1373,30 @@ mod tests {
         assert!(log::logger().enabled(&meta(log::Level::Info)));
         // The ceiling stays at Trace, so lowering the threshold later works.
         assert_eq!(log::max_level(), log::LevelFilter::Trace);
+    }
+
+    /// Issue 1988: the bare level is the default threshold `RUST_LOG`
+    /// states; per-target directives and junk state none. Pure, so it does not
+    /// move the process default the test above reads.
+    #[test]
+    fn rust_log_states_a_default_level_only_through_a_bare_level() {
+        use nros_log::Severity;
+        assert_eq!(rust_log_default_level("trace"), Some(Severity::Trace));
+        assert_eq!(rust_log_default_level(" DEBUG "), Some(Severity::Debug));
+        assert_eq!(
+            rust_log_default_level("info,nros_rmw_zenoh=trace"),
+            Some(Severity::Info)
+        );
+        assert_eq!(rust_log_default_level("warn,error"), Some(Severity::Error));
+        assert_eq!(rust_log_default_level("off"), Some(Severity::Fatal));
+        assert_eq!(
+            rust_log_default_level("debug/publish"),
+            Some(Severity::Debug)
+        );
+        assert_eq!(rust_log_default_level("nros_rmw_zenoh=trace"), None);
+        assert_eq!(rust_log_default_level("nros_rmw_zenoh"), None);
+        assert_eq!(rust_log_default_level(""), None);
+        assert_eq!(rust_log_default_level("verbose"), None);
     }
 
     #[test]
