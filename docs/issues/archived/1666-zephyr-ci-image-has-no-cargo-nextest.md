@@ -1,7 +1,7 @@
 ---
 id: 1666
 title: "live-peer's board job reaches its run step and the Zephyr CI image has no `cargo nextest`"
-status: open
+status: resolved
 type: bug
 area: ci, zephyr
 severity: medium
@@ -9,7 +9,7 @@ found: 2026-10-03
 related: [1474, 1353, 1627, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -71,3 +71,10 @@ same shell still resolves another `cargo-nextest`, and only a second `source
 
 Fixed alongside this entry: the step re-sources `activate.sh` after the install.
 The acceptance above is unchanged: a board job that reports cell verdicts.
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `40784c4c53` (2026-10-07): a tool installed after `activate.sh` is put on PATH by re-sourcing it.
+- **Evidence:** live-peer 39096469491 (2026-10-18): off-runner `qos_zephyr_ros2_interop_e2e` passes.

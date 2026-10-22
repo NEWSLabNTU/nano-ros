@@ -106,7 +106,7 @@ Where it stands at 2026-09-29:
   wired and gated, only the statement is missing.
 
 **Cost:** one double reservation of the backing (tens of KiB) on a QEMU-only
-board. **Blocker:** [issue 1355](../1355-threadx-riscv64-builds-the-linux-threadx-port.md)
+board. **Blocker:** [issue 1355](1355-threadx-riscv64-builds-the-linux-threadx-port.md)
 — the `threadx_riscv64` lane builds ThreadX's linux/gnu port and its board crate
 does not compile, so there is no image to measure yet.
 

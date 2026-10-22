@@ -3,7 +3,7 @@ id: 1474
 title: "The Zephyr Rust fixture build runs `cargo clippy` as a ninja step, and the
   container's stable toolchain has no clippy component — so `live-peer` dies in its
   fixture build with an error about a missing rustup component"
-status: open
+status: resolved
 type: bug
 area: ci, zephyr, build
 severity: medium
@@ -11,7 +11,7 @@ found: 2026-09-24
 related: [1364, 1353, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -181,3 +181,10 @@ Stays **open**: acceptance is `live-peer`'s off-runner job reaching its cells,
 which is tonight's run at the earliest. Remedy 2 (do not lint in a fixture
 build) is still available and still untried; this closes remedy 1 properly
 rather than choosing between them.
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `eaa9e8b93f` (2026-09-29): the clippy step no longer deletes the component it needs.
+- **Evidence:** live-peer 39096469491 (2026-10-18) built `build-ws-rs-qos-entry-zenoh`, clippy ran, and the board cells passed.

@@ -3,14 +3,14 @@ id: 1364
 title: "The zephyr CI image is Python 3.10 and ships no TOML parser, so every repo
   script that reads a manifest dies in it — and the gate that exists for this class
   reads two dependency groups neither parser is in"
-status: open
+status: resolved
 type: bug
 area: [ci, tooling]
 severity: medium
 related: [issue-0878, issue-1353, issue-1019, issue-1226, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## What happens
 
@@ -233,3 +233,10 @@ Two fixes would each close this site. Either the probe image installs
 `check-source-refs.py` reads the one table it needs with the same
 dependency-free reader `nros-build-paths::locate::row_from_index` uses, so
 staging needs no TOML library.
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `eb693afb8d` and `14a18ecca0` gate the CI images' TOML parser and enumerate every TOML site; `6a36a9402d` covers the 22.04 release builder.
+- **Evidence:** live-peer 39543166221 (2026-10-21) has no `tomllib`/`tomli` error; the installed probe is green in nightly 39560904828.

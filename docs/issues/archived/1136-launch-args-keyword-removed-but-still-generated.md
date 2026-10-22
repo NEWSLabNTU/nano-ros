@@ -1,7 +1,7 @@
 ---
 id: 1136
 title: "`LAUNCH_ARGS` was removed from `nano_ros_entry` while the CLI still emits it — every `host-tests` integration run has failed for at least 30 runs"
-status: open
+status: resolved
 type: bug
 area: build, cli, testing
 severity: high
@@ -9,7 +9,7 @@ found: 2026-09-06
 related: [1127, 0433, phase-433, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 # The one lane that could produce a live-peer verdict has not finished in 30 runs
 
@@ -112,3 +112,10 @@ literals in the tree.
    identical without a red test.
 4. Re-run `host-tests.yml` and confirm the integration job reaches `just ci
    tier1` — that is what unblocks issue 1127's verification work.
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `631f5c04cb` and `b6278b9338` (2026-09-06): `nano_ros_entry` parses `LAUNCH_ARGS` again (`cmake/NanoRosEntry.cmake`), and the keyword survey covers the caller CI runs.
+- **Evidence:** host-tests 39093104537 (2026-10-18): all three jobs green, past **Build workspace fixtures**.

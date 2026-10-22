@@ -1,7 +1,7 @@
 ---
 id: 1665
 title: "Nightly tier 2: Zephyr workspace Rust entries fail with `can't find crate for core` (byteorder), 10 of 32 images"
-status: open
+status: resolved
 type: bug
 area: ci, zephyr, build
 severity: medium
@@ -9,7 +9,7 @@ found: 2026-10-03
 related: [1288, 1353, 1603, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -83,3 +83,10 @@ workspace-entry road, not at either leaf. The job log does print
 does not say which triple these crates were built for. Still no `zephyr.log`
 artifact. The `provision-zenohd` exit 78 in the same job is the reported lane
 skip (no `ros-humble-rmw-zenoh-cpp`), not this failure.
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `168eed2c20` (2026-10-03, issue 1672): the root toolchain pin carries Zephyr native_sim's Rust target. Same cause as 1672.
+- **Evidence:** nightly 39560904828 (2026-10-21): the Zephyr family builds OK, workspace Rust leaves included.

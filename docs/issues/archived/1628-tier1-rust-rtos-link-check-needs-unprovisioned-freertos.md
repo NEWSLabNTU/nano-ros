@@ -3,7 +3,7 @@ id: 1628
 title: "`just ci tier1` runs `rust-rtos-link-check`, which needs the FreeRTOS
   kernel that `host-tests.yml` never checks out — both tier-1 arms now fail on a
   provisioning refusal that 1147 had been hiding"
-status: open
+status: resolved
 type: bug
 area: ci, freertos
 severity: medium
@@ -11,7 +11,7 @@ found: 2026-10-02
 related: [issue-1147, issue-1345, issue-1353, issue-1043, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -140,3 +140,10 @@ guessing one would just move the lie. `just/check/codegen.just:245` already
 carries a comment noting this exact case, so it has been seen once before and
 recorded rather than fixed. Deciding what provisions ThreadX is a separate change
 with an owner who knows the answer.
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `41ba457ec7` (2026-10-02): the RTOS link check provisions the kernels it links against.
+- **Evidence:** run-matrix 39555555017 tier 1 (2026-10-21): `rust-rtos-link-check — ok after 1m43s`.

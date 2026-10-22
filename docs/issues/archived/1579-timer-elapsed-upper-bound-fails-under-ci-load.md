@@ -3,7 +3,7 @@ id: 1579
 title: "`timer_readiness_and_elapsed_agree_with_the_dispatcher` bounds a REAL
   sleep with a 10 ms allowance, so a loaded CI runner fails it — four sites,
   one helper"
-status: open
+status: resolved
 type: bug
 area: testing, nros-node, ci
 severity: medium
@@ -11,7 +11,7 @@ found: 2026-09-29
 related: [1353, 1139, 0355, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happened
 
@@ -104,3 +104,10 @@ Acceptance: `node-std-tests` green across three consecutive scheduled
 `host-tests` runs, with the chosen bound's basis written down beside it.
 
 [36539890676]: https://github.com/NEWSLabNTU/nano-ros/actions/runs/36539890676
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `dac8ce0e84` (2026-10-16): the timer tests read a clock they own, so the elapsed bound no longer depends on runner load.
+- **Evidence:** Deterministic by construction; no tier-1 run since has failed it.

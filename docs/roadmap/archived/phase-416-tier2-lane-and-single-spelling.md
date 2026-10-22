@@ -109,4 +109,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1158](../../issues/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) | the tier-2 lane has produced no runtime verdict in six consecutive scheduled runs. 'The tier-2 lane runs end to end' is this phase's thesis; phase-441 cites the issue only in passing — **re-homed to [phase-449](../phase-449-state-keyed-by-name-not-by-tree.md) 2026-10-12** |
+| [#1158](../../issues/archived/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) | the tier-2 lane has produced no runtime verdict in six consecutive scheduled runs. 'The tier-2 lane runs end to end' is this phase's thesis; phase-441 cites the issue only in passing — **re-homed to [phase-449](../phase-449-state-keyed-by-name-not-by-tree.md) 2026-10-12** |

@@ -3,7 +3,7 @@ id: 1497
 title: "Tier 2's zephyr module dies in `codegen-system`: the `zephyr_self_pkg`
   fixture leaves declare system semantics and no SystemModel is generated for
   them, so the lane stops in the build with no cell verdict"
-status: open
+status: resolved
 type: bug
 area: ci, build, cli, testing
 severity: high
@@ -11,7 +11,7 @@ found: 2026-09-25
 related: [1158, 1457, 0533, 1501, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 > **Root cause found and fixed — issue 1501 (2026-09-25).** None of the three
 > candidates below was the answer, and the first one was already implemented:
@@ -99,3 +99,10 @@ than guessed:
 
 Acceptance: a `run-matrix` run whose coverage job reports a stage past the
 build — i.e. cells run and the lane produces a verdict, green or red.
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `1879c31c48` (2026-09-25, with issue 1501): a self-pkg bringup that declares components is syncable.
+- **Evidence:** run-matrix 39555555017 tier 2 (2026-10-21): `zephyr_self_pkg_rust_builds_via_shim` passes.
