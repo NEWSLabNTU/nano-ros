@@ -1697,41 +1697,10 @@ _nextest-slow-tests junit="target/nextest/default/junit.xml" limit="20":
 test-zpico-multisession verbose="":
     #!/usr/bin/env bash
     set -euo pipefail
-    source scripts/build/cargo.sh
-    export CARGO_TARGET_DIR="$(nros_scoped_target_dir zpico-multisession)"  # issue 0400: box-aware
-    export NROS_ZENOH_MAX_SESSIONS=2
-    # issue 0695 — through `_nextest-tolerant`, not a bare `cargo nextest run`
-    # (issue 0673's rule): `nros_tests::lane_skip!` raised in ANOTHER package's own
-    # test binary — this lane's `zenoh_integration` — is still a skip, and a
-    # bare run turned its `[SKIPPED]` panic into a hard red no fix can clear.
-    # The tolerant helper rewrites the junit (which lands under this lane's
-    # scoped CARGO_TARGET_DIR, exported above) and fails only on real failures.
-    # Issue 1704 — the test is `#[ignore]`d in a single-session build (the
-    # `zpico_multi_session` cfg, from zpico-sys's resolved pool), so if the env
-    # above ever failed to reach the shim this filter would select NO test and
-    # nextest exits 4 (`no tests to run`), which `_nextest-tolerant` reports as
-    # an ERROR — never a pass, never a skip.
-    # The `two_sessions` filter is POSITIONAL (name substring), equivalent to
-    # the old `-E 'test(~two_sessions)'`: `_nextest-tolerant` splices its args
-    # into a bash array literal, where the `(`…`)` would not survive.
-    args=(-p nros-rmw-zenoh --features platform-posix --test zenoh_integration
-          two_sessions --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
-        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
-    fi
-    just _nextest-tolerant "${args[@]}"
-    # issue 0652 — `loan_e2e` for the same reason, and it is why the feature is
-    # off `check::required-features-tests`: it runs a publisher and a subscriber
-    # in ONE process (same-process pub/sub on a single session hits zenoh-pico's
-    # write filter), so it needs the pool this lane's env provides. #0652 named
-    # this recipe as its home and left the wiring undone, so the target stayed
-    # in no lane after all.
-    loan_args=(-p nros-tests --features loan-e2e --test loan_e2e --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        loan_args+=(--success-output never --failure-output never)
-    fi
-    just _nextest-tolerant "${loan_args[@]}"
+    # phase-510 W1 — the lanes, their env and their own target dir are the
+    # `runner = "test-zpico-multisession"` rows of `.config/feature-lanes.toml`.
+    _v="{{verbose}}"
+    python3 scripts/feature-lanes.py run test-zpico-multisession ${_v:+--verbose}
 
 #
 # Heavy groups are skipped via a CLI `-E` predicate keyed off nextest
@@ -2729,22 +2698,10 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # what the sweep did. Here it is harmless: the `rm -f "$junit"` below clears
     # it, and this lane reports its own verdict through its exit status.
     echo "=== Required-features fixture tests ==="
-    just _nextest-platform custom_transport_loopback "{{verbose}}" "--features rmw" || failed=1
-    # phase-436 (RFC-0106 D5) — a guard condition on a POLL-ONLY backend. Its
-    # own invocation because `xrce-wake-test` registers XRCE and must not share
-    # a binary with `trigger-test`'s zenoh; here, not in the fixture-free
-    # `check::required-features-tests`, because it needs the XRCE Agent.
-    #
-    # Issue 1734 — `xrce_concurrent_entities`, concurrent entity creation on one
-    # XRCE session while another thread drives it, rides the same invocation:
-    # same feature, same Agent need, and one invocation keeps one junit.
-    just _nextest-platform "xrce_guard_wake xrce_concurrent_entities" "{{verbose}}" "--features xrce-wake-test" || failed=1
-    # Issue 1940 — zenoh through the C vtable (`CffiSession`), incl. a waker
-    # registered on a subscription and woken by real arrivals. `cffi_smoke` is
-    # `cfg(feature = "platform-posix")`, which the `--workspace` run below never
-    # enables, so until this line the target compiled empty in every lane. It
-    # needs a router, hence here and not in `ci gate`.
-    just _nextest-tolerant -p nros-rmw-zenoh --features platform-posix --test cffi_smoke --no-fail-fast || failed=1
+    # phase-510 W1 — the lanes are the `runner = "test-all"` rows of
+    # `.config/feature-lanes.toml`, each with its reason beside it.
+    _v="{{verbose}}"
+    python3 scripts/feature-lanes.py run test-all ${_v:+--verbose} || failed=1
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}")
     if [ -z "{{verbose}}" ]; then
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.

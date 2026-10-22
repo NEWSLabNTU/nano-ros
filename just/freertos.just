@@ -249,16 +249,15 @@ build-fixture-extras:
     # Issue #0317 — the wake-latency-cortex-m3 microbench (Phase 141.D), a
     # TWO-IMAGE bench (subscriber `wake-latency-cortex-m3` + publisher
     # `wake-latency-pub`) so the zenohd router delivers a real transport-arrival
-    # wake to the subscriber. Build BOTH images at the profile the test locates
-    # so a compile regression is caught here. The runtime
-    # `wake_latency_cortex_m3` test takes its intended CYCCNT skip on QEMU
-    # (Cortex-M3 doesn't emulate the DWT cycle counter); the real P99 validates on
-    # hardware. This lane guards the BUILD of both images.
+    # wake to the subscriber. This lane guards the BUILD of both images, and only
+    # the build: the P99 is a hardware measurement. Its QEMU runner was deleted
+    # by phase-510 W2 — QEMU's MPS2 model does not emulate the DWT cycle counter,
+    # so the histogram held 0 samples on every run (measured 2026-10-22) and the
+    # test was a red no lane could clear.
     # issue 0488 residue 1 — the bare in-leaf `cargo build` that used to be here
     # is gone. The pair is a `[[fixture]]` row now, so `build-test-fixtures`
     # builds it into the shared `freertos` group with a coordinate and a
-    # staleness probe, and `tests/wake_latency_cortex_m3.rs` resolves it through
-    # that row instead of a hand-spelled path.
+    # staleness probe.
 
     toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
     # Phase 140 removed the `build/install/bin/nros-codegen` install

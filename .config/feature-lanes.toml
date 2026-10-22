@@ -1,0 +1,413 @@
+# The feature-lane registry — RFC-0051 §7b, phase-510 W0/W1.
+#
+# ONE table for every cargo feature that gates a test target (a `[[test]]
+# required-features` entry or a test file's crate-level `#![cfg(feature …)]`),
+# and for every lane that turns such a feature on.
+#
+# `scripts/feature-lanes.py` reads it two ways:
+#
+#   run <runner>   executes the lanes whose `runner` is that recipe, so the
+#                  recipe holds no hand-spelled `--features`/`--test` list.
+#   check          the gate (`check-required-features-reachable`): every
+#                  gated target, in every crate, sits in a lane whose features
+#                  satisfy its gate — the TARGET, not merely the feature, which
+#                  is the gap four unreached targets came through (phase-510
+#                  inventory).
+#
+# A lane whose runner is not generated (`generated = false`) is a recipe that
+# still spells its own invocation; the gate then checks that recipe's text
+# carries each of the lane's targets, so the registry cannot claim a run the
+# recipe does not make.
+
+# ── Gating features, classified (phase-510 W0, RFC-0051 §7a) ───────────────
+#
+# class = "config"   a PRODUCT build configuration: switching it off changes
+#                    the mechanism, not what the test observes. It has a
+#                    `matrix::Config` value and matrix cells.
+# class = "harness"  only decides whether a test file compiles (a test-only
+#                    feature, or a platform/std selection the crate needs to
+#                    build its test at all). Registry only, no cell.
+# The test for which: if switching it off should change what the test
+# asserts, it is a workload; if the same observation must hold by another
+# path, it is a configuration (RFC-0051 §7a).
+
+[feature.lending]
+class = "config"
+config = "Lending"
+reason = "the loan publish path (`SlotLending`); a lending pubsub must deliver what plain pubsub does"
+
+[feature.loan-e2e]
+class = "config"
+config = "Lending"
+reason = "nros-tests' switch for `nros-node/rmw-lending` — the same configuration, reached from the test crate"
+
+[feature.signal-fd-wake-test]
+class = "config"
+config = "SignalFdWake"
+reason = "turns on `nros-node/signal-fd-wake`: the executor wakes through a signal fd instead of polling — same dispatch, different mechanism"
+
+[feature.link-custom]
+class = "config"
+config = "CustomTransport"
+reason = "zenoh-pico over a caller-supplied link instead of its own sockets — same messages, different transport"
+
+[feature.trigger-test]
+class = "harness"
+reason = "pulls nros-node + the zenoh backend into nros-tests for the trigger/wake tests; the trigger API itself is always built"
+
+[feature.component-runtime-test]
+class = "harness"
+reason = "pulls the component runtime's dependencies into nros-tests; the runtime itself is the default posix build"
+
+[feature.phase216-substrate]
+class = "harness"
+reason = "pulls `nros-platform` + `nros/rmw-cffi` into nros-tests for the dispatch-strategy test"
+
+[feature.xrce-wake-test]
+class = "harness"
+reason = "pulls the XRCE backend into nros-tests for its wake tests"
+
+[feature.rmw]
+class = "harness"
+reason = "pulls nros-rmw into nros-tests for `custom_transport_loopback`"
+
+[feature.rclrs-port-test]
+class = "harness"
+reason = "the rclrs talker port is a `Workload::Port` question, not a build configuration; this pulls its dependencies"
+
+[feature.platform-posix]
+class = "harness"
+reason = "selects the posix platform port so the backend crate's integration tests can link at all"
+
+[feature.posix-c-port]
+class = "harness"
+reason = "builds the pure-C posix platform port the C-port tests exercise"
+
+[feature.c-stub-test]
+class = "harness"
+reason = "builds the C stub platform/transport the stub tests exercise"
+
+[feature.unix-mock]
+class = "harness"
+reason = "the nvidia-ivc unix-socket mock its loopback test runs against"
+
+[feature.bridge-stub]
+class = "harness"
+reason = "a stub Cyclone bridge, so the descriptor/registry tests need no Cyclone build"
+
+[feature.std]
+class = "harness"
+reason = "std-only test harness code"
+
+[feature.alloc]
+class = "harness"
+reason = "the alloc arm of a crate's tests; a CORE crate's alloc split is the platform matrix's question, not a cell's"
+
+[feature.stats]
+class = "harness"
+reason = "zpico-alloc's statistics counters its replay test reads"
+
+[feature.log-compat]
+class = "harness"
+reason = "the `log` crate bridge nros-log's bridge test exercises"
+
+[feature.rmw-cffi]
+class = "harness"
+reason = "the cffi RMW the crate's tests drive"
+
+# ── Configurations that are not cargo features ─────────────────────────────
+# A configuration is a property of the BUILD, which a knob can state as well as
+# a feature. Listed so `matrix::Config` has one source.
+[knob.NROS_ZENOH_MAX_SESSIONS]
+class = "config"
+config = "Multisession"
+reason = "a zenoh-pico session pool larger than 1: two sessions in one process"
+
+# ── Lanes ──────────────────────────────────────────────────────────────────
+# runner     the recipe that runs the lane (`generated = true`: by calling
+#            `feature-lanes.py run <runner>`; false: it spells its own
+#            invocation and the gate reads that recipe for the targets)
+# crate      `-p <crate>`
+# features   `--features`
+# no_default `--no-default-features`
+# tolerant   through `just _nextest-tolerant` (a lane whose targets need a
+#            router or Agent: it turns `[SKIPPED:capability]` into the
+#            lane's own verdict, issue 0673) — else a plain `cargo nextest run`
+# targets    `--test <t>`; `lib = true` adds `--lib`
+# filter     a test-name filter after the targets
+# env        extra environment for the lane
+
+# required-features-tests — `just/check/lanes.just`, run by `check::build`.
+# A plain lane is `cargo nextest run` WITHOUT `--no-tests`: nextest's default
+# "no tests to run" ERROR is the signal that catches a file-cfg target whose
+# feature is missing (issue 0779), so keep it.
+
+# Issue 0673 — through `_nextest-tolerant`: these need a real zenoh router, and
+# a bare run counts `[SKIPPED:capability]` as a FAILURE. The tolerance is keyed
+# on the marker; a build/setup error (nextest exit != 100) is never absorbed.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-tests"
+features = ["trigger-test", "component-runtime-test", "phase216-substrate", "signal-fd-wake-test"]
+tolerant = true
+targets = ["trigger_conditions", "wake_latency", "ftti_detection_bounds",
+           "component_runtime", "tier_filter", "component_dispatch", "component_param",
+           "dispatch_strategy", "signal_fd_wake", "entity_wake",
+           # phase-510 W2 — behind `component-runtime-test` since issue 0900
+           # and in no lane's `--test` list, so it never ran.
+           "executor_arena_advisory"]
+
+# phase-427 W10 — the rclrs talker port + its diff against upstream's text. Its
+# own lane because `rclrs-port-test` is the CHEAP feature: no router, no
+# capability probe, so a red here is a red. The manifest `required-features`
+# and the file's `#![cfg]` are the same name on purpose (issue 0779).
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-tests"
+features = ["rclrs-port-test"]
+targets = ["rclrs_talker_port", "context_create_executor"]
+
+# Issue 0779 — the FILE-CFG half: crate-level `#![cfg(feature = "lending")]`,
+# which cargo BUILDS with the feature off, so nextest ran zero tests and called
+# it green. Both files had stopped compiling a phase earlier.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-rmw-cffi"
+features = ["alloc", "lending"]
+targets = ["loan_null_slot", "loan_native"]
+
+# Issue 0814 — the NULL-slot refusal is one contract in every build, so it
+# also runs heap-free.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-rmw-cffi"
+no_default = true
+features = ["lending"]
+targets = ["loan_null_slot"]
+
+# Issue 1906 — `condvar_shim_codes` needs `platform-posix`: it calls the
+# zenoh-pico alias shim against the POSIX port.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-rmw-zenoh"
+features = ["lending", "platform-posix"]
+# phase-510 W2 — `session_config_keys` is behind `platform-posix` and was in
+# no lane; its refusal tests open no session, so it needs no router.
+targets = ["lending_traits", "condvar_shim_codes", "session_config_keys"]
+
+# phase-510 W2 — the zenoh tests that start a router (`ZenohRouter`), so
+# through `_nextest-tolerant`. `status_events_matrix` ran in no lane;
+# `matched_events_live` only in a debug recipe (`linux test-matched-events`).
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-rmw-zenoh"
+features = ["platform-posix"]
+tolerant = true
+targets = ["status_events_matrix", "matched_events_live"]
+
+# Issue 0972 — a MODULE, not a test file: `nros-c`'s `mod node` is inside
+# `rmw_modules!` (`#[cfg(feature = "rmw-cffi")]`), and `test-unit` activates no
+# features, so fifty-two unit tests in `node.rs` had never run anywhere.
+# `check::workspace-features` only CLIPPIES it — lint, never execution.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-c"
+features = ["rmw-cffi"]
+lib = true
+
+# Issue 1613 — nros-log's `log` bridge is behind `log-compat`, which no
+# workspace member enables, so neither its unit tests nor the delivery test ran.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-log"
+features = ["log-compat"]
+lib = true
+targets = ["log_bridge_keeps_the_target"]
+
+# Issue 0779 — each file's cfg is a CONJUNCTION, so the feature named in the
+# issue is not enough:
+#   custom_transport  #![cfg(all(feature = "platform-posix", feature = "link-custom"))]
+#   registry_race     #![cfg(all(feature = "std",            feature = "bridge-stub"))]
+#   descriptor_seam   #![cfg(feature = "bridge-stub")]
+# Pass the whole conjunction; `feature-lanes.py check` holds a lane to it.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-rmw-cyclonedds"
+features = ["std", "bridge-stub"]
+targets = ["descriptor_seam", "registry_race"]
+
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-rmw-zenoh"
+features = ["platform-posix", "link-custom"]
+targets = ["custom_transport"]
+
+# Issue 0779 — the last three. `c-stub-test` needed real repairs, not just a
+# flag: its abi_layout_check.c had not compiled since phase-321 W2.e moved the
+# crate, and c_stub_platform asserted a call count for a trait that had shrunk.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-platform-cffi"
+features = ["posix-c-port"]
+targets = ["c_port_posix", "c_port_posix_critical_section", "c_port_posix_net",
+           "c_port_posix_timer", "c_port_posix_wake", "wake_wrapper"]
+
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-platform-cffi"
+features = ["c-stub-test"]
+targets = ["c_stub_platform"]
+
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-rmw-cffi"
+features = ["c-stub-test"]
+targets = ["c_stub_transport"]
+
+# `unix-mock` is a conjunction too (`std`), and the only one whose crate says
+# so: nvidia-ivc carries a `compile_error!` naming the missing feature.
+[[lane]]
+runner = "required-features-tests"
+crate = "nvidia-ivc"
+features = ["std", "unix-mock"]
+targets = ["loopback"]
+
+# phase-510 W2 — not feature-gated: `test-unit` excludes the whole crate
+# (its `*Rmw` imports are platform-gated), so its one test ran nowhere. It
+# needs no feature to build on the host.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-rmw-xrce-cffi"
+targets = ["register_smoke"]
+
+# phase-460 W7 / issue 1425 — `nros-cpp`'s LIB tests, behind `rmw-cffi` for the
+# reason `nros-c`'s are: `subscription.rs`, the C++ take path, ran in no lane.
+# `--no-default-features` drops `panic-platform`: a lib test is a final
+# artifact, and the dev-dep `nros-platform-cffi/posix-c-port` supplies the
+# platform ABI (issue 0619).
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-cpp"
+no_default = true
+features = ["std", "rmw-cffi"]
+lib = true
+
+# test-zpico-multisession — `justfile`: a two-session pool and its own target
+# dir (the knob is a build input, `rerun-if-env-changed`, so sharing `target/`
+# with the default-1 tiers would rebuild the shim on every alternation).
+#
+# Issue 0695 — tolerant, because `lane_skip!` in `zenoh_integration` is still a
+# skip. Issue 1704 — that test is `#[ignore]`d in a single-session build, so if
+# the env ever failed to reach the shim the `two_sessions` filter selects NO test
+# and nextest exits 4, which `_nextest-tolerant` reports as an ERROR, never a
+# pass. The filter is POSITIONAL (name substring): `_nextest-tolerant` splices
+# its args into a bash array, where `-E 'test(...)'` would not survive.
+[[lane]]
+runner = "test-zpico-multisession"
+crate = "nros-rmw-zenoh"
+features = ["platform-posix"]
+tolerant = true
+targets = ["zenoh_integration"]
+filter = "two_sessions"
+env = { NROS_ZENOH_MAX_SESSIONS = "2" }
+scoped_target_dir = "zpico-multisession"
+
+# Issue 0652 — `loan_e2e` runs a publisher and a subscriber in ONE process
+# (same-process pub/sub on one session hits zenoh-pico's write filter), so it
+# needs this lane's pool.
+[[lane]]
+runner = "test-zpico-multisession"
+crate = "nros-tests"
+features = ["loan-e2e"]
+tolerant = true
+targets = ["loan_e2e"]
+env = { NROS_ZENOH_MAX_SESSIONS = "2" }
+scoped_target_dir = "zpico-multisession"
+
+# test-all — `justfile`: the feature runs that need FIXTURES (`test-all`
+# depends on `_require-fixtures`; `required-features-tests` does not). Through
+# `_nextest-platform` (`via = "platform"`) where the targets are nros-tests
+# binaries. They run BEFORE the main sweep: every nextest run rewrites
+# `junit.xml`, and the sweep's real-failure record must be the last one.
+
+# `custom_transport_loopback` — the one target behind `rmw`; needs native
+# fixtures.
+[[lane]]
+runner = "test-all"
+via = "platform"
+crate = "nros-tests"
+features = ["rmw"]
+targets = ["custom_transport_loopback"]
+
+# phase-436 (RFC-0106 D5) — a guard condition on a POLL-ONLY backend; its own
+# invocation because `xrce-wake-test` registers XRCE and must not share a binary
+# with `trigger-test`'s zenoh, and it needs the XRCE Agent. Issue 1734's
+# `xrce_concurrent_entities` rides along: same feature, same Agent need.
+[[lane]]
+runner = "test-all"
+via = "platform"
+crate = "nros-tests"
+features = ["xrce-wake-test"]
+targets = ["xrce_guard_wake", "xrce_concurrent_entities"]
+
+# Issue 1940 — zenoh through the C vtable (`CffiSession`), incl. a waker woken by
+# real arrivals. `cfg(feature = "platform-posix")`, which `--workspace` never
+# enables; needs a router, hence here and not in `ci gate`.
+[[lane]]
+runner = "test-all"
+crate = "nros-rmw-zenoh"
+features = ["platform-posix"]
+tolerant = true
+targets = ["cffi_smoke"]
+
+# test-unit — `cargo nextest run --workspace`, NO features. A target gated on a
+# feature reaches it only when the workspace's own dependency graph turns that
+# feature on (cargo unifies features across members). `unified = true` says
+# so, and the gate verifies it against `cargo metadata`'s resolved features
+# rather than trusting the claim.
+[[lane]]
+runner = "test-unit"
+unified = true
+crate = "nros-rmw-cffi"
+features = ["alloc"]
+targets = ["adapter_oom", "entity_wake", "log_severity", "node_slot", "ping_session",
+           "process_in_place", "publish_streamed", "pure_functions", "refused_service_len",
+           "request_sequence", "rust_adapter", "server_available", "take_sequence"]
+
+[[lane]]
+runner = "test-unit"
+unified = true
+crate = "nros-node"
+features = ["alloc"]
+targets = ["rtic_integration"]
+
+[[lane]]
+runner = "test-unit"
+unified = true
+crate = "nros-rmw"
+features = ["alloc"]
+targets = ["rtic_integration"]
+
+# Recipes that still spell their own invocation. The gate reads each one's
+# text for every target listed here.
+[[lane]]
+runner = "node-std-tests"
+generated = false
+crate = "nros-node"
+features = ["alloc", "rmw-cffi"]
+targets = ["executor_backing_claims"]
+
+[[lane]]
+runner = "node-std-tests"
+generated = false
+crate = "zpico-alloc"
+features = ["stats"]
+targets = ["heap_replay"]
+
+[[lane]]
+runner = "test-ignored"
+generated = false
+crate = "nros-rmw-cyclonedds"
+no_default = true
+features = ["bridge-stub", "std"]
+targets = ["bare_metal_link"]

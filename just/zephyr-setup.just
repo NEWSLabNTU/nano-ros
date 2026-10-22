@@ -479,6 +479,11 @@ verify-fvp-runtime:
     # through its lane check, and a bare `cargo nextest` counts that as a
     # FAILURE (phase-472 W2).
     just _nextest-tolerant -p nros-tests --test fvp_runtime_ws --no-capture
+    # phase-510 W2 — `fvp_smoke` (the board-import surface) ran in NO lane: it is
+    # excluded from `test-all` and its nextest group from `test`, and nothing
+    # named it. It belongs here, beside its sibling, on the same model.
+    just zephyr build-fvp-board-import
+    just _nextest-tolerant -p nros-tests --test fvp_smoke --no-capture
 
 # Phase 215.G.1 — build the minimal ASI-shaped board-import fixture
 # (`packages/testing/nros-tests/fixtures/board_import_fvp`) for the FVP

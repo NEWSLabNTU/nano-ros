@@ -5,8 +5,10 @@
 //! from the separate publisher image (routed through the host `zenohd`), the
 //! probe's `on_wake` / `on_dispatch` hooks capture the executor
 //! wake→dispatch delta. After `TARGET_SAMPLES` it drains the ring into a
-//! histogram and dumps CSV (v1 format) over semihosting for the host runner
-//! `nros-tests::wake_latency_cortex_m3`, then exits.
+//! histogram and dumps CSV (v1 format) over semihosting, then exits. Read it
+//! on hardware: QEMU's MPS2 model does not emulate the DWT cycle counter, so an
+//! emulated run's histogram is empty (its QEMU runner was deleted for that,
+//! phase-510 W2).
 //!
 //! The wake-cb path only fires on real transport arrival, so a same-image
 //! pub→sub (in-process loopback) would NOT exercise it — hence the two-image
