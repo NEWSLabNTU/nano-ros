@@ -3,7 +3,7 @@ id: 1998
 title: "`nros build` hands west no `-Dnano_ros_ROOT`, so a Zephyr workspace image cannot find its own package config"
 status: resolved
 resolved: 2026-10-22
-resolved_in: "branch fix/west-nano-ros-root"
+resolved_in: "PR #2480"
 type: bug
 area: cli, build, zephyr
 severity: high
