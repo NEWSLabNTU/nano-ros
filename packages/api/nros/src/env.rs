@@ -39,10 +39,10 @@
 //!   with the environment rung on top. The C / C++ entries call these on every
 //!   Linux build, `env` or not.
 //! * [`rmw_selector`] — the one `$NROS_RMW` reader (issue 0687's first half).
-//! * [`var`] / [`read_file`] — the two C-library reads the hosted `init*`
+//! * [`var`](crate::env::var) / [`read_file`](crate::env::read_file) — the two C-library reads the hosted `init*`
 //!   entries need (`$RMW_IMPLEMENTATION`, `--params-file`).
-//! * [`write_file`], [`rename`], [`set_var`], [`exe_name`], [`thread_key`],
-//!   [`exit`] — the rest of the hosted PROCESS edge, for the C / C++ surfaces
+//! * [`write_file`](crate::env::write_file), [`rename`](crate::env::rename), [`set_var`](crate::env::set_var), [`exe_name`](crate::env::exe_name), [`thread_key`](crate::env::thread_key),
+//!   [`exit`](crate::env::exit) — the rest of the hosted PROCESS edge, for the C / C++ surfaces
 //!   (phase-359 W10 stage C). `nros-c` and `nros-cpp` write their census,
 //!   metadata and profile files through these instead of `std::fs` /
 //!   `std::process`, so the image root never links libstd: a census is a
