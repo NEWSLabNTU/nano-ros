@@ -126,12 +126,19 @@ CRATES = {
         "skip": {},
     },
     "nros": {
-        "base": "std,alloc",
+        # phase-359 W10 stage B: `nros` has no `std` feature any more, so a
+        # base naming it failed every row of this crate.
+        "base": "alloc",
         "axes": ["", "rmw-cffi"],
         "expected": {
             # Issue 1765 — the size probe's own build only; build.rs refuses it.
             ("ffi-size-markers", ""): "is enabled outside the size probe",
             ("ffi-size-markers", "rmw-cffi"): "is enabled outside the size probe",
+            # phase-359 W10 stage B — the TOML loader needs the bridge's own
+            # `std`, which the consumer names at its dep-site; `nros` has no
+            # `std` to forward, so the bridge's compile_error! refuses it here.
+            ("config", ""): "parses TOML via serde",
+            ("config", "rmw-cffi"): "parses TOML via serde",
         },
         "skip": {},
     },
