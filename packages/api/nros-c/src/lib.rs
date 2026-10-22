@@ -28,10 +28,16 @@
 
 // ── Crate-level imports ─────────────────────────────────────────────────
 
-#[cfg(feature = "std")]
+// phase-359 W10 stage C — TEST builds only (see `test-harness` in Cargo.toml).
+// A test binary's root is libstd, and this crate's own `staticlib`/`cdylib`
+// are final artifacts even in a test build, so they take libstd's panic
+// handler, personality and allocator too, instead of this crate's.
+#[cfg(feature = "test-harness")]
 extern crate std;
 
-#[cfg(feature = "panic-halt")]
+// Not under a test harness: its root is libstd, whose handler a second one
+// would duplicate (E0152). An unreferenced dependency is never linked.
+#[cfg(all(feature = "panic-halt", not(feature = "test-harness")))]
 use panic_halt as _;
 
 // issue 0619 — the `posix-c-port` dev-dependency supplies the platform symbols
@@ -129,11 +135,17 @@ mod heap_stats {
 // allocator found" while `cargo tree` happily shows
 // `nros-platform feature "global-allocator"` enabled. `alloc-stats` masked it
 // by giving the crate an unrelated reason to be referenced.
-#[cfg(all(feature = "global-allocator", not(feature = "std")))]
+#[cfg(feature = "global-allocator")]
 extern crate nros_platform;
 
 // Panic handler for the no_std C/C++ API staticlib when no other panic strategy
-// is linked (no `std`, no `panic-halt`).
+// is linked (no `panic-halt`, and not a Rust test harness — `test-harness`).
+//
+// phase-359 W10 stage C — this no longer stands down for `std`, because no
+// image root links libstd any more: a posix C/C++ image is `#![no_std]` like
+// threadx-linux and freertos-posix, and its panic reaches `nros_platform_panic`
+// (which on posix prints and aborts). The one Rust artifact that still has a
+// libstd root is a TEST binary, and it says so (`test-harness`).
 //
 // phase-366 W4 — this FORWARDS to `nros_platform_panic` instead of deciding
 // anything. The old body was `loop { spin_loop() }`, and its own comment
@@ -155,7 +167,7 @@ extern crate nros_platform;
 // W5 moves ownership out of this library entirely, to the entry.
 #[cfg(all(
     feature = "panic-platform",
-    not(feature = "std"),
+    not(feature = "test-harness"),
     not(feature = "panic-halt")
 ))]
 #[panic_handler]
@@ -193,6 +205,31 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     // diverges; the ABI takes a length-delimited diagnostic, not a C string.
     unsafe { nros_platform_panic(buf.bytes.as_ptr(), buf.used) }
 }
+
+// phase-359 W10 stage C — `rust_eh_personality` for a `#![no_std]` image on a
+// HOSTED target (Linux, incl. Zephyr native_sim): the prebuilt `core`/`alloc`
+// are compiled `panic = "unwind"`, so their landing pads reference the symbol
+// through `DW.ref.rust_eh_personality` even when this image is built
+// `panic = "abort"` (measured: an undefined reference at the C link). libstd
+// defines it; a no_std image has no libstd, so the crate that supplies the
+// image's panic runtime supplies this half of it too, strongly, and only when
+// it IS that crate (a `panic-*` provider, never under a test harness — that
+// root is libstd, which defines its own). It is never called: nothing in a
+// no_std image starts an unwind, the panic handler diverges into the platform.
+//
+// The host-sim RTOS ports carry a WEAK definition for their Rust-only images
+// (issue 1763); a strong one here wins over it in a C/C++ image without a
+// duplicate.
+#[cfg(all(
+    target_os = "linux",
+    any(feature = "panic-platform", feature = "panic-halt"),
+    not(feature = "test-harness")
+))]
+/// Runtime plumbing for the linker, not C API: never in a header.
+///
+/// cbindgen:ignore
+#[unsafe(no_mangle)]
+extern "C" fn rust_eh_personality() {}
 
 // critical-section impl backed by the platform vtable
 // (`nros_platform_critical_section_{acquire,release}`). Phase 248 —
@@ -252,17 +289,17 @@ mod macros;
 pub(crate) mod config;
 
 // Issue 1556 item 2 — the C census switch. Its calls are unconditional; its
-// bodies are empty without `std` (see the module).
+// bodies are empty off Linux (see the module).
 #[cfg(feature = "rmw-cffi")]
 mod census;
 
 // Issue 1556 — `metadata-mode` writes a census FILE named by an environment
-// variable, which is what `std` is for: a capability the consumer picks
-// requires it rather than granting it (ARCHITECTURE §2, `check-feature-contract`).
-#[cfg(all(feature = "metadata-mode", not(feature = "std")))]
+// variable. phase-359 W10 stage C: both go through the C library (`nros::env`),
+// so the requirement is a hosted Linux process, not `std`.
+#[cfg(all(feature = "metadata-mode", not(target_os = "linux")))]
 compile_error!(
     "`nros-c/metadata-mode` records a census and writes it to the file `$NROS_CENSUS_OUT` \
-     names: add \"std\" to this crate's features"
+     names, through the C library: it exists only on a hosted Linux target"
 );
 
 // Backend-independent modules (always available)

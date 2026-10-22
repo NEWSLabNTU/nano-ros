@@ -54,7 +54,7 @@ HOST_UNCHECKABLE := `bash scripts/build/embedded-only-members.sh`
 # this set) runs on schedule only. ONE spelling, read by `check-c`,
 # `check-cpp`, the clippy combos and `compile-smoke`; `check-lane-contracts`
 # verifies a merge-gating lane compiles both crates with it.
-C_API_SHIPPED_FEATURES := "std,rmw-cffi,platform-posix,ros-humble"
+C_API_SHIPPED_FEATURES := "alloc,env,log,panic-platform,rmw-cffi,platform-posix,ros-humble"
 
 
 # The gates themselves, by topic. `import` and not `mod`: it MERGES

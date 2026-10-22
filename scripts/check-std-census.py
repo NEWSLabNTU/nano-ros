@@ -257,7 +257,13 @@ BASELINE = {
     # cfg sites are `census.rs`'s hosted/no-std arms (4) plus the
     # `metadata-mode`-requires-`std` `compile_error!` (1) — the call sites are
     # unconditional, so no executor or support code gained a `std` arm.
-    "nros-c": {"cfg": 7, "path": 1},
+    #
+    # phase-359 W10 stage C: 7/1 -> 0/0, the `std` FEATURE deleted. The census
+    # switch reads, writes and exits through the C library (`nros::env`) on
+    # every Linux target, and the panic handler / allocator no longer stand
+    # down for `std`: no image root links libstd. The `std` that is left is a
+    # test harness's (`test-harness`, never an image's).
+    "nros-c": {"cfg": 0, "path": 0},
     #
     # phase-359 W10 (backend tier): 3 -> 5. Two arms select the WALL CLOCK —
     # the platform's `time_since_epoch_*` when a port is linked, the steady
@@ -377,7 +383,13 @@ BASELINE = {
     # `#[cfg(feature = "std")]`, and its `#[cfg(not(feature = "std"))]` twin
     # that refuses the flag by name on a target with no file system. The parse
     # of the TEXT is `nros_node::ros_args::parse_params_yaml`, no std at all.
-    "nros-cpp": {"cfg": 5, "path": 9},
+    #
+    # phase-359 W10 stage C: 5/9 -> 0/0, the `std` FEATURE deleted, and with it
+    # the last core crate's. Census, profile, metadata sidecar, params file and
+    # `$NROS_ENTRY_SPIN_MS` go through `nros::env` (the C library); the census
+    # funnel test's `use std` is read as test code (a single-line `#[cfg(test)]`
+    # ahead of its wrapped gate). No crate in this table names `std` now.
+    "nros-cpp": {"cfg": 0, "path": 0},
     # 2026-09-06: cfg 1 -> 0. The one site was the crate attribute itself,
     # `#![cfg_attr(not(feature = "std"), no_std)]`, and it bought nothing --
     # this crate's `std` is `std = ["alloc"]` over `alloc = []`, so it enables

@@ -1837,7 +1837,6 @@ dependencies = [
  "nros-platform-cffi",
  "nros-rmw",
  "nros-rmw-metadata",
- "panic-halt",
 ]
 
 [[package]]

@@ -39,7 +39,7 @@
 # Prerequisites — build these first; this module only LINKS them
 # ---------------------------------------------------------------------------
 #
-#   cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release
+#   cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release
 #   cmake -S packages/platform/nros-platform-posix -B build/nros-platform-posix
 #   cmake --build build/nros-platform-posix
 #
@@ -106,7 +106,7 @@ _nros_px4_resolve_archive(_NROS_PX4_CPP_A NROS_CPP_ARCHIVE NROS_CPP_ARCHIVE
     # plus the networked backend, which `nros-cpp` no longer names (RFC-0071 D9):
     # `just px4 build-bridge-example` builds it from the generated image crate.
     # profile-literal-ok: prebuilt archive — the instruction that builds it
-    "cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release")
+    "cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release")
 
 _nros_px4_resolve_archive(_NROS_PX4_PLATFORM_A NROS_PLATFORM_ARCHIVE NROS_PLATFORM_ARCHIVE
     "${NROS_REPO_DIR}/build/nros-platform-posix/libnros_platform_posix.a"
@@ -216,7 +216,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/NanoRosArchivePairing.cmake)
 # guessing one.
 set(_NROS_PX4_REBUILD_HINT
     # profile-literal-ok: prebuilt archive — the instruction that builds it
-    "cargo build -p nros-cpp --no-default-features --features std,rmw-cffi,platform-posix --release\n"
+    "cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release\n"
     "    (a uORB->RMW BRIDGE module instead wants the image-crate archive `just px4 build-bridge-example` builds)\n"
     "    Whichever you run, it rewrites the header and the archive together -- that is the point.")
 
@@ -529,7 +529,7 @@ function(nros_px4_add_module)
                     "Rebuild the archive for THIS module:\n"
                     "    cargo build -p nros-cpp --no-default-features "
                     # profile-literal-ok: prebuilt archive — the instruction that builds it
-                    "--features std,rmw-cffi,platform-posix --release\n"
+                    "--features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release\n"
                     "or, from the repo root, just:\n"
                     "    just px4 build-sitl-example\n"
                     "To link a different archive on purpose, point at it with "

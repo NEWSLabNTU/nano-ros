@@ -1,5 +1,13 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
+**Status (2026-10-22). W10 stage C landed: none of the nine crates has a
+`std` feature.** `just check std-census` measures **0 cfg sites / 0 `std::`
+paths**. `nros-c` / `nros-cpp` lost the last two, and with them every C/C++
+image's libstd: the image root is `#![no_std]` on every platform (posix and
+Zephyr native_sim included), ending in `nros_platform_panic` and allocating
+through the port. The maintainer ruled between "the root keeps libstd on posix"
+and "posix is shaped like the host simulators" for the second (option 4a).
+
 **Status (2026-10-21). W10 stages A and B landed: seven of the nine crates
 have no `std` feature.** `nros-core`, `nros-rmw`, `nros-serdes`,
 `nros-params`, `nros-log`, `nros-node` (stage A) and the `nros` facade
@@ -1373,6 +1381,36 @@ in three places (`NanoRosFeatureSet.cmake`'s panic-policy guard,
 `NanoRosImageCrate.cmake`). In the image-crate model the image ROOT decides
 `#![no_std]`, so the likely end state is that the root, not `nros-c`, carries
 the hosted flavour — which is a design ruling, not a sweep.
+
+*Landed (2026-10-22), ruling 4a — posix shaped like threadx-linux and
+freertos-posix:*
+
+* `nros-c` / `nros-cpp` `std` deleted. What it carried besides the runtime is
+  named: `alloc`, `env`, `log` (`nros-cpp` gained `log`). `nros_feature_set()`'s
+  posix arm emits those; native_sim's `std` became `alloc,env,log`.
+* The hosted extras go through the C library: `nros::env` gained
+  `write_file`, `rename`, `set_var`, `exe_name`, `thread_key`, `exit` beside
+  `var` / `read_file`. The census (C and C++), metadata sidecar, profile sink,
+  `--params-file` and `$NROS_ENTRY_SPIN_MS` use them, on every Linux target —
+  so threadx-linux / freertos-posix C++ images read a params file now too.
+* The image runtime: `panic-platform` / `global-allocator` no longer stand
+  down for `std`; `platform-posix` selects `global-allocator` like every other
+  platform (`check-platform-provider-features` lost its std-backed row).
+  `nros-c` defines `rust_eh_personality` STRONGLY on a Linux target when it
+  supplies the panic runtime: the prebuilt `alloc` references it even under
+  `panic = "abort"` (measured), and libstd is no longer there to define it.
+* Every generated root is `#![no_std]` (`NanoRosImageCrate`), and the runtime
+  umbrella's `NO_STD` argument is gone (cmake/Corrosion and Zephyr lanes).
+  Issue 1742's `PANIC halt`-on-`std` refusal is gone with its cause.
+* `nros-rmw-metadata` (the census recorder, in every posix C/C++ image) is
+  `no_std` outside its tests; it linked libstd, which meets `nros-c`'s panic
+  handler as E0152.
+* Test builds: `nros-c/test-harness` (turned on by `nros-c`'s and
+  `nros-cpp`'s dev-dependencies, never by an image) — a test binary's root IS
+  libstd, and `nros-c`'s `staticlib`/`cdylib` are final artifacts in a test
+  build too. It replaces what `std`'s feature unification did by accident.
+* Not built here: PX4 SITL (its archive instructions name the new set) and
+  RTOS cross images (tier 2).
 
 ## Costs accepted
 

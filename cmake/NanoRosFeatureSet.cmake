@@ -189,7 +189,18 @@ function(nros_feature_set out_var)
         set(_cross TRUE)
     endif()
     if(_FS_PLATFORM STREQUAL "posix")
-        list(APPEND _feats std platform-posix)
+        # phase-359 W10 stage C — the third host tier off `std`, after
+        # threadx-linux (issue 1763) and freertos-posix (issue 1778), and the
+        # last. `std` meant four things at once: libstd in the staticlib,
+        # libstd's panic handler, libstd's allocator, and the hosted extras.
+        # The first three are properties of the IMAGE, and a library feature
+        # decided them; now the image root is `#![no_std]` on every road, its
+        # panic ends in `nros_platform_panic` (`panic-platform`, the default
+        # ending, which `std` used to make stand down) and its heap goes
+        # through the port (`platform-posix` brings `global-allocator`). The
+        # extras go through the C library, so this arm names the capabilities
+        # the hosted runtime uses: the environment (`env`) and the `log` bridge.
+        list(APPEND _feats alloc env log platform-posix)
     elseif(_FS_PLATFORM STREQUAL "freertos" OR _FS_PLATFORM STREQUAL "freertos_armcm3")
         # issue 1778 — ONE tier, `alloc`, host or cross, as issue 1763 made it
         # for ThreadX.
@@ -508,29 +519,10 @@ function(nros_apply_panic_policy policy context)
     set(_app_applied FALSE)
     foreach(_app_target nros_c nros_cpp nros_c-static nros_cpp-static)
         if(TARGET ${_app_target})
-            # issue 1742 — a `std` staticlib already HAS a panic handler: std's.
-            # `panic-platform`'s handler is `cfg(not(feature = "std"))`, so it
-            # stands down and std's ends the image (measured on threadx-linux:
-            # links and runs). `panic-halt` cannot stand down — it is the
-            # `panic_halt` crate — and rustc refuses the pair as E0152
-            # "duplicate lang item `panic_impl`", inside `nros-c`, naming no
-            # policy. Say it here, at configure, where the request was made.
-            # Keyed on `std` in the STATICLIB, not on the board. Every ThreadX
-            # and FreeRTOS image is `no_std` now: threadx-linux Rust since 1759,
-            # its C/C++/mixed since 1763, freertos-posix since 1778. It stays live
-            # only for the `std` tiers (posix, NuttX), and there it
-            # is still right.
-            get_target_property(_app_feats ${_app_target} CORROSION_FEATURES)
-            if(_app_policy STREQUAL "halt" AND _app_feats AND "std" IN_LIST _app_feats)
-                message(FATAL_ERROR
-                    "${context}: PANIC halt cannot apply to this image — its "
-                    "nros-c/nros-cpp staticlib is built with `std` (a `std` tier: "
-                    "posix, NuttX), and `std` already supplies "
-                    "the #[panic_handler]. `panic-halt` would be a second one "
-                    "(rustc E0152, duplicate lang item `panic_impl`). Use PANIC "
-                    "platform — on a std tier std's own handler ends the image — "
-                    "or PANIC own.")
-            endif()
+            # issue 1742's guard (PANIC halt refused on a `std` staticlib, E0152)
+            # is gone with `std` itself (phase-359 W10 stage C): no nros-c /
+            # nros-cpp staticlib links libstd any more, so every policy applies
+            # on every platform.
             corrosion_set_features(${_app_target} FEATURES ${_app_feature})
             # Issue 1858 -- a feature set HERE lands after `nros-c` keyed the
             # shared cargo dir on its features, so two images that differ only

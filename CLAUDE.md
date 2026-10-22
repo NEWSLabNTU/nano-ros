@@ -400,11 +400,12 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   subset of the ONE registry pin set `locks/cargo-registry.lock`. Every other cargo root is a leaf
   whose lock is SEEDED from the pins on its first build (`nros build`, or `nros_seed_leaf_lock` /
   `nros ws seed-lock` for a script that runs cargo itself), never committed.
-- **`std` is being DELETED; write `core::`/`alloc::`, never `std::`** (ARCHITECTURE §2, phase-359).
-  Terminal state of the core crates is `core` and `core+alloc` — `std` there is a second
-  implementation of the platform layer, not a convenience over it. Seven of the nine have no `std`
-  feature at all (W10 stages A/B); `nros-c`/`nros-cpp` remain (stage C: their `std` is the
-  staticlib's libstd/panic flavour, which cmake reads). A capability needs what its FACILITY
+- **`std` is DELETED from the core crates; write `core::`/`alloc::`, never `std::`** (ARCHITECTURE
+  §2, phase-359). All nine are `core` / `core+alloc` with no `std` feature (W10 stages A–C) — `std`
+  there was a second implementation of the platform layer, not a convenience over it. A C/C++
+  image's Rust root is `#![no_std]` on every platform (posix and native_sim included): its panic
+  ends in `nros_platform_panic`, its heap is the port's, and a test binary is the only libstd root
+  (`nros-c/test-harness`). A capability needs what its FACILITY
   needs: `env` is the process environment and reads through the C library's `getenv`
   (`nros::env`, one reader for the std Linux board and the no_std host simulators), so it needs a
   C library, not `std`. A capability REQUIRES what it needs (`compile_error!`) rather than granting

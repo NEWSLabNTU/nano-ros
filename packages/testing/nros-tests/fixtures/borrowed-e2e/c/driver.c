@@ -14,6 +14,15 @@
 
 #include <e2e_msgs/msg/borrowed.h>
 
+/* The registration hook every C image owes `rclc_support_init` — there is no
+ * weak default on the C path. This driver opens no session and registers no
+ * backend; it only has to define the hook. Whether the archive member that
+ * references it is pulled into the link depends on how rustc partitions
+ * `nros-c` into codegen units, which moved when phase-359 W10 stage C changed
+ * the crate's feature set: a link that worked by partitioning luck. */
+void nros_app_register_backends(void);
+void nros_app_register_backends(void) {}
+
 static e2e_msgs__msg__Borrowed__Storage g_storage;
 
 int main(void) {

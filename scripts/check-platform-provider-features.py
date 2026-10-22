@@ -18,9 +18,10 @@ fixture family. A HOST build cannot detect this: it gets both items from `std`.
 
 THE RULE
 
-  platform-posix   MUST NOT select a malloc provider — libstd supplies it.
-  every other      MUST select a malloc provider (`global-allocator`).
-  platform-*
+  EVERY platform-* MUST select a malloc provider (`global-allocator`).
+                   phase-359 W10 stage C made this hold for `platform-posix`
+                   too: it used to be exempt because libstd supplied the
+                   allocator, and no C/C++ image links libstd any more.
   EVERY platform-* MUST NOT select a panic provider, and `nros_feature_set()`
                    must not emit one either. phase-366 moved that decision to
                    the IMAGE: `nros::main!(panic = …)` for a Rust entry,
@@ -60,17 +61,10 @@ import comments  # noqa: E402
 MALLOC = "global-allocator"
 # phase-366 R1/R2 — the entry-selected provider. `panic-spin` is deleted.
 PANIC = ("panic-platform", "panic-halt")
-# `std` supplies both lang items, so these must NOT name a provider.
-STD_BACKED = {"platform-posix"}
-# issue 1763 — provider ports (their nros-c row names `global-allocator`) that
-# `nros_feature_set()` still emits with `std`, each with the reason. Anything
-# not here that does so fails. ThreadX left this list in issue 1763, and
-# FreeRTOS (the POSIX simulator) in issue 1778.
-STD_TIER_KNOWN = {
-    # NuttX ships a real `std` port (`*-nuttx-*` is std-capable, built with
-    # build-std); RFC-0003's tier table records the choice.
-    "platform-nuttx": "NuttX's own std port (RFC-0003)",
-}
+# phase-359 W10 stage C — there are no std-backed rows. `platform-posix` was
+# the last (`STD_BACKED`), after ThreadX (issue 1763) and FreeRTOS (issue 1778)
+# left the std tier; the API crates have no `std` feature any more, so a
+# `nros_feature_set()` arm naming one is a configure that cargo refuses.
 
 
 def selects(body: str, feature: str) -> bool:
@@ -154,15 +148,6 @@ def main() -> int:
                 file=sys.stderr,
             )
             fail = 1
-        if name in STD_BACKED:
-            if has_malloc:
-                print(
-                    f"ERROR: nros-c/{name} names a malloc provider, but `std` "
-                    "already supplies one — that is a duplicate lang item.",
-                    file=sys.stderr,
-                )
-                fail = 1
-            continue
         if not has_malloc:
             print(
                 f"ERROR: nros-c/{name} selects no `{MALLOC}`.",
@@ -186,25 +171,19 @@ def main() -> int:
             if plat is None:
                 continue  # a partial append; the platform arrives in another
             if "std" in feats:
-                # issue 1763 — `std` supplies panic + allocator, but on a port
-                # whose `nros-c` row ALREADY names one (it owns a heap), `std`
-                # is not cover. It is a SECOND runtime, and a costly one:
-                # `panic-platform` stands down so a panic never reaches
-                # `nros_platform_panic`, the Rust heap is glibc rather than the
-                # port's, and `PANIC halt` must be refused at configure (E0152,
-                # issue 1742). threadx-linux was exactly this until issue 1763.
-                # A provider port rides `std` only with a recorded reason.
-                if selects(rows.get(plat, ""), MALLOC) and plat not in STD_TIER_KNOWN:
-                    print(
-                        f"ERROR: nros_feature_set emits {plat} with `std` "
-                        f"({' '.join(feats)}), but nros-c/{plat} names its own "
-                        f"`{MALLOC}`: the port supplies the runtime, and `std` "
-                        "would be a second one (issue 1763). Emit `alloc` "
-                        "instead, or add the platform to STD_TIER_KNOWN with "
-                        "the reason and a tracked issue.",
-                        file=sys.stderr,
-                    )
-                    fail = 1
+                # phase-359 W10 stage C — `nros-c`/`nros-cpp` have no `std`.
+                # It was a SECOND runtime beside the port's (issue 1763): the
+                # Rust heap glibc's, `panic-platform` standing down, `PANIC
+                # halt` refused (issue 1742). Every arm emits `alloc` now.
+                print(
+                    f"ERROR: nros_feature_set emits {plat} with `std` "
+                    f"({' '.join(feats)}), a feature nros-c/nros-cpp no longer "
+                    f"have. The port supplies the runtime (`{MALLOC}` + the "
+                    "image's panic ending): emit `alloc`, plus `env`/`log` for "
+                    "a hosted target.",
+                    file=sys.stderr,
+                )
+                fail = 1
                 continue
             if any(p in feats for p in PANIC):
                 print(
@@ -232,15 +211,14 @@ def main() -> int:
         print(
             "\n  A no_std final artifact needs exactly one #[global_allocator] and\n"
             "  one #[panic_handler]. The `platform-*` feature is what names the port\n"
-            "  that supplies them (phase-361 W8.d). A host build cannot catch this —\n"
-            "  it gets both from `std` (issue 0617).",
+            "  that supplies them (phase-361 W8.d), on a host target too\n"
+            "  (phase-359 W10 stage C) — no image root links libstd.",
             file=sys.stderr,
         )
         return 1
 
     print(
-        f"platform provider features: OK ({len(rows)} row(s); "
-        f"{len(STD_BACKED)} std-backed, {len(rows) - len(STD_BACKED)} port-supplied)"
+        f"platform provider features: OK ({len(rows)} row(s), all port-supplied)"
     )
     return 0
 

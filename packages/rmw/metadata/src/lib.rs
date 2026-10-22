@@ -48,6 +48,15 @@
 //! exits; it never spins, so nothing observes these. They are honest no-ops
 //! rather than `unimplemented!()` so a component whose `configure` happens to
 //! publish once during setup does not abort the probe.
+//!
+//! # No `std` (phase-359 W10 stage C)
+//!
+//! A hosted C/C++ image carries this backend (`metadata-mode`), and that
+//! image's root is `#![no_std]` now: a dependency that linked libstd would put
+//! libstd's `#[panic_handler]` beside `nros-c`'s (rustc E0152). Nothing here
+//! ever needed it; the tests do, and link it.
+
+#![cfg_attr(not(test), no_std)]
 
 use nros::node_metadata::EntityKind;
 use nros_rmw::{

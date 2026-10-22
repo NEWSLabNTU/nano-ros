@@ -66,7 +66,8 @@ ROOT = Path(__file__).resolve().parent.parent
 # justfile's `C_API_SHIPPED_FEATURES` so it keeps one spelling; the fallback
 # is only for a direct run.
 C_SHIPPED = os.environ.get(
-    "NROS_C_API_SHIPPED_FEATURES", "std,rmw-cffi,platform-posix,ros-humble"
+    "NROS_C_API_SHIPPED_FEATURES",
+    "alloc,env,log,panic-platform,rmw-cffi,platform-posix,ros-humble",
 )
 
 ONE_OF_PREFIXES = (
@@ -151,11 +152,11 @@ CRATES = {
         "base": C_SHIPPED,
         "no_default": True,
         "axes": [""],
-        "expected": {
-            # A bare-metal panic handler; the `std` the host base needs brings
-            # its own, so the pair is refused by the compiler.
-            ("panic-halt", ""): "duplicate lang item",
-        },
+        # phase-359 W10 stage C — `panic-halt` beside the base's `panic-platform`
+        # used to be refused (the base was `std`, whose handler was a second
+        # one, E0152). The base has no libstd now, and `panic-platform`'s
+        # handler stands down for `panic-halt`, so the pair composes.
+        "expected": {},
         "skip": {
             "platform-esp32-qemu": _ESP32_DORMANT,
             "platform-freertos": _CROSS,
@@ -170,11 +171,11 @@ CRATES = {
         "base": C_SHIPPED,
         "no_default": True,
         "axes": [""],
-        "expected": {
-            # A bare-metal panic handler; the `std` the host base needs brings
-            # its own, so the pair is refused by the compiler.
-            ("panic-halt", ""): "duplicate lang item",
-        },
+        # phase-359 W10 stage C — `panic-halt` beside the base's `panic-platform`
+        # used to be refused (the base was `std`, whose handler was a second
+        # one, E0152). The base has no libstd now, and `panic-platform`'s
+        # handler stands down for `panic-halt`, so the pair composes.
+        "expected": {},
         "skip": {
             "platform-esp32-qemu": _ESP32_DORMANT,
             "platform-freertos": _CROSS,

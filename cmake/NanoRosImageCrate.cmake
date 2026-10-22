@@ -181,8 +181,8 @@ function(nros_image_crate prefix)
 
     # Every feature of the API crate, forwarded (`f = ["api/f"]`), so the
     # import keeps passing the API crate's features BY NAME: the panic-policy
-    # feature is appended to the target after import, and its `std` check reads
-    # `CORROSION_FEATURES` (issue 1742) — both see the same names as before.
+    # feature is appended to the target after import, and sees the same names
+    # as before.
     file(STRINGS "${_api_dir}/Cargo.toml" _api_lines)
     set(_in_features FALSE)
     set(_forward "")
@@ -200,10 +200,11 @@ function(nros_image_crate prefix)
             endif()
         endif()
     endforeach()
-    set(_no_std "")
-    if(NOT "std" IN_LIST _api_feats)
-        set(_no_std "#![no_std]\n")
-    endif()
+    # phase-359 W10 stage C — every image root is `#![no_std]`: the API crates
+    # have no `std` feature to infer a hosted root from, and the panic handler,
+    # personality and allocator are the image's, supplied by the API crate's
+    # `panic-*` / `global-allocator` features this root forwards.
+    set(_no_std "#![no_std]\n")
     if(_IC_FLAVOR STREQUAL "c")
         set(_surface "static _KEEP_API: &[unsafe extern \"C\" fn()] = &api::c_surface_anchor::C_SURFACE_ANCHOR;")
     else()

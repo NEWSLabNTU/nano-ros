@@ -2032,7 +2032,8 @@ mod tests {
     /// issue 0665 — the same rule against the REAL manifests, not a fixture.
     ///
     /// The two crates that carry an `*_EXECUTOR_OPAQUE_U64S` assert both forward
-    /// `nros/env` from their `std`, one on a single line and one wrapped. A
+    /// `nros/env` from their own `env` (it rode their `std` until phase-359 W10
+    /// stage C deleted that feature). A
     /// synthetic fixture cannot notice when somebody reformats a manifest or
     /// adds a forward; reading the files can. If this test ever has to be
     /// relaxed, the parser is wrong — not the manifest.
@@ -2045,7 +2046,7 @@ mod tests {
             .expect("repo root above packages/tooling/nros-sizes-build");
 
         unsafe {
-            std::env::set_var("CARGO_FEATURE_STD", "1");
+            std::env::set_var("CARGO_FEATURE_ENV", "1");
             std::env::set_var("CARGO_FEATURE_ALLOC", "1");
         }
         let mut results = Vec::new();
@@ -2058,7 +2059,7 @@ mod tests {
             results.push((krate, got));
         }
         unsafe {
-            std::env::remove_var("CARGO_FEATURE_STD");
+            std::env::remove_var("CARGO_FEATURE_ENV");
             std::env::remove_var("CARGO_FEATURE_ALLOC");
         }
 
@@ -2070,7 +2071,7 @@ mod tests {
         for (krate, got) in results {
             assert!(
                 got.contains(&"env".to_string()),
-                "{krate}: `std` forwards `nros/env`, so the probe must build the \
+                "{krate}: `env` forwards `nros/env`, so the probe must build the \
                  facade WITH it — otherwise `ExecutorInlineStorage` is measured 16 \
                  bytes short and the emitted opaque size with it (issue 0665). \
                  got {got:?}"

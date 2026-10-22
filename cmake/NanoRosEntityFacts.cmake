@@ -136,7 +136,33 @@ function(nros_entity_facts_env_deferred _target)
         CALL _nros_entity_facts_flush)
 endfunction()
 
+# phase-359 W10 stage C — "saying nothing gets `platform`" (ARCHITECTURE §2),
+# for a configure that imports the runtime staticlib and declares no ending at
+# all: a plain `find_package(nano_ros)` library or executable, no
+# `nano_ros_entry()`, no board seam calling `nros_apply_panic_policy()`. On posix
+# such an image used to get libstd's `#[panic_handler]` through `nros-c/std`;
+# with `std` gone it would have none (`#[panic_handler] function required`), so
+# the default ending is applied HERE, the way an entry applies it, at the end
+# of the configure when every entry has had its say. Runs before the re-key
+# below, so the late `panic-platform` is in the shared cargo key (issue 1858).
+# A lane that applies the ending itself (Zephyr, NuttX) has declared it, so
+# this stands aside.
+function(_nros_apply_default_ending)
+    get_property(_policy GLOBAL PROPERTY NROS_ENTRY_PANIC_POLICY)
+    get_property(_applied GLOBAL PROPERTY NROS_ENTRY_PANIC_APPLIED)
+    if(_policy OR _applied OR NOT COMMAND nros_apply_panic_policy)
+        return()
+    endif()
+    foreach(_t IN ITEMS nros_c nros_cpp nros_c-static nros_cpp-static)
+        if(TARGET ${_t})
+            nros_apply_panic_policy(platform "nano-ros (no entry declared an ending)")
+            return()
+        endif()
+    endforeach()
+endfunction()
+
 function(_nros_entity_facts_flush)
+    _nros_apply_default_ending()
     _nros_entity_facts_rekey_shared_cargo_dir()
     # Issue 1746 -- the shared cargo key is FINAL now; the configure-time
     # sizes-header heals waited for exactly this (see nros_config_header_heal).

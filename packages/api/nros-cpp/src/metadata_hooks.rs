@@ -65,13 +65,12 @@ pub unsafe extern "C" fn nros_cpp_metadata_dump(
     let Ok(json) = nros::metadata_mode::to_json(&export) else {
         return -3;
     };
-    // phase-359 W10 — this `std` is the CAPABILITY, not a spelling to unwind.
-    // `metadata-mode` exists to write this file; a filesystem is what it needs
-    // and `std` is where one lives. The guard in `lib.rs` names it, which is the
-    // part that was missing. (`nros`'s half of the same feature requires only
-    // `alloc`: it records into a heap-allocated global and hands back a
-    // `String` — the write is here, and only here.)
-    if std::fs::write(out_path, json).is_err() {
+    // phase-359 W10 stage C — the file is written through the C library
+    // (`nros::env::write_file`): a filesystem is a property of the hosted
+    // process, not of the Rust standard library. (`nros`'s half of the same
+    // feature requires only `alloc`: it records into a heap-allocated global
+    // and hands back a `String` — the write is here, and only here.)
+    if nros::env::write_file(out_path, json.as_bytes()).is_err() {
         return -3;
     }
     0
