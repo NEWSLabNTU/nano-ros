@@ -1,5 +1,31 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-10-22). The blackout is over: every scheduled lane reached its
+own work in the last week, and what is red now is red about something.**
+Measured over the scheduled runs of 2026-10-17 to 10-21:
+
+| lane | reaches its work? | what is red |
+| --- | --- | --- |
+| `probe`, `lane-census`, `pr-verdicts` | yes | nothing; green every run |
+| `gate` | yes | alternates green and red |
+| `run-matrix` (tier 1 + tier 2) | yes, 7 of the last 8 runs (`just matrix-triage`) | the same 3 cells in both tiers: trace-marker tests that #1949's log threshold silenced, fixed in their own PR |
+| `nightly` | yes, 12 of 16 jobs pass (`just nightly-triage`) | only tier-2 pairwise, whose build died on `No space left on device`, then `ld … signal 7 [Bus error]` and rustc SIGSEGV after the fixture stamp was written — the runner's disk, issue 1353's shape |
+| `live-peer` | 10-17/10-18 green; 10-19 to 10-21 red in its build | `zpico_ring_claim_head` declared `ptrdiff_t`, defined `intptr_t` (#1956's change) — fixed by `948bd88ec9` (issue 1979) AFTER the last run |
+| `host-tests` | 10-18 green | the feature sweep still built `nros-node[std]` (fixed by `161dc7f444`, after the last run), plus ENOSPC on the runner |
+
+So the acceptance below holds for every lane in the measurement table but
+`live-peer` and `host-tests`, and both of those have their code cause fixed on
+`main` and await one scheduled run. The issue sweep of the same day resolved 12
+of the homed issues on commit + run evidence (each resolution names both):
+1136, 1158, 1355, 1364, 1474, 1493, 1497, 1579, 1628, 1665, 1666, 1755.
+Still open here: 1325 (the filter's haystack still holds `$conf_files`), 1483
+(`[python.empy]`/`[python.lark]` still listed), 1758, and 1651/1365/1842/1459
+for their remaining items; 1375, 1457 and 1899 show no symptom in the last runs
+but name no fix, so one more clean run decides them. W5 is still open.
+**Left before archiving:** one green scheduled `live-peer` and `host-tests`,
+the trace-marker fix, the runner-disk exhaustion (an image/runner fix, not code), W5, and
+the four issues above.
+
 **Status (2026-10-13). Provisioning passes; three build faults found, two
 already fixed.** The 2026-10-12 nightly (run 38213993313, `3df774a34c`) reached
 the build in both matrix lanes and stopped there. Tier 2's `freertos` and
@@ -61,7 +87,7 @@ narrow fix had also already landed before this phase opened -- `9722fca32`,
 `probe.yml` not at all. Five lanes are dark; the sixth is new.
 
 Six issues describe pieces of this and none of them describes the whole:
-[1158](../issues/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) (tier 2, filed
+[1158](../issues/archived/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) (tier 2, filed
 2026-09-06, seventeen days ago), 1359, 1457, 1458, 1459, 1034.
 
 ## What the triage found
@@ -242,23 +268,23 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1136](../issues/1136-launch-args-keyword-removed-but-still-generated.md) | `host-tests`' integration job died at **Build workspace fixtures** for 30 runs because the CLI still emits the removed `LAUNCH_ARGS`. That is a scheduled lane with no verdict. |
+| [#1136](../issues/archived/1136-launch-args-keyword-removed-but-still-generated.md) | `host-tests`' integration job died at **Build workspace fixtures** for 30 runs because the CLI still emits the removed `LAUNCH_ARGS`. That is a scheduled lane with no verdict. |
 | [#1325](../issues/1325-zephyr-fixture-filter-matches-the-checkout-path.md) | `NROS_ZEPHYR_FIXTURE_FILTER` matches against a haystack that holds more than the leaf name, so the scheduled Zephyr fixture build selects the wrong set. |
-| [#1355](../issues/1355-threadx-riscv64-builds-the-linux-threadx-port.md) | The `threadx_riscv64` nightly builds ThreadX's linux/gnu port for a target with no POSIX headers, so the lane has never reached a cell. |
+| [#1355](../issues/archived/1355-threadx-riscv64-builds-the-linux-threadx-port.md) | The `threadx_riscv64` nightly builds ThreadX's linux/gnu port for a target with no POSIX headers, so the lane has never reached a cell. |
 | [#1365](../issues/1365-tier2-self-hosted-runner-unregistered.md) | Tier-2 jobs wait for a self-hosted runner that is not registered, and the lane reports nothing. |
 | [#1375](../issues/1375-zephyr-native-sim-runner-link-misses-zpico-reply-slot.md) | The native_sim runner link cannot see the zpico reply-slot symbols, so every Zephyr fixture fails to link in tier 2. |
 | [#1459](../issues/1459-threadx-c-entry-undefined-network-wait.md) | `threadx_linux` C fixtures fail to link, which stops the scheduled lane in its build. |
-| [#1474](../issues/1474-zephyr-rust-fixture-build-has-no-clippy-component.md) | The Zephyr Rust fixture build runs clippy as a ninja step, and the CI image has no clippy component, so `live-peer` dies in its build. |
+| [#1474](../issues/archived/1474-zephyr-rust-fixture-build-has-no-clippy-component.md) | The Zephyr Rust fixture build runs clippy as a ninja step, and the CI image has no clippy component, so `live-peer` dies in its build. |
 | [#1483](../issues/1483-python-layer-carries-upstream-transitive-deps.md) | `[python.*]` lists two of upstream rosidl's transitive dependencies. It came from the CI-image fix of issue 1457, which is homed here. |
-| [#1493](../issues/1493-heap-free-poc-bin-has-no-row-and-no-lane-declaration.md) | `fixture_source_coverage` was red on main for 27 days because no lane runs that test. |
-| [#1497](../issues/1497-tier2-zephyr-self-pkg-leaves-have-no-systemmodel.md) | Tier 2's Zephyr module dies in `codegen-system`, with no cell verdict. The root cause, issue 1501, is fixed; what is left is a scheduled run that reaches the cells. |
-| [#1579](../issues/1579-timer-elapsed-upper-bound-fails-under-ci-load.md) | A real sleep bounded by a 10 ms allowance fails `timer_readiness_and_elapsed_agree_with_the_dispatcher` on a loaded runner, in tier 1. |
+| [#1493](../issues/archived/1493-heap-free-poc-bin-has-no-row-and-no-lane-declaration.md) | `fixture_source_coverage` was red on main for 27 days because no lane runs that test. |
+| [#1497](../issues/archived/1497-tier2-zephyr-self-pkg-leaves-have-no-systemmodel.md) | Tier 2's Zephyr module dies in `codegen-system`, with no cell verdict. The root cause, issue 1501, is fixed; what is left is a scheduled run that reaches the cells. |
+| [#1579](../issues/archived/1579-timer-elapsed-upper-bound-fails-under-ci-load.md) | A real sleep bounded by a 10 ms allowance fails `timer_readiness_and_elapsed_agree_with_the_dispatcher` on a loaded runner, in tier 1. |
 | [#1590](../issues/archived/1590-threadx-rv64-rust-leaf-misses-cyclone-backend-archive.md) | A `threadx_riscv64` Rust leaf built with Cyclone linked no Cyclone backend archive. Fixed by `be2d7efd39`; 12/12 leaves link (2026-10-21). |
 | [#1592](../issues/archived/1592-features-custom-msgs-declares-rosidl-default-deps.md) | In-tree `package.xml` names resolved only through ament, so the ROS-less tier-2 runner refused them. The sites were fixed in October; a no-ROS ladder test now catches the class. |
-| [#1628](../issues/1628-tier1-rust-rtos-link-check-needs-unprovisioned-freertos.md) | `just ci tier1` runs `rust-rtos-link-check`, which needs a FreeRTOS kernel that `host-tests.yml` never checks out. |
-| [#1665](../issues/1665-zephyr-ws-rust-leaf-cannot-find-core.md) | Zephyr workspace Rust entries fail with `can't find crate for core` in the tier-2 nightly, in 10 of 32 images. |
-| [#1666](../issues/1666-zephyr-ci-image-has-no-cargo-nextest.md) | live-peer's board job reaches its run step, and the Zephyr CI image has no `cargo nextest`. |
-| [#1755](../issues/1755-runner-home-cache-not-writable.md) | After a runner-container restart, two tier-1 steps cannot create directories under `~/.cache`. |
+| [#1628](../issues/archived/1628-tier1-rust-rtos-link-check-needs-unprovisioned-freertos.md) | `just ci tier1` runs `rust-rtos-link-check`, which needs a FreeRTOS kernel that `host-tests.yml` never checks out. |
+| [#1665](../issues/archived/1665-zephyr-ws-rust-leaf-cannot-find-core.md) | Zephyr workspace Rust entries fail with `can't find crate for core` in the tier-2 nightly, in 10 of 32 images. |
+| [#1666](../issues/archived/1666-zephyr-ci-image-has-no-cargo-nextest.md) | live-peer's board job reaches its run step, and the Zephyr CI image has no `cargo nextest`. |
+| [#1755](../issues/archived/1755-runner-home-cache-not-writable.md) | After a runner-container restart, two tier-1 steps cannot create directories under `~/.cache`. |
 | [#1758](../issues/1758-skip-and-pass-is-a-failure.md) | Scope, not host probes, decides what runs. What is left is every scheduled lane declaring its scope and reporting in-scope reds. |
 | [#1842](../issues/1842-tier-priority-plan-image-red-verdict-unprinted.md) | `tier-priority-plan-image` fails the Zephyr fixture build in two scheduled lanes, and neither lane shows its verdict. |
 | [#1898](../issues/archived/1898-metadata-harness-excerpt-drops-cargo-cause.md) | The tier-2 nightly stopped in `generate-bindings` on a git dependency it could not fetch, and the excerpt dropped the reason. |

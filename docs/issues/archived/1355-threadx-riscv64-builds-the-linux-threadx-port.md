@@ -3,7 +3,7 @@ id: 1355
 title: "The `threadx_riscv64` nightly job builds ThreadX's **linux/gnu** port, whose
   `tx_port.h` includes `<semaphore.h>` — so the board crate's build script dies on a
   target that has no POSIX headers, and the lane has never reached a cell"
-status: open
+status: resolved
 type: bug
 area: ci, boards, threadx
 severity: medium
@@ -11,7 +11,7 @@ found: 2026-09-12
 related: [1158, 1145, 1557, phase-448, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -46,7 +46,7 @@ It also quietly weakens issue 1145's ThreadX entry, which records
 the mechanism is in place awaiting a measurement on that board's own images.
 That measurement cannot be taken while the board crate will not build. (1145 is
 resolved; that remainder is now
-[issue 1557](archived/1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md),
+[issue 1557](1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md),
 which this issue blocks.)
 
 ## What this is NOT
@@ -295,8 +295,15 @@ than on all of it.
 The "boots, no session" observation in the phase-472 F5 entry above was the rust
 app thread dialling the board crate's stale `192.0.3.0/24` default while NetX
 sat on slirp's `10.0.2.0/24`. Fixed under
-[issue 1557](archived/1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md):
+[issue 1557](1557-threadx-riscv64-backing-and-allocator-bases-unmeasured.md):
 the image now dials its own `system.toml` locator, and a hand run with
 `start_riscv64_virt`'s arguments delivers (talker/listener 39 samples in 40 s,
 action round trip complete). This issue's acceptance — the nightly lane reaching
 a verdict on its cells — is unchanged, and the Cyclone half is still issue 1590.
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `fa6cf68d2a` (phase-451 W4) picks the risc-v ThreadX port; `50c9b26b76` verified the app_config half on a real build.
+- **Evidence:** nightly 39560904828 (2026-10-21): the `threadx_riscv64` job builds and reports `4 tests run: 4 passed`.

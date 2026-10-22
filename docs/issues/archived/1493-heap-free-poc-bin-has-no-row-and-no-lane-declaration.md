@@ -3,7 +3,7 @@ id: 1493
 title: "`fixture_source_coverage` has been red on main for 27 days over
   `heap-free-poc-mps2`, and the reason nobody saw it is that no merge-gating
   lane runs that test"
-status: open
+status: resolved
 type: bug
 area: ci, testing
 severity: medium
@@ -11,7 +11,7 @@ related: [0540, 0538, 1040, 1158, 0952, phase-350, phase-391, phase-468, phase-4
 found: 2026-09-25
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 # The red
 
@@ -169,3 +169,10 @@ the runs listed above are no longer retrievable (`gh run view --log` returns
 `log not found`), so this issue asserts only the conclusions, which are
 retrievable, and does not claim which step ate them. That question belongs with
 the lane, not with this bin.
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `b760cde688` (2026-09-25) declares the lane that builds the heap-free image.
+- **Evidence:** run-matrix 39555555017 tier 1 (2026-10-21): `every_test_bin_is_a_row_or_a_tracked_exception` passes.

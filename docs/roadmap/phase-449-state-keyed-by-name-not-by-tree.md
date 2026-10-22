@@ -201,8 +201,13 @@ tree's entries and judged images no run of this tree made.
       assume. Measured end to end on a synthetic workspace with the runner's
       exact shape: gate refuses and names all three paths, unbind repairs,
       gate passes, second unbind is a no-op.
-- [ ] One scheduled tier-2 run reaches the cells and produces a verdict. This
+- [x] One scheduled tier-2 run reaches the cells and produces a verdict. This
       is the acceptance; the earlier failure texts are not.
+      **Met (2026-10-22).** `just matrix-triage` over the last 8 run-matrix runs
+      reports 7 reaching the cells with a verdict (scheduled 2026-10-16, 10-17,
+      10-19, 10-20, 10-21, and two dispatches); only 10-18 stopped in the build.
+      The tier-2 cells are red for reasons about the code (three trace-marker
+      tests #1949's log threshold silenced), which is what a verdict is. Issue 1158 is resolved on this evidence.
       **Still owed, and not claimable from a checkout.** A scheduled run is the
       only thing that can satisfy it. As of 2026-09-20 `just matrix-triage`
       reports 0 of 8 runs reaching the cells — but the SPLIT has moved, which
@@ -475,7 +480,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1158](../issues/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) — The tier-2 lane has produced no runtime verdict in six consecutive scheduled runs, and no pre-merge event can produce …
+- [issue 1158](../issues/archived/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) — The tier-2 lane has produced no runtime verdict in six consecutive scheduled runs, and no pre-merge event can produce …
 
 ## Issues homed here (2026-10-17)
 

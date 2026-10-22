@@ -1,7 +1,7 @@
 ---
 id: 1158
 title: "The tier-2 lane has produced no runtime verdict in six consecutive scheduled runs, and no pre-merge event can produce one"
-status: open
+status: resolved
 type: bug
 area: ci, testing
 severity: high
@@ -9,7 +9,7 @@ related: [0968, 1016, 1029, 1043, 1075, 1098, 1104, 1114, 1127, 1353, 1457, 1458
 found: 2026-09-06
 ---
 
-**Home: [phase-449](../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — re-homed 2026-10-12 from phase-416, which is archived.
+**Home: [phase-449](../../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — re-homed 2026-10-12 from phase-416, which is archived.
 
 # The lane whose job is the runtime verdict has not delivered one since 2026-09-01
 
@@ -594,3 +594,7 @@ today's 1591 + 1592), on a lane whose summary string has not changed. The claim
 this issue keeps making is unaltered and this run is its strongest instance: the
 lane finally ran, and what it found was three independent reasons, two previously
 unknown. Fixing any one of them does not give this lane a verdict.
+
+## Resolution (2026-10-22)
+
+The tier-2 lane produces a verdict again. `just matrix-triage` over the last 8 run-matrix runs: 7 reached the cells (39555555017, 39380448771, 39210994277 FAILED in cells; 39009801514, 38980380118, 38861323075 passed; 38933437082 FAILED in cells), and only 39103947641 (2026-10-18) stopped in the build. The cells' own reds are defects of their own (the trace-marker tests #1949's log threshold silenced). Closes phase-449 W2's acceptance box.

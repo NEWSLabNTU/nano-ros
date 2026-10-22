@@ -1,7 +1,7 @@
 ---
 id: 1755
 title: "After the runner container restart, two tier-1 steps cannot create directories under `/home/runner/.cache`: Miri's sysroot and `nros::main!`'s model cache"
-status: open
+status: resolved
 type: bug
 area: [ci, testing]
 severity: medium
@@ -9,7 +9,7 @@ found: 2026-10-08
 related: [1685, 1387, 1457, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -103,3 +103,10 @@ tier-1 run creates both directories.
   uid on every start, so a restart cannot reintroduce this. The fix belongs in
   the image (CLAUDE.md: a missing dependency on a self-hosted runner is an
   IMAGE fix, never a host fix).
+
+## Resolution (2026-10-22)
+
+Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
+
+- **Fix:** `d16afa7836` and `4b31d50354` (2026-10-10): the runner image creates its mount points, so `~/.cache` is the runner's, and the self-test holds as root.
+- **Evidence:** run-matrix 39555555017 tier 1 (2026-10-21): the Miri sysroot step completes.
