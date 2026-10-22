@@ -301,9 +301,53 @@ the image now dials its own `system.toml` locator, and a hand run with
 action round trip complete). This issue's acceptance — the nightly lane reaching
 a verdict on its cells — is unchanged, and the Cyclone half is still issue 1590.
 
-## Resolution (2026-10-22)
+## First recorded resolution (2026-10-22, phase-466 close-out)
+
+This is kept as a record. The section below shows its evidence was the wrong one: the 4 passing tests were side tests, not this issue's cells.
 
 Closed in the phase-466 close-out, against the scheduled runs of 2026-10-18 to 10-21.
 
 - **Fix:** `fa6cf68d2a` (phase-451 W4) picks the risc-v ThreadX port; `50c9b26b76` verified the app_config half on a real build.
 - **Evidence:** nightly 39560904828 (2026-10-21): the `threadx_riscv64` job builds and reports `4 tests run: 4 passed`.
+
+## Resolution (2026-10-22) — the lane was green without running its cells
+
+The nightly's `threadx_riscv64` job went **green** on 2026-10-21 (run
+39560904828, job 119092650058): the build tally is clean, the port this issue
+is named for is gone from the log (`semaphore.h` and `linux/gnu`: 0
+occurrences), and `Summary: 4 tests run: 4 passed`. Read as the acceptance,
+that is the lane reaching a verdict. It is not: those four are the
+`threadx_riscv64_qemu` target's side tests (three Cyclone two-QEMU pubsubs and
+`errno_is_per_thread`). The cells this issue's acceptance names —
+`rtos_e2e`'s `Platform__ThreadxRiscv64` — were never selected, because `just
+threadx_riscv64 test` ran its own target alone while the FreeRTOS, NuttX and
+ThreadX-Linux recipes each select their platform's `rtos_e2e` cells. Only
+`test-all` reached them, and no lane runs `test-all` for this module.
+
+**Fix.** The `test` recipe runs both targets in one `_nextest-platform`
+invocation (issue 1658's one-junit rule), filtered with
+`binary(=threadx_riscv64_qemu) | test(ThreadxRiscv64)`, the FreeRTOS lane's
+shape.
+
+**Gate, for the class.** `just check platform-lane-cells`
+(`scripts/check-platform-lane-cells.py`, fast line, ~0.1 s): for every
+`rtos_e2e` `Platform` variant, derived from its `Display` arms (which ARE the
+`just` module names), the module's `test` recipe must name `rtos_e2e` and
+`test(<Variant>)`, comments excluded. Modules are read through
+`check_just_sources`, the one reader of the `just` graph. Against the pre-fix
+recipe it fails naming both missing literals; self-test covers a comment that
+names them, a missing module, a missing recipe, and an enum it cannot find.
+
+**Verified locally**, in a fresh worktree whose `build/` was empty, so the
+port selection was COLD (this issue's other open question): `just test
+threadx_riscv64` built every fixture and ran **10 tests, 10 passed** — the four
+side tests plus `rtos_e2e` `ThreadxRiscv64` pubsub and service for Rust, C and
+C++. The riscv `risc-v64/gnu` port was selected throughout.
+
+**Not covered, deliberately and not by this issue:** the riscv64 ACTION cells.
+`test_rtos_action_e2e`'s `#[values]` omits `ThreadxRiscv64` on purpose, for
+QEMU wall-clock, as its comment records. Adding them is a cost decision, not a
+lane defect.
+
+**Not run:** the nightly itself with this change. Its first run will be the
+first time the scheduled lane reaches these cells.

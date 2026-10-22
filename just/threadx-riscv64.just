@@ -487,7 +487,14 @@ test verbose="": build-fixtures
         echo "ERROR: NetX Duo not found at $NETX_DIR. Run: just threadx-linux setup"
         exit 1
     fi
-    just _nextest-platform threadx_riscv64_qemu '{{verbose}}'
+    # Issue 1355 — the platform's own cells live in `rtos_e2e`
+    # (`Platform__ThreadxRiscv64`: zenoh pubsub/service/action × Rust/C/C++), and
+    # this recipe used to run `threadx_riscv64_qemu` alone — four Cyclone/errno
+    # tests. So the nightly job went GREEN on 2026-10-21 having run none of the
+    # cells the issue's acceptance names. One invocation for both targets (issue
+    # 1658: one junit, one skip budget, one verdict), the FreeRTOS lane's shape.
+    # Gate: `check platform-lane-cells`.
+    just _nextest-platform 'threadx_riscv64_qemu rtos_e2e' '{{verbose}}' '' 'binary(=threadx_riscv64_qemu) | test(ThreadxRiscv64)'
 
 # Run all ThreadX RISC-V tests including networked E2E
 [group("full-matrix")]

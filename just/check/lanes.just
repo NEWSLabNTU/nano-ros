@@ -3872,3 +3872,12 @@ cpp-ffi-tests:
 # because the tier would recurse; `just ci gate` runs it after `check::fast`.
 pristine-checkout:
     @bash scripts/ci/pristine-checkout-fast.sh
+
+# Issue 1355 — every `rtos_e2e` platform's own `just <module> test` selects its
+# cells (`rtos_e2e` + `test(<Variant>)`). `threadx_riscv64` ran its side target
+# alone, so its nightly job went green over four Cyclone/errno tests and never
+# ran a `Platform__ThreadxRiscv64` cell. Platforms derived from `Platform`'s
+# `Display` arms, modules from `check_just_sources`; ~0.1 s.
+[private]
+platform-lane-cells:
+    @python3 scripts/check-platform-lane-cells.py
