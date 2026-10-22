@@ -542,6 +542,38 @@ impl Workload {
     }
 }
 
+/// Configuration axis (RFC-0051 §7a, phase-510): a build-time switch that
+/// changes the MECHANISM a workload runs through, not what it observes. A cell
+/// carries a SET of them (`Cell::config`), empty for the default build.
+///
+/// A `Workload` changes what the test asserts; a `Config` must not — a lending
+/// pubsub delivers exactly what plain pubsub does. The variants are the
+/// `class = "config"` rows of `.config/feature-lanes.toml`, and
+/// `just check required-features-reachable` holds the two to the same set.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Config {
+    /// Loan publish (`SlotLending`): the payload is written into a slot the
+    /// backend lends, instead of copied from a caller buffer (issue 0814).
+    Lending,
+    /// A zenoh-pico session pool larger than one (`NROS_ZENOH_MAX_SESSIONS`).
+    Multisession,
+    /// The executor wakes through a signal fd instead of polling.
+    SignalFdWake,
+    /// zenoh-pico over a caller-supplied link instead of its own sockets.
+    CustomTransport,
+}
+
+impl Config {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Config::Lending => "lending",
+            Config::Multisession => "multisession",
+            Config::SignalFdWake => "signal-fd-wake",
+            Config::CustomTransport => "custom-transport",
+        }
+    }
+}
+
 /// What the cell exercises.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -589,6 +621,17 @@ pub struct Cell {
     pub workload: Workload,
     pub kind: Kind,
     pub tier: Tier,
+    /// The build configurations the cell's image is built with (RFC-0051
+    /// §7a). Empty is the default build; a configured cell is backed by a
+    /// fixture row that enables them and asserts what they are for.
+    pub config: &'static [Config],
+}
+
+impl Cell {
+    /// This cell, built with `config` (RFC-0051 §7a).
+    pub const fn with(self, config: &'static [Config]) -> Cell {
+        Cell { config, ..self }
+    }
 }
 
 const fn cell(
@@ -606,6 +649,7 @@ const fn cell(
         workload,
         kind,
         tier,
+        config: &[],
     }
 }
 

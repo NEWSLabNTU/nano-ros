@@ -98,8 +98,9 @@ nros-rmw = { path = "../../core/nros-rmw", default-features = false, features = 
 
 # Node + executor API (optional, for trigger condition integration tests).
 # Phase 141.C — `wake-latency-probe` feature pulls in
-# `wake_probe::{parse_csv, percentile_ns}` for the
-# `wake_latency_cortex_m3` host runner.
+# `wake_probe::{parse_csv, percentile_ns}`. Its QEMU host runner,
+# `wake_latency_cortex_m3`, was deleted by phase-510 W2: QEMU's MPS2 model does
+# not emulate the DWT cycle counter, so it measured 0 samples on every run.
 nros-node = { path = "../../core/nros-node", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "wake-latency-probe"], optional = true }
 
 # Phase 124.A.8.b — zenoh-pico backend (lending feature on) for the

@@ -107,8 +107,10 @@ TEXT_EXT = (
 )
 SKIP = re.compile(
     r"(^|/)third-party/|/generated/|^docs/issues/|^docs/roadmap/|"
-    r"^scripts/check|/check-[^/]*$|^\.config/"
+    r"^scripts/check|/check-[^/]*$|^\.config/(?!feature-lanes\.toml$)"
 )
+# `.config/` holds baselines and ledgers, which MENTION knobs; the one file
+# there that SETS one is the feature-lane registry (phase-510 W1).
 
 
 def is_claim_doc(path: str) -> bool:
@@ -255,6 +257,12 @@ def producers_in(path: str, text: str) -> set[str]:
             out |= set(re.findall(r"\"(" + NAME + r")\"", t))
     elif path.endswith((".sh", ".just")) or path == "justfile":
         out |= set(re.findall(r"(?:^|\s|export\s+)(" + NAME + r")=", t, re.M))
+    elif path == ".config/feature-lanes.toml":
+        # phase-510 W1 — a feature lane's `env = { NAME = "v" }` is exported by
+        # `scripts/feature-lanes.py run` for that lane's command: the registry
+        # is where `test-zpico-multisession`'s `NROS_ZENOH_MAX_SESSIONS=2` lives.
+        for table in re.findall(r"(?m)^\s*env\s*=\s*\{([^}]*)\}", t):
+            out |= set(re.findall(r"\b(" + NAME + r")\s*=", table))
     return out
 
 
@@ -357,6 +365,13 @@ def self_test() -> None:
     c, p, _ = evaluate(fixed, callees, set(), set(), {"NROS_ORPHAN_KNOB"})
     assert not c, f"selftest: rule 1 false positive {sorted(c)}"
     assert not p, f"selftest: rule 2 false positive {sorted(p)}"
+
+    # phase-510 W1 — a feature lane's `env` table produces its names; the same
+    # name in a TOML comment does not.
+    assert producers_in(".config/feature-lanes.toml",
+                        'env = { NROS_LANE_KNOB = "2" }\n') == {"NROS_LANE_KNOB"}
+    assert producers_in(".config/feature-lanes.toml",
+                        '# env = { NROS_LANE_KNOB = "2" }\n') == set()
 
     # phase-484 W5a: a doc claiming the CANONICAL spelling of a registry row
     # whose reader still names the LEGACY one is read -- one row, one knob --

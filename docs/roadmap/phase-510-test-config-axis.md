@@ -1,6 +1,6 @@
 # Phase 510 — a configuration axis for the test matrix, one feature-lane registry, and every test bound to a cell
 
-**Status (2026-10-22). Planned; nothing landed.** Design is RFC-0051 §7
+**Status (2026-10-22). W0–W2 done; W3–W6 open.** Design is RFC-0051 §7
 (amendment 2026-10-22) and RFC-0061's amendment of the same date. This phase
 opened from phase-441 W8: the 0814 decision (option 2) keeps the loan publish
 half, which by W8's own condition calls for an embedded lending lane. Asking
@@ -133,6 +133,26 @@ The expected split, to be confirmed by reading each target:
 
 **Acceptance.** A table in this doc giving every gating feature in the tree, its class, and the reason. A `Config` enum in `matrix.rs` with exactly the configuration rows. Every existing cell gets `config: &[]`, so nothing moves yet.
 
+**DONE 2026-10-22.** Each of the 20 gating features was read against what it
+turns on. The table with reasons is `.config/feature-lanes.toml`'s
+`[feature.*]` rows, the one place it is kept; the decisions:
+
+| Class | Features |
+| --- | --- |
+| config `Lending` | `lending`, `loan-e2e` (turns on `nros-node/rmw-lending`) |
+| config `SignalFdWake` | `signal-fd-wake-test` (turns on `nros-node/signal-fd-wake`) |
+| config `CustomTransport` | `link-custom` |
+| config `Multisession` | not a cargo feature: the `NROS_ZENOH_MAX_SESSIONS` knob (`[knob.*]`) |
+| harness | `trigger-test`, `component-runtime-test`, `phase216-substrate`, `xrce-wake-test`, `rmw`, `rclrs-port-test`: each pulls test-only dependencies into `nros-tests`; the product code it reaches is always built |
+| harness | `platform-posix`, `posix-c-port`, `c-stub-test`, `unix-mock`, `bridge-stub`, `std`, `alloc`, `stats`, `log-compat`, `rmw-cffi`: each selects a platform or a stub so a test can compile |
+
+Two predictions above were wrong: `trigger-test` and `component-runtime-test`
+are harness gates, not configurations — they pull dependencies; the trigger API
+and the component runtime are in the default posix build. `matrix::Config`
+holds exactly the four configuration values, every cell carries `config: &[]`
+(`Cell::with` builds a configured one), and the gate holds the enum and the
+registry to one set in both directions.
+
 ### W1 — the feature-lane registry, and the gate
 
 One table (proposed: `packages/testing/nros-tests/src/feature_lanes.rs`, or a TOML under `.config/` if a shell consumer needs it). Each row: feature set → lane → targets → class (W0).
@@ -153,6 +173,37 @@ Four of the six unreached targets passed through exactly that gap.
 - **Positive:** it passes after W2.
 - `required-features-tests`, `test-all`'s feature runs and `test-zpico-multisession` run the same targets as before, with the old recipe lines deleted.
 
+**DONE 2026-10-22.** `.config/feature-lanes.toml` is the registry (TOML: the
+recipes are shell). `scripts/feature-lanes.py run <runner>` executes a recipe's
+lanes, so `required-features-tests`, `test-zpico-multisession` and `test-all`'s
+three feature runs are each one call, and each lane's comment moved beside its
+row. `just check required-features-reachable` now runs `feature-lanes.py
+check`, and the feature-level `check-required-features-reachable.py` is
+deleted. The new gate works per (crate, target):
+
+- every `[[test]] required-features` and file-level `#![cfg(feature …)]` target
+  in every crate must sit in a lane whose features satisfy its whole gate (a
+  conjunction is a conjunction);
+- a `test-unit` lane's claim that the workspace unifies a feature on is checked
+  against `cargo metadata` (NOT VERIFIED, never a failure, where the cache is
+  absent);
+- a hand-spelled runner (`node-std-tests`, `test-ignored`) must carry its
+  lane's crate and features in its own text;
+- every gating feature is classified, and `matrix::Config` matches the
+  config rows.
+
+Negative control, run on the tree before W2: the gate named
+`executor_arena_advisory`, `wake_latency_cortex_m3`, `session_config_keys`,
+`status_events_matrix` and `matched_events_live` (the last ran only in a debug
+recipe). Its self-test holds the shapes: a feature enabled for one target but
+not the next, a missing conjunct, an unclassified feature, a generated runner
+that never calls the generator, a unified claim the graph does not back.
+
+Measured equivalence: all 16 `required-features-tests` lanes pass (32 tests in
+the nros-tests tolerant lane, now including `executor_arena_advisory`), and
+`test-zpico-multisession` reports the same 2 passed / 22 filtered and 2 passed
+it did before.
+
 ### W2 — the six unreached targets
 
 Each one is fixed or deleted, with the reason recorded:
@@ -164,6 +215,23 @@ Each one is fixed or deleted, with the reason recorded:
 - `fvp_smoke`: a lane, or a recorded `CarveOut` (FVP needs a licensed model) and deletion of the dead filter.
 
 **Acceptance.** Each target runs green in a lane, or is gone. Run each solo before believing a red (CLAUDE.md: a target nothing ran has not been green for an unknown time).
+
+**DONE 2026-10-22.**
+
+| Target | Outcome |
+| --- | --- |
+| `executor_arena_advisory` | Joined the nros-tests tolerant lane; passes |
+| `session_config_keys` | Joined the zenoh `lending,platform-posix` lane (opens no session); passes |
+| `status_events_matrix` | New tolerant zenoh lane (starts a router); passes |
+| `matched_events_live` | Same lane, out of its debug-recipe-only state; passes |
+| `register_smoke` | New lane, no features — `test-unit` excludes its crate for a platform-gating reason that does not reach this test; passes |
+| `fvp_smoke` | Runs in `verify-fvp-runtime`, after `build-fvp-board-import`, beside `fvp_runtime_ws` on the same model |
+| `wake_latency_cortex_m3` | **Deleted.** Measured: 0 samples on QEMU — the MPS2 model does not emulate the DWT cycle counter its histogram reads — so it was a red no lane could clear, and there is no hardware lane. The two bench images stay build-checked by their fixture row, and `wake_probe`'s CSV/percentile code keeps its unit tests in `nros-node` |
+
+Correction to the inventory: `wake_latency_cortex_m3` was not "no `[[test]]`
+entry, so nothing builds it". `nros-tests` uses auto-discovered tests, so it was
+a target — compiled EMPTY by every run without `trigger-test`, which is the
+0779 shape.
 
 ### W3 — bind runtime tests to cells
 

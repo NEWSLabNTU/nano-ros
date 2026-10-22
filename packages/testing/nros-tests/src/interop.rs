@@ -231,6 +231,7 @@ const fn c(
         workload,
         kind,
         tier,
+        config: &[],
     }
 }
 

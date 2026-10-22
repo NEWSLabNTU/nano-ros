@@ -453,10 +453,14 @@ no-tracked-workspace-roots:
 
 # Issue 0652 — a `required-features` target no recipe enables is invisible:
 # cargo does not report it as filtered, it simply never builds it, so it looks
-# like coverage while running nothing. Baseline is a shrinking backlog.
+# like coverage while running nothing. phase-510 W1 (RFC-0051 §7b) made the
+# unit the TARGET, not the feature: every feature-gated test target, in every
+# crate, must sit in a `.config/feature-lanes.toml` lane whose features satisfy
+# its gate. The feature-level check this replaced passed while four targets
+# behind reachable features ran nowhere.
 [group("main")]
 required-features-reachable:
-    @python3 scripts/check-required-features-reachable.py
+    @python3 scripts/feature-lanes.py check
 
 # A test that can SKIP must be run by a runner that understands skips.
 # `nros_tests::lane_skip!` PANICS with a `[SKIPPED:lane]` marker (Rust's harness
