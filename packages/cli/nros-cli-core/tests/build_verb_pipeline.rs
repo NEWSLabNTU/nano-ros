@@ -213,6 +213,41 @@ fn a_west_image_names_this_checkout_as_its_nros_module() {
     );
 }
 
+/// Issue 1998 — the west handoff names the root the generated app's
+/// `find_package(nano_ros)` imports, as the cmake roads do since issue 1304.
+/// Nothing exports `nano_ros_ROOT` since RFC-0103 D6, so a west configure
+/// without it died with "Could not find a package configuration file provided
+/// by nano_ros". A caller's own `-Dnano_ros_ROOT` comes later on the line and
+/// wins.
+#[test]
+fn a_west_image_names_the_nano_ros_root_its_app_imports() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    let (_, cmake_zone) = line.split_once(" -- ").expect("a cmake zone");
+    let value = cmake_zone
+        .split(' ')
+        .find_map(|a| a.strip_prefix("-Dnano_ros_ROOT="))
+        .unwrap_or_else(|| panic!("no -Dnano_ros_ROOT after `--`: {line}"));
+    assert_eq!(
+        std::fs::canonicalize(value).unwrap(),
+        std::fs::canonicalize(repo_root()).unwrap(),
+        "the root is this checkout: {line}"
+    );
+
+    let mut a = args(tmp.path(), &["zephyr"]);
+    a.native_args = vec!["-Dnano_ros_ROOT=/elsewhere".into()];
+    let plans = plan_builds(&a).expect("resolves");
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    let ours = line.find(&format!("-Dnano_ros_ROOT={value}"));
+    let theirs = line.find("-Dnano_ros_ROOT=/elsewhere");
+    assert!(
+        matches!((ours, theirs), (Some(o), Some(t)) if o < t),
+        "the caller's root comes last, so cmake takes it: {line}"
+    );
+}
+
 /// Issue 1519 — the image authors the NANO-ROS id (`zephyr`, above) and `-b`
 /// is the descriptor's `[board.zephyr] west_board`. Authoring that framework
 /// string instead used to work only because the descriptor also listed it as
