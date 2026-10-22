@@ -63,7 +63,7 @@ echo "borrowed-e2e: building nros-c (platform-posix)…"
 # writing" branch. The per-build config header is then never written and this
 # fixture fails on the header it is about to link against — which is what the
 # build script's own warning means by "do not link the resulting rlib".
-( cd "$repo_root" && cargo build -p nros-c --features std,platform-posix,rmw-cffi >/dev/null )
+( cd "$repo_root" && cargo build -p nros-c --features alloc,env,log,platform-posix,rmw-cffi >/dev/null )
 # The line above is a plain `cargo build`, so the archive is the `dev` profile's
 # for the host; where that lands is `nros locate artifact` (phase-484 W6b).
 lib="$(nros_locate_artifact c-archive --profile dev)"

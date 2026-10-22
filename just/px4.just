@@ -125,7 +125,7 @@ build-sitl-cpp:
 # Each is ~10 min cold, <2 s warm.
 #
 # Prereqs the helper checks for at configure time, with the command to fix each:
-#   cargo build -p nros-cpp --no-default-features --features std,rmw-cffi --release
+#   cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release
 #   cmake -S packages/platform/nros-platform-posix -B build/nros-platform-posix
 #   cmake --build build/nros-platform-posix
 [group("examples")]
@@ -165,7 +165,7 @@ build-sitl-example:
     # profile-literal-ok: symbol fixture: the PX4 link and this build must name
     # the same profile dir, and PX4 knows nothing about nano-ros profiles.
     cargo build -p nros-cpp --no-default-features \
-        --features std,rmw-cffi,platform-posix --release
+        --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release
     # nros-cmake-prefix-exempt: the POSIX platform's C archive -- no Rust target
     # in that project, so no Corrosion to resolve.
     # Same rule as the ThreadX-RV64 leaves: quiet on success, and on failure

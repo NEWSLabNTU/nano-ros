@@ -1441,7 +1441,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_get_actual_qos(
     NROS_CPP_RET_OK
 }
 
-#[cfg(all(test, feature = "std"))]
+#[cfg(test)]
 mod tests {
     //! phase-460 W7 / issue 1425 -- the C++ take counts and NAMES a sample it
     //! threw away for being too big.

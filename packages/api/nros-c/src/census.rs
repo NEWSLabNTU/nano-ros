@@ -24,21 +24,22 @@
 //! services, clients).
 //!
 //! Hosted only: `$NROS_CENSUS_OUT` is an environment variable and the census a
-//! file, so the bodies need `std` — which no RTOS image has, and there both
-//! calls are empty. An image with `std` but without `metadata-mode` has no
-//! recorder; it REFUSES a census at support init rather than booting normally
-//! with no file.
+//! file, so the bodies need a C library — read and written through
+//! `nros::env`, which exists on every Linux target (phase-359 W10 stage C; it
+//! used to be `std`). No RTOS image has one, and there both calls are empty. A
+//! Linux image without `metadata-mode` has no recorder; it REFUSES a census at
+//! support init rather than booting normally with no file.
 
 use crate::error::rcl_ret_t;
 
 /// Arm census mode at support init. `Ok(())` means "carry on": either no
 /// census was asked for, or the recorder is now the selected backend.
 pub(crate) fn arm() -> Result<(), rcl_ret_t> {
-    #[cfg(feature = "std")]
+    #[cfg(target_os = "linux")]
     {
         hosted::arm()
     }
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(target_os = "linux"))]
     {
         Ok(())
     }
@@ -46,23 +47,18 @@ pub(crate) fn arm() -> Result<(), rcl_ret_t> {
 
 /// At the head of every spin entry point: if [`arm`] armed a census, write it
 /// and exit the process instead of spinning. Returns only when no census was
-/// armed (always, on a build without `std`).
+/// armed (always, off Linux).
 pub(crate) fn finish_if_armed() {
-    #[cfg(feature = "std")]
+    #[cfg(target_os = "linux")]
     hosted::finish_if_armed();
 }
 
-#[cfg(feature = "std")]
+#[cfg(target_os = "linux")]
 mod hosted {
-    // ONE `std::` path for the module: `check-std-census` counts the text, and
-    // every use here is the capability (an environment variable, a file, an
-    // exit) rather than a convenience over the platform layer.
-    // `fs` is used by the `metadata-mode` arm only.
-    #[allow(unused_imports)]
-    use std::{env, fs, process};
+    // Every process facility here — the variable, the file, the exit — goes
+    // through `nros::env`, the one C-library edge (phase-359 W10 stage C).
+    use nros::env;
 
-    #[allow(unused_imports)]
-    use alloc::string::{String, ToString};
     use core::sync::atomic::{AtomicBool, Ordering};
 
     use crate::error::rcl_ret_t;
@@ -76,9 +72,8 @@ mod hosted {
 
     /// `$NROS_CENSUS_OUT`, with an empty value read as unset (the reading
     /// every other funnel gives it).
-    fn census_out_path() -> Option<String> {
-        let raw = env::var(CENSUS_OUT_ENV).ok()?;
-        if raw.is_empty() { None } else { Some(raw) }
+    fn census_out_path() -> Option<&'static str> {
+        env::var(CENSUS_OUT_ENV).filter(|raw| !raw.is_empty())
     }
 
     #[cfg(feature = "metadata-mode")]
@@ -129,7 +124,7 @@ mod hosted {
             return;
         }
         let code = write_census();
-        process::exit(code);
+        env::exit(code);
     }
 
     #[cfg(feature = "metadata-mode")]
@@ -145,23 +140,21 @@ mod hosted {
             );
             return 1;
         }
-        let exe = env::current_exe()
-            .ok()
-            .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
-            .unwrap_or_default();
+        let exe = env::exe_name().unwrap_or_default();
         let export = nros::node_metadata::SourceMetadataExport::new(&exe, &exe)
             .executable(&exe)
             .language("c");
         let Ok(json) = nros::metadata_mode::to_json(&export) else {
             return 1;
         };
-        match fs::write(&path, json) {
+        match env::write_file(path, json.as_bytes()) {
             Ok(()) => 0,
-            Err(_) => {
+            Err(why) => {
                 nros_log::log_error!(
                     nros_log::get_logger("nros-c"),
-                    "nros census: cannot write `{}`",
-                    path
+                    "nros census: `{}` {}",
+                    path,
+                    why
                 );
                 1
             }

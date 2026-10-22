@@ -30,7 +30,9 @@ mkdir -p "$out_dir"
 
 # Phase 241.D3-rev — single-runtime model: the C umbrella `libnros_c.a` bundles the
 # zenoh backend (rlib dep) into ONE archive, so a host C binary links a single Rust
-# staticlib with one `std` + one `REGISTRY` — no `--allow-multiple-definition`.
+# staticlib with one runtime + one `REGISTRY` — no `--allow-multiple-definition`.
+# (phase-359 W10 stage C: that runtime is `#![no_std]` — `panic-platform` and the
+# port's allocator — so the hosted set is named, not `std`.)
 #
 # RFC-0071 D9 (phase-506 W4d) — `nros-c` names no backend, so the archive is
 # built from the IMAGE CRATE `cmake/NanoRosImageCrate.cmake` generates (its
@@ -43,7 +45,7 @@ mkdir -p "$out_dir"
 image_dir="$out_dir/image"
 if ! image="$(cmake --log-level=WARNING -DNROS_IMAGE_FLAVOR=c -DNROS_IMAGE_RMW=zenoh \
         -DNROS_IMAGE_EDITION=humble -DNROS_IMAGE_OUT_DIR="$image_dir" \
-        "-DNROS_IMAGE_API_FEATURES=std;platform-posix;rmw-cffi;ros-humble" \
+        "-DNROS_IMAGE_API_FEATURES=alloc;env;log;panic-platform;platform-posix;rmw-cffi;ros-humble" \
         -P "$repo_root/cmake/NanoRosImageCrate.cmake")"; then
     echo "link-determinism: generating the zenoh image crate failed" >&2
     exit 1
@@ -65,7 +67,11 @@ cp "$built" "$out_dir/"
 # `set -e`, failing the hard PR gate). The consuming test then only runs `nm` on
 # this prebuilt `lkproof` (pure inspection — no compilation at test time).
 cc="${CC:-cc}"
-printf 'int main(void){return 0;}\n' > "$out_dir/bare.c"
+# Every C image owes `nros_app_register_backends` (no weak default on the C
+# path); a real image gets it from its generated entry. Since phase-359 W10
+# stage C the archive's own panic runtime is always pulled into a link and can
+# share an object with `rclc_support_init_rmw`, so a bare binary states it too.
+printf 'void nros_app_register_backends(void);\nvoid nros_app_register_backends(void){}\nint main(void){return 0;}\n' > "$out_dir/bare.c"
 "$cc" "$out_dir/bare.c" -Wl,-u,nros_rmw_zenoh_register "$out_dir/libnros_c.a" \
     -lpthread -ldl -lm -o "$out_dir/lkproof"
 # The message names the flag we deliberately do NOT pass. Spelled in two pieces

@@ -1530,6 +1530,38 @@
     "verdict": "extension",
     "why": "the fallible form of `rust:resolve_hosted` (`packages/api/nros/src/env.rs:222`): `Result<ExecutorConfig, BootConfigError>`, so a typo'd `ROS_DOMAIN_ID` is an error the caller sees rather than a node that silently moves to domain 0. `nros::init()` reads through this one (issue 0687 — the module used to carry its own copy of the same four-variable parse, and the copies had drifted)."
   },
+  "rust:var": {
+    "verdict": "extension",
+    "why": "phase-359 W10 stage C — part of the hosted PROCESS edge in `nros::env` (`packages/api/nros/src/env.rs`), the one place nano-ros calls the C library for a process facility, so `nros-c` / `nros-cpp` write their census, metadata and profile files and read `--params-file` without libstd (their image roots are `#![no_std]`). Linux targets only. rclrs has no counterpart: it is a `std` crate and uses `std::env` / `std::fs` / `std::process` directly; this is that surface for a `no_std` image inside a process. `var(name) -> Option<&'static str>`: `$name` through `getenv`, empty-or-non-UTF-8 read as unset by the callers that filter; the borrow points into the process environment, which outlives the boot."
+  },
+  "rust:read_file": {
+    "verdict": "extension",
+    "why": "phase-359 W10 stage C — part of the hosted PROCESS edge in `nros::env` (`packages/api/nros/src/env.rs`), the one place nano-ros calls the C library for a process facility, so `nros-c` / `nros-cpp` write their census, metadata and profile files and read `--params-file` without libstd (their image roots are `#![no_std]`). Linux targets only. rclrs has no counterpart: it is a `std` crate and uses `std::env` / `std::fs` / `std::process` directly; this is that surface for a `no_std` image inside a process. `read_file(path) -> Result<String, &'static str>`: `std::fs::read_to_string` through `fopen`/`fread`; `--params-file` reads through it (`alloc`)."
+  },
+  "rust:write_file": {
+    "verdict": "extension",
+    "why": "phase-359 W10 stage C — part of the hosted PROCESS edge in `nros::env` (`packages/api/nros/src/env.rs`), the one place nano-ros calls the C library for a process facility, so `nros-c` / `nros-cpp` write their census, metadata and profile files and read `--params-file` without libstd (their image roots are `#![no_std]`). Linux targets only. rclrs has no counterpart: it is a `std` crate and uses `std::env` / `std::fs` / `std::process` directly; this is that surface for a `no_std` image inside a process. `write_file(path, bytes) -> Result<(), &'static str>`: `std::fs::write` through `fopen`/`fwrite`/`fclose`, a full disk reported from `fclose` (`alloc`)."
+  },
+  "rust:rename": {
+    "verdict": "extension",
+    "why": "phase-359 W10 stage C — part of the hosted PROCESS edge in `nros::env` (`packages/api/nros/src/env.rs`), the one place nano-ros calls the C library for a process facility, so `nros-c` / `nros-cpp` write their census, metadata and profile files and read `--params-file` without libstd (their image roots are `#![no_std]`). Linux targets only. rclrs has no counterpart: it is a `std` crate and uses `std::env` / `std::fs` / `std::process` directly; this is that surface for a `no_std` image inside a process. `rename(from, to)`: `std::fs::rename` through the C library's `rename`, for the profile sink's write-then-rename (`alloc`)."
+  },
+  "rust:set_var": {
+    "verdict": "extension",
+    "why": "phase-359 W10 stage C — part of the hosted PROCESS edge in `nros::env` (`packages/api/nros/src/env.rs`), the one place nano-ros calls the C library for a process facility, so `nros-c` / `nros-cpp` write their census, metadata and profile files and read `--params-file` without libstd (their image roots are `#![no_std]`). Linux targets only. rclrs has no counterpart: it is a `std` crate and uses `std::env` / `std::fs` / `std::process` directly; this is that surface for a `no_std` image inside a process. `unsafe set_var(name, value)`: `std::env::set_var` through `setenv`, `unsafe` for the same reason (the environment is not thread-safe); called only in the boot funnel, before any executor or tier task exists, to select the census recorder (`alloc`)."
+  },
+  "rust:exe_name": {
+    "verdict": "extension",
+    "why": "phase-359 W10 stage C — part of the hosted PROCESS edge in `nros::env` (`packages/api/nros/src/env.rs`), the one place nano-ros calls the C library for a process facility, so `nros-c` / `nros-cpp` write their census, metadata and profile files and read `--params-file` without libstd (their image roots are `#![no_std]`). Linux targets only. rclrs has no counterpart: it is a `std` crate and uses `std::env` / `std::fs` / `std::process` directly; this is that surface for a `no_std` image inside a process. `exe_name() -> Option<String>`: the last component of `/proc/self/exe` (`std::env::current_exe` + `file_name`), the identity a census carries (`alloc`)."
+  },
+  "rust:thread_key": {
+    "verdict": "extension",
+    "why": "phase-359 W10 stage C — part of the hosted PROCESS edge in `nros::env` (`packages/api/nros/src/env.rs`), the one place nano-ros calls the C library for a process facility, so `nros-c` / `nros-cpp` write their census, metadata and profile files and read `--params-file` without libstd (their image roots are `#![no_std]`). Linux targets only. rclrs has no counterpart: it is a `std` crate and uses `std::env` / `std::fs` / `std::process` directly; this is that surface for a `no_std` image inside a process. `thread_key() -> usize`: `pthread_self()`, a key unique among live threads, in place of a `thread_local!` address for the profiler's per-thread attribution."
+  },
+  "rust:exit": {
+    "verdict": "extension",
+    "why": "phase-359 W10 stage C — part of the hosted PROCESS edge in `nros::env` (`packages/api/nros/src/env.rs`), the one place nano-ros calls the C library for a process facility, so `nros-c` / `nros-cpp` write their census, metadata and profile files and read `--params-file` without libstd (their image roots are `#![no_std]`). Linux targets only. rclrs has no counterpart: it is a `std` crate and uses `std::env` / `std::fs` / `std::process` directly; this is that surface for a `no_std` image inside a process. `exit(code) -> !`: `std::process::exit` through the C library's `exit` (atexit handlers run, stdio flushes), how a census run ends instead of spinning."
+  },
   "rust:zephyr_component_main": {
     "verdict": "extension",
     "why": "emits Zephyr's `rust_main` for a self-bringup Rust component package: open a Zephyr executor, register the component, spin forever. A framework ENTRY macro, the same category as `nros::main!`, needed because a Zephyr `rust_cargo_application()` image has no `fn main` of its own and there are no POSIX-style constructor sections to register from (see the CLAUDE.md pitfall). Gated on `rmw-cffi` rather than on a platform feature, because it is codegen and its `::zephyr::*` paths resolve only in a zephyr build."

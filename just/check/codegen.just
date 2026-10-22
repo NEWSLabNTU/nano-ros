@@ -321,7 +321,7 @@ census-hooks-complete:
     # and fail as `recorder rejected node` — measured, the first time the widened
     # filter put the funnel beside the fixture in one process.
     cargo test -p nros-cpp --lib --no-default-features \
-        --features std,rmw-cffi,metadata-mode,param-services --quiet \
+        --features alloc,env,log,rmw-cffi,metadata-mode,param-services --quiet \
         -- census --test-threads=1
     # issue 1679 -- and WITHOUT the store: the census of a C++ image whose
     # bringup declares no `param_services`. Every declare answers UNSUPPORTED
@@ -329,7 +329,7 @@ census-hooks-complete:
     # The hook used to sit inside the `param-store` cfg arm, so this
     # configuration recorded none -- and no lane built it, so nothing said so.
     CARGO_TARGET_DIR="$gen_no_store" cargo test -p nros-cpp --lib --no-default-features \
-        --features std,rmw-cffi,metadata-mode --quiet \
+        --features alloc,env,log,rmw-cffi,metadata-mode --quiet \
         -- census_without_store --test-threads=1
 
 # phase-463 W4 (issue 1419) -- the census RUNS where it can still refuse, and

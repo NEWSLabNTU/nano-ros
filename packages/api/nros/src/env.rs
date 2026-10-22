@@ -39,8 +39,15 @@
 //!   with the environment rung on top. The C / C++ entries call these on every
 //!   Linux build, `env` or not.
 //! * [`rmw_selector`] — the one `$NROS_RMW` reader (issue 0687's first half).
-//! * `var` / `read_file` (crate-private) — the two C-library reads the hosted `init*`
+//! * [`var`] / [`read_file`] — the two C-library reads the hosted `init*`
 //!   entries need (`$RMW_IMPLEMENTATION`, `--params-file`).
+//! * [`write_file`], [`rename`], [`set_var`], [`exe_name`], [`thread_key`],
+//!   [`exit`] — the rest of the hosted PROCESS edge, for the C / C++ surfaces
+//!   (phase-359 W10 stage C). `nros-c` and `nros-cpp` write their census,
+//!   metadata and profile files through these instead of `std::fs` /
+//!   `std::process`, so the image root never links libstd: a census is a
+//!   property of a process with a C library, not of the Rust standard library.
+//!   One spelling of each C-library call, here, rather than one per crate.
 
 use core::ffi::{CStr, c_char};
 
@@ -68,7 +75,7 @@ fn raw(name: &CStr) -> Option<&'static CStr> {
 ///
 /// `name` is a Rust string; one longer than 63 bytes, or one holding a NUL,
 /// is no variable this tree reads and answers `None`.
-pub(crate) fn var(name: &str) -> Option<&'static str> {
+pub fn var(name: &str) -> Option<&'static str> {
     let mut buf = [0u8; 64];
     if name.len() >= buf.len() || name.as_bytes().contains(&0) {
         return None;
@@ -82,13 +89,27 @@ fn non_empty(v: Option<&'static str>) -> Option<&'static str> {
     v.filter(|s| !s.is_empty())
 }
 
+/// `path` as a NUL-terminated buffer for the C library, or `None` when it holds
+/// a NUL byte (no file is named by such a path).
+#[cfg(feature = "alloc")]
+fn c_path(path: &str) -> Option<alloc::vec::Vec<u8>> {
+    if path.as_bytes().contains(&0) {
+        return None;
+    }
+    let mut cpath = alloc::vec::Vec::with_capacity(path.len() + 1);
+    cpath.extend_from_slice(path.as_bytes());
+    cpath.push(0);
+    Some(cpath)
+}
+
 /// A whole file, through the C library — `std::fs::read_to_string` for a
-/// crate with no `std`. `--params-file` is its one caller.
+/// crate with no `std`. `--params-file` reads through it, and so do the
+/// C / C++ surfaces' own params-file entries.
 ///
 /// The error is a short reason (`"cannot be opened"`, `"is not UTF-8"`, ...),
 /// for the caller to put beside the path it already holds.
-#[cfg(all(feature = "env", feature = "param-store"))]
-pub(crate) fn read_file(path: &str) -> Result<alloc::string::String, &'static str> {
+#[cfg(feature = "alloc")]
+pub fn read_file(path: &str) -> Result<alloc::string::String, &'static str> {
     use core::ffi::c_void;
     unsafe extern "C" {
         fn fopen(path: *const c_char, mode: *const c_char) -> *mut c_void;
@@ -96,12 +117,9 @@ pub(crate) fn read_file(path: &str) -> Result<alloc::string::String, &'static st
         fn ferror(f: *mut c_void) -> i32;
         fn fclose(f: *mut c_void) -> i32;
     }
-    let mut cpath = alloc::vec::Vec::with_capacity(path.len() + 1);
-    cpath.extend_from_slice(path.as_bytes());
-    if cpath.contains(&0) {
+    let Some(cpath) = c_path(path) else {
         return Err("names a path holding a NUL byte");
-    }
-    cpath.push(0);
+    };
     // SAFETY: both strings are NUL-terminated; `f` is checked before use and
     // closed exactly once; `fread` writes at most `chunk.len()` bytes.
     let bytes = unsafe {
@@ -126,6 +144,119 @@ pub(crate) fn read_file(path: &str) -> Result<alloc::string::String, &'static st
         out
     };
     alloc::string::String::from_utf8(bytes).map_err(|_| "is not UTF-8")
+}
+
+/// Write `bytes` to `path`, creating or truncating it — `std::fs::write` for a
+/// crate with no `std`. The error is a short reason, as for [`read_file`].
+#[cfg(feature = "alloc")]
+pub fn write_file(path: &str, bytes: &[u8]) -> Result<(), &'static str> {
+    use core::ffi::c_void;
+    unsafe extern "C" {
+        fn fopen(path: *const c_char, mode: *const c_char) -> *mut c_void;
+        fn fwrite(ptr: *const c_void, size: usize, n: usize, f: *mut c_void) -> usize;
+        fn fclose(f: *mut c_void) -> i32;
+    }
+    let Some(cpath) = c_path(path) else {
+        return Err("names a path holding a NUL byte");
+    };
+    // SAFETY: both strings are NUL-terminated; `f` is checked before use and
+    // closed exactly once; `fwrite` reads at most `bytes.len()` bytes.
+    unsafe {
+        let f = fopen(cpath.as_ptr().cast(), c"wb".as_ptr());
+        if f.is_null() {
+            return Err("cannot be opened for writing");
+        }
+        let written = fwrite(bytes.as_ptr().cast(), 1, bytes.len(), f);
+        // `fclose` flushes: a full disk shows up here, not in `fwrite`.
+        let closed = fclose(f) == 0;
+        if written != bytes.len() || !closed {
+            return Err("cannot be written");
+        }
+    }
+    Ok(())
+}
+
+/// Rename `from` to `to`, replacing `to` — `std::fs::rename`. Same filesystem
+/// only, which is how its callers use it (write-then-rename beside the target).
+#[cfg(feature = "alloc")]
+pub fn rename(from: &str, to: &str) -> Result<(), &'static str> {
+    unsafe extern "C" {
+        fn rename(from: *const c_char, to: *const c_char) -> i32;
+    }
+    let (Some(f), Some(t)) = (c_path(from), c_path(to)) else {
+        return Err("names a path holding a NUL byte");
+    };
+    // SAFETY: both strings are NUL-terminated and live for the call.
+    match unsafe { rename(f.as_ptr().cast(), t.as_ptr().cast()) } {
+        0 => Ok(()),
+        _ => Err("cannot be renamed"),
+    }
+}
+
+/// Set `$name` to `value` for this process — `std::env::set_var`.
+///
+/// # Safety
+///
+/// The process must be single-threaded, or no other thread may read or write
+/// the environment during the call: `setenv` is not thread-safe, which is why
+/// `std::env::set_var` is `unsafe` too. Its callers run in the boot funnel,
+/// before any executor or tier task exists.
+#[cfg(feature = "alloc")]
+pub unsafe fn set_var(name: &str, value: &str) {
+    unsafe extern "C" {
+        fn setenv(name: *const c_char, value: *const c_char, overwrite: i32) -> i32;
+    }
+    let (Some(n), Some(v)) = (c_path(name), c_path(value)) else {
+        return;
+    };
+    // SAFETY: both strings are NUL-terminated; the caller upholds the
+    // single-threaded condition.
+    unsafe { setenv(n.as_ptr().cast(), v.as_ptr().cast(), 1) };
+}
+
+/// The file name of this process's executable (`/proc/self/exe`'s last
+/// component) — what `std::env::current_exe()` + `file_name()` gave. `None`
+/// when the link cannot be read.
+#[cfg(feature = "alloc")]
+pub fn exe_name() -> Option<alloc::string::String> {
+    unsafe extern "C" {
+        fn readlink(path: *const c_char, buf: *mut c_char, len: usize) -> isize;
+    }
+    let mut buf = [0u8; 4096];
+    // SAFETY: the path is NUL-terminated; `readlink` writes at most
+    // `buf.len()` bytes and returns how many (it does not NUL-terminate).
+    let n = unsafe {
+        readlink(
+            c"/proc/self/exe".as_ptr(),
+            buf.as_mut_ptr().cast(),
+            buf.len(),
+        )
+    };
+    let full = core::str::from_utf8(buf.get(..usize::try_from(n).ok()?)?).ok()?;
+    Some(alloc::string::String::from(
+        full.rsplit('/').next().unwrap_or(full),
+    ))
+}
+
+/// A key unique to the calling thread among live threads — the address a
+/// `thread_local!` would give, without `std`. `pthread_t` on Linux is the
+/// thread's descriptor address.
+pub fn thread_key() -> usize {
+    unsafe extern "C" {
+        fn pthread_self() -> usize;
+    }
+    // SAFETY: `pthread_self` has no preconditions and cannot fail.
+    unsafe { pthread_self() }
+}
+
+/// End the process with `code`, running `atexit` handlers and flushing stdio —
+/// `std::process::exit`.
+pub fn exit(code: i32) -> ! {
+    unsafe extern "C" {
+        fn exit(code: i32) -> !;
+    }
+    // SAFETY: `exit` has no preconditions; it does not return.
+    unsafe { exit(code) }
 }
 
 /// **The** answer to "which RMW backend did the user select" — one reader, one

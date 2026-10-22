@@ -5600,8 +5600,8 @@ doc-c:
     header="packages/api/nros-c/include/rclc/detail/nros_generated.h"
     if [ ! -f "$header" ]; then
         echo "Generated header not found, building nros-c first..."
-        # phase-361 W3 — `std` explicit (host build; nros-c `default = []` now).
-        cargo build -p nros-c --features "std,rmw-cffi,platform-posix,ros-humble"
+        # phase-359 W10 stage C — the hosted set by name (`std` is gone).
+        cargo build -p nros-c --features "alloc,env,log,rmw-cffi,platform-posix,ros-humble"
     fi
     mkdir -p target/doxygen/c
     (cd packages/api/nros-c && doxygen Doxyfile)

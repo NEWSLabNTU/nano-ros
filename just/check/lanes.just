@@ -2700,7 +2700,7 @@ cpp: cpp-fmt
     # Green on a fresh dir, red on the second run — which is why it read as a
     # race rather than as a lane that overwrites its own input.
     CARGO_TARGET_DIR="$gen_clippy_zenoh" \
-        cargo clippy --quiet -p nros-cpp --no-default-features --features "std,rmw-cffi,platform-posix,ros-humble"
+        cargo clippy --quiet -p nros-cpp --no-default-features --features "alloc,env,log,panic-platform,rmw-cffi,platform-posix,ros-humble"
     echo "All C++ checks passed!"
 
 # `decoupling` is REWRITTEN, not retired (phase-444 W4.b, issue 1219, which
@@ -3807,8 +3807,8 @@ workspace-features:
     # reason its manifest gives: `--no-default-features` builds this crate's
     # staticlib, which is a FINAL artifact and needs a `#[panic_handler]`.
     cargo clippy --quiet -p nros-c --no-default-features --features "panic-platform,rmw-cffi,lending" -- -D warnings
-    @echo "  - nros-c: lending + std (publish AND borrow surface)"
-    cargo clippy --quiet -p nros-c --no-default-features --features "std,rmw-cffi,lending,platform-posix" -- -D warnings
+    @echo "  - nros-c: lending + hosted (publish AND borrow surface)"
+    cargo clippy --quiet -p nros-c --no-default-features --features "alloc,env,log,panic-platform,rmw-cffi,lending,platform-posix" -- -D warnings
     @echo "All feature checks passed!"
 
 # Check zenoh transport
@@ -3860,7 +3860,7 @@ cpp-ffi-tests:
     set -euo pipefail
     source scripts/build/cargo.sh
     export CARGO_TARGET_DIR="$(nros_scoped_target_dir check-cpp-ffi-tests)"
-    cargo test -p nros-cpp --lib --no-default-features --features std,rmw-cffi --quiet \
+    cargo test -p nros-cpp --lib --no-default-features --features alloc,env,log,rmw-cffi --quiet \
         -- install_argv_remaps_tests
 
 # Issue 1373 — the fast tier, run in a checkout with NO submodules (the shape

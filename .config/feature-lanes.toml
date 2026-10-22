@@ -103,6 +103,14 @@ reason = "std-only test harness code"
 class = "harness"
 reason = "the alloc arm of a crate's tests; a CORE crate's alloc split is the platform matrix's question, not a cell's"
 
+[feature.env]
+class = "harness"
+reason = "the process-environment capability a hosted C/C++ test reads (`$NROS_CENSUS_OUT`, the boot rung); what `std` carried until phase-359 W10 stage C"
+
+[feature.log]
+class = "harness"
+reason = "the `log` crate bridge a hosted C/C++ runtime installs; what `std` carried besides the heap until phase-359 W10 stage C"
+
 [feature.stats]
 class = "harness"
 reason = "zpico-alloc's statistics counters its replay test reads"
@@ -289,7 +297,8 @@ targets = ["register_smoke"]
 runner = "required-features-tests"
 crate = "nros-cpp"
 no_default = true
-features = ["std", "rmw-cffi"]
+# phase-359 W10 stage C — `std` is gone from nros-cpp; these are what it carried.
+features = ["alloc", "env", "log", "rmw-cffi"]
 lib = true
 
 # test-zpico-multisession — `justfile`: a two-session pool and its own target

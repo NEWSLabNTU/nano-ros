@@ -100,8 +100,9 @@ was in none of them.
 Normative. Every crate feature table points here rather than restating it.
 
 **Read the direction first, because it decides how the rules below are applied.**
-The terminal state of the core crates is **`core` and `core+alloc`**. `std` is
-being DELETED from them (phase-359) rather than managed: it is not a convenience
+The terminal state of the core crates is **`core` and `core+alloc`**, and since
+phase-359 W10 stage C it is the current state: none of the nine has a `std`
+feature. `std` was DELETED from them rather than managed: it is not a convenience
 layer over the platform but a second implementation of one, and
 `nros-platform-posix` already provides every primitive it was used for. So
 `alloc` is a permanent axis and **`std` is a transitional one with a scheduled
@@ -130,6 +131,20 @@ end**. Three consequences that come up constantly:
 > image is its BINARY's: a `main` crate, or a board crate whose root is not
 > `#![no_std]` (`nros-board-linux`). `metadata-mode` needs only the heap
 > (issue 0687 follow-up: a portable mutex, `String`, `format!`).
+>
+> **A C/C++ image has no `std` at all** (phase-359 W10 stage C). Its Rust root
+> — the generated image crate, the workspace runtime umbrella, or `nros-c` /
+> `nros-cpp` itself — is `#![no_std]` on every platform, posix and Zephyr
+> native_sim included, like threadx-linux and freertos-posix before them. The
+> hosted extras (census, metadata and profile files, `--params-file`, `exit`)
+> go through the C library with the environment (`nros::env`), and the image
+> runtime is the image's: `panic-platform` (the default ending) supplies the
+> handler and, on a Linux target, the `rust_eh_personality` the prebuilt
+> `alloc` references; `platform-<rtos>` supplies the allocator. Before, a
+> library feature (`nros-c/std`) decided all four at once, which is why
+> `PANIC halt` was refused on posix (issue 1742) and a posix panic never
+> reached `nros_platform_panic`. The one libstd root left is a Rust TEST
+> binary, and it says so (`nros-c/test-harness`).
 
 **Corollary worth remembering.** A capability that grants what it needs can never
 reach its own guard — `metadata-mode` carried a `compile_error!` for two phases

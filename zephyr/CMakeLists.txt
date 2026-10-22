@@ -554,9 +554,12 @@ if(CONFIG_NROS_C_API)
     # resolves it.
     set(_nros_features "rmw-cffi,platform-zephyr,${_nros_edition_feature}")
 
-    # native_sim targets run on Linux and support std (needed for panic handler)
+    # native_sim targets run inside a Linux process: the hosted capabilities
+    # (the environment, the `log` bridge). phase-359 W10 stage C — this was
+    # `std`, which also put libstd's panic handler in place of the image's
+    # ending; the staticlib is `#![no_std]` now and ends in `nros_platform_panic`.
     if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
-        string(APPEND _nros_features ",std")
+        string(APPEND _nros_features ",alloc,env,log")
     endif()
 
     # phase-8 W4 — callback tracing (see `_nros_trace_suffix` above).
@@ -805,12 +808,12 @@ if(CONFIG_NROS_CPP_API)
     endif()
 
 
-    # native_sim targets use the host Rust target; keep std enabled so
-    # the final native_sim executable links Rust's panic personality.
-    # (`std` implies `alloc`; the repeat above is harmless and keeps the
-    # capability stated where it is required rather than where it is implied.)
+    # native_sim targets run inside a Linux process: the hosted capabilities,
+    # as on the C path above. phase-359 W10 stage C — this was `std`, kept for
+    # Rust's panic personality; `nros-c` supplies `rust_eh_personality` with
+    # the image's panic runtime now.
     if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
-        string(APPEND _nros_cpp_features ",std")
+        string(APPEND _nros_cpp_features ",env,log")
     endif()
 
     # Issue 0745 — this mirrors the workspace lowering: the param-services
@@ -872,7 +875,7 @@ if(CONFIG_NROS_CPP_API)
         # feature on either crate; the image crate bundles it).
         set(_nros_c_for_cpp_features "rmw-cffi,platform-zephyr,${_nros_edition_feature}")
         if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
-            string(APPEND _nros_c_for_cpp_features ",std")
+            string(APPEND _nros_c_for_cpp_features ",alloc,env,log")
         endif()
         # phase-8 W4 — callback tracing. MUST match the nros-cpp string above:
         # both archives are linked into this image from one nros-node dep
@@ -945,16 +948,10 @@ if(CONFIG_NROS_CPP_API)
         else()
             set(_umb_backend "zenoh")
         endif()
-        # native_sim uses the host std triple → std umbrella; a real Zephyr board is no_std.
-        set(_umb_no_std TRUE)
-        if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
-            set(_umb_no_std FALSE)
-        endif()
         string(REPLACE "," ";" _umb_feats "${_nros_cpp_features}")
         nros_write_runtime_umbrella_crate(
             OUT_DIR      "${CMAKE_BINARY_DIR}/nros_ws_runtime"
             BACKEND      "${_umb_backend}"
-            NO_STD       "${_umb_no_std}"
             NODE_DIRS    ${NROS_WS_RUST_NODE_DIRS}
             CPP_FEATURES ${_umb_feats})
         nros_cargo_build(

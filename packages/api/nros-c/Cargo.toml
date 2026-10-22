@@ -43,34 +43,29 @@ crate-type = ["staticlib", "cdylib", "lib"]
 # real consumer takes this crate with `default-features = false` and picks its
 # own provider, so nothing downstream is affected.
 default = ["panic-platform"]
-# phase-359 W10 — `env` rides with `std` here; see the same note in `nros-cpp`.
-# `std` on the C API has always meant "hosted", and a hosted C entry resolves
-# its locator/domain from the environment at runtime.
 # phase-359 W10 — the process-environment CAPABILITY, named here so this crate's
-# own `#[cfg]` can ask for it. `std` continues to imply it, which preserves what
-# a C image linking the std flavour has always had: `$NROS_RMW` backend
-# selection. Without this feature the cfg would be permanently false and that
-# selection would vanish from the C API silently.
+# own `#[cfg]` can ask for it: `$NROS_RMW` backend selection at support init.
+# phase-359 W10 stage C — there is no `std` beside it any more. The C API's
+# hosted edge (the environment, the census file, `exit`) goes through the C
+# library, so a hosted C image asks for `env` (and `log`) by name, the way a
+# Rust one does; `nros_feature_set()` names both for `posix`.
 env = ["nros/env"]
-std = ["alloc", "env", "nros/log", "log"]
 # Issue 1875 -- `nros-node`'s `log` feature routes its records (the
 # `nros: session open` stability marker among them) through the `log` crate.
 # A C/C++ image has no `nros::main!` to install the bridge into the nros-log
 # sinks, so `ensure_default_sinks` does it under THIS feature: the bridge
-# exists exactly where those records are compiled. `std` turns it on, as
-# `nros-node/std` turns on `nros-node/log`; a no_std image leaves it off,
-# which also keeps `log::set_logger` (it needs compare-and-swap) off the small
-# targets. A feature of its own rather than `cfg(feature = "std")`, so the
-# std census does not grow (phase-359).
+# exists exactly where those records are compiled. A hosted image names it
+# (`nros_feature_set()`'s `posix` arm); an RTOS image leaves it off, which also
+# keeps `log::set_logger` (it needs compare-and-swap) off the small targets.
 log = ["nros-node/log", "nros-platform-cffi/log-compat"]
 # Issue 1556 items 2-3 — a C application is a census PRODUCER. With this
 # feature the hosted support init answers `$NROS_CENSUS_OUT` by selecting the
 # recording backend, and the first spin writes what the recorder saw (the
 # hooks are `nros::census_hooks`, which every `nros-c` node / timer / guard /
-# parameter entry point calls) and exits instead of spinning. Host-only: it
-# REQUIRES `std` (the switch is an environment variable and the census a file;
-# `compile_error!` without it),
-# which no RTOS image has. `nros-cpp`'s `metadata-mode` forwards here, because
+# parameter entry point calls) and exits instead of spinning. Host-only: the
+# switch is an environment variable and the census a file, both read and
+# written through the C library (`nros::env`), which a Linux process has and
+# no RTOS image does (`compile_error!` off Linux). `nros-cpp`'s `metadata-mode` forwards here, because
 # that umbrella bundles this crate.
 metadata-mode = ["nros/metadata-mode", "dep:nros-rmw-metadata"]
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
@@ -166,8 +161,12 @@ critical-section = ["dep:critical-section"]
 # clock is a window that never elapses, so a 200 ms window admits the FIRST
 # record and then none (issue 1152; before it the same constant admitted EVERY
 # record: measured 40 of 40 without, 5 of 40 with).
+# phase-359 W10 stage C — and `global-allocator`, like every other platform: a
+# posix C/C++ image's root is `#![no_std]` now, so Rust's heap goes through the
+# port (`nros_platform_alloc`, `malloc` on posix) instead of libstd's `System`.
 platform-posix = [
     "nros-log/platform-clock",
+    "global-allocator",
     "nros-platform/platform-posix",
 ]
 platform-zephyr = [
@@ -292,6 +291,15 @@ panic-halt = ["dep:panic-halt"]
 # link step, not of the RTOS — the same platform is `own` for a Zephyr-hosted
 # C/C++ image (the `zephyr` crate supplies it) and `platform` for a bare one.
 panic-platform = []
+
+# phase-359 W10 stage C — TEST-ONLY. The final artifact is a Rust test harness,
+# whose root is libstd: libstd supplies the `#[panic_handler]` and
+# `rust_eh_personality`, so this crate supplies neither (a second handler is
+# rustc E0152), and links libstd itself, because its `staticlib`/`cdylib` are
+# final artifacts in a test build too and need one. It replaces what `std` did for test builds before `std` was
+# deleted, and says what it is: this crate's and `nros-cpp`'s dev-dependencies
+# turn it on, and nothing that builds an image may.
+test-harness = []
 
 # Opt-in instrumentation of the RTOS Rust global allocator (FreeRTOS
 # pvPortMalloc / ThreadX z_malloc / Zephyr k_malloc). Tracks used/peak
@@ -428,33 +436,25 @@ nros-build-helpers = { workspace = true }
 # `cargo build -p nros` resolves through. The probe adds `ffi-size-markers` to
 # its own `--features=<resolved>` (issue 1765); this dep-site no longer names it.
 
-# phase-361 W3 fallout — the crate's OWN tests need `std` spelled.
+# phase-361 W3 fallout — the crate's OWN tests need their capabilities spelled.
 #
-# `default = []` is the contract: an embedded user picks `std`/`alloc`/platform
+# `default = []` is the contract: an embedded user picks `alloc`/platform
 # deliberately, and nothing is enabled behind their back. But it applies to this
 # crate's test build too, and there the "user" is `cargo test --workspace`, which
-# passes no features at all. With no `std`, `platform.rs` takes its `no_std` arm
-# and calls `nros_platform_clock_us` / `_sleep_us` — C ABI symbols supplied by a
-# platform port that no feature selected — so the lib test failed to LINK:
-#
-#     rust-lld: error: undefined symbol: nros_platform_clock_us
-#       >>> referenced by platform.rs:58 (nros_c::platform::get_time_ns)
+# passes no features at all.
 #
 # A self dev-dependency is how a crate enables its own features for tests only:
-# it leaves the published feature set untouched (a consumer still gets
-# `default = []`) while making the test target hosted, which is what these tests
-# are. This is NOT a default in disguise — `cargo build -p nros-c` is unchanged.
-#
-# It went unnoticed because every check in phase-361 named its features
-# explicitly (`std,rmw-cffi,platform-posix,ros-humble`, `platform-threadx,alloc`,
-# …); the featureless configuration is the one nobody built.
+# it leaves the published feature set untouched while making the test target
+# hosted, which is what these tests are. This is NOT a default in disguise —
+# `cargo build -p nros-c` is unchanged. (It used to name `std`; phase-359 W10
+# stage C deleted that feature, and `alloc`/`env`/`log` are what it carried.)
 [dev-dependencies]
 # phase-417 stage 3 — `rmw-cffi` joined `std` here, and the reason is issue
 # 1226's rule: a test that WORKS is not a test that RUNS. Eleven of this crate's
 # modules — `node`, `service`, `subscription`, `publisher`, `timer`, `executor`,
 # … — are behind `#[cfg(feature = "rmw-cffi")]` (see `rmw_modules!` in `lib.rs`),
 # and `just test-unit` is `cargo nextest run --workspace` with NO `--features`,
-# which resolves this crate to `default, panic-platform, std, alloc, env` and
+# which resolves this crate to `default, panic-platform, alloc, env, log` and
 # nothing else (measured with `cargo tree --workspace -i nros-c -e features`).
 # So every unit test in those modules compiled, passed locally under an explicit
 # `--features rmw-cffi`, and was built by no merge-gating lane: 95 of this
@@ -462,7 +462,7 @@ nros-build-helpers = { workspace = true }
 # stage's `is_valid` family. It costs the lane the cffi vtable registry and no
 # backend — `rmw-cffi` is `nros/rmw-cffi`, not `rmw-zenoh`, so no vendored
 # source is pulled in.
-nros-c = { path = ".", features = ["std", "rmw-cffi"] }
+nros-c = { path = ".", features = ["alloc", "env", "log", "rmw-cffi", "test-harness"] }
 # issue 0619 — same reason as `nros-cpp`'s: a lib TEST is a final artifact and
 # links no platform port, so `nros-log`'s `PlatformSink` leaves
 # `nros_platform_log_write` / `_flush` declared and never defined.

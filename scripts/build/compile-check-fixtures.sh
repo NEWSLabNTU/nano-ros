@@ -1459,7 +1459,7 @@ elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # phase-506 W4d removed it — the API crates name no backend, RFC-0071 D9 —
     # and `rmw-cffi`, which it implied, is what the executor sizes need.)
     ( cd "$repo_root" && cargo build -q -p nros-cpp -p nros-c \
-        --features nros-cpp/std,nros-c/std,nros-cpp/ros-humble,nros-cpp/rmw-cffi ) \
+        --features nros-cpp/alloc,nros-cpp/env,nros-cpp/log,nros-cpp/platform-posix,nros-cpp/ros-humble,nros-cpp/rmw-cffi ) \
         || echo "cxx-syntax: config-header generation build failed (snippets needing them will skip)" >&2
     # A build that exits 0 having written nothing is the case the `||` above
     # cannot see. Say so — the snippets fail either way, but their error is

@@ -38,11 +38,15 @@
 #[cfg(any(feature = "alloc", test))]
 extern crate alloc;
 
-#[cfg(feature = "std")]
+// A lib TEST's root is libstd, and the census tests below use it.
+#[cfg(test)]
 extern crate std;
 
-#[cfg(feature = "panic-halt")]
-use panic_halt as _;
+// `panic-halt` is `nros-c`'s: this crate's feature forwards to it, and `nros-c`
+// references the one `panic_halt` crate, so this staticlib carries its handler
+// through that rlib. A second `use` here could not tell when `nros-c` sits
+// under a test harness (`nros-c/test-harness`, libstd's handler) and made the
+// pair E0152 (phase-359 W10 stage C).
 
 // issue 0619 — a lib TEST is a final artifact, so it must link a platform port
 // like any real consumer; without one, `nros_platform_clock_ns` and friends are
@@ -2024,9 +2028,8 @@ const CENSUS_OUT_ENV: &str = "NROS_CENSUS_OUT";
 /// spinning. `None` when unset or empty (an empty value is "unset", the same
 /// reading `optional_cstr_arg` gives an empty baked string).
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
-fn census_out_path() -> Option<alloc::string::String> {
-    let raw = std::env::var(CENSUS_OUT_ENV).ok()?;
-    if raw.is_empty() { None } else { Some(raw) }
+fn census_out_path() -> Option<&'static str> {
+    nros::env::var(CENSUS_OUT_ENV).filter(|raw| !raw.is_empty())
 }
 
 // ---------------------------------------------------------------------------
@@ -2044,10 +2047,11 @@ fn census_out_path() -> Option<alloc::string::String> {
 
 /// The hosted edge of the profile: the switch, the coverage text, the file
 /// sink and the thread key `nros::profile` needs and the core does not have
-/// (it is `core + alloc`). ONE `std` import for all of it.
+/// (it is `core + alloc`). All of it through `nros::env`, the one C-library
+/// edge (phase-359 W10 stage C — it was one `std` import).
 #[cfg(all(feature = "rmw-cffi", feature = "env", feature = "profile-mode"))]
 mod profile_edge {
-    use std::{env, fs, string::String, sync::OnceLock, thread_local};
+    use nros::env;
 
     /// The profile switch's variable name, stated once (see `CENSUS_OUT_ENV`
     /// for why a name and not a literal).
@@ -2055,42 +2059,42 @@ mod profile_edge {
     /// The run's free-text `coverage.inputs` (what the run was fed).
     const PROFILE_INPUTS_ENV: &str = "NROS_PROFILE_INPUTS";
 
-    static PATH: OnceLock<String> = OnceLock::new();
+    /// The file `arm` was given. Set once, before `install`; the process
+    /// environment it points into lives for the process.
+    static PATH: nros_rmw::sync::Mutex<Option<&'static str>> = nros_rmw::sync::Mutex::new(None);
 
     /// Write-then-rename, so a reader (or a SIGTERM mid-write) never sees half.
     fn sink(doc: &str) {
-        let Some(path) = PATH.get() else { return };
+        let Some(path) = PATH.with(|p| *p) else {
+            return;
+        };
         let tmp = alloc::format!("{path}.tmp");
-        if fs::write(&tmp, doc).is_ok() {
-            let _ = fs::rename(&tmp, path);
+        if env::write_file(&tmp, doc.as_bytes()).is_ok() {
+            let _ = env::rename(&tmp, path);
         }
     }
 
-    /// Unique per live thread: the address of a thread-local.
+    /// Unique per live thread.
     fn thread_key() -> usize {
-        thread_local! { static KEY: u8 = const { 0 }; }
-        KEY.with(|k| k as *const u8 as usize)
+        env::thread_key()
     }
 
     /// Arm the host profile when `$NROS_PROFILE_OUT` names a file (empty is
     /// unset). Idempotent: a tiered boot opens one executor per tier, and they
     /// share the one profile.
     pub(super) fn arm() {
-        let Some(path) = env::var(PROFILE_OUT_ENV).ok().filter(|p| !p.is_empty()) else {
+        let Some(path) = env::var(PROFILE_OUT_ENV).filter(|p| !p.is_empty()) else {
             return;
         };
         if nros::profile::enabled() {
             return;
         }
-        let _ = PATH.set(path);
+        PATH.with(|p| *p = Some(path));
         nros::profile::install(thread_key, sink);
-        let launch = env::current_exe()
-            .ok()
-            .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
-            .unwrap_or_default();
-        let inputs = env::var(PROFILE_INPUTS_ENV)
-            .unwrap_or_else(|_| String::from("live run; no replayed input set was named"));
-        nros::profile::enable(&launch, &inputs);
+        let launch = env::exe_name().unwrap_or_default();
+        let inputs =
+            env::var(PROFILE_INPUTS_ENV).unwrap_or("live run; no replayed input set was named");
+        nros::profile::enable(&launch, inputs);
     }
 }
 
@@ -2128,7 +2132,7 @@ fn census_select_backend() {
     // SAFETY: this runs in the boot funnel BEFORE the executor opens and
     // before any tier task is spawned, so the process is single-threaded at
     // this point -- the condition `set_var` asks for.
-    unsafe { std::env::set_var("NROS_RMW", nros::census_hooks::RECORDER_RMW) };
+    unsafe { nros::env::set_var("NROS_RMW", nros::census_hooks::RECORDER_RMW) };
     // Issue 1556 (c) -- whoever selected it owns this census; the application
     // arm in `nros_cpp_init_rmw` stands down.
     CENSUS_SELECTED.store(true, core::sync::atomic::Ordering::Release);
@@ -2199,10 +2203,7 @@ fn census_write(session: &core::ffi::CStr, out_path: &str) -> i32 {
         cpp_diag!("nros census: $NROS_CENSUS_OUT contains a NUL byte");
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let exe = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
-        .unwrap_or_default();
+    let exe = nros::env::exe_name().unwrap_or_default();
     let exe = alloc::ffi::CString::new(exe).unwrap_or_default();
     // SAFETY: every pointer is a live NUL-terminated string for the call.
     let rc = unsafe {
@@ -2304,7 +2305,7 @@ pub unsafe extern "C" fn nros_cpp_census_finish(session_name: *const c_char) -> 
         let s = unsafe { core::ffi::CStr::from_ptr(session_name) };
         if s.is_empty() { c"node" } else { s }
     };
-    census_write(name, &path)
+    census_write(name, path)
 }
 
 /// Issue 1732 — install the hosted termination guard for a C++ runner whose
@@ -2417,13 +2418,13 @@ pub(crate) fn census_finish_application_if_armed() {
             return;
         };
         let code = match census_out_path() {
-            Some(path) => census_write(&name, &path),
+            Some(path) => census_write(&name, path),
             None => {
                 cpp_diag!("nros census: armed at init, but $NROS_CENSUS_OUT is gone");
                 NROS_CPP_RET_INVALID_ARGUMENT
             }
         };
-        std::process::exit(code);
+        nros::env::exit(code);
     }
 }
 
@@ -2567,7 +2568,7 @@ pub unsafe extern "C" fn nros_board_native_run_components_named_in(
     // (a warning); kept, the CLI marks it incomplete and every check against
     // it refuses.
     if let Some(path) = census {
-        let rc = census_write(name_resolved, &path);
+        let rc = census_write(name_resolved, path);
         unsafe { nros_cpp_fini(sptr) };
         return if setup_rc != 0 { setup_rc } else { rc };
     }
@@ -6278,11 +6279,13 @@ pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
     {
         use nros_node::ros_args::{ApplyParamsError, apply_ros_args_with_params};
         let read_file = |path: &str| -> Result<alloc::string::String, alloc::string::String> {
-            #[cfg(feature = "std")]
+            // phase-359 W10 stage C — through the C library, so every image
+            // inside a host process reads it (it was `std`-only).
+            #[cfg(target_os = "linux")]
             {
-                std::fs::read_to_string(path).map_err(|e| alloc::format!("{e}"))
+                nros::env::read_file(path).map_err(alloc::string::String::from)
             }
-            #[cfg(not(feature = "std"))]
+            #[cfg(not(target_os = "linux"))]
             {
                 let _ = path;
                 Err(alloc::string::String::from(
@@ -7416,7 +7419,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
                 break;
             }
         }
-        let rc = census_write(name_resolved, &path);
+        let rc = census_write(name_resolved, path);
         unsafe { nros_cpp_fini(sptr) };
         return if setup_rc != 0 { setup_rc } else { rc };
     }
@@ -7956,12 +7959,13 @@ mod qos_override_tests {
 /// a host check reads is not what the ABI saw.
 ///
 /// Single-threaded by necessity (`cargo test -p nros-cpp --lib
-/// --no-default-features --features std,env,rmw-cffi,metadata-mode,param-services
+/// --no-default-features --features alloc,env,log,rmw-cffi,metadata-mode,param-services
 /// -- census --test-threads=1`): the switch is a process environment variable
 /// and the recorder is a process global, which is what census mode IS.
-// One line, not five: `check-std-census` reads a test gate off a SINGLE
-// attribute line, and a wrapped one leaves the whole module counted as
-// production `std::` use.
+// `check-std-census` reads a test gate off a SINGLE attribute line, and rustfmt
+// wraps the five-conjunct gate below over several; the bare `#[cfg(test)]`
+// first is that line (cfg attributes AND together, so it narrows nothing).
+#[cfg(test)]
 #[cfg(all(
     test,
     feature = "env",
@@ -7970,11 +7974,6 @@ mod qos_override_tests {
     feature = "param-services"
 ))]
 mod census_funnel_tests {
-    // ONE `std::` path for the whole module: `check-std-census` counts
-    // occurrences of the text, and rustfmt wraps this module's five-conjunct
-    // test gate over several lines, which is more than that census reads as
-    // a test gate. Importing once keeps the crate's production count honest
-    // without hiding a single use.
     use std::{env, fs};
 
     use core::{ffi::c_void, mem::MaybeUninit};
@@ -8505,13 +8504,15 @@ compile_error!("`bridge` boxes every entity handle: add \"alloc\" to this crate'
 // census enumerates every non-test `std::` site in the tree. Of the 25, these
 // two are the only ones gated by a CAPABILITY of this crate rather than by
 // `std` itself.
-#[cfg(all(feature = "metadata-mode", not(feature = "std")))]
+//
+// phase-359 W10 stage C — `std` is gone. The file write and the environment go
+// through the C library (`nros::env`), so `metadata-mode` requires a hosted
+// Linux target, and `env` needs no guard of its own here: `nros/env` refuses a
+// non-Linux target itself.
+#[cfg(all(feature = "metadata-mode", not(target_os = "linux")))]
 compile_error!(
-    "`metadata-mode` writes the sidecar file (`nros_cpp_metadata_dump`): add \"std\" to this crate's features"
-);
-#[cfg(all(feature = "env", not(feature = "std")))]
-compile_error!(
-    "`env` reads the process environment (`$NROS_ENTRY_SPIN_MS`): add \"std\" to this crate's features"
+    "`metadata-mode` writes the sidecar file (`nros_cpp_metadata_dump`) through the C library: \
+     it exists only on a hosted Linux target"
 );
 
 /// Resolve boot config, with the environment rung when this build has the
@@ -8548,8 +8549,7 @@ fn resolve_boot(
 /// rather than wrapping to a value nobody asked for.
 #[cfg(feature = "env")]
 fn entry_spin_ms() -> u64 {
-    std::env::var("NROS_ENTRY_SPIN_MS")
-        .ok()
+    nros::env::var("NROS_ENTRY_SPIN_MS")
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(0)
 }

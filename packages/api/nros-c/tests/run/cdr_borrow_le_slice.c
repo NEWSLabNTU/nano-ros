@@ -39,6 +39,14 @@
 #include <rclc/detail/cdr.h>
 #include <rclc/detail/view.h>
 
+/* The registration hook every C image owes `rclc_support_init` — there is no
+ * weak default on the C path. This harness opens no session; it only has to
+ * define the hook, because whether the `libnros_c.a` member referencing it is
+ * pulled into the link follows rustc's codegen-unit partitioning, which moved
+ * when phase-359 W10 stage C changed the crate's feature set. */
+void nros_app_register_backends(void);
+void nros_app_register_backends(void) {}
+
 static int failures = 0;
 
 #define CHECK(cond)                                                                                \

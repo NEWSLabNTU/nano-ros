@@ -34,36 +34,29 @@ crate-type = ["staticlib", "lib"]
 # real consumer takes this crate with `default-features = false` and picks its
 # own provider, so nothing downstream is affected.
 default = ["panic-platform"]
-std = [
-    "env",
-    "alloc",
-    # phase-359 W10 — `env` rides with `std` HERE, and only here.
-    #
-    # W10 split `ExecutorConfig::from_env` and `try_resolve`'s hosted rung off
-    # the `std` flavour onto an `env` CAPABILITY, so a Rust consumer now names
-    # `alloc` + `env` explicitly. The C/C++ API has no such per-consumer
-    # feature list to update — `std` on this crate has always MEANT "hosted",
-    # and the hosted C entry resolves its locator and domain from the
-    # environment at runtime.
-    #
-    # Dropping the forward silently removed that rung: the C++ and MIXED
-    # service/action servers built and started, resolved against the baked
-    # fallback instead of the environment, and the harness reported "server
-    # never became ready" — 4 of 8 `roundtrip_xprocess` cells. Compiling proved
-    # nothing about it.
-    "nros/env",
-    "nros/log",
-    "nros-c/std",
-    # Optional-dep forward: only applies when `bridge` is also on. Without it the
-    # bridge ABI's std-only diagnostics compile out (issue 0436).
-    "nros-bridge?/std",
-]
+# phase-359 W10 stage C — `std` is DELETED. It meant "hosted", and was four
+# things at once: libstd linked into the staticlib, libstd's panic handler and
+# allocator in place of the port's, and the hosted extras (census, metadata and
+# profile files, `$NROS_ENTRY_SPIN_MS`, `--params-file`). The first three were
+# properties of the IMAGE, decided here by a library feature; a posix C/C++
+# image is `#![no_std]` now like threadx-linux and freertos-posix, ending in
+# `nros_platform_panic` and allocating through the port. The extras go through
+# the C library (`nros::env`), so a hosted image names what it uses: `alloc`,
+# `env`, `log` (`nros_feature_set()`'s `posix` arm).
+#
+# The `env` forward to `nros/env` stays load-bearing, as the old `std` list
+# warned: without it the hosted C++ entry resolves against the baked fallback
+# instead of the environment (4 of 8 `roundtrip_xprocess` cells, measured).
 alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc", "nros-c/alloc", "nros-platform/alloc"]
 # phase-359 W10 — the process-environment CAPABILITY, named so this crate's own
-# `#[cfg]` can ask for it (the same reason `nros-c` gained one). `std` implies
-# it, so a C++ image linking the std flavour keeps exactly what it had: the
-# hosted component entry resolving its locator and domain from the environment.
+# `#[cfg]` can ask for it (the same reason `nros-c` gained one): the hosted
+# component entry resolving its locator and domain from the environment, and
+# the census / profile switches.
 env = ["nros/env", "nros-c/env"]
+# Issue 1875 — `nros-node`'s records through the `log` crate, bridged into the
+# nros-log sinks by `nros-c` (see its `log` feature). What `std` carried here
+# besides the heap.
+log = ["nros/log", "nros-c/log"]
 
 # Phase 241.D3-rev — single-runtime umbrella. `nros-cpp` bundles `nros-c` (the C
 # ABI + the cffi shim + the force-linked backend) as an rlib dep, so `libnros_cpp.a`
@@ -219,12 +212,13 @@ ros-jazzy = [
 ]
 
 # Bare-metal panic handler (enables building staticlib without std)
-# Phase 241.D3-rev (W12) — forward to nros-c too. nros-c is now a dependency of the
-# C++ umbrella and its `[lib] crate-type` includes `staticlib`/`cdylib`, so rustc
-# emits those final artifacts for the dep too; on a no_std target each needs a
-# `#[panic_handler]`. Both crates `use panic_halt as _` over the SAME panic-halt crate
-# (one instance), so this provides exactly one handler — no duplicate.
-panic-halt = ["dep:panic-halt", "nros-c/panic-halt"]
+# Phase 241.D3-rev (W12) — forward to nros-c. nros-c is a dependency of the C++
+# umbrella and its `[lib] crate-type` includes `staticlib`/`cdylib`, so rustc emits
+# those final artifacts for the dep too; on a no_std target each needs a
+# `#[panic_handler]`. phase-359 W10 stage C — ONLY nros-c references the
+# `panic_halt` crate now; this crate's own `use` was redundant (one instance) and
+# turned into E0152 when nros-c sat under a test harness.
+panic-halt = ["nros-c/panic-halt"]
 
 
 # phase-366 M4 — the entry-selected provider, forwarded like every other.
@@ -289,7 +283,6 @@ nros-rmw = { version = "0.6.0", path = "../../core/nros-rmw", default-features =
 nros-rmw-metadata = { path = "../../rmw/metadata", optional = true }
 # phase-361 W8.c — `zpico-alloc` is gone with the duplicate `HeapStats` static;
 # `alloc-stats` forwards to `nros-c`, which forwards to `nros-platform`.
-panic-halt = { version = "1", optional = true }
 # critical-section impl provided by the Zephyr alloc module on
 # platform-zephyr. DDS + portable-atomic depend on it being set.
 #
@@ -343,6 +336,11 @@ nros-build-helpers = { workspace = true }
 # `c-stub-test`: that is mutually exclusive with `posix-c-port`, and feature
 # unification turns both on in a workspace build.
 nros-platform-cffi = { workspace = true, features = ["posix-c-port"] }
+# phase-359 W10 stage C — a lib TEST's root is libstd, which supplies the panic
+# handler and `rust_eh_personality`; `nros-c` must then supply neither, even
+# when this crate's default `panic-platform` reaches it (rustc E0152 otherwise).
+# `std` used to say this by accident; `test-harness` says it on purpose.
+nros-c = { version = "0.6.0", path = "../nros-c", default-features = false, features = ["test-harness"] }
 
 [package.metadata.docs.rs]
 all-features = true
