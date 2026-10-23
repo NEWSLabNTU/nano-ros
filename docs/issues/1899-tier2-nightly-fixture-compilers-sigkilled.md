@@ -116,3 +116,28 @@ parallel fixture build, which is when memory peaks: 07:59–09:04Z (compilers
 SIGKILLed), 18:25–18:38Z, and now 05:12–05:28Z. The kernel log for those three
 windows is still the missing evidence (item 1 under "What would close this"),
 and it now has three places to look.
+
+## No recurrence in eight days, and item 3 done (2026-10-23)
+
+Every self-hosted job of `nightly` and `run-matrix` created from 2026-10-15
+12:00Z to 2026-10-23 was scanned: 35 jobs, on `newslab-118-server` (24),
+`newslab-server-241` (9) and `newslab-133` (2). None of their logs has a
+`signal 9` line or a `lost communication` annotation. 19 of them ran the
+fixture build at the same `budget=48, pool=4×12 + zephyr=48` as the 10-14
+sighting. Two had `No space left on device` (10-17 on newslab-133, 10-21 on
+newslab-118-server), which is issue 1353, not this.
+
+So nothing in the repository changed and the kills stopped. The cause is
+still unattributed: item 1, the host kernel log for the three windows above,
+is the only thing that can say whether it was memory, and it needs someone
+on `newslab-118-server`. Item 2 waits on item 1.
+
+**Item 3 is done.** `scripts/build/log-first-errors.sh`, the excerpt printer
+both fixture schedulers call, now counts the lines a killed compile leaves
+(sccache's `Compiler killed by signal N`, cargo's `(signal: 9, SIGKILL`, gcc's
+`Killed signal terminated program`) and names them before the error lines.
+Replayed on the 10-14 job log (115730089599), it prints `3 compile(s) … were
+KILLED by a signal and printed no diagnostic` above the `could not compile`
+line for `ros-launch-manifest-model`. Self-test on the fast line:
+`just check log-first-errors`.
+

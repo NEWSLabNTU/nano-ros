@@ -415,6 +415,22 @@ interop-verdict-ledger:
 nextest-binary-filters:
     @python3 scripts/check-nextest-binary-filters.py
 
+# Issue 2004 — a test that runs a matrix of cells in one `#[test]` PASSES over
+# the cells outside the run's coordinates, and its stdout summary is the only
+# record of which cells ran. nextest discards a passing test's output, so every
+# such test must sit in the `success-output = "final"` override. The subject is
+# derived: every test file calling `lane_scope::skip_note(` for a summary.
+[group("ci")]
+matrix-summary-visible:
+    @python3 scripts/check-matrix-summary-visible.py
+
+# Issue 1899 — a compile the kernel killed prints no diagnostic, so the first
+# error line a failing fixture family shows is a consequence. The excerpt
+# printer counts kills and names them first; this runs its self-test.
+[group("ci")]
+log-first-errors:
+    @bash scripts/build/log-first-errors.sh --selftest
+
 # phase-373 W1 — every `test()`/`binary()` predicate in .config/nextest.toml must
 # match at least one real test. The `binary()` half is already covered statically
 # by `check-nextest-binary-filters` on the fast line; this is the `test()` half,
