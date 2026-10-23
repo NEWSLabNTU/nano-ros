@@ -3068,4 +3068,30 @@ mod ament_witness_tests {
         record_ament_stamp(&parse(&args)).unwrap();
         assert_eq!(fs::read(&witness).unwrap(), fs::read(&record).unwrap());
     }
+
+    /// Issue 1825 on the cmake road: output recorded by ANOTHER emitter at the
+    /// same codegen version (a pin bump between two releases) makes the
+    /// configure regenerate, with the inputs untouched. The witness is stamped
+    /// by whichever binary runs it, which through the front is the pinned one.
+    #[test]
+    fn output_from_another_emitter_regenerates_at_configure() {
+        let t = tempfile::tempdir().unwrap();
+        let args = args_for(t.path());
+        let witness = t.path().join("args.ament.toml");
+        record_ament_stamp(&parse(&args)).unwrap();
+        let record = Stamp::path_in(&t.path().join("out"));
+        let ours = Stamp::read(&record).unwrap();
+        Stamp {
+            emitter: "0".repeat(64),
+            ..ours
+        }
+        .write(&record)
+        .unwrap();
+
+        let line = write_ament_witness(&args, &witness)
+            .unwrap()
+            .expect("output from another emitter must regenerate");
+        assert!(line.contains("different emitter"), "{line}");
+        assert_ne!(fs::read(&witness).unwrap(), fs::read(&record).unwrap());
+    }
 }
