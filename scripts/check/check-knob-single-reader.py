@@ -175,11 +175,11 @@ OWNERS: dict[str, str] = {
     "NROS_XRCE_CUSTOM_TRANSPORT_MTU": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
     "NROS_XRCE_STREAM_HISTORY": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
     "NROS_LET_BUFFER_SIZE": "packages/tooling/nros-build-helpers/src/c.rs",
-    "NROS_TRANSPORT_KIND": "packages/boards/nros-board-common/src/platform_config.rs",
-    "NROS_TRANSPORT_ENDPOINT": "packages/boards/nros-board-common/src/platform_config.rs",
-    "NROS_ZENOH_TX_BATCH": "packages/boards/nros-board-common/src/platform_config.rs",
-    "NROS_ZENOH_TX_SPLIT_LOCK": "packages/boards/nros-board-common/src/platform_config.rs",
-    "NROS_ZENOH_TX_BATCH_FLUSH_MS": "packages/boards/nros-board-common/src/platform_config.rs",
+    "NROS_TRANSPORT_KIND": "packages/tooling/nros-platform-config/src/platform_config.rs",
+    "NROS_TRANSPORT_ENDPOINT": "packages/tooling/nros-platform-config/src/platform_config.rs",
+    "NROS_ZENOH_TX_BATCH": "packages/tooling/nros-platform-config/src/platform_config.rs",
+    "NROS_ZENOH_TX_SPLIT_LOCK": "packages/tooling/nros-platform-config/src/platform_config.rs",
+    "NROS_ZENOH_TX_BATCH_FLUSH_MS": "packages/tooling/nros-platform-config/src/platform_config.rs",
 }
 
 
@@ -910,7 +910,7 @@ def ledger_self_test() -> None:
 # The resolver itself names every knob in its front-end table; that is the map,
 # not a second reader.
 EXEMPT = {
-    "packages/boards/nros-board-common/src/platform_config.rs",
+    "packages/tooling/nros-platform-config/src/platform_config.rs",
 }
 
 READ_IDIOMS = [
@@ -1021,8 +1021,25 @@ def main() -> int:
         capture_output=True,
         check=True,
     )
-    for rel in listing.stdout.decode("utf-8", "ignore").split("\0"):
-        if not rel or rel in EXEMPT:
+    tracked_rs = {r for r in listing.stdout.decode("utf-8", "ignore").split("\0") if r}
+
+    # An owner or exemption naming a file that is not tracked matches nothing,
+    # so the gate stays green while it has stopped checking that knob. Six
+    # rows pointed at `nros-board-common/src/platform_config.rs` for weeks
+    # after `b05096bfb0` moved the resolver to `nros-platform-config`.
+    dangling = sorted(
+        {(k, v) for k, v in OWNERS.items() if v not in tracked_rs}
+        | {("(exempt)", e) for e in EXEMPT if e not in tracked_rs}
+    )
+    if dangling:
+        print("check-knob-single-reader: a path in OWNERS or EXEMPT is not a tracked file\n")
+        for knob, rel in dangling:
+            print(f"  {knob}: {rel}")
+        print("\nMove the row to the file that reads the knob now.")
+        return 1
+
+    for rel in sorted(tracked_rs):
+        if rel in EXEMPT:
             continue
         path = REPO / rel
         try:

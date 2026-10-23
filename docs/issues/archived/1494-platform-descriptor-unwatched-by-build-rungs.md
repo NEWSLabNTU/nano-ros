@@ -11,7 +11,7 @@ found: 2026-09-25
 related: [1401, 0491, 1018, 1145, 1486, phase-400]
 ---
 
-**Home: [phase-400](../../roadmap/phase-400-unified-configuration.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-400](../../roadmap/archived/phase-400-unified-configuration.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 

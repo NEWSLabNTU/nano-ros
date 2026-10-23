@@ -1,5 +1,31 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
+**Status (2026-10-23). Archived — W1–W5, W7 and W8 done; W6's remainder is
+[issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md).** W6
+migrated 55 knobs in 12 tenants. The 15 still classed `sizing` each need a rung
+only when some platform or board wants a non-default value, so they are kept as
+one issue rather than a phase. Two of them, the XRCE service request and reply
+buffers, were re-checked on this date and are not plain backlog. The issue says
+why.
+
+Closing re-check against `main`:
+
+- **W3's tenant is read only by `nros config explain`**
+  ([issue 2006](../../issues/2006-transport-tenant-read-only-by-explain.md)).
+  `resolve_transport` has no build-road caller and no descriptor sets
+  `[knobs.transport]`. Builds take the transport from RFC-0098 D4's
+  `[image.<id>] transport`, which has its own implication code in
+  `leaf_settings.rs`. W3 met its gate when it landed (2026-08-30), and RFC-0098
+  later gave the transport a second home. The W3 section below describes the
+  tenant as built; the issue is the open design question.
+- **W8 is done.** `check-knob-single-reader` holds the one-reader rule, the
+  legacy spellings were retired in phase-484 W8, and issue 1220 removed the last
+  `config/` descriptor the W1 grace period had left. The gate's owner table
+  still named `nros-board-common/src/platform_config.rs` six times, a file
+  `b05096bfb0` had moved to `nros-platform-config`, and nothing failed. It now
+  refuses an owner or exemption that is not a tracked file.
+- **RFC-0086** is Stable for D3–D6. D1/D2 stay Draft pending issue 2006.
+
 **Status (2026-10-21).** W1–W5 and W7 are unchanged. W6 is still open:
 `just check config-knob-census` counts **55** ladder knobs in 12 tenants and
 **15** sizing names still to migrate, after the re-sort below moved three
@@ -18,7 +44,7 @@ once issues 1971 and 1982 added two executor knobs).
 **Earlier status (2026-09-04): W1-W5, W7 and W8 done; W6's `executor`, `transport`,
 `zenoh.tx`, `memory`, `params`, `rmw`, `net`, `runtime`, `zenoh.wire`, `xrce` and `zenoh.limits` tenants done, its remaining tenants
 outstanding.** Design is
-[RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
+[RFC-0086](../../design/0086-unified-configuration-transport-tenant-and-coupling.md),
 which amends RFC-0049 (Stable) and adopts RFC-0071 D8. Nothing here proposes a
 new mechanism — the ladder and `nros config explain` already exist and work.
 This phase gives them reach and deletes what they replace.
@@ -65,8 +91,8 @@ them. When W3 lands that file is a transport stanza and nothing else.
 
 ### Boundary with phase-484 (stated 2026-10-14)
 
-[Phase-484](archived/phase-484-one-owner-per-fact.md)
-([RFC-0103](../design/0103-one-owner-per-fact.md)) does not take over W6. The
+[Phase-484](phase-484-one-owner-per-fact.md)
+([RFC-0103](../../design/0103-one-owner-per-fact.md)) does not take over W6. The
 two phases answer different questions about a knob:
 
 * **484 owns the knob's IDENTITY.** It decides one canonical name, its legacy
@@ -99,9 +125,9 @@ W8, and the one-reader rule stays here (`check-knob-single-reader`).
 | **W3** | `transport` tenant + `requires` / `implies` / `exactly-one-of` in the resolver | serial-only image builds with no hand-written link or driver lines | **done** |
 | **W4** | Provenance: `explain` reports implied and overridden | every knob prints rung, rule, and override | **done** |
 | **W5** | Kconfig mirror — link symbols get `depends on`; drift test holds it | `NETWORKING=n` cannot leave `LINK_TCP=y` | **done** |
-| **W6** | Migrate the sizing knobs, tenant by tenant | ladder knob count rises; env/Kconfig count falls | |
+| **W6** | Migrate the sizing knobs, tenant by tenant | ladder knob count rises; env/Kconfig count falls | **55 migrated; the 15 left are [issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md)** |
 | **W7** | Core: audit for exclusive/negative features | no `compile_error!` stands in for exclusivity | **done — none found; premise was wrong** |
-| **W8** | Retire the old paths | the retired mechanism no longer resolves anything | |
+| **W8** | Retire the old paths | the retired mechanism no longer resolves anything | **done** |
 
 W1 and W2 are mechanical and unblock everything else; do them first and
 together. W3 is the substance. W6 is the long tail and is deliberately last —
@@ -203,6 +229,11 @@ platform file naming it.
 
 ## W3 — the transport tenant and the coupling verbs
 
+**Done 2026-08-30 (`2104ebef99`). Re-checked 2026-10-23:** the tenant is read
+only by `nros config explain`, and builds take the transport from
+`[image.<id>] transport` (RFC-0098 D4). See
+[issue 2006](../../issues/2006-transport-tenant-read-only-by-explain.md).
+
 The substance. RFC-0086 D1 and D2.
 
 * `[transport]` in `system.toml`: `kind` (`exactly-one-of`) + `endpoint`.
@@ -267,6 +298,10 @@ the drift test fails if the mirror and the resolver disagree.
 ---
 
 ## W6 — migrate the sizing knobs
+
+**Closed 2026-10-23 with 55 knobs migrated.** The 15 left, with the reason each
+has no rung, are
+[issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md).
 
 The long tail: buffers, pools, entity caps, ring depths — the bulk of the 78 +
 21 + 9. Tenant by tenant, each keeping its existing env/define name as the lane
@@ -673,8 +708,8 @@ zenoh entity caps and pools (phase-392) — see the re-scope above.
 `NROS_SUBSCRIPTION_BUFFER_SIZE`, `ZPICO_SUBSCRIBER_BUFFER_SIZE`,
 `ZPICO_SUBSCRIBER_LARGE_SIZE`, `ZPICO_SUBSCRIBER_SIZE_THRESHOLD` and
 `ZPICO_PUBLISHER_TX_BUFFER_SIZE` are receive/transmit buffer sizes that
-[phase-403](archived/phase-403-type-bound-rx-sizing.md) and
-[phase-408](archived/phase-408-cpp-message-derived-buffers.md) are making **derived from
+[phase-403](phase-403-type-bound-rx-sizing.md) and
+[phase-408](phase-408-cpp-message-derived-buffers.md) are making **derived from
 the message type**. A ladder rung would give each a per-platform default —
 entrenching the global those phases exist to remove. The census classifies them
 `derived` so nobody migrates one by following the backlog count.
@@ -800,7 +835,7 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1037](../issues/archived/1037-nros-log-cargo-features-violate-d5.md) | RESOLVED 2026-10-06: `nros-log` carried four (in fact five) pick-one Cargo-feature families in `packages/core/`; they are the `[knobs.log]` tenant now. RFC-0086 D5 is this phase's design, which makes nros-log a W6 tenant and not a separate campaign |
+| [#1037](../../issues/archived/1037-nros-log-cargo-features-violate-d5.md) | RESOLVED 2026-10-06: `nros-log` carried four (in fact five) pick-one Cargo-feature families in `packages/core/`; they are the `[knobs.log]` tenant now. RFC-0086 D5 is this phase's design, which makes nros-log a W6 tenant and not a separate campaign |
 
 ## Issues homed here (2026-10-17)
 
@@ -808,5 +843,5 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1494](../issues/archived/1494-platform-descriptor-unwatched-by-build-rungs.md) | RESOLVED 2026-10-22: `BuildRungs` already watched every descriptor (issue 1401's second half); the remaining work was one shared enumerator for every reader. A descriptor that newly SHADOWS an answered name is still unwatched, for a measured reason recorded in the issue. |
-| [#1808](../issues/1808-sizing-knobs-with-no-static-derivation.md) | Homed 2026-10-23 from phase-394, which was archived that day. Five sizing knobs are still stated by hand because nothing in the image can derive them. They are the blockers behind part of W6's sizing backlog, `NROS_ZEPHYR_HEAP_SIZE` among them. |
+| [#1494](../../issues/archived/1494-platform-descriptor-unwatched-by-build-rungs.md) | RESOLVED 2026-10-22: `BuildRungs` already watched every descriptor (issue 1401's second half); the remaining work was one shared enumerator for every reader. A descriptor that newly SHADOWS an answered name is still unwatched, for a measured reason recorded in the issue. |
+| [#1808](../../issues/1808-sizing-knobs-with-no-static-derivation.md) | Homed 2026-10-23 from phase-394, which was archived that day. Five sizing knobs are still stated by hand because nothing in the image can derive them. They are the blockers behind part of W6's sizing backlog, `NROS_ZEPHYR_HEAP_SIZE` among them. |

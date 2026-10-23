@@ -9,7 +9,7 @@ found: 2026-10-11
 related: [1036, 1120, 1140, 1010, 1702, 1728, phase-394, phase-400]
 ---
 
-**Home: [phase-400](../roadmap/phase-400-unified-configuration.md)** — re-homed 2026-10-23 from phase-394, archived that day. W6 there carries the sizing knobs still off the ladder, and this issue is the derivation those knobs are waiting on.
+**Home: none.** Re-homed 2026-10-23 from phase-394 to [phase-400](../roadmap/archived/phase-400-unified-configuration.md), which was archived the same day. The sizing knobs still off the ladder, which phase-400's W6 carried, are now [issue 2007](2007-sizing-knob-ladder-rungs-backlog.md). This issue is the derivation those knobs are waiting on.
 
 ## Measured
 
@@ -35,9 +35,10 @@ The island's board `.conf` carries each blocker as a comment beside the value.
 
 ## Related work that is not this issue
 
-- The sizing knobs not yet on the RFC-0049 ladder (11 on 2026-10-11, from
-  `python3 scripts/check/config-knob-census.py`) belong to
-  [phase-400](../roadmap/phase-400-unified-configuration.md).
+- The sizing knobs not yet on the RFC-0049 ladder (15 on 2026-10-23, from
+  `python3 scripts/check/config-knob-census.py`) are
+  [issue 2007](2007-sizing-knob-ladder-rungs-backlog.md), the remainder of the
+  archived [phase-400](../roadmap/archived/phase-400-unified-configuration.md).
 - Two issues phase-412 homed stand on their own: 1120 (the inventory's refusal
   names the retired `ENTITIES`) and 1140 (two "was a contract authored?"
   predicates disagree on a timer-only contract). A third, 1036, is resolved.
