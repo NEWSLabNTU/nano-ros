@@ -5,7 +5,7 @@
 *
 * DO NOT EDIT — regenerated at configure time. Routes each launch node
 * to the real executor via its `RCLC_C_COMPONENT` factory/configure seam
-* (no synthesizing interpreter); `nros_board_native_run_tiers_in`
+* (no synthesizing interpreter); `nros_board_native_run_levels_in`
 * owns init/spin/shutdown.
 */
 
@@ -25,37 +25,27 @@ extern int32_t __nros_c_component_telem_pkg_configure(const nros_cpp_node_t* nod
 static nros_cpp_node_t __nros_node_0;
 static nros_cpp_node_t __nros_node_1;
 
-/* issue 1604 / phase-462 W1 (RFC-0052) -- contract monitor rows (tier[0] high): one
+/* issue 1604 / phase-462 W1 (RFC-0052) -- contract monitor rows (tier[0] every level (one executor)): one
  * per contracted publisher and per age contract, the same rows the Rust road
  * bakes into `system_monitors.rs` and the C++ pack into its entry. The runtime
  * builds its spec/cell tables in the storage below at install
  * (`nros_cpp_install_monitors`), so an image with no contract carries none of
  * this. The storage is `uint64_t` so it is 8-aligned without C11 `_Alignas`. */
-static const nros_cpp_monitor_row_t __nros_mon_rows_t0[1] = {
+static const nros_cpp_monitor_row_t __nros_mon_rows_t0[2] = {
     { "/cmd", "/ctrl/cmd", 100000u, 5u, "/setpoint", 8u },
-};
-static uint64_t __nros_mon_storage_t0[(1u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
-
-/* issue 1604 / phase-462 W1 (RFC-0052) -- contract monitor rows (tier[1] low): one
- * per contracted publisher and per age contract, the same rows the Rust road
- * bakes into `system_monitors.rs` and the C++ pack into its entry. The runtime
- * builds its spec/cell tables in the storage below at install
- * (`nros_cpp_install_monitors`), so an image with no contract carries none of
- * this. The storage is `uint64_t` so it is 8-aligned without C11 `_Alignas`. */
-static const nros_cpp_monitor_row_t __nros_mon_rows_t1[1] = {
     { "/telemetry", "/telem/telemetry", 1000u, 0u, NULL, 0u },
 };
-static uint64_t __nros_mon_storage_t1[(1u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
-static const nros_cpp_age_row_t __nros_age_rows_t1[1] = {
+static uint64_t __nros_mon_storage_t0[(2u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
+static const nros_cpp_age_row_t __nros_age_rows_t0[1] = {
     { "/cmd", "/telem/cmd", 50u, 0u },
 };
-static uint64_t __nros_age_storage_t1[(1u * NROS_CPP_AGE_ROW_STORAGE + 7u) / 8u];
+static uint64_t __nros_age_storage_t0[(1u * NROS_CPP_AGE_ROW_STORAGE + 7u) / 8u];
 
 /* Phase 274.W2 — per-tier setup functions (one per tier). */
 /* phase-509 P9b: `__nros_at` names the node being built, for the report below. */
 static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nros_at) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
-    /* phase-462 W1 -- contract monitor table (tier[0] high): installed BEFORE any node
+    /* phase-462 W1 -- contract monitor table (tier[0] every level (one executor)): installed BEFORE any node
      * exists, because a publisher attaches its counter cell at create time.
      * phase-474: the monitors judge from the first spin unless the image sets
      * CONFIG_NROS_MONITOR_ARM_ON_CALL; then the application calls
@@ -68,13 +58,13 @@ static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nr
     {
         nros_cpp_monitor_tables_t mtables = {
             .rows = __nros_mon_rows_t0,
-            .n_rows = 1u,
+            .n_rows = 2u,
             .row_storage = __nros_mon_storage_t0,
             .row_storage_len = sizeof(__nros_mon_storage_t0),
-            .ages = NULL,
-            .n_ages = 0u,
-            .age_storage = NULL,
-            .age_storage_len = 0u,
+            .ages = __nros_age_rows_t0,
+            .n_ages = 1u,
+            .age_storage = __nros_age_storage_t0,
+            .age_storage_len = sizeof(__nros_age_storage_t0),
         };
         nros_cpp_ret_t mret = nros_cpp_install_monitors(executor, &mtables);
         if (mret != NROS_CPP_RET_OK) return (int32_t)mret;
@@ -103,31 +93,6 @@ static int32_t __nros_entry_setup_tier_0(void* executor) {
 /* phase-509 P9b: `__nros_at` names the node being built, for the report below. */
 static int32_t __nros_entry_setup_tier_1_nodes(void* executor, const char** __nros_at) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
-    /* phase-462 W1 -- contract monitor table (tier[1] low): installed BEFORE any node
-     * exists, because a publisher attaches its counter cell at create time.
-     * phase-474: the monitors judge from the first spin unless the image sets
-     * CONFIG_NROS_MONITOR_ARM_ON_CALL; then the application calls
-     * rclc_monitors_arm() when it enters RUN, and CONFIG_NROS_MONITOR_ARM_GRACE_MS
-     * is the backstop. A verdict before arming is counted, not stored. The
-     * ring keeps the latest CONFIG_NROS_EXECUTOR_MAX_VIOLATIONS verdicts;
-     * CONFIG_NROS_VIOLATION_DRAIN_REPORT logs each one at the end of its spin,
-     * CONFIG_NROS_TRACE_CALLBACKS traces it (markers 21-24) and
-     * CONFIG_NROS_BOOT_REPORT keeps it in NROS_VIOLATION_RECORD for SWD. */
-    {
-        nros_cpp_monitor_tables_t mtables = {
-            .rows = __nros_mon_rows_t1,
-            .n_rows = 1u,
-            .row_storage = __nros_mon_storage_t1,
-            .row_storage_len = sizeof(__nros_mon_storage_t1),
-            .ages = __nros_age_rows_t1,
-            .n_ages = 1u,
-            .age_storage = __nros_age_storage_t1,
-            .age_storage_len = sizeof(__nros_age_storage_t1),
-        };
-        nros_cpp_ret_t mret = nros_cpp_install_monitors(executor, &mtables);
-        if (mret != NROS_CPP_RET_OK) return (int32_t)mret;
-    }
-
     {
         *__nros_at = "telem";
         nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "telem", "/", &__nros_node_1);
@@ -216,11 +181,35 @@ __attribute__((section(".nros_boot_config"), used))
  * is no honest size to write. The runner asks the linked library whether the
  * block is big enough and refuses it if not. */
 #include <rclcpp/detail/nros_cpp_config_generated.h>
-static uint64_t __nros_tier_executor_storage[2][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+/* phase-509 P9b (RFC-0108 "As built in P9b") — a level runner opens ONE
+ * executor per core, so ONE block: every level works on it. */
+static uint64_t __nros_tier_executor_storage[1][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+
+/* phase-509 P9 (RFC-0108) — this core's level scheduler: the session every
+ * level shares and one seat per level, in a static the linker places and the
+ * cost report (`mem-report --levels`) names. Each row of the table above is one
+ * level; the runner spawns one worker per level over it. */
+#define NROS_CPP_SCHEDULER_BACKING_SIZE_0 NROS_CPP_SCHEDULER_BACKING_SIZE(2u)
+static uint64_t __nros_scheduler_0[NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8u];
+/* phase-509 P9b (RFC-0108 "As built in P9b") — the core's ONE executor
+ * backing, when this build sizes its levels: every level's members, summed
+ * (NROS_CPP_LEVELS_BACKING_SIZE), and the context above carries none inline.
+ * A build that sizes no level keeps the whole-image executor inline. The
+ * library refuses a backing short of the levels' layout before the session
+ * opens. */
+#if defined(NROS_CPP_LEVELS_BACKING_SIZE)
+static uint64_t __nros_levels_backing[NROS_CPP_LEVELS_BACKING_SIZE / 8u];
+static const nros_tier_backing_t __nros_level_backings[1] = {
+    {__nros_levels_backing, sizeof(__nros_levels_backing)},
+};
+#define NROS_ENTRY_LEVEL_BACKINGS __nros_level_backings
+#else
+#define NROS_ENTRY_LEVEL_BACKINGS NULL
+#endif
 
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
-    return nros_board_native_run_tiers_in(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]));
+    return nros_board_native_run_levels_in(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), NROS_ENTRY_LEVEL_BACKINGS, NULL, __nros_scheduler_0, sizeof(__nros_scheduler_0));
 }
 

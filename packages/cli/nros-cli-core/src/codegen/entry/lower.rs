@@ -341,11 +341,9 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
         // registers on it: what an executor holds once (its monitor tables)
         // is lowered once, for the whole image.
         let one_executor = opts.probe.is_none()
-            && family.c_abi_runners().is_some_and(|r| {
-                r.run_levels.is_some()
-                    && r.tier_task_memory.is_some()
-                    && r.tiers_take_static_storage()
-            });
+            && family
+                .c_abi_runners()
+                .is_some_and(|r| r.run_levels.is_some() && r.tiers_take_static_storage());
         e.tiers = Some(lower_tiers(plan, tiers, opts, one_executor)?);
         e.monitor_tables = e
             .tiers

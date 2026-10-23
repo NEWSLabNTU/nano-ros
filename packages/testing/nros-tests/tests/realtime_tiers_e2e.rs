@@ -51,7 +51,7 @@ use nros_tests::{
         ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_realtime_entry, build_freertos_workspace_cpp_realtime_entry,
         build_freertos_workspace_rust_realtime_entry, build_native_workspace_c_realtime_entry,
-        build_native_workspace_cpp_derived_tiers_entry,
+        build_native_workspace_cpp_derived_tiers_entry, build_native_workspace_cpp_levels_entry,
         build_native_workspace_cpp_rclcpp_realtime_entry,
         build_native_workspace_cpp_realtime_entry,
         build_native_workspace_rust_realtime_derived_entry,
@@ -139,6 +139,14 @@ enum Proof {
     /// pair (its worker preempted that callback mid-run), never the reverse,
     /// and each spawned level's worker runs on the derived stack.
     LevelOrder,
+    /// phase-509 P10 -- a level image on a multi-core HOST (`levels-cpp`'s
+    /// linux image): the levels' threads run in parallel there, so the
+    /// preemption ORDER is not observable; the bounded run's whole output
+    /// must show every level's node running (its `[<node>] tick=` or
+    /// `begin=` marker, twice), each node's own launch parameter, the runner
+    /// opening one executor for all three levels, and no level failing the
+    /// boot.
+    LevelsRun,
 }
 
 type Resolver = fn() -> TestResult<PathBuf>;
@@ -320,6 +328,15 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
                 note: "issue #124 / phase-272 W3: IS-A-node rclcpp-shape components bind via the \
                        node_name → sched_context table at Executor::node_builder — a miss here \
                        means rclcpp-shape nodes lost their tier again",
+            },
+            Exec {
+                label: "cpp-levels",
+                resolver: linux_cpp_levels_entry,
+                port,
+                boot: Boot::Native,
+                proof: Proof::LevelsRun,
+                note: "phase-509 P10: levels-cpp on the host — three levels, worker threads \
+                       over one executor (nros_board_native_run_levels_in)",
             },
             Exec {
                 label: "cpp-derived",
@@ -507,6 +524,9 @@ fn linux_cpp_rclcpp_entry() -> TestResult<PathBuf> {
 }
 fn linux_rust_derived_entry() -> TestResult<PathBuf> {
     build_native_workspace_rust_realtime_derived_entry().map(|p| p.to_path_buf())
+}
+fn linux_cpp_levels_entry() -> TestResult<PathBuf> {
+    build_native_workspace_cpp_levels_entry().map(|p| p.to_path_buf())
 }
 fn linux_cpp_derived_entry() -> TestResult<PathBuf> {
     build_native_workspace_cpp_derived_tiers_entry().map(|p| p.to_path_buf())
@@ -892,6 +912,61 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         return;
     }
 
+    if let (Proof::LevelsRun, Boot::Native) = (cell.proof, cell.boot) {
+        let mut cmd = Command::new(&entry);
+        cmd.env("NROS_LOCATOR", router.locator())
+            .env("NROS_SESSION_MODE", "client")
+            .env("NROS_ENTRY_SPIN_MS", "4000");
+        let mut guest = ManagedProcess::spawn_command(cmd, "levels-entry")
+            .unwrap_or_else(|e| panic!("spawn native levels entry: {e}"));
+        let console = guest
+            .wait_for_all_output(Duration::from_secs(20))
+            .unwrap_or_else(|e| format!("<no output: {e}>"));
+        guest.kill();
+        let verdict = (|| {
+            if let Some(l) = console
+                .lines()
+                .find(|l| l.contains("failing the boot") || l.contains("setup failed"))
+            {
+                return Err(format!("a level failed the boot: {l}"));
+            }
+            if !console.contains("level(s) over one executor") {
+                return Err("the runner did not run its levels over one executor".to_string());
+            }
+            for (node, run) in [
+                ("urgent", "tick="),
+                ("middle", "begin="),
+                ("lazy", "begin="),
+            ] {
+                let marker = format!("[{node}] {run}1");
+                if !console.contains(&marker) {
+                    return Err(format!(
+                        "node `{node}`'s level did not run (`{marker}` absent)"
+                    ));
+                }
+            }
+            for (node, tag) in LEVELS_CPP_PARAMS {
+                let line = format!("[{node}] level_tag={tag}");
+                if !console.contains(&line) {
+                    return Err(format!(
+                        "node `{node}` did not read its launch parameter (`{line}` absent)"
+                    ));
+                }
+            }
+            Ok(())
+        })();
+        if let Err(why) = verdict {
+            panic!(
+                "[{} {}] {why} ({})\n         console:\n           {}",
+                platform,
+                lang,
+                cell.note,
+                console_excerpt(&console)
+            );
+        }
+        return;
+    }
+
     if let (Proof::ConsoleTicks(nodes), Boot::Native) = (cell.proof, cell.boot) {
         // Issue 1733 — a bounded run, then the WHOLE output: no marker can be
         // consumed by an earlier wait, and a `setup FAILED` line printed before
@@ -1214,7 +1289,8 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         Proof::SerialTicks(_)
         | Proof::SerialDispatch(_)
         | Proof::ConsoleTicks(_)
-        | Proof::LevelOrder => {
+        | Proof::LevelOrder
+        | Proof::LevelsRun => {
             unreachable!("handled above")
         }
     }

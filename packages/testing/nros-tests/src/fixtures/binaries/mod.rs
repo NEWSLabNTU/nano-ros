@@ -303,6 +303,8 @@ static NATIVE_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::n
 static NATIVE_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Issue 1733 — the native derived-tier C++ entry (`derived-tiers-cpp`).
 static NATIVE_WORKSPACE_CPP_DERIVED_TIERS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// phase-509 P10 -- the native LEVELS C++ entry (`levels-cpp`'s linux image).
+static NATIVE_WORKSPACE_CPP_LEVELS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 272 W3 — cached path to the rclcpp-shape 2-tier realtime workspace entry.
 static NATIVE_WORKSPACE_CPP_RCLCPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 273 W4 — cached path to the sub-node 2-group realtime workspace entry (RFC-0047 proof).
@@ -4063,6 +4065,17 @@ pub fn build_native_workspace_cpp_derived_tiers_entry() -> TestResult<&'static P
                 "derived-tiers-cpp",
                 "linux_entry",
             )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-509 P10 -- the native LEVELS C++ entry (cached): `levels-cpp`'s three
+/// components at three rates, one derived level each, run as worker threads
+/// over one executor by `nros_board_native_run_levels_in`.
+pub fn build_native_workspace_cpp_levels_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_LEVELS_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry("workspace-cpp-native-levels", "levels-cpp", "linux_entry")
         })
         .map(|p| p.as_path())
 }

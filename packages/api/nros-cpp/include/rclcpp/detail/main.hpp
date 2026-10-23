@@ -380,6 +380,23 @@ class LinuxBoard {
             session_name, node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers),
             n_tiers, executor_storage, storage_stride);
     }
+
+    /// phase-509 P10 (RFC-0108) — the levels runner a generated hosted entry
+    /// calls: each row of `tiers` is one level, a worker thread over the
+    /// core's ONE executor (block 0 of `executor_storage`, carved from
+    /// `backings` when the build sizes its levels). `task_memory` is NULL on
+    /// the host. See `nros_board_native_run_levels_in` in
+    /// `<rclc/detail/main.h>`.
+    static int32_t run_levels(const char* session_name, const char* node_namespace,
+                              const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
+                              size_t storage_stride, const ::nros_tier_backing_t* backings,
+                              const ::nros_tier_task_memory_t* task_memory, void* scheduler_backing,
+                              size_t scheduler_bytes) {
+        return ::nros_board_native_run_levels_in(
+            session_name, node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers),
+            n_tiers, executor_storage, storage_stride, backings, task_memory, scheduler_backing,
+            scheduler_bytes);
+    }
 };
 
 /// Phase 235.B — embedded (Zephyr) board adapter, the `Board::run()`

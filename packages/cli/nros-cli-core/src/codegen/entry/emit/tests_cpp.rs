@@ -245,7 +245,8 @@ fn typed_emit_tiered_remaps_are_installed_before_every_tier_setup() {
         "one table for both tiers; src:\n{src}"
     );
     assert!(!src.contains("nros_cpp_declare_remap"));
-    assert_launch_table_installed_before_the_runner(&src, "run_tiers");
+    // phase-509 P10 -- the native tier runner is its levels runner.
+    assert_launch_table_installed_before_the_runner(&src, "run_levels");
 }
 
 #[test]
@@ -1193,10 +1194,10 @@ fn typed_emit_tiers_native_uses_run_tiers_path() {
     );
     assert!(src.contains("80LL"), "high priority 80LL; src:\n{src}");
     assert!(src.contains("10LL"), "low priority 10LL; src:\n{src}");
-    // main calls run_tiers.
+    // main calls the levels runner (phase-509 P10).
     assert!(
-        src.contains("::rclcpp::board::LinuxBoard::run_tiers("),
-        "main must call LinuxBoard::run_tiers; src:\n{src}"
+        src.contains("::rclcpp::board::LinuxBoard::run_levels("),
+        "main must call LinuxBoard::run_levels; src:\n{src}"
     );
     // Old sched-context wiring must NOT appear in the run_tiers path.
     assert!(
@@ -1786,8 +1787,9 @@ fn boards_with_run_tiers_still_emit_their_own_wrapper() {
         plan.board = board.into();
         let src =
             emit_typed(&plan).unwrap_or_else(|e| panic!("{board} multi-tier emit failed: {e}"));
-        // phase-509 P9 -- Zephyr's tier runner is its levels runner.
-        let runner = if board == "zephyr" {
+        // phase-509 P9/P10 -- Zephyr's and the host's tier runner is its
+        // levels runner.
+        let runner = if board == "zephyr" || board == "linux" {
             "::run_levels("
         } else {
             "::run_tiers("
@@ -2089,7 +2091,10 @@ fn typed_emit_monitor_rows_match_namespaced_nodes() {
 /// tier 1.
 #[test]
 fn typed_emit_tiers_slice_monitor_rows_per_tier() {
-    let plan = fixture_plan_with_tiers();
+    // A board whose runner still gives each tier its own executor (a level
+    // runner installs one table: `typed_emit_levels_install_one_monitor_table`).
+    let mut plan = fixture_plan_with_tiers();
+    plan.board = "freertos".into();
     let rows = vec![
         MonitorRow {
             topic: "/cmd".into(),

@@ -227,7 +227,8 @@ fn typed_emit_tiered_remaps_are_installed_before_every_tier_setup() {
         "one table for both tiers; src:\n{src}"
     );
     assert!(!src.contains("nros_cpp_declare_remap"));
-    assert_launch_table_installed_before_the_runner(&src, "run_tiers");
+    // phase-509 P10 -- the native tier runner is its levels runner.
+    assert_launch_table_installed_before_the_runner(&src, "run_levels");
 }
 
 #[test]
@@ -614,17 +615,20 @@ fn typed_emit_tiers_uses_run_tiers_path() {
     // Priority baked in as LL literals.
     assert!(src.contains("80LL"), "high priority 80LL; src:\n{src}");
     assert!(src.contains("10LL"), "low priority 10LL; src:\n{src}");
-    // main calls run_tiers, not run_components.
-    // Issue 1597 — over the entry's own per-tier `.bss` executor storage.
+    // main calls the levels runner, not run_components (phase-509 P10: one
+    // worker thread per level over the core's ONE executor).
+    // Issue 1597 — over the entry's own `.bss` executor storage, one block.
     assert!(
-        src.contains("nros_board_native_run_tiers_in(")
-            && src
-                .contains("__nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]))"),
-        "main must call nros_board_native_run_tiers_in over the entry's storage; src:\n{src}"
+        src.contains("nros_board_native_run_levels_in(")
+            && src.contains(
+                "__nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), \
+                 NROS_ENTRY_LEVEL_BACKINGS, NULL, __nros_scheduler_0"
+            ),
+        "main must call nros_board_native_run_levels_in over the entry's storage; src:\n{src}"
     );
     assert!(
-        src.contains("static uint64_t __nros_tier_executor_storage[2]["),
-        "native tiered entry must own its tiers' executor storage; src:\n{src}"
+        src.contains("static uint64_t __nros_tier_executor_storage[1]["),
+        "a level image owns ONE executor block; src:\n{src}"
     );
     assert!(
         !src.contains("return nros_board_native_run_components"),
@@ -872,7 +876,10 @@ fn typed_emit_bakes_supervised_route_and_reaction_hook() {
 /// run_tiers shape: each tier installs ITS nodes' rows on ITS executor.
 #[test]
 fn typed_emit_tiers_slice_monitor_rows_per_tier() {
-    let plan = fixture_plan_with_tiers();
+    // A board whose runner still gives each tier its own executor (a level
+    // runner installs one table: `typed_emit_levels_install_one_monitor_table`).
+    let mut plan = fixture_plan_with_tiers();
+    plan.board = "freertos".into();
     let rows = vec![
         MonitorRow {
             topic: "/cmd".into(),

@@ -433,6 +433,7 @@ nros_board_native_run_components	nros_board_native_run_components	seam	declared 
 nros_board_native_run_components_named	nros_board_native_run_components_named	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_components_named_in	nros_board_native_run_components_named_in	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_components_named_ns	nros_board_native_run_components_named_ns	seam	declared by a port seam or the C++ FFI
+nros_board_native_run_levels_in	nros_board_native_run_levels_in	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_tiers	nros_board_native_run_tiers	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_tiers_in	nros_board_native_run_tiers_in	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_tiers_ns	nros_board_native_run_tiers_ns	seam	declared by a port seam or the C++ FFI

@@ -126,6 +126,10 @@ exclude = [
     "nros_board_native_run_tiers_ns",
     # Issue 1597 — the storage-taking twin, for the same reason.
     "nros_board_native_run_tiers_in",
+    # phase-509 P10 — the level runner, and its backing row (declared by
+    # hand as `nros_tier_backing_t`), for the same reason.
+    "nros_board_native_run_levels_in",
+    "NativeTierBackingC",
 ]
 
 [fn]

@@ -8588,6 +8588,378 @@ unsafe extern "C" fn native_tier_trampoline(arg: *mut c_void) -> *mut c_void {
     core::ptr::null_mut()
 }
 
+/// phase-509 P10 -- one core executor backing a generated entry hands a
+/// level runner, `nros_tier_backing_t`'s layout (`<rclc/detail/main.h>`).
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
+#[repr(C)]
+pub struct NativeTierBackingC {
+    pub backing: *mut c_void,
+    pub bytes: usize,
+}
+
+/// phase-509 P10 -- the calling thread's identity for the executor's lock
+/// (`pthread_self`): equal on one thread, distinct across live threads.
+#[cfg(all(feature = "rmw-cffi", feature = "env", unix))]
+unsafe extern "C" fn native_thread_id() -> usize {
+    unsafe extern "C" {
+        fn pthread_self() -> usize;
+    }
+    // SAFETY: `pthread_self` takes nothing and never fails.
+    unsafe { pthread_self() }
+}
+
+/// What one spawned level's worker receives (the entry crosses C as
+/// `*mut c_void`).
+#[cfg(all(feature = "rmw-cffi", feature = "env", unix))]
+struct NativeLevelCtx {
+    shutdown: alloc::sync::Arc<core::sync::atomic::AtomicBool>,
+    /// 0 = setup running, 1 = set up, 2 = failed (its code in `setup_rc`).
+    state: alloc::sync::Arc<core::sync::atomic::AtomicU8>,
+    setup_rc: alloc::sync::Arc<core::sync::atomic::AtomicI32>,
+    scheduler: usize,
+    level: u8,
+    name: alloc::ffi::CString,
+    stack_bytes: usize,
+    period_us: u64,
+    n_groups: usize,
+    groups: usize,
+    setup: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
+}
+
+/// One spawned level's worker: open the level over the core's scheduler,
+/// run its setup on the core's ONE executor, report, then work its band.
+///
+/// # Safety
+/// `arg` is the `Box<NativeLevelCtx>` the spawn site created, passed once.
+#[cfg(all(feature = "rmw-cffi", feature = "env", unix))]
+unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
+    use core::sync::atomic::Ordering;
+    // SAFETY: the caller's contract.
+    let ctx = unsafe { alloc::boxed::Box::from_raw(arg as *mut NativeLevelCtx) };
+    let sched = ctx.scheduler as *mut c_void;
+    let fail = |rc: i32| {
+        ctx.setup_rc.store(rc, Ordering::SeqCst);
+        ctx.state.store(2, Ordering::SeqCst);
+    };
+    let rc = unsafe { nros_cpp_level_open(sched, ctx.level, ctx.name.as_ptr(), ctx.stack_bytes) };
+    let owner = unsafe { nros_cpp_scheduler_owner(sched) };
+    if rc != NROS_CPP_RET_OK || owner.is_null() {
+        fail(if rc != NROS_CPP_RET_OK {
+            rc
+        } else {
+            NROS_CPP_RET_ERROR
+        });
+        return core::ptr::null_mut();
+    }
+    let groups = ctx.groups as *const *const c_char;
+    if !groups.is_null() && ctx.n_groups > 0 {
+        unsafe { nros_cpp_executor_set_active_groups(owner, groups, ctx.n_groups) };
+    }
+    if let Some(setup) = ctx.setup {
+        let rc = unsafe { setup(owner) };
+        if rc != 0 {
+            fail(rc);
+            return core::ptr::null_mut();
+        }
+    }
+    ctx.state.store(1, Ordering::SeqCst);
+    let period_ms = (ctx.period_us / 1_000).clamp(1, i32::MAX as u64) as i32;
+    while !ctx.shutdown.load(Ordering::Relaxed) {
+        // Parks (the lock released) until its band's next timer, an arrival
+        // in its band, or the period; then runs its band's ready callbacks.
+        let _ = unsafe { nros_cpp_level_spin_once(sched, ctx.level, period_ms) };
+    }
+    core::ptr::null_mut()
+}
+
+/// phase-509 P10 (RFC-0108; the amended RFC-0107 step 6) -- the native LEVEL
+/// runner a generated hosted entry calls (`LinuxBoard::run_levels`): each
+/// row of `tiers` is one level, placed by its urgency among the rows (POSIX
+/// `SCHED_FIFO`, bigger is more urgent). The core's ONE executor is block 0
+/// of `executor_storage`, carved from `backings[0]` when the build sizes its
+/// levels (else inline); it carries the POSIX port's recursive
+/// `PTHREAD_PRIO_INHERIT` mutex and `pthread_self` as its lock, and every
+/// level but the least urgent is a worker thread over it (one platform task,
+/// at its row's priority, best effort without `CAP_SYS_NICE`). The least
+/// urgent level is adopted on the calling thread: it owns the session, drives
+/// the transport and keeps `$NROS_ENTRY_SPIN_MS` and the termination guard.
+///
+/// Setups run one at a time, the adopted level's first, each spawned level
+/// started only once the one before it has set up (issue #144's order). A
+/// setup that fails FAILS THE BOOT (RFC-0108 "As fixed after item 4"): the
+/// level and code are logged, every level started so far is stopped and
+/// joined, the session is closed and the code returned, so the process exits
+/// with it. `task_memory` must be NULL (a host thread's stack is the
+/// process's to map); `scheduler_backing` is the entry's
+/// `NROS_CPP_SCHEDULER_BACKING_SIZE_0` static, or NULL for one from the heap.
+///
+/// # Safety
+/// As [`nros_board_native_run_tiers_in`], plus: `backings` is NULL or one
+/// element; `scheduler_backing` NULL or `scheduler_bytes` writable bytes that
+/// outlive the call.
+#[cfg(all(feature = "rmw-cffi", feature = "env", unix))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_board_native_run_levels_in(
+    session_name: *const c_char,
+    node_namespace: *const c_char,
+    tiers: *const NativeTierSpecC,
+    n_tiers: usize,
+    executor_storage: *mut c_void,
+    storage_stride: usize,
+    backings: *const NativeTierBackingC,
+    task_memory: *const c_void,
+    scheduler_backing: *mut c_void,
+    scheduler_bytes: usize,
+) -> i32 {
+    use alloc::{sync::Arc, vec::Vec};
+    use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering};
+
+    unsafe extern "C" {
+        fn nros_platform_mutex_rec_init(m: *mut c_void) -> i8;
+        fn nros_platform_mutex_rec_lock(m: *mut c_void) -> i8;
+        fn nros_platform_mutex_rec_unlock(m: *mut c_void) -> i8;
+        fn nros_platform_mutex_rec_storage_size() -> usize;
+    }
+
+    if tiers.is_null() || n_tiers == 0 || !task_memory.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    if n_tiers > usize::from(NROS_CPP_MAX_LEVELS) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    // A census counts what the setups CREATE, on one executor and no thread:
+    // the tier runner's census arm is exactly that.
+    if census_out_path().is_some() {
+        return unsafe {
+            nros_board_native_run_tiers_in(
+                session_name,
+                node_namespace,
+                tiers,
+                n_tiers,
+                executor_storage,
+                storage_stride,
+            )
+        };
+    }
+    let chk = nros_cpp_executor_storage_check(executor_storage, storage_stride);
+    if chk != NROS_CPP_RET_OK {
+        return chk;
+    }
+    let tier_slice = unsafe { core::slice::from_raw_parts(tiers, n_tiers) };
+    let name_resolved: &core::ffi::CStr = if session_name.is_null() {
+        c"node"
+    } else {
+        let s = unsafe { core::ffi::CStr::from_ptr(session_name) };
+        if s.is_empty() { c"node" } else { s }
+    };
+    let ns_resolved: *const c_char = unsafe { optional_cstr_arg(node_namespace) };
+    nros_platform::termination::install_guard();
+
+    // Each row's level: its urgency among the rows, POSIX bigger-is-urgent.
+    let stride = core::mem::size_of::<NativeTierSpecC>();
+    let level_of = |i: usize| -> u8 {
+        let l = unsafe { nros_cpp_tier_level(&tier_slice[0].priority, stride, n_tiers, i, false) };
+        l.max(0) as u8
+    };
+    // The adopted level is the least urgent one (issue 0636: an owner that
+    // outranks its peers and then spins starves them).
+    let boot = (0..n_tiers).max_by_key(|&i| (level_of(i), i)).unwrap_or(0);
+
+    // The core's one executor.
+    let sptr = executor_storage;
+    let rc = unsafe {
+        match backings.as_ref() {
+            Some(b) => nros_cpp_init_levels(
+                core::ptr::null(),
+                0,
+                name_resolved.as_ptr(),
+                ns_resolved,
+                sptr,
+                b.backing,
+                b.bytes,
+            ),
+            None => nros_cpp_init(
+                core::ptr::null(),
+                0,
+                name_resolved.as_ptr(),
+                ns_resolved,
+                sptr,
+            ),
+        }
+    };
+    if rc != NROS_CPP_RET_OK {
+        return rc;
+    }
+    let fini = |code: i32| -> i32 {
+        unsafe { nros_cpp_fini(sptr) };
+        code
+    };
+
+    // Its lock, before a second thread can reach it: the POSIX port's
+    // recursive priority-inheriting mutex, and the thread identity, so each
+    // pass releases it around its callbacks and its park. One level needs
+    // neither. The mutex lives as long as the process.
+    if n_tiers > 1 {
+        let words = unsafe { nros_platform_mutex_rec_storage_size() }
+            .div_ceil(8)
+            .max(1);
+        let m: &'static mut [u64] = alloc::boxed::Box::leak(alloc::vec![0u64; words].into());
+        let mp = m.as_mut_ptr() as *mut c_void;
+        if unsafe { nros_platform_mutex_rec_init(mp) } != 0
+            || unsafe {
+                nros_cpp_executor_set_lock(
+                    sptr,
+                    nros_platform_mutex_rec_lock,
+                    nros_platform_mutex_rec_unlock,
+                    mp,
+                )
+            } != NROS_CPP_RET_OK
+            || unsafe { nros_cpp_executor_set_thread_id(sptr, native_thread_id) } != NROS_CPP_RET_OK
+        {
+            crate::cpp_diag!("nros: native run_levels: the executor lock was not installed");
+            return fini(NROS_CPP_RET_ERROR);
+        }
+    }
+
+    // The core's scheduler: the entry's static, or one from the heap.
+    let n_levels = n_tiers as u8;
+    let mut heap_sched: Vec<u64> = Vec::new();
+    let (sb, sbytes) = if scheduler_backing.is_null() {
+        let bytes = nros_cpp_scheduler_backing_size(n_levels);
+        heap_sched.resize(bytes.div_ceil(8), 0);
+        (heap_sched.as_mut_ptr() as *mut c_void, bytes)
+    } else {
+        (scheduler_backing, scheduler_bytes)
+    };
+    let sched = unsafe { nros_cpp_scheduler_open(0, n_levels, sptr, sb, sbytes) };
+    if sched.is_null() {
+        return fini(NROS_CPP_RET_INVALID_ARGUMENT);
+    }
+
+    // The adopted level: seat it, gate it, set it up on this thread.
+    let bt = &tier_slice[boot];
+    if unsafe { nros_cpp_level_adopt(sched, level_of(boot), sptr, 0, bt.name) } != NROS_CPP_RET_OK {
+        return fini(NROS_CPP_RET_ERROR);
+    }
+    if !bt.groups.is_null() && bt.n_groups > 0 {
+        unsafe { nros_cpp_executor_set_active_groups(sptr, bt.groups, bt.n_groups) };
+    }
+    let tier_name = |t: &NativeTierSpecC| -> alloc::string::String {
+        if t.name.is_null() {
+            alloc::string::String::from("?")
+        } else {
+            unsafe { core::ffi::CStr::from_ptr(t.name) }
+                .to_string_lossy()
+                .into_owned()
+        }
+    };
+    if let Some(setup) = bt.setup {
+        let rc = unsafe { setup(sptr) };
+        if rc != 0 {
+            crate::cpp_diag!(
+                "nros: level {} (`{}`) setup failed (rc={rc}): failing the boot",
+                level_of(boot),
+                tier_name(bt)
+            );
+            return fini(rc);
+        }
+    }
+
+    // Every other level, one at a time, each started once the last has set
+    // up: a worker thread over the core's executor.
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let mut workers: Vec<nros_platform::task::PlatformTask> = Vec::with_capacity(n_tiers - 1);
+    let stop = |workers: Vec<nros_platform::task::PlatformTask>| {
+        shutdown.store(true, Ordering::Relaxed);
+        for w in workers {
+            w.join();
+        }
+    };
+    for (i, t) in tier_slice.iter().enumerate() {
+        if i == boot {
+            continue;
+        }
+        let state = Arc::new(AtomicU8::new(0));
+        let setup_rc = Arc::new(AtomicI32::new(0));
+        let name = tier_name(t);
+        let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(NativeLevelCtx {
+            shutdown: Arc::clone(&shutdown),
+            state: Arc::clone(&state),
+            setup_rc: Arc::clone(&setup_rc),
+            scheduler: sched as usize,
+            level: level_of(i),
+            name: alloc::ffi::CString::new(name.clone()).unwrap_or_else(|_| c"level".into()),
+            stack_bytes: t.stack_bytes,
+            period_us: t.spin_period_us,
+            n_groups: t.n_groups,
+            groups: t.groups as usize,
+            setup: t.setup,
+        }));
+        let task_name = alloc::ffi::CString::new(alloc::format!("nros-level-{name}"))
+            .unwrap_or_else(|_| c"nros-level".into());
+        // SAFETY: `ctx` is reclaimed by the trampoline, on the spawned task.
+        let spawned = unsafe {
+            nros_platform::task::PlatformTask::spawn_with(
+                native_level_trampoline,
+                ctx as *mut c_void,
+                task_name.as_ptr(),
+                t.stack_bytes,
+                t.priority,
+            )
+        };
+        let Some(task) = spawned else {
+            // SAFETY: nothing was spawned, so nothing else owns it.
+            drop(unsafe { alloc::boxed::Box::from_raw(ctx) });
+            crate::cpp_diag!(
+                "nros: level {} (`{name}`) did not start: failing the boot",
+                level_of(i)
+            );
+            stop(workers);
+            return fini(NROS_CPP_RET_ERROR);
+        };
+        workers.push(task);
+        while state.load(Ordering::SeqCst) == 0 {
+            platform_sleep_us(1_000);
+        }
+        if state.load(Ordering::SeqCst) == 2 {
+            let rc = setup_rc.load(Ordering::SeqCst);
+            crate::cpp_diag!(
+                "nros: level {} (`{name}`) setup failed (rc={rc}): failing the boot",
+                level_of(i)
+            );
+            stop(workers);
+            return fini(rc);
+        }
+    }
+    crate::cpp_diag!("nros: multi-level run — {n_tiers} level(s) over one executor");
+
+    // The adopted level's loop, bounded as the tier runner's.
+    let bound_ms: u64 = entry_spin_ms();
+    let start_ns = nros_cpp_time_ns();
+    let boot_period_ms = (bt.spin_period_us / 1_000).clamp(1, 10) as i32;
+    let mut ret = 0i32;
+    loop {
+        if nros_platform::termination::requested() {
+            nros_log::log_info!(
+                nros_log::get_logger("nros_cpp"),
+                "nros: termination signal received; closing the RMW session"
+            );
+            break;
+        }
+        let last = unsafe { nros_cpp_spin_once(sptr, boot_period_ms) };
+        if last != NROS_CPP_RET_OK {
+            ret = last;
+            break;
+        }
+        if bound_ms != 0 && (nros_cpp_time_ns() - start_ns) / 1_000_000 >= bound_ms {
+            break;
+        }
+    }
+    stop(workers);
+    drop(heap_sched);
+    fini(ret)
+}
+
 /// Sleep through the platform ABI, like every other pacing site in the tree
 /// since phase-359 W10.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]

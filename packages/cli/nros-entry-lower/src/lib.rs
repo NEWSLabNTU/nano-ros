@@ -176,7 +176,9 @@ impl BoardFamily {
                 run_components: Some("nros_board_native_run_components_named_in"),
                 run_tiers: Some("nros_board_native_run_tiers_in"),
                 run_tiers_backed: None,
-                run_levels: None,
+                // phase-509 P10 -- one worker thread per level over the
+                // core's one executor (nros-cpp).
+                run_levels: Some("nros_board_native_run_levels_in"),
                 // Issue 1597 — the host too. Its runners are Rust and used to
                 // build each `CppContext` on a stack (`size_of`-exact, but
                 // priced by nothing and a second road beside the shared one);
