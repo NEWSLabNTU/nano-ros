@@ -18,9 +18,9 @@ So the acceptance below holds for every lane in the measurement table but
 `main` and await one scheduled run. The issue sweep of the same day resolved 12
 of the homed issues on commit + run evidence (each resolution names both):
 1136, 1158, 1355, 1364, 1474, 1493, 1497, 1579, 1628, 1665, 1666, 1755.
-Still open here: 1758, and 1651/1365/1842/1459
-for their remaining items; 1375, 1457 and 1899 show no symptom in the last runs
-but name no fix, so one more clean run decides them. W5 is still open.
+Still open here (2026-10-23): 1365 for its remaining items, and 1899, which
+shows no symptom since 2026-10-15 and waits on the host kernel log. 1758, 1651,
+1842, 1459, 1375 and 1457 have since been resolved on run evidence. W5 is still open.
 **Left before archiving:** one green scheduled `live-peer` and `host-tests`,
 the trace-marker fix, the runner-disk exhaustion (an image/runner fix, not code), W5, and
 the four issues above.
@@ -298,7 +298,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#1666](../issues/archived/1666-zephyr-ci-image-has-no-cargo-nextest.md) | live-peer's board job reaches its run step, and the Zephyr CI image has no `cargo nextest`. |
 | [#1755](../issues/archived/1755-runner-home-cache-not-writable.md) | After a runner-container restart, two tier-1 steps cannot create directories under `~/.cache`. |
 | [#1758](../issues/archived/1758-skip-and-pass-is-a-failure.md) | RESOLVED 2026-10-23: scope, not host probes, decides what runs. Every scheduled lane that gates on it now reaches a verdict or stops on a different, tracked defect. |
-| [#1842](../issues/1842-tier-priority-plan-image-red-verdict-unprinted.md) | `tier-priority-plan-image` fails the Zephyr fixture build in two scheduled lanes, and neither lane shows its verdict. |
+| [#1842](../issues/archived/1842-tier-priority-plan-image-red-verdict-unprinted.md) | RESOLVED 2026-10-23: `9a814ee199` fixed the band-stale verdict and repeats it where the recipe fails; the 2026-10-20 and 2026-10-22 tier-2 nightlies built the Zephyr family OK. |
 | [#1898](../issues/archived/1898-metadata-harness-excerpt-drops-cargo-cause.md) | The tier-2 nightly stopped in `generate-bindings` on a git dependency it could not fetch, and the excerpt dropped the reason. |
 | [#1899](../issues/1899-tier2-nightly-fixture-compilers-sigkilled.md) | Compilers were SIGKILLed across five families at once in the tier-2 nightly build, so crates fail with no diagnostic. |
 | [#1981](../issues/1981-live-peer-narrowing-alternation-is-one-workspace-id.md) | Homed 2026-10-23 from phase-441, which was archived that day. The `live-peer` board job joins two `NROS_FIXTURE_ID` narrowings with `\|`, and the workspace builder reads the result as one id. So the lane cannot run the fragmented-sample cell phase-441 W6 recorded. |
