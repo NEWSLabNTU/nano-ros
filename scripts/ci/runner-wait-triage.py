@@ -200,8 +200,11 @@ def main() -> int:
                     help="minutes a job may wait beside an idle runner before it counts (default 2)")
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()
-    if args.selftest:
-        return selftest()
+    # The classifier's negative control runs on the normal path too, so a
+    # report is never produced by a classifier that fails its own cases.
+    rc = selftest()
+    if rc or args.selftest:
+        return rc
     return report(REPO, args.grace)
 
 
