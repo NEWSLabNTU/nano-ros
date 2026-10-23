@@ -742,6 +742,35 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   `L_max`. Sporadic budgets and the alive and overrun rules stay
   executor-owned, under the lock: refilled by whichever pass reads the
   clock first, charged per callback by the worker that ran it.
+- **As landed in item 4.** The Zephyr runner opens ONE executor per core:
+  `nros_cpp_init_levels` carves it from the entry's levels backing
+  (`NROS_CPP_LEVELS_BACKING_SIZE`: the tier table's sizings summed), the
+  runner installs the port's recursive priority-inheriting mutex
+  (`nros_cpp_executor_set_lock`) and its thread identity
+  (`nros_cpp_executor_set_thread_id`, `k_current_get`), and the scheduler
+  holds the owner's handle. The adopted level is the executor's own
+  worker (`nros_cpp_level_adopt`; it parks on the executor's wake object,
+  drives the transport and runs the executor-wide chores). Every spawned
+  level is a worker: `nros_cpp_level_open(scheduler, level, name,
+  stack_bytes)` seats its `BandWorker` and a `BandWaiter` over a platform
+  wake object (`BandWaiter::platform`) in the scheduler backing, links the
+  waiter into the arrival routing, and makes the level current for
+  registration; the runner then runs the level's setup on the owner's
+  handle (`nros_cpp_scheduler_owner`), and the worker loops on
+  `nros_cpp_level_spin_once`. A level owns the slots its setup registered
+  (`Executor::set_registering_level`, stamped in the slot tag): authored
+  tiers carry no ranks, so a band of dispatch levels cannot separate them,
+  and each level keeps the callbacks P9 gave its executor. Within a level
+  the dispatch order is still the ranked one. The entry emits one executor
+  block and one levels backing (C and C++ packs; the two Zephyr tier
+  goldens change accordingly), and `NROS_CPP_SCHEDULER_BACKING_SIZE(n)`
+  reserves 8 pointers + 40 bytes per seat. Cost on `levels-cpp`
+  (native_sim, `.bss`): 43,736 B -> 22,280 B. A spawned level costs its
+  seat (104 B), its thread object (176 B) and its stack, plus one platform
+  wake object from the heap; the stack-headroom rule stays the executor's
+  own worker's. The levels backing is the per-tier sizings summed, 5,296 B
+  above the one-level derivation (13,112 B); deriving it jointly is left to
+  the sizing descriptor.
 - **Order of landing.** (1) the lock seam: the lock, the guards on every
   FFI path, `nros_cpp_executor_set_lock`, one worker, no behaviour change;
   (2) the pass in steps: lock released around callbacks, running mark,

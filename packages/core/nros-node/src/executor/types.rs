@@ -1060,6 +1060,10 @@ pub(crate) struct SlotTag {
     /// (`apply_node_default_sched`). It orders the occupant inside its sched
     /// context's bucket. 0 for an occupant registered without a node.
     pub(crate) rank: u8,
+    /// phase-509 P9b item 4 -- the level whose setup registered the occupant
+    /// (`Executor::set_registering_level`), when the executor's levels own
+    /// their slots by registration. 0 otherwise. Rides in the tag's padding.
+    pub(crate) level: u8,
     /// Issue 1667 — [`SlotTag::IN_DISPATCH`], [`SlotTag::RELEASE_PENDING`].
     /// Rides in what was the struct's padding byte, so the tag is still 4
     /// bytes and no image's executor backing moves.
@@ -1099,6 +1103,7 @@ impl SlotTag {
             generation,
             owner,
             rank: 0,
+            level: 0,
             flags: portable_atomic::AtomicU8::new(0),
         }
     }

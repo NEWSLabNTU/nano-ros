@@ -130,6 +130,15 @@ uint32_t nros_zephyr_current_cpu(void) {
 #endif
 }
 
+/* phase-509 P9b (RFC-0108 "As built in P9b") — the calling thread's identity
+ * for the executor's lock: equal on one thread, distinct across live threads.
+ * With it, a level's pass releases the lock around each user callback, so a
+ * more urgent level's worker preempts a running callback of a less urgent
+ * one on the core's one executor. */
+uintptr_t nros_zephyr_thread_id(void) {
+    return (uintptr_t)k_current_get();
+}
+
 /* issue 0758 W4 — acquire the wall-clock epoch, if this image asked for one.
  *
  * WHY THE DECISION LIVES IN C. Zephyr has TWO tier arms — `zephyr_run_tiers.c`

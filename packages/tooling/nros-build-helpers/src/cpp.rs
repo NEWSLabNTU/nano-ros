@@ -629,6 +629,19 @@ fn tier_backing_defines(probed: &crate::shared::SizeMap) -> String {
     for (i, v) in sizes.iter().enumerate() {
         out.push_str(&format!("#define NROS_CPP_TIER_BACKING_SIZE_{i} {v}\n"));
     }
+    // phase-509 P9b item 4 -- the one executor backing a level runner opens:
+    // every tier's members, summed (`nros::sizes::LEVELS_BACKING_SIZE`).
+    if let Some(v) = probed
+        .get("LEVELS_BACKING_SIZE")
+        .copied()
+        .filter(|v| *v > 0)
+    {
+        out.push_str(&format!(
+            "/* phase-509 P9b -- a level runner opens ONE executor per core, carved\n \
+             * from a backing of NROS_CPP_LEVELS_BACKING_SIZE bytes. */\n\
+             #define NROS_CPP_LEVELS_BACKING_SIZE {v}\n"
+        ));
+    }
     out
 }
 
@@ -660,5 +673,19 @@ mod tier_backing_tests {
             "{h}"
         );
         assert!(!h.contains("SIZE_2"), "{h}");
+        assert!(!h.contains("LEVELS_BACKING"), "{h}");
+    }
+
+    #[test]
+    fn the_levels_backing_is_published_when_sized() {
+        let probed = crate::shared::SizeMap::from([
+            ("TIER_BACKING_SIZE_0".to_string(), 11_288u64),
+            ("LEVELS_BACKING_SIZE".to_string(), 13_112u64),
+        ]);
+        let h = tier_backing_defines(&probed);
+        assert!(
+            h.contains("#define NROS_CPP_LEVELS_BACKING_SIZE 13112\n"),
+            "{h}"
+        );
     }
 }

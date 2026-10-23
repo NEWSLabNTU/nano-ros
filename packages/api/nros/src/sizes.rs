@@ -142,6 +142,13 @@ mod rmw_sizes {
     export_bytes!(pub TIER_BACKING_SIZE_6 = nros_node::tier_backing_bytes(6));
     export_bytes!(pub TIER_BACKING_SIZE_7 = nros_node::tier_backing_bytes(7));
 
+    // phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- the ONE executor
+    // backing a level runner opens per core: every tier's (level's) members,
+    // summed. Zero on an image sized as one executor. Published as
+    // `NROS_CPP_LEVELS_BACKING_SIZE`, which sizes the generated entry's
+    // levels backing.
+    export_bytes!(pub LEVELS_BACKING_SIZE = nros_node::levels_backing_bytes());
+
     // issue 0961 — the STACK requirement is a different number from the one
     // above, and reusing that one would overstate it. `EXECUTOR_SIZE` is the
     // executor value PLUS its carved backing, which is what the caller's

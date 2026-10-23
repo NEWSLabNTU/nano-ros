@@ -1598,6 +1598,31 @@ nros_cpp_ret_t nros_cpp_init_tier(const char *locator,
                                   size_t backing_bytes);
 
 /**
+ * phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- [`nros_cpp_init`]
+ * for the ONE executor a level runner opens per core: carved from `backing`
+ * (`backing_bytes`, 8-aligned) at the image's levels sizing, every tier's
+ * (level's) members summed (`nros_node::levels_executor_sizing`). Refused
+ * before a session opens on an image that sizes no tier, or for a backing
+ * below [`nros_cpp_levels_backing_size`].
+ *
+ * # Safety
+ * As [`nros_cpp_init_tier`], without the tier name.
+ */
+nros_cpp_ret_t nros_cpp_init_levels(const char *locator,
+                                    uint8_t domain_id,
+                                    const char *node_name,
+                                    const char *namespace_,
+                                    void *storage,
+                                    void *backing,
+                                    size_t backing_bytes);
+
+/**
+ * phase-509 P9b item 4 -- the backing bytes [`nros_cpp_init_levels`]
+ * carves, `0` on an image that sizes no level.
+ */
+size_t nros_cpp_levels_backing_size(void);
+
+/**
  * Issue 1970 -- the backing bytes the executor of the tier named `tier`
  * carves, or `0` when this image sizes no tier of that name (its executors
  * are then the image's, carved inline).
@@ -2858,6 +2883,21 @@ nros_cpp_ret_t nros_cpp_executor_set_lock(void *handle,
                                           void *ctx);
 
 /**
+ * phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- give the lock
+ * [`nros_cpp_executor_set_lock`] installed the port's thread identity
+ * (`k_current_get`, `pthread_self`), so a pass releases it around each user
+ * callback and around its park: the levels' workers then preempt each
+ * other's callbacks. Call it after `set_lock`, while no second thread can
+ * reach the executor. `INVALID_ARGUMENT` with no lock installed.
+ *
+ * # Safety
+ * `handle` is a live executor handle from this ABI, or NULL; `thread_id`
+ * answers the calling thread's identity from any thread, equal on one
+ * thread and distinct across live threads.
+ */
+nros_cpp_ret_t nros_cpp_executor_set_thread_id(void *handle, size_t (*thread_id)(void));
+
+/**
  * phase-509 P7 — the level of tier `index` of a runner's `n` tiers: its
  * urgency order among their kernel priorities, 0 the most urgent, equal
  * priorities in array order. The rule `nros codegen entry` uses for
@@ -2920,20 +2960,24 @@ bool nros_cpp_levels_take_alive(void);
  * than `NROS_CPP_MAX_LEVELS`. The generated
  * `NROS_CPP_SCHEDULER_BACKING_SIZE_<core>` is
  * `NROS_CPP_SCHEDULER_BACKING_SIZE(n)` of `<rclc/detail/main.h>`, which
- * spells this same arithmetic; the entry asserts the two agree at boot and the
- * cost report reads the static's size.
+ * reserves at least this much (8 pointers + 40 per seat, P9b); the entry's
+ * backing is refused at open when it is shorter, and the cost report reads
+ * the static's size.
  */
 size_t nros_cpp_scheduler_backing_size(uint8_t n_levels);
 
 /**
  * phase-509 P9 (RFC-0108 D3; the amended RFC-0107 step 5) -- open core
  * `core`'s scheduler in `backing` (`bytes`, 8-aligned, at least
- * [`nros_cpp_scheduler_backing_size`]`(n_levels)`), over the session the
- * executor `owner` opened (`nros_cpp_init` / `nros_cpp_init_tier`). It states
- * the image's level count (`nros_cpp_set_level_count`); the owner is then
- * seated with [`nros_cpp_level_adopt`] and every other level opened with
+ * [`nros_cpp_scheduler_backing_size`]`(n_levels)`), over the executor
+ * `owner` opened (`nros_cpp_init_levels` / `nros_cpp_init`). It states the
+ * image's level count (`nros_cpp_set_level_count`); the owner is then seated
+ * with [`nros_cpp_level_adopt`] and every other level opened with
  * [`nros_cpp_level_open`]. Returns the scheduler handle (`backing`), or NULL
  * when anything is refused.
+ *
+ * P9b item 4: every level works on `owner`'s executor. Install its lock
+ * (`nros_cpp_executor_set_lock`, `_set_thread_id`) before a level opens.
  *
  * # Safety
  * `owner` is a live executor handle from this ABI, or NULL; `backing` points
@@ -2946,10 +2990,15 @@ void *nros_cpp_scheduler_open(uint8_t core,
                               size_t bytes);
 
 /**
- * phase-509 P9 -- seat an executor that is already open (the session owner,
- * which runs on the caller's thread) at `level`, and place it there
- * (`nros_cpp_executor_set_level`). `stack_bytes` is the stack its thread runs
- * on; `name` a static string, or NULL.
+ * phase-509 P9 -- seat the executor that owns the session (the core's one
+ * executor, which runs on the caller's thread) at `level`, and place it
+ * there (`nros_cpp_executor_set_level`). `stack_bytes` is the stack its
+ * thread runs on; `name` a static string, or NULL.
+ *
+ * P9b item 4: the adopted level is the executor's own worker (it parks on
+ * the executor's wake object and drives the transport), and the callbacks
+ * its setup registers from now on are its own
+ * (`Executor::set_registering_level`).
  *
  * # Safety
  * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL;
@@ -2963,26 +3012,61 @@ nros_cpp_ret_t nros_cpp_level_adopt(void *scheduler,
                                     const char *name);
 
 /**
- * phase-509 P9 (RFC-0108 D3) -- open level `level` of `scheduler`: an
- * executor over the scheduler's session, built in `storage`
- * (`NROS_CPP_EXECUTOR_STORAGE_SIZE` bytes), placed at the level and seated.
- * With a `backing` it is carved at the sizing the image derived for the tier
- * named `name` (`nros_cpp_executor_open_over_session_tier`); with NULL, from
- * the context's inline tail. `stack_bytes` is the stack the level's worker
- * thread was created with (the derived per-level stack), recorded for
- * [`nros_cpp_scheduler_level_stack_bytes`].
+ * phase-509 P9 (RFC-0108 D3) / P9b item 4 -- open level `level` of
+ * `scheduler` as a WORKER over the core's one executor (the adopted owner's):
+ * its record and waiter are seated in the scheduler's backing, its waiter is
+ * linked into the executor's arrival routing, and the callbacks registered
+ * from now on are the level's (`Executor::set_registering_level`). Call it
+ * on the level's own thread, then run the level's setup on the owner's
+ * executor handle ([`nros_cpp_scheduler_owner`]), then loop on
+ * [`nros_cpp_level_spin_once`]. `stack_bytes` is the stack the level's
+ * thread was created with, recorded for
+ * [`nros_cpp_scheduler_level_stack_bytes`]. A level costs its seat and its
+ * stack; no executor, no backing.
  *
  * # Safety
- * As [`nros_cpp_executor_open_over_session_tier`] for `storage`, `name` and
- * `backing`; `scheduler` a handle from [`nros_cpp_scheduler_open`] or NULL.
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL; `name`
+ * NULL or a NUL-terminated string that outlives the scheduler.
  */
 nros_cpp_ret_t nros_cpp_level_open(void *scheduler,
                                    uint8_t level,
                                    const char *name,
-                                   void *storage,
-                                   void *backing,
-                                   size_t backing_bytes,
                                    size_t stack_bytes);
+
+/**
+ * phase-509 P9b item 4 -- the core's one executor (the owner's handle):
+ * what a level's setup registers its nodes on. NULL for a handle that is not
+ * a scheduler.
+ *
+ * # Safety
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+ */
+void *nros_cpp_scheduler_owner(void *scheduler);
+
+/**
+ * phase-509 P9b item 4 -- make the callbacks registered from now on level
+ * `level`'s, on the core's executor: a runner calls it before each level's
+ * setup (the level that opens or adopts is made current already).
+ *
+ * # Safety
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+ */
+nros_cpp_ret_t nros_cpp_scheduler_set_registering_level(void *scheduler, uint8_t level);
+
+/**
+ * phase-509 P9b item 4 -- one pass of level `level`'s worker over the core's
+ * executor: it parks (its wake object, the lock released) for at most
+ * `timeout_ms` or until its next timer or an arrival in its band, then runs
+ * its band's ready callbacks, most urgent first, releasing the lock around
+ * each (`Executor::spin_band_once`). The adopted level spins with
+ * `nros_cpp_spin_once` on the owner's handle instead.
+ *
+ * # Safety
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL, and
+ * `level` was opened with [`nros_cpp_level_open`] on the calling thread
+ * (the seat's worker record is that thread's alone).
+ */
+nros_cpp_ret_t nros_cpp_level_spin_once(void *scheduler, uint8_t level, int32_t timeout_ms);
 
 /**
  * phase-509 P9 -- how many levels `scheduler` holds, 0 for a handle that is

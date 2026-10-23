@@ -158,3 +158,37 @@ impl Drop for NodeWake {
         let _ = unsafe { nros_platform_wake_drop(ptr) };
     }
 }
+
+/// phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- a band worker's wake
+/// object over the platform's (`nros_platform_wake_*`): what a level runner
+/// gives each spawned level.
+impl super::scheduler::BandWaiter {
+    /// A waiter over a new platform wake object, leaked with it: one per
+    /// level, for the image's life. `None` when the platform links no wake
+    /// primitive; the level then polls.
+    pub fn platform() -> Option<&'static Self> {
+        unsafe extern "C" fn wake(ctx: *mut c_void) {
+            // SAFETY: `ctx` is the leaked `NodeWake` below.
+            unsafe { &*(ctx as *const NodeWake) }.signal();
+        }
+        unsafe extern "C" fn wait(ctx: *mut c_void, us: u64) -> i32 {
+            // The wake primitive's own resolution is the millisecond; a
+            // band's park rounds UP, so it never wakes before its timer.
+            let ms = us.div_ceil(1000).min(u64::from(u32::MAX)) as u32;
+            // SAFETY: as `wake`.
+            if unsafe { &*(ctx as *const NodeWake) }.wait_ms(ms) {
+                0
+            } else {
+                -1
+            }
+        }
+        let w: &'static NodeWake =
+            alloc::boxed::Box::leak(alloc::boxed::Box::new(NodeWake::new()?));
+        let ctx = w as *const NodeWake as *mut c_void;
+        // SAFETY: the wake object is leaked, so it outlives every executor;
+        // its signal and wait are callable from any thread (the platform's
+        // wake contract).
+        let waiter = unsafe { Self::new(wake, wait, ctx) };
+        Some(alloc::boxed::Box::leak(alloc::boxed::Box::new(waiter)))
+    }
+}
