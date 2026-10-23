@@ -3,7 +3,7 @@ id: 2001
 title: "A zenoh-pico publisher drops a put whenever another thread holds the TX lock, RELIABLE QoS or not"
 status: resolved
 resolved: 2026-10-23
-resolved_in: "fix/2001-reliable-publish-blocks"
+resolved_in: "PR #2517"
 type: bug
 area: [rmw-zenoh, qos]
 severity: medium
