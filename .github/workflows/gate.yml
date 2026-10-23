@@ -787,6 +787,12 @@ jobs:
               https://github.com/zephyrproject-rtos/zephyr.git zephyr-workspace/zephyr
             git -C zephyr-workspace/zephyr sparse-checkout set lib/cpp/minimal/include
           fi
+          # issue 1483 -- `check-python-entry-provenance` compares each
+          # `[python.*]` mirror with upstream rosidl's own package.xml, so it
+          # needs the pinned rosidl clone; without it the gate reports NOT
+          # VERIFIED and `check-fast-skip-allowlist` refuses the lane.
+          source ./activate.sh
+          nros setup --source rosidl
 
       - name: just check fast
         run: |
