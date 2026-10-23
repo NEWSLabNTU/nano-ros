@@ -350,9 +350,14 @@ never fills. Resolved 2026-10-21: a full ring now keeps the newest samples and
 counts the rest, with its own end-to-end test beside this one.
 
 Its first red on main is
-[issue 1980](../issues/1980-entity-wake-race-test-blames-executor-for-failed-publish.md).
+[issue 1980](../issues/archived/1980-entity-wake-race-test-blames-executor-for-failed-publish.md).
 In a tier-1 run the publisher thread's own `publish` failed
 (`Transport(PublishFailed)`), and the test reported that as a lost dispatch.
+Resolved 2026-10-23: two test races, not executor defects. The publish was
+zenoh-pico's DROP congestion control dropping a put on TX-lock contention, now
+retried and reported as its own failure. The arrival budget now starts at the
+last sample's publish, not while the publisher was still waiting for a
+callback to publish into.
 
 ### W6 — measure
 
