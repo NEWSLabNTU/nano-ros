@@ -419,10 +419,6 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
     const PUBLISH_INTERVAL: Duration = Duration::from_millis(5);
     const ROUNDS: u32 = 20;
     const BURST: u32 = 3;
-    /// How long a publish the transport dropped is retried (issue 1980).
-    /// Far shorter than `ARRIVAL_BUDGET`, so a retried sample still arrives
-    /// in time to be judged.
-    const PUBLISH_RETRY_BUDGET: Duration = Duration::from_millis(500);
     require_zenohd();
     let locator = zenohd_unique.locator();
     let domain = u32::from(nros_tests::unique_ros_domain_id());
@@ -472,16 +468,13 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
     // announces it again: if the executor drops an arrival that lands during
     // the dispatch, that sample is never dispatched.
     //
-    // Issue 1980: a publish can FAIL here without anything being wrong with
-    // dispatch. This publisher has zenoh-pico's default DROP congestion
-    // control, which only TRY-locks the transport's TX mutex and drops the put
-    // when another thread holds it (the lease task's keep-alive, descheduled
-    // mid-write on a loaded host, measured 1 run in 25 under CPU load). A
-    // dropped publish is retried, since the sample must exist for the verdict
-    // to mean anything. One that stays dropped is reported AS a publish
-    // failure: before this, the publisher thread panicked, the main loop
-    // waited for a sample that was never sent, and the verdict blamed the
-    // executor.
+    // Issue 1980: a publish that FAILS says nothing about dispatch, so it is
+    // reported as a publish failure, not as a lost arrival. It used to fail
+    // under CPU load (1 run in 25): zenoh-pico's default DROP congestion
+    // control dropped the put whenever another thread held the transport's TX
+    // mutex. Since issue 2001 a RELIABLE publisher waits for the mutex
+    // instead, so this test no longer retries — a publish failure here is a
+    // regression of 2001.
     let (to_publisher, rounds) = std::sync::mpsc::channel::<u32>();
     let (raced_tx, raced) = std::sync::mpsc::channel::<Result<bool, String>>();
     let in_callback_pub = in_callback.clone();
@@ -490,18 +483,10 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
         let publish = |seq: u32| -> Result<(), String> {
             let mut payload = [0u8, 1, 0, 0, 0, 0, 0, 0];
             payload[4..8].copy_from_slice(&seq.to_le_bytes());
-            let start = Instant::now();
-            loop {
-                match publisher.0.publish_raw(&payload) {
-                    Ok(()) => return Ok(()),
-                    Err(e) if start.elapsed() >= PUBLISH_RETRY_BUDGET => {
-                        return Err(format!(
-                            "sample {seq}: publish failed for {PUBLISH_RETRY_BUDGET:?}: {e:?}"
-                        ));
-                    }
-                    Err(_) => std::thread::yield_now(),
-                }
-            }
+            publisher
+                .0
+                .publish_raw(&payload)
+                .map_err(|e| format!("sample {seq}: publish failed: {e:?} (issue 2001)"))
         };
         while let Ok(first) = rounds.recv() {
             let last = first + BURST - 1;
@@ -552,7 +537,7 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
                 );
             }
             assert!(
-                round_start.elapsed() < ARRIVAL_BUDGET * 2 + PUBLISH_RETRY_BUDGET * BURST,
+                round_start.elapsed() < ARRIVAL_BUDGET * 2,
                 "{shape:?} round {round}: the publisher never reported sample {last} \
                  (latest dispatched {})",
                 latest.load(SeqCst)

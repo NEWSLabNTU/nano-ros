@@ -1,12 +1,14 @@
 ---
 id: 2001
 title: "A zenoh-pico publisher drops a put whenever another thread holds the TX lock, RELIABLE QoS or not"
-status: open
+status: resolved
+resolved: 2026-10-23
+resolved_in: "fix/2001-reliable-publish-blocks"
 type: bug
 area: [rmw-zenoh, qos]
 severity: medium
 found: 2026-10-23
-related: [1980, 0145, phase-279]
+related: [1980, 2005, 0145, phase-279]
 ---
 
 ## Measured
@@ -71,3 +73,40 @@ the backend's reason.
   removed, `2 x nproc` load, 0 of 50 publish failures).
 - The congestion-control choice per publisher is stated in one place and
   covered by a test, not implied by `ZPICO_TX_BATCH`.
+
+## Resolution (2026-10-23)
+
+Option 1 landed. `zpico_declare_publisher_ex` takes `is_reliable`, and a
+RELIABLE publisher is declared with `Z_CONGESTION_CONTROL_BLOCK`. The Rust
+backend passes the RESOLVED reliability (`ZenohPublisher::new`, after
+`resolve_system_default`), so `SystemDefault` and `BestAvailable` arrive as a
+concrete policy. The bare `zpico_declare_publisher` means RELIABLE, the ROS
+default. `ZPICO_TX_BATCH` still forces BLOCK for its own reason, and both rules
+are now stated in one comment at the declare site.
+
+Deadlock check: BLOCK takes `_mutex_tx` and waits. zenoh-pico already takes
+that same mutex with BLOCK for every declaration, interest and query reply
+(`src/net/primitives.c`), so a thread waiting on it is not new. Local delivery
+(`Z_FEATURE_LOCAL_SUBSCRIBER`) runs after the send returns, outside the lock
+(`_z_write`), so a subscriber callback that publishes does not re-enter it.
+`ZPICO_TX_BATCH` images have declared every publisher BLOCK since phase-279.
+
+**A wire-visible side effect.** zenoh-pico encodes the congestion-control
+choice into the message's QoS (`_z_n_qos_make(.., cong_ctrl == BLOCK, ..)`), so
+the router now treats these samples as BLOCK as well. `rmw_zenoh_cpp` chooses
+BLOCK only for KEEP_ALL publishers, so a RELIABLE + KEEP_LAST nano-ros
+publisher now asks the router to block where a ROS one asks it to drop. Under
+router-side congestion, that means backpressure instead of loss. zenoh-pico
+offers no way to split the local lock policy from the wire flag. Not measured
+against a congested router.
+
+Test: `entity_wake::an_arrival_racing_a_drain_is_never_left_undispatched` no
+longer retries a failed publish, so a contention drop on its RELIABLE publisher
+fails it as `publish failed ... (issue 2001)`. Runs listed in the PR.
+
+Option 2 (a distinct `Busy` error) was NOT done. zenoh-pico's contention
+failure is the platform's try-lock code, which is `-1`, `_Z_ERR_GENERIC` or an
+errno mapping depending on the port. That makes it indistinguishable from
+other failures without a fork patch. The BEST_EFFORT half is filed as
+[issue 2005](../2005-zpico-best-effort-publish-contention-reads-as-failure.md),
+with the zenoh-matching fork patch as its recommendation.
