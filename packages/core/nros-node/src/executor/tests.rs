@@ -16836,6 +16836,8 @@ mod p9b_windows {
     struct Sem {
         count: Mutex<u32>,
         cv: Condvar,
+        /// A worker is inside `sem_take` now.
+        waiting: core::sync::atomic::AtomicBool,
     }
 
     unsafe extern "C" fn sem_give(c: *mut core::ffi::c_void) {
@@ -16849,9 +16851,11 @@ mod p9b_windows {
         // SAFETY: as `sem_give`.
         let s = unsafe { &*(c as *const Sem) };
         let g = s.count.lock().unwrap();
+        s.waiting.store(true, Ordering::SeqCst);
         let (mut g, _) =
             s.cv.wait_timeout_while(g, std::time::Duration::from_micros(us), |c| *c == 0)
                 .unwrap();
+        s.waiting.store(false, Ordering::SeqCst);
         if *g > 0 {
             *g -= 1;
             0
@@ -16864,6 +16868,7 @@ mod p9b_windows {
         let sem: &'static Sem = std::boxed::Box::leak(std::boxed::Box::new(Sem {
             count: Mutex::new(0),
             cv: Condvar::new(),
+            waiting: core::sync::atomic::AtomicBool::new(false),
         }));
         let ctx = sem as *const Sem as *mut core::ffi::c_void;
         // SAFETY: the semaphore is leaked; both entries are thread-safe.
@@ -16872,8 +16877,9 @@ mod p9b_windows {
     }
 
     /// Item 3 -- a band worker parks, with the lock released, until its
-    /// band's next timer is due: a 4 ms timer under a 2 s budget is served in
-    /// a few ms, and another thread takes the lock during the park.
+    /// band's next timer is due: a 50 ms timer under a 2 s budget is served
+    /// well inside a second, and another thread takes the lock while the
+    /// worker is parked (it would block until the pass ended otherwise).
     #[test]
     fn a_band_worker_parks_until_its_timer_is_due() {
         let mut executor = executor_with_clock(MockSession::new());
@@ -16885,7 +16891,7 @@ mod p9b_windows {
         executor
             .node_mut(nid)
             .create_timer_with_info(
-                TimerDuration::from_millis(4),
+                TimerDuration::from_millis(50),
                 crate::executor::TimerClockSource::Steady,
                 true,
                 move |_| {
@@ -16893,21 +16899,24 @@ mod p9b_windows {
                 },
             )
             .unwrap();
-        let (waiter, _) = leaked_waiter();
+        let (waiter, ctx) = leaked_waiter();
+        let sem = ctx as usize;
         let mut w = BandWorker::new(0, Band::new(0, 1).unwrap()).with_waiter(waiter);
         executor.attach_band_worker(&w);
         let shared = Shared(&mut executor);
         let t0 = std::time::Instant::now();
-        let parked_lock_taken = Arc::new(AtomicUsize::new(0));
-        let p = parked_lock_taken.clone();
-        let f2 = fired.clone();
+        let taken_while_parked = Arc::new(AtomicUsize::new(0));
+        let p = taken_while_parked.clone();
         std::thread::scope(|sc| {
             sc.spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(1));
+                // SAFETY: the leaked semaphore.
+                let s = unsafe { &*(sem as *const Sem) };
+                while !s.waiting.load(Ordering::SeqCst) {
+                    std::thread::yield_now();
+                }
                 // SAFETY: the lock is taken before the executor is read.
                 let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
-                // Taken while the worker was parked: the timer has not fired.
-                if f2.load(Ordering::SeqCst) == 0 {
+                if s.waiting.load(Ordering::SeqCst) {
                     p.fetch_add(1, Ordering::SeqCst);
                 }
             });
@@ -16928,7 +16937,7 @@ mod p9b_windows {
             }
         });
         assert_eq!(
-            parked_lock_taken.load(Ordering::SeqCst),
+            taken_while_parked.load(Ordering::SeqCst),
             1,
             "another thread took the lock during the park"
         );
