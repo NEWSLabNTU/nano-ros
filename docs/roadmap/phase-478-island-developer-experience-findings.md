@@ -271,7 +271,7 @@ D3 for every `NROS_DERIVED_*` pool knob, liveliness first.
   `printk("zpico: liveliness pool exhausted ...")` (`zpico.c:3293`), which goes
   to the unwired console. Route the C shim's pool-exhaustion lines to the record
   too, and have the island re-check its triage section 3 after its next pin bump.
-- [Issue 1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)
+- [Issue 1252](../issues/archived/1252-message-bound-knobs-have-no-pre-configure-twin.md)
   (open): the board build refused its own image on
   `NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS`.
 

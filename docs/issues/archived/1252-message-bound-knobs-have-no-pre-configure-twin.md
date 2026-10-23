@@ -1,14 +1,27 @@
 ---
 id: 1252
 title: "The message-bound half of the Zephyr chain still has no pre-configure producer, so one re-configure survives and RFC-0094 A3 cannot be met"
-status: open
+status: resolved
 area: build, cmake, cli
 severity: medium
 found: 2026-09-10
 related: [1228, 0940, 0965, 0991, 1002, 1119, 1061, 1125, phase-439, phase-403, phase-478]
 ---
 
-**Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-439](../../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
+# RESOLVED 2026-10-23 — the bound link is seeded (W6) and held to (W8)
+
+The acceptance's open rows are closed as follows. The fixed-point deletion was
+re-scoped by ruling (phase-439 W8, RFC-0094 A3 amended). On a configure
+`nros build` started, the message-bound sizes are held to the seed at the end
+of the top-level configure, over a recorded set of inputs
+(`resolved-message-bounds-inputs.cmake`). The same inputs with a different
+answer stops the configure, naming both files; it is measured in vivo by
+appending one comment to the seed. Moved inputs converge by the fixed point,
+which stays for configures `nros build` did not start (a bare `west build` of a
+leaf measured 1 re-configure). `.config`: not compared, because nothing W6 or
+W8 changes reaches Kconfig.
 
 # UPDATE 2026-10-23 (W6 landed) — 0 re-configures on the reference image
 

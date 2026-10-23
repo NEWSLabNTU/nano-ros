@@ -1,14 +1,28 @@
 ---
 id: 1228
 title: "phase-439 W2 landed the resolve phase; the three-pass fixed point is still authoritative and RFC-0094 A3 is not met"
-status: open
+status: resolved
 area: build, cmake, cli
 severity: medium
 found: 2026-09-08
 related: [0940, 0965, 0991, 1002, 1119, 1061, 1125, 1252, phase-439, phase-403, phase-412]
 ---
 
-**Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-439](../../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+
+# RESOLVED 2026-10-23 — one entity composer (phase-439 W7), and A3 as amended (W8)
+
+Items (1) and (2) landed for the C/C++ west road: see the next section. Item
+(3) did not need doing, because there is one composer now. What this issue
+still called open, the deletion, was ruled out of scope rather than done.
+RFC-0094 A3 is amended so that a configure `nros build` started takes one pass
+BY CONSTRUCTION, while the fixed point stays the convergence for configures it
+did not start. That was measured: a bare `west build` of
+`examples/zephyr/cpp/talker` needs it, at 1 re-configure. W8 also closed the
+one hole the W7 take had. It was keyed on the model's PATH, and a configure
+`nros build` did not start re-resolves the model in place after a contract
+edit, so the record now carries the model's content digest
+(`tests/cmake-resolved-seed-tests.sh` case T, "the model edited in place").
 
 # UPDATE 2026-10-23 (later) — items (1) and (2) landed for the C/C++ west road (phase-439 W7)
 

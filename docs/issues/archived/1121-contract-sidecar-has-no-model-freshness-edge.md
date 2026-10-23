@@ -1,7 +1,7 @@
 ---
 id: 1121
 title: "Adding a `<stem>.contract.yaml` does not invalidate the SystemModel it feeds — `nros sync` leaves the stale model in place"
-status: open
+status: resolved
 type: bug
 area: cli, tooling
 severity: medium
@@ -9,7 +9,26 @@ found: 2026-09-06
 related: [1120, 0475, 1018, phase-424, phase-330, phase-439, phase-460, phase-478]
 ---
 
-**Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — re-homed 2026-10-14 from phase-330, which is archived (and on 2026-10-12 from phase-424 before it).
+**Home: [phase-439](../../roadmap/phase-439-resolve-before-configure.md)** — re-homed 2026-10-14 from phase-330, which is archived (and on 2026-10-12 from phase-424 before it).
+
+# RESOLVED 2026-10-23 — does not reproduce, in either direction (phase-439 W9)
+
+Measured on a scratch copy of `examples/workspaces/cpp`, with the model at
+`build/nros/models/demo_bringup/system_model.yaml`:
+
+| step | `contracts.node_paths` in the model |
+| --- | --- |
+| `system.contract.yaml` moved away, `nros sync` | 0 |
+| put back, `nros sync` | 1: re-resolved |
+| deleted, `nros sync` | 0: re-resolved |
+| no change, `nros sync` | model mtime unchanged |
+
+Adding a sidecar is caught by phase-454 W12, which put `*.contract.yaml` in
+sync's mtime horizon (`cmd/ws.rs`). Deleting one moves no mtime, and phase-439
+had expected that half to still be open. It is caught by issue 0320's
+content-addressed check: `model_gate::provenance_stale` re-hashes the model's
+recorded `meta.inputs`, the contract is one of them, and a missing input is
+stale. Nothing left to file.
 
 # The file that sizes the image is not an input to the thing that reads it
 
