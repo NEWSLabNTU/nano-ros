@@ -29,7 +29,8 @@ remains, in the order I would take it:
 4. **Path B's target run — MET on QEMU 2026-10-16.** With a live zenoh
    session and a 50 ms budget, mps2-an385 printed
    `park bounded by Platform(0) at 27000 us`; with the shipped 10 ms budget
-   the source never wins. No hardware run: no board is on this bench. See
+   the source never wins. The hardware run moved to
+   [phase-512](phase-512-on-hardware-measurements.md) H2 on 2026-10-23. See
    Path B's exit.
 5. **Per-entity wake routing — MEASURED 2026-10-16, folded into
    [phase-397](phase-397-pushed-readiness-executor.md).** One zenoh session,
@@ -613,7 +614,8 @@ watched run.
     during WFI at a rate unrelated to elapsed time, and that the image is SMP
     while CTF events carry no CPU id. So A3 on FVP can check that the probe
     measures the right thing in the right place. Absolute latency needs
-    silicon (S32Z), or a short, low-idle capture under the 4.295 s wrap.
+    silicon (S32Z), or a short, low-idle capture under the 4.295 s wrap. The
+    silicon run is [phase-512](phase-512-on-hardware-measurements.md) H1.
   * **E4 measured.** Same painted image, idle boot, with and without E4:
 
     | | without E4 | with E4 |
@@ -800,8 +802,9 @@ outside tests. Every wired port waits; none says WHEN.
   So the source works and wins where the budget leaves it room, which is
   where it was always going to pay. The shipped budget stays 10 ms: on this
   board nothing parks (D5), so a longer budget would only lengthen the
-  transport's blocking drive. No hardware run; no board is on this bench.
-  The original reading, from a sandbox with no router, follows.
+  transport's blocking drive. The hardware run is
+  [phase-512](phase-512-on-hardware-measurements.md) H2, since no board is on
+  this bench. The original reading, from a sandbox with no router, follows.
 
   **Half met, and the other half MEASURED rather than left silent.** The
   non-test caller exists (two of them), and a QEMU mps2-an385 run of
