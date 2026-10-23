@@ -3,7 +3,7 @@ id: 2005
 title: "A BEST_EFFORT zenoh-pico publish dropped on TX-lock contention still returns PublishFailed, indistinguishable from a dead session"
 status: resolved
 resolved: 2026-10-23
-resolved_in: "zenoh-pico fork 57bbde9e"
+resolved_in: "PR #2523 (zenoh-pico fork 57bbde9e)"
 type: bug
 area: [rmw-zenoh, qos]
 severity: low
