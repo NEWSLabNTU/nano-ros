@@ -699,6 +699,13 @@ pub struct EntityInputs {
     pub registered: Vec<String>,
     /// The resolved SystemModel, canonical.
     pub model: std::path::PathBuf,
+    /// The model's CONTENT, as cmake's `file(SHA256)` spells it. The path alone
+    /// is not the input: a configure `nros build` did not start re-resolves the
+    /// model in place (an edited contract re-runs it through
+    /// `CMAKE_CONFIGURE_DEPENDS`), and a take keyed on the path would hand that
+    /// configure the answer for the model it replaced. Empty when unreadable,
+    /// which matches nothing.
+    pub model_sha256: String,
     /// The colcon workspace root, canonical.
     pub workspace: std::path::PathBuf,
     /// The `--board-rx-*` arguments, in `_nros_board_rx_cost_args`' order.
@@ -727,9 +734,18 @@ impl EntityInputs {
                 rx_args.push(f.to_string());
             }
         }
+        let model_sha256 = std::fs::read(model)
+            .map(|b| {
+                Sha256::digest(&b)
+                    .iter()
+                    .map(|x| format!("{x:02x}"))
+                    .collect()
+            })
+            .unwrap_or_default();
         Self {
             registered: keys,
             model: nros_build_paths::canonical(model),
+            model_sha256,
             workspace: nros_build_paths::canonical(workspace),
             rx_args,
         }
@@ -758,6 +774,11 @@ impl EntityInputs {
             self.registered.join(";")
         );
         let _ = writeln!(s, "set(NROS_RESOLVED_ENTITY_MODEL [==[{model}]==])");
+        let _ = writeln!(
+            s,
+            "set(NROS_RESOLVED_ENTITY_MODEL_SHA256 {})",
+            self.model_sha256
+        );
         let _ = writeln!(s, "set(NROS_RESOLVED_ENTITY_WORKSPACE [==[{ws}]==])");
         let _ = writeln!(
             s,
@@ -863,7 +884,14 @@ mod tests {
             .map(str::to_string)
             .collect();
         let reg = crate::cmd::entity_inventory::registered_from_probe(&meta, &launched).unwrap();
-        let inputs = EntityInputs::new(&reg, dir.path(), dir.path(), None);
+        let model = dir.path().join("system_model.yaml");
+        std::fs::write(&model, "nodes: []\n").unwrap();
+        let inputs = EntityInputs::new(&reg, &model, dir.path(), None);
+        // `printf 'nodes: []\n' | sha256sum` -- what cmake's file(SHA256) reads.
+        assert_eq!(
+            inputs.model_sha256,
+            "704056ab12a52a1a941fd543cb0207a1117d3fb8884a0428a7c7ccce5feb946e"
+        );
         assert_eq!(
             inputs.registered.join(";"),
             "b_pkg::sub::b_pkg::Sub2;core::bare::core::Bare;z_pkg::talker::z_pkg::Talker",
