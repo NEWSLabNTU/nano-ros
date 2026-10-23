@@ -18,8 +18,7 @@ So the acceptance below holds for every lane in the measurement table but
 `main` and await one scheduled run. The issue sweep of the same day resolved 12
 of the homed issues on commit + run evidence (each resolution names both):
 1136, 1158, 1355, 1364, 1474, 1493, 1497, 1579, 1628, 1665, 1666, 1755.
-Still open here: 1325 (the filter's haystack still holds `$conf_files`), 1483
-(`[python.empy]`/`[python.lark]` still listed), 1758, and 1651/1365/1842/1459
+Still open here: 1758, and 1651/1365/1842/1459
 for their remaining items; 1375, 1457 and 1899 show no symptom in the last runs
 but name no fix, so one more clean run decides them. W5 is still open.
 **Left before archiving:** one green scheduled `live-peer` and `host-tests`,
@@ -275,7 +274,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#1375](../issues/archived/1375-zephyr-native-sim-runner-link-misses-zpico-reply-slot.md) | RESOLVED 2026-10-23: Zephyr Rust zenoh images link, boot and pass in the nightly (39739466151). A merge-gating Zephyr link was declined; the nightly is that lane. |
 | [#1459](../issues/archived/1459-threadx-c-entry-undefined-network-wait.md) | RESOLVED 2026-10-23: the weak-reference fix holds, and the nightly `threadx_linux` job builds and passes the C images. A C-only image in L3 was declined; the nightly is that lane. |
 | [#1474](../issues/archived/1474-zephyr-rust-fixture-build-has-no-clippy-component.md) | The Zephyr Rust fixture build runs clippy as a ninja step, and the CI image has no clippy component, so `live-peer` dies in its build. |
-| [#1483](../issues/1483-python-layer-carries-upstream-transitive-deps.md) | `[python.*]` lists two of upstream rosidl's transitive dependencies. It came from the CI-image fix of issue 1457, which is homed here. |
+| [#1483](../issues/archived/1483-python-layer-carries-upstream-transitive-deps.md) | RESOLVED 2026-10-23 — `empy`/`lark` moved to `[source.rosidl.python]`, a gated mirror of rosidl's `package.xml`, with apt names from the rosdep snapshot. |
 | [#1493](../issues/archived/1493-heap-free-poc-bin-has-no-row-and-no-lane-declaration.md) | `fixture_source_coverage` was red on main for 27 days because no lane runs that test. |
 | [#1497](../issues/archived/1497-tier2-zephyr-self-pkg-leaves-have-no-systemmodel.md) | Tier 2's Zephyr module dies in `codegen-system`, with no cell verdict. The root cause, issue 1501, is fixed; what is left is a scheduled run that reaches the cells. |
 | [#1579](../issues/archived/1579-timer-elapsed-upper-bound-fails-under-ci-load.md) | A real sleep bounded by a 10 ms allowance fails `timer_readiness_and_elapsed_agree_with_the_dispatcher` on a loaded runner, in tier 1. |

@@ -1921,10 +1921,10 @@ packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 # [python.*]: catkin-pkg, empy …, lark", which named three of four and said
 # nothing about whose they are):
 #
-#   em      UPSTREAM's  [python.empy]  rosdep key `python3-empy`
+#   em      UPSTREAM's  [source.rosidl.python.python3-empy]
 #                       (rosidl_adapter/package.xml <exec_depend>), version
 #                       PINNED 3.3.4 by US — empy 4 breaks the templates
-#   lark    UPSTREAM's  [python.lark]  rosdep key `python3-lark-parser`
+#   lark    UPSTREAM's  [source.rosidl.python.python3-lark-parser]
 #                       (rosidl_parser/package.xml <exec_depend>)
 #   catkin_pkg  OURS    [python.catkin-pkg] — we import it too
 #   yaml        OURS    [python.pyyaml] — 11 of our own scripts import it
@@ -1936,9 +1936,11 @@ packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 # `python3-yaml`, which `rosidl_adapter/rosidl_adapter/cli.py` imports on lines
 # 19-20. A derivation that trusted package.xml would under-declare exactly the
 # module whose absence killed tier-2 nightly (issue 1457). So the two that ARE
-# upstream's carry `rosdep = "<key>"`, which is what makes their apt NAME the
-# vendored snapshot's answer rather than a string we maintain; the other two are
-# ours on their own merits and would be here regardless.
+# upstream's sit under `[source.rosidl.python.<rosdep key>]` below (issue 1483),
+# where the vendored snapshot answers their apt NAME; the other two are ours on
+# their own merits and would be here regardless. rosidl_cli's two keys are
+# not mirrored: the IDL path imports nothing that needs them, measured in a
+# container with no ROS.
 #
 # ON A HOST WITH THE ROS APT REPO none of this is reached: `apt install
 # ros-humble-rosidl-adapter` installs the adapter under
@@ -1985,6 +1987,34 @@ ref = "5621b26eff54596a356ad8abd72c06e7650d21f7"
 location = "store"
 build_stage = true
 check = { python_import = "rosidl_adapter.cli", env = "NROS_ROSIDL_ADAPTER_BIN_DIR" }
+
+# Issue 1483 — the python modules rosidl's OWN code needs on the ROS-less host,
+# keyed by the rosdep key upstream's `package.xml` declares them under. They
+# are not `[python.*]` entries, because they are upstream's dependencies, not
+# ours: on a host with the ROS apt repo, apt resolves them through
+# `ros-humble-rosidl-adapter` and none of this is read.
+#
+# Each table is a TRACKED MIRROR of one `<exec_depend>` at `ref` above, so it
+# can move only with a reviewed pin move, and `check-python-entry-provenance`
+# compares it with the manifest in the provisioned clone, in both directions.
+# What it does NOT carry is the apt name: that is `nros-rosdep-snapshot.toml`'s
+# answer to the key (`python3-lark-parser` -> `python3-lark`, a rename this
+# index used to hand-copy). What it does carry are the facts rosdep has no field
+# for: the PyPI and import names, and our own version constraint.
+#
+# `catkin_pkg` and `yaml` are imported by `rosidl_adapter/cli.py` and declared in
+# NO upstream manifest, so a mirror of the manifests cannot supply them. They
+# are `[python.catkin-pkg]` / `[python.pyyaml]`, ours on their own merits.
+[source.rosidl.python.python3-empy]
+from = "rosidl_adapter/package.xml"
+pip = "empy"
+module = "em"
+version = "3.3.4"
+version_why = "OURS, not upstream's: a rosdep key carries no version, and empy 4.x breaks the rosidl templates. The apt candidate must SATISFY it or the remedy falls to pip (jammy carries 3.3.4-2, measured)"
+
+[source.rosidl.python.python3-lark-parser]
+from = "rosidl_parser/package.xml"
+pip = "lark"
 
 # --- OS packages (phase-327 W1, RFC-0062) -----------------------------------
 #
@@ -2694,39 +2724,6 @@ pip = "PyYAML"
 module = "yaml"
 apt = ["python3-yaml"]
 why = "OURS: 11 of our own scripts import yaml (measured 2026-09-24) — scripts/ci/lane-stage.py, scripts/lib/workflow_commands.py, scripts/probe/extract-workflow-steps.py, gen-rosdep-snapshot.py and six check-* gates on the check-fast line. A host that cannot import yaml cannot run the lane this repo tells everyone to run before every push. The rosidl tree reaches it too and declares it nowhere"
-
-[python.empy]
-pip = "empy"
-module = "em"
-version = "3.3.4"
-# NOT OURS (issues 1483/1484): zero direct importers of `em` in this repo,
-# measured. It is `rosidl_adapter`'s own
-# `<exec_depend>python3-empy</exec_depend>` at the commit `[source.rosidl]`
-# pins, and it is declared here only because the ROS-less host has no
-# `ros-humble-rosidl-adapter` to install and let apt resolve.
-#
-# The NAME is upstream's, so `rosdep` names their key and the apt list is the
-# vendored snapshot's answer to it. The VERSION is OURS and stays ours: a rosdep
-# key carries none, and empy 4.x breaks the rosidl templates. The apt candidate
-# must SATISFY the pin or the resolver falls to pip: jammy carries 3.3.4-2
-# (measured), and a release that moved to 4.x is refused by measurement rather
-# than by a table someone has to keep current.
-rosdep = "python3-empy"
-apt = ["python3-empy"]
-why = "UPSTREAM rosidl's: rosidl_adapter templates (rosidl_adapter/package.xml <exec_depend> at humble-5621b26); nothing here imports `em`. The 3.3.4 pin IS ours — empy 4.x is INCOMPATIBLE"
-
-[python.lark]
-pip = "lark"
-# NOT OURS (issues 1483/1484): zero direct importers of `lark` in this repo,
-# measured — and the sharpest case for `rosdep`. Upstream's key is
-# `python3-lark-parser`; the apt package is `python3-lark`. That RENAME is data
-# ros/rosdistro publishes and `nros-rosdep-snapshot.toml` vendors at a pinned
-# ref, and this entry used to hand-copy one edge of it — the exact shape that
-# goes silently wrong in the direction that reads as correct.
-# `check-python-entry-provenance` compares the two, so it can no longer.
-rosdep = "python3-lark-parser"
-apt = ["python3-lark"]
-why = "UPSTREAM rosidl's: rosidl_parser grammar (rosidl_parser/package.xml <exec_depend>python3-lark-parser</exec_depend> at humble-5621b26); nothing here imports `lark`"
 
 [python.tomli]
 pip = "tomli"

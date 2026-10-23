@@ -84,6 +84,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
 import index_packages  # noqa: E402 — the one manager-field reader (phase-447 D2)
 
 INDEX = os.path.join(ROOT, "nros-sdk-index.toml")
+SNAPSHOT = os.path.join(ROOT, "nros-rosdep-snapshot.toml")
 
 
 def load(path=INDEX):
@@ -99,14 +100,28 @@ def load(path=INDEX):
 # generation time: the index
 
 
+def layer(index):
+    """`[python.*]` plus every `[source.*.python]` dependency — issue 1483.
+
+    A source's dependencies are upstream's, keyed by rosdep key, and their apt
+    names come from the pinned snapshot (`index_packages.python_layer`). The
+    snapshot is read only when a source declares any, so a synthetic index in
+    the self-test needs no file.
+    """
+    snapshot = None
+    if any((src.get("python") for src in index.get("source", {}).values())):
+        snapshot = load(SNAPSHOT)
+    return index_packages.python_layer(index, snapshot)
+
+
 def image_layer_keys(index):
-    """The `[python.*]` entries a container image owns — see the header.
+    """The python entries a container image owns — see the header.
 
     An entry with a `check.cmd` is an executable some verb installs elsewhere;
     an entry without one is an import against the ambient interpreter.
     """
     out = []
-    for key, entry in sorted(index.get("python", {}).items()):
+    for key, entry in sorted(layer(index).items()):
         check = entry.get("check") or {}
         if check.get("cmd"):
             continue
@@ -116,7 +131,7 @@ def image_layer_keys(index):
 
 def declarations(index, keys=None):
     """What the index says about each key — no host measurement in here."""
-    python = index.get("python", {})
+    python = layer(index)
     keys = image_layer_keys(index) if keys is None else list(keys)
     missing = [k for k in keys if k not in python]
     if missing:
