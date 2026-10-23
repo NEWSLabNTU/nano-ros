@@ -267,13 +267,15 @@ fn assert_launch_table_installed_before_the_runner(src: &str, runner: &str) {
 #[test]
 fn typed_emit_param_services_block_present_when_enabled() {
     // Phase 269 W1 — when param_services is true, the post-configure block emits
-    // nros_cpp_register_parameter_services + nros_cpp_declare_param per node param.
+    // nros_cpp_register_parameter_services + one seed per node param.
     let mut plan = fixture_plan(&[("param_talker_pkg", "param_talker")]);
     plan.param_services = true;
     plan.nodes[0].params = vec![("publish_period_ms".into(), "250".into())];
     let src = emit_typed(&plan).expect("typed C emit ok");
     assert!(src.contains("nros_cpp_register_parameter_services(executor)"));
-    assert!(src.contains("nros_cpp_declare_param(executor, 0, \"publish_period_ms\", \"250\")"));
+    assert!(src.contains(
+        "nros_cpp_declare_node_param(executor, \"param_talker\", \"publish_period_ms\", \"250\")"
+    ));
     // must appear after the configure loop, before return 0
     let reg_at = src.find("nros_cpp_register_parameter_services").unwrap();
     let ret_at = src.rfind("return 0;").unwrap();
@@ -295,12 +297,13 @@ fn typed_emit_param_services_registration_is_non_fatal_both_paths() {
     // the non-fatal shape with 0745; BOTH C paths kept the pre-0745 block, which
     // returned the rc and aborted boot. Covers the flat AND the tiered emitter,
     // because the tiered site is a separate copy of the same block.
-    for (label, mut plan) in [
+    for (label, node, mut plan) in [
         (
             "flat",
+            "param_talker",
             fixture_plan(&[("param_talker_pkg", "param_talker")]),
         ),
-        ("tiered", fixture_plan_with_tiers()),
+        ("tiered", "ctrl", fixture_plan_with_tiers()),
     ] {
         plan.param_services = true;
         plan.nodes[0].params = vec![("publish_period_ms".into(), "250".into())];
@@ -317,14 +320,16 @@ fn typed_emit_param_services_registration_is_non_fatal_both_paths() {
 
         // Seeding precedes registration, and happens exactly once per param — the
         // old block re-declared every param AFTER construction (0745 defect 2).
-        let seed = "nros_cpp_declare_param(executor, 0, \"publish_period_ms\", \"250\")";
+        let seed = format!(
+            "nros_cpp_declare_node_param(executor, \"{node}\", \"publish_period_ms\", \"250\")"
+        );
         let seed_at = src
-            .find(seed)
+            .find(&seed)
             .unwrap_or_else(|| panic!("{label}: no seed; got:\n{src}"));
         let reg_at = src.find("nros_cpp_register_parameter_services").unwrap();
         assert!(seed_at < reg_at, "{label}: params seed BEFORE registration");
         assert_eq!(
-            src.matches(seed).count(),
+            src.matches(&seed).count(),
             1,
             "{label}: one seed per param; got:\n{src}"
         );
@@ -337,7 +342,7 @@ fn typed_emit_param_services_absent_when_disabled() {
     let plan = fixture_plan(&[("talker_pkg", "talker")]);
     let src = emit_typed(&plan).expect("typed C emit ok");
     assert!(!src.contains("nros_cpp_register_parameter_services"));
-    assert!(!src.contains("nros_cpp_declare_param"));
+    assert!(!src.contains("nros_cpp_declare_node_param"));
 }
 
 #[test]
@@ -518,9 +523,9 @@ fn fixture_plan_with_tiers() -> Plan {
 }
 
 /// issue 1272 -- two nodes that set the SAME parameter name each seed it on
-/// their own node index, and each node's seeds come right before that
-/// node's `nros_cpp_node_create`, so the index the seed names is the one
-/// the executor hands out next.
+/// their own node, and each node's seeds come right before that node's
+/// `nros_cpp_node_create`, so the next node the executor builds is the one
+/// the seed names (phase-509 P9b: by name; the shim resolves the index).
 #[test]
 fn typed_emit_seeds_each_node_on_its_own_index() {
     let mut plan = fixture_plan(&[("a_pkg", "alpha"), ("b_pkg", "beta")]);
@@ -528,8 +533,8 @@ fn typed_emit_seeds_each_node_on_its_own_index() {
     plan.nodes[1].params = vec![("rate".into(), "20".into())];
     let src = emit_typed(&plan).expect("typed C emit ok");
 
-    let seed_a = "nros_cpp_declare_param(executor, 0, \"rate\", \"10\")";
-    let seed_b = "nros_cpp_declare_param(executor, 1, \"rate\", \"20\")";
+    let seed_a = "nros_cpp_declare_node_param(executor, \"alpha\", \"rate\", \"10\")";
+    let seed_b = "nros_cpp_declare_node_param(executor, \"beta\", \"rate\", \"20\")";
     let create_a = "nros_cpp_node_create(executor, \"alpha\", \"/\", &__nros_node_0)";
     let create_b = "nros_cpp_node_create(executor, \"beta\", \"/\", &__nros_node_1)";
     let at = |s: &str| {
@@ -542,27 +547,29 @@ fn typed_emit_seeds_each_node_on_its_own_index() {
     );
 }
 
-/// issue 1272 -- a tiered entry builds each tier's nodes on that tier's
-/// OWN executor, so the first node of every tier is index 0 there. The
-/// plan-wide index (`__nros_node_1`) is not the executor's.
+/// phase-509 P9b -- a tier's seeds NAME their node, never an index: on a
+/// runner with one executor per tier the first node of every tier is index 0
+/// there, and on a level runner (one executor per core) every tier's setup
+/// builds on the same executor, so no build-time index is right for both. The
+/// shim resolves the index from the executor it seeds.
 #[test]
-fn typed_emit_tier_seeds_restart_at_zero_per_tier() {
+fn typed_emit_tier_seeds_name_their_node() {
     let mut plan = fixture_plan_with_tiers();
     plan.nodes[0].params = vec![("period".into(), "10".into())];
     plan.nodes[1].params = vec![("period".into(), "100".into())];
     let src = emit_typed(&plan).expect("typed C tier emit ok");
 
     assert!(
-        src.contains("nros_cpp_declare_param(executor, 0, \"period\", \"10\")"),
-        "ctrl is tier 0's first node; got:\n{src}"
+        src.contains("nros_cpp_declare_node_param(executor, \"ctrl\", \"period\", \"10\")"),
+        "ctrl's seed names ctrl; got:\n{src}"
     );
     assert!(
-        src.contains("nros_cpp_declare_param(executor, 0, \"period\", \"100\")"),
-        "telem is tier 1's first node, index 0 on tier 1's executor; got:\n{src}"
+        src.contains("nros_cpp_declare_node_param(executor, \"telem\", \"period\", \"100\")"),
+        "telem's seed names telem; got:\n{src}"
     );
     assert!(
-        !src.contains("nros_cpp_declare_param(executor, 1,"),
-        "no tier builds a second node here; got:\n{src}"
+        !src.contains("nros_cpp_declare_param("),
+        "no seed counts its node; got:\n{src}"
     );
 }
 
@@ -898,10 +905,10 @@ fn typed_emit_tiers_slice_monitor_rows_per_tier() {
         "{src}"
     );
     let t0 = src
-        .find("static int32_t __nros_entry_setup_tier_0(void* executor)")
+        .find("static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nros_at)")
         .unwrap();
     let t1 = src
-        .find("static int32_t __nros_entry_setup_tier_1(void* executor)")
+        .find("static int32_t __nros_entry_setup_tier_1_nodes(void* executor, const char** __nros_at)")
         .unwrap();
     let setup0 = &src[t0..t1];
     let setup1 = &src[t1..];

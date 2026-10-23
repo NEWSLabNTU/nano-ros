@@ -26,9 +26,11 @@ static nros_cpp_node_t __nros_node_0;
 static nros_cpp_node_t __nros_node_1;
 
 /* Phase 274.W2 — per-tier setup functions (one per tier). */
-static int32_t __nros_entry_setup_tier_0(void* executor) {
+/* phase-509 P9b: `__nros_at` names the node being built, for the report below. */
+static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nros_at) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
     {
+        *__nros_at = "ctrl";
         nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "ctrl", "/", &__nros_node_0);
         if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
         void* self = __nros_c_component_ctrl_pkg_create();
@@ -51,9 +53,20 @@ static int32_t __nros_entry_setup_tier_0(void* executor) {
     return 0;
 }
 
-static int32_t __nros_entry_setup_tier_1(void* executor) {
+/* phase-509 P9b -- a failed setup names its tier and node before the runner
+ * fails the boot with its code. */
+static int32_t __nros_entry_setup_tier_0(void* executor) {
+    const char* __nros_at = NULL;
+    const int32_t rc = __nros_entry_setup_tier_0_nodes(executor, &__nros_at);
+    if (rc != 0) nros_cpp_report_setup_failure("high", __nros_at, rc);
+    return rc;
+}
+
+/* phase-509 P9b: `__nros_at` names the node being built, for the report below. */
+static int32_t __nros_entry_setup_tier_1_nodes(void* executor, const char** __nros_at) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
     {
+        *__nros_at = "telem";
         nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "telem", "/", &__nros_node_1);
         if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
         void* self = __nros_c_component_telem_pkg_create();
@@ -61,6 +74,15 @@ static int32_t __nros_entry_setup_tier_1(void* executor) {
         if (crc != 0) return crc;
     }
     return 0;
+}
+
+/* phase-509 P9b -- a failed setup names its tier and node before the runner
+ * fails the boot with its code. */
+static int32_t __nros_entry_setup_tier_1(void* executor) {
+    const char* __nros_at = NULL;
+    const int32_t rc = __nros_entry_setup_tier_1_nodes(executor, &__nros_at);
+    if (rc != 0) nros_cpp_report_setup_failure("low", __nros_at, rc);
+    return rc;
 }
 
 /* Phase 274.W2 — per-tier groups arrays + tier spec table.

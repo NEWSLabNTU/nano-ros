@@ -25,11 +25,11 @@ static ::listener_pkg::LISTENER __nros_comp_1;
 static int32_t __nros_entry_setup() {
     {
         {
-            nros_cpp_ret_t prc = nros_cpp_declare_param(::rclcpp::global_handle(), 0, "rate_hz", "10");
+            nros_cpp_ret_t prc = nros_cpp_declare_node_param(::rclcpp::global_handle(), "renamed_talker", "rate_hz", "10");
             if (prc != NROS_CPP_RET_OK) return (int32_t)prc;
         }
         {
-            nros_cpp_ret_t prc = nros_cpp_declare_param(::rclcpp::global_handle(), 0, "greeting", "he said \"hi\" \\ bye");
+            nros_cpp_ret_t prc = nros_cpp_declare_node_param(::rclcpp::global_handle(), "renamed_talker", "greeting", "he said \"hi\" \\ bye");
             if (prc != NROS_CPP_RET_OK) return (int32_t)prc;
         }
         ::rclcpp::Result r = ::rclcpp::create_node(__nros_node_0, "renamed_talker", "/demo");

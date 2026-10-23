@@ -771,6 +771,43 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   own worker's. The levels backing is the per-tier sizings summed, 5,296 B
   above the one-level derivation (13,112 B); deriving it jointly is left to
   the sizing descriptor.
+- **As fixed after item 4 (the island board).** Two things a per-tier
+  setup kept per executor were wrong once every level's setup registers on
+  the one executor, and a setup failure was silent:
+  - *Launch parameters.* The entry seeded each node's parameters with a
+    build-time node index that restarted per tier (issue 1272:
+    `nros_cpp_declare_param(executor, k, ...)`, `k` the node's position in
+    its tier), so every level named node 0 and the shim refused the second
+    level's seed. The entry now names the node
+    (`nros_cpp_declare_node_param(executor, "<node>", ...)`) and the shim
+    resolves the index from the executor it seeds: its next node. Chosen
+    over a build-time count across tiers, which would hold only for a runner
+    that sets the levels up in table order on one executor and only while
+    every earlier component built exactly one node; resolving at the call
+    holds for either runner and any setup order. A seed for another node on
+    the index the previous seed took (that node was never built) is refused,
+    which keeps issue 1272's guard. The node's rank
+    (`nros_cpp_bind_node_rank`) was already keyed by name and namespace.
+  - *Monitor tables.* Each tier installed its own table on its executor;
+    on one executor each install replaced the last, so only the last
+    level's rows were judged. A level image now lowers ONE table (every
+    level's monitor, age and hazard rows and the mode variants over them),
+    installed by the boot level's setup, which runs first; no other level
+    installs one. The levels share the executor's one scheduling context, so
+    two levels' mode deadlines for one mode are refused at build.
+  - *Setup failure.* A level whose open or setup failed parked forever,
+    which also halted the spawn chain (the next level spawns after this
+    one's setup), and the boot level's returned to `main()`: the image ran
+    half up with nothing to say so. Policy now: the generated setup names
+    its tier and the node it was building (`nros_cpp_report_setup_failure`,
+    error level), the runner prints the level and code
+    ("nros: level N (<name>) setup failed (rc=..): failing the boot") and
+    FAILS THE BOOT with `k_panic()` (`nros_zephyr_fail_boot`), so the
+    kernel's fatal-error handler decides (halt by default; an application
+    may reset) and an application watchdog is never fed again. `levels-cpp`
+    gives a node on each spawned level a launch parameter, and the
+    zephyr/cpp-levels row checks each node read it and no level failed the
+    boot.
 - **Order of landing.** (1) the lock seam: the lock, the guards on every
   FFI path, `nros_cpp_executor_set_lock`, one worker, no behaviour change;
   (2) the pass in steps: lock released around callbacks, running mark,
@@ -1106,3 +1143,6 @@ The first draft's open questions, as decided:
 - 2026-10-21: P11 built; the OS-priority worker pool is retired (alternative 4).
 - 2026-10-21: P7 built; D8 amended with the level identity and liveness as
   built (a per-image check-in registry; no spin-hook ABI).
+- 2026-10-24: P9b fixed after the island board: launch seeds name their
+  node, a level image installs one monitor table, and a level's setup
+  failure fails the boot.

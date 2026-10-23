@@ -34,7 +34,7 @@ static int32_t __nros_entry_setup(void* executor) {
     }
     {
         {
-            nros_cpp_ret_t prc = nros_cpp_declare_param(executor, 0, "rate_hz", "10");
+            nros_cpp_ret_t prc = nros_cpp_declare_node_param(executor, "renamed_talker", "rate_hz", "10");
             if (prc != NROS_CPP_RET_OK) return (int32_t)prc;
         }
         nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "renamed_talker", "/demo", &__nros_node_0);

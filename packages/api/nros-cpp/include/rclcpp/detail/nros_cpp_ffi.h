@@ -3322,6 +3322,20 @@ nros_cpp_ret_t nros_cpp_executor_clear_release_jitter_stats(void *handle);
 uint64_t nros_cpp_time_ns(void);
 
 /**
+ * phase-509 P9b -- report a tier (level) setup that failed: the generated
+ * entry's setup wrapper calls this with the tier's name, the node it was
+ * building (`NULL` when it failed before its first node: the monitor
+ * install) and the code it returns, BEFORE handing the code to the runner,
+ * which then fails the boot (a level runner does not park a level whose
+ * setup failed; RFC-0108 "As built in P9b"). Logged at error level on the
+ * `nros_cpp` logger, the channel every other setup refusal uses.
+ *
+ * # Safety
+ * `tier` and `node` are NULL or NUL-terminated strings.
+ */
+void nros_cpp_report_setup_failure(const char *tier, const char *node, int32_t rc);
+
+/**
  * Create a guard condition and register it with the executor.
  *
  * The caller provides `storage` — a pointer to a buffer of at least
@@ -5566,6 +5580,43 @@ nros_cpp_ret_t nros_cpp_declare_param(void *executor,
                                       uint8_t node,
                                       const char *name,
                                       const char *value);
+
+/**
+ * Seed a launch parameter, given as a string, on the node the executor will
+ * build NEXT, naming that node rather than counting it.
+ *
+ * phase-509 P9b -- the call the generated entry makes (C and C++ packs). The
+ * shim resolves the node itself: the index is the executor's own next node
+ * (`nodes().len()` at this call), not a number the build counted. Under
+ * RFC-0108's one executor per core, every level's setup registers on the
+ * SAME executor, one after another, so a build-time index restarted per tier
+ * (what [`nros_cpp_declare_param`] is handed) names node 0 in every level:
+ * the second level's seed was refused and its setup failed. A build-time
+ * count across tiers would hold only for a runner that sets the levels up in
+ * table order on one executor, and only while every earlier component built
+ * exactly one node; resolving here holds for any runner, any setup order,
+ * and a component that builds two nodes.
+ *
+ * `node_name` labels the seed. Seeds for one node arrive back to back,
+ * directly before it is built (issue 0745), so a seed for ANOTHER node that
+ * lands on the index the previous one was seeded for means that node was
+ * never built: REFUSED with `NROS_CPP_RET_INVALID_ARGUMENT` and a log line
+ * naming both nodes, rather than handing the earlier node's values to the
+ * later one (issue 1272's failure). The label is not compared with the name
+ * the node is built under: an rclcpp-shape component may build its node
+ * under the class's own literal when the launch file names none.
+ *
+ * The value's type is INFERRED from the string, as for
+ * [`nros_cpp_declare_param`].
+ *
+ * # Safety
+ * `executor` must be a valid, live `CppContext*`. `node_name`, `name` and
+ * `value` must be valid null-terminated UTF-8 strings.
+ */
+nros_cpp_ret_t nros_cpp_declare_node_param(void *executor,
+                                           const char *node_name,
+                                           const char *name,
+                                           const char *value);
 
 /**
  * Get an integer parameter by name from the C++ executor's parameter store.

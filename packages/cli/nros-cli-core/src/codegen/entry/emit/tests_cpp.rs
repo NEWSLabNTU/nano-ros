@@ -829,10 +829,10 @@ fn typed_emit_param_services_block_present_when_enabled() {
     let src = emit_typed(&plan).expect("typed cpp emit ok");
     assert!(src.contains("nros_cpp_register_parameter_services(__exec)"));
     assert!(src.contains(
-        "nros_cpp_declare_param(::rclcpp::global_handle(), 0, \"publish_period_ms\", \"250\")"
+        "nros_cpp_declare_node_param(::rclcpp::global_handle(), \"param_talker\", \"publish_period_ms\", \"250\")"
     ));
     // issue 0745 — seeding precedes construction.
-    let seed_at = src.find("nros_cpp_declare_param").unwrap();
+    let seed_at = src.find("nros_cpp_declare_node_param").unwrap();
     let construct_at = src
         .find(".configure(")
         .or_else(|| src.find("new ("))
@@ -861,7 +861,7 @@ fn typed_emit_param_services_absent_when_disabled() {
     )]);
     let src = emit_typed(&plan).expect("typed cpp emit ok");
     assert!(!src.contains("nros_cpp_register_parameter_services"));
-    assert!(!src.contains("nros_cpp_declare_param"));
+    assert!(!src.contains("nros_cpp_declare_node_param"));
 }
 
 #[test]
@@ -1027,8 +1027,8 @@ fn fixture_plan_with_tiers() -> Plan {
 
 /// issue 1272 -- two nodes that set the SAME parameter name each seed it on
 /// their own node index, and each node's seeds come right before that
-/// node's construction, so the index the seed names is the one the
-/// executor hands out next.
+/// node's construction, so the next node the executor builds is the one the
+/// seed names (phase-509 P9b: by name; the shim resolves the index).
 #[test]
 fn typed_emit_seeds_each_node_on_its_own_index() {
     let mut plan = fixture_plan_typed(&[
@@ -1039,8 +1039,10 @@ fn typed_emit_seeds_each_node_on_its_own_index() {
     plan.nodes[1].params = vec![("rate".into(), "20".into())];
     let src = emit_typed(&plan).expect("typed cpp emit ok");
 
-    let seed_a = "nros_cpp_declare_param(::rclcpp::global_handle(), 0, \"rate\", \"10\")";
-    let seed_b = "nros_cpp_declare_param(::rclcpp::global_handle(), 1, \"rate\", \"20\")";
+    let seed_a =
+        "nros_cpp_declare_node_param(::rclcpp::global_handle(), \"alpha\", \"rate\", \"10\")";
+    let seed_b =
+        "nros_cpp_declare_node_param(::rclcpp::global_handle(), \"beta\", \"rate\", \"20\")";
     let create_a = "::rclcpp::create_node(__nros_node_0, \"alpha\", \"/\")";
     let create_b = "::rclcpp::create_node(__nros_node_1, \"beta\", \"/\")";
     let at = |s: &str| {
@@ -1053,26 +1055,28 @@ fn typed_emit_seeds_each_node_on_its_own_index() {
     );
 }
 
-/// issue 1272 -- each tier setup builds its nodes on the tier's OWN
-/// executor, so the first node of every tier is index 0 there.
+/// phase-509 P9b -- a tier's seeds NAME their node, never an index: a
+/// level runner (one executor per core) builds every tier's nodes on the same
+/// executor, a tier runner on one executor each, and the shim resolves the
+/// index from the executor it seeds.
 #[test]
-fn typed_emit_tier_seeds_restart_at_zero_per_tier() {
+fn typed_emit_tier_seeds_name_their_node() {
     let mut plan = fixture_plan_with_tiers();
     plan.nodes[0].params = vec![("period".into(), "10".into())];
     plan.nodes[1].params = vec![("period".into(), "100".into())];
     let src = emit_typed(&plan).expect("typed cpp tier emit ok");
 
     assert!(
-        src.contains("nros_cpp_declare_param(executor, 0, \"period\", \"10\")"),
-        "ctrl is tier 0's first node; got:\n{src}"
+        src.contains("nros_cpp_declare_node_param(executor, \"ctrl\", \"period\", \"10\")"),
+        "ctrl's seed names ctrl; got:\n{src}"
     );
     assert!(
-        src.contains("nros_cpp_declare_param(executor, 0, \"period\", \"100\")"),
-        "telem is tier 1's first node, index 0 on tier 1's executor; got:\n{src}"
+        src.contains("nros_cpp_declare_node_param(executor, \"telem\", \"period\", \"100\")"),
+        "telem's seed names telem; got:\n{src}"
     );
     assert!(
-        !src.contains("nros_cpp_declare_param(executor, 1,"),
-        "no tier builds a second node here; got:\n{src}"
+        !src.contains("nros_cpp_declare_param("),
+        "no seed counts its node; got:\n{src}"
     );
 }
 
@@ -2118,10 +2122,10 @@ fn typed_emit_tiers_slice_monitor_rows_per_tier() {
         "{src}"
     );
     let t0 = src
-        .find("static int32_t __nros_entry_setup_tier_0(void* executor)")
+        .find("static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nros_at)")
         .unwrap();
     let t1 = src
-        .find("static int32_t __nros_entry_setup_tier_1(void* executor)")
+        .find("static int32_t __nros_entry_setup_tier_1_nodes(void* executor, const char** __nros_at)")
         .unwrap();
     let setup0 = &src[t0..t1];
     let setup1 = &src[t1..];
@@ -2138,6 +2142,86 @@ fn typed_emit_tiers_slice_monitor_rows_per_tier() {
         !emit_typed(&plan)
             .unwrap()
             .contains("nros_cpp_install_monitors")
+    );
+}
+
+/// phase-509 P9b -- a tier setup that fails names its tier and the node it
+/// was building (`nros_cpp_report_setup_failure`) before it returns the code
+/// the runner fails the boot with.
+#[test]
+fn typed_emit_tier_setup_reports_its_failing_node() {
+    let mut plan = fixture_plan_with_tiers();
+    plan.board = "zephyr".into();
+    let src = emit_typed(&plan).expect("levels emit ok");
+    let body = src
+        .find("static int32_t __nros_entry_setup_tier_1_nodes(void* executor, const char** __nros_at)")
+        .expect("the tier's node body");
+    let wrapper = src
+        .find("static int32_t __nros_entry_setup_tier_1(void* executor)")
+        .expect("the tier's setup");
+    assert!(
+        src[body..wrapper].contains("*__nros_at = \"telem\";"),
+        "the body names the node it builds; src:\n{src}"
+    );
+    assert!(
+        src[wrapper..].contains("nros_cpp_report_setup_failure(\"low\", __nros_at, rc);"),
+        "the wrapper reports tier and node on failure; src:\n{src}"
+    );
+}
+
+/// phase-509 P9b -- on a level runner (Zephyr: one executor per core) every
+/// tier's setup registers on the SAME executor, so a table per tier would be
+/// installed once per level, each replacing the last, and only the last
+/// level's rows would be judged. The image's rows are ONE table, installed by
+/// the boot level's setup (tier 0, which runs first), and no other level
+/// installs one.
+#[test]
+fn typed_emit_levels_install_one_monitor_table() {
+    let mut plan = fixture_plan_with_tiers();
+    plan.board = "zephyr".into();
+    let row = |topic: &str, fqn: &str| MonitorRow {
+        topic: topic.into(),
+        fqn: fqn.into(),
+        min_rate_hz_milli: 1_000,
+        max_latency_ms: 0,
+        route_trigger: String::new(),
+        route_max_latency_ms: 0,
+        route_deadline_ms: 0,
+        reaction: String::new(),
+        reaction_id: 0,
+        mechanism: 0,
+    };
+    let rows = vec![
+        row("/cmd", "/ctrl/cmd"),
+        row("/telemetry", "/telem/telemetry"),
+    ];
+    let src = emit_typed_monitored(&plan, &rows, &[]).expect("levels emit ok");
+    assert!(
+        src.contains("::rclcpp::board::ZephyrBoard::run_levels("),
+        "a level image; src:\n{src}"
+    );
+    assert!(
+        src.contains("__nros_mon_rows_t0[2]"),
+        "one table of both rows; src:\n{src}"
+    );
+    assert!(
+        !src.contains("__nros_mon_rows_t1"),
+        "no second table; src:\n{src}"
+    );
+    assert_eq!(
+        src.matches("nros_cpp_install_monitors(").count(),
+        1,
+        "installed once; src:\n{src}"
+    );
+    let t0 = src
+        .find("static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nros_at)")
+        .unwrap();
+    let t1 = src
+        .find("static int32_t __nros_entry_setup_tier_1_nodes(void* executor, const char** __nros_at)")
+        .unwrap();
+    assert!(
+        src[t0..t1].contains("nros_cpp_install_monitors("),
+        "by the boot level's setup; src:\n{src}"
     );
 }
 

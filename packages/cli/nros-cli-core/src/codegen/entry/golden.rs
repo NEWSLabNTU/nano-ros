@@ -374,6 +374,15 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // issue 1551 — Zephyr's runner takes the tiers' executor storage, so this
     // is the row that pins the emitted `.bss` static and the `_in` call.
     out.push(("c_zephyr_tiers", c_tiered_plan("zephyr"), Emitter::C));
+    // phase-509 P9b -- a level image (Zephyr, one executor per core) whose
+    // nodes on every level carry launch parameters: each seed names its node
+    // (`nros_cpp_declare_node_param`), never a per-tier index, which named
+    // node 0 on every level and failed the second level's setup.
+    let mut c_levels_params = c_tiered_plan("zephyr");
+    for (i, n) in c_levels_params.nodes.iter_mut().enumerate() {
+        n.params = vec![("level_tag".into(), i.to_string())];
+    }
+    out.push(("c_zephyr_levels_params", c_levels_params, Emitter::C));
     // issue 1568 — FreeRTOS joined it (and NuttX, pinned by `c_nuttx_tiers`);
     // no C FreeRTOS tiered golden existed, so its `.bss` static and `_in`
     // call had nothing pinning them.
@@ -594,6 +603,12 @@ pub(super) fn cases() -> Vec<(&'static str, Plan, Emitter)> {
     // pinning.
     out.push(("cpp_native_tiers", cpp_tiered_plan("linux"), Emitter::Cpp));
     out.push(("cpp_zephyr_tiers", cpp_tiered_plan("zephyr"), Emitter::Cpp));
+    // phase-509 P9b -- the C++ twin of `c_zephyr_levels_params`.
+    let mut cpp_levels_params = cpp_tiered_plan("zephyr");
+    for (i, n) in cpp_levels_params.nodes.iter_mut().enumerate() {
+        n.params = vec![("level_tag".into(), i.to_string())];
+    }
+    out.push(("cpp_zephyr_levels_params", cpp_levels_params, Emitter::Cpp));
     out.push(("cpp_nuttx_tiers", cpp_tiered_plan("nuttx"), Emitter::Cpp));
     out.push((
         "cpp_freertos_tiers",

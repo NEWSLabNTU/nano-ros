@@ -121,8 +121,12 @@ fn generate_config(
     // `EXECUTOR_SIZE` already counts, so that is not added twice.
     let max_handles = dep_usize("DEP_NROS_NODE_MAX_CBS");
     let c_executor_header: usize = 128 + 8 * max_handles;
+    // phase-509 P9b -- plus the last launch seed's node and index
+    // (`CppContext::seed_next`: a 64-byte name, its length, the index and a
+    // flag), rounded up to a word.
+    let seed_next: usize = 72;
     let cpp_context_overhead: usize =
-        16 + probe_publisher_for_diag.next_multiple_of(8) + 16 + c_executor_header;
+        16 + probe_publisher_for_diag.next_multiple_of(8) + 16 + c_executor_header + seed_next;
     let probe_executor_pre = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     // issue 0961 — the bare `Executor` value, which is what a caller's stack
     // pays. Deliberately NOT `EXECUTOR_SIZE`: that one includes the carved

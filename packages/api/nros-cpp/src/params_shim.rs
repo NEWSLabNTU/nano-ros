@@ -122,6 +122,88 @@ pub unsafe extern "C" fn nros_cpp_declare_param(
     }
 }
 
+/// Seed a launch parameter, given as a string, on the node the executor will
+/// build NEXT, naming that node rather than counting it.
+///
+/// phase-509 P9b -- the call the generated entry makes (C and C++ packs). The
+/// shim resolves the node itself: the index is the executor's own next node
+/// (`nodes().len()` at this call), not a number the build counted. Under
+/// RFC-0108's one executor per core, every level's setup registers on the
+/// SAME executor, one after another, so a build-time index restarted per tier
+/// (what [`nros_cpp_declare_param`] is handed) names node 0 in every level:
+/// the second level's seed was refused and its setup failed. A build-time
+/// count across tiers would hold only for a runner that sets the levels up in
+/// table order on one executor, and only while every earlier component built
+/// exactly one node; resolving here holds for any runner, any setup order,
+/// and a component that builds two nodes.
+///
+/// `node_name` labels the seed. Seeds for one node arrive back to back,
+/// directly before it is built (issue 0745), so a seed for ANOTHER node that
+/// lands on the index the previous one was seeded for means that node was
+/// never built: REFUSED with `NROS_CPP_RET_INVALID_ARGUMENT` and a log line
+/// naming both nodes, rather than handing the earlier node's values to the
+/// later one (issue 1272's failure). The label is not compared with the name
+/// the node is built under: an rclcpp-shape component may build its node
+/// under the class's own literal when the launch file names none.
+///
+/// The value's type is INFERRED from the string, as for
+/// [`nros_cpp_declare_param`].
+///
+/// # Safety
+/// `executor` must be a valid, live `CppContext*`. `node_name`, `name` and
+/// `value` must be valid null-terminated UTF-8 strings.
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_declare_node_param(
+    executor: *mut c_void,
+    node_name: *const c_char,
+    name: *const c_char,
+    value: *const c_char,
+) -> nros_cpp_ret_t {
+    if node_name.is_null() || name.is_null() || value.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let (Some(node_str), Some(name_str), Some(val_str)) = (unsafe {
+        (
+            cstr_to_str(node_name),
+            cstr_to_str(name),
+            cstr_to_str(value),
+        )
+    }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Ok(next) = u8::try_from(ctx.executor.nodes().len()) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if let Some((seeded, at)) = ctx.seed_next.get()
+        && at == next
+        && seeded != node_str
+    {
+        nros_log::log_error!(
+            nros_log::get_logger("nros_cpp"),
+            "launch parameter '{name_str}' of node '{node_str}' would land on node index \
+             {next}, which node '{seeded}' was seeded for and never built: refusing it"
+        );
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    if !ctx.seed_next.set(node_str, next) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    // phase-446 seam: a declared type replaces this inference.
+    let pv = infer_param_value(val_str);
+    if ctx
+        .executor
+        .declare_parameter_on(nros_node::executor::NodeId::from_raw(next), name_str, pv)
+    {
+        NROS_CPP_RET_OK
+    } else {
+        NROS_CPP_RET_ERROR
+    }
+}
+
 /// Get an integer parameter by name from the C++ executor's parameter store.
 ///
 /// Writes to `*out_value` on success. Returns `NROS_CPP_RET_OK` if found,
