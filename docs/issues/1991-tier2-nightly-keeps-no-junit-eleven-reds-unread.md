@@ -127,3 +127,16 @@ What the durations and neighbours show, and nothing more:
 2. **Then read the next red night's text** for rows 4–14 and file each
    distinct cause, or attribute it to an existing issue. Until then, rows 4–14
    are a list of names, not a diagnosis.
+
+## Item 1 done (2026-10-23)
+
+The `tier 2 nightly (pairwise cover)` job in `.github/workflows/nightly.yml`
+now has the `Upload junit and logs` step (`if: always()`) that run-matrix's
+tier-1 and tier-2 jobs carry, with the same paths: the nextest junit, the
+build logs and `tmp/build-test-fixtures-*/`. The artifact is
+`tier2-nightly-junit`, kept 14 days. The junit has each failure's output, so
+`NROS_TEST_FAILURE_OUTPUT` is left at `never` and the job log stays short.
+
+This issue stays open for item 2: the first nightly after this lands should
+upload the text for rows 4–14, and each distinct cause gets filed or
+attributed then.

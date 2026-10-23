@@ -1234,6 +1234,25 @@ jobs:
         run: |
           source ./activate.sh
           just ci matrix-nightly
+      # Issue 1991 — the same step run-matrix's tier-1 and tier-2 jobs carry.
+      # Without it this lane counted its real failures ("Real failures: 14")
+      # and named none: `test-all` runs nextest with `--failure-output never`,
+      # and the junit stayed in the persistent fixture tree, where the next
+      # nextest run there rewrote it. The fixture-build logs ride along, so a
+      # red build step is readable too (issue 1842).
+      - name: Upload junit and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier2-nightly-junit
+          path: |
+            ${{ env.NROS_FIXTURE_TREE }}/target/nextest/**/junit*.xml
+            ${{ env.NROS_FIXTURE_TREE }}/build/**/*.log
+            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.log
+            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/**/*.log
+            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.joblog
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Sweep orphans and disk
         if: always()
         run: ./scripts/ci/runner-sweep.sh || true
