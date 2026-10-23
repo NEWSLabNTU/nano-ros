@@ -398,8 +398,9 @@ fn the_entry_runs_an_allocated_authored_tier() {
 
     let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
-        src.contains("::rclcpp::board::ZephyrBoard::run_tiers("),
-        "an allocated tier must reach the IMAGE, not just the plan; src:\n{src}"
+        src.contains("::rclcpp::board::ZephyrBoard::run_levels("),
+        "an allocated tier must reach the IMAGE (its levels runner, phase-509 P9), not \
+         just the plan; src:\n{src}"
     );
     assert!(
         !src.contains("run_components("),

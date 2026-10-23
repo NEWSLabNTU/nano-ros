@@ -110,8 +110,9 @@ fn the_entry_derives_its_tiers_and_emits_run_tiers() {
 
     let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
-        src.contains("::rclcpp::board::ZephyrBoard::run_tiers("),
-        "the entry must end in ZephyrBoard::run_tiers, not run_components; src:\n{src}"
+        src.contains("::rclcpp::board::ZephyrBoard::run_levels("),
+        "the entry must end in ZephyrBoard::run_levels (phase-509 P9), not run_components; \
+         src:\n{src}"
     );
     assert!(
         !src.contains("run_components("),
@@ -171,7 +172,7 @@ fn without_the_keyword_the_entry_derives_nothing_and_keeps_run_components() {
 
     let src = emit::emit_typed(Lang::Cpp, &plan).expect("the typed C++ entry emits");
     assert!(
-        !src.contains("run_tiers"),
+        !src.contains("run_tiers") && !src.contains("run_levels"),
         "without a declared group there is no tier to run; src:\n{src}"
     );
     assert!(
