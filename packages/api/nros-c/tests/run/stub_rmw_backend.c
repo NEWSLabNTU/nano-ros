@@ -313,6 +313,58 @@ static rmw_ret_t stub_destroy_client(rmw_client_t* client) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
+/* Issue 1996 — the client request/reply pair, so a test can drive a C++
+ * `rclcpp::Future` through the real runtime: `send_request` counts the call and
+ * hands out increasing sequence ids; `take_response` yields the reply a test
+ * STAGED with `nros_stub_rmw_stage_reply`, once, answering the last request.
+ * Nothing staged reads as "no reply yet". Before this pair both slots were
+ * NULL, which the runtime reports as an unsupported send. */
+static uint8_t s_staged_reply[256];
+static size_t s_staged_reply_len = 0;
+static bool s_reply_staged = false;
+static int64_t s_next_request_seq = 1;
+static uint32_t s_requests_sent = 0;
+
+static rmw_ret_t stub_send_request(const rmw_client_t* client, rmw_byte_span_t request,
+                                   int64_t* sequence_id) {
+    (void)client;
+    (void)request;
+    ++s_requests_sent;
+    if (sequence_id != NULL) *sequence_id = s_next_request_seq;
+    ++s_next_request_seq;
+    return NROS_RMW_RET_OK;
+}
+
+static rmw_ret_t stub_take_response(const rmw_client_t* client, rmw_mut_byte_span_t* reply,
+                                    int64_t* seq_out, bool* taken) {
+    (void)client;
+    if (taken != NULL) *taken = false;
+    if (!s_reply_staged) return NROS_RMW_RET_OK;
+    if (reply == NULL || reply->data == NULL) return NROS_RMW_RET_ERROR;
+    if (reply->capacity < s_staged_reply_len) {
+        reply->len = s_staged_reply_len;
+        return NROS_RMW_RET_BUFFER_TOO_SMALL;
+    }
+    memcpy(reply->data, s_staged_reply, s_staged_reply_len);
+    reply->len = s_staged_reply_len;
+    if (seq_out != NULL) *seq_out = s_next_request_seq - 1;
+    if (taken != NULL) *taken = true;
+    s_reply_staged = false;
+    return NROS_RMW_RET_OK;
+}
+
+bool nros_stub_rmw_stage_reply(const uint8_t* data, size_t len) {
+    if (len > sizeof(s_staged_reply) || (len > 0 && data == NULL)) return false;
+    if (len > 0) memcpy(s_staged_reply, data, len);
+    s_staged_reply_len = len;
+    s_reply_staged = true;
+    return true;
+}
+
+uint32_t nros_stub_rmw_requests_sent(void) {
+    return s_requests_sent;
+}
+
 /* Phase 124.B.1's wake slot, stored and never called — and the DIFFERENCE that
  * makes is the point (phase-417 W4.e).
  *
@@ -497,6 +549,8 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .send_response = stub_send_response,
     .create_client = stub_create_client,
     .destroy_client = stub_destroy_client,
+    .send_request = stub_send_request,
+    .take_response = stub_take_response,
     .set_wake_callback = stub_set_wake_callback,
     .supported_qos_policies = stub_supported_qos_policies,
     .publisher_get_actual_qos = stub_publisher_get_actual_qos,

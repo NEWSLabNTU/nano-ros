@@ -210,4 +210,15 @@
 #define NROS_CPP_HAS_STD_CHRONO 1
 #endif
 
+// issue 1996 — `<future>` is for ONE name: `std::future_status`, what upstream's
+// `FutureAndRequestId::wait_for` returns and what a ported client compares
+// against (`fut.wait_for(1s) == std::future_status::ready`). No `std::future`
+// or `std::shared_future` is constructed anywhere in this API: the reply still
+// lives in `rclcpp::Future`'s own buffer and is driven by the executor
+// (RFC-0021). Same opt-in as every capability here.
+#if defined(NROS_CPP_STD) // hosted-family: capability-definition
+#include <future>
+#define NROS_CPP_HAS_STD_FUTURE 1
+#endif
+
 #endif // NROS_RCLCPP_DETAIL_STD_DETECT_HPP

@@ -214,6 +214,7 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 | `executor.spin_some()` / `rclcpp::spin_some(node)` | drain what is ready, without waiting | The bound is milliseconds (`spin_some(5)`), not a `std::chrono` duration. |
 | `client->wait_for_service(1s)` / `wait_for_action_server(10s)` | the millisecond wait, converted | Hosted builds. The budget is still required; a negative duration is refused at the call. |
 | `rclcpp::spin_until_future_complete(node, client->send_request(req))` | spins until the reply arrives | The timeout is milliseconds. |
+| `auto fut = client->async_send_request(std::make_shared<S::Request>(…))` / `fut.get()` / `fut.wait_for(1s)` / `client->remove_pending_request(fut)` | the poll client's `rclcpp::Future`, under upstream's verbs | Hosted builds, except `remove_pending_request` (issue 1996). `get()` returns the reply as an owning `std::shared_ptr<Response>` but never blocks: call it after `spin_until_future_complete` returned `SUCCESS` (before the reply it logs a refusal and returns nullptr). `wait_for` returns `std::future_status` and spins the executor while it waits. One request in flight per client: a reply that arrives after `remove_pending_request` is taken by the client's next future. A freestanding build has `send_request(req)` + `fut.try_take(resp)`; `get()` there is a compile error naming them. |
 | `#include "rclcpp_action/rclcpp_action.hpp"` | an umbrella over `Server<A>` / `Client<A>` | The action shapes still differ; see below. |
 | `rclcpp::init(argc, argv) / shutdown() / ok() / spin(n) / spin_some(n)` | wraps `rclcpp::init_in/shutdown_in/ok/spin_once` | `--ros-args -r from:=to` is honoured, beneath any remap the launch file sets for the same name. `-p [node:]name:=value` and `--params-file <file>` are honoured in an image with a parameter store: the value replaces the default when the node declares the parameter (scalars only from a file; a value of the wrong type is logged and the default kept). Any other ROS argument (`__node`, log flags) aborts, naming it. |
 | `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through the `NROS_LOG_*` family into `nros_log` | Carries the logger, so `get_logger("x")` selects a real per-logger level, and `FATAL` is a distinct severity. Reaches `LOG_ERR`/`printk` on embedded, where the legacy `NROS_*` sink is a no-op (issue 1019). `_THROTTLE` variants are REFUSE-LOUD. |
@@ -240,10 +241,10 @@ lines changes in either direction (`edits.json`). Today:
 | `minimal_subscriber` member_function | 0 | — |
 | `minimal_subscriber` lambda (jazzy) | 0 | — |
 | `minimal_timer` lambda / member_function | 0 | — |
+| `minimal_client` | 0 | — |
 | `minimal_service` | 3 | global `Node::SharedPtr` from a temporary |
 | `minimal_subscriber` not_composable | 3 | global `Node::SharedPtr` from a temporary |
 | `minimal_publisher` not_composable | 11 | the `try`/`catch` goes: no exceptions |
-| `minimal_client` | 15 | `async_send_request` / `future.get()` / `remove_pending_request` become `send_request` / `Future::try_take` / `Future::cancel` |
 | `multithreaded_executor` | 18 | `MultiThreadedExecutor`, callback groups |
 | `minimal_action_server` member_functions | 77 | goal handles, `create_server` over node interfaces, a thread per goal |
 | `minimal_action_client` member_functions | 87 | goal handles, futures, raw-byte feedback/result callbacks |
@@ -254,8 +255,6 @@ The remaining causes, largest first:
   futures; see the next section. The stock server also starts a `std::thread`
   per goal, which nano-ros does not do for you.
 - **Callback groups and the multi-threaded executor** (18 lines).
-- **The client future shape** (15 lines, issue 1996). `send_request` returns a
-  `rclcpp::Future` you drain with `try_take`, not a `shared_future`.
 - **Exceptions** (11 lines). There is nothing to catch.
 - **A global `Node::SharedPtr` assigned from `make_shared`** (2 lines each).
 

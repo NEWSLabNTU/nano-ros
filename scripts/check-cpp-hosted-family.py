@@ -72,6 +72,12 @@ FAMILY = {
         "`std::chrono::duration` overloads that convert to `nros::Duration` and "
         "delegate (`create_wall_timer`, `rclcpp::create_timer`, `Rate`)",
     ),
+    "future-interop": (
+        {"NROS_CPP_HAS_STD_FUTURE"},
+        "`rclcpp::Future::wait_for(std::chrono::duration)` returning "
+        "`std::future_status` (issue 1996). It DRIVES the executor for the "
+        "budget (RFC-0021); no `std::future` is constructed",
+    ),
     "stream-interop": (
         {"NROS_CPP_HAS_STD_SSTREAM"},
         "`RCLCPP_*_STREAM` formatting of a type with its own "

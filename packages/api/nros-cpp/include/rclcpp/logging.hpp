@@ -334,6 +334,28 @@ template <typename T> struct refuse {
     "wait_for_service/wait_for_action_server(negative) REFUSED by nano-ros: no unbounded wait "    \
     "(RFC-0021). Name a budget: wait_for_service(10s)."
 
+// issue 1996 — `rclcpp::Future::get()`. Upstream returns an OWNING
+// `std::shared_ptr<Response>` and BLOCKS until the reply arrives. A hosted
+// build (`NROS_CPP_STD`) has the first half — one heap copy of the reply — and
+// not the second, because a wait that does not drive the executor is what
+// RFC-0021 forbids; so `get()` there answers a reply that HAS arrived and says
+// the runtime refusal below otherwise. A freestanding build has neither
+// `<memory>` nor an allocator, so the name is refused at compile time.
+#define NROS_RCLCPP_REFUSE_FUTURE_GET                                                              \
+    "rclcpp::Future::get() is REFUSED by nano-ros on a freestanding build (RFC-0089, issue "       \
+    "1996). Upstream returns an owning std::shared_ptr<Response>, which needs <memory> and a "     \
+    "heap allocation per reply; this build has neither. On a hosted build (-DNROS_CPP_STD) get() " \
+    "exists and returns that shared_ptr once the reply has arrived. Here, take the reply into "    \
+    "storage you own: `S::Response resp; if (fut.try_take(resp).ok()) { ... resp.sum ... }` "      \
+    "after rclcpp::spin_until_future_complete(node, fut) returned SUCCESS, or block with "         \
+    "fut.wait(executor_handle, timeout_ms, resp), which drives the executor while it waits."
+
+// The RUNTIME half: `get()` on a hosted build before the reply arrived (or on a
+// consumed future). Short, because `say_refused` enforces nros_log's buffer.
+#define NROS_RCLCPP_REFUSE_FUTURE_GET_NOT_READY_RUNTIME                                            \
+    "Future::get() before the reply: nano-ros never blocks without spinning (RFC-0021). "          \
+    "Call spin_until_future_complete first. Returning nullptr."
+
 #define NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK                                             \
     "the shared_ptr service-callback shape is REFUSED by nano-ros (RFC-0089, phase-417 W2.c). "    \
     "rclcpp's create_service/create_client callback takes std::shared_ptr<Request> and "           \

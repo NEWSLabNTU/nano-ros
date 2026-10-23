@@ -364,7 +364,7 @@
       "nros::Future::wait",
       "nros::Future::try_take"
     ],
-    "why": "rclcpp returns a `std::shared_future` a caller `get()`s, and `spin_until_future_complete` drives the executor underneath. Ours returns a `Promise` the caller drives explicitly (`promise.wait(&mut executor, timeout)`) -- RFC-0021. needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport. The arity matches by coincidence, which is why the correlator files it `arity-only`.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-18, stated against upstream. `rclcpp::Client::async_send_request` returns a future KEYED BY THE SEQUENCE NUMBER `rcl_send_request` produced, which is what makes more than one outstanding request well-defined. Ours cannot: the sequence number is discarded at three layers and the future's slot is a hardcoded 0 — see `cpp:PollClient::send_request` for the measurement. A caller with two requests in flight gets whichever reply lands first, on both futures, with no error.\n\nDisposition ADOPT. Nothing platform-shaped is in the way — the sequence number EXISTS at every layer and is explicitly thrown away (`_seq`) — so this is a correlation table the arena can hold, not a capability the constraints forbid. Until it exists, the honest alternative under the rule is to refuse the second concurrent request loudly rather than to serve it wrongly."
+    "why": "rclcpp returns a `std::shared_future` a caller `get()`s, and `spin_until_future_complete` drives the executor underneath. Ours returns a `Promise` the caller drives explicitly (`promise.wait(&mut executor, timeout)`) -- RFC-0021. needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport. The arity matches by coincidence, which is why the correlator files it `arity-only`.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-18, stated against upstream. `rclcpp::Client::async_send_request` returns a future KEYED BY THE SEQUENCE NUMBER `rcl_send_request` produced, which is what makes more than one outstanding request well-defined. Ours cannot: the sequence number is discarded at three layers and the future's slot is a hardcoded 0 — see `cpp:PollClient::send_request` for the measurement. A caller with two requests in flight gets whichever reply lands first, on both futures, with no error.\n\nDisposition ADOPT. Nothing platform-shaped is in the way — the sequence number EXISTS at every layer and is explicitly thrown away (`_seq`) — so this is a correlation table the arena can hold, not a capability the constraints forbid. Until it exists, the honest alternative under the rule is to refuse the second concurrent request loudly rather than to serve it wrongly.\n\nissue 1996 (2026-10-23) -- the SHAPE half landed; the correlation half above did not. On a hosted (`NROS_CPP_STD`) build `rclcpp::PollClient<S>::async_send_request(const std::shared_ptr<Request>&)` sends `*request` through `send_request` and returns the same `rclcpp::Future`, whose `get()` returns the reply as an owning `std::shared_ptr<Response>` (`cpp:Future::get`) and whose `wait_for(duration)` returns `std::future_status` while DRIVING the executor (`cpp:Future::wait_for`), with `valid()` beside them -- so the stock `minimal_client` ports with zero edited lines. What still differs and keeps this row's disposition ADOPT rather than closed: the future is not keyed by the sequence number, so two requests in flight on one client still cross-deliver, exactly as stated above; and there is no `.future` / `.request_id` / `share()` (no `std::shared_future`)."
   },
   "cpp:Client::clear_on_new_response_callback": {
     "verdict": "divergence",
@@ -459,9 +459,13 @@
     "why": "RE-VERDICTED 2026-09-23 (phase-444 ledger re-read), gap -> declined; see `cpp:Client::prune_pending_requests` for the measurement. All three verbs move together and all three lose their subject together.\n\nTHIS ONE LOSES ITS PREDICATE AS WELL AS ITS TABLE: \"older than\" needs a per-request TIMESTAMP, and we carry none. That is the same declared omission `c:take_response_with_info` records — the service take slots yield a sequence number and nothing from `rmw_service_info_t` (`packages/core/nros-rmw-abi/include/nros/rmw_vtable.h:310-330`, `:374-388`). Even over a one-entry universe the verb could not be answered."
   },
   "cpp:Client::remove_pending_request": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "why": "RE-VERDICTED 2026-09-23 (phase-444 ledger re-read), gap -> declined; see `cpp:Client::prune_pending_requests` for the measurement.\n\nTHE 2026-09-21 NOTE CALLED THIS \"the cheapest of the three: the sequence number the take path already returns IS the key\". Measured 2026-09-23, on the surfaces this row is about, it does not return one: `rclc_client_take_response` (`packages/api/nros-c/include/rclc/detail/nros_generated.h:7768`) and `nros_client_take_response_raw` (`:7668`) yield bytes only, and `nros_cpp_service_client_take_response` (`packages/api/nros-cpp/src/service.rs:714`) drops the `_seq` its Rust callee hands back. It is dropped for the same reason the table does not exist — one call in flight leaves nothing to key. Removal by key and `reset_in_flight()` would be the same operation over the same single candidate."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "issue 1996 (2026-10-23) -- RE-VERDICTED declined -> divergence/adopt-bounded. The previous verdict's own argument is what closes it: \"removal by key and `reset_in_flight()` would be the same operation over the same single candidate\". So the operation exists without the key: `rclcpp::PollClient<S>::remove_pending_request(Future&)` (`polling_client.hpp`) cancels the future it is handed, answers true iff that future was a still-pending request of THIS client (it compares the future's client storage, so another client's future answers false and stays pending), and false on a second call -- upstream's \"was it in the pending map\". Both builds, no allocation. It removed the last edit of that kind from the stock `minimal_client` port (`edits.json`: 15 -> 0, with `async_send_request(shared_ptr)` and `Future::get`). THE BOUND, written on the declaration: upstream erases a map entry keyed by the sequence number, so a reply arriving later is DROPPED; ours has one request in flight and no key (`cpp:PollClient::send_request`), so a reply arriving after removal is still taken by the next future the same client hands out. The keyed fix is the correlation table `cpp:Client::async_send_request` records as ADOPT. Held by `packages/api/nros-cpp/tests/compile/client_future_shape_runtime.cpp`.\n\nPrevious text: RE-VERDICTED 2026-09-23 (phase-444 ledger re-read), gap -> declined; see `cpp:Client::prune_pending_requests` for the measurement.\n\nTHE 2026-09-21 NOTE CALLED THIS \"the cheapest of the three: the sequence number the take path already returns IS the key\". Measured 2026-09-23, on the surfaces this row is about, it does not return one: `rclc_client_take_response` (`packages/api/nros-c/include/rclc/detail/nros_generated.h:7768`) and `nros_client_take_response_raw` (`:7668`) yield bytes only, and `nros_cpp_service_client_take_response` (`packages/api/nros-cpp/src/service.rs:714`) drops the `_seq` its Rust callee hands back. It is dropped for the same reason the table does not exist — one call in flight leaves nothing to key. Removal by key and `reset_in_flight()` would be the same operation over the same single candidate.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/polling_client.hpp",
+      "text": "reply that arrives AFTER this call is still taken by the next future"
+    }
   },
   "cpp:Client::server_available": {
     "verdict": "extension",
@@ -631,6 +635,15 @@
     "verdict": "extension",
     "why": "the constructor set of an ours-only type: a default constructor plus move operations, with copies deleted. See `cpp:PollClient`. The MOVE is sound here — this half owns its client and relocates it through `nros_cpp_service_client_relocate`, and no arena entry holds its address. Same shape as `cpp:PollService::PollService<S>`."
   },
+  "cpp:PollClient::async_send_request": {
+    "verdict": "extension",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/polling_client.hpp",
+      "text": "Absent on a freestanding build, where there is no `<memory>`: send the"
+    },
+    "why": "issue 1996 -- an UPSTREAM name on an ours-only type, the shape `cpp:PollClient::wait_for_service` set: the comparison against `rclcpp::Client::async_send_request` stays on `cpp:Client::async_send_request`; this row records that the poll client (what `create_client<S>(name)` with no handler returns) now answers upstream's pointer-taking spelling. HOSTED ONLY (`NROS_CPP_HAS_SHARED_PTR`): it sends `*request` exactly as `send_request(const Request&)` does and returns the same `rclcpp::Future`; a null request returns an empty future and sends nothing. THE BOUND is `send_request`'s, not a new one: one request in flight per client (the slot-0 defect on `cpp:PollClient::send_request`). Freestanding has no `<memory>`, so the name is absent and `send_request(req)` is the spelling. Held by `client_future_shape_runtime.cpp`."
+  },
   "cpp:PollClient::call": {
     "verdict": "extension",
     "why": "phase-456 W9 — the blocking convenience moved here with the storage it sends through. Substantive verdict below, carried over from the deleted `cpp:Client::call` row: rclcpp's equivalent is `async_send_request(...).get()`, which deadlocks on a single-threaded executor, which is why RFC-0021 makes the executor an explicit parameter.\n\nCarried over from the `cpp:Client::call` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nthe blocking convenience: send and drive the executor until the reply or the timeout. rclcpp's equivalent is `async_send_request(...).get()`, which deadlocks on a single-threaded executor -- the reason RFC-0021 makes the executor an explicit parameter."
@@ -662,6 +675,15 @@
   "cpp:PollClient::is_valid": {
     "verdict": "extension",
     "why": "see the pubsub stage's `cpp:Publisher::is_valid`."
+  },
+  "cpp:PollClient::remove_pending_request": {
+    "verdict": "extension",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/polling_client.hpp",
+      "text": "reply that arrives AFTER this call is still taken by the next future"
+    },
+    "why": "issue 1996 -- an UPSTREAM name on an ours-only type; the substantive verdict, including the bound (a reply arriving after removal is still taken by the next future, because nothing is keyed by sequence number), is on `cpp:Client::remove_pending_request`. Both builds: it cancels the future and answers true only for a pending request of THIS client."
   },
   "cpp:PollClient::send_request": {
     "verdict": "extension",
