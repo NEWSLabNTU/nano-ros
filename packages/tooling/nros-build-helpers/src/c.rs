@@ -115,12 +115,6 @@ fn generate_config(
 
     // --- C API knobs (nros-c only, not shared with nros-node) ---
     // phase-400 W6 — the `[knobs.runtime]` rungs for the LET buffer.
-    //
-    // `NROS_SERVICE_TIMEOUT_MS` below is deliberately NOT on the ladder: it is
-    // read here and in `nros-rmw-zenoh/build.rs` because two artifacts embed
-    // it, and a migrated knob may have exactly one reader
-    // (`check-knob-single-reader`). Migrating it means giving the pair one
-    // emission point first.
     let rungs = nros_platform_config::platform_config::BuildRungs::from_build_env();
     let let_buffer_size = nros_zephyr_build::knob("NROS_LET_BUFFER_SIZE")
         .rung(
@@ -129,25 +123,16 @@ fn generate_config(
                 .and_then(|r| r.runtime_rungs().let_buffer_size),
         )
         .resolve(512);
-    // Phase 192.4 — default service-client RPC timeout. Read the same env var
-    // and use the same default (30000) as the zenoh backend
-    // (`nros-rmw-zenoh/build.rs`) so the two paths agree.
-    //
-    // Phase 214.C.1 — the 30_000 literal lives in TWO build.rs files
-    // (here + `nros-rmw-zenoh/build.rs:25`). Single source = the
-    // `NROS_SERVICE_TIMEOUT_MS` env var contract — both sites read it
-    // with the same default. The literal is duplicated as a fallback;
-    // when changing the default, update BOTH sites (and the doc strings
-    // at line 200 here + line 42 there) in lockstep. Cross-doc
-    // pointer: `nros-rmw-zenoh/build.rs:15` carries the rationale
-    // for the 30_000 ms choice (Phase 160.C.2 — bumped from 10 s
-    // because zenoh handshake under qemu slirp can drop early
-    // packets).
-    //
-    // phase-484 W5a — read through `knob()` like its twin in
-    // `nros-rmw-zenoh/build.rs`, so both artifacts take the same answer from the
-    // same spellings. Still no `.rung()`: the reason above stands.
-    let service_timeout_ms = nros_zephyr_build::knob("NROS_SERVICE_TIMEOUT_MS").resolve(30_000);
+    // Phase 192.4 — default service-client RPC timeout, shared with the
+    // zenoh backend's Rust const. issue 2007 — both resolve it through
+    // `resolve_service_timeout_ms`, so the C define and the Rust const take
+    // the same answer from the same rungs.
+    let service_timeout_ms = nros_platform_config::platform_config::resolve_service_timeout_ms(
+        &rungs
+            .as_ref()
+            .map(|r| r.zenoh_limit_rungs())
+            .unwrap_or_default(),
+    );
 
     // --- Opaque storage from probe (Phase 118.B closure of Phase 87.6) ---
     // `EXECUTOR_SIZE` comes from `nros::sizes::EXECUTOR_SIZE` exported via

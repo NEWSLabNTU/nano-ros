@@ -12,8 +12,9 @@ rows were deleted by
 The D1 and D2 sections below are kept as the design record.
 **Boundary (2026-10-14):** a knob's name, legacy spellings and registry row
 belong to [RFC-0103](0103-one-owner-per-fact.md) (phase-484). Which knobs
-get ladder rungs is still this RFC's question; the open list is
-[issue 2007](../issues/2007-sizing-knob-ladder-rungs-backlog.md).
+get ladder rungs is still this RFC's question. The rule ("a rung when a descriptor
+needs one") was settled by
+[issue 2007](../issues/archived/2007-sizing-knob-ladder-rungs-backlog.md).
 **Amends / refines:** RFC-0049 (hierarchical platform/board config) — gives its
 ladder reach and adds knob-to-knob constraints; RFC-0071 (RMW backend
 descriptor) — adopts D8's one-family rule and closes the leak D8 names.

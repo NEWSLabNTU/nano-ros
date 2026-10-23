@@ -236,29 +236,16 @@ fn main() {
         BuiltinSlot::Refused(why) => panic!("\n\n{why}\n"),
     };
     let builtin_inbox_depth: usize = env_usize_min("NROS_PARAM_SERVICE_INBOX_DEPTH", 1, 1);
-    // Phase 160.C.2 — bumped 10_000 → 30_000. The original 10 s default
-    // was too short for slow zenoh-pico flushes on Zephyr/NSOS where
-    // each publish/query can take ~2.5 s under Z_FEATURE_INTEREST=1. An
-    // action `get_result` query sent while the server is still running a
-    // feedback loop (11 publishes × ~2.5 s each = ~28 s before
-    // `complete_goal` fires) expires the internal query timer well
-    // before the server reaches its `try_handle_get_result` handler.
-    // Bumping to 30 s covers the common slow-Zephyr action window; fast
-    // services on POSIX still return in milliseconds so the wider cap
-    // only matters when something is genuinely slow.
     // phase-400 W6 — the `[knobs.zenoh.limits]` rungs. `None` when no lane named
     // a platform, and the builtins below then stand.
     let limits = nros_platform_config::platform_config::BuildRungs::from_build_env()
         .map(|r| r.zenoh_limit_rungs())
         .unwrap_or_default();
-    // NOT a ladder knob, deliberately: this value is read HERE and in
-    // `nros-build-helpers`'s C emitter, because two artifacts embed it (a Rust
-    // const and a C define). `check-knob-single-reader` allows a migrated knob
-    // exactly one reader, and that invariant is what stops the pair drifting —
-    // so migrating this one needs the two readers to share a single resolution
-    // point first, which is a change to where the value is EMITTED, not to the
-    // ladder.
-    let service_timeout_ms: usize = env_usize("NROS_SERVICE_TIMEOUT_MS", 30_000);
+    // issue 2007 — resolved in `nros-platform-config`, the one place the C
+    // emitter in `nros-build-helpers` also asks, so the Rust const and the C
+    // define cannot disagree. The 30 s default's rationale lives there too.
+    let service_timeout_ms =
+        nros_platform_config::platform_config::resolve_service_timeout_ms(&limits);
     let keyexpr_string_size: usize =
         env_usize_rung("NROS_KEYEXPR_STRING_SIZE", limits.keyexpr_string_size, 256);
     // Phase 124.D.3.c — SPSC ring depth per subscriber. Default 4

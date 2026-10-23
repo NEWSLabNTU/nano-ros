@@ -1567,6 +1567,29 @@ pub const ZENOH_LIMIT_KNOBS: &[&str] = &[
     "subscriber_ring_depth",
 ];
 
+/// The builtin default service-client RPC timeout, in milliseconds.
+///
+/// Phase 160.C.2 raised it from 10 s: a slow zenoh-pico flush on Zephyr/NSOS
+/// can take ~2.5 s per publish, so an action `get_result` sent during an
+/// 11-publish feedback loop expired before the server reached its handler.
+pub const BUILTIN_SERVICE_TIMEOUT_MS: usize = 30_000;
+
+/// The ONE resolution of `NROS_SERVICE_TIMEOUT_MS` (issue 2007).
+///
+/// Two artifacts embed this value: `nros-rmw-zenoh`'s Rust const and
+/// `nros-c`'s config header. Each build script used to read the env itself,
+/// with its own copy of the 30 000 literal, and neither passed the
+/// `[knobs.zenoh.limits] service_timeout_ms` rung, so a descriptor stating it
+/// parsed and changed nothing. Both now call this, so they take the same
+/// answer from the same rungs. `limits` is
+/// [`BuildRungs::zenoh_limit_rungs`], or the default when no lane named a
+/// platform.
+pub fn resolve_service_timeout_ms(limits: &ZenohLimitKnobs) -> usize {
+    nros_zephyr_build::knob("NROS_SERVICE_TIMEOUT_MS")
+        .rung(limits.service_timeout_ms)
+        .resolve(BUILTIN_SERVICE_TIMEOUT_MS)
+}
+
 /// The canonical env spelling of a zenoh limit knob, from the knob registry.
 pub fn zenoh_limit_env_key(knob: &str) -> &'static str {
     registry_env("zenoh.limits", knob)
@@ -3997,6 +4020,24 @@ mod tests {
 
     fn no_env(_: &str) -> Option<String> {
         None
+    }
+
+    // ---- issue 2007 — the service timeout's one resolver ----
+
+    #[test]
+    fn service_timeout_takes_the_limits_rung_over_the_builtin() {
+        // Both readers ignored this rung before issue 2007, so a descriptor
+        // stating it parsed and changed nothing.
+        let none = ZenohLimitKnobs::default();
+        assert_eq!(
+            resolve_service_timeout_ms(&none),
+            BUILTIN_SERVICE_TIMEOUT_MS
+        );
+        let stated = ZenohLimitKnobs {
+            service_timeout_ms: Some(5_000),
+            ..ZenohLimitKnobs::default()
+        };
+        assert_eq!(resolve_service_timeout_ms(&stated), 5_000);
     }
 
     // ---- issue 2006 — the retired transport tenant ----
