@@ -644,16 +644,11 @@ jobs:
         env:
           SCOPES: ${{ needs.membership.outputs.build_scopes }}
           NARROWING: ${{ needs.membership.outputs.narrowing }}
+        # Issue 1758 — a key the narrowing repeats (`NROS_FIXTURE_ID`, one per
+        # recorded cell) is one build pass per value, never the last one.
         run: |
           source ./activate.sh
-          for kv in $NARROWING; do
-              echo "narrowing: $kv"
-              export "$kv"
-          done
-          for s in $SCOPES; do
-              echo "=== just build $s ==="
-              just build "$s"
-          done
+          bash scripts/ci/live-peer-board-build.sh run "$SCOPES" "$NARROWING"
 
       # The cells run under `cargo nextest`, which `just setup linux` installs
       # and this job never runs: its scopes are `zephyr`/`qemu`, and the Zephyr
@@ -828,16 +823,11 @@ jobs:
         env:
           SCOPES: ${{ needs.membership.outputs.ci_build_scopes }}
           NARROWING: ${{ needs.membership.outputs.ci_narrowing }}
+        # Issue 1758 — a key the narrowing repeats (`NROS_FIXTURE_ID`, one per
+        # recorded cell) is one build pass per value, never the last one.
         run: |
           source ./activate.sh
-          for kv in $NARROWING; do
-              echo "narrowing: $kv"
-              export "$kv"
-          done
-          for s in $SCOPES; do
-              echo "=== just build $s ==="
-              just build "$s"
-          done
+          bash scripts/ci/live-peer-board-build.sh run "$SCOPES" "$NARROWING"
 
       - name: Provision cargo-nextest
         id: nextest
