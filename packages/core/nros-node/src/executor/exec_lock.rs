@@ -18,10 +18,10 @@
 //!
 //! Item 2 -- the callback window. A shared or band pass
 //! (`Executor::spin_once_shared`, `Executor::spin_band_once`) whose lock
-//! carries the port's thread identity ([`ExecLock::with_thread_id`]) gives
-//! the lock for each user callback and takes it back after ([`Window`]). The
+//! carries the port's thread identity (`ExecLock::with_thread_id`) gives
+//! the lock for each user callback and takes it back after (`Window`). The
 //! entry stays marked running (its slot tag), so no other pass dispatches or
-//! probes it and its release is deferred; a [`Running`] record names the
+//! probes it and its release is deferred; a `Running` record names the
 //! thread running it, so an entry operation from another thread is told apart
 //! from one the callback makes itself: the entry accessors answer as for a
 //! stale handle, and a timer cancel or reset is deferred to the callback's

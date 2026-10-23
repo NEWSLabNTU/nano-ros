@@ -91,7 +91,7 @@ impl Band {
     };
 
     /// The band `[most_urgent, least_urgent]`, or `None` when it is empty or
-    /// reaches past [`MAX_DISPATCH_LEVEL`].
+    /// reaches past the least urgent dispatch level (31).
     pub const fn new(most_urgent: u8, least_urgent: u8) -> Option<Band> {
         if most_urgent > least_urgent || least_urgent > MAX_DISPATCH_LEVEL {
             None
