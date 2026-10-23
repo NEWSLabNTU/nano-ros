@@ -1,10 +1,9 @@
 # Phase 511 (B/C) — cells for the six tests with blockers: a Gated tier, a Dormant row, and one interop row
 
-**Status (2026-10-23). IN PROGRESS — modelling done; two runtime verdicts open.**
-B1, B3, B4, C landed and B2 is modelled. Open:
+**Status (2026-10-23). IN PROGRESS — modelling done; one runtime verdict open.**
+B1, B3, B4, C landed and B2 is modelled. C's live verdict is recorded (pass). Open:
 
 - B2's test fails in its own lane, a real defect found by running it (issue 2003).
-- C's live run needs `slirp4netns`, which this host lacks.
 
 Implements RFC-0051 §7c (amendment 2026-10-23, B/C). It follows
 [phase-511 A/D](archived/phase-511-unmodeled-tests-to-cells.md), which left six
@@ -96,14 +95,13 @@ a public download, x86_64 only.
   - `px4_xrce`: 3/3 pass after the issue 2002 fix.
   - `fvp_smoke`: pass.
   - `fvp_runtime_ws`: fails (issue 2003).
-  - `cyclone_slirp_pair`: `[UNMET PRECONDITION]`, `slirp4netns` is not on PATH.
+  - `cyclone_slirp_pair`: 2/2 pass in 37 s (`just linux test-ros2-cyclone-slirp-pair`,
+    Humble, once `slirp4netns` was installed); verdict recorded in
+    `.config/interop-verdicts.toml`.
 
 ## Remaining
 
 - Issue 2003, then `just zephyr verify-fvp-runtime` green.
-- On a host with `slirp4netns`, run `just linux test-ros2-cyclone-slirp-pair`
-  and record the verdict (`scripts/check-interop-verdicts.py --record
-  native-slirp-pubsub-cpp-cyclone-n2r`).
 
 ## Related
 
