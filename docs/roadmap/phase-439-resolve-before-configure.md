@@ -63,9 +63,9 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       [#1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md):
       reproduce on main; archive if only sidecar deletion is left, and file
       that case if it reproduces.
-      [#1460](../issues/1460-sync-staged-model-vanishes-before-commit.md): the
-      staging name is still one fixed `<model>.yaml.resolving` per model;
-      reproduce, then make it unique per resolve.
+      [#1460](../issues/archived/1460-sync-staged-model-vanishes-before-commit.md):
+      RESOLVED 2026-10-23 — reproduced (22 of 40 concurrent syncs failed),
+      and the staged name is now unique per resolve (0 of 40).
 - [ ] **W10 — RFC-0094 text.** D4 says digest where the code keys on knob
       values; D2's example names a `[zpico]` table where the schema has
       `[executor]` and `[pools]`; status moves off Draft for the landed
@@ -596,4 +596,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | issue | why it belongs here |
 | --- | --- |
 | [#1413](../issues/1413-play-launch-parser-ref-lags-submodule-pin.md) | `[tool.play_launch_parser].source.ref` lags the `play_launch` submodule pin, and that pin is the resolver this phase runs before configure. |
-| [#1460](../issues/1460-sync-staged-model-vanishes-before-commit.md) | `nros sync` fails on its own `.resolving` staging file. Sync is the resolve step. |
+| [#1460](../issues/archived/1460-sync-staged-model-vanishes-before-commit.md) | RESOLVED 2026-10-23. | `nros sync` fails on its own `.resolving` staging file. Sync is the resolve step. |

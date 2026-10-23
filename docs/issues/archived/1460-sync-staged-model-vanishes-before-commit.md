@@ -3,7 +3,7 @@ id: 1460
 title: "`nros sync` fails on its own staging file — `<model>.yaml.resolving` is
   gone by the time the pin is stamped or the rename runs, at a different package
   each attempt, and the same sync succeeds when re-run"
-status: open
+status: resolved
 type: bug
 area: [cli, tooling]
 severity: high
@@ -11,7 +11,7 @@ found: 2026-09-22
 related: [0409, 0427, 1420, phase-439]
 ---
 
-**Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-439](../../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -85,3 +85,38 @@ first measurement worth taking is whether one `nros sync` process resolves
 several models concurrently: two variants of one bringup
 (`multihost_robot1`/`multihost_robot2`) share a directory, and attempt 2 died on
 the first of that pair.
+
+## Resolution (2026-10-23)
+
+**Cause: two `nros sync` processes resolving the same model.** The staged path
+was `model.with_extension("yaml.resolving")`, one name per model, so every
+concurrent resolve of that model wrote, read and renamed the SAME file. The
+first to finish renamed it away; the others then failed reading it (the pin
+stamp) or renaming it (the commit). There is no in-process race: one sync
+resolves its models serially, `nros-launch-resolve` writes `-o` with a plain
+`fs::write`, and nothing else in the sync path deletes the file. The "re-run
+succeeds" behaviour is the race not recurring, not progress.
+
+**Reproduced.** In `examples/workspaces/c` (seven models), each round touched
+`src/demo_bringup/system.toml` so every model re-resolved, then started four
+`nros sync` processes at once. Ten rounds with the old name: **22 of 40 syncs
+failed**, with both errors this issue records (`stamp resolver pin` /
+`read staged model … No such file or directory`, and `commit resolved model`)
+and a third it did not: `parse staged model …: YAML: missing field meta` — a
+reader reaching the staged file while another process was mid-write. That
+one is worse than a failure, because the same read can also succeed on a
+file another resolve is about to overwrite.
+
+**Fix.** `staged_model_path` names the staged file
+`<model>.resolving.<pid>.<seq>`, so no two resolves, in one process or
+several, can reach one staged file. The promotion is still a same-directory
+`rename`, so it stays atomic, and racing resolves of one model now end with
+one complete model in place. Every reader of the models directory selects by
+suffix (`_model.yaml`, `.census.json`), so a name left by a killed process is
+never read as a model. Same ten rounds with the fix: **0 of 40 failed**,
+every log showing real `sync: resolved` lines, and no staged file left
+behind. Unit test: `staged_model_path_tests`.
+
+Where the concurrency came from in the original two attempts is not
+established — attempt 1 overlapped hand-run syncs; attempt 2's second
+process is unknown. The fix does not depend on knowing it.

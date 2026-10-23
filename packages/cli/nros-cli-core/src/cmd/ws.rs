@@ -1692,6 +1692,27 @@ impl WsPkg {
 // could call it, which is how a refused resolve left a model every OTHER
 // consumer trusted; now every door calls the one gate.
 
+/// Issue 1460 — the file a resolve writes before it is promoted to `model`.
+///
+/// It was `<model>.resolving`, one name for every resolve of that model, so two
+/// `nros sync` processes resolving the same model (two lanes syncing one
+/// workspace, a hand run beside a recipe) shared it: the first to finish
+/// renamed the file away, and the other died reading or renaming a staged file
+/// that it had just been told existed. The name now carries the process id and
+/// a per-process sequence number, so no two resolves can reach the same staged
+/// file. The promotion stays a `rename` within one directory, so it remains
+/// atomic, and a racing resolve of the same model still ends with one complete
+/// model in place rather than a mix. Every reader of the models directory
+/// selects by suffix (`_model.yaml`, `.census.json`, ...), so a staged name
+/// left behind by a killed process is never read as a model.
+fn staged_model_path(model: &Path) -> PathBuf {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut name = model.file_name().unwrap_or_default().to_os_string();
+    name.push(format!(".resolving.{}.{seq}", std::process::id()));
+    model.with_file_name(name)
+}
+
 /// Issue 0427 — record the resolver PIN (`NROS_PLAY_LAUNCH_SHA`) into a freshly
 /// resolved model's `meta.resolver`, so [`crate::model_gate::provenance_stale`] treats a
 /// resolver change as staleness. Overwrites the resolver's own unreliable
@@ -2492,7 +2513,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
             // committed models no longer exist (W4.a). Dims live in the
             // resolver INPUTS (system.toml), so a re-resolve cannot lose them;
             // the staged write remains for atomicity only.
-            let staged = model.with_extension("yaml.resolving");
+            let staged = staged_model_path(&model);
             cmd.arg("-o").arg(&staged);
             let out = cmd
                 .output()
@@ -6378,6 +6399,34 @@ mod synth_ament_prefix_tests {
                 .starts_with(&*prefix.to_string_lossy()),
             "the synthesised prefix is searched first"
         );
+    }
+}
+
+#[cfg(test)]
+mod staged_model_path_tests {
+    use super::*;
+
+    /// Issue 1460 — two resolves of one model must never share a staged file,
+    /// and the staged name must stay beside the model (so the promotion is a
+    /// same-directory rename) and must not read as a model to a suffix filter.
+    #[test]
+    fn two_resolves_of_one_model_stage_to_different_files() {
+        let model = Path::new("/ws/build/nros/models/demo/multihost_robot1_model.yaml");
+        let a = staged_model_path(model);
+        let b = staged_model_path(model);
+        assert_ne!(a, b, "two resolves share {}", a.display());
+        for s in [&a, &b] {
+            assert_eq!(s.parent(), model.parent());
+            let name = s.file_name().unwrap().to_str().unwrap();
+            assert!(
+                name.starts_with("multihost_robot1_model.yaml.resolving."),
+                "{name}"
+            );
+            assert!(
+                !name.ends_with("_model.yaml") && !name.ends_with(".json"),
+                "{name}"
+            );
+        }
     }
 }
 
