@@ -3367,7 +3367,20 @@ fn run_check_all(index: &SdkIndex, workspace: &Path) -> Result<()> {
         .as_ref()
         .map(|c| c as &dyn python_provider::AptQuery);
     let interpreter = python_provider::Interpreter::detect();
-    for (alias, py) in &index.python {
+    // Issue 1483 — `[source.*.python]` dependencies join OUR entries here,
+    // their apt names read from the pinned rosdep snapshot beside the index.
+    let rosdep_snapshot = {
+        let p = crate::orchestration::rosdep_snapshot::default_path(workspace);
+        if p.is_file() {
+            Some(crate::orchestration::rosdep_snapshot::RosdepSnapshot::load(
+                &p,
+            )?)
+        } else {
+            None
+        }
+    };
+    let python_layer = index.python_layer(rosdep_snapshot.as_ref());
+    for (alias, py) in &python_layer {
         let provider = python_provider::resolve(py, doctor_ctx.os_release.as_deref(), apt_query);
         // An entry with no `check` is probed by IMPORTING its module. Five of
         // the eight had no probe at all, so they reported `[UNPROBED]` — and an

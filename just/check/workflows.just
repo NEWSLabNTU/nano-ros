@@ -293,20 +293,19 @@ prereq-roles:
 rosdep-snapshot:
     @python3 scripts/check-rosdep-snapshot.py
 
-# Issues 1483/1484 — a `[python.*]` entry names WHOSE dependency it is.
+# Issues 1483/1484 — a python dependency is declared by WHOEVER needs it.
 #
 # The maintainer's rule: our index must not carry transitive dependencies, and
 # where a package rides behind a direct apt ROS dependency, install that and let
-# apt resolve it. Six of the eight entries are ours (measured: `tomli` 42 direct
-# importers, `yaml` 11, `catkin_pkg` 1); `empy` and `lark` are upstream rosidl's
-# alone, carried only because `[source.rosidl]` serves the ROS-LESS host, where
-# there is no `ros-humble-rosidl-adapter` for apt to resolve behind.
-#
-# So the census runs every time instead of being re-derived by hand — it was
-# re-derived three times in one day and got `pyyaml` wrong twice — and an entry
-# nothing here imports must name upstream's `rosdep` key, whose apt name comes
-# from the pinned snapshot rather than from a hand-copy. `python3-lark-parser`
-# -> `python3-lark` is a rename we WERE hand-copying one edge of.
+# apt resolve it. `[python.*]` is now ours alone (measured: `tomli` 42 direct
+# importers, `yaml` 11, `catkin_pkg` 1, plus three tools); the census runs every
+# time, because it was re-derived three times in one day and got `pyyaml` wrong
+# twice. `empy` and `lark` are upstream rosidl's, so they sit under
+# `[source.rosidl.python.<rosdep key>]` as a mirror of its `package.xml` at the
+# pinned ref. The gate compares the two in both directions against the
+# provisioned clone (NOT VERIFIED without one), and the apt names come from the
+# pinned rosdep snapshot, never from the index (`python3-lark-parser` ->
+# `python3-lark` is a rename we WERE hand-copying one edge of).
 [group("checks")]
 python-entry-provenance:
     @python3 scripts/check-python-entry-provenance.py

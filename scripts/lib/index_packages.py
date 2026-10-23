@@ -103,7 +103,57 @@ def run_programs(tool, host=None):
     return out
 
 
+def python_layer(index, snapshot=None):
+    """Every python entry: OUR `[python.*]` plus each `[source.*.python.<key>]`.
+
+    The Python half of `SdkIndex::python_layer` (issue 1483). A source entry is
+    upstream's dependency, keyed by its rosdep key; its apt names are the rosdep
+    `snapshot`'s answer to that key (the parsed `nros-rosdep-snapshot.toml`),
+    never a name the index authors. A key the snapshot does not map keeps no apt
+    name and says so in `apt_refused`, so the remedy is pip, with the reason.
+    Returns `{alias: entry}`; a source entry's alias is its pip name.
+    """
+    out = dict(index.get("python", {}))
+    keys = (snapshot or {}).get("key", {})
+    for name, src in sorted(index.get("source", {}).items()):
+        for key, dep in sorted((src.get("python") or {}).items()):
+            apt = list((keys.get(key) or {}).get("apt", []))
+            entry = {
+                "pip": dep["pip"],
+                "rosdep": key,
+                "from": dep["from"],
+                "source": name,
+                "why": "UPSTREAM %s's: %s <exec_depend>%s</exec_depend> at %s"
+                % (name, dep["from"], key, src.get("version")),
+            }
+            for field in ("module", "version"):
+                if dep.get(field):
+                    entry[field] = dep[field]
+            if apt:
+                entry["apt"] = apt
+            else:
+                entry["apt_refused"] = (
+                    "rosdep key `%s` maps to no apt package in nros-rosdep-snapshot.toml" % key
+                )
+            out[dep["pip"]] = entry
+    return out
+
+
 def self_test():
+    idx = {
+        "python": {"pyyaml": {"pip": "PyYAML", "apt": ["python3-yaml"]}},
+        "source": {"rosidl": {"version": "v", "python": {
+            "python3-lark-parser": {"from": "p/package.xml", "pip": "lark"},
+            "python3-nope": {"from": "p/package.xml", "pip": "nope"},
+        }}},
+    }
+    snap = {"key": {"python3-lark-parser": {"apt": ["python3-lark"]}}}
+    layer = python_layer(idx, snap)
+    assert layer["lark"]["apt"] == ["python3-lark"], "the snapshot names the apt package"
+    assert layer["lark"]["rosdep"] == "python3-lark-parser"
+    assert "apt" not in layer["nope"] and layer["nope"]["apt_refused"], \
+        "an unmapped key falls to pip, with the reason"
+    assert layer["pyyaml"] == idx["python"]["pyyaml"], "our own entries pass through"
     ssl = {"default": ["libssl3"], "noble": ["libssl3t64"]}
     assert for_release(["x"], "noble") == ["x"]
     assert for_release(ssl, "noble") == ["libssl3t64"]

@@ -15,36 +15,30 @@ nothing here imports. Every entry's `why` read the same way regardless, so
 "which of these are ours?" was a question only a fresh census could answer, and
 that census kept being re-derived — three times in one day, wrongly twice.
 
-So the gate asks it, from the tree, every run:
+Issue 1483 then moved those two OUT of `[python.*]`. They sit under
+`[source.rosidl.python.<rosdep key>]`, beside the tree whose code needs them,
+with no authored apt name. So the gate asks three things, every run:
 
-  1. WHOSE IS IT?  For each entry with no `check` command — the ones the index
-     probes by IMPORTING their module, i.e. claims about the ambient
-     interpreter — count direct importers in this repo's tracked `*.py`
-     (`third-party/` and `docs/` excluded, parsed with `ast` rather than
-     grepped). Zero importers and no `rosdep` key is the state the rule
-     forbids: an entry that reads as ours and is not.
+  1. IS EACH `[python.*]` ENTRY OURS?  For each entry with no `check` command
+     (the ones the index probes by IMPORTING their module, i.e. claims about
+     the ambient interpreter), count direct importers in this repo's tracked
+     `*.py` (`third-party/` and `docs/` excluded, parsed with `ast` rather than
+     grepped). Zero importers is an upstream dependency posing as ours, and so
+     is an entry carrying a `rosdep` key: both belong under the `[source.*]`
+     whose code imports them.
 
-  2. DOES THE UPSTREAM NAME COME FROM UPSTREAM?  An entry that declares
-     `rosdep = "<key>"` must resolve, through the pinned vendored
-     `nros-rosdep-snapshot.toml`, to EXACTLY the `apt` names it declares.
-     `[python.lark]` is why: upstream's key is `python3-lark-parser` and the apt
-     package is `python3-lark`, so the entry was hand-copying one edge of a
-     rename whose owner publishes it. A hand-copy drifts in the direction that
-     reads as correct; this comparison is what makes that impossible.
+  2. DOES EACH SOURCE KEY RESOLVE?  A `[source.*.python.<key>]` must be a key
+     of the pinned `nros-rosdep-snapshot.toml`. That file, not the index, names
+     the apt package (`python3-lark-parser` -> `python3-lark`).
 
-WHY THE TWO UPSTREAM ENTRIES ARE STILL HERE AT ALL, since the rule says install
-the ROS package instead: `[source.rosidl]` exists for the host that HAS NO ROS
-APT REPO (issue 0368 / phase-327), where there is no `ros-humble-rosidl-adapter`
-to install and nothing for apt to resolve. The runner container is exactly that
-host. So the honest end state is not silence — it is an entry that says whose
-dependency it is and takes the name from whoever owns it.
-
-NOT CHECKED HERE, because it needs the network: that the `rosdep` keys are the
-ones upstream's own `package.xml` declares at the pinned `ref`. Measured by hand
-at `humble-5621b26` (rosidl_adapter -> `python3-empy`, rosidl_parser ->
-`python3-lark-parser`) and recorded in `[source.rosidl]`'s comment; re-measuring
-it is a pin-move action, like `gen-rosdep-snapshot.py --verify`. A gate that
-reaches the network fails on the pristine offline worktree this tier supports.
+  3. IS THE MIRROR UPSTREAM'S MANIFEST?  Each key must be an `<exec_depend>`
+     of the `package.xml` its `from` names, and every `python3-*`
+     `<exec_depend>` of those manifests must be mirrored. Read from the clone
+     `nros setup --source <name>` provisions at the pinned `ref`
+     (`$NROS_HOME/sources/<name>/<version>`). Without that clone the check is
+     NOT VERIFIED through the skip ledger, never silently OK: this gate also
+     runs on the pristine offline worktree, and a pin move is the only thing
+     that can change the answer.
 
 Run:  python3 scripts/check-python-entry-provenance.py [--self-test] [--census]
 """
@@ -60,6 +54,8 @@ except ModuleNotFoundError:  # python3.10
     import tomli as tomllib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import check_skip  # noqa: E402  phase-472 F2 — the NOT VERIFIED ledger
 INDEX = os.path.join(ROOT, "nros-sdk-index.toml")
 SNAPSHOT = os.path.join(ROOT, "nros-rosdep-snapshot.toml")
 
@@ -136,52 +132,110 @@ def declared_apt(entry):
 
 
 def offenders(python_entries, snapshot_keys, hits):
-    """Every violation, as (alias, what) — the testable core."""
+    """Rule 1 over `[python.*]`, as (alias, what) — the testable core."""
     found = []
     for alias, entry in sorted(python_entries.items()):
-        rosdep = entry.get("rosdep")
         check = entry.get("check")
         is_tool = isinstance(check, dict) and "cmd" in check
         module = module_name(entry)
-        importers = hits.get(module, [])
-
-        if not is_tool and not importers and not rosdep:
+        if entry.get("rosdep"):
             found.append(
                 (
-                    alias,
-                    'no file in this repo imports `%s`, and the entry names no '
-                    'upstream `rosdep` key — so it reads as ours and is not. '
-                    'Either add `rosdep = "<upstream key>"` (whose dependency '
-                    'it is, with the apt name taken from the pinned snapshot), '
-                    'or remove the entry and let apt resolve it behind the ROS '
-                    'package that needs it' % module,
+                    "python.%s" % alias,
+                    '`rosdep = "%s"` says this is upstream\'s dependency, so it is '
+                    'not an entry of ours: move it to `[source.<name>.python.%s]` '
+                    'under the tree whose code imports `%s` (issue 1483)'
+                    % (entry["rosdep"], entry["rosdep"], module),
                 )
             )
-        if rosdep is None:
-            continue
-        if rosdep not in snapshot_keys:
+        elif not is_tool and not hits.get(module):
             found.append(
                 (
-                    alias,
-                    '`rosdep = "%s"` is not a key in nros-rosdep-snapshot.toml '
-                    '— an unresolvable key names no owner' % rosdep,
-                )
-            )
-            continue
-        want = snapshot_keys[rosdep]
-        got = declared_apt(entry)
-        if got != want:
-            found.append(
-                (
-                    alias,
-                    '`rosdep = "%s"` resolves to %s in the pinned snapshot, but '
-                    'the entry declares apt = %s. The key is upstream\'s and the '
-                    'name is the snapshot\'s answer to it; a hand-written third '
-                    'spelling is the drift this field exists to stop'
-                    % (rosdep, want, got),
+                    "python.%s" % alias,
+                    'no file in this repo imports `%s`, so it reads as ours and is '
+                    'not. Move it under the `[source.*]` whose code needs it, keyed '
+                    'by its rosdep key, or remove it and let apt resolve it behind '
+                    'the ROS package that needs it' % module,
                 )
             )
     return found
+
+
+def exec_depends(xml_text):
+    """The `<exec_depend>` names of one `package.xml` (attributes ignored)."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(xml_text)
+    return {(e.text or "").strip() for e in root.iter("exec_depend")}
+
+
+def source_offenders(sources, snapshot_keys, read_manifest):
+    """Rules 2 and 3 over `[source.*.python]`, as (where, what).
+
+    `read_manifest(name, version, rel)` returns the manifest's text, or None
+    when that source is not provisioned here. Returns `(found, unverified)`,
+    the second naming each source whose manifests could not be read.
+    """
+    found, unverified = [], []
+    for name, src in sorted(sources.items()):
+        deps = src.get("python") or {}
+        if not deps:
+            continue
+        for key in sorted(deps):
+            if key not in snapshot_keys:
+                found.append(
+                    (
+                        "source.%s.python.%s" % (name, key),
+                        "not a key in nros-rosdep-snapshot.toml, so nothing names "
+                        "its apt package; an unresolvable key names no owner",
+                    )
+                )
+        declared = {}
+        for rel in sorted({d["from"] for d in deps.values()}):
+            text = read_manifest(name, src.get("version"), rel)
+            if text is None:
+                unverified.append(name)
+                declared = None
+                break
+            declared[rel] = exec_depends(text)
+        if declared is None:
+            continue
+        for key, dep in sorted(deps.items()):
+            if key not in declared[dep["from"]]:
+                found.append(
+                    (
+                        "source.%s.python.%s" % (name, key),
+                        "%s at %s declares no `<exec_depend>%s</exec_depend>`: the "
+                        "mirror names an edge upstream does not have"
+                        % (dep["from"], src.get("version"), key),
+                    )
+                )
+        for rel, names in sorted(declared.items()):
+            for key in sorted(n for n in names if n.startswith("python3-")):
+                if key not in deps:
+                    found.append(
+                        (
+                            "source.%s" % name,
+                            "%s at %s declares `<exec_depend>%s</exec_depend>`, and "
+                            "no `[source.%s.python.%s]` mirrors it: the ROS-less host "
+                            "would be missing it" % (rel, src.get("version"), key, name, key),
+                        )
+                    )
+    return found, unverified
+
+
+def store_manifest_reader(store_root):
+    """`read_manifest` over the store clones `nros setup --source` writes."""
+
+    def read(name, version, rel):
+        path = os.path.join(store_root, "sources", name, str(version), rel)
+        try:
+            with open(path, encoding="utf8") as fh:
+                return fh.read()
+        except OSError:
+            return None
+
+    return read
 
 
 def self_test():
@@ -193,30 +247,53 @@ def self_test():
     assert offenders(ours, snap, hits) == [], offenders(ours, snap, hits)
 
     orphan = {"lark": {"pip": "lark", "apt": ["python3-lark"]}}
-    assert len(offenders(orphan, snap, hits)) == 1, "an unimported entry with no owner passes"
+    assert len(offenders(orphan, snap, hits)) == 1, "an unimported entry passes"
 
+    # The pre-1483 shape: upstream's, attributed, and still in OUR layer.
     attributed = {
         "lark": {"pip": "lark", "rosdep": "python3-lark-parser", "apt": ["python3-lark"]}
     }
-    assert offenders(attributed, snap, hits) == [], offenders(attributed, snap, hits)
-
-    # The rename, hand-copied wrong — the case the whole field is for.
-    drifted = {
-        "lark": {
-            "pip": "lark",
-            "rosdep": "python3-lark-parser",
-            "apt": ["python3-lark-parser"],
-        }
-    }
-    assert len(offenders(drifted, snap, hits)) == 1, "a drifted apt name passes"
-
-    unknown = {"x": {"pip": "x", "rosdep": "python3-nope", "apt": ["python3-x"]}}
-    assert len(offenders(unknown, snap, hits)) == 1, "an unresolvable key passes"
+    assert len(offenders(attributed, snap, hits)) == 1, "a rosdep entry in [python.*] passes"
 
     # A TOOL is an executable some verb installs, not a module we import — it
     # owes no importer (`west`, `clang-format`, `colcon`).
     tool = {"west": {"pip": "west", "apt_refused": "PyPI only", "check": {"cmd": "west"}}}
     assert offenders(tool, snap, hits) == [], offenders(tool, snap, hits)
+
+    adapter = "<package><exec_depend>python3-empy</exec_depend><exec_depend>rosidl_cli</exec_depend></package>"
+    parser = "<package><exec_depend>python3-lark-parser</exec_depend></package>"
+    tree = {"rosidl_adapter/package.xml": adapter, "rosidl_parser/package.xml": parser}
+    reader = lambda _n, _v, rel: tree.get(rel)  # noqa: E731
+    good = {"rosidl": {"version": "v", "python": {
+        "python3-empy": {"from": "rosidl_adapter/package.xml", "pip": "empy"},
+        "python3-lark-parser": {"from": "rosidl_parser/package.xml", "pip": "lark"},
+    }}}
+    assert source_offenders(good, snap, reader) == ([], []), source_offenders(good, snap, reader)
+
+    wrong_from = {"rosidl": {"version": "v", "python": {
+        "python3-empy": {"from": "rosidl_parser/package.xml", "pip": "empy"},
+        "python3-lark-parser": {"from": "rosidl_parser/package.xml", "pip": "lark"},
+    }}}
+    assert len(source_offenders(wrong_from, snap, reader)[0]) >= 1, "an edge upstream lacks passes"
+
+    dropped = {"rosidl": {"version": "v", "python": {
+        "python3-empy": {"from": "rosidl_adapter/package.xml", "pip": "empy"},
+    }}}
+    assert len(source_offenders(dropped, snap, reader)[0]) == 0, \
+        "only the manifests a mirror names are read"
+    tree["rosidl_adapter/package.xml"] = adapter.replace(
+        "</package>", "<exec_depend>python3-new</exec_depend></package>")
+    assert len(source_offenders(good, snap, reader)[0]) == 1, "an unmirrored upstream key passes"
+    tree["rosidl_adapter/package.xml"] = adapter
+
+    unknown = {"rosidl": {"version": "v", "python": {
+        "python3-nope": {"from": "rosidl_adapter/package.xml", "pip": "x"}}}}
+    assert any("snapshot" in w for _, w in source_offenders(unknown, snap, reader)[0]), \
+        "an unresolvable key passes"
+
+    absent = lambda *_: None  # noqa: E731
+    assert source_offenders(good, snap, absent) == ([], ["rosidl"]), \
+        "an unprovisioned clone is NOT VERIFIED, not OK"
 
     # The census reads imports, not prose.
     assert top_level_imports("import yaml\n") == {"yaml"}
@@ -226,7 +303,7 @@ def self_test():
     }
     assert top_level_imports("from .local import x\n") == set()
 
-    print("check-python-entry-provenance self-test: OK (8 cases)")
+    print("check-python-entry-provenance self-test: OK (14 cases)")
     return 0
 
 
@@ -264,10 +341,15 @@ def main():
         return 0
 
     found = offenders(python_entries, snapshot_keys, hits)
+    store = os.environ.get("NROS_HOME") or os.path.join(os.path.expanduser("~"), ".nros")
+    src_found, unverified = source_offenders(
+        index.get("source", {}), snapshot_keys, store_manifest_reader(store)
+    )
+    found += src_found
     if found:
         sys.stderr.write("check-python-entry-provenance: FAILED\n\n")
         for alias, what in found:
-            sys.stderr.write("  [python.%s]: %s\n\n" % (alias, what))
+            sys.stderr.write("  [%s]: %s\n\n" % (alias, what))
         sys.stderr.write(
             "  The rule (issues 1483/1484): our index must not carry another\n"
             "  project's dependencies as if they were ours. Where apt can\n"
@@ -279,12 +361,19 @@ def main():
         return 1
 
     ours = sum(1 for e in python_entries.values() if hits[module_name(e)])
-    upstream = sum(1 for e in python_entries.values() if e.get("rosdep"))
+    upstream = sum(len(s.get("python") or {}) for s in index.get("source", {}).values())
     print(
-        "check-python-entry-provenance: OK (%d entries: %d imported here, %d "
-        "attributed upstream by rosdep key, the rest tool-probed)"
+        "check-python-entry-provenance: OK ([python.*]: %d entries, %d imported "
+        "here, the rest tool-probed; [source.*.python]: %d upstream key(s))"
         % (len(python_entries), ours, upstream)
     )
+    if unverified:
+        return check_skip.unverified(
+            "python-entry-provenance",
+            "no provisioned clone of [source.%s] under %s/sources, so its "
+            "python mirror was not compared with upstream's package.xml "
+            "(nros setup --source %s)" % (unverified[0], store, unverified[0]),
+        )
     return 0
 
 

@@ -1036,11 +1036,13 @@ pub struct PythonDep {
     /// The UPSTREAM rosdep key this dependency is declared under, for an entry
     /// that is not ours — issue 1484.
     ///
-    /// Set only where nothing in this repo imports the module: `empy` and
-    /// `lark` are `rosidl_adapter`'s and `rosidl_parser`'s own
-    /// `<exec_depend>`s, carried here because `[source.rosidl]` serves the
-    /// ROS-LESS host, where the maintainer's "install the apt ROS package and
-    /// let apt resolve it" has no ROS package to install.
+    /// Set by [`SdkIndex::python_layer`] on a `[source.*.python.<key>]`
+    /// dependency (issue 1483): `empy` and `lark` are `rosidl_adapter`'s and
+    /// `rosidl_parser`'s own `<exec_depend>`s, carried because `[source.rosidl]`
+    /// serves the ROS-LESS host, where the maintainer's "install the apt ROS
+    /// package and let apt resolve it" has no ROS package to install.
+    /// `check-python-entry-provenance` refuses it on an authored `[python.*]`
+    /// entry: an upstream dependency belongs beside the tree that needs it.
     ///
     /// It is not a second spelling of [`Self::apt`]: the KEY is upstream's and
     /// the apt NAME is the pinned `nros-rosdep-snapshot.toml`'s answer to it,
@@ -1598,6 +1600,45 @@ pub struct SourcePackage {
     /// populated".
     #[serde(default)]
     pub check: Option<CheckProbe>,
+    /// Issue 1483 — the python modules THIS source's own code needs, keyed by
+    /// the UPSTREAM rosdep key its `package.xml` declares them under.
+    ///
+    /// `rosidl`'s `rosidl_adapter` needs `em` and `rosidl_parser` needs `lark`.
+    /// Those are upstream's `<exec_depend>`s, not ours, so they are not
+    /// `[python.*]` entries (the maintainer's rule: the index does not carry
+    /// transitive dependencies). On a host with the ROS apt repo, apt resolves
+    /// them through `ros-<edition>-rosidl-adapter`. The ROS-less host has no
+    /// such package, so the source names them itself. Each entry is a TRACKED
+    /// mirror of one edge of upstream's manifest at `ref`, and
+    /// `check-python-entry-provenance` compares it with that manifest. The apt
+    /// NAME is never authored: it is the pinned `nros-rosdep-snapshot.toml`'s
+    /// answer to the key ([`SdkIndex::python_layer`]).
+    #[serde(default)]
+    pub python: BTreeMap<String, SourcePythonDep>,
+}
+
+/// One python dependency a `[source.*]` tree's own code declares — issue 1483.
+///
+/// The key it sits under is upstream's rosdep key. Everything here is a fact
+/// rosdep does not carry: the PyPI and import names, and OUR version
+/// constraint, if we have one.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourcePythonDep {
+    /// The source-relative `package.xml` that declares the key as an
+    /// `<exec_depend>`.
+    pub from: String,
+    /// The PyPI distribution name.
+    pub pip: String,
+    /// The import name, when it differs from [`Self::pip`].
+    #[serde(default)]
+    pub module: Option<String>,
+    /// OUR constraint, never upstream's: a rosdep key carries no version.
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Why we constrain [`Self::version`]. Required with it.
+    #[serde(default)]
+    pub version_why: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -1626,6 +1667,7 @@ impl Default for SourcePackage {
             build_stage: false,
             builds_in_place: false,
             check: None,
+            python: BTreeMap::new(),
         }
     }
 }
@@ -1666,6 +1708,60 @@ pub struct GatedPackage {
 }
 
 impl SdkIndex {
+    /// The whole python layer: OUR `[python.*]` entries, plus each
+    /// `[source.*.python.<key>]` dependency, whose apt names are the rosdep
+    /// snapshot's answer to its key — issue 1483.
+    ///
+    /// A source dependency the snapshot does not map (or no snapshot at all)
+    /// keeps an EMPTY apt list with the reason in `apt_refused`, so the remedy
+    /// falls to pip and says why, rather than inventing a package name.
+    #[must_use]
+    pub fn python_layer(
+        &self,
+        snapshot: Option<&crate::orchestration::rosdep_snapshot::RosdepSnapshot>,
+    ) -> Vec<(String, PythonDep)> {
+        let mut out: Vec<(String, PythonDep)> = self
+            .python
+            .iter()
+            .map(|(a, p)| (a.clone(), p.clone()))
+            .collect();
+        for (name, src) in &self.source {
+            for (key, dep) in &src.python {
+                let apt = snapshot
+                    .and_then(|s| s.key.get(key))
+                    .map(|e| e.apt.clone())
+                    .unwrap_or_default();
+                let apt_refused = apt.is_empty().then(|| {
+                    format!(
+                        "rosdep key `{key}` maps to no apt package in nros-rosdep-snapshot.toml"
+                    )
+                });
+                out.push((
+                    dep.pip.clone(),
+                    PythonDep {
+                        pip: dep.pip.clone(),
+                        module_name: dep.module.clone(),
+                        version: dep.version.clone(),
+                        apt: ManagerPackages::Every(apt),
+                        rosdep: Some(key.clone()),
+                        apt_refused,
+                        // The apt NAME is the snapshot's, so the entry says the
+                        // name is unprobed rather than reading as verified here.
+                        why: Some(format!(
+                            "UPSTREAM {name}'s: {} <exec_depend>{key}</exec_depend> at {}; \
+                             apt name {}",
+                            dep.from,
+                            src.version,
+                            crate::orchestration::rosdep_snapshot::RosdepSnapshot::PROVENANCE_NOTE
+                        )),
+                        check: None,
+                    },
+                ));
+            }
+        }
+        out
+    }
+
     /// Where a prereq's `path` probe resolves against, if its provider has a
     /// checkout at all.
     ///
@@ -2043,6 +2139,37 @@ impl SdkIndex {
                      a refusal beside a declaration says nothing true; keep one"
                 ),
                 _ => {}
+            }
+        }
+        // Issue 1483 — a source's python deps are upstream's edges, keyed by
+        // upstream's rosdep key. A key that is not a python key, a constraint
+        // with no reason, or a module also declared as one of OURS would each
+        // make the layer say two things about one import.
+        for (name, src) in &self.source {
+            for (key, dep) in &src.python {
+                if !key.starts_with("python3-") {
+                    bail!(
+                        "[source.{name}.python.{key}] is not a rosdep python key — the table \
+                         is keyed by the `<exec_depend>` upstream's `{}` declares",
+                        dep.from
+                    );
+                }
+                if dep.version.is_some() != dep.version_why.is_some() {
+                    bail!(
+                        "[source.{name}.python.{key}] needs `version` and `version_why` \
+                         together — the constraint is OURS, so it says why"
+                    );
+                }
+                let module = dep
+                    .module
+                    .clone()
+                    .unwrap_or_else(|| dep.pip.replace('-', "_"));
+                if let Some((alias, _)) = self.python.iter().find(|(_, p)| p.module() == module) {
+                    bail!(
+                        "[source.{name}.python.{key}] and [python.{alias}] both declare `import \
+                         {module}` — keep the one whose dependency it is"
+                    );
+                }
             }
         }
         // Phase 195.B — a `[source.*]` provisioning recipe must be coherent so
@@ -2602,6 +2729,61 @@ check = { cmd = "west" }
     /// which is the point of it being a struct: the derivation is a pure
     /// function of its inputs, so this test needs no `set_var` — a
     /// process-global that leaks between parallel tests (issue 1101).
+    /// Issue 1483 — a source's python dependency is upstream's: keyed by its
+    /// rosdep key, its apt name is the SNAPSHOT's answer, never authored.
+    #[test]
+    fn a_source_python_dep_takes_its_apt_name_from_the_snapshot() {
+        let idx = SdkIndex::parse(
+            "[source.rosidl]\nversion = \"v1\"\n\
+             [source.rosidl.python.python3-lark-parser]\n\
+             from = \"rosidl_parser/package.xml\"\npip = \"lark\"\n\
+             [source.rosidl.python.python3-unmapped]\n\
+             from = \"rosidl_parser/package.xml\"\npip = \"unmapped\"\n",
+        )
+        .unwrap();
+        idx.validate().unwrap();
+        let snap = crate::orchestration::rosdep_snapshot::RosdepSnapshot::parse(
+            "[key.python3-lark-parser]\napt = [\"python3-lark\"]\n",
+        )
+        .unwrap();
+        let layer = idx.python_layer(Some(&snap));
+        let lark = &layer.iter().find(|(a, _)| a == "lark").unwrap().1;
+        assert_eq!(
+            lark.apt_packages(Some("jammy")),
+            ["python3-lark".to_string()]
+        );
+        assert_eq!(lark.rosdep.as_deref(), Some("python3-lark-parser"));
+        assert!(lark.apt_refused.is_none());
+        let unmapped = &layer.iter().find(|(a, _)| a == "unmapped").unwrap().1;
+        assert!(
+            unmapped.apt.is_empty() && unmapped.apt_refused.is_some(),
+            "a key the snapshot does not map falls to pip, with the reason"
+        );
+    }
+
+    #[test]
+    fn a_source_python_dep_is_refused_when_it_says_two_things() {
+        let bad_key = "[source.s]\nversion = \"v\"\n[source.s.python.empy]\n\
+                       from = \"p.xml\"\npip = \"empy\"\n";
+        assert!(
+            SdkIndex::parse(bad_key).unwrap().validate().is_err(),
+            "a key that is not a rosdep python key"
+        );
+        let no_why = "[source.s]\nversion = \"v\"\n[source.s.python.python3-empy]\n\
+                      from = \"p.xml\"\npip = \"empy\"\nversion = \"3.3.4\"\n";
+        assert!(
+            SdkIndex::parse(no_why).unwrap().validate().is_err(),
+            "our constraint with no reason"
+        );
+        let twice = "[python.em]\npip = \"empy\"\nmodule = \"em\"\napt_refused = \"x\"\n\
+                     [source.s]\nversion = \"v\"\n[source.s.python.python3-empy]\n\
+                     from = \"p.xml\"\npip = \"empy\"\nmodule = \"em\"\n";
+        assert!(
+            SdkIndex::parse(twice).unwrap().validate().is_err(),
+            "one import declared as ours and as upstream's"
+        );
+    }
+
     #[test]
     fn a_ros_package_derives_its_os_name() {
         let dep = PrereqDep {

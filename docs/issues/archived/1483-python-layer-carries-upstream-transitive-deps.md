@@ -2,7 +2,7 @@
 id: 1483
 title: "`[python.*]` enumerates two of upstream rosidl's own dependencies — and
   the tree already holds the non-drifting answer it was written to replace"
-status: open
+status: resolved
 type: tech-debt
 area: [tooling, orchestration]
 severity: medium
@@ -10,7 +10,7 @@ found: 2026-09-24
 related: [1482, 1481, 1457, 0368, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## The governing rule
 
@@ -130,3 +130,48 @@ through the rosdep snapshot, `empy` and `lark` gone from `[python.*]`, the
 `empy` 3.3.4 constraint preserved, and a ROS-less host still able to run
 `msg_to_cyclone_idl.py` — demonstrated in a container with no ROS, which is the
 only host where any of this is load-bearing.
+
+## Resolution (2026-10-23)
+
+The maintainer chose the tracked-mirror shape over deriving at setup time.
+Setup-time derivation fails on one point: `package.xml` lives in the rosidl
+clone, and the runner-image generator and `nros setup --check` both run before
+any clone exists.
+
+- **`[python.empy]` and `[python.lark]` are gone.** They are now
+  `[source.rosidl.python.python3-empy]` and
+  `[source.rosidl.python.python3-lark-parser]`, each keyed by upstream's rosdep
+  key with a `from` naming the declaring `package.xml`. Neither entry authors
+  an apt name: `SdkIndex::python_layer` (Rust) and
+  `index_packages.python_layer` (Python) take it from
+  `nros-rosdep-snapshot.toml`. A key the snapshot does not map falls to pip,
+  and the remedy says why.
+- **The `empy` 3.3.4 pin stays, as ours.** It is `version` plus a required
+  `version_why`. `SdkIndex::validate` refuses either one without the other, a
+  key that is not `python3-*`, and one import declared both as ours and as a
+  source's.
+- **Consumers:** `nros setup --check` iterates the whole layer. So does
+  `scripts/sdk/python-packages.py`, which generates the runner image's python
+  layer: the image still derives the same five packages to the same apt names
+  (`catkin-pkg empy lark pyyaml tomli`), so the image does not change.
+- **`check-python-entry-provenance` now asks three things.**
+  1. Every `[python.*]` entry is ours: it has an importer here, or it is a
+     tool, and it carries no `rosdep` key.
+  2. Every source key is in the snapshot.
+  3. The mirror matches the clone's `package.xml` at the pinned ref in both
+     directions: each mirrored key is an `<exec_depend>` of its `from`, and
+     each `python3-*` `<exec_depend>` of those manifests is mirrored. With no
+     provisioned clone it reports NOT VERIFIED through the skip ledger.
+
+  The issue's text said rule 3 "needs the network". It does not: the clone
+  `nros setup --source rosidl` writes is already at the pinned ref.
+  Mutation-tested: pointing lark's `from` at `rosidl_adapter/package.xml`
+  fails with "declares no `<exec_depend>python3-lark-parser</exec_depend>`".
+
+**Demonstrated on a ROS-less host.** In a stock `ubuntu:22.04` container with
+no `/opt/ros`, the clone mounted read-only, and the layer resolved and
+installed by `python-packages.py --resolve`: all five resolved to apt, `catkin_pkg em lark yaml tomli` imported, and
+`msg_to_cyclone_idl.py` turned `std_msgs/msg/Header.msg` into `Header.idl`.
+`rosidl_cli`'s own keys (`python3-argcomplete`, `python3-importlib-metadata`)
+were not installed, and the IDL path did not need them. That is why the mirror
+reads only `rosidl_adapter` and `rosidl_parser`.

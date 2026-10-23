@@ -3273,6 +3273,7 @@ mod tests {
             build_stage: false,
             builds_in_place: false,
             check: None,
+            python: Default::default(),
         };
         assert_eq!(
             provision_source("lwip", &clone, &ws, false, None).unwrap(),
@@ -3407,6 +3408,7 @@ mod tests {
             build_stage: false,
             builds_in_place: false,
             check: None,
+            python: Default::default(),
         }
     }
 
