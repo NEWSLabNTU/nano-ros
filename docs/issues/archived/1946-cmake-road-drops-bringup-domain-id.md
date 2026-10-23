@@ -10,7 +10,7 @@ resolved: 2026-10-18
 related: [phase-441, 0794, 0161]
 ---
 
-**Home: [phase-441](../../roadmap/phase-441-rmw-on-target-verification.md)** — found building its W6 cell.
+**Home: [phase-441](../../roadmap/archived/phase-441-rmw-on-target-verification.md)** — found building its W6 cell.
 
 ## What happens
 

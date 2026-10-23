@@ -6,8 +6,10 @@ type: bug
 area: [ci, testing, build]
 severity: medium
 found: 2026-10-19
-related: [0997, 1758, 1656, 1961, phase-441]
+related: [0997, 1758, 1656, 1961, phase-441, phase-466]
 ---
+
+**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-23; it was filed under phase-441 W6, archived that day. It keeps the `live-peer` board lane from running the fragmented-sample cell.
 
 ## Measured
 

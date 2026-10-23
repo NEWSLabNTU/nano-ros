@@ -8,7 +8,7 @@ related: [0820, 0801, 1280, phase-445, phase-414, phase-441]
 resolved: 2026-10-18
 ---
 
-**Home: [phase-441](../../roadmap/phase-441-rmw-on-target-verification.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". It had no home after phase-414 was archived on 2026-10-12.
+**Home: [phase-441](../../roadmap/archived/phase-441-rmw-on-target-verification.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". It had no home after phase-414 was archived on 2026-10-12.
 
 ## Symptom (as reported, not yet reproduced by the filer)
 

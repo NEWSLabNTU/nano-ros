@@ -161,7 +161,7 @@ real-time budget most dislikes. The after figure is exactly 2.00 across 199
 messages.
 
 **Correcting this section as first written:** it said the
-[phase 394](../../roadmap/phase-394-memory-campaign-ledger.md) ledger could report
+[phase 394](../../roadmap/archived/phase-394-memory-campaign-ledger.md) ledger could report
 allocation count per take. It cannot — that instrument reads static RAM out of an
 ELF symbol table. Runtime allocation needed an instrument and did not have one.
 

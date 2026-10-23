@@ -9,7 +9,7 @@ found: 2026-10-12
 related: [phase-230, rfc-0034, 1525, phase-394]
 ---
 
-**Home: [phase-394](../roadmap/phase-394-memory-campaign-ledger.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: none — parked while ESP32 is dormant ([issue 1525](archived/1525-esp32-c-cpp-has-no-build-road.md)).** Re-homed 2026-10-23 from phase-394, archived that day. Do not work it until ESP32 is revived.
 
 ## What is left
 

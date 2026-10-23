@@ -12,7 +12,7 @@ listed three items as open, and none of them is:
   records a pass for both Cyclone action cells (2026-09-07) and for the
   zenoh `n2r` cell (2026-10-06).
 - **W7 became its own phase.** The on-target cell that is not QoS is
-  [phase-441](../phase-441-rmw-on-target-verification.md), which opens by
+  [phase-441](phase-441-rmw-on-target-verification.md), which opens by
   quoting W7 and calling itself "that phase".
 
 **Status (2026-10-12). W0, W1, W3, W5.a and W5 LANDED.** W5 is the scheduled

@@ -6,10 +6,10 @@ type: limitation
 area: [sizing, zephyr, memory]
 severity: low
 found: 2026-10-11
-related: [1036, 1120, 1140, 1010, 1702, 1728, phase-394]
+related: [1036, 1120, 1140, 1010, 1702, 1728, phase-394, phase-400]
 ---
 
-**Home: [phase-394](../roadmap/phase-394-memory-campaign-ledger.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-400](../roadmap/phase-400-unified-configuration.md)** — re-homed 2026-10-23 from phase-394, archived that day. W6 there carries the sizing knobs still off the ladder, and this issue is the derivation those knobs are waiting on.
 
 ## Measured
 

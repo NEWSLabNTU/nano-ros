@@ -5,10 +5,10 @@ title: "The emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst,
 status: open
 type: bug
 area: rmw, platform
-related: [issue-0836, issue-0889, issue-0749, phase-441]
+related: [issue-0836, issue-0889, issue-0749, phase-441, phase-512]
 ---
 
-**Home: [phase-441](../roadmap/phase-441-rmw-on-target-verification.md)** — re-homed 2026-10-12 from phase-358, which is archived.
+**Home: [phase-512](../roadmap/phase-512-on-hardware-measurements.md)** (H3) — re-homed 2026-10-23 from phase-441, archived that day. Its in-tree witness passed over slirp under `-icount` (phase-441 W6, 2026-10-20), so what is left is the tap-fed, free-running path.
 
 ## Symptom
 

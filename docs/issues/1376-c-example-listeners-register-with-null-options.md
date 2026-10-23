@@ -6,10 +6,10 @@ title: "Seven C example listeners register with `options = NULL`, so they take
 status: open
 type: bug
 area: [api, examples, sizing]
-related: [1319, 0896, 0964, phase-456, phase-454, phase-394]
+related: [1319, 0896, 0964, phase-456, phase-454, phase-394, phase-460]
 ---
 
-**Home: [phase-394](../roadmap/phase-394-memory-campaign-ledger.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-460](../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — re-homed 2026-10-23 from phase-394, archived that day. The descriptor credits a hint the image does not supply, which is a trusted fact nobody checks: that phase's class.
 
 ## Symptom
 

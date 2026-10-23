@@ -1,6 +1,22 @@
 # phase-460 - every consumer of the contract chain verifies what it consumes
 
-**Status (2026-09-21). PROPOSED; nothing landed.** Numbered 460 because
+**Status (2026-10-23). Six of seven waves LANDED; one item open.** W1 (PR
+#1165), W2 and W4 (PR #1166), W5 (PR #1229), W6 (PR #1228), W7 (the heap
+exhaustion is fatal under `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL`, and
+`samples_dropped_too_small` is in the boot report; issue 1425 archived) and
+W3's second half (issue 1422) are on `main`. What remains is **W3's first half,
+[issue 1368](../issues/1368-frag-max-size-not-checked-against-derived-bound.md)**:
+`NROS_FRAG_MAX_SIZE` is still a flat `default 2048`, with no derive sentinel and
+no comparison against the derived receive bound. One note for whoever takes it:
+the Kconfig entry is now GENERATED from
+`packages/tooling/nros-zephyr-build/knobs.toml` (row `ZENOH_FRAG_MAX_SIZE`,
+RFC-0103 D2b), so the sentinel goes there plus `scripts/gen-knob-registry.py`,
+not into `zephyr/Kconfig` as the W3 row below says. The W1 and W2 follow-ups
+recorded in those waves are unverified since they were written. Issues 0259,
+1140 and 1376 are homed here (table at the end). The "starts now?" column in
+the plan below is as of 2026-09-21.
+
+The phase was opened 2026-09-21 as PROPOSED. It was numbered 460 because
 phases 456-458 were being opened concurrently by other sessions; this is
 highest-existing (455) + 5. Sibling of phase-459 (the tier derivation a C++
 image cannot reach); the two came out of one investigation of the Autoware
@@ -369,3 +385,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | --- | --- |
 | [#0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md) | WCET, blocking and feasibility as declared data is phase-357 W2's remainder. It is a check over the contract chain. |
 | [#1140](../issues/1140-describes-wiring-misses-timer-only-contract.md) | Two predicates ask whether a contract was authored, and they disagree on a timer-only contract. Their agreement is a contract-chain check. |
+| [#1376](../issues/1376-c-example-listeners-register-with-null-options.md) | Homed 2026-10-23 from phase-394, which was archived that day. Seven C listeners pass `options = NULL`, yet the sizing descriptor credits their image with a supplied hint. A consumer trusts a fact nothing checks, which is this phase's class. |

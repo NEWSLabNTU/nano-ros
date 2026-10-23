@@ -8,7 +8,7 @@ related: [0917, 0888, 1000, phase-177, phase-441]
 resolved: 2026-10-18
 ---
 
-**Home: [phase-441](../../roadmap/phase-441-rmw-on-target-verification.md)** — re-homed 2026-10-12 from phase-414, which is archived.
+**Home: [phase-441](../../roadmap/archived/phase-441-rmw-on-target-verification.md)** — re-homed 2026-10-12 from phase-414, which is archived.
 
 # The announcements are correct, on schedule, and then they stop
 
