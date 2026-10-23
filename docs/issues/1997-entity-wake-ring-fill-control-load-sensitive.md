@@ -50,3 +50,25 @@ Make the burst fill the ring by construction rather than by speed: hold the
 subscription's dispatch (a gate the callback waits on) until the publisher has
 sent `ring depth + N` samples, then release it. The control then measures the
 eviction path every time, on any load.
+
+## Re-measured 2026-10-23: it fails ALONE too
+
+The title's "passes alone" no longer holds on main. Run solo, with the lane's
+own features (`--features trigger-test,component-runtime-test,phase216-substrate,signal-fd-wake-test`),
+`-E 'test(a_burst_into_a_slow_subscription_ends_on_its_newest_sample)'`, 10
+runs each, nothing else building:
+
+| tree | failed runs |
+| --- | --- |
+| main at 686a23ddc6, plus PR #2536 (guard + Zephyr-setup fixes, no runtime change) | 4 / 10 |
+| the same, plus the issue-1825 CLI change (rosidl-codegen only) | 5 / 10 |
+
+Both cases fail, not only `case_2`:
+`case_1_drains_to_empty` panicked at `entity_wake.rs:667` with "DrainsToEmpty:
+the ring never filled, so the burst did not test eviction". In `just ci gate`
+it stops `check::build` (feature lane `nros-tests … --test entity_wake`) on
+roughly every other run, so it is no longer a load-only flake. Main gained
+`40c179f39f` (issue 2001: a RELIABLE zenoh-pico publisher waits for the TX
+mutex) the same day, which slows exactly the publisher this control depends
+on outrunning the subscriber. That is a candidate, not a finding: the
+fix direction above (fill the ring by construction) is unaffected either way.
