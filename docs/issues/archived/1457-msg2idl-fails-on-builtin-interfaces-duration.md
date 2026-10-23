@@ -3,7 +3,7 @@ id: 1457
 title: "tier-2 nightly's zephyr module dies on `msg2idl.py failed on
   builtin_interfaces/msg/Duration.msg (exit 1)`, and the lane prints the exit code
   without the reason — a different stop from the four that preceded it"
-status: open
+status: resolved
 type: bug
 area: [ci, tooling, zephyr]
 severity: high
@@ -11,7 +11,7 @@ found: 2026-09-22
 related: [1389, 1360, 1158, 1387, 1482, 1481, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## What happens
 
@@ -330,3 +330,33 @@ failure, not only the error. The zephyr module's own log is already uploaded
 as an artifact (1158 item 3's fix); what neither log answers is whether ROS was
 sourced for that step. Until it does, a rerun of this lane can "fix" or
 "break" the issue without any code moving.
+
+## Resolution (2026-10-23) — no recurrence in seven nightlies
+
+The issue's close condition is a tier-2 nightly getting past
+`msg_to_cyclone_idl` on the self-hosted runner. The last seven scheduled
+nightlies' `tier 2 nightly (pairwise cover)` job, step `just build
+tier2-nightly`:
+
+| run | date | build step | `not importable` / `msg2idl` lines |
+| --- | --- | --- | --- |
+| 38865877123 | 10-16 | success | not checked |
+| 39012587878 | 10-17 | success | not checked |
+| 39106651485 | 10-18 | failure: `check fast` `submodule-pins` | 0 / 0 |
+| 39216095521 | 10-19 | failure: `threadx_linux` C++ `_cargo-build_nros_cpp` | 0 / 0 |
+| 39385346818 | 10-20 | failure: `linux` C++ xrce `_cargo-build_nros_c` | 0 / 0 |
+| 39560904828 | 10-21 | success | not checked |
+| 39739466151 | 10-22 | success, `== zephyr == OK` | 0 / 0 |
+
+The three reds are other defects and none of them is this message. In
+39739466151 the C and C++ Cyclone images, which reach
+`msg_to_cyclone_idl` through `NrosRmwCycloneddsTypeSupport`, built and
+passed (`test_threadx_linux_c_image_ends_on_one_sigterm::case_1_cyclonedds`,
+`an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`).
+
+**Not verified:** that a Zephyr C++ Cyclone leaf was rebuilt in that run.
+Those cells were out of lane, so the zephyr module may have passed over a
+cached artifact in the persistent fixture tree. The section above records
+that this message came and went on one sha; if it returns, re-open this
+issue with the step's environment captured, which is what that section asked
+for.

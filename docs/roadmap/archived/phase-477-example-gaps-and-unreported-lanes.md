@@ -152,7 +152,7 @@ roots the census found, and `just check example-build-coverage` (188/194 built,
 
 ### W3 — lanes that do not report
 
-- Issue [1651](../../issues/1651-host-tests-red-or-cancelled-on-most-pushes.md) —
+- Issue [1651](../../issues/archived/1651-host-tests-red-or-cancelled-on-most-pushes.md) —
   `host-tests.yml` has not gone green since 2026-06-17: 24 of its last 30 runs
   cancelled by the next merge, the rest failing at `just ci tier1`. The highest-
   severity item in this phase: it is the only lane running the fixture-backed

@@ -3,7 +3,7 @@ id: 1459
 title: "`threadx_linux`'s C fixtures fail to link on `undefined reference to
   nros_board_network_wait` — the weak definition is header-emitted, and the image
   that calls it has no TU that includes the header"
-status: open
+status: resolved
 type: bug
 area: [boards, threadx, testing]
 severity: high
@@ -11,7 +11,7 @@ found: 2026-09-22
 related: [1355, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -153,3 +153,20 @@ is no C-only fixture in a lane that would catch a recurrence, so a future
 regression of this symbol would be caught by the nightly or by nothing. Until
 that exists, these two greens are evidence the fix works, not a guard that it
 keeps working.
+
+## Resolution (2026-10-23) — closed on the nightly; no C-only image in a merge-gating lane, by decision
+
+The fix holds. Nightly `threadx_linux` was green on 10-17, 10-20, 10-21 and
+10-22. In 39739466151 (2026-10-22) the job built
+`examples/threadx-linux/c/{talker,listener,service-server,service-client}`
+and ran `test_rtos_{service,action,pubsub}_e2e::platform_3_Platform__ThreadxLinux::lang_2_Lang__C`,
+all PASS. Its 10-18 and 10-19 reds (39106651485, 39216095521) are a
+different defect: `unwinding panics are not supported without std`, with no
+`nros_board_network_wait` in either log.
+
+The second half of the acceptance, a C-only image in a merge-gating lane, is
+declined. The maintainer chose (2026-10-23) to accept the nightly
+`threadx_linux` job as the lane that catches a recurrence, rather than add
+`examples/threadx-linux/c/talker` to L3's link check. L3's
+`rust-rtos-link-check` still builds only the Rust talker, so a recurrence
+would be found by the nightly, a day late, and by nothing earlier.

@@ -3,7 +3,7 @@ id: 1375
 title: "The native_sim runner link cannot see the zpico reply-slot symbols the
   Rust side calls — every Zephyr fixture fails to link, and tier 2 is the only
   lane that would have said so"
-status: open
+status: resolved
 type: bug
 area: [zephyr, rmw-zenoh, build]
 severity: high
@@ -11,7 +11,7 @@ found: 2026-09-17
 related: [issue-0902, issue-1332, issue-1365, issue-0056, issue-0475, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 
@@ -102,3 +102,25 @@ nothing ran.
    five-day outage of that machine is also a five-day outage of every Zephyr
    link check. That is the same argument [[issue-1040]] makes for a gate that
    runs nowhere.
+
+## Resolution (2026-10-23) — closed on the nightly; no merge-gating Zephyr link, by decision
+
+**Item 1, the link, is fixed in practice.** The callers are still there
+(`zpico.rs` calls `zpico_reply_slot_stats` and
+`zpico_reply_slot_take_announcement`), and Zephyr Rust zenoh images now link,
+boot and pass. Nightly 39739466151 (2026-10-22), job `tier 2 nightly
+(pairwise cover)` on `nano-ros-runner-newslab-118-server`: `just build
+tier2-nightly` succeeded with `== zephyr == OK`, then
+`zephyr boot_smoke::case_01..06_zenoh_rust_*_boots` all PASS and
+`example_e2e::case_03_zenoh_cpp_pubsub_e2e` PASS. A STALE fixture fails its
+cell rather than passing it, so those passes are images built from that
+tree. No commit on main names this issue as its fix, so WHICH change
+repaired the runner link is not established.
+
+**Item 2, a merge-gating reason to notice, is declined.** Linking a Zephyr
+image in the merge queue's L3 job needs the Zephyr SDK and a west workspace
+on the queue runner, a large cost on every batch. The maintainer chose
+(2026-10-23) to accept the tier-2 nightly as the lane that links Zephyr
+images. The cost of that choice is the one this issue measured: a nightly
+outage is also an outage of every Zephyr link check, so a recurrence is
+found a day or more late.
