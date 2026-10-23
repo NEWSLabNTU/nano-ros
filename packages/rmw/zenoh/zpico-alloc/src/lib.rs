@@ -47,9 +47,17 @@
 //! directly (the `z_malloc` shim above); the Rust side arrives via
 //! `PlatformAlloc for <YourPlatform>`, which reaches the same static.
 //!
-//! All allocations are 8-byte aligned. Requested alignments greater than 8 are
-//! not supported and yield a null pointer (the caller's `handle_alloc_error`
-//! fires) — no nros runtime type needs more than 8-byte alignment.
+//! Every allocation is aligned to [`ALIGN`] = `2 * size_of::<usize>()`: 8 on a
+//! 32-bit target, 16 on a 64-bit one. That is what a C `malloc` owes on the
+//! 64-bit targets the arena serves (`alignof(max_align_t)` is 16 on AArch64
+//! and x86_64), and issue 2003 is what happened when it was a flat 8: Cyclone's
+//! lock-free LIFO, a `{pointer, aba}` pair updated by a 128-bit CAS, landed in
+//! an 8-aligned slab slot on the FVP image and AArch64 `caspal` faulted. It is
+//! also rlsf's own payload alignment (`GRANULARITY / 2`), so the TLSF path pays
+//! no padding for it on either width; only the storage alignment changed.
+//! On a 32-bit target 8 matches ARM's `max_align_t`; riscv32's is 16, and no
+//! type the arena serves there needs more than 8. The Rust side gets larger
+//! alignments from `nros-platform`'s over-align path.
 
 #![no_std]
 
@@ -74,7 +82,15 @@ const GRANULARITY_LOG2: u32 = (core::mem::size_of::<usize>() * 4).trailing_zeros
 /// costs 2 bytes to remove. `u32` covers every `FLLEN` up to 32.
 type FlBitmap = u32;
 
-const ALIGN: usize = 8;
+/// The alignment of every block this heap returns — see the crate doc and
+/// issue 2003. Equal to rlsf's payload alignment (`GRANULARITY / 2`), so asking
+/// rlsf for it never adds padding.
+pub const ALIGN: usize = rlsf::GRANULARITY / 2;
+const _: () = assert!(ALIGN == 2 * core::mem::size_of::<usize>());
+// The storage must be at least as aligned as the blocks carved from it: the
+// slab hands out `base + k * SLAB_SLOT_SIZE` with no rounding at all.
+const _: () = assert!(core::mem::align_of::<Aligned<1>>() >= ALIGN);
+const _: () = assert!(SLAB_SLOT_SIZE.is_multiple_of(ALIGN));
 const HEADER_SIZE: usize = core::mem::size_of::<BlockHeader>();
 
 /// Slab slot size in bytes. Allocations ≤ this size use the O(1) slab cache.
@@ -92,14 +108,15 @@ const SLAB_SLOT_COUNT: usize = 8;
 /// Total slab region size in bytes.
 const SLAB_REGION_SIZE: usize = SLAB_SLOT_SIZE * SLAB_SLOT_COUNT;
 
-/// 8-byte-aligned byte-array wrapper for the heap / slab backing storage.
+/// 16-byte-aligned byte-array wrapper for the heap / slab backing storage.
 ///
 /// A bare `[u8; N]` has alignment 1, so the free-list base could land on an
-/// odd address. Forcing the storage to 8-byte alignment makes every returned
-/// pointer 8-aligned (headers and aligned sizes are 8-byte multiples), which
-/// is what lets the platform's `#[global_allocator]` hand this memory to Rust
-/// on strict-alignment targets. Strictly stronger than a bare `[u8; N]`.
-#[repr(C, align(8))]
+/// odd address. The slab carves its slots straight off this base, so its
+/// alignment IS the slab's alignment guarantee: at `align(8)` a 64-bit image
+/// got slots at 8 mod 16 whenever the linker placed the static there (issue
+/// 2003). 16 covers [`ALIGN`] on every width; on a 32-bit target it costs at
+/// most 8 bytes of padding in the static, once.
+#[repr(C, align(16))]
 struct Aligned<const M: usize>([u8; M]);
 
 /// Block header stored immediately before each allocation.
@@ -305,7 +322,7 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
 
     // ── Public API ─────────────────────────────────────────────────────
 
-    /// Allocate `size` bytes (8-byte aligned). Returns null on failure.
+    /// Allocate `size` bytes ([`ALIGN`]-aligned). Returns null on failure.
     ///
     /// Allocations ≤ 64 bytes try the slab cache first (O(1)). Larger
     /// allocations use first-fit free-list search. Splits blocks when the
@@ -660,8 +677,8 @@ impl Exhaustion {
     /// a `size`-byte request at this crate's alignment and `SLLEN`.
     ///
     /// rlsf 0.2.3's `allocate`: the search size is `size` plus the used-block
-    /// header (`GRANULARITY / 2`; the 8-byte alignment adds no padding because
-    /// `GRANULARITY / 2 >= 8`), rounded up to `GRANULARITY`; `map_ceil` then
+    /// header (`GRANULARITY / 2`; [`ALIGN`] adds no padding because it IS
+    /// `GRANULARITY / 2`), rounded up to `GRANULARITY`; `map_ceil` then
     /// rounds that up to the floor of the first second-level list above it,
     /// i.e. to a multiple of `2^(floor(log2(search)) - log2(SLLEN))`. A free
     /// block is at least that large exactly when its payload
@@ -710,9 +727,9 @@ impl Exhaustion {
 // The heap is still the board's ARENA. The Rust side reaches it through the
 // platform's `PlatformAlloc` impl, and `nros-platform` owns the single
 // `#[global_allocator]` in the tree. The alignment contract that lived on the
-// deleted impl now lives there: allocations are 8-byte aligned, and a request
-// for more is answered with null so the caller's `handle_alloc_error` fires
-// rather than receiving misaligned memory.
+// deleted impl now lives there: this arena's blocks are [`ALIGN`]-aligned, and
+// a larger request is served by its over-align path rather than handed
+// misaligned memory.
 
 // ============================================================================
 // Reusable heap-usage counter (stats feature)
@@ -1076,17 +1093,48 @@ mod tests {
         assert_eq!(heap.request_spread(), (100, 1500), "sticky across frees");
     }
 
+    /// Issue 2003 — every block, from BOTH paths, is `ALIGN`-aligned (16 on a
+    /// 64-bit host) wherever the heap itself is placed. The heap is put behind
+    /// a `u64` and not, so one of the two placements starts 8 mod 16 if the
+    /// heap's own alignment is only 8: that is the linker placement that made
+    /// the FVP image's slab hand Cyclone an 8-aligned LIFO. Checking a single
+    /// placement passed by luck before the fix.
     #[test]
-    fn allocations_are_8_byte_aligned() {
-        let heap: FreeListHeap<4096> = FreeListHeap::new();
-        // Slab path
-        let p1 = heap.alloc(16);
-        assert_eq!(p1 as usize % ALIGN, 0);
-        // Free-list path
-        let p2 = heap.alloc(200);
-        assert_eq!(p2 as usize % ALIGN, 0);
-        heap.free(p1);
-        heap.free(p2);
+    fn every_block_is_align_aligned_wherever_the_heap_sits() {
+        extern crate std;
+        use std::boxed::Box;
+
+        #[repr(C)]
+        struct Behind {
+            _pad: u64,
+            heap: FreeListHeap<4096>,
+        }
+        let behind = Box::new(Behind {
+            _pad: 0,
+            heap: FreeListHeap::new(),
+        });
+        let bare: Box<FreeListHeap<4096>> = Box::default();
+
+        for heap in [&behind.heap, &*bare] {
+            // All eight slab slots, then the TLSF path at a few sizes.
+            let mut ptrs = std::vec::Vec::new();
+            for _ in 0..SLAB_SLOT_COUNT {
+                let p = heap.alloc(16);
+                assert!(heap.is_in_slab(p as *mut u8));
+                ptrs.push(p);
+            }
+            for size in [8usize, 65, 200, 1000] {
+                ptrs.push(heap.alloc(size));
+            }
+            for &p in &ptrs {
+                assert!(!p.is_null());
+                assert_eq!(p as usize % ALIGN, 0, "block {p:p} is not {ALIGN}-aligned");
+            }
+            for p in ptrs {
+                heap.free(p);
+            }
+        }
+        assert_eq!(ALIGN, 2 * core::mem::size_of::<usize>());
     }
 
     #[cfg(feature = "stats")]

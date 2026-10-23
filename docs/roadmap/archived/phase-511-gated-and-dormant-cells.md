@@ -1,12 +1,11 @@
 # Phase 511 (B/C) — cells for the six tests with blockers: a Gated tier, a Dormant row, and one interop row
 
-**Status (2026-10-23). IN PROGRESS — modelling done; one runtime verdict open.**
-B1, B3, B4, C landed and B2 is modelled. C's live verdict is recorded (pass). Open:
-
-- B2's test fails in its own lane, a real defect found by running it (issue 2003).
+**Status (2026-10-23). DONE.** B1–B4 and C landed, and every test this phase
+modelled has passed in its own lane. B2's test first failed there on a real
+defect (issue 2003), fixed in this phase. C's live verdict is recorded (pass).
 
 Implements RFC-0051 §7c (amendment 2026-10-23, B/C). It follows
-[phase-511 A/D](archived/phase-511-unmodeled-tests-to-cells.md), which left six
+[phase-511 A/D](phase-511-unmodeled-tests-to-cells.md), which left six
 binaries `NonCell::Unmodeled`, each with a stated blocker.
 
 ## What each needed
@@ -50,7 +49,7 @@ binaries `NonCell::Unmodeled`, each with a stated blocker.
 Modelling put four tests in lanes for the first time, and three of those lanes
 were broken in ways nothing had reported.
 
-1. **`px4_xrce`: [issue 2002](../issues/archived/2002-px4-qos-profile-refused-by-xrce.md), fixed here.** Since issue 1329 (2026-09-11) the
+1. **`px4_xrce`: [issue 2002](../../issues/archived/2002-px4-qos-profile-refused-by-xrce.md), fixed here.** Since issue 1329 (2026-09-11) the
    XRCE backend refuses liveliness, which it cannot honour. `QOS_PROFILE_PX4`,
    the profile written for that backend, still demanded `Automatic`, so every
    companion failed to advertise its first topic
@@ -71,11 +70,13 @@ were broken in ways nothing had reported.
    `nros sdk-path`, which finds the SDK index from the cwd, and a cargo test runs
    in its crate dir. Both FVP tests reported "not resolvable" over an installed
    model. The resolver now asks from the checkout root.
-4. **`fvp_runtime_ws`: [issue 2003](../issues/2003-fvp-cyclone-lifo-misaligned-by-8-byte-heap.md), open.** Once it could run, the image
-   data-aborts on both tier CPUs right after `dds_create_participant`: Cyclone's
-   16-byte lock-free LIFO lands on an 8-aligned block from the Zephyr heap, and
-   AArch64 `caspal` faults. The fix is in `zpico-alloc`'s alignment contract, so
-   it is filed rather than slipped in here.
+4. **`fvp_runtime_ws`: [issue 2003](../../issues/archived/2003-fvp-cyclone-lifo-misaligned-by-8-byte-heap.md), fixed.** Once it could run, the image
+   data-aborted on both tier CPUs right after `dds_create_participant`: Cyclone's
+   16-byte lock-free LIFO landed in an 8-aligned slot of `zpico-alloc`'s slab,
+   and AArch64 `caspal` faulted. The arena now guarantees
+   `2 * size_of::<usize>()` (16 on 64-bit), which costs no padding: it is
+   rlsf's own payload alignment, and only the storage's `align(8)` had broken
+   it.
 
 Also corrected, because it was the premise of B2's tier question: the matrix's
 FVP comments and BuildOnly reasons called the model "license-walled
@@ -94,14 +95,19 @@ a public download, x86_64 only.
   - `freertos_qemu`: pass, in 103 s.
   - `px4_xrce`: 3/3 pass after the issue 2002 fix.
   - `fvp_smoke`: pass.
-  - `fvp_runtime_ws`: fails (issue 2003).
+  - `fvp_runtime_ws`: failed (issue 2003); after the fix, 2/2 pass on a
+    rebuilt image, both tiers publishing.
   - `cyclone_slirp_pair`: 2/2 pass in 37 s (`just linux test-ros2-cyclone-slirp-pair`,
     Humble, once `slirp4netns` was installed); verdict recorded in
     `.config/interop-verdicts.toml`.
 
 ## Remaining
 
-- Issue 2003, then `just zephyr verify-fvp-runtime` green.
+None. The FVP cell stays `Gated` (maintainer ruling 2026-10-23): it gets
+no CI runner and no scheduled lane. It runs when someone types
+`just zephyr verify-fvp-runtime`. The rejected options were adding the
+model (a public x86_64 download, `nros setup --tool arm-fvp`) to the tier-2
+image as a Runtime cell, and a scheduled lane that runs only that recipe.
 
 ## Related
 

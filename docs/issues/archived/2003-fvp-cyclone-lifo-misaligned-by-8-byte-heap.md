@@ -1,11 +1,12 @@
 ---
 id: 2003
 title: "The FVP workspace entry dies at boot: Cyclone's 16-byte lock-free LIFO gets an 8-aligned block from the Zephyr heap, and AArch64 `caspal` faults"
-status: open
+status: resolved
 type: bug
 area: [platform, rmw, zephyr, cyclonedds]
 severity: high
 found: 2026-10-23
+resolved: 2026-10-23
 related: [0232, 1324, phase-511]
 ---
 
@@ -77,17 +78,43 @@ also unrunnable on a CMake-4 host until this session fixed its toolchain
 variant. Phase-511 B2 gave the test a `Tier::Gated` cell, and running that gated
 lane found this.
 
-## Fix direction (not applied)
+## Which allocation it was
 
-Make the arena honour the target's `max_align_t` for the C funnel: 16 on 64-bit
-targets, 8 on 32-bit. Either raise `ALIGN` per target, or take an alignment on
-the C entry points and allocate at `max(8, align_of max_align_t)`.
+Not the TLSF path. rlsf rounds its pool start up to `GRANULARITY` (32 on
+64-bit) and places each payload `GRANULARITY / 2` past a block start, so its
+blocks were already 16-aligned on 64-bit. Both fault addresses lie in the
+512-byte SLAB, which follows the main arena inside the `HEAP` static
+(`0x272ae8 - 0x172a28 = 0x1000c0`, just past a 1 MiB arena) and are 0x100
+apart, i.e. four 64-byte slots. The slab hands out `base + k * 64` with no
+rounding, and its storage was `#[repr(C, align(8))]`, so its alignment was
+whatever the linker gave the static: here 8 mod 16. The LIFO's owner is a
+Cyclone allocation of 64 bytes or less.
 
-The cost is padding on 64-bit images, which moves the heap sizing figures
-issue 1324's work measured. Re-measure them on fixtures rebuilt after the
-change. `allocations_are_8_byte_aligned` and the `GRANULARITY` arithmetic in
-`zpico-alloc` change with it.
+## Fix (2026-10-23)
 
-Acceptance: `just zephyr verify-fvp-runtime` prints `[telem] tick=` and
-`[ctrl] tick=`. Add a host unit test in `zpico-alloc`: on a 64-bit target, every
-C-funnel allocation is 16-aligned.
+`zpico-alloc`:
+
+- `ALIGN` is `rlsf::GRANULARITY / 2`, i.e. `2 * size_of::<usize>()`: 16 on
+  64-bit, 8 on 32-bit. It is now public and asserted at compile time.
+- The backing storage is `align(16)`, with a compile-time assert that it is at
+  least `ALIGN` and that the slab slot size is a multiple of it.
+
+No sizing figure moves. `ALIGN` equals rlsf's payload alignment, so
+`max_overhead` (`align - GRANULARITY / 2 + header`) is unchanged and no request
+pays padding. The slab's slot size was already a multiple of 16. The only cost
+is up to 8 bytes of padding in each `HEAP` static, once. `tests/heap_replay.rs`,
+which replays a recorded Zephyr allocation trace, is unchanged and passes.
+
+On a 32-bit target the guarantee stays 8. That is ARM's `max_align_t`.
+riscv32's is 16, but nothing the arena serves there needs more than 8.
+
+Test: `every_block_is_align_aligned_wherever_the_heap_sits` allocates every
+slab slot and four TLSF sizes from a heap at two placements, 8 bytes apart, so
+one of them starts 8 mod 16 if the storage is only 8-aligned. With the storage
+reverted to `align(8)` it fails (`block 0x…1d68 is not 16-aligned`). The test
+it replaced checked one placement, and passed by luck.
+
+Acceptance: `just zephyr verify-fvp-runtime` on a rebuilt image:
+- `fvp_runtime_ws`: 2/2 pass, including `fvp_ws_entry_two_tier_publishes`.
+- `fvp_smoke`: pass.
+- The rebuilt image places `HEAP` at `0x144150`.
