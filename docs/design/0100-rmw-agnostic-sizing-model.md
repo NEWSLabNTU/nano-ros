@@ -1095,7 +1095,7 @@ inputs change, and the runtime rebuilds. That is
 [issue 1647](../issues/archived/1647-cmake-first-build-compiles-placeholder-message-bounds.md)'s
 two-build fixed point seen from the descriptor, and its fix — a pre-configure
 producer of the bound tables,
-[issue 1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)'s
+[issue 1252](../issues/archived/1252-message-bound-knobs-have-no-pre-configure-twin.md)'s
 direction — closes both at once. Acceptance for either includes the
 descriptor's bytes, not only the binary's.
 *(Issue 1647 resolved the same day: the generator runs codegen at CONFIGURE

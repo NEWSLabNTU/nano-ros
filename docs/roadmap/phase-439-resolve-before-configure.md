@@ -1,6 +1,17 @@
 # Phase 439 — Resolve before configure
 
-**Status (2026-10-22). Re-assessed against `origin/main` (`4b4f372522`): the
+**Status (2026-10-23): W5–W10 done; RFC-0094 is Stable with A3 amended and met
+as amended.** A configure `nros build` started takes one pass by construction,
+and the fixed point stays as the convergence for configures it did not start
+(W8). #1228, #1252 and #1121 are resolved. The one item still homed here is
+[#1413](../issues/1413-play-launch-parser-ref-lags-submodule-pin.md), which is
+upstream work in `NEWSLabNTU/play_launch` and is held by its gate. The phase
+stays open for it and archives when it closes. Optional follow-on, not a work
+item: seeding the configures that still converge (the Rust west entry, the
+multi-entry cmake road, a bare `west build` of a leaf) would restore A3's
+original text. RFC-0094's A3 amendment says what that would take.
+
+**Status (2026-10-22), superseded above. Re-assessed against `origin/main` (`4b4f372522`): the
 design still holds, and the remaining work is RFC-0094 A3.** D1, D2, D3, D5 and
 D6 are in the code, and D4 landed as knob VALUES in the cargo-directory key, not
 the digest (three sources since issue 1712). RFC-0103 builds on `resolved.toml`
@@ -56,7 +67,7 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       `check-knob-delivery <build-dir>` is green. **A third arm exists**: the
       sizing descriptor (`cmake/NanoRosSizingDescriptor.cmake`) also re-hashes
       after its readers ran, so W6 must take it as well as the bound fragment.
-- [x] **W6 — the bound producer before configure ([#1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)).**
+- [x] **W6 — the bound producer before configure ([#1252](../issues/archived/1252-message-bound-knobs-have-no-pre-configure-twin.md)).**
       **Descriptor arm: done (2026-10-23).** It did NOT move with the bound
       tables. The arm hashed `nros/sizing/west-cargo-descriptor.cmake`, which
       held only a PATH. The module's resolver could not know the entry's name,
@@ -110,7 +121,7 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       cannot delete the fixed point: a bare `west build`, a stale probe, or a
       workspace whose interface search path the CLI does not see gets no seed
       and still converges through the arm.
-- [x] **W7 — one entity composer ([#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md)).**
+- [x] **W7 — one entity composer ([#1228](../issues/archived/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md)).**
       The mid-configure producer reads the resolve instead of recomposing, with
       the refusal guard its `nros-metadata.json` component set gives it today
       (`tests/cmake-resolved-seed-tests.sh` case C stays green).
@@ -146,12 +157,40 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       seed is its only producer, issue 1729), the cmake road (one configure
       for several entries, i.e. a shared runtime, which the resolve does not
       compose), and every configure `nros build` did not start.
-- [ ] **W8 — delete the fixed point.** Only after W6 and W7 measure 0
+- [x] **W8 — delete the fixed point.** Only after W6 and W7 measure 0
       re-configures: remove `nros_reconfigure_settle` and the future-mtime arm
       in `cmake/NanoRosReconfigure.cmake`, with their tests. Control:
       `check-knob-delivery` green before and after, delivered knobs and
       `zephyr/.config` byte-identical. This meets A3.
-- [ ] **W9 — the smaller issues.**
+      **Re-scoped 2026-10-23 (user ruling), done, and A3 amended in RFC-0094.**
+      The deletion as written would have broken every configure `nros build`
+      did not start. A bare `west build` of `examples/zephyr/cpp/talker`
+      measured 1 re-configure with the bound and entity arms firing, and the
+      fixed point is what delivers that image's derived numbers. So the rule
+      became: a configure `nros build` started is STRICT. Its message-bound
+      sizes are held to the seed at the end of the top-level configure
+      (`_nros_resolved_bounds_promise_check`, after the last of the
+      once-per-package producer calls). A difference over the SAME inputs
+      (`resolved-message-bounds-inputs.cmake`: table digests, entity digest,
+      ceiling) stops the configure, naming both files. A difference over moved
+      inputs is a resolve older than the tree; it converges by the fixed point
+      and says to re-run `nros build`. The entity inventory needs no check: W7's
+      take copies the answer, so it cannot differ, and W8 closed W7's one hole,
+      a take keyed on the model's PATH. An edited contract re-resolves the model
+      in place in a configure `nros build` did not start, so the record now
+      carries the model's content digest. The sizing descriptor's named/none is
+      a configure-time default, not a resolved fact, so its arm stays.
+      Measured on `demo_bringup:zephyr`, clean dir: 0 re-configures, delivered
+      knobs identical, `check-knob-delivery` green. Appending a comment to the
+      seed and re-configuring stops the configure with both paths named;
+      restoring it configures cleanly. The bare-west talker is unchanged: 1
+      re-configure, no promise. `tests/cmake-resolved-seed-tests.sh` case U
+      covers agree / same-inputs-differ / stale table / stale ceiling / no
+      record. It is mutation-tested: disabling the check reds 3, ignoring the
+      tables reds 1. `zephyr/.config` was not compared; nothing W8 changes
+      reaches Kconfig.
+- [x] **W9 — the smaller issues.** Done 2026-10-23: #1121 resolved (see
+      below); #1413 stays tracked, by ruling; #1460 resolved.
       [#1413](../issues/1413-play-launch-parser-ref-lags-submodule-pin.md): the
       index ref `27b6749b` is 315 commits behind the pin `0b44a695`, and it
       cannot simply move: past `f7f6d2cf` the standalone CLI has no Python
@@ -161,16 +200,24 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       Closing it is upstream work in `NEWSLabNTU/play_launch` (a
       Python-capable CLI, or `pyexec` staged beside it), so it is tracked here
       and not worked here.
-      [#1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md):
+      [#1121](../issues/archived/1121-contract-sidecar-has-no-model-freshness-edge.md):
       reproduce on main; archive if only sidecar deletion is left, and file
-      that case if it reproduces.
+      that case if it reproduces. **Does not reproduce, in either direction**
+      (a scratch copy of `examples/workspaces/cpp`, 2026-10-23). Adding
+      `system.contract.yaml` re-resolved the model (phase-454 W12's mtime
+      horizon). Deleting it re-resolved it too, through issue 0320's
+      content-addressed `meta.inputs` check, which the phase doc had not
+      counted. A no-change sync leaves the model untouched. Archived; nothing
+      to file.
       [#1460](../issues/archived/1460-sync-staged-model-vanishes-before-commit.md):
       RESOLVED 2026-10-23 — reproduced (22 of 40 concurrent syncs failed),
       and the staged name is now unique per resolve (0 of 40).
-- [ ] **W10 — RFC-0094 text.** D4 says digest where the code keys on knob
+- [x] **W10 — RFC-0094 text.** D4 says digest where the code keys on knob
       values; D2's example names a `[zpico]` table where the schema has
       `[executor]` and `[pools]`; status moves off Draft for the landed
-      decisions.
+      decisions. **Done 2026-10-23:** D2's example is a real `resolved.toml`
+      (abridged); D4 is amended to the three roads `NanoRosSharedCargoDir.cmake`
+      keys on; A3 is amended (W8); status Stable; the README row says so.
 
 The 2026-09-08 status follows.
 
@@ -686,9 +733,9 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md) | W2 landed the resolve phase and its own text says 'Remainder is issue 1228'. That is a hand-off, and the remainder is this phase's unmet A3 |
-| [#1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md) | the message-bound half of the same chain has no pre-configure producer. Without it RFC-0094 A3 cannot be met, which makes it a work item here rather than a note |
-| [#1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md) | a new `<stem>.contract.yaml` is a resolver input that `nros sync` does not record, so the model it feeds stays stale. Recording every resolve input is this phase's digest question. Re-homed 2026-10-14 from phase-330, archived; phase-460 rules it out of scope |
+| [#1228](../issues/archived/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md) RESOLVED 2026-10-23 (W7/W8) | W2 landed the resolve phase and its own text says 'Remainder is issue 1228'. That is a hand-off, and the remainder is this phase's unmet A3 |
+| [#1252](../issues/archived/1252-message-bound-knobs-have-no-pre-configure-twin.md) RESOLVED 2026-10-23 (W6/W8) | the message-bound half of the same chain has no pre-configure producer. Without it RFC-0094 A3 cannot be met, which makes it a work item here rather than a note |
+| [#1121](../issues/archived/1121-contract-sidecar-has-no-model-freshness-edge.md) RESOLVED 2026-10-23 (W9) | a new `<stem>.contract.yaml` is a resolver input that `nros sync` does not record, so the model it feeds stays stale. Recording every resolve input is this phase's digest question. Re-homed 2026-10-14 from phase-330, archived; phase-460 rules it out of scope |
 
 ## Issues homed here (2026-10-17)
 

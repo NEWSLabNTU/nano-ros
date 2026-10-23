@@ -1,6 +1,8 @@
 # RFC-0094 — Resolve before configure: the declared thing is the thing that runs
 
-**Status:** Draft (2026-09-08)
+**Status:** Stable (2026-10-23). D1, D3, D5 and D6 are in the code as written;
+D2, D4 and A3 are amended below to what landed (phase-439 W8/W10). Draft
+2026-09-08.
 
 Supersedes nothing. Amends RFC-0065 (D1's stage list gains a stage), RFC-0071
 (D5's index becomes load-bearing) and RFC-0087 (D2's `build_type` gains a
@@ -105,26 +107,39 @@ No compile. No configure. No cargo invocation.
 ### D2 — `resolved.toml` is the single answer, and it carries its own provenance
 
 ```toml
+schema_version = 1
+
 [image]
-entry = "talker"   board = "mps2-an385-freertos"   rmw = "zenoh"
-digest = "a3f1c9e2"
+bringup = "demo_bringup"   entry = "zephyr"   board = "zephyr"
+platform = "zephyr"        rmw = "zenoh"      status = "derived"
+digest = "ca166fa46415b8de"
 
-[executor]
-max_cbs = 1   max_sc = 8   max_nodes = 4   arena_size = 8192
+[executor]               # the executor's own tables
+max_cbs = 2   action_clients = 0   max_nodes = 2   max_sc = 3
+max_monitors = 0   max_age_monitors = 0   entity_total = 3
 
-[zpico]
-max_publishers = 1   max_subscribers = 1
-max_queryables = 8   max_large_subscribers = 0
+[pools]                  # the RMW session pools the executor does not count
+max_subscribers = 1   rmw_subscriber_slots = 1   max_publishers = 1
+max_queryables = 1    max_liveliness = 5
 
 [provenance]
-max_cbs        = "src/talker/package.xml → 1 publisher, 1 timer"
-max_queryables = "INFRA: param_services 6 + lifecycle 5 → floor 8"
+max_cbs        = "<metadata probe> + source-metadata + <model> → 3 declared entities over 2 components, 2 of them claiming a callback slot"
+max_queryables = "APPLICATION service servers + 3 per action server + the runtime's own servers for the families the bringup declares (6 per node for param_services, 5 for lifecycle; issue 1270)"
+nros_zenoh_max_large_subscribers = "HAND-SET: no declarative derivation. …"
 ```
+
+That is `examples/workspaces/cpp`'s `demo_bringup:zephyr`, abridged (it also
+has `[runtime]`, `[entities]` and `[locations.*]`, the last from RFC-0103 D7).
+This section used to show a `[zpico]` table. No such table was ever written:
+the schema splits the counts by what they size, the executor's tables and the
+RMW's session pools, and a knob with no declarative derivation is a
+`[provenance]` line saying so, never a value.
 
 `[provenance]` is normative, not decoration. Today "which number did this image
 build at?" is answered by cache-variable archaeology.
 
-`digest` hashes every resolved value. See D4.
+`digest` hashes every resolved value. It summarises the answer for a reader,
+and is not what a cargo directory is keyed on: see D4.
 
 ### D3 — `build_type` selects the DRIVER; file presence selects PARTICIPATION
 
@@ -203,7 +218,19 @@ So:
     file presence  → IS it built here
     the gate       → a PARTICIPATING package must have the files its type needs
 
-### D4 — Every cargo-directory key carries the resolve digest
+### D4 — Every cargo-directory key carries the resolved knob VALUES
+
+**Amended 2026-10-23 to what landed (phase-439 W1).** The key carries the knob
+values themselves, not `digest`. `cmake/NanoRosSharedCargoDir.cmake` is the one
+spelling, and it reads three roads in order. First the resolver registry
+(`NROS_RESOLVED_KNOBS` / `NROS_RESOLVED_<name>`). Then the environment, for
+names the resolver did not answer. Then the image's own `[image.<id>] env`
+(issue 1712). A value is what the reading build script compiles against, so
+keying on it separates exactly the directories that must differ. A digest would
+do the same, and also re-key for a value no build script reads. With no knob
+stated, all three roads are empty and the key is unchanged, so a warm cargo
+directory is not invalidated for nothing. The rest of this section is the
+original text, and its reasoning still holds.
 
 `nros_share_corrosion_cargo_dir(KEY …)` on the `nros-c` lane keys on
 `features, rmw, board, caps, profile, target` and **no knob values**. The Zephyr
@@ -283,6 +310,53 @@ uORB middleware, which is a property of that backend and not of the seam.*
 `nros_reconfigure_settle` and the future-mtime arm are deleted, and Zephyr
 converges in one pass.
 
+**Amended 2026-10-23 (phase-439 W8), and met as amended:**
+
+> **A3 — a configure `nros build` started takes one pass, by construction.**
+> Every value its early readers consume is composed before the configure, by
+> the same function the configure-time producer runs, over inputs the configure
+> can check. Where the configure reads that answer it does not recompose it.
+> Where it recomposes, it holds the result to the answer: a difference over the
+> SAME inputs stops the configure, naming both files, and is never re-converged.
+> A difference over DIFFERENT inputs (a tree edited after the resolve) converges
+> as before and says why. The fixed point stays, as the convergence mechanism
+> for every configure `nros build` did not start.
+
+*Why the amendment, measured.* A plain `west build` of
+`examples/zephyr/cpp/talker` has no resolve phase in front of it. On a clean
+build dir it takes 1 re-configure, with the bound and entity arms both firing
+(measured 2026-10-23, and again after W8). Its early readers can only see a
+placeholder, and the fixed point is what makes that configure deliver the
+derived numbers. Deleting it, as the original text asked, would have shipped
+placeholder sizes there with no diagnostic. Seeding every such configure, so
+the module resolves a standalone leaf before its readers run, is the original
+A3 and remains possible. It is new design, not a deletion, and nothing here
+blocks it.
+
+*What holds it, per fragment:*
+
+| fragment | pre-configure value | configure side | a difference over the same inputs |
+| --- | --- | --- | --- |
+| entity inventory (C/C++ west) | `resolved.cmake`, composed over the registered population (W7) | READS it, only when `resolved-entity-inputs.cmake` matches: registered rows, model path and content, workspace, board rx | cannot occur: the configure copies the answer |
+| message-bound sizes (C/C++ west) | `resolved-message-bounds.cmake` (W6) | recomposes once per interface package | FATAL at the end of the top-level configure (`_nros_resolved_bounds_promise_check`), over `resolved-message-bounds-inputs.cmake`: table digests, entity digest, ceiling |
+| sizing descriptor, named or none (west) | a DEFAULT (`named` when a resolve is in front), not a resolved fact | the entry decides | an arm: an image with no contract legitimately writes no descriptor |
+
+Measured on `demo_bringup:zephyr` (`native_sim/native/64`, Zephyr 3.7), clean
+build dir: 0 `Re-running CMake`, delivered knobs identical to the pre-W6 tree,
+`check-knob-delivery` green. Appending one comment line to the seed and
+re-configuring that build dir stops the configure with both paths named;
+restoring the seed configures cleanly. `tests/cmake-resolved-seed-tests.sh`
+cases T and U cover each outcome, mutation-tested.
+
+*Not covered, so the fixed point still converges them:* the Rust west entry
+(`rust_cargo_application()`; its entity seed is its only producer, issue 1729,
+and its bounds have no seed), the multi-entry cmake road (one configure for a
+shared runtime, which the per-image resolve does not compose), and the
+image-Kconfig stamp in `zephyr/CMakeLists.txt`.
+
+*The text below is the 2026-09-10 record, kept because its lesson is the
+reason the amendment checks inputs rather than trusting them.*
+
 *Not met. Two of the chain's three passes are gone and the last one is named.
 Measured on `demo_bringup:zephyr` (`native_sim/native/64`, Zephyr 3.7), clean
 build dir: 2 re-configures with no resolve phase, 1 once phase-439 W2's seed
@@ -320,7 +394,8 @@ the same studies and filed separately (1208–1221); none blocks this.
 Closes: 1207 (build_type unread, W3), 1224 (the cyclone declaration — no
 change needed, premise corrected), 1214 (discoverable not dispatchable), 1215
 (root closed list), 1216 (unconsumed dispatch outputs), 1219 (no rmw-agnostic
-gate).
+gate), 1228 (the second entity composer, W7), 1252 (the message-bound link, W6;
+A3 as amended, W8).
 
 Unblocks: 1197 (the FreeRTOS heap pairing — the board reads `resolved.toml`
 rather than needing a channel into `nros-node`'s dependency graph), 1171, 1198.
