@@ -74,6 +74,12 @@ static inline int32_t k_msleep(int32_t ms) {
     return ms;
 }
 
+/* phase-509 P9b -- `nros_zephyr_fail_boot`'s kernel panic (a macro in
+ * Zephyr). */
+static inline void k_panic(void) {
+    NROS_HOST_SHIM_UNREACHABLE("k_panic");
+}
+
 static inline void k_yield(void) {
     sched_yield();
 }
