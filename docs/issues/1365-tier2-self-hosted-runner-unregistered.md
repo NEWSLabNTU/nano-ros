@@ -808,7 +808,7 @@ What this run adds:
   An id does not carry a registration time, so this sample cannot say
   whether either one re-registered during the wait. 118 (now 1756) is offline
   after its tier-2 deaths
-  ([issue 1899](1899-tier2-nightly-fixture-compilers-sigkilled.md)).
+  ([issue 1899](archived/1899-tier2-nightly-fixture-compilers-sigkilled.md)).
 - **Restarting the container did not help.** At 07:02Z
   `nano-ros-runner-newslab-server-241` was removed and its supervisor loop
   started it again. Its `_diag/Runner_*.log` reads:

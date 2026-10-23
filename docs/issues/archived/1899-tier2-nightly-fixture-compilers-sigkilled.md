@@ -1,7 +1,7 @@
 ---
 id: 1899
 title: "Tier-2 nightly fixture build: compilers were SIGKILLed across five families at once, so crates fail with no diagnostic"
-status: open
+status: wontfix
 type: bug
 area: [ci, build, testing]
 severity: medium
@@ -9,7 +9,7 @@ found: 2026-10-14
 related: [1353, 1365, 1898, 0115, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## Measured
 
@@ -141,3 +141,22 @@ KILLED by a signal and printed no diagnostic` above the `could not compile`
 line for `ros-launch-manifest-model`. Self-test on the fast line:
 `just check log-first-errors`.
 
+
+## Resolution (2026-10-23) — wontfix: runner configuration, not a project defect
+
+Closed by maintainer decision, on the same ground as issue 1353. Whether a
+self-hosted runner has the memory for the lane's fixture build is the
+operator's to provision, and nothing in the repository changed when the kills
+stopped: 35 self-hosted jobs since 2026-10-15, 19 of them at the same
+`budget=48, pool=4×12 + zephyr=48`, show no `signal 9` and no lost runner.
+
+What the project owed is done. Item 3 makes a killed compile name itself:
+`scripts/build/log-first-errors.sh` counts the kills and prints them ahead of
+the error lines, with a self-test on the fast line (`just check
+log-first-errors`). If it recurs, the log says so in its first lines, and
+the kernel log on the runner host (item 1) is the evidence to collect.
+
+Not done, deliberately: item 2 (size `budget`/`pool` from `MemAvailable`).
+Its cause is unattributed and its cap unmeasured, so it would be a guess
+defending against a symptom that has stopped. Reopen with a kernel-log
+record of an `oom-kill` naming `rustc` or `cc1` if that changes.
