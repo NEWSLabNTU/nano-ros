@@ -744,22 +744,20 @@ if ! nros_grep_q "PARAM=\[\]" <<<"$OUT"; then
 fi
 
 # ---------------------------------------------------------------------------
-# I. Issue 1480 -- an ABSENT inbox size writes its reason as a COMMENT, and the
-#    fragment it is appended to must still PARSE.
+# I. Phase-439 -- the inbox join leaves the fragment EXACTLY as the CLI wrote it.
 #
-#    `_nros_entity_inbox_bytes` returns a MULTI-LINE reason when a request type
-#    carries no derived bound: one line per unbounded type. A `#` comment in
-#    CMake runs to the end of ONE line, so writing that reason after a single
-#    `#` left every later line at a COMMAND position, and the fragment became
-#    `Parse error. Expected a command name, got unquoted argument with text
-#    "example_interfaces/srv/AddTwoInts_Request"` on the NEXT include -- which
-#    is `_nros_entity_budget_env`, not this function, so nothing here failed
-#    and every `Build workspace fixtures` run died at cmake configure.
+#    The join used to APPEND its answer to the fragment, for a declared road
+#    issue 1649 retired. Nothing read the appendix after that, and it was the
+#    one part of the fragment the CLI did not write: stage 3.5's seed is the
+#    CLI's text, so the hash moved on every configure and the entity arm of
+#    `nros_reconfigure_settle` cost a second cmake pass for nothing. The
+#    answer, and the reason for an absent one, now live in the caller's scope.
 #
-#    The assertion is the re-include, not the text: an appendix that reads
-#    correctly and does not parse is exactly the state that shipped.
+#    The unbounded half keeps issue 1480's subject: its reason is MULTI-LINE
+#    (one line per unbounded type), which broke the fragment when it was
+#    written there as a one-line comment. A variable carries it whole.
 # ---------------------------------------------------------------------------
-log_info "I. an absent inbox size leaves a fragment that still parses (issue 1480)"
+log_info "I. the inbox join publishes into scope and leaves the fragment byte-identical"
 
 BOUNDS_FRAG="$TEST_TMPDIR/i-bounds.cmake"
 cat > "$BOUNDS_FRAG" <<'EOF'
@@ -772,33 +770,54 @@ UNBOUNDED_BODY="$TEST_TMPDIR/i-derived.cmake"
 cp "$DERIVED_BODY" "$UNBOUNDED_BODY"
 cat >> "$UNBOUNDED_BODY" <<EOF
 set(NROS_ENTITY_SERVICE_REQUEST_TYPES_STATUS "resolved")
-set(NROS_ENTITY_SERVICE_REQUEST_TYPES "example_interfaces/srv/AddTwoInts_Request")
+set(NROS_ENTITY_SERVICE_REQUEST_TYPES "example_interfaces/srv/AddTwoInts_Request;example_interfaces/srv/Trigger_Request")
 set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_FRAGMENTS "$BOUNDS_FRAG")
 EOF
 
 I_FRAG="$TEST_TMPDIR/i.cmake"
 OUT="$(derive "$UNBOUNDED_BODY" 0 "$META" "$I_FRAG")"
 check
-if ! nros_grep_q "NROS_DERIVED_SERVICE_INBOX_BYTES is ABSENT" "$I_FRAG"; then
-    fail "I: the appendix did not record the absent service inbox size -- \
-the case cannot assert anything about a reason it never wrote -- $OUT"
+if ! cmp -s "$UNBOUNDED_BODY" "$I_FRAG"; then
+    fail "I: the join changed the fragment the CLI wrote -- every changed byte \
+re-runs cmake (phase-439) -- $(diff "$UNBOUNDED_BODY" "$I_FRAG")"
 fi
 check
-if nros_grep_q "^set(NROS_DERIVED_SERVICE_INBOX_BYTES" "$I_FRAG"; then
+if ! nros_grep_q "NROS_ENTITY_SERVICE_INBOX_REASON=service request type(s) carry no derived bound" <<<"$OUT"; then
+    fail "I: the absent service inbox size carried no reason -- $OUT"
+fi
+check
+if ! nros_grep_q "example_interfaces/srv/Trigger_Request (not in the bound inventory)" <<<"$OUT"; then
+    fail "I: the multi-line reason lost its second type (issue 1480's subject) -- $OUT"
+fi
+check
+if nros_grep_q "NROS_DERIVED_SERVICE_INBOX_BYTES=" <<<"$OUT"; then
     fail "I: an unbounded request type published a number anyway; absence is \
-the answer here (RFC-0100 D6)"
+the answer here (RFC-0100 D6) -- $OUT"
 fi
-# The regression itself. Include the fragment the way `_nros_entity_budget_env`
-# does; a stray line at a command position is a hard parse error.
-I_INCLUDE="$TEST_TMPDIR/i-include.cmake"
-cat > "$I_INCLUDE" <<EOF
-include("$I_FRAG")
-message(STATUS "I: fragment re-included")
+
+# The bounded half: a priced type publishes its number, and still writes nothing.
+BOUNDED_FRAG="$TEST_TMPDIR/i-bounds-ok.cmake"
+cat > "$BOUNDED_FRAG" <<'EOF'
+set(NROS_MESSAGE_BOUND_example_interfaces_srv_AddTwoInts_Request_STATE "bounded")
+set(NROS_MESSAGE_BOUND_example_interfaces_srv_AddTwoInts_Request_RX 24)
 EOF
+BOUNDED_BODY="$TEST_TMPDIR/i-derived-ok.cmake"
+cp "$DERIVED_BODY" "$BOUNDED_BODY"
+cat >> "$BOUNDED_BODY" <<EOF
+set(NROS_ENTITY_SERVICE_REQUEST_TYPES_STATUS "resolved")
+set(NROS_ENTITY_SERVICE_REQUEST_TYPES "example_interfaces/srv/AddTwoInts_Request")
+set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_FRAGMENTS "$BOUNDED_FRAG")
+EOF
+I_FRAG_OK="$TEST_TMPDIR/i-ok.cmake"
+OUT="$(derive "$BOUNDED_BODY" 0 "$META" "$I_FRAG_OK")"
 check
-if ! I_OUT="$(cmake -P "$I_INCLUDE" 2>&1)"; then
-    fail "I: the appended fragment does not parse on re-include -- this is \
-issue 1480, and it takes every cmake workspace image down at configure -- $I_OUT"
+if ! nros_grep_q "NROS_DERIVED_SERVICE_INBOX_BYTES=24" <<<"$OUT"; then
+    fail "I: a priced service request did not reach the caller's scope -- $OUT"
+fi
+check
+if ! cmp -s "$BOUNDED_BODY" "$I_FRAG_OK"; then
+    fail "I: a priced join changed the fragment the CLI wrote -- \
+$(diff "$BOUNDED_BODY" "$I_FRAG_OK")"
 fi
 
 # ---------------------------------------------------------------------------

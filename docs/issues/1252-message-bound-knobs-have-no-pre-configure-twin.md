@@ -10,6 +10,16 @@ related: [1228, 0940, 0965, 0991, 1002, 1119, 1061, 1125, phase-439, phase-403, 
 
 **Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
+# UPDATE 2026-10-23 — phase-439 W5: two arms remain, not one
+
+Re-measured on the same image, seed present, clean build dir, after the entity
+arm was fixed a second time (#1228's 2026-10-23 update): 1 `Re-running CMake`,
+and pass 1 fires TWO arms — this one (the message-bound fragment) AND the
+sizing descriptor (`cmake/NanoRosSizingDescriptor.cmake`, label "the sizing
+descriptor this image names to cargo"). This issue's acceptance therefore needs
+the descriptor arm quiet too. Find out first whether it moves only because the
+bound tables it composes over arrive mid-configure.
+
 # What is left of the fixed point, MEASURED on a real image
 
 Issue 1228 closed the ENTITY link: `nros build`'s stage 3.5 seed and the

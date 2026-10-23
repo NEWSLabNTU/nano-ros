@@ -10,6 +10,23 @@ related: [0940, 0965, 0991, 1002, 1119, 1061, 1125, 1252, phase-439, phase-403, 
 
 **Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
+# UPDATE 2026-10-23 — the entity arm came back, and is gone again
+
+phase-439 W5 re-measured `demo_bringup:zephyr` on 2026-10-22: 1 `Re-running
+CMake`, and the ENTITY arm was firing again beside the bounds arm (and a third,
+the sizing descriptor's, which the 09-10 table below did not list). `diff`
+between `resolved.cmake` and `nros/entity_inventory.cmake` was five lines:
+phase-461 W3's inbox join, which `cmake/NanoRosEntityInventory.cmake` APPENDED
+to the fragment after the CLI wrote it. The guard test below compares two Rust
+composers, so a cmake-side append was outside its reach.
+
+The appendix had no reader left (issue 1649 moved both inbox sizes to the sizing
+descriptor), so the join now publishes into scope only, and
+`tests/cmake-entity-inventory-tests.sh` case I asserts the fragment stays
+byte-identical to the CLI's text. Re-measured: still 1 pass (the bounds and
+descriptor arms fire), entity arm gone, `diff` empty, delivered knobs identical,
+`check-knob-delivery` green.
+
 # UPDATE 2026-09-10 — item (3) is landed and MEASURED, on a real Zephyr image
 
 The entity link is closed and the numbers below are from a real build, not from

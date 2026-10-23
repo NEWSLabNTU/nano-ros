@@ -319,26 +319,6 @@ set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED_FROM "${CMAKE_CURRENT_LIST_FILE}"
 # type whose own bound is `unbounded`/`unresolved`. ONE unpriced row refuses the
 # whole family, because the slot is shared by every queryable in it and a
 # maximum over the rows that answered is not a bound on the rows that did not.
-# _nros_entity_comment_block(<text> <out-var>)
-#
-# Issue 1480. A reason string is written into the GENERATED fragment beside an
-# absent value, and `_nros_entity_inbox_bytes` returns a MULTI-LINE one: it
-# lists each unbounded type on its own line. A `#` comment in CMake runs to the
-# end of ONE line, so interpolating that text after a single `#` comments the
-# first line and drops every later line at a COMMAND position -- which is how a
-# type name became `Parse error. Expected a command name, got unquoted argument
-# with text "example_interfaces/srv/AddTwoInts_Request"` and took every
-# `Build workspace fixtures` run with it.
-#
-# Comment EVERY line, so a reason may be as long as it needs to be. Both call
-# sites go through here rather than each spelling the replace, because one of
-# the two families would have been fixed and the other left (CLAUDE.md's
-# "fix the CLASS, not the reported site").
-function(_nros_entity_comment_block _text _o_var)
-    string(REPLACE "\n" "\n#   " _commented "${_text}")
-    set(${_o_var} "${_commented}" PARENT_SCOPE)
-endfunction()
-
 function(_nros_entity_inbox_bytes _types _family _o_bytes _o_why)
     set(${_o_bytes} "" PARENT_SCOPE)
     set(${_o_why} "" PARENT_SCOPE)
@@ -516,7 +496,8 @@ function(nros_derive_entity_inventory_knobs)
                NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN
                NROS_PARAM_SERVICE_SHAPE
                # phase-461 W3 -- the two inbox families' slot sizes.
-               NROS_DERIVED_SERVICE_INBOX_BYTES NROS_DERIVED_ACTION_INBOX_BYTES)
+               NROS_DERIVED_SERVICE_INBOX_BYTES NROS_DERIVED_ACTION_INBOX_BYTES
+               NROS_ENTITY_SERVICE_INBOX_REASON NROS_ENTITY_ACTION_INBOX_REASON)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
     endforeach()
@@ -652,18 +633,23 @@ function(nros_derive_entity_inventory_knobs)
 
     # phase-461 W3 (issue 1352) -- the two inbox families' slot sizes, joined
     # from the fragment's per-family request-type lists and the registered
-    # message-bound fragments. APPENDED to the fragment rather than only
-    # published into this frame, because the declared road
-    # (`_nros_entity_budget_env` in `cmake/NanoRosEntityFacts.cmake`) reads this
-    # FILE and not this function's scope -- a value that crosses the function
-    # boundary and never reaches the file is the fourth delivery failure
-    # `check-knob-delivery` was written for.
+    # message-bound fragments, and published into this frame ONLY.
     #
-    # The REASON is written beside an absent value, never instead of a number:
-    # absence is the answer here (RFC-0100 D6) and a reader that finds no
-    # variable must fall back to its own default, which is what the zenoh build
-    # script's `SERVICE_BUFFER_SIZE_DEFAULT` is.
-    set(_inbox_appendix "")
+    # Phase-439 -- this join used to APPEND its answer to `${_output}`, because
+    # the declared road (`_nros_entity_budget_env`) read the FILE. Issue 1649
+    # retired that road for both sizes (`nros-rmw-zenoh` reads the sizing
+    # descriptor's `declared_service_request_bytes` and only that), so the
+    # appendix had no reader left -- and it was the one thing in the fragment
+    # the CLI did not write. Stage 3.5's seed (`resolved.cmake`) is the CLI's
+    # text, so the fragment's hash moved on every configure and the entity arm
+    # of `nros_reconfigure_settle` fired for nothing but these lines. The
+    # fragment is now exactly what the CLI wrote, byte for byte.
+    #
+    # The REASON for an absent value is published beside it, never instead of
+    # a number: absence is the answer here (RFC-0100 D6). Being a variable and
+    # not a comment, a multi-line reason no longer needs issue 1480's per-line
+    # `#` -- there is no generated file left for it to break.
+    #
     # Both names are written IN FULL and neither is built by interpolation --
     # the rule this file already states one block down, and the reason
     # `check-declared-fact-carriers` can see a published fact at all: it greps
@@ -675,12 +661,8 @@ function(nros_derive_entity_inventory_knobs)
     endif()
     _nros_entity_inbox_bytes("${_svc_types}" "service" _svc_bytes _svc_why)
     if(_svc_bytes STREQUAL "")
-        _nros_entity_comment_block("${_svc_why}" _svc_why_comment)
-        string(APPEND _inbox_appendix
-            "# NROS_DERIVED_SERVICE_INBOX_BYTES is ABSENT: ${_svc_why_comment}\n")
+        _nros_entity_publish(NROS_ENTITY_SERVICE_INBOX_REASON "${_svc_why}")
     else()
-        string(APPEND _inbox_appendix
-            "set(NROS_DERIVED_SERVICE_INBOX_BYTES ${_svc_bytes})\n")
         _nros_entity_publish(NROS_DERIVED_SERVICE_INBOX_BYTES "${_svc_bytes}")
     endif()
     set(_act_types "")
@@ -690,22 +672,9 @@ function(nros_derive_entity_inventory_knobs)
     endif()
     _nros_entity_inbox_bytes("${_act_types}" "action" _act_bytes _act_why)
     if(_act_bytes STREQUAL "")
-        _nros_entity_comment_block("${_act_why}" _act_why_comment)
-        string(APPEND _inbox_appendix
-            "# NROS_DERIVED_ACTION_INBOX_BYTES is ABSENT: ${_act_why_comment}\n")
+        _nros_entity_publish(NROS_ENTITY_ACTION_INBOX_REASON "${_act_why}")
     else()
-        string(APPEND _inbox_appendix
-            "set(NROS_DERIVED_ACTION_INBOX_BYTES ${_act_bytes})\n")
         _nros_entity_publish(NROS_DERIVED_ACTION_INBOX_BYTES "${_act_bytes}")
-    endif()
-    file(READ "${_output}" _inv_text)
-    string(FIND "${_inv_text}" "# phase-461 W3 -- the per-family inbox join" _joined)
-    if(_joined EQUAL -1)
-        file(APPEND "${_output}"
-            "# phase-461 W3 -- the per-family inbox join, appended by\n"
-            "# cmake/NanoRosEntityInventory.cmake. The CLI writes which types each\n"
-            "# family receives; the largest derived `_RX` over them is the slot size.\n"
-            "${_inbox_appendix}")
     endif()
 
     # Republish everything the fragment set. `include()` inside a function keeps
@@ -995,7 +964,9 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         # value that crosses the function boundary and is not printed here is
         # untestable and invisible.
         NROS_DERIVED_SERVICE_INBOX_BYTES
-        NROS_DERIVED_ACTION_INBOX_BYTES)
+        NROS_DERIVED_ACTION_INBOX_BYTES
+        NROS_ENTITY_SERVICE_INBOX_REASON
+        NROS_ENTITY_ACTION_INBOX_REASON)
         if(DEFINED ${_v})
             message(STATUS "${_v}=${${_v}}")
         endif()
