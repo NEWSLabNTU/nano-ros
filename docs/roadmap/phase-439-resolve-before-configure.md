@@ -31,16 +31,40 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
 
 ## Remaining work (2026-10-22)
 
-- [ ] **W5 — re-measure.** `Re-running CMake` count and the arms that fire, on a
+- [x] **W5 — re-measure.** `Re-running CMake` count and the arms that fire, on a
       clean build dir for `demo_bringup:zephyr` (`examples/workspaces/cpp`,
       `native_sim/native/64`), with and without the stage 3.5 seed, using
       #1252's reproduction. Record the numbers here and in #1252.
+      **Measured 2026-10-22/23**, seed present, clean build dir each time:
+
+      | tree | `Re-running CMake` | arms in pass 1 |
+      | --- | --- | --- |
+      | `main` 2026-10-22 | 1 | sizing descriptor, bounds, **entity** |
+      | + inbox join kept out of the fragment | 1 | sizing descriptor, bounds |
+
+      The entity arm had come back since 2026-09-10 (#1228's table said
+      "bounds only"). Cause: phase-461 W3 made
+      `cmake/NanoRosEntityInventory.cmake` APPEND its inbox join (five lines)
+      to `nros/entity_inventory.cmake`, so the fragment was no longer the CLI's
+      text and never matched the seed. `resolve::tests::stage_3_5_and_the_mid_configure_producer_agree_byte_for_byte`
+      compares two Rust composers, so it could not see a cmake-side append. The
+      appendix had had no reader since issue 1649 moved both inbox sizes to the
+      sizing descriptor, so the join now publishes into scope only, and
+      `tests/cmake-entity-inventory-tests.sh` case I asserts the fragment is
+      byte-identical to what the CLI wrote (mutation-tested against `main`).
+      Control: the 18 delivered-knob lines are identical across both runs, and
+      `check-knob-delivery <build-dir>` is green. **A third arm exists**: the
+      sizing descriptor (`cmake/NanoRosSizingDescriptor.cmake`) also re-hashes
+      after its readers ran, so W6 must take it as well as the bound fragment.
 - [ ] **W6 — the bound producer before configure ([#1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)).**
       First measure whether the sizing descriptor's per-type facts produce the
       same knobs as `nros_derive_message_bound_knobs` for the W5 image. If they
       do, stage 3.5 writes the bound fragment and the cmake composer becomes
       its reader. If not, record the difference in #1252 before designing a
-      third composer.
+      third composer. W5 found the sizing-descriptor arm firing in the same
+      pass; first find out whether it moves only because the bound tables it
+      composes over arrive mid-configure, which would make it fall with the
+      bound fragment.
 - [ ] **W7 — one entity composer ([#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md)).**
       The mid-configure producer reads the resolve instead of recomposing, with
       the refusal guard its `nros-metadata.json` component set gives it today
