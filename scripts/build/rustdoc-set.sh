@@ -31,7 +31,11 @@
 # 179 diagnostics and TWELVE such crates — three weeks of drift on a surface
 # nothing checked. All 179 are fixed; the new gate holds the zero.
 # phase-359 W10: `env` needs `alloc`, and `std` no longer brings it.
-NROS_RUSTDOC_FEATURES="rmw-cffi,platform-posix,ros-humble,safety-e2e,std,alloc,env,macros"
+# Stage C: no `std`, because no C/C++ image has it. In a workspace doc build
+# `std` turned on `nros-rmw-cffi/std`, so libstd's panic handler met nros-c's
+# own (E0152). Nothing replaces it: nros-c's `log` (which `std` used to imply)
+# gates function bodies, not items, so the documented surface is the same.
+NROS_RUSTDOC_FEATURES="rmw-cffi,platform-posix,ros-humble,safety-e2e,alloc,env,macros"
 NROS_RUSTDOC_CRATES=(
     nros
     nros-rmw
