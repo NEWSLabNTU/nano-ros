@@ -13,7 +13,8 @@ related: [1033, 1722, 1808, 2006]
 
 Phase-400 W6 migrated build-script sizing knobs onto the RFC-0049 ladder, one
 tenant at a time. `just check config-knob-census` on `main` (2026-10-23):
-55 ladder knobs in 12 tenants, and **15** build-script names still classed
+43 ladder knobs in 12 tenants (41 in 11 once issue 2006 retired the
+transport tenant), and **15** build-script names still classed
 `sizing`, i.e. policy values with no derivation and no rung:
 
 | knob | why it has no rung yet |

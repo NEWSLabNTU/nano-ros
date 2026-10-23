@@ -149,11 +149,16 @@ pub struct PlatformConfigFile {
 /// additive fields here.
 /// `[knobs]` — typed policy.
 ///
-/// phase-400 W2 / RFC-0071 D8. `transport` is a RESERVED, cross-cutting key;
-/// every other key is a BACKEND NAME, so a platform can say "here are my
+/// phase-400 W2 / RFC-0071 D8. Apart from the named tenants below, every key
+/// is a BACKEND NAME, so a platform can say "here are my
 /// settings for whichever backend is selected" without naming one in its
 /// schema. `[build.<rmw>]` was de-keyed the same way by phase-347 W6; this is
 /// the knobs half of the same rule.
+///
+/// `transport` was a reserved tenant here until issue 2006 retired it: no file
+/// set it and no build read it, because a build takes its transport from
+/// `[image.<id>] transport` (RFC-0098 D4). A `[knobs.transport]` table now
+/// parses as a backend's and fails on its first key.
 ///
 /// `deny_unknown_fields` is dropped here and NOWHERE else, because serde does
 /// not support it alongside `flatten`. The validation it provided is not lost:
@@ -202,15 +207,6 @@ pub struct Knobs {
     /// phase-400 W6 — the XRCE transport tenant. See [`XrceKnobs`].
     #[serde(default)]
     pub xrce: XrceKnobs,
-    /// phase-400 W3 / RFC-0086 D1 — the transport tenant.
-    ///
-    /// The first knob that crosses all three descriptor axes: the backend knows
-    /// how to SPELL an endpoint, the platform knows whether an IP stack EXISTS,
-    /// the board knows which peripheral is WIRED. Stating it once is what lets
-    /// the resolver derive the link and driver settings that a transport choice
-    /// implies, instead of each image hand-writing them.
-    #[serde(default)]
-    pub transport: TransportKnobs,
     /// Any other key is a backend name. Empty for every in-tree file today,
     /// which is the point: a third-party RMW fills it without nano-ros
     /// learning its name.
@@ -233,8 +229,7 @@ pub struct BackendKnobs {
 }
 
 impl Knobs {
-    /// Keys under `[knobs]` that are neither the reserved `transport` tenant
-    /// nor a backend the caller knows about. Caller supplies the known set,
+    /// Keys under `[knobs]` that are neither a named tenant nor a backend the caller knows about. Caller supplies the known set,
     /// because only it has loaded the descriptors.
     pub fn unknown_backend_keys(&self, known: &[&str]) -> Vec<String> {
         self.backends
@@ -1483,57 +1478,6 @@ pub struct ResolvedUsize {
     pub env_key: &'static str,
 }
 
-/// `[knobs.transport]` — RFC-0086 D1.
-#[derive(Debug, Default, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TransportKnobs {
-    /// `exactly-one-of` serial | tcp | udp. `None` defers to the rung below.
-    pub kind: Option<String>,
-    /// Opaque to this layer: the BACKEND lowers it into its own locator
-    /// spelling, and the BOARD resolves a peripheral name. Carried, not parsed.
-    pub endpoint: Option<String>,
-}
-
-/// The transports the resolver knows how to constrain. RFC-0086 D2 makes this
-/// an `exactly-one-of` group, which is why an unknown value is an error rather
-/// than a pass-through: a typo that silently selects nothing would leave every
-/// implication unapplied and the image would build with the wrong links on.
-pub const TRANSPORT_KINDS: &[&str] = &["serial", "tcp", "udp"];
-
-/// Built-in default — level 1. `tcp` preserves the behaviour of every image
-/// that predates this tenant, where `NROS_ZENOH_LINK_TCP` was `default y`.
-pub const BUILTIN_TRANSPORT_KIND: &str = "tcp";
-
-/// One knob set by an implication rather than by a ladder rung.
-///
-/// RFC-0086 D2: `implies` is Kconfig `imply` strength, NEVER `select` — a
-/// higher rung still wins, and when it does the override is recorded here so
-/// `nros config explain` can report it. A forcing verb would let
-/// `transport.kind = "serial"` silently stamp out an explicitly requested TCP
-/// link, which is the failure mode Kconfig's own documentation records for
-/// `select`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Implied {
-    /// Dotted knob name, e.g. `links.tcp` or `drivers.ethernet`.
-    pub knob: String,
-    /// The value the implication asks for.
-    pub value: bool,
-    /// The rule that asked, for the explain output.
-    pub rule: String,
-    /// Set when a higher rung contradicted the implication. The implication
-    /// LOSES; this records that it happened.
-    pub overridden_by: Option<KnobSource>,
-}
-
-/// The fully-resolved transport tenant.
-#[derive(Debug, Clone)]
-pub struct ResolvedTransport {
-    pub kind: Resolved<String>,
-    pub endpoint: Resolved<Option<String>>,
-    /// Every knob this transport choice implies, in declaration order.
-    pub implied: Vec<Implied>,
-}
-
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ZenohKnobs {
@@ -1726,21 +1670,6 @@ pub enum ConfigError {
         path: String,
         boards: String,
     },
-    /// phase-400 W3 — `transport.kind` outside the `exactly-one-of` group.
-    UnknownTransport {
-        platform: String,
-        kind: String,
-        known: String,
-    },
-    /// phase-400 W3 — `requires` failed: the transport needs a capability the
-    /// platform does not declare. Named at CONFIG time, which is the whole
-    /// point: the alternative is a link error against `AF_INET` much later.
-    TransportCapabilityMissing {
-        platform: String,
-        kind: String,
-        capability: String,
-        source: String,
-    },
     Io {
         path: String,
         source: std::io::Error,
@@ -1784,26 +1713,6 @@ impl std::fmt::Display for ConfigError {
                 f,
                 "{path}: board {boards}: {}",
                 retired_board_knobs_refusal()
-            ),
-            ConfigError::UnknownTransport {
-                platform,
-                kind,
-                known,
-            } => write!(
-                f,
-                "platform `{platform}`: knobs.transport.kind = `{kind}` is not one of: {known}"
-            ),
-            ConfigError::TransportCapabilityMissing {
-                platform,
-                kind,
-                capability,
-                source,
-            } => write!(
-                f,
-                "platform `{platform}`: transport.kind = `{kind}` (from {source}) requires \
-                 capabilities.{capability}, which this platform does not declare. Either pick a \
-                 transport the platform supports, or add the capability to its nros-platform.toml \
-                 if the fact is simply missing."
             ),
             ConfigError::Io { path, source } => write!(f, "{path}: {source}"),
             ConfigError::Parse { path, source } => write!(f, "{path}: {source}"),
@@ -2172,7 +2081,7 @@ impl PlatformsTree {
     ///
     /// Board wins, per key. A key the board does not mention keeps the
     /// platform's answer, and a key NEITHER declares stays absent — which is
-    /// not `false` (`resolve_transport`'s rule, and `manifest::matches`').
+    /// not `false` (`manifest::matches`' rule).
     pub fn capabilities_with_board(
         &self,
         name: &str,
@@ -2206,24 +2115,6 @@ impl PlatformsTree {
             }
         }
         Ok(tx)
-    }
-
-    /// Same inheritance walk as [`Self::platform_tx_knobs`], for the transport
-    /// tenant: a child platform overrides its parent field by field, and an
-    /// unset field defers rather than resetting to the default.
-    fn platform_transport_knobs(&self, name: &str) -> Result<TransportKnobs, ConfigError> {
-        let chain = self.chain(name)?;
-        let mut t = TransportKnobs::default();
-        for file in chain.iter().rev() {
-            let f = &file.knobs.transport;
-            if f.kind.is_some() {
-                t.kind = f.kind.clone();
-            }
-            if f.endpoint.is_some() {
-                t.endpoint = f.endpoint.clone();
-            }
-        }
-        Ok(t)
     }
 
     /// Resolve `backend`'s `tx` knob set for `platform`, applying the full
@@ -2958,139 +2849,6 @@ impl PlatformsTree {
         Ok(k)
     }
 
-    /// phase-400 W3 / RFC-0086 D1+D2 — resolve the transport tenant and the
-    /// knobs it implies.
-    ///
-    /// Three verbs, with the strengths the surveyed prior art settles:
-    ///
-    /// * `exactly-one-of` (Gentoo `REQUIRED_USE`) — `kind` is one of
-    ///   [`TRANSPORT_KINDS`]. An unrecognised value is an error, not a silent
-    ///   pass-through: it would leave every implication unapplied and build an
-    ///   image with the wrong links enabled.
-    /// * `requires` (hard) — the platform must declare the capability the
-    ///   transport needs. Failure names both the platform and the asked-for
-    ///   kind, at CONFIG time, rather than surfacing later as a link error
-    ///   against `AF_INET`.
-    /// * `implies` (weak, Kconfig `imply` strength) — the dependent link and
-    ///   driver knobs. `env_overrides` lets a higher rung win; the override is
-    ///   recorded, never silently dropped.
-    pub fn resolve_transport(
-        &self,
-        platform: &str,
-        board: Option<&TransportKnobs>,
-        env: &dyn Fn(&str) -> Option<String>,
-    ) -> Result<ResolvedTransport, ConfigError> {
-        let plat = self.platform_transport_knobs(platform)?;
-
-        let (kind, kind_src) = match (
-            env("NROS_TRANSPORT_KIND"),
-            board.and_then(|b| b.kind.clone()),
-            plat.kind.clone(),
-        ) {
-            (Some(v), _, _) => (v.trim().to_string(), KnobSource::Env),
-            (None, Some(v), _) => (v, KnobSource::Board),
-            (None, None, Some(v)) => (v, KnobSource::Platform),
-            (None, None, None) => (BUILTIN_TRANSPORT_KIND.to_string(), KnobSource::Builtin),
-        };
-
-        if !TRANSPORT_KINDS.contains(&kind.as_str()) {
-            return Err(ConfigError::UnknownTransport {
-                platform: platform.to_string(),
-                kind,
-                known: TRANSPORT_KINDS.join(", "),
-            });
-        }
-
-        let (endpoint, endpoint_src) = match (
-            env("NROS_TRANSPORT_ENDPOINT"),
-            board.and_then(|b| b.endpoint.clone()),
-            plat.endpoint.clone(),
-        ) {
-            (Some(v), _, _) => (Some(v), KnobSource::Env),
-            (None, Some(v), _) => (Some(v), KnobSource::Board),
-            (None, None, Some(v)) => (Some(v), KnobSource::Platform),
-            (None, None, None) => (None, KnobSource::Builtin),
-        };
-
-        // `requires` — hard. A capability is a FACT declared by the platform;
-        // policy that contradicts fact must not ship (RFC-0049), and for a
-        // transport that means failing here rather than at link time.
-        let caps = self.capabilities(platform)?;
-        let needed = match kind.as_str() {
-            "tcp" | "udp" => Some("ip_stack"),
-            "serial" => Some("serial"),
-            _ => None,
-        };
-        // Absent is NOT the same as false. `[capabilities]` is an open, young
-        // vocabulary -- only one of the seven in-tree platform files declared
-        // anything when this landed -- so an UNDECLARED fact means "nobody has
-        // described this platform yet" and must not fail a build that works.
-        // An EXPLICIT `false` is a described impossibility and is hard.
-        //
-        // The undeclared case is reported by `transport_warnings` rather than
-        // swallowed, so the gap is visible and gets closed by declaration.
-        if let Some(cap) = needed
-            && caps.get(cap) == Some(&false)
-        {
-            return Err(ConfigError::TransportCapabilityMissing {
-                platform: platform.to_string(),
-                kind: kind.clone(),
-                capability: cap.to_string(),
-                source: kind_src.as_str().to_string(),
-            });
-        }
-
-        // `implies` — weak. Every knob a transport choice settles, so no image
-        // has to hand-write them. The env front-end still wins; when it does,
-        // the implication is marked overridden rather than discarded.
-        let rule = format!("transport.kind={kind}");
-        let mut implied = Vec::new();
-        let mut imply = |knob: &str, value: bool, env_key: &str| {
-            let overridden_by = knob_env(env, env_key).and_then(|v| {
-                let want = v.trim().parse::<u64>().map(|n| n != 0).unwrap_or(false);
-                (want != value).then_some(KnobSource::Env)
-            });
-            implied.push(Implied {
-                knob: knob.to_string(),
-                value,
-                rule: rule.clone(),
-                overridden_by,
-            });
-        };
-
-        let serial = kind == "serial";
-        imply("links.tcp", kind == "tcp", "NROS_ZENOH_LINK_TCP");
-        imply("links.udp", kind == "udp", "NROS_ZENOH_LINK_UDP_UNICAST");
-        imply("links.serial", serial, "NROS_ZENOH_LINK_SERIAL");
-        // The MAC/MDIO/PHY drivers are `default y` behind devicetree nodes the
-        // board has enabled, so they arrive on their own and must be turned off
-        // by name. This is the fifteen-line hand-written block RFC-0086 exists
-        // to delete.
-        imply("drivers.ethernet", !serial, "NROS_DRIVER_ETHERNET");
-        imply("drivers.phy", !serial, "NROS_DRIVER_PHY");
-        imply("drivers.mdio", !serial, "NROS_DRIVER_MDIO");
-        imply("net.ip_stack", !serial, "NROS_NET_IP_STACK");
-        // D9 (safety-island demo) -- a serial link does not carry the domain's
-        // liveliness history; the graph cache is the old default on IP.
-        imply(
-            "zenoh.graph_discovery",
-            !serial,
-            "NROS_ZENOH_GRAPH_DISCOVERY",
-        );
-
-        Ok(ResolvedTransport {
-            kind: Resolved {
-                value: kind,
-                source: kind_src,
-            },
-            endpoint: Resolved {
-                value: endpoint,
-                source: endpoint_src,
-            },
-            implied,
-        })
-    }
-
     /// The merged `[knobs]` table for `platform`, following `inherits`.
     /// Exposed so a caller that HAS loaded the rmw descriptors can run
     /// [`Knobs::unknown_backend_keys`] against the real backend list.
@@ -3104,40 +2862,9 @@ impl PlatformsTree {
             {
                 out.zenoh = file.knobs.zenoh.clone();
             }
-            if file.knobs.transport.kind.is_some() || file.knobs.transport.endpoint.is_some() {
-                out.transport = file.knobs.transport.clone();
-            }
             for (k, v) in &file.knobs.backends {
                 out.backends.insert(k.clone(), v.clone());
             }
-        }
-        Ok(out)
-    }
-
-    /// phase-400 W3 — facts this transport choice relied on but the platform
-    /// never declared. Not an error (see `resolve_transport`), but printed, so
-    /// an undescribed platform is visible rather than silently assumed.
-    pub fn transport_warnings(
-        &self,
-        platform: &str,
-        t: &ResolvedTransport,
-    ) -> Result<Vec<String>, ConfigError> {
-        let caps = self.capabilities(platform)?;
-        let needed = match t.kind.value.as_str() {
-            "tcp" | "udp" => Some("ip_stack"),
-            "serial" => Some("serial"),
-            _ => None,
-        };
-        let mut out = Vec::new();
-        if let Some(cap) = needed
-            && !caps.contains_key(cap)
-        {
-            out.push(format!(
-                "platform `{platform}`: transport.kind = `{}` needs capabilities.{cap}, which \
-                 this platform's nros-platform.toml does not declare either way — permitted, but \
-                 the fact should be stated",
-                t.kind.value
-            ));
         }
         Ok(out)
     }
@@ -4272,90 +3999,16 @@ mod tests {
         None
     }
 
-    // ---- phase-400 W3 / RFC-0086 D2 — the transport tenant ----
-
-    const CAPS_BOTH: &str = r#"
-[capabilities]
-ip_stack = true
-serial = true
-"#;
+    // ---- issue 2006 — the retired transport tenant ----
 
     #[test]
-    fn transport_serial_implies_the_whole_dependent_set() {
-        // The regression this tenant exists to prevent: fifteen hand-written
-        // Kconfig lines per image, turning off links and drivers that a
-        // transport choice already determines.
-        let tmp = write_tree(&[("p", CAPS_BOTH)]);
-        let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let env = |k: &str| (k == "NROS_TRANSPORT_KIND").then(|| "serial".to_string());
-        let t = tree.resolve_transport("p", None, &env).unwrap();
-        assert_eq!(t.kind.value, "serial");
-        let off = [
-            "links.tcp",
-            "links.udp",
-            "drivers.ethernet",
-            "drivers.phy",
-            "drivers.mdio",
-            "net.ip_stack",
-            "zenoh.graph_discovery",
-        ];
-        for knob in off {
-            let i = t.implied.iter().find(|i| i.knob == knob).expect(knob);
-            assert!(!i.value, "{knob} should be implied off by serial");
-            assert!(i.overridden_by.is_none());
-        }
-        let ser = t.implied.iter().find(|i| i.knob == "links.serial").unwrap();
-        assert!(ser.value);
-    }
-
-    #[test]
-    fn implies_is_imply_strength_not_select() {
-        // Kconfig's `select` forces and can build an invalid config. Ours must
-        // LOSE to a higher rung, and must record that it did.
-        let tmp = write_tree(&[("p", CAPS_BOTH)]);
-        let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let env = |k: &str| match k {
-            "NROS_TRANSPORT_KIND" => Some("serial".to_string()),
-            "NROS_ZENOH_LINK_TCP" => Some("1".to_string()),
-            _ => None,
-        };
-        let t = tree.resolve_transport("p", None, &env).unwrap();
-        let tcp = t.implied.iter().find(|i| i.knob == "links.tcp").unwrap();
-        assert_eq!(tcp.overridden_by, Some(KnobSource::Env));
-    }
-
-    #[test]
-    fn requires_is_hard_only_against_an_explicit_false() {
-        // Absent is "nobody described this platform yet" and must not fail a
-        // build that works; an explicit false is a described impossibility.
-        let tmp = write_tree(&[
-            ("undeclared", "[capabilities]\nserial = true\n"),
-            ("denied", "[capabilities]\nip_stack = false\n"),
-        ]);
-        let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let tcp = |k: &str| (k == "NROS_TRANSPORT_KIND").then(|| "tcp".to_string());
-
-        let t = tree.resolve_transport("undeclared", None, &tcp).unwrap();
-        assert_eq!(t.kind.value, "tcp");
-        assert_eq!(tree.transport_warnings("undeclared", &t).unwrap().len(), 1);
-
-        assert!(matches!(
-            tree.resolve_transport("denied", None, &tcp),
-            Err(ConfigError::TransportCapabilityMissing { .. })
-        ));
-    }
-
-    #[test]
-    fn transport_kind_is_exactly_one_of() {
-        // A typo must not silently select nothing: every implication would go
-        // unapplied and the image would build with the wrong links on.
-        let tmp = write_tree(&[("p", CAPS_BOTH)]);
-        let tree = PlatformsTree::load(tmp.path()).unwrap();
-        let env = |k: &str| (k == "NROS_TRANSPORT_KIND").then(|| "uart".to_string());
-        assert!(matches!(
-            tree.resolve_transport("p", None, &env),
-            Err(ConfigError::UnknownTransport { .. })
-        ));
+    fn a_retired_knobs_transport_table_is_refused_not_ignored() {
+        // The tenant is gone; its table now lands in the flattened backend
+        // map, whose `deny_unknown_fields` refuses `kind`. A stale descriptor
+        // must fail loud rather than build as if it said nothing.
+        let tmp = write_tree(&[("p", "[knobs.transport]\nkind = \"serial\"\n")]);
+        let e = PlatformsTree::load(tmp.path()).unwrap_err().to_string();
+        assert!(e.contains("kind"), "{e}");
     }
 
     // ---- phase-400 W6 — the executor sizing tenant ----

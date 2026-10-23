@@ -115,12 +115,11 @@ pub const LEAF_SELECTION_DIR: &str = "build/nros/selection";
 /// rule. Lives here because the macro and the CLI must spell it the same.
 pub const IMAGE_ENV: &str = "NROS_IMAGE";
 
-/// The link kinds `[image.<id>] transport` may name — the same three
-/// `nros_platform_config::platform_config::TRANSPORT_KINDS` defines
-/// (RFC-0086 D2).
+/// The link kinds `[image.<id>] transport` may name (RFC-0098 D4). This is the
+/// one list: the `[knobs.transport]` tenant that once restated it in
+/// `nros-platform-config` was retired by issue 2006, since no build read it.
 ///
-/// Restated rather than imported: this crate is what the `nros::main!`
-/// proc-macro reads, so it carries no dependencies. An unknown value is an
+/// An unknown value is an
 /// ERROR here for RFC-0086 D2's own reason — a typo that silently selected
 /// nothing would leave every implication unapplied and the image would build
 /// with the wrong links on, which is exactly what

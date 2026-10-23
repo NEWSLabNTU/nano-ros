@@ -1,12 +1,15 @@
 # RFC-0086 — Unified configuration: the transport tenant, coupling verbs, and retiring the per-lane knob
 
-**Status:** Stable for D3–D6 (2026-10-23); D1 and D2 Draft. Drafted 2026-08-30;
-implemented by [phase-400](../roadmap/archived/phase-400-unified-configuration.md),
-archived 2026-10-23. D1/D2's transport tenant was built (phase-400 W3), but no
-build road reads it: builds take the transport from RFC-0098 D4's
-`[image.<id>] transport`, and the tenant is read only by `nros config explain`.
-Whether to retire the tenant or route the image's statement through it is
-[issue 2006](../issues/2006-transport-tenant-read-only-by-explain.md).
+**Status:** Stable for D3–D6 (2026-10-23); D1 and D2 Superseded by RFC-0098 D4
+(2026-10-23). Drafted 2026-08-30; implemented by
+[phase-400](../roadmap/archived/phase-400-unified-configuration.md), archived
+2026-10-23. D1/D2's transport tenant was built (phase-400 W3), but no build road
+ever read it. Builds take the transport from RFC-0098 D4's
+`[image.<id>] transport`, which states it once per image, as D1 asked, and
+applies D2's `imply` rule itself. The tenant, its resolver and its `explain`
+rows were deleted by
+[issue 2006](../issues/archived/2006-transport-tenant-read-only-by-explain.md).
+The D1 and D2 sections below are kept as the design record.
 **Boundary (2026-10-14):** a knob's name, legacy spellings and registry row
 belong to [RFC-0103](0103-one-owner-per-fact.md) (phase-484). Which knobs
 get ladder rungs is still this RFC's question; the open list is
@@ -142,6 +145,11 @@ reach.
 
 ### D1 — `transport` as the first cross-cutting tenant
 
+> **Superseded (2026-10-23, issue 2006).** The `[knobs.transport]` tenant this
+> section describes was built and then deleted, because no build read it. The
+> transport is stated by `[image.<id>] transport` (RFC-0098 D4), over the same
+> three words (`leaf_system::TRANSPORT_KINDS`).
+
 The user states intent once. Each axis contributes what only it knows.
 
 ```toml
@@ -180,6 +188,12 @@ This replaces three incompatible spellings of one concept:
 for Cyclone — no nros symbol at all.
 
 ### D2 — three verbs, with strengths
+
+> **Superseded (2026-10-23, issue 2006).** On the build road, `exactly-one-of`
+> is `validate_transport` / `leaf_system`, and `implies` is
+> `leaf_settings::transport_implications` (`ZPICO_NO_SMOLTCP`, `NROS_LINK_IP`,
+> each losing to an explicit env row). `requires` has no build-road form: the
+> deleted resolver's check never reached a build either.
 
 ```
 transport.kind = "serial"

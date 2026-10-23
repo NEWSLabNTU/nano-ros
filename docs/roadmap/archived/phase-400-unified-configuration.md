@@ -1,8 +1,10 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
 **Status (2026-10-23). Archived — W1–W5, W7 and W8 done; W6's remainder is
-[issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md).** W6
-migrated 55 knobs in 12 tenants. The 15 still classed `sizing` each need a rung
+[issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md).** At
+close the ladder held 43 knobs in 12 tenants (the census's "already on the
+ladder" row; this line first said 55, which is its "paths / flags" row). Issue
+2006 then retired the transport tenant and its two knobs, leaving 41 in 11. The 15 still classed `sizing` each need a rung
 only when some platform or board wants a non-default value, so they are kept as
 one issue rather than a phase. Two of them, the XRCE service request and reply
 buffers, were re-checked on this date and are not plain backlog. The issue says
@@ -11,23 +13,26 @@ why.
 Closing re-check against `main`:
 
 - **W3's tenant is read only by `nros config explain`**
-  ([issue 2006](../../issues/2006-transport-tenant-read-only-by-explain.md)).
+  ([issue 2006](../../issues/archived/2006-transport-tenant-read-only-by-explain.md),
+  which then retired it).
   `resolve_transport` has no build-road caller and no descriptor sets
   `[knobs.transport]`. Builds take the transport from RFC-0098 D4's
   `[image.<id>] transport`, which has its own implication code in
   `leaf_settings.rs`. W3 met its gate when it landed (2026-08-30), and RFC-0098
   later gave the transport a second home. The W3 section below describes the
-  tenant as built; the issue is the open design question.
+  tenant as built; it no longer exists.
 - **W8 is done.** `check-knob-single-reader` holds the one-reader rule, the
   legacy spellings were retired in phase-484 W8, and issue 1220 removed the last
   `config/` descriptor the W1 grace period had left. The gate's owner table
   still named `nros-board-common/src/platform_config.rs` six times, a file
   `b05096bfb0` had moved to `nros-platform-config`, and nothing failed. It now
   refuses an owner or exemption that is not a tracked file.
-- **RFC-0086** is Stable for D3–D6. D1/D2 stay Draft pending issue 2006.
+- **RFC-0086** is Stable for D3–D6. Issue 2006 marked D1/D2 superseded by
+  RFC-0098 D4.
 
 **Status (2026-10-21).** W1–W5 and W7 are unchanged. W6 is still open:
-`just check config-knob-census` counts **55** ladder knobs in 12 tenants and
+`just check config-knob-census` counts **43** ladder knobs in 12 tenants (first written as 55, the
+census's "paths / flags" row) and
 **15** sizing names still to migrate, after the re-sort below moved three
 names that were already derived (or now are) out of the backlog. The 15 are
 the graph entity budget and graph cache bytes, five `NROS_XRCE_*` sizes and
@@ -122,10 +127,10 @@ W8, and the one-reader rule stays here (`check-knob-single-reader`).
 | --- | --- | --- | --- |
 | **W1** | Platform axis resolves like rmw: descriptor beside its crate, by name over a search path | a platform outside the tree builds without forking `config/` | **done** |
 | **W2** | De-name the platform sections — `[build.<rmw>]`, `[knobs.<rmw>.tx]` | a second backend receives platform knobs with neither side naming the other | **done** |
-| **W3** | `transport` tenant + `requires` / `implies` / `exactly-one-of` in the resolver | serial-only image builds with no hand-written link or driver lines | **done** |
+| **W3** | `transport` tenant + `requires` / `implies` / `exactly-one-of` in the resolver | serial-only image builds with no hand-written link or driver lines | **done; retired by issue 2006** |
 | **W4** | Provenance: `explain` reports implied and overridden | every knob prints rung, rule, and override | **done** |
 | **W5** | Kconfig mirror — link symbols get `depends on`; drift test holds it | `NETWORKING=n` cannot leave `LINK_TCP=y` | **done** |
-| **W6** | Migrate the sizing knobs, tenant by tenant | ladder knob count rises; env/Kconfig count falls | **55 migrated; the 15 left are [issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md)** |
+| **W6** | Migrate the sizing knobs, tenant by tenant | ladder knob count rises; env/Kconfig count falls | **43 on the ladder; the 15 left are [issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md)** |
 | **W7** | Core: audit for exclusive/negative features | no `compile_error!` stands in for exclusivity | **done — none found; premise was wrong** |
 | **W8** | Retire the old paths | the retired mechanism no longer resolves anything | **done** |
 
@@ -231,8 +236,9 @@ platform file naming it.
 
 **Done 2026-08-30 (`2104ebef99`). Re-checked 2026-10-23:** the tenant is read
 only by `nros config explain`, and builds take the transport from
-`[image.<id>] transport` (RFC-0098 D4). See
-[issue 2006](../../issues/2006-transport-tenant-read-only-by-explain.md).
+`[image.<id>] transport` (RFC-0098 D4). [Issue
+2006](../../issues/archived/2006-transport-tenant-read-only-by-explain.md)
+retired the tenant on the same day.
 
 The substance. RFC-0086 D1 and D2.
 
@@ -299,7 +305,7 @@ the drift test fails if the mirror and the resolver disagree.
 
 ## W6 — migrate the sizing knobs
 
-**Closed 2026-10-23 with 55 knobs migrated.** The 15 left, with the reason each
+**Closed 2026-10-23 with 43 knobs on the ladder.** The 15 left, with the reason each
 has no rung, are
 [issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md).
 

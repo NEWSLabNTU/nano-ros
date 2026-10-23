@@ -589,11 +589,6 @@ LADDER_MAPPED_NOT_MIGRATED = {
 }
 
 
-# The ladder reads these, and they are SELECTIONS (RFC-0103 D2b: they stay in
-# phase-481's fragment), not knobs — so the knob registry has no row for them.
-SELECTIONS = {"NROS_TRANSPORT_KIND", "NROS_TRANSPORT_ENDPOINT"}
-
-
 def _registry_rows():
     try:
         import tomllib
@@ -659,7 +654,6 @@ def ladder_knobs():
     for struct in (
         "TxKnobs",
         "ExecutorKnobs",
-        "TransportKnobs",
         "MemoryKnobs",
         "ParamKnobs",
         "RmwKnobs",
@@ -1001,7 +995,7 @@ def unregistered_knobs(by_class, spelled):
     """Names classified as a KNOB that are no spelling in the knob registry."""
     return sorted(
         n for cls in ("ladder", "sizing", "derived") for n in by_class.get(cls, [])
-        if n not in spelled and n not in SELECTIONS
+        if n not in spelled
     )
 
 

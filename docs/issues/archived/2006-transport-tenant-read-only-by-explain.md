@@ -1,7 +1,8 @@
 ---
 id: 2006
 title: "RFC-0086's transport tenant is read only by `nros config explain`; builds take the transport from `[image.<id>] transport`"
-status: open
+status: resolved
+resolved: 2026-10-23
 type: tech-debt
 area: [config, cli]
 severity: medium
@@ -62,8 +63,38 @@ Pick one transport mechanism and give it one reader. Either:
   `explain` rows describe what the build gets, and `leaf_settings.rs`'s own
   implication table goes.
 
-Which one is a design decision for RFC-0086's owner. Until then RFC-0086 is
-Stable for D3–D6 only.
+## Resolution (2026-10-23): retired
 
-**Home:** none. Phase-400, which landed W3, was archived on 2026-10-23 with
-this issue as its one open design question.
+The tenant was retired rather than routed. What decided it, measured on `main`:
+
+- No tracked descriptor ever set `[knobs.transport]`, so no build changes.
+- Four of the eight knobs the resolver "implied" (`NROS_DRIVER_ETHERNET`,
+  `NROS_DRIVER_PHY`, `NROS_DRIVER_MDIO`, `NROS_NET_IP_STACK`) have no reader
+  anywhere in the tree. Their `explain` rows described a mechanism that was
+  never built.
+- The image road already holds both halves of D1/D2. `[image.<id>] transport`
+  states the transport once, as D1 asked, over the same three words
+  (`leaf_system::TRANSPORT_KINDS`). `validate_transport` is `exactly-one-of`.
+  `transport_implications` is `implies` at Kconfig `imply` strength: an
+  explicit env row wins.
+- Routing would have needed `explain` to take an image, which it cannot, and
+  would have kept a second implication table to agree with the first.
+
+Deleted: `TransportKnobs`, `Knobs::transport`, `TRANSPORT_KINDS` and
+`BUILTIN_TRANSPORT_KIND` in `nros-platform-config`, plus `Implied`,
+`ResolvedTransport`, `resolve_transport`, `transport_warnings`, the two
+`ConfigError` variants and their four tests. Also deleted: the `transport.*`
+rows and the warning loop in `nros config explain`, the census's
+`TransportKnobs` struct and `SELECTIONS` set, and the two `NROS_TRANSPORT_*`
+owner rows in `check-knob-single-reader`. The census now counts 41 ladder knobs
+in 11 tenants, down from 43 in 12.
+
+A `[knobs.transport]` table now parses as a backend's `[knobs.<rmw>]` table,
+and serde refuses it on its first key (`kind`). So the old spelling fails loud
+rather than being ignored.
+
+RFC-0086 now marks D1 and D2 Superseded by RFC-0098 D4. D2's `requires` verb
+has no build-road form. The deleted resolver's check never reached a build
+either, so nothing was lost. If a build should refuse `transport = "serial"`
+on a board without a UART, that check belongs in `validate_transport`, against
+the board's capabilities.

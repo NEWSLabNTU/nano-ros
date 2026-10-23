@@ -175,8 +175,6 @@ OWNERS: dict[str, str] = {
     "NROS_XRCE_CUSTOM_TRANSPORT_MTU": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
     "NROS_XRCE_STREAM_HISTORY": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
     "NROS_LET_BUFFER_SIZE": "packages/tooling/nros-build-helpers/src/c.rs",
-    "NROS_TRANSPORT_KIND": "packages/tooling/nros-platform-config/src/platform_config.rs",
-    "NROS_TRANSPORT_ENDPOINT": "packages/tooling/nros-platform-config/src/platform_config.rs",
     "NROS_ZENOH_TX_BATCH": "packages/tooling/nros-platform-config/src/platform_config.rs",
     "NROS_ZENOH_TX_SPLIT_LOCK": "packages/tooling/nros-platform-config/src/platform_config.rs",
     "NROS_ZENOH_TX_BATCH_FLUSH_MS": "packages/tooling/nros-platform-config/src/platform_config.rs",
