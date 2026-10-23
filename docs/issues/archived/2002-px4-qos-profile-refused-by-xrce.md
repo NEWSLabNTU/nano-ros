@@ -7,7 +7,7 @@ area: [rmw, px4, testing]
 severity: high
 found: 2026-10-23
 resolved: 2026-10-23
-related: [1329, 0026]
+related: [1329, 0026, phase-511]
 ---
 
 ## Measured
