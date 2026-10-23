@@ -295,9 +295,14 @@ fn c_abi_runners_name_only_symbols_that_exist() {
         let Some(runners) = family.c_abi_runners() else {
             continue;
         };
-        for sym in [runners.run_components, runners.run_tiers]
-            .into_iter()
-            .flatten()
+        for sym in [
+            runners.run_components,
+            runners.run_tiers,
+            runners.run_tiers_backed,
+            runners.run_levels,
+        ]
+        .into_iter()
+        .flatten()
         {
             named += 1;
             assert!(
