@@ -721,10 +721,27 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   is the worker's (`Executor::set_worker_band`, every level by default),
   and its slots are the only ones it scans, takes from the ready word,
   re-checks, sweeps and drains; another band's arrival bits stay in the
-  word. Item 2 leaves the park, the transport drive and the executor-wide
+  word. A band worker credits its timers with the time since its own
+  previous pass, and leaves the transport drive and the executor-wide
   chores (services, component ticks, the rules) to the executor's own
-  worker, under the lock; a band pass does not park. A band worker
-  credits its timers with the time since its own previous pass.
+  worker.
+- **As landed in item 3.** A band worker parks when it has a `BandWaiter`
+  (the port's wake object: a signal entry and a bounded wait entry,
+  `'static`), linked into the executor's arrival routing by
+  `Executor::attach_band_worker`. `spin_band_once(this, worker, timeout)`
+  parks with the lock released until the earliest timer of its band
+  (less the time since its last pass), an arrival in its band, or
+  `timeout`. The waiter carries its band's slot mask, refreshed by each
+  pass; `WakeCtx::mark_ready` wakes the one waiter whose mask holds the
+  slot (the executor's own worker when none does), and the session-wide
+  `signal` wakes the executor's own worker and every waiter. The
+  executor's own worker parks (port park primitive) and waits (wake
+  object) in a window too, and its timer bound counts only its band. The
+  transport drive itself stays under the lock: with a backend that
+  cannot wake a park (XRCE), it is a blocking receive, and it bounds
+  `L_max`. Sporadic budgets and the alive and overrun rules stay
+  executor-owned, under the lock: refilled by whichever pass reads the
+  clock first, charged per callback by the worker that ran it.
 - **Order of landing.** (1) the lock seam: the lock, the guards on every
   FFI path, `nros_cpp_executor_set_lock`, one worker, no behaviour change;
   (2) the pass in steps: lock released around callbacks, running mark,
