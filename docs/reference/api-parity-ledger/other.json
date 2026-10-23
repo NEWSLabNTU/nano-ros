@@ -3,6 +3,10 @@
     "Schema: see docs/reference/api-parity-ledger/SCHEMA.md — the one home for what",
     "a row means. Do NOT copy it back here; issue 1095 is what that cost."
   ],
+  "rust:DRAIN_PASSES": {
+    "verdict": "extension",
+    "why": "issue 2000 — how many passes a log dispatcher makes over `nros_log::early`'s held records before it releases the dispatch guard. A record that finds another delivery in progress (another thread, or a sink that logs) is held rather than dropped, and the holder delivers it; this bound is what keeps a sink that logs on every write from looping. Public so a test or a sizing note can state the bound instead of copying the number. rclrs/rcutils have no correspondent: rcutils hands each record to its output handler synchronously and keeps no queue."
+  },
   "rust:MAX_AGE_MONITORS": {
     "verdict": "extension",
     "why": "phase-496 W1 -- how many age contract rows one executor watches (`NROS_EXECUTOR_MAX_AGE_MONITORS`). See `rust:MAX_MONITORS`."

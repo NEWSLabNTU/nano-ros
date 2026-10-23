@@ -46,8 +46,10 @@
 //! Three separate reasons, and the first two are already load-bearing before
 //! this module exists:
 //!
-//! 1. `nros_log`'s dispatcher holds `RECURSION_GUARD` across every
-//!    `sink.log()` call, so a sink that logs is refused outright.
+//! 1. `nros_log`'s dispatcher holds its dispatch guard across every
+//!    `sink.log()` call, so a sink that logs cannot recurse: its record is
+//!    held and delivered after the current one, a bounded number of passes per
+//!    dispatch (issue 2000).
 //! 2. The SINK does not publish. It copies into a `.bss` slot and returns, so
 //!    no logging call ever enters the RMW stack. This is what keeps issue
 //!    0589's shape — a Zephyr native_sim image dying by stack exhaustion with

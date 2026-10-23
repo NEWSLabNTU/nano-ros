@@ -956,20 +956,9 @@ pub fn init(sinks: &'static [&'static dyn LogSink]) {
         SINKS_PTR.store(CELL.as_ptr(), Ordering::Release);
     }
     // AFTER publishing, so a record raised during the drain reaches `sinks`
-    // directly rather than joining a ring nobody will drain again.
-    early::drain(sinks);
-    let lost = early::overflowed();
-    if lost > 0 {
-        // Reported through the sinks just installed, because the alternative is
-        // a silent hole exactly where the boot story is (`nros-log` cannot know
-        // what those records said, but it does know how many there were).
-        let logger = Logger::new("nros_log");
-        crate::log_warn!(
-            &logger,
-            "{lost} record(s) raised before `init` did not fit the early ring \
-             (see `nros_log::early`; raise `early-records-<N>`)"
-        );
-    }
+    // directly rather than joining a ring nobody will drain again. Overflow is
+    // reported by the same path (`report_lost`).
+    deliver_held();
 }
 
 #[cfg(not(feature = "alloc"))]
@@ -1086,12 +1075,10 @@ pub fn add_sink(sink: &'static dyn LogSink) -> bool {
     };
     ADD_LOCK.store(false, Ordering::Release);
 
-    if installed && SINKS_PTR.load(Ordering::Acquire).is_null() && idx == 0 {
-        // First delivery target in the program, and `init` has not run: the
-        // held records are ours to replay. AFTER publishing, for the reason
-        // `init` states — a record raised during the drain reaches the sink
-        // directly rather than joining a ring nobody will drain again.
-        early::drain_with(&mut |record| sink.log(record));
+    if installed {
+        // The first delivery target in the program replays what was held
+        // before it. AFTER publishing, for the reason `init` states.
+        deliver_held();
     }
     installed
 }
@@ -1164,18 +1151,7 @@ pub fn __timestamp_ns() -> u64 {
 }
 
 fn dispatch_to_sinks(record: &Record<'_>) {
-    if recursion_guard_check_and_set() {
-        return;
-    }
-    // phase-417 W4.d — the appendable list is walked whether or not `init`
-    // ran, and a record with at least one destination is NOT held.
-    let added = deliver_to_added(record);
-    let ptr = SINKS_PTR.load(Ordering::Acquire);
-    if ptr.is_null() {
-        if added > 0 {
-            recursion_guard_clear();
-            return;
-        }
+    if !has_destination() {
         // Nothing installed yet — HOLD the record; `init` replays it into
         // whatever sinks the board chooses. See `early` for why this crate
         // does not reach for the platform sink itself: doing that (issue 0710)
@@ -1187,21 +1163,117 @@ fn dispatch_to_sinks(record: &Record<'_>) {
         // was: the early records land in the sink the board picked, not in the
         // one dispatch guessed before the board had spoken.
         early::hold(record);
-        recursion_guard_clear();
         return;
     }
-    {
+    if !dispatch_guard_try_acquire() {
+        // Another delivery is in progress — this thread's own sink logging
+        // (recursion), or another thread. Hold it, then take the hand-off
+        // (`early` module docs, issue 2000).
+        early::hold(record);
+        if dispatch_guard_try_acquire() {
+            drain_and_release();
+        }
+        return;
+    }
+    deliver(record);
+    drain_and_release();
+}
+
+/// Whether a delivery would reach any sink.
+///
+/// phase-417 W4.d — the appendable list counts as much as `init`'s: a record
+/// with at least one destination is NOT held.
+fn has_destination() -> bool {
+    !SINKS_PTR.load(Ordering::Acquire).is_null() || ADDED.len.load(Ordering::Acquire) > 0
+}
+
+/// Hand `record` to every sink, appended ones first. Called with the dispatch
+/// guard held.
+fn deliver(record: &Record<'_>) {
+    deliver_to_added(record);
+    let ptr = SINKS_PTR.load(Ordering::Acquire);
+    if !ptr.is_null() {
         // SAFETY: `init` published a valid `'static` slice reference.
         let sinks: &'static [&'static dyn LogSink] = unsafe { *ptr };
         for sink in sinks {
             sink.log(record);
         }
     }
-    recursion_guard_clear();
+}
+
+/// Deliver whatever is held, if a sink exists and no delivery is in progress.
+/// One in progress delivers it itself before it lets go.
+fn deliver_held() {
+    // A loss is worth a delivery on its own: `NROS_LOG_EARLY_RECORDS = 0`
+    // holds nothing, so the count may be all there is to report.
+    if has_destination() && (early::pending() || lost_unreported()) && dispatch_guard_try_acquire()
+    {
+        drain_and_release();
+    }
+}
+
+/// With the guard held: deliver the held records, release, and take the guard
+/// back while a record is still waiting — at most [`early::DRAIN_PASSES`]
+/// times, which is what bounds a sink that logs (`early` module docs).
+fn drain_and_release() {
+    for pass in 0..early::DRAIN_PASSES {
+        early::drain_with(&mut deliver);
+        report_lost();
+        dispatch_guard_release();
+        // `SeqCst` on both: a raiser that saw the guard held published its
+        // record before retrying the guard, so either it gets the guard or
+        // this load sees the record.
+        if pass + 1 == early::DRAIN_PASSES || !early::pending() || !dispatch_guard_try_acquire() {
+            break;
+        }
+    }
+}
+
+/// Records lost to a full hold queue, already reported. Written only with the
+/// dispatch guard held.
+static LOST_REPORTED: AtomicUsize = AtomicUsize::new(0);
+
+fn lost_unreported() -> bool {
+    early::overflowed() != LOST_REPORTED.load(Ordering::Relaxed)
+}
+
+/// With the guard held: say how many records were lost since the last report.
+///
+/// `nros-log` cannot know what those records said, but it does know how many
+/// there were, and a silent hole is worse than a count. Delivered directly
+/// rather than through dispatch, because a report that could itself be held —
+/// and so lost — would undercount the loss it exists to state.
+fn report_lost() {
+    let lost = early::overflowed();
+    let reported = LOST_REPORTED.swap(lost, Ordering::Relaxed);
+    if lost == reported || !severity_enabled_at_compile_time(Severity::Warn) {
+        return;
+    }
+    let mut message = buffer::FormatBuffer::new();
+    let _ = core::fmt::Write::write_fmt(
+        &mut message,
+        format_args!(
+            "{} log record(s) lost: more were waiting for a sink than \
+             NROS_LOG_EARLY_RECORDS = {} holds (see `nros_log::early`)",
+            lost - reported,
+            early::early_depth()
+        ),
+    );
+    deliver(&Record {
+        severity: Severity::Warn,
+        logger_name: "nros_log",
+        message: message.as_str(),
+        file: file!(),
+        line: line!(),
+        timestamp_ns: __timestamp_ns(),
+    });
 }
 
 /// Flush every registered sink, appended ones included.
 pub fn flush() {
+    // A record held for a busy dispatcher (issue 2000) is not flushed until it
+    // has been delivered.
+    deliver_held();
     let len = ADDED.len.load(Ordering::Acquire);
     let base = ADDED.slots.get().cast::<Option<&'static dyn LogSink>>();
     for idx in 0..len {
@@ -1222,28 +1294,26 @@ pub fn flush() {
 }
 
 // -----------------------------------------------------------------------------
-// Recursion guard — process-global single AtomicBool.
+// Dispatch guard — one delivery at a time, process-wide.
 //
-// Granularity is intentionally coarse (process-wide, not per-thread).
-// The guard exists to break a sink that triggers log() during write
-// — not to serialize concurrent loggers across threads. A thread
-// re-entering through its own sink loses its other in-flight
-// sinks for that call; a different thread logging concurrently is
-// also short-circuited momentarily. This is acceptable: the alt is
-// per-thread storage which doesn't exist uniformly across our
-// `no_std` targets (`thread_local!` requires `std`).
+// Held across every `sink.log()`. It breaks a sink that logs from recursing,
+// and it keeps two threads out of the sinks at once, so a sink never sees
+// interleaved calls. A record that finds it held is NOT dropped (issue 2000):
+// it is held in `early` and delivered by the holder. Per-thread recursion
+// detection would need a thread identity, which no `no_std` target here gives
+// for free; deferral needs none.
 // -----------------------------------------------------------------------------
 
-static RECURSION_GUARD: AtomicBool = AtomicBool::new(false);
+static DISPATCH_GUARD: AtomicBool = AtomicBool::new(false);
 
-fn recursion_guard_check_and_set() -> bool {
-    RECURSION_GUARD
-        .compare_exchange(false, true, Ordering::Acquire, Ordering::Acquire)
-        .is_err()
+fn dispatch_guard_try_acquire() -> bool {
+    DISPATCH_GUARD
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
 }
 
-fn recursion_guard_clear() {
-    RECURSION_GUARD.store(false, Ordering::Release);
+fn dispatch_guard_release() {
+    DISPATCH_GUARD.store(false, Ordering::SeqCst);
 }
 
 // -----------------------------------------------------------------------------

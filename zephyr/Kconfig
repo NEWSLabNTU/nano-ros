@@ -1445,15 +1445,17 @@ config NROS_LOG_DYNAMIC_LOGGERS
       this Kconfig value outranks it, and the environment outranks both.
 
 
-# prompt: nros-log records held before init
+# prompt: nros-log records held for delivery
 config NROS_LOG_EARLY_RECORDS
     int
     default 4
     range 0 256
     help
-      How many records nros_log::early holds before init installs the
-      sinks (nros-log build.rs, as NROS_LOG_EARLY_RECORDS; issue 1037).
-      0 declines the ring: early records are dropped and only counted.
+      How many records nros_log::early holds until a sink can take them:
+      before init installs the sinks, or while another thread is inside a
+      sink (issue 2000). nros-log build.rs reads it as
+      NROS_LOG_EARLY_RECORDS (issue 1037). 0 declines the queue: such
+      records are dropped and only counted, and the count is logged.
       Each slot is a formatting buffer plus a logger name in .bss.
       Replaces the deprecated early-records-<N> cargo features.
 

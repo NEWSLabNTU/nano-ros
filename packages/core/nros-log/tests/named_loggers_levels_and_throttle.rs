@@ -8,10 +8,11 @@
 //!
 //! ## Why the lock
 //!
-//! `nros_log`'s dispatcher holds a process-global recursion guard, so two
-//! threads logging at once means one record is dropped by design. Tests that
-//! assert on WHAT was collected therefore serialise; the ones that only assert
-//! on logger identity do not need to.
+//! `nros_log`'s dispatcher delivers one record at a time, and a record raised
+//! while another thread is mid-delivery is delivered by that thread
+//! afterwards (issue 2000), so it can land after its own `log_*!` returned.
+//! Tests that assert on WHAT was collected therefore serialise; the ones that
+//! only assert on logger identity do not need to.
 
 use std::sync::Mutex;
 

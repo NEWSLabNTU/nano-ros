@@ -1,7 +1,9 @@
 ---
 id: 2000
 title: "nros-log's recursion guard is process-wide, so a record logged while another thread is inside a sink is silently dropped"
-status: open
+status: resolved
+resolved: 2026-10-23
+resolved_in: "fix/2000-log-defer-not-drop"
 type: bug
 area: [logging, core]
 severity: medium
@@ -62,3 +64,38 @@ that the drop is silent and total for that record.
 3. **Count the drops** (an `overflowed()`-style counter, reported at the next
    dispatch). This loses the same records, but no longer silently. It is worth
    doing whichever of 1 or 2 is chosen.
+
+## Resolution (2026-10-23)
+
+Maintainer chose deferral plus a loss count (options C + D in the comparison),
+over a per-thread guard: that would have needed a thread-identity call in all
+seven platform ports, and it would also have let two threads into a sink at
+once, which sinks that write raw bytes (a UART) relied on never happening.
+
+A record that finds the dispatch guard held is now HELD in the
+`nros_log::early` queue, and the thread holding the guard delivers it before it
+lets go:
+
+- `early` is a reusable multi-producer queue now, not a one-shot boot ring.
+  Each slot cycles `EMPTY -> WRITING -> READY -> READING -> EMPTY`, and a
+  drain replays in raise order. The same `NROS_LOG_EARLY_RECORDS` knob sizes
+  it: both uses ask how many records may wait for a sink at once.
+- **The hand-off cannot strand a record.** The raiser publishes, then retries
+  the guard; the holder releases, then looks for held records. Both are
+  `SeqCst`, so one of them always sees the other.
+- **A sink that logs is postponed, not refused, and it is bounded.** The holder
+  makes at most `early::DRAIN_PASSES` (2) passes, each over records held when
+  the pass began, so it neither loops nor grows the stack. A leftover waits
+  for the next dispatch or `flush()`.
+- **Losses are reported** (option D). A record that finds the queue full is
+  counted (`early::overflowed()`), and the next delivery emits one
+  `nros_log` warning with the count. It is delivered directly under the guard,
+  so the report itself cannot be lost.
+- One delivery at a time still holds: a sink never sees two threads.
+
+Tests (each its own binary, since the state is process-wide):
+`busy_dispatch_other_thread` (fails on the old code with `left: ["slow"]`),
+`busy_dispatch_sink_logs`, `busy_dispatch_overflow` and
+`busy_dispatch_stress` (8 threads x 5000 records: delivered + lost = sent, and
+never two threads in a sink). The two concurrency tests passed 300 runs each,
+and 100 runs each under `2 x nproc` busy loops.
