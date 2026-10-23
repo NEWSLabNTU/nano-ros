@@ -1271,6 +1271,16 @@ pub const TYPED_CARRIER_SENT_PREFIX: &str = "[typed_carrier] sent:";
 /// `zephyr_cortex_m_qemu` asserts on it the way an operator reads it.
 pub const BOOT_REPORT_ARENA_EXHAUSTED: &str = "ARENA EXHAUSTED:";
 
+/// phase-511 A6 — the bare-metal MPS2-AN385 board's `init_hardware` banner
+/// (`packages/boards/nros-board-mps2-an385/src/node.rs` prints it before the
+/// executor opens). Keep in sync with that `hprintln!`.
+pub const QEMU_BAREMETAL_BOARD_BANNER: &str = "nros QEMU Platform";
+
+/// phase-511 A6 — the text every board's boot prints as it reaches
+/// `Executor::open`, in either outcome (`Executor::open failed:` without a
+/// peer). Boot reaching it is the `BoardEntryBoot` proof.
+pub const EXECUTOR_OPEN_REACHED: &str = "Executor::open";
+
 /// phase-381 — the graph probe's verdict line. Like `ERRNO_ISOLATION_PASS`,
 /// this is not delivery: it is the fixture saying it saw the peer it was told
 /// to expect, which is the only thing a discovery workload can assert.

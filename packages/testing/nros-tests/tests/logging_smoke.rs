@@ -448,3 +448,32 @@ fn native_rust_logging_example_threshold_raise_filters_round_two() {
         );
     }
 }
+
+/// RFC-0051 §7c (phase-511) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::LoggingSmoke,
+        &[
+            (P::Linux, L::Rust, R::Zenoh, W::Logging, K::Example),
+            (P::QemuBaremetal, L::Rust, R::Zenoh, W::Logging, K::Example),
+            (P::FreertosMps2, L::Rust, R::Zenoh, W::Logging, K::Example),
+            (P::NuttxArm, L::Rust, R::Zenoh, W::Logging, K::Example),
+            (P::ThreadxLinux, L::Rust, R::Zenoh, W::Logging, K::Example),
+            (P::ThreadxRiscv64, L::Rust, R::Zenoh, W::Logging, K::Example),
+            (
+                P::ZephyrNativeSim,
+                L::Rust,
+                R::Zenoh,
+                W::Logging,
+                K::Example,
+            ),
+        ],
+    );
+}

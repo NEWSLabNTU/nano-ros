@@ -32,7 +32,10 @@
 
 use std::{process::Command, time::Duration};
 
-use nros_tests::fixtures::{QemuProcess, is_qemu_available, qemu_baremetal_main_e2e_binary};
+use nros_tests::{
+    fixtures::{QemuProcess, is_qemu_available, qemu_baremetal_main_e2e_binary},
+    output,
+};
 
 /// `thumbv7m-none-eabi` Rust target installed?
 fn thumbv7m_target_installed() -> bool {
@@ -92,17 +95,38 @@ fn baremetal_board_run_executes_run_plan() {
 
     // Boot reaches `Executor::open` (its failure banner without a peer is the
     // lifecycle proof). The accumulated output carries the earlier boot banner.
-    let output = qemu.collect_until("Executor::open", Duration::from_secs(25));
+    let boot = qemu.collect_until(output::EXECUTOR_OPEN_REACHED, Duration::from_secs(25));
     qemu.kill();
 
-    println!("=== qemu-baremetal-main-e2e boot output ===\n{output}");
+    println!("=== qemu-baremetal-main-e2e boot output ===\n{boot}");
 
     assert!(
-        output.contains("nros QEMU Platform"),
-        "boot must reach the board `init_hardware` banner (reset → BoardEntry::run). Output:\n{output}"
+        boot.contains(output::QEMU_BAREMETAL_BOARD_BANNER),
+        "boot must reach the board `init_hardware` banner (reset → BoardEntry::run). Output:\n{boot}"
     );
     assert!(
-        output.contains("Executor::open"),
-        "boot must reach `Executor::open` (full BoardEntry boot scaffold ran). Output:\n{output}"
+        boot.contains(output::EXECUTOR_OPEN_REACHED),
+        "boot must reach `Executor::open` (full BoardEntry boot scaffold ran). Output:\n{boot}"
+    );
+}
+
+/// RFC-0051 §7c (phase-511) — the cases this file runs are exactly the
+/// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
+/// added, retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::BaremetalRunPlan,
+        &[(
+            P::QemuBaremetal,
+            L::Rust,
+            R::Zenoh,
+            W::BoardEntryBoot,
+            K::Example,
+        )],
     );
 }
