@@ -1,0 +1,1 @@
+`nros sync` no longer fails when two syncs resolve the same model at once. The staged file each resolve writes before promoting it was one fixed `<model>.yaml.resolving`, so concurrent syncs read, rewrote and renamed each other's file. The staged name is now unique per resolve. (issue 1460)
