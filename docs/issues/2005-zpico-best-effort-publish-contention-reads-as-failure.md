@@ -52,8 +52,20 @@ tell them apart, and neither can anything above it.
    surfaced as `TransportError::Busy`. Every caller then has to handle a code
    that BEST_EFFORT semantics say it should not care about. The C and C++ error
    mappings move too.
-3. **Leave it.** Today no in-tree publisher is BEST_EFFORT on a path where
-   anyone checks the result. 1980's test was RELIABLE.
+3. **No fork change: zpico reports every failed BEST_EFFORT put as success.**
+   Cheap, but a best-effort publisher on a dead session then also succeeds,
+   so a publish result stops revealing a dead session.
+4. **Leave it.** It is user-visible today. nros-c's action server publishes
+   feedback BEST_EFFORT (`packages/api/nros-c/src/action/server.rs`), so
+   `rclc_action_publish_feedback_raw` returns `RCL_RET_ERROR` whenever another
+   thread holds the TX mutex. Any `RCLC_QOS_SENSOR_DATA` publisher does the
+   same.
+
+Scope of option 1, measured in the pinned zenoh-pico (1.8): declarations take
+the mutex with BLOCK, query requests default to BLOCK
+(`z_internal_congestion_control_default_request`), and a reply follows its
+query. So a DROP send is a put, a delete or an admin-space put, which is the
+best-effort data plane and nothing else.
 
 Option 1 is the recommendation: it is the zenoh behaviour, and it removes the
 error rather than giving it a name.
