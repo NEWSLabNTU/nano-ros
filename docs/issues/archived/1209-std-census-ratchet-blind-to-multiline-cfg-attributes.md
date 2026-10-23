@@ -2,13 +2,15 @@
 id: 1209
 title: "The `std` census counts `feature = \"std\"` only on lines containing the
   literal `cfg`, so rustfmt wrapping an attribute hides a site from the ratchet"
-status: open
+status: resolved
+resolved: 2026-10-23
+resolved_in: "phase-359 close-out"
 type: bug
 area: [tooling, ci, core]
 related: [0597, 0196, phase-359, phase-361]
 ---
 
-**Home: [phase-359](../roadmap/phase-359-drop-std-campaign.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-359](../../roadmap/archived/phase-359-drop-std-campaign.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## What
 
@@ -105,3 +107,19 @@ those are rare here and over-counting fails **closed** on a ratchet. Verify with
 Whichever shape lands, raise the `nros-node` baseline from 3 to 4 in the same
 commit so the correction is in the diff, and add a wrapped-attribute case to
 `self_test()` — the gate must be shown able to fail on the form it missed.
+
+## Resolution (2026-10-23) — moot
+
+Phase-359 W10 deleted the `std` feature from all nine census crates, so a
+`cfg(feature = "std")` there now names an UNDECLARED feature. The compiler
+refuses it: measured by appending a `#[cfg(feature = "std")]` item to
+`nros-serdes` and running `cargo check`, which failed with `error: unexpected
+cfg condition value: std` (`-D unexpected-cfgs` via `-D warnings`). That check
+is token-based, so a rustfmt-wrapped attribute is caught exactly like a
+one-line one, which is the hole this issue described. A `std::` path outside a
+test build does not compile either (`#![no_std]` roots, `extern crate std`
+only under `cfg(test)` / `test-harness`).
+
+The census baselines are 0 everywhere, so its line-based count no longer guards
+anything the compiler does not. Not fixed in the tool: the effort would buy no
+detection.

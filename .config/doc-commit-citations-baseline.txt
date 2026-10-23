@@ -54,7 +54,7 @@ db91f2bad
 
 # ---- DEAD -------------------------------------------------------------------
 
-# `docs/roadmap/phase-359-drop-std-campaign.md`, the four-row table of std
+# `docs/roadmap/archived/phase-359-drop-std-campaign.md`, the four-row table of std
 # symbols and the commit that removed each. The symbol names and issue numbers
 # in the same rows survive; the hashes did not.
 bc6c8dfc6

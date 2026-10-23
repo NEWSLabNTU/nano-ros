@@ -80,7 +80,7 @@
 // both of which this image already links — so the predicate has nothing left to
 // decide and the crate is one flavour on every target.
 //
-// See `docs/roadmap/phase-359-drop-std-campaign.md` W7 for what each std
+// See `docs/roadmap/archived/phase-359-drop-std-campaign.md` W7 for what each std
 // facility became.
 #![no_std]
 
