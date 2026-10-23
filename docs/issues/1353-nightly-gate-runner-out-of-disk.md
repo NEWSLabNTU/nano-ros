@@ -2340,3 +2340,22 @@ rustc-LLVM ERROR: IO failure on output stream: No space left on device
   `example-lint` mps2 RTIC leaves, all inside the one `matrix-nightly` build.
 - Disk: the box's `/home` showed 1.7T free when checked. The space that ran
   out was the runner container's own.
+
+## Sighting 2026-10-23: tier-1 `host-tests` gates on a hosted runner
+
+- **Run:** host-tests 39894233489 (scheduled 03:17 UTC, head `2b6c5fdbf`).
+- **Job:** 120220810768, `tier-1 gates (just check)`, on a GitHub-hosted
+  runner (`GitHub Actions 1000110604`).
+- **Failed step:** `just ci tier1 gates`, about 2 h in, inside
+  `template-copy-out`. The `example-lint` mps2-an385 baremetal C leaves were
+  compiling at the time.
+
+```
+##[warning]You are running out of disk space. ... Free space left: 93 MB
+error: couldn't create a temp dir: No space left on device (os error 28) at path "/__w/nano-ros/nano-ros/build/example-lint/mps2-an385-baremetal-c-service-server/nros-relwithdebinfo/deps/rmetaQRRGZy"
+ci tier1-gates FAILED at step 1 of 1 (check::default).
+```
+
+This is the tier-1 shape already recorded above under "The tier-1 half of the
+same distinction". The same run's `per-feature clippy` job failed separately,
+on issue 1987, which is a different cause.
