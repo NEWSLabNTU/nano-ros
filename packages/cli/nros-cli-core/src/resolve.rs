@@ -681,6 +681,22 @@ pub const RESOLVED_ENTITY_INPUTS_NAME: &str = "resolved-entity-inputs.cmake";
 /// `cmake/NanoRosEntry.cmake` reads that file).
 pub const RESOLVED_ENTITY_JSON_NAME: &str = "resolved-entity-inventory.json";
 
+/// The environment variable `nros build` hands a west configure the record's
+/// digest in (`nros_resolved_entity_take` requires it).
+pub const ENTITY_RECORD_ENV: &str = "NROS_RESOLVED_ENTITY_RECORD_SHA256";
+
+/// SHA-256 of `<dir>/resolved-entity-inputs.cmake`, as cmake's `file(SHA256)`
+/// spells it, or `None` when no record was written.
+pub fn entity_record_digest(dir: &std::path::Path) -> Option<String> {
+    let bytes = std::fs::read(dir.join(RESOLVED_ENTITY_INPUTS_NAME)).ok()?;
+    Some(
+        Sha256::digest(&bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect(),
+    )
+}
+
 /// What the producer must find in its OWN configure before it may read the
 /// resolve instead of recomposing (`nros_resolved_entity_take` in
 /// `cmake/NanoRosResolved.cmake`).

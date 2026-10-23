@@ -484,7 +484,14 @@ message(STATUS "PROBE_TAKEN=\${_taken}")
 EOF
 take_run() { # <label> [cmake -D args...]
     rm -rf "$TAKE_ROOT/build"
-    TAKE_OUT="$(cmake -S "$TAKE_ROOT/src" -B "$TAKE_ROOT/build" "${@:2}" 2>&1)"
+    # The record's digest in the environment, as `nros build` hands it to the
+    # configures it starts; TAKE_NO_ENV=1 is a configure it did not start.
+    local env_sha=""
+    if [ -z "${TAKE_NO_ENV:-}" ]; then
+        env_sha="$(sha256sum "$TAKE_ROOT/resolve/resolved-entity-inputs.cmake" | cut -d' ' -f1)"
+    fi
+    TAKE_OUT="$(NROS_RESOLVED_ENTITY_RECORD_SHA256="$env_sha" \
+        cmake -S "$TAKE_ROOT/src" -B "$TAKE_ROOT/build" "${@:2}" 2>&1)"
 }
 write_take_record
 take_run match
@@ -527,6 +534,9 @@ take_declines "another model" "it was composed over" "-DPROBE_MODELS=$TAKE_ROOT/
 take_declines "no workspace" "its workspace is" "-DPROBE_WS="
 write_take_record 1 "$REG" "--board-rx-frame-cost-us;40"
 take_declines "another board receive cost" "board receive cost"
+write_take_record
+TAKE_NO_ENV=1 take_declines "a configure \`nros build\` did not start (a later reconfigure)" \
+    "was not started by the \`nros build\`"
 write_take_record 2
 take_declines "an unknown record schema" "schema this reader does not know"
 # The model re-resolved IN PLACE (same path, new content) -- what a configure
@@ -552,13 +562,13 @@ mkdir -p "$PROM_ROOT/resolve" "$PROM_ROOT/src"
 printf 'set(BOUND seeded)\n' > "$PROM_ROOT/resolve/resolved-message-bounds.cmake"
 printf '{"types": []}\n' > "$PROM_ROOT/table.json"
 printf 'set(ENTITY x)\n' > "$PROM_ROOT/entity.cmake"
-write_prom_record() { # [table sha] [ceiling]
+write_prom_record() { # [table sha] [ceiling] [tables override]
     local tsha esha
     tsha="${1:-$(sha256sum "$PROM_ROOT/table.json" | cut -d' ' -f1)}"
     esha="$(sha256sum "$PROM_ROOT/entity.cmake" | cut -d' ' -f1)"
     cat > "$PROM_ROOT/resolve/resolved-message-bounds-inputs.cmake" <<EOF
 set(NROS_RESOLVED_BOUNDS_INPUTS_SCHEMA 1)
-set(NROS_RESOLVED_BOUNDS_TABLES [==[std_msgs=$tsha]==])
+set(NROS_RESOLVED_BOUNDS_TABLES [==[${3:-std_msgs=$tsha}]==])
 set(NROS_RESOLVED_BOUNDS_ENTITY_SHA256 $esha)
 set(NROS_RESOLVED_BOUNDS_CEILING ${2:-2048})
 EOF
@@ -583,10 +593,25 @@ file(MAKE_DIRECTORY "\${_t}")
 file(WRITE "\${_t}/nros_message_bounds.cmake" "")
 configure_file("$PROM_ROOT/table.json" "\${_t}/nros_message_bounds.json" COPYONLY)
 nros_message_bounds_register_fragment("\${_t}/nros_message_bounds.cmake")
+foreach(_n IN LISTS PROBE_EXTRA_TABLES)
+    set(_t2 "\${CMAKE_BINARY_DIR}/codegen/\${_n}")
+    file(MAKE_DIRECTORY "\${_t2}")
+    file(WRITE "\${_t2}/nros_message_bounds.cmake" "")
+    configure_file("$PROM_ROOT/table.json" "\${_t2}/nros_message_bounds.json" COPYONLY)
+    nros_message_bounds_register_fragment("\${_t2}/nros_message_bounds.cmake")
+endforeach()
+# The entity fragment the producer reads; PROBE_ENTITY_LAG composes over an
+# older answer that the entity producer then replaces, later in the configure.
+if(PROBE_ENTITY_LAG)
+    file(WRITE "\${_e}" "set(ENTITY older)\n")
+endif()
 # ---- the PRODUCER ----
+nros_message_bounds_note_composition("\${_e}" 2048)
 nros_reconfigure_snapshot("\${_frag}" _before)
 file(WRITE "\${_frag}" "set(BOUND \${PROBE_ANSWER})\n")
 nros_reconfigure_on_change("\${_frag}" "\${_before}" LABEL "the probe bounds")
+# ---- the ENTITY producer, after the last bounds call ----
+configure_file("$PROM_ROOT/entity.cmake" "\${_e}" COPYONLY)
 EOF
 prom_run() { # [cmake -D args...]
     rm -rf "$PROM_ROOT/build"
@@ -627,6 +652,28 @@ if [ "$PROM_RC" -eq 0 ] && nros_grep_q -F "small-class ceiling is 4096" <<<"$PRO
     log_success "another ceiling: stale, not a disagreement"
 else
     fail "a ceiling difference was treated as a disagreement (rc=$PROM_RC):
+$PROM_OUT"
+fi
+write_prom_record
+prom_run -DPROBE_ANSWER=other -DPROBE_ENTITY_LAG=ON
+check
+if [ "$PROM_RC" -eq 0 ] && nros_grep_q -F "entity inventory is not the one" <<<"$PROM_OUT"; then
+    log_success "bounds composed over an entity answer the entity producer later replaced: lag, not a disagreement"
+else
+    fail "the check judged the bounds against an entity fragment they never read (rc=$PROM_RC):
+$PROM_OUT"
+fi
+# Two tables whose names sort differently from their formatted rows (`foo`
+# before `foo2` by name, `foo2=` before `foo=` as text): the record is written
+# in the row order `write_west_seed` uses, and the FATAL must stay reachable.
+_tsha="$(sha256sum "$PROM_ROOT/table.json" | cut -d' ' -f1)"
+write_prom_record "" "" "foo2=$_tsha;foo=$_tsha;std_msgs=$_tsha"
+prom_run -DPROBE_ANSWER=other "-DPROBE_EXTRA_TABLES=foo;foo2"
+check
+if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "over the SAME inputs" <<<"$PROM_OUT"; then
+    log_success "tables foo + foo2: the record's row order matches, and a disagreement still stops the configure"
+else
+    fail "with tables foo and foo2 the record never matches, so the check cannot fire (rc=$PROM_RC):
 $PROM_OUT"
 fi
 rm -f "$PROM_ROOT/resolve/resolved-message-bounds-inputs.cmake"

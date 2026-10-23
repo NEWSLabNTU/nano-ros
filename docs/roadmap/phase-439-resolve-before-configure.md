@@ -189,6 +189,24 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       record. It is mutation-tested: disabling the check reds 3, ignoring the
       tables reds 1. `zephyr/.config` was not compared; nothing W8 changes
       reaches Kconfig.
+      **Review (an independent read of W7/W8, same day) found three real
+      defects, all fixed before merge:**
+      1. `NROS_RESOLVED_DIR` is a cached `-D`, so a later reconfigure of an
+         `nros build` dir reached the take. The record does not cover the
+         probe sidecars that floor the counts, so after a `nros sync` that
+         moved one, a reconfigure could have copied an undersized answer. The
+         take now requires the record's digest in the environment, which only
+         the `nros build` that wrote it hands its west configure and which
+         ninja's own re-runs inherit. Measured: under `nros build` the take
+         fires; a bare `cmake <dir>` declines and recomposes.
+      2. The promise check compared the FINAL entity fragment, which the entity
+         producer can rewrite after the last bounds call. Each composition now
+         notes what it read (`nros_message_bounds_note_composition`).
+      3. The record's table rows were sorted by package in Rust and as text in
+         cmake, so `foo`/`foo2` never matched and the check went vacuous.
+      Plus a cmake dedup key that could collide where Rust's cannot. Case T
+      gained "a configure `nros build` did not start"; case U gained the lag
+      and the `foo`/`foo2` cases. Each fails on the code before its fix.
 - [x] **W9 — the smaller issues.** Done 2026-10-23: #1121 resolved (see
       below); #1413 stays tracked, by ruling; #1460 resolved.
       [#1413](../issues/1413-play-launch-parser-ref-lags-submodule-pin.md): the

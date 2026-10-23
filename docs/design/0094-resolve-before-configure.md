@@ -337,8 +337,8 @@ blocks it.
 
 | fragment | pre-configure value | configure side | a difference over the same inputs |
 | --- | --- | --- | --- |
-| entity inventory (C/C++ west) | `resolved.cmake`, composed over the registered population (W7) | READS it, only when `resolved-entity-inputs.cmake` matches: registered rows, model path and content, workspace, board rx | cannot occur: the configure copies the answer |
-| message-bound sizes (C/C++ west) | `resolved-message-bounds.cmake` (W6) | recomposes once per interface package | FATAL at the end of the top-level configure (`_nros_resolved_bounds_promise_check`), over `resolved-message-bounds-inputs.cmake`: table digests, entity digest, ceiling |
+| entity inventory (C/C++ west) | `resolved.cmake`, composed over the registered population (W7) | READS it, only in a configure the `nros build` that wrote `resolved-entity-inputs.cmake` started (its digest rides the environment), and only when the record matches: registered rows, model path and content, workspace, board rx | cannot occur: the configure copies the answer. A later reconfigure of the same build dir recomposes, because the record does not cover the probe sidecars that floor the counts |
+| message-bound sizes (C/C++ west) | `resolved-message-bounds.cmake` (W6) | recomposes once per interface package | FATAL at the end of the top-level configure (`_nros_resolved_bounds_promise_check`), over `resolved-message-bounds-inputs.cmake`: table digests, plus the entity digest and ceiling the LAST composition read |
 | sizing descriptor, named or none (west) | a DEFAULT (`named` when a resolve is in front), not a resolved fact | the entry decides | an arm: an image with no contract legitimately writes no descriptor |
 
 Measured on `demo_bringup:zephyr` (`native_sim/native/64`, Zephyr 3.7), clean

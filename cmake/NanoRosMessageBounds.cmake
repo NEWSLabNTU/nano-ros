@@ -251,6 +251,20 @@ function(nros_message_bounds_register_fragment _path)
     set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_FRAGMENTS "${_list}")
 endfunction()
 
+# nros_message_bounds_note_composition(<entity fragment> <ceiling>) -- phase-439 W8
+#
+# Record what one composition read, for `_nros_resolved_bounds_promise_check`:
+# the entity fragment's digest (empty when there is none) and the ceiling.
+# GLOBAL and overwritten per call, so the check sees the LAST call's inputs.
+function(nros_message_bounds_note_composition _entity _ceiling)
+    set(_sha "")
+    if(NOT "${_entity}" STREQUAL "" AND EXISTS "${_entity}")
+        file(SHA256 "${_entity}" _sha)
+    endif()
+    set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_ENTITY_SHA256 "${_sha}")
+    set_property(GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_CEILING "${_ceiling}")
+endfunction()
+
 # nros_message_bounds_fragments(<out_var>) -- the list, in the caller's scope.
 function(nros_message_bounds_fragments _out_var)
     get_property(_list GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_FRAGMENTS)
@@ -408,6 +422,13 @@ function(nros_derive_message_bound_knobs)
     if(NOT _ceiling)
         set(_ceiling "${NROS_MESSAGE_BOUNDS_DEFAULT_SMALL_CEILING}")
     endif()
+    # phase-439 W8 -- what THIS call composes over, for the resolve-phase
+    # promise check (`_nros_resolved_bounds_promise_check`). Recorded per call,
+    # last call wins: the entity fragment can be rewritten after the last
+    # bounds call (the entity producer runs later), and comparing the fragment
+    # as it stands at the end of the configure would judge this answer against
+    # an input it never read.
+    nros_message_bounds_note_composition("${_B_ENTITY_INVENTORY}" "${_ceiling}")
 
     # ---- Nothing derived until proven otherwise -------------------------
     # Every out-variable starts UNSET. A knob that cannot be derived must be

@@ -61,7 +61,11 @@
 #
 # `NROS_RESOLVED_DIR` unset -- a bare `west build`, `just zephyr
 # build-fixtures`, a user's own `cmake -S` -- means every function here is a
-# no-op and the placeholder is written as before. That is the whole reason the
+# no-op and the placeholder is written as before. NOTE it is a `-D`, so it is
+# CACHED: a later reconfigure of a build dir `nros build` created still has it,
+# whoever starts that configure. A rule that must hold only for configures
+# `nros build` itself started cannot key on it (`nros_resolved_entity_take`
+# keys on an environment variable for that reason). That is the whole reason the
 # seam is a passed variable rather than a search: a reader that GUESSED where a
 # resolve might live would silently pick up another image's answer, which is
 # issue 0616's shape one directory over.
@@ -252,6 +256,7 @@ function(_nros_resolved_bounds_promise_check)
     unset(NROS_RESOLVED_BOUNDS_INPUTS_SCHEMA)
     include("${_rec}")
     _nros_resolved_bounds_inputs(_tables _entity_sha)
+    get_property(_ceiling GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_CEILING)
     set(_why "")
     if(NOT "${NROS_RESOLVED_BOUNDS_INPUTS_SCHEMA}" STREQUAL "1")
         set(_why "its input record has a schema this reader does not know")
@@ -259,10 +264,9 @@ function(_nros_resolved_bounds_promise_check)
         set(_why "its bound tables are [${NROS_RESOLVED_BOUNDS_TABLES}], this configure's [${_tables}]")
     elseif(NOT "${_entity_sha}" STREQUAL "${NROS_RESOLVED_BOUNDS_ENTITY_SHA256}")
         set(_why "this configure's entity inventory is not the one it was composed with")
-    elseif(NOT "${NROS_MESSAGE_BOUNDS_DEFAULT_SMALL_CEILING}" STREQUAL
-           "${NROS_RESOLVED_BOUNDS_CEILING}")
+    elseif(NOT "${_ceiling}" STREQUAL "${NROS_RESOLVED_BOUNDS_CEILING}")
         set(_why "its small-class ceiling is ${NROS_RESOLVED_BOUNDS_CEILING}, this "
-                 "configure's ${NROS_MESSAGE_BOUNDS_DEFAULT_SMALL_CEILING}")
+                 "configure's ${_ceiling}")
         string(CONCAT _why ${_why})
     endif()
     if(NOT _why STREQUAL "")
@@ -290,8 +294,9 @@ endfunction()
 #
 # This configure's half of the record `write_west_seed` writes: `<pkg>=<sha256>`
 # of each registered bound table's JSON (its fragment's sibling), sorted by
-# package, and the entity fragment's digest. A package registered with two
-# DIFFERENT tables is reported as both rows, which matches no record.
+# package, and the digest of the entity fragment the last composition read. A
+# package registered with two DIFFERENT tables is reported as both rows, which
+# matches no record.
 function(_nros_resolved_bounds_inputs _out_tables _out_entity)
     nros_message_bounds_fragments(_frags)
     set(_rows "")
@@ -311,11 +316,9 @@ function(_nros_resolved_bounds_inputs _out_tables _out_entity)
         list(SORT _rows)
     endif()
     set(${_out_tables} "${_rows}" PARENT_SCOPE)
-    nros_entity_inventory_knobs_file(_e)
-    set(_esha "")
-    if(EXISTS "${_e}")
-        file(SHA256 "${_e}" _esha)
-    endif()
+    # The entity fragment the LAST bounds composition read, never the fragment
+    # as it stands now: the entity producer may rewrite it afterwards.
+    get_property(_esha GLOBAL PROPERTY NROS_MESSAGE_BOUNDS_COMPOSED_ENTITY_SHA256)
     set(${_out_entity} "${_esha}" PARENT_SCOPE)
 endfunction()
 
@@ -420,6 +423,20 @@ function(nros_resolved_entity_take _metadata _output _json _out_taken)
         return()
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_rec}")
+
+    # Only a configure the `nros build` that wrote this record started -- its
+    # digest rides the environment, which ninja's own re-runs inherit. The
+    # record covers the registered rows, the model and the workspace, not the
+    # probe sidecars that floor the counts: a later reconfigure of this build
+    # dir (`NROS_RESOLVED_DIR` is cached, so it still reaches here) may follow a
+    # `nros sync` that moved one, and must compose.
+    file(SHA256 "${_rec}" _rec_sha)
+    if(NOT "$ENV{NROS_RESOLVED_ENTITY_RECORD_SHA256}" STREQUAL "${_rec_sha}")
+        message(STATUS "nros: entity inventory composed at configure, not read from the "
+                       "resolve phase: this configure was not started by the `nros build` "
+                       "that wrote ${_rec}")
+        return()
+    endif()
 
     foreach(_v NROS_RESOLVED_ENTITY_INPUTS_SCHEMA NROS_RESOLVED_ENTITY_REGISTERED
                NROS_RESOLVED_ENTITY_MODEL NROS_RESOLVED_ENTITY_MODEL_SHA256
@@ -556,7 +573,9 @@ function(_nros_resolved_registered_keys _metadata _out_keys _out_why)
             else()
                 string(JSON _pkg GET "${_doc}" components ${_i} pkg)
             endif()
-            string(MD5 _id "${_pkg}::${_name}")
+            # A newline cannot appear in either name, so `a::b`+`c` and
+            # `a`+`b::c` stay two rows, as they are in `EntityInventory::insert`.
+            string(MD5 _id "${_pkg}\n${_name}")
             set(_row_${_id} "${_pkg}::${_name}::${_class}")
             list(APPEND _ids "${_id}")
         endforeach()
