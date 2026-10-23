@@ -106,6 +106,10 @@ nros-sdk.lock
 # refused (no store) row, one dir each (`scripts/check-param-services-heap-free.sh`).
 /target-param-heap-free/
 /target-param-heap-free-nostore/
+# Issue 1177 -- nros-c with no std and no alloc, and nros-c's lib test target at
+# its default features, in `just check compile-smoke`.
+/target-nros-c-no-alloc/
+/target-nros-c-test-default/
 /target-param-heap-free-store-only/
 
 # Issue 1472 — `just check test-targets` runs the tests of workspace-excluded
