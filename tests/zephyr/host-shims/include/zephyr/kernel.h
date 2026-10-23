@@ -128,6 +128,12 @@ static inline int k_mutex_unlock(struct k_mutex* mutex) {
     return pthread_mutex_unlock(&mutex->m);
 }
 
+/* phase-509 P10 -- `nros_zephyr_exec_lock_init`'s; the host test calls none
+ * of the executor-lock shims. */
+static inline int k_mutex_init(struct k_mutex* mutex) {
+    return pthread_mutex_init(&mutex->m, NULL);
+}
+
 /* ---- stacks -------------------------------------------------------------
  *
  * `nros_zephyr_task_create_prio` hands `&nros_thread_stacks[slot]` to
