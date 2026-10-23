@@ -1,0 +1,50 @@
+# Node interface contract for system.launch.xml (phase-509 P9).
+#
+# Three timer paths at three rates. The derivation ranks by
+# `paths.on_timer.trigger.timer.rate_hz`, one rank per distinct rate, and one
+# preemption level per rank (RFC-0108 D4 rule 1): 50 Hz is level 0, 20 Hz
+# level 1, 5 Hz level 2. The code's timer periods (20, 50 and 200 ms) state the
+# same loops.
+
+version: 1
+
+nodes:
+  urgent:
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 50 } }
+        output: [tick]
+    pub:
+      tick: { min_rate_hz: 10 }
+
+  middle:
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 20 } }
+        output: [tick]
+    pub:
+      tick: { min_rate_hz: 5 }
+
+  lazy:
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 5 } }
+        output: [tick]
+    pub:
+      tick: { min_rate_hz: 1 }
+
+# Every topic leaves the image; nothing here subscribes, so the derivation
+# places nodes by their timers alone.
+topics:
+  /levels/urgent:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [urgent/tick]
+  /levels/middle:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [middle/tick]
+  /levels/lazy:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [lazy/tick]

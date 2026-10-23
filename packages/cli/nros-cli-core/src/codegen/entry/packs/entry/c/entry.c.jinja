@@ -59,7 +59,7 @@
 *
 * DO NOT EDIT — regenerated at configure time. Routes each launch node
 * to the real executor via its `RCLC_C_COMPONENT` factory/configure seam
-* (no synthesizing interpreter); `{{ boot.runners.run_tiers if boot.tiers else boot.runners.run_components }}`
+* (no synthesizing interpreter); `{{ (boot.runners.run_levels or boot.runners.run_tiers) if boot.tiers else boot.runners.run_components }}`
 * owns init/spin/shutdown.
 */
 

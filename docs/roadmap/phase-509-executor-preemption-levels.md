@@ -578,16 +578,111 @@ client/server pairs); the degradation and refusal text.
 
 ### P9 -- Zephyr runner on levels, per-level stacks, cost report (amended RFC-0107 step 5)
 
-- [ ] Goal: the Zephyr runner spawns levels instead of tiers. The FFI becomes
+- [x] Goal: the Zephyr runner spawns levels instead of tiers. The FFI becomes
       `nros_cpp_scheduler_open(core)` + `nros_cpp_level_open(scheduler, level)`,
       replacing `nros_cpp_dispatcher_open(core, tier)`. Generated sizes become
       `NROS_CPP_CORE_BACKING_SIZE`, `NROS_CPP_SCHEDULER_BACKING_SIZE_<core>`
       and a per-level stack.
-- [ ] Per-level stacks derived from the members (largest member plus the
+- [x] Per-level stacks derived from the members (largest member plus the
       worker frame), never the platform default.
-- [ ] The cost report after the target compile: per region and per level its
+- [x] The cost report after the target compile: per region and per level its
       stack and worker record; per core its scheduler and backing; text and
       JSON. A check, never an input.
+
+**Done (as built).**
+
+- **The runner.** Every generated Zephyr entry calls
+  `nros_board_zephyr_run_levels_in` (C++ `ZephyrBoard::run_levels`): each
+  row of its table is one level (a derived level, or an authored tier,
+  which is one band), placed by the P7 rule. The boot level owns the
+  session and runs on `main()`; every other level's worker thread opens its
+  executor over the core's scheduler. The `_tasks_in` / `_backed_in` /
+  `_in` / `_ns` runners stay for older entries and take the scheduler from
+  the platform heap (a few hundred bytes); a generated image takes none.
+- **The FFI** (`nros_cpp_*`): `nros_cpp_scheduler_backing_size(n)`,
+  `nros_cpp_scheduler_open(core, n_levels, owner, backing, bytes)` (over
+  the session the owner executor opened; it states the level count),
+  `nros_cpp_level_adopt(scheduler, level, executor, stack_bytes, name)`
+  (the boot level), `nros_cpp_level_open(scheduler, level, name, storage,
+  backing, backing_bytes, stack_bytes)` (every other level), and the
+  queries `nros_cpp_scheduler_level_count`,
+  `nros_cpp_scheduler_level_executor` and
+  `nros_cpp_scheduler_level_stack_bytes`. The scheduler is a record in the
+  entry's own backing: a head (core, level count, domain, session) and one
+  seat per level (executor, the stack its worker runs on, name).
+- **Generated sizes.** The entry emits `__nros_scheduler_0[
+  NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8]` with
+  `NROS_CPP_SCHEDULER_BACKING_SIZE_0` = `NROS_CPP_SCHEDULER_BACKING_SIZE(n)`
+  (`<rclc/detail/main.h>`: 8 + one pointer + three pointers per level,
+  8-rounded; 88 B for three levels on a 64-bit target). The per-level
+  backings stay `NROS_CPP_TIER_BACKING_SIZE_<i>` (issue 1970).
+- **Derived stacks.** A spawned level that declares no `stack_bytes` is
+  `NROS_TIER_TASK_MEMORY_DEFINE(i, NROS_LEVEL_STACK_BYTES(0u))`
+  (`tier_task_memory_zephyr.h`): the largest member's stack, or the
+  per-callback default for a member that states none, plus the worker
+  frame. New Kconfig `NROS_ZEPHYR_LEVEL_WORKER_FRAME` (default 4,096, an
+  estimate); the per-callback default is `NROS_ZEPHYR_TIER_STACK_SIZE`
+  minus the frame, so a level whose members state nothing gets exactly the
+  knob, as every tier did before (a `BUILD_ASSERT` keeps the frame below
+  it). An authored `stack_bytes` stays the expert override, and the
+  priority record carries it (`tiers[].stack_bytes`). FreeRTOS keeps its
+  stated default until its P10 runner (`TierTaskMemory::derives_level_stacks`).
+- **The cost report.** `scripts/nros-mem-report.py <elf> --levels`
+  (`just mem-report`): per level its stack (derived and measured), its
+  worker record (executor context + backing + thread object) and its
+  members, naming each member that took the per-callback default; per core
+  its scheduler and the level backings; per region (the link map's memory
+  regions, else the output section). `--json` for machines; `--check`
+  asserts the contexts are `n x NROS_CPP_EXECUTOR_STORAGE_SIZE`, each
+  backing its `NROS_CPP_TIER_BACKING_SIZE_<i>`, the scheduler
+  `NROS_CPP_SCHEDULER_BACKING_SIZE(n)`, and each spawned level's stack
+  holds the derived bytes. It reads the image, the per-build sizes header,
+  the image's `.config` and `nros_priority_plan.json`; nothing reads it
+  back. On the fixture: three levels, stacks 16,384 B (= derived) for the
+  two spawned levels, each worker record 14,608 B (context 3,144 + backing
+  11,288 + thread 176), scheduler 88 B; `.bss` 43,736 B, `.noinit` 32,768 B.
+- **Fixed on the way:** P7's level helper in `zephyr_run_tiers.c` used
+  `nros_tier_spec_t` before its typedef, so no tiered Zephyr C/C++ image
+  compiled on `main` since P7 (no gate lane compiles one); and mem-report's
+  sizes-header search still looked under the pre-phase-501 `nros/` mirror.
+
+Deviations, recorded in RFC-0108 ("As built in P9"):
+
+- **A level is still an executor over the shared session**, not a worker
+  over one ready set: dispatching one `Executor` from two threads needs the
+  spin pass to drop its `&mut` borrow around each user callback, and
+  RFC-0107's step 4 dispatcher is not on `main`. The schedule is D3's
+  (rank order and non-preemptive inside a level, kernel preemption across
+  levels); release and budget accounting stay in each level's executor,
+  which owns its members' slots, so nothing is shared and nothing moved.
+  There is therefore no `NROS_CPP_CORE_BACKING_SIZE`.
+- **The FFI takes what it needs:** `scheduler_open` takes the owner
+  executor and the entry's backing besides the core, and the boot level is
+  adopted rather than opened.
+- **No member states a stack yet** (no contract or `system.toml` key), so
+  every member takes the per-callback default and the report names it.
+- **The board fixture is Zephyr native_sim**, the lane's Zephyr target with
+  a router (the real Zephyr scheduler), not QEMU.
+- **The Rust Zephyr runner** (`entry_tiers.rs`) keeps P7's placement, and
+  `zephyr_image.rs` needed nothing.
+
+Tests: `scheduler_tests` in nros-cpp
+(`the_backing_is_a_head_and_one_seat_per_level`,
+`a_short_backing_or_a_foreign_handle_is_refused`,
+`each_level_is_seated_once_with_its_stack`); nros-entry-lower
+`an_undeclared_spawned_level_derives_its_stack`; the entry goldens
+(`cpp_zephyr_tiers`, `c_zephyr_tiers`) and
+`typed_emit_tiers_zephyr_embedded_uses_run_tiers_path`; mem-report's
+selftest (`selftest_levels`); and the board fixture
+`examples/workspaces/levels-cpp` (row `workspace-zephyr-cpp-levels`),
+run by `realtime_tiers_e2e` cell `zephyr/cpp-levels`: three levels at 50,
+20 and 5 Hz, the two less urgent callbacks running 15 and 60 ms; the cell
+requires an urgent tick inside a middle callback, urgent and middle markers
+inside a lazy callback, no lazy marker inside a middle callback, each
+spawned level on its derived 16,384 B stack, and `mem-report --levels
+--check` clean (`the_level_order_verdict_reads_preemption_off_the_console`
+proves the verdict can fail). One-level images are unchanged: they spawn
+nothing and emit none of this.
 
 **Touches:** `packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c`,
 `packages/boards/nros-board-zephyr/src/entry_tiers.rs`,

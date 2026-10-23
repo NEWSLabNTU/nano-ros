@@ -176,6 +176,7 @@ impl BoardFamily {
                 run_components: Some("nros_board_native_run_components_named_in"),
                 run_tiers: Some("nros_board_native_run_tiers_in"),
                 run_tiers_backed: None,
+                run_levels: None,
                 // Issue 1597 — the host too. Its runners are Rust and used to
                 // build each `CppContext` on a stack (`size_of`-exact, but
                 // priced by nothing and a second road beside the shared one);
@@ -188,6 +189,7 @@ impl BoardFamily {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: Some("nros_board_freertos_run_tiers_tasks_in"),
                 run_tiers_backed: None,
+                run_levels: None,
                 takes_executor_storage: true,
                 // Issue 1598 — each spawned tier's stack + TCB are the entry's
                 // statics (`xTaskCreateStatic`), not heap_4 blocks. The
@@ -199,6 +201,8 @@ impl BoardFamily {
                     header: "rclc/detail/tier_task_memory_freertos.h",
                     boot_tier: BootTier::Last,
                     default_stack_bytes: 262_144,
+                    // Its runner is phase-509 P10's.
+                    derives_level_stacks: false,
                 }),
             }),
             BoardFamily::Zephyr => Some(CAbiRunners {
@@ -206,6 +210,10 @@ impl BoardFamily {
                 run_tiers: Some("nros_board_zephyr_run_tiers_tasks_in"),
                 // Issue 1970 -- and its per-tier-sized twin.
                 run_tiers_backed: Some("nros_board_zephyr_run_tiers_backed_in"),
+                // phase-509 P9 -- the levels runner every generated Zephyr
+                // entry calls: one worker per level over the core's
+                // scheduler, whose backing the entry owns.
+                run_levels: Some("nros_board_zephyr_run_levels_in"),
                 takes_executor_storage: true,
                 // Issue 1232 — each spawned tier's thread + stack are the
                 // entry's `K_THREAD_STACK_DEFINE`, sized from the tier's own
@@ -218,12 +226,17 @@ impl BoardFamily {
                     header: "rclc/detail/tier_task_memory_zephyr.h",
                     boot_tier: BootTier::First,
                     default_stack_bytes: 0,
+                    // phase-509 P9 -- a level that declares no stack gets
+                    // `NROS_LEVEL_STACK_BYTES`: its largest member's stack
+                    // plus the worker frame.
+                    derives_level_stacks: true,
                 }),
             }),
             BoardFamily::Nuttx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: Some("nros_board_nuttx_run_tiers_in"),
                 run_tiers_backed: None,
+                run_levels: None,
                 takes_executor_storage: true,
                 // A NuttX tier is a pthread whose stack the kernel allocates;
                 // not moved (yet).
@@ -233,6 +246,7 @@ impl BoardFamily {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: None,
                 run_tiers_backed: None,
+                run_levels: None,
                 takes_executor_storage: true,
                 tier_task_memory: None,
             }),
@@ -324,6 +338,14 @@ pub struct CAbiRunners {
     /// whose runner has no such twin (its tiers keep one whole-image executor
     /// each).
     pub run_tiers_backed: Option<&'static str>,
+    /// phase-509 P9 (RFC-0108) -- the LEVELS runner:
+    /// `(…, tiers, n_tiers, storage, stride, backings, task_memory,
+    /// scheduler_backing, scheduler_bytes) -> int32_t`. Each row of the tier
+    /// table is one level; the core's scheduler lives in the entry's
+    /// `NROS_CPP_SCHEDULER_BACKING_SIZE_0` static, and `backings` is the
+    /// [`run_tiers_backed`](Self::run_tiers_backed) array or NULL. When a
+    /// family has one, the entry calls it in place of both tier runners.
+    pub run_levels: Option<&'static str>,
     /// Issues 1551 + 1568 — this family's runners take the executor storage
     /// from the CALLER, and the entry emits it as ONE file-scope static: `n`
     /// blocks of `NROS_CPP_EXECUTOR_STORAGE_SIZE` rounded to 8, one per tier
@@ -367,6 +389,13 @@ pub struct TierTaskMemory {
     /// choice to the header, which names the board's own knob (Zephyr:
     /// CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE).
     pub default_stack_bytes: u64,
+    /// phase-509 P9 (RFC-0108 D3) -- a spawned level that declares no
+    /// `stack_bytes` gets a stack DERIVED from its members (the header's
+    /// `NROS_LEVEL_STACK_BYTES(member)`: the largest member's stack, or the
+    /// port's per-callback default for a member that states none, plus the
+    /// worker's own frame), never the platform's thread default. `false`
+    /// keeps [`default_stack_bytes`](Self::default_stack_bytes).
+    pub derives_level_stacks: bool,
 }
 
 /// Which tier of a highest-priority-first table a runner boots on the caller.
@@ -732,6 +761,7 @@ mod tests {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: None,
                 run_tiers_backed: None,
+                run_levels: None,
                 takes_executor_storage: true,
                 tier_task_memory: None,
             })

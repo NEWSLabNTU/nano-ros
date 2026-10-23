@@ -484,6 +484,30 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_tiers_backed_in(
     size_t storage_stride, const nros_tier_backing_t* backings,
     const nros_tier_task_memory_t* task_memory);
 
+/* phase-509 P9 (RFC-0108) — the bytes a core's level scheduler takes for `n`
+ * levels: an 8-byte head and the session pointer, then one seat per level (its
+ * executor, its worker's stack bytes, its name), rounded up to 8. The same
+ * arithmetic as `nros_cpp_scheduler_backing_size(n)`, which refuses a shorter
+ * backing at open. A generated entry sizes `NROS_CPP_SCHEDULER_BACKING_SIZE_0`
+ * with it. */
+#define NROS_CPP_SCHEDULER_BACKING_SIZE(n)                                                         \
+    (((8u + sizeof(void*) + (size_t)(n) * 3u * sizeof(void*)) + 7u) & ~(size_t)7u)
+
+/* phase-509 P9 (RFC-0108 D3; the amended RFC-0107 step 5) — the runner a
+ * generated Zephyr entry calls: each row of `tiers` is one LEVEL (a derived
+ * level, or an authored tier, which is one band). The boot level owns the
+ * session; the core's scheduler, held in `scheduler_backing`
+ * (`NROS_CPP_SCHEDULER_BACKING_SIZE_0` bytes, the entry's static), seats every
+ * level, and each spawned level's worker opens its executor over it on a
+ * stack derived from its members (`NROS_LEVEL_STACK_BYTES`,
+ * <rclc/detail/tier_task_memory_zephyr.h>). `backings` is the `_backed_in`
+ * array, or NULL when the build sizes none. */
+NROS_PUBLIC int32_t nros_board_zephyr_run_levels_in(
+    const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
+    const nros_native_tier_spec_t* tiers, size_t n_tiers, void* executor_storage,
+    size_t storage_stride, const nros_tier_backing_t* backings,
+    const nros_tier_task_memory_t* task_memory, void* scheduler_backing, size_t scheduler_bytes);
+
 /* phase-281 W3 (nuttx) (RFC-0015 Model 1) — run a multi-tier embedded C/C++
  * entry on NuttX: open ONE RMW session on the caller's thread (the NuttX
  * `app_main` thread), spawn one `pthread` per non-boot tier (NuttX is POSIX —

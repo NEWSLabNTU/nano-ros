@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>demo_bringup</name>
+  <version>0.1.0</version>
+  <description>phase-509 P9 - bringup for the three-level C++ workspace (ws-levels-cpp).</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

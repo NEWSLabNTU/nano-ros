@@ -1,0 +1,55 @@
+[system]
+name = "levels_cpp"
+rmw = "zenoh"
+domain_id = 0
+
+# phase-509 P9 - the three-level fixture (RFC-0108). Three C++ components, one
+# wall timer each, at 50, 20 and 5 Hz; no `group_tiers`, no `[tiers.*]`. The
+# derivation gives one preemption level per distinct contract rank, and the
+# Zephyr runner spawns one worker per level over the core's scheduler. The
+# two less urgent callbacks run long (15 and 60 ms), so a more urgent level's
+# tick printed inside their begin/end pair is the preemption the test checks.
+
+[[component]]
+pkg = "urgent_pkg"
+class = "urgent_pkg::Urgent"
+name = "urgent"
+
+[[component]]
+pkg = "middle_pkg"
+class = "middle_pkg::Middle"
+name = "middle"
+
+[[component]]
+pkg = "lazy_pkg"
+class = "lazy_pkg::Lazy"
+name = "lazy"
+
+# Issue 0951 - the implicit machine this system runs on. Unscoped and with no
+# `nodes`, so it governs every launch file and every node.
+[host.native]
+
+# RFC-0065 D6 - images are the buildable unit; both entries are generated.
+[image_defaults]
+rmw = "zenoh"
+
+[image.linux]
+board = "linux"
+
+[image.zephyr]
+board = "zephyr"
+conf = ["prj-zenoh.conf"]
+# phase-470 W5.b3 (issue 1288) — the west application is GENERATED, so no
+# `entry =`: a generated application is found by construction at
+# `build/<coord>/<image>_entry/`, which is the ambiguity `entry =` existed to
+# resolve. `panic` is the one fact the deleted `CMakeLists.txt` stated that no
+# other declaration carried (`nano_ros_add_executable(... PANIC platform)`);
+# `LANG`, `BRINGUP` and the `add_subdirectory` list are derived from the
+# packages the launch names.
+panic = "platform"
+# phase-276 W2 / phase-481 W3 -- the levels need tx windows well inside their
+# period: Zephyr zsock serializes send behind the read task's recv window
+# (issues 0129/0139). Moved from the board's prj-zenoh.conf: a nano-ros knob
+# is the image's (RFC-0098 D10), rendered into Kconfig by the module.
+[image.zephyr.knobs.zenoh]
+socket_timeout_ms = 5

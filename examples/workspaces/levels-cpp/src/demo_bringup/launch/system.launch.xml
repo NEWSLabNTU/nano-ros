@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- phase-509 P9 (ws-levels-cpp) - three nodes at three timer rates, so the
+     derivation gives three preemption levels. The node `name`s match
+     system.toml [[component]].name and the `nodes:` keys of
+     system.contract.yaml beside this file. -->
+<launch>
+    <node pkg="urgent_pkg" exec="urgent" name="urgent"/>
+    <node pkg="middle_pkg" exec="middle" name="middle"/>
+    <node pkg="lazy_pkg" exec="lazy" name="lazy"/>
+</launch>

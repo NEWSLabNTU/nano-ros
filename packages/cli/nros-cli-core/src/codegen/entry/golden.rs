@@ -1006,7 +1006,9 @@ fn branch_of(src: &str) -> super::ExecutorShape {
     // failure about this test's vocabulary rather than about the branch it
     // exists to check) and the `run_tiers` half was still an exact
     // `contains("run_tiers(")` that 1442 would have broken the same way.
-    let tiers = calls_runner(src, "run_tiers");
+    // phase-509 P9 -- the Zephyr runner spawns LEVELS (`run_levels`): the
+    // same multi-thread branch under the levels name.
+    let tiers = calls_runner(src, "run_tiers") || calls_runner(src, "run_levels");
     let components = calls_runner(src, "run_components");
     match (tiers, sched, any_sched, components) {
         (true, false, false, false) => ExecutorShape::Tiers,
