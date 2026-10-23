@@ -1639,10 +1639,27 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // freestanding application work. No cwd gymnastics: the
                 // application path is absolute.
                 let h = Handoff::new("west", a).in_dir(&root);
-                Some(match &zbase {
+                let h = match &zbase {
                     Some(z) => h.with_env("ZEPHYR_BASE", z.as_os_str()),
                     None => h,
-                })
+                };
+                // phase-439 W7 -- the configure may READ the resolve's entity
+                // inventory only when THIS run of `nros build` wrote the record
+                // it reads it by: the digest rides the environment, which ninja's
+                // own re-runs of cmake inherit and a later reconfigure of the
+                // same build dir does not (`NROS_RESOLVED_DIR` is cached, so it
+                // cannot tell them apart). The record covers the registered
+                // rows, the model and the workspace, not the probe sidecars that
+                // floor the counts, and those can move between two builds.
+                Some(
+                    match resolved_dir
+                        .as_ref()
+                        .and_then(|d| crate::resolve::entity_record_digest(d))
+                    {
+                        Some(digest) => h.with_env(crate::resolve::ENTITY_RECORD_ENV, digest),
+                        None => h,
+                    },
+                )
             }
         };
 
