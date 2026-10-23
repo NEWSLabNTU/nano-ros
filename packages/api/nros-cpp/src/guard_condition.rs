@@ -44,7 +44,7 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_create(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let c_callback = callback;

@@ -20,7 +20,7 @@ use core::ffi::{c_char, c_void};
 use nros_rmw::{Publisher as PublisherTrait, Session, TopicInfo};
 
 use crate::{
-    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, cstr_to_str,
+    NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, cstr_to_str,
     nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
@@ -121,7 +121,8 @@ pub unsafe extern "C" fn nros_cpp_publisher_create(
         .and_then(|s| s.split('\0').next())
         .unwrap_or("/");
 
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut crate::CppContext = &mut ctx_ref;
 
     // Phase 305 W3 (issue 0255) — expand `~`/relative topic names against this
     // node's identity and apply its launch remap rules (executor-side table)

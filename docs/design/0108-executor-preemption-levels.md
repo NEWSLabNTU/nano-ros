@@ -627,6 +627,86 @@ differ from the step above:
   (`CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE` minus the frame) and the cost
   report names it; a level's stack is then exactly the knob, as before.
 
+**As built in P9b** (design note; items 1-4 land it in order). P9 left each
+level a whole executor over the shared session. P9b makes the levels worker
+threads over ONE executor per core, so a level costs a worker record and its
+stack instead of a context and a backing. Measured on `levels-cpp`
+(native_sim, `mem-report --levels`): three levels as executors take
+43,736 B of `.bss` (3 x (context 3,144 + backing 11,288) + 88 scheduler +
+2 x 176 thread objects); the same three nodes as one level take 16,296 B
+(context 3,144 + backing 13,112 + scheduler 40). Each per-level backing
+carries a fixed floor of about 10.4 KB that one shared backing pays once.
+
+- **Ownership and borrows.** One `Executor` per core. A `&mut Executor`
+  exists only while the executor's lock is held, and never across a user
+  callback. A worker's pass runs as steps: (1) lock; reap deferred
+  releases, advance its band's timers, scan its band's readiness, pick from
+  the band's per-level FIFO and bitmap at the band threshold, and mark the
+  picked entry running (`begin_dispatch`'s slot tag); (2) copy out
+  `(try_process, data_ptr, desc_idx, delta)` and unlock; (3) call
+  `try_process(data_ptr, ...)` with no executor reference live (the data is
+  in the pinned arena, which never moves for the executor's lifetime); (4)
+  lock; finish the dispatch (runtime and budget, route judge, deadline),
+  clear the running mark, merge mid-pass arrivals, re-pick; unlock. A
+  worker's own record (band, park, stack record) is the P6 `Worker`, owned
+  by its thread; the ready set, slots, timers, sporadic budgets and monitors
+  stay in the executor under the lock.
+- **Locking.** One lock per executor: the port's RECURSIVE,
+  PRIORITY-INHERITING mutex (`nros_platform_mutex_rec_*`: Zephyr `k_mutex`,
+  POSIX `PTHREAD_PRIO_INHERIT`, FreeRTOS recursive mutex, NuttX with
+  priority inheritance, ThreadX `TX_INHERIT`), installed on the executor by
+  the runner before any second thread can reach it
+  (`nros_cpp_executor_set_lock`). Every C and C++ FFI entry that touches
+  the executor takes it before its reference exists (`cpp_ctx_checked` /
+  `cpp_ctx_locked` return a `CtxRef`, nros-c's `get_executor` a `CExecRef`)
+  and gives it back when that reference drops; a lookup that hands back an
+  object inside the executor (an action client core, a service client, a
+  node's session) hands back the lock with it (`Locked` / `CLocked`). It is
+  recursive because, until the pass releases it around callbacks (item 2),
+  a callback that calls back into the executor re-enters it on the same
+  thread. It is never held across a park or a callback once item 2-3 land.
+  An executor with no lock installed (every one-level image, every Rust
+  `&mut` user) pays one predictable branch per entry and nothing else.
+  Interrupt handlers never take it: arrivals use the scheduler's lock-free
+  ready word and the band's wake object, and `from_isr` is unchanged.
+- **Lock cost** (host, Intel Core Ultra 7 265K, glibc, recursive +
+  `PTHREAD_PRIO_INHERIT`): uncontended lock+unlock 13.6-15.3 ns, a nested
+  (recursive) pair 16.0-16.5 ns; two threads hammering one lock 165-550 ns
+  per pair (the PI futex hand-off). Zephyr's `k_mutex` on target is to be
+  measured on the island (I4); native_sim does not advance time while code
+  runs, so it cannot price it.
+- **Blocking bound.** With one priority-inheriting lock, a level i's
+  callback is blocked, besides the non-preemptive tail of its own band, by
+  at most ONE critical section of a less urgent worker:
+  `B_i = max C_k (k less urgent, same band) + L_max`, where `L_max` is the
+  longest locked step of any less urgent worker (a pick or a finish, never a
+  callback, never a park). The response-time analysis (`levels::response_time`)
+  gains `L_max` in its blocking term once item 2 measures it.
+- **Cancellation and timers.** Cancel, reset or release of an entry that is
+  running on another worker is deferred through the issue 1705 path (the
+  running mark is the slot tag `begin_dispatch` sets) and reaped by the next
+  locked step; on an entry that is not running it applies at once. Each
+  timer belongs to one band, and only that band's worker advances it, with
+  that worker's own elapsed time, so a timer is never credited twice.
+  Each worker parks on its own wake object until the earliest deadline in
+  its band (RFC-0106, the park already on the P6 `Worker`). One worker, the
+  least urgent level (which owns the session), drives the transport.
+- **Why it is sound.** All shared mutable executor state is behind one
+  lock, and a `&mut` to it exists only inside a guard. A callback touches
+  only its own entry's pinned arena data, through a raw pointer, and an
+  entry marked running is neither freed nor moved. The running mark means
+  two workers never run one callback at once; one worker per band makes a
+  band non-preemptive, and preemption across bands is the kernel's. A
+  worker picks only from its own band, so a less urgent worker never takes
+  work that a more urgent band has pending.
+- **Order of landing.** (1) the lock seam: the lock, the guards on every
+  FFI path, `nros_cpp_executor_set_lock`, one worker, no behaviour change;
+  (2) the pass in steps: lock released around callbacks, running mark,
+  deferred cancel, band-filtered pick, `set_reprobe_each_callback` (once per
+  pass by default); (3) scheduler-owned accounting: per-band timers and
+  budgets, one transport driver, per-worker band park; (4) the runner, FFI
+  and cost report: `level_open` opens a worker over the core's executor.
+
 ## Relation to other RFCs
 
 - **RFC-0002 (RT execution model).** Amended. Its single-thread, registration-

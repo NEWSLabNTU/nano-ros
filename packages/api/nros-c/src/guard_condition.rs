@@ -205,7 +205,7 @@ pub unsafe extern "C" fn rclc_node_create_guard_condition(
     }
 
     let node_id = nros_node::executor::NodeId::from_raw(node_ref.node_id);
-    let rust_exec = crate::executor::get_executor(executor);
+    let mut rust_exec = crate::executor::get_executor(executor);
 
     // The callback is bound HERE, at creation, and cannot be swapped later.
     let wrapper = move || {
@@ -323,7 +323,7 @@ pub unsafe extern "C" fn rclc_node_get_graph_guard_condition(
     }
 
     let node_id = nros_node::executor::NodeId::from_raw(node_ref.node_id);
-    let rust_exec = crate::executor::get_executor(executor);
+    let mut rust_exec = crate::executor::get_executor(executor);
 
     let wrapper = move || {
         if let Some(cb) = callback {

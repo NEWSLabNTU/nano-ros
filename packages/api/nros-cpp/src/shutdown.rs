@@ -111,7 +111,7 @@ pub unsafe extern "C" fn nros_cpp_remove_pre_shutdown_callback(
     executor_handle: *mut c_void,
     handle: nros_cpp_shutdown_callback_handle_t,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     if ctx
@@ -135,7 +135,7 @@ pub unsafe extern "C" fn nros_cpp_remove_on_shutdown_callback(
     executor_handle: *mut c_void,
     handle: nros_cpp_shutdown_callback_handle_t,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     if ctx
@@ -172,7 +172,7 @@ unsafe fn add_shutdown_callback(
     let Some(callback) = callback else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     // SAFETY: forwarded verbatim from this function's own contract.

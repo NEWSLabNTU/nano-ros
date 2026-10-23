@@ -1331,6 +1331,11 @@ mod tests {
                 + size_of::<Option<&'static [super::super::launch_remap::LaunchRemap]>>()
                 + 2 * size_of::<u16>()
                 + size_of::<Option<u32>>()
+                // phase-509 P9b -- the executor's lock (RFC-0108 "As built in
+                // P9b"): the port mutex's address and its take / give entries.
+                // The mutex itself lives in the runner's scheduler backing;
+                // scales with nothing.
+                + size_of::<Option<super::super::exec_lock::ExecLock>>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],

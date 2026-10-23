@@ -92,7 +92,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_capturing_with_info(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let node_ref = unsafe { &*node };
-    let Some(ctx) = (unsafe { cpp_ctx_checked(node_ref.executor) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(node_ref.executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let bytes = if capture.is_null() || capture_len == 0 {
@@ -164,7 +164,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let c_context = context;
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let c_context = context;
@@ -324,7 +324,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_capturing(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let node_ref = unsafe { &*node };
-    let Some(ctx) = (unsafe { cpp_ctx_checked(node_ref.executor) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(node_ref.executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let bytes = if capture.is_null() || capture_len == 0 {
@@ -384,7 +384,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_oneshot(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let c_context = context;
@@ -453,7 +453,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_in_group(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let c_context = context;
@@ -511,7 +511,7 @@ pub unsafe extern "C" fn nros_cpp_timer_cancel(
     executor_handle: *mut c_void,
     handle_id: usize,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let id = nros_node::HandleId::from_raw(handle_id);
@@ -554,7 +554,7 @@ pub unsafe extern "C" fn nros_cpp_timer_reset(
     executor_handle: *mut c_void,
     handle_id: usize,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let id = nros_node::HandleId::from_raw(handle_id);

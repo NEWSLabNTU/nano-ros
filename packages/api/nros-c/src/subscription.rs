@@ -575,7 +575,7 @@ pub unsafe extern "C" fn rclc_polling_subscription_init_with_qos(
 
         // Phase 156 Sub-bug D — multi-Session dispatch (see
         // `rclc_publisher_init_default` for the long form).
-        let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
+        let (mut session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
             Some(t) => t,
             None => return RCL_RET_NOT_INIT,
         };

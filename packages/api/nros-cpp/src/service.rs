@@ -15,9 +15,9 @@ use core::ffi::{c_char, c_void};
 use nros_rmw::{ClientTrait, ServiceInfo, ServiceTrait, Session};
 
 use crate::{
-    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
-    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRY_AGAIN, NROS_CPP_RET_UNSUPPORTED, cpp_ctx_checked,
-    cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
+    NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, NROS_CPP_RET_TIMEOUT,
+    NROS_CPP_RET_TRY_AGAIN, NROS_CPP_RET_UNSUPPORTED, cpp_ctx_checked, cstr_to_str,
+    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 use core::{
@@ -107,7 +107,8 @@ pub unsafe extern "C" fn nros_cpp_service_server_create(
         .and_then(|s| s.split('\0').next())
         .unwrap_or("/");
 
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut crate::CppContext = &mut ctx_ref;
 
     // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
     let resolved_svc = match crate::resolve_node_entity_name(ctx, node_ref, svc_str) {
@@ -212,7 +213,8 @@ pub unsafe extern "C" fn nros_cpp_service_server_register(
     // The arena registration derives namespace + node name from the node
     // record (register_service_raw_sized_on), so only the bare service name is
     // passed here — unlike the poll-style create which builds ServiceInfo itself.
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut crate::CppContext = &mut ctx_ref;
 
     // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
     let resolved_svc = match crate::resolve_node_entity_name(ctx, node_ref, svc_str) {
@@ -423,7 +425,8 @@ pub unsafe extern "C" fn nros_cpp_service_client_create(
         .and_then(|s| s.split('\0').next())
         .unwrap_or("/");
 
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut crate::CppContext = &mut ctx_ref;
 
     // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
     let resolved_svc = match crate::resolve_node_entity_name(ctx, node_ref, svc_str) {
@@ -586,7 +589,8 @@ pub unsafe extern "C" fn nros_cpp_service_client_register(
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
 
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut crate::CppContext = &mut ctx_ref;
 
     // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
     let resolved_svc = match crate::resolve_node_entity_name(ctx, node_ref, svc_str) {
@@ -654,7 +658,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_on_handle(
     if req_data.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let entry = match unsafe { ctx.executor.service_client_entry_mut(handle_id) } {
@@ -770,12 +774,19 @@ unsafe fn client_either_road<'a>(
     storage: *const c_void,
     executor: *mut c_void,
     handle_id: usize,
-) -> Option<&'a nros::internals::RmwServiceClient> {
+) -> Option<crate::Locked<'a, nros::internals::RmwServiceClient>> {
     if !storage.is_null() {
-        return Some(unsafe { &*(storage as *const nros::internals::RmwServiceClient) });
+        // SAFETY: caller storage, outside the executor: no lock to hold.
+        return Some(unsafe {
+            crate::Locked::new(storage as *mut nros::internals::RmwServiceClient, None)
+        });
     }
     let ctx = unsafe { cpp_ctx_checked(executor) }?;
-    unsafe { ctx.executor.service_client_handle(handle_id) }
+    let client = unsafe { ctx.executor.service_client_handle(handle_id) }?;
+    let client = core::ptr::from_ref(client).cast_mut();
+    // SAFETY (phase-509 P9b): the client lives in the executor's pinned
+    // arena slot and is used only while `ctx` keeps the executor lock.
+    Some(unsafe { crate::Locked::new(client, Some(ctx)) })
 }
 
 /// Phase 124.C.3 — graph-aware "is the matching server up?" probe.
@@ -879,7 +890,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     crate::census_finish_application_if_armed();
     use nros_rmw::ClientTrait as _;
 
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
 
