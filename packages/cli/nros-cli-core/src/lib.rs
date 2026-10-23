@@ -54,6 +54,10 @@ pub mod leaf_payload_classes;
 /// `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE` half of
 /// `cmake/NanoRosMessageBounds.cmake`.
 pub mod leaf_take_buffer;
+/// phase-439 W6 (issue 1252) — the Rust twin of the cmake message-bound
+/// composer, so `nros build` can seed the west road's bound fragment before
+/// the configure that would otherwise spend a pass deriving it.
+pub mod message_bound_knobs;
 /// phase-460 W1 (issue 1420) -- the ONE door a consumer opens a resolved
 /// SystemModel through: the refusal marker `nros sync` leaves on a refused
 /// resolve, and the provenance check that used to live in `cmd/ws.rs` where

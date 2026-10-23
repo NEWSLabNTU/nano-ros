@@ -149,10 +149,42 @@ endfunction()
 # dependency, and `nros build` writes it write-if-changed, so an unchanged
 # resolve costs no configure.
 function(nros_resolved_seed_entity_inventory _path)
-    if(ARGC GREATER 1)
-        set(${ARGV1} FALSE PARENT_SCOPE)
-    endif()
     nros_resolved_entity_fragment(_frag)
+    _nros_resolved_seed("${_frag}" "${_path}" "entity inventory" _used)
+    if(ARGC GREATER 1)
+        set(${ARGV1} ${_used} PARENT_SCOPE)
+    endif()
+endfunction()
+
+# nros_resolved_seed_message_bounds(<path>) — phase-439 W6 (issue 1252)
+#
+# The same seed for the image's MESSAGE-BOUND fragment
+# (`nros/message_bound_knobs.cmake`), from `resolved-message-bounds.cmake`,
+# which `nros build` writes beside `resolved.cmake` for a west image
+# (`nros_cli_core::message_bound_knobs::write_west_seed`). Call it from the
+# READER, before `nros_message_bounds_seed_knobs_file(<path>)` -- the same
+# order and the same reason as the entity seed above. The producer
+# (`nros_find_interfaces()`) still runs and still wins: a seed that differs
+# from its answer arms the pass it would have armed anyway.
+#
+# No-op with no resolve phase, and when `nros build` declined to seed (it says
+# why on its own output): the placeholder is then written as before.
+function(nros_resolved_seed_message_bounds _path)
+    nros_resolved_dir(_dir)
+    if("${_dir}" STREQUAL "" OR NOT EXISTS "${_dir}/resolved-message-bounds.cmake")
+        return()
+    endif()
+    _nros_resolved_seed("${_dir}/resolved-message-bounds.cmake" "${_path}"
+        "message-bound sizes" _used)
+endfunction()
+
+# _nros_resolved_seed(<projection> <path> <what> <out_used>)
+#
+# The one copy both seeds make: VERBATIM, re-seeded only when the projection's
+# content moved (issue 1729's record), and the projection made a configure
+# dependency. The rationale for each half is the comment below.
+function(_nros_resolved_seed _frag _path _what _out_used)
+    set(${_out_used} FALSE PARENT_SCOPE)
     if("${_frag}" STREQUAL "")
         return()
     endif()
@@ -196,10 +228,8 @@ function(nros_resolved_seed_entity_inventory _path)
     file(READ "${_frag}" _body)
     file(WRITE "${_path}" "${_body}")
     file(WRITE "${_record}" "${_seed_hash}\n")
-    if(ARGC GREATER 1)
-        set(${ARGV1} TRUE PARENT_SCOPE)
-    endif()
+    set(${_out_used} TRUE PARENT_SCOPE)
     message(STATUS
-        "nros: entity inventory seeded from the resolve phase (${_frag}); this "
+        "nros: ${_what} seeded from the resolve phase (${_frag}); this "
         "configure's first reader sees a derived answer rather than a placeholder")
 endfunction()

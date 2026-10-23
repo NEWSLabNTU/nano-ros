@@ -155,19 +155,28 @@ impl ImageIdent {
     /// and this string is joined onto a build root.
     #[must_use]
     pub fn dir_name(&self) -> String {
-        let sanitize = |s: &str| -> String {
-            s.chars()
-                .map(|c| {
-                    if c.is_ascii_alphanumeric() || matches!(c, '_' | '-') {
-                        c
-                    } else {
-                        '-'
-                    }
-                })
-                .collect()
-        };
-        format!("{}__{}", sanitize(&self.bringup), sanitize(&self.entry))
+        dir_name_for(&self.bringup, &self.entry)
     }
+}
+
+/// [`ImageIdent::dir_name`] from the two fields it reads, for a caller that
+/// has the image's bringup and id but not the rest of its identity — stage 4,
+/// which writes the west road's message-bound seed beside this phase's answer
+/// (phase-439 W6). One spelling, so the two cannot name different dirs.
+#[must_use]
+pub fn dir_name_for(bringup: &str, entry: &str) -> String {
+    let sanitize = |s: &str| -> String {
+        s.chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '_' | '-') {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect()
+    };
+    format!("{}__{}", sanitize(bringup), sanitize(entry))
 }
 
 /// One image's resolved answer, plus how it got there.

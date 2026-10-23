@@ -217,6 +217,12 @@ pub enum Sub {
     #[command(name = "west-leaf-sizing")]
     WestLeafSizing(crate::cmd::west_leaf_sizing::WestLeafSizingArgs),
 
+    /// phase-439 W6 — the Rust twin of `nros_derive_message_bound_knobs`, over
+    /// JSON bound tables. `nros build` seeds the west road's bound fragment
+    /// with the same composer; this verb lets the cmake suite compare the two.
+    #[command(name = "message-bound-knobs", hide = true)]
+    MessageBoundKnobs(crate::cmd::message_bound_knobs::MessageBoundKnobsArgs),
+
     /// phase-348 W1 — list packages that announce a provision
     /// (`<export><nano_ros_provides kind="rmw" name="zenoh"/></export>`),
     /// across the search path.
@@ -731,6 +737,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::EntityCensus(a) => crate::cmd::entity_census::run(a),
         Sub::SizingDescriptor(a) => crate::cmd::sizing_descriptor::run(a),
         Sub::WestLeafSizing(a) => crate::cmd::west_leaf_sizing::run(a),
+        Sub::MessageBoundKnobs(a) => crate::cmd::message_bound_knobs::run(a),
         Sub::Providers(a) => run_providers(a),
         Sub::Order(a) => run_order(a),
         Sub::RmwDispatch(a) => run_rmw_dispatch(a),
