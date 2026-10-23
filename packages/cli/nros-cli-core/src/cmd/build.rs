@@ -2955,6 +2955,34 @@ fn generate_entry(
         );
         crate::builder::west_app::write(&app, &entry_dir_for_deps)
             .map_err(|e| eyre::eyre!("generating the west application for `{image_id}`: {e}"))?;
+        // phase-439 W6 (issue 1252) -- the image's message-bound fragment,
+        // composed BEFORE the configure from the same closure, tables and
+        // entity inventory the configure's composer will read, beside stage
+        // 3.5's answer. The configure copies it in ahead of its first reader
+        // (`nros_resolved_seed_message_bounds`), so a configure that agrees
+        // spends no pass deriving it. Never fatal: no seed is today's
+        // behaviour, and the reason is said once.
+        if let Some(cm) = app.cmake.as_ref() {
+            let resolved_dir = root
+                .join("build")
+                .join(crate::resolve::dir_name_for(bringup, image_id));
+            let probe_codegen =
+                crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(
+                    &root.join("build").join("nros-metadata"),
+                )
+                .join("build")
+                .join("nros-codegen")
+                .join(format!("nano_ros_{}", cm.lang));
+            let node_dirs: Vec<std::path::PathBuf> = nodes.iter().map(|(_, d)| d.clone()).collect();
+            match crate::message_bound_knobs::write_west_seed(
+                &resolved_dir,
+                &probe_codegen,
+                &node_dirs,
+            ) {
+                Ok(p) => eprintln!("nros build:   message bounds seeded → {}", p.display()),
+                Err(why) => eprintln!("nros build:   message bounds not seeded: {why}"),
+            }
+        }
         return Ok(GeneratedEntry {
             dir: Some(entry_dir_for_deps),
         });

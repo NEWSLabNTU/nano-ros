@@ -1946,6 +1946,28 @@ pub fn collect_interface_files(share_dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(files)
 }
 
+/// The interface packages `resolve-deps` resolves for one `package.xml`, by
+/// name, with no CMake script written.
+///
+/// phase-439 W6 — `nros build` asks this BEFORE the configure, for every node
+/// package a generated west application `add_subdirectory`s, so it can compose
+/// the image's message-bound fragment from the same closure the configure's
+/// `nros_find_interfaces()` will reach. Same index, same transitive walk, same
+/// filter as [`resolve_deps_from_package_xml`]; only the output differs.
+pub fn resolve_interface_package_names(package_xml: &Path) -> Result<Vec<String>> {
+    use package_xml::PackageXml;
+
+    let pkg_xml = PackageXml::parse(package_xml)?;
+    let index = load_index_with_fallback(false)?;
+    let all_deps = resolve_transitive_dependencies(&index, pkg_xml.all_dependencies(), false)?;
+    let mut names: Vec<String> = filter_interface_packages(&index, &all_deps, false)?
+        .into_iter()
+        .map(|(n, _)| n)
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
 /// Resolve interface dependencies from package.xml and output a CMake script.
 ///
 /// Parses `package.xml`, resolves transitive deps via ament index (with bundled

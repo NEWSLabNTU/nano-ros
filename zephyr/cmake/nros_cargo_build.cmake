@@ -310,6 +310,12 @@ set(NROS_KNOB_DERIVE_SENTINEL -1)
 # build dir directly, and is the thing to run before trusting a size out of one.
 function(_nros_load_derived_message_bounds)
     nros_message_bounds_knobs_file(_knobs)
+    # phase-439 W6 (issue 1252) -- prefer the answer `nros build` composed
+    # before this configure over a placeholder: this is the first reader, and
+    # the producer (`nros_find_interfaces()`) runs after it, so on a clean
+    # build dir the placeholder is what costs the extra configure. No-op with
+    # no resolve phase, or when `nros build` declined to seed.
+    nros_resolved_seed_message_bounds("${_knobs}")
     if(NOT EXISTS "${_knobs}")
         # Created EMPTY rather than skipped, because the next line registers it
         # as a configure dependency and a ninja input with no producing rule is

@@ -517,6 +517,15 @@ function(nros_derive_message_bound_knobs)
 
     set(_packages "${NROS_MESSAGE_BOUND_PACKAGES}")
     set(_types "${NROS_MESSAGE_BOUND_TYPES}")
+    # phase-439 W6 -- SORTED, so the answer is a function of the closure as a
+    # SET and not of the order this configure registered its fragments in.
+    # `nros build` composes the same answer before the configure
+    # (`nros_cli_core::message_bound_knobs`, which sorts the same way) and seeds
+    # this file with it; the seed saves a configure pass only when it is byte
+    # for byte what is written here, and the order of the open-type list, the
+    # package list and the largest-type tie-break are all in those bytes.
+    list(SORT _packages)
+    list(SORT _types)
     list(LENGTH _types _type_count)
     _nros_bounds_publish(NROS_MESSAGE_BOUNDS_PACKAGES "${_packages}")
     _nros_bounds_publish(NROS_MESSAGE_BOUNDS_TYPE_COUNT "${_type_count}")

@@ -35,6 +35,7 @@ pub mod leaf_settings;
 pub mod leaf_system;
 pub mod locate;
 pub mod materialize;
+pub mod message_bound_knobs;
 pub mod metadata;
 pub mod model_path;
 pub mod new;

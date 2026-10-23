@@ -10,6 +10,26 @@ related: [1228, 0940, 0965, 0991, 1002, 1119, 1061, 1125, phase-439, phase-403, 
 
 **Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
+# UPDATE 2026-10-23 (W6 landed) — 0 re-configures on the reference image
+
+The design below is built: a byte-for-byte Rust twin of the composer
+(`nros_cli_core::message_bound_knobs`, parity-tested against the cmake module
+on every case of `tests/cmake-message-bounds-tests.sh`), fed before the
+configure from `resolve-deps` over the west app's node packages, the metadata
+probe's bound tables and `resolved.cmake`, and seeded into the build dir by
+`nros_resolved_seed_message_bounds`. Item 1's "refuse when the closure could
+differ" is how it behaves: every input it cannot produce is NO SEED.
+
+Acceptance against the list below, on `demo_bringup:zephyr`, clean dir:
+
+* `Re-running CMake` = **0** -- met;
+* `check-knob-delivery <build-dir>` green -- met;
+* delivered knobs identical -- met (the final pass's 13 resolved-knob lines);
+  `zephyr/.config` -- NOT compared;
+* deleting `nros_reconfigure_settle` and the future-mtime arm -- NOT done, and
+  not yet possible: an image with no seed (bare `west build`, no `nros sync`)
+  still needs the arm. That is phase-439 W8.
+
 # UPDATE 2026-10-23 (later) — phase-439 W6: the descriptor arm is gone; the bound arm needs inputs, not a composer
 
 **The descriptor arm was not about bound tables.** It hashed

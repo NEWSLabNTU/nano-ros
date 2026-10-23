@@ -163,13 +163,109 @@ frag() {
         echo "list(REMOVE_DUPLICATES NROS_MESSAGE_BOUND_PACKAGES)"
         echo "list(REMOVE_DUPLICATES NROS_MESSAGE_BOUND_TYPES)"
     } > "$path"
+    frag_json "$path" "$pkg"
+}
+
+# phase-439 W6 -- the JSON sibling `BoundInventory::to_json` writes beside the
+# fragment, from the same rows, so the Rust twin can compose the same closure.
+# Re-reads the rows out of the fragment just written rather than taking them
+# twice, so the two files cannot be given different inputs.
+frag_json() {
+    local path="$1" pkg="$2"
+    python3 - "$path" "$pkg" "${path%.cmake}.json" <<'PY_EOF'
+import json, re, sys
+src, pkg, out = sys.argv[1:4]
+types, rows = [], {}
+for line in open(src):
+    m = re.match(r'list\(APPEND NROS_MESSAGE_BOUND_TYPES "(.*)"\)', line)
+    if m:
+        types.append(m.group(1)); continue
+    m = re.match(r'set\(NROS_MESSAGE_BOUND_(\w+)_(STATE|TX|RX|REASON) "?(.*?)"?\)$', line.strip())
+    if m:
+        rows.setdefault(m.group(1), {})[m.group(2)] = m.group(3)
+doc = {"schema_version": 1, "package": pkg, "types": []}
+for t in types:
+    r = rows.get(re.sub(r'[^A-Za-z0-9]', '_', t), {})
+    row = {"type_name": t, "state": r.get("STATE", "")}
+    if row["state"] == "bounded":
+        row["tx_max_serialized_size"] = int(r["TX"]); row["rx_max_serialized_size"] = int(r["RX"])
+    elif r.get("REASON"):
+        row["reason"] = r["REASON"]
+    doc["types"].append(row)
+json.dump(doc, open(out, "w"))
+PY_EOF
 }
 
 # Run the derivation. $1 = ";"-joined fragment list, rest = extra -D args.
 # Captures stdout+stderr; the caller greps it.
+#
+# phase-439 W6 -- and run the Rust twin (`nros ws message-bound-knobs`) over the
+# same closure, requiring the SAME BYTES. `nros build` seeds the west road's
+# bound fragment with that composer, and a seed saves a configure pass only when
+# it is byte-identical to what this module then writes -- so every case below
+# is also a parity case. A case the twin declines (exit 3: the cmake text names
+# a build-dir path) or one built from a fragment with no JSON sibling is
+# counted as skipped; a mismatch is logged and fails the run at the end.
+# shellcheck source=scripts/build/cargo.sh
+source "$PROJECT_ROOT/scripts/build/cargo.sh"
+# issue 1850 -- this checkout's CLI, or the explicit $NROS_CLI the gate passes.
+# CHECKOUT-ONLY: the twin under test is THIS tree's, so a binary from PATH or
+# the store would compare a different tree. None built here (a pristine clone)
+# is a REPORTED skip of the parity half, never a pass; the cmake half still runs.
+NROS_TEST_CLI="$(nros_cli_bin --checkout-only 2>/dev/null)" || NROS_TEST_CLI=""
+if [ -z "$NROS_TEST_CLI" ]; then
+    # shellcheck source=scripts/build/check-skip.sh
+    . "$PROJECT_ROOT/scripts/build/check-skip.sh"
+    nros_check_skip message-bound-knobs \
+        "case P (Rust twin parity) NOT VERIFIED -- this checkout built no \`nros\` (run \`just setup-cli\`)"
+fi
+PARITY_N=0
 derive() {
     local frags="$1"; shift
-    cmake -DNROS_BOUNDS_FRAGMENTS="$frags" "$@" -P "$MODULE" 2>&1
+    local out="" ceiling="" entity="" a
+    for a in "$@"; do
+        case "$a" in
+            -DNROS_BOUNDS_OUTPUT=*) out="${a#-DNROS_BOUNDS_OUTPUT=}" ;;
+            -DNROS_BOUNDS_CEILING=*) ceiling="${a#-DNROS_BOUNDS_CEILING=}" ;;
+            -DNROS_BOUNDS_ENTITY_INVENTORY=*) entity="${a#-DNROS_BOUNDS_ENTITY_INVENTORY=}" ;;
+        esac
+    done
+    local extra=()
+    if [ -z "$out" ]; then
+        PARITY_N=$((PARITY_N + 1))
+        out="$TEST_TMPDIR/parity-$BASHPID-$RANDOM.cmake"
+        extra=(-DNROS_BOUNDS_OUTPUT="$out")
+    fi
+    cmake -DNROS_BOUNDS_FRAGMENTS="$frags" "$@" "${extra[@]}" -P "$MODULE" 2>&1
+    parity_check "$frags" "$out" "$ceiling" "$entity"
+}
+
+parity_check() {
+    local frags="$1" out="$2" ceiling="$3" entity="$4" f
+    [ -n "$NROS_TEST_CLI" ] || return 0
+    local args=(ws message-bound-knobs --output "$out.rust")
+    local IFS=';'
+    for f in $frags; do
+        if [ ! -f "$f" ] || [ ! -f "${f%.cmake}.json" ]; then
+            echo "skip" >> "$TEST_TMPDIR/parity.log"
+            return 0
+        fi
+        args+=(--table "${f%.cmake}.json")
+    done
+    unset IFS
+    [ -n "$ceiling" ] && args+=(--ceiling "$ceiling")
+    [ -n "$entity" ] && args+=(--entity-inventory "$entity")
+    local rc=0
+    "$NROS_TEST_CLI" "${args[@]}" >/dev/null 2>"$out.rust.err" || rc=$?
+    if [ "$rc" -eq 3 ]; then
+        echo "skip" >> "$TEST_TMPDIR/parity.log"
+    elif [ "$rc" -ne 0 ]; then
+        echo "FAIL $frags: the twin exited $rc: $(cat "$out.rust.err")" >> "$TEST_TMPDIR/parity.log"
+    elif ! cmp -s "$out" "$out.rust"; then
+        echo "FAIL $frags: $(diff "$out" "$out.rust" | head -20 | tr '\n' '|')" >> "$TEST_TMPDIR/parity.log"
+    else
+        echo "ok" >> "$TEST_TMPDIR/parity.log"
+    fi
 }
 
 # phase-403 step 1. An ENTITY-inventory fragment, byte-for-byte the shape
@@ -1079,6 +1175,28 @@ check
 # and `check-knob-single-reader` refuses the carriers coming back. The
 # DERIVATION this file tests above is unchanged -- the descriptor's rows are
 # priced from the same bound tables.
+
+# ---------------------------------------------------------------------------
+# phase-439 W6 -- every derive() above was also a parity case (see derive()).
+log_header "P -- the Rust twin writes the cmake composer's bytes on every case"
+if [ -n "$NROS_TEST_CLI" ]; then
+PARITY_OK="$(grep -c '^ok$' "$TEST_TMPDIR/parity.log" 2>/dev/null || true)"
+PARITY_SKIP="$(grep -c '^skip$' "$TEST_TMPDIR/parity.log" 2>/dev/null || true)"
+check
+if nros_grep_q '^FAIL' < "$TEST_TMPDIR/parity.log"; then
+    fail "P: the Rust twin and the cmake composer disagree -- a seed from it would arm the \
+configure pass it exists to save (phase-439 W6):"
+    grep '^FAIL' "$TEST_TMPDIR/parity.log"
+fi
+check
+# A floor, so a harness that silently stopped comparing (every case skipped)
+# cannot read green. Measured when written: see the count printed below.
+if [ "${PARITY_OK:-0}" -lt 20 ]; then
+    fail "P: only ${PARITY_OK:-0} case(s) were compared (${PARITY_SKIP:-0} skipped) -- \
+the parity harness is not reaching the cases"
+fi
+log_info "P: ${PARITY_OK:-0} case(s) byte-identical, ${PARITY_SKIP:-0} skipped (a path in the text, or no JSON sibling)"
+fi
 
 # ---------------------------------------------------------------------------
 log_header "Summary"

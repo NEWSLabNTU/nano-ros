@@ -56,7 +56,7 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       `check-knob-delivery <build-dir>` is green. **A third arm exists**: the
       sizing descriptor (`cmake/NanoRosSizingDescriptor.cmake`) also re-hashes
       after its readers ran, so W6 must take it as well as the bound fragment.
-- [ ] **W6 — the bound producer before configure ([#1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)).**
+- [x] **W6 — the bound producer before configure ([#1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)).**
       **Descriptor arm: done (2026-10-23).** It did NOT move with the bound
       tables. The arm hashed `nros/sizing/west-cargo-descriptor.cmake`, which
       held only a PATH. The module's resolver could not know the entry's name,
@@ -75,12 +75,41 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       descriptor reached cargo (`nros-node` read it at build), knob lines
       identical to W5, `check-knob-delivery` green.
 
-      **Bound arm: open, design recorded in #1252.** The descriptor and
+      **Bound arm: done (2026-10-23).** The descriptor and
       `nros_derive_message_bound_knobs` agree on every number for the W5 image,
       but both compose MID-configure over the same codegen-written
-      `nros_message_bounds.json` tables. A Rust composer exists; inputs before
-      configure do not. The 2026-10-22 status note above ("#1252's premise may
-      be out of date") was wrong on the point that matters.
+      `nros_message_bounds.json` tables: a Rust composer existed, inputs before
+      configure did not. The 2026-10-22 status note above ("#1252's premise may
+      be out of date") was wrong on the point that matters. What closed it:
+
+      * `nros_cli_core::message_bound_knobs::compose`, the cmake composer's
+        twin, byte for byte. `tests/cmake-message-bounds-tests.sh` runs both on
+        every case it builds (21 compared, 5 declined because the text names a
+        build-dir path; a one-space mutation reds 15). Both now compose the
+        closure SORTED, so the answer is a function of the set, not of the
+        order a configure registered fragments in.
+      * inputs from before the configure: the closure is the union of
+        `resolve-deps` over the generated west app's node packages (the call
+        `nros_find_interfaces()` makes, factored as
+        `resolve_interface_package_names`); the tables are the metadata
+        probe's, which `nros sync` generated over the same packages and caps;
+        the entity text is `resolved.cmake`. Stage 4 writes
+        `resolved-message-bounds.cmake` beside it, and
+        `nros_resolved_seed_message_bounds` copies it in ahead of the Zephyr
+        loader. Any missing input is no seed, which is the old behaviour.
+
+      Measured, `demo_bringup:zephyr`, clean dir: **0 `Re-running CMake`**, no
+      arm, seed == fragment, `check-knob-delivery` green, the final pass's 13
+      resolved-knob lines identical to W6b's two-pass build; an incremental
+      re-run also 0. `zephyr/.config` was not compared (the W6b dir was wiped
+      by the clean rebuild). The image only BUILT after fixing
+      `zephyr_run_tiers.c` (phase-509 P7 used `nros_tier_spec_t` 85 lines
+      before its typedef; every Zephyr C++ image failed to compile on `main`).
+
+      A3 is met for an image built by `nros build` after `nros sync`. W8 still
+      cannot delete the fixed point: a bare `west build`, a stale probe, or a
+      workspace whose interface search path the CLI does not see gets no seed
+      and still converges through the arm.
 - [ ] **W7 — one entity composer ([#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md)).**
       The mid-configure producer reads the resolve instead of recomposing, with
       the refusal guard its `nros-metadata.json` component set gives it today
