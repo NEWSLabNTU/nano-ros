@@ -1011,6 +1011,11 @@ pub(crate) struct WakeCtx {
     /// `AtomicU64`, so the word names `usize::BITS` slots (`entity_wake::SLOTS`)
     /// and an entry above that keeps the session wake.
     pub(crate) ready: portable_atomic::AtomicUsize,
+    /// phase-509 P9b item 3 (RFC-0108 D7) -- the band workers' wake objects
+    /// (`Executor::attach_band_worker`), a list of `'static` waiters that is
+    /// only ever pushed to. An attributed arrival wakes the worker whose band
+    /// holds its slot; an unattributed one wakes every worker.
+    pub(crate) band_waiters: portable_atomic::AtomicPtr<super::scheduler::BandWaiter>,
 }
 
 #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -1023,12 +1028,27 @@ impl WakeCtx {
             flag,
             node_wake,
             ready: portable_atomic::AtomicUsize::new(0),
+            band_waiters: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
         }
     }
 
-    /// The wake itself: flag, then the primitive. Shared by the session
-    /// callback and the entity waker so the two cannot drift.
+    /// phase-509 P9b item 3 -- the wake for an arrival nothing attributes:
+    /// the executor's own worker, and every band worker, since any of them
+    /// may own the slot it is for.
     pub(crate) fn signal(&self) {
+        self.signal_own();
+        let mut w = self.band_waiters.load(portable_atomic::Ordering::Acquire);
+        while !w.is_null() {
+            // SAFETY: only `'static` waiters are linked, never unlinked.
+            let waiter = unsafe { &*w };
+            waiter.signal();
+            w = waiter.next.load(portable_atomic::Ordering::Acquire);
+        }
+    }
+
+    /// The executor's own worker's wake: flag, then the primitive. Shared by
+    /// the session callback and the entity waker so the two cannot drift.
+    pub(crate) fn signal_own(&self) {
         // Phase 141.B.2 — capture T0 at cb entry. No-op when the
         // probe feature is off or no cycle reader is installed.
         #[cfg(feature = "wake-latency-probe")]
@@ -1051,7 +1071,20 @@ impl WakeCtx {
     pub(crate) fn mark_ready(&self, slot: usize) {
         self.ready
             .fetch_or(1usize << slot, core::sync::atomic::Ordering::SeqCst);
-        self.signal();
+        // phase-509 P9b item 3 (RFC-0108 D7) -- only the worker whose band
+        // holds the slot; the executor's own worker when no band does.
+        let bit = 1usize << slot;
+        let mut w = self.band_waiters.load(portable_atomic::Ordering::Acquire);
+        while !w.is_null() {
+            // SAFETY: only `'static` waiters are linked, never unlinked.
+            let waiter = unsafe { &*w };
+            if waiter.slots.load(portable_atomic::Ordering::SeqCst) & bit != 0 {
+                waiter.signal();
+                return;
+            }
+            w = waiter.next.load(portable_atomic::Ordering::Acquire);
+        }
+        self.signal_own();
     }
 }
 
@@ -3915,29 +3948,97 @@ impl<'s> Executor<'s> {
     /// services, component ticks, the monitors' rules): the executor's own
     /// worker does.
     ///
+    /// phase-509 P9b item 3 -- a worker with a waiter
+    /// ([`super::scheduler::BandWorker::with_waiter`]) first parks, the lock
+    /// released, for at most `timeout`: until its band's next timer is due or
+    /// an arrival in its band signals it. Without one, `timeout` is unused
+    /// and the pass polls.
+    ///
     /// # Safety
     /// As [`Self::spin_once_shared`].
     pub unsafe fn spin_band_once(
         this: *mut Self,
         worker: &mut super::scheduler::BandWorker,
+        timeout: core::time::Duration,
     ) -> SpinOnceResult {
         let mut discarded = None;
         // SAFETY: the caller's contract is `pass`'s.
-        unsafe {
-            Self::pass(
-                this,
-                PassMode::Band(worker),
-                core::time::Duration::ZERO,
-                &mut discarded,
-            )
+        unsafe { Self::pass(this, PassMode::Band(worker), timeout, &mut discarded) }
+    }
+
+    /// phase-509 P9b item 3 -- link `worker`'s waiter into this executor's
+    /// arrival routing (RFC-0108 D7): an arrival attributed to a slot of its
+    /// band then wakes it alone, an unattributed one wakes it with the rest.
+    /// A worker with no waiter polls; this is then a no-op, as on a build
+    /// with no arrival path. Attach each waiter to one executor, once.
+    pub fn attach_band_worker(&mut self, worker: &super::scheduler::BandWorker) {
+        let Some(waiter) = worker.waiter else {
+            return;
+        };
+        waiter.slots.store(
+            self.band_slots(worker.band) as usize,
+            portable_atomic::Ordering::SeqCst,
+        );
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if let Some(ctx) = self.wake_ctx.as_ref() {
+            let w = waiter as *const super::scheduler::BandWaiter as *mut _;
+            let head = &ctx.band_waiters;
+            let mut cur = head.load(portable_atomic::Ordering::Acquire);
+            loop {
+                waiter.next.store(cur, portable_atomic::Ordering::Release);
+                match head.compare_exchange(
+                    cur,
+                    w,
+                    portable_atomic::Ordering::AcqRel,
+                    portable_atomic::Ordering::Acquire,
+                ) {
+                    Ok(_) => break,
+                    Err(now) => cur = now,
+                }
+            }
         }
     }
 
     /// phase-509 P9b item 2 -- a band pass's prelude: check in as its level,
     /// read the clock, and credit its timers with the time since ITS previous
-    /// pass.
-    fn band_prelude(&mut self, w: &mut super::scheduler::BandWorker) -> (Option<u64>, u64) {
-        let now = self.now_us();
+    /// pass. Item 3: with a waiter and a positive `timeout`, park first, with
+    /// the lock released, until the band's next timer is due, an arrival in
+    /// the band signals the waiter, or `timeout` passes.
+    ///
+    /// # Safety
+    /// As [`Self::owned_prelude`].
+    unsafe fn band_prelude(
+        this: *mut Self,
+        window_lock: Option<super::exec_lock::ExecLock>,
+        w: &mut super::scheduler::BandWorker,
+        timeout: core::time::Duration,
+    ) -> (Option<u64>, u64) {
+        // SAFETY: the caller's contract; derived again after the park.
+        let mut s: &mut Self = unsafe { &mut *this };
+        if let Some(waiter) = w.waiter {
+            let mask = s.band_slots(w.band);
+            waiter
+                .slots
+                .store(mask as usize, portable_atomic::Ordering::SeqCst);
+            let budget_us = timeout.as_micros().min(u64::MAX as u128) as u64;
+            // A band timer's remainder is as of the worker's last pass; the
+            // time since is already spent.
+            let since_us = match (s.now_us(), w.last_spin_end_us) {
+                (Some(now), Some(prev)) => now.saturating_sub(prev),
+                _ => 0,
+            };
+            let bound_us = s
+                .next_timer_deadline_in_us(mask)
+                .map_or(budget_us, |t| t.saturating_sub(since_us).min(budget_us));
+            if bound_us > 0 && !s.band_has_arrivals(mask) {
+                let window = window_lock.map(super::exec_lock::Window::open);
+                waiter.wait_us(bound_us);
+                drop(window);
+                // SAFETY: the lock is held again.
+                s = unsafe { &mut *this };
+            }
+        }
+        let now = s.now_us();
         super::level_liveness::LEVELS.check_in(w.level, now);
         match now {
             Some(now) => {
@@ -3947,6 +4048,17 @@ impl<'s> Executor<'s> {
             }
             None => (None, 0),
         }
+    }
+
+    /// phase-509 P9b item 3 -- whether an arrival for one of `mask`'s slots
+    /// is already in the ready word (it then does not park).
+    fn band_has_arrivals(&self, mask: u64) -> bool {
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if let Some(ctx) = self.wake_ctx.as_ref() {
+            return ctx.ready.load(portable_atomic::Ordering::SeqCst) as u64 & mask != 0;
+        }
+        let _ = mask;
+        false
     }
 
     /// phase-503 — microseconds from now to the earliest deadline of a pending
@@ -4324,11 +4436,24 @@ impl<'s> Executor<'s> {
     /// `/clock` a frozen one, waking the image once per timer period forever.
     /// Its wake source is a `/clock` message, which reaches `drive_io` like
     /// any sample.
+    ///
+    /// phase-509 P9b item 3 -- the executor's own worker's timers: those of
+    /// its band (every timer for the one-level worker), so it does not wake
+    /// for a timer another band's worker runs.
     pub(crate) fn next_timer_deadline_us(&self) -> Option<u64> {
+        self.next_timer_deadline_in_us(self.band_slots(self.worker.band))
+    }
+
+    /// phase-509 P9b item 3 -- [`Self::next_timer_deadline_us`] over the
+    /// timers in `mask`'s slots.
+    pub(crate) fn next_timer_deadline_in_us(&self, mask: u64) -> Option<u64> {
         let arena_ptr = self.arena.as_ptr() as *const u8;
         let mut soonest: Option<u64> = None;
         for (i, meta) in self.entries.iter().enumerate() {
             let Some(meta) = meta else { continue };
+            if i < 64 && mask & (1u64 << i) == 0 {
+                continue;
+            }
             // phase-509 P9b item 2 -- not a timer running in another worker's
             // window: its header is that worker's while it runs, and a
             // running timer is not the one to wait for.
@@ -11160,13 +11285,28 @@ impl<'s> Executor<'s> {
         // Issue 1705 — releases deferred behind a dispatch that has since
         // finished are completed here, before this pass looks at the entries.
         s.reap_deferred_releases();
+        // phase-509 P9b item 2 -- the lock this pass releases around each
+        // user callback (and, item 3, around its park): only a shared or band
+        // pass, and only when the lock can tell the callback's thread from
+        // the others. `None` -- an owned pass, or no lock -- runs the whole
+        // pass under the caller's hold.
+        let window_lock = match mode {
+            PassMode::Owned => None,
+            _ => s.exec_lock.filter(|l| l.opens_windows()),
+        };
         // phase-509 P9b item 2 -- the owned and shared passes run the
         // executor's own worker's prelude (sim time, services, jitter, the
-        // park, the transport drive); a band pass runs only its own clock.
+        // park, the transport drive); a band pass runs its own clock and
+        // (item 3) its own park.
+        //
+        // SAFETY: the caller's contract is the preludes'; `s` is not used
+        // across the call and is derived again after it.
         let (now_us_this_spin, delta_us) = match &mut mode {
-            PassMode::Band(w) => s.band_prelude(w),
-            _ => s.owned_prelude(timeout),
+            PassMode::Band(w) => unsafe { Self::band_prelude(this, window_lock, w, timeout) },
+            _ => unsafe { Self::owned_prelude(this, window_lock, timeout) },
         };
+        // SAFETY: the prelude returns holding the lock again.
+        s = unsafe { &mut *this };
         // phase-509 P9b item 2 -- this pass's band (every level for the
         // one-level worker) and its slots. The scan, the sweep and the drain
         // see only these, so a worker never takes another band's work.
@@ -11176,14 +11316,6 @@ impl<'s> Executor<'s> {
         };
         let band_mask = s.band_slots(band);
         let is_band_pass = matches!(mode, PassMode::Band(_));
-        // phase-509 P9b item 2 -- the lock this pass releases around each
-        // user callback: only a shared or band pass, and only when the lock
-        // can tell the callback's thread from the others. `None` -- an owned
-        // pass, or no lock -- runs every callback under the caller's hold.
-        let window_lock = match mode {
-            PassMode::Owned => None,
-            _ => s.exec_lock.filter(|l| l.opens_windows()),
-        };
         let window_thread = window_lock.and_then(|l| l.current_thread()).unwrap_or(0);
 
         let arena_ptr = s.arena.as_mut_ptr() as *mut u8;
@@ -12185,12 +12317,22 @@ impl<'s> Executor<'s> {
     /// The executor's own worker's prelude to a pass: everything
     /// `spin_once` did before its readiness scan. Returns the pass's clock
     /// read and the elapsed time its timers are credited.
-    fn owned_prelude(&mut self, timeout: core::time::Duration) -> (Option<u64>, u64) {
+    /// # Safety
+    /// As [`Self::pass`]; `window_lock` is the pass's (`None` for an owned
+    /// pass), and with it the calling thread holds the lock exactly once.
+    unsafe fn owned_prelude(
+        this: *mut Self,
+        window_lock: Option<super::exec_lock::ExecLock>,
+        timeout: core::time::Duration,
+    ) -> (Option<u64>, u64) {
+        // SAFETY: the caller's contract; re-derived after every window.
+        #[allow(unused_mut)]
+        let mut s: &mut Self = unsafe { &mut *this };
         // phase-509 P7 (RFC-0108 D8.2) -- this level is alive: it reached a
         // spin. A level stuck in a callback stops checking in, which is what
         // the image's watchdog feed (`take_every_level_alive`) waits on.
-        let now = self.now_us();
-        super::level_liveness::LEVELS.check_in(self.worker.level, now);
+        let now = s.now_us();
+        super::level_liveness::LEVELS.check_in(s.worker.level, now);
         // phase-436 W2 (issue 1193) — the budget is carried in MICROSECONDS.
         // This was `as_millis()`, which truncates: `from_micros(500)` became
         // `0`, and a zero timeout selects the non-blocking path — so a
@@ -12206,8 +12348,8 @@ impl<'s> Executor<'s> {
         #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
         {
             #[cfg(feature = "param-store")]
-            self.settle_builder_reserved_parameters();
-            self.reconcile_ros_time_source();
+            s.settle_builder_reserved_parameters();
+            s.reconcile_ros_time_source();
         }
 
         // phase-426 W3 — attach the six parameter services to any node that
@@ -12221,10 +12363,10 @@ impl<'s> Executor<'s> {
         // (issue 1268), and with the result dropped "this node has no
         // parameter services" was a fact nothing on the image stated.
         #[cfg(feature = "param-services")]
-        if self.parameter_services_pending()
-            && let Err(e) = self.reconcile_parameter_services()
+        if s.parameter_services_pending()
+            && let Err(e) = s.reconcile_parameter_services()
         {
-            self.report_parameter_service_reconcile_failure(e);
+            s.report_parameter_service_reconcile_failure(e);
         }
 
         // Release jitter, measured HERE rather than in `spin_period`, because
@@ -12245,12 +12387,12 @@ impl<'s> Executor<'s> {
         // point (see `record_release_jitter`); the release is judged after the
         // park, against the grid (`record_grid_release`). A zero timeout means
         // "poll, no cadence claimed", so it is neither judged nor gridded.
-        let grid_budget_us = self.record_release_jitter(timeout);
+        let grid_budget_us = s.record_release_jitter(timeout);
 
         // issue 0900 — one-shot advisory when the arena is far larger than what
         // registered. First spin rather than "end of registration", because
         // there is no such point: an app may register lazily.
-        super::arena::maybe_report_arena_headroom(self.arena_used, self.arena.len());
+        super::arena::maybe_report_arena_headroom(s.arena_used, s.arena.len());
 
         // phase-412 -- the same moment, recorded where a board with no log sink
         // can still be asked. Reaching this stage is the positive result the
@@ -12266,7 +12408,7 @@ impl<'s> Executor<'s> {
         // budget here meant a park the session won was attributed to
         // `CallerBudget`, so the one number that explains a wake named the
         // wrong source.
-        let session_us = self
+        let session_us = s
             .session
             .next_deadline_ms()
             .map(|next| (next as u64).saturating_mul(1000));
@@ -12280,14 +12422,14 @@ impl<'s> Executor<'s> {
         // Attribution is recorded here rather than derived later: this is the
         // only point where the losing candidates are still in hand.
         let (park_bound_us, park_source) =
-            self.next_wake_bound_attributed_us(grid_budget_us, session_us);
-        self.worker.last_park_bound_us = park_bound_us;
-        self.worker.last_park_source = park_source;
+            s.next_wake_bound_attributed_us(grid_budget_us, session_us);
+        s.worker.last_park_bound_us = park_bound_us;
+        s.worker.last_park_source = park_source;
         // phase-436 W2 (issue 1193) — round UP to what the primitive can
         // express. The old `as_millis()` truncated, so a sub-millisecond
         // request became a zero park: the non-blocking path, a busy loop.
-        let park_achieved_us = self.round_park_up_us(park_bound_us);
-        self.worker.last_park_achieved_us = park_achieved_us;
+        let park_achieved_us = s.round_park_up_us(park_bound_us);
+        s.worker.last_park_achieved_us = park_achieved_us;
 
         // phase-436 W6 — a port that installed a park primitive does its
         // waiting HERE, on the bound every source agreed on, and the transport
@@ -12307,9 +12449,13 @@ impl<'s> Executor<'s> {
         // arriving mid-park would wait out the whole bound — the Phase
         // 127.C.4 stall (a reliable stream whose ACK lands in a session nobody
         // drives). Those executors keep the receive-blocking wait below.
-        let park_can_be_woken = self.park_can_be_woken();
-        let parked = match self.worker.park_primitive {
+        let park_can_be_woken = s.park_can_be_woken();
+        // phase-509 P9b item 3 -- a shared pass parks with the lock released
+        // (a window), so the band workers run while the executor's own
+        // worker waits. Nothing borrowed from the executor crosses it.
+        let parked = match s.worker.park_primitive {
             Some((park, ctx)) if park_achieved_us > 0 && park_can_be_woken => {
+                let _window = window_lock.map(super::exec_lock::Window::open);
                 // SAFETY: `park` and `ctx` were supplied together by the port
                 // through `set_park_primitive` and outlive the executor by its
                 // contract.
@@ -12328,6 +12474,8 @@ impl<'s> Executor<'s> {
         // otherwise the park and the drive would sum, and the cadence would be
         // up to twice what was asked. Same trap as passing a period to
         // `spin_once` instead of declaring it (#648).
+        // SAFETY: the lock is held again (the window, if any, has closed).
+        s = unsafe { &mut *this };
         let timeout_ms = if parked {
             0
         } else {
@@ -12350,18 +12498,18 @@ impl<'s> Executor<'s> {
         // phase-359 W4 — the spin-ENTRY read, one spelling. Kept distinct from
         // the post-IO read below because the first spin's delta is measured from
         // entry; collapsing them would make that delta 0 on the first call only.
-        let spin_start_us = self.now_us();
+        let spin_start_us = s.now_us();
 
         // phase-474 I2 -- arm the monitors when the policy says start-up is over,
         // before any rule of this spin can judge.
-        self.update_monitor_arming(spin_start_us);
+        s.update_monitor_arming(spin_start_us);
         // phase-462 W4 -- and switch to the requested mode's tables, before
         // any rule of this spin judges by them.
-        self.update_mode(spin_start_us);
+        s.update_mode(spin_start_us);
 
         // RFC-0052 W3b.4 — contract monitors tick once per spin (window
         // logic inside; single branch when the baked table is empty).
-        self.run_contract_monitors();
+        s.run_contract_monitors();
 
         // Phase 104.C.6 — shared executor wake. Swap-and-clear the
         // wake flag; if it was set before this `spin_once` entered,
@@ -12384,9 +12532,7 @@ impl<'s> Executor<'s> {
         // of the field it reads.
         #[cfg(feature = "alloc")]
         #[allow(unused_variables)]
-        let was_woken = self
-            .wake_flag
-            .swap(false, portable_atomic::Ordering::SeqCst);
+        let was_woken = s.wake_flag.swap(false, portable_atomic::Ordering::SeqCst);
 
         // Phase 124.B.4 — condvar-blocked wait.
         //
@@ -12470,12 +12616,12 @@ impl<'s> Executor<'s> {
                 // mid-spin case caught, and what `executor_backend_wake.c`'s
                 // second lower bound now pins. Latent until then only because
                 // no C spin had ever entered the wait arm.
-                if let Some(wake) = self.node_wake.as_ref() {
+                if let Some(wake) = s.node_wake.as_ref() {
                     let _ = wake.wait_ms(0);
                 }
                 0
-            } else if self.async_wake_live()
-                && let Some(wake) = self.node_wake.as_ref()
+            } else if s.async_wake_live()
+                && let Some(wake) = s.node_wake.as_ref()
             {
                 // phase-436 — after a park this wait has a zero timeout and
                 // the park has already waited on this same object, so it is a
@@ -12485,12 +12631,18 @@ impl<'s> Executor<'s> {
                 // return and here stays posted and ends the next park at once,
                 // which costs one spin and loses nothing.
                 if !parked {
-                    let _ = wake.wait_ms(timeout_ms as u32);
+                    // phase-509 P9b item 3 -- the wait is a window too: the
+                    // wake object is the executor's (`Arc`, set at open and
+                    // never replaced), reached through a raw pointer.
+                    let wake: *const super::node_wake::NodeWake = &**wake;
+                    let _window = window_lock.map(super::exec_lock::Window::open);
+                    // SAFETY: the object outlives the executor's open window.
+                    let _ = unsafe { &*wake }.wait_ms(timeout_ms as u32);
                 }
+                // SAFETY: the lock is held again.
+                s = unsafe { &mut *this };
                 // Drain any flag the cb set while we were waiting.
-                let _ = self
-                    .wake_flag
-                    .swap(false, portable_atomic::Ordering::SeqCst);
+                let _ = s.wake_flag.swap(false, portable_atomic::Ordering::SeqCst);
                 0
             } else {
                 // No wake primitive linked, or a poll-only backend: drive the
@@ -12519,11 +12671,11 @@ impl<'s> Executor<'s> {
         // issue 0324 — the primary session's I/O result is TRACKED, not
         // discarded. See `consecutive_io_failures` for why this is a counter
         // rather than an early return.
-        match self.drive_primary(primary_drive_timeout_ms) {
-            Ok(()) => self.consecutive_io_failures = 0,
-            Err(_) => self.consecutive_io_failures = self.consecutive_io_failures.saturating_add(1),
+        match s.drive_primary(primary_drive_timeout_ms) {
+            Ok(()) => s.consecutive_io_failures = 0,
+            Err(_) => s.consecutive_io_failures = s.consecutive_io_failures.saturating_add(1),
         }
-        for extra in self.extra_sessions.iter_mut() {
+        for extra in s.extra_sessions.iter_mut() {
             // Best-effort BY DESIGN: extra sessions are bridge / multi-domain
             // attachments, and one of them failing must not stall the primary
             // spin. The old code expressed this the same way it expressed the
@@ -12536,11 +12688,11 @@ impl<'s> Executor<'s> {
         // every consumer further down. Replaces the std/no_std delta pair AND
         // two ad-hoc `static EPOCH: OnceLock<Instant>` blocks that each kept
         // their own std-only epoch.
-        let now_us_this_spin = self.now_us();
+        let now_us_this_spin = s.now_us();
         // phase-474 I11 -- the release instant is the end of the park, so it
         // is judged on this read, before any dispatch of this spin.
         if let Some(now) = now_us_this_spin {
-            self.record_grid_release(now);
+            s.record_grid_release(now);
         }
 
         // Same rule on both flavours: measure elapsed when a clock exists, else
@@ -12550,10 +12702,10 @@ impl<'s> Executor<'s> {
         // is one expression, not a behaviour change.
         let delta_us = match now_us_this_spin {
             Some(now) => {
-                let prev = self
+                let prev = s
                     .last_spin_end_us
                     .unwrap_or_else(|| spin_start_us.unwrap_or(now));
-                self.last_spin_end_us = Some(now);
+                s.last_spin_end_us = Some(now);
                 now.saturating_sub(prev)
             }
             None => (timeout_ms as u64).saturating_mul(1000),
@@ -12564,10 +12716,10 @@ impl<'s> Executor<'s> {
         // diagnostic arrives after as much time as this image's own wall timers
         // believe has passed, on whatever clock it actually has.
         #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
-        self.note_sim_time_silence(delta_us);
+        s.note_sim_time_silence(delta_us);
 
-        if !self.spin_quantization_checked && timeout_ms > 0 {
-            self.spin_quantization_checked = true;
+        if !s.spin_quantization_checked && timeout_ms > 0 {
+            s.spin_quantization_checked = true;
             // The TIER's declared cadence, not the capped park bound. Since
             // phase-436 W1 the two differ whenever a timer is due sooner than
             // the budget, and auditing the cap would compare the timer period
@@ -12576,8 +12728,8 @@ impl<'s> Executor<'s> {
             // timer to quantize. `spin_nominal_us` is the declared cadence
             // (`set_spin_nominal_us`, else the caller's timeout), recorded at
             // the top of this spin before any capping.
-            self.spin_quantization_us = self.spin_nominal_us;
-            self.audit_spin_quantization(self.spin_quantization_us);
+            s.spin_quantization_us = s.spin_nominal_us;
+            s.audit_spin_quantization(s.spin_quantization_us);
         }
         (now_us_this_spin, delta_us)
     }
@@ -16610,5 +16762,69 @@ mod cancel_tests {
         assert!(exec.is_spinning());
         exec.exit_spin_loop();
         assert!(!exec.is_spinning());
+    }
+}
+
+/// phase-509 P9b item 3 (RFC-0108 D7) -- the arrival path wakes only the
+/// worker whose band holds the slot.
+#[cfg(all(test, feature = "alloc", feature = "rmw-cffi"))]
+mod band_wake_routing_tests {
+    use super::{super::scheduler::BandWaiter, WakeCtx};
+    use core::ffi::c_void;
+    use portable_atomic::{AtomicUsize, Ordering};
+
+    static WOKEN: [AtomicUsize; 2] = [AtomicUsize::new(0), AtomicUsize::new(0)];
+
+    unsafe extern "C" fn wake(ctx: *mut c_void) {
+        WOKEN[ctx as usize].fetch_add(1, Ordering::SeqCst);
+    }
+
+    unsafe extern "C" fn wait(_ctx: *mut c_void, _us: u64) -> i32 {
+        0
+    }
+
+    #[test]
+    fn an_attributed_arrival_wakes_its_band_and_an_unattributed_one_wakes_all() {
+        // SAFETY: the contexts are plain indices `wake` decodes.
+        static A: BandWaiter = unsafe { BandWaiter::new(wake, wait, core::ptr::null_mut()) };
+        static B: BandWaiter =
+            unsafe { BandWaiter::new(wake, wait, core::ptr::without_provenance_mut(1)) };
+        A.slots.store(0b0011, Ordering::SeqCst);
+        B.slots.store(0b0100, Ordering::SeqCst);
+        let flag = portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false));
+        let ctx = WakeCtx::new(flag.clone(), None);
+        B.next.store(&A as *const _ as *mut _, Ordering::SeqCst);
+        ctx.band_waiters
+            .store(&B as *const _ as *mut _, Ordering::SeqCst);
+
+        ctx.mark_ready(2);
+        assert_eq!(WOKEN[1].load(Ordering::SeqCst), 1, "slot 2 is B's");
+        assert_eq!(WOKEN[0].load(Ordering::SeqCst), 0);
+        assert!(
+            !flag.load(Ordering::SeqCst),
+            "the executor's own worker sleeps on"
+        );
+
+        ctx.mark_ready(1);
+        assert_eq!(WOKEN[0].load(Ordering::SeqCst), 1, "slot 1 is A's");
+
+        ctx.mark_ready(5);
+        assert!(
+            flag.load(Ordering::SeqCst),
+            "no band holds slot 5: own worker"
+        );
+        assert_eq!(
+            WOKEN[0].load(Ordering::SeqCst) + WOKEN[1].load(Ordering::SeqCst),
+            2
+        );
+
+        ctx.signal();
+        assert_eq!(
+            WOKEN[0].load(Ordering::SeqCst),
+            2,
+            "unattributed: every band"
+        );
+        assert_eq!(WOKEN[1].load(Ordering::SeqCst), 2);
+        assert_eq!(ctx.ready.load(Ordering::SeqCst), 0b100110);
     }
 }

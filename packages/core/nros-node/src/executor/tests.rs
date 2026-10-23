@@ -16691,7 +16691,7 @@ mod p9b_windows {
         fn spin_band(self, w: &mut BandWorker) -> SpinOnceResult {
             // SAFETY: as `spin_shared`.
             let _g = unsafe { ExecGuard::acquire(self.0) };
-            unsafe { Executor::spin_band_once(self.0, w) }
+            unsafe { Executor::spin_band_once(self.0, w, core::time::Duration::ZERO) }
         }
     }
 
@@ -16828,6 +16828,145 @@ mod p9b_windows {
         assert!(
             got[..first_lo].is_empty() && got[lo_end + 1..].iter().all(|e| e.starts_with("lo")),
             "the lo worker never ran hi: {got:?}"
+        );
+        drop(executor);
+    }
+
+    /// A port wake object for the tests: a counting semaphore.
+    struct Sem {
+        count: Mutex<u32>,
+        cv: Condvar,
+    }
+
+    unsafe extern "C" fn sem_give(c: *mut core::ffi::c_void) {
+        // SAFETY: the tests pass a leaked `Sem`.
+        let s = unsafe { &*(c as *const Sem) };
+        *s.count.lock().unwrap() += 1;
+        s.cv.notify_all();
+    }
+
+    unsafe extern "C" fn sem_take(c: *mut core::ffi::c_void, us: u64) -> i32 {
+        // SAFETY: as `sem_give`.
+        let s = unsafe { &*(c as *const Sem) };
+        let g = s.count.lock().unwrap();
+        let (mut g, _) =
+            s.cv.wait_timeout_while(g, std::time::Duration::from_micros(us), |c| *c == 0)
+                .unwrap();
+        if *g > 0 {
+            *g -= 1;
+            0
+        } else {
+            -1
+        }
+    }
+
+    fn leaked_waiter() -> (&'static crate::executor::BandWaiter, *mut core::ffi::c_void) {
+        let sem: &'static Sem = std::boxed::Box::leak(std::boxed::Box::new(Sem {
+            count: Mutex::new(0),
+            cv: Condvar::new(),
+        }));
+        let ctx = sem as *const Sem as *mut core::ffi::c_void;
+        // SAFETY: the semaphore is leaked; both entries are thread-safe.
+        let w = unsafe { crate::executor::BandWaiter::new(sem_give, sem_take, ctx) };
+        (std::boxed::Box::leak(std::boxed::Box::new(w)), ctx)
+    }
+
+    /// Item 3 -- a band worker parks, with the lock released, until its
+    /// band's next timer is due: a 4 ms timer under a 2 s budget is served in
+    /// a few ms, and another thread takes the lock during the park.
+    #[test]
+    fn a_band_worker_parks_until_its_timer_is_due() {
+        let mut executor = executor_with_clock(MockSession::new());
+        install_lock(&mut executor);
+        let fired = Arc::new(AtomicUsize::new(0));
+        let f = fired.clone();
+        executor.bind_node_rank("t", "/", 0).unwrap();
+        let nid = executor.node_builder("t").build().unwrap();
+        executor
+            .node_mut(nid)
+            .create_timer_with_info(
+                TimerDuration::from_millis(4),
+                crate::executor::TimerClockSource::Steady,
+                true,
+                move |_| {
+                    f.fetch_add(1, Ordering::SeqCst);
+                },
+            )
+            .unwrap();
+        let (waiter, _) = leaked_waiter();
+        let mut w = BandWorker::new(0, Band::new(0, 1).unwrap()).with_waiter(waiter);
+        executor.attach_band_worker(&w);
+        let shared = Shared(&mut executor);
+        let t0 = std::time::Instant::now();
+        let parked_lock_taken = Arc::new(AtomicUsize::new(0));
+        let p = parked_lock_taken.clone();
+        let f2 = fired.clone();
+        std::thread::scope(|sc| {
+            sc.spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+                // SAFETY: the lock is taken before the executor is read.
+                let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
+                // Taken while the worker was parked: the timer has not fired.
+                if f2.load(Ordering::SeqCst) == 0 {
+                    p.fetch_add(1, Ordering::SeqCst);
+                }
+            });
+            while fired.load(Ordering::SeqCst) == 0 {
+                // SAFETY: the lock is taken before the pass and held once.
+                let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
+                unsafe {
+                    Executor::spin_band_once(
+                        shared.ptr(),
+                        &mut w,
+                        core::time::Duration::from_secs(2),
+                    )
+                };
+                assert!(
+                    t0.elapsed() < std::time::Duration::from_secs(1),
+                    "parked past the timer"
+                );
+            }
+        });
+        assert_eq!(
+            parked_lock_taken.load(Ordering::SeqCst),
+            1,
+            "another thread took the lock during the park"
+        );
+        drop(executor);
+    }
+
+    /// Item 3 -- a band worker with nothing due parks on its wake object, and
+    /// a signal ends the park early.
+    #[test]
+    fn a_signal_ends_a_band_park() {
+        let mut executor = executor_with_clock(MockSession::new());
+        install_lock(&mut executor);
+        let (waiter, ctx) = leaked_waiter();
+        let mut w = BandWorker::new(0, Band::new(0, 1).unwrap()).with_waiter(waiter);
+        executor.attach_band_worker(&w);
+        let shared = Shared(&mut executor);
+        let ctx = ctx as usize;
+        let t0 = std::time::Instant::now();
+        std::thread::scope(|sc| {
+            sc.spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                // SAFETY: the leaked semaphore.
+                unsafe { sem_give(ctx as *mut core::ffi::c_void) };
+            });
+            // SAFETY: the lock is taken before the pass and held once.
+            let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
+            unsafe {
+                Executor::spin_band_once(shared.ptr(), &mut w, core::time::Duration::from_secs(5))
+            };
+        });
+        let took = t0.elapsed();
+        assert!(
+            took >= std::time::Duration::from_millis(15),
+            "it parked: {took:?}"
+        );
+        assert!(
+            took < std::time::Duration::from_secs(2),
+            "the signal ended it: {took:?}"
         );
         drop(executor);
     }

@@ -747,6 +747,11 @@
     "why": "phase-509 P9b item 2 / RFC-0108 \"As built in P9b\" -- the band of dispatch levels the executor's own worker runs (every level by default). With band workers over the same executor (`Executor::spin_band_once`) the bands partition the levels, so each callback has exactly one worker. rclcpp's multi-threaded executor shares one wait set among its threads and has no notion of a level band; rclrs has one executor thread.",
     "bucket": "ours-only"
   },
+  "rust:Executor::attach_band_worker": {
+    "verdict": "extension",
+    "why": "phase-509 P9b item 3 / RFC-0108 D7 -- link a band worker's wake object into the executor's arrival routing, so an arrival attributed to a slot of its band wakes that worker alone (an unattributed one wakes every worker). rclcpp's multi-threaded executor wakes its shared wait set; rclrs has one executor thread; neither routes an arrival to a priority band.",
+    "bucket": "ours-only"
+  },
   "rust:Executor::*violation*": {
     "verdict": "extension",
     "why": "drain the contract violations the monitors recorded (`drain_violations`), count the ones dropped when the fixed buffer overflowed (`violations_dropped`), and gate reporting (`set_report_violations`). The bounded buffer plus an explicit dropped count is the no-allocator shape: a device cannot grow a violation log, and silently losing entries would make the monitor lie. rclcpp raises QoS events through callbacks instead.",

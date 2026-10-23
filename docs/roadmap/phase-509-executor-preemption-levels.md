@@ -722,8 +722,19 @@ core; the design note is RFC-0108 "As built in P9b". Four PRs, in order:
       per pass by default. `nros_cpp_spin_once` holds no reference across
       its pass. Tests: `two_workers_never_run_one_callback_at_once`,
       `a_band_worker_runs_only_its_band`.
-- [ ] 3. Scheduler-owned accounting: per-band timers and budgets, one
-      transport driver, per-worker band park.
+- [x] 3. Scheduler-owned accounting: each band's timers advance only on
+      its worker's passes, by that worker's own elapsed time; sporadic
+      budgets stay executor-owned under the lock and are charged per
+      callback by the worker that ran it; only the executor's own worker
+      drives the transport. Per-worker band park: a `BandWorker` with a
+      `BandWaiter` (`attach_band_worker`) parks, the lock released, until
+      its band's next timer or a signal; an attributed arrival signals only
+      its band's waiter, an unattributed one every worker
+      (`WakeCtx::mark_ready` / `signal`). The executor's own worker parks
+      and waits with the lock released too, and its park bound counts only
+      its band's timers. Tests: `a_band_worker_parks_until_its_timer_is_due`,
+      `a_signal_ends_a_band_park`,
+      `an_attributed_arrival_wakes_its_band_and_an_unattributed_one_wakes_all`.
 - [ ] 4. Runner, FFI, cost report: `level_open` opens a worker over the
       core's executor; `levels-cpp` and `mem-report --levels` show a level
       as a worker record and a stack.
