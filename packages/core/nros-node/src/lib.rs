@@ -294,7 +294,8 @@ pub use executor::{
 #[cfg(any(has_rmw, test))]
 pub use executor::{
     ExecutorInlineStorage, ExecutorSizing, INLINE_BACKING_U64S, INLINE_SIZING, RegionUnit,
-    RegionUnits, tier_backing_bytes, tier_executor_sizing, tier_sizing,
+    RegionUnits, levels_backing_bytes, levels_executor_sizing, tier_backing_bytes,
+    tier_executor_sizing, tier_sizing,
 };
 
 // issue 0687 — the selector's CAP (its reader lives at the hosted edge, in

@@ -1472,15 +1472,23 @@ LEVEL_KCONFIG_DEFAULTS = {
 }
 _KCONFIG_INT = re.compile(r"^(CONFIG_[A-Z0-9_]+)=([0-9]+)\s*$", re.M)
 _LEVEL_SYM = re.compile(
-    r"^__nros_(tier_stack|tier_thread|tier_backing|scheduler)_([0-9]+)$|^__nros_tier_executor_storage$"
+    r"^__nros_(tier_stack|tier_thread|tier_backing|scheduler)_([0-9]+)$"
+    r"|^__nros_tier_executor_storage$|^__nros_levels_backing$"
 )
 
 
 def scheduler_backing_size(n_levels, ptr):
     """`NROS_CPP_SCHEDULER_BACKING_SIZE(n)` of <rclc/detail/main.h>, for a
-    target whose pointers are `ptr` bytes: an 8-byte head and the session
-    pointer, then three pointer-sized fields per level, rounded up to 8."""
-    return (8 + ptr + n_levels * 3 * ptr + 7) // 8 * 8
+    target whose pointers are `ptr` bytes: an 8-byte head, the session and the
+    core's executor, then one seat per level -- phase-509 P9b: the level's
+    worker record and waiter, at most 8 pointers + 40 bytes -- rounded up to 8."""
+    return (8 + 2 * ptr + n_levels * (8 * ptr + 40) + 7) // 8 * 8
+
+
+def scheduler_seat_bytes(ptr):
+    """One level's share of the scheduler: its seat (phase-509 P9b), the
+    bound the C macro reserves."""
+    return 8 * ptr + 40
 
 
 def derived_level_stack(member_bytes, kconfig):
@@ -1628,12 +1636,25 @@ def level_costs(elf, sizes_header=None):
         )
 
     storage = symbols.get("__nros_tier_executor_storage")
+    # phase-509 P9b (RFC-0108 "As built in P9b") -- a level image opens ONE
+    # executor per core, carved from the levels backing; a level is a worker
+    # record (its scheduler seat) and a stack. Before P9b each level was an
+    # executor: a context and a backing per row.
+    levels_backing = symbols.get("__nros_levels_backing")
+    one_executor = levels_backing is not None
+    res["layout"] = "one executor per core (P9b)" if one_executor else "an executor per level (P9)"
     per_ctx = None
     if storage is not None:
-        per_ctx = storage[1] // n
+        per_ctx = storage[1] // (1 if one_executor else n)
         if "NROS_CPP_EXECUTOR_STORAGE_SIZE" in sizes:
             want = (sizes["NROS_CPP_EXECUTOR_STORAGE_SIZE"] + 7) // 8 * 8
-            check("executor contexts (n x NROS_CPP_EXECUTOR_STORAGE_SIZE)", storage[1], n * want)
+            if one_executor:
+                check("core executor context (NROS_CPP_EXECUTOR_STORAGE_SIZE)", storage[1], want)
+            else:
+                check("executor contexts (n x NROS_CPP_EXECUTOR_STORAGE_SIZE)", storage[1], n * want)
+    if one_executor and "NROS_CPP_LEVELS_BACKING_SIZE" in sizes:
+        check("core executor backing (NROS_CPP_LEVELS_BACKING_SIZE)", levels_backing[1],
+              sizes["NROS_CPP_LEVELS_BACKING_SIZE"])
     for i, t in enumerate(tiers):
         members = [m[0] if isinstance(m, list) else m for m in t.get("members", [])]
         row = {
@@ -1685,10 +1706,16 @@ def level_costs(elf, sizes_header=None):
             key = f"NROS_CPP_TIER_BACKING_SIZE_{i}"
             if key in sizes:
                 check(f"level {levels[i]} backing ({key})", bk[1], sizes[key])
-        if per_ctx is not None:
+        if one_executor:
+            # The level's seat in the scheduler: its worker record.
+            row["seat"] = scheduler_seat_bytes(ptr)
+        elif per_ctx is not None:
             row["context"] = per_ctx
             row["context_region"] = region_of(storage[0], storage[2], regions)
-        row["worker_record"] = row.get("context", 0) + row.get("backing", 0) + row.get("thread", 0)
+        row["worker_record"] = (
+            row.get("context", 0) + row.get("backing", 0) + row.get("thread", 0)
+            + row.get("seat", 0)
+        )
         res["levels"].append(row)
     sched = symbols.get("__nros_scheduler_0")
     core = {"core": 0, "levels": n}
@@ -1703,6 +1730,10 @@ def level_costs(elf, sizes_header=None):
              "expected": scheduler_backing_size(n, ptr), "ok": False}
         )
     core["backing"] = sum(r.get("backing", 0) for r in res["levels"])
+    if one_executor:
+        core["executor_context"] = per_ctx or 0
+        core["executor_backing"] = levels_backing[1]
+        core["executor_region"] = region_of(levels_backing[0], levels_backing[2], regions)
     res["cores"].append(core)
     if problem:
         res["sizes_problem"] = problem
@@ -1714,6 +1745,12 @@ def level_costs(elf, sizes_header=None):
                 by_region[reg] = by_region.get(reg, 0) + r[k]
     if sched:
         by_region[core["scheduler_region"]] = by_region.get(core["scheduler_region"], 0) + sched[1]
+    if one_executor:
+        reg = core["executor_region"]
+        by_region[reg] = by_region.get(reg, 0) + core["executor_backing"]
+        if storage is not None:
+            sreg = region_of(storage[0], storage[2], regions)
+            by_region[sreg] = by_region.get(sreg, 0) + storage[1]
     res["regions"] = by_region
     return res
 
@@ -1726,9 +1763,10 @@ def level_report(res):
         return out[0] + f"\n  {res['note']}"
     out.append(f"  record: {res['record']}")
     out.append(f"  kconfig: {res['kconfig']['source']}")
+    out.append(f"  layout: {res.get('layout', '?')}")
     out.append(
         f"  {'lvl':>3} {'row':>3} {'name':<24} {'stack':>8} {'derived':>8} {'context':>8} "
-        f"{'backing':>8} {'thread':>7} {'record':>8}  members"
+        f"{'backing':>8} {'thread':>7} {'seat':>6} {'record':>8}  members"
     )
     for r in sorted(res["levels"], key=lambda r: r["level"]):
         out.append(
@@ -1736,7 +1774,8 @@ def level_report(res):
             f"{fmt(r['stack']) if 'stack' in r else 'main':>8} "
             f"{fmt(r['stack_derived']) if 'stack_derived' in r else '-':>8} "
             f"{fmt(r.get('context', 0)):>8} {fmt(r.get('backing', 0)):>8} "
-            f"{fmt(r.get('thread', 0)):>7} {fmt(r['worker_record']):>8}  "
+            f"{fmt(r.get('thread', 0)):>7} {fmt(r.get('seat', 0)):>6} "
+            f"{fmt(r['worker_record']):>8}  "
             + ", ".join(r["members"])
         )
         if r.get("members_defaulted"):
@@ -1745,10 +1784,17 @@ def level_report(res):
                 + ", ".join(r["members_defaulted"])
             )
     for c in res["cores"]:
-        out.append(
-            f"  core {c['core']}: scheduler {fmt(c.get('scheduler', 0))} B, "
-            f"level backings {fmt(c['backing'])} B, {c['levels']} levels"
-        )
+        if "executor_backing" in c:
+            out.append(
+                f"  core {c['core']}: executor context {fmt(c['executor_context'])} B + "
+                f"backing {fmt(c['executor_backing'])} B (one executor), scheduler "
+                f"{fmt(c.get('scheduler', 0))} B, {c['levels']} levels"
+            )
+        else:
+            out.append(
+                f"  core {c['core']}: scheduler {fmt(c.get('scheduler', 0))} B, "
+                f"level backings {fmt(c['backing'])} B, {c['levels']} levels"
+            )
     out.append("  by region:")
     for reg, b in sorted(res["regions"].items()):
         out.append(f"    {reg:<32} {fmt(b):>10}")
@@ -1776,8 +1822,8 @@ def level_check(res):
 
 
 def selftest_levels():
-    assert scheduler_backing_size(3, 8) == 88 and scheduler_backing_size(3, 4) == 48
-    assert scheduler_backing_size(1, 4) == 24
+    assert scheduler_backing_size(3, 8) == 336 and scheduler_backing_size(3, 4) == 232
+    assert scheduler_backing_size(1, 4) == 88
     k = dict(LEVEL_KCONFIG_DEFAULTS)
     assert derived_level_stack(0, k) == 16384, "members that state nothing keep the knob"
     assert derived_level_stack(6000, k) == 10096, "a stated member plus the worker frame"

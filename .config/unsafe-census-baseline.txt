@@ -44,10 +44,10 @@ nros-c                             460  84     5     462      0
 nros-cli-core                       22   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
-nros-cpp                           986  39     0     383      0
+nros-cpp                           995  39     0     389      0
 nros-log                            23   0     7       1      0
 nros-macros                         16   0     1       2      0
-nros-node                          652  184    35     144      0
+nros-node                          655  184    35     146      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0

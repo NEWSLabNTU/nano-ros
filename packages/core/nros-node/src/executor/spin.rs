@@ -3899,7 +3899,21 @@ impl<'s> Executor<'s> {
     /// phase-509 P9b item 2 -- the slots whose dispatch level is in `band`.
     /// Every slot for [`super::scheduler::Band::ALL`], the one-level worker's
     /// band, without looking at one.
-    fn band_slots(&self, band: super::scheduler::Band) -> u64 {
+    fn band_slots(&self, level: u8, band: super::scheduler::Band) -> u64 {
+        // phase-509 P9b item 4 -- levels that own their slots by
+        // registration (a level runner): the worker of `level` runs exactly
+        // what its level's setup registered, whatever the ranks say.
+        if self.worker.registering_level != super::scheduler::NO_OWNING_LEVEL {
+            let mut mask = 0u64;
+            for i in 0..self.entries.len().min(64) {
+                if self.entries[i].is_some()
+                    && self.slot_tags.get(i).is_some_and(|t| t.level == level)
+                {
+                    mask |= 1u64 << i;
+                }
+            }
+            return mask;
+        }
         if band == super::scheduler::Band::ALL {
             return u64::MAX;
         }
@@ -3910,6 +3924,16 @@ impl<'s> Executor<'s> {
             }
         }
         mask
+    }
+
+    /// phase-509 P9b item 4 -- the callbacks registered from now on belong
+    /// to level `level`: its worker runs them, and no other does. The first
+    /// call switches the executor to levels that own their slots by
+    /// registration (a level runner sets each level up in turn); until then,
+    /// and on every image that never calls it, a worker's band of dispatch
+    /// levels decides.
+    pub fn set_registering_level(&mut self, level: u8) {
+        self.worker.registering_level = level.min(super::scheduler::NO_OWNING_LEVEL - 1);
     }
 
     /// phase-509 P9b item 2 -- the band the executor's own worker runs:
@@ -3976,7 +4000,7 @@ impl<'s> Executor<'s> {
             return;
         };
         waiter.slots.store(
-            self.band_slots(worker.band) as usize,
+            self.band_slots(worker.level, worker.band) as usize,
             portable_atomic::Ordering::SeqCst,
         );
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -4016,7 +4040,7 @@ impl<'s> Executor<'s> {
         // SAFETY: the caller's contract; derived again after the park.
         let mut s: &mut Self = unsafe { &mut *this };
         if let Some(waiter) = w.waiter {
-            let mask = s.band_slots(w.band);
+            let mask = s.band_slots(w.level, w.band);
             waiter
                 .slots
                 .store(mask as usize, portable_atomic::Ordering::SeqCst);
@@ -4441,7 +4465,7 @@ impl<'s> Executor<'s> {
     /// its band (every timer for the one-level worker), so it does not wake
     /// for a timer another band's worker runs.
     pub(crate) fn next_timer_deadline_us(&self) -> Option<u64> {
-        self.next_timer_deadline_in_us(self.band_slots(self.worker.band))
+        self.next_timer_deadline_in_us(self.band_slots(self.worker.level, self.worker.band))
     }
 
     /// phase-509 P9b item 3 -- [`Self::next_timer_deadline_us`] over the
@@ -7865,6 +7889,8 @@ impl<'s> Executor<'s> {
             tag.generation = tag.next_generation();
             tag.owner = 0;
             tag.rank = 0;
+            // phase-509 P9b item 4 -- the level being set up owns it.
+            tag.level = self.worker.registering_level;
             tag.reset_flags();
         }
     }
@@ -11312,11 +11338,11 @@ impl<'s> Executor<'s> {
         // phase-509 P9b item 2 -- this pass's band (every level for the
         // one-level worker) and its slots. The scan, the sweep and the drain
         // see only these, so a worker never takes another band's work.
-        let band = match &mode {
-            PassMode::Band(w) => w.band,
-            _ => s.worker.band,
+        let (level, band) = match &mode {
+            PassMode::Band(w) => (w.level, w.band),
+            _ => (s.worker.level, s.worker.band),
         };
-        let band_mask = s.band_slots(band);
+        let band_mask = s.band_slots(level, band);
         let is_band_pass = matches!(mode, PassMode::Band(_));
         let window_thread = window_lock.and_then(|l| l.current_thread()).unwrap_or(0);
 
@@ -11887,7 +11913,10 @@ impl<'s> Executor<'s> {
                 let level = super::sched_context::Priority::from_index(bucket).dispatch_level(rank);
                 // phase-509 P6 / P9b item 2 -- the scan saw only this pass's
                 // band, so nothing it queued is another band's.
-                debug_assert!(band.contains(level));
+                debug_assert!(
+                    s.worker.registering_level != super::scheduler::NO_OWNING_LEVEL
+                        || band.contains(level)
+                );
                 let _ = fifo.insert_at(level, job);
             }
         }

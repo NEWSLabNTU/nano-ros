@@ -40,7 +40,13 @@
  * is no honest size to write. The runner asks the linked library whether the
  * block is big enough and refuses it if not. */
 #include <rclcpp/detail/nros_cpp_config_generated.h>
+{% if boot.task_memory and boot.runners.run_levels -%}
+/* phase-509 P9b (RFC-0108 "As built in P9b") — a level runner opens ONE
+ * executor per core, so ONE block: every level works on it. */
+static uint64_t __nros_tier_executor_storage[1][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+{%- else -%}
 static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+{%- endif %}
 
 {% if boot.task_memory -%}
 /* Issue 1598 — each spawned tier's TASK memory (stack + control block), as
@@ -54,7 +60,7 @@ static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECU
 {% for r in boot.task_memory.rows %}    {% if r.spawned %}NROS_TIER_TASK_MEMORY({{ r.index }}){% else %}NROS_TIER_TASK_MEMORY_NONE{% endif %},
 {% endfor %}};
 
-{% if boot.runners.run_tiers_backed -%}
+{% if boot.runners.run_tiers_backed and not boot.runners.run_levels -%}
 /* Issue 1970 — each tier's OWN executor backing, when this build sizes its
  * executors per tier: the per-build header then publishes NROS_CPP_TIER_COUNT
  * and one NROS_CPP_TIER_BACKING_SIZE_<i> per tier (tier-table order), the
@@ -79,8 +85,18 @@ static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECU
  * level; the runner spawns one worker per level over it. */
 #define NROS_CPP_SCHEDULER_BACKING_SIZE_0 NROS_CPP_SCHEDULER_BACKING_SIZE({{ boot.n_tiers }}u)
 static uint64_t __nros_scheduler_0[NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8u];
-#if defined(NROS_ENTRY_TIERS_BACKED)
-#define NROS_ENTRY_LEVEL_BACKINGS __nros_tier_backings
+/* phase-509 P9b (RFC-0108 "As built in P9b") — the core's ONE executor
+ * backing, when this build sizes its levels: every level's members, summed
+ * (NROS_CPP_LEVELS_BACKING_SIZE), and the context above carries none inline.
+ * A build that sizes no level keeps the whole-image executor inline. The
+ * library refuses a backing short of the levels' layout before the session
+ * opens. */
+#if defined(NROS_CPP_LEVELS_BACKING_SIZE)
+static uint64_t __nros_levels_backing[NROS_CPP_LEVELS_BACKING_SIZE / 8u];
+static const nros_tier_backing_t __nros_level_backings[1] = {
+    {__nros_levels_backing, sizeof(__nros_levels_backing)},
+};
+#define NROS_ENTRY_LEVEL_BACKINGS __nros_level_backings
 #else
 #define NROS_ENTRY_LEVEL_BACKINGS nullptr
 #endif

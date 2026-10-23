@@ -601,8 +601,10 @@ class ZephyrBoard {
     /// phase-509 P9 (RFC-0108) — the levels runner a generated entry calls:
     /// each row of `tiers` is one level, `scheduler_backing` is the entry's
     /// `NROS_CPP_SCHEDULER_BACKING_SIZE_0` static the core's scheduler lives
-    /// in, and `backings` is NULL unless the build sizes a backing per level.
-    /// See `nros_board_zephyr_run_levels_in` in `<rclc/detail/main.h>`.
+    /// in, and `backings` is the core executor's levels backing (P9b: one
+    /// executor per core, a level is a worker over it), or NULL when the
+    /// build sizes none. See `nros_board_zephyr_run_levels_in` in
+    /// `<rclc/detail/main.h>`.
     static int32_t run_levels(const char* session_name, const char* node_namespace,
                               const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
                               size_t storage_stride, const ::nros_tier_backing_t* backings,

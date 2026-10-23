@@ -118,7 +118,9 @@ __attribute__((section(".nros_boot_config"), used))
  * is no honest size to write. The runner asks the linked library whether the
  * block is big enough and refuses it if not. */
 #include <rclcpp/detail/nros_cpp_config_generated.h>
-static uint64_t __nros_tier_executor_storage[2][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+/* phase-509 P9b (RFC-0108 "As built in P9b") — a level runner opens ONE
+ * executor per core, so ONE block: every level works on it. */
+static uint64_t __nros_tier_executor_storage[1][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
 
 /* Issue 1598 — each spawned tier's TASK memory (stack + control block), as
  * statics the linker places and prices: an image whose stacks do not fit RAM
@@ -132,32 +134,24 @@ static const nros_tier_task_memory_t __nros_tier_task_memory[2] = {
     NROS_TIER_TASK_MEMORY(1),
 };
 
-/* Issue 1970 — each tier's OWN executor backing, when this build sizes its
- * executors per tier: the per-build header then publishes NROS_CPP_TIER_COUNT
- * and one NROS_CPP_TIER_BACKING_SIZE_<i> per tier (tier-table order), the
- * contexts above carry no inline backing, and the runner hands tier i's
- * executor `__nros_tier_backing_<i>`. A build that sizes no tier (or a tier
- * table other than this entry's) publishes no matching count, and the entry
- * keeps the whole-image executor per tier. The library refuses a backing short
- * of its tier's layout before that tier opens. */
-#if defined(NROS_CPP_TIER_COUNT) && NROS_CPP_TIER_COUNT == 2
-#define NROS_ENTRY_TIERS_BACKED 1
-static uint64_t __nros_tier_backing_0[NROS_CPP_TIER_BACKING_SIZE_0 / 8u];
-static uint64_t __nros_tier_backing_1[NROS_CPP_TIER_BACKING_SIZE_1 / 8u];
-static const nros_tier_backing_t __nros_tier_backings[2] = {
-    {__nros_tier_backing_0, sizeof(__nros_tier_backing_0)},
-    {__nros_tier_backing_1, sizeof(__nros_tier_backing_1)},
-};
-#endif
-
 /* phase-509 P9 (RFC-0108) — this core's level scheduler: the session every
  * level shares and one seat per level, in a static the linker places and the
  * cost report (`mem-report --levels`) names. Each row of the table above is one
  * level; the runner spawns one worker per level over it. */
 #define NROS_CPP_SCHEDULER_BACKING_SIZE_0 NROS_CPP_SCHEDULER_BACKING_SIZE(2u)
 static uint64_t __nros_scheduler_0[NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8u];
-#if defined(NROS_ENTRY_TIERS_BACKED)
-#define NROS_ENTRY_LEVEL_BACKINGS __nros_tier_backings
+/* phase-509 P9b (RFC-0108 "As built in P9b") — the core's ONE executor
+ * backing, when this build sizes its levels: every level's members, summed
+ * (NROS_CPP_LEVELS_BACKING_SIZE), and the context above carries none inline.
+ * A build that sizes no level keeps the whole-image executor inline. The
+ * library refuses a backing short of the levels' layout before the session
+ * opens. */
+#if defined(NROS_CPP_LEVELS_BACKING_SIZE)
+static uint64_t __nros_levels_backing[NROS_CPP_LEVELS_BACKING_SIZE / 8u];
+static const nros_tier_backing_t __nros_level_backings[1] = {
+    {__nros_levels_backing, sizeof(__nros_levels_backing)},
+};
+#define NROS_ENTRY_LEVEL_BACKINGS __nros_level_backings
 #else
 #define NROS_ENTRY_LEVEL_BACKINGS NULL
 #endif

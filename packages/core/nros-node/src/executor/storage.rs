@@ -737,6 +737,52 @@ pub const fn tier_backing_bytes(index: usize) -> usize {
     }
 }
 
+/// phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- the sizing of the
+/// ONE executor a level runner opens per core: every level's callbacks, nodes,
+/// arena and declared parameters, summed over the image's tiers (each row of
+/// the tier table is one level). `None` when the image sizes no tier.
+pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
+    let tiers = crate::config::TIER_SIZINGS;
+    if tiers.is_empty() {
+        return None;
+    }
+    let store = nros_params::IMPLIED_STORE_SLOTS;
+    let (mut cbs, mut arena, mut nodes, mut params) = (0usize, 0usize, 0usize, 0usize);
+    let mut i = 0;
+    while i < tiers.len() {
+        let t = &tiers[i];
+        cbs += t.cbs;
+        arena += t.arena;
+        nodes += t.nodes;
+        params += match t.params {
+            None => store,
+            Some(n) => n,
+        };
+        i += 1;
+    }
+    // One executor dispatches at most one ready word of slots; a level image
+    // past it is refused at registration, loudly, as any executor is.
+    let max_cbs = super::spin::MAX_CALLBACK_SLOTS;
+    Some(ExecutorSizing {
+        cbs: if cbs < max_cbs { cbs } else { max_cbs },
+        sc: crate::config::MAX_SC,
+        arena,
+        nodes,
+        params: if params < store { params } else { store },
+        remaps: MAX_REMAPS,
+    })
+}
+
+/// phase-509 P9b item 4 -- the backing bytes [`levels_executor_sizing`]
+/// carves, `0` on an image that sizes no tier. What
+/// `nros::sizes::LEVELS_BACKING_SIZE` publishes to the C/C++ header.
+pub const fn levels_backing_bytes() -> usize {
+    match levels_executor_sizing() {
+        Some(s) => s.u64_len() * 8,
+        None => 0,
+    }
+}
+
 /// Carve an 8-aligned `u64` backing into the typed executor slices.
 ///
 /// # Safety

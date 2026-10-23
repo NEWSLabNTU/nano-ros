@@ -165,7 +165,16 @@ pub(crate) struct Worker {
     pub(crate) stack_headroom_last_check_us: Option<u64>,
     pub(crate) stack_headroom_spins_since_check: u32,
     pub(crate) stack_headroom_checks: u32,
+    /// phase-509 P9b item 4 -- the level that owns callbacks registered now
+    /// (`Executor::set_registering_level`); [`NO_OWNING_LEVEL`] until a level
+    /// runner first sets one, which is every image's band-of-levels mode. An
+    /// executor-wide fact, kept here among the worker's small fields so it
+    /// shares their padding.
+    pub(crate) registering_level: u8,
 }
+
+/// phase-509 P9b item 4 -- no level owns slots by registration.
+pub(crate) const NO_OWNING_LEVEL: u8 = u8::MAX;
 
 impl Worker {
     /// The one-level executor's worker: every dispatch level, nothing parked
@@ -187,6 +196,7 @@ impl Worker {
             stack_headroom_last_check_us: None,
             stack_headroom_spins_since_check: 0,
             stack_headroom_checks: 0,
+            registering_level: NO_OWNING_LEVEL,
         }
     }
 }

@@ -1183,6 +1183,73 @@ pub unsafe extern "C" fn nros_cpp_init_tier(
     }
 }
 
+/// phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- [`nros_cpp_init`]
+/// for the ONE executor a level runner opens per core: carved from `backing`
+/// (`backing_bytes`, 8-aligned) at the image's levels sizing, every tier's
+/// (level's) members summed (`nros_node::levels_executor_sizing`). Refused
+/// before a session opens on an image that sizes no tier, or for a backing
+/// below [`nros_cpp_levels_backing_size`].
+///
+/// # Safety
+/// As [`nros_cpp_init_tier`], without the tier name.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_init_levels(
+    locator: *const c_char,
+    domain_id: u8,
+    node_name: *const c_char,
+    namespace: *const c_char,
+    storage: *mut c_void,
+    backing: *mut c_void,
+    backing_bytes: usize,
+) -> nros_cpp_ret_t {
+    let Some(sizing) = nros_node::levels_executor_sizing() else {
+        cpp_diag!(
+            "nros: this image sizes no level (phase-509 P9b) -- the entry and the library were \
+             built from different tier tables; rebuild"
+        );
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let need = sizing.u64_len() * 8;
+    if backing.is_null()
+        || !(backing as usize).is_multiple_of(core::mem::align_of::<u64>())
+        || backing_bytes < need
+    {
+        cpp_diag!(
+            "nros: levels executor backing refused ({backing_bytes} bytes; the levels need \
+             {need}, 8-aligned)"
+        );
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    // SAFETY: caller contract -- `backing_bytes` writable, aligned bytes that
+    // outlive the executor and nothing else touches.
+    let words = unsafe {
+        core::slice::from_raw_parts_mut(
+            backing as *mut core::mem::MaybeUninit<u64>,
+            backing_bytes / 8,
+        )
+    };
+    unsafe {
+        init_rmw_over(
+            core::ptr::null(),
+            locator,
+            domain_id,
+            node_name,
+            namespace,
+            storage,
+            Some((words, sizing)),
+        )
+    }
+}
+
+/// phase-509 P9b item 4 -- the backing bytes [`nros_cpp_init_levels`]
+/// carves, `0` on an image that sizes no level.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_levels_backing_size() -> usize {
+    nros_node::levels_backing_bytes()
+}
+
 /// Issue 1970 -- the backing bytes the executor of the tier named `tier`
 /// carves, or `0` when this image sizes no tier of that name (its executors
 /// are then the image's, carved inline).
@@ -6962,6 +7029,37 @@ pub unsafe extern "C" fn nros_cpp_executor_set_lock(
     NROS_CPP_RET_OK
 }
 
+/// phase-509 P9b item 4 (RFC-0108 "As built in P9b") -- give the lock
+/// [`nros_cpp_executor_set_lock`] installed the port's thread identity
+/// (`k_current_get`, `pthread_self`), so a pass releases it around each user
+/// callback and around its park: the levels' workers then preempt each
+/// other's callbacks. Call it after `set_lock`, while no second thread can
+/// reach the executor. `INVALID_ARGUMENT` with no lock installed.
+///
+/// # Safety
+/// `handle` is a live executor handle from this ABI, or NULL; `thread_id`
+/// answers the calling thread's identity from any thread, equal on one
+/// thread and distinct across live threads.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_thread_id(
+    handle: *mut c_void,
+    thread_id: unsafe extern "C" fn() -> usize,
+) -> nros_cpp_ret_t {
+    // SAFETY: the caller's contract on `handle`; the lock (if any) is taken
+    // before the reference exists (RFC-0108 "As built in P9b").
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(l) = cpp.executor.exec_lock() else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: the caller's contract on `thread_id`.
+    let l = unsafe { l.with_thread_id(thread_id) };
+    cpp.executor.set_exec_lock(Some(l));
+    NROS_CPP_RET_OK
+}
+
 /// phase-509 P7 — the most levels an image can have (the check-in word's
 /// width).
 pub const NROS_CPP_MAX_LEVELS: u8 = nros_node::executor::MAX_LEVELS as u8;
@@ -7066,22 +7164,44 @@ pub extern "C" fn nros_cpp_levels_take_alive() -> bool {
 // ============================================================================
 
 /// phase-509 P9 -- the tag a scheduler backing carries once opened ("SCHD").
+#[cfg(feature = "rmw-cffi")]
 const SCHEDULER_MAGIC: u32 = 0x5343_4844;
 
-/// phase-509 P9 -- one level's seat in a core's scheduler: the executor its
-/// worker dispatches, the stack its worker thread was created with (`0` while
-/// unseated or unknown), and the level's name (the tier it runs, a static
-/// string from the entry's table).
+/// phase-509 P9 / P9b item 4 -- one level's seat in a core's scheduler. P9b
+/// (RFC-0108 "As built in P9b"): a level is a WORKER over the core's one
+/// executor, not an executor of its own -- its record ([`BandWorker`]: its
+/// level, its band, its clock), its wake object's waiter ([`BandWaiter`], the
+/// arrival path's view of it), the executor it works on (the owner's), the
+/// stack its thread was created with, and its name. `#[repr(C)]` with the
+/// two records first, so the seat's size is `8 x pointer + 40` at most on
+/// every target (`NROS_CPP_SCHEDULER_BACKING_SIZE`).
+///
+/// [`BandWorker`]: nros_node::executor::BandWorker
+/// [`BandWaiter`]: nros_node::executor::BandWaiter
+#[cfg(feature = "rmw-cffi")]
 #[repr(C)]
 struct LevelSeat {
+    worker: nros_node::executor::BandWorker,
+    /// The worker's waiter, `None` for the adopted level (the executor's own
+    /// worker parks on the executor's wake object) and on a platform with no
+    /// wake primitive (the level polls).
+    waiter: Option<&'static nros_node::executor::BandWaiter>,
     executor: *mut c_void,
     stack_bytes: usize,
     name: *const c_char,
 }
 
-/// phase-509 P9 -- a core's scheduler: the session its levels share and one
-/// seat per level. It lives in the entry's own backing
+#[cfg(feature = "rmw-cffi")]
+const _: () = assert!(
+    core::mem::size_of::<LevelSeat>() <= 8 * core::mem::size_of::<usize>() + 40,
+    "NROS_CPP_SCHEDULER_BACKING_SIZE (rclc/detail/main.h) reserves 8 pointers + 40 per seat"
+);
+
+/// phase-509 P9 -- a core's scheduler: the session its levels share, the
+/// executor every level works on (P9b: the owner's, the adopted level's) and
+/// one seat per level. It lives in the entry's own backing
 /// (`NROS_CPP_SCHEDULER_BACKING_SIZE_<core>`), never the heap.
+#[cfg(feature = "rmw-cffi")]
 #[repr(C)]
 struct SchedulerHead {
     magic: u32,
@@ -7091,6 +7211,8 @@ struct SchedulerHead {
     domain_id: u8,
     _pad: u8,
     session: *mut c_void,
+    /// phase-509 P9b item 4 -- the core's one executor (the owner's handle).
+    owner: *mut c_void,
 }
 
 /// phase-509 P9 -- the backing bytes a scheduler of `n_levels` levels takes:
@@ -7098,8 +7220,10 @@ struct SchedulerHead {
 /// than `NROS_CPP_MAX_LEVELS`. The generated
 /// `NROS_CPP_SCHEDULER_BACKING_SIZE_<core>` is
 /// `NROS_CPP_SCHEDULER_BACKING_SIZE(n)` of `<rclc/detail/main.h>`, which
-/// spells this same arithmetic; the entry asserts the two agree at boot and the
-/// cost report reads the static's size.
+/// reserves at least this much (8 pointers + 40 per seat, P9b); the entry's
+/// backing is refused at open when it is shorter, and the cost report reads
+/// the static's size.
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_cpp_scheduler_backing_size(n_levels: u8) -> usize {
     if n_levels == 0 || n_levels > NROS_CPP_MAX_LEVELS {
@@ -7115,6 +7239,7 @@ pub extern "C" fn nros_cpp_scheduler_backing_size(n_levels: u8) -> usize {
 ///
 /// # Safety
 /// `scheduler` is NULL or a pointer [`nros_cpp_scheduler_open`] returned.
+#[cfg(feature = "rmw-cffi")]
 unsafe fn scheduler_parts<'a>(
     scheduler: *mut c_void,
 ) -> Option<(&'a mut SchedulerHead, &'a mut [LevelSeat])> {
@@ -7143,12 +7268,13 @@ unsafe fn scheduler_parts<'a>(
     Some((head, seats))
 }
 
-/// Write an empty scheduler of `n_levels` over `session` into `backing`.
-/// `None` when the backing is NULL, misaligned or short, or the count is not
-/// a level count.
+/// Write an empty scheduler of `n_levels` over `owner`'s `session` into
+/// `backing`. `None` when the backing is NULL, misaligned or short, or the
+/// count is not a level count.
 ///
 /// # Safety
 /// `backing` is NULL or points at `bytes` writable bytes.
+#[cfg(feature = "rmw-cffi")]
 unsafe fn scheduler_init(
     backing: *mut c_void,
     bytes: usize,
@@ -7156,6 +7282,7 @@ unsafe fn scheduler_init(
     n_levels: u8,
     domain_id: u8,
     session: *mut c_void,
+    owner: *mut c_void,
 ) -> Option<*mut c_void> {
     let need = nros_cpp_scheduler_backing_size(n_levels);
     if need == 0
@@ -7175,6 +7302,7 @@ unsafe fn scheduler_init(
             domain_id,
             _pad: 0,
             session,
+            owner,
         });
         let seats = backing
             .cast::<u8>()
@@ -7182,6 +7310,11 @@ unsafe fn scheduler_init(
             .cast::<LevelSeat>();
         for i in 0..usize::from(n_levels) {
             seats.add(i).write(LevelSeat {
+                worker: nros_node::executor::BandWorker::new(
+                    i as u8,
+                    nros_node::executor::Band::ALL,
+                ),
+                waiter: None,
                 executor: core::ptr::null_mut(),
                 stack_bytes: 0,
                 name: core::ptr::null(),
@@ -7191,37 +7324,17 @@ unsafe fn scheduler_init(
     Some(backing)
 }
 
-/// Seat `executor` at `level`. `ALREADY_EXISTS` for a seated level,
-/// `INVALID_ARGUMENT` for a level past the scheduler's count.
-fn seat_level(
-    seats: &mut [LevelSeat],
-    level: u8,
-    executor: *mut c_void,
-    stack_bytes: usize,
-    name: *const c_char,
-) -> nros_cpp_ret_t {
-    let Some(seat) = seats.get_mut(usize::from(level)) else {
-        return NROS_CPP_RET_INVALID_ARGUMENT;
-    };
-    if !seat.executor.is_null() {
-        return NROS_CPP_RET_ALREADY_EXISTS;
-    }
-    *seat = LevelSeat {
-        executor,
-        stack_bytes,
-        name,
-    };
-    NROS_CPP_RET_OK
-}
-
 /// phase-509 P9 (RFC-0108 D3; the amended RFC-0107 step 5) -- open core
 /// `core`'s scheduler in `backing` (`bytes`, 8-aligned, at least
-/// [`nros_cpp_scheduler_backing_size`]`(n_levels)`), over the session the
-/// executor `owner` opened (`nros_cpp_init` / `nros_cpp_init_tier`). It states
-/// the image's level count (`nros_cpp_set_level_count`); the owner is then
-/// seated with [`nros_cpp_level_adopt`] and every other level opened with
+/// [`nros_cpp_scheduler_backing_size`]`(n_levels)`), over the executor
+/// `owner` opened (`nros_cpp_init_levels` / `nros_cpp_init`). It states the
+/// image's level count (`nros_cpp_set_level_count`); the owner is then seated
+/// with [`nros_cpp_level_adopt`] and every other level opened with
 /// [`nros_cpp_level_open`]. Returns the scheduler handle (`backing`), or NULL
 /// when anything is refused.
+///
+/// P9b item 4: every level works on `owner`'s executor. Install its lock
+/// (`nros_cpp_executor_set_lock`, `_set_thread_id`) before a level opens.
 ///
 /// # Safety
 /// `owner` is a live executor handle from this ABI, or NULL; `backing` points
@@ -7238,7 +7351,7 @@ pub unsafe extern "C" fn nros_cpp_scheduler_open(
     let session = unsafe { nros_cpp_executor_session_handle(owner) };
     let domain_id = unsafe { cpp_ctx_checked(owner) }.map_or(0, |c| c.domain_id as u8);
     let Some(handle) =
-        (unsafe { scheduler_init(backing, bytes, core, n_levels, domain_id, session) })
+        (unsafe { scheduler_init(backing, bytes, core, n_levels, domain_id, session, owner) })
     else {
         cpp_diag!(
             "nros: scheduler for core {core} refused ({n_levels} levels, {bytes} backing bytes; \
@@ -7253,10 +7366,37 @@ pub unsafe extern "C" fn nros_cpp_scheduler_open(
     handle
 }
 
-/// phase-509 P9 -- seat an executor that is already open (the session owner,
-/// which runs on the caller's thread) at `level`, and place it there
-/// (`nros_cpp_executor_set_level`). `stack_bytes` is the stack its thread runs
-/// on; `name` a static string, or NULL.
+/// Seat `executor` at `level`. `ALREADY_EXISTS` for a seated level,
+/// `INVALID_ARGUMENT` for a level past the scheduler's count.
+#[cfg(feature = "rmw-cffi")]
+fn seat_level(
+    seats: &mut [LevelSeat],
+    level: u8,
+    executor: *mut c_void,
+    stack_bytes: usize,
+    name: *const c_char,
+) -> nros_cpp_ret_t {
+    let Some(seat) = seats.get_mut(usize::from(level)) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if !seat.executor.is_null() {
+        return NROS_CPP_RET_ALREADY_EXISTS;
+    }
+    seat.executor = executor;
+    seat.stack_bytes = stack_bytes;
+    seat.name = name;
+    NROS_CPP_RET_OK
+}
+
+/// phase-509 P9 -- seat the executor that owns the session (the core's one
+/// executor, which runs on the caller's thread) at `level`, and place it
+/// there (`nros_cpp_executor_set_level`). `stack_bytes` is the stack its
+/// thread runs on; `name` a static string, or NULL.
+///
+/// P9b item 4: the adopted level is the executor's own worker (it parks on
+/// the executor's wake object and drives the transport), and the callbacks
+/// its setup registers from now on are its own
+/// (`Executor::set_registering_level`).
 ///
 /// # Safety
 /// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL;
@@ -7274,73 +7414,153 @@ pub unsafe extern "C" fn nros_cpp_level_adopt(
     let Some((_, seats)) = (unsafe { scheduler_parts(scheduler) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    if unsafe { cpp_ctx_checked(executor) }.is_none() {
-        return NROS_CPP_RET_INVALID_ARGUMENT;
-    }
     let ret = seat_level(seats, level, executor, stack_bytes, name);
     if ret != NROS_CPP_RET_OK {
         return ret;
     }
-    unsafe { nros_cpp_executor_set_level(executor, level) }
+    // SAFETY: the caller's contract on `executor`; the lock is taken before
+    // the reference exists.
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if !cpp.executor.set_level(level) {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    cpp.executor.set_registering_level(level);
+    NROS_CPP_RET_OK
 }
 
-/// phase-509 P9 (RFC-0108 D3) -- open level `level` of `scheduler`: an
-/// executor over the scheduler's session, built in `storage`
-/// (`NROS_CPP_EXECUTOR_STORAGE_SIZE` bytes), placed at the level and seated.
-/// With a `backing` it is carved at the sizing the image derived for the tier
-/// named `name` (`nros_cpp_executor_open_over_session_tier`); with NULL, from
-/// the context's inline tail. `stack_bytes` is the stack the level's worker
-/// thread was created with (the derived per-level stack), recorded for
-/// [`nros_cpp_scheduler_level_stack_bytes`].
+/// phase-509 P9 (RFC-0108 D3) / P9b item 4 -- open level `level` of
+/// `scheduler` as a WORKER over the core's one executor (the adopted owner's):
+/// its record and waiter are seated in the scheduler's backing, its waiter is
+/// linked into the executor's arrival routing, and the callbacks registered
+/// from now on are the level's (`Executor::set_registering_level`). Call it
+/// on the level's own thread, then run the level's setup on the owner's
+/// executor handle ([`nros_cpp_scheduler_owner`]), then loop on
+/// [`nros_cpp_level_spin_once`]. `stack_bytes` is the stack the level's
+/// thread was created with, recorded for
+/// [`nros_cpp_scheduler_level_stack_bytes`]. A level costs its seat and its
+/// stack; no executor, no backing.
 ///
 /// # Safety
-/// As [`nros_cpp_executor_open_over_session_tier`] for `storage`, `name` and
-/// `backing`; `scheduler` a handle from [`nros_cpp_scheduler_open`] or NULL.
+/// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL; `name`
+/// NULL or a NUL-terminated string that outlives the scheduler.
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_level_open(
     scheduler: *mut c_void,
     level: u8,
     name: *const c_char,
-    storage: *mut c_void,
-    backing: *mut c_void,
-    backing_bytes: usize,
     stack_bytes: usize,
 ) -> nros_cpp_ret_t {
     let Some((head, seats)) = (unsafe { scheduler_parts(scheduler) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    match seats.get(usize::from(level)) {
-        None => return NROS_CPP_RET_INVALID_ARGUMENT,
-        Some(s) if !s.executor.is_null() => return NROS_CPP_RET_ALREADY_EXISTS,
-        Some(_) => {}
+    let owner = head.owner;
+    let ret = seat_level(seats, level, owner, stack_bytes, name);
+    if ret != NROS_CPP_RET_OK {
+        return ret;
     }
-    let (session, domain_id) = (head.session, u32::from(head.domain_id));
-    let ret = if backing.is_null() {
-        unsafe {
-            nros_cpp_executor_open_over_session(session, c"tier_node".as_ptr(), domain_id, storage)
-        }
-    } else {
-        unsafe {
-            nros_cpp_executor_open_over_session_tier(
-                session,
-                c"tier_node".as_ptr(),
-                domain_id,
-                storage,
-                name,
-                backing,
-                backing_bytes,
-            )
-        }
+    let seat = &mut seats[usize::from(level)];
+    // The level's wake object: the platform's, leaked with the level (one per
+    // level for the image's life). None: the level polls.
+    seat.waiter = nros_node::executor::BandWaiter::platform();
+    seat.worker = match seat.waiter {
+        Some(w) => nros_node::executor::BandWorker::new(level, nros_node::executor::Band::ALL)
+            .with_waiter(w),
+        None => nros_node::executor::BandWorker::new(level, nros_node::executor::Band::ALL),
     };
-    if ret != NROS_CPP_RET_OK {
-        return ret;
+    // SAFETY: the scheduler's owner is the live executor it was opened over;
+    // the lock is taken before the reference exists.
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(owner) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    cpp.executor.attach_band_worker(&seat.worker);
+    cpp.executor.set_registering_level(level);
+    NROS_CPP_RET_OK
+}
+
+/// phase-509 P9b item 4 -- the core's one executor (the owner's handle):
+/// what a level's setup registers its nodes on. NULL for a handle that is not
+/// a scheduler.
+///
+/// # Safety
+/// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_scheduler_owner(scheduler: *mut c_void) -> *mut c_void {
+    unsafe { scheduler_parts(scheduler) }.map_or(core::ptr::null_mut(), |(h, _)| h.owner)
+}
+
+/// phase-509 P9b item 4 -- make the callbacks registered from now on level
+/// `level`'s, on the core's executor: a runner calls it before each level's
+/// setup (the level that opens or adopts is made current already).
+///
+/// # Safety
+/// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_scheduler_set_registering_level(
+    scheduler: *mut c_void,
+    level: u8,
+) -> nros_cpp_ret_t {
+    let Some((head, _)) = (unsafe { scheduler_parts(scheduler) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: as `nros_cpp_level_open`.
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(head.owner) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    cpp.executor.set_registering_level(level);
+    NROS_CPP_RET_OK
+}
+
+/// phase-509 P9b item 4 -- one pass of level `level`'s worker over the core's
+/// executor: it parks (its wake object, the lock released) for at most
+/// `timeout_ms` or until its next timer or an arrival in its band, then runs
+/// its band's ready callbacks, most urgent first, releasing the lock around
+/// each (`Executor::spin_band_once`). The adopted level spins with
+/// `nros_cpp_spin_once` on the owner's handle instead.
+///
+/// # Safety
+/// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL, and
+/// `level` was opened with [`nros_cpp_level_open`] on the calling thread
+/// (the seat's worker record is that thread's alone).
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_level_spin_once(
+    scheduler: *mut c_void,
+    level: u8,
+    timeout_ms: i32,
+) -> nros_cpp_ret_t {
+    crate::census_finish_application_if_armed();
+    // SAFETY: the caller's contract on `scheduler`.
+    let Some((head, seats)) = (unsafe { scheduler_parts(scheduler) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let ctx = head.owner as *mut CppContext;
+    let Some(seat) = seats.get_mut(usize::from(level)) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if ctx.is_null() || seat.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let ret = seat_level(seats, level, storage, stack_bytes, name);
-    if ret != NROS_CPP_RET_OK {
-        return ret;
+    // SAFETY (RFC-0108 "As built in P9b", ownership): the owner's tag and
+    // executor pointer are read raw, the lock is taken through it, and no
+    // reference to the context or the executor lives across the pass.
+    if unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).tag)) } != CPP_CONTEXT_TAG {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    unsafe { nros_cpp_executor_set_level(storage, level) }
+    // SAFETY: as above; the field is written once at open.
+    let exec =
+        unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).executor) as *const *mut CppExecutor) };
+    // SAFETY: `exec` is the owner's live executor.
+    let _lock = unsafe { nros_node::executor::exec_lock::ExecGuard::acquire(exec) };
+    let timeout = core::time::Duration::from_millis(timeout_ms.max(0) as u64);
+    // SAFETY: the lock is held once; the seat's worker record is this
+    // level's thread's alone (the caller's contract).
+    let _ = unsafe { CppExecutor::spin_band_once(exec, &mut seat.worker, timeout) };
+    NROS_CPP_RET_OK
 }
 
 /// phase-509 P9 -- how many levels `scheduler` holds, 0 for a handle that is
@@ -7348,6 +7568,7 @@ pub unsafe extern "C" fn nros_cpp_level_open(
 ///
 /// # Safety
 /// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_scheduler_level_count(scheduler: *mut c_void) -> u8 {
     unsafe { scheduler_parts(scheduler) }.map_or(0, |(h, _)| h.n_levels)
@@ -7357,6 +7578,7 @@ pub unsafe extern "C" fn nros_cpp_scheduler_level_count(scheduler: *mut c_void) 
 ///
 /// # Safety
 /// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_scheduler_level_executor(
     scheduler: *mut c_void,
@@ -7373,6 +7595,7 @@ pub unsafe extern "C" fn nros_cpp_scheduler_level_executor(
 ///
 /// # Safety
 /// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_scheduler_level_stack_bytes(
     scheduler: *mut c_void,
@@ -9801,7 +10024,7 @@ mod mode_alias_tests {
 }
 
 /// phase-509 P9 -- the scheduler record: its size, its refusals and its seats.
-#[cfg(test)]
+#[cfg(all(test, feature = "rmw-cffi"))]
 mod scheduler_tests {
     use super::*;
 
@@ -9810,13 +10033,19 @@ mod scheduler_tests {
     }
 
     /// The size is the head plus one seat per level, 8-rounded, and the C
-    /// macro's arithmetic (`8 + ptr + n * 3 * ptr`) is the same number.
+    /// macro (`NROS_CPP_SCHEDULER_BACKING_SIZE`: `8 + 2 ptr + n (8 ptr + 40)`)
+    /// reserves at least that (phase-509 P9b item 4: a seat is a worker
+    /// record, not an executor).
     #[test]
     fn the_backing_is_a_head_and_one_seat_per_level() {
         let ptr = core::mem::size_of::<usize>();
         for n in [1u8, 3, 8, 32] {
-            let want = (8 + ptr + usize::from(n) * 3 * ptr).next_multiple_of(8);
-            assert_eq!(nros_cpp_scheduler_backing_size(n), want, "{n} levels");
+            let exact = (core::mem::size_of::<SchedulerHead>()
+                + usize::from(n) * core::mem::size_of::<LevelSeat>())
+            .next_multiple_of(8);
+            assert_eq!(nros_cpp_scheduler_backing_size(n), exact, "{n} levels");
+            let macro_bytes = (8 + 2 * ptr + usize::from(n) * (8 * ptr + 40)).next_multiple_of(8);
+            assert!(exact <= macro_bytes, "{n} levels: {exact} > {macro_bytes}");
         }
         assert_eq!(nros_cpp_scheduler_backing_size(0), 0);
         assert_eq!(nros_cpp_scheduler_backing_size(NROS_CPP_MAX_LEVELS + 1), 0);
@@ -9830,11 +10059,32 @@ mod scheduler_tests {
         let mut b = backing(3);
         let p = b.as_mut_ptr().cast::<c_void>();
         let bytes = b.len() * 8;
-        assert!(unsafe { scheduler_init(p, bytes - 8, 0, 3, 0, session) }.is_none());
-        assert!(unsafe { scheduler_init(p, bytes, 0, 3, 0, core::ptr::null_mut()) }.is_none());
-        assert!(unsafe { scheduler_init(p, bytes, 0, 0, 0, session) }.is_none());
+        assert!(
+            unsafe { scheduler_init(p, bytes - 8, 0, 3, 0, session, core::ptr::null_mut()) }
+                .is_none()
+        );
+        assert!(
+            unsafe {
+                scheduler_init(
+                    p,
+                    bytes,
+                    0,
+                    3,
+                    0,
+                    core::ptr::null_mut(),
+                    core::ptr::null_mut(),
+                )
+            }
+            .is_none()
+        );
+        assert!(
+            unsafe { scheduler_init(p, bytes, 0, 0, 0, session, core::ptr::null_mut()) }.is_none()
+        );
         let odd = unsafe { p.cast::<u8>().add(4) }.cast::<c_void>();
-        assert!(unsafe { scheduler_init(odd, bytes, 0, 1, 0, session) }.is_none());
+        assert!(
+            unsafe { scheduler_init(odd, bytes, 0, 1, 0, session, core::ptr::null_mut()) }
+                .is_none()
+        );
         // Never opened: the tag is not there.
         assert_eq!(unsafe { nros_cpp_scheduler_level_count(p) }, 0);
         assert!(unsafe { nros_cpp_scheduler_level_executor(p, 0) }.is_null());
@@ -9852,10 +10102,23 @@ mod scheduler_tests {
         let mut b = backing(3);
         let bytes = b.len() * 8;
         let p = b.as_mut_ptr().cast::<c_void>();
-        let h = unsafe { scheduler_init(p, bytes, 0, 3, 7, session) }.unwrap();
+        let owner = 0x3000 as *mut c_void;
+        let h = unsafe { scheduler_init(p, bytes, 0, 3, 7, session, owner) }.unwrap();
         assert_eq!(unsafe { nros_cpp_scheduler_level_count(h) }, 3);
         let (head, seats) = unsafe { scheduler_parts(h) }.unwrap();
-        assert_eq!((head.core, head.domain_id, head.session), (0, 7, session));
+        assert_eq!(
+            (head.core, head.domain_id, head.session, head.owner),
+            (0, 7, session, owner)
+        );
+        // Every seat starts as its level's polling worker.
+        assert!(
+            seats
+                .iter()
+                .enumerate()
+                .all(|(i, s)| s.worker.band() == nros_node::executor::Band::ALL
+                    && s.waiter.is_none()
+                    && i < 3)
+        );
         let e1 = 0x2000 as *mut c_void;
         assert_eq!(
             seat_level(seats, 1, e1, 12_288, core::ptr::null()),

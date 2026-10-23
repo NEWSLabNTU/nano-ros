@@ -735,14 +735,30 @@ core; the design note is RFC-0108 "As built in P9b". Four PRs, in order:
       its band's timers. Tests: `a_band_worker_parks_until_its_timer_is_due`,
       `a_signal_ends_a_band_park`,
       `an_attributed_arrival_wakes_its_band_and_an_unattributed_one_wakes_all`.
-- [ ] 4. Runner, FFI, cost report: `level_open` opens a worker over the
-      core's executor; `levels-cpp` and `mem-report --levels` show a level
-      as a worker record and a stack.
+- [x] 4. Runner, FFI, cost report: the Zephyr runner opens ONE executor
+      per core (`nros_cpp_init_levels`, carved from the entry's
+      `NROS_CPP_LEVELS_BACKING_SIZE` static), installs its lock and thread
+      identity, and every spawned level is a worker over it:
+      `nros_cpp_level_open(scheduler, level, name, stack_bytes)` seats its
+      record and wake object, its setup registers on the owner's handle
+      (`nros_cpp_scheduler_owner`; the slots are the level's,
+      `Executor::set_registering_level`), and it loops on
+      `nros_cpp_level_spin_once`. The entry emits one executor block and one
+      levels backing; `mem-report --levels` reports a level as its seat, its
+      thread object and its stack. `levels-cpp` (native_sim, `.bss`):
+      43,736 B before (P9) -> 22,280 B after (context 3,184 + backing
+      18,408 + scheduler 336 + 2 x 176 thread objects).
 
 **Measured before P9b** (`levels-cpp`, native_sim): three levels as
 executors 43,736 B `.bss` (each 3,144 context + 11,288 backing, plus 176 B
 thread objects and an 88 B scheduler); the same nodes as one level 16,296 B
 (3,144 + 13,112 + 40).
+
+**Measured after P9b** (same fixture): 22,280 B `.bss`: one context
+(3,184), one backing for every level's members (18,408; the tiers' own
+sizings summed, so 5,296 B above the one-level derivation's 13,112), the
+scheduler (336: 3 seats of 104) and 2 x 176 B thread objects. A spawned level
+costs its seat, its thread object and its stack.
 
 ### P10 -- The other runners (amended RFC-0107 step 6)
 

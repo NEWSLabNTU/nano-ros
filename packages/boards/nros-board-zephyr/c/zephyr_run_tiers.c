@@ -243,8 +243,34 @@ extern void* nros_cpp_scheduler_open(uint8_t core, uint8_t n_levels, void* owner
                                      size_t bytes);
 extern int nros_cpp_level_adopt(void* scheduler, uint8_t level, void* executor, size_t stack_bytes,
                                 const char* name);
-extern int nros_cpp_level_open(void* scheduler, uint8_t level, const char* name, void* storage,
-                               void* backing, size_t backing_bytes, size_t stack_bytes);
+/* phase-509 P9b (RFC-0108 "As built in P9b") -- a level is a WORKER over the
+ * core's ONE executor (the owner's): `level_open` seats its record and wake
+ * object, the level's setup then registers its nodes on the owner's handle,
+ * and the worker loops on `level_spin_once`. The owner's executor carries the
+ * port's recursive priority-inheriting mutex and this thread identity, so a
+ * pass releases it around each callback and park: the levels preempt each
+ * other on one executor. */
+extern int nros_cpp_level_open(void* scheduler, uint8_t level, const char* name,
+                               size_t stack_bytes);
+extern int nros_cpp_level_spin_once(void* scheduler, uint8_t level, int32_t timeout_ms);
+extern void* nros_cpp_scheduler_owner(void* scheduler);
+extern int nros_cpp_init_levels(const char* locator, uint8_t domain_id, const char* node_name,
+                                const char* namespace_, void* storage, void* backing,
+                                size_t backing_bytes);
+extern int nros_cpp_executor_set_lock(void* executor, int8_t (*lock)(void*),
+                                      int8_t (*unlock)(void*), void* ctx);
+extern int nros_cpp_executor_set_thread_id(void* executor, uintptr_t (*thread_id)(void));
+extern int8_t nros_platform_mutex_rec_init(void* m);
+extern int8_t nros_platform_mutex_rec_lock(void* m);
+extern int8_t nros_platform_mutex_rec_unlock(void* m);
+extern size_t nros_platform_mutex_rec_storage_size(void);
+extern uintptr_t nros_zephyr_thread_id(void);
+
+/* The core's executor lock: the port's recursive, priority-inheriting mutex
+ * (Zephyr `k_mutex`), one per image. 256 bytes reserved, the platform API's
+ * bound (`NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE`); the port's real size is
+ * checked at boot. */
+static uint64_t zephyr_exec_mutex[256u / 8u];
 
 /* issue 0636 option 3 — the tier spin loop's scheduled gap.
  *
@@ -459,61 +485,47 @@ static void* zephyr_tier_task(void* arg) {
 
     zephyr_apply_tier_deadline(ctx->name, ctx->tier_class, ctx->deadline_us);
 
-    /* phase-509 P9 -- open this LEVEL over the scheduler: a borrowed executor
-     * on the session the boot level owns, placed at the level and seated with
-     * the stack this worker thread was created with. The boot level must
-     * outlive this task; its spin loop runs forever, enforcing this. */
-    int rc = nros_cpp_level_open(ctx->scheduler, ctx->level, ctx->name, ctx->executor_storage,
-                                 ctx->backing, ctx->backing_bytes, ctx->stack_bytes);
-    if (rc != 0) {
+    /* phase-509 P9b -- open this LEVEL over the scheduler: a worker over the
+     * core's one executor (the owner's), seated with the stack this thread
+     * was created with. The boot level owns the executor and outlives this
+     * task; its spin loop runs forever, enforcing this. */
+    int rc = nros_cpp_level_open(ctx->scheduler, ctx->level, ctx->name, ctx->stack_bytes);
+    void* owner = nros_cpp_scheduler_owner(ctx->scheduler);
+    if (rc != 0 || owner == NULL) {
         printk("nros: level %u (`%s`) did not open (rc=%d)\n", (unsigned)ctx->level,
                (ctx->name != NULL) ? ctx->name : "?", rc);
-        /* Cannot open the borrowed executor; park forever (boot thread
-         * continues). NOTE (issue #144): the spawn of the next tier sits AFTER
-         * this tier's setup, so failing here HALTS the chain — ctx->rest will
-         * not start. Intentional (a degraded deploy), but a fault-isolation
-         * change from the pre-#144 loop-spawn. */
+        /* Park forever (boot thread continues). NOTE (issue #144): the spawn
+         * of the next tier sits AFTER this tier's setup, so failing here
+         * HALTS the chain -- ctx->rest will not start. Intentional (a
+         * degraded deploy), but a fault-isolation change from the pre-#144
+         * loop-spawn. */
         for (;;) {
             nros_zephyr_msleep(1000);
         }
     }
 
-    /* Gate this executor to its tier's callback groups. */
+    /* Gate the registrations of this level's setup to its tier's callback
+     * groups (the gate applies at registration, so each level sets it before
+     * its own setup). */
     if (ctx->n_groups > 0 && ctx->groups != NULL) {
-        nros_cpp_executor_set_active_groups(ctx->executor_storage, ctx->groups, ctx->n_groups);
+        nros_cpp_executor_set_active_groups(owner, ctx->groups, ctx->n_groups);
     }
-    /* phase-436 follow-up — declare a default stack-headroom bound from the
-     * stack this tier's thread was actually created with. The executor cannot
-     * derive one itself (`check_stack_headroom`: it never sees `stack_bytes`),
-     * but this layer can, because it just spawned the thread with that size.
-     *
-     * BEFORE `setup()` deliberately: an explicit
-     * `nros_cpp_executor_set_min_stack_headroom` inside the tier's setup then
-     * overwrites this, so declared beats derived by ordering alone.
-     *
-     * `ctx->stack_bytes` is the stack this thread was CREATED with: the
-     * entry's declared size when the entry supplied the memory (issue 1232),
-     * the fixed pool slot otherwise. Before 1232 it was always the slot, and
-     * the declared number described no real stack. The kernel's own record is
-     * printed beside it, so the claim is checkable on a running image. */
+    /* The kernel's own record of this thread's stack, printed beside the
+     * stack it was created with, so the claim is checkable on a running
+     * image. The stack-headroom rule stays the owner's (the executor's own
+     * worker): a level's stack is checked by `mem-report --levels`. */
     printk("nros: tier stack tier=`%s` bytes=%u kernel=%u\n", (ctx->name != NULL) ? ctx->name : "?",
            (unsigned)ctx->stack_bytes, (unsigned)nros_zephyr_current_stack_size());
-    if (nros_cpp_executor_derive_min_stack_headroom(ctx->executor_storage, ctx->stack_bytes) != 0) {
-        /* Fail LOUD. A bound that was never set leaves `stack-headroom-runtime`
-         * off, and a monitor that silently fails to arm reads exactly like a
-         * system with nothing to report. */
-        printk("nros: stack-headroom bound NOT set tier=`%s` — the rule stays off\n",
-               (ctx->name != NULL) ? ctx->name : "?");
-    }
-    zephyr_install_park(ctx->executor_storage, ctx->name);
 
-    /* Run the tier's node-setup function. */
+    /* Run the tier's node-setup function on the core's executor: what it
+     * registers is this level's (`nros_cpp_level_open` made it current). */
     if (ctx->setup != NULL) {
-        rc = ctx->setup(ctx->executor_storage);
+        rc = ctx->setup(owner);
         if (rc != 0) {
-            /* Setup failed; close the borrowed executor and park. As with the
-             * open failure above, this HALTS the chain (issue #144). */
-            nros_cpp_fini(ctx->executor_storage);
+            /* Setup failed; park. As with the open failure above, this HALTS
+             * the chain (issue #144). */
+            printk("nros: level %u (`%s`) setup failed (rc=%d)\n", (unsigned)ctx->level,
+                   (ctx->name != NULL) ? ctx->name : "?", rc);
             for (;;) {
                 nros_zephyr_msleep(1000);
             }
@@ -527,23 +539,18 @@ static void* zephyr_tier_task(void* arg) {
     (void)zephyr_spawn_next_tier(ctx->scheduler, ctx->rest, ctx->n_rest, ctx->rest_storage,
                                  ctx->storage_stride, ctx->rest_task_memory, ctx->rest_backings);
 
-    /* Spin loop. Pass the tier period as the spin_once timeout — a BLOCKING
-     * read drives the shared session's TX/handshake from the spin path and
-     * yields the CPU cooperatively (mirrors the Rust zephyr run_tiers tier
-     * loop, which spins with a real period and no extra sleep). */
+    /* The worker's loop: each pass parks on the level's own wake object (the
+     * lock released) until its band's next timer, an arrival in its band, or
+     * the period, then runs its band's ready callbacks. */
     uint32_t period_ms = (uint32_t)(ctx->spin_period_us / 1000u);
     if (period_ms < SPIN_PERIOD_FLOOR_MS) {
         period_ms = SPIN_PERIOD_FLOOR_MS;
     }
-    /* issue 0636 option 3 — every iteration reaches a scheduling point. The
-     * executor's own wait is skipped whenever a wake already fired, so under
-     * sustained traffic this loop would otherwise never block, and under
-     * SCHED_FIFO a thread that never blocks never lets a lower-priority tier
-     * run. The gap costs nothing while the spins do block. */
+    /* issue 0636 option 3 — every iteration reaches a scheduling point. */
     uint64_t gap_state = 0;
     for (;;) {
         uint64_t iter_start_ns = nros_platform_clock_ns();
-        nros_cpp_spin_once(ctx->executor_storage, (int32_t)period_ms);
+        nros_cpp_level_spin_once(ctx->scheduler, ctx->level, (int32_t)period_ms);
         gap_state = nros_tier_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
                                             ctx->spin_period_us);
     }
@@ -577,8 +584,9 @@ static int zephyr_spawn_next_tier(void* scheduler, const nros_tier_spec_t* remai
     }
     const nros_tier_spec_t* t = &remaining[0];
 
-    void* tier_exec = storage;
-    memset(tier_exec, 0, storage_stride);
+    /* phase-509 P9b -- a level has no executor of its own: it works on the
+     * core's one executor, so nothing of the caller's storage is its. */
+    void* tier_exec = NULL;
 
     /* Allocate the tier task context (lives for firmware lifetime). About a
      * hundred bytes, the one per-tier heap cost left on this path. */
@@ -597,7 +605,9 @@ static int zephyr_spawn_next_tier(void* scheduler, const nros_tier_spec_t* remai
     /* Chain tail: this task will spawn remaining[1] after its own setup. */
     ctx->rest = remaining + 1;
     ctx->n_rest = n_remaining - 1u;
-    ctx->rest_storage = storage + storage_stride;
+    /* phase-509 P9b -- no level takes a block of the caller's storage (the
+     * entry carries one, the core executor's); carried unchanged. */
+    ctx->rest_storage = storage;
     ctx->storage_stride = storage_stride;
     ctx->rest_task_memory = (task_memory != NULL) ? task_memory + 1 : NULL;
     ctx->stack_bytes =
@@ -964,12 +974,30 @@ static int32_t zephyr_run_tiers(const char* locator, uint8_t domain_id, const ch
     void* boot_storage = storage;
     memset(boot_storage, 0, storage_stride);
 
+    /* phase-509 P9b -- the core's ONE executor: carved from the entry's
+     * levels backing (every level's members, summed) when the build sizes its
+     * levels, else the context's inline whole-image backing. */
     int rc = (backings != NULL)
-                 ? nros_cpp_init_tier(locator, domain_id, sn, ns, boot_storage, tiers[0].name,
-                                      backings[0].backing, backings[0].bytes)
+                 ? nros_cpp_init_levels(locator, domain_id, sn, ns, boot_storage,
+                                        backings[0].backing, backings[0].bytes)
                  : nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
     if (rc != 0) {
         return (int32_t)rc;
+    }
+    /* phase-509 P9b -- the executor's lock, before any second thread can
+     * reach it: the port's recursive priority-inheriting mutex, and this
+     * thread identity, so each pass releases it around its callbacks and its
+     * park. One level needs neither. */
+    if (n_tiers > 1u) {
+        if (nros_platform_mutex_rec_storage_size() > sizeof(zephyr_exec_mutex) ||
+            nros_platform_mutex_rec_init(zephyr_exec_mutex) != 0 ||
+            nros_cpp_executor_set_lock(boot_storage, nros_platform_mutex_rec_lock,
+                                       nros_platform_mutex_rec_unlock, zephyr_exec_mutex) != 0 ||
+            nros_cpp_executor_set_thread_id(boot_storage, nros_zephyr_thread_id) != 0) {
+            printk("nros: zephyr run_levels: the executor lock was not installed; refused\n");
+            nros_cpp_fini(boot_storage);
+            return -1; /* NROS_CPP_RET_ERROR */
+        }
     }
 
     /* phase-509 P9 -- the scheduler of this core, over the session the boot
@@ -1049,7 +1077,7 @@ static int32_t zephyr_run_tiers(const char* locator, uint8_t domain_id, const ch
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the
      * helper never touches) and return error. Downstream tier tasks handle
      * their own spawn failures by parking + continuing to spin. */
-    int src = zephyr_spawn_next_tier(scheduler, &tiers[1], n_tiers - 1u, storage + storage_stride,
+    int src = zephyr_spawn_next_tier(scheduler, &tiers[1], n_tiers - 1u, storage,
                                      storage_stride, (task_memory != NULL) ? &task_memory[1] : NULL,
                                      (backings != NULL) ? &backings[1] : NULL);
     if (src != 0) {
