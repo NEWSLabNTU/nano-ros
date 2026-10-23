@@ -331,3 +331,40 @@ Taken. A board row is now built by the job whose image can build it:
 Today the split is two Zephyr cells and one FreeRTOS cell
 (`freertos-mps2-pubsub-c-zenoh-n2r`, setup `freertos qemu`, build
 `freertos`, narrowed to `NROS_FIXTURE_ID=workspace-c-freertos`).
+
+### The board-ci job never reached its cells (2026-10-22)
+
+The split above worked for the Zephyr image: on `live-peer regression` run
+**39721379635** (schedule, head `16f33b1a3b`) the host job and the Zephyr board
+job both gave VERDICT: cells ran and passed. The `nano-ros-ci` image's job gave
+NO VERDICT, stopping at `Build the fixtures those rows resolve`:
+
+```
+fixtures: no row anywhere carries id 'workspace-c-freertos|workspace-cpp-mps3-an536-freertos-slirp|workspace-cpp-mps3-an536-freertos-slirp-bulk'.
+error: recipe `build-examples` failed with exit code 2
+```
+
+Three FreeRTOS cells are recorded, and each narrows by `NROS_FIXTURE_ID`.
+`narrowing_for` joined every key's values with `|`. Its own docstring says that
+is a union only because `NROS_ZEPHYR_FIXTURE_FILTER` is a regex, and that "a
+future key whose union is not an alternation must say so here". `NROS_FIXTURE_ID`
+is that key: it names one row. The workflow's inline loop could not have
+carried several values anyway, since exporting each line in turn keeps the
+last.
+
+Fixed in two places:
+
+- **The producer.** `NARROWING_REGEX_KEYS` names the keys that join. Every
+  other key gets one line per value.
+- **The consumer.** Both board jobs call `scripts/ci/live-peer-board-build.sh`.
+  A key named once narrows every pass. A key named several times is one
+  `just build <scope>` pass per value. Two repeated keys are refused, because
+  nothing states which values pair.
+
+Gate `check live-peer-board-build` runs the script's selftest. That includes
+planning the ledger's real board-ci narrowing, which is three passes today.
+
+Still to show: one scheduled run where the board-ci job reaches its cells. The
+nine single-node FreeRTOS Rust rows still build on the first pass, because
+`fixtures-build.sh` takes `--id`. The second and third passes should find them
+fresh.

@@ -382,13 +382,22 @@ def scopes_for(platforms, role: str = "setup") -> list[str]:
     return sorted(out)
 
 
+# Which narrowing keys are a REGEX, so that several cells' values can be joined
+# into ONE build pass as an alternation. Every other key is an EXACT value
+# (`NROS_FIXTURE_ID` names one row), and several cells sharing it need one build
+# pass EACH: joined with `|` it named a row nobody has, and the board-ci job
+# stopped in its build every night once a second FreeRTOS cell was recorded
+# (run 39721379635, issue 1758). `scripts/ci/live-peer-board-build.sh` runs a
+# repeated key as one pass per value.
+NARROWING_REGEX_KEYS = frozenset({"NROS_ZEPHYR_FIXTURE_FILTER"})
+
+
 def narrowing_for(ids) -> list[str]:
     """`KEY=value` lines narrowing a fixture build to these cells' leaves.
 
-    Several cells sharing a key are joined with `|`: the one narrowing hook in
-    the tree (`NROS_ZEPHYR_FIXTURE_FILTER`) is a REGEX, so an alternation is its
-    union. A future key whose union is not an alternation must say so here
-    rather than inherit this one's meaning.
+    Several cells sharing a REGEX key (`NARROWING_REGEX_KEYS`) are joined with
+    `|`, since an alternation is a regex's union. An exact key gets one line per
+    distinct value, and the build runs once per value.
     """
     fixtures = FIXTURES_TOML.read_text(encoding="utf-8")
     merged: dict[str, list[str]] = {}
@@ -409,7 +418,13 @@ def narrowing_for(ids) -> list[str]:
                 f"would narrow the build to nothing and read as done"
             )
         merged.setdefault(key, []).append(value)
-    return [f"{k}={'|'.join(sorted(set(v)))}" for k, v in sorted(merged.items())]
+    out = []
+    for k, v in sorted(merged.items()):
+        if k in NARROWING_REGEX_KEYS:
+            out.append(f"{k}={'|'.join(sorted(set(v)))}")
+        else:
+            out.extend(f"{k}={x}" for x in sorted(set(v)))
+    return out
 
 
 # Which `fixtures-build.sh linux <lang> <rmw>` the HOST cells need, DERIVED from
@@ -1777,6 +1792,22 @@ def _self_test_runner_split(
     assert narrowing_for(["zephyr-qos-rust-zenoh"]) == [
         "NROS_ZEPHYR_FIXTURE_FILTER=build-ws-rs-qos-entry-zenoh"
     ], narrowing_for(["zephyr-qos-rust-zenoh"])
+    # Issue 1758 — an EXACT key is never joined: two FreeRTOS cells are two
+    # build passes, not one id nobody has.
+    _two = narrowing_for([
+        "freertos-mps2-pubsub-c-zenoh-n2r",
+        "freertos-an536-pubsub-cpp-cyclone-n2r",
+    ])
+    assert _two == [
+        "NROS_FIXTURE_ID=workspace-c-freertos",
+        "NROS_FIXTURE_ID=workspace-cpp-mps3-an536-freertos-slirp",
+    ], _two
+    assert narrowing_for([
+        "zephyr-qos-rust-zenoh", "zephyr-cortex-m-pubsub-c-zenoh",
+    ]) == [
+        "NROS_ZEPHYR_FIXTURE_FILTER="
+        "build-cortex-m-c-talker-zenoh|build-ws-rs-qos-entry-zenoh"
+    ]
     try:
         narrowing_for(["a-board-cell-nobody-mapped"])
     except LedgerError as e:

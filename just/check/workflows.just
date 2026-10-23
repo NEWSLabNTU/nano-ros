@@ -837,3 +837,12 @@ workflow-setup-spelling:
 [private]
 hook-repo-side-effects:
     @bash scripts/check-hook-repo-side-effects.sh
+
+# Issue 1758 -- a live-peer board job builds once per value of a narrowing key
+# it repeats. Both board jobs exported each `KEY=value` line in turn, so a
+# repeated key kept only its last value, and the producer's `|`-join was a
+# union only for a regex: for `NROS_FIXTURE_ID` it named a row nobody has, and
+# the board-ci job stopped in its build every night. The selftest plans the
+# ledger's real board-ci narrowing too.
+live-peer-board-build:
+    @bash scripts/ci/live-peer-board-build.sh selftest
