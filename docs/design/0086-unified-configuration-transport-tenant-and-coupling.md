@@ -1,9 +1,16 @@
 # RFC-0086 — Unified configuration: the transport tenant, coupling verbs, and retiring the per-lane knob
 
-**Status:** Draft (2026-08-30)
+**Status:** Stable for D3–D6 (2026-10-23); D1 and D2 Draft. Drafted 2026-08-30;
+implemented by [phase-400](../roadmap/archived/phase-400-unified-configuration.md),
+archived 2026-10-23. D1/D2's transport tenant was built (phase-400 W3), but no
+build road reads it: builds take the transport from RFC-0098 D4's
+`[image.<id>] transport`, and the tenant is read only by `nros config explain`.
+Whether to retire the tenant or route the image's statement through it is
+[issue 2006](../issues/2006-transport-tenant-read-only-by-explain.md).
 **Boundary (2026-10-14):** a knob's name, legacy spellings and registry row
 belong to [RFC-0103](0103-one-owner-per-fact.md) (phase-484). Which knobs
-get ladder rungs is still this RFC's question (phase-400 W6).
+get ladder rungs is still this RFC's question; the open list is
+[issue 2007](../issues/2007-sizing-knob-ladder-rungs-backlog.md).
 **Amends / refines:** RFC-0049 (hierarchical platform/board config) — gives its
 ladder reach and adds knob-to-knob constraints; RFC-0071 (RMW backend
 descriptor) — adopts D8's one-family rule and closes the leak D8 names.

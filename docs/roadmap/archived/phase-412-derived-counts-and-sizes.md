@@ -1,6 +1,6 @@
 # Phase 412 — every count and size the image can state about itself
 
-**Archived 2026-10-11.** Every count the entity inventory can answer is derived, and all four acceptance items were met on 2026-09-06. The knobs nothing in the image can derive moved to [issue 1808](../../issues/1808-sizing-knobs-with-no-static-derivation.md); 1036 has since been resolved, and the two other issues homed below (1120, 1140) stay open on their own, and the sizing knobs still off the RFC-0049 ladder belong to [phase-400](../phase-400-unified-configuration.md).
+**Archived 2026-10-11.** Every count the entity inventory can answer is derived, and all four acceptance items were met on 2026-09-06. The knobs nothing in the image can derive moved to [issue 1808](../../issues/1808-sizing-knobs-with-no-static-derivation.md); 1036 has since been resolved, and the two other issues homed below (1120, 1140) stay open on their own, and the sizing knobs still off the RFC-0049 ladder belong to [phase-400](phase-400-unified-configuration.md).
 
 **Status (2026-09-02). Opened from the mr-canhubk344 island audit.** phase-403
 proved an image can derive its own buffer sizes; phase-409 proved the same for
