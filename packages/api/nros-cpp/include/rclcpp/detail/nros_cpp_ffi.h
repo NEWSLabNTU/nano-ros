@@ -5227,6 +5227,19 @@ int32_t nros_cpp_action_client_try_recv_goal_response_raw(void *storage,
                                                           size_t buf_len);
 
 /**
+ * Issue 2011 — [`nros_cpp_action_client_try_recv_goal_response_raw`] that also writes the goal the reply is ABOUT (the
+ * goal of the request whose sequence id it names, issue 2009) into
+ * `goal_id_out`. With several goals in flight the bytes alone cannot say
+ * which one a reply answers. A reply naming no pending request (an abandoned
+ * one's) is dropped, as before. `goal_id_out` is written only when a reply is
+ * returned (`> 0`).
+ */
+int32_t nros_cpp_action_client_try_recv_goal_response_raw_for(void *storage,
+                                                              uint8_t *buf,
+                                                              size_t buf_len,
+                                                              uint8_t (*goal_id_out)[16]);
+
+/**
  * Phase 122.3.d — L1 polling: send a get_result request.
  */
 nros_cpp_ret_t nros_cpp_action_client_send_get_result_request_raw(void *storage,
@@ -5236,6 +5249,19 @@ nros_cpp_ret_t nros_cpp_action_client_send_get_result_request_raw(void *storage,
  * Phase 122.3.d — L1 polling: try receiving the get_result reply.
  */
 int32_t nros_cpp_action_client_try_recv_result_raw(void *storage, uint8_t *buf, size_t buf_len);
+
+/**
+ * Issue 2011 — [`nros_cpp_action_client_try_recv_result_raw`] that also writes the goal the reply is ABOUT (the
+ * goal of the request whose sequence id it names, issue 2009) into
+ * `goal_id_out`. With several goals in flight the bytes alone cannot say
+ * which one a reply answers. A reply naming no pending request (an abandoned
+ * one's) is dropped, as before. `goal_id_out` is written only when a reply is
+ * returned (`> 0`).
+ */
+int32_t nros_cpp_action_client_try_recv_result_raw_for(void *storage,
+                                                       uint8_t *buf,
+                                                       size_t buf_len,
+                                                       uint8_t (*goal_id_out)[16]);
 
 /**
  * Phase 122.3.d — L1 polling: send a cancel request.
@@ -5250,6 +5276,19 @@ nros_cpp_ret_t nros_cpp_action_client_send_cancel_request_raw(void *storage,
 int32_t nros_cpp_action_client_try_recv_cancel_response_raw(void *storage,
                                                             uint8_t *buf,
                                                             size_t buf_len);
+
+/**
+ * Issue 2011 — [`nros_cpp_action_client_try_recv_cancel_response_raw`] that also writes the goal the reply is ABOUT (the
+ * goal of the request whose sequence id it names, issue 2009) into
+ * `goal_id_out`. With several goals in flight the bytes alone cannot say
+ * which one a reply answers. A reply naming no pending request (an abandoned
+ * one's) is dropped, as before. `goal_id_out` is written only when a reply is
+ * returned (`> 0`).
+ */
+int32_t nros_cpp_action_client_try_recv_cancel_response_raw_for(void *storage,
+                                                                uint8_t *buf,
+                                                                size_t buf_len,
+                                                                uint8_t (*goal_id_out)[16]);
 
 /**
  * Phase 122.3.d — L1 polling: try receiving feedback. Writes

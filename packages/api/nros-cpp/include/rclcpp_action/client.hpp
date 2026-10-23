@@ -288,9 +288,19 @@ template <typename A> class Client {
     /// if (accept.accepted) { /* use accept.goal_id */ }
     /// ```
     ///
+    /// The future is KEYED BY ITS GOAL (issue 2011): any number of goals may be
+    /// in flight, each future receives only its own goal's acceptance, and the
+    /// executor dispatching that reply during `spin_once` hands it to the
+    /// future instead of racing it. Single-threaded, like the service futures:
+    /// do not spin this client's executor on another thread while one is in
+    /// flight.
+    ///
     /// @param goal  Goal to send.
     /// @return Future that resolves to GoalAccept. Returns a consumed
-    ///         (empty) future on serialization or send failure.
+    ///         (empty) future (`valid()` false) on serialization or send
+    ///         failure -- including a full table: at most
+    ///         `MAX_CONCURRENT_GOALS` acceptances may be pending per client
+    ///         (the Rust core refuses the send before it reaches the wire).
     ::rclcpp::Future<GoalAccept> send_goal_future(const GoalType& goal) {
         if (!initialized_) return ::rclcpp::Future<GoalAccept>();
 
@@ -305,12 +315,12 @@ template <typename A> class Client {
             storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id));
         if (ret != 0) return ::rclcpp::Future<GoalAccept>();
 
-        return ::rclcpp::Future<GoalAccept>(storage_,
-                                            &nros_cpp_action_client_try_recv_goal_response,
-                                            // issue 2009 -- unkeyed here: the send_goal
-                                            // sub-client correlates by sequence id on the
-                                            // Rust side (`ActionClientCore`).
-                                            0,
+        // Issue 2011 -- keyed by THIS goal on this client's acceptance list:
+        // the acceptance reaches it whether the executor dispatched it during
+        // `spin_once` (through `on_goal_response`) or the future's own poll
+        // took it (`nros_cpp_action_client_poll`, same callbacks).
+        return ::rclcpp::Future<GoalAccept>(storage_, &nros_cpp_action_client_poll, goal_id,
+                                            &accepts_,
                                             executor_ // driven by `Future::wait_for` (issue 1996)
         );
     }
@@ -328,9 +338,17 @@ template <typename A> class Client {
     /// RCLCPP_TRY(fut.wait(executor.handle(), 10000, result));
     /// ```
     ///
+    /// Keyed by `goal_id` (issue 2011): the future receives that goal's result
+    /// and no other, whichever client or future polls first. A result for a
+    /// goal no future waits on -- including one whose future was cancelled or
+    /// destroyed first -- is dropped (the client's result callback still sees
+    /// it). Several futures for one goal each receive its result, one reply
+    /// apiece.
+    ///
     /// @param goal_id  16-byte goal UUID from send_goal() or GoalAccept.
     /// @return Future that resolves to ResultType. Returns a consumed
-    ///         (empty) future on send failure.
+    ///         (empty) future on send failure, including a full table (at most
+    ///         `MAX_CONCURRENT_GOALS` get_result requests pending per client).
     ::rclcpp::Future<ResultType> get_result_future(const uint8_t goal_id[16]) {
         return get_result_future_sized<::rclcpp::rx_buffer_capacity<ResultType>::value>(goal_id);
     }
@@ -355,10 +373,9 @@ template <typename A> class Client {
             storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id));
         if (ret != 0) return Fut();
 
-        return Fut(storage_, &nros_cpp_action_client_try_recv_result,
-                   // issue 2009 -- unkeyed here: the get_result sub-client
-                   // correlates by sequence id on the Rust side.
-                   0,
+        // Issue 2011 -- keyed by THIS goal on this client's result list; see
+        // `send_goal_future`.
+        return Fut(storage_, &nros_cpp_action_client_poll, goal_id, &results_,
                    executor_ // driven by `Future::wait_for` (issue 1996)
         );
     }
@@ -382,8 +399,7 @@ template <typename A> class Client {
 
         uint8_t buf[Cap];
         size_t len = 0;
-        nros_cpp_ret_t ret =
-            nros_cpp_action_client_try_recv_feedback(storage_, buf, sizeof(buf), &len);
+        nros_cpp_ret_t ret = take_feedback(this, buf, sizeof(buf), &len);
         if (ret != 0) return ::rclcpp::Result(ret);
         if (len == 0) return ::rclcpp::Result(::rclcpp::ErrorCode::TryAgain);
         if (FeedbackType::ffi_deserialize(buf, len, &feedback) != 0) {
@@ -395,7 +411,9 @@ template <typename A> class Client {
     /// Get a reference to the action client's feedback stream.
     ///
     /// The stream yields `FeedbackType` values across all currently-active
-    /// goals for this client — feedback is not goal-scoped at this layer.
+    /// goals for this client — feedback is not goal-scoped at this layer. It
+    /// holds the LATEST feedback per client (issue 2011: it used to be one slot
+    /// for every action client in the process); an unread one is overwritten.
     /// Callers that need per-goal separation should use the callback API
     /// (`set_callbacks(SendGoalOptions{ .feedback = … })`), which delivers
     /// `(goal_id, bytes, len, ctx)` via an executor-driven trampoline.
@@ -414,7 +432,7 @@ template <typename A> class Client {
     /// ```
     ::rclcpp::Stream<FeedbackType>& feedback_stream() {
         if (initialized_ && !feedback_stream_.is_valid()) {
-            feedback_stream_.bind(storage_, &nros_cpp_action_client_try_recv_feedback);
+            feedback_stream_.bind(this, &Client::take_feedback);
         }
         return feedback_stream_;
     }
@@ -543,8 +561,10 @@ template <typename A> class Client {
     ///         if the client is not initialized, or the FFI error code.
     ::rclcpp::Result set_callbacks(const SendGoalOptions& options) {
         if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
-        return ::rclcpp::Result(nros_cpp_action_client_set_callbacks(
-            storage_, options.goal_response, options.feedback, options.result, options.context));
+        // Issue 2011 -- the client keeps its OWN callbacks installed (they feed
+        // the goal-keyed futures and the feedback slot) and forwards to these.
+        user_ = options;
+        return install_dispatch();
     }
 
     /// Poll for pending async replies (non-blocking).
@@ -570,7 +590,12 @@ template <typename A> class Client {
     /// that entry in place — the entities are destroyed, so no late reply can
     /// read this storage — frees its callback slot and returns its arena bytes
     /// for reuse, so a create/destroy loop does not exhaust the executor.
+    ///
+    /// Issue 2011 -- a future still pending on this client becomes invalid
+    /// (`valid()` false) instead of pointing at freed storage.
     ~Client() {
+        accepts_.orphan_all();
+        results_.orphan_all();
         if (initialized_) {
             nros_cpp_action_client_destroy(storage_);
             initialized_ = false;
@@ -583,18 +608,20 @@ template <typename A> class Client {
     // RE-POINTS the arena entry's callback `context` at the new `storage_`
     // (issue 1496 — before that, a moved-from temporary left the entry naming
     // dead bytes). The feedback stream is rebound to the new storage afterwards.
+    //
+    // Issue 2011 -- the pending futures and the client's own callbacks follow
+    // it too: both lists move (each future's storage pointer re-targeted) and
+    // the callbacks are re-installed with the new address as their context.
     Client(Client&& other)
         : executor_(other.executor_), initialized_(other.initialized_), action_name_{} {
         ::memcpy(action_name_, other.action_name_, sizeof(action_name_));
-        if (other.initialized_) {
-            nros_cpp_action_client_relocate(other.storage_, storage_);
-            other.initialized_ = false;
-        }
-        other.feedback_stream_ = ::rclcpp::Stream<FeedbackType>();
+        adopt(other);
     }
 
     Client& operator=(Client&& other) {
         if (this != &other) {
+            accepts_.orphan_all();
+            results_.orphan_all();
             if (initialized_) {
                 nros_cpp_action_client_destroy(storage_);
                 feedback_stream_ = ::rclcpp::Stream<FeedbackType>();
@@ -602,11 +629,7 @@ template <typename A> class Client {
             executor_ = other.executor_;
             initialized_ = other.initialized_;
             ::memcpy(action_name_, other.action_name_, sizeof(action_name_));
-            if (other.initialized_) {
-                nros_cpp_action_client_relocate(other.storage_, storage_);
-                other.initialized_ = false;
-            }
-            other.feedback_stream_ = ::rclcpp::Stream<FeedbackType>();
+            adopt(other);
         }
         return *this;
     }
@@ -621,6 +644,95 @@ template <typename A> class Client {
 
     friend class ::rclcpp::Node;
 
+    /// Issue 2011 -- install this client's own callbacks (context = `this`).
+    ::rclcpp::Result install_dispatch() {
+        return ::rclcpp::Result(nros_cpp_action_client_set_callbacks(
+            storage_, &Client::on_goal_response, &Client::on_feedback, &Client::on_result, this));
+    }
+
+    /// Take over `other`'s storage, pending futures, callbacks and feedback.
+    void adopt(Client& other) {
+        user_ = other.user_;
+        feedback_len_ = other.feedback_len_;
+        feedback_ready_ = other.feedback_ready_;
+        feedback_truncated_ = other.feedback_truncated_;
+        for (size_t i = 0; i < feedback_len_; ++i)
+            feedback_buf_[i] = other.feedback_buf_[i];
+        other.feedback_ready_ = false;
+        if (other.initialized_) {
+            nros_cpp_action_client_relocate(other.storage_, storage_);
+            other.accepts_.move_to(accepts_, storage_);
+            other.results_.move_to(results_, storage_);
+            other.initialized_ = false;
+            (void)install_dispatch();
+        }
+        other.feedback_stream_ = ::rclcpp::Stream<FeedbackType>();
+    }
+
+    // Issue 2011 -- the three callbacks every `Client<A>` keeps installed. The
+    // executor's dispatch (and `nros_cpp_action_client_poll`) hands each reply
+    // here, attributed to the goal its request named (issue 2009); it goes to
+    // the future waiting on THAT goal on THIS client, if any -- dropped
+    // otherwise, never handed to another goal -- and then to the user's
+    // callback (`set_callbacks`).
+    static void on_goal_response(bool accepted, const uint8_t goal_id[16], void* ctx) {
+        Client* self = static_cast<Client*>(ctx);
+        ::rclcpp::detail::PendingLink* owner = self->accepts_.resolve_goal(goal_id);
+        if (owner != nullptr) {
+            // The 17-byte layout `GoalAccept::ffi_deserialize` decodes
+            // (`nros_cpp_action_goal_accept_decode`).
+            uint8_t wire[17];
+            for (int i = 0; i < 16; ++i)
+                wire[i] = goal_id[i];
+            wire[16] = accepted ? 1 : 0;
+            self->accepts_.deliver(owner, wire, sizeof(wire));
+        }
+        if (self->user_.goal_response != nullptr)
+            self->user_.goal_response(accepted, goal_id, self->user_.context);
+    }
+
+    static void on_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx) {
+        Client* self = static_cast<Client*>(ctx);
+        const size_t n = len < sizeof(self->feedback_buf_) ? len : sizeof(self->feedback_buf_);
+        for (size_t i = 0; i < n; ++i)
+            self->feedback_buf_[i] = data[i];
+        self->feedback_len_ = n;
+        self->feedback_truncated_ = n < len;
+        self->feedback_ready_ = true;
+        if (self->user_.feedback != nullptr)
+            self->user_.feedback(goal_id, data, len, self->user_.context);
+    }
+
+    static void on_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data,
+                          size_t len, void* ctx) {
+        Client* self = static_cast<Client*>(ctx);
+        ::rclcpp::detail::PendingLink* owner = self->results_.resolve_goal(goal_id);
+        if (owner != nullptr) self->results_.deliver(owner, data, len);
+        if (self->user_.result != nullptr)
+            self->user_.result(goal_id, status, data, len, self->user_.context);
+    }
+
+    /// The latest feedback this client received (the stream's take hook).
+    /// Runs one pass of the client's dispatch first when the slot is empty, so
+    /// feedback no `spin_once` has taken yet is found too.
+    static nros_cpp_ret_t take_feedback(void* ctx, uint8_t* buf, size_t cap, size_t* out_len) {
+        Client* self = static_cast<Client*>(ctx);
+        *out_len = 0;
+        if (!self->initialized_)
+            return static_cast<nros_cpp_ret_t>(::rclcpp::ErrorCode::NotInitialized);
+        if (!self->feedback_ready_) (void)nros_cpp_action_client_poll(self->storage_);
+        if (!self->feedback_ready_) return 0;
+        self->feedback_ready_ = false;
+        if (self->feedback_truncated_ || self->feedback_len_ > cap) {
+            *out_len = self->feedback_len_;
+            return static_cast<nros_cpp_ret_t>(::rclcpp::ErrorCode::Error);
+        }
+        for (size_t i = 0; i < self->feedback_len_; ++i)
+            buf[i] = self->feedback_buf_[i];
+        *out_len = self->feedback_len_;
+        return 0;
+    }
+
     alignas(8) uint8_t storage_[NROS_CPP_ACTION_CLIENT_STORAGE_SIZE];
     void* executor_; // Stashed executor handle (Phase 82) for blocking helpers
     bool initialized_;
@@ -630,6 +742,20 @@ template <typename A> class Client {
     // state. W4.b's second half writes `get_action_name()`, so it is back and
     // it is read — see the note on `Server<A>::get_action_name`.
     char action_name_[::rclcpp_action::ACTION_NAME_MAX];
+    /// Issue 2011 -- the futures waiting on this client's acceptances and
+    /// results, each keyed by its goal. Intrusive: an entry is a future the
+    /// caller holds, so there is no capacity to mis-size and no heap; the Rust
+    /// core's per-sub-client table (`MAX_CONCURRENT_GOALS`) refuses a send
+    /// past its bound, and the future is then empty.
+    ::rclcpp::detail::PendingList accepts_;
+    ::rclcpp::detail::PendingList results_;
+    /// The user's callbacks (`set_callbacks`), forwarded to after delivery.
+    SendGoalOptions user_;
+    /// The latest feedback, per client (it was one slot per PROCESS).
+    uint8_t feedback_buf_[::rclcpp::rx_buffer_capacity<FeedbackType>::value];
+    size_t feedback_len_ = 0;
+    bool feedback_ready_ = false;
+    bool feedback_truncated_ = false;
 };
 
 } // namespace rclcpp_action
@@ -650,6 +776,10 @@ Result Node::create_action_client(::rclcpp_action::Client<A>& out, const char* a
         &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, &hashes, ffi_qos, out.storage_);
     if (ret == 0) {
         out.executor_ = executor_handle_;
+        // Issue 2011 -- the client's own callbacks, from the start: they feed
+        // its goal-keyed futures and its feedback slot.
+        out.initialized_ = true;
+        (void)out.install_dispatch();
         // phase-417 W4.b — remember the name for `get_action_name()`, truncating
         // at `rclcpp_action::ACTION_NAME_MAX` exactly as the server and the polling tiers do.
         ::rclcpp::detail::assign_entity_name(out.action_name_, action_name);

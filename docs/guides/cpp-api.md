@@ -271,7 +271,7 @@ RCLCPP_TRY(client.get_result(goal_id, result));
 
 These helpers are syntactic sugar over `send_goal_async()` + `spin_once()`; they cannot be called from inside a dispatch callback (returns `RCLC_RET_REENTRANT`).
 
-**Future-based async.** `send_goal_future()` / `get_result_future()` return a `Future<T>` that polls the same arena slot:
+**Future-based async.** `send_goal_future()` / `get_result_future()` return a `Future<T>` keyed by its goal: each future receives only its own goal's acceptance or result, whether the executor dispatched it during `spin_once` or the future's own poll took it, and a result for a goal nobody waits on is dropped (issue 2011). At most `MAX_CONCURRENT_GOALS` of each may be pending per client; past that the send is refused and the future is empty (`valid()` false):
 
 ```cpp
 auto fut = client.send_goal_future(goal);
