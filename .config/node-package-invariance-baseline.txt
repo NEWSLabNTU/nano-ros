@@ -8,6 +8,8 @@
 # Portability at the call site (the `::setvbuf` class): the busy-wait primitive
 # differs by platform and the reason must be readable where it is used.
 examples/workspaces/violation-cpp/src/violation_pkg/src/Handler.cpp  # __ZEPHYR__ selects k_busy_wait for the deadline-violation busy loop
+examples/workspaces/levels-cpp/src/lazy_pkg/src/Lazy.cpp  # __ZEPHYR__ selects k_busy_wait: a clock spin never ends on native_sim, whose time stands still while code runs
+examples/workspaces/levels-cpp/src/middle_pkg/src/Middle.cpp  # __ZEPHYR__ selects k_busy_wait, as Lazy.cpp
 # The per-platform wrapper packages of the PORT template are its platform seam
 # by design (one package per target platform, named for it).
 examples/templates/cpp-port-minimal-publisher/zephyr/CMakeLists.txt  # the template's Zephyr wrapper package: find_package(Zephyr)

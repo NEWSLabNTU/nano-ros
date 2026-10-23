@@ -1504,13 +1504,13 @@ def level_order(priorities, smaller_is_urgent):
 
 
 def find_near(elf, name, depth=4):
-    """The nearest file called `name` at or below the ELF's ancestors."""
+    """The nearest file called `name` in one of the ELF's ancestors (the
+    generated entry writes it at the build's top, beside `zephyr/`)."""
     d = os.path.dirname(os.path.abspath(elf))
     for _ in range(depth):
-        hits = sorted(glob.glob(os.path.join(d, "**", name), recursive=True))
-        hits = [h for h in hits if "/out/" not in h]
-        if hits:
-            return hits[0]
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return p
         d = os.path.dirname(d)
     return None
 
