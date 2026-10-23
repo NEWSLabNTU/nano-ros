@@ -89,6 +89,9 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // Not the image's output at all: the image has no console. The
         // decoder's verdict over a dump of the halted guest (issue 1036).
         Workload::BootReport => output::BOOT_REPORT_ARENA_EXHAUSTED,
+        // Not delivery: the boot road reached `Executor::open` (phase-511 A6).
+        // There is no peer, so the open's own banner is the evidence.
+        Workload::BoardEntryBoot => output::EXECUTOR_OPEN_REACHED,
     }
 }
 

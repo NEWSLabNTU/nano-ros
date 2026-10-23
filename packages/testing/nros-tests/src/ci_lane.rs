@@ -40,7 +40,16 @@
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 23 | 11 | 22 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 20 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config | 39 | 37 | 73 % |
-//! | tier 3 | everything | 231 | 51 | 100 % |
+//! | tier 3 | everything | 245 | 51 | 100 % |
+//!
+//! Re-measured 2026-10-23 (phase-511): fifteen Runtime cells joined for tests
+//! that ran with no cell (Linux Params/Qos/CustomMsg/Safety examples, Logging
+//! examples on seven platforms, and the bare-metal `BoardEntryBoot` road). No
+//! lane moved: every new cell sits at a coordinate an existing cell already
+//! holds, and the workload axis is covered only by tier 1, whose host-executable
+//! pool already had each new workload or none of its platforms. Tier 3 went
+//! 230 -> 245 cells over the same 51 coordinates. The table had said 231,
+//! unchecked; its cell count is now asserted.
 //!
 //! Re-measured 2026-10-22 (phase-510 W6): the `config` axis joined the covers
 //! (RFC-0061 amendment 2026-10-22) — 1-wise in tiers 1 and 2, paired with
@@ -1035,6 +1044,13 @@ _tier-build:
                 coords(lane).len()
             );
         }
+        // phase-511: the cell column is asserted too. It read 231 while the
+        // tier-3 row was only ever checked for its coordinates.
+        let total_cells = all_runtime_cells().count();
+        assert_eq!(
+            total_cells, 245,
+            "the table's tier-3 cell count (245) is stale; recomputed {total_cells}"
+        );
         assert_eq!(
             total_coords, 51,
             "the table's tier-3 denominator (51 coordinates) is stale; recomputed \

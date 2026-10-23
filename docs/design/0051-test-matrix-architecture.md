@@ -341,6 +341,13 @@ edition test — RFC-0051's own E1 shape). A target in neither is a gate failure
 The one-off-recipe-only class becomes visible by construction: such a target
 either has a cell, and so a tiered lane that selects it, or a recorded reason.
 
+*Amendment 2026-10-23 (phase-511).* A runtime reason comes in two kinds, and
+they must not share a name. `Unmodeled` is debt: the test runs a coordinate or
+workload the matrix could hold and does not yet. `Probe` is not: its subject is
+a knob, a platform contract, or one feature in one image, which no workload
+describes. Under one name the debt list read twice its length (23, of which 11
+were probes), and nothing told "model me" from "never a cell".
+
 **What this does not change.** `Kind` stays the wiring axis, `Tier` stays a
 property of the cell, and `interop::CELLS` keeps its shape — a configured
 interop cell is an `InteropCell` whose nano `Cell` carries a `config` set. The
