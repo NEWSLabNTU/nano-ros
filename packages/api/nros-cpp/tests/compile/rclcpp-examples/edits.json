@@ -70,11 +70,9 @@
     },
     "minimal_client": {
       "source": "rclcpp/services/minimal_client/main.cpp",
-      "edited_lines": 15,
+      "edited_lines": 0,
       "edited_lines_before_phase_488": 26,
-      "remaining": [
-        "future shape: async_send_request(shared_ptr) / future.get() / remove_pending_request are declined (no shared_future, no allocator); use send_request(const Request&) + Future::try_take + Future::cancel"
-      ]
+      "remaining": []
     },
     "minimal_action_server_member_functions": {
       "source": "rclcpp/actions/minimal_action_server/member_functions.cpp",

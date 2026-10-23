@@ -33,22 +33,21 @@ int main(int argc, char * argv[])
     }
     RCLCPP_INFO(node->get_logger(), "waiting for service to appear...");
   }
-  auto request = AddTwoInts::Request();
-  request.a = 41;
-  request.b = 1;
-  auto result_future = client->send_request(request);
+  auto request = std::make_shared<AddTwoInts::Request>();
+  request->a = 41;
+  request->b = 1;
+  auto result_future = client->async_send_request(request);
   if (rclcpp::spin_until_future_complete(node, result_future) !=
     rclcpp::FutureReturnCode::SUCCESS)
   {
     RCLCPP_ERROR(node->get_logger(), "service call failed :(");
-    result_future.cancel();
+    client->remove_pending_request(result_future);
     return 1;
   }
-  AddTwoInts::Response result;
-  (void)result_future.try_take(result);
+  auto result = result_future.get();
   RCLCPP_INFO(
     node->get_logger(), "result of %" PRId64 " + %" PRId64 " = %" PRId64,
-    request.a, request.b, result.sum);
+    request->a, request->b, result->sum);
   rclcpp::shutdown();
   return 0;
 }

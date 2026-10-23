@@ -307,7 +307,8 @@ template <typename A> class Client {
 
         return ::rclcpp::Future<GoalAccept>(storage_,
                                             &nros_cpp_action_client_try_recv_goal_response,
-                                            0 // slot 0 (single outstanding goal request)
+                                            0,        // slot 0 (single outstanding goal request)
+                                            executor_ // driven by `Future::wait_for` (issue 1996)
         );
     }
 
@@ -352,7 +353,8 @@ template <typename A> class Client {
         if (ret != 0) return Fut();
 
         return Fut(storage_, &nros_cpp_action_client_try_recv_result,
-                   0 // slot 0 (single outstanding result request)
+                   0,        // slot 0 (single outstanding result request)
+                   executor_ // driven by `Future::wait_for` (issue 1996)
         );
     }
 

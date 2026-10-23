@@ -153,8 +153,58 @@ template <typename S> class PollClient {
         if (ret != 0) return Fut();
 
         return Fut(storage_, &nros_cpp_service_client_take_response,
-                   0 // slot 0 (single outstanding request)
+                   0,        // slot 0 (single outstanding request)
+                   executor_ // what `Future::wait_for` drives (issue 1996)
         );
+    }
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    /// `rclcpp::Client::async_send_request(SharedRequest)` — issue 1996.
+    /// ADOPT-BOUNDED.
+    ///
+    /// The stock client builds its request with `std::make_shared` and hands
+    /// the pointer over; this sends `*request` exactly as
+    /// `send_request(const Request&)` does and returns the same
+    /// `rclcpp::Future`, which `spin_until_future_complete` takes and whose
+    /// `get()` returns the reply as a `std::shared_ptr<Response>`.
+    ///
+    /// THE BOUND, and it is `send_request`'s, not a new one: ONE request in
+    /// flight per client. The future is not keyed by the request's sequence
+    /// number (`cpp:PollClient::send_request` records the slot-0 defect), so a
+    /// second outstanding request on the same client may take the first one's
+    /// reply. A null `request` returns an empty future (`valid()` false).
+    ///
+    /// Absent on a freestanding build, where there is no `<memory>`: send the
+    /// request by reference with `send_request(req)`.
+    ::rclcpp::Future<ResponseType>
+    async_send_request(const ::std::shared_ptr<RequestType>& request) {
+        if (!request) return ::rclcpp::Future<ResponseType>();
+        return send_request(*request);
+    }
+#endif // NROS_CPP_HAS_SHARED_PTR
+
+    /// `rclcpp::Client::remove_pending_request(future)` — issue 1996.
+    /// ADOPT-BOUNDED.
+    ///
+    /// Forgets the request `future` is waiting on: the future is cancelled
+    /// (`valid()` false afterwards) and its reply will not be delivered
+    /// through it. Returns true if `future` was a pending request of THIS
+    /// client, false if it was already taken or cancelled, or belongs to
+    /// another client — upstream's "was it in the pending map".
+    ///
+    /// THE BOUND: upstream erases the entry keyed by the request's sequence
+    /// number, so a reply that arrives later is dropped. Here there is one
+    /// request in flight and no key (`cpp:PollClient::send_request`), so a
+    /// reply that arrives AFTER this call is still taken by the next future
+    /// this client hands out. Do not issue the next request until that reply
+    /// can no longer arrive, or use a fresh client.
+    template <size_t RespCap>
+    bool remove_pending_request(::rclcpp::Future<ResponseType, RespCap>& future) {
+        if (!future.valid() || future.client_storage_ != static_cast<void*>(storage_)) {
+            return false;
+        }
+        future.cancel();
+        return true;
     }
 
     /// Send a request and block until a reply is received.

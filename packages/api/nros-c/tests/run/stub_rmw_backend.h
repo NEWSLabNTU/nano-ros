@@ -99,6 +99,14 @@ const uint8_t* nros_stub_rmw_last_payload(size_t* len);
 /** phase-492 W8 — publishes the stub has accepted since process start. */
 uint32_t nros_stub_rmw_publish_count(void);
 
+/** Issue 1996 — stage ONE client reply: the next `take_response` on any client
+ *  yields these bytes (answering the last request sent), then none until the
+ *  next stage. `false` if it does not fit the stub's 256-byte slot. */
+bool nros_stub_rmw_stage_reply(const uint8_t* data, size_t len);
+
+/** Issue 1996 — client requests the stub has accepted since process start. */
+uint32_t nros_stub_rmw_requests_sent(void);
+
 /** Issue 1940 — the entity kinds the per-entity new-data slots are stored by. */
 #define NROS_STUB_ENTITY_SUBSCRIPTION 0
 #define NROS_STUB_ENTITY_SERVICE 1

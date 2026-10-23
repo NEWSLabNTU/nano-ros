@@ -15,6 +15,10 @@
 
 #include "rclcpp/result.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<T> — the receive-buffer size
+// issue 1996 — `refuse<T>`, `say_refused` and the `NROS_RCLCPP_REFUSE_FUTURE_GET*`
+// messages; it also brings `std_detect.hpp`, which defines the capability
+// macros `get()` and `wait_for()` are gated on.
+#include "rclcpp/logging.hpp"
 
 // FFI declarations
 extern "C" {
@@ -141,13 +145,93 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     /// Cancel the pending operation (idempotent).
     void cancel() { slot_ = -1; }
 
+    /// `std::future::valid()` — true until the result is taken or the future
+    /// is cancelled (issue 1996). The negation of @ref is_consumed.
+    bool valid() const { return slot_ >= 0; }
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    /// `FutureAndRequestId::get()` — issue 1996. ADOPT-BOUNDED.
+    ///
+    /// Upstream returns the reply as an owning `std::shared_ptr<Response>`, and
+    /// so does this: one heap copy of the reply, deserialized into a
+    /// `std::make_shared<T>()`, which the caller may keep. It consumes the
+    /// future, as `std::future::get()` does.
+    ///
+    /// THE BOUND: upstream BLOCKS until the reply arrives; this never waits.
+    /// A wait that does not drive the executor is what RFC-0021 forbids, and
+    /// a future has no executor to drive on its own. So call it where the
+    /// stock examples do — after `rclcpp::spin_until_future_complete(node,
+    /// fut)` returned `SUCCESS`, or `wait_for(...)` returned `ready`. Called
+    /// before the reply (or on a consumed future) it says
+    /// `NROS_RCLCPP_REFUSE_FUTURE_GET_NOT_READY_RUNTIME` and returns nullptr;
+    /// a reply that fails to deserialize also returns nullptr.
+    ///
+    /// Absent on a freestanding build, where there is no `<memory>`: there the
+    /// name is a `static_assert` naming `try_take` (`NROS_RCLCPP_REFUSE_FUTURE_GET`).
+    ::std::shared_ptr<T> get() {
+        if (slot_ < 0 || (!ready_ && !is_ready())) {
+            NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_FUTURE_GET_NOT_READY_RUNTIME);
+            return ::std::shared_ptr<T>();
+        }
+        ::std::shared_ptr<T> out = ::std::make_shared<T>();
+        if (!try_take(*out).ok()) return ::std::shared_ptr<T>();
+        return out;
+    }
+#else
+    /// Freestanding: `get()` is REFUSED at compile time — no `<memory>`, no
+    /// allocator. The message names `try_take` and `wait` (issue 1996).
+    template <typename U = void> void get() {
+        static_assert(::rclcpp::detail::refuse<U>::value, NROS_RCLCPP_REFUSE_FUTURE_GET);
+    }
+#endif // NROS_CPP_HAS_SHARED_PTR
+
+#if defined(NROS_CPP_HAS_STD_FUTURE) // hosted-family: future-interop
+    /// `FutureAndRequestId::wait_for(duration)` — issue 1996. ADOPT-BOUNDED.
+    ///
+    /// Returns `std::future_status::ready` once the reply has arrived and
+    /// `std::future_status::timeout` when the budget runs out first. It DRIVES
+    /// the executor the client was created on while it waits, in `spin_once`
+    /// slices of at most 10 ms — the wait RFC-0021 allows — so other entities
+    /// keep being served and the reply can land on a single-threaded
+    /// transport. Upstream's `wait_for` merely blocks on a promise a second
+    /// thread fulfils.
+    ///
+    /// The budget is rounded UP to milliseconds and clamped to `UINT32_MAX`;
+    /// a zero or negative duration is one non-waiting check, as for
+    /// `std::future::wait_for`. Never `deferred`. On a consumed or cancelled
+    /// future (where upstream's is undefined) it returns `timeout` at once.
+    /// A future with no executor (default-constructed) does not wait: it checks once.
+    template <typename Rep, typename Period>
+    ::std::future_status wait_for(::std::chrono::duration<Rep, Period> timeout) {
+        if (slot_ < 0) return ::std::future_status::timeout;
+        if (ready_ || is_ready()) return ::std::future_status::ready;
+        const int64_t ms = ::rclcpp::detail::chrono_wait_budget_ms(timeout);
+        if (ms <= 0 || executor_ == nullptr) {
+            if (executor_ != nullptr) (void)nros_cpp_spin_once(executor_, 0);
+            return is_ready() ? ::std::future_status::ready : ::std::future_status::timeout;
+        }
+        const uint64_t start_ns = nros_cpp_time_ns();
+        const uint64_t budget_ns = static_cast<uint64_t>(ms) * 1000000ULL;
+        while (true) {
+            const uint64_t elapsed_ns = nros_cpp_time_ns() - start_ns;
+            if (elapsed_ns >= budget_ns) break;
+            const uint64_t left_ms = (budget_ns - elapsed_ns + 999999ULL) / 1000000ULL;
+            const int32_t slice = left_ms < 10ULL ? static_cast<int32_t>(left_ms) : 10;
+            (void)nros_cpp_spin_once(executor_, slice);
+            if (is_ready()) return ::std::future_status::ready;
+        }
+        return is_ready() ? ::std::future_status::ready : ::std::future_status::timeout;
+    }
+#endif // NROS_CPP_HAS_STD_FUTURE
+
     /// Check if the future has been consumed or cancelled.
     bool is_consumed() const { return slot_ < 0; }
 
     // Move semantics (non-copyable, single-shot)
     Future(Future&& other) noexcept
-        : client_storage_(other.client_storage_), take_fn_(other.take_fn_), slot_(other.slot_),
-          ready_(other.ready_), cached_len_(other.cached_len_) {
+        : client_storage_(other.client_storage_), take_fn_(other.take_fn_),
+          executor_(other.executor_), slot_(other.slot_), ready_(other.ready_),
+          cached_len_(other.cached_len_) {
         for (size_t i = 0; i < cached_len_; ++i)
             cached_buf_[i] = other.cached_buf_[i];
         other.slot_ = -1;
@@ -158,6 +242,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
         if (this != &other) {
             client_storage_ = other.client_storage_;
             take_fn_ = other.take_fn_;
+            executor_ = other.executor_;
             slot_ = other.slot_;
             ready_ = other.ready_;
             cached_len_ = other.cached_len_;
@@ -173,7 +258,8 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
 
     /// Default constructor -- creates an empty/consumed future.
     Future()
-        : client_storage_(nullptr), take_fn_(nullptr), slot_(-1), ready_(false), cached_len_(0) {}
+        : client_storage_(nullptr), take_fn_(nullptr), executor_(nullptr), slot_(-1), ready_(false),
+          cached_len_(0) {}
 
   private:
     Future(const Future&) = delete;
@@ -184,11 +270,15 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
 
     using TryRecvFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);
 
-    Future(void* storage, TryRecvFn fn, int slot)
-        : client_storage_(storage), take_fn_(fn), slot_(slot), ready_(false), cached_len_(0) {}
+    // `executor` is what `wait_for` drives (issue 1996); nullptr = no
+    // executor known, and `wait_for` then checks once instead of waiting.
+    Future(void* storage, TryRecvFn fn, int slot, void* executor = nullptr)
+        : client_storage_(storage), take_fn_(fn), executor_(executor), slot_(slot), ready_(false),
+          cached_len_(0) {}
 
     void* client_storage_;
     TryRecvFn take_fn_;
+    void* executor_;
     int slot_;
     bool ready_;
     size_t cached_len_;

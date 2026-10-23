@@ -1553,6 +1553,54 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/timer_call_info_runtime
+    # issue 1996 -- upstream's service-client FUTURE shape on the poll client:
+    # `async_send_request(shared_ptr)`, `get()` -> `shared_ptr<Response>`,
+    # `wait_for(duration)` -> `std::future_status`, `remove_pending_request`.
+    # A RUN because each compiles as an inert stub; the stub backend serves a
+    # reply the test stages, and `wait_for` is held to a LOWER bound.
+    test -f packages/api/nros-cpp/tests/compile/client_future_shape_runtime.cpp || { \
+        echo "ERROR: client_future_shape_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - client future shape: async_send_request(shared_ptr) / get() / wait_for / remove_pending_request (runtime, issue 1996)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/client_future_shape_runtime \
+        packages/api/nros-cpp/tests/compile/client_future_shape_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/client_future_shape_runtime
+    # ...and WITHOUT the hosted surface `Future::get()` is refused, naming
+    # `try_take` (no `<memory>`, no allocator). Grepped for both, because an
+    # include typo also fails to compile.
+    _cfg=packages/api/nros-cpp/tests/compile/client_future_get_freestanding_probe.cpp
+    test -f "$_cfg" || { echo "ERROR: $_cfg is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - Future::get() is REFUSED without NROS_CPP_STD (issue 1996)"
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
+    mkdir -p tmp
+    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -I"$cppgen" -I"$cgen" \
+        -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        "$_cfg" 2>tmp/refuse-future-get-freestanding.log; then
+        echo "ERROR: $_cfg COMPILED -- Future::get() was accepted with no allocator." >&2
+        exit 1
+    fi
+    for _needle in "REFUSED by nano-ros" "try_take"; do
+        nros_grep_q "$_needle" tmp/refuse-future-get-freestanding.log && _rc=0 || _rc=$?
+        if [ "$_rc" -ne 0 ]; then
+            echo "ERROR: $_cfg failed WITHOUT '$_needle' -- it broke for another reason." >&2
+            echo "       See tmp/refuse-future-get-freestanding.log" >&2
+            exit 1
+        fi
+    done
     # phase-488 — the STOCK rclcpp examples (ros2/examples, humble + jazzy),
     # ported with the fewest edits and kept beside the verbatim originals, so a
     # header change that breaks a stock line shows as a count, not as a user's
