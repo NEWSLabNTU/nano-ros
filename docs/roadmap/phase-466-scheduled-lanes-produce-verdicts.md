@@ -285,7 +285,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#1665](../issues/archived/1665-zephyr-ws-rust-leaf-cannot-find-core.md) | Zephyr workspace Rust entries fail with `can't find crate for core` in the tier-2 nightly, in 10 of 32 images. |
 | [#1666](../issues/archived/1666-zephyr-ci-image-has-no-cargo-nextest.md) | live-peer's board job reaches its run step, and the Zephyr CI image has no `cargo nextest`. |
 | [#1755](../issues/archived/1755-runner-home-cache-not-writable.md) | After a runner-container restart, two tier-1 steps cannot create directories under `~/.cache`. |
-| [#1758](../issues/1758-skip-and-pass-is-a-failure.md) | Scope, not host probes, decides what runs. What is left is every scheduled lane declaring its scope and reporting in-scope reds. |
+| [#1758](../issues/archived/1758-skip-and-pass-is-a-failure.md) | RESOLVED 2026-10-23: scope, not host probes, decides what runs. Every scheduled lane that gates on it now reaches a verdict or stops on a different, tracked defect. |
 | [#1842](../issues/1842-tier-priority-plan-image-red-verdict-unprinted.md) | `tier-priority-plan-image` fails the Zephyr fixture build in two scheduled lanes, and neither lane shows its verdict. |
 | [#1898](../issues/archived/1898-metadata-harness-excerpt-drops-cargo-cause.md) | The tier-2 nightly stopped in `generate-bindings` on a git dependency it could not fetch, and the excerpt dropped the reason. |
 | [#1899](../issues/1899-tier2-nightly-fixture-compilers-sigkilled.md) | Compilers were SIGKILLed across five families at once in the tier-2 nightly build, so crates fail with no diagnostic. |
