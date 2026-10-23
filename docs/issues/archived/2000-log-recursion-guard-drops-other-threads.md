@@ -3,7 +3,7 @@ id: 2000
 title: "nros-log's recursion guard is process-wide, so a record logged while another thread is inside a sink is silently dropped"
 status: resolved
 resolved: 2026-10-23
-resolved_in: "fix/2000-log-defer-not-drop"
+resolved_in: "PR #2515"
 type: bug
 area: [logging, core]
 severity: medium
