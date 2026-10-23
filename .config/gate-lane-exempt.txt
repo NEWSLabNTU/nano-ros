@@ -62,7 +62,6 @@ size-markers-image  # needs built fixtures; a step of `just ci` tier1/matrix/mat
 stack-floor  # in no lane and no caller found — issue 1071's class
 submodule-commits-reachable  # gate.yml runs it by name; needs the remote
 submodule-drift  # in no lane and no caller found — issue 1071's class
-support-status  # generator `--check`; in no lane and no caller found
 tier-preconditions  # a PRECONDITION reporter; runs at the head of `just ci`
 weak-symbols-image  # needs built fixtures, so it cannot be buildless; a step of `just ci matrix` (run-matrix.yml) after that lane's fixture build (issue 1739)
 workspace  # aggregate: depends on `workspace-fmt`, echoes where its jobs went

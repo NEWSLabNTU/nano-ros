@@ -47,8 +47,8 @@ reason, tested together (see
 
 | Backend | Client side (pinned) | Host side | Pairing rule |
 |---|---|---|---|
-| **Zenoh** | zenoh-pico `1.7.2` (vendored submodule) | Router = the one **ROS ships**: `ros2 run rmw_zenoh_cpp rmw_zenohd` — nano-ros deliberately vendors no router (RFC-0075) | zenoh-pico's wire protocol is stable across zenoh 1.x, so the pinned client interops with a newer ROS-shipped router (issue 0291) |
-| **XRCE-DDS** | Micro-XRCE-DDS client `2.4.3-nros1` + Micro-CDR `2.0.x` | Agent `2.4.3-nros1` (installed by `nros setup … --rmw xrce`) | Client and agent are pinned to the same upstream release |
+| **Zenoh** | zenoh-pico `1.8.0` (vendored submodule) | Router = the one **ROS ships**: `ros2 run rmw_zenoh_cpp rmw_zenohd` — nano-ros deliberately vendors no router (RFC-0075) | zenoh-pico's wire protocol is stable across zenoh 1.x, so the pinned client interops with a newer ROS-shipped router (issue 0291) |
+| **XRCE-DDS** | Micro-XRCE-DDS client `3.0.1` + Micro-CDR `2.0.2` | Agent `2.4.3-nros1` (installed by `nros setup … --rmw xrce`) | Client and agent are pinned independently and are NOT the same upstream release; they meet at the DDS-XRCE wire protocol |
 | **Cyclone DDS** | fork `0.10.5-nros1` — upstream 0.10.5 + carried patches ([fork delta](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/cyclonedds-fork-delta.md)) | Talks RTPS directly to `rmw_cyclonedds_cpp` | Pinned to the Cyclone **ROS ships** (`ros-humble-cyclonedds` 0.10.5) — upstream 11.x is deliberately NOT a rebase target until a distro migration (issue 0507) |
 
 Per-feature coverage across the three backends:
@@ -86,15 +86,13 @@ dynamic typesupport, service introspection and the
 
 | Tool | Pinned version |
 |---|---|
-| Rust | `stable` channel (`rust-toolchain.toml`); pinned cross targets: `thumbv7em-none-eabihf`, `armv7r-none-eabihf`, `aarch64-unknown-none`. `rustfmt` runs on nightly (nightly-only options). |
-| Arm GCC (`arm-none-eabi`) | `13.2-nros1` |
+| Rust | `1.99.0` channel (`rust-toolchain.toml`); pinned cross targets: `thumbv7m-none-eabi`, `thumbv7em-none-eabihf`, `armv7r-none-eabi`, `armv7r-none-eabihf`, `armv8r-none-eabihf`, `riscv32imc-unknown-none-elf`, `riscv64gc-unknown-none-elf`, `aarch64-unknown-none`, `armv7a-none-eabi`, `armv7a-none-eabihf`, `thumbv7em-none-eabi`, `thumbv8m.main-none-eabi`, `thumbv8m.main-none-eabihf`, `i686-unknown-linux-gnu`, `x86_64-unknown-none`. `rustfmt` runs on nightly (nightly-only options). |
+| Arm GCC (`arm-none-eabi`) | `13.2-nros5` |
 | RISC-V GCC (`riscv-none-elf`) | `14.2-nros1` |
-| QEMU (patched, Arm) | `11.0.0-nros2` |
-| QEMU (Espressif fork, ESP32-C3) | `esp-develop-nros1` |
-| espflash | `4.5.0-nros1` |
+| QEMU (patched, Arm) | `11.0.0-nros7` |
 | Corrosion (CMake↔Cargo) | `0.6.1-nros1` (≥ 0.6.0 required — older versions share one build dir across workspace roots and break the `mixed` link) |
-| OpenOCD | `0.12.0-nros1` |
-| sccache | `0.8.2-nros1` |
+| OpenOCD | `0.12.0-nros2` |
+| sccache | `0.17.0-nros1` |
 
 `-nros<N>` suffixes mark builds re-packaged (or patched) for the SDK
 store; the base version is the upstream release.

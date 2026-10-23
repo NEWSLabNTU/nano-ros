@@ -59,7 +59,7 @@ may differ.
 ## 3. RMW backend certification
 
 - [ ] **Backend version pinned** to a tested tuple. Zenoh-pico
-      1.7.2 (matches `rmw_zenoh_cpp`). Cyclone DDS 0.10.5 (matches
+      1.8.0 (wire-compatible with `rmw_zenoh_cpp` across zenoh 1.x). Cyclone DDS 0.10.5 (matches
       `ros-humble-cyclonedds`). XRCE-DDS Micro-Client at its
       workspace pin.
 - [ ] **All required QoS policies supported** by your backend. The

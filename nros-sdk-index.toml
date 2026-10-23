@@ -1309,7 +1309,12 @@ ref = "9a29f1bd3f07bd19d085b9e90f8fa7a77479dfa7"
 # PREFIX of a user's own zenoh-pico build (zpico-sys `system-zenohpico`), and one
 # name with two meanings is RFC-0103 D6's defect. Edit the checkout submodule
 # instead — the local-edit rung (HEAD off `ref`, or dirty) outranks the store.
-version = "1.7.2"
+#
+# `version` is AUTHORED (setup runs when the tree is absent) and is a claim
+# about the pin: it must equal the tree's `version.txt` — `just check
+# support-status` refuses a disagreement. It read 1.7.2 for weeks after the pin
+# moved to 1.8.0 + fork commits, because that gate ran in no lane.
+version = "1.8.0"
 location = "store"
 dest = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
@@ -1382,7 +1387,8 @@ ref = "5e146adef63b326b04282252639bebc2730939c6"
 # is not a client version at all: it is `[tool.xrce-agent]`'s nros release label,
 # copied across. The tree has been 3.0.1 (gitlink `bdfa2809`, "Release v3.0.1")
 # for as long as the row has existed, which also makes the book's "client and
-# agent are pinned to the same upstream release" false — filed, not fixed here.
+# agent are pinned to the same upstream release" false — the generated page now
+# says they are pinned independently (the page renders, it no longer asserts).
 # `micro-cdr` said `2.0.x`; the tree is a pinned tag, so a wildcard understates
 # what we actually know.
 [source.micro-xrce-dds-client]
