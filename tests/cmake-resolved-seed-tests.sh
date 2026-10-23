@@ -445,6 +445,7 @@ write_take_record() {
 set(NROS_RESOLVED_ENTITY_INPUTS_SCHEMA ${1:-1})
 set(NROS_RESOLVED_ENTITY_REGISTERED [==[${2:-$REG}]==])
 set(NROS_RESOLVED_ENTITY_MODEL [==[$TAKE_ROOT/model/system_model.yaml]==])
+set(NROS_RESOLVED_ENTITY_MODEL_SHA256 $(sha256sum "$TAKE_ROOT/model/system_model.yaml" | cut -d' ' -f1))
 set(NROS_RESOLVED_ENTITY_WORKSPACE [==[$TAKE_ROOT/ws]==])
 set(NROS_RESOLVED_ENTITY_RX_ARGS [==[${3:-}]==])
 EOF
@@ -528,6 +529,115 @@ write_take_record 1 "$REG" "--board-rx-frame-cost-us;40"
 take_declines "another board receive cost" "board receive cost"
 write_take_record 2
 take_declines "an unknown record schema" "schema this reader does not know"
+# The model re-resolved IN PLACE (same path, new content) -- what a configure
+# `nros build` did not start does after a contract edit.
+write_take_record
+printf 'edited\n' > "$TAKE_ROOT/model/system_model.yaml"
+take_declines "the model edited in place" "changed since \`nros build\` resolved it"
+: > "$TAKE_ROOT/model/system_model.yaml"
+
+# ---------------------------------------------------------------------------
+log_header "Case U -- a seeded message-bound answer is held to, not re-converged (phase-439 W8)"
+# ---------------------------------------------------------------------------
+#
+# RFC-0094 A3, as amended: a configure `nros build` started takes ONE pass. The
+# readers of the message-bound fragment read the seed; if the producer then
+# composes a different answer over the SAME inputs (tables, entity inventory,
+# ceiling -- `resolved-message-bounds-inputs.cmake`), the two composers
+# disagree and the configure stops. Over DIFFERENT inputs it is a resolve older
+# than the tree, and the fixed point converges it as before. No record (every
+# configure `nros build` did not start) is the fixed point, unchanged.
+PROM_ROOT="$TEST_TMPDIR/promise"
+mkdir -p "$PROM_ROOT/resolve" "$PROM_ROOT/src"
+printf 'set(BOUND seeded)\n' > "$PROM_ROOT/resolve/resolved-message-bounds.cmake"
+printf '{"types": []}\n' > "$PROM_ROOT/table.json"
+printf 'set(ENTITY x)\n' > "$PROM_ROOT/entity.cmake"
+write_prom_record() { # [table sha] [ceiling]
+    local tsha esha
+    tsha="${1:-$(sha256sum "$PROM_ROOT/table.json" | cut -d' ' -f1)}"
+    esha="$(sha256sum "$PROM_ROOT/entity.cmake" | cut -d' ' -f1)"
+    cat > "$PROM_ROOT/resolve/resolved-message-bounds-inputs.cmake" <<EOF
+set(NROS_RESOLVED_BOUNDS_INPUTS_SCHEMA 1)
+set(NROS_RESOLVED_BOUNDS_TABLES [==[std_msgs=$tsha]==])
+set(NROS_RESOLVED_BOUNDS_ENTITY_SHA256 $esha)
+set(NROS_RESOLVED_BOUNDS_CEILING ${2:-2048})
+EOF
+}
+cat > "$PROM_ROOT/src/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.20)
+project(nros_promise_probe NONE)
+include("$RECONFIGURE_MODULE")
+include("$PROJECT_ROOT/cmake/NanoRosEntityInventory.cmake")
+include("$PROJECT_ROOT/cmake/NanoRosMessageBounds.cmake")
+include("$RESOLVED_MODULE")
+set(NROS_RESOLVED_DIR "$PROM_ROOT/resolve")
+nros_entity_inventory_knobs_file(_e)
+configure_file("$PROM_ROOT/entity.cmake" "\${_e}" COPYONLY)
+nros_message_bounds_knobs_file(_frag)
+# ---- the READER (the Zephyr module's order) ----
+nros_resolved_seed_message_bounds("\${_frag}")
+nros_reconfigure_settle("\${_frag}")
+# ---- one interface package registers its table ----
+set(_t "\${CMAKE_BINARY_DIR}/codegen/std_msgs")
+file(MAKE_DIRECTORY "\${_t}")
+file(WRITE "\${_t}/nros_message_bounds.cmake" "")
+configure_file("$PROM_ROOT/table.json" "\${_t}/nros_message_bounds.json" COPYONLY)
+nros_message_bounds_register_fragment("\${_t}/nros_message_bounds.cmake")
+# ---- the PRODUCER ----
+nros_reconfigure_snapshot("\${_frag}" _before)
+file(WRITE "\${_frag}" "set(BOUND \${PROBE_ANSWER})\n")
+nros_reconfigure_on_change("\${_frag}" "\${_before}" LABEL "the probe bounds")
+EOF
+prom_run() { # [cmake -D args...]
+    rm -rf "$PROM_ROOT/build"
+    PROM_RC=0
+    PROM_OUT="$(cmake -S "$PROM_ROOT/src" -B "$PROM_ROOT/build" "$@" 2>&1)" || PROM_RC=$?
+}
+write_prom_record
+prom_run -DPROBE_ANSWER=seeded
+check
+if [ "$PROM_RC" -eq 0 ] && ! nros_grep_q -F "changed after the readers" <<<"$PROM_OUT"; then
+    log_success "producer agrees with the seed: one pass, nothing armed"
+else
+    fail "an agreeing producer did not configure cleanly in one pass (rc=$PROM_RC):
+$PROM_OUT"
+fi
+prom_run -DPROBE_ANSWER=other
+check
+if [ "$PROM_RC" -ne 0 ] && nros_grep_q -F "over the SAME inputs" <<<"$PROM_OUT"; then
+    log_success "same inputs, different answer: the configure STOPS naming both files"
+else
+    fail "a disagreement over the same inputs did not stop the configure (rc=$PROM_RC):
+$PROM_OUT"
+fi
+write_prom_record "0000000000000000000000000000000000000000000000000000000000000000"
+prom_run -DPROBE_ANSWER=other
+check
+if [ "$PROM_RC" -eq 0 ] && nros_grep_q -F "composed over other inputs -- its bound tables" <<<"$PROM_OUT" \
+   && nros_grep_q -F "changed after the readers" <<<"$PROM_OUT"; then
+    log_success "a moved table: the resolve is stale, the fixed point converges, and says why"
+else
+    fail "a stale resolve was not left to the fixed point (rc=$PROM_RC):
+$PROM_OUT"
+fi
+write_prom_record "" 4096
+prom_run -DPROBE_ANSWER=other
+check
+if [ "$PROM_RC" -eq 0 ] && nros_grep_q -F "small-class ceiling is 4096" <<<"$PROM_OUT"; then
+    log_success "another ceiling: stale, not a disagreement"
+else
+    fail "a ceiling difference was treated as a disagreement (rc=$PROM_RC):
+$PROM_OUT"
+fi
+rm -f "$PROM_ROOT/resolve/resolved-message-bounds-inputs.cmake"
+prom_run -DPROBE_ANSWER=other
+check
+if [ "$PROM_RC" -eq 0 ] && ! nros_grep_q -F "resolve phase's seed" <<<"$PROM_OUT"; then
+    log_success "no record (a configure nros build did not start): the fixed point, unchanged"
+else
+    fail "a configure with no record was held to a promise it never made (rc=$PROM_RC):
+$PROM_OUT"
+fi
 
 # ---------------------------------------------------------------------------
 log_header "Summary"

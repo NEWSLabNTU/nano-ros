@@ -179,6 +179,144 @@ function(nros_resolved_seed_message_bounds _path)
     endif()
     _nros_resolved_seed("${_dir}/resolved-message-bounds.cmake" "${_path}"
         "message-bound sizes" _used)
+    # phase-439 W8 -- and hold the producer to it (see the check below).
+    if(EXISTS "${_dir}/resolved-message-bounds-inputs.cmake")
+        get_property(_queued GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_FRAG SET)
+        set_property(GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_FRAG "${_path}")
+        if(NOT _queued)
+            cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+                CALL _nros_resolved_bounds_promise_check)
+        endif()
+    endif()
+endfunction()
+
+# _nros_resolved_bounds_promise_check() -- phase-439 W8 (RFC-0094 A3, amended)
+#
+# A configure `nros build` started takes ONE pass for the message-bound sizes:
+# its readers read the seed stage 3.5 composed, and the producer
+# (`nros_derive_message_bound_knobs`, once per interface-declaring package)
+# composes the same answer again. This holds the producer to it, at the end of
+# the top-level configure -- after the LAST producer call, because an earlier
+# call sees fewer tables and legitimately differs.
+#
+# Three outcomes, decided by what the readers consumed and by the inputs:
+#
+#   * readers did not read the seed, or the final fragment equals what they
+#     read: nothing to say (the fixed point in NanoRosReconfigure.cmake covers
+#     the first);
+#   * the answer moved AND this configure's inputs are not the ones the seed was
+#     composed over (a table regenerated, another entity inventory, another
+#     ceiling -- a tree edited since `nros build` resolved it): a resolve older
+#     than the tree. The producer's arm buys the pass, as it always has, and
+#     this says why the configure was not single-pass;
+#   * the answer moved over the SAME inputs: the two composers of one answer
+#     disagree. That is a bug in one of them (the parity case of
+#     `tests/cmake-message-bounds-tests.sh` is what should have caught it), and
+#     a second pass would only build with whichever answer came last -- so the
+#     configure stops, naming both files.
+#
+# Runs one hop late: the first call re-queues itself, so it follows every
+# deferred call queued before it (an entry's standalone flushes among them).
+function(_nros_resolved_bounds_promise_check)
+    get_property(_hop GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_HOP)
+    if(NOT _hop)
+        set_property(GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_HOP TRUE)
+        cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+            CALL _nros_resolved_bounds_promise_check)
+        return()
+    endif()
+    if(NOT COMMAND _nros_reconfigure_pass_props OR NOT COMMAND nros_message_bounds_fragments
+       OR NOT COMMAND nros_entity_inventory_knobs_file)
+        return()
+    endif()
+    get_property(_frag GLOBAL PROPERTY NROS_RESOLVED_BOUNDS_PROMISE_FRAG)
+    nros_resolved_dir(_dir)
+    set(_seed "${_dir}/resolved-message-bounds.cmake")
+    set(_rec "${_dir}/resolved-message-bounds-inputs.cmake")
+    if("${_frag}" STREQUAL "" OR NOT EXISTS "${_seed}" OR NOT EXISTS "${_rec}"
+       OR NOT EXISTS "${_frag}")
+        return()
+    endif()
+    _nros_reconfigure_pass_props("${_frag}" _basis_prop _armed_prop)
+    get_property(_have GLOBAL PROPERTY ${_basis_prop} SET)
+    if(NOT _have)
+        return()
+    endif()
+    get_property(_basis GLOBAL PROPERTY ${_basis_prop})
+    file(SHA256 "${_seed}" _seed_sha)
+    file(SHA256 "${_frag}" _final_sha)
+    if(NOT _basis STREQUAL _seed_sha OR _final_sha STREQUAL _basis)
+        return()
+    endif()
+
+    unset(NROS_RESOLVED_BOUNDS_INPUTS_SCHEMA)
+    include("${_rec}")
+    _nros_resolved_bounds_inputs(_tables _entity_sha)
+    set(_why "")
+    if(NOT "${NROS_RESOLVED_BOUNDS_INPUTS_SCHEMA}" STREQUAL "1")
+        set(_why "its input record has a schema this reader does not know")
+    elseif(NOT "${_tables}" STREQUAL "${NROS_RESOLVED_BOUNDS_TABLES}")
+        set(_why "its bound tables are [${NROS_RESOLVED_BOUNDS_TABLES}], this configure's [${_tables}]")
+    elseif(NOT "${_entity_sha}" STREQUAL "${NROS_RESOLVED_BOUNDS_ENTITY_SHA256}")
+        set(_why "this configure's entity inventory is not the one it was composed with")
+    elseif(NOT "${NROS_MESSAGE_BOUNDS_DEFAULT_SMALL_CEILING}" STREQUAL
+           "${NROS_RESOLVED_BOUNDS_CEILING}")
+        set(_why "its small-class ceiling is ${NROS_RESOLVED_BOUNDS_CEILING}, this "
+                 "configure's ${NROS_MESSAGE_BOUNDS_DEFAULT_SMALL_CEILING}")
+        string(CONCAT _why ${_why})
+    endif()
+    if(NOT _why STREQUAL "")
+        message(STATUS
+            "nros: message-bound sizes: the resolve phase's seed (${_seed}) was "
+            "composed over other inputs -- ${_why}. This configure converges by "
+            "one more pass; re-run `nros build` to keep it to one.")
+        return()
+    endif()
+    message(FATAL_ERROR
+        "nros: this image's message-bound sizes differ from the answer `nros build` "
+        "resolved before this configure, over the SAME inputs.
+"
+        "  seed:      ${_seed}
+"
+        "  configure: ${_frag}
+"
+        "  The two composers of one answer disagree, which is a bug in one of them, "
+        "not a lag to converge: a configure `nros build` started takes one pass "
+        "(RFC-0094 A3, phase-439 W8), and a second pass would build with whichever "
+        "answer came last. `diff` the two files and report it.")
+endfunction()
+
+# _nros_resolved_bounds_inputs(<out_tables> <out_entity_sha>)
+#
+# This configure's half of the record `write_west_seed` writes: `<pkg>=<sha256>`
+# of each registered bound table's JSON (its fragment's sibling), sorted by
+# package, and the entity fragment's digest. A package registered with two
+# DIFFERENT tables is reported as both rows, which matches no record.
+function(_nros_resolved_bounds_inputs _out_tables _out_entity)
+    nros_message_bounds_fragments(_frags)
+    set(_rows "")
+    foreach(_f IN LISTS _frags)
+        get_filename_component(_d "${_f}" DIRECTORY)
+        get_filename_component(_pkg "${_d}" NAME)
+        set(_json "${_d}/nros_message_bounds.json")
+        if(EXISTS "${_json}")
+            file(SHA256 "${_json}" _h)
+        else()
+            set(_h "missing")
+        endif()
+        list(APPEND _rows "${_pkg}=${_h}")
+    endforeach()
+    if(_rows)
+        list(REMOVE_DUPLICATES _rows)
+        list(SORT _rows)
+    endif()
+    set(${_out_tables} "${_rows}" PARENT_SCOPE)
+    nros_entity_inventory_knobs_file(_e)
+    set(_esha "")
+    if(EXISTS "${_e}")
+        file(SHA256 "${_e}" _esha)
+    endif()
+    set(${_out_entity} "${_esha}" PARENT_SCOPE)
 endfunction()
 
 # _nros_resolved_seed(<projection> <path> <what> <out_used>)
@@ -256,7 +394,8 @@ endfunction()
 #               THIS configure's `nano_ros_node_register()` calls wrote. The
 #               resolve read them from `nros sync`'s metadata probe; a component
 #               added since the last sync differs here.
-#   model       the one model this configure accumulated (issue 1600's list).
+#   model       the one model this configure accumulated (issue 1600's list),
+#               by path AND content.
 #               Several models are a shared runtime, which the resolve -- one
 #               image -- does not compose.
 #   workspace   the colcon workspace whose probe sidecars floor the contract.
@@ -283,7 +422,8 @@ function(nros_resolved_entity_take _metadata _output _json _out_taken)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_rec}")
 
     foreach(_v NROS_RESOLVED_ENTITY_INPUTS_SCHEMA NROS_RESOLVED_ENTITY_REGISTERED
-               NROS_RESOLVED_ENTITY_MODEL NROS_RESOLVED_ENTITY_WORKSPACE
+               NROS_RESOLVED_ENTITY_MODEL NROS_RESOLVED_ENTITY_MODEL_SHA256
+               NROS_RESOLVED_ENTITY_WORKSPACE
                NROS_RESOLVED_ENTITY_RX_ARGS)
         unset(${_v})
     endforeach()
@@ -321,6 +461,14 @@ function(nros_resolved_entity_take _metadata _output _json _out_taken)
             get_filename_component(_want "${NROS_RESOLVED_ENTITY_MODEL}" REALPATH)
             if(NOT "${_existing}" STREQUAL "${_want}")
                 set(_why "it was composed over ${_want}, this configure over ${_existing}")
+            else()
+                # The CONTENT, not the path: a configure `nros build` did not
+                # start re-resolves the model in place, and the resolve then
+                # describes the model it replaced -- re-run `nros build`.
+                file(SHA256 "${_existing}" _model_sha)
+                if(NOT "${_model_sha}" STREQUAL "${NROS_RESOLVED_ENTITY_MODEL_SHA256}")
+                    set(_why "the model ${_existing} changed since `nros build` resolved it")
+                endif()
             endif()
         endif()
     endif()
