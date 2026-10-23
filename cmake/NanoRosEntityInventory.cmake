@@ -217,6 +217,7 @@ include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSchemaReader.cmake")
 # phase-462 W6c -- `_nros_board_rx_cost_args`, the board's `[board.rx]`.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardRxCost.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosResolved.cmake")
 
 # The inventory schema this reader understands --
 # `nros_cli_core::entity_inventory::ENTITY_INVENTORY_SCHEMA_VERSION`. A fragment
@@ -575,29 +576,37 @@ function(nros_derive_entity_inventory_knobs)
     # below is derived with it, and an ingress the board cannot satisfy fails
     # here, naming the subscriber (RFC-0074).
     _nros_board_rx_cost_args(_rx_args)
-    execute_process(
-        COMMAND "${_E_CLI}" ws entity-inventory
-                --metadata "${_metadata}"
-                ${_model_arg}
-                ${_ws_arg}
-                ${_rx_args}
-                --output-cmake "${_output}"
-                --output-json "${CMAKE_BINARY_DIR}/nros/entity_inventory.json"
-        OUTPUT_VARIABLE _out
-        ERROR_VARIABLE _err
-        RESULT_VARIABLE _rc
-        OUTPUT_STRIP_TRAILING_WHITESPACE)
-    if(NOT _rc EQUAL 0)
-        # A non-zero exit is a BROKEN DECLARATION -- an unknown entity kind, a
-        # component claiming NONE beside real entities -- not an absent one, and
-        # the CLI's message names the component. That is a configuration error
-        # and it is fatal, the same way a malformed message-bound fragment is.
-        message(FATAL_ERROR
-            "nros: the entity declaration in this image is not readable.\n"
-            "  ${_err}\n"
-            "  Fix the declaration the named component makes: a bringup states it in\n"
-            "  `<bringup>/launch/<stem>.contract.yaml`; a standalone leaf states it in\n"
-            "  its own `system.toml` `[[component]] entities` (RFC-0098 D8).")
+    # phase-439 W7 (issue 1228) -- read the resolve phase's answer when it was
+    # composed over this configure's inputs; see `nros_resolved_entity_take`.
+    # The inbox join and the republish below run either way: they read the
+    # fragment, not the call that wrote it.
+    nros_resolved_entity_take("${_metadata}" "${_output}"
+        "${CMAKE_BINARY_DIR}/nros/entity_inventory.json" _taken)
+    if(NOT _taken)
+        execute_process(
+            COMMAND "${_E_CLI}" ws entity-inventory
+                    --metadata "${_metadata}"
+                    ${_model_arg}
+                    ${_ws_arg}
+                    ${_rx_args}
+                    --output-cmake "${_output}"
+                    --output-json "${CMAKE_BINARY_DIR}/nros/entity_inventory.json"
+            OUTPUT_VARIABLE _out
+            ERROR_VARIABLE _err
+            RESULT_VARIABLE _rc
+            OUTPUT_STRIP_TRAILING_WHITESPACE)
+        if(NOT _rc EQUAL 0)
+            # A non-zero exit is a BROKEN DECLARATION -- an unknown entity kind, a
+            # component claiming NONE beside real entities -- not an absent one, and
+            # the CLI's message names the component. That is a configuration error
+            # and it is fatal, the same way a malformed message-bound fragment is.
+            message(FATAL_ERROR
+                "nros: the entity declaration in this image is not readable.\n"
+                "  ${_err}\n"
+                "  Fix the declaration the named component makes: a bringup states it in\n"
+                "  `<bringup>/launch/<stem>.contract.yaml`; a standalone leaf states it in\n"
+                "  its own `system.toml` `[[component]] entities` (RFC-0098 D8).")
+        endif()
     endif()
 
     if(NOT EXISTS "${_output}")

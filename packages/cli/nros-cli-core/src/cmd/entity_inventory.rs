@@ -69,6 +69,22 @@ struct ComponentMeta {
     entities: Option<serde::de::IgnoredAny>,
 }
 
+impl ComponentMeta {
+    /// Pre-RFC-0057 metadata carries no `pkg`; the retired L.4 convention
+    /// (`pkg = class.split("::").next()`) is the same fallback
+    /// `codegen::entry::metadata` keeps, restated rather than shared because
+    /// that module's index is keyed for a different consumer.
+    /// `cmake/NanoRosResolved.cmake`'s `_nros_resolved_registered_keys` states
+    /// the same rule over the same document, for the reason given at
+    /// [`registered_from_probe`].
+    fn pkg_or_class_prefix(&self) -> String {
+        self.pkg
+            .clone()
+            .or_else(|| self.class.split("::").next().map(str::to_string))
+            .unwrap_or_default()
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct MetadataDoc {
     #[serde(default)]
@@ -196,15 +212,7 @@ pub struct EntityInventoryArgs {
 fn inventory_from_metadata(source: &str, doc: &MetadataDoc) -> Result<EntityInventory> {
     let mut inv = EntityInventory::new(source);
     for c in &doc.components {
-        // Pre-RFC-0057 metadata carries no `pkg`; the retired L.4 convention
-        // (`pkg = class.split("::").next()`) is the same fallback
-        // `codegen::entry::metadata` keeps, restated rather than shared because
-        // that module's index is keyed for a different consumer.
-        let pkg = c
-            .pkg
-            .clone()
-            .or_else(|| c.class.split("::").next().map(str::to_string))
-            .unwrap_or_default();
+        let pkg = c.pkg_or_class_prefix();
         if c.entities.is_some() {
             bail!(
                 "component `{pkg}::{}` in `{source}` carries an `entities` key. That key \
@@ -246,6 +254,74 @@ pub fn inventory_from_metadata_file(path: &std::path::Path) -> Result<EntityInve
     inventory_from_metadata(&path.display().to_string(), &doc)
 }
 
+/// phase-439 W7 (issue 1228) -- the population ONE image's configure will
+/// register, read before that configure runs.
+///
+/// The configure's `nros-metadata.json` is written by the image's own
+/// `nano_ros_node_register()` calls, so stage 3.5 cannot read it (it does not
+/// exist yet). `nros sync`'s metadata probe configures EVERY workspace package
+/// and writes the same rows for all of them; a west image `add_subdirectory()`s
+/// exactly the packages its launch plan names, so the rows of those packages are
+/// the rows its configure will register. That is what gives the resolve the
+/// refusal guard the configure-time producer has: a registered component the
+/// launch declaration does not describe is an ABSENT row here too, and the
+/// derivation refuses for both.
+///
+/// The configure does not take this on trust. The resolve records the rows it
+/// composed over (`resolve::EntityInputs`), and the producer reads the resolve
+/// only when its own metadata names the same rows -- a component added since
+/// the last `nros sync` makes it recompose, exactly as before.
+pub(crate) fn registered_from_probe(
+    path: &std::path::Path,
+    packages: &std::collections::BTreeSet<String>,
+) -> Result<EntityInventory> {
+    let raw = std::fs::read_to_string(path)
+        .wrap_err_with(|| format!("read metadata `{}`", path.display()))?;
+    let mut doc: MetadataDoc = serde_json::from_str(&raw)
+        .wrap_err_with(|| format!("parse metadata `{}`", path.display()))?;
+    doc.components
+        .retain(|c| packages.contains(&c.pkg_or_class_prefix()));
+    inventory_from_metadata(&path.display().to_string(), &doc)
+}
+
+/// The three refusals every model meets before it may say anything. One list
+/// for [`load_model`] and for stage 3.5, which composes the same image over the
+/// same model and must refuse where this verb would fail the configure.
+pub(crate) fn check_model(model: &ros_launch_manifest_model::SystemModel) -> Result<()> {
+    reject_zero_depths(model)?;
+    // phase-454 W3 -- and a QoS VALUE this build does not model. Same place
+    // and same reason as the zero depth above: this is the one point a model
+    // enters the verb and the only one with an error channel.
+    reject_unknown_qos_values(model)?;
+    // phase-454 W7 (RFC-0100 D8) -- and a `qos_overrides.*` parameter that
+    // states a capacity policy the contract does not. Third refusal at the
+    // same seam, for the same reason.
+    reject_qos_override_divergence(model)
+}
+
+/// One image's composition: the registered population with one model's wiring
+/// folded in, the board's per-frame receive cost, and the ingress check.
+///
+/// phase-439 W7 -- the single-model, whole-image path of [`run`], lifted so
+/// stage 3.5 composes a C/C++ west image by THIS code rather than by a second
+/// spelling of it. `run` calls it too, so the two cannot drift: the producer
+/// that reads the resolve is reading what this function returned.
+pub(crate) fn compose_image(
+    registered: EntityInventory,
+    model_source: &str,
+    model: &nros_orchestration_ir::overlay::LoadedModel,
+    workspace: Option<&std::path::Path>,
+    rx: Option<crate::entity_inventory::RxFrameCost>,
+    who: &str,
+) -> Result<EntityInventory> {
+    let mut inv = fold_model(registered, model_source, model, workspace);
+    if rx.is_some() {
+        inv.set_board_rx_cost(rx);
+    }
+    crate::sizing_descriptor::report_rx_ingress(&inv, who)?;
+    Ok(inv)
+}
+
 /// One `--model`, verified, parsed and checked at the door -- the three
 /// refusals every model meets before it may say anything.
 fn load_model(model_path: &std::path::Path) -> Result<nros_orchestration_ir::overlay::LoadedModel> {
@@ -258,18 +334,7 @@ fn load_model(model_path: &std::path::Path) -> Result<nros_orchestration_ir::ove
         .wrap_err_with(|| format!("read model `{}`", model_path.display()))?;
     let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
         .wrap_err_with(|| format!("parse model `{}`", model_path.display()))?;
-    reject_zero_depths(&model).wrap_err_with(|| format!("model `{}`", model_path.display()))?;
-    // phase-454 W3 -- and a QoS VALUE this build does not model. Same place
-    // and same reason as the zero depth above: this is the one point a model
-    // enters the verb and the only one with an error channel.
-    reject_unknown_qos_values(&model)
-        .wrap_err_with(|| format!("model `{}`", model_path.display()))?;
-    // phase-454 W7 (RFC-0100 D8) -- and a `qos_overrides.*` parameter that
-    // states a capacity policy the contract does not. Third refusal at the
-    // same seam, for the same reason: this is the one point a model enters
-    // the verb and the only one with an error channel.
-    reject_qos_override_divergence(&model)
-        .wrap_err_with(|| format!("model `{}`", model_path.display()))?;
+    check_model(&model).wrap_err_with(|| format!("model `{}`", model_path.display()))?;
     // phase-486 W3 -- the nano-ros switches beside the model.
     nros_orchestration_ir::overlay::LoadedModel::with_overlay_beside(model, model_path)
         .map_err(|e| eyre::eyre!(e))
@@ -428,6 +493,13 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     // phase-446 W6 -- rendered from the same model, when there is one.
     let mut inv = metadata_inv;
     let mut params_header: Option<String> = None;
+    let rx =
+        args.board_rx_frame_cost_us
+            .map(|frame_cost_us| crate::entity_inventory::RxFrameCost {
+                frame_cost_us,
+                floor_us: args.board_rx_floor_us,
+            });
+    let mut composed = false;
     if args.model.len() > 1 {
         // Issue 1600 -- the IMAGE-WIDE outputs over several models: one runtime
         // that every entry of a multi-entry configure links.
@@ -452,12 +524,26 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
                 &model_path.display().to_string(),
             ));
         }
-        inv = fold_model(
-            inv,
-            &model_path.display().to_string(),
-            &model,
-            args.workspace.as_deref(),
-        );
+        if args.component.is_none() {
+            // The whole image over one model: the composition stage 3.5
+            // performs for a C/C++ west image (phase-439 W7), by the same call.
+            inv = compose_image(
+                inv,
+                &model_path.display().to_string(),
+                &model,
+                args.workspace.as_deref(),
+                rx,
+                "nros ws entity-inventory",
+            )?;
+            composed = true;
+        } else {
+            inv = fold_model(
+                inv,
+                &model_path.display().to_string(),
+                &model,
+                args.workspace.as_deref(),
+            );
+        }
     }
 
     if let Some(want) = &args.component {
@@ -467,13 +553,12 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     // phase-462 W6c -- the board's per-frame receive cost: the fragment's
     // `NROS_DERIVED_ZENOH_RX_TASK_BUDGET_*` are derived with it, and a declared
     // ingress the board cannot satisfy fails this configure (RFC-0074).
-    if let Some(frame_cost_us) = args.board_rx_frame_cost_us {
-        inv.set_board_rx_cost(Some(crate::entity_inventory::RxFrameCost {
-            frame_cost_us,
-            floor_us: args.board_rx_floor_us,
-        }));
+    if !composed {
+        if rx.is_some() {
+            inv.set_board_rx_cost(rx);
+        }
+        crate::sizing_descriptor::report_rx_ingress(&inv, "nros ws entity-inventory")?;
     }
-    crate::sizing_descriptor::report_rx_ingress(&inv, "nros ws entity-inventory")?;
 
     let (json_path, cmake_path) = match &args.output_dir {
         Some(dir) => (

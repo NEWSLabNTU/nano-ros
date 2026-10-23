@@ -10,6 +10,44 @@ related: [0940, 0965, 0991, 1002, 1119, 1061, 1125, 1252, phase-439, phase-403, 
 
 **Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
+# UPDATE 2026-10-23 (later) — items (1) and (2) landed for the C/C++ west road (phase-439 W7)
+
+The producer now READS the resolve instead of recomposing, and stage 3.5 has
+the refusal guard. The guard did not need the configure's `nros-metadata.json`
+after all. `nros sync`'s metadata probe already has every workspace
+component's row, and a C/C++ west app `add_subdirectory()`s exactly the
+packages its launch plan names. So the probe rows of those packages ARE the
+rows its configure registers, available before any configure runs
+(`registered_from_probe`). A registered component the contract does not
+describe is an absent row on both sides, and both refuse.
+
+One composer. `nros ws entity-inventory`'s single-model path and stage 3.5 both
+call `cmd::entity_inventory::compose_image`. The resolve records the inputs it
+composed over (`resolved-entity-inputs.cmake`), and the producer copies
+`resolved.cmake` and `resolved-entity-inventory.json` only when its own inputs
+match. A mismatch (a component registered since the last sync, several models,
+another workspace, another board receive cost, an unknown record schema)
+recomposes as before and names the input. Case C's property holds one level
+up: an answer composed over other inputs is never taken (case T,
+mutation-tested).
+
+Found by the comparison, which is a reason to compare rather than trust: on the
+west road the producer's `--workspace` was EMPTY, because the generated app
+never calls `nano_ros_workspace()` and the fallback (`_ws_root`) lands in
+`build/<coord>/`. So issue 1694's probe-sidecar floor ran in stage 3.5 and not
+in the configure. The bytes happened to agree on `demo_bringup`. The producer
+now takes the workspace from the bringup's `<ws>/src/<pkg>` layout.
+
+Measured, `demo_bringup:zephyr`, clean dir: 0 `Re-running CMake`, producer read
+the resolve, fragment and JSON byte-identical, 13 delivered-knob lines identical
+to W6, `check-knob-delivery` green, two incremental rebuilds 0.
+
+**Still open here: item (3)'s question is moot for this road, and the
+deletion is W8.** A bare `west build` of `examples/zephyr/cpp/talker` (no
+resolve) still takes 1 re-configure with two arms (bounds, entity), measured
+the same day. The fixed point is what makes that configure deliver the right
+numbers, so it cannot be deleted until such configures are seeded too.
+
 # UPDATE 2026-10-23 — the entity arm came back, and is gone again
 
 phase-439 W5 re-measured `demo_bringup:zephyr` on 2026-10-22: 1 `Re-running
