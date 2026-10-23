@@ -111,8 +111,9 @@ What the tree does today:
   (0.16.8 and 1.0.1), while the store holds both versions under
   `~/.nros/sdk/`. So every checkout on this host that builds Zephyr through the
   shared workspace compiles with the island submodule's SDK copy: the mirror
-  image of [issue 1254](../issues/1254-zephyr-sdk-installs-inside-the-checkout.md)
-  (open), where the island bound a sibling's.
+  image of [issue 1254](../issues/archived/1254-zephyr-sdk-installs-inside-the-checkout.md)
+  (resolved 2026-10-23: the store half; I2's configure refusal stays here),
+  where the island bound a sibling's.
 - `nros-sdk.lock` (design 0014: "committed per workspace", index = desired,
   lock = installed) is written and read back by `nros store gc`, but no build
   step checks that the toolchain IN USE is the one the lock names; a `--prefix`

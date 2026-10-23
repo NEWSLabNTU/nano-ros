@@ -58,10 +58,19 @@ setup *ARGS:
         # invisible until a build dies inside `FindZephyr-sdk.cmake`; swallowing
         # it here would rebuild that exact defect one line lower. The script
         # already exits 0 when there is nothing to do.
+        #
+        # issue 1254 — the SDK dir is ASKED of the ladder, never constructed.
+        # This used to name `$(pwd)/scripts/zephyr/sdk/zephyr-sdk-<v>`, the
+        # legacy in-checkout copy, so on a host provisioned into the store (or in
+        # any fresh worktree) the path did not exist, the script exited 0 on
+        # "nothing to do", and the store SDK was never registered — 1279's
+        # failure, reached through the arm 1254 moved. No arm holding the SDK is
+        # not an error here, for the same reason the script's own absent-dir
+        # case is not one: `--skip-sdk` reaches this branch too.
         sdk_want="$(cat "$WORKSPACE/zephyr/SDK_VERSION" 2>/dev/null || echo "")"
-        if [ -n "$sdk_want" ]; then
-            bash scripts/zephyr/ensure-sdk-registered.sh \
-                "$(pwd)/scripts/zephyr/sdk/zephyr-sdk-$sdk_want"
+        if [ -n "$sdk_want" ] \
+            && sdk_dir="$(bash scripts/lib/zephyr-sdk.sh --version "$sdk_want" resolve)"; then
+            bash scripts/zephyr/ensure-sdk-registered.sh "$sdk_dir"
         fi
         # issue 1387 / 1253 / phase-449 W2 — the SAME gap one rung over, and it
         # cost the tier-2 lane every run from 2026-09-17 to -20.

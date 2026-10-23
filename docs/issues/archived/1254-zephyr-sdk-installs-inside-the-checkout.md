@@ -2,14 +2,15 @@
 id: 1254
 title: "The Zephyr SDK is provisioned INSIDE the nano-ros checkout, not in the
   store -- so a downstream workspace binds to whichever clone ran setup"
-status: open
+status: resolved
 type: bug
 area: zephyr, tooling
 severity: medium
-related: [issue-1248, phase-449, phase-478]
+related: [issue-1248, phase-449, phase-478, 1279]
+resolved: 2026-10-23
 ---
 
-**Home: [phase-449](../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-449](../../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## Symptom
 
@@ -109,3 +110,44 @@ checkout arm last so a host provisioned earlier keeps working.
   `scripts/zephyr/sdk/` and its `env.sh` names a store path.
 - `nros store list` shows the SDK and `nros store gc` respects it.
 - A host with only the legacy `scripts/zephyr/sdk/` still builds (checkout arm).
+
+## Resolution (2026-10-23)
+
+Phase-449 W3 landed the fix shape: `setup.sh` installs into the store (no
+`--prefix`), `scripts/lib/zephyr-sdk.sh` is the one ladder (override, then
+store, then the legacy checkout copy), and the four `just` recipes in the table
+above ask it. `nros sdk-path` answers the SDK root since issue 1259.
+
+**One reader was still constructing the path, and it was live.** Issue 1279's
+registration step in `just zephyr setup` (the branch taken when the workspace
+already exists) was added after that sweep and spelled
+`"$(pwd)/scripts/zephyr/sdk/zephyr-sdk-$sdk_want"` again. Measured in a fresh
+worktree on a host whose SDK is in the store, registering into a scratch
+`HOME`:
+
+| path handed to `ensure-sdk-registered.sh` | rc | registry afterwards |
+| --- | --- | --- |
+| the constructed checkout path (main) | 0 | **empty** — the dir does not exist, so the script reports nothing to do |
+| `zephyr-sdk.sh --version 0.16.8 resolve` (this fix) | 0 | `~/.nros/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8/cmake` |
+
+So on any store-provisioned host, and in every fresh worktree, the verb that
+issue 1279 made able to repair a lost registry silently could not. It now asks
+the ladder. New gate `check-zephyr-sdk-path-asked` (fast line) refuses a code
+line naming `scripts/zephyr/sdk/zephyr-sdk-` outside its two owners (the
+ladder's checkout arm and `runner-doctor.sh`'s own ladder); it catches main's
+version of the recipe, and its self-test runs on the normal path.
+
+Acceptance, as measured:
+
+- A shared workspace's `env.sh` names a store path: on this host
+  `~/.nros/workspaces/zephyr/3.7/env.sh` exports
+  `ZEPHYR_SDK_INSTALL_DIR="$HOME/.nros/sdk/zephyr-sdk/0.16.8/zephyr-sdk-0.16.8"`.
+  The 4.4 line was not re-provisioned here; its install goes through the same
+  `setup.sh` path W3 measured.
+- `nros store list` / `nros store gc`: W3 measured, not re-run.
+- The legacy checkout arm still resolves: it is the ladder's last arm, and
+  `runner-doctor.sh`'s self-test covers it.
+
+Phase-478 I2 also names this issue. Its other half (a configure that refuses an
+SDK from another checkout that the lock does not name) is that phase's work
+and stays open there.

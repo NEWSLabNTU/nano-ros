@@ -1,5 +1,15 @@
 # Phase 449 — build state keyed by a NAME, not by the tree that asked for it
 
+**Status (2026-10-23). Every work item is DONE; two homed issues remain.**
+W2's last box closed with issue 1158 (2026-10-22: 7 of the last 8 tier-2 runs
+reached the cells), and W7's with issue 1166 (2026-10-15). Issue 1254 is
+resolved: W3's fix had one reader left, `just zephyr setup`'s SDK registration,
+which still built the checkout path and so registered nothing on a
+store-provisioned host; it asks the ladder now, and
+`check-zephyr-sdk-path-asked` keeps it that way. What is open is the table at
+the end: #1824 (the generated-header side channel) and #1825 (a pin bump's
+re-stale, unmeasured on the user path).
+
 **Status (2026-10-12). W1, W3, W4, W5, W6 and W8 are DONE; W2 and W7 each
 have one box open.** W2's open box is one scheduled tier-2 run reaching its
 cells, which needs a nightly, not a checkout. W7's open box is the runner's
@@ -222,7 +232,7 @@ tree's entries and judged images no run of this tree made.
 
 ### W3 — the Zephyr SDK lives in the store, not in a clone
 
-[Issue 1254](../issues/1254-zephyr-sdk-installs-inside-the-checkout.md).
+[Issue 1254](../issues/archived/1254-zephyr-sdk-installs-inside-the-checkout.md).
 Provisioning installs to `<clone>/scripts/zephyr/sdk/`, and a downstream
 project's generated `env.sh` then exports a `ZEPHYR_SDK_INSTALL_DIR` pointing
 into a sibling clone. Every board build of that project has depended on that

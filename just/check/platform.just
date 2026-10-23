@@ -188,6 +188,14 @@ board-vocabulary:
 zephyr-module-allowlist:
     @python3 scripts/check-zephyr-module-allowlist.py
 
+# issue 1254 -- the legacy in-checkout Zephyr SDK path is ASKED of
+# `scripts/lib/zephyr-sdk.sh`, never constructed. A fifth hand-built copy
+# (issue 1279's registration step) outlived the sweep that moved the other four,
+# and on a store-provisioned host it registered nothing, silently.
+[group("checks")]
+zephyr-sdk-path-asked:
+    @python3 scripts/check/check-zephyr-sdk-path-asked.py
+
 # phase-460 W6 -- the Zephyr stack-slot pool gives back what it hands out.
 #
 # `zephyr/nros_platform_zephyr_shims.c` owns the ENTIRE task pool of the Zephyr
