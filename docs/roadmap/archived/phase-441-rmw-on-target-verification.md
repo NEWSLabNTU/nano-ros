@@ -1,6 +1,17 @@
 # Phase 441 — the one "on-target" live-peer cell runs on host sockets
 
-**Status (2026-10-18). W1–W5 and W7 DONE; REVISED — W6's live cell PASSES (issue
+**Status (2026-10-23). DONE, archived.** W1-W8 met their acceptance: W6's
+fragmented leg passed on 2026-10-20 (725 of 751 samples whole, 5 of 5 runs), and
+W8 chose and landed 0814's option 2 on 2026-10-21, with the embedded lending cell
+built by [phase-510](phase-510-test-config-axis.md) W5. Two issues outlived the
+phase and moved: [issue 0917](../../issues/0917-an536-fragmented-sample-never-syncs.md)
+(narrowed by W6 to a tap-fed, free-running QEMU path this tree does not have) to
+[phase-512](../phase-512-on-hardware-measurements.md) H3, and
+[issue 1981](../../issues/1981-live-peer-narrowing-alternation-is-one-workspace-id.md)
+(the board lane reads a `|`-joined narrowing as one id) to
+[phase-466](../phase-466-scheduled-lanes-produce-verdicts.md).
+
+**Earlier status (2026-10-18). W1–W5 and W7 DONE; REVISED — W6's live cell PASSES (issue
 0997 found and fixed on it); W6's fragmented leg (0917) and W8 are open.** The two cells this phase was opened for have met a live peer:
 `zephyr-cortex-m-pubsub-c-zenoh` and `freertos-mps2-pubsub-c-zenoh-n2r` each carry a
 recorded `pass` in `.config/interop-verdicts.toml` (2026-10-11, rmw_zenoh_cpp on
@@ -336,7 +347,7 @@ setcover: all_addrs udp/10.0.2.2:17912@2
 
 **V4 — the loopback pin and the NAT rewrite are mutually exclusive**, which is
 the one finding that lands on this tree rather than on Cyclone, and is filed as
-[issue 1251](../issues/archived/1251-cyclone-slirp-needs-nat-profile.md).
+[issue 1251](../../issues/archived/1251-cyclone-slirp-needs-nat-profile.md).
 `ExternalNetworkAddress` is refused outright when the only selected interface is
 loopback (`q_init.c:398`, *"external network address specification only
 supported if there is a unique non-loopback interface"*), so a host pinned the
@@ -748,7 +759,7 @@ across context switches. Both R52 boards now set it to 2 and state
 `configFPU_D32=1` on `freertos_config`; `check-freertos-fpu-context` holds the
 class. The cell passed 3 of 3 runs at the cyclonedds pin and the ledger records
 `pass`, so the `live-peer` board lane now runs it. Full account in
-[0997](../issues/archived/0997-island-announces-spdp-once-then-lease-expires.md).
+[0997](../../issues/archived/0997-island-announces-spdp-once-then-lease-expires.md).
 What remains of W6 is the fragmented leg for 0917, which no longer has a
 small-sample failure in front of it.
 
@@ -818,7 +829,7 @@ and the C, C++ and Rust loan docs stop claiming XRCE lends or uORB falls back
 with one copy. That meets 0814's "Acceptance for this half". Option 2 keeps the
 publish half, so by this item's own condition the embedded lending lane is
 next: the zenoh loan is compiled for embedded targets and run only on posix.
-That lane is [phase-510](archived/phase-510-test-config-axis.md) W5: asking where it
+That lane is [phase-510](phase-510-test-config-axis.md) W5: asking where it
 would go showed the matrix has no coordinate for a build configuration, so
 phase-510 adds one (RFC-0051 §7) before building the cell.
 
@@ -852,11 +863,11 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1139](../issues/archived/1139-cyclone-ros2-pubsub-e2e-flakes-under-the-parallel-gate.md) | `nros_rmw_cyclonedds_ros2_pubsub_e2e` fails under the 21-way parallel run. Today it is a row in phase-444's verdict table reading 'open | Acceptance, still unmet' — a status, not an owner; its acceptance needs a live peer, which is this phase |
-| [#1251](../issues/archived/1251-cyclone-slirp-needs-nat-profile.md) | a Cyclone peer for a QEMU guest cannot be loopback-pinned. It is W2's own residue and appears only as prerequisite #3 of a prose list |
-| [#0917](../issues/0917-an536-fragmented-sample-never-syncs.md) | re-homed 2026-10-12 from phase-358 (archived). Interrupt-driven RX landed, but the an536 FreeRTOS Cyclone target still never syncs a fragmented sample. Getting an on-target verdict on it is this phase's job |
-| [#0997](../issues/archived/0997-island-announces-spdp-once-then-lease-expires.md) | re-homed 2026-10-12 from phase-414 (archived). **Resolved 2026-10-18 on W6's cell**: no FreeRTOS task on the Cortex-R52 boards had an FPU context, so hard-float code clobbered other tasks' d-registers; Cyclone stamped its events `tsched = 0` and its SPDP/PMD events stopped rescheduling. Fixed in both R52 boards' FreeRTOS config, gated by `check-freertos-fpu-context`. |
-| [#0814](../issues/archived/0814-lending-never-exercised-on-hardware.md) | re-homed 2026-10-13 from phase-433 (archived). The zero-copy lending surface is enabled only by a posix test crate, so no embedded target has run it. An on-target cell with lending on closes it. |
+| [#1139](../../issues/archived/1139-cyclone-ros2-pubsub-e2e-flakes-under-the-parallel-gate.md) | `nros_rmw_cyclonedds_ros2_pubsub_e2e` fails under the 21-way parallel run. Today it is a row in phase-444's verdict table reading 'open | Acceptance, still unmet' — a status, not an owner; its acceptance needs a live peer, which is this phase |
+| [#1251](../../issues/archived/1251-cyclone-slirp-needs-nat-profile.md) | a Cyclone peer for a QEMU guest cannot be loopback-pinned. It is W2's own residue and appears only as prerequisite #3 of a prose list |
+| [#0917](../../issues/0917-an536-fragmented-sample-never-syncs.md) | re-homed 2026-10-12 from phase-358 (archived). Interrupt-driven RX landed, but the an536 FreeRTOS Cyclone target still never syncs a fragmented sample. Getting an on-target verdict on it is this phase's job |
+| [#0997](../../issues/archived/0997-island-announces-spdp-once-then-lease-expires.md) | re-homed 2026-10-12 from phase-414 (archived). **Resolved 2026-10-18 on W6's cell**: no FreeRTOS task on the Cortex-R52 boards had an FPU context, so hard-float code clobbered other tasks' d-registers; Cyclone stamped its events `tsched = 0` and its SPDP/PMD events stopped rescheduling. Fixed in both R52 boards' FreeRTOS config, gated by `check-freertos-fpu-context`. |
+| [#0814](../../issues/archived/0814-lending-never-exercised-on-hardware.md) | re-homed 2026-10-13 from phase-433 (archived). The zero-copy lending surface is enabled only by a posix test crate, so no embedded target has run it. An on-target cell with lending on closes it. |
 
 ## Issues homed here (2026-10-17)
 
@@ -864,5 +875,5 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1281](../issues/archived/1281-riscv-nuttx-c-talker-router-drops-session.md) | The NuttX RISC-V C talker's router drops its session after 28-79 s. This needs an on-target verdict. Re-homed from phase-414, which is archived. |
-| [#1946](../issues/archived/1946-cmake-road-drops-bringup-domain-id.md) | Found building W6: on the CMake road a C/C++ entry's session ignored `[system]` and `[image.<id>]` `domain_id`. **Resolved 2026-10-18**: the generated entry carries the image's resolved domain as `DOMAIN_ID`; a disagreeing `-DNROS_DOMAIN_ID` is refused. Standalone leaves are recorded there as not covered. |
+| [#1281](../../issues/archived/1281-riscv-nuttx-c-talker-router-drops-session.md) | The NuttX RISC-V C talker's router drops its session after 28-79 s. This needs an on-target verdict. Re-homed from phase-414, which is archived. |
+| [#1946](../../issues/archived/1946-cmake-road-drops-bringup-domain-id.md) | Found building W6: on the CMake road a C/C++ entry's session ignored `[system]` and `[image.<id>]` `domain_id`. **Resolved 2026-10-18**: the generated entry carries the image's resolved domain as `DOMAIN_ID`; a disagreeing `-DNROS_DOMAIN_ID` is refused. Standalone leaves are recorded there as not covered. |

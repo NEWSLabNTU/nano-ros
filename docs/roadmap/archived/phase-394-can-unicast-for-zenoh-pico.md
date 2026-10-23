@@ -5,7 +5,7 @@
 Archived 2026-09-03. Section 13 is a later postscript: what changed upstream
 after the archive, and a port campaign that turned out to be unnecessary.
 
-Implements [RFC-0083](../design/0083-can-unicast-over-isotp.md), the zenoh-pico
+Implements [RFC-0083](../../design/0083-can-unicast-over-isotp.md), the zenoh-pico
 half. A nano-ros node and a ROS 2 node exchange **services, actions, action
 cancellation and parameters** across a CAN bus, in both roles.
 

@@ -1,9 +1,23 @@
 # Phase 394 — memory unification and optimization: the campaign ledger
 
-**Status (2026-09-11). Ledger open. 390 is done through W5 (W6, the emitter's
+**Status (2026-10-23). Archived: nothing left to coordinate.** Every phase this
+ledger tracked (390, 391, 392, 412, 433, 448) is archived, and 19 of the 22
+issues its ledger table still called open are resolved. The rest went to live
+homes or stand alone:
+[issue 1376](../../issues/1376-c-example-listeners-register-with-null-options.md)
+to [phase-460](../phase-460-formal-checks-on-the-contract-chain.md),
+[issue 1808](../../issues/1808-sizing-knobs-with-no-static-derivation.md) to
+[phase-400](../phase-400-unified-configuration.md),
+[issue 0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) stays with
+[phase-474](../phase-474-safety-island-board-findings.md), and
+[issue 1823](../../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) is
+parked with no home while ESP32 is dormant (issue 1525). The ledger below is
+kept as history; its "open" rows are not current.
+
+**Earlier status (2026-09-11). Ledger open. 390 is done through W5 (W6, the emitter's
 own vocabulary, is not started); 391 is done through W5; 392 has W1-W6 landed
 with amendment B's wave open. The per-port exact-size work that followed 392 W6
-has its own phase now, [448](archived/phase-448-exact-executor-backing-on-every-port.md).
+has its own phase now, [448](phase-448-exact-executor-backing-on-every-port.md).
 As of this date every open issue on the ledger names a HOME phase — see the
 2026-09-11 amendment.** This doc
 coordinates work that already had three phase docs and eight issues but no single
@@ -19,7 +33,7 @@ in this campaign covered:
 
 | item | where it landed | status |
 | --- | --- | --- |
-| Tightly-coupled memory was never a placement target — 192 KiB idle at 0 % | phase-392 amendment A, [issue 0880](../issues/0880-tcm-unused-while-sram-exhausted.md) | stacks moved; 80 KiB of DTCM still free |
+| Tightly-coupled memory was never a placement target — 192 KiB idle at 0 % | phase-392 amendment A, [issue 0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) | stacks moved; 80 KiB of DTCM still free |
 | Pools are sized for worst cases that are SUMMED, never overlapped | phase-392 amendment B | new wave, tier-gated |
 | The libc arena regresses because only the symbol is gated, not the config | phase-391 W1b | gate item added |
 | Flash is 4 MiB at 8.3 % and is NOT fungible with RAM | phase-392 amendment D | scoped: post-mortem log, config storage, ITCM |
@@ -33,7 +47,7 @@ calls `spin` rather than in `.bss` — and W1 prices pools by reading symbols.
 
 | item | where it landed | status |
 | --- | --- | --- |
-| The executor arena is stack-resident, so `mem-report` cannot see it and task stacks carry a term proportional to the subscription graph | [RFC-0002 § 4.4b](../design/0002-rt-execution-model.md) decision; phase-392 lever 1b + wave W6 | opened |
+| The executor arena is stack-resident, so `mem-report` cannot see it and task stacks carry a term proportional to the subscription graph | [RFC-0002 § 4.4b](../../design/0002-rt-execution-model.md) decision; phase-392 lever 1b + wave W6 | opened |
 
 Two things it does NOT change, recorded so they are not re-litigated from this
 amendment: it does not decide whether payload buffers become heap-backed (that
@@ -53,10 +67,10 @@ one effort in two halves:
 
 | phase | half | one line |
 | --- | --- | --- |
-| [390](archived/phase-390-storage-mode-rename-inline-heap-view.md) | vocabulary | rename RFC-0033 storage modes `owned`/`borrowed` to `inline`/`heap`/`view` |
-| [391](archived/phase-391-allocation-unification-and-tier-model.md) | dynamic | one `#[global_allocator]`, one funnel, a tier model, rlsf |
-| [392](archived/phase-392-static-memory-space-campaign.md) | static | 27% of a safety-island image is message buffers nobody can price |
-| [380](archived/phase-380-serialized-size-bound.md) | static | serialized size bound (W0–W3, W5 landed) |
+| [390](phase-390-storage-mode-rename-inline-heap-view.md) | vocabulary | rename RFC-0033 storage modes `owned`/`borrowed` to `inline`/`heap`/`view` |
+| [391](phase-391-allocation-unification-and-tier-model.md) | dynamic | one `#[global_allocator]`, one funnel, a tier model, rlsf |
+| [392](phase-392-static-memory-space-campaign.md) | static | 27% of a safety-island image is message buffers nobody can price |
+| [380](phase-380-serialized-size-bound.md) | static | serialized size bound (W0–W3, W5 landed) |
 
 The dependency order the docs state: 392 depends on 390 for vocabulary and on
 391 for the gate that verifies its claims, and 392 W1 is the instrument
@@ -91,7 +105,7 @@ inventory's published numbers from a claim into a checked fact. Gate:
 
 ## What the instrument found immediately
 
-[Issue 0827](../issues/archived/0827-unused-rmw-pools-dominate-static-ram.md). Static RAM
+[Issue 0827](../../issues/archived/0827-unused-rmw-pools-dominate-static-ram.md). Static RAM
 is a property of the RMW, not of the node — **identical to the byte** across
 talker, listener, service-server and action-server:
 
@@ -119,12 +133,12 @@ decision, never this doc.
 | 392 W3a / W3b | — | **landed** | subscription buffer sized from the type's own bound — Rust only |
 | 392 W3c | unclaimed | **open** | derived-by-default on the Rust path; the global becomes the opt-out |
 | 392 W3d | — | **landed, under another phase** | 0896 layers 1-3, delivered as phase-408 W1. The C publish helper sizes `buf[<PREFIX>_TX_MAX_SERIALIZED_SIZE]` for a bounded type (`packs/c/message.h.jinja:178`), and `message_size_bound_parity.rs` asserts the C constant, the C++ constant and the Rust const are one number, both encodings |
-| 392 W3e | — | **superseded** | by [phase 408](archived/phase-408-cpp-message-derived-buffers.md) — the fork it described does not exist |
+| 392 W3e | — | **superseded** | by [phase 408](phase-408-cpp-message-derived-buffers.md) — the fork it described does not exist |
 | 392 W3f | — | **delivered as a refusal** | Cyclone records that the hint is inapplicable; see the phase's 2026-09-02 amendment, which corrects this row's original claim |
 | 392 W3g | — | **landed, under another phase** | 0896 layers 5-6, delivered as phase-403 W0/W6. The split is `_TX_/_RX_MAX_SERIALIZED_SIZE` (TX is XCDR1, RX is `max(XCDR1, XCDR2)`), and the unbounded diagnostic is a POISON TOKEN — `NROS_UNBOUNDED__<type>__field_<name>`, an undefined identifier that names the offending field at the compile error |
 | 392 W4 net stack | — | **landed and MEASURED** | 38,334 B of `.bss`+`.data` and 78,696 B of flash on mps2/an385, two images from one tree differing only in networking. Larger than this row's original 27,760 B estimate, because that counted `net_*` symbols and missed four stacks |
 | 392 W5.a-W5.g | — | **landed; NO SHIPPED SAVING** | the mechanism, the diagnostic, the checked override and the measurement all exist. The figure reaches one of six compiled cargo units and carries the infra half only. Do not quote 143,456 B as shipped |
-| 392 W6 arena static | — | **landed 2026-09-06** | the executor arena is a named `.bss` static (`EXECUTOR_BACKING`). Its per-port follow-through — pairing it with each RTOS allocator arena — is [phase 448](archived/phase-448-exact-executor-backing-on-every-port.md) |
+| 392 W6 arena static | — | **landed 2026-09-06** | the executor arena is a named `.bss` static (`EXECUTOR_BACKING`). Its per-port follow-through — pairing it with each RTOS allocator arena — is [phase 448](phase-448-exact-executor-backing-on-every-port.md) |
 | 390 W1-W5 | — | **landed** | the `inline`/`heap`/`view` rename shipped; this row said "open" for nine days |
 | 390 W6 | unclaimed | open | the emitter's OWN vocabulary; found while rebasing W5, never started |
 | 391 W1-W5 | — | **landed** | one funnel, the tier model, rlsf, and the tier is gated |
@@ -238,7 +252,7 @@ rate work lands.
 across the RTOS ports — the backing reserved twice, the heap that cannot learn
 its size, undeclared table counts, per-type arena pricing, and two Zephyr XRCE
 failures — and no phase carried any of them as a work item. They are
-[phase 448](archived/phase-448-exact-executor-backing-on-every-port.md) now. Four more went
+[phase 448](phase-448-exact-executor-backing-on-every-port.md) now. Four more went
 into phase-412's homed table and five into phase-392's. The rule applied is
 phase-412's own: *a mention is not an owner.* An issue cited in a wave's
 hand-off list ("→ issue 1146") is a hand-off, not a work item. 1145, 1146 and
@@ -262,7 +276,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1376](../issues/1376-c-example-listeners-register-with-null-options.md) | Seven C listeners pass `options = NULL`, so the sizing descriptor credits a hint the image does not supply. That is a sizing-accuracy item on the ledger. |
-| [#1630](../issues/archived/1630-freertos-entry-bss-overflows-ram-after-arena-pricing.md) | `freertos_entry`'s `.bss` overflowed `RAM` by 151,016 bytes. The cause was not the arena pricing: issue 1598 moved the tier stacks into `.bss` while `ucHeap` still reserved them. Fixed by `fba1b024a9`; 389,144 B headroom now. |
-| [#1808](../issues/1808-sizing-knobs-with-no-static-derivation.md) | Five sizing knobs are still set by hand because nothing in the image can derive them. This is phase-412's remainder. |
-| [#1823](../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | `nros-platform-esp32-qemu` reports 0 for `heap_{used,total}_bytes`. This is phase-230's heap-ABI remainder (ESP32 is dormant, issue 1525). |
+| [#1376](../../issues/1376-c-example-listeners-register-with-null-options.md) | Seven C listeners pass `options = NULL`, so the sizing descriptor credits a hint the image does not supply. That is a sizing-accuracy item on the ledger. |
+| [#1630](../../issues/archived/1630-freertos-entry-bss-overflows-ram-after-arena-pricing.md) | `freertos_entry`'s `.bss` overflowed `RAM` by 151,016 bytes. The cause was not the arena pricing: issue 1598 moved the tier stacks into `.bss` while `ucHeap` still reserved them. Fixed by `fba1b024a9`; 389,144 B headroom now. |
+| [#1808](../../issues/1808-sizing-knobs-with-no-static-derivation.md) | Five sizing knobs are still set by hand because nothing in the image can derive them. This is phase-412's remainder. |
+| [#1823](../../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | `nros-platform-esp32-qemu` reports 0 for `heap_{used,total}_bytes`. This is phase-230's heap-ABI remainder (ESP32 is dormant, issue 1525). |

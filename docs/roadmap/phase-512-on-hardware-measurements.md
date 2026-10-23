@@ -61,6 +61,24 @@ registers it.
 **Done when** a real board with a live session prints a `Platform(n)`-won park.
 The report line fires on the first one, so the run answers within seconds.
 
+### H3 — an 8-fragment RTPS burst on a free-running, tap-fed QEMU
+
+From [phase-441](archived/phase-441-rmw-on-target-verification.md) W6, for
+[issue 0917](../issues/0917-an536-fragmented-sample-never-syncs.md).
+
+This is the one item here that is not silicon. It is a host setup no lane
+provides. Phase-441 W6's fragmented leg passed in tree on 2026-10-20 on the
+mps3-an536 FreeRTOS Cyclone listener: 725 of 751 samples of 10 576 bytes (eight
+`DATA_FRAG`s each) arrived whole, in 5 of 5 runs, over slirp under
+`-icount shift=auto`. The island's failure was on a different path: a QEMU
+running free (no `-icount`) and fed unpaced frames from a root-provisioned
+tap. That path needs root on the host, and no runner has it.
+
+**Done when** the same listener, on a free-running QEMU behind a tap, either
+keeps receiving whole 8-fragment samples for 45 s (then 0917 closes as not
+reproduced) or drops them (then that run is 0917's first in-tree
+reproduction, with the RX FIFO depth and the drain interval recorded).
+
 ## Not in this phase
 
 - Work that is blocked on a downstream project rather than on a board, such as

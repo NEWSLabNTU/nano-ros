@@ -82,4 +82,4 @@ The knob itself is enumerated, which is what this issue asked for: the ceiling i
 now tunable and visible. Annotate the pool when `lending` reaches a shipped
 image, and verify the figure against a real one with `just mem-report` rather
 than trusting the arithmetic — see
-[phase 394](../roadmap/phase-394-memory-campaign-ledger.md).
+[phase 394](../../roadmap/archived/phase-394-memory-campaign-ledger.md).

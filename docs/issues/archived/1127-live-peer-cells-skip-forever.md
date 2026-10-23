@@ -294,7 +294,7 @@ roadmap item that shipped it:
   Cyclone announces nodes through `ros_discovery_info`, not liveliness tokens.
 
 * **`zephyr-cortex-m-pubsub-c-zenoh`** (phase-441 W1;
-  `docs/roadmap/phase-441-rmw-on-target-verification.md:199-213` already records
+  `docs/roadmap/archived/phase-441-rmw-on-target-verification.md:199-213` already records
   "**A live verdict is still owed**"). Needs a Zephyr SDK, `qemu-system-arm` and
   a ROS host. One MECHANICAL blocker beyond that, worth naming because it is not
   obvious from the cell: recording it also needs a `BOARD_FIXTURE_NARROWING` row

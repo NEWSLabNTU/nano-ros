@@ -407,6 +407,6 @@ lending with each platform it has a cell on. Recorded in RFC-0061.
 ## Related
 
 - RFC-0051 §7, RFC-0061 amendment 2026-10-22, RFC-0066 (where "configuration" comes from).
-- [phase-441](../phase-441-rmw-on-target-verification.md) W8, which opened this.
+- [phase-441](phase-441-rmw-on-target-verification.md) W8, which opened this.
 - Issue [0814](../../issues/archived/0814-lending-never-exercised-on-hardware.md) (W5).
 - Issue 1758 (the no-skip rule every new lane keeps).

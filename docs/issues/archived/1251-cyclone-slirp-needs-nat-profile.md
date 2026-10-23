@@ -15,7 +15,7 @@ related: [issue-1009, issue-1137, phase-441, phase-480]
 
 Phase-441 W2 measured whether CycloneDDS 0.10.5 can discover across QEMU's
 user-mode (slirp) networking. **It can** — the recipe and the evidence are in
-[phase-441](../../roadmap/phase-441-rmw-on-target-verification.md) §W2. This issue
+[phase-441](../../roadmap/archived/phase-441-rmw-on-target-verification.md) §W2. This issue
 records the one part of that answer that is a limitation of THIS tree rather
 than of Cyclone: the host-side profile our test harness writes cannot be the
 host side of such a pair, and nothing today says so.
