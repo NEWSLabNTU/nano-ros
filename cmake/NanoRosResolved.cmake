@@ -68,6 +68,9 @@
 
 include_guard(GLOBAL)
 
+# `nros_resolved_entity_take` compares the board receive-cost arguments.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardRxCost.cmake")
+
 # nros_resolved_dir(<out_var>)
 #
 # The directory stage 3.5 wrote this image's answer into, or empty.
@@ -232,4 +235,191 @@ function(_nros_resolved_seed _frag _path _what _out_used)
     message(STATUS
         "nros: ${_what} seeded from the resolve phase (${_frag}); this "
         "configure's first reader sees a derived answer rather than a placeholder")
+endfunction()
+
+# nros_resolved_entity_take(<metadata> <output> <json> <out_taken>) -- phase-439 W7
+#
+# The mid-configure entity producer READS the resolve instead of recomposing,
+# when the resolve was composed over this configure's own inputs (issue 1228).
+#
+# `nros build` composes a C/C++ west image at stage 3.5 by the same function
+# `nros ws entity-inventory` runs (`cmd::entity_inventory::compose_image`), over
+# the population the image's packages register, and records what it composed
+# over in `resolved-entity-inputs.cmake`. Equal inputs into one function are
+# equal outputs, so on a match this copies `resolved.cmake` to `<output>` and
+# `resolved-entity-inventory.json` to `<json>` and the caller runs no CLI: one
+# composer, and nothing for the reconfigure arm to find.
+#
+# The inputs compared are every one the producer passes the verb:
+#
+#   registered  `<pkg>::<component>::<class>` per row of <metadata>, the rows
+#               THIS configure's `nano_ros_node_register()` calls wrote. The
+#               resolve read them from `nros sync`'s metadata probe; a component
+#               added since the last sync differs here.
+#   model       the one model this configure accumulated (issue 1600's list).
+#               Several models are a shared runtime, which the resolve -- one
+#               image -- does not compose.
+#   workspace   the colcon workspace whose probe sidecars floor the contract.
+#   rx          the board's `--board-rx-*` arguments.
+#
+# Any difference, an absent or unreadable record, or a <metadata> row carrying
+# the retired `entities` key (the verb refuses it, and only the verb says so)
+# leaves `<out_taken>` FALSE and says why once: the caller composes exactly as
+# it did before this function existed. A road with no record -- every
+# configure `nros build` did not start, and every non-west image -- never
+# reaches the comparison.
+function(nros_resolved_entity_take _metadata _output _json _out_taken)
+    set(${_out_taken} FALSE PARENT_SCOPE)
+    nros_resolved_entity_fragment(_frag)
+    if("${_frag}" STREQUAL "")
+        return()
+    endif()
+    nros_resolved_dir(_dir)
+    set(_rec "${_dir}/resolved-entity-inputs.cmake")
+    set(_rjson "${_dir}/resolved-entity-inventory.json")
+    if(NOT EXISTS "${_rec}" OR NOT EXISTS "${_rjson}")
+        return()
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_rec}")
+
+    foreach(_v NROS_RESOLVED_ENTITY_INPUTS_SCHEMA NROS_RESOLVED_ENTITY_REGISTERED
+               NROS_RESOLVED_ENTITY_MODEL NROS_RESOLVED_ENTITY_WORKSPACE
+               NROS_RESOLVED_ENTITY_RX_ARGS)
+        unset(${_v})
+    endforeach()
+    include("${_rec}")
+    set(_why "")
+    if(NOT "${NROS_RESOLVED_ENTITY_INPUTS_SCHEMA}" STREQUAL "1")
+        set(_why "its input record (${_rec}) has a schema this reader does not know")
+    endif()
+
+    if(_why STREQUAL "")
+        _nros_resolved_registered_keys("${_metadata}" _keys _why)
+        if(_why STREQUAL "" AND NOT "${_keys}" STREQUAL "${NROS_RESOLVED_ENTITY_REGISTERED}")
+            set(_why "it registered [${NROS_RESOLVED_ENTITY_REGISTERED}] and this "
+                     "configure registers [${_keys}] -- re-run `nros sync`")
+            string(CONCAT _why ${_why})
+        endif()
+    endif()
+
+    if(_why STREQUAL "")
+        get_property(_models GLOBAL PROPERTY NROS_ENTITY_INVENTORY_MODELS)
+        set(_existing "")
+        foreach(_m IN LISTS _models)
+            if(EXISTS "${_m}")
+                get_filename_component(_m "${_m}" REALPATH)
+                list(APPEND _existing "${_m}")
+            endif()
+        endforeach()
+        if(_existing)
+            list(REMOVE_DUPLICATES _existing)
+        endif()
+        list(LENGTH _existing _n_models)
+        if(NOT _n_models EQUAL 1)
+            set(_why "this configure composes over ${_n_models} models, the resolve over one")
+        else()
+            get_filename_component(_want "${NROS_RESOLVED_ENTITY_MODEL}" REALPATH)
+            if(NOT "${_existing}" STREQUAL "${_want}")
+                set(_why "it was composed over ${_want}, this configure over ${_existing}")
+            endif()
+        endif()
+    endif()
+
+    if(_why STREQUAL "")
+        get_property(_ws GLOBAL PROPERTY NROS_ENTITY_INVENTORY_WORKSPACE)
+        set(_ws_real "")
+        if(NOT "${_ws}" STREQUAL "")
+            get_filename_component(_ws_real "${_ws}" REALPATH)
+        endif()
+        get_filename_component(_ws_want "${NROS_RESOLVED_ENTITY_WORKSPACE}" REALPATH)
+        if(NOT "${_ws_real}" STREQUAL "${_ws_want}")
+            set(_why "its workspace is ${_ws_want}, this configure's is `${_ws_real}`")
+        endif()
+    endif()
+
+    if(_why STREQUAL "")
+        _nros_board_rx_cost_args(_rx)
+        if(NOT "${_rx}" STREQUAL "${NROS_RESOLVED_ENTITY_RX_ARGS}")
+            set(_why "its board receive cost is [${NROS_RESOLVED_ENTITY_RX_ARGS}], "
+                     "this configure's [${_rx}]")
+            string(CONCAT _why ${_why})
+        endif()
+    endif()
+
+    if(NOT _why STREQUAL "")
+        message(STATUS "nros: entity inventory composed at configure, not read from the "
+                       "resolve phase: ${_why}")
+        return()
+    endif()
+
+    # COPYONLY is write-if-different, so an unchanged answer moves no mtime and
+    # the copy is a configure dependency on its source -- both what the verb's
+    # own write-if-changed gave the reader.
+    configure_file("${_frag}" "${_output}" COPYONLY)
+    configure_file("${_rjson}" "${_json}" COPYONLY)
+    set(${_out_taken} TRUE PARENT_SCOPE)
+    message(STATUS "nros: entity inventory read from the resolve phase (${_frag}); "
+                   "this configure composed nothing")
+endfunction()
+
+# _nros_resolved_registered_keys(<metadata> <out_keys> <out_why>)
+#
+# `<pkg>::<component>::<class>` for every row of a `nros-metadata.json`,
+# deduplicated on `(pkg, component)` with the LAST row winning and sorted --
+# `EntityInventory::insert`'s rule and `resolve::EntityInputs::new`'s order. The
+# package falls back to the class's leading `::` segment, as
+# `ComponentMeta::pkg_or_class_prefix` does.
+function(_nros_resolved_registered_keys _metadata _out_keys _out_why)
+    set(${_out_keys} "" PARENT_SCOPE)
+    set(${_out_why} "" PARENT_SCOPE)
+    if(NOT EXISTS "${_metadata}")
+        set(${_out_why} "this configure has no ${_metadata}" PARENT_SCOPE)
+        return()
+    endif()
+    file(READ "${_metadata}" _doc)
+    string(JSON _n ERROR_VARIABLE _err LENGTH "${_doc}" components)
+    if(_err)
+        set(_n 0)
+    endif()
+    set(_ids "")
+    if(_n GREATER 0)
+        math(EXPR _last "${_n} - 1")
+        foreach(_i RANGE ${_last})
+            string(JSON _name ERROR_VARIABLE _e1 GET "${_doc}" components ${_i} name)
+            string(JSON _class ERROR_VARIABLE _e2 GET "${_doc}" components ${_i} class)
+            if(_e1 OR _e2)
+                set(${_out_why} "${_metadata} row ${_i} has no name or class" PARENT_SCOPE)
+                return()
+            endif()
+            string(JSON _t ERROR_VARIABLE _e3 TYPE "${_doc}" components ${_i} entities)
+            if(NOT _e3)
+                set(${_out_why} "${_metadata} row ${_i} carries the retired `entities` key"
+                    PARENT_SCOPE)
+                return()
+            endif()
+            string(JSON _t ERROR_VARIABLE _e4 TYPE "${_doc}" components ${_i} pkg)
+            if(_e4 OR _t STREQUAL "NULL")
+                string(FIND "${_class}" "::" _at)
+                if(_at EQUAL -1)
+                    set(_pkg "${_class}")
+                else()
+                    string(SUBSTRING "${_class}" 0 ${_at} _pkg)
+                endif()
+            else()
+                string(JSON _pkg GET "${_doc}" components ${_i} pkg)
+            endif()
+            string(MD5 _id "${_pkg}::${_name}")
+            set(_row_${_id} "${_pkg}::${_name}::${_class}")
+            list(APPEND _ids "${_id}")
+        endforeach()
+    endif()
+    set(_keys "")
+    if(_ids)
+        list(REMOVE_DUPLICATES _ids)
+        foreach(_id IN LISTS _ids)
+            list(APPEND _keys "${_row_${_id}}")
+        endforeach()
+        list(SORT _keys)
+    endif()
+    set(${_out_keys} "${_keys}" PARENT_SCOPE)
 endfunction()

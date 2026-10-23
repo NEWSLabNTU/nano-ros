@@ -423,6 +423,113 @@ $CONFIGURE_OUT"
 fi
 
 # ---------------------------------------------------------------------------
+log_header "Case T -- the producer READS the resolve only over its own inputs (phase-439 W7)"
+# ---------------------------------------------------------------------------
+#
+# `nros_resolved_entity_take` is what lets the mid-configure producer copy
+# stage 3.5's answer instead of recomposing (issue 1228). Its safety property is
+# case C's, one level up: an answer composed over DIFFERENT inputs must never be
+# taken. So: a match copies byte for byte, and each input moved alone declines
+# and names that input. The registered-key rule (dedup on pkg::component with
+# the last row winning, the class-prefix package fallback, sorted) is pinned to
+# a literal here AND in `resolve::tests::entity_inputs_key_the_registered_rows`,
+# so the Rust writer and this reader cannot drift apart unseen.
+TAKE_ROOT="$TEST_TMPDIR/take"
+mkdir -p "$TAKE_ROOT/resolve" "$TAKE_ROOT/ws/src" "$TAKE_ROOT/model"
+printf 'set(ANSWER resolved)\n' > "$TAKE_ROOT/resolve/resolved.cmake"
+printf '{"source":"resolve"}\n' > "$TAKE_ROOT/resolve/resolved-entity-inventory.json"
+: > "$TAKE_ROOT/model/system_model.yaml"
+REG='b_pkg::sub::b_pkg::Sub2;core::bare::core::Bare;z_pkg::talker::z_pkg::Talker'
+write_take_record() {
+    cat > "$TAKE_ROOT/resolve/resolved-entity-inputs.cmake" <<EOF
+set(NROS_RESOLVED_ENTITY_INPUTS_SCHEMA ${1:-1})
+set(NROS_RESOLVED_ENTITY_REGISTERED [==[${2:-$REG}]==])
+set(NROS_RESOLVED_ENTITY_MODEL [==[$TAKE_ROOT/model/system_model.yaml]==])
+set(NROS_RESOLVED_ENTITY_WORKSPACE [==[$TAKE_ROOT/ws]==])
+set(NROS_RESOLVED_ENTITY_RX_ARGS [==[${3:-}]==])
+EOF
+}
+# Three rows plus a duplicate of b_pkg::sub (the later one wins), and one row
+# with no `pkg` (its package is the class prefix).
+cat > "$TAKE_ROOT/metadata.json" <<'EOF'
+{"components": [
+  {"name": "talker", "pkg": "z_pkg", "class": "z_pkg::Talker"},
+  {"name": "sub", "pkg": "b_pkg", "class": "b_pkg::Sub1"},
+  {"name": "bare", "class": "core::Bare"},
+  {"name": "sub", "pkg": "b_pkg", "class": "b_pkg::Sub2"}
+]}
+EOF
+mkdir -p "$TAKE_ROOT/src"
+cat > "$TAKE_ROOT/src/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.20)
+project(nros_take_probe NONE)
+include("$RESOLVED_MODULE")
+set(NROS_RESOLVED_DIR "$TAKE_ROOT/resolve")
+if(NOT PROBE_MODELS)
+    set(PROBE_MODELS "$TAKE_ROOT/model/system_model.yaml")
+endif()
+foreach(_m IN LISTS PROBE_MODELS)
+    set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_INVENTORY_MODELS "\${_m}")
+endforeach()
+if(NOT DEFINED PROBE_WS)
+    set(PROBE_WS "$TAKE_ROOT/ws")
+endif()
+set_property(GLOBAL PROPERTY NROS_ENTITY_INVENTORY_WORKSPACE "\${PROBE_WS}")
+_nros_resolved_registered_keys("$TAKE_ROOT/metadata.json" _keys _kwhy)
+message(STATUS "PROBE_KEYS=\${_keys}")
+nros_resolved_entity_take("$TAKE_ROOT/metadata.json" "\${CMAKE_BINARY_DIR}/frag.cmake"
+    "\${CMAKE_BINARY_DIR}/inv.json" _taken)
+message(STATUS "PROBE_TAKEN=\${_taken}")
+EOF
+take_run() { # <label> [cmake -D args...]
+    rm -rf "$TAKE_ROOT/build"
+    TAKE_OUT="$(cmake -S "$TAKE_ROOT/src" -B "$TAKE_ROOT/build" "${@:2}" 2>&1)"
+}
+write_take_record
+take_run match
+check
+if nros_grep_q -F "PROBE_KEYS=$REG" <<<"$TAKE_OUT"; then
+    log_success "registered keys: deduplicated last-wins, class-prefix fallback, sorted"
+else
+    fail "the registered-key rule moved; want PROBE_KEYS=$REG
+$TAKE_OUT"
+fi
+check
+if nros_grep_q -F "PROBE_TAKEN=TRUE" <<<"$TAKE_OUT" \
+   && cmp -s "$TAKE_ROOT/resolve/resolved.cmake" "$TAKE_ROOT/build/frag.cmake" \
+   && cmp -s "$TAKE_ROOT/resolve/resolved-entity-inventory.json" "$TAKE_ROOT/build/inv.json"; then
+    log_success "inputs match: the resolve's fragment and JSON are taken byte for byte"
+else
+    fail "a matching record was not taken verbatim:
+$TAKE_OUT"
+fi
+
+take_declines() { # <what> <expected reason fragment> [cmake -D args...]
+    take_run "$1" "${@:3}"
+    check
+    if nros_grep_q -F "PROBE_TAKEN=FALSE" <<<"$TAKE_OUT" && nros_grep_q -F "$2" <<<"$TAKE_OUT" \
+       && [ ! -e "$TAKE_ROOT/build/frag.cmake" ]; then
+        log_success "$1: declined, naming it"
+    else
+        fail "$1: an answer composed over other inputs was taken, or the reason is missing
+  (want '$2'):
+$TAKE_OUT"
+    fi
+}
+write_take_record 1 'b_pkg::sub::b_pkg::Sub2;z_pkg::talker::z_pkg::Talker'
+take_declines "a component registered since the resolve" "re-run \`nros sync\`"
+write_take_record
+: > "$TAKE_ROOT/model/other.yaml"
+take_declines "a second model (a shared runtime)" "composes over 2 models" \
+    "-DPROBE_MODELS=$TAKE_ROOT/model/system_model.yaml;$TAKE_ROOT/model/other.yaml"
+take_declines "another model" "it was composed over" "-DPROBE_MODELS=$TAKE_ROOT/model/other.yaml"
+take_declines "no workspace" "its workspace is" "-DPROBE_WS="
+write_take_record 1 "$REG" "--board-rx-frame-cost-us;40"
+take_declines "another board receive cost" "board receive cost"
+write_take_record 2
+take_declines "an unknown record schema" "schema this reader does not know"
+
+# ---------------------------------------------------------------------------
 log_header "Summary"
 # ---------------------------------------------------------------------------
 

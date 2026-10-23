@@ -639,6 +639,10 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             &board,
             nano_ros_root.as_deref(),
             descriptor.rx,
+            // phase-439 W7 -- the road whose configure reads the resolve
+            // instead of recomposing: a west image crossing out of Rust, i.e.
+            // the generated C/C++ application.
+            driver == Driver::West && image_has_non_rust(&image, &bringup_dir),
         );
         let resolved_dir = resolved.as_ref().map(|r| r.dir.clone());
 
@@ -2886,18 +2890,7 @@ fn generate_entry(
     // number (`report_parameter_store_refused`).
     let launch_seeds_params = plan.nodes.iter().any(|n| !n.params.is_empty());
 
-    // A launch file may name one package several times; cargo needs it once.
-    let mut seen = std::collections::BTreeSet::new();
-    let mut nodes = Vec::new();
-    for n in &plan.nodes {
-        if !seen.insert(n.pkg.clone()) {
-            continue;
-        }
-        let dir = root.join("src").join(&n.pkg);
-        if dir.is_dir() {
-            nodes.push((n.pkg.clone(), dir));
-        }
-    }
+    let nodes = launch_closure(root, &plan);
 
     // Where the entry will be written — needed to make its dependency paths
     // relative, and computed before the spec because the spec carries them.
@@ -2966,11 +2959,7 @@ fn generate_entry(
             let resolved_dir = root
                 .join("build")
                 .join(crate::resolve::dir_name_for(bringup, image_id));
-            let probe_codegen =
-                crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(
-                    &root.join("build").join("nros-metadata"),
-                )
-                .join("build")
+            let probe_codegen = metadata_probe_build_dir(root)
                 .join("nros-codegen")
                 .join(format!("nano_ros_{}", cm.lang));
             let node_dirs: Vec<std::path::PathBuf> = nodes.iter().map(|(_, d)| d.clone()).collect();
@@ -3804,6 +3793,68 @@ fn entries_for_other_boards(
     out
 }
 
+/// The workspace packages a launch plan names, once each, in plan order --
+/// the closure a C/C++ west application `add_subdirectory()`s
+/// (`builder::west_app::resolve_cmake`), and therefore the packages whose
+/// components its configure registers. A launch file may name one package
+/// several times; the build needs it once.
+fn launch_closure(
+    root: &std::path::Path,
+    plan: &crate::codegen::entry::Plan,
+) -> Vec<(String, std::path::PathBuf)> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut nodes = Vec::new();
+    for n in &plan.nodes {
+        if !seen.insert(n.pkg.clone()) {
+            continue;
+        }
+        let dir = root.join("src").join(&n.pkg);
+        if dir.is_dir() {
+            nodes.push((n.pkg.clone(), dir));
+        }
+    }
+    nodes
+}
+
+/// The build dir of `nros sync`'s metadata probe for this workspace, which
+/// holds every workspace component's `nros-metadata.json` row and the codegen
+/// output (`nros-codegen/`) the message-bound seed reads.
+fn metadata_probe_build_dir(root: &std::path::Path) -> std::path::PathBuf {
+    crate::orchestration::metadata_probe_cmake::probe_dir_for_workspace(
+        &root.join("build").join("nros-metadata"),
+    )
+    .join("build")
+}
+
+/// phase-439 W7 (issue 1228) -- the population a C/C++ west image's configure
+/// will register, from the metadata probe's rows of the packages its launch
+/// plan names. `Err` says why there is none, and the resolve then composes from
+/// the model alone and records no inputs, so the configure recomposes.
+fn registered_population(
+    root: &std::path::Path,
+    model_path: &std::path::Path,
+    board: Option<String>,
+) -> Result<crate::entity_inventory::EntityInventory, String> {
+    let plan = crate::codegen::entry::plan_from_model(model_path, board)
+        .map_err(|e| format!("cannot plan the launch: {e}"))?;
+    let packages: std::collections::BTreeSet<String> = launch_closure(root, &plan)
+        .into_iter()
+        .map(|(p, _)| p)
+        .collect();
+    if packages.is_empty() {
+        return Err("the launch plan names no workspace package".into());
+    }
+    let probe = metadata_probe_build_dir(root).join("nros-metadata.json");
+    if !probe.is_file() {
+        return Err(format!(
+            "no metadata probe at {} (run `nros sync`)",
+            probe.display()
+        ));
+    }
+    crate::cmd::entity_inventory::registered_from_probe(&probe, &packages)
+        .map_err(|e| format!("{e:#}"))
+}
+
 /// Stage 3.5 for ONE image — RFC-0094 D1, phase-439 W2.
 ///
 /// Reads the declarations, runs [`EntityInventory::derive`] once through
@@ -4064,6 +4115,7 @@ fn resolve_image(
     board: &str,
     nano_ros_root: Option<&std::path::Path>,
     rx_cost: Option<crate::entity_inventory::RxFrameCost>,
+    compose_registered: bool,
 ) -> Option<ResolvedImage> {
     use crate::{
         entity_inventory::EntityInventory,
@@ -4091,6 +4143,9 @@ fn resolve_image(
     // The model rides beside the inventory for issue 1594's observation join.
     type Composed = (EntityInventory, nros_orchestration_ir::overlay::LoadedModel);
     let mut store_infra = None;
+    // phase-439 W7 -- set exactly when the composition below ran over the
+    // registered population, which is what lets the configure read it.
+    let mut entity_inputs: Option<crate::resolve::EntityInputs> = None;
     let inventory: Result<Composed, String> = (|| {
         let model_rel =
             model_location::launch_to_model_rel(bringup_dir, image.launch.as_deref(), &args_vec)
@@ -4148,6 +4203,40 @@ fn resolve_image(
         // implication, so narrowing the predicate again fails loudly here
         // instead of silently dropping the facts a second time.
         let params = crate::entity_inventory::ParamDeclarations::from_model(&model);
+
+        // phase-439 W7 (issue 1228) -- a C/C++ west image is composed the way
+        // its configure composes it: the population its packages REGISTER,
+        // with the contract folded in, by `nros ws entity-inventory`'s own
+        // function. The registered rows are the refusal guard the model alone
+        // lacks -- a registered component no contract describes is an absent
+        // row, and the derivation refuses here exactly as it would there. The
+        // verb's refusals become this phase's (it cannot fail a build), so a
+        // model the configure would reject leaves no projection to read.
+        if compose_registered && EntityInventory::from_model("", &model).is_some() {
+            match registered_population(root, &model_path, image.board.clone()) {
+                Ok(registered) => {
+                    crate::cmd::entity_inventory::check_model(&model)
+                        .map_err(|e| format!("{e:#}"))?;
+                    let inputs =
+                        crate::resolve::EntityInputs::new(&registered, &model_path, root, rx_cost);
+                    let inv = crate::cmd::entity_inventory::compose_image(
+                        registered,
+                        &model_path.display().to_string(),
+                        &model,
+                        Some(root),
+                        rx_cost,
+                        "nros build:  ",
+                    )
+                    .map_err(|e| format!("{e:#}"))?;
+                    entity_inputs = Some(inputs);
+                    return Ok((inv, model.clone()));
+                }
+                Err(why) => eprintln!(
+                    "nros build:   entity inventory composed from the model alone ({why}); \
+                     the configure will recompose it"
+                ),
+            }
+        }
         //
         // Issue 1694 -- a contract states what it names, and a count is never
         // smaller than what the launched nodes' code creates: floored by the
@@ -4199,7 +4288,10 @@ fn resolve_image(
     let composed = inventory.as_ref().ok().cloned();
     let locations = image_locations(nano_ros_root, root);
     let written = match inventory {
-        Ok((inv, _)) => write_resolved(&dir, ident, &inv, locations),
+        Ok((inv, _)) => write_resolved(&dir, ident, &inv, locations).and_then(|w| {
+            crate::resolve::write_entity_inputs(&w, &dir, entity_inputs.as_ref(), &inv)?;
+            Ok(w)
+        }),
         Err(reason) => {
             let r = crate::resolve::Resolved::unresolvable(
                 ident,
@@ -4212,9 +4304,17 @@ fn resolve_image(
             // inventory to render one from.
             match std::fs::create_dir_all(&dir)
                 .and_then(|()| {
-                    let stale = dir.join(crate::resolve::RESOLVED_CMAKE_NAME);
-                    if stale.exists() {
-                        std::fs::remove_file(&stale)?;
+                    // phase-439 W7 -- and the record a configure would
+                    // read it by: no projection, nothing to take.
+                    for name in [
+                        crate::resolve::RESOLVED_CMAKE_NAME,
+                        crate::resolve::RESOLVED_ENTITY_INPUTS_NAME,
+                        crate::resolve::RESOLVED_ENTITY_JSON_NAME,
+                    ] {
+                        let stale = dir.join(name);
+                        if stale.exists() {
+                            std::fs::remove_file(&stale)?;
+                        }
                     }
                     Ok(())
                 })

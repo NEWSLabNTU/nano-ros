@@ -110,10 +110,42 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       cannot delete the fixed point: a bare `west build`, a stale probe, or a
       workspace whose interface search path the CLI does not see gets no seed
       and still converges through the arm.
-- [ ] **W7 — one entity composer ([#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md)).**
+- [x] **W7 — one entity composer ([#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md)).**
       The mid-configure producer reads the resolve instead of recomposing, with
       the refusal guard its `nros-metadata.json` component set gives it today
       (`tests/cmake-resolved-seed-tests.sh` case C stays green).
+      **Done 2026-10-23, for the C/C++ west road.** Stage 3.5 gets the guard by
+      reading the population the image will register before the configure
+      runs: `nros sync`'s metadata probe has every workspace component's row,
+      and a west app `add_subdirectory()`s exactly the packages its launch plan
+      names, so probe rows ∩ launch closure are the configure's rows
+      (`cmd::entity_inventory::registered_from_probe`). Both sides compose
+      through one function, `compose_image`, which `nros ws entity-inventory`
+      now calls too. The resolve records what it composed over
+      (`resolved-entity-inputs.cmake`: registered rows, model, workspace,
+      board rx args). `nros_resolved_entity_take` copies `resolved.cmake` and
+      the JSON only when the configure's own inputs match, and otherwise
+      recomposes and says which input differed. A refusal leaves no
+      projection, so it always goes through the CLI.
+      Found on the way: the generated west app publishes no
+      `NROS_WORKSPACE_DIR`, so the producer's issue-1694 probe-sidecar floor
+      never ran on this road while stage 3.5 applied it. The producer now takes
+      the workspace from the bringup's `<ws>/src/<pkg>` layout, the census
+      check's rule. It is not published as `NROS_WORKSPACE_DIR`, because board
+      facts would then resolve from it.
+      Measured on `demo_bringup:zephyr`, clean dir: 0 `Re-running CMake`; the
+      producer reads the resolve ("this configure composed nothing"); fragment
+      and JSON byte-identical to the resolve; the 13 delivered-knob lines
+      identical to W6's; `check-knob-delivery` green; two incremental rebuilds
+      0 re-runs. Case T of `tests/cmake-resolved-seed-tests.sh` covers a match
+      (byte-for-byte take) and each input moved alone (declines, naming it);
+      mutating the registered or model comparison reds it. The Rust writer and
+      the cmake reader of the registered keys are pinned to one literal
+      (`resolve::tests::entity_inputs_key_the_registered_rows`).
+      **Not covered:** the Rust west entry (`rust_cargo_application()`, whose
+      seed is its only producer, issue 1729), the cmake road (one configure
+      for several entries, i.e. a shared runtime, which the resolve does not
+      compose), and every configure `nros build` did not start.
 - [ ] **W8 — delete the fixed point.** Only after W6 and W7 measure 0
       re-configures: remove `nros_reconfigure_settle` and the future-mtime arm
       in `cmake/NanoRosReconfigure.cmake`, with their tests. Control:

@@ -656,6 +656,7 @@ function(nano_ros_entry)
             LAUNCH    "${_NRA_LAUNCH}"
             MODEL     "${_NRA_MODEL}"
             BOARD     "${_NRA_BOARD}"
+            BRINGUP   "${_NRA_BRINGUP}"
             ARGS_LIST ""
             TYPED     "${_NRA_TYPED}"
             OUT_VAR_GEN     _gen_tu
@@ -1213,7 +1214,7 @@ endfunction()
 function(_nros_entry_invoke_codegen)
     cmake_parse_arguments(_NRX
         ""
-        "NAME;LANG;LAUNCH;MODEL;BOARD;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
+        "NAME;LANG;LAUNCH;MODEL;BOARD;BRINGUP;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
         "ARGS_LIST"
         ${ARGN})
 
@@ -1427,8 +1428,27 @@ function(_nros_entry_invoke_codegen)
     # GENERATED entry (RFC-0065 D8) it lands in `build/<coord>/`, which has no
     # `src/`, so both consumers silently skipped the workspace -- issue 0949's
     # class, whose fix published the right root as `NROS_WORKSPACE_DIR`.
+    #
+    # phase-439 W7 -- and a GENERATED west application publishes no
+    # `NROS_WORKSPACE_DIR` (it never calls `nano_ros_workspace()`), so this
+    # fell to `_ws_root` there, every probe sidecar went unread, and the floor
+    # stage 3.5 applies to the same image was missing here. The bringup names
+    # the workspace by the layout `_nros_entry_require_fresh_census` already
+    # reads it by: a bringup at `<ws>/src/<pkg>` is in `<ws>`. Not published as
+    # `NROS_WORKSPACE_DIR`, which board facts would then resolve from instead
+    # of the application.
+    set(_nrx_bringup_ws "")
+    if(NOT "${_NRX_BRINGUP}" STREQUAL "")
+        get_filename_component(_nrx_bp "${_NRX_BRINGUP}" DIRECTORY)
+        get_filename_component(_nrx_bp_name "${_nrx_bp}" NAME)
+        if(_nrx_bp_name STREQUAL "src")
+            get_filename_component(_nrx_bringup_ws "${_nrx_bp}" DIRECTORY)
+        endif()
+    endif()
     if(DEFINED NROS_WORKSPACE_DIR AND IS_DIRECTORY "${NROS_WORKSPACE_DIR}/src")
         set(_nrx_colcon_ws "${NROS_WORKSPACE_DIR}")
+    elseif(NOT _nrx_bringup_ws STREQUAL "" AND IS_DIRECTORY "${_nrx_bringup_ws}/src")
+        set(_nrx_colcon_ws "${_nrx_bringup_ws}")
     else()
         set(_nrx_colcon_ws "${_ws_root}")
     endif()
