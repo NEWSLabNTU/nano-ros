@@ -1327,6 +1327,11 @@ qos_profiles! {
     /// writers). Verified against real PX4 SITL (`nros-px4-sitl-test`):
     /// `TRANSIENT_LOCAL` durability silently fails to match `/fmu/out/*`.
     /// Adjust depth via `.keep_last(n)` for higher-rate streams.
+    ///
+    /// Liveliness is the `None` sentinel, not `Automatic` (issue 2002): this
+    /// profile exists for the XRCE backend, and `uxrQoS_t` carries no
+    /// liveliness, so XRCE refuses a stated one (issue 1329). Stating it made
+    /// every companion fail to advertise its first topic.
     QOS_PROFILE_PX4: "nros: PX4 uxrce_dds_client companion QoS; no upstream constant" = {
         history: KeepLast,
         depth: 1,
@@ -1334,7 +1339,7 @@ qos_profiles! {
         durability: Volatile,
         deadline_ms: 0,
         lifespan_ms: 0,
-        liveliness_kind: Automatic,
+        liveliness_kind: None,
         liveliness_lease_ms: 0,
         avoid_ros_namespace_conventions: false,
         tx_express: false,
@@ -1388,10 +1393,13 @@ qos_profiles! {
 //   application on that backend over a policy nobody asked for. The fix is to
 //   stop asking, not to let a backend claim what it does not implement.
 //
-//   The `BEST_EFFORT` / `RELIABLE` / `QOS_PROFILE_PX4` shorthands still state
-//   AUTOMATIC. They mirror no upstream constant — their doc strings say so —
-//   so they are choices rather than deviations, and a caller picking one is
-//   asking for automatic liveliness on purpose.
+//   The `BEST_EFFORT` / `RELIABLE` shorthands still state AUTOMATIC. They
+//   mirror no upstream constant — their doc strings say so — so they are
+//   choices rather than deviations, and a caller picking one is asking for
+//   automatic liveliness on purpose. `QOS_PROFILE_PX4` stated it too, and was
+//   the counterexample to that reading (issue 2002): it is the profile FOR the
+//   XRCE backend, which honours no liveliness, so nobody picking it could have
+//   meant it. It carries the sentinel now.
 //
 // `rmw_qos_profile_unknown` HAS a counterpart now — `QOS_PROFILE_UNKNOWN` in the
 // table below, added by this phase. The note that used to stand here declared it
