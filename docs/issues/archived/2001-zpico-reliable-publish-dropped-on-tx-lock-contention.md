@@ -25,9 +25,13 @@ i.e. a TRY-lock. When another thread holds the transport TX mutex, the put is
 discarded ("Dropping zenoh message because of congestion control", `_Z_INFO`
 only) and `z_publisher_put` returns an error.
 
-The other holder needs no congestion at all. The lease task's keep-alive, a
-service reply, or a second publisher on the same session is enough, and on a
-loaded host that holder can be descheduled mid-write, which widens the window.
+The other holder needs no congestion at all: the lease task's keep-alive is
+enough, and on a loaded host it can be descheduled mid-write, which widens the
+window. (This originally said a service reply or a second publisher could hold
+it too. They cannot: every data send takes the session's transport lock
+first, in `_z_send_n_msg` (issue 0899), so data sends serialise there and wait.
+Only the keep-alive takes the TX mutex directly. Corrected while resolving
+issue 2005.)
 Issue 1980 measured it: 1 of 25 runs of
 `an_arrival_racing_a_drain_is_never_left_undispatched` under `2 x nproc` busy
 loops failed `publish_raw` with exactly this path.
@@ -108,5 +112,5 @@ Option 2 (a distinct `Busy` error) was NOT done. zenoh-pico's contention
 failure is the platform's try-lock code, which is `-1`, `_Z_ERR_GENERIC` or an
 errno mapping depending on the port. That makes it indistinguishable from
 other failures without a fork patch. The BEST_EFFORT half is filed as
-[issue 2005](../2005-zpico-best-effort-publish-contention-reads-as-failure.md),
+[issue 2005](2005-zpico-best-effort-publish-contention-reads-as-failure.md),
 with the zenoh-matching fork patch as its recommendation.

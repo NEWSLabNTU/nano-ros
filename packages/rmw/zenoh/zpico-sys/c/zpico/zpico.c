@@ -2748,13 +2748,14 @@ int32_t zpico_declare_publisher_ex(zpico_session_t* session, const char* keyexpr
      * through NrosRmwQos; harmless without batching. */
     pub_opts.is_express = (is_express != 0);
     /* Issue 2001 — what a put does when ANOTHER thread holds the transport TX
-     * mutex (the lease task's keep-alive, a service reply, a second
-     * publisher). zenoh-pico's default DROP only TRY-locks it and discards the
-     * put, which is not zenoh's DROP (that drops on a full send queue): it
-     * fails on mere contention, and the caller cannot tell it from a dead
-     * session. A RELIABLE publisher therefore WAITS (BLOCK), for as long as the
-     * holder's own write takes. BEST_EFFORT keeps DROP: losing a sample is
-     * what it allows. */
+     * mutex. Data sends serialise on the session's transport lock first
+     * (`_z_send_n_msg`, issue 0899), so that other thread is the lease task
+     * sending a keep-alive, which takes the TX mutex directly. zenoh-pico's
+     * default DROP only TRY-locks it and discards the put, which is not
+     * zenoh's DROP (that drops on a full send queue). A RELIABLE publisher
+     * therefore WAITS (BLOCK), for as long as the keep-alive's write takes.
+     * BEST_EFFORT keeps DROP: losing a sample is what it allows, and since
+     * issue 2005 the fork reports that drop as success. */
     if (is_reliable != 0) {
         pub_opts.congestion_control = Z_CONGESTION_CONTROL_BLOCK;
     }
