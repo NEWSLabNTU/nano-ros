@@ -5,7 +5,8 @@
 //! `ZephyrBoard::run_tiers` — two tiers over one shared Cyclone DDS session).
 //!
 //! This is the maintainer pre-release gate (`just zephyr verify-fvp-runtime`
-//! builds + runs it): the ARM FVP is license-walled, so no scheduled lane
+//! builds + runs it): no CI runner provisions the ARM FVP (`nros setup --tool
+//! arm-fvp`, a public download since 2026-09-06), so no scheduled lane
 //! selects it (`test-all` excludes it by scope), it fails (`unmet!`) on a
 //! host without the model, and a maintainer runs it before an ASI pin bump
 //! or release. It replaces the retired false-green legacy talker
@@ -76,9 +77,8 @@ fn fvp_ws_entry_two_tier_publishes() {
     // 1. FVP installed?
     if resolve_fvp_dir(&root).is_none() {
         unmet!(
-            "ARM FVP not resolvable (set ARMFVP_BIN_PATH or ARM_FVP_DIR; \
-             gated install — accept Arm EULA at \
-             https://developer.arm.com/downloads/-/arm-ecosystem-fvps)"
+            "ARM FVP not resolvable — run `nros setup --tool arm-fvp` (a public \
+             download, x86_64 Linux only), or set ARMFVP_BIN_PATH / ARM_FVP_DIR"
         );
     }
 
@@ -137,4 +137,25 @@ fn fvp_ws_entry_two_tier_publishes() {
     );
 
     drop(proc);
+}
+
+/// RFC-0051 §7c (phase-511) — the cases this file runs are exactly the
+/// cells `matrix::consumer_of` assigns to it. Fixture-free: a cell added,
+/// retiered or reassigned without this list moving is a red here.
+#[test]
+fn cases_bound_to_matrix_cells() {
+    use nros_tests::matrix::{
+        Consumer, Kind as K, Lang as L, PlatformId as P, Rmw as R, Workload as W,
+        assert_consumer_cases,
+    };
+    assert_consumer_cases(
+        Consumer::FvpRuntimeWs,
+        &[(
+            P::Fvp,
+            L::Cpp,
+            R::Cyclonedds,
+            W::RealtimeTiers,
+            K::Workspace,
+        )],
+    );
 }

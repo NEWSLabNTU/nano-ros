@@ -333,6 +333,10 @@ build-c-port:
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
     source scripts/build/zephyr-python.sh
     nros_zephyr_activate
+    # issue 0698 — native_sim builds with the host toolchain, named rather than
+    # left unset (CMake 4 refuses Zephyr 3.7's unquoted expansion of it).
+    source scripts/build/zephyr-toolchain.sh
+    export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant native_sim/native/64)"
     west build -b native_sim/native/64 \
         -d tests/zephyr-c-smoke/build tests/zephyr-c-smoke \
         -- -DMAKE="$make_bin"

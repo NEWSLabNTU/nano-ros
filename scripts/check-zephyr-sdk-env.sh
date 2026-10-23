@@ -117,6 +117,55 @@ while IFS= read -r site; do
     esac
 done <<<"$_gg"
 
+# Issue 0698's REACH (phase-511). A `just` recipe that configures a Zephyr image
+# names its toolchain variant, because Zephyr 3.7 expands it unquoted and CMake
+# 4 refuses the configure when it is unset. The rule reached three callers and
+# missed five (the four FVP recipes and `build-c-port`), each red only on a
+# CMake-4 host that ran it. A recipe "configures" when a non-comment line runs
+# `west build` or `nros build … --zephyr-workspace`; a recipe that only names
+# them in prose is not one. The negative control runs first.
+variant_reach() { # <file>...  prints `file:recipe` per offender
+    python3 - "$@" <<'PY'
+import re, sys
+CONF = re.compile(r"(^|[\s;&|(\"'])west(\"?\s|\s.*\s)build\b|--zephyr-workspace\b")
+HEAD = re.compile(r"^[A-Za-z_@][\w-]*(\s[^:=\n]*)?:(?!=)")
+for path in sys.argv[1:]:
+    name, body = None, []
+    def flush():
+        if name is None:
+            return
+        # Comments and messages name the command without running it.
+        code = [
+            l for l in body
+            if not l.lstrip().startswith(("#", "echo ", "printf ", "nros_lane_skip "))
+        ]
+        if any(CONF.search(l) for l in code) and not any(
+            "ZEPHYR_TOOLCHAIN_VARIANT" in l for l in code
+        ):
+            print(f"{path}:{name}")
+    for line in open(path, encoding="utf-8"):
+        if HEAD.match(line):
+            flush()
+            name, body = line.split(":", 1)[0].split()[0], []
+        elif name is not None:
+            body.append(line)
+    flush()
+PY
+}
+printf '%s\n' 'bad:' '    west build -b native_sim app' 'good:' \
+    '    export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant x)"' \
+    '    west build -b x app' 'prose:' '    # a `west build` would need it' \
+    '    echo "  [MISSING] deps for west build"' >"$tmp/fixture.just"
+got="$(variant_reach "$tmp/fixture.just")"
+[ "$got" = "$tmp/fixture.just:bad" ] \
+    || fail "variant-reach negative control: want only \`bad\`, got \`$got\`"
+mapfile -t _just_files < <(git -C "$repo_root" ls-files 'just/*.just' 'just/**/*.just' justfile)
+offenders="$(cd "$repo_root" && variant_reach "${_just_files[@]}")"
+while IFS= read -r o; do
+    [ -n "$o" ] || continue
+    fail "recipe configures a Zephyr image with no ZEPHYR_TOOLCHAIN_VARIANT (issue 0698): $o"
+done <<<"$offenders"
+
 if [ "$fails" -ne 0 ]; then
     echo "check-zephyr-sdk-env: $fails failure(s)" >&2
     exit 1
