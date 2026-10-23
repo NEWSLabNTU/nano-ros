@@ -312,6 +312,15 @@ where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "2 case(s) produced a result in interop_e2e.xml"
 
 [[verdict]]
+cell = "native-slirp-pubsub-cpp-cyclone-n2r"
+date = "2026-10-23"
+verdict = "pass"
+tests = ["a_tag_isolated_host_profile_reaches_a_slirp_guest_and_nothing_else"]
+run = "just linux test-ros2-cyclone-slirp-pair"
+where = "host, Humble, slirp4netns 1.0.1, main 6e00553ede"
+evidence = "1 case(s) produced a result in junit.xml"
+
+[[verdict]]
 cell = "zephyr-cortex-m-pubsub-c-zenoh"
 date = "2026-10-11"
 verdict = "pass"
