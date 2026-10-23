@@ -342,6 +342,11 @@ build-fvp-ws-entry:
     _sdk_ninja="$(nros sdk-path ninja)"
     cd "$workspace"
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
+    # issue 0698 — name the toolchain variant: Zephyr 3.7 expands it UNQUOTED,
+    # and CMake 4 refuses the configure when it is unset (phase-511 found these
+    # four FVP recipes were the callers that rule never reached).
+    source "$nros_root/scripts/build/zephyr-toolchain.sh"
+    export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant fvp_baser_aemv8r)"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     export NROS_REPO_DIR="$nros_root"
     # phase-298 W3 — bake the fast-sim flag into the configure-time
@@ -439,6 +444,11 @@ run-fvp-ws-entry:
     cd "$workspace"
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
     # issue 1254 — the resolver, not a fifth spelling of the path.
+    # issue 0698 — name the toolchain variant: Zephyr 3.7 expands it UNQUOTED,
+    # and CMake 4 refuses the configure when it is unset (phase-511 found these
+    # four FVP recipes were the callers that rule never reached).
+    source "$nros_root/scripts/build/zephyr-toolchain.sh"
+    export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant fvp_baser_aemv8r)"
     export ZEPHYR_SDK_INSTALL_DIR="$(bash "$nros_root/scripts/lib/zephyr-sdk.sh" --root "$nros_root" resolve)"
     export NROS_REPO_DIR="$nros_root"
     export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
@@ -569,6 +579,11 @@ build-fvp-board-import:
     _sdk_ninja="$(nros sdk-path ninja)"
     cd "$workspace"
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
+    # issue 0698 — name the toolchain variant: Zephyr 3.7 expands it UNQUOTED,
+    # and CMake 4 refuses the configure when it is unset (phase-511 found these
+    # four FVP recipes were the callers that rule never reached).
+    source "$nros_root/scripts/build/zephyr-toolchain.sh"
+    export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant fvp_baser_aemv8r)"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     # Phase 215.B — the fixture's CMakeLists includes
     # `${NROS_REPO_DIR}/zephyr/cmake/nano_ros_use_board.cmake` BEFORE
@@ -653,6 +668,11 @@ run-fvp-board-import:
     cd "$workspace"
     export PATH="$_sdk_make/bin:$_sdk_ninja/bin:$PATH"
     # issue 1254 — the resolver, not a fifth spelling of the path.
+    # issue 0698 — name the toolchain variant: Zephyr 3.7 expands it UNQUOTED,
+    # and CMake 4 refuses the configure when it is unset (phase-511 found these
+    # four FVP recipes were the callers that rule never reached).
+    source "$nros_root/scripts/build/zephyr-toolchain.sh"
+    export ZEPHYR_TOOLCHAIN_VARIANT="$(nros_zephyr_toolchain_variant fvp_baser_aemv8r)"
     export ZEPHYR_SDK_INSTALL_DIR="$(bash "$nros_root/scripts/lib/zephyr-sdk.sh" --root "$nros_root" resolve)"
     west build -d "$fvp_build" -t run
 

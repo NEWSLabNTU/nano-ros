@@ -81,7 +81,11 @@ fi
 # shellcheck source=../build/cargo.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../build/cargo.sh"
 if _fvp_cli="$(nros_cli_bin 2>/dev/null)"; then
-    if _store="$("$_fvp_cli" sdk-path arm-fvp 2>/dev/null)" && [ -n "$_store" ]; then
+    # `nros sdk-path` finds `nros-sdk-index.toml` from its working directory,
+    # so ask from this checkout's root: a caller elsewhere (a cargo test runs
+    # in its crate dir) got "no FVP found" over an installed model (phase-511).
+    _fvp_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    if _store="$(cd "$_fvp_root" && "$_fvp_cli" sdk-path arm-fvp 2>/dev/null)" && [ -n "$_store" ]; then
         if emit_dir "$_store/bin" 2>/dev/null || emit_dir "$_store" 2>/dev/null; then
             exit 0
         fi

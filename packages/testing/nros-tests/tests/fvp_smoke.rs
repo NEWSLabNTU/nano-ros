@@ -22,7 +22,7 @@
 //! Preconditions (each an `nros_tests::unmet!` red, issue 1758; NEVER a
 //! bare `eprintln!`+`return`, which would report a false PASS):
 //!   1. ARM FVP not resolvable via `scripts/zephyr/resolve-fvp-bin.sh`
-//!      (gated, license-walled — `[gated.arm-fvp]` in
+//!      (`[tool.arm-fvp]`, a public download, in
 //!      `nros-sdk-index.toml`).
 //!   2. `west` not on PATH (Zephyr SDK absent).
 //!   3. Zephyr workspace not set up.
@@ -81,9 +81,8 @@ fn fvp_board_import_fixture_boots() {
     // 1. FVP installed?
     if resolve_fvp_dir(&root).is_none() {
         unmet!(
-            "ARM FVP not resolvable (set ARMFVP_BIN_PATH or ARM_FVP_DIR; \
-             gated install — accept Arm EULA at \
-             https://developer.arm.com/downloads/-/arm-ecosystem-fvps)"
+            "ARM FVP not resolvable — run `nros setup --tool arm-fvp` (a public \
+             download, x86_64 Linux only), or set ARMFVP_BIN_PATH / ARM_FVP_DIR"
         );
     }
 
