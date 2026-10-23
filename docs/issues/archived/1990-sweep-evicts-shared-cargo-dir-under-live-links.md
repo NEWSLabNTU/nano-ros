@@ -1,7 +1,7 @@
 ---
 id: 1990
 title: "runner-sweep evicts `build/corrosion-cargo/<platform>` while example build dirs still link into it, so the next build without a reconfigure fails with `File exists (os error 17)`"
-status: open
+status: resolved
 type: bug
 area: [ci, build]
 severity: medium
@@ -145,3 +145,50 @@ Either side can own the fix. Choose one and gate it:
 Acceptance: on a tree whose leaves are configured, `rm -rf
 build/corrosion-cargo/freertos` followed by `just build tier2-nightly` (no
 reconfigure) builds the FreeRTOS C leaves.
+
+## Resolution (2026-10-23)
+
+Option 1: the build re-creates what the configure made.
+
+- `cmake/NanoRosSharedCargoLink.cmake` is a `cmake -P` script. If
+  `<build>/cargo` is a symlink whose target is missing, it creates the
+  target and says so (`re-created the shared cargo dir … (issue 1990)`).
+  A live link, a real directory (the degrade path) and no link at all are
+  left alone. A link to a regular file is refused.
+- `nros_share_corrosion_cargo_dir()` schedules, once per configure, an
+  always-run target `nros_shared_cargo_link` that runs the script. A
+  deferred call at the end of the configure orders every `_cargo-build_*`
+  target in the build after it, because those targets come from sibling
+  scopes (`nros-c`, `nros-cpp`, a Rust leaf's own crate) and any of them can
+  be the first edge ninja runs.
+- The script reads the LINK at build time, not a directory baked in at
+  configure. The issue 1700 re-key moves the link at the end of the
+  configure, so the link is the one value that is always current.
+- `nros_share_corrosion_cargo_dir()` is the only `file(CREATE_LINK` in the
+  tree (`git grep -n CREATE_LINK -- cmake zephyr packages`), so every leaf
+  that links into a shared cargo dir gets the step. The roads that pass
+  `CARGO_TARGET_DIR` directly (NuttX's FFI driver, the Zephyr lane) have no
+  link, and cargo creates a missing directory itself, as the issue noted.
+  Only the native road was measured here.
+
+Measured on `examples/linux/c/talker/build-zenoh`
+(`fixtures-build.sh linux c zenoh` at `origin/main` + this change):
+
+- `ninja -t query …/_cargo-build_nros_c.util` lists `nros_shared_cargo_link`
+  among its inputs.
+- `rm -rf` of the directory the link names, then `cmake --build build-zenoh`
+  with no reconfigure: rc 0. The first edge printed the re-create line,
+  cargo rebuilt `nros-c-image_*` and `nros-cpp-image_*` into it, and the
+  talker linked.
+- Control: `mkdir -p <dangling link>/x` fails with `File exists`, the same
+  error cargo reported.
+
+Gate: `check cmake-shared-cargo-link` (fast line), with 6 cases. With the
+script's `file(MAKE_DIRECTORY)` commented out, it FAILS cases 1 (dangling
+link) and 5 (relative target).
+
+Not done:
+- The sweep still evicts `corrosion-cargo/<platform>` as one unit. Each
+  eviction now costs the next build a full Rust rebuild, not a failure.
+- The 118 runner's leaves heal on their next build, so no runner action is
+  needed. That has not been seen on a runner yet.
