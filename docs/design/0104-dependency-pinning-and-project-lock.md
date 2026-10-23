@@ -121,6 +121,7 @@ version = "0.1.9"
 [generated.std_msgs]         # what the local half came FROM (D5)
 ament = "sha256:…"           # hash of the ament inputs; codegen version
 codegen = "…"
+emitter = "…"                # codegen_fingerprint() of the emitters (issue 1825)
 ```
 
 In a checkout it is a build artifact (gitignored, as today). In a USER project
@@ -155,6 +156,20 @@ build must regenerate it before compiling, or the image carries generated code
 that no longer matches its ROS peers — 1018's freshness class with the ROS
 install as the moved input. `[generated.<pkg>] ament` is the key: a mismatch
 re-runs generation for that package.
+
+**The emitter is the other input, and the codegen VERSION does not stand for
+it** (issue 1825, amended 2026-10-23). The version is bumped when the emitted
+code's contract with the runtime changes; two release toolchains can carry the
+same version and emit different bytes, and a user project moves between them
+with a pin edit (RFC-0095 D9). Keyed on `ament` and `codegen` alone, `nros
+build` under the new pin reused the old pin's output as current.
+`[generated.<pkg>] emitter` is `rosidl_codegen::codegen_fingerprint()`, the hash
+of every byte the emitters produce for the corpus, so a regeneration follows
+any emitted-byte change and nothing else (phase-424 measured 41 CLI builds
+sharing 9 fingerprints). A record without it predates the field and regenerates
+once. The cmake witness is computed by whichever `nros` the configure
+resolves; through the front, dispatch makes that the pinned toolchain (by
+design; issue 1825 records what was and was not measured end to end).
 
 The record lives BESIDE the tree it describes — `<generated pkg>/nros-generated.toml`,
 the same `[generated.<pkg>]` section — because generated trees are per leaf and

@@ -8216,6 +8216,35 @@ mod generated_freshness_tests {
     }
 
     #[test]
+    fn a_crate_generated_by_another_toolchain_is_reported() {
+        // Issue 1825 — a user project's pin moved from toolchain A to B. Same
+        // ament inputs, same codegen VERSION (two releases can share one), so the
+        // only difference is the emitter. `nros build` under B must regenerate,
+        // not compile A's output; before the `emitter` field it read as current.
+        let t = tempfile::tempdir().unwrap();
+        let scan = synced_workspace(t.path());
+        let record = Stamp::path_in(&t.path().join("generated/my_msgs"));
+        let by_b = Stamp::read(&record).unwrap();
+        Stamp {
+            emitter: "a".repeat(64),
+            ..by_b.clone()
+        }
+        .write(&record)
+        .unwrap();
+        let (moved, _) = moved_in(t.path(), &scan);
+        let names: Vec<&str> = moved.iter().map(|m| m.package.as_str()).collect();
+        assert_eq!(names, ["my_msgs"], "{moved:?}");
+        assert!(
+            moved[0].reason.contains("different emitter"),
+            "{}",
+            moved[0].reason
+        );
+        // Negative control: B's own record is current.
+        by_b.write(&record).unwrap();
+        assert!(moved_in(t.path(), &scan).0.is_empty());
+    }
+
+    #[test]
     fn an_unresolvable_crate_is_listed_apart_never_counted_fresh() {
         // A crate whose package this host no longer resolves cannot be checked:
         // it is reported, not silently treated as current, and not refused

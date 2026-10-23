@@ -7,7 +7,7 @@ operational `mv`, not a code change. W8 had already landed as phase-431 W4. The
 user-path probe W8 deferred exists as `just probe installed` (phase-447 A3). One
 clause of W7 was argued, not measured — a pin bump re-staling generated code on
 the user path — and moved to
-[issue 1825](../../issues/1825-store-pin-bump-restale-unmeasured.md).
+[issue 1825](../../issues/archived/1825-store-pin-bump-restale-unmeasured.md).
 
 **Status (2026-09-09). W1 LANDED; W2 CLOSED by deletion (issue 1248); W3-W8 open.** Implements
 [RFC-0095](../../design/0095-nros-store-is-the-root.md). The campaign home for

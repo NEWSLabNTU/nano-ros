@@ -1289,7 +1289,9 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   mtime** (issue 1780, RFC-0104 D5) — `dpkg` installs a file with the `.deb`'s
   mtime and an overlay moves no file, so a ROS upgrade left cmake and west
   images byte-identical. Every generated package carries
-  `nros-generated.toml` (`rosidl_codegen::ament_stamp`); `nros build`
+  `nros-generated.toml` (`rosidl_codegen::ament_stamp`), keyed on the ament
+  inputs AND the emitter fingerprint (issue 1825: a pin bump between two
+  releases of one codegen version reused the old output); `nros build`
   regenerates a moved cargo-road crate, both cmake generators ask
   `nros_codegen_ament_stale()` at configure.
 - **A lib reached through a raw `-Wl,...` link FLAG gets no rebuild edge (issue 0475)** — CMake cannot
