@@ -1058,6 +1058,16 @@ test-ros2-multinode-rust verbose="":
 test-ros2-multinode-cpp verbose="":
     @just _test-focused 'binary(=cpp_multi_node_entry)' {{verbose}}
 
+# Issue 1251's Cyclone profile pair, through libslirp itself (phase-511 C,
+# interop cell `native-slirp-pubsub-cpp-cyclone-n2r`): the Cyclone backend's
+# `ros2_pub` as a guest behind `slirp4netns`, a stock `ros2 topic echo` on the
+# host. Runs `cyclone_slirp_pair`; needs ROS 2 + `rmw_cyclonedds_cpp`,
+# `unshare` + `slirp4netns`, unprivileged user namespaces, and the
+# `cyclone_slirp_guest` compile-check row (every fixture lane builds it).
+[group("debug")]
+test-ros2-cyclone-slirp-pair verbose="":
+    @just _test-focused 'binary(=cyclone_slirp_pair)' {{verbose}}
+
 # DECLARATIVE zenoh → Cyclone DDS bridge e2e (phase-267 W-B, issues 0106 / 0107
 # / 0109). The bridge is a `linux_entry` whose `system.toml` declares the
 # `[[bridge]]`; `nros sync` bakes `nros-bridge.toml` and the macro emits the

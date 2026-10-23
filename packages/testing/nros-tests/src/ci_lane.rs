@@ -39,8 +39,17 @@
 //! | --- | --- | --- | --- | --- |
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 23 | 11 | 22 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 20 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config | 39 | 37 | 73 % |
-//! | tier 3 | everything | 245 | 51 | 100 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config | 37 | 35 | 69 % |
+//! | tier 3 | everything | 247 | 51 | 100 % |
+//!
+//! Re-measured 2026-10-23 (phase-511 B/C): the FreeRTOS C++ Cyclone workspace
+//! cell went BuildOnly -> Runtime (the mps3-an536 entry answers it), and one
+//! Linux C++ Cyclone interop cell joined (`cyclone_slirp_pair`). Tiers 1 and 2
+//! did not move. The nightly got CHEAPER, 39/37 -> 37/35 (the greedy cover
+//! reshuffling around a new Runtime cell, as in phase-510 W6), with every
+//! declared pair still covered (`nightly_covers_every_declared_pair_it_claims_to`). The two
+//! new `Gated` cells (FVP, PX4 XRCE) are in no cover by construction. Tier 3 is
+//! 247 cells over the same 51 coordinates.
 //!
 //! Re-measured 2026-10-23 (phase-511): fifteen Runtime cells joined for tests
 //! that ran with no cell (Linux Params/Qos/CustomMsg/Safety examples, Logging
@@ -1026,7 +1035,7 @@ _tier-build:
         let documented = [
             (CiLane::Tier1, 23, 11),
             (CiLane::Tier2, 11, 10),
-            (CiLane::Tier2Nightly, 39, 37),
+            (CiLane::Tier2Nightly, 37, 35),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -1048,8 +1057,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 245,
-            "the table's tier-3 cell count (245) is stale; recomputed {total_cells}"
+            total_cells, 247,
+            "the table's tier-3 cell count (247) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 51,

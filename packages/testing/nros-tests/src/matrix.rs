@@ -81,7 +81,7 @@ pub enum PlatformId {
     Esp32Qemu,
     /// Bare-metal RTIC on QEMU MPS2-AN385.
     QemuBaremetal,
-    /// ARM FVP Base_RevC AEMv8-R (license-gated model).
+    /// ARM FVP Base_RevC AEMv8-R (`[tool.arm-fvp]`, x86_64 Linux only).
     Fvp,
     /// PX4-SITL host (the uORB middleware). Issue 0341 — expressible so the
     /// uORB axis has a home; carried as a CarveOut (no CI runner builds SITL).
@@ -611,6 +611,13 @@ pub enum Tier {
     /// Deliberately unsupported / not applicable. The string is the
     /// recorded reason (audit E5).
     CarveOut(&'static str),
+    /// A runtime test exists and its consumer binds it, but it runs only in
+    /// the lane the string names, which no CI tier selects: the prerequisite
+    /// is one no CI runner provisions (the FVP model, the PX4 `.msg` tree).
+    /// The tier covers skip it, so no tier claims what it cannot run (issue
+    /// 0232's false green), and `BuildOnly` would say no test exists, which is
+    /// false the other way (RFC-0051 §7c, phase-511).
+    Gated(&'static str),
 }
 
 /// One cell of the matrix.
@@ -1040,27 +1047,35 @@ pub const CELLS: &[Cell] = &[
     // model of the F4 MAC). The board is now
     // `book/src/porting/stm32f4-out-of-tree.md`.
 
-    // FVP — cyclone runtime (license-gated at run time), cpp + rust.
-    // Issue 0232 / phase-320 W1.a — these were `Runtime`, which the lane can
-    // never satisfy: the Base_RevC AEMv8-R model is license-walled
-    // (`[gated.arm-fvp]` in nros-sdk-index.toml, user-supplied via ARM_FVP_DIR),
-    // so `fvp_smoke` / `fvp_runtime_ws` skip on EVERY CI and dev host. Claiming
-    // Runtime here is the exact shape of 0232's false green — a lane that always
-    // skipped, so four walls "shipped invisible and were found by the ASI
+    // FVP — Cyclone, cpp + rust.
+    // Issue 0232 / phase-320 W1.a — these were `Runtime`, which no lane could
+    // satisfy: the model was then believed license-walled and modelled as
+    // `[gated.arm-fvp]`, so `fvp_smoke` / `fvp_runtime_ws` skipped on every CI
+    // and dev host. Claiming Runtime here was 0232's false green — a lane that
+    // always skipped, so four walls "shipped invisible and were found by the ASI
     // consumer". A gap reads as a gap; an overclaim reads as confidence.
     //
-    // The maintainer-run runtime gate still exists and still matters
-    // (`just zephyr verify-fvp-runtime`); it is simply not coverage this matrix
-    // can promise. Note the runtime-verified FVP artifact is the two-tier
-    // workspace Entry, not these example cells.
+    // Since 2026-09-06 the model is a pinned public download
+    // (`[tool.arm-fvp]`, `nros setup --tool arm-fvp`, x86_64 Linux only), so
+    // what keeps it off CI is that no runner provisions it, not a license
+    // (phase-511 corrected this note and the reasons below).
+    //
+    // The example cells have no runtime test at all: phase-298 W4 retired the
+    // legacy talker tests, whose images have no ethernet device and so could
+    // never publish. The runtime FVP artifact is the two-tier workspace entry.
     cell(Fvp, Cpp,  Cyclonedds, Pubsub, Example,
-         BuildOnly("license-gated model; runtime needs ARM_FVP_DIR and is maintainer-run \
-                    via `just zephyr verify-fvp-runtime` (phase-298)")),
+         BuildOnly("the example image has no ethernet device on the FVP, so it cannot \
+                    publish; the runtime FVP witness is the workspace entry (phase-298 W4)")),
     cell(Fvp, Rust, Cyclonedds, Pubsub, Example,
-         BuildOnly("license-gated model; runtime needs ARM_FVP_DIR and is maintainer-run \
-                    via `just zephyr verify-fvp-runtime` (phase-298)")),
+         BuildOnly("the example image has no ethernet device on the FVP, so it cannot \
+                    publish; the runtime FVP witness is the workspace entry (phase-298 W4)")),
     cell(Fvp, Cpp,  Zenoh,      Pubsub, Example,
          CarveOut("zenoh-pico needs POSIX API the FVP board conf doesn't enable (#217)")),
+    // phase-511 B2 — that workspace entry, the two-tier realtime-cpp image,
+    // answered by `fvp_runtime_ws`.
+    cell(Fvp, Cpp, Cyclonedds, RealtimeTiers, Workspace,
+         Gated("`just zephyr verify-fvp-runtime` — no CI runner provisions the FVP model \
+                (`nros setup --tool arm-fvp`, x86_64 Linux only)")),
 
     // ── Workspace kind (Entry-pkg lanes; native-heavy today) ──────────
     cell(Linux, Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
@@ -1101,16 +1116,18 @@ pub const CELLS: &[Cell] = &[
     // of its own and the board carries no Rust board crate.
     cell(FreertosPosix, C,   Cyclonedds, EntryPubsub, Workspace, Runtime),
     cell(FreertosPosix, Cpp, Cyclonedds, EntryPubsub, Workspace, Runtime),
-    // phase-372 — the S32Z270 Cortex-R52 bundle's workspace row
-    // (`workspace-cpp-s32z270-freertos`). It borrows the `freertos` platform
-    // token for the family lane; MPS2 owns that platform's Runtime cells, and
-    // this board has no witness of its own, so it is BuildOnly rather than a
-    // promise CI runs. The string is what unlocks it.
-    cell(FreertosMps2, Cpp, Cyclonedds, EntryPubsub, Workspace,
-         BuildOnly("phase-372 — S32Z270 is link-complete only: the NXP GIC port, \
-                    RTD NETC driver and PBcfg are consumer-provisioned seams \
-                    (autoware-safety-island), so no in-tree runner can boot it. \
-                    Unlocks when a hardware or simulator witness exists")),
+    // phase-511 B1 — the FreeRTOS C++ Cyclone workspace entry, answered by
+    // `freertos_qemu` on the mps3-an536 entry (`workspace-cpp-mps3-an536-freertos`),
+    // which boots under QEMU and delivers in-image. The coordinate is the
+    // `freertos` family's, as the W6 interop cells on the same board are.
+    //
+    // It was BuildOnly for the S32Z270 Cortex-R52 bundle's row
+    // (`workspace-cpp-s32z270-freertos`, phase-372), which shares the
+    // coordinate. That board is still link-complete only (the NXP GIC port,
+    // RTD NETC driver and PBcfg are consumer-provisioned seams), and its row is
+    // still built; the cell now has a runtime witness on an emulated twin, so it
+    // no longer waits on S32Z270 hardware.
+    cell(FreertosMps2, Cpp, Cyclonedds, EntryPubsub, Workspace, Runtime),
     cell(NuttxArm, C,    Zenoh, EntryPubsub, Workspace, Runtime),
     // Corrected during the phase-295 W3.b entry consolidation: the seed
     // table marked the nuttx-arm C++ and all three nuttx-riscv EntryPubsub
@@ -1264,23 +1281,43 @@ pub const CELLS: &[Cell] = &[
     cell(Px4, Cpp, Uorb, Pubsub, Example,
          CarveOut("uORB runs only inside a PX4-SITL build (just px4 …); no CI runner \
                    builds SITL. `packages/testing/nros-px4-register-check` is the source of truth.")),
+    // phase-511 B3 — the PX4 companion over XRCE (`px4_xrce`): host processes
+    // round-tripping `px4_msgs` through a MicroXRCEAgent. Gated: its leaves
+    // generate `px4_msgs` from the PX4-Autopilot `.msg` tree, which no CI runner
+    // carries, and a Runtime cell would put PX4 in tier 2's platform cover.
+    cell(Px4, Rust, Xrce, Pubsub, Example,
+         Gated("`just build px4` then `just test px4` — the leaves need the \
+                PX4-Autopilot `.msg` tree (`just px4 setup`), which no CI runner carries")),
 ];
 
-/// Does any cell of `p` ask for something to be BUILT (Runtime or BuildOnly)?
+/// Does any cell of `p` ask a CI lane to BUILD something (Runtime or
+/// BuildOnly)?
 ///
-/// A platform whose every cell is a `CarveOut` — PX4 (no runner builds SITL)
-/// and ESP32 (dormant, issue 1525) — has nothing for a fixture row, a `just`
-/// module or a lane to produce. The coverage gates exempt it by this PROPERTY,
-/// derived from `CELLS`, rather than by naming it a second time.
+/// A platform whose every cell is a `CarveOut` or [`Tier::Gated`] — PX4 (no
+/// runner builds SITL, and the XRCE companion cell is gated on the PX4 `.msg`
+/// tree) and ESP32 (dormant, issue 1525) — has nothing for a fixture row, a
+/// `just` module or a lane to produce. A gated cell is built by the lane its
+/// string names, which no tier schedules. The coverage gates exempt it by
+/// this PROPERTY, derived from `CELLS`, rather than by naming it a second time.
 pub fn platform_is_built(p: PlatformId) -> bool {
     CELLS
         .iter()
-        .any(|c| c.platform == p && !matches!(c.tier, Tier::CarveOut(_)))
+        .any(|c| c.platform == p && matches!(c.tier, Tier::Runtime | Tier::BuildOnly(_)))
 }
 
 /// Runtime cells only — what the matrix consumers iterate.
 pub fn runtime_cells() -> impl Iterator<Item = &'static Cell> {
     CELLS.iter().filter(|c| matches!(c.tier, Tier::Runtime))
+}
+
+/// The cells a test answers: [`Tier::Runtime`] plus [`Tier::Gated`]. This is
+/// the domain of [`consumer_of`]; [`runtime_cells`] stays what the tier
+/// covers and the fixture gates iterate, because a gated cell runs only in
+/// its own lane.
+pub fn answered_cells() -> impl Iterator<Item = &'static Cell> {
+    CELLS
+        .iter()
+        .filter(|c| matches!(c.tier, Tier::Runtime | Tier::Gated(_)))
 }
 
 /// The test binary that answers each Runtime cell — RFC-0051 §7c, phase-510
@@ -1349,6 +1386,13 @@ pub enum Consumer {
     LoggingSmoke,
     /// `tests/baremetal_run_plan_runtime.rs` (phase-511 A6).
     BaremetalRunPlan,
+    /// `tests/freertos_qemu.rs` — the mps3-an536 Cyclone C++ entry
+    /// (phase-511 B1).
+    FreertosQemu,
+    /// `tests/fvp_runtime_ws.rs` — a [`Tier::Gated`] cell (phase-511 B2).
+    FvpRuntimeWs,
+    /// `tests/px4_xrce.rs` — a [`Tier::Gated`] cell (phase-511 B3).
+    Px4Xrce,
 }
 
 impl Consumer {
@@ -1385,6 +1429,9 @@ impl Consumer {
         Consumer::Safety,
         Consumer::LoggingSmoke,
         Consumer::BaremetalRunPlan,
+        Consumer::FreertosQemu,
+        Consumer::FvpRuntimeWs,
+        Consumer::Px4Xrce,
     ];
 
     /// The test binary (`tests/<binary>.rs`).
@@ -1421,6 +1468,9 @@ impl Consumer {
             Consumer::Safety => "safety_e2e",
             Consumer::LoggingSmoke => "logging_smoke",
             Consumer::BaremetalRunPlan => "baremetal_run_plan_runtime",
+            Consumer::FreertosQemu => "freertos_qemu",
+            Consumer::FvpRuntimeWs => "fvp_runtime_ws",
+            Consumer::Px4Xrce => "px4_xrce",
         }
     }
 }
@@ -1447,6 +1497,12 @@ pub enum NonCell {
     /// feature checked in one image — something no matrix workload describes,
     /// so it is never a cell. The string says what it probes (phase-511 D1).
     Probe(&'static str),
+    /// The test's platform is dormant: every cell of it is a `CarveOut`, and
+    /// every case is `#[ignore]`d with the same reason. Not debt the matrix
+    /// owes while the platform sleeps; reviving a cell makes this binary its
+    /// consumer, which `dormant_rows_name_a_platform_with_no_answered_cell`
+    /// enforces (phase-511 B4).
+    Dormant(PlatformId, &'static str),
 }
 
 /// Every `tests/*.rs` binary that is neither a [`Consumer`] nor an interop
@@ -1529,12 +1585,6 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
             "Linux/Rust/Zenoh/Pubsub/Example under Config::CustomTransport — a feature lane until W4 gives it a configured cell",
         ),
     ),
-    (
-        "cyclone_slirp_pair",
-        NonCell::Unmodeled(
-            "two host processes over slirp to stock ros2 — the W2 recipe test, interop-shaped with no ic row",
-        ),
-    ),
     ("cyclonedds_descriptors", NonCell::Static),
     ("diagnostic_verbatim", NonCell::CompileCheck),
     ("dispatch_strategy", NonCell::Static),
@@ -1548,7 +1598,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     (
         "esp32_emulator",
-        NonCell::Unmodeled("ESP32 is dormant (issue 1525): every Esp32Qemu cell is a CarveOut"),
+        NonCell::Dormant(PlatformId::Esp32Qemu, "ESP32 is dormant (issue 1525)"),
     ),
     ("example_output_conformance", NonCell::Static),
     ("example_portability", NonCell::Static),
@@ -1573,12 +1623,6 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("fixture_source_coverage", NonCell::Static),
     ("freertos_firmware_entry", NonCell::CompileCheck),
     (
-        "freertos_qemu",
-        NonCell::Unmodeled(
-            "mps3-an536 Cyclone entry: the board is not a matrix axis value, and the FreertosMps2 Cpp Cyclone row is BuildOnly (S32Z270)",
-        ),
-    ),
-    (
         "freertos_run_plan_runtime",
         NonCell::Secondary(
             "FreertosMps2/Rust/Zenoh/Pubsub/Example (same talker image) — answered by rtos_e2e",
@@ -1586,14 +1630,10 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     ("ftti_detection_bounds", NonCell::Static),
     (
-        "fvp_runtime_ws",
-        NonCell::Unmodeled(
-            "Fvp/Cpp/Cyclonedds/RealtimeTiers/Workspace — no cell; FVP runs only in verify-fvp-runtime",
-        ),
-    ),
-    (
         "fvp_smoke",
-        NonCell::Unmodeled("the FVP board-import surface — no cell; runs in verify-fvp-runtime"),
+        NonCell::Probe(
+            "the FVP board-import surface boots a printk app, no RMW; runs in `just zephyr verify-fvp-runtime`",
+        ),
     ),
     ("generated_message_code_compiles", NonCell::CompileCheck),
     (
@@ -1690,10 +1730,6 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         NonCell::Probe("session-pool exhaustion on ThreadX-Linux"),
     ),
     ("px4_bridge_compile", NonCell::CompileCheck),
-    (
-        "px4_xrce",
-        NonCell::Unmodeled("px4_msgs over XRCE via px4-stub — Px4 is modelled only as uORB"),
-    ),
     ("qemu_patched_binary", NonCell::Static),
     (
         "qos",
@@ -1819,6 +1855,9 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         };
     }
     match (cell.platform, cell.lang, cell.rmw, cell.workload, cell.kind) {
+        // phase-511 B2 — ahead of the RealtimeTiers arm, whose consumer
+        // derives its cases and runs only Runtime cells.
+        (P::Fvp, L::Cpp, R::Cyclonedds, W::RealtimeTiers, K::Workspace) => Some(FvpRuntimeWs),
         // ── the phase-329 W1 consumers, which derive their cases ──────────
         (_, _, _, W::Multihost, _) => Some(Multihost),
         (_, _, _, W::RealtimeTiers, _) => Some(RealtimeTiers),
@@ -1858,6 +1897,11 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         (P::QemuBaremetal, L::Rust, R::Zenoh, W::BoardEntryBoot, K::Example) => {
             Some(BaremetalRunPlan)
         }
+        // phase-511 B1, B3.
+        (P::FreertosMps2, L::Cpp, R::Cyclonedds, W::EntryPubsub, K::Workspace) => {
+            Some(FreertosQemu)
+        }
+        (P::Px4, L::Rust, R::Xrce, W::Pubsub, K::Example) => Some(Px4Xrce),
         (P::Linux, _, _, W::Pubsub, K::Example) => Some(LinuxExamplePubsub),
         (P::Linux, _, _, W::Service | W::Action, K::Example) => Some(LinuxExampleReqresp),
         (P::Linux, _, _, W::ExecutorBoundNode, K::Example) => Some(LinuxExampleExecutorBoundNode),
@@ -1902,7 +1946,7 @@ fn cell_key(coord: CellCoord, config: &[Config]) -> String {
 /// The Runtime cells [`consumer_of`] assigns to `consumer`, as coordinates
 /// (with the configuration set, for a configured cell).
 pub fn consumer_cells(consumer: Consumer) -> std::collections::BTreeSet<String> {
-    runtime_cells()
+    answered_cells()
         .filter(|c| consumer_of(c) == Some(consumer))
         .map(|c| cell_key((c.platform, c.lang, c.rmw, c.workload, c.kind), c.config))
         .collect()
@@ -2079,8 +2123,8 @@ mod tests {
     /// in the consumer), since exec tables live in the per-test binaries.
     #[test]
     fn every_runtime_cell_has_a_consumer() {
-        // RFC-0051 §7c — `consumer_of` is TOTAL over Runtime cells.
-        let unowned: Vec<_> = runtime_cells()
+        // RFC-0051 §7c — `consumer_of` is TOTAL over Runtime and Gated cells.
+        let unowned: Vec<_> = answered_cells()
             .filter(|c| consumer_of(c).is_none())
             .collect();
         assert!(
@@ -2092,7 +2136,7 @@ mod tests {
         // consumer file whose workload/platform set vanished, so it runs nothing.
         for &cons in Consumer::ALL {
             assert!(
-                runtime_cells().any(|c| consumer_of(c) == Some(cons)),
+                answered_cells().any(|c| consumer_of(c) == Some(cons)),
                 "consumer {cons:?} (`tests/{}.rs`) claims no Runtime cell",
                 cons.binary()
             );
@@ -2155,12 +2199,28 @@ mod tests {
         }
     }
 
+    /// phase-511 B4 — a `Dormant` row is true only while its platform has no
+    /// cell a test answers. Reviving one makes the binary that cell's consumer.
+    #[test]
+    fn dormant_rows_name_a_platform_with_no_answered_cell() {
+        for (bin, why) in NON_CELL_TESTS {
+            if let NonCell::Dormant(p, reason) = why {
+                let live: Vec<_> = answered_cells().filter(|c| c.platform == *p).collect();
+                assert!(
+                    live.is_empty(),
+                    "`tests/{bin}.rs` is NonCell::Dormant({p:?}, {reason:?}), but {p:?} has \
+                     answered cells {live:#?}: make the binary their consumer"
+                );
+            }
+        }
+    }
+
     /// Every carve-out / build-only reason is non-empty (audit E5).
     #[test]
     fn gap_tiers_carry_reasons() {
         for c in CELLS {
             match c.tier {
-                Tier::BuildOnly(r) | Tier::CarveOut(r) => {
+                Tier::BuildOnly(r) | Tier::CarveOut(r) | Tier::Gated(r) => {
                     assert!(!r.is_empty(), "empty reason: {c:?}")
                 }
                 Tier::Runtime => {}

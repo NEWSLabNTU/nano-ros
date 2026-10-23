@@ -77,7 +77,7 @@ MATRIX = os.path.join(ROOT, "packages/testing/nros-tests/src/matrix.rs")
 
 
 def unbuilt_platforms(matrix_src: str) -> set[str]:
-    """`PlatformId`s with no `matrix::CELLS` row that is not a `CarveOut`.
+    """`PlatformId`s with no `matrix::CELLS` row that is not a `CarveOut` or `Gated`.
 
     The Python reading of `matrix::platform_is_built`, from the same table, so
     the exemption is a PROPERTY of the matrix and never a name written here.
@@ -108,7 +108,9 @@ def unbuilt_platforms(matrix_src: str) -> set[str]:
         platform = body.split(",", 1)[0].strip().split("::")[-1]
         if platform and platform[0].isupper():
             seen.add(platform)
-            if "CarveOut(" not in body:
+            # phase-511 — a `Gated` cell is built by its own lane, never by a
+            # CI one, so it does not make its platform built either.
+            if "CarveOut(" not in body and "Gated(" not in body:
                 built.add(platform)
         i = j
     if not seen:

@@ -227,3 +227,19 @@ fn a_tag_isolated_host_profile_reaches_a_slirp_guest_and_nothing_else() {
          should be revisited"
     );
 }
+
+/// issue 0352 — this binary's coordinate is the interop cell
+/// `native-slirp-pubsub-cpp-cyclone-n2r` (phase-511 C). Fixture-free.
+#[test]
+fn cases_bound_to_interop_cells() {
+    use nros_tests::matrix::{Lang, PlatformId, Rmw, Workload};
+    nros_tests::interop::assert_test_bound(
+        "cyclone_slirp_pair",
+        &[(
+            PlatformId::Linux,
+            Lang::Cpp,
+            Rmw::Cyclonedds,
+            Workload::Pubsub,
+        )],
+    );
+}

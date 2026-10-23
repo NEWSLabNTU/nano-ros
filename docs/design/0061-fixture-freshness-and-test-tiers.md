@@ -458,6 +458,12 @@ cells share their default-build siblings' coordinates, so none of the delta is
 a new fixture; it is the greedy cover reshuffling around the new requirements.
 Adopted at that price.
 
+**Re-measured (phase-511, 2026-10-23).** RFC-0051's `Gated` tier (a test that
+runs only in a named maintainer lane) is outside every cover by construction,
+so the FVP and PX4 XRCE cells cost no tier anything. The FreeRTOS C++ Cyclone
+workspace cell becoming Runtime made the nightly cheaper, 39 / 37 to 37 / 35,
+with every declared pair still covered; tiers 1 and 2 did not move.
+
 What each tier may miss, extended: **tier 1** misses every
 configuration-on-target defect (the 0814 class), as it misses every
 platform-specific one; **tier 2** misses configuration × platform interactions
