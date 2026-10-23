@@ -109,6 +109,37 @@ _nros_guard_group_members() {
         awk -v g="$pgid" '$2 == g && $3 !~ /^Z/ { print $1 }'
 }
 
+# The members of a group the CALLER belongs to, minus the caller and everything
+# it forked to ask.
+#
+#   _nros_guard_group_others <pgid> <self-pid>
+#
+# `_nros_guard_group_members` is right for a group the caller is OUTSIDE of,
+# which is every caller but one. The lane sentinel asks about its OWN group,
+# and asking forks: the `$(…)` subshells, `ps`, `awk` and `wc` are members of
+# that group at the instant `ps` takes its snapshot. Measured: a shell alone in
+# its group counted 6. So "only this sentinel left" could never be true, the
+# drain loop ran its whole 10 s after every stop, and the sentinel lingered ~11 s
+# before SIGKILLing its own group (issue 2012). Excluding `<self-pid>` and its
+# descendants is exact: the sentinel starts nothing but these probes.
+_nros_guard_group_others() {
+    local pgid="$1" self="$2"
+    ps -eo pid=,ppid=,pgid=,stat= 2>/dev/null |
+        awk -v g="$pgid" -v me="$self" '
+            # Zombies are dropped on read (issue 0853). The ancestry walk loses
+            # nothing by it: a LIVE process never has a zombie parent, since an
+            # exited parent`s children are reparented.
+            $4 !~ /^Z/ { pp[$1] = $2; pg[$1] = $3 }
+            END {
+                for (p in pg) {
+                    if (pg[p] != g || p == me) continue
+                    q = p; hops = 0
+                    while ((q in pp) && q != me && q > 1 && hops++ < 64) q = pp[q]
+                    if (q != me) print p
+                }
+            }'
+}
+
 # Reap a process group left behind by a launcher that could not run its trap.
 #
 # Announced, never silent: a build that quietly kills processes it did not start
@@ -372,10 +403,15 @@ _nros_guard_lane_sentinel() {
     # Ignore our own broadcast (and the owner's), so the escalation below runs.
     trap '' TERM HUP
     kill -TERM 0 2>/dev/null
+    # Read once, outside any `$(…)`: inside one, `$BASHPID` is the subshell's.
+    local me="$BASHPID" grp
+    grp="$(ps -o pgid= -p "$me" | tr -d ' ')"
     local waited=0
     while [ "$waited" -lt 10 ]; do
-        # Only this sentinel left (or nothing): done.
-        [ "$(_nros_guard_group_members "$(ps -o pgid= -p "$BASHPID" | tr -d ' ')" | wc -l)" -le 1 ] && exit 0
+        # Only this sentinel left (or nothing): done. Not counted with
+        # `_nros_guard_group_members`, which would count this probe too and
+        # never reach 1 (issue 2012).
+        [ -z "$(_nros_guard_group_others "$grp" "$me")" ] && exit 0
         sleep 1
         waited=$((waited + 1))
     done
