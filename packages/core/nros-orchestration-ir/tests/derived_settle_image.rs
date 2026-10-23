@@ -67,19 +67,13 @@ fn an_image_from_a_derived_settle_matches_one_written_by_hand() {
     );
     assert_eq!(haz_d, haz_w, "hazard rows");
     assert_eq!(haz_d.len(), 1, "the hazard is lowered: {haz_d:?}");
-    // Found here: `hazard_sinks` reads the settle of the hazard's reaction
-    // path itself, and a resolved model keeps the safe state on the NODE
-    // path at the reaction's sink (the reaction is a scope path), so the
-    // row's settle is 0 in both images. The settle the model carries is
-    // the node path's, and that is the same number either way:
-    let settle = |m: &SystemModel| {
-        m.contracts.node_paths[SAFE_STATE]
-            .safe_state
-            .as_ref()
-            .and_then(|s| s.settle_ms)
-            .unwrap()
-    };
-    assert!((settle(&d) - settle(&w)).abs() < 1e-3);
+    // The settle reached the image: the hazard reacts by a scope path, and
+    // its row carries the safe state at that path's sink -- the derived
+    // 4422.67 ms, rounded -- with that publisher as its sink.
+    assert!((4422..=4423).contains(&haz_d[0].settle_ms), "{haz_d:?}");
+    let sink = haz_d[0].sink.expect("the sink row");
+    assert_eq!(rows_d[sink].fqn, "/safety/brake_controller/brake_cmd");
+    assert_ne!(haz_d[0].reaction_id, 0);
 
     assert_eq!(
         format!("{:?}", ftti_budget::hazard_budgets(&d)),
