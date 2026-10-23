@@ -729,14 +729,19 @@ fn example_e2e(#[case] cell: Cell) {
 }
 
 /// Tripwire: the case list above must track the matrix (RFC-0051 W1 SSoT).
-/// A new `(ZephyrNativeSim, Example, Runtime)` row means a new `#[case]` in
-/// [`example_e2e`]; a retired row means removing one. Update BOTH.
+/// A new `(ZephyrNativeSim, Example, Runtime)` cell that `consumer_of` gives
+/// this file means a new `#[case]` in [`example_e2e`]; a retired one means
+/// removing one. Update BOTH. It counts the cells ASSIGNED here, not every
+/// native_sim Example cell: the Logging example is `logging_smoke`'s
+/// (phase-511 A5), and a platform-wide count read that as a missing case.
 #[test]
 fn example_e2e_case_count_tracks_matrix() {
-    use nros_tests::matrix::{Kind, PlatformId, runtime_cells};
+    use nros_tests::matrix::{Consumer, Kind, PlatformId, consumer_of, runtime_cells};
     let n = runtime_cells()
         .filter(|c| {
-            matches!(c.platform, PlatformId::ZephyrNativeSim) && matches!(c.kind, Kind::Example)
+            matches!(c.platform, PlatformId::ZephyrNativeSim)
+                && matches!(c.kind, Kind::Example)
+                && consumer_of(c) == Some(Consumer::Zephyr)
         })
         .count();
     assert_eq!(
