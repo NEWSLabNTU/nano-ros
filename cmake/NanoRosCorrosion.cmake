@@ -409,6 +409,59 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSharedCargoDir.cmake")
 set(_NROS_SHARED_CARGO_CHECK_SH
     "${CMAKE_CURRENT_LIST_DIR}/../scripts/check-shared-cargo-dir-used.sh"
     CACHE INTERNAL "issue 0945 — shared-cargo-dir redirect assertion")
+set(_NROS_SHARED_CARGO_LINK_SCRIPT
+    "${CMAKE_CURRENT_LIST_DIR}/NanoRosSharedCargoLink.cmake"
+    CACHE INTERNAL "issue 1990 — re-create a swept shared cargo dir at build time")
+
+# Issue 1990 — the configure makes the link and its target; the runner sweep
+# can delete the target afterwards, and a build that does not reconfigure then
+# fails in cargo with `File exists (os error 17)`. Schedule ONE always-run step
+# per configure that re-creates the target (NanoRosSharedCargoLink.cmake), and
+# order every Corrosion cargo edge after it. Deferred to the end of the
+# configure because the cargo targets are made later, in sibling scopes
+# (`nros-c`, `nros-cpp`, a Rust leaf's own crate), and ordering ALL of them is
+# the point: any of them can be the first edge ninja runs.
+function(_nros_shared_cargo_link_schedule)
+    get_property(_done GLOBAL PROPERTY NROS_SHARED_CARGO_LINK_SCHEDULED)
+    if(_done)
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY NROS_SHARED_CARGO_LINK_SCHEDULED TRUE)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+        CALL _nros_shared_cargo_link_order)
+endfunction()
+
+function(_nros_shared_cargo_link_collect dir out_var)
+    get_property(_targets DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+    set(_found "")
+    foreach(_t IN LISTS _targets)
+        if(_t MATCHES "^_cargo-build_")
+            list(APPEND _found "${_t}")
+        endif()
+    endforeach()
+    get_property(_subdirs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+    foreach(_sub IN LISTS _subdirs)
+        _nros_shared_cargo_link_collect("${_sub}" _sub_found)
+        list(APPEND _found ${_sub_found})
+    endforeach()
+    set(${out_var} "${_found}" PARENT_SCOPE)
+endfunction()
+
+function(_nros_shared_cargo_link_order)
+    _nros_shared_cargo_link_collect("${CMAKE_SOURCE_DIR}" _cargo_targets)
+    if(NOT _cargo_targets)
+        return()
+    endif()
+    add_custom_target(nros_shared_cargo_link
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNROS_SHARED_CARGO_LINK=${CMAKE_BINARY_DIR}/cargo"
+            -P "${_NROS_SHARED_CARGO_LINK_SCRIPT}"
+        COMMENT "nano-ros: checking the shared cargo dir behind ${CMAKE_BINARY_DIR}/cargo (issue 1990)"
+        VERBATIM)
+    foreach(_t IN LISTS _cargo_targets)
+        add_dependencies(${_t} nros_shared_cargo_link)
+    endforeach()
+endfunction()
 
 
 function(nros_share_corrosion_cargo_dir)
@@ -428,6 +481,7 @@ function(nros_share_corrosion_cargo_dir)
     if(NOT NROS_SHARED_CARGO_DIR)
         return()
     endif()
+    _nros_shared_cargo_link_schedule()
     set(_key_text "${NROS_SHARED_CARGO_DIR_KEY_TEXT}")
     set(_link "${CMAKE_BINARY_DIR}/cargo")
     # Record the key text BEFORE the checks below, not after the symlink is

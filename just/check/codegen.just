@@ -791,6 +791,22 @@ cmake-leaf-cache:
     fi
     ./tests/cmake-leaf-cache-tests.sh
 
+# issue 1990 — a build dir's `cargo` link whose target the runner sweep removed
+# is re-created at BUILD time, before any cargo edge, so a swept cache costs a
+# rebuild rather than `File exists (os error 17)`
+# (tests/cmake-shared-cargo-link-tests.sh).
+[private]
+cmake-shared-cargo-link:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cmake-shared-cargo-link "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-shared-cargo-link-tests.sh
+
 # issue 1894 — an entry's `DEPLOY`/`BOARD` keyword beside a leaf `system.toml`
 # must agree with its `[image.<id>]`; a disagreeing one is a configure error
 # naming both files, a guest project with no `system.toml` keeps the keyword
