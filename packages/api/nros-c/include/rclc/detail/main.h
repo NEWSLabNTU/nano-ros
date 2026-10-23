@@ -514,6 +514,22 @@ NROS_PUBLIC int32_t nros_board_zephyr_run_levels_in(
     size_t storage_stride, const nros_tier_backing_t* backings,
     const nros_tier_task_memory_t* task_memory, void* scheduler_backing, size_t scheduler_bytes);
 
+/* phase-509 P10 (RFC-0108; the amended RFC-0107 step 6) -- the HOSTED level
+ * runner (`LinuxBoard::run_levels`): each row of `tiers` is one level, placed
+ * by its urgency (POSIX SCHED_FIFO, bigger is more urgent). The core's ONE
+ * executor is block 0 of `executor_storage`, carved from `backings[0]` when
+ * the build sizes its levels (else inline), locked by the POSIX port's
+ * recursive PTHREAD_PRIO_INHERIT mutex; the least urgent level is adopted on
+ * the calling thread and every other level is a worker thread over it. A
+ * level whose setup fails fails the boot: logged, every started level
+ * stopped, the code returned. `task_memory` must be NULL (the process maps a
+ * host thread's stack). Defined in nros-cpp. */
+NROS_PUBLIC int32_t nros_board_native_run_levels_in(
+    const char* session_name, const char* node_namespace, const nros_native_tier_spec_t* tiers,
+    size_t n_tiers, void* executor_storage, size_t storage_stride,
+    const nros_tier_backing_t* backings, const nros_tier_task_memory_t* task_memory,
+    void* scheduler_backing, size_t scheduler_bytes);
+
 /* phase-281 W3 (nuttx) (RFC-0015 Model 1) — run a multi-tier embedded C/C++
  * entry on NuttX: open ONE RMW session on the caller's thread (the NuttX
  * `app_main` thread), spawn one `pthread` per non-boot tier (NuttX is POSIX —

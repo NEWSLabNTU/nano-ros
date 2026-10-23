@@ -1003,6 +1003,23 @@ image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
+# phase-509 P10 -- the THREE-LEVEL C++ image on the HOST (levels-cpp's linux
+# image): the derivation gives three levels and `nros_board_native_run_levels_in`
+# runs them as worker threads over one executor. Consumed by
+# `tests/realtime_tiers_e2e.rs` (native/cpp-levels): every level's node runs and
+# reads its own launch parameter, and no level fails the boot. The native
+# sibling of `workspace-zephyr-cpp-levels`.
+[[workspace_fixture]]
+id = "workspace-cpp-native-levels"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/levels-cpp"
+bringup = "src/demo_bringup"
+image = "linux"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build/posix-zenoh-linux/cmake"
+
 # Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape variant of realtime-cpp.
 # Same 2-tier scheduling (ctrl_node → high 10 ms, telem_node → low 100 ms) but
 # components are IS-A-node ComponentNode subclasses (SHAPE rclcpp). The bind_node_name_sched
