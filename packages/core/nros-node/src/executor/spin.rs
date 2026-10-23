@@ -2206,6 +2206,13 @@ pub struct Executor<'s> {
     /// supervised route passes its deadline (`route-deadline-runtime`), and on
     /// `DeadlineAction::Fault` when no `fault_fn` is set.
     pub(crate) reaction_hook: Option<(super::monitor::ReactionHookFn, *mut core::ffi::c_void)>,
+    /// phase-509 P9b (RFC-0108 "As built in P9b") -- the lock every path that
+    /// touches this executor takes once a second thread can reach it (one
+    /// worker per level over one executor). `None` -- every one-level image --
+    /// makes each guard a no-op. Read through a raw pointer by
+    /// [`super::exec_lock::ExecGuard::acquire`], so it is written only while
+    /// no second thread exists.
+    pub(crate) exec_lock: Option<super::exec_lock::ExecLock>,
     /// Issue #515 — the spin cadence audit runs once, on the first spin
     /// that carries a non-zero timeout (which is where the tier's
     /// declared spin period becomes visible to the executor).
@@ -2491,6 +2498,7 @@ impl<'s> Executor<'s> {
             mode_applied: 0,
             fault_fn: None,
             reaction_hook: None,
+            exec_lock: None,
             spin_quantization_checked: false,
             reprobe_each_callback: REPROBE_EACH_CALLBACK_DEFAULT,
             spin_quantization_us: 0,
@@ -3768,6 +3776,19 @@ impl<'s> Executor<'s> {
         hook: Option<(super::monitor::ReactionHookFn, *mut core::ffi::c_void)>,
     ) {
         self.reaction_hook = hook;
+    }
+
+    /// phase-509 P9b (RFC-0108 "As built in P9b") -- install the lock every
+    /// FFI entry and every worker pass takes on this executor (`None` removes
+    /// it). Call it while no second thread can reach the executor: a runner
+    /// installs it before it spawns a level.
+    pub fn set_exec_lock(&mut self, lock: Option<super::exec_lock::ExecLock>) {
+        self.exec_lock = lock;
+    }
+
+    /// phase-509 P9b -- the installed lock, if any.
+    pub fn exec_lock(&self) -> Option<super::exec_lock::ExecLock> {
+        self.exec_lock
     }
 
     /// phase-503 — microseconds from now to the earliest deadline of a pending

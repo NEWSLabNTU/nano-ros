@@ -103,6 +103,9 @@ pub mod sched_context;
 // Issue 1971 -- the image's launch remap table, one `const` table in flash
 // that every executor reads (RFC-0107 step 1). No RMW: it is plain data.
 pub mod launch_remap;
+
+/// phase-509 P9b -- the executor's lock (RFC-0108 "As built in P9b").
+pub mod exec_lock;
 // phase-509 P7 (RFC-0108 D8) -- each executor's level and the image's per-level
 // liveness. Plain atomics, no RMW: every build carries it.
 pub mod level_liveness;

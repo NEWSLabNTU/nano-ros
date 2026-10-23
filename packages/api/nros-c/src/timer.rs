@@ -739,7 +739,7 @@ unsafe fn time_until_next_call_ns_of(timer: &rcl_timer_t) -> Result<i64, rcl_ret
 /// `timer` must be non-NULL and point to a valid `rcl_timer_t`.
 unsafe fn registered_handle(
     timer: &rcl_timer_t,
-) -> Option<(&'static mut crate::executor::CExecutor, nros_node::HandleId)> {
+) -> Option<(crate::executor::CExecRef<'static>, nros_node::HandleId)> {
     if timer._executor.is_null() || timer.handle_id == usize::MAX {
         return None;
     }
@@ -979,7 +979,7 @@ pub unsafe extern "C" fn rcl_timer_exchange_period(
     }
 
     let new_period_ns = new_period as u64;
-    if let Some((exec, id)) = registered_handle(timer_ref) {
+    if let Some((mut exec, id)) = registered_handle(timer_ref) {
         // A registered timer whose handle the executor no longer recognises is
         // the `NOT_INIT` the sibling accessors report; reporting OK here would
         // claim a dispatcher change that did not happen.

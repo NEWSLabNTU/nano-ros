@@ -699,6 +699,32 @@ FFI, `zephyr/Kconfig`.
 
 **Depends on:** P5, P6, P7.
 
+### P9b -- Levels as workers over one executor (closes P9 deviation 1)
+
+P9 left each level a whole executor (context + backing, ~14.4 KB on
+`levels-cpp`). P9b makes the levels worker threads over one executor per
+core; the design note is RFC-0108 "As built in P9b". Four PRs, in order:
+
+- [x] 1. The lock seam: `nros_node::executor::exec_lock` (`ExecLock`,
+      `ExecGuard`), `Executor::set_exec_lock`, `nros_cpp_executor_set_lock`;
+      every nros-cpp / nros-c entry that touches an executor takes the lock
+      before its reference exists (`CtxRef`, `CExecRef`, `Locked`,
+      `CLocked`). No lock is installed yet, so nothing changes at runtime.
+- [ ] 2. The pass in steps: the lock released around each user callback,
+      the running mark, deferred cancel, band-filtered pick,
+      `set_reprobe_each_callback`. Tests: no concurrent run of one callback;
+      band exclusion.
+- [ ] 3. Scheduler-owned accounting: per-band timers and budgets, one
+      transport driver, per-worker band park.
+- [ ] 4. Runner, FFI, cost report: `level_open` opens a worker over the
+      core's executor; `levels-cpp` and `mem-report --levels` show a level
+      as a worker record and a stack.
+
+**Measured before P9b** (`levels-cpp`, native_sim): three levels as
+executors 43,736 B `.bss` (each 3,144 context + 11,288 backing, plus 176 B
+thread objects and an 88 B scheduler); the same nodes as one level 16,296 B
+(3,144 + 13,112 + 40).
+
 ### P10 -- The other runners (amended RFC-0107 step 6)
 
 - [ ] Linux / POSIX: one `SCHED_FIFO` pthread per level.

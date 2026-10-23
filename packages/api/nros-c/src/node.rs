@@ -1386,16 +1386,21 @@ impl rcl_node_t {
 /// Returns `None` when any lookup fails so callers can map to
 /// `RCL_RET_NOT_INIT`.
 #[cfg(feature = "rmw-cffi")]
-#[allow(clippy::mut_from_ref)]
 pub(crate) unsafe fn resolve_session_and_domain(
     node: &rcl_node_t,
-) -> Option<(&mut nros::internals::RmwSession, u32)> {
+) -> Option<(
+    crate::executor::CLocked<'static, nros::internals::RmwSession>,
+    u32,
+)> {
     if node.is_executor_bound() {
         let exec_mut = &mut *(node.executor as *mut crate::executor::rclc_executor_t);
         let support_ptr = exec_mut.support;
-        let rust_exec = crate::executor::get_executor(exec_mut);
+        let mut rust_exec = crate::executor::get_executor(exec_mut);
         let node_id = nros_node::executor::node_record::NodeId::from_raw(node.node_id);
-        let session = rust_exec.node_session_mut(node_id)?;
+        let session: *mut nros::internals::RmwSession = rust_exec.node_session_mut(node_id)?;
+        // SAFETY (phase-509 P9b): the session lives in the executor, used only
+        // while the returned `CLocked` keeps `rust_exec`'s lock.
+        let session = crate::executor::CLocked::new(session, Some(rust_exec));
         // Inherit from the SESSION when there is no support context. The old
         // `else { 0 }` silently put every entity on domain 0 while the session
         // itself was open on another domain -- the node liveliness token used
@@ -1427,7 +1432,9 @@ pub(crate) unsafe fn resolve_session_and_domain(
         // error, because the domain is just the first element of the key
         // (issue 0801).
         let raw_domain = support_mut.domain_id;
-        let session = support_mut.get_session_mut()?;
+        let session: *mut nros::internals::RmwSession = support_mut.get_session_mut()?;
+        // SAFETY: the support context's session is outside any executor.
+        let session = crate::executor::CLocked::new(session, None);
         // issue 0972 — decode, do not read the raw byte.
         let domain_id = resolve_domain_from_c_abi(raw_domain, session.domain_id())?;
         Some((session, domain_id))
@@ -2298,7 +2305,7 @@ mod accessor_tests {
     /// Declare the two rules both remap tests read, one per node.
     fn declare_remaps(executor: &mut crate::executor::rclc_executor_t) {
         unsafe {
-            let rust_exec = crate::executor::get_executor(executor);
+            let mut rust_exec = crate::executor::get_executor(executor);
             rust_exec
                 .declare_remap("filter", "/sensing", "/sensing/scan", "/wire/primary")
                 .expect("remap table has room");

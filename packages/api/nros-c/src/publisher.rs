@@ -332,7 +332,7 @@ pub unsafe extern "C" fn rclc_publisher_init_with_qos(
         // `node.support`). Single call covers both shapes; bridge
         // examples now reach the XRCE / DDS extra sessions instead of
         // hitting RCL_RET_NOT_INIT against a NULL support pointer.
-        let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
+        let (mut session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
             Some(t) => t,
             None => return RCL_RET_NOT_INIT,
         };

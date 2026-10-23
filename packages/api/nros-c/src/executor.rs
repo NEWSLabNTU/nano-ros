@@ -69,12 +69,87 @@ const _: () = assert!(
 /// # Safety
 /// `executor` must be initialised: its `_opaque` holds a live `CExecutor`.
 #[inline]
-pub(crate) unsafe fn get_executor<'a>(executor: *mut rclc_executor_t) -> &'a mut CExecutor {
+pub(crate) unsafe fn get_executor<'a>(executor: *mut rclc_executor_t) -> CExecRef<'a> {
     // Unbound lifetime, on purpose: the `CExecutor` lives in `_opaque` (or the
     // host's storage) and never aliases the header fields callers keep writing
     // (`_handle_entities`, `in_dispatch`) while it is in use — the disjointness
     // the old `&mut [u64]` parameter expressed by borrowing `_opaque` alone.
-    &mut *(executor_ptr(&mut *executor) as *mut CExecutor)
+    // SAFETY (RFC-0108 "As built in P9b"): `executor` is initialised (this
+    // fn's contract), so `_opaque` holds the live executor; `lock` takes its
+    // lock before any reference to it exists.
+    unsafe { CExecRef::lock((*executor)._opaque.as_mut_ptr() as *mut CExecutor) }
+}
+
+/// phase-509 P9b (RFC-0108 "As built in P9b") -- the C API's executor
+/// reference: it holds the executor's lock (taken BEFORE the reference
+/// exists) until it drops. An executor with no lock installed takes none.
+pub(crate) struct CExecRef<'a> {
+    exec: *mut CExecutor,
+    _guard: nros_node::executor::exec_lock::ExecGuard,
+    _life: core::marker::PhantomData<&'a mut CExecutor>,
+}
+
+impl CExecRef<'_> {
+    /// # Safety
+    /// `exec` points at a live, initialised executor.
+    pub(crate) unsafe fn lock(exec: *mut CExecutor) -> Self {
+        // SAFETY: the caller's contract; the lock is read through the raw
+        // pointer and taken before any reference to the executor exists.
+        let guard = unsafe { nros_node::executor::exec_lock::ExecGuard::acquire(exec) };
+        Self {
+            exec,
+            _guard: guard,
+            _life: core::marker::PhantomData,
+        }
+    }
+}
+
+impl core::ops::Deref for CExecRef<'_> {
+    type Target = CExecutor;
+    fn deref(&self) -> &CExecutor {
+        // SAFETY: `lock`'s contract; the lock (when installed) makes this the
+        // only thread holding a reference.
+        unsafe { &*self.exec }
+    }
+}
+
+/// phase-509 P9b -- an object inside the executor (a node's session) handed
+/// back by a lookup together with the executor lock the lookup took; `None`
+/// for an object outside the executor (a support context), which needs none.
+pub(crate) struct CLocked<'a, T> {
+    ptr: *mut T,
+    _exec: Option<CExecRef<'a>>,
+}
+
+impl<'a, T> CLocked<'a, T> {
+    /// # Safety
+    /// `ptr` is valid while `exec` holds the lock (or for `'a` with `None`),
+    /// and nothing else references it meanwhile.
+    pub(crate) unsafe fn new(ptr: *mut T, exec: Option<CExecRef<'a>>) -> Self {
+        Self { ptr, _exec: exec }
+    }
+}
+
+impl<T> core::ops::Deref for CLocked<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        // SAFETY: `new`'s contract.
+        unsafe { &*self.ptr }
+    }
+}
+
+impl<T> core::ops::DerefMut for CLocked<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        // SAFETY: as `deref`.
+        unsafe { &mut *self.ptr }
+    }
+}
+
+impl core::ops::DerefMut for CExecRef<'_> {
+    fn deref_mut(&mut self) -> &mut CExecutor {
+        // SAFETY: as `deref`.
+        unsafe { &mut *self.exec }
+    }
 }
 
 /// The executor's `CExecutor`, as the untyped pointer entities store
@@ -94,8 +169,10 @@ pub(crate) fn executor_ptr(executor: &mut rclc_executor_t) -> *mut core::ffi::c_
 /// `ptr` must point to the `_opaque` field of a live, initialized
 /// `rclc_executor_t`.
 #[inline]
-pub(crate) unsafe fn get_executor_from_ptr(ptr: *mut core::ffi::c_void) -> &'static mut CExecutor {
-    &mut *(ptr as *mut CExecutor)
+pub(crate) unsafe fn get_executor_from_ptr(ptr: *mut core::ffi::c_void) -> CExecRef<'static> {
+    // SAFETY (RFC-0108 "As built in P9b"): `ptr` is a live executor's
+    // `_opaque` (this fn's contract); the lock is taken before the reference.
+    unsafe { CExecRef::lock(ptr as *mut CExecutor) }
 }
 
 /// Propagate node identity from a C node into the executor before
@@ -620,7 +697,7 @@ pub unsafe extern "C" fn rclc_executor_ping(
     }
     #[cfg(feature = "rmw-cffi")]
     {
-        let exec = get_executor(exec_t);
+        let mut exec = get_executor(exec_t);
         match exec.ping(timeout_ms) {
             Ok(()) => RCL_RET_OK,
             Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Timeout)) => {
@@ -712,7 +789,7 @@ pub unsafe extern "C" fn rclc_executor_get_node_names(
     #[cfg(feature = "rmw-cffi")]
     {
         const NAME_MAX: usize = 256;
-        let exec = get_executor(exec_t);
+        let mut exec = get_executor(exec_t);
         let mut cb = |name: &str, ns: &str, enclave: Option<&str>| -> bool {
             // NUL-terminated on the stack: the C contract borrows for the call
             // only, so nothing is allocated on either side of the seam. A name
@@ -973,7 +1050,7 @@ unsafe fn nros_executor_wait_for_endpoints_impl(
             return RCL_RET_INVALID_ARGUMENT;
         };
         let timeout = core::time::Duration::from_millis(timeout_ms as u64);
-        let exec = get_executor(exec_t);
+        let mut exec = get_executor(exec_t);
         let r = if publishers {
             exec.wait_for_publishers(topic, count, timeout)
         } else {
@@ -1042,7 +1119,7 @@ unsafe fn nros_executor_names_and_types_impl(
     {
         const NAME_MAX: usize = 256;
         const TYPES_MAX: usize = 8;
-        let exec = get_executor(exec_t);
+        let mut exec = get_executor(exec_t);
         let mut cb = |name: &str, types: &[&str]| -> bool {
             // NUL-terminated on the stack; the C contract borrows for the call
             // only. A name or type that does not fit is SKIPPED rather than
@@ -1115,7 +1192,7 @@ unsafe fn nros_executor_count_impl(
         let Ok(topic) = core::ffi::CStr::from_ptr(topic_name).to_str() else {
             return RCL_RET_INVALID_ARGUMENT;
         };
-        let exec = get_executor(exec_t);
+        let mut exec = get_executor(exec_t);
         let r = match kind {
             CountKind::Publishers => exec.count_publishers(topic),
             CountKind::Subscribers => exec.count_subscribers(topic),
@@ -1201,7 +1278,7 @@ unsafe fn nros_executor_by_node_impl(
         };
         const NAME_MAX: usize = 256;
         const TYPES_MAX: usize = 8;
-        let exec = get_executor(exec_t);
+        let mut exec = get_executor(exec_t);
         let mut cb = |n: &str, types: &[&str]| -> bool {
             let mut name_buf = [0u8; NAME_MAX];
             if n.len() >= NAME_MAX {
@@ -1348,7 +1425,7 @@ unsafe fn nros_executor_endpoint_info_impl(
             return RCL_RET_INVALID_ARGUMENT;
         };
         const NAME_MAX: usize = 256;
-        let exec = get_executor(exec_t);
+        let mut exec = get_executor(exec_t);
         let mut cb = |info: &nros_rmw::GraphEndpointInfo<'_>| -> bool {
             let mut name_buf = [0u8; NAME_MAX];
             let mut ns_buf = [0u8; NAME_MAX];
@@ -1446,7 +1523,7 @@ pub unsafe extern "C" fn rclc_executor_set_semantics(
     if executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
         || executor.state == rclc_executor_state_t::RCLC_EXECUTOR_STATE_SPINNING
     {
-        let rust_exec = get_executor(executor);
+        let mut rust_exec = get_executor(executor);
         rust_exec.set_semantics(match semantics {
             rclc_executor_semantics_t::RCLCPP_EXECUTOR => {
                 nros_node::ExecutorSemantics::RclcppExecutor
@@ -1552,7 +1629,7 @@ pub unsafe extern "C" fn rclc_executor_node_init(
     node_ref.sched_context_id = opts.sched_context_id;
 
     // Drive the Rust executor's NodeBuilder.
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     let name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
     let mut builder = rust_exec.node_builder(name_str);
     if opts.rmw_name_len > 0 {
@@ -1688,7 +1765,8 @@ pub unsafe fn bind_host_node(
 ) -> rcl_ret_t {
     use crate::node::{NROS_DOMAIN_ID_INHERIT, rclc_node_state_t};
     validate_not_null!(executor, node);
-    let Some(record) = get_executor(executor).node(node_id) else {
+    let exec_ref = get_executor(executor);
+    let Some(record) = exec_ref.node(node_id) else {
         return RCL_RET_INVALID_ARGUMENT;
     };
     let n = &mut *node;
@@ -1812,7 +1890,7 @@ pub unsafe extern "C" fn rclc_executor_set_trigger(
     // Forward to the internal executor. The RAW predicate is always OUR bridge,
     // never the user's function directly: the user's function needs the entity
     // pointers, which live on this side.
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     match trigger {
         Some(_) => {
             rust_exec.set_trigger(nros_node::Trigger::RawPredicate {
@@ -2034,7 +2112,7 @@ unsafe fn register_subscription_entry(
     // because the subscription records the arena it was registered into and
     // the borrow checker will not hand out a second `&mut` inside one block.
     let executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
 
     let topic_str = core::str::from_utf8_unchecked(
         &subscription_ref.topic_name[..subscription_ref.topic_name_len],
@@ -2049,7 +2127,7 @@ unsafe fn register_subscription_entry(
 
     // Propagate node identity into the executor so the underlying
     // create_subscription call gets liveliness keyexpr metadata.
-    set_executor_node_identity(rust_exec, subscription_ref.node);
+    set_executor_node_identity(&mut rust_exec, subscription_ref.node);
     // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
     // against the identity just set (executor-side remap table).
     let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
@@ -2063,7 +2141,14 @@ unsafe fn register_subscription_entry(
     // session; a legacy Node takes the single-Node entry point (issue 1405).
     let node_id = registration_node_id(subscription_ref.node);
 
-    let handle_id = match register(rust_exec, node_id, topic_str, type_str, type_hash_str, qos) {
+    let handle_id = match register(
+        &mut rust_exec,
+        node_id,
+        topic_str,
+        type_str,
+        type_hash_str,
+        qos,
+    ) {
         Ok(handle_id) => handle_id,
         Err(ret) => return ret,
     };
@@ -2379,8 +2464,8 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
     };
 
     {
-        let rust_exec = get_executor(executor);
-        set_executor_node_identity_from_node(rust_exec, node);
+        let mut rust_exec = get_executor(executor);
+        set_executor_node_identity_from_node(&mut rust_exec, node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
@@ -2593,7 +2678,7 @@ unsafe fn add_timer_inner(
     let c_context = timer_ref.get_context();
     let timer_ptr = timer;
     let period = nros_node::TimerDuration::from_micros(period_us);
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
 
     // SAFETY (both closures): the C callback and timer/context pointers remain
     // valid for the lifetime of the executor (same guarantee as rclc).
@@ -2686,7 +2771,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
         // registered into and the borrow checker will not hand out a second
         // `&mut` inside the same block.
         let executor_ptr = executor as *mut _ as *mut core::ffi::c_void;
-        let rust_exec = get_executor(executor);
+        let mut rust_exec = get_executor(executor);
 
         let topic_str = core::str::from_utf8_unchecked(
             &subscription_ref.topic_name[..subscription_ref.topic_name_len],
@@ -2703,7 +2788,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
             None => return RCL_RET_INVALID_ARGUMENT,
         };
 
-        set_executor_node_identity(rust_exec, subscription_ref.node);
+        set_executor_node_identity(&mut rust_exec, subscription_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
@@ -2865,7 +2950,7 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw(
     }
 
     {
-        let rust_exec = get_executor(executor);
+        let mut rust_exec = get_executor(executor);
 
         // Extract metadata from service struct
         let service_name = core::str::from_utf8_unchecked(
@@ -2882,7 +2967,7 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw(
         };
 
         // Propagate node identity for liveliness key expression.
-        set_executor_node_identity(rust_exec, service_ref.node);
+        set_executor_node_identity(&mut rust_exec, service_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(service_name) {
@@ -2998,7 +3083,7 @@ pub unsafe extern "C" fn rclc_executor_attach_client(
 
     {
         let opaque_ptr = executor_ptr(executor);
-        let rust_exec = get_executor_from_ptr(opaque_ptr);
+        let mut rust_exec = get_executor_from_ptr(opaque_ptr);
 
         let service_name =
             core::str::from_utf8_unchecked(&client_ref.service_name[..client_ref.service_name_len]);
@@ -3016,7 +3101,7 @@ pub unsafe extern "C" fn rclc_executor_attach_client(
         let client_ctx = core::ptr::null_mut();
 
         // Propagate node identity for liveliness key expression.
-        set_executor_node_identity(rust_exec, client_ref.node);
+        set_executor_node_identity(&mut rust_exec, client_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(service_name) {
@@ -3136,7 +3221,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_server(
     {
         // Grab the opaque pointer before borrowing for get_executor to avoid double borrow.
         let opaque_ptr = executor_ptr(executor);
-        let rust_exec = get_executor_from_ptr(opaque_ptr);
+        let mut rust_exec = get_executor_from_ptr(opaque_ptr);
 
         // Extract metadata from action server struct
         let action_name =
@@ -3168,7 +3253,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_server(
         let context = server as *mut core::ffi::c_void;
 
         // Propagate node identity for liveliness key expression.
-        set_executor_node_identity(rust_exec, server_ref.node);
+        set_executor_node_identity(&mut rust_exec, server_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(action_name) {
@@ -3280,7 +3365,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
 
     {
         let opaque_ptr = executor_ptr(executor);
-        let rust_exec = get_executor_from_ptr(opaque_ptr);
+        let mut rust_exec = get_executor_from_ptr(opaque_ptr);
 
         // Always register trampolines — they check the C struct's callback
         // pointer at invocation time, so they handle None gracefully. This is
@@ -3308,7 +3393,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
             core::str::from_utf8_unchecked(&client_ref.type_hash[..client_ref.type_hash_len]);
 
         // Propagate node identity for liveliness key expression.
-        set_executor_node_identity(rust_exec, client_ref.node);
+        set_executor_node_identity(&mut rust_exec, client_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(action_name) {
@@ -3439,7 +3524,7 @@ pub unsafe extern "C" fn rclc_executor_remove_action_server(
     }
 
     let handle_id = server._internal.handle.handle_id();
-    let rust_exec = get_executor_from_ptr(opaque_ptr);
+    let mut rust_exec = get_executor_from_ptr(opaque_ptr);
     // SAFETY: the entry was registered by `rclc_executor_attach_action_server`
     // through `register_action_server_raw_sized` with exactly these const
     // parameters, and `server._internal` (the only copy of its handle) is
@@ -3507,7 +3592,7 @@ pub unsafe extern "C" fn rclc_executor_remove_action_client(
     }
 
     let entry_index = client._internal.arena_entry_index as usize;
-    let rust_exec = get_executor_from_ptr(opaque_ptr);
+    let mut rust_exec = get_executor_from_ptr(opaque_ptr);
     // SAFETY: registered by `rclc_executor_attach_action_client` through the
     // default-sized `register_action_client_raw`; the index is cleared below,
     // so no copy of it is used after the slot is handed back.
@@ -3598,7 +3683,7 @@ pub unsafe extern "C" fn rclc_executor_remove_subscription(
     }
 
     let handle_id = nros_node::executor::HandleId::from_raw(subscription.handle_id);
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     // Issue 1993 — the status-event slots are keyed on the executor-owned
     // subscriber, which `release_subscription` drops; free them first, or
     // every remove/re-add cycle leaks registrations from the process-wide
@@ -3670,7 +3755,7 @@ pub unsafe extern "C" fn rclc_executor_remove_timer(
     }
 
     let handle_id = nros_node::executor::HandleId::from_raw(timer.handle_id);
-    let rust_exec = get_executor_from_ptr(opaque_ptr);
+    let mut rust_exec = get_executor_from_ptr(opaque_ptr);
     // SAFETY: as in `rclc_executor_remove_subscription`.
     let released = rust_exec.release_timer(handle_id);
     timer.handle_id = usize::MAX;
@@ -3724,7 +3809,7 @@ pub unsafe extern "C" fn rclc_executor_remove_service(
 
     let handle_id =
         nros_node::executor::HandleId::for_owned_slot(service._internal.arena_entry_index as usize);
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     // SAFETY: as in `rclc_executor_remove_subscription`.
     let released = rust_exec.release_service(handle_id);
     service._internal.arena_entry_index = -1;
@@ -3785,7 +3870,7 @@ pub unsafe extern "C" fn rclc_executor_remove_client(
 
     let handle_id =
         nros_node::executor::HandleId::for_owned_slot(client._internal.arena_entry_index as usize);
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     // SAFETY: as in `rclc_executor_remove_subscription`.
     let released = rust_exec.release_service_client(handle_id);
     client._internal.arena_entry_index = -1;
@@ -3934,7 +4019,7 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
     }
 
     {
-        let rust_exec = get_executor(executor);
+        let mut rust_exec = get_executor(executor);
 
         // Convert timeout from nanoseconds to milliseconds (i32) for nros-node
         let timeout_ms: u64 = if timeout_ns > 0 {
@@ -4737,7 +4822,7 @@ pub unsafe extern "C" fn rclc_executor_add_time_triggered_dispatcher(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     rust_exec.register_time_triggered_dispatcher(major_frame_us);
     RCL_RET_OK
 }
@@ -4762,7 +4847,7 @@ pub unsafe extern "C" fn rclc_executor_create_sched_context(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     let sc = convert_sched_context(&*cfg);
     match rust_exec.create_sched_context(sc) {
         Ok(id) => {
@@ -4816,7 +4901,7 @@ pub unsafe extern "C" fn rclc_executor_bind_handle_to_sched_context(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     let h = nros_node::executor::HandleId::from_raw(handle);
     let id = nros_node::executor::sched_context::SchedContextId(sc_id);
     match rust_exec.bind_handle_to_sched_context(h, id) {
@@ -4895,7 +4980,7 @@ pub unsafe extern "C" fn rclc_executor_add_pre_shutdown_callback(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     match rust_exec.add_pre_shutdown_callback(callback, context) {
         Ok(handle) => {
             *out_handle = handle.0;
@@ -4932,7 +5017,7 @@ pub unsafe extern "C" fn rclc_executor_add_on_shutdown_callback(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     match rust_exec.add_on_shutdown_callback(callback, context) {
         Ok(handle) => {
             *out_handle = handle.0;
@@ -4965,7 +5050,7 @@ pub unsafe extern "C" fn rclc_executor_remove_pre_shutdown_callback(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     if rust_exec.remove_pre_shutdown_callback(nros_node::ShutdownCallbackHandle(handle)) {
         RCL_RET_OK
     } else {
@@ -4989,7 +5074,7 @@ pub unsafe extern "C" fn rclc_executor_remove_on_shutdown_callback(
         executor,
         rclc_executor_state_t::RCLC_EXECUTOR_STATE_INITIALIZED
     );
-    let rust_exec = get_executor(executor);
+    let mut rust_exec = get_executor(executor);
     if rust_exec.remove_on_shutdown_callback(nros_node::ShutdownCallbackHandle(handle)) {
         RCL_RET_OK
     } else {

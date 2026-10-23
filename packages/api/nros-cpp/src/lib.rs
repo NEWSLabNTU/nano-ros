@@ -813,7 +813,7 @@ const _: () = assert!(core::mem::offset_of!(CppContext, tag) == 0);
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_executor_inner(handle: *mut c_void) -> *mut c_void {
     match unsafe { cpp_ctx_checked(handle) } {
-        Some(ctx) => core::ptr::from_mut::<CppExecutor>(ctx.executor).cast(),
+        Some(mut ctx) => core::ptr::from_mut::<CppExecutor>(&mut *ctx.executor).cast(),
         None => core::ptr::null_mut(),
     }
 }
@@ -846,7 +846,7 @@ pub unsafe extern "C" fn nros_cpp_node_bind_c(
     let Some(id) = node_id_opt(node) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let Some(ctx) = (unsafe { cpp_ctx_checked(node.executor) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(node.executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     if node_out.is_null() || executor_out.is_null() {
@@ -885,8 +885,15 @@ const _: () = {
 ///
 /// # Safety
 /// `handle` must either be null or point to a readable 8-byte-aligned allocation.
+///
+/// phase-509 P9b (RFC-0108 "As built in P9b") -- the context comes back as a
+/// [`CtxRef`] that HOLDS the executor's lock for as long as the caller uses
+/// it: the lock is taken before the `&mut` exists and given back when the
+/// `CtxRef` drops, so no two threads ever hold a reference to one context at
+/// once. An executor with no lock installed (every one-level image) takes no
+/// lock and behaves exactly as before.
 #[cfg(feature = "rmw-cffi")]
-pub(crate) unsafe fn cpp_ctx_checked<'a>(handle: *mut c_void) -> Option<&'a mut CppContext> {
+pub(crate) unsafe fn cpp_ctx_checked<'a>(handle: *mut c_void) -> Option<CtxRef<'a>> {
     if handle.is_null() {
         return None;
     }
@@ -895,7 +902,105 @@ pub(crate) unsafe fn cpp_ctx_checked<'a>(handle: *mut c_void) -> Option<&'a mut 
     if unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).tag)) } != CPP_CONTEXT_TAG {
         return None;
     }
-    Some(unsafe { &mut *ctx })
+    // SAFETY (RFC-0108 "As built in P9b", ownership): the executor pointer is
+    // read as a raw pointer, creating no reference, and the lock is taken
+    // through it BEFORE the context's `&mut` below exists. The `executor`
+    // field is written once at open, before any second thread can hold the
+    // handle.
+    let exec = unsafe {
+        core::ptr::read(core::ptr::addr_of!((*ctx).executor) as *const *const CppExecutor)
+    };
+    let guard = unsafe { nros_node::executor::exec_lock::ExecGuard::acquire(exec) };
+    // SAFETY: the tag proved the handle is a context this crate stamped, and
+    // the lock (when installed) makes this the only live reference to it.
+    Some(CtxRef {
+        ctx: unsafe { &mut *ctx },
+        _guard: guard,
+    })
+}
+
+/// phase-509 P9b -- [`cpp_ctx_checked`] for a handle an entity stored at its
+/// creation (`node_ref.executor`, `client.executor_ptr`), which was checked
+/// then: the same lock, taken before the reference exists, without the tag
+/// re-check those call sites never made.
+///
+/// # Safety
+/// `handle` points at a live context this crate stamped.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) unsafe fn cpp_ctx_locked<'a>(handle: *mut c_void) -> CtxRef<'a> {
+    let ctx = handle as *mut CppContext;
+    // SAFETY: as `cpp_ctx_checked`: a raw read of the executor pointer, then
+    // the lock, then the only reference.
+    let exec = unsafe {
+        core::ptr::read(core::ptr::addr_of!((*ctx).executor) as *const *const CppExecutor)
+    };
+    let guard = unsafe { nros_node::executor::exec_lock::ExecGuard::acquire(exec) };
+    CtxRef {
+        ctx: unsafe { &mut *ctx },
+        _guard: guard,
+    }
+}
+
+/// phase-509 P9b -- an object inside the executor (an arena entry's core or
+/// client) handed back by a lookup, together with the executor lock the
+/// lookup took: the object is used while the lock is still held, and the lock
+/// is given back when this drops. `ctx` is `None` for an object that lives
+/// outside the executor (caller storage), which needs no lock.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) struct Locked<'a, T: ?Sized> {
+    ptr: *mut T,
+    _ctx: Option<CtxRef<'a>>,
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl<'a, T: ?Sized> Locked<'a, T> {
+    /// # Safety
+    /// `ptr` is valid for as long as `ctx` holds the lock (or, with `None`,
+    /// for `'a`), and nothing else references it meanwhile.
+    pub(crate) unsafe fn new(ptr: *mut T, ctx: Option<CtxRef<'a>>) -> Self {
+        Self { ptr, _ctx: ctx }
+    }
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl<T: ?Sized> core::ops::Deref for Locked<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        // SAFETY: `new`'s contract -- valid while the lock is held.
+        unsafe { &*self.ptr }
+    }
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl<T: ?Sized> core::ops::DerefMut for Locked<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        // SAFETY: as `deref`; `&mut self` makes this the only use.
+        unsafe { &mut *self.ptr }
+    }
+}
+
+/// phase-509 P9b -- a context reference that holds the executor's lock (see
+/// [`cpp_ctx_checked`]). Derefs to the [`CppContext`]; the lock is given back
+/// when it drops, after the reference's last use.
+#[cfg(feature = "rmw-cffi")]
+pub(crate) struct CtxRef<'a> {
+    ctx: &'a mut CppContext,
+    _guard: nros_node::executor::exec_lock::ExecGuard,
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl core::ops::Deref for CtxRef<'_> {
+    type Target = CppContext;
+    fn deref(&self) -> &CppContext {
+        self.ctx
+    }
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl core::ops::DerefMut for CtxRef<'_> {
+    fn deref_mut(&mut self) -> &mut CppContext {
+        self.ctx
+    }
 }
 
 /// Issue 1667 — the ONE body behind every `nros_cpp_*_release` that takes a
@@ -917,7 +1022,7 @@ pub(crate) unsafe fn release_dispatch_entry(
     handle_id: usize,
     release: unsafe fn(&mut CppExecutor, nros_node::HandleId) -> bool,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let id = nros_node::HandleId::from_raw(handle_id);
@@ -3012,7 +3117,7 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     // session (no rmw override → slot 0), so routing is unchanged — only the
     // node identity is now correct per component, matching the Rust + `_ex`
     // paths.
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let mut builder = ctx.executor.node_builder(name_str);
@@ -3206,7 +3311,7 @@ pub unsafe extern "C" fn nros_cpp_node_create_ex(
     // `rclc_init_multi` handle used to be cast to `CppContext`: both start with the
     // same `Executor`, so the cast read fine and the later field writes corrupted
     // the other struct's `Vec` (PX4 dumped core). Now it is a clean error.
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let mut builder = ctx.executor.node_builder(name_str);
@@ -3291,7 +3396,7 @@ pub unsafe extern "C" fn nros_cpp_node_destroy(node: *mut nros_cpp_node_t) -> nr
     if !node.is_null() {
         // SAFETY: a non-null `node` is a handle `nros_cpp_node_create*` filled.
         let node_ref = unsafe { &*node };
-        if let (Some(node_id), Some(ctx)) = (node_id_opt(node_ref), unsafe {
+        if let (Some(node_id), Some(mut ctx)) = (node_id_opt(node_ref), unsafe {
             cpp_ctx_checked(node_ref.executor)
         }) {
             // SAFETY: every handle the C++ side holds for these entries is
@@ -3422,7 +3527,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_serialization_format(
     #[cfg(feature = "rmw-cffi")]
     {
         let node = unsafe { &*node };
-        let Some(ctx) = (unsafe { cpp_ctx_checked(node.executor) }) else {
+        let Some(mut ctx) = (unsafe { cpp_ctx_checked(node.executor) }) else {
             return core::ptr::null();
         };
         // No NodeId (a node handle built before registration, or one whose
@@ -3631,7 +3736,7 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     // Issue 1556 (c) -- an application census writes and exits at its first
     // blocking call, instead of blocking.
     crate::census_finish_application_if_armed();
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let ms = timeout_ms.max(0) as u64;
@@ -3645,7 +3750,7 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
         executor,
         c: nros_c::rclc_executor_t { in_dispatch, .. },
         ..
-    } = ctx;
+    } = &mut *ctx;
     let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
         return NROS_CPP_RET_REENTRANT;
     };
@@ -3678,7 +3783,7 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_spin_some(handle: *mut c_void, max_ms: u32) -> nros_cpp_ret_t {
     crate::census_finish_application_if_armed();
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     // Issue 0290 — the same re-entry refusal `nros_cpp_spin_once` makes.
@@ -3686,7 +3791,7 @@ pub unsafe extern "C" fn nros_cpp_spin_some(handle: *mut c_void, max_ms: u32) ->
         executor,
         c: nros_c::rclc_executor_t { in_dispatch, .. },
         ..
-    } = ctx;
+    } = &mut *ctx;
     let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
         return NROS_CPP_RET_REENTRANT;
     };
@@ -3853,7 +3958,7 @@ pub unsafe extern "C" fn nros_cpp_executor_ping(
     handle: *mut c_void,
     timeout_ms: i32,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     match ctx.executor.ping(timeout_ms) {
@@ -3906,7 +4011,7 @@ pub unsafe extern "C" fn nros_cpp_executor_get_node_names(
     visit: nros_cpp_node_visit_fn,
     ctx: *mut c_void,
 ) -> nros_cpp_ret_t {
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let Some(visit) = visit else {
@@ -3966,7 +4071,7 @@ unsafe fn cpp_names_and_types(
     ctx: *mut c_void,
     services: bool,
 ) -> nros_cpp_ret_t {
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let Some(visit) = visit else {
@@ -4066,7 +4171,7 @@ unsafe fn cpp_count_on_topic(
     out_count: *mut usize,
     kind: CppGraphCount,
 ) -> nros_cpp_ret_t {
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     if topic_name.is_null() || out_count.is_null() {
@@ -4187,7 +4292,7 @@ unsafe fn cpp_by_node(
     ctx: *mut c_void,
     kind: u8,
 ) -> nros_cpp_ret_t {
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     if node_name.is_null() || node_namespace.is_null() {
@@ -4335,7 +4440,7 @@ unsafe fn cpp_endpoint_info(
     ctx: *mut c_void,
     publishers: bool,
 ) -> nros_cpp_ret_t {
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     if topic_name.is_null() {
@@ -4496,7 +4601,7 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
     use nros_node::executor::sched_context::{
         DeadlinePolicy, OptUs, Priority, SchedClass, SchedContext,
     };
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let cfg = unsafe { &*cfg };
@@ -4593,7 +4698,7 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context_from_policy(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     use nros_node::executor::sched_context::SchedContext;
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     // null → None; a non-UTF-8 string is treated as absent (the bake already
@@ -4661,7 +4766,7 @@ pub unsafe extern "C" fn nros_cpp_bind_handle_to_sched_context(
     callback_handle: usize,
     sc_id: u8,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let h = nros_node::executor::HandleId::from_raw(callback_handle);
@@ -4698,7 +4803,7 @@ pub unsafe extern "C" fn nros_cpp_bind_node_name_sched(
     if name.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let name_str = match unsafe { cstr_to_str(name) } {
@@ -4748,7 +4853,7 @@ pub unsafe extern "C" fn nros_cpp_bind_node_rank(
     if name.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let name_str = match unsafe { cstr_to_str(name) } {
@@ -4810,7 +4915,7 @@ pub unsafe extern "C" fn nros_cpp_bind_group_sched(
     if name.is_null() || group.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let name_str = match unsafe { cstr_to_str(name) } {
@@ -4925,7 +5030,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_min_stack_headroom(
     handle: *mut c_void,
     bytes: usize,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     ctx.executor.set_min_stack_headroom_bytes(bytes);
@@ -5128,7 +5233,7 @@ pub unsafe extern "C" fn nros_cpp_install_monitors(
     // the log (issue 0514's floor) and never `/diagnostics`. Arming here
     // rather than in the templates covers both packs and every board's spin
     // loop at once: the executor drains into the sink from `spin_once`.
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let Some(t) = (unsafe { tables.as_ref() }) else {
@@ -5137,7 +5242,7 @@ pub unsafe extern "C" fn nros_cpp_install_monitors(
     if t.n_rows == 0 && t.n_ages == 0 {
         return NROS_CPP_RET_OK;
     }
-    diag::arm(ctx)
+    diag::arm(&mut ctx)
 }
 
 /// The table half of [`nros_cpp_install_monitors`], unchanged.
@@ -5150,7 +5255,7 @@ unsafe fn install_monitor_tables(
     tables: *const nros_cpp_monitor_tables_t,
 ) -> nros_cpp_ret_t {
     use nros::monitor::{AgeMonitorSpec, MonitorSpec, PubMonitorCell, SubMonitorCell};
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let Some(t) = (unsafe { tables.as_ref() }) else {
@@ -5401,7 +5506,7 @@ pub unsafe extern "C" fn nros_cpp_install_hazards(
     table: *const nros_cpp_hazard_table_t,
 ) -> nros_cpp_ret_t {
     use nros::monitor::{GuardRef, GuardSpec, HazardCell, HazardSpec, NO_SINK};
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let Some(t) = (unsafe { table.as_ref() }) else {
@@ -5687,7 +5792,7 @@ pub unsafe extern "C" fn nros_cpp_install_modes(
     handle: *mut c_void,
     tables: *const nros_cpp_mode_tables_t,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let Some(t) = (unsafe { tables.as_ref() }) else {
@@ -5941,7 +6046,7 @@ pub unsafe extern "C" fn nros_cpp_executor_drain_violations(
     cb: nros_cpp_violation_cb_t,
     ctx: *mut c_void,
 ) -> nros_cpp_ret_t {
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let Some(cb) = cb else {
@@ -5979,7 +6084,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_violation_drain_report(
     handle: *mut c_void,
     enabled: bool,
 ) -> nros_cpp_ret_t {
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     cpp.executor.set_violation_drain_report(enabled);
@@ -6044,7 +6149,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_monitor_arming(
     on_call: bool,
     grace_ms: u32,
 ) -> nros_cpp_ret_t {
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     cpp.executor.set_monitor_arming(on_call, grace_ms);
@@ -6091,7 +6196,7 @@ pub unsafe extern "C" fn nros_cpp_declare_remap(
     if node_name.is_null() || from.is_null() || to.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let name_str = match unsafe { cstr_to_str(node_name) } {
@@ -6274,14 +6379,15 @@ pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
         }
     });
     // NULL handle: VALIDATE only. Resolved once, for both builds.
-    let executor = if handle.is_null() {
+    let mut ctx_ref = if handle.is_null() {
         None
     } else {
         let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         };
-        Some(&mut *ctx.executor)
+        Some(ctx)
     };
+    let executor = ctx_ref.as_mut().map(|ctx| &mut *ctx.executor);
 
     // phase-482 W5 — an image that can hold parameter overrides honours
     // `-p` and `--params-file` too. Without the parameter store the remap-only
@@ -6370,7 +6476,7 @@ impl core::fmt::Write for TruncatingWriter<'_> {
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_executor_session_handle(executor: *mut c_void) -> *mut c_void {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return core::ptr::null_mut();
     };
     ctx.executor.session_handle().into_raw()
@@ -6523,7 +6629,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
     groups: *const *const c_char,
     n: usize,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
 
@@ -6727,7 +6833,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_reaction_hook(
     hook: nros_cpp_reaction_hook_t,
     ctx: *mut c_void,
 ) -> nros_cpp_ret_t {
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     // SAFETY: the two event structs have one layout (asserted above), so a
@@ -6783,7 +6889,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_level(
     handle: *mut c_void,
     level: u8,
 ) -> nros_cpp_ret_t {
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     if cpp.executor.set_level(level) {
@@ -6791,6 +6897,35 @@ pub unsafe extern "C" fn nros_cpp_executor_set_level(
     } else {
         NROS_CPP_RET_INVALID_ARGUMENT
     }
+}
+
+/// phase-509 P9b (RFC-0108 "As built in P9b") -- install the executor's
+/// lock: `ctx` is the port's initialised RECURSIVE, priority-inheriting mutex
+/// (`nros_platform_mutex_rec_init`), and `lock` / `unlock` take and give it
+/// (`nros_platform_mutex_rec_lock` / `_unlock`). From then on every
+/// `nros_cpp_*` entry that touches this executor holds it for its duration.
+/// A NULL `ctx` removes the lock. Call it before a second thread can reach
+/// the executor; the mutex must outlive it. `INVALID_ARGUMENT` for a handle
+/// that is not an executor.
+///
+/// # Safety
+/// `handle` is a live executor handle from this ABI, or NULL; `ctx` is NULL
+/// or a mutex `lock` / `unlock` operate on, valid for the executor's life.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_lock(
+    handle: *mut c_void,
+    lock: unsafe extern "C" fn(*mut c_void) -> i8,
+    unlock: unsafe extern "C" fn(*mut c_void) -> i8,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    // SAFETY: the caller's contract on `ctx`, `lock` and `unlock`.
+    let l = unsafe { nros_node::executor::exec_lock::ExecLock::new(ctx, lock, unlock) };
+    cpp.executor.set_exec_lock(l);
+    NROS_CPP_RET_OK
 }
 
 /// phase-509 P7 — the most levels an image can have (the check-in word's
@@ -7360,7 +7495,7 @@ pub unsafe extern "C" fn nros_cpp_executor_register_wake_source(
     let Some(next) = next else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     match cpp.executor.register_wake_source(next, ctx) {
@@ -7446,7 +7581,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_park_primitive(
     let Some(park) = park else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     cpp.executor.set_park_primitive(park, ctx, granularity_us);
@@ -7469,7 +7604,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_spin_nominal_us(
     handle: *mut c_void,
     us: u64,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     ctx.executor.set_spin_nominal_us(us);
@@ -7497,7 +7632,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_spin_nominal_wait_paced_us(
     handle: *mut c_void,
     us: u64,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     ctx.executor.set_spin_nominal_wait_paced_us(us);
@@ -7670,7 +7805,7 @@ pub unsafe extern "C" fn nros_cpp_executor_last_park(
 pub unsafe extern "C" fn nros_cpp_executor_clear_release_jitter_stats(
     handle: *mut c_void,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     ctx.executor.clear_release_jitter_stats();

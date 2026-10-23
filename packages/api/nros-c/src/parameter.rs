@@ -29,7 +29,7 @@ mod imp {
 
     use crate::{
         error::*,
-        executor::{CExecutor, get_executor, rclc_executor_t},
+        executor::{get_executor, rclc_executor_t},
         node::{rcl_node_t, rclc_node_state_t},
     };
 
@@ -191,7 +191,7 @@ mod imp {
     /// The executor and node key a READY server names.
     unsafe fn target<'a>(
         server: *const rclc_parameter_server_t,
-    ) -> Result<(&'a mut CExecutor, NodeId), rcl_ret_t> {
+    ) -> Result<(crate::executor::CExecRef<'a>, NodeId), rcl_ret_t> {
         let Some(s) = server.as_ref() else {
             return Err(RCL_RET_INVALID_ARGUMENT);
         };
@@ -208,7 +208,7 @@ mod imp {
     /// rclc refuses it.
     unsafe fn target_mut<'a>(
         server: *mut rclc_parameter_server_t,
-    ) -> Result<(&'a mut CExecutor, NodeId), rcl_ret_t> {
+    ) -> Result<(crate::executor::CExecRef<'a>, NodeId), rcl_ret_t> {
         if let Some(s) = server.as_ref()
             && s.on_callback
         {
@@ -276,7 +276,7 @@ mod imp {
         name: *const c_char,
         value: ParameterValue,
     ) -> rcl_ret_t {
-        let (exec, id) = tri!(target_mut(server));
+        let (mut exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(name) else {
             return RCL_RET_INVALID_ARGUMENT;
         };
@@ -304,7 +304,7 @@ mod imp {
         name: *const c_char,
         value: ParameterValue,
     ) -> rcl_ret_t {
-        let (exec, id) = tri!(target_mut(server));
+        let (mut exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(name) else {
             return RCL_RET_INVALID_ARGUMENT;
         };
@@ -316,10 +316,13 @@ mod imp {
     unsafe fn get_value<'a>(
         server: *mut rclc_parameter_server_t,
         name: *const c_char,
-    ) -> Result<&'a ParameterValue, rcl_ret_t> {
+    ) -> Result<crate::executor::CLocked<'a, ParameterValue>, rcl_ret_t> {
         let (exec, id) = target(server)?;
         let n = name_str(name).ok_or(RCL_RET_INVALID_ARGUMENT)?;
-        exec.get_parameter_on(id, n).ok_or(RCL_RET_ERROR)
+        let v: *const ParameterValue = exec.get_parameter_on(id, n).ok_or(RCL_RET_ERROR)?;
+        // SAFETY (phase-509 P9b): the value lives in the executor's parameter
+        // store and is read only while the returned `CLocked` holds the lock.
+        Ok(crate::executor::CLocked::new(v.cast_mut(), Some(exec)))
     }
 
     // ------------------------------------------------------------------------
@@ -525,7 +528,7 @@ mod imp {
             return RCL_RET_NOT_INIT;
         }
         let executor = node.executor.cast_mut();
-        let exec = get_executor(&mut (*executor));
+        let mut exec = get_executor(&mut (*executor));
         let id = NodeId::from_raw(node.node_id);
         // Creates the store if this is its first use, and sets the node's
         // undeclared-set policy.
@@ -567,7 +570,7 @@ mod imp {
         server: *mut rclc_parameter_server_t,
         _node: *mut rcl_node_t,
     ) -> rcl_ret_t {
-        let (exec, id) = tri!(target_mut(server));
+        let (mut exec, id) = tri!(target_mut(server));
         let s = &mut *server;
         if s.has_hook {
             exec.remove_on_set_parameters_callback(nros_node::OnSetParameterHandle::from_raw(
@@ -622,7 +625,7 @@ mod imp {
         on_modification: rclc_parameter_callback_t,
         context: *mut c_void,
     ) -> rcl_ret_t {
-        let (exec, id) = tri!(target_mut(server));
+        let (mut exec, id) = tri!(target_mut(server));
         let s = &mut *server;
         if executor.is_null() || executor != s.executor {
             return RCL_RET_INVALID_ARGUMENT;
@@ -670,7 +673,7 @@ mod imp {
         server: *mut rclc_parameter_server_t,
         parameter_name: *const c_char,
     ) -> rcl_ret_t {
-        let (exec, id) = tri!(target_mut(server));
+        let (mut exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(parameter_name) else {
             return RCL_RET_INVALID_ARGUMENT;
         };
@@ -707,7 +710,8 @@ mod imp {
                 if output.is_null() {
                     return RCL_RET_INVALID_ARGUMENT;
                 }
-                match tri!(get_value(server, parameter_name)).$as() {
+                let value = tri!(get_value(server, parameter_name));
+                match value.$as() {
                     Some(v) => {
                         *output = v;
                         RCL_RET_OK
@@ -800,7 +804,8 @@ mod imp {
         if output.is_null() {
             return RCL_RET_INVALID_ARGUMENT;
         }
-        let Some(s) = tri!(get_value(server, parameter_name)).as_string() else {
+        let value = tri!(get_value(server, parameter_name));
+        let Some(s) = value.as_string() else {
             return RCL_RET_INVALID_ARGUMENT;
         };
         if s.len() + 1 > capacity {
@@ -853,7 +858,8 @@ mod imp {
                 capacity: usize,
                 out_len: *mut usize,
             ) -> rcl_ret_t {
-                let Some(a) = tri!(get_value(server, parameter_name)).$as() else {
+                let value = tri!(get_value(server, parameter_name));
+                let Some(a) = value.$as() else {
                     return RCL_RET_INVALID_ARGUMENT;
                 };
                 if !out_len.is_null() {
@@ -985,7 +991,8 @@ mod imp {
         capacity: usize,
         out_len: *mut usize,
     ) -> rcl_ret_t {
-        let ParameterValue::StringArray(a) = tri!(get_value(server, parameter_name)) else {
+        let value = tri!(get_value(server, parameter_name));
+        let ParameterValue::StringArray(a) = &*value else {
             return RCL_RET_INVALID_ARGUMENT;
         };
         if !out_len.is_null() {
@@ -1017,7 +1024,7 @@ mod imp {
         parameter_description: *const c_char,
         additional_constraints: *const c_char,
     ) -> rcl_ret_t {
-        let (exec, id) = tri!(target_mut(server));
+        let (mut exec, id) = tri!(target_mut(server));
         let text = |p: *const c_char| {
             if p.is_null() {
                 Some("")
@@ -1047,7 +1054,7 @@ mod imp {
         parameter_name: *const c_char,
         read_only: bool,
     ) -> rcl_ret_t {
-        let (exec, id) = tri!(target_mut(server));
+        let (mut exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(parameter_name) else {
             return RCL_RET_INVALID_ARGUMENT;
         };
@@ -1068,7 +1075,7 @@ mod imp {
         to_value: i64,
         step: u64,
     ) -> rcl_ret_t {
-        let (exec, id) = tri!(target_mut(server));
+        let (mut exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(parameter_name) else {
             return RCL_RET_INVALID_ARGUMENT;
         };
@@ -1091,7 +1098,7 @@ mod imp {
         to_value: f64,
         step: f64,
     ) -> rcl_ret_t {
-        let (exec, id) = tri!(target_mut(server));
+        let (mut exec, id) = tri!(target_mut(server));
         let Some(n) = name_str(parameter_name) else {
             return RCL_RET_INVALID_ARGUMENT;
         };

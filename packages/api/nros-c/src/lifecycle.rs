@@ -426,7 +426,7 @@ mod service_backed {
         if executor.is_null() {
             return RCL_RET_INVALID_ARGUMENT;
         }
-        let exec = unsafe { get_executor(&mut (*executor)) };
+        let mut exec = unsafe { get_executor(&mut (*executor)) };
         match exec.register_lifecycle_services() {
             Ok(()) => RCL_RET_OK,
             Err(_) => RCL_RET_ERROR,
@@ -470,7 +470,7 @@ mod service_backed {
         if executor.is_null() {
             return RCL_RET_INVALID_ARGUMENT;
         }
-        let exec = unsafe { get_executor(&mut (*executor)) };
+        let mut exec = unsafe { get_executor(&mut (*executor)) };
         let Some(sm) = exec.lifecycle_state_machine_mut() else {
             return RCL_RET_NOT_INIT;
         };
@@ -496,7 +496,7 @@ mod service_backed {
         if executor.is_null() {
             return RCL_RET_INVALID_ARGUMENT;
         }
-        let exec = unsafe { get_executor(&mut (*executor)) };
+        let mut exec = unsafe { get_executor(&mut (*executor)) };
         let Some(sm) = exec.lifecycle_state_machine_mut() else {
             return RCL_RET_NOT_INIT;
         };

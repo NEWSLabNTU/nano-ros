@@ -40,7 +40,7 @@ use crate::{
 pub unsafe extern "C" fn nros_cpp_register_lifecycle_services(
     executor: *mut c_void,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     match ctx.executor.register_lifecycle_services() {
@@ -74,7 +74,7 @@ pub unsafe extern "C" fn nros_cpp_lifecycle_change_state(
     // DESTROY) fall out of `from_u8` as `INVALID_ARGUMENT`.
     transition_id: u8,
 ) -> nros_cpp_ret_t {
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let Some(sm) = ctx.executor.lifecycle_state_machine_mut() else {
@@ -130,7 +130,7 @@ unsafe fn register_cpp(
     cb: nros_cpp_lifecycle_callback_t,
     ctx: *mut c_void,
 ) -> nros_cpp_ret_t {
-    let Some(context) = (unsafe { cpp_ctx_checked(executor) }) else {
+    let Some(mut context) = (unsafe { cpp_ctx_checked(executor) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let Some(sm) = context.executor.lifecycle_state_machine_mut() else {

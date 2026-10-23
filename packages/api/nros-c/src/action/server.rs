@@ -526,7 +526,7 @@ pub unsafe extern "C" fn rclc_action_publish_feedback_raw(
     }
     let handle = internal.handle;
 
-    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+    let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
@@ -536,7 +536,7 @@ pub unsafe extern "C" fn rclc_action_publish_feedback_raw(
     // expects raw fields only (it adds its own CDR header + GoalId framing).
     let fields = strip_cdr_header(data);
 
-    match handle.publish_feedback_raw(executor, &goal_id, fields) {
+    match handle.publish_feedback_raw(&mut executor, &goal_id, fields) {
         Ok(()) => RCL_RET_OK,
         Err(_) => RCL_RET_ERROR,
     }
@@ -561,7 +561,7 @@ pub unsafe extern "C" fn rclc_action_succeed(
     }
     let handle = internal.handle;
 
-    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+    let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
@@ -579,7 +579,7 @@ pub unsafe extern "C" fn rclc_action_succeed(
     // issue 0796 — a result the server cannot retain (larger than the action
     // server's RESULT_BUF) is now reported instead of silently dropped.
     match handle.complete_goal_raw(
-        executor,
+        &mut executor,
         &goal_id,
         nros_node::GoalStatus::Succeeded,
         result_fields,
@@ -607,7 +607,7 @@ pub unsafe extern "C" fn rclc_action_abort(
     }
     let handle = internal.handle;
 
-    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+    let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
@@ -623,7 +623,7 @@ pub unsafe extern "C" fn rclc_action_abort(
     // issue 0796 — a result the server cannot retain (larger than the action
     // server's RESULT_BUF) is now reported instead of silently dropped.
     match handle.complete_goal_raw(
-        executor,
+        &mut executor,
         &goal_id,
         nros_node::GoalStatus::Aborted,
         result_fields,
@@ -651,7 +651,7 @@ pub unsafe extern "C" fn rclc_action_canceled(
     }
     let handle = internal.handle;
 
-    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+    let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
@@ -667,7 +667,7 @@ pub unsafe extern "C" fn rclc_action_canceled(
     // issue 0796 — a result the server cannot retain (larger than the action
     // server's RESULT_BUF) is now reported instead of silently dropped.
     match handle.complete_goal_raw(
-        executor,
+        &mut executor,
         &goal_id,
         nros_node::GoalStatus::Canceled,
         result_fields,
@@ -696,11 +696,11 @@ pub unsafe extern "C" fn rclc_action_execute(
     }
     let handle = internal.handle;
 
-    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+    let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
     let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
-    handle.set_goal_status(executor, &goal_id, nros_node::GoalStatus::Executing);
+    handle.set_goal_status(&mut executor, &goal_id, nros_node::GoalStatus::Executing);
     RCL_RET_OK
 }
 
@@ -750,7 +750,7 @@ pub unsafe extern "C" fn rclc_action_server_get_active_goal_count(
             }
             let handle = internal.handle;
             let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-            *out = handle.active_goal_count(executor);
+            *out = handle.active_goal_count(&executor);
             RCL_RET_OK
         }
         _ => RCL_RET_NOT_INIT,
@@ -834,7 +834,7 @@ pub unsafe extern "C" fn rclc_action_server_goal_exists(
             }
             let handle = internal.handle;
             let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-            handle.goal_exists(executor, &goal_id)
+            handle.goal_exists(&executor, &goal_id)
         }
         _ => false,
     }
@@ -890,8 +890,8 @@ pub unsafe extern "C" fn rclc_action_expire_goals(
                 return RCL_RET_NOT_INIT;
             }
             let handle = internal.handle;
-            let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-            *num_expired = handle.expire_goals(executor);
+            let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+            *num_expired = handle.expire_goals(&mut executor);
             RCL_RET_OK
         }
         _ => RCL_RET_NOT_INIT,
@@ -925,7 +925,7 @@ pub unsafe extern "C" fn rclc_action_get_goal_status(
     let goal_id = nros_node::GoalId {
         uuid: (*goal).uuid.uuid,
     };
-    match handle.goal_status(executor, &goal_id) {
+    match handle.goal_status(&executor, &goal_id) {
         Some(s) => {
             *status = goal_status_from_core(s);
             RCL_RET_OK
@@ -1077,7 +1077,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_init(
     {
         // Phase 156 Sub-bug D — multi-Session dispatch (see
         // `rclc_publisher_init_default`).
-        let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
+        let (mut session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
             Some(t) => t,
             None => return RCL_RET_NOT_INIT,
         };

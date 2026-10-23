@@ -329,7 +329,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
     }
 
     let server = unsafe { &mut *(storage as *mut CppActionServer) };
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
 
@@ -501,7 +501,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback(
     }
 
     let server = unsafe { &*(handle as *const CppActionServer) };
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let id = nros::GoalId {
@@ -553,7 +553,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     }
 
     let server = unsafe { &*(handle as *const CppActionServer) };
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     let id = nros::GoalId {
@@ -712,7 +712,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_detach(
         // Created but never registered: no arena entry names this storage.
         return NROS_CPP_RET_OK;
     };
-    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_OK;
     };
     // SAFETY: `handle` came from `register_action_server_raw` in
@@ -852,14 +852,18 @@ pub(crate) struct CppActionClient {
 unsafe fn cpp_arena_core_mut<'a>(
     arena_entry_index: i32,
     executor_ptr: *mut c_void,
-) -> Option<&'a mut nros_node::ActionClientCore> {
+) -> Option<crate::Locked<'a, nros_node::ActionClientCore>> {
     if arena_entry_index < 0 || executor_ptr.is_null() {
         return None;
     }
     unsafe {
-        let ctx = &mut *(executor_ptr as *mut CppContext);
-        ctx.executor
-            .action_client_core_mut(arena_entry_index as usize)
+        let mut ctx = crate::cpp_ctx_locked(executor_ptr);
+        let core: *mut nros_node::ActionClientCore = ctx
+            .executor
+            .action_client_core_mut(arena_entry_index as usize)?;
+        // SAFETY (phase-509 P9b): the core lives in the executor's pinned
+        // arena; it is used only while `ctx` keeps the executor lock.
+        Some(crate::Locked::new(core, Some(ctx)))
     }
 }
 
@@ -1069,7 +1073,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
     // Issue 1913 — each endpoint on its own hash (NULL falls back to `hash_str`).
     let hashes = unsafe { nros_cpp_action_hashes_t::resolve(hashes, hash_str) };
 
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut crate::CppContext = &mut ctx_ref;
 
     // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps.
     let resolved_act = match crate::resolve_node_entity_name(ctx, node_ref, act_str) {
@@ -1192,7 +1197,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
         if crate::nros_cpp_time_ns() >= deadline_ns {
             return NROS_CPP_RET_TIMEOUT;
         }
-        let ctx = unsafe { &mut *(executor_ptr as *mut CppContext) };
+        let mut ctx_ref = unsafe { crate::cpp_ctx_locked(executor_ptr) };
+        let ctx: &mut crate::CppContext = &mut ctx_ref;
         let _ = ctx
             .executor
             .spin_once(core::time::Duration::from_millis(SPIN_MS));
@@ -1273,10 +1279,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     let goal_fields = strip_cdr_header(goal_data);
 
     // Send goal via arena core (non-blocking)
-    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
-        Some(c) => c,
-        None => return NROS_CPP_RET_ERROR,
-    };
+    let mut core =
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+            Some(c) => c,
+            None => return NROS_CPP_RET_ERROR,
+        };
     let goal_id = match core.send_goal_raw(goal_fields) {
         Ok(id) => id,
         Err(_) => return NROS_CPP_RET_ERROR,
@@ -1327,7 +1334,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     // server's queryable callback may not run for ~12 s after the
     // client sends the goal (lease/keepalive serialization). The
     // 10 s budget was racing this on test_zephyr_cpp_action_server_to_client_e2e.
-    let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(client.executor_ptr) };
+    let ctx: &mut crate::CppContext = &mut ctx_ref;
     // Issue 0290 — this helper BLOCKS by spinning the executor, so it must not
     // run from inside a callback (the C twin `rclc_action_send_goal` returns
     // RCLC_RET_REENTRANT for exactly this). Restore the caller's callback
@@ -1422,7 +1430,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
 
     // Send get_result request via arena core (non-blocking)
     {
-        let core =
+        let mut core =
             match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
                 Some(c) => c,
                 None => return NROS_CPP_RET_ERROR,
@@ -1472,7 +1480,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     // Phase 89.3: wall-clock budgeting — see the explanation on
     // `send_goal` above for why `for _ in 0..1000` is insufficient on
     // multi-threaded zpico backends.
-    let ctx = unsafe { &mut *(client.executor_ptr as *mut CppContext) };
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(client.executor_ptr) };
+    let ctx: &mut crate::CppContext = &mut ctx_ref;
     // Issue 0290 — blocking helper; refuse to re-enter from a callback.
     let CppContext {
         executor,
@@ -1567,15 +1576,16 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
 
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
 
-    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
-        Some(c) => c,
-        None => {
-            unsafe {
-                *feedback_len = 0;
+    let mut core =
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+            Some(c) => c,
+            None => {
+                unsafe {
+                    *feedback_len = 0;
+                }
+                return NROS_CPP_RET_OK;
             }
-            return NROS_CPP_RET_OK;
-        }
-    };
+        };
 
     match core.try_recv_feedback_raw() {
         Ok(Some((_goal_id, total_len))) => {
@@ -1646,13 +1656,14 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response(
     }
 
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
-    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
-        Some(c) => c,
-        None => {
-            unsafe { *out_len = 0 };
-            return NROS_CPP_RET_TRY_AGAIN;
-        }
-    };
+    let mut core =
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+            Some(c) => c,
+            None => {
+                unsafe { *out_len = 0 };
+                return NROS_CPP_RET_TRY_AGAIN;
+            }
+        };
 
     match core.try_recv_send_goal_reply() {
         Ok(Some(total_len)) => {
@@ -1767,14 +1778,14 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
 
     // Fallback: check the core directly (in case the trampoline wasn't fired yet)
     let _client = unsafe { &mut *(handle as *mut CppActionClient) };
-    let core = match unsafe { cpp_arena_core_mut(_client.arena_entry_index, _client.executor_ptr) }
-    {
-        Some(c) => c,
-        None => {
-            unsafe { *out_len = 0 };
-            return NROS_CPP_RET_TRY_AGAIN;
-        }
-    };
+    let mut core =
+        match unsafe { cpp_arena_core_mut(_client.arena_entry_index, _client.executor_ptr) } {
+            Some(c) => c,
+            None => {
+                unsafe { *out_len = 0 };
+                return NROS_CPP_RET_TRY_AGAIN;
+            }
+        };
 
     match core.try_recv_get_result_reply() {
         Ok(Some(total_len)) => {
@@ -1841,7 +1852,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_destroy(storage: *mut c_void) ->
         let client = unsafe { &mut *(storage as *mut CppActionClient) };
         let entry_index = client.arena_entry_index;
         if entry_index >= 0 {
-            if let Some(ctx) = unsafe { cpp_ctx_checked(client.executor_ptr) } {
+            if let Some(mut ctx) = unsafe { cpp_ctx_checked(client.executor_ptr) } {
                 // SAFETY: the entry was registered by
                 // `nros_cpp_action_client_create` through
                 // `register_action_client_raw`, the default-sized entry point,
@@ -1883,7 +1894,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_relocate(
     // left alone it names the moved-from storage, which a temporary frees.
     let client = unsafe { &*(new_storage as *const CppActionClient) };
     if client.arena_entry_index >= 0
-        && let Some(ctx) = unsafe { cpp_ctx_checked(client.executor_ptr) }
+        && let Some(mut ctx) = unsafe { cpp_ctx_checked(client.executor_ptr) }
     {
         // SAFETY: registered through `register_action_client_raw`, the
         // default-sized entry point; `new_storage` is the caller's live storage.
@@ -1924,10 +1935,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal_async(
     // Strip CDR header (same as blocking variant)
     let goal_fields = strip_cdr_header(goal_data);
 
-    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
-        Some(c) => c,
-        None => return NROS_CPP_RET_ERROR,
-    };
+    let mut core =
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+            Some(c) => c,
+            None => return NROS_CPP_RET_ERROR,
+        };
 
     // Non-blocking: uses zpico_get_start internally
     match core.send_goal_raw(goal_fields) {
@@ -1967,10 +1979,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
     unsafe { core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), -1i32) };
     unsafe { core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_LEN), -1i32) };
 
-    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
-        Some(c) => c,
-        None => return NROS_CPP_RET_ERROR,
-    };
+    let mut core =
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+            Some(c) => c,
+            None => return NROS_CPP_RET_ERROR,
+        };
 
     match core.send_get_result_request(&id) {
         Ok(()) => NROS_CPP_RET_OK,
@@ -2004,10 +2017,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_cancel_goal(
     let id = nros::GoalId {
         uuid: unsafe { *goal_id },
     };
-    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
-        Some(c) => c,
-        None => return NROS_CPP_RET_ERROR,
-    };
+    let mut core =
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+            Some(c) => c,
+            None => return NROS_CPP_RET_ERROR,
+        };
     match core.send_cancel_request(&id) {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
@@ -2034,10 +2048,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
-    let core = match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
-        Some(c) => c,
-        None => return NROS_CPP_RET_ERROR,
-    };
+    let mut core =
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+            Some(c) => c,
+            None => return NROS_CPP_RET_ERROR,
+        };
     match core.try_recv_cancel_reply() {
         // [CDR_HDR(4)][return_code i8][goals_canceling…]
         Ok(Some(len)) if len > CDR_HEADER_LEN => {
@@ -2109,7 +2124,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
         u
     };
 
-    let core = match unsafe { cpp_arena_core_mut(idx, eptr) } {
+    let mut core = match unsafe { cpp_arena_core_mut(idx, eptr) } {
         Some(c) => c,
         None => return NROS_CPP_RET_OK,
     };
@@ -2458,7 +2473,8 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         .ok()
         .and_then(|s| s.split('\0').next())
         .unwrap_or("/");
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut crate::CppContext = &mut ctx_ref;
 
     // phase-428 W5 finding 3, swept — the CALLBACK action path resolves
     // (`:902`); these polling ones created from the raw name, so a `~` or a
@@ -2882,7 +2898,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         .ok()
         .and_then(|s| s.split('\0').next())
         .unwrap_or("/");
-    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    let mut ctx_ref = unsafe { crate::cpp_ctx_locked(node_ref.executor) };
+    let ctx: &mut crate::CppContext = &mut ctx_ref;
 
     // phase-428 W5 finding 3, swept — the CALLBACK action path resolves
     // (`:902`); these polling ones created from the raw name, so a `~` or a

@@ -2831,6 +2831,25 @@ nros_cpp_ret_t nros_cpp_executor_level(void *handle, uint8_t *out_level);
 nros_cpp_ret_t nros_cpp_executor_set_level(void *handle, uint8_t level);
 
 /**
+ * phase-509 P9b (RFC-0108 "As built in P9b") -- install the executor's
+ * lock: `ctx` is the port's initialised RECURSIVE, priority-inheriting mutex
+ * (`nros_platform_mutex_rec_init`), and `lock` / `unlock` take and give it
+ * (`nros_platform_mutex_rec_lock` / `_unlock`). From then on every
+ * `nros_cpp_*` entry that touches this executor holds it for its duration.
+ * A NULL `ctx` removes the lock. Call it before a second thread can reach
+ * the executor; the mutex must outlive it. `INVALID_ARGUMENT` for a handle
+ * that is not an executor.
+ *
+ * # Safety
+ * `handle` is a live executor handle from this ABI, or NULL; `ctx` is NULL
+ * or a mutex `lock` / `unlock` operate on, valid for the executor's life.
+ */
+nros_cpp_ret_t nros_cpp_executor_set_lock(void *handle,
+                                          int8_t (*lock)(void*),
+                                          int8_t (*unlock)(void*),
+                                          void *ctx);
+
+/**
  * phase-509 P7 — the level of tier `index` of a runner's `n` tiers: its
  * urgency order among their kernel priorities, 0 the most urgent, equal
  * priorities in array order. The rule `nros codegen entry` uses for

@@ -504,7 +504,7 @@ unsafe fn subscription_set(
         return RCL_RET_NOT_INIT;
     }
     let exec_t = subscription._executor as *mut crate::executor::rclc_executor_t;
-    let exec = unsafe { crate::executor::get_executor(exec_t) };
+    let mut exec = unsafe { crate::executor::get_executor(exec_t) };
     let Some(handle) = (unsafe { exec.subscription_handle_mut(subscription.handle_id) }) else {
         return RCL_RET_NOT_INIT;
     };

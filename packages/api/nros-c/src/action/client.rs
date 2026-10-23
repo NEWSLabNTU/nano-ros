@@ -371,7 +371,7 @@ pub unsafe extern "C" fn rclc_action_client_wait_for_action_server(
         let timeout_ns: u64 = (timeout_ms as u64).saturating_mul(1_000_000);
         loop {
             {
-                let exec = crate::executor::get_executor(exec_t);
+                let mut exec = crate::executor::get_executor(exec_t);
                 let core = match exec.action_client_core_mut(internal.arena_entry_index as usize) {
                     Some(c) => c,
                     None => return RCL_RET_NOT_INIT,
@@ -457,7 +457,7 @@ pub unsafe extern "C" fn rclc_action_client_action_server_is_ready(
             return false;
         }
         let exec_t = &mut *executor;
-        let exec = crate::executor::get_executor(exec_t);
+        let mut exec = crate::executor::get_executor(exec_t);
         match exec.action_client_core_mut(internal.arena_entry_index as usize) {
             Some(core) => core.is_server_ready(),
             None => false,
@@ -1143,7 +1143,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_init(
     {
         // Phase 156 Sub-bug D — multi-Session dispatch (see
         // `rclc_publisher_init_default`).
-        let (session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
+        let (mut session, domain_id) = match crate::node::resolve_session_and_domain(node_ref) {
             Some(t) => t,
             None => return RCL_RET_NOT_INIT,
         };
