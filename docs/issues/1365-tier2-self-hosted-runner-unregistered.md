@@ -865,3 +865,32 @@ and the loop restarted. The new container read `Current runner version:
 on other hosts. Each needs `runner-container.sh <labels> --build` from a
 checkout with this pin, then a restart. Closes when all three take queued
 work without an update step.
+
+## Where the version pin left it (2026-10-23)
+
+Measured from the jobs API over every job a `nano-ros-runner-*` took from
+2026-10-15 to 2026-10-23 (181 jobs, across `nightly`, `run-matrix`, `queue` and
+`live-peer`). For each tier/L3 job that waited more than 60 s, the question
+asked was whether every other runner was busy during the wait.
+
+- **Up to 2026-10-17, the third shape recurred.** On 10-17 an `L3` waited
+  94 min and a `tier 2 (1-wise matrix)` waited 86 min while
+  `newslab-118-server` ran nothing at all. On 10-15 and 10-16 all three hosts
+  were idle across waits of up to 1303 min. This is the window in which the
+  2.337.0 pin was rolled out host by host.
+- **From 2026-10-19 to 10-20, every long wait (9–57 min, 8 jobs) was
+  contention.** `newslab-server-241` was busy for the whole wait and
+  `newslab-118-server` was finishing another job, so the job queued behind
+  real work. That is a capacity matter, not this issue's outage.
+- **Since 2026-10-21, no self-hosted job waited more than 60 s.**
+
+`newslab-133` ran no job after 10-17. No runner container is up there today,
+and its `nano-ros-runner:local` image (built 2026-10-15) still reports
+`config.sh --version` = 2.329.0. So the closing condition ("all three take
+queued work without an update step") holds on 118 and 241 and not on 133. On
+133 the fix is `runner-container.sh nros-qemu,nros-sdk-zephyr,nros-big --build`
+from a current checkout, then a restart. Whether to run a runner on that host
+is the operator's call; it is not a code change.
+
+Clause 2 (a lane that reports "queued and unclaimed" and says why) is still
+open.

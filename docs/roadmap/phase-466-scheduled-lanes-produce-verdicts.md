@@ -163,7 +163,7 @@ are diagnosis waves, and what a wave ends up editing depends on what it finds.
 | `phase-466-W2` | LANDED (#1209). Not `probe.yml` -- the narrow fix was already on main. The class gate `check-workflow-just-provisioning` plus the sweep of every workflow and composite action that invokes `just` | done |
 | `phase-466-W3` | LANDED (#1210). THREE independent bugs: the missing `-DZEPHYR_EXTRA_MODULES`, the runner's absent rosidl python deps (1457, kept open -- not fixable in this repository), and a missing `mkdir -p` at `fixture-lane.sh:343` that silently lost issue 0499's lower bound | done |
 | `phase-466-W4` | LANDED (#1212). Both lanes die in ONE step on a full disk (issue 1353). A survivable disk-report channel plus `scripts/ci/reclaim-disk.sh`, with `live-peer.yml`'s inline copy folded into it | done |
-| `phase-466-W5` | OPEN (2026-10-14, handed over by the archived phase-330). The RTOS half of phase-330's two last acceptance boxes: build the RTOS realtime workspace fixtures and get a verdict from `realtime_tiers_e2e` and `sched_dims_applied_e2e` on them. See "W5 -- the RTOS realtime cells" below | waits on a tier-2 nightly that reaches its cells |
+| `phase-466-W5` | OPEN (2026-10-14, handed over by the archived phase-330). The RTOS half of phase-330's two last acceptance boxes: build the RTOS realtime workspace fixtures and get a verdict from `realtime_tiers_e2e` and `sched_dims_applied_e2e` on them. See "W5 -- the RTOS realtime cells" below | a tier-2 nightly reached its cells on 2026-10-22 and both tests passed, but its log cannot say which RTOS cells ran (issue 2004); the next run that reaches its cells prints them |
 
 W1 and W3 may collide on the Zephyr image: if W3's `msg2idl.py` failure turns
 out to be another missing package in that image, the Dockerfile edit belongs
@@ -238,6 +238,18 @@ on every RTOS cell: green, or red for a reason about the code under test. An
 `UNMET PRECONDITION` is not a verdict. A red that is a real defect gets its own
 issue; it does not reopen phase-330.
 
+**2026-10-23.** The tier-2 nightly of 2026-10-22 (run 39739466151) built its
+fixtures and ran 3190 tests, and both tests PASSED: `realtime_tiers` in 119 s,
+`sched_dims_applied` in 23 s. Since issue 1758, an unmet precondition inside
+either test is a failure, so a PASS means no in-scope cell was missing its
+fixture. It does not say which cells were in scope. A cell outside the run's
+pairwise coordinates is recorded as "out of lane" and the test still passes,
+and the summary naming those cells is stdout, which nextest discards on PASS.
+That is issue 2004, now fixed: both tests print the summary on PASS. W5 is
+decided by the next tier-2 run that reaches its cells, and if that summary
+puts RTOS cells out of lane, it also needs a lane whose coordinates include
+them.
+
 ## Two things this phase must not do
 
 **Do not fix only where the symptom was seen.** The package absence is not the
@@ -290,3 +302,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#1898](../issues/archived/1898-metadata-harness-excerpt-drops-cargo-cause.md) | The tier-2 nightly stopped in `generate-bindings` on a git dependency it could not fetch, and the excerpt dropped the reason. |
 | [#1899](../issues/1899-tier2-nightly-fixture-compilers-sigkilled.md) | Compilers were SIGKILLed across five families at once in the tier-2 nightly build, so crates fail with no diagnostic. |
 | [#1981](../issues/1981-live-peer-narrowing-alternation-is-one-workspace-id.md) | Homed 2026-10-23 from phase-441, which was archived that day. The `live-peer` board job joins two `NROS_FIXTURE_ID` narrowings with `\|`, and the workspace builder reads the result as one id. So the lane cannot run the fragmented-sample cell phase-441 W6 recorded. |
+| [#2004](../issues/2004-matrix-test-summary-hidden-on-pass.md) | A matrix test that passes over cells it did not run prints which ones, and nextest discards that output on PASS, so W5 could not be read off the 2026-10-22 tier-2 run. |

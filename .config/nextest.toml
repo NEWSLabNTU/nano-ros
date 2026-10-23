@@ -39,6 +39,19 @@ path = "junit.xml"
 store-success-output = false
 store-failure-output = true
 
+# issue 2004 — these tests run a matrix of cells inside one `#[test]` and PASS
+# when the cells in this run's coordinates pass, recording the rest as "out of
+# lane". Their stdout summary ("6 row(s) ran, 0 skipped, 14 out of lane") is the
+# only record of which cells a green covered, and nextest discards a passing
+# test's output by default. So a tier-2 nightly reported `PASS realtime_tiers`
+# and could not say which RTOS cells it ran (phase-466 W5). Print it on PASS.
+# The list is derived, not authored: `check-matrix-summary-visible` finds every
+# test that calls `lane_scope::skip_note(` for a summary and requires it here.
+[[profile.default.overrides]]
+filter = "binary(entry_e2e) or binary(multihost_e2e) or binary(realtime_tiers_e2e) or binary(roundtrip_xprocess_e2e) or binary(sched_dims_applied_e2e)"
+success-output = "final"
+junit.store-success-output = true
+
 # Per-platform groups for QEMU + bridge-networked tests.
 #
 # phase-295 W4 — port/domain isolation comes from the ONE allocator
