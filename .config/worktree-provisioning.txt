@@ -14,7 +14,7 @@
 # NOT every submodule: no lane checks out all 20 (issue 1043), and the Zephyr
 # `hal_*` modules alone are gigabytes. This is the set the gate tiers actually
 # read, which is why each row carries its reader.
-packages/rmw/zenoh/zpico-sys/zenoh-pico           # check::fast — capability-conditionals, zpico-config-keys
+packages/rmw/zenoh/zpico-sys/zenoh-pico           # check::fast — capability-conditionals, zpico-config-keys, support-status
 packages/rmw/xrce/xrce-sys/micro-cdr              # check::fast — xrce-vendored-versions
 packages/rmw/xrce/xrce-sys/micro-xrce-dds-client  # check::fast — xrce-vendored-versions
 third-party/dds/cyclonedds                        # check::build — test-targets, workspace-all, workspace-features

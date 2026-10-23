@@ -215,7 +215,7 @@ eliminate allocation in the C transport layer.
 
 | Backend crate | C Library | Allocator by Platform |
 |---|---|---|
-| `nros-rmw-zenoh` | zenoh-pico 1.7.2 | POSIX: `malloc`; Zephyr: `k_malloc`; FreeRTOS: `pvPortMalloc`; bare-metal: custom bump allocator |
+| `nros-rmw-zenoh` | zenoh-pico 1.8.0 | POSIX: `malloc`; Zephyr: `k_malloc`; FreeRTOS: `pvPortMalloc`; bare-metal: custom bump allocator |
 | `nros-rmw-xrce-cffi` | Micro-XRCE-DDS 3.0.1 | POSIX: `malloc`; Zephyr: `k_malloc`; FreeRTOS: `pvPortMalloc`; NuttX: `malloc` |
 
 This is by design: the C libraries manage their own session state, stream

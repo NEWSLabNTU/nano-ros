@@ -72,7 +72,6 @@ scripts/gen-board-support-table.py
 scripts/gen-cli-source-dirs.py
 scripts/gen-rmw-feature-matrix.py
 scripts/gen-sched-matrix.py
-scripts/gen-support-status.py
 scripts/lib/grep-q.sh
 scripts/reserve-claim.sh
 scripts/sdk/check-qemu-configure.sh
