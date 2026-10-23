@@ -1,7 +1,7 @@
 ---
 id: 1758
 title: "A missing prerequisite was a SKIP that read as a pass, at ~500 test sites and in the fixture builders; scope now decides what runs and everything in scope fails"
-status: open
+status: resolved
 type: tech-debt
 area: [testing, ci, build]
 severity: high
@@ -9,7 +9,7 @@ found: 2026-10-09
 related: [584, 1161, 1685, 1718, 1454, 650, 1802, phase-497, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## The rule
 
@@ -368,3 +368,40 @@ Still to show: one scheduled run where the board-ci job reaches its cells. The
 nine single-node FreeRTOS Rust rows still build on the first pass, because
 `fixtures-build.sh` takes `--id`. The second and third passes should find them
 fresh.
+
+## Resolution (2026-10-23) — the rule holds on every lane; what is red now is red for named reasons
+
+Every item this issue raised has a commit on `main`, and the last piece of
+evidence it asked for has arrived.
+
+- **The board-ci job reached its cells.** `live-peer regression` run
+  **39899428558** (schedule 2026-10-23, head `6dde801c0f`, which includes
+  `8add9c2378`): job `live-peer board (ci image)` reports *VERDICT: cells ran
+  and passed*. That is the "still to show" above. The same run's
+  `live-peer host` job also reports *VERDICT: cells ran and passed*.
+- **The rosout C cell.** The second option was taken: `4cac2efe7d` makes the
+  live-peer lane run the cases it recorded rather than whole test binaries,
+  so `a_c_log_call_reaches_ros2_topic_echo_rosout` no longer runs in a lane
+  that never recorded it.
+- **Tier 1 skips nothing for an unmet precondition.** run-matrix
+  **39555555017** (10-21), `tier 1 (cells)`: `check-skip-budget: 2920 ran,
+  213 deselected (out of lane), 0 skipped for an unmet precondition`. The
+  run's 3 real failures (`test_qos_keyexpr_encoding`, `test_gid_consistency`,
+  `test_sequence_number_increment`) are issue 1988, resolved on 10-22. The
+  first two runner items in "Residue" did not recur there: the models cache
+  is issue 1755 (archived), and the PX4-Autopilot submodule is checked out in
+  `host-tests` (`nros setup --source px4-autopilot: source 1.17.0`). The
+  async action client stall is issue 1756 (archived).
+
+The reds on scheduled lanes this morning are verdicts with owners, not
+skips that read as a pass:
+
+| Lane, run | Where it stops | Owner |
+|---|---|---|
+| live-peer 39899428558, `board` (Zephyr image) | `zephyr_run_tiers.c:245: unknown type name 'nros_tier_spec_t'` — phase-509 P7 (`4eea551751`) uses the type 85 lines before its typedef | PR #2511 |
+| run-matrix 39734065923 (10-22), tier 1 | `failed to create directory …/build-xrce/cargo`, `File exists (os error 17)` — a dangling link into an evicted shared cargo dir | issue 1990 |
+| host-tests 39894233489, `tier-1 gates` | `No space left on device` | issue 1353 |
+| host-tests 39894233489, `per-feature clippy` | the standalone `nros-board-threadx-qemu-riscv64` row, 1 of 360 | issue 1987 |
+
+Each of those would have been a pass-by-skip before this issue, or a
+silent drop from the run. Now each one stops its lane and says why.
