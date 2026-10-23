@@ -1082,6 +1082,12 @@ impl SlotTag {
     /// A deferred release is waiting for a running dispatch to finish. The
     /// handle already stops resolving, so nothing else reaches the entry.
     pub(crate) const RELEASE_PENDING: u8 = 2;
+    /// phase-509 P9b item 2 -- a timer cancel asked for while the timer's
+    /// callback ran in another thread's window; applied when it returns.
+    pub(crate) const CANCEL_PENDING: u8 = 4;
+    /// phase-509 P9b item 2 -- likewise a timer reset. The later of a pending
+    /// cancel and reset wins: each clears the other.
+    pub(crate) const RESET_PENDING: u8 = 8;
     /// A dispatch of this entry is not finished.
     pub(crate) const IN_FLIGHT: u8 = Self::IN_DISPATCH;
 

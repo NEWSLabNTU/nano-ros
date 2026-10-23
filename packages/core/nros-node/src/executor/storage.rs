@@ -1332,10 +1332,15 @@ mod tests {
                 + 2 * size_of::<u16>()
                 + size_of::<Option<u32>>()
                 // phase-509 P9b -- the executor's lock (RFC-0108 "As built in
-                // P9b"): the port mutex's address and its take / give entries.
-                // The mutex itself lives in the runner's scheduler backing;
-                // scales with nothing.
+                // P9b"): the port mutex's address and its take / give entries,
+                // and (item 2) the port's thread-identity entry. The mutex
+                // itself lives in the runner's scheduler backing; scales with
+                // nothing.
                 + size_of::<Option<super::super::exec_lock::ExecLock>>()
+                // phase-509 P9b item 2 -- the head of the open callback
+                // windows' list; the records live in the passes' frames, one
+                // per window. One pointer, scales with nothing.
+                + size_of::<*mut super::super::exec_lock::Running>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],

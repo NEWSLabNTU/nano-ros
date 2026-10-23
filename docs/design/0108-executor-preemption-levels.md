@@ -681,7 +681,9 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   `B_i = max C_k (k less urgent, same band) + L_max`, where `L_max` is the
   longest locked step of any less urgent worker (a pick or a finish, never a
   callback, never a park). The response-time analysis (`levels::response_time`)
-  gains `L_max` in its blocking term once item 2 measures it.
+  gains `L_max` in its blocking term once item 4 measures it on the levels
+  fixture. Until item 3, the executor's own worker still holds the lock
+  across its park and transport drive, so `L_max` is that park.
 - **Cancellation and timers.** Cancel, reset or release of an entry that is
   running on another worker is deferred through the issue 1705 path (the
   running mark is the slot tag `begin_dispatch` sets) and reaped by the next
@@ -699,6 +701,30 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   band non-preemptive, and preemption across bands is the kernel's. A
   worker picks only from its own band, so a less urgent worker never takes
   work that a more urgent band has pending.
+- **As landed in item 2.** The pass is `Executor::pass` over a raw
+  pointer; `spin_once(&mut self)` runs it owned (the lock, if any, held
+  throughout), `spin_once_shared(*mut Executor, timeout)` runs the
+  executor's own worker shared, and `spin_band_once(*mut Executor, &mut
+  BandWorker)` runs one band. A shared or band pass opens a window around
+  each user callback only when the lock carries the port's thread identity
+  (`ExecLock::with_thread_id`, `k_current_get` / `pthread_self`); without
+  one it holds the lock as in item 1. Across a window the pass keeps only a
+  copy of the entry's meta and its arena address, and re-derives its
+  `&mut` after. The running mark is the slot tag `begin_dispatch` sets,
+  which every scan, sweep, drain, re-probe and timer-header walk now
+  treats as held; a `Running` record in the pass's frame names the thread
+  in the window. An operation on that entry from another thread: a timer
+  cancel or reset is recorded in the tag (`CANCEL_PENDING`,
+  `RESET_PENDING`; the later wins) and applied when the callback returns;
+  a release is deferred as before (issue 1705); every other accessor
+  answers as for a stale handle, and the caller may retry. The pass's band
+  is the worker's (`Executor::set_worker_band`, every level by default),
+  and its slots are the only ones it scans, takes from the ready word,
+  re-checks, sweeps and drains; another band's arrival bits stay in the
+  word. Item 2 leaves the park, the transport drive and the executor-wide
+  chores (services, component ticks, the rules) to the executor's own
+  worker, under the lock; a band pass does not park. A band worker
+  credits its timers with the time since its own previous pass.
 - **Order of landing.** (1) the lock seam: the lock, the guards on every
   FFI path, `nros_cpp_executor_set_lock`, one worker, no behaviour change;
   (2) the pass in steps: lock released around callbacks, running mark,

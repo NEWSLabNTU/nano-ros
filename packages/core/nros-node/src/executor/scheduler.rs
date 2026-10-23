@@ -191,6 +191,41 @@ impl Worker {
     }
 }
 
+/// phase-509 P9b item 2 (RFC-0108 "As built in P9b") -- a worker of one band
+/// over an executor it shares with other workers: the record its own thread
+/// owns and hands to [`Executor::spin_band_once`](super::Executor::spin_band_once).
+///
+/// A band pass runs only the band's callbacks, and credits the band's timers
+/// with the time since this worker's own previous pass, so two workers never
+/// split one timer's elapsed time between them.
+#[derive(Clone, Copy, Debug)]
+pub struct BandWorker {
+    /// The level's index in the image, 0 the most urgent: what its passes
+    /// check in as (`level_liveness`).
+    pub(crate) level: u8,
+    /// The dispatch levels this worker runs.
+    pub(crate) band: Band,
+    /// When this worker's previous pass read the clock; `None` before its
+    /// first.
+    pub(crate) last_spin_end_us: Option<u64>,
+}
+
+impl BandWorker {
+    /// The worker of `band` at image level `level`.
+    pub const fn new(level: u8, band: Band) -> Self {
+        Self {
+            level,
+            band,
+            last_spin_end_us: None,
+        }
+    }
+
+    /// The band this worker runs.
+    pub const fn band(&self) -> Band {
+        self.band
+    }
+}
+
 /// How a scheduler signals a worker's wake object (`NodeWake` on a real
 /// port; a mock kernel in the tests).
 pub type WorkerWakeFn = unsafe extern "C" fn(ctx: *mut c_void);

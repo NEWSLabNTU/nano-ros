@@ -3736,24 +3736,46 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     // Issue 1556 (c) -- an application census writes and exits at its first
     // blocking call, instead of blocking.
     crate::census_finish_application_if_armed();
-    let Some(mut ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+    if handle.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
-    };
+    }
+    let ctx = handle as *mut CppContext;
+    // Read ONLY the tag until it is proven to be ours (as `cpp_ctx_checked`).
+    // SAFETY: the caller's contract: a handle from `nros_cpp_init`; the tag is
+    // read through the raw pointer, creating no reference.
+    if unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).tag)) } != CPP_CONTEXT_TAG {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
     let ms = timeout_ms.max(0) as u64;
+    // phase-509 P9b item 2 (RFC-0108 "As built in P9b") -- the pass runs
+    // over raw pointers, with no `&mut CppContext` or `&mut Executor` live
+    // across it: with a lock that has a thread identity installed, the pass
+    // releases it around each callback, and another thread (a level's
+    // worker, an FFI caller) then takes it and its own reference. The
+    // executor pointer is read raw, the lock taken through it first.
+    //
+    // SAFETY: the tag proved the context; a raw read of a field written once
+    // at open, before any second thread can hold the handle.
+    let exec =
+        unsafe { core::ptr::read(core::ptr::addr_of!((*ctx).executor) as *const *mut CppExecutor) };
+    // SAFETY: `exec` is the context's live executor; the lock is taken
+    // before anything below reads the context.
+    let _lock = unsafe { nros_node::executor::exec_lock::ExecGuard::acquire(exec) };
     // Issue 0290 — refuse to re-enter from inside a callback. Without this a
     // blocking helper called during dispatch (`Client::call`, `Future::wait`,
-    // which loop on this fn) would create a second `&mut Executor` while the
-    // outer dispatch still holds one. `Future::wait` treats REENTRANT as
-    // non-transient and propagates it, so the caller gets
-    // `ErrorCode::Reentrant` rather than corruption.
-    let CppContext {
-        executor,
-        c: nros_c::rclc_executor_t { in_dispatch, .. },
-        ..
-    } = &mut *ctx;
-    let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
+    // which loop on this fn) would start a second pass while the outer one
+    // is still dispatching. `Future::wait` treats REENTRANT as non-transient
+    // and propagates it, so the caller gets `ErrorCode::Reentrant` rather
+    // than corruption. The flag is a raw place, read and written only under
+    // the lock (the pass returns holding it again).
+    // SAFETY: a place projection through the proven context; no reference.
+    let in_dispatch = unsafe { core::ptr::addr_of_mut!((*ctx).c.in_dispatch) };
+    // SAFETY: the tag proved the context; the lock serialises the flag.
+    if unsafe { in_dispatch.read() } {
         return NROS_CPP_RET_REENTRANT;
-    };
+    }
+    // SAFETY: as the read.
+    unsafe { in_dispatch.write(true) };
     // Phase 127.C.4 — the prior Zephyr+std bypass (drive_io(0) + msleep)
     // starved reliable XRCE retransmission on the server side and
     // skipped arena dispatch on the client side; the underlying
@@ -3761,7 +3783,12 @@ pub unsafe extern "C" fn nros_cpp_spin_once(
     // `Executor::spin_once` for Zephyr+std, so a normal spin runs the
     // transport for the full timeout via UDP recv and fires the arena
     // trampolines.
-    let _ = executor.spin_once(core::time::Duration::from_millis(ms));
+    //
+    // SAFETY: the calling thread holds the lock once (`_lock`); no reference
+    // to the executor or the context is live across the pass.
+    let _ = unsafe { CppExecutor::spin_once_shared(exec, core::time::Duration::from_millis(ms)) };
+    // SAFETY: as the read above; the lock is held again.
+    unsafe { in_dispatch.write(false) };
     NROS_CPP_RET_OK
 }
 

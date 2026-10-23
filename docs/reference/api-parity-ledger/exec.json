@@ -742,6 +742,11 @@
     "why": "phase-509 P3 / RFC-0108 D2 -- after every callback the executor picks again from the ready set as it is now; a slot whose backend cannot attribute an arrival (XRCE, uORB) is probed once per pass by default, and this opts in to probing it after every callback too (measured cost in RFC-0108 D2). rclcpp's executors rebuild their wait set per spin and have no such knob.",
     "bucket": "ours-only"
   },
+  "rust:Executor::set_worker_band": {
+    "verdict": "extension",
+    "why": "phase-509 P9b item 2 / RFC-0108 \"As built in P9b\" -- the band of dispatch levels the executor's own worker runs (every level by default). With band workers over the same executor (`Executor::spin_band_once`) the bands partition the levels, so each callback has exactly one worker. rclcpp's multi-threaded executor shares one wait set among its threads and has no notion of a level band; rclrs has one executor thread.",
+    "bucket": "ours-only"
+  },
   "rust:Executor::*violation*": {
     "verdict": "extension",
     "why": "drain the contract violations the monitors recorded (`drain_violations`), count the ones dropped when the fixed buffer overflowed (`violations_dropped`), and gate reporting (`set_report_violations`). The bounded buffer plus an explicit dropped count is the no-allocator shape: a device cannot grow a violation log, and silently losing entries would make the monitor lie. rclcpp raises QoS events through callbacks instead.",

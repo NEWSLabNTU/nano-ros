@@ -11,10 +11,21 @@
 //! `&mut` user) takes the `None` arm: a guard is one predictable branch and
 //! nothing else, so this seam changes no behaviour where it is not installed.
 //!
-//! Why recursive: until the pass releases the lock around each user callback
-//! (item 2), a callback that calls back into the executor (`timer_cancel`,
-//! `*_release`, a parameter call) re-enters the lock the spinning worker
-//! already holds, on the same thread.
+//! Why recursive: an owned pass (`spin_once(&mut self)`), and a pass whose
+//! lock has no thread identity, hold the lock across each user callback, so a
+//! callback that calls back into the executor (`timer_cancel`, `*_release`, a
+//! parameter call) re-enters it on the same thread.
+//!
+//! Item 2 -- the callback window. A shared or band pass
+//! (`Executor::spin_once_shared`, `Executor::spin_band_once`) whose lock
+//! carries the port's thread identity ([`ExecLock::with_thread_id`]) gives
+//! the lock for each user callback and takes it back after ([`Window`]). The
+//! entry stays marked running (its slot tag), so no other pass dispatches or
+//! probes it and its release is deferred; a [`Running`] record names the
+//! thread running it, so an entry operation from another thread is told apart
+//! from one the callback makes itself: the entry accessors answer as for a
+//! stale handle, and a timer cancel or reset is deferred to the callback's
+//! return.
 //!
 //! Why priority-inheriting: a less urgent worker holding the lock for a
 //! bookkeeping step must run at the waiter's priority, so a more urgent
@@ -29,6 +40,10 @@ use core::{ffi::c_void, ptr::NonNull};
 /// `0` on success, negative on failure.
 pub type ExecLockFn = unsafe extern "C" fn(*mut c_void) -> i8;
 
+/// The calling thread's identity, as the port names it (`k_current_get`,
+/// `pthread_self`): equal on one thread, distinct across live threads.
+pub type ThreadIdFn = unsafe extern "C" fn() -> usize;
+
 /// The executor's lock: the port's recursive priority-inheriting mutex and
 /// the two calls that take and give it. Installed once, before any second
 /// thread can reach the executor ([`super::Executor::set_exec_lock`]), and
@@ -38,6 +53,13 @@ pub struct ExecLock {
     ctx: NonNull<c_void>,
     lock: ExecLockFn,
     unlock: ExecLockFn,
+    /// phase-509 P9b item 2 -- the calling thread's identity. With it, a pass
+    /// releases the lock around each user callback (a "window"), and an
+    /// operation on an entry whose callback runs in another thread's window
+    /// is told apart from one the callback makes itself. Without it the lock
+    /// is held for the whole pass, as in item 1.
+    #[cfg_attr(not(any(has_rmw, test)), allow(dead_code))] // read by the pass
+    thread_id: Option<ThreadIdFn>,
 }
 
 // SAFETY: the context is the port's mutex, whose whole purpose is to be shared
@@ -58,10 +80,38 @@ impl ExecLock {
             ctx: NonNull::new(ctx)?,
             lock,
             unlock,
+            thread_id: None,
         })
     }
 
-    fn take(&self) {
+    /// This lock, with the port's thread identity: a pass that holds it
+    /// releases it around each user callback (phase-509 P9b item 2).
+    ///
+    /// # Safety
+    /// `id` answers the calling thread's identity, from any thread, equal on
+    /// one thread and distinct across threads that are alive together.
+    pub unsafe fn with_thread_id(self, id: ThreadIdFn) -> Self {
+        Self {
+            thread_id: Some(id),
+            ..self
+        }
+    }
+
+    /// Whether a pass may release this lock around a callback: only when it
+    /// can tell the callback's own thread from the others.
+    #[cfg(any(has_rmw, test))]
+    pub(crate) fn opens_windows(&self) -> bool {
+        self.thread_id.is_some()
+    }
+
+    /// The calling thread's identity; `None` without a [`ThreadIdFn`].
+    #[cfg(any(has_rmw, test))]
+    pub(crate) fn current_thread(&self) -> Option<usize> {
+        // SAFETY: `with_thread_id`'s contract: callable from any thread.
+        self.thread_id.map(|id| unsafe { id() })
+    }
+
+    pub(crate) fn take(&self) {
         // SAFETY: `new`'s contract: the context is the initialised mutex these
         // entries take. A failed take is not recoverable here (the port's
         // mutex never fails on a valid handle); the guard proceeds, which is
@@ -69,7 +119,7 @@ impl ExecLock {
         let _ = unsafe { (self.lock)(self.ctx.as_ptr()) };
     }
 
-    fn give(&self) {
+    pub(crate) fn give(&self) {
         // SAFETY: as `take`; only ever called by the guard that took it.
         let _ = unsafe { (self.unlock)(self.ctx.as_ptr()) };
     }
@@ -120,6 +170,39 @@ impl Drop for ExecGuard {
             l.give();
         }
     }
+}
+
+/// phase-509 P9b item 2 -- a callback window: the lock is given for this
+/// value's lifetime and taken back when it drops, also on unwind, so the
+/// guard the pass's caller holds always gives a lock it owns.
+#[cfg(any(has_rmw, test))]
+#[must_use = "the lock is taken back when the window drops"]
+pub(crate) struct Window(ExecLock);
+
+#[cfg(any(has_rmw, test))]
+impl Window {
+    /// Give `lock`, which the calling thread holds exactly once.
+    pub(crate) fn open(lock: ExecLock) -> Self {
+        lock.give();
+        Self(lock)
+    }
+}
+
+#[cfg(any(has_rmw, test))]
+impl Drop for Window {
+    fn drop(&mut self) {
+        self.0.take();
+    }
+}
+
+/// phase-509 P9b item 2 -- which thread runs the callback of `slot` in an
+/// open window. Lives in the pass's frame for the window's length and is
+/// linked into the executor's list under the lock (`Executor::running`).
+#[cfg(any(has_rmw, test))]
+pub(crate) struct Running {
+    pub(crate) slot: usize,
+    pub(crate) thread: usize,
+    pub(crate) next: *mut Running,
 }
 
 #[cfg(test)]
