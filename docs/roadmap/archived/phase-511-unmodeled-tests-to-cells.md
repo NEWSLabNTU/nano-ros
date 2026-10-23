@@ -101,7 +101,7 @@ ThreadxLinux, ThreadxRiscv64 and ZephyrNativeSim.
 
 ## Not in this phase
 
-B and C landed afterwards: [phase-511 B/C](../phase-511-gated-and-dormant-cells.md).
+B and C landed afterwards: [phase-511 B/C](phase-511-gated-and-dormant-cells.md).
 
 - **B** — `freertos_qemu` (mps3-an536 is not a platform value),
   `fvp_runtime_ws` / `fvp_smoke` (FVP runs only in `verify-fvp-runtime`),
