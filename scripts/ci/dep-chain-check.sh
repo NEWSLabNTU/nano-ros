@@ -170,10 +170,44 @@ for cell in "${CELLS[@]}"; do
         # `Locking` lines BEFORE its error, so ten lines from the top are all
         # preamble. Run 37552262262 printed exactly that and still named no
         # cause. Capture the failing run's stderr and print its TAIL.
-        tree_rc=0
-        tree_err="$( cd "$ex" && cargo tree "${feat_args[@]}" -e no-dev 2>&1 1>/dev/null )" || tree_rc=$?
+        #
+        # Issue 1992 -- a REGISTRY failure is retried, then reported as one.
+        # The root `net.retry = 10` does not reach every cell: the NuttX leaf
+        # pins the nightly whose cargo never classes an HTTP/2 framing error
+        # as spurious (scripts/lib/cargo_registry.py says why), so one blip
+        # failed the cell in five seconds with no retry. The classifier only
+        # runs on a failed run, so it can choose WHICH failure is printed,
+        # never turn one into a pass.
+        if ! tree_attempts="$(python3 scripts/lib/cargo_registry.py attempts)" \
+            || ! tree_backoff="$(python3 scripts/lib/cargo_registry.py backoff)"; then
+            echo "  [FAIL] scripts/lib/cargo_registry.py failed its own self-test (above)"
+            exit 1
+        fi
+        tree_errfile="$(mktemp)"
+        attempt=1
+        while :; do
+            tree_rc=0
+            tree_err="$( cd "$ex" && cargo tree "${feat_args[@]}" -e no-dev 2>&1 1>/dev/null )" || tree_rc=$?
+            [ "$tree_rc" -eq 0 ] && break
+            printf '%s\n' "$tree_err" >"$tree_errfile"
+            python3 scripts/lib/cargo_registry.py classify "$tree_errfile" || break
+            [ "$attempt" -ge "$tree_attempts" ] && break
+            echo "  [retry] cargo tree could not reach the registry (attempt $attempt of $tree_attempts); retrying in $((tree_backoff * attempt)) s"
+            sleep "$((tree_backoff * attempt))"
+            attempt=$((attempt + 1))
+        done
+        tree_registry=0
+        if [ "$tree_rc" -ne 0 ] && python3 scripts/lib/cargo_registry.py classify "$tree_errfile"; then
+            tree_registry=1
+        fi
+        rm -f "$tree_errfile"
         if [ "$tree_rc" -eq 0 ]; then
             echo "  [ok] crate/feature dep chain resolves (${feat_args[*]:-default features})"
+        elif [ "$tree_registry" -eq 1 ]; then
+            echo "  [FAIL] cargo tree could not reach the crates.io registry after $attempt attempt(s) (issue 1992)."
+            echo "         This is a network failure, NOT a dep-chain verdict. Last 20 lines of its stderr:"
+            printf '%s\n' "$tree_err" | tail -20 | sed 's/^/      /'
+            cell_ok=0
         else
             echo "  [FAIL] cargo tree did not resolve (${feat_args[*]:-default features}), exit ${tree_rc}; last 20 lines of its stderr:"
             printf '%s\n' "$tree_err" | tail -20 | sed 's/^/      /'

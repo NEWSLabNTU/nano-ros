@@ -96,34 +96,14 @@ def _pinned_nightly():
     raise RuntimeError("no `channel = \"...\"` line in " + manifest)
 
 
-# Issue 1626 -- how many cargo processes `rustdoc_json` runs before it calls a
-# registry failure final, and the pause (times the attempt number) between them.
-REGISTRY_ATTEMPTS = 3
-REGISTRY_BACKOFF_S = 20
-
-# What cargo prints when it could not reach a registry or download a crate, as
-# opposed to rejecting the crate. Each pattern is one measured shape: the four
-# sightings in issue 1626 (an HTTP/2 framing error, a connect timeout, a refused
-# connection) plus a DNS failure. Matched against cargo's stderr only when the
-# exit status is already non-zero, so a pattern can only change WHICH error is
-# raised, never whether one is.
-_REGISTRY_FAILURE = re.compile(
-    r"unable to update registry"
-    r"|failed to download from `https?://"
-    r"|download of \S+ failed"
-    r"|\[\d+\] (?:Could not resolve host|Could not connect|Error in the HTTP2"
-    r"|Timeout was reached|SSL connect error|Failure when receiving|Send failure|Recv failure)"
-    r"|spurious network error"
+# Issue 1626 / 1992 -- the attempt budget and the classifier live in
+# `scripts/lib/cargo_registry.py`, shared with `dep-chain`'s `cargo tree`.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+from cargo_registry import (
+    REGISTRY_ATTEMPTS,
+    REGISTRY_BACKOFF_S,
+    is_registry_failure,
 )
-
-
-def is_registry_failure(stderr):
-    """True when a failed cargo run failed to REACH the registry.
-
-    A compile error, a resolver conflict or a missing feature is not one, and
-    must keep reading as the failure it is.
-    """
-    return bool(_REGISTRY_FAILURE.search(stderr or ""))
 
 
 class RegistryUnreachable(RuntimeError):

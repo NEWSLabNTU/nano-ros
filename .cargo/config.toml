@@ -16,6 +16,11 @@
 # (`api-parity`'s `cargo doc`, `setup-cli`, `dep-chain`'s `cargo tree`), so the
 # budget is raised to ride out a minute-long blip. A real outage still fails,
 # about a minute later than it did; a non-spurious error is never retried.
+# Issue 1992 -- NOT under the pinned nightly (`nightly-2026-04-11`, which the
+# NuttX/Zephyr examples and `api-parity` use): that cargo never classes an
+# HTTP/2 framing error on a sparse-index fetch as spurious, so this setting
+# does not retry it there. `dep-chain` and `api-parity` carry their own outer
+# retry for that reason (scripts/lib/cargo_registry.py).
 [net]
 retry = 10
 
