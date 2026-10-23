@@ -237,6 +237,14 @@ jobs:
           # which compile those kernels' sources; the board env names the port,
           # the store holds the tree.
           nros setup --source freertos-kernel --source lwip --source threadx --source threadx-netxduo
+          # Issue 1987 — the STANDALONE `nros-board-threadx-qemu-riscv64` row
+          # compiles that kernel for riscv64, and its port is newlib-only (it
+          # swaps newlib's per-thread `_impure_ptr`, issue 0680). The image's
+          # apt `riscv64-unknown-elf-gcc` ships picolibc and no newlib, so
+          # without the pinned dist the build fell back to it and died on
+          # `string.h`. The dist bundles newlib, and the build finds it in
+          # the store before anything on PATH.
+          nros setup --tool riscv-none-elf-gcc
           # ...and for the NuttX board, whose zpico build reads the CONFIGURED
           # kernel's generated `include/nuttx/config.h` (~2 min + ~30 s).
           nros setup qemu-armv7a-nuttx
