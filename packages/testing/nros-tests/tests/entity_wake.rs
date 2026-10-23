@@ -419,6 +419,10 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
     const PUBLISH_INTERVAL: Duration = Duration::from_millis(5);
     const ROUNDS: u32 = 20;
     const BURST: u32 = 3;
+    /// How long a publish the transport dropped is retried (issue 1980).
+    /// Far shorter than `ARRIVAL_BUDGET`, so a retried sample still arrives
+    /// in time to be judged.
+    const PUBLISH_RETRY_BUDGET: Duration = Duration::from_millis(500);
     require_zenohd();
     let locator = zenohd_unique.locator();
     let domain = u32::from(nros_tests::unique_ros_domain_id());
@@ -467,32 +471,57 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
     // arrives while the executor is dispatching that entity. No later arrival
     // announces it again: if the executor drops an arrival that lands during
     // the dispatch, that sample is never dispatched.
+    //
+    // Issue 1980: a publish can FAIL here without anything being wrong with
+    // dispatch. This publisher has zenoh-pico's default DROP congestion
+    // control, which only TRY-locks the transport's TX mutex and drops the put
+    // when another thread holds it (the lease task's keep-alive, descheduled
+    // mid-write on a loaded host, measured 1 run in 25 under CPU load). A
+    // dropped publish is retried, since the sample must exist for the verdict
+    // to mean anything. One that stays dropped is reported AS a publish
+    // failure: before this, the publisher thread panicked, the main loop
+    // waited for a sample that was never sent, and the verdict blamed the
+    // executor.
     let (to_publisher, rounds) = std::sync::mpsc::channel::<u32>();
-    let (raced_tx, raced) = std::sync::mpsc::channel::<bool>();
+    let (raced_tx, raced) = std::sync::mpsc::channel::<Result<bool, String>>();
     let in_callback_pub = in_callback.clone();
     let publisher_thread = std::thread::spawn(move || {
         let publisher = publisher;
-        let publish = |seq: u32| {
+        let publish = |seq: u32| -> Result<(), String> {
             let mut payload = [0u8, 1, 0, 0, 0, 0, 0, 0];
             payload[4..8].copy_from_slice(&seq.to_le_bytes());
-            publisher.0.publish_raw(&payload).expect("publish");
+            let start = Instant::now();
+            loop {
+                match publisher.0.publish_raw(&payload) {
+                    Ok(()) => return Ok(()),
+                    Err(e) if start.elapsed() >= PUBLISH_RETRY_BUDGET => {
+                        return Err(format!(
+                            "sample {seq}: publish failed for {PUBLISH_RETRY_BUDGET:?}: {e:?}"
+                        ));
+                    }
+                    Err(_) => std::thread::yield_now(),
+                }
+            }
         };
         while let Ok(first) = rounds.recv() {
             let last = first + BURST - 1;
-            for seq in first..last {
-                if seq > first {
-                    std::thread::sleep(PUBLISH_INTERVAL);
+            let outcome = (|| {
+                for seq in first..last {
+                    if seq > first {
+                        std::thread::sleep(PUBLISH_INTERVAL);
+                    }
+                    publish(seq)?;
                 }
-                publish(seq);
-            }
-            // Wait for that sample's dispatch to start, then publish into it.
-            let start = Instant::now();
-            while !in_callback_pub.load(SeqCst) && start.elapsed() < ARRIVAL_BUDGET {
-                std::hint::spin_loop();
-            }
-            let raced = in_callback_pub.load(SeqCst);
-            publish(last);
-            raced_tx.send(raced).unwrap();
+                // Wait for that sample's dispatch to start, then publish into it.
+                let start = Instant::now();
+                while !in_callback_pub.load(SeqCst) && start.elapsed() < ARRIVAL_BUDGET {
+                    std::hint::spin_loop();
+                }
+                let raced = in_callback_pub.load(SeqCst);
+                publish(last)?;
+                Ok(raced)
+            })();
+            raced_tx.send(outcome).unwrap();
         }
     });
 
@@ -501,14 +530,35 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
         let first = 1 + round * BURST;
         let last = first + BURST - 1;
         to_publisher.send(first).unwrap();
-        let start = Instant::now();
+        // The arrival budget runs from the LAST sample's publish, not from the
+        // round's start: the publisher may wait up to `ARRIVAL_BUDGET` itself
+        // for a callback to publish into, and a budget that started earlier
+        // ran out during that wait and blamed dispatch for a sample not yet
+        // sent (issue 1980, measured 1 run in 25 under CPU load).
+        let round_start = Instant::now();
+        let mut published_at = None;
         let mut raced_this_round = None;
         while latest.load(SeqCst) < last {
             if raced_this_round.is_none() {
                 raced_this_round = raced.try_recv().ok();
+                if raced_this_round.is_some() {
+                    published_at = Some(Instant::now());
+                }
+            }
+            if let Some(Err(failure)) = &raced_this_round {
+                panic!(
+                    "{shape:?} round {round}: {failure}. The sample was never sent, so this \
+                     says nothing about dispatch (issue 1980)"
+                );
             }
             assert!(
-                start.elapsed() < ARRIVAL_BUDGET,
+                round_start.elapsed() < ARRIVAL_BUDGET * 2 + PUBLISH_RETRY_BUDGET * BURST,
+                "{shape:?} round {round}: the publisher never reported sample {last} \
+                 (latest dispatched {})",
+                latest.load(SeqCst)
+            );
+            assert!(
+                published_at.is_none_or(|at: Instant| at.elapsed() < ARRIVAL_BUDGET),
                 "{shape:?} round {round}: sample {last}, published while a callback ran \
                  ({:?}), was never dispatched (latest {}); an arrival that raced a dispatch \
                  was lost",
@@ -522,7 +572,8 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
             None => raced
                 .recv_timeout(ARRIVAL_BUDGET)
                 .expect("publisher finished"),
-        };
+        }
+        .unwrap_or_else(|failure| panic!("{shape:?} round {round}: {failure}"));
         raced_rounds += u32::from(raced_this_round);
     }
     drop(to_publisher);

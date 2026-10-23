@@ -1,7 +1,9 @@
 ---
 id: 1980
 title: "The entity-wake race test reports a lost dispatch when its own publish failed, and the publish failed in a tier-1 run on main"
-status: open
+status: resolved
+resolved: 2026-10-23
+resolved_in: "PR #2492"
 type: bug
 area: [testing, runtime, zenoh]
 severity: medium
@@ -115,3 +117,30 @@ after `publish(last)` returns.
    refusing under load, or a session not yet ready when round 0 begins. The
    test publishes immediately after `create_publisher_raw`, with no wait for
    the session to settle.
+
+## Resolution (2026-10-23)
+
+Two test defects, both reproduced locally under CPU load (`2 x nproc` busy
+loops), neither an executor defect.
+
+1. **The publish failure is zenoh-pico's DROP congestion control.** A
+   publisher declared without `ZPICO_TX_BATCH` keeps zenoh-pico's default
+   `Z_CONGESTION_CONTROL_DROP`, and `_z_transport_tx_send_n_msg` then only
+   TRY-locks the transport TX mutex. When another thread holds it (the lease
+   task's keep-alive, descheduled mid-write on a loaded host), the put is
+   dropped and `z_publisher_put` returns an error, which reaches the test as
+   `Transport(PublishFailed)`. Measured: 1 of 25 loaded runs, with exactly this
+   issue's signature. The test now retries a dropped publish for up to 500 ms,
+   and a publish that stays dropped fails the test as "publish failed", not
+   as a lost arrival (item 1 above).
+2. **A second race hid behind it.** The arrival budget started at the round's
+   start, but the publisher itself waits up to the same `ARRIVAL_BUDGET` for a
+   callback to publish into. A publisher descheduled past the previous
+   sample's 3 ms callback waited the full 5 s, and the main loop's budget ran
+   out at the same moment. That produced the same "was never dispatched"
+   message with no publish failure (1 of 25 loaded runs once item 1 was
+   fixed). The budget now runs from the last sample's publish.
+
+Whether a RELIABLE publisher should keep zenoh-pico's DROP, which drops on
+mere TX-lock contention rather than on a full queue the way zenoh's DROP does,
+is a product question this fix does not settle.
