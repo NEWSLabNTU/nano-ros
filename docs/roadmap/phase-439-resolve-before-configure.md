@@ -57,14 +57,30 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       sizing descriptor (`cmake/NanoRosSizingDescriptor.cmake`) also re-hashes
       after its readers ran, so W6 must take it as well as the bound fragment.
 - [ ] **W6 — the bound producer before configure ([#1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md)).**
-      First measure whether the sizing descriptor's per-type facts produce the
-      same knobs as `nros_derive_message_bound_knobs` for the W5 image. If they
-      do, stage 3.5 writes the bound fragment and the cmake composer becomes
-      its reader. If not, record the difference in #1252 before designing a
-      third composer. W5 found the sizing-descriptor arm firing in the same
-      pass; first find out whether it moves only because the bound tables it
-      composes over arrive mid-configure, which would make it fall with the
-      bound fragment.
+      **Descriptor arm: done (2026-10-23).** It did NOT move with the bound
+      tables. The arm hashed `nros/sizing/west-cargo-descriptor.cmake`, which
+      held only a PATH. The module's resolver could not know the entry's name,
+      so on a clean dir it wrote an empty fragment and the entry's path armed
+      the pass. The west road now names one fixed file,
+      `nros/sizing/west-cargo.toml`, which the entry fills by
+      `copy_if_different`. Cargo reads the content at build time, so only the
+      one-or-none decision can still arm. The resolver defaults to "named"
+      behind `nros build`'s resolve phase. A deferred backstop takes a "named"
+      default back, and arms, when no descriptor was written. Cyclone records
+      an absent file as read, so a clean Cyclone image still arms on content
+      (its C++ half is compiled at configure time, so that pass is real).
+      `tests/cmake-sizing-descriptor-tests.sh` G5/G8 (mutation-tested: default
+      forced to none, and backstop removed, both red). Measured on the W5
+      image, clean dir: 1 `Re-running CMake`, **bounds the only arm**; the
+      descriptor reached cargo (`nros-node` read it at build), knob lines
+      identical to W5, `check-knob-delivery` green.
+
+      **Bound arm: open, design recorded in #1252.** The descriptor and
+      `nros_derive_message_bound_knobs` agree on every number for the W5 image,
+      but both compose MID-configure over the same codegen-written
+      `nros_message_bounds.json` tables. A Rust composer exists; inputs before
+      configure do not. The 2026-10-22 status note above ("#1252's premise may
+      be out of date") was wrong on the point that matters.
 - [ ] **W7 — one entity composer ([#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md)).**
       The mid-configure producer reads the resolve instead of recomposing, with
       the refusal guard its `nros-metadata.json` component set gives it today

@@ -10,6 +10,48 @@ related: [1228, 0940, 0965, 0991, 1002, 1119, 1061, 1125, phase-439, phase-403, 
 
 **Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
+# UPDATE 2026-10-23 (later) — phase-439 W6: the descriptor arm is gone; the bound arm needs inputs, not a composer
+
+**The descriptor arm was not about bound tables.** It hashed
+`nros/sizing/west-cargo-descriptor.cmake`, which records only the PATH named
+to cargo. The module's resolver runs inside `find_package(Zephyr)`, cannot know
+the entry's name, and on a clean dir wrote an empty placeholder, so the entry's
+path armed the pass. The west road now names one fixed file
+(`nros/sizing/west-cargo.toml`, filled by the entry), and cargo reads its
+content at build time. Measured on the image below, clean dir: still 1
+`Re-running CMake`, and **this issue's arm is the only one left**.
+
+**Measured: the Rust side agrees, and that does not help.** For
+`demo_bringup:zephyr` the sizing descriptor and `nros_derive_message_bound_knobs`
+state the same answer: subscribed `std_msgs/msg/Int32` = 12, small class 12,
+0 large subscribers, take buffer refused because 14 of 32 closure types are
+unbounded. But the descriptor is composed during configure, from the same
+`nros_message_bounds.json` tables codegen writes in `nros_find_interfaces()`. A
+Rust composer exists (`leaf_payload_classes::join`, `leaf_take_buffer::derive`);
+INPUTS before configure do not. On the cargo road `nros sync` runs codegen first,
+which is why the leaf twin works there. On the cmake/west road codegen runs
+inside the configure.
+
+**What a pre-configure producer needs, in order:**
+
+1. **The image's interface closure, without cmake.** On this image the
+   transitive `package.xml` `<depend>` closure of the bringup's component
+   packages ({std_msgs, builtin_interfaces}) equals the 2 tables cmake
+   registered. That is one image; cmake's closure is whatever members
+   `find_package`, and nothing forces the two to agree. A producer must REFUSE
+   (and leave the configure to derive, as today) when they could differ. It
+   must never guess, or the payload classes under-size: the unsafe direction.
+2. **The bound rows for that closure.** `rosidl_codegen::bounds` already
+   computes them from the parsed interfaces. Stage 3.5 can call it over the
+   ament share of the closure without writing generated packages.
+3. **One composer.** Render `message_bound_knobs.cmake` in Rust at stage 3.5,
+   and turn `nros_derive_message_bound_knobs` into a reader that compares, the
+   shape 1228 used for entities. The fragment's text names counts of the
+   closure ("14 of 32 types"), so byte equality is the test, and a cmake-side
+   append is the regression to guard (phase-439 W5).
+
+Acceptance is unchanged below.
+
 # UPDATE 2026-10-23 — phase-439 W5: two arms remain, not one
 
 Re-measured on the same image, seed present, clean build dir, after the entity

@@ -1110,13 +1110,18 @@ if(CONFIG_NROS_RMW_CYCLONEDDS)
     endif()
     # Record what this pass compiles from, so the entry -- which rewrites the
     # descriptor AFTER this runs -- can arm another configure when the content
-    # moved (`nros_sizing_descriptor_record_for_west`).
-    if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL ""
-       AND EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
-        nros_reconfigure_settle("${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+    # moved (`nros_sizing_descriptor_record_for_west`). phase-439 W6: the path
+    # is fixed and may be named before the entry has written it, so an ABSENT
+    # file is recorded as read too, and the defaults apply this pass.
+    set(_nros_west_cyc_descriptor "")
+    if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL "")
+        nros_sizing_descriptor_west_settle_cargo_file()
+        if(EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+            set(_nros_west_cyc_descriptor "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+        endif()
     endif()
     nros_sizing_descriptor_apply_cyclonedds(
-        TARGET nros DESCRIPTOR "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+        TARGET nros DESCRIPTOR "${_nros_west_cyc_descriptor}")
 endif()
 
 endif() # CONFIG_NROS

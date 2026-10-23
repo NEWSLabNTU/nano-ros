@@ -391,6 +391,18 @@ function(_west_record_and_read _tag)
     unset(NROS_SIZING_DESCRIPTOR_FOR_CARGO)
     include("${_west}")
     message(STATUS "WEST_${_tag}=${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+    # phase-439 W6 -- the path is fixed; what it HOLDS is the decision.
+    nros_sizing_descriptor_cargo_env(_chosen)
+    string(REGEX REPLACE "^NROS_SIZING_DESCRIPTOR=" "" _chosen "${_chosen}")
+    set(_same 0)
+    if(EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}" AND EXISTS "${_chosen}")
+        file(READ "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}" _a)
+        file(READ "${_chosen}" _b)
+        if(_a STREQUAL _b)
+            set(_same 1)
+        endif()
+    endif()
+    message(STATUS "WEST_${_tag}_COPY_OF=${_chosen} SAME=${_same}")
 endfunction()
 _west_record_and_read(ONE)
 if(DEFINED ENV{NROS_TEST_SECOND})
@@ -484,16 +496,27 @@ fi
 log_info "G5. the west road records the SAME one-or-none decision (issue 1407)"
 OUT="$(run_writer "" "")"
 check
-if ! nros_grep_q "WEST_ONE=[^ ]*/nros/sizing/one.toml\$" <<<"$OUT"; then
-    fail "G5: one descriptor and the west fragment names none -- the Zephyr knob \
-resolver would forward nothing and every descriptor consumer keeps its carrier -- $OUT"
+if ! nros_grep_q "WEST_ONE=[^ ]*/nros/sizing/west-cargo.toml\$" <<<"$OUT"; then
+    fail "G5: one descriptor and the west fragment does not name the FIXED cargo path -- \
+the Zephyr knob resolver would forward nothing, or a path it cannot know on a clean \
+build dir (phase-439 W6) -- $OUT"
+fi
+check
+if ! nros_grep_q "WEST_ONE_COPY_OF=[^ ]*/nros/sizing/one.toml SAME=1" <<<"$OUT"; then
+    fail "G5: the fixed cargo path does not hold the entry's descriptor -- $OUT"
 fi
 OUT="$(run_writer "" 1)"
 check
-if ! nros_grep_q "WEST_TWO=[^ ]*/nros/sizing/runtime/shared.toml\$" <<<"$OUT"; then
-    fail "G5: two entries and the west fragment did not name the RUNTIME descriptor -- \
+if ! nros_grep_q "WEST_TWO_COPY_OF=[^ ]*/nros/sizing/runtime/shared.toml SAME=1" <<<"$OUT"; then
+    fail "G5: two entries and the fixed cargo path does not hold the RUNTIME descriptor -- \
 the shared archive would be sized from one of N images, or from nothing, on the west \
 road only (RFC-0100 D12) -- $OUT"
+fi
+OUT="$(NROS_TEST_SECOND= run_writer 1 "")"
+check
+if ! nros_grep_q "WEST_ONE=\$" <<<"$OUT"; then
+    fail "G5: no descriptor was written and the west fragment still names one -- cargo \
+would be handed a file that is not there (RFC-0100 D6) -- $OUT"
 fi
 
 log_info "G3. TWO entries name the RUNTIME descriptor, composed over both models (D12)"
@@ -637,6 +660,99 @@ run_leaf() {
     NROS_TEST_ENTRY_FIRST="$1" \
         cmake -S "$WPROJ" -B "$WPROJ/build" 2>&1
 }
+
+# ---------------------------------------------------------------------------
+# G8 -- phase-439 W6: the west resolver's DEFAULT decision, and the backstop
+# that takes a "named" default back when no descriptor was written. The
+# resolver lives in the Zephyr module; these are the two functions it calls.
+BPROJ="$TEST_TMPDIR/backstop"
+mkdir -p "$BPROJ"
+cat > "$BPROJ/CMakeLists.txt" <<'EOF'
+cmake_minimum_required(VERSION 3.20)
+project(nros_sizing_descriptor_west_backstop_test NONE)
+include("$ENV{NROS_TEST_RECONFIGURE}")
+include("$ENV{NROS_TEST_MODULE}")
+set(_leaf "")
+if(NOT "$ENV{NROS_TEST_LEAF_FILE}" STREQUAL "")
+    set(_leaf "${CMAKE_BINARY_DIR}/leaf.toml")
+    file(WRITE "${_leaf}" "schema_version = 2\n")
+endif()
+nros_sizing_descriptor_west_fragment(_frag)
+nros_sizing_descriptor_west_default("$ENV{NROS_TEST_RESOLVED}" "${_leaf}")
+nros_reconfigure_settle("${_frag}")
+include("${_frag}")
+message(STATUS "DEFAULT=${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+# The entry's half, when the case has one: an entry that names a descriptor
+# writes the same fragment text the default did, and copies the file.
+if(NOT "$ENV{NROS_TEST_ENTRY_WRITES}" STREQUAL "")
+    file(WRITE "${CMAKE_BINARY_DIR}/one.toml" "schema_version = 2\n")
+    set_property(GLOBAL APPEND PROPERTY NROS_SIZING_DESCRIPTOR_PATHS
+        "${CMAKE_BINARY_DIR}/one.toml")
+    nros_sizing_descriptor_record_for_west()
+endif()
+if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL ""
+   AND NOT EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+    nros_sizing_descriptor_west_arm_backstop("${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+endif()
+cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _g8_report)
+function(_g8_report)
+    nros_sizing_descriptor_west_fragment(_f)
+    unset(NROS_SIZING_DESCRIPTOR_FOR_CARGO)
+    include("${_f}")
+    message(STATUS "FINAL=${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+endfunction()
+EOF
+
+# run_backstop <resolved-dir-or-empty> <leaf-file:1|empty> <entry-writes:1|empty>
+run_backstop() {
+    rm -rf "$BPROJ/build"
+    NROS_TEST_RECONFIGURE="$PROJECT_ROOT/cmake/NanoRosReconfigure.cmake" \
+    NROS_TEST_MODULE="$MODULE" \
+    NROS_TEST_RESOLVED="$1" \
+    NROS_TEST_LEAF_FILE="$2" \
+    NROS_TEST_ENTRY_WRITES="$3" \
+        cmake -S "$BPROJ" -B "$BPROJ/build" 2>&1
+}
+
+log_info "G8. the west default names the fixed path only behind a resolve, and a backstop takes it back"
+OUT="$(run_backstop "$TEST_TMPDIR" "" 1)"
+check
+if ! nros_grep_q "DEFAULT=[^ ]*/nros/sizing/west-cargo.toml\$" <<<"$OUT"; then
+    fail "G8: behind a resolve, a clean build dir did not default to the fixed path -- \
+the descriptor would reach cargo only after a re-configure (phase-439 W5) -- $OUT"
+fi
+check
+if nros_grep_q "changed after the readers" <<<"$OUT"; then
+    fail "G8: the entry agreed with the default and a re-configure was still armed -- \
+the pass W6 removes -- $OUT"
+fi
+check
+if ! nros_grep_q "FINAL=[^ ]*/nros/sizing/west-cargo.toml\$" <<<"$OUT"; then
+    fail "G8: an entry that wrote its descriptor lost the decision -- $OUT"
+fi
+OUT="$(run_backstop "$TEST_TMPDIR" "" "")"
+check
+if ! nros_grep_q "FINAL=\$" <<<"$OUT"; then
+    fail "G8: nothing wrote the forwarded descriptor and the fragment still names it -- \
+cargo would be handed a file that is not there (RFC-0100 D6) -- $OUT"
+fi
+check
+if ! nros_grep_q "none was written" <<<"$OUT"; then
+    fail "G8: the backstop took the decision back without arming a re-configure, so \
+THIS pass's resolver keeps the missing path -- $OUT"
+fi
+OUT="$(run_backstop "" "" "")"
+check
+if ! nros_grep_q "DEFAULT=\$" <<<"$OUT"; then
+    fail "G8: a bare west build (no resolve) defaulted to naming a descriptor -- every \
+image built without \`nros build\` would arm the backstop's pass -- $OUT"
+fi
+OUT="$(run_backstop "$TEST_TMPDIR" 1 "")"
+check
+if ! nros_grep_q "DEFAULT=\$" <<<"$OUT"; then
+    fail "G8: a standalone leaf with its own descriptor defaulted to the entry path -- \
+issue 1662's leaf would lose its descriptor for a pass -- $OUT"
+fi
 
 log_info "H1. a standalone leaf's descriptor reaches cargo (issues 1407/1378)"
 OUT="$(NROS_TEST_ENTRY_FIRST= run_leaf "")"
