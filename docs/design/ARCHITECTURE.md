@@ -105,13 +105,16 @@ phase-359 W10 stage C it is the current state: none of the nine has a `std`
 feature. `std` was DELETED from them rather than managed: it is not a convenience
 layer over the platform but a second implementation of one, and
 `nros-platform-posix` already provides every primitive it was used for. So
-`alloc` is a permanent axis and **`std` is a transitional one with a scheduled
-end**. Three consequences that come up constantly:
+`alloc` is a permanent axis and **`std` was a transitional one, and its end came
+at stage C**. Three consequences that come up constantly:
 
-> **New code writes `core::` and `alloc::`, never `std::`.** A `std::` path in a
-> crate that targets embedded is a new site for phase-359 to unwind.
-> `check-std-census` is a ratchet that only turns one way and its target is
-> zero.
+> **New code writes `core::` and `alloc::`, never `std::`.** In the nine core
+> crates a `std::` path no longer compiles outside a test build (`cfg(test)`,
+> or `nros-c`/`nros-cpp`'s `test-harness`), and neither does a
+> `cfg(feature = "std")`: the feature is undeclared, so `unexpected_cfgs` refuses
+> it under `-D warnings` (measured on `nros-serdes`, 2026-10-23), wrapped by
+> rustfmt or not. `check-std-census` stays at zero as the readable record. In a
+> crate that still declares `std` (below), a new `std::` path is new debt.
 >
 > **A capability needs what its FACILITY needs, and that is rarely `std`.**
 > `env` is the process environment, which belongs to the PROCESS, not to the
@@ -147,8 +150,19 @@ end**. Three consequences that come up constantly:
 > binary, and it says so (`nros-c/test-harness`).
 
 **Corollary worth remembering.** A capability that grants what it needs can never
-reach its own guard — `metadata-mode` carried a `compile_error!` for two phases
-that could not fire, because the manifest edge satisfied the condition it tested.
+reach its own guard. `metadata-mode` WAS the example: it was `["std"]` because
+`metadata_mode.rs` used `std::sync::Mutex`, `Box::leak` and `format!`, and it
+carried a `compile_error!` for two phases that could not fire, because the
+manifest edge satisfied the condition it tested. Issue 0669/0687 moved it to a
+portable mutex and `alloc`, and made it require rather than grant. **No
+capability in the tree grants `std` today**; `python3 scripts/check-std-census.py
+--check-guards` is what holds that, and anyone can re-run it (issue 1210).
+
+The manifest clauses below now bind the crates that still declare `std`, all
+outside the nine: `nros-platform`, `nros-rmw-cffi`, the bridge, and the RMW
+backends with their staticlibs and `-sys` crates. Each is a backend or platform
+crate whose `std` arm is a hosted implementation of its own seam, not a flavour
+of the core.
 
 > **`alloc` is the heap axis, and it is the only spelling of it.** Every
 > heap-gated item is `#[cfg(feature = "alloc")]`. `cfg(any(feature = "alloc",

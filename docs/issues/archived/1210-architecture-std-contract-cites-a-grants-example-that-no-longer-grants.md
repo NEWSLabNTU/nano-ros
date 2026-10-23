@@ -2,13 +2,15 @@
 id: 1210
 title: "ARCHITECTURE §2's normative `std`/`alloc` contract teaches the
   require-vs-grant rule from `metadata-mode`, which stopped granting `std`"
-status: open
+status: resolved
+resolved: 2026-10-23
+resolved_in: "phase-359 close-out"
 type: docs
 area: [docs, core, api]
 related: [0669, 0687, 0598, phase-359, phase-361]
 ---
 
-**Home: [phase-359](../roadmap/phase-359-drop-std-campaign.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-359](../../roadmap/archived/phase-359-drop-std-campaign.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 
@@ -91,3 +93,20 @@ Keep the rule — it is correct and load-bearing. Change what illustrates it:
    *capability*, which is the reverse direction and not forbidden by any clause,
    but is the nearest thing in the tree to the retired pattern and will be read
    as a counter-example by the next person doing this sweep.
+
+## Resolution (2026-10-23)
+
+Fixed in `docs/design/ARCHITECTURE.md` §2, along the fix sketch:
+
+1. The corollary now uses `metadata-mode` in the past tense: it WAS `["std"]`,
+   its guard could not fire, and issue 0669/0687 made it require `alloc`
+   instead of granting `std`.
+2. It states the measured position — no capability in the tree grants `std` —
+   and names the command that holds it (`check-std-census.py --check-guards`,
+   green on the resolving commit).
+3. Moot: the `nros-c` `std = [...]` edge is gone (phase-359 W10 stage C,
+   PR #2485), so the counter-example no longer exists.
+
+The same edit scoped the remaining manifest clauses to the crates that still
+declare `std` (platform, cffi, bridge, RMW backends) and re-tensed "`std` is
+transitional" to the stage C outcome.

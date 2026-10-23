@@ -1,5 +1,37 @@
 # phase-359 — drop `std` from the core crates, and make `alloc` explicit
 
+**Status (2026-10-23). COMPLETE, archived.** The goal is met and measured:
+none of the nine crates declares `std` (`just check std-census`: 0 cfg sites,
+0 `std::` paths), and every C/C++ image root is `#![no_std]` (W10 stage C,
+PR #2485). The items marked partial below were each closed by a later stage,
+not by edits to their own sections, so their headings keep the date they were
+written:
+
+* **W2** — the deferred `wake_ctx` pair collapsed with the condvar path:
+  `nros-node` has one `WakeCtx` (`flag` + `node_wake`), no `Condvar` arm.
+* **W3** — both deferred signatures moved: `signal_fd()` and
+  `ThreadHandle::join()` return `Result<_, NodeError>`, not `std::io` /
+  `std::thread` results.
+* **W5** — folded into W10 as recorded; the std-only thread conveniences were
+  ported to the platform task ABI or deleted with the `std` arms.
+* **W8** — the residue it called "genuinely hosted" left with `std`: the
+  environment reads through `nros::env` (C `getenv`, stage B) and the clock is
+  the platform's (2026-08-20 ruling).
+* **W10** — stages A, B and C landed (2026-10-21, 2026-10-22).
+
+Homed issues: #1210 resolved (ARCHITECTURE §2 re-tensed, and it now states
+that no capability grants `std`); #1209 resolved as moot — with the feature
+undeclared, a `cfg(feature = "std")` in a core crate is an `unexpected_cfgs`
+error under `-D warnings`, wrapped or not, so the census's line-based count no
+longer guards anything the compiler does not.
+
+Residue, deliberately not part of this phase: `std` remains declared by
+`nros-platform`, `nros-rmw-cffi`, the bridge and the RMW backends (their
+hosted arm of their own seam, under phase-361's manifest clauses), and a few
+`nros-node` comments still describe the retired `wake_cv`/`wake_mu` pair.
+Lanes not re-run after stage C: tier 2 (`just ci matrix`), Zephyr native_sim
+and PX4 SITL.
+
 **Status (2026-10-22). W10 stage C landed: none of the nine crates has a
 `std` feature.** `just check std-census` measures **0 cfg sites / 0 `std::`
 paths**. `nros-c` / `nros-cpp` lost the last two, and with them every C/C++
@@ -1443,7 +1475,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0736](../issues/archived/0736-realtime-tiers-timer-overrun-red-on-main.md) | `realtime_tiers` nuttx-arm/rust: the fast tier outruns the slow one. Mentioned in passing here; making it a work item so it has an owner |
+| [#0736](../../issues/archived/0736-realtime-tiers-timer-overrun-red-on-main.md) | `realtime_tiers` nuttx-arm/rust: the fast tier outruns the slow one. Mentioned in passing here; making it a work item so it has an owner |
 
 ## Issues homed here (survey 2026-09-11)
 
@@ -1454,8 +1486,8 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1209](../issues/1209-std-census-ratchet-blind-to-multiline-cfg-attributes.md) | the `std` census counts `feature = "std"` only on lines containing the token, so a rustfmt-wrapped `cfg` hides a site from the instrument this phase depends on |
-| [#1210](../issues/1210-architecture-std-contract-cites-a-grants-example-that-no-longer-grants.md) | ARCHITECTURE §2's normative `std`/`alloc` contract is this phase's artifact, and its worked example stopped granting `std` — the document teaches the opposite of the rule it states |
+| [#1209](../../issues/archived/1209-std-census-ratchet-blind-to-multiline-cfg-attributes.md) | the `std` census counts `feature = "std"` only on lines containing the token, so a rustfmt-wrapped `cfg` hides a site from the instrument this phase depends on |
+| [#1210](../../issues/archived/1210-architecture-std-contract-cites-a-grants-example-that-no-longer-grants.md) | ARCHITECTURE §2's normative `std`/`alloc` contract is this phase's artifact, and its worked example stopped granting `std` — the document teaches the opposite of the rule it states |
 
 ## Issues homed here (2026-10-17)
 
@@ -1463,4 +1495,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1210](../issues/1210-architecture-std-contract-cites-a-grants-example-that-no-longer-grants.md) | ARCHITECTURE §2's `std`/`alloc` contract has to say what the campaign's terminal state is. |
+| [#1210](../../issues/archived/1210-architecture-std-contract-cites-a-grants-example-that-no-longer-grants.md) | ARCHITECTURE §2's `std`/`alloc` contract has to say what the campaign's terminal state is. |

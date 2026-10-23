@@ -6,7 +6,7 @@ W1, W2 (both halves), W3, W3.b, W4 (`scripts/check-feature-contract.py`), W7
 (`nros-macros` optional, `macros` named at the dep-site) and W8.a–e landed; W5
 and W6 were closed as not viable with the measurements recorded. The allocator
 work landed under its old number (`8d68359200`, "phase-341 W8.c"). The rest of
-the `std` question belongs to [phase-359](../phase-359-drop-std-campaign.md).
+the `std` question belongs to [phase-359](phase-359-drop-std-campaign.md).
 
 **Status (2026-08-15).** IN PROGRESS. `phase-359` (drop `std` from the core
 crates) landed on `main` the same day and contradicted W1/W2.a; **that is
@@ -63,7 +63,7 @@ are genuinely different feature sets.
 
 ## Overlap with phase-359 (drop-`std` campaign) — RESOLVED 2026-08-15
 
-[phase-359](../phase-359-drop-std-campaign.md) landed on `main` 2026-08-15, while
+[phase-359](phase-359-drop-std-campaign.md) landed on `main` 2026-08-15, while
 this branch was rebasing onto it. It is not adjacent work — it reaches the same
 manifests, and on one design point the two phases pull in opposite directions.
 
