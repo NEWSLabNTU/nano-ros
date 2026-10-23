@@ -223,13 +223,21 @@ Standard QoS profiles (`QOS_PROFILE_DEFAULT`, `QOS_PROFILE_SENSOR_DATA`, `QOS_PR
 
 ```rust,ignore
 pub trait ClientTrait {
-    // Async: send request, poll for reply separately
-    fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error>;
-    fn take_response_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
+    // Async: send request (returns its sequence id), poll for reply separately
+    fn send_request_raw(&mut self, request: &[u8]) -> Result<i64, Self::Error>;
+    // A reply carries the sequence id of the request it answers
+    fn take_response_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<(usize, i64)>, Self::Error>;
 }
 ```
 
 Blocking waits are composed above the RMW by the executor (which keeps driving `drive_io` between polls).
+
+Every client surface matches a reply to its request by that sequence id
+(issue 2009, `nros_rmw::RequestCorrelator`): a reply is delivered only to the
+request it names, and a reply whose request was cancelled, abandoned or timed
+out is dropped rather than handed to the next request. A backend that cannot
+assign ids leaves `NROS_RMW_SEQUENCE_ID_UNKNOWN`, and the client then keeps one
+request in flight.
 
 ## APIs Present in ROS 2 rmw but Absent in nros-rmw
 

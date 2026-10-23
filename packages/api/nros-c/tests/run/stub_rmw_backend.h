@@ -107,6 +107,32 @@ bool nros_stub_rmw_stage_reply(const uint8_t* data, size_t len);
 /** Issue 1996 — client requests the stub has accepted since process start. */
 uint32_t nros_stub_rmw_requests_sent(void);
 
+/** Issue 2009 — stage a reply for the request sent as @p seq. Replies are taken
+ *  oldest-staged first, whatever their ids, so staging B's before A's delivers
+ *  them out of order. `false` when the stub's 8 slots are full or the reply
+ *  does not fit 256 bytes. */
+bool nros_stub_rmw_stage_reply_for(int64_t seq, const uint8_t* data, size_t len);
+
+/** Issue 2009 — the id the stub assigned to the most recent request. */
+int64_t nros_stub_rmw_last_request_seq(void);
+
+/** Issue 2009 — refuse a send (`NROS_RMW_RET_WOULD_BLOCK`, nothing sent) once
+ *  @p max requests are outstanding (sent and not yet answered by a taken
+ *  reply), as a real backend refuses past its own limit. 0 = no cap. */
+void nros_stub_rmw_set_max_outstanding(uint32_t max);
+
+/** Issue 2009 — `false`: neither `send_request` nor `take_response` writes an
+ *  id, so the runtime sees `NROS_RMW_SEQUENCE_ID_UNKNOWN` — a backend that
+ *  cannot assign ids. */
+void nros_stub_rmw_set_ids_supported(bool supported);
+
+/** Issue 2009 — replies staged and not yet taken. */
+size_t nros_stub_rmw_staged_replies(void);
+
+/** Issue 2009 — drop staged replies and restore the defaults (no cap, ids
+ *  supported), so one probe's leftovers cannot answer the next. */
+void nros_stub_rmw_reset_client(void);
+
 /** Issue 1940 — the entity kinds the per-entity new-data slots are stored by. */
 #define NROS_STUB_ENTITY_SUBSCRIPTION 0
 #define NROS_STUB_ENTITY_SERVICE 1

@@ -171,8 +171,11 @@ int main() {
     check(other->remove_pending_request(foreign), "the other client removes its own");
 
     // --- a zero budget is one check, and a null request sends nothing --------
-    stage_sum(7);
+    // The reply is staged AFTER the send: it answers `quick`'s request by id
+    // (issue 2009). Staged before, it would answer the removed request above
+    // and be dropped.
     auto quick = client->async_send_request(request);
+    stage_sum(7);
     check(quick.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready,
           "wait_for(0) sees a reply that is already in");
     auto quick_reply = quick.get();

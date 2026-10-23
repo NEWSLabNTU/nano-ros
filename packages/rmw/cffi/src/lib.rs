@@ -5395,10 +5395,12 @@ impl ClientTrait for CffiClient {
             return Err(TransportError::Unsupported);
         };
         let view = self.make_view();
-        // Issue 0778 — the id the backend assigned. A backend that leaves it
-        // untouched reports 0, which is a legal id; nothing here treats it as
-        // a sentinel.
-        let mut sequence_id: i64 = 0;
+        // Issue 0778 — the id the backend assigned. Issue 2009 — pre-set to
+        // `NROS_RMW_SEQUENCE_ID_UNKNOWN`, the way `take`'s `len` is pre-set to
+        // `NROS_RMW_TAKE_LEN_UNKNOWN`: a backend that leaves it untouched now
+        // reads as "no id", where it used to read as id 0 — a legal id that
+        // the correlation layer would have matched against.
+        let mut sequence_id: i64 = generated::NROS_RMW_SEQUENCE_ID_UNKNOWN;
         let rc = unsafe {
             f(
                 &view,
@@ -5433,7 +5435,8 @@ impl ClientTrait for CffiClient {
             len: generated::NROS_RMW_TAKE_LEN_UNKNOWN as usize,
         };
         let mut taken = false;
-        let mut seq: i64 = 0;
+        // Issue 2009 — see `send_request_raw`.
+        let mut seq: i64 = generated::NROS_RMW_SEQUENCE_ID_UNKNOWN;
         let rc = unsafe { f(&view, &mut reply_span, &mut seq, &mut taken) };
         if rc != NROS_RMW_RET_OK {
             if rc == NROS_RMW_RET_BUFFER_TOO_SMALL {

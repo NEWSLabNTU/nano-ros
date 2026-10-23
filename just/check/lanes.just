@@ -447,6 +447,22 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/entity_wake_callback
     ./tmp/entity_wake_callback
+    echo "  - issue 2009: C clients match a reply to its request by sequence number;"
+    echo "    a stray or timed-out call's late reply is dropped, not delivered"
+    test -f packages/api/nros-c/tests/run/client_seq_correlation.c || { \
+        echo "ERROR: client_seq_correlation.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/client_seq_correlation.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/client_seq_correlation
+    ./tmp/client_seq_correlation
     echo "  - issue 1993: the five Tier-1 status-event setters register through the"
     echo "    slot table with their deadline, fire the user callback, refuse without"
     echo "    backend support, and a late fire after fini is a no-op"
@@ -1576,6 +1592,29 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/client_future_shape_runtime
+    # issue 2009 -- the poll client's futures are keyed by their request's
+    # SEQUENCE ID: replies staged out of order each reach their own future, a
+    # reply after remove_pending_request (or a destroyed future) is dropped, the
+    # transport's outstanding limit refuses the send, and an id-less backend gets
+    # one request in flight. A RUN: every one of these is behaviour.
+    test -f packages/api/nros-cpp/tests/compile/client_seq_correlation_runtime.cpp || { \
+        echo "ERROR: client_seq_correlation_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - client futures keyed by sequence id: out-of-order replies, late replies dropped, full / id-less (runtime, issue 2009)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/client_seq_correlation_runtime \
+        packages/api/nros-cpp/tests/compile/client_seq_correlation_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/client_seq_correlation_runtime
     # ...and WITHOUT the hosted surface `Future::get()` is refused, naming
     # `try_take` (no `<memory>`, no allocator). Grepped for both, because an
     # include typo also fails to compile.

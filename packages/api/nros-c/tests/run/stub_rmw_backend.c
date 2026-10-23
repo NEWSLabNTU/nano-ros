@@ -315,22 +315,43 @@ static rmw_ret_t stub_destroy_client(rmw_client_t* client) {
 
 /* Issue 1996 — the client request/reply pair, so a test can drive a C++
  * `rclcpp::Future` through the real runtime: `send_request` counts the call and
- * hands out increasing sequence ids; `take_response` yields the reply a test
- * STAGED with `nros_stub_rmw_stage_reply`, once, answering the last request.
- * Nothing staged reads as "no reply yet". Before this pair both slots were
- * NULL, which the runtime reports as an unsupported send. */
-static uint8_t s_staged_reply[256];
-static size_t s_staged_reply_len = 0;
-static bool s_reply_staged = false;
+ * hands out increasing sequence ids; `take_response` yields the replies a test
+ * STAGED, oldest first, each reporting the id it was staged for. Nothing staged
+ * reads as "no reply yet". Before this pair both slots were NULL, which the
+ * runtime reports as an unsupported send.
+ *
+ * Issue 2009 — staged BY ID (`nros_stub_rmw_stage_reply_for`), in any order, so
+ * a test can deliver replies out of order and after a request was removed; an
+ * outstanding-request cap (`nros_stub_rmw_set_max_outstanding`), refused the
+ * way a real backend refuses a send past its own limit; and an id-less mode
+ * (`nros_stub_rmw_set_ids_supported(false)`) in which neither slot writes an id,
+ * the backend `NROS_RMW_SEQUENCE_ID_UNKNOWN` exists for. */
+#define STUB_REPLY_SLOTS 8
+typedef struct {
+    uint8_t data[256];
+    size_t len;
+    int64_t seq;
+} stub_reply_t;
+static stub_reply_t s_replies[STUB_REPLY_SLOTS];
+static size_t s_reply_count = 0;
 static int64_t s_next_request_seq = 1;
 static uint32_t s_requests_sent = 0;
+static uint32_t s_max_outstanding = 0; /* 0 = no cap */
+static uint32_t s_outstanding = 0;
+static bool s_ids_supported = true;
 
 static rmw_ret_t stub_send_request(const rmw_client_t* client, rmw_byte_span_t request,
                                    int64_t* sequence_id) {
     (void)client;
     (void)request;
+    if (s_max_outstanding != 0 && s_outstanding >= s_max_outstanding) {
+        /* A real backend's own limit: zenoh's pending-get table, Cyclone's
+         * per-client outstanding set. Nothing is sent. */
+        return NROS_RMW_RET_WOULD_BLOCK;
+    }
     ++s_requests_sent;
-    if (sequence_id != NULL) *sequence_id = s_next_request_seq;
+    ++s_outstanding;
+    if (sequence_id != NULL && s_ids_supported) *sequence_id = s_next_request_seq;
     ++s_next_request_seq;
     return NROS_RMW_RET_OK;
 }
@@ -339,26 +360,59 @@ static rmw_ret_t stub_take_response(const rmw_client_t* client, rmw_mut_byte_spa
                                     int64_t* seq_out, bool* taken) {
     (void)client;
     if (taken != NULL) *taken = false;
-    if (!s_reply_staged) return NROS_RMW_RET_OK;
+    if (s_reply_count == 0) return NROS_RMW_RET_OK;
     if (reply == NULL || reply->data == NULL) return NROS_RMW_RET_ERROR;
-    if (reply->capacity < s_staged_reply_len) {
-        reply->len = s_staged_reply_len;
+    const stub_reply_t* r = &s_replies[0];
+    if (reply->capacity < r->len) {
+        reply->len = r->len;
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
-    memcpy(reply->data, s_staged_reply, s_staged_reply_len);
-    reply->len = s_staged_reply_len;
-    if (seq_out != NULL) *seq_out = s_next_request_seq - 1;
+    memcpy(reply->data, r->data, r->len);
+    reply->len = r->len;
+    if (seq_out != NULL && s_ids_supported) *seq_out = r->seq;
     if (taken != NULL) *taken = true;
-    s_reply_staged = false;
+    memmove(&s_replies[0], &s_replies[1], (s_reply_count - 1) * sizeof(stub_reply_t));
+    --s_reply_count;
+    if (s_outstanding > 0) --s_outstanding;
     return NROS_RMW_RET_OK;
 }
 
-bool nros_stub_rmw_stage_reply(const uint8_t* data, size_t len) {
-    if (len > sizeof(s_staged_reply) || (len > 0 && data == NULL)) return false;
-    if (len > 0) memcpy(s_staged_reply, data, len);
-    s_staged_reply_len = len;
-    s_reply_staged = true;
+bool nros_stub_rmw_stage_reply_for(int64_t seq, const uint8_t* data, size_t len) {
+    if (s_reply_count >= STUB_REPLY_SLOTS) return false;
+    if (len > sizeof(s_replies[0].data) || (len > 0 && data == NULL)) return false;
+    stub_reply_t* r = &s_replies[s_reply_count];
+    if (len > 0) memcpy(r->data, data, len);
+    r->len = len;
+    r->seq = seq;
+    ++s_reply_count;
     return true;
+}
+
+bool nros_stub_rmw_stage_reply(const uint8_t* data, size_t len) {
+    return nros_stub_rmw_stage_reply_for(s_next_request_seq - 1, data, len);
+}
+
+int64_t nros_stub_rmw_last_request_seq(void) {
+    return s_next_request_seq - 1;
+}
+
+void nros_stub_rmw_set_max_outstanding(uint32_t max) {
+    s_max_outstanding = max;
+}
+
+void nros_stub_rmw_set_ids_supported(bool supported) {
+    s_ids_supported = supported;
+}
+
+size_t nros_stub_rmw_staged_replies(void) {
+    return s_reply_count;
+}
+
+void nros_stub_rmw_reset_client(void) {
+    s_reply_count = 0;
+    s_outstanding = 0;
+    s_max_outstanding = 0;
+    s_ids_supported = true;
 }
 
 uint32_t nros_stub_rmw_requests_sent(void) {

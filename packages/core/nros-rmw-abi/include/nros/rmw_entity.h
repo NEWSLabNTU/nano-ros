@@ -191,6 +191,26 @@ typedef struct rmw_mut_byte_span_t {
  *  drop log named the buffer and never the sample. */
 #define NROS_RMW_TAKE_LEN_UNKNOWN 0
 
+/** The request id a backend reports when it CANNOT supply one — issue 2009.
+ *
+ *  `send_request`'s `*sequence_id` and `take_response`'s `*seq_out` are how a
+ *  client with more than one call outstanding matches a reply to its request
+ *  (issue 0778). The CALLER pre-sets both to this value, exactly as it pre-sets
+ *  `len` to `NROS_RMW_TAKE_LEN_UNKNOWN`, so a backend that never writes them —
+ *  or writes this explicitly — reads as "no id" rather than as id 0, which is a
+ *  legal id. Every in-tree backend that implements the client slots writes a
+ *  real id.
+ *
+ *  What the runtime does with "no id" is defined, not guessed: a client whose
+ *  backend sent a request without an id keeps ONE request in flight (a second
+ *  send is refused), and a reply without an id is delivered only when exactly
+ *  one request is pending. It is never handed to a different request.
+ *
+ *  INT64_MIN, spelled so bindgen can evaluate it. No backend counts down to
+ *  it: zenoh and the stub count up from 1, cyclonedds reports its writer
+ *  sequence number, XRCE its 16-bit request id. */
+#define NROS_RMW_SEQUENCE_ID_UNKNOWN (-9223372036854775807LL - 1)
+
 /** A message type's identity — phase-406 W1.
  *
  *  Upstream passes `const rosidl_message_type_support_t *`: a runtime-dispatch

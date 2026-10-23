@@ -8321,6 +8321,33 @@ rcl_ret_t rclc_polling_client_send_request_raw(struct rclc_polling_client_t *cli
                                                size_t len);
 
 /**
+ * Issue 2009 — [`rclc_polling_client_send_request_raw`] that also reports the
+ * request's SEQUENCE NUMBER, upstream's `rcl_send_request(client, request,
+ * &sequence_number)`.
+ *
+ * A polling client keeps no pending table: a caller with more than one
+ * request outstanding matches each reply's number
+ * ([`rclc_polling_client_take_response_raw_seq`]) against these. On a backend
+ * that cannot assign ids the number is `NROS_RMW_SEQUENCE_ID_UNKNOWN`
+ * (`INT64_MIN`), and replies cannot be told apart — keep one request in
+ * flight there.
+ *
+ * # Returns
+ * `RCL_RET_OK` (and `*sequence_number` written), `RCL_RET_INVALID_ARGUMENT`,
+ * `RCL_RET_ERROR` on transport failure, `RCL_RET_NOT_INIT` without
+ * `rmw-cffi`.
+ *
+ * # Safety
+ * `client` must be an initialized polling client; `data` readable for `len`
+ * bytes; `sequence_number` writable.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_polling_client_send_request_raw_seq(struct rclc_polling_client_t *client,
+                                                   const uint8_t *data,
+                                                   size_t len,
+                                                   int64_t *sequence_number);
+
+/**
  * Phase 122.3.c.5 — non-blocking poll for a reply on an L1
  * polling-mode client. Writes reply bytes into the caller's `buf`.
  *
@@ -8337,6 +8364,28 @@ NROS_PUBLIC
 int32_t rclc_polling_client_take_response_raw(struct rclc_polling_client_t *client,
                                               uint8_t *buf,
                                               size_t buf_len);
+
+/**
+ * Issue 2009 — [`rclc_polling_client_take_response_raw`] that also reports
+ * the SEQUENCE NUMBER of the request the reply answers: the number
+ * [`rclc_polling_client_send_request_raw_seq`] returned for it. Upstream's
+ * `rcl_take_response(client, &request_header, response)`, whose header
+ * carries the same number.
+ *
+ * `*sequence_number` is written only when a reply was copied (return `> 0`).
+ *
+ * # Returns
+ * Same as [`rclc_polling_client_take_response_raw`].
+ *
+ * # Safety
+ * `client` must be an initialized polling client. `buf` writable for
+ * `buf_len` bytes; `sequence_number` writable.
+ */
+NROS_PUBLIC
+int32_t rclc_polling_client_take_response_raw_seq(struct rclc_polling_client_t *client,
+                                                  uint8_t *buf,
+                                                  size_t buf_len,
+                                                  int64_t *sequence_number);
 
 /**
  * Set the response callback fired by `rclc_executor_spin_some` when an

@@ -51,6 +51,190 @@ namespace rclcpp {
 // claim about the code that is not true.
 template <typename S> class PollClient;
 
+namespace detail {
+
+/// Issue 2009 — the id a backend reports when it cannot assign one: the RMW
+/// ABI's `NROS_RMW_SEQUENCE_ID_UNKNOWN` (`INT64_MIN`). `polling_client.hpp`
+/// asserts it equals the FFI's `NROS_CPP_SEQUENCE_ID_UNKNOWN`.
+constexpr int64_t SEQUENCE_ID_UNKNOWN = (-9223372036854775807LL - 1);
+
+/// Issue 2009 — stale replies one poll drops before reporting "nothing yet";
+/// the twin of Rust's `nros_rmw::MAX_STALE_DRAIN_PER_POLL`.
+constexpr int MAX_STALE_DRAIN_PER_POLL = 8;
+
+/// The take hook a service future polls: one reply, its length AND the id of
+/// the request it answers (`nros_cpp_service_client_take_response_seq`).
+using TakeSeqFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*, int64_t*);
+
+/// Issue 2009 — the part of a `Future` the client's pending list links. Not a
+/// template, so futures of different reply capacities on one client share a
+/// list, and a future that takes ANOTHER future's reply can hand it over
+/// without knowing that future's type.
+struct PendingList;
+struct PendingLink {
+    PendingLink* next = nullptr;
+    /// The list this future is on while its request is pending; nullptr for an
+    /// unkeyed future, or once the future is consumed or cancelled.
+    PendingList* list = nullptr;
+    /// The client storage the future takes from (the poll client's, or the
+    /// action client's for an unkeyed future).
+    void* storage = nullptr;
+    int64_t seq = SEQUENCE_ID_UNKNOWN;
+    uint8_t* buf = nullptr; ///< the future's own receive buffer
+    size_t cap = 0;
+    size_t len = 0;
+    bool ready = false;
+    /// The client went away while the request was pending: never answerable.
+    bool orphaned = false;
+};
+
+/// Issue 2009 — the requests ONE poll client has in flight, as an intrusive
+/// list of the futures waiting on them, each keyed by its request's sequence
+/// id. A reply is delivered only to the future whose id it carries; a reply
+/// naming no pending future (a removed or destroyed one's) is dropped.
+///
+/// The same rule as Rust's `nros_rmw::RequestCorrelator`, which every other
+/// client surface uses. It lives in the futures here rather than in a table
+/// because each future already owns the buffer its reply must land in.
+///
+/// BOUNDED, NO HEAP, NO CAPACITY TO MIS-SIZE: an entry is a future the caller
+/// already holds, so the list is as long as the futures in flight. What caps
+/// that is the transport's own outstanding-request limit (zenoh
+/// `NROS_ZENOH_MAX_PENDING_GETS`, Cyclone's 8 per client): a send past it is
+/// refused by the backend, and `send_request` then returns an empty future
+/// (`valid()` false) without linking anything.
+///
+/// A backend that cannot assign ids (`SEQUENCE_ID_UNKNOWN`) gets one request
+/// in flight per client — `can_send()` refuses a second while the first is
+/// pending — and an unkeyed reply goes to the sole pending future. A removed
+/// unkeyed request costs the next unkeyed reply (`orphans`), which is dropped
+/// rather than delivered to a newer request it cannot be told apart from.
+struct PendingList {
+    PendingLink* head = nullptr;
+    uint8_t orphans = 0;
+
+    size_t count() const {
+        size_t n = 0;
+        for (PendingLink* l = head; l != nullptr; l = l->next)
+            ++n;
+        return n;
+    }
+
+    bool can_send() const {
+        for (PendingLink* l = head; l != nullptr; l = l->next)
+            if (l->seq == SEQUENCE_ID_UNKNOWN) return false;
+        return true;
+    }
+
+    void link(PendingLink* l) {
+        l->next = head;
+        head = l;
+    }
+
+    /// Unlink `l` if present. `abandoned`: its request will never be taken
+    /// through it (removed / destroyed), as opposed to answered.
+    bool unlink(PendingLink* l, bool abandoned) {
+        for (PendingLink** pp = &head; *pp != nullptr; pp = &(*pp)->next) {
+            if (*pp == l) {
+                *pp = l->next;
+                l->next = nullptr;
+                if (abandoned && l->seq == SEQUENCE_ID_UNKNOWN && orphans < 255) ++orphans;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// A moved future: the list must point at its new address.
+    void relink(PendingLink* from, PendingLink* to) {
+        for (PendingLink** pp = &head; *pp != nullptr; pp = &(*pp)->next) {
+            if (*pp == from) {
+                to->next = from->next;
+                *pp = to;
+                from->next = nullptr;
+                return;
+            }
+        }
+    }
+
+    /// The pending future a reply carrying `seq` answers, or nullptr (stale:
+    /// drop it). Does not unlink.
+    PendingLink* resolve(int64_t seq) {
+        if (seq == SEQUENCE_ID_UNKNOWN) {
+            if (orphans > 0) {
+                --orphans;
+                return nullptr;
+            }
+            return (head != nullptr && head->next == nullptr) ? head : nullptr;
+        }
+        for (PendingLink* l = head; l != nullptr; l = l->next)
+            if (l->seq == seq) return l;
+        // The backend gave the REPLY an id but not the request: the sole
+        // pending request is the only candidate.
+        if (head != nullptr && head->next == nullptr && head->seq == SEQUENCE_ID_UNKNOWN)
+            return head;
+        return nullptr;
+    }
+
+    /// The poll client that owns this list MOVED to `to` (whose storage is
+    /// `storage`): every pending future follows it.
+    void move_to(PendingList& to, void* storage) {
+        to.head = head;
+        to.orphans = orphans;
+        for (PendingLink* l = head; l != nullptr; l = l->next) {
+            l->list = &to;
+            l->storage = storage;
+        }
+        head = nullptr;
+        orphans = 0;
+    }
+
+    /// Forget every pending request, as `remove_pending_request` does for one:
+    /// each waiting future becomes invalid and its reply, if it still comes, is
+    /// dropped. Returns how many were pending.
+    size_t prune() {
+        size_t n = 0;
+        while (head != nullptr) {
+            PendingLink* l = head;
+            (void)unlink(l, true);
+            l->list = nullptr;
+            l->orphaned = true;
+            ++n;
+        }
+        return n;
+    }
+
+    /// The poll client that owns this list is going away: every pending future
+    /// becomes invalid (`valid()` false) instead of pointing at freed storage.
+    void orphan_all() {
+        PendingLink* l = head;
+        while (l != nullptr) {
+            PendingLink* next = l->next;
+            l->next = nullptr;
+            l->list = nullptr;
+            l->storage = nullptr;
+            l->orphaned = true;
+            l = next;
+        }
+        head = nullptr;
+        orphans = 0;
+    }
+
+    /// Hand a reply to `owner`, which is answered and leaves the list.
+    void deliver(PendingLink* owner, const uint8_t* data, size_t len) {
+        const size_t n = len < owner->cap ? len : owner->cap;
+        if (owner->buf != data) {
+            for (size_t i = 0; i < n; ++i)
+                owner->buf[i] = data[i];
+        }
+        owner->len = n;
+        owner->ready = true;
+        (void)unlink(owner, false);
+    }
+};
+
+} // namespace detail
+
 /// Single-shot deferred result for request/response operations.
 ///
 /// Returned by PollClient<S>::send_request (phase-456 W9; it was
@@ -71,20 +255,32 @@ template <typename S> class PollClient;
 ///              `ActionClient::get_result_future_sized`, which hand back a
 ///              `Future<T, N>` (issue 0964). This buffer IS the capacity:
 ///              under-sizing it truncates the reply.
+///
+/// A service future is KEYED BY ITS REQUEST'S SEQUENCE ID (issue 2009): any
+/// number of futures may be in flight on one `PollClient`, each receives only
+/// the reply to its own request whichever future happens to poll first, and a
+/// reply that arrives after the future was cancelled, removed
+/// (`remove_pending_request`) or destroyed is dropped — never handed to a later
+/// future. See `detail::PendingList` for the bound and for backends that
+/// cannot assign ids.
 template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class Future {
   public:
     /// Check if the result has arrived (non-blocking).
+    ///
+    /// For a service future this takes replies off the client until its own
+    /// arrives: one for another pending future is handed to that future, one
+    /// for no pending future is dropped (at most
+    /// `detail::MAX_STALE_DRAIN_PER_POLL` per call).
     bool is_ready() {
-        if (slot_ < 0 || !take_fn_) return false;
-        if (ready_) return true;
-        uint8_t buf[Cap];
+        if (!live()) return false;
+        if (link_.ready) return true;
+        if (take_seq_fn_ != nullptr) return poll_keyed();
+        if (!take_fn_) return false;
         size_t len = 0;
-        nros_cpp_ret_t ret = take_fn_(client_storage_, buf, sizeof(buf), &len);
+        nros_cpp_ret_t ret = take_fn_(link_.storage, cached_buf_, sizeof(cached_buf_), &len);
         if (ret == 0 && len > 0) {
-            ready_ = true;
-            cached_len_ = len < sizeof(cached_buf_) ? len : sizeof(cached_buf_);
-            for (size_t i = 0; i < cached_len_; ++i)
-                cached_buf_[i] = buf[i];
+            link_.ready = true;
+            link_.len = len < sizeof(cached_buf_) ? len : sizeof(cached_buf_);
             return true;
         }
         return false;
@@ -95,10 +291,10 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     /// @param out  Output object (filled on success).
     /// @return Result::success() on ready, ErrorCode::Error if not ready or failed.
     Result try_take(T& out) {
-        if (slot_ < 0) return Result(ErrorCode::Error);
-        if (!ready_ && !is_ready()) return Result(ErrorCode::Error);
+        if (!live()) return Result(ErrorCode::Error);
+        if (!link_.ready && !is_ready()) return Result(ErrorCode::Error);
         slot_ = -1; // consume
-        if (T::ffi_deserialize(cached_buf_, cached_len_, &out) != 0) {
+        if (T::ffi_deserialize(cached_buf_, link_.len, &out) != 0) {
             return Result(ErrorCode::Error);
         }
         return Result::success();
@@ -116,7 +312,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     ///                         values reduce wakeups for long waits.
     /// @return Result::success(), ErrorCode::Timeout, or error.
     Result wait(void* executor_handle, uint32_t timeout_ms, T& out, uint32_t poll_ms = 10) {
-        if (slot_ < 0) return Result(ErrorCode::Error);
+        if (!live()) return Result(ErrorCode::Error);
         if (poll_ms == 0) poll_ms = 1;
         // Phase 89.2: budget by wall-clock. Accumulating `step` per iteration
         // breaks when the underlying `zpico_spin_once` returns early on a
@@ -142,12 +338,20 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
         return Result(ErrorCode::Timeout);
     }
 
-    /// Cancel the pending operation (idempotent).
-    void cancel() { slot_ = -1; }
+    /// Cancel the pending operation (idempotent). A service future leaves its
+    /// client's pending list, so its reply — if it still comes — is dropped
+    /// (issue 2009).
+    void cancel() {
+        detach(true);
+        slot_ = -1;
+    }
 
     /// `std::future::valid()` — true until the result is taken or the future
     /// is cancelled (issue 1996). The negation of @ref is_consumed.
-    bool valid() const { return slot_ >= 0; }
+    ///
+    /// Issue 2009 — also false once the client it was sent on was destroyed
+    /// (or moved over) while the request was pending.
+    bool valid() const { return live(); }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
     /// `FutureAndRequestId::get()` — issue 1996. ADOPT-BOUNDED.
@@ -169,7 +373,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     /// Absent on a freestanding build, where there is no `<memory>`: there the
     /// name is a `static_assert` naming `try_take` (`NROS_RCLCPP_REFUSE_FUTURE_GET`).
     ::std::shared_ptr<T> get() {
-        if (slot_ < 0 || (!ready_ && !is_ready())) {
+        if (!live() || (!link_.ready && !is_ready())) {
             NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_FUTURE_GET_NOT_READY_RUNTIME);
             return ::std::shared_ptr<T>();
         }
@@ -203,8 +407,8 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     /// A future with no executor (default-constructed) does not wait: it checks once.
     template <typename Rep, typename Period>
     ::std::future_status wait_for(::std::chrono::duration<Rep, Period> timeout) {
-        if (slot_ < 0) return ::std::future_status::timeout;
-        if (ready_ || is_ready()) return ::std::future_status::ready;
+        if (!live()) return ::std::future_status::timeout;
+        if (link_.ready || is_ready()) return ::std::future_status::ready;
         const int64_t ms = ::rclcpp::detail::chrono_wait_budget_ms(timeout);
         if (ms <= 0 || executor_ == nullptr) {
             if (executor_ != nullptr) (void)nros_cpp_spin_once(executor_, 0);
@@ -225,31 +429,25 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
 #endif // NROS_CPP_HAS_STD_FUTURE
 
     /// Check if the future has been consumed or cancelled.
-    bool is_consumed() const { return slot_ < 0; }
+    bool is_consumed() const { return !live(); }
 
-    // Move semantics (non-copyable, single-shot)
+    // Move semantics (non-copyable, single-shot). A linked future's list entry
+    // FOLLOWS it to the new address (issue 2009), so a future may be returned
+    // by value and stored wherever the caller likes while it is in flight.
     Future(Future&& other) noexcept
-        : client_storage_(other.client_storage_), take_fn_(other.take_fn_),
-          executor_(other.executor_), slot_(other.slot_), ready_(other.ready_),
-          cached_len_(other.cached_len_) {
-        for (size_t i = 0; i < cached_len_; ++i)
-            cached_buf_[i] = other.cached_buf_[i];
-        other.slot_ = -1;
-        other.ready_ = false;
+        : take_fn_(other.take_fn_), take_seq_fn_(other.take_seq_fn_), executor_(other.executor_),
+          slot_(other.slot_) {
+        adopt(other);
     }
 
     Future& operator=(Future&& other) noexcept {
         if (this != &other) {
-            client_storage_ = other.client_storage_;
+            cancel();
             take_fn_ = other.take_fn_;
+            take_seq_fn_ = other.take_seq_fn_;
             executor_ = other.executor_;
             slot_ = other.slot_;
-            ready_ = other.ready_;
-            cached_len_ = other.cached_len_;
-            for (size_t i = 0; i < cached_len_; ++i)
-                cached_buf_[i] = other.cached_buf_[i];
-            other.slot_ = -1;
-            other.ready_ = false;
+            adopt(other);
         }
         return *this;
     }
@@ -257,9 +455,10 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     ~Future() { cancel(); }
 
     /// Default constructor -- creates an empty/consumed future.
-    Future()
-        : client_storage_(nullptr), take_fn_(nullptr), executor_(nullptr), slot_(-1), ready_(false),
-          cached_len_(0) {}
+    Future() : take_fn_(nullptr), take_seq_fn_(nullptr), executor_(nullptr), slot_(-1) {
+        link_.buf = cached_buf_;
+        link_.cap = sizeof(cached_buf_);
+    }
 
   private:
     Future(const Future&) = delete;
@@ -272,16 +471,86 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
 
     // `executor` is what `wait_for` drives (issue 1996); nullptr = no
     // executor known, and `wait_for` then checks once instead of waiting.
+    // An UNKEYED future: the take hook carries no request id, so the future
+    // trusts whatever reply it takes. The action client's goal / result
+    // futures are built this way; their sub-clients correlate by id on the
+    // Rust side (`ActionClientCore`, issue 2009).
     Future(void* storage, TryRecvFn fn, int slot, void* executor = nullptr)
-        : client_storage_(storage), take_fn_(fn), executor_(executor), slot_(slot), ready_(false),
-          cached_len_(0) {}
+        : take_fn_(fn), take_seq_fn_(nullptr), executor_(executor), slot_(slot) {
+        link_.buf = cached_buf_;
+        link_.cap = sizeof(cached_buf_);
+        link_.storage = storage;
+    }
 
-    void* client_storage_;
+    // Issue 2009 — a KEYED future: the request went out as `seq`, and the
+    // future joins `list`, the pending list of the client it was sent on.
+    Future(void* storage, ::rclcpp::detail::TakeSeqFn fn, int64_t seq,
+           ::rclcpp::detail::PendingList* list, void* executor)
+        : take_fn_(nullptr), take_seq_fn_(fn), executor_(executor), slot_(0) {
+        link_.buf = cached_buf_;
+        link_.cap = sizeof(cached_buf_);
+        link_.storage = storage;
+        link_.seq = seq;
+        link_.list = list;
+        if (list != nullptr) list->link(&link_);
+    }
+
+    bool live() const { return slot_ >= 0 && !link_.orphaned; }
+
+    /// Take replies off the client until this future's own arrives; hand each
+    /// other pending future its reply, drop the rest.
+    bool poll_keyed() {
+        ::rclcpp::detail::PendingList* list = link_.list;
+        if (list == nullptr) return false;
+        for (int i = 0; i < ::rclcpp::detail::MAX_STALE_DRAIN_PER_POLL; ++i) {
+            size_t len = 0;
+            int64_t seq = ::rclcpp::detail::SEQUENCE_ID_UNKNOWN;
+            nros_cpp_ret_t ret =
+                take_seq_fn_(link_.storage, cached_buf_, sizeof(cached_buf_), &len, &seq);
+            if (ret != 0) break; // TRY_AGAIN (nothing yet) or a transport error
+            ::rclcpp::detail::PendingLink* owner = list->resolve(seq);
+            if (owner != nullptr) list->deliver(owner, cached_buf_, len);
+            if (link_.ready) return true;
+        }
+        return link_.ready;
+    }
+
+    /// Leave the client's pending list, if still on it. `abandoned`: the
+    /// request will never be answered through this future.
+    void detach(bool abandoned) {
+        if (link_.list != nullptr && !link_.ready) (void)link_.list->unlink(&link_, abandoned);
+        link_.list = nullptr;
+    }
+
+    /// Take over `other`'s state and list position; `other` becomes empty.
+    void adopt(Future& other) {
+        link_.buf = cached_buf_;
+        link_.cap = sizeof(cached_buf_);
+        link_.storage = other.link_.storage;
+        link_.seq = other.link_.seq;
+        link_.ready = other.link_.ready;
+        link_.orphaned = other.link_.orphaned;
+        link_.len = other.link_.len;
+        link_.list = other.link_.list;
+        link_.next = nullptr;
+        if (link_.ready) {
+            for (size_t i = 0; i < link_.len; ++i)
+                cached_buf_[i] = other.cached_buf_[i];
+        }
+        if (link_.list != nullptr && !link_.ready) link_.list->relink(&other.link_, &link_);
+        other.link_.list = nullptr;
+        other.link_.ready = false;
+        other.link_.next = nullptr;
+        other.slot_ = -1;
+    }
+
     TryRecvFn take_fn_;
+    ::rclcpp::detail::TakeSeqFn take_seq_fn_;
     void* executor_;
     int slot_;
-    bool ready_;
-    size_t cached_len_;
+    /// Issue 2009 — the entry the client's pending list links, plus the client
+    /// storage this future takes from.
+    ::rclcpp::detail::PendingLink link_;
     uint8_t cached_buf_[Cap];
 };
 

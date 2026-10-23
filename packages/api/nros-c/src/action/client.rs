@@ -942,19 +942,14 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
         None => return RCL_RET_NOT_INIT,
     };
 
-    // Poll goal acceptance reply
-    if let Ok(Some(total_len)) = core.try_recv_send_goal_reply()
+    // Poll goal acceptance reply. Issue 2009 — attributed to the goal its
+    // request named, not to the most recently sent goal (`goal_counter`).
+    if let Ok(Some((total_len, goal_id))) = core.try_recv_send_goal_reply_for()
         && let Some(cb) = client_ref.goal_response_callback
     {
         let buf = core.result_buffer_ref();
         let accepted = total_len >= 5 && buf[4] != 0;
-        let uuid = rclc_goal_uuid_t {
-            uuid: {
-                let mut u = [0u8; 16];
-                u[..8].copy_from_slice(&core.goal_counter().to_le_bytes());
-                u
-            },
-        };
+        let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
         cb(&uuid, accepted, ctx);
     }
 
@@ -980,8 +975,8 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
         }
     }
 
-    // Poll result reply
-    if let Ok(Some(total_len)) = core.try_recv_get_result_reply()
+    // Poll result reply — issue 2009, attributed like the acceptance above.
+    if let Ok(Some((total_len, goal_id))) = core.try_recv_get_result_reply_for()
         && let Some(cb) = client_ref.result_callback
     {
         let buf = core.result_buffer_ref();
@@ -1006,13 +1001,7 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
             // raw, so splice the reply's own (always-valid) top-level encap
             // in front. Callback contract: bytes = encap-headered result.
             let result_offset = (CDR_HEADER_LEN + 4).min(total_len);
-            let uuid = rclc_goal_uuid_t {
-                uuid: {
-                    let mut u = [0u8; 16];
-                    u[..8].copy_from_slice(&core.goal_counter().to_le_bytes());
-                    u
-                },
-            };
+            let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
             let raw = &buf[result_offset..total_len];
             let has_encap =
                 raw.len() >= 2 && raw[0] == 0 && matches!(raw[1], 0 | 1 | 6 | 7 | 0x0a | 0x0b);

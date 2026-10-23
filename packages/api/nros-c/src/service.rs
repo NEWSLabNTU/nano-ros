@@ -1574,13 +1574,66 @@ pub unsafe extern "C" fn rclc_polling_client_send_request_raw(
         };
         let slice = core::slice::from_raw_parts(data, len);
         match raw.send_request_raw(slice) {
-            Ok(()) => RCL_RET_OK,
+            Ok(_seq) => RCL_RET_OK,
             Err(_) => RCL_RET_ERROR,
         }
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client_mut, data, len);
+        RCL_RET_NOT_INIT
+    }
+}
+
+/// Issue 2009 — [`rclc_polling_client_send_request_raw`] that also reports the
+/// request's SEQUENCE NUMBER, upstream's `rcl_send_request(client, request,
+/// &sequence_number)`.
+///
+/// A polling client keeps no pending table: a caller with more than one
+/// request outstanding matches each reply's number
+/// ([`rclc_polling_client_take_response_raw_seq`]) against these. On a backend
+/// that cannot assign ids the number is `NROS_RMW_SEQUENCE_ID_UNKNOWN`
+/// (`INT64_MIN`), and replies cannot be told apart — keep one request in
+/// flight there.
+///
+/// # Returns
+/// `RCL_RET_OK` (and `*sequence_number` written), `RCL_RET_INVALID_ARGUMENT`,
+/// `RCL_RET_ERROR` on transport failure, `RCL_RET_NOT_INIT` without
+/// `rmw-cffi`.
+///
+/// # Safety
+/// `client` must be an initialized polling client; `data` readable for `len`
+/// bytes; `sequence_number` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_polling_client_send_request_raw_seq(
+    client: *mut rclc_polling_client_t,
+    data: *const u8,
+    len: usize,
+    sequence_number: *mut i64,
+) -> rcl_ret_t {
+    if client.is_null() || (data.is_null() && len != 0) || sequence_number.is_null() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+
+    let client_mut = &mut *client;
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let Some(raw) = client_mut.raw() else {
+            return RCL_RET_INVALID_ARGUMENT;
+        };
+        let slice = core::slice::from_raw_parts(data, len);
+        match raw.send_request_raw(slice) {
+            Ok(seq) => {
+                *sequence_number = seq;
+                RCL_RET_OK
+            }
+            Err(_) => RCL_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (client_mut, data, len, sequence_number);
         RCL_RET_NOT_INIT
     }
 }
@@ -1614,7 +1667,10 @@ pub unsafe extern "C" fn rclc_polling_client_take_response_raw(
             return RCL_RET_INVALID_ARGUMENT;
         };
         match raw.take_response_raw() {
-            Ok(Some(len)) => {
+            // Issue 2009 — this spelling has no out-parameter for the id; a
+            // caller with more than one request in flight uses
+            // `rclc_polling_client_take_response_raw_seq`.
+            Ok(Some((len, _seq))) => {
                 let copy_len = len.min(buf_len);
                 core::ptr::copy_nonoverlapping(raw.reply_buffer().as_ptr(), buf, copy_len);
                 copy_len as i32
@@ -1626,6 +1682,56 @@ pub unsafe extern "C" fn rclc_polling_client_take_response_raw(
     #[cfg(not(feature = "rmw-cffi"))]
     {
         let _ = (client_mut, buf, buf_len);
+        RCL_RET_NOT_INIT
+    }
+}
+
+/// Issue 2009 — [`rclc_polling_client_take_response_raw`] that also reports
+/// the SEQUENCE NUMBER of the request the reply answers: the number
+/// [`rclc_polling_client_send_request_raw_seq`] returned for it. Upstream's
+/// `rcl_take_response(client, &request_header, response)`, whose header
+/// carries the same number.
+///
+/// `*sequence_number` is written only when a reply was copied (return `> 0`).
+///
+/// # Returns
+/// Same as [`rclc_polling_client_take_response_raw`].
+///
+/// # Safety
+/// `client` must be an initialized polling client. `buf` writable for
+/// `buf_len` bytes; `sequence_number` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_polling_client_take_response_raw_seq(
+    client: *mut rclc_polling_client_t,
+    buf: *mut u8,
+    buf_len: usize,
+    sequence_number: *mut i64,
+) -> i32 {
+    if client.is_null() || (buf.is_null() && buf_len != 0) || sequence_number.is_null() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+
+    let client_mut = &mut *client;
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let Some(raw) = client_mut.raw() else {
+            return RCL_RET_INVALID_ARGUMENT;
+        };
+        match raw.take_response_raw() {
+            Ok(Some((len, seq))) => {
+                let copy_len = len.min(buf_len);
+                core::ptr::copy_nonoverlapping(raw.reply_buffer().as_ptr(), buf, copy_len);
+                *sequence_number = seq;
+                copy_len as i32
+            }
+            Ok(None) => 0,
+            Err(_) => RCL_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (client_mut, buf, buf_len, sequence_number);
         RCL_RET_NOT_INIT
     }
 }
@@ -1935,7 +2041,20 @@ pub unsafe extern "C" fn rclc_client_send_request_async(
     request_len: usize,
 ) -> rcl_ret_t {
     validate_not_null!(client, request_data);
+    send_request_async_inner(client, request_data, request_len, false)
+}
 
+/// The body of [`rclc_client_send_request_async`]. `resend` is
+/// `rclc_client_call`'s discovery-race retry of the SAME logical call: it skips
+/// the one-call-in-flight gate (the call is still in flight — that is the
+/// point) and records its id as another generation of that call, so a reply to
+/// ANY generation completes it (issue 2009).
+unsafe fn send_request_async_inner(
+    client: *mut rcl_client_t,
+    request_data: *const u8,
+    request_len: usize,
+    resend: bool,
+) -> rcl_ret_t {
     #[cfg(feature = "rmw-cffi")]
     {
         use nros_node::ClientTrait;
@@ -1956,7 +2075,7 @@ pub unsafe extern "C" fn rclc_client_send_request_async(
             Some(e) => e,
             None => return RCL_RET_NOT_INIT,
         };
-        if entry.pending {
+        if entry.pending && !resend {
             return RCLC_RET_BAD_SEQUENCE;
         }
 
@@ -1966,10 +2085,12 @@ pub unsafe extern "C" fn rclc_client_send_request_async(
         entry
             .reply_ready
             .store(false, core::sync::atomic::Ordering::Release);
-        // Issue 0778 — the C client API is one-call-in-flight; the sequence
-        // id is dropped here deliberately, not lost.
         match entry.handle.send_request_raw(request) {
-            Ok(_seq) => {
+            Ok(seq) => {
+                // Issue 2009 — the reply is taken only if it names this id (or
+                // another generation of this same call). A late reply to an
+                // EARLIER call is dropped instead of answering this one.
+                entry.record_send(seq, resend);
                 entry.pending = true;
                 // Register a waker that sets reply_ready when the
                 // transport delivers the reply. This replaces blind
@@ -1994,7 +2115,7 @@ pub unsafe extern "C" fn rclc_client_send_request_async(
 
     #[cfg(not(feature = "rmw-cffi"))]
     {
-        let _ = (client, request_data, request_len);
+        let _ = (client, request_data, request_len, resend);
         RCL_RET_ERROR
     }
 }
@@ -2017,8 +2138,6 @@ pub unsafe extern "C" fn rclc_client_take_response(
 
     #[cfg(feature = "rmw-cffi")]
     {
-        use nros_node::ClientTrait;
-
         let client_ref = &mut *client;
         if client_ref.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED {
             return RCL_RET_NOT_INIT;
@@ -2040,8 +2159,10 @@ pub unsafe extern "C" fn rclc_client_take_response(
         }
 
         let buf = core::slice::from_raw_parts_mut(response_data, response_capacity);
-        match entry.handle.take_response_raw(buf) {
-            Ok(Some((len, _seq))) => {
+        // Issue 2009 — only the reply to the call in flight; a late reply to
+        // an earlier (timed-out) call is dropped on the way.
+        match entry.take_reply(buf) {
+            Ok(Some(len)) => {
                 entry.pending = false;
                 *response_len = len;
                 RCL_RET_OK
@@ -2213,21 +2334,10 @@ pub unsafe extern "C" fn rclc_client_call(
             break;
         }
         if now_ns.saturating_sub(last_send_ns) >= resend_interval_ns {
-            // Clear `pending` so the resend isn't rejected with
-            // BAD_SEQUENCE, then re-issue the same request.
-            {
-                let internal = &mut client_ref._internal;
-                if !internal.executor_ptr.is_null() && internal.arena_entry_index >= 0 {
-                    let exec_t2 = &mut *(internal.executor_ptr as *mut rclc_executor_t);
-                    let mut exec2 = crate::executor::get_executor(exec_t2);
-                    if let Some(entry) =
-                        exec2.service_client_entry_mut(internal.arena_entry_index as usize)
-                    {
-                        entry.pending = false;
-                    }
-                }
-            }
-            let _ = rclc_client_send_request_async(client, request_data, request_len);
+            // Re-issue the same request as another GENERATION of this call
+            // (issue 2009): the one-call gate is skipped and a reply to any
+            // generation completes the call.
+            let _ = send_request_async_inner(client, request_data, request_len, true);
             last_send_ns = now_ns;
         }
     }
@@ -2245,19 +2355,17 @@ pub unsafe extern "C" fn rclc_client_call(
     // drop path (handles.rs::Promise::take clears `in_flight` on
     // successful reception) — we reset here on the timeout path.
     //
-    // Semantic note: if the late reply for the timed-out call arrives
-    // before the caller fires another request, it will be picked up
-    // by the next `rclc_client_take_response` / spin dispatch.
-    // That's a known "stale reply" quirk of single-slot clients; the
-    // caller either tolerates it (match on returned seq) or resets
-    // the slot explicitly. The previous behaviour — silently jamming
-    // every subsequent call — was strictly worse.
+    // Issue 2009 — and forget the timed-out call's ids, so its late reply is
+    // DROPPED. It used to be picked up by the next `rclc_client_take_response`
+    // / spin dispatch and handed to the NEXT call as its answer (the "stale
+    // reply quirk" this comment once accepted).
     let internal = &mut client_ref._internal;
     if !internal.executor_ptr.is_null() && internal.arena_entry_index >= 0 {
         let exec_t = &mut *(internal.executor_ptr as *mut rclc_executor_t);
         let mut exec = crate::executor::get_executor(exec_t);
         if let Some(entry) = exec.service_client_entry_mut(internal.arena_entry_index as usize) {
             entry.pending = false;
+            entry.sequences.clear();
             entry
                 .reply_ready
                 .store(false, core::sync::atomic::Ordering::Release);

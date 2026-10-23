@@ -466,6 +466,10 @@ pub(crate) struct ActionClientRawArenaEntry<
 /// Single in-flight request per entry: a second `send_request` while
 /// `pending` is still `true` is the user's responsibility to avoid (the
 /// C wrapper checks at the call site).
+///
+/// Issue 2009 — `sequences` holds the ids that logical call went out under
+/// (one per re-send), and a reply is dispatched only if it names one of them.
+/// Every sender records its id through [`ServiceClientRawArenaEntry::record_send`].
 #[repr(C)]
 pub struct ServiceClientRawArenaEntry<const REPLY_BUF: usize> {
     pub handle: session::RmwServiceClient,
@@ -476,6 +480,59 @@ pub struct ServiceClientRawArenaEntry<const REPLY_BUF: usize> {
     pub reply_ready: core::sync::atomic::AtomicBool,
     pub callback: Option<RawResponseCallback>,
     pub context: *mut core::ffi::c_void,
+    /// Issue 2009 — the ids of the call in flight; see the type docs.
+    pub sequences: ClientSequences,
+}
+
+/// Issue 2009 — the request ids of an executor-owned client's one logical
+/// call: every re-send generation of it (see
+/// [`MAX_CLIENT_RESEND_GENERATIONS`](crate::limits::MAX_CLIENT_RESEND_GENERATIONS)).
+pub type ClientSequences =
+    nros_rmw::RequestCorrelator<(), { crate::limits::MAX_CLIENT_RESEND_GENERATIONS }>;
+
+impl<const REPLY_BUF: usize> ServiceClientRawArenaEntry<REPLY_BUF> {
+    /// Record a request this entry just sent. A FRESH call (`resend` false)
+    /// first forgets the ids of any earlier call, so that call's late reply is
+    /// dropped instead of being dispatched as this one's; a re-send of the
+    /// same call adds its generation beside the others.
+    pub fn record_send(&mut self, seq: i64, resend: bool) {
+        record_client_send(&mut self.sequences, seq, resend);
+    }
+
+    /// Take the reply to the call in flight, dropping any reply that names
+    /// another request. On a match every generation of the call is retired,
+    /// so the replies the other generations still draw are dropped too.
+    pub fn take_reply(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
+        take_client_reply(&mut self.handle, buf, &mut self.sequences)
+    }
+}
+
+/// Issue 2009 — [`ServiceClientRawArenaEntry::record_send`]'s rule, shared with
+/// the typed callback entry's header.
+pub(crate) fn record_client_send(seqs: &mut ClientSequences, seq: i64, resend: bool) {
+    if !resend {
+        seqs.clear();
+    } else if seq == nros_rmw::SEQUENCE_ID_UNKNOWN && seqs.contains(seq) {
+        // An id-less backend's re-sends are one request: nothing to add.
+        return;
+    }
+    seqs.insert_evicting(seq, ());
+}
+
+/// Issue 2009 — [`ServiceClientRawArenaEntry::take_reply`]'s rule.
+pub(crate) fn take_client_reply(
+    handle: &mut session::RmwServiceClient,
+    buf: &mut [u8],
+    seqs: &mut ClientSequences,
+) -> Result<Option<usize>, TransportError> {
+    match nros_rmw::take_correlated(handle, buf, seqs)? {
+        Some((len, _seq, ())) => {
+            // The remaining generations answer a call that is now complete.
+            seqs.clear();
+            Ok(Some(len))
+        }
+        None => Ok(None),
+    }
 }
 
 /// Concrete service entry for raw (untyped) callbacks.
@@ -3267,19 +3324,13 @@ pub(crate) unsafe fn action_client_raw_try_process<
     let mut did_work = false;
 
     // 1. Poll goal acceptance reply
-    if let Ok(Some(total_len)) = core.try_recv_send_goal_reply() {
+    // Issue 2009 — the goal is the one the reply's request was ABOUT. It used
+    // to be rebuilt from `goal_counter`, i.e. the most recently SENT goal, so
+    // two goals in flight swapped acceptances.
+    if let Ok(Some((total_len, goal_id))) = core.try_recv_send_goal_reply_for() {
         if let Some(cb) = goal_response_callback {
             // Reply CDR: header (4) + accepted (u8) + stamp
             let accepted = total_len >= 5 && core.result_buffer[4] != 0;
-            // Extract GoalId from the last sent goal
-            let goal_id = nros_core::GoalId {
-                uuid: {
-                    let mut uuid = [0u8; 16];
-                    let counter = core.goal_counter.to_le_bytes();
-                    uuid[..8].copy_from_slice(&counter);
-                    uuid
-                },
-            };
             // Phase 8 — hooked at the invocation, inside both the
             // `Ok(Some(..))` arm and the `Some(cb)` guard: an unregistered
             // callback or an empty poll emits nothing.
@@ -3334,8 +3385,9 @@ pub(crate) unsafe fn action_client_raw_try_process<
         did_work = true;
     }
 
-    // 3. Poll result reply
-    if let Ok(Some(total_len)) = core.try_recv_get_result_reply() {
+    // 3. Poll result reply — issue 2009: attributed to the goal its request
+    //    named, not to the most recently sent goal.
+    if let Ok(Some((total_len, goal_id))) = core.try_recv_get_result_reply_for() {
         if let Some(cb) = result_callback {
             // Reply layout from `try_handle_get_result_raw` in
             // `action_core.rs`:
@@ -3365,15 +3417,6 @@ pub(crate) unsafe fn action_client_raw_try_process<
                     5 => nros_core::GoalStatus::Canceled,
                     6 => nros_core::GoalStatus::Aborted,
                     _ => nros_core::GoalStatus::Unknown,
-                };
-                // Extract GoalId from the last sent goal
-                let goal_id = nros_core::GoalId {
-                    uuid: {
-                        let mut uuid = [0u8; 16];
-                        let counter = core.goal_counter.to_le_bytes();
-                        uuid[..8].copy_from_slice(&counter);
-                        uuid
-                    },
                 };
                 // #175 + RFC-0069/0418 — restore the result's CDR encapsulation
                 // header. The fields arrive raw at `RESULT_PAYLOAD_OFFSET` on
@@ -3426,7 +3469,6 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     desc_idx: u8,
 ) -> Result<bool, TransportError> {
     use core::sync::atomic::Ordering;
-    use nros_rmw::ClientTrait;
     let entry = unsafe { &mut *(ptr as *mut ServiceClientRawArenaEntry<REPLY_BUF>) };
 
     if !entry.pending {
@@ -3445,11 +3487,16 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     // Clear the waker flag if set (consumed by this check).
     entry.reply_ready.store(false, Ordering::Release);
 
-    // Issue 0778 — one call per arena entry today, so the sequence id is
-    // discarded rather than absent. Correlating here means keying entries by
-    // it, which is the follow-up that issue tracks.
-    match entry.handle.take_response_raw(&mut entry.reply_buffer) {
-        Ok(Some((len, _seq))) => {
+    // Issue 2009 — dispatched only if the reply names the call in flight; a
+    // late reply to an earlier call is dropped here, not handed to this one.
+    let ServiceClientRawArenaEntry {
+        handle,
+        reply_buffer,
+        sequences,
+        ..
+    } = &mut *entry;
+    match take_client_reply(handle, reply_buffer, sequences) {
+        Ok(Some(len)) => {
             entry.pending = false;
             // Phase 8 — hooked inside the `Some(cb)` arm. A client with no
             // callback never reaches here (see above); the not-pending and
@@ -3481,6 +3528,8 @@ pub struct ServiceClientSendHeader<const REPLY_BUF: usize> {
     pub pending: bool,
     /// Set by the transport waker when a reply arrives (mirrors the raw entry).
     pub reply_ready: core::sync::atomic::AtomicBool,
+    /// Issue 2009 — the id of the call in flight (mirrors the raw entry).
+    pub sequences: ClientSequences,
 }
 
 /// Typed service-client callback entry (RFC-0041, Phase 239.1). The executor
@@ -3513,7 +3562,6 @@ where
     F: FnMut(&Svc::Reply),
 {
     use core::sync::atomic::Ordering;
-    use nros_rmw::ClientTrait;
     let entry = unsafe { &mut *(ptr as *mut ServiceClientCallbackEntry<Svc, F, REPLY_BUF>) };
 
     if !entry.hdr.pending {
@@ -3521,12 +3569,15 @@ where
     }
     entry.hdr.reply_ready.store(false, Ordering::Release);
 
-    match entry
-        .hdr
-        .handle
-        .take_response_raw(&mut entry.hdr.reply_buffer)
-    {
-        Ok(Some((len, _seq))) => {
+    // Issue 2009 — see `service_client_raw_try_process`.
+    let ServiceClientSendHeader {
+        handle,
+        reply_buffer,
+        sequences,
+        ..
+    } = &mut entry.hdr;
+    match take_client_reply(handle, reply_buffer, sequences) {
+        Ok(Some(len)) => {
             entry.hdr.pending = false;
             let mut reader = CdrReader::new_with_header(&entry.hdr.reply_buffer[..len])
                 .map_err(|_| TransportError::DeserializationError)?;
@@ -3583,15 +3634,6 @@ pub(crate) struct ActionClientCallbackEntry<
     pub(crate) on_feedback: FbF,
     pub(crate) on_result: ResF,
     pub(crate) _phantom: PhantomData<A>,
-}
-
-/// Reconstruct a `GoalId` from the core's monotonically increasing counter
-/// (mirrors `action_client_raw_try_process`).
-#[inline]
-fn goal_id_from_counter(counter: u64) -> nros_core::GoalId {
-    let mut uuid = [0u8; 16];
-    uuid[..8].copy_from_slice(&counter.to_le_bytes());
-    nros_core::GoalId { uuid }
 }
 
 /// Decode one raw feedback slot (outer header + GoalId at [4..20] + inner-CDR
@@ -3680,9 +3722,10 @@ where
     let mut did_work = false;
 
     // 1. Goal-acceptance reply (single-outstanding → gated single buffer).
-    if let Ok(Some(total_len)) = core.try_recv_send_goal_reply() {
+    // Issue 2009 — the goal is the one the reply's request was ABOUT, not the
+    // most recently sent one.
+    if let Ok(Some((total_len, goal_id))) = core.try_recv_send_goal_reply_for() {
         let accepted = total_len >= 5 && core.result_buffer[4] != 0;
-        let goal_id = goal_id_from_counter(core.goal_counter);
         // Phase 8 — hooked inside the `Ok(Some(..))` arm; an empty poll is
         // the common case and runs no user code.
         trace_cb_start(desc_idx);
@@ -3742,7 +3785,7 @@ where
 
     // 3. Result reply — status at byte 4, payload at [8 ..] (header + status +
     //    align pad); see the raw dispatcher (Phase 96.1).
-    if let Ok(Some(total_len)) = core.try_recv_get_result_reply() {
+    if let Ok(Some((total_len, goal_id))) = core.try_recv_get_result_reply_for() {
         const RESULT_PAYLOAD_OFFSET: usize = 8;
         if total_len >= RESULT_PAYLOAD_OFFSET {
             let status = match core.result_buffer[4] {
@@ -3751,7 +3794,6 @@ where
                 6 => nros_core::GoalStatus::Aborted,
                 _ => nros_core::GoalStatus::Unknown,
             };
-            let goal_id = goal_id_from_counter(core.goal_counter);
             // #175 — restore the result's per-message encap if a typed transport
             // framing (Cyclone) stripped it; the reply's top-level encap is
             // `result_buffer[0..4]`.

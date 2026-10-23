@@ -1665,8 +1665,8 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response(
             }
         };
 
-    match core.try_recv_send_goal_reply() {
-        Ok(Some(total_len)) => {
+    match core.try_recv_send_goal_reply_for() {
+        Ok(Some((total_len, goal_id))) => {
             // The reply buffer contains: CDR header (4) + accepted byte (1) + ...
             // We produce: goal_id (16) + accepted (1) = 17 bytes
             let needed = 17usize;
@@ -1676,10 +1676,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response(
             }
             let buf = core.result_buffer_ref();
             let accepted: u8 = if total_len >= 5 && buf[4] != 0 { 1 } else { 0 };
-            // Fill goal_id from the counter (same logic as poll())
-            let counter = core.goal_counter();
-            let mut uuid = [0u8; 16];
-            uuid[..8].copy_from_slice(&counter.to_le_bytes());
+            // Issue 2009 — the goal the reply's request named. This used to be
+            // rebuilt from `goal_counter`, the most recently SENT goal.
+            let uuid = goal_id.uuid;
             unsafe {
                 core::ptr::copy_nonoverlapping(uuid.as_ptr(), out_data, 16);
                 *out_data.add(16) = accepted;
@@ -2118,25 +2117,19 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
     let idx = client.arena_entry_index;
     let eptr = client.executor_ptr;
 
-    let make_uuid = |counter: u64| -> [u8; 16] {
-        let mut u = [0u8; 16];
-        u[..8].copy_from_slice(&counter.to_le_bytes());
-        u
-    };
-
     let mut core = match unsafe { cpp_arena_core_mut(idx, eptr) } {
         Some(c) => c,
         None => return NROS_CPP_RET_OK,
     };
 
-    // Poll goal acceptance reply
-    if let Ok(Some(total_len)) = core.try_recv_send_goal_reply()
+    // Poll goal acceptance reply. Issue 2009 — attributed to the goal its
+    // request named, not to the most recently sent goal (`goal_counter`).
+    if let Ok(Some((total_len, goal_id))) = core.try_recv_send_goal_reply_for()
         && let Some(cb) = goal_response_cb
     {
         let buf = core.result_buffer_ref();
         let accepted = total_len >= 5 && buf[4] != 0;
-        let uuid = make_uuid(core.goal_counter());
-        unsafe { cb(accepted, &uuid, ctx) };
+        unsafe { cb(accepted, &goal_id.uuid, ctx) };
     }
 
     // Poll feedback
@@ -2178,13 +2171,14 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
     // of a prior 8-offset was measuring against that same broken pair).
     // Deliver WITH a single encap header, arena-style.
     const RESULT_PAYLOAD_OFFSET: usize = CDR_HEADER_LEN + 4;
-    if let Ok(Some(total_len)) = core.try_recv_get_result_reply()
+    // Issue 2009 — attributed like the acceptance above.
+    if let Ok(Some((total_len, goal_id))) = core.try_recv_get_result_reply_for()
         && let Some(cb) = result_cb
         && total_len >= 5
     {
         let buf = core.result_buffer_ref();
         let status = buf[4] as i32;
-        let uuid = make_uuid(core.goal_counter());
+        let uuid = goal_id.uuid;
         let raw = &buf[RESULT_PAYLOAD_OFFSET.min(total_len)..total_len];
         if payload_has_cdr_encap(raw) {
             unsafe { cb(&uuid, status, raw.as_ptr(), raw.len(), ctx) };
