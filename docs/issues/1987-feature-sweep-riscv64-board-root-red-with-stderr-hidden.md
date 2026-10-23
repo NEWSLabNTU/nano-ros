@@ -73,3 +73,29 @@ or how its store's sources resolve. Which one is not known.
    container lacks, through the image (a runner dependency is an image fix).
    Otherwise move the root to `STANDALONE_SKIP` with the measured reason, so
    the sweep reports a skip rather than a red no one can read.
+
+## Sightings: every scheduled night since (2026-10-20 through 2026-10-23)
+
+The same root has failed in every scheduled `host-tests` run since it was
+added. In each one it is the only failing combination:
+
+| Night | Run | Head |
+| --- | --- | --- |
+| 2026-10-20 | 39363542759 | `712f1853b` |
+| 2026-10-21 | 39537847371 | `6738e85a0` |
+| 2026-10-22 | 39716043967 | `350203f0b` |
+| 2026-10-23 | 39894233489 (job 120220810480) | `2b6c5fdbf` |
+
+The 2026-10-23 log still shows only the first line of the failure, so the
+cause is still unknown:
+
+```
+  FAIL nros-board-threadx-qemu-riscv64 --manifest-path packages/boards/nros-board-threadx-qemu-riscv64 (nros-board-threadx-qemu-riscv64, locked)
+        error: failed to run custom build command for `nros-board-threadx v0.4.0 (/__w/nano-ros/nano-ros/packages/boards/nros-board-threadx)`
+check-feature-sweep: 1 of 360 combination(s) FAILED:
+```
+
+The job ran on a GitHub-hosted runner (`GitHub Actions 1000110602`).
+Remedy 1 above (keep the build script's stderr) has still not landed. This
+lane cannot say more until it does, and it will keep failing in the same
+words, so a second cause landing here would not be noticed.
