@@ -1255,7 +1255,25 @@ pub struct ActionClientCore<
     pub(crate) in_flight_send_goal: bool,
     pub(crate) in_flight_cancel: bool,
     pub(crate) in_flight_get_result: bool,
+    /// Issue 2009 — the requests each sub-client has in flight, keyed by the
+    /// sequence id the backend assigned and carrying the goal each one is
+    /// about. A reply is attributed to the goal of the request it NAMES, and a
+    /// reply naming no pending request (an abandoned one's) is dropped. Before
+    /// this, every reply was attributed to the most recently SENT goal
+    /// (`goal_counter`), so two goals in flight swapped acceptances and
+    /// results, and an abandoned `get_result`'s late reply answered the next.
+    pub(crate) pending_send_goal: ActionRequests,
+    pub(crate) pending_cancel: ActionRequests,
+    pub(crate) pending_get_result: ActionRequests,
 }
+
+/// Issue 2009 — one action sub-client's requests in flight: at most
+/// [`MAX_CONCURRENT_GOALS`](crate::limits::MAX_CONCURRENT_GOALS) — the number of
+/// goals a server holds at once — each keyed by its sequence id and carrying
+/// its goal. A send past that is refused with
+/// [`NodeError::RequestInFlight`] before it reaches the wire.
+pub type ActionRequests =
+    nros_rmw::RequestCorrelator<GoalId, { crate::limits::MAX_CONCURRENT_GOALS }>;
 
 impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
@@ -1301,6 +1319,9 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             in_flight_send_goal: false,
             in_flight_cancel: false,
             in_flight_get_result: false,
+            pending_send_goal: ActionRequests::new(),
+            pending_cancel: ActionRequests::new(),
+            pending_get_result: ActionRequests::new(),
         }
     }
 
@@ -1312,6 +1333,10 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// After calling, use `send_goal_client` and `result_buffer` to construct
     /// a Promise for the acceptance reply.
     pub fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalId, NodeError> {
+        // Issue 2009 — refuse BEFORE the counter moves or the request is sent.
+        self.pending_send_goal
+            .can_send()
+            .map_err(|_| NodeError::RequestInFlight)?;
         self.goal_counter += 1;
         let mut goal_id = GoalId::default();
         let counter_bytes = self.goal_counter.to_le_bytes();
@@ -1330,10 +1355,11 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
         self.goal_buffer[pos..pos + goal_cdr.len()].copy_from_slice(goal_cdr);
         let req_len = pos + goal_cdr.len();
 
-        self.send_goal_client
+        let seq = self
+            .send_goal_client
             .send_request_raw(&self.goal_buffer[..req_len])
-            .map(|_seq| ())
             .map_err(|_| NodeError::ServiceRequestFailed)?;
+        let _ = self.pending_send_goal.insert(seq, goal_id);
 
         Ok(goal_id)
     }
@@ -1366,6 +1392,9 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// After calling, use `cancel_goal_client` and `result_buffer` to construct
     /// a Promise for the cancel response.
     pub fn send_cancel_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+        self.pending_cancel
+            .can_send()
+            .map_err(|_| NodeError::RequestInFlight)?;
         let mut writer =
             crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
 
@@ -1375,10 +1404,12 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
         let req_len = writer.position();
 
-        self.cancel_goal_client
+        let seq = self
+            .cancel_goal_client
             .send_request_raw(&self.goal_buffer[..req_len])
-            .map(|_seq| ())
-            .map_err(|_| NodeError::ServiceRequestFailed)
+            .map_err(|_| NodeError::ServiceRequestFailed)?;
+        let _ = self.pending_cancel.insert(seq, *goal_id);
+        Ok(())
     }
 
     /// Send a get_result request.
@@ -1386,6 +1417,9 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// After calling, use `get_result_client` and `result_buffer` to construct
     /// a Promise for the result response.
     pub fn send_get_result_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+        self.pending_get_result
+            .can_send()
+            .map_err(|_| NodeError::RequestInFlight)?;
         let mut writer =
             crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
 
@@ -1393,10 +1427,12 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
         let req_len = writer.position();
 
-        self.get_result_client
+        let seq = self
+            .get_result_client
             .send_request_raw(&self.goal_buffer[..req_len])
-            .map(|_seq| ())
-            .map_err(|_| NodeError::ServiceRequestFailed)
+            .map_err(|_| NodeError::ServiceRequestFailed)?;
+        let _ = self.pending_get_result.insert(seq, *goal_id);
+        Ok(())
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` that fires when the
@@ -1429,15 +1465,20 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// CDR payload is in `result_buffer_ref()[..len]`. Reply layout
     /// is action_msgs/srv/CancelGoal_Response wire CDR.
     pub fn try_recv_cancel_reply(&mut self) -> Result<Option<usize>, NodeError> {
-        match self
-            .cancel_goal_client
-            .take_response_raw(&mut self.result_buffer)
-        {
-            // Issue 0778 — the sequence id is discarded HERE, not missing:
-            // an action's cancel / get_result client keeps one call in flight
-            // at a time, so the id adds nothing the caller can use yet. It is
-            // available the moment that changes.
-            Ok(opt) => Ok(opt.map(|(len, _seq)| len)),
+        Ok(self.try_recv_cancel_reply_for()?.map(|(len, _goal)| len))
+    }
+
+    /// Issue 2009 — [`Self::try_recv_cancel_reply`] with the goal the reply is ABOUT: the
+    /// goal of the request whose sequence id it names. A reply naming no
+    /// pending request is dropped (it answers an abandoned request).
+    pub fn try_recv_cancel_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+        // Phase 120: NoData == steady-state polling; map to Ok(None).
+        match nros_rmw::take_correlated(
+            &mut self.cancel_goal_client,
+            &mut self.result_buffer,
+            &mut self.pending_cancel,
+        ) {
+            Ok(opt) => Ok(opt.map(|(len, _seq, goal)| (len, goal))),
             Err(TransportError::NoData) => Ok(None),
             Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
         }
@@ -1452,16 +1493,22 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// to access the raw CDR data. The layout is: CDR header (4) + status
     /// byte (1) + result data.
     pub fn try_recv_get_result_reply(&mut self) -> Result<Option<usize>, NodeError> {
+        Ok(self
+            .try_recv_get_result_reply_for()?
+            .map(|(len, _goal)| len))
+    }
+
+    /// Issue 2009 — [`Self::try_recv_get_result_reply`] with the goal the reply is ABOUT: the
+    /// goal of the request whose sequence id it names. A reply naming no
+    /// pending request is dropped (it answers an abandoned request).
+    pub fn try_recv_get_result_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
         // Phase 120: NoData == steady-state polling; map to Ok(None).
-        match self
-            .get_result_client
-            .take_response_raw(&mut self.result_buffer)
-        {
-            // Issue 0778 — the sequence id is discarded HERE, not missing:
-            // an action's cancel / get_result client keeps one call in flight
-            // at a time, so the id adds nothing the caller can use yet. It is
-            // available the moment that changes.
-            Ok(opt) => Ok(opt.map(|(len, _seq)| len)),
+        match nros_rmw::take_correlated(
+            &mut self.get_result_client,
+            &mut self.result_buffer,
+            &mut self.pending_get_result,
+        ) {
+            Ok(opt) => Ok(opt.map(|(len, _seq, goal)| (len, goal))),
             Err(TransportError::NoData) => Ok(None),
             Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
         }
@@ -1474,16 +1521,20 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ///
     /// The reply CDR contains: header (4) + accepted (u8) + stamp (i32 + u32).
     pub fn try_recv_send_goal_reply(&mut self) -> Result<Option<usize>, NodeError> {
+        Ok(self.try_recv_send_goal_reply_for()?.map(|(len, _goal)| len))
+    }
+
+    /// Issue 2009 — [`Self::try_recv_send_goal_reply`] with the goal the reply is ABOUT: the
+    /// goal of the request whose sequence id it names. A reply naming no
+    /// pending request is dropped (it answers an abandoned request).
+    pub fn try_recv_send_goal_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
         // Phase 120: NoData == steady-state polling; map to Ok(None).
-        match self
-            .send_goal_client
-            .take_response_raw(&mut self.result_buffer)
-        {
-            // Issue 0778 — the sequence id is discarded HERE, not missing:
-            // an action's cancel / get_result client keeps one call in flight
-            // at a time, so the id adds nothing the caller can use yet. It is
-            // available the moment that changes.
-            Ok(opt) => Ok(opt.map(|(len, _seq)| len)),
+        match nros_rmw::take_correlated(
+            &mut self.send_goal_client,
+            &mut self.result_buffer,
+            &mut self.pending_send_goal,
+        ) {
+            Ok(opt) => Ok(opt.map(|(len, _seq, goal)| (len, goal))),
             Err(TransportError::NoData) => Ok(None),
             Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
         }

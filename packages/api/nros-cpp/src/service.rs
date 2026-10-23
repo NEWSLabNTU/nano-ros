@@ -507,15 +507,22 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
         // into every image via the active platform impl.
         fn nros_platform_sleep_ms(ms: usize);
     }
-    if client.send_request_raw(req_slice).is_err() {
-        return NROS_CPP_RET_TIMEOUT;
+    // Issue 2009 — this call takes only the reply naming ITS request. A
+    // reply to an earlier request on the same client — a `Future` the caller
+    // cancelled, a call that timed out — is dropped on the way, where it used
+    // to be returned as this call's answer.
+    let mut pending = nros_rmw::RequestCorrelator::<(), 1>::new();
+    match client.send_request_raw(req_slice) {
+        Ok(seq) => {
+            let _ = pending.insert(seq, ());
+        }
+        Err(_) => return NROS_CPP_RET_TIMEOUT,
     }
     const STEP_MS: u32 = 5;
     let mut waited_ms: u32 = 0;
     loop {
-        match client.take_response_raw(resp_slice) {
-            // Issue 0778 — one call in flight on this blocking path.
-            Ok(Some((len, _seq))) => {
+        match nros_rmw::take_correlated(client, resp_slice, &mut pending) {
+            Ok(Some((len, _seq, ()))) => {
                 unsafe {
                     *resp_len = len;
                 }
@@ -677,7 +684,10 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_on_handle(
         .reply_ready
         .store(false, core::sync::atomic::Ordering::Release);
     match entry.handle.send_request_raw(request) {
-        Ok(_seq) => {
+        Ok(seq) => {
+            // Issue 2009 — the dispatcher hands the response callback only the
+            // reply naming this id.
+            entry.record_send(seq, false);
             // CRITICAL (RFC-0041 / Phase 239): `service_client_raw_try_process`
             // early-returns unless `pending` is set, so the reply would never be
             // dispatched to the response trampoline without this. Mirror the C
@@ -695,6 +705,11 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_on_handle(
 
 /// Send a service request asynchronously (non-blocking).
 ///
+/// Issue 2009 — the single-request spelling: the id the backend assigned is
+/// not reported. `rclcpp::PollClient` sends through
+/// [`nros_cpp_service_client_send_request_seq`], which reports it, so every
+/// future it hands out is keyed by its own request.
+///
 /// # Safety
 /// `storage` must be a valid initialized service client. `req_data` must point
 /// to `req_len` readable bytes.
@@ -704,13 +719,39 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_request(
     req_data: *const u8,
     req_len: usize,
 ) -> nros_cpp_ret_t {
-    if storage.is_null() || req_data.is_null() {
+    let mut seq = crate::NROS_CPP_SEQUENCE_ID_UNKNOWN;
+    unsafe { nros_cpp_service_client_send_request_seq(storage, req_data, req_len, &mut seq) }
+}
+
+/// Send a service request asynchronously and report its SEQUENCE ID — issue
+/// 2009.
+///
+/// `*sequence_id` is the id the backend assigned (written only on
+/// `NROS_CPP_RET_OK`), which [`nros_cpp_service_client_take_response_seq`]
+/// reports back with the reply that answers it — the pair upstream's
+/// `rcl_send_request` / `rcl_take_response` carry. A backend that cannot
+/// assign ids reports [`NROS_CPP_SEQUENCE_ID_UNKNOWN`](crate::NROS_CPP_SEQUENCE_ID_UNKNOWN).
+///
+/// # Safety
+/// `storage` must be a valid initialized service client. `req_data` must point
+/// to `req_len` readable bytes; `sequence_id` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_send_request_seq(
+    storage: *mut c_void,
+    req_data: *const u8,
+    req_len: usize,
+    sequence_id: *mut i64,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || req_data.is_null() || sequence_id.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
     let req_slice = unsafe { core::slice::from_raw_parts(req_data, req_len) };
     match client.send_request_raw(req_slice) {
-        Ok(_seq) => NROS_CPP_RET_OK,
+        Ok(seq) => {
+            unsafe { *sequence_id = seq };
+            NROS_CPP_RET_OK
+        }
         Err(e) => crate::transport_error_to_cpp_ret(e),
     }
 }
@@ -719,6 +760,10 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_request(
 ///
 /// Returns `NROS_CPP_RET_OK` and fills `resp_data`/`resp_len` on success,
 /// `NROS_CPP_RET_TRY_AGAIN` if no reply is available yet.
+///
+/// Issue 2009 — the single-request spelling: the reply's id is not reported,
+/// so this cannot tell which request a reply answers. `rclcpp::Future` takes
+/// through [`nros_cpp_service_client_take_response_seq`].
 ///
 /// # Safety
 /// All pointers must be valid. `resp_data` must point to `resp_capacity` writable bytes.
@@ -729,16 +774,49 @@ pub unsafe extern "C" fn nros_cpp_service_client_take_response(
     resp_capacity: usize,
     resp_len: *mut usize,
 ) -> nros_cpp_ret_t {
-    if storage.is_null() || resp_data.is_null() || resp_len.is_null() {
+    let mut seq = crate::NROS_CPP_SEQUENCE_ID_UNKNOWN;
+    unsafe {
+        nros_cpp_service_client_take_response_seq(
+            storage,
+            resp_data,
+            resp_capacity,
+            resp_len,
+            &mut seq,
+        )
+    }
+}
+
+/// Try to receive a reply (non-blocking) and report the SEQUENCE ID of the
+/// request it answers — issue 2009.
+///
+/// `NROS_CPP_RET_OK`: `resp_data[..*resp_len]` holds the reply and
+/// `*sequence_id` the id [`nros_cpp_service_client_send_request_seq`] returned
+/// for its request. `NROS_CPP_RET_TRY_AGAIN`: no reply yet (`*resp_len` = 0,
+/// `*sequence_id` untouched). The caller decides whom the reply belongs to;
+/// this takes whatever reply is next.
+///
+/// # Safety
+/// All pointers must be valid. `resp_data` must point to `resp_capacity`
+/// writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_service_client_take_response_seq(
+    storage: *mut c_void,
+    resp_data: *mut u8,
+    resp_capacity: usize,
+    resp_len: *mut usize,
+    sequence_id: *mut i64,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || resp_data.is_null() || resp_len.is_null() || sequence_id.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
     let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp_data, resp_capacity) };
 
     match client.take_response_raw(resp_slice) {
-        Ok(Some((len, _seq))) => {
+        Ok(Some((len, seq))) => {
             unsafe {
                 *resp_len = len;
+                *sequence_id = seq;
             }
             NROS_CPP_RET_OK
         }

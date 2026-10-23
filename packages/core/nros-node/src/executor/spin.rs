@@ -10378,6 +10378,7 @@ impl<'s> Executor<'s> {
                     reply_ready: core::sync::atomic::AtomicBool::new(false),
                     callback,
                     context,
+                    sequences: super::arena::ClientSequences::new(),
                 },
             );
         }
@@ -10468,6 +10469,7 @@ impl<'s> Executor<'s> {
                         reply_buffer: [0u8; REPLY_BUF],
                         pending: false,
                         reply_ready: core::sync::atomic::AtomicBool::new(false),
+                        sequences: super::arena::ClientSequences::new(),
                     },
                     callback,
                     _phantom: core::marker::PhantomData,

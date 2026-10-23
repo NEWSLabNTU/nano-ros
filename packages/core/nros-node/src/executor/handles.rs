@@ -2249,13 +2249,15 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
 
     /// Send a raw CDR request. Non-blocking; the reply arrives via
     /// [`take_response_raw`](Self::take_response_raw).
-    pub fn send_request_raw(&mut self, request: &[u8]) -> Result<(), NodeError> {
-        // Issue 0778 — the backend now hands back a sequence id. This raw
-        // handle keeps one call in flight (`in_flight_flag`), so it has no use
-        // for the id yet and drops it explicitly rather than by omission.
+    ///
+    /// Returns the SEQUENCE ID the backend assigned (issue 2009), which the
+    /// reply carries back. This handle keeps no table: a caller with more than
+    /// one request outstanding matches the id itself — the shape of upstream's
+    /// `rcl_send_request(client, req, &sequence_number)`. It is
+    /// [`nros_rmw::SEQUENCE_ID_UNKNOWN`] on a backend that cannot assign ids.
+    pub fn send_request_raw(&mut self, request: &[u8]) -> Result<i64, NodeError> {
         self.handle
             .send_request_raw(request)
-            .map(|_seq| ())
             .map_err(|_| NodeError::ServiceRequestFailed)
     }
 
@@ -2267,13 +2269,14 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     }
 
     /// Try to receive a reply (non-blocking). Returns
-    /// `Ok(Some(len))` with the reply length on success; bytes
-    /// live in [`reply_buffer`](Self::reply_buffer) until the next
-    /// call.
-    pub fn take_response_raw(&mut self) -> Result<Option<usize>, NodeError> {
+    /// `Ok(Some((len, sequence_id)))` on success; bytes live in
+    /// [`reply_buffer`](Self::reply_buffer) until the next call, and
+    /// `sequence_id` is the one [`send_request_raw`](Self::send_request_raw)
+    /// returned for the request this answers (issue 2009) — upstream's
+    /// `rcl_take_response` request header.
+    pub fn take_response_raw(&mut self) -> Result<Option<(usize, i64)>, NodeError> {
         self.handle
             .take_response_raw(&mut self.reply_buffer)
-            .map(|opt| opt.map(|(len, _seq)| len))
             .map_err(|_| NodeError::Transport(TransportError::ServiceRequestFailed))
     }
 
@@ -2518,9 +2521,12 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
             .serialize(&mut writer)
             .map_err(|_| NodeError::Serialization)?;
         let req_len = writer.position();
-        hdr.handle
+        let seq = hdr
+            .handle
             .send_request_raw(&buf[..req_len])
             .map_err(|_| NodeError::ServiceRequestFailed)?;
+        // Issue 2009 — the dispatcher delivers only the reply naming this id.
+        super::arena::record_client_send(&mut hdr.sequences, seq, false);
         hdr.pending = true;
         Ok(())
     }
@@ -2602,6 +2608,11 @@ pub struct EmbeddedServiceClient<
     /// without awaiting, then `call()` again" which would otherwise
     /// deliver the stale reply to the new caller.
     pub(crate) in_flight: bool,
+    /// Issue 2009 — the id of the request in flight. The `Promise` accepts
+    /// only the reply naming it, so a reply to a call abandoned with
+    /// [`reset_in_flight`](Self::reset_in_flight) is dropped rather than
+    /// delivered to the next call.
+    pub(crate) pending: nros_rmw::RequestCorrelator<(), 1>,
     pub(crate) _phantom: PhantomData<Svc>,
 }
 
@@ -2727,10 +2738,14 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
         let req_len = writer.position();
 
         // Send the request (non-blocking)
-        self.handle
+        let seq = self
+            .handle
             .send_request_raw(&self.req_buffer[..req_len])
             .map_err(|_| NodeError::ServiceRequestFailed)?;
 
+        // Issue 2009 — the promise accepts only the reply naming `seq`.
+        self.pending.clear();
+        let _ = self.pending.insert(seq, ());
         self.in_flight = true;
 
         Ok(Promise {
@@ -2738,6 +2753,7 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
             reply_buffer: &mut self.reply_buffer,
             parse: cdr_deserialize_reply::<Svc>,
             in_flight_flag: &mut self.in_flight,
+            pending: &mut self.pending,
         })
     }
 
@@ -2745,11 +2761,13 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     ///
     /// Call this if a previous [`Promise`] was dropped without completing
     /// and you want to abandon the pending reply. The next
-    /// [`call`](Self::call) will proceed but may still observe the stale
-    /// reply if one is in the transport's queue — callers that need strict
-    /// correctness should drain / ignore one extra `take` first.
+    /// [`call`](Self::call) proceeds, and the abandoned call's reply — if it
+    /// still arrives — is DROPPED: the next promise accepts only the reply
+    /// naming its own request's id (issue 2009). It used to be delivered to
+    /// the next call.
     pub fn reset_in_flight(&mut self) {
         self.in_flight = false;
+        self.pending.clear();
     }
 
     /// Block until at least one matching service server is discoverable on
@@ -2862,6 +2880,9 @@ pub struct Promise<'a, T> {
     /// explicitly acknowledge the abandoned call via
     /// `reset_in_flight()`.
     pub(crate) in_flight_flag: &'a mut bool,
+    /// Issue 2009 — the ids this promise's request may come back under. A
+    /// reply naming any other id is stale (an abandoned call's) and dropped.
+    pub(crate) pending: &'a mut dyn nros_rmw::ReplyMatcher,
 }
 
 impl<T> Promise<'_, T> {
@@ -2883,7 +2904,9 @@ impl<T> Promise<'_, T> {
     pub fn take(&mut self) -> Result<Option<T>, NodeError> {
         // Phase 120: NoData (no reply yet) is the steady-state polling
         // condition — map to Ok(None) instead of ServiceRequestFailed.
-        match match self.handle.take_response_raw(self.reply_buffer) {
+        // Issue 2009 — only the reply naming this promise's request; stale
+        // replies met on the way are dropped.
+        match match nros_rmw::take_matched(&mut *self.handle, self.reply_buffer, self.pending) {
             Ok(opt) => opt,
             Err(TransportError::NoData) => return Ok(None),
             Err(e) => return Err(NodeError::Transport(e)),
@@ -3375,6 +3398,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
                 reply_buffer: &mut self.core.result_buffer,
                 parse: parse_goal_accepted,
                 in_flight_flag: &mut self.core.in_flight_send_goal,
+                pending: &mut self.core.pending_send_goal,
             },
         ))
     }
@@ -3426,6 +3450,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
             reply_buffer: &mut self.core.result_buffer,
             parse: parse_cancel_response,
             in_flight_flag: &mut self.core.in_flight_cancel,
+            pending: &mut self.core.pending_cancel,
         })
     }
 
@@ -3445,12 +3470,17 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
             reply_buffer: &mut self.core.result_buffer,
             parse: parse_result_response::<A>,
             in_flight_flag: &mut self.core.in_flight_get_result,
+            pending: &mut self.core.pending_get_result,
         })
     }
 
     /// Explicitly clear the "send_goal reply in flight" flag (Phase 84.D3).
+    ///
+    /// Issue 2009 — the abandoned request's reply, if it still comes, is
+    /// dropped rather than delivered to the next `send_goal`.
     pub fn reset_send_goal_in_flight(&mut self) {
         self.core.in_flight_send_goal = false;
+        self.core.pending_send_goal.clear();
     }
 
     /// Block until the action server's send-goal queryable is discoverable
@@ -3485,13 +3515,21 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     }
 
     /// Explicitly clear the "cancel reply in flight" flag (Phase 84.D3).
+    ///
+    /// Issue 2009 — the abandoned request's reply, if it still comes, is
+    /// dropped rather than delivered to the next `cancel_goal`.
     pub fn reset_cancel_in_flight(&mut self) {
         self.core.in_flight_cancel = false;
+        self.core.pending_cancel.clear();
     }
 
     /// Explicitly clear the "get_result reply in flight" flag (Phase 84.D3).
+    ///
+    /// Issue 2009 — the abandoned request's reply, if it still comes, is
+    /// dropped rather than delivered as the next goal's result.
     pub fn reset_get_result_in_flight(&mut self) {
         self.core.in_flight_get_result = false;
+        self.core.pending_get_result.clear();
     }
 
     /// Create a feedback stream (receives feedback for all goals).

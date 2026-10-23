@@ -307,7 +307,10 @@ template <typename A> class Client {
 
         return ::rclcpp::Future<GoalAccept>(storage_,
                                             &nros_cpp_action_client_try_recv_goal_response,
-                                            0,        // slot 0 (single outstanding goal request)
+                                            // issue 2009 -- unkeyed here: the send_goal
+                                            // sub-client correlates by sequence id on the
+                                            // Rust side (`ActionClientCore`).
+                                            0,
                                             executor_ // driven by `Future::wait_for` (issue 1996)
         );
     }
@@ -353,7 +356,9 @@ template <typename A> class Client {
         if (ret != 0) return Fut();
 
         return Fut(storage_, &nros_cpp_action_client_try_recv_result,
-                   0,        // slot 0 (single outstanding result request)
+                   // issue 2009 -- unkeyed here: the get_result sub-client
+                   // correlates by sequence id on the Rust side.
+                   0,
                    executor_ // driven by `Future::wait_for` (issue 1996)
         );
     }

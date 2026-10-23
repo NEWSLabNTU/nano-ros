@@ -735,6 +735,7 @@ impl<'a> NodeHandle<'a> {
             req_buffer: [0u8; REQ_BUF],
             reply_buffer: [0u8; REPLY_BUF],
             in_flight: false,
+            pending: nros_rmw::RequestCorrelator::new(),
             _phantom: PhantomData,
         })
     }
@@ -1399,6 +1400,9 @@ impl<'a> NodeHandle<'a> {
                 in_flight_send_goal: false,
                 in_flight_cancel: false,
                 in_flight_get_result: false,
+                pending_send_goal: super::action_core::ActionRequests::new(),
+                pending_cancel: super::action_core::ActionRequests::new(),
+                pending_get_result: super::action_core::ActionRequests::new(),
             },
             _phantom: PhantomData,
         })

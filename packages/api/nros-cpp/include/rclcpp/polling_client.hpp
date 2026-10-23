@@ -78,6 +78,11 @@
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
+// Issue 2009 — the header's spelling of "no id" and the FFI's must agree, or a
+// future would treat a backend's "no id" as a real one.
+static_assert(::rclcpp::detail::SEQUENCE_ID_UNKNOWN == NROS_CPP_SEQUENCE_ID_UNKNOWN,
+              "rclcpp::detail::SEQUENCE_ID_UNKNOWN drifted from NROS_CPP_SEQUENCE_ID_UNKNOWN");
+
 // issue 1437 — the two granted-QoS accessors return a `rclcpp::QoS` BY VALUE from
 // an inline body, so the complete type must be here, not only by the time
 // `rclcpp/node.hpp` is pulled in below.
@@ -122,9 +127,16 @@ template <typename S> class PollClient {
     /// Call `wait()` on the returned future to block until the response
     /// arrives, or poll with `is_ready()` / `try_take()`.
     ///
+    /// Issue 2009 — the future is keyed by the request's sequence id, so any
+    /// number may be in flight on this client and each gets its own reply. See
+    /// `rclcpp::detail::PendingList` for the bound.
+    ///
     /// @param req  Request to send.
     /// @return Future that resolves to the response. Returns a consumed
-    ///         (empty) future on serialization or send failure.
+    ///         (empty) future on serialization or send failure — including a
+    ///         backend that refuses the send because it already holds as many
+    ///         outstanding requests as it can, and a backend that cannot assign
+    ///         ids while this client already has a request in flight.
     ::rclcpp::Future<ResponseType> send_request(const RequestType& req) {
         return send_request_sized<::rclcpp::rx_buffer_capacity<ResponseType>::value>(req);
     }
@@ -142,6 +154,9 @@ template <typename S> class PollClient {
     ::rclcpp::Future<ResponseType, RespCap> send_request_sized(const RequestType& req) {
         using Fut = ::rclcpp::Future<ResponseType, RespCap>;
         if (!initialized_) return Fut();
+        // Issue 2009 — a backend that sent the last request WITHOUT an id can
+        // keep only that one in flight: a second reply could not be told apart.
+        if (!pending_.can_send()) return Fut();
 
         uint8_t req_buf[::rclcpp::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
@@ -149,11 +164,14 @@ template <typename S> class PollClient {
             return Fut();
         }
 
-        nros_cpp_ret_t ret = nros_cpp_service_client_send_request(storage_, req_buf, req_len);
+        int64_t seq = ::rclcpp::detail::SEQUENCE_ID_UNKNOWN;
+        nros_cpp_ret_t ret =
+            nros_cpp_service_client_send_request_seq(storage_, req_buf, req_len, &seq);
         if (ret != 0) return Fut();
 
-        return Fut(storage_, &nros_cpp_service_client_take_response,
-                   0,        // slot 0 (single outstanding request)
+        // Issue 2009 — keyed by `seq` and linked into this client's pending
+        // list: the reply naming `seq` reaches this future and no other.
+        return Fut(storage_, &nros_cpp_service_client_take_response_seq, seq, &pending_,
                    executor_ // what `Future::wait_for` drives (issue 1996)
         );
     }
@@ -168,11 +186,12 @@ template <typename S> class PollClient {
     /// `rclcpp::Future`, which `spin_until_future_complete` takes and whose
     /// `get()` returns the reply as a `std::shared_ptr<Response>`.
     ///
-    /// THE BOUND, and it is `send_request`'s, not a new one: ONE request in
-    /// flight per client. The future is not keyed by the request's sequence
-    /// number (`cpp:PollClient::send_request` records the slot-0 defect), so a
-    /// second outstanding request on the same client may take the first one's
-    /// reply. A null `request` returns an empty future (`valid()` false).
+    /// The future is keyed by the request's sequence id (issue 2009), as
+    /// upstream's is: several may be in flight on one client and each gets its
+    /// own reply. THE BOUND is `send_request`'s: the transport's own
+    /// outstanding-request limit, past which the send is refused and the
+    /// future comes back empty. A null `request` returns an empty future
+    /// (`valid()` false).
     ///
     /// Absent on a freestanding build, where there is no `<memory>`: send the
     /// request by reference with `send_request(req)`.
@@ -192,20 +211,31 @@ template <typename S> class PollClient {
     /// client, false if it was already taken or cancelled, or belongs to
     /// another client — upstream's "was it in the pending map".
     ///
-    /// THE BOUND: upstream erases the entry keyed by the request's sequence
-    /// number, so a reply that arrives later is dropped. Here there is one
-    /// request in flight and no key (`cpp:PollClient::send_request`), so a
-    /// reply that arrives AFTER this call is still taken by the next future
-    /// this client hands out. Do not issue the next request until that reply
-    /// can no longer arrive, or use a fresh client.
+    /// As upstream does, this erases the request keyed by its sequence number
+    /// (issue 2009): a reply that arrives later is DROPPED, never taken by a
+    /// future this client hands out afterwards.
+    ///
+    /// THE BOUND, for a backend that cannot assign ids only: the late reply
+    /// cannot say whose it is, so the NEXT reply that comes back without an id
+    /// is dropped in its place (`rclcpp::detail::PendingList::orphans`) rather
+    /// than handed to a newer request. Every in-tree backend assigns ids.
     template <size_t RespCap>
     bool remove_pending_request(::rclcpp::Future<ResponseType, RespCap>& future) {
-        if (!future.valid() || future.client_storage_ != static_cast<void*>(storage_)) {
+        if (!future.valid() || future.link_.storage != static_cast<void*>(storage_)) {
             return false;
         }
         future.cancel();
         return true;
     }
+
+    /// `rclcpp::Client::prune_pending_requests()` — issue 2009.
+    ///
+    /// Forgets every request this client has in flight, exactly as
+    /// `remove_pending_request` forgets one: each waiting future becomes
+    /// invalid (`valid()` false) and a reply that arrives later is dropped.
+    /// Returns how many requests were pending. A future whose reply had
+    /// already arrived is not pending and keeps it.
+    size_t prune_pending_requests() { return pending_.prune(); }
 
     /// Send a request and block until a reply is received.
     ///
@@ -412,7 +442,11 @@ template <typename S> class PollClient {
     /// `RmwServiceClient` in `storage_`. The `!callback_mode_` guard this
     /// replaced existed because one class served two owners; the dispatch entity
     /// is `rclcpp::Client<S>` now and has no storage to free.
+    ///
+    /// Issue 2009 — a future still waiting on this client becomes invalid
+    /// (`valid()` false) rather than pointing at freed storage.
     ~PollClient() {
+        pending_.orphan_all();
         if (initialized_) {
             nros_cpp_service_client_destroy(storage_);
         }
@@ -420,18 +454,22 @@ template <typename S> class PollClient {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // `nros_cpp_service_client_relocate` runtime call (Phase 84.C1).
+    // `nros_cpp_service_client_relocate` runtime call (Phase 84.C1). Issue
+    // 2009 — the futures pending on `other` follow the client to its new
+    // address; the ones pending on a client that is moved OVER are orphaned.
     PollClient(PollClient&& other)
         : executor_(other.executor_), initialized_(other.initialized_), service_name_{} {
         ::rclcpp::detail::assign_entity_name(service_name_, other.service_name_);
         if (other.initialized_) {
             nros_cpp_service_client_relocate(other.storage_, storage_);
         }
+        other.pending_.move_to(pending_, static_cast<void*>(storage_));
         other.initialized_ = false;
     }
 
     PollClient& operator=(PollClient&& other) {
         if (this != &other) {
+            pending_.orphan_all();
             if (initialized_) {
                 nros_cpp_service_client_destroy(storage_);
             }
@@ -441,6 +479,7 @@ template <typename S> class PollClient {
             if (other.initialized_) {
                 nros_cpp_service_client_relocate(other.storage_, storage_);
             }
+            other.pending_.move_to(pending_, static_cast<void*>(storage_));
             other.initialized_ = false;
         }
         return *this;
@@ -476,6 +515,9 @@ template <typename S> class PollClient {
     alignas(8) uint8_t storage_[NROS_SERVICE_CLIENT_SIZE];
     void* executor_;
     bool initialized_;
+    /// Issue 2009 — the futures this client has requests in flight for, keyed
+    /// by sequence id. Two words; the entries are the futures themselves.
+    ::rclcpp::detail::PendingList pending_;
     /// phase-444 — the service name, kept C++-side for `get_service_name()`.
     /// See `rclcpp::Client`'s field of the same name.
     char service_name_[::rclcpp::SERVICE_NAME_MAX];

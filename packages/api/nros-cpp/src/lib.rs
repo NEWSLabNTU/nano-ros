@@ -254,6 +254,13 @@ pub const NROS_CPP_RET_NOT_ALLOWED: nros_cpp_ret_t = -12;
 pub const NROS_CPP_RET_REJECTED: nros_cpp_ret_t = -13;
 /// Try again — operation not ready yet.
 pub const NROS_CPP_RET_TRY_AGAIN: nros_cpp_ret_t = -14;
+
+/// The request id a backend reports when it cannot assign one — issue 2009.
+/// Equal to the RMW ABI's `NROS_RMW_SEQUENCE_ID_UNKNOWN` (`INT64_MIN`), spelled
+/// as a literal so cbindgen emits it. A future whose request went out with it
+/// is matched only while it is its client's ONE pending request.
+pub const NROS_CPP_SEQUENCE_ID_UNKNOWN: i64 = -9_223_372_036_854_775_807 - 1;
+const _: () = assert!(NROS_CPP_SEQUENCE_ID_UNKNOWN == nros_rmw::SEQUENCE_ID_UNKNOWN);
 /// Reentrant call detected — executor is already spinning.
 pub const NROS_CPP_RET_REENTRANT: nros_cpp_ret_t = -15;
 /// Phase 108 — operation not implemented by the active backend.

@@ -30,3 +30,16 @@ pub const MAX_TYPE_HASH_LEN: usize = 128;
 
 /// Maximum number of concurrent goals per action server.
 pub const MAX_CONCURRENT_GOALS: usize = 4;
+
+/// Issue 2009 — request ids one executor-owned (callback / blocking) service
+/// client remembers for its ONE logical call in flight.
+///
+/// A logical call can be on the wire several times: `rclc_client_call` re-sends
+/// its request every 500 ms to ride out the discovery race, and each re-send
+/// gets a fresh id. Any of those generations answers the call, so the client
+/// accepts a reply naming any of the last `MAX_CLIENT_RESEND_GENERATIONS`
+/// generations and drops everything else — including a late reply to a call
+/// that already completed or timed out, which used to be handed to the NEXT
+/// call. Four generations covers a server answering up to ~2 s after the
+/// request it answers; an older generation's reply is dropped.
+pub const MAX_CLIENT_RESEND_GENERATIONS: usize = 4;

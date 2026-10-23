@@ -53,6 +53,14 @@
 
 
 /**
+ * The request id a backend reports when it cannot assign one — issue 2009.
+ * Equal to the RMW ABI's `NROS_RMW_SEQUENCE_ID_UNKNOWN` (`INT64_MIN`), spelled
+ * as a literal so cbindgen emits it. A future whose request went out with it
+ * is matched only while it is its client's ONE pending request.
+ */
+#define NROS_CPP_SEQUENCE_ID_UNKNOWN (-9223372036854775807 - 1)
+
+/**
  * Maximum RMW backend name length for `nros_cpp_node_options_t`.
  * Mirrors `BACKEND_NAME_MAX` in `nros-rmw-cffi`.
  */
@@ -3759,6 +3767,11 @@ nros_cpp_ret_t nros_cpp_service_client_send_on_handle(void *executor_handle,
 /**
  * Send a service request asynchronously (non-blocking).
  *
+ * Issue 2009 — the single-request spelling: the id the backend assigned is
+ * not reported. `rclcpp::PollClient` sends through
+ * [`nros_cpp_service_client_send_request_seq`], which reports it, so every
+ * future it hands out is keyed by its own request.
+ *
  * # Safety
  * `storage` must be a valid initialized service client. `req_data` must point
  * to `req_len` readable bytes.
@@ -3768,10 +3781,33 @@ nros_cpp_ret_t nros_cpp_service_client_send_request(void *storage,
                                                     size_t req_len);
 
 /**
+ * Send a service request asynchronously and report its SEQUENCE ID — issue
+ * 2009.
+ *
+ * `*sequence_id` is the id the backend assigned (written only on
+ * `NROS_CPP_RET_OK`), which [`nros_cpp_service_client_take_response_seq`]
+ * reports back with the reply that answers it — the pair upstream's
+ * `rcl_send_request` / `rcl_take_response` carry. A backend that cannot
+ * assign ids reports [`NROS_CPP_SEQUENCE_ID_UNKNOWN`](crate::NROS_CPP_SEQUENCE_ID_UNKNOWN).
+ *
+ * # Safety
+ * `storage` must be a valid initialized service client. `req_data` must point
+ * to `req_len` readable bytes; `sequence_id` must be writable.
+ */
+nros_cpp_ret_t nros_cpp_service_client_send_request_seq(void *storage,
+                                                        const uint8_t *req_data,
+                                                        size_t req_len,
+                                                        int64_t *sequence_id);
+
+/**
  * Try to receive a reply (non-blocking).
  *
  * Returns `NROS_CPP_RET_OK` and fills `resp_data`/`resp_len` on success,
  * `NROS_CPP_RET_TRY_AGAIN` if no reply is available yet.
+ *
+ * Issue 2009 — the single-request spelling: the reply's id is not reported,
+ * so this cannot tell which request a reply answers. `rclcpp::Future` takes
+ * through [`nros_cpp_service_client_take_response_seq`].
  *
  * # Safety
  * All pointers must be valid. `resp_data` must point to `resp_capacity` writable bytes.
@@ -3780,6 +3816,26 @@ nros_cpp_ret_t nros_cpp_service_client_take_response(void *storage,
                                                      uint8_t *resp_data,
                                                      size_t resp_capacity,
                                                      size_t *resp_len);
+
+/**
+ * Try to receive a reply (non-blocking) and report the SEQUENCE ID of the
+ * request it answers — issue 2009.
+ *
+ * `NROS_CPP_RET_OK`: `resp_data[..*resp_len]` holds the reply and
+ * `*sequence_id` the id [`nros_cpp_service_client_send_request_seq`] returned
+ * for its request. `NROS_CPP_RET_TRY_AGAIN`: no reply yet (`*resp_len` = 0,
+ * `*sequence_id` untouched). The caller decides whom the reply belongs to;
+ * this takes whatever reply is next.
+ *
+ * # Safety
+ * All pointers must be valid. `resp_data` must point to `resp_capacity`
+ * writable bytes.
+ */
+nros_cpp_ret_t nros_cpp_service_client_take_response_seq(void *storage,
+                                                         uint8_t *resp_data,
+                                                         size_t resp_capacity,
+                                                         size_t *resp_len,
+                                                         int64_t *sequence_id);
 
 /**
  * Phase 124.C.3 — graph-aware "is the matching server up?" probe.

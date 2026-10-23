@@ -2254,10 +2254,13 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
             let slot = executor.resolve_handle(hid).ok_or(NodeDeclError::Runtime)?;
             let entry =
                 unsafe { executor.service_client_entry_mut(slot) }.ok_or(NodeDeclError::Runtime)?;
-            entry
+            let seq = entry
                 .handle
                 .send_request_raw(request_cdr)
                 .map_err(|_| NodeDeclError::Runtime)?;
+            // Issue 2009 — only the reply naming this request completes the
+            // call; an earlier call's late reply is dropped.
+            entry.record_send(seq, false);
         }
         // Bounded wait — caps total time so the tick loop stays responsive.
         for _ in 0..200 {
@@ -2266,13 +2269,19 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
             let slot = executor.resolve_handle(hid).ok_or(NodeDeclError::Runtime)?;
             let entry =
                 unsafe { executor.service_client_entry_mut(slot) }.ok_or(NodeDeclError::Runtime)?;
-            match entry.handle.take_response_raw(response_buf) {
-                // Issue 0778 — one call in flight on this blocking path, so
-                // the sequence id is dropped deliberately.
-                Ok(Some((len, _seq))) => return Ok(len),
+            match entry.take_reply(response_buf) {
+                Ok(Some(len)) => return Ok(len),
                 Ok(None) => continue,
                 Err(_) => return Err(NodeDeclError::Runtime),
             }
+        }
+        // Timed out: forget the call, so its reply — if it still comes — is
+        // dropped rather than returned by the next `call_raw` (issue 2009).
+        let executor = unsafe { &mut *self.executor };
+        if let Some(slot) = executor.resolve_handle(hid)
+            && let Some(entry) = unsafe { executor.service_client_entry_mut(slot) }
+        {
+            entry.sequences.clear();
         }
         Err(NodeDeclError::Runtime)
     }

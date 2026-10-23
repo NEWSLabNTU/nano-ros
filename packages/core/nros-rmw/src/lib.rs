@@ -36,6 +36,7 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod correlation;
 pub mod custom_transport;
 pub mod event;
 // issue 1551 — the one spelling of a fallible `Box::new` (`Box::try_new` is
@@ -55,6 +56,13 @@ pub use event::{
     CountStatus, DeadlineMissedStatus, EventCallback, EventKind, EventPayload,
     IncompatibleTypeCounter, IncompatibleTypeStatus, LivelinessChangedStatus, MatchedCounter,
     MatchedStatus, MessageLostStatus, payload_from_raw,
+};
+
+// Issue 2009 — the one request/reply correlation rule every client surface
+// applies to the ids `ClientTrait` carries.
+pub use correlation::{
+    MAX_STALE_DRAIN_PER_POLL, ReplyMatcher, RequestCorrelator, SEQUENCE_ID_UNKNOWN, SendRefusal,
+    take_correlated, take_matched,
 };
 
 // Phase 115.A — runtime-pluggable custom transport vtable.

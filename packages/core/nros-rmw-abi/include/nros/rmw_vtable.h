@@ -377,7 +377,12 @@ typedef struct nros_rmw_vtable_t {
      *  is idempotent at the application layer" — which this ABI cannot
      *  enforce and which is false for `send_goal` and `SetParameters`, both of
      *  which travel this path. Same application code, different behaviour per
-     *  transport. The id is what deletes both policies. */
+     *  transport. The id is what deletes both policies.
+     *
+     *  Issue 2009 — the caller pre-sets `*sequence_id` to
+     *  `NROS_RMW_SEQUENCE_ID_UNKNOWN`; a backend that cannot assign ids
+     *  leaves it there, and the runtime then keeps one call in flight on that
+     *  client instead of matching replies it cannot tell apart. */
     rmw_ret_t (*send_request)(const rmw_client_t *client,
         rmw_byte_span_t request, int64_t *sequence_id);
 
@@ -389,6 +394,12 @@ typedef struct nros_rmw_vtable_t {
      *  0778: handing the id out at send time is useless if it does not come
      *  back. Mirrors `take_request`'s `seq_out`, which the SERVER side has
      *  always had — the asymmetry was the tell.
+     *
+     *  Issue 2009 — the runtime delivers a reply ONLY to the request whose id
+     *  it carries, and drops a reply whose request was cancelled or is not
+     *  pending. `*seq_out` is pre-set to `NROS_RMW_SEQUENCE_ID_UNKNOWN`; a
+     *  reply that comes back with it is delivered only when one request is
+     *  pending on the client.
      *
      *  (The paragraph that used to sit here described `>= 0` = bytes and
      *  "other negative = backend error", the pre-W3.d shape, three phases

@@ -470,6 +470,9 @@ pub struct MockServiceClient {
     pub next_seq: Cell<i64>,
     /// The id of the most recent send; what a reply is reported against.
     pub last_sent_seq: Cell<Option<i64>>,
+    /// Issue 2009 — the id the pre-loaded reply reports instead, set by
+    /// [`load_reply_for`](Self::load_reply_for).
+    pub pending_reply_seq: Cell<Option<i64>>,
     /// phase-444 — the service this client was created on.
     service_name: MockName,
 }
@@ -486,6 +489,7 @@ impl MockServiceClient {
             pending_reply: Cell::new(None),
             next_seq: Cell::new(0),
             last_sent_seq: Cell::new(None),
+            pending_reply_seq: Cell::new(None),
             service_name: MockName::new(service_name),
         }
     }
@@ -498,6 +502,14 @@ impl MockServiceClient {
     /// Load a reply that will be returned by the next `take_response_raw` call.
     pub fn load_reply(&self, data: [u8; 256], len: usize) {
         self.pending_reply.set(Some((data, len)));
+        self.pending_reply_seq.set(None);
+    }
+
+    /// Issue 2009 — load a reply that answers the request sent as `seq`,
+    /// whatever was sent since.
+    pub fn load_reply_for(&self, seq: i64, data: [u8; 256], len: usize) {
+        self.pending_reply.set(Some((data, len)));
+        self.pending_reply_seq.set(Some(seq));
     }
 }
 
@@ -522,8 +534,13 @@ impl ClientTrait for MockServiceClient {
             Some((data, len)) => {
                 reply_buf[..len].copy_from_slice(&data[..len]);
                 self.pending_reply.set(None);
-                // The mock answers whatever it was last asked.
-                Ok(Some((len, self.last_sent_seq.get().unwrap_or(0))))
+                // The mock answers whatever it was last asked, unless the
+                // reply was loaded for a named request (issue 2009).
+                let seq = self
+                    .pending_reply_seq
+                    .take()
+                    .unwrap_or_else(|| self.last_sent_seq.get().unwrap_or(0));
+                Ok(Some((len, seq)))
             }
             None => Ok(None),
         }

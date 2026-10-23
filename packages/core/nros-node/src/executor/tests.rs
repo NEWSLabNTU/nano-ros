@@ -8281,6 +8281,163 @@ fn test_promise_try_recv_returns_none_then_some() {
     assert_eq!(reply.sum, 99);
 }
 
+/// A CDR `{ i32 }` reply in a mock-sized buffer (issue 2009 tests).
+fn encode_test_reply(sum: i32) -> ([u8; 256], usize) {
+    let mut reply_buf = [0u8; 256];
+    let mut writer = CdrWriter::new_with_header(&mut reply_buf).unwrap();
+    writer.write_i32(sum).unwrap();
+    let len = writer.position();
+    let _ = writer;
+    (reply_buf, len)
+}
+
+/// Issue 2009 — a reply to a call abandoned with `reset_in_flight` is DROPPED.
+/// It used to be delivered to the next call's promise as its answer.
+#[test]
+fn promise_drops_the_late_reply_of_an_abandoned_call() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let mut node = executor.create_node("test").unwrap();
+    let mut client = node.create_client::<TestService>("/test_svc").unwrap();
+
+    let first_seq;
+    {
+        let promise = client.call(&TestServiceRequest { a: 1 }).unwrap();
+        first_seq = promise.handle.last_sent_seq.get().unwrap();
+    }
+    // The first promise was dropped without its reply: abandon the call.
+    client.reset_in_flight();
+    let mut promise = client.call(&TestServiceRequest { a: 2 }).unwrap();
+    let second_seq = promise.handle.last_sent_seq.get().unwrap();
+    assert_ne!(first_seq, second_seq);
+
+    // The abandoned call's reply arrives late.
+    let (late, late_len) = encode_test_reply(111);
+    promise.handle.load_reply_for(first_seq, late, late_len);
+    assert!(
+        promise.take().unwrap().is_none(),
+        "the abandoned call's reply must not answer the new call"
+    );
+
+    let (own, own_len) = encode_test_reply(222);
+    promise.handle.load_reply_for(second_seq, own, own_len);
+    assert_eq!(promise.take().unwrap().unwrap().sum, 222);
+}
+
+/// Issue 2009 — the callback client dispatches only the reply naming the call
+/// in flight; a reply naming another request is dropped, not handed to the
+/// callback.
+#[test]
+fn callback_client_drops_a_reply_for_another_request() {
+    use crate::executor::arena::ServiceClientSendHeader;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("svc_cb_seq").build().unwrap();
+    let got = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::new()));
+    let got2 = got.clone();
+    let mut client = executor
+        .node_mut(nid)
+        .create_client_with_callback::<TestService, _>("/svc", move |reply: &TestServiceReply| {
+            got2.lock().unwrap().push(reply.sum);
+        })
+        .unwrap();
+    client.call(&TestServiceRequest { a: 7 }).unwrap();
+
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let hdr = unsafe {
+        &*(arena_ptr.add(off)
+            as *const ServiceClientSendHeader<{ crate::config::DEFAULT_RX_BUF_SIZE }>)
+    };
+    let sent = hdr.handle.last_sent_seq.get().unwrap();
+
+    let (stray, stray_len) = encode_test_reply(-1);
+    hdr.handle.load_reply_for(sent + 100, stray, stray_len);
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        got.lock().unwrap().is_empty(),
+        "a stray reply reached the callback"
+    );
+
+    let (own, own_len) = encode_test_reply(14);
+    hdr.handle.load_reply_for(sent, own, own_len);
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(*got.lock().unwrap(), alloc::vec![14]);
+}
+
+/// Issue 2009 — an action client with two goals in flight attributes each
+/// acceptance to the goal of the request it answers. It used to report every
+/// acceptance against the most recently SENT goal (`goal_counter`), so goal 1's
+/// acceptance read as goal 2's. And a sub-client full of pending requests
+/// refuses the next send rather than sending one it could not match.
+#[test]
+fn action_client_attributes_replies_by_request_id() {
+    use crate::executor::action_core::ActionClientCore;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("act_seq").build().unwrap();
+    let accepted = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::new()));
+    let acc2 = accepted.clone();
+    let mut client = executor
+        .node_mut(nid)
+        .create_action_client_with_callbacks::<TestAction, _, _, _>(
+            "/act",
+            move |id: &nros_core::GoalId, ok: bool| {
+                let mut c = [0u8; 8];
+                c.copy_from_slice(&id.uuid[..8]);
+                acc2.lock().unwrap().push((u64::from_le_bytes(c), ok));
+            },
+            |_id: &nros_core::GoalId, _fb: &TestFeedback| {},
+            |_id: &nros_core::GoalId, _st: nros_core::GoalStatus, _r: &TestResult| {},
+        )
+        .unwrap();
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let core = unsafe {
+        &*(arena_ptr.add(off)
+            as *const ActionClientCore<
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+            >)
+    };
+
+    let g1 = client.send_goal(&TestGoal { order: 1 }).unwrap();
+    let seq1 = core.send_goal_client.last_sent_seq.get().unwrap();
+    let g2 = client.send_goal(&TestGoal { order: 2 }).unwrap();
+    assert_ne!(g1.uuid, g2.uuid);
+
+    // Goal 1's acceptance arrives AFTER goal 2 was sent.
+    let mut b = [0u8; 256];
+    b[..5].copy_from_slice(&[0, 1, 0, 0, 1]);
+    core.send_goal_client.load_reply_for(seq1, b, 5);
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        *accepted.lock().unwrap(),
+        alloc::vec![(1u64, true)],
+        "goal 1's acceptance is attributed to goal 1, not the latest goal"
+    );
+
+    // Two more fill the send_goal sub-client (MAX_CONCURRENT_GOALS = 4 with
+    // goal 2 still pending); the next is refused before it is sent.
+    let _g3 = client.send_goal(&TestGoal { order: 3 }).unwrap();
+    let _g4 = client.send_goal(&TestGoal { order: 4 }).unwrap();
+    let _g5 = client.send_goal(&TestGoal { order: 5 }).unwrap();
+    let sent_before = core.send_goal_client.next_seq.get();
+    assert!(
+        matches!(
+            client.send_goal(&TestGoal { order: 6 }),
+            Err(NodeError::RequestInFlight)
+        ),
+        "a full pending table refuses the send"
+    );
+    assert_eq!(
+        core.send_goal_client.next_seq.get(),
+        sent_before,
+        "a refused goal never reached the transport"
+    );
+}
+
 private_test_clock!(no_timeout_credit_clock);
 
 // ====================================================================
