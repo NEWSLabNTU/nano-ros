@@ -1948,6 +1948,17 @@ pub fn run() {
             crate::RxTaskBudget::from_knobs(rx_budget_frames, rx_budget_rest_us)
                 .unwrap_or_else(|e| panic!("{e}"));
     }
+    // Issue 1368 — publish the reassembly ceiling this script bakes into
+    // zenoh-pico (`Z_FRAG_MAX_SIZE` / `Z_BATCH_UNICAST_SIZE`) on the `links =
+    // "zpico"` channel, so `nros-rmw-zenoh` can compare its receive class
+    // against it (`DEP_ZPICO_FRAG_MAX_SIZE`). NOT on Zephyr: there the cmake
+    // module compiles zenoh-pico with the value IT resolved, and the configure
+    // runs the same comparison (`_nros_rx_ceiling`). Publishing this script's
+    // number there would check a ceiling the image does not have.
+    if !use_zephyr {
+        println!("cargo:frag_max_size={}", buf_config.frag_max_size);
+        println!("cargo:batch_unicast_size={}", buf_config.batch_unicast_size);
+    }
     std::fs::write(out_dir.join("shim_constants.rs"), shim_config.rust_consts()).unwrap();
 
     // Phase 134.3 — `zenoh_generic_config.h` is the single source of
