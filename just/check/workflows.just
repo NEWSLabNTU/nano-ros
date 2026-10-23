@@ -429,10 +429,20 @@ runner-doctor-sdk-resolution:
 # the group is used daily: eleven of twenty `cargo-fixtures` children were wrong
 # by ~20 days, and the sweep proposed deleting the 12.8 GiB NATIVE group — used
 # the previous day — to reclaim a 60 MiB overrun. Silent either way; the cost
-# shows up as the next job rebuilding a fixture nobody touched. ~1 s, tmpdir.
+# shows up as the next job rebuilding a fixture nobody touched. Issue 1353 adds
+# area coverage: `sizes-probe/<rustc>` and the west build root are eviction
+# units, and what sits in no area is reported. ~1 s, tmpdir.
 [private]
 runner-sweep-eviction-order:
     @bash tests/runner-sweep-eviction-order-tests.sh
+
+# issue 1365 clause 2 — `just runner-wait-triage` names WHY a self-hosted job is
+# still queued (no runner / offline / busy / idle beside the waiter). Its live
+# half needs repository admin and the network, so only the classifier's
+# self-test runs here. Pure, <1 s.
+[private]
+runner-wait-triage:
+    @python3 scripts/ci/runner-wait-triage.py --selftest
 
 # issue 1964 — the pre-push hook keeps `just check fast`'s full output and
 # per-gate verdicts in a per-user state dir, outside every checkout, so a red

@@ -894,3 +894,33 @@ is the operator's call; it is not a code change.
 
 Clause 2 (a lane that reports "queued and unclaimed" and says why) is still
 open.
+
+## Clause 2: a report that names the shape (2026-10-23)
+
+`just runner-wait-triage` (`scripts/ci/runner-wait-triage.py`) lists every
+queued job whose labels include `self-hosted`. It joins each one with the
+repository's runner list and names the shape:
+
+| shape | runner state | remedy it prints |
+| --- | --- | --- |
+| NO RUNNER | nothing registered carries the job's labels | `just runner-up <labels>` |
+| OFFLINE | matching runners registered, all offline | restart the container |
+| BUSY | every online match is running other work | none; contention ends by itself |
+| IDLE | an online match is idle and the job has waited past `--grace` (2 min) | the third shape: check the runner's version and listener log, then restart |
+
+This is the measurement the 2026-09-29 section asked for: "queued and
+unclaimed" qualified by "the runner is online and idle". It answers from the
+runner side, which job state cannot do.
+
+Why it is a maintainer verb and not a workflow step: `GET
+/repos/{r}/actions/runners` needs repository admin. A workflow's `GITHUB_TOKEN`
+has no `administration` permission, so in a workflow the report could only say
+"queued" and never name the shape. Without the permission, the tool still
+lists the waits and says the shape could not be named. To run it unattended
+needs a secret with that permission, which is the operator's call.
+
+The classifier's self-test (7 cases) is on the fast line as `just check
+runner-wait-triage`. Live on 2026-10-23: 2 runners registered (118 and 241),
+both online and busy, no self-hosted job queued.
+
+The clause closes once one of these reports has named a real wait's shape.

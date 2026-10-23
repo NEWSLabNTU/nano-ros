@@ -2360,6 +2360,96 @@ This is the tier-1 shape already recorded above under "The tier-1 half of the
 same distinction". The same run's `per-feature clippy` job failed separately,
 on issue 1987, which is a different cause.
 
+## The self-hosted shape: the sweep budgets a list, and the list missed the two largest caches (2026-10-23)
+
+The self-hosted tier-2 runners hit this twice: newslab-133 on 2026-10-17 (job
+117338072093) and newslab-118 on 2026-10-21 (job 119091640399). Both failed
+with `No space left on device` from cargo, `ld` and rustc inside
+`nros-fixture-tree`. These runners run `runner-sweep.sh` after every job, so
+the question was why the sweep did not stop it.
+
+Each job's sweep output gives the answer. Here are the 35 self-hosted jobs from
+10-16 to 10-23. "start" is runner-doctor's free disk at the start of the job,
+and "end" is the sweep's free disk after it evicted:
+
+| runner | first job | start | last job before ENOSPC | start | end |
+| --- | --- | --- | --- | --- | --- |
+| newslab-118 | 10-16 05:35 | 654G | 10-21 07:17 | 154G | 127G |
+| newslab-133 | 10-16 09:48 | 570G | 10-17 07:53 | 325G | 145G |
+
+On 118, free space went down on 14 of 15 consecutive jobs, although every sweep
+evicted fixtures down to its 60 GiB budget and said "the machine had leftovers
+and they were cleared". The 10-21 08:54 job started with 1012G, so the volume
+was cleared by hand in between. The drain then began again: 691G on 10-22 and
+380G on 10-23.
+
+I measured 133's runner volume read-only (`docker run -v nros-runner-work:/w:ro
+… du`). The volume is also this host's disk: 916G, 94 % full. The workspace
+held 406 GiB:
+
+| path | size | in a sweep area? |
+| --- | --- | --- |
+| `build/sizes-probe` | 89 GiB (79 live rustc 1.99 + 11 retired 1.96-nightly) | **no** |
+| `build/zephyr-workspace-builds/3.7` | 66 GiB | **no** |
+| `examples/**` leaf builds (`workspaces/*/build`, `*/target-fixtures`, `qemu-armv7a-nuttx/*`) | 93 GiB | **no** |
+| `build/metadata-probe` | 13 GiB | **no** |
+| `target/` + `packages/cli/target` | 61 + 32 GiB | reported, not pruned (`cargo-sweep` absent) |
+| the 8 listed fixture kinds | ~40 GiB after eviction | yes, 60 GiB budget |
+
+The sweep's areas are lists that someone wrote. `sizes-probe` (keyed by
+`<rustc-slug>/<key>` since phase-336) and the per-checkout west build root
+(issue 1596) came later and were never added. A list like that goes stale
+toward OK: the sweep neither evicted nor mentioned 260 GiB.
+
+### Fixed
+
+`scripts/ci/runner-sweep.sh`:
+
+- **Two more eviction areas.** `sizes-probe/<rustc-slug>` and
+  `zephyr-workspace-builds/<line>` (or `NROS_ZEPHYR_BUILD_ROOT`) are now
+  candidate dirs of the fixtures area. Each of their children is one eviction
+  unit, so a retired toolchain's tree goes first by age, and no list of
+  toolchains needs keeping current.
+- **An `unbudgeted:` line.** One `du -d2` walk reports what is under the
+  checkout and in no area, names the largest entries, and warns past
+  `NROS_SWEEP_UNBUDGETED_WARN_GIB` (default 40). This is a report, not an
+  eviction: nobody has decided whether a directory with no budget is safe to
+  drop. A cache added by a later phase now shows up in every job log instead of
+  draining the volume silently.
+- **No more `Broken pipe` lines.** The eviction listing is sorted into a
+  variable first. Before, every evicting sweep printed about 25 `sort: write
+  failed … Broken pipe` lines.
+
+The dry run (`--check --disk`) against 133's real volume reports the fixtures
+area at 193.3 GiB, with 133.6 GiB that would be freed. It also prints:
+
+```
+unbudgeted: 118.9 GiB in no area above — neither budgeted nor evicted
+    92.5 GiB  …/examples
+    12.7 GiB  …/build/metadata-probe
+    2.0 GiB  …/target-zpico-multisession
+    …
+runner-sweep: 118.9 GiB is outside every area (warn at 40.0 GiB).
+```
+
+Tests: `just check runner-sweep-eviction-order` has 5 new cases. Against the
+previous sweep, 4 of them fail: the two eviction units, the report and the
+warning. The `Broken pipe` case does not discriminate at a 0 GiB budget,
+because the loop never stops early there, so it is a regression check only.
+
+### What it left open (superseded by the resolution below)
+
+- **`examples/**`, 93 GiB.** This is fixture output that never moved under the
+  build root (issue 0488's residue). It is now named in every sweep, but not
+  evicted: a workspace's `build/nros/` holds `nros sync` output, and dropping
+  that is a separate decision from dropping a fixture coordinate.
+- **`cargo-sweep` is not in the runner image.** So `target/` is reported and
+  never pruned; it reached 210 GiB on 118 before the 10-21 clear. Fixing that
+  needs a pinned `[tool.cargo-sweep]` index row (dist sha256, measured floor)
+  and an image rebuild by the operator.
+- **What closes this shape:** a week of self-hosted jobs in which the sweep's
+  end-of-job free disk stops falling.
+
 ## Resolution (2026-10-23) — wontfix: runner configuration, not a project defect
 
 Closed by maintainer decision. Running out of disk on the CI runner is a
