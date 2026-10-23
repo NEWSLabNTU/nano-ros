@@ -191,13 +191,80 @@ impl Worker {
     }
 }
 
+/// phase-509 P9b item 3 -- how a band worker waits on its own wake object:
+/// at most `us` microseconds, returning early when the object is signalled
+/// (`WorkerWakeFn`). The answer is ignored: either way the worker re-scans.
+pub type BandWaitFn = unsafe extern "C" fn(ctx: *mut c_void, us: u64) -> i32;
+
+/// phase-509 P9b item 3 (RFC-0108 D7, "As built in P9b") -- a band worker's
+/// wake object and the slots it answers for. The transport's arrival path
+/// reads it without the executor's lock, so it is `'static` and its fields
+/// are atomics or fixed at construction; it is linked into the executor's
+/// arrival routing by [`Executor::attach_band_worker`](super::Executor::attach_band_worker)
+/// and never unlinked.
+pub struct BandWaiter {
+    /// The band's slots, as the worker's last pass saw them. An arrival on
+    /// one of them wakes this worker only.
+    pub(crate) slots: AtomicUsize,
+    /// Signals the wake object (`k_sem_give`, a futex post).
+    #[cfg_attr(not(all(feature = "alloc", feature = "rmw-cffi")), allow(dead_code))]
+    // the arrival path
+    pub(crate) wake: WorkerWakeFn,
+    /// Waits on it, bounded.
+    pub(crate) wait: BandWaitFn,
+    pub(crate) ctx: *mut c_void,
+    /// The next waiter of the same executor.
+    #[cfg_attr(not(all(feature = "alloc", feature = "rmw-cffi")), allow(dead_code))]
+    // the arrival path
+    pub(crate) next: portable_atomic::AtomicPtr<BandWaiter>,
+}
+
+// SAFETY: `ctx` is the port's wake object, handed in with the two functions
+// that use it, callable from any thread (as `Scheduler::add_worker`'s wake);
+// everything else is atomic.
+unsafe impl Sync for BandWaiter {}
+// SAFETY: as above.
+unsafe impl Send for BandWaiter {}
+
+impl BandWaiter {
+    /// A waiter over the port's wake object at `ctx`.
+    ///
+    /// # Safety
+    /// `wake` and `wait` are callable from any thread with `ctx`, which
+    /// outlives every executor the waiter is attached to.
+    pub const unsafe fn new(wake: WorkerWakeFn, wait: BandWaitFn, ctx: *mut c_void) -> Self {
+        Self {
+            slots: AtomicUsize::new(0),
+            wake,
+            wait,
+            ctx,
+            next: portable_atomic::AtomicPtr::new(core::ptr::null_mut()),
+        }
+    }
+
+    /// Signal the worker.
+    #[cfg_attr(not(all(feature = "alloc", feature = "rmw-cffi")), allow(dead_code))] // the arrival path
+    pub(crate) fn signal(&self) {
+        // SAFETY: `new`'s contract.
+        unsafe { (self.wake)(self.ctx) };
+    }
+
+    /// Wait at most `us` microseconds, or until signalled.
+    pub(crate) fn wait_us(&self, us: u64) {
+        // SAFETY: `new`'s contract.
+        let _ = unsafe { (self.wait)(self.ctx, us) };
+    }
+}
+
 /// phase-509 P9b item 2 (RFC-0108 "As built in P9b") -- a worker of one band
 /// over an executor it shares with other workers: the record its own thread
 /// owns and hands to [`Executor::spin_band_once`](super::Executor::spin_band_once).
 ///
 /// A band pass runs only the band's callbacks, and credits the band's timers
 /// with the time since this worker's own previous pass, so two workers never
-/// split one timer's elapsed time between them.
+/// split one timer's elapsed time between them. With a [`BandWaiter`]
+/// (item 3) it parks on its own wake object until its band's next timer is
+/// due or an arrival in its band signals it.
 #[derive(Clone, Copy, Debug)]
 pub struct BandWorker {
     /// The level's index in the image, 0 the most urgent: what its passes
@@ -208,15 +275,36 @@ pub struct BandWorker {
     /// When this worker's previous pass read the clock; `None` before its
     /// first.
     pub(crate) last_spin_end_us: Option<u64>,
+    /// phase-509 P9b item 3 -- its wake object, if it parks.
+    pub(crate) waiter: Option<&'static BandWaiter>,
+}
+
+impl core::fmt::Debug for BandWaiter {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("BandWaiter")
+            .field("slots", &self.slots.load(SeqCst))
+            .finish_non_exhaustive()
+    }
 }
 
 impl BandWorker {
-    /// The worker of `band` at image level `level`.
+    /// The worker of `band` at image level `level`, polling (no park).
     pub const fn new(level: u8, band: Band) -> Self {
         Self {
             level,
             band,
             last_spin_end_us: None,
+            waiter: None,
+        }
+    }
+
+    /// The same worker, parking on `waiter` (phase-509 P9b item 3). Attach
+    /// it to the executor ([`Executor::attach_band_worker`](super::Executor::attach_band_worker))
+    /// so its band's arrivals signal it.
+    pub const fn with_waiter(self, waiter: &'static BandWaiter) -> Self {
+        Self {
+            waiter: Some(waiter),
+            ..self
         }
     }
 
