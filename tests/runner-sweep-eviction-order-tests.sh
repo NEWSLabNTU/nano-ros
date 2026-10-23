@@ -21,6 +21,8 @@ set -uo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 sweep="$repo_root/scripts/ci/runner-sweep.sh"
+# shellcheck source=scripts/lib/grep-q.sh
+. "$repo_root/scripts/lib/grep-q.sh"
 failures=0
 checks=0
 
@@ -129,26 +131,26 @@ else
     fail "sizes-probe keys were not evicted oldest-first:
 $out2"
 fi
-if printf '%s\n' "$out2" | grep -q 'rm -rf .*/zephyr-workspace-builds/3.7/build-leaf'; then
+if nros_grep_q 'rm -rf .*/zephyr-workspace-builds/3.7/build-leaf' <<<"$out2"; then
     ok "a west build leaf under zephyr-workspace-builds/<line> is an eviction unit"
 else
     fail "the west build leaf was never proposed:
 $out2"
 fi
-if printf '%s\n' "$out2" | grep -qE '^ +unbudgeted: 2 MiB in no area' \
-   && printf '%s\n' "$out2" | grep -qE '^ +2 MiB +.*/examples$'; then
+if nros_grep_q -E '^ +unbudgeted: 2 MiB in no area' <<<"$out2" \
+   && nros_grep_q -E '^ +2 MiB +.*/examples$' <<<"$out2"; then
     ok "the leaf build in no area is reported and named, and no area is counted twice"
 else
     fail "unbudgeted report missing, mis-sized or unnamed (want 2 MiB, examples):
 $out2"
 fi
-if printf '%s\n' "$out2" | grep -q 'is outside every area'; then
+if nros_grep_q 'is outside every area' <<<"$out2"; then
     ok "unbudgeted space past the warn threshold warns"
 else
     fail "no warning at a 0 GiB warn threshold:
 $out2"
 fi
-if printf '%s\n' "$out2" | grep -q 'Broken pipe'; then
+if nros_grep_q 'Broken pipe' <<<"$out2"; then
     fail "sort wrote into a closed pipe:
 $out2"
 else
