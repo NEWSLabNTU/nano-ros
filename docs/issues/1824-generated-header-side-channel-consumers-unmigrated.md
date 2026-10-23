@@ -50,3 +50,105 @@ same wrong bytes twice, so the verdict is FRESH.
 Every lane reads its config headers from a destination that cargo or cmake
 owns, and the target-dir copy is deleted. The `git grep` above then returns
 nothing outside the helper being retired.
+
+## Re-measured 2026-10-23: the count is not the finish line
+
+The 240 to 93 drop since 2026-10-12 is NOT migration. Issue 1852 (2026-10-12)
+made the directory NAMES single-sourced (`nros_build_paths::artifact`,
+`cmake/NanoRosArtifactLayout.cmake`, `scripts/lib/artifact_layout.py`), so the
+readers stopped spelling `nros-c-generated` and the grep stopped finding them.
+The headers still go where they went: `write_header_to_target_dir`
+(`packages/tooling/nros-build-helpers/src/shared.rs`) still writes the
+`$CARGO_TARGET_DIR` copy and its `.h.stamp`. The grep in "What closes it" can
+reach zero with nothing migrated, so the close criterion is restated below.
+
+## Who still reads the side channel (2026-10-23)
+
+| road | reader | from |
+| --- | --- | --- |
+| cargo-native (NuttX FFI, any `links` consumer) | `DEP_NROS_{C,CPP}_CONFIG_INCLUDE` | **`$OUT_DIR`** already (issue 1569) |
+| Zephyr west | `cargo-out-dir-headers.py` placer | **`$OUT_DIR`** already (phase-400 W5.c) |
+| cmake / Corrosion | `nros_config_header_mirror` in `packages/api/nros-{c,cpp}/CMakeLists.txt`; `_nros_generated_header_dir` in `NanoRosNodeRegister.cmake` / `NanoRosVerbs.cmake` | side channel |
+| NuttX app build | `integrations/nuttx/Make.defs`: `nros artifact c-include --target-dir …` into `CFLAGS` | side channel |
+| PX4 module | `integrations/px4/NanoRosPx4Module.cmake`, after a cargo build the USER runs | side channel |
+
+So three roads are left, not "every lane except Zephyr".
+
+## The premise the design rests on, measured
+
+The Zephyr lane works because cargo reports `out_dir` on its JSON stream even on
+a fully cached run. Corrosion does not run `cargo build`, it runs `cargo rustc`,
+so that had to be re-measured for the verb Corrosion uses. Measured on main
+(`cargo rustc -p nros-cpp --lib --crate-type staticlib --target
+x86_64-unknown-linux-gnu --no-default-features --features
+alloc,env,log,panic-platform,rmw-cffi,platform-posix
+--message-format=json-render-diagnostics`, scratch target dir):
+
+| run | wall | rebuilt units | `build-script-executed` for nros-c / nros-cpp | header in `out_dir` |
+| --- | --- | --- | --- | --- |
+| cold | 80.6 s | 128 | 2 | `nros-c-generated/rclc/detail/nros_config_generated.h`, `nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h` |
+| warm | 0.65 s | **0** | **2** | same paths, same dirs |
+
+So a cache hit, the case that breaks the side channel (issue 0805's shared
+target dir), still names the directory holding the right header.
+
+## Proposal
+
+**D1. Corrosion: wrap ONLY the two crates that write headers, through
+Corrosion's own per-target seam.** Corrosion reads
+`INTERFACE_CORROSION_CARGO` per imported target (`cargo_bin` in
+`Corrosion.cmake`: `$<IF:$<BOOL:${cargo_override}>,…>`), and passes no
+`--message-format` of its own (it passes `--verbose` only). Set it on `nros_c` /
+`nros_cpp` to `scripts/build/cargo-out-dir-headers.py --package <crate> --dest
+<cmake-owned dir> -- <real cargo>`. That is the placer the Zephyr lane already
+uses, so there is one reader of the stream (`scripts/lib/cargo_out_dir.py`), not
+a second. The mirror's SOURCE moves from the cargo target dir to `--dest`, a
+directory cmake names at configure and owns. The real cargo comes from
+`_CORROSION_CARGO`, never PATH. Not `Rust_CARGO`: that would wrap every crate in
+the configure, including user crates that write no header.
+
+The override reaches only the build: Corrosion's `cargo metadata` at configure
+runs `"${_CORROSION_CARGO}" metadata` directly (`CorrosionGenerator.cmake:31`),
+and the target property does not exist yet when it runs. Open, to settle on the
+first measured build: the mirror's always-run node (issue 1783) stays, because
+its edge is still a file no cmake rule produces; only the file's location
+changes, and that has to be shown with a header-only change rebuilding exactly
+its consumers.
+
+**D2. NuttX: wrap the invocation the Makefile already owns.**
+`integrations/nuttx/Makefile` mirrors upstream `RUST_CARGO_BUILD` with its own
+command (line ~188), so the placer goes in front of it with `--dest` under the
+image build dir, and `nros artifact c-include` answers that dir. One spelling,
+the same script.
+
+**D3. PX4: the module cannot wrap a cargo it does not run.** The user runs the
+documented `cargo build -p nros-cpp …` (the module restates it at lines ~109 /
+~219 as the remedy). Two options:
+- (a) the documented command becomes the placer form (`cargo-out-dir-headers.py
+  … -- cargo build …`), so the user's own build places the header;
+- (b) the module re-asks cargo at configure with the same arguments: a cached
+  `--message-format=json` run is 0.65 s, measured above.
+
+(a) keeps one producer; (b) keeps the user's command unchanged but spells the
+argument list a second time, inside the module. Recommend (a); PX4 is the road
+with the fewest users and a single remedy string to change.
+
+**D4. Delete the side channel last, in one change.** Delete
+`write_header_to_target_dir`'s target-dir half, its `.h.stamp`
+(`write_stamp` / `drop_stamp_without_header` / `write_header_if_absent_or_verify`'s
+cross-writer check, which exists only because two writers share that path), and
+retarget or retire the gates that police it: `check-orphan-generated-stamp`,
+`check-px4-archive-header-pairing`, `check-sizes-header-mirrors`. Issue 0834's
+absorbing stamp-without-header state, one of CLAUDE.md's two documented
+`rm -rf` exemptions, disappears with the stamp.
+
+**Order:** D1 (covers every cmake leaf, the largest consumer set), then D2, then
+D3, then D4. Each before D4 is additive: the side channel keeps working until
+nothing reads it.
+
+## What closes it (restated)
+
+`write_header_to_target_dir` writes nothing under `$CARGO_TARGET_DIR`, and no
+reader resolves a generated header through `--target-dir`. Measure it with the
+reader table above, not with a grep for the directory name: issue 1852 already
+made that grep miss every reader that asks for the name.
