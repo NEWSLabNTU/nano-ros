@@ -129,7 +129,7 @@ pub fn model_reaction_ids(model: &SystemModel) -> Vec<(u16, String)> {
         .collect();
     for (key, h) in &model.contracts.hazards {
         if let Ok(Some(r)) = crate::ftti_budget::reaction_path(model, key, h)
-            && r.path.safe_state.is_some()
+            && reaction_safe_state(model, &r).is_some()
         {
             refs.push(r.key);
         }
@@ -447,19 +447,58 @@ fn contract_deadline_ms(
         .unwrap_or(0)
 }
 
+/// The safe state a hazard's reaction commands. A reaction that is a node
+/// path states it there; a reaction that is a scope path -- the shape
+/// play_launch resolves every contract to -- has none of its own: the safe
+/// state is on the node path whose `emits` publishes one of the scope path's
+/// outputs (the node at the reaction's sink). When several do, the one with
+/// the largest settle, so the hazard is charged the slowest. Reading only
+/// the reaction path's own left `settle_ms` 0 and the hazard with no sink
+/// for every resolved model (play_launch phase 91 E10's test found it).
+pub(crate) fn reaction_safe_state<'m>(
+    model: &'m SystemModel,
+    r: &crate::ftti_budget::ResolvedReaction<'m>,
+) -> Option<&'m ros_launch_manifest_model::SafeStateContract> {
+    if let Some(ss) = &r.path.safe_state {
+        return Some(ss);
+    }
+    if !model.contracts.scope_paths.contains_key(r.key) {
+        return None;
+    }
+    model
+        .contracts
+        .node_paths
+        .values()
+        .filter_map(|p| p.safe_state.as_ref())
+        .filter(|ss| {
+            r.path.output.iter().any(|t| {
+                model
+                    .structure
+                    .topics
+                    .get(t)
+                    .is_some_and(|w| w.publishers.contains(&ss.emits))
+            })
+        })
+        .max_by(|a, b| {
+            a.settle_ms
+                .unwrap_or(0.0)
+                .total_cmp(&b.settle_ms.unwrap_or(0.0))
+                .then_with(|| b.emits.cmp(&a.emits))
+        })
+}
+
 /// phase-462 W3b -- every hazard's `safe_state` publisher in this model, with
-/// the reacting path's `settle_ms` (0 when none), keyed by endpoint ref. A
+/// its `settle_ms` (0 when none), keyed by endpoint ref; the safe state is
+/// [`reaction_safe_state`]'s. A
 /// hazard whose reaction does not resolve is skipped here: that refusal is
 /// [`crate::ftti_budget`]'s, raised on both bake roads before anything bakes.
 fn hazard_sinks(model: &SystemModel) -> std::collections::BTreeMap<String, u32> {
     let mut out = std::collections::BTreeMap::new();
     for (key, h) in &model.contracts.hazards {
-        let Ok(Some(crate::ftti_budget::ResolvedReaction { path, .. })) =
-            crate::ftti_budget::reaction_path(model, key, h)
-        else {
+        let Ok(Some(r)) = crate::ftti_budget::reaction_path(model, key, h) else {
             continue;
         };
-        if let Some(ss) = &path.safe_state {
+        if let Some(ss) = reaction_safe_state(model, &r) {
             let settle = ss
                 .settle_ms
                 .unwrap_or(0.0)
@@ -611,9 +650,12 @@ pub fn hazard_rows(model: &SystemModel, rows: &[MonitorRow], ages: &[AgeRow]) ->
         let reaction = crate::ftti_budget::reaction_path(model, key, h)
             .ok()
             .flatten();
-        let emits = reaction.and_then(|r| r.path.safe_state.as_ref().map(|s| s.emits.as_str()));
+        let safe_state = reaction
+            .as_ref()
+            .and_then(|r| reaction_safe_state(model, r));
+        let emits = safe_state.map(|s| s.emits.as_str());
         let reaction_id = reaction
-            .filter(|r| r.path.safe_state.is_some())
+            .filter(|_| safe_state.is_some())
             .and_then(|r| ids.iter().find(|(_, name)| name == r.key))
             .map_or(0, |(id, _)| *id);
         out.push(HazardRow {
@@ -1053,6 +1095,51 @@ mod hazard_row_tests {
             (0, 20),
             "the sink row carries no rate promise (its latency is the path's own)"
         );
+    }
+
+    /// The shape play_launch resolves a contract to: the hazard reacts by a
+    /// SCOPE path, and the safe state is on the node path at its sink. The
+    /// hazard takes that node path's settle and publisher, and the scope path
+    /// is its reaction. Before, both read the scope path's own safe state,
+    /// which it never has, and the row baked settle 0 and no sink.
+    #[test]
+    fn a_scope_path_reaction_takes_the_safe_state_at_its_sink() {
+        let lowered_scope = |output: &str| {
+            let yaml = model_yaml(
+                AGE_100,
+                SAFE_STATE,
+                "      guards:\n        - members: [/scan]\n      on: omission\n      \
+                 reaction: demo.launch.xml/stop\n      ftti_ms: 500.0\n",
+                "",
+            )
+            .replace(
+                "\n  hazards:\n",
+                &format!(
+                    "\n  scope_paths:\n    demo.launch.xml/stop:\n      input: [/scan]\n      \
+                     output: [{output}]\n      max_latency_ms: 50.0\n  hazards:\n"
+                ),
+            );
+            let m = parse(&yaml);
+            let rows = monitor_rows(&m).expect("rows");
+            let ages = age_rows(&m).expect("ages");
+            let hz = hazard_rows(&m, &rows, &ages);
+            (m, rows, hz)
+        };
+        let (m, rows, hz) = lowered_scope("/stop");
+        let h = &hz[0];
+        assert_eq!(h.settle_ms, 30, "{h:?}");
+        assert_eq!(rows[h.sink.expect("sink row")].fqn, "/handler/stop");
+        let ids = model_reaction_ids(&m);
+        assert_eq!(ids, vec![(1, "demo.launch.xml/stop".to_string())]);
+        assert_eq!(h.reaction_id, 1);
+        // The negative control: a scope path ending where no safe state is
+        // published has nothing at its sink.
+        let (m, _, hz) = lowered_scope("/scan");
+        assert_eq!(
+            (hz[0].settle_ms, hz[0].sink, hz[0].reaction_id),
+            (0, None, 0)
+        );
+        assert!(model_reaction_ids(&m).is_empty());
     }
 
     /// A table set holding only part of a hazard's monitors does not lower
