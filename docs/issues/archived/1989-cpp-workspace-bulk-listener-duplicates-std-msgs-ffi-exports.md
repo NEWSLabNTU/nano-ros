@@ -1,7 +1,7 @@
 ---
 id: 1989
 title: "A second std_msgs subscriber package in the cpp workspace gives it two `libnano_ros_cpp_ffi_std_msgs.a`, and the issue 0277 gate counts 90 duplicate `nros_cpp_*` exports"
-status: open
+status: resolved
 type: bug
 area: [build, codegen, cpp, testing]
 severity: medium
@@ -75,3 +75,40 @@ fix has to pick which:
 
 Either way, rerun `interface_subset_linkage` against the cpp workspace with
 both subscriber packages built.
+
+## Resolution (2026-10-23)
+
+The FFI split was right; the gate counted a file the build no longer
+produces.
+
+- `_nros_find_ros_msg_package` generates a message package once per
+  configure, in the binary dir of the FIRST package that calls
+  `find_package()` for it, and every later caller returns early on
+  `if(TARGET <pkg>__nano_ros_cpp)`. The generated root lists SUBDIRS in
+  name order, so `bulk_listener_pkg` (b) is now first and took `std_msgs`
+  over from `listener_pkg` (l). That is also why `talker_pkg` never had one.
+- A fresh build of `origin/main` (`c0c088e6f`,
+  `workspace-fixtures-build.sh linux cpp --id workspace-cpp-native`) writes
+  exactly one `libnano_ros_cpp_ffi_std_msgs.a`, under `bulk_listener_pkg`.
+  Every entry's `build.make` names that path, and none names
+  `listener_pkg`'s.
+- The 118 runner's persistent fixture tree still held the archive
+  `listener_pkg` built before #2435. Nothing removes a crate dir a
+  configure stops generating, and nothing links it, so no link could see
+  the 90 "duplicates". The next tier-1 run (39555555017, 2026-10-21, same
+  runner) passed the test; why that tree no longer held the old archive was
+  not read from its log.
+
+Fix: `interface_subset_linkage` counts an archive only if a generated build
+file of its cmake binary dir (`build.ninja`, or any `build.make`) names it as
+a whole token, relative or absolute, and prints the archives it leaves out.
+A binary dir with no build file at all is an `[UNMET PRECONDITION]`.
+
+| Fixture state (restored, archive set compared after) | Old test | New test |
+|---|---|---|
+| fresh build | PASS | PASS |
+| `bulk_listener_pkg`'s archive copied to `listener_pkg`'s old path (the 10-20 tree) | FAIL at line 164, 90 duplicates | PASS, residue named |
+| the same, plus an entry `build.make` naming the copy | FAIL | FAIL, 90 duplicates |
+
+Not done: the build does not delete a stale FFI crate dir. It costs disk, not
+correctness, now that the gate reads what the build links.
