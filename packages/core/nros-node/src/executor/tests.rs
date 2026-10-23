@@ -16593,3 +16593,264 @@ fn a_node_level_timer_with_info_honours_autostart_and_reports_lateness() {
     );
     assert_eq!(seen[0].clock, crate::executor::TimerClockSource::Steady);
 }
+
+/// phase-509 P9b item 2 (RFC-0108 "As built in P9b") -- worker passes over
+/// one executor that release its lock around each callback.
+mod p9b_windows {
+    use super::*;
+    use crate::executor::{
+        Band, BandWorker,
+        exec_lock::{ExecGuard, ExecLock},
+    };
+    use std::{
+        sync::{
+            Arc, Condvar, Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
+        vec::Vec,
+    };
+
+    /// A recursive lock standing in for the port's
+    /// (`nros_platform_mutex_rec_*`): owner thread and depth under a mutex.
+    struct RecLock {
+        state: Mutex<(usize, u32)>,
+        cv: Condvar,
+    }
+
+    unsafe extern "C" fn thread_id() -> usize {
+        std::thread_local!(static ID: u8 = const { 0 });
+        ID.with(|x| x as *const u8 as usize)
+    }
+
+    unsafe extern "C" fn rec_lock(c: *mut core::ffi::c_void) -> i8 {
+        // SAFETY: the tests pass a leaked `RecLock` as the context.
+        let l = unsafe { &*(c as *const RecLock) };
+        // SAFETY: `thread_id` is callable from any thread.
+        let me = unsafe { thread_id() };
+        let mut g = l.state.lock().unwrap();
+        while g.1 > 0 && g.0 != me {
+            g = l.cv.wait(g).unwrap();
+        }
+        g.0 = me;
+        g.1 += 1;
+        0
+    }
+
+    unsafe extern "C" fn rec_unlock(c: *mut core::ffi::c_void) -> i8 {
+        // SAFETY: as `rec_lock`.
+        let l = unsafe { &*(c as *const RecLock) };
+        let mut g = l.state.lock().unwrap();
+        assert!(g.1 > 0, "unlock of a lock this thread does not hold");
+        g.1 -= 1;
+        if g.1 == 0 {
+            g.0 = 0;
+            l.cv.notify_all();
+        }
+        0
+    }
+
+    /// The executor's lock, with a thread identity: passes open windows.
+    fn install_lock(executor: &mut Executor<'static>) {
+        let lock: &'static RecLock = std::boxed::Box::leak(std::boxed::Box::new(RecLock {
+            state: Mutex::new((0, 0)),
+            cv: Condvar::new(),
+        }));
+        // SAFETY: the lock is leaked, so it outlives the executor; `thread_id`
+        // tells live threads apart (a thread-local's address).
+        let l = unsafe {
+            ExecLock::new(lock as *const RecLock as *mut _, rec_lock, rec_unlock)
+                .unwrap()
+                .with_thread_id(thread_id)
+        };
+        executor.set_exec_lock(Some(l));
+    }
+
+    /// The executor, reachable from several threads; every use takes its
+    /// lock first.
+    #[derive(Clone, Copy)]
+    struct Shared(*mut Executor<'static>);
+    // SAFETY: every thread that dereferences it holds the executor's lock
+    // (`ExecGuard::acquire`) except inside a callback window, where it touches
+    // nothing the window does not allow.
+    unsafe impl Send for Shared {}
+    // SAFETY: as above.
+    unsafe impl Sync for Shared {}
+
+    impl Shared {
+        /// The pointer, by a method so a closure captures the whole `Shared`.
+        fn ptr(self) -> *mut Executor<'static> {
+            self.0
+        }
+
+        fn spin_shared(self) -> SpinOnceResult {
+            // SAFETY: the lock is taken before the pass and held once.
+            let _g = unsafe { ExecGuard::acquire(self.0) };
+            unsafe { Executor::spin_once_shared(self.0, core::time::Duration::ZERO) }
+        }
+
+        fn spin_band(self, w: &mut BandWorker) -> SpinOnceResult {
+            // SAFETY: as `spin_shared`.
+            let _g = unsafe { ExecGuard::acquire(self.0) };
+            unsafe { Executor::spin_band_once(self.0, w) }
+        }
+    }
+
+    /// A node of contract rank `rank` with one 1 ms timer running `f`.
+    fn ranked_timer(
+        executor: &mut Executor<'static>,
+        name: &str,
+        rank: u8,
+        f: impl FnMut(&crate::TimerCallInfo) + Send + 'static,
+    ) -> HandleId {
+        executor.bind_node_rank(name, "/", rank).unwrap();
+        let nid = executor.node_builder(name).build().unwrap();
+        executor
+            .node_mut(nid)
+            .create_timer_with_info(
+                TimerDuration::from_millis(1),
+                crate::executor::TimerClockSource::Steady,
+                true,
+                f,
+            )
+            .unwrap()
+    }
+
+    /// Item 2, test 1 -- two threads spin one executor and one timer is due
+    /// on every pass: its callback never runs twice at once (the running
+    /// mark), and the lock IS released while it runs (another thread takes
+    /// it from inside the callback).
+    #[test]
+    fn two_workers_never_run_one_callback_at_once() {
+        let mut executor = executor_with_clock(MockSession::new());
+        install_lock(&mut executor);
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let runs = Arc::new(AtomicUsize::new(0));
+        let reached = Arc::new(AtomicUsize::new(0));
+        let shared = Shared(&mut executor);
+        let (a, p, r, re) = (active.clone(), peak.clone(), runs.clone(), reached.clone());
+        let id = std::sync::OnceLock::<HandleId>::new();
+        let id = std::boxed::Box::leak(std::boxed::Box::new(id));
+        let idr: &'static std::sync::OnceLock<HandleId> = id;
+        let t = ranked_timer(&mut executor, "solo", 0, move |_| {
+            let now = a.fetch_add(1, Ordering::SeqCst) + 1;
+            p.fetch_max(now, Ordering::SeqCst);
+            r.fetch_add(1, Ordering::SeqCst);
+            // The window is open: a third thread takes the lock and asks
+            // about this very timer. Under a held lock this would deadlock.
+            std::thread::scope(|sc| {
+                sc.spawn(|| {
+                    // SAFETY: the lock is taken before the executor is read.
+                    let _g = unsafe { ExecGuard::acquire(shared.ptr()) };
+                    let _ = unsafe { &*shared.ptr() }.timer_is_canceled(*idr.get().unwrap());
+                    re.fetch_add(1, Ordering::SeqCst);
+                });
+            });
+            std::thread::sleep(std::time::Duration::from_micros(300));
+            a.fetch_sub(1, Ordering::SeqCst);
+        });
+        id.set(t).unwrap();
+        std::thread::scope(|sc| {
+            for _ in 0..2 {
+                sc.spawn(move || {
+                    for _ in 0..200 {
+                        shared.spin_shared();
+                        std::thread::sleep(std::time::Duration::from_micros(200));
+                    }
+                });
+            }
+        });
+        assert!(runs.load(Ordering::SeqCst) >= 2, "the timer ran");
+        assert_eq!(peak.load(Ordering::SeqCst), 1, "never two runs at once");
+        assert_eq!(
+            reached.load(Ordering::SeqCst),
+            runs.load(Ordering::SeqCst),
+            "every callback ran with the lock released"
+        );
+        drop(executor);
+    }
+
+    /// Item 2, test 2 -- two bands over one executor: each worker runs only
+    /// its own band's callbacks, and the urgent band's worker runs while a
+    /// less urgent callback is in its window, without taking that band's work.
+    #[test]
+    fn a_band_worker_runs_only_its_band() {
+        let mut executor = executor_with_clock(MockSession::new());
+        install_lock(&mut executor);
+        let log = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+        let shared = Shared(&mut executor);
+        let hi_band = Band::new(0, 1).unwrap(); // rank 0 -> level 1
+        let lo_band = Band::new(2, 31).unwrap(); // rank 1 -> level 2
+        let l = log.clone();
+        ranked_timer(&mut executor, "hi", 0, move |_| {
+            l.lock().unwrap().push("hi")
+        });
+        let l = log.clone();
+        let nested = Arc::new(AtomicUsize::new(0));
+        let n = nested.clone();
+        ranked_timer(&mut executor, "lo", 1, move |_| {
+            l.lock().unwrap().push("lo");
+            if n.fetch_add(1, Ordering::SeqCst) == 0 {
+                // Preempted, in effect: the urgent worker runs its band to
+                // completion while this callback is in its window.
+                let l2 = l.clone();
+                std::thread::scope(|sc| {
+                    sc.spawn(move || {
+                        let mut hi = BandWorker::new(0, hi_band);
+                        for _ in 0..20 {
+                            shared.spin_band(&mut hi);
+                            std::thread::sleep(std::time::Duration::from_micros(300));
+                        }
+                        l2.lock().unwrap().push("hi-done");
+                    });
+                });
+            }
+            l.lock().unwrap().push("lo-end");
+        });
+        // The lo worker alone: only lo runs (hi stays due, untaken).
+        let mut lo = BandWorker::new(1, lo_band);
+        for _ in 0..3 {
+            shared.spin_band(&mut lo);
+            std::thread::sleep(std::time::Duration::from_micros(1_500));
+        }
+        let got = log.lock().unwrap().clone();
+        let first_lo = got.iter().position(|e| *e == "lo").expect("lo ran");
+        let lo_end = got.iter().position(|e| *e == "lo-end").unwrap();
+        // Everything between lo's start and end came from the hi worker.
+        let inner = &got[first_lo + 1..lo_end];
+        assert!(inner.contains(&"hi"), "hi ran inside lo's window: {got:?}");
+        assert_eq!(inner.last(), Some(&"hi-done"), "{got:?}");
+        assert!(
+            inner.iter().all(|e| *e == "hi" || *e == "hi-done"),
+            "the hi worker ran only hi: {got:?}"
+        );
+        // Outside the window only the lo worker ran: never hi.
+        assert!(
+            got[..first_lo].is_empty() && got[lo_end + 1..].iter().all(|e| e.starts_with("lo")),
+            "the lo worker never ran hi: {got:?}"
+        );
+        drop(executor);
+    }
+
+    /// A band filter is not a slot filter by registration: with no lock, an
+    /// owned `spin_once` still runs every band (the one-level worker).
+    #[test]
+    fn the_one_level_worker_still_runs_every_band() {
+        let mut executor = executor_with_clock(MockSession::new());
+        let log = Arc::new(Mutex::new(Vec::<&'static str>::new()));
+        let l = log.clone();
+        ranked_timer(&mut executor, "hi", 0, move |_| {
+            l.lock().unwrap().push("hi")
+        });
+        let l = log.clone();
+        ranked_timer(&mut executor, "lo", 1, move |_| {
+            l.lock().unwrap().push("lo")
+        });
+        for _ in 0..3 {
+            executor.spin_once(core::time::Duration::ZERO);
+            std::thread::sleep(std::time::Duration::from_micros(1_500));
+        }
+        let got = log.lock().unwrap().clone();
+        assert!(got.contains(&"hi") && got.contains(&"lo"), "{got:?}");
+    }
+}

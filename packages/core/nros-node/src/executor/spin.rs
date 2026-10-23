@@ -2213,6 +2213,10 @@ pub struct Executor<'s> {
     /// [`super::exec_lock::ExecGuard::acquire`], so it is written only while
     /// no second thread exists.
     pub(crate) exec_lock: Option<super::exec_lock::ExecLock>,
+    /// phase-509 P9b item 2 -- the callbacks running in an open window, one
+    /// record per window, each in its pass's frame (`exec_lock::Running`).
+    /// Read and written only under the lock; null while no window is open.
+    pub(crate) running: *mut super::exec_lock::Running,
     /// Issue #515 — the spin cadence audit runs once, on the first spin
     /// that carries a non-zero timeout (which is where the tier's
     /// declared spin period becomes visible to the executor).
@@ -2499,6 +2503,7 @@ impl<'s> Executor<'s> {
             fault_fn: None,
             reaction_hook: None,
             exec_lock: None,
+            running: core::ptr::null_mut(),
             spin_quantization_checked: false,
             reprobe_each_callback: REPROBE_EACH_CALLBACK_DEFAULT,
             spin_quantization_us: 0,
@@ -3791,6 +3796,159 @@ impl<'s> Executor<'s> {
         self.exec_lock
     }
 
+    /// phase-509 P9b item 2 -- whether the callback of `slot` runs in a window
+    /// on a thread other than the calling one. An operation on such an entry
+    /// would race the callback, so the entry accessors answer as for a stale
+    /// handle and cancel / reset are deferred to the end of the dispatch.
+    /// `false` with no window open, which is every one-level image.
+    pub(crate) fn running_elsewhere(&self, slot: usize) -> bool {
+        if self.running.is_null() {
+            return false;
+        }
+        let Some(me) = self.exec_lock.and_then(|l| l.current_thread()) else {
+            return false;
+        };
+        let mut r = self.running;
+        while !r.is_null() {
+            // SAFETY: a record is linked only for its window and unlinked
+            // under the lock before its frame ends (`pass`), and the caller
+            // holds the lock.
+            let rec = unsafe { &*r };
+            if rec.slot == slot {
+                return rec.thread != me;
+            }
+            r = rec.next;
+        }
+        false
+    }
+
+    /// phase-509 P9b item 2 -- link `rec` into the open windows.
+    ///
+    /// # Safety
+    /// `rec` stays alive and unmoved until [`Self::unlink_running`] removes
+    /// it, under the lock.
+    unsafe fn link_running(&mut self, rec: *mut super::exec_lock::Running) {
+        // SAFETY: the caller's contract.
+        unsafe { (*rec).next = self.running };
+        self.running = rec;
+    }
+
+    /// phase-509 P9b item 2 -- unlink `rec`, linked by
+    /// [`Self::link_running`].
+    fn unlink_running(&mut self, rec: *mut super::exec_lock::Running) {
+        let mut at: *mut *mut super::exec_lock::Running = &mut self.running;
+        // SAFETY: every linked record is alive (`link_running`'s contract),
+        // and the list is touched only under the lock.
+        unsafe {
+            while !(*at).is_null() {
+                if *at == rec {
+                    *at = (*rec).next;
+                    return;
+                }
+                at = &mut (**at).next;
+            }
+        }
+    }
+
+    /// phase-509 P9b item 2 -- the dispatch level of `slot`'s occupant: its
+    /// sched context's bucket, and inside `Normal` its rank.
+    fn slot_level(&self, slot: usize) -> u8 {
+        let sc_idx = self.sched_context_bindings[slot].0 as usize;
+        let priority = self
+            .sched_contexts
+            .get(sc_idx)
+            .and_then(|s| s.as_ref())
+            .map_or(super::sched_context::Priority::Normal, |sc| sc.priority);
+        let rank = self.slot_tags.get(slot).map_or(0, |t| t.rank);
+        priority.dispatch_level(rank)
+    }
+
+    /// phase-509 P9b item 2 -- the slots whose dispatch level is in `band`.
+    /// Every slot for [`super::scheduler::Band::ALL`], the one-level worker's
+    /// band, without looking at one.
+    fn band_slots(&self, band: super::scheduler::Band) -> u64 {
+        if band == super::scheduler::Band::ALL {
+            return u64::MAX;
+        }
+        let mut mask = 0u64;
+        for i in 0..self.entries.len().min(64) {
+            if self.entries[i].is_some() && band.contains(self.slot_level(i)) {
+                mask |= 1u64 << i;
+            }
+        }
+        mask
+    }
+
+    /// phase-509 P9b item 2 -- the band the executor's own worker runs:
+    /// every level by default. With band workers over the same executor
+    /// ([`Self::spin_band_once`]), the bands must partition the levels, so
+    /// each callback has one worker.
+    pub fn set_worker_band(&mut self, band: super::scheduler::Band) {
+        self.worker.band = band;
+    }
+
+    /// phase-509 P9b item 2 -- one pass of the executor's own worker, through
+    /// a raw pointer: `spin_once`, except that with a lock that has a thread
+    /// identity installed ([`super::exec_lock::ExecLock::with_thread_id`]) the
+    /// lock is released around each user callback, so other threads (band
+    /// workers, FFI callers) reach the executor while it runs.
+    ///
+    /// # Safety
+    /// `this` points at a live executor. If any other thread can reach it, a
+    /// lock is installed and the calling thread holds it exactly once, and
+    /// every other thread takes it before touching the executor. No reference
+    /// to the executor is live in the caller across this call.
+    pub unsafe fn spin_once_shared(
+        this: *mut Self,
+        timeout: core::time::Duration,
+    ) -> SpinOnceResult {
+        let mut discarded = None;
+        // SAFETY: the caller's contract is `pass`'s.
+        unsafe { Self::pass(this, PassMode::Shared, timeout, &mut discarded) }
+    }
+
+    /// phase-509 P9b item 2 -- one pass of a band worker over an executor it
+    /// shares: the readiness of `worker`'s band, then its callbacks, most
+    /// urgent level first, the lock released around each one as in
+    /// [`Self::spin_once_shared`]. A band pass does not park, drive the
+    /// transport or run the executor-wide chores (parameter and lifecycle
+    /// services, component ticks, the monitors' rules): the executor's own
+    /// worker does.
+    ///
+    /// # Safety
+    /// As [`Self::spin_once_shared`].
+    pub unsafe fn spin_band_once(
+        this: *mut Self,
+        worker: &mut super::scheduler::BandWorker,
+    ) -> SpinOnceResult {
+        let mut discarded = None;
+        // SAFETY: the caller's contract is `pass`'s.
+        unsafe {
+            Self::pass(
+                this,
+                PassMode::Band(worker),
+                core::time::Duration::ZERO,
+                &mut discarded,
+            )
+        }
+    }
+
+    /// phase-509 P9b item 2 -- a band pass's prelude: check in as its level,
+    /// read the clock, and credit its timers with the time since ITS previous
+    /// pass.
+    fn band_prelude(&mut self, w: &mut super::scheduler::BandWorker) -> (Option<u64>, u64) {
+        let now = self.now_us();
+        super::level_liveness::LEVELS.check_in(w.level, now);
+        match now {
+            Some(now) => {
+                let prev = w.last_spin_end_us.unwrap_or(now);
+                w.last_spin_end_us = Some(now);
+                (Some(now), now.saturating_sub(prev))
+            }
+            None => (None, 0),
+        }
+    }
+
     /// phase-503 — microseconds from now to the earliest deadline of a pending
     /// supervised route (0 when one is due), or `None` when none is waiting or
     /// the executor has no clock. A port that supervises with its own timer
@@ -4169,8 +4327,12 @@ impl<'s> Executor<'s> {
     pub(crate) fn next_timer_deadline_us(&self) -> Option<u64> {
         let arena_ptr = self.arena.as_ptr() as *const u8;
         let mut soonest: Option<u64> = None;
-        for meta in self.entries.iter().flatten() {
-            if !matches!(meta.kind, EntryKind::Timer) {
+        for (i, meta) in self.entries.iter().enumerate() {
+            let Some(meta) = meta else { continue };
+            // phase-509 P9b item 2 -- not a timer running in another worker's
+            // window: its header is that worker's while it runs, and a
+            // running timer is not the one to wait for.
+            if !matches!(meta.kind, EntryKind::Timer) || Self::slot_held(self.slot_tags, i) {
                 continue;
             }
             // SAFETY: a Timer entry's arena slot holds a `TimerEntry<F>`, whose
@@ -4210,7 +4372,7 @@ impl<'s> Executor<'s> {
             let Some(meta) = self.entries[i].as_ref() else {
                 continue;
             };
-            if !matches!(meta.kind, EntryKind::Timer) {
+            if !matches!(meta.kind, EntryKind::Timer) || Self::slot_held(self.slot_tags, i) {
                 continue;
             }
             // SAFETY: a Timer entry's arena slot holds a `TimerEntry<F>`,
@@ -4856,7 +5018,10 @@ impl<'s> Executor<'s> {
             let Some(meta) = self.entries[i].as_ref() else {
                 continue;
             };
-            if !matches!(meta.kind, EntryKind::Timer) {
+            // phase-509 P9b item 2 -- a timer whose callback runs in another
+            // worker's window is that worker's to touch; its overrun is
+            // reported by the next pass that finds it idle.
+            if !matches!(meta.kind, EntryKind::Timer) || Self::slot_held(self.slot_tags, i) {
                 continue;
             }
             // SAFETY: a Timer entry's arena slot holds a `TimerEntry<F>`,
@@ -7235,12 +7400,17 @@ impl<'s> Executor<'s> {
     }
 
     /// Issue 1705 — `slot`'s entry is not to be touched by the spin thread
-    /// this pass: its release is pending (it is never dispatched again).
+    /// this pass: its release is pending (it is never dispatched again), or
+    /// (phase-509 P9b item 2) its callback is running, in another worker's
+    /// window or below this pass on the same stack. So one callback never
+    /// runs twice at once, and a pass never probes or sweeps an entry whose
+    /// callback another thread is in.
     #[inline]
     fn slot_held(slot_tags: &[super::types::SlotTag], slot: usize) -> bool {
-        slot_tags
-            .get(slot)
-            .is_some_and(|t| t.flags() & super::types::SlotTag::RELEASE_PENDING != 0)
+        slot_tags.get(slot).is_some_and(|t| {
+            t.flags() & (super::types::SlotTag::RELEASE_PENDING | super::types::SlotTag::IN_FLIGHT)
+                != 0
+        })
     }
 
     /// phase-509 P3 (RFC-0108 D2) -- after a callback, merge what became
@@ -7265,6 +7435,7 @@ impl<'s> Executor<'s> {
         >,
         settled: &mut u64,
         arena_ptr: *mut u8,
+        band_mask: u64,
     ) {
         let mut fresh: u64 = 0;
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -7273,9 +7444,12 @@ impl<'s> Executor<'s> {
         let attributed: u64 = 0;
         #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
         {
-            let arrived = self.wake_ctx.as_ref().map_or(0, |ctx| {
-                ctx.ready.swap(0, portable_atomic::Ordering::SeqCst) as u64
-            }) & attributed;
+            // phase-509 P9b item 2 -- this band's arrivals only.
+            let arrived = self
+                .wake_ctx
+                .as_ref()
+                .map_or(0, |ctx| take_band_bits(&ctx.ready, band_mask))
+                & attributed;
             // Kept for the next pass: its scan asks `has_data` (the bit has
             // left the word, and its wake already ended no park early).
             self.entity_recheck |= arrived & *settled;
@@ -7287,6 +7461,7 @@ impl<'s> Executor<'s> {
                 let bit = 1u64 << i;
                 let Some(meta) = meta else { continue };
                 if (*settled | attributed | fresh) & bit != 0
+                    || band_mask & bit == 0
                     || matches!(meta.kind, EntryKind::Timer | EntryKind::GuardCondition)
                     || matches!(meta.invocation, InvocationMode::Always)
                     || Self::slot_held(self.slot_tags, i)
@@ -7368,6 +7543,17 @@ impl<'s> Executor<'s> {
     /// Issue 1667 — `slot`'s callback has returned. Complete a release it
     /// requested while running.
     fn finish_dispatch(&mut self, slot: usize) {
+        let Some(tag) = self.slot_tags.get(slot) else {
+            return;
+        };
+        // phase-509 P9b item 2 -- a cancel or reset deferred behind this
+        // callback first, while the entry is still marked running.
+        if tag.flags()
+            & (super::types::SlotTag::CANCEL_PENDING | super::types::SlotTag::RESET_PENDING)
+            != 0
+        {
+            self.apply_deferred_timer_op(slot);
+        }
         let Some(tag) = self.slot_tags.get(slot) else {
             return;
         };
@@ -7716,13 +7902,22 @@ impl<'s> Executor<'s> {
     /// granted-QoS read-backs answered for no entity.
     fn slot_of_raw(&self, entry_index: usize) -> Option<usize> {
         self.resolve_handle(HandleId::from_raw(entry_index))
+            .filter(|&slot| !self.running_elsewhere(slot))
     }
 
     /// phase-476 W0 — [`resolve_handle`](Self::resolve_handle) as an index that
     /// is OUT OF RANGE for a stale handle, so an existing `entries.get(..)`
     /// chain answers `None` for it with no further change.
+    ///
+    /// phase-509 P9b item 2 -- also out of range while the entry's callback
+    /// runs in another thread's window (`running_elsewhere`): the accessors
+    /// that go through here touch the entry's arena data, which that callback
+    /// owns until it returns. The caller sees what a stale handle gets, and
+    /// may retry once the callback has returned.
     pub(crate) fn live_slot(&self, id: HandleId) -> usize {
-        self.resolve_handle(id).unwrap_or(usize::MAX)
+        self.resolve_handle(id)
+            .filter(|&slot| !self.running_elsewhere(slot))
+            .unwrap_or(usize::MAX)
     }
 
     /// phase-476 W0 — record that `node` registered the entry `id` names, so
@@ -10496,7 +10691,13 @@ impl<'s> Executor<'s> {
 
     /// Cancel a timer. A cancelled timer will not fire but still accumulates
     /// elapsed time. The timer can be restarted with [`reset_timer()`](Self::reset_timer).
+    ///
+    /// phase-509 P9b item 2 -- while the timer's callback runs in another
+    /// thread's window, the cancel is recorded and applied when it returns.
     pub fn cancel_timer(&mut self, id: HandleId) -> Result<(), NodeError> {
+        if self.defer_timer_op(id, super::types::SlotTag::CANCEL_PENDING)? {
+            return Ok(());
+        }
         let meta = self
             .entries
             .get(self.live_slot(id))
@@ -10515,7 +10716,12 @@ impl<'s> Executor<'s> {
 
     /// Reset a timer. Clears the cancelled state and resets the elapsed time
     /// to zero, so the timer starts a fresh period.
+    ///
+    /// phase-509 P9b item 2 -- deferred like [`Self::cancel_timer`].
     pub fn reset_timer(&mut self, id: HandleId) -> Result<(), NodeError> {
+        if self.defer_timer_op(id, super::types::SlotTag::RESET_PENDING)? {
+            return Ok(());
+        }
         let meta = self
             .entries
             .get(self.live_slot(id))
@@ -10539,19 +10745,85 @@ impl<'s> Executor<'s> {
         Ok(())
     }
 
+    /// phase-509 P9b item 2 -- record a cancel (`op` = `CANCEL_PENDING`) or a
+    /// reset (`RESET_PENDING`) of the timer `id` when its callback runs in
+    /// another thread's window, and answer `true`; `false` when it is not,
+    /// and the caller applies the operation now. The later of the two wins.
+    fn defer_timer_op(&mut self, id: HandleId, op: u8) -> Result<bool, NodeError> {
+        let Some(slot) = self.resolve_handle(id) else {
+            return Ok(false);
+        };
+        if !self.running_elsewhere(slot) {
+            return Ok(false);
+        }
+        if !self.entries[slot]
+            .as_ref()
+            .is_some_and(|m| matches!(m.kind, EntryKind::Timer))
+        {
+            return Err(NodeError::BufferTooSmall);
+        }
+        let tag = &self.slot_tags[slot];
+        tag.clear(super::types::SlotTag::CANCEL_PENDING | super::types::SlotTag::RESET_PENDING);
+        tag.set(op);
+        Ok(true)
+    }
+
+    /// phase-509 P9b item 2 -- apply the cancel or reset deferred while the
+    /// timer in `slot` ran (`defer_timer_op`). Under the lock, its callback
+    /// returned.
+    fn apply_deferred_timer_op(&mut self, slot: usize) {
+        let Some(tag) = self.slot_tags.get(slot) else {
+            return;
+        };
+        let was =
+            tag.clear(super::types::SlotTag::CANCEL_PENDING | super::types::SlotTag::RESET_PENDING);
+        if was & (super::types::SlotTag::CANCEL_PENDING | super::types::SlotTag::RESET_PENDING) == 0
+        {
+            return;
+        }
+        let id = self.handle_for(slot);
+        if was & super::types::SlotTag::CANCEL_PENDING != 0 {
+            let _ = self.cancel_timer(id);
+        } else {
+            let _ = self.reset_timer(id);
+        }
+    }
+
     /// Check if a timer is cancelled.
+    ///
+    /// phase-509 P9b item 2 -- a cancel or reset still pending behind the
+    /// timer's running callback is the answer, as if it had applied.
     pub fn timer_is_canceled(&self, id: HandleId) -> bool {
+        if let Some(slot) = self.resolve_handle(id)
+            && self.running_elsewhere(slot)
+        {
+            let f = self.slot_tags[slot].flags();
+            if f & super::types::SlotTag::CANCEL_PENDING != 0 {
+                return true;
+            }
+            if f & super::types::SlotTag::RESET_PENDING != 0 {
+                return false;
+            }
+        }
+        // `resolve_handle`, not `live_slot`: a running callback's dispatch
+        // never writes `cancelled` (only `cancel_timer` / `reset_timer` do,
+        // and they are deferred while it runs elsewhere), so the flag is read
+        // as a plain field, through a raw pointer, with no reference to the
+        // entry the callback holds.
         let meta = match self
             .entries
-            .get(self.live_slot(id))
+            .get(self.resolve_handle(id).unwrap_or(usize::MAX))
             .and_then(|e| e.as_ref())
         {
             Some(m) if matches!(m.kind, EntryKind::Timer) => m,
             _ => return false,
         };
         let arena_ptr = self.arena.as_ptr() as *const u8;
-        let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
-        header.cancelled
+        // SAFETY: `meta.offset` is this live entry's slot inside the arena.
+        let header = unsafe { arena_ptr.add(meta.offset) as *const TimerHeader };
+        // SAFETY: a Timer entry's arena slot starts with its `TimerHeader`;
+        // see above for why the read races no write.
+        unsafe { core::ptr::addr_of!((*header).cancelled).read() }
     }
 
     /// Get the period of a timer in milliseconds (truncated — see
@@ -10855,9 +11127,1065 @@ impl<'s> Executor<'s> {
         timeout: core::time::Duration,
         first_error: &mut Option<TransportError>,
     ) -> SpinOnceResult {
+        // SAFETY: `self` is exclusive for the whole call, and an owned pass
+        // never releases the executor's lock (`PassMode::Owned`), so nothing
+        // else reaches the executor while it runs.
+        unsafe { Self::pass(self, PassMode::Owned, timeout, first_error) }
+    }
+
+    /// One pass, over a raw executor pointer (phase-509 P9b item 2, RFC-0108
+    /// "As built in P9b"). See [`PassMode`]: an owned pass is the
+    /// `spin_once` every image ran before; a shared pass releases the
+    /// executor's lock around each user callback, and a band pass runs one
+    /// worker's band.
+    ///
+    /// No `&mut Self` lives across a callback window: `s` is re-derived from
+    /// `this` after each one, and nothing borrowed from the executor before a
+    /// window is used after it.
+    ///
+    /// # Safety
+    /// `this` points at a live executor. For `PassMode::Owned`, nothing else
+    /// reaches it for the call. Otherwise the executor's lock is installed and
+    /// held exactly once by the calling thread, and every other thread that
+    /// reaches the executor takes the lock first.
+    unsafe fn pass(
+        this: *mut Self,
+        mut mode: PassMode<'_>,
+        timeout: core::time::Duration,
+        first_error: &mut Option<TransportError>,
+    ) -> SpinOnceResult {
+        // SAFETY: the caller's contract; re-derived after every window.
+        #[allow(unused_mut)]
+        let mut s: &mut Self = unsafe { &mut *this };
         // Issue 1705 — releases deferred behind a dispatch that has since
         // finished are completed here, before this pass looks at the entries.
-        self.reap_deferred_releases();
+        s.reap_deferred_releases();
+        // phase-509 P9b item 2 -- the owned and shared passes run the
+        // executor's own worker's prelude (sim time, services, jitter, the
+        // park, the transport drive); a band pass runs only its own clock.
+        let (now_us_this_spin, delta_us) = match &mut mode {
+            PassMode::Band(w) => s.band_prelude(w),
+            _ => s.owned_prelude(timeout),
+        };
+        // phase-509 P9b item 2 -- this pass's band (every level for the
+        // one-level worker) and its slots. The scan, the sweep and the drain
+        // see only these, so a worker never takes another band's work.
+        let band = match &mode {
+            PassMode::Band(w) => w.band,
+            _ => s.worker.band,
+        };
+        let band_mask = s.band_slots(band);
+        let is_band_pass = matches!(mode, PassMode::Band(_));
+        // phase-509 P9b item 2 -- the lock this pass releases around each
+        // user callback: only a shared or band pass, and only when the lock
+        // can tell the callback's thread from the others. `None` -- an owned
+        // pass, or no lock -- runs every callback under the caller's hold.
+        let window_lock = match mode {
+            PassMode::Owned => None,
+            _ => s.exec_lock.filter(|l| l.opens_windows()),
+        };
+        let window_thread = window_lock.and_then(|l| l.current_thread()).unwrap_or(0);
+
+        let arena_ptr = s.arena.as_mut_ptr() as *mut u8;
+
+        // Phase 1: Readiness scan (Phase 110.A.b — backed by FifoReadySet).
+        //
+        // `bits` carries data-readiness only (used by trigger eval +
+        // by `InvocationMode::OnNewData`). `always_mask` carries the
+        // `InvocationMode::Always` entries that fire regardless of
+        // data presence. The dispatcher drains `bits | always_mask`
+        // after the trigger passes. phase-509 P2 -- in dispatch-level
+        // order (the sched context's bucket, and inside `Normal` the
+        // node's rank), registration order (lowest bit first) among
+        // equals, so an image whose nodes hold one rank is bit-identical
+        // to the pre-refactor `for (i, meta) in entries.iter().enumerate()`
+        // loop.
+        let mut bits: u64 = 0;
+        let mut count: usize = 0;
+        let mut non_timer_mask: u64 = 0;
+        let mut always_mask: u64 = 0;
+
+        // phase-397 W3 (RFC-0084) — an ATTRIBUTED slot's readiness is pushed,
+        // not probed. Its arrivals set its bit in the ready word (W2), so the
+        // bit is read and `has_data` is not called. Two cases still ask:
+        //
+        // - a slot in `entity_recheck`, which may hold data no arrival will
+        //   announce again (see the field);
+        // - a slot whose backend cannot attribute (XRCE, uORB, a timer, a
+        //   guard condition), exactly as before.
+        //
+        // The bit means the data ARRIVED, not that it is still PRESENT: an
+        // arrival that races a drain may dispatch to an empty queue, and every
+        // `try_process` already answers `Ok(false)` to that. A bit cleared
+        // before its dispatch would lose a message; one that over-reports
+        // costs one empty call.
+        //
+        // The word is taken AFTER the wait and the drive above, so it holds
+        // every arrival that ended this spin's park, including those a
+        // single-threaded backend delivered inside `drive_io`. One that lands
+        // after the take stays in the word and has signalled the wake, so the
+        // next spin does not park on it.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        let (attributed, arrived, recheck) = {
+            let attributed = s.entity_attributed;
+            // phase-509 P9b item 2 -- only this band's arrivals: another
+            // band's bits stay in the word for its worker.
+            let arrived = s
+                .wake_ctx
+                .as_ref()
+                .map_or(0, |ctx| take_band_bits(&ctx.ready, band_mask));
+            let recheck = s.entity_recheck & band_mask;
+            s.entity_recheck &= !band_mask;
+            (attributed, arrived & attributed, recheck & attributed)
+        };
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        let (attributed, arrived, recheck) = (0u64, 0u64, 0u64);
+        // Attributed slots the scan could not settle (held mid-dispatch).
+        let mut carry: u64 = 0;
+        let mut probes: u32 = 0;
+
+        for (i, meta) in s.entries.iter().enumerate() {
+            let Some(meta) = meta else { continue };
+            let bit = 1u64 << i;
+            if band_mask & bit == 0 {
+                continue;
+            }
+            if Self::slot_held(s.slot_tags, i) {
+                carry |= (arrived | recheck) & bit;
+                continue;
+            }
+            {
+                let pushed = attributed & bit != 0;
+                let ready = if pushed && arrived & bit != 0 {
+                    true
+                } else if pushed && recheck & bit == 0 {
+                    false
+                } else {
+                    probes = probes.wrapping_add(1);
+                    let data_ptr = unsafe { arena_ptr.add(meta.offset) as *const u8 };
+                    unsafe { (meta.has_data)(data_ptr) }
+                };
+                if ready {
+                    bits |= bit;
+                }
+                if !matches!(meta.kind, EntryKind::Timer | EntryKind::GuardCondition) {
+                    non_timer_mask |= 1u64 << i;
+                }
+                if matches!(meta.invocation, InvocationMode::Always) {
+                    always_mask |= 1u64 << i;
+                }
+                count += 1;
+            }
+        }
+        // Every attributed slot that was ready is asked again next spin: a
+        // dispatch takes what one call takes, and a trigger that does not
+        // pass dispatches nothing, so either may leave data behind.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        {
+            s.entity_recheck |= carry | (bits & attributed);
+            s.readiness_probes = s.readiness_probes.wrapping_add(probes);
+        }
+        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
+        let _ = (carry, probes);
+
+        // phase-462 W5b — an armed deadline row's arrival evidence.
+        if bits != 0 && !s.age_table.is_empty() {
+            super::monitor::credit_arrivals(s.age_table, bits);
+        }
+
+        let snapshot = ReadinessSnapshot { bits, count };
+
+        // Phase 2: Trigger evaluation
+        let trigger_passes = match &s.trigger {
+            Trigger::Any => bits & non_timer_mask != 0 || non_timer_mask == 0,
+            Trigger::All => bits & non_timer_mask == non_timer_mask,
+            Trigger::One(id) => snapshot.is_ready(*id),
+            Trigger::AllOf(set) => snapshot.all_ready(*set),
+            Trigger::AnyOf(set) => snapshot.any_ready(*set),
+            Trigger::Always => true,
+            Trigger::Predicate(f) => f(&snapshot),
+            Trigger::RawPredicate { callback, context } => {
+                // Convert ReadinessSnapshot bitmask to a bool array for the C callback
+                let mut ready_array = [false; 64];
+                for (i, slot) in ready_array
+                    .iter_mut()
+                    .enumerate()
+                    .take(snapshot.count.min(64))
+                {
+                    *slot = snapshot.bits & (1u64 << i) != 0;
+                }
+                // SAFETY: The callback and context are provided by the C API caller.
+                // The ready_array is valid for snapshot.count elements.
+                unsafe { callback(ready_array.as_ptr(), snapshot.count, *context) }
+            }
+        };
+
+        if !trigger_passes {
+            // Timers still need delta accumulation even when trigger doesn't pass
+            //
+            // phase-8 — `.enumerate()` (rather than a bare `.flatten()`) because
+            // `try_process` now carries the entry's slot index for the callback
+            // trace hooks. This sweep FIRES timer callbacks, so it is a real
+            // dispatch path and must attribute them like the drain below does.
+            //
+            // phase-474 I6 -- and it must TIME them like the drain does. This
+            // is the path every timer takes on a node that also subscribes
+            // (the default `Trigger::Any` fails whenever no subscription has
+            // a sample), and it measured nothing, so `max-latency-runtime`
+            // never judged a timer path: the safety island's 250 ms overrun of
+            // a 206 ms path stored no verdict. One clock read before and one
+            // after each timer's `try_process`, only when a latency contract
+            // exists and a clock is injected; the publish-count snapshot is a
+            // fixed array on the stack, nothing allocates. The measured span
+            // is callback entry to exit, as in the drains; release jitter is
+            // `release-jitter-runtime`'s.
+            let mon_table = s.monitor_table;
+            // phase10-B3 -- the route rule reads the same clock and snapshot:
+            // a timer tick is where a sampled route's output is published.
+            let lat_clock = s.clock_us_fn.filter(|_| {
+                mon_table.iter().any(|m| m.max_latency_ms > 0)
+                    || super::monitor::route_active(mon_table)
+            });
+            for i in 0..s.entries.len() {
+                let Some(meta) = s.entries[i].as_ref() else {
+                    continue;
+                };
+                if matches!(meta.kind, EntryKind::Timer)
+                    && band_mask & (1u64 << i) != 0
+                    && !Self::slot_held(s.slot_tags, i)
+                {
+                    let data_ptr = unsafe { arena_ptr.add(meta.offset) };
+                    let try_process = meta.try_process;
+                    let counts_before = snapshot_pub_counts(mon_table, lat_clock.is_some());
+                    let start_us = lat_clock.map(|c| c());
+                    Self::begin_dispatch(s.slot_tags, i);
+                    // phase-509 P9b item 2 -- the callback window: see the
+                    // drain below.
+                    let mut rec = super::exec_lock::Running {
+                        slot: i,
+                        thread: window_thread,
+                        next: core::ptr::null_mut(),
+                    };
+                    let window = window_lock.map(|l| {
+                        // SAFETY: `rec` outlives the window and is unlinked
+                        // under the lock right after it.
+                        unsafe { s.link_running(&mut rec) };
+                        super::exec_lock::Window::open(l)
+                    });
+                    // phase-463 W7 -- the host profile times this sweep too:
+                    // it is the path every timer of a node that also
+                    // subscribes takes (see above), so missing it measured
+                    // the talker's timer at zero invocations.
+                    //
+                    // The OFF arm is the original `let _ =`, untouched, and
+                    // that is MEASURED rather than tidy: every binding tried
+                    // in its place (`let _p`, `let p; drop(p)`) moved
+                    // `spin_once_capturing` by 49-64 B in the Zephyr image
+                    // (phase-463 W5 I3c). Hence the second `unsafe` block,
+                    // recorded in the unsafe census.
+                    #[cfg(not(feature = "profile-mode"))]
+                    let _ = unsafe { try_process(data_ptr, delta_us, i as u8) };
+                    #[cfg(feature = "profile-mode")]
+                    {
+                        super::profile::dispatch_begin(arena_ptr as usize, i);
+                        let processed = unsafe { try_process(data_ptr, delta_us, i as u8) };
+                        super::profile::dispatch_end(matches!(processed, Ok(true)));
+                    }
+                    // Read before the lock is taken back, so a wait for it
+                    // is not counted as the callback's latency.
+                    let swept_end_us = start_us.and(lat_clock).map(|c| c());
+                    if let Some(w) = window {
+                        drop(w);
+                        // SAFETY: the lock is held again; nothing borrowed
+                        // from the executor before the window is used after.
+                        s = unsafe { &mut *this };
+                        s.unlink_running(&mut rec);
+                    }
+                    if let (Some(end_us), Some(t0)) = (swept_end_us, start_us) {
+                        let elapsed_us = end_us.saturating_sub(t0).min(u32::MAX as u64) as u32;
+                        attribute_latency(mon_table, true, &counts_before, elapsed_us);
+                        let hook = s.reaction_hook.filter(|_| s.violations.counts.armed);
+                        let violations = &mut s.violations;
+                        super::monitor::route_judge(
+                            mon_table,
+                            &counts_before,
+                            end_us,
+                            |row, v, record, react| {
+                                if react {
+                                    call_route_reaction(hook, mon_table, row, &v);
+                                }
+                                if record {
+                                    violations.record(v)
+                                }
+                            },
+                        );
+                    }
+                    s.finish_dispatch(i);
+                }
+            }
+
+            // phase-509 P9b item 2 -- the executor-wide chores below are the
+            // executor's own worker's.
+            if is_band_pass {
+                return SpinOnceResult::new();
+            }
+
+            // Parameter services live outside the arena and must be processed
+            // regardless of trigger state, otherwise ROS 2 param queries time out.
+            #[cfg(feature = "param-store")]
+            {
+                #[allow(unused_mut)] // only the services add to it
+                let mut handled = 0usize;
+                #[cfg(feature = "param-services")]
+                if let Some(params) = &mut s.params {
+                    {
+                        let crate::param_store::ParamState {
+                            server,
+                            services,
+                            buffers,
+                            staged,
+                            ..
+                        } = &mut **params;
+                        // phase-426 W3 — one set per node; every set is pumped,
+                        // because `ros2 param list` addresses each node's own
+                        // six and a set nobody polls times out.
+                        //
+                        // Issue 1270 -- all of them through ONE buffer pair.
+                        // Issue 1271 -- a request that got no reply is logged
+                        // inside, once per service; there is no error to drop.
+                        if let Some(buffers) = buffers {
+                            for set in services.iter_mut() {
+                                handled += set.process(server, staged, buffers);
+                            }
+                        }
+                    }
+                }
+                // phase-425 W3b — a `ros2 param set … use_sim_time true` arrives
+                // through this path.
+                s.note_param_services_ran(handled);
+            }
+
+            // Same treatment for lifecycle services — `ros2 lifecycle get`
+            // must succeed even when no callbacks fired this tick.
+            //
+            // Issue 1587 — `process` also drains the state machine's
+            // announcement queue onto `~/transition_event`, so a transition
+            // triggered from application code between two spins (autostart is
+            // the common one) reaches a watching supervisor here.
+            // SAFETY: see the matching invariant on the later call site.
+            #[cfg(feature = "lifecycle-services")]
+            if let Some(lc) = &mut s.lifecycle {
+                let _ = unsafe { lc.process() };
+            }
+
+            // phase-474 I7 -- an idle spin is the natural slot for the queued
+            // reports.
+            s.flush_violation_reports();
+
+            return SpinOnceResult::new();
+        }
+
+        // Phase 2.5: LET pre-sample (only when LogicalExecutionTime)
+        //
+        // Sample all subscription data into entry buffers BEFORE dispatching
+        // any callbacks. This ensures all callbacks in this cycle see a
+        // consistent snapshot of data from the same point in time.
+        // Services are NOT pre-sampled (request-reply is sequential).
+        if matches!(s.semantics, ExecutorSemantics::LogicalExecutionTime) {
+            for (i, meta) in s.entries.iter().enumerate() {
+                let Some(meta) = meta else { continue };
+                if matches!(meta.kind, EntryKind::Subscription)
+                    && band_mask & (1u64 << i) != 0
+                    && !Self::slot_held(s.slot_tags, i)
+                {
+                    let data_ptr = unsafe { arena_ptr.add(meta.offset) };
+                    unsafe { (meta.pre_sample)(data_ptr) };
+                }
+            }
+        }
+
+        // Phase 3: Dispatch (Phase 110.C — bucketed by SC.priority).
+        //
+        // Two ready-set families, each split across `Priority::COUNT`
+        // buckets (Critical / Normal / BestEffort). Per-entry SC
+        // `class` selects FIFO bitmap vs EDF heap; SC `priority`
+        // selects the bucket within. Drain order:
+        //   for each bucket in priority order (Critical first):
+        //     drain EDF heap (deadline-priority), then FIFO bitmap
+        //     (registration-order)
+        // Default workloads — every entry on the auto-default Fifo SC
+        // (Normal priority) — populate only `fifo[Normal]`, so
+        // dispatch order is bit-identical to 110.B.b for those.
+        const NB: usize = super::sched_context::Priority::COUNT;
+        let mut result = SpinOnceResult::new();
+        // phase-509 P2 (RFC-0108 D2) -- the FIFO half is ordered by dispatch
+        // level: a bucket's reserved level, or `1 + rank` inside `Normal`, the
+        // rank being the one the entry's node was seeded with. Equal levels
+        // keep registration order, so an image with one rank is unchanged.
+        let mut fifo: super::ready_set::RankedFifoSet<{ MAX_CALLBACK_SLOTS }> =
+            super::ready_set::RankedFifoSet::new();
+        let mut edf: super::ready_set::BucketedEdfSet<NB, { MAX_CALLBACK_SLOTS }> =
+            super::ready_set::BucketedEdfSet::new();
+        let active_mask = bits | always_mask;
+
+        // Phase 110.E — refill any Sporadic SC budgets at period
+        // boundaries before deciding what to dispatch this cycle.
+        // Refill is polled (not ISR-driven) — coarse but correct
+        // upper-bound bandwidth limiter.
+        // phase-359 W4 — was `#[cfg(feature = "std")]` with NO no_std arm, so
+        // polled Sporadic budgets never refilled on embedded: they exhausted
+        // once and stayed exhausted. That was a consequence of "no clock on
+        // no_std", which is false whenever a `clock_us` hook is injected. Now it
+        // runs on either flavour when a clock exists, and is skipped when none
+        // does — identical to today's behaviour in that case.
+        if let Some(now_us) = now_us_this_spin {
+            let now_ms = now_us / 1000;
+            // issue 0736 — REFILL only. This used to also charge the cycle's
+            // `delta_us` as the per-SC consumption estimate ("worst-case
+            // attribution", pending a higher-precision clock hook). That hook
+            // landed, and the attribution was not merely coarse: `delta_us` is
+            // the wall-clock gap between spins, not CPU the callbacks spent, so
+            // wherever the gap exceeds the budget the SC is exhausted on every
+            // spin regardless of what it ran. Consumption is charged from
+            // measured callback runtime in `consume_dispatch_runtime_us`.
+            for slot in s.sporadic_states.iter_mut().flatten() {
+                let _ = slot.refill(now_ms);
+            }
+        }
+
+        for i in 0..s.entries.len() {
+            if active_mask & (1u64 << i) == 0 {
+                continue;
+            }
+            let sc_idx = s.sched_context_bindings[i].0 as usize;
+            let sc_class_priority_deadline = s
+                .sched_contexts
+                .get(sc_idx)
+                .and_then(|s| s.as_ref())
+                .map(|sc| {
+                    (
+                        sc.class,
+                        sc.priority.index(),
+                        sc.deadline_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX),
+                    )
+                });
+            let (sc_class, bucket, deadline_us) = sc_class_priority_deadline.unwrap_or((
+                super::sched_context::SchedClass::Fifo,
+                super::sched_context::Priority::Normal.index(),
+                u32::MAX,
+            ));
+            // Phase 110.E — Sporadic SC dispatch is suppressed when
+            // its budget is exhausted. Atomic path (110.E.b PlatformTimer
+            // refill) takes precedence when registered; polled path
+            // (cycle-level delta_us attribution) handles the unregistered
+            // case. Either way, exhausted budget skips dispatch.
+            if matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
+                #[cfg(feature = "alloc")]
+                let atomic_has_budget = s
+                    .sporadic_atomic_states
+                    .get(sc_idx)
+                    .and_then(|s| s.as_ref())
+                    .map(|(state, _)| state.has_budget());
+                #[cfg(not(feature = "alloc"))]
+                let atomic_has_budget: Option<bool> = None;
+                let has_budget = match atomic_has_budget {
+                    Some(b) => b,
+                    None => s
+                        .sporadic_states
+                        .get(sc_idx)
+                        .and_then(|s| s.as_ref())
+                        .map(|s| s.budget_remaining_us > 0)
+                        .unwrap_or(true),
+                };
+                if !has_budget {
+                    // issue 0736 — keep the TIMER'S CLOCK honest even while the
+                    // budget gates its dispatch.
+                    //
+                    // A timer's `elapsed_us` only advances inside
+                    // `timer_try_process`, which is reached only when the entry
+                    // is DISPATCHED, and each dispatch is handed just THIS
+                    // cycle's `delta_us`. So every cycle skipped here was
+                    // dropped from the timer's sense of time: it did not fire,
+                    // it did not learn that its period had passed, and — because
+                    // the overrun counter is driven by that same `elapsed_us` —
+                    // it did not count the activation it missed.
+                    //
+                    // That is why the throttle was invisible. Measured on
+                    // nuttx-arm/rust: ~238 activations lost against ~40
+                    // reported, so five in six missed firings were unaccounted
+                    // ANYWHERE. The tier ran at a quarter of its declared rate
+                    // and the only honest signal was the delivery count itself.
+                    //
+                    // Advancing the clock here does not dispatch anything and
+                    // does not defeat the budget. It makes the entry's own
+                    // accounting independent of whether the executor CHOSE to
+                    // run it, which is the property every "did this meet its
+                    // declaration?" question needs, and it lets the existing
+                    // `Skip` policy count the backlog and the existing
+                    // `timer-overrun-runtime` rule report it.
+                    if let Some(meta) = s.entries[i].as_ref()
+                        && matches!(meta.kind, EntryKind::Timer)
+                    {
+                        // SAFETY: a Timer entry's arena slot holds a
+                        // `TimerEntry<F>`, whose leading layout IS
+                        // `TimerHeader` — the same cast the overrun reporter
+                        // one screen up already relies on.
+                        let header =
+                            unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
+                        // Issue 1321 — on the TIMER'S clock, not the
+                        // executor's. This line read
+                        // `header.elapsed_us += delta_us`, which is wall
+                        // microseconds: for a `Ros` timer that advanced a
+                        // simulated-time counter by wall time, so a paused
+                        // `/clock` no longer paused the timer — the one
+                        // property a ROS-time timer has. Unbounded, unlike
+                        // 1321's park bound, because it can fire a callback
+                        // that no clock step earned.
+                        super::arena::timer_advance_without_dispatch(header, delta_us);
+                    }
+                    // issue 0736 — a budget skip used to be a bare `continue`,
+                    // which is the silent-drop shape 0737 gated one layer out:
+                    // the entry is simply not dispatched and nothing anywhere
+                    // says so, so a permanently starved tier is
+                    // indistinguishable from an idle one. It took a hand-run
+                    // 45 s image and a per-executor probe to learn that this
+                    // line was skipping 96 % of one tier's spins.
+                    // The rolling window catches a budget that THROTTLES; the
+                    // streak below catches one that starves outright. issue
+                    // 0736 needed both: the measured case skipped ~3 spins in
+                    // 4 without ever reaching a streak, so the tier ran at a
+                    // quarter of its declared rate in silence.
+                    if let Some((skips, total)) = s
+                        .sporadic_states
+                        .get_mut(sc_idx)
+                        .and_then(|st| st.as_mut())
+                        .and_then(|st| st.take_budget_window())
+                    {
+                        nros_log::log_warn!(
+                            nros_log::get_logger("nros"),
+                            "sporadic budget throttled sched context {}: {} of the last {} dispatch opportunities were skipped for want of budget. The declared budget_us/period_us cannot sustain this tier's callbacks on this target.",
+                            sc_idx,
+                            skips,
+                            total
+                        );
+                    }
+                    if let Some(streak) = s
+                        .sporadic_states
+                        .get_mut(sc_idx)
+                        .and_then(|st| st.as_mut())
+                        .and_then(|st| st.note_budget_skip())
+                    {
+                        nros_log::log_warn!(
+                            nros_log::get_logger("nros"),
+                            "sporadic budget exhausted for {} consecutive spins (sched context {}): its callbacks are not being dispatched. Either the callback runtime exceeds the declared budget_us per period_us, or the declaration is unsatisfiable on this target.",
+                            streak,
+                            sc_idx
+                        );
+                    }
+                    continue;
+                }
+                // Phase 110.E.b follow-up — per-callback runtime
+                // accounting (replaces this cycle-level attribution)
+                // is applied at dispatch time below via
+                // `consume_dispatch_runtime_us`. We only update the
+                // polled-path `SporadicState` (no_std fallback) here
+                // because the atomic path now records actual
+                // wall-clock per-callback runtime. The
+                // `delta_us` over-attribution that previously hit the
+                // atomic state was a worst-case bandwidth limiter;
+                // per-callback measurement is strictly tighter.
+                #[cfg(not(feature = "alloc"))]
+                {
+                    let _ = sc_idx; // polled-state path lives in
+                    // `sporadic_states`; this branch is a no-op when
+                    // the atomic path is enabled.
+                }
+            }
+            // Phase 110.G — TT window gate, orthogonal to class.
+            // Skips dispatch when the SC has a TT window AND the
+            // current monotonic time is outside it. Both gates apply
+            // independently — a Sporadic SC with a TT window must
+            // pass both.
+            if s.major_frame_us > 0 {
+                let sc_opt = s.sched_contexts.get(sc_idx).and_then(|s| s.as_ref());
+                if let Some(sc) = sc_opt {
+                    let off = sc.tt_window_offset_us.get().map(|nz| nz.get()).unwrap_or(0);
+                    let dur = sc
+                        .tt_window_duration_us
+                        .get()
+                        .map(|nz| nz.get())
+                        .unwrap_or(0);
+                    if dur > 0 {
+                        // Compute current phase within the major
+                        // frame using the accumulated `delta_us` clock
+                        // (std-only precise; no_std uses `delta_us`
+                        // approximation from spin cadence).
+                        // phase-359 W4 — the shared read. The no_std arm used
+                        // to be `now_us = delta_us`, i.e. a per-spin INTERVAL
+                        // used as an absolute phase clock, which the comment
+                        // above called an approximation. It is now the real
+                        // clock when one is injected, and falls back to the old
+                        // approximation only when none is.
+                        let now_us = now_us_this_spin.unwrap_or(delta_us);
+                        let phase = (now_us % s.major_frame_us as u64) as u32;
+                        let in_window = if off + dur <= s.major_frame_us {
+                            phase >= off && phase < off + dur
+                        } else {
+                            // Window wraps the major frame boundary.
+                            let end = (off as u64 + dur as u64) % s.major_frame_us as u64;
+                            phase >= off || (phase as u64) < end
+                        };
+                        if !in_window {
+                            continue;
+                        }
+                    }
+                }
+            }
+            let is_edf = matches!(sc_class, super::sched_context::SchedClass::Edf);
+            let job = super::types::ActiveJob {
+                sort_key: if is_edf { deadline_us } else { i as u32 },
+                desc_idx: i as super::types::DescIdx,
+            };
+            if is_edf {
+                let _ = edf.insert_into(bucket, job);
+            } else {
+                let rank = s.slot_tags.get(i).map_or(0, |t| t.rank);
+                let level = super::sched_context::Priority::from_index(bucket).dispatch_level(rank);
+                // phase-509 P6 / P9b item 2 -- the scan saw only this pass's
+                // band, so nothing it queued is another band's.
+                debug_assert!(band.contains(level));
+                let _ = fifo.insert_at(level, job);
+            }
+        }
+        // phase-509 P3 -- every slot this pass has already settled: queued
+        // above, or held back by a gate (budget, window, worker). A slot in
+        // it never joins the pass again, so each entry runs at most once per
+        // pass (a timer's clock advances by one `delta_us` per pass, and a
+        // callback that readies itself cannot hold the pass forever).
+        let mut settled: u64 = active_mask;
+        // phase-509 P3 -- the LET semantics dispatch the pass's snapshot,
+        // sampled before any callback ran; nothing joins it mid-pass.
+        // A trigger narrower than "any" (`One`, `AllOf`, a predicate) chose
+        // this pass's work from the scan; it stays the scan's.
+        let repick = !matches!(s.semantics, ExecutorSemantics::LogicalExecutionTime)
+            && matches!(s.trigger, Trigger::Any | Trigger::Always);
+
+        // SAFETY: each `desc_idx` we pop was set above only when the
+        // corresponding `entries[i]` slot was `Some`; no Executor
+        // mutation happens between that scan and this dispatch.
+        let mut dispatch_one = |meta: &CallbackMeta,
+                                desc_idx: usize,
+                                arena_ptr: *mut u8,
+                                delta_us: u64,
+                                result: &mut SpinOnceResult| {
+            // Phase 141.B.2 — capture T1 at subscription dispatch
+            // entry. Probe pairs it with the most recent T0 from
+            // `nros_rmw_runtime_wake_cb` (std + alloc variants)
+            // and pushes `T1 - T0` onto the ring buffer 141.C
+            // drains. No-op when the probe feature is off or
+            // no cycle reader is installed. Other entry kinds
+            // (Service / Timer / GuardCondition) skip the probe
+            // because the 141 acceptance is specifically
+            // wake-to-subscription-dispatch latency.
+            #[cfg(feature = "wake-latency-probe")]
+            if matches!(meta.kind, EntryKind::Subscription) {
+                super::wake_probe::on_dispatch();
+            }
+            let data_ptr = unsafe { arena_ptr.add(meta.offset) };
+            // phase-8 — `desc_idx` is the entry slot index, threaded through so
+            // the leaf hooks in `arena.rs` can name the callback they bracket.
+            // `MAX_CALLBACK_SLOTS` is 64 (enforced by the `u64` ready-set
+            // bitmask), so the `as u8` cannot truncate a live slot.
+            // phase-463 W7 — time the dispatch and attribute its publishes
+            // (host `profile-mode` only). ONE call site for both builds, so no
+            // second `unsafe` block; the binding is the only change an RTOS
+            // image sees, and its loadable bytes measured identical (phase-463
+            // W5 I3c, Zephyr cpp/talker).
+            #[cfg(feature = "profile-mode")]
+            super::profile::dispatch_begin(arena_ptr as usize, desc_idx);
+            let processed = unsafe { (meta.try_process)(data_ptr, delta_us, desc_idx as u8) };
+            #[cfg(feature = "profile-mode")]
+            super::profile::dispatch_end(matches!(processed, Ok(true)));
+            match processed {
+                Ok(true) => match meta.kind {
+                    EntryKind::Subscription => result.subscriptions_processed += 1,
+                    EntryKind::Service
+                    | EntryKind::ServiceClient
+                    | EntryKind::ActionServer
+                    | EntryKind::ActionClient => result.services_handled += 1,
+                    EntryKind::Timer => result.timers_fired += 1,
+                    EntryKind::GuardCondition => {}
+                },
+                Ok(false) => {}
+                Err(e) => {
+                    // phase-427 — the first one is kept, the rest are counted.
+                    // `stop_on_first_error` is what reads it; when nobody
+                    // asked, the `Option` is a local the optimiser drops.
+                    if first_error.is_none() {
+                        *first_error = Some(e);
+                    }
+                    match meta.kind {
+                        EntryKind::Subscription => result.subscription_errors += 1,
+                        EntryKind::Service
+                        | EntryKind::ServiceClient
+                        | EntryKind::ActionServer
+                        | EntryKind::ActionClient => result.service_errors += 1,
+                        EntryKind::Timer | EntryKind::GuardCondition => {}
+                    }
+                }
+            }
+        };
+
+        // Phase 110.E.b follow-up — per-callback runtime accounting
+        // for Sporadic SCs. Wall-clock-measure each dispatch and
+        // consume the elapsed microseconds from the bound SC's
+        // atomic budget. This replaces the cycle-level over-
+        // attribution that previously charged the FULL `delta_us`
+        // against every Sporadic SC regardless of which entries
+        // actually fired — accurate per-callback measurement is the
+        // shape the design doc's per-callback runtime acceptance
+        // calls out.
+        //
+        // phase-359 W10 — this was `feature = "std"`-gated, because it "needs a
+        // `core::time::Instant`-equivalent monotonic clock ... until a
+        // board-side monotonic-microsecond accessor lands". That accessor
+        // landed: `now_us()` reads the platform monotonic counter on every
+        // flavour. So per-callback sporadic accounting is no longer something
+        // only a hosted build gets, and the no_std fallback to polled
+        // `SporadicState` cycle deltas is no longer the only option on target.
+        let consume_dispatch_runtime_us =
+            |desc_idx: usize,
+             elapsed_us: u32,
+             sched_context_bindings: &[super::sched_context::SchedContextId],
+             sched_contexts: &[Option<super::sched_context::SchedContext>],
+             sporadic_states: &mut [Option<super::sched_context::SporadicState>],
+             alive_slots: &mut [super::monitor::AliveSlot],
+             #[cfg(feature = "alloc")] sporadic_atomic_states: &[Option<(
+                portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
+                OpaqueTimerHandle,
+            )>]| {
+                let sc_idx = sched_context_bindings[desc_idx].0 as usize;
+                // Alive supervision counts EVERY dispatch, before the class
+                // gate below: a Fifo or time-triggered context can fall
+                // silent exactly as a sporadic one can, and the rule that
+                // notices must not be scoped to the class that happens to
+                // carry a budget.
+                if let Some(slot) = alive_slots.get_mut(sc_idx) {
+                    slot.dispatches = slot.dispatches.wrapping_add(1);
+                }
+                let sc_class = sched_contexts
+                    .get(sc_idx)
+                    .and_then(|s| s.as_ref())
+                    .map(|sc| sc.class)
+                    .unwrap_or(super::sched_context::SchedClass::Fifo);
+                if !matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
+                    return;
+                }
+                #[cfg(feature = "alloc")]
+                if let Some((state, _)) =
+                    sporadic_atomic_states.get(sc_idx).and_then(|s| s.as_ref())
+                {
+                    state.consume(elapsed_us);
+                    // Unconditional, unlike the overrun record below: the
+                    // budget is sized FROM this number, so it has to exist
+                    // before the budget is right rather than only after it
+                    // is wrong.
+                    state.record_exec(elapsed_us);
+                    // Phase 110.E.b — overrun detection. Cooperative
+                    // single-thread can't preempt a runaway callback,
+                    // so post-dispatch wall-clock comparison delivers
+                    // the same observable signal as the design's
+                    // oneshot-IRQ-and-cancel pattern, without needing
+                    // a separate timer per SC. `budget_capacity_us` is
+                    // the per-period budget the SC was sized against;
+                    // any callback exceeding that has run past its
+                    // bandwidth allotment.
+                    if elapsed_us > state.budget_capacity_us {
+                        state.record_overrun(elapsed_us - state.budget_capacity_us);
+                    }
+                }
+                // issue 0736 — the POLLED state is charged unconditionally,
+                // and it is the one that matters: `has_budget` prefers the
+                // atomic state only when a refill timer was registered, which
+                // no board or entry does. Before this, the alloc arm charged a
+                // state nothing populated and the no_std arm discarded the
+                // measurement outright (`let _ = (sc_idx, elapsed_us)`), so no
+                // shipped image recorded per-callback runtime anywhere — while
+                // the comment above claimed it did.
+                if let Some(state) = sporadic_states.get_mut(sc_idx).and_then(|s| s.as_mut()) {
+                    state.consume(elapsed_us);
+                }
+            };
+
+        // W3b.5 — post-dispatch contract checks. `lat_active` gates the
+        // per-dispatch publish-count snapshot (attribution of dispatch
+        // elapsed time to monitored publishers whose counter advanced);
+        // `dl_active` gates elapsed measurement for deadline actions. The third
+        // term used to be `cfg!(feature = "std")` — "std measures anyway for
+        // the sporadic path" — which made a COMPILE-TIME flavour stand in for
+        // "is there a clock". It is now the runtime question it always was.
+        let mon_table = s.monitor_table;
+        let lat_active = mon_table.iter().any(|m| m.max_latency_ms > 0);
+        let dl_active = s.sched_contexts.iter().flatten().any(|sc| {
+            sc.deadline_us.is_some()
+                && !matches!(
+                    sc.deadline_action,
+                    super::sched_context::DeadlineAction::Ignore
+                )
+        });
+        let mon_clock = s.clock_us_fn;
+        // phase10-B3 -- the route rule needs the clock and the publish-count
+        // snapshot, and nothing else; without a clock it judges nothing.
+        let route_on = mon_clock.is_some() && super::monitor::route_active(mon_table);
+        // phase-503 -- a late supervised route reacts at completion too; not
+        // before the monitors are armed (phase-474 I2), as after the park.
+        let route_hook = s.reaction_hook.filter(|_| s.violations.counts.armed);
+        let counts_on = lat_active || route_on;
+        // phase-359 W4 — one predicate, no cfg block. `cfg!` is an expression,
+        // so the flavour difference stays a value instead of a branch: std
+        // measures unconditionally because the sporadic runtime accounting
+        // below (itself std-only) consumes the result, which is exactly what
+        // the comment above described and what the four-arm sites encoded.
+        let measure_us = counts_on || dl_active || mon_clock.is_some();
+        // phase-359 W4 — ONE hoisted µs reader for the per-dispatch latency
+        // measurement below. Hoisted because `now_us()` takes `&mut self` and
+        // the dispatch loop already holds borrows; the std arm copies the epoch
+        // (a `Copy` `Instant`) so reading inside the loop touches no `self`.
+        // This is the last cfg pair in the timing path: the two call sites it
+        // serves each had FOUR arms (start + elapsed, per flavour).
+        let read_us = move || mon_clock.map(|c| c()).unwrap_or(0);
+        // Deferred deadline-miss violations (the loop body holds an
+        // immutable borrow of `s.entries`, so the ring is fed after).
+        let mut deadline_misses: heapless::Vec<
+            super::monitor::Violation,
+            { super::monitor::MAX_VIOLATIONS },
+        > = heapless::Vec::new();
+        // SCs whose remaining callbacks this cycle are skipped
+        // (`DeadlineAction::Skip`) — bitmask over SC slots.
+        let mut skipped_scs: u64 = 0;
+
+        // For each priority bucket (Critical → Normal → BestEffort),
+        // drain EDF first then FIFO so an EDF callback in this bucket
+        // beats a FIFO peer at the same priority, but no lower-priority
+        // entry runs while a higher-priority bucket has work pending.
+        // Strict static priority across buckets; non-preemptive within
+        // an in-flight callback (see Phase 110.D).
+        // phase-509 P3 (RFC-0108 D2) -- one pick at a time. Each pick is the
+        // most urgent queued job (bucket by bucket: EDF heap, then the ranked
+        // FIFO's levels), and after each callback the ready set is merged
+        // with what became ready while it ran, so an urgent callback made
+        // ready by a less urgent one runs before the rest of the pass. Was a
+        // drain of the scan's snapshot, bucket by bucket.
+        loop {
+            let mut next = None;
+            for bucket in 0..NB {
+                if let Some(job) = edf.pop_from(bucket) {
+                    next = Some(job);
+                    break;
+                }
+                let (level_lo, level_hi) =
+                    super::sched_context::Priority::from_index(bucket).level_range();
+                if let Some(job) = fifo.pop_in(level_lo, level_hi) {
+                    next = Some(job);
+                    break;
+                }
+            }
+            let Some(job) = next else { break };
+            let i = job.desc_idx as usize;
+            let sc_idx = s.sched_context_bindings[i].0 as usize;
+            if sc_idx < 64 && skipped_scs & (1u64 << sc_idx) != 0 {
+                continue; // W3b.5 DeadlineAction::Skip containment
+            }
+            if let Some(meta) = s.entries[i]
+                && !Self::slot_held(s.slot_tags, i)
+            {
+                let counts_before = snapshot_pub_counts(mon_table, counts_on);
+                // Measured only when a consumer wants it, matching the
+                // no_std arm this replaces — the std arm used to measure
+                // unconditionally.
+                let start_us = measure_us.then(read_us);
+                let took_before = result.subscriptions_processed;
+                Self::begin_dispatch(s.slot_tags, i);
+                // phase-509 P9b item 2 (RFC-0108 "As built in P9b") -- the
+                // callback window. With a lock that can tell threads apart,
+                // a shared or band pass gives it for the callback, so a more
+                // urgent worker (or an FFI caller) reaches the executor
+                // while this callback runs. What crosses the window is a
+                // copy of the entry's meta and its pinned arena address; the
+                // running mark (`begin_dispatch`) keeps every other pass off
+                // the entry and defers its release, and `rec` names this
+                // thread as the one running it. `s` is derived again after.
+                let mut rec = super::exec_lock::Running {
+                    slot: i,
+                    thread: window_thread,
+                    next: core::ptr::null_mut(),
+                };
+                let window = window_lock.map(|l| {
+                    // SAFETY: `rec` outlives the window and is unlinked under
+                    // the lock right after it.
+                    unsafe { s.link_running(&mut rec) };
+                    super::exec_lock::Window::open(l)
+                });
+                dispatch_one(&meta, i, arena_ptr, delta_us, &mut result);
+                let end_us = start_us.map(|_| read_us());
+                if let Some(w) = window {
+                    drop(w);
+                    // SAFETY: the lock is held again; nothing borrowed from
+                    // the executor before the window is used after.
+                    s = unsafe { &mut *this };
+                    s.unlink_running(&mut rec);
+                }
+                let elapsed_us: Option<u32> = start_us
+                    .zip(end_us)
+                    .map(|(t0, t1)| t1.saturating_sub(t0))
+                    .map(|d| d.min(u32::MAX as u64) as u32);
+                // phase10-B3 -- a subscription dispatch takes its sample
+                // first, so the dispatch start is the take.
+                if route_on && let (Some(t0), Some(t1)) = (start_us, end_us) {
+                    if result.subscriptions_processed != took_before {
+                        super::monitor::route_take(mon_table, i, t0);
+                    }
+                    super::monitor::route_judge(
+                        mon_table,
+                        &counts_before,
+                        t1,
+                        |row, v, record, react| {
+                            if react {
+                                call_route_reaction(route_hook, mon_table, row, &v);
+                            }
+                            if record {
+                                let _ = deadline_misses.push(v);
+                            }
+                        },
+                    );
+                }
+                if let Some(elapsed_us) = elapsed_us {
+                    consume_dispatch_runtime_us(
+                        i,
+                        elapsed_us,
+                        &s.sched_context_bindings[..],
+                        &s.sched_contexts[..],
+                        &mut s.sporadic_states[..],
+                        &mut s.alive_slots[..],
+                        #[cfg(feature = "alloc")]
+                        &s.sporadic_atomic_states[..],
+                    );
+                }
+                if let Some(elapsed_us) = elapsed_us {
+                    attribute_latency(mon_table, lat_active, &counts_before, elapsed_us);
+                    check_deadline_miss(
+                        s.sched_contexts.get(sc_idx).and_then(|s| s.as_ref()),
+                        sc_idx,
+                        elapsed_us,
+                        &mut deadline_misses,
+                        &mut skipped_scs,
+                        s.fault_fn,
+                        s.reaction_hook,
+                    );
+                }
+                s.finish_dispatch(i);
+            }
+            if repick {
+                s.merge_mid_pass(&mut fifo, &mut edf, &mut settled, arena_ptr, band_mask);
+            }
+        }
+
+        // W3b.5 — feed deferred deadline misses into the violation ring.
+        for v in deadline_misses {
+            s.violations.record(v);
+        }
+        // phase-509 P9b item 2 -- the rules and the executor-wide chores
+        // below are the executor's own worker's.
+        if is_band_pass {
+            return result;
+        }
+
+        // Issue #505 — same ring, same cycle. This runs AFTER dispatch,
+        // unlike the windowed rate/age/latency rules at the top of the
+        // spin: the activations it reports were dropped by the dispatch
+        // that just happened, and a tier that is stalling should not have
+        // to wait for the next spin to say so.
+        s.check_timer_overruns();
+        s.check_release_jitter_rule();
+        s.check_stack_headroom_rule();
+        s.check_alive_supervision();
+        // phase-474 I7 -- the queued /diagnostics reports, after this spin's
+        // dispatches and rules, when the next timer leaves room for them.
+        s.flush_violation_reports();
+        // phase-474 I1 -- the opt-in drain-and-report hook, after every rule of
+        // this spin has had its say.
+        s.violations.drain_and_report();
+
+        // Process parameter services (outside the arena)
+        #[cfg(feature = "param-store")]
+        #[allow(unused_mut)] // only the services add to it
+        let mut handled = 0usize;
+        #[cfg(feature = "param-services")]
+        if let Some(params) = &mut s.params {
+            {
+                let crate::param_store::ParamState {
+                    server,
+                    services,
+                    buffers,
+                    staged,
+                    ..
+                } = &mut **params;
+                // phase-426 W3 -- one set per node; see the sibling site above,
+                // including why nothing here can discard an error (1270/1271).
+                if let Some(buffers) = buffers {
+                    for set in services.iter_mut() {
+                        let n = set.process(server, staged, buffers);
+                        result.services_handled += n;
+                        handled += n;
+                    }
+                }
+            }
+        }
+        #[cfg(feature = "param-store")]
+        s.note_param_services_ran(handled);
+
+        // Process lifecycle services (outside the arena).
+        //
+        // SAFETY: `change_state` dispatches a user-supplied C callback through a
+        // raw function pointer stored in `LifecyclePollingNodeCtx`. The caller
+        // of `register_lifecycle_services` guarantees the callback/context pair
+        // stays live for as long as the executor (see that method's docs).
+        #[cfg(feature = "lifecycle-services")]
+        if let Some(lc) = &mut s.lifecycle {
+            if let Ok(n) = unsafe { lc.process() } {
+                result.services_handled += n;
+            }
+        }
+
+        // Phase 258 (Track 2, 2a) — executor-owned component tick pass.
+        // Mirrors `ExecutorNodeRuntime::run_ticks`: after the transport +
+        // callbacks have been pumped, drive each enrolled component's `tick`
+        // (service-client/action poll, etc.). `exec_ctx` hands the component
+        // the whole executor as a raw `*mut Executor` so its tick can
+        // reborrow it (the same disjoint-field raw-ptr pattern run_ticks
+        // uses). Index-iterate over `Copy` slots so no borrow of
+        // `s.component_slots` is held while `tick` runs (which aliases
+        // `self` through `exec_ctx`).
+        let exec_ctx = s as *mut Executor as *mut core::ffi::c_void;
+        let slot_count = s.component_slots.len();
+        for i in 0..slot_count {
+            let slot = s.component_slots[i];
+            // SAFETY: `slot.state` is the leaked cell the matching `tick`
+            // expects (enrolled via `enroll_component`); `exec_ctx` is a live
+            // `*mut Executor` for `self`. The slot was copied out, so no
+            // borrow of `component_slots` is outstanding during the call.
+            unsafe {
+                (slot.tick)(slot.state, exec_ctx);
+            }
+        }
+
+        result
+    }
+
+    /// The executor's own worker's prelude to a pass: everything
+    /// `spin_once` did before its readiness scan. Returns the pass's clock
+    /// read and the elapsed time its timers are credited.
+    fn owned_prelude(&mut self, timeout: core::time::Duration) -> (Option<u64>, u64) {
         // phase-509 P7 (RFC-0108 D8.2) -- this level is alive: it reached a
         // spin. A level stuck in a callback stops checking in, which is what
         // the image's watchdog feed (`take_every_level_alive`) waits on.
@@ -11251,930 +12579,7 @@ impl<'s> Executor<'s> {
             self.spin_quantization_us = self.spin_nominal_us;
             self.audit_spin_quantization(self.spin_quantization_us);
         }
-
-        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-
-        // Phase 1: Readiness scan (Phase 110.A.b — backed by FifoReadySet).
-        //
-        // `bits` carries data-readiness only (used by trigger eval +
-        // by `InvocationMode::OnNewData`). `always_mask` carries the
-        // `InvocationMode::Always` entries that fire regardless of
-        // data presence. The dispatcher drains `bits | always_mask`
-        // after the trigger passes. phase-509 P2 -- in dispatch-level
-        // order (the sched context's bucket, and inside `Normal` the
-        // node's rank), registration order (lowest bit first) among
-        // equals, so an image whose nodes hold one rank is bit-identical
-        // to the pre-refactor `for (i, meta) in entries.iter().enumerate()`
-        // loop.
-        let mut bits: u64 = 0;
-        let mut count: usize = 0;
-        let mut non_timer_mask: u64 = 0;
-        let mut always_mask: u64 = 0;
-
-        // phase-397 W3 (RFC-0084) — an ATTRIBUTED slot's readiness is pushed,
-        // not probed. Its arrivals set its bit in the ready word (W2), so the
-        // bit is read and `has_data` is not called. Two cases still ask:
-        //
-        // - a slot in `entity_recheck`, which may hold data no arrival will
-        //   announce again (see the field);
-        // - a slot whose backend cannot attribute (XRCE, uORB, a timer, a
-        //   guard condition), exactly as before.
-        //
-        // The bit means the data ARRIVED, not that it is still PRESENT: an
-        // arrival that races a drain may dispatch to an empty queue, and every
-        // `try_process` already answers `Ok(false)` to that. A bit cleared
-        // before its dispatch would lose a message; one that over-reports
-        // costs one empty call.
-        //
-        // The word is taken AFTER the wait and the drive above, so it holds
-        // every arrival that ended this spin's park, including those a
-        // single-threaded backend delivered inside `drive_io`. One that lands
-        // after the take stays in the word and has signalled the wake, so the
-        // next spin does not park on it.
-        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-        let (attributed, arrived, recheck) = {
-            let attributed = self.entity_attributed;
-            let arrived = self.wake_ctx.as_ref().map_or(0, |ctx| {
-                ctx.ready.swap(0, portable_atomic::Ordering::SeqCst) as u64
-            });
-            let recheck = core::mem::take(&mut self.entity_recheck);
-            (attributed, arrived & attributed, recheck & attributed)
-        };
-        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
-        let (attributed, arrived, recheck) = (0u64, 0u64, 0u64);
-        // Attributed slots the scan could not settle (held mid-dispatch).
-        let mut carry: u64 = 0;
-        let mut probes: u32 = 0;
-
-        for (i, meta) in self.entries.iter().enumerate() {
-            let Some(meta) = meta else { continue };
-            let bit = 1u64 << i;
-            if Self::slot_held(self.slot_tags, i) {
-                carry |= (arrived | recheck) & bit;
-                continue;
-            }
-            {
-                let pushed = attributed & bit != 0;
-                let ready = if pushed && arrived & bit != 0 {
-                    true
-                } else if pushed && recheck & bit == 0 {
-                    false
-                } else {
-                    probes = probes.wrapping_add(1);
-                    let data_ptr = unsafe { arena_ptr.add(meta.offset) as *const u8 };
-                    unsafe { (meta.has_data)(data_ptr) }
-                };
-                if ready {
-                    bits |= bit;
-                }
-                if !matches!(meta.kind, EntryKind::Timer | EntryKind::GuardCondition) {
-                    non_timer_mask |= 1u64 << i;
-                }
-                if matches!(meta.invocation, InvocationMode::Always) {
-                    always_mask |= 1u64 << i;
-                }
-                count += 1;
-            }
-        }
-        // Every attributed slot that was ready is asked again next spin: a
-        // dispatch takes what one call takes, and a trigger that does not
-        // pass dispatches nothing, so either may leave data behind.
-        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-        {
-            self.entity_recheck |= carry | (bits & attributed);
-            self.readiness_probes = self.readiness_probes.wrapping_add(probes);
-        }
-        #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
-        let _ = (carry, probes);
-
-        // phase-462 W5b — an armed deadline row's arrival evidence.
-        if bits != 0 && !self.age_table.is_empty() {
-            super::monitor::credit_arrivals(self.age_table, bits);
-        }
-
-        let snapshot = ReadinessSnapshot { bits, count };
-
-        // Phase 2: Trigger evaluation
-        let trigger_passes = match &self.trigger {
-            Trigger::Any => bits & non_timer_mask != 0 || non_timer_mask == 0,
-            Trigger::All => bits & non_timer_mask == non_timer_mask,
-            Trigger::One(id) => snapshot.is_ready(*id),
-            Trigger::AllOf(set) => snapshot.all_ready(*set),
-            Trigger::AnyOf(set) => snapshot.any_ready(*set),
-            Trigger::Always => true,
-            Trigger::Predicate(f) => f(&snapshot),
-            Trigger::RawPredicate { callback, context } => {
-                // Convert ReadinessSnapshot bitmask to a bool array for the C callback
-                let mut ready_array = [false; 64];
-                for (i, slot) in ready_array
-                    .iter_mut()
-                    .enumerate()
-                    .take(snapshot.count.min(64))
-                {
-                    *slot = snapshot.bits & (1u64 << i) != 0;
-                }
-                // SAFETY: The callback and context are provided by the C API caller.
-                // The ready_array is valid for snapshot.count elements.
-                unsafe { callback(ready_array.as_ptr(), snapshot.count, *context) }
-            }
-        };
-
-        if !trigger_passes {
-            // Timers still need delta accumulation even when trigger doesn't pass
-            //
-            // phase-8 — `.enumerate()` (rather than a bare `.flatten()`) because
-            // `try_process` now carries the entry's slot index for the callback
-            // trace hooks. This sweep FIRES timer callbacks, so it is a real
-            // dispatch path and must attribute them like the drain below does.
-            //
-            // phase-474 I6 -- and it must TIME them like the drain does. This
-            // is the path every timer takes on a node that also subscribes
-            // (the default `Trigger::Any` fails whenever no subscription has
-            // a sample), and it measured nothing, so `max-latency-runtime`
-            // never judged a timer path: the safety island's 250 ms overrun of
-            // a 206 ms path stored no verdict. One clock read before and one
-            // after each timer's `try_process`, only when a latency contract
-            // exists and a clock is injected; the publish-count snapshot is a
-            // fixed array on the stack, nothing allocates. The measured span
-            // is callback entry to exit, as in the drains; release jitter is
-            // `release-jitter-runtime`'s.
-            let mon_table = self.monitor_table;
-            // phase10-B3 -- the route rule reads the same clock and snapshot:
-            // a timer tick is where a sampled route's output is published.
-            let lat_clock = self.clock_us_fn.filter(|_| {
-                mon_table.iter().any(|m| m.max_latency_ms > 0)
-                    || super::monitor::route_active(mon_table)
-            });
-            for i in 0..self.entries.len() {
-                let Some(meta) = self.entries[i].as_ref() else {
-                    continue;
-                };
-                if matches!(meta.kind, EntryKind::Timer) && !Self::slot_held(self.slot_tags, i) {
-                    let data_ptr = unsafe { arena_ptr.add(meta.offset) };
-                    let try_process = meta.try_process;
-                    let counts_before = snapshot_pub_counts(mon_table, lat_clock.is_some());
-                    let start_us = lat_clock.map(|c| c());
-                    Self::begin_dispatch(self.slot_tags, i);
-                    // phase-463 W7 -- the host profile times this sweep too:
-                    // it is the path every timer of a node that also
-                    // subscribes takes (see above), so missing it measured
-                    // the talker's timer at zero invocations.
-                    //
-                    // The OFF arm is the original `let _ =`, untouched, and
-                    // that is MEASURED rather than tidy: every binding tried
-                    // in its place (`let _p`, `let p; drop(p)`) moved
-                    // `spin_once_capturing` by 49-64 B in the Zephyr image
-                    // (phase-463 W5 I3c). Hence the second `unsafe` block,
-                    // recorded in the unsafe census.
-                    #[cfg(not(feature = "profile-mode"))]
-                    let _ = unsafe { try_process(data_ptr, delta_us, i as u8) };
-                    #[cfg(feature = "profile-mode")]
-                    {
-                        super::profile::dispatch_begin(arena_ptr as usize, i);
-                        let processed = unsafe { try_process(data_ptr, delta_us, i as u8) };
-                        super::profile::dispatch_end(matches!(processed, Ok(true)));
-                    }
-                    if let (Some(clock), Some(t0)) = (lat_clock, start_us) {
-                        let end_us = clock();
-                        let elapsed_us = end_us.saturating_sub(t0).min(u32::MAX as u64) as u32;
-                        attribute_latency(mon_table, true, &counts_before, elapsed_us);
-                        let hook = self.reaction_hook.filter(|_| self.violations.counts.armed);
-                        let violations = &mut self.violations;
-                        super::monitor::route_judge(
-                            mon_table,
-                            &counts_before,
-                            end_us,
-                            |row, v, record, react| {
-                                if react {
-                                    call_route_reaction(hook, mon_table, row, &v);
-                                }
-                                if record {
-                                    violations.record(v)
-                                }
-                            },
-                        );
-                    }
-                    self.finish_dispatch(i);
-                }
-            }
-
-            // Parameter services live outside the arena and must be processed
-            // regardless of trigger state, otherwise ROS 2 param queries time out.
-            #[cfg(feature = "param-store")]
-            {
-                #[allow(unused_mut)] // only the services add to it
-                let mut handled = 0usize;
-                #[cfg(feature = "param-services")]
-                if let Some(params) = &mut self.params {
-                    {
-                        let crate::param_store::ParamState {
-                            server,
-                            services,
-                            buffers,
-                            staged,
-                            ..
-                        } = &mut **params;
-                        // phase-426 W3 — one set per node; every set is pumped,
-                        // because `ros2 param list` addresses each node's own
-                        // six and a set nobody polls times out.
-                        //
-                        // Issue 1270 -- all of them through ONE buffer pair.
-                        // Issue 1271 -- a request that got no reply is logged
-                        // inside, once per service; there is no error to drop.
-                        if let Some(buffers) = buffers {
-                            for set in services.iter_mut() {
-                                handled += set.process(server, staged, buffers);
-                            }
-                        }
-                    }
-                }
-                // phase-425 W3b — a `ros2 param set … use_sim_time true` arrives
-                // through this path.
-                self.note_param_services_ran(handled);
-            }
-
-            // Same treatment for lifecycle services — `ros2 lifecycle get`
-            // must succeed even when no callbacks fired this tick.
-            //
-            // Issue 1587 — `process` also drains the state machine's
-            // announcement queue onto `~/transition_event`, so a transition
-            // triggered from application code between two spins (autostart is
-            // the common one) reaches a watching supervisor here.
-            // SAFETY: see the matching invariant on the later call site.
-            #[cfg(feature = "lifecycle-services")]
-            if let Some(lc) = &mut self.lifecycle {
-                let _ = unsafe { lc.process() };
-            }
-
-            // phase-474 I7 -- an idle spin is the natural slot for the queued
-            // reports.
-            self.flush_violation_reports();
-
-            return SpinOnceResult::new();
-        }
-
-        // Phase 2.5: LET pre-sample (only when LogicalExecutionTime)
-        //
-        // Sample all subscription data into entry buffers BEFORE dispatching
-        // any callbacks. This ensures all callbacks in this cycle see a
-        // consistent snapshot of data from the same point in time.
-        // Services are NOT pre-sampled (request-reply is sequential).
-        if matches!(self.semantics, ExecutorSemantics::LogicalExecutionTime) {
-            for (i, meta) in self.entries.iter().enumerate() {
-                let Some(meta) = meta else { continue };
-                if matches!(meta.kind, EntryKind::Subscription)
-                    && !Self::slot_held(self.slot_tags, i)
-                {
-                    let data_ptr = unsafe { arena_ptr.add(meta.offset) };
-                    unsafe { (meta.pre_sample)(data_ptr) };
-                }
-            }
-        }
-
-        // Phase 3: Dispatch (Phase 110.C — bucketed by SC.priority).
-        //
-        // Two ready-set families, each split across `Priority::COUNT`
-        // buckets (Critical / Normal / BestEffort). Per-entry SC
-        // `class` selects FIFO bitmap vs EDF heap; SC `priority`
-        // selects the bucket within. Drain order:
-        //   for each bucket in priority order (Critical first):
-        //     drain EDF heap (deadline-priority), then FIFO bitmap
-        //     (registration-order)
-        // Default workloads — every entry on the auto-default Fifo SC
-        // (Normal priority) — populate only `fifo[Normal]`, so
-        // dispatch order is bit-identical to 110.B.b for those.
-        const NB: usize = super::sched_context::Priority::COUNT;
-        let mut result = SpinOnceResult::new();
-        // phase-509 P2 (RFC-0108 D2) -- the FIFO half is ordered by dispatch
-        // level: a bucket's reserved level, or `1 + rank` inside `Normal`, the
-        // rank being the one the entry's node was seeded with. Equal levels
-        // keep registration order, so an image with one rank is unchanged.
-        let mut fifo: super::ready_set::RankedFifoSet<{ MAX_CALLBACK_SLOTS }> =
-            super::ready_set::RankedFifoSet::new();
-        let mut edf: super::ready_set::BucketedEdfSet<NB, { MAX_CALLBACK_SLOTS }> =
-            super::ready_set::BucketedEdfSet::new();
-        let active_mask = bits | always_mask;
-
-        // Phase 110.E — refill any Sporadic SC budgets at period
-        // boundaries before deciding what to dispatch this cycle.
-        // Refill is polled (not ISR-driven) — coarse but correct
-        // upper-bound bandwidth limiter.
-        // phase-359 W4 — was `#[cfg(feature = "std")]` with NO no_std arm, so
-        // polled Sporadic budgets never refilled on embedded: they exhausted
-        // once and stayed exhausted. That was a consequence of "no clock on
-        // no_std", which is false whenever a `clock_us` hook is injected. Now it
-        // runs on either flavour when a clock exists, and is skipped when none
-        // does — identical to today's behaviour in that case.
-        if let Some(now_us) = now_us_this_spin {
-            let now_ms = now_us / 1000;
-            // issue 0736 — REFILL only. This used to also charge the cycle's
-            // `delta_us` as the per-SC consumption estimate ("worst-case
-            // attribution", pending a higher-precision clock hook). That hook
-            // landed, and the attribution was not merely coarse: `delta_us` is
-            // the wall-clock gap between spins, not CPU the callbacks spent, so
-            // wherever the gap exceeds the budget the SC is exhausted on every
-            // spin regardless of what it ran. Consumption is charged from
-            // measured callback runtime in `consume_dispatch_runtime_us`.
-            for slot in self.sporadic_states.iter_mut().flatten() {
-                let _ = slot.refill(now_ms);
-            }
-        }
-
-        for i in 0..self.entries.len() {
-            if active_mask & (1u64 << i) == 0 {
-                continue;
-            }
-            let sc_idx = self.sched_context_bindings[i].0 as usize;
-            let sc_class_priority_deadline = self
-                .sched_contexts
-                .get(sc_idx)
-                .and_then(|s| s.as_ref())
-                .map(|sc| {
-                    (
-                        sc.class,
-                        sc.priority.index(),
-                        sc.deadline_us.get().map(|nz| nz.get()).unwrap_or(u32::MAX),
-                    )
-                });
-            let (sc_class, bucket, deadline_us) = sc_class_priority_deadline.unwrap_or((
-                super::sched_context::SchedClass::Fifo,
-                super::sched_context::Priority::Normal.index(),
-                u32::MAX,
-            ));
-            // Phase 110.E — Sporadic SC dispatch is suppressed when
-            // its budget is exhausted. Atomic path (110.E.b PlatformTimer
-            // refill) takes precedence when registered; polled path
-            // (cycle-level delta_us attribution) handles the unregistered
-            // case. Either way, exhausted budget skips dispatch.
-            if matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
-                #[cfg(feature = "alloc")]
-                let atomic_has_budget = self
-                    .sporadic_atomic_states
-                    .get(sc_idx)
-                    .and_then(|s| s.as_ref())
-                    .map(|(state, _)| state.has_budget());
-                #[cfg(not(feature = "alloc"))]
-                let atomic_has_budget: Option<bool> = None;
-                let has_budget = match atomic_has_budget {
-                    Some(b) => b,
-                    None => self
-                        .sporadic_states
-                        .get(sc_idx)
-                        .and_then(|s| s.as_ref())
-                        .map(|s| s.budget_remaining_us > 0)
-                        .unwrap_or(true),
-                };
-                if !has_budget {
-                    // issue 0736 — keep the TIMER'S CLOCK honest even while the
-                    // budget gates its dispatch.
-                    //
-                    // A timer's `elapsed_us` only advances inside
-                    // `timer_try_process`, which is reached only when the entry
-                    // is DISPATCHED, and each dispatch is handed just THIS
-                    // cycle's `delta_us`. So every cycle skipped here was
-                    // dropped from the timer's sense of time: it did not fire,
-                    // it did not learn that its period had passed, and — because
-                    // the overrun counter is driven by that same `elapsed_us` —
-                    // it did not count the activation it missed.
-                    //
-                    // That is why the throttle was invisible. Measured on
-                    // nuttx-arm/rust: ~238 activations lost against ~40
-                    // reported, so five in six missed firings were unaccounted
-                    // ANYWHERE. The tier ran at a quarter of its declared rate
-                    // and the only honest signal was the delivery count itself.
-                    //
-                    // Advancing the clock here does not dispatch anything and
-                    // does not defeat the budget. It makes the entry's own
-                    // accounting independent of whether the executor CHOSE to
-                    // run it, which is the property every "did this meet its
-                    // declaration?" question needs, and it lets the existing
-                    // `Skip` policy count the backlog and the existing
-                    // `timer-overrun-runtime` rule report it.
-                    if let Some(meta) = self.entries[i].as_ref()
-                        && matches!(meta.kind, EntryKind::Timer)
-                    {
-                        // SAFETY: a Timer entry's arena slot holds a
-                        // `TimerEntry<F>`, whose leading layout IS
-                        // `TimerHeader` — the same cast the overrun reporter
-                        // one screen up already relies on.
-                        let header =
-                            unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
-                        // Issue 1321 — on the TIMER'S clock, not the
-                        // executor's. This line read
-                        // `header.elapsed_us += delta_us`, which is wall
-                        // microseconds: for a `Ros` timer that advanced a
-                        // simulated-time counter by wall time, so a paused
-                        // `/clock` no longer paused the timer — the one
-                        // property a ROS-time timer has. Unbounded, unlike
-                        // 1321's park bound, because it can fire a callback
-                        // that no clock step earned.
-                        super::arena::timer_advance_without_dispatch(header, delta_us);
-                    }
-                    // issue 0736 — a budget skip used to be a bare `continue`,
-                    // which is the silent-drop shape 0737 gated one layer out:
-                    // the entry is simply not dispatched and nothing anywhere
-                    // says so, so a permanently starved tier is
-                    // indistinguishable from an idle one. It took a hand-run
-                    // 45 s image and a per-executor probe to learn that this
-                    // line was skipping 96 % of one tier's spins.
-                    // The rolling window catches a budget that THROTTLES; the
-                    // streak below catches one that starves outright. issue
-                    // 0736 needed both: the measured case skipped ~3 spins in
-                    // 4 without ever reaching a streak, so the tier ran at a
-                    // quarter of its declared rate in silence.
-                    if let Some((skips, total)) = self
-                        .sporadic_states
-                        .get_mut(sc_idx)
-                        .and_then(|st| st.as_mut())
-                        .and_then(|st| st.take_budget_window())
-                    {
-                        nros_log::log_warn!(
-                            nros_log::get_logger("nros"),
-                            "sporadic budget throttled sched context {}: {} of the last {} dispatch opportunities were skipped for want of budget. The declared budget_us/period_us cannot sustain this tier's callbacks on this target.",
-                            sc_idx,
-                            skips,
-                            total
-                        );
-                    }
-                    if let Some(streak) = self
-                        .sporadic_states
-                        .get_mut(sc_idx)
-                        .and_then(|st| st.as_mut())
-                        .and_then(|st| st.note_budget_skip())
-                    {
-                        nros_log::log_warn!(
-                            nros_log::get_logger("nros"),
-                            "sporadic budget exhausted for {} consecutive spins (sched context {}): its callbacks are not being dispatched. Either the callback runtime exceeds the declared budget_us per period_us, or the declaration is unsatisfiable on this target.",
-                            streak,
-                            sc_idx
-                        );
-                    }
-                    continue;
-                }
-                // Phase 110.E.b follow-up — per-callback runtime
-                // accounting (replaces this cycle-level attribution)
-                // is applied at dispatch time below via
-                // `consume_dispatch_runtime_us`. We only update the
-                // polled-path `SporadicState` (no_std fallback) here
-                // because the atomic path now records actual
-                // wall-clock per-callback runtime. The
-                // `delta_us` over-attribution that previously hit the
-                // atomic state was a worst-case bandwidth limiter;
-                // per-callback measurement is strictly tighter.
-                #[cfg(not(feature = "alloc"))]
-                {
-                    let _ = sc_idx; // polled-state path lives in
-                    // `sporadic_states`; this branch is a no-op when
-                    // the atomic path is enabled.
-                }
-            }
-            // Phase 110.G — TT window gate, orthogonal to class.
-            // Skips dispatch when the SC has a TT window AND the
-            // current monotonic time is outside it. Both gates apply
-            // independently — a Sporadic SC with a TT window must
-            // pass both.
-            if self.major_frame_us > 0 {
-                let sc_opt = self.sched_contexts.get(sc_idx).and_then(|s| s.as_ref());
-                if let Some(sc) = sc_opt {
-                    let off = sc.tt_window_offset_us.get().map(|nz| nz.get()).unwrap_or(0);
-                    let dur = sc
-                        .tt_window_duration_us
-                        .get()
-                        .map(|nz| nz.get())
-                        .unwrap_or(0);
-                    if dur > 0 {
-                        // Compute current phase within the major
-                        // frame using the accumulated `delta_us` clock
-                        // (std-only precise; no_std uses `delta_us`
-                        // approximation from spin cadence).
-                        // phase-359 W4 — the shared read. The no_std arm used
-                        // to be `now_us = delta_us`, i.e. a per-spin INTERVAL
-                        // used as an absolute phase clock, which the comment
-                        // above called an approximation. It is now the real
-                        // clock when one is injected, and falls back to the old
-                        // approximation only when none is.
-                        let now_us = now_us_this_spin.unwrap_or(delta_us);
-                        let phase = (now_us % self.major_frame_us as u64) as u32;
-                        let in_window = if off + dur <= self.major_frame_us {
-                            phase >= off && phase < off + dur
-                        } else {
-                            // Window wraps the major frame boundary.
-                            let end = (off as u64 + dur as u64) % self.major_frame_us as u64;
-                            phase >= off || (phase as u64) < end
-                        };
-                        if !in_window {
-                            continue;
-                        }
-                    }
-                }
-            }
-            let is_edf = matches!(sc_class, super::sched_context::SchedClass::Edf);
-            let job = super::types::ActiveJob {
-                sort_key: if is_edf { deadline_us } else { i as u32 },
-                desc_idx: i as super::types::DescIdx,
-            };
-            if is_edf {
-                let _ = edf.insert_into(bucket, job);
-            } else {
-                let rank = self.slot_tags.get(i).map_or(0, |t| t.rank);
-                let level = super::sched_context::Priority::from_index(bucket).dispatch_level(rank);
-                // phase-509 P6 -- the one-level facade's worker runs every
-                // dispatch level, so nothing it scans is another band's.
-                debug_assert!(self.worker.band.contains(level));
-                let _ = fifo.insert_at(level, job);
-            }
-        }
-        // phase-509 P3 -- every slot this pass has already settled: queued
-        // above, or held back by a gate (budget, window, worker). A slot in
-        // it never joins the pass again, so each entry runs at most once per
-        // pass (a timer's clock advances by one `delta_us` per pass, and a
-        // callback that readies itself cannot hold the pass forever).
-        let mut settled: u64 = active_mask;
-        // phase-509 P3 -- the LET semantics dispatch the pass's snapshot,
-        // sampled before any callback ran; nothing joins it mid-pass.
-        // A trigger narrower than "any" (`One`, `AllOf`, a predicate) chose
-        // this pass's work from the scan; it stays the scan's.
-        let repick = !matches!(self.semantics, ExecutorSemantics::LogicalExecutionTime)
-            && matches!(self.trigger, Trigger::Any | Trigger::Always);
-
-        // SAFETY: each `desc_idx` we pop was set above only when the
-        // corresponding `entries[i]` slot was `Some`; no Executor
-        // mutation happens between that scan and this dispatch.
-        let mut dispatch_one = |meta: &CallbackMeta,
-                                desc_idx: usize,
-                                arena_ptr: *mut u8,
-                                delta_us: u64,
-                                result: &mut SpinOnceResult| {
-            // Phase 141.B.2 — capture T1 at subscription dispatch
-            // entry. Probe pairs it with the most recent T0 from
-            // `nros_rmw_runtime_wake_cb` (std + alloc variants)
-            // and pushes `T1 - T0` onto the ring buffer 141.C
-            // drains. No-op when the probe feature is off or
-            // no cycle reader is installed. Other entry kinds
-            // (Service / Timer / GuardCondition) skip the probe
-            // because the 141 acceptance is specifically
-            // wake-to-subscription-dispatch latency.
-            #[cfg(feature = "wake-latency-probe")]
-            if matches!(meta.kind, EntryKind::Subscription) {
-                super::wake_probe::on_dispatch();
-            }
-            let data_ptr = unsafe { arena_ptr.add(meta.offset) };
-            // phase-8 — `desc_idx` is the entry slot index, threaded through so
-            // the leaf hooks in `arena.rs` can name the callback they bracket.
-            // `MAX_CALLBACK_SLOTS` is 64 (enforced by the `u64` ready-set
-            // bitmask), so the `as u8` cannot truncate a live slot.
-            // phase-463 W7 — time the dispatch and attribute its publishes
-            // (host `profile-mode` only). ONE call site for both builds, so no
-            // second `unsafe` block; the binding is the only change an RTOS
-            // image sees, and its loadable bytes measured identical (phase-463
-            // W5 I3c, Zephyr cpp/talker).
-            #[cfg(feature = "profile-mode")]
-            super::profile::dispatch_begin(arena_ptr as usize, desc_idx);
-            let processed = unsafe { (meta.try_process)(data_ptr, delta_us, desc_idx as u8) };
-            #[cfg(feature = "profile-mode")]
-            super::profile::dispatch_end(matches!(processed, Ok(true)));
-            match processed {
-                Ok(true) => match meta.kind {
-                    EntryKind::Subscription => result.subscriptions_processed += 1,
-                    EntryKind::Service
-                    | EntryKind::ServiceClient
-                    | EntryKind::ActionServer
-                    | EntryKind::ActionClient => result.services_handled += 1,
-                    EntryKind::Timer => result.timers_fired += 1,
-                    EntryKind::GuardCondition => {}
-                },
-                Ok(false) => {}
-                Err(e) => {
-                    // phase-427 — the first one is kept, the rest are counted.
-                    // `stop_on_first_error` is what reads it; when nobody
-                    // asked, the `Option` is a local the optimiser drops.
-                    if first_error.is_none() {
-                        *first_error = Some(e);
-                    }
-                    match meta.kind {
-                        EntryKind::Subscription => result.subscription_errors += 1,
-                        EntryKind::Service
-                        | EntryKind::ServiceClient
-                        | EntryKind::ActionServer
-                        | EntryKind::ActionClient => result.service_errors += 1,
-                        EntryKind::Timer | EntryKind::GuardCondition => {}
-                    }
-                }
-            }
-        };
-
-        // Phase 110.E.b follow-up — per-callback runtime accounting
-        // for Sporadic SCs. Wall-clock-measure each dispatch and
-        // consume the elapsed microseconds from the bound SC's
-        // atomic budget. This replaces the cycle-level over-
-        // attribution that previously charged the FULL `delta_us`
-        // against every Sporadic SC regardless of which entries
-        // actually fired — accurate per-callback measurement is the
-        // shape the design doc's per-callback runtime acceptance
-        // calls out.
-        //
-        // phase-359 W10 — this was `feature = "std"`-gated, because it "needs a
-        // `core::time::Instant`-equivalent monotonic clock ... until a
-        // board-side monotonic-microsecond accessor lands". That accessor
-        // landed: `now_us()` reads the platform monotonic counter on every
-        // flavour. So per-callback sporadic accounting is no longer something
-        // only a hosted build gets, and the no_std fallback to polled
-        // `SporadicState` cycle deltas is no longer the only option on target.
-        let consume_dispatch_runtime_us =
-            |desc_idx: usize,
-             elapsed_us: u32,
-             sched_context_bindings: &[super::sched_context::SchedContextId],
-             sched_contexts: &[Option<super::sched_context::SchedContext>],
-             sporadic_states: &mut [Option<super::sched_context::SporadicState>],
-             alive_slots: &mut [super::monitor::AliveSlot],
-             #[cfg(feature = "alloc")] sporadic_atomic_states: &[Option<(
-                portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
-                OpaqueTimerHandle,
-            )>]| {
-                let sc_idx = sched_context_bindings[desc_idx].0 as usize;
-                // Alive supervision counts EVERY dispatch, before the class
-                // gate below: a Fifo or time-triggered context can fall
-                // silent exactly as a sporadic one can, and the rule that
-                // notices must not be scoped to the class that happens to
-                // carry a budget.
-                if let Some(slot) = alive_slots.get_mut(sc_idx) {
-                    slot.dispatches = slot.dispatches.wrapping_add(1);
-                }
-                let sc_class = sched_contexts
-                    .get(sc_idx)
-                    .and_then(|s| s.as_ref())
-                    .map(|sc| sc.class)
-                    .unwrap_or(super::sched_context::SchedClass::Fifo);
-                if !matches!(sc_class, super::sched_context::SchedClass::Sporadic) {
-                    return;
-                }
-                #[cfg(feature = "alloc")]
-                if let Some((state, _)) =
-                    sporadic_atomic_states.get(sc_idx).and_then(|s| s.as_ref())
-                {
-                    state.consume(elapsed_us);
-                    // Unconditional, unlike the overrun record below: the
-                    // budget is sized FROM this number, so it has to exist
-                    // before the budget is right rather than only after it
-                    // is wrong.
-                    state.record_exec(elapsed_us);
-                    // Phase 110.E.b — overrun detection. Cooperative
-                    // single-thread can't preempt a runaway callback,
-                    // so post-dispatch wall-clock comparison delivers
-                    // the same observable signal as the design's
-                    // oneshot-IRQ-and-cancel pattern, without needing
-                    // a separate timer per SC. `budget_capacity_us` is
-                    // the per-period budget the SC was sized against;
-                    // any callback exceeding that has run past its
-                    // bandwidth allotment.
-                    if elapsed_us > state.budget_capacity_us {
-                        state.record_overrun(elapsed_us - state.budget_capacity_us);
-                    }
-                }
-                // issue 0736 — the POLLED state is charged unconditionally,
-                // and it is the one that matters: `has_budget` prefers the
-                // atomic state only when a refill timer was registered, which
-                // no board or entry does. Before this, the alloc arm charged a
-                // state nothing populated and the no_std arm discarded the
-                // measurement outright (`let _ = (sc_idx, elapsed_us)`), so no
-                // shipped image recorded per-callback runtime anywhere — while
-                // the comment above claimed it did.
-                if let Some(state) = sporadic_states.get_mut(sc_idx).and_then(|s| s.as_mut()) {
-                    state.consume(elapsed_us);
-                }
-            };
-
-        // W3b.5 — post-dispatch contract checks. `lat_active` gates the
-        // per-dispatch publish-count snapshot (attribution of dispatch
-        // elapsed time to monitored publishers whose counter advanced);
-        // `dl_active` gates elapsed measurement for deadline actions. The third
-        // term used to be `cfg!(feature = "std")` — "std measures anyway for
-        // the sporadic path" — which made a COMPILE-TIME flavour stand in for
-        // "is there a clock". It is now the runtime question it always was.
-        let mon_table = self.monitor_table;
-        let lat_active = mon_table.iter().any(|m| m.max_latency_ms > 0);
-        let dl_active = self.sched_contexts.iter().flatten().any(|sc| {
-            sc.deadline_us.is_some()
-                && !matches!(
-                    sc.deadline_action,
-                    super::sched_context::DeadlineAction::Ignore
-                )
-        });
-        let mon_clock = self.clock_us_fn;
-        // phase10-B3 -- the route rule needs the clock and the publish-count
-        // snapshot, and nothing else; without a clock it judges nothing.
-        let route_on = mon_clock.is_some() && super::monitor::route_active(mon_table);
-        // phase-503 -- a late supervised route reacts at completion too; not
-        // before the monitors are armed (phase-474 I2), as after the park.
-        let route_hook = self.reaction_hook.filter(|_| self.violations.counts.armed);
-        let counts_on = lat_active || route_on;
-        // phase-359 W4 — one predicate, no cfg block. `cfg!` is an expression,
-        // so the flavour difference stays a value instead of a branch: std
-        // measures unconditionally because the sporadic runtime accounting
-        // below (itself std-only) consumes the result, which is exactly what
-        // the comment above described and what the four-arm sites encoded.
-        let measure_us = counts_on || dl_active || mon_clock.is_some();
-        // phase-359 W4 — ONE hoisted µs reader for the per-dispatch latency
-        // measurement below. Hoisted because `now_us()` takes `&mut self` and
-        // the dispatch loop already holds borrows; the std arm copies the epoch
-        // (a `Copy` `Instant`) so reading inside the loop touches no `self`.
-        // This is the last cfg pair in the timing path: the two call sites it
-        // serves each had FOUR arms (start + elapsed, per flavour).
-        let read_us = move || mon_clock.map(|c| c()).unwrap_or(0);
-        // Deferred deadline-miss violations (the loop body holds an
-        // immutable borrow of `self.entries`, so the ring is fed after).
-        let mut deadline_misses: heapless::Vec<
-            super::monitor::Violation,
-            { super::monitor::MAX_VIOLATIONS },
-        > = heapless::Vec::new();
-        // SCs whose remaining callbacks this cycle are skipped
-        // (`DeadlineAction::Skip`) — bitmask over SC slots.
-        let mut skipped_scs: u64 = 0;
-
-        // For each priority bucket (Critical → Normal → BestEffort),
-        // drain EDF first then FIFO so an EDF callback in this bucket
-        // beats a FIFO peer at the same priority, but no lower-priority
-        // entry runs while a higher-priority bucket has work pending.
-        // Strict static priority across buckets; non-preemptive within
-        // an in-flight callback (see Phase 110.D).
-        // phase-509 P3 (RFC-0108 D2) -- one pick at a time. Each pick is the
-        // most urgent queued job (bucket by bucket: EDF heap, then the ranked
-        // FIFO's levels), and after each callback the ready set is merged
-        // with what became ready while it ran, so an urgent callback made
-        // ready by a less urgent one runs before the rest of the pass. Was a
-        // drain of the scan's snapshot, bucket by bucket.
-        loop {
-            let mut next = None;
-            for bucket in 0..NB {
-                if let Some(job) = edf.pop_from(bucket) {
-                    next = Some(job);
-                    break;
-                }
-                let (level_lo, level_hi) =
-                    super::sched_context::Priority::from_index(bucket).level_range();
-                if let Some(job) = fifo.pop_in(level_lo, level_hi) {
-                    next = Some(job);
-                    break;
-                }
-            }
-            let Some(job) = next else { break };
-            let i = job.desc_idx as usize;
-            let sc_idx = self.sched_context_bindings[i].0 as usize;
-            if sc_idx < 64 && skipped_scs & (1u64 << sc_idx) != 0 {
-                continue; // W3b.5 DeadlineAction::Skip containment
-            }
-            if let Some(meta) = self.entries[i].as_ref()
-                && !Self::slot_held(self.slot_tags, i)
-            {
-                let counts_before = snapshot_pub_counts(mon_table, counts_on);
-                // Measured only when a consumer wants it, matching the
-                // no_std arm this replaces — the std arm used to measure
-                // unconditionally.
-                let start_us = measure_us.then(read_us);
-                let took_before = result.subscriptions_processed;
-                Self::begin_dispatch(self.slot_tags, i);
-                dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
-                let end_us = start_us.map(|_| read_us());
-                let elapsed_us: Option<u32> = start_us
-                    .zip(end_us)
-                    .map(|(t0, t1)| t1.saturating_sub(t0))
-                    .map(|d| d.min(u32::MAX as u64) as u32);
-                // phase10-B3 -- a subscription dispatch takes its sample
-                // first, so the dispatch start is the take.
-                if route_on && let (Some(t0), Some(t1)) = (start_us, end_us) {
-                    if result.subscriptions_processed != took_before {
-                        super::monitor::route_take(mon_table, i, t0);
-                    }
-                    super::monitor::route_judge(
-                        mon_table,
-                        &counts_before,
-                        t1,
-                        |row, v, record, react| {
-                            if react {
-                                call_route_reaction(route_hook, mon_table, row, &v);
-                            }
-                            if record {
-                                let _ = deadline_misses.push(v);
-                            }
-                        },
-                    );
-                }
-                if let Some(elapsed_us) = elapsed_us {
-                    consume_dispatch_runtime_us(
-                        i,
-                        elapsed_us,
-                        &self.sched_context_bindings[..],
-                        &self.sched_contexts[..],
-                        &mut self.sporadic_states[..],
-                        &mut self.alive_slots[..],
-                        #[cfg(feature = "alloc")]
-                        &self.sporadic_atomic_states[..],
-                    );
-                }
-                if let Some(elapsed_us) = elapsed_us {
-                    attribute_latency(mon_table, lat_active, &counts_before, elapsed_us);
-                    check_deadline_miss(
-                        self.sched_contexts.get(sc_idx).and_then(|s| s.as_ref()),
-                        sc_idx,
-                        elapsed_us,
-                        &mut deadline_misses,
-                        &mut skipped_scs,
-                        self.fault_fn,
-                        self.reaction_hook,
-                    );
-                }
-                self.finish_dispatch(i);
-            }
-            if repick {
-                self.merge_mid_pass(&mut fifo, &mut edf, &mut settled, arena_ptr);
-            }
-        }
-
-        // W3b.5 — feed deferred deadline misses into the violation ring.
-        for v in deadline_misses {
-            self.violations.record(v);
-        }
-
-        // Issue #505 — same ring, same cycle. This runs AFTER dispatch,
-        // unlike the windowed rate/age/latency rules at the top of the
-        // spin: the activations it reports were dropped by the dispatch
-        // that just happened, and a tier that is stalling should not have
-        // to wait for the next spin to say so.
-        self.check_timer_overruns();
-        self.check_release_jitter_rule();
-        self.check_stack_headroom_rule();
-        self.check_alive_supervision();
-        // phase-474 I7 -- the queued /diagnostics reports, after this spin's
-        // dispatches and rules, when the next timer leaves room for them.
-        self.flush_violation_reports();
-        // phase-474 I1 -- the opt-in drain-and-report hook, after every rule of
-        // this spin has had its say.
-        self.violations.drain_and_report();
-
-        // Process parameter services (outside the arena)
-        #[cfg(feature = "param-store")]
-        #[allow(unused_mut)] // only the services add to it
-        let mut handled = 0usize;
-        #[cfg(feature = "param-services")]
-        if let Some(params) = &mut self.params {
-            {
-                let crate::param_store::ParamState {
-                    server,
-                    services,
-                    buffers,
-                    staged,
-                    ..
-                } = &mut **params;
-                // phase-426 W3 -- one set per node; see the sibling site above,
-                // including why nothing here can discard an error (1270/1271).
-                if let Some(buffers) = buffers {
-                    for set in services.iter_mut() {
-                        let n = set.process(server, staged, buffers);
-                        result.services_handled += n;
-                        handled += n;
-                    }
-                }
-            }
-        }
-        #[cfg(feature = "param-store")]
-        self.note_param_services_ran(handled);
-
-        // Process lifecycle services (outside the arena).
-        //
-        // SAFETY: `change_state` dispatches a user-supplied C callback through a
-        // raw function pointer stored in `LifecyclePollingNodeCtx`. The caller
-        // of `register_lifecycle_services` guarantees the callback/context pair
-        // stays live for as long as the executor (see that method's docs).
-        #[cfg(feature = "lifecycle-services")]
-        if let Some(lc) = &mut self.lifecycle {
-            if let Ok(n) = unsafe { lc.process() } {
-                result.services_handled += n;
-            }
-        }
-
-        // Phase 258 (Track 2, 2a) — executor-owned component tick pass.
-        // Mirrors `ExecutorNodeRuntime::run_ticks`: after the transport +
-        // callbacks have been pumped, drive each enrolled component's `tick`
-        // (service-client/action poll, etc.). `exec_ctx` hands the component
-        // the whole executor as a raw `*mut Executor` so its tick can
-        // reborrow it (the same disjoint-field raw-ptr pattern run_ticks
-        // uses). Index-iterate over `Copy` slots so no borrow of
-        // `self.component_slots` is held while `tick` runs (which aliases
-        // `self` through `exec_ctx`).
-        let exec_ctx = self as *mut Executor as *mut core::ffi::c_void;
-        let slot_count = self.component_slots.len();
-        for i in 0..slot_count {
-            let slot = self.component_slots[i];
-            // SAFETY: `slot.state` is the leaked cell the matching `tick`
-            // expects (enrolled via `enroll_component`); `exec_ctx` is a live
-            // `*mut Executor` for `self`. The slot was copied out, so no
-            // borrow of `component_slots` is outstanding during the call.
-            unsafe {
-                (slot.tick)(slot.state, exec_ctx);
-            }
-        }
-
-        result
+        (now_us_this_spin, delta_us)
     }
 
     /// Drive I/O and dispatch callbacks forever — the body of an RTOS task.
@@ -15127,6 +15532,34 @@ impl Drop for ThreadHandle {
 // crossing is the same one; only the thing doing the crossing changed.
 #[cfg(feature = "alloc")]
 unsafe impl<'s> Send for Executor<'s> {}
+
+/// phase-509 P9b item 2 -- take the bits of `mask` out of a ready word and
+/// leave the rest for the workers of the other bands. One swap for the
+/// one-level worker's every-slot mask, as before.
+#[cfg(any(has_rmw, test))]
+#[allow(dead_code)] // no ready word without `alloc` + `rmw-cffi`
+#[inline]
+fn take_band_bits(word: &portable_atomic::AtomicUsize, mask: u64) -> u64 {
+    if mask == u64::MAX {
+        word.swap(0, portable_atomic::Ordering::SeqCst) as u64
+    } else {
+        (word.fetch_and(!(mask as usize), portable_atomic::Ordering::SeqCst) as u64) & mask
+    }
+}
+
+/// phase-509 P9b item 2 (RFC-0108 "As built in P9b") -- how a pass runs.
+#[cfg(any(has_rmw, test))]
+pub(crate) enum PassMode<'w> {
+    /// `spin_once(&mut self)`: the executor's own worker; the lock, if one
+    /// is installed, is held for the whole pass.
+    Owned,
+    /// The executor's own worker through a raw pointer
+    /// ([`Executor::spin_once_shared`]): the lock is released around each
+    /// user callback when it carries a thread identity.
+    Shared,
+    /// A band worker's pass ([`Executor::spin_band_once`]).
+    Band(&'w mut super::scheduler::BandWorker),
+}
 
 impl<'s> Drop for Executor<'s> {
     fn drop(&mut self) {

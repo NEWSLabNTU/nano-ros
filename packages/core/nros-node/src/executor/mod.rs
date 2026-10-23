@@ -192,6 +192,9 @@ pub use node::{CallbackGroup, Node, NodeHandle};
 pub use node_record::{NodeBuilder, NodeId, NodeRecord};
 #[cfg(any(has_rmw, test))]
 pub use spin::Executor;
+// phase-509 P9b item 2 -- a band worker over a shared executor.
+#[cfg(any(has_rmw, test))]
+pub use scheduler::{Band, BandWorker};
 // phase-436 — the wake-source seam's types. `Executor::last_park` RETURNS a
 // `WakeSourceId` and `register_wake_source` / `set_park_primitive` TAKE the two
 // fn-pointer types, so all four are already public API; without these a caller

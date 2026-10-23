@@ -710,10 +710,18 @@ core; the design note is RFC-0108 "As built in P9b". Four PRs, in order:
       every nros-cpp / nros-c entry that touches an executor takes the lock
       before its reference exists (`CtxRef`, `CExecRef`, `Locked`,
       `CLocked`). No lock is installed yet, so nothing changes at runtime.
-- [ ] 2. The pass in steps: the lock released around each user callback,
-      the running mark, deferred cancel, band-filtered pick,
-      `set_reprobe_each_callback`. Tests: no concurrent run of one callback;
-      band exclusion.
+- [x] 2. The pass in steps: `Executor::spin_once_shared` and
+      `Executor::spin_band_once` (`BandWorker`) run a pass over a raw
+      pointer and release the lock around each user callback when it
+      carries a thread identity (`ExecLock::with_thread_id`); the running
+      mark keeps other passes off the entry; a timer cancel or reset from
+      another thread is deferred to the callback's return, other entry
+      operations from another thread answer as for a stale handle; the
+      scan, sweep and drain take only the pass's band
+      (`Executor::set_worker_band`); `set_reprobe_each_callback` stays once
+      per pass by default. `nros_cpp_spin_once` holds no reference across
+      its pass. Tests: `two_workers_never_run_one_callback_at_once`,
+      `a_band_worker_runs_only_its_band`.
 - [ ] 3. Scheduler-owned accounting: per-band timers and budgets, one
       transport driver, per-worker band park.
 - [ ] 4. Runner, FFI, cost report: `level_open` opens a worker over the
