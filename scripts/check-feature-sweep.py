@@ -846,6 +846,50 @@ def verdict(expect, rc, err):
     return rc == 0, ""
 
 
+# Issue 1987 — how much of one build script's `--- stderr` a FAIL prints. A C
+# compile error is a few lines; a panic with a backtrace is not, and the job
+# log is the only place this output lands.
+BUILD_SCRIPT_STDERR_LINES = 60
+
+
+def diagnostic_lines(err):
+    """The lines of a failed run's stderr that say WHY it failed.
+
+    clippy's own findings are `error…`, `  -->` and `Diff in` lines. A build
+    script's failure is not: cargo prints one `error: failed to run custom
+    build command` line and puts the reason under `Caused by:`, in the
+    script's `--- stderr` section and on `cargo:warning=` lines. Keeping only
+    the first kind printed the crate's name and nothing else, every night
+    (issue 1987)."""
+    out, in_stderr, kept, dropped = [], False, 0, 0
+    for line in err.splitlines():
+        body = line.strip()
+        # The section ends where cargo's indentation does.
+        if in_stderr and line and not line.startswith(" "):
+            in_stderr = False
+            if dropped:
+                out.append(f"  ... ({dropped} more build-script stderr line(s))")
+        if in_stderr:
+            if not body:
+                continue
+            if kept < BUILD_SCRIPT_STDERR_LINES:
+                out.append(line)
+                kept += 1
+            else:
+                dropped += 1
+            continue
+        if line.startswith(("error", "  -->", "Diff in")):
+            out.append(line)
+        elif body.startswith(("process didn't exit successfully", "cargo:warning=")):
+            out.append(line)
+        elif body == "--- stderr":
+            out.append(line)
+            in_stderr, kept, dropped = True, 0, 0
+    if in_stderr and dropped:
+        out.append(f"  ... ({dropped} more build-script stderr line(s))")
+    return out
+
+
 def self_test():
     """Negative controls, run on every invocation: each rule must fire."""
     # A one-of group member REPLACES the base's member, never joins it.
@@ -929,6 +973,37 @@ def self_test():
     # A board's env resolves `${workspace}` and unwraps `{ value = ... }`.
     env = board_env({"env": {"A": "x", "B": {"value": "${workspace}/c", "force": True}}}, "/r")
     assert env == {"A": "x", "B": "/r/c"}, env
+    # A build script's failure keeps its REASON, not only the crate's name
+    # (issue 1987). The shape is cargo's own, captured from a failing script.
+    failed = (
+        "warning: b@0.0.0: probe said no\n"
+        "error: failed to run custom build command for `b v0.0.0 (/x)`\n"
+        "\n"
+        "Caused by:\n"
+        "  process didn't exit successfully: `/x/build-script-build` (exit status: 1)\n"
+        "  --- stdout\n"
+        "  cargo:rerun-if-changed=build.rs\n"
+        "  cargo:warning=probe said no\n"
+        "\n"
+        "  --- stderr\n"
+        "  x.c:3:10: fatal error: tx_port.h: No such file or directory\n"
+        "warning: build failed, waiting for other jobs to finish...\n"
+    )
+    kept = diagnostic_lines(failed)
+    assert any("tx_port.h" in line for line in kept), kept
+    assert any("cargo:warning=probe said no" in line for line in kept), kept
+    assert not any("rerun-if-changed" in line for line in kept), kept
+    assert not any("waiting for other jobs" in line for line in kept), kept
+    # ...and a long one is bounded, saying how much it dropped.
+    long = "  --- stderr\n" + "".join(f"  line {i}\n" for i in range(100))
+    kept = diagnostic_lines(long)
+    assert len(kept) == 1 + BUILD_SCRIPT_STDERR_LINES + 1, len(kept)
+    assert kept[-1].endswith(f"({100 - BUILD_SCRIPT_STDERR_LINES} more build-script stderr line(s))")
+    # A clippy finding still prints as before.
+    assert diagnostic_lines("error: unused import\n  --> src/lib.rs:1:5\nnote: x\n") == [
+        "error: unused import",
+        "  --> src/lib.rs:1:5",
+    ]
 
 
 def main():
@@ -1035,9 +1110,8 @@ def main():
         else:
             print(f"  FAIL {label}{': ' + why if why else ''}")
             if not expect:
-                for line in err.splitlines():
-                    if line.startswith(("error", "  -->", "Diff in")):
-                        print(f"        {line}")
+                for line in diagnostic_lines(err):
+                    print(f"        {line}")
             failures.append(label)
         sys.stdout.flush()
     if args.list:

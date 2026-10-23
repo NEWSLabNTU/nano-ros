@@ -1,12 +1,12 @@
 ---
 id: 1987
 title: "The feature sweep's new STANDALONE run of `nros-board-threadx-qemu-riscv64` fails its first night in CI, and the sweep's output filter drops the build-script error that would say why"
-status: open
+status: resolved
 type: bug
 area: [ci, boards, threadx, testing]
 severity: medium
 found: 2026-10-20
-related: [1960, 1355]
+related: [1960, 1355, 0680, 0678]
 ---
 
 ## Measured
@@ -99,3 +99,65 @@ The job ran on a GitHub-hosted runner (`GitHub Actions 1000110602`).
 Remedy 1 above (keep the build script's stderr) has still not landed. This
 lane cannot say more until it does, and it will keep failing in the same
 words, so a second cause landing here would not be noticed.
+
+## Resolution (2026-10-23) — the job compiled a newlib-only port with a picolibc-only compiler
+
+Both remedies landed together.
+
+### 1. The sweep prints a build script's reason
+
+`scripts/check-feature-sweep.py` routes a failed run's stderr through
+`diagnostic_lines()`. That keeps clippy's `error…`/`  -->`/`Diff in` lines as
+before, and adds cargo's `process didn't exit successfully` line, the
+script's `cargo:warning=` lines and its `--- stderr` section, capped at 60
+lines with a count of what was dropped. The self-test feeds it cargo's own
+failure shape, captured from a failing build script, and asserts the
+reason survives and the `rerun-if-changed` noise does not.
+
+### 2. The cause, reproduced in the CI image
+
+The sweep was rerun by hand in `nano-ros-ci-local:humble`, the same jammy
+base and apt list as `nano-ros-ci:humble`, which this host cannot pull:
+
+- **With the store's pinned `riscv-none-elf-gcc` 14.2-nros1 hidden**, as on
+  the runner (the job provisions ThreadX *sources* and no compiler), the
+  build falls back to the image's apt `riscv64-unknown-elf-gcc` 10.2.0 and
+  fails, rc=101:
+
+  ```
+  tx_port.h:89:10: fatal error: string.h: No such file or directory
+  ```
+
+- **With it present**, rc=0, and cc-rs's debug output shows 736 compiles
+  through `~/.nros/sdk/riscv-none-elf-gcc/14.2-nros1/bin/riscv-none-elf-gcc`.
+  That is why the workstation passed: its store holds the dist, and
+  `nros_build_paths::riscv64::tool` prefers the store to `PATH`.
+
+The `string.h` error is only the first layer. The image's apt compiler ships
+picolibc and no newlib. jammy's picolibc specs add its headers with
+`-isystem`, so `--specs=picolibc.specs -print-sysroot` prints an empty line
+and `arch_flags::riscv64::picolibc_sysroot()` adds no include. Pointing it at
+those headers was tried; the build then stops in
+`nros-platform-threadx/src/platform.c:724`:
+
+```
+error: '_impure_ptr' undeclared
+error: invalid application of 'sizeof' to incomplete type 'struct _reent'
+```
+
+The RISC-V64 port is newlib-only by design: it swaps newlib's per-thread
+`_impure_ptr` in the scheduler (issue 0680, `NROS_TX_PORT_HAS_REENT`). So no
+probe change can make a picolibc-only compiler build this board, and the
+header fallback was reverted rather than shipped. Issue 0678's rule stands
+as it was.
+
+### The fix
+
+`host-tests.yml`'s `feature-sweep` job now runs `nros setup --tool
+riscv-none-elf-gcc` beside its ThreadX sources. That is the toolchain the
+port needs (the dist bundles newlib) and the one every other lane that
+builds `threadx_riscv64` provisions through `nros setup` for the board.
+
+Still to see: the first scheduled `host-tests` run with this change, where
+`nros-board-threadx-qemu-riscv64` should be one more `ok` line. If it is
+not, the sweep now prints why.
