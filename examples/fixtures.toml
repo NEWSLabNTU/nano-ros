@@ -5720,6 +5720,33 @@ west_id = "zephyr/native_sim/native/64/workspace-derived-tiers-entry-cpp"
 west_zenoh_locator = "tcp/127.0.0.1:7691"
 skip_probe = true
 
+# phase-509 P9 -- the THREE-LEVEL C++ Zephyr image (examples/workspaces/levels-cpp):
+# three components at 50, 20 and 5 Hz, no authored tiers, so the derivation
+# gives three preemption levels and the runner spawns one worker per level
+# over the core's scheduler. The two less urgent callbacks run 15 and 60 ms
+# with `k_busy_wait`. Consumed by `tests/realtime_tiers_e2e.rs`
+# (zephyr/cpp-levels), which reads the preemption ORDER off the console (a
+# more urgent level's marker inside a less urgent callback's begin/end pair,
+# never the reverse) and checks each spawned level's stack is the derived one.
+#
+# Synced in `just zephyr build-fixtures`' workspace-entry prep, as the
+# derived-tiers row above. 7691 is the same cell's port, shared with the two
+# rows above for the same reason: one cell, run one image after the other.
+[[workspace_fixture]]
+id = "workspace-zephyr-cpp-levels"
+platform = "zephyr"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/levels-cpp"
+bringup = "src/demo_bringup"
+image = "zephyr"
+board = "native_sim/native/64"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+west_build_name = "build-ws-cpp-levels-entry-zenoh"
+west_id = "zephyr/native_sim/native/64/workspace-levels-entry-cpp"
+west_zenoh_locator = "tcp/127.0.0.1:7691"
+skip_probe = true
+
 # phase-474 T4 -- the violation-channel fixture
 # (examples/workspaces/violation-cpp): one C++ component whose 10 Hz timer
 # path carries a contracted 50 ms max_latency. Built with

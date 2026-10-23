@@ -372,6 +372,12 @@ build-fixtures:
         ( cd examples/workspaces/derived-tiers-cpp
           "$nros_cli" sync >/dev/null )
     fi
+    # phase-509 P9 -- the three-level workspace, derived the same way.
+    if [ -d examples/workspaces/levels-cpp ]; then
+        echo "  → levels-cpp workspace-entry prep (nros sync)"
+        ( cd examples/workspaces/levels-cpp
+          "$nros_cli" sync >/dev/null )
+    fi
 
     # Issue 1419 -- the census each contracted workspace image's configure will
     # check, taken here, SERIALLY, before the leaves fan out: two leaves of one

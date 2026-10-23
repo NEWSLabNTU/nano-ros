@@ -173,6 +173,11 @@ impl PriorityRecord<'_> {
                         "origin": self.origin(&r.name),
                         "above_transport": self.above_transport(&r.members),
                         "spin_period_us": r.spin_period_us,
+                        // phase-509 P9 -- an authored `stack_bytes` (the
+                        // expert override); `null` means the level's stack is
+                        // derived from its members. The cost report
+                        // (`mem-report --levels`) reads it.
+                        "stack_bytes": r.stack_bytes,
                         "members": r.members.iter()
                             .map(|(n, g)| json!([n, g]))
                             .collect::<Vec<_>>(),

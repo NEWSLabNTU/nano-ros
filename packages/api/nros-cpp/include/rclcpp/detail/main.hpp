@@ -597,6 +597,23 @@ class ZephyrBoard {
             node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
             executor_storage, storage_stride, backings, task_memory);
     }
+
+    /// phase-509 P9 (RFC-0108) — the levels runner a generated entry calls:
+    /// each row of `tiers` is one level, `scheduler_backing` is the entry's
+    /// `NROS_CPP_SCHEDULER_BACKING_SIZE_0` static the core's scheduler lives
+    /// in, and `backings` is NULL unless the build sizes a backing per level.
+    /// See `nros_board_zephyr_run_levels_in` in `<rclc/detail/main.h>`.
+    static int32_t run_levels(const char* session_name, const char* node_namespace,
+                              const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
+                              size_t storage_stride, const ::nros_tier_backing_t* backings,
+                              const ::nros_tier_task_memory_t* task_memory, void* scheduler_backing,
+                              size_t scheduler_bytes) {
+        return ::nros_board_zephyr_run_levels_in(
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
+            executor_storage, storage_stride, backings, task_memory, scheduler_backing,
+            scheduler_bytes);
+    }
 };
 
 /// Phase 238 — embedded NuttX board adapter, sibling to `ZephyrBoard`.

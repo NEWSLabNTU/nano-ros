@@ -70,6 +70,7 @@ NROS_CPP_ACTION_CLIENT_STORAGE_SIZE	NROS_CPP_ACTION_CLIENT_STORAGE_SIZE	build	bu
 NROS_CPP_ACTION_SERVER_STORAGE_SIZE	NROS_CPP_ACTION_SERVER_STORAGE_SIZE	build	build or configuration fact
 NROS_CPP_CONFIG_OPTIONAL	NROS_CPP_CONFIG_OPTIONAL	build	build or configuration fact
 NROS_CPP_FFI_H	NROS_CPP_FFI_H	build	build or configuration fact
+NROS_CPP_SCHEDULER_BACKING_SIZE	NROS_CPP_SCHEDULER_BACKING_SIZE	build	build or configuration fact
 NROS_C_ACTION_CLIENT_STORAGE_SIZE	NROS_C_ACTION_CLIENT_STORAGE_SIZE	build	build or configuration fact
 NROS_C_ACTION_SERVER_STORAGE_SIZE	NROS_C_ACTION_SERVER_STORAGE_SIZE	build	build or configuration fact
 NROS_C_CANCEL_ACCEPT	RCLC_C_CANCEL_ACCEPT	ours	API constant with no upstream spelling
@@ -156,6 +157,9 @@ NROS_H	RCLC_H	ours	API constant with no upstream spelling
 NROS_HAS_PARAM_SERVICES	NROS_HAS_PARAM_SERVICES	build	build or configuration fact
 NROS_HOST_POSIX	NROS_HOST_POSIX	hook	defined by the application or entry, called by startup code
 NROS_INIT_H	NROS_INIT_H	build	build or configuration fact
+NROS_LEVEL_CALLBACK_STACK_DEFAULT_	NROS_LEVEL_CALLBACK_STACK_DEFAULT_	hook	defined by the application or entry, called by startup code
+NROS_LEVEL_STACK_BYTES	NROS_LEVEL_STACK_BYTES	hook	defined by the application or entry, called by startup code
+NROS_LEVEL_WORKER_FRAME_	NROS_LEVEL_WORKER_FRAME_	hook	defined by the application or entry, called by startup code
 NROS_LIFECYCLE_CTX_OPAQUE_U64S	NROS_LIFECYCLE_CTX_OPAQUE_U64S	build	build or configuration fact
 NROS_LIFECYCLE_CTX_SIZE	NROS_LIFECYCLE_CTX_SIZE	build	build or configuration fact
 NROS_LIFECYCLE_H	NROS_LIFECYCLE_H	build	build or configuration fact
@@ -439,6 +443,7 @@ nros_board_nuttx_run_tiers_ns	nros_board_nuttx_run_tiers_ns	seam	declared by a p
 nros_board_rtos_run_components	nros_board_rtos_run_components	seam	declared by a port seam or the C++ FFI
 nros_board_rtos_run_components_in	nros_board_rtos_run_components_in	seam	declared by a port seam or the C++ FFI
 nros_board_rtos_run_components_ns	nros_board_rtos_run_components_ns	seam	declared by a port seam or the C++ FFI
+nros_board_zephyr_run_levels_in	nros_board_zephyr_run_levels_in	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_tiers	nros_board_zephyr_run_tiers	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_tiers_backed_in	nros_board_zephyr_run_tiers_backed_in	seam	declared by a port seam or the C++ FFI
 nros_board_zephyr_run_tiers_in	nros_board_zephyr_run_tiers_in	seam	declared by a port seam or the C++ FFI

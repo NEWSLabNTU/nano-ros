@@ -594,6 +594,39 @@ per-sched-context alive slots, which live inside one executor, cannot hold
 it); `take_every_level_alive` is the watchdog feed. nano-ros has no
 spin-hook ABI: a supervisor wraps the spin and reads the handle's level.
 
+**As built in P9** (`zephyr_run_tiers.c`, the `nros_cpp_*` scheduler FFI,
+the entry packs, `tier_task_memory_zephyr.h`, `scripts/nros-mem-report.py
+--levels`). The Zephyr runner spawns one worker thread per level (each row
+of the entry's table is a derived level, or an authored tier, which is one
+band) over a per-core scheduler record: `nros_cpp_scheduler_open(core,
+n_levels, owner, backing, bytes)` over the session the boot level opened,
+`nros_cpp_level_adopt` for the boot level and `nros_cpp_level_open` for
+every other, each seated with the stack its worker runs on. Three points
+differ from the step above:
+
+- **A level is still an executor over the shared session**, not a worker
+  over one ready set. A second worker dispatching from one `Executor` needs
+  the spin pass to drop its `&mut` borrow around every user callback, and
+  RFC-0107's step 4 dispatcher is not on `main`; that refactor is not part
+  of P9. The schedule is the one D3 describes: inside a level, rank order
+  (D2), non-preemptive; across levels, the kernel's preemption by the
+  level's priority. Release and budget accounting stay in each level's
+  executor, which owns its members' slots, so nothing is shared and
+  nothing moves. The cost differs: a level carries an executor context and
+  its own backing (issue 1970), not only a worker record.
+- **Generated sizes.** `NROS_CPP_SCHEDULER_BACKING_SIZE_0` is
+  `NROS_CPP_SCHEDULER_BACKING_SIZE(n)`, the entry's static; one scheduler
+  for the runner's table, which spans the image. There is no
+  `NROS_CPP_CORE_BACKING_SIZE`: the backings stay per level
+  (`NROS_CPP_TIER_BACKING_SIZE_<i>`).
+- **Member stacks.** A spawned level that declares no `stack_bytes` gets
+  `NROS_LEVEL_STACK_BYTES(member)`: the largest member's stack plus the
+  worker frame (`CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`, 4,096 B, an
+  estimate). No contract or `system.toml` key states a member's stack yet,
+  so every member takes the per-callback default
+  (`CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE` minus the frame) and the cost
+  report names it; a level's stack is then exactly the knob, as before.
+
 ## Relation to other RFCs
 
 - **RFC-0002 (RT execution model).** Amended. Its single-thread, registration-

@@ -34,6 +34,29 @@
 
 #define NROS_TIER_TASK_STACK_BYTES_(bytes) ((bytes) > 0u ? (bytes) : NROS_TIER_TASK_STACK_DEFAULT_)
 
+/* phase-509 P9 (RFC-0108 D3) — a LEVEL's stack, derived from its members: the
+ * largest member's stated stack, or the per-callback default for a member that
+ * states none, plus the worker's own frame (the spin loop, spin_once and the
+ * transport drive under it). Never the platform's thread default. The
+ * per-callback default is the level knob minus the frame, so a level whose
+ * members state nothing gets exactly CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE, the
+ * stack every tier got before. A generated entry passes a spawned level that
+ * declares no `stack_bytes` as `NROS_LEVEL_STACK_BYTES(member)`, and the cost
+ * report (`scripts/nros-mem-report.py --levels`) checks the static against the
+ * same arithmetic. */
+#ifdef CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME
+#define NROS_LEVEL_WORKER_FRAME_ CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME
+#else
+#define NROS_LEVEL_WORKER_FRAME_ 4096
+#endif
+#define NROS_LEVEL_CALLBACK_STACK_DEFAULT_                                                         \
+    (NROS_TIER_TASK_STACK_DEFAULT_ - NROS_LEVEL_WORKER_FRAME_)
+#define NROS_LEVEL_STACK_BYTES(member)                                                             \
+    (((member) > 0u ? (member) : NROS_LEVEL_CALLBACK_STACK_DEFAULT_) + NROS_LEVEL_WORKER_FRAME_)
+BUILD_ASSERT(NROS_LEVEL_WORKER_FRAME_ < NROS_TIER_TASK_STACK_DEFAULT_,
+             "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME must stay below "
+             "CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE: their difference is the per-callback default");
+
 /* Tier `i`'s stack and thread object, as file-scope statics named for
  * `mem-report`. */
 #define NROS_TIER_TASK_MEMORY_DEFINE(i, bytes)                                                     \

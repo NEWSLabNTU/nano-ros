@@ -2888,6 +2888,103 @@ bool nros_cpp_levels_alive(void);
 bool nros_cpp_levels_take_alive(void);
 
 /**
+ * phase-509 P9 -- the backing bytes a scheduler of `n_levels` levels takes:
+ * its head and one seat per level, rounded up to 8. `0` for 0 levels or more
+ * than `NROS_CPP_MAX_LEVELS`. The generated
+ * `NROS_CPP_SCHEDULER_BACKING_SIZE_<core>` is
+ * `NROS_CPP_SCHEDULER_BACKING_SIZE(n)` of `<rclc/detail/main.h>`, which
+ * spells this same arithmetic; the entry asserts the two agree at boot and the
+ * cost report reads the static's size.
+ */
+size_t nros_cpp_scheduler_backing_size(uint8_t n_levels);
+
+/**
+ * phase-509 P9 (RFC-0108 D3; the amended RFC-0107 step 5) -- open core
+ * `core`'s scheduler in `backing` (`bytes`, 8-aligned, at least
+ * [`nros_cpp_scheduler_backing_size`]`(n_levels)`), over the session the
+ * executor `owner` opened (`nros_cpp_init` / `nros_cpp_init_tier`). It states
+ * the image's level count (`nros_cpp_set_level_count`); the owner is then
+ * seated with [`nros_cpp_level_adopt`] and every other level opened with
+ * [`nros_cpp_level_open`]. Returns the scheduler handle (`backing`), or NULL
+ * when anything is refused.
+ *
+ * # Safety
+ * `owner` is a live executor handle from this ABI, or NULL; `backing` points
+ * at `bytes` writable bytes that outlive every level, or is NULL.
+ */
+void *nros_cpp_scheduler_open(uint8_t core,
+                              uint8_t n_levels,
+                              void *owner,
+                              void *backing,
+                              size_t bytes);
+
+/**
+ * phase-509 P9 -- seat an executor that is already open (the session owner,
+ * which runs on the caller's thread) at `level`, and place it there
+ * (`nros_cpp_executor_set_level`). `stack_bytes` is the stack its thread runs
+ * on; `name` a static string, or NULL.
+ *
+ * # Safety
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL;
+ * `executor` a live executor handle or NULL; `name` NULL or a NUL-terminated
+ * string that outlives the scheduler.
+ */
+nros_cpp_ret_t nros_cpp_level_adopt(void *scheduler,
+                                    uint8_t level,
+                                    void *executor,
+                                    size_t stack_bytes,
+                                    const char *name);
+
+/**
+ * phase-509 P9 (RFC-0108 D3) -- open level `level` of `scheduler`: an
+ * executor over the scheduler's session, built in `storage`
+ * (`NROS_CPP_EXECUTOR_STORAGE_SIZE` bytes), placed at the level and seated.
+ * With a `backing` it is carved at the sizing the image derived for the tier
+ * named `name` (`nros_cpp_executor_open_over_session_tier`); with NULL, from
+ * the context's inline tail. `stack_bytes` is the stack the level's worker
+ * thread was created with (the derived per-level stack), recorded for
+ * [`nros_cpp_scheduler_level_stack_bytes`].
+ *
+ * # Safety
+ * As [`nros_cpp_executor_open_over_session_tier`] for `storage`, `name` and
+ * `backing`; `scheduler` a handle from [`nros_cpp_scheduler_open`] or NULL.
+ */
+nros_cpp_ret_t nros_cpp_level_open(void *scheduler,
+                                   uint8_t level,
+                                   const char *name,
+                                   void *storage,
+                                   void *backing,
+                                   size_t backing_bytes,
+                                   size_t stack_bytes);
+
+/**
+ * phase-509 P9 -- how many levels `scheduler` holds, 0 for a handle that is
+ * not one.
+ *
+ * # Safety
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+ */
+uint8_t nros_cpp_scheduler_level_count(void *scheduler);
+
+/**
+ * phase-509 P9 -- the executor seated at `level`, or NULL.
+ *
+ * # Safety
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+ */
+void *nros_cpp_scheduler_level_executor(void *scheduler, uint8_t level);
+
+/**
+ * phase-509 P9 (RFC-0108 D3) -- the stack `level`'s worker thread runs on,
+ * as its runner seated it: the derived per-level stack for a spawned level,
+ * the caller's thread stack for the adopted one. `0` for an unseated level.
+ *
+ * # Safety
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+ */
+size_t nros_cpp_scheduler_level_stack_bytes(void *scheduler, uint8_t level);
+
+/**
  * phase-503 — microseconds from now to the earliest deadline of a pending
  * supervised route (0 when one is due), written to `*out_us`;
  * `UINT64_MAX` when no supervised route is waiting. A port supervising with

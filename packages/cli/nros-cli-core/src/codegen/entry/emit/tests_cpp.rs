@@ -1439,10 +1439,19 @@ fn typed_emit_tiers_zephyr_embedded_uses_run_tiers_path() {
         src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
         "expected 2-element NativeTierSpec array; src:\n{src}"
     );
-    // ZephyrBoard::run_tiers called (not LinuxBoard / FreertosBoard).
+    // ZephyrBoard::run_levels called (not LinuxBoard / FreertosBoard):
+    // phase-509 P9, each tier row is one level over the core's scheduler.
     assert!(
-        src.contains("::rclcpp::board::ZephyrBoard::run_tiers("),
-        "main must call ZephyrBoard::run_tiers; src:\n{src}"
+        src.contains("::rclcpp::board::ZephyrBoard::run_levels("),
+        "main must call ZephyrBoard::run_levels; src:\n{src}"
+    );
+    assert!(
+        src.contains("NROS_TIER_TASK_MEMORY_DEFINE(1, NROS_LEVEL_STACK_BYTES(0u));"),
+        "an undeclared spawned level's stack is derived; src:\n{src}"
+    );
+    assert!(
+        src.contains("static uint64_t __nros_scheduler_0[NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8u];"),
+        "the entry owns the scheduler's backing; src:\n{src}"
     );
     // Zephyr entry point: plain int main(void), kernel calls it directly.
     assert!(
@@ -1773,10 +1782,13 @@ fn boards_with_run_tiers_still_emit_their_own_wrapper() {
         plan.board = board.into();
         let src =
             emit_typed(&plan).unwrap_or_else(|e| panic!("{board} multi-tier emit failed: {e}"));
-        assert!(
-            src.contains("::run_tiers("),
-            "{board} must still call run_tiers"
-        );
+        // phase-509 P9 -- Zephyr's tier runner is its levels runner.
+        let runner = if board == "zephyr" {
+            "::run_levels("
+        } else {
+            "::run_tiers("
+        };
+        assert!(src.contains(runner), "{board} must still call {runner}");
         assert!(
             src.contains(wrapper),
             "{board} must be wrapped in `{wrapper}`"

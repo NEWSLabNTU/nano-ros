@@ -6891,6 +6891,329 @@ pub extern "C" fn nros_cpp_levels_take_alive() -> bool {
     nros_node::executor::take_every_level_alive()
 }
 
+// ============================================================================
+// phase-509 P9 (RFC-0108, amended RFC-0107 step 5) -- the scheduler and its
+// levels
+// ============================================================================
+
+/// phase-509 P9 -- the tag a scheduler backing carries once opened ("SCHD").
+const SCHEDULER_MAGIC: u32 = 0x5343_4844;
+
+/// phase-509 P9 -- one level's seat in a core's scheduler: the executor its
+/// worker dispatches, the stack its worker thread was created with (`0` while
+/// unseated or unknown), and the level's name (the tier it runs, a static
+/// string from the entry's table).
+#[repr(C)]
+struct LevelSeat {
+    executor: *mut c_void,
+    stack_bytes: usize,
+    name: *const c_char,
+}
+
+/// phase-509 P9 -- a core's scheduler: the session its levels share and one
+/// seat per level. It lives in the entry's own backing
+/// (`NROS_CPP_SCHEDULER_BACKING_SIZE_<core>`), never the heap.
+#[repr(C)]
+struct SchedulerHead {
+    magic: u32,
+    core: u8,
+    n_levels: u8,
+    /// The owner's ROS domain, which every level's context records.
+    domain_id: u8,
+    _pad: u8,
+    session: *mut c_void,
+}
+
+/// phase-509 P9 -- the backing bytes a scheduler of `n_levels` levels takes:
+/// its head and one seat per level, rounded up to 8. `0` for 0 levels or more
+/// than `NROS_CPP_MAX_LEVELS`. The generated
+/// `NROS_CPP_SCHEDULER_BACKING_SIZE_<core>` is
+/// `NROS_CPP_SCHEDULER_BACKING_SIZE(n)` of `<rclc/detail/main.h>`, which
+/// spells this same arithmetic; the entry asserts the two agree at boot and the
+/// cost report reads the static's size.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_scheduler_backing_size(n_levels: u8) -> usize {
+    if n_levels == 0 || n_levels > NROS_CPP_MAX_LEVELS {
+        return 0;
+    }
+    let bytes = core::mem::size_of::<SchedulerHead>()
+        + usize::from(n_levels) * core::mem::size_of::<LevelSeat>();
+    bytes.next_multiple_of(8)
+}
+
+/// The head and seats of an opened scheduler, or `None` for anything that is
+/// not one.
+///
+/// # Safety
+/// `scheduler` is NULL or a pointer [`nros_cpp_scheduler_open`] returned.
+unsafe fn scheduler_parts<'a>(
+    scheduler: *mut c_void,
+) -> Option<(&'a mut SchedulerHead, &'a mut [LevelSeat])> {
+    if scheduler.is_null()
+        || !(scheduler as usize).is_multiple_of(core::mem::align_of::<SchedulerHead>())
+    {
+        return None;
+    }
+    let head = scheduler.cast::<SchedulerHead>();
+    // Read ONLY the tag until it is proven to be ours.
+    if unsafe { core::ptr::read(core::ptr::addr_of!((*head).magic)) } != SCHEDULER_MAGIC {
+        return None;
+    }
+    let head = unsafe { &mut *head };
+    let n = usize::from(head.n_levels);
+    // SAFETY: open checked the backing holds `n` seats after the head.
+    let seats = unsafe {
+        core::slice::from_raw_parts_mut(
+            scheduler
+                .cast::<u8>()
+                .add(core::mem::size_of::<SchedulerHead>())
+                .cast::<LevelSeat>(),
+            n,
+        )
+    };
+    Some((head, seats))
+}
+
+/// Write an empty scheduler of `n_levels` over `session` into `backing`.
+/// `None` when the backing is NULL, misaligned or short, or the count is not
+/// a level count.
+///
+/// # Safety
+/// `backing` is NULL or points at `bytes` writable bytes.
+unsafe fn scheduler_init(
+    backing: *mut c_void,
+    bytes: usize,
+    core: u8,
+    n_levels: u8,
+    domain_id: u8,
+    session: *mut c_void,
+) -> Option<*mut c_void> {
+    let need = nros_cpp_scheduler_backing_size(n_levels);
+    if need == 0
+        || backing.is_null()
+        || !(backing as usize).is_multiple_of(8)
+        || bytes < need
+        || session.is_null()
+    {
+        return None;
+    }
+    let head = backing.cast::<SchedulerHead>();
+    unsafe {
+        head.write(SchedulerHead {
+            magic: SCHEDULER_MAGIC,
+            core,
+            n_levels,
+            domain_id,
+            _pad: 0,
+            session,
+        });
+        let seats = backing
+            .cast::<u8>()
+            .add(core::mem::size_of::<SchedulerHead>())
+            .cast::<LevelSeat>();
+        for i in 0..usize::from(n_levels) {
+            seats.add(i).write(LevelSeat {
+                executor: core::ptr::null_mut(),
+                stack_bytes: 0,
+                name: core::ptr::null(),
+            });
+        }
+    }
+    Some(backing)
+}
+
+/// Seat `executor` at `level`. `ALREADY_EXISTS` for a seated level,
+/// `INVALID_ARGUMENT` for a level past the scheduler's count.
+fn seat_level(
+    seats: &mut [LevelSeat],
+    level: u8,
+    executor: *mut c_void,
+    stack_bytes: usize,
+    name: *const c_char,
+) -> nros_cpp_ret_t {
+    let Some(seat) = seats.get_mut(usize::from(level)) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if !seat.executor.is_null() {
+        return NROS_CPP_RET_ALREADY_EXISTS;
+    }
+    *seat = LevelSeat {
+        executor,
+        stack_bytes,
+        name,
+    };
+    NROS_CPP_RET_OK
+}
+
+/// phase-509 P9 (RFC-0108 D3; the amended RFC-0107 step 5) -- open core
+/// `core`'s scheduler in `backing` (`bytes`, 8-aligned, at least
+/// [`nros_cpp_scheduler_backing_size`]`(n_levels)`), over the session the
+/// executor `owner` opened (`nros_cpp_init` / `nros_cpp_init_tier`). It states
+/// the image's level count (`nros_cpp_set_level_count`); the owner is then
+/// seated with [`nros_cpp_level_adopt`] and every other level opened with
+/// [`nros_cpp_level_open`]. Returns the scheduler handle (`backing`), or NULL
+/// when anything is refused.
+///
+/// # Safety
+/// `owner` is a live executor handle from this ABI, or NULL; `backing` points
+/// at `bytes` writable bytes that outlive every level, or is NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_scheduler_open(
+    core: u8,
+    n_levels: u8,
+    owner: *mut c_void,
+    backing: *mut c_void,
+    bytes: usize,
+) -> *mut c_void {
+    let session = unsafe { nros_cpp_executor_session_handle(owner) };
+    let domain_id = unsafe { cpp_ctx_checked(owner) }.map_or(0, |c| c.domain_id as u8);
+    let Some(handle) =
+        (unsafe { scheduler_init(backing, bytes, core, n_levels, domain_id, session) })
+    else {
+        cpp_diag!(
+            "nros: scheduler for core {core} refused ({n_levels} levels, {bytes} backing bytes; \
+             it needs {} and an open owner)",
+            nros_cpp_scheduler_backing_size(n_levels)
+        );
+        return core::ptr::null_mut();
+    };
+    if nros_cpp_set_level_count(n_levels) != NROS_CPP_RET_OK {
+        return core::ptr::null_mut();
+    }
+    handle
+}
+
+/// phase-509 P9 -- seat an executor that is already open (the session owner,
+/// which runs on the caller's thread) at `level`, and place it there
+/// (`nros_cpp_executor_set_level`). `stack_bytes` is the stack its thread runs
+/// on; `name` a static string, or NULL.
+///
+/// # Safety
+/// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL;
+/// `executor` a live executor handle or NULL; `name` NULL or a NUL-terminated
+/// string that outlives the scheduler.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_level_adopt(
+    scheduler: *mut c_void,
+    level: u8,
+    executor: *mut c_void,
+    stack_bytes: usize,
+    name: *const c_char,
+) -> nros_cpp_ret_t {
+    let Some((_, seats)) = (unsafe { scheduler_parts(scheduler) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if unsafe { cpp_ctx_checked(executor) }.is_none() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let ret = seat_level(seats, level, executor, stack_bytes, name);
+    if ret != NROS_CPP_RET_OK {
+        return ret;
+    }
+    unsafe { nros_cpp_executor_set_level(executor, level) }
+}
+
+/// phase-509 P9 (RFC-0108 D3) -- open level `level` of `scheduler`: an
+/// executor over the scheduler's session, built in `storage`
+/// (`NROS_CPP_EXECUTOR_STORAGE_SIZE` bytes), placed at the level and seated.
+/// With a `backing` it is carved at the sizing the image derived for the tier
+/// named `name` (`nros_cpp_executor_open_over_session_tier`); with NULL, from
+/// the context's inline tail. `stack_bytes` is the stack the level's worker
+/// thread was created with (the derived per-level stack), recorded for
+/// [`nros_cpp_scheduler_level_stack_bytes`].
+///
+/// # Safety
+/// As [`nros_cpp_executor_open_over_session_tier`] for `storage`, `name` and
+/// `backing`; `scheduler` a handle from [`nros_cpp_scheduler_open`] or NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_level_open(
+    scheduler: *mut c_void,
+    level: u8,
+    name: *const c_char,
+    storage: *mut c_void,
+    backing: *mut c_void,
+    backing_bytes: usize,
+    stack_bytes: usize,
+) -> nros_cpp_ret_t {
+    let Some((head, seats)) = (unsafe { scheduler_parts(scheduler) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    match seats.get(usize::from(level)) {
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        Some(s) if !s.executor.is_null() => return NROS_CPP_RET_ALREADY_EXISTS,
+        Some(_) => {}
+    }
+    let (session, domain_id) = (head.session, u32::from(head.domain_id));
+    let ret = if backing.is_null() {
+        unsafe {
+            nros_cpp_executor_open_over_session(session, c"tier_node".as_ptr(), domain_id, storage)
+        }
+    } else {
+        unsafe {
+            nros_cpp_executor_open_over_session_tier(
+                session,
+                c"tier_node".as_ptr(),
+                domain_id,
+                storage,
+                name,
+                backing,
+                backing_bytes,
+            )
+        }
+    };
+    if ret != NROS_CPP_RET_OK {
+        return ret;
+    }
+    let ret = seat_level(seats, level, storage, stack_bytes, name);
+    if ret != NROS_CPP_RET_OK {
+        return ret;
+    }
+    unsafe { nros_cpp_executor_set_level(storage, level) }
+}
+
+/// phase-509 P9 -- how many levels `scheduler` holds, 0 for a handle that is
+/// not one.
+///
+/// # Safety
+/// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_scheduler_level_count(scheduler: *mut c_void) -> u8 {
+    unsafe { scheduler_parts(scheduler) }.map_or(0, |(h, _)| h.n_levels)
+}
+
+/// phase-509 P9 -- the executor seated at `level`, or NULL.
+///
+/// # Safety
+/// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_scheduler_level_executor(
+    scheduler: *mut c_void,
+    level: u8,
+) -> *mut c_void {
+    unsafe { scheduler_parts(scheduler) }
+        .and_then(|(_, s)| s.get(usize::from(level)).map(|s| s.executor))
+        .unwrap_or(core::ptr::null_mut())
+}
+
+/// phase-509 P9 (RFC-0108 D3) -- the stack `level`'s worker thread runs on,
+/// as its runner seated it: the derived per-level stack for a spawned level,
+/// the caller's thread stack for the adopted one. `0` for an unseated level.
+///
+/// # Safety
+/// `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_scheduler_level_stack_bytes(
+    scheduler: *mut c_void,
+    level: u8,
+) -> usize {
+    unsafe { scheduler_parts(scheduler) }
+        .and_then(|(_, s)| s.get(usize::from(level)).map(|s| s.stack_bytes))
+        .unwrap_or(0)
+}
+
 /// phase-503 — microseconds from now to the earliest deadline of a pending
 /// supervised route (0 when one is due), written to `*out_us`;
 /// `UINT64_MAX` when no supervised route is waiting. A port supervising with
@@ -9305,6 +9628,85 @@ mod mode_alias_tests {
             unsafe { carve_mode_tables(&BASE, &AGES, &t) }.err(),
             Some(NROS_CPP_RET_INVALID_ARGUMENT)
         );
+    }
+}
+
+/// phase-509 P9 -- the scheduler record: its size, its refusals and its seats.
+#[cfg(test)]
+mod scheduler_tests {
+    use super::*;
+
+    fn backing(n: u8) -> alloc::vec::Vec<u64> {
+        alloc::vec![0u64; nros_cpp_scheduler_backing_size(n) / 8]
+    }
+
+    /// The size is the head plus one seat per level, 8-rounded, and the C
+    /// macro's arithmetic (`8 + ptr + n * 3 * ptr`) is the same number.
+    #[test]
+    fn the_backing_is_a_head_and_one_seat_per_level() {
+        let ptr = core::mem::size_of::<usize>();
+        for n in [1u8, 3, 8, 32] {
+            let want = (8 + ptr + usize::from(n) * 3 * ptr).next_multiple_of(8);
+            assert_eq!(nros_cpp_scheduler_backing_size(n), want, "{n} levels");
+        }
+        assert_eq!(nros_cpp_scheduler_backing_size(0), 0);
+        assert_eq!(nros_cpp_scheduler_backing_size(NROS_CPP_MAX_LEVELS + 1), 0);
+    }
+
+    /// A short, misaligned or sessionless backing is refused, and a handle
+    /// that is not a scheduler answers nothing.
+    #[test]
+    fn a_short_backing_or_a_foreign_handle_is_refused() {
+        let session = 0x1000 as *mut c_void;
+        let mut b = backing(3);
+        let p = b.as_mut_ptr().cast::<c_void>();
+        let bytes = b.len() * 8;
+        assert!(unsafe { scheduler_init(p, bytes - 8, 0, 3, 0, session) }.is_none());
+        assert!(unsafe { scheduler_init(p, bytes, 0, 3, 0, core::ptr::null_mut()) }.is_none());
+        assert!(unsafe { scheduler_init(p, bytes, 0, 0, 0, session) }.is_none());
+        let odd = unsafe { p.cast::<u8>().add(4) }.cast::<c_void>();
+        assert!(unsafe { scheduler_init(odd, bytes, 0, 1, 0, session) }.is_none());
+        // Never opened: the tag is not there.
+        assert_eq!(unsafe { nros_cpp_scheduler_level_count(p) }, 0);
+        assert!(unsafe { nros_cpp_scheduler_level_executor(p, 0) }.is_null());
+        assert_eq!(
+            unsafe { nros_cpp_scheduler_level_count(core::ptr::null_mut()) },
+            0
+        );
+    }
+
+    /// Each level is seated once, its stack is answered per level, and a
+    /// level past the count is refused.
+    #[test]
+    fn each_level_is_seated_once_with_its_stack() {
+        let session = 0x1000 as *mut c_void;
+        let mut b = backing(3);
+        let bytes = b.len() * 8;
+        let p = b.as_mut_ptr().cast::<c_void>();
+        let h = unsafe { scheduler_init(p, bytes, 0, 3, 7, session) }.unwrap();
+        assert_eq!(unsafe { nros_cpp_scheduler_level_count(h) }, 3);
+        let (head, seats) = unsafe { scheduler_parts(h) }.unwrap();
+        assert_eq!((head.core, head.domain_id, head.session), (0, 7, session));
+        let e1 = 0x2000 as *mut c_void;
+        assert_eq!(
+            seat_level(seats, 1, e1, 12_288, core::ptr::null()),
+            NROS_CPP_RET_OK
+        );
+        assert_eq!(
+            seat_level(seats, 1, e1, 1, core::ptr::null()),
+            NROS_CPP_RET_ALREADY_EXISTS
+        );
+        assert_eq!(
+            seat_level(seats, 3, e1, 1, core::ptr::null()),
+            NROS_CPP_RET_INVALID_ARGUMENT
+        );
+        assert_eq!(unsafe { nros_cpp_scheduler_level_executor(h, 1) }, e1);
+        assert_eq!(
+            unsafe { nros_cpp_scheduler_level_stack_bytes(h, 1) },
+            12_288
+        );
+        assert_eq!(unsafe { nros_cpp_scheduler_level_stack_bytes(h, 0) }, 0);
+        assert_eq!(unsafe { nros_cpp_scheduler_level_stack_bytes(h, 9) }, 0);
     }
 }
 

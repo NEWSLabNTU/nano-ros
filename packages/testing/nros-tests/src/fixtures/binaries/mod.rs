@@ -5637,6 +5637,21 @@ pub fn build_zephyr_workspace_cpp_derived_tiers_entry() -> TestResult<PathBuf> {
     )
 }
 
+/// phase-509 P9 -- the Zephyr (native_sim) THREE-LEVEL C++ workspace Entry
+/// (`examples/workspaces/levels-cpp`): three components at three contract
+/// rates, so the derivation gives three preemption levels and the runner
+/// spawns one worker per level. Built by the west lane into
+/// `<zephyr-build-root>/build-ws-cpp-levels-entry-zenoh/zephyr/zephyr.exe`;
+/// consumed by `tests/realtime_tiers_e2e.rs` (`zephyr/cpp-levels`).
+pub fn build_zephyr_workspace_cpp_levels_entry() -> TestResult<PathBuf> {
+    let binary_path = zephyr_build_root().join("build-ws-cpp-levels-entry-zenoh/zephyr/zephyr.exe");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        // The WORKSPACE: the levels are derived from the bringup's contract.
+        ZephyrLeafSource::zenoh("examples/workspaces/levels-cpp", "cpp"),
+    )
+}
+
 /// phase-474 T4 -- the Zephyr (native_sim) violation-channel fixture
 /// (`examples/workspaces/violation-cpp`): one C++ handler whose contracted
 /// 10 Hz timer path overruns once after it arms the monitors. Built by the

@@ -60,8 +60,9 @@ use nros_tests::{
         build_nuttx_riscv_workspace_rust_realtime_entry, build_nuttx_workspace_c_realtime_entry,
         build_nuttx_workspace_cpp_realtime_entry, build_nuttx_workspace_rust_realtime_entry,
         build_threadx_workspace_rust_realtime_entry, build_zephyr_workspace_c_realtime_entry,
-        build_zephyr_workspace_cpp_derived_tiers_entry, build_zephyr_workspace_cpp_realtime_entry,
-        build_zephyr_workspace_rust_realtime_entry, freertos, is_qemu_available, require_zenohd,
+        build_zephyr_workspace_cpp_derived_tiers_entry, build_zephyr_workspace_cpp_levels_entry,
+        build_zephyr_workspace_cpp_realtime_entry, build_zephyr_workspace_rust_realtime_entry,
+        freertos, is_qemu_available, require_zenohd,
     },
     matrix::{
         Cell as MCell, Consumer, Lang as ML, PlatformId as MP, Tier as MT, Workload as MW,
@@ -132,6 +133,12 @@ enum Proof {
     /// row also fails on any `setup FAILED` line, because a tier that lost its
     /// setup is exactly what this image did on every boot.
     ConsoleTicks(&'static [&'static str]),
+    /// phase-509 P9 (RFC-0108 D3) -- native_sim CONSOLE proof of the
+    /// PREEMPTION ORDER of a three-level image (`levels-cpp`): a more urgent
+    /// level's marker prints inside a less urgent level's `begin=`/`end=`
+    /// pair (its worker preempted that callback mid-run), never the reverse,
+    /// and each spawned level's worker runs on the derived stack.
+    LevelOrder,
 }
 
 type Resolver = fn() -> TestResult<PathBuf>;
@@ -144,6 +151,93 @@ const DERIVED_TIERS_CPP_NODES: &[&str] = &[
     "stop_mode_operator",
     "mrm_handler",
 ];
+
+/// phase-509 P9 -- `levels-cpp`'s spawned levels (the boot level runs on
+/// `main()`): their derived tier names, most urgent first.
+const LEVELS_CPP_SPAWNED: &[&str] = &["derived-urgent", "derived-middle"];
+
+/// phase-509 P9 -- the stack a `levels-cpp` level derives with the Kconfig
+/// defaults: no member states one, so `NROS_LEVEL_STACK_BYTES(0)` is the
+/// per-callback default (16384 - 4096) plus the worker frame (4096).
+const LEVELS_CPP_DERIVED_STACK: u32 = 16_384;
+
+/// phase-509 P9 -- the text between each `[<node>] begin=N` and the
+/// `[<node>] end=N` that closes it, for every complete pair in `console`.
+fn callback_runs<'a>(console: &'a str, node: &str) -> Vec<&'a str> {
+    let begin = format!("[{node}] begin=");
+    let mut runs = Vec::new();
+    let mut at = 0;
+    while let Some(b) = console[at..].find(&begin) {
+        let start = at + b + begin.len();
+        let n: String = console[start..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if n.is_empty() {
+            at = start;
+            continue;
+        }
+        let end = format!("[{node}] end={n}");
+        match console[start..].find(&end) {
+            Some(e) => {
+                runs.push(&console[start + n.len()..start + e]);
+                at = start + e + end.len();
+            }
+            None => break,
+        }
+    }
+    runs
+}
+
+/// phase-509 P9 -- what the level-order proof reads off a `levels-cpp`
+/// console: `Err` names the first ordering it did not find, or the one it
+/// found the wrong way round.
+fn level_order_verdict(console: &str) -> Result<(), String> {
+    let middle = callback_runs(console, "middle");
+    let lazy = callback_runs(console, "lazy");
+    if middle.len() < 2 || lazy.len() < 2 {
+        return Err(format!(
+            "too few complete callbacks to judge ({} middle, {} lazy)",
+            middle.len(),
+            lazy.len()
+        ));
+    }
+    if !middle.iter().any(|r| r.contains("[urgent] tick=")) {
+        return Err("level 0 (urgent) never preempted level 1 (middle)".into());
+    }
+    if !lazy.iter().any(|r| r.contains("[urgent] tick=")) {
+        return Err("level 0 (urgent) never preempted level 2 (lazy)".into());
+    }
+    if !lazy.iter().any(|r| r.contains("[middle] begin=")) {
+        return Err("level 1 (middle) never preempted level 2 (lazy)".into());
+    }
+    if let Some(r) = middle.iter().find(|r| r.contains("[lazy] ")) {
+        return Err(format!(
+            "level 2 (lazy) ran inside a level-1 (middle) callback: {r:?}"
+        ));
+    }
+    Ok(())
+}
+
+#[test]
+fn the_level_order_verdict_reads_preemption_off_the_console() {
+    let good = "[lazy] begin=0\n[urgent] tick=1\n[middle] begin=0\n[urgent] tick=2\n\
+                [middle] end=0\n[lazy] end=0\n[middle] begin=1\n[urgent] tick=3\n\
+                [middle] end=1\n[lazy] begin=1\n[middle] begin=2\n[middle] end=2\n\
+                [lazy] end=1\n";
+    assert_eq!(level_order_verdict(good), Ok(()));
+    // One thread in registration order: nothing ever lands inside a run.
+    let flat = "[lazy] begin=0\n[lazy] end=0\n[middle] begin=0\n[middle] end=0\n\
+                [urgent] tick=0\n[lazy] begin=1\n[lazy] end=1\n[middle] begin=1\n\
+                [middle] end=1\n";
+    assert!(level_order_verdict(flat).is_err());
+    // Inverted: the least urgent level runs inside a more urgent callback.
+    let inverted = good.replace(
+        "[middle] begin=2\n[middle] end=2",
+        "[middle] begin=2\n[lazy] begin=9\n[middle] end=2",
+    );
+    assert!(level_order_verdict(&inverted).unwrap_err().contains("lazy"));
+}
 
 /// The per-cell EXECUTION data for one realtime-tiers matrix cell. The
 /// coordinate lives in `matrix::Cell`; this carries the boot/resolver/proof.
@@ -259,6 +353,15 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
                 proof: Proof::ConsoleTicks(DERIVED_TIERS_CPP_NODES),
                 note: "issue 1575: derived-tiers-cpp — four tiers DERIVED from the contract \
                        (no authored [tiers.*]); the image issue 1551 ran the heap dry on",
+            },
+            Exec {
+                label: "cpp-levels",
+                resolver: build_zephyr_workspace_cpp_levels_entry,
+                port,
+                boot: Boot::ZephyrNativeSim,
+                proof: Proof::LevelOrder,
+                note: "phase-509 P9: levels-cpp — three preemption levels, one worker each \
+                       over the core's scheduler, on derived stacks",
             },
         ],
         (MP::ZephyrNativeSim, ML::C) => vec![Exec {
@@ -826,6 +929,55 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         }
         return;
     }
+    if let Proof::LevelOrder = cell.proof {
+        let mut guest = ZephyrProcess::start(&entry, ZephyrPlatform::NativeSim)
+            .unwrap_or_else(|e| panic!("boot zephyr native_sim: {e}"));
+        // Cold boot, then four complete runs of the 5 Hz level: enough pairs
+        // for every ordering to have occurred.
+        let console = guest.wait_for_pattern("[lazy] end=4", anchor_timeout(cell.boot));
+        guest.kill();
+        let verdict = (|| {
+            if !console.contains("nros: scheduler core=0 levels=3") {
+                return Err("the runner did not open one scheduler of three levels".to_string());
+            }
+            for level in LEVELS_CPP_SPAWNED {
+                let line =
+                    format!("nros: tier stack tier=`{level}` bytes={LEVELS_CPP_DERIVED_STACK} ");
+                if !console.contains(&line) {
+                    return Err(format!(
+                        "level `{level}` did not run on its derived stack (`{line}` absent)"
+                    ));
+                }
+            }
+            level_order_verdict(&console)?;
+            // RFC-0108 D4 rule 7 -- the cost report's numbers are the
+            // generated sizes: each level's stack the derived one, each
+            // backing and the scheduler the generated size.
+            let report = Command::new("python3")
+                .arg(nros_tests::project_root().join("scripts/nros-mem-report.py"))
+                .arg(&entry)
+                .args(["--levels", "--check"])
+                .output()
+                .map_err(|e| format!("could not run the level cost report: {e}"))?;
+            if !report.status.success() {
+                return Err(format!(
+                    "the level cost report disagrees with the generated sizes:\n{}",
+                    String::from_utf8_lossy(&report.stdout)
+                ));
+            }
+            Ok(())
+        })();
+        if let Err(why) = verdict {
+            panic!(
+                "[{} {}] {why} ({})\n         guest console:\n           {}",
+                platform,
+                lang,
+                cell.note,
+                console_excerpt(&console)
+            );
+        }
+        return;
+    }
     if let Proof::ConsoleTicks(nodes) = cell.proof {
         assert!(
             matches!(cell.boot, Boot::ZephyrNativeSim),
@@ -1040,7 +1192,10 @@ fn run_one(pcell: &MCell, cell: &Exec) {
                 );
             }
         }
-        Proof::SerialTicks(_) | Proof::SerialDispatch(_) | Proof::ConsoleTicks(_) => {
+        Proof::SerialTicks(_)
+        | Proof::SerialDispatch(_)
+        | Proof::ConsoleTicks(_)
+        | Proof::LevelOrder => {
             unreachable!("handled above")
         }
     }

@@ -107,6 +107,9 @@ pub struct LoweredRunners {
     /// See [`CAbiRunners::run_tiers_backed`] (issue 1970).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_tiers_backed: Option<String>,
+    /// See [`CAbiRunners::run_levels`] (phase-509 P9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_levels: Option<String>,
     /// See [`CAbiRunners::takes_executor_storage`].
     pub takes_executor_storage: bool,
 }
@@ -117,6 +120,7 @@ impl From<CAbiRunners> for LoweredRunners {
             run_components: r.run_components.map(String::from),
             run_tiers: r.run_tiers.map(String::from),
             run_tiers_backed: r.run_tiers_backed.map(String::from),
+            run_levels: r.run_levels.map(String::from),
             takes_executor_storage: r.takes_executor_storage,
         }
     }
@@ -166,6 +170,12 @@ pub struct TaskStackRow {
     /// The declared size, or the family's stated default; `0` lets the
     /// family header pick its board knob.
     pub bytes: u64,
+    /// phase-509 P9 -- the stack is DERIVED from the level's members by the
+    /// family header (`NROS_LEVEL_STACK_BYTES`), because the level declares
+    /// none and the family derives ([`crate::TierTaskMemory::derives_level_stacks`]).
+    /// `bytes` is then 0.
+    #[serde(default)]
+    pub derived: bool,
 }
 
 impl LoweredTaskMemory {
@@ -184,6 +194,13 @@ impl LoweredTaskMemory {
                     index,
                     spawned: bytes.is_some(),
                     bytes: bytes.unwrap_or(0),
+                    // No member states a stack on any road yet (no contract
+                    // or `system.toml` key carries one), so a derived level
+                    // is `NROS_LEVEL_STACK_BYTES(0)`: the per-callback default
+                    // plus the worker frame.
+                    derived: mem.derives_level_stacks
+                        && bytes.is_some()
+                        && declared.get(index).copied().flatten().is_none(),
                 })
                 .collect(),
         }
@@ -511,6 +528,7 @@ mod tests {
             header: "h",
             boot_tier: crate::BootTier::Last,
             default_stack_bytes: 262_144,
+            derives_level_stacks: false,
         };
         // tier 0 declares 4 KiB, tier 1 nothing, tier 2 is the boot tier.
         let lowered = LoweredTaskMemory::for_tiers(&mem, &[4096, 0, 999]);
@@ -524,6 +542,38 @@ mod tests {
         assert_eq!(
             LoweredTaskMemory::for_tiers(&deferred, &[0, 0]).spawned_bytes(),
             0
+        );
+    }
+
+    /// phase-509 P9 (RFC-0108 D3) -- on a family that derives level stacks,
+    /// a spawned level that declares none is DERIVED (the header's
+    /// `NROS_LEVEL_STACK_BYTES`), an authored `stack_bytes` stays the expert
+    /// override, and the boot level, which runs on the caller, is neither.
+    #[test]
+    fn an_undeclared_spawned_level_derives_its_stack() {
+        let zephyr = crate::BoardFamily::Zephyr
+            .c_abi_runners()
+            .and_then(|r| r.tier_task_memory)
+            .expect("Zephyr takes tier task memory");
+        let rows = LoweredTaskMemory::for_tiers(&zephyr, &[0, 0, 8192]).rows;
+        let derived: Vec<(bool, bool, u64)> = rows
+            .iter()
+            .map(|r| (r.spawned, r.derived, r.bytes))
+            .collect();
+        assert_eq!(
+            derived,
+            [(false, false, 0), (true, true, 0), (true, false, 8192)]
+        );
+        let freertos = crate::BoardFamily::Freertos
+            .c_abi_runners()
+            .and_then(|r| r.tier_task_memory)
+            .expect("FreeRTOS takes tier task memory");
+        assert!(
+            LoweredTaskMemory::for_tiers(&freertos, &[0, 0])
+                .rows
+                .iter()
+                .all(|r| !r.derived),
+            "FreeRTOS keeps its stated default until its P10 runner"
         );
     }
 }
