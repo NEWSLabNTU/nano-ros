@@ -1,0 +1,1 @@
+The pull-request lane now compiles `nros-c` the way an embedded consumer links it, with no `std` and no `alloc`, and builds `nros-c`'s default-feature test target. Before, only the scheduled `workspace-features` lane built either one, so its reds reached `main`. (issue 1177)

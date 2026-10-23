@@ -1147,11 +1147,29 @@ compile-smoke:
     # turns the heap OFF can say so. Every other build here has `alloc` on.
     # Positive row (store carved) + negative row (no store: refused by name).
     bash scripts/check-param-services-heap-free.sh
+    # Issue 1177 -- and `nros-c` in the shape an EMBEDDED consumer links: no
+    # `std`, no `alloc`, with `lending`. Every nros-c row above has `std` (it is
+    # in `C_API_SHIPPED_FEATURES`), so before this the only lane that compiled
+    # this shape was `workspace-features`, which runs in `check build` on
+    # schedule. Twice a red in that lane reached `main` and was found by hand.
+    # `panic-platform` is nros-c's own `default`, named because
+    # `--no-default-features` drops it and the staticlib needs a
+    # `#[panic_handler]`. Its own target dir: a different feature shape is a
+    # different sizes-header mirror (issue 1382).
+    CARGO_TARGET_DIR="$(nros_scoped_target_dir nros-c-no-alloc)" \
+        cargo check -p nros-c --no-default-features --features "panic-platform,rmw-cffi,lending" --quiet
+    # And nros-c's lib TEST target at its default features, the row that was red
+    # at `f0f97de42` (issue 1177's second red, issue 0619's class). A
+    # `--no-run` build, so nothing executes. Its own target dir for the same
+    # reason.
+    CARGO_TARGET_DIR="$(nros_scoped_target_dir nros-c-test-default)" \
+        cargo test --no-run -p nros-c --quiet
     echo "compile smoke: workspace + all targets check clean (no lints; see check-build);"
     echo "  nros-c + nros-cpp check clean in the shipped shape ({{C_API_SHIPPED_FEATURES}}),"
     echo "  with param-services (issue 1260), nros-cpp with param-store alone"
     echo "  (issue 1529), nros-node per module-gating"
-    echo "  feature alone (issue 1468), and nros-node param-services heap-free (issue 1812)."
+    echo "  feature alone (issue 1468), nros-node param-services heap-free (issue 1812),"
+    echo "  and nros-c with no std or alloc plus its default-feature test target (issue 1177)."
 
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The
 # clippy + syntax probe COMPILE nros-cpp/nros-c → build tier (check-build), NOT

@@ -2,14 +2,14 @@
 id: 1177
 title: "`check::workspace-features` gates no merge, so its reds are found by
   embedded consumers -- two so far, and the tier it should move to is open"
-status: open
+status: resolved
 type: bug
 area: testing, build, c-api
 severity: high
 related: [issue-0196, issue-0952, issue-0993, issue-1175, phase-395, phase-417, phase-413, phase-489, phase-505]
 ---
 
-**Home: [phase-489](../roadmap/phase-489-ci-build-speedup.md)** — re-homed 2026-10-12 from phase-413, which is archived.
+**Home: [phase-489](../../roadmap/phase-489-ci-build-speedup.md)** — re-homed 2026-10-12 from phase-413, which is archived.
 
 ## Status 2026-09-11
 
@@ -285,3 +285,38 @@ took it back off.
 Do not fix the symptom by giving `nros-c` `std` in the lane. The whole point of
 the combination is that an embedded image has neither `std` nor `alloc`, and a
 lane that builds the easy configuration is the lane we already have.
+
+## Resolution (2026-10-23) — Option B, chosen by the maintainer
+
+The tier question above was the maintainer's to answer, and the answer is
+**Option B**, widened by one row. `compile-smoke`, which runs on every pull
+request and in the merge queue, now has two rows it did not have:
+
+```
+cargo check -p nros-c --no-default-features --features "panic-platform,rmw-cffi,lending"
+cargo test --no-run -p nros-c
+```
+
+The first is the configuration an embedded consumer links, with neither
+`std` nor `alloc`. That is the class this issue is named for. The second is
+the default-feature test-compile that was red at `f0f97de42`, which B alone
+would not have caught. Each row has its own scoped target dir
+(`target-nros-c-no-alloc`, `target-nros-c-test-default`, both gitignored),
+because a different nros-c feature shape is a different sizes-header mirror
+(issue 1382).
+
+**Measured.** Cold, in fresh target dirs, with the global `sccache` live on
+a host at load average 75: 22 s for the no-`alloc` check and 26 s for the
+test build. Warm re-runs took 3 s and 1 s. By this issue's own scale factor
+of 2.3 to 2.9, the cold CI cost is estimated at about 1.5 to 2.5 min per PR
+run. Only a CI run settles that.
+
+**Mutation.** An ungated `alloc::vec::Vec` in `nros-c`'s `lib.rs` made the
+new row fail (`cannot find module or crate alloc`, rc=101), while the
+shipped-shape row, which has `std`, still passed. The mutation was reverted.
+
+**Still schedule-only, deliberately:** the rest of `workspace-features`. That
+covers `-D warnings` on the two `lending` rows (`compile-smoke` is a `cargo
+check` with rustc's deny-warnings, not clippy), the `zpico-sys link-ivc`
+row, and the `--workspace --no-default-features` test-compile. A red there
+is still found a day late, which is the cost the cheaper option accepts.

@@ -932,7 +932,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1177](../issues/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
+- [issue 1177](../issues/archived/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — RESOLVED 2026-10-23 (Option B: the no-alloc nros-c rows run in `compile-smoke`). `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
 
 ## Issues homed here (2026-10-17)
 
