@@ -155,6 +155,7 @@ pub struct InteropCell {
 pub const SLIRP_PAIR_CELLS: &[&str] = &[
     "freertos-an536-pubsub-cpp-cyclone-n2r",
     "freertos-an536-pubsub-cpp-cyclone-r2n",
+    "native-slirp-pubsub-cpp-cyclone-n2r",
 ];
 
 /// `test` sentinel for a carved-out cell no test runs.
@@ -508,6 +509,16 @@ pub const CELLS: &[InteropCell] = &[
        c(FreertosMps2, Cpp, Cyclonedds, EntryPubsub, Interop, Runtime),
        FreertosMps2Fixtures, RosEdition(Cyclonedds), RosToNano,
        "pubsub_freertos_an536_cyclone_ros2_interop_e2e"),
+
+    // phase-511 C — issue 1251's profile pair, measured through libslirp
+    // itself: the Cyclone backend's C++ `ros2_pub` runs as a guest inside a
+    // user + network namespace whose only way out is `slirp4netns`, and a
+    // stock `ros2 topic echo` on the host receives it. The nano side is the
+    // `cyclone_slirp_guest` compile-check row, which every fixture lane builds.
+    ic("native-slirp-pubsub-cpp-cyclone-n2r",
+       c(Linux, Cpp, Cyclonedds, Pubsub, Interop, Runtime),
+       LinuxFixtures, RosEdition(Cyclonedds), NanoToRos,
+       "cyclone_slirp_pair"),
 
     // ── Declarative cross-RMW bridges ───────────────────────────────────
     // The nano bridge is a `ws-bridge-*-rust` linux_entry; a ROS 2 peer sits on
@@ -1105,7 +1116,7 @@ mod tests {
     #[test]
     fn gap_tiers_carry_reasons() {
         for c in CELLS {
-            if let Tier::CarveOut(r) | Tier::BuildOnly(r) = c.cell.tier {
+            if let Tier::CarveOut(r) | Tier::BuildOnly(r) | Tier::Gated(r) = c.cell.tier {
                 assert!(!r.is_empty(), "empty reason: {c:?}");
             }
         }

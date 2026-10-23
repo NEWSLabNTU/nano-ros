@@ -274,8 +274,8 @@ l3:
 #
 # Why 1-wise and not pairwise, which is what this lane originally specified: cost
 # is COORDINATES, not cells, because cells share fixtures and fixtures are what
-# take hours. The pairwise cover is 39 of 245 cells (16 %) but 37 of 51
-# coordinates (73 %) — a middle tier costing 73 % of the sweep is one nobody runs,
+# take hours. The pairwise cover is 37 of 247 cells (15 %) but 35 of 51
+# coordinates (69 %) — a middle tier costing 69 % of the sweep is one nobody runs,
 # which is the failure mode RFC-0061 exists to fix. The pairwise coverage moved to
 # `ci-matrix-nightly` rather than being dropped: platform x lang is exactly where
 # the 0268 / 0245 / 0332 class lives.

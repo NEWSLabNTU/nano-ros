@@ -519,7 +519,7 @@ fn interop_bindings_g1_every_runtime_cell_names_a_real_test() {
     let mut bad = Vec::new();
     for c in interop::CELLS {
         match c.cell.tier {
-            Tier::Runtime => {
+            Tier::Runtime | Tier::Gated(_) => {
                 if c.test == NO_TEST {
                     bad.push(format!("{}: Runtime but carries NO_TEST", c.id));
                     continue;

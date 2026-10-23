@@ -348,6 +348,18 @@ a knob, a platform contract, or one feature in one image, which no workload
 describes. Under one name the debt list read twice its length (23, of which 11
 were probes), and nothing told "model me" from "never a cell".
 
+*Amendment 2026-10-23 (phase-511, B/C).* Two more shapes needed a name.
+**`Tier::Gated(lane)`**: a runtime test exists and binds its cell, but its
+prerequisite is one no CI runner provisions (today the FVP model and the PX4
+`.msg` tree), so it runs only in the lane the string names. `Runtime` would
+put it in the tier covers and claim what CI cannot run (issue 0232's false
+green); `BuildOnly` would say no test exists. Gated cells are in `consumer_of`'s
+domain (`answered_cells`) and in no cover (`runtime_cells`), and they do not make
+their platform "built" for the lane gates. **`NonCell::Dormant(platform)`**: a
+test whose platform is parked, every cell a `CarveOut` and every case
+`#[ignore]`d. A gate holds it to that: once the platform has an answered cell,
+the binary must become its consumer. After phase-511 no test is `Unmodeled`.
+
 **What this does not change.** `Kind` stays the wiring axis, `Tier` stays a
 property of the cell, and `interop::CELLS` keeps its shape — a configured
 interop cell is an `InteropCell` whose nano `Cell` carries a `config` set. The
