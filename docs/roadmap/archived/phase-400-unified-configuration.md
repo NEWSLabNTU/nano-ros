@@ -1,7 +1,7 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
 **Status (2026-10-23). Archived — W1–W5, W7 and W8 done; W6's remainder is
-[issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md).** At
+[issue 2007](../../issues/archived/2007-sizing-knob-ladder-rungs-backlog.md).** At
 close the ladder held 43 knobs in 12 tenants (the census's "already on the
 ladder" row; this line first said 55, which is its "paths / flags" row). Issue
 2006 then retired the transport tenant and its two knobs, leaving 41 in 11. The 15 still classed `sizing` each need a rung
@@ -130,7 +130,7 @@ W8, and the one-reader rule stays here (`check-knob-single-reader`).
 | **W3** | `transport` tenant + `requires` / `implies` / `exactly-one-of` in the resolver | serial-only image builds with no hand-written link or driver lines | **done; retired by issue 2006** |
 | **W4** | Provenance: `explain` reports implied and overridden | every knob prints rung, rule, and override | **done** |
 | **W5** | Kconfig mirror — link symbols get `depends on`; drift test holds it | `NETWORKING=n` cannot leave `LINK_TCP=y` | **done** |
-| **W6** | Migrate the sizing knobs, tenant by tenant | ladder knob count rises; env/Kconfig count falls | **43 on the ladder; the 15 left are [issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md)** |
+| **W6** | Migrate the sizing knobs, tenant by tenant | ladder knob count rises; env/Kconfig count falls | **43 on the ladder; the 15 left are [issue 2007](../../issues/archived/2007-sizing-knob-ladder-rungs-backlog.md)** |
 | **W7** | Core: audit for exclusive/negative features | no `compile_error!` stands in for exclusivity | **done — none found; premise was wrong** |
 | **W8** | Retire the old paths | the retired mechanism no longer resolves anything | **done** |
 
@@ -307,7 +307,7 @@ the drift test fails if the mirror and the resolver disagree.
 
 **Closed 2026-10-23 with 43 knobs on the ladder.** The 15 left, with the reason each
 has no rung, are
-[issue 2007](../../issues/2007-sizing-knob-ladder-rungs-backlog.md).
+[issue 2007](../../issues/archived/2007-sizing-knob-ladder-rungs-backlog.md).
 
 The long tail: buffers, pools, entity caps, ring depths — the bulk of the 78 +
 21 + 9. Tenant by tenant, each keeping its existing env/define name as the lane

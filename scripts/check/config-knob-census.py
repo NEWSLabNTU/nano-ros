@@ -56,7 +56,8 @@ LADDER_FLOOR = 42
 # knobs that are numeric but read as strings and handed to a C `#define`.
 #
 #   ladder   already resolved over the RFC-0049 ladder
-#   sizing   a sizing knob still to migrate — THE BACKLOG
+#   sizing   a sizing knob with no rung: one is added when a descriptor
+#            needs a non-default value (issue 2007)
 #   derived  a number ANOTHER CAMPAIGN is making derived rather than set:
 #            phase-403 / phase-408 for the receive and transmit buffers (from
 #            the message type), phase-392 for the zenoh entity caps and pools
@@ -145,7 +146,6 @@ KNOB_CLASS = {
         "per-type campaign and is a global only until that reaches it",
     ),
     # --- sizing: the backlog ---
-    "NROS_SERVICE_TIMEOUT_MS": ("sizing", "a timeout, not a size, but the same ladder shape. TWO readers (zenoh build + the C emitter), so it needs one emission point before a rung"),
     # issue 0968 — the UDP/TCP twin of the line above. Documented in the book and
     # in Kconfig with a 512 default, resolved by cmake under the UNPREFIXED name
     # that no build script reads, and hardcoded to 4096 on the UDP path anyway —
@@ -160,8 +160,8 @@ KNOB_CLASS = {
     "NROS_XRCE_SUBSCRIBER_RING_DEPTH": ("sizing", "samples per subscriber slot; a burst policy, not derivable"),
     "NROS_XRCE_BUFFER_SIZE": ("sizing", "the default of the three per-family receive sizes"),
     "NROS_XRCE_SUBSCRIBER_BUFFER_SIZE": ("derived", "subscriber ring entry; the largest declared subscription wire bound (phase-403 W8)"),
-    "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE": ("sizing", "service request entry, shared with the param and lifecycle servers; lifecycle's ChangeState label is unbounded, so deriving it from the declared servers needs zenoh's family split first (issue 2007)"),
-    "NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE": ("sizing", "service-client reply slot; the sizing descriptor states no _Response bound, so it cannot be derived (issue 2007)"),
+    "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE": ("sizing", "service request entry, shared with the param and lifecycle servers; lifecycle's ChangeState label is unbounded, so deriving it from the declared servers needs zenoh's family split first (issue 1808)"),
+    "NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE": ("sizing", "service-client reply slot; the sizing descriptor states no _Response bound, so it cannot be derived (issue 1808)"),
     "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
     "NROS_ZENOH_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # phase-461 W1 / issue 1352 -- the service inbox per FAMILY. The two slot
@@ -575,15 +575,13 @@ def _struct_fields(src, struct):
 #
 # Deliberately NOT the whole classification. "the ladder maps this env name" and
 # "this knob is migrated" are different facts, and conflating them would hide
-# remaining work: `NROS_SERVICE_TIMEOUT_MS` is mapped and NOT migrated — it has
-# two readers, so `check-knob-single-reader` refuses it — and deriving its class
+# remaining work: `NROS_SUBSCRIPTION_BUFFER_SIZE` is mapped and NOT migrated,
+# because a build script still reads its env directly, and deriving its class
 # from the mapping alone would silently move it out of the "still to migrate"
-# count. Those cases are named in `LADDER_MAPPED_NOT_MIGRATED`, which is short,
+# count. (`NROS_SERVICE_TIMEOUT_MS` was the other case until issue 2007 gave
+# its two readers one resolver.) Those cases are named in `LADDER_MAPPED_NOT_MIGRATED`, which is short,
 # shrinks as they land, and is the only hand-kept part left.
 LADDER_MAPPED_NOT_MIGRATED = {
-    # Mapped by the ladder, still read in two places (zenoh build + the C
-    # emitter), so it needs one emission point before it can claim a rung.
-    "NROS_SERVICE_TIMEOUT_MS",
     # Mapped, but `nros-node`'s build script still reads the env directly.
     "NROS_SUBSCRIPTION_BUFFER_SIZE",
 }
@@ -1194,7 +1192,7 @@ def main() -> int:
     print(f"  build-script env names, by what they ARE ({len(seen)} total)")
     print(f"  {'-' * 38} -----")
     for cls, label in (
-        ("sizing", "sizing knobs still to migrate  <-- W6"),
+        ("sizing", "sizing knobs with no rung (2007)"),
         ("derived", "another campaign is DERIVING these"),
         ("ladder", "already on the ladder"),
         ("infra", "paths / flags / ladder inputs (not knobs)"),

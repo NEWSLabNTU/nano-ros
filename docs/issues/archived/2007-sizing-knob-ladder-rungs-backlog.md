@@ -1,12 +1,13 @@
 ---
 id: 2007
-title: "15 sizing knobs still have no platform or board rung on the RFC-0049 ladder"
-status: open
+title: "15 sizing knobs had no platform or board rung on the RFC-0049 ladder"
+status: resolved
+resolved: 2026-10-23
 type: tech-debt
 area: [config]
 severity: low
 found: 2026-10-23
-related: [1033, 1722, 1808, 2006]
+related: [1033, 1722, 1808, 2006, 2013]
 ---
 
 ## Measured
@@ -57,5 +58,40 @@ Checked on 2026-10-23 because zenoh already derives its service inbox slot
   zenoh's server inbox maximum. That over-sizes the inbox; it never
   under-sizes it.
 
-**Home:** none. Phase-400 was archived on 2026-10-23, and this list was the
-remainder of its W6.
+## Resolution (2026-10-23)
+
+Each row now has one of three outcomes.
+
+**Fixed: `NROS_SERVICE_TIMEOUT_MS`.** The table's reason ("two readers, needs
+one emission point") understated the problem. The schema already had the rung,
+`[knobs.zenoh.limits] service_timeout_ms`. `BuildRungs::zenoh_limit_rungs`
+merged it, but neither reader passed it: `nros-rmw-zenoh/build.rs` and
+`nros-build-helpers/src/c.rs` each called `knob(...)` with their own copy of the
+30 000 literal and no `.rung()`. So a descriptor that stated it parsed and
+changed nothing.
+
+Both now call
+`nros_platform_config::platform_config::resolve_service_timeout_ms`, which owns
+the default and its rationale (`BUILTIN_SERVICE_TIMEOUT_MS`). That makes it a
+ladder knob with one owner in `check-knob-single-reader`. It also leaves the
+census's `LADDER_MAPPED_NOT_MIGRATED` set and its `sizing` row. The census now
+counts 14 sizing knobs and 42 ladder knobs.
+
+**Moved to issue 1808: the two XRCE service buffers.** Neither one waits on a
+rung. Each waits on a derivation: the request buffer needs the
+parameter/lifecycle family split zenoh got in phase-461 W2, and the reply
+buffer needs a response bound in the sizing descriptor. That is 1808's
+question, so both rows now live in its table with the reasoning above.
+
+**Closed by policy: the other 12.** The graph budget and cache, the three XRCE
+transport sizes, the three inbox depths, the two executor policies and the two
+zenoh priorities. The table above gives each one's reason. The rule this issue
+already stated is the closing condition: a rung is added when a platform or
+board needs a value other than the builtin, and none does today. The census
+keeps listing them as `sizing` with a reason per row. That list is the tracker,
+so a separate open issue would only duplicate it.
+
+**Found while closing:** `nros config explain` prints none of the
+`zenoh.wire`, `zenoh.limits` or `xrce` tenants. That covers 12 ladder knobs,
+including the timeout rung this issue fixed. It is
+[issue 2013](../2013-explain-omits-three-ladder-tenants.md).

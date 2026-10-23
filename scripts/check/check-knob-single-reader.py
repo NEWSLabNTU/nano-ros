@@ -167,9 +167,9 @@ OWNERS: dict[str, str] = {
     "NROS_ZENOH_RX_TASK_BUDGET_FRAMES": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     "NROS_ZENOH_RX_TASK_BUDGET_REST_US": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     # The zenoh limits + xrce tenants, and the LET buffer (phase-400 W6).
-    # `NROS_SERVICE_TIMEOUT_MS` is NOT here: it has two readers by design (a
-    # Rust const and a C define), and this gate's one-reader rule is what keeps
-    # them equal. Migrating it needs a single emission point first.
+    # `NROS_SERVICE_TIMEOUT_MS` is embedded twice (a Rust const and a C
+    # define), and both build scripts call the one resolver below (issue 2007).
+    "NROS_SERVICE_TIMEOUT_MS": "packages/tooling/nros-platform-config/src/platform_config.rs",
     "NROS_KEYEXPR_STRING_SIZE": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
     "NROS_ZENOH_SUBSCRIBER_RING_DEPTH": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
     "NROS_XRCE_CUSTOM_TRANSPORT_MTU": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
