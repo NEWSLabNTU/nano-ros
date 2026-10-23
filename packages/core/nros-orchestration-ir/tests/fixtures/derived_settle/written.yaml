@@ -1,0 +1,183 @@
+meta:
+  version: 2
+  inputs:
+  - path: launch/bringup.contract.yaml
+    sha256: b9014321badbc538786e8653f93c25c9ecd4bdb6fe9e379f3f1689ab8b514bf8
+  - path: launch/bringup.launch.xml
+    sha256: 1ec5eefc28f242e918a8642e27f9f6f4de88140f579a334aae5aed2b81567875
+  resolver:
+    tool: ros-launch-resolve
+    version: 0.9.0
+  diagnostics:
+  - 2 QoS override parameter(s) derived from contract deadline/liveliness declarations (applied where the node opted in via QosOverridingOptions)
+  - 'bringup.launch.xml: [satisfiability] info: satisfiability analysis not run: this checker was built without the `smt` feature (z3), so conditional-arg dangling-entity/unreachable-node checks are unavailable (at )'
+  - '[path-exclusion] info: scope path ''safety.stop'' (scope 0): the critical path assumes each node runs on arrival, but these traversals serialise with a sibling callback and may be delayed by it — /safety/obstacle_detector/detect may wait for [declare_lost] (up to 2.00ms); /safety/brake_controller/brake may wait for [emergency_stop] (up to 5.00ms). Declare `concurrency.exclusive` on the node if they can in fact run concurrently; absent that declaration every path of a node is assumed to serialise, matching rclcpp''s default callback group (at paths.safety.stop)'
+  - '[fault-reaction-budget] info: bringup.contract.yaml:18: hazard ''drive_blind'': detection 100.00ms (/safety/obstacle_detector/scan detects within 100.00ms) + reaction 4429.67ms (reaction route /safety/obstacle_detector/declare_lost -> /safety/brake_controller/emergency_stop = 7.00ms + settle 4422.67ms) = 4529.67ms fits the fault-tolerant time interval 10000.00ms with 5470.33ms of slack (at hazards.drive_blind.ftti)'
+  - '[reaction-unguarded] warning: hazard ''drive_blind'' reaction ''safety.stop'' ends at /safety/brake_cmd and no subscriber there declares an `on_violation` — a stalled reaction would go unnoticed. Guard it with a second hazard whose guard is this output (at hazards.drive_blind.reaction)'
+structure:
+  scopes:
+    bringup.launch.xml:
+      manifest: contract_ext_vehicle_by_hand/launch/bringup.contract.yaml
+      file: bringup.launch.xml
+  nodes:
+    /safety/lidar_driver:
+      scope: bringup.launch.xml
+      pkg: demo_nodes_cpp
+      exec: talker
+      node_name: lidar_driver
+    /safety/obstacle_detector:
+      scope: bringup.launch.xml
+      pkg: demo_nodes_cpp
+      exec: listener
+      params:
+        qos_overrides./safety/scan.subscription.liveliness: manual_by_topic
+        qos_overrides./safety/scan.subscription.liveliness_lease_duration: 100000000
+      param_sources:
+      - kind: inline
+        name: qos_overrides./safety/scan.subscription.liveliness_lease_duration
+        value: 100000000
+      - kind: inline
+        name: qos_overrides./safety/scan.subscription.liveliness
+        value: manual_by_topic
+      node_name: obstacle_detector
+    /safety/brake_controller:
+      scope: bringup.launch.xml
+      pkg: demo_nodes_cpp
+      exec: listener
+      params:
+        target_acceleration: -2.5
+        target_jerk: -1.5
+      param_sources:
+      - kind: inline
+        name: target_acceleration
+        value: -2.5
+      - kind: inline
+        name: target_jerk
+        value: -1.5
+      node_name: brake_controller
+  topics:
+    /safety/brake_cmd:
+      type: std_msgs/msg/String
+      pub:
+      - /safety/brake_controller/brake_cmd
+    /safety/obstacles:
+      type: std_msgs/msg/String
+      pub:
+      - /safety/obstacle_detector/obstacles
+      sub:
+      - /safety/brake_controller/obstacles
+    /safety/scan:
+      type: std_msgs/msg/String
+      pub:
+      - /safety/lidar_driver/scan
+      sub:
+      - /safety/obstacle_detector/scan
+contracts:
+  sub_endpoints:
+    /safety/brake_controller/obstacles:
+      max_age_ms: 60.0
+      on_violation:
+        on:
+        - late
+        - omission
+        reaction: /safety/brake_controller/emergency_stop
+        within_ms: 20.0
+        mechanism: qos
+    /safety/obstacle_detector/scan:
+      min_rate_hz: 50.0
+      max_age_ms: 100.0
+      qos:
+        liveliness: manual_by_topic
+        lease_duration_ms: 100.0
+      on_violation:
+        on:
+        - omission
+        reaction: /safety/obstacle_detector/declare_lost
+        within_ms: 10.0
+        mechanism: qos
+  node_paths:
+    /safety/brake_controller/brake:
+      input:
+      - /safety/brake_controller/obstacles
+      output:
+      - /safety/brake_controller/brake_cmd
+      trigger:
+        kind: input
+        value:
+        - /safety/brake_controller/obstacles
+      max_latency_ms: 8.0
+    /safety/brake_controller/emergency_stop:
+      input:
+      - /safety/brake_controller/obstacles
+      output:
+      - /safety/brake_controller/brake_cmd
+      trigger:
+        kind: input
+        value:
+        - /safety/brake_controller/obstacles
+      max_latency_ms: 5.0
+      safe_state:
+        emits: /safety/brake_controller/brake_cmd
+        settle_ms: 4422.666667
+    /safety/lidar_driver/sample:
+      output:
+      - /safety/lidar_driver/scan
+      trigger:
+        kind: timer
+        value:
+          rate_hz: 50.0
+      max_latency_ms: 2.0
+    /safety/obstacle_detector/declare_lost:
+      input:
+      - /safety/obstacle_detector/scan
+      output:
+      - /safety/obstacle_detector/obstacles
+      trigger:
+        kind: input
+        value:
+        - /safety/obstacle_detector/scan
+      max_latency_ms: 2.0
+    /safety/obstacle_detector/detect:
+      input:
+      - /safety/obstacle_detector/scan
+      output:
+      - /safety/obstacle_detector/obstacles
+      trigger:
+        kind: input
+        value:
+        - /safety/obstacle_detector/scan
+      max_latency_ms: 12.0
+  scope_paths:
+    bringup.launch.xml/safety.stop:
+      input:
+      - /safety/scan
+      output:
+      - /safety/brake_cmd
+      max_latency_ms: 100.0
+  node_params:
+    /safety/brake_controller:
+      target_acceleration:
+        type: double
+      target_jerk:
+        type: double
+  externals:
+    /safety/brake_cmd: sub
+  hazards:
+    bringup.launch.xml/drive_blind:
+      severity: ASIL_D
+      guards:
+      - members:
+        - /safety/scan
+      on: omission
+      ftti_ms: 10000.0
+      reaction: bringup.launch.xml/safety.stop
+  severity_levels:
+  - QM
+  - ASIL_A
+  - ASIL_B
+  - ASIL_C
+  - ASIL_D
+  node_criticality:
+    /safety/brake_controller: high
+    /safety/lidar_driver: high
+    /safety/obstacle_detector: high
