@@ -561,11 +561,14 @@ int32_t zpico_declare_publisher(struct zpico_session_t *_session, const char *_k
 
 /**
  * Declare a publisher with options (stub). `_is_express` mirrors the real
- * shim's phase-279 express hint.
+ * shim's phase-279 express hint. `_is_reliable` (issue 2001) makes a put
+ * WAIT for the transport TX mutex instead of being dropped when another
+ * thread holds it: nonzero for a RELIABLE publisher.
  */
 int32_t zpico_declare_publisher_ex(struct zpico_session_t *_session,
                                    const char *_keyexpr,
-                                   int32_t _is_express);
+                                   int32_t _is_express,
+                                   int32_t _is_reliable);
 
 /**
  * Publish data using publisher handle.

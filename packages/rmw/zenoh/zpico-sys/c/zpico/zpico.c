@@ -2717,11 +2717,12 @@ static void zpico_release_slot_impl(struct zpico_session* s, bool* active) {
 // ============================================================================
 
 int32_t zpico_declare_publisher(zpico_session_t* session, const char* keyexpr) {
-    return zpico_declare_publisher_ex(session, keyexpr, 0);
+    /* RELIABLE, the ROS default QoS. */
+    return zpico_declare_publisher_ex(session, keyexpr, 0, 1);
 }
 
 int32_t zpico_declare_publisher_ex(zpico_session_t* session, const char* keyexpr,
-                                   int32_t is_express) {
+                                   int32_t is_express, int32_t is_reliable) {
     struct zpico_session* s = (struct zpico_session*)session;
     if (!s->session_open) {
         return ZPICO_ERR_SESSION;
@@ -2746,6 +2747,17 @@ int32_t zpico_declare_publisher_ex(zpico_session_t* session, const char* keyexpr
      * (sent immediately, wire EXPRESS flag). Surfaced from TopicInfo::tx_express
      * through NrosRmwQos; harmless without batching. */
     pub_opts.is_express = (is_express != 0);
+    /* Issue 2001 — what a put does when ANOTHER thread holds the transport TX
+     * mutex (the lease task's keep-alive, a service reply, a second
+     * publisher). zenoh-pico's default DROP only TRY-locks it and discards the
+     * put, which is not zenoh's DROP (that drops on a full send queue): it
+     * fails on mere contention, and the caller cannot tell it from a dead
+     * session. A RELIABLE publisher therefore WAITS (BLOCK), for as long as the
+     * holder's own write takes. BEST_EFFORT keeps DROP: losing a sample is
+     * what it allows. */
+    if (is_reliable != 0) {
+        pub_opts.congestion_control = Z_CONGESTION_CONTROL_BLOCK;
+    }
 #if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1
     /* Batching queues puts behind the transport tx mutex; the default DROP
      * congestion control TRY-locks it and silently discards the put whenever a

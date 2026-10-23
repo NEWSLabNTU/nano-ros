@@ -103,8 +103,9 @@ int main(void) {
 
     /* Phase 282 W3 (#145) — STRESS_EXPRESS=1 declares the publisher express:
      * its samples bypass tx batching (wire EXPRESS flag) even in a batching
-     * image, so per-message latency is not flush-cadence-quantized. */
-    int32_t handle = zpico_declare_publisher_ex(s, STRESS_KEYEXPR, STRESS_EXPRESS);
+     * image, so per-message latency is not flush-cadence-quantized. RELIABLE,
+     * like every ROS-default publisher (issue 2001). */
+    int32_t handle = zpico_declare_publisher_ex(s, STRESS_KEYEXPR, STRESS_EXPRESS, 1);
     if (handle < 0) {
         printk("STRESS_FAIL: declare rc=%d\n", handle);
         return 1;

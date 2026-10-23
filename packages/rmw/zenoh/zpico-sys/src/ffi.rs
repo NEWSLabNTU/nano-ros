@@ -339,12 +339,15 @@ mod cbindgen_stubs {
     }
 
     /// Declare a publisher with options (stub). `_is_express` mirrors the real
-    /// shim's phase-279 express hint.
+    /// shim's phase-279 express hint. `_is_reliable` (issue 2001) makes a put
+    /// WAIT for the transport TX mutex instead of being dropped when another
+    /// thread holds it: nonzero for a RELIABLE publisher.
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_declare_publisher_ex(
         _session: *mut zpico_session_t,
         _keyexpr: *const c_char,
         _is_express: i32,
+        _is_reliable: i32,
     ) -> i32 {
         0
     }

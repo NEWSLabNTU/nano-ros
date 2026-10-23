@@ -203,6 +203,7 @@ unsafe extern "C" {
         session: *mut zpico_session_t,
         keyexpr: *const core::ffi::c_char,
         is_express: i32,
+        is_reliable: i32,
     ) -> i32;
     pub fn zpico_publish(
         session: *mut zpico_session_t,

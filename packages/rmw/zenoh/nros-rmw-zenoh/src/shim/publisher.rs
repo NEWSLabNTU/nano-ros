@@ -621,7 +621,11 @@ impl ZenohPublisher {
         // 2. The underlying C shim manages its own state
         // 3. We transmute the lifetime to 'static for storage
         let publisher = unsafe {
-            let pub_result = context.declare_publisher(&keyexpr_buf, topic.tx_express);
+            let pub_result = context.declare_publisher(
+                &keyexpr_buf,
+                topic.tx_express,
+                qos.reliability == nros_rmw::QoSReliabilityPolicy::Reliable,
+            );
             match pub_result {
                 Ok(p) => core::mem::transmute::<
                     crate::zpico::Publisher<'_>,

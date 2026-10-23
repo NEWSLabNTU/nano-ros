@@ -563,9 +563,23 @@ impl Context {
     ///
     /// Returns an error if the session is not open, the key expression is invalid,
     /// or the maximum number of publishers has been reached.
-    pub fn declare_publisher(&self, keyexpr: &[u8], tx_express: bool) -> Result<Publisher<'_>> {
+    ///
+    /// `reliable` (issue 2001): a put on a RELIABLE publisher waits for the
+    /// transport's TX mutex rather than being dropped while another thread
+    /// holds it.
+    pub fn declare_publisher(
+        &self,
+        keyexpr: &[u8],
+        tx_express: bool,
+        reliable: bool,
+    ) -> Result<Publisher<'_>> {
         let handle = ffi_guard(|| unsafe {
-            zpico_declare_publisher_ex(self.handle, keyexpr.as_ptr().cast(), tx_express as i32)
+            zpico_declare_publisher_ex(
+                self.handle,
+                keyexpr.as_ptr().cast(),
+                tx_express as i32,
+                reliable as i32,
+            )
         });
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));

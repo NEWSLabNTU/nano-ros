@@ -1553,7 +1553,7 @@ fn concurrent_declares_on_one_session_never_share_a_slot() {
                     let publishers: Vec<_> = (0..PER_THREAD)
                         .map(|p| {
                             let key = format!("issue1711/r{round}/t{t}/p{p}\0");
-                            ctx.declare_publisher(key.as_bytes(), false)
+                            ctx.declare_publisher(key.as_bytes(), false, true)
                                 .unwrap_or_else(|e| panic!("round {round} t{t} p{p}: {e:?}"))
                         })
                         .collect();
@@ -1680,7 +1680,7 @@ fn declares_keep_running_across_a_reconnect() {
     let ctx = nros_rmw_zenoh::zpico::Context::new(locator.as_bytes()).expect("open the session");
     // Long-lived entries, so the replay walks a non-trivial list.
     let _keep_pub = ctx
-        .declare_publisher(b"issue1749/keep/pub\0", false)
+        .declare_publisher(b"issue1749/keep/pub\0", false, true)
         .expect("keep pub");
     let _keep_tok = ctx
         .declare_liveliness(b"issue1749/keep/token\0")
@@ -1727,7 +1727,7 @@ fn declares_keep_running_across_a_reconnect() {
                 while !stop.load(Ordering::Relaxed) {
                     let key = format!("issue1749/t{t}/{}\0", n % 8);
                     n = n.wrapping_add(1);
-                    let p = ctx.declare_publisher(key.as_bytes(), false);
+                    let p = ctx.declare_publisher(key.as_bytes(), false, true);
                     let l = ctx.declare_liveliness(key.as_bytes());
                     if p.is_ok() && l.is_ok() {
                         ok.fetch_add(1, Ordering::Relaxed);
