@@ -1,7 +1,7 @@
 ---
 id: 1651
 title: "`host-tests.yml` has not gone green since 2026-06-17 — most runs are cancelled by the next merge, and the rest fail at `just ci tier1`"
-status: open
+status: resolved
 type: bug
 area: ci, testing
 severity: high
@@ -9,7 +9,7 @@ found: 2026-10-03
 related: [1521, 1644, 1226, 1158, phase-477, phase-466]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, re-homed 2026-10-13 from phase-477, archived that day. What is left is a green tier-1 run on `main`, which is 466's acceptance.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, re-homed 2026-10-13 from phase-477, archived that day. What is left is a green tier-1 run on `main`, which is 466's acceptance.
 
 ## What this is
 
@@ -204,3 +204,28 @@ Both reds were fixed together, with a third defect one of them was hiding:
    `px4=4/4` stamped, `px4_bridge_compile` passes.
 
 Acceptance holds once a `tier1` run on `main` after this lands is green.
+
+## Resolution (2026-10-23) — acceptance met; the current reds are other issues
+
+Acceptance was a green `host-tests` and a green tier 1 on `main`. Both
+happened: `host-tests` succeeded on 38675524288 (10-15), 38844798102 (10-16)
+and 39093104537 (10-18), and run-matrix 38980380118 (dispatch, main at
+`be26a55bf`) reported `tier 1 — VERDICT: cells ran and passed`.
+
+`host-tests` is red again from 10-19, but those runs are verdicts with named
+causes, not this issue's mechanism (runs cancelled by the next merge, or
+dying before a verdict):
+
+- **tier-1 gates**, 10-19 (39194192517) and 10-22 (39716043967):
+  `required-features-tests` failed on
+  `entity_wake an_arrival_racing_a_drain_is_never_left_undispatched`. That is
+  issue 1980.
+- **per-feature clippy**, 10-21 and 10-22: 50 `nros`/`nros-node` rows with
+  `does not contain this feature: std`, phase-359 fallout fixed on main by
+  `ff65ab9e33` and #2467. The remaining row, `nros-board-threadx-qemu-riscv64`,
+  is issue 1987, and was the only failure on 10-20.
+- **tier-1 gates**, 10-21: `template-copy-out` hit `No space left on device`,
+  issue 1353's class. The same run's `linux-check` red was not attributed.
+
+So the lane now reports, which is what this issue asked for, and what it
+reports is tracked elsewhere.
