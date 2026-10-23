@@ -1,0 +1,1 @@
+`dep-chain` retries a `cargo tree` that could not reach crates.io, and reports a persistent registry failure as a network failure, not a dependency-chain verdict. The pinned nightly's cargo never retried an HTTP/2 framing error on its own (issue 1992).

@@ -1,7 +1,7 @@
 ---
 id: 1992
 title: "dep-chain's NuttX cell fails on a crates.io HTTP/2 framing error with no retry at all, although the root `net.retry = 10` names exactly that error and that gate"
-status: open
+status: resolved
 type: bug
 area: [ci, tooling]
 severity: low
@@ -83,3 +83,45 @@ runs `cargo tree` once.
    it, or wrap the probe's `cargo tree` in the same "retry a registry failure,
    then report it as one" loop that `api-parity` has. A registry failure that
    survives the retries should still fail, and say it was the registry.
+
+## Resolution (2026-10-23)
+
+**Why no retry ran: the cell's cargo is not the one `net.retry` was
+measured against.** The root config does reach the leaf. Nothing in the
+job sets `CARGO_NET_RETRY`, and cargo's config walk from
+`examples/qemu-armv7a-nuttx/rust/talker` ends at the repository root. But
+`examples/qemu-armv7a-nuttx/rust-toolchain.toml` pins `nightly-2026-04-11`
+(cargo `eb94155a9`, 1.96.0-nightly), for `-Z build-std` against the patched
+NuttX libc. That cargo's sparse-index fetch returns the curl error wrapped in
+`http_async::Error::Easy`, and its `maybe_spurious` downcasts only to a bare
+`curl::Error`. So `[16] Error in the HTTP2 framing layer` is never classed as
+spurious, and `net.retry` never applies. Cargo fixed it upstream on 2026-04-17,
+six days after the pin, in `963787c759` ("add http_async types to spurious
+error detection"). Stable 1.99, which the other six cells use, has the fix.
+
+The stderr fingerprints it: `Caused by: curl failed` is that nightly's
+`#[error("curl failed")]` on `http_async::Error::Easy`. The string is in the
+nightly's binary and not in 1.99's. Issue 1626's `api-parity` samples carry
+the same line, because `api-parity` runs `cargo +<pinned nightly> doc`. That
+is why its outer loop was the one remedy that held.
+
+**The fix is item 2's second option**, because bumping the nightly is tied
+to the patched libc version and belongs in its own change:
+
+- `scripts/lib/cargo_registry.py` is now the one classifier. It moved from
+  `scripts/api_parity/extract_rust.py`, which imports it, and it adds a CLI
+  for shell callers. Its self-test runs on every invocation, so every
+  dep-chain cell exercises it, and its first sample is this run's stderr.
+- `scripts/ci/dep-chain-check.sh` retries a failed `cargo tree` whose stderr
+  classifies as a registry failure, up to 3 attempts at 20 s × attempt. A
+  failure that survives says `could not reach the crates.io registry after 3
+  attempt(s) (issue 1992)` and that it is NOT a dep-chain verdict, and the
+  cell still fails. A non-registry failure is not retried and prints as
+  before.
+- The root `.cargo/config.toml` comment no longer claims `net.retry` covers
+  this case under the pinned nightly.
+
+Checked with a fake `cargo` driving the probe's loop: two HTTP/2 failures and
+then a success give `[ok]` after 3 calls; persistent failures give the
+registry `[FAIL]` after 3 calls; a resolver error gives the ordinary `[FAIL]`
+after 1 call.
