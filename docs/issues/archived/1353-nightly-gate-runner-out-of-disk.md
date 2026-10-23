@@ -3,7 +3,7 @@ id: 1353
 title: "The scheduled `gate` run dies at `just check build` with `No space left on
   device` on the GitHub-hosted runner — 8 of the last 10 nights, so the compile
   tier's only unattended lane has produced almost no verdict for a week"
-status: open
+status: wontfix
 type: bug
 area: ci
 severity: medium
@@ -11,7 +11,7 @@ found: 2026-09-12
 related: [1350, 0996, 1177, 1158, phase-466, phase-489]
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## What happens
 
@@ -2359,3 +2359,13 @@ ci tier1-gates FAILED at step 1 of 1 (check::default).
 This is the tier-1 shape already recorded above under "The tier-1 half of the
 same distinction". The same run's `per-feature clippy` job failed separately,
 on issue 1987, which is a different cause.
+
+## Resolution (2026-10-23) — wontfix: runner configuration, not a project defect
+
+Closed by maintainer decision. Running out of disk on the CI runner is a
+property of how the runner is configured and provisioned, not a defect in
+nano-ros, so it is not tracked in this series. The project-side work this
+issue prompted stays where it landed: phase-466 W4's disk-report channel
+and `scripts/ci/reclaim-disk.sh`, and phase-489's build-speed items. A
+`No space left on device` in a scheduled lane is now an operator matter
+for the runner, not an open issue to cite as a lane's owner.
