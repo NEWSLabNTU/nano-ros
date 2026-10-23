@@ -206,7 +206,7 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 | `std::make_shared<MyNode>()` | works | `auto node = std::make_shared<MyNode>()` and `rclcpp::spin(std::make_shared<MyNode>())` are unchanged. `rclcpp::Node::SharedPtr node = std::make_shared<…>(…)` does not compile — write `auto`; see "`Node::SharedPtr` observes, it does not own" below. `shared_from_this()` works too, with the same caveat. |
 | `rclcpp::Node::make_shared("name")` | `std::make_shared<rclcpp::Node>(…)`, the owning `std::shared_ptr` | Hosted builds. `auto node = rclcpp::Node::make_shared("x");` is unchanged; assigning the temporary straight to a global `rclcpp::Node::SharedPtr` is not — keep it in a local first (`auto node = …; g_node = node;`). |
 | `create_publisher<M>(topic, qos)` | shared_ptr-returning wrapper | `qos` can be `rclcpp::QoS(10)` or an int. |
-| `create_subscription<M>(topic, qos, callback)` | registered on the executor arena; dispatched by **any** spin verb | **Capturing lambdas + `std::function` all work**. |
+| `create_subscription<M>(topic, qos, callback)` | registered on the executor arena; dispatched by **any** spin verb | **Capturing lambdas + `std::function` + `std::bind` all work**. The callback may take `const M&` (no allocation, every target) or, on hosted builds, upstream's `M::UniquePtr` / `M::SharedPtr` / `M::ConstSharedPtr` / `std::shared_ptr<const M>`: each delivery is then copied into a fresh heap object the callback owns and may keep. A freestanding build refuses the pointer shapes at compile time, naming `const M&`. |
 | `create_wall_timer(period, callback)` | registered on the executor arena; dispatched by **any** spin verb | `std::chrono::duration` arg, capturing-lambda callback. Returns `rclcpp::TimerBase::SharedPtr`, which is `rclcpp::Timer::SharedPtr` — one flat type, two names. See below. |
 | `rclcpp::create_timer(node, clock, period, cb)` | the clock-taking verb; a `RCL_ROS_TIME` clock follows `/clock` | Humble's only form. `create_wall_timer` stays on the steady clock. |
 | `create_service<S>(name, handler)` with upstream's `std::shared_ptr<Request>` / `std::shared_ptr<Response>` handler (optionally with `std::shared_ptr<rmw_request_id_t>` first) | lent from the dispatch: the handler gets pointers to the request and response the dispatch decoded | Hosted builds; a plain function or a capture-less lambda. The handler must not KEEP a pointer past its call: that aborts, naming why. The request header is zero-filled. A capturing lambda is refused (use `rclcpp::bind_service`). |
@@ -238,13 +238,13 @@ lines changes in either direction (`edits.json`). Today:
 |---|---|---|
 | `minimal_publisher` lambda / member_function | 0 | — |
 | `minimal_subscriber` member_function | 0 | — |
+| `minimal_subscriber` lambda (jazzy) | 0 | — |
 | `minimal_timer` lambda / member_function | 0 | — |
 | `minimal_service` | 3 | global `Node::SharedPtr` from a temporary |
 | `minimal_subscriber` not_composable | 3 | global `Node::SharedPtr` from a temporary |
-| `minimal_subscriber` lambda (jazzy) | 4 | a `String::UniquePtr` callback becomes `const String&` |
 | `minimal_publisher` not_composable | 11 | the `try`/`catch` goes: no exceptions |
 | `minimal_client` | 15 | `async_send_request` / `future.get()` / `remove_pending_request` become `send_request` / `Future::try_take` / `Future::cancel` |
-| `multithreaded_executor` | 26 | `MultiThreadedExecutor`, callback groups, `ConstSharedPtr` callbacks |
+| `multithreaded_executor` | 18 | `MultiThreadedExecutor`, callback groups |
 | `minimal_action_server` member_functions | 77 | goal handles, `create_server` over node interfaces, a thread per goal |
 | `minimal_action_client` member_functions | 87 | goal handles, futures, raw-byte feedback/result callbacks |
 
@@ -253,13 +253,10 @@ The remaining causes, largest first:
 - **Actions** (164 lines). No `ServerGoalHandle` / `ClientGoalHandle` and no
   futures; see the next section. The stock server also starts a `std::thread`
   per goal, which nano-ros does not do for you.
-- **Callback groups and the multi-threaded executor** (most of 26 lines).
+- **Callback groups and the multi-threaded executor** (18 lines).
 - **The client future shape** (15 lines, issue 1996). `send_request` returns a
   `rclcpp::Future` you drain with `try_take`, not a `shared_future`.
 - **Exceptions** (11 lines). There is nothing to catch.
-- **Pointer-shaped subscription callbacks** (`Msg::UniquePtr`,
-  `Msg::ConstSharedPtr`, issue 1995). The subscription delivers `const Msg&`; generated
-  messages carry no `SharedPtr` aliases.
 - **A global `Node::SharedPtr` assigned from `make_shared`** (2 lines each).
 
 ## Actions: no goal handles, no futures

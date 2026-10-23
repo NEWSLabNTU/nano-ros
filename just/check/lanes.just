@@ -1278,6 +1278,51 @@ cpp: cpp-fmt
         -o "$gen/nros-cpp-tests"/service_shared_ptr_handler_runtime \
         packages/api/nros-cpp/tests/compile/service_shared_ptr_handler_runtime.cpp
     "$gen/nros-cpp-tests"/service_shared_ptr_handler_runtime
+    # issue 1995 — upstream's pointer-shaped SUBSCRIPTION callbacks
+    # (`M::UniquePtr`, `M::SharedPtr`, `M::ConstSharedPtr`, `std::bind` over a
+    # ConstSharedPtr member): each classifies, sees the delivered message, and a
+    # KEPT pointer is a live copy after the frame dies (copy, not the service
+    # handler's loan). Same header-only link shape as above.
+    test -f packages/api/nros-cpp/tests/compile/subscription_pointer_callback_runtime.cpp || { \
+        echo "ERROR: subscription_pointer_callback_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - pointer-shaped subscription callbacks: heap copy per delivery, retention is legal (runtime, issue 1995)"
+    c++ -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Wl,--unresolved-symbols=ignore-all \
+        -o "$gen/nros-cpp-tests"/subscription_pointer_callback_runtime \
+        packages/api/nros-cpp/tests/compile/subscription_pointer_callback_runtime.cpp
+    "$gen/nros-cpp-tests"/subscription_pointer_callback_runtime
+    # ...and WITHOUT the hosted surface they are refused, naming `const M&`:
+    # no allocator on the delivery path. Grepped, because an include typo also
+    # fails to compile.
+    _spf=packages/api/nros-cpp/tests/compile/subscription_pointer_callback_freestanding_probe.cpp
+    test -f "$_spf" || { echo "ERROR: $_spf is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - pointer-shaped subscription callbacks are REFUSED without NROS_CPP_STD (issue 1995)"
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
+    mkdir -p tmp
+    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -I"$cppgen" -I"$cgen" \
+        -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        "$_spf" 2>tmp/refuse-subscription-pointer-freestanding.log; then
+        echo "ERROR: $_spf COMPILED -- a pointer-shaped callback was accepted with no allocator." >&2
+        exit 1
+    fi
+    for _needle in "REFUSED by nano-ros" "const M&"; do
+        nros_grep_q "$_needle" tmp/refuse-subscription-pointer-freestanding.log && _rc=0 || _rc=$?
+        if [ "$_rc" -ne 0 ]; then
+            echo "ERROR: $_spf failed WITHOUT '$_needle' -- it broke for another reason." >&2
+            echo "       See tmp/refuse-subscription-pointer-freestanding.log" >&2
+            exit 1
+        fi
+    done
     # phase-459 W6 — a node's callback groups and its registration's
     # CALLBACK_GROUPS must agree. RUNTIME for the reason the probe above gives:
     # the refusal is decided at boot, so a syntax-only sweep is green either
@@ -2547,7 +2592,8 @@ cpp: cpp-fmt
     # expected-failure compile proves only that a file does not build.
     for probe in node_options system_defaults_qos log_throttle service_callback \
                  unbounded_spin unbounded_wait unbounded_wait_dispatch \
-                 unbounded_wait_handle unbounded_action_wait multi_threaded_executor; do \
+                 unbounded_wait_handle unbounded_action_wait multi_threaded_executor \
+                 subscription_callback; do \
         f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
         test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
         if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \

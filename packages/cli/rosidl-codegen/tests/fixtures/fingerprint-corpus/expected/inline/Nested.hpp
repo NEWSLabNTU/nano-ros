@@ -16,6 +16,7 @@
 #include "rclcpp/heap_string.hpp"
 #include "rclcpp/size_bound.hpp"
 #include "rclcpp/detail/serialization_format.hpp"
+#include "rclcpp/detail/std_detect.hpp" // issue 1995 — NROS_CPP_HAS_SHARED_PTR for the pointer aliases
 #include "msg/fingerprint_corpus_msg_shapes.hpp"
 
 #include <rclc/detail/nros_config_generated.h>
@@ -43,6 +44,16 @@ namespace fingerprint_corpus { namespace msg {
 struct Nested {
     fingerprint_corpus::msg::Shapes one = {};
     rclcpp::FixedSequence<fingerprint_corpus::msg::Shapes, 64> many = {};
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    // rosidl's smart-pointer aliases (issue 1995) — hosted builds only.
+    using SharedPtr = ::std::shared_ptr<Nested>;
+    using ConstSharedPtr = ::std::shared_ptr<const Nested>;
+    using UniquePtr = ::std::unique_ptr<Nested>;
+    using ConstUniquePtr = ::std::unique_ptr<const Nested>;
+    using WeakPtr = ::std::weak_ptr<Nested>;
+    using ConstWeakPtr = ::std::weak_ptr<const Nested>;
+#endif
 
     // Type metadata
     static constexpr const char* TYPE_NAME = "fingerprint-corpus::msg::dds_::Nested_";

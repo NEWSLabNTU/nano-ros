@@ -1054,8 +1054,17 @@ Node::create_subscription(const char* topic, const ::rclcpp::QoS& qos, Cb cb) {
     // `owned_entities` to keep it alive, and hand back a `shared_ptr` aliasing
     // into it. W1 put the capture in the arena entry, so the cell has nothing
     // left to hold; W2 stops pretending the result is a pointer to an object.
+    //
+    // issue 1995 — the callback's SHAPE decides what the arena holds: a
+    // `const M&` callable as-is, or (hosted only) an adapter that hands a
+    // pointer-shaped callback a heap copy of each message. Anything else is
+    // refused here, naming the shapes, rather than as an `InplaceFn` conversion.
+    constexpr int shape = ::rclcpp::detail::subscription_callback_shape<M, Cb>::value;
+    static_assert(shape != ::rclcpp::detail::SUB_SHAPE_NONE || ::rclcpp::detail::refuse<Cb>::value,
+                  NROS_RCLCPP_REFUSE_SUBSCRIPTION_CALLBACK_SHAPE);
     using Capture = ::rclcpp::InplaceFn<void(const M&)>;
-    Capture captured(::rclcpp::tr::forward_rvalue(cb));
+    Capture captured(::rclcpp::detail::subscription_callback_adapter<M, Cb, shape>::wrap(
+        ::rclcpp::tr::forward_rvalue(cb)));
     ::size_t handle_id = 0;
     const ::rclcpp::Result r = ::rclcpp::detail::register_subscription_capturing<M>(
         *this, topic, qos, captured, &handle_id);

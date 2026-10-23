@@ -681,6 +681,117 @@ namespace rclcpp {
 
 namespace detail {
 
+// ---- issue 1995: which callback shapes a subscription takes ------------------
+//
+// The arena delivers `const M&` from a message decoded in its dispatch frame,
+// and that stays the ONE delivery path. Upstream's other common shapes —
+// `M::UniquePtr`, `M::SharedPtr`, `M::ConstSharedPtr` (by value or `const&`),
+// `std::shared_ptr<const M>` — are taken on a HOSTED build by wrapping the
+// callable in an adapter that COPIES the message into a heap object per
+// delivery and hands the callback that pointer.
+//
+// Why a copy, not the service handler's frame loan (`detail::lend_from_frame`):
+// a subscription callback KEEPING its pointer (`last_msg_ = msg;`) is the
+// common case, not the rare one, and a loan turns it into an abort. A copy
+// makes keeping it legal, and the allocation is opted into by the signature —
+// a `const M&` callback still allocates nothing. Freestanding builds have no
+// allocator on this path, so there the pointer shapes are refused at compile
+// time (`NROS_RCLCPP_REFUSE_SUBSCRIPTION_CALLBACK_SHAPE`).
+
+/// Unevaluated-only `declval`, so the detection below needs no `<utility>`.
+template <typename T> T&& sub_declval() noexcept;
+
+/// `true` iff `F&` can be called with one argument of type `Arg`.
+template <typename F, typename Arg, typename = void>
+struct sub_callable_with : ::rclcpp::tr::false_type {};
+template <typename F, typename Arg>
+struct sub_callable_with<F, Arg, decltype((void)sub_declval<F&>()(sub_declval<Arg>()))>
+    : ::rclcpp::tr::true_type {};
+
+/// The shapes, in detection order. `const M&` first, so a callable taking
+/// `M` by value or `auto` keeps the allocation-free path.
+enum SubscriptionCallbackShape {
+    SUB_SHAPE_NONE = 0,
+    SUB_SHAPE_REF = 1,              ///< `void(const M&)` — the delivery path itself
+    SUB_SHAPE_CONST_SHARED_PTR = 2, ///< `std::shared_ptr<const M>` (`M::ConstSharedPtr`)
+    SUB_SHAPE_SHARED_PTR = 3,       ///< `std::shared_ptr<M>` (`M::SharedPtr`)
+    SUB_SHAPE_UNIQUE_PTR = 4,       ///< `std::unique_ptr<M>` (`M::UniquePtr`)
+};
+
+// Each step instantiates its probe only when every earlier one failed, so a
+// generic lambda that IS callable with `const M&` is never instantiated with a
+// smart pointer (its body would be a hard error, not a substitution failure).
+template <typename M, typename D, bool = sub_callable_with<D, const M&>::value>
+struct sub_shape_ref;
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+template <typename M, typename D, bool = sub_callable_with<D, ::std::shared_ptr<const M>>::value>
+struct sub_shape_const_shared;
+template <typename M, typename D, bool = sub_callable_with<D, ::std::shared_ptr<M>>::value>
+struct sub_shape_shared;
+template <typename M, typename D, bool = sub_callable_with<D, ::std::unique_ptr<M>>::value>
+struct sub_shape_unique;
+template <typename M, typename D>
+struct sub_shape_unique<M, D, true> : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_UNIQUE_PTR> {};
+template <typename M, typename D>
+struct sub_shape_unique<M, D, false> : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_NONE> {};
+template <typename M, typename D>
+struct sub_shape_shared<M, D, true> : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_SHARED_PTR> {};
+template <typename M, typename D> struct sub_shape_shared<M, D, false> : sub_shape_unique<M, D> {};
+template <typename M, typename D>
+struct sub_shape_const_shared<M, D, true>
+    : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_CONST_SHARED_PTR> {};
+template <typename M, typename D>
+struct sub_shape_const_shared<M, D, false> : sub_shape_shared<M, D> {};
+template <typename M, typename D>
+struct sub_shape_ref<M, D, false> : sub_shape_const_shared<M, D> {};
+#else
+template <typename M, typename D>
+struct sub_shape_ref<M, D, false> : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_NONE> {};
+#endif // NROS_CPP_HAS_SHARED_PTR
+template <typename M, typename D>
+struct sub_shape_ref<M, D, true> : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_REF> {};
+
+/// Which `SubscriptionCallbackShape` the callable `F` is, for message `M`.
+template <typename M, typename F>
+struct subscription_callback_shape : sub_shape_ref<M, typename ::rclcpp::tr::decay<F>::type> {};
+
+/// Turns a callback of shape `Shape` into something `InplaceFn<void(const M&)>`
+/// can hold. The `const M&` shape passes through untouched (no wrapper, no
+/// allocation); a refused shape becomes a no-op so the refusal's
+/// `static_assert` is the only diagnostic the caller reads.
+template <typename M, typename F, int Shape> struct subscription_callback_adapter;
+
+template <typename M, typename F> struct subscription_callback_adapter<M, F, SUB_SHAPE_REF> {
+    template <typename G> static G&& wrap(G&& f) { return static_cast<G&&>(f); }
+};
+
+template <typename M, typename F> struct subscription_callback_adapter<M, F, SUB_SHAPE_NONE> {
+    struct Refused {
+        void operator()(const M&) {}
+    };
+    template <typename G> static Refused wrap(G&&) { return Refused(); }
+};
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+/// The pointer shapes: one heap copy of the delivered message per call. The
+/// callback owns (a share of) it and may keep it past the call — upstream's
+/// contract, with nothing lent from the dispatch frame.
+template <typename M, int Shape> struct subscription_heap_copy {
+    static ::std::shared_ptr<M> make(const M& msg) { return ::std::make_shared<M>(msg); }
+};
+template <typename M> struct subscription_heap_copy<M, SUB_SHAPE_UNIQUE_PTR> {
+    static ::std::unique_ptr<M> make(const M& msg) { return ::std::unique_ptr<M>(new M(msg)); }
+};
+
+template <typename M, typename F, int Shape> struct subscription_callback_adapter {
+    struct Copying {
+        typename ::rclcpp::tr::decay<F>::type fn;
+        void operator()(const M& msg) { fn(subscription_heap_copy<M, Shape>::make(msg)); }
+    };
+    template <typename G> static Copying wrap(G&& f) { return Copying{static_cast<G&&>(f)}; }
+};
+#endif // NROS_CPP_HAS_SHARED_PTR
+
 /// phase-456 W2 — register a capturing callback, with the capture in the ARENA.
 ///
 /// The bridge between `rclcpp::InplaceFn` and

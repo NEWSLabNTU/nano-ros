@@ -1,0 +1,24 @@
+{#-
+  issue 1995 — upstream rosidl's nested smart-pointer aliases, on the HOSTED
+  surface only. A ported subscription callback spells its parameter
+  `Msg::UniquePtr` / `Msg::ConstSharedPtr` / `const Msg::SharedPtr&`, and
+  without these the name "has not been declared" before overload resolution is
+  reached. `NROS_CPP_HAS_SHARED_PTR` is the one capability macro
+  (`rclcpp/detail/std_detect.hpp`, defined iff `NROS_CPP_STD`), so a
+  freestanding build sees no `<memory>` and no alias. The executor still
+  delivers `const Msg&`; `rclcpp::Node::create_subscription` adapts a
+  pointer-shaped callback by COPYING the message into a heap object per
+  delivery, which is the allocation the callback's signature asked for.
+
+  `ptr_self` is the struct's own name as written inside it (the injected class
+  name), set by the including template.
+-#}
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    // rosidl's smart-pointer aliases (issue 1995) — hosted builds only.
+    using SharedPtr = ::std::shared_ptr<{{ ptr_self }}>;
+    using ConstSharedPtr = ::std::shared_ptr<const {{ ptr_self }}>;
+    using UniquePtr = ::std::unique_ptr<{{ ptr_self }}>;
+    using ConstUniquePtr = ::std::unique_ptr<const {{ ptr_self }}>;
+    using WeakPtr = ::std::weak_ptr<{{ ptr_self }}>;
+    using ConstWeakPtr = ::std::weak_ptr<const {{ ptr_self }}>;
+#endif
