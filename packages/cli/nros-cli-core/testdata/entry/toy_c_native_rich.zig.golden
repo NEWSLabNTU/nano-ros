@@ -32,7 +32,7 @@ fn __nros_entry_setup(executor: ?*anyopaque) callconv(.C) i32 {
     if (executor == null) return c.NROS_CPP_RET_NOT_INIT;
     {
         if (c.nros_cpp_declare_remap(executor, "renamed_talker", "/", "chatter", "/demo/chatter") != c.NROS_CPP_RET_OK) return -1;
-        if (c.nros_cpp_declare_param(executor, 0, "rate_hz", "10") != c.NROS_CPP_RET_OK) return -1;
+        if (c.nros_cpp_declare_node_param(executor, "renamed_talker", "rate_hz", "10") != c.NROS_CPP_RET_OK) return -1;
         const nrc = c.nros_cpp_node_create(executor, "renamed_talker", "/demo", &__nros_node_0);
         if (nrc != c.NROS_CPP_RET_OK) return nrc;
         const self = __nros_c_component_c_talker_pkg_create();

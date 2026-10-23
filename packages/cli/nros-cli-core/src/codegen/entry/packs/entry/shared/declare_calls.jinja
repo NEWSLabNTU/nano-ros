@@ -12,8 +12,8 @@
   caller passes it in as `dexec` (phase-494: it is template text, so the
   template that writes it chooses it; it used to ride on a Rust view).
 
-  What the caller puts in scope: `n`, the `LoweredNode`; `dexec`, its
-  executor expression; `at`, the node's index on that executor. A C++ entry compiles these exact lines. Two copies would
+  What the caller puts in scope: `n`, the `LoweredNode`, and `dexec`, its
+  executor expression. A C++ entry compiles these exact lines. Two copies would
   be two authored spellings of one call sequence, which is the defect
   phase-432 exists to remove; before this they were `emit_declare_remaps` and
   `emit_declare_params`, `pub(super)` string writers in `emit_c.rs` that
@@ -27,13 +27,15 @@
   emission sat inside the `param_services` gate and AFTER construction, so a
   plan without param services silently dropped every launch param.
 
-  issue 1272 -- a parameter seed NAMES ITS NODE. `at` is the index
-  the executor's `node_builder` will hand this node: its position among the
-  nodes this setup function builds on this executor. Both packs therefore
-  emit these calls BEFORE the node is created, so the seed always names the
-  NEXT node, and the shim refuses a seed whose index is not that next node
-  (a component that built two nodes, or none, would otherwise shift every
-  later node's parameters onto a neighbour).
+  issue 1272 -- a parameter seed lands on ITS node. Both packs emit these
+  calls BEFORE the node is created, so the seed is for the NEXT node the
+  executor builds. phase-509 P9b: the seed NAMES that node
+  (`nros_cpp_declare_node_param`) and the shim resolves its index from the
+  executor itself; a build-time index restarted per tier, and under RFC-0108's
+  one executor per core every level's setup registers on the same executor,
+  so the second level's seeds named a node that was not next and its setup
+  failed. A seed for another node on the index the previous node was seeded
+  for (that node was never built) is refused, as 1272 refused a stale index.
 
   Indentation is eight spaces because both callers open a node block at four.
   It is written here rather than passed in: a caller that needed a different
@@ -51,7 +53,7 @@
 {%- endif %}
 {%- for p in n.params %}
         {
-            nros_cpp_ret_t prc = nros_cpp_declare_param({{ dexec }}, {{ at }}, "{{ p[0] | c_str }}", "{{ p[1] | c_str }}");
+            nros_cpp_ret_t prc = nros_cpp_declare_node_param({{ dexec }}, "{{ n.name | c_str }}", "{{ p[0] | c_str }}", "{{ p[1] | c_str }}");
             if (prc != NROS_CPP_RET_OK) return (int32_t)prc;
         }
 {%- endfor -%}

@@ -56,7 +56,7 @@ var __nros_node_{{ loop.index0 }}: c.nros_cpp_node_t = undefined;
         if (c.nros_cpp_declare_remap(executor, "{{ n.name | c_str }}", "/", "{{ r[0] | c_str }}", "{{ r[1] | c_str }}") != c.NROS_CPP_RET_OK) return -1;
 {%- endfor %}
 {%- for p in n.params %}
-        if (c.nros_cpp_declare_param(executor, {{ at }}, "{{ p[0] | c_str }}", "{{ p[1] | c_str }}") != c.NROS_CPP_RET_OK) return -1;
+        if (c.nros_cpp_declare_node_param(executor, "{{ n.name | c_str }}", "{{ p[0] | c_str }}", "{{ p[1] | c_str }}") != c.NROS_CPP_RET_OK) return -1;
 {%- endfor %}
         const nrc = c.nros_cpp_node_create(executor, "{{ n.name | c_str }}", "{{ n.namespace | c_str }}", &__nros_node_{{ idx }});
         if (nrc != c.NROS_CPP_RET_OK) return nrc;

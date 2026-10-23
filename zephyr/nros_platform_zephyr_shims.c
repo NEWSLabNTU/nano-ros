@@ -30,6 +30,17 @@ int32_t nros_zephyr_msleep(int32_t ms) {
     return k_msleep(ms);
 }
 
+/* phase-509 P9b (RFC-0108 "As built in P9b") -- a level runner's setup
+ * failure FAILS THE BOOT: the kernel's fatal-error path (K_ERR_KERNEL_PANIC),
+ * so `k_sys_fatal_error_handler` decides (halt by default; an application
+ * that overrides it may reset), and a hardware watchdog the application arms
+ * is never fed again. A level that parked instead left the image half up:
+ * the levels after it never spawned, the rest ran on, and nothing but a
+ * missing topic said so. The caller has printed the level and its code. */
+void nros_zephyr_fail_boot(void) {
+    k_panic();
+}
+
 void nros_zephyr_rand_fill(void* dst, size_t len) {
     sys_rand_get(dst, len);
 }

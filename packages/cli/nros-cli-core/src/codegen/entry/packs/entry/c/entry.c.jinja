@@ -208,7 +208,8 @@ static uint64_t __nros_mode_storage{{ tag }}[(({{ m.modes | length }}u + 1u) * (
 {% if tiers -%}
 /* Phase 274.W2 — per-tier setup functions (one per tier). */
 {% for t in tiers.setups -%}
-static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
+/* phase-509 P9b: `__nros_at` names the node being built, for the report below. */
+static int32_t __nros_entry_setup_tier_{{ t.index }}_nodes(void* executor, const char** __nros_at) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
 {%- if t.monitors %}
 {%- with m = t.monitors, mexec = "executor" %}
@@ -217,7 +218,8 @@ static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
 {%- endif %}
 {%- for s in t.nodes %}{% set n = nodes[s.node] %}
     {
-{%- with dexec = "executor", at = s.on_executor, idx = s.node %}
+        *__nros_at = "{{ n.name|c_str }}";
+{%- with dexec = "executor", idx = s.node %}
 {%- include "declare_calls.jinja" %}
 {%- include "node_body_c.jinja" %}
 {%- endwith %}
@@ -227,6 +229,15 @@ static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
 {%- include "service_trailer_c.jinja" %}
 {%- endif %}
     return 0;
+}
+
+/* phase-509 P9b -- a failed setup names its tier and node before the runner
+ * fails the boot with its code. */
+static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
+    const char* __nros_at = NULL;
+    const int32_t rc = __nros_entry_setup_tier_{{ t.index }}_nodes(executor, &__nros_at);
+    if (rc != 0) nros_cpp_report_setup_failure("{{ t.name|c_str }}", __nros_at, rc);
+    return rc;
 }
 
 {% endfor -%}
@@ -309,7 +320,7 @@ static int32_t __nros_entry_setup(void* executor) {
 {%- endif %}
 {%- for n in nodes %}
     {
-{%- with dexec = "executor", at = loop.index0, idx = loop.index0 %}
+{%- with dexec = "executor", idx = loop.index0 %}
 {%- include "declare_calls.jinja" %}
 {%- include "node_body_c.jinja" %}
 {%- endwith %}

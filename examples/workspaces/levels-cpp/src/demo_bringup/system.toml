@@ -2,6 +2,9 @@
 name = "levels_cpp"
 rmw = "zenoh"
 domain_id = 0
+# phase-509 P9b -- the parameter store, for the launch parameter every
+# level's node carries (system.launch.xml).
+features = ["params"]
 
 # phase-509 P9 - the three-level fixture (RFC-0108). Three C++ components, one
 # wall timer each, at 50, 20 and 5 Hz; no `group_tiers`, no `[tiers.*]`. The

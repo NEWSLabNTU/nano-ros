@@ -684,6 +684,10 @@ pub(crate) struct CppContext {
     /// image installs a non-empty table. `None` for an uncontracted image.
     #[cfg(feature = "rmw-cffi")]
     pub(crate) diag: Option<DiagSink>,
+    /// phase-509 P9b -- the node the last launch seed named and the index it
+    /// landed on (`nros_cpp_declare_node_param`), so a seed for
+    /// another node on that same index is refused (that node was never built).
+    pub(crate) seed_next: SeedNext,
     /// phase-492 W4 — the C API's face of this same executor. The executor and
     /// its carved backing live in `c._opaque` exactly where `rclc_executor_init`
     /// puts them (`nros_node::ExecutorInlineStorage`), so there is one executor
@@ -695,6 +699,55 @@ pub(crate) struct CppContext {
     /// from a callback returns REENTRANT instead of aliasing `&mut Executor`
     /// (issue 0290).
     pub(crate) c: nros_c::rclc_executor_t,
+}
+
+/// phase-509 P9b -- the last launch seed's node and the index it landed on
+/// (see [`CppContext::seed_next`]). Plain bytes: the context is `repr(C)`
+/// storage the caller owns, written in place by [`write_context`].
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+pub(crate) struct SeedNext {
+    name: [u8; 64],
+    len: u8,
+    index: u8,
+    set: bool,
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl SeedNext {
+    pub(crate) const EMPTY: Self = Self {
+        name: [0u8; 64],
+        len: 0,
+        index: 0,
+        set: false,
+    };
+
+    /// The last seed's node and index, if there was one.
+    #[allow(dead_code)] // read only with `param-store`
+    pub(crate) fn get(&self) -> Option<(&str, u8)> {
+        if !self.set {
+            return None;
+        }
+        core::str::from_utf8(&self.name[..usize::from(self.len)])
+            .ok()
+            .map(|n| (n, self.index))
+    }
+
+    /// Record a seed; `false` for a node name too long to hold.
+    #[allow(dead_code)] // written only with `param-store`
+    pub(crate) fn set(&mut self, name: &str, index: u8) -> bool {
+        let Ok(len) = u8::try_from(name.len()) else {
+            return false;
+        };
+        if name.len() > self.name.len() {
+            return false;
+        }
+        self.name[..name.len()].copy_from_slice(name.as_bytes());
+        self.len = len;
+        self.index = index;
+        self.set = true;
+        true
+    }
 }
 
 /// Issue 1635 — write every field of a freshly opened [`CppContext`] but the
@@ -724,6 +777,10 @@ pub(crate) unsafe fn write_context(
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).executor), &mut *slot);
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).domain_id), domain_id);
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).diag), None);
+        core::ptr::write(
+            core::ptr::addr_of_mut!((*ctx_ptr).seed_next),
+            SeedNext::EMPTY,
+        );
         // LAST: the tag means "fully initialised" (issue 0436).
         core::ptr::write(core::ptr::addr_of_mut!((*ctx_ptr).tag), CPP_CONTEXT_TAG);
     }
@@ -8580,6 +8637,31 @@ pub extern "C" fn nros_cpp_time_ns() -> u64 {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/// phase-509 P9b -- report a tier (level) setup that failed: the generated
+/// entry's setup wrapper calls this with the tier's name, the node it was
+/// building (`NULL` when it failed before its first node: the monitor
+/// install) and the code it returns, BEFORE handing the code to the runner,
+/// which then fails the boot (a level runner does not park a level whose
+/// setup failed; RFC-0108 "As built in P9b"). Logged at error level on the
+/// `nros_cpp` logger, the channel every other setup refusal uses.
+///
+/// # Safety
+/// `tier` and `node` are NULL or NUL-terminated strings.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_report_setup_failure(
+    tier: *const c_char,
+    node: *const c_char,
+    rc: i32,
+) {
+    let tier = unsafe { cstr_to_str(tier) }.unwrap_or("?");
+    match unsafe { cstr_to_str(node) } {
+        Some(node) => {
+            cpp_diag!("setup of tier `{tier}` failed at node `{node}` (rc={rc})")
+        }
+        None => cpp_diag!("setup of tier `{tier}` failed before its first node (rc={rc})"),
+    }
+}
 
 /// Convert a C null-terminated string to a `&str`.
 ///

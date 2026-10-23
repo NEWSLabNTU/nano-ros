@@ -4,7 +4,17 @@
      system.toml [[component]].name and the `nodes:` keys of
      system.contract.yaml beside this file. -->
 <launch>
-    <node pkg="urgent_pkg" exec="urgent" name="urgent"/>
-    <node pkg="middle_pkg" exec="middle" name="middle"/>
-    <node pkg="lazy_pkg" exec="lazy" name="lazy"/>
+    <!-- phase-509 P9b: a launch parameter on every level's node (lazy's is
+         the boot level, urgent's and middle's are spawned), so every level's
+         setup seeds one on the core's one executor. Each node prints the
+         value it read. -->
+    <node pkg="urgent_pkg" exec="urgent" name="urgent">
+        <param name="level_tag" value="100"/>
+    </node>
+    <node pkg="middle_pkg" exec="middle" name="middle">
+        <param name="level_tag" value="101"/>
+    </node>
+    <node pkg="lazy_pkg" exec="lazy" name="lazy">
+        <param name="level_tag" value="102"/>
+    </node>
 </launch>

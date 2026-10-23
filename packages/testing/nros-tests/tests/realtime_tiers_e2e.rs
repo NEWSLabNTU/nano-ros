@@ -156,6 +156,10 @@ const DERIVED_TIERS_CPP_NODES: &[&str] = &[
 /// `main()`): their derived tier names, most urgent first.
 const LEVELS_CPP_SPAWNED: &[&str] = &["derived-urgent", "derived-middle"];
 
+/// phase-509 P9b -- the launch parameter each level's node carries
+/// (`levels-cpp`'s system.launch.xml) and prints as it reads it.
+const LEVELS_CPP_PARAMS: &[(&str, i64)] = &[("urgent", 100), ("middle", 101), ("lazy", 102)];
+
 /// phase-509 P9 -- the stack a `levels-cpp` level derives with the Kconfig
 /// defaults: no member states one, so `NROS_LEVEL_STACK_BYTES(0)` is the
 /// per-callback default (16384 - 4096) plus the worker frame (4096).
@@ -939,6 +943,21 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         let verdict = (|| {
             if !console.contains("nros: scheduler core=0 levels=3") {
                 return Err("the runner did not open one scheduler of three levels".to_string());
+            }
+            if let Some(l) = console.lines().find(|l| l.contains("failing the boot")) {
+                return Err(format!("a level failed the boot: {l}"));
+            }
+            // phase-509 P9b -- each level's node carries a launch
+            // parameter, seeded by that level's setup on the core's ONE
+            // executor. A seed keyed by a per-tier index named node 0 in
+            // every level and failed the second level's setup.
+            for (node, tag) in LEVELS_CPP_PARAMS {
+                let line = format!("[{node}] level_tag={tag}");
+                if !console.contains(&line) {
+                    return Err(format!(
+                        "node `{node}` did not read its launch parameter (`{line}` absent)"
+                    ));
+                }
             }
             for level in LEVELS_CPP_SPAWNED {
                 let line =

@@ -98,6 +98,9 @@ enum DeadlineSc<'t> {
     None,
     Context(&'t str, u8),
     TierIndex(&'t ResolvedTierTable),
+    /// phase-509 P9b -- every tier of the table is a level on ONE executor,
+    /// whose one scheduling context is 0.
+    Shared(&'t ResolvedTierTable),
 }
 
 /// The name a plan node is CREATED with: its launch name, or its executable.
@@ -333,7 +336,17 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
 
     if shape == ExecutorShape::Tiers {
         let tiers = plan.resolved_tiers.as_ref().expect("Tiers implies a table");
-        e.tiers = Some(lower_tiers(plan, tiers, opts)?);
+        // phase-509 P9b (RFC-0108 "As built in P9b") -- a family whose runner
+        // spawns LEVELS opens ONE executor per core, and every tier's setup
+        // registers on it: what an executor holds once (its monitor tables)
+        // is lowered once, for the whole image.
+        let one_executor = opts.probe.is_none()
+            && family.c_abi_runners().is_some_and(|r| {
+                r.run_levels.is_some()
+                    && r.tier_task_memory.is_some()
+                    && r.tiers_take_static_storage()
+            });
+        e.tiers = Some(lower_tiers(plan, tiers, opts, one_executor)?);
         e.monitor_tables = e
             .tiers
             .iter()
@@ -428,6 +441,7 @@ fn lower_tiers(
     plan: &Plan,
     tiers: &ResolvedTierTable,
     opts: &LowerOptions<'_>,
+    one_executor: bool,
 ) -> Result<LoweredTiers, String> {
     // #0266 — the ThreadX round-robin time slice has a per-thread consumer only
     // on the Rust `nros::main!` ThreadX arm today. The C tier ABI
@@ -455,7 +469,15 @@ fn lower_tiers(
         })
         .collect();
 
-    let setups = tiers
+    // phase-509 P9b -- every node some tier places, for the one table of a
+    // one-executor image.
+    let all_members: Vec<String> = plan
+        .nodes
+        .iter()
+        .filter(|n| node_to_tier.contains_key(node_name(n)))
+        .map(plan_node_fqn)
+        .collect();
+    let setups: Vec<TierSetup> = tiers
         .tiers
         .iter()
         .enumerate()
@@ -477,8 +499,11 @@ fn lower_tiers(
                     .iter()
                     .enumerate()
                     .filter(|(_, n)| node_to_tier.get(node_name(n)).copied() == Some(ti))
-                    // issue 1272 — each tier setup builds its nodes on the
-                    // tier's OWN executor, so the index restarts per tier.
+                    // issue 1272 — the node's position among this tier's
+                    // nodes. phase-509 P9b: no longer what a parameter seed
+                    // is keyed by (the seed names its node and the shim
+                    // resolves the index), since on one executor per core
+                    // every level's setup builds on the same executor.
                     .enumerate()
                     .map(|(k, (i, _))| SetupNode {
                         node: i,
@@ -486,12 +511,30 @@ fn lower_tiers(
                     })
                     .collect(),
                 emits_services: ti == 0,
-                monitors: monitor_table(
-                    Some((ti, &tier.name)),
-                    opts,
-                    DeadlineSc::Context(&tier.name, 0),
-                    |node| members.iter().any(|n| n == node),
-                ),
+                monitors: if !one_executor {
+                    monitor_table(
+                        Some((ti, &tier.name)),
+                        opts,
+                        DeadlineSc::Context(&tier.name, 0),
+                        |node| members.iter().any(|n| n == node),
+                    )
+                } else if ti == 0 {
+                    // phase-509 P9b -- ONE table for the one executor, every
+                    // level's rows, installed by the boot level's setup
+                    // (tiers[0], which runs first and alone). A table per
+                    // level would be installed on the same executor once per
+                    // level, each REPLACING the last: only the last level's
+                    // rows would be judged, and the earlier levels'
+                    // publishers would keep cells nothing reads.
+                    monitor_table(
+                        Some((0, "every level (one executor)")),
+                        opts,
+                        DeadlineSc::Shared(tiers),
+                        |node| all_members.iter().any(|n| n == node),
+                    )
+                } else {
+                    None
+                },
             }
         })
         .collect();
@@ -517,6 +560,23 @@ fn lower_tiers(
             deadline_policy: tier.deadline_policy.clone(),
         })
         .collect();
+
+    // phase-509 P9b -- the levels share the executor's one scheduling
+    // context, so two levels' mode deadlines for one mode would set the same
+    // context twice. Refused by name rather than letting the later row win.
+    if one_executor && let Some(m) = setups.first().and_then(|s| s.monitors.as_ref()) {
+        let tables =
+            core::iter::once(&m.base_deadlines).chain(m.modes.iter().map(|v| &v.deadlines));
+        for (k, rows) in tables.enumerate() {
+            if rows.iter().filter(|r| r.sc == 0).count() > 1 {
+                return Err(format!(
+                    "mode table {k}: more than one level states a mode deadline, and the \
+                     levels of a one-executor image (phase-509 P9b) share the executor's \
+                     one scheduling context; state the deadline on one level"
+                ));
+            }
+        }
+    }
 
     Ok(LoweredTiers {
         n: tiers.tiers.len(),
@@ -706,6 +766,7 @@ fn monitor_table(
                     .iter()
                     .position(|x| x.name == t)
                     .and_then(|i| u8::try_from(i).ok()),
+                DeadlineSc::Shared(table) => table.tiers.iter().any(|x| x.name == t).then_some(0),
             })
         })
         .unwrap_or_default();

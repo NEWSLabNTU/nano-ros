@@ -82,6 +82,9 @@ extern void nros_zephyr_set_current_priority(int32_t priority);
  * `nros_platform_zephyr_shims.c`). Shared with the Rust arm. */
 extern int nros_zephyr_report_tier_vs_transport(const char* tier, size_t tier_len, int32_t prio);
 extern int32_t nros_zephyr_msleep(int32_t ms);
+/* phase-509 P9b -- fail the boot (k_panic) after a level's open or setup
+ * failed; see the shim. Never returns. */
+extern void nros_zephyr_fail_boot(void);
 /* Phase 110.D shim — pin the CALLING thread to a CPU (`k_thread_cpu_pin`).
  * Returns 0 on success, -ENOSYS when the image lacks CONFIG_SCHED_CPU_MASK,
  * else the kernel error. issue 0655: for a STARTED thread that error is always
@@ -492,16 +495,13 @@ static void* zephyr_tier_task(void* arg) {
     int rc = nros_cpp_level_open(ctx->scheduler, ctx->level, ctx->name, ctx->stack_bytes);
     void* owner = nros_cpp_scheduler_owner(ctx->scheduler);
     if (rc != 0 || owner == NULL) {
-        printk("nros: level %u (`%s`) did not open (rc=%d)\n", (unsigned)ctx->level,
-               (ctx->name != NULL) ? ctx->name : "?", rc);
-        /* Park forever (boot thread continues). NOTE (issue #144): the spawn
-         * of the next tier sits AFTER this tier's setup, so failing here
-         * HALTS the chain -- ctx->rest will not start. Intentional (a
-         * degraded deploy), but a fault-isolation change from the pre-#144
-         * loop-spawn. */
-        for (;;) {
-            nros_zephyr_msleep(1000);
-        }
+        /* phase-509 P9b -- FAIL THE BOOT. Parking here (as before) halted
+         * the spawn chain, since the next level spawns after this one's
+         * setup (issue #144), and left the image half up with nothing to
+         * say so. */
+        printk("nros: level %u (`%s`) did not open (rc=%d): failing the boot\n",
+               (unsigned)ctx->level, (ctx->name != NULL) ? ctx->name : "?", rc);
+        nros_zephyr_fail_boot();
     }
 
     /* Gate the registrations of this level's setup to its tier's callback
@@ -522,13 +522,12 @@ static void* zephyr_tier_task(void* arg) {
     if (ctx->setup != NULL) {
         rc = ctx->setup(owner);
         if (rc != 0) {
-            /* Setup failed; park. As with the open failure above, this HALTS
-             * the chain (issue #144). */
-            printk("nros: level %u (`%s`) setup failed (rc=%d)\n", (unsigned)ctx->level,
-                   (ctx->name != NULL) ? ctx->name : "?", rc);
-            for (;;) {
-                nros_zephyr_msleep(1000);
-            }
+            /* phase-509 P9b -- FAIL THE BOOT, as for a level that did not
+             * open. The generated setup has named the node it was building
+             * (`nros_cpp_report_setup_failure`). */
+            printk("nros: level %u (`%s`) setup failed (rc=%d): failing the boot\n",
+                   (unsigned)ctx->level, (ctx->name != NULL) ? ctx->name : "?", rc);
+            nros_zephyr_fail_boot();
         }
     }
 
@@ -1068,8 +1067,13 @@ static int32_t zephyr_run_tiers(const char* locator, uint8_t domain_id, const ch
     if (boot->setup != NULL) {
         rc = boot->setup(boot_storage);
         if (rc != 0) {
-            nros_cpp_fini(boot_storage);
-            return (int32_t)rc;
+            /* phase-509 P9b -- the boot level fails the boot like any other
+             * level: returning the code left `main()` to return and the
+             * image idle with no level spinning. */
+            printk("nros: level %u (`%s`) setup failed (rc=%d): failing the boot\n",
+                   (unsigned)zephyr_tier_level(boot), (boot->name != NULL) ? boot->name : "?",
+                   (int)rc);
+            nros_zephyr_fail_boot();
         }
     }
 

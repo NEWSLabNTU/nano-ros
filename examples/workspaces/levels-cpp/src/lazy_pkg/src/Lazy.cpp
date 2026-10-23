@@ -8,6 +8,7 @@
 
 #include "lazy_pkg/Lazy.hpp"
 
+#include <cstdint>
 #include <cstdio>
 
 #if defined(__ZEPHYR__)
@@ -44,6 +45,10 @@ void Lazy::on_timer() {
 
 Lazy::Lazy(::rclcpp::NodeHandle h) : ::rclcpp::NodeWithTimers<1>(h, "lazy") {
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
+    // phase-509 P9b -- the launch parameter seeded on this node by its
+    // level's setup (system.launch.xml); the test reads it back here.
+    const int64_t tag = declare_parameter<int64_t>("level_tag", -1);
+    std::printf("[lazy] level_tag=%lld\n", static_cast<long long>(tag));
     pub_ = create_publisher_in<std_msgs::msg::Int32>("/levels/lazy");
     create_wall_timer_in<Lazy, &Lazy::on_timer>(200);
 }
