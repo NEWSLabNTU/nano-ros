@@ -498,24 +498,43 @@ endfunction()
 # path exported by a caller is theirs. Only a path to a file that EXISTS is
 # forwarded -- a named descriptor that is not there is an error in every
 # consumer (RFC-0100 D6), and the fragment can outlive the file it names.
+#
+# phase-439 W6 -- the path is FIXED (`nros_sizing_descriptor_west_cargo_path`),
+# so on a clean build dir this pass can name it before the entry has written
+# it; cargo reads the content at build time. Only the one-or-none DECISION is
+# still the entry's, and the default written here when no fragment exists yet
+# is the entry's own text for the likely answer, so a configure that agrees
+# arms nothing:
+#
+#   * `nros build`'s resolve phase is in front of the configure
+#     (`nros_resolved_dir`) and no standalone leaf answered -- "named". That is
+#     the road that writes a descriptor.
+#   * anything else (a bare `west build`, a standalone Rust leaf) -- "none",
+#     which is what this function forwarded before W6.
+#
+# A "named" decision whose file still does not exist when the configure ends
+# -- no entry ran, or the entry named none -- is taken back by the deferred
+# `nros_sizing_descriptor_west_arm_backstop`, which arms a re-configure so
+# cargo is never handed a file that is not there (RFC-0100 D6).
 function(_nros_load_west_sizing_descriptor)
     nros_sizing_descriptor_west_fragment(_frag)
     if(NOT EXISTS "${_frag}")
-        # Created EMPTY rather than skipped, for the reason the bounds loader
-        # gives: it is registered as a configure dependency below, and a ninja
-        # input with no producing rule is a hard error at load.
-        get_filename_component(_dir "${_frag}" DIRECTORY)
-        file(MAKE_DIRECTORY "${_dir}")
-        file(WRITE "${_frag}" "set(NROS_SIZING_DESCRIPTOR_FOR_CARGO \"\")\n")
+        # Written rather than skipped, for the reason the bounds loader gives:
+        # it is registered as a configure dependency below, and a ninja input
+        # with no producing rule is a hard error at load.
+        nros_resolved_dir(_resolved)
+        nros_sizing_descriptor_west_default("${_resolved}" "${NROS_WEST_LEAF_DESCRIPTOR}")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_frag}")
     nros_reconfigure_settle("${_frag}")
     include("${_frag}")
-    if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL ""
-       AND EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+    if(NOT NROS_SIZING_DESCRIPTOR_FOR_CARGO STREQUAL "")
         message(STATUS
             "nros: sizing descriptor named to cargo -- ${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
         _nros_resolve_knob(NROS_SIZING_DESCRIPTOR "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}" derived)
+        if(NOT EXISTS "${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+            nros_sizing_descriptor_west_arm_backstop("${NROS_SIZING_DESCRIPTOR_FOR_CARGO}")
+        endif()
     elseif(NOT NROS_WEST_LEAF_DESCRIPTOR STREQUAL ""
            AND EXISTS "${NROS_WEST_LEAF_DESCRIPTOR}")
         # Issue 1662 -- no entry named one, and this is a standalone Rust leaf
