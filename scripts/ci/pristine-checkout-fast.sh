@@ -193,7 +193,20 @@ run_in_clone just check fast > "$log" 2>&1 || rc=$?
 sed -n '/^check-fast (parallel):/,$p' "$log"
 if [ "$rc" -ne 0 ]; then
     echo "" >&2
-    grep -E '^===== FAIL' "$log" >&2 || tail -40 "$log" >&2
+    # Each FAIL record is its header PLUS the gate's own output, up to the
+    # next record or the lane summary (run-gates-parallel.sh). Printing the
+    # headers alone dropped the reason, so a red here named a gate and never
+    # said why (issue 2008). Capped per record; the clone has the rest.
+    if nros_grep_q '^===== FAIL' "$log"; then
+        awk -v cap="${NROS_PRISTINE_FAIL_LINES:-60}" '
+            /^===== FAIL/                { on = 1; n = 0; print; next }
+            /^check-fast \(parallel\):/  { on = 0 }
+            on && ++n <= cap             { print }
+            on && n == cap + 1           { print "    ... (record truncated; re-run with --keep)" }
+        ' "$log" >&2
+    else
+        tail -40 "$log" >&2
+    fi
     echo "" >&2
     echo "pristine-checkout: FAILED (rc=$rc) -- the fast tier is red in a checkout" >&2
     echo "  with no submodules, which is what \`git worktree add\` produces." >&2
