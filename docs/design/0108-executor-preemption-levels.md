@@ -672,9 +672,18 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
 - **Lock cost** (host, Intel Core Ultra 7 265K, glibc, recursive +
   `PTHREAD_PRIO_INHERIT`): uncontended lock+unlock 13.6-15.3 ns, a nested
   (recursive) pair 16.0-16.5 ns; two threads hammering one lock 165-550 ns
-  per pair (the PI futex hand-off). Zephyr's `k_mutex` on target is to be
-  measured on the island (I4); native_sim does not advance time while code
-  runs, so it cannot price it.
+  per pair (the PI futex hand-off). native_sim does not advance time while
+  code runs, so it cannot price Zephyr's `k_mutex`; the island measured it
+  on target (I4: S32K344, Cortex-M7 at 160 MHz, Zephyr 4.4, DWT cycles over
+  1000 pairs at boot, the read pair subtracted) [M]:
+  - `k_mutex_lock` + `k_mutex_unlock`, uncontended: 279 cycles avg
+    (277-517), 1.74 us;
+  - the nested (recursive) pair, taken while held: 151 cycles (151-178),
+    0.94 us;
+  - the pair through the entries the runner installs on the executor
+    (`nros_platform_mutex_rec_lock` / `_unlock` over a `k_mutex`): 1,380
+    cycles avg (1,365-1,818), 8.63 us, five times the raw pair. What the
+    port's recursive wrapper spends there is not yet attributed.
 - **Blocking bound.** With one priority-inheriting lock, a level i's
   callback is blocked, besides the non-preemptive tail of its own band, by
   at most ONE critical section of a less urgent worker:
@@ -684,6 +693,27 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   gains `L_max` in its blocking term once item 4 measures it on the levels
   fixture. Until item 3, the executor's own worker still holds the lock
   across its park and transport drive, so `L_max` is that park.
+  **Measured on the island (I4) [M]:** every outermost hold of the
+  executor's lock, timed per holding thread (the runner's
+  `nros_cpp_executor_set_lock` wrapped; the island's lock probe image), over
+  one planning encore (56 s; the maxima below are from 8 s of uptime on,
+  past bring-up, and equal the whole-run maxima). The three levels at
+  kernel priorities 5 (`mrm_handler`), 7 (emergency operator) and 8
+  (comfortable operator, the adopted level that drives the transport):
+
+  | level (priority) | holds | over 2 us | longest hold | longest wait to acquire |
+  |---|---|---|---|---|
+  | handler (5) | 18,927 | 24 | 55.2 us | 11.9 us |
+  | emergency operator (7) | 14,692 | 14 | 42.1 us | 11.3 us |
+  | comfortable operator (8), transport | 5,659 | 10 | 77.5 us | 8.3 us |
+
+  A hold averages under 0.1 us: most are an FFI entry's guard around a
+  few loads. So for the most urgent level `L_max` = 77.5 us, the adopted
+  level's longest step (its transport drive under the lock), and for the
+  emergency operator's level it is the same 77.5 us; the waits observed
+  (at most 11.9 us) stay well inside it. Against the handler's 100 ms
+  period and its 149 ms supervised budget, the term is 0.08 % of the
+  period.
 - **Cancellation and timers.** Cancel, reset or release of an entry that is
   running on another worker is deferred through the issue 1705 path (the
   running mark is the slot tag `begin_dispatch` sets) and reaped by the next
@@ -1146,3 +1176,5 @@ The first draft's open questions, as decided:
 - 2026-10-24: P9b fixed after the island board: launch seeds name their
   node, a level image installs one monitor table, and a level's setup
   failure fails the boot.
+- 2026-10-24: the island measured the lock on target (I4): `k_mutex` pair
+  1.74 us, the installed recursive pair 8.63 us, `L_max` 77.5 us.
