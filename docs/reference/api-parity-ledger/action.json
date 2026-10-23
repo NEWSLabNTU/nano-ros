@@ -130,6 +130,11 @@
     "bucket": "ours-only",
     "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`. Renamed from `nros_action_client_try_recv_*_raw` by phase-487 W4, when the polled action client became its own type, `rclc_polling_action_client_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
   },
+  "c:polling_action_client_try_recv_*_raw_for": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "issue 2011 -- the polling tier's `try_recv_{goal_response,result,cancel_response}_raw` that also write the goal a reply is ABOUT: the goal of the request whose sequence id it names (issue 2009's `ActionRequests`). With several goals in flight the bytes alone cannot say which goal a reply answers. rcl's `rcl_action_take_*_response` report a `rmw_request_id_t` and leave the goal mapping to the caller; ours keeps that table, so it hands out the goal instead. See `c:polling_action_client_try_recv_*_raw`; the C++ twin is the `goal_id_out` overload on `PollingActionClient`."
+  },
   "c:action_client_wait_for_action_server": {
     "verdict": "extension",
     "why": "blocks until the action's send_goal queryable is discoverable, driving the executor. RFC-0021: a blocking helper takes the executor and drives it, which is what makes the timeout reliable on a single-threaded transport. rclcpp_action's `Client::wait_for_action_server` folds onto ours by the *Base rule; rclc has no counterpart. See the service stage's `c:client_wait_for_service`."
@@ -1348,9 +1353,9 @@
     "disposition": "adopt-bounded",
     "envelope": {
       "file": "docs/guides/cpp-api.md",
-      "text": "return a `Future<T>` that polls the same arena slot"
+      "text": "return a `Future<T>` keyed by its goal"
     },
-    "why": "the future-shaped send. Returns `nros::Future<GoalAccept>`, which the caller drives with the executor (RFC-0021: a blocking helper takes the executor and drives it) rather than a `std::shared_future` a second thread completes. rclcpp_action's counterpart is `async_send_goal`'s return value. See `cpp:Client::async_send_request` for the same divergence on the service client.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
+    "why": "the future-shaped send. Returns `nros::Future<GoalAccept>`, which the caller drives with the executor (RFC-0021: a blocking helper takes the executor and drives it) rather than a `std::shared_future` a second thread completes. rclcpp_action's counterpart is `async_send_goal`'s return value. See `cpp:Client::async_send_request` for the same divergence on the service client.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own.\n\nissue 2011 (2026-10-23) -- KEYED BY GOAL. The future used to be unkeyed: `get_result_future` read a process-global one-slot `RESULT_STASH` shared by every C++ action client, and `send_goal_future` raced the executor's dispatch for its own reply. Each future is now linked on its client's acceptance or result list under its goal id (`rclcpp::detail::PendingList`, the intrusive list service futures use since issue 2009) and fed by the callbacks the client keeps installed; a reply for a goal nobody waits on is dropped. Bounded, no heap; a full Rust table (`MAX_CONCURRENT_GOALS`) refuses the send. Verdict unchanged: the divergence is still the future TYPE and who drives it."
   },
   "cpp:Client::get_result": {
     "verdict": "divergence",
@@ -1374,9 +1379,9 @@
     "disposition": "adopt-bounded",
     "envelope": {
       "file": "docs/guides/cpp-api.md",
-      "text": "return a `Future<T>` that polls the same arena slot"
+      "text": "return a `Future<T>` keyed by its goal"
     },
-    "why": "`nros::Future<ResultType>` over a goal's result, driven by the executor (RFC-0021). rclcpp_action's `async_get_result` returns a `std::shared_future`; the difference is the future TYPE and who drives it, not the capability. See `cpp:Client::get_result`.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
+    "why": "`nros::Future<ResultType>` over a goal's result, driven by the executor (RFC-0021). rclcpp_action's `async_get_result` returns a `std::shared_future`; the difference is the future TYPE and who drives it, not the capability. See `cpp:Client::get_result`.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own.\n\nissue 2011 (2026-10-23) -- KEYED BY GOAL. The future used to be unkeyed: `get_result_future` read a process-global one-slot `RESULT_STASH` shared by every C++ action client, and `send_goal_future` raced the executor's dispatch for its own reply. Each future is now linked on its client's acceptance or result list under its goal id (`rclcpp::detail::PendingList`, the intrusive list service futures use since issue 2009) and fed by the callbacks the client keeps installed; a reply for a goal nobody waits on is dropped. Bounded, no heap; a full Rust table (`MAX_CONCURRENT_GOALS`) refuses the send. Verdict unchanged: the divergence is still the future TYPE and who drives it."
   },
   "cpp:Client::get_result_future_sized": {
     "verdict": "extension",

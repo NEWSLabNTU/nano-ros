@@ -790,6 +790,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_relocate(
 /// Internal state for the action client.
 /// C++ action client callback function pointers (freestanding C++14).
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub(crate) struct CppActionClientCallbacks {
     pub goal_response:
         Option<unsafe extern "C" fn(accepted: bool, goal_id: *const [u8; 16], ctx: *mut c_void)>,
@@ -889,26 +890,6 @@ unsafe extern "C" fn cpp_goal_response_trampoline(
     }
 }
 
-/// Single-slot stash for feedback messages consumed by the trampoline.
-///
-/// The arena's `action_client_raw_try_process` consumes feedback from
-/// the core during `spin_once`, then fires the trampoline. If the
-/// user registered a `feedback` callback via
-/// `nros_cpp_action_client_set_callbacks`, the trampoline forwards
-/// to it. Otherwise — the polling case used by the example —
-/// without this stash the message would simply be dropped, leaving
-/// `feedback_stream().try_next()` and `try_recv_feedback()` empty
-/// even though the server published. Stashing the latest feedback
-/// here lets both APIs coexist.
-///
-/// Single slot: a second feedback arriving before the first is
-/// drained overwrites it. Real-world action workflows rarely need
-/// more than the latest sample, and a heapless ring would add
-/// per-slot capacity tradeoffs without test pressure.
-static mut FEEDBACK_STASH_LEN: i32 = -1;
-static mut FEEDBACK_STASH: [u8; DEFAULT_RX_BUF_SIZE] = [0u8; DEFAULT_RX_BUF_SIZE];
-static mut FEEDBACK_STASH_GOAL_ID: nros::GoalId = nros::GoalId { uuid: [0u8; 16] };
-
 /// Issue #179 — a raw payload never starts with a CDR encapsulation
 /// identifier (`00 {00|01|06|07|0a|0b}`). The upstream dispatch (arena /
 /// poll) now delivers action payloads WITH a single encap header (splicing
@@ -919,59 +900,65 @@ fn payload_has_cdr_encap(buf: &[u8]) -> bool {
     buf.len() >= 2 && buf[0] == 0 && matches!(buf[1], 0 | 1 | 6 | 7 | 0x0a | 0x0b)
 }
 
+/// Frame a dispatched payload for a C++ callback: verbatim when it already
+/// carries an encapsulation header, else behind a little-endian one.
+fn frame_for_callback(data: &[u8], framed: &mut [u8; DEFAULT_RX_BUF_SIZE]) -> usize {
+    if payload_has_cdr_encap(data) {
+        let n = data.len().min(DEFAULT_RX_BUF_SIZE);
+        framed[..n].copy_from_slice(&data[..n]);
+        n
+    } else {
+        framed[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
+        let n = data.len().min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
+        framed[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&data[..n]);
+        CDR_HEADER_LEN + n
+    }
+}
+
+/// Splice the reply's own top-level encapsulation header (`hdr`) in front of
+/// the raw fields `raw` — what the arena dispatch does for every action
+/// payload (`action_client_raw_try_process`, RFC-0069/0418: the fields arrive
+/// header-less on every backend). Shared by [`nros_cpp_action_client_poll`]
+/// and [`nros_cpp_action_client_try_recv_result`], so a reply reaches a C++
+/// callback in one framing whichever path took it off the wire.
+fn splice_encap(hdr: &[u8], raw: &[u8], out: &mut [u8; DEFAULT_RX_BUF_SIZE]) -> usize {
+    let n = raw.len().min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
+    out[..CDR_HEADER_LEN].copy_from_slice(&hdr[..CDR_HEADER_LEN]);
+    out[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&raw[..n]);
+    CDR_HEADER_LEN + n
+}
+
+// Issue 2011 — the feedback and result trampolines FORWARD, and keep nothing.
+// They used to copy every payload into `FEEDBACK_STASH` / `RESULT_STASH`, two
+// `static mut` single slots shared by every C++ action client in the process,
+// which `try_recv_feedback` / `try_recv_result` (and so every
+// `get_result_future`) read back: two goals, or two clients, read each other's
+// result and a second result overwrote an unread one. Delivery is per client
+// now — `rclcpp_action::Client<A>` installs its own callbacks, which hand each
+// acceptance and result to the future waiting on THAT goal (keyed by goal id,
+// `rclcpp::detail::PendingList`) before forwarding to the user's.
 unsafe extern "C" fn cpp_feedback_trampoline(
     goal_id: *const nros::GoalId,
     feedback_data: *const u8,
     feedback_len: usize,
     context: *mut c_void,
 ) {
+    let client = unsafe { &*(context as *const CppActionClient) };
+    let Some(cb) = client.callbacks.feedback else {
+        return;
+    };
     let data = unsafe { core::slice::from_raw_parts(feedback_data, feedback_len) };
     let mut framed = [0u8; DEFAULT_RX_BUF_SIZE];
-    let framed_len = if payload_has_cdr_encap(data) {
-        let n = feedback_len.min(DEFAULT_RX_BUF_SIZE);
-        framed[..n].copy_from_slice(&data[..n]);
-        n
-    } else {
-        framed[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
-        let n = feedback_len.min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
-        framed[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&data[..n]);
-        CDR_HEADER_LEN + n
-    };
-
-    // Always stash the latest feedback for `try_recv_feedback` /
-    // `feedback_stream().try_next()` polling.
+    let framed_len = frame_for_callback(data, &mut framed);
     unsafe {
-        core::ptr::copy_nonoverlapping(
+        cb(
+            &(*goal_id).uuid,
             framed.as_ptr(),
-            core::ptr::addr_of_mut!(FEEDBACK_STASH) as *mut u8,
             framed_len,
-        );
-        core::ptr::write(
-            core::ptr::addr_of_mut!(FEEDBACK_STASH_LEN),
-            framed_len as i32,
-        );
-        core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_GOAL_ID), *goal_id);
-    }
-
-    // Also forward to user callback if set.
-    let client = unsafe { &*(context as *const CppActionClient) };
-    if let Some(cb) = client.callbacks.feedback {
-        unsafe {
-            cb(
-                &(*goal_id).uuid,
-                framed.as_ptr(),
-                framed_len,
-                client.callbacks.context,
-            )
-        };
-    }
+            client.callbacks.context,
+        )
+    };
 }
-
-/// Stash for result data captured by the trampoline.
-/// Used by `nros_cpp_action_client_try_recv_result` to retrieve
-/// results that were consumed by the executor's auto-dispatch.
-static mut RESULT_STASH_LEN: i32 = -1; // -1 = empty, >= 0 = data length
-static mut RESULT_STASH: [u8; DEFAULT_RX_BUF_SIZE] = [0u8; DEFAULT_RX_BUF_SIZE];
 
 unsafe extern "C" fn cpp_result_trampoline(
     goal_id: *const nros::GoalId,
@@ -980,50 +967,147 @@ unsafe extern "C" fn cpp_result_trampoline(
     result_len: usize,
     context: *mut c_void,
 ) {
+    let client = unsafe { &*(context as *const CppActionClient) };
+    let Some(cb) = client.callbacks.result else {
+        return;
+    };
     // User callbacks expect normal CDR bytes. The upstream dispatch delivers
     // WITH a single encap header (issue #179); prepend only when it is
     // genuinely absent.
     let data = unsafe { core::slice::from_raw_parts(result_data, result_len) };
     let mut framed = [0u8; DEFAULT_RX_BUF_SIZE];
-    let framed_len = if payload_has_cdr_encap(data) {
-        let n = result_len.min(DEFAULT_RX_BUF_SIZE);
-        framed[..n].copy_from_slice(&data[..n]);
-        n
-    } else {
-        framed[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
-        let n = result_len.min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
-        framed[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&data[..n]);
-        CDR_HEADER_LEN + n
+    let framed_len = frame_for_callback(data, &mut framed);
+    let s = match status {
+        nros::GoalStatus::Succeeded => 4i32,
+        nros::GoalStatus::Canceled => 5,
+        nros::GoalStatus::Aborted => 6,
+        _ => 0,
     };
-
-    // Always stash the result for Future::wait polling
     unsafe {
-        core::ptr::copy_nonoverlapping(
+        cb(
+            &(*goal_id).uuid,
+            s,
             framed.as_ptr(),
-            core::ptr::addr_of_mut!(RESULT_STASH) as *mut u8,
             framed_len,
-        );
-        core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), framed_len as i32);
-    }
+            client.callbacks.context,
+        )
+    };
+}
 
-    // Also forward to user callback if set
-    let client = unsafe { &*(context as *const CppActionClient) };
-    if let Some(cb) = client.callbacks.result {
-        let s = match status {
-            nros::GoalStatus::Succeeded => 4i32,
-            nros::GoalStatus::Canceled => 5,
-            nros::GoalStatus::Aborted => 6,
-            _ => 0,
+/// Issue 2011 — what a BLOCKING call (`nros_cpp_action_client_send_goal` /
+/// `_get_result`) waits on, on its own stack frame.
+///
+/// Both used to install a callback that wrote a `static mut` flag, with the
+/// client's callback context set to NULL: process-global (two clients blocking
+/// at once shared one flag), blind to the goal (ANY acceptance or result —
+/// another goal's, another future's — ended the wait as if it were this one's),
+/// and it swallowed every other reply that arrived meanwhile, feedback and
+/// results included, because the user callbacks were simply unplugged.
+///
+/// Now all three callbacks are swapped for [`waiter_goal_response`] /
+/// [`waiter_feedback`] / [`waiter_result`] with THIS waiter as their context.
+/// The reply for `want` ends the wait; everything else is forwarded to the
+/// callbacks that were installed before (`orig`, with their own context), so a
+/// pending future or the user's callback still gets its own reply. The guard
+/// restores `orig` on every exit.
+struct BlockingWaiter {
+    want: [u8; 16],
+    want_result: bool,
+    orig: CppActionClientCallbacks,
+    done: bool,
+    accepted: bool,
+    len: usize,
+    buf: [u8; DEFAULT_RX_BUF_SIZE],
+}
+
+impl BlockingWaiter {
+    fn new(want: [u8; 16], want_result: bool, orig: CppActionClientCallbacks) -> Self {
+        Self {
+            want,
+            want_result,
+            orig,
+            done: false,
+            accepted: false,
+            len: 0,
+            buf: [0u8; DEFAULT_RX_BUF_SIZE],
+        }
+    }
+}
+
+unsafe extern "C" fn waiter_goal_response(
+    accepted: bool,
+    goal_id: *const [u8; 16],
+    ctx: *mut c_void,
+) {
+    let w = unsafe { &mut *(ctx as *mut BlockingWaiter) };
+    if !w.want_result && !w.done && unsafe { *goal_id } == w.want {
+        w.done = true;
+        w.accepted = accepted;
+        return;
+    }
+    if let Some(cb) = w.orig.goal_response {
+        unsafe { cb(accepted, goal_id, w.orig.context) };
+    }
+}
+
+unsafe extern "C" fn waiter_feedback(
+    goal_id: *const [u8; 16],
+    data: *const u8,
+    len: usize,
+    ctx: *mut c_void,
+) {
+    let w = unsafe { &mut *(ctx as *mut BlockingWaiter) };
+    if let Some(cb) = w.orig.feedback {
+        unsafe { cb(goal_id, data, len, w.orig.context) };
+    }
+}
+
+unsafe extern "C" fn waiter_result(
+    goal_id: *const [u8; 16],
+    status: i32,
+    data: *const u8,
+    len: usize,
+    ctx: *mut c_void,
+) {
+    let w = unsafe { &mut *(ctx as *mut BlockingWaiter) };
+    if w.want_result && !w.done && unsafe { *goal_id } == w.want {
+        let n = len.min(DEFAULT_RX_BUF_SIZE);
+        unsafe { core::ptr::copy_nonoverlapping(data, w.buf.as_mut_ptr(), n) };
+        w.len = n;
+        w.done = true;
+        return;
+    }
+    if let Some(cb) = w.orig.result {
+        unsafe { cb(goal_id, status, data, len, w.orig.context) };
+    }
+}
+
+/// Installs a [`BlockingWaiter`]'s callbacks on a client and restores the
+/// previous ones when dropped.
+struct WaiterInstall {
+    client: *mut CppActionClient,
+    orig: CppActionClientCallbacks,
+}
+
+impl WaiterInstall {
+    /// # Safety
+    /// `client` and `waiter` must outlive the returned guard.
+    unsafe fn new(client: *mut CppActionClient, waiter: *mut BlockingWaiter) -> Self {
+        let c = unsafe { &mut *client };
+        let orig = c.callbacks;
+        c.callbacks = CppActionClientCallbacks {
+            goal_response: Some(waiter_goal_response),
+            feedback: Some(waiter_feedback),
+            result: Some(waiter_result),
+            context: waiter as *mut c_void,
         };
-        unsafe {
-            cb(
-                &(*goal_id).uuid,
-                s,
-                framed.as_ptr(),
-                framed_len,
-                client.callbacks.context,
-            )
-        };
+        Self { client, orig }
+    }
+}
+
+impl Drop for WaiterInstall {
+    fn drop(&mut self) {
+        unsafe { (*self.client).callbacks = self.orig };
     }
 }
 
@@ -1257,7 +1341,6 @@ pub unsafe extern "C" fn nros_cpp_action_client_action_server_is_ready(
 /// # Safety
 /// All pointers must be valid; `handle` must be an initialized `CppActionClient`.
 #[unsafe(no_mangle)]
-#[allow(static_mut_refs)]
 pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     handle: *mut c_void,
     goal_buf: *const u8,
@@ -1279,47 +1362,25 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     let goal_fields = strip_cdr_header(goal_data);
 
     // Send goal via arena core (non-blocking)
-    let mut core =
-        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
-            Some(c) => c,
-            None => return NROS_CPP_RET_ERROR,
-        };
-    let goal_id = match core.send_goal_raw(goal_fields) {
-        Ok(id) => id,
-        Err(_) => return NROS_CPP_RET_ERROR,
+    let goal_id = {
+        let mut core =
+            match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+                Some(c) => c,
+                None => return NROS_CPP_RET_ERROR,
+            };
+        match core.send_goal_raw(goal_fields) {
+            Ok(id) => id,
+            Err(_) => return NROS_CPP_RET_ERROR,
+        }
     };
     unsafe {
         *goal_id_out = goal_id.uuid;
     }
 
-    // Use a flag-based approach: install a temporary goal_response callback
-    // that sets a local flag. The arena's action_client_raw_try_process fires
-    // the trampoline during spin_once, which reads client.callbacks and
-    // dispatches to the user's callback (or our temporary one).
-    static mut BLOCKING_ACCEPTED: i32 = -1; // -1=pending, 0=rejected, 1=accepted
-    unsafe {
-        core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_ACCEPTED), -1i32);
-    }
-
-    // Save original callback and install temporary one
-    let orig_cb = client.callbacks.goal_response;
-    let orig_ctx = client.callbacks.context;
-    unsafe extern "C" fn blocking_goal_cb(
-        _accepted: bool,
-        _goal_id: *const [u8; 16],
-        _ctx: *mut c_void,
-    ) {
-        unsafe {
-            core::ptr::write(
-                core::ptr::addr_of_mut!(BLOCKING_ACCEPTED),
-                if _accepted { 1i32 } else { 0i32 },
-            );
-        }
-    }
-    client.callbacks.goal_response = Some(blocking_goal_cb);
-    client.callbacks.context = core::ptr::null_mut();
-
-    // Spin executor until flag set or timeout (30 s wall-clock).
+    // Spin executor until THIS goal's acceptance arrives or timeout (30 s
+    // wall-clock). Issue 2011 — the wait is a `BlockingWaiter` on this frame,
+    // matched by goal id; every other reply is forwarded to the callbacks that
+    // were installed before (see `BlockingWaiter`).
     //
     // Phase 89.3: wall-clock budgeting instead of `for _ in 0..1000`
     // (same class of bug fixed for service clients in 89.2). On
@@ -1338,27 +1399,26 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     let ctx: &mut crate::CppContext = &mut ctx_ref;
     // Issue 0290 — this helper BLOCKS by spinning the executor, so it must not
     // run from inside a callback (the C twin `rclc_action_send_goal` returns
-    // RCLC_RET_REENTRANT for exactly this). Restore the caller's callback
-    // before bailing so the guard can't strand the client on the blocking one.
+    // RCLC_RET_REENTRANT for exactly this).
     let CppContext {
         executor,
         c: nros_c::rclc_executor_t { in_dispatch, .. },
         ..
     } = ctx;
     let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
-        client.callbacks.goal_response = orig_cb;
-        client.callbacks.context = orig_ctx;
         return NROS_CPP_RET_REENTRANT;
     };
+    let mut waiter = BlockingWaiter::new(goal_id.uuid, false, client.callbacks);
+    let waiter_ptr: *mut BlockingWaiter = &mut waiter;
+    // SAFETY: `waiter` and the client outlive `_install` (dropped first).
+    let _install = unsafe { WaiterInstall::new(client, waiter_ptr) };
     let start_ns = crate::nros_cpp_time_ns();
     let timeout_ns: u64 = 30_000_000_000; // 30 s
     loop {
         let _ = executor.spin_once(core::time::Duration::from_millis(10));
-        let flag = unsafe { core::ptr::read(core::ptr::addr_of!(BLOCKING_ACCEPTED)) };
-        if flag >= 0 {
-            // Restore original callback
-            client.callbacks.goal_response = orig_cb;
-            client.callbacks.context = orig_ctx;
+        // SAFETY: written only by the waiter callbacks, inside `spin_once`.
+        let (done, accepted) = unsafe { ((*waiter_ptr).done, (*waiter_ptr).accepted) };
+        if done {
             // issue 0868 — a server REJECTION is `REJECTED`, not `ERROR`.
             //
             // This used to return `ERROR` (-1), which is also what the two
@@ -1372,7 +1432,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
             // With this split the three are distinguishable: `REJECTED` = the
             // server decided, `ERROR` = we could not send, `TIMEOUT` = no
             // answer within the budget.
-            return if flag == 1 {
+            return if accepted {
                 NROS_CPP_RET_OK
             } else {
                 NROS_CPP_RET_REJECTED
@@ -1383,9 +1443,6 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
             break;
         }
     }
-    // Restore original callback on timeout
-    client.callbacks.goal_response = orig_cb;
-    client.callbacks.context = orig_ctx;
     NROS_CPP_RET_TIMEOUT
 }
 
@@ -1404,7 +1461,6 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
 /// # Safety
 /// All pointers must be valid.
 #[unsafe(no_mangle)]
-#[allow(static_mut_refs)]
 pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     handle: *mut c_void,
     executor_handle: *mut c_void,
@@ -1440,42 +1496,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
         }
     }
 
-    // Flag-based: install temporary result callback, spin until flag set.
-    static mut BLOCKING_RESULT_LEN: i32 = -1; // -1=pending, >=0=length
-    static mut BLOCKING_RESULT_STATUS: i32 = 0;
-    static mut BLOCKING_RESULT_BUF: [u8; DEFAULT_RX_BUF_SIZE] = [0u8; DEFAULT_RX_BUF_SIZE];
-    unsafe {
-        core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_RESULT_LEN), -1i32);
-        core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_RESULT_STATUS), 0i32);
-    }
-
-    let orig_cb = client.callbacks.result;
-    let orig_ctx = client.callbacks.context;
-    unsafe extern "C" fn blocking_result_cb(
-        _goal_id: *const [u8; 16],
-        status: i32,
-        data: *const u8,
-        len: usize,
-        _ctx: *mut c_void,
-    ) {
-        unsafe {
-            core::ptr::write(core::ptr::addr_of_mut!(BLOCKING_RESULT_STATUS), status);
-            let copy_len = len.min(DEFAULT_RX_BUF_SIZE);
-            core::ptr::copy_nonoverlapping(
-                data,
-                core::ptr::addr_of_mut!(BLOCKING_RESULT_BUF) as *mut u8,
-                copy_len,
-            );
-            core::ptr::write(
-                core::ptr::addr_of_mut!(BLOCKING_RESULT_LEN),
-                copy_len as i32,
-            );
-        }
-    }
-    client.callbacks.result = Some(blocking_result_cb);
-    client.callbacks.context = core::ptr::null_mut();
-
-    // Spin executor until flag set or timeout (10 s wall-clock).
+    // Spin executor until THIS goal's result arrives or timeout (10 s
+    // wall-clock). Issue 2011 — a `BlockingWaiter` on this frame, matched by
+    // goal id, instead of three `static mut`s shared by every client.
     //
     // Phase 89.3: wall-clock budgeting — see the explanation on
     // `send_goal` above for why `for _ in 0..1000` is insufficient on
@@ -1489,26 +1512,23 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
         ..
     } = ctx;
     let Some(_guard) = DispatchGuard::enter(in_dispatch) else {
-        client.callbacks.result = orig_cb;
-        client.callbacks.context = orig_ctx;
         return NROS_CPP_RET_REENTRANT;
     };
+    let mut waiter = BlockingWaiter::new(id.uuid, true, client.callbacks);
+    let waiter_ptr: *mut BlockingWaiter = &mut waiter;
+    // SAFETY: `waiter` and the client outlive `_install` (dropped first).
+    let _install = unsafe { WaiterInstall::new(client, waiter_ptr) };
     let start_ns = crate::nros_cpp_time_ns();
     let timeout_ns: u64 = 10_000_000_000; // 10 s
     loop {
         let _ = executor.spin_once(core::time::Duration::from_millis(10));
-        let rlen = unsafe { core::ptr::read(core::ptr::addr_of!(BLOCKING_RESULT_LEN)) };
-        if rlen >= 0 {
-            client.callbacks.result = orig_cb;
-            client.callbacks.context = orig_ctx;
-            let data_len = rlen as usize;
+        // SAFETY: written only by the waiter callbacks, inside `spin_once`.
+        let w = unsafe { &*waiter_ptr };
+        if w.done {
+            let data_len = w.len;
             if data_len <= result_buf_len {
                 unsafe {
-                    core::ptr::copy_nonoverlapping(
-                        core::ptr::addr_of!(BLOCKING_RESULT_BUF) as *const u8,
-                        result_buf,
-                        data_len,
-                    );
+                    core::ptr::copy_nonoverlapping(w.buf.as_ptr(), result_buf, data_len);
                     *result_len = data_len;
                 }
                 return NROS_CPP_RET_OK;
@@ -1520,8 +1540,6 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
             break;
         }
     }
-    client.callbacks.result = orig_cb;
-    client.callbacks.context = orig_ctx;
     NROS_CPP_RET_TIMEOUT
 }
 
@@ -1549,31 +1567,12 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    // First check the trampoline's stash. Arena's
-    // `action_client_raw_try_process` consumes feedback from the
-    // core during `spin_once`; without checking the stash here we'd
-    // see no feedback even though the trampoline got it.
-    let stash_len = unsafe { core::ptr::read(core::ptr::addr_of!(FEEDBACK_STASH_LEN)) };
-    if stash_len >= 0 {
-        let data_len = stash_len as usize;
-        unsafe { core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_LEN), -1i32) };
-        if data_len > buf_len {
-            unsafe {
-                *feedback_len = data_len;
-            }
-            return NROS_CPP_RET_ERROR;
-        }
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                core::ptr::addr_of!(FEEDBACK_STASH) as *const u8,
-                feedback_buf,
-                data_len,
-            );
-            *feedback_len = data_len;
-        }
-        return NROS_CPP_RET_OK;
-    }
-
+    // Issue 2011 — this reads only feedback the executor has NOT dispatched:
+    // during `spin_once` the arena takes it off the wire and hands it to the
+    // client's feedback callback. The process-global `FEEDBACK_STASH` that used
+    // to catch those (for every client at once) is gone;
+    // `rclcpp_action::Client<A>` keeps its own latest-feedback slot, filled by
+    // the callback it installs.
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
 
     let mut core =
@@ -1745,40 +1744,17 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    // Check the result stash (filled by cpp_result_trampoline during spin_once).
-    // The executor's action_client_raw_try_process consumes the reply from the
-    // core and fires the trampoline, which stashes the data here. We can't call
-    // core.try_recv_get_result_reply() because the data is already consumed.
-    //
-    // The stash contains the payload as written by the action server
-    // (the bytes `complete_goal_raw` was given) — for cpp callers that
-    // means a CDR-encoded buffer with header included, since
-    // `ffi_serialize` writes one. Forward it verbatim; `ffi_deserialize`
-    // re-reads the CDR header.
-    let stash_len = unsafe { core::ptr::read(core::ptr::addr_of!(RESULT_STASH_LEN)) };
-    if stash_len >= 0 {
-        let data_len = stash_len as usize;
-        unsafe { core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), -1i32) };
-
-        if data_len > out_capacity {
-            unsafe { *out_len = data_len };
-            return NROS_CPP_RET_ERROR;
-        }
-        unsafe {
-            core::ptr::copy_nonoverlapping(
-                core::ptr::addr_of!(RESULT_STASH) as *const u8,
-                out_data,
-                data_len,
-            );
-            *out_len = data_len;
-        }
-        return NROS_CPP_RET_OK;
-    }
-
-    // Fallback: check the core directly (in case the trampoline wasn't fired yet)
-    let _client = unsafe { &mut *(handle as *mut CppActionClient) };
+    // Issue 2011 — this reads only a result the executor has NOT dispatched
+    // (during `spin_once` the arena hands each result to the client's result
+    // callback), and says nothing about WHICH goal it is for. The future
+    // `rclcpp_action::Client<A>::get_result_future` returns no longer reads it:
+    // it is keyed by goal id and fed by the callback the client installs. The
+    // process-global `RESULT_STASH` this used to read first — one slot shared
+    // by every C++ action client, which is how two futures read each other's
+    // result — is gone.
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
     let mut core =
-        match unsafe { cpp_arena_core_mut(_client.arena_entry_index, _client.executor_ptr) } {
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
             Some(c) => c,
             None => {
                 unsafe { *out_len = 0 };
@@ -1974,10 +1950,6 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
         uuid: unsafe { *goal_id },
     };
 
-    // Reset stashes before sending (so take_*  starts clean)
-    unsafe { core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), -1i32) };
-    unsafe { core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_LEN), -1i32) };
-
     let mut core =
         match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
             Some(c) => c,
@@ -2147,17 +2119,13 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
         const FEEDBACK_PAYLOAD_OFFSET: usize =
             CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
         if total_len > FEEDBACK_PAYLOAD_OFFSET {
+            // Issue 2011 — spliced exactly as the arena dispatch does
+            // (`action_client_raw_try_process`), so a payload reaches the
+            // callback in ONE framing whichever path took it off the wire.
             let buf = core.feedback_buffer_ref();
-            let raw = &buf[FEEDBACK_PAYLOAD_OFFSET..total_len];
-            if payload_has_cdr_encap(raw) {
-                unsafe { cb(&goal_id.uuid, raw.as_ptr(), raw.len(), ctx) };
-            } else {
-                let mut spliced = [0u8; DEFAULT_RX_BUF_SIZE];
-                let n = raw.len().min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
-                spliced[..CDR_HEADER_LEN].copy_from_slice(&buf[..CDR_HEADER_LEN]);
-                spliced[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&raw[..n]);
-                unsafe { cb(&goal_id.uuid, spliced.as_ptr(), CDR_HEADER_LEN + n, ctx) };
-            }
+            let mut spliced = [0u8; DEFAULT_RX_BUF_SIZE];
+            let n = splice_encap(buf, &buf[FEEDBACK_PAYLOAD_OFFSET..total_len], &mut spliced);
+            unsafe { cb(&goal_id.uuid, spliced.as_ptr(), n, ctx) };
         }
     }
 
@@ -2180,15 +2148,10 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
         let status = buf[4] as i32;
         let uuid = goal_id.uuid;
         let raw = &buf[RESULT_PAYLOAD_OFFSET.min(total_len)..total_len];
-        if payload_has_cdr_encap(raw) {
-            unsafe { cb(&uuid, status, raw.as_ptr(), raw.len(), ctx) };
-        } else {
-            let mut spliced = [0u8; DEFAULT_RX_BUF_SIZE];
-            let n = raw.len().min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
-            spliced[..CDR_HEADER_LEN].copy_from_slice(&buf[..CDR_HEADER_LEN]);
-            spliced[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&raw[..n]);
-            unsafe { cb(&uuid, status, spliced.as_ptr(), CDR_HEADER_LEN + n, ctx) };
-        }
+        // Issue 2011 — the arena's framing (see the feedback arm above).
+        let mut spliced = [0u8; DEFAULT_RX_BUF_SIZE];
+        let n = splice_encap(buf, raw, &mut spliced);
+        unsafe { cb(&uuid, status, spliced.as_ptr(), n, ctx) };
     }
 
     NROS_CPP_RET_OK
@@ -3043,15 +3006,35 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response_raw(
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
-    if storage.is_null() || (buf.is_null() && buf_len != 0) {
+    let mut goal_id = [0u8; 16];
+    unsafe {
+        nros_cpp_action_client_try_recv_goal_response_raw_for(storage, buf, buf_len, &mut goal_id)
+    }
+}
+
+/// Issue 2011 — [`nros_cpp_action_client_try_recv_goal_response_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names, issue 2009) into
+/// `goal_id_out`. With several goals in flight the bytes alone cannot say
+/// which one a reply answers. A reply naming no pending request (an abandoned
+/// one's) is dropped, as before. `goal_id_out` is written only when a reply is
+/// returned (`> 0`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response_raw_for(
+    storage: *mut c_void,
+    buf: *mut u8,
+    buf_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> i32 {
+    if storage.is_null() || (buf.is_null() && buf_len != 0) || goal_id_out.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
-    match core.try_recv_send_goal_reply() {
-        Ok(Some(len)) => {
+    match core.try_recv_send_goal_reply_for() {
+        Ok(Some((len, id))) => {
             let copy_len = len.min(buf_len);
             unsafe {
                 core::ptr::copy_nonoverlapping(core.result_buffer_ref().as_ptr(), buf, copy_len);
+                (*goal_id_out).copy_from_slice(&id.uuid);
             }
             copy_len as i32
         }
@@ -3086,15 +3069,33 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result_raw(
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
-    if storage.is_null() || (buf.is_null() && buf_len != 0) {
+    let mut goal_id = [0u8; 16];
+    unsafe { nros_cpp_action_client_try_recv_result_raw_for(storage, buf, buf_len, &mut goal_id) }
+}
+
+/// Issue 2011 — [`nros_cpp_action_client_try_recv_result_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names, issue 2009) into
+/// `goal_id_out`. With several goals in flight the bytes alone cannot say
+/// which one a reply answers. A reply naming no pending request (an abandoned
+/// one's) is dropped, as before. `goal_id_out` is written only when a reply is
+/// returned (`> 0`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result_raw_for(
+    storage: *mut c_void,
+    buf: *mut u8,
+    buf_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> i32 {
+    if storage.is_null() || (buf.is_null() && buf_len != 0) || goal_id_out.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
-    match core.try_recv_get_result_reply() {
-        Ok(Some(len)) => {
+    match core.try_recv_get_result_reply_for() {
+        Ok(Some((len, id))) => {
             let copy_len = len.min(buf_len);
             unsafe {
                 core::ptr::copy_nonoverlapping(core.result_buffer_ref().as_ptr(), buf, copy_len);
+                (*goal_id_out).copy_from_slice(&id.uuid);
             }
             copy_len as i32
         }
@@ -3130,15 +3131,35 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response_raw(
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
-    if storage.is_null() || (buf.is_null() && buf_len != 0) {
+    let mut goal_id = [0u8; 16];
+    unsafe {
+        nros_cpp_action_client_try_recv_cancel_response_raw_for(storage, buf, buf_len, &mut goal_id)
+    }
+}
+
+/// Issue 2011 — [`nros_cpp_action_client_try_recv_cancel_response_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names, issue 2009) into
+/// `goal_id_out`. With several goals in flight the bytes alone cannot say
+/// which one a reply answers. A reply naming no pending request (an abandoned
+/// one's) is dropped, as before. `goal_id_out` is written only when a reply is
+/// returned (`> 0`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response_raw_for(
+    storage: *mut c_void,
+    buf: *mut u8,
+    buf_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> i32 {
+    if storage.is_null() || (buf.is_null() && buf_len != 0) || goal_id_out.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
-    match core.try_recv_cancel_reply() {
-        Ok(Some(len)) => {
+    match core.try_recv_cancel_reply_for() {
+        Ok(Some((len, id))) => {
             let copy_len = len.min(buf_len);
             unsafe {
                 core::ptr::copy_nonoverlapping(core.result_buffer_ref().as_ptr(), buf, copy_len);
+                (*goal_id_out).copy_from_slice(&id.uuid);
             }
             copy_len as i32
         }

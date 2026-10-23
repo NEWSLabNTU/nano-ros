@@ -448,7 +448,8 @@ c: c-fmt
         -o tmp/entity_wake_callback
     ./tmp/entity_wake_callback
     echo "  - issue 2009: C clients match a reply to its request by sequence number;"
-    echo "    a stray or timed-out call's late reply is dropped, not delivered"
+    echo "    a stray or timed-out call's late reply is dropped, not delivered; the polled"
+    echo "    action client names each reply's goal (issue 2011)"
     test -f packages/api/nros-c/tests/run/client_seq_correlation.c || { \
         echo "ERROR: client_seq_correlation.c is MISSING -- this check passes on absence." >&2; \
         exit 1; }
@@ -1615,6 +1616,30 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/client_seq_correlation_runtime
+    # issue 2011 -- the ACTION client's futures are keyed by their GOAL: two
+    # goals' acceptances and results staged out of order each reach their own
+    # future (on the future's own poll AND through the executor's dispatch),
+    # two action clients in one process do not cross, a late result after a
+    # cancel / destroy is dropped, a full table refuses, and the blocking calls
+    # wait for their own goal while forwarding the rest. A RUN: all behaviour.
+    test -f packages/api/nros-cpp/tests/compile/action_future_keying_runtime.cpp || { \
+        echo "ERROR: action_future_keying_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - action futures keyed by goal: out-of-order, executor dispatch, two clients, late / full (runtime, issue 2011)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/action_future_keying_runtime \
+        packages/api/nros-cpp/tests/compile/action_future_keying_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/action_future_keying_runtime
     # ...and WITHOUT the hosted surface `Future::get()` is refused, naming
     # `try_take` (no `<memory>`, no allocator). Grepped for both, because an
     # include typo also fails to compile.

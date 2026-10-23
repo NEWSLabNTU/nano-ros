@@ -120,6 +120,24 @@ template <typename A> class PollingActionClient {
         return Result::success();
     }
 
+    /// Issue 2011 -- @ref try_recv_goal_response that also writes the goal the
+    /// reply is ABOUT into `goal_id_out` (the goal of the request whose
+    /// sequence id it names, issue 2009). With several goals in flight the
+    /// bytes alone cannot say which one a reply answers.
+    Result try_recv_goal_response(uint8_t* buf, size_t cap, size_t& out_len,
+                                  uint8_t goal_id_out[16]) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        int32_t rc = nros_cpp_action_client_try_recv_goal_response_raw_for(
+            storage_, buf, cap, reinterpret_cast<uint8_t(*)[16]>(goal_id_out));
+        return raw_len_result(rc, out_len);
+    }
+
+    /// @ref try_recv_goal_response writing the goal into a `GoalUUID`.
+    Result try_recv_goal_response(uint8_t* buf, size_t cap, size_t& out_len,
+                                  ::rclcpp_action::GoalUUID& goal_id_out) {
+        return try_recv_goal_response(buf, cap, out_len, goal_id_out.data());
+    }
+
     /// Issue a get_result request for the given goal.
     Result send_get_result_request(const uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
@@ -147,16 +165,28 @@ template <typename A> class PollingActionClient {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[Cap + 5];
         int32_t rc = nros_cpp_action_client_try_recv_result_raw(storage_, buf, sizeof(buf));
-        if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
-        if (rc == 0) return Result(ErrorCode::TryAgain);
-        // CDR encapsulation header (4) + status byte (1) = 5-byte
-        // prefix before the result payload.
-        constexpr size_t kPrefix = 5;
-        if (static_cast<size_t>(rc) <= kPrefix) return Result(ErrorCode::Error);
-        size_t payload_len = static_cast<size_t>(rc) - kPrefix;
-        if (ResultType::ffi_deserialize(buf + kPrefix, payload_len, &out) != 0)
-            return Result(ErrorCode::Error);
-        return Result::success();
+        return decode_result(rc, buf, out);
+    }
+
+    /// Issue 2011 -- @ref try_recv_result that also writes the goal the result
+    /// is FOR into `goal_id_out` (see the goal-response overload).
+    Result try_recv_result(ResultType& out, uint8_t goal_id_out[16]) {
+        return try_recv_result_sized<::rclcpp::rx_buffer_capacity<ResultType>::value>(out,
+                                                                                      goal_id_out);
+    }
+
+    /// @ref try_recv_result writing the goal into a `GoalUUID`.
+    Result try_recv_result(ResultType& out, ::rclcpp_action::GoalUUID& goal_id_out) {
+        return try_recv_result(out, goal_id_out.data());
+    }
+
+    /// @ref try_recv_result_sized with the goal written to `goal_id_out`.
+    template <size_t Cap> Result try_recv_result_sized(ResultType& out, uint8_t goal_id_out[16]) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        uint8_t buf[Cap + 5];
+        int32_t rc = nros_cpp_action_client_try_recv_result_raw_for(
+            storage_, buf, sizeof(buf), reinterpret_cast<uint8_t(*)[16]>(goal_id_out));
+        return decode_result(rc, buf, out);
     }
 
     /// Issue a cancel request for the given goal.
@@ -182,6 +212,16 @@ template <typename A> class PollingActionClient {
         }
         out_len = static_cast<size_t>(rc);
         return Result::success();
+    }
+
+    /// Issue 2011 -- @ref try_recv_cancel_response that also writes the goal
+    /// the reply is ABOUT into `goal_id_out`.
+    Result try_recv_cancel_response(uint8_t* buf, size_t cap, size_t& out_len,
+                                    uint8_t goal_id_out[16]) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        int32_t rc = nros_cpp_action_client_try_recv_cancel_response_raw_for(
+            storage_, buf, cap, reinterpret_cast<uint8_t(*)[16]>(goal_id_out));
+        return raw_len_result(rc, out_len);
     }
 
     /// Try to receive a feedback message. Writes the source `goal_id`
@@ -256,6 +296,31 @@ template <typename A> class PollingActionClient {
 
   private:
     friend class ::rclcpp::Node;
+
+    /// A raw `_raw[_for]` return: `<0` error, `0` nothing yet, `>0` bytes.
+    static Result raw_len_result(int32_t rc, size_t& out_len) {
+        if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
+        if (rc == 0) {
+            out_len = 0;
+            return Result(ErrorCode::TryAgain);
+        }
+        out_len = static_cast<size_t>(rc);
+        return Result::success();
+    }
+
+    /// Decode a get_result reply of `rc` bytes in `buf` into `out`.
+    static Result decode_result(int32_t rc, const uint8_t* buf, ResultType& out) {
+        if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
+        if (rc == 0) return Result(ErrorCode::TryAgain);
+        // CDR encapsulation header (4) + status byte (1) = 5-byte
+        // prefix before the result payload.
+        constexpr size_t kPrefix = 5;
+        if (static_cast<size_t>(rc) <= kPrefix) return Result(ErrorCode::Error);
+        size_t payload_len = static_cast<size_t>(rc) - kPrefix;
+        if (ResultType::ffi_deserialize(buf + kPrefix, payload_len, &out) != 0)
+            return Result(ErrorCode::Error);
+        return Result::success();
+    }
 
     static constexpr size_t kStorageU64s = NROS_CPP_RAW_ACTION_CLIENT_OPAQUE_U64S;
     alignas(8) uint64_t storage_[kStorageU64s];

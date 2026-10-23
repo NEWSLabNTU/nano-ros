@@ -110,7 +110,13 @@ uint32_t nros_stub_rmw_requests_sent(void);
 /** Issue 2009 — stage a reply for the request sent as @p seq. Replies are taken
  *  oldest-staged first, whatever their ids, so staging B's before A's delivers
  *  them out of order. `false` when the stub's 8 slots are full or the reply
- *  does not fit 256 bytes. */
+ *  does not fit 256 bytes.
+ *
+ *  Issue 2011 — a reply is taken only by the CLIENT that sent @p seq (each
+ *  accept-mode client has its own identity), so an action client's three
+ *  sub-clients, or two clients, never take each other's replies. A @p seq the
+ *  stub has no sender for (never sent, or older than its last 64 requests)
+ *  goes to whichever client asks first. */
 bool nros_stub_rmw_stage_reply_for(int64_t seq, const uint8_t* data, size_t len);
 
 /** Issue 2009 — the id the stub assigned to the most recent request. */

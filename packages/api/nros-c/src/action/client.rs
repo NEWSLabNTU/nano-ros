@@ -1350,7 +1350,31 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_goal_response_raw(
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
-    if client.is_null() || (buf.is_null() && buf_len != 0) {
+    let mut goal_id = [0u8; 16];
+    unsafe {
+        rclc_polling_action_client_try_recv_goal_response_raw_for(
+            client,
+            buf,
+            buf_len,
+            &mut goal_id,
+        )
+    }
+}
+
+/// Issue 2011 — [`rclc_polling_action_client_try_recv_goal_response_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names, issue 2009) into
+/// `goal_id_out`. With several goals in flight the bytes alone cannot say
+/// which one a reply answers. A reply naming no pending request (an abandoned
+/// one's) is dropped. `goal_id_out` is written only when a reply is returned
+/// (`> 0`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_polling_action_client_try_recv_goal_response_raw_for(
+    client: *mut rclc_polling_action_client_t,
+    buf: *mut u8,
+    buf_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> i32 {
+    if client.is_null() || (buf.is_null() && buf_len != 0) || goal_id_out.is_null() {
         return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
@@ -1359,11 +1383,12 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_goal_response_raw(
             Some(c) => c,
             None => return RCL_RET_INVALID_ARGUMENT,
         };
-        match core.try_recv_send_goal_reply() {
-            Ok(Some(len)) => {
+        match core.try_recv_send_goal_reply_for() {
+            Ok(Some((len, id))) => {
                 let src = core.result_buffer_ref();
                 let copy_len = len.min(buf_len);
                 core::ptr::copy_nonoverlapping(src.as_ptr(), buf, copy_len);
+                (*goal_id_out).copy_from_slice(&id.uuid);
                 copy_len as i32
             }
             Ok(None) => 0,
@@ -1372,7 +1397,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_goal_response_raw(
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
-        let _ = (buf, buf_len);
+        let _ = (buf, buf_len, goal_id_out);
         RCL_RET_NOT_INIT
     }
 }
@@ -1415,7 +1440,26 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_result_raw(
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
-    if client.is_null() || (buf.is_null() && buf_len != 0) {
+    let mut goal_id = [0u8; 16];
+    unsafe {
+        rclc_polling_action_client_try_recv_result_raw_for(client, buf, buf_len, &mut goal_id)
+    }
+}
+
+/// Issue 2011 — [`rclc_polling_action_client_try_recv_result_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names, issue 2009) into
+/// `goal_id_out`. With several goals in flight the bytes alone cannot say
+/// which one a reply answers. A reply naming no pending request (an abandoned
+/// one's) is dropped. `goal_id_out` is written only when a reply is returned
+/// (`> 0`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_polling_action_client_try_recv_result_raw_for(
+    client: *mut rclc_polling_action_client_t,
+    buf: *mut u8,
+    buf_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> i32 {
+    if client.is_null() || (buf.is_null() && buf_len != 0) || goal_id_out.is_null() {
         return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
@@ -1424,11 +1468,12 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_result_raw(
             Some(c) => c,
             None => return RCL_RET_INVALID_ARGUMENT,
         };
-        match core.try_recv_get_result_reply() {
-            Ok(Some(len)) => {
+        match core.try_recv_get_result_reply_for() {
+            Ok(Some((len, id))) => {
                 let src = core.result_buffer_ref();
                 let copy_len = len.min(buf_len);
                 core::ptr::copy_nonoverlapping(src.as_ptr(), buf, copy_len);
+                (*goal_id_out).copy_from_slice(&id.uuid);
                 copy_len as i32
             }
             Ok(None) => 0,
@@ -1437,7 +1482,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_result_raw(
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
-        let _ = (buf, buf_len);
+        let _ = (buf, buf_len, goal_id_out);
         RCL_RET_NOT_INIT
     }
 }
@@ -1479,7 +1524,31 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_cancel_response_raw
     buf: *mut u8,
     buf_len: usize,
 ) -> i32 {
-    if client.is_null() || (buf.is_null() && buf_len != 0) {
+    let mut goal_id = [0u8; 16];
+    unsafe {
+        rclc_polling_action_client_try_recv_cancel_response_raw_for(
+            client,
+            buf,
+            buf_len,
+            &mut goal_id,
+        )
+    }
+}
+
+/// Issue 2011 — [`rclc_polling_action_client_try_recv_cancel_response_raw`] that also writes the goal the reply is ABOUT (the
+/// goal of the request whose sequence id it names, issue 2009) into
+/// `goal_id_out`. With several goals in flight the bytes alone cannot say
+/// which one a reply answers. A reply naming no pending request (an abandoned
+/// one's) is dropped. `goal_id_out` is written only when a reply is returned
+/// (`> 0`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_polling_action_client_try_recv_cancel_response_raw_for(
+    client: *mut rclc_polling_action_client_t,
+    buf: *mut u8,
+    buf_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> i32 {
+    if client.is_null() || (buf.is_null() && buf_len != 0) || goal_id_out.is_null() {
         return RCL_RET_INVALID_ARGUMENT;
     }
     #[cfg(feature = "rmw-cffi")]
@@ -1488,11 +1557,12 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_cancel_response_raw
             Some(c) => c,
             None => return RCL_RET_INVALID_ARGUMENT,
         };
-        match core.try_recv_cancel_reply() {
-            Ok(Some(len)) => {
+        match core.try_recv_cancel_reply_for() {
+            Ok(Some((len, id))) => {
                 let src = core.result_buffer_ref();
                 let copy_len = len.min(buf_len);
                 core::ptr::copy_nonoverlapping(src.as_ptr(), buf, copy_len);
+                (*goal_id_out).copy_from_slice(&id.uuid);
                 copy_len as i32
             }
             Ok(None) => 0,
@@ -1501,7 +1571,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_try_recv_cancel_response_raw
     }
     #[cfg(not(feature = "rmw-cffi"))]
     {
-        let _ = (buf, buf_len);
+        let _ = (buf, buf_len, goal_id_out);
         RCL_RET_NOT_INIT
     }
 }

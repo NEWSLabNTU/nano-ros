@@ -66,6 +66,14 @@ constexpr int MAX_STALE_DRAIN_PER_POLL = 8;
 /// the request it answers (`nros_cpp_service_client_take_response_seq`).
 using TakeSeqFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*, int64_t*);
 
+/// Issue 2011 — what an ACTION future polls: one pass of the action client's
+/// own dispatch (`nros_cpp_action_client_poll`), which takes any reply off the
+/// wire and hands it to the client's callbacks — and so, keyed by goal id, to
+/// the future waiting on that goal. A reply the executor dispatched during
+/// `spin_once` arrives the same way, so a future gets its reply whichever path
+/// took it.
+using PumpFn = nros_cpp_ret_t (*)(void*);
+
 /// Issue 2009 — the part of a `Future` the client's pending list links. Not a
 /// template, so futures of different reply capacities on one client share a
 /// list, and a future that takes ANOTHER future's reply can hand it over
@@ -80,6 +88,12 @@ struct PendingLink {
     /// action client's for an unkeyed future).
     void* storage = nullptr;
     int64_t seq = SEQUENCE_ID_UNKNOWN;
+    /// Issue 2011 — an ACTION future is keyed by its GOAL instead of a
+    /// sequence id: an action client's acceptance and result arrive attributed
+    /// to a goal (the Rust core correlates each sub-client's replies by id,
+    /// issue 2009), so the goal is the key a reply carries up here.
+    bool by_goal = false;
+    uint8_t goal_id[16] = {};
     uint8_t* buf = nullptr; ///< the future's own receive buffer
     size_t cap = 0;
     size_t len = 0;
@@ -138,7 +152,10 @@ struct PendingList {
             if (*pp == l) {
                 *pp = l->next;
                 l->next = nullptr;
-                if (abandoned && l->seq == SEQUENCE_ID_UNKNOWN && orphans < 255) ++orphans;
+                // A goal-keyed (action) future names its reply exactly, so its
+                // removal costs no later reply (issue 2011).
+                if (abandoned && !l->by_goal && l->seq == SEQUENCE_ID_UNKNOWN && orphans < 255)
+                    ++orphans;
                 return true;
             }
         }
@@ -173,6 +190,24 @@ struct PendingList {
         // pending request is the only candidate.
         if (head != nullptr && head->next == nullptr && head->seq == SEQUENCE_ID_UNKNOWN)
             return head;
+        return nullptr;
+    }
+
+    /// Issue 2011 — the pending ACTION future waiting on `goal`, or nullptr
+    /// (nobody waits: the reply is dropped, never handed to another goal's
+    /// future). Exact match only; does not unlink.
+    PendingLink* resolve_goal(const uint8_t goal[16]) {
+        for (PendingLink* l = head; l != nullptr; l = l->next) {
+            if (!l->by_goal) continue;
+            bool same = true;
+            for (int i = 0; i < 16; ++i) {
+                if (l->goal_id[i] != goal[i]) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) return l;
+        }
         return nullptr;
     }
 
@@ -263,6 +298,13 @@ struct PendingList {
 /// (`remove_pending_request`) or destroyed is dropped — never handed to a later
 /// future. See `detail::PendingList` for the bound and for backends that
 /// cannot assign ids.
+///
+/// An ACTION future (`rclcpp_action::Client<A>::send_goal_future` /
+/// `get_result_future`) is KEYED BY ITS GOAL the same way (issue 2011): it is
+/// on its client's list of acceptances or of results, it receives only its own
+/// goal's, and a reply for a goal nobody waits on — or arriving after the
+/// future was cancelled or destroyed — is dropped. Two action clients keep two
+/// sets of lists, so they never see each other's replies.
 template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class Future {
   public:
     /// Check if the result has arrived (non-blocking).
@@ -275,6 +317,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
         if (!live()) return false;
         if (link_.ready) return true;
         if (take_seq_fn_ != nullptr) return poll_keyed();
+        if (pump_fn_ != nullptr) return poll_pumped();
         if (!take_fn_) return false;
         size_t len = 0;
         nros_cpp_ret_t ret = take_fn_(link_.storage, cached_buf_, sizeof(cached_buf_), &len);
@@ -435,8 +478,8 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     // FOLLOWS it to the new address (issue 2009), so a future may be returned
     // by value and stored wherever the caller likes while it is in flight.
     Future(Future&& other) noexcept
-        : take_fn_(other.take_fn_), take_seq_fn_(other.take_seq_fn_), executor_(other.executor_),
-          slot_(other.slot_) {
+        : take_fn_(other.take_fn_), take_seq_fn_(other.take_seq_fn_), pump_fn_(other.pump_fn_),
+          executor_(other.executor_), slot_(other.slot_) {
         adopt(other);
     }
 
@@ -445,6 +488,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
             cancel();
             take_fn_ = other.take_fn_;
             take_seq_fn_ = other.take_seq_fn_;
+            pump_fn_ = other.pump_fn_;
             executor_ = other.executor_;
             slot_ = other.slot_;
             adopt(other);
@@ -455,7 +499,9 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     ~Future() { cancel(); }
 
     /// Default constructor -- creates an empty/consumed future.
-    Future() : take_fn_(nullptr), take_seq_fn_(nullptr), executor_(nullptr), slot_(-1) {
+    Future()
+        : take_fn_(nullptr), take_seq_fn_(nullptr), pump_fn_(nullptr), executor_(nullptr),
+          slot_(-1) {
         link_.buf = cached_buf_;
         link_.cap = sizeof(cached_buf_);
     }
@@ -472,11 +518,11 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     // `executor` is what `wait_for` drives (issue 1996); nullptr = no
     // executor known, and `wait_for` then checks once instead of waiting.
     // An UNKEYED future: the take hook carries no request id, so the future
-    // trusts whatever reply it takes. The action client's goal / result
-    // futures are built this way; their sub-clients correlate by id on the
-    // Rust side (`ActionClientCore`, issue 2009).
+    // trusts whatever reply it takes. Nothing in-tree builds one any more —
+    // the action futures are goal-keyed since issue 2011 — but the shape stays
+    // for a caller with exactly one request in flight.
     Future(void* storage, TryRecvFn fn, int slot, void* executor = nullptr)
-        : take_fn_(fn), take_seq_fn_(nullptr), executor_(executor), slot_(slot) {
+        : take_fn_(fn), take_seq_fn_(nullptr), pump_fn_(nullptr), executor_(executor), slot_(slot) {
         link_.buf = cached_buf_;
         link_.cap = sizeof(cached_buf_);
         link_.storage = storage;
@@ -486,11 +532,28 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
     // future joins `list`, the pending list of the client it was sent on.
     Future(void* storage, ::rclcpp::detail::TakeSeqFn fn, int64_t seq,
            ::rclcpp::detail::PendingList* list, void* executor)
-        : take_fn_(nullptr), take_seq_fn_(fn), executor_(executor), slot_(0) {
+        : take_fn_(nullptr), take_seq_fn_(fn), pump_fn_(nullptr), executor_(executor), slot_(0) {
         link_.buf = cached_buf_;
         link_.cap = sizeof(cached_buf_);
         link_.storage = storage;
         link_.seq = seq;
+        link_.list = list;
+        if (list != nullptr) list->link(&link_);
+    }
+
+    // Issue 2011 — a GOAL-KEYED action future: it joins `list` (the action
+    // client's acceptances or results) under `goal`. The client's callbacks
+    // deliver into it (`PendingList::resolve_goal` + `deliver`); `pump` is the
+    // client's own dispatch, for a reply no `spin_once` has taken yet.
+    Future(void* storage, ::rclcpp::detail::PumpFn pump, const uint8_t goal[16],
+           ::rclcpp::detail::PendingList* list, void* executor)
+        : take_fn_(nullptr), take_seq_fn_(nullptr), pump_fn_(pump), executor_(executor), slot_(0) {
+        link_.buf = cached_buf_;
+        link_.cap = sizeof(cached_buf_);
+        link_.storage = storage;
+        link_.by_goal = true;
+        for (int i = 0; i < 16; ++i)
+            link_.goal_id[i] = goal[i];
         link_.list = list;
         if (list != nullptr) list->link(&link_);
     }
@@ -515,6 +578,14 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
         return link_.ready;
     }
 
+    /// Issue 2011 — one pass of the action client's dispatch; whatever it
+    /// takes reaches its own goal's future through the client's callbacks.
+    bool poll_pumped() {
+        if (link_.list == nullptr || link_.storage == nullptr) return link_.ready;
+        (void)pump_fn_(link_.storage);
+        return link_.ready;
+    }
+
     /// Leave the client's pending list, if still on it. `abandoned`: the
     /// request will never be answered through this future.
     void detach(bool abandoned) {
@@ -528,6 +599,9 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
         link_.cap = sizeof(cached_buf_);
         link_.storage = other.link_.storage;
         link_.seq = other.link_.seq;
+        link_.by_goal = other.link_.by_goal;
+        for (int i = 0; i < 16; ++i)
+            link_.goal_id[i] = other.link_.goal_id[i];
         link_.ready = other.link_.ready;
         link_.orphaned = other.link_.orphaned;
         link_.len = other.link_.len;
@@ -546,6 +620,7 @@ template <typename T, size_t Cap = ::rclcpp::rx_buffer_capacity<T>::value> class
 
     TryRecvFn take_fn_;
     ::rclcpp::detail::TakeSeqFn take_seq_fn_;
+    ::rclcpp::detail::PumpFn pump_fn_;
     void* executor_;
     int slot_;
     /// Issue 2009 — the entry the client's pending list links, plus the client

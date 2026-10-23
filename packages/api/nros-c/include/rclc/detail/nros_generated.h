@@ -4265,6 +4265,20 @@ int32_t rclc_polling_action_client_try_recv_goal_response_raw(struct rclc_pollin
                                                               size_t buf_len);
 
 /**
+ * Issue 2011 — [`rclc_polling_action_client_try_recv_goal_response_raw`] that also writes the goal the reply is ABOUT (the
+ * goal of the request whose sequence id it names, issue 2009) into
+ * `goal_id_out`. With several goals in flight the bytes alone cannot say
+ * which one a reply answers. A reply naming no pending request (an abandoned
+ * one's) is dropped. `goal_id_out` is written only when a reply is returned
+ * (`> 0`).
+ */
+NROS_PUBLIC
+int32_t rclc_polling_action_client_try_recv_goal_response_raw_for(struct rclc_polling_action_client_t *client,
+                                                                  uint8_t *buf,
+                                                                  size_t buf_len,
+                                                                  uint8_t (*goal_id_out)[16]);
+
+/**
  * Phase 122.3.c.6.b — L1 polling: send a get_result request for the
  * given goal. Reply lands via `_try_recv_result_raw`.
  */
@@ -4283,6 +4297,20 @@ int32_t rclc_polling_action_client_try_recv_result_raw(struct rclc_polling_actio
                                                        size_t buf_len);
 
 /**
+ * Issue 2011 — [`rclc_polling_action_client_try_recv_result_raw`] that also writes the goal the reply is ABOUT (the
+ * goal of the request whose sequence id it names, issue 2009) into
+ * `goal_id_out`. With several goals in flight the bytes alone cannot say
+ * which one a reply answers. A reply naming no pending request (an abandoned
+ * one's) is dropped. `goal_id_out` is written only when a reply is returned
+ * (`> 0`).
+ */
+NROS_PUBLIC
+int32_t rclc_polling_action_client_try_recv_result_raw_for(struct rclc_polling_action_client_t *client,
+                                                           uint8_t *buf,
+                                                           size_t buf_len,
+                                                           uint8_t (*goal_id_out)[16]);
+
+/**
  * Phase 122.3.c.6.b — L1 polling: send a cancel request.
  */
 NROS_PUBLIC
@@ -4298,6 +4326,20 @@ NROS_PUBLIC
 int32_t rclc_polling_action_client_try_recv_cancel_response_raw(struct rclc_polling_action_client_t *client,
                                                                 uint8_t *buf,
                                                                 size_t buf_len);
+
+/**
+ * Issue 2011 — [`rclc_polling_action_client_try_recv_cancel_response_raw`] that also writes the goal the reply is ABOUT (the
+ * goal of the request whose sequence id it names, issue 2009) into
+ * `goal_id_out`. With several goals in flight the bytes alone cannot say
+ * which one a reply answers. A reply naming no pending request (an abandoned
+ * one's) is dropped. `goal_id_out` is written only when a reply is returned
+ * (`> 0`).
+ */
+NROS_PUBLIC
+int32_t rclc_polling_action_client_try_recv_cancel_response_raw_for(struct rclc_polling_action_client_t *client,
+                                                                    uint8_t *buf,
+                                                                    size_t buf_len,
+                                                                    uint8_t (*goal_id_out)[16]);
 
 /**
  * Phase 122.3.c.6.e — register a C wake callback on the

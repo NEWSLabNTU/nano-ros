@@ -280,7 +280,10 @@ debug:
   `_with_ctx` setters with a `void*` context.
 - **Client: `send_goal` blocks and fills an out-param goal id**, returning
   `Result`, where upstream's `async_send_goal` returns a `shared_future` of a
-  goal handle. `send_goal_future` is the future-shaped spelling.
+  goal handle. `send_goal_future` / `get_result_future` are the future-shaped
+  spellings, over `rclcpp::Future` (driven by the executor, never a
+  `std::shared_future`). Each is keyed by its goal, so several goals may be in
+  flight on one client and each future receives only its own goal's reply.
 - **Client: callbacks bind to the CLIENT.** Upstream passes `SendGoalOptions`
   to each `async_send_goal`; here `client.set_callbacks(opts)` installs them
   once for every goal the client sends. They are read when a reply is

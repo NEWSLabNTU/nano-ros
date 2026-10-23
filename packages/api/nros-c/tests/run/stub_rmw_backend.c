@@ -292,6 +292,18 @@ static rmw_ret_t stub_send_response(const rmw_service_t* server, int64_t seq,
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
+/* Issue 2011 — each client created in accept mode gets its OWN token, so a
+ * reply staged for a request is taken only by the client that sent it (an
+ * action client is three service clients, and a process may hold several). */
+#define STUB_CLIENT_TOKENS 64
+static int s_client_tokens[STUB_CLIENT_TOKENS];
+static size_t s_next_client_token = 0;
+
+static bool is_client_token(const void* p) {
+    return p >= (const void*)&s_client_tokens[0] &&
+           p < (const void*)&s_client_tokens[STUB_CLIENT_TOKENS];
+}
+
 static rmw_ret_t stub_create_client(const rmw_node_t* node,
                                     const rmw_service_type_support_t* type_support,
                                     const char* service_name, uint32_t domain_id,
@@ -302,14 +314,19 @@ static rmw_ret_t stub_create_client(const rmw_node_t* node,
     (void)type_support;
     (void)domain_id;
     (void)qos;
-    (void)out;
-    if (accept_create(&out->backend_data)) return NROS_RMW_RET_OK;
+    if (accept_create(&out->backend_data)) {
+        out->backend_data = &s_client_tokens[s_next_client_token % STUB_CLIENT_TOKENS];
+        ++s_next_client_token;
+        return NROS_RMW_RET_OK;
+    }
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
 static rmw_ret_t stub_destroy_client(rmw_client_t* client) {
-    (void)client;
-    if (client != NULL && accept_destroy(client->backend_data)) return NROS_RMW_RET_OK;
+    if (client != NULL && is_client_token(client->backend_data)) {
+        s_live_entities--;
+        return NROS_RMW_RET_OK;
+    }
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
@@ -340,9 +357,26 @@ static uint32_t s_max_outstanding = 0; /* 0 = no cap */
 static uint32_t s_outstanding = 0;
 static bool s_ids_supported = true;
 
+/* Issue 2011 — which client sent each request, so `take_response` hands a
+ * reply only to its own client. A ring: an id older than the last 64 requests
+ * (or one never sent) has no owner, and any client may take its reply. */
+#define STUB_SENT_LOG 64
+typedef struct {
+    int64_t seq;
+    const void* owner;
+} stub_sent_t;
+static stub_sent_t s_sent[STUB_SENT_LOG];
+static size_t s_sent_next = 0;
+
+static const void* request_owner(int64_t seq) {
+    for (size_t i = 0; i < STUB_SENT_LOG; ++i) {
+        if (s_sent[i].owner != NULL && s_sent[i].seq == seq) return s_sent[i].owner;
+    }
+    return NULL;
+}
+
 static rmw_ret_t stub_send_request(const rmw_client_t* client, rmw_byte_span_t request,
                                    int64_t* sequence_id) {
-    (void)client;
     (void)request;
     if (s_max_outstanding != 0 && s_outstanding >= s_max_outstanding) {
         /* A real backend's own limit: zenoh's pending-get table, Cyclone's
@@ -351,6 +385,9 @@ static rmw_ret_t stub_send_request(const rmw_client_t* client, rmw_byte_span_t r
     }
     ++s_requests_sent;
     ++s_outstanding;
+    s_sent[s_sent_next % STUB_SENT_LOG].seq = s_next_request_seq;
+    s_sent[s_sent_next % STUB_SENT_LOG].owner = client != NULL ? client->backend_data : NULL;
+    ++s_sent_next;
     if (sequence_id != NULL && s_ids_supported) *sequence_id = s_next_request_seq;
     ++s_next_request_seq;
     return NROS_RMW_RET_OK;
@@ -358,11 +395,20 @@ static rmw_ret_t stub_send_request(const rmw_client_t* client, rmw_byte_span_t r
 
 static rmw_ret_t stub_take_response(const rmw_client_t* client, rmw_mut_byte_span_t* reply,
                                     int64_t* seq_out, bool* taken) {
-    (void)client;
     if (taken != NULL) *taken = false;
-    if (s_reply_count == 0) return NROS_RMW_RET_OK;
+    /* Issue 2011 — the oldest staged reply THIS client may take: one for a
+     * request it sent, or one whose request has no recorded owner. */
+    size_t at = s_reply_count;
+    for (size_t i = 0; i < s_reply_count; ++i) {
+        const void* owner = request_owner(s_replies[i].seq);
+        if (owner == NULL || client == NULL || owner == client->backend_data) {
+            at = i;
+            break;
+        }
+    }
+    if (at == s_reply_count) return NROS_RMW_RET_OK;
     if (reply == NULL || reply->data == NULL) return NROS_RMW_RET_ERROR;
-    const stub_reply_t* r = &s_replies[0];
+    const stub_reply_t* r = &s_replies[at];
     if (reply->capacity < r->len) {
         reply->len = r->len;
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
@@ -371,7 +417,7 @@ static rmw_ret_t stub_take_response(const rmw_client_t* client, rmw_mut_byte_spa
     reply->len = r->len;
     if (seq_out != NULL && s_ids_supported) *seq_out = r->seq;
     if (taken != NULL) *taken = true;
-    memmove(&s_replies[0], &s_replies[1], (s_reply_count - 1) * sizeof(stub_reply_t));
+    memmove(&s_replies[at], &s_replies[at + 1], (s_reply_count - at - 1) * sizeof(stub_reply_t));
     --s_reply_count;
     if (s_outstanding > 0) --s_outstanding;
     return NROS_RMW_RET_OK;
