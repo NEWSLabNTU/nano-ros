@@ -143,4 +143,5 @@ loops), neither an executor defect.
 
 Whether a RELIABLE publisher should keep zenoh-pico's DROP, which drops on
 mere TX-lock contention rather than on a full queue the way zenoh's DROP does,
-is a product question this fix does not settle.
+is a product question this fix does not settle. Filed as
+[issue 2001](../2001-zpico-reliable-publish-dropped-on-tx-lock-contention.md).
