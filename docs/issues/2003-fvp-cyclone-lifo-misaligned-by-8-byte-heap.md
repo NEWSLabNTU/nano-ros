@@ -6,7 +6,7 @@ type: bug
 area: [platform, rmw, zephyr, cyclonedds]
 severity: high
 found: 2026-10-23
-related: [0232, 1324]
+related: [0232, 1324, phase-511]
 ---
 
 ## Measured
