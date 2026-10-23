@@ -1,7 +1,7 @@
 # Phase 511 — model the unmodeled runtime tests, and name the ones that are not cells
 
-**Status (2026-10-23). IN PROGRESS — A1–A6 and D1 open.** Implements RFC-0051 §7c
-(amendment 2026-10-22). It follows [phase-510](archived/phase-510-test-config-axis.md),
+**Status (2026-10-23). DONE — A1–A6 and D1 landed; B and C are out of scope (below).** Implements RFC-0051 §7c
+(amendment 2026-10-22). It follows [phase-510](phase-510-test-config-axis.md),
 which bound every Runtime cell to the test that answers it and left 23 test
 binaries as `NonCell::Unmodeled`, "a candidate cell, not an exemption".
 
@@ -92,6 +92,13 @@ comment already claims.
   native solo and each RTOS platform it names.
 - `Unmodeled` holds exactly the B and C rows (6).
 
+**Result (2026-10-23).** 15 Runtime cells + 1 CarveOut, six consumers, 11 rows
+to `Probe`; `Unmodeled` is 6. Tier lanes unchanged (23/11, 11/10, 39/37); tier
+3 is 245 cells over 51 coordinates. On fixtures rebuilt at `lane=all`, all 31
+tests in the six binaries passed (ESP32 logging stays `#[ignore]`, issue
+1525), including `logging_smoke` on QemuBaremetal, FreertosMps2, NuttxArm,
+ThreadxLinux, ThreadxRiscv64 and ZephyrNativeSim.
+
 ## Not in this phase
 
 - **B** — `freertos_qemu` (mps3-an536 is not a platform value),
@@ -101,5 +108,5 @@ comment already claims.
 
 ## Related
 
-- RFC-0051 §7c; [phase-510](archived/phase-510-test-config-axis.md) W3.
+- RFC-0051 §7c; [phase-510](phase-510-test-config-axis.md) W3.
 - RFC-0061 (the tier covers the new cells and workload join).
