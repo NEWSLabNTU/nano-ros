@@ -11,8 +11,9 @@
 //!    dispatcher. Lets ecosystem crates that target `log::info!`
 //!    flow through the same sink list.
 //!
-//! Either / both can be active. Cycles are short-circuited by the
-//! facade's process-global recursion guard.
+//! Either / both can be active. A cycle cannot recurse: the facade delivers
+//! one record at a time, and a record raised during a delivery is held and
+//! delivered after it, a bounded number of passes per dispatch (`early`).
 
 #[cfg(target_has_atomic = "ptr")]
 use core::sync::atomic::{AtomicBool, Ordering};

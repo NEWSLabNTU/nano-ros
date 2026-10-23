@@ -26,9 +26,11 @@
 //! not a hang but a silent death — issue 0589's `zvfs_write` recursion
 //! exhausts the stack with no message.
 //!
-//! [`dispatch_to_sinks`](crate) already holds `RECURSION_GUARD` across every
-//! `sink.log()` call, so the immediate recursion is already refused. This
-//! module refuses the SECOND shape as well, which that guard cannot see: the
+//! [`dispatch_to_sinks`](crate) already holds its dispatch guard across every
+//! `sink.log()` call, so the immediate recursion cannot happen: a record raised
+//! inside a sink is held and delivered after it, a bounded number of passes per
+//! dispatch (issue 2000). This module refuses the SECOND shape as well, which
+//! that guard cannot see: the
 //! pump runs OUTSIDE dispatch, so a record raised by the publish path would be
 //! enqueued normally, published on the next pump, log again, and amplify
 //! forever at steady state without ever recursing. `PUMPING` (a module-private flag) is set for the

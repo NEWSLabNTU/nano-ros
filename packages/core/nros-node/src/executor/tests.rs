@@ -11562,10 +11562,10 @@ fn two_nodes_on_one_executor_emit_under_their_own_names() {
 
     // Names unique to this test: the sink is process-global and sibling tests
     // in this binary emit through the catch-all logger while it is installed.
-    // The marker filter below makes their EXTRA records harmless. A MISSING
-    // marker record is issue 2000, not this test: nros-log's recursion guard
-    // is process-wide, so a record emitted while a sibling test thread is
-    // inside a sink is dropped.
+    // The marker filter below makes their EXTRA records harmless. A marker
+    // emitted while a sibling test thread is inside a sink is held and
+    // delivered by that thread when it finishes (issue 2000), so it may land
+    // after `log_info!` returns: wait for it rather than read once.
     const TALKER: &str = "w5_two_names_talker";
     const LISTENER: &str = "w5_two_names_listener";
 
@@ -11595,13 +11595,22 @@ fn two_nodes_on_one_executor_emit_under_their_own_names() {
     nros_log::log_info!(talker_logger, "w5 marker: talker is up");
     nros_log::log_info!(listener_logger, "w5 marker: listener is up");
 
-    let records: Vec<(String, String)> = CAPTURED
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|(_, message)| message.starts_with("w5 marker:"))
-        .cloned()
-        .collect();
+    let markers = || -> Vec<(String, String)> {
+        CAPTURED
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, message)| message.starts_with("w5 marker:"))
+            .cloned()
+            .collect()
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut records = markers();
+    while records.len() < 2 && std::time::Instant::now() < deadline {
+        std::thread::yield_now();
+        nros_log::flush();
+        records = markers();
+    }
 
     assert_eq!(
         records.len(),

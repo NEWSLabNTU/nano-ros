@@ -1,4 +1,5 @@
-//! Records raised before any sink was installed.
+//! Records that could not be delivered when they were raised: before any sink
+//! was installed, or while another thread was inside a sink (issue 2000).
 //!
 //! ## The problem this exists for
 //!
@@ -75,25 +76,65 @@
 //! is at least reportable.
 //!
 //! Overflow is counted, never silently absorbed: [`overflowed`] returns how
-//! many records did not fit, and `init` reports it through the freshly
-//! installed sinks.
+//! many records did not fit, and the next delivery reports the count through
+//! the sinks (`nros_log` logger, at `warn`).
+//!
+//! ## The same queue holds records that met a BUSY dispatcher — issue 2000
+//!
+//! Dispatch runs one record at a time: a flag is held across every
+//! `sink.log()`, so a sink that logs cannot recurse into itself, and two
+//! threads never write to a sink at once. Until issue 2000 a record that found
+//! the flag held was DROPPED, which was right for the recursion it was written
+//! for and wrong for everything else: a record from ANOTHER thread vanished
+//! whenever any thread was mid-delivery. `nros-log` cannot tell the two apart
+//! without a thread identity, which no `no_std` target here gives it for free.
+//!
+//! So such a record is held here instead, and the thread holding the flag
+//! delivers it before letting go. Nobody waits and nothing interleaves inside
+//! a sink. Two properties follow, both bounded on purpose:
+//!
+//! * **A sink that logs is not refused, it is postponed.** The holder makes at
+//!   most [`DRAIN_PASSES`] passes, each over the records already held when the
+//!   pass began, so a sink that logs on every write adds a bounded number of
+//!   lines per dispatch and can never loop or grow the stack. What is left
+//!   waits for the next dispatch or [`crate::flush`].
+//! * **A record cannot be stranded by the hand-off.** The raiser publishes the
+//!   record, then tries the flag once more; the holder releases the flag, then
+//!   looks for held records once more. Under `SeqCst` one of the two always
+//!   sees the other, so either the raiser delivers it or the holder does. The
+//!   only record left behind is one raised during the holder's LAST pass, which
+//!   the next dispatch or `flush` delivers.
+//!
+//! The knob sizes both uses, because they are one question: how many records
+//! may be waiting for a sink at once.
 
 use core::cell::UnsafeCell;
 
-use portable_atomic::{AtomicUsize, Ordering};
+use portable_atomic::{AtomicU8, AtomicUsize, Ordering};
 
-use crate::{LogSink, Record, Severity, buffer::format_buffer_capacity};
+use crate::{Record, Severity, buffer::format_buffer_capacity};
 
-/// Records held before `init`. See the module docs for the trade.
+/// Records held at once. See the module docs for the trade.
 #[must_use]
 pub const fn early_depth() -> usize {
     crate::config::EARLY_RECORDS
 }
 
+/// Passes a dispatcher makes over the held records before it lets go. See the
+/// module docs: this is what bounds a sink that logs.
+pub const DRAIN_PASSES: usize = 2;
+
 const DEPTH: usize = early_depth();
 const MSG_CAP: usize = format_buffer_capacity();
 /// A logger name is an identifier, not prose — `nros-node`'s longest is 20.
 const NAME_CAP: usize = 48;
+
+/// Slot states. A slot cycles `EMPTY -> WRITING -> READY -> READING -> EMPTY`,
+/// and each arrow is taken by exactly one thread (a CAS for the two claims).
+const EMPTY: u8 = 0;
+const WRITING: u8 = 1;
+const READY: u8 = 2;
+const READING: u8 = 3;
 
 struct Pending {
     severity: Severity,
@@ -118,22 +159,25 @@ impl Pending {
 }
 
 struct Slot {
-    /// Written by exactly one claimant; see `CLAIMED`.
+    /// Written only by the thread that moved `state` EMPTY -> WRITING, read
+    /// only by the one that moved it READY -> READING.
     cell: UnsafeCell<Pending>,
-    /// Publishes `cell` to the drain. `Release` here, `Acquire` there.
-    ready: AtomicUsize,
+    state: AtomicU8,
+    /// Raise order, so a drain replays in the order records were raised.
+    seq: AtomicUsize,
 }
 
-// SAFETY: `cell` is written only by the thread that won a distinct index from
-// `CLAIMED`'s `fetch_add` (each index is handed out once), and read only after
-// that thread's `Release` store to `ready` is observed by an `Acquire` load.
+// SAFETY: `cell` has one owner at a time, handed over by `state`: a writer owns
+// it from its EMPTY -> WRITING CAS to its `Release` store of READY, a reader
+// from its READY -> READING CAS (`Acquire`) to its `Release` store of EMPTY.
 unsafe impl Sync for Slot {}
 
 impl Slot {
     const fn new() -> Self {
         Self {
             cell: UnsafeCell::new(Pending::new()),
-            ready: AtomicUsize::new(0),
+            state: AtomicU8::new(EMPTY),
+            seq: AtomicUsize::new(0),
         }
     }
 }
@@ -142,46 +186,62 @@ impl Slot {
 const EMPTY_SLOT: Slot = Slot::new();
 static SLOTS: [Slot; DEPTH] = [EMPTY_SLOT; DEPTH];
 
-/// Total records offered while no sinks were installed. Indices `>= DEPTH`
-/// did not fit; the count of those is [`overflowed`].
-static CLAIMED: AtomicUsize = AtomicUsize::new(0);
+/// Next raise-order number.
+static NEXT_SEQ: AtomicUsize = AtomicUsize::new(0);
+/// READY slots. `SeqCst` on both sides: it is half of the hand-off in the
+/// module docs, paired with the dispatch flag.
+static PENDING: AtomicUsize = AtomicUsize::new(0);
+/// Records that found every slot taken. Never reset.
+static LOST: AtomicUsize = AtomicUsize::new(0);
 
-/// How many early records did not fit and were lost.
+/// How many records did not fit and were lost, since the program started.
 #[must_use]
 pub fn overflowed() -> usize {
-    CLAIMED.load(Ordering::Relaxed).saturating_sub(DEPTH)
+    LOST.load(Ordering::Relaxed)
 }
 
-/// Hold `record` until a sink list is installed.
+/// Hold `record` until a dispatcher delivers it.
 ///
 /// Returns `false` when it did not fit — the caller has nothing further to do,
-/// but [`overflowed`] will report it.
-// `early-records-0` makes the capacity 0, a legal size: the comparison is then
-// always true, which is the right answer for a pool with no slots.
-#[allow(clippy::absurd_extreme_comparisons)]
+/// but [`overflowed`] counts it and the next delivery reports it.
 pub(crate) fn hold(record: &Record<'_>) -> bool {
-    let idx = CLAIMED.fetch_add(1, Ordering::AcqRel);
-    if idx >= DEPTH {
-        return false;
+    for slot in &SLOTS {
+        if slot
+            .state
+            .compare_exchange(EMPTY, WRITING, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            continue;
+        }
+        slot.seq
+            .store(NEXT_SEQ.fetch_add(1, Ordering::Relaxed), Ordering::Relaxed);
+        // SAFETY: the CAS above made this thread the slot's only owner until
+        // the `Release` store of READY below.
+        let pending = unsafe { &mut *slot.cell.get() };
+        pending.severity = record.severity;
+        // Truncating rather than refusing: a clipped record is worth more than
+        // none, and the alternative is deciding that a long logger name loses
+        // the whole line.
+        pending.logger_name.clear();
+        let _ = pending
+            .logger_name
+            .push_str(clip(record.logger_name, NAME_CAP));
+        pending.message.clear();
+        let _ = pending.message.push_str(clip(record.message, MSG_CAP));
+        pending.file = record.file;
+        pending.line = record.line;
+        pending.timestamp_ns = record.timestamp_ns;
+        slot.state.store(READY, Ordering::Release);
+        PENDING.fetch_add(1, Ordering::SeqCst);
+        return true;
     }
-    let slot = &SLOTS[idx];
-    // SAFETY: `idx` was handed out exactly once by the `fetch_add` above, so
-    // this thread is the only writer of `slot.cell`, and no reader may touch it
-    // until the `Release` store below.
-    let pending = unsafe { &mut *slot.cell.get() };
-    pending.severity = record.severity;
-    // Truncating rather than refusing: a clipped early record is worth more
-    // than none, and the alternative is deciding at boot that a long logger
-    // name loses the whole line.
-    let _ = pending
-        .logger_name
-        .push_str(clip(record.logger_name, NAME_CAP));
-    let _ = pending.message.push_str(clip(record.message, MSG_CAP));
-    pending.file = record.file;
-    pending.line = record.line;
-    pending.timestamp_ns = record.timestamp_ns;
-    slot.ready.store(1, Ordering::Release);
-    true
+    LOST.fetch_add(1, Ordering::Relaxed);
+    false
+}
+
+/// Whether any record is waiting.
+pub(crate) fn pending() -> bool {
+    PENDING.load(Ordering::SeqCst) > 0
 }
 
 /// Longest prefix of `s` that fits `cap` bytes without splitting a character.
@@ -196,39 +256,40 @@ fn clip(s: &str, cap: usize) -> &str {
     &s[..end]
 }
 
-/// Replay everything held, in the order it was raised, into `sinks`.
+/// One pass: deliver every record held when the pass began, oldest first.
 ///
-/// Called by [`crate::init`] AFTER the sink list is published, so a record
-/// raised concurrently with the drain reaches the sinks directly rather than
-/// the ring. That can interleave a live record with a replayed one; ordering
-/// among the replayed records themselves is preserved, which is the property
-/// worth having.
-pub(crate) fn drain(sinks: &'static [&'static dyn LogSink]) {
-    drain_with(&mut |record| {
-        for sink in sinks {
-            sink.log(record);
-        }
-    });
-}
-
-/// The half of [`drain`] that does not name a sink LIST.
-///
-/// phase-417 W4.d added [`crate::add_sink`], so "where a held record goes" is
-/// no longer answered by one `&'static [&dyn LogSink]`. The replay walk stayed
-/// one function and grew a callback rather than being copied next to the new
-/// registry — a second copy is a second answer to "in what order, and what
-/// happens to a slot whose writer has not published yet".
+/// A record held DURING the pass waits for the next one — that is what bounds
+/// a sink that logs (module docs). Safe to run concurrently with `hold` and
+/// with another pass: a slot is claimed READY -> READING by one reader only.
 pub(crate) fn drain_with(deliver: &mut dyn FnMut(&Record<'_>)) {
-    let claimed = CLAIMED.load(Ordering::Acquire);
-    let held = if claimed > DEPTH { DEPTH } else { claimed };
-    for slot in SLOTS.iter().take(held) {
-        if slot.ready.swap(0, Ordering::AcqRel) == 0 {
-            // Either already drained by a concurrent `init`, or its writer has
-            // not published yet. Neither is worth spinning at boot for.
+    let bound = NEXT_SEQ.load(Ordering::Acquire);
+    loop {
+        // Oldest READY slot raised before the pass began. DEPTH is a handful,
+        // so a scan per record is cheaper than any ordered structure.
+        let mut oldest: Option<(&Slot, usize)> = None;
+        for slot in &SLOTS {
+            if slot.state.load(Ordering::Acquire) != READY {
+                continue;
+            }
+            let seq = slot.seq.load(Ordering::Relaxed);
+            if seq >= bound {
+                continue;
+            }
+            if oldest.is_none_or(|(_, best)| seq < best) {
+                oldest = Some((slot, seq));
+            }
+        }
+        let Some((slot, _)) = oldest else { break };
+        if slot
+            .state
+            .compare_exchange(READY, READING, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            // Another pass took it first.
             continue;
         }
-        // SAFETY: the `Acquire` half of the swap above pairs with the writer's
-        // `Release` store, and the swap makes this the only reader.
+        // SAFETY: the CAS above made this the slot's only reader, and its
+        // `Acquire` pairs with the writer's `Release` store of READY.
         let pending = unsafe { &*slot.cell.get() };
         let record = Record {
             severity: pending.severity,
@@ -239,6 +300,7 @@ pub(crate) fn drain_with(deliver: &mut dyn FnMut(&Record<'_>)) {
             timestamp_ns: pending.timestamp_ns,
         };
         deliver(&record);
+        slot.state.store(EMPTY, Ordering::Release);
+        PENDING.fetch_sub(1, Ordering::SeqCst);
     }
-    CLAIMED.store(0, Ordering::Release);
 }

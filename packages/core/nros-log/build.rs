@@ -8,7 +8,7 @@
 //! | `NROS_LOG_DYNAMIC_LOGGERS`  | 16      | runtime-logger arenas (phase-479 W5)            |
 //! | `NROS_LOG_MAX_LEVEL`        | `trace` | the compile-time severity CEILING (issue 1037)  |
 //! | `NROS_LOG_BUFFER_SIZE`      | 256     | the per-call formatting buffer (issue 1037)     |
-//! | `NROS_LOG_EARLY_RECORDS`    | 4       | records held before `init` (issue 1037)         |
+//! | `NROS_LOG_EARLY_RECORDS`    | 4       | records held for delivery (issues 1037, 2000)   |
 //! | `NROS_LOG_ROSOUT_RECORDS`   | 16      | the `/rosout` queue depth (issue 1037)          |
 //!
 //! and derives one `cfg`, `nros_log_clock`, from the platform's `clock`
@@ -158,7 +158,7 @@ fn main() {
          pub(crate) const MAX_LEVEL: u8 = {max_level};\n\
          /// `NROS_LOG_BUFFER_SIZE`: bytes of the per-call formatting buffer.\n\
          pub(crate) const BUFFER_SIZE: usize = {buffer_size};\n\
-         /// `NROS_LOG_EARLY_RECORDS`: records held before `init` (0 = none).\n\
+         /// `NROS_LOG_EARLY_RECORDS`: records held for delivery (0 = none).\n\
          pub(crate) const EARLY_RECORDS: usize = {early_records};\n\
          /// `NROS_LOG_ROSOUT_RECORDS`: the `/rosout` queue depth.\n\
          #[cfg_attr(not(feature = \"rosout\"), allow(dead_code))]\n\
