@@ -330,6 +330,37 @@ fn main() {
         described_classes.map(|c| c.large_count),
         2,
     );
+    // Issue 1368 — the receive class against zenoh-pico's reassembly ceiling.
+    // A sample larger than `max(frag, batch)` is dropped inside the transport
+    // on a SUCCESS return, so the build refuses here instead. Only STATED
+    // classes are checked (the same rungs as above, never the builtins), and
+    // only where `zpico-sys` compiled zenoh-pico and published the ceiling it
+    // baked: on Zephyr the cmake configure runs this comparison.
+    if let (Ok(frag), Ok(batch)) = (
+        std::env::var("DEP_ZPICO_FRAG_MAX_SIZE"),
+        std::env::var("DEP_ZPICO_BATCH_UNICAST_SIZE"),
+    ) {
+        use nros_sizing_descriptor::receive_ceiling::{receive_ceiling_refusal, receive_need};
+        let parse = |v: String| -> usize {
+            v.trim()
+                .parse()
+                .expect("zpico-sys publishes the reassembly ceiling as a number (issue 1368)")
+        };
+        let need = receive_need(
+            nros_zephyr_build::knob("NROS_ZENOH_MAX_LARGE_SUBSCRIBERS")
+                .rung(described_classes.map(|c| c.large_count))
+                .stated(),
+            nros_zephyr_build::knob("NROS_ZENOH_SUBSCRIBER_LARGE_SIZE")
+                .rung(described_classes.and_then(|c| (c.large_count > 0).then_some(c.large_max)))
+                .stated(),
+            nros_zephyr_build::knob("NROS_SUBSCRIBER_BUFFER_SIZE")
+                .rung(described_classes.and_then(|c| (c.small_max > 0).then_some(c.small_max)))
+                .stated(),
+        );
+        if let Some(msg) = receive_ceiling_refusal(need, parse(frag), parse(batch)) {
+            panic!("nros-rmw-zenoh: {msg}");
+        }
+    }
     // Phase 268 — per-session per-node NN liveliness token cap. One zenoh
     // session hosts at most the executor's node cap of graph nodes, so this
     // tracks `nros-node`'s `NROS_EXECUTOR_MAX_NODES` (default 4); keep them in

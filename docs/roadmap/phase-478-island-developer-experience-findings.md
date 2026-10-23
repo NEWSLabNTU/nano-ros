@@ -168,9 +168,11 @@ value anyway and compare.
 
 Related, and not the same: [issue 1490](../issues/1490-kconfig-knob-forwarding-gate-tests-mention-not-table-row.md)
 (open) is about a knob not being FORWARDED, not about a forwarded one losing;
-[issue 1368](../issues/1368-frag-max-size-not-checked-against-derived-bound.md)
-(open) is the same compare-to-nothing class for `ZPICO_FRAG_MAX_SIZE` against the
-derived receive bound and should land on the same mechanism. The heap is
+[issue 1368](../issues/archived/1368-frag-max-size-not-checked-against-derived-bound.md)
+(resolved 2026-10-23) was the same compare-to-nothing class for the frag ceiling
+against the receive class. It landed as a refusal on both roads (the Zephyr
+configure, and `nros-rmw-zenoh`'s build over `zpico-sys`'s published ceiling),
+through one rule in `nros_sizing_descriptor::receive_ceiling`. The heap is
 [phase-474](phase-474-safety-island-board-findings.md) I5's: the configured
 102,400 against a stale 133,952 ask is a derivation that does not yet cover the
 read path, and 474 owns making the two agree;

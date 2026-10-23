@@ -3,7 +3,7 @@ id: 1368
 title: "The zenoh reassembly ceiling is compared to nothing - an image whose
   derived receive bound exceeds ZPICO_FRAG_MAX_SIZE drops large samples with no
   build-time signal"
-status: open
+status: resolved
 type: bug
 area: rmw, zenoh, cmake, zephyr, sizing
 severity: medium
@@ -11,7 +11,7 @@ found: 2026-09-18
 related: [issue-0940, issue-0963, issue-1181, phase-40, phase-403, phase-460, phase-478]
 ---
 
-**Home: [phase-460](../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-460](../../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## What the two numbers are
 
@@ -157,18 +157,43 @@ the board's RAM budget, which is the same division phase-412 chose for the
 POSIX mutex floor (`nros_cargo_build.cmake:515`, "a floor with a measured
 constant is honest about being a bound rather than a model").
 
-## Remaining
+## Resolution (2026-10-23)
 
-* The check is Zephyr-side only, because `nros_resolve_knobs()` is. The native
-  lane resolves the same pair through `nros-zpico-build`'s runner
-  (`packages/rmw/zenoh/nros-zpico-build/src/runner.rs:885`) and gets no
-  comparison.
-* The provisioning number is the closure bound whenever the entity inventory
-  does not narrow it to the subscribed set, so the check can refuse a build
-  that would have worked. The escape is the one the message names: state
-  `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` / `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE`,
-  which wins over the derivation. Narrowing it properly is issue 0963's
-  subscribed-basis join, not this one.
-* Nothing checks the SEND direction. `ZPICO_BATCH_UNICAST_SIZE` against the
-  largest type the image PUBLISHES is the same subtraction, and
-  `DEFAULT_TX_BUF` aliases the take buffer, so the fact is already derived.
+The issue's own "Remaining" list, item by item, against `main` at `4389c19b8c`.
+
+* **The other roads — FIXED.** Every road except Zephyr compiles zenoh-pico in
+  `zpico-sys` (`nros-zpico-build`'s runner), which resolves the frag and batch
+  sizes on its wire ladder. It now publishes the values it BAKED on its
+  `links = "zpico"` channel (`cargo:frag_max_size`, `cargo:batch_unicast_size`),
+  and `nros-rmw-zenoh`'s build script, the crate that resolves the receive
+  classes, compares the two and refuses the build. The rule lives in ONE place
+  that both arms state identically: `nros_sizing_descriptor::receive_ceiling`
+  (`receive_need`, `receive_ceiling`, `receive_ceiling_refusal`, unit-tested
+  there). Zephyr keeps its configure-time arm, because on Zephyr the cmake
+  module compiles zenoh-pico with the value cmake resolved, so the runner does
+  NOT publish there. Publishing its own number would check a ceiling the image
+  does not have. Only STATED classes are checked (env, Kconfig or the sizing
+  descriptor), never the crate builtins: those are 1024 small and 16384 large,
+  which would refuse every embedded image that states nothing against its 2048
+  frag buffer.
+
+  Measured on a host build of `nros-rmw-zenoh --features platform-posix,std`:
+  with nothing stated, it builds as before. With
+  `NROS_ZENOH_FRAG_MAX_SIZE=1400 NROS_ZENOH_BATCH_UNICAST_SIZE=1024
+  NROS_SUBSCRIBER_BUFFER_SIZE=1496` (the Minimal recipe's ceiling against the
+  island's derived class) it fails with rc 101, naming both knobs. With the frag
+  size at 2048 it builds.
+
+* **Closure over-statement — narrowed on the cargo road, not here.** The cargo
+  arm's classes come from the sizing descriptor's SUBSCRIPTION rows
+  (`described_payload_classes`), i.e. the subscribed set, wherever a descriptor
+  exists. Issue 0963 is resolved and archived. A stated class still wins on
+  both arms, and the refusal says so.
+
+* **The send direction — not a defect in the image.** Fragmentation is compiled
+  on in every build: `nros-zpico-build` writes `#define Z_FEATURE_FRAGMENTATION
+  1`, and zenoh-pico's own default is 1, which is what the Zephyr build gets. So
+  a publish larger than the batch is fragmented, never dropped by the sender
+  (`_z_transport_tx_send_fragment`, zenoh-pico `src/transport/common/tx.c`). The
+  only limit on it is the RECEIVING peer's reassembly ceiling, which is a fact
+  about that peer and not one this image's build can know.

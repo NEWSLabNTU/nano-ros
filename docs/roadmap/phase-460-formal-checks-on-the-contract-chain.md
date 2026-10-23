@@ -1,17 +1,17 @@
 # phase-460 - every consumer of the contract chain verifies what it consumes
 
-**Status (2026-10-23). Six of seven waves LANDED; one item open.** W1 (PR
+**Status (2026-10-23). Every wave LANDED; three homed issues remain.** W1 (PR
 #1165), W2 and W4 (PR #1166), W5 (PR #1229), W6 (PR #1228), W7 (the heap
 exhaustion is fatal under `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL`, and
 `samples_dropped_too_small` is in the boot report; issue 1425 archived) and
-W3's second half (issue 1422) are on `main`. What remains is **W3's first half,
-[issue 1368](../issues/1368-frag-max-size-not-checked-against-derived-bound.md)**:
-`NROS_FRAG_MAX_SIZE` is still a flat `default 2048`, with no derive sentinel and
-no comparison against the derived receive bound. One note for whoever takes it:
-the Kconfig entry is now GENERATED from
-`packages/tooling/nros-zephyr-build/knobs.toml` (row `ZENOH_FRAG_MAX_SIZE`,
-RFC-0103 D2b), so the sentinel goes there plus `scripts/gen-knob-registry.py`,
-not into `zephyr/Kconfig` as the W3 row below says. The W1 and W2 follow-ups
+W3's second half (issue 1422) are on `main`. So is W3's first half,
+[issue 1368](../issues/archived/1368-frag-max-size-not-checked-against-derived-bound.md),
+resolved 2026-10-23, though not in the shape the W3 row below plans. It is a
+CHECK on every road, not a `-1` derive sentinel, which the issue declined with
+reasons. The Zephyr configure (`_nros_rx_ceiling`, since `4b6025539b`) and
+`nros-rmw-zenoh`'s build, over the ceiling `zpico-sys` publishes, both refuse
+a stated receive class above `max(frag, batch)`. One rule backs both:
+`nros_sizing_descriptor::receive_ceiling`. The W1 and W2 follow-ups
 recorded in those waves are unverified since they were written. Issues 0259,
 1140 and 1376 are homed here (table at the end). The "starts now?" column in
 the plan below is as of 2026-09-21.
@@ -78,7 +78,7 @@ Owns these issues, one per wave:
 [1423](../issues/archived/1423-system-toml-domain-id-and-kconfig-domain-id-are-never-compared.md),
 [1424](../issues/archived/1424-zephyr-heap-size-is-a-guess-with-a-peak-reporter-nothing-reads.md),
 [1425](../issues/archived/1425-heap-exhaustion-and-buffer-too-small-reach-no-fault-hook-on-a-consoleless-board.md).
-Takes [issue 1368](../issues/1368-frag-max-size-not-checked-against-derived-bound.md)
+Takes [issue 1368](../issues/archived/1368-frag-max-size-not-checked-against-derived-bound.md)
 as W3's first half. Cites [issue 1036](../issues/archived/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md)
 (the sink problem) and [issue 1121](../issues/1121-contract-sidecar-has-no-model-freshness-edge.md)
 (a different freshness edge on the same model) without owning them.
@@ -222,7 +222,7 @@ on `builtin_interfaces/Time`, **45.9 ns (16 %)** on a 1090-element schema, and
 **zero in any shipped image** (const-evaluated everywhere but the host CLI's
 codegen).
 
-Claim: phase-460-W3. Depends on: none. Owns: zephyr/Kconfig (NROS_FRAG_MAX_SIZE), zephyr/cmake/nros_cargo_build.cmake (rx-ceiling block). Gate: issue 1368's acceptance, in just ci gate. Status: SECOND HALF LANDED 2026-09-27 (issue 1422 resolved, issue 1369 resolved with it; RFC-0068 Amendment 3) — rosidl-lower's plain/align deleted, nros-serdes' plain kept and its doc corrected, NROS_ENTITY_PLAIN_TYPES and the arena dispatch declined with a measurement and no longer owned by this claim. FIRST HALF (issue 1368, the NROS_FRAG_MAX_SIZE comparison) not started.
+Claim: phase-460-W3. Depends on: none. Owns: zephyr/Kconfig (NROS_FRAG_MAX_SIZE), zephyr/cmake/nros_cargo_build.cmake (rx-ceiling block). Gate: issue 1368's acceptance, in just ci gate. Status: SECOND HALF LANDED 2026-09-27 (issue 1422 resolved, issue 1369 resolved with it; RFC-0068 Amendment 3) — rosidl-lower's plain/align deleted, nros-serdes' plain kept and its doc corrected, NROS_ENTITY_PLAIN_TYPES and the arena dispatch declined with a measurement and no longer owned by this claim. FIRST HALF (issue 1368) RESOLVED 2026-10-23 as a check on every road, not a derivation; see the status line.
 
 ### W4 - `system.toml` domain and Kconfig domain agree, or the configure says which wins (issue 1423)
 

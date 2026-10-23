@@ -61,6 +61,8 @@ pub mod fact;
 pub mod infra;
 // Issue 1722 — the parameter family's request price, shared by every backend.
 pub mod param_request;
+// Issue 1368 — the receive class against zenoh-pico's reassembly ceiling.
+pub mod receive_ceiling;
 pub use param_request::param_request_max_from;
 mod render;
 mod schema;
