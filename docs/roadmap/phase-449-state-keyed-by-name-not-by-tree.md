@@ -6,9 +6,9 @@ reached the cells), and W7's with issue 1166 (2026-10-15). Issue 1254 is
 resolved: W3's fix had one reader left, `just zephyr setup`'s SDK registration,
 which still built the checkout path and so registered nothing on a
 store-provisioned host; it asks the ladder now, and
-`check-zephyr-sdk-path-asked` keeps it that way. What is open is the table at
-the end: #1824 (the generated-header side channel, now designed) and #1825 (a
-pin bump's re-stale, unmeasured on the user path).
+`check-zephyr-sdk-path-asked` keeps it that way. What is open is #1824 (the
+generated-header side channel, now designed). #1825 is resolved: the claim was
+false, and the generated-code record now names the emitter (RFC-0104 D5).
 
 **Status (2026-10-12). W1, W3, W4, W5, W6 and W8 are DONE; W2 and W7 each
 have one box open.** W2's open box is one scheduled tier-2 run reaching its
