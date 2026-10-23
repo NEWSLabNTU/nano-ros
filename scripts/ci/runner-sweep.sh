@@ -88,6 +88,9 @@
 #   NROS_SWEEP_BUDGET_ZEPHYR_GIB    default 14
 #   NROS_SWEEP_BUDGET_FIXTURES_GIB  default 60
 #   NROS_SWEEP_BUDGET_WORK_GIB      default 40
+#   NROS_SWEEP_UNBUDGETED_WARN_GIB  default 40 — warn when this much of the
+#                                   checkout sits in no area (issue 1353)
+#   NROS_SWEEP_UNBUDGETED_SHOW_MIB  default 1024 — name entries at least this big
 set -euo pipefail
 
 repo_root="${NROS_RUNNER_REPO_ROOT:-}"
@@ -134,6 +137,7 @@ _would() { _say "  [would] $*"; }
 _did()   { _say "  [did]   $*"; }
 
 dirty=0   # 0 = nothing found to sweep; 1 = there was (or would be) work
+attributed_paths=()  # every dir an area measured; _report_unbudgeted reports the rest
 
 # --- where the runner's work dir is ------------------------------------------
 #
@@ -522,6 +526,7 @@ _evict() {
     local area="$1" budget="$2" pinned="$3"
     shift 3
     local dirs=("$@")
+    attributed_paths+=("${dirs[@]}")
 
     local total=0 d sz
     for d in "${dirs[@]}"; do
@@ -567,6 +572,11 @@ _evict() {
         done
     done
 
+    # Sorted into a variable first: the loop below stops at the budget, and a
+    # `sort` still writing into the closed pipe printed ~25 `Broken pipe` lines
+    # into every job log that evicted (issue 1353, runs of 10-17 and 10-21).
+    local sorted
+    sorted="$(printf '%s' "$listing" | sort -n)"
     local mtime path freed=0
     while IFS=$'\t' read -r mtime path; do
         [ -n "${path:-}" ] || continue
@@ -579,7 +589,7 @@ _evict() {
             rm -rf "$path"
         fi
         freed=$((freed + sz))
-    done < <(printf '%s' "$listing" | sort -n)
+    done <<< "$sorted"
 
     if [ "$CHECK" -eq 1 ]; then
         _say "  $area: $(_human "$freed") would be freed"
@@ -591,6 +601,83 @@ _evict() {
         _warn "  Either the budget is too small for this runner's labels, or something"
         _warn "  outside the eviction units is holding the space. Raise the budget"
         _warn "  deliberately rather than letting the disk decide."
+    fi
+}
+
+# issue 1353 — what sits under the checkout (and the build root, when it was
+# relocated) in NO area above. Every area is a list somebody wrote, and a list
+# goes stale toward OK: a cache added by a later phase is neither evicted nor
+# reported, and the sweep still prints "done". On newslab-133 on 2026-10-23 that
+# was 250+ GiB of a 406 GiB workspace — `build/sizes-probe` 89, `build/zephyr-
+# workspace-builds` 66, `examples/**` leaf builds 93, `build/metadata-probe` 13
+# — while 118's free space fell from 654 GiB to 154 GiB over five days of
+# sweeps that each said they had cleared the machine, and then ran out.
+#
+# Reported, never evicted: a directory nobody budgeted has nobody who knows
+# whether it is safe to drop. One `du -d2` walk per root. The frontier is the
+# shallowest directory that holds no area: a top-level entry if it holds none,
+# else its children (so `packages/` is split around `packages/cli/target`).
+_report_unbudgeted() {
+    local -a roots=("$repo_root")
+    case "$build_root/" in "$repo_root"/*) ;; *) roots+=("$build_root") ;; esac
+
+    # in = inside an area; over = holds one; out = neither.
+    _attribution() {
+        local p="$1" a
+        for a in "${attributed_paths[@]}"; do
+            case "$p/" in "$a"/*) printf 'in'; return 0 ;; esac
+        done
+        for a in "${attributed_paths[@]}"; do
+            case "$a/" in "$p"/*) printf 'over'; return 0 ;; esac
+        done
+        printf 'out'
+    }
+
+    local -A expand=()
+    local root sz path rel parent total=0 found=""
+    for root in "${roots[@]}"; do
+        [ -d "$root" ] || continue
+        local walk
+        walk="$(du -x -B1 -d2 "$root" 2>/dev/null || true)"
+        # du lists children before parents, so classify depth 1 first.
+        while IFS=$'\t' read -r sz path; do
+            [ -n "${path:-}" ] || continue
+            rel="${path#"$root"/}"
+            [ "$path" = "$root" ] && continue
+            case "$rel" in */*) continue ;; esac
+            case "$(_attribution "$path")" in
+                out)  found+="$sz"$'\t'"$path"$'\n'; total=$((total + sz)) ;;
+                over) expand["$path"]=1 ;;
+            esac
+        done <<< "$walk"
+        while IFS=$'\t' read -r sz path; do
+            [ -n "${path:-}" ] || continue
+            rel="${path#"$root"/}"
+            case "$rel" in */*/*) continue ;; */*) ;; *) continue ;; esac
+            parent="${path%/*}"
+            [ -n "${expand[$parent]:-}" ] || continue
+            [ "$(_attribution "$path")" = out ] || continue
+            found+="$sz"$'\t'"$path"$'\n'
+            total=$((total + sz))
+        done <<< "$walk"
+    done
+
+    _hwm_put unbudgeted "$total"
+    local gib=$((1024 * 1024 * 1024))
+    _say "  unbudgeted: $(_human "$total") in no area above — neither budgeted nor evicted"
+    local shown=0 show=$(( ${NROS_SWEEP_UNBUDGETED_SHOW_MIB:-1024} * 1024 * 1024 ))
+    while IFS=$'\t' read -r sz path; do
+        [ -n "${path:-}" ] || continue
+        [ "$sz" -ge "$show" ] || break
+        _say "      $(_human "$sz")  $path"
+        shown=$((shown + 1))
+        [ "$shown" -lt 10 ] || break
+    done <<< "$(printf '%s' "$found" | sort -rn)"
+    local warn=$(( ${NROS_SWEEP_UNBUDGETED_WARN_GIB:-40} * gib ))
+    if [ "$total" -gt "$warn" ]; then
+        _warn "runner-sweep: $(_human "$total") is outside every area (warn at $(_human "$warn"))."
+        _warn "  Nothing reclaims it, so the volume drains by that much per growth step."
+        _warn "  Give the largest entry an area, or delete it deliberately (issue 1353)."
     fi
 }
 
@@ -646,6 +733,27 @@ _sweep_disk() {
                 zephyr-fixture-build compile-check-fixtures; do
         [ -d "$build_root/$kind" ] && cache_dirs+=("$build_root/$kind")
     done
+    # issue 1353 — two caches one level deeper, outside this list until
+    # 2026-10-23, when they were the two largest consumers on newslab-133's
+    # runner volume (89 GiB and 66 GiB of 406 GiB) and the sweep reported
+    # neither. Their children are not units: `sizes-probe/<rustc-slug>/<key>`
+    # and `zephyr-workspace-builds/<line>/build-*` are, so the slug and the line
+    # are candidate DIRS. A retired toolchain's slug (an 11 GiB 1.96-nightly
+    # tree beside the live one) then evicts first by age, with no list of
+    # toolchains to keep current. `sizes-probe` sits under the CHECKOUT's
+    # `build/`, not `nros_build_root` (nros-sizes-build `probe_target_dir`), and
+    # a west build root an operator relocated is honoured as given.
+    local sub
+    for sub in "$build_root/sizes-probe"/*/ "$repo_root/build/sizes-probe"/*/ \
+               "$build_root/zephyr-workspace-builds"/*/; do
+        [ -d "$sub" ] || continue
+        sub="${sub%/}"
+        case " ${cache_dirs[*]} " in *" $sub "*) continue ;; esac
+        cache_dirs+=("$sub")
+    done
+    if [ -n "${NROS_ZEPHYR_BUILD_ROOT:-}" ] && [ -d "$NROS_ZEPHYR_BUILD_ROOT" ]; then
+        cache_dirs+=("${NROS_ZEPHYR_BUILD_ROOT%/}")
+    fi
     if [ "${#cache_dirs[@]}" -gt 0 ]; then
         _evict fixtures \
             $(( ${NROS_SWEEP_BUDGET_FIXTURES_GIB:-60} * gib )) \
@@ -698,6 +806,7 @@ _sweep_disk() {
     [ -f "$repo_root/Cargo.toml" ] && cargo_roots+=("$repo_root")
     [ -f "$repo_root/packages/cli/Cargo.toml" ] && cargo_roots+=("$repo_root/packages/cli")
     local sweep_days="${NROS_SWEEP_CARGO_DAYS:-21}"
+    for root in "${cargo_roots[@]}"; do attributed_paths+=("$root/target"); done
     if [ "${#cargo_roots[@]}" -eq 0 ]; then
         _say "  cargo-targets: no cargo manifest at the checkout root"
     elif ! command -v cargo-sweep >/dev/null 2>&1; then
@@ -759,6 +868,8 @@ _sweep_disk() {
         _hwm_put sccache "$scb"
         _say "  sccache: $(_human "$scb") at $sc — self-capped (SCCACHE_CACHE_SIZE), not evicted here"
     fi
+
+    _report_unbudgeted
 
     # --- the filesystem itself -----------------------------------------------
     #

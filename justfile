@@ -3117,6 +3117,18 @@ pr-verdicts *ARGS:
 queue-triage *ARGS:
     @bash scripts/ci/queue-triage.sh {{ARGS}}
 
+# Why is a self-hosted job still queued? (issue 1365) Joins every queued
+# self-hosted job with the runner list and names the shape: NO RUNNER,
+# OFFLINE, BUSY (contention, ends by itself) or IDLE (a matching runner idle
+# beside the waiter: the 26 h "third shape"). From job state alone the four
+# look identical. The runner list needs repository admin, which a workflow
+# token lacks; without it the waits are listed unnamed. Never gates.
+#
+#   just runner-wait-triage    just runner-wait-triage --grace 5
+[group("setup")]
+runner-wait-triage *ARGS:
+    @python3 scripts/ci/runner-wait-triage.py {{ARGS}}
+
 # Is the merge queue's check timeout still ~2x the merge_group gate lane, and
 # does the ruleset hold the value `enable-merge-queue.sh` declares? (issue 1629)
 # Read-only: on a FAIL it prints the ruleset command and never runs it. Needs

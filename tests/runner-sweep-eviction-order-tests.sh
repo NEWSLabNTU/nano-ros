@@ -15,7 +15,7 @@
 # needs, written to the previous day) to reclaim a 60 MiB overrun.
 #
 # This builds that exact shape and asserts the order, because the failure is
-# silent: the sweep reports a successful eviction either way, and what it cost
+# silent (issue 1353's area coverage is checked at the end, same reason): the sweep reports a successful eviction either way, and what it cost
 # only shows up as the next job rebuilding a fixture nobody touched.
 set -uo pipefail
 
@@ -98,6 +98,61 @@ if [ -z "${newest_busy//[0-9]/}" ] && [ -n "$newest_busy" ]; then
     fi
 else
     echo "  [skip] _newest_mtime not separately callable (sourcing runs the sweep)"
+fi
+
+# --- issue 1353: the caches one level deeper, and what no area holds ----------
+#
+# `sizes-probe/<rustc-slug>/<key>` and `zephyr-workspace-builds/<line>/build-*`
+# were in no area, so the sweep neither evicted nor reported them while they
+# were the two largest consumers on a runner that ran out of disk. And a leaf
+# build under `examples/` is in no area by design, so it must be REPORTED: the
+# sweep printed "done" over 250 GiB it never looked at.
+w2="$work/areas"
+mkdir -p "$w2/build/sizes-probe/rustc-old/k1" "$w2/build/sizes-probe/rustc-new/k2" \
+         "$w2/build/zephyr-workspace-builds/3.7/build-leaf" "$w2/examples/ws/build"
+dd if=/dev/zero of="$w2/build/sizes-probe/rustc-old/k1/lib.rlib" bs=1M count=3 status=none
+dd if=/dev/zero of="$w2/build/sizes-probe/rustc-new/k2/lib.rlib" bs=1M count=3 status=none
+dd if=/dev/zero of="$w2/build/zephyr-workspace-builds/3.7/build-leaf/zephyr.elf" bs=1M count=3 status=none
+dd if=/dev/zero of="$w2/examples/ws/build/app.o" bs=1M count=2 status=none
+touch -t "$old" "$w2/build/sizes-probe/rustc-old/k1/lib.rlib"
+
+out2="$(NROS_RUNNER_REPO_ROOT="$w2" NROS_BUILD_ROOT="$w2/build" \
+        NROS_SWEEP_BUDGET_FIXTURES_GIB=0 NROS_SWEEP_UNBUDGETED_SHOW_MIB=1 \
+        NROS_SWEEP_UNBUDGETED_WARN_GIB=0 NROS_SWEEP_STATE_DIR="$w2/state" \
+        "$sweep" --check --disk 2>&1)" || true
+
+old_line="$(printf '%s\n' "$out2" | grep -n 'rm -rf .*/rustc-old/k1' | head -1 | cut -d: -f1)"
+new_line="$(printf '%s\n' "$out2" | grep -n 'rm -rf .*/rustc-new/k2' | head -1 | cut -d: -f1)"
+if [ -n "$old_line" ] && [ -n "$new_line" ] && [ "$old_line" -lt "$new_line" ]; then
+    ok "a sizes-probe key is an eviction unit, and the retired toolchain's goes first"
+else
+    fail "sizes-probe keys were not evicted oldest-first:
+$out2"
+fi
+if printf '%s\n' "$out2" | grep -q 'rm -rf .*/zephyr-workspace-builds/3.7/build-leaf'; then
+    ok "a west build leaf under zephyr-workspace-builds/<line> is an eviction unit"
+else
+    fail "the west build leaf was never proposed:
+$out2"
+fi
+if printf '%s\n' "$out2" | grep -qE '^ +unbudgeted: 2 MiB in no area' \
+   && printf '%s\n' "$out2" | grep -qE '^ +2 MiB +.*/examples$'; then
+    ok "the leaf build in no area is reported and named, and no area is counted twice"
+else
+    fail "unbudgeted report missing, mis-sized or unnamed (want 2 MiB, examples):
+$out2"
+fi
+if printf '%s\n' "$out2" | grep -q 'is outside every area'; then
+    ok "unbudgeted space past the warn threshold warns"
+else
+    fail "no warning at a 0 GiB warn threshold:
+$out2"
+fi
+if printf '%s\n' "$out2" | grep -q 'Broken pipe'; then
+    fail "sort wrote into a closed pipe:
+$out2"
+else
+    ok "no Broken pipe noise from the eviction listing"
 fi
 
 echo ""
