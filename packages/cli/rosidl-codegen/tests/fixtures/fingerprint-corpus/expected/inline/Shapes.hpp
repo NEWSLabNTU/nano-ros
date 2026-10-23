@@ -16,6 +16,7 @@
 #include "rclcpp/heap_string.hpp"
 #include "rclcpp/size_bound.hpp"
 #include "rclcpp/detail/serialization_format.hpp"
+#include "rclcpp/detail/std_detect.hpp" // issue 1995 — NROS_CPP_HAS_SHARED_PTR for the pointer aliases
 
 #include <rclc/detail/nros_config_generated.h>
 
@@ -57,6 +58,16 @@ struct Shapes {
     double arr_fixed[3] = {};
     rclcpp::FixedSequence<int32_t, 4> seq_bounded = {};
     rclcpp::FixedString<8> str_bounded = {};
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    // rosidl's smart-pointer aliases (issue 1995) — hosted builds only.
+    using SharedPtr = ::std::shared_ptr<Shapes>;
+    using ConstSharedPtr = ::std::shared_ptr<const Shapes>;
+    using UniquePtr = ::std::unique_ptr<Shapes>;
+    using ConstUniquePtr = ::std::unique_ptr<const Shapes>;
+    using WeakPtr = ::std::weak_ptr<Shapes>;
+    using ConstWeakPtr = ::std::weak_ptr<const Shapes>;
+#endif
 
     // Type metadata
     static constexpr const char* TYPE_NAME = "fingerprint-corpus::msg::dds_::Shapes_";

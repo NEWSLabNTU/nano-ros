@@ -30,11 +30,9 @@
     },
     "minimal_subscriber_lambda": {
       "source": "rclcpp/topics/minimal_subscriber/lambda.cpp",
-      "edited_lines": 4,
+      "edited_lines": 0,
       "edited_lines_before_phase_488": 4,
-      "remaining": [
-        "pointer-shaped subscription callback: std_msgs::msg::String::UniquePtr has no codegen alias and the arena delivers `const M&` (no per-message allocation); write `const M& msg` and `msg.` for `msg->` (Jazzy only \u2014 Humble's lambda already ports)"
-      ]
+      "remaining": []
     },
     "minimal_subscriber_member_function": {
       "source": "rclcpp/topics/minimal_subscriber/member_function.cpp",
@@ -98,12 +96,11 @@
     },
     "multithreaded_executor": {
       "source": "rclcpp/executors/multithreaded_executor/multithreaded_executor.cpp",
-      "edited_lines": 26,
+      "edited_lines": 18,
       "edited_lines_before_phase_488": 29,
       "remaining": [
         "MultiThreadedExecutor is refused (RFC-0002: one task per executor, no hidden threads) \u2014 renamed to SingleThreadedExecutor",
-        "callback groups: create_callback_group(CallbackGroupType) / SubscriptionOptions::callback_group / CallbackGroup::SharedPtr have no counterpart (every group is mutually exclusive on one task); the group plumbing is deleted",
-        "pointer-shaped subscription callback (ConstSharedPtr), as minimal_subscriber_lambda"
+        "callback groups: create_callback_group(CallbackGroupType) / SubscriptionOptions::callback_group / CallbackGroup::SharedPtr have no counterpart (every group is mutually exclusive on one task); the group plumbing is deleted"
       ]
     }
   }

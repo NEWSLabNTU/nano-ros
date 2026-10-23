@@ -362,6 +362,20 @@ template <typename T> struct refuse {
     "service handler kept its request/response shared_ptr past the call: nano-ros lends them "     \
     "from the dispatch frame (no heap). Copy the message instead."
 
+// issue 1995 — a subscription callback the executor cannot call. The arena
+// delivers `const M&`; a HOSTED build (`NROS_CPP_STD`) also takes upstream's
+// pointer shapes by copying the message into a heap object per delivery, so a
+// freestanding build — no allocator on the delivery path — refuses them here,
+// instead of `InplaceFn` failing to convert the callable.
+#define NROS_RCLCPP_REFUSE_SUBSCRIPTION_CALLBACK_SHAPE                                             \
+    "this subscription-callback shape is REFUSED by nano-ros (RFC-0089, issue 1995). The "         \
+    "executor delivers the message as const M& from its dispatch frame, so the callback must be "  \
+    "callable as void(const M&). On a hosted build (-DNROS_CPP_STD) upstream's pointer shapes "    \
+    "are ALSO taken -- M::UniquePtr, M::SharedPtr, M::ConstSharedPtr, std::shared_ptr<const M> "   \
+    "-- at the price of one heap copy of the message per delivery, which the callback may keep. "  \
+    "A freestanding build has no allocator on the delivery path: write `const M& msg` and "        \
+    "`msg.` for `msg->`, and copy the message out if you need it after the call."
+
 /// Bytes of name an `rclcpp::Logger` keeps (issue 1682). 128 is
 /// `nros_node::names::MAX_RESOLVED_NAME_LEN`, the longest name the stack
 /// resolves; override with `-DNROS_CPP_LOGGER_NAME_CAPACITY=<n>`.

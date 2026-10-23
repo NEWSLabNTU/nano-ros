@@ -15,6 +15,7 @@
 // or action header on its own, by `repr-memory-agreement`, found these missing).
 #include "rclcpp/heap_sequence.hpp"
 #include "rclcpp/heap_string.hpp"
+#include "rclcpp/detail/std_detect.hpp" // issue 1995 — NROS_CPP_HAS_SHARED_PTR for the pointer aliases
 
 {%- for dep in dependencies %}
 #include "{{ dep }}.hpp"
@@ -55,6 +56,9 @@ struct {{ service_name }} {
 {%- endfor %}
 {%- endif %}
 
+{%- set ptr_self = "Request" %}
+
+{% include "_pointer_aliases.jinja" %}
         static constexpr const char* TYPE_NAME = "{{ package_name }}::srv::dds_::{{ service_name }}_Request_";
         static constexpr const char* TYPE_HASH = "{{ type_hash }}";
         static constexpr size_t SERIALIZED_SIZE_MAX = {{ request_serialized_size_max }};
@@ -86,6 +90,9 @@ struct {{ service_name }} {
 {%- endfor %}
 {%- endif %}
 
+{%- set ptr_self = "Response" %}
+
+{% include "_pointer_aliases.jinja" %}
         static constexpr const char* TYPE_NAME = "{{ package_name }}::srv::dds_::{{ service_name }}_Response_";
         static constexpr const char* TYPE_HASH = "{{ type_hash }}";
         static constexpr size_t SERIALIZED_SIZE_MAX = {{ response_serialized_size_max }};

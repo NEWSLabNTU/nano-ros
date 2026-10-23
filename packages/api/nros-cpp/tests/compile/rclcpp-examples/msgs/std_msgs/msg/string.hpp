@@ -16,6 +16,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "rclcpp/detail/std_detect.hpp" // issue 1995 — the pointer aliases
+
 #include "rclcpp/detail/serialization_format.hpp"
 #include "rclcpp/fixed_string.hpp"
 
@@ -23,6 +25,16 @@ namespace std_msgs {
 namespace msg {
 
 struct String {
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    // rosidl's smart-pointer aliases (issue 1995) — hosted builds only.
+    using SharedPtr = ::std::shared_ptr<String>;
+    using ConstSharedPtr = ::std::shared_ptr<const String>;
+    using UniquePtr = ::std::unique_ptr<String>;
+    using ConstUniquePtr = ::std::unique_ptr<const String>;
+    using WeakPtr = ::std::weak_ptr<String>;
+    using ConstWeakPtr = ::std::weak_ptr<const String>;
+#endif
+
     ::rclcpp::FixedString<256> data = {};
 
     static constexpr const char* TYPE_NAME = "std_msgs::msg::dds_::String_";

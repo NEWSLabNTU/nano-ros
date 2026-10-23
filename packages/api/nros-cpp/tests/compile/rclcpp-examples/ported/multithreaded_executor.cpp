@@ -119,28 +119,28 @@ private:
    * Every time the Publisher publishes something, all subscribers to the topic get poked
    * This function gets called when Subscriber1 is poked (due to the std::bind we used when defining it)
    */
-  void subscriber1_cb(const std_msgs::msg::String & msg)
+  void subscriber1_cb(const std_msgs::msg::String::ConstSharedPtr msg)
   {
     auto message_received_at = timing_string();
 
     // Extract current thread
     RCLCPP_INFO(
       this->get_logger(), "THREAD %s => Heard '%s' at %s",
-      string_thread_id().c_str(), msg.data.c_str(), message_received_at.c_str());
+      string_thread_id().c_str(), msg->data.c_str(), message_received_at.c_str());
   }
 
   /**
    * This function gets called when Subscriber2 is poked
    * Since it's running on a separate thread than Subscriber 1, it will run at (more-or-less) the same time!
    */
-  void subscriber2_cb(const std_msgs::msg::String & msg)
+  void subscriber2_cb(const std_msgs::msg::String::ConstSharedPtr msg)
   {
     auto message_received_at = timing_string();
 
     // Prep display message
     RCLCPP_INFO(
       this->get_logger(), "THREAD %s => Heard '%s' at %s",
-      string_thread_id().c_str(), msg.data.c_str(), message_received_at.c_str());
+      string_thread_id().c_str(), msg->data.c_str(), message_received_at.c_str());
   }
 
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr subscription1_;

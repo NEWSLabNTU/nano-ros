@@ -15,6 +15,7 @@
 // or action header on its own, by `repr-memory-agreement`, found these missing).
 #include "rclcpp/heap_sequence.hpp"
 #include "rclcpp/heap_string.hpp"
+#include "rclcpp/detail/std_detect.hpp" // issue 1995 — NROS_CPP_HAS_SHARED_PTR for the pointer aliases
 
 {%- for dep in dependencies %}
 #include "{{ dep }}.hpp"
@@ -58,6 +59,9 @@ struct {{ action_name }} {
 {%- endfor %}
 {%- endif %}
 
+{%- set ptr_self = "Goal" %}
+
+{% include "_pointer_aliases.jinja" %}
         static constexpr const char* TYPE_NAME = "{{ package_name }}::action::dds_::{{ action_name }}_Goal_";
         static constexpr const char* TYPE_HASH = "{{ goal_type_hash }}";
         static constexpr size_t SERIALIZED_SIZE_MAX = {{ goal_serialized_size_max }};
@@ -89,6 +93,9 @@ struct {{ action_name }} {
 {%- endfor %}
 {%- endif %}
 
+{%- set ptr_self = "Result" %}
+
+{% include "_pointer_aliases.jinja" %}
         static constexpr const char* TYPE_NAME = "{{ package_name }}::action::dds_::{{ action_name }}_Result_";
         static constexpr const char* TYPE_HASH = "{{ result_type_hash }}";
         static constexpr size_t SERIALIZED_SIZE_MAX = {{ result_serialized_size_max }};
@@ -120,6 +127,9 @@ struct {{ action_name }} {
 {%- endfor %}
 {%- endif %}
 
+{%- set ptr_self = "Feedback" %}
+
+{% include "_pointer_aliases.jinja" %}
         static constexpr const char* TYPE_NAME = "{{ package_name }}::action::dds_::{{ action_name }}_Feedback_";
         static constexpr const char* TYPE_HASH = "{{ feedback_type_hash }}";
         static constexpr size_t SERIALIZED_SIZE_MAX = {{ feedback_serialized_size_max }};

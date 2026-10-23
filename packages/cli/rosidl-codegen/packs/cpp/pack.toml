@@ -23,4 +23,5 @@ templates = [
     { key = "message_cpp_exports.rs", file = "message_exports.rs.jinja" },
     { key = "service_cpp.hpp", file = "service.hpp.jinja" },
     { key = "action_cpp.hpp", file = "action.hpp.jinja" },
+    { key = "_pointer_aliases.jinja", file = "_pointer_aliases.jinja" },
 ]

@@ -112,6 +112,14 @@ FALLBACK_GLOB = "packages/api/nros-*/include/*/detail/*_config_generated_*.h"
 # yielding the current macros, which is issue 0196's shape.
 PACKS_DIR = REPO / "packages/cli/rosidl-codegen"
 CODEGEN_VERSION_RS = REPO / "packages/core/nros-core/src/codegen_version.rs"
+# issue 1995 -- the ONE site that defines the C++ `NROS_CPP_HAS_*` CAPABILITY
+# macros. A template may test one (the hosted-only pointer aliases test
+# `NROS_CPP_HAS_SHARED_PTR`), and it is NOT a config-header macro: it is
+# defined iff the consumer asked for the porting surface, and UNDEFINED is the
+# freestanding answer. Defining it in a snapshot would switch the hosted arm on
+# in every buildless check. So whatever this header defines is subtracted from
+# the required set -- read from the header, never listed here.
+CAPABILITY_HEADER = REPO / "packages/api/nros-cpp/include/rclcpp/detail/std_detect.hpp"
 
 # issue 1569 -- the ONE define that may select a committed fallback, and the
 # only places allowed to state it outside a comment: the buildless checks
@@ -180,6 +188,7 @@ def analyse(
     stubs: dict[str, str],
     pack_texts: dict[str, str],
     codegen_rs: str,
+    capability_text: str = "",
 ) -> list[str]:
     """The whole rule, over CONTENT — so the self-test drives the same code."""
     problems: list[str] = []
@@ -189,6 +198,7 @@ def analyse(
     for text in pack_texts.values():
         body = _JINJA_COMMENT.sub("", text)
         required |= macros_read_by(body) - defines_in(body)
+    required -= defines_in(capability_text)
     if not required:
         problems.append(
             "  the codegen packs read NO config-header macro. Either the packs "
@@ -400,6 +410,16 @@ def self_test() -> None:
     guarded_dup = {"cfg_x.h": "#ifndef CFG_X_H\n#define CFG_X_H\n" + dup["cfg_x.h"] + "#endif\n"}
     assert "2 times" in "".join(analyse(guarded_dup, stubs, packs, rs)), "guard is not an arm"
 
+    # issue 1995 -- a capability macro the template tests is exempt only because
+    # the capability header DEFINES it; without that header it is required.
+    cap_packs = dict(packs)
+    cap_packs["c.jinja"] = "#if defined(NROS_CPP_HAS_X)\n#endif\n"
+    cap = "#if defined(NROS_CPP_STD)\n#define NROS_CPP_HAS_X 1\n#endif\n"
+    assert analyse(good, stubs, cap_packs, rs, cap) == [], "a capability macro is exempt"
+    assert "NROS_CPP_HAS_X" in "".join(analyse(good, stubs, cap_packs, rs)), (
+        "without the capability header it is a required macro"
+    )
+
     assert analyse(good, stubs, {}, rs), "no packs must FAIL, not pass vacuously"
     assert analyse({}, stubs, packs, rs), "no fallbacks must FAIL"
 
@@ -459,7 +479,15 @@ def main() -> int:
         else ""
     )
 
-    problems = analyse(fallbacks, stubs, pack_texts, codegen_rs)
+    if not CAPABILITY_HEADER.is_file():
+        print(
+            f"check-config-fallback-macros: {CAPABILITY_HEADER.relative_to(REPO)} is "
+            "gone -- the capability-macro exemption has no source.",
+            file=sys.stderr,
+        )
+        return 1
+    capability_text = CAPABILITY_HEADER.read_text(encoding="utf-8")
+    problems = analyse(fallbacks, stubs, pack_texts, codegen_rs, capability_text)
     problems += stub_dispatch_problems(stubs, {str(p).rsplit("/", 1)[-1] for p in fallbacks})
     # issue 1569 -- every tracked text file that names the define. `grep -l`
     # over the index is one process, not a walk.

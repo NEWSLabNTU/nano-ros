@@ -9,6 +9,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "rclcpp/detail/std_detect.hpp" // issue 1995 — the pointer aliases
+
 #include "rclcpp/fixed_sequence.hpp"
 
 #define NROS_RCLCPP_EXAMPLES_STUB_FFI                                                              \
@@ -28,6 +30,16 @@ namespace action {
 
 struct Fibonacci {
     struct Goal {
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+        // rosidl's smart-pointer aliases (issue 1995) — hosted builds only.
+        using SharedPtr = ::std::shared_ptr<Goal>;
+        using ConstSharedPtr = ::std::shared_ptr<const Goal>;
+        using UniquePtr = ::std::unique_ptr<Goal>;
+        using ConstUniquePtr = ::std::unique_ptr<const Goal>;
+        using WeakPtr = ::std::weak_ptr<Goal>;
+        using ConstWeakPtr = ::std::weak_ptr<const Goal>;
+#endif
+
         int32_t order = {};
         static constexpr const char* TYPE_NAME =
             "example_interfaces::action::dds_::Fibonacci_Goal_";
@@ -37,6 +49,16 @@ struct Fibonacci {
     };
 
     struct Result {
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+        // rosidl's smart-pointer aliases (issue 1995) — hosted builds only.
+        using SharedPtr = ::std::shared_ptr<Result>;
+        using ConstSharedPtr = ::std::shared_ptr<const Result>;
+        using UniquePtr = ::std::unique_ptr<Result>;
+        using ConstUniquePtr = ::std::unique_ptr<const Result>;
+        using WeakPtr = ::std::weak_ptr<Result>;
+        using ConstWeakPtr = ::std::weak_ptr<const Result>;
+#endif
+
         ::rclcpp::FixedSequence<int32_t, 64> sequence = {};
         static constexpr const char* TYPE_NAME =
             "example_interfaces::action::dds_::Fibonacci_Result_";
@@ -46,6 +68,16 @@ struct Fibonacci {
     };
 
     struct Feedback {
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+        // rosidl's smart-pointer aliases (issue 1995) — hosted builds only.
+        using SharedPtr = ::std::shared_ptr<Feedback>;
+        using ConstSharedPtr = ::std::shared_ptr<const Feedback>;
+        using UniquePtr = ::std::unique_ptr<Feedback>;
+        using ConstUniquePtr = ::std::unique_ptr<const Feedback>;
+        using WeakPtr = ::std::weak_ptr<Feedback>;
+        using ConstWeakPtr = ::std::weak_ptr<const Feedback>;
+#endif
+
         ::rclcpp::FixedSequence<int32_t, 64> sequence = {};
         static constexpr const char* TYPE_NAME =
             "example_interfaces::action::dds_::Fibonacci_Feedback_";

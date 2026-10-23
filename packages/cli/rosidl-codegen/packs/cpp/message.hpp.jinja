@@ -15,6 +15,7 @@
 #include "rclcpp/heap_string.hpp"
 #include "rclcpp/size_bound.hpp"
 #include "rclcpp/detail/serialization_format.hpp"
+#include "rclcpp/detail/std_detect.hpp" // issue 1995 — NROS_CPP_HAS_SHARED_PTR for the pointer aliases
 {%- if has_view %}
 #include "rclcpp/span.hpp"
 {%- endif %}
@@ -55,6 +56,10 @@ struct {{ message_name }} {
     static constexpr {{ constant.c_type }} {{ constant.name }} = {{ constant.value }};
 {%- endfor %}
 {%- endif %}
+
+{%- set ptr_self = message_name %}
+
+{% include "_pointer_aliases.jinja" %}
 
     // Type metadata
     static constexpr const char* TYPE_NAME = "{{ package_name }}::msg::dds_::{{ message_name }}_";
