@@ -205,9 +205,16 @@ def owner_kill(base):
             return
         p.send_signal(signal.SIGKILL)
         wait_rc(p, 5)
-        s = r.survivors()
+        # A NARROWER window than the default, and the width is the assertion
+        # (issue 2012). The sentinel's own drain loop is 10 s; a sentinel that
+        # cannot tell its group is empty runs all of it and then SIGKILLs
+        # itself, ~11 s after the kill, which the default 12 s window passed by
+        # 0.4 s idle and failed under the parallel fast line. A working one is
+        # gone in ~1 s (one poll), so 6 s separates the two with room for load.
+        s = r.survivors(settle=6)
         check(not s, f"owner-kill: {len(s)} process(es) survived a SIGKILLed owner — "
-              f"the sentinel did not fire: {s}")
+              f"the sentinel did not fire, or did not notice its group was empty "
+              f"(issue 2012): {s}")
     finally:
         r.reap()
 
