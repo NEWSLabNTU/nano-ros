@@ -150,6 +150,33 @@ uintptr_t nros_zephyr_thread_id(void) {
     return (uintptr_t)k_current_get();
 }
 
+/* phase-509 P10 -- the executor's lock as a bare `k_mutex`: recursive (it
+ * counts its owner's re-entries) and priority-inheriting, which is every
+ * property the lock needs (RFC-0108 "Locking"). The runner used the port's
+ * `nros_platform_mutex_rec_*` before, which on a CONFIG_POSIX_API image is a
+ * `pthread_mutex_t` looked up in the POSIX layer's object pool on every call:
+ * 8.63 us per lock+unlock pair on the S32K344 against 1.74 us for the bare
+ * pair (island lock probe). The storage is the caller's, at least
+ * `nros_zephyr_exec_lock_size()` bytes, pointer-aligned. */
+size_t nros_zephyr_exec_lock_size(void) {
+    return sizeof(struct k_mutex);
+}
+
+int8_t nros_zephyr_exec_lock_init(void* m) {
+    if (m == NULL) {
+        return -1;
+    }
+    return k_mutex_init((struct k_mutex*)m) == 0 ? 0 : -1;
+}
+
+int8_t nros_zephyr_exec_lock(void* m) {
+    return k_mutex_lock((struct k_mutex*)m, K_FOREVER) == 0 ? 0 : -1;
+}
+
+int8_t nros_zephyr_exec_unlock(void* m) {
+    return k_mutex_unlock((struct k_mutex*)m) == 0 ? 0 : -1;
+}
+
 /* issue 0758 W4 — acquire the wall-clock epoch, if this image asked for one.
  *
  * WHY THE DECISION LIVES IN C. Zephyr has TWO tier arms — `zephyr_run_tiers.c`

@@ -263,17 +263,19 @@ extern int nros_cpp_init_levels(const char* locator, uint8_t domain_id, const ch
 extern int nros_cpp_executor_set_lock(void* executor, int8_t (*lock)(void*),
                                       int8_t (*unlock)(void*), void* ctx);
 extern int nros_cpp_executor_set_thread_id(void* executor, uintptr_t (*thread_id)(void));
-extern int8_t nros_platform_mutex_rec_init(void* m);
-extern int8_t nros_platform_mutex_rec_lock(void* m);
-extern int8_t nros_platform_mutex_rec_unlock(void* m);
-extern size_t nros_platform_mutex_rec_storage_size(void);
+/* phase-509 P10 -- the executor's lock is a bare `k_mutex` (recursive and
+ * priority-inheriting), through the module's shims: the port's
+ * `nros_platform_mutex_rec_*` cost five times as much per pair on a
+ * CONFIG_POSIX_API image (zephyr/nros_platform_zephyr_shims.c). */
+extern size_t nros_zephyr_exec_lock_size(void);
+extern int8_t nros_zephyr_exec_lock_init(void* m);
+extern int8_t nros_zephyr_exec_lock(void* m);
+extern int8_t nros_zephyr_exec_unlock(void* m);
 extern uintptr_t nros_zephyr_thread_id(void);
 
-/* The core's executor lock: the port's recursive, priority-inheriting mutex
- * (Zephyr `k_mutex`), one per image. 256 bytes reserved, the platform API's
- * bound (`NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE`); the port's real size is
- * checked at boot. */
-static uint64_t zephyr_exec_mutex[256u / 8u];
+/* The core's executor lock, one per image: room for a `struct k_mutex`
+ * (20-32 bytes on the targets), whose real size is checked at boot. */
+static uint64_t zephyr_exec_mutex[64u / 8u];
 
 /* issue 0636 option 3 — the tier spin loop's scheduled gap.
  *
@@ -984,14 +986,14 @@ static int32_t zephyr_run_tiers(const char* locator, uint8_t domain_id, const ch
         return (int32_t)rc;
     }
     /* phase-509 P9b -- the executor's lock, before any second thread can
-     * reach it: the port's recursive priority-inheriting mutex, and this
+     * reach it: a bare `k_mutex` (recursive, priority-inheriting), and this
      * thread identity, so each pass releases it around its callbacks and its
      * park. One level needs neither. */
     if (n_tiers > 1u) {
-        if (nros_platform_mutex_rec_storage_size() > sizeof(zephyr_exec_mutex) ||
-            nros_platform_mutex_rec_init(zephyr_exec_mutex) != 0 ||
-            nros_cpp_executor_set_lock(boot_storage, nros_platform_mutex_rec_lock,
-                                       nros_platform_mutex_rec_unlock, zephyr_exec_mutex) != 0 ||
+        if (nros_zephyr_exec_lock_size() > sizeof(zephyr_exec_mutex) ||
+            nros_zephyr_exec_lock_init(zephyr_exec_mutex) != 0 ||
+            nros_cpp_executor_set_lock(boot_storage, nros_zephyr_exec_lock,
+                                       nros_zephyr_exec_unlock, zephyr_exec_mutex) != 0 ||
             nros_cpp_executor_set_thread_id(boot_storage, nros_zephyr_thread_id) != 0) {
             printk("nros: zephyr run_levels: the executor lock was not installed; refused\n");
             nros_cpp_fini(boot_storage);
