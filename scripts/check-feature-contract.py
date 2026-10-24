@@ -675,6 +675,8 @@ def self_test():
         if not want_fail and got:
             failures.append(f"{case}: clause ({clause}) fired on a clean tree: {got}")
 
+    # A fresh clone has no `tmp/`: its tracked recipes moved out (issue 1524).
+    os.makedirs(os.path.join(ROOT, "tmp"), exist_ok=True)
     with tempfile.TemporaryDirectory(dir=os.path.join(ROOT, "tmp")) as tmp:
         # 0. The baseline tree passes every clause.
         r = os.path.join(tmp, "clean")

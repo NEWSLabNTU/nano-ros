@@ -681,6 +681,8 @@ def self_test():
         expect(not probs, f"exemption table: {probs}")
 
     # …and the manifest producer, both directions on the same classifier.
+    # A fresh clone has no `tmp/`: its tracked recipes moved out (issue 1524).
+    os.makedirs(os.path.join(ROOT, "tmp"), exist_ok=True)
     with tempfile.TemporaryDirectory(dir=os.path.join(ROOT, "tmp")) as d:
         manifest = os.path.join(d, "nros-platform.toml")
         rel_manifest = os.path.relpath(manifest, ROOT)
