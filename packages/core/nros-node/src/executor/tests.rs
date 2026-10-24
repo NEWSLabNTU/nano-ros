@@ -8436,6 +8436,37 @@ fn action_client_attributes_replies_by_request_id() {
         sent_before,
         "a refused goal never reached the transport"
     );
+
+    // Issue 2027 — the binding whose last owner of goal 3's request let go
+    // (a dropped C++ future) forgets it: the slot is free again, and goal 3's
+    // late acceptance is dropped rather than attributed to anyone.
+    let seq3 = sent_before - 3;
+    let core_mut = unsafe {
+        &mut *(executor.arena.as_mut_ptr().cast::<u8>().add(off)
+            as *mut ActionClientCore<
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+            >)
+    };
+    assert!(
+        core_mut.forget_send_goal(&_g3),
+        "goal 3's request was pending"
+    );
+    assert!(
+        !core_mut.forget_send_goal(&_g3),
+        "...and is forgotten exactly once"
+    );
+    let _g6 = client
+        .send_goal(&TestGoal { order: 6 })
+        .expect("the freed slot takes the next goal");
+    core_mut.send_goal_client.load_reply_for(seq3, b, 5);
+    accepted.lock().unwrap().clear();
+    executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        accepted.lock().unwrap().is_empty(),
+        "a forgotten goal's late acceptance reaches no callback"
+    );
 }
 
 private_test_clock!(no_timeout_credit_clock);

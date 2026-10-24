@@ -518,16 +518,26 @@
   },
   "cpp:Client::async_cancel_goal": {
     "verdict": "divergence",
+    "disposition": "adopt-bounded",
     "provides": [
-      "nros::ActionClient::cancel_goal",
-      "nros::ActionClient::try_recv_cancel_response"
+      "rclcpp_action::Client::async_cancel_goal",
+      "rclcpp_action::Client::cancel_goal",
+      "rclcpp_action::Client::try_recv_cancel_response"
     ],
-    "why": "cancelling a goal from the callback-tier C++ client. Present since issue 0796 as `nros::ActionClient<A>::cancel_goal(goal_id)` + `try_recv_cancel_response(CancelReturnCode&)`; it was a GAP before that, with C (`rclc_action_cancel_goal`) and Rust (`ActionClient::cancel_goal`) both having one and C++ having only the L1 `PollingActionClient::send_cancel_request`. What remains is the SHAPE: rclcpp_action returns a `std::shared_future`, and RFC-0021 has no runtime to await one, so ours is fire-the-request then read the reply when the executor has spun. See `c:action_cancel_goal`. Phase 379 W3."
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp_action/client.hpp",
+      "text": "THE BOUND: a cancel reply is taken by the client's own dispatch, which"
+    },
+    "why": "issue 2027 (2026-10-24) -- LANDED at upstream's name on a HOSTED build: `async_cancel_goal(goal_handle, cancel_callback = nullptr)` sends the CancelGoal request for the handle's goal and returns a `std::shared_future<CancelResponse::SharedPtr>` (`rclcpp_action::detail::DrivenSharedFuture`, which IS-A `std::shared_future`) resolving to upstream's `CancelResponse` -- `return_code` with its four constants and `goals_canceling` (`goal_id.uuid`, `stamp.sec` / `stamp.nanosec`); `cancel_callback` gets the same response. The reply is matched to its REQUEST by sequence id (the Rust core's cancel sub-client correlator, issue 2009), so two cancels about one goal never cross. THE BOUND, and the platform constraint behind it: nothing fulfils a future from another thread here (RFC-0021, single-threaded transport), so the future DRIVES the client when polled -- `is_ready()` (what `spin_until_future_complete` polls), `wait_for`, `get` -- and a cancel reply is taken by that future or `Client::poll()`, never by the executor's spin (whose arena dispatch takes acceptances, feedback and results only). A caller keeping only the callback calls `poll()`. Empty future (`valid()` false) where upstream throws: a null handle, or a full table (`MAX_CONCURRENT_GOALS` cancels pending). Needs `std::promise`, so it is refused (`NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`) on a freestanding build and on a libstdc++ without threads. The goal-id-keyed fire-then-read form, `cancel_goal(goal_id)` + `try_recv_cancel_response(CancelReturnCode&)` (issue 0796), stays on every build; a reply the handle-taking dispatch took for none of its waiters is kept for `try_recv_cancel_response`.\n\nEARLIER ROW (superseded): ours was only the fire-then-read pair, with the future shape declined under RFC-0021."
   },
   "cpp:Client::async_cancel_goals_before": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "why": "cancels every goal accepted before a timestamp. It needs each goal's acceptance stamp, which our arena does not keep -- see `c:action_goal_info_t`: time is a board capability (RFC-0036) and the accept path has no clock to read. A user loses bulk cancellation by age and must cancel by goal id."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "book/src/getting-started/porting-a-cpp-node.md",
+      "text": "nano-ros SERVER does not yet act on the zero-id cancel-all / cancel-before"
+    },
+    "why": "issue 2027 (2026-10-24) -- LANDED on a HOSTED build beside `async_cancel_all_goals`: both send upstream's wire form -- the zero goal id with `stamp` (an `rclcpp::Time`, split into `sec` / `nanosec`), or with the zero stamp for cancel-all (`ActionClientCore::send_cancel_request_stamped`) -- and return the same driven `std::shared_future<CancelResponse::SharedPtr>` as `cpp:Client::async_cancel_goal`, with its bound. THE OTHER HALF IS NOT OURS YET: a nano-ros SERVER reads only the goal id of a CancelGoal request and keeps no acceptance stamp (`c:action_goal_info_t`: time is a board capability, RFC-0036), so it answers a zero-id request UNKNOWN_GOAL_ID rather than cancelling every goal / every goal before the stamp. Against an rclcpp server the call does what upstream's does; against ours it is issue 2029.\n\nEARLIER ROW (superseded): declined as absent, for the stamp the server does not keep -- which is a property of the server, not of the client's request."
   },
   "cpp:Client::get_action_name": {
     "verdict": "extension",
@@ -614,7 +624,7 @@
   "cpp:ServerGoalHandle": {
     "verdict": "divergence",
     "disposition": "adopt-bounded",
-    "why": "issue 2015 (2026-10-24) -- LANDED as a HOSTED drop-in. `rclcpp_action::ServerGoalHandle<A>` (`packages/api/nros-cpp/include/rclcpp_action/server.hpp`) answers `get_goal_id`, `is_active`, `is_executing`, `is_canceling` on every build and, hosted, `get_goal` (the `std::shared_ptr<const Goal>` the goal callback was handed), `publish_feedback`, `succeed`, `abort`, `canceled` taking upstream's `std::shared_ptr`s; `SharedPtr` is `std::shared_ptr`. It is what `rclcpp_action::create_server`'s cancel and accepted callbacks receive. THE BOUND: the handle is a heap token over `(server, goal id)`; every call forwards to `Server<A>` keyed by the id and the goal's lifecycle stays in the server's static arena (RFC-0019), so the status answers come from that arena (`for_each_active_goal`), and a terminal goal reads `Unknown`/inactive. It names its server by address: the server must not move while a handle is in use (a `SharedPtr` does not move it). Used from the executor's task only -- a handle driven from a thread the application started races the executor (RFC-0002, no lock on a one-level image), which is why the stock `std::thread{...}.detach()` in `handle_accepted` stays a documented edit. Freestanding: no allocator, so `SharedPtr` is refused (`NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`) and `Server<A>::succeed(goal_id, result)` etc. are the form. `execute` is absent (see `cpp:ServerGoalHandle::execute`).\n\nEARLIER ROW (superseded, phase-417): the C++ answer was `complete_goal` / `for_each_active_goal` on the server; `get_goal` had no counterpart.",
+    "why": "issue 2015 (2026-10-24) -- LANDED as a HOSTED drop-in. `rclcpp_action::ServerGoalHandle<A>` (`packages/api/nros-cpp/include/rclcpp_action/server.hpp`) answers `get_goal_id`, `is_active`, `is_executing`, `is_canceling` on every build and, hosted, `get_goal` (the `std::shared_ptr<const Goal>` the goal callback was handed), `publish_feedback`, `succeed`, `abort`, `canceled` taking upstream's `std::shared_ptr`s; `SharedPtr` is `std::shared_ptr`. It is what `rclcpp_action::create_server`'s cancel and accepted callbacks receive. THE BOUND: the handle is a heap token over `(server, goal id)`; every call forwards to `Server<A>` keyed by the id and the goal's lifecycle stays in the server's static arena (RFC-0019), so the status answers come from that arena (`for_each_active_goal`), and a terminal goal reads `Unknown`/inactive. It names its server by address: the server must not move while a handle is in use (a `SharedPtr` does not move it). Used from the executor's task only -- a handle driven from a thread the application started races the executor (RFC-0002, no lock on a one-level image), which is why the stock `std::thread{...}.detach()` in `handle_accepted` stays a documented edit. Freestanding: no allocator, so `SharedPtr` is refused (`NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`) and `Server<A>::succeed(goal_id, result)` etc. are the form. `execute()` (issue 2027) moves an ACCEPTED goal to EXECUTING through `Server<A>::execute(goal_id)` and publishes the status array, on every build; upstream raises on a goal that is not ACCEPTED, this changes nothing then. `create_server` executes an `ACCEPT_AND_EXECUTE` goal before `handle_accepted`, as upstream's server does.\n\nEARLIER ROW (superseded, phase-417): the C++ answer was `complete_goal` / `for_each_active_goal` on the server; `get_goal` had no counterpart.",
     "envelope": {
       "file": "packages/api/nros-cpp/include/rclcpp_action/server.hpp",
       "text": "Envelope: the handle names its server by address"
@@ -1307,7 +1317,7 @@
   "cpp:Server::execute": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "phase-417 stage 0 — visible only because the rclcpp adapter (then `rclcpp_compat.hpp`; deleted at stage 6 step A, each declaration moved to the header owning its concept) became a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. `rclcpp_action::Server`'s member surface is the wait-set/`Waitable` protocol (`execute`, `is_ready`, `set_on_ready_callback`) plus `make_shared`; the executor owns readiness here and entities are arena-registered at creation (RFC-0002), so there is nothing for a caller to poll or construct."
+    "why": "phase-417 stage 0 — visible only because the rclcpp adapter (then `rclcpp_compat.hpp`; deleted at stage 6 step A, each declaration moved to the header owning its concept) became a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. `rclcpp_action::Server`'s member surface is the wait-set/`Waitable` protocol (`execute`, `is_ready`, `set_on_ready_callback`) plus `make_shared`; the executor owns readiness here and entities are arena-registered at creation (RFC-0002), so there is nothing for a caller to poll or construct.\n\nissue 2027 (2026-10-24) -- NAME COLLISION, not a port: `rclcpp_action::Server<A>::execute(goal_id)` now exists and is NOT upstream's `Waitable::execute(std::shared_ptr<void>&)`. It is the goal-id-keyed form of `ServerGoalHandle::execute()` (ACCEPTED -> EXECUTING, status published), which upstream keeps on the handle. The `Waitable` member stays absent for the reason above, and a ported call of it does not compile (different parameter)."
   },
   "cpp:Server::is_ready": {
     "verdict": "declined",
@@ -1671,11 +1681,6 @@
     "verdict": "divergence",
     "bucket": "ours-only",
     "why": "issue 2015 (2026-10-24) -- the handle's constructor, from `(server, goal id)`. Upstream's is private and takes rcl handles; ours is a public token constructor because the goal's state lives in the server's arena and the handle only names it (see `cpp:ServerGoalHandle`)."
-  },
-  "cpp:ServerGoalHandle::execute": {
-    "verdict": "gap",
-    "bucket": "theirs-only",
-    "why": "issue 2015 (2026-10-24) -- moves a goal accepted with ACCEPT_AND_DEFER to EXECUTING. The C surface has it (`rclc_action_execute`) and the Rust handle can, but `rclcpp_action::Server<A>` exposes no C++ call that does, so the handle has nothing to forward to. Not needed by a goal accepted with ACCEPT_AND_EXECUTE (the stock examples); a deferred goal is still completed with `succeed` / `abort` / `canceled`. Calling it is a compile error."
   },
   "rust:Executor::retarget_action_server_raw": {
     "verdict": "extension",

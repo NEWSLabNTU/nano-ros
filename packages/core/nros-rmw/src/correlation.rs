@@ -183,6 +183,28 @@ impl<K: Copy, const N: usize> RequestCorrelator<K, N> {
         }
     }
 
+    /// Forget ONE pending request carrying `key` — the oldest — as
+    /// [`remove`](Self::remove) does by id. For a caller that knows what a
+    /// request was ABOUT but not the id the backend gave it: an action
+    /// client's future is keyed by its goal, so when the last owner of a
+    /// goal's request lets go before the reply, this frees the slot the
+    /// request held (issue 2027). Its reply, if it still comes, is dropped.
+    /// `true` if one was pending.
+    pub fn remove_key(&mut self, key: &K) -> bool
+    where
+        K: PartialEq,
+    {
+        match self.live().iter().position(|(_, k)| k == key) {
+            Some(i) => {
+                let seq = self.entries[i].0;
+                self.remove_at(i);
+                self.note_abandoned(seq);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Forget every pending request (the caller abandoned them all — a
     /// timed-out blocking call, `reset_in_flight`). Their replies are dropped.
     pub fn clear(&mut self) {
@@ -312,6 +334,30 @@ mod tests {
         assert_eq!(t.resolve(11), Some(2));
         assert_eq!(t.resolve(10), Some(1));
         assert!(t.is_empty());
+    }
+
+    #[test]
+    fn remove_key_frees_one_slot_and_drops_its_late_reply() {
+        let mut t = Table::new();
+        for (seq, key) in [(10, 7), (11, 8), (12, 7), (13, 9)] {
+            t.insert(seq, key).unwrap();
+        }
+        assert_eq!(t.can_send(), Err(SendRefusal::Full));
+        assert!(t.remove_key(&7), "the oldest request about 7 is forgotten");
+        assert_eq!(t.len(), 3);
+        assert!(t.can_send().is_ok(), "the freed slot takes a new request");
+        assert_eq!(
+            t.resolve(10),
+            None,
+            "the forgotten request's late reply is dropped"
+        );
+        assert_eq!(
+            t.resolve(12),
+            Some(7),
+            "the other request about 7 is still pending"
+        );
+        assert!(!t.remove_key(&42), "nothing pending about 42");
+        assert_eq!(t.len(), 2);
     }
 
     #[test]

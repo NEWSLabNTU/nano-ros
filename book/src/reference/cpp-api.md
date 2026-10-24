@@ -23,6 +23,10 @@ public surface a user application needs.
 - [`rclcpp::PollService<S>`](../api/cpp/classrclcpp_1_1PollService.html) — L1 polling service server. The caller owns the server and drains it with `take_request` / `send_response` from its own spin loop. `node.create_service<S>(name)` with no handler hands one back.
 - [`rclcpp::PollClient<S>`](../api/cpp/classrclcpp_1_1PollClient.html) — L1 future-style service client, the client half of the same split (phase-456 W9). The caller owns the client and drains the reply itself: `send_request` returns a `rclcpp::Future<T>`, `call` blocks while driving the executor, `call_polling` blocks without driving it, and `wait_for_service` / `service_is_ready` probe the server. `node.create_client<S>(name)` with no handler hands one back.
 - [`rclcpp_action::Server<A>`](../api/cpp/classrclcpp__action_1_1Server.html) / [`Client<A>`](../api/cpp/classrclcpp__action_1_1Client.html) — L2 callback model (executor-arena registered). `rclcpp::ActionServer<A>` / `rclcpp::ActionClient<A>` are the same two types.
+  Hosted, upstream's goal handles too: `ServerGoalHandle<A>` (incl. `execute()`
+  for `ACCEPT_AND_DEFER`), `ClientGoalHandle<A>`, and `Client<A>::async_get_result` /
+  `async_cancel_goal` / `async_cancel_all_goals` / `async_cancel_goals_before`
+  returning `std::shared_future`s (issues 2015, 2027).
 - [`rclcpp::PollingActionServer<A>`](../api/cpp/classrclcpp_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classrclcpp_1_1PollingActionClient.html) — L1 polling model. Caller drives `take_*` / `accept_goal` / `complete_goal` from a spin loop.
 - [`rclcpp::Future<T>`](../api/cpp/classrclcpp_1_1Future.html) — async result handle
 - [`rclcpp::Executor`](../api/cpp/classrclcpp_1_1Executor.html), [`Timer`](../api/cpp/classrclcpp_1_1Timer.html), [`GuardCondition`](../api/cpp/classrclcpp_1_1GuardCondition.html)

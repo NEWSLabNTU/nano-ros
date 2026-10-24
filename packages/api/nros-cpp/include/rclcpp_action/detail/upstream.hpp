@@ -25,7 +25,8 @@
 
 #include "rclcpp/detail/std_detect.hpp" // NROS_CPP_HAS_SHARED_PTR, <memory>, <functional>
 #include "rclcpp/detail/traits.hpp"
-#include "rclcpp/logging.hpp" // NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE, detail::refuse
+#include "rclcpp/logging.hpp"           // NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE, detail::refuse
+#include "rclcpp/detail/nros_cpp_ffi.h" // nros_cpp_spin_once / nros_cpp_time_ns (issue 2027)
 
 namespace rclcpp_action {
 namespace detail {
@@ -141,6 +142,83 @@ template <typename R, typename... A> class UpstreamCallback<R(A...)> {
 
     void* fn_;
 };
+
+/// Issue 2027 — what a `DrivenSharedFuture` drives: one pass of its CLIENT's
+/// own dispatch (`ctx`, null once the client is gone or moved away) and the
+/// executor that client was created on. Shared between the client and every
+/// future it handed out, so a future never names a dead client.
+struct PumpCell {
+    void (*fn)(void*) = nullptr;
+    void* ctx = nullptr;
+    void* executor = nullptr;
+};
+
+#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
+/// Issue 2027 — the `std::shared_future` upstream's `async_get_result` /
+/// `async_cancel_goal` return, IS-A `std::shared_future<T>`.
+///
+/// A plain `std::shared_future` waits for another thread to fulfil it, and
+/// there is none here (RFC-0021): its value arrives from the client's
+/// dispatch, during a spin. So this one drives that dispatch while it waits:
+/// `is_ready()` (what `rclcpp::spin_until_future_complete` polls) runs one
+/// pass of the client's own dispatch first, and `wait_for` / `get` spin the
+/// client's executor in 10 ms slices, as `rclcpp::Future::wait_for` does.
+/// Converted to a bare `std::shared_future<T>` it still completes, but only
+/// when something else drives the client (`poll()`, a spin, another future).
+template <typename T> class DrivenSharedFuture : public ::std::shared_future<T> {
+  public:
+    DrivenSharedFuture() {}
+    DrivenSharedFuture(::std::shared_future<T> f, ::std::shared_ptr<PumpCell> pump)
+        : ::std::shared_future<T>(static_cast<::std::shared_future<T>&&>(f)),
+          pump_(static_cast<::std::shared_ptr<PumpCell>&&>(pump)) {}
+
+    /// The value has arrived. Drives one pass of the client's dispatch first.
+    bool is_ready() const {
+        if (!this->valid()) return false;
+        if (settled()) return true;
+        if (pump_ && pump_->fn != nullptr && pump_->ctx != nullptr) pump_->fn(pump_->ctx);
+        return settled();
+    }
+
+    /// `std::shared_future::wait_for`, DRIVEN: spins the client's executor in
+    /// slices of at most 10 ms until the value arrives or the budget runs out.
+    template <typename Rep, typename Period>
+    ::std::future_status wait_for(::std::chrono::duration<Rep, Period> timeout) const {
+        if (!this->valid()) return ::std::future_status::timeout;
+        if (is_ready()) return ::std::future_status::ready;
+        const int64_t ms = ::rclcpp::detail::chrono_wait_budget_ms(timeout);
+        void* exec = pump_ ? pump_->executor : nullptr;
+        if (ms <= 0 || exec == nullptr) return ::std::future_status::timeout;
+        const uint64_t start_ns = nros_cpp_time_ns();
+        const uint64_t budget_ns = static_cast<uint64_t>(ms) * 1000000ULL;
+        while (nros_cpp_time_ns() - start_ns < budget_ns) {
+            (void)nros_cpp_spin_once(exec, 10);
+            if (is_ready()) return ::std::future_status::ready;
+        }
+        return is_ready() ? ::std::future_status::ready : ::std::future_status::timeout;
+    }
+
+    /// `std::shared_future::get`, DRIVEN: spins the client's executor until
+    /// the value arrives (unbounded, like `spin_until_future_complete`
+    /// without a timeout). Call it after that, as the stock examples do. On a
+    /// future whose client is gone and whose value never came it does not
+    /// wait: the base `get()` then reports the broken promise.
+    const T& get() const {
+        while (this->valid() && !is_ready() && pump_ && pump_->ctx != nullptr &&
+               pump_->executor != nullptr) {
+            (void)nros_cpp_spin_once(pump_->executor, 10);
+        }
+        return ::std::shared_future<T>::get();
+    }
+
+  private:
+    bool settled() const {
+        return ::std::shared_future<T>::wait_for(::std::chrono::seconds(0)) ==
+               ::std::future_status::ready;
+    }
+    ::std::shared_ptr<PumpCell> pump_;
+};
+#endif
 
 } // namespace detail
 } // namespace rclcpp_action

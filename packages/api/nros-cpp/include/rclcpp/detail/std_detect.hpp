@@ -212,13 +212,29 @@
 
 // issue 1996 — `<future>` is for ONE name: `std::future_status`, what upstream's
 // `FutureAndRequestId::wait_for` returns and what a ported client compares
-// against (`fut.wait_for(1s) == std::future_status::ready`). No `std::future`
-// or `std::shared_future` is constructed anywhere in this API: the reply still
-// lives in `rclcpp::Future`'s own buffer and is driven by the executor
-// (RFC-0021). Same opt-in as every capability here.
+// against (`fut.wait_for(1s) == std::future_status::ready`). A service or
+// goal-acceptance reply still lives in `rclcpp::Future`'s own buffer and is
+// driven by the executor (RFC-0021). Issue 2027 added the one place a
+// `std::shared_future` IS built: upstream's `rclcpp_action::Client::
+// async_get_result` / `async_cancel_*` return one, fulfilled by the client's
+// own dispatch (`rclcpp_action::detail::DrivenSharedFuture`, which drives that
+// dispatch while it is waited on). Same opt-in as every capability here.
 #if defined(NROS_CPP_STD) // hosted-family: capability-definition
 #include <future>
 #define NROS_CPP_HAS_STD_FUTURE 1
+#endif
+
+// issue 2027 — `std::promise` / `std::shared_future` themselves, which
+// `rclcpp_action::Client::async_get_result` / `async_cancel_*` return. Not
+// implied by `<future>`: a libstdc++ built without gthreads (arm-none-eabi,
+// the RTOS islands) declares both and defines neither, so `-DNROS_CPP_STD` on
+// such a target has `std::future_status` and no `std::promise`. Measured by
+// `check cpp`'s ILP32 arm-none-eabi probe. libc++ and MSVC have no such mode.
+#if defined(__GLIBCXX__) && !defined(_GLIBCXX_HAS_GTHREADS)
+#define NROS_CPP_NO_GTHR_ 1
+#endif
+#if defined(NROS_CPP_STD) && !defined(NROS_CPP_NO_GTHR_) // hosted-family: capability-definition
+#define NROS_CPP_HAS_STD_PROMISE 1
 #endif
 
 #endif // NROS_RCLCPP_DETAIL_STD_DETECT_HPP

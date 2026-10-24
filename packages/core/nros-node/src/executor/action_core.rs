@@ -1394,6 +1394,26 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// After calling, use `cancel_goal_client` and `result_buffer` to construct
     /// a Promise for the cancel response.
     pub fn send_cancel_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+        self.send_cancel_request_stamped(goal_id, 0, 0)
+            .map(|_seq| ())
+    }
+
+    /// [`Self::send_cancel_request`] with the request's `GoalInfo.stamp` — issue 2027.
+    ///
+    /// `action_msgs/srv/CancelGoal` reads the pair (goal id, stamp): a zero id
+    /// with a zero stamp cancels EVERY goal, a zero id with a stamp cancels
+    /// the goals accepted at or before it, and a non-zero id cancels that goal
+    /// (plus, with a stamp, those before it). The reply is correlated under
+    /// `goal_id` — the zero id for the two broadcast forms. Returns the
+    /// request's sequence id, which is what tells two pending requests about
+    /// the SAME goal (or two broadcasts) apart when their replies come back
+    /// ([`Self::try_recv_cancel_reply_seq`]).
+    pub fn send_cancel_request_stamped(
+        &mut self,
+        goal_id: &GoalId,
+        stamp_sec: i32,
+        stamp_nanosec: u32,
+    ) -> Result<i64, NodeError> {
         self.pending_cancel
             .can_send()
             .map_err(|_| NodeError::RequestInFlight)?;
@@ -1401,8 +1421,12 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
 
         write_goal_id(&mut writer, goal_id)?;
-        writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
-        writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
+        writer
+            .write_i32(stamp_sec)
+            .map_err(|_| NodeError::Serialization)?;
+        writer
+            .write_u32(stamp_nanosec)
+            .map_err(|_| NodeError::Serialization)?;
 
         let req_len = writer.position();
 
@@ -1411,7 +1435,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             .send_request_raw(&self.goal_buffer[..req_len])
             .map_err(|_| NodeError::ServiceRequestFailed)?;
         let _ = self.pending_cancel.insert(seq, *goal_id);
-        Ok(())
+        Ok(seq)
     }
 
     /// Send a get_result request.
@@ -1474,13 +1498,22 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// goal of the request whose sequence id it names. A reply naming no
     /// pending request is dropped (it answers an abandoned request).
     pub fn try_recv_cancel_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+        Ok(self
+            .try_recv_cancel_reply_seq()?
+            .map(|(len, _seq, goal)| (len, goal)))
+    }
+
+    /// Issue 2027 — [`Self::try_recv_cancel_reply_for`] with the sequence id
+    /// of the request the reply answers too ([`nros_rmw::SEQUENCE_ID_UNKNOWN`]
+    /// from a backend that assigns none — it then holds one cancel in flight).
+    pub fn try_recv_cancel_reply_seq(&mut self) -> Result<Option<(usize, i64, GoalId)>, NodeError> {
         // Phase 120: NoData == steady-state polling; map to Ok(None).
         match nros_rmw::take_correlated(
             &mut self.cancel_goal_client,
             &mut self.result_buffer,
             &mut self.pending_cancel,
         ) {
-            Ok(opt) => Ok(opt.map(|(len, _seq, goal)| (len, goal))),
+            Ok(opt) => Ok(opt),
             Err(TransportError::NoData) => Ok(None),
             Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
         }
@@ -1540,6 +1573,27 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
             Err(TransportError::NoData) => Ok(None),
             Err(_) => Err(NodeError::Transport(TransportError::DeserializationError)),
         }
+    }
+
+    /// Issue 2027 — forget the oldest pending `send_goal` request for
+    /// `goal_id`: its slot (one of
+    /// [`MAX_CONCURRENT_GOALS`](crate::limits::MAX_CONCURRENT_GOALS)) is free
+    /// for the next goal, and its reply, if it still comes, is dropped. For a
+    /// binding whose last owner of that request let go before the reply came
+    /// (a dropped C++ future). `true` if one was pending.
+    pub fn forget_send_goal(&mut self, goal_id: &GoalId) -> bool {
+        self.pending_send_goal.remove_key(goal_id)
+    }
+
+    /// Issue 2027 — [`Self::forget_send_goal`] for a `get_result` request.
+    pub fn forget_get_result(&mut self, goal_id: &GoalId) -> bool {
+        self.pending_get_result.remove_key(goal_id)
+    }
+
+    /// Issue 2027 — [`Self::forget_send_goal`] for a `cancel_goal` request
+    /// (the zero id names a cancel-all / cancel-before request).
+    pub fn forget_cancel(&mut self, goal_id: &GoalId) -> bool {
+        self.pending_cancel.remove_key(goal_id)
     }
 
     /// Read-only access to the result buffer (after polling a reply).

@@ -416,6 +416,26 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/action_remove_cycles
     ./tmp/action_remove_cycles
+    # issue 2027 -- a staged action FEEDBACK frame reaches a C client as its
+    # payload and goal id: `rclc_action_client_poll` hands the callback
+    # `[header][fields]` (issue 2014 fixed it handing the bare fields, with no
+    # runtime test), and the L1 polling client returns the whole frame with
+    # the fields at RCLC_ACTION_FEEDBACK_PAYLOAD_OFFSET. Same stub + archive.
+    test -f packages/api/nros-c/tests/run/action_feedback_decode.c || { \
+        echo "ERROR: action_feedback_decode.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    echo "  - issue 2027: a staged feedback frame decodes on both C polling paths"
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/action_feedback_decode.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/action_feedback_decode
+    ./tmp/action_feedback_decode
     echo "  - issue 1631: a C subscription/timer/service/client is REMOVED from its"
     echo "    executor, and a create/remove loop of each runs past the arena twice"
     # The other four kinds, in 1609's shape: arena used pinned at cycle 0 over
@@ -1683,8 +1703,8 @@ cpp: cpp-fmt
         done
         _ap_n=$((_ap_n + 1))
     done
-    test "$_ap_n" -eq 5 || { echo "ERROR: expected 5 action freestanding probes, ran $_ap_n -- one went missing." >&2; exit 1; }
-    echo "  - rclcpp_action goal-handle shapes are REFUSED without NROS_CPP_STD ($_ap_n probes, issue 2015)"
+    test "$_ap_n" -eq 7 || { echo "ERROR: expected 7 action freestanding probes, ran $_ap_n -- one went missing." >&2; exit 1; }
+    echo "  - rclcpp_action goal-handle shapes are REFUSED without NROS_CPP_STD ($_ap_n probes, issues 2015 + 2027)"
     # issue 2011 -- the ACTION client's futures are keyed by their GOAL: two
     # goals' acceptances and results staged out of order each reach their own
     # future (on the future's own poll AND through the executor's dispatch),
@@ -1709,6 +1729,41 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/action_future_keying_runtime
+    # issue 2027 -- the rest of upstream's goal-handle API and the goal-slot
+    # leak: async_get_result / async_cancel_goal (+ cancel_all / cancel_before)
+    # return std::shared_futures that spin_until_future_complete + get()
+    # complete; ServerGoalHandle::execute() after ACCEPT_AND_DEFER (and the
+    # server executing ACCEPT_AND_EXECUTE itself); and more than
+    # MAX_CONCURRENT_GOALS abandoned futures still leave the client able to send.
+    # Negative control, measured: the future's forget hook made a no-op -> the
+    # leak checks fail (the fifth goal is refused).
+    # issue 2027 -- and a staged FEEDBACK frame decodes to its payload and goal
+    # id on the C++ polling client and the callback client. Negative control,
+    # measured: PollingActionClient decoding feedback from byte 0 (issue 2014's
+    # defect) -> failures.
+    for _tu in action_goal_handle_api_runtime action_feedback_decode_runtime; do
+        test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
+            echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
+            exit 1; \
+        }
+    done
+    echo "  - rclcpp_action goal handles: async_get_result / async_cancel_*, execute(), no slot leak (runtime, issue 2027)"
+    echo "  - action feedback decodes to payload + goal id on the polling and callback clients (runtime, issue 2027)"
+    for _tu in action_goal_handle_api_runtime action_feedback_decode_runtime; do
+        c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+            -I"$cppgen" \
+            -I"$cgen" \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/core/nros-rmw-abi/include \
+            -Ipackages/platform/nros-platform-api/include \
+            -Ipackages/api/nros-c/tests/run \
+            -o "$gen/nros-cpp-tests/$_tu" \
+            "packages/api/nros-cpp/tests/compile/$_tu.cpp" \
+            "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+            "$nros_cpp_lib" -lpthread -ldl -lm
+        "$gen/nros-cpp-tests/$_tu"
+    done
     # issue 2014 -- the POLLING action client decodes a get_result reply's
     # fields from byte 8 (`[encap][status][pad -> 8][fields]`), the offset every
     # dispatch path shares (`nros_node::action_frame`); it skipped 5. A RUN: the

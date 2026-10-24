@@ -34,7 +34,8 @@ const _: () =
 const _: () = assert!(NROS_CPP_ACTION_CDR_HEADER_LEN == action_frame::CDR_HEADER_LEN);
 
 use crate::{
-    CppContext, DispatchGuard, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
+    CppContext, DispatchGuard, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT,
+    NROS_CPP_RET_NOT_ALLOWED, NROS_CPP_RET_NOT_FOUND, NROS_CPP_RET_NOT_INIT, NROS_CPP_RET_OK,
     NROS_CPP_RET_REENTRANT, NROS_CPP_RET_REJECTED, NROS_CPP_RET_TIMEOUT,
     NROS_CPP_RET_TRANSPORT_ERROR, NROS_CPP_RET_TRY_AGAIN, NROS_CPP_RET_UNSUPPORTED,
     cpp_ctx_checked, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
@@ -593,6 +594,54 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     match h.complete_goal_raw(ctx.executor, &id, status, result_fields) {
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Start EXECUTING an accepted goal — issue 2027, `ServerGoalHandle::execute`.
+///
+/// Upstream's `execute()` moves a goal from ACCEPTED to EXECUTING and
+/// publishes the status array; it is how a goal the goal callback answered
+/// `ACCEPT_AND_DEFER` starts (and what the server does itself, before
+/// `handle_accepted`, for `ACCEPT_AND_EXECUTE`). Returns `NROS_CPP_RET_OK`
+/// when the goal moved, `NROS_CPP_RET_NOT_FOUND` when this server has no such
+/// live goal, and `NROS_CPP_RET_NOT_ALLOWED` when the goal is not ACCEPTED
+/// (upstream raises there; nothing is changed or published).
+///
+/// # Safety
+/// `handle` must be a valid `CppActionServer` storage pointer,
+/// `executor_handle` a valid `CppContext`, and `goal_id` 16 readable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_server_execute(
+    handle: *mut c_void,
+    executor_handle: *mut c_void,
+    goal_id: *const [u8; 16],
+) -> nros_cpp_ret_t {
+    if handle.is_null() || goal_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let server = unsafe { &*(handle as *const CppActionServer) };
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(h) = server.handle else {
+        return NROS_CPP_RET_NOT_INIT;
+    };
+    let id = nros::GoalId {
+        uuid: unsafe { *goal_id },
+    };
+    let mut status = None;
+    h.for_each_active_goal(&*ctx.executor, |g| {
+        if g.goal_id.uuid == id.uuid {
+            status = Some(g.status);
+        }
+    });
+    match status {
+        None => NROS_CPP_RET_NOT_FOUND,
+        Some(nros::GoalStatus::Accepted) => {
+            h.set_goal_status(ctx.executor, &id, nros::GoalStatus::Executing);
+            NROS_CPP_RET_OK
+        }
+        Some(_) => NROS_CPP_RET_NOT_ALLOWED,
     }
 }
 
@@ -2054,6 +2103,191 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response(
         Ok(None) => NROS_CPP_RET_TRY_AGAIN,
         Err(_) => NROS_CPP_RET_ERROR,
     }
+}
+
+/// Issue 2027 — the `send_goal` sub-client, for
+/// [`nros_cpp_action_client_forget`].
+pub const NROS_CPP_ACTION_CHANNEL_SEND_GOAL: i32 = 0;
+/// Issue 2027 — the `cancel_goal` sub-client.
+pub const NROS_CPP_ACTION_CHANNEL_CANCEL: i32 = 1;
+/// Issue 2027 — the `get_result` sub-client.
+pub const NROS_CPP_ACTION_CHANNEL_GET_RESULT: i32 = 2;
+
+/// Forget ONE pending request about `goal_id` on one sub-client — issue 2027.
+///
+/// Each sub-client holds at most `MAX_CONCURRENT_GOALS` requests in flight,
+/// and a slot used to come back only when its reply arrived. A C++ future
+/// whose last owner let go first (dropped, cancelled, moved over) — with no
+/// client-wide callback and no upstream goal handle still waiting for the
+/// reply — left the slot taken for good, so the fifth abandoned goal refused
+/// every later send. The header calls this from the future's abandonment; the
+/// reply, if it still comes, is dropped by the correlator.
+///
+/// `channel` is one of the `NROS_CPP_ACTION_CHANNEL_*` constants. Returns `1`
+/// when a request was forgotten, `0` when none about `goal_id` was pending,
+/// or a negative `NROS_CPP_RET_*` code.
+///
+/// # Safety
+/// `handle` must be a valid action client storage and `goal_id` 16 readable
+/// bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_forget(
+    handle: *mut c_void,
+    channel: i32,
+    goal_id: *const [u8; 16],
+) -> nros_cpp_ret_t {
+    if handle.is_null() || goal_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let id = nros::GoalId {
+        uuid: unsafe { *goal_id },
+    };
+    let mut core =
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+            Some(c) => c,
+            None => return NROS_CPP_RET_ERROR,
+        };
+    let forgotten = match channel {
+        NROS_CPP_ACTION_CHANNEL_SEND_GOAL => core.forget_send_goal(&id),
+        NROS_CPP_ACTION_CHANNEL_CANCEL => core.forget_cancel(&id),
+        NROS_CPP_ACTION_CHANNEL_GET_RESULT => core.forget_get_result(&id),
+        _ => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    i32::from(forgotten)
+}
+
+/// Send a `CancelGoal` request carrying a goal id AND a stamp — issue 2027.
+///
+/// `rclcpp_action::Client::async_cancel_all_goals` is the zero id with a zero
+/// stamp, `async_cancel_goals_before(stamp)` the zero id with `stamp`. The
+/// reply is correlated under `goal_id` (the zero id for both), and taken with
+/// [`nros_cpp_action_client_take_cancel_reply`]. `seq_out` (may be NULL)
+/// receives the request's sequence id, which the reply carries back — the
+/// only thing that tells two pending cancels about one goal apart.
+///
+/// # Safety
+/// All non-NULL pointers must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_cancel_goals(
+    handle: *mut c_void,
+    goal_id: *const [u8; 16],
+    stamp_sec: i32,
+    stamp_nanosec: u32,
+    seq_out: *mut i64,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || goal_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let id = nros::GoalId {
+        uuid: unsafe { *goal_id },
+    };
+    let mut core =
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+            Some(c) => c,
+            None => return NROS_CPP_RET_ERROR,
+        };
+    match core.send_cancel_request_stamped(&id, stamp_sec, stamp_nanosec) {
+        Ok(seq) => {
+            if !seq_out.is_null() {
+                unsafe { *seq_out = seq };
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// One `action_msgs/msg/GoalInfo` of a `CancelGoal` reply — issue 2027.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct nros_cpp_action_goal_info_t {
+    /// The goal id.
+    pub uuid: [u8; 16],
+    /// When the server accepted it: seconds.
+    pub stamp_sec: i32,
+    /// ...and nanoseconds.
+    pub stamp_nanosec: u32,
+}
+
+/// Take one `CancelGoal` reply, attributed to the request it answers — issue 2027.
+///
+/// Writes the goal the REQUEST named (the zero id for a cancel-all /
+/// cancel-before) to `goal_id_out`, that request's sequence id to `seq_out`
+/// (may be NULL; `INT64_MIN` from a backend that assigns none), the RPC
+/// return code to
+/// `return_code_out`, the reply's `goals_canceling` count to `count_out`, and
+/// the first `min(count, infos_cap)` of them to `infos`. `infos` may be NULL
+/// when `infos_cap` is 0.
+///
+/// Returns `NROS_CPP_RET_OK` when a reply was taken, `NROS_CPP_RET_TRY_AGAIN`
+/// when none is pending, and `NROS_CPP_RET_ERROR` for a malformed reply (it
+/// is consumed, and `goal_id_out` / `seq_out` still name the request it
+/// answered; issue 0223's rule — a truncation is not "no goals").
+///
+/// # Safety
+/// All non-NULL pointers must be valid; `infos` must hold `infos_cap` entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_take_cancel_reply(
+    handle: *mut c_void,
+    goal_id_out: *mut [u8; 16],
+    return_code_out: *mut i8,
+    infos: *mut nros_cpp_action_goal_info_t,
+    infos_cap: usize,
+    count_out: *mut usize,
+    seq_out: *mut i64,
+) -> nros_cpp_ret_t {
+    if handle.is_null()
+        || goal_id_out.is_null()
+        || return_code_out.is_null()
+        || count_out.is_null()
+        || (infos.is_null() && infos_cap != 0)
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let mut core =
+        match unsafe { cpp_arena_core_mut(client.arena_entry_index, client.executor_ptr) } {
+            Some(c) => c,
+            None => return NROS_CPP_RET_ERROR,
+        };
+    let (len, seq, goal) = match core.try_recv_cancel_reply_seq() {
+        Ok(Some(x)) => x,
+        Ok(None) => return NROS_CPP_RET_TRY_AGAIN,
+        Err(_) => return NROS_CPP_RET_ERROR,
+    };
+    // The request it answers is known even when the reply is malformed, so a
+    // caller waiting on that request can be told it is over.
+    unsafe {
+        *goal_id_out = goal.uuid;
+        if !seq_out.is_null() {
+            *seq_out = seq;
+        }
+    }
+    let reply = &core.result_buffer_ref()[..len];
+    let (Some(code), Some(count)) = (
+        action_frame::cancel_return_code(reply),
+        action_frame::cancel_goals_count(reply),
+    ) else {
+        return NROS_CPP_RET_ERROR;
+    };
+    unsafe {
+        *return_code_out = code;
+        *count_out = count;
+    }
+    for i in 0..count.min(infos_cap) {
+        if let Some((g, sec, nanosec)) = action_frame::cancel_goal_info(reply, i) {
+            unsafe {
+                *infos.add(i) = nros_cpp_action_goal_info_t {
+                    uuid: g.uuid,
+                    stamp_sec: sec,
+                    stamp_nanosec: nanosec,
+                };
+            }
+        }
+    }
+    NROS_CPP_RET_OK
 }
 
 /// Register async callbacks on the action client.
