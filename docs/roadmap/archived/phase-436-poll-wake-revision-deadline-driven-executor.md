@@ -21,7 +21,7 @@ moved; what is left is not this repository's work:
   It buys power, not latency, and needs a receive interrupt `lan9118-smoltcp`
   does not have.
 * **Per-entity wake routing** (checkpoint item 5) was folded into
-  [phase-397](../phase-397-pushed-readiness-executor.md), which landed it.
+  [phase-397](phase-397-pushed-readiness-executor.md), which landed it.
 
 The design is still the executor's: [RFC-0106](../../design/0106-executor-park.md)'s
 park and wake-source seam is what every entry and tier runner installs, and
@@ -64,7 +64,7 @@ remains, in the order I would take it:
    [phase-512](../phase-512-on-hardware-measurements.md) H2 on 2026-10-23. See
    Path B's exit.
 5. **Per-entity wake routing — MEASURED 2026-10-16, folded into
-   [phase-397](../phase-397-pushed-readiness-executor.md).** One zenoh session,
+   [phase-397](phase-397-pushed-readiness-executor.md).** One zenoh session,
    an owner executor with a subscription and N tier executors over the same
    session with nothing registered, a publisher in another process at 1 kHz
    (native Linux, aarch64). Every idle tier spun 999-1000 times a second, at

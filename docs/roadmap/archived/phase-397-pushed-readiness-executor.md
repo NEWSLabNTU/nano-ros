@@ -1,7 +1,10 @@
 # Phase 397 — Pushed readiness: the wake says WHO, and the executor stops scanning
 
-**Status (2026-10-19). W1-W5 DONE (W2 on zenoh and Cyclone; W4 by deletion); W6 not started.** Implements
-[RFC-0084](../design/0084-readiness-is-pushed-not-scanned.md).
+**Status (2026-10-24). DONE — archived. W1-W5 landed 2026-10-18/19 (W2 on
+zenoh and Cyclone; W4 by deletion); W6 measured 2026-10-24, below.** Implements
+[RFC-0084](../../design/0084-readiness-is-pushed-not-scanned.md). The ready word
+it added is load-bearing beyond this phase: phase-509's band workers take
+their slots from it (`take_band_bits` over the same `WakeCtx::ready`).
 
 **Revision 2026-10-17, read against `main`.**
 - **Still true:** the scan, the one-argument wake callback, the `u64`
@@ -15,7 +18,7 @@
   `nros-rmw-cffi` handle implements that, and `rmw_vtable.h` has no
   per-entity slot to forward it to. So in every `rmw-cffi` build they are
   no-ops:
-  [issue 1940](../issues/archived/1940-entity-wake-callback-is-inert-through-cffi.md).
+  [issue 1940](../../issues/archived/1940-entity-wake-callback-is-inert-through-cffi.md).
   The token therefore needs a NEW vtable slot, which is now W1. Fixing 1940
   is that slot's first consumer, and it is what this phase stands on.
 - **The backend set is two, not one.** Cyclone's `on_data_available(reader,
@@ -32,7 +35,7 @@ have described this seam since they were written and never been wired to
 anything.
 
 **Depends on** nothing. Independent of
-[issue 0852](../issues/archived/0852-zephyr-serial-rx-is-polled-and-overruns.md) — that
+[issue 0852](../../issues/archived/0852-zephyr-serial-rx-is-polled-and-overruns.md) — that
 is about how bytes reach the transport, this is about what the executor does
 once they have.
 
@@ -205,7 +208,7 @@ because `dds_set_listener` waits out a callback in progress. A
 Not attaching the listener fails the first case.
 
 That test also found
-[issue 1963](../issues/archived/1963-cyclone-late-wake-callback-misses-existing-readers.md):
+[issue 1963](../../issues/archived/1963-cyclone-late-wake-callback-misses-existing-readers.md):
 a session wake installed AFTER a reader existed never fired for that reader.
 Resolved 2026-10-21: the participant's listener is now attached when the
 session is created, and the test runs both orderings.
@@ -215,7 +218,7 @@ session is created, and the test runs both orderings.
 (RFC-0106 D6), and before this item every arrival woke all of them. Measured
 on a native host: 7-9 us of CPU per spurious wake, about 0.8 % of a core per
 idle member at 1 kHz.
-[Issue 1929](../issues/archived/1929-zenoh-async-wake-is-one-process-global-slot.md)
+[Issue 1929](../../issues/archived/1929-zenoh-async-wake-is-one-process-global-slot.md)
 (zenoh's arrival wake was one process-global slot) was fixed ahead of this at
 session grain on 2026-10-16: a per-session wake table, so a second session's
 executor no longer takes the first's arrivals. This item is the entity grain.
@@ -342,7 +345,7 @@ The in-place case still passes under that mutation, because its drain loop
 takes the racing sample in the same dispatch. That is why both shapes run.
 
 The test also found
-[issue 1979](../issues/archived/1979-zenoh-full-ring-drops-newest-sample.md).
+[issue 1979](../../issues/archived/1979-zenoh-full-ring-drops-newest-sample.md).
 zenoh's subscriber ring dropped the NEWEST sample when it was full, silently.
 A first draft with a callback slower than its publisher lost each burst's
 last sample there, with W3 enabled or disabled. The test is paced so the ring
@@ -350,7 +353,7 @@ never fills. Resolved 2026-10-21: a full ring now keeps the newest samples and
 counts the rest, with its own end-to-end test beside this one.
 
 Its first red on main is
-[issue 1980](../issues/archived/1980-entity-wake-race-test-blames-executor-for-failed-publish.md).
+[issue 1980](../../issues/archived/1980-entity-wake-race-test-blames-executor-for-failed-publish.md).
 In a tier-1 run the publisher thread's own `publish` failed
 (`Transport(PublishFailed)`), and the test reported that as a lost dispatch.
 Resolved 2026-10-23: two test races, not executor defects. The publish was
@@ -359,21 +362,36 @@ retried and reported as its own failure. The arrival budget now starts at the
 last sample's publish, not while the publisher was still waiting for a
 callback to publish into.
 
-### W6 — measure
+### W6 — measure — DONE 2026-10-24
 
-Report, before and after:
-- `has_data` calls per spin;
-- wake-to-callback latency from the existing `wake-latency-probe`;
-- CPU per idle executor at 1 kHz over a shared session (phase-436 step 5's
-  probe: 6.8-9.4 us per spurious wake, about 0.8 % of a core, on a native
-  host).
+**Measured on current `main`, after phase-509, so this is not a clean
+397-only delta.** A true before/after would build the 2026-10-17 tree, and
+phase-509 has rewritten the spin and the park since. The "before" column is
+therefore reproduced by MUTATION on the same tree and host: restoring the
+fan-out (`wake_entity_or_session` also firing the session wake) or dropping
+the entity wake. Each mutation turns its test red. Native Linux x86_64, zenoh,
+one `rmw_zenohd` on loopback; both tests are in `nros-tests/tests/entity_wake.rs`
+(`just check required-features-tests`) and print their numbers.
 
-Run them on images that exist today: `workspace-rust-native` (host, zenoh),
-`workspace-rust-native-cyclonedds` (host, Cyclone), and `workspace-rust-zephyr`
-(Zephyr). The original target, a CANHUBK344 action image, is not in tree.
+| metric | before (mutation, same host) | after | test |
+| --- | --- | --- | --- |
+| `has_data` calls on a spin that dispatches one attributed arrival | one per registered slot | **0**; an idle spin also 0 | `a_pushed_spin_dispatches_without_probing_readiness` (W3) |
+| idle shared-session member under ~950 arrivals/s for another member: spins | 2849 in 3 s (949/s) | **6 in 3 s** (one per 500 ms park) | `an_idle_member_parks_through_kilohertz_arrivals_for_another` |
+| same, thread CPU | 6.6 ms in 3 s, 0.22 % of a core (~2.3 us per spurious wake) | **97 us in 3 s, 0.003 %** | same |
+| arrival-to-callback, 200 samples 10 ms apart, 1 s park | park-bound: half the samples lost to the depth-4 ring, the rest late | **median 22 us, p90 28 us, max 55 us** | `an_attributed_arrival_reaches_its_callback_without_waiting_out_the_park` |
 
-**Done when** the numbers are in this document. A phase that changes a hot path
-and does not measure it has not finished.
+Notes on reading it:
+- phase-436 step 5 measured the fan-out at 6.8-9.4 us per spurious wake on
+  aarch64. The 2.3 us here is the same mechanism on a faster x86_64 host; the
+  count (one wake per foreign arrival) is what the fix removes, and it is the
+  same on both.
+- The latency publisher shares the subscriber's process, so 22 us is the
+  wake-and-dispatch path, not a cross-host transport number.
+- **Not measured: Cyclone and Zephyr.** Cyclone fills all three slots (W2.b,
+  checked by its own `tests/entity_wake.cpp`), but `nros-tests` has no
+  in-process Cyclone harness for these two probes, and building one is a
+  harness task, not a measurement. Zephyr's per-wake cost is unmeasured; the
+  count it pays is the same.
 
 ## 3. Explicitly out of scope
 
@@ -383,7 +401,7 @@ and does not measure it has not finished.
   token type with it (RFC-0084 §9).
 - **A wait-on-many platform primitive.** Zephyr's `k_poll` is the native answer
   and FreeRTOS/POSIX have theirs; that belongs in the platform ABI as its own
-  change, per [RFC-0076](../design/0076-platform-abi-ask-do-not-assume.md).
+  change, per [RFC-0076](../../design/0076-platform-abi-ask-do-not-assume.md).
   Compatible with this phase, not required by it.
 - **`rmw_wait`.** Moves multiplexing into the rmw layer across four backends.
   The token is the small half of that idea and is what this phase buys.

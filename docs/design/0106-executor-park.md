@@ -207,10 +207,12 @@ budget is a floor on the wait, not a bound on the call.
   interrupt or a SysTick one-shot; a board without an RX interrupt installs
   none and keeps the busy-poll, which is D5's rule one layer down. See
   [issue 2022](../issues/archived/2022-bare-metal-tickless-idle-needs-nic-rx-irq.md).
-- **Per-entity wake routing.** Removes D6's spurious wakes. Measured on a
-  native host: 7-9 us of CPU per spurious wake, so about 0.8 % of a core per
-  idle member at 1 kHz of arrivals. It needs the arrival to name its entity,
-  which is RFC-0084's token; it lands with that (phase-397), not before.
+- **Per-entity wake routing — RESOLVED 2026-10-19 (phase-397).** D6's
+  spurious wakes are gone for every entity whose backend attributes its
+  arrival (zenoh, Cyclone): the arrival wakes its owner, not the session.
+  Measured 2026-10-24 (phase-397 W6, x86_64): an idle member under ~950
+  foreign arrivals/s spins once per park instead of once per arrival, 0.003 %
+  of a core instead of 0.22 %. XRCE, uORB and bare metal still fan out.
 - **Deadline sources on hardware.** smoltcp's is the only port source. It
   wins a park on QEMU when the budget leaves it room (phase-436 Path B's
   exit); no hardware run yet.
@@ -220,6 +222,8 @@ budget is a floor on the wait, not a bound on the call.
 - 2026-10-24 — Bare metal's open question resolved: a tickless idle inside
   the transport's wait, on mps2-an385 (issue 2022). Idle QEMU host CPU
   99.9 % → ~1 %.
+- 2026-10-24 — Per-entity wake routing resolved by phase-397, with W6's
+  numbers.
 - 2026-10-16 — Per-entity routing measured and deferred to RFC-0084's token
   (phase-397); issue 1929 filed from the same probe.
 - 2026-10-16 — D5 gains the sliced drive for a guard condition on a poll-only
