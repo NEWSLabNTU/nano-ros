@@ -372,6 +372,37 @@ function(nros_entity_inventory_knobs_file _out_var)
     set(${_out_var} "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake" PARENT_SCOPE)
 endfunction()
 
+# nros_refuse_refused_param_declaration(<fragment>)
+#
+# phase-460 W2 (issue 1421) -- the ONE check that a REFUSED `params:`
+# declaration stops the configure, for every road that sizes the parameter
+# store from this fragment: the cmake road (`_nros_param_store_env`,
+# NanoRosEntityFacts.cmake) and the Zephyr module's parameter ladder
+# (`zephyr/cmake/nros_cargo_build.cmake`). The Zephyr road used to read only
+# the derived NUMBERS, so a refusal there wrote none and the store took the
+# crate defaults with no build-time line -- issue 1421's failure, one road
+# over (the follow-up phase-460 W2 recorded).
+#
+# `absent`, `declared` and a fragment with no status pass: only the
+# producer's own verdict is fatal. Runs in its own frame, so including the
+# fragment here sets nothing in the caller.
+function(nros_refuse_refused_param_declaration _inv)
+    if(NOT EXISTS "${_inv}")
+        return()
+    endif()
+    include("${_inv}")
+    if(NROS_PARAM_DECLARATION_STATUS STREQUAL "refused")
+        message(FATAL_ERROR
+            "nros: the parameter store cannot be sized: the entity inventory "
+            "REFUSED the contract's `params:` declaration "
+            "(NROS_PARAM_DECLARATION_STATUS \"refused\" in ${_inv}):\n"
+            "  ${NROS_PARAM_DECLARATION_REASON}\n"
+            "Declare `params:` on every node in the image, or on none. The "
+            "configure stops here rather than build the image on nros-params' "
+            "crate defaults (phase-460 W2, issue 1421).")
+    endif()
+endfunction()
+
 # nros_entity_inventory_metadata_file(<out_var>)
 #
 # The input: the file `nano_ros_node_register` rewrites on every call

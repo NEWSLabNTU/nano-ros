@@ -450,16 +450,7 @@ function(_nros_param_store_env _out_var)
     # `absent` keeps its meaning -- no node declares, and an image with no
     # contract is sized by its board -- and so does a fragment that predates
     # the field. Only the inventory's own `refused` is fatal.
-    if(NROS_PARAM_DECLARATION_STATUS STREQUAL "refused")
-        message(FATAL_ERROR
-            "nros: the parameter store cannot be sized: the entity inventory "
-            "REFUSED the contract's `params:` declaration "
-            "(NROS_PARAM_DECLARATION_STATUS \"refused\" in ${_inv}):\n"
-            "  ${NROS_PARAM_DECLARATION_REASON}\n"
-            "Declare `params:` on every node in the image, or on none. The "
-            "configure stops here rather than build the image on nros-params' "
-            "crate defaults (phase-460 W2, issue 1421).")
-    endif()
+    nros_refuse_refused_param_declaration("${_inv}")
     if(NOT NROS_PARAM_DECLARATION_STATUS STREQUAL "declared")
         return()
     endif()

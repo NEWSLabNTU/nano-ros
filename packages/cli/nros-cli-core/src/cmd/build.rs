@@ -1812,6 +1812,11 @@ fn plan_leaf_image(
     // this build reads: the resolved model (the entity facts) and the generated
     // message crates the manifest path-depends on. Missing either is ONE line
     // naming `nros sync`, never cargo's manifest error four frames down.
+    // phase-460 W1 follow-up -- a model sync refused (or one whose inputs
+    // moved since) is not "unsynced": it names its own remedy.
+    if let Err(r) = crate::leaf_entity_env::leaf_model_path(root) {
+        eyre::bail!("{}: {r}", root.display());
+    }
     let unsynced: Vec<String> = unsynced_inputs(root, &img);
     if !unsynced.is_empty() {
         eyre::bail!(
@@ -2865,9 +2870,13 @@ fn generate_entry(
             return Ok(GeneratedEntry::default());
         }
     };
-    let model_path = match model_location::ensure_model(bringup_dir, &model_rel) {
-        Ok((p, _inputs)) => p,
-        Err(e) => {
+    // phase-460 W1 follow-up -- the gated door, as every other consumer of a
+    // resolved model. A refused or stale model stops the build here; only an
+    // UNRESOLVABLE one keeps the warning below.
+    let model_path = match open_model(bringup_dir, &model_rel) {
+        Ok(p) => p,
+        Err(ModelDoor::Refused(r)) => eyre::bail!("`{image_id}`: {r}"),
+        Err(ModelDoor::Unresolved(e)) => {
             eprintln!("nros build: warning: cannot resolve the model for `{image_id}`: {e}");
             return Ok(GeneratedEntry::default());
         }
@@ -4120,6 +4129,34 @@ struct ResolvedImage {
 /// which a given image never reads, and `nros locate --all --why` already
 /// explains a miss. Empty when there is no nano-ros root or its index will not
 /// load — the record is never a reason for a build to stop.
+/// Why [`open_model`] gave no model.
+enum ModelDoor {
+    /// `nros sync` refused it, or its provenance no longer holds.
+    Refused(crate::model_gate::Refusal),
+    /// No model, and none could be resolved from the inputs.
+    Unresolved(String),
+}
+
+/// phase-460 W1 follow-up -- the one door `nros build` opens a resolved model
+/// through. A model `nros sync` produced is verified like at every other door
+/// (`model_gate::open`: the refusal marker on every rung, the resolver pin,
+/// the recorded and the launch-tree inputs). Only when no rung
+/// holds a model does it resolve one from the inputs (`ensure_model`, which
+/// itself refuses on a marker), so a model this build resolved a moment ago
+/// is current by construction.
+fn open_model(
+    bringup_dir: &std::path::Path,
+    model_rel: &str,
+) -> Result<std::path::PathBuf, ModelDoor> {
+    match crate::model_gate::open(bringup_dir, model_rel) {
+        Err(r) => Err(ModelDoor::Refused(r)),
+        Ok(Some(p)) => Ok(p),
+        Ok(None) => nros_orchestration_ir::model_location::ensure_model(bringup_dir, model_rel)
+            .map(|(p, _inputs)| p)
+            .map_err(ModelDoor::Unresolved),
+    }
+}
+
 fn image_locations(
     nano_ros_root: Option<&std::path::Path>,
     project: &std::path::Path,
@@ -4194,8 +4231,13 @@ fn resolve_image(
         let model_rel =
             model_location::launch_to_model_rel(bringup_dir, image.launch.as_deref(), &args_vec)
                 .map_err(|e| format!("cannot resolve the launch for this image: {e}"))?;
-        let (model_path, _inputs) = model_location::ensure_model(bringup_dir, &model_rel)
-            .map_err(|e| format!("cannot resolve the SystemModel: {e}"))?;
+        // phase-460 W1 follow-up -- the gated door. This phase cannot fail a
+        // build, so a refused or stale model is its refusal reason: no number
+        // is read from it.
+        let model_path = open_model(bringup_dir, &model_rel).map_err(|e| match e {
+            ModelDoor::Refused(r) => r.to_string(),
+            ModelDoor::Unresolved(e) => format!("cannot resolve the SystemModel: {e}"),
+        })?;
         let raw = std::fs::read_to_string(&model_path)
             .map_err(|e| format!("reading {}: {e}", model_path.display()))?;
         let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
@@ -7271,5 +7313,56 @@ mod board_net_file_tests {
             assert_eq!(eth0.network, "br");
             assert_eq!(eth0.address, Address::Static([192, 0, 3, host]), "{image}");
         }
+    }
+}
+
+/// phase-460 W1 follow-up -- `nros build` opens a resolved model through the
+/// gated door. A refused `nros sync` leaves a marker and no model; the
+/// stage-4 entry generator and the single-package road both read that as a
+/// refusal (the build stops), never as "nothing to read" or as a cue to
+/// resolve one locally.
+#[cfg(test)]
+mod model_door_tests {
+    use super::*;
+
+    fn bringup_with_marker() -> (tempfile::TempDir, std::path::PathBuf, String) {
+        let ws = tempfile::tempdir().unwrap();
+        let bringup = ws.path().join("src").join("demo_bringup");
+        std::fs::create_dir_all(bringup.join("launch")).unwrap();
+        std::fs::write(bringup.join("system.toml"), "").unwrap();
+        let rel = nros_orchestration_ir::model_location::launch_to_model_rel(&bringup, None, &[])
+            .unwrap();
+        // The sync rung, holding the marker and no model: what a refused
+        // resolve leaves behind (`model_gate::quarantine`).
+        let rung = ws
+            .path()
+            .join("build/nros/models/demo_bringup")
+            .join("system_model.yaml");
+        std::fs::create_dir_all(rung.parent().unwrap()).unwrap();
+        std::fs::write(
+            crate::model_gate::marker_path(&rung),
+            "check: contract-check\ninput: system.toml\n",
+        )
+        .unwrap();
+        (ws, bringup, rel)
+    }
+
+    #[test]
+    fn a_refused_model_stops_the_entry_generator() {
+        let (_ws, bringup, rel) = bringup_with_marker();
+        match open_model(&bringup, &rel) {
+            Err(ModelDoor::Refused(r)) => {
+                assert!(r.to_string().contains("contract-check"), "{r}")
+            }
+            Err(ModelDoor::Unresolved(e)) => panic!("read as unresolvable: {e}"),
+            Ok(p) => panic!("opened {}", p.display()),
+        }
+    }
+
+    #[test]
+    fn a_refused_leaf_model_is_a_refusal_not_an_absence() {
+        let (_ws, bringup, _rel) = bringup_with_marker();
+        assert!(crate::leaf_entity_env::leaf_model_path(&bringup).is_err());
+        assert!(crate::leaf_entity_env::leaf_model(&bringup).is_none());
     }
 }

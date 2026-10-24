@@ -1698,6 +1698,12 @@ function(nros_resolve_knobs)
     #
     # Spelled out, not looped, for the reason the ENTITY_COUNT block above
     # states: a computed name is invisible to the gates that read this file.
+    #
+    # phase-460 W2 follow-up -- a REFUSED declaration derives no number, so
+    # the five rows below would fall to the crate defaults with no line said.
+    # The same check the cmake road runs stops the configure first.
+    nros_entity_inventory_knobs_file(_nros_param_inv)
+    nros_refuse_refused_param_declaration("${_nros_param_inv}")
     _nros_resolve_derivable_knob(NROS_MAX_PARAMETERS
         "${CONFIG_NROS_MAX_PARAMETERS}" NROS_DERIVED_MAX_PARAMETERS
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
