@@ -1,5 +1,14 @@
 # phase-466 -- every scheduled lane produces a verdict again
 
+**Status (2026-10-24). Every implementation item is landed; what remains is run
+evidence and runner configuration.** The live-peer host job's one red
+(`test_ros2_service_xrce_client`, 4 nights) was a real regression, not a flake:
+[#2026](../issues/archived/2026-live-peer-xrce-service-client-no-reply.md),
+fixed. #2004's fix landed in c8ec37ffc7 and waits on the run that reads it
+(W5). `host-tests` stopped on ENOSPC plus a rustfmt diff fixed in 70790ce080.
+Left: one green scheduled `live-peer` and `host-tests`, W5 read off a tier-2
+run, and issue 1365 (operator-side).
+
 **Status (2026-10-22). The blackout is over: every scheduled lane reached its
 own work in the last week, and what is red now is red about something.**
 Measured over the scheduled runs of 2026-10-17 to 10-21:

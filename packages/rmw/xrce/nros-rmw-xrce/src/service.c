@@ -67,7 +67,12 @@ void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t 
 void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t request_id,
                          uint16_t reply_id, struct ucdrBuffer* ub, uint16_t length, void* args) {
     (void)session;
-    (void)reply_id;
+    /* Issue 2026 — `request_id` here is NOT the request this answers: it is the
+     * id of the `uxr_buffer_request_data` read that delivered the reply
+     * (`read_access.c` passes the DATA submessage's own request id). The id
+     * `uxr_buffer_request` returned when the request was SENT arrives as
+     * `reply_id`, decoded from the reply's `BaseObjectRequest`. */
+    (void)request_id;
     if (args == NULL || ub == NULL) {
         return;
     }
@@ -79,7 +84,7 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
             continue;
         }
         /* Issue 0778 — remember WHICH request this answers. */
-        slot->reply_request_id = request_id;
+        slot->reply_request_id = reply_id;
         /* Issue 0819 — one staging path for every inbound payload, fragments
          * included; see `xrce_stage_inbound`. */
         slot->overflow =

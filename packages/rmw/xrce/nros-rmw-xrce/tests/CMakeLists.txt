@@ -49,6 +49,14 @@ target_link_libraries(nros_rmw_xrce_service_refused_len PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_service_refused_len COMMAND nros_rmw_xrce_service_refused_len)
 
+# Issue 2026 — a reply reports the id its request was SENT with (`on_reply`'s
+# `reply_id`), not the id of the read that delivered it. No agent: the callback
+# is called directly with the two ids different.
+add_executable(nros_rmw_xrce_reply_correlation reply_correlation.c)
+target_link_libraries(nros_rmw_xrce_reply_correlation PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_reply_correlation COMMAND nros_rmw_xrce_reply_correlation)
+
 # Issue 1292 — the `ros_discovery_info` sample, the endpoint-key counting rule,
 # node/endpoint lifetimes and the probe's nonce check. No agent; the live half
 # is `rust_multi_node_per_node_graph`'s XRCE case.

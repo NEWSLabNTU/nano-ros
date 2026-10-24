@@ -450,7 +450,8 @@ typedef struct xrce_service_client_slot {
     bool overflow;
     uint16_t requester_id;
     /* Issue 0778 — the XRCE request id the buffered reply answers, recorded
-     * by `xrce_reply_callback` (which used to `(void)request_id` it away) and
+     * by `xrce_reply_callback` from its `reply_id` argument (issue 2026: NOT
+     * its `request_id`, which names the read that delivered the reply) and
      * reported out of `take_response` as the sequence id. */
     uint16_t reply_request_id;
     bool active;
