@@ -13,7 +13,25 @@ use nros::{
     GoalId,
     cdr::{CDR_HEADER_LEN, strip_cdr_header},
 };
-use nros_node::config::DEFAULT_RX_BUF_SIZE;
+use nros_node::{action_frame, config::DEFAULT_RX_BUF_SIZE};
+
+/// Issue 2014 — byte of a get_result reply where the result fields start
+/// (`[encap 4][status i8][pad → 8][fields]`). The C++ `PollingActionClient`
+/// decodes the raw reply itself, so it needs the number; this is the C ABI
+/// mirror of `nros_node::action_frame::RESULT_PAYLOAD_OFFSET` (a literal,
+/// because cbindgen emits only literals — the assert below binds the two).
+pub const NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET: usize = 8;
+/// Issue 2014 — byte of a feedback message where the feedback fields start
+/// (`[encap 4][GoalId.uuid 16][fields]`); mirror of
+/// `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
+pub const NROS_CPP_ACTION_FEEDBACK_PAYLOAD_OFFSET: usize = 20;
+/// Issue 2014 — length of the CDR encapsulation header a raw action frame
+/// starts with; mirror of `nros_node::action_frame::CDR_HEADER_LEN`.
+pub const NROS_CPP_ACTION_CDR_HEADER_LEN: usize = 4;
+const _: () = assert!(NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET == action_frame::RESULT_PAYLOAD_OFFSET);
+const _: () =
+    assert!(NROS_CPP_ACTION_FEEDBACK_PAYLOAD_OFFSET == action_frame::FEEDBACK_PAYLOAD_OFFSET);
+const _: () = assert!(NROS_CPP_ACTION_CDR_HEADER_LEN == action_frame::CDR_HEADER_LEN);
 
 use crate::{
     CppContext, DispatchGuard, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
@@ -138,19 +156,14 @@ unsafe extern "C" fn goal_callback_trampoline(
         return nros::GoalResponse::Reject;
     };
 
-    // Incoming framing: [CDR_HDR][seq_prefix(4)][UUID(16)][goal_fields].
-    // User-facing framing: [CDR_HDR][goal_fields].
-    let framing_len = CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
+    // Incoming framing: [CDR_HDR][UUID(16)][goal_fields].
+    // User-facing framing: [CDR_HDR][goal_fields] (issue 2014: offset and
+    // splice from `action_frame`).
     let slice = unsafe { core::slice::from_raw_parts(goal_data, goal_len) };
     let mut user_buf = [0u8; GOAL_USER_BUF];
-    let (ptr, len) = if goal_len > framing_len {
-        let fields = &slice[framing_len..];
-        user_buf[..CDR_HEADER_LEN].copy_from_slice(&nros::cdr::CDR_LE_HEADER);
-        let copy_len = fields.len().min(user_buf.len() - CDR_HEADER_LEN);
-        user_buf[CDR_HEADER_LEN..CDR_HEADER_LEN + copy_len].copy_from_slice(&fields[..copy_len]);
-        (user_buf.as_ptr(), CDR_HEADER_LEN + copy_len)
-    } else {
-        (goal_data, goal_len)
+    let (ptr, len) = match action_frame::splice_goal_request(slice, &mut user_buf) {
+        Some(n) => (user_buf.as_ptr(), n),
+        None => (goal_data, goal_len),
     };
 
     let uuid_ptr = goal_id as *const [u8; 16];
@@ -915,19 +928,6 @@ fn frame_for_callback(data: &[u8], framed: &mut [u8; DEFAULT_RX_BUF_SIZE]) -> us
     }
 }
 
-/// Splice the reply's own top-level encapsulation header (`hdr`) in front of
-/// the raw fields `raw` — what the arena dispatch does for every action
-/// payload (`action_client_raw_try_process`, RFC-0069/0418: the fields arrive
-/// header-less on every backend). Shared by [`nros_cpp_action_client_poll`]
-/// and [`nros_cpp_action_client_try_recv_result`], so a reply reaches a C++
-/// callback in one framing whichever path took it off the wire.
-fn splice_encap(hdr: &[u8], raw: &[u8], out: &mut [u8; DEFAULT_RX_BUF_SIZE]) -> usize {
-    let n = raw.len().min(DEFAULT_RX_BUF_SIZE - CDR_HEADER_LEN);
-    out[..CDR_HEADER_LEN].copy_from_slice(&hdr[..CDR_HEADER_LEN]);
-    out[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&raw[..n]);
-    CDR_HEADER_LEN + n
-}
-
 // Issue 2011 — the feedback and result trampolines FORWARD, and keep nothing.
 // They used to copy every payload into `FEEDBACK_STASH` / `RESULT_STASH`, two
 // `static mut` single slots shared by every C++ action client in the process,
@@ -1588,34 +1588,17 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
 
     match core.try_recv_feedback_raw() {
         Ok(Some((_goal_id, total_len))) => {
-            // Feedback buffer layout (see arena.rs
-            // `FEEDBACK_PAYLOAD_OFFSET` comment): outer CDR(4) +
-            // GoalId.length(u32 = 4) + GoalId.uuid(16) + payload.
-            // Skip 24 bytes to land on the payload — the prior
-            // `CDR_HEADER_LEN + GoalId::UUID_LEN` (= 20) missed
-            // the GoalId length-prefix u32.
-            const FEEDBACK_PAYLOAD_OFFSET: usize =
-                CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
-            let buf = core.feedback_buffer_ref();
-            if total_len > FEEDBACK_PAYLOAD_OFFSET {
-                let data = &buf[FEEDBACK_PAYLOAD_OFFSET..total_len];
-                let framed_len = CDR_HEADER_LEN + data.len();
-                if framed_len <= buf_len {
-                    unsafe {
-                        core::ptr::copy_nonoverlapping(
-                            nros::cdr::CDR_LE_HEADER.as_ptr(),
-                            feedback_buf,
-                            CDR_HEADER_LEN,
-                        );
-                        core::ptr::copy_nonoverlapping(
-                            data.as_ptr(),
-                            feedback_buf.add(CDR_HEADER_LEN),
-                            data.len(),
-                        );
-                        *feedback_len = framed_len;
-                    }
-                    return NROS_CPP_RET_OK;
+            // Issue 2014 — offset and splice from `action_frame` (the frame's
+            // own encap in front of the fields, as every dispatch delivers).
+            let msg = &core.feedback_buffer_ref()[..total_len];
+            if let Some(fields) = action_frame::feedback_fields(msg)
+                && CDR_HEADER_LEN + fields.len() <= buf_len
+            {
+                unsafe {
+                    let out = core::slice::from_raw_parts_mut(feedback_buf, buf_len);
+                    *feedback_len = action_frame::splice(msg, fields, out).unwrap_or(0);
                 }
+                return NROS_CPP_RET_OK;
             }
             unsafe {
                 *feedback_len = 0;
@@ -1674,7 +1657,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_goal_response(
                 return NROS_CPP_RET_ERROR;
             }
             let buf = core.result_buffer_ref();
-            let accepted: u8 = if total_len >= 5 && buf[4] != 0 { 1 } else { 0 };
+            let accepted = u8::from(action_frame::goal_accepted(&buf[..total_len]));
             // Issue 2009 — the goal the reply's request named. This used to be
             // rebuilt from `goal_counter`, the most recently SENT goal.
             let uuid = goal_id.uuid;
@@ -1764,26 +1747,22 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_result(
 
     match core.try_recv_get_result_reply() {
         Ok(Some(total_len)) => {
-            // Reply layout (see arena.rs `RESULT_PAYLOAD_OFFSET`
-            // comment): outer CDR(4) + status(1) + align(4 → pad 3)
-            // + payload. Skip 8 bytes to land on the payload.
-            const RESULT_PAYLOAD_OFFSET: usize = 8;
-            if total_len <= RESULT_PAYLOAD_OFFSET {
-                unsafe { *out_len = 0 };
-                return NROS_CPP_RET_OK;
-            }
-            let data_len = total_len - RESULT_PAYLOAD_OFFSET;
+            // Issue 2014 — the payload offset from `action_frame`.
+            let buf = core.result_buffer_ref();
+            let fields = match action_frame::result_fields(&buf[..total_len]) {
+                Some(f) if !f.is_empty() => f,
+                _ => {
+                    unsafe { *out_len = 0 };
+                    return NROS_CPP_RET_OK;
+                }
+            };
+            let data_len = fields.len();
             if data_len > out_capacity {
                 unsafe { *out_len = data_len };
                 return NROS_CPP_RET_ERROR;
             }
-            let buf = core.result_buffer_ref();
             unsafe {
-                core::ptr::copy_nonoverlapping(
-                    buf[RESULT_PAYLOAD_OFFSET..total_len].as_ptr(),
-                    out_data,
-                    data_len,
-                );
+                core::ptr::copy_nonoverlapping(fields.as_ptr(), out_data, data_len);
                 *out_len = data_len;
             }
             NROS_CPP_RET_OK
@@ -2026,14 +2005,16 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_cancel_response(
         };
     match core.try_recv_cancel_reply() {
         // [CDR_HDR(4)][return_code i8][goals_canceling…]
-        Ok(Some(len)) if len > CDR_HEADER_LEN => {
-            unsafe { *out_return_code = core.result_buffer_ref()[CDR_HEADER_LEN] as i8 };
-            NROS_CPP_RET_OK
-        }
         // A reply that carries no return_code byte is a malformed frame, not
         // "no reply yet" — issue 0223's rule: do not collapse a truncation
         // onto a plausible default.
-        Ok(Some(_)) => NROS_CPP_RET_ERROR,
+        Ok(Some(len)) => match action_frame::cancel_return_code(&core.result_buffer_ref()[..len]) {
+            Some(code) => {
+                unsafe { *out_return_code = code };
+                NROS_CPP_RET_OK
+            }
+            None => NROS_CPP_RET_ERROR,
+        },
         Ok(None) => NROS_CPP_RET_TRY_AGAIN,
         Err(_) => NROS_CPP_RET_ERROR,
     }
@@ -2099,8 +2080,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
     if let Ok(Some((total_len, goal_id))) = core.try_recv_send_goal_reply_for()
         && let Some(cb) = goal_response_cb
     {
-        let buf = core.result_buffer_ref();
-        let accepted = total_len >= 5 && buf[4] != 0;
+        let accepted = action_frame::goal_accepted(&core.result_buffer_ref()[..total_len]);
         unsafe { cb(accepted, &goal_id.uuid, ctx) };
     }
 
@@ -2108,50 +2088,33 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
     if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw()
         && let Some(cb) = feedback_cb
     {
-        // [CDR_HEADER(4)][GoalId.uuid(16)][feedback payload] — SEQ_PREFIX_LEN
-        // is 0 since 233.6 (kept in the sum so the framing reads uniformly).
-        // Issue #179 — deliver WITH a single encap header, mirroring the
-        // arena dispatch: a typed server's payload already carries one
-        // (`ffi_serialize`), a stripped-fields payload gets the reply's own
-        // top-level encap spliced in front. The old verbatim pass-through
-        // handed raw fields to `ffi_deserialize`, which ate the first data
-        // word as the encap.
-        const FEEDBACK_PAYLOAD_OFFSET: usize =
-            CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
-        if total_len > FEEDBACK_PAYLOAD_OFFSET {
-            // Issue 2011 — spliced exactly as the arena dispatch does
-            // (`action_client_raw_try_process`), so a payload reaches the
-            // callback in ONE framing whichever path took it off the wire.
-            let buf = core.feedback_buffer_ref();
-            let mut spliced = [0u8; DEFAULT_RX_BUF_SIZE];
-            let n = splice_encap(buf, &buf[FEEDBACK_PAYLOAD_OFFSET..total_len], &mut spliced);
+        // Issue 2014 — offset and splice from `action_frame`, exactly as the
+        // arena dispatch (`action_client_raw_try_process`) does, so a payload
+        // reaches the callback in ONE framing whichever path took it off the
+        // wire (issues #179, 2011).
+        let mut spliced = [0u8; DEFAULT_RX_BUF_SIZE];
+        if let Some(n) =
+            action_frame::splice_feedback(&core.feedback_buffer_ref()[..total_len], &mut spliced)
+        {
             unsafe { cb(&goal_id.uuid, spliced.as_ptr(), n, ctx) };
         }
     }
 
-    // Poll result reply
-    //
-    // Layout (`reply_get_result_from_slab`): [CDR_HEADER(4)][status(i8)]
-    // [align(4) → byte 8][result payload]. Issue #179 — the old offset-5
-    // slice handed the three alignment-pad bytes to the deserializer as the
-    // start of the body (its comment cited the C wrapper's identical bug as
-    // proof of correctness — two bugs cross-validating; phase-239's revert
-    // of a prior 8-offset was measuring against that same broken pair).
-    // Deliver WITH a single encap header, arena-style.
-    const RESULT_PAYLOAD_OFFSET: usize = CDR_HEADER_LEN + 4;
-    // Issue 2009 — attributed like the acceptance above.
+    // Poll result reply — `[encap][status i8][pad → 8][fields]`. Issue 2014:
+    // status, offset and splice from `action_frame` (the offset-5 slice of
+    // #179 handed the three pad bytes to the deserializer). Issue 2009 —
+    // attributed like the acceptance above.
     if let Ok(Some((total_len, goal_id))) = core.try_recv_get_result_reply_for()
         && let Some(cb) = result_cb
-        && total_len >= 5
     {
-        let buf = core.result_buffer_ref();
-        let status = buf[4] as i32;
-        let uuid = goal_id.uuid;
-        let raw = &buf[RESULT_PAYLOAD_OFFSET.min(total_len)..total_len];
-        // Issue 2011 — the arena's framing (see the feedback arm above).
+        let reply = &core.result_buffer_ref()[..total_len];
         let mut spliced = [0u8; DEFAULT_RX_BUF_SIZE];
-        let n = splice_encap(buf, raw, &mut spliced);
-        unsafe { cb(&uuid, status, spliced.as_ptr(), n, ctx) };
+        if let (Some(status), Some(n)) = (
+            action_frame::result_status(reply),
+            action_frame::splice_result(reply, &mut spliced),
+        ) {
+            unsafe { cb(&goal_id.uuid, status as i32, spliced.as_ptr(), n, ctx) };
+        }
     }
 
     NROS_CPP_RET_OK
@@ -2371,11 +2334,6 @@ pub(crate) type PollingActionServerCore =
 pub(crate) type PollingActionClientCore =
     nros_node::ActionClientCore<DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE>;
 
-// CDR framing bytes prefixing the goal payload in send_goal requests
-// (CDR encapsulation header + GoalId sequence length prefix + UUID).
-const POLLING_GOAL_REQUEST_FRAMING_LEN: usize =
-    CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
-
 /// Phase 122.3.d — initialize an L1 polling-mode action server.
 ///
 /// Builds the 5 channels via the node's session and writes the
@@ -2580,7 +2538,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_try_recv_goal_request_raw(
     match core.try_recv_goal_request() {
         Ok(Some(req)) => {
             let goal_buf = core.goal_buffer();
-            let payload_offset = POLLING_GOAL_REQUEST_FRAMING_LEN;
+            let payload_offset = action_frame::GOAL_REQUEST_PAYLOAD_OFFSET;
             if payload_offset + req.data_len > goal_buf.len() {
                 return NROS_CPP_RET_ERROR;
             }

@@ -454,8 +454,10 @@ impl<
         goal_id: &GoalId,
         feedback_cdr: &[u8],
     ) -> Result<(), NodeError> {
-        // GoalId framing (4 + 16 = 20 bytes) + feedback_cdr must fit in FEEDBACK_BUF
-        let needed = 4 + 20 + feedback_cdr.len(); // CDR header + GoalId + feedback
+        // CDR header + GoalId + feedback must fit in FEEDBACK_BUF. Issue 2014 —
+        // the framing from `action_frame`; this read `4 + 20`, the pre-233.6
+        // GoalId with a sequence-length prefix.
+        let needed = crate::action_frame::FEEDBACK_PAYLOAD_OFFSET + feedback_cdr.len();
         if needed > FEEDBACK_BUF {
             return Err(NodeError::BufferTooSmall);
         }

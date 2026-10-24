@@ -185,6 +185,28 @@
 #define NROS_CPP_SERIALIZATION_FORMAT_ID 1
 
 /**
+ * Issue 2014 — byte of a get_result reply where the result fields start
+ * (`[encap 4][status i8][pad → 8][fields]`). The C++ `PollingActionClient`
+ * decodes the raw reply itself, so it needs the number; this is the C ABI
+ * mirror of `nros_node::action_frame::RESULT_PAYLOAD_OFFSET` (a literal,
+ * because cbindgen emits only literals — the assert below binds the two).
+ */
+#define NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET 8
+
+/**
+ * Issue 2014 — byte of a feedback message where the feedback fields start
+ * (`[encap 4][GoalId.uuid 16][fields]`); mirror of
+ * `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
+ */
+#define NROS_CPP_ACTION_FEEDBACK_PAYLOAD_OFFSET 20
+
+/**
+ * Issue 2014 — length of the CDR encapsulation header a raw action frame
+ * starts with; mirror of `nros_node::action_frame::CDR_HEADER_LEN`.
+ */
+#define NROS_CPP_ACTION_CDR_HEADER_LEN 4
+
+/**
  * `rclcpp::SchedClass` mirror. Phase 110.B.
  */
 enum nros_cpp_sched_class_t

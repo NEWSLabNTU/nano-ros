@@ -2,10 +2,7 @@
 
 use core::{ffi::c_void, ptr};
 
-use nros::{
-    GoalId,
-    cdr::{CDR_HEADER_LEN, strip_cdr_header, write_cdr_le_header},
-};
+use nros::cdr::strip_cdr_header;
 
 use super::common::*;
 use crate::{
@@ -14,13 +11,21 @@ use crate::{
     node::{rcl_node_t, rclc_node_state_t},
 };
 
-/// CDR sequence<uint8, 16> length prefix (4 bytes) in front of the UUID bytes.
-/// Mirrors the constant of the same name in `server.rs`.
-const GOAL_ID_SEQ_PREFIX_LEN: usize = GoalId::SEQ_PREFIX_LEN;
+use nros_node::action_frame;
 
-/// Bytes of CDR framing that precede feedback fields in a feedback message:
-/// CDR encapsulation header + GoalId sequence length prefix + UUID.
-const FEEDBACK_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN + GoalId::UUID_LEN;
+/// Issue 2014 — byte of a get_result reply where the result fields start
+/// (`[encap 4][status i8][pad → 8][fields]`), for a C caller decoding what
+/// `rclc_polling_action_client_try_recv_result_raw` returns. C ABI mirror of
+/// `nros_node::action_frame::RESULT_PAYLOAD_OFFSET` (a literal, because
+/// cbindgen emits only literals — the assert below binds the two).
+pub const RCLC_ACTION_RESULT_PAYLOAD_OFFSET: usize = 8;
+/// Issue 2014 — byte of a feedback message where the feedback fields start
+/// (`[encap 4][GoalId.uuid 16][fields]`), for a caller of
+/// `rclc_polling_action_client_try_recv_feedback_raw`; mirror of
+/// `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
+pub const RCLC_ACTION_FEEDBACK_PAYLOAD_OFFSET: usize = 20;
+const _: () = assert!(RCLC_ACTION_RESULT_PAYLOAD_OFFSET == action_frame::RESULT_PAYLOAD_OFFSET);
+const _: () = assert!(RCLC_ACTION_FEEDBACK_PAYLOAD_OFFSET == action_frame::FEEDBACK_PAYLOAD_OFFSET);
 
 // ============================================================================
 // Internal implementation
@@ -765,28 +770,15 @@ pub unsafe extern "C" fn rclc_action_try_recv_feedback(
             if let Some(cb) = client.feedback_callback {
                 let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
 
-                // Feedback wire layout: [CDR_HEADER][GoalId seq prefix][UUID][feedback fields].
-                // The C deserializer expects [CDR_HEADER][fields], so we
-                // prepend a CDR header in a stack buffer.
-                let fb_fields_len = len.saturating_sub(FEEDBACK_FRAMING_LEN);
-
-                if fb_fields_len > 0 {
-                    // Re-framed feedback: [CDR_HEADER][feedback_fields].
-                    const FB_USER_BUF: usize = 512;
-                    let mut fb_buf = [0u8; FB_USER_BUF];
-                    let payload =
-                        write_cdr_le_header(&mut fb_buf).expect("fb_buf >= CDR_HEADER_LEN");
-                    let copy_len = fb_fields_len.min(payload.len());
-                    payload[..copy_len].copy_from_slice(
-                        &core.feedback_buffer_ref()
-                            [FEEDBACK_FRAMING_LEN..FEEDBACK_FRAMING_LEN + copy_len],
-                    );
-                    cb(
-                        &uuid,
-                        fb_buf.as_ptr(),
-                        CDR_HEADER_LEN + copy_len,
-                        client.context,
-                    );
+                // Issue 2014 — offset and splice from `action_frame`: the C
+                // deserializer expects [CDR_HEADER][fields], the frame's own
+                // header in front, as the executor dispatch delivers.
+                const FB_USER_BUF: usize = 512;
+                let mut fb_buf = [0u8; FB_USER_BUF];
+                if let Some(n) =
+                    action_frame::splice_feedback(&core.feedback_buffer_ref()[..len], &mut fb_buf)
+                {
+                    cb(&uuid, fb_buf.as_ptr(), n, client.context);
                 } else {
                     cb(&uuid, ptr::null(), 0, client.context);
                 }
@@ -947,8 +939,7 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
     if let Ok(Some((total_len, goal_id))) = core.try_recv_send_goal_reply_for()
         && let Some(cb) = client_ref.goal_response_callback
     {
-        let buf = core.result_buffer_ref();
-        let accepted = total_len >= 5 && buf[4] != 0;
+        let accepted = action_frame::goal_accepted(&core.result_buffer_ref()[..total_len]);
         let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
         cb(&uuid, accepted, ctx);
     }
@@ -957,64 +948,44 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
     if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw()
         && let Some(cb) = client_ref.feedback_callback
     {
-        let buf = core.feedback_buffer_ref();
-        // NOTE: this polling path uses CDR_HEADER + UUID (20 bytes) whereas
-        // `rclc_action_try_recv_feedback` above uses CDR_HEADER + seq_prefix
-        // + UUID (24). The discrepancy is tracked as a Phase 83 audit finding
-        // — preserve current semantics until the feedback framing is unified
-        // inside `ActionClientCore`.
-        let offset = CDR_HEADER_LEN + GoalId::UUID_LEN;
-        if total_len > offset {
+        // Issue 2014 — offset and splice from `action_frame`. This path used
+        // to hand the callback the bare fields (no encapsulation header) while
+        // the executor dispatch handed it `[encap][fields]`, so one callback
+        // saw two framings depending on who took the message off the wire.
+        const SPLICE_BUF: usize = 1024;
+        let mut spliced = [0u8; SPLICE_BUF];
+        if let Some(n) =
+            action_frame::splice_feedback(&core.feedback_buffer_ref()[..total_len], &mut spliced)
+        {
             let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
-            cb(
-                &uuid,
-                buf[offset..total_len].as_ptr(),
-                total_len - offset,
-                ctx,
-            );
+            cb(&uuid, spliced.as_ptr(), n, ctx);
         }
     }
 
     // Poll result reply — issue 2009, attributed like the acceptance above.
+    // Issue 2014 — status, payload offset (byte 8, after the status and its
+    // alignment pad; #179) and splice from `action_frame`. The frame's own
+    // encap is spliced in front unconditionally: the encap SNIFF this used
+    // was retired from the executor dispatch (a body starting `00 01 00 00`
+    // reads as a header).
     if let Ok(Some((total_len, goal_id))) = core.try_recv_get_result_reply_for()
         && let Some(cb) = client_ref.result_callback
     {
-        let buf = core.result_buffer_ref();
-        if total_len >= 5 {
-            let status_byte = buf[4];
-            let c_status = match status_byte {
-                4 => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
-                5 => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
-                6 => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
+        let reply = &core.result_buffer_ref()[..total_len];
+        const SPLICE_BUF: usize = 1024;
+        let mut spliced = [0u8; SPLICE_BUF];
+        if let (Some(status), Some(n)) = (
+            action_frame::result_status(reply),
+            action_frame::splice_result(reply, &mut spliced),
+        ) {
+            let c_status = match status {
+                nros_node::GoalStatus::Succeeded => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
+                nros_node::GoalStatus::Canceled => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
+                nros_node::GoalStatus::Aborted => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
                 _ => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
             };
-            // Issue #179 — the reply is `[CDR hdr 4][status i8][align(4)]
-            // [result payload]`: the payload starts at stream-pos 4 = byte 8,
-            // NOT byte 5. Slicing at 5 handed the three alignment-pad bytes
-            // to the deserializer as the start of the result body → every
-            // zenoh C/C++ action client failed `Failed to deserialize result`
-            // on all platforms (feedback worked: its 4+16 framing lands
-            // aligned by luck). Mirror the arena dispatch (executor/arena.rs
-            // `RESULT_PAYLOAD_OFFSET`): payload@8, delivered WITH a CDR
-            // encapsulation header — a typed/Rust server serialised one
-            // in-line; a C server's `strip_cdr_header`→slab reply arrives
-            // raw, so splice the reply's own (always-valid) top-level encap
-            // in front. Callback contract: bytes = encap-headered result.
-            let result_offset = (CDR_HEADER_LEN + 4).min(total_len);
             let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
-            let raw = &buf[result_offset..total_len];
-            let has_encap =
-                raw.len() >= 2 && raw[0] == 0 && matches!(raw[1], 0 | 1 | 6 | 7 | 0x0a | 0x0b);
-            if has_encap {
-                cb(&uuid, c_status, raw.as_ptr(), raw.len(), ctx);
-            } else {
-                const SPLICE_BUF: usize = 1024;
-                let mut spliced = [0u8; SPLICE_BUF];
-                let n = raw.len().min(SPLICE_BUF - CDR_HEADER_LEN);
-                spliced[..CDR_HEADER_LEN].copy_from_slice(&buf[..CDR_HEADER_LEN]);
-                spliced[CDR_HEADER_LEN..CDR_HEADER_LEN + n].copy_from_slice(&raw[..n]);
-                cb(&uuid, c_status, spliced.as_ptr(), CDR_HEADER_LEN + n, ctx);
-            }
+            cb(&uuid, c_status, spliced.as_ptr(), n, ctx);
         }
     }
 

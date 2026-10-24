@@ -151,19 +151,22 @@ template <typename A> class PollingActionClient {
     }
 
     /// Try to receive the get_result reply as a typed result.
-    /// The reply has wire layout: CDR header (4B) + status byte (1B) +
-    /// result payload — deserializes the trailing payload into `out`.
+    /// The reply has wire layout `[CDR header 4][status i8][pad → byte 8]
+    /// [result fields]` (`NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET`) —
+    /// deserializes the fields, behind the reply's own header, into `out`.
     Result try_recv_result(ResultType& out) {
         return try_recv_result_sized<::rclcpp::rx_buffer_capacity<ResultType>::value>(out);
     }
 
     /// @ref try_recv_result with the RESULT PAYLOAD capacity chosen by the
-    /// caller. `Cap` is the payload, not the buffer: the wire reply carries a
-    /// 5-byte prefix (CDR header + status), which this adds (issue 0964).
+    /// caller. `Cap` is the payload, not the buffer: the wire reply carries an
+    /// 8-byte prefix (CDR header + status + alignment pad,
+    /// `NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET`), which this adds (issues 0964,
+    /// 2014).
     /// See @ref Subscription::try_recv_sized.
     template <size_t Cap> Result try_recv_result_sized(ResultType& out) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[Cap + 5];
+        uint8_t buf[Cap + kResultOffset];
         int32_t rc = nros_cpp_action_client_try_recv_result_raw(storage_, buf, sizeof(buf));
         return decode_result(rc, buf, out);
     }
@@ -183,7 +186,7 @@ template <typename A> class PollingActionClient {
     /// @ref try_recv_result_sized with the goal written to `goal_id_out`.
     template <size_t Cap> Result try_recv_result_sized(ResultType& out, uint8_t goal_id_out[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[Cap + 5];
+        uint8_t buf[Cap + kResultOffset];
         int32_t rc = nros_cpp_action_client_try_recv_result_raw_for(
             storage_, buf, sizeof(buf), reinterpret_cast<uint8_t(*)[16]>(goal_id_out));
         return decode_result(rc, buf, out);
@@ -249,14 +252,14 @@ template <typename A> class PollingActionClient {
     template <size_t Cap>
     Result try_recv_feedback_sized(uint8_t goal_id_out[16], FeedbackType& out_fb) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[Cap];
+        // Issue 2014 — the raw frame is `[CDR header 4][GoalId 16][fields]`,
+        // so the buffer holds `Cap` of FIELDS plus that prefix, and the
+        // fields are decoded behind the frame's own header (they used to be
+        // decoded from byte 0, reading the goal id as the payload).
+        uint8_t buf[Cap + kFeedbackOffset];
         int32_t rc = nros_cpp_action_client_try_recv_feedback_raw(
             storage_, buf, sizeof(buf), reinterpret_cast<uint8_t(*)[16]>(goal_id_out));
-        if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
-        if (rc == 0) return Result(ErrorCode::TryAgain);
-        if (FeedbackType::ffi_deserialize(buf, static_cast<size_t>(rc), &out_fb) != 0)
-            return Result(ErrorCode::Error);
-        return Result::success();
+        return decode_spliced<FeedbackType>(rc, buf, kFeedbackOffset, out_fb);
     }
 
     /// Phase 122.3.c.6.e — caller-owned wake-state slot. One per
@@ -308,18 +311,37 @@ template <typename A> class PollingActionClient {
         return Result::success();
     }
 
-    /// Decode a get_result reply of `rc` bytes in `buf` into `out`.
-    static Result decode_result(int32_t rc, const uint8_t* buf, ResultType& out) {
+    /// Issue 2014 — the action frame offsets, from the ONE spelling
+    /// (`nros_node::action_frame`, mirrored into the C ABI and asserted equal
+    /// there). This header used to skip 5 bytes of a get_result reply whose
+    /// payload starts at 8.
+    static constexpr size_t kHeaderLen = NROS_CPP_ACTION_CDR_HEADER_LEN;
+    static constexpr size_t kResultOffset = NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET;
+    static constexpr size_t kFeedbackOffset = NROS_CPP_ACTION_FEEDBACK_PAYLOAD_OFFSET;
+    static_assert(kResultOffset >= kHeaderLen && kFeedbackOffset >= kHeaderLen,
+                  "an action payload offset lies after the CDR header");
+
+    /// Decode a raw action frame of `rc` bytes in `buf` whose fields start at
+    /// `offset`: the frame's own CDR header is copied IN PLACE to sit right
+    /// before the fields, and `[header][fields]` is handed to the
+    /// deserializer — the same splice every executor dispatch does
+    /// (`action_frame::splice`), with no second buffer.
+    template <typename M>
+    static Result decode_spliced(int32_t rc, uint8_t* buf, size_t offset, M& out) {
         if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
         if (rc == 0) return Result(ErrorCode::TryAgain);
-        // CDR encapsulation header (4) + status byte (1) = 5-byte
-        // prefix before the result payload.
-        constexpr size_t kPrefix = 5;
-        if (static_cast<size_t>(rc) <= kPrefix) return Result(ErrorCode::Error);
-        size_t payload_len = static_cast<size_t>(rc) - kPrefix;
-        if (ResultType::ffi_deserialize(buf + kPrefix, payload_len, &out) != 0)
-            return Result(ErrorCode::Error);
+        if (static_cast<size_t>(rc) < offset) return Result(ErrorCode::Error);
+        uint8_t* framed = buf + (offset - kHeaderLen);
+        for (size_t i = 0; i < kHeaderLen; ++i)
+            framed[i] = buf[i];
+        size_t framed_len = static_cast<size_t>(rc) - (offset - kHeaderLen);
+        if (M::ffi_deserialize(framed, framed_len, &out) != 0) return Result(ErrorCode::Error);
         return Result::success();
+    }
+
+    /// Decode a get_result reply of `rc` bytes in `buf` into `out`.
+    static Result decode_result(int32_t rc, uint8_t* buf, ResultType& out) {
+        return decode_spliced<ResultType>(rc, buf, kResultOffset, out);
     }
 
     static constexpr size_t kStorageU64s = NROS_CPP_RAW_ACTION_CLIENT_OPAQUE_U64S;
