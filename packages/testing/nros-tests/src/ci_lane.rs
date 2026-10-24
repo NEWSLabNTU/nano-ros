@@ -37,10 +37,16 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 23 | 11 | 22 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 24 | 11 | 22 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 20 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config | 37 | 35 | 69 % |
-//! | tier 3 | everything | 247 | 51 | 100 % |
+//! | tier 3 | everything | 248 | 51 | 100 % |
+//!
+//! Re-measured 2026-10-24 (issue 1511): the `BeforeBoot` workload joined with
+//! one Linux Rust Zenoh Runtime cell. A new workload is something only tier 1's
+//! 1-wise workload axis has to reach, so tier 1 went 23 -> 24 cells at the same
+//! 11 coordinates; tiers 2 and nightly did not move. Tier 3 is 248 cells over
+//! the same 51 coordinates.
 //!
 //! Re-measured 2026-10-23 (phase-511 B/C): the FreeRTOS C++ Cyclone workspace
 //! cell went BuildOnly -> Runtime (the mps3-an536 entry answers it), and one
@@ -1033,7 +1039,7 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 23, 11),
+            (CiLane::Tier1, 24, 11),
             (CiLane::Tier2, 11, 10),
             (CiLane::Tier2Nightly, 37, 35),
         ];
@@ -1057,8 +1063,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 247,
-            "the table's tier-3 cell count (247) is stale; recomputed {total_cells}"
+            total_cells, 248,
+            "the table's tier-3 cell count (248) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 51,
