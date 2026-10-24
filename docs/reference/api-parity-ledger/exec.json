@@ -757,6 +757,21 @@
     "why": "phase-509 P9b item 4 / RFC-0108 \"As built in P9b\" -- the callbacks registered from now on belong to preemption level `level`: a level runner sets each level up in turn on the core's ONE executor, and each level's worker then runs exactly what its setup registered (authored tiers carry no ranks, so a band of dispatch levels cannot separate them). rclcpp assigns callbacks to executors by callback group; rclrs has one executor thread.",
     "bucket": "ours-only"
   },
+  "rust:Executor::set_level_sched_context": {
+    "verdict": "extension",
+    "why": "issue 2018 / RFC-0108 As-built -- the registering preemption level's own sched context, lowered from its tier policy: what the level's setup registers binds to it instead of the executor's default, which every level on the core shares, so a level's budget is charged to that level alone. rclcpp and rclrs have neither sched contexts nor preemption levels on one executor. See `rust:Executor::set_registering_level`.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::defer_budget_to_kernel": {
+    "verdict": "extension",
+    "why": "issue 2018 / RFC-0108 As-built -- hand a level's sched-context budget to the kernel that enforces it on the level's thread (NuttX SCHED_SPORADIC, Linux SCHED_DEADLINE), so the executor does not throttle the level a second time: one enforcer per level. No rclcpp/rclrs counterpart (no executor-side budgets). See `rust:Executor::set_level_sched_context`.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::enforces_budget": {
+    "verdict": "extension",
+    "why": "issue 2018 -- whether the executor enforces a sched context's budget (a cooperative Sporadic context not handed to the kernel). See `rust:Executor::defer_budget_to_kernel`.",
+    "bucket": "ours-only"
+  },
   "rust:Executor::registering_level": {
     "verdict": "extension",
     "why": "issue 2020 -- the level that owns what is registered now (`None` until a level runner first calls `set_registering_level`): the `nros` runtime records it per `register_node` component so the component ticks on its own level. See `rust:Executor::set_registering_level`.",
