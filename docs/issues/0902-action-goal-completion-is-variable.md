@@ -5,10 +5,10 @@ title: "action goals complete between 20 % and 90 % of the time on the same buil
 status: open
 type: bug
 area: rmw
-related: [issue-0912, issue-0882, issue-0879, issue-0852, issue-1332, issue-1341, phase-444, phase-455, phase-433, phase-467, phase-474]
+related: [issue-0912, issue-0882, issue-0879, issue-0852, issue-1332, issue-1341, phase-444, phase-455, phase-433, phase-467, phase-474, phase-512]
 ---
 
-**Home: [phase-474](../roadmap/phase-474-safety-island-board-findings.md)** — re-homed 2026-10-13 from phase-433, archived that day, because this is a board run over a direct serial link, which is 474's subject. phase-433 had re-homed it on 2026-10-12 from phase-358, also archived.
+**Home: [phase-512](../roadmap/phase-512-on-hardware-measurements.md)** — H8, moved 2026-10-24 from phase-474 because its open step is a hand run on the MR-CANHUBK344. Before that: re-homed 2026-10-13 from phase-433, archived that day, because this is a board run over a direct serial link, which is 474's subject. phase-433 had re-homed it on 2026-10-12 from phase-358, also archived.
 
 ## Measurement
 
