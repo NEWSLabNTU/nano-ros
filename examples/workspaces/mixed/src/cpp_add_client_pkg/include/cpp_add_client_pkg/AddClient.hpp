@@ -27,6 +27,8 @@ class AddClient {
     int64_t a_ = 0;
     bool in_flight_ = false;
     int waits_ = 0;
+    /// The id of the request in flight; a reply naming another is stale (issue 2033).
+    int64_t seq_ = NROS_CPP_SEQUENCE_ID_UNKNOWN;
 
     void on_tick();
 

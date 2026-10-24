@@ -13,8 +13,14 @@ void AddClient::on_tick() {
     if (in_flight_) {
         uint8_t resp[64];
         size_t rlen = 0;
-        if (nros_cpp_service_client_take_response(client_.bytes, resp, sizeof(resp), &rlen) == 0 &&
-            rlen > 0) {
+        int64_t seq = NROS_CPP_SEQUENCE_ID_UNKNOWN;
+        // Issue 2033 — take the reply WITH the id of the request it answers. A
+        // resent request's predecessor can still answer late; its reply names
+        // the abandoned id and is dropped here instead of printed as this one's.
+        if (nros_cpp_service_client_take_response_seq(client_.bytes, resp, sizeof(resp), &rlen,
+                                                      &seq) == 0 &&
+            rlen > 0 && (seq == seq_ || seq == NROS_CPP_SEQUENCE_ID_UNKNOWN ||
+                         seq_ == NROS_CPP_SEQUENCE_ID_UNKNOWN)) {
             Svc::Response r;
             if (Svc::Response::ffi_deserialize(resp, rlen, &r) == 0) {
                 in_flight_ = false;
@@ -33,7 +39,7 @@ void AddClient::on_tick() {
         uint8_t buf[64];
         size_t written = 0;
         if (Svc::Request::ffi_serialize(&req, buf, sizeof(buf), &written) == 0 &&
-            nros_cpp_service_client_send_request(client_.bytes, buf, written) == 0) {
+            nros_cpp_service_client_send_request_seq(client_.bytes, buf, written, &seq_) == 0) {
             in_flight_ = true;
             waits_ = 0;
         }

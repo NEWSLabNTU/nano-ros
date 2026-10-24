@@ -474,4 +474,132 @@ mod tests {
         assert_eq!(take_matched(&mut c, &mut buf, &mut t).unwrap(), None);
         assert!(t.contains(5), "the pending request is still waiting");
     }
+
+    // ---- issue 2033: the typed `ClientTrait` helpers carry the id too ----
+
+    /// A reply of one `i32`, so a test can tell WHICH request a typed reply
+    /// answered by its value.
+    #[derive(Debug, Clone, PartialEq)]
+    struct Sum(i32);
+    impl nros_core::Serialize for Sum {
+        fn serialize(&self, w: &mut nros_core::CdrWriter) -> Result<(), nros_core::SerError> {
+            w.write_i32(self.0)
+        }
+    }
+    impl nros_core::Deserialize for Sum {
+        fn deserialize(r: &mut nros_core::CdrReader) -> Result<Self, nros_core::DeserError> {
+            Ok(Sum(r.read_i32()?))
+        }
+    }
+    impl nros_core::RosMessage for Sum {
+        const TYPE_NAME: &'static str = "test::srv::dds_::Sum_";
+        const TYPE_HASH: &'static str =
+            "0000000000000000000000000000000000000000000000000000000000000000";
+    }
+    struct SumSrv;
+    impl nros_core::RosService for SumSrv {
+        type Request = Sum;
+        type Reply = Sum;
+        const SERVICE_NAME: &'static str = "test::srv::dds_::Sum_";
+        const SERVICE_HASH: &'static str =
+            "0000000000000000000000000000000000000000000000000000000000000000";
+    }
+
+    /// A client that numbers its requests 1, 2, … and answers from a scripted
+    /// queue of `(value, sequence_id)` replies, each as CDR with a header.
+    struct TypedScripted {
+        next_seq: i64,
+        replies: Vec<(i32, i64)>,
+    }
+    impl ClientTrait for TypedScripted {
+        type Error = TransportError;
+        fn send_request_raw(&mut self, _r: &[u8]) -> Result<i64, TransportError> {
+            self.next_seq += 1;
+            Ok(self.next_seq)
+        }
+        fn take_response_raw(
+            &mut self,
+            buf: &mut [u8],
+        ) -> Result<Option<(usize, i64)>, TransportError> {
+            if self.replies.is_empty() {
+                return Ok(None);
+            }
+            let (v, seq) = self.replies.remove(0);
+            let mut w = nros_core::CdrWriter::new_with_header(buf).unwrap();
+            w.write_i32(v).unwrap();
+            Ok(Some((w.position(), seq)))
+        }
+    }
+
+    #[test]
+    fn typed_send_returns_the_id_the_backend_assigned() {
+        let mut c = TypedScripted {
+            next_seq: 40,
+            replies: Vec::new(),
+        };
+        let mut req = [0u8; 16];
+        assert_eq!(c.send_request::<SumSrv>(&Sum(1), &mut req).unwrap(), 41);
+        assert_eq!(c.send_request::<SumSrv>(&Sum(2), &mut req).unwrap(), 42);
+    }
+
+    #[test]
+    fn typed_take_reports_the_id_of_the_request_a_reply_answers() {
+        let mut c = TypedScripted {
+            next_seq: 0,
+            replies: std::vec![(7, 3)],
+        };
+        let mut buf = [0u8; 16];
+        assert_eq!(
+            c.take_response::<SumSrv>(&mut buf).unwrap(),
+            Some((Sum(7), 3))
+        );
+    }
+
+    /// The defect: a typed caller sends, gives up (timeout), resends, and the
+    /// FIRST request's late reply arrives before the second's. The typed take
+    /// for the resend must drop it and deliver only the resend's own reply.
+    #[test]
+    fn typed_take_for_drops_the_late_reply_of_an_abandoned_request() {
+        let mut c = TypedScripted {
+            next_seq: 0,
+            replies: Vec::new(),
+        };
+        let mut req = [0u8; 16];
+        let stale = c.send_request::<SumSrv>(&Sum(1), &mut req).unwrap();
+        // ...no reply in time; the caller resends.
+        let fresh = c.send_request::<SumSrv>(&Sum(2), &mut req).unwrap();
+        assert_ne!(stale, fresh);
+        c.replies.push((100, stale)); // the abandoned request's late reply
+        c.replies.push((200, fresh));
+        let mut buf = [0u8; 16];
+        assert_eq!(
+            c.take_response_for::<SumSrv>(fresh, &mut buf).unwrap(),
+            Some(Sum(200)),
+            "the resend got the abandoned request's reply"
+        );
+        assert!(c.replies.is_empty());
+    }
+
+    #[test]
+    fn typed_take_for_reports_nothing_when_only_a_stale_reply_arrived() {
+        let mut c = TypedScripted {
+            next_seq: 0,
+            replies: std::vec![(100, 1)],
+        };
+        let mut buf = [0u8; 16];
+        assert_eq!(c.take_response_for::<SumSrv>(2, &mut buf).unwrap(), None);
+    }
+
+    #[test]
+    fn typed_take_for_accepts_an_idless_reply_for_the_request_in_mind() {
+        let mut c = TypedScripted {
+            next_seq: 0,
+            replies: std::vec![(5, SEQUENCE_ID_UNKNOWN)],
+        };
+        let mut buf = [0u8; 16];
+        assert_eq!(
+            c.take_response_for::<SumSrv>(9, &mut buf).unwrap(),
+            Some(Sum(5))
+        );
+    }
 }

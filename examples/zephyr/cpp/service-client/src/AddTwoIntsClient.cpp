@@ -35,15 +35,20 @@ void AddTwoIntsClient::on_tick() {
         req[3] = 0x00;
         write_i64_le(req + 4, a_);
         write_i64_le(req + 12, b_);
-        if (nros_cpp_service_client_send_request(client_.bytes, req, sizeof(req)) == 0) {
+        if (nros_cpp_service_client_send_request_seq(client_.bytes, req, sizeof(req), &seq_) == 0) {
             awaiting_ = true;
         }
         return;
     }
     uint8_t resp[64];
     size_t len = 0;
-    if (nros_cpp_service_client_take_response(client_.bytes, resp, sizeof(resp), &len) == 0 &&
-        len >= 12) {
+    int64_t seq = NROS_CPP_SEQUENCE_ID_UNKNOWN;
+    // Issue 2033 — a reply naming another request than ours is stale: drop it.
+    if (nros_cpp_service_client_take_response_seq(client_.bytes, resp, sizeof(resp), &len, &seq) ==
+            0 &&
+        len >= 12 &&
+        (seq == seq_ || seq == NROS_CPP_SEQUENCE_ID_UNKNOWN ||
+         seq_ == NROS_CPP_SEQUENCE_ID_UNKNOWN)) {
         int64_t sum = read_i64_le(resp + 4);
         std::printf("Result of add_two_ints: %lld\n", static_cast<long long>(sum));
         done_ = true;

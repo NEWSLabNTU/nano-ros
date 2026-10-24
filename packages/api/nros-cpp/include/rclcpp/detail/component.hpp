@@ -304,8 +304,10 @@ inline Result bind_action_server_raw(::rclcpp::Node& node, void* storage, const 
 }
 
 /// Storage a component must own for a raw, poll-style service client (8-aligned,
-/// app lifetime). Send with `nros_cpp_service_client_send_request(bytes, …)`,
-/// poll with `nros_cpp_service_client_take_response(bytes, …)`.
+/// app lifetime). Send with `nros_cpp_service_client_send_request_seq(bytes, …, &seq)`,
+/// poll with `nros_cpp_service_client_take_response_seq(bytes, …, &reply_seq)` and
+/// drop a reply whose `reply_seq` is not the request you are waiting for — after a
+/// resend, the abandoned request can still answer (issue 2033).
 struct ServiceClientStorage {
     alignas(8) uint8_t bytes[NROS_SERVICE_CLIENT_SIZE];
 };

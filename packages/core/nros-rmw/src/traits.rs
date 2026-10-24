@@ -4153,6 +4153,17 @@ pub trait ServiceTrait {
     }
 }
 
+/// Decode a CDR service reply (encapsulation header included) — the typed
+/// half [`ClientTrait::take_response`] and [`ClientTrait::take_response_for`]
+/// share.
+fn decode_reply<S: RosService>(bytes: &[u8]) -> Result<S::Reply, TransportError> {
+    use nros_core::CdrReader;
+
+    let mut reader =
+        CdrReader::new_with_header(bytes).map_err(|_| TransportError::DeserializationError)?;
+    S::Reply::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)
+}
+
 /// Service client trait for sending requests.
 ///
 /// # Threading
@@ -4216,12 +4227,21 @@ pub trait ClientTrait {
 
     /// Send a typed service request without waiting for a reply (non-blocking).
     ///
-    /// Serializes the request into `req_buf` and calls [`send_request_raw`](Self::send_request_raw).
+    /// Serializes the request into `req_buf` and calls
+    /// [`send_request_raw`](Self::send_request_raw), returning the SEQUENCE ID
+    /// the backend assigned — [`crate::SEQUENCE_ID_UNKNOWN`] on a backend that
+    /// cannot assign one. Hand it to
+    /// [`take_response_for`](Self::take_response_for) so this call takes only
+    /// its own reply.
+    ///
+    /// Issue 2033 — this returned `()` after issue 2009, discarding the id the
+    /// raw path had carried since issue 0778, so a typed caller had nothing to
+    /// correlate by.
     fn send_request<S: RosService>(
         &mut self,
         request: &S::Request,
         req_buf: &mut [u8],
-    ) -> Result<(), Self::Error>
+    ) -> Result<i64, Self::Error>
     where
         Self::Error: From<TransportError>,
     {
@@ -4234,29 +4254,59 @@ pub trait ClientTrait {
             .map_err(|_| TransportError::SerializationError)?;
         let req_len = writer.position();
 
-        self.send_request_raw(&req_buf[..req_len]).map(|_seq| ())
+        self.send_request_raw(&req_buf[..req_len])
     }
 
-    /// Poll for a typed reply to the most recently sent request (non-blocking).
+    /// Poll for the next typed reply (non-blocking), WHICHEVER request it
+    /// answers.
     ///
-    /// Calls [`take_response_raw`](Self::take_response_raw) and deserializes if available.
+    /// Returns `Ok(Some((reply, sequence_id)))`: `sequence_id` is the id
+    /// [`send_request`](Self::send_request) returned for the request this
+    /// reply answers, and the caller decides whom it belongs to — upstream's
+    /// `rcl_take_response` request header. A caller with ONE request in mind
+    /// wants [`take_response_for`](Self::take_response_for), which drops the
+    /// replies of requests it abandoned.
+    ///
+    /// Issue 2033 — this used to return the reply alone and was documented as
+    /// "the reply to the most recently sent request", which it never checked:
+    /// after a resend or a timeout, the abandoned request's late reply was
+    /// handed to the new one.
     fn take_response<S: RosService>(
         &mut self,
+        reply_buf: &mut [u8],
+    ) -> Result<Option<(S::Reply, i64)>, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        match self.take_response_raw(reply_buf)? {
+            Some((len, seq)) => Ok(Some((decode_reply::<S>(&reply_buf[..len])?, seq))),
+            None => Ok(None),
+        }
+    }
+
+    /// Poll for the typed reply to the request `sequence_id` names
+    /// (non-blocking), dropping any reply that answers a different one.
+    ///
+    /// `sequence_id` is what [`send_request`](Self::send_request) returned.
+    /// The rule is [`crate::correlation`]'s, the one every other client
+    /// surface applies (issue 2009): a reply is delivered only to the request
+    /// whose id it carries, a stale reply is DROPPED (at most
+    /// [`crate::MAX_STALE_DRAIN_PER_POLL`] per call), and an id-less reply or
+    /// request ([`crate::SEQUENCE_ID_UNKNOWN`]) matches the sole request in
+    /// mind. `Ok(None)` — nothing for this request yet.
+    fn take_response_for<S: RosService>(
+        &mut self,
+        sequence_id: i64,
         reply_buf: &mut [u8],
     ) -> Result<Option<S::Reply>, Self::Error>
     where
         Self::Error: From<TransportError>,
     {
-        use nros_core::CdrReader;
-
-        match self.take_response_raw(reply_buf)? {
-            Some((len, _seq)) => {
-                let mut reader = CdrReader::new_with_header(&reply_buf[..len])
-                    .map_err(|_| TransportError::DeserializationError)?;
-                let reply = S::Reply::deserialize(&mut reader)
-                    .map_err(|_| TransportError::DeserializationError)?;
-                Ok(Some(reply))
-            }
+        let mut pending = crate::RequestCorrelator::<(), 1>::new();
+        // A one-entry table cannot be full on its first insert.
+        let _ = pending.insert(sequence_id, ());
+        match crate::take_correlated(self, reply_buf, &mut pending)? {
+            Some((len, _seq, ())) => Ok(Some(decode_reply::<S>(&reply_buf[..len])?)),
             None => Ok(None),
         }
     }
