@@ -771,6 +771,20 @@ mod transport_tests {
         assert!(e.contains("serial | tcp | udp"), "{e}");
         assert!(e.contains("rmw"), "names the key that DOES take it: {e}");
     }
+
+    /// RFC-0109 D3 — one link vocabulary: every kind an image may name is a
+    /// kind a board's `[board.net] links` may carry.
+    #[test]
+    fn image_transport_kinds_are_board_link_kinds() {
+        use nros_board_common::platform_config::LINK_KINDS;
+        use nros_orchestration_ir::leaf_system::TRANSPORT_KINDS;
+        for k in TRANSPORT_KINDS {
+            assert!(
+                LINK_KINDS.contains(k),
+                "image transport `{k}` is not in LINK_KINDS"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

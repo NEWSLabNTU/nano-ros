@@ -1,0 +1,1 @@
+Every board descriptor states who owns its network devices, `[board.net] stack = "host" | "os" | "board"`, and the link kinds it carries, `links = [...]` (RFC-0109 D2/D3). Both are validated, and a test refuses an in-tree descriptor that omits either.

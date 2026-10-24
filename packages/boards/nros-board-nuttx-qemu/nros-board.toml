@@ -113,6 +113,10 @@ network = "qemu"
 # RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
 # `[image.<id>.net.eth0]`.
 interfaces = { eth0 = "ethernet" }
+# RFC-0109 D2 — the RTOS's own configuration owns the network devices.
+stack = "os"
+# RFC-0109 D3 — the link kinds this board carries.
+links = ["tcp", "udp"]
 
 [board.capabilities]
 heap = true
@@ -263,6 +267,10 @@ network = "qemu"
 # RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
 # `[image.<id>.net.eth0]`.
 interfaces = { eth0 = "ethernet" }
+# RFC-0109 D2 — the RTOS's own configuration owns the network devices.
+stack = "os"
+# RFC-0109 D3 — the link kinds this board carries.
+links = ["tcp", "udp"]
 
 [board.capabilities]
 heap = true

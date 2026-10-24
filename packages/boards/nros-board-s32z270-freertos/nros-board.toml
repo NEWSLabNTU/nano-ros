@@ -57,3 +57,9 @@ threads = true
 # RFC-0048 §6 — CMake toolchain file for `nros setup`'s preset.
 [board.cmake]
 toolchain_file = "cmake/toolchain/arm-freertos-armcr52.cmake"
+
+# RFC-0109 D2 — the board package owns the network devices (nano-ros is the OS).
+[board.net]
+stack = "board"
+# RFC-0109 D3 — the link kinds this board carries.
+links = ["tcp", "udp"]

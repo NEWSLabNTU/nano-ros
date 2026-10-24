@@ -111,3 +111,9 @@ inputs = [
     "CONFIG_POSIX_PRIORITY_SCHEDULING",
     "CONFIG_PREEMPT_ENABLED",
 ]
+
+# RFC-0109 D2 — the RTOS's own configuration owns the network devices.
+[board.net]
+stack = "os"
+# RFC-0109 D3 — the link kinds this board carries.
+links = ["tcp", "udp", "serial", "can", "isotp"]
