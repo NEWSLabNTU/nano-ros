@@ -7676,10 +7676,11 @@ impl<'s> Executor<'s> {
             let data_ptr = (self.arena.as_mut_ptr() as *mut u8).add(meta.offset);
             (meta.drop_fn)(data_ptr);
         }
+        // The entry's binding goes; the CONTEXT's budget state stays. It is
+        // indexed by sched context, not by entry slot, and other entries may
+        // still be bound to it: clearing `sporadic_states[index]` here dropped
+        // the budget of whichever context shared the released slot's number.
         self.sched_context_bindings[index] = super::sched_context::SchedContextId(0);
-        if let Some(st) = self.sporadic_states.get_mut(index) {
-            *st = None;
-        }
         // phase10-B3 -- a released trigger subscription stops starting routes.
         if matches!(kind, EntryKind::Subscription) {
             super::monitor::route_unbind(self.monitor_table, index);
