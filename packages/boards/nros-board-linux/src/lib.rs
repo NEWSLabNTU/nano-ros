@@ -1127,7 +1127,7 @@ fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
     );
 }
 
-/// RFC-0052 / phase-296 W3a, issue 2018 (RFC-0108 As-built) — lower a
+/// RFC-0052 / phase-296 W3a, issue 2018 (RFC-0108 As-built) -- lower a
 /// level's RTOS-agnostic scheduling policy onto the level's OWN scheduling
 /// context (`apply_level_sched_policy`), which what its setup registers binds
 /// to, rather than onto the executor's default, which every level on the core
@@ -1170,7 +1170,7 @@ unsafe extern "C" {
     ) -> i32;
 }
 
-/// Issue 2018 — put the CALLING level thread under `SCHED_DEADLINE` with its
+/// Issue 2018 -- put the CALLING level thread under `SCHED_DEADLINE` with its
 /// tier's budget, period and deadline (`nros-platform-posix`'s
 /// `nros_posix_apply_current_deadline`, shared with the C ABI's level
 /// runner). `true` when the kernel accepted it. Without `CAP_SYS_NICE` the
