@@ -48,6 +48,11 @@ mod node;
 // consumers don't pull heapless / the PAC / the `nros` umbrella.
 #[cfg(feature = "rtic")]
 pub mod rtic;
+// issue 2022 — the tickless idle behind smoltcp's wait loops (LAN9118 RX
+// interrupt + SysTick one-shot). Not for RTIC, which owns the vector table
+// and already wakes its `wfi` on a 1 ms tick.
+#[cfg(all(feature = "ethernet", not(feature = "rtic")))]
+mod tickless;
 // Phase 207.2 — XRCE custom-transport callbacks bound to the CMSDK UART0.
 // Off by default; opt in via `features = ["xrce-transport"]` from an XRCE
 // example (forwards through to `serial`).
