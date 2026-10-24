@@ -78,6 +78,18 @@ impl NodeFlags {
         self.bits[raw >> 6] & (1u64 << (raw & 63)) != 0
     }
 
+    /// The lowest-numbered node whose flag is set, if any.
+    pub fn first(&self) -> Option<NodeKey> {
+        for (word, bits) in self.bits.iter().enumerate() {
+            if *bits != 0 {
+                return Some(NodeKey::new(
+                    (word * 64 + bits.trailing_zeros() as usize) as u8,
+                ));
+            }
+        }
+        None
+    }
+
     /// Set or clear the flag for `node`.
     pub fn set(&mut self, node: NodeKey, on: bool) {
         let raw = node.raw() as usize;

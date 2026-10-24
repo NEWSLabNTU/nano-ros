@@ -800,11 +800,12 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "freertos-an536-pubsub-cpp-cyclone-r2n"),
 
     // ── params_per_node_interop — issue 1268 gave it a second cell ──────
-    // Two zenoh cases and one Cyclone case. Before the Cyclone cell existed this
+    // Three zenoh cases (issue 2023 added the `/parameter_events` one) and one Cyclone case. Before the Cyclone cell existed this
     // binary needed no rows (one cell owns every case); adding it is exactly the
     // moment issue 1191 says the map becomes necessary — otherwise the Cyclone
     // case would be counter-evidence for the zenoh cell and vice versa.
     co("params_per_node_interop", "ros2_param_cli_addresses_each_node_by_its_own_fqn", "native-params-per-node-rust-zenoh"),
+    co("params_per_node_interop", "ros2_topic_echo_sees_each_nodes_parameter_events", "native-params-per-node-rust-zenoh"),
     co("params_per_node_interop", "ros2_param_set_refuses_undeclared_and_off_step",    "native-params-per-node-rust-zenoh"),
     co("params_per_node_interop", "ros2_param_cli_addresses_each_node_on_cyclonedds",  "native-params-per-node-rust-cyclone"),
     co("params_per_node_interop", "xrce_set_parameters_naming_25_declared_lands",      "native-params-25-rust-xrce"),

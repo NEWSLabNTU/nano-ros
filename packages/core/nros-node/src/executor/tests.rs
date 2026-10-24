@@ -15013,6 +15013,38 @@ fn i3_a_thinned_timer_traces_one_tick_in_n() {
     set_trace_sink(None);
 }
 
+// Issue 2023 — the decoder both `/parameter_events` tests read frames with.
+/// `(name, type, integer)` of the one parameter a slot carries.
+#[cfg(feature = "param-services")]
+type Slot = Option<(alloc::string::String, u8, i64)>;
+/// `(stamp_sec, node, [new, changed, deleted])`.
+#[cfg(feature = "param-services")]
+type Decoded = (i32, alloc::string::String, [Slot; 3]);
+
+#[cfg(feature = "param-services")]
+fn decode(bytes: &[u8]) -> Decoded {
+    use nros_core::{CdrReader, Deserialize};
+    use nros_rcl_interfaces::msg::Parameter;
+    let mut r = CdrReader::new(&bytes[4..]);
+    let sec = r.read_i32().unwrap();
+    let _nanosec = r.read_u32().unwrap();
+    let node = alloc::string::String::from(r.read_string().unwrap());
+    let mut slots: [Slot; 3] = [None, None, None];
+    for slot in &mut slots {
+        let n = r.read_sequence_len().unwrap();
+        assert!(n <= 1, "one parameter per event");
+        if n == 1 {
+            let p = Box::new(Parameter::deserialize(&mut r).unwrap());
+            *slot = Some((
+                alloc::string::String::from(p.name.as_str()),
+                p.value.type_,
+                p.value.integer_value,
+            ));
+        }
+    }
+    (sec, node, slots)
+}
+
 /// phase-491 W3 (RFC-0105 D8) — every change on a node that asked for events
 /// is published as ONE `rcl_interfaces/msg/ParameterEvent` carrying one
 /// parameter, in the slot its kind names, with the value the store holds.
@@ -15021,39 +15053,13 @@ fn i3_a_thinned_timer_traces_one_tick_in_n() {
 #[cfg(feature = "param-services")]
 #[test]
 fn parameter_events_publish_each_change_in_its_slot() {
-    use nros_core::{CdrReader, Deserialize};
     use nros_params::ParameterValue;
-    use nros_rcl_interfaces::msg::Parameter;
-
-    /// `(name, type, integer)` of the one parameter a slot carries.
-    type Slot = Option<(alloc::string::String, u8, i64)>;
-    /// `(stamp_sec, node, [new, changed, deleted])`.
-    type Decoded = (i32, alloc::string::String, [Slot; 3]);
-
-    fn decode(bytes: &[u8]) -> Decoded {
-        let mut r = CdrReader::new(&bytes[4..]);
-        let sec = r.read_i32().unwrap();
-        let _nanosec = r.read_u32().unwrap();
-        let node = alloc::string::String::from(r.read_string().unwrap());
-        let mut slots: [Slot; 3] = [None, None, None];
-        for slot in &mut slots {
-            let n = r.read_sequence_len().unwrap();
-            assert!(n <= 1, "one parameter per event");
-            if n == 1 {
-                let p = Box::new(Parameter::deserialize(&mut r).unwrap());
-                *slot = Some((
-                    alloc::string::String::from(p.name.as_str()),
-                    p.value.type_,
-                    p.value.integer_value,
-                ));
-            }
-        }
-        (sec, node, slots)
-    }
 
     let mut executor = executor_with_clock(MockSession::new());
     let _talker = executor.node_builder("talker").build().unwrap();
-    // A declaration made BEFORE events are on is not reported.
+    // Issue 2023 — a declaration made BEFORE events are on is reported by
+    // the node's START-UP event, as rclcpp's (whose publisher predates every
+    // declaration) would report it.
     assert!(executor.declare_parameter("early", ParameterValue::Integer(1)));
     executor
         .enable_parameter_events_on(NodeId::PRIMARY)
@@ -15067,11 +15073,21 @@ fn parameter_events_publish_each_change_in_its_slot() {
             .expect("the publisher exists")
     }
     assert_eq!(publisher(&executor).topic_name(), "/parameter_events");
+    let start_up = publisher(&executor).publish_count();
+    let early = (0..start_up)
+        .filter_map(|i| publisher(&executor).retained(i))
+        .map(|(bytes, len)| decode(&bytes[..len]))
+        .find(|(_, _, slots)| slots[0].as_ref().is_some_and(|s| s.0 == "early"))
+        .expect("the start-up event names `early`");
+    assert_eq!(early.1, "/talker");
+    assert_eq!(early.2[0], Some(("early".into(), 2, 1)));
+    executor.flush_parameter_events();
     assert_eq!(
         publisher(&executor).publish_count(),
-        0,
-        "nothing changed since events went on"
+        start_up,
+        "the start-up event is published once"
     );
+    publisher(&executor).clear_published();
 
     assert!(executor.declare_parameter("rate", ParameterValue::Integer(5)));
     executor.flush_parameter_events();
@@ -15121,6 +15137,110 @@ fn parameter_events_publish_each_change_in_its_slot() {
         Some(("gain".into(), 2, 2)),
         "new-then-set is still NEW, at the latest value"
     );
+}
+
+/// Issue 2023 — `register_parameter_services`, the road the C++ and Rust
+/// surfaces take, brings `/parameter_events` up with the six services: ONE
+/// publisher for every node, each node's START-UP event naming what it holds
+/// (its `use_sim_time` too, under `sim-time`, as upstream's), then one event
+/// per change — and a node that opted out publishes nothing.
+#[cfg(feature = "param-services")]
+#[test]
+fn registering_parameter_services_publishes_parameter_events_for_every_node() {
+    use nros_params::ParameterValue;
+    let mut executor = executor_with_clock(MockSession::new());
+    executor.set_node_identity("alpha", "/");
+    let _alpha = executor.node_builder("alpha").build().unwrap();
+    let beta = executor
+        .node_builder("beta")
+        .namespace("/ns")
+        .build()
+        .unwrap();
+    let gamma = executor.node_builder("gamma").build().unwrap();
+    executor.disable_parameter_events_on(gamma);
+    assert!(executor.declare_parameter_on(beta, "gain", ParameterValue::Integer(3)));
+    assert!(executor.declare_parameter_on(gamma, "quiet", ParameterValue::Integer(0)));
+    executor
+        .register_parameter_services()
+        .expect("mock services register");
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    fn publisher<'a>(executor: &'a Executor<'_>) -> &'a crate::mock::MockPublisher {
+        executor
+            .params
+            .as_ref()
+            .and_then(|p| p.event_publisher.as_ref())
+            .expect("one /parameter_events publisher for the executor")
+    }
+    assert_eq!(publisher(&executor).topic_name(), "/parameter_events");
+    let frames: alloc::vec::Vec<Decoded> = (0..publisher(&executor).publish_count())
+        .filter_map(|i| publisher(&executor).retained(i))
+        .map(|(bytes, len)| decode(&bytes[..len]))
+        .collect();
+    assert!(
+        frames.iter().any(|(_, node, _)| node == "/alpha"),
+        "alpha's start-up event: {frames:?}"
+    );
+    assert!(
+        frames
+            .iter()
+            .any(|(_, node, s)| node == "/ns/beta" && s[0] == Some(("gain".into(), 2, 3))),
+        "beta's start-up event names `gain`: {frames:?}"
+    );
+    assert!(
+        frames.iter().all(|(_, node, _)| node != "/gamma"),
+        "gamma opted out: {frames:?}"
+    );
+
+    publisher(&executor).clear_published();
+    assert_eq!(
+        executor.set_parameter_local_on(beta, "gain", ParameterValue::Integer(4)),
+        nros_params::SetParameterResult::Success
+    );
+    let _ = executor.set_parameter_local_on(gamma, "quiet", ParameterValue::Integer(1));
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        publisher(&executor).publish_count(),
+        1,
+        "gamma's set is not published"
+    );
+    let (bytes, len) = publisher(&executor).last_published().unwrap();
+    let (_, node, slots) = decode(&bytes[..len]);
+    assert_eq!(node, "/ns/beta");
+    assert_eq!(slots[1], Some(("gain".into(), 2, 4)), "a set is CHANGED");
+
+    assert!(executor.undeclare_parameter_on(beta, "gain"));
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let (bytes, len) = publisher(&executor).last_published().unwrap();
+    let (_, _, slots) = decode(&bytes[..len]);
+    assert_eq!(
+        slots[2],
+        Some(("gain".into(), 0, 0)),
+        "an undeclare is DELETED"
+    );
+}
+
+/// Issue 2023 — a node that holds NO parameter still announces itself: one
+/// event with its name and three empty lists.
+#[cfg(all(feature = "param-services", not(feature = "sim-time")))]
+#[test]
+fn a_node_holding_no_parameter_announces_itself() {
+    let mut executor = executor_with_clock(MockSession::new());
+    let _bare = executor.node_builder("bare").build().unwrap();
+    executor
+        .enable_parameter_events_on(NodeId::PRIMARY)
+        .expect("one publisher");
+    executor.flush_parameter_events();
+    let p = executor
+        .params
+        .as_ref()
+        .and_then(|p| p.event_publisher.as_ref())
+        .unwrap();
+    assert_eq!(p.publish_count(), 1);
+    let (bytes, len) = p.last_published().unwrap();
+    let (_, node, slots) = decode(&bytes[..len]);
+    assert_eq!(node, "/bare");
+    assert_eq!(slots, [None, None, None]);
 }
 
 // ===========================================================================

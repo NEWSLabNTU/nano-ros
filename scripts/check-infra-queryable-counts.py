@@ -52,6 +52,16 @@ GROUPS = [
         "LIFECYCLE_SERVICE_PUBLISHERS",
         LIFECYCLE,
     ),
+    # Issue 2023 — the parameter family's ONE `/parameter_events` writer, per
+    # executor. Same reasoning as the lifecycle publisher row: VOLATILE, so no
+    # queryable, but a publisher slot and a liveliness token the entity
+    # inventory and the zenoh liveliness default both mirror.
+    (
+        "ROS parameter-event publisher",
+        "create_param_event_pub",
+        "PARAM_EVENT_PUBLISHERS",
+        PARAMS,
+    ),
 ]
 
 # An RMW backend must NOT restate these: it does not depend on `nros-node` and
@@ -132,7 +142,7 @@ def read(root, rel):
 # reporting that every count agrees.
 MIRROR = re.compile(
     r"^(?:pub )?const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES|ACTION_SERVER_QUERYABLES"
-    r"|ACTION_CLIENT_SERVICE_CLIENTS|LIFECYCLE_SERVICE_PUBLISHERS)"
+    r"|ACTION_CLIENT_SERVICE_CLIENTS|LIFECYCLE_SERVICE_PUBLISHERS|PARAM_EVENT_PUBLISHERS)"
     r": usize = (\d+);",
     re.M,
 )
@@ -338,7 +348,8 @@ def check(root, rmw_dir="packages/rmw"):
 
 def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
            c_cli_action=3, c_inv_param=6, cli_chans=3, c_inv_cli=3,
-           n_lc_pub=1, c_lc_pub=1, c_inv_lc_pub=1, c_shared_lc=5):
+           n_lc_pub=1, c_lc_pub=1, c_inv_lc_pub=1, c_shared_lc=5,
+           n_pe_pub=1, c_pe_pub=1, c_inv_pe_pub=1):
     for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, "packages/rmw/zenoh/x/src/service.rs"):
         os.makedirs(os.path.join(root, os.path.dirname(rel)), exist_ok=True)
     body = "".join(f"        let h{i} = create_param_srv::<T>(\n" for i in range(n_param))
@@ -351,9 +362,16 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
     body += "".join(
         f"        let p{i} = create_lc_pub::<TransitionEvent>(\n" for i in range(n_lc_pub)
     )
+    # Issue 2023 -- the `/parameter_events` creator is a module-level `fn`
+    # taking the executor; same two shapes (definition + call) as above.
+    body += "fn create_param_event_pub(\n"
+    body += "".join(
+        f"        let e{i} = create_param_event_pub(self, node, qos)?;\n" for i in range(n_pe_pub)
+    )
     open(os.path.join(root, SPIN), "w").write(body)
     open(os.path.join(root, PARAMS), "w").write(
-        f"pub const PARAM_SERVICE_QUERYABLES: usize = {c_param};\n")
+        f"pub const PARAM_SERVICE_QUERYABLES: usize = {c_param};\n"
+        f"pub const PARAM_EVENT_PUBLISHERS: usize = {c_pe_pub};\n")
     open(os.path.join(root, LIFECYCLE), "w").write(
         f"pub const LIFECYCLE_SERVICE_QUERYABLES: usize = {c_lc};\n"
         f"pub const LIFECYCLE_SERVICE_PUBLISHERS: usize = {c_lc_pub};\n")
@@ -389,6 +407,7 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
         f"const PARAM_SERVICE_QUERYABLES: usize = {c_inv_param};\n"
         "const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;\n"
         f"const LIFECYCLE_SERVICE_PUBLISHERS: usize = {c_inv_lc_pub};\n"
+        f"const PARAM_EVENT_PUBLISHERS: usize = {c_inv_pe_pub};\n"
         f"const ACTION_CLIENT_SERVICE_CLIENTS: usize = {c_inv_cli};\n")
     # Issue 1743 -- the shared build-script mirror, spelled `pub const`.
     shared = EXTRA_MIRROR_FILES[2]
@@ -437,6 +456,18 @@ def self_test():
         # Issue 1743 -- a `pub const` mirror in the shared library drifted.
         ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 6), 1,
          "the shared nros-sizing-descriptor mirror drifted (a `pub const`)"),
+        # Issue 2023 -- the `/parameter_events` publisher row: a second writer
+        # appears, the constant drifts, the pattern goes blind, a mirror drifts.
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 2), 1,
+         "a second /parameter_events publisher was created and the constant stayed 1"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 2), 1,
+         "PARAM_EVENT_PUBLISHERS drifted to 2 with one creation site"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 0), 1,
+         "the /parameter_events publisher's creation pattern stopped matching"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 6, 3, 3, 1, 1, 1, 5, 1, 1, 2), 1,
+         "the entity inventory's /parameter_events mirror drifted"),
+        ((6, 5, 6, 5, "const PARAM_EVENT_PUBLISHERS: usize = 1;"), 0,
+         "a build-script /parameter_events mirror that agrees"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()

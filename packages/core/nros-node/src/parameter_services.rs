@@ -1285,6 +1285,17 @@ pub use crate::config::PARAM_SERVICE_BUFFER_SIZE;
 /// `check-infra-queryable-counts` holds it to the number of creation sites.
 pub const PARAM_SERVICE_QUERYABLES: usize = 6;
 
+/// Issue 2023 — publishers the parameter family claims: ONE
+/// `/parameter_events` writer per EXECUTOR (not per node — every event names
+/// its node in its own `node` field). VOLATILE (`parameter_events_default`),
+/// so it costs a publisher slot and a liveliness token and NO queryable.
+///
+/// Same feature as the services, so an image without `param-services` pays
+/// nothing. `check-infra-queryable-counts` holds it to the
+/// `create_param_event_pub` creation sites, and the entity inventory and the
+/// zenoh liveliness default mirror it.
+pub const PARAM_EVENT_PUBLISHERS: usize = 1;
+
 /// phase-446 F3 -- whether [`param_service_buffer_bytes`] was derived from the
 /// contract rather than configured.
 pub(crate) const fn param_service_buffer_derived() -> bool {
@@ -1833,6 +1844,13 @@ pub(crate) struct ParamServiceReconcileFailure {
 ///
 /// `value` is the parameter's CURRENT value (`None` for a deletion, which
 /// carries the name with a `NOT_SET` value, as rclcpp's handler reads it).
+///
+/// Issue 2023 — `ParameterEventKind::Announce` (a node's start-up event while
+/// it holds no parameter) fills no slot: three empty lists.
+///
+/// A value that does not fit is REFUSED (`None`), never truncated: a
+/// half-written `Parameter` would be a malformed sample. The caller counts it
+/// and logs it, naming `NROS_PARAM_SERVICE_BUFFER_SIZE`.
 pub(crate) fn encode_parameter_event(
     buf: &mut [u8],
     stamp_ns: u64,

@@ -402,6 +402,11 @@ impl MockPublisher {
         self.published.borrow().back().copied()
     }
 
+    /// The `i`-th retained sample, oldest first (the window holds the last 8).
+    pub fn retained(&self, i: usize) -> Option<MockPublished> {
+        self.published.borrow().iter().nth(i).copied()
+    }
+
     /// Forget every retained sample and reset the count — for a test asserting
     /// about publishes made AFTER some setup step.
     pub fn clear_published(&self) {

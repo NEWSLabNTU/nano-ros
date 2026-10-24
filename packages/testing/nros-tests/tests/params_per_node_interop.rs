@@ -292,6 +292,50 @@ fn ros2_param_cli_addresses_each_node_by_its_own_fqn(zenohd_unique: ZenohRouter)
     );
 }
 
+/// Issue 2023 on the wire: a served RUST node publishes `/parameter_events`
+/// (rclrs's and rclcpp's behaviour), as a stock `ros2 topic echo` reads it — an
+/// accepted `ros2 param set` arrives as an `rcl_interfaces/msg/ParameterEvent`
+/// naming the node it was set on and carrying the new value. Two nodes share
+/// the executor's ONE publisher, so the `node` field is what tells them apart.
+#[rstest]
+fn ros2_topic_echo_sees_each_nodes_parameter_events(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    require_ros2();
+    let locator = zenohd_unique.locator();
+    let image = start_two_node_image(&locator);
+    require_both_nodes_discoverable(&image, &locator);
+
+    let mut events = nros_tests::ros2::Ros2Process::topic_echo_for(
+        "/parameter_events",
+        "rcl_interfaces/msg/ParameterEvent",
+        &locator,
+        DEFAULT_ROS_DISTRO,
+        Duration::from_secs(60),
+    )
+    .expect("start ros2 topic echo /parameter_events");
+    // Discovery of the echo subscriber through the router.
+    std::thread::sleep(Duration::from_secs(5));
+
+    let set_out = param_set(image.beta(), "rate", "22", &locator);
+    assert!(
+        set_out.contains(SET_OK),
+        "setting a declared, in-range parameter should succeed. Output:\n{set_out}"
+    );
+    let echoed = events
+        .wait_for_output_count("integer_value: 22", 1, Duration::from_secs(30))
+        .expect("a ParameterEvent for the accepted set");
+    assert!(
+        echoed.contains(&format!("node: {}", image.beta())),
+        "the event names the node the set landed on, not the executor's first \
+         node (one publisher serves both):\n{echoed}"
+    );
+    assert!(
+        echoed.contains("name: rate"),
+        "the event names the parameter:\n{echoed}"
+    );
+    events.kill();
+}
+
 /// Issues 1151 and 1150 on the wire: a `set` the store must refuse, and a
 /// control showing the refusals are a constraint rather than a broken writer.
 #[rstest]

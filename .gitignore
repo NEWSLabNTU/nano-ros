@@ -132,6 +132,8 @@ nros-sdk.lock
 /target-check-cpp/
 /target-check-cpp-clippy-zenoh/
 /target-check-cpp-cyclone-embedded/
+# Issue 2023 -- nros-cpp with param-services, for parameter_events_runtime.
+/target-check-cpp-param-services/
 
 # Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed
 examples/**/target-*/

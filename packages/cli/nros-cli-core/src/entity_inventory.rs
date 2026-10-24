@@ -1426,6 +1426,14 @@ const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 /// `a_lifecycle_image_pays_one_publisher_and_no_queryable` holds that.
 const LIFECYCLE_SERVICE_PUBLISHERS: usize = 1;
 
+/// MIRROR of `nros_node::parameter_services::PARAM_EVENT_PUBLISHERS`, held the
+/// same way (issue 2023): the parameter family's ONE `/parameter_events`
+/// writer, once per EXECUTOR. VOLATILE, so — exactly as
+/// [`LIFECYCLE_SERVICE_PUBLISHERS`] — a term in
+/// [`DerivedEntityKnobs::max_publishers`] and the liveliness pool and nothing
+/// else.
+const PARAM_EVENT_PUBLISHERS: usize = 1;
+
 /// MIRROR of `nros_node::executor::action::ACTION_CLIENT_SERVICE_CLIENTS`,
 /// held there by `check-infra-queryable-counts`: the three service clients an
 /// action client opens, each of which declares a liveliness token.
@@ -1586,8 +1594,7 @@ impl InfraServices {
 
     /// PUBLISHERS the two families claim at boot — issue 1587.
     ///
-    /// One, `~/transition_event`, when the bringup declares `lifecycle`; the
-    /// parameter family has none. Once per EXECUTOR and not per node, exactly
+    /// One, `~/transition_event`, when the bringup declares `lifecycle`. Once per EXECUTOR and not per node, exactly
     /// as [`LIFECYCLE_SERVICE_QUERYABLES`] is: `register_lifecycle_services`
     /// builds one set under the executor's own FQN, which is why
     /// [`Self::queryables`] multiplies the parameter term by
@@ -1599,12 +1606,22 @@ impl InfraServices {
     /// `crate::rosout`'s publisher is the user's to declare while this one is
     /// not: `/rosout` is an opt-in capability with no feature in the model,
     /// and the lifecycle family has one.
+    ///
+    /// Issue 2023 — plus [`PARAM_EVENT_PUBLISHERS`] when the bringup declares
+    /// `param_services`: every node served that way publishes
+    /// `/parameter_events`, through ONE writer per executor.
     pub fn publishers(self) -> usize {
-        if self.lifecycle {
+        let lifecycle = if self.lifecycle {
             LIFECYCLE_SERVICE_PUBLISHERS
         } else {
             0
-        }
+        };
+        let params = if self.param_services {
+            PARAM_EVENT_PUBLISHERS
+        } else {
+            0
+        };
+        lifecycle + params
     }
 
     /// Either source declaring a family declares it: this is a fact about the
@@ -7936,9 +7953,10 @@ contracts:
         let both = knobs("param_services, lifecycle");
         assert_eq!(
             both.max_liveliness - none.max_liveliness,
-            both.infra_queryables + LIFECYCLE_SERVICE_PUBLISHERS + 1,
+            both.infra_queryables + LIFECYCLE_SERVICE_PUBLISHERS + PARAM_EVENT_PUBLISHERS + 1,
             "one token per runtime server, one for the `~/transition_event`
-             publisher (issue 1587), plus one node name for lifecycle"
+             publisher (issue 1587), one for `/parameter_events` (issue 2023),
+             plus one node name for lifecycle"
         );
         assert_eq!(
             both.infra_queryables,
@@ -7978,6 +7996,41 @@ contracts:
         assert_eq!(
             lifecycle.max_liveliness - none.max_liveliness,
             LIFECYCLE_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_PUBLISHERS + 1
+        );
+    }
+
+    /// Issue 2023 — what `param_services` pays for `/parameter_events`: ONE
+    /// publisher slot and one liveliness token for the whole executor, however
+    /// many nodes carry the family, and NO queryable (the writer is VOLATILE).
+    #[test]
+    fn param_services_pays_one_parameter_events_publisher_and_no_queryable() {
+        let knobs = |features: &str| {
+            EntityInventory::from_model("t", &(infra_model(features)).clone())
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
+        };
+        let none = knobs("");
+        let params = knobs("param_services");
+        assert_eq!(
+            params.max_publishers - none.max_publishers,
+            PARAM_EVENT_PUBLISHERS,
+            "one `/parameter_events` writer per executor"
+        );
+        assert!(
+            params.param_service_nodes > 1,
+            "precondition: several nodes carry the family, yet one writer"
+        );
+        assert_eq!(
+            params.max_queryables - none.max_queryables,
+            PARAM_SERVICE_QUERYABLES * params.param_service_nodes,
+            "the writer claims no queryable"
+        );
+        assert_eq!(
+            params.max_liveliness - none.max_liveliness,
+            PARAM_SERVICE_QUERYABLES * params.param_service_nodes + PARAM_EVENT_PUBLISHERS,
         );
     }
 
