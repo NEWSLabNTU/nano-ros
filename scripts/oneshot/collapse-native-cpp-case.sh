@@ -3,7 +3,7 @@
 # linux/cpp/<case>. C++ side has zenoh + dds today (no xrce dir);
 # the canonical add_subdirectory + -DNROS_RMW glue handles both.
 #
-# Usage: tmp/collapse-native-cpp-case.sh <case>
+# Usage: scripts/oneshot/collapse-native-cpp-case.sh <case>
 set -euo pipefail
 
 case_name="${1:?usage: $0 <case>}"

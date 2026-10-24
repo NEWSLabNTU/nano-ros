@@ -4,7 +4,7 @@
 # the dst Cargo.toml exposes both `rmw-zenoh` + `rmw-dds`; otherwise
 # only `rmw-zenoh`.
 #
-# Usage: tmp/collapse-freertos-rust-case.sh <case>
+# Usage: scripts/oneshot/collapse-freertos-rust-case.sh <case>
 set -euo pipefail
 
 case_name="${1:?usage: $0 <case>}"

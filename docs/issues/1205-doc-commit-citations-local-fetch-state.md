@@ -9,7 +9,7 @@ area: [ci, docs]
 related: [1178, 0359, phase-419, phase-395]
 ---
 
-**Home: [phase-395](../roadmap/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-419, which is archived.
+**Home: none** — stands on its own since 2026-10-24, when [phase-395](../roadmap/archived/phase-395-dev-workflow-migration.md) was archived with every remaining wave either landed or deliberately not shipped. Before that, re-homed 2026-10-12 from phase-419, which is archived.
 
 ## What
 

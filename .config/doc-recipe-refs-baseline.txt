@@ -59,8 +59,6 @@ docs/research/tool-confidence-assessment.md	esp32
 docs/roadmap/book-audit/acc5/SUMMARY.md	esp32
 docs/roadmap/book-audit/acc5/esp32.md	esp32
 docs/roadmap/phase-162-rt-scheduling-harness.md	rt-test
-docs/roadmap/phase-395-dev-workflow-migration.md	ci-l2
-docs/roadmap/phase-395-dev-workflow-migration.md	ci-l4-tier1
 examples/esp32-c3-baremetal/README.md	esp32
 packages/cli/CONTRIBUTING.md	build-build-tools
 packages/cli/CONTRIBUTING.md	build-user-libs

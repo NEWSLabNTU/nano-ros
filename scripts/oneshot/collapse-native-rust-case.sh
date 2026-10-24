@@ -2,7 +2,7 @@
 # Phase 118.B.1 — collapse one linux/rust/<rmw>/<case> sibling into
 # linux/rust/<case>. Idempotent: skips if the target dir already exists.
 #
-# Usage: tmp/collapse-native-rust-case.sh <case>
+# Usage: scripts/oneshot/collapse-native-rust-case.sh <case>
 set -euo pipefail
 
 case_name="${1:?usage: $0 <case>}"

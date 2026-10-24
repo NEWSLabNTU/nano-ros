@@ -1149,7 +1149,7 @@ Explicit exit criteria, so this is falsifiable rather than a one-way door:
 ## Sequencing
 
 The ordered migration, with the work broken out per wave, is
-**[phase 395](../roadmap/phase-395-dev-workflow-migration.md)**. Summary of the
+**[phase 395](../roadmap/archived/phase-395-dev-workflow-migration.md)** (archived 2026-10-24). Summary of the
 order and why each step comes where it does:
 
 Ordered so each step pays for the next.

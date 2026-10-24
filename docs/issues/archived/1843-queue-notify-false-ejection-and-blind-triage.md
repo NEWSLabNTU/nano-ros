@@ -118,7 +118,7 @@ checkout landed: `queue-triage.sh` counted failures per WORKFLOW NAME. Every
   red that made every batch produce a failed `queue` run.
 * [issue 1338](1338-arm-auto-merge-reports-armed-and-never-arms.md) — the
   same shape: a merge-queue signal that reports something that did not happen.
-* [phase-395](../../roadmap/phase-395-dev-workflow-migration.md) introduced
+* [phase-395](../../roadmap/archived/phase-395-dev-workflow-migration.md) introduced
   `queue-notify`;
   [phase-396](../../roadmap/archived/phase-396-merge-queue-throughput-policy.md)
   W4 added the INFRA verdict that fault 2 hid.

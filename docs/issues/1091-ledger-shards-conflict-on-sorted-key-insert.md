@@ -8,7 +8,7 @@ area: tooling, docs
 related: [0883, 0884, 1071, 1072, phase-396, phase-395]
 ---
 
-**Home: [phase-395](../roadmap/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-396, which is archived.
+**Home: none** — stands on its own since 2026-10-24, when [phase-395](../roadmap/archived/phase-395-dev-workflow-migration.md) was archived with every remaining wave either landed or deliberately not shipped. Before that, re-homed 2026-10-12 from phase-396, which is archived.
 
 ## The measurement
 

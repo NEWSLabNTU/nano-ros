@@ -417,10 +417,9 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   → RFC-0023 + [docs/guides/message-generation.md](docs/guides/message-generation.md).
 - Unused vars: `_name` + comment, or `#[allow(dead_code)]` for test struct fields.
 - Reusable tests → `packages/testing/nros-tests/tests/` (Rust) or `tests/` (sh). Temp tests → Bash
-  then promote. Temp files in `$project/tmp/`, not `/tmp`; use Write/Edit not heredoc.
-  **`tmp/` is gitignored for NEW files and holds TEN TRACKED recipes** (`collapse-*.sh`,
-  `migrate-*.py`), which every ignore rule exempts — so `rm -rf tmp` deletes committed
-  files, and has (issue 1524). Delete what you made, never the directory.
+  then promote. Temp files in `$project/tmp/` (gitignored, holds no tracked file), not `/tmp`;
+  use Write/Edit not heredoc. Past one-shot migration recipes live in `scripts/oneshot/` —
+  they sat in `tmp/` until issue 1524, where `rm -rf tmp` deleted them.
 - **A test never SKIPS because something it needs is absent — it FAILS; SCOPE decides what
   runs** (issue 1758). Missing tool, router, SDK, peer, fixture ⇒ `nros_tests::unmet!` (a red,
   `[UNMET PRECONDITION]`), never a pass. The only skip is `lane_skip!` (`[SKIPPED:lane]`),

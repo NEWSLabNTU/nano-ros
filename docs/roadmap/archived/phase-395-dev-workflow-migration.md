@@ -1,5 +1,24 @@
 # Phase 395 — migrating to the multi-agent dev workflow
 
+**Status (2026-10-24). DONE — archived.** Every wave either landed or was
+deliberately not shipped, and none of the rest has a next step:
+
+* **W10 (fixture cache) stays in shadow mode.** The recorder and the key are
+  live code (`nros_tests::fixtures::cache_key`, `fixture-cache-shadow`); there is
+  still no lookup or restore verb, and two of the four input classes
+  (`link-archives`, `env-vars`) are not in the key. Turning it on is a design
+  problem, not a work item — reopen as a new phase if it is wanted.
+* **W16 (tier 1 covers tier 1's platforms) was designed, measured and not
+  shipped.** W19 since made every tier narrow by COORDINATE in the fixture
+  resolver, which was the point of W16's change.
+* **W18's reporting half landed** (`check-skip-budget` separates deselections
+  from unmet preconditions); its structural half was W16's.
+
+Issues: [1524](../../issues/archived/1524-tmp-holds-ignored-scratch-and-tracked-recipes.md)
+resolved on archiving (the tracked `tmp/` recipes moved to `scripts/oneshot/`).
+1091, 1155 and 1205 stay open with no home phase — each is small, independent,
+and not about this phase's design; their `**Home:**` lines say so.
+
 **Status (2026-10-12). Most of it LANDED, nearly all on 2026-08-28** (about
 68 commits cite this phase). The line this replaces said "nothing landed".
 Landed: W0 and W0.5 (measured, then all six red CI jobs root-caused), W1 (the
@@ -14,7 +33,7 @@ and deliberately not shipped. W18 has no commit of its own. The original
 opening line follows.
 
 **Status (2026-08-28). Plan, nothing landed.** The design and its measurements
-live in [multi-agent-ci-workflow.md](../development/multi-agent-ci-workflow.md);
+live in [multi-agent-ci-workflow.md](../../development/multi-agent-ci-workflow.md);
 this is the ordered work to get there. Each wave is independently landable and
 each one pays for the next. Waves 0–3 need no runner, no queue and no new
 service — they are worth doing even if the rest is never adopted.
@@ -96,7 +115,7 @@ not see its own rule. That is the finding, more than the individual fixes.
 
 | job | defect |
 | --- | --- |
-| `pr-checks` | `check-subtree-guard`. **Still failing — my diagnosis was wrong.** I read it as PGID recycling and rewrote the check to require same-pid-AND-same-pgid; it still fails, which PROVES the survivors are genuine. Containerisation and CPU starvation are also ruled out (passes in `ubuntu:22.04`, passes at `--cpus=0.3`). The rewrite made the diagnostic honest and the hypothesis falsifiable, which is how the error surfaced. Tracked as [issue 0853](../issues/archived/0853-subtree-guard-fails-only-on-github-runner.md); needs the CI image to diagnose. |
+| `pr-checks` | `check-subtree-guard`. **Still failing — my diagnosis was wrong.** I read it as PGID recycling and rewrote the check to require same-pid-AND-same-pgid; it still fails, which PROVES the survivors are genuine. Containerisation and CPU starvation are also ruled out (passes in `ubuntu:22.04`, passes at `--cpus=0.3`). The rewrite made the diagnostic honest and the hypothesis falsifiable, which is how the error surfaced. Tracked as [issue 0853](../../issues/archived/0853-subtree-guard-fails-only-on-github-runner.md); needs the CI image to diagnose. |
 | `host-tests` | `just zenohd setup` built the VENDORED router, deleted by RFC-0075 / phase-362. `zenohd` takes a LOCATOR, so `setup` was one — the step could never work. |
 | nightly `qemu` | ran `test-wcet`, which deliberately refuses under emulation (no DWT counter). Red by construction. Also silently narrowed: `build-all`/`build-examples` did not exist for this module alone, so the `\|\|` chain fell through to the lightest build. |
 | nightly `nuttx`, `threadx_linux` | a nextest `-E` filter cannot survive just's UNQUOTED variadic interpolation — `args=(-E test(Nuttx))` is a bash syntax error. The only two callers with parens; exactly the two failures. |
@@ -175,8 +194,8 @@ change rather than a fixed set. `row_coord()`, `NROS_TEST_COORDS` and
 
 `pr.yml` running L0/L1/L2 on `ubuntu-22.04`, replacing the PR half of
 `pr-checks.yml`. Thin `just` callers per
-[ci-workflow-reorg.md](../development/ci-workflow-reorg.md); fresh-clone
-assumptions per [ci-conventions.md](../development/ci-conventions.md).
+[ci-workflow-reorg.md](../../development/ci-workflow-reorg.md); fresh-clone
+assumptions per [ci-conventions.md](../../development/ci-conventions.md).
 
 Path filters so an express change (docs, an index row) runs L0 and nothing else.
 `pr-checks.yml` already has a `changes` job to model this on.
@@ -895,11 +914,11 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0895](../issues/archived/0895-format-walks-unbuilt-colcon-workspace-leaves.md) | `just format` is red or green depending on whether a migrated colcon workspace has been BUILT |
-| [#0925](../issues/archived/0925-box-sync-copies-generated-manifests.md) | `ros2-box-sync.sh` copies the GENERATED workspace manifests, so the box and the host disagree |
-| [#0957](../issues/archived/0957-format-blocked-by-unexcluded-workspace-leaf.md) | **RESOLVED 2026-10-12** (`f24e9c519f`) — `just format` failed whole-tree because a workspace leaf was in neither the root members nor the excludes; the root now excludes the whole `examples/workspaces` prefix |
-| [#0986](../issues/archived/0986-pre-push-hook-corrupts-the-repo-it-guards.md) | **CLOSED 2026-09-06** — the pre-push hook wrote into the repository it was guarding. One clearing helper (`nros_clear_inherited_git_env`, list taken from `git rev-parse --local-env-vars`) replaces four divergent hand-written `unset`s |
-| [#0988](../issues/archived/0988-hook-scripts-never-exercised-under-a-hook-environment.md) | **CLOSED 2026-09-06** — no gate ran a hook the way git runs it. `check-hook-repo-side-effects` now runs the hook and every `git init`-ing script under both hook environments against a victim repo compared byte for byte |
+| [#0895](../../issues/archived/0895-format-walks-unbuilt-colcon-workspace-leaves.md) | `just format` is red or green depending on whether a migrated colcon workspace has been BUILT |
+| [#0925](../../issues/archived/0925-box-sync-copies-generated-manifests.md) | `ros2-box-sync.sh` copies the GENERATED workspace manifests, so the box and the host disagree |
+| [#0957](../../issues/archived/0957-format-blocked-by-unexcluded-workspace-leaf.md) | **RESOLVED 2026-10-12** (`f24e9c519f`) — `just format` failed whole-tree because a workspace leaf was in neither the root members nor the excludes; the root now excludes the whole `examples/workspaces` prefix |
+| [#0986](../../issues/archived/0986-pre-push-hook-corrupts-the-repo-it-guards.md) | **CLOSED 2026-09-06** — the pre-push hook wrote into the repository it was guarding. One clearing helper (`nros_clear_inherited_git_env`, list taken from `git rev-parse --local-env-vars`) replaces four divergent hand-written `unset`s |
+| [#0988](../../issues/archived/0988-hook-scripts-never-exercised-under-a-hook-environment.md) | **CLOSED 2026-09-06** — no gate ran a hook the way git runs it. `check-hook-repo-side-effects` now runs the hook and every `git init`-ing script under both hook environments against a victim repo compared byte for byte |
 
 ## Issues homed here (survey 2026-09-11)
 
@@ -910,8 +929,8 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0854](../issues/archived/0854-action-raw-goal-flaky-under-load.md) | `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo. W5 names it as quarantine entry #1 — a quarantine entry with no owner and no expiry is a permanent one |
-| [#1053](../issues/archived/1053-rfc-ids-have-no-reservation.md) | RFC ids have no reservation, so two sessions both wrote 0087 and two more wrote 0089. W1 already solved this race for issues and phases; the third series is the same fix, not a new one |
+| [#0854](../../issues/archived/0854-action-raw-goal-flaky-under-load.md) | `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo. W5 names it as quarantine entry #1 — a quarantine entry with no owner and no expiry is a permanent one |
+| [#1053](../../issues/archived/1053-rfc-ids-have-no-reservation.md) | RFC ids have no reservation, so two sessions both wrote 0087 and two more wrote 0089. W1 already solved this race for issues and phases; the third series is the same fix, not a new one |
 
 ## Issues re-homed here (2026-10-12)
 
@@ -920,11 +939,11 @@ about the dev and CI workflow this phase owns.
 
 | issue | from | why it belongs here |
 | --- | --- | --- |
-| [#0872](../issues/archived/0872-pr-arm-example-check-needs-nros-sync.md) | phase-396 | the PR/nightly example-check arm still fails on missing generated message bindings, so the lane cannot finish |
-| [#1091](../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md) | phase-396 | the api-parity ledger is still sorted shards that conflict on insert, the last of #1072's shared-append class |
-| [#1205](../issues/1205-doc-commit-citations-local-fetch-state.md) | phase-419 | `check-doc-commit-citations` answers "in my object store", not "in this history" |
-| [#0996](../issues/archived/0996-ci-workflow-audit-tier-promises.md) | phase-413 | the CI workflow audit's findings that remain after phase-413's waves landed |
-| [#1155](../issues/1155-arch-flags-tests-in-no-lane.md) | phase-413 | `nros-board-common`'s `arch_flags` tests run in no lane |
+| [#0872](../../issues/archived/0872-pr-arm-example-check-needs-nros-sync.md) | phase-396 | the PR/nightly example-check arm still fails on missing generated message bindings, so the lane cannot finish |
+| [#1091](../../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md) | phase-396 | the api-parity ledger is still sorted shards that conflict on insert, the last of #1072's shared-append class |
+| [#1205](../../issues/1205-doc-commit-citations-local-fetch-state.md) | phase-419 | `check-doc-commit-citations` answers "in my object store", not "in this history" |
+| [#0996](../../issues/archived/0996-ci-workflow-audit-tier-promises.md) | phase-413 | the CI workflow audit's findings that remain after phase-413's waves landed |
+| [#1155](../../issues/1155-arch-flags-tests-in-no-lane.md) | phase-413 | `nros-board-common`'s `arch_flags` tests run in no lane |
 
 ## Open issues that name this phase
 
@@ -932,7 +951,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1177](../issues/archived/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — RESOLVED 2026-10-23 (Option B: the no-alloc nros-c rows run in `compile-smoke`). `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
+- [issue 1177](../../issues/archived/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) — RESOLVED 2026-10-23 (Option B: the no-alloc nros-c rows run in `compile-smoke`). `check::workspace-features` gates no merge, so its reds are found by embedded consumers -- two so far, and the tier i …
 
 ## Issues homed here (2026-10-17)
 
@@ -940,4 +959,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1524](../issues/1524-tmp-holds-ignored-scratch-and-tracked-recipes.md) | `tmp/` is both ignored scratch and tracked recipes, which is a hazard in the workflow instructions every session follows. |
+| [#1524](../../issues/archived/1524-tmp-holds-ignored-scratch-and-tracked-recipes.md) | **RESOLVED 2026-10-24** (recipes moved to `scripts/oneshot/`) — `tmp/` is both ignored scratch and tracked recipes, which is a hazard in the workflow instructions every session follows. |
