@@ -1230,7 +1230,14 @@ jobs:
           source ./activate.sh
           just build tier2-nightly
 
+      # Issue 1991 — the panic text goes into the job log as well as the junit
+      # below, so `gh run view --log` names a red without an artifact download.
+      # `test-all` honours this knob and defaults it to `never`; the live-peer
+      # lane sets `final` for the same reason. A `lane_skip!` is a panic too, so
+      # its one-line reason prints beside the real failures.
       - name: just ci matrix-nightly
+        env:
+          NROS_TEST_FAILURE_OUTPUT: final
         run: |
           source ./activate.sh
           just ci matrix-nightly
