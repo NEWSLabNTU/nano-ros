@@ -757,6 +757,16 @@
     "why": "phase-509 P9b item 4 / RFC-0108 \"As built in P9b\" -- the callbacks registered from now on belong to preemption level `level`: a level runner sets each level up in turn on the core's ONE executor, and each level's worker then runs exactly what its setup registered (authored tiers carry no ranks, so a band of dispatch levels cannot separate them). rclcpp assigns callbacks to executors by callback group; rclrs has one executor thread.",
     "bucket": "ours-only"
   },
+  "rust:Executor::registering_level": {
+    "verdict": "extension",
+    "why": "issue 2020 -- the level that owns what is registered now (`None` until a level runner first calls `set_registering_level`): the `nros` runtime records it per `register_node` component so the component ticks on its own level. See `rust:Executor::set_registering_level`.",
+    "bucket": "ours-only"
+  },
+  "rust:Executor::pass_ticks_owner": {
+    "verdict": "extension",
+    "why": "issue 2020 / RFC-0108 \"As built in P10\" -- the one rule for which pass ticks a component: on a level image a band pass ticks only its level's components and the executor's own pass the boot level's; otherwise the executor's own pass ticks every component. Shared by the executor's enrolled ticks and the `nros` runtime's `run_ticks_for`. No rclcpp/rclrs counterpart -- neither has preemption levels on one executor. See `rust:Executor::set_registering_level`.",
+    "bucket": "ours-only"
+  },
   "rust:Executor::*violation*": {
     "verdict": "extension",
     "why": "drain the contract violations the monitors recorded (`drain_violations`), count the ones dropped when the fixed buffer overflowed (`violations_dropped`), and gate reporting (`set_report_violations`). The bounded buffer plus an explicit dropped count is the no-allocator shape: a device cannot grow a violation log, and silently losing entries would make the monitor lie. rclcpp raises QoS events through callbacks instead.",
