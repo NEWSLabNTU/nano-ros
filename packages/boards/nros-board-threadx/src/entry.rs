@@ -362,8 +362,9 @@ fn start_pool_peak_reporter<B: BoardPrint>() {
 // ============================================================================
 // Phase 297 W4 (RFC-0053) — ThreadX multi-tier `run_tiers`.
 //
-// One `Executor` per tier over ONE shared RMW session, mirroring the FreeRTOS
-// `run_tiers_entry`. The boot tier (`tiers[0]` — the numerically-largest =
+// phase-509 P10 (RFC-0108 "As built in P9b"): each tier is one LEVEL over the
+// core's ONE executor (`nros::levels::LevelCore`), locked by the port's
+// recursive TX_INHERIT mutex with `tx_thread_identify` as the thread id. The boot tier (`tiers[0]` — the numerically-largest =
 // LOWEST ThreadX priority; the sort does not invert per RTOS direction,
 // issue 0251) runs on the
 // `tx_application_define` app thread; each remaining tier is spawned via the
@@ -386,20 +387,48 @@ struct TiersContext<C, F> {
     setup: F,
 }
 
-/// Byte-pool context handed to each spawned (non-boot) tier thread. Allocated
-/// with [`nros_threadx_alloc`], read + freed by [`tier_task_entry`].
-struct TierTaskCtx<F> {
-    session: ::nros::SessionHandle,
+/// Byte-pool context handed to each spawned (non-boot) level thread.
+/// Allocated with [`nros_threadx_alloc`], read + freed by [`level_task_entry`].
+struct LevelTaskCtx<F> {
+    core: ::nros::levels::LevelCore,
     tier: TierSpec<'static>,
-    /// Tiers still to spawn AFTER this one — the chained-spawn tail (#144).
+    /// Levels still to spawn AFTER this one — the chained-spawn tail (#144).
     rest: &'static [TierSpec<'static>],
-    /// issue 1571 — this tier's executor backing: one slot of the entry's
-    /// `.bss` `TierExecutorBacking`, never the byte pool.
-    slot: &'static mut ::nros::TierExecutorBackingSlot,
-    /// The slots `rest` will take, one each, handed down the chain with it.
-    rest_backing: &'static mut [::nros::TierExecutorBackingSlot],
+    /// The whole table, which the levels are counted over.
+    all: &'static [TierSpec<'static>],
     setup: F,
 }
+
+/// The level of `remaining[0]` among `all`: its urgency order, ThreadX's
+/// smaller-is-urgent.
+fn level_of_suffix(all: &[TierSpec<'_>], remaining: &[TierSpec<'_>]) -> u8 {
+    ::nros::tier_level_by(
+        all.len(),
+        all.len().saturating_sub(remaining.len()),
+        true,
+        |i| all[i].priority,
+    )
+    .unwrap_or(0)
+}
+
+unsafe extern "C" {
+    fn nros_threadx_exec_lock_size() -> usize;
+    fn nros_threadx_thread_id() -> usize;
+    fn nros_platform_mutex_rec_init(m: *mut c_void) -> i8;
+    fn nros_platform_mutex_rec_lock(m: *mut c_void) -> i8;
+    fn nros_platform_mutex_rec_unlock(m: *mut c_void) -> i8;
+}
+
+unsafe extern "C" fn exec_thread_id() -> usize {
+    unsafe { nros_threadx_thread_id() }
+}
+
+/// The core's executor lock, one per image: room for a `TX_MUTEX`, whose real
+/// size is checked at boot.
+struct ExecMutex(core::cell::UnsafeCell<[u64; 32]>);
+// SAFETY: handed to the kernel once, at boot, before any level thread exists.
+unsafe impl Sync for ExecMutex {}
+static EXEC_MUTEX: ExecMutex = ExecMutex(core::cell::UnsafeCell::new([0; 32]));
 
 /// Lower a `TierSpec` onto the executor runtime: the active-groups filter + the
 /// common-backend `apply_tier_sched_policy` (W1). Shared by the boot tier and
@@ -451,14 +480,14 @@ fn apply_tier_core_exclude<B: BoardPrint>(tier: &TierSpec<'static>) {
     }
 }
 
-/// issue #144 — chained tier spawn. Spawns exactly ONE ThreadX thread for
+/// issue #144 — chained level spawn. Spawns exactly ONE ThreadX thread for
 /// `remaining[0]`, handing it `remaining[1..]` as its own `rest` so the chain
-/// continues once that tier's setup completes. Empty `remaining` → `Ok`.
-/// `Err(())` on ctx-alloc or spawn failure (the caller decides fatality).
-fn spawn_next_tier<B, C, F, E>(
-    session: ::nros::SessionHandle,
+/// continues once that level's setup completes. Empty `remaining` → `Ok`.
+/// `Err(())` on ctx-alloc or spawn failure; the caller fails the boot.
+fn spawn_next_level<B, C, F, E>(
+    core: ::nros::levels::LevelCore,
+    all: &'static [TierSpec<'static>],
     remaining: &'static [TierSpec<'static>],
-    backing: &'static mut [::nros::TierExecutorBackingSlot],
     setup: F,
 ) -> core::result::Result<(), ()>
 where
@@ -470,30 +499,20 @@ where
     let Some((tier, rest)) = remaining.split_first() else {
         return Ok(());
     };
-    // issue 1571 — `run_tiers_entry` checked the block covers every spawned
-    // tier before the kernel started, so a missing slot is a broken chain.
-    let Some((slot, rest_backing)) = backing.split_first_mut() else {
-        B::println(format_args!(
-            "nros: no executor backing slot left for tier `{}` (issue 1571)",
-            tier.name
-        ));
-        return Err(());
-    };
-    let size = core::mem::size_of::<TierTaskCtx<F>>();
-    let ptr = unsafe { nros_threadx_alloc(size as core::ffi::c_ulong) as *mut TierTaskCtx<F> };
+    let size = core::mem::size_of::<LevelTaskCtx<F>>();
+    let ptr = unsafe { nros_threadx_alloc(size as core::ffi::c_ulong) as *mut LevelTaskCtx<F> };
     if ptr.is_null() {
-        B::println(format_args!("nros: tier `{}` ctx alloc failed", tier.name));
+        B::println(format_args!("nros: level `{}` ctx alloc failed", tier.name));
         return Err(());
     }
     unsafe {
         core::ptr::write(
             ptr,
-            TierTaskCtx::<F> {
-                session,
+            LevelTaskCtx::<F> {
+                core,
                 tier: *tier,
                 rest,
-                slot,
-                rest_backing,
+                all,
                 setup,
             },
         );
@@ -509,8 +528,8 @@ where
     let time_slice_us = tier.time_slice_us.unwrap_or(0) as core::ffi::c_ulong;
     let rc = unsafe {
         nros_threadx_create_task(
-            c"nros_tier".as_ptr().cast(),
-            tier_task_entry::<B, C, F, E>,
+            c"nros_level".as_ptr().cast(),
+            level_task_entry::<B, C, F, E>,
             ptr as *mut c_void,
             stack_bytes,
             prio,
@@ -519,13 +538,12 @@ where
         )
     };
     if rc != 0 {
-        B::println(format_args!("nros: failed to spawn tier `{}`", tier.name));
+        B::println(format_args!("nros: failed to spawn level `{}`", tier.name));
         unsafe { nros_threadx_free(ptr as *mut c_void) };
         return Err(());
     }
     if tier.preempt_threshold.is_some() {
-        // phase-296 W5.10 — non_preempt_scope trace marker: tx_thread_create
-        // applied the threshold at creation (rc == 0). Literal mirrors
+        // phase-296 W5.10 — non_preempt_scope trace marker. Literal mirrors
         // `nros_tests::output::THREADX_PREEMPT_MARKER`.
         B::println(format_args!(
             "nros: preempt threshold set tier=`{}` {}",
@@ -533,9 +551,7 @@ where
         ));
     }
     if let Some(ts) = tier.time_slice_us {
-        // phase-296 #0266 — time-slice trace marker: tx_thread_create applied
-        // the round-robin slice at creation (rc == 0; ThreadX honors a
-        // per-thread slice unconditionally). Literal mirrors
+        // phase-296 #0266 — literal mirrors
         // `nros_tests::output::THREADX_TIME_SLICE_MARKER`.
         B::println(format_args!(
             "nros: time slice set tier=`{}` {}us",
@@ -545,86 +561,83 @@ where
     Ok(())
 }
 
-/// Spawned-tier thread body, reached through the shim's slot-table trampoline
-/// (pointer-width `input` — NEVER ThreadX ULONG, which is 32-bit on the
-/// x86_64 linux port): `input` is
-/// the [`TierTaskCtx`] pointer (from [`spawn_next_tier`]). Opens an `Executor`
-/// over the SHARED session, applies this tier's groups + sched policy,
-/// registers (off-tier callbacks gated out), chain-spawns the next tier once
-/// its own setup returns (#144), then spins forever at the tier's period.
+/// Spawned-level thread body, reached through the shim's slot-table
+/// trampoline (pointer-width `input` — NEVER ThreadX ULONG, which is 32-bit
+/// on the x86_64 linux port). A WORKER over the core's one executor: it opens
+/// its level, runs the image's setup on the shared runtime with its groups
+/// active (what registers is this level's), chain-spawns the next level once
+/// its own setup returns (#144), then loops on its band's passes. A level
+/// that does not open, whose setup fails or whose successor cannot be spawned
+/// fails the boot.
 ///
 /// # Safety
-/// `input` must be a `nros_threadx_alloc`-allocated `TierTaskCtx<F>` from
-/// [`spawn_next_tier`]; this thread consumes + frees it.
-unsafe extern "C" fn tier_task_entry<B, C, F, E>(input: *mut c_void)
+/// `input` must be a `nros_threadx_alloc`-allocated `LevelTaskCtx<F>` from
+/// [`spawn_next_level`]; this thread consumes + frees it.
+unsafe extern "C" fn level_task_entry<B, C, F, E>(input: *mut c_void)
 where
     B: BoardPrint + BoardExit,
     C: ThreadxConfig,
     F: Fn(&mut RuntimeCtx<'_>) -> core::result::Result<(), E> + Copy,
     E: core::fmt::Debug,
 {
-    let arg = input as *mut TierTaskCtx<F>;
-    let TierTaskCtx {
-        session,
+    let arg = input as *mut LevelTaskCtx<F>;
+    let LevelTaskCtx {
+        core,
         tier,
         rest,
-        slot,
-        rest_backing,
+        all,
         setup,
     } = unsafe { core::ptr::read(arg) };
     unsafe { nros_threadx_free(arg as *mut c_void) };
     B::println(format_args!("nros: tier `{}` thread up", tier.name));
-
-    // SAFETY: the boot thread owns the session for the firmware lifetime (its
-    // spin loop never returns), so the handle stays valid. issue 1571 — the
-    // backing is this tier's `.bss` slot, not a leaked `Box` on the byte pool.
-    let executor = unsafe { ::nros::Executor::open_with_session_handle_slot(session, slot) };
-    let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
-    apply_tier(&mut crt, &tier);
     apply_tier_core_exclude::<B>(&tier);
-    {
-        let mut runtime = RuntimeCtx::with_runtime(&mut crt);
-        if let Err(e) = (setup)(&mut runtime) {
+    // This level's row is the one before `rest` in `all`.
+    let level = level_of_suffix(all, &all[all.len().saturating_sub(rest.len() + 1)..]);
+    // SAFETY: once, on this level's own thread.
+    let worker = match unsafe { core.open_level(level) } {
+        Ok(w) => w,
+        Err(e) => {
             B::println(format_args!(
-                "nros: tier `{}` setup failed: {:?} — {} downstream tier(s) will NOT start",
-                tier.name,
-                e,
-                rest.len()
+                "nros: level `{}` did not open ({:?}): failing the boot",
+                tier.name, e
             ));
             B::exit_failure();
         }
-    }
-    // #144 — setup done, so bringing up the next tier can no longer race our
-    // declares. Mint a fresh handle off this executor (the boot handle was
-    // consumed above). A DOWNSTREAM spawn failure must not stop this tier
-    // spinning, so warn + continue.
-    let next_session = crt.executor_mut().session_handle();
-    if spawn_next_tier::<B, C, F, E>(next_session, rest, rest_backing, setup).is_err() {
+    };
+    // SAFETY: the runtime reference lives inside the closure only.
+    let rc = unsafe {
+        core.with_runtime(|crt| {
+            let _ = crt.executor_mut().set_active_groups(tier.groups);
+            let mut runtime = RuntimeCtx::with_runtime(crt);
+            (setup)(&mut runtime)
+        })
+    };
+    if let Err(e) = rc {
         B::println(format_args!(
-            "nros: tier `{}` failed to spawn next tier; continuing",
+            "nros: level `{}` setup failed: {:?}: failing the boot",
+            tier.name, e
+        ));
+        B::exit_failure();
+    }
+    if spawn_next_level::<B, C, F, E>(core, all, rest, setup).is_err() {
+        B::println(format_args!(
+            "nros: level `{}` could not spawn the next level: failing the boot",
             tier.name
         ));
+        B::exit_failure();
     }
-    let period_ms = (tier.spin_period_us / 1000).max(1) as u32;
+    let period_ms = (tier.spin_period_us / 1000).max(1);
     B::println(format_args!(
         "nros: tier `{}` setup complete — spinning at {} ms",
         tier.name, period_ms
     ));
-    // issue 0636 option 3 — every iteration reaches a scheduling point. The
-    // executor's own wait is SKIPPED whenever a wake already fired, so under
-    // sustained traffic this loop would otherwise never block, and a thread
-    // that never blocks never lets a lower-priority tier run. Costs nothing
-    // while the spins do block.
+    let period = core::time::Duration::from_millis(period_ms);
+    // issue 0636 option 3 — every iteration reaches a scheduling point.
     let mut gap = ::nros_platform::TierSpinGap::new(tier.spin_period_us);
     loop {
         let iter = gap.mark();
-        if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
-            B::println(format_args!(
-                "nros: tier `{}` spin error: {:?}",
-                tier.name, err
-            ));
-            B::exit_failure();
-        }
+        // SAFETY: `worker` is this thread's, from `open_level`.
+        unsafe { core.spin_level_once(worker, period) };
         gap.after_spin(iter);
     }
 }
@@ -727,63 +740,96 @@ where
     }
     apply_tier(&mut crt, boot_tier);
     apply_tier_core_exclude::<B>(boot_tier);
-    // phase-296 #0266 — the boot tier self-applies its round-robin time slice
-    // (the boot thread was created with TX_NO_TIME_SLICE; change it in place).
     if let Some(ts) = boot_tier.time_slice_us {
         if unsafe { nros_threadx_apply_current_time_slice(ts as core::ffi::c_ulong) } == 1 {
-            // Literal mirrors `nros_tests::output::THREADX_TIME_SLICE_MARKER`.
             B::println(format_args!(
                 "nros: time slice set tier=`{}` {}us",
                 boot_tier.name, ts
             ));
         }
     }
+    // phase-509 P10 -- the core's level runtime: the port's recursive
+    // TX_INHERIT mutex as the executor's lock, before any second thread can
+    // reach it (one level needs none).
+    if tiers.len() > ::nros::MAX_LEVELS {
+        B::println(format_args!(
+            "nros: {} tiers is past the {} levels a core holds",
+            tiers.len(),
+            ::nros::MAX_LEVELS
+        ));
+        B::exit_failure();
+    }
+    let mutex = EXEC_MUTEX.0.get() as *mut c_void;
+    if tiers.len() > 1
+        && (unsafe { nros_threadx_exec_lock_size() } > core::mem::size_of::<[u64; 32]>()
+            || unsafe { nros_platform_mutex_rec_init(mutex) } != 0)
     {
-        let mut runtime = RuntimeCtx::with_runtime(&mut crt);
-        if let Err(e) = setup(&mut runtime) {
-            B::println(format_args!("Application error (boot tier): {:?}", e));
+        B::println(format_args!(
+            "nros: threadx run_levels: the executor lock was not installed; refused"
+        ));
+        B::exit_failure();
+    }
+    let n_levels = u8::try_from(tiers.len()).unwrap_or(u8::MAX);
+    // SAFETY: no second thread exists yet; the mutex is a static the kernel
+    // initialised above; `tx_thread_identify` names the calling thread.
+    let core = match unsafe {
+        ::nros::levels::LevelCore::new(
+            crt,
+            n_levels,
+            level_of_suffix(tiers, tiers),
+            mutex,
+            nros_platform_mutex_rec_lock,
+            nros_platform_mutex_rec_unlock,
+            exec_thread_id,
+        )
+    } {
+        Ok(c) => c,
+        Err(e) => {
+            B::println(format_args!(
+                "nros: threadx run_levels: the level runtime refused: {:?}",
+                e
+            ));
             B::exit_failure();
         }
+    };
+    // SAFETY: the runtime reference lives inside the closure only.
+    let rc = unsafe {
+        core.with_runtime(|crt| {
+            let mut runtime = RuntimeCtx::with_runtime(crt);
+            setup(&mut runtime)
+        })
+    };
+    if let Err(e) = rc {
+        B::println(format_args!("Application error (boot tier): {:?}", e));
+        B::exit_failure();
     }
+    // The boot level's executor backing is the session's own; one executor
+    // serves every level, so the spawned tiers' slots go unused.
+    let _ = tier_backing;
 
-    // Chain-spawn the remaining tiers off this executor's session.
-    if spawn_next_tier::<B, C, F, E>(
-        crt.executor_mut().session_handle(),
-        &tiers[1..],
-        tier_backing,
-        setup,
-    )
-    .is_err()
-    {
+    if spawn_next_level::<B, C, F, E>(core, tiers, &tiers[1..], setup).is_err() {
         B::exit_failure();
     }
 
     B::println(format_args!(
+        "nros: multi-level run — {} level(s) over one executor",
+        tiers.len()
+    ));
+    B::println(format_args!(
         "Multi-tier setup complete — entering boot-tier spin loop."
     ));
-    let period_ms = (boot_tier.spin_period_us / 1000).max(1) as u32;
-    // issue 0636 option 3 — every iteration reaches a scheduling point. The
-    // executor's own wait is SKIPPED whenever a wake already fired, so under
-    // sustained traffic this loop would otherwise never block, and a thread
-    // that never blocks never lets a lower-priority tier run. Costs nothing
-    // while the spins do block.
+    let period = core::time::Duration::from_millis((boot_tier.spin_period_us / 1000).max(1));
     let mut gap = ::nros_platform::TierSpinGap::new(boot_tier.spin_period_us);
-    // A bounded run ends here, on the boot tier: exiting the process ends the
-    // spawned tiers with it.
     let deadline = SpinDeadline::from_ms(spin_ms);
     loop {
         let iter = gap.mark();
-        if let Err(err) = ::nros_platform::NodeDispatchRuntime::spin_once(&mut crt, period_ms) {
-            B::println(format_args!("spin_once error: {:?}", err));
-            B::exit_failure();
-        }
+        // SAFETY: this is the boot level's thread.
+        unsafe { core.spin_boot_once(period) };
         gap.after_spin(iter);
         deadline.finish_if_passed::<B>();
     }
 }
 
-/// The end of a bounded run (`ThreadxConfig::entry_spin_ms`), on the platform's
-/// monotonic clock. `None` never ends.
 struct SpinDeadline(Option<u64>);
 
 impl SpinDeadline {

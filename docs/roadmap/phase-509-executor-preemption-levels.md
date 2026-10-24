@@ -1,6 +1,8 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-21). In progress: P1-P8 and P11 done.** The design is
+**Status (2026-10-24). P1-P11 done in nano-ros; open: the kernel budget
+item (issue 2018) and the island's board items I1-I4 below, whose board
+evidence lives in the island repo.** The design is
 [RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
 questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
@@ -492,7 +494,8 @@ Deviations, recorded in RFC-0108 ("As built in P7"):
   check-in is a per-image registry the spins write.
 - **The other runners** (POSIX, NuttX, FreeRTOS, ThreadX) do not place
   levels yet: there every tier's executor reports level 0 until their P10
-  runner. The island's Zephyr runners do.
+  runner. The island's Zephyr runners do. (P10: the C-ABI runners and the
+  Rust Zephyr and ThreadX runners place levels now.)
 - **C++ parity:** the C++ surface is the `nros_cpp_*` C ABI, which the
   parity report does not hold against rclcpp; the C and Rust ledgers carry
   the new rows.
@@ -626,7 +629,8 @@ client/server pairs); the degradation and refusal text.
   knob, as every tier did before (a `BUILD_ASSERT` keeps the frame below
   it). An authored `stack_bytes` stays the expert override, and the
   priority record carries it (`tiers[].stack_bytes`). FreeRTOS keeps its
-  stated default until its P10 runner (`TierTaskMemory::derives_level_stacks`).
+  stated default until its P10 runner (`TierTaskMemory::derives_level_stacks`;
+  P10: FreeRTOS and NuttX derive now).
 - **The cost report.** `scripts/nros-mem-report.py <elf> --levels`
   (`just mem-report`): per level its stack (derived and measured), its
   worker record (executor context + backing + thread object) and its
@@ -762,15 +766,50 @@ costs its seat, its thread object and its stack.
 
 ### P10 -- The other runners (amended RFC-0107 step 6)
 
-- [ ] Linux / POSIX: one `SCHED_FIFO` pthread per level.
-- [ ] NuttX: `nros-board-nuttx-qemu/c/nuttx_run_tiers.c`.
-- [ ] FreeRTOS: `nros-board-freertos/c/freertos_run_tiers.c`, with derived
-      stacks and `configUSE_TIME_SLICING = 0` when the image has levels.
-- [ ] ThreadX: `nros-board-common/c/threadx_hooks.c`, the band's threshold
-      set through `tx_thread_preemption_change`.
+- [x] Linux / POSIX: one `SCHED_FIFO` pthread per level
+      (`nros_board_native_run_levels_in`, nros-cpp; #2548).
+- [x] NuttX: `nros-board-nuttx-qemu/c/nuttx_run_tiers.c`
+      (`nros_board_nuttx_run_levels_in`; #2553), each spawned level on the
+      entry's static stack (`tier_task_memory_nuttx.h`, new).
+- [x] FreeRTOS: `nros-board-freertos/c/freertos_run_tiers.c`
+      (`nros_board_freertos_run_levels_in`; #2553), with derived stacks.
+      `configUSE_TIME_SLICING` stays at the kernel default: issue 2017.
+- [x] ThreadX: ThreadX has no C tier runner, so its level runner is the
+      Rust one (`nros-board-threadx/src/entry.rs` `run_tiers_entry`, on
+      `nros::levels::LevelCore`). `threadx_hooks.c` gains the lock's size
+      and the thread identity. A band's preemption threshold is still the
+      tier's `preempt_threshold`, applied at `tx_thread_create`.
+- [x] Zephyr, Rust arm: `nros-board-zephyr/src/entry_tiers.rs` on
+      `LevelCore`, with the C runner's bare `k_mutex` lock.
+- [x] The Zephyr runner's lock is a bare `k_mutex` (#2547). On the island
+      the installed pair went from 8.58 us (POSIX recursive mutex) to
+      2.35 us.
 - [ ] Kernel budget enforcement where the kernel has it (Linux
       `SCHED_DEADLINE`, NuttX `SCHED_SPORADIC`), one PR per platform, after
-      its runner.
+      its runner. Moved to issue 2018.
+
+**Done (as built).** RFC-0108 "As built in P10" has the table of runners,
+locks, thread identities and stacks, and the Rust level core
+(`nros::levels::LevelCore`, the Rust twin of the `nros_cpp_level_*` FFI).
+Every runner fails the boot on a level that does not open, whose setup
+fails, or that cannot be spawned. Deviations from the plan above:
+
+- **Acceptance fixture.** The 3-level fixture (`levels-cpp`) has a host row
+  (`workspace-cpp-native-levels`, `Proof::LevelsRun`). On FreeRTOS, NuttX
+  (arm, riscv) and ThreadX-linux the check is the realtime rows, whose three
+  authored tiers are three levels. The FreeRTOS proof now requires the
+  runner's line. No preemption order is read on those lanes. On the host
+  the levels run in parallel on several CPUs, so the order is not
+  observable there either. Zephyr's `cpp-levels` row is the preemption
+  check.
+- **Derived stacks in the cost report.** FreeRTOS and NuttX derive
+  (`derives_level_stacks`), but every member takes the per-callback
+  default, so a level gets exactly the old tier stack. `mem-report
+  --levels` is not run on those images. Both are issue 2019.
+- **Not moved.** The Rust Linux, FreeRTOS and NuttX tier arms still open
+  an executor per tier (issue 2016). On a Rust level image a component's
+  tick runs on the boot level (issue 2020). The per-tier monitor-table
+  emit has no board left (issue 2021).
 
 **Acceptance:** per platform, the P9 3-level preemption fixture on that
 platform's QEMU or host lane, and the derived stacks in the cost report.

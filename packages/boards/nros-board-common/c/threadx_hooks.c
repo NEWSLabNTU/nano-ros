@@ -413,6 +413,20 @@ static VOID nros_tx_task_trampoline(ULONG slot)
     nros_tx_task_entries[slot](nros_tx_task_args[slot]);
 }
 
+/* phase-509 P10 (RFC-0108 "As built in P9b") -- what a level runner installs
+ * as the executor's lock: the port's recursive mutex (`tx_mutex_create` with
+ * TX_INHERIT, nros_platform_mutex_rec_*), in storage the runner owns and
+ * sizes from this, and the calling thread's identity. */
+size_t nros_threadx_exec_lock_size(void)
+{
+    return sizeof(TX_MUTEX);
+}
+
+uintptr_t nros_threadx_thread_id(void)
+{
+    return (uintptr_t)tx_thread_identify();
+}
+
 /* Re-prioritize the CALLING thread to a tier's sched values (phase-297 W5).
  * The boot tier runs on the `tx_application_define` app thread, which was
  * created at the fixed `nros_board_app_priority()` — NOT the tier's declared

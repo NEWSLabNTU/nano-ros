@@ -1835,5 +1835,25 @@
   "rust:tier_level_by": {
     "verdict": "extension",
     "why": "phase-509 P7 (RFC-0108 D8) -- `tier_level` over a runner's own tier array (a priority accessor), so a board need not copy its priorities out. rclrs has no levels."
+  },
+  "rust:LevelCore": {
+    "verdict": "extension",
+    "why": "phase-509 P10 (RFC-0108) -- the Rust tier runners' level core: one executor per core shared by a worker per level, the twin of the `nros_cpp_level_*` FFI the C runners use. rclrs has no levels."
+  },
+  "rust:LevelCore::new": {
+    "verdict": "extension",
+    "why": "phase-509 P10 -- make a runtime the core's level runtime: the port's recursive priority-inheriting lock and thread identity installed, the level count stated, the boot level current. rclrs has no levels."
+  },
+  "rust:LevelCore::open_level": {
+    "verdict": "extension",
+    "why": "phase-509 P10 -- seat a spawned level's band worker on the shared executor and make it the registering level. rclrs has no levels."
+  },
+  "rust:LevelCore::with_runtime": {
+    "verdict": "extension",
+    "why": "phase-509 P10 -- run a level's setup on the shared runtime under the executor's lock. rclrs has no levels."
+  },
+  "rust:LevelError": {
+    "verdict": "extension",
+    "why": "phase-509 P10 -- why a level could not be set up (a level out of range, no lock). rclrs has no levels."
   }
 }
