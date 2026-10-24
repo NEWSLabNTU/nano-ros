@@ -188,6 +188,11 @@ corrosion_import_crate(
 # sibling's (see `nros_config_header_cargo_manifest`).
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
 nros_config_header_cargo_manifest("${_nros_c_cargo_manifest}")
+# issue 1824 — cargo runs under the placer, which copies the build script's
+# headers from `$OUT_DIR` into a dir this configure owns. The mirror below
+# reads that copy, never the `$CARGO_TARGET_DIR` side channel.
+set(_nros_c_placed_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-placed")
+nros_config_header_place(nros_c "${_nros_c_placed_dir}" nros-c)
 # Issue 0945 item 1 — witness that cargo actually built into the shared
 # directory. The redirect above works by symlinking over a path Corrosion
 # derives privately and offers no knob for, so a Corrosion upgrade that moves
@@ -280,11 +285,15 @@ set(_nros_c_gen_config_header "${_nros_c_intree_include_dir}/${_nros_c_hdr_sub}/
 # leaf, and once leaves share a cargo target dir cargo skips it for every leaf
 # after the first. The script falls back to the leaf-independent
 # `nros-c-generated/` copy, which is the same bytes.
+#
+# issue 1824 — and the source is now the PLACED copy (`-` as the gen-subdir):
+# written from the `$OUT_DIR` of the cargo run this build made, so neither the
+# leaf copy's staleness (0978) nor a sibling's shared copy (0987, 1904) can
+# reach it.
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
-nros_generated_subpath(_nros_c_gendir c)
+nros_config_header_placed(_nros_c_placed_hdr "${_nros_c_placed_dir}" c nros_config_generated.h)
 nros_config_header_mirror(nros_c_config_header cargo-build_nros_c
-    "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
-    "${_nros_c_gendir}" "nros_config_generated.h"
+    "${_nros_c_placed_hdr}" "-" "nros_config_generated.h"
     "${_nros_c_gen_config_header}")
 # Issue 0090 — export the absolute mirror-header path so NanoRosNodeRegister can set
 # a FILE-level OBJECT_DEPENDS on it. The threadx carrier's link-time

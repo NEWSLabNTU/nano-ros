@@ -32,7 +32,7 @@ untouched — `--message-format=json-render-diagnostics` renders diagnostics to
 stderr as usual and leaves stdout pure JSON for us, so nothing a developer reads
 is swallowed.
 
-Run: cargo-out-dir-headers.py --package nros-c --dest <dir> -- cargo build …
+Run: cargo-out-dir-headers.py --package nros-c [--package …] --dest <dir> -- cargo build …
      cargo-out-dir-headers.py --self-test
 """
 
@@ -93,36 +93,61 @@ def copy_headers(out_dir: str, dest: str) -> list:
     return copied
 
 
-def run(package: str, dest: str, cargo_cmd: list) -> int:
+def asks_for_stream(cargo_cmd: list) -> bool:
+    """True when the command asks cargo for the JSON stream this script reads.
+
+    Issue 1824 — under Corrosion this script IS the import's cargo
+    (`INTERFACE_CORROSION_CARGO`), so it also receives commands that build
+    nothing, such as the `cargo-clean_<crate>` target's `cargo clean`. The
+    `--message-format` flag is added to the BUILD command only
+    (`corrosion_set_cargo_flags`), so its absence means there is nothing to
+    place and cargo runs untouched, stdout included.
+    """
+    return any(a.startswith("--message-format") for a in cargo_cmd)
+
+
+def run(packages: list, dest: str, cargo_cmd: list) -> int:
+    """Run cargo and place the headers of every package in `packages`.
+
+    Several, because one cargo build can hold more than one header writer:
+    the nros-cpp staticlib links nros-c, whose OWN build script writes the C
+    header the C++ image also mirrors (issue 1824). Each package's headers come
+    from that package's `$OUT_DIR`; `copy_headers` keeps each under its own
+    `nros-*-generated/` segment, so they cannot collide.
+    """
+    if not asks_for_stream(cargo_cmd):
+        return subprocess.call(cargo_cmd)
     proc = subprocess.Popen(cargo_cmd, stdout=subprocess.PIPE, text=True)
     assert proc.stdout is not None
-    out_dirs = _out_dirs(proc.stdout, package)
+    lines = list(proc.stdout)
     rc = proc.wait()
     if rc != 0:
         return rc
 
-    if not out_dirs:
-        # Not fatal, and deliberately so: a package whose build script emits no
-        # headers is a normal configuration (nros-cpp with no C API, a probe-only
-        # build). Failing here would turn "nothing to copy" into a build break.
-        # The BYPRODUCT declaration on the cmake side is what makes a genuinely
-        # missing header fail, at the consumer that needs it.
-        print(
-            f"nros: no build-script-executed for '{package}' — no headers copied",
-            file=sys.stderr,
-        )
-        return 0
+    for package in packages:
+        out_dirs = _out_dirs(lines, package)
+        if not out_dirs:
+            # Not fatal, and deliberately so: a package whose build script emits
+            # no headers is a normal configuration (nros-cpp with no C API, a
+            # probe-only build). Failing here would turn "nothing to copy" into a
+            # build break. The consumer that needs a header is what fails — the
+            # cmake mirror refuses a placed header that is missing (issue 1824).
+            print(
+                f"nros: no build-script-executed for '{package}' — no headers copied",
+                file=sys.stderr,
+            )
+            continue
 
-    # LAST wins. Several units of one package can run their build script in a
-    # single invocation (measured: nine `nros-c` build-script units in one
-    # Zephyr tree, one per feature set). The one cmake wants is the one this
-    # build asked for, which is the last cargo reports for the package.
-    copied = copy_headers(out_dirs[-1], dest)
-    if copied:
-        print(
-            f"nros: {package} headers -> {dest} ({', '.join(copied)})",
-            file=sys.stderr,
-        )
+        # LAST wins. Several units of one package can run their build script in
+        # a single invocation (measured: nine `nros-c` build-script units in one
+        # Zephyr tree, one per feature set). The one cmake wants is the one this
+        # build asked for, which is the last cargo reports for the package.
+        copied = copy_headers(out_dirs[-1], dest)
+        if copied:
+            print(
+                f"nros: {package} headers -> {dest} ({', '.join(copied)})",
+                file=sys.stderr,
+            )
     return 0
 
 
@@ -145,6 +170,19 @@ def self_test() -> int:
             print(f"  FAIL package_matches({pid!r}, {name!r}) = {got}, want {want}", file=sys.stderr)
             fails += 1
     print(f"  ok   package_matches: {len(cases)} spelling(s)")
+
+    # Issue 1824 — a command with no JSON stream (Corrosion's `cargo clean`)
+    # passes through; the build command, which carries the flag, is read.
+    stream_cases = [
+        (["cargo", "clean", "-p", "nros-c"], False),
+        (["cargo", "rustc", "--message-format=json-render-diagnostics", "--", "-Cx"], True),
+        (["cargo", "build", "--message-format", "json"], True),
+    ]
+    for cmd, want in stream_cases:
+        if asks_for_stream(cmd) != want:
+            print(f"  FAIL asks_for_stream({cmd}) != {want}", file=sys.stderr)
+            fails += 1
+    print(f"  ok   asks_for_stream: {len(stream_cases)} command(s)")
 
     with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, "out")
@@ -207,7 +245,7 @@ def self_test() -> int:
     if fails:
         print(f"cargo-out-dir-headers --self-test: {fails} case(s) FAILED", file=sys.stderr)
         return 1
-    print("cargo-out-dir-headers --self-test: OK (6 checks)")
+    print("cargo-out-dir-headers --self-test: OK (7 checks)")
     return 0
 
 
@@ -215,7 +253,8 @@ def main(argv) -> int:
     if "--self-test" in argv:
         return self_test()
     ap = argparse.ArgumentParser()
-    ap.add_argument("--package", required=True)
+    ap.add_argument("--package", required=True, action="append",
+                    help="a package whose build script writes headers; repeatable")
     ap.add_argument("--dest", required=True)
     ap.add_argument("cargo", nargs=argparse.REMAINDER)
     args = ap.parse_args(argv)

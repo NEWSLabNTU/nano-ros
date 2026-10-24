@@ -78,6 +78,12 @@ corrosion_import_crate(
 # sibling's (see `nros_config_header_cargo_manifest`).
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
 nros_config_header_cargo_manifest("${_nros_cpp_cargo_manifest}")
+# issue 1824 — cargo runs under the placer (see nros-c/CMakeLists.txt). This
+# image mirrors TWO headers and they come from two build scripts: nros-cpp's
+# writes the C++ one, and nros-c's — a dependency built in the same cargo run —
+# the C one, each into its own `$OUT_DIR`. So both packages are named.
+set(_nros_cpp_placed_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-placed")
+nros_config_header_place(nros_cpp "${_nros_cpp_placed_dir}" nros-cpp nros-c)
 # The preset's definition, so the crate resolves `--profile nros-…` without a
 # `[profile.*]` block of its own. No-op for a user-owned profile.
 nros_cargo_profile_env(nros_cpp-static)
@@ -156,14 +162,15 @@ if(TARGET cargo-build_nros_cpp)
     # leaf, which a shared cargo target dir makes untrue after the first.
     set(_NROS_CPP_MIRROR_SH "${CMAKE_CURRENT_LIST_DIR}/../../../scripts/build/mirror-generated-header.sh")
     include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
-    nros_generated_subpath(_nros_cpp_gendir_cpp cpp)
-    nros_generated_subpath(_nros_cpp_gendir_c c)
+    # issue 1824 — the PLACED copies, `-` as the gen-subdir (see nros-c).
+    nros_config_header_placed(_nros_cpp_placed_cpp "${_nros_cpp_placed_dir}"
+        cpp nros_cpp_config_generated.h)
+    nros_config_header_placed(_nros_cpp_placed_c "${_nros_cpp_placed_dir}"
+        c nros_config_generated.h)
     nros_config_header_mirror(nros_cpp_config_header cargo-build_nros_cpp
-        "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
-        "${_nros_cpp_gendir_cpp}" "nros_cpp_config_generated.h"
+        "${_nros_cpp_placed_cpp}" "-" "nros_cpp_config_generated.h"
         "${_nros_cpp_gen_cpp_header}"
-        "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
-        "${_nros_cpp_gendir_c}" "nros_config_generated.h"
+        "${_nros_cpp_placed_c}" "-" "nros_config_generated.h"
         "${_nros_cpp_gen_c_header}")
     # Issue 0268 — heal an ALREADY-drifted mirror at configure time. The Ninja edge
     # above only fires when the crate rebuilds, so a tree that went stale under the
@@ -199,18 +206,19 @@ if(TARGET cargo-build_nros_cpp)
     # configure error — the build-time edge is the real mechanism and this is
     # only a repair for a tree that is already drifted — so the result is
     # ignored, exactly as the old `if(EXISTS ...)` guard made it best-effort.
+    # Issue 1824 -- the heal reads the placed copies too, `-` as the gen-subdir.
     foreach(_nros_cpp_heal
-            "nros_cpp_config_generated.h;${_nros_cpp_gendir_cpp};${_nros_cpp_hdr_sub_cpp}"
-            "nros_config_generated.h;${_nros_cpp_gendir_c};${_nros_cpp_hdr_sub_c}")
+            "nros_cpp_config_generated.h;${_nros_cpp_placed_cpp};${_nros_cpp_hdr_sub_cpp}"
+            "nros_config_generated.h;${_nros_cpp_placed_c};${_nros_cpp_hdr_sub_c}")
         list(GET _nros_cpp_heal 0 _nros_cpp_hdr)
-        list(GET _nros_cpp_heal 1 _nros_cpp_gendir)
+        list(GET _nros_cpp_heal 1 _nros_cpp_src)
         list(GET _nros_cpp_heal 2 _nros_cpp_sub)
         # Issue 1746 -- QUEUED, not run here: at this scope the shared cargo
         # link may still point at a provisional key (see
         # `nros_config_header_heal` in NanoRosEntityFacts.cmake).
         nros_config_header_heal("${_NROS_CPP_MIRROR_SH}"
-            "${CMAKE_CURRENT_BINARY_DIR}/${_nros_cpp_hdr}"
-            "${CMAKE_BINARY_DIR}" "${_nros_cpp_gendir}" "${_nros_cpp_hdr}"
+            "${_nros_cpp_src}"
+            "${CMAKE_BINARY_DIR}" "-" "${_nros_cpp_hdr}"
             "${_nros_cpp_intree_include_dir}/${_nros_cpp_sub}/${_nros_cpp_hdr}")
     endforeach()
     target_include_directories(nros-cpp-headers BEFORE INTERFACE

@@ -88,6 +88,12 @@ EXEMPT = {
     # bounded pattern was measured and rejected: it loses the real
     # `set(_ffi_env … -E env …)` + later-cargo shape in NanoRosGenerateInterfaces.
     "cmake/NanoRosCodegenCore.cmake": "spawns no cargo; `-E env` prefixes `nros codegen` only",
+    # Spawns NO cargo of its own. `nros_config_header_place` (issue 1824) only
+    # names a wrapper as an EXISTING Corrosion import's cargo; the import's
+    # cargo command — env, board facts and all — is still the one Corrosion
+    # builds, and the file that imports the crate delivers the facts to it
+    # (`nros_board_facts_env_deferred` in packages/api/nros-{c,cpp}).
+    "cmake/NanoRosConfigHeaderMirror.cmake": "wraps an import's cargo; the importer delivers its facts",
     # A staged integration-test template (`@NROS_REPO_DIR@` is rewritten at
     # stage time) exercising the Corrosion superbuild of a user-shaped HOST
     # workspace; it declares no deploy, so `nros ws board-facts` has nothing
