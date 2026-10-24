@@ -1,6 +1,6 @@
 ---
 id: 2025
-title: "Zephyr native_sim XRCE C leaves fail to link: `nros-platform-posix`'s platform.c is in both libnros.a and libnros_cpp.a"
+title: "Zephyr native_sim XRCE C/C++ leaves fail to link: `nros-platform-posix`'s platform.c is in both libnros.a and libnros_cpp.a"
 status: open
 type: bug
 area: [zephyr, build, rmw-xrce, platform]
@@ -36,6 +36,15 @@ collect2: error: ld returned 1 exit status
 `critical_section_acquire/release`, `log_write/flush`,
 `task_storage_size/align`, `task_stack_unused_bytes[_upto]` and
 `wake_park_granularity_us`. In tier 1 that leaves 0 of 6 Zephyr images built.
+
+**Second sighting, the 05:12 nightly.** Run **40065220667** (head
+`3c99fb35f0`), job **120786927499** (`tier 2 nightly (pairwise cover)`), the
+only red job of 31 (25 success, 5 skipped). It shows the same 16-symbol
+`multiple definition` in the Zephyr fixture build, and it reaches C++ as well
+as C: `build-{c,cpp}-listener-xrce`, `build-c-talker-xrce`,
+`build-c-service-{client,server}-xrce` and
+`build-{c,cpp}-action-{client,server}-xrce`. So the class is "every Zephyr
+native_sim XRCE C/C++ leaf", not only the four C leaves the tier-2 run built.
 
 ## What it is NOT
 
