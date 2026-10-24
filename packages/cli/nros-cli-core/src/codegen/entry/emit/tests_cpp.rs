@@ -2139,11 +2139,13 @@ fn typed_emit_levels_install_one_monitor_table() {
         "a level image; src:\n{src}"
     );
     assert!(
-        src.contains("__nros_mon_rows_t0[2]"),
+        src.contains("__nros_mon_rows[2]"),
         "one table of both rows; src:\n{src}"
     );
-    assert!(
-        !src.contains("__nros_mon_rows_t1"),
+    assert_eq!(
+        src.matches("static const ::nros_cpp_monitor_row_t ")
+            .count(),
+        1,
         "no second table; src:\n{src}"
     );
     assert_eq!(

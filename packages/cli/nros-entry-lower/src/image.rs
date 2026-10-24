@@ -236,8 +236,10 @@ pub struct TierSetup {
     pub nodes: Vec<SetupNode>,
     /// Only tier 0 registers param services and lifecycle — process facts.
     pub emits_services: bool,
-    /// phase-462 W1 — this tier's contract monitor rows, installed on its
-    /// executor before its first node. `None` when it has none.
+    /// phase-462 W1 -- the image's contract monitor rows, installed on the
+    /// core's one executor before the first node. Only tier 0 (the boot
+    /// level, which runs first) carries them, for every level (phase-509
+    /// P9b); `None` on every other tier and when there are none.
     pub monitors: Option<MonitorTable>,
 }
 
@@ -330,12 +332,12 @@ pub struct LoweredBootConfig {
 
 /// The contract monitor rows ONE executor installs (phase-462 W1, RFC-0052).
 ///
-/// `tier` is the tier whose setup installs it, `None` for the single
-/// executor. A pack derives its symbol names and banner from it.
+/// An image holds at most one: the single executor's, or on a level image
+/// (phase-509 P9b) the one the boot level's setup installs for every level.
+/// Issue 2021 removed the per-tier tables, and with them the tier index and
+/// name the packs used to tell those tables' symbols apart.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MonitorTable {
-    pub tier: Option<usize>,
-    pub tier_name: Option<String>,
     pub rows: Vec<MonitorRow>,
     pub ages: Vec<AgeRow>,
     /// phase-462 W3b -- the hazards this executor observes over `rows` /

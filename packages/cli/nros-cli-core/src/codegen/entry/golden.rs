@@ -862,7 +862,8 @@ fn a_mode_tier_deadline_lowers_onto_each_executor_shape() {
         assert!(sched.contains(want), "missing `{want}`:\n{sched}");
     }
 
-    // The tier shape: only the moved tier's table carries rows, at context 0.
+    // The level shape: the image's one table carries the moved tier's row,
+    // at the shared context 0, and no second table exists (issue 2021).
     for (lang, p) in [
         (Lang::C, c_tiered_plan("linux")),
         (Lang::Cpp, cpp_tiered_plan("linux")),
@@ -870,11 +871,11 @@ fn a_mode_tier_deadline_lowers_onto_each_executor_shape() {
         let src = emit(lang, &p);
         assert!(
             src.contains(
-                "nros_cpp_mode_deadline_t __nros_mode_deadlines_t0_0[1] = {\n    { 0u, 5000u },"
+                "nros_cpp_mode_deadline_t __nros_mode_deadlines_0[1] = {\n    { 0u, 5000u },"
             ),
             "{src}"
         );
-        assert!(!src.contains("__nros_mode_deadlines_t1_0"), "{src}");
+        assert_eq!(src.matches("__nros_mode_deadlines_0[").count(), 1, "{src}");
         assert!(!src.contains(".sc_ids = __nros_sc_ids"), "{src}");
         assert!(src.contains("50u, \"//enter_tight\" }"), "{src}");
     }
