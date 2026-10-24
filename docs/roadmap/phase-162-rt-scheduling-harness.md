@@ -7,10 +7,11 @@ work; this phase owns the host-side / kernel-side / board-side
 setup that turns the parked acceptance criteria into runnable
 gates.
 
-**Status (2026-10-14). PARKED, mostly blocked on hardware.** Not started.
+**Status (2026-10-24). PARKED.** Not started. 162.C, the silicon run, moved
+to [phase-512](phase-512-on-hardware-measurements.md) H4 on 2026-10-24.
 The tree has no `rt-harness`, no `nros-bench/nuttx-sched-sporadic` and no
-`just/rt.just`. 162.A needs a `CAP_SYS_NICE`/RT-kernel host and 162.C needs
-real Cortex-M3 silicon, and no lane provides either. 162.B is the exception:
+`just/rt.just`. 162.A needs a `CAP_SYS_NICE`/RT-kernel host, and no lane
+provides one. 162.B is the exception:
 `CONFIG_SCHED_SPORADIC=y` is already in the NuttX QEMU defconfigs, so its
 bench and budget assertion (B.2/B.3) could run under QEMU today. A CPU-budget
 number from an emulator is weak evidence, though, and nobody has asked for
@@ -195,31 +196,9 @@ Contents:
 
 ### 162.C — Cortex-M3 P99 wake-latency on real silicon
 
-- [ ] **162.C.1** Hardware procurement checklist
-      (`docs/reference/hardware-procurement.md` new section):
-      MPS2-AN385, STM32F4-Discovery; flashing tools (OpenOCD /
-      ST-Link / J-Link); cable + USB-UART adapter for sample
-      capture.
-- [ ] **162.C.2** Programming guide for
-      `wake-latency-cortex-m3` bench binary on real hardware.
-      The bench already produces CSV over UART; document the
-      capture command + host-side parser invocation.
-- [ ] **162.C.3** Run the bench on real hardware; assert P99
-      ≤ 100 µs across all three Phase 141.D scenarios. Closes
-      Phase 141 spec-acceptance gate (parked in 141 archive).
-- [ ] **162.C.4** Capture the 10× baseline: patch
-      `nros-node/src/executor/spin.rs:706::nros_rmw_runtime_wake_cb` to no-op,
-      measure pre-141 P99 on the same hardware, restore. Land the baseline
-      number as a static reference in a **new**
-      `wake-latency-cortex-m3/README.md`. Closes Phase 141 10× baseline
-      acceptance.
-
-      *Corrected 2026-09-06:* this item named `wake_alloc.rs`, which no longer
-      exists — the symbol moved to `executor/spin.rs` (and there is a second,
-      `nros_rmw_runtime_wake_cb_from_isr` at :916, which a no-op patch must
-      also cover or the ISR path keeps waking). It also said "land the number
-      IN `README.md`" as though editing one; the crate has no README, so C.4
-      creates it.
+**Moved 2026-10-24 to [phase-512](phase-512-on-hardware-measurements.md) H4**
+(162.C.1–C.4 are H4.1–H4.4), which gathers every item that needs a board. The
+history and corrections for this section stay above, under "C".
 
 ### 162.D — PiCAS evaluation (optional / deferred)
 

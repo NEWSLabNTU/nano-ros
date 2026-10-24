@@ -1,4 +1,4 @@
-# Phase 512 — Measurements that need a real board
+# Phase 512 — Work that needs a real board
 
 **Status (2026-10-23). Not started — blocked on hardware.** No board is on this
 bench, and no CI lane provides one. Each item below is a measurement whose code
@@ -10,11 +10,14 @@ its board is attached; each one is independent of the others.
 **Prior:** [phase-436](phase-436-poll-wake-revision-deadline-driven-executor.md)
 (the deadline-driven executor, RFC-0106).
 
-**Related, not moved:** [phase-162](phase-162-rt-scheduling-harness.md) 162.C
-(Cortex-M3 P99 wake latency on silicon), and the board runs in
-[phase-474](phase-474-safety-island-board-findings.md) (T4's native_sim, QEMU
-and board runs). Both phases own more than their hardware runs, so their board
-items stay where their context is.
+**Gathered 2026-10-24:** [phase-162](phase-162-rt-scheduling-harness.md) 162.C
+(H4), [phase-418](phase-418-orin-safety-island-and-spe.md) 418.5 and 418.7
+(H5), the board leg of [phase-474](phase-474-safety-island-board-findings.md)
+T4 (H6), and [issue 1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md)
+(H7). Each source phase keeps a pointer where the item was. Board reruns that
+belong to the safety island's own phase (474 I6, I8, I9 and 446-W7's board
+leg are "the island's W4") stay in phase-474: they are blocked on a downstream
+project as much as on a board.
 
 ---
 
@@ -78,6 +81,77 @@ tap. That path needs root on the host, and no runner has it.
 keeps receiving whole 8-fragment samples for 45 s (then 0917 closes as not
 reproduced) or drops them (then that run is 0917's first in-tree
 reproduction, with the RX FIFO depth and the drain interval recorded).
+
+### H4 — Cortex-M3 P99 wake latency on silicon
+
+From phase-162 162.C, which keeps its history and corrections.
+
+The `wake-latency-cortex-m3` bench (`packages/testing/nros-bench/`) builds in
+the `freertos` fixture group and runs under QEMU, but QEMU's timing says
+nothing about a silicon P99. The four items, unchanged in substance:
+
+- [ ] **H4.1** (was 162.C.1) Procurement checklist in
+      `docs/reference/hardware-procurement.md`: MPS2-AN385 or
+      STM32F4-Discovery, OpenOCD / ST-Link / J-Link, a USB-UART adapter.
+- [ ] **H4.2** (was 162.C.2) Programming guide for the bench on hardware: the
+      capture command and the host-side parser invocation for its UART CSV.
+- [ ] **H4.3** (was 162.C.3) Run it; assert P99 ≤ 100 µs across the three
+      phase-141.D scenarios. Closes phase-141's spec-acceptance gate.
+- [ ] **H4.4** (was 162.C.4) The 10× baseline: no-op
+      `nros_rmw_runtime_wake_cb` AND `nros_rmw_runtime_wake_cb_from_isr` in
+      `nros-node/src/executor/spin.rs`, measure, restore, and record the number
+      in a new `wake-latency-cortex-m3/README.md`.
+
+**Done when** H4.3 and H4.4 have numbers from the same board.
+
+### H5 — the Orin SPE on a Jetson AGX Orin devkit
+
+From phase-418 418.5 and 418.7. Provisioning (418.4), the board crate (418.6)
+and the bridge decision (418.8) need no devkit and stay in phase-418.
+
+- [ ] **H5.1** (was 418.5) A non-`aon_echo` IVC channel in the AGX Orin DTSI,
+      and its Linux-side owner (a small out-of-tree kernel module with a char
+      device, or reuse of the echo channel's driver), with the kernel rebuild
+      and flash steps documented. **Acceptance:** a loopback between a
+      userspace process on Jetson Linux and the stock `ivc-echo-task` on the
+      SPE, with the frame format matching `nvidia_ivc_mock_wire_format.rs`.
+- [ ] **H5.2** (was 418.7) A talker on the SPE reaching `ros2 topic echo` on
+      Jetson Linux through the CCPLEX bridge and `rmw_zenoh_cpp`.
+      **Acceptance:** an `interop::CELLS` row (no fixture row: the SPE side is
+      flashed, not launched), and promoting `nros-board-orin-spe`'s
+      `board-support.toml` row off tier 3 once a lane can assert it.
+
+**Done when** H5.2's echo prints on the devkit.
+
+### H6 — a deliberate overrun reported through D1's channel on the S32K344
+
+From phase-474 T4. The host executor e2e and the native_sim fixture
+(`violation_channel_e2e`) have landed. The QEMU leg stays in phase-474,
+because it needs no board.
+
+The board run of 2026-10-06 showed the overrun as timer-overrun and jitter
+verdicts, not as `max-latency-runtime`. That was phase-474 I6, whose host half
+has landed since (#1750). So this run is also the first board check of I6's
+fix.
+
+**Done when** a deliberate overrun on the MR-CANHUBK344 appears in the
+violation ring read over SWD as a `max-latency-runtime` verdict.
+
+### H7 — the boot report's arena-exhaustion record, dumped from silicon
+
+[Issue 1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md),
+homed here from phase-474. Every other step of the path runs in a lane: the
+host decode tests, and the QEMU `mps2/an385` boot-report fixture that dumps
+the record with `pmemsave`. Only the MR-CANHUBK344 dump is missing.
+
+**Done when** the issue's board run decodes to the same verdict as the QEMU
+lane, and the issue is archived.
+
+## Issues homed here
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) | H7: its only open step runs on the MR-CANHUBK344. |
 
 ## Not in this phase
 
