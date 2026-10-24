@@ -124,8 +124,8 @@ pool.app = [15, 31]
 # `cargo check` (11,070 refused, 11,071 accepted), not re-measured with `nm`.
 #
 # The cost is real and is the price of one statement per board: a talker
-# reserves 11,072 words where its own executor needs ~2,917, and gives back the
-# same 11,072 from the pool. The image's total is unchanged either way — this
+# reserves 11,076 words where its own executor needs ~2,917, and gives back the
+# same 11,076 from the pool. The image's total is unchanged either way — this
 # rung MOVES bytes between `.bss` and the pool, it does not save them — so
 # over-stating costs `mem-report` accuracy, not memory.
 #
@@ -134,8 +134,12 @@ pool.app = [15, 31]
 # `nros-node/tests/executor_backing_claims.rs` compares it against the measured
 # default. Before issue 1388 that check read Zephyr confs only, so this claim
 # was the one spelling nothing vouched for.
+# 11,076 since issue 2020 (2026-10-24): each enrolled component slot records
+# the level that registered it (`ComponentSlot::level`), 24 -> 32 B per slot,
+# 4 node slots x 8 B = 32 B = 4 words (`executor_backing_claims` measured
+# 11,076 on the 64-bit host).
 [knobs.executor]
-backing_u64s = 11072
+backing_u64s = 11076
 
 # phase-479 W5 (RFC-0102 D5) — the runtime-logger arenas. MEASURED as a host board: no
 # `target` is stated (`toolchain = "stable"` builds for the host triple) —

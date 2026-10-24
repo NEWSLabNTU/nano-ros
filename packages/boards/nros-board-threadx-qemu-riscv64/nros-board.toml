@@ -95,5 +95,9 @@ toolchain_file = "cmake/toolchain/riscv64-threadx.cmake"
 # 11,072 since phase-509 P2 (2026-10-21): the lifetime tag carries the slot's
 # dispatch rank, 4 -> 6 B per slot, 4 slots x 2 B = 8 B = 1 word
 # (`executor_backing_claims` measured 11,072 on the 64-bit host).
+# 11,076 since issue 2020 (2026-10-24): each enrolled component slot records
+# the level that registered it (`ComponentSlot::level`), 24 -> 32 B per slot,
+# 4 node slots x 8 B = 32 B = 4 words (`executor_backing_claims` measured
+# 11,076 on the 64-bit host).
 [knobs.executor]
-backing_u64s = 11072
+backing_u64s = 11076
