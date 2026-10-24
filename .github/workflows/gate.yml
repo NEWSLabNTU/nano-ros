@@ -3373,7 +3373,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # The token authenticates the releases API calls that check each asset's
+      # digest without downloading it. Unauthenticated, a shared runner IP
+      # exhausts the 60/h limit and the script falls back to downloading
+      # every asset (6.6 GiB).
       - name: Verify prebuilt assets resolve + hash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: python3 scripts/sdk/verify-index.py nros-sdk-index.toml
       # Phase 191.3 — the index source-build flags and the prebuilt build script
       # must not drift (else prebuilt != source-built).

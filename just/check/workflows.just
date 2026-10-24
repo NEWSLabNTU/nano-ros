@@ -501,7 +501,10 @@ sdk-guard-can-fire:
     @python3 scripts/check-sdk-guard-can-fire.py
 
 # Verify nros-sdk-index.toml + the QEMU configure flags
-# (the `sdk-index` job in .github/workflows/gate.yml). Buildless + fast.
+# (the `sdk-index` job in .github/workflows/gate.yml). Buildless + fast: assets
+# are checked against the releases API's digests (~9 s), which needs a token for
+# the rate limit — `gh auth token` when GH_TOKEN is unset. Without one it still
+# passes, by downloading every asset (6.6 GiB).
 #
 # The third one is issue 1006: a qemu recipe with no `dist` is source-built by
 # EVERY user, so a backend it leaves auto-detected makes the runtime dependency
@@ -510,7 +513,7 @@ sdk-guard-can-fire:
 # half lives here.
 [group("ci")]
 sdk-index:
-    python3 scripts/sdk/verify-index.py nros-sdk-index.toml
+    GH_TOKEN="${GH_TOKEN:-$(gh auth token 2>/dev/null || true)}" python3 scripts/sdk/verify-index.py nros-sdk-index.toml
     ./scripts/sdk/check-qemu-configure.sh
     python3 scripts/sdk/check-qemu-source-features.py nros-sdk-index.toml
 
