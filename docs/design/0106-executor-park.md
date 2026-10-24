@@ -199,11 +199,14 @@ budget is a floor on the wait, not a bound on the call.
 
 ## Open questions
 
-- **Bare metal (phase-436 C3).** Not a park: every bare-metal backend is
-  poll-only, so D5 never parks there. What remains is a tickless `wfi` inside
-  the transport's wait, armed on its deadline, and it needs a NIC receive
-  interrupt first; without one it is D5's blind sleep one layer down.
-  Tracked as [issue 2022](../issues/2022-bare-metal-tickless-idle-needs-nic-rx-irq.md).
+- **Bare metal (phase-436 C3) — RESOLVED 2026-10-24.** Not a park: every
+  bare-metal backend is poll-only, so D5 never parks there. The transport's
+  own waits now sleep tickless (`nros_smoltcp::wait_idle`, called by a wait
+  loop once it has found nothing; the deadline narrowed by smoltcp's
+  `poll_delay`). mps2-an385 installs the primitive, woken by the LAN9118 RX
+  interrupt or a SysTick one-shot; a board without an RX interrupt installs
+  none and keeps the busy-poll, which is D5's rule one layer down. See
+  [issue 2022](../issues/archived/2022-bare-metal-tickless-idle-needs-nic-rx-irq.md).
 - **Per-entity wake routing.** Removes D6's spurious wakes. Measured on a
   native host: 7-9 us of CPU per spurious wake, so about 0.8 % of a core per
   idle member at 1 kHz of arrivals. It needs the arrival to name its entity,
@@ -214,6 +217,9 @@ budget is a floor on the wait, not a bound on the call.
 
 ## Changelog
 
+- 2026-10-24 — Bare metal's open question resolved: a tickless idle inside
+  the transport's wait, on mps2-an385 (issue 2022). Idle QEMU host CPU
+  99.9 % → ~1 %.
 - 2026-10-16 — Per-entity routing measured and deferred to RFC-0084's token
   (phase-397); issue 1929 filed from the same probe.
 - 2026-10-16 — D5 gains the sliced drive for a guard condition on a poll-only

@@ -139,6 +139,9 @@ static void _threadx_printk(const char* fmt, ...) {
 extern int32_t smoltcp_init(void);
 extern void smoltcp_cleanup(void);
 extern uint64_t smoltcp_clock_now_ms(void);
+// issue 2022 — nros-smoltcp's tickless idle. Returns at once unless the board
+// installed a sleep primitive (one with an RX-interrupt wake source).
+extern void nros_smoltcp_idle_until_ms(uint64_t deadline_ms);
 #endif
 
 // ============================================================================
@@ -3373,12 +3376,22 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
     // below can retire its pending query.
     // Polling behaviour (timeout_ms > 0): stop after the first read that
     // processed data, and retry until data arrives or the timeout elapses.
+    //
+    // issue 2022 — between retries the loop idles to its deadline instead of
+    // spinning on it, when the board can be woken by a frame (mps2-an385's
+    // LAN9118 RX interrupt). `nros_smoltcp_idle_until_ms` narrows the sleep by
+    // smoltcp's own timers and is a no-op on a board with no wake source, so
+    // those keep the busy-poll. It runs only after a read that found nothing:
+    // anything the poll inside `zp_read` delivered has been consumed by then.
     int ret;
     uint64_t start = smoltcp_clock_now_ms();
     do {
         ret = zp_read(z_session_loan_mut(&s->session), NULL);
         if (ret == 0 && timeout_ms != 0) break; // Processed data (timeout mode)
         if (ret != 0 && timeout_ms == 0) break; // No data (drain mode)
+        if (ret != 0) {
+            nros_smoltcp_idle_until_ms(start + timeout_ms);
+        }
     } while (ret == 0 || smoltcp_clock_now_ms() - start < timeout_ms);
     // issue 1512 / issue 0387's class — a QUIET tick is 0, not an error.
     // "Nothing complete buffered" is `_Z_NO_DATA_PROCESSED` on this path
