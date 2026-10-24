@@ -796,11 +796,14 @@ const NUTTX_TIER_STACK_DEFAULT_BYTES: usize = 65536;
 /// Self-apply the tier's kernel sporadic policy (no-op off-target and when
 /// the tier declares no budget/period). Name/class cross the FFI as
 /// NUL-terminated stack copies (TierSpec strings are `&str`, not C strings).
+/// `true` when the kernel accepted `SCHED_SPORADIC`: the kernel then enforces
+/// the level's budget, and the executor must not enforce it again (issue
+/// 2018, [`apply_level_policy`]).
 #[cfg(target_os = "nuttx")]
-fn apply_tier_sporadic(tier: &nros_platform::TierSpec<'_>) {
+fn apply_tier_sporadic(tier: &nros_platform::TierSpec<'_>) -> bool {
     let (Some(class), Some(budget), Some(period)) = (tier.class, tier.budget_us, tier.period_us)
     else {
-        return;
+        return false;
     };
     let mut name_buf = [0u8; 64];
     let n = tier.name.len().min(63);
@@ -815,6 +818,45 @@ fn apply_tier_sporadic(tier: &nros_platform::TierSpec<'_>) {
             budget,
             period,
             tier.priority,
+        ) == 1
+    }
+}
+
+/// Issue 2018 (RFC-0108 As-built) -- the level's own sched context, lowered
+/// from its tier's policy, so what its setup registers is charged to it and
+/// not to the executor's default context, which every level shares. With
+/// `kernel` (the kernel accepted `SCHED_SPORADIC` for this level's thread,
+/// with the same budget and period) the executor does not enforce the budget
+/// a second time; without it the executor's cooperative budget is the
+/// enforcement. One enforcer per level. Call on the level's runtime, after the
+/// level opened and before its setup.
+#[cfg(target_os = "nuttx")]
+fn apply_level_policy(
+    crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
+    tier: &nros_platform::TierSpec<'_>,
+    budget: bool,
+    kernel: bool,
+) {
+    let (period_us, budget_us) = if budget {
+        (tier.period_us, tier.budget_us)
+    } else {
+        (None, None)
+    };
+    let sc = crt.apply_level_sched_policy(
+        tier.class,
+        period_us,
+        budget_us,
+        tier.deadline_us,
+        tier.deadline_policy,
+        kernel,
+    );
+    if let (Some(_), Some(b), Some(p)) = (sc, budget_us, period_us) {
+        println!(
+            "nros: level budget tier=`{}` {}us/{}us enforced by the {}",
+            tier.name,
+            b,
+            p,
+            if kernel { "KERNEL" } else { "EXECUTOR" }
         );
     }
 }
@@ -1020,21 +1062,9 @@ where
     let boot_is_budgeted = boot_tier.class == Some("real_time")
         && boot_tier.budget_us.is_some()
         && boot_tier.period_us.is_some();
-    boot_crt.apply_tier_sched_policy(
-        boot_tier.class,
-        if boot_is_budgeted {
-            None
-        } else {
-            boot_tier.period_us
-        },
-        if boot_is_budgeted {
-            None
-        } else {
-            boot_tier.budget_us
-        },
-        boot_tier.deadline_us,
-        boot_tier.deadline_policy,
-    );
+    // Issue 2018 -- lowered onto the boot LEVEL's own context below (after
+    // the level core seats it, before its setup), not onto the executor's
+    // default, which every level on the core shares.
     // phase-296 W5.9 / issue #246 — likewise DON'T self-apply the kernel
     // SCHED_SPORADIC server to the boot tier here (nor below): it would drop
     // this session-owning thread to `sched_ss_low_priority` when its budget is
@@ -1102,6 +1132,10 @@ where
     // starts. SAFETY: the runtime reference lives inside the closure only.
     let rc = unsafe {
         core.with_runtime(|crt| {
+            // Issue 2018 -- the session-owning boot level is never budgeted
+            // (#246, above): neither the kernel nor the executor throttles
+            // it, and only its deadline lowers.
+            apply_level_policy(crt, boot_tier, !boot_is_budgeted, false);
             let mut ctx = nros_platform::RuntimeCtx::with_runtime(crt);
             setup(&mut ctx)
         })
@@ -1316,7 +1350,7 @@ where
     // phase-302 W3 (issue 0263) — the declared SCHED_FIFO priority; phase-296
     // W5.9 — the kernel sporadic server, when declared; W5.11 — the core pin.
     apply_tier_priority(tier);
-    apply_tier_sporadic(tier);
+    let kernel_budget = apply_tier_sporadic(tier);
     apply_tier_affinity(tier);
     // SAFETY: once, on this level's own thread.
     let worker = match unsafe { core.open_level(level) } {
@@ -1338,6 +1372,7 @@ where
             // ON, so this level registers NOTHING rather than registering on
             // a quietly narrower set.
             let _ = crt.executor_mut().set_active_groups(tier.groups);
+            apply_level_policy(crt, tier, true, kernel_budget);
             let mut rctx = nros_platform::RuntimeCtx::with_runtime(crt);
             (*setup)(&mut rctx)
         })
@@ -1435,9 +1470,34 @@ fn nuttx_spin_tier_forever(
     // the guarantee hold without depending on that ordering being right.
     // Costs nothing while the spins do block.
     let mut gap = nros_platform::TierSpinGap::new(tier.spin_period_us);
+    // Issue 2018 -- say when the kernel's sporadic server throttles this
+    // level (it demoted the thread to the floor priority), as the C level
+    // runner does after each pass: the C seam's one implementation.
+    unsafe extern "C" {
+        fn nros_nuttx_report_current_sporadic_throttle(
+            name: *const core::ffi::c_char,
+            priority: i64,
+            already_reported: *mut i32,
+        ) -> i32;
+    }
+    let mut name_buf = [0u8; 64];
+    let n = tier.name.len().min(63);
+    name_buf[..n].copy_from_slice(&tier.name.as_bytes()[..n]);
+    let mut throttle_reported: i32 = 0;
     loop {
         let iter = gap.mark();
         let r = pass(core::time::Duration::from_millis(period_ms as u64));
+        if tier.priority > 0 {
+            // SAFETY: `name_buf` is NUL-terminated and outlives the call;
+            // `throttle_reported` is this loop's.
+            unsafe {
+                nros_nuttx_report_current_sporadic_throttle(
+                    name_buf.as_ptr() as *const core::ffi::c_char,
+                    tier.priority,
+                    &mut throttle_reported,
+                );
+            }
+        }
         timers += r.timers_fired;
         subs += r.subscriptions_processed;
         errs += r.subscription_errors + r.service_errors;

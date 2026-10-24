@@ -1015,3 +1015,65 @@ fn dotconfig_has_line(dotconfig: &Path, line: &str) -> bool {
         .map(|text| text.lines().any(|l| l.trim() == line))
         .unwrap_or(false)
 }
+
+/// Issue 2018 -- a NuttX level that overruns its declared budget is throttled
+/// by the KERNEL, and only by the kernel.
+///
+/// The `ws-realtime-{cpp,rust}` images declare `[tiers.high.nuttx]` budget
+/// 5 ms per 10 ms, and their `high` member runs one tick in fifty for 8 ms on
+/// NuttX. The assertions, from the guest console:
+///
+/// - the runner lowered the level's budget onto the level's own sched
+///   context and handed it to the kernel (`enforced by the KERNEL`);
+/// - the overrun happened, and the kernel's sporadic server demoted the
+///   level's thread to its floor priority (`throttled by the KERNEL`);
+/// - the level kept dispatching afterwards (the SECOND overrun, tick 75);
+/// - the executor never skipped the level for want of budget (its
+///   `sporadic budget exhausted` report is absent): one enforcer, not two.
+#[test]
+fn nuttx_level_budget_overrun_is_throttled_by_the_kernel() {
+    type Resolve = fn() -> TestResult<PathBuf>;
+    let cells: [(ML, Resolve, &str); 2] = [
+        (
+            ML::Cpp,
+            || build_nuttx_workspace_cpp_realtime_entry().map(|p| p.to_path_buf()),
+            "[ctrl] overran the level budget at tick=75 (",
+        ),
+        (
+            ML::Rust,
+            || build_nuttx_workspace_rust_realtime_entry().map(|p| p.to_path_buf()),
+            "on_ctrl: overran the level budget at tick 75 (",
+        ),
+    ];
+    for (lang, resolve, second_overrun) in cells {
+        if !nros_tests::lane_scope::admits(MP::NuttxArm) {
+            continue;
+        }
+        let entry = resolve().require(&format!("nuttx-arm {} realtime", lang.as_str()));
+        let port = port_of(MP::NuttxArm, lang, MW::RealtimeTiers);
+        let _router = ZenohRouter::start_on("0.0.0.0", port)
+            .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start on {port}: {e}"));
+        let groups: Vec<Vec<String>> = vec![
+            vec!["nros: level budget tier=`high` 5000us/10000us enforced by the KERNEL".into()],
+            vec!["nros: sporadic budget throttled by the KERNEL tier=`high`".into()],
+            vec![second_overrun.into()],
+        ];
+        let mut q = QemuProcess::start_nuttx_virt(&entry, true)
+            .unwrap_or_else(|e| panic!("[nuttx-arm {}] boot NuttX QEMU: {e}", lang.as_str()));
+        let log = q.wait_for_output_each(&groups, Duration::from_secs(120));
+        q.kill();
+        let log = log.unwrap_or_else(|e| {
+            panic!(
+                "[nuttx-arm {}] the overrunning level was not shown throttled by the \
+                 kernel: {e}",
+                lang.as_str()
+            )
+        });
+        assert!(
+            !log.contains("sporadic budget exhausted for"),
+            "[nuttx-arm {}] the executor skipped a level the kernel already throttles \
+             (two enforcers):\n{log}",
+            lang.as_str()
+        );
+    }
+}

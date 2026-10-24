@@ -1878,6 +1878,10 @@ pub struct DerivedEntityKnobs {
     ///   `set_default_sched_context`, which MUTATES slot 0 -- so a tiered Rust
     ///   boot, which opens one executor per tier, spends one reserved slot per
     ///   executor and no table entry at all.
+    ///   Issue 2018: a level runner (every tier runner since issue 2016) creates
+    ///   **one per level** that declares a policy
+    ///   (`set_level_sched_context`, on the core's one executor), on every
+    ///   language, which the tier term below covers.
     /// * the C / C++ entry pack creates **one per tier**, through
     ///   `nros_cpp_create_sched_context_from_policy` into `__nros_sc_ids[N]`,
     ///   where `N` is the resolved tier table's length (`SchedView::n`).

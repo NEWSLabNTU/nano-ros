@@ -3110,6 +3110,52 @@ void *nros_cpp_scheduler_owner(void *scheduler);
 nros_cpp_ret_t nros_cpp_scheduler_set_registering_level(void *scheduler, uint8_t level);
 
 /**
+ * Issue 2018 (RFC-0108 As-built) -- give the registering level its own
+ * scheduling context, lowered from its tier's policy by the common backend
+ * (`SchedContext::from_tier_policy`): what the level's setup registers from
+ * now on binds to it rather than to the executor's default, which every
+ * level on the core shares (`Executor::set_level_sched_context`). Call it
+ * after [`nros_cpp_level_open`] / [`nros_cpp_level_adopt`] and before the
+ * level's setup.
+ *
+ * `kernel_enforces_budget` non-zero says the kernel throttles the level's
+ * thread with the same budget and period (NuttX `SCHED_SPORADIC`, Linux
+ * `SCHED_DEADLINE`), so the executor does not enforce it a second time. A
+ * runner that learns it only later hands it over with
+ * [`nros_cpp_sched_context_defer_budget_to_kernel`].
+ *
+ * `class` / `deadline_policy` are NUL-terminated or null (absent);
+ * `period_us` / `budget_us` / `deadline_us` use `0` as absent. A level with
+ * no policy keeps the default context: `NROS_CPP_RET_OK` with `*out_sc_id`
+ * 0. `NROS_CPP_RET_FULL` when no context slot is free.
+ *
+ * # Safety
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL; the
+ * strings as above; `out_sc_id` a valid `*mut u8`.
+ */
+nros_cpp_ret_t nros_cpp_level_set_sched_policy(void *scheduler,
+                                               const char *class_,
+                                               uint64_t period_us,
+                                               uint64_t budget_us,
+                                               uint64_t deadline_us,
+                                               const char *deadline_policy,
+                                               uint8_t kernel_enforces_budget,
+                                               uint8_t *out_sc_id);
+
+/**
+ * Issue 2018 -- the kernel now enforces context `sc_id`'s budget on its
+ * level's thread, so the executor stops enforcing it
+ * (`Executor::defer_budget_to_kernel`). For a runner that sets the level's
+ * policy before its setup and learns the kernel's answer after it.
+ * `NROS_CPP_RET_OK` when a cooperative budget was handed over,
+ * `NROS_CPP_RET_INVALID_ARGUMENT` when `sc_id` carries none.
+ *
+ * # Safety
+ * `scheduler` is a handle from [`nros_cpp_scheduler_open`] or NULL.
+ */
+nros_cpp_ret_t nros_cpp_sched_context_defer_budget_to_kernel(void *scheduler, uint8_t sc_id);
+
+/**
  * phase-509 P9b item 4 -- one pass of level `level`'s worker over the core's
  * executor: it parks (its wake object, the lock released) for at most
  * `timeout_ms` or until its next timer or an arrival in its band, then runs
