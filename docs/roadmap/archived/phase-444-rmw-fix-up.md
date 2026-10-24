@@ -428,7 +428,7 @@ one-line script is in the truth-pass section above.
      rows, closed by phase-417 stage 4.
 9. **Semantics the correlator cannot see and that phase-428 has not ledgered:**
    issue **1041**, a repeating timer catching up after a stall where rcl skips —
-   home [phase-436](../phase-436-poll-wake-revision-deadline-driven-executor.md),
+   home [phase-436](phase-436-poll-wake-revision-deadline-driven-executor.md),
    whose issue table records that the executor arena already defaults to `Skip`
    and names the unswept sibling.
 
