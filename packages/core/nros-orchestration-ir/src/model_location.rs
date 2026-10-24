@@ -461,7 +461,7 @@ fn model_write_dirs(bringup_dir: &Path) -> Vec<PathBuf> {
 }
 
 /// Is `model` one [`ensure_model`] resolved for itself (it sits in one of
-/// [`model_write_dirs`])? Such a model is current by construction -- resolved
+/// `model_write_dirs`)? Such a model is current by construction -- resolved
 /// from the inputs a moment ago, or reused while newer than every one -- and
 /// carries the resolver's own version rather than the pin `nros sync` stamps,
 /// so a provenance check written for sync's models does not apply to it. The
