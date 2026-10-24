@@ -1,15 +1,16 @@
 ---
 id: 2026
 title: "Live-peer: the nano-ros XRCE service client gets no reply from an rclpy server (`test_ros2_service_xrce_client`)"
-status: open
+status: resolved
 type: bug
 area: [testing, rmw-xrce, interop]
 severity: medium
 found: 2026-10-24
-related: [issue-0672]
+resolved: 2026-10-24
+related: [issue-0672, 2009, 0778, phase-466]
 ---
 
-**Home: none.** One sighting so far, in the scheduled live-peer lane.
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)** — its live-peer lane cannot go green while this cell is red.
 
 ## What failed
 
@@ -57,3 +58,40 @@ these commits touch the service and executor paths:
 Run `test_ros2_service_xrce_client` solo on the host runner at current main. If
 it is red, bisect the window above. If it is green, record it as a flake, and
 close only when the next scheduled live-peer run's host job is green.
+
+## Measured (2026-10-24, solo, this host, ROS humble + a ROS-paired Agent)
+
+`test_ros2_service_xrce_client` on main at `7ddf4f42c0`: **5 of 5 failed**,
+each with nine `Service call failed, retrying: Runtime` while the rclpy server
+reported ready. Not a flake.
+
+## Cause
+
+Issue 2009 (b827142a64) made every client match a reply to its request by
+sequence id and DROP a reply that names no pending request. For XRCE that id
+comes from `xrce_reply_callback`, which since issue 0778 recorded the wrong one
+of the two ids Micro-XRCE's `on_reply` passes:
+
+- `request_id` is the id of the `uxr_buffer_request_data` READ that delivered
+  the reply (`read_access.c` passes the DATA submessage's own request id);
+- `reply_id` is the id `uxr_buffer_request` returned when the request was
+  SENT, decoded from the reply's `BaseObjectRequest`.
+
+The callback stored the first and discarded the second. Nothing compared the
+value until 2009, so 0778's mistake was invisible for two months; after 2009
+every XRCE service client (Rust, C and C++ alike: they share the backend)
+dropped every reply.
+
+## Fix
+
+`xrce_reply_callback` records `reply_id`. New buildless C test
+`tests/reply_correlation.c` (`just check rmw-xrce`) calls the callback with the
+two ids different and asserts `take_response` reports the sent one; with the
+old line it reports `3` for a request sent as `42` and fails.
+
+Measured after: `test_ros2_service_xrce_client` **5 of 5 pass** (3.4 s each).
+The whole `xrce_ros2_interop` binary: 7 of 8 pass. The eighth,
+`test_ros2_action_xrce_client`, receives the result and fails only its
+`"Goal accepted"` grep, a line the example stopped printing with issue 0448;
+it is not a recorded live-peer cell, and that stale assertion predates this
+change.
