@@ -668,6 +668,48 @@ def ladder_knobs():
     return total
 
 
+# Issue 2013 — the row prefix `nros config explain` prints for each ladder
+# struct. A struct missing here, or a field missing from `explain`'s defaults,
+# is a knob the ladder resolves and the provenance report never shows. RFC-0086
+# D6 makes that report the acceptance test, so the census refuses it.
+EXPLAIN_PREFIX = {
+    "TxKnobs": "{rmw}.tx.",
+    "ExecutorKnobs": "executor.",
+    "MemoryKnobs": "memory.",
+    "ParamKnobs": "params.",
+    "RmwKnobs": "rmw.",
+    "NetKnobs": "net.",
+    "RuntimeKnobs": "runtime.",
+    "LogKnobs": "log.",
+    "WireKnobs": "zenoh.wire.",
+    "XrceKnobs": "xrce.",
+    "ZenohLimitKnobs": "zenoh.limits.",
+}
+
+EXPLAIN_SRC = "packages/cli/nros-cli-core/src/cmd/config.rs"
+
+
+def explain_gaps(ladder, src):
+    """Ladder knobs `explain` cannot print, as `Struct.field` strings.
+
+    A struct is printed when its prefix appears in a `format!` row; a field is
+    printed when its name is a string literal in the `explain` body, which is
+    where every tenant's defaults table lives.
+    """
+    start = src.find("fn explain(")
+    end = src.find("\nfn ", start + 1)
+    body = src[start:end] if start >= 0 else ""
+    literals = set(re.findall(r'"([a-z0-9_]+)"', body))
+    gaps = []
+    for struct, fields in sorted(ladder.items()):
+        prefix = EXPLAIN_PREFIX.get(struct)
+        if prefix is None or f'format!("{prefix}{{' not in body:
+            gaps.append(f"{struct} (no `explain` row)")
+            continue
+        gaps.extend(f"{struct}.{f}" for f in fields if f not in literals)
+    return gaps
+
+
 def kconfig_symbols():
     syms = set()
     for p in tracked("*Kconfig", "*Kconfig.*", "*/Kconfig"):
@@ -1138,6 +1180,23 @@ def self_test() -> None:
         f"({unregistered!r})"
     )
 
+    # Issue 2013 — `explain_gaps` must report a tenant with no printed row and
+    # a field missing from a printed tenant's defaults, and nothing else.
+    fake = (
+        'fn explain(a: A) {\n'
+        '    let d = &[("max_cbs", 4)];\n'
+        '    println!("{}", format!("executor.{name}"));\n'
+        '}\n'
+        'fn after() { let _ = "stream_history"; }\n'
+    )
+    gaps = explain_gaps(
+        {"ExecutorKnobs": ["max_cbs", "max_sc"], "XrceKnobs": ["stream_history"]},
+        fake,
+    )
+    assert gaps == ["ExecutorKnobs.max_sc", "XrceKnobs (no `explain` row)"], (
+        f"selftest: explain_gaps reported {gaps!r}"
+    )
+
 
 def main() -> int:
     self_test()
@@ -1257,6 +1316,22 @@ def main() -> int:
         sys.stderr.write(
             "  Add a row (or the name as a `legacy` spelling of an existing one)\n"
             "  and run `python3 scripts/gen-knob-registry.py`.\n"
+        )
+        return 1
+
+    gaps = explain_gaps(ladder, read(os.path.join(ROOT, EXPLAIN_SRC)))
+    if gaps:
+        sys.stderr.write(
+            "config-knob-census: FAILED — `nros config explain` does not print "
+            f"{len(gaps)} ladder knob(s):\n"
+        )
+        for g in gaps:
+            sys.stderr.write(f"    {g}\n")
+        sys.stderr.write(
+            f"  Add the tenant's resolve call and defaults to {EXPLAIN_SRC}\n"
+            "  (and its row prefix to EXPLAIN_PREFIX here). RFC-0086 D6 makes\n"
+            "  the provenance report the acceptance test; a knob it omits is\n"
+            "  one whose source nobody can see (issue 2013).\n"
         )
         return 1
 

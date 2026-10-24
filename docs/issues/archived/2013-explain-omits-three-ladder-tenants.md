@@ -1,7 +1,8 @@
 ---
 id: 2013
 title: "`nros config explain` prints 8 of the 11 ladder tenants; `zenoh.wire`, `zenoh.limits` and `xrce` are invisible"
-status: open
+status: resolved
+resolved: 2026-10-24
 type: bug
 area: [config, cli]
 severity: low
@@ -39,3 +40,26 @@ because it never printed the tenant.
 `explain` prints every tenant in `config-knob-census`'s `ladder_knobs()` list.
 A gate should check that list against the tenants `explain` prints, so a new
 tenant without a printed row fails.
+
+## Resolution
+
+`explain` now prints all three tenants, plus a thirteenth knob the issue
+missed: `runtime.let_buffer_size`. That one is a field of `RuntimeKnobs`
+and is read by `nros-build-helpers/src/c.rs`, but `explain`'s runtime
+defaults table never listed it.
+
+- `PlatformsTree::resolve_xrce` and `resolve_zenoh_limits` return each value
+  with its rung, the same shape as the other tenants, through one shared
+  helper `resolve_usize_tenant`.
+- `explain` calls `resolve_wire`, which had no caller before, with builtins
+  that mirror `nros-zpico-build`'s computed table: 65535/65535/8192 for
+  posix, nuttx and threadx, 2048/1024/1024 for the others. One case it
+  cannot see: a serial-only link lowers the unicast batch to 1500, and
+  that is a fact about the link set, not the platform.
+- `config-knob-census` refuses a ladder struct with no `explain` row
+  (`EXPLAIN_PREFIX`), and a field missing from that row's defaults table.
+  Its self-test covers both cases. A mutation that renames the `xrce` row
+  makes it fail.
+
+The "42 ladder knobs" figure above counts build-script environment names.
+The ladder structs hold 53 fields, and `explain` now prints every one.
