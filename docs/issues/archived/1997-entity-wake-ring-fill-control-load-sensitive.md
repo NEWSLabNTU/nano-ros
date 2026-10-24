@@ -1,11 +1,12 @@
 ---
 id: 1997
 title: "entity_wake's burst test fails its own 'the ring really filled' control under a loaded `check::build`, and passes alone"
-status: open
+status: resolved
 type: bug
 area: [testing, rmw]
 severity: low
 found: 2026-10-21
+resolved: 2026-10-24
 related: [1979, 1980]
 ---
 
@@ -72,3 +73,33 @@ roughly every other run, so it is no longer a load-only flake. Main gained
 mutex) the same day, which slows exactly the publisher this control depends
 on outrunning the subscriber. That is a candidate, not a finding: the
 fix direction above (fill the ring by construction) is unaffected either way.
+
+## Fixed (2026-10-24)
+
+The ring now fills by construction. After the first sample is dispatched
+(discovery settled), samples 2..=25 are published while the executor is NOT
+spinning; on POSIX zenoh-pico's background read task lands every arrival in
+the subscription's ring (depth 4), which nothing drains. The test waits —
+sleep-polling, no spin, bounded by `ARRIVAL_BUDGET` — until
+`ring_full_drops_total()` has moved and then until it stops moving, so the
+ring holds its final contents before the executor runs. Only then does it
+spin and assert the newest sample was dispatched. "The ring filled" is now an
+asserted precondition with its own message, not a race the publisher had to
+win. The publisher thread, `CALLBACK_COST` and `PUBLISH_INTERVAL` are gone;
+the read-task assumption was checked by measurement (the precondition passes
+every run below). A callback gate, the alternative construction, was not
+needed.
+
+Measured on main at `a9f280e4fe`, solo, the lane's features, `-E
+'test(a_burst_into_a_slow_subscription_ends_on_its_newest_sample)'`;
+"under load" = one busy-loop per core (`nproc`) for the whole series:
+
+| tree | solo | under load |
+| --- | --- | --- |
+| before (main) | 0 / 10 | 5 / 10 (both cases, `the ring never filled`) |
+| after | 0 / 10 | 0 / 10, then 0 / 30 |
+
+It still discriminates: with `_zpico_ring_reserve` mutated to drop the
+incoming sample on a full ring (the pre-1979 keep-oldest behaviour), both
+cases fail 3 / 3 on the newest-sample assertion (latest stops below 25),
+while the fill precondition passes.
