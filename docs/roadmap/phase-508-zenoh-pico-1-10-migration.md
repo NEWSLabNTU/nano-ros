@@ -82,13 +82,13 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       session patches and to `zpico.c`. DONE 2026-10-24: 5 obsolete, 12 port,
       2 redesign (#0899 teardown, the read-task frame budget), 2 depend on how
       single-thread builds poll. Issue 0910's second-pass survey has the table.
-- [ ] Decide how each build drives the executor: multi-thread builds run
-      `zp_start_read_task` (one executor thread, which replaces the read and
-      lease tasks and collapses issue 0623's priority band to one), and
-      single-thread builds run a bounded `zp_spin_once` loop. The ThreadX
-      multi-thread arm calls `zp_read`, which 1.10.1 compiles out, so it must
-      pick one. Emit `Z_RUNTIME_MAX_TASKS` and
-      `Z_RUNTIME_IDLE_READ_TASK_SLEEP`.
+- [ ] Decide how each build drives the executor. Drafted 2026-10-24 as
+      [RFC-0110](../design/0110-zenoh-pico-executor-driving.md): THREAD mode
+      (POSIX, Zephyr, NuttX, FreeRTOS) runs the one executor thread, which
+      replaces the read and lease tasks; CALLER mode (bare metal, ThreadX)
+      runs a bounded `zp_spin_once` loop, and ThreadX gets a fork patch to
+      run the multi-thread executor from the caller. Done when RFC-0110's
+      measurements are taken and it leaves Draft.
 - [ ] Rebase the fork's `nano-ros` patch line onto upstream 1.10.1, keeping the
       patches as individual commits (CLAUDE.md, vendored-fork workflow). Drop
       each patch that upstream now carries, and record each drop. Redesign
