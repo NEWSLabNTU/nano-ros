@@ -137,3 +137,87 @@ port: anything we write into `config.h` alone is erased by the first `cmake`
 configure. Two knobs were in that position and are now in `config.h.in`; the
 `#ifndef` wrapping from `49012370` still is not (118 lines). Details and the
 sweep command are in [phase-415](../roadmap/archived/phase-415-zenoh-pico-1-8-0-patch-line.md).
+
+## Update 2026-10-24 — ROS Humble now ships 1.10.1, so 1.10 is the target again
+
+The 2026-09-04 update parked this issue because 1.10 was two minors ahead of the
+zenoh ROS ships. That stopped being true on 2026-10-11, when
+`ros-humble-zenoh-cpp-vendor` **0.1.11** reached the Humble apt repository
+(`1jammy.20261011`). Its `zenoh_cpp_vendor/CMakeLists.txt` reads "corresponds
+to zenoh-c 1.10.1 plus few fixes"; 0.1.9's read "zenoh-c 1.8.0 plus few fixes".
+The jazzy, kilted and rolling branches of `ros2/rmw_zenoh` are on 1.10.1 too,
+though jazzy (0.2.11) and kilted (0.6.8) have not released it yet. The full
+table and its sources are in
+[phase-508](../roadmap/phase-508-zenoh-pico-1-10-migration.md).
+
+Under the same tracking rule that made 1.8.0 the target, the target is now
+**1.10.1**, and this issue is queued work again rather than a cost record.
+
+Which of the measurements above still apply:
+
+- The **1863 commits behind** and **54 knobs behind** counts are from the
+  `dac320e3` (1.7.2) pin and overstate the gap from the 1.8.0 line phase-415
+  landed. phase-508 re-measures both against 1.10.1.
+- The structural points stand: upstream ships its own Zephyr UART backend and
+  serial protocol, so the migration is mostly deleting ours; derive the knobs
+  from upstream rather than transcribing them; find the TU that compiles
+  without `ZENOH_GENERIC`; and do not carry fork commit `67ee0224` forward.
+- The `nros-integration-1.10` branch's serial commit still lacks the deadline,
+  `k_yield()` and the issue-0852 interrupt-driven RX our port has, so it is a
+  reference, not something to cherry-pick.
+
+Not yet measured: whether a 1.8.0 image interoperates with a 1.10.1 router.
+Issue 0291 expects it to, since the wire protocol is stable across 1.x, and
+phase-508's first work item checks it.
+
+## Survey 2026-10-24 — the 1.8.0 patch line against upstream 1.10.1
+
+Measured on a scratch clone of the fork, nothing pushed. Superproject pin
+`57bbde9e` (`version.txt` 1.8.0), which is the tip of the fork's `nano-ros`
+branch; upstream tags `1.8.0` (`eb47e2e0`, the patch line's merge base) and
+`1.10.1`.
+
+| | count |
+| --- | --- |
+| patch-line commits on top of 1.8.0 | 92 |
+| of those, already carried by 1.10.1 (`git cherry`) | 2: `66b5bf9b` `_z_socket_accept` field name, `75dd7713` `z_random_fill` pointer advance |
+| upstream commits 1.8.0 → 1.10.1 | 61, touching 440 files |
+| files the patch line touches | 88, of which 50 upstream also changed |
+| trial merge onto 1.10.1: files that merge clean | 66 |
+| trial merge onto 1.10.1: files that conflict | **22** (phase-415's 1.7.2 → 1.8.0 port had 42) |
+
+The 22 conflicts, by kind:
+
+- **content (15):** `examples/unix/c11/z_pub_st.c`, `config.h.in`,
+  `link/link.h`, `session/keyexpr_match_template.h`,
+  `system/common/platform.h`, `system/platform/unix.h`,
+  `transport/transport.h`, `src/net/session.c`, `src/session/keyexpr.c`,
+  `src/system/common/platform.c`, `src/system/unix/network.c`,
+  `src/system/zephyr/network.c`, `src/system/zephyr/system.c`,
+  `src/transport/unicast/lease.c`, `src/transport/unicast/read.c`.
+- **file location (4):** our added `include/zenoh-pico/system/link/{can,custom,isotp,ivc}.h`
+  sit in a directory upstream renamed, so they move with it.
+- **modify/delete (3):** `include/zenoh-pico/config.h` (1.10.1 no longer has
+  it in the tree), `src/system/common/serial.c` and
+  `src/system/freertos/lwip/network.c` (both replaced by upstream's
+  `src/link/transport/**` layout). These are the restructure this issue
+  predicted; the serial one is the deletion the migration is for.
+
+Config knobs (`#define Z_*` in `config.h.in`): 83 at 1.8.0, 96 at 1.10.1. New
+in 1.10.1 (14): the connect/listen timeout and exit-on-failure `_KEY`/`_DEFAULT`
+pairs, `Z_RUNTIME_MAX_TASKS`, `Z_RUNTIME_IDLE_READ_TASK_SLEEP`,
+`Z_MAX_NUM_SCOUT_INTERFACES`, `Z_TRANSPORT_ACCEPT_TIMEOUT` and
+`Z_TRANSPORT_CONNECT_TIMEOUT`. Removed (1): `Z_FEATURE_PERIODIC_TASKS`, which
+our generator still emits. `config_header()` emits 41 of the 96 and leaves 55
+(27 `*_KEY`, 12 `*_DEFAULT`, 16 sizes and timeouts) to upstream's defaults,
+which at 1.8.0 came from the committed `config.h` and at 1.10.1 have no
+committed home. Deriving them from upstream rather than transcribing them is
+still the plan. The generator's 12 knobs that are not in 1.10.1's template are
+our fork's own additions (the CAN/custom/ISO-TP/IVC links, the RX task budget,
+the TX split lock, the lease sleep chunk) plus `Z_FEATURE_SCOUTING_UDP`,
+`Z_FEATURE_UNSTABLE_API` and the removed `Z_FEATURE_PERIODIC_TASKS`.
+
+Reproduce, from a clone of `jerry73204/zenoh-pico` with the two upstream tags
+fetched: `git checkout 1.10.1 && git merge --no-commit 57bbde9e` and count
+`git diff --name-only --diff-filter=U`; `git cherry 1.10.1 57bbde9e 1.8.0` for
+the carried commits.
