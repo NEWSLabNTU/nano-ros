@@ -2,10 +2,7 @@
 
 use core::{ffi::c_void, ptr};
 
-use nros::{
-    GoalId,
-    cdr::{CDR_HEADER_LEN, strip_cdr_header, write_cdr_le_header},
-};
+use nros::cdr::strip_cdr_header;
 
 use super::common::*;
 use crate::{
@@ -14,13 +11,7 @@ use crate::{
     node::{rcl_node_t, rclc_node_state_t},
 };
 
-/// CDR sequence<uint8, 16> length prefix (4 bytes) in front of the UUID bytes.
-/// See [`nros_node::GoalId`] encoding in `CLAUDE.md`.
-const GOAL_ID_SEQ_PREFIX_LEN: usize = GoalId::SEQ_PREFIX_LEN;
-
-/// Bytes of CDR framing that precede the goal payload in a send_goal request:
-/// CDR encapsulation header + GoalId sequence length prefix + UUID.
-const GOAL_REQUEST_FRAMING_LEN: usize = CDR_HEADER_LEN + GOAL_ID_SEQ_PREFIX_LEN + GoalId::UUID_LEN;
+use nros_node::action_frame;
 
 // ============================================================================
 // Action Server
@@ -244,22 +235,16 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
         return nros_node::GoalResponse::Reject;
     };
 
-    // goal_data contains the full CDR request: [CDR_HDR][GoalId seq][UUID][goal_fields].
-    // The C callback expects CDR-encoded goal data: [CDR_HDR][goal_fields].
-    // Extract goal fields (after CDR header + GoalId) and prepend a CDR header.
+    // goal_data contains the full CDR request: [CDR_HDR][UUID][goal_fields].
+    // The C callback expects CDR-encoded goal data: [CDR_HDR][goal_fields],
+    // built on the stack (must outlive the callback). Issue 2014 — offset and
+    // splice from `action_frame` (the request's own header in front).
     let goal_slice = core::slice::from_raw_parts(goal_data, goal_len);
-
-    // Build [CDR_HEADER][goal_fields] on the stack (must outlive the callback)
     const GOAL_CB_BUF: usize = 512;
     let mut cb_buf = [0u8; GOAL_CB_BUF];
-    let (cb_ptr, cb_len) = if goal_len > GOAL_REQUEST_FRAMING_LEN {
-        let fields = &goal_slice[GOAL_REQUEST_FRAMING_LEN..];
-        let payload = write_cdr_le_header(&mut cb_buf).expect("cb_buf >= CDR_HEADER_LEN");
-        let copy_len = fields.len().min(payload.len());
-        payload[..copy_len].copy_from_slice(&fields[..copy_len]);
-        (cb_buf.as_ptr(), CDR_HEADER_LEN + copy_len)
-    } else {
-        (goal_data, goal_len)
+    let (cb_ptr, cb_len) = match action_frame::splice_goal_request(goal_slice, &mut cb_buf) {
+        Some(n) => (cb_buf.as_ptr(), n),
+        None => (goal_data, goal_len),
     };
 
     let c_response = goal_cb(server, &goal_handle, cb_ptr, cb_len, (*server).context);
@@ -1375,9 +1360,9 @@ pub unsafe extern "C" fn rclc_polling_action_server_try_recv_goal_request_raw(
         match core.try_recv_goal_request() {
             Ok(Some(req)) => {
                 // Goal payload sits in core.goal_buffer() at
-                // [GOAL_REQUEST_FRAMING_LEN..GOAL_REQUEST_FRAMING_LEN+req.data_len].
+                // [GOAL_REQUEST_PAYLOAD_OFFSET..+req.data_len] (issue 2014).
                 let goal_buf = core.goal_buffer();
-                let payload_offset = GOAL_REQUEST_FRAMING_LEN;
+                let payload_offset = action_frame::GOAL_REQUEST_PAYLOAD_OFFSET;
                 if payload_offset + req.data_len > goal_buf.len() {
                     return RCL_RET_ERROR;
                 }

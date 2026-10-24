@@ -3330,7 +3330,7 @@ pub(crate) unsafe fn action_client_raw_try_process<
     if let Ok(Some((total_len, goal_id))) = core.try_recv_send_goal_reply_for() {
         if let Some(cb) = goal_response_callback {
             // Reply CDR: header (4) + accepted (u8) + stamp
-            let accepted = total_len >= 5 && core.result_buffer[4] != 0;
+            let accepted = crate::action_frame::goal_accepted(&core.result_buffer[..total_len]);
             // Phase 8 — hooked at the invocation, inside both the
             // `Ok(Some(..))` arm and the `Some(cb)` guard: an unregistered
             // callback or an empty poll emits nothing.
@@ -3344,41 +3344,26 @@ pub(crate) unsafe fn action_client_raw_try_process<
     // 2. Poll feedback
     if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw() {
         if let Some(cb) = feedback_callback {
-            // Feedback buffer layout from `publish_feedback_raw` in
-            // `action_core.rs`:
-            //   bytes 0..4   outer CDR header (`new_with_header`)
-            //   bytes 4..20  GoalId.uuid (16 bytes, fixed `uint8[16]`,
-            //                no length prefix — ROS 2
-            //                `unique_identifier_msgs/UUID`; see
-            //                `action_core::write_goal_id`)
-            //   bytes 20..   payload — exactly the bytes the caller
-            //                of `publish_feedback_raw` handed in
-            //                (typed serializers like `ffi_serialize`
-            //                write a CDR header at the front).
+            // Layout `[encap 4][GoalId.uuid 16][fields]` — see `action_frame`.
+            // Issue 2014 — the offset (`action_frame::FEEDBACK_PAYLOAD_OFFSET`)
+            // and the splice are spelled once, in `action_frame`.
             //
-            // 233.6: the GoalId carries NO sequence-length prefix (it did
-            // pre-233.6, which made the offset `4 + 4 + 16`; that framing
-            // self-matched nano-ros peers but a real `rcl_action` peer
-            // rejects the extra 4 bytes).
-            const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 16;
-            if total_len > FEEDBACK_PAYLOAD_OFFSET {
-                // #175 + RFC-0069/0418 — the payload is field bytes on every
-                // backend now: Cyclone's `dds_stream` drops the inner encap of a
-                // nested field, and since 0418 the producer never writes one. So
-                // splice the enclosing message's encap unconditionally. This used
-                // to branch on an encap SNIFF, which mis-fires on a body whose
-                // first word is 0x00010000 (see the retired helper).
-                let raw = &core.feedback_buffer[FEEDBACK_PAYLOAD_OFFSET..total_len];
-                let mut spliced = [0u8; FEEDBACK_BUF];
-                let n = raw.len().min(FEEDBACK_BUF - 4);
-                spliced[0..4].copy_from_slice(&core.feedback_buffer[0..4]);
-                spliced[4..4 + n].copy_from_slice(&raw[..n]);
+            // #175 + RFC-0069/0418 — the payload is field bytes on every
+            // backend now: Cyclone's `dds_stream` drops the inner encap of a
+            // nested field, and since 0418 the producer never writes one. So
+            // splice the enclosing message's encap unconditionally. This used
+            // to branch on an encap SNIFF, which mis-fires on a body whose
+            // first word is 0x00010000 (see the retired helper).
+            let mut spliced = [0u8; FEEDBACK_BUF];
+            if let Some(n) = crate::action_frame::splice_feedback(
+                &core.feedback_buffer[..total_len],
+                &mut spliced,
+            ) {
                 // Phase 8 — a DISTINCT callback from the goal-response one,
-                // with its own pair. Hooked inside the
-                // `total_len > FEEDBACK_PAYLOAD_OFFSET` guard: a short
+                // with its own pair. Hooked inside the guard: a short
                 // payload runs no user code and must emit nothing.
                 trace_cb_start(desc_idx);
-                unsafe { cb(&goal_id, spliced.as_ptr(), 4 + n, *context) };
+                unsafe { cb(&goal_id, spliced.as_ptr(), n, *context) };
                 trace_cb_end(desc_idx);
             }
         }
@@ -3389,63 +3374,32 @@ pub(crate) unsafe fn action_client_raw_try_process<
     //    named, not to the most recently sent goal.
     if let Ok(Some((total_len, goal_id))) = core.try_recv_get_result_reply_for() {
         if let Some(cb) = result_callback {
-            // Reply layout from `try_handle_get_result_raw` in
-            // `action_core.rs`:
-            //   bytes 0..4   outer CDR header (`new_with_header`)
-            //   byte  4      status (i8)
-            //   bytes 5..8   align(4) pad
-            //   bytes 8..    payload — exactly the bytes the caller
-            //                of `complete_goal_raw` handed in (typed
-            //                serializers like `ffi_serialize` write
-            //                a CDR header at the front, which is
-            //                why the alignment pad above is sized
-            //                to land the payload at a 4-byte boundary).
+            // Layout `[encap 4][status i8][pad → 8][fields]` — see
+            // `action_frame`. Slicing at 5 (Phase 96.1) leaked the three pad
+            // bytes into the payload and emptied every C++/XRCE result.
+            // Issue 2014 — status, payload offset and splice come from
+            // `action_frame`, the one spelling every consumer shares.
             //
-            // The trampoline forwards `payload` to the C/C++
-            // callback verbatim — the cpp wrapper expects to see
-            // the inner CDR header that `ffi_serialize` wrote.
-            // Earlier code used `result_offset = 5` and skipped
-            // only the status byte; that leaked the 3 alignment
-            // pad bytes into the payload prefix and blew up
-            // `ffi_deserialize`, surfacing as an empty result on
-            // the cpp/xrce action client (Phase 96.1 follow-up).
-            const RESULT_PAYLOAD_OFFSET: usize = 8;
-            if total_len >= RESULT_PAYLOAD_OFFSET {
-                let status_byte = core.result_buffer[4];
-                let status = match status_byte {
-                    4 => nros_core::GoalStatus::Succeeded,
-                    5 => nros_core::GoalStatus::Canceled,
-                    6 => nros_core::GoalStatus::Aborted,
-                    _ => nros_core::GoalStatus::Unknown,
-                };
-                // #175 + RFC-0069/0418 — restore the result's CDR encapsulation
-                // header. The fields arrive raw at `RESULT_PAYLOAD_OFFSET` on
-                // every backend now: Cyclone sends `GetResult_Response` as a
-                // TYPED sample whose `result` is a NESTED field, so `dds_stream`
-                // consumes the inner encap; and since 0418 the producer never
-                // writes one. The consumer (`CallbackCtx::message` /
-                // `ffi_deserialize`) reads with `new_with_header`, so splice the
-                // reply's top-level encap (`result_buffer[0..4]`, always valid)
-                // in front unconditionally.
-                //
-                // This used to branch on an encap SNIFF, justified by the claim
-                // that "a raw CDR field never begins with an encoding
-                // identifier". That claim is false — a leading `int32` of 256 is
-                // `00 01 00 00` — and once 0418 made every payload header-less
-                // the sniff decided every decode, so such a body had its first
-                // word eaten as framing: the very corruption this comment warns
-                // about, caused by the guard against it. See the retired
-                // `payload_has_cdr_encap`.
-                let raw = &core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len];
-                let mut spliced = [0u8; RESULT_BUF];
-                let n = raw.len().min(RESULT_BUF - 4);
-                spliced[0..4].copy_from_slice(&core.result_buffer[0..4]);
-                spliced[4..4 + n].copy_from_slice(&raw[..n]);
+            // #175 + RFC-0069/0418 — restore the result's CDR encapsulation
+            // header. The fields arrive raw on every backend now: Cyclone sends
+            // `GetResult_Response` as a TYPED sample whose `result` is a NESTED
+            // field, so `dds_stream` consumes the inner encap; and since 0418
+            // the producer never writes one. The consumer
+            // (`CallbackCtx::message` / `ffi_deserialize`) reads with
+            // `new_with_header`, so splice the reply's top-level encap in front
+            // unconditionally. It used to branch on an encap SNIFF, which a
+            // leading `int32` of 256 (`00 01 00 00`) defeats — see the retired
+            // `payload_has_cdr_encap`.
+            let reply = &core.result_buffer[..total_len];
+            let mut spliced = [0u8; RESULT_BUF];
+            if let (Some(status), Some(n)) = (
+                crate::action_frame::result_status(reply),
+                crate::action_frame::splice_result(reply, &mut spliced),
+            ) {
                 // Phase 8 — the third distinct callback on this entry, its
-                // own pair. Inside the `total_len >= RESULT_PAYLOAD_OFFSET`
-                // guard, which can skip the call entirely.
+                // own pair. Inside the guard, which can skip the call entirely.
                 trace_cb_start(desc_idx);
-                unsafe { cb(&goal_id, status, spliced.as_ptr(), 4 + n, *context) };
+                unsafe { cb(&goal_id, status, spliced.as_ptr(), n, *context) };
                 trace_cb_end(desc_idx);
             }
         }
@@ -3647,26 +3601,26 @@ pub(crate) struct ActionClientCallbackEntry<
 #[inline]
 fn dispatch_feedback<A, F, const FEEDBACK_BUF: usize>(
     data: &[u8],
-    offset: usize,
     on_feedback: &mut F,
     desc_idx: u8,
 ) where
     A: RosAction,
     F: FnMut(&nros_core::GoalId, &A::Feedback),
 {
-    if data.len() <= offset {
+    // Issue 2014 — offsets from `action_frame`.
+    let (Some(goal_id), Some(fields)) = (
+        crate::action_frame::feedback_goal_id(data),
+        crate::action_frame::feedback_fields(data),
+    ) else {
         return;
-    }
-    let mut uuid = [0u8; 16];
-    uuid.copy_from_slice(&data[4..20]);
-    let goal_id = nros_core::GoalId { uuid };
+    };
     // #175 — restore the feedback's per-message encap if a typed transport
     // framing (Cyclone) stripped it; the message's top-level encap is `data[0..4]`.
     //
     // Phase 8 — hooked INSIDE the `if let Some(fb)`: the early `return`
     // above and a `None` from `read_action_field` both leave the user
     // closure un-run, and neither may emit a span.
-    if let Some(fb) = read_action_field::<A::Feedback, FEEDBACK_BUF>(&data[0..4], &data[offset..]) {
+    if let Some(fb) = read_action_field::<A::Feedback, FEEDBACK_BUF>(data, fields) {
         trace_cb_start(desc_idx);
         on_feedback(&goal_id, &fb);
         trace_cb_end(desc_idx);
@@ -3725,7 +3679,7 @@ where
     // Issue 2009 — the goal is the one the reply's request was ABOUT, not the
     // most recently sent one.
     if let Ok(Some((total_len, goal_id))) = core.try_recv_send_goal_reply_for() {
-        let accepted = total_len >= 5 && core.result_buffer[4] != 0;
+        let accepted = crate::action_frame::goal_accepted(&core.result_buffer[..total_len]);
         // Phase 8 — hooked inside the `Ok(Some(..))` arm; an empty poll is
         // the common case and runs no user code.
         trace_cb_start(desc_idx);
@@ -3739,7 +3693,6 @@ where
     //    message: outer CDR header (4) + GoalId (16) + inner-CDR payload; see the
     //    raw dispatcher for the layout rationale (233.6).
     {
-        const FEEDBACK_PAYLOAD_OFFSET: usize = 4 + 16;
         match feedback_buffer {
             BufferStrategy::Triple(tb) => {
                 let slot = tb.write_slot();
@@ -3750,12 +3703,7 @@ where
                     // Phase 8 — the pair lives INSIDE `dispatch_feedback`
                     // (it can return without firing); `desc_idx` is threaded
                     // in so the leaf can name itself.
-                    dispatch_feedback::<A, _, FEEDBACK_BUF>(
-                        &data[..len],
-                        FEEDBACK_PAYLOAD_OFFSET,
-                        on_feedback,
-                        desc_idx,
-                    );
+                    dispatch_feedback::<A, _, FEEDBACK_BUF>(&data[..len], on_feedback, desc_idx);
                     did_work = true;
                 }
             }
@@ -3770,12 +3718,7 @@ where
                     // Phase 8 — one pair per drained slot, emitted by
                     // `dispatch_feedback` itself, so a ring draining N
                     // messages reports N invocations rather than one.
-                    dispatch_feedback::<A, _, FEEDBACK_BUF>(
-                        &data[..len],
-                        FEEDBACK_PAYLOAD_OFFSET,
-                        on_feedback,
-                        desc_idx,
-                    );
+                    dispatch_feedback::<A, _, FEEDBACK_BUF>(&data[..len], on_feedback, desc_idx);
                     ring.commit_pop();
                     did_work = true;
                 }
@@ -3786,21 +3729,16 @@ where
     // 3. Result reply — status at byte 4, payload at [8 ..] (header + status +
     //    align pad); see the raw dispatcher (Phase 96.1).
     if let Ok(Some((total_len, goal_id))) = core.try_recv_get_result_reply_for() {
-        const RESULT_PAYLOAD_OFFSET: usize = 8;
-        if total_len >= RESULT_PAYLOAD_OFFSET {
-            let status = match core.result_buffer[4] {
-                4 => nros_core::GoalStatus::Succeeded,
-                5 => nros_core::GoalStatus::Canceled,
-                6 => nros_core::GoalStatus::Aborted,
-                _ => nros_core::GoalStatus::Unknown,
-            };
+        let reply = &core.result_buffer[..total_len];
+        // Issue 2014 — status and payload offset from `action_frame`.
+        if let (Some(status), Some(fields)) = (
+            crate::action_frame::result_status(reply),
+            crate::action_frame::result_fields(reply),
+        ) {
             // #175 — restore the result's per-message encap if a typed transport
             // framing (Cyclone) stripped it; the reply's top-level encap is
-            // `result_buffer[0..4]`.
-            if let Some(res) = read_action_field::<A::Result, RESULT_BUF>(
-                &core.result_buffer[0..4],
-                &core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len],
-            ) {
+            // `reply[0..4]`.
+            if let Some(res) = read_action_field::<A::Result, RESULT_BUF>(reply, fields) {
                 // Phase 8 — inside the `Some(res)` arm: a failed
                 // deserialize leaves `on_result` un-run and must emit
                 // nothing. Distinct callback, its own pair.

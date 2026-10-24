@@ -213,9 +213,9 @@ int main(void) {
         CHECK(nros_stub_rmw_stage_reply_for(seq_rb, res_b, sizeof(res_b)), "stage B's result");
         CHECK(nros_stub_rmw_stage_reply_for(seq_ra, res_a, sizeof(res_a)), "stage A's result");
         n = rclc_polling_action_client_try_recv_result_raw_for(&act, buf, sizeof(buf), &about);
-        CHECK(n == 12 && buf[8] == 0xBB && memcmp(about, gb, 16) == 0, "first result: B's");
+        CHECK(n == 12 && buf[RCLC_ACTION_RESULT_PAYLOAD_OFFSET] == 0xBB && memcmp(about, gb, 16) == 0, "first result: B's");
         n = rclc_polling_action_client_try_recv_result_raw_for(&act, buf, sizeof(buf), &about);
-        CHECK(n == 12 && buf[8] == 0xAA && memcmp(about, ga, 16) == 0, "second result: A's");
+        CHECK(n == 12 && buf[RCLC_ACTION_RESULT_PAYLOAD_OFFSET] == 0xAA && memcmp(about, ga, 16) == 0, "second result: A's");
         n = rclc_polling_action_client_try_recv_result_raw_for(&act, buf, sizeof(buf), &about);
         CHECK(n == 0, "nothing more");
         CHECK(rclc_polling_action_client_try_recv_result_raw_for(&act, buf, sizeof(buf), NULL) ==

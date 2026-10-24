@@ -117,6 +117,23 @@ struct rclc_goal_uuid_t;
 #define NROS_SERIALIZATION_FORMAT_ID 1
 
 /**
+ * Issue 2014 — byte of a get_result reply where the result fields start
+ * (`[encap 4][status i8][pad → 8][fields]`), for a C caller decoding what
+ * `rclc_polling_action_client_try_recv_result_raw` returns. C ABI mirror of
+ * `nros_node::action_frame::RESULT_PAYLOAD_OFFSET` (a literal, because
+ * cbindgen emits only literals — the assert below binds the two).
+ */
+#define RCLC_ACTION_RESULT_PAYLOAD_OFFSET 8
+
+/**
+ * Issue 2014 — byte of a feedback message where the feedback fields start
+ * (`[encap 4][GoalId.uuid 16][fields]`), for a caller of
+ * `rclc_polling_action_client_try_recv_feedback_raw`; mirror of
+ * `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
+ */
+#define RCLC_ACTION_FEEDBACK_PAYLOAD_OFFSET 20
+
+/**
  * Live registrations, process-wide, across both the C and C++ APIs. Nine
  * event kinds carry a slot (issue 1993): up to four per publisher, five
  * per subscription. See the module doc for why 16.

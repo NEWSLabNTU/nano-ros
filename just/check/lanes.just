@@ -1640,6 +1640,28 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/action_future_keying_runtime
+    # issue 2014 -- the POLLING action client decodes a get_result reply's
+    # fields from byte 8 (`[encap][status][pad -> 8][fields]`), the offset every
+    # dispatch path shares (`nros_node::action_frame`); it skipped 5. A RUN: the
+    # property is the bytes that come back.
+    test -f packages/api/nros-cpp/tests/compile/polling_action_result_offset_runtime.cpp || { \
+        echo "ERROR: polling_action_result_offset_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - polling action client: get_result payload decoded from byte 8 (runtime, issue 2014)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/polling_action_result_offset_runtime \
+        packages/api/nros-cpp/tests/compile/polling_action_result_offset_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/polling_action_result_offset_runtime
     # ...and WITHOUT the hosted surface `Future::get()` is refused, naming
     # `try_take` (no `<memory>`, no allocator). Grepped for both, because an
     # include typo also fails to compile.

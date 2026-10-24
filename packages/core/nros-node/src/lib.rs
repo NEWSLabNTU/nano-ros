@@ -86,6 +86,7 @@ extern crate std;
 extern crate alloc;
 
 /// phase-412 -- the boot self-report, for boards with no reachable log sink.
+pub mod action_frame;
 pub mod boot_report;
 pub mod c_waker;
 pub mod config;
