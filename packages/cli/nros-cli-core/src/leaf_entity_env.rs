@@ -960,18 +960,20 @@ pub fn leaf_infra(
 /// and a second copy of this resolution is how the facts and the rows would
 /// come to describe different resolutions of one bringup.
 pub fn leaf_model(leaf: &Path) -> Option<nros_orchestration_ir::overlay::LoadedModel> {
-    use nros_orchestration_ir::model_location;
-    if !leaf
-        .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
-        .is_file()
-    {
-        return None;
-    }
-    let rel = model_location::launch_to_model_rel(leaf, None, &[]).ok()?;
-    let path = model_location::resolve_model_path(leaf, &rel);
-    if !path.is_file() {
-        return None;
-    }
+    let path = match leaf_model_path(leaf) {
+        Ok(Some(p)) => p,
+        Ok(None) => return None,
+        // phase-460 W1 follow-up -- a refused or stale model states no fact.
+        // Said once here; `nros build` refuses the leaf outright
+        // (`plan_single_package`).
+        Err(r) => {
+            eprintln!(
+                "warning: {}: {r}\n  The backend keeps its undeclared budgets.",
+                leaf.display()
+            );
+            return None;
+        }
+    };
     match crate::orchestration::model_ingest::load_model(&path) {
         Ok(m) => Some(m),
         Err(e) => {
@@ -983,6 +985,27 @@ pub fn leaf_model(leaf: &Path) -> Option<nros_orchestration_ir::overlay::LoadedM
             None
         }
     }
+}
+
+/// phase-460 W1 follow-up -- the leaf's resolved model, through the gated
+/// door (`model_gate::open`): `Ok(None)` when the leaf has no
+/// `system.toml` or `nros sync` has written no model, `Err` when sync refused
+/// it or its provenance no longer holds. It used to take
+/// `resolve_model_path`'s first existing file unchecked.
+pub fn leaf_model_path(
+    leaf: &Path,
+) -> Result<Option<std::path::PathBuf>, crate::model_gate::Refusal> {
+    use nros_orchestration_ir::model_location;
+    if !leaf
+        .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+        .is_file()
+    {
+        return Ok(None);
+    }
+    let Ok(rel) = model_location::launch_to_model_rel(leaf, None, &[]) else {
+        return Ok(None);
+    };
+    crate::model_gate::open(leaf, &rel)
 }
 
 /// What a leaf's derived `[env]` is: the rendered sidecar (for the per-leaf

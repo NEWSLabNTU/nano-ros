@@ -36,12 +36,14 @@
 //! the launch parser back on the cmake path phase-296 deleted, and would let a
 //! consumer disagree with the build layer that owns the artifact.
 //!
-//! The `nros::main!` proc-macro is a fifth door this module cannot reach: it
-//! opens the model through `nros_orchestration_ir::model_location::ensure_model`
+//! The `nros::main!` proc-macro is a door this module cannot reach: it opens
+//! the model through `nros_orchestration_ir::model_location::ensure_model`
 //! (`packages/core/nros-macros/src/main_macro.rs`), and a proc-macro cannot
-//! depend on this crate. That door still re-resolves from the inputs when the
-//! artifact is absent -- which is what quarantine leaves -- so it never reads
-//! a quarantined model; what it does not see is the marker.
+//! depend on this crate. So the marker is spelled THERE
+//! (`model_location::refusal_marker`) and `ensure_model` refuses on it; it
+//! used to re-resolve from the inputs when quarantine left no file, and so
+//! built from a model its producer had refused. `nros build` opens models
+//! through [`verify_search`] (phase-460 W1 follow-up).
 
 use std::path::{Path, PathBuf};
 
@@ -49,11 +51,11 @@ use sha2::{Digest, Sha256};
 
 /// Extension of the marker beside a model: `system_model.yaml` is refused by
 /// `system_model.refused` in the same directory.
-pub const MARKER_EXT: &str = "refused";
+pub const MARKER_EXT: &str = nros_orchestration_ir::model_location::REFUSED_MARKER_EXT;
 
 /// `<stem>.refused` beside `<stem>.yaml`.
 pub fn marker_path(model: &Path) -> PathBuf {
-    model.with_extension(MARKER_EXT)
+    nros_orchestration_ir::model_location::refusal_marker(model)
 }
 
 /// `<stem>.refused-<utc-stamp>.yaml` beside `<stem>.yaml` -- where the
@@ -251,6 +253,37 @@ pub fn verify_search(bringup_dir: &Path, model_rel: &str) -> Result<Option<PathB
         }
     }
     Ok(None)
+}
+
+/// phase-460 W1 follow-up -- [`verify_search`] for a consumer that may also
+/// RESOLVE (`nros build`, a leaf's entity facts). The refusal marker is
+/// checked on every rung. The first model found is fully verified unless
+/// `ensure_model` resolved it for itself
+/// (`model_location::is_self_resolved`): that one carries no sync pin and is
+/// current by construction, so the pin check would refuse every such model.
+/// Measured -- `build_verb_pipeline` went red on exactly that, `0.9.0` against
+/// our pin.
+pub fn open(bringup_dir: &Path, model_rel: &str) -> Result<Option<PathBuf>, Refusal> {
+    use nros_orchestration_ir::model_location;
+    let candidates = model_location::model_search_paths(bringup_dir, model_rel);
+    for c in &candidates {
+        let marker = marker_path(c);
+        if let Some(m) = Marker::read(&marker) {
+            return Err(Refusal::Refused {
+                model: c.clone(),
+                marker,
+                check: m.check,
+                input: m.input,
+            });
+        }
+    }
+    let Some(found) = candidates.into_iter().find(|c| c.is_file()) else {
+        return Ok(None);
+    };
+    if !model_location::is_self_resolved(bringup_dir, &found) {
+        verify(&found, Some(bringup_dir))?;
+    }
+    Ok(Some(found))
 }
 
 /// Issue 0320 -- content-addressed staleness, moved here from `cmd/ws.rs`

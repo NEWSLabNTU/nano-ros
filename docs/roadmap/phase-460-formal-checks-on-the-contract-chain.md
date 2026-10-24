@@ -12,7 +12,10 @@ reasons. The Zephyr configure (`_nros_rx_ceiling`, since `4b6025539b`) and
 `nros-rmw-zenoh`'s build, over the ceiling `zpico-sys` publishes, both refuse
 a stated receive class above `max(frag, batch)`. One rule backs both:
 `nros_sizing_descriptor::receive_ceiling`. The W1 and W2 follow-ups
-recorded in those waves are unverified since they were written. Issue 0259
+recorded in those waves were re-checked 2026-10-24. Both were still open, and
+both are fixed. `nros build` and `nros::main!` now refuse a model `nros sync`
+refused. The Zephyr road now stops on a refused `params:` declaration, as the
+cmake road does. Their claim lines below record how. Issue 0259
 is homed here (table at the end). Its design was re-checked 2026-10-24 and
 rewritten, because RFC-0108 had moved what it owns; its one concrete defect,
 the preemption levels ignoring the realizer's core placement, was fixed the
@@ -160,7 +163,7 @@ and `codegen entry` all exit non-zero naming the marker; the negative control
 reverts the edit, syncs, and all four pass. Runs in the fast tier
 (`just ci-l1`).
 
-Claim: phase-460-W1. Depends on: none. Owns: packages/cli/nros-cli-core/src/cmd/ws.rs, packages/cli/nros-cli-core/src/cmd/model_path.rs, packages/cli/nros-cli-core/src/model_gate.rs (new), one gate call each in packages/cli/nros-cli-core/src/cmd/entity_inventory.rs, cmd/codegen_system.rs, cmd/codegen.rs, packages/api/nros/src/lib.rs, docs/design/0063-system-model-is-a-build-artifact.md. Gate: the refused-resolve fixture test in just ci-l1. Status: landed in PR #1165 (21a39e69c, merged 2026-09-22); four consumers gated; issue 1420 archived there. Follow-up: `nros::main!` ensure_model and `nros build` plan_from_model still open a model ungated.
+Claim: phase-460-W1. Depends on: none. Owns: packages/cli/nros-cli-core/src/cmd/ws.rs, packages/cli/nros-cli-core/src/cmd/model_path.rs, packages/cli/nros-cli-core/src/model_gate.rs (new), one gate call each in packages/cli/nros-cli-core/src/cmd/entity_inventory.rs, cmd/codegen_system.rs, cmd/codegen.rs, packages/api/nros/src/lib.rs, docs/design/0063-system-model-is-a-build-artifact.md. Gate: the refused-resolve fixture test in just ci-l1. Status: landed in PR #1165 (21a39e69c, merged 2026-09-22); four consumers gated; issue 1420 archived there. Follow-up (2026-10-24, done): `nros::main!` ensure_model and `nros build` plan_from_model still opened a model ungated. Re-checked: `ensure_model` re-resolved from the inputs when quarantine left no file, so both built from a model `nros sync` had refused, and `nros build`'s entry generator, its resolve phase and the single-package leaf read the sync model with no provenance check. Now `ensure_model` refuses on a refusal marker on any rung (`model_location::refused_marker_for`, where the marker is spelled for both crates). `nros build` opens models through `model_gate::open` (`open_model`, and `leaf_entity_env::leaf_model_path` for a leaf): the marker on every rung, then the full verify of a model sync wrote. A model `ensure_model` resolved for itself skips the pin check, since it carries no sync stamp and is current by construction. A refusal stops the build at stage 4; in stage 3.5, which cannot fail a build, it is the refusal reason. Tests: `model_location::tests::a_refused_model_is_not_re_resolved_past_its_marker` and `cmd::build::model_door_tests`. Each fails when its door is reverted.
 
 ### W2 - a partial `params:` declaration is a refusal, not a default (issue 1421)
 
@@ -181,7 +184,7 @@ no contract is sized by its board. `refused` becomes a configure-time
 inventory with `refused` fails the configure naming the node; `absent` and
 `declared` pass unchanged.
 
-Claim: phase-460-W2. Depends on: none. Owns: cmake/NanoRosEntityFacts.cmake, packages/core/nros-params/build.rs, tests/cmake-entity-inventory-tests.sh. Gate: tests/cmake-entity-inventory-tests.sh. Status: landed in PR #1166 (a9c3f6636); cmake-entity-inventory 77 assertions held; issue 1421 archived. Follow-up: the Zephyr road forwards the five numbers, not the status, so a refusal still falls to crate defaults there until nros_cargo_build.cmake resolves NROS_PARAM_DECLARATION_STATUS beside :1208 (after 461 W1).
+Claim: phase-460-W2. Depends on: none. Owns: cmake/NanoRosEntityFacts.cmake, packages/core/nros-params/build.rs, tests/cmake-entity-inventory-tests.sh. Gate: tests/cmake-entity-inventory-tests.sh. Status: landed in PR #1166 (a9c3f6636); cmake-entity-inventory 77 assertions held; issue 1421 archived. Follow-up (2026-10-24, done): the Zephyr road read only the five derived numbers, so a refusal derived none and fell to the crate defaults with no line said. Re-checked against main: still so, and nros-params refuses only when the status reaches its environment, which this road never sent. Now the check is one function, `nros_refuse_refused_param_declaration` (`cmake/NanoRosEntityInventory.cmake`). The cmake road's `_nros_param_store_env` calls it, and so does the Zephyr parameter ladder, before its first row. `tests/cmake-entity-inventory-tests.sh` asserts the function directly and that the Zephyr ladder calls it first (81 assertions). Not yet built on a Zephyr image.
 
 ### W3 - a stated ceiling is compared to the derived bound; a computed flag has a reader (issues 1368, 1422 - SECOND HALF LANDED)
 
@@ -288,7 +291,7 @@ already carries `CONFIG_NROS_BOOT_REPORT=y`. This wave does not run on
 silicon inside nano-ros (issue 1036 records why no lane can); it ships the
 fields, the reader and the recipe, and the island runs it.
 
-Claim: phase-460-W5. Depends on: none. Owns: packages/core/nros-node/src/boot_report.rs, scripts/check-boot-report-layout.py, scripts/read-boot-report.py, packages/platform/nros-platform-zephyr/src/platform.c, just/check/tools.just, docs/design/0077-image-runtime-is-the-images-choice.md. Gate: just check boot-report-layout plus the new heap-headroom recipe on a fixture dump. Status: PR #1229, in the queue; the record is 22 fields / 88 bytes at VERSION 4, `heap_peak_bytes` and `heap_capacity_bytes` appended, written from `nros_platform_alloc` and `nros_platform_realloc` so the record is current at every stage transition and on the exhaustion path before the printk. Gates: `check-boot-report-layout` OK, `read-boot-report --self-test` OK (peak 0 refused, headroom 4096 refused, headroom exactly 24576 passes, peak above capacity refused). Issue 1424 stays OPEN: the board half of its acceptance, a non-zero peak from a real dump, is the island's (island-W4). Doc correction: this wave was written as "the stage transitions in platform.c" and platform.c has none, so the numbers are PUSHED from the allocator instead, which is strictly finer and needs no callback the cross-port ABI does not carry.
+Claim: phase-460-W5. Depends on: none. Owns: packages/core/nros-node/src/boot_report.rs, scripts/check-boot-report-layout.py, scripts/read-boot-report.py, packages/platform/nros-platform-zephyr/src/platform.c, just/check/tools.just, docs/design/0077-image-runtime-is-the-images-choice.md. Gate: just check boot-report-layout plus the new heap-headroom recipe on a fixture dump. Status: landed in PR #1229 (the status header records it; this line said "in the queue" until 2026-10-24); the record is 22 fields / 88 bytes at VERSION 4, `heap_peak_bytes` and `heap_capacity_bytes` appended, written from `nros_platform_alloc` and `nros_platform_realloc` so the record is current at every stage transition and on the exhaustion path before the printk. Gates: `check-boot-report-layout` OK, `read-boot-report --self-test` OK (peak 0 refused, headroom 4096 refused, headroom exactly 24576 passes, peak above capacity refused). Issue 1424 stays OPEN: the board half of its acceptance, a non-zero peak from a real dump, is the island's (island-W4). Doc correction: this wave was written as "the stage transitions in platform.c" and platform.c has none, so the numbers are PUSHED from the allocator instead, which is strictly finer and needs no callback the cross-port ABI does not carry.
 
 ### W6 - the slot release survives a reconnect (gate only)
 
@@ -299,7 +302,7 @@ succeeds; the negative control forces `pthread_detach` on one and asserts the
 next create past the pool reports `OUT OF THREAD SLOTS`, which is the
 documented behaviour for a detached teardown.
 
-Claim: phase-460-W6. Depends on: none. Owns: a new host test under tests/zephyr/ for zephyr/nros_platform_zephyr_shims.c. Gate: the N+2 create/join test in just ci-l1. Status: PR #1228, in the queue; the N+2 create/join test plus a detach negative control at N in 1, 4 and 8, and a defused-release mutant that fails as it must, so the gate's teeth are measured rather than claimed. Wired as a `zephyr-thread-slots` recipe under the check module, which arrives with that PR and so cannot be named in the `just check <name>` form here yet. The shims needed NO seam: capacity is already an overridable `-D` and the release is already an exported symbol.
+Claim: phase-460-W6. Depends on: none. Owns: a new host test under tests/zephyr/ for zephyr/nros_platform_zephyr_shims.c. Gate: the N+2 create/join test in just ci-l1. Status: landed in PR #1228 (the status header records it; this line said "in the queue" until 2026-10-24); the N+2 create/join test plus a detach negative control at N in 1, 4 and 8, and a defused-release mutant that fails as it must, so the gate's teeth are measured rather than claimed. Wired as a `zephyr-thread-slots` recipe under the check module, which arrives with that PR and so cannot be named in the `just check <name>` form here yet. The shims needed NO seam: capacity is already an overridable `-D` and the release is already an exported symbol.
 
 ### W7 - a fault reaches a hook a console-less board can read (issue 1425)
 
@@ -331,7 +334,7 @@ names both sizes; a Zephyr native_sim test that exhausts the heap on purpose
 with the fatal knob on and asserts the fatal handler ran and the report's
 `failed_alloc` names the size.
 
-Claim: phase-460-W7. Depends on: phase-460-W5. Owns: packages/platform/nros-platform-zephyr/src/platform.c (exhaustion path), zephyr/Kconfig (NROS_HEAP_EXHAUSTION_IS_FATAL), packages/api/nros-cpp/src/subscription.rs, packages/core/nros-node/src/boot_report.rs (samples_dropped_too_small), the host test in packages/api/nros-cpp and the native_sim test under tests/zephyr/. Gate: the two W7 tests, the host half in just ci-l1. Status: not started.
+Claim: phase-460-W7. Depends on: phase-460-W5. Owns: packages/platform/nros-platform-zephyr/src/platform.c (exhaustion path), zephyr/Kconfig (NROS_HEAP_EXHAUSTION_IS_FATAL), packages/api/nros-cpp/src/subscription.rs, packages/core/nros-node/src/boot_report.rs (samples_dropped_too_small), the host test in packages/api/nros-cpp and the native_sim test under tests/zephyr/. Gate: the two W7 tests, the host half in just ci-l1. Status: landed (the status header records it: the exhaustion is fatal under `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL`, `samples_dropped_too_small` is in the boot report, issue 1425 archived; this line said "not started" until 2026-10-24).
 
 ## Gates for the phase
 

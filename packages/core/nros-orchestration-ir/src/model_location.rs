@@ -460,6 +460,19 @@ fn model_write_dirs(bringup_dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Is `model` one [`ensure_model`] resolved for itself (it sits in one of
+/// [`model_write_dirs`])? Such a model is current by construction -- resolved
+/// from the inputs a moment ago, or reused while newer than every one -- and
+/// carries the resolver's own version rather than the pin `nros sync` stamps,
+/// so a provenance check written for sync's models does not apply to it. The
+/// refusal marker still does (phase-460 W1 follow-up).
+pub fn is_self_resolved(bringup_dir: &Path, model: &Path) -> bool {
+    let Some(parent) = model.parent() else {
+        return false;
+    };
+    model_write_dirs(bringup_dir).iter().any(|d| d == parent)
+}
+
 /// The first of [`model_write_dirs`] that can be created, or an error naming
 /// every candidate and why each refused.
 fn create_model_write_dir(bringup_dir: &Path) -> Result<PathBuf, String> {
@@ -499,8 +512,39 @@ fn build_scoped_dir(bringup_dir: &Path) -> String {
     format!("{h:016x}-{name}")
 }
 
+/// Extension of the marker `nros sync` writes beside a model whose resolve it
+/// REFUSED: `system_model.yaml` is refused by `system_model.refused` (phase-460
+/// W1). Spelled here, below every consumer, so the `nros::main!` proc-macro --
+/// which cannot depend on the CLI's `model_gate` -- reads the same marker.
+pub const REFUSED_MARKER_EXT: &str = "refused";
+
+/// `<stem>.refused` beside `<stem>.yaml`.
+pub fn refusal_marker(model: &Path) -> PathBuf {
+    model.with_extension(REFUSED_MARKER_EXT)
+}
+
+/// The refusal marker on any rung of [`model_search_paths`], if one exists.
+///
+/// Every rung, not the one [`resolve_model_path`] would pick: a refused
+/// resolve QUARANTINES the previous model, so the rung that holds the marker
+/// no longer holds a file, and a search for the first existing file walks
+/// past it.
+pub fn refused_marker_for(bringup_dir: &Path, model_rel: &str) -> Option<PathBuf> {
+    model_search_paths(bringup_dir, model_rel)
+        .iter()
+        .map(|c| refusal_marker(c))
+        .find(|m| m.is_file())
+}
+
 /// Locate the model for `(bringup, model_rel)`, RESOLVING it from the bringup's
 /// inputs when no build has produced one.
+///
+/// phase-460 W1 follow-up -- REFUSES when `nros sync` last refused this
+/// model (a [`refused_marker_for`] marker exists). A refused resolve leaves no
+/// model behind, so without this the branch below re-resolved one from the
+/// inputs and a consumer built from a model its producer had just rejected
+/// (the refusing check may be one only `nros sync` runs). The marker stays
+/// until the next successful `nros sync` removes it.
 ///
 /// phase-330 made the SystemModel a build artifact; this closes the gap that
 /// left (issue 0414). A consumer that only ever LOOKED for the artifact fails
@@ -529,6 +573,17 @@ pub fn ensure_model(
     })?;
     let launch_path = bringup_dir.join("launch").join(&launch_file);
     let inputs = vec![system_toml.clone(), launch_path.clone()];
+
+    if let Some(marker) = refused_marker_for(bringup_dir, model_rel) {
+        let why = std::fs::read_to_string(&marker).unwrap_or_default();
+        return Err(format!(
+            "`nros sync` refused the last resolve of `{model_rel}` (marker `{}`):\n  {}\n  \
+             Fix the input it names and run `nros sync`; a consumer does not \
+             re-resolve past a refusal (phase-460 W1).",
+            marker.display(),
+            why.trim().replace('\n', "\n  ")
+        ));
+    }
 
     // A model a build already produced wins: cmake / nros-build resolve into
     // NROS_MODEL_DIR or OUT_DIR before invoking cargo, and re-resolving here
@@ -681,6 +736,57 @@ mod tests {
             }
         }
         out
+    }
+
+    /// phase-460 W1 follow-up -- a refused `nros sync` quarantines the model
+    /// and leaves a marker on its rung. `ensure_model` used to find no file
+    /// there and resolve one itself, so `nros::main!` and `nros build`
+    /// compiled against a model its producer had refused. It refuses now, on
+    /// whichever rung holds the marker; without one it does not.
+    #[test]
+    fn a_refused_model_is_not_re_resolved_past_its_marker() {
+        let root = std::env::temp_dir().join(format!(
+            "nros-refused-marker-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let bringup = root.join("src").join("demo_bringup");
+        std::fs::create_dir_all(bringup.join("launch")).unwrap();
+        std::fs::write(bringup.join("system.toml"), "").unwrap();
+        let rel = "config/system_model.yaml";
+        with_env(&[("NROS_MODEL_DIR", None), ("OUT_DIR", None)], || {
+            let launch = model_rel_to_inputs(&bringup, rel).unwrap().unwrap().0;
+            std::fs::write(bringup.join("launch").join(launch), "<launch/>\n").unwrap();
+            let refused = |r: &Result<(PathBuf, Vec<PathBuf>), String>| matches!(r, Err(e) if e.contains("refused the last resolve"));
+
+            let without = ensure_model(&bringup, rel);
+            assert!(!refused(&without), "no marker, no refusal: {without:?}");
+
+            // The sync rung (`<ws>/build/nros/models/<bringup>/`), holding the
+            // marker and NO model -- the shape quarantine leaves.
+            let rung = root
+                .join("build/nros/models/demo_bringup")
+                .join("system_model.yaml");
+            std::fs::create_dir_all(rung.parent().unwrap()).unwrap();
+            std::fs::write(
+                refusal_marker(&rung),
+                "check: contract-check\ninput: system.toml\n",
+            )
+            .unwrap();
+            assert_eq!(
+                refused_marker_for(&bringup, rel),
+                Some(refusal_marker(&rung))
+            );
+            let with = ensure_model(&bringup, rel);
+            assert!(refused(&with), "{with:?}");
+            let msg = with.unwrap_err();
+            assert!(
+                msg.contains("contract-check") && msg.contains("nros sync"),
+                "{msg}"
+            );
+        });
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
