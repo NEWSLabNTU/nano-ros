@@ -39,6 +39,8 @@ board_features = ["image-runtime"]
 # (`[image.<id>.net.*]` is refused naming this).
 [board.net]
 stack = "host"
+# RFC-0109 D3 — the link kinds this board carries.
+links = ["tcp", "udp"]
 
 [board.entry]
 signature = "#[unsafe(no_mangle)]\nextern \"C\" fn main(argc: i32, argv: *const *const c_char) -> i32"

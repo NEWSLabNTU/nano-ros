@@ -56,6 +56,10 @@ interfaces = { eth0 = { kind = "ethernet", mac_prefix = "52:54:00" } }
 # No `ip` / `mac` here (RFC-0103 D10g, phase-497 W2): an address is the
 # image's, stated in its system.toml; an image that states none gets QEMU's
 # first guest address, 10.0.2.15.
+# RFC-0109 D2 — the board package owns the network devices (nano-ros is the OS).
+stack = "board"
+# RFC-0109 D3 — the link kinds this board carries.
+links = ["tcp", "udp"]
 
 [board.entry]
 

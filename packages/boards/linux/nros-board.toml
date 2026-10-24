@@ -41,6 +41,8 @@ supported_netstacks = []
 # (`[image.<id>.net.*]` is refused naming this).
 [board.net]
 stack = "host"
+# RFC-0109 D3 — the link kinds this board carries.
+links = ["tcp", "udp", "serial", "can", "isotp"]
 
 [board.capabilities]
 heap = true

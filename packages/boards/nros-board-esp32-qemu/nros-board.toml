@@ -50,6 +50,10 @@ interfaces = { eth0 = "ethernet" }
 # (its examples state `host = 50` / `51`), and a MAC is the image's or derived
 # per image — `02:00:00` plus three bytes, which the open_eth driver programs
 # into the device.
+# RFC-0109 D2 — the board package owns the network devices (nano-ros is the OS).
+stack = "board"
+# RFC-0109 D3 — the link kinds this board carries.
+links = ["tcp", "udp", "serial"]
 
 [board.entry]
 signature = "#[esp_hal::main]\nfn main() -> !"

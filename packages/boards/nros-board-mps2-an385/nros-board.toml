@@ -56,6 +56,10 @@ network = "qemu"
 # RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
 # `[image.<id>.net.eth0]`.
 interfaces = { eth0 = "ethernet" }
+# RFC-0109 D2 — the board package owns the network devices (nano-ros is the OS).
+stack = "board"
+# RFC-0109 D3 — the link kinds this board carries.
+links = ["tcp", "udp", "serial"]
 
 [board.entry]
 signature = "#[nros_board_mps2_an385::entry]\nfn main() -> !"

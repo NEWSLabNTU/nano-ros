@@ -51,3 +51,9 @@ tools = ["arm-fvp"]
 heap = true
 atomics = true
 threads = true
+
+# RFC-0109 D2 — the RTOS's own configuration owns the network devices.
+[board.net]
+stack = "os"
+# RFC-0109 D3 — the link kinds this board carries.
+links = ["tcp", "udp"]

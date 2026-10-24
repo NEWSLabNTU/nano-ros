@@ -3104,14 +3104,19 @@ pub struct BoardNet {
     /// interfaces, and an image's interface name is not checked.
     #[serde(default)]
     pub interfaces: BTreeMap<String, InterfaceDecl>,
-    /// RFC-0103 D10e — `"host"` when the host operating system owns the
-    /// network stack (`linux`, `freertos-posix`, threadx-linux's NSOS):
-    /// interfaces, addresses and routes are the kernel's, and an image states
-    /// none (`[image.<id>.net.*]` is refused). `supported_netstacks = []`
-    /// cannot say this — NuttX and Zephyr list `[]` too, because their OS
-    /// brings its own stack.
+    /// RFC-0109 D2 (extending RFC-0103 D10e) — who owns this board's network
+    /// devices: `"host"` (the host operating system: `linux`,
+    /// `freertos-posix`, threadx-linux's NSOS), `"os"` (the RTOS's own
+    /// configuration: Zephyr, NuttX) or `"board"` (the board package, where
+    /// nano-ros is the OS: bare metal, FreeRTOS, ThreadX). Read through
+    /// [`BoardNet::stack_owner`]. `supported_netstacks = []` cannot say this —
+    /// NuttX and Zephyr list `[]` too, because their OS brings its own stack.
     #[serde(default)]
     pub stack: Option<String>,
+    /// RFC-0109 D3 — the link kinds this board can carry, from
+    /// [`LINK_KINDS`]. Read through [`BoardNet::links`].
+    #[serde(default)]
+    pub links: Vec<String>,
     /// RFC-0103 D10g (phase-497 W2) — the board-level single-interface
     /// identity, RETIRED: an address is the image's, a gateway and netmask the
     /// network's, and a MAC the image's (or derived per image from the
@@ -3213,18 +3218,62 @@ pub const QEMU_NETWORK: &str = "qemu";
 /// The interface kinds `[board.net] interfaces` may name (RFC-0103 D10c).
 pub const INTERFACE_KINDS: &[&str] = &["ethernet", "wifi", "serial", "custom"];
 
+/// The link kinds `[board.net] links` may name (RFC-0109 D3). One vocabulary:
+/// an image's `transport` (`nros_orchestration_ir::leaf_system::TRANSPORT_KINDS`)
+/// names a subset of it, and zenoh-pico's `link-*` features map onto it
+/// (`tcp` / `udp` → `link-ip`).
+pub const LINK_KINDS: &[&str] = &[
+    "serial", "tcp", "udp", "can", "isotp", "ivc", "raweth", "custom",
+];
+
+/// Who owns a board's network devices (RFC-0109 D2): `[board.net] stack`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StackOwner {
+    /// The host operating system.
+    Host,
+    /// The RTOS's own configuration (Zephyr, NuttX).
+    Os,
+    /// The board package (bare metal, FreeRTOS, ThreadX).
+    Board,
+}
+
 impl BoardNet {
-    /// Whether the host operating system owns this board's network
-    /// (`stack = "host"`), checked: any other value is refused.
-    pub fn host_stack(&self) -> Result<bool, String> {
+    /// `stack`, checked: `None` when the board states none, an error for any
+    /// value but `host`, `os` and `board`.
+    pub fn stack_owner(&self) -> Result<Option<StackOwner>, String> {
         match self.stack.as_deref() {
-            None => Ok(false),
-            Some("host") => Ok(true),
+            None => Ok(None),
+            Some("host") => Ok(Some(StackOwner::Host)),
+            Some("os") => Ok(Some(StackOwner::Os)),
+            Some("board") => Ok(Some(StackOwner::Board)),
             Some(other) => Err(format!(
-                "[board.net] stack = {other:?}: the one value is \"host\" (the host OS owns \
-                 the network); omit it for a board that brings its own stack"
+                "[board.net] stack = {other:?}: expected \"host\" (the host OS owns the \
+                 network), \"os\" (the RTOS's own configuration does) or \"board\" (the \
+                 board package does) (RFC-0109 D2)"
             )),
         }
+    }
+
+    /// Whether the host operating system owns this board's network
+    /// (`stack = "host"`), checked.
+    pub fn host_stack(&self) -> Result<bool, String> {
+        Ok(self.stack_owner()? == Some(StackOwner::Host))
+    }
+
+    /// `links`, checked against [`LINK_KINDS`].
+    pub fn links(&self) -> Result<&[String], String> {
+        if let Some(bad) = self
+            .links
+            .iter()
+            .find(|l| !LINK_KINDS.contains(&l.as_str()))
+        {
+            return Err(format!(
+                "[board.net] links names {bad:?}, which is not a link kind (expected one of: \
+                 {}) (RFC-0109 D3)",
+                LINK_KINDS.join(" | ")
+            ));
+        }
+        Ok(&self.links)
     }
 
     /// Check an image's interface `name` against this board (RFC-0103 D10c/e):
@@ -3630,6 +3679,54 @@ mod board_capability_tests {
 
 #[cfg(test)]
 mod tests {
+    /// RFC-0109 D2 — `stack` names who owns the network: three values, and
+    /// `host_stack` keeps answering only for the first.
+    #[test]
+    fn stack_owner_accepts_host_os_and_board() {
+        let with = |s: Option<&str>| BoardNet {
+            stack: s.map(str::to_string),
+            ..BoardNet::default()
+        };
+        assert_eq!(with(None).stack_owner().unwrap(), None);
+        assert_eq!(
+            with(Some("host")).stack_owner().unwrap(),
+            Some(StackOwner::Host)
+        );
+        assert_eq!(
+            with(Some("os")).stack_owner().unwrap(),
+            Some(StackOwner::Os)
+        );
+        assert_eq!(
+            with(Some("board")).stack_owner().unwrap(),
+            Some(StackOwner::Board)
+        );
+        let e = with(Some("rtos")).stack_owner().unwrap_err();
+        assert!(
+            e.contains("\"os\"") && e.contains("\"board\"") && e.contains("RFC-0109"),
+            "{e}"
+        );
+        assert!(with(Some("host")).host_stack().unwrap());
+        assert!(!with(Some("os")).host_stack().unwrap());
+        assert!(!with(Some("board")).host_stack().unwrap());
+    }
+
+    /// RFC-0109 D3 — `links` names kinds from the one vocabulary.
+    #[test]
+    fn links_refuses_a_kind_outside_the_vocabulary() {
+        let net = |l: &[&str]| BoardNet {
+            links: l.iter().map(|s| s.to_string()).collect(),
+            ..BoardNet::default()
+        };
+        assert_eq!(net(&["tcp", "isotp"]).links().unwrap(), ["tcp", "isotp"]);
+        let e = net(&["tcp", "eth"]).links().unwrap_err();
+        assert!(
+            e.contains("\"eth\"") && e.contains("serial | tcp | udp"),
+            "{e}"
+        );
+        let parsed: BoardNet = toml::from_str("stack = \"board\"\nlinks = [\"udp\"]\n").unwrap();
+        assert_eq!(parsed.links().unwrap(), ["udp"]);
+    }
+
     /// RFC-0103 D10c/D10e (phase-497 W1) — an image's interface against its
     /// board: none on a host-stack board, only a declared one where the board
     /// declares them, and an address only on an IP kind.
