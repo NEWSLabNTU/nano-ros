@@ -436,6 +436,26 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/action_feedback_decode
     ./tmp/action_feedback_decode
+    # issue 2030 -- the C callback tier TAKES cancel replies: six
+    # `rclc_action_cancel_goal` (past the sub-client's four request slots),
+    # each answered, through `rclc_executor_spin_some` and through
+    # `rclc_action_client_poll`, every send accepted and every reply handed to
+    # the new cancel-response callback. Same stub + archive.
+    test -f packages/api/nros-c/tests/run/action_cancel_replies.c || { \
+        echo "ERROR: action_cancel_replies.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    echo "  - issue 2030: more than four C cancels, each reply taken"
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/action_cancel_replies.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/action_cancel_replies
+    ./tmp/action_cancel_replies
     echo "  - issue 1631: a C subscription/timer/service/client is REMOVED from its"
     echo "    executor, and a create/remove loop of each runs past the arena twice"
     # The other four kinds, in 1609's shape: arena used pinned at cycle 0 over

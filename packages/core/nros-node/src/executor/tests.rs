@@ -8587,10 +8587,12 @@ fn test_get_result_deferred_per_goal_concurrent() {
     let _ = core.active_goals.push(RawActiveGoal {
         goal_id: g1,
         status: GoalStatus::Executing,
+        stamp: nros_core::Time::default(),
     });
     let _ = core.active_goals.push(RawActiveGoal {
         goal_id: g2,
         status: GoalStatus::Executing,
+        stamp: nros_core::Time::default(),
     });
 
     // A get_result request is [CDR-LE header][fixed uint8[16] goal_id].
@@ -8817,6 +8819,7 @@ fn deferred_get_result_is_answered_past_the_slab_capacity() {
             .push(RawActiveGoal {
                 goal_id: g,
                 status: GoalStatus::Executing,
+                stamp: nros_core::Time::default(),
             })
             .ok()
             .unwrap();
@@ -8941,6 +8944,7 @@ fn an_unretainable_result_is_reported_and_the_waiter_is_still_answered() {
         .push(RawActiveGoal {
             goal_id: g,
             status: GoalStatus::Executing,
+            stamp: nros_core::Time::default(),
         })
         .ok()
         .unwrap();
@@ -9142,6 +9146,7 @@ fn completed_goal_appears_in_the_published_status_array() {
     let _ = core.active_goals.push(RawActiveGoal {
         goal_id: g,
         status: GoalStatus::Executing,
+        stamp: nros_core::Time::default(),
     });
     core.publish_status_array().unwrap();
 
@@ -9191,6 +9196,7 @@ fn status_array_mixes_active_and_terminated_goals() {
         let _ = core.active_goals.push(RawActiveGoal {
             goal_id: id,
             status: GoalStatus::Executing,
+            stamp: nros_core::Time::default(),
         });
     }
     core.complete_goal_raw(&aborted, GoalStatus::Aborted, &[0u8; 4])
@@ -9283,11 +9289,13 @@ fn status_array_entry_layout_is_measured() {
     let _ = core.active_goals.push(RawActiveGoal {
         goal_id: GoalId { uuid: [1u8; 16] },
         status: GoalStatus::Executing,
+        stamp: nros_core::Time::default(),
     });
     let one = published_len(&core);
     let _ = core.active_goals.push(RawActiveGoal {
         goal_id: GoalId { uuid: [2u8; 16] },
         status: GoalStatus::Executing,
+        stamp: nros_core::Time::default(),
     });
     let two = published_len(&core);
 
@@ -9304,6 +9312,7 @@ fn status_array_entry_layout_is_measured() {
         let _ = core.active_goals.push(RawActiveGoal {
             goal_id: GoalId { uuid: [i; 16] },
             status: GoalStatus::Executing,
+            stamp: nros_core::Time::default(),
         });
     }
     for i in 0..MAX_GOALS as u8 {
@@ -9354,6 +9363,7 @@ fn status_array_fits_at_the_largest_admitted_max_goals() {
         let _ = core.active_goals.push(RawActiveGoal {
             goal_id: GoalId { uuid: [i; 16] },
             status: GoalStatus::Executing,
+            stamp: nros_core::Time::default(),
         });
         core.complete_goal_raw(
             &GoalId {
@@ -10983,6 +10993,7 @@ fn detaching_a_raw_action_client_clears_the_callbacks_that_read_its_context() {
             goal_response_callback: Some(no_op_goal_response),
             feedback_callback: None,
             result_callback: None,
+            cancel_response_callback: None,
             context: owner_ptr,
         })
         .expect("the mock session registers a raw action client");
@@ -12592,6 +12603,7 @@ fn register_raw_client(executor: &mut Executor<'_>) -> Result<usize, NodeError> 
             goal_response_callback: Some(no_op_goal_response),
             feedback_callback: None,
             result_callback: None,
+            cancel_response_callback: None,
             context: core::ptr::null_mut(),
         })
         .map(|h| h.entry_index())
@@ -16013,6 +16025,7 @@ fn raw_action_endpoints_are_keyed_on_their_own_hashes() {
             goal_response_callback: None,
             feedback_callback: None,
             result_callback: None,
+            cancel_response_callback: None,
             context: core::ptr::null_mut(),
         })
         .expect("the mock session registers a raw action client");
@@ -17523,4 +17536,232 @@ mod p9b_windows {
         let got = log.lock().unwrap().clone();
         assert!(got.contains(&"hi") && got.contains(&"lo"), "{got:?}");
     }
+}
+
+// ============================================================================
+// Issue 2029 — CancelGoal's zero-id forms (cancel-all, cancel-before)
+// ============================================================================
+
+/// A core holding three EXECUTING goals accepted at 10 s, 20 s and 30 s, plus
+/// one already CANCELING goal at 5 s (not cancelable again).
+#[cfg(test)]
+fn cancel_fixture() -> super::action_core::ActionServerCore<256, 128, 128, 4> {
+    use super::action_core::{ActionServerCore, RawActiveGoal};
+    use crate::mock::MockPublisher;
+    use nros_core::{GoalId, GoalStatus, Time};
+
+    let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockServiceServer::new(),
+        MockPublisher::new(),
+        MockPublisher::new(),
+    );
+    for (b, sec, status) in [
+        (1u8, 10, GoalStatus::Executing),
+        (2, 20, GoalStatus::Executing),
+        (3, 30, GoalStatus::Executing),
+        (4, 5, GoalStatus::Canceling),
+    ] {
+        let _ = core.active_goals.push(RawActiveGoal {
+            goal_id: GoalId { uuid: [b; 16] },
+            status,
+            stamp: Time::new(sec, 0),
+        });
+    }
+    core
+}
+
+/// Load a `CancelGoal` request `[CDR header][uuid 16][stamp sec i32][nsec u32]`.
+#[cfg(test)]
+fn load_cancel(
+    core: &super::action_core::ActionServerCore<256, 128, 128, 4>,
+    id: u8,
+    sec: i32,
+    nanosec: u32,
+) {
+    let mut b = [0u8; 256];
+    b[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
+    b[4..20].copy_from_slice(&[id; 16]);
+    b[20..24].copy_from_slice(&sec.to_le_bytes());
+    b[24..28].copy_from_slice(&nanosec.to_le_bytes());
+    core.cancel_goal_server.load(b, 28);
+}
+
+/// The reply's `(return_code, [(uuid first byte, stamp sec)])`.
+#[cfg(test)]
+fn cancel_reply(
+    core: &super::action_core::ActionServerCore<256, 128, 128, 4>,
+) -> (i8, Vec<(u8, i32)>) {
+    let sent = core.cancel_goal_server.sent.borrow();
+    let (_seq, buf, len) = sent.last().expect("a cancel reply was sent");
+    let r = &buf[..*len];
+    let rc = r[4] as i8;
+    let n = u32::from_le_bytes(r[8..12].try_into().unwrap()) as usize;
+    let mut goals = Vec::new();
+    for i in 0..n {
+        let at = 12 + i * 24;
+        let sec = i32::from_le_bytes(r[at + 16..at + 20].try_into().unwrap());
+        goals.push((r[at], sec));
+    }
+    (rc, goals)
+}
+
+#[cfg(test)]
+fn status_of(
+    core: &super::action_core::ActionServerCore<256, 128, 128, 4>,
+    b: u8,
+) -> nros_core::GoalStatus {
+    core.find_goal_status(&nros_core::GoalId { uuid: [b; 16] })
+}
+
+#[test]
+fn a_zero_id_zero_stamp_cancel_cancels_every_cancelable_goal() {
+    use nros_core::{CancelResponse, GoalStatus};
+    let mut core = cancel_fixture();
+    load_cancel(&core, 0, 0, 0);
+    let mut asked = Vec::new();
+    let out = core
+        .try_handle_cancel(|id, st| {
+            asked.push((id.uuid[0], st));
+            CancelResponse::Accept
+        })
+        .unwrap();
+    assert_eq!(
+        out.map(|(id, r)| (id.uuid[0], r)),
+        Some((0, CancelResponse::Accept))
+    );
+    assert_eq!(
+        asked,
+        std::vec![
+            (1, GoalStatus::Executing),
+            (2, GoalStatus::Executing),
+            (3, GoalStatus::Executing)
+        ],
+        "the callback is asked once per cancelable goal, never about the CANCELING one"
+    );
+    assert_eq!(
+        cancel_reply(&core),
+        (0, std::vec![(1, 10), (2, 20), (3, 30)]),
+        "ERROR_NONE, every goal listed with its acceptance stamp"
+    );
+    for b in 1..=3 {
+        assert_eq!(status_of(&core, b), GoalStatus::Canceling);
+    }
+}
+
+#[test]
+fn a_zero_id_stamped_cancel_cancels_the_goals_accepted_at_or_before_it() {
+    use nros_core::{CancelResponse, GoalStatus};
+    let mut core = cancel_fixture();
+    load_cancel(&core, 0, 20, 0);
+    core.try_handle_cancel(|_, _| CancelResponse::Accept)
+        .unwrap();
+    assert_eq!(cancel_reply(&core), (0, std::vec![(1, 10), (2, 20)]));
+    assert_eq!(
+        status_of(&core, 3),
+        GoalStatus::Executing,
+        "30 s is after the stamp"
+    );
+}
+
+#[test]
+fn a_named_stamped_cancel_cancels_that_goal_and_those_before_the_stamp() {
+    use nros_core::CancelResponse;
+    let mut core = cancel_fixture();
+    load_cancel(&core, 3, 10, 0);
+    core.try_handle_cancel(|_, _| CancelResponse::Accept)
+        .unwrap();
+    assert_eq!(cancel_reply(&core), (0, std::vec![(1, 10), (3, 30)]));
+}
+
+#[test]
+fn a_named_unstamped_cancel_cancels_that_goal_alone() {
+    use nros_core::CancelResponse;
+    let mut core = cancel_fixture();
+    load_cancel(&core, 2, 0, 0);
+    let mut calls = 0;
+    core.try_handle_cancel(|_, _| {
+        calls += 1;
+        CancelResponse::Accept
+    })
+    .unwrap();
+    assert_eq!(calls, 1);
+    assert_eq!(cancel_reply(&core), (0, std::vec![(2, 20)]));
+}
+
+#[test]
+fn the_cancel_callback_decides_per_goal() {
+    use nros_core::{CancelResponse, GoalStatus};
+    let mut core = cancel_fixture();
+    load_cancel(&core, 0, 0, 0);
+    core.try_handle_cancel(|id, _| {
+        if id.uuid[0] == 2 {
+            CancelResponse::Reject
+        } else {
+            CancelResponse::Accept
+        }
+    })
+    .unwrap();
+    assert_eq!(cancel_reply(&core), (0, std::vec![(1, 10), (3, 30)]));
+    assert_eq!(
+        status_of(&core, 2),
+        GoalStatus::Executing,
+        "the refused goal runs on"
+    );
+
+    // Every goal refused: ERROR_REJECTED, nothing listed.
+    let mut core = cancel_fixture();
+    load_cancel(&core, 0, 0, 0);
+    let out = core
+        .try_handle_cancel(|_, _| CancelResponse::Reject)
+        .unwrap();
+    assert_eq!(out.map(|(_, r)| r), Some(CancelResponse::Reject));
+    assert_eq!(cancel_reply(&core), (1, std::vec![]));
+}
+
+#[test]
+fn an_unknown_or_finished_goal_is_answered_without_asking_the_callback() {
+    use nros_core::{CancelResponse, GoalId, GoalStatus};
+    let mut core = cancel_fixture();
+    load_cancel(&core, 9, 0, 0);
+    let mut calls = 0;
+    core.try_handle_cancel(|_, _| {
+        calls += 1;
+        CancelResponse::Accept
+    })
+    .unwrap();
+    assert_eq!(calls, 0);
+    assert_eq!(
+        cancel_reply(&core),
+        (2, std::vec![]),
+        "ERROR_UNKNOWN_GOAL_ID"
+    );
+
+    core.complete_goal_raw(&GoalId { uuid: [1; 16] }, GoalStatus::Succeeded, &[0u8; 4])
+        .unwrap();
+    load_cancel(&core, 1, 0, 0);
+    core.try_handle_cancel(|_, _| {
+        calls += 1;
+        CancelResponse::Accept
+    })
+    .unwrap();
+    assert_eq!(calls, 0);
+    assert_eq!(
+        cancel_reply(&core),
+        (3, std::vec![]),
+        "ERROR_GOAL_TERMINATED"
+    );
+}
+
+/// No cancelable goal at all: a cancel-all is REJECTED, as `rcl_action` does.
+#[test]
+fn a_cancel_all_with_nothing_to_cancel_is_rejected() {
+    use nros_core::CancelResponse;
+    let mut core = cancel_fixture();
+    core.active_goals.clear();
+    load_cancel(&core, 0, 0, 0);
+    core.try_handle_cancel(|_, _| CancelResponse::Accept)
+        .unwrap();
+    assert_eq!(cancel_reply(&core), (1, std::vec![]));
 }

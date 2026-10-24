@@ -1927,6 +1927,7 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                             goal_response_callback: None,
                             feedback_callback,
                             result_callback,
+                            cancel_response_callback: None,
                             context: ctx,
                         },
                     )

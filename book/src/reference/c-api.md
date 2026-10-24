@@ -53,8 +53,10 @@ goals, requesting results, and cancelling:
   `rclc_action_try_recv_feedback()`. Return immediately. Replies are
   delivered through the callbacks registered with
   `rclc_action_client_set_goal_response_callback()`,
-  `rclc_action_client_set_feedback_callback()`, and
-  `rclc_action_client_set_result_callback()`. The callbacks fire from
+  `rclc_action_client_set_feedback_callback()`,
+  `rclc_action_client_set_result_callback()`, and (for a cancel's reply:
+  its return code and how many goals are canceling)
+  `rclc_action_client_set_cancel_response_callback()`. The callbacks fire from
   `rclc_executor_spin_some()` — your spin loop is the only place
   callbacks run.
 - **Blocking convenience:** `rclc_action_send_goal()` and

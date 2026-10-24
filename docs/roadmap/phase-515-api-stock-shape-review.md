@@ -56,10 +56,10 @@ Each was left without a phase when its finding phase closed.
 
 | issue | severity | item |
 | --- | --- | --- |
-| [2030](../issues/2030-c-callback-tier-cancel-reply-slot.md) — the C callback tier never takes a cancel reply | medium | C7 |
+| [2030](../issues/archived/2030-c-callback-tier-cancel-reply-slot.md) — the C callback tier never takes a cancel reply (resolved 2026-10-24) | medium | C7 |
 | [2024](../issues/2024-parameter-event-handler.md) — no `ParameterEventHandler` | low | P6 |
 | [1942](../issues/1942-rclrs-service-info-no-counterpart.md) — no `ServiceInfo` for a service callback | low | R7 |
-| [2029](../issues/2029-action-server-cancel-all-before.md) — cancel-all / cancel-before answer `UNKNOWN_GOAL_ID` | low | X1 |
+| [2029](../issues/archived/2029-action-server-cancel-all-before.md) — cancel-all / cancel-before answer `UNKNOWN_GOAL_ID` (resolved 2026-10-24) | low | X1 |
 
 ## Decisions
 
@@ -144,7 +144,9 @@ copy on the handle; price the bytes per entity before deciding.
 
 **C7 — issue 2030.** The C callback tier has no cancel-reply slot, so the fifth
 `rclc_action_cancel_goal` is refused. Medium severity; it is a correctness gap,
-not a shape choice.
+not a shape choice. **Resolved 2026-10-24:** the arena entry has a cancel-response
+slot, C registers it, and `rclc_action_client_set_cancel_response_callback` is new.
+The C++ half (taking replies in the spin) is issue 2034.
 
 **C8 — open renames (5):** `rcl_publish_serialized_message` (ours
 `rclc_publish_raw`), `rcl_service_server_is_available`,
@@ -244,7 +246,9 @@ Pick one user-facing receiver and keep the others internal.
 
 **X1 — issue 2029.** An action server answers the zero-id `CancelGoal` forms
 (cancel-all, cancel-before-time) with `UNKNOWN_GOAL_ID`. Behaviour, in the
-shared action core, so it lands once for all three languages.
+shared action core, so it lands once for all three languages. **Resolved
+2026-10-24** in `ActionServerCore::try_handle_cancel`; goals now carry an
+acceptance stamp.
 
 ## Acceptance
 

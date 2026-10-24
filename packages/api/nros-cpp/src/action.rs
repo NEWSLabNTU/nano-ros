@@ -1268,6 +1268,11 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
             goal_response_callback: Some(cpp_goal_response_trampoline),
             feedback_callback: Some(cpp_feedback_trampoline),
             result_callback: Some(cpp_result_trampoline),
+            // Issue 2030 — `None`: the C++ tier reads its cancel replies itself
+            // (`try_recv_cancel_response`, the `async_cancel_*` futures), so the
+            // executor must leave them in place. Taking them in the spin needs a
+            // per-request stash those readers could collect from — issue 2034.
+            cancel_response_callback: None,
             context: storage, // context = CppActionClient pointer
         }) {
         Ok(h) => h,
