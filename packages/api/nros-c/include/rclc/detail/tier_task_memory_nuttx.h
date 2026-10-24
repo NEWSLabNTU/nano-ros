@@ -28,7 +28,7 @@
 #ifndef NROS_NUTTX_LEVEL_STACK_DEFAULT
 #define NROS_NUTTX_LEVEL_STACK_DEFAULT 16384u
 #endif
-/* Issue 2019 — the frame is measured, not estimated: a spawned level runs its
+/* Issue 2019 -- the frame is measured, not estimated: a spawned level runs its
  * own setup (open_level, the members' registration) on its own stack before
  * its first pass, and that setup is the stack's peak. The C level runner's
  * spawned level on QEMU virt cortex-a7 (realtime-c, stack coloration) peaked
