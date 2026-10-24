@@ -36,6 +36,22 @@
 
 /* ---- Scheduler ---- */
 #define configUSE_PREEMPTION                    1
+/* Issue 2017 (RFC-0108 D6) -- a LEVEL image runs its levels at distinct
+ * priorities and every level worker parks each pass, so the kernel never has
+ * to rotate one with an equal-priority task; RFC-0108 D6 asks it not to slice
+ * a level in the middle of a callback. `NROS_FREERTOS_LEVEL_IMAGE` is the
+ * per-image input: the cmake road's `nano_ros_entry` defines it on
+ * `freertos_config` for a tiered entry (the entry's link-libs sidecar says
+ * `NROS_LEVEL_IMAGE`), and the cargo road's board build.rs defines it on
+ * every `cc::Build` when `nros build` turned on the board's `level-image`
+ * feature for a multi-tier schedule (`schedule_board_features`). An image
+ * without levels keeps the kernel default, 1. A tiered entry refuses to
+ * build against a kernel that slices (`tier_task_memory_freertos.h`). */
+#if defined(NROS_FREERTOS_LEVEL_IMAGE) && NROS_FREERTOS_LEVEL_IMAGE
+#define configUSE_TIME_SLICING                  0
+#else
+#define configUSE_TIME_SLICING                  1
+#endif
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 0
 #define configUSE_TICKLESS_IDLE                 0
 #define configCPU_CLOCK_HZ                      ((unsigned long)NROS_BOARD_CPU_CLOCK_HZ)

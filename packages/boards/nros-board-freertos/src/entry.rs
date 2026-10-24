@@ -1090,6 +1090,20 @@ where
         "nros: multi-level run — {} level(s) over one executor",
         ctx.tiers.len()
     ));
+    // Issue 2017 (RFC-0108 D6) -- say what the kernel was built with: a level
+    // image's kernel does not time-slice (the `level-image` feature).
+    unsafe extern "C" {
+        fn nros_freertos_kernel_time_slicing() -> i32;
+    }
+    // SAFETY: a bare read of a compile-time constant in the board's C seam.
+    B::println(format_args!(
+        "nros: kernel time slicing {}",
+        if unsafe { nros_freertos_kernel_time_slicing() } != 0 {
+            "ON (issue 2017)"
+        } else {
+            "OFF"
+        }
+    ));
     B::println(format_args!(
         "Multi-tier setup complete — entering boot-tier spin loop."
     ));

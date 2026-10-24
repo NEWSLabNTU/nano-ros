@@ -313,6 +313,12 @@ pub fn schedule_board_features(
     if wants_edf && declares("zephyr-edf") {
         out.push("zephyr-edf".to_string());
     }
+    // Issue 2017 (RFC-0108 D6) -- a multi-tier schedule runs the LEVEL
+    // runner, and a board whose kernel is built per image (the FreeRTOS
+    // family, through its build.rs) stops time-slicing for it.
+    if declares("level-image") {
+        out.push("level-image".to_string());
+    }
     out
 }
 
@@ -1227,6 +1233,47 @@ mod tests {
                 "`nros-board-zephyr` no longer declares `{f}`; \
                  `schedule_board_features` names it as a literal and `declares` \
                  would now drop it silently"
+            );
+        }
+    }
+
+    /// Issue 2017 -- a multi-tier schedule is a LEVEL image, and a FreeRTOS
+    /// board crate turns the kernel's time slicing off for it; a single-tier
+    /// one keeps the default. Asserted against the crates that own the
+    /// feature, through the same reader the derivation uses.
+    #[test]
+    fn a_level_image_asks_a_freertos_board_for_the_level_kernel() {
+        let boards =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../packages/boards");
+        let multi = ResolvedTierTable {
+            tiers: vec![
+                tier("high", Some("real_time"), None),
+                tier("low", None, None),
+            ],
+        };
+        let single = ResolvedTierTable {
+            tiers: vec![tier(nros_orchestration_ir::DEFAULT_TIER, None, None)],
+        };
+        for b in [
+            "nros-board-freertos",
+            "nros-board-mps2-an385-freertos",
+            "nros-board-mps3-an536-freertos",
+            "nros-board-s32z270-freertos",
+        ] {
+            let dir = boards.join(b);
+            let declares = |f: &str| crate::orchestration::facade::crate_declares_feature(&dir, f);
+            assert!(
+                declares("level-image"),
+                "`{b}` no longer declares `level-image`"
+            );
+            assert_eq!(
+                schedule_board_features(Some(&multi), declares),
+                vec!["level-image".to_string()],
+                "{b}"
+            );
+            assert!(
+                schedule_board_features(Some(&single), declares).is_empty(),
+                "{b}"
             );
         }
     }

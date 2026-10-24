@@ -802,6 +802,27 @@ function(nano_ros_entry)
         endif()
     endif()
 
+    # Issue 2017 (RFC-0108 D6) -- a tiered entry is a LEVEL image, and its
+    # kernel must not time-slice a level against an equal-priority task in the
+    # middle of a callback. `configUSE_TIME_SLICING` is compiled into the
+    # kernel, so the entry's sidecar states the fact (`NROS_LEVEL_IMAGE`) and
+    # this hands it to every TU that includes `FreeRTOSConfig.h`, which turns
+    # slicing off (on `freertos_config`, issue 1197's carrier). An untiered
+    # entry states nothing and keeps the kernel default. One configure builds
+    # one kernel: a level entry beside an untiered one in the same build
+    # directory gives both the level kernel, which the untiered one runs on
+    # unchanged (its tasks block; slicing only rotated equal priorities).
+    if(TARGET ${_NRA_NAME} AND TARGET freertos_config)
+        get_target_property(_nra_level_image ${_NRA_NAME} NROS_LEVEL_IMAGE)
+        if(_nra_level_image)
+            get_property(_nra_level_done GLOBAL PROPERTY _NROS_FREERTOS_LEVEL_IMAGE)
+            if(NOT _nra_level_done)
+                set_property(GLOBAL PROPERTY _NROS_FREERTOS_LEVEL_IMAGE 1)
+                nros_freertos_config_define("NROS_FREERTOS_LEVEL_IMAGE=1")
+            endif()
+        endif()
+    endif()
+
     # phase-263 C2c — on Zephyr the generated entry TU is compiled INTO `app` (not into
     # ${_NRA_NAME}), and a TYPED C++ entry `#include`s each node's component CLASS header
     # (`<pkg>/<Class>.hpp`). The sidecar above linked the component libs PRIVATE to the

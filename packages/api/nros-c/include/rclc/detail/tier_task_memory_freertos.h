@@ -35,6 +35,18 @@
     "nros: a tiered FreeRTOS entry owns its tier stacks (issue 1598), which needs configSUPPORT_STATIC_ALLOCATION 1 in FreeRTOSConfig.h"
 #endif
 
+/* Issue 2017 (RFC-0108 D6) -- a level image's kernel must not slice a level
+ * against an equal-priority task in the middle of a callback. nano-ros's
+ * boards set it per image (`NROS_FREERTOS_LEVEL_IMAGE`, FreeRTOSConfig.h); a
+ * host with its own FreeRTOSConfig.h sets configUSE_TIME_SLICING 0, or states
+ * why it keeps slicing with NROS_FREERTOS_ALLOW_TIME_SLICING. */
+#if !defined(configUSE_TIME_SLICING) || (configUSE_TIME_SLICING != 0)
+#if !defined(NROS_FREERTOS_ALLOW_TIME_SLICING)
+#error                                                                                             \
+    "nros: a FreeRTOS level image needs configUSE_TIME_SLICING 0 in FreeRTOSConfig.h (RFC-0108 D6, issue 2017)"
+#endif
+#endif
+
 /* Words for a tier declaring `bytes`, rounded UP and raised to the port's
  * floor. */
 #define NROS_TIER_TASK_STACK_WORDS_(bytes)                                                         \

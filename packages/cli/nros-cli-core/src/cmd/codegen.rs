@@ -892,6 +892,18 @@ fn write_link_libs_sidecar(
             "set_property(TARGET {exe_target} PROPERTY NROS_TIER_STACKS_BSS_BYTES {bytes})"
         );
     }
+    // Issue 2017 (RFC-0108 D6) -- a tiered entry runs the LEVEL runner, and a
+    // level image's kernel must not time-slice a level against an
+    // equal-priority task. The setting is compiled into the kernel, not the
+    // entry, so the entry states the fact on the executable and the board
+    // decides what its kernel build does with it (`NanoRosEntry.cmake`:
+    // `NROS_FREERTOS_LEVEL_IMAGE` on FreeRTOS). Absent for an untiered entry.
+    if lowered.boot.as_ref().is_some_and(|b| b.tiers) {
+        let _ = writeln!(
+            out,
+            "set_property(TARGET {exe_target} PROPERTY NROS_LEVEL_IMAGE 1)"
+        );
+    }
     if let Some(parent) = sidecar.parent() {
         std::fs::create_dir_all(parent)
             .wrap_err_with(|| format!("create sidecar parent `{}`", parent.display()))?;

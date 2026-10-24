@@ -404,6 +404,56 @@ mod tests {
     /// function, so the number is a literal there. This holds the literal to the
     /// derivation, and the carrier's app stack to the constant the derivation
     /// uses: three files, one fact.
+    /// Issue 2017 (RFC-0108 D6) -- every FreeRTOS board's FreeRTOSConfig.h
+    /// turns time slicing OFF for a level image (`NROS_FREERTOS_LEVEL_IMAGE`,
+    /// the per-image input both build roads define) and keeps the kernel
+    /// default, ON, for every other image. Read through the host C
+    /// preprocessor, so the answer is what a compiler sees, not a text match.
+    #[test]
+    fn a_level_image_kernel_does_not_time_slice_and_others_keep_the_default() {
+        // This crate is `no_std`; the test harness is not.
+        extern crate std;
+        use std::string::{String, ToString};
+        let boards = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let slicing = |header: &std::path::Path, level: bool| -> String {
+            let mut cmd = std::process::Command::new("cc");
+            cmd.args(["-E", "-dM", "-x", "c"]);
+            if level {
+                cmd.arg("-DNROS_FREERTOS_LEVEL_IMAGE=1");
+            }
+            let out = cmd
+                .arg(header)
+                .output()
+                .unwrap_or_else(|e| panic!("run the host `cc` on {}: {e}", header.display()));
+            assert!(
+                out.status.success(),
+                "{}: {}",
+                header.display(),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .find_map(|l| l.strip_prefix("#define configUSE_TIME_SLICING "))
+                .unwrap_or_else(|| panic!("{} defines no configUSE_TIME_SLICING", header.display()))
+                .trim()
+                .to_string()
+        };
+        for b in [
+            "nros-board-mps2-an385-freertos",
+            "nros-board-mps3-an536-freertos",
+            "nros-board-s32z270-freertos",
+            "nros-board-freertos-posix",
+        ] {
+            let header = boards.join(b).join("config/FreeRTOSConfig.h");
+            assert_eq!(slicing(&header, true), "0", "{b}: a level image slices");
+            assert_eq!(
+                slicing(&header, false),
+                "1",
+                "{b}: a non-level image lost the default"
+            );
+        }
+    }
+
     #[test]
     fn the_header_states_the_derived_dds_default() {
         let header = include_str!("../../nros-board-freertos/config/FreeRTOSConfig.h");

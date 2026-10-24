@@ -235,9 +235,17 @@ fn main() {
     // A closure rather than four call sites: the next `cc::Build` here gets it
     // by being handed to the same function, which is the property that was
     // missing.
+    // Issue 2017 (RFC-0108 D6) -- a LEVEL image (the `level-image` feature,
+    // which `nros build` turns on for a multi-tier schedule) gets a kernel
+    // that does not time-slice: FreeRTOSConfig.h reads
+    // `NROS_FREERTOS_LEVEL_IMAGE`. Same carrier as the heap, every TU.
+    let level_image = env::var("CARGO_FEATURE_LEVEL_IMAGE").is_ok();
     let apply_heap_kb = |build: &mut cc::Build| {
         if let Some(kb) = heap_kb {
             build.define("NROS_FREERTOS_HEAP_KB", kb.to_string().as_str());
+        }
+        if level_image {
+            build.define("NROS_FREERTOS_LEVEL_IMAGE", "1");
         }
     };
     apply_heap_kb(&mut freertos);

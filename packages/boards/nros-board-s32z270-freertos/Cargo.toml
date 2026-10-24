@@ -28,5 +28,7 @@ nros-build-paths = { path = "../../tooling/nros-build-paths" }
 
 [features]
 default = ["rmw-zenoh"]
+# Issue 2017 -- a level image's kernel does not time-slice (nros-board-freertos).
+level-image = ["nros-board-freertos/level-image"]
 rmw-zenoh = ["dep:zpico-sys", "nros-board-freertos/rmw-zenoh"]
 safety-e2e = ["nros-board-freertos/safety-e2e"]

@@ -98,6 +98,11 @@ nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 
 [features]
 default = []
+# Issue 2017 (RFC-0108 D6) -- this image runs LEVELS, so its kernel is built
+# with configUSE_TIME_SLICING 0 (build.rs defines NROS_FREERTOS_LEVEL_IMAGE on
+# every TU that includes FreeRTOSConfig.h). `nros build` turns it on through
+# the board crate for a multi-tier schedule (`schedule_board_features`).
+level-image = []
 # `reference-mps2` removed (issue 1309). It named an optional dep that formed a
 # package cycle; its re-export was retired by phase-313 and nothing enabled the
 # feature afterwards.

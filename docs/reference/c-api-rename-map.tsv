@@ -137,6 +137,7 @@ NROS_EXECUTOR_STATE_SPINNING	RCLC_EXECUTOR_STATE_SPINNING	ours	API constant with
 NROS_EXECUTOR_STATE_UNINITIALIZED	RCLC_EXECUTOR_STATE_UNINITIALIZED	ours	API constant with no upstream spelling
 NROS_EXECUTOR_STORAGE_SIZE	NROS_EXECUTOR_STORAGE_SIZE	build	build or configuration fact
 NROS_FEATURES	NROS_FEATURES	build	build or configuration fact
+NROS_FREERTOS_ALLOW_TIME_SLICING	NROS_FREERTOS_ALLOW_TIME_SLICING	hook	defined by the application or entry, called by startup code
 NROS_FREERTOS_LEVEL_STACK_DEFAULT	NROS_FREERTOS_LEVEL_STACK_DEFAULT	hook	defined by the application or entry, called by startup code
 NROS_FREERTOS_LEVEL_WORKER_FRAME	NROS_FREERTOS_LEVEL_WORKER_FRAME	hook	defined by the application or entry, called by startup code
 NROS_GENERATED_H	NROS_GENERATED_H	build	build or configuration fact
