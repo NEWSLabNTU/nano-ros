@@ -1292,6 +1292,23 @@ impl SystemToml {
         Ok(())
     }
 
+    /// RFC-0109 D4 (phase-514 W2) — fold every image's board network files
+    /// (the `.toml` entries of its `os_config`, relative to `dir`, the
+    /// directory holding this `system.toml`) into its `net`. Call once after
+    /// parsing, before anything reads an image's interfaces; an interface
+    /// stated both inline and in a file is refused.
+    pub fn fold_os_config(&mut self, dir: &std::path::Path) -> Result<(), String> {
+        for (id, img) in &mut self.image {
+            img.net = nros_orchestration_ir::system_net::fold_board_net_files(
+                &img.net,
+                dir,
+                &img.os_config,
+                &format!("image.{id}"),
+            )?;
+        }
+        Ok(())
+    }
+
     /// Every image's `[image.<id>.net.<if>]` over `[image_defaults.net]`.
     #[must_use]
     pub fn image_interfaces(

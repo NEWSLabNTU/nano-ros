@@ -1,6 +1,10 @@
 # Phase 514 — Network and middleware configuration in three layers
 
-**Status (2026-10-24). Not started.** Implements
+**Status (2026-10-24). W1 and W2 landed; W3–W6 not started.** W1: every
+board descriptor states `[board.net] stack` and `links`, from one link
+vocabulary (`LINK_KINDS`, a superset of the image `TRANSPORT_KINDS`). W2: an
+image's address lives in the board network file its `os_config` names; all 78
+in-tree rows moved, each resolving byte-identically. Implements
 [RFC-0109](../design/0109-network-config-layers.md). Opened with the RFC so
 its work and phase-206's leftovers have one home.
 

@@ -1,0 +1,7 @@
+# The board network file for image `rv-virt-threadx` (RFC-0109 D4): its
+# interfaces, read by `nros sync` through `os_config`. Format owned by
+# the board package; one table per interface.
+[eth0]
+network = "qemu"
+host = 40
+mac = "52:54:00:12:34:56"

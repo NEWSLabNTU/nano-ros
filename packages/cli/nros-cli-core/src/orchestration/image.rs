@@ -145,6 +145,12 @@ pub struct ImageBlock {
     /// `nros_orchestration_ir::system_net::lower`, the one reader.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub net: BTreeMap<String, nros_orchestration_ir::system_net::ImageNetIf>,
+    /// RFC-0109 D4/D6 (phase-514 W2) — this image's layer-1 files, relative to
+    /// its `system.toml`. A `.toml` one is the board package's network file,
+    /// folded into [`Self::net`] by
+    /// [`super::cargo_metadata_schema::SystemToml::fold_os_config`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub os_config: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<String>,
 
@@ -360,6 +366,12 @@ impl ImageBlock {
             retired_netmask: Default::default(),
             // Per interface: one the image states replaces the base's whole.
             net: nros_orchestration_ir::system_net::overlay(&base.net, &self.net),
+            // A list the image states replaces the base's whole, like a scalar.
+            os_config: if self.os_config.is_empty() {
+                base.os_config.clone()
+            } else {
+                self.os_config.clone()
+            },
             transport: pick(&self.transport, &base.transport),
             serdes: pick(&self.serdes, &base.serdes),
             ros_edition: pick(&self.ros_edition, &base.ros_edition),

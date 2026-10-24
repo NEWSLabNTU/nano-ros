@@ -104,7 +104,7 @@ entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]
 
 [image.esp32-c3-baremetal]
 board = "esp32-c3-baremetal"
-net = { eth0 = { network = "qemu", host = 50 } }
+os_config = ["board-net.toml"]    # [eth0] network = "qemu", host = 50
 locator = "tcp/10.0.2.2:9800"
 ```
 

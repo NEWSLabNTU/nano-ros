@@ -20,7 +20,7 @@ name = "fibonacci_action_client"
 [image.rv-virt-threadx]
 board = "rv-virt-threadx"
 locator = "tcp/10.0.2.2:9420"
-net = { eth0 = { network = "qemu", host = 16 } }
+os_config = ["board-net-rv-virt-threadx.toml"]
 
 # The Cyclone build of the same board, as its own image (issue 1946): the
 # domain is a property of the BUILD — 127 is `alloc::domain_of(ThreadxRiscv64, Rust,
@@ -32,4 +32,4 @@ board = "rv-virt-threadx"
 rmw = "cyclonedds"
 domain_id = 127
 locator = "tcp/10.0.2.2:9420"
-net = { eth0 = { network = "qemu", host = 16 } }
+os_config = ["board-net-rv-virt-threadx-cyclonedds.toml"]

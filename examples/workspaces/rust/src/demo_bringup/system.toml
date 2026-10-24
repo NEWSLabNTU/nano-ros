@@ -166,14 +166,14 @@ board = "mps2-an385-freertos"
 panic = "own"
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
-net = { eth0 = { network = "br", host = 10 } }
+os_config = ["board-net-freertos_br_robot1.toml"]
 
 [image.freertos_br_robot2]
 board = "mps2-an385-freertos"
 panic = "own"
 launch = "multihost.launch.xml"
 args = { host = "robot2" }
-net = { eth0 = { network = "br", host = 11 } }
+os_config = ["board-net-freertos_br_robot2.toml"]
 
 [image.linux_service_client]
 board = "linux"

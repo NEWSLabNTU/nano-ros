@@ -1,0 +1,6 @@
+# The board network file for image `esp32-c3-baremetal` (RFC-0109 D4): its
+# interfaces, read by `nros sync` through `os_config`. Format owned by
+# the board package; one table per interface.
+[eth0]
+network = "qemu"
+host = 51

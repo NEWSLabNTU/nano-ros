@@ -24,4 +24,4 @@ panic = "platform"
 # THIS cell's router port, so `tests/emulator.rs` runs each pair against its
 # own router (issue 1512). 10.0.2.2 is the guest's route to the host (slirp).
 locator = "tcp/10.0.2.2:10420"
-net = { eth0 = { network = "qemu", host = 14 } }
+os_config = ["board-net.toml"]

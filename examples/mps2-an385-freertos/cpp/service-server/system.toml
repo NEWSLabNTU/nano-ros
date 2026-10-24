@@ -21,7 +21,7 @@ name = "add_two_ints_server"
 board = "mps2-an385-freertos"
 # RFC-0103 D10 (phase-497 W2) — this image's address on QEMU's network;
 # its pair partner states the other one, so the two seed distinct zenoh ZIDs.
-net = { eth0 = { network = "qemu", host = 10 } }
+os_config = ["board-net.toml"]
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

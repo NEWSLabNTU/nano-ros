@@ -21,7 +21,7 @@ board = "freertos"
 # crate-root panic provider (RFC-0077, issue 1305).
 panic = "platform"
 locator = "tcp/10.0.2.2:7800"
-net = { eth0 = { network = "qemu", host = 16 } }
+os_config = ["board-net.toml"]
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

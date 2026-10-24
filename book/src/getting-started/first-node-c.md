@@ -89,8 +89,8 @@ quietly building the `CMakeLists.txt` one.
 
 On native, locator + domain come from env vars (`NROS_LOCATOR`,
 `ROS_DOMAIN_ID`) with built-in defaults; an embedded image declares
-them in its own `[image.<id>]` table (`locator`, and its address as
-`net = { eth0 = { network = "qemu", host = N } }`) and they are baked at build time (see
+them in its own `[image.<id>]` table (`locator`, and its address in the board
+network file `os_config` names) and they are baked at build time (see
 [Configuration](../user-guide/configuration.md)).
 
 The `CMakeLists.txt` is, verbatim from

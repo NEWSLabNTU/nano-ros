@@ -731,7 +731,15 @@ fn image_system(
     let net = {
         let base = crate::system_net::parse_image_net(defaults, "image_defaults")
             .map_err(|e| format!("{}: {e}", path.display()))?;
-        let own = crate::system_net::parse_image_net(image, &format!("image.{id}"))
+        let at = format!("image.{id}");
+        let inline = crate::system_net::parse_image_net(image, &at)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        // RFC-0109 D4 (phase-514 W2) — and the board network files the image
+        // names in `os_config`, beside this `system.toml`.
+        let os_config = crate::system_net::parse_os_config(image, &at)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let dir = path.parent().unwrap_or_else(|| Path::new("."));
+        let own = crate::system_net::fold_board_net_files(&inline, dir, &os_config, &at)
             .map_err(|e| format!("{}: {e}", path.display()))?;
         crate::system_net::overlay(&base, &own)
     };

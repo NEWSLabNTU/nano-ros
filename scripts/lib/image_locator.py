@@ -51,15 +51,17 @@ def leaf_image_id(doc):
     return None
 
 
-def stated_locator(doc, image_id):
-    """`(locator | None, error | None)` for `[image.<image_id>]`."""
+def stated_locator(doc, image_id, base_dir=None):
+    """`(locator | None, error | None)` for `[image.<image_id>]`. `base_dir`
+    is the directory holding the `system.toml`, where the image's
+    `os_config` board network files live (RFC-0109 D4)."""
     image = doc.get("image", {}).get(image_id)
     if image is None:
         return None, f"`[image.{image_id}]` is not declared"
     for table in (image, doc.get("image_defaults", {})):
         if isinstance(table.get("locator"), str):
             return table["locator"], None
-    router = network_router(doc, image)
+    router = network_router(doc, image, base_dir)
     if router is not None:
         return router, None
     system = doc.get("system", {})
@@ -68,12 +70,27 @@ def stated_locator(doc, image_id):
     return None, None
 
 
-def network_router(doc, image):
+def board_net_files(image, base_dir):
+    """RFC-0109 D4 (phase-514 W2) — the interfaces the image's `os_config`
+    board network files (its `.toml` entries) state. Mirrors
+    `nros_orchestration_ir::system_net::fold_board_net_files`."""
+    out = {}
+    if base_dir is None:
+        return out
+    for f in image.get("os_config", []) or []:
+        if isinstance(f, str) and f.endswith(".toml"):
+            with open(os.path.join(base_dir, f), "rb") as fh:
+                out.update(tomllib.load(fh))
+    return out
+
+
+def network_router(doc, image, base_dir=None):
     """D10d — the `router` of the network the image's FIRST interface (by name,
-    `[image.<id>.net]` over `[image_defaults.net]`) names, or None. Mirrors
-    `nros_orchestration_ir::system_net::network_router`."""
+    `[image.<id>.net]` and its board network files over `[image_defaults.net]`)
+    names, or None. Mirrors `nros_orchestration_ir::system_net::network_router`."""
     ifs = dict(doc.get("image_defaults", {}).get("net", {}) or {})
     ifs.update(image.get("net", {}) or {})
+    ifs.update(board_net_files(image, base_dir))
     if not ifs:
         return None
     first = ifs[sorted(ifs)[0]]
@@ -109,7 +126,7 @@ def main(argv):
             print(f"image_locator: {path} declares {len(doc.get('image', {}))} images; "
                   f"name one with --image", file=sys.stderr)
             return 1
-    locator, err = stated_locator(doc, image_id)
+    locator, err = stated_locator(doc, image_id, os.path.dirname(path))
     if err or locator is None:
         print(f"image_locator: {path}: {err or f'`[image.{image_id}]` states no locator'} — "
               f"the image dials its board's compiled-in default, which no recipe can name "

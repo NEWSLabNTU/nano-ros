@@ -225,7 +225,7 @@ def image_locator(row, root):
             doc = tomllib.load(f)
         image_id = row["image"].split(":")[-1]
     # issue 1865 — ONE reading of the overlay, shared with the router recipes.
-    locator, err = stated_locator(doc, image_id)
+    locator, err = stated_locator(doc, image_id, os.path.dirname(path))
     return locator, path, err
 
 

@@ -66,8 +66,8 @@ file in full.
 
 Native (host) talkers read the locator + domain from arguments passed to
 `rclcpp::init_in(...)`; no other config is needed. An embedded image declares
-its `locator` and its address (`net = { eth0 = { network = "qemu", host = N } }`)
-in its own `[image.<id>]` table and bakes them at build time. The `package.xml`
+its `locator` in its own `[image.<id>]` table and its address in the board
+network file `os_config` names, and bakes them at build time. The `package.xml`
 `<nano_ros deploy=… board=… rmw=…/>` export that used to carry that
 tuple is retired and refused.
 
