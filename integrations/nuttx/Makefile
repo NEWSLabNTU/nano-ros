@@ -90,7 +90,13 @@ endif
 # RMW is the Kconfig choice that is set, `CONFIG_NROS_RMW_<NAME>=y` -> `<name>`.
 NROS_RMW := $(shell echo $(patsubst CONFIG_NROS_RMW_%,%,$(foreach v,$(filter CONFIG_NROS_RMW_%,$(.VARIABLES)),$(if $(filter y,$($(v))),$(v)))) | tr A-Z a-z)
 
-NROS_API_FEATURES := std;ros-$(NROS_ROS_EDITION);platform-nuttx;rmw-cffi
+# phase-359 W10 stage C took `std` off nros-c / nros-cpp, and this line kept
+# asking for it, so every build here stopped at `nros-c-image does not contain
+# this feature: std` (found by issue 1824's D2 build — no lane runs this file).
+# The NuttX port SUPPLIES the heap (`platform-nuttx` -> `global-allocator`) and
+# this archive is the image's runtime, so it owns the panic handler: the same
+# set the board's FFI crate builds (`nros-nuttx-ffi/Cargo.toml`).
+NROS_API_FEATURES := alloc;panic-platform;ros-$(NROS_ROS_EDITION);platform-nuttx;rmw-cffi
 
 # The C and C++ images are members of ONE generated root, so one target dir
 # serves one root (issue 0616); `Make.defs` locates the archives under it.
@@ -103,11 +109,25 @@ nros_image_crate = $(shell cmake --log-level=WARNING \
 	-DNROS_IMAGE_WORKSPACE_DIR=$(NROS_IMAGE_ROOT) \
 	"-DNROS_IMAGE_API_FEATURES=$(NROS_API_FEATURES)" \
 	-P $(NANO_ROS_ROOT_DEFS)/cmake/NanoRosImageCrate.cmake)
-ifeq ($(NROS_APPS_BUILD_OK),1)
-NROS_C_IMAGE := $(call nros_image_crate,c)
+# ONE image per configuration: the one that LINKS. A C++ image links
+# `libnros_cpp.a` alone, which bundles nros-c (issue 1636, `Make.defs`), so a C
+# image built beside it reached nothing. Building both was also what broke the
+# C++ configuration outright: each `nros_image_crate` call runs in its OWN cmake
+# process and writes the shared root's `members` from that process alone, so
+# the second call left the first crate outside its root and cargo refused it
+# ("current package believes it's in a workspace when it's not").
+# $(NROS_IMAGE_HEADER_PACKAGES) are the crates whose build scripts write the
+# headers the image's TUs include: the C++ image's C header comes from nros-c's
+# build script, not nros-cpp's (issue 1824).
 ifneq ($(CONFIG_NROS_CPP_API),)
-NROS_CPP_IMAGE := $(call nros_image_crate,cpp)
+NROS_IMAGE_FLAVOR := cpp
+NROS_IMAGE_HEADER_PACKAGES := nros-cpp nros-c
+else
+NROS_IMAGE_FLAVOR := c
+NROS_IMAGE_HEADER_PACKAGES := nros-c
 endif
+ifeq ($(NROS_APPS_BUILD_OK),1)
+NROS_IMAGE := $(call nros_image_crate,$(NROS_IMAGE_FLAVOR))
 endif
 
 # Pass the feature set + NuttX include dir to Cargo via env.
@@ -211,7 +231,13 @@ NROS_RUSTFLAGS_ARMV7A := target.armv7a-nuttx-eabihf.rustflags=["-C","link-arg=-m
 NROS_CFLAGS_ARMV7A := env.CFLAGS_armv7a_nuttx_eabihf.value="-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 
 # $(1) = the image crate's manifest, $(2) = its features (comma-separated) —
-# the two words `nros_image_crate` printed.
+# the two words `nros_image_crate` printed; $(3) = the image flavor (`c` /
+# `cpp`); $(4) = $(NROS_IMAGE_HEADER_PACKAGES).
+#
+# Issue 1824 — cargo runs under the header placer, which reads the build's
+# JSON stream and copies each package's headers out of ITS `$OUT_DIR` into
+# the image's placed dir (`Make.defs`). One placer for every road (the Zephyr
+# and cmake lanes run the same script).
 define NROS_CARGO_BUILD
 	NUTTX_INCLUDE_DIR=$(TOPDIR)/include:$(TOPDIR)/include/arch \
 	CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc \
@@ -220,7 +246,11 @@ define NROS_CARGO_BUILD
 	CXX_armv7a_nuttx_eabi=arm-none-eabi-g++ \
 	AR_armv7a_nuttx_eabihf=arm-none-eabi-ar \
 	AR_armv7a_nuttx_eabi=arm-none-eabi-ar \
+    python3 $(NROS_REPO_DIR)/scripts/build/cargo-out-dir-headers.py \
+		$(foreach p,$(4),--package $(p)) \
+		--dest $(call NROS_PLACED_DIR,$(3)) -- \
     cargo build --release \
+		--message-format=json-render-diagnostics \
 		-Zbuild-std=std,panic_abort \
 		--no-default-features \
 		--features "$(strip $(2))" \
@@ -243,26 +273,13 @@ ifneq ($(wildcard $(APPDIR)/tools/Rust.mk),)
 # through upstream's macro.
 context::
 ifeq ($(NROS_TARGET_TRIPLE),)
-	$(call RUST_CARGO_BUILD,nros-c,$(NROS_REPO_DIR)/packages/api)
+	$(call RUST_CARGO_BUILD,nros-$(NROS_IMAGE_FLAVOR),$(NROS_REPO_DIR)/packages/api)
 else
-	$(call NROS_CARGO_BUILD,$(word 1,$(NROS_C_IMAGE)),$(word 2,$(NROS_C_IMAGE)))
-endif
-# Phase 157.C.11 — also build nros-cpp staticlib when CONFIG_NROS_CPP_API=y.
-# `libnros_cpp.a` rides on the same Cargo workspace target dir as
-# `libnros_c.a`; Make.defs adds it to EXTRA_LIBS conditionally.
-ifneq ($(CONFIG_NROS_CPP_API),)
-ifeq ($(NROS_TARGET_TRIPLE),)
-	$(call RUST_CARGO_BUILD,nros-cpp,$(NROS_REPO_DIR)/packages/api)
-else
-	$(call NROS_CARGO_BUILD,$(word 1,$(NROS_CPP_IMAGE)),$(word 2,$(NROS_CPP_IMAGE)))
-endif
+	$(call NROS_CARGO_BUILD,$(word 1,$(NROS_IMAGE)),$(word 2,$(NROS_IMAGE)),$(NROS_IMAGE_FLAVOR),$(NROS_IMAGE_HEADER_PACKAGES))
 endif
 
 clean::
-	$(call NROS_CARGO_CLEAN,$(word 1,$(NROS_C_IMAGE)))
-ifneq ($(CONFIG_NROS_CPP_API),)
-	$(call NROS_CARGO_CLEAN,$(word 1,$(NROS_CPP_IMAGE)))
-endif
+	$(call NROS_CARGO_CLEAN,$(word 1,$(NROS_IMAGE)))
 endif
 
 include $(APPDIR)/Application.mk

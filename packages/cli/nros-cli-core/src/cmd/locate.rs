@@ -67,6 +67,15 @@ pub struct Args {
     #[arg(long)]
     pub target_dir: Option<PathBuf>,
 
+    /// `artifact` mode: the directory a build PLACED its config headers in
+    /// (`scripts/build/cargo-out-dir-headers.py --dest`, issue 1824). The
+    /// header artifacts resolve under it instead of the target dir: the
+    /// placed copy comes from this build's own `$OUT_DIR`, while the target
+    /// dir's is whichever build wrote it last. An archive is never placed,
+    /// so naming one with this is refused.
+    #[arg(long)]
+    pub placed_dir: Option<PathBuf>,
+
     /// The project whose `system.toml` `[sources]` is rung 3 (RFC-0103 D3).
     /// Default: `$NROS_WORKSPACE_ROOT`, else the nearest ancestor of the
     /// working directory that holds a `system.toml`.
@@ -299,13 +308,20 @@ fn run_artifact(args: &Args, checkout: Option<&std::path::Path>) -> Result<()> {
         };
         wanted.push(a);
     }
-    let target_dir = match &args.target_dir {
-        Some(d) => d.clone(),
-        None => cargo_target_dir(checkout)?,
+    if args.placed_dir.is_some() {
+        refuse_placed_archive(&wanted)?;
+    }
+    // Asked only when something resolves under it: a header-only lookup with
+    // --placed-dir must not need the cargo workspace.
+    let target_dir = match (&args.target_dir, &args.placed_dir) {
+        (Some(d), _) => d.clone(),
+        (None, Some(p)) => p.clone(),
+        (None, None) => cargo_target_dir(checkout)?,
     };
     let batch = wanted.len() > 1;
     for a in wanted {
-        let path = a.path(&target_dir, args.target.as_deref(), &args.profile);
+        let root = args.placed_dir.as_deref().unwrap_or(&target_dir);
+        let path = a.path(root, args.target.as_deref(), &args.profile);
         let key = format!("artifact-{}", a.name());
         match args.format {
             Format::Path if batch => println!("{}\t{}", a.name(), path.display()),
@@ -319,12 +335,31 @@ fn run_artifact(args: &Args, checkout: Option<&std::path::Path>) -> Result<()> {
         }
         if args.why {
             eprintln!(
-                "  {:<10} {} (cargo target dir) + {}",
+                "  {:<10} {} ({}) + {}",
                 "artifact",
-                target_dir.display(),
+                root.display(),
+                if args.placed_dir.is_some() {
+                    "placed dir"
+                } else {
+                    "cargo target dir"
+                },
                 a.relative(args.target.as_deref(), &args.profile).display()
             );
         }
+    }
+    Ok(())
+}
+
+/// `--placed-dir` holds what a build PLACED — headers. An archive is cargo's
+/// output and is never placed, so resolving one there would name a file that
+/// cannot exist.
+fn refuse_placed_archive(wanted: &[nros_build_paths::artifact::Artifact]) -> Result<()> {
+    if let Some(a) = wanted.iter().find(|a| a.per_profile()) {
+        bail!(
+            "`{}` is cargo's output, never placed — drop --placed-dir, which only header \
+             artifacts resolve under",
+            a.name()
+        );
     }
     Ok(())
 }
@@ -406,7 +441,23 @@ fn cargo_target_dir(checkout: Option<&std::path::Path>) -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::var_name;
+    use super::{refuse_placed_archive, var_name};
+    use nros_build_paths::artifact::Artifact;
+
+    #[test]
+    fn placed_dir_takes_headers_and_refuses_archives() {
+        let headers = [
+            Artifact::CInclude,
+            Artifact::CppInclude,
+            Artifact::CConfigHeader,
+            Artifact::CppConfigHeader,
+        ];
+        assert!(refuse_placed_archive(&headers).is_ok());
+        for a in [Artifact::CArchive, Artifact::CppArchive] {
+            let err = refuse_placed_archive(&[Artifact::CInclude, a]).unwrap_err();
+            assert!(err.to_string().contains(a.name()), "{err}");
+        }
+    }
 
     #[test]
     fn variable_names_are_mechanical() {

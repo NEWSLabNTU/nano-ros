@@ -51,6 +51,17 @@ NROS_CLI ?= nros
 # Per ARCH, like the Makefile's object dir (issue 0525).
 NROS_IMAGE_ROOT := $(APPDIR)/external/.nros-build/$(patsubst "%",%,$(CONFIG_ARCH))/image
 NROS_IMAGE_TARGET_DIR := $(NROS_IMAGE_ROOT)/target
+# Issue 1824 — where the Makefile's cargo build PLACES its config headers. They
+# come from that build's own `$OUT_DIR` via
+# `scripts/build/cargo-out-dir-headers.py`, never the target dir's shared copy,
+# which is whichever build wrote it last. Per flavor, so switching
+# CONFIG_NROS_CPP_API cannot leave the other image's headers on the path.
+NROS_PLACED_DIR = $(NROS_IMAGE_ROOT)/placed-$(1)
+ifneq ($(CONFIG_NROS_CPP_API),)
+NROS_LINKED_PLACED_DIR := $(call NROS_PLACED_DIR,cpp)
+else
+NROS_LINKED_PLACED_DIR := $(call NROS_PLACED_DIR,c)
+endif
 NROS_NUTTX_TRIPLE := armv7a-nuttx-eabihf
 nros_artifact = $(or $(shell $(NROS_CLI) locate artifact $(1) $(2) --index $(NANO_ROS_ROOT_DEFS)/nros-sdk-index.toml),$(error nano-ros: `$(NROS_CLI) locate artifact $(1)` answered nothing — put the nros CLI on PATH (source activate.sh) or set NROS_CLI))
 NROS_CARGO_ARCHIVE_ARGS := --target $(NROS_NUTTX_TRIPLE) --profile release --target-dir $(NROS_IMAGE_TARGET_DIR)
@@ -83,15 +94,15 @@ EXTRA_LIBPATHS+= -L$(NROS_CARGO_LIB_DIR)
 -include $(APPDIR)/external/nano-ros/extra_libs.mk
 endif
 
-# Phase 157.C.8 — per-build `nros_config_generated.h` lands at
-# `$CARGO_TARGET_DIR/nros-c-generated/rclc/detail/` after `cargo build
-# -p nros-c` (phase-501 W2). Add `nros-c-generated` to the include path
-# FIRST (gcc resolves `-I` left-to-right) so `#include
+# Phase 157.C.8 — the per-build `nros_config_generated.h` is placed at
+# `<placed dir>/nros-c-generated/rclc/detail/` by the Makefile's cargo build
+# (issue 1824; phase-501 W2 for the subdir). Add `nros-c-generated` to the
+# include path FIRST (gcc resolves `-I` left-to-right) so `#include
 # <rclc/detail/nros_config_generated.h>` picks up the per-build variant header
 # instead of the source-tree stub (which deliberately errors via
 # `#error` to flag mis-configured builds).
 # Where that directory is, is `nros locate artifact c-include` (above).
-NROS_C_GENERATED_INCLUDE := $(call nros_artifact,c-include,--target-dir $(NROS_IMAGE_TARGET_DIR))
+NROS_C_GENERATED_INCLUDE := $(call nros_artifact,c-include,--placed-dir $(NROS_LINKED_PLACED_DIR))
 CFLAGS += ${INCDIR_PREFIX}$(NROS_C_GENERATED_INCLUDE)
 
 # CFLAGS — surface the nano-ros C headers to user code that
@@ -102,10 +113,10 @@ CFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/api/nros-c/include
 # Phase 157.C.11 — C++ surface. Mirror the C-side header
 # precedence + add the cbindgen-emitted `nros_cpp_ffi.h` parent
 # (in `packages/api/nros-cpp/include/`). nros-cpp's per-build
-# `nros_cpp_config_generated.h` lands at
-# `$CARGO_TARGET_DIR/nros-cpp-generated/rclcpp/detail/` analogous to nros-c.
+# `nros_cpp_config_generated.h` is placed at
+# `<placed dir>/nros-cpp-generated/rclcpp/detail/` analogous to nros-c.
 ifneq ($(CONFIG_NROS_CPP_API),)
-CXXFLAGS += ${INCDIR_PREFIX}$(call nros_artifact,cpp-include,--target-dir $(NROS_IMAGE_TARGET_DIR))
+CXXFLAGS += ${INCDIR_PREFIX}$(call nros_artifact,cpp-include,--placed-dir $(NROS_LINKED_PLACED_DIR))
 CXXFLAGS += ${INCDIR_PREFIX}$(NANO_ROS_ROOT_DEFS)/packages/api/nros-cpp/include
 # nros-cpp depends on nros-c headers — keep the C-side -I on the
 # C++ compile line too.

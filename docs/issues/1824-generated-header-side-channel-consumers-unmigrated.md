@@ -186,3 +186,41 @@ it does the same. The always-run mirror node (issue 1783) stays.
 Left: D2 (NuttX), D3 (PX4), D4 (delete the side channel and its stamp). The
 cargo-dir half of `mirror-generated-header.sh` has no Corrosion caller now and
 goes with D4.
+
+## D2 landed (2026-10-24)
+
+`integrations/nuttx/Makefile` runs its cargo build under
+`scripts/build/cargo-out-dir-headers.py` with `--dest
+<image root>/placed-<flavor>`, and `Make.defs` asks `nros locate artifact
+{c,cpp}-include --placed-dir <that dir>` — a new flag that resolves the header
+artifacts under a placed directory and refuses an archive (an archive is
+cargo's output and is never placed). The layout under the placed dir is the
+same `nros_build_paths::artifact` join, so no path is spelled twice.
+
+The build did not run on main before this, for two reasons unrelated to the
+headers, both found by running it (no lane runs this file —
+`check-nuttx-integration-makefile.sh` says so):
+
+- it asked the image crate for `std`, which phase-359 W10 stage C deleted from
+  nros-c / nros-cpp the day before. Now `alloc;panic-platform`, the FFI crate's
+  set.
+- with `CONFIG_NROS_CPP_API=y` it generated BOTH image crates, each in its own
+  cmake process, and each wrote the shared root's `members` from that process
+  alone, so the C crate was outside its root and cargo refused it. Only the C++
+  archive links (issue 1636), so only the linked flavor is built now.
+
+Measured on a private copy of the NuttX tree, `qemu-armv7a:nsh`, zenoh: C and
+C++ configurations both build and link; the placed headers are byte-identical
+to the side channel's; the compile line of the app's C TU carries the placed
+`-I` and no target-dir one; with the placed dir deleted, a re-run of `context`
+on a fully cached cargo places both headers again (6.3 s). NuttX runs
+`context::` once per tree (`$(APPDIR)/.context`), so an incremental `make` runs
+no cargo at all — that was already true on main, for the archive as well as
+the headers.
+
+Also found, for D4: `just/check/lanes.just` (`check-c` / `check-cpp`, and the
+param-dir probe near line 967) reads `nros_locate_artifact c-include` /
+`cpp-include` without a placed dir, i.e. the side channel. The reader table
+above missed it.
+
+Left: D3 (PX4), D4.
