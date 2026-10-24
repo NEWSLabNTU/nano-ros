@@ -882,7 +882,8 @@ impl LinuxBoard {
         // quietly narrower set.
         let _ = boot_crt.executor_mut().set_active_groups(boot_tier.groups);
         install_park(&mut boot_crt);
-        apply_tier_sched(&mut boot_crt, boot_tier);
+        // Issue 2018 -- the boot level's policy lowers onto its own context
+        // below, once the level core seats it, not onto the default.
         apply_tier_affinity::<Self>(boot_tier);
 
         // The executor's lock, before a second thread can reach it: the
@@ -934,6 +935,11 @@ impl LinuxBoard {
         // SAFETY: the runtime reference lives inside the closure only.
         let rc = unsafe {
             core.with_runtime(|crt| {
+                // Issue 2018 -- the boot level owns the session and drives the
+                // transport, so it gets no kernel reservation (a throttled
+                // owner stalls every level's I/O, issue #246's shape); its
+                // budget, if any, is the executor's, gating its callbacks only.
+                apply_level_sched::<Self>(crt, boot_tier, false);
                 let mut ctx = RuntimeCtx::with_runtime(crt);
                 setup(&mut ctx)
             })
@@ -986,9 +992,13 @@ impl LinuxBoard {
                         }
                     };
                     // SAFETY: the runtime reference lives inside the closure.
+                    // Issue 2018 -- the kernel's reservation on this level's
+                    // thread; the level's context defers to it when it took.
+                    let kernel = apply_tier_deadline(tier);
                     let rc = unsafe {
                         core.with_runtime(|crt| {
                             let _ = crt.executor_mut().set_active_groups(tier.groups);
+                            apply_level_sched::<Self>(crt, tier, kernel);
                             let mut ctx = RuntimeCtx::with_runtime(crt);
                             setup(&mut ctx)
                         })
@@ -1117,26 +1127,83 @@ fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
     );
 }
 
-/// RFC-0052 / phase-296 W3a — lower a tier's RTOS-agnostic scheduling
-/// policy onto the tier executor's DEFAULT scheduling context. One
-/// Executor per tier means "the tier's policy" == "this executor's
-/// default SC"; per-group/per-handle bindings still take precedence.
+/// RFC-0052 / phase-296 W3a, issue 2018 (RFC-0108 As-built) — lower a
+/// level's RTOS-agnostic scheduling policy onto the level's OWN scheduling
+/// context (`apply_level_sched_policy`), which what its setup registers binds
+/// to, rather than onto the executor's default, which every level on the core
+/// shares. Call it on the registering level, before its setup.
 ///
-/// v1 lowers the sporadic-budget shape (`class = "real_time"` with
-/// `budget_us` + `period_us` → `SchedClass::Sporadic`) and `best_effort`;
-/// `time_triggered` window registration is W3b (needs the major-frame
-/// dispatcher wired at this altitude too). A tier with no class/budget
-/// leaves the default Fifo SC untouched — byte-identical pre-W3 behavior.
-fn apply_tier_sched(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime, tier: &TierSpec<'_>) {
-    // W3a lowering now lives portably on `ExecutorNodeRuntime` (W5.4) so every
-    // board shares it; posix just forwards its tier fields.
-    crt.apply_tier_sched_policy(
+/// `kernel`: the kernel enforces the level's budget on its thread
+/// (`SCHED_DEADLINE`, [`apply_tier_deadline`]), so the executor does not
+/// enforce it a second time; otherwise the executor's cooperative budget does,
+/// with the same numbers. One enforcer per level, and the line says which.
+fn apply_level_sched<B: BoardPrint>(
+    crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
+    tier: &TierSpec<'_>,
+    kernel: bool,
+) {
+    let sc = crt.apply_level_sched_policy(
         tier.class,
         tier.period_us,
         tier.budget_us,
         tier.deadline_us,
         tier.deadline_policy,
+        kernel,
     );
+    if let (Some(_), Some(b), Some(p)) = (sc, tier.budget_us, tier.period_us) {
+        B::println(format_args!(
+            "nros: level budget tier=`{}` {b}us/{p}us enforced by the {}",
+            tier.name,
+            if kernel { "KERNEL" } else { "EXECUTOR" }
+        ));
+    }
+}
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn nros_posix_apply_current_deadline(
+        name: *const core::ffi::c_char,
+        tier_class: *const core::ffi::c_char,
+        budget_us: u64,
+        period_us: u64,
+        deadline_us: u64,
+    ) -> i32;
+}
+
+/// Issue 2018 — put the CALLING level thread under `SCHED_DEADLINE` with its
+/// tier's budget, period and deadline (`nros-platform-posix`'s
+/// `nros_posix_apply_current_deadline`, shared with the C ABI's level
+/// runner). `true` when the kernel accepted it. Without `CAP_SYS_NICE` the
+/// kernel refuses, the C side says so once with the fix, and the executor's
+/// budget is the enforcement. A tier that declares no reservation is
+/// untouched.
+#[cfg(unix)]
+fn apply_tier_deadline(tier: &TierSpec<'_>) -> bool {
+    let (Some(class), Some(budget), Some(period)) = (tier.class, tier.budget_us, tier.period_us)
+    else {
+        return false;
+    };
+    let (Ok(name), Ok(class)) = (
+        std::ffi::CString::new(tier.name),
+        std::ffi::CString::new(class),
+    ) else {
+        return false;
+    };
+    // SAFETY: both strings are NUL-terminated and outlive the call.
+    unsafe {
+        nros_posix_apply_current_deadline(
+            name.as_ptr(),
+            class.as_ptr(),
+            budget,
+            period,
+            tier.deadline_us.unwrap_or(0),
+        ) == 1
+    }
+}
+
+#[cfg(not(unix))]
+fn apply_tier_deadline(_tier: &TierSpec<'_>) -> bool {
+    false
 }
 
 /// phase-296 W5.13 — the placement dim's LINUX realization: pin the CALLING
@@ -1351,6 +1418,119 @@ fn rust_log_default_level(value: &str) -> Option<nros_log::Severity> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    unsafe extern "C" {
+        fn nros_posix_deadline_attr(
+            tier_class: *const core::ffi::c_char,
+            budget_us: u64,
+            period_us: u64,
+            deadline_us: u64,
+            runtime_ns: *mut u64,
+            deadline_ns: *mut u64,
+            period_ns: *mut u64,
+        ) -> i32;
+    }
+
+    fn deadline_attr(class: &core::ffi::CStr, b: u64, p: u64, d: u64) -> Option<(u64, u64, u64)> {
+        let (mut rt, mut dl, mut pd) = (0u64, 0u64, 0u64);
+        // SAFETY: a pure computation over the arguments and three out-params.
+        let ok =
+            unsafe { nros_posix_deadline_attr(class.as_ptr(), b, p, d, &mut rt, &mut dl, &mut pd) };
+        (ok == 1).then_some((rt, dl, pd))
+    }
+
+    /// Issue 2018 -- a level's budget becomes a SCHED_DEADLINE reservation:
+    /// runtime = budget, period = period, deadline = the declared one when it
+    /// lies within [budget, period], else the period. Anything else asks the
+    /// kernel for nothing.
+    #[test]
+    fn a_level_budget_maps_onto_a_deadline_reservation() {
+        assert_eq!(
+            deadline_attr(c"real_time", 5_000, 10_000, 0),
+            Some((5_000_000, 10_000_000, 10_000_000))
+        );
+        assert_eq!(
+            deadline_attr(c"real_time", 2_000, 10_000, 4_000),
+            Some((2_000_000, 4_000_000, 10_000_000)),
+            "a deadline inside [budget, period] is the reservation's"
+        );
+        assert_eq!(
+            deadline_attr(c"real_time", 2_000, 10_000, 1_000),
+            Some((2_000_000, 10_000_000, 10_000_000)),
+            "a deadline below the budget is unsatisfiable: the period stands in"
+        );
+        assert_eq!(deadline_attr(c"real_time", 0, 10_000, 0), None, "no budget");
+        assert_eq!(deadline_attr(c"real_time", 5_000, 0, 0), None, "no period");
+        assert_eq!(
+            deadline_attr(c"real_time", 20_000, 10_000, 0),
+            None,
+            "budget > period"
+        );
+        assert_eq!(
+            deadline_attr(c"best_effort", 5_000, 10_000, 0),
+            None,
+            "not real_time"
+        );
+    }
+
+    /// Issue 2018 -- the kernel throttles a level thread that runs past its
+    /// SCHED_DEADLINE budget. Needs `CAP_SYS_NICE`: where the kernel refuses
+    /// (EPERM, the common unprivileged host), the call must report the
+    /// refusal and leave the thread on its old policy, which is what this
+    /// asserts instead -- the throttle half then has NOT run, and the test
+    /// says so on its output.
+    #[test]
+    fn a_level_past_its_deadline_budget_is_throttled_by_the_kernel() {
+        let tier = TierSpec {
+            name: "overrun",
+            class: Some("real_time"),
+            budget_us: Some(2_000),
+            period_us: Some(10_000),
+            ..TierSpec::single()
+        };
+        let handle = std::thread::spawn(move || {
+            let accepted = apply_tier_deadline(&tier);
+            // SAFETY: plain libc reads of the calling thread's policy and clock.
+            let policy = unsafe { libc::sched_getscheduler(0) };
+            let cpu_ns = || {
+                let mut ts = libc::timespec {
+                    tv_sec: 0,
+                    tv_nsec: 0,
+                };
+                unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
+                ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
+            };
+            if !accepted {
+                return (false, policy, 0u128);
+            }
+            // 20 ms of CPU against 2 ms per 10 ms: at least nine throttled
+            // periods, so the wall time is far past the CPU time.
+            let start = std::time::Instant::now();
+            let cpu0 = cpu_ns();
+            while cpu_ns() - cpu0 < 20_000_000 {
+                core::hint::spin_loop();
+            }
+            (true, policy, start.elapsed().as_millis())
+        });
+        let (accepted, policy, wall_ms) = handle.join().expect("the level thread");
+        if !accepted {
+            assert_ne!(
+                policy, 6,
+                "a refused reservation leaves the thread off SCHED_DEADLINE"
+            );
+            println!(
+                "issue 2018: SCHED_DEADLINE refused on this host (no CAP_SYS_NICE): the \
+                 fallback was checked, the kernel throttle was NOT run"
+            );
+            return;
+        }
+        assert_eq!(policy, 6, "the level thread runs under SCHED_DEADLINE");
+        assert!(
+            wall_ms >= 80,
+            "20 ms of CPU at 2 ms per 10 ms took only {wall_ms} ms of wall time: \
+             the kernel did not throttle the level"
+        );
+    }
 
     #[test]
     fn init_hardware_is_noop() {

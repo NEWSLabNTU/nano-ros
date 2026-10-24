@@ -1012,8 +1012,33 @@ executor's lock and the thread identity:
     overruns 8 ms of a 5 ms per 10 ms budget once in fifty ticks on NuttX)
     and asserts the kernel throttle, a later overrun (the level still
     dispatches), and no executor budget skip.
+  - **Linux** (the C ABI's native level runner and the Rust arm). A spawned
+    level declaring `real_time` with a budget and period asks the kernel for
+    a `SCHED_DEADLINE` reservation on its thread
+    (`nros_posix_apply_current_deadline` in `nros-platform-posix`, shared by
+    both runners): runtime = budget, period = period, deadline = the
+    declared one when it lies within [budget, period], else the period
+    (`nros_posix_deadline_attr`). When the kernel accepts, the executor
+    defers. Without `CAP_SYS_NICE` the kernel refuses (EPERM): the port says
+    so once, naming `setcap cap_sys_nice+ep`, plus a `deadline budget
+    FAILED` line per level, and the executor enforces, as the `SCHED_FIFO`
+    priority fallback does. EPERM also covers a level pinned to fewer CPUs
+    than its root domain, which `SCHED_DEADLINE` does not allow; EBUSY is
+    the kernel's admission control refusing the bandwidth. The adopted
+    level owns the session and drives the transport, so it gets no
+    reservation on either runner (a throttled owner stalls every level's
+    I/O, #246's shape); its budget, if any, is the executor's and gates its
+    own callbacks only. A reservation charges the whole thread (its park,
+    the pass, the transport work it does), where the executor's budget
+    charges callbacks only, so a declared budget sized from callback
+    runtimes is tighter under the kernel. Test: `nros-board-linux`
+    `a_level_budget_maps_onto_a_deadline_reservation` (the arithmetic) and
+    `a_level_past_its_deadline_budget_is_throttled_by_the_kernel` (20 ms of
+    CPU at 2 ms per 10 ms must take at least 80 ms of wall time; on a host
+    that refuses the reservation it checks the fallback instead and prints
+    that the throttle half did not run).
 - **Not in P10.** FreeRTOS keeps `configUSE_TIME_SLICING` at the kernel
-  default. Linux `SCHED_DEADLINE` is not wired to levels yet (issue 2018).
+  default.
 
 ## Relation to other RFCs
 

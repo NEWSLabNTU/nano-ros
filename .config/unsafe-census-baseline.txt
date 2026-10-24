@@ -28,7 +28,7 @@ nros-baremetal-common               24   0     0      21      0
 nros-board-cffi                      3   0     0       6      0
 nros-board-esp32-qemu               11   1     1       0      0
 nros-board-freertos                 63   1     1      20      0
-nros-board-linux                    17   0     0       5      0
+nros-board-linux                    21   0     0       7      0
 nros-board-mps2-an385               34   6     1       5      0
 nros-board-mps2-an385-freertos       3   0     0       1      0
 nros-board-nuttx                    28   0     0      14      0
@@ -44,7 +44,7 @@ nros-c                             461  85     5     465      0
 nros-cli-core                       22   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
-nros-cpp                          1050  39     0     404      0
+nros-cpp                          1056  40     0     405      0
 nros-log                            23   0     7       1      0
 nros-macros                         16   0     1       2      0
 nros-node                          671  186    35     149      0

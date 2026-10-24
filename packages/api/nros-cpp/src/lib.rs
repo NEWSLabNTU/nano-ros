@@ -8741,6 +8741,55 @@ struct NativeLevelCtx {
     n_groups: usize,
     groups: usize,
     setup: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
+    /// Issue 2018 -- the level's row (`*const NativeTierSpecC`, the entry's
+    /// static table), for its policy.
+    spec: usize,
+}
+
+/// Issue 2018 (RFC-0108 As-built) -- the level's own sched context from its
+/// row's policy, on the registering level. `kernel` says the kernel enforces
+/// the row's budget on the level's thread (Linux `SCHED_DEADLINE`), so the
+/// executor does not enforce it again; otherwise the executor does, with the
+/// same numbers. Says which.
+///
+/// # Safety
+/// `sched` is the runner's scheduler; `t` a row of the entry's table.
+#[cfg(all(feature = "rmw-cffi", feature = "env", unix))]
+unsafe fn native_level_sched_policy(sched: *mut c_void, t: &NativeTierSpecC, kernel: bool) {
+    let mut sc: u8 = 0;
+    let rc = unsafe {
+        nros_cpp_level_set_sched_policy(
+            sched,
+            t.tier_class,
+            t.period_us,
+            t.budget_us,
+            t.deadline_us,
+            t.deadline_policy,
+            u8::from(kernel),
+            &mut sc,
+        )
+    };
+    let name = if t.name.is_null() {
+        alloc::string::String::from("?")
+    } else {
+        unsafe { core::ffi::CStr::from_ptr(t.name) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    if rc != NROS_CPP_RET_OK {
+        crate::cpp_diag!(
+            "nros: level `{name}` sched context not created (rc={rc}): it runs on the default"
+        );
+        return;
+    }
+    if sc != 0 && t.budget_us != 0 && t.period_us != 0 {
+        crate::cpp_diag!(
+            "nros: level budget tier=`{name}` {}us/{}us enforced by the {}",
+            t.budget_us,
+            t.period_us,
+            if kernel { "KERNEL" } else { "EXECUTOR" }
+        );
+    }
 }
 
 /// One spawned level's worker: open the level over the core's scheduler,
@@ -8771,6 +8820,31 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
     let groups = ctx.groups as *const *const c_char;
     if !groups.is_null() && ctx.n_groups > 0 {
         unsafe { nros_cpp_executor_set_active_groups(owner, groups, ctx.n_groups) };
+    }
+    // Issue 2018 -- the kernel's reservation on this level's thread, then the
+    // level's own context, which defers to the kernel when it took the budget.
+    // SAFETY: `spec` is a row of the entry's static table.
+    if let Some(t) = unsafe { (ctx.spec as *const NativeTierSpecC).as_ref() } {
+        unsafe extern "C" {
+            fn nros_posix_apply_current_deadline(
+                name: *const c_char,
+                tier_class: *const c_char,
+                budget_us: u64,
+                period_us: u64,
+                deadline_us: u64,
+            ) -> i32;
+        }
+        // SAFETY: the strings are the row's, NUL-terminated or null.
+        let kernel = unsafe {
+            nros_posix_apply_current_deadline(
+                ctx.name.as_ptr(),
+                t.tier_class,
+                t.budget_us,
+                t.period_us,
+                t.deadline_us,
+            )
+        } == 1;
+        unsafe { native_level_sched_policy(sched, t, kernel) };
     }
     if let Some(setup) = ctx.setup {
         let rc = unsafe { setup(owner) };
@@ -8961,6 +9035,11 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
     if !bt.groups.is_null() && bt.n_groups > 0 {
         unsafe { nros_cpp_executor_set_active_groups(sptr, bt.groups, bt.n_groups) };
     }
+    // Issue 2018 -- the adopted level owns the session and drives the
+    // transport, so it gets no kernel reservation (a throttled owner stalls
+    // every level's I/O, issue #246's shape); its context's budget, if any,
+    // is the executor's, which gates only its own callbacks.
+    unsafe { native_level_sched_policy(sched, bt, false) };
     let tier_name = |t: &NativeTierSpecC| -> alloc::string::String {
         if t.name.is_null() {
             alloc::string::String::from("?")
@@ -9011,6 +9090,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             n_groups: t.n_groups,
             groups: t.groups as usize,
             setup: t.setup,
+            spec: t as *const NativeTierSpecC as usize,
         }));
         let task_name = alloc::ffi::CString::new(alloc::format!("nros-level-{name}"))
             .unwrap_or_else(|_| c"nros-level".into());
