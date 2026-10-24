@@ -415,7 +415,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
             port,
             boot: Boot::NuttxArm,
             proof: Proof::CounterRatio3x,
-            note: "phase-281 W3-nuttx: QemuArmVirt::run_tiers (std::thread per tier), \
+            note: "phase-281 W3-nuttx: QemuArmVirt::run_tiers (a level worker per tier, issue 2016), \
                    the cell that completed the 12-cell Model-1 matrix",
         }],
         (MP::NuttxRiscv, ML::Rust) => vec![Exec {

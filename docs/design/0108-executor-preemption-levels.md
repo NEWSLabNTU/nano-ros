@@ -873,6 +873,9 @@ executor's lock and the thread identity:
 | NuttX (C) | `nros_board_nuttx_run_levels_in` | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | entry static (`pthread_attr_setstack`), `NROS_LEVEL_STACK_BYTES` |
 | Zephyr (Rust) | `ZephyrBoard::run_tiers_with_task_memory` | bare `k_mutex` (`nros_zephyr_exec_lock*`) | `k_current_get` | entry static or the pool slot (declared size) |
 | ThreadX (Rust) | `run_tiers_entry` | `nros_platform_mutex_rec_*` (`TX_INHERIT`) | `tx_thread_identify` | byte pool (declared size) |
+| Linux (Rust, issue 2016) | `LinuxBoard::run_tiers` | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | the process's (`std::thread`, declared size) |
+| FreeRTOS (Rust, issue 2016) | `run_tiers_entry` | `nros_platform_mutex_rec_*` (FreeRTOS recursive mutex) | `nros_freertos_current_task_id` (`xTaskGetCurrentTaskHandle`) | entry static or heap_4 (declared size) |
+| NuttX (Rust, issue 2016) | `run_tiers` | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | `sys::spawn_tier` (declared size, else 64 KiB) |
 
 - **The Rust level core** is `nros::levels::LevelCore`: the core's
   `ExecutorNodeRuntime`, leaked for the image's life, with the lock and
@@ -911,13 +914,20 @@ executor's lock and the thread identity:
   the lock probe, 10,000 pairs) the installed pair fell from 8.58 us to
   2.35 us (raw `k_mutex` pair 1.74 us; the difference is the shim call and
   the executor's lock indirection) [M].
-- **Not in P10.** The Rust Linux, FreeRTOS and NuttX tier arms
-  (`nros-board-linux`, `nros-board-freertos`, `nros-board-nuttx`) still open
-  one executor per tier over the session; the C-ABI runners above are what
-  every C and C++ entry on those boards calls. FreeRTOS keeps
-  `configUSE_TIME_SLICING` at the kernel default. Kernel budget enforcement
-  (Linux `SCHED_DEADLINE`, NuttX `SCHED_SPORADIC`) is not wired to levels.
-  Each is a filed follow-up.
+- **The Rust Linux, FreeRTOS and NuttX arms** (issue 2016) run on
+  `LevelCore` too, so every tier runner in the tree is a level runner. Each
+  keeps its boot choice (the least urgent tier owns the session) and its
+  chained setups. The tiers' per-executor scheduling policy
+  (`apply_tier_sched_policy`) is the boot level's alone now, since the levels
+  share one executor, as on Zephyr and ThreadX; the kernel facts stay per
+  level thread (priority, core pin, NuttX's `SCHED_SPORADIC` server on the
+  non-owner levels). A spawned level's failed setup now fails the boot on
+  all three. The hosted Linux arm ends its run (a termination signal or
+  `NROS_ENTRY_SPIN_MS`) by joining the level threads and taking the runtime
+  back (`LevelCore::into_runtime`, the lock removed) to close the session.
+- **Not in P10.** FreeRTOS keeps `configUSE_TIME_SLICING` at the kernel
+  default. Kernel budget enforcement (Linux `SCHED_DEADLINE`, NuttX
+  `SCHED_SPORADIC`) is not wired to levels. Each is a filed follow-up.
 
 ## Relation to other RFCs
 
@@ -1257,6 +1267,8 @@ The first draft's open questions, as decided:
   is a bare `k_mutex` (2.35 us per pair on target). The Rust Linux, FreeRTOS
   and NuttX arms, FreeRTOS time slicing, kernel budgets and member-derived
   stacks are filed (issues 2016-2021).
+- 2026-10-24: the Rust Linux, FreeRTOS and NuttX arms run on `LevelCore`
+  (issue 2016); `LevelCore::into_runtime` is the hosted arm's teardown.
 - 2026-10-24: Accepted. P10 built (every runner on levels; the Zephyr lock a
   bare `k_mutex`, 2.35 us per pair on target); the island's final board round
   on nano-ros c602d4d504 passes every planning act and the 300 ms overrun
