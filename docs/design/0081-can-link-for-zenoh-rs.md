@@ -385,3 +385,13 @@ priority-blind write as a fact about zenoh. It is a fact about zenoh-pico. In
 zenoh-rs `pipeline.pull()` yields `(batch, priority)` and the information is
 discarded one call later, at the trait boundary. The blocker is a trait
 signature, not an architecture.
+
+## Amendment — RFC-0109 (2026-10-24)
+
+A CAN controller's rate and its start are layer-1 facts
+([RFC-0109](0109-network-config-layers.md) D10): the OS states them (Linux
+`ip link set … bitrate`, Zephyr devicetree `bus-speed`), or the board package
+does where nano-ros is the OS. The locator keys `bitrate` / `dbitrate`, which
+§4 already calls advisory on Linux, are therefore refused in nano-ros wiring
+on every platform; FD-versus-classic is read from the started interface. `id`,
+`match` and `mask` stay in the locator: they are wiring.

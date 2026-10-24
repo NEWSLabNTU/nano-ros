@@ -513,3 +513,26 @@ keeps its hand-written board crate.
 - **Gitignore `.cargo/` today.** Drops the only copy of 19 leaves' board
   triple and the esp32 stack budgets (`.bss` overflowed DRAM by 11,184 B
   without them). The homes must exist first; that is phase-445's order.
+
+## Amendment — RFC-0109 (2026-10-24)
+
+[RFC-0109](0109-network-config-layers.md) splits network and middleware
+configuration into three layers (OS devices, the RMW's own file, ROS-level
+`system.toml`). Two decisions here change with it:
+
+- **D4's `[image.<id>] transport` becomes derived.** The link kind is read off
+  the session's wiring (the RMW's own file, or a file-less domain's
+  `locator`) and checked against the board descriptor's `links`. The
+  implication it carried is unchanged: a serial-only image still gets
+  `ZPICO_NO_SMOLTCP=1` and `NROS_LINK_IP=0`, and an image's own `env` still
+  wins (RFC-0086 D2's strength). Stating `transport` is refused, naming the
+  wiring as its home.
+- **D11's `conf` generalises to `os_config`**, the image's layer-1 files on
+  any platform: Zephyr `prj*.conf` and devicetree overlays (rendered as today:
+  `-DEXTRA_CONF_FILE` / `-DEXTRA_DTC_OVERLAY_FILE`), a NuttX `defconfig`
+  fragment, or a board package's own file on a `"board"`-stack board. `conf`
+  stays an alias until every tracked use migrates, then is refused.
+
+D5's "`ip`, `gateway`, `netmask`, `locator` … live in `system.toml`" is
+superseded for those four keys: addresses belong to layer 1 and the locator to
+layer 2. `domain_id` and `rmw` stay here.

@@ -185,3 +185,15 @@ register_all(...) { ...; register_bridges(executor)?; }
   resolution; out of scope (resolve-from-interfaces requires named, declared topics).
 - **QoS reconciliation across mismatched publishers** (domain_bridge's
   majority-match) — nano-ros bakes the declared interface QoS; revisit if needed.
+
+## Amendment — RFC-0109 (2026-10-24)
+
+The sessions a bridge connects are `[[domain]]` rows (`name`, `rmw`, `id`,
+`config`), named by `from` / `to` (`"zenoh:ecu"`). This RFC's
+`connect`-endpoint blocks were the `nros.toml` spelling and are not parsed by
+any road. Each domain's endpoint comes from its own RMW file, or its `locator`
+when the backend has no file format (XRCE), per
+[RFC-0109](0109-network-config-layers.md) D6/D8. Two NICs serving two purposes
+is exactly this shape: one domain per NIC, wired by each domain's own file
+(RFC-0109 U5/U7). The generator's session interning by (rmw, domain, locator)
+is unchanged.

@@ -45,7 +45,7 @@ name the owner: "nano-ros `[lifecycle]`", "nano-ros `[param_services]`",
 | `[host.<n>]` (`nodes`/`launch` scoping, `domain_id`, `locator`) | `execution.deploy.<n>` `domain` / `locator` / `rmw` | **passes** — which machine runs which node, on which bus, is topology. The table's KEY (`extra.host_name`) is read by nothing and leaves with `extra` |
 | `[tiers.*]`, `[[component]] group_tiers` | `execution.tiers`, `execution.bindings` | **passes** — scheduling, in the shared `sched` schema |
 | `[[component]] params` / `params_files` | `structure.nodes[].params` | **passes** — ROS parameter values |
-| `[system] rmw` / `domain_id` / `locator`, `[[transport]]`, `[[bridge]]` | `execution.deploy`, `transports`, `bridges` | **passes** — ROS environment and topology |
+| `[system] rmw` / `domain_id` / `locator`, `[[transport]]` (both retired by [RFC-0109](0109-network-config-layers.md); sessions are `[[domain]]`), `[[bridge]]` | `execution.deploy`, `transports`, `bridges` | **passes** — ROS environment and topology |
 
 So four things leave the model: `execution.features`, the system-wide
 lifecycle default, `execution.deploy.<n>.extra`, and `execution.deploy.<n>.target`.
