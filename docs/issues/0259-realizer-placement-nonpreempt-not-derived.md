@@ -162,15 +162,34 @@ So no value can be misread today. **Remedy:** delete the three fields, and the
 producer should add fields in the runtime's unit, and should not inherit dead
 ones.
 
+**Done 2026-10-24.** `period_ms`, `budget_ms` and `deadline_ms` are gone from
+`PlanSchedContext` and `SchedContextConfig`, from the planner's
+`default_executor`, and from `nros explain`. The eight hand-written plan
+fixtures under `nros-cli-core/tests/fixtures/orchestration/` lost the same
+keys; they carried numbers there (`"budget_ms": 20`), but only the schema test
+read those plans, and only their `class`. A plan written by an older CLI no
+longer parses (`deny_unknown_fields`). It is a build artifact, so rebuilding
+regenerates it. `SchedContextConfig` has no user left at all; deleting it is
+a separate cleanup.
+
+The realizer's preempt dim went the same day (section 1):
+`RealizedNode.preempt_threshold` and `RealizedNode.preempt_real`. Every
+derived tier and allocated placement now states `preempt_threshold: None` and
+says why. An authored ThreadX `preempt_threshold` is untouched.
+`SchedCaps.preempt_threshold` stays, despite section 1's remedy. It is a board
+fact, not a derived dim, and it has a reader: `scripts/gen-sched-matrix.py`
+renders it into the book's scheduling matrix. The `sched-matrix` gate failed
+when it was deleted.
+
 ### Summary of what this issue now owns
 
 | item | state | next step |
 | --- | --- | --- |
-| `non_preempt` | owned by RFC-0108 / phase-509 (P5, P6 built; P10 ThreadX open) | delete the realizer's dead preempt dim |
+| `non_preempt` | owned by RFC-0108 / phase-509 (P5, P6 built; P10 ThreadX open); realizer's dead dim deleted 2026-10-24 | none here |
 | performance placement | derived (2026-09-04); levels partitioned per core (2026-10-24) | an authored core count, and the profile's C into the realizer (section 2) |
 | hardware locality | blocked | board peripheral registry |
 | chain colocation and per-image budget split | blocked | interference model, after section 2 |
-| plan-schema units | moot | delete the dead `_ms` fields |
+| plan-schema units | dead `_ms` fields deleted 2026-10-24 | none |
 
 No item has a live defect. Section 2's latent one is fixed; what it lacks is an input.
 

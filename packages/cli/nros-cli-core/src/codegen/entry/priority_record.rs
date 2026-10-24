@@ -449,11 +449,9 @@ mod tests {
             deadline_us: None,
             budget_us: None,
             core: None,
-            preempt_threshold: None,
             blocking_us: None,
             deadline_real: DimRealization::NotRequested,
             budget_real: DimRealization::NotRequested,
-            preempt_real: DimRealization::NotRequested,
             placement_real: DimRealization::NotRequested,
         }
     }

@@ -324,13 +324,13 @@ pub fn placement_is_unauthored(
 }
 
 /// issue 1426 rule 2 — one member's bid for the single priority an authored,
-/// unplaced tier gets: `(node FQN, allocated priority, preempt threshold)`.
+/// unplaced tier gets: `(node FQN, allocated priority)`.
 ///
 /// A tier is one thread, so several of these compete and the most urgent wins
 /// (see the loop at the end of [`derive_tiers_from_contracts`]). Named because
 /// the tuple is the whole reason clippy calls the map's type complex, and a
 /// name is the answer it asks for.
-type AllocationCandidate<'a> = (&'a str, i64, Option<i64>);
+type AllocationCandidate<'a> = (&'a str, i64);
 
 /// Has this tier a platform sub-table for ANY target? The discriminator between
 /// rules 2 and 3 above — see [`placement_is_unauthored`].
@@ -626,11 +626,10 @@ fn derive_tiers_with_caps(
                         // turn a real mistake into a derived number.
                     } else {
                         // Rule 2 — NAMED and unplaced: an allocation request.
-                        unplaced.entry(g.tier.clone()).or_default().push((
-                            n.name.as_str(),
-                            n.priority,
-                            n.preempt_threshold,
-                        ));
+                        unplaced
+                            .entry(g.tier.clone())
+                            .or_default()
+                            .push((n.name.as_str(), n.priority));
                         let pin = pins
                             .entry(g.tier.clone())
                             .or_insert((None, None, Vec::new()));
@@ -825,13 +824,13 @@ fn derive_tiers_with_caps(
                 b.1.cmp(&a.1)
             }
         });
-        let (leader, priority, preempt_threshold) = members[0];
+        let (leader, priority) = members[0];
         // phase-509 P1 (RFC-0108 D4 rule 5): one degradation per member whose
         // rank the tier does not keep, not only the first. A node with two
         // groups on this tier is one member, so it is reported once; the
         // stable sort keeps the order the members were met in among equals.
         let mut reported: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
-        for &(other, relaxed, _) in members.iter().skip(1) {
+        for &(other, relaxed) in members.iter().skip(1) {
             if relaxed == priority || !reported.insert(other) {
                 continue;
             }
@@ -864,7 +863,9 @@ fn derive_tiers_with_caps(
             tier,
             TierRtosSpec {
                 priority,
-                preempt_threshold,
+                // A kernel threshold is authored, never allocated: RFC-0108
+                // derives thresholds per level (`levels.rs`), not per tier.
+                preempt_threshold: None,
                 // Everything else stays AUTHORED on the `[tiers.<name>]`
                 // head — see `DerivedSchedule::placements`. Spelled out rather
                 // than `..Default::default()`, because a defaulted `priority`
@@ -922,7 +923,9 @@ fn level_tier(
     let spec = TierRtosSpec {
         priority: lead.priority,
         stack_bytes: None,
-        preempt_threshold: lead.preempt_threshold,
+        // RFC-0108's threshold is the level's (`Level::threshold`); a kernel
+        // threshold reaches a tier only when authored.
+        preempt_threshold: None,
         // Time-slicing is not a derived dim (no contract fact implies
         // round-robin); an authored `time_slice_us` is the only source.
         time_slice_us: None,
@@ -1829,11 +1832,9 @@ mod tests {
             deadline_us: None,
             budget_us: None,
             core: None,
-            preempt_threshold: None,
             blocking_us: None,
             deadline_real: NotRequested,
             budget_real: NotRequested,
-            preempt_real: NotRequested,
             placement_real: NotRequested,
         }
     }

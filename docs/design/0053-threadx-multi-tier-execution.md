@@ -129,9 +129,12 @@ TierSpec per tier i:                    run_tiers(tiers):
   tier.budget_us, tier.deadline_us, tier.deadline_policy)` (W5.4) on its
   executor. Shared-session-across-threads follows the other boards' model.
 - **`preempt_threshold` → `tx_thread_preemption_change`:** the native
-  realization of `non_preempt_scope`. The realizer's
-  `RealizedNode.preempt_threshold` (RFC-0052 W5.2) flows through `TierSpec`
-  (bake-validated ThreadX-only) into the shim.
+  realization of `non_preempt_scope`. An authored
+  `[tiers.<name>.threadx] preempt_threshold` flows through `TierSpec`
+  (bake-validated ThreadX-only) into the shim. (The realizer's
+  `RealizedNode.preempt_threshold` was always `None` and was deleted
+  2026-10-24, issue 0259; a derived threshold is RFC-0108's per-level one,
+  whose ThreadX kernel row is phase-509 P10.)
 
 ## Migration ladder
 
