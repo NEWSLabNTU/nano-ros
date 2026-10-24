@@ -209,6 +209,43 @@ template <typename S> class PollService;
 template <typename S> class PollClient;
 template <typename S> class ClientHandle;
 
+class Node;
+
+/// Issue 2015 — upstream's node-interface slices, as HANDLES ON THE ONE NODE.
+///
+/// rclcpp splits a node into ~10 `node_interfaces::Node*Interface` objects so
+/// `rclcpp_action::create_server` / `create_client` (a separate package) can
+/// take the parts they need. nano-ros has no slices: a node is one object,
+/// and each `get_node_*_interface()` returns a non-owning handle naming it,
+/// whose only use is to be passed to those factories. That keeps the stock
+/// call `rclcpp_action::create_server<A>(this->get_node_base_interface(), ...)`
+/// compiling as written. The handle has no members of upstream's interface;
+/// calling one is a compile error.
+namespace node_interfaces {
+
+/// One slice's handle; `Tag` only keeps the five spellings distinct types.
+template <int Tag> class NodeInterfaceHandle {
+  public:
+    /// Upstream's `Node*Interface::SharedPtr` — the handle itself (no allocator).
+    using SharedPtr = NodeInterfaceHandle;
+    NodeInterfaceHandle() : node_(nullptr) {}
+    explicit NodeInterfaceHandle(Node* node) : node_(node) {}
+    /// The node this handle names (null for a default-constructed one).
+    Node* node() const { return node_; }
+    explicit operator bool() const { return node_ != nullptr; }
+
+  private:
+    Node* node_;
+};
+
+using NodeBaseInterface = NodeInterfaceHandle<0>;
+using NodeClockInterface = NodeInterfaceHandle<1>;
+using NodeGraphInterface = NodeInterfaceHandle<2>;
+using NodeLoggingInterface = NodeInterfaceHandle<3>;
+using NodeWaitablesInterface = NodeInterfaceHandle<4>;
+
+} // namespace node_interfaces
+
 /// Executor-bound node handle the generated entry hands to a node constructor
 /// (RFC-0044 §Design.1, merged onto `Node` by phase-427 W4).
 ///
@@ -909,6 +946,30 @@ class Node {
     SharedPtr shared_from_this() { return SharedPtr(this); }
     /// Const overload of [`shared_from_this`].
     ConstSharedPtr shared_from_this() const { return ConstSharedPtr(this); }
+
+    /// Issue 2015 — upstream's node-interface getters, for
+    /// `rclcpp_action::create_server` / `create_client`. Each returns a
+    /// non-owning handle naming THIS node (see `rclcpp::node_interfaces`);
+    /// nothing else takes one.
+    ::rclcpp::node_interfaces::NodeBaseInterface::SharedPtr get_node_base_interface() {
+        return ::rclcpp::node_interfaces::NodeBaseInterface(this);
+    }
+    /// See `get_node_base_interface`.
+    ::rclcpp::node_interfaces::NodeClockInterface::SharedPtr get_node_clock_interface() {
+        return ::rclcpp::node_interfaces::NodeClockInterface(this);
+    }
+    /// See `get_node_base_interface`.
+    ::rclcpp::node_interfaces::NodeGraphInterface::SharedPtr get_node_graph_interface() {
+        return ::rclcpp::node_interfaces::NodeGraphInterface(this);
+    }
+    /// See `get_node_base_interface`.
+    ::rclcpp::node_interfaces::NodeLoggingInterface::SharedPtr get_node_logging_interface() {
+        return ::rclcpp::node_interfaces::NodeLoggingInterface(this);
+    }
+    /// See `get_node_base_interface`.
+    ::rclcpp::node_interfaces::NodeWaitablesInterface::SharedPtr get_node_waitables_interface() {
+        return ::rclcpp::node_interfaces::NodeWaitablesInterface(this);
+    }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
     /// `rclcpp::Node::make_shared(args...)` — phase-488. ADOPT, hosted.

@@ -123,10 +123,14 @@
     "why": "SHIPPED as `Result get_fully_qualified_name(char* buf, size_t buf_len, size_t* out_len = nullptr) const` (`packages/api/nros-cpp/include/rclcpp/node.hpp:680`). Same constraint as `c:node_get_fully_qualified_name`: upstream returns a `const char *` into storage it owns, and a caller buffer is the no-allocator form. A ported call is a COMPILE ERROR. Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
   },
   "cpp:Node::get_node_base_interface": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
     "bucket": "theirs-only",
-    "disposition": "absent",
-    "verdict": "declined",
-    "why": "rclcpp splits a node into ~10 `node_interfaces::Node*Interface` slices so a component can be handed the part it needs. The split exists to make rclcpp_components and rclcpp_action composable without passing a whole node; our components are declared, not constructed with an injected node (RFC-0044), so there is nothing to inject a slice of."
+    "why": "issue 2015 (2026-10-24) -- PRESENT, as a porting handle. rclcpp splits a node into ~10 `node_interfaces::Node*Interface` slices so a separate package (rclcpp_action, rclcpp_components) can take the part it needs. Ours has no slices -- a node is one object and our components are declared, not constructed with an injected node (RFC-0044) -- so `get_node_base_interface` / `_clock_` / `_graph_` / `_logging_` / `_waitables_` each return a non-owning `rclcpp::node_interfaces::NodeInterfaceHandle` naming THIS node, whose only use is to be passed to `rclcpp_action::create_server` / `create_client`. That keeps the stock `create_server<A>(this->get_node_base_interface(), ...)` call compiling as written. ADOPT-BOUNDED: the handle has NONE of upstream's interface members (calling one is a compile error), `SharedPtr` is the handle itself (no allocator), and the parameters / services / timers / time-source / topics slices are not provided.\n\nEARLIER ROW (declined): the split exists to make rclcpp_components and rclcpp_action composable; nothing to inject a slice of.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "The handle has no members of upstream's interface;"
+    }
   },
   "cpp:Node::get_node_options": {
     "disposition": "adopt",
@@ -139,9 +143,14 @@
     "why": "see `cpp:Node::get_node_base_interface`."
   },
   "cpp:Node::get_node_waitables_interface": {
-    "disposition": "absent",
-    "verdict": "declined",
-    "why": "see `cpp:Node::get_node_base_interface`."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "bucket": "theirs-only",
+    "why": "issue 2015 (2026-10-24) -- see `cpp:Node::get_node_base_interface`: a non-owning handle naming the node, for `rclcpp_action::create_server` / `create_client`; no waitables interface behind it (there is no wait set, RFC-0002).",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "The handle has no members of upstream's interface;"
+    }
   },
   "cpp:Node::get_sub_namespace": {
     "disposition": "absent",

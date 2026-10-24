@@ -17,6 +17,7 @@
 #include "rclcpp/detail/config.hpp"
 #include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "rclcpp/logging.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
+#include "rclcpp/owned.hpp"   // issue 2015 — `Client<A>::SharedPtr`
 #include "rclcpp/result.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 #include "rclcpp/future.hpp"
@@ -26,6 +27,7 @@
 // `CancelResponse` in action_server.hpp, which is also where
 // polling_action_server.hpp reaches for them.
 #include "rclcpp_action/server.hpp"
+#include "rclcpp_action/detail/upstream.hpp" // issue 2015 — hosted goal-handle plumbing
 
 // Phase 118.D: FFI declarations sourced from cbindgen-generated
 // `nros_cpp_ffi.h`. cbindgen renders Rust `*const [u8; 16]` /
@@ -75,6 +77,75 @@ class Node;
 // `rclcpp::Client<S>` is the SERVICE client, in a different namespace.
 namespace rclcpp_action {
 
+/// `rclcpp_action::ResultCode` — issue 2015, upstream's client-side terminal
+/// code, value for value: `int8_t`, the `action_msgs/msg/GoalStatus` numbers
+/// of the three terminal states (and UNKNOWN). The same numbers as
+/// `GoalStatus`, so a status from the goal-id-keyed callbacks converts with a
+/// cast.
+enum class ResultCode : int8_t {
+    UNKNOWN = 0,
+    SUCCEEDED = 4,
+    CANCELED = 5,
+    ABORTED = 6,
+};
+
+template <typename A> class Client;
+
+/// `rclcpp_action::ClientGoalHandle<A>` — issue 2015, upstream's client-side
+/// per-goal handle.
+///
+/// On a HOSTED build (`NROS_CPP_STD`) it is what `async_send_goal`'s
+/// `SendGoalOptions` callbacks receive, as upstream's `SharedPtr`
+/// (`std::shared_ptr`): the goal id and status, and — nested — the
+/// `WrappedResult` the result callback gets. It owns no futures and no
+/// subscription (the client does; the handle is a heap token over the goal id).
+/// A freestanding build has no allocator for it: `SharedPtr` and
+/// `WrappedResult` are refused there, and the client's goal-id-keyed callbacks
+/// (`set_callbacks`) are the form.
+template <typename A> class ClientGoalHandle {
+  public:
+    using Feedback = typename A::Feedback;
+    using Result = typename A::Result;
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+    using SharedPtr = ::std::shared_ptr<ClientGoalHandle>;
+    using ConstSharedPtr = ::std::shared_ptr<const ClientGoalHandle>;
+    /// What a result callback receives: upstream's `WrappedResult`.
+    struct WrappedResult {
+        GoalUUID goal_id;
+        ResultCode code;
+        ::std::shared_ptr<Result> result;
+    };
+    using GoalResponseCallback = ::std::function<void(SharedPtr)>;
+    using FeedbackCallback =
+        ::std::function<void(SharedPtr, const ::std::shared_ptr<const Feedback>)>;
+    using ResultCallback = ::std::function<void(const WrappedResult&)>;
+#else
+    using SharedPtr = detail::Refused<ClientGoalHandle>;
+    using ConstSharedPtr = detail::Refused<ClientGoalHandle>;
+    using WrappedResult = detail::Refused<ClientGoalHandle>;
+#endif
+
+    explicit ClientGoalHandle(const GoalUUID& id)
+        : goal_id_(id), status_(static_cast<int8_t>(GoalStatus::Accepted)), feedback_aware_(false),
+          result_aware_(false) {}
+
+    /// The goal's id.
+    const GoalUUID& get_goal_id() const { return goal_id_; }
+    /// The last status this client saw for the goal (`action_msgs` numbers).
+    int8_t get_status() const { return status_; }
+    /// A feedback callback was given for this goal.
+    bool is_feedback_aware() const { return feedback_aware_; }
+    /// A result callback was given for this goal (its result was requested).
+    bool is_result_aware() const { return result_aware_; }
+
+  private:
+    friend class Client<A>;
+    GoalUUID goal_id_;
+    int8_t status_;
+    bool feedback_aware_;
+    bool result_aware_;
+};
+
 /// Typed action client for a ROS 2 action.
 ///
 /// Mirrors upstream's `rclcpp_action::Client<A>`. The action type `A` must provide
@@ -98,6 +169,23 @@ template <typename A> class Client {
     using ResultType = typename A::Result;
     using FeedbackType = typename A::Feedback;
 
+    /// Issue 2015 — upstream's `Client<A>::SharedPtr`. Not a `std::shared_ptr`:
+    /// `rclcpp::Owned<Client>` holds the client BY VALUE (no allocator), which
+    /// is what `rclcpp_action::create_client` returns.
+    using SharedPtr = ::rclcpp::Owned<Client>;
+    /// Upstream's goal handle for this action (issue 2015).
+    using GoalHandle = ::rclcpp_action::ClientGoalHandle<A>;
+    /// Upstream's result wrapper (hosted; refused on a freestanding build).
+    using WrappedResult = typename GoalHandle::WrappedResult;
+
+  private:
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+    using FeedbackPtr = ::std::shared_ptr<const FeedbackType>;
+#else
+    using FeedbackPtr = detail::Refused<FeedbackType>;
+#endif
+
+  public:
     /// Goal acceptance response for the Future pattern.
     ///
     /// Returned by `send_goal_future()`. Contains the goal UUID and
@@ -449,6 +537,14 @@ template <typename A> class Client {
     /// Callbacks are invoked during spin_once() when the corresponding
     /// response arrives.
     /// All callbacks receive the context pointer for user state.
+    ///
+    /// Issue 2015 — on a HOSTED build it ALSO carries upstream's three
+    /// per-goal fields, `goal_response_callback` / `feedback_callback` /
+    /// `result_callback`, taking upstream's shapes (`GoalHandle::SharedPtr`,
+    /// `std::shared_ptr<const Feedback>`, `const WrappedResult&`). Those are
+    /// read by `async_send_goal`, per goal, as upstream does; the raw pointers
+    /// are read by `set_callbacks`, per client. A freestanding build refuses an
+    /// assignment to the upstream fields.
     struct SendGoalOptions {
         /// Called when the server accepts or rejects the goal.
         void (*goal_response)(bool accepted, const uint8_t goal_id[16], void* ctx);
@@ -459,6 +555,15 @@ template <typename A> class Client {
                        void* ctx);
         /// User context pointer passed to all callbacks.
         void* context;
+
+        /// Upstream's: the goal was accepted (a handle) or rejected (null).
+        detail::UpstreamCallback<void(typename GoalHandle::SharedPtr)> goal_response_callback;
+        /// Upstream's: feedback for the goal.
+        detail::UpstreamCallback<void(typename GoalHandle::SharedPtr, FeedbackPtr)>
+            feedback_callback;
+        /// Upstream's: the goal's result. Giving one requests the result once
+        /// the goal is accepted, as upstream does.
+        detail::UpstreamCallback<void(const WrappedResult&)> result_callback;
 
         SendGoalOptions() : goal_response(0), feedback(0), result(0), context(0) {}
     };
@@ -489,6 +594,47 @@ template <typename A> class Client {
     ::rclcpp::Result send_goal_async(const GoalType& goal, ::rclcpp_action::GoalUUID& goal_id) {
         return send_goal_async(goal, goal_id.data());
     }
+
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+    /// `async_send_goal(goal, options)` — issue 2015, upstream's per-goal send.
+    ///
+    /// Sends the goal and binds `options`' upstream fields to THAT goal:
+    /// `goal_response_callback` gets a `GoalHandle::SharedPtr` (null when the
+    /// server rejected it), `feedback_callback` each feedback as a
+    /// `std::shared_ptr<const Feedback>`, and `result_callback` the
+    /// `WrappedResult` — giving one requests the result once the goal is
+    /// accepted, as upstream does. Every callback runs from the executor's
+    /// dispatch during `spin*`, beside the client-wide ones of
+    /// `set_callbacks`.
+    ///
+    /// Upstream returns a `std::shared_future<GoalHandle::SharedPtr>`; this
+    /// returns the goal-keyed `rclcpp::Future<GoalAccept>` that
+    /// `send_goal_future` does (RFC-0021: no blocking future), so
+    /// `auto f = client->async_send_goal(goal, opts);` compiles and a caller
+    /// that waits on it gets the acceptance. An empty future (`valid()` false)
+    /// means the send failed and no callback will run.
+    ::rclcpp::Future<GoalAccept>
+    async_send_goal(const GoalType& goal, const SendGoalOptions& options = SendGoalOptions()) {
+        uint8_t goal_id[16];
+        if (!send_goal_async(goal, goal_id).ok()) return ::rclcpp::Future<GoalAccept>();
+        UpstreamState* st = upstream_.template as<UpstreamState>();
+        if (st == nullptr) {
+            st = new UpstreamState();
+            upstream_.reset(st, [](void* p) { delete static_cast<UpstreamState*>(p); });
+        }
+        st->goals.push_back(UpstreamGoal{GoalUUID(goal_id), options, nullptr});
+        return ::rclcpp::Future<GoalAccept>(storage_, &nros_cpp_action_client_poll, goal_id,
+                                            &accepts_, executor_);
+    }
+#else
+    /// **REFUSED** on a freestanding build — issue 2015.
+    template <typename T = void>
+    ::rclcpp::Future<GoalAccept> async_send_goal(const GoalType&,
+                                                 const SendGoalOptions& = SendGoalOptions()) {
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE);
+        return ::rclcpp::Future<GoalAccept>();
+    }
+#endif
 
     /// Cancel a goal (non-blocking) — issue 0796.
     ///
@@ -653,6 +799,7 @@ template <typename A> class Client {
     /// Take over `other`'s storage, pending futures, callbacks and feedback.
     void adopt(Client& other) {
         user_ = other.user_;
+        upstream_ = static_cast<detail::HostedBox&&>(other.upstream_);
         feedback_len_ = other.feedback_len_;
         feedback_ready_ = other.feedback_ready_;
         feedback_truncated_ = other.feedback_truncated_;
@@ -687,6 +834,7 @@ template <typename A> class Client {
             wire[16] = accepted ? 1 : 0;
             self->accepts_.deliver(owner, wire, sizeof(wire));
         }
+        self->upstream_goal_response(accepted, goal_id);
         if (self->user_.goal_response != nullptr)
             self->user_.goal_response(accepted, goal_id, self->user_.context);
     }
@@ -699,6 +847,7 @@ template <typename A> class Client {
         self->feedback_len_ = n;
         self->feedback_truncated_ = n < len;
         self->feedback_ready_ = true;
+        self->upstream_feedback(goal_id, data, len);
         if (self->user_.feedback != nullptr)
             self->user_.feedback(goal_id, data, len, self->user_.context);
     }
@@ -708,8 +857,102 @@ template <typename A> class Client {
         Client* self = static_cast<Client*>(ctx);
         ::rclcpp::detail::PendingLink* owner = self->results_.resolve_goal(goal_id);
         if (owner != nullptr) self->results_.deliver(owner, data, len);
+        self->upstream_result(goal_id, status, data, len);
         if (self->user_.result != nullptr)
             self->user_.result(goal_id, status, data, len, self->user_.context);
+    }
+
+    // Issue 2015 — upstream's per-goal callbacks (`async_send_goal`). Hosted
+    // only: `upstream_` is empty on a freestanding build, so these do nothing.
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+    struct UpstreamGoal {
+        GoalUUID id;
+        SendGoalOptions options;
+        typename GoalHandle::SharedPtr handle;
+    };
+    struct UpstreamState {
+        ::std::vector<UpstreamGoal> goals;
+    };
+
+    UpstreamState* upstream_goal(const uint8_t goal_id[16], size_t& at) const {
+        UpstreamState* st = upstream_.template as<UpstreamState>();
+        if (st == nullptr) return nullptr;
+        const GoalUUID id(goal_id);
+        for (at = 0; at < st->goals.size(); ++at)
+            if (st->goals[at].id == id) return st;
+        return nullptr;
+    }
+#endif
+
+    void upstream_goal_response(bool accepted, const uint8_t goal_id[16]) {
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+        size_t at = 0;
+        UpstreamState* st = upstream_goal(goal_id, at);
+        if (st == nullptr) return;
+        UpstreamGoal& g = st->goals[at];
+        auto cb = g.options.goal_response_callback;
+        if (!accepted) {
+            st->goals.erase(st->goals.begin() + static_cast<long>(at));
+            if (cb) cb(nullptr);
+            return;
+        }
+        g.handle = ::std::make_shared<GoalHandle>(g.id);
+        g.handle->feedback_aware_ = static_cast<bool>(g.options.feedback_callback);
+        g.handle->result_aware_ = static_cast<bool>(g.options.result_callback);
+        typename GoalHandle::SharedPtr handle = g.handle;
+        if (!handle->feedback_aware_ && !handle->result_aware_)
+            st->goals.erase(st->goals.begin() + static_cast<long>(at));
+        if (cb) cb(handle);
+        if (handle->result_aware_) (void)get_result_async(goal_id);
+#else
+        (void)accepted;
+        (void)goal_id;
+#endif
+    }
+
+    void upstream_feedback(const uint8_t goal_id[16], const uint8_t* data, size_t len) {
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+        size_t at = 0;
+        UpstreamState* st = upstream_goal(goal_id, at);
+        if (st == nullptr) return;
+        auto cb = st->goals[at].options.feedback_callback;
+        typename GoalHandle::SharedPtr handle = st->goals[at].handle;
+        if (!cb || !handle) return;
+        ::std::shared_ptr<FeedbackType> fb = ::std::make_shared<FeedbackType>();
+        if (FeedbackType::ffi_deserialize(data, len, fb.get()) != 0) return;
+        cb(handle, fb);
+#else
+        (void)goal_id;
+        (void)data;
+        (void)len;
+#endif
+    }
+
+    void upstream_result(const uint8_t goal_id[16], int32_t status, const uint8_t* data,
+                         size_t len) {
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+        size_t at = 0;
+        UpstreamState* st = upstream_goal(goal_id, at);
+        if (st == nullptr) return;
+        UpstreamGoal g = st->goals[at];
+        st->goals.erase(st->goals.begin() + static_cast<long>(at));
+        if (g.handle) g.handle->status_ = static_cast<int8_t>(status);
+        if (!g.options.result_callback) return;
+        WrappedResult wrapped;
+        wrapped.goal_id = g.id;
+        wrapped.code = (status == 4 || status == 5 || status == 6) ? static_cast<ResultCode>(status)
+                                                                   : ResultCode::UNKNOWN;
+        wrapped.result = ::std::make_shared<ResultType>();
+        if (ResultType::ffi_deserialize(data, len, wrapped.result.get()) != 0) {
+            wrapped.result.reset();
+        }
+        g.options.result_callback(wrapped);
+#else
+        (void)goal_id;
+        (void)status;
+        (void)data;
+        (void)len;
+#endif
     }
 
     /// The latest feedback this client received (the stream's take hook).
@@ -756,6 +999,10 @@ template <typename A> class Client {
     size_t feedback_len_ = 0;
     bool feedback_ready_ = false;
     bool feedback_truncated_ = false;
+    /// Issue 2015 — the goals `async_send_goal` bound upstream callbacks to
+    /// (hosted only; empty, and the same two pointers wide, on a freestanding
+    /// build).
+    detail::HostedBox upstream_;
 };
 
 } // namespace rclcpp_action

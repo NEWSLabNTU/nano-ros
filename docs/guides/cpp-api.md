@@ -325,6 +325,50 @@ while (!my_state.done) { rclcpp::spin_once(10); }
 
 Because callback storage lives in the arena, `set_callbacks()` may be called before or after `send_goal_async()` — the executor's trampoline reads the latest pointers on each dispatch. The C++-side trampoline always stashes the most recent feedback / result bytes too, so the same `Client` can drive `feedback_stream().try_next()` and `get_result_future().wait()` even with callbacks installed.
 
+### Actions with upstream's goal handles (hosted)
+
+Issue 2015. On a hosted build (`-DNROS_CPP_STD`) the stock `rclcpp_action`
+spellings are drop-ins over the two classes above:
+
+```cpp
+using Fibonacci = example_interfaces::action::Fibonacci;
+using GoalHandle = rclcpp_action::ServerGoalHandle<Fibonacci>;
+using namespace std::placeholders;
+
+// Server: free factory over the node interfaces, std::bind-ed members.
+rclcpp_action::Server<Fibonacci>::SharedPtr server = rclcpp_action::create_server<Fibonacci>(
+    get_node_base_interface(), get_node_clock_interface(), get_node_logging_interface(),
+    get_node_waitables_interface(), "fibonacci",
+    std::bind(&MyNode::handle_goal, this, _1, _2),    // (const GoalUUID&, shared_ptr<const Goal>)
+    std::bind(&MyNode::handle_cancel, this, _1),      // (shared_ptr<GoalHandle>)
+    std::bind(&MyNode::handle_accepted, this, _1));   // (shared_ptr<GoalHandle>)
+// in handle_accepted: goal_handle->get_goal(), ->publish_feedback(fb),
+// ->is_canceling(), ->succeed(result) / ->abort(result) / ->canceled(result)
+
+// Client: SendGoalOptions' upstream fields, bound per goal by async_send_goal.
+auto client = rclcpp_action::create_client<Fibonacci>(this, "fibonacci");
+auto opts = rclcpp_action::Client<Fibonacci>::SendGoalOptions();
+opts.goal_response_callback = [](rclcpp_action::ClientGoalHandle<Fibonacci>::SharedPtr h) {};
+opts.feedback_callback = [](auto h, const std::shared_ptr<const Fibonacci::Feedback> fb) {};
+opts.result_callback = [](const rclcpp_action::Client<Fibonacci>::WrappedResult& r) {
+    // r.code: rclcpp_action::ResultCode::SUCCEEDED / ABORTED / CANCELED; r.result
+};
+auto fut = client->async_send_goal(goal, opts);   // rclcpp::Future<GoalAccept>
+```
+
+`X<A>::SharedPtr` is `rclcpp::Owned<X<A>>` (the entity by value), and the
+`get_node_*_interface()` handles name the node and do nothing else. A goal
+handle is a heap token over the goal id: every call forwards to the server or
+client keyed by it, and the goal's state stays in the arena. Drive it from the
+executor's task only — not from a thread you started — and do not move the
+server while a handle is in use. The callbacks run from the executor's
+dispatch, beside the client-wide `set_callbacks` ones. `async_send_goal`
+returns the goal-keyed `rclcpp::Future<GoalAccept>`, not a
+`std::shared_future`; `get_goal_stamp` and `ServerGoalHandle::execute` are
+absent. On a freestanding build each of these shapes is a compile error
+(`NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`) naming the goal-id-keyed form above;
+`create_client` alone works there.
+
 ### Timer
 
 Timers fire during `spin_once()`:

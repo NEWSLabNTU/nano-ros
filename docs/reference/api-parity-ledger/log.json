@@ -112,9 +112,14 @@
     }
   },
   "cpp:Node::get_node_logging_interface": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "why": "see `cpp:Node::get_node_base_interface` in the node stage -- rclcpp's ~10-way `node_interfaces::Node*Interface` split exists so a component can be handed the slice it needs, and our components are declared rather than constructed with an injected node (RFC-0044), so there is nothing to inject a slice of."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "bucket": "theirs-only",
+    "why": "issue 2015 (2026-10-24) -- see the node stage's `cpp:Node::get_node_base_interface`: a non-owning handle naming the node, for `rclcpp_action::create_server` / `create_client`; no logging interface behind it -- loggers are `rclcpp::Logger` values (`get_logger`).",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "The handle has no members of upstream's interface;"
+    }
   },
   "cpp:get_logging_directory": {
     "verdict": "declined",

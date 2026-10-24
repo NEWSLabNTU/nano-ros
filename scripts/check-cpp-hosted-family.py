@@ -67,6 +67,15 @@ FAMILY = {
         "rclcpp::Node>` is how a ported `main` builds its node) and the "
         "`SharedPtr`-taking spin verbs over the `Node&` ones",
     ),
+    "action-interop": (
+        {"NROS_CPP_HAS_SHARED_PTR"},
+        "upstream rclcpp_action's goal-handle shapes (issue 2015): "
+        "`ClientGoalHandle` / `ServerGoalHandle::SharedPtr` = `std::shared_ptr`, "
+        "`WrappedResult`, the `std::function` callbacks of `create_server` and "
+        "`SendGoalOptions`, `async_send_goal`. The state lives on the heap behind "
+        "fixed-width members (`detail::HostedBox`, `UpstreamCallback`), so no "
+        "layout follows the flag; freestanding refuses each one",
+    ),
     "chrono-interop": (
         {"NROS_CPP_HAS_STD_CHRONO"},
         "`std::chrono::duration` overloads that convert to `nros::Duration` and "

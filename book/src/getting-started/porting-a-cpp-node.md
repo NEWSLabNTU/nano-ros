@@ -215,14 +215,14 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 | `client->wait_for_service(1s)` / `wait_for_action_server(10s)` | the millisecond wait, converted | Hosted builds. The budget is still required; a negative duration is refused at the call. |
 | `rclcpp::spin_until_future_complete(node, client->send_request(req))` | spins until the reply arrives | The timeout is milliseconds. |
 | `auto fut = client->async_send_request(std::make_shared<S::Request>(…))` / `fut.get()` / `fut.wait_for(1s)` / `client->remove_pending_request(fut)` | the poll client's `rclcpp::Future`, under upstream's verbs | Hosted builds, except `remove_pending_request` (issue 1996). `get()` returns the reply as an owning `std::shared_ptr<Response>` but never blocks: call it after `spin_until_future_complete` returned `SUCCESS` (before the reply it logs a refusal and returns nullptr). `wait_for` returns `std::future_status` and spins the executor while it waits. Each future is keyed by its request's sequence number (issue 2009), as upstream's is: several may be in flight on one client, each gets its own reply, and a reply that arrives after `remove_pending_request` (or `prune_pending_requests`) is dropped. How many is capped by the transport's own outstanding-request limit (`NROS_ZENOH_MAX_PENDING_GETS` on zenoh); a send past it returns an empty future (`valid()` false). A freestanding build has `send_request(req)` + `fut.try_take(resp)`; `get()` there is a compile error naming them. |
-| `#include "rclcpp_action/rclcpp_action.hpp"` | an umbrella over `Server<A>` / `Client<A>` | The action shapes still differ; see below. |
+| `#include "rclcpp_action/rclcpp_action.hpp"` | an umbrella over `Server<A>` / `Client<A>` and the two free factories | See [Actions](#actions-goal-handles-on-a-hosted-build) below. |
 | `rclcpp::init(argc, argv) / shutdown() / ok() / spin(n) / spin_some(n)` | wraps `rclcpp::init_in/shutdown_in/ok/spin_once` | `--ros-args -r from:=to` is honoured, beneath any remap the launch file sets for the same name. `-p [node:]name:=value` and `--params-file <file>` are honoured in an image with a parameter store: the value replaces the default when the node declares the parameter (scalars only from a file; a value of the wrong type is logged and the default kept). Any other ROS argument (`__node`, log flags) aborts, naming it. |
 | `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through the `NROS_LOG_*` family into `nros_log` | Carries the logger, so `get_logger("x")` selects a real per-logger level, and `FATAL` is a distinct severity. Reaches `LOG_ERR`/`printk` on embedded, where the legacy `NROS_*` sink is a no-op (issue 1019). `_THROTTLE` variants are REFUSE-LOUD. |
 | `get_logger().get_child("sub")` | a real child logger, `<parent>.sub` (RFC-0102) | Its level, when unset, follows the nearest ancestor's, so `set_level` on the node logger reaches it. A full name over 48 bytes or a full runtime-logger arena emits through the PARENT and `set_level` on it is refused — never a silent move of the parent's threshold. Iron/Jazzy images publish children on `/rosout`; Humble ones, as upstream, do not. |
 | `executor.spin_once() / client->wait_for_service() / action_client->wait_for_action_server()` | **the budget is required** | Upstream defaults all three to "block forever", which nano-ros has no form of; the no-argument call is a compile error naming the alternative rather than a silently substituted 10 ms / 5 s budget. Write `spin_once(10)`, `wait_for_service(10000)`. |
 | `rclcpp::QoS / KeepLast(n) / SystemDefaultsQoS()` | one class with upstream's implicit `(depth)` ctor | Chainable setters inherited. |
 | `diagnostic_updater::Updater` + `DiagnosticStatusWrapper` | `packages/api/nros-diagnostic-updater` | Publishes `/diagnostics`. |
-| `rclcpp_action::Server<A> / Client<A>` | ours, under upstream's names (`rclcpp::ActionServer/Client<A>` are aliases for them) | Same entities, smaller shapes: no goal handles and no futures. See [Actions](#actions-no-goal-handles-no-futures) below. |
+| `rclcpp_action::Server<A> / Client<A>` | ours, under upstream's names | Hosted builds take upstream's goal-handle shapes as written; freestanding builds key goals by id. See [Actions](#actions-goal-handles-on-a-hosted-build) below. |
 | `class MyNode : public rclcpp_lifecycle::LifecycleNode` | ours, under upstream's name (`<rclcpp_lifecycle/lifecycle_node.hpp>`) | It IS an `rclcpp::Node`. The `on_configure(const State&)` … `on_shutdown` overrides, `CallbackReturn::SUCCESS`, `configure()` / `activate()` / … and `get_current_state()` keep upstream's signatures; the REP-2002 services are registered by the constructor. `create_publisher<M>(topic, qos)` returns a managed `LifecyclePublisher<M>::SharedPtr` that sends only while Active. One managed node per executor. |
 | `RCLCPP_COMPONENTS_REGISTER_NODE(class)` | no-op macro + cmake-side `rclcpp_components_register_node()` emits a thin `int main()` per registration | Single-binary embedded. |
 | `find_package(ament_cmake_auto / rclcpp / rclcpp_components / diagnostic_updater / std_msgs / …)` | find modules at `cmake/find/` | ~28 of the most-cited ROS 2 packages; a message package not among them is found by the resolver from `NROS_INTERFACE_SEARCH_PATH` / `AMENT_PREFIX_PATH`. |
@@ -246,50 +246,96 @@ lines changes in either direction (`edits.json`). Today:
 | `minimal_subscriber` not_composable | 3 | global `Node::SharedPtr` from a temporary |
 | `minimal_publisher` not_composable | 11 | the `try`/`catch` goes: no exceptions |
 | `multithreaded_executor` | 18 | `MultiThreadedExecutor`, callback groups |
-| `minimal_action_server` member_functions | 77 | goal handles, `create_server` over node interfaces, a thread per goal |
-| `minimal_action_client` member_functions | 87 | goal handles, futures, raw-byte feedback/result callbacks |
+| `minimal_action_client` member_functions | 2 | `seq.back()` on a generated sequence |
+| `minimal_action_server` member_functions | 6 | the goal runs in the accepted callback, not on a thread of its own |
 
 The remaining causes, largest first:
 
-- **Actions** (164 lines). No `ServerGoalHandle` / `ClientGoalHandle` and no
-  futures; see the next section. The stock server also starts a `std::thread`
-  per goal, which nano-ros does not do for you.
 - **Callback groups and the multi-threaded executor** (18 lines).
 - **Exceptions** (11 lines). There is nothing to catch.
+- **The action server's thread per goal** (6 lines). The stock
+  `handle_accepted` detaches a `std::thread` that drives the goal handle; a
+  goal handle used from a thread you started races the executor (nano-ros
+  starts no threads behind it and a one-level image has no executor lock). The
+  port calls `execute(goal_handle)` in the accepted callback and drops the
+  `rclcpp::Rate::sleep`, which would re-enter the executor from that callback.
 - **A global `Node::SharedPtr` assigned from `make_shared`** (2 lines each).
+- **`seq.back()` on a generated sequence** (2 lines). `FixedSequence` /
+  `HeapSequence` are not `std::vector`; write `seq[seq.length() - 1]`.
 
-## Actions: no goal handles, no futures
+The two action examples took 164 edited lines until issue 2015 made upstream's
+goal-handle shapes drop-ins (77 → 6 and 87 → 2); the total went from 199 to 43.
+
+## Actions: goal handles on a hosted build
 
 The action types keep upstream's names and concepts, and `GoalResponse` /
-`CancelResponse` keep upstream's enumerators and values. The SHAPES around
-them are smaller, because there is no allocator to hand out a goal handle and
-no async runtime to complete a future (RFC-0021). Every difference below is a
-compile error in a ported file, so the list is what to rewrite, not what to
-debug:
+`CancelResponse` / `ResultCode` keep upstream's enumerators and values.
 
-- **Server: no `ServerGoalHandle`.** The goal and accepted callbacks receive the
-  16-byte goal id. Feedback and termination are calls on the SERVER keyed by that
-  id — `server.publish_feedback(id, fb)`, `server.succeed(id, result)`,
-  `abort`, `canceled` — taking the message by const reference, not a `shared_ptr`.
-- **Server: created in place.** There is no `rclcpp_action::create_server`
-  returning a `SharedPtr`; declare the `Server<A>` and initialise it with
-  `node.create_action_server(srv, name)`. It is not a `Waitable` (no
-  `execute` / `is_ready` / `set_on_ready_callback`): the executor drives it
-  directly.
-- **Callbacks are stateless function pointers** (empty-capture lambdas), or the
-  `_with_ctx` setters with a `void*` context.
-- **Client: `send_goal` blocks and fills an out-param goal id**, returning
-  `Result`, where upstream's `async_send_goal` returns a `shared_future` of a
-  goal handle. `send_goal_future` / `get_result_future` are the future-shaped
-  spellings, over `rclcpp::Future` (driven by the executor, never a
-  `std::shared_future`). Each is keyed by its goal, so several goals may be in
-  flight on one client and each future receives only its own goal's reply.
-- **Client: callbacks bind to the CLIENT.** Upstream passes `SendGoalOptions`
-  to each `async_send_goal`; here `client.set_callbacks(opts)` installs them
-  once for every goal the client sends. They are read when a reply is
-  dispatched, so install them before the spin that delivers it.
-- **`wait_for_action_server` takes milliseconds and returns `Result`** — and
-  the budget is required (see the table above).
+**On a hosted build** (`-DNROS_CPP_STD`, what the porting flow sets) the stock
+spellings are drop-ins (issue 2015):
+
+- `rclcpp_action::create_server<A>(node->get_node_base_interface(), …clock,
+  …logging, …waitables, name, handle_goal, handle_cancel, handle_accepted)` and
+  `rclcpp_action::create_client<A>(…base, …graph, …logging, …waitables, name)`,
+  or the `(node, name, …)` shape. Each returns `X<A>::SharedPtr`, which is
+  `rclcpp::Owned<X<A>>`: the entity by value, so a member
+  `Server<A>::SharedPtr action_server_;` works and nothing is shared. The
+  `get_node_*_interface()` getters return a handle naming the node, whose only
+  use is these two calls.
+- The callbacks take upstream's shapes, `std::bind`-ed members included:
+  `handle_goal(const GoalUUID&, std::shared_ptr<const Goal>)`,
+  `handle_cancel(std::shared_ptr<ServerGoalHandle<A>>)`,
+  `handle_accepted(std::shared_ptr<ServerGoalHandle<A>>)`.
+- `ServerGoalHandle<A>` answers `get_goal_id`, `get_goal`, `is_active`,
+  `is_executing`, `is_canceling`, and `publish_feedback` / `succeed` / `abort` /
+  `canceled` take upstream's `std::shared_ptr`s. Each call forwards to the
+  server, keyed by the goal id; the goal itself lives in the server's static
+  arena, and the handle is a token over it. `execute()` (for
+  `ACCEPT_AND_DEFER`) is not there yet.
+- `Client<A>::SendGoalOptions` carries upstream's `goal_response_callback`
+  (a `ClientGoalHandle<A>::SharedPtr`, null when rejected), `feedback_callback`
+  (`std::shared_ptr<const Feedback>`) and `result_callback`
+  (`WrappedResult{goal_id, code, result}`), and `async_send_goal(goal, options)`
+  binds them to that goal. Giving a result callback requests the result once the
+  goal is accepted, as upstream does.
+
+What stays different, each a compile error or written below:
+
+- **`async_send_goal` returns `rclcpp::Future<GoalAccept>`**, the goal-keyed
+  future `send_goal_future` returns, not a `std::shared_future` of a goal
+  handle. `auto f = client->async_send_goal(goal, opts);` compiles; a caller
+  that waits on `f` gets the acceptance (RFC-0021: the future never blocks
+  without spinning). `async_cancel_goal` / `async_get_result` with a goal
+  handle are not there: cancel with `cancel_goal(goal_id)`.
+- **A goal handle is driven from the executor's task.** Do not hand it to a
+  thread you start (see the 6 lines above). It names its server by address, so
+  the server must not move while a handle is in use; a `SharedPtr` does not
+  move it.
+- **No `get_goal_stamp`**: the arena keeps no acceptance time.
+- It is not a `Waitable` (no `execute` / `is_ready` / `set_on_ready_callback`):
+  the executor drives the server directly.
+- **`wait_for_action_server` returns `Result`** and the budget is required
+  (see the table above).
+
+**On a freestanding build** there is no allocator for a goal handle, so
+`ClientGoalHandle::SharedPtr`, `ServerGoalHandle::SharedPtr`,
+`rclcpp_action::create_server`, `async_send_goal` and an assignment to
+`SendGoalOptions`' upstream fields are each a compile error naming the
+goal-id-keyed form:
+
+- **Server.** Declare the `Server<A>`, initialise it with
+  `node.create_action_server(srv, name)`, and install
+  `set_goal_callback_with_ctx` / `set_cancel_callback_with_ctx` /
+  `set_accepted_callback_with_ctx` (function pointers with a `void*` context).
+  The callbacks receive the 16-byte goal id; feedback and termination are calls
+  on the server keyed by it — `srv.publish_feedback(id, fb)`,
+  `srv.succeed(id, result)`, `abort`, `canceled` — taking the message by const
+  reference.
+- **Client.** `client.set_callbacks(SendGoalOptions{goal_response, feedback,
+  result, context})` installs raw callbacks once for every goal the client
+  sends; `send_goal_async(goal, goal_id)` sends. `send_goal_future` /
+  `get_result_future` are the future-shaped spellings, each keyed by its goal.
+  `rclcpp_action::create_client` works here too (no allocator involved).
 
 ## Two things the compiler will not tell you
 

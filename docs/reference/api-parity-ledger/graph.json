@@ -293,9 +293,14 @@
     "why": "hands out the `Event` the next call to `wait_for_graph_change` blocks on. rclcpp's graph `Event` is a `shared_ptr`-held mutex+flag that a background graph LISTENER THREAD sets and `wait_for_graph_change` blocks on. Three constraints each rule the shape out: no allocator for the shared object (`make_shared` -- the same reason pubsub declines every `make_shared` factory), no background transport thread to run the listener (RFC-0002 puts one executor on one RTOS task and `rmw_vtable.h` says in its own words that no graph slot may block on the wire), and no blocking wait outside the executor (RFC-0021: a blocking helper takes the executor, as `rclc_client_wait_for_service` does). Our shape for \"the graph changed\" is an EDGE: the `node_get_graph_guard_condition` slot, deliberately `set_wake_callback`-shaped rather than a waitable, carrying no payload because delivering WHAT changed means buffering it. That slot is NULL in every backend, so nothing fires today. What a user loses: no way to be told that a node or an endpoint appeared or went away -- only `rclc_client_wait_for_service` / `Client::service_is_ready` answers that, and only for one service at a time. (CORRECTED 2026-09-04, phase-417: this cited `server_available`, which in C++ is now only a `[[deprecated]]` forwarder -- phase-379 W6 decision 2 settled the name as `service_is_ready`. C still exports both, which is what `c:client_server_available` records.) NOTE this contradicts the node stage's `c:node_get_graph_guard_condition`, which declines on \"nothing would ever trigger it here\"; the slot exists precisely so a backend CAN trigger it."
   },
   "cpp:Node::get_node_graph_interface": {
-    "disposition": "absent",
-    "verdict": "declined",
-    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `Node*Interface` slices exist so a component can be handed the part it needs, and our components are declared rather than constructed with an injected node (RFC-0044). The graph slice would additionally be a slice of nothing: see `c:get_node_names`."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "bucket": "theirs-only",
+    "why": "issue 2015 (2026-10-24) -- see the node stage's `cpp:Node::get_node_base_interface`: a non-owning handle naming the node, for `rclcpp_action::create_server` / `create_client`; no graph interface behind it -- see `c:get_node_names`.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "The handle has no members of upstream's interface;"
+    }
   },
   "cpp:Node::get_node_names": {
     "verdict": "divergence",

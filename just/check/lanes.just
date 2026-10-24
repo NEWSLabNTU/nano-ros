@@ -1616,6 +1616,58 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/client_seq_correlation_runtime
+    # issue 2015 -- upstream rclcpp_action spellings as HOSTED drop-ins:
+    # create_server / create_client over the node interfaces, std::bind-ed
+    # goal-handle callbacks, ServerGoalHandle's get_goal / publish_feedback /
+    # succeed / is_canceling, SendGoalOptions' upstream fields, async_send_goal,
+    # WrappedResult + ResultCode. A RUN: the stub stages requests for a named
+    # server and samples for a named subscription, and keeps what each answered.
+    test -f packages/api/nros-cpp/tests/compile/action_upstream_dropins_runtime.cpp || { \
+        echo "ERROR: action_upstream_dropins_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - rclcpp_action upstream drop-ins: goal handles, create_server/client, SendGoalOptions (runtime, issue 2015)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/action_upstream_dropins_runtime \
+        packages/api/nros-cpp/tests/compile/action_upstream_dropins_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/action_upstream_dropins_runtime
+    # ...and WITHOUT the hosted surface each of those shapes is REFUSED, naming
+    # the goal-id-keyed form. One probe per spelling; grepped for both the
+    # refusal and its issue, because an include typo also fails to compile.
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
+    mkdir -p tmp
+    _ap_n=0
+    for _ap in packages/api/nros-cpp/tests/compile/action_*_freestanding_probe.cpp; do
+        _ap_log="tmp/refuse-$(basename "$_ap" .cpp).log"
+        if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+            -I"$cppgen" -I"$cgen" \
+            -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            "$_ap" 2>"$_ap_log"; then
+            echo "ERROR: $_ap COMPILED -- a goal-handle shape was accepted with no allocator." >&2
+            exit 1
+        fi
+        for _needle in "REFUSED by nano-ros" "issue 2015"; do
+            nros_grep_q "$_needle" "$_ap_log" && _rc=0 || _rc=$?
+            if [ "$_rc" -ne 0 ]; then
+                echo "ERROR: $_ap failed WITHOUT '$_needle' -- it broke for another reason. See $_ap_log" >&2
+                exit 1
+            fi
+        done
+        _ap_n=$((_ap_n + 1))
+    done
+    test "$_ap_n" -eq 5 || { echo "ERROR: expected 5 action freestanding probes, ran $_ap_n -- one went missing." >&2; exit 1; }
+    echo "  - rclcpp_action goal-handle shapes are REFUSED without NROS_CPP_STD ($_ap_n probes, issue 2015)"
     # issue 2011 -- the ACTION client's futures are keyed by their GOAL: two
     # goals' acceptances and results staged out of order each reach their own
     # future (on the future's own poll AND through the executor's dispatch),

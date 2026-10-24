@@ -398,6 +398,24 @@ template <typename T> struct refuse {
     "A freestanding build has no allocator on the delivery path: write `const M& msg` and "        \
     "`msg.` for `msg->`, and copy the message out if you need it after the call."
 
+// issue 2015 — upstream rclcpp_action's goal-handle shapes. `ClientGoalHandle`
+// / `ServerGoalHandle` are owned through `std::shared_ptr`, and the callbacks
+// that take them (`create_server`'s three, `SendGoalOptions`' three,
+// `async_send_goal`) are `std::function`s: a hosted build (`NROS_CPP_STD`)
+// takes all of them as drop-ins, at the price of a heap goal handle per goal.
+// A freestanding build has no allocator for either, so each is refused here.
+#define NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE                                                      \
+    "rclcpp_action's goal-handle shapes are REFUSED by nano-ros on a freestanding build "          \
+    "(RFC-0089, "                                                                                  \
+    "issue 2015): ClientGoalHandle / ServerGoalHandle ::SharedPtr, the std::function callbacks "   \
+    "of "                                                                                          \
+    "rclcpp_action::create_server and Client::SendGoalOptions (goal_response_callback, "           \
+    "feedback_callback, result_callback) and Client::async_send_goal. They need std::shared_ptr "  \
+    "and an allocator; a hosted build (-DNROS_CPP_STD) takes them as written. Freestanding, key "  \
+    "the goal by its id: Node::create_action_server + Server::set_goal_callback_with_ctx / "       \
+    "set_accepted_callback_with_ctx and Server::succeed(goal_id, result); on the client "          \
+    "set_callbacks(SendGoalOptions{goal_response, feedback, result, context}) + send_goal_async."
+
 /// Bytes of name an `rclcpp::Logger` keeps (issue 1682). 128 is
 /// `nros_node::names::MAX_RESOLVED_NAME_LEN`, the longest name the stack
 /// resolves; override with `-DNROS_CPP_LOGGER_NAME_CAPACITY=<n>`.
