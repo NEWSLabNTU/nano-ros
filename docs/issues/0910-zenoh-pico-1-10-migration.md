@@ -268,3 +268,94 @@ interrupt-driven and async receive path (119 lines reference `uart_irq`,
 `src/link/transport/{tcp,udp,serial}/*_<platform>.c` layout, take upstream's
 serial protocol framing where it matches ours, and add the higher baud rates
 to `tty_posix.c` rather than keeping a second POSIX serial backend.
+
+## Survey 2026-10-24 (second pass) — the async executor and the link ABI
+
+A replay of the patch line was started on a scratch clone and stopped at
+commit 7 of 92. The merge survey above counted conflicting FILES, and missed
+two upstream changes that decide the cost.
+
+**1. Upstream 1.9.0 replaced the read and lease threads with an async
+executor** (`65f80db8`, "Asynchronous executor (#1190)", then `278f4629`
+and `6cdd442a`). Read, lease, keep-alive, query timeout and reconnect are
+now futures under `src/runtime/`:
+
+- In a multi-thread build, all of them run on ONE executor thread, which
+  holds its mutex while a task runs (`background_executor.c:56-83`).
+- `zp_start_read_task` starts that thread. `zp_start_lease_task` and
+  `zp_stop_lease_task` are no-ops that return OK (`api.c`).
+- `zp_read`, `zp_send_keep_alive` and `zp_spin_once` exist only when
+  `Z_FEATURE_MULTI_THREAD == 0`, and in a single-thread build
+  `zp_spin_once` runs one task per call.
+- `Z_RUNTIME_MAX_TASKS` and `Z_RUNTIME_IDLE_READ_TASK_SLEEP` exist only as
+  `config.h.in` substitutions, with no `#ifndef` fallback, so our generator
+  must emit both. `zp_spin_once` returns `false` only when
+  `Z_RUNTIME_IDLE_READ_TASK_SLEEP > 0`, so a drain loop over it needs that
+  knob or a budget.
+
+For nano-ros that means `zpico.c` must change how it drives the session, at
+about 25 call sites:
+
+- **Lease task:** its priority, stack and attributes become dead. The
+  transport priority band from issue 0623 collapses to one executor
+  priority, and one stack must hold read, lease, reconnect (a blocking
+  connect) and user callbacks.
+- **ThreadX multi-thread arm:** it calls `zp_read` from tier threads with no
+  executor running, so it no longer compiles. It must start the executor or
+  build single-threaded.
+- **`zpico_send_keep_alive`:** it is unguarded, so it must use the internal
+  `_zp_send_keep_alive`.
+- **Single-thread polling** (bare-metal smoltcp, serial): it must move from
+  `zp_read` + `zp_send_keep_alive` + `_z_pending_query_process_timeout` to a
+  bounded `zp_spin_once` loop. On the old path, the lease, reconnect and
+  query-timeout futures would never run.
+
+**2. The platform link ABI was renamed and reshaped.** `_z_open_tcp` became
+`_z_tcp_open`, `_z_send_tcp` became `_z_tcp_write`,
+`_z_read_serial_internal` became `_z_serial_read`, and so on, declared in
+`include/zenoh-pico/link/transport/{tcp,udp_unicast,udp_multicast,serial,socket}.h`.
+`_z_socket_wait_event` became `_z_socket_wait_readable` over an iterator. On
+our side this reaches:
+
+- the alias TU `zpico-sys/c/zpico/platform_aliases.c`, which carries about
+  37 aliases;
+- `zpico-sys/c/platform/threadx/network.c`;
+- `zpico-serial/src/ffi.rs`;
+- every `extra_sources` row in `nros-rmw-zenoh/nros-rmw.toml` that names
+  `system/<rtos>/network.c`;
+- our own CAN, ISO-TP, IVC and custom links.
+
+1.10.1 also gained `ZP_SYSTEM_PLATFORM_HEADER`, which selects a platform
+header by macro. That may let `ZENOH_GENERIC`'s header plumbing go.
+
+**The 21 transport and session patches, classified against 1.10.1's code**
+
+Each was read against upstream's code, not run. References are to
+`up-1.10.1` files.
+
+| class | commits |
+| --- | --- |
+| OBSOLETE (5) | `0ac5c201` batch guard (transport.h:307-321, `07c84ebc`); `23a117d2` #0959 chunked lease sleep (the lease is a timed future, and stop signals the executor's condvar); `0343ad1b` MATCHING=0 guard (filtering.c:323, `07c84ebc`); `a1c741db` `== true` in `#if` (`08e4e584`); `7335492a` peer-mode read remainder (inert for our client-mode islands) |
+| PORT (12) | `affe5a6e` query `_start_time` after send (primitives.c:605/621); `ccffda45` try-lock keep-alive (lease.c:66, :202 — now it also stalls read); `4b72b53e` OOM in `_z_unsafe_register_pending_query` (query.c:98); `98ab67c4` write filter off on single-thread (filtering.c:251); `8330e0f3` and `86f1b1df` split TX lock (tx.c is almost unchanged); `730fa365` declarations always express (tx.c:40); `52f60b79` one rejected message must not kill the read task (now worse: the error closes the transport and reconnects, read.c:401); `6b574173` lock the declaration cache (session.c:613, after the #0899 redesign; its retry part is obsolete); `eb16447f` DECLARE_FINAL clones the interest (interest.c:508, unchanged); `57bbde9e` a dropped DROP put reports OK (tx.c:296); `717153c1` #0924 SO_LINGER abort, moving to `tcp_lwip.c:_z_tcp_lwip_close` (its `_reconnecting` guard is obsolete) |
+| REDESIGN (2) | `ae59aa48` #0899 teardown use-after-free: `_zp_unicast_failed_result` frees the transport under `_mutex_transport` while `_z_send_n_msg` takes no lock, and reconnect holds that mutex across a blocking `_z_open`, so porting the lock as is deadlocks or stalls. The fix must mark the transport `NONE` under the lock and close it outside the lock. `00f8e2f0` read-task frame budget: `run_forever` loops without yielding while any task is ready, so the budget has to become a `wake_up_after(rest_ms)` from the read future, with `rest_ms` of at least 2, because the executor only waits when the next wake is more than 1 ms away. |
+| DEPENDS ON the `zpico.c` choice (2) | `81459416` and `f13ae3b5`, the polled-read drain and compaction. They are OBSOLETE if single-thread polling moves to `zp_spin_once`, whose read future already compacts the remainder (read.c:82-115). They are needed if `zp_read` stays. The two paths must never be mixed. |
+
+**Other behaviour changes between 1.8.0 and 1.10.1:**
+
+- Query timeouts are checked every 1 s. Before, the check ran every `lease/3`,
+  which is 20 s at our 60 s lease.
+- A read error closes the transport and reconnects every 1 s.
+- User callbacks run on the executor thread, so a slow callback delays the
+  lease and keep-alive.
+- The handshake takes `Z_TRANSPORT_CONNECT_TIMEOUT`.
+- Zephyr gained a thread-stack slot pool, `CONFIG_ZENOH_PICO_THREADS_NUM`
+  (default 4), next to our own `5c000233`.
+- The executor adds a mutex and a condvar per session, so recheck Zephyr's
+  pthread pool counts.
+
+What this does to the estimate: the move is no longer a rebase plus a serial
+re-port. It is a rebase plus a change to how nano-ros drives zenoh-pico on
+every platform, with two patches to redesign and the platform link ABI to
+re-port. The first four commits replayed cleanly onto 1.10.1, and two
+carried commits were dropped; that work is kept on the scratch branch
+`port/wip-1.10.1-partial`, which was not pushed.
