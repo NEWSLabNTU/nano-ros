@@ -25,27 +25,27 @@ extern int32_t __nros_c_component_telem_pkg_configure(const nros_cpp_node_t* nod
 static nros_cpp_node_t __nros_node_0;
 static nros_cpp_node_t __nros_node_1;
 
-/* issue 1604 / phase-462 W1 (RFC-0052) -- contract monitor rows (tier[0] every level (one executor)): one
+/* issue 1604 / phase-462 W1 (RFC-0052) -- contract monitor rows: one
  * per contracted publisher and per age contract, the same rows the Rust road
  * bakes into `system_monitors.rs` and the C++ pack into its entry. The runtime
  * builds its spec/cell tables in the storage below at install
  * (`nros_cpp_install_monitors`), so an image with no contract carries none of
  * this. The storage is `uint64_t` so it is 8-aligned without C11 `_Alignas`. */
-static const nros_cpp_monitor_row_t __nros_mon_rows_t0[2] = {
+static const nros_cpp_monitor_row_t __nros_mon_rows[2] = {
     { "/cmd", "/ctrl/cmd", 100000u, 5u, "/setpoint", 8u },
     { "/telemetry", "/telem/telemetry", 1000u, 0u, NULL, 0u },
 };
-static uint64_t __nros_mon_storage_t0[(2u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
-static const nros_cpp_age_row_t __nros_age_rows_t0[1] = {
+static uint64_t __nros_mon_storage[(2u * NROS_CPP_MONITOR_ROW_STORAGE + 7u) / 8u];
+static const nros_cpp_age_row_t __nros_age_rows[1] = {
     { "/cmd", "/telem/cmd", 50u, 0u },
 };
-static uint64_t __nros_age_storage_t0[(1u * NROS_CPP_AGE_ROW_STORAGE + 7u) / 8u];
+static uint64_t __nros_age_storage[(1u * NROS_CPP_AGE_ROW_STORAGE + 7u) / 8u];
 
 /* Phase 274.W2 — per-tier setup functions (one per tier). */
 /* phase-509 P9b: `__nros_at` names the node being built, for the report below. */
 static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nros_at) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
-    /* phase-462 W1 -- contract monitor table (tier[0] every level (one executor)): installed BEFORE any node
+    /* phase-462 W1 -- contract monitor table: installed BEFORE any node
      * exists, because a publisher attaches its counter cell at create time.
      * phase-474: the monitors judge from the first spin unless the image sets
      * CONFIG_NROS_MONITOR_ARM_ON_CALL; then the application calls
@@ -57,14 +57,14 @@ static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nr
      * CONFIG_NROS_BOOT_REPORT keeps it in NROS_VIOLATION_RECORD for SWD. */
     {
         nros_cpp_monitor_tables_t mtables = {
-            .rows = __nros_mon_rows_t0,
+            .rows = __nros_mon_rows,
             .n_rows = 2u,
-            .row_storage = __nros_mon_storage_t0,
-            .row_storage_len = sizeof(__nros_mon_storage_t0),
-            .ages = __nros_age_rows_t0,
+            .row_storage = __nros_mon_storage,
+            .row_storage_len = sizeof(__nros_mon_storage),
+            .ages = __nros_age_rows,
             .n_ages = 1u,
-            .age_storage = __nros_age_storage_t0,
-            .age_storage_len = sizeof(__nros_age_storage_t0),
+            .age_storage = __nros_age_storage,
+            .age_storage_len = sizeof(__nros_age_storage),
         };
         nros_cpp_ret_t mret = nros_cpp_install_monitors(executor, &mtables);
         if (mret != NROS_CPP_RET_OK) return (int32_t)mret;

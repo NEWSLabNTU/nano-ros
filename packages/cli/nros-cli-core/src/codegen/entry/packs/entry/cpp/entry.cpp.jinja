@@ -104,20 +104,20 @@ static ::{{ s.class }} __nros_comp_{{ loop.index0 }};
 #define NROS_MODE_{{ md.ident }} {{ md.id }}u /* {{ md.name | c_str }} */
 {%- endfor %}
 {%- endif %}
-{%- for m in monitor_tables %}{% set tag %}{% if m.tier is not none %}_t{{ m.tier }}{% endif %}{% endset %}
+{%- if monitor_table %}{% with m = monitor_table %}
 
-/* phase-462 W1 (RFC-0052) -- contract monitor rows{% if m.tier is not none %} (tier[{{ m.tier }}] {{ m.tier_name }}){% endif %}: one per contracted
+/* phase-462 W1 (RFC-0052) -- contract monitor rows: one per contracted
  * publisher and per age contract, the same rows the Rust road bakes into
  * `system_monitors.rs`. The runtime builds its spec/cell tables in the storage
  * below at install (`nros_cpp_install_monitors`), so an image with no contract
  * carries none of this. */
 {%- if m.rows %}
-static const ::nros_cpp_monitor_row_t __nros_mon_rows{{ tag }}[{{ m.rows | length }}] = {
+static const ::nros_cpp_monitor_row_t __nros_mon_rows[{{ m.rows | length }}] = {
 {%- for r in m.rows %}
     { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u, {% if r.route_trigger %}"{{ r.route_trigger | c_str }}"{% else %}nullptr{% endif %}, {{ r.route_max_latency_ms }}u{% if r.route_deadline_ms %}, {{ r.route_deadline_ms }}u, {{ r.reaction_id }}u, {{ r.mechanism }}u{% endif %} },
 {%- endfor %}
 };
-alignas(8) static unsigned char __nros_mon_storage{{ tag }}[{{ m.rows | length }} * NROS_CPP_MONITOR_ROW_STORAGE];
+alignas(8) static unsigned char __nros_mon_storage[{{ m.rows | length }} * NROS_CPP_MONITOR_ROW_STORAGE];
 {%- if m.rows | selectattr("route_deadline_ms") | list %}
 /* phase-503 -- supervised routes: a take still unanswered at its deadline is
  * reported (route-deadline-runtime) and nros_app_reaction_hook, when the
@@ -130,12 +130,12 @@ extern "C" void nros_app_reaction_hook(const ::nros_cpp_reaction_event_t* event,
 {%- endif %}
 {%- endif %}
 {%- if m.ages %}
-static const ::nros_cpp_age_row_t __nros_age_rows{{ tag }}[{{ m.ages | length }}] = {
+static const ::nros_cpp_age_row_t __nros_age_rows[{{ m.ages | length }}] = {
 {%- for r in m.ages %}
     { "{{ r.topic | c_str }}", "{{ r.fqn | c_str }}", {{ r.max_age_ms }}u, {{ r.deadline_ms }}u },
 {%- endfor %}
 };
-alignas(8) static unsigned char __nros_age_storage{{ tag }}[{{ m.ages | length }} * NROS_CPP_AGE_ROW_STORAGE];
+alignas(8) static unsigned char __nros_age_storage[{{ m.ages | length }} * NROS_CPP_AGE_ROW_STORAGE];
 {%- endif %}
 {%- if m.hazards %}
 /* phase-462 W3b -- the contract's hazards this executor observes over the rows
@@ -144,21 +144,21 @@ alignas(8) static unsigned char __nros_age_storage{{ tag }}[{{ m.ages | length }
  * drain (`nros_cpp_install_hazards`). */
 {%- for h in m.hazards %}{% set hi = loop.index0 %}
 {%- for g in h.guards %}
-static const ::nros_cpp_hazard_member_t __nros_hz_members{{ tag }}_{{ hi }}_{{ loop.index0 }}[{{ g.members | length }}] = {
+static const ::nros_cpp_hazard_member_t __nros_hz_members_{{ hi }}_{{ loop.index0 }}[{{ g.members | length }}] = {
 {%- for mm in g.members %}
     { {{ mm.kind }}u, {{ mm.row }}u },
 {%- endfor %}
 };
 {%- endfor %}
-static const ::nros_cpp_hazard_guard_t __nros_hz_guards{{ tag }}_{{ hi }}[{{ h.guards | length }}] = {
+static const ::nros_cpp_hazard_guard_t __nros_hz_guards_{{ hi }}[{{ h.guards | length }}] = {
 {%- for g in h.guards %}
-    { {% if g.all_of %}1{% else %}0{% endif %}u, __nros_hz_members{{ tag }}_{{ hi }}_{{ loop.index0 }}, {{ g.members | length }}u },
+    { {% if g.all_of %}1{% else %}0{% endif %}u, __nros_hz_members_{{ hi }}_{{ loop.index0 }}, {{ g.members | length }}u },
 {%- endfor %}
 };
 {%- endfor %}
-static const ::nros_cpp_hazard_row_t __nros_hz_rows{{ tag }}[{{ m.hazards | length }}] = {
+static const ::nros_cpp_hazard_row_t __nros_hz_rows[{{ m.hazards | length }}] = {
 {%- for h in m.hazards %}
-    { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_guards{{ tag }}_{{ loop.index0 }}, {{ h.guards | length }}u, {{ h.sink }}u, {{ h.reaction_id }}u },
+    { "{{ h.key | c_str }}", {{ h.ftti_ms }}u, {{ h.settle_ms }}u, __nros_hz_guards_{{ loop.index0 }}, {{ h.guards | length }}u, {{ h.sink }}u, {{ h.reaction_id }}u },
 {%- endfor %}
 };
 {%- if m.hazards | selectattr("reaction_id") | list %}
@@ -171,7 +171,7 @@ static const ::nros_cpp_hazard_row_t __nros_hz_rows{{ tag }}[{{ m.hazards | leng
  */
 extern "C" void nros_app_reaction_hook(const ::nros_cpp_reaction_event_t* event, void* ctx) __attribute__((weak));
 {%- endif %}
-alignas(8) static unsigned char __nros_hz_storage{{ tag }}[{{ m.hazards | length }} * NROS_CPP_HAZARD_ROW_STORAGE + {{ m.hazard_guards }} * NROS_CPP_HAZARD_GUARD_STORAGE + {{ m.hazard_members }} * NROS_CPP_HAZARD_MEMBER_STORAGE];
+alignas(8) static unsigned char __nros_hz_storage[{{ m.hazards | length }} * NROS_CPP_HAZARD_ROW_STORAGE + {{ m.hazard_guards }} * NROS_CPP_HAZARD_GUARD_STORAGE + {{ m.hazard_members }} * NROS_CPP_HAZARD_MEMBER_STORAGE];
 {%- endif %}
 {%- if m.modes %}
 /* phase-462 W4b -- the contract's modes: each mode's numbers for the rows
@@ -181,14 +181,14 @@ alignas(8) static unsigned char __nros_hz_storage{{ tag }}[{{ m.hazards | length
  * only its table header. */
 {%- for md in m.modes %}{% set mi = loop.index %}
 {%- if md.rows %}
-static const ::nros_cpp_mode_row_t __nros_mode_rows{{ tag }}_{{ mi }}[{{ md.rows | length }}] = {
+static const ::nros_cpp_mode_row_t __nros_mode_rows_{{ mi }}[{{ md.rows | length }}] = {
 {%- for r in md.rows %}
     { {{ r.min_rate_hz_milli }}u, {{ r.max_latency_ms }}u, {{ r.route_max_latency_ms }}u, {{ r.route_deadline_ms }}u },
 {%- endfor %}
 };
 {%- endif %}
 {%- if md.ages %}
-static const ::nros_cpp_mode_age_row_t __nros_mode_ages{{ tag }}_{{ mi }}[{{ md.ages | length }}] = {
+static const ::nros_cpp_mode_age_row_t __nros_mode_ages_{{ mi }}[{{ md.ages | length }}] = {
 {%- for a in md.ages %}
     { {{ a }}u },
 {%- endfor %}
@@ -199,27 +199,27 @@ static const ::nros_cpp_mode_age_row_t __nros_mode_ages{{ tag }}_{{ mi }}[{{ md.
 /* phase-462 W4c -- the sched-context deadlines the modes move on this
  * executor: table 0 the base's, table k mode k's, each naming the same
  * contexts{% if m.deadline_sc_is_tier %} by tier index into __nros_sc_ids{% endif %}. */
-static const ::nros_cpp_mode_deadline_t __nros_mode_deadlines{{ tag }}_0[{{ m.base_deadlines | length }}] = {
+static const ::nros_cpp_mode_deadline_t __nros_mode_deadlines_0[{{ m.base_deadlines | length }}] = {
 {%- for d in m.base_deadlines %}
     { {{ d.sc }}u, {{ d.deadline_us }}u },
 {%- endfor %}
 };
 {%- for md in m.modes %}{% set mi = loop.index %}
-static const ::nros_cpp_mode_deadline_t __nros_mode_deadlines{{ tag }}_{{ mi }}[{{ md.deadlines | length }}] = {
+static const ::nros_cpp_mode_deadline_t __nros_mode_deadlines_{{ mi }}[{{ md.deadlines | length }}] = {
 {%- for d in md.deadlines %}
     { {{ d.sc }}u, {{ d.deadline_us }}u },
 {%- endfor %}
 };
 {%- endfor %}
 {%- endif %}
-static const ::nros_cpp_mode_t __nros_modes{{ tag }}[{{ m.modes | length }}] = {
+static const ::nros_cpp_mode_t __nros_modes[{{ m.modes | length }}] = {
 {%- for md in m.modes %}{% set mi = loop.index %}
-    { {% if md.rows %}__nros_mode_rows{{ tag }}_{{ mi }}{% else %}nullptr{% endif %}, {{ md.rows | length }}u, {% if md.ages %}__nros_mode_ages{{ tag }}_{{ mi }}{% else %}nullptr{% endif %}, {{ md.ages | length }}u, {% if m.base_deadlines %}__nros_mode_deadlines{{ tag }}_{{ mi }}{% else %}nullptr{% endif %}, {{ md.deadlines | length }}u, {{ md.switch_budget_ms }}u, {% if md.reaction %}"{{ md.reaction | c_str }}"{% else %}nullptr{% endif %} },
+    { {% if md.rows %}__nros_mode_rows_{{ mi }}{% else %}nullptr{% endif %}, {{ md.rows | length }}u, {% if md.ages %}__nros_mode_ages_{{ mi }}{% else %}nullptr{% endif %}, {{ md.ages | length }}u, {% if m.base_deadlines %}__nros_mode_deadlines_{{ mi }}{% else %}nullptr{% endif %}, {{ md.deadlines | length }}u, {{ md.switch_budget_ms }}u, {% if md.reaction %}"{{ md.reaction | c_str }}"{% else %}nullptr{% endif %} },
 {%- endfor %}
 };
-alignas(8) static unsigned char __nros_mode_storage{{ tag }}[({{ m.modes | length }} + 1) * (NROS_CPP_MODE_TABLE_STORAGE + {{ m.base_deadlines | length }} * NROS_CPP_MODE_DEADLINE_STORAGE) + {{ m.modes | selectattr("rows") | list | length }} * {{ m.rows | length }} * NROS_CPP_MODE_ROW_STORAGE + {{ m.modes | selectattr("ages") | list | length }} * {{ m.ages | length }} * NROS_CPP_MODE_AGE_STORAGE];
+alignas(8) static unsigned char __nros_mode_storage[({{ m.modes | length }} + 1) * (NROS_CPP_MODE_TABLE_STORAGE + {{ m.base_deadlines | length }} * NROS_CPP_MODE_DEADLINE_STORAGE) + {{ m.modes | selectattr("rows") | list | length }} * {{ m.rows | length }} * NROS_CPP_MODE_ROW_STORAGE + {{ m.modes | selectattr("ages") | list | length }} * {{ m.ages | length }} * NROS_CPP_MODE_AGE_STORAGE];
 {%- endif %}
-{%- endfor %}
+{%- endwith %}{%- endif %}
 
 {% if tiers -%}
 {%- for setup in tiers.setups -%}

@@ -197,13 +197,14 @@ pub struct LoweredEntry {
     pub sched: Option<crate::LoweredSched>,
     #[serde(default)]
     pub services: crate::LoweredServices,
-    /// The single executor's contract monitor table (none on the tiered
-    /// layout — each tier setup carries its own).
+    /// The single executor's contract monitor table (none on the level
+    /// layout -- the boot level's setup carries it).
     #[serde(default)]
     pub monitors: Option<crate::MonitorTable>,
-    /// Every non-empty monitor table, for the file-scope statics.
+    /// The image's one non-empty monitor table, for the file-scope statics:
+    /// `monitors`, or the boot level's on a level image (issue 2021).
     #[serde(default)]
-    pub monitor_tables: Vec<crate::MonitorTable>,
+    pub monitor_table: Option<crate::MonitorTable>,
     /// phase-462 W4b -- the contract's mode names in mode-id order: mode
     /// `i + 1` is `modes[i]` (0 is the base). The packs name each id
     /// `NROS_MODE_<NAME>` for `nros_cpp_request_mode`.

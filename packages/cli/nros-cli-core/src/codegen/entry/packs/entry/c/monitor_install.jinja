@@ -1,9 +1,8 @@
-{%- set tag %}{% if m.tier is not none %}_t{{ m.tier }}{% endif %}{% endset %}
 {#-
   Issue 1604 — the C spelling of `../cpp/monitor_install.jinja`: install one
   contract monitor table (phase-462 W1, RFC-0052) on one executor, inside the
   setup function that is about to create that executor's nodes. `m` is the
-  table (its rows and its symbol tag), `mexec` the executor expression the
+  table (its rows), `mexec` the executor expression the
   caller hands in — the setup's own `executor` parameter on both C bodies,
   which each setup has already NULL-checked. The install is C ABI
   (`rclcpp/detail/nros_cpp_ffi.h`), so the C pack calls it exactly as the C++ one does;
@@ -15,7 +14,7 @@
   dropped by the renderer, so the caller's next line follows the closing brace
   directly.
 #}
-    /* phase-462 W1 -- contract monitor table{% if m.tier is not none %} (tier[{{ m.tier }}] {{ m.tier_name }}){% endif %}: installed BEFORE any node
+    /* phase-462 W1 -- contract monitor table: installed BEFORE any node
      * exists, because a publisher attaches its counter cell at create time.
      * phase-474: the monitors judge from the first spin unless the image sets
      * CONFIG_NROS_MONITOR_ARM_ON_CALL; then the application calls
@@ -27,14 +26,14 @@
      * CONFIG_NROS_BOOT_REPORT keeps it in NROS_VIOLATION_RECORD for SWD. */
     {
         nros_cpp_monitor_tables_t mtables = {
-            .rows = {% if m.rows %}__nros_mon_rows{{ tag }}{% else %}NULL{% endif %},
+            .rows = {% if m.rows %}__nros_mon_rows{% else %}NULL{% endif %},
             .n_rows = {{ m.rows | length }}u,
-            .row_storage = {% if m.rows %}__nros_mon_storage{{ tag }}{% else %}NULL{% endif %},
-            .row_storage_len = {% if m.rows %}sizeof(__nros_mon_storage{{ tag }}){% else %}0u{% endif %},
-            .ages = {% if m.ages %}__nros_age_rows{{ tag }}{% else %}NULL{% endif %},
+            .row_storage = {% if m.rows %}__nros_mon_storage{% else %}NULL{% endif %},
+            .row_storage_len = {% if m.rows %}sizeof(__nros_mon_storage){% else %}0u{% endif %},
+            .ages = {% if m.ages %}__nros_age_rows{% else %}NULL{% endif %},
             .n_ages = {{ m.ages | length }}u,
-            .age_storage = {% if m.ages %}__nros_age_storage{{ tag }}{% else %}NULL{% endif %},
-            .age_storage_len = {% if m.ages %}sizeof(__nros_age_storage{{ tag }}){% else %}0u{% endif %},
+            .age_storage = {% if m.ages %}__nros_age_storage{% else %}NULL{% endif %},
+            .age_storage_len = {% if m.ages %}sizeof(__nros_age_storage){% else %}0u{% endif %},
         };
         nros_cpp_ret_t mret = nros_cpp_install_monitors({{ mexec }}, &mtables);
         if (mret != NROS_CPP_RET_OK) return (int32_t)mret;
@@ -49,10 +48,10 @@
 {%- if m.hazards %}
         /* phase-462 W3b -- the hazard observer, over the rows just installed. */
         nros_cpp_hazard_table_t htable = {
-            .rows = __nros_hz_rows{{ tag }},
+            .rows = __nros_hz_rows,
             .n_rows = {{ m.hazards | length }}u,
-            .storage = __nros_hz_storage{{ tag }},
-            .storage_len = sizeof(__nros_hz_storage{{ tag }}),
+            .storage = __nros_hz_storage,
+            .storage_len = sizeof(__nros_hz_storage),
         };
         mret = nros_cpp_install_hazards({{ mexec }}, &htable);
         if (mret != NROS_CPP_RET_OK) return (int32_t)mret;
@@ -60,11 +59,11 @@
 {%- if m.modes %}
         /* phase-462 W4b -- the contract's modes, over the base rows just installed. */
         nros_cpp_mode_tables_t mtab = {
-            .modes = __nros_modes{{ tag }},
+            .modes = __nros_modes,
             .n_modes = {{ m.modes | length }}u,
-            .storage = __nros_mode_storage{{ tag }},
-            .storage_len = sizeof(__nros_mode_storage{{ tag }}),
-            .base_deadlines = {% if m.base_deadlines %}__nros_mode_deadlines{{ tag }}_0{% else %}NULL{% endif %},
+            .storage = __nros_mode_storage,
+            .storage_len = sizeof(__nros_mode_storage),
+            .base_deadlines = {% if m.base_deadlines %}__nros_mode_deadlines_0{% else %}NULL{% endif %},
             .n_base_deadlines = {{ m.base_deadlines | length }}u,
             .sc_ids = {% if m.deadline_sc_is_tier and m.base_deadlines %}__nros_sc_ids{% else %}NULL{% endif %},
             .n_sc_ids = {% if m.deadline_sc_is_tier and m.base_deadlines %}sizeof(__nros_sc_ids){% else %}0u{% endif %},
