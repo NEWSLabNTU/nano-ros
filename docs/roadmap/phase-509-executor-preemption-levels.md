@@ -905,7 +905,11 @@ level count; DTCM stays under the 122,880 B guard; SRAM is recorded.
   groups). A later extension, with the triggers RFC-0108 D3 names.
 - **Core assignment / load partitioning**, including who splits an end-to-end
   deadline across images. A later phase; this one keeps the derivation keyed
-  by (core, rank) with `core` unset.
+  by (core, rank) with `core` unset. Setting `core` is
+  [issue 0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md)'s
+  work: its realizer already packs measured nodes onto cores, and P5's single
+  `derive_levels` call drops that packing. The issue's "Current design"
+  section 2 has the plan: partition first, then levels per core.
 - **EDF across levels.** EDF orders work within a level only, until an image
   needs more.
 

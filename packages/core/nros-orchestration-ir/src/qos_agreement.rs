@@ -399,9 +399,11 @@ fn node_of(ep: &str) -> &str {
 pub fn check_model(model: &SystemModel) -> Result<(), QosAgreementError> {
     // No topic wiring means no contract statement about any topic, so there is
     // one producer and nothing to disagree with. NOT a silent pass over a
-    // missing check: `EntityInventory::from_model` abstains on exactly this
-    // model for exactly this reason, and an image whose sizing has no contract
-    // input has no second statement to diverge from.
+    // missing check: a `qos_overrides.*` parameter names a topic endpoint, and
+    // with no topic in the contract there is no second statement for it to
+    // diverge from. This is narrower than `EntityInventory::from_model`'s
+    // "was a contract authored?" test, on purpose: a contract that states only
+    // timers, services or parameters still states nothing about a topic.
     if model.structure.topics.is_empty() {
         return Ok(());
     }
