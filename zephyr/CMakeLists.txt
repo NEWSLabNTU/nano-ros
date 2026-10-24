@@ -952,7 +952,14 @@ if(CONFIG_NROS_CPP_API)
         else()
             set(_umb_backend "zenoh")
         endif()
-        string(REPLACE "," ";" _umb_feats "${_nros_cpp_features}")
+        # Issue 2010 -- and the image's panic ending. `_nros_panic_suffix` is
+        # passed beside the feature STRINGS, not in them (above), and the
+        # umbrella's nros-cpp dep is `default-features = false`, so without it
+        # the one archive this image links had no handler at all once
+        # phase-359 W10 stage C took `std` (and libstd's handler) away. The
+        # cmake lane's umbrella appends the same feature
+        # (`NanoRosRuntimeCrate.cmake`, `nros_panic_policy_feature`).
+        string(REPLACE "," ";" _umb_feats "${_nros_cpp_features}${_nros_panic_suffix}")
         nros_write_runtime_umbrella_crate(
             OUT_DIR      "${CMAKE_BINARY_DIR}/nros_ws_runtime"
             BACKEND      "${_umb_backend}"

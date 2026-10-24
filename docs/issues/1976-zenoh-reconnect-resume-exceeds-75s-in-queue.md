@@ -6,8 +6,10 @@ type: bug
 area: [runtime, zenoh, testing]
 severity: medium
 found: 2026-10-18
-related: [1802, 1751, 1749]
+related: [1802, 1751, 1749, phase-513]
 ---
+
+**Home: [phase-513](../roadmap/phase-513-nightly-reds-with-no-home.md)** — R5.
 
 ## Measured
 
