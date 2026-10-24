@@ -550,9 +550,12 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         // anything is generated. An unreadable `system.toml` is left to the
         // code whose job it is to report it.
         if let Ok(raw) = std::fs::read_to_string(bringup_dir.join("system.toml"))
-            && let Ok(sys) =
+            && let Ok(mut sys) =
                 toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
         {
+            // RFC-0109 D4 (phase-514 W2) — the board network files first.
+            sys.fold_os_config(&bringup_dir)
+                .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
             sys.wcet_profile_for_image(&image_id, &platform)
                 .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
             // RFC-0103 D10b (phase-497 W1) — the address against its network.
@@ -4049,7 +4052,10 @@ pub(crate) fn workspace_image_net(
     let Ok(raw) = std::fs::read_to_string(&path) else {
         return Ok(None);
     };
-    let sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+    let mut sys = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+        .map_err(|e| eyre::eyre!("{}: {e}", path.display()))?;
+    // RFC-0109 D4 (phase-514 W2) — the board network files the images name.
+    sys.fold_os_config(bringup_dir)
         .map_err(|e| eyre::eyre!("{}: {e}", path.display()))?;
     let mut all = crate::orchestration::image_net::resolve_system(&sys, |id| {
         let img = match &sys.image_defaults {
@@ -7237,5 +7243,33 @@ mod zephyr_leaf_application_tests {
 
         std::fs::remove_file(leaf.join("CMakeLists.txt")).unwrap();
         assert_eq!(zephyr_leaf_application(leaf, leaf), None);
+    }
+}
+
+#[cfg(test)]
+mod board_net_file_tests {
+    /// RFC-0109 D4 (phase-514 W2) — the workspace road reads an image's
+    /// interfaces from the board network file its `os_config` names. The Rust
+    /// workspace's multihost pair sits on `[network.br]` through those files
+    /// alone, each at its own address.
+    #[test]
+    fn the_workspace_road_resolves_interfaces_from_board_net_files() {
+        use nros_board_common::image_net::Address;
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap();
+        let catalog =
+            crate::orchestration::board_descriptor::BoardCatalog::load(&repo).expect("catalog");
+        let bringup = repo.join("examples/workspaces/rust/src/demo_bringup");
+        for (image, host) in [("freertos_br_robot1", 10), ("freertos_br_robot2", 11)] {
+            let net = super::workspace_image_net(&catalog, &bringup, image, Some(&repo))
+                .expect("resolves")
+                .unwrap_or_else(|| panic!("{image} has a network"));
+            let eth0 = &net.interfaces[0];
+            assert_eq!(eth0.name, "eth0");
+            assert_eq!(eth0.network, "br");
+            assert_eq!(eth0.address, Address::Static([192, 0, 3, host]), "{image}");
+        }
     }
 }

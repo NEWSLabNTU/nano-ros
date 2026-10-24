@@ -24,7 +24,7 @@ dispatch = "deferred"
 [image.mps2-an385-baremetal]
 board = "qemu-mps2-an385"
 locator = "tcp/10.0.2.2:10500"
-net = { eth0 = { network = "qemu", host = 11 } }
+os_config = ["board-net-mps2-an385-baremetal.toml"]
 
 # phase-497 W3 (RFC-0103 D10) — the network `tests/qemu-baremetal` runs this
 # image on: each container's own bridge `br0` (192.168.100.1/24, NAT'd onto the
@@ -38,4 +38,4 @@ attach = { tap = "tap0" }
 
 [image.docker]
 board = "qemu-mps2-an385"
-net = { eth0 = { network = "docker", host = 11, mac = "02:00:00:00:00:01" } }
+os_config = ["board-net-docker.toml"]

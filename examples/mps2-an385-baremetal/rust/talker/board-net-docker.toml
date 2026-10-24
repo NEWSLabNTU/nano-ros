@@ -1,0 +1,7 @@
+# The board network file for image `docker` (RFC-0109 D4): its
+# interfaces, read by `nros sync` through `os_config`. Format owned by
+# the board package; one table per interface.
+[eth0]
+network = "docker"
+host = 10
+mac = "02:00:00:00:00:00"

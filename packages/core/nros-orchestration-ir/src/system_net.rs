@@ -278,6 +278,78 @@ pub fn parse_image_net(
         .map_err(|e| format!("{at}.net: {e} (each interface is `[{at}.net.<if>]`)"))
 }
 
+/// RFC-0109 D4 (phase-514 W2) — the board config files an image names.
+///
+/// `os_config` lists an image's layer-1 files. The `.toml` ones are the board
+/// package's own network file (RFC-0109 D4); the rest (Zephyr `.conf`,
+/// devicetree `.overlay`, a NuttX `defconfig` fragment) belong to the RTOS and
+/// are not read here.
+#[must_use]
+pub fn board_net_files(os_config: &[String]) -> Vec<&str> {
+    os_config
+        .iter()
+        .map(String::as_str)
+        .filter(|f| f.ends_with(".toml"))
+        .collect()
+}
+
+/// `os_config` from an image's raw table (the leaf road).
+pub fn parse_os_config(image: Option<&toml::Table>, at: &str) -> Result<Vec<String>, String> {
+    let Some(v) = image.and_then(|t| t.get("os_config")) else {
+        return Ok(Vec::new());
+    };
+    v.clone()
+        .try_into()
+        .map_err(|e| format!("{at}.os_config: {e} (a list of file paths)"))
+}
+
+/// Read one board network file: a table per interface, each with the fields
+/// of [`ImageNetIf`] (`network`, `host` or `address`, `mac`).
+pub fn read_board_net_file(path: &std::path::Path) -> Result<BTreeMap<String, ImageNetIf>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("{}: {e} (named by `os_config`)", path.display()))?;
+    toml::from_str(&text).map_err(|e| {
+        format!(
+            "{}: {e} (a board network file is one `[<interface>]` table per interface, \
+             with `network`, `host` or `address`, and `mac` — RFC-0109 D4)",
+            path.display()
+        )
+    })
+}
+
+/// An image's interfaces: its inline `net` plus every board network file its
+/// `os_config` names, resolved against `dir` (the `system.toml`'s directory).
+/// An interface stated in two places is refused, naming both: one owner per
+/// fact (RFC-0103), and the file is that owner (RFC-0109 D4).
+pub fn fold_board_net_files(
+    inline: &BTreeMap<String, ImageNetIf>,
+    dir: &std::path::Path,
+    os_config: &[String],
+    at: &str,
+) -> Result<BTreeMap<String, ImageNetIf>, String> {
+    let mut out = inline.clone();
+    let mut owner: BTreeMap<String, String> = inline
+        .keys()
+        .map(|k| (k.clone(), format!("[{at}.net.{k}]")))
+        .collect();
+    for file in board_net_files(os_config) {
+        let path = dir.join(file);
+        for (name, decl) in read_board_net_file(&path)? {
+            if let Some(prev) = owner.get(&name) {
+                return Err(format!(
+                    "`{at}`: interface `{name}` is stated twice — in {prev} and in {} — so \
+                     the image has two owners for one address (RFC-0109 D4: the board \
+                     network file named by `os_config` is its one home)",
+                    path.display()
+                ));
+            }
+            owner.insert(name.clone(), path.display().to_string());
+            out.insert(name, decl);
+        }
+    }
+    Ok(out)
+}
+
 /// D10g — refuse a flat `ip` / `gateway` / `netmask` on `table`, naming the
 /// new home.
 pub fn refuse_flat_image_net(table: Option<&toml::Table>, at: &str) -> Result<(), String> {
@@ -477,6 +549,61 @@ pub fn network_router(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A scratch directory unique to this process and test.
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("nros-ir-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// RFC-0109 D4 (phase-514 W2) — a board network file supplies an image's
+    /// interfaces; an interface stated inline AND in a file has two owners and
+    /// is refused; a non-`.toml` entry belongs to the RTOS and is not read.
+    #[test]
+    fn os_config_board_net_files_fold_into_the_image_net() {
+        let dir = scratch("fold");
+        std::fs::write(
+            dir.join("board-net.toml"),
+            "[eth0]\nnetwork = \"qemu\"\nhost = 10\n",
+        )
+        .unwrap();
+        let files = vec!["prj.conf".to_string(), "board-net.toml".to_string()];
+
+        let got = fold_board_net_files(&BTreeMap::new(), &dir, &files, "image.t").unwrap();
+        assert_eq!(got["eth0"].network.as_deref(), Some("qemu"));
+        assert_eq!(got["eth0"].host, Some(10));
+
+        let inline: BTreeMap<String, ImageNetIf> = [(
+            "eth0".to_string(),
+            ImageNetIf {
+                host: Some(11),
+                ..ImageNetIf::default()
+            },
+        )]
+        .into();
+        let e = fold_board_net_files(&inline, &dir, &files, "image.t").unwrap_err();
+        assert!(
+            e.contains("`eth0` is stated twice") && e.contains("[image.t.net.eth0]"),
+            "{e}"
+        );
+
+        let e = fold_board_net_files(
+            &BTreeMap::new(),
+            &dir,
+            &["missing.toml".to_string()],
+            "image.t",
+        )
+        .unwrap_err();
+        assert!(e.contains("missing.toml") && e.contains("os_config"), "{e}");
+
+        std::fs::write(dir.join("bad.toml"), "[eth0]\nhots = 1\n").unwrap();
+        let e = fold_board_net_files(&BTreeMap::new(), &dir, &["bad.toml".to_string()], "image.t")
+            .unwrap_err();
+        assert!(e.contains("RFC-0109 D4"), "a misspelt key is refused: {e}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn doc(s: &str) -> toml::Table {
         s.parse().expect("toml")

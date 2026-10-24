@@ -55,13 +55,28 @@ fn manifest_row(manifest: &toml::Value, fixture_id: &str) -> Option<toml::Value>
 /// network the image's FIRST interface names (RFC-0103 D10d, phase-497 W2),
 /// then `[system]` — `nros_orchestration_ir::leaf_system`'s precedence, the
 /// same reading `scripts/lib/image_locator.py` gives.
-fn stated_locator<'a>(doc: &'a toml::Value, id: &str) -> Option<&'a str> {
+fn stated_locator(doc: &toml::Value, id: &str, base: &Path) -> Option<String> {
     if let Some(l) = str_at(doc, &["image", id, "locator"])
         .or_else(|| str_at(doc, &["image_defaults", "locator"]))
     {
-        return Some(l);
+        return Some(l.to_owned());
     }
-    let mut ifs: std::collections::BTreeMap<&str, &toml::Value> = Default::default();
+    // RFC-0109 D4 (phase-514 W2) — the image's board network files, read by
+    // the one reader `nros_orchestration_ir::system_net`.
+    let os_config: Vec<String> = doc
+        .get("image")
+        .and_then(|i| i.get(id))
+        .and_then(|t| t.get("os_config"))
+        .and_then(|v| v.clone().try_into().ok())
+        .unwrap_or_default();
+    let from_files = nros_orchestration_ir::system_net::fold_board_net_files(
+        &Default::default(),
+        base,
+        &os_config,
+        &format!("image.{id}"),
+    )
+    .unwrap_or_default();
+    let mut ifs: std::collections::BTreeMap<&str, Option<&str>> = Default::default();
     for t in [
         doc.get("image_defaults"),
         doc.get("image").and_then(|i| i.get(id)),
@@ -70,15 +85,25 @@ fn stated_locator<'a>(doc: &'a toml::Value, id: &str) -> Option<&'a str> {
     .flatten()
     {
         if let Some(net) = t.get("net").and_then(|n| n.as_table()) {
-            ifs.extend(net.iter().map(|(k, v)| (k.as_str(), v)));
+            ifs.extend(
+                net.iter()
+                    .map(|(k, v)| (k.as_str(), v.get("network").and_then(|n| n.as_str()))),
+            );
         }
     }
+    ifs.extend(
+        from_files
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.network.as_deref())),
+    );
     let router = ifs
         .values()
         .next()
-        .and_then(|first| first.get("network")?.as_str())
+        .and_then(|first| *first)
         .and_then(|name| str_at(doc, &["network", name, "router"]));
-    router.or_else(|| str_at(doc, &["system", "locator"]))
+    router
+        .or_else(|| str_at(doc, &["system", "locator"]))
+        .map(str::to_owned)
 }
 
 /// The locator `fixture_id`'s image bakes, resolved against the checkout at
@@ -94,8 +119,8 @@ pub fn baked_locator_in(root: &Path, fixture_id: &str) -> Result<String, String>
         let path = root.join(dir).join(bringup).join("system.toml");
         let doc = read_doc(&path)?;
         let id = image.rsplit(':').next().unwrap_or(image);
-        if let Some(l) = stated_locator(&doc, id) {
-            return Ok(l.to_owned());
+        if let Some(l) = stated_locator(&doc, id, path.parent().unwrap_or(root)) {
+            return Ok(l);
         }
     } else if let (Some(dir), None) = (str_at(&row, &["dir"]), str_at(&row, &["image"])) {
         // Issue 1865 — a single-package LEAF row (phase-484 W4e): no `image`,
@@ -127,8 +152,8 @@ pub fn baked_locator_in(root: &Path, fixture_id: &str) -> Result<String, String>
                 _ => default,
             };
             if let Some(id) = chosen {
-                if let Some(l) = stated_locator(&doc, id) {
-                    return Ok(l.to_owned());
+                if let Some(l) = stated_locator(&doc, id, &leaf) {
+                    return Ok(l);
                 }
             }
         }

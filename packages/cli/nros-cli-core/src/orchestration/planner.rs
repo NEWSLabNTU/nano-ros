@@ -802,10 +802,14 @@ fn schema_build_json(
     // exactly such a parse error — it must reach the user, naming the
     // replacement.
     let sys = match system_toml.and_then(|p| std::fs::read_to_string(p).ok().map(|t| (p, t))) {
-        Some((p, text)) => Some(
-            toml::from_str::<super::cargo_metadata_schema::SystemToml>(&text)
-                .map_err(|e| eyre!("parsing {}: {e}", p.display()))?,
-        ),
+        Some((p, text)) => {
+            let mut s = toml::from_str::<super::cargo_metadata_schema::SystemToml>(&text)
+                .map_err(|e| eyre!("parsing {}: {e}", p.display()))?;
+            // RFC-0109 D4 (phase-514 W2) — the board network files the images name.
+            s.fold_os_config(p.parent().unwrap_or_else(|| std::path::Path::new(".")))
+                .map_err(|e| eyre!("{}: {e}", p.display()))?;
+            Some(s)
+        }
         None => None,
     };
     // A bad `default_images` must FAIL, not quietly downgrade the plan to

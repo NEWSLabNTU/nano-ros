@@ -19,5 +19,5 @@ name = "talker"
 # remaining smoltcp knobs.
 [image.esp32-c3-baremetal]
 board = "esp32-c3-baremetal"
-net = { eth0 = { network = "qemu", host = 50 } }
+os_config = ["board-net.toml"]
 locator = "tcp/10.0.2.2:9800"

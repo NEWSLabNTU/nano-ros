@@ -98,13 +98,28 @@ generated glue. Nothing is written in `Cargo.toml`, in `package.xml` or on a
 
 A network fact has three owners (RFC-0103 D10): the **board** states its
 interfaces, the **project** states its networks, and the **image** states its
-address on one. The image's half is `net`, one entry per interface:
+address on one. The image's half lives in a **board network file** the image
+names with `os_config` (RFC-0109 D4 — on a board where nano-ros is the OS, the
+board package owns the device, so the address is in the board's own file), one
+table per interface:
 
 ```toml
 [image.talker]
 board = "qemu-mps2-an385"
-net   = { eth0 = { network = "qemu", host = 10 } }   # 10.0.2.10 on QEMU's network
+os_config = ["board-net.toml"]
 ```
+
+```toml
+# board-net.toml, beside system.toml
+[eth0]
+network = "qemu"
+host = 10                      # 10.0.2.10 on QEMU's network
+```
+
+The older inline spelling, `net = { eth0 = { … } }` in `[image.<id>]`, is still
+read; stating one interface in both places is refused. Zephyr and NuttX boards
+own their network in their own configuration, and a host-OS board (Linux) in
+the operating system, so neither takes a board network file.
 
 `qemu` is built in: QEMU's own user-mode (SLIRP) network, `10.0.2.0/24` with
 gateway and router host `10.0.2.2`. Every `-nic user` makes a private copy of
@@ -119,13 +134,13 @@ router  = "tcp/192.168.50.1:7447"    # the locator its images dial by default
 
 [image.sensor]
 board = "qemu-mps2-an385"
-net   = { eth0 = { network = "lab", address = "192.168.50.20" } }
+os_config = ["board-net-sensor.toml"]   # [eth0] network = "lab", address = "192.168.50.20"
 ```
 
 Per interface:
 
 - `network` defaults to the board's (`qemu` on every QEMU board), so
-  `net = { eth0 = { host = 10 } }` is enough there.
+  `[eth0] host = 10` is enough there.
 - `host` is the last octet within the network's subnet; `address` is the full
   IPv4, or `"dhcp"` on a network with `dhcp = true` (and a board whose
   interface runs a DHCP client). An interface on `qemu` that states no address
@@ -139,7 +154,7 @@ Per interface:
   stated.
 
 A board may have several interfaces. An image addresses each on its own
-network, `net = { eth0 = { … }, eth1 = { … } }`.
+network, one table each: `[eth0]`, `[eth1]`.
 
 These fail the build, naming the image (and, for a duplicate, both images):
 

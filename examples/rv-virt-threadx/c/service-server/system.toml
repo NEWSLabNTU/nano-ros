@@ -22,4 +22,4 @@ board = "rv-virt-threadx"
 # RFC-0103 D10 (phase-497 W2) — the Cyclone pair shares one L2 link, so each
 # member states its own address, and the MAC QEMU gives its virtio device
 # (`threadx_riscv64_qemu.rs` passes the same one to `-device`).
-net = { eth0 = { network = "qemu", host = 40, mac = "52:54:00:12:34:56" } }
+os_config = ["board-net.toml"]

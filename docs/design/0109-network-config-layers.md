@@ -122,8 +122,12 @@ it is an `"os"` row whose layer-1 file is `sdkconfig.defaults`.
 ### D3 — What nano-ros reads (the whole contract)
 
 - **Build time, from the board descriptor:** `[board.net] stack` (D2),
-  `supported_netstacks`, and a new `links = ["tcp", "udp", "serial", "isotp",
-  "can", "custom"]` — the link kinds the board can carry. These choose which
+  `supported_netstacks`, and a new `links` — the link kinds the board can
+  carry, from ONE vocabulary, `LINK_KINDS` in `nros-platform-config`:
+  `serial`, `tcp`, `udp`, `can`, `isotp`, `ivc`, `raweth`, `custom`. It is a
+  superset of the image-side `TRANSPORT_KINDS` (`serial | tcp | udp`, pinned by
+  a test) and maps onto zenoh-pico's `link-*` features (`tcp` / `udp` →
+  `link-ip`). *(Landed: phase-514 W1.)* These choose which
   zenoh-pico / XRCE link code is compiled (today's `[image] transport`
   implication, now derived: D6). An image whose wiring names a link the board
   lacks is refused at sync. Cyclone's link is always `udp`; a
@@ -151,20 +155,25 @@ package's own parser.
   its `prj.conf`.
 - The in-tree reference boards (mps2-an385, mps2-an385-freertos,
   mps3-an536-freertos, esp32-qemu, threadx-qemu-riscv64, s32z270-freertos)
-  share ONE format, parsed by `nros-board-common` in the board crate's build:
+  share ONE format. *As built (phase-514 W2)* it is one table per interface
+  carrying the fields the retired inline `net` entry had, read by
+  `nros_orchestration_ir::system_net::read_board_net_file`:
 
   ```toml
-  # board-net.toml — format owned by nros-board-common (version 1)
+  # board-net.toml, beside system.toml; named by [image.<id>] os_config
   [eth0]
-  address = "192.0.3.10/24"     # or: dhcp = true
-  gateway = "192.0.3.1"
+  network = "qemu"              # the network it sits on (until W4/W6 move it)
+  host = 10                     # or: address = "192.0.3.10" | "dhcp"
   mac = "02:00:00:00:00:10"     # optional; derived when absent
   ```
 
-  A CAN or serial interface states its own device facts here
-  (`[can0] bitrate = 500000`, `[uart1] baud = 115200`).
-- **Where it is parsed.** `nros sync` parses every image's file through
-  `nros-board-common` (the CLI already depends on it) and renders the result
+  The netmask and gateway still come from the network the interface names;
+  they move into this file when W4 retires `[network.<name>]`. A CAN or
+  serial interface's device facts (`[can0] bitrate`, `[uart1] baud`) join the
+  same file when W5 moves controller bring-up out of the link.
+- **Where it is parsed.** `nros sync` and `nros build` parse every image's
+  file (`system_net::fold_board_net_files`, on the leaf and workspace roads
+  both) and render the result
   into the ONE carrier phase-497 built, `NROS_IMAGE_NET` (RFC-0103 D10f), on
   all three roads. So the C-startup board (`threadx-qemu-riscv64`, which bakes
   its address from that carrier), the QEMU launcher (which must pin the same

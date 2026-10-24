@@ -88,10 +88,11 @@ Which network the defaults describe is stated by the board: its
 sits on QEMU's own user-mode network (`10.0.2.15/24`, gateway and router
 `10.0.2.2`) — the network every QEMU board shares. `Config::qemu_slirp()` is
 the same network at the RTIC entry's own address (`10.0.2.10`, router port
-`7450`). Either way, an image that sets its `locator` and its address
-(`net = { eth0 = { network = "qemu", host = N } }`) in its `[image.<id>]`
+`7450`). Either way, an image that sets its `locator` in its `[image.<id>]`
+and its address in a board network file (`[eth0] network = "qemu"`, `host = N`)
 table overrides the default — which every in-tree example
-does, and which you should too.
+does, and which you should too. The address goes in the image's board network
+file, named by `os_config` (below).
 
 ## Configure
 
@@ -116,7 +117,17 @@ dispatch = "deferred"
 [image.mps2-an385-baremetal]
 board = "qemu-mps2-an385"
 locator = "tcp/10.0.2.2:10500"
-net = { eth0 = { network = "qemu", host = 10 } }
+os_config = ["board-net.toml"]
+```
+
+and the image's address sits in the board network file it names,
+`board-net.toml` beside `system.toml` (RFC-0109 D4 — the board package owns
+the device, so its address lives in the board's own file):
+
+```toml
+[eth0]
+network = "qemu"
+host = 10
 ```
 
 `board` picks the silicon and everything that follows from it; `rmw` picks the
