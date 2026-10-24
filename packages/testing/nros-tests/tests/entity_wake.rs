@@ -577,6 +577,16 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
 /// ring used to refuse the incoming sample instead, and this measured
 /// `latest 23` of 25 with the same shape. The samples the ring could not
 /// hold are counted, which is also the control that the ring did fill.
+///
+/// Issue 1997 — the ring fills BY CONSTRUCTION, not by speed. The burst used
+/// to come from a publisher thread that had to outrun a deliberately slow
+/// callback, and under load (or, after issue 2001 slowed the publisher, even
+/// alone) it often did not, so the control refused the run. Now the "slow
+/// subscription" is one nobody drains: the whole burst is published while
+/// the executor is NOT spinning, so zenoh-pico's background read task lands
+/// every arrival in a ring that nothing empties. That the ring overflowed is
+/// then a precondition, waited for and asserted before any dispatch, and the
+/// spin afterwards tests only what a full ring kept.
 #[rstest]
 #[case::drains_to_empty(Shape::DrainsToEmpty)]
 #[case::one_sample_per_dispatch(Shape::OneSamplePerDispatch)]
@@ -585,9 +595,7 @@ fn a_burst_into_a_slow_subscription_ends_on_its_newest_sample(
     #[case] shape: Shape,
 ) {
     use std::sync::atomic::{AtomicU32, Ordering::SeqCst};
-    /// Four publishes per callback, so the ring fills within one dispatch.
-    const CALLBACK_COST: Duration = Duration::from_millis(2);
-    const PUBLISH_INTERVAL: Duration = Duration::from_micros(500);
+    /// Well past the ring's depth (4), so most of the burst must be evicted.
     const BURST: u32 = 25;
     require_zenohd();
     let locator = zenohd_unique.locator();
@@ -604,7 +612,6 @@ fn a_burst_into_a_slow_subscription_ends_on_its_newest_sample(
         if let Some(seq) = data.get(4..8) {
             latest_cb.fetch_max(u32::from_le_bytes(seq.try_into().unwrap()), SeqCst);
         }
-        std::thread::sleep(CALLBACK_COST);
     };
     let mut handle = exec.node_mut(node);
     let builder = handle
@@ -619,20 +626,20 @@ fn a_burst_into_a_slow_subscription_ends_on_its_newest_sample(
             .build(move |data: &[u8], _info: &_| on_sample(data)),
     }
     .expect("register subscription");
-    let publisher = SendPublisher(
-        exec.node_mut(node)
-            .create_publisher_raw("/entity_wake/burst", TYPE, "")
-            .expect("publisher"),
-    );
-    let drops_before = nros_rmw_zenoh::ring_full_drops_total();
-
-    // The first sample, alone, until it is dispatched: discovery has settled
-    // and the burst cannot be lost before the subscription matches.
+    let publisher = exec
+        .node_mut(node)
+        .create_publisher_raw("/entity_wake/burst", TYPE, "")
+        .expect("publisher");
     let publish = |seq: u32| {
         let mut payload = [0u8, 1, 0, 0, 0, 0, 0, 0];
         payload[4..8].copy_from_slice(&seq.to_le_bytes());
-        publisher.0.publish_raw(&payload).expect("publish");
+        publisher
+            .publish_raw(&payload)
+            .unwrap_or_else(|e| panic!("{shape:?}: sample {seq}: publish failed: {e:?}"));
     };
+
+    // The first sample, alone, until it is dispatched: discovery has settled
+    // and the burst cannot be lost before the subscription matches.
     let start = Instant::now();
     while latest.load(SeqCst) < 1 {
         assert!(
@@ -642,21 +649,42 @@ fn a_burst_into_a_slow_subscription_ends_on_its_newest_sample(
         publish(1);
         exec.spin_once(Duration::from_millis(50));
     }
+    let drops_before = nros_rmw_zenoh::ring_full_drops_total();
 
-    let publisher_thread = std::thread::spawn(move || {
-        let publisher = publisher;
-        for seq in 2..=BURST {
-            let mut payload = [0u8, 1, 0, 0, 0, 0, 0, 0];
-            payload[4..8].copy_from_slice(&seq.to_le_bytes());
-            publisher.0.publish_raw(&payload).expect("publish");
-            std::thread::sleep(PUBLISH_INTERVAL);
+    // The burst, with the executor NOT spinning: nothing drains the ring, so
+    // zenoh-pico's read task must overflow it. Waiting for that (without a
+    // spin) makes the eviction a precondition rather than a race.
+    for seq in 2..=BURST {
+        publish(seq);
+    }
+    let start = Instant::now();
+    while nros_rmw_zenoh::ring_full_drops_total() <= drops_before {
+        assert!(
+            start.elapsed() < ARRIVAL_BUDGET,
+            "{shape:?}: {} samples published into an undrained ring of depth 4 and none \
+             was evicted within {ARRIVAL_BUDGET:?}; either the arrivals never landed or the \
+             ring is deeper than this test assumes, so it cannot test eviction",
+            BURST - 1
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    // Let the rest of the burst land too, so the spin below sees the ring's
+    // final contents, not a burst still in flight.
+    let settle = Instant::now();
+    let mut drops = nros_rmw_zenoh::ring_full_drops_total();
+    while settle.elapsed() < ARRIVAL_BUDGET {
+        std::thread::sleep(Duration::from_millis(20));
+        let now = nros_rmw_zenoh::ring_full_drops_total();
+        if now == drops {
+            break;
         }
-    });
+        drops = now;
+    }
+
     let start = Instant::now();
     while latest.load(SeqCst) < BURST && start.elapsed() < ARRIVAL_BUDGET {
         exec.spin_once(Duration::from_millis(50));
     }
-    publisher_thread.join().unwrap();
     assert_eq!(
         latest.load(SeqCst),
         BURST,
@@ -664,6 +692,7 @@ fn a_burst_into_a_slow_subscription_ends_on_its_newest_sample(
          samples instead"
     );
     // Control: the ring really filled, so this tested what a full ring keeps.
+    // Asserted above as a precondition; kept here so the verdict names both.
     assert!(
         nros_rmw_zenoh::ring_full_drops_total() > drops_before,
         "{shape:?}: the ring never filled, so the burst did not test eviction"
