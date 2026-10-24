@@ -73,49 +73,68 @@ uint64_t nros_platform_clock_resolution_ns(void) {
     return (uint64_t)k_ticks_to_ns_floor64(1);
 }
 
-/* issue 0758 — the Zephyr wall-clock epoch, acquired once over SNTP.
+/* issue 0758 — the Zephyr wall-clock epoch, kept as an OFFSET from the
+ * monotonic clock. Two sources may install it:
+ *
+ *   - SNTP (CONFIG_SNTP), one exchange at boot;
+ *   - the timestamps on received zenoh samples (CONFIG_NROS_EPOCH_FROM_ZENOH,
+ *     phase-478 D4), for a board whose only link to the host is the zenoh
+ *     session itself — a UART, so no IP stack and no SNTP.
  *
  * WHY AN OFFSET AND NOT A QUERY PER CALL. `epoch_us` is on the message-stamp
- * path, so a network round trip per call is not an option — and SNTP's own
- * accuracy is worse than the monotonic clock's between acquisitions anyway. We
- * take ONE reading, subtract the monotonic clock at that instant to get a fixed
- * offset, and derive every later answer from `nros_platform_clock_ns()`. That
- * makes reads cheap, monotonic between acquisitions, and free of any failure
- * mode the network has.
+ * path, so a network round trip per call is not an option. We take a reading,
+ * subtract the monotonic clock at that instant to get an offset, and derive
+ * every later answer from `nros_platform_clock_ns()`. Reads are cheap and
+ * monotonic between installs.
  *
- * The jump the header warns about happens exactly once, when the offset is
- * installed: before it, callers get `0` (no wall clock) and stamp boot-relative
- * time knowingly; after it, absolute time. There is no window where a wrong
- * absolute value is published.
+ * Before the first install callers get `0` (no wall clock) and stamp
+ * boot-relative time knowingly; after it, absolute time. There is no window
+ * where a wrong absolute value is published.
  *
- * Gated on CONFIG_SNTP so an image that does not want a network clock does not
- * link one, and answers `0` — which the header defines as "no wall clock here"
- * rather than an error. */
+ * A spinlock, not two atomics: the zenoh source re-installs the offset for as
+ * long as the image runs (issue 0758's re-acquisition requirement), and a
+ * hi/lo pair read while a writer straddles a 2^32 us boundary would be off by
+ * 71 minutes. SNTP alone wrote it once, which is what the pair assumed.
+ *
+ * With neither source compiled in this answers `0`, which the header defines
+ * as "no wall clock here" rather than an error. */
+#if defined(CONFIG_SNTP) || defined(CONFIG_NROS_EPOCH_FROM_ZENOH)
 #ifdef CONFIG_SNTP
 #include <zephyr/net/sntp.h>
+#endif
 
 /* Microseconds to add to `nros_platform_clock_ns()/1000` to get UNIX time.
- * Zero means "not acquired"; written once by the acquirer, read by every
- * `epoch_us` caller. `atomic` because the acquirer runs on the boot thread
- * while tiers may already be stamping. */
-static atomic_t nros_zephyr_epoch_offset_lo = ATOMIC_INIT(0);
-static atomic_t nros_zephyr_epoch_offset_hi = ATOMIC_INIT(0);
+ * Zero means "not acquired". */
+static uint64_t nros_zephyr_epoch_offset;
+static struct k_spinlock nros_zephyr_epoch_lock;
 
 static uint64_t nros_zephyr_epoch_offset_get(void) {
-    /* Read hi/lo twice and retry on a torn pair. A 64-bit offset does not fit
-     * one atomic_t on 32-bit targets, and the value is written exactly once, so
-     * a single retry is sufficient — this is not a general seqlock. */
-    for (int attempt = 0; attempt < 2; attempt++) {
-        uint32_t hi1 = (uint32_t)atomic_get(&nros_zephyr_epoch_offset_hi);
-        uint32_t lo = (uint32_t)atomic_get(&nros_zephyr_epoch_offset_lo);
-        uint32_t hi2 = (uint32_t)atomic_get(&nros_zephyr_epoch_offset_hi);
-        if (hi1 == hi2) {
-            return ((uint64_t)hi1 << 32) | (uint64_t)lo;
-        }
-    }
-    return 0;
+    k_spinlock_key_t key = k_spin_lock(&nros_zephyr_epoch_lock);
+    uint64_t offset = nros_zephyr_epoch_offset;
+    k_spin_unlock(&nros_zephyr_epoch_lock, key);
+    return offset;
 }
 
+static void nros_zephyr_epoch_offset_set(uint64_t offset) {
+    k_spinlock_key_t key = k_spin_lock(&nros_zephyr_epoch_lock);
+    nros_zephyr_epoch_offset = offset;
+    k_spin_unlock(&nros_zephyr_epoch_lock, key);
+}
+
+uint64_t nros_platform_epoch_us(void) {
+    uint64_t offset = nros_zephyr_epoch_offset_get();
+    if (offset == 0ULL) {
+        return 0ULL; /* not acquired — no wall clock */
+    }
+    return offset + nros_platform_clock_ns() / 1000ULL;
+}
+#else /* neither source */
+uint64_t nros_platform_epoch_us(void) {
+    return 0;
+}
+#endif
+
+#ifdef CONFIG_SNTP
 int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms);
 int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms) {
     if (server == NULL || server[0] == '\0') {
@@ -134,27 +153,64 @@ int nros_platform_epoch_acquire_sntp(const char* server, uint32_t timeout_ms) {
     uint64_t frac_us = ((uint64_t)ts.fraction * 1000000ULL) >> 32;
     uint64_t now_us = ts.seconds * 1000000ULL + frac_us;
     uint64_t mono_us = nros_platform_clock_ns() / 1000ULL;
-    uint64_t offset = now_us - mono_us;
-    atomic_set(&nros_zephyr_epoch_offset_lo, (atomic_val_t)(uint32_t)offset);
-    atomic_set(&nros_zephyr_epoch_offset_hi, (atomic_val_t)(uint32_t)(offset >> 32));
-    return 0;
-}
-
-uint64_t nros_platform_epoch_us(void) {
-    uint64_t offset = nros_zephyr_epoch_offset_get();
-    if (offset == 0ULL) {
-        return 0ULL; /* not acquired — no wall clock */
-    }
-    return offset + nros_platform_clock_ns() / 1000ULL;
-}
-#else  /* !CONFIG_SNTP */
-/* No network clock compiled in. `0` is the honest answer, not a placeholder:
- * the header makes it mean "no epoch here", so a caller keeps stamping
- * boot-relative time knowingly rather than publishing a wrong absolute one. */
-uint64_t nros_platform_epoch_us(void) {
+    nros_zephyr_epoch_offset_set(now_us - mono_us);
     return 0;
 }
 #endif /* CONFIG_SNTP */
+
+/* phase-478 D4 — the epoch from zenoh sample timestamps.
+ *
+ * zenoh-pico's sample handler hands every timestamped sample's time here
+ * (`zpico.c`, `sample_handler`). A ROS 2 host's samples carry one: rmw_zenoh's
+ * router config enables timestamping for router, peers and clients, so a
+ * sample is stamped with the publishing host's HLC — its wall clock, NTP64
+ * since the UNIX epoch — or with the router's when the publisher left it
+ * unstamped. That is the clock every stamped-message peer on the host
+ * compares against, which is the only clock this exists to agree with.
+ *
+ * A sample's stamp is taken BEFORE it reaches us, so `stamp - mono` is low by
+ * the one-way latency. Within each CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS
+ * window the LARGEST offset seen is the least-delayed sample, and it is
+ * installed when the window closes; the first sample installs at once so the
+ * image stops stamping boot-relative time as early as it can. Re-installing
+ * every window is what issue 0758 measured a one-shot epoch could not do: on
+ * a free-running simulator a one-shot offset drifted ~10x real time.
+ *
+ * Runs on zenoh-pico's read task, the one thread that calls it, so the window
+ * state needs no lock; the installed offset does (readers are every thread).
+ * Defined in every build so zpico.c — which sees no CONFIG_* (its build script
+ * forwards none) — can call it unconditionally on Zephyr. */
+void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64);
+void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64) {
+#ifdef CONFIG_NROS_EPOCH_FROM_ZENOH
+    static uint64_t window_start_us;
+    static uint64_t window_max;
+    /* NTP64: seconds in the upper 32 bits, a binary fraction in the lower. */
+    uint64_t peer_us = (ntp64 >> 32) * 1000000ULL + (((ntp64 & 0xFFFFFFFFULL) * 1000000ULL) >> 32);
+    uint64_t mono_us = nros_platform_clock_ns() / 1000ULL;
+    if (peer_us <= mono_us) {
+        return; /* not a wall-clock reading */
+    }
+    uint64_t offset = peer_us - mono_us;
+    if (nros_zephyr_epoch_offset_get() == 0ULL) {
+        nros_zephyr_epoch_offset_set(offset);
+        window_start_us = mono_us;
+        window_max = 0;
+        printk("nros: wall-clock epoch acquired from zenoh sample timestamps\n");
+        return;
+    }
+    if (offset > window_max) {
+        window_max = offset;
+    }
+    if (mono_us - window_start_us >= (uint64_t)CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS * 1000ULL) {
+        nros_zephyr_epoch_offset_set(window_max);
+        window_start_us = mono_us;
+        window_max = 0;
+    }
+#else
+    (void)ntp64;
+#endif
+}
 
 /* ---- Allocation ----
  *
