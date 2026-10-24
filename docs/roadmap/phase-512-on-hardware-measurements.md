@@ -13,8 +13,9 @@ its board is attached; each one is independent of the others.
 **Gathered 2026-10-24:** [phase-162](phase-162-rt-scheduling-harness.md) 162.C
 (H4), [phase-418](phase-418-orin-safety-island-and-spe.md) 418.5 and 418.7
 (H5), the board leg of [phase-474](phase-474-safety-island-board-findings.md)
-T4 (H6), and [issue 1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md)
-(H7). Each source phase keeps a pointer where the item was. Board reruns that
+T4 (H6), [issue 1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md)
+(H7), and [issue 0902](../issues/0902-action-goal-completion-is-variable.md)
+(H8, moved 2026-10-24). Each source phase keeps a pointer where the item was. Board reruns that
 belong to the safety island's own phase (474 I6, I8, I9 and 446-W7's board
 leg are "the island's W4") stay in phase-474: they are blocked on a downstream
 project as much as on a board.
@@ -147,11 +148,30 @@ the record with `pmemsave`. Only the MR-CANHUBK344 dump is missing.
 **Done when** the issue's board run decodes to the same verdict as the QEMU
 lane, and the issue is archived.
 
+### H8 — action goal completion rate on the MR-CANHUBK344, over serial
+
+[Issue 0902](../issues/0902-action-goal-completion-is-variable.md), moved
+here from phase-474 on 2026-10-24. On a bare-metal serial board inside a real
+ROS 2 graph, goals were accepted and then completed in 20 % to 90 % of runs on
+one build. The native lane now gates the completion path end to end
+(`just linux test-action-completion`, 3/3), but issue 1332 showed that lane
+cannot exercise the reply-slot path at all: a one-slot table refuses nothing
+there. Only the board, inside a real graph, has the peer population that
+showed the symptom.
+
+**Done when** a freshly built image on the MR-CANHUBK344 (`mr_canhubk3/s32k344`),
+over its direct serial link, a router and a live ROS 2 peer, has its goal
+completion rate recorded over enough runs to separate it from the 20–90 %
+spread, with `zpico_reply_slot_declines` read during the run. Non-zero puts
+the failure back on the reply-slot path; zero with goals still failing rules
+that path out.
+
 ## Issues homed here
 
 | issue | why it belongs here |
 | --- | --- |
 | [#1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) | H7: its only open step runs on the MR-CANHUBK344. |
+| [#0902](../issues/0902-action-goal-completion-is-variable.md) | H8: its open measurement is a hand run on the MR-CANHUBK344. |
 
 ## Not in this phase
 
