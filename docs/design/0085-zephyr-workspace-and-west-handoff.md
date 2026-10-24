@@ -275,22 +275,26 @@ conf fragment reported "not found" in two paths that were the same path twice.
 right-looking answer and a WRONG one often enough that the resolver lists the
 candidates and stops, and the image says which:
 
-> **Correction, 2026-09-27 (issue 1520).** The count and the examples that stood
-> here — "six of the fourteen Zephyr images match more than one entry package",
-> `realtime-cpp`'s `zephyr_entry`/`fvp_entry` "same board", and
-> `[image.zephyr_robot1]` "would have built `zephyr_entry`" — do not survive
-> measurement. `realtime-cpp`'s pair was an artefact of `[image.fvp] board`
-> misreading as `native_sim/native/64` (issue 1517); and a RUST entry is matched
-> on the image its own `system.toml` names, not on its board, so
-> `examples/workspaces/rust` is not an ambiguity either — `[image.zephyr]`
-> derives `zephyr_entry` correctly with no `entry =` at all. The refusal below
-> is still right, and the arm the tree actually hits is the OTHER one: no
-> package claims the board, so the resolver falls back to the Bringup directory.
-> Both arms and the unclassified `entry =` rows are issue 1520.
+Measured 2026-10-24 (issue 1520): no image in `examples/` names an `entry`
+now. Issue 1288 deleted the hand-written applications and `nros build`
+generates one per image at `build/<coord>/<image>_entry/`, so every example
+image derives its application by construction and neither arm is reached.
+`entry` is left for an application someone wrote by hand. The tree has four,
+all test fixtures, and each says in a comment which arm it answers:
+`multi_pkg_workspace_zephyr` and `zephyr_self_pkg/sibling` name a west app the
+image id cannot derive, and the two FreeRTOS fixtures name their firmware
+package.
+
+The ambiguity arm stays reachable only for C/C++ packages matched by their
+`DEPLOY` token. A Rust entry is matched on the image its own `system.toml`
+names, so it is never a candidate for a sibling image. An earlier version of
+this section counted "six of the fourteen Zephyr images" as ambiguous and cited
+`realtime-cpp` and `examples/workspaces/rust`. Neither survived measurement
+(issues 1517, 1520), and both workspaces now generate their entries.
 
 ```toml
-[image.zephyr_robot1]
-entry = "zephyr_entry_robot1"
+[image.zephyr]
+entry = "zephyr_app"   # a hand-written west application
 ```
 
 This is why `entry` is an image key rather than a derived value, and it is the

@@ -2,7 +2,8 @@
 id: 1520
 title: "The `entry =` ambiguity every doc cites was the one issue 1517 measured as
   manufactured, and the tree now has no measured ambiguity case at all"
-status: open
+status: resolved
+resolved: 2026-10-24
 type: docs
 area: [docs, examples, cli]
 severity: low
@@ -82,3 +83,26 @@ six sites will make the same prediction.
   image. That is the question to answer first; the other eight follow from it.
 * Issue 1288 makes the whole question moot for generated entries; this is worth
   only the gap before it lands, and the prose correction is worth it regardless.
+
+## Resolution (2026-10-24)
+
+Issue 1288 settled most of this before anyone returned to it. It deleted
+the hand-written Zephyr applications, so `examples/` holds no `entry =` row
+now. The ten rows this issue wanted classified are gone, and every example
+image derives its application by construction.
+
+- **0085 restated.** The correction note is replaced with what was measured.
+  No example names an entry. The four rows left in the tree are test
+  fixtures (`multi_pkg_workspace_zephyr`, `zephyr_self_pkg/sibling` and the
+  two FreeRTOS ones), and each says in its own comment why its west app or
+  firmware package cannot be derived. The ambiguity arm is reachable only
+  for C/C++ `DEPLOY` matches. The key's example is now a hand-written app
+  rather than `zephyr_entry_robot1`, which no longer exists.
+- **Book.** `integration-zephyr.md`'s "worked examples" snippet still showed
+  `entry = "zephyr_entry"`, which no example carries. The line is removed,
+  and the page now says when `entry` is needed.
+
+Not answered: the open question above, why `[image.zephyr]` and
+`[image.zephyr_robot1]` differed although both are Rust entries naming
+their own image. Both packages are deleted, so it cannot be reproduced and
+no longer matters.

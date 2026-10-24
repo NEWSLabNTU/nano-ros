@@ -294,8 +294,8 @@ point: it is not in progress, and it will not start itself.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1511](../issues/1511-no-worked-example-of-entry-customisation.md) | every entry is generated now, so nothing shows a user the escape hatch: a worked example of customising an entry. From the archived phase-477. |
-| [#1520](../issues/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md) | the `entry =` ambiguity the docs cite was manufactured (issue 1517), so the docs explain a case that no longer exists. From the archived phase-477. |
+| [#1511](../issues/1511-no-worked-example-of-entry-customisation.md) | every entry is generated now, so nothing shows a user the escape hatch: a worked example of customising an entry. From the archived phase-477. Its deferral condition, issue 1288, was met on 2026-10-11. |
+| [#1520](../issues/archived/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md) | the `entry =` ambiguity the docs cite was manufactured (issue 1517), so the docs explain a case that no longer exists. From the archived phase-477. **RESOLVED 2026-10-24**: issue 1288 left no `entry =` row in `examples/`; 0085 and the book now say so. |
 
 ## Open issues that name this phase
 
