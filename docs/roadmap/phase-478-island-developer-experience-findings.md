@@ -1,6 +1,15 @@
 # Phase 478 -- the island's developer-experience findings: borrowed toolchains, silent knobs, derivations without arithmetic
 
-**Status (2026-10-05). PROPOSED -- nothing implemented.** Records the
+**Status (2026-10-24). IN PROGRESS -- D1-D4 decided, I1-I8 landed; T2 and
+T3 wait on the island's board.** Refreshed 2026-10-24: D2/I3 and the first half
+of I8 had already landed under phase-474 I5 and issue 1534's configure warning,
+and most issues the 2026-10-05 text cited as open are resolved (T1). What is
+left needs the S32K344 and the island tree: the fresh-worktree and island
+`image-facts` re-run (T2), the stated-below-derived build of the island image
+(T3), and on-board confirmation of D4's epoch. I8's second half waits on
+phase-474 T3.
+
+Originally (2026-10-05, PROPOSED). Records the
 nano-ros half of the developer-experience gaps the Autoware safety island
 (simple-autoware-safety-island) met while building, flashing and running its
 RTSS@Work 2026 demo on an NXP S32K344. The runtime findings of the same demo
@@ -59,29 +68,29 @@ item of this phase; anything else is where it is already tracked.
 
 | gap | what | where it lives |
 | --- | --- | --- |
-| 3.1, 3.2, 3.12 | a checkout silently uses another checkout's `nros`, SDK or workspace; setup is per worktree and unchecked | here D1, I1, I2; issues 1253, 1254, 1234, 1399, 1373 |
+| 3.1, 3.2, 3.12 | a checkout silently uses another checkout's `nros`, SDK or workspace; setup is per worktree and unchecked | here D1, I1, I2 (landed); issues 1253, 1254, 1234, 1399, 1373 (all resolved) |
 | 3.3 | a value written in the wrong config file is ignored | mostly fixed upstream by `3d52070ec`; see "Already answered" |
-| 3.4 | a stated knob beats the derivation in silence | here D2, I3 |
+| 3.4 | a stated knob beats the derivation in silence | here D2, I3 (landed, `06d1880a13`) |
 | 3.5 | three heap figures disagree; QEMU needed 1 MiB once Autoware joined | phase-474 I5 (cross-ref only) |
-| 3.6 | the liveliness count (25) has no recorded arithmetic | here D3, I4 |
-| 3.7, 4.5 | refusals that mislead, failures that announce nothing | here I5; issues 1120, 1303, 1036, 1252 |
-| 3.8 | a contract edit does not invalidate the model | issue 1121 |
+| 3.6 | the liveliness count (25) has no recorded arithmetic | here D3, I4 (landed) |
+| 3.7, 4.5 | refusals that mislead, failures that announce nothing | here I5; issues 1120, 1303, 1036, 1252 (all resolved) |
+| 3.8 | a contract edit does not invalidate the model | issue 1121 (resolved) |
 | 3.9 | a standing "no producer" on every `nros sync` | phase-474 I4 |
-| 3.10 | scheduling derivation inert, one stderr line | issue 1371 |
+| 3.10 | scheduling derivation inert, one stderr line | issue 1371 (open) |
 | 3.11 | slow first build; `nros setup native` source-builds zenohd | issue 0374 (resolved); host hygiene is the island's |
 | 3.13 | `image-facts --for-entry zephyr_entry` refused on the pristine tree | here T2 (re-verify) |
-| 1.6 | a declared endpoint is never checked against the code | phase-463 (W6 flips the island); issue 1419 |
-| 2.2, 2.3 | the CLI's vendored play_launch moves on its own; versions do not name the grammar | here I7 |
-| 4.1 | a console-less board's log needs four unannounced steps | here I6 |
+| 1.6 | a declared endpoint is never checked against the code | phase-463 (archived); issue 1419 (resolved) |
+| 2.2, 2.3 | the CLI's vendored play_launch moves on its own; versions do not name the grammar | here I7 (landed) |
+| 4.1 | a console-less board's log needs four unannounced steps | here I6 (landed) |
 | 4.2 | RX ring default at its edge; main thread priority unstated | phase-474 T3 owns the values; here I8 owns where a board author learns them |
 | 4.3 | the lease `min()` looked like a peer join | phase-474 T1 |
 | 5.1, 5.2, 5.7 | violations invisible; ring keeps the first 8; start-up entries | phase-474 D1, D2, I1, I2, T4 |
 | 5.3 | the runtime monitor checks a callback, the budget is a route | phase-474 D3 |
 | 1.4 | a budget is also a deadline and a monitor | phase-474 D4 |
-| 5.4 | no board time source over serial | here D4; issue 0758 |
+| 5.4 | no board time source over serial | here D4 (Zephyr landed); issue 0758 |
 | 5.6 | instruments that read zero or are absent | phase-474 I3, T2 |
 | 7.2 | `find .` walks into worktrees | issue 1565 (resolved) |
-| 7.5 | issue status drift | here T1; issue 1489 |
+| 7.5 | issue status drift | here T1 (refreshed 2026-10-24); issue 1489 (resolved) |
 
 The island's own stale-checkout habit (a six-weeks-old `~/repos/nano-ros`) is
 the user's, not nano-ros's, and is not an item.
@@ -144,6 +153,32 @@ Proposal, to decide in this document:
 Not proposed: keying build directories by checkout. That is issues 1399 and
 1596's question (1596 resolved it for the Zephyr build dirs) and stays there.
 
+**Decided (2026-10-24).** What changed underneath this section first: issue
+1254 (resolved 2026-10-23) moved the SDK into the store, so `just zephyr setup`
+no longer writes one inside a checkout, and the `~/.nros/workspaces/zephyr/*`
+directories quoted above no longer exist on this host. Issue 1253's manifest
+half is checked by `check-zephyr-workspace-checkout.sh` on every tier-2 run, and
+issue 1379's `nros_assert_single_checkout` refuses a module from another
+checkout at configure. Issue 1373 found the fast tier green in a pristine
+worktree and added `check pristine-checkout`; issue 1513 added
+`_require-worktree-provisioning`, which reports every missing submodule and
+both binaries at once.
+
+1. **Kept as proposed.** Both doctors FAIL on a borrowed `nros`. "Borrowed"
+   means it resolves (through symlinks) into a DIFFERENT nano-ros checkout.
+   An `nros` outside any checkout is a release or store install, and stays OK.
+   This is the same three-row rule `scripts/lib/checkout-paths.sh` states for
+   inherited paths, asked through one new helper, `nros_foreign_checkout_of`.
+2. **Narrowed: ownership, not the lock.** The configure refuses an SDK
+   inside another checkout. It does not compare the SDK against
+   `nros-sdk.lock`. The lock records versions, while the defect was a path; a
+   store SDK at a version the lock does not name is `drift.rs`'s `tool` kind,
+   already a separate check. The west-manifest half is issue 1379's refusal
+   plus 1253's tier-2 check, so I2 adds nothing for it.
+3. **Mostly answered by 1513.** The one missing item was the hooks, which are
+   not a precondition of the lane (it passes without them). So they appear as
+   a NOTE in the same report rather than as a failure.
+
 ### D2 -- a stated number that loses to the derivation says so
 
 `zephyr/cmake/nros_cargo_build.cmake:432-438`, `_nros_resolve_derivable_knob`:
@@ -166,6 +201,16 @@ value anyway and compare.
 - stated ABOVE: a STATUS line with both numbers, so the over-provision is
   visible and reviewable.
 - equal: say nothing new; suggest deleting the stated line.
+
+**Decided and landed (`06d1880a13`, phase-474 I5): a WARNING, never a
+refusal.** `_nros_compare_stated_to_derived` runs on both stating rungs
+(Kconfig, environment) in `_nros_resolve_derivable_knob`. A stated value below
+the derivation warns, above it prints a STATUS with both numbers, and equal says
+the line can be deleted. No acknowledgement knob: a stated value already wins,
+which is what "a derived value is a default" means, and a refusal would turn
+every board that knows better into an override fight. The message names the
+RUNG, not the file. Zephyr merges Kconfig fragments before this code sees a
+value, so the file is in the build's `Merged configuration` lines, not here.
 
 Related, and not the same: [issue 1490](../issues/1490-kconfig-knob-forwarding-gate-tests-mention-not-table-row.md)
 (open) is about a knob not being FORWARDED, not about a forwarded one losing;
@@ -205,6 +250,21 @@ of D2 -- for liveliness, "25 = 4 node tokens + P publishers + S subscribers + Q
 queryables + C clients". The format is shared, so a test can hold the sum equal
 to the value.
 
+**Decided (2026-10-24).** A composition exists for a knob that is a SUM of
+declared counts: `MAX_SUBSCRIBERS`, `MAX_PUBLISHERS`, `MAX_QUERYABLES`,
+`MAX_LIVELINESS`. A knob that is one count (`EXECUTOR_MAX_NODES`), a max
+(`RUNTIME_MAX_CELL_ENTITIES`) or a flag (`RMW_LOCAL_QUERYABLE`) has no
+arithmetic to show; its fragment comment already says what it counts. Each
+composition is carried as `NROS_COMPOSITION_<knob>`, deliberately NOT
+`NROS_DERIVED_*`, because that prefix is the set of facts
+`check-knob-delivery` follows to the compiler. **Not in `image-facts`:** that
+query stops before generation and carries no entity facts at all, since the
+entity inventory is composed at configure by `nano_ros_entry()`. The query that
+answers it is `nros ws entity-inventory`, whose JSON now has a `compositions`
+table. A merge across images keeps the composition of the image that set the
+max, so the merged line still sums to the merged value; a per-term max would
+describe no image.
+
 ### D4 -- a time source for a board with no IP stack
 
 [Issue 0758](../issues/0758-platform-sntp-epoch-source.md) (open) proposes
@@ -223,6 +283,26 @@ gateway. 0758's first work item (the ABI function with a returns-0 sentinel and
 its POSIX implementation) is independent of this choice and can land first.
 The island consumes it in its phase 9 W3 and W9.
 
+**Decided (2026-10-24): the timestamps zenoh already puts on every sample.
+Neither of the two options above.** rmw_zenoh's router config enables
+timestamping for router, peers and clients (`timestamping.enabled`, checked in
+Humble's `DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5`). So every sample a ROS 2 host
+sends arrives stamped with the publisher's HLC, which is that host's wall clock
+in NTP64 since the UNIX epoch, or with the router's if the publisher left it
+unstamped. That is the clock the stamped-message peers compare against. It
+needs no gateway, no new exchange and no protocol, and it re-acquires for as
+long as samples arrive, which issue 0758 measured a one-shot epoch cannot do.
+`CONFIG_NROS_EPOCH_FROM_ZENOH`: the first timestamped sample installs the
+offset; after that, each `CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS` window
+re-installs the largest offset it saw, i.e. the least-delayed sample's.
+Accepted limits:
+- low by one link latency;
+- no epoch for an image that receives nothing;
+- Zephyr only, since FreeRTOS and ThreadX answer 0 and issue 0772 keeps them.
+
+0758's first work item had already landed (`nros_platform_epoch_us`, every
+port).
+
 ## Implementation
 
 ### I1 -- the doctor names a borrowed `nros`
@@ -232,6 +312,25 @@ the checkout; `install_nros_source` does not accept a foreign one; the first
 recipe that needs the CLI, the fast-gate submodules or the hooks checks all
 three at once. Issue 1373 is the gate half of the same fresh-worktree shape.
 
+**Landed (2026-10-24).**
+- `scripts/bootstrap.sh shell-doctor` FAILs on a borrowed `nros`, naming
+  both checkouts and `just setup-cli && source ./activate.sh`.
+- `install_nros_source` builds this checkout's CLI instead of returning early.
+- `just doctor` gains a `borrowed` state for the case it used to pass as
+  "in-tree CLI not built yet, whatever is on PATH is fine".
+- `_require-worktree-provisioning` notes an unset or wrong `core.hooksPath`.
+  An absolute spelling of `.githooks` counts as set.
+- Found on the way: `bootstrap.sh --dry-run` BUILT the CLI. A
+  `# profile-literal-ok` marker comment inside the `\` continuation ended the
+  `run_cmd` call, so `run_cmd` got a label and no command, and `cargo build`
+  ran on its own, outside `--dry-run`. The marker now sits above the call
+  (still inside `check-build-profile-literals`' 3-line window), and a
+  repository sweep found no other comment that cuts a continuation short.
+
+Measured with a synthetic second checkout first on PATH:
+`[FAIL] nros on PATH (…/bin/nros) belongs to ANOTHER checkout`, and
+`--dry-run` prints both `cargo build` lines without running them.
+
 ### I2 -- the lock is checked at configure
 
 D1.2: the Zephyr module refuses an SDK or a west manifest that belongs to
@@ -240,15 +339,39 @@ refused. Then re-provision the shared workspaces on this host so that their
 `env.sh` names store paths, and close issue 1254 and the module half of issue
 1253 on that run.
 
+**Landed (2026-10-24), narrowed per D1.2.** `nros_assert_sdk_not_foreign` in
+`zephyr/cmake/nros_checkout_guard.cmake` runs right after issue 1379's
+application check. It refuses `ZEPHYR_SDK_INSTALL_DIR` inside a different
+checkout, naming both and `just zephyr setup`. `-DNROS_ALLOW_FOREIGN_SDK=ON`
+downgrades it to a warning. 1254 and 1253 were closed by their own work, and
+the `--prefix` install no longer exists (1254: `setup.sh` installs into the
+store). New gate `just check zephyr-checkout-guard` runs both functions over
+synthetic checkouts under `cmake -P`, eight rows, with a downgraded-guard
+negative control on every run. No lane has two checkouts, so nothing else
+reaches either refusal.
+
 ### I3 -- stated-vs-derived on every derivable knob
 
 D2 in `_nros_resolve_derivable_knob`, with the message-bound and entity
 inventories both feeding it; the `FRAG_MAX_SIZE` comparison of issue 1368 on the
 same path.
 
+**Landed** in `06d1880a13` (phase-474 I5). Issue 1368 landed as a refusal on
+both roads through `nros_sizing_descriptor::receive_ceiling` (`e6396d757f`).
+
 ### I4 -- compositions in the fragment and in `image-facts`
 
 D3 for every `NROS_DERIVED_*` pool knob, liveliness first.
+
+**Landed (2026-10-24)** for the four summed pools (D3's decision).
+- `entity_inventory::Composition`, and `DerivedEntityKnobs::compositions`
+  built beside the sums they mirror term for term.
+- The fragment writes `set(NROS_COMPOSITION_<knob> "<sum> = <terms>")`.
+  `_nros_derived_composition` appends it to the configure's `DERIVED from`
+  STATUS and to D2's warning (`… derives (25 = 4 node tokens + …)`).
+- The inventory JSON carries a `compositions` table.
+- `compositions_sum_to_their_knobs` holds each total equal to its knob, on
+  one image and across a merge.
 
 ### I5 -- refusals that point at something that exists, failures that reach the record
 
@@ -275,6 +398,15 @@ D3 for every `NROS_DERIVED_*` pool knob, liveliness first.
   (open): the board build refused its own image on
   `NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS`.
 
+**Done (checked 2026-10-24).** 1120, 1303, 1036 and 1252 are all resolved and
+archived. The C shim's pool-exhaustion line needed no routing. The liveliness
+`printk` in `zpico.c` is the only exhaustion `printk` in the shim, and its one
+caller, `declare_entity_liveliness` in `nros-rmw-zenoh`'s `shim/session.rs`,
+already logs an `nros_log` ERROR on that return. Since 1036 the boot record
+counts every such ERROR, with its file and line. The `printk` is a second
+copy of the same event for a console, if there is one. The island's
+re-check of its triage section 3 after its next pin bump is the island's.
+
 ### I6 -- a console-less board has a documented log path
 
 The island's triage section 1 needs four steps no error mentions to read a log
@@ -286,6 +418,19 @@ issue 1036's record v9, and the RTT recipe as the second; optionally an
 `nros-rtt` snippet that sets the module and buffer. The board-specific half
 (which UART is wired) stays the island's.
 
+**Landed (2026-10-24):** book page
+[Observing a Board With No Console](../../book/src/user-guide/console-less-boards.md).
+It covers three channels, in order:
+1. the boot record: what record v11 carries, and the `--addr-only` /
+   `savemem` / decode commands;
+2. `CONFIG_NROS_FAULT_LOG`;
+3. RTT last, with the island's four-row table and the 16 KiB up-buffer.
+
+The page says why the order matters: issue 0913 measured that attaching the
+probe kills a serial zenoh session. No `nros-rtt` snippet: the SEGGER module
+is not in the west allowlist, and adding it is a module decision
+(`[zephyr_module.*]`), not a documentation one.
+
 ### I7 -- the CLI names the grammar it embeds
 
 `packages/cli/third-party/play_launch` is a submodule the CLI vendors, moved by
@@ -294,6 +439,15 @@ and its PATH holds a third copy (gap 2.3). `nros --version` (or a `--verbose`
 form) prints the vendored play_launch commit and the rlm tag it parses with, so
 "which grammar judged this contract" has an answer from the tool that judged it.
 The play_launch-side `--version` fix is play_launch's.
+
+**Landed (2026-10-24) on `nros version`, not `--version`.** `install.sh`,
+`check-release-manifest.py` and the launcher's dispatch each read `--version`
+as one line (`awk '{print $NF}'`), and `nros version` was already the
+multi-line form (it prints the codegen version). It now also prints
+`play_launch <sha>` (issue 0409's `NROS_PLAY_LAUNCH_SHA`) and
+`ros-launch-manifest <tag>`. `build.rs` reads the tag from the
+`ros-launch-manifest-types` row of the crate's own manifest. CLAUDE.md requires
+one tag across every crate, so that row answers for all of them.
 
 ### I8 -- the serial-link pair is learnt from nano-ros, not from the island's conf
 
@@ -310,30 +464,42 @@ help name both lines and why; when T3 lands, the default moves under
 for snippet sizing), so a board conf can still override it, and D2's compare
 reports a stated value below it.
 
+**First half landed.**
+- The `NROS_ZENOH_SERIAL_RX_RING_BYTES` help names the island's 4096 and the
+  main-priority pairing.
+- `zephyr/cmake/nros_rmw_zenoh.cmake` WARNS at configure when the main
+  thread is not below the read task on a serial link, naming the number to
+  use (issue 1534's configure half).
+- The serial guide's new "Zephyr: a board that joins over a UART" section
+  (2026-10-24) names both lines and why. Its stale Zephyr row (`uart_poll_*`
+  only) now names the interrupt-driven ring of issue 0852.
+
+The second half waits on phase-474 T3; issue 1534 stays open there.
+
 ## Test / check
 
 ### T1 -- issue status sweep
 
 The island document read several nano-ros issues as open that are not, and one
-as open whose defect is fixed. Checked 2026-10-05 on origin/main:
+as open whose defect is fixed. First checked 2026-10-05; re-checked against
+each issue file on 2026-10-24, when most of the table had closed under other
+work:
 
-| issue | file status | actual |
+| issue | status 2026-10-05 | status 2026-10-24 |
 | --- | --- | --- |
-| 1253, 1254, 1234, 1399, 1373 | open | open |
-| 1596 | resolved (archived) | resolved; the island document lists it as open |
-| 1424 | resolved (archived) | resolved for native_sim; board and QEMU not done (474 I5) |
-| 1425 | resolved (archived) | resolved |
-| 0374, 1565 | resolved (archived) | resolved |
-| 1120 | open | defect fixed by `51fdfef44` (I5) |
-| 1490, 1368 | open | open; 1490 is forwarding, not stated-wins (D2) |
-| 0758 | open | open (D4) |
-| 1533, 1534, 0852 | open | 474 T3 |
-| 1303, 1036, 1252 | open | open (I5) |
-| 0934, 0941, 1121, 1371, 1419, 1489 | open | open |
+| 1253, 1254, 1234, 1399, 1373 | open | resolved, archived |
+| 1596, 1424, 1425, 0374, 1565 | resolved | resolved (1424 still native_sim only; 474 I5) |
+| 1120 | open, defect fixed by `51fdfef44` | resolved, archived |
+| 1368 | open | resolved, archived (a refusal on both roads) |
+| 1490 | open | open -- forwarding, not stated-wins (D2) |
+| 0758 | open | open; the link-only provider landed (D4), re-acquisition on the SNTP path and the FreeRTOS half (0772) remain |
+| 1533, 0852 | open | resolved, archived |
+| 1534 | open | open -- 474 T3 (I8's second half) |
+| 1303, 1036, 1252 | open | resolved, archived (I5) |
+| 0934, 0941, 1121, 1419, 1489 | open | resolved, archived |
+| 1371 | open | open |
 
-Resolve 1120 per I5. Issue 1489 is the general form of this row; it was
-resolved 2026-10-22 for the one artifact that can answer it mechanically, the
-API-parity ledger (a section of `just roadmap-audit`), and archived.
+**Done (2026-10-24).** Every row now matches its issue file.
 
 ### T2 -- the fresh-worktree run, and `image-facts` on the island
 
@@ -392,28 +558,35 @@ I5, I6, I7 and I8 are independent. I8's second half waits on 474 T3.
 
 ## Acceptance
 
-- [ ] D1, D2, D3, D4 each decided and written into this document.
-- [ ] I1: the doctor FAILs on an `nros` outside the checkout, and the first
+- [x] D1, D2, D3, D4 each decided and written into this document (2026-10-24).
+- [x] I1: the doctor FAILs on an `nros` outside the checkout, and the first
       recipe that needs them names a missing CLI, submodules and hooks at once.
-- [ ] I2: a Zephyr configure refuses an SDK or west manifest from another
-      checkout that the lock does not name; the shared workspaces on the
-      development host name store paths; issue 1254 resolved.
-- [ ] I3: a derivable knob stated below its derived value warns or refuses at
-      configure, naming both numbers and the stating file.
-- [ ] I4: every derived pool knob prints its composition with values, and a test
-      holds the sum equal to the value.
-- [ ] I5: issue 1120 resolved and archived; the C shim's pool-exhaustion lines
-      reach the boot record.
-- [ ] I6: a Zephyr guide page names the boot record and the RTT recipe for a
-      console-less board.
-- [ ] I7: `nros --version` names the vendored play_launch commit and rlm tag.
+- [x] I2: a Zephyr configure refuses an SDK from another checkout (narrowed
+      from "that the lock does not name", D1.2); the west manifest half is
+      issue 1379's refusal; issue 1254 resolved. No shared workspace exists
+      on the development host any more, so there was none to re-provision.
+- [x] I3: a derivable knob stated below its derived value warns at configure,
+      naming both numbers and the stating rung (`06d1880a13`).
+- [x] I4: every SUMMED pool knob prints its composition with values, and a test
+      holds the sum equal to the value (D3 says which knobs are sums).
+- [x] I5: issue 1120 resolved and archived; the pool-exhaustion event reaches
+      the boot record through the Rust caller's ERROR log (checked, no change).
+- [x] I6: a book page names the boot record, the fault record and the RTT
+      recipe for a console-less board.
+- [x] I7: `nros version` names the vendored play_launch commit and rlm tag
+      (`--version` stays one line; I7).
 - [ ] I8: the serial-link guide and Kconfig help name the main-priority and
-      RX-ring lines until 474 T3 makes them defaults.
-- [ ] T1: every row of the status table matches its issue file (1120 archived).
+      RX-ring lines (done) until 474 T3 makes them defaults (waits on T3).
+- [x] T1: every row of the status table matches its issue file (1120 archived).
 - [ ] T2: the fresh-worktree run passes as stated; `image-facts` on the island
-      re-run and its result recorded.
+      re-run and its result recorded. Needs the island tree at a pin that
+      carries this phase.
 - [ ] T3: the island image shows the stated-below-derived message and a
-      liveliness composition that sums to the resolved value.
+      liveliness composition that sums to the resolved value. Needs the
+      island's board build.
+- [ ] D4 on the board: `nros: wall-clock epoch acquired from zenoh sample
+      timestamps` on the S32K344 with `CONFIG_NROS_EPOCH_FROM_ZENOH=y`, and the
+      hazard command's stamp compared with host time (the island's phase 9 W3).
 
 ## Open issues that name this phase
 

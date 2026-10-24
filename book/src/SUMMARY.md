@@ -69,6 +69,7 @@
 - [QoS, Status Events, and Discovery](./concepts/status-events.md)
 - [TX Throughput & Latency Tuning](./user-guide/tx-tuning.md)
 - [Serial Transport](./user-guide/serial-transport.md)
+- [Observing a Board With No Console](./user-guide/console-less-boards.md)
 - [RTIC Integration](./user-guide/rtic-integration.md)
 - [Embassy Integration](./user-guide/embassy-integration.md)
 - [Troubleshooting](./user-guide/troubleshooting.md)
