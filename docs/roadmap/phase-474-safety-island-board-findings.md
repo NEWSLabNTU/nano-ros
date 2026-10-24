@@ -3,7 +3,8 @@
 **Status (2026-10-06). IN PROGRESS.** D5 had already landed before this
 phase was written (issue 1567, see D5). D1, D2, I1 and I2 landed on branch
 `feat/violation-ring-and-arming` (issues 1714, 1715); T4 landed as a host
-executor test, its native_sim / QEMU / board runs are open. Every other item is
+executor test and a native_sim fixture; its QEMU run is open, and its board run
+moved to [phase-512](phase-512-on-hardware-measurements.md) H6 on 2026-10-24. Every other item is
 open. Records the open work the Autoware safety island's RTSS@Work 2026 demo
 (simple-autoware-safety-island, phase 8) found in nano-ros while running its
 three acts on an NXP S32K344 (MR-CANHUBK344) behind a 921,600-baud UART and an
@@ -1153,8 +1154,9 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
       channel. (Host executor e2e landed; the board run of 2026-10-06 shows
       the overrun as timer-overrun and jitter verdicts and markers, not as
       `max-latency-runtime`: I6. native_sim fixture landed:
-      `violation_channel_e2e`, one latency verdict after arming; QEMU and
-      the board run stay open.)
+      `violation_channel_e2e`, one latency verdict after arming; QEMU
+      open here. The board run moved 2026-10-24 to
+      [phase-512](phase-512-on-hardware-measurements.md) H6.)
 - [ ] I6: a timer-fired callback that overruns its `max_latency` produces a
       `max-latency-runtime` verdict, on the host test and on the S32K344.
       (Host half landed in #1750: the trigger-miss sweep times each timer
@@ -1193,10 +1195,12 @@ this phase will fix it.
 
 ## Issues homed here (2026-10-17)
 
+[issue 1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) moved to [phase-512](phase-512-on-hardware-measurements.md) H7
+on 2026-10-24.
+
 Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) | The boot report's arena-exhaustion record has never been dumped from the MR-CANHUBK344. |
 | [#1806](../issues/1806-zenoh-constrained-link-unvalidated-on-full-autoware-graph.md) | The constrained-link zenoh changes from phase-473 have never run against the full Autoware graph on the island. |
 | [#1822](../issues/1822-can-link-priority-mapping-blocked-by-join-size.md) | The zenoh-rs CAN link's priority mapping cannot be switched on because a QoS `Join` exceeds the CAN FD MTU. It waits on upstream. |

@@ -355,13 +355,9 @@ second one.
       precondition instead of a build failure four frames deep, and the `fsp`
       backend compiles in a lane.
 
-- [ ] **418.5 — CCPLEX-side IVC channel.** Add a non-`aon_echo` IVC channel to
-      the AGX Orin DTSI, and decide the Linux-side owner: a small out-of-tree
-      kernel module exposing a char device, or reuse of the echo channel's
-      driver. Document the kernel rebuild and flash steps. **Acceptance:** a
-      documented loopback between a userspace process on Jetson Linux and the
-      stock `ivc-echo-task` on the SPE, on this board, with the frame format
-      matching `nvidia_ivc_mock_wire_format.rs`.
+- **418.5 — CCPLEX-side IVC channel.** Moved 2026-10-24 to
+      [phase-512](phase-512-on-hardware-measurements.md) H5.1: it needs a Jetson
+      AGX Orin devkit to flash and loop back on.
 
 - [ ] **418.6 — Bring back `nros-board-orin-spe`.** Recreate the board crate over
       the canonical platform C ABI (not as a platform crate — phase 121.9 settled
@@ -369,13 +365,10 @@ second one.
       `tegra_ivc_channel_*`. Restore it from `53a3402d2` rather than rewriting.
       **Acceptance:** it builds for `armv7r-none-eabihf` with the FSP present, it
       has a `board-support.toml` row, and per RFC-0064 that row is tier 3 with a
-      named maintainer until 418.7 lands.
+      named maintainer until phase-512 H5.2 (was 418.7) lands.
 
-- [ ] **418.7 — End-to-end on hardware.** A talker on the SPE reaching a
-      `ros2 topic echo` on Jetson Linux through the CCPLEX bridge and
-      `rmw_zenoh_cpp`. **Acceptance:** an `interop::CELLS` row (there is no
-      fixture row — the SPE side is flashed, not launched), and a promotion of the
-      registry row once a lane can assert it.
+- **418.7 — End-to-end on hardware.** Moved 2026-10-24 to
+      [phase-512](phase-512-on-hardware-measurements.md) H5.2.
 
 - [ ] **418.8 — Bridge daemon: decide where it lives.** Either vendor
       `autoware_sentinel`'s `src/ivc-bridge/` into this tree or declare it a
