@@ -1,5 +1,10 @@
 # Phase 503 -- Deadline-armed route monitor with a reaction hook
 
+**Status (2026-10-24). DONE — archived.** Every work item is done, and W5's
+temporary pin is gone: ros-launch-manifest is no longer pinned by rev `33577ff`
+— every crate takes it by tag (`v0.2.0` on this date). The independent timer
+and the executor-run reaction under "Not in this phase" stay unplanned.
+
 **Status (2026-10-18).** W1-W7 done. W1-W4 landed in PR #2264; W5 (the
 model read, ros-launch-manifest pinned by rev 33577ff until its v0.1.61 tag)
 and the end-to-end test in the follow-up; W6 (a late completion is a

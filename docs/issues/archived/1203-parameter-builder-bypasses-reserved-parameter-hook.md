@@ -11,7 +11,7 @@ found: 2026-09-07
 resolved: 2026-10-18
 ---
 
-**Home: [phase-461](../../roadmap/phase-461-service-inbox-per-family.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-461](../../roadmap/archived/phase-461-service-inbox-per-family.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What
 

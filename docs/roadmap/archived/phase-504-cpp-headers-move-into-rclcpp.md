@@ -2,7 +2,7 @@
 
 **Status (2026-10-17). Complete — W1–W5 landed in #2278; the index pins
 release 0.6.0-nros3.** Landed as phase-503, which
-[phase-503](../phase-503-route-deadline-monitor.md) (the route deadline monitor)
+[phase-503](phase-503-route-deadline-monitor.md) (the route deadline monitor)
 had already taken; renumbered to 504 at archive time, so commits on main still
 say phase-503. The C++ half of the RFC-0089 amendment "the C headers
 live under `rclc/`" (2026-10-15), which

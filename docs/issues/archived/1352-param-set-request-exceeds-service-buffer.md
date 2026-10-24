@@ -110,7 +110,7 @@ the depth is the half that makes it pay; doing either alone misses.
 
 ## Where the fix is planned
 
-[phase-461](../../roadmap/phase-461-service-inbox-per-family.md) owns this issue:
+[phase-461](../../roadmap/archived/phase-461-service-inbox-per-family.md) owns this issue:
 per-family inboxes (W1), the parameter family sized by phase-446 F3's request
 bound at depth 1 in nros-node (W2), a build-time assert that the slot holds
 the largest declared `set_parameters` (W2), and a counted, once-logged inbox

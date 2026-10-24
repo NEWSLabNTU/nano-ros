@@ -1,5 +1,13 @@
 # phase-461 -- the service inbox is sized per family, and the parameter family brings its own
 
+**Status (2026-10-24). DONE — archived.** The two items the 2026-10-18
+revision left are closed: W7 by PR #2353 (issue 1203, merged 2026-10-18) and W8
+by the run recorded under its heading (issue 1529). The island switching its
+bringup to the `params` axis is a change in the island's repository, as the
+status below already said, and nothing here waits on it. The "Limits" section
+names the next steps (a per-family reply-slot depth, one ring per family,
+Cyclone and xrce inboxes); none is planned, and each would open a new phase.
+
 **Status (2026-10-18). Every wave LANDED; REVISED — the design is built, and
 W7–W8 are the two homed issues, re-scoped against `main`. W8 DONE (issue 1529
 resolved); W7 (issue 1203) is in PR #2353.** Nothing in "What it
@@ -21,7 +29,7 @@ measuring VERDICT PASS (W6's acceptance). Issue 1897 (2026-10-15) took
 W6's item 1: nros-node splits `param-store` from `param-services`, so a
 `params` image compiles none of the service code. Planned 2026-09-21. Numbered highest + 6 because
 five other phases were being opened concurrently (456-460 are theirs). Owns
-[issue 1352](../issues/archived/1352-param-set-request-exceeds-service-buffer.md), which
+[issue 1352](../../issues/archived/1352-param-set-request-exceeds-service-buffer.md), which
 PR #1043 FILED (merged 2026-09-13) and did not fix. Completes the half of
 phase-454 W6.a that its own text left open ("lowering it is a separate question
 that needs the built-in service surface to become a declared one"), and is the
@@ -676,7 +684,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1203](../issues/archived/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s builder declares straight into the store, so `use_sim_time` attaches no clock. This is the parameter family's own surface. |
+| [#1203](../../issues/archived/1203-parameter-builder-bypasses-reserved-parameter-hook.md) | `Executor::parameter`'s builder declares straight into the store, so `use_sim_time` attaches no clock. This is the parameter family's own surface. |
 
 ## Revision 2026-10-18 — what is left, read against `main`
 
