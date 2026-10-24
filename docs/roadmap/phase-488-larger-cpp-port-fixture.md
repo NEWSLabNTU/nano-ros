@@ -55,6 +55,64 @@ porting guide; the action shapes (164 of the 226 lines) dominate. Filed from
 it: issue 1995 (pointer-shaped subscription callbacks) and issue 1996 (the
 client future shape).
 
+### W0 follow-up (2026-10-25)
+
+**Landed since W0.** Each was filed from the ported examples or from the API
+parity work around them:
+
+| issue | PR | what |
+| --- | --- | --- |
+| [1995](../issues/archived/1995-cpp-pointer-shaped-subscription-callbacks.md) | #2513 | pointer-shaped subscription callbacks (hosted) |
+| [1996](../issues/archived/1996-cpp-client-shared-future-shape.md) | #2524 | the client future's `get` / `wait_for` / `valid` |
+| [2009](../issues/archived/2009-cpp-client-sequence-correlation.md) | #2533 | replies matched to requests by sequence id, every client |
+| [2011](../issues/archived/2011-cpp-action-client-future-global-stash.md) | #2540 | C++ action futures keyed per goal |
+| [2014](../issues/archived/2014-polling-action-client-result-offset.md) | #2552 | the get_result payload offset, spelled once |
+| [2015](../issues/archived/2015-rclcpp-action-upstream-dropins.md) | #2561 | upstream `rclcpp_action` spellings as drop-ins |
+| [2023](../issues/archived/2023-cpp-rust-parameter-events.md) | #2575, #2581 | C++ and Rust publish `/parameter_events` |
+| [2027](../issues/archived/2027-action-goal-handle-api.md) | #2587 | handle-taking action calls, `ServerGoalHandle::execute` |
+| [2033](../issues/archived/2033-typed-client-helpers-drop-seq.md) | #2595 | the typed Rust client helpers carry the sequence id |
+
+#2612 (in the merge queue on this date) closes the two action-cancel issues,
+#2029 (cancel-all / cancel-before on the server) and #2030 (the C tier takes
+cancel replies), and files #2034.
+
+**Edited lines, as measured** (`edits.json`, `edit_count.py --report`): 254
+before the drop-ins → 226 at W0 → 214 after 1995 → 199 after 1996 → **43**
+after 2015. The other issues in the table moved no example's count.
+
+**What the 43 lines are**, per `edits.json`'s `remaining`:
+
+- `multithreaded_executor` (18). `MultiThreadedExecutor` is refused (RFC-0002:
+  one task per executor, no hidden threads), and callback groups have no
+  counterpart, so the group plumbing is deleted.
+- `minimal_publisher_not_composable` (11). The try/catch around publish and
+  spin is removed: no exceptions (RFC-0018).
+- `minimal_action_server_member_functions` (6). The stock `handle_accepted`
+  detaches a `std::thread` per goal. The port runs `execute(goal_handle)` in
+  the accepted callback and drops `rclcpp::Rate::sleep`.
+- `minimal_subscriber_not_composable` and `minimal_service` (3 each). A global
+  `Node::SharedPtr` cannot be assigned from a temporary, because ours does not
+  own.
+- `minimal_action_client_member_functions` (2). A generated sequence has no
+  `.back()`, so `seq.back()` is spelled `seq[seq.length() - 1]`.
+
+**Open issues the stock examples or the parity work still point at:**
+
+- [issue 2024](../issues/2024-parameter-event-handler.md): no `ParameterEventHandler`.
+- [issue 2035](../issues/2035-cpp-node-options-param-event-publisher-off.md):
+  `NodeOptions::start_parameter_event_publisher(false)` is refused, so C++
+  cannot turn off one node's `/parameter_events`.
+- [issue 2036](../issues/2036-cpp-subscription-message-info-callback.md): no
+  `rclcpp::MessageInfo`, so the `(const MsgT&, const MessageInfo&)` callback
+  does not compile.
+- [issue 2037](../issues/2037-cpp-client-future-and-request-id.md): no
+  `.future` / `.request_id` / `share()` on the client future.
+- [issue 2038](../issues/2038-declarative-timer-autostart-and-info.md): the
+  declarative Rust timer has no autostart flag or call info.
+- [issue 2039](../issues/2039-c-api-matched-status-events-interop.md): no
+  interop cell drives the C matched and status-event callbacks from stock ROS 2.
+- #2034 (filed by #2612): the C++ executor's spin does not take cancel replies.
+
 ## Work items
 
 ### W1 — pick the nodes (done 2026-10-24)
