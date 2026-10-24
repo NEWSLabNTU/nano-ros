@@ -540,7 +540,7 @@ pub extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
 // image says what it wants, once.
 
 // phase-359 W7 — `run_entry` carries the same gate as `run_tiers` and as every
-// helper both of them call (`install_stdout_logger`, `nuttx_run_one_tier`,
+// helper both of them call (`install_stdout_logger`, `nuttx_level_trampoline`,
 // `nuttx_spin_tier_forever`, `NUTTX_TIER_STACK_DEFAULT_BYTES`).
 //
 // It did not before, and the reason is issue 0579's class again: the gate ONE
@@ -851,13 +851,13 @@ fn apply_tier_affinity(tier: &nros_platform::TierSpec<'_>) {
 /// phase-281 W3-nuttx (RFC-0015 Model 1) — per-tier multi-task NuttX entry.
 ///
 /// The multi-tier sibling of [`run_entry`]: opens the ONE RMW session, then
-/// runs one [`nros::Executor`] per [`nros_platform::TierSpec`] over that shared
-/// session. NuttX ships `std` and its zenoh-pico build sets
-/// `Z_FEATURE_MULTI_THREAD = 1` (`platforms/nuttx/nros-platform.toml`
-/// `[platform.nuttx]`), so `std::thread` maps onto NuttX pthreads and this
-/// mirrors the **native Linux** [`nros_board_linux`] `run_tiers` (a scoped
-/// thread per tier over one session) rather than the FFI k_thread shim the
-/// Zephyr / bare-metal boards need.
+/// (issue 2016, RFC-0108 "As built in P10") runs each
+/// [`nros_platform::TierSpec`] as one LEVEL over the core's ONE executor
+/// ([`nros::levels::LevelCore`]): the boot tier owns the session and runs on
+/// this task, every other tier is a detached worker pthread over the same
+/// executor (`sys::spawn_tier`), started once the level before it has set
+/// up. NuttX's zenoh-pico build sets `Z_FEATURE_MULTI_THREAD = 1`
+/// (`platforms/nuttx/nros-platform.toml` `[platform.nuttx]`).
 ///
 /// ## Ordering (issue #144 — the interest-handshake race)
 ///
@@ -1040,358 +1040,332 @@ where
     // this session-owning thread to `sched_ss_low_priority` when its budget is
     // spent, stalling the shared flush. Spawn every tier at the boot tier's
     // normal FIFO priority; spawned NON-owner tiers self-apply the budget dim's
-    // kernel + cooperative realization in `nuttx_run_one_tier`.
-    {
-        let mut ctx = nros_platform::RuntimeCtx::with_runtime(&mut boot_crt);
-        if let Err(e) = setup(&mut ctx) {
-            // issue 0572 — STDOUT. This guest's stderr does not reach the serial
-            // console, so every `println!` diagnostic in this function has been
-            // invisible: a boot-tier setup failure, a failed tier spawn, a spin
-            // error. Issue 0565 taught the harness to capture the console for
-            // exactly these lines, and they could never appear in it.
-            println!("nros: boot tier `{}` setup FAILED: {:?}", boot_tier.name, e);
-            return Err(e);
+    // kernel + cooperative realization in `nuttx_level_trampoline`.
+    // issue 2016 (RFC-0108 "As built in P10") — every tier is one LEVEL over
+    // the core's ONE executor (`nros::levels::LevelCore`), the shape the C
+    // runner (`nros_board_nuttx_run_levels_in`) and the Zephyr and ThreadX
+    // Rust runners have. The boot tier stays the session owner and runs on
+    // this task; every other tier is a worker pthread over the same executor.
+    // The entry's tier executor backing (issue 1571) was checked against the
+    // table above, but one executor serves every level: the slots go unused.
+    let _ = tier_backing;
+    if tiers.len() > ::nros::MAX_LEVELS {
+        println!(
+            "nros: {} tiers is past the {} levels a core holds",
+            tiers.len(),
+            ::nros::MAX_LEVELS
+        );
+        sys::exit_process(1);
+    }
+    let n = tiers.len();
+    // The executor's lock, before a second thread can reach it: the POSIX
+    // port's recursive `PTHREAD_PRIO_INHERIT` mutex and `pthread_self`, so
+    // each pass releases it around its callbacks and its park. One level
+    // needs none. The mutex lives for the image's life.
+    let mutex: *mut core::ffi::c_void = if n > 1 {
+        // SAFETY: a pure size query of the linked port.
+        let words = unsafe { nros_platform_mutex_rec_storage_size() }
+            .div_ceil(8)
+            .max(1);
+        let m: &'static mut [u64] =
+            alloc::boxed::Box::leak(alloc::vec![0u64; words].into_boxed_slice());
+        let mp = m.as_mut_ptr() as *mut core::ffi::c_void;
+        // SAFETY: `mp` is `words` writable words, leaked for the image.
+        if unsafe { nros_platform_mutex_rec_init(mp) } != 0 {
+            println!("nros: nuttx run_levels: the executor lock was not installed; refused");
+            sys::exit_process(1);
         }
+        mp
+    } else {
+        core::ptr::null_mut()
+    };
+    // SAFETY: no second thread exists yet; the mutex was initialised above
+    // (or is unused with one level); `pthread_self` names the calling thread.
+    let core = match unsafe {
+        ::nros::levels::LevelCore::new(
+            boot_crt,
+            u8::try_from(n).unwrap_or(u8::MAX),
+            nuttx_level_of(tiers, boot_index),
+            mutex,
+            nros_platform_mutex_rec_lock,
+            nros_platform_mutex_rec_unlock,
+            nuttx_thread_id,
+        )
+    } {
+        Ok(c) => c,
+        Err(e) => {
+            println!("nros: nuttx run_levels: the level runtime refused: {:?}", e);
+            sys::exit_process(1);
+        }
+    };
+    // issue #144 — the boot level's declares FIRST, before any other level
+    // starts. SAFETY: the runtime reference lives inside the closure only.
+    let rc = unsafe {
+        core.with_runtime(|crt| {
+            let mut ctx = nros_platform::RuntimeCtx::with_runtime(crt);
+            setup(&mut ctx)
+        })
+    };
+    if let Err(e) = rc {
+        // issue 0572 — STDOUT. This guest's stderr does not reach the serial
+        // console, so a `stderr` diagnostic here is invisible.
+        println!("nros: boot tier `{}` setup FAILED: {:?}", boot_tier.name, e);
+        return Err(e);
     }
 
-    let shared = NuttxSharedSession(boot_crt.executor_mut().session_ptr());
-    let setup = &setup;
-    // Issue 1733 — the spawned tiers' setups are serialized among THEMSELVES
-    // too. Running the boot tier's setup first (issue #144, above) kept them
-    // off the boot tier's declares, but every other tier was spawned at once,
-    // so with three tiers or more two spawned setups declared on the shared
-    // session concurrently — the race this runner's own doc calls out, and
-    // the one the C arm (`nuttx_run_tiers.c`) closes by chaining its spawns.
-    // Lives in this frame, which never returns (see `TierCtx`).
-    let setup_gate = ::nros::TierSetupGate::new();
-    // issue 1571 — one `.bss` slot per spawned tier, in spawn order; checked
-    // above to cover every tier but the boot one.
-    let mut slots = tier_backing.iter_mut();
-    {
-        // Spawn every non-boot tier; each borrows the shared session pointer +
-        // `&setup`. The boot declares are already done, so these only overlap the
-        // boot tier's spin.
-        // issue 0636 — the owner keeps its INHERITED priority through the spawn
-        // loop and adopts its own (least urgent) one after it, at the call
-        // below. Applying it here instead was measured WORSE — 4 of 8 against
-        // 6 of 8 — and the failing console stopped dead after the owner's own
-        // marker, before it had spawned anything: dropping to the least urgent
-        // priority while the tier topology does not yet exist puts the owner
-        // below the transport and system tasks that are already running, and
-        // it never gets the CPU back to do the spawning. That is issue 0623's
-        // hazard (a tier priority and a transport priority in one scheduler)
-        // reached from the other side.
-        for (spawn_index, tier) in tiers.iter().enumerate() {
-            if spawn_index == boot_index {
-                continue; // this one runs on the boot task
-            }
-            let Some(slot) = slots.next() else {
-                println!(
-                    "nros: no executor backing slot left for tier `{}` (issue 1571)",
-                    tier.name
-                );
-                continue;
-            };
-            // issue 0572 — the spawned tiers' identity + groups, same reason.
-            println!(
-                "nros: spawning tier `{}` — groups {:?}, class {:?}, spin {} us",
-                tier.name, tier.groups, tier.class, tier.spin_period_us
-            );
-            // issue #246 — a tier spawned with no explicit stack requested the
-            // std default (2 MiB), which `pthread_create` cannot satisfy from
-            // NuttX's small kernel heap → ENOMEM ("failed to spawn tier"). The
-            // C/C++ sibling glue always passes an explicit
-            // `pthread_attr_setstacksize` (16 KiB default / `stack_bytes`
-            // override) precisely because the executor arena lives on the heap
-            // (`nros_platform_alloc`), so a tier stack only carries call frames.
-            // Mirror that: honour `stack_bytes`, else a 64 KiB default
-            // (== NuttX's own `CONFIG_PTHREAD_STACK_DEFAULT`, generous for the
-            // zenoh-pico/executor call depth the Rust closures reach).
-            //
-            // phase-359 W7 — the size is now handed to the C shim, which sets it
-            // on a `pthread_attr_t` laid out by THIS kernel's headers. Same
-            // number, same effect, one fewer std-shaped layer in between.
-            let stack_bytes = if tier.stack_bytes > 0 {
-                tier.stack_bytes
-            } else {
-                NUTTX_TIER_STACK_DEFAULT_BYTES
-            };
-            // phase-359 W7 — the per-tier context the spawned task receives.
-            //
-            // `thread::scope` used to carry the borrows (`&setup`, `tier`, the
-            // shared session) into the spawned closure and PROVE they outlived
-            // it. A detached NuttX task cannot be given that proof by the type
-            // system, so the invariant becomes explicit and is stated here:
-            // `run_tiers` never returns — the boot tier's spin loop below is
-            // infinite — so every borrow reachable from this frame outlives
-            // every task spawned from it. That is the same invariant the C arm
-            // relies on (`nuttx_run_tiers.c` heap-allocates its ctx and never
-            // frees it), now with the same lifetime and one owner.
-            //
-            // The box is deliberately leaked: the task never exits, so there is
-            // no point at which freeing it would be correct.
-            let ctx = alloc::boxed::Box::new(TierCtx::<F, E> {
-                session: shared.0,
-                slot: slot as *mut ::nros::TierExecutorBackingSlot,
-                tier: tier as *const nros_platform::TierSpec<'_>
-                    as *const nros_platform::TierSpec<'static>,
-                setup: setup as *const F,
-                setup_gate: &setup_gate as *const ::nros::TierSetupGate,
-                _e: core::marker::PhantomData,
-            });
-            // Keep the TYPED pointer as well: the `*mut c_void` the C shim wants
-            // has lost the type needed to reconstruct the box on the failure path.
-            let ctx_typed = alloc::boxed::Box::into_raw(ctx);
-            let ctx_ptr = ctx_typed as *mut core::ffi::c_void;
-            // issue #246 — NuttX `pthread_create` can fail TRANSIENTLY under
-            // host/QEMU load, distinct from the deterministic 2-MiB-stack ENOMEM
-            // the explicit stack size above fixes. A single failure drops the
-            // whole tier for the run → the low tier never delivers → the cell
-            // times out (the historical #246 flake). Retry a few times with a
-            // yield between attempts.
-            const SPAWN_ATTEMPTS: u32 = 5;
-            let mut spawned = false;
-            for attempt in 1..=SPAWN_ATTEMPTS {
-                let rc = sys::spawn_tier(
-                    tier.name,
-                    stack_bytes,
-                    tier.priority,
-                    nuttx_tier_trampoline::<F, E>,
-                    ctx_ptr,
-                );
-                if rc == 0 {
-                    spawned = true;
-                    break;
-                }
-                // W7 — this reports the pthread errno directly. The std path
-                // could only offer `io::Error`, and issue 0246 recorded its
-                // diagnosis as "an `io::Error` with no OS errno": std had
-                // discarded the one number that identifies the failure.
-                println!(
-                    "nros: spawn tier `{}` attempt {}/{} failed (stack {} B, errno {})",
-                    tier.name, attempt, SPAWN_ATTEMPTS, stack_bytes, rc
-                );
-                sys::yield_now();
-            }
-            if !spawned {
-                // Reclaim the context no task took ownership of.
-                // SAFETY: every attempt failed, so no task received `ctx_ptr`
-                // and this is the only live pointer to that allocation.
-                drop(unsafe { alloc::boxed::Box::from_raw(ctx_typed) });
-                println!(
-                    "nros: FAILED to spawn tier `{}` after {} attempts — tier will not run",
-                    tier.name, SPAWN_ATTEMPTS
-                );
-            }
-        }
-        // phase-296 W5.9 / issue #246 — the boot tier is the SESSION OWNER:
-        // its spin drives the one shared zenoh-pico session's TX flush for
-        // EVERY tier (all spawned tiers borrow this session). A kernel
-        // SCHED_SPORADIC server would drop this thread to `sched_ss_low_priority`
-        // (== `SCHED_FIFO` min, prio 1) the moment its budget is spent, stalling
-        // the whole session's flush and starving delivery on all tiers (observed:
-        // the high/ctrl publisher delivered exactly ONE sample, then the flush
-        // stalled). So the session-owning boot tier stays SCHED_FIFO — it is
-        // NEVER budget-capped. The budget dim's kernel-Native realization applies
-        // to NON-owner tiers, which self-apply it in `nuttx_run_one_tier`.
-        if boot_is_budgeted {
-            println!(
-                "nros: tier `{}` declares a sporadic budget but is the session-owning \
-                 boot tier — kept SCHED_FIFO (a kernel/cooperative budget cap would \
-                 stall the shared session flush; non-owner tiers realize the budget)",
-                boot_tier.name
-            );
-        }
-        // phase-296 W5.11 — placement dim: the boot tier self-pins to its
-        // declared `core` (safe here — a core pin, unlike the sporadic budget
-        // above, does not cap CPU so it cannot starve the shared flush).
-        apply_tier_affinity(boot_tier);
-        // issue 0579 — and its declared PRIORITY, for exactly the reason the
-        // affinity call above gives. `apply_tier_priority` was called from
-        // `nuttx_run_one_tier` only, so tiers[0] parsed its
-        // `[tiers.<name>.nuttx] priority`, baked it into the TierSpec, carried
-        // it to the board and dropped it.
-        //
-        // Dropping one number out of an ORDERING does not make that tier
-        // "default" — it silently reorders the set: a spawned tier declaring
-        // 105 outranks a boot tier that declared 110, the inverse of what the
-        // author wrote, with no diagnostic. It lands on the worst tier to get
-        // wrong, since the boot tier is the session owner whose spin drives the
-        // shared zenoh-pico flush.
-        //
-        // This is NOT issue 0246. That rule keeps the kernel SPORADIC SERVER
-        // off the session owner because a spent budget drops it to
-        // `sched_ss_low_priority` and stalls the shared flush — a mechanism
-        // that CAPS CPU. A plain `pthread_setschedparam` priority caps nothing,
-        // which is the same distinction the affinity comment draws, and
-        // `boot_is_budgeted` above keeps the budget off the owner independently.
-        //
-        // ThreadX takes this answer too (`nros_threadx_set_current_priority`,
-        // whose comment names the same inversion); Zephyr takes the other one,
-        // sorting so tiers[0] is the numerically-largest = lowest-priority tier
-        // and never needs to outrank anything (issue 0251). Two answers exist;
-        // this board now has one of them rather than neither.
-        // issue 0636 — the `yield_now()` run that stood here is gone. It existed
-        // to hand the CPU to tiers the owner was about to OUTRANK, and the
-        // owner does not outrank them any more: a more urgent tier preempts the
-        // moment it is runnable. Under SCHED_FIFO a yield never lets a
-        // lower-priority thread run in any case, which is why those yields
-        // moved the rate to 4 of 6 and then stopped moving it.
-        //
-        // The owner adopts its own priority HERE — after spawning, before
-        // spinning. Both neighbours were tried and measured: before the spawn
-        // loop the owner starved against the transport tasks (4 of 8), and
-        // never applying it at all leaves the marker RFC-0052 requires unset.
-        apply_tier_priority(boot_tier);
-        nuttx_spin_tier_forever(&mut boot_crt, boot_tier);
+    // The other levels, CHAINED: this task starts the first, and each starts
+    // the next once its own setup has returned (issue #144), so no two setups
+    // overlap on the shared session (issue 1733 needed a gate for that when
+    // every tier was spawned at once). Spawn order is table order without the
+    // boot tier.
+    //
+    // phase-359 W7 — what the spawned tasks borrow (`tiers`, `setup`) lives
+    // in this frame, and `run_tiers` never returns (the boot level's spin
+    // below is infinite), so every borrow outlives every task spawned from
+    // it. That is the same invariant the C arm relies on; the `'static`
+    // spellings below restate it for a raw pointer that cannot carry it.
+    let order: &'static [usize] = alloc::boxed::Box::leak(
+        (0..n)
+            .filter(|&i| i != boot_index)
+            .collect::<alloc::vec::Vec<_>>()
+            .into_boxed_slice(),
+    );
+    // SAFETY: the never-returns invariant above.
+    let all: &'static [nros_platform::TierSpec<'static>] = unsafe {
+        core::slice::from_raw_parts(tiers.as_ptr() as *const nros_platform::TierSpec<'static>, n)
+    };
+    let setup = &setup as *const F;
+    if !nuttx_spawn_level::<F, E>(core, all, order, 0, setup) {
+        println!("nros: a level did not start: failing the boot");
+        sys::exit_process(1);
     }
-
-    // Unreachable: the boot tier's spin loop never returns — which is also what
-    // keeps every borrow the spawned tiers hold alive (see `TierCtx`).
-    #[allow(unreachable_code)]
-    Ok(())
+    println!("nros: multi-level run — {} level(s) over one executor", n);
+    // phase-296 W5.9 / issue #246 — the boot tier is the SESSION OWNER: its
+    // passes drive the one shared zenoh-pico session's TX flush for EVERY
+    // level. A kernel SCHED_SPORADIC server would drop this thread to
+    // `sched_ss_low_priority` the moment its budget is spent, stalling the
+    // whole session's flush. So the session-owning boot tier stays
+    // SCHED_FIFO — it is NEVER budget-capped. The budget dim's kernel-Native
+    // realization applies to the other levels, which self-apply it in
+    // `nuttx_level_trampoline`.
+    if boot_is_budgeted {
+        println!(
+            "nros: tier `{}` declares a sporadic budget but is the session-owning \
+             boot tier — kept SCHED_FIFO (a kernel/cooperative budget cap would \
+             stall the shared session flush; non-owner tiers realize the budget)",
+            boot_tier.name
+        );
+    }
+    // phase-296 W5.11 — placement dim: the boot tier self-pins to its
+    // declared `core` (a core pin, unlike the sporadic budget above, does not
+    // cap CPU so it cannot starve the shared flush).
+    apply_tier_affinity(boot_tier);
+    // issue 0579 / issue 0636 — and adopts its declared PRIORITY here, after
+    // it has started the first level and before it spins: before that it
+    // starved against the transport tasks (4 of 8), and never applying it
+    // leaves the marker RFC-0052 requires unset. A plain priority caps
+    // nothing, unlike the sporadic server kept off this tier above.
+    apply_tier_priority(boot_tier);
+    // SAFETY: this is the boot level's thread.
+    nuttx_spin_tier_forever(boot_tier, |t| unsafe { core.spin_boot_once(t) });
 }
 
-/// phase-359 W7 — what a spawned tier receives, in place of a scoped closure's
-/// captures.
-///
-/// Raw pointers rather than references because the value crosses a C `void *`
-/// into a detached task, and a reference cannot survive that round trip with
-/// its lifetime intact. Soundness rests on the invariant stated at the spawn
-/// site: `run_tiers` never returns, so everything pointed at here outlives the
-/// task.
+// issue 2016 — the POSIX port's recursive priority-inheriting mutex, the level
+// runner's executor lock, and the thread identity it is keyed by.
 #[cfg(target_os = "nuttx")]
-struct TierCtx<F, E> {
-    /// The boot executor's session, shared by every tier (see
-    /// [`NuttxSharedSession`] for why sharing it is sound).
-    session: *mut ::nros::internals::RmwSession,
-    /// issue 1571 — this tier's executor backing: one slot of the entry's
-    /// `.bss` `TierExecutorBacking`, never the kernel heap. Unique to this
-    /// task (the spawn loop hands each slot out once).
-    slot: *mut ::nros::TierExecutorBackingSlot,
-    /// The tier's spec. Stored as `'static` because a raw pointer cannot carry
-    /// the real lifetime; the invariant above is what makes reading it back
-    /// sound.
-    tier: *const nros_platform::TierSpec<'static>,
-    /// The shared `setup` closure — `Fn` + `Sync`, invoked once per tier.
+unsafe extern "C" {
+    fn nros_platform_mutex_rec_storage_size() -> usize;
+    fn nros_platform_mutex_rec_init(m: *mut core::ffi::c_void) -> i8;
+    fn nros_platform_mutex_rec_lock(m: *mut core::ffi::c_void) -> i8;
+    fn nros_platform_mutex_rec_unlock(m: *mut core::ffi::c_void) -> i8;
+    /// NuttX `pthread_t` is `pid_t`, an `int`.
+    fn pthread_self() -> core::ffi::c_int;
+}
+
+/// The executor lock's thread identity: the calling thread's `pthread_t`.
+#[cfg(target_os = "nuttx")]
+unsafe extern "C" fn nuttx_thread_id() -> usize {
+    // SAFETY: `pthread_self` takes nothing and never fails.
+    unsafe { pthread_self() as usize }
+}
+
+/// The level of tier `index`: its urgency order among `tiers`, NuttX's
+/// bigger-is-urgent (the rule `NROS_ENTRY_LEVEL_OF_<node>` is generated by).
+#[cfg(target_os = "nuttx")]
+fn nuttx_level_of(tiers: &[nros_platform::TierSpec<'_>], index: usize) -> u8 {
+    ::nros::tier_level_by(tiers.len(), index, false, |i| tiers[i].priority).unwrap_or(0)
+}
+
+/// issue 2016 — what a spawned level task receives: the core, the table, the
+/// spawn order and its own place in it, and the shared `setup`.
+///
+/// Raw pointer for `setup` because the value crosses a C `void *` into a
+/// detached task; soundness rests on the never-returns invariant stated in
+/// [`run_tiers`].
+#[cfg(target_os = "nuttx")]
+struct LevelCtx<F, E> {
+    core: ::nros::levels::LevelCore,
+    all: &'static [nros_platform::TierSpec<'static>],
+    order: &'static [usize],
+    pos: usize,
     setup: *const F,
-    /// Issue 1733 — the runner's one setup gate, held across this tier's open
-    /// and `setup`.
-    setup_gate: *const ::nros::TierSetupGate,
     _e: core::marker::PhantomData<fn() -> E>,
 }
 
-/// C-ABI entry for a spawned tier: rebuild the borrows and run the tier.
+/// Start the level at `order[pos]` (nothing past the end): one detached
+/// pthread at the tier's priority, retried on a transient refusal (issue
+/// #246). `false` when it could not be started.
+#[cfg(target_os = "nuttx")]
+fn nuttx_spawn_level<F, E>(
+    core: ::nros::levels::LevelCore,
+    all: &'static [nros_platform::TierSpec<'static>],
+    order: &'static [usize],
+    pos: usize,
+    setup: *const F,
+) -> bool
+where
+    F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
+    E: core::fmt::Debug,
+{
+    let Some(&index) = order.get(pos) else {
+        return true;
+    };
+    let tier = &all[index];
+    // issue 0572 — the spawned level's identity + groups.
+    println!(
+        "nros: spawning tier `{}` — groups {:?}, class {:?}, spin {} us",
+        tier.name, tier.groups, tier.class, tier.spin_period_us
+    );
+    // issue #246 — a tier spawned with no explicit stack requested the std
+    // default (2 MiB), which `pthread_create` cannot satisfy from NuttX's
+    // small kernel heap. Honour `stack_bytes`, else a 64 KiB default
+    // (== NuttX's own `CONFIG_PTHREAD_STACK_DEFAULT`).
+    let stack_bytes = if tier.stack_bytes > 0 {
+        tier.stack_bytes
+    } else {
+        NUTTX_TIER_STACK_DEFAULT_BYTES
+    };
+    let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(LevelCtx::<F, E> {
+        core,
+        all,
+        order,
+        pos,
+        setup,
+        _e: core::marker::PhantomData,
+    }));
+    // issue #246 — NuttX `pthread_create` can fail TRANSIENTLY under
+    // host/QEMU load. Retry a few times with a yield between attempts.
+    const SPAWN_ATTEMPTS: u32 = 5;
+    for attempt in 1..=SPAWN_ATTEMPTS {
+        let rc = sys::spawn_tier(
+            tier.name,
+            stack_bytes,
+            tier.priority,
+            nuttx_level_trampoline::<F, E>,
+            ctx as *mut core::ffi::c_void,
+        );
+        if rc == 0 {
+            return true;
+        }
+        println!(
+            "nros: spawn tier `{}` attempt {}/{} failed (stack {} B, errno {})",
+            tier.name, attempt, SPAWN_ATTEMPTS, stack_bytes, rc
+        );
+        sys::yield_now();
+    }
+    // SAFETY: every attempt failed, so no task received `ctx` and this is the
+    // only live pointer to that allocation.
+    drop(unsafe { alloc::boxed::Box::from_raw(ctx) });
+    println!(
+        "nros: FAILED to spawn tier `{}` after {} attempts",
+        tier.name, SPAWN_ATTEMPTS
+    );
+    false
+}
+
+/// C-ABI entry for a spawned level: a worker over the core's one executor.
+/// It adopts its tier's kernel facts, opens its level, runs `setup` on the
+/// shared runtime with its groups active (what registers is this level's),
+/// starts the next level, then loops on its band's passes. A level that does
+/// not open, whose setup fails or whose successor cannot start fails the
+/// boot.
 ///
 /// Generic, so each `(F, E)` pair gets its own monomorphised entry — the
 /// closure type is what a `void *` cannot carry.
 #[cfg(target_os = "nuttx")]
-unsafe extern "C" fn nuttx_tier_trampoline<F, E>(
+unsafe extern "C" fn nuttx_level_trampoline<F, E>(
     arg: *mut core::ffi::c_void,
 ) -> *mut core::ffi::c_void
 where
     F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
     E: core::fmt::Debug,
 {
-    // SAFETY: `arg` is the `TierCtx` leaked by the spawn site, whose contents
-    // outlive this task by the never-returns invariant documented there.
-    let ctx = unsafe { &*(arg as *const TierCtx<F, E>) };
-    // SAFETY: all three pointers came from live borrows at the spawn site; the
-    // gate lives in `run_tiers`' frame, which never returns.
-    let (tier, setup, gate) = unsafe { (&*ctx.tier, &*ctx.setup, &*ctx.setup_gate) };
-    // Issue 1733 — the open is part of the critical section: it touches the
-    // shared session too. `nuttx_run_one_tier` releases the guard once setup
-    // has returned, before it spins.
-    let guard = gate.enter();
-    // SAFETY: aliasing the boot executor's session is the per-tier model. The
-    // backend serializes concurrent I/O internally (`Z_FEATURE_MULTI_THREAD`),
-    // but NOT concurrent entity declaration, which the gate above serializes.
-    // issue 1571 — over this tier's `.bss` slot, not a leaked `Box`.
-    let exec = unsafe { ::nros::Executor::open_with_session_slot(ctx.session, &mut *ctx.slot) };
-    nuttx_run_one_tier::<F, E>(exec, tier, setup, guard);
+    // SAFETY: `arg` is the `LevelCtx` `nuttx_spawn_level` handed this task.
+    let ctx = unsafe { alloc::boxed::Box::from_raw(arg as *mut LevelCtx<F, E>) };
+    let LevelCtx {
+        core,
+        all,
+        order,
+        pos,
+        setup,
+        ..
+    } = *ctx;
+    let index = order[pos];
+    let tier = &all[index];
+    let level = nuttx_level_of(all, index);
+    // phase-302 W3 (issue 0263) — the declared SCHED_FIFO priority; phase-296
+    // W5.9 — the kernel sporadic server, when declared; W5.11 — the core pin.
+    apply_tier_priority(tier);
+    apply_tier_sporadic(tier);
+    apply_tier_affinity(tier);
+    // SAFETY: once, on this level's own thread.
+    let worker = match unsafe { core.open_level(level) } {
+        Ok(w) => w,
+        Err(e) => {
+            println!(
+                "nros: tier `{}` did not open as level {} ({:?}): failing the boot",
+                tier.name, level, e
+            );
+            sys::exit_process(1);
+        }
+    };
+    // SAFETY: `setup` lives in `run_tiers`' frame, which never returns; the
+    // runtime reference lives inside the closure only.
+    let rc = unsafe {
+        core.with_runtime(|crt| {
+            // issue 1172 — `Err` means the filter did not fit, and
+            // `set_active_groups` has already cleared it and left filtering
+            // ON, so this level registers NOTHING rather than registering on
+            // a quietly narrower set.
+            let _ = crt.executor_mut().set_active_groups(tier.groups);
+            let mut rctx = nros_platform::RuntimeCtx::with_runtime(crt);
+            (*setup)(&mut rctx)
+        })
+    };
+    if let Err(e) = rc {
+        // issue 0572 — STDOUT; this guest's stderr never reaches the console.
+        println!(
+            "nros: tier `{}` setup FAILED: {:?} — failing the boot",
+            tier.name, e
+        );
+        sys::exit_process(1);
+    }
+    if !nuttx_spawn_level::<F, E>(core, all, order, pos + 1, setup) {
+        println!("nros: a level did not start: failing the boot");
+        sys::exit_process(1);
+    }
+    // SAFETY: `worker` is this thread's, from `open_level`.
+    nuttx_spin_tier_forever(tier, |t| unsafe { core.spin_level_once(worker, t) });
     core::ptr::null_mut()
 }
 
-/// `Send` wrapper for the shared raw session pointer so it can cross the
-/// `std::thread::scope` boundary (the mirror of `nros-board-linux`'s
-/// `SharedSession`). The pointed-to RMW session type is `pub(crate)` in
-/// `nros-node`, so the wrapper is generic over `T` and never names it — `T` is
-/// inferred from [`nros::Executor::session_ptr`]. Sharing the pointer is sound
-/// under the per-tier contract: the boot executor owns the one session, the RMW
-/// backend serializes concurrent access through its own locks (zenoh-pico
-/// `Z_FEATURE_MULTI_THREAD = 1` on NuttX), and `thread::scope` guarantees no
-/// spawned tier outlives the owner.
-#[cfg(target_os = "nuttx")]
-struct NuttxSharedSession<T>(*mut T);
-#[cfg(target_os = "nuttx")]
-impl<T> Clone for NuttxSharedSession<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-#[cfg(target_os = "nuttx")]
-impl<T> Copy for NuttxSharedSession<T> {}
-// SAFETY: the per-tier model shares one RMW session across tier tasks by design;
-// concurrent access is serialized inside the backend.
-#[cfg(target_os = "nuttx")]
-unsafe impl<T> Send for NuttxSharedSession<T> {}
-
-/// Register + spin one tier on a freshly-opened borrowed-session executor
-/// (spawned-tier path).
-#[cfg(target_os = "nuttx")]
-fn nuttx_run_one_tier<F, E>(
-    exec: ::nros::Executor<'static>,
-    tier: &nros_platform::TierSpec<'_>,
-    setup: &F,
-    setup_guard: ::nros::TierSetupGuard<'_>,
-) where
-    F: Fn(&mut nros_platform::RuntimeCtx<'_>) -> Result<(), E>,
-    E: core::fmt::Debug,
-{
-    let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
-    // issue 1172 — `Err` means the filter did not fit, and
-    // `set_active_groups` has already cleared it and left filtering ON,
-    // so this tier registers NOTHING rather than registering on a
-    // quietly narrower set. Nothing here can return an error (the tier
-    // runner is `-> ()`), so the fail-closed state IS the report.
-    let _ = crt.executor_mut().set_active_groups(tier.groups);
-    install_park(&mut crt);
-    // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
-    crt.apply_tier_sched_policy(
-        tier.class,
-        tier.period_us,
-        tier.budget_us,
-        tier.deadline_us,
-        tier.deadline_policy,
-    );
-    // phase-302 W3 (issue 0263) — adopt the declared SCHED_FIFO priority
-    // (std spawn carries no priority attr; the C arm sets it at create).
-    apply_tier_priority(tier);
-    // phase-296 W5.9 — kernel sporadic server for this tier thread, when declared.
-    apply_tier_sporadic(tier);
-    // phase-296 W5.11 — placement dim: SMP core pin for this tier, when declared.
-    apply_tier_affinity(tier);
-    {
-        let mut ctx = nros_platform::RuntimeCtx::with_runtime(&mut crt);
-        if let Err(e) = setup(&mut ctx) {
-            // issue 0572 — STDOUT; this guest's stderr never reaches the console.
-            println!(
-                "nros: tier `{}` setup FAILED: {:?} — tier task exiting",
-                tier.name, e
-            );
-            return;
-        }
-    }
-    drop(setup_guard);
-    nuttx_spin_tier_forever(&mut crt, tier);
-}
-
-/// Drive a tier executor's `spin_once` at its declared period, forever.
+/// Drive a level's passes (`pass`, one of `LevelCore`'s) at its tier's
+/// declared period, forever.
 #[cfg(target_os = "nuttx")]
 fn nuttx_spin_tier_forever(
-    crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
     tier: &nros_platform::TierSpec<'_>,
-) {
+    mut pass: impl FnMut(core::time::Duration) -> ::nros::SpinOnceResult,
+) -> ! {
     // issue 0572 — which wait the executor's spin will take. The primary
     // (session-owning) executor sleeps in the wake primitive when the backend
     // installed a wake callback; a borrowed one polls. `storage_size() == 0`
@@ -1463,17 +1437,10 @@ fn nuttx_spin_tier_forever(
     let mut gap = nros_platform::TierSpinGap::new(tier.spin_period_us);
     loop {
         let iter = gap.mark();
-        match crt.spin_once_counted(core::time::Duration::from_millis(period_ms as u64)) {
-            Ok(r) => {
-                timers += r.timers_fired;
-                subs += r.subscriptions_processed;
-                errs += r.subscription_errors + r.service_errors;
-            }
-            Err(err) => {
-                // STDOUT: this guest's stderr never reaches the serial console.
-                println!("nros: tier `{}` spin error: {:?}", tier.name, err);
-            }
-        }
+        let r = pass(core::time::Duration::from_millis(period_ms as u64));
+        timers += r.timers_fired;
+        subs += r.subscriptions_processed;
+        errs += r.subscription_errors + r.service_errors;
         gap.after_spin(iter);
         iters += 1;
         if iters == 1 {

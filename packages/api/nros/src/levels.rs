@@ -22,6 +22,12 @@
 //!    chores, the boot level's component ticks). Issue 2020: a component
 //!    ticks on the level that registered it, never on two.
 //!
+//! 4. `LevelCore::into_runtime` -- issue 2016: once every other level's
+//!    thread has stopped and been joined, the boot level takes the runtime
+//!    back (the lock removed), so a hosted runner can close its session and
+//!    return. An RTOS runner never calls it: its levels spin for the image's
+//!    life.
+//!
 //! Every access goes through the raw runtime pointer with the lock taken
 //! first, so no reference to the runtime or its executor is live across
 //! another thread's pass.
@@ -151,17 +157,40 @@ impl LevelCore {
     /// arrival, then runs its band's ready callbacks and (issue 2020) the
     /// ticks of the components its level registered -- the executor's
     /// enrolled ones inside the band pass, the runtime's own after it, the
-    /// lock held.
+    /// lock held. Returns the pass's counts.
     ///
     /// # Safety
     /// `worker` is the calling thread's, from [`Self::open_level`].
-    pub unsafe fn spin_level_once(&self, worker: &mut BandWorker, timeout: Duration) {
+    pub unsafe fn spin_level_once(
+        &self,
+        worker: &mut BandWorker,
+        timeout: Duration,
+    ) -> nros_node::SpinOnceResult {
         let exec = self.exec();
         // SAFETY: the lock is held once; no reference to the executor lives.
         let _g = unsafe { ExecGuard::acquire(exec) };
-        let _ = unsafe { Executor::spin_band_once(exec, worker, timeout) };
+        let result = unsafe { Executor::spin_band_once(exec, worker, timeout) };
         // SAFETY: under the lock no other thread touches the runtime.
         unsafe { (*self.rt).run_ticks_for(Some(worker.level())) };
+        result
+    }
+
+    /// Issue 2016 -- the teardown: take the runtime back from the levels,
+    /// the executor's lock removed, for the caller to close its session
+    /// (`Executor::close`) and drop it. The level workers stay leaked, as
+    /// they were for the image's life, and the level count stays stated.
+    ///
+    /// # Safety
+    /// Called once, on the boot level's thread, after every other thread
+    /// that reached the runtime (each level's worker, any callback it ran)
+    /// has stopped and been joined; no copy of this `LevelCore` is used
+    /// afterwards.
+    pub unsafe fn into_runtime(self) -> ExecutorNodeRuntime {
+        // SAFETY: `rt` came from `Box::leak` in `new`, and the caller's
+        // contract makes this the only live handle to it.
+        let mut rt = unsafe { alloc::boxed::Box::from_raw(self.rt) };
+        rt.executor_mut().set_exec_lock(None);
+        *rt
     }
 
     /// One pass of the boot level: the executor's own worker (transport,
@@ -170,8 +199,8 @@ impl LevelCore {
     ///
     /// # Safety
     /// Called from the boot level's thread only.
-    pub unsafe fn spin_boot_once(&self, timeout: Duration) {
+    pub unsafe fn spin_boot_once(&self, timeout: Duration) -> nros_node::SpinOnceResult {
         // SAFETY: as `spin_level_once`; the ticks run under the same guard.
-        unsafe { ExecutorNodeRuntime::spin_once_shared(self.rt, timeout) };
+        unsafe { ExecutorNodeRuntime::spin_once_shared(self.rt, timeout) }
     }
 }
