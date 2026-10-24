@@ -46,7 +46,12 @@ them. On `native_sim` the linker resolved that call from the POSIX port that
 `nros-rmw-xrce-cffi` bundles, and 56 duplicate symbols followed in every
 Zephyr C++ XRCE leaf. The kernel arm now defines all eight.
 
-**Done when** a tier-2 nightly links the six `build-cpp-*-xrce` Zephyr leaves.
+The scheduled `run-matrix` hit the same collision in its C XRCE leaves, which
+link `libnros_cpp.a` as well. That run was filed as issue 2025, which is
+retired as a duplicate of 2032.
+
+**Done when** a tier-2 nightly links the six `build-cpp-*-xrce` Zephyr leaves,
+and a scheduled `run-matrix` links its `build-c-*-xrce` leaves.
 
 ### R3 — the six Zephyr Rust leaves pass `check-lock` on newslab-server-241
 

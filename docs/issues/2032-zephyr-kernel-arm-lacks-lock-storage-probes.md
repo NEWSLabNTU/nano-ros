@@ -6,7 +6,7 @@ type: bug
 area: [zephyr, platform, build, ci]
 severity: medium
 found: 2026-10-24
-related: [phase-513, phase-509, 1776, 1779, 0566]
+related: [phase-513, phase-509, 1776, 1779, 0566, 2025]
 ---
 
 **Home: [phase-513](../roadmap/phase-513-nightly-reds-with-no-home.md)** — R2.
@@ -20,7 +20,14 @@ related: [phase-513, phase-509, 1776, 1779, 0566]
   images.
 - **Images:** every Zephyr 3.7 `native_sim/native/64` C++ XRCE leaf —
   `build-cpp-{talker,listener,service-client,service-server,action-client,action-server}-xrce`.
-  The C XRCE leaves and every zenoh / Cyclone C++ leaf link.
+  Every zenoh and Cyclone C++ leaf links. In these two nightlies the C XRCE
+  leaves link as well. The scheduled `run-matrix` run 40070127626 (head
+  `62b661ac1c`) shows the same collision in C XRCE leaves:
+  `build-c-{listener,talker,service-client}-xrce` in tier 2 (job 120801569218)
+  and `build-c-service-server-xrce` in tier 1 (job 120804235709). Both images
+  link `libnros_cpp.a`, so the reach is "Zephyr native_sim XRCE images", not
+  only C++. That run was filed separately as issue 2025, now retired as a
+  duplicate of this one.
 - **Failure:** 56 duplicate symbols at the final link, every non-weak function
   of the POSIX port's `platform.c`, for example:
 
@@ -86,4 +93,6 @@ fills the same defaults as the POSIX arm.
 
 ## What would close it
 
-A tier-2 nightly in which the six `build-cpp-*-xrce` Zephyr leaves link.
+A tier-2 nightly in which the six `build-cpp-*-xrce` Zephyr leaves link, and a
+scheduled `run-matrix` in which the `build-c-*-xrce` leaves of tier 1 and
+tier 2 link.
