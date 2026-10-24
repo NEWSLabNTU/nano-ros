@@ -2,26 +2,26 @@
  * the build system supplying the real header.
  *
  * `nros_config_generated.h` is produced per-build by `nros-c/build.rs`
- * and written to
- *   $CARGO_TARGET_DIR/nros-c-generated/rclc/detail/nros_config_generated.h
- *
- * Issue 0360 — this used to document a `<variant_slug>/` directory level that
- * NOTHING EVER IMPLEMENTED. The path is flat, so two feature sets sharing a
- * target dir overwrite each other's header (and each other's archive). Rather
- * than describe a mechanism that does not exist, the real header now carries
+ * and written ONLY to that build script's cargo `$OUT_DIR`, as
+ *   <OUT_DIR>/nros-c-generated/rclc/detail/nros_config_generated.h
+ * (issue 1824 retired the flat `$CARGO_TARGET_DIR/nros-c-generated/` copy,
+ * which was whichever build wrote it last). The real header carries
  *   #define NROS_CONFIG_VARIANT "<sorted_underscore_joined_features>"
  * plus a reference to a matching symbol in libnros_c.a, so a header/archive
  * mismatch is an undefined reference NAMING the variant it wanted instead of a
- * silent `_opaque` overflow at runtime.
+ * silent `_opaque` overflow at runtime (issue 0360).
  *
- * Build systems pick the right variant header — see the matching stub
- * in `nros-cpp/include/rclcpp/detail/nros_cpp_config_generated.h` for the full
- * dispatch model. Short form (Phase 140):
- *   - CMake `add_subdirectory(nano-ros)`: nros-c's CMakeLists mirrors
- *     the per-build header into ${CMAKE_CURRENT_BINARY_DIR}/include/rclc/detail/
- *     and adds it to nros_c-static's INTERFACE include path.
- *   - Zephyr: zephyr/CMakeLists.txt prepends the cargo target dir.
- *   - Direct `cargo build`: add `-I$CARGO_TARGET_DIR/nros-c-generated`.
+ * How a build reaches it:
+ *   - CMake `add_subdirectory(nano-ros)`: nros-c's CMakeLists places the
+ *     header from the import's own cargo run and mirrors it into
+ *     ${CMAKE_CURRENT_BINARY_DIR}/include/rclc/detail/, on nros_c-static's
+ *     INTERFACE include path.
+ *   - Zephyr, NuttX, PX4: each places it the same way (see each integration).
+ *   - A cargo dependent: `DEP_NROS_C_CONFIG_INCLUDE` (the `links` channel).
+ *   - Direct `cargo build`: run it under the placer and add the placed dir —
+ *       python3 scripts/build/cargo-out-dir-headers.py --package nros-c
+ *         --dest <dir> -- cargo build … --message-format=json-render-diagnostics
+ *       -I"$(nros locate artifact c-include --placed-dir <dir>)"
  *
  * If this stub's `#error` fires, your build system has NOT been
  * configured to supply the real header.

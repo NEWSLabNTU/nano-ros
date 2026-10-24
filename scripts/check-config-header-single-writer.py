@@ -3,12 +3,11 @@
 
 The per-build sizes headers (`nros_config_generated.h`,
 `nros_cpp_config_generated.h`) are mirrored into the in-tree include dirs by
-`scripts/build/mirror-generated-header.sh`, which since issue 0978 knows the
-precedence: prefer the leaf-INDEPENDENT copy in the shared cargo target dir,
-fall back to the leaf's own. That precedence exists because a shared
-`--target-dir` makes cargo run a build script once per (crate, feature set),
-not once per leaf, so the leaf's own copy is present and arbitrarily old for
-every leaf after the first.
+`scripts/build/mirror-generated-header.sh`, which knows which copy is current:
+since issue 1824 the one PLACED from the `$OUT_DIR` of this build's cargo run
+(before it, a precedence between the leaf's own copy and the shared target-dir
+copy, issue 0978 — a shared `--target-dir` runs a build script once per
+(crate, feature set), not once per leaf, so a leaf's own copy can be old).
 
 A second writer does not merely duplicate that logic — it DEFEATS it. Issue
 0985: `nros-cpp/CMakeLists.txt` healed the mirror at configure time with a

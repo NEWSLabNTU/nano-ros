@@ -17,7 +17,7 @@
  *
  *   cc -fsyntax-only -std=c11 \
  *       -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/configured \
- *       -Itarget/nros-c-generated \
+ *       -I"$(nros locate artifact c-include --placed-dir <dir>)" \
  *       -Ipackages/api/nros-c/include \
  *       -Ipackages/platform/nros-platform-api/include \
  *       packages/api/nros-c/tests/compile/typed_service_handler.c

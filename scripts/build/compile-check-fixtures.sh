@@ -52,6 +52,9 @@ source "$repo_root/scripts/lib/grep-q.sh"
 source "$repo_root/scripts/build/cli-usable.sh"
 
 out_root="$(nros_build_dir "$NROS_KIND_COMPILE_CHECK")"
+# Issue 1824 — where the cxx-syntax generation build PLACES the per-build config
+# headers (from its own `$OUT_DIR`); `cxx_syntax_check` compiles against them.
+cc_placed="$out_root/placed-config-headers"
 mkdir -p "$out_root"
 
 # Write a fixture's `.compile-ok` stamp — issue 1454.
@@ -1200,13 +1203,13 @@ cxx_syntax_check() {
     # Issue #34 — the per-build generated config headers MUST precede the
     # source include dir: `packages/api/nros-cpp/include/rclcpp/detail/nros_cpp_config_generated.h`
     # is a stub that `#error`s, so if it is searched first the real header
-    # (`target/nros-cpp-generated/rclcpp/detail/...`, emitted by nros-cpp's build.rs) is
+    # (placed into $cc_placed by the generation build below, issue 1824) is
     # never reached. Prepend the generated dirs.
     # Where they are is `nros locate artifact` (phase-484 W6b), never a spelled
-    # `<root>/target/...`.
+    # path.
     local inc=() hdr
     for hdr in cpp-config-header c-config-header; do
-        hdr="$(nros_locate_artifact "$hdr")" || hdr=""
+        hdr="$(nros_locate_artifact "$hdr" --placed-dir "$cc_placed")" || hdr=""
         # `<root>/nros-<lang>-generated/<subdir>/<file>.h` -> the `-generated` dir.
         # The subdir differs per language (`rclc/detail` for C, `nros` for C++).
         [ -n "$hdr" ] && [ -f "$hdr" ] && inc+=(-I "${hdr%-generated/*}-generated")
@@ -1459,7 +1462,7 @@ elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # on residue. Issue 1031. (This named `nros-cpp/rmw-zenoh-cffi` until
     # phase-506 W4d removed it — the API crates name no backend, RFC-0071 D9 —
     # and `rmw-cffi`, which it implied, is what the executor sizes need.)
-    ( cd "$repo_root" && cargo build -q -p nros-cpp -p nros-c \
+    ( cd "$repo_root" && nros_cargo_placed "$cc_placed" nros-cpp nros-c -- build -q -p nros-cpp -p nros-c \
         --features nros-cpp/alloc,nros-cpp/env,nros-cpp/log,nros-cpp/platform-posix,nros-cpp/ros-humble,nros-cpp/rmw-cffi ) \
         || echo "cxx-syntax: config-header generation build failed (snippets needing them will skip)" >&2
     # A build that exits 0 having written nothing is the case the `||` above
@@ -1467,7 +1470,7 @@ elif command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # `#error "must be supplied per-build"` twenty frames into a header, which
     # names the stub rather than the step that was supposed to replace it.
     for _h in cpp-config-header c-config-header; do
-        _h="$(nros_locate_artifact "$_h")" || _h="<nros locate artifact $_h failed>"
+        _h="$(nros_locate_artifact "$_h" --placed-dir "$cc_placed")" || _h="<nros locate artifact $_h failed>"
         [ -f "$_h" ] || echo "cxx-syntax: config-header generation produced NO $_h \
 (the build succeeded) — snippets including it will fail against the committed stub" >&2
     done

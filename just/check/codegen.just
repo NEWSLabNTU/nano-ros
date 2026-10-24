@@ -293,9 +293,10 @@ census-hooks-complete:
     source scripts/build/cargo.sh
     # issue 1354 — its own Cargo target dir, because its feature set is its own.
     #
-    # `nros-cpp`'s build script writes `nros_config_generated.h` into
+    # `nros-cpp`'s build script wrote `nros_config_generated.h` into
     # `$CARGO_TARGET_DIR/nros-c-generated/`, a byproduct with no feature in its
-    # path, so the last build of a given crate owns it. This gate builds with
+    # path, so the last build of a given crate owned it (gone since issue 1824;
+    # the private dir still isolates this gate's archives). This gate builds with
     # `metadata-mode,param-services`, which no other gate does, and the
     # resulting executor layout genuinely differs — measured against the `cpp`
     # lane's: NROS_EXECUTOR_SIZE 90408 against 90448. Sharing the path made the
@@ -635,18 +636,14 @@ bounds-fragment-configure:
     fi
     NROS_CLI="$_cli" ./tests/cmake-bounds-fragment-configure-tests.sh
 
-# Issue 0978 — the generated config header a leaf compiles against must be the
-# CURRENT one, not merely a PRESENT one.
-#
-# `mirror-generated-header.sh` chooses between the leaf's own corrosion copy and
-# the leaf-independent copy in the shared cargo target dir. Issue 0805 made it
-# prefer the leaf's and fall back only when that was ABSENT, on the grounds that
-# the two are "the same bytes" — true only when one build-script run wrote both.
-# Once leaves share a cargo target dir the script runs for ONE of them, so every
-# other leaf keeps its copy from whenever it last ran: present, and arbitrarily
-# old. Measured 19 of 20 native leaves six days stale, caught by the 0369 size
-# anchor as `undefined reference to nros_config_variant_sz_<hash>` — a link
-# error that names a hash and no file.
+# Issue 1824 — the generated config header a leaf compiles against is the
+# copy PLACED from the `$OUT_DIR` of the cargo run this build made, and nothing
+# else. `mirror-generated-header.sh` used to CHOOSE between the leaf's corrosion
+# copy and the shared `$CARGO_TARGET_DIR` side channel, and each rule of that
+# choice was a fix for the last (0805 → 0978 → 0987 → 1904): a copy that is
+# PRESENT is not one that is CURRENT. The self-test pins that the placed source
+# is the only one, that a missing one is an error, that a pre-1824 command is
+# refused, and the write-if-changed + run-marker semantics.
 #
 # The self-test is in the script so the rule and its cases live together; it
 # stages temp dirs only (no cargo, no cmake, milliseconds), so it belongs on the
@@ -671,17 +668,6 @@ msg-dep-is-path:
 [private]
 no-absolute-model-paths:
     @bash scripts/check-no-absolute-model-paths.sh
-
-# issue 0834 — a per-build sizes header must never lose its `.stamp` twin.
-#
-# The pair is written by ONE function, header first, so a stamp with no header
-# is a state the writers cannot produce — and it does not repair itself: a build
-# whose probe yields 0 declines to write the header and reports success. The
-# consumer-side symptom is a stub `#error` (C++) or an undeclared macro (C),
-# from a file nobody was looking at. This names the directory instead.
-[private]
-orphan-generated-stamp:
-    @python3 scripts/check-orphan-generated-stamp.py
 
 # Issue 0739 — every build-time sizing knob is enumerable, and the pools that
 # declared their arithmetic carry a byte figure. Issue 0271 audited a 256 KB

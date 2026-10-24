@@ -86,23 +86,28 @@ c: c-fmt
     # undefined `nros_cpp_config_variant_*` symbol. The 40-byte executor
     # difference between the two was CORRECT — different features, different
     # layout — which is why the answer is a private dir and not one lane
-    # yielding to the other.
+    # yielding to the other. (Issue 1824 deleted that shared header path; the
+    # private dir still keeps the ARCHIVE this lane links its own.)
     #
     # `nros_scoped_target_dir`'s doc warns it is for dirs with no consumer
     # reading a fixed relative path. That is honoured: every `-I` below is
     # derived from this same variable, so no fixed path escapes this recipe.
     gen="$(nros_scoped_target_dir check-c)"
     export CARGO_TARGET_DIR="$gen"
-    # issue 1852 — the per-build header dirs under this lane's target dir,
-    # ASKED (`nros locate artifact`, which honours CARGO_TARGET_DIR), never
-    # joined by hand: the names live in `nros_build_paths::artifact`.
-    cgen="$(nros_locate_artifact c-include)"
-    cppgen="$(nros_locate_artifact cpp-include)"
+    # issue 1852 — the per-build header dirs, ASKED (`nros locate artifact`),
+    # never joined by hand: the names live in `nros_build_paths::artifact`.
+    # Issue 1824 — under the dir THIS lane's cargo builds PLACE them in
+    # (`nros_cargo_placed`), from each build's own `$OUT_DIR`. The two builds
+    # below place into ONE dir on purpose: the C++ build re-places nros-c's
+    # header from its own unit graph, which is the one its archive links.
+    placed="$gen/placed"
+    cgen="$(nros_locate_artifact c-include --placed-dir "$placed")"
+    cppgen="$(nros_locate_artifact cpp-include --placed-dir "$placed")"
     echo "Checking C code (build + syntax)..."
     echo "  - syntax (nros-c umbrella header)"
     # The per-variant `<rclc/detail/nros_config_generated.h>` (defining the
     # OPAQUE_U64S macros referenced by `<rclc/detail/nros_generated.h>`) is
-    # emitted by `nros-c`'s build.rs into `target/nros-c-generated/`.
+    # emitted by `nros-c`'s build.rs into its `$OUT_DIR` and placed into $placed.
     # Build first so the syntax check has those macros; otherwise
     # the source-tree stub fires its `#error`.
     # issue 0400 follow-up — this build GENERATES the headers the checks below
@@ -111,7 +116,7 @@ c: c-fmt
     # "your C headers are broken": every `*_OPAQUE_U64S` came back undeclared
     # from a `cc` line that says nothing about cargo. Diagnosing that cost four
     # wrong hypotheses; the build's own error names the cause in one line.
-    cargo build -p nros-c --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
+    nros_cargo_placed "$placed" nros-c -- build -p nros-c --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
     # Variant dir FIRST so its `nros_config_generated.h` (with the
     # real OPAQUE_U64S macros) wins over the source-tree stub.
     cc -fsyntax-only \
@@ -910,7 +915,7 @@ c: c-fmt
     # "your C headers are broken": every `*_OPAQUE_U64S` came back undeclared
     # from a `cc` line that says nothing about cargo. Diagnosing that cost four
     # wrong hypotheses; the build's own error names the cause in one line.
-    cargo build -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
+    nros_cargo_placed "$placed" nros-cpp nros-c -- build -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
     cc -fsyntax-only \
         -I"$cgen" \
         -I"$cppgen" \
@@ -945,23 +950,13 @@ c: c-fmt
     # `param-services`, so the archive every step above links has none of these
     # symbols at all.
     #
-    # That second shape gets its OWN target dir, and the reason is the
-    # config-variant guard, not tidiness. `nros_config_generated.h` is mirrored
-    # to `$CARGO_TARGET_DIR/nros-c-generated/` as a build-script SIDE EFFECT, so
-    # it carries whichever feature shape last RAN a build script -- and cargo
-    # caches both shapes' fingerprints, so switching back to one it has already
-    # built re-runs nothing and rewrites nothing. Sharing one target dir
-    # therefore links a header sized for the shipped shape against an archive
-    # built for this one: `undefined reference to nros_config_variant_sz_<hash>`
-    # when the guard fires, and a wrong `rclc_executor_t` if it ever did not.
-    # A separate dir makes header and archive one build, permanently.
-    #
-    # `CARGO_TARGET_DIR`, not `--target-dir`: the mirror resolves its root from
-    # that variable FIRST and only falls back to walking up from `OUT_DIR`, and
-    # that walk reads a directory name containing a `-` as a target TRIPLE
-    # (`nros-c-param-services` looks exactly like one). With the flag alone the
-    # header landed back in the shared `target/`, clobbering the shipped one --
-    # measured, not reasoned.
+    # That second shape gets its OWN target dir: `<dir>/debug/libnros_c.a` is
+    # whichever shape last LINKED there, so sharing the shipped shape's dir
+    # would link this TU against that archive. Its header is placed from THIS
+    # build's `$OUT_DIR` (issue 1824), so header and archive are one build.
+    # (Until 1824 the header came from a flat `$CARGO_TARGET_DIR/nros-c-generated/`
+    # copy, which was also why this used `CARGO_TARGET_DIR` and not
+    # `--target-dir`; the archive path below still reads it.)
     #
     # `NROS_MAX_PARAM_CONSTRAINTS_LEN=256` because the descriptor's
     # `additional_constraints` capacity DEFAULTS TO 0, and stating it here is
@@ -979,11 +974,11 @@ c: c-fmt
     # same build.
     param_dir="$PWD/target/nros-c-param-services"
     NROS_MAX_PARAM_CONSTRAINTS_LEN=256 CARGO_TARGET_DIR="$param_dir" \
-        cargo build -p nros-c --no-default-features \
+        nros_cargo_placed "$param_dir/placed" nros-c -- build -p nros-c --no-default-features \
         --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
     mkdir -p tmp
     cc -std=c11 -Wall -Wextra -D_GNU_SOURCE \
-        -I"$(CARGO_TARGET_DIR="$param_dir" nros_locate_artifact c-include)" \
+        -I"$(nros_locate_artifact c-include --placed-dir "$param_dir/placed")" \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
         -Ipackages/platform/nros-platform-api/include \
@@ -1241,11 +1236,11 @@ cpp: cpp-fmt
     gen_clippy_zenoh="$(nros_scoped_target_dir check-cpp-clippy-zenoh)"
     gen="$(nros_scoped_target_dir check-cpp)"
     export CARGO_TARGET_DIR="$gen"
-    # issue 1852 — the per-build header dirs under this lane's target dir,
-    # ASKED (`nros locate artifact`, which honours CARGO_TARGET_DIR), never
-    # joined by hand: the names live in `nros_build_paths::artifact`.
-    cgen="$(nros_locate_artifact c-include)"
-    cppgen="$(nros_locate_artifact cpp-include)"
+    # issue 1852 — the per-build header dirs, ASKED, never joined by hand.
+    # Issue 1824 — placed by the build below from its own `$OUT_DIR`.
+    placed="$gen/placed"
+    cgen="$(nros_locate_artifact c-include --placed-dir "$placed")"
+    cppgen="$(nros_locate_artifact cpp-include --placed-dir "$placed")"
     echo "Checking C++ headers (build + syntax + clippy)..."
     echo "  - freestanding syntax (c++14)"
     # The C++ headers include nros-c's `<rclc/types.h>`, so the syntax probe
@@ -1253,8 +1248,8 @@ cpp: cpp-fmt
     # The per-variant `<rclcpp/detail/nros_cpp_config_generated.h>` (defining
     # `NROS_CPP_EXECUTOR_STORAGE_SIZE` and friends, referenced by
     # `executor.hpp`'s `uint8_t storage_[NROS_CPP_EXECUTOR_STORAGE_SIZE]`)
-    # is emitted by `nros-cpp`'s build.rs into
-    # `target/nros-cpp-generated/`. Same C-side header for nros-c.
+    # is emitted by `nros-cpp`'s build.rs into its `$OUT_DIR` and placed into
+    # $placed. Same C-side header for nros-c.
     # Build both first; variant dirs go FIRST on the include path so
     # their real headers win over the source-tree stubs.
     # issue 0400 follow-up — this build GENERATES the headers the checks below
@@ -1263,7 +1258,7 @@ cpp: cpp-fmt
     # "your C headers are broken": every `*_OPAQUE_U64S` came back undeclared
     # from a `cc` line that says nothing about cargo. Diagnosing that cost four
     # wrong hypotheses; the build's own error names the cause in one line.
-    cargo build -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
+    nros_cargo_placed "$placed" nros-cpp nros-c -- build -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
     # phase-428 W5 finding 9 — a failed `rclcpp::Node::create_*` must ABORT,
     # not hand back a shared_ptr to a dead entity. RUNTIME, and forking,
     # because the defect was that nothing happened: a compile probe cannot tell
@@ -1279,11 +1274,11 @@ cpp: cpp-fmt
     # `--unresolved-symbols=ignore-all` is deliberate and does not weaken 0360:
     # the stamp exists to stop a TU linking an archive built with OTHER
     # features, and there is no archive here to mismatch. Linking one instead
-    # was tried and is NOT reproducible — `target/nros-cpp-generated` is a
-    # shared dir written by whichever unit last ran its build script, so the
-    # header's variant is the CLIPPY step's while the archive is this build's,
-    # and the link fails on a stamp mismatch on every run after the first
-    # (issue 0834's class, not a race).
+    # was tried and was NOT reproducible while the header came from the shared
+    # `target/nros-cpp-generated` (whichever unit last ran its build script —
+    # the CLIPPY step's variant against this build's archive). Since issue 1824
+    # the header is placed from this build, so that reason is gone; linking an
+    # archive here is now possible and not yet done.
     echo "  - a failed create aborts (runtime, c++14)"
     mkdir -p "$gen/nros-cpp-tests"
     c++ -std=c++14 -fno-exceptions -fno-rtti \

@@ -19,7 +19,7 @@ use nros_build_paths::artifact::Artifact;
 
 use crate::shared::{
     compile_c_stub, dep_usize, generate_cbindgen_header, probe_nros_sizes, watch_param_store_shape,
-    write_header_to_corrosion, write_header_to_target_dir,
+    write_header_to_corrosion, write_header_to_out_dir,
 };
 
 pub fn run() {
@@ -147,9 +147,8 @@ fn generate_config(
     // pollute every other variant's installed header → opaque-storage
     // overflow at runtime.
     // Phase 119.3: merge is gone. Each cargo invocation writes its
-    // per-build header to
-    // `$CARGO_TARGET_DIR/nros-c-generated/rclc/detail/...` (FLAT; issue 0360)
-    // and `nros_c_setup()` CMake function finds it.
+    // per-build header to its own `$OUT_DIR` (issue 1824), where a consumer
+    // reaches it through `links` or the placer.
     let probe_executor = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
     if probe_executor == 0 {
         println!(
@@ -345,8 +344,7 @@ fn generate_config(
         .replace("@HAS_PARAM_SERVICES@", has_param_services());
     // Phase 119.3: source-tree header is now a committed STUB that
     // `#error`s. Real header gets written PER-BUILD to
-    // `$CARGO_TARGET_DIR/nros-c-generated/rclc/detail/` (FLAT; issue 0360).
-    // `nros_c_setup()` CMake function finds it.
+    // `<OUT_DIR>/nros-c-generated/rclc/detail/` (issue 1824).
     let _ = (manifest_dir, c_header);
     if probe_executor == 0 {
         // `cargo check --no-default-features` / `cargo doc` — no probe
@@ -478,9 +476,9 @@ fn generate_config(
         .replace("@VARIANT_SLUG@", &crate::shared::variant_slug())
         .replace("@VARIANT_SYMBOL@", &variant_suffix);
 
-    // Phase 119.3: two stable per-build locations (see nros-cpp/build.rs
-    // for rationale).
-    write_header_to_target_dir(
+    // `$OUT_DIR` (the only per-build copy, issue 1824) and the Corrosion
+    // import's install-rule copy — see `cpp.rs` for both.
+    write_header_to_out_dir(
         &Artifact::CConfigHeader.relative(None, "dev"),
         &exact_header,
     );

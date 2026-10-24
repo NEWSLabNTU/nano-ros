@@ -63,11 +63,12 @@ echo "borrowed-e2e: building nros-c (platform-posix)…"
 # writing" branch. The per-build config header is then never written and this
 # fixture fails on the header it is about to link against — which is what the
 # build script's own warning means by "do not link the resulting rlib".
-( cd "$repo_root" && cargo build -p nros-c --features alloc,env,log,platform-posix,rmw-cffi >/dev/null )
+# Issue 1824 — the config header is PLACED from this build's own `$OUT_DIR`.
+( cd "$repo_root" && nros_cargo_placed "$out_dir/placed" nros-c -- build -p nros-c --features alloc,env,log,platform-posix,rmw-cffi >/dev/null )
 # The line above is a plain `cargo build`, so the archive is the `dev` profile's
 # for the host; where that lands is `nros locate artifact` (phase-484 W6b).
 lib="$(nros_locate_artifact c-archive --profile dev)"
-cfg_hdr="$(nros_locate_artifact c-config-header)"
+cfg_hdr="$(nros_locate_artifact c-config-header --placed-dir "$out_dir/placed")"
 # `<root>/nros-c-generated/<subdir>/<file>.h` -> `<root>/nros-c-generated`; the
 # subdir is per language (`rclc/detail` here), so cut at the generated root.
 cfg_dir="${cfg_hdr%-generated/*}-generated"

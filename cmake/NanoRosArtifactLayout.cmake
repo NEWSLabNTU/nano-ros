@@ -77,8 +77,8 @@ function(nros_generated_header _out _root _lang _file)
 endfunction()
 
 # nros_generated_subpath(<out> <c|cpp>)
-#   `<dir>/<subdir>` — what `mirror-generated-header.sh` takes as <gen-subdir>,
-#   e.g. `nros-c-generated/rclc/detail`.
+#   `<dir>/<subdir>`, e.g. `nros-c-generated/rclc/detail` — a header's path under
+#   a placed dir (`nros_config_header_placed`).
 function(nros_generated_subpath _out _lang)
     nros_generated_dir(_dir "${_lang}")
     nros_generated_header_subdir(_sub "${_lang}")

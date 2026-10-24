@@ -1,19 +1,20 @@
 ---
 id: 1824
 title: "The per-build config headers still go through the `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/` side channel on every lane except Zephyr"
-status: open
+status: resolved
 type: tech-debt
 area: [build, cmake]
 severity: medium
 found: 2026-10-12
+resolved: 2026-10-24
 related: [phase-424, 0945, 0491, 0805, 0360, 0834, 0978, 0985, 0987, 1031, phase-449]
 ---
 
-**Home: [phase-449](../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-449](../../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What is left
 
-[phase-424](../roadmap/archived/phase-424-build-graph-freshness-truth.md) was
+[phase-424](../../roadmap/archived/phase-424-build-graph-freshness-truth.md) was
 archived on 2026-10-11 with three "carried forward" items. Item 2 was superseded
 by phase-429 / RFC-0090, and item 3 was closed on 2026-09-06. **Item 1 is still
 open, and this issue carries it.** Item 1 is #0945 item 4: the generated
@@ -281,3 +282,57 @@ target-dir half, the `.h.stamp`, `check-orphan-generated-stamp`,
 `check-sizes-header-mirrors`' target-dir candidates, the cargo-dir half of
 `mirror-generated-header.sh`, and the staleness probe's `ConfigHeaderStamp`
 exemption.
+
+## D4 landed (2026-10-24): the side channel is deleted — RESOLVED
+
+Every reader moved first, then the writer went.
+
+**The reader the census missed was a WRITER's own check.** nros-cpp's build
+script verified its c-format header against the target-dir copy nros-c had
+left (`write_header_if_absent_or_verify`), and the `.h.stamp` existed only to
+tell that copy's staleness from real divergence. It now reads nros-c's copy from
+nros-c's OWN `$OUT_DIR` through the `links` channel
+(`DEP_NROS_C_CONFIG_INCLUDE`), which belongs to the same cargo invocation, so a
+disagreeing define has one meaning and stops the build, and the stamp has
+nothing left to answer (`verify_against_nros_c_header`; unit-tested, and the
+test fails when the comparison is disabled). nros-cpp no longer writes the C
+header anywhere.
+
+Migrated, each to a placed dir from its own cargo run (one shell spelling,
+`nros_cargo_placed` in `scripts/build/cargo.sh`): `check-c` (both builds and the
+param probe), `check-cpp`, `compile-check-fixtures.sh`'s cxx-syntax generation,
+`borrowed-e2e/build.sh`, `size_probe_verify.sh`. `heap_compile_check.rs` (a
+manual `#[ignore]` test in the CLI workspace, which runs no build of its own)
+takes `NROS_C_CONFIG_INCLUDE` and refuses, naming the two commands, when it is
+unset; its `check-artifact-path-literals` allowlist row went with the literal.
+
+**One more found while deleting: a C++-only Zephyr image.** Its C header was
+declared a byproduct of the nros-cpp cargo build, but the placer there named
+only `--package nros-cpp`, so the file arrived through the target-dir copy —
+which on Zephyr IS the header root. The nros-cpp build now places `nros-c` too,
+exactly when no separate `nros_c_cargo_build` exists (the same condition the
+byproduct already used).
+
+Deleted: `write_header_to_target_dir`'s target-dir half and
+`write_shared_header`, `target_dir_path`, `drop_stamp_without_header`, the stamp
+helpers and `probe_artifact_stamp` (`nros-build-helpers`); the gate
+`check-orphan-generated-stamp` (retired from the registry baseline: it policed
+a file nothing writes); the staleness probe's `ConfigHeaderStamp` exemption;
+`check-feature-sweep`'s per-run rmtree of the shared dirs; the cargo-dir half of
+`mirror-generated-header.sh` (a gen-subdir other than `-` is now refused, naming
+this issue) with `check-sizes-header-mirrors`' matching candidates and
+`nros_config_header_cargo_manifest`, which existed only to feed it.
+
+**The regression gate is the CLI.** `nros locate artifact` REFUSES a header
+artifact without `--placed-dir` (there is no target-dir copy for it to name),
+so a reader added later fails at its first run, naming the placer.
+
+Issue 0834's absorbing stamp-without-header state is gone with the stamp, and
+CLAUDE.md's `rm -rf` rule is down to one exemption.
+
+Measured: `just check c` and `just check cpp` pass and read only their placed
+dirs, and no `nros-{c,cpp}-generated/` exists under any target dir after them;
+`examples/linux/cpp/talker` (zenoh, Ninja) builds and links with both crates'
+headers placed, a no-op rebuild is 0.61 s and compiles nothing, and the build
+tree holds no side-channel dir and no `.h.stamp`; the three heap C syntax checks
+pass through the documented remedy; every touched script's self-test passes.

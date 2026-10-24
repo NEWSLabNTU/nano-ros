@@ -6,8 +6,9 @@ reached the cells), and W7's with issue 1166 (2026-10-15). Issue 1254 is
 resolved: W3's fix had one reader left, `just zephyr setup`'s SDK registration,
 which still built the checkout path and so registered nothing on a
 store-provisioned host; it asks the ladder now, and
-`check-zephyr-sdk-path-asked` keeps it that way. What is open is #1824 (the
-generated-header side channel, now designed). #1825 is resolved: the claim was
+`check-zephyr-sdk-path-asked` keeps it that way. #1824 (the
+generated-header side channel) is resolved 2026-10-24 (D1–D4), which leaves no
+homed issue open. #1825 is resolved: the claim was
 false, and the generated-code record now names the emitter (RFC-0104 D5).
 
 **Status (2026-10-12). W1, W3, W4, W5, W6 and W8 are DONE; W2 and W7 each
@@ -498,5 +499,5 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1824](../issues/1824-generated-header-side-channel-consumers-unmigrated.md) | The per-build config headers still go through `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`. That is state keyed by a tree, not a name. Carried from phase-424. D1 landed 2026-10-24: the cmake / Corrosion road places them from `$OUT_DIR`; NuttX, PX4 and the deletion remain. |
+| [#1824](../issues/archived/1824-generated-header-side-channel-consumers-unmigrated.md) | **Resolved 2026-10-24.** The per-build config headers went through `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`, state keyed by a tree. D1 (cmake / Corrosion), D2 (NuttX), D3 (PX4) placed them from `$OUT_DIR`; D4 deleted the target-dir copy and its `.h.stamp`. |
 | [#1825](../issues/archived/1825-store-pin-bump-restale-unmeasured.md) | **RESOLVED 2026-10-23.** The claim was false: the generated-code record keyed on the codegen VERSION, so a pin bump between two releases of one version reused the old output. The record now carries the emitter fingerprint (RFC-0104 D5). |

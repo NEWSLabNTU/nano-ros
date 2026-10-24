@@ -2,26 +2,23 @@
  * the build system supplying the real header.
  *
  * `nros_cpp_config_generated.h` is produced per-build by
- * `nros-cpp/build.rs` and written to
- *   $CARGO_TARGET_DIR/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h
- * Issue 0360 — the `<variant_slug>/` level documented here was never
- * implemented; the path is FLAT, so two feature sets sharing a target dir
- * overwrite each other. The real header instead carries
- * `#define NROS_CPP_CONFIG_VARIANT "<features>"` and references a matching
- * symbol in the archive, making a mismatch a link error rather than a silent
- * `_opaque` overflow
- * (e.g. `platform-posix_rmw-zenoh_ros-humble_std`).
+ * `nros-cpp/build.rs` and written ONLY to that build script's cargo
+ * `$OUT_DIR`, as
+ *   <OUT_DIR>/nros-cpp-generated/rclcpp/detail/nros_cpp_config_generated.h
+ * (issue 1824 retired the flat `$CARGO_TARGET_DIR/nros-cpp-generated/` copy).
+ * The real header carries `#define NROS_CPP_CONFIG_VARIANT "<features>"` and
+ * references a matching symbol in the archive, making a mismatch a link error
+ * rather than a silent `_opaque` overflow (issue 0360).
  *
- * Build systems pick the right variant header (Phase 140):
- *   - CMake `add_subdirectory(nano-ros)`: nros-cpp's CMakeLists mirrors
- *     the per-build header into ${CMAKE_CURRENT_BINARY_DIR}/include/nros/
- *     and adds it to nros-cpp-headers' INTERFACE include path BEFORE
- *     the source-tree stub.
- *   - Zephyr: zephyr/CMakeLists.txt prepends `${CMAKE_BINARY_DIR}/nros-rust`
- *     (the cargo target dir) so the per-build header wins.
- *   - Direct `cargo build`: add the per-build path to your compile
- *     flags manually, e.g.
- *       -I$CARGO_TARGET_DIR/nros-cpp-generated
+ * How a build reaches it — the same roads as the C header (see
+ * `nros-c/include/rclc/detail/nros_config_generated.h`). A C++ image also
+ * compiles against the C header, which nros-c's build script writes, so a
+ * direct `cargo build` places BOTH packages:
+ *       python3 scripts/build/cargo-out-dir-headers.py --package nros-cpp
+ *         --package nros-c --dest <dir> -- cargo build …
+ *         --message-format=json-render-diagnostics
+ *       -I"$(nros locate artifact cpp-include --placed-dir <dir>)"
+ *       -I"$(nros locate artifact c-include --placed-dir <dir>)"
  *
  * If this stub's `#error` fires, your build system has NOT been
  * configured to supply the real header. See

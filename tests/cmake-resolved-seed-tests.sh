@@ -357,7 +357,7 @@ $BUILD_OUT"
 fi
 
 # ---------------------------------------------------------------------------
-log_header "G. a configure-time header heal reads the FINAL cargo key (issue 1746)"
+log_header "G. a configure-time header heal runs after the cargo re-key (issue 1746)"
 # ---------------------------------------------------------------------------
 #
 # The same two-step shape one seam over. `<build>/cargo` is keyed provisionally
@@ -370,44 +370,46 @@ log_header "G. a configure-time header heal reads the FINAL cargo key (issue 174
 # flush and the REAL mirror script; only the re-key itself is stood in for.
 # The immediate run beside it is the pre-fix shape, kept as the control that
 # shows this miniature can see the defect at all.
+#
+# Issue 1824 -- the mirror reads only a PLACED source now (`-` gen-subdir),
+# never `<build>/cargo/*/`, so the provisional key no longer reaches the heal
+# through the cargo link. The queue is still the heal's road, and this case
+# still pins its ORDER: the stand-in re-key rewrites the placed copy, so a
+# heal that ran before it reads PROVISIONAL.
 
 FACTS_MODULE="$PROJECT_ROOT/cmake/NanoRosEntityFacts.cmake"
 MIRROR_SH="$PROJECT_ROOT/scripts/build/mirror-generated-header.sh"
 HEAL_ROOT="$TEST_TMPDIR/heal"
-mkdir -p "$HEAL_ROOT/prov/k/gen/nros" "$HEAL_ROOT/final/k/gen/nros" "$HEAL_ROOT/src"
-printf 'PROVISIONAL\n' > "$HEAL_ROOT/prov/k/gen/nros/h.h"
-printf 'FINAL\n' > "$HEAL_ROOT/final/k/gen/nros/h.h"
+mkdir -p "$HEAL_ROOT/src"
 cat > "$HEAL_ROOT/src/CMakeLists.txt" <<EOF
 cmake_minimum_required(VERSION 3.20)
 project(nros_header_heal_probe NONE)
 include("$FACTS_MODULE")
 
-# nros-c's scope: the PROVISIONAL key.
-file(REMOVE "\${CMAKE_BINARY_DIR}/cargo")
-file(CREATE_LINK "$HEAL_ROOT/prov" "\${CMAKE_BINARY_DIR}/cargo" SYMBOLIC)
+# nros-c's scope: the placed copy as the PROVISIONAL key's cargo run left it.
+file(WRITE "\${CMAKE_BINARY_DIR}/placed/h.h" "PROVISIONAL\n")
 
 # The deferred flush's re-key, stood in for (the real one needs a whole
 # Corrosion import); the flush that CALLS it is the real one.
 function(_nros_entity_facts_rekey_shared_cargo_dir)
-    file(REMOVE "\${CMAKE_BINARY_DIR}/cargo")
-    file(CREATE_LINK "$HEAL_ROOT/final" "\${CMAKE_BINARY_DIR}/cargo" SYMBOLIC)
+    file(WRITE "\${CMAKE_BINARY_DIR}/placed/h.h" "FINAL\n")
 endfunction()
 # nros-cpp's scope: queue the heal, exactly as its CMakeLists does.
-nros_config_header_heal("$MIRROR_SH" "\${CMAKE_BINARY_DIR}/leaf/h.h"
-    "\${CMAKE_BINARY_DIR}" gen/nros h.h "\${CMAKE_BINARY_DIR}/include/nros/h.h")
+nros_config_header_heal("$MIRROR_SH" "\${CMAKE_BINARY_DIR}/placed/h.h"
+    "\${CMAKE_BINARY_DIR}" - h.h "\${CMAKE_BINARY_DIR}/include/nros/h.h")
 
 # An entry registers LAST in a real configure, so the facts flush is scheduled
 # AFTER the heal was queued: its deferred call runs first and must wait.
 nros_entity_facts_env_deferred(nros_heal_probe_target)
 
 # The pre-fix shape, for contrast: run it NOW.
-execute_process(COMMAND bash "$MIRROR_SH" "\${CMAKE_BINARY_DIR}/leaf/h.h"
-    "\${CMAKE_BINARY_DIR}" gen/nros h.h "\${CMAKE_BINARY_DIR}/immediate/h.h")
+execute_process(COMMAND bash "$MIRROR_SH" "\${CMAKE_BINARY_DIR}/placed/h.h"
+    "\${CMAKE_BINARY_DIR}" - h.h "\${CMAKE_BINARY_DIR}/immediate/h.h")
 EOF
 CONFIGURE_OUT="$(cmake -G Ninja -S "$HEAL_ROOT/src" -B "$HEAL_ROOT/build" 2>&1)"
 check
 if [ "$(cat "$HEAL_ROOT/build/immediate/h.h" 2>/dev/null)" = "PROVISIONAL" ]; then
-    log_success "control: an immediate heal reads the provisional key (the defect is visible here)"
+    log_success "control: an immediate heal reads the provisional copy (the defect is visible here)"
 else
     fail "control did not reproduce the defect, so the case below proves nothing:
   immediate='$(cat "$HEAL_ROOT/build/immediate/h.h" 2>/dev/null)'
@@ -415,7 +417,7 @@ $CONFIGURE_OUT"
 fi
 check
 if [ "$(cat "$HEAL_ROOT/build/include/nros/h.h" 2>/dev/null)" = "FINAL" ]; then
-    log_success "the queued heal ran after the re-key and mirrored the FINAL key's header"
+    log_success "the queued heal ran after the re-key and mirrored the FINAL placed header"
 else
     fail "THE HEAL READ A PROVISIONAL KEY (issue 1746): got
   '$(cat "$HEAL_ROOT/build/include/nros/h.h" 2>/dev/null)', want FINAL.

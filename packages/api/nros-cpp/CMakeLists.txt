@@ -74,10 +74,7 @@ corrosion_import_crate(
     PROFILE       ${NROS_CARGO_PROFILE}
     ${_nros_cpp_img_LOCKED}
 )
-# issue 1904 — the mirror reads the cargo subdir THIS manifest gets, never a
-# sibling's (see `nros_config_header_cargo_manifest`).
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
-nros_config_header_cargo_manifest("${_nros_cpp_cargo_manifest}")
 # issue 1824 — cargo runs under the placer (see nros-c/CMakeLists.txt). This
 # image mirrors TWO headers and they come from two build scripts: nros-cpp's
 # writes the C++ one, and nros-c's — a dependency built in the same cargo run —
@@ -157,9 +154,6 @@ if(TARGET cargo-build_nros_cpp)
     # packages/api/nros-c/CMakeLists.txt. One spelling for both crates: the
     # mirror re-runs every build (write-if-changed + restat), because the
     # staticlib it used to key on does not change when only the header does.
-    # issue 0805 — see the matching comment in nros-c/CMakeLists.txt: the
-    # leaf's own copy is written only when the build script runs for THIS
-    # leaf, which a shared cargo target dir makes untrue after the first.
     set(_NROS_CPP_MIRROR_SH "${CMAKE_CURRENT_LIST_DIR}/../../../scripts/build/mirror-generated-header.sh")
     include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
     # issue 1824 — the PLACED copies, `-` as the gen-subdir (see nros-c).
@@ -201,8 +195,8 @@ if(TARGET cargo-build_nros_cpp)
     # same build, same generated content — and `c_listener` failing to link on
     # issue 0369's size anchor.
     #
-    # Best-effort by construction: on a tree that has never built, neither
-    # candidate exists and the script exits non-zero saying so. That is not a
+    # Best-effort by construction: on a tree that has never built, the placed
+    # copy does not exist yet and the script exits non-zero saying so. That is not a
     # configure error — the build-time edge is the real mechanism and this is
     # only a repair for a tree that is already drifted — so the result is
     # ignored, exactly as the old `if(EXISTS ...)` guard made it best-effort.

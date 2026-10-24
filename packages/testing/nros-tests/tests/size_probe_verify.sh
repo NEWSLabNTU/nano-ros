@@ -35,7 +35,9 @@ cd "$(git rev-parse --show-toplevel)"
 # issue 1852 — asked, not joined: `nros locate artifact` honours CARGO_TARGET_DIR.
 # shellcheck source=../../../../scripts/build/cargo.sh
 . "$(git rev-parse --show-toplevel)/scripts/build/cargo.sh"
-HEADER="$(nros_locate_artifact c-config-header)"
+# Issue 1824 — placed by `build_under` from each build's own `$OUT_DIR`.
+PLACED="$(git rev-parse --show-toplevel)/build/size-probe-verify/placed"
+HEADER="$(nros_locate_artifact c-config-header --placed-dir "$PLACED")"
 FEATURES="rmw-cffi,platform-posix,ros-humble"  # phase-506 W4d: nros-c names no backend
 JOBS="${JOBS:-8}"
 SOAK_ROUNDS="${SOAK_ROUNDS:-3}"
@@ -52,7 +54,7 @@ extract_sizes() {
 
 build_under() {
     cargo clean -p nros-c >/dev/null
-    cargo build -p nros-c --features "$FEATURES" -j "$JOBS" >/dev/null
+    nros_cargo_placed "$PLACED" nros-c -- build -p nros-c --features "$FEATURES" -j "$JOBS" >/dev/null
 }
 
 echo "=== 0464 — the fallbacks stay deleted ==="

@@ -8,9 +8,8 @@ fn main() {
 /// `links = "nros_cpp"` channel as `DEP_NROS_CPP_CONFIG_INCLUDE` (issue 1569),
 /// the twin of `nros-c`'s `DEP_NROS_C_CONFIG_INCLUDE`.
 ///
-/// The OUT_DIR copy, not the shared `$CARGO_TARGET_DIR/nros-cpp-generated/`
-/// one: this unit wrote it, so it is THIS feature set's header and cannot be a
-/// sibling build's that landed on the flat path first (issue 0360). Emitted
+/// The OUT_DIR copy is the only one (issue 1824): this unit wrote it, so it is
+/// THIS feature set's header and cannot be a sibling build's (issue 0360). Emitted
 /// even when `run()` declined to write the header (a probe that read nothing):
 /// the consumer checks the file exists and refuses by name, which is better
 /// than a path it has to guess.

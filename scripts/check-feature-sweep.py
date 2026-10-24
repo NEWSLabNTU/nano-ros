@@ -55,7 +55,6 @@ Run: python3 scripts/check-feature-sweep.py [--crate NAME] [--half host|cross] [
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -708,19 +707,11 @@ def plan(name, cfg, features):
     return runs
 
 
-# The per-build sizes headers nros-c / nros-cpp write at a FLAT path in the
-# target dir (`write_header_to_target_dir`). Issue 1354's rule is that a build
-# probing its own feature set must not share that path with another feature
-# set, and this sweep runs dozens of sets through one dir: in a WARM dir a
-# cached nros-c unit does not rerun, so its header is the last run's, and
-# nros-cpp's verifier refuses it ("DIFFERENT probed sizes") — correctly. So
-# every run starts without them, which is a per-run path without per-run dirs.
-SIZES_HEADER_DIRS = ("nros-c-generated", "nros-cpp-generated")
-
-
-def drop_shared_sizes_headers(target_dir):
-    for d in SIZES_HEADER_DIRS:
-        shutil.rmtree(Path(target_dir) / d, ignore_errors=True)
+# Issue 1824 — this sweep used to delete the FLAT target-dir sizes headers
+# before every run: in a warm dir a cached nros-c unit did not rerun, so the
+# shared header was the last run's and nros-cpp's verifier refused it. The flat
+# copy is gone, and the verifier reads nros-c's OWN `$OUT_DIR` for the same unit
+# graph, so a warm dir is correct as it stands.
 
 
 def clippy(name, cfg, feats, target_dir):
@@ -731,7 +722,6 @@ def clippy(name, cfg, feats, target_dir):
         cmd += ["--features", feats]
     cmd += ["--", "-D", "warnings"]
     env = dict(os.environ, CARGO_TARGET_DIR=str(target_dir))
-    drop_shared_sizes_headers(target_dir)
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env)
     return p.returncode, p.stderr
 
@@ -747,7 +737,6 @@ def cross_clippy(name, feats, triple, board_env_vars, target_dir, prefix=(), unm
         cmd += ["--target", triple]
     cmd += ["--", "-D", "warnings"]
     env = dict(os.environ, CARGO_TARGET_DIR=str(target_dir), **board_env_vars)
-    drop_shared_sizes_headers(target_dir)
     p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, env=env)
     return p.returncode, p.stderr
 

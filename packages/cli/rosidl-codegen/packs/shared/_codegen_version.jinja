@@ -48,9 +48,9 @@
   identical pair of macros into `nros_config_generated.h` and
   `nros_cpp_config_generated.h` from the same `nros_core::codegen_version`. Using
   the C header means a C++ consumer needs one per-build directory on its include
-  path rather than two — and the second is genuinely harder to get right, because
-  `target/nros-cpp-generated` is SHARED and holds whatever the last `nros-cpp`
-  build wrote. Reaching for it in the borrowed-e2e fixture produced an undefined
+  path rather than two — and the second was genuinely harder to get right while
+  `target/nros-cpp-generated` was SHARED and held whatever the last `nros-cpp`
+  build wrote (retired, issue 1824). Reaching for it in the borrowed-e2e fixture produced an undefined
   `nros_cpp_config_variant_…_platform_zephyr` on a posix build: issue 1050's
   class, an ambient artifact standing in for a fact. Not this check's problem to
   solve, and not a problem it needs to have.
