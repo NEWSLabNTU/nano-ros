@@ -6,7 +6,7 @@ type: bug
 area: [zephyr, platform, build, ci]
 severity: medium
 found: 2026-10-24
-related: [phase-513, phase-509, 1776, 1779, 0566, 2025]
+related: [phase-513, phase-466, phase-509, 1776, 1779, 0566, 2025]
 ---
 
 **Home: [phase-513](../roadmap/phase-513-nightly-reds-with-no-home.md)** — R2.

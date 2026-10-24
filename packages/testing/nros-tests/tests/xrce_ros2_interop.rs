@@ -644,7 +644,10 @@ fn test_ros2_action_xrce_client(xrce_action_client_binary: PathBuf) {
     // the reply came back (goal_id framing + per-channel service types). At
     // least one non-empty feedback proves the feedback topic + UUID framing
     // round-trips from a real `rcl_action` server.
-    let accepted = client_output.contains("Goal accepted");
+    // Issue 1918 — the Rust client says it SENT the goal, not that it was
+    // accepted, so the shared predicate reads acceptance off the result. A
+    // literal "Goal accepted" here went false for that reason alone.
+    let accepted = nros_tests::output::action_goal_accepted(&client_output);
     let got_feedback = client_output.contains(&format!(
         "{} [0, 1",
         nros_tests::output::ACTION_FEEDBACK_PREFIX
