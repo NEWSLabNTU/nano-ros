@@ -10,7 +10,7 @@ related: [phase-440, rfc-0095, rfc-0104, phase-447, 0182, phase-449, 1780]
 resolved: 2026-10-23
 ---
 
-**Home: [phase-449](../../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-449](../../roadmap/archived/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What is left
 

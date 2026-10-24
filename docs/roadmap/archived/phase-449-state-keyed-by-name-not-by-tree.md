@@ -1,5 +1,9 @@
 # Phase 449 — build state keyed by a NAME, not by the tree that asked for it
 
+**Status (2026-10-24). COMPLETE — archived.** Every work item is done and no
+homed issue is open: #1824 resolved 2026-10-24 (D4, PR #2573) and #1825 on
+2026-10-23. The 2026-10-23 line below is kept as the record it was.
+
 **Status (2026-10-23). Every work item is DONE; two homed issues remain.**
 W2's last box closed with issue 1158 (2026-10-22: 7 of the last 8 tier-2 runs
 reached the cells), and W7's with issue 1166 (2026-10-15). Issue 1254 is
@@ -34,7 +38,7 @@ resolves its build root and its `check-skips` ledger to its own tree. Issue
 **One PRESCRIPTION here is superseded, which matters more than one item
 closing.** This phase says shared state must be keyed by "git common dir"; a
 linked worktree's `.git` is a FILE, not a directory
-([#1336](../issues/archived/1336-cli-source-stamp-unwatched-in-worktree.md)), so
+([#1336](../../issues/archived/1336-cli-source-stamp-unwatched-in-worktree.md)), so
 `scripts/lib/checkout-paths.sh` deliberately uses a MARKER WALK and says so at
 its own § "Why the marker and not `.git`". Anything W6 keys by tree must reach
 for that marker, not for the mechanism this document named.
@@ -61,20 +65,20 @@ artifact shipped or the wrong verdict printed, and in every case **the message
 named something else**:
 
 * `subtree-guard` refused a build saying *"two builds in one tree"* when the
-  other build was in an unrelated clone ([#1157](../issues/archived/1157-subtree-guard-lock-is-host-global-not-per-tree.md)).
+  other build was in an unrelated clone ([#1157](../../issues/archived/1157-subtree-guard-lock-is-host-global-not-per-tree.md)).
 * A `just check fast` summary listed skips that were untrue of the checkout that
   printed them — the linked worktree's, delivered into the parent's ledger
-  ([#1234](../issues/archived/1234-worktree-agents-share-the-parent-build-dir.md)).
+  ([#1234](../../issues/archived/1234-worktree-agents-share-the-parent-build-dir.md)).
 * `just nuttx build-riscv-c`, run inside a worktree, reconfigured the MAIN
   checkout's NuttX kernel from `qemu-armv7a` to `rv-virt` and rewrote its
   `.config`, `include/nuttx/config.h` and `nuttx` binary. Nothing in the
   worktree's own `third-party/nuttx` was touched and nothing said so
-  ([#1280](../issues/archived/1280-worktree-inherits-foreign-sdk-paths.md),
+  ([#1280](../../issues/archived/1280-worktree-inherits-foreign-sdk-paths.md),
   resolved 2026-09-12).
 * Tier 2 produced **no verdict for eight consecutive scheduled runs**, and the
   same SHA failed two different ways on two different days, because the Zephyr
   workspace it built in belongs to a second checkout
-  ([#1253](../issues/archived/1253-zephyr-workspace-manifest-binds-foreign-module.md)).
+  ([#1253](../../issues/archived/1253-zephyr-workspace-manifest-binds-foreign-module.md)).
 
 That last one is the cost that orders this phase. A lane whose outcome depends
 on something outside the commit under test has no signal capacity at all, which
@@ -91,7 +95,7 @@ host collide on.
 
 **"Keyed by the tree" has one spelling, and this document first named the wrong
 one.** It said "git common dir"; a linked worktree's `.git` is a FILE
-([#1336](../issues/archived/1336-cli-source-stamp-unwatched-in-worktree.md)), so the
+([#1336](../../issues/archived/1336-cli-source-stamp-unwatched-in-worktree.md)), so the
 answer is the CHECKOUT MARKER walk that `scripts/lib/checkout-paths.sh`
 implements and `nros_launcher::checkout::MONOREPO_MARKER` mirrors — the same
 resolver W4 already landed. A second spelling here would be the defect this
@@ -116,7 +120,7 @@ before the items where a wrong VERDICT prints, and the repair gap comes last.
 
 ### W1 — a Zephyr workspace names the checkout whose module it builds
 
-[Issue 1258](../issues/archived/1258-zephyr-store-workspace-is-bound-to-one-checkout.md).
+[Issue 1258](../../issues/archived/1258-zephyr-store-workspace-is-bound-to-one-checkout.md).
 `scripts/zephyr/setup.sh` replaces the west manifest project with a symlink to
 the checkout that ran it, so the `nros` Zephyr module of EVERY build in that
 workspace comes from that one tree, measured in a downstream project's
@@ -166,12 +170,12 @@ workspace comes from that one tree, measured in a downstream project's
       `<home>/src/nano-ros` while `NanoRosVerbs.cmake` came from `_work/...`.
       Migration is therefore NOT transparent; an old workspace must be unbound,
       which is what W2 now does in `just zephyr setup`. See
-      [issue 1389](../issues/1389-tier2-entity-inventory-schema-reader-behind.md)
+      [issue 1389](../../issues/archived/1389-tier2-entity-inventory-schema-reader-behind.md)
       "Step 1, answered".
 
 ### W2 — tier 2 builds the tree under test
 
-[Issue 1253](../issues/archived/1253-zephyr-workspace-manifest-binds-foreign-module.md).
+[Issue 1253](../../issues/archived/1253-zephyr-workspace-manifest-binds-foreign-module.md).
 W1's defect as the lane experiences it: the runner's workspace lives inside a
 second nano-ros checkout, so tier 2 compiled that tree's headers beside this
 tree's entries and judged images no run of this tree made.
@@ -227,13 +231,13 @@ tree's entries and judged images no run of this tree made.
       since). Provisioning is fixed; the build cause is identified and fixed
       above. This item stays open until a nightly says otherwise, and issue
       1158, re-homed here from the archived
-      [phase-416](archived/phase-416-tier2-lane-and-single-spelling.md) on 2026-10-12,
+      [phase-416](phase-416-tier2-lane-and-single-spelling.md) on 2026-10-12,
       owns whatever is behind it — a lane that has never reached its cells has
       no way to show what the next failure is.
 
 ### W3 — the Zephyr SDK lives in the store, not in a clone
 
-[Issue 1254](../issues/archived/1254-zephyr-sdk-installs-inside-the-checkout.md).
+[Issue 1254](../../issues/archived/1254-zephyr-sdk-installs-inside-the-checkout.md).
 Provisioning installs to `<clone>/scripts/zephyr/sdk/`, and a downstream
 project's generated `env.sh` then exports a `ZEPHYR_SDK_INSTALL_DIR` pointing
 into a sibling clone. Every board build of that project has depended on that
@@ -298,7 +302,7 @@ clone existing and on nobody running `just clean-setup` in it.
 
 ### W4 — a worktree build uses the worktree's SDK trees — DONE
 
-[Issue 1280](../issues/archived/1280-worktree-inherits-foreign-sdk-paths.md),
+[Issue 1280](../../issues/archived/1280-worktree-inherits-foreign-sdk-paths.md),
 resolved and archived on 2026-09-12 by `8eeaa05ac`. The item was written here
 while the issue was open; it landed on `main` first, so this section records
 what closed it rather than what is owed.
@@ -323,7 +327,7 @@ DIFFERENT checkout → RE-ROOT and say so, this checkout → KEEP).
 
 ### W5 — a worktree's build dir and skip ledger are its own — DONE
 
-[Issue 1234](../issues/archived/1234-worktree-agents-share-the-parent-build-dir.md). A
+[Issue 1234](../../issues/archived/1234-worktree-agents-share-the-parent-build-dir.md). A
 linked worktree inherits `NROS_REPO_DIR`, so it writes its build dir and its
 skip ledger into the parent, and one tree's skips appear in another's gate
 summary. Parallel agent sessions are the normal way work happens here, so this
@@ -353,7 +357,7 @@ phase-454 W3 did it; neither had reason to edit this section.
 
 ### W6 — the build guard is keyed by tree
 
-[Issue 1157](../issues/archived/1157-subtree-guard-lock-is-host-global-not-per-tree.md).
+[Issue 1157](../../issues/archived/1157-subtree-guard-lock-is-host-global-not-per-tree.md).
 `/tmp/nros-build-guards/<name>.pgid` is keyed by build NAME and by nothing else,
 so an unrelated checkout blocks this one's gates while the refusal says the
 opposite.
@@ -391,7 +395,7 @@ independent, the other shares across trees that should be.
 
 ### W7 — the runner builds into its own checkout
 
-[Issue 1166](../issues/archived/1166-ci-runner-builds-into-a-developer-checkout.md). The
+[Issue 1166](../../issues/archived/1166-ci-runner-builds-into-a-developer-checkout.md). The
 self-hosted runner's `.env` pins `NROS_ZEPHYR_WORKSPACE` into a developer's
 working tree, the lane's own verification reports that as `[OK]`, and a west
 build dir carries neither the board nor the checkout in its name.
@@ -429,7 +433,7 @@ reads this path.
 
 ### W8 — `just setup zephyr` can repair what it skips
 
-[Issue 1279](../issues/archived/1279-zephyr-setup-skips-sdk-registration-when-workspace-exists.md).
+[Issue 1279](../../issues/archived/1279-zephyr-setup-skips-sdk-registration-when-workspace-exists.md).
 The verb skips the whole SDK setup when the WORKSPACE directory exists, but the
 cmake package registry entry is per-USER state. A host can hold a complete,
 unpacked, unusable SDK that the verb cannot repair.
@@ -476,11 +480,11 @@ unpacked, unusable SDK that the verb cannot repair.
 * Making SDK trees per-tree *copies*. Sharing a 2.5 GB SDK between checkouts is
   correct; being unable to say which tree a build used is the defect.
 * The provisioning ladder itself — that is
-  [phase-447](archived/phase-447-provisioning-revision.md). W3 states where the SDK must
+  [phase-447](phase-447-provisioning-revision.md). W3 states where the SDK must
   land and lets 447 own how it gets there.
 * Fixing the tier-2 lane's other stages. Issue 1158's "no runtime verdict in six
   scheduled runs" was homed at
-  [phase-416](archived/phase-416-tier2-lane-and-single-spelling.md) and moved here
+  [phase-416](phase-416-tier2-lane-and-single-spelling.md) and moved here
   when that phase was archived (2026-10-12). W2 removes one of its causes; the
   issue stays open until a scheduled tier-2 run reaches its cells. Homing it here
   gives it an owner. It does not make the other stages this phase's work.
@@ -491,7 +495,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1158](../issues/archived/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) — The tier-2 lane has produced no runtime verdict in six consecutive scheduled runs, and no pre-merge event can produce …
+- [issue 1158](../../issues/archived/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) — The tier-2 lane has produced no runtime verdict in six consecutive scheduled runs, and no pre-merge event can produce …
 
 ## Issues homed here (2026-10-17)
 
@@ -499,5 +503,5 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1824](../issues/archived/1824-generated-header-side-channel-consumers-unmigrated.md) | **Resolved 2026-10-24.** The per-build config headers went through `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`, state keyed by a tree. D1 (cmake / Corrosion), D2 (NuttX), D3 (PX4) placed them from `$OUT_DIR`; D4 deleted the target-dir copy and its `.h.stamp`. |
-| [#1825](../issues/archived/1825-store-pin-bump-restale-unmeasured.md) | **RESOLVED 2026-10-23.** The claim was false: the generated-code record keyed on the codegen VERSION, so a pin bump between two releases of one version reused the old output. The record now carries the emitter fingerprint (RFC-0104 D5). |
+| [#1824](../../issues/archived/1824-generated-header-side-channel-consumers-unmigrated.md) | **Resolved 2026-10-24.** The per-build config headers went through `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`, state keyed by a tree. D1 (cmake / Corrosion), D2 (NuttX), D3 (PX4) placed them from `$OUT_DIR`; D4 deleted the target-dir copy and its `.h.stamp`. |
+| [#1825](../../issues/archived/1825-store-pin-bump-restale-unmeasured.md) | **RESOLVED 2026-10-23.** The claim was false: the generated-code record keyed on the codegen VERSION, so a pin bump between two releases of one version reused the old output. The record now carries the emitter fingerprint (RFC-0104 D5). |

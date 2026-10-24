@@ -3,7 +3,7 @@
 **Status (2026-10-12). COMPLETE — archived 2026-10-12.** W1–W3 closed through
 archived issues 1011, 1016 and 1017. W4, the NuttX tier-2 module, became part of
 the tier-2 lane work that
-[phase-449](../phase-449-state-keyed-by-name-not-by-tree.md) W2 and
+[phase-449](phase-449-state-keyed-by-name-not-by-tree.md) W2 and
 [phase-466](../phase-466-scheduled-lanes-produce-verdicts.md) carry. Homed issue
 1158 (no tier-2 runtime verdict) moved to phase-449, whose W2 already names it.
 
@@ -109,4 +109,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1158](../../issues/archived/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) | the tier-2 lane has produced no runtime verdict in six consecutive scheduled runs. 'The tier-2 lane runs end to end' is this phase's thesis; phase-441 cites the issue only in passing — **re-homed to [phase-449](../phase-449-state-keyed-by-name-not-by-tree.md) 2026-10-12** |
+| [#1158](../../issues/archived/1158-tier2-lane-has-produced-no-verdict-for-six-days.md) | the tier-2 lane has produced no runtime verdict in six consecutive scheduled runs. 'The tier-2 lane runs end to end' is this phase's thesis; phase-441 cites the issue only in passing — **re-homed to [phase-449](phase-449-state-keyed-by-name-not-by-tree.md) 2026-10-12** |

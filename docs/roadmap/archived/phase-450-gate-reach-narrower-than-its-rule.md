@@ -257,5 +257,5 @@ make the statement.
 * Making a gate merge-gating. Whether a lane runs at all is
   [phase-413](phase-413-ci-workflow-user-parity.md)'s question; this phase is
   about what a lane can see once it runs. The two meet in
-  [phase-449](../phase-449-state-keyed-by-name-not-by-tree.md) W7, whose
+  [phase-449](phase-449-state-keyed-by-name-not-by-tree.md) W7, whose
   verification printed `[OK]` on a configuration it should have refused.
