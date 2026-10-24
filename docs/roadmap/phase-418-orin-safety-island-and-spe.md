@@ -1,5 +1,20 @@
 # Phase 418 — NVIDIA Orin: what "safety island" actually means, and what nano-ros needs to run there
 
+**DEFERRED (2026-10-24).** Maintainer decision: Orin SPE support waits. Nothing
+here is in progress and no claim should be taken on it until it resumes. What
+stays in-tree meanwhile is infrastructure with its own checks, not a board:
+`nvidia-ivc` (stub, Unix mock, `fsp` backend; `just check ivc-fsp`),
+`zpico-link-ivc`, and 418.3's `cortex-r5` profile. Orin SPE has **no row** in
+`packages/boards/board-support.toml` — that registry lists board packages that
+exist, and there is none — and [Supported Boards](../../book/src/reference/supported-boards.md)
+lists it as deferred. Open on resumption: 418.1's DRAM-carveout question (and a
+re-measure — issue 1122 has since removed the 131,072 B `LARGE_PAYLOADS` that
+dominated the number below), 418.4, 418.6 (re-scoped below as an integration
+shell, per RFC-0064) and 418.8. 418.5 and 418.7 need hardware and live in
+[phase-512](phase-512-on-hardware-measurements.md). The CLI's `orin-spe`
+platform kind was removed with the deferral: it built an SPE descriptor as
+bare-metal, and the SPE is a board over FreeRTOS.
+
 **Status (2026-09-06). 418.3 landed. 418.1 measured — it does not fit at
 defaults, by ~2.3×; 418.2's premise was wrong and its scope is narrower than
 filed.** §2a records a survey of the vendor BSP, and three of its findings have
@@ -359,13 +374,28 @@ second one.
       [phase-512](phase-512-on-hardware-measurements.md) H5.1: it needs a Jetson
       AGX Orin devkit to flash and loop back on.
 
-- [ ] **418.6 — Bring back `nros-board-orin-spe`.** Recreate the board crate over
-      the canonical platform C ABI (not as a platform crate — phase 121.9 settled
-      that), binding `NV_SPE_FSP_DIR`, the `ARM_CR5` port and the FSP's
-      `tegra_ivc_channel_*`. Restore it from `53a3402d2` rather than rewriting.
-      **Acceptance:** it builds for `armv7r-none-eabihf` with the FSP present, it
-      has a `board-support.toml` row, and per RFC-0064 that row is tier 3 with a
-      named maintainer until phase-512 H5.2 (was 418.7) lands.
+- [ ] **418.6 — An integration shell over the FSP build, not a board crate.**
+      (Re-scoped 2026-10-24.) This item used to say "bring back
+      `nros-board-orin-spe`" from `53a3402d2`. RFC-0064 deleted that crate on
+      purpose ("scaffolds → integration shells"), and by its own test — *does
+      the host ecosystem have a build system?* — the SPE is shell territory:
+      the FSP's `rt-aux-cpu-demo-fsp/Makefile` already owns the linker script
+      (one 256 KB BTCM region), startup, `FreeRTOSConfig.h` and the link
+      (`make bin_t23x` → `spe.elf`, §2a). A board crate would supply exactly
+      those again, and a second copy of a vendor link script is the drift
+      RFC-0064 exists to avoid. So the shell is a make fragment (e.g.
+      `integrations/orin-spe-fsp/`) that adds nano-ros to the FSP build: the
+      platform C ABI over the FSP's FreeRTOS (`platform = "freertos"`, `ARM_CR5`
+      port), the `fsp` backend of `nvidia-ivc` bound to the FSP's own
+      `tegra_ivc_channel_*`, and a nano-ros static library cross-built for
+      `armv7r-none-eabi` with 418.3's softfp profile. **Acceptance:** with the
+      FSP provisioned (418.4), `make bin_t23x` links an `spe.elf` containing a
+      nano-ros node, in a lane — the FSP is BSD/MIT and needs no account, so CI
+      can build it. Then, per RFC-0064, the shell gets a `board-support.toml`
+      row (the registry may need a non-crate row kind for a shell — decide
+      then) at **tier 3** with a named maintainer: no emulator boots the SPE,
+      so tier 2 is out of reach until phase-512 H5.2 (was 418.7) runs on a
+      devkit.
 
 - **418.7 — End-to-end on hardware.** Moved 2026-10-24 to
       [phase-512](phase-512-on-hardware-measurements.md) H5.2.
@@ -432,3 +462,4 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 1155](../issues/archived/1155-arch-flags-tests-in-no-lane.md) — **resolved 2026-10-24** (the tests run in `node-std-tests`) — `nros-board-common`'s `arch_flags` tests run in no lane — `test-unit` activates no features and the module is behind …
+- [issue 2031](../issues/2031-zpico-build-chapter-describes-deleted-manifest.md) — the book's zpico-sys build chapter documents `zenoh_platforms.toml`, a file that no longer exists (found while removing its stale `orin-spe` entry for this phase's deferral)

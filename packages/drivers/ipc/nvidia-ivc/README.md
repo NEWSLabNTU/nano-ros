@@ -6,7 +6,7 @@ nano-ros-internal deps. Two compile-time backends:
 | Feature      | Backend                                | Target      |
 |--------------|----------------------------------------|-------------|
 | `unix-mock`  | `UnixDatagram::pair()` (SOCK_DGRAM)    | Linux host  |
-| `fsp`        | `tegra_aon_fsp.a` (`NV_SPE_FSP_DIR`)   | `armv7r-none-eabihf` (Orin SPE) |
+| `fsp`        | the FSP's `tegra_ivc_channel_*` (`NV_SPE_FSP_DIR`) | Orin SPE (Cortex-R5, softfp) |
 
 Default build (no features) is an inert stub — every entry point fails
 closed. Build with exactly one backend feature; the two are mutually
@@ -14,9 +14,11 @@ exclusive.
 
 ## Why two backends
 
-NVIDIA's `tegra_aon_fsp.a` is closed-source and ships under SDK Manager
-EULA. Anyone without an Orin DevKit account cannot build the `fsp`
-backend. The `unix-mock` backend reproduces the IVC frame semantics
+The `fsp` backend needs NVIDIA's SPE FSP and an Orin to run on. The FSP
+itself is open — BSD-3-Clause, with MIT FreeRTOS — and downloads without an
+account, inside the Jetson Linux public sources
+(`Linux_for_Tegra/source/spe-freertos-bsp.tbz2`); phase-418 §2a records the
+survey. The `unix-mock` backend reproduces the IVC frame semantics
 (fixed 64-byte SOCK_DGRAM datagrams, message boundaries preserved)
 on plain Linux, which is enough for:
 
@@ -38,18 +40,19 @@ The `loopback` test wires two channel IDs to one socketpair via
 `unix_mock::register_pair`, exchanges single-frame and multi-frame
 payloads, and asserts byte-perfect reassembly.
 
-## Building for SPE
+## Building for SPE — deferred
 
-```sh
-NV_SPE_FSP_DIR=$HOME/nvidia/spe-fsp \
-  cargo +nightly build -p nvidia-ivc --features fsp \
-  --target armv7r-none-eabihf -Zbuild-std=core
-```
+Orin SPE support is deferred
+([phase-418](../../../../docs/roadmap/phase-418-orin-safety-island-and-spe.md)),
+and the `fsp` backend's LINK MODEL is known wrong: `build.rs` expects
+`$NV_SPE_FSP_DIR/lib/libtegra_aon_fsp.a`, but the FSP builds no static library
+(`make bin_t23x` compiles its objects straight into `spe.elf`). The `tegra_ivc_*`
+declarations in `src/fsp.rs` do match the FSP's `include/tegra-ivc.h`. How the
+symbols are supplied is decided by phase-418 item 418.6 — an integration shell
+that adds nano-ros to the FSP's own make build — and so is the target: the FSP
+compiles `-mfloat-abi=softfp`, which is `armv7r-none-eabi`, not `-eabihf`.
 
-Drives consumed by:
+`just check ivc-fsp` compiles this backend against a stand-in tree meanwhile.
 
-- `nros-platform-orin-spe` —
-  Phase 100.5; implements `PlatformIvc` by delegating here.
-- `zpico-platform-shim::ivc_helpers` —
-  Phase 100.4; re-exports the C ABI under the `_z_*_ivc` symbol names
-  zenoh-pico's `Z_FEATURE_LINK_IVC` C code expects.
+Consumed by `zpico-link-ivc`, which forwards zenoh-pico's `Z_FEATURE_LINK_IVC`
+`_z_*_ivc` symbols to this crate's C ABI.

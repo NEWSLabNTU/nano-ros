@@ -489,7 +489,7 @@ pub fn count_callbacks_with_metadata(
 /// Deliberately tolerant: this is a CHECK, and a check that hard-fails because
 /// it could not find a config tree is a worse outcome than one that falls back
 /// to the documented default. A platform with no tree entry of its own
-/// (`esp32`, `stm32`, `orin-spe`) takes the same fallback.
+/// (`esp32`, `stm32`) takes the same fallback.
 fn resolve_max_cbs_through_ladder(platform: &str) -> Option<usize> {
     use nros_board_common::platform_config::PlatformsTree;
     use nros_orchestration_ir::executor_sizing as sz;
@@ -1072,8 +1072,8 @@ mod executor_capacity_tests {
             PlatformsTree::load_search_path(&PlatformsTree::default_search_path(&repo, None))
                 .expect("in-tree platforms tree");
 
-        // Every platform that ships a `nros-platform.toml`. `esp32`, `stm32`
-        // and `orin-spe` are deliberately absent — they have no tree entry, so
+        // Every platform that ships a `nros-platform.toml`. `esp32` and
+        // `stm32` are deliberately absent — they have no tree entry, so
         // they take the documented fallback, which is what tolerance is for.
         for kind in [
             PlatformKind::Posix,
@@ -1155,7 +1155,6 @@ mod executor_capacity_tests {
             PlatformKind::ThreadxRiscv64,
             PlatformKind::Esp32,
             PlatformKind::Stm32,
-            PlatformKind::OrinSpe,
         ] {
             assert_eq!(
                 kind.honors_entry_sizing(),
