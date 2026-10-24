@@ -984,6 +984,48 @@ int8_t nros_platform_condvar_wait_until(void* cv, void* m, uint64_t abstime_ms) 
 
 #define NROS_Z_HANDLE(ptr) (*(void**)(ptr))
 
+/* Issue 2032 — the opaque-storage probes, for this arm's shape: the caller's
+ * storage holds one handle, so every lock object needs a pointer's worth.
+ * This arm had none of them, and a caller that asked (the native level
+ * runner, phase-509 P10) did not fail here: on `native_sim` the linker
+ * found the POSIX port's `platform.o` inside the XRCE shim's archive, pulled
+ * it for this one symbol, and collided on the other 56. */
+size_t nros_platform_mutex_storage_size(void) {
+    return sizeof(void*);
+}
+size_t nros_platform_mutex_storage_align(void) {
+    return _Alignof(void*);
+}
+size_t nros_platform_mutex_rec_storage_size(void) {
+    return sizeof(void*);
+}
+size_t nros_platform_mutex_rec_storage_align(void) {
+    return _Alignof(void*);
+}
+size_t nros_platform_condvar_storage_size(void) {
+    return sizeof(void*);
+}
+size_t nros_platform_condvar_storage_align(void) {
+    return _Alignof(void*);
+}
+
+_Static_assert(NROS_PLATFORM_MUTEX_STORAGE_SIZE >= sizeof(void*),
+               "NROS_PLATFORM_MUTEX_STORAGE_SIZE too small for this port");
+_Static_assert(NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE >= sizeof(void*),
+               "NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE too small for this port");
+_Static_assert(NROS_PLATFORM_CONDVAR_STORAGE_SIZE >= sizeof(void*),
+               "NROS_PLATFORM_CONDVAR_STORAGE_SIZE too small for this port");
+
+/* Issue 2032 — the same defaults the POSIX arm fills: no priority, no core. */
+void nros_platform_task_attr_init(nros_platform_task_attr_t* attr) {
+    if (attr == NULL) {
+        return;
+    }
+    memset(attr, 0, sizeof(*attr));
+    attr->priority = INT32_MIN;
+    attr->core = -1;
+}
+
 int8_t nros_platform_mutex_init(void* m) {
     if (m == NULL) return -1;
     /* RFC-0034 D6 -- allocations here go through `nros_platform_alloc`, NOT
@@ -1089,6 +1131,12 @@ int8_t nros_platform_condvar_signal_all(void* cv) {
     struct k_condvar* c = NROS_Z_HANDLE(cv);
     if (c == NULL) return -1;
     return k_condvar_broadcast(c) >= 0 ? 0 : -1;
+}
+
+/* Issue 2032 — the ISR-safe signal, as the POSIX arm gives it: Zephyr's
+ * `k_condvar_signal` is the same call from either context. */
+int8_t nros_platform_condvar_signal_from_isr(void* cv) {
+    return nros_platform_condvar_signal(cv);
 }
 
 /* Issue 1907 -- a condvar wait requires the caller to hold `m` exactly once.

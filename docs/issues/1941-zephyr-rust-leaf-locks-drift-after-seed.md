@@ -5,9 +5,11 @@ status: open
 type: bug
 severity: medium
 area: [build, ci, examples]
-related: [issue-1937, issue-1924]
+related: [issue-1937, issue-1924, phase-513]
 found: 2026-10-17
 ---
+
+**Home: [phase-513](../roadmap/phase-513-nightly-reds-with-no-home.md)** — R3.
 
 ## What happened
 

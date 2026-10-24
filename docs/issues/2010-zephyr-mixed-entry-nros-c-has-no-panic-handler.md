@@ -6,8 +6,10 @@ type: bug
 area: [zephyr, ci, build, api]
 severity: medium
 found: 2026-10-23
-related: [1742, 1858]
+related: [1742, 1858, phase-513]
 ---
+
+**Home: [phase-513](../roadmap/phase-513-nightly-reds-with-no-home.md)** — R1.
 
 ## Measured
 

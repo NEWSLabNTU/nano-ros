@@ -6,8 +6,10 @@ type: bug
 area: [ci, testing]
 severity: medium
 found: 2026-10-20
-related: [1988]
+related: [1988, phase-513]
 ---
+
+**Home: [phase-513](../roadmap/phase-513-nightly-reds-with-no-home.md)** — R4.
 
 ## Measured
 
