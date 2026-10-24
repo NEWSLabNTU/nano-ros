@@ -25,7 +25,7 @@ moved; what is left is not this repository's work:
 
 The design is still the executor's: [RFC-0106](../../design/0106-executor-park.md)'s
 park and wake-source seam is what every entry and tier runner installs, and
-what [phase-509](../phase-509-executor-preemption-levels.md)'s band workers park
+what [phase-509](phase-509-executor-preemption-levels.md)'s band workers park
 on (`executor/port_park.rs`, `executor/scheduler.rs`). One line of "What this
 phase does not do" is superseded: dispatch within one executor is no longer
 only non-preemptive, because phase-509 (RFC-0108) adds preemption between

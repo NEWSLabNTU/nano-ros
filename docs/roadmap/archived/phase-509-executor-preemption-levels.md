@@ -1,10 +1,12 @@
 # Phase 509 -- Executor preemption levels (RFC-0108, amended RFC-0107 steps 4-6)
 
-**Status (2026-10-24). P1-P11 done in nano-ros; open: the kernel budget
-item (issue 2018) and the island's board items I1-I4 below, whose board
-evidence lives in the island repo.** The design is
-[RFC-0108](../design/0108-executor-preemption-levels.md) (Draft, its open
-questions decided 2026-10-21). This phase also carries RFC-0107's steps 4-6
+**Status (2026-10-24). Archived -- complete.** P1-P11 and P9b are merged
+in nano-ros, and the island runs on derived levels with I1-I4 green on the
+S32K344 board (final round on nano-ros c602d4d504). The kernel budget item
+moved to issue 2018; the other follow-ups are issues 2016, 2017 and
+2019-2021. The design is
+[RFC-0108](../../design/0108-executor-preemption-levels.md) (Accepted
+2026-10-24). This phase also carries RFC-0107's steps 4-6
 as RFC-0108 amends them (RFC-0107 is on branch
 `docs/rfc-0107-shared-executor-core`; steps 1-3 are merged).
 
@@ -868,12 +870,15 @@ island changes, checked on the S32K344 board.
 
 ### I1 -- Supervisor safe for N levels, board-checked at N = 1
 
-- [ ] Route 1 owned by the handler's level: P7's level query when it has
+- [x] Route 1 owned by the handler's level: P7's level query when it has
       landed, or until then a latch on the handle for which the route watch
       succeeded.
-- [ ] A per-level SWT0 check-in mask.
-- [ ] A spin-gap statistic per level.
-- [ ] `prio_take` records every level.
+- [x] A per-level SWT0 check-in mask.
+- [x] A spin-gap statistic per level.
+- [x] `prio_take` records every level.
+
+**Done.** Island b9ac828 (the latch; acts PASS on the one-level image),
+replaced by the P7 level query in island 60067ce.
 
 **Touches (island):** `src/zephyr_entry/src/island_supervisor.c:616-638`
 (`island_supervisor_spin_after`), `:654-688` (the SWT0 feed).
@@ -885,7 +890,11 @@ image.
 
 ### I2 -- Pin bump with P1-P3, measure mrm_handler jitter
 
-- [ ] Still one thread; dispatch is now in rank order.
+- [x] Still one thread; dispatch is now in rank order.
+
+**Done.** Island 612cbe7 (pin f43cfb2249), runs p509-r1-*: every act PASS;
+the handler's tick spread against its 100 ms grid 2.11-2.86 ms (read from
+its `call_mrm` entries), against 14.84 ms in the contract's `jitter`.
 
 **Acceptance (board):** acts PASS; the handler's tick jitter is measured
 against today's 14.84 ms [M]; the priority record names both operators
@@ -895,11 +904,17 @@ against today's 14.84 ms [M]; the priority record names both operators
 
 ### I3 -- Three levels, with a 2-level fallback
 
-- [ ] Remove the authored `[tiers.mrm]` and the `group_tiers`; expect three
+- [x] Remove the authored `[tiers.mrm]` and the `group_tiers`; expect three
       levels at ranks 5, 7 and 8, and no rule-2 degradation.
-- [ ] Record DTCM and SRAM [M] in place of RFC-0108's estimates.
-- [ ] If the margins are thin, use `max_levels = 2`: {`mrm_handler`} |
-      {emergency operator, comfortable operator}.
+- [x] Record DTCM and SRAM [M] in place of RFC-0108's estimates.
+- [x] If the margins are thin, use `max_levels = 2`: {`mrm_handler`} |
+      {emergency operator, comfortable operator}. Not needed.
+
+**Done.** Island 0a1e0bf: three levels (5, 7, 8; supervisor 3), and
+`priority-check` agrees. DTCM 109,588 of the 122,880 B guard (13,292 B
+headroom); SRAM 309,832 of 327,680 B (94.55 %), the two spawned level
+stacks taking 32,768 B. The SRAM margin is what stops a fourth level
+(issue 2019).
 
 **Acceptance:** the island's board build and priority check agree on the
 level count; DTCM stays under the 122,880 B guard; SRAM is recorded.
@@ -908,13 +923,24 @@ level count; DTCM stays under the 122,880 B guard; SRAM is recorded.
 
 ### I4 -- Full board check
 
-- [ ] The planning acts encore, a and b, and the 300 ms overrun encore: every
+- [x] The planning acts encore, a and b, and the 300 ms overrun encore: every
       one PASS.
-- [ ] Route 1 judged only from the handler's level.
-- [ ] SWT0 fires 0.
-- [ ] Stack high-water per level from the thread analyzer, against the
+- [x] Route 1 judged only from the handler's level.
+- [x] SWT0 fires 0.
+- [x] Stack high-water per level from the thread analyzer, against the
       derived stacks.
-- [ ] The handler's tick jitter compared with I2.
+- [x] The handler's tick jitter compared with I2.
+
+**Done.** Island main e016bc0 (pin c602d4d504), runs p509-final-*: every act
+PASS, the overrun 9/9 and supervised 7/7, SWT0 fires 0, priorities agree.
+Stack high-water (p509-r4-lp, nano-ros 3f9c3571ce) 12,248-12,496 of the
+derived 16,384 B. The handler's tick spread is 0.30-0.31 ms, from
+2.11-2.86 ms at I2. The overrun's 365 ms spin-path feed gap without an SWT0
+fire is by design: after a route latches the safe state the supervisor's
+reaction thread feeds SWT0, and SWT0's longest real unfed span was about
+170 ms (island docs, phase-13). Evidence: island
+`docs/design/carla-island-demo.md`, sections "Derived levels" and "Final
+pin".
 
 **Depends on:** I3.
 
@@ -945,7 +971,7 @@ level count; DTCM stays under the 122,880 B guard; SRAM is recorded.
 - **Core assignment / load partitioning**, including who splits an end-to-end
   deadline across images. A later phase; this one keeps the derivation keyed
   by (core, rank) with `core` unset. Setting `core` is
-  [issue 0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md)'s
+  [issue 0259](../../issues/0259-realizer-placement-nonpreempt-not-derived.md)'s
   work: its realizer already packs measured nodes onto cores, and P5's single
   `derive_levels` call drops that packing. The issue's "Current design"
   section 2 has the plan: partition first, then levels per core.

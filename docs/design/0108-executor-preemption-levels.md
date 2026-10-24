@@ -1,7 +1,7 @@
 ---
 rfc: 0108
 title: "One ordered ready set per core, N preemption levels derived from the contract -- ordering is separated from preemption"
-status: Draft
+status: Accepted
 since: 2026-10
 last-reviewed: 2026-10
 implements-tracked-by: [phase-509]
@@ -12,9 +12,11 @@ superseded-by: null
 
 # RFC-0108 -- One ordered ready set per core, N preemption levels
 
-**Status:** Draft (2026-10-21). P1-P8 and P11 are built; the rest is a proposal.
+**Status:** Accepted (2026-10-24). Phase 509 built every step (P1-P11, P9b)
+and the island ran on derived levels with its board check green (I1-I4).
+Follow-ups are issues 2016-2021.
 The open questions of the first draft are decided (see Decisions); the work is
-tracked by [phase-509](../roadmap/phase-509-executor-preemption-levels.md).
+tracked by [phase-509](../roadmap/archived/phase-509-executor-preemption-levels.md).
 
 **Amends:** [RFC-0002](0002-rt-execution-model.md) (dispatch order inside an
 executor becomes the contract's rank, not registration order) and RFC-0107
@@ -365,13 +367,14 @@ island's single tier dispatch in rank order without any second thread.
   override, or a measured high-water recorded for it) plus the worker's own
   frame. A member with no stated figure takes the port's per-callback default,
   and the cost report (D4) names each member that did.
-- **What a level costs** [E]: a stack plus a worker record. The worker record
-  is the dispatch half of RFC-0107's dispatcher, which that RFC bounds above by
-  the 2,672 B `CppContext` [M]; the kernel thread object is 272 B [M]. The
-  backing, the callback slots, the arena and the monitor rows are per core,
-  not per level. Method: RFC-0107's step-3 estimate minus the ready set and
-  callback slots, which move to the per-core scheduler. To be measured at
-  phase step P9.
+- **What a level costs** [M]: a stack plus a worker record, as planned.
+  On `levels-cpp` (native_sim, P9b) a spawned level costs its scheduler seat
+  (104 B), its thread object (176 B), its derived stack (16,384 B, in
+  `.noinit`) and one platform wake object; the executor context (3,184 B)
+  and the backing are per core. The three levels total 22,280 B of `.bss`
+  against 43,736 B with an executor per level. On the island (S32K344) the
+  two spawned levels' stacks are 16,384 B each, with a high-water of
+  12,248-12,496 B (thread analyzer, I4).
 
 ### D4 -- Deriving N, and the budget
 
@@ -990,7 +993,7 @@ executor's lock and the thread identity:
 
 Each nano-ros step is its own PR with its own tests; the work items, files
 and dependencies are in
-[phase-509](../roadmap/phase-509-executor-preemption-levels.md). Steps P1-P5
+[phase-509](../roadmap/archived/phase-509-executor-preemption-levels.md). Steps P1-P5
 do not depend on RFC-0107 steps 4-6; P6 onward do.
 
 1. **P1. Report every member that loses its rank.** `derive.rs:631-649` emits
@@ -1242,3 +1245,8 @@ The first draft's open questions, as decided:
   is a bare `k_mutex` (2.35 us per pair on target). The Rust Linux, FreeRTOS
   and NuttX arms, FreeRTOS time slicing, kernel budgets and member-derived
   stacks are filed (issues 2016-2021).
+- 2026-10-24: Accepted. P10 built (every runner on levels; the Zephyr lock a
+  bare `k_mutex`, 2.35 us per pair on target); the island's final board round
+  on nano-ros c602d4d504 passes every planning act and the 300 ms overrun
+  with SWT0 silent, and the handler's tick spread against its 100 ms grid is
+  0.30-0.31 ms, from 2.11-2.86 ms on one thread. The level cost is measured.
