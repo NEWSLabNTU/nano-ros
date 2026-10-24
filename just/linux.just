@@ -238,12 +238,6 @@ setup:
     fi
     nros setup --tool qemu --prefix build/qemu --index nros-sdk-index.toml
     nros setup --tool xrce-agent --index nros-sdk-index.toml
-    # OPTIONAL, and it says so. The workspace-entry fixtures skip without it;
-    # every other native fixture builds. `|| echo` is the "continue past a
-    # known-optional command" form — a decision that is visible in the log,
-    # not a fallback between two verbs.
-    nros setup --tool play_launch_parser --index nros-sdk-index.toml \
-        || echo "linux setup: play_launch_parser unavailable — workspace-entry fixtures will SKIP"
     echo "linux lane provisioned."
 
 # Build native workspace fixtures from examples/fixtures.toml.

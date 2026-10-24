@@ -11,7 +11,7 @@ found: 2026-10-22
 related: [1304, 1867, 1258, phase-439, rfc-0103]
 ---
 
-**Home: [phase-439](../../roadmap/phase-439-resolve-before-configure.md)** — found while re-measuring its configure-pass count (W5).
+**Home: [phase-439](../../roadmap/archived/phase-439-resolve-before-configure.md)** — found while re-measuring its configure-pass count (W5).
 
 ## What happens
 

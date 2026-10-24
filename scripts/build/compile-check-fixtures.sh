@@ -615,7 +615,8 @@ cmake_fixture_prereqs() {
         echo "cmake-fixtures: '$nb' lacks 'codegen entry' — stale CLI (just setup-cli)" >&2
         exit 2
     }
-    # No `play_launch_parser` check. Issue 1454 MEASURED it unused here (an
+    # No `play_launch_parser` check (the store tool is retired, issue 1413;
+    # issue 1454 had already MEASURED it unused here: an
     # strace over a cmake-configure build: the resolver runs, this binary never
     # does), and it was the most common reason the whole cmake lane "skipped"
     # (issue 1718: `cpp_robot_entry` never built on live-peer). Issue 1758
@@ -777,7 +778,7 @@ id_filter="${NROS_FIXTURE_ID:-}"
 # CI's `check` job is the case that needed it: `check-source-gates` asserts the
 # `cxx-syntax` stamps, which need a C++ compiler and nothing else, while the
 # `cargo-check` and `cmake-configure` rows in the same manifest need
-# `nros-launch-resolve` and `play_launch_parser` from `activate.sh`. Building
+# `nros-launch-resolve` from `activate.sh`. Building
 # everything there fails on prerequisites the job does not have and never
 # reaches the rows it actually needs.
 #

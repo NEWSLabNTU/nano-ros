@@ -1,15 +1,16 @@
 # Phase 439 — Resolve before configure
 
-**Status (2026-10-23): W5–W10 done; RFC-0094 is Stable with A3 amended and met
-as amended.** A configure `nros build` started takes one pass by construction,
-and the fixed point stays as the convergence for configures it did not start
-(W8). #1228, #1252 and #1121 are resolved. The one item still homed here is
-[#1413](../issues/1413-play-launch-parser-ref-lags-submodule-pin.md), which is
-upstream work in `NEWSLabNTU/play_launch` and is held by its gate. The phase
-stays open for it and archives when it closes. Optional follow-on, not a work
-item: seeding the configures that still converge (the Rust west entry, the
-multi-entry cmake road, a bare `west build` of a leaf) would restore A3's
-original text. RFC-0094's A3 amendment says what that would take.
+**Status (2026-10-24): COMPLETE, archived.** W5–W10 done; RFC-0094 is Stable
+with A3 amended and met as amended. A configure `nros build` started takes one
+pass by construction, and the fixed point stays as the convergence for
+configures it did not start (W8). #1228, #1252, #1121 and #1460 are resolved,
+and [#1413](../../issues/archived/1413-play-launch-parser-ref-lags-submodule-pin.md),
+the last item homed here, closed by RETIRING the standalone
+`play_launch_parser` tool rather than moving its pin (one pin remains, the
+`play_launch` gitlink). Optional follow-on, not a work item: seeding the
+configures that still converge (the Rust west entry, the multi-entry cmake
+road, a bare `west build` of a leaf) would restore A3's original text.
+RFC-0094's A3 amendment says what that would take.
 
 **Status (2026-10-22), superseded above. Re-assessed against `origin/main` (`4b4f372522`): the
 design still holds, and the remaining work is RFC-0094 A3.** D1, D2, D3, D5 and
@@ -67,7 +68,7 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       `check-knob-delivery <build-dir>` is green. **A third arm exists**: the
       sizing descriptor (`cmake/NanoRosSizingDescriptor.cmake`) also re-hashes
       after its readers ran, so W6 must take it as well as the bound fragment.
-- [x] **W6 — the bound producer before configure ([#1252](../issues/archived/1252-message-bound-knobs-have-no-pre-configure-twin.md)).**
+- [x] **W6 — the bound producer before configure ([#1252](../../issues/archived/1252-message-bound-knobs-have-no-pre-configure-twin.md)).**
       **Descriptor arm: done (2026-10-23).** It did NOT move with the bound
       tables. The arm hashed `nros/sizing/west-cargo-descriptor.cmake`, which
       held only a PATH. The module's resolver could not know the entry's name,
@@ -121,7 +122,7 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       cannot delete the fixed point: a bare `west build`, a stale probe, or a
       workspace whose interface search path the CLI does not see gets no seed
       and still converges through the arm.
-- [x] **W7 — one entity composer ([#1228](../issues/archived/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md)).**
+- [x] **W7 — one entity composer ([#1228](../../issues/archived/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md)).**
       The mid-configure producer reads the resolve instead of recomposing, with
       the refusal guard its `nros-metadata.json` component set gives it today
       (`tests/cmake-resolved-seed-tests.sh` case C stays green).
@@ -208,8 +209,8 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       gained "a configure `nros build` did not start"; case U gained the lag
       and the `foo`/`foo2` cases. Each fails on the code before its fix.
 - [x] **W9 — the smaller issues.** Done 2026-10-23: #1121 resolved (see
-      below); #1413 stays tracked, by ruling; #1460 resolved.
-      [#1413](../issues/1413-play-launch-parser-ref-lags-submodule-pin.md): the
+      below); #1413 resolved 2026-10-24 by retiring the tool (see the issue); #1460 resolved.
+      [#1413](../../issues/archived/1413-play-launch-parser-ref-lags-submodule-pin.md): the
       index ref `27b6749b` is 315 commits behind the pin `0b44a695`, and it
       cannot simply move: past `f7f6d2cf` the standalone CLI has no Python
       backend, so a bump ships a parser that leaves `$(eval)` in an
@@ -218,7 +219,7 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       Closing it is upstream work in `NEWSLabNTU/play_launch` (a
       Python-capable CLI, or `pyexec` staged beside it), so it is tracked here
       and not worked here.
-      [#1121](../issues/archived/1121-contract-sidecar-has-no-model-freshness-edge.md):
+      [#1121](../../issues/archived/1121-contract-sidecar-has-no-model-freshness-edge.md):
       reproduce on main; archive if only sidecar deletion is left, and file
       that case if it reproduces. **Does not reproduce, in either direction**
       (a scratch copy of `examples/workspaces/cpp`, 2026-10-23). Adding
@@ -227,7 +228,7 @@ This host has a Zephyr 3.7 workspace (`~/.nros/workspaces/zephyr/3.7`), so
       content-addressed `meta.inputs` check, which the phase doc had not
       counted. A no-change sync leaves the model untouched. Archived; nothing
       to file.
-      [#1460](../issues/archived/1460-sync-staged-model-vanishes-before-commit.md):
+      [#1460](../../issues/archived/1460-sync-staged-model-vanishes-before-commit.md):
       RESOLVED 2026-10-23 — reproduced (22 of 40 concurrent syncs failed),
       and the staged name is now unique per resolve (0 of 40).
 - [x] **W10 — RFC-0094 text.** D4 says digest where the code keys on knob
@@ -254,7 +255,7 @@ W4 landed out of the stated order because it depends on none of the others: it
 is the RMW axis alone (descriptors, the cmake seam, the link strategies), while
 W0's and W1's preconditions are about routing and cargo-directory keys.
 
-Implements [RFC-0094](../design/0094-resolve-before-configure.md). Read its
+Implements [RFC-0094](../../design/0094-resolve-before-configure.md). Read its
 "Design" section first; this doc carries work items and acceptance only.
 
 ## Why the order is what it is
@@ -751,9 +752,9 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1228](../issues/archived/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md) RESOLVED 2026-10-23 (W7/W8) | W2 landed the resolve phase and its own text says 'Remainder is issue 1228'. That is a hand-off, and the remainder is this phase's unmet A3 |
-| [#1252](../issues/archived/1252-message-bound-knobs-have-no-pre-configure-twin.md) RESOLVED 2026-10-23 (W6/W8) | the message-bound half of the same chain has no pre-configure producer. Without it RFC-0094 A3 cannot be met, which makes it a work item here rather than a note |
-| [#1121](../issues/archived/1121-contract-sidecar-has-no-model-freshness-edge.md) RESOLVED 2026-10-23 (W9) | a new `<stem>.contract.yaml` is a resolver input that `nros sync` does not record, so the model it feeds stays stale. Recording every resolve input is this phase's digest question. Re-homed 2026-10-14 from phase-330, archived; phase-460 rules it out of scope |
+| [#1228](../../issues/archived/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md) RESOLVED 2026-10-23 (W7/W8) | W2 landed the resolve phase and its own text says 'Remainder is issue 1228'. That is a hand-off, and the remainder is this phase's unmet A3 |
+| [#1252](../../issues/archived/1252-message-bound-knobs-have-no-pre-configure-twin.md) RESOLVED 2026-10-23 (W6/W8) | the message-bound half of the same chain has no pre-configure producer. Without it RFC-0094 A3 cannot be met, which makes it a work item here rather than a note |
+| [#1121](../../issues/archived/1121-contract-sidecar-has-no-model-freshness-edge.md) RESOLVED 2026-10-23 (W9) | a new `<stem>.contract.yaml` is a resolver input that `nros sync` does not record, so the model it feeds stays stale. Recording every resolve input is this phase's digest question. Re-homed 2026-10-14 from phase-330, archived; phase-460 rules it out of scope |
 
 ## Issues homed here (2026-10-17)
 
@@ -761,5 +762,5 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1413](../issues/1413-play-launch-parser-ref-lags-submodule-pin.md) | `[tool.play_launch_parser].source.ref` lags the `play_launch` submodule pin, and that pin is the resolver this phase runs before configure. |
-| [#1460](../issues/archived/1460-sync-staged-model-vanishes-before-commit.md) | RESOLVED 2026-10-23. | `nros sync` fails on its own `.resolving` staging file. Sync is the resolve step. |
+| [#1413](../../issues/archived/1413-play-launch-parser-ref-lags-submodule-pin.md) | RESOLVED 2026-10-24 (tool retired). `[tool.play_launch_parser].source.ref` lags the `play_launch` submodule pin, and that pin is the resolver this phase runs before configure. |
+| [#1460](../../issues/archived/1460-sync-staged-model-vanishes-before-commit.md) | RESOLVED 2026-10-23. | `nros sync` fails on its own `.resolving` staging file. Sync is the resolve step. |

@@ -6,7 +6,7 @@ Desktop/host examples in C, C++ and Rust. Just module: **`linux`**
 ## Prerequisites
 
 ```sh
-source ./activate.sh          # PATH: nros, play_launch_parser (zenohd stays off PATH; `just linux zenohd` resolves it)
+source ./activate.sh          # PATH: nros (zenohd stays off PATH; `just linux zenohd` resolves it)
 nros setup linux             # host toolchains (zenoh RMW default)
 ```
 

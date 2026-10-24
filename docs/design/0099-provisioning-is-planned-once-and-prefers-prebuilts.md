@@ -120,7 +120,8 @@ tool.source              -> Source
 So a source build never means "this must be compiled" — it means **the index has
 no `dist.<host>` row**. Measured: **15 of 25 tools carry one; 10 do not** (`nros`,
 `sccache`, `rustfilt`, `cargo-show-asm`, `play_launch_parser`, `corrosion`,
-`esp32-qemu`, `espflash`, `genromfs`, `make`).
+`esp32-qemu`, `espflash`, `genromfs`, `make`). (As measured; `play_launch_parser`
+has since gained dists and then been retired outright — issue 1413.)
 
 Each source build removed is a SERIALISATION POINT removed, not only minutes: a
 source build takes the whole machine while the network sits idle, which is the
@@ -400,6 +401,14 @@ CPython — so the requirement is "this host's libpython3", and a key naming
 `noble = libpython3.12t64`, probe `sharedlib = "libpython3."`). A soname-EXACT
 requirement belongs to a prebuilt that links one minor; it gets its own key the
 day such a dist row exists, and `check-dist-runtime-deps` will demand it.
+
+**Amended 2026-10-24 (issue 1413): `[prereq.libpython3]` is gone with its only
+consumer.** The `play_launch_parser` store tool was retired: no build path ran
+it (issue 1454's trace), and the parser is reached only through
+`nros-launch-resolve`, which links it from the `play_launch` submodule. So
+`[tool.play_launch_parser]`, its two dists, `[prereq.libpython3]` and
+`[prereq.libexpat1]` left the index; `[prereq.libpython310]` stays for the
+released `nros-launch-resolve`.
 
 ## D10 — The provisioner reads manifest/index files — TRUE for Zephyr since phase-447 F1
 

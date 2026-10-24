@@ -14,56 +14,25 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 # stamp check reinstalls on every invocation.
 CORROSION_VERSION := "v0.6.1"
 
-# play_launch_parser. `jerry73204/play_launch_parser` is ARCHIVED and
-# superseded by `NEWSLabNTU/play_launch`, which vendors the same crate at
-# `src/ros-launch-resolve/parser/crates/play_launch_parser`.
+# play_launch_parser — RETIRED as a provisioned tool (issue 1413). The
+# launch parser is the crate `nros-launch-resolve` STATICALLY LINKS from the
+# `packages/cli/third-party/play_launch` submodule, so there is one pin, the
+# gitlink. The standalone store binary `nros setup --tool play_launch_parser`
+# used to install ran ZERO times in a traced fixture build (issue 1454: 29,828
+# `execve` calls; a `cmake-configure` row, 37,244) and was built from a
+# SECOND, lagging pin. Need the raw parse (a `record.json`)? Ask the resolver:
+# `$(nros locate tool nros-launch-resolve) <launch file> --record -`.
 #
-# WHAT TO RE-RUN WHEN THE PIN MOVES — NOTHING TO REMEMBER, the tree now asks
-# (issue 1454). Two prose answers lived here and both were wrong, so the third
-# is a MECHANISM rather than a sentence:
-#
-#   * "the L.6 gate tests `phase212_l6_launch_synth::*`" — issue 0381 rewrote
-#     those to synthesise in-process and deleted the
-#     `play_launch_parser_available()` gate, so they answer the same either way
-#     (measured, with each parser on PATH in turn);
-#   * "`nav2_compat`'s `n11_launch_xml_ros2_compat_smoke` … with
-#     `play_launch_parser` on PATH" — that fixture IS the binding acceptance,
-#     and the clause about the PATH binary was not: over a full fixture build
-#     traced with `strace -f -e trace=execve` (29,828 calls) the SDK-store
-#     `play_launch_parser` runs ZERO times. What parses is
-#     `nros-launch-resolve`, which STATICALLY LINKS the parser crate from the
-#     `packages/cli/third-party/play_launch` submodule; `nros sync` spawns it,
-#     and the store binary is a standalone CLI no build path reaches. The same
-#     trace over a `cmake-configure` row (37,244 calls) says the same.
-#
-# So a bumped parser is a bumped `nros-launch-resolve`, and the fixture now
-# RECORDS which one baked it: `compile-check-fixtures.sh` stamps
-# `tool:nros-launch-resolve=<play_launch commit>` into `.compile-ok` and
-# `compile-check-signature.sh` folds the same identity into `.inputsig`. A
-# fixture baked by a different parser then FAILS
+# WHAT TO RE-RUN WHEN THE PIN MOVES — nothing to remember: a bumped parser is
+# a bumped `nros-launch-resolve`, and fixtures RECORD which one baked them.
+# `compile-check-fixtures.sh` stamps `tool:nros-launch-resolve=<play_launch
+# commit>` into `.compile-ok`, `compile-check-signature.sh` folds the same
+# identity into `.inputsig`, and a fixture baked by a different parser FAILS
 # (`nros_tests::fixtures::require_compile_check`, naming both commits and the
-# rebuild command) instead of asserting real codegen evidence from a parser
-# nobody is running. One spelling for the identity:
-# `scripts/build/launch-resolver-identity.sh`, which also records why it is the
-# commit and not a store path (issues 0491/0500).
-#
-# Rebuild it with
-# `NROS_FIXTURE_ID=nav2_compat_smoke bash scripts/build/compile-check-fixtures.sh`
-# — the failure prints that line. The six `record.json` consumers are worth
-# running beside it.
-#
-# NO CONSTANT LIVES HERE, and two sentences that used to claim one did (issue
-# 1413). `install-play-launch-parser` has been a one-line forwarder to
-# `nros setup --tool play_launch_parser` since phase-422 W1, so the pin is
-# `nros-sdk-index.toml`'s `[tool.play_launch_parser]` and the version is its
-# `0.1.0-nrosN` label — NOT "the SUBMODULE COMMIT", which is what the old text
-# said and what stopped being true when the forwarder landed.
-#
-# The index's `source.ref` and the `packages/cli/third-party/play_launch`
-# gitlink are NOT the same commit today, deliberately and with the reason
-# recorded beside the index entry — see issue 1413 and
-# `check-play-launch-parser-ref`, which measures the relationship the prose
-# here used to assert.
+# rebuild command). One spelling for the identity:
+# `scripts/build/launch-resolver-identity.sh`. The binding acceptance is
+# `nav2_compat`'s `n11_launch_xml_ros2_compat_smoke` — rebuild it with
+# `NROS_FIXTURE_ID=nav2_compat_smoke bash scripts/build/compile-check-fixtures.sh`.
 
 # Workspace module — host-agnostic dev environment setup.
 #
@@ -96,7 +65,6 @@ setup:
     # for both, one lock write.
     @nros setup --tool ninja --tool make
     @just workspace install-corrosion
-    @just workspace install-play-launch-parser
     @just workspace rust-pinned-toolchains
     @just workspace rust-targets
     @just workspace cargo-tools
@@ -156,14 +124,6 @@ install-corrosion:
     # same upstream tag this recipe used to, so the doctor's comparison is
     # unchanged.
     nros setup --tool corrosion
-
-[group("setup")]
-install-play-launch-parser:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # phase-422 W1 — FORWARDER, for the reason on `install-corrosion` above.
-    # `[tool.play_launch_parser]` in the index is the pin.
-    nros setup --tool play_launch_parser
 
 [group("setup")]
 install-sccache:
@@ -310,51 +270,6 @@ doctor:
         fail=1
     else
         echo "  [MISSING] nros-launch-resolve (run: just setup-launch-resolve)"
-        fail=1
-    fi
-
-    # --- play_launch_parser (TEST-tier prereq only) ---
-    # Issue 0336: this is NOT a CLI prereq. The RFC-0060 CLI ships its own
-    # resolver (checked above) and never shells out to play_launch_parser — the
-    # `nros plan` claim below was true pre-RFC-0060 and is not any more. It stays
-    # a FAIL because the launch_synth / self_bringup / orchestration_includes
-    # gate tests probe it on PATH; if those move to an absolute-path lookup this
-    # whole block can become a warning.
-    # Phase 220.J.2 — FAIL (not warn) on either missing install OR
-    # binary-not-on-PATH; install-stamp alone is insufficient — agents
-    # routinely hit the gap when a fresh worktree forgets `source
-    # ./activate.sh` (the script that PATH-prepends
-    # `~/.nros/sdk/play_launch_parser/bin/`). Tailored hints distinguish
-    # the two failure modes.
-    # Same constructor the installer uses, so doctor cannot look somewhere the
-    # install never wrote (phase-365 W2; the flat layout resolves since 0628).
-    # Falls back to the hand-join only when `nros` is not on PATH — which is one
-    # of the two failure modes this very check exists to report, so it must not
-    # become a hard error here.
-    plp_prefix="$(nros sdk-path play_launch_parser 2>/dev/null || true)"
-    if [ -z "$plp_prefix" ]; then
-        plp_prefix="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser"
-    fi
-    plp_stamp="$plp_prefix/.installed-version"
-    plp_bin="$plp_prefix/bin/play_launch_parser"
-    plp_install_ok=0
-    # phase-422 W1 — ask the INDEX, not a second constant. This compared the
-    # stamp to `PLAY_LAUNCH_PARSER_VERSION` (a git SHA) while the index pins
-    # `0.1.0-nros1`; the two producers never agreed, so retiring the recipe's
-    # own installer made the doctor report a correctly installed tool MISSING.
-    # One pin, and the CLI owns the comparison.
-    if nros setup --tool play_launch_parser --check >/dev/null 2>&1 && [ -x "$plp_bin" ]; then
-        plp_install_ok=1
-    fi
-    if [ $plp_install_ok -eq 1 ] && command -v play_launch_parser >/dev/null 2>&1; then
-        echo "  [OK] play_launch_parser (index pin) (~/.nros/sdk/play_launch_parser)"
-    elif [ $plp_install_ok -eq 1 ]; then
-        echo "  [PATH] play_launch_parser installed at ~/.nros/sdk/play_launch_parser/bin/ but not on PATH —"
-        echo "         run: source ./activate.sh  (or direnv allow / source ./activate.fish)"
-        echo "         (Phase 220.J — agent driver scripts MUST source activate.sh before any just <plat> build)"
-        fail=1
-    else
-        echo "  [MISSING] play_launch_parser (run: just workspace install-play-launch-parser)"
         fail=1
     fi
 

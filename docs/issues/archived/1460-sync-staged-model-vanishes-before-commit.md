@@ -11,7 +11,7 @@ found: 2026-09-22
 related: [0409, 0427, 1420, phase-439]
 ---
 
-**Home: [phase-439](../../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-439](../../roadmap/archived/phase-439-resolve-before-configure.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What happens
 

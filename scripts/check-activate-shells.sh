@@ -225,13 +225,9 @@ versioned_store="$tmp/versioned"
 # shellcheck source=scripts/lib/sdk-pin.sh
 source "$REPO_ROOT/scripts/lib/sdk-pin.sh"
 genromfs_pin="$(nros_sdk_pinned_version genromfs "$REPO_ROOT/nros-sdk-index.toml")"
-plp_pin="$(nros_sdk_pinned_version play_launch_parser "$REPO_ROOT/nros-sdk-index.toml")"
 mkdir -p "$versioned_store/sdk/genromfs/$genromfs_pin/bin"
 : >"$versioned_store/sdk/genromfs/$genromfs_pin/bin/genromfs"
 chmod +x "$versioned_store/sdk/genromfs/$genromfs_pin/bin/genromfs"
-mkdir -p "$versioned_store/sdk/play_launch_parser/$plp_pin/bin"
-: >"$versioned_store/sdk/play_launch_parser/$plp_pin/bin/play_launch_parser"
-chmod +x "$versioned_store/sdk/play_launch_parser/$plp_pin/bin/play_launch_parser"
 # ...and a STALE version beside the pin, which must NOT reach PATH (issue 1563:
 # readdir order put `13.2-nros4` ahead of the pinned `13.2-nros5`).
 mkdir -p "$versioned_store/sdk/genromfs/0.0.1-stale/bin"
@@ -248,7 +244,7 @@ done
 # above. bash is mandatory, so assert the wiring there.
 path_out="$(NROS_HOME="$versioned_store" NROS_QUIET_ACTIVATE=1 bash -c \
     ". '$REPO_ROOT/activate.sh'; printf '%s' \"\$PATH\"" 2>/dev/null)"
-for tool in genromfs play_launch_parser; do
+for tool in genromfs; do
     if ! nros_grep_q "^$versioned_store/sdk/$tool/" <<<"${path_out//:/$'\n'}"; then
         fail "activate.sh: versioned $tool bin dir never reached PATH"
     fi

@@ -9,7 +9,7 @@ found: 2026-09-06
 related: [1120, 0475, 1018, phase-424, phase-330, phase-439, phase-460, phase-478]
 ---
 
-**Home: [phase-439](../../roadmap/phase-439-resolve-before-configure.md)** — re-homed 2026-10-14 from phase-330, which is archived (and on 2026-10-12 from phase-424 before it).
+**Home: [phase-439](../../roadmap/archived/phase-439-resolve-before-configure.md)** — re-homed 2026-10-14 from phase-330, which is archived (and on 2026-10-12 from phase-424 before it).
 
 # RESOLVED 2026-10-23 — does not reproduce, in either direction (phase-439 W9)
 

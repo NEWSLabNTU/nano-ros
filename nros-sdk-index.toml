@@ -657,177 +657,6 @@ ref = "12b4af2c5ac98657d42df84a5a45006ceede503b"
 configure = "cmake -S . -B build -DCMAKE_INSTALL_PREFIX={prefix} -DCMAKE_BUILD_TYPE=Release -DBUILD_IDLC=ON -DBUILD_TESTING=OFF -DBUILD_DDSPERF=OFF"
 install = "cmake --build build --parallel $(nproc) --target install"
 
-# play_launch_parser — the launch-graph parser the `nros plan` /
-# `nros codegen-system` resolver shells out to when synthesising or
-# multi-resolving `<pkg>/launch/*.launch.xml` (Phase 212.L.6). The
-# resolver builds the XML body (synth-from-Component-pkg OR pkg-named
-# vs system.launch.xml precedence) in-memory and pipes it through this
-# binary to get the `record.json` the planner consumes. Without it the
-# Phase 212 L.6 gate tests (`phase212_l6_launch_synth::*`) skip clean;
-# with it they transition SKIP -> PASS, closing the §Acceptance
-# "Launch file synthesis works" + "Multi-launch resolution works"
-# bullets.
-#
-# Source-build only — the upstream `jerry73204/play_launch_parser` repo
-# is a Rust workspace (no PyPI package, no prebuilt release tags), so
-# install via `cargo install --path crates/play_launch_parser` (same
-# shape as `[tool.nros]` / `[tool.zenohd]`). Pinned to a SHA on `main`
-# (no upstream tags yet) — same convention the `[tool.cyclonedds]` row
-# uses to pin a SHA on the NEWSLabNTU fork's `nano-ros` branch. The
-# cmd-line surface the L.6 resolver requires (`play_launch_parser --help`,
-# the `launch <pkg> <file>` subcommand) has been stable across the
-# pinned `main` window, but bumping the SHA is the explicit signal to
-# re-run the L.6 gate tests.
-#
-# Build-time prereq: a Python dev install (pyo3 `auto-initialize` links
-# libpythonX.Y at build time). On the default-tier host that's already
-# present (apt `python3`/`python3-dev` covered by `just workspace
-# apt-packages`); on bare-bones CI it would be the one extra apt
-# package, but neither tier moves a module without docs + orchestrator
-# updates so this stays implicit (the `workspace` module is the
-# umbrella). Header/binary-only install at well under the 500 MB /
-# 5 min `default` tier policy in `docs/development/sdk-tiers.md`,
-# idempotent (the `just workspace install-play-launch-parser` recipe
-# gates on a `.installed-version` stamp).
-# SUPERSEDED SOURCE, 2026-08-28. `jerry73204/play_launch_parser` is ARCHIVED;
-# the crate lives on inside `NEWSLabNTU/play_launch`, which this repo already
-# pins as a submodule at `packages/cli/third-party/play_launch`. Pointing here
-# at the archived repo gave ONE component TWO independent pins — the LIBRARY
-# half is path-dep'd from the submodule by `nros-launch-resolve`, the BINARY
-# half was cloned from the standalone repo — with nothing keeping them in step.
-# That is the drift class of issues 0609 (zenoh router) and 0507 (cyclonedds).
-#
-# `just workspace install-play-launch-parser` is a one-line forwarder to
-# `nros setup --tool play_launch_parser` (phase-422 W1), so there is ONE
-# producer and this row is its pin.
-#
-# THE `ref` IS NOT THE SUBMODULE PIN, and the sentence that used to sit here
-# said it was (issue 1413). It drifted because three documents asserted lockstep
-# and no gate measured it — which is what prose guarding an unchecked invariant
-# is for. `check-play-launch-parser-ref` measures it now.
-#
-# WHY THEY STILL DIFFER, measured rather than assumed. Issue 0897 W2b/W3 moved
-# pyo3 OUT of the `play_launch_parser` crate in `f7f6d2cf`: the Python half
-# became `pyexec` (a cdylib) loaded at run time by `pyload`, and `pyload` is
-# reached through `resolve/`, NOT through the standalone CLI's `main.rs`. So a
-# `cargo install` of that crate at or past `f7f6d2cf` links no interpreter.
-#
-# RE-MEASURED 2026-09-27 against the CURRENT gitlink, because the table that
-# used to sit here was written about `07f0461e` and the gitlink has moved since.
-# Two binaries, three launch shapes, built and run on this host:
-#
-#   binary                  DT_NEEDED       .launch.py  $(eval) direct  $(eval) via <arg default>
-#   published nros2 dist    libpython3.10   /from_python  /from_eval_2  /from_eval_2
-#   67dc7691, the gitlink   no libpython    exit 1        exit 1        /from_eval_$(eval '1 + 1'), exit 0
-#
-# `$(eval …)` HAS TWO PATHS AND ONLY ONE OF THEM IS LOUD — which is what still
-# makes this a blocker rather than a documented decline. Upstream `caab6fbc`
-# gave the DIRECT path a named diagnostic ("no Python backend is loaded, and a
-# `$(eval …)` substitution needs one", exit 1): that is issue 1413's own third
-# option, already taken upstream before the issue was filed, and both the issue's
-# table and the sentence that used to sit here missed it. But a `$(eval …)`
-# written into an `<arg default=…>` and read back with `$(var …)` still exits 0
-# with the substitution UNEXPANDED — a wrong node name, no diagnostic — at
-# `07f0461e` and at the gitlink alike. Arg defaults are where real launch files
-# put eval, so the arm that stayed silent is the arm that matters.
-#
-# `27b6749b` is `f7f6d2cf^`: the NEWEST ref whose `cargo install` still yields a
-# Python-capable binary, and the pin sits ON it (`0.1.0-nros2`, this entry).
-# NO COMMIT COUNT IS WRITTEN HERE any more: the two that were ("54 behind", "54
-# remaining") were both stale within days, and the distance is one `git rev-list
-# --count <ref>..<gitlink>` away in any checkout that has the submodule.
-# Closing the gap needs an install target that builds `pyexec` + `pyload` and
-# stages `libplay_launch_parser_pyexec.so` beside the binary — the pair shape
-# `nros-launch-resolve` already ships and `launch_py_resolves_as_shipped`
-# already tests — or upstream restoring a Python-capable CLI binary.
-#
-# AND THE GITLINK CANNOT BECOME THIS ENTRY'S SOURCE — measured 2026-09-27, not
-# preferred. `nros setup --tool` fetches this index over HTTPS
-# (`raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/nros-sdk-index.toml`) and
-# source-builds by cloning `source.git` into the SDK store; it runs on a user's
-# host with NO nano-ros checkout, so a `source.submodule = "<path>"` field would
-# name a directory that is not there and `git ls-tree HEAD <path>` would have
-# nothing to read. The index is the only thing that crosses that boundary and it
-# carries no repository with it — the same boundary stops `nano-ros-sdk`'s
-# `build-play_launch_parser.sh` one layer up. Nor are the two a duplicated fact:
-# the gitlink is ALREADY the sole spelling of which parser the BUILD consumes
-# (`nros-launch-resolve` statically links the crate out of the submodule, and
-# issue 1454 stamps that commit into `.compile-ok`), while the ref below names a
-# standalone CLI that issue 1454's strace measured running ZERO times in any
-# build path. Deriving one from the other would erase that distinction and ship
-# the Python-less binary measured above.
-#
-# Acceptance for this bump, run before it was cut: `nav2_compat`'s
-# `n11_launch_xml_ros2_compat_smoke` with its build-stage fixture REBUILT
-# against the new parser (it drives `nros_build::generate_run_plan` over a
-# nav2-shaped `launch/system.launch.xml` with `play_launch_parser` on PATH and
-# inspects the emitted `run_plan.rs` + `nros-plan.json`), plus the six
-# `record.json` consumers and the four L.6/L.7 tests — 11/11. Note the
-# `phase212_l6_launch_synth::*` acceptance `just/workspace.just` used to name is
-# itself stale: issue 0381 rewrote those tests to synthesise in-process, so they
-# never shell to the parser and cannot gate a bump of it. They were run anyway,
-# with each parser on PATH in turn, and are insensitive — measured, not assumed.
-#
-# Gate: `check-play-launch-parser-ref`, which asserts ancestry, the two
-# spellings agreeing, and that this declaration exists while they differ.
-# ref-lag: issue 1413 — the gitlink is past `f7f6d2cf`, where the standalone CLI lost its Python backend, and `$(eval …)` inside an `<arg default=…>` still exits 0 there with the substitution unexpanded (measured 2026-09-27); closing it needs an install target that stages `libplay_launch_parser_pyexec.so` beside the binary, not a ref bump
-#
-# SEEDED 2026-09-21 (issue 1273 / RFC-0099 D4), then RE-CUT the same day at
-# `27b6749b` (issue 1413). `nano-ros-sdk`'s `scripts/build-play_launch_parser.sh`
-# (phase-447 C2) landed on that repo's `main`; `build-tool.yml` was dispatched
-# with `tool=play_launch_parser version=0.1.0-nros2 upstream=<the ref below>`,
-# and tag `play_launch_parser-0.1.0-nros2` carries one asset per matrix host.
-# (`0.1.0-nros1`, cut from `838ce948`, stays published and is simply older.)
-# This entry leaves the dist-or-reason ratchet accordingly.
-#
-# TWO OF THREE HOSTS, and the third is a MEASURED decline, not a gap. Read off
-# the published artifacts themselves (`scripts/sdk/measure-dist-floor.py`, and
-# the Mach-O load commands for the macOS one):
-#
-#   linux-x86_64 / linux-arm64 — one dynamic ELF, floor glibc 2.34, and exactly
-#     ONE external `DT_NEEDED`: `libpython3.10.so.1.0` (pyo3 `auto-initialize`,
-#     the same hard single-minor link `nros-launch-resolve` has — issue 0897).
-#     libexpat/libz are reached THROUGH libpython, not named by this binary, so
-#     `system` keeps them and gains `libpython310`: that is the soname-exact
-#     `[prereq.*]` whose `apt.noble = []` is what D1's backward half reads to
-#     refuse this dist on a host that ships 3.12, before downloading it.
-#   macos-arm64 — BUILT and PUBLISHED, and deliberately NOT declared here; the
-#     nros2 artifact was re-measured and is the same shape as nros1's. Its
-#     `LC_LOAD_DYLIB` names `/Library/Frameworks/Python.framework/Versions/3.14/
-#     Python`, an ABSOLUTE path to the python.org framework the macos-14 runner
-#     happens to carry; there is no `@rpath`, so the binary cannot start on a
-#     mac lacking that exact framework version. The backward half that would
-#     catch this is Linux-only (`ldconfig` answers, `otool` has no equivalent
-#     probe here), and `floor = { macos = "11.0" }` — which is what the artifact
-#     truly declares — would let every mac download it. Declaring the row would
-#     hand most macs a tool that dies in the loader INSTEAD of the source build
-#     that works, so the row stays out until the dist links a relocatable
-#     interpreter. Same shape as `[tool.esp32-qemu]`'s decline: measured, then
-#     declined, with the measurement written down. (macos-arm64 is therefore
-#     still source-built, and a re-cut did not change that.)
-[tool.play_launch_parser]
-version = "0.1.0-nros2"
-# `libpython3` is the SOURCE build's requirement (this host's own CPython);
-# `libpython310` is the DIST's (a hard single-minor `DT_NEEDED`, measured).
-system = ["libexpat1", "libpython3", "libpython310", "libz1"]
-# Measured 2026-09-21 on the published linux-x86_64 dist (re-verified against
-# the `0.1.0-nros2` artifact after the ref bump, not carried over), with
-# LD_LIBRARY_PATH/PYTHONPATH/PYTHONHOME stripped the way the smoke path
-# spawns it: exit 0, the line below first on STDOUT, stderr empty. The
-# string is the crate `description`, so it moves only when the tool is
-# redescribed — not on every version bump, which is the objection that
-# keeps `[tool.ninja]` probe-less.
-smoke = [
-    { run = "bin/play_launch_parser --help", expect = "High-performance ROS 2 launch file parser" },
-]
-upstream = "27b6749b983391313bc717c7c75da959099a9d52" # = source.ref (play_launch pin; no upstream tags)
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/play_launch_parser-0.1.0-nros2/play_launch_parser-linux-x86_64.tar.zst", sha256 = "a7e77157226ec2798c50bf9aa5fcf5647a1dcd65fdda31d0f93123d1498abb1c", floor = { glibc = "2.34" } }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/play_launch_parser-0.1.0-nros2/play_launch_parser-linux-arm64.tar.zst", sha256 = "9145b5c72bec0f69422855bdb28e36d4075ac84011ffbb0b464567e38c3595f1", floor = { glibc = "2.34" } }
-[tool.play_launch_parser.source]
-git = "https://github.com/NEWSLabNTU/play_launch"
-ref = "27b6749b983391313bc717c7c75da959099a9d52"
-install = "cargo install --path src/ros-launch-resolve/parser/crates/play_launch_parser --root {prefix} --locked"
-
 # Corrosion — the CMake ↔ Rust/Cargo bridge that `corrosion_import_crate()`
 # in mixed-language workspaces (Phase 212 — `cmake/NanoRosThreadxSystemCodegen.cmake`,
 # `multi_pkg_workspace_mixed` fixture, examples/linux/rust talker/listener
@@ -1003,7 +832,7 @@ install = "cmake --build build --parallel $(nproc) --target install"
 #
 # The SOURCE recipe stays as the fallback and its own rationale, since a host
 # off the three built arches still needs it: pinned like every other cargo
-# tool here (`[tool.sccache]`, `[tool.play_launch_parser]`) rather than a bare
+# tool here (`[tool.sccache]`) rather than a bare
 # `cargo install espflash`, which would resolve against crates.io at whatever
 # version is current that day — the drift the pinning convention and the
 # project-wide `--locked` shim exist to prevent. The binary lives in the
@@ -2318,7 +2147,7 @@ check = { header = "z3.h" }
 
 [prereq.python3-dev]
 role = "buildtool"
-why = "pyo3 source builds (play_launch_parser, nros-launch-resolve; issue 0368 F5)"
+why = "pyo3 source build of nros-launch-resolve (issue 0368 F5)"
 apt = ["python3-dev"]
 dnf = ["python3-devel"]
 pacman = ["python"]
@@ -2931,15 +2760,6 @@ dnf = ["libxcrypt"]
 pacman = ["libxcrypt-compat"]
 check = { sharedlib = "libcrypt.so.1" }
 
-[prereq.libexpat1]
-role = "infra"
-why = "runtime dep of the play_launch_parser dist(s) (issue 0926)"
-apt = ["libexpat1"]
-dnf = ["expat"]
-pacman = ["expat"]
-brew = ["expat"]
-check = { sharedlib = "libexpat.so.1" }
-
 [prereq.libpcre2]
 role = "infra"
 why = "runtime dep of the qemu dist(s) (issue 0926)"
@@ -2949,60 +2769,24 @@ pacman = ["pcre2"]
 brew = ["pcre2"]
 check = { sharedlib = "libpcre2-8.so.0" }
 
-# phase-447 D2 — was `[prereq.libpython310]`, and the minor version in the KEY
-# was the defect, not just a stale package name. Its only consumer is the
-# play_launch_parser SOURCE build (there is no dist — RFC-0099 D4's ten), and a
-# source build links whatever CPython the HOST has: 3.10 on jammy, 3.12 on
-# noble. So the requirement is "this host's libpython3", and a key naming 3.10
-# asked every non-jammy host for a package it could not have (noble has no
-# `libpython3.10`; the old dnf/pacman rows asked for non-default side installs).
+# A soname-EXACT requirement: the `nros-launch-resolve` release binary
+# (`.github/workflows/release-nros.yml`'s "Stage the prefix" step, PR #896 /
+# phase-447 A1) links `libpython3.10.so.1.0` as a hard `DT_NEEDED` (pyo3's
+# `auto-initialize`). For a binary linked against one minor, the minor IS the
+# requirement, so the version in the key is right.
 #
-# A soname-EXACT requirement (`libpython3.10.so.1.0`) is a different thing: it
-# belongs to a binary that links one minor. That key exists — it is
-# `[prereq.libpython310]`, directly below, for the `nros-launch-resolve`
-# release binary (issue 0897, PR #896). `check-dist-runtime-deps` maps sonames
-# through `check.sharedlib`, and this prefix probe matches none exactly, so a
-# dist that links one minor is steered to that key, not this one.
+# Its host-CPython sibling `[prereq.libpython3]` (and a second consumer here,
+# the `play_launch_parser` dists) left with the standalone `play_launch_parser`
+# tool (issue 1413): the parser is reached only through `nros-launch-resolve`.
 #
-# `default` is `libpython3-dev`, the one name that pulls the RELEASE's own
-# minor on every Debian/Ubuntu; jammy/noble name the runtime package directly
-# (verified in the archive 2026-09-11 — noble's is the t64 rename).
-[prereq.libpython3]
-role = "infra"
-why = "this host's CPython embedding library — the play_launch_parser SOURCE build links it (pyo3 auto-initialize)"
-apt = { default = ["libpython3-dev"], jammy = ["libpython3.10"], noble = ["libpython3.12t64"] }
-dnf = ["python3-libs"]
-pacman = ["python"]
-check = { sharedlib = "libpython3." }
-
-# The soname-EXACT sibling of `[prereq.libpython3]` above: the two keys are two
-# requirements that the old single key conflated (phase-447 D2).
-#
-# Corrected for issue 1273 / RFC-0099 D4 — when this was written
-# `play_launch_parser` had no dist (it was on the dist-or-reason ratchet), so
-# that could not have been the reason it named. The original one: PR #896
-# (phase-447 A1) made `nros-launch-resolve` ship in the release
-# (`.github/workflows/release-nros.yml`'s "Stage the prefix" step), and it
-# links `libpython3.10.so.1.0` as a hard `DT_NEEDED` (pyo3's
-# `auto-initialize`).
-#
-# SECOND CONSUMER, 2026-09-21: the `play_launch_parser` linux dists were seeded
-# (tag `play_launch_parser-0.1.0-nros1`) and they link the SAME soname, for the
-# same pyo3 reason — measured on the published artifacts. So this key now
-# serves two binaries, and `[tool.play_launch_parser] system` names it. That
-# does not make the paragraph above wrong; it makes `libpython3` vs
-# `libpython310` the distinction that carried the weight, which is exactly what
-# phase-447 D2 split them for.
-#
-# For a binary linked against one minor, the minor IS the requirement, so here
-# the version in the key is right. phase-447 D2 lets it say where that minor
-# is not packaged at all: noble ships 3.12 and no `libpython3.10` (verified
-# 2026-09-11), and `noble = []` is exactly the signal D1's backward half reads
-# to refuse such a binary before downloading it. No `default`: jammy is the only
-# Ubuntu LTS that packages 3.10, and a default would claim the others do.
+# phase-447 D2 lets it say where that minor is not packaged at all: noble
+# ships 3.12 and no `libpython3.10` (verified 2026-09-11), and `noble = []` is
+# exactly the signal D1's backward half reads to refuse such a binary before
+# downloading it. No `default`: jammy is the only Ubuntu LTS that packages
+# 3.10, and a default would claim the others do.
 [prereq.libpython310]
 role = "infra"
-why = "runtime dep of the nros-launch-resolve release binary and of the play_launch_parser dist(s) — both link libpython3.10.so.1.0 via pyo3 auto-initialize (phase-447 A1 / PR #896; issue 1273)"
+why = "runtime dep of the nros-launch-resolve release binary — links libpython3.10.so.1.0 via pyo3 auto-initialize (phase-447 A1 / PR #896; issue 1273)"
 apt = { jammy = ["libpython3.10"], noble = [] }
 dnf = ["python3.10-libs"]
 pacman = ["python310"]
@@ -3040,7 +2824,7 @@ check = { sharedlib = "libtinfo.so.6" }
 
 [prereq.libz1]
 role = "infra"
-why = "runtime dep of the play_launch_parser, qemu dist(s) (issue 0926)"
+why = "runtime dep of the qemu dist(s) (issue 0926)"
 apt = ["zlib1g"]
 dnf = ["zlib"]
 pacman = ["zlib"]

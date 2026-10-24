@@ -315,26 +315,6 @@ elif [ -z "${NROS_QUIET_ACTIVATE:-}" ] && ! command -v nros >/dev/null 2>&1; the
     echo "  (set NROS_QUIET_ACTIVATE=1 to suppress this hint.)" >&2
 fi
 
-# `play_launch_parser` — installed by `just workspace install-play-
-# launch-parser` to `~/.nros/sdk/play_launch_parser/bin/`. The Phase
-# 212.L.6 launch-graph resolver shells out to it. The Phase 212.M-F.20
-# pkg-index resolver inside the parser eats `AMENT_PREFIX_PATH` so the
-# ROS source above must run FIRST.
-if [ -x "${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/bin/play_launch_parser" ]; then
-    export PATH="${NROS_HOME:-$HOME/.nros}/sdk/play_launch_parser/bin:$PATH"
-else
-    # phase-327 W3 — `nros setup --tool play_launch_parser` (the prebuilt
-    # remedy the doctor names) installs to the VERSIONED store layout
-    # (sdk/<tool>/<version>/bin), which the unversioned path above misses.
-    # Issue 1563: that version is the PIN, constructed — never "whichever
-    # version is present", which readdir order decided.
-    _nros_store_tool_bin play_launch_parser _plp_bin
-    if [ -n "$_plp_bin" ] && [ -x "$_plp_bin/play_launch_parser" ]; then
-        export PATH="$_plp_bin:$PATH"
-    fi
-    unset _plp_bin
-fi
-
 # Cross-compiler toolchains installed by `nros setup` land in the SDK store
 # (~/.nros/sdk/<tool>/<version>/bin). Unlike qemu — which the test harness
 # resolves via a build/<tool> prefix and deliberately keeps OFF the global

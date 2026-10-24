@@ -121,7 +121,8 @@ set-e-bare-assignment:
 # stopped tier 2 and the tier-2 nightly with three citations that are on main.
 #
 # The rule — truncation can only manufacture a false NEGATIVE — was already
-# written correctly in `check-play-launch-parser-ref.py`; the second gate to
+# written correctly in `check-play-launch-parser-ref.py` (retired with its
+# tool, issue 1413); the second gate to
 # need it wrote it again and got half. So there is one spelling
 # (`scripts/lib/git_history.py` + its shell twin) and this keeps a third from
 # appearing. Reach is what a line can show; honest REPORTING of the unknown

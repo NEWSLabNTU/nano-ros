@@ -84,10 +84,10 @@ nros doctor                         # check SDK paths / toolchains / env
 | `nros doctor` / `board` | health-check; inspect supported boards |
 | `nros plan` / `check` / `explain` | launch-file → plan resolution¹ |
 
-¹ Launch parsing shells out to the separate
-[`play_launch_parser`](https://github.com/jerry73204/play_launch_parser)
-(`pip install play-launch-parser`) so `nros` itself stays python-free; the build
-system runs it internally to produce the plan record.
+¹ Launch parsing runs in the separate `nros-launch-resolve` helper (built by
+`just setup-launch-resolve`, shipped beside `nros` in a release), which links the
+parser from the `third-party/play_launch` submodule — so `nros` itself stays
+python-free. `nros-launch-resolve <launch file> --record -` prints the raw parse.
 
 ## License
 

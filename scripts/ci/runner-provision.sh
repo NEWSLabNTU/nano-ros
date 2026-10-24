@@ -265,8 +265,7 @@ if ! command -v just >/dev/null 2>&1; then
 fi
 
 # The sweep contract (CLAUDE.md): every `just <plat>` invocation wants
-# `source ./activate.sh` first — it is the env/PATH SSoT and wires `nros` and
-# `play_launch_parser`. It installs nothing and never errors by design, but it
+# `source ./activate.sh` first — it is the env/PATH SSoT and wires `nros`. It installs nothing and never errors by design, but it
 # is sourced with the strict flags off anyway: an `unbound variable` inside
 # somebody else's file must not abort provisioning.
 if [ -r "$repo_root/activate.sh" ]; then

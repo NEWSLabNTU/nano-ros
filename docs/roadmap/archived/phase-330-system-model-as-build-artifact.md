@@ -16,7 +16,7 @@ phase still owns. Those fixtures are built only by the scheduled tier-2 lanes,
 so their verdict is handed to
 [phase-466](../phase-466-scheduled-lanes-produce-verdicts.md) (work item W5).
 RFC-0063 is `Stable`. Issue 1121, the one open issue that named this phase, is
-re-homed to [phase-439](../phase-439-resolve-before-configure.md).
+re-homed to [phase-439](phase-439-resolve-before-configure.md).
 
 ## Goal
 
@@ -831,7 +831,7 @@ completed:
 Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it. Issue 1121 was re-homed to
-[phase-439](../phase-439-resolve-before-configure.md) on 2026-10-14, when this
+[phase-439](phase-439-resolve-before-configure.md) on 2026-10-14, when this
 phase closed.
 
 - [issue 1121](../../issues/archived/1121-contract-sidecar-has-no-model-freshness-edge.md) — Adding a `<stem>.contract.yaml` does not invalidate the SystemModel it feeds — `nros sync` leaves the stale model in …
