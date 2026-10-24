@@ -1041,8 +1041,10 @@ generation on the table only for whatever survives step 2.
 - **[OPEN]** `[board.fvp-aemv8r-smp] platform = "bare-metal"` in the index vs its
   Zephyr `board.cmake` — drift, or does the index's `platform` mean
   "provisioning family"? If the latter, the field is misnamed.
-- **[OPEN]** `config/bare-metal` defines `[arch.cortex-m4f]` but never lists it in
-  `arch = [...]`. Dead, or reachable another way?
+- **[RESOLVED 2026-10-24, issue 1154]** `config/bare-metal` defined
+  `[arch.cortex-m4f]` but never listed it in `arch = [...]`. Unreachable: it is
+  listed now, matching only `thumbv7em-none-eabihf`. Its sibling
+  `[arch.riscv32gc]` was deleted (no bare-metal Rust triple has that name).
 - **[OPEN]** Three in-tree board modules — `esp32-c3`, `mps2-an385`,
   `stm32f4-nucleo` — are selected by no caller found. **Not** a deadness claim;
   phase-321's retro is explicit about that failure mode. Needs checking.

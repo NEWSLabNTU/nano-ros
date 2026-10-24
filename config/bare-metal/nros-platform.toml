@@ -48,10 +48,19 @@ names = ["bare-metal", "esp32"]
 # in the zenoh backend's descriptor now: `[port.bare-metal]` in
 # packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml ("platforms name no
 # backends", RFC-0072 §9).
-# Phase 148: bare-metal spans cortex-m3 (mps2-an385-baremetal,
-# stm32f4) AND riscv32imc (ESP32-C3). First arch whose `target_match`
-# hits is applied — see build.rs::build_zenoh_pico_unified Step 3.
-arch_profiles = ["cortex-m3", "riscv32imc"]
+# Phase 148: bare-metal spans cortex-m3 (mps2-an385-baremetal) AND
+# riscv32imc (ESP32-C3). First arch whose `target_match` hits is applied —
+# see nros-zpico-build's `platform_arch`.
+#
+# issue 1154 — `cortex-m4f` (an STM32F4-class Cortex-M4F) was defined here
+# and not listed, so a bare-metal `thumbv7em-none-eabihf` build matched no
+# profile and compiled zenoh-pico with cc-rs's defaults instead of these
+# flags. It is listed now. No in-tree bare-metal image targets thumbv7em, so
+# no image moves. A `riscv32gc` profile sat beside it, also unlisted; it was
+# deleted rather than listed, because no bare-metal Rust triple is named
+# `riscv32gc` (rustc's are `riscv32i…-unknown-none-elf`, none with `d`), and
+# its `-mabi=ilp32d` matches none of them — there was no board to keep it for.
+arch_profiles = ["cortex-m3", "cortex-m4f", "riscv32imc"]
 # Phase 204.9 — size build (`-Os`): zenoh-pico is the biggest vendor C blob
 # on embedded; `-Os` saved ~8 KB .text on the bare-metal talker vs `-O2`.
 compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
@@ -69,8 +78,15 @@ target_match = "thumbv7m"
 target_exclude = "thumbv7em"
 cflags = ["-mcpu=cortex-m3", "-mthumb"]
 
+# The FULL hard-float triple, not `thumbv7em`: `target_match` is a substring
+# test, so `thumbv7em` would also claim soft-float `thumbv7em-none-eabi` and
+# compile it `-mfloat-abi=hard`. A soft-float thumbv7em build matches no
+# profile instead — the FreeRTOS `cortex-m7` profile's rule (its comment has
+# the reasoning). A Cortex-M7 bare-metal image (`thumbv7em-none-eabihf` too)
+# would take these M4F flags; M7 runs that code, and its fpv5 FPU executes
+# fpv4-sp instructions.
 [arch.cortex-m4f]
-target_match = "thumbv7em"
+target_match = "thumbv7em-none-eabihf"
 cflags = ["-mcpu=cortex-m4", "-mthumb", "-mfpu=fpv4-sp-d16", "-mfloat-abi=hard"]
 
 [arch.riscv32imc]
@@ -80,6 +96,3 @@ needs_picolibc = true
 needs_errno_override = true
 needs_riscv_compiler = true
 
-[arch.riscv32gc]
-target_match = "riscv32gc"
-cflags = ["-march=rv32gc", "-mabi=ilp32d"]

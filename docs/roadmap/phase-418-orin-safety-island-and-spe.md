@@ -423,7 +423,7 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1154](../issues/1154-bare-metal-arch-profiles-unreachable.md) | `config/bare-metal` defines `cortex-m4f` and `riscv32gc` and lists neither. 418.3 owns `check-arch-profile-resolution` and its KNOWN_UNREACHABLE/KNOWN_INERT allowlist, which is where an unlisted profile has to be answered |
+| [#1154](../issues/archived/1154-bare-metal-arch-profiles-unreachable.md) | **Resolved 2026-10-24:** `cortex-m4f` listed (hard-float thumbv7em only), `riscv32gc` deleted, both allowlists empty. Was: `config/bare-metal` defines `cortex-m4f` and `riscv32gc` and lists neither. 418.3 owns `check-arch-profile-resolution` and its KNOWN_UNREACHABLE/KNOWN_INERT allowlist, which is where an unlisted profile has to be answered |
 
 ## Open issues that name this phase
 
@@ -431,4 +431,4 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 1155](../issues/1155-arch-flags-tests-in-no-lane.md) — `nros-board-common`'s `arch_flags` tests run in no lane — `test-unit` activates no features and the module is behind …
+- [issue 1155](../issues/archived/1155-arch-flags-tests-in-no-lane.md) — **resolved 2026-10-24** (the tests run in `node-std-tests`) — `nros-board-common`'s `arch_flags` tests run in no lane — `test-unit` activates no features and the module is behind …

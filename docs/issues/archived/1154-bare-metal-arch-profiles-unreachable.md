@@ -1,7 +1,9 @@
 ---
 id: 1154
 title: "`config/bare-metal` defines `cortex-m4f` and `riscv32gc` and lists neither, so an STM32F4 or riscv32gc bare-metal build resolves no arch profile"
-status: open
+status: resolved
+resolved: 2026-10-24
+resolved_in: "PR #TBD"
 type: bug
 area: platform, build
 severity: medium
@@ -9,7 +11,7 @@ found: 2026-09-06
 related: [0385, phase-418]
 ---
 
-**Home: [phase-418](../roadmap/phase-418-orin-safety-island-and-spe.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-418](../../roadmap/phase-418-orin-safety-island-and-spe.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 # phase-385 W1's defect, twice more, in a file that phase did not look at
 
@@ -76,3 +78,28 @@ and stops there will fail on the remaining entry rather than look done.
 python3 scripts/check-arch-profile-resolution.py    # reports 2 known unreachable
 grep -nE '^arch = |^\[arch\.' config/bare-metal/nros-platform.toml
 ```
+
+## Resolution (2026-10-24)
+
+One decision per profile, as the issue asked:
+
+- **`cortex-m4f`: listed, and narrowed.** `arch_profiles` is now
+  `["cortex-m3", "cortex-m4f", "riscv32imc"]`, and `target_match` is the full
+  `thumbv7em-none-eabihf` rather than the substring `thumbv7em`, so soft-float
+  `thumbv7em-none-eabi` matches no profile instead of compiling
+  `-mfloat-abi=hard` — the FreeRTOS `cortex-m7` profile's rule. No in-tree
+  bare-metal image targets thumbv7em, so no image moves. Before this, such a
+  build did not panic, as the gate's comment said: `nros-zpico-build` applies a
+  profile only `if let Some(..)`, so zenoh-pico compiled with no arch flags at
+  all, silently. Only the FreeRTOS kernel build refuses a missing profile.
+- **`riscv32gc`: deleted.** No bare-metal Rust triple carries the name —
+  rustc's are `riscv32{e,em,emc,i,im,ima,imac,imafc,imc,imfc}-unknown-none-elf`
+  — and its `-mabi=ilp32d` (double-float) fits none of them. Listing it would
+  have fixed one of its two faults and kept the other; there was no board to
+  keep it for.
+
+`check-arch-profile-resolution`'s `KNOWN_UNLISTED` and `KNOWN_INERT` are both
+empty now. `bare_metal_resolves_cortex_m4f_for_hard_float_thumbv7em_only`
+(`nros-board-common/src/arch_flags.rs`) pins all three answers, and fails with
+`cortex-m4f` taken back out of the list. That test would have run in no lane
+(issue 1155), so the same change gives those tests a lane.

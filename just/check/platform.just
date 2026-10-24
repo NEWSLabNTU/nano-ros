@@ -39,8 +39,8 @@
 # listed, defined, shadows nothing, and offers the ABI rule no pair to judge.
 # phase-385 W1 was "a triple with no profile", which panics and is eventually
 # found; this is "a profile with no triple", which is silently inert. The build
-# resolves nothing either way. It has already found a third pre-existing
-# instance, `config/bare-metal`'s `[arch.riscv32gc]`.
+# resolves nothing either way. It found a third pre-existing instance,
+# `config/bare-metal`'s `[arch.riscv32gc]`, deleted by issue 1154.
 #
 # Buildless: it reads the platform manifests and `config/rust-targets.txt`, and
 # invokes no cargo. Self-test on the normal path.

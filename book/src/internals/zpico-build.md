@@ -16,7 +16,7 @@ per-platform datum the build needs. Two top-level table groups:
 - `[arch.<name>]` — reusable target-arch compiler-flag profiles
   shared across platforms that target the same CPU family
   (`cortex-m3`, `cortex-m4f`, `cortex-a7`, `cortex-r5-softfp`,
-  `riscv32imc`, `riscv32gc`, `riscv64gc`).
+  `riscv32imc`, `riscv64gc`).
 
 ### Per-platform fields
 

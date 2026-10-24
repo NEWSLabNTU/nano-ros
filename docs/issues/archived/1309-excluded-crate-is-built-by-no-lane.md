@@ -105,7 +105,7 @@ emulator, nothing that would stop them running on the host in milliseconds.
 They are unreachable because the crate is not in any workspace, so no `cargo
 test` invocation in this repo can name them.
 
-This is [issue 1155](../1155-arch-flags-tests-in-no-lane.md) one crate over —
+This is [issue 1155](1155-arch-flags-tests-in-no-lane.md) one crate over —
 there, `nros-board-common`'s `arch_flags` tests run in no lane because
 `test-unit` activates no feature; here the crate is not in a workspace at all.
 Same verdict, different mechanism, which is why fixing 1155 will not fix this.

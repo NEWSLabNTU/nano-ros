@@ -3424,6 +3424,15 @@ node-std-tests:
     ran_tests "zpico-alloc stats tests (issue 1370)" \
         cargo test -p zpico-alloc --features stats --lib --tests --quiet
 
+    # Issue 1155 — the same class again: `nros-board-common` is `no_std` unless
+    # `build-helpers` is on, and its host-only modules — `arch_flags`, the
+    # resolver every `[arch.*]` profile goes through — sit behind it. No
+    # workspace member enables it, so `--workspace` ran none of their tests;
+    # measured `cargo nextest list -p nros-board-common`: 0 `arch_flags` cases,
+    # 6 with the feature. Issue 1154's bare-metal cortex-m4f test is one of them.
+    ran_tests "nros-board-common build-helpers tests (issue 1155)" \
+        cargo test -p nros-board-common --features build-helpers --lib --quiet
+
     # phase-412 #4 — the arena's host oracle, seen to FIRE. `arena_oracle` holds
     # the default arena to the declared model in a `const` item, and a const
     # item nobody has watched fail reads exactly like one that passes. So: the
