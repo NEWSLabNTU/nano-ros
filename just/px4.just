@@ -125,7 +125,7 @@ build-sitl-cpp:
 # Each is ~10 min cold, <2 s warm.
 #
 # Prereqs the helper checks for at configure time, with the command to fix each:
-#   cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release
+#   the placer-wrapped `cargo build -p nros-cpp …` NanoRosPx4Module.cmake names
 #   cmake -S packages/platform/nros-platform-posix -B build/nros-platform-posix
 #   cmake --build build/nros-platform-posix
 [group("examples")]
@@ -162,10 +162,16 @@ build-sitl-example:
     # `build-bridge-example` does the same thing for the opposite reason (it
     # picks a NETWORKED backend), which is why that recipe never had this bug.
     echo "Building the nano-ros archive this module links (uORB only)"
-    # profile-literal-ok: symbol fixture: the PX4 link and this build must name
-    # the same profile dir, and PX4 knows nothing about nano-ros profiles.
+    # Issue 1824 — under the header placer, so the headers the module compiles
+    # against come from THIS cargo run's `$OUT_DIR`, into the dir
+    # NanoRosPx4Module.cmake reads by default (`build/nros-px4/placed`).
+    # The PX4 link and this build must name the same profile dir, and PX4 knows
+    # nothing about nano-ros profiles. (Marker on one line: the gate looks 3 up.)
+    # profile-literal-ok: symbol fixture
+    python3 scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest "$(pwd)/build/nros-px4/placed" -- \
     cargo build -p nros-cpp --no-default-features \
-        --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release
+        --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release \
+        --message-format=json-render-diagnostics
     # nros-cmake-prefix-exempt: the POSIX platform's C archive -- no Rust target
     # in that project, so no Corrosion to resolve.
     # Same rule as the ThreadX-RV64 leaves: quiet on success, and on failure
@@ -285,20 +291,27 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # generates: the API crate plus the backend the descriptor names, with the
     # platform and the edition (issue 1893) forwarded through that descriptor.
     # It is its own cargo root, so it gets its own target dir (issue 0616), and
-    # PX4's configure finds the archive and the per-build headers there through
-    # `CARGO_TARGET_DIR`, which `nros locate artifact` honours.
+    # PX4's configure finds the archive there through `CARGO_TARGET_DIR`, which
+    # `nros locate artifact` honours, and the headers the build PLACED through
+    # `NROS_PX4_HEADER_DIR` (issue 1824).
+    # The features are the uORB archive's set plus `bridge`: `std` is gone from
+    # nros-cpp (phase-359 W10 stage C), and asking for it stopped this recipe in
+    # cargo.
     IMAGE_DIR="$ROOT/build/px4-bridge/image"
     export CARGO_TARGET_DIR="$IMAGE_DIR/target"
+    export NROS_PX4_HEADER_DIR="$IMAGE_DIR/placed"
     if ! image="$(cmake --log-level=WARNING -DNROS_IMAGE_FLAVOR=cpp \
             -DNROS_IMAGE_RMW="$RMW" -DNROS_IMAGE_EDITION='{{edition}}' \
             -DNROS_IMAGE_OUT_DIR="$IMAGE_DIR" \
-            "-DNROS_IMAGE_API_FEATURES=std;bridge;platform-posix;ros-{{edition}}" \
+            "-DNROS_IMAGE_API_FEATURES=alloc;env;log;panic-platform;bridge;platform-posix;ros-{{edition}}" \
             -P "$ROOT/cmake/NanoRosImageCrate.cmake")"; then
         echo "ERROR: generating the $RMW image crate failed" >&2
         exit 1
     fi
+    # profile-literal-ok: symbol fixture: same PX4 SITL link as the uORB archive.
+    python3 "$ROOT/scripts/build/cargo-out-dir-headers.py" --package nros-cpp --package nros-c --dest "$NROS_PX4_HEADER_DIR" -- \
     cargo build --manifest-path "${image%% *}" --no-default-features \
-        --features "${image#* }" --release # profile-literal-ok: symbol fixture
+        --features "${image#* }" --release --message-format=json-render-diagnostics
     # profile-literal-ok: symbol fixture: same PX4 SITL link as above.
     # The POSIX platform archive nros_px4_add_module links (its guard names this
     # exact command when it is missing).

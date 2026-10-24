@@ -1,0 +1,1 @@
+`just px4 build-bridge-example` no longer asks the image crate for a `std` feature that nros-cpp no longer has, which stopped the recipe in cargo before PX4 was reached; it builds the uORB archive's feature set plus `bridge`.

@@ -39,12 +39,20 @@
 # Prerequisites — build these first; this module only LINKS them
 # ---------------------------------------------------------------------------
 #
-#   cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release
+#   python3 scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c \
+#       --dest build/nros-px4/placed -- \
+#       cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release \
+#       --message-format=json-render-diagnostics
 #   cmake -S packages/platform/nros-platform-posix -B build/nros-platform-posix
 #   cmake --build build/nros-platform-posix
 #
-# Override either path with -DNROS_CPP_ARCHIVE=... / -DNROS_PLATFORM_ARCHIVE=...
-# or the matching env vars. Note PX4's Makefile does NOT forward EXTRA_CMAKE_ARGS,
+# The first runs cargo under the header placer (issue 1824): the per-build config
+# headers this module compiles against are copied out of THAT cargo run's own
+# `$OUT_DIR` into `build/nros-px4/placed`, so they describe the archive the same
+# run produced — not whatever build last wrote the target dir's shared copy.
+#
+# Override any path with -DNROS_CPP_ARCHIVE=... / -DNROS_PLATFORM_ARCHIVE=... /
+# -DNROS_PX4_HEADER_DIR=... (the placer's --dest) or the matching env vars. Note PX4's Makefile does NOT forward EXTRA_CMAKE_ARGS,
 # so from a `make px4_sitl_default` invocation the environment is the way in.
 
 include_guard(GLOBAL)
@@ -70,10 +78,31 @@ endif()
 # paired against were another build's.
 include("${NROS_REPO_DIR}/cmake/NanoRosLocate.cmake")
 nros_locate_artifact(_NROS_PX4_CPP_A_DEFAULT cpp-archive PROFILE release CONTEXT "NanoRosPx4Module")
-nros_locate_artifact(_NROS_PX4_C_INCLUDE c-include CONTEXT "NanoRosPx4Module")
-nros_locate_artifact(_NROS_PX4_CPP_INCLUDE cpp-include CONTEXT "NanoRosPx4Module")
-nros_locate_artifact(_NROS_PX4_CPP_CONFIG_HEADER cpp-config-header CONTEXT "NanoRosPx4Module")
-nros_locate_artifact(_NROS_PX4_C_CONFIG_HEADER c-config-header CONTEXT "NanoRosPx4Module")
+
+# Issue 1824 — the headers come from the directory the archive's own cargo run
+# PLACED them in, never the target dir's `nros-{c,cpp}-generated/`, which every
+# cargo build sharing that target dir writes. Overridable like the archive, so a
+# caller who points at another archive points at its headers too; the pairing
+# assertion below still refuses a pair that disagrees.
+if(DEFINED NROS_PX4_HEADER_DIR AND NOT NROS_PX4_HEADER_DIR STREQUAL "")
+    set(_NROS_PX4_HEADER_DIR "${NROS_PX4_HEADER_DIR}")
+elseif(NOT "$ENV{NROS_PX4_HEADER_DIR}" STREQUAL "")
+    set(_NROS_PX4_HEADER_DIR "$ENV{NROS_PX4_HEADER_DIR}")
+else()
+    set(_NROS_PX4_HEADER_DIR "${NROS_REPO_DIR}/build/nros-px4/placed")
+endif()
+nros_locate_artifact(_NROS_PX4_C_INCLUDE c-include PLACED_DIR "${_NROS_PX4_HEADER_DIR}" CONTEXT "NanoRosPx4Module")
+nros_locate_artifact(_NROS_PX4_CPP_INCLUDE cpp-include PLACED_DIR "${_NROS_PX4_HEADER_DIR}" CONTEXT "NanoRosPx4Module")
+nros_locate_artifact(_NROS_PX4_CPP_CONFIG_HEADER cpp-config-header PLACED_DIR "${_NROS_PX4_HEADER_DIR}" CONTEXT "NanoRosPx4Module")
+nros_locate_artifact(_NROS_PX4_C_CONFIG_HEADER c-config-header PLACED_DIR "${_NROS_PX4_HEADER_DIR}" CONTEXT "NanoRosPx4Module")
+
+# The ONE spelling of the command that builds a uORB module's archive AND places
+# its headers. Every remedy below names it; restating it per site is how the
+# copies drifted before (three of them carried a feature set nros-cpp no longer
+# had).
+# profile-literal-ok: prebuilt archive — the instruction that builds it
+set(_NROS_PX4_UORB_ARCHIVE_CMD
+    "python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py --package nros-cpp --package nros-c --dest ${_NROS_PX4_HEADER_DIR} -- cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release --message-format=json-render-diagnostics")
 
 # --- Resolve the two prebuilt archives --------------------------------------
 function(_nros_px4_resolve_archive OUT_VAR CACHE_VAR ENV_VAR DEFAULT_PATH BUILD_HINT)
@@ -105,8 +134,7 @@ _nros_px4_resolve_archive(_NROS_PX4_CPP_A NROS_CPP_ARCHIVE NROS_CPP_ARCHIVE
     # (the ABI `<rclcpp/bridge.hpp>`'s MultiExecutor calls) into this archive,
     # plus the networked backend, which `nros-cpp` no longer names (RFC-0071 D9):
     # `just px4 build-bridge-example` builds it from the generated image crate.
-    # profile-literal-ok: prebuilt archive — the instruction that builds it
-    "cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release")
+    "${_NROS_PX4_UORB_ARCHIVE_CMD}")
 
 _nros_px4_resolve_archive(_NROS_PX4_PLATFORM_A NROS_PLATFORM_ARCHIVE NROS_PLATFORM_ARCHIVE
     "${NROS_REPO_DIR}/build/nros-platform-posix/libnros_platform_posix.a"
@@ -199,11 +227,13 @@ endforeach()
 # linked against. That is the anchor doing its job at LINK time, ~1100 targets
 # in. Below it is the same fact, at configure time, naming the command.
 #
-# The archive path is overridable (`NROS_CPP_ARCHIVE`) and the header path is
-# not — it is derived from NROS_REPO_DIR — so an override silently un-pairs
-# them. That hole is permanent by construction and is the main thing this catches
-# that a recipe fix cannot: `just px4 build-sitl-example` now builds the archive
-# it links (issue 1050), but it can only speak for the DEFAULT path.
+# The archive (`NROS_CPP_ARCHIVE`) and the header dir (`NROS_PX4_HEADER_DIR`)
+# are overridden SEPARATELY, so an override of one can still un-pair them, and a
+# plain `cargo build` (no placer) moves the archive without moving the placed
+# headers (issue 1824). That hole is permanent by construction and is the main
+# thing this catches that a recipe fix cannot: `just px4 build-sitl-example`
+# builds the archive it links (issue 1050), but it can only speak for the
+# DEFAULT paths.
 include(${CMAKE_CURRENT_LIST_DIR}/NanoRosArchivePairing.cmake)
 
 # ONE hint for both calls, and it names BOTH feature sets on purpose. The header
@@ -215,8 +245,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/NanoRosArchivePairing.cmake)
 # file scope BACKENDS is not yet known, so the hint says both rather than
 # guessing one.
 set(_NROS_PX4_REBUILD_HINT
-    # profile-literal-ok: prebuilt archive — the instruction that builds it
-    "cargo build -p nros-cpp --no-default-features --features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release\n"
+    "${_NROS_PX4_UORB_ARCHIVE_CMD}\n"
     "    (a uORB->RMW BRIDGE module instead wants the image-crate archive `just px4 build-bridge-example` builds)\n"
     "    Whichever you run, it rewrites the header and the archive together -- that is the point.")
 
@@ -527,9 +556,7 @@ function(nros_px4_add_module)
                     "module fails at startup with `nros::init() failed` (issue "
                     "1050).\n"
                     "Rebuild the archive for THIS module:\n"
-                    "    cargo build -p nros-cpp --no-default-features "
-                    # profile-literal-ok: prebuilt archive — the instruction that builds it
-                    "--features alloc,env,log,panic-platform,rmw-cffi,platform-posix --release\n"
+                    "    ${_NROS_PX4_UORB_ARCHIVE_CMD}\n"
                     "or, from the repo root, just:\n"
                     "    just px4 build-sitl-example\n"
                     "To link a different archive on purpose, point at it with "
