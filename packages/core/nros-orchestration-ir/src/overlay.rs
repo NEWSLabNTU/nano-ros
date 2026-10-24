@@ -46,12 +46,21 @@ pub struct Overlay {
     /// base-then-specific concatenation `ImageBlock::merged_over` applies.
     /// Only images that add something appear.
     pub images: BTreeMap<String, Vec<String>>,
+    /// Issue 2019 -- `[[component]] stack_bytes`: the stack each component's
+    /// callbacks need, keyed by the component's `name` (its node's bare
+    /// name). A level's derived stack is its largest member's plus the
+    /// worker frame (`NROS_LEVEL_STACK_BYTES(member)`). Only components that
+    /// state one appear.
+    pub component_stacks: BTreeMap<String, u32>,
 }
 
 impl Overlay {
     /// True when the overlay states nothing, so no file is written.
     pub fn is_empty(&self) -> bool {
-        self.features.is_empty() && self.lifecycle_autostart.is_none() && self.images.is_empty()
+        self.features.is_empty()
+            && self.lifecycle_autostart.is_none()
+            && self.images.is_empty()
+            && self.component_stacks.is_empty()
     }
 
     /// The switches image `id` builds with: the system list plus whatever the
@@ -159,10 +168,38 @@ impl Overlay {
                 }
             }
         }
+        // Issue 2019 -- `[[component]] stack_bytes`, keyed by `name`.
+        let mut component_stacks = BTreeMap::new();
+        if let Some(rows) = doc.get("component").and_then(|c| c.as_array()) {
+            for row in rows {
+                let Some(v) = row.get("stack_bytes") else {
+                    continue;
+                };
+                let name = row.get("name").and_then(|n| n.as_str()).ok_or_else(|| {
+                    format!(
+                        "{}: a `[[component]]` stating `stack_bytes` must have a `name`",
+                        origin.display()
+                    )
+                })?;
+                let bytes = v
+                    .as_integer()
+                    .filter(|b| *b > 0 && *b <= i64::from(u32::MAX))
+                    .ok_or_else(|| {
+                        format!(
+                            "{}: `[[component]] {name}` `stack_bytes` must be a positive \
+                             integer of at most {} bytes",
+                            origin.display(),
+                            u32::MAX
+                        )
+                    })?;
+                component_stacks.insert(name.to_string(), bytes as u32);
+            }
+        }
         Ok(Self {
             features,
             lifecycle_autostart,
             images,
+            component_stacks,
         })
     }
 
@@ -195,6 +232,9 @@ impl Overlay {
                 items.join(", ")
             ));
         }
+        for (name, bytes) in &self.component_stacks {
+            out.push_str(&format!("\n[component.{name:?}]\nstack_bytes = {bytes}\n"));
+        }
         out
     }
 
@@ -204,7 +244,10 @@ impl Overlay {
         let doc: toml::Table =
             toml::from_str(text).map_err(|e| format!("{}: cannot parse: {e}", origin.display()))?;
         for k in doc.keys() {
-            if !matches!(k.as_str(), "meta" | "system" | "lifecycle" | "image") {
+            if !matches!(
+                k.as_str(),
+                "meta" | "system" | "lifecycle" | "image" | "component"
+            ) {
                 return Err(format!(
                     "{}: unknown overlay table `[{k}]`",
                     origin.display()
@@ -253,10 +296,27 @@ impl Overlay {
                 images.insert(id.clone(), feats);
             }
         }
+        let mut component_stacks = BTreeMap::new();
+        if let Some(tbl) = doc.get("component").and_then(|c| c.as_table()) {
+            for (name, block) in tbl {
+                let bytes = block
+                    .get("stack_bytes")
+                    .and_then(|b| b.as_integer())
+                    .and_then(|b| u32::try_from(b).ok())
+                    .ok_or_else(|| {
+                        format!(
+                            "{}: `[component.{name:?}]` needs an integer `stack_bytes`",
+                            origin.display()
+                        )
+                    })?;
+                component_stacks.insert(name.clone(), bytes);
+            }
+        }
         Ok(Self {
             features,
             lifecycle_autostart,
             images,
+            component_stacks,
         })
     }
 }
@@ -541,6 +601,36 @@ mod tests {
         );
         let back = Overlay::parse(&ov.render(), Path::new("nros.toml")).unwrap();
         assert_eq!(back, ov);
+    }
+
+    /// Issue 2019 -- `[[component]] stack_bytes` reaches the overlay keyed by
+    /// the component's name, survives a round trip, and a bad value or a
+    /// nameless row is refused naming the file.
+    #[test]
+    fn a_component_stack_reaches_the_overlay() {
+        let ov = o(
+            "[[component]]\npkg = \"p\"\nclass = \"p::A\"\nname = \"urgent\"\n\
+                    stack_bytes = 6144\n\
+                    [[component]]\npkg = \"q\"\nclass = \"q::B\"\nname = \"lazy\"\n",
+        );
+        assert_eq!(
+            ov.component_stacks,
+            BTreeMap::from([("urgent".to_string(), 6144)])
+        );
+        assert!(!ov.is_empty(), "a stated stack is an overlay fact");
+        let back = Overlay::parse(&ov.render(), Path::new("nros.toml")).unwrap();
+        assert_eq!(back, ov);
+        let p = Path::new("system.toml");
+        assert!(
+            Overlay::from_system_toml_str("[[component]]\nname = \"a\"\nstack_bytes = 0\n", p)
+                .unwrap_err()
+                .contains("positive")
+        );
+        assert!(
+            Overlay::from_system_toml_str("[[component]]\nstack_bytes = 4096\n", p)
+                .unwrap_err()
+                .contains("name")
+        );
     }
 
     #[test]

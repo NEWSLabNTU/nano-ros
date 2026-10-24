@@ -49,6 +49,7 @@ fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
                 callback_groups: Vec::new(),
                 sched_context: None,
                 group_tiers: std::collections::BTreeMap::new(),
+                stack_bytes: None,
             })
             .collect(),
         depfile_paths: Vec::new(),
@@ -87,6 +88,7 @@ fn fixture_plan_typed(nodes: &[(&str, &str, &str, &str, &str)]) -> Plan {
                 callback_groups: Vec::new(),
                 sched_context: None,
                 group_tiers: std::collections::BTreeMap::new(),
+                stack_bytes: None,
             })
             .collect(),
         depfile_paths: Vec::new(),
@@ -1417,6 +1419,32 @@ fn typed_emit_tiers_freertos_embedded_uses_run_tiers_path() {
     assert!(
         !src.contains("nros_cpp_create_sched_context"),
         "FreeRTOS run_tiers path must not emit create_sched_context; src:\n{src}"
+    );
+}
+
+/// Issue 2019 -- a member's stated stack (`[[component]] stack_bytes`, on the
+/// plan node) reaches its level's `NROS_LEVEL_STACK_BYTES(member)`: the
+/// spawned level is derived from its own member's stack, not `0u`.
+#[test]
+fn typed_emit_a_member_stack_reaches_its_level() {
+    let mut plan = fixture_plan_with_tiers();
+    plan.board = "zephyr".into();
+    for n in &mut plan.nodes {
+        let name = n.name.clone().unwrap_or_else(|| n.exec.clone());
+        n.stack_bytes = Some(if name == "ctrl" { 6000 } else { 7000 });
+    }
+    let spawned = &plan.resolved_tiers.as_ref().unwrap().tiers[1];
+    let member = if spawned.members[0].0 == "ctrl" {
+        6000
+    } else {
+        7000
+    };
+    let src = emit_typed(&plan).expect("typed cpp zephyr tier emit ok");
+    assert!(
+        src.contains(&format!(
+            "NROS_TIER_TASK_MEMORY_DEFINE(1, NROS_LEVEL_STACK_BYTES({member}u));"
+        )),
+        "the spawned level derives from its member's stack; src:\n{src}"
     );
 }
 

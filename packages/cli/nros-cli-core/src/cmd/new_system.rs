@@ -337,6 +337,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             params_files: Vec::new(),
             entities: None,
             dispatch: None,
+            stack_bytes: None,
         })
         .collect();
 

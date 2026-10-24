@@ -943,6 +943,53 @@ fn default_tier(members: Vec<(String, String)>) -> ResolvedTier {
 // platform-applicability validation (RFC-0052 / phase-296 W2)
 // =============================================================================
 
+/// Issue 2019 -- the worker frame a LEVEL's stack carries above its largest
+/// member's: the level's own loop, the executor pass and the transport drive
+/// under it, outside any callback. The same number the C headers state
+/// (`<rclc/detail/tier_task_memory_<rtos>.h>`) and `mem-report --levels`
+/// checks against. `None` on a host (`posix`), whose threads' stacks are the
+/// process's to map.
+pub fn level_worker_frame_bytes(rtos: &str) -> Option<u32> {
+    match rtos {
+        "zephyr" | "freertos" | "nuttx" | "threadx" => Some(4096),
+        _ => None,
+    }
+}
+
+/// Issue 2019 -- derive the stack of every tier (level) that authors none
+/// from its members: the largest `member_stacks` entry among the tier's
+/// members (`system.toml [[component]] stack_bytes`, keyed by component name)
+/// plus [`level_worker_frame_bytes`]. A tier none of whose members states a
+/// stack keeps `None` (the port's default, which is the per-callback default
+/// plus the frame), and an authored `stack_bytes` is the expert override.
+/// The Rust pack's spelling of the C headers' `NROS_LEVEL_STACK_BYTES(member)`.
+/// Returns how many tiers were derived.
+pub fn derive_level_stacks(
+    table: &mut ResolvedTierTable,
+    member_stacks: &BTreeMap<String, u32>,
+    rtos: &str,
+) -> usize {
+    let Some(frame) = level_worker_frame_bytes(rtos) else {
+        return 0;
+    };
+    let mut derived = 0;
+    for tier in &mut table.tiers {
+        if tier.stack_bytes.is_some() {
+            continue;
+        }
+        let member = tier
+            .members
+            .iter()
+            .filter_map(|(node, _)| member_stacks.get(node).copied())
+            .max();
+        if let Some(m) = member {
+            tier.stack_bytes = Some(m.saturating_add(frame));
+            derived += 1;
+        }
+    }
+    derived
+}
+
 /// Reject tier knobs the SELECTED target cannot honor — a bake-time error,
 /// never a silent ignore (the domain-0 lesson). Shared by the CLI codegen
 /// path and the `nros::main!` proc-macro so both bakes agree.
@@ -1770,5 +1817,40 @@ mod applicability_tests {
         assert!(validate_tier_platform_applicability(&table(t2.clone()), "posix").is_err());
         t2.period_us = Some(1000);
         assert!(validate_tier_platform_applicability(&table(t2), "posix").is_ok());
+    }
+
+    /// Issue 2019 -- a tier that authors no stack takes its largest stated
+    /// member's plus the worker frame; one whose members state none, an
+    /// authored one, and a host keep theirs.
+    #[test]
+    fn a_level_derives_its_stack_from_its_largest_member() {
+        let mut urgent = base();
+        urgent.name = "urgent".into();
+        urgent.members = vec![("a".into(), "g".into()), ("b".into(), "g".into())];
+        let mut lazy = base();
+        lazy.name = "lazy".into();
+        lazy.members = vec![("c".into(), "g".into())];
+        let mut authored = base();
+        authored.name = "authored".into();
+        authored.stack_bytes = Some(9000);
+        authored.members = vec![("a".into(), "g".into())];
+        let stacks: BTreeMap<String, u32> =
+            [("a".to_string(), 2048), ("b".to_string(), 6144)].into();
+        let mut t = ResolvedTierTable {
+            tiers: vec![urgent.clone(), lazy.clone(), authored.clone()],
+        };
+        assert_eq!(derive_level_stacks(&mut t, &stacks, "zephyr"), 1);
+        assert_eq!(t.tiers[0].stack_bytes, Some(6144 + 4096));
+        assert_eq!(t.tiers[1].stack_bytes, None, "no member states one");
+        assert_eq!(
+            t.tiers[2].stack_bytes,
+            Some(9000),
+            "the authored override wins"
+        );
+        let mut host = ResolvedTierTable {
+            tiers: vec![urgent],
+        };
+        assert_eq!(derive_level_stacks(&mut host, &stacks, "posix"), 0);
+        assert_eq!(host.tiers[0].stack_bytes, None);
     }
 }

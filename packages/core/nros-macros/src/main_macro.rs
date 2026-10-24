@@ -1354,13 +1354,24 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         if !tiers.is_empty() {
             let component_names: BTreeSet<&str> =
                 node_instances.iter().map(String::as_str).collect();
-            let table = resolve_tiers(&tiers, &overrides, &component_names, &node_groups, &rtos)
-                .map_err(|e| {
-                    syn::Error::new(
-                        model_lit.span(),
-                        format!("nros::main!: tier resolution: {e}"),
-                    )
-                })?;
+            let mut table =
+                resolve_tiers(&tiers, &overrides, &component_names, &node_groups, &rtos).map_err(
+                    |e| {
+                        syn::Error::new(
+                            model_lit.span(),
+                            format!("nros::main!: tier resolution: {e}"),
+                        )
+                    },
+                )?;
+            // Issue 2019 -- a level that authors no stack takes its largest
+            // member's (`[[component]] stack_bytes`, from the overlay beside
+            // the model) plus the port's worker frame, the C headers'
+            // `NROS_LEVEL_STACK_BYTES(member)`.
+            nros_orchestration_ir::derive_level_stacks(
+                &mut table,
+                &model.overlay.component_stacks,
+                &rtos,
+            );
             nros_orchestration_ir::validate_tier_platform_applicability(&table, &rtos)
                 .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
             // phase-462 W4c -- a mode moves its derived tiers' deadlines, and

@@ -215,6 +215,7 @@ mod tests {
                     callback_groups: Vec::new(),
                     sched_context: None,
                     group_tiers: std::collections::BTreeMap::new(),
+                    stack_bytes: None,
                 })
                 .collect(),
             depfile_paths: Vec::new(),

@@ -1685,6 +1685,15 @@ pub struct SystemComponentEntry {
     /// (`Inline`), exactly as an absent manifest key was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dispatch: Option<String>,
+    /// Issue 2019 -- the stack this component's callbacks need, in bytes. A
+    /// level's derived stack is its largest member's plus the port's worker
+    /// frame (`NROS_LEVEL_STACK_BYTES(member)`), so stating it here tightens
+    /// (or widens) the level the component lands on. `None` = the port's
+    /// per-callback default. Carried to the entry in the nano-ros overlay
+    /// (`nros.toml`, `[component.<name>] stack_bytes`); an authored tier
+    /// `stack_bytes` still overrides the derivation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stack_bytes: Option<u32>,
 }
 
 /// `[host.<name>]` — a machine (issue 0951). Re-exported, not redeclared: the

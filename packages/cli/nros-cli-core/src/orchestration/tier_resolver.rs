@@ -547,6 +547,7 @@ mod tests {
             params_files: Vec::new(),
             entities: None,
             dispatch: None,
+            stack_bytes: None,
         }];
         let map = collect_callback_groups(&cfg, &components);
         let decls = map.get("ctrl_node").expect("ctrl_node must be in map");
@@ -709,6 +710,7 @@ priority = 10
                 params_files: Vec::new(),
                 entities: None,
                 dispatch: None,
+                stack_bytes: None,
             }
         }
 

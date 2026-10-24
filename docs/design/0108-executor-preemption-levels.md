@@ -625,10 +625,12 @@ differ from the step above:
 - **Member stacks.** A spawned level that declares no `stack_bytes` gets
   `NROS_LEVEL_STACK_BYTES(member)`: the largest member's stack plus the
   worker frame (`CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`, 4,096 B, an
-  estimate). No contract or `system.toml` key states a member's stack yet,
-  so every member takes the per-callback default
+  estimate). No contract or `system.toml` key stated a member's stack in
+  P9, so every member took the per-callback default
   (`CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE` minus the frame) and the cost
-  report names it; a level's stack is then exactly the knob, as before.
+  report named it; a level's stack was then exactly the knob, as before.
+  Issue 2019 added the key (`[[component]] stack_bytes`, below "As built
+  in P10").
 
 **As built in P9b** (design note; items 1-4 land it in order). P9 left each
 level a whole executor over the shared session. P9b makes the levels worker
@@ -906,8 +908,24 @@ executor's lock and the thread identity:
   before (FreeRTOS 256 KiB, `NROS_FREERTOS_LEVEL_STACK_DEFAULT`; NuttX
   16 KiB, `NROS_NUTTX_LEVEL_STACK_DEFAULT`). NuttX now takes its levels'
   stacks from the entry (`tier_task_memory_nuttx.h`), which it did not
-  before. The Rust runners keep the declared size: the Rust pack has no
-  derived-stack row yet.
+  before.
+- **Member stacks** (issue 2019). A component states the stack its
+  callbacks need in `system.toml`: `[[component]] stack_bytes = <bytes>`.
+  The key travels to the entry in the nano-ros overlay beside the model
+  (`nros.toml`, `[component."<name>"] stack_bytes`), keyed by the
+  component's `name`, and a spawned level that declares no `stack_bytes`
+  is `NROS_LEVEL_STACK_BYTES(member)` over its largest member's stated
+  stack (`0u` when none states one: the per-callback default). An authored
+  tier `stack_bytes` stays the expert override. The Rust pack derives the
+  same way (`nros_orchestration_ir::derive_level_stacks`, called by
+  `nros::main!`): a level none of whose members states a stack keeps the
+  port's default, otherwise its tier's `stack_bytes` becomes the largest
+  member's plus the port's worker frame, which sizes the Zephyr entry
+  static and the ThreadX byte-pool stack. The priority record carries each
+  tier's `member_stack_bytes`, and `mem-report --levels` checks every
+  spawned level's static against the same rule per family (Zephyr's
+  `.config` knobs; FreeRTOS's and NuttX's header defaults, the last row
+  booting on both).
 - **Lock cost.** The Zephyr runner's lock is a bare `k_mutex` through the
   module's shims, not `nros_platform_mutex_rec_*`: on a `CONFIG_POSIX_API`
   image that wrapper is a POSIX recursive mutex. On the island (S32K344,

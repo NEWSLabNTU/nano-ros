@@ -31,6 +31,7 @@ fn fixture_plan(nodes: &[(&str, &str)]) -> Plan {
                 callback_groups: Vec::new(),
                 sched_context: None,
                 group_tiers: std::collections::BTreeMap::new(),
+                stack_bytes: None,
             })
             .collect(),
         depfile_paths: Vec::new(),
@@ -490,6 +491,7 @@ fn fixture_plan_with_tiers() -> Plan {
                 callback_groups: vec!["ctrl_grp".into()],
                 sched_context: Some(0), // high tier
                 group_tiers: std::collections::BTreeMap::new(),
+                stack_bytes: None,
             },
             PlanNode {
                 pkg: "telem_pkg".into(),
@@ -506,6 +508,7 @@ fn fixture_plan_with_tiers() -> Plan {
                 callback_groups: vec!["telem_grp".into()],
                 sched_context: Some(1), // low tier
                 group_tiers: std::collections::BTreeMap::new(),
+                stack_bytes: None,
             },
         ],
         depfile_paths: Vec::new(),

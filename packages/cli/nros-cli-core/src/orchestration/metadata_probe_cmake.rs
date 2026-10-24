@@ -286,6 +286,7 @@ fn probe_plan(o: &CmakeProbeOptions, language: nros_lang::Language) -> Plan {
             callback_groups: Vec::new(),
             sched_context: None,
             group_tiers: std::collections::BTreeMap::new(),
+            stack_bytes: None,
         }],
         depfile_paths: Vec::new(),
         lifecycle: None,
