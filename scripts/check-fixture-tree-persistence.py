@@ -19,10 +19,14 @@ R3  The sync step comes right after `actions/checkout` and runs in
     overrides `working-directory`, so nothing quietly runs in the cleaned
     checkout, which holds no build.
 
-R4  Every `upload-artifact` path in the job is rooted at
-    `${{ env.NROS_FIXTURE_TREE }}/` — upload paths resolve against the
-    workspace, not the step's working directory, so an unprefixed path uploads
-    nothing (`if-no-files-found: ignore` would hide it).
+R4  Every `upload-artifact` path in the job is the per-run reports dir
+    REPORTS, and an `if: always()` step running `fixture-tree.sh reports
+    REPORTS` comes before the first upload. The tree KEEPS files, including an
+    earlier run's junit and logs, so an upload read from the tree shipped them
+    as this run's: nightly 40073092367 ran no test and uploaded a 3-day-old
+    junit naming three failures (issue 1991). (Before that, R4 required paths
+    rooted at `${{ env.NROS_FIXTURE_TREE }}/`, because upload paths resolve
+    against the cleaned workspace; REPORTS is absolute too.)
 
 R5  Never in a MERGE-GATING job: no job in a workflow triggered by
     `pull_request` / `merge_group`, and no job running
@@ -54,7 +58,8 @@ GATE = "check-fixture-tree-persistence"
 SYNC = "scripts/ci/fixture-tree.sh sync"
 TREE_WD = "${{ github.workspace }}/../nros-fixture-tree"
 SYNC_WD = "${{ github.workspace }}"
-UPLOAD_ROOT = "${{ env.NROS_FIXTURE_TREE }}/"
+REPORTS = "${{ runner.temp }}/nros-run-reports"
+COLLECT = f'scripts/ci/fixture-tree.sh reports "{REPORTS}"'
 GATING_EVENTS = {"pull_request", "pull_request_target", "merge_group"}
 
 
@@ -115,7 +120,14 @@ def job_problems(wf, name, job, gating):
     if steps[i].get("working-directory") != SYNC_WD:
         out.append(f"{where} (R3): the sync step must run in {SYNC_WD!r} — the tree may "
                    f"not exist yet.")
+    collected = False
     for k, s in enumerate(steps):
+        if COLLECT in _run(s) and k > i:
+            collected = True
+            if "always()" not in str(s.get("if", "")):
+                out.append(f"{where} (R4): step {s.get('name', k)!r} collects the run's "
+                           f"reports without `if: always()`, so a red step before it "
+                           f"uploads nothing.")
         if k == i:
             continue
         if k < i and _run(s):
@@ -126,11 +138,16 @@ def job_problems(wf, name, job, gating):
                        f"working-directory, so it does not run in the tree.")
         if "upload-artifact" in str(s.get("uses", "")):
             paths = str((s.get("with") or {}).get("path", "")).split("\n")
+            if not collected:
+                out.append(f"{where} (R4): upload {s.get('name', k)!r} has no "
+                           f"`{COLLECT}` step before it, so nothing separates this "
+                           f"run's reports from an earlier run's (issue 1991).")
             for p in (p.strip() for p in paths):
-                if p and not p.startswith(UPLOAD_ROOT):
-                    out.append(f"{where} (R4): upload path {p!r} is not under "
-                               f"{UPLOAD_ROOT!r}; upload paths resolve against the "
-                               f"cleaned checkout, so it would upload nothing.")
+                if p and p.rstrip("/") != REPORTS:
+                    out.append(f"{where} (R4): upload path {p!r} is not {REPORTS!r}: "
+                               f"read from the tree it ships an earlier run's files "
+                               f"as this run's (issue 1991), and a relative path "
+                               f"resolves against the cleaned checkout.")
     return out
 
 
@@ -172,10 +189,12 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: scripts/ci/fixture-tree.sh sync
       - run: just build tier1
+      - name: collect
+        if: always()
+        run: scripts/ci/fixture-tree.sh reports "${{ runner.temp }}/nros-run-reports"
       - uses: actions/upload-artifact@v4
         with:
-          path: |
-            ${{ env.NROS_FIXTURE_TREE }}/build/**/*.log
+          path: ${{ runner.temp }}/nros-run-reports/
 """
 
 
@@ -202,7 +221,19 @@ def self_test():
            GOOD.replace("      - run: just build tier1\n",
                         "      - run: just build tier1\n        working-directory: .\n"), "R3")
     expect("unrooted upload path refused",
-           GOOD.replace("${{ env.NROS_FIXTURE_TREE }}/build", "build"), "R4")
+           GOOD.replace("path: ${{ runner.temp }}/nros-run-reports/", "path: build/**/*.log"),
+           "R4")
+    expect("an upload read from the tree refused (issue 1991)",
+           GOOD.replace("path: ${{ runner.temp }}/nros-run-reports/",
+                        "path: ${{ env.NROS_FIXTURE_TREE }}/target/nextest/**/junit*.xml"),
+           "R4")
+    expect("an upload with no collect step refused",
+           GOOD.replace("      - name: collect\n        if: always()\n"
+                        "        run: scripts/ci/fixture-tree.sh reports "
+                        "\"${{ runner.temp }}/nros-run-reports\"\n", ""), "R4")
+    expect("a collect step without if: always() refused",
+           GOOD.replace("      - name: collect\n        if: always()\n",
+                        "      - name: collect\n"), "R4")
     expect("merge-gating workflow refused",
            GOOD.replace("workflow_dispatch: {}", "merge_group: {}"), "R5")
     expect("clean-tree job refused",

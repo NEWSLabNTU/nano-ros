@@ -201,17 +201,18 @@ jobs:
       # uploaded — so every instance of this class became a manual
       # reproduction, and issues 1457 and 1458 were both filed saying the cause
       # was not in the log when it was, one file over.
+      # Issue 1991 -- the tree is kept across runs, and so is an earlier run's
+      # junit: a run whose tests never started uploaded it as its own. Upload
+      # only the reports this run wrote (`fixture-tree.sh reports`).
+      - name: Collect this run's junit and logs
+        if: always()
+        run: scripts/ci/fixture-tree.sh reports "${{ runner.temp }}/nros-run-reports"
       - name: Upload junit and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: post-submit-junit
-          path: |
-            ${{ env.NROS_FIXTURE_TREE }}/target/nextest/**/junit*.xml
-            ${{ env.NROS_FIXTURE_TREE }}/build/**/*.log
-            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.log
-            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/**/*.log
-            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.joblog
+          path: ${{ runner.temp }}/nros-run-reports/
           if-no-files-found: ignore
           retention-days: 14
       - name: Sweep orphans and disk
@@ -384,17 +385,18 @@ jobs:
           rm -f "$NROS_LANE_STEP_RECORD"
           source ./activate.sh
           just ci tier1 run
+      # Issue 1991 -- the tree is kept across runs, and so is an earlier run's
+      # junit: a run whose tests never started uploaded it as its own. Upload
+      # only the reports this run wrote (`fixture-tree.sh reports`).
+      - name: Collect this run's junit and logs
+        if: always()
+        run: scripts/ci/fixture-tree.sh reports "${{ runner.temp }}/nros-run-reports"
       - name: Upload junit and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tier1-junit
-          path: |
-            ${{ env.NROS_FIXTURE_TREE }}/target/nextest/**/junit*.xml
-            ${{ env.NROS_FIXTURE_TREE }}/build/**/*.log
-            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.log
-            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/**/*.log
-            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.joblog
+          path: ${{ runner.temp }}/nros-run-reports/
           if-no-files-found: ignore
           retention-days: 14
       - name: Sweep orphans and disk

@@ -144,6 +144,38 @@ The `just ci matrix-nightly` step also sets `NROS_TEST_FAILURE_OUTPUT=final`
 log length: each `[SKIPPED:lane]` panic prints its reason as well, about 215
 of them on a night like 2026-10-20.
 
-This issue stays open for item 2: the first nightly after this lands should
-upload the text for rows 4–14, and each distinct cause gets filed or
-attributed then.
+## Item 1's upload shipped an earlier run's junit (fixed 2026-10-24)
+
+The first nightly after item 1 (run 40073092367, 2026-10-24 07:10 UTC) failed
+in `just build tier2-nightly`: Zephyr leaves failed to link, so
+`just ci matrix-nightly` was skipped and no test ran. Its
+`tier2-nightly-junit` artifact still held a `junit.xml`, timestamped
+2026-10-21, naming three failures (`nano2nano::test_gid_consistency`,
+`nano2nano::test_sequence_number_increment`,
+`qos::test_qos_keyexpr_encoding`). That file came from an earlier run. The
+persistent fixture tree keeps untracked files by design (phase-489 W6), and
+the upload read straight from it, so whatever was there went up as this run's.
+The same was true of run-matrix's tier-1 and tier-2 uploads and of the
+fixture-build logs.
+
+Fix:
+* `fixture-tree.sh sync` stamps the run's start (a mark under the tree's git
+  dir).
+* `fixture-tree.sh reports <dest>` copies only the junit and logs written
+  after that stamp, at their tree-relative paths, and counts the older ones it
+  left behind.
+* All three tree jobs run it (`if: always()`) and upload
+  `${{ runner.temp }}/nros-run-reports/`.
+* `check-fixture-tree-persistence` R4 now refuses an upload path read from the
+  tree, and an upload with no `reports` step before it. Run over the
+  workflows before this fix, it flags all three jobs.
+* The script's self-test covers the two cases. A run that wrote nothing
+  uploads nothing, although two old reports are present. A run's fresh reports
+  are copied. Comparing against the wrong path makes the second case fail.
+
+This issue stays open for item 2: the first nightly that reaches
+`just ci matrix-nightly` should upload the text for rows 4–14, and each
+distinct cause gets filed or attributed then. `295c20dc3b` (phase-513 R1/R2),
+which landed after that night's run, names the two Zephyr link breaks that
+stop this fixture build as what it fixes. The next night will show whether it
+was all of them.
