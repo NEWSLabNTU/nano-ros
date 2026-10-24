@@ -17869,3 +17869,41 @@ fn a_level_budget_handed_to_the_kernel_is_not_enforced_twice() {
     );
     assert!(other_default, "the next level does not inherit the context");
 }
+
+/// Releasing an entry must not touch the budget of the sched context that
+/// happens to share its slot number: `sporadic_states` is indexed by context,
+/// and `release_entry` used to clear it by entry slot, silently un-budgeting
+/// context 1 when the entry in slot 1 was released.
+#[test]
+fn releasing_an_entry_keeps_the_budget_of_the_context_with_its_number() {
+    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext, SchedContextId};
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let sc = executor
+        .create_sched_context(SchedContext {
+            class: SchedClass::Sporadic,
+            budget_us: OptUs::from_us(1_000),
+            period_us: OptUs::from_us(10_000),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(sc, SchedContextId(1));
+    let budgeted = executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+    executor.bind_handle_to_sched_context(budgeted, sc).unwrap();
+    let other = executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+    assert_eq!(
+        executor.live_slot(other),
+        1,
+        "the released entry sits in slot 1"
+    );
+    assert!(executor.enforces_budget(sc));
+    // SAFETY: `other` is not used again.
+    assert!(unsafe { executor.release_timer(other) });
+    assert!(
+        executor.enforces_budget(sc),
+        "context 1 keeps its budget when the entry in slot 1 is released"
+    );
+}

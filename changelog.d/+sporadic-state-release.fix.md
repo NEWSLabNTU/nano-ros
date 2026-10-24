@@ -1,0 +1,1 @@
+Releasing an executor entry (a destroyed subscription, timer, service, client or guard condition) no longer clears the cooperative budget of the sched context whose id equals the entry's slot number. `sporadic_states` is indexed by sched context, and `release_entry` cleared it by entry slot, so releasing the entry in slot N silently un-budgeted context N for the rest of the run.
