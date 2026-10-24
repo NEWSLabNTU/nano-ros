@@ -1419,7 +1419,17 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // be found by the `DEPLOY`-token scan below: a Zephyr entry's
                 // `DEPLOY` names the PLATFORM, so that scan answers a question
                 // about the board it never reads (issue 1517).
-                let generated = if image.entry.is_some() {
+                //
+                // * a STANDALONE leaf whose own `CMakeLists.txt` is a Zephyr
+                //   application (`examples/zephyr/<lang>/<example>/`) IS the
+                //   application. Generating one beside it pointed west at a
+                //   directory with no `prj.conf` (C/C++: "No prj.conf file(s)
+                //   was found") or demanded a selection facade for an entry
+                //   nobody needs (Rust).
+                let leaf_app = (image.entry.is_none())
+                    .then(|| zephyr_leaf_application(&root, &bringup_dir))
+                    .flatten();
+                let generated = if image.entry.is_some() || leaf_app.is_some() {
                     GeneratedEntry::default()
                 } else {
                     generate_entry(
@@ -1434,12 +1444,12 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         image_has_non_rust(&image, &bringup_dir),
                     )?
                 };
-                let app = match &generated.dir {
-                    Some(d) => {
+                let app = match (&generated.dir, leaf_app.as_ref()) {
+                    (Some(d), _) | (None, Some(d)) => {
                         eprintln!("nros build:   west application → {}", d.display());
                         d.clone()
                     }
-                    None => west_application_dir(
+                    (None, None) => west_application_dir(
                         &image_id,
                         &image,
                         descriptor,
@@ -4733,6 +4743,29 @@ fn before_boot_not_on_c_road(image_id: &str) -> eyre::Report {
     )
 }
 
+/// The leaf directory, when it is a Zephyr application in its own right.
+///
+/// A standalone leaf keeps `system.toml` beside a `CMakeLists.txt` that calls
+/// `find_package(Zephyr)` — every `examples/zephyr/<lang>/<example>/` does, with
+/// its `prj.conf` and `boards/` next to it. That file is what makes a directory
+/// a west application, so it is the predicate; a workspace bringup's
+/// `CMakeLists.txt` (an ament package) never names Zephyr, and a workspace root
+/// has no build file at all (RFC-0098 D9).
+fn zephyr_leaf_application(
+    root: &std::path::Path,
+    bringup_dir: &std::path::Path,
+) -> Option<PathBuf> {
+    if root != bringup_dir {
+        return None;
+    }
+    let cmake = std::fs::read_to_string(bringup_dir.join("CMakeLists.txt")).ok()?;
+    cmake
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or(""))
+        .any(|l| l.contains("find_package(Zephyr"))
+        .then(|| bringup_dir.to_path_buf())
+}
+
 fn west_application_dir(
     image_id: &str,
     image: &crate::orchestration::image::ImageBlock,
@@ -7169,5 +7202,40 @@ mod registry_patch_spelling_tests {
             Some(&board.canonicalize().unwrap()),
             "{rows:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod zephyr_leaf_application_tests {
+    use super::zephyr_leaf_application;
+
+    /// A standalone Zephyr leaf is its own west application; a workspace
+    /// bringup with an ament `CMakeLists.txt`, or one that only mentions
+    /// Zephyr in a comment, is not.
+    #[test]
+    fn only_a_leaf_whose_cmakelists_finds_zephyr_is_its_own_application() {
+        let td = tempfile::tempdir().unwrap();
+        let leaf = td.path();
+        std::fs::write(
+            leaf.join("CMakeLists.txt"),
+            "cmake_minimum_required(VERSION 3.20)\nfind_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})\n",
+        )
+        .unwrap();
+        assert_eq!(zephyr_leaf_application(leaf, leaf).as_deref(), Some(leaf));
+        // A bringup INSIDE a workspace never answers for the workspace.
+        assert_eq!(
+            zephyr_leaf_application(leaf, &leaf.join("src/bringup")),
+            None
+        );
+
+        std::fs::write(
+            leaf.join("CMakeLists.txt"),
+            "# not find_package(Zephyr) here\nfind_package(ament_cmake REQUIRED)\n",
+        )
+        .unwrap();
+        assert_eq!(zephyr_leaf_application(leaf, leaf), None);
+
+        std::fs::remove_file(leaf.join("CMakeLists.txt")).unwrap();
+        assert_eq!(zephyr_leaf_application(leaf, leaf), None);
     }
 }
