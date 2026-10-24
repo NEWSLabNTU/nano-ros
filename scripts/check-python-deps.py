@@ -115,7 +115,10 @@ GROUPS = {
         "`just px4 build-sitl-cpp` (subset of PX4's Tools/setup/requirements.txt)",
         [
             ("kconfiglib", "kconfiglib"),
-            ("pyros_genmsg", "pyros-genmsg"),
+            # The distribution is `pyros-genmsg`; the module it installs is
+            # `genmsg` (as `just px4 doctor` probes it). `import pyros_genmsg`
+            # fails even when it is installed, so this group could never pass.
+            ("genmsg", "pyros-genmsg"),
             ("jinja2", "jinja2"),
         ],
     ),
