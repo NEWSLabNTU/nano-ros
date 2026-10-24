@@ -77,6 +77,8 @@ def self_test():
     checking passes silently, which is the very shape this gate exists for."""
     import tempfile
 
+    # A fresh clone has no `tmp/`: its tracked recipes moved out (issue 1524).
+    os.makedirs(os.path.join(ROOT, "tmp"), exist_ok=True)
     with tempfile.TemporaryDirectory(dir=os.path.join(ROOT, "tmp")) as d:
         crate = os.path.join(d, "crate")
         os.makedirs(os.path.join(crate, "include"))
