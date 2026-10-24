@@ -34,7 +34,6 @@ pub enum PlatformKind {
     ThreadxRiscv64,
     Esp32,
     Stm32,
-    OrinSpe,
 }
 
 impl PlatformKind {
@@ -66,14 +65,12 @@ impl PlatformKind {
         match self {
             PlatformKind::Posix => "platform-posix",
             PlatformKind::Freertos => "platform-freertos",
-            // Stm32 and OrinSpe are out-of-tree platform kinds with no in-tree
-            // board; they take the bare-metal feature like every other
-            // no-RTOS target. Listed EXPLICITLY rather than via a `_` arm, so
+            // Stm32 is an out-of-tree platform kind with no in-tree board; it
+            // takes the bare-metal feature like every other no-RTOS target. Listed EXPLICITLY rather than via a `_` arm, so
             // the next kind added has to make this choice on purpose.
-            PlatformKind::BareMetal
-            | PlatformKind::Esp32
-            | PlatformKind::Stm32
-            | PlatformKind::OrinSpe => "platform-bare-metal",
+            PlatformKind::BareMetal | PlatformKind::Esp32 | PlatformKind::Stm32 => {
+                "platform-bare-metal"
+            }
             PlatformKind::Nuttx => "platform-nuttx",
             PlatformKind::Zephyr => "platform-zephyr",
             PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => "platform-threadx",
@@ -102,7 +99,6 @@ impl PlatformKind {
             PlatformKind::ThreadxRiscv64 => "threadx-riscv64",
             PlatformKind::Esp32 => "esp32",
             PlatformKind::Stm32 => "stm32",
-            PlatformKind::OrinSpe => "orin-spe",
         }
     }
 
@@ -135,7 +131,7 @@ impl PlatformKind {
     /// exist is a C/C++ example road on that tree — `examples/esp32-c3-baremetal/`
     /// is the no-IDF `esp-hal` path, and C/C++ on the same silicon is the ESP-IDF
     /// component (phase-139). The overlay is for a non-IDF C parent build, which
-    /// states its own platform. `Stm32`/`OrinSpe` have no in-tree board at all.
+    /// states its own platform. `Stm32` has no in-tree board at all.
     pub fn cmake_deploy(self) -> Option<&'static str> {
         Some(match self {
             PlatformKind::Posix => "linux",
@@ -144,7 +140,7 @@ impl PlatformKind {
             PlatformKind::Nuttx => "nuttx",
             PlatformKind::Zephyr => "zephyr",
             PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => "threadx",
-            PlatformKind::Esp32 | PlatformKind::Stm32 | PlatformKind::OrinSpe => return None,
+            PlatformKind::Esp32 | PlatformKind::Stm32 => return None,
         })
     }
 
@@ -169,10 +165,7 @@ impl PlatformKind {
             PlatformKind::Zephyr => Some(F::Zephyr),
             PlatformKind::Nuttx => Some(F::Nuttx),
             PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => Some(F::Threadx),
-            PlatformKind::BareMetal
-            | PlatformKind::Esp32
-            | PlatformKind::Stm32
-            | PlatformKind::OrinSpe => None,
+            PlatformKind::BareMetal | PlatformKind::Esp32 | PlatformKind::Stm32 => None,
         }
     }
 
@@ -340,8 +333,8 @@ impl BoardCapabilities {
                     threads: true,
                 }
             }
-            // Generic bare-metal / SPE: no heap by default (opt in via board.toml).
-            BareMetal | Stm32 | OrinSpe => BoardCapabilities {
+            // Generic bare-metal: no heap by default (opt in via board.toml).
+            BareMetal | Stm32 => BoardCapabilities {
                 heap: false,
                 atomics: true,
                 threads: false,
@@ -953,6 +946,13 @@ impl BoardFile {
         if let Some(toml::Value::Array(boards)) = table.get_mut("board") {
             for entry in boards.iter_mut() {
                 if let toml::Value::Table(t) = entry
+                    && t.get("platform").and_then(|p| p.as_str()) == Some("orin-spe")
+                {
+                    return Err(<toml::de::Error as serde::de::Error>::custom(
+                        RETIRED_ORIN_SPE_PLATFORM,
+                    ));
+                }
+                if let toml::Value::Table(t) = entry
                     && t.contains_key("knobs")
                 {
                     let names = t
@@ -984,6 +984,14 @@ impl BoardFile {
         toml::Value::Table(table).try_into()
     }
 }
+
+/// `platform = "orin-spe"` is refused by name rather than left to serde's
+/// "unknown variant" list. The Orin SPE is a BOARD over FreeRTOS (NVIDIA's
+/// FSP kernel), never a platform of its own (RFC-0064): the `OrinSpe` kind it
+/// replaced built such a descriptor as bare-metal. Phase-418 is deferred.
+const RETIRED_ORIN_SPE_PLATFORM: &str = "`platform = \"orin-spe\"` is not a platform: the Orin SPE \
+     runs FreeRTOS (NVIDIA's FSP), so its descriptor states `platform = \"freertos\"`. \
+     Orin SPE support is deferred — see docs/roadmap/phase-418-orin-safety-island-and-spe.md";
 
 /// The `[build]` / `[target.<triple>]` shape of a `cargo_config` template.
 #[derive(Debug, Default, Deserialize)]
@@ -2210,7 +2218,6 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             ThreadxRiscv64,
             Esp32,
             Stm32,
-            OrinSpe,
         ] {
             let back: PlatformKind = serde_json::from_str(&format!("\"{}\"", p.kebab()))
                 .unwrap_or_else(|e| panic!("`{}` does not deserialize back: {e}", p.kebab()));
@@ -2670,6 +2677,22 @@ entry_kind = "zephyr-staticlib"
         let top = BoardFile::parse(&format!("[knbos.net]\nmax_udp_sockets = 2\n\n{HEAD}"))
             .expect_err("an unknown top-level table is refused");
         assert!(top.to_string().contains("knbos"), "{top}");
+    }
+
+    /// phase-418 (deferred) — `orin-spe` is no platform kind: the SPE is a
+    /// board over FreeRTOS. A descriptor naming it is refused with the
+    /// platform it should state, instead of being built as bare-metal (what
+    /// the retired `OrinSpe` kind did).
+    #[test]
+    fn orin_spe_platform_is_refused_naming_freertos() {
+        let err = BoardFile::parse(
+            "[[board]]\nnames = [\"orin-spe\"]\nplatform = \"orin-spe\"\n\
+             toolchain = \"stable\"\nentry_kind = \"hosted-main\"\n",
+        )
+        .expect_err("platform = \"orin-spe\" must not load");
+        let msg = err.to_string();
+        assert!(msg.contains("platform = \"freertos\""), "{msg}");
+        assert!(msg.contains("phase-418"), "{msg}");
     }
 
     /// phase-462 W6c -- `[board.rx]` is the board's per-frame receive cost:

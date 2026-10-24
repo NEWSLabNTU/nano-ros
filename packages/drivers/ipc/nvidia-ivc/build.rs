@@ -1,8 +1,9 @@
 // build.rs — link search paths for the `fsp` feature.
 //
 // The `unix-mock` feature is pure Rust + libc and needs nothing here.
-// The `fsp` feature links against NVIDIA's `tegra_aon_fsp` static library,
-// shipped under SDK Manager EULA. Path is supplied via `NV_SPE_FSP_DIR`.
+// The `fsp` feature links against a `tegra_aon_fsp` static library under
+// `NV_SPE_FSP_DIR`. The FSP builds no such library (phase-418 §2a), so this
+// link model is pending phase-418 item 418.6 (deferred); see README.
 
 fn main() {
     // issue 0491 — `NV_SPE_FSP_DIR` names a DIRECTORY, so its SPELLING is not
@@ -24,8 +25,8 @@ fn main() {
     }
 
     // issue 1560 site 4 — through `env_path`, the ONE implementation of issue
-    // 1280's three-valued rule. The FSP ships under an SDK-Manager EULA and can
-    // never be vendored, so this always names a tree outside every nano-ros
+    // 1280's three-valued rule. The FSP is provisioned outside the checkout (it
+    // is not vendored), so this names a tree outside every nano-ros
     // checkout — the arm `reroot_foreign` deliberately leaves alone, and the
     // reason there is no `just/sdk-env.just` row for it (which is in turn why
     // phase-471 W3's gate cannot see this site). Written anyway because

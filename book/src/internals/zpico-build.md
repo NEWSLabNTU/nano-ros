@@ -7,16 +7,26 @@ collapses that surface to one consumer + one data file.
 
 ## The manifest
 
-`packages/rmw/zenoh/zpico-sys/zenoh_platforms.toml` declares every
-per-platform datum the build needs. Two top-level table groups:
+> **Partly stale (issue 2031).** `zenoh_platforms.toml` no longer exists, and
+> the field tables below still describe it. Where the data lives now is stated
+> in this section; the tables have not been re-derived yet.
 
-- `[platform.<name>]` — one block per supported platform
-  (`posix`, `zephyr`, `freertos-lwip`, `nuttx`, `threadx`,
-  `bare-metal`, `generic`, `orin-spe`).
-- `[arch.<name>]` — reusable target-arch compiler-flag profiles
-  shared across platforms that target the same CPU family
-  (`cortex-m3`, `cortex-m4f`, `cortex-a7`, `cortex-r5-softfp`,
-  `riscv32imc`, `riscv64gc`).
+The per-platform data is split by owner:
+
+- **`[port.<name>]` in `packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml`** —
+  zenoh-pico's own per-port sources, defines and include paths (`freertos`,
+  `nuttx`, `posix`, `threadx`, `zephyr`, `bare-metal`, `generic`). The build
+  driver is `packages/rmw/zenoh/nros-zpico-build`.
+- **`[arch.<name>]` in each platform's `nros-platform.toml`** — the
+  target-arch compiler-flag profiles, selectable only when the file's
+  `arch_profiles` list names them (first `target_match` wins). Seven files:
+  `config/{bare-metal,generic}/` and
+  `packages/platform/nros-platform-{freertos,nuttx,posix,threadx,zephyr}/`.
+  Profiles today: `cortex-m3`, `cortex-m4f`, `riscv32imc` (bare-metal);
+  `cortex-m3`, `cortex-m7`, `cortex-r5`, `cortex-r52` (FreeRTOS);
+  `cortex-a7` (NuttX); `riscv64gc` (ThreadX). `posix`, `zephyr` and
+  `generic` list none. `just check arch-profile-resolution` checks every
+  supported triple against these lists.
 
 ### Per-platform fields
 

@@ -91,14 +91,14 @@ own platform axis — it pulls in one of the rows above.
 |------------------------------|---------------------|-------------|---------------------------------------------|
 | `nros-board-mps2-an385`      | `bare-metal`        | Cortex-M3   | QEMU MPS2-AN385 + LAN9118 + smoltcp         |
 | `nros-board-esp32-qemu`      | `bare-metal`        | RISC-V (ESP32-C3) | QEMU ESP32 + OpenETH + smoltcp        |
-| `nros-board-orin-spe`        | `freertos`          | Cortex-R5F  | NVIDIA Jetson AGX Orin SPE + FreeRTOS-FSP   |
 
-`nros-board-orin-spe` is the canonical example of the board-over-RTOS
-pattern: a Cortex-R5F SPE running NVIDIA's FreeRTOS V10.4.3 FSP, with
-critical-section provided by the canonical
-`nros_platform_critical_section_{acquire,release}` C symbols (Cortex-R
-CPSR I-bit body inside the port) — not by a per-CPU Rust feature flag.
-See `docs/roadmap/phase-100-orin-spe-infra.md` for the wiring.
+The board-over-RTOS pattern — a board that pulls in an RTOS row rather than
+being a platform itself — is what NVIDIA's Jetson Orin SPE would be: a
+Cortex-R5F running NVIDIA's FreeRTOS FSP, i.e. `platform = "freertos"`, never a
+platform of its own. Its board crate was removed in phase-337, and support is
+deferred; because the FSP ships its own make build, the plan is an integration
+shell rather than a board crate (see
+[phase-418](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-418-orin-safety-island-and-spe.md)).
 
 ## Example Configurations
 
