@@ -224,3 +224,60 @@ param-dir probe near line 967) reads `nros_locate_artifact c-include` /
 above missed it.
 
 Left: D3 (PX4), D4.
+
+## D3 landed (2026-10-24)
+
+Option (a). `NanoRosPx4Module.cmake` locates the four header artifacts with
+`nros_locate_artifact(... PLACED_DIR <dir>)` (the cmake spelling of
+`--placed-dir`), where `<dir>` is `NROS_PX4_HEADER_DIR` (cache, then env, like
+`NROS_CPP_ARCHIVE`), default `build/nros-px4/placed`. The archive command the
+module documents and names in every remedy is now ONE string,
+`_NROS_PX4_UORB_ARCHIVE_CMD` — the placer in front of the same `cargo build -p
+nros-cpp …`. It was restated at three sites before. `just px4
+build-sitl-example` runs that form; `build-bridge-example` places into
+`<image>/placed` and exports `NROS_PX4_HEADER_DIR`, as it already exported
+`CARGO_TARGET_DIR` for the archive. That recipe also asked the image crate for
+`std` (gone since phase-359 W10 stage C), so it stopped in cargo; it now asks
+for the uORB set plus `bridge`.
+
+The configure-time pairing assertion (issue 1046) stays, and is what catches the
+hole left by construction: a plain `cargo build` moves the archive and not the
+placed headers.
+
+Measured without a PX4 tree, through a stub project that includes the module
+(its file-scope half — locate, archive, pairing — is everything this changes;
+`nros_px4_add_module` needs `px4_add_module`):
+
+| state | pre-D3 module | D3 module |
+| --- | --- | --- |
+| uORB archive built by the placer form | — | both headers pair |
+| then a DEV build with other features in the same target dir (its build script ran, its compile failed) | **FATAL**: pairs the release archive against the dev build's header | both headers still pair |
+| then a plain release build with other features | — | **FATAL**, naming the placer command |
+| that command, run verbatim | — | both pair again (7.2 s, cached) |
+| bridge image (zenoh, jazzy) through the recipe's step 3 | — | both pair, archive from `CARGO_TARGET_DIR`, headers from `NROS_PX4_HEADER_DIR` |
+
+Not run: a PX4 SITL build (`make px4_sitl_default`). The only PX4 tree here is
+the main checkout's shared one, and reconfiguring it for another worktree's
+`EXTERNAL_MODULES_LOCATION` would rebuild somebody else's configured tree.
+
+Left: D4. Census of what still reads `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`
+(2026-10-24, `git grep` over non-doc files), each to migrate to a placed dir or
+to the `links` channel before the writer goes:
+
+- `just/check/lanes.just` — `check-c` / `check-cpp` (`nros_locate_artifact
+  {c,cpp}-include`, no placed dir) and the param probe (`CARGO_TARGET_DIR=…
+  nros_locate_artifact c-include`);
+- `scripts/build/compile-check-fixtures.sh` — `{c,cpp}-config-header` twice;
+- `packages/testing/nros-tests/fixtures/borrowed-e2e/build.sh` —
+  `c-config-header`;
+- `packages/cli/rosidl-codegen/tests/heap_compile_check.rs` — a literal
+  `target/nros-c-generated`, three times (and outside the artifact helper);
+- `zephyr/CMakeLists.txt` / `cmake/NanoRosNodeRegister.cmake` through
+  `_nros_generated_header_dir()` — to check: phase-400 W5 points the Zephyr
+  answer at the placer's root, so these may already be off the side channel.
+
+The writer side and its policing are D4 as designed: `write_header_to_target_dir`'s
+target-dir half, the `.h.stamp`, `check-orphan-generated-stamp`,
+`check-sizes-header-mirrors`' target-dir candidates, the cargo-dir half of
+`mirror-generated-header.sh`, and the staleness probe's `ConfigHeaderStamp`
+exemption.

@@ -104,20 +104,23 @@ function(nros_locate_var _var)
 endfunction()
 
 # nros_locate_artifact(<out> <name> [TARGET <triple>] [PROFILE <profile>]
-#                      [CONTEXT <label>])
+#                      [PLACED_DIR <dir>] [CONTEXT <label>])
 #   — where a cargo-built nano-ros artifact lands (phase-484 W6b, RFC-0103 D7):
 #   `c-archive`, `cpp-archive`, `c-include`, `cpp-include`, `c-config-header`,
 #   `cpp-config-header`. The layout under the target dir is
 #   `nros_build_paths::artifact` (the function the build scripts that WRITE the
 #   headers call) and the target dir is cargo's own answer, so nothing here
 #   spells `<root>/target/…`. PROFILE defaults to `release`; TARGET is omitted
-#   for a host build cargo ran without `--target`.
+#   for a host build cargo ran without `--target`. PLACED_DIR resolves a header
+#   artifact under the directory `scripts/build/cargo-out-dir-headers.py --dest`
+#   placed it in (`--placed-dir`, issue 1824) — the header from THAT cargo run,
+#   not the target dir's shared copy; an archive is refused there.
 #
 #   REQUIRED, unlike `nros_locate_source`: a source row has a checkout copy a
 #   caller can fall back to, an artifact has no second answer — a guessed path
 #   is exactly what this replaces. A missing CLI is fatal, naming the remedy.
 function(nros_locate_artifact _out _name)
-    cmake_parse_arguments(_LA "" "TARGET;PROFILE;CONTEXT" "" ${ARGN})
+    cmake_parse_arguments(_LA "" "TARGET;PROFILE;PLACED_DIR;CONTEXT" "" ${ARGN})
     if(NOT _LA_PROFILE)
         set(_LA_PROFILE release)
     endif()
@@ -130,6 +133,9 @@ function(nros_locate_artifact _out _name)
         --index "${_NROS_LOCATE_INDEX}")
     if(_LA_TARGET)
         list(APPEND _args --target "${_LA_TARGET}")
+    endif()
+    if(_LA_PLACED_DIR)
+        list(APPEND _args --placed-dir "${_LA_PLACED_DIR}")
     endif()
     execute_process(
         COMMAND "${_nros}" ${_args}
