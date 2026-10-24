@@ -6,8 +6,10 @@ type: bug
 area: [api]
 severity: medium
 found: 2026-10-24
-related: [2027, 2009, 0796]
+related: [2027, 2009, 0796, phase-515]
 ---
+
+**Home: [phase-515](../roadmap/phase-515-api-stock-shape-review.md)** — homed 2026-10-24; listed in that phase's table of open API issues.
 
 ## What
 
