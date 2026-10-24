@@ -7,7 +7,7 @@ area: embedded
 related: [issue-0505, phase-462, phase-464, rfc-0074, 1948, 1949]
 ---
 
-**Home: [phase-464](../roadmap/phase-464-contract-chain-program.md)** — re-homed 2026-10-18 from [phase-462](../roadmap/archived/phase-462-safety-vocabulary-on-target.md), archived with every wave landed; what is left is the router rule, a contract term lowered outside the device. Before that, re-homed 2026-10-12 from phase-358.
+**Home: none** — since 2026-10-24, when [phase-464](../roadmap/archived/phase-464-contract-chain-program.md) (an umbrella owning no code) was archived. What is left is RFC-0074's router `downsampling` rule, a contract term the resolver would lower into the ROUTER's config, and no phase owns router-side lowering yet. Before that, homed at phase-464 from 2026-10-18 (re-homed from [phase-462](../roadmap/archived/phase-462-safety-vocabulary-on-target.md), archived with every wave landed), and before that at phase-358.
 
 ## Problem
 

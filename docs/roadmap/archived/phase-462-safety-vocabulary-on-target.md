@@ -3,7 +3,7 @@
 **Status (2026-10-18). COMPLETE, archived: W1, W2, W3, W4 (a/b/c), W5 and
 W6a/W6b/W6c landed, and W6a's gate, the RFC-0074 flood-cell rerun, is met
 (6/6 budgeted runs stall-free, worst 11.5 ms). Issue 0506 is re-homed to
-[phase-464](../phase-464-contract-chain-program.md) for the router rule.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
+[phase-464](phase-464-contract-chain-program.md) for the router rule.** (Planned 2026-09-21.) Numbered highest + 7 (phase-461 took +6;
 456-460 belong to concurrent sessions). Depends on two pieces of work outside
 this document: the shared MapperInput derivation phase (a play_launch / rlm
 phase being designed in parallel, referred to here by that name and not by a
