@@ -1910,16 +1910,18 @@ cpp: cpp-fmt
         exit 1; \
     }
     echo "  - a served C++ node publishes /parameter_events on start-up, set, declare, undeclare (runtime, issue 2023)"
+    # Issue 1824 -- the config headers are placed from this build's own
+    # `$OUT_DIR` and asked for by `--placed-dir`; there is no target-dir mirror
+    # to read beside the archive any more (D4).
     CARGO_TARGET_DIR="$pe_dir" \
-        cargo build -p nros-cpp --no-default-features \
-        --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
+        nros_cargo_placed "$pe_dir/placed" nros-cpp nros-c -- build -p nros-cpp \
+        --no-default-features --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
     # profile-literal-ok: unprofiled: a plain `cargo build`, so `<dir>/debug/` IS
-    # its derived output dir, and the mirrored headers beside it are from this
-    # same build.
+    # its derived output dir.
     pe_lib="$pe_dir/debug/libnros_cpp.a"
     c++ -std=c++17 -fno-exceptions -fno-rtti \
-        -I"$(CARGO_TARGET_DIR="$pe_dir" nros_locate_artifact cpp-include)" \
-        -I"$(CARGO_TARGET_DIR="$pe_dir" nros_locate_artifact c-include)" \
+        -I"$(nros_locate_artifact cpp-include --placed-dir "$pe_dir/placed")" \
+        -I"$(nros_locate_artifact c-include --placed-dir "$pe_dir/placed")" \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/core/nros-rmw-abi/include \
