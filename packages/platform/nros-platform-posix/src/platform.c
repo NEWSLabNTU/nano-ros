@@ -33,6 +33,10 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __linux__
+/* issue 2018 -- sched_setattr(2) has no glibc wrapper before 2.41. */
+#include <sys/syscall.h>
+#endif
 
 /* ---- Clock (monotonic) ---- */
 
@@ -1047,6 +1051,131 @@ int nros_posix_apply_current_priority(const char *name, uint32_t priority) {
            tname, want, rc);
     fflush(stdout); /* see the note above */
     return 0;
+}
+
+/* Issue 2018 (RFC-0108 As-built) -- a level's budget as a Linux
+ * SCHED_DEADLINE reservation: `runtime` = the budget, `period` = the
+ * replenishment period, `deadline` = the declared relative deadline when it
+ * lies within [budget, period], else the period. All in nanoseconds, as
+ * sched_setattr(2) takes them. Returns 1 and writes the three when the level
+ * declares a reservation the kernel can be asked for (`real_time` with a
+ * budget and a period, budget <= period, budget >= 1024 ns, the kernel's
+ * floor), 0 otherwise. Pure: the arithmetic the runner applies, testable
+ * without the privilege the call needs. */
+int nros_posix_deadline_attr(const char *tier_class, uint64_t budget_us, uint64_t period_us,
+                             uint64_t deadline_us, uint64_t *runtime_ns, uint64_t *deadline_ns,
+                             uint64_t *period_ns);
+int nros_posix_deadline_attr(const char *tier_class, uint64_t budget_us, uint64_t period_us,
+                             uint64_t deadline_us, uint64_t *runtime_ns, uint64_t *deadline_ns,
+                             uint64_t *period_ns) {
+    if (tier_class == NULL || strcmp(tier_class, "real_time") != 0 || budget_us == 0u ||
+        period_us == 0u || budget_us > period_us) {
+        return 0;
+    }
+    /* Past this the nanosecond products overflow; no level declares it. */
+    if (period_us > UINT64_MAX / 1000u) {
+        return 0;
+    }
+    uint64_t rt = budget_us * 1000u;
+    uint64_t pd = period_us * 1000u;
+    uint64_t dl = pd;
+    if (deadline_us != 0u && deadline_us >= budget_us && deadline_us <= period_us) {
+        dl = deadline_us * 1000u;
+    }
+    if (rt < 1024u) {
+        return 0;
+    }
+    if (runtime_ns != NULL) {
+        *runtime_ns = rt;
+    }
+    if (deadline_ns != NULL) {
+        *deadline_ns = dl;
+    }
+    if (period_ns != NULL) {
+        *period_ns = pd;
+    }
+    return 1;
+}
+
+/* Issue 2018 -- put the CALLING thread (a level's) under SCHED_DEADLINE
+ * with its tier's budget (`nros_posix_deadline_attr`). The kernel then
+ * enforces the budget: a level that runs past it is throttled until its next
+ * period. Returns 1 when the kernel accepted it, 0 otherwise -- the level then
+ * keeps its SCHED_FIFO priority (or the default policy) and the executor's
+ * cooperative budget is the enforcement. Never fatal, like the priority
+ * above: an unprivileged host (no CAP_SYS_NICE) is the common case, and the
+ * operator gets one line naming the fix, plus a per-level line. Marker:
+ * `nros: deadline budget set tier=...`. Linux only; elsewhere it says so. */
+int nros_posix_apply_current_deadline(const char *name, const char *tier_class,
+                                      uint64_t budget_us, uint64_t period_us,
+                                      uint64_t deadline_us);
+int nros_posix_apply_current_deadline(const char *name, const char *tier_class,
+                                      uint64_t budget_us, uint64_t period_us,
+                                      uint64_t deadline_us) {
+    const char *tname = (name != NULL) ? name : "?";
+    uint64_t rt = 0;
+    uint64_t dl = 0;
+    uint64_t pd = 0;
+    if (!nros_posix_deadline_attr(tier_class, budget_us, period_us, deadline_us, &rt, &dl,
+                                  &pd)) {
+        return 0;
+    }
+#if defined(__linux__) && defined(SYS_sched_setattr)
+    /* The kernel's `struct sched_attr` (include/uapi/linux/sched/types.h),
+     * SCHED_ATTR_SIZE_VER0: 48 bytes. */
+    struct {
+        uint32_t size;
+        uint32_t sched_policy;
+        uint64_t sched_flags;
+        int32_t sched_nice;
+        uint32_t sched_priority;
+        uint64_t sched_runtime;
+        uint64_t sched_deadline;
+        uint64_t sched_period;
+    } attr;
+    memset(&attr, 0, sizeof(attr));
+    attr.size = (uint32_t) sizeof(attr);
+    attr.sched_policy = 6u; /* SCHED_DEADLINE */
+    attr.sched_runtime = rt;
+    attr.sched_deadline = dl;
+    attr.sched_period = pd;
+    if (syscall(SYS_sched_setattr, 0, &attr, 0u) == 0) {
+        printf("nros: deadline budget set tier=`%s` %lluus/%lluus (deadline %lluus)\n", tname,
+               (unsigned long long) budget_us, (unsigned long long) period_us,
+               (unsigned long long) (dl / 1000u));
+        fflush(stdout);
+        return 1;
+    }
+    int err = errno;
+    if (err == EPERM) {
+        static int reported;
+        if (!reported) {
+            reported = 1;
+            fprintf(stderr,
+                    "[warn] nros: SCHED_DEADLINE is REFUSED for this process (EPERM), so "
+                    "every level's declared budget is enforced by the executor only, at "
+                    "callback boundaries, and not by the kernel.\n"
+                    "       Grant the capability to the binary that runs the levels:\n"
+                    "           sudo setcap cap_sys_nice+ep <executable>\n"
+                    "       (EPERM also means a level pinned to fewer CPUs than its root "
+                    "domain: SCHED_DEADLINE needs the whole domain.)\n");
+        }
+    }
+    printf("nros: deadline budget FAILED tier=`%s` errno=%d%s -- the executor enforces the "
+           "budget\n",
+           tname, err, (err == EBUSY) ? " (admission: the CPU bandwidth is taken)" : "");
+    fflush(stdout);
+    return 0;
+#else
+    (void) rt;
+    (void) dl;
+    (void) pd;
+    printf("nros: deadline budget declared for tier=`%s` but this platform has no "
+           "kernel deadline reservation -- the executor enforces the budget\n",
+           tname);
+    fflush(stdout);
+    return 0;
+#endif
 }
 
 void nros_platform_log_write(uint8_t severity,
