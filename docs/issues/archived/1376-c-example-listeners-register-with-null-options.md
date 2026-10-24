@@ -1,16 +1,67 @@
 ---
 id: 1376
-title: "Five of the six rclc subscription entry points pass a receive hint of 0
-  although the subscription carries its type's bound, so they take the
-  `c_raw_no_hint` row while the sizing descriptor credits the image with the
-  typed hint"
-status: open
+title: "Four of the five rclc subscription entry points that take an
+  `rcl_subscription_t` passed a receive hint of 0 although it carries its type's
+  bound, so they took the `c_raw_no_hint` row while the sizing descriptor
+  credits the image with the typed hint"
+status: resolved
 type: bug
 area: [api, examples, sizing]
+resolved: 2026-10-24
 related: [1319, 0896, 0964, phase-456, phase-454, phase-394, phase-460, phase-492]
 ---
 
-**Home: [phase-460](../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — re-homed 2026-10-23 from phase-394, archived that day. The descriptor credits a hint the image does not supply, which is a trusted fact nobody checks: that phase's class.
+**Home: [phase-460](../../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — re-homed 2026-10-23 from phase-394, archived that day. The descriptor credits a hint the image does not supply, which is a trusted fact nobody checks: that phase's class.
+
+## Resolved 2026-10-24
+
+All five rclc entry points that take an `rcl_subscription_t` now forward the
+type's bound through one helper, `subscription_rx_bound`
+(`packages/api/nros-c/src/executor.rs`). `with_context` uses it too, in place
+of its inline read. Only `rclc_executor_add_subscription_raw_with_info` still
+passes `0`, and that is correct. It takes type NAMES, not a subscription, so
+no descriptor and no bound reach it. Its comment now says so and names the
+entry point to use instead.
+
+**One correction to the re-check below.** It counted "five of the six" entry
+points as passing `0`. The true count was four of the five that take a
+subscription: `_raw`, `_raw_validated`, `_with_info` and `_in_group`. The new
+gate reports exactly those four when run over main's source as it was before
+this fix.
+
+**Measured**, with the arena's own counter (`rclc_executor_get_arena_used`),
+on one registration per entry point. The test is `tests/run/subscription_rx_bound.c`
+in `just check c`, on the stub backend. A type stating 64 bytes is compared
+with an unbounded one:
+
+| entry point | bounded (64 B) | unbounded (fallback) |
+| --- | --- | --- |
+| `rclc_executor_add_subscription_raw` | 1,608 B | 12,168 B |
+| `rclc_executor_add_subscription_with_info` | 1,080 B | 2,040 B |
+| `rclc_executor_add_subscription_in_group` | 1,608 B | 12,168 B |
+
+Before the fix, the two columns were EQUAL on all three rows. Built against
+main's `executor.rs`, the same test fails 3 of 3, so it tests the fix rather
+than passing beside it. `_raw_validated` needs the `safety-e2e` capability,
+which the `check c` library does not carry. It is covered instead by the C
+safety workspace e2e (`workspace_features::case_09_c_safety`), which passes on
+fixtures built from this tree. That is the image the "safety listener
+measurement" acceptance item named. It is the one example on this path, and
+it still delivers and validates its CRC with a slot sized to Int32's bound,
+because the E2E sequence number and CRC travel in the zenoh attachment, not in
+the payload (`ZenohSubscriber::take_validated`).
+
+**Gate:** `check-c-subscription-bound-supplied`
+(`scripts/check/check-c-subscription-bound-supplied.py`, on the fast line, next
+to its C++ sibling). Inside every `rclc_executor_add_subscription*` whose
+parameters include an `rcl_subscription_t`, the last argument of an
+`add_arena_subscription_c_*` call must not be a literal `0`. The function's
+shape decides it, not a list: the names-only form is admitted because it takes
+no subscription. A selftest of four cases runs on every invocation, and the
+gate refuses to report OK if it finds no entry point at all.
+
+Also: a unit test of the helper. It checks that no descriptor gives 0, that a
+stated bound passes through, and that an unbounded type gives 0.
 
 ## Re-checked 2026-10-24: the seven sites are gone, and the class moved into the API
 

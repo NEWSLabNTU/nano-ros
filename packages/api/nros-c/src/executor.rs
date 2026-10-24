@@ -2077,6 +2077,29 @@ pub unsafe extern "C" fn rclc_executor_trigger_index(
 /// counts. ONE spelling, so a new subscription verb cannot register an entry
 /// the remover cannot find (the 1668 shape was a copy of this body that
 /// recorded none of it).
+/// The receive bound a subscription's type states (issue 1376).
+///
+/// `rclc_subscription_init_*` keeps the type descriptor on the subscription
+/// (`ROSIDL_GET_MSG_TYPE_SUPPORT(...)`), and the generated descriptor carries
+/// the type's `__RX_MAX_SERIALIZED_SIZE` as `serialized_size_max`. Every entry
+/// point that takes an `rcl_subscription_t` forwards it, typed or raw: the
+/// bound is a fact about the TYPE, so which entry point a call site picks must
+/// not decide whether the arena slot is sized from it. The sizing descriptor
+/// credits a C entry with the typed hint and cannot see the call site.
+///
+/// 0 = the type states no bound (unbounded, or a descriptor built from names
+/// alone), so the image default applies — never a claim of zero bytes (issue
+/// 0896 / phase-403 W5).
+///
+/// # Safety
+/// `subscription` must be a valid, non-NULL `rcl_subscription_t`.
+unsafe fn subscription_rx_bound(subscription: *const rcl_subscription_t) -> usize {
+    (*subscription)
+        .type_support
+        .as_ref()
+        .map_or(0, |t| t.serialized_size_max)
+}
+
 unsafe fn register_subscription_entry(
     executor: *mut rclc_executor_t,
     subscription: *mut rcl_subscription_t,
@@ -2210,6 +2233,9 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_validated(
     validate_not_null!(executor, subscription);
     #[cfg(feature = "safety-e2e")]
     {
+        // The E2E sequence number and CRC travel in the attachment, not the
+        // payload, so the type's own bound is the whole slot.
+        let rx_bytes = subscription_rx_bound(subscription);
         register_subscription_entry(
             executor,
             subscription,
@@ -2220,7 +2246,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_validated(
                 };
                 rust_exec
                     .add_arena_subscription_c_validated_callback::<MESSAGE_BUFFER_SIZE>(
-                        node_id, topic, type_name, type_hash, qos, callback, context, 0,
+                        node_id, topic, type_name, type_hash, qos, callback, context, rx_bytes,
                     )
                     .map_err(|_| RCL_RET_ERROR)
             },
@@ -2312,9 +2338,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_with_context(
     let Some(deserialize_fn) = type_info.deserialize else {
         return RCL_RET_UNSUPPORTED;
     };
-    // 0 = the type states no bound, so the image default applies — never a
-    // claim of zero bytes (issue 0896 / phase-403 W5).
-    let rx_bytes = type_info.serialized_size_max;
+    let rx_bytes = subscription_rx_bound(subscription);
 
     // The name resolution, node routing and bookkeeping are the raw path's —
     // one helper — so the two registrations cannot become two different
@@ -2378,6 +2402,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw(
     invocation: rclc_executor_handle_invocation_t,
 ) -> rcl_ret_t {
     validate_not_null!(executor, subscription);
+    let rx_bytes = subscription_rx_bound(subscription);
     register_subscription_entry(
         executor,
         subscription,
@@ -2393,8 +2418,8 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw(
                 .add_arena_subscription_c_callback::<MESSAGE_BUFFER_SIZE>(
                     node_id, topic, type_name, type_hash, qos, callback, context,
                     None, // Phase 273 W3: group threading is via rclc_executor_add_subscription_in_group
-                    // phase-402 W2 — this path states no hint; 0 = no opinion.
-                    0,
+                    // Issue 1376 — the type's bound, as the typed path forwards.
+                    rx_bytes,
                 )
                 .map_err(|_| RCL_RET_ERROR)
         },
@@ -2482,11 +2507,12 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_raw_with_info(
             qos_settings,
             cb,
             context,
-            // phase-408 W5a — this entry point predates the options struct and
-            // has no hint to forward, so it states none. 0 is "no opinion", not
-            // a claim of zero bytes: the subscription keeps the small payload
-            // class it has always taken. A C caller that wants the derived size
-            // goes through the options-carrying registration.
+            // phase-408 W5a / issue 1376 — this entry point takes type NAMES,
+            // not an `rcl_subscription_t`, so no descriptor and no bound reach
+            // it, and it states none. 0 is "no opinion", not a claim of zero
+            // bytes: the subscription keeps the small payload class. A caller
+            // that wants the type's bound registers through
+            // `rclc_executor_add_subscription_with_info`, which reads it.
             0,
         );
         match result {
@@ -2542,6 +2568,7 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_with_info(
     invocation: rclc_executor_handle_invocation_t,
 ) -> rcl_ret_t {
     validate_not_null!(executor, subscription);
+    let rx_bytes = subscription_rx_bound(subscription);
     let Some(cb) = callback else {
         return RCL_RET_INVALID_ARGUMENT;
     };
@@ -2553,8 +2580,9 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_with_info(
             rust_exec
                 .add_arena_subscription_c_info_callback::<MESSAGE_BUFFER_SIZE>(
                     node_id, topic, type_name, type_hash, qos, cb, context,
-                    // As the direct-arg form: no hint, the small payload class.
-                    0,
+                    // Issue 1376 — the type's bound. Unlike the direct-arg
+                    // form, this one HAS a subscription and so a descriptor.
+                    rx_bytes,
                 )
                 .map_err(|_| RCL_RET_ERROR)
         },
@@ -2818,8 +2846,8 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_in_group(
             callback,
             context,
             group_str,
-            // phase-402 W2 — this path states no hint; 0 = no opinion.
-            0,
+            // Issue 1376 — the type's bound, as the typed path forwards.
+            subscription_rx_bound(subscription),
         );
 
         match result {
@@ -5085,6 +5113,31 @@ pub unsafe extern "C" fn rclc_executor_remove_on_shutdown_callback(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 1376 — the receive bound comes off the subscription's descriptor,
+    /// and its absence reads as "no opinion" (0), never as a size.
+    #[test]
+    fn subscription_rx_bound_reads_the_descriptor_and_defaults_to_no_opinion() {
+        let ty = crate::publisher::rclc_message_type_t {
+            type_name: ptr::null(),
+            type_hash: ptr::null(),
+            serialized_size_max: 1234,
+            serialize: None,
+            deserialize: None,
+        };
+        let unbounded = crate::publisher::rclc_message_type_t {
+            serialized_size_max: 0,
+            ..ty
+        };
+        let mut sub = rcl_subscription_t::default();
+        unsafe {
+            assert_eq!(subscription_rx_bound(&sub), 0, "no descriptor: no opinion");
+            sub.type_support = &ty;
+            assert_eq!(subscription_rx_bound(&sub), 1234);
+            sub.type_support = &unbounded;
+            assert_eq!(subscription_rx_bound(&sub), 0, "unbounded type: no opinion");
+        }
+    }
 
     /// Stand-in for a registered C entity (`rcl_subscription_t`, …). Only its
     /// ADDRESS is ever compared, but the payload is deliberately a `usize` that

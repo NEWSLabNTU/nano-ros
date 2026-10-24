@@ -254,6 +254,15 @@ cpp-freestanding-mechanisms:
 cpp-subscription-bound-supplied:
     @python3 scripts/check-cpp-subscription-bound-supplied.py
 
+# Issue 1376 — the C half. An `rclc_executor_add_subscription*` entry point
+# that takes an `rcl_subscription_t` holds the type descriptor, so it holds the
+# receive bound; a literal `0` hint from there takes the `unbounded` row while
+# the sizing descriptor credits the entry with the typed one. Shape-decided:
+# the names-only `_raw_with_info` has no descriptor, and its `0` is honest.
+[private]
+c-subscription-bound-supplied:
+    @python3 scripts/check/check-c-subscription-bound-supplied.py
+
 # phase-417 / issue 1225 — a capability probe may gate a METHOD, never `sizeof`.
 # MEASURED, not grepped: one `sizeof` probe TU per capability configuration over
 # every public type the umbrella exports, DERIVED from a clang AST rather than
