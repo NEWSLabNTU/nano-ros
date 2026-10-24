@@ -563,6 +563,22 @@ endfunction()
 # Never a refusal: the stated value still wins (an image may know better, e.g.
 # entities created only by application code the inventory cannot see). No
 # derivation, or a non-numeric value on either side: nothing to compare, silent.
+# _nros_derived_composition(<derived_var> <out_var>)
+#
+# phase-478 D3 -- " (25 = 4 node tokens + ...)" when the entity inventory
+# published the arithmetic behind `<derived_var>` (`NROS_COMPOSITION_<knob>`,
+# beside the `NROS_DERIVED_<knob>` it explains), else "". A bare derived number
+# is one nobody can check; the island recorded its liveliness pool as 25 with a
+# formula from a different image.
+function(_nros_derived_composition derived_var out_var)
+    string(REPLACE "NROS_DERIVED_" "NROS_COMPOSITION_" _cv "${derived_var}")
+    if(DEFINED ${_cv} AND NOT "${${_cv}}" STREQUAL "")
+        set(${out_var} " (${${_cv}})" PARENT_SCOPE)
+    else()
+        set(${out_var} "" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(_nros_compare_stated_to_derived env_name stated rung derived_var source)
     if(NOT DEFINED ${derived_var})
         return()
@@ -571,17 +587,18 @@ function(_nros_compare_stated_to_derived env_name stated rung derived_var source
     if(NOT "${stated}" MATCHES "^[0-9]+$" OR NOT "${_derived}" MATCHES "^[0-9]+$")
         return()
     endif()
+    _nros_derived_composition(${derived_var} _comp)
     if(stated LESS _derived)
         message(WARNING
             "nros: ${env_name}=${stated}, stated by ${rung}, is BELOW the "
-            "${_derived} this image's ${source} derives. The stated value wins, "
+            "${_derived} this image's ${source} derives${_comp}. The stated value wins, "
             "so the image is sized short of what its own inventory says it "
             "needs. Delete the stated line to take the derivation, or raise it "
             "(phase-478 D2).")
     elseif(stated GREATER _derived)
         message(STATUS
             "nros: ${env_name}=${stated}, stated by ${rung}, is above the "
-            "${_derived} this image's ${source} derives (over-provisioned by "
+            "${_derived} this image's ${source} derives${_comp} (over-provisioned by "
             "the difference).")
     else()
         message(STATUS
@@ -643,8 +660,9 @@ function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
         return()
     endif()
     if(DEFINED ${derived_var} AND NOT "${${derived_var}}" STREQUAL "")
+        _nros_derived_composition(${derived_var} _comp)
         message(STATUS
-            "nros: ${env_name}=${${derived_var}} DERIVED from this image's "
+            "nros: ${env_name}=${${derived_var}}${_comp} DERIVED from this image's "
             "${_src} (nothing in Kconfig or the environment states one)")
         _nros_resolve_knob(${env_name} "${${derived_var}}" derived)
         return()

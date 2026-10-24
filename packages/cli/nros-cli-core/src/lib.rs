@@ -5,6 +5,20 @@
 //! that library is renamed or split.
 
 pub mod abi_guard;
+
+/// phase-478 I7 — what `nros version` prints after the codegen version: the
+/// play_launch commit this binary's launch resolution was built against
+/// (issue 0409's pin) and the ros-launch-manifest tag its contract grammar
+/// comes from. "Which grammar judged this contract" otherwise has no answer
+/// from the tool that judged it — the island ran three copies of play_launch
+/// at once (gap 2.3).
+pub const BUILD_INFO: &str = concat!(
+    "play_launch ",
+    env!("NROS_PLAY_LAUNCH_SHA"),
+    "\nros-launch-manifest ",
+    env!("NROS_RLM_TAG"),
+);
+
 /// phase-383 — `nros build`, the colcon-like builder (RFC-0065).
 ///
 /// Named `builder`, not `build`: `packages/cli/.gitignore` carries a `build/`
