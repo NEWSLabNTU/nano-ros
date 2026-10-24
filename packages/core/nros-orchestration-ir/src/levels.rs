@@ -171,6 +171,9 @@ impl Level {
 /// The derived levels of one core (RFC-0108 D4).
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct LevelPlan {
+    /// The core these levels run on: the realizer's placement of their
+    /// members (issue 0259), `None` for the nodes it left unpinned.
+    pub core: Option<u32>,
     /// The cap the levels were derived against.
     pub max_levels: u16,
     /// Where the cap came from: `"image"` (its `.config`) or `"platform"`.
@@ -185,6 +188,15 @@ pub struct LevelPlan {
 /// What [`derive_levels`] reads.
 #[derive(Clone, Debug)]
 pub struct LevelInput<'a> {
+    /// The core every node in `free` is placed on (`None`: unpinned). The
+    /// caller partitions first, so one call never spans two cores' scheduling
+    /// domains (RFC-0108 D3, issue 0259).
+    pub core: Option<u32>,
+    /// Work this call does not see can preempt on this core: unpinned
+    /// nodes beside placed ones. Their interference is not in `tasks`, so the
+    /// analysed merge (rule 2) could not bound it and stays off, as it does
+    /// for a pin.
+    pub floating_interference: bool,
     /// The nodes no authored tier binds.
     pub free: &'a [LevelNode],
     /// The authored tiers.
@@ -504,14 +516,15 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
         let p = input.free.iter().find(|n| n.node == node)?.priority;
         free_prios.iter().position(|q| *q == p)
     };
-    let jobs: Option<Vec<Job>> = if input.pinned.is_empty() && !free_tasks.is_empty() {
-        free_tasks
-            .iter()
-            .map(|t| job_of(t, rank_index(&t.node)?))
-            .collect()
-    } else {
-        None
-    };
+    let jobs: Option<Vec<Job>> =
+        if input.pinned.is_empty() && !input.floating_interference && !free_tasks.is_empty() {
+            free_tasks
+                .iter()
+                .map(|t| job_of(t, rank_index(&t.node)?))
+                .collect()
+        } else {
+            None
+        };
     let mut method = LevelMethod::PerRank;
     let mut bands = per_rank.clone();
     let mut analysed = false;
@@ -750,6 +763,7 @@ pub fn derive_levels(input: &LevelInput<'_>) -> LevelPlan {
     }
 
     LevelPlan {
+        core: input.core,
         max_levels: input.max_levels,
         cap_source: input.cap_source,
         method,
@@ -786,6 +800,8 @@ mod tests {
         cap: u16,
     ) -> LevelInput<'a> {
         LevelInput {
+            core: None,
+            floating_interference: false,
             free,
             pinned,
             tasks,
@@ -959,6 +975,27 @@ mod tests {
         let plan = derive_levels(&input(&free, &[], &blind, 2));
         assert_eq!(members(&plan), vec![vec!["/a"], vec!["/b", "/c"]]);
         assert_eq!(plan.method, LevelMethod::Capped);
+    }
+
+    /// Issue 0259: work this call cannot see (unpinned nodes beside placed
+    /// ones) may preempt on its core, so the analysed merge cannot bound the
+    /// bands and the levels come from rules 1 and 3, exactly as for a pin.
+    #[test]
+    fn floating_interference_keeps_the_analysed_merge_off() {
+        let free = [node("/a", 5), node("/b", 6), node("/c", 7)];
+        let tasks = [
+            timer("/a", Some(1), 100),
+            timer("/b", Some(1), 200),
+            timer("/c", Some(1), 400),
+        ];
+        let mut inp = input(&free, &[], &tasks, 8);
+        assert_eq!(derive_levels(&inp).method, LevelMethod::ResponseTime);
+        inp.core = Some(1);
+        inp.floating_interference = true;
+        let plan = derive_levels(&inp);
+        assert_eq!(plan.method, LevelMethod::PerRank);
+        assert_eq!(plan.levels.len(), 3);
+        assert_eq!(plan.core, Some(1));
     }
 
     /// The analysed merge also merges below the cap: it finds the fewest

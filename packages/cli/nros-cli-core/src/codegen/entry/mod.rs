@@ -874,8 +874,8 @@ pub struct EntryDerivation {
     /// mode moves (empty without modes).
     pub mode_deadlines: nros_orchestration_ir::mode_variants::ModeTierDeadlines,
     /// phase-509 P5 (RFC-0108 D4) -- the preemption levels the derivation
-    /// banded, for the record's `levels`.
-    pub levels: Option<nros_orchestration_ir::levels::LevelPlan>,
+    /// banded, one plan per core (issue 0259), for the record's `levels`.
+    pub levels: Vec<nros_orchestration_ir::levels::LevelPlan>,
 }
 
 impl EntryDerivation {

@@ -1,6 +1,6 @@
 ---
 id: 259
-title: "Core assignment is derived by the realizer and ignored by the preemption levels; hardware locality and chain colocation have no inputs"
+title: "Core assignment is derived by the realizer but no entry point gives it a core count or a budget; hardware locality and chain colocation have no inputs"
 status: open
 type: limitation
 area: orchestration
@@ -57,7 +57,7 @@ places. They are not the same quantity: per node versus per band. Before
 either grows, decide whether the necessary-condition check
 `C_i + B_i > D_i` should read the band's blocking instead.
 
-### 2. Performance placement and the levels disagree about cores (latent)
+### 2. Performance placement and the levels disagreed about cores (fixed 2026-10-24)
 
 The 2026-09-04 derivation stands. `realize_rtos` packs measured periodic nodes
 worst-fit onto `n_cores`, sets `RealizedNode.core` and marks
@@ -73,11 +73,16 @@ emits the level's `TierDef.core` from its LEAD member (`derive.rs`,
 * The response-time analysis counts nodes on other cores as same-core
   preemption and blocking. That errs pessimistic, so it is safe, but it is wrong.
 
-**Latent, not live.** Realizer placement fires only when the deployment
-declares `cores >= 2` AND every periodic node carries a budget. The three bake
-roads select no RFC-0078 profile, so they carry no budget (phase-509 P5, "C
-reaches the analysis only through `derive_tiers_with_wcet`"). Only the
-`derive_tiers_with_wcet` entry point can reach it today.
+**Latent, not live, and further from live than this section first said.**
+Realizer placement fires only when the caps state `n_cores >= 2` AND every
+periodic node carries a budget. Corrected 2026-10-24: NO entry point supplies
+either one. `sched_caps_for` sets `n_cores: None` for every platform, because
+issue 0951 deleted the only input that set it (the per-deploy `cores` knob,
+which no authoring path could write). And `derive_tiers_with_wcet` builds the
+realizer's mapper input with `mapper_input_from_model(model)`, so the profile
+reaches the task records but never the realizer's `exec_ms`. The earlier text
+here, "only the `derive_tiers_with_wcet` entry point can reach it", was wrong:
+that entry point cannot reach it either.
 
 **Revised design: partition first, then derive levels per core.** That is
 RFC-0108's own scope rule ("one ready set never spans more than one core's
@@ -96,6 +101,34 @@ scheduling domain"):
 
 This is this issue's work, not phase-509's. Phase-509 deliberately leaves
 `core` unset, and this issue is where `core` gets set.
+
+**Fixed 2026-10-24, as designed above.**
+
+* `derive.rs` groups the free nodes by `RealizedNode.core` and calls
+  `derive_levels` once per group. `DerivedSchedule.levels` is a `Vec` with one
+  `LevelPlan` per core, and each plan records its `core`. The record's
+  `levels` key is now an array. With nothing placed, which is every entry
+  point today, there is one plan, `core: None`, holding every pin: exactly the
+  single call it replaces.
+* `level_tier` takes the group's core. A multi-node level on a placed core is
+  named `derived-core<c>-level-<k>`, since level indices restart per core.
+* Pins: the unpinned group sees every authored tier, and a placed core sees
+  the tiers authored for it plus the unpinned ones.
+* One case this design did not spell out. Unpinned work (pins or free nodes)
+  can run on any core. When it sits beside placed work, no single call sees
+  all the interference on a core. So `LevelInput.floating_interference` turns
+  the analysed merge (RFC-0108 D4 rule 2) off in every group, as a pin already
+  does. That keeps the analysis safe: the old single call over-counted
+  interference, and splitting must not under-count it.
+* Test `derive::tests::a_level_never_spans_two_cores`: four measured nodes,
+  two cores, interleaved ranks, a cap of one level per core. Collapsing the
+  grouping back to one call fails it. It reaches placement through
+  `derive_tiers_with_caps`, a private seam that takes the mapper input and
+  the caps the public entry points derive for themselves.
+
+What remains is the input. A core count needs an authoring path (issue 0951's
+condition), and the realizer needs the profile's `exec_ms`. Until both exist,
+the partition is correct and never runs.
 
 ### 3. Hardware locality: unchanged, still blocked on a board input
 
@@ -134,12 +167,12 @@ ones.
 | item | state | next step |
 | --- | --- | --- |
 | `non_preempt` | owned by RFC-0108 / phase-509 (P5, P6 built; P10 ThreadX open) | delete the realizer's dead preempt dim |
-| performance placement | derived (2026-09-04) | partition first, levels per core (section 2), with a test |
+| performance placement | derived (2026-09-04); levels partitioned per core (2026-10-24) | an authored core count, and the profile's C into the realizer (section 2) |
 | hardware locality | blocked | board peripheral registry |
 | chain colocation and per-image budget split | blocked | interference model, after section 2 |
 | plan-schema units | moot | delete the dead `_ms` fields |
 
-Section 2 is the only item with a concrete defect, and it is latent.
+No item has a live defect. Section 2's latent one is fixed; what it lacks is an input.
 
 ## Original finding (phase-296 W5.5–W5.11, 2026-07-24)
 
