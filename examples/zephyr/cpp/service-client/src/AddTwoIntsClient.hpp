@@ -20,6 +20,8 @@ class AddTwoIntsClient {
     int64_t a_ = 2;
     int64_t b_ = 3;
     bool awaiting_ = false;
+    /// The id of the request in flight; a reply naming another is stale (issue 2033).
+    int64_t seq_ = NROS_CPP_SEQUENCE_ID_UNKNOWN;
     bool done_ = false;
 
     void on_tick(); // send / poll driver, bound by identity
