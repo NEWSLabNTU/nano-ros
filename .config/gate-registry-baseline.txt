@@ -221,6 +221,7 @@ payload-class-ceiling
 peer-sweep-lanes
 pipefail-sigpipe-assertions
 platform-abi-mirror
+platform-port-arms
 platform-provider-features
 platform-rmws
 pool-inventory
@@ -340,5 +341,6 @@ zenohd-spawn-sites
 zephyr-kconfig-knobs
 zephyr-knob-agreement
 zephyr-module-allowlist
+zephyr-panic-suffix
 zephyr-workspace-resolvers
 zpico-config-keys

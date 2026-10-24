@@ -369,6 +369,15 @@ platform-name-answered:
 image-panic-policy:
     @python3 scripts/check-image-panic-policy.py
 
+# phase-513 R7 / issue 2010 — the C/C++ half `image-panic-policy` cannot see, on
+# Zephyr: every cargo build in `zephyr/CMakeLists.txt` appends
+# `_nros_panic_suffix`. The mixed workspace's umbrella did not, so once nros-c
+# lost `std` the one archive a mixed image links had no `#[panic_handler]`.
+# Buildless; self-tests on every run.
+[private]
+zephyr-panic-suffix:
+    @python3 scripts/check/check-zephyr-panic-suffix.py
+
 
 # issue 0460 — a knob Kconfig forwards must be read by the Rust lane too. The
 # cmake `set(ENV{...})` exports reach the C lane's re-baked command and NOT
@@ -442,6 +451,15 @@ leaf-conf-nros-knobs:
 [group("checks")]
 baremetal-platform-arms:
     @python3 scripts/check-baremetal-platform-arms.py
+
+# phase-513 R6 / issue 2032 — every arm of a platform port's `#if`/`#else`
+# defines the same `nros_platform_*` functions. Zephyr's kernel arm was eight
+# functions short of its POSIX arm from issue 0566 on, and it surfaced only when
+# a new caller made the linker fetch the POSIX port's `platform.o` instead: 56
+# duplicate symbols in a different file. Buildless; self-tests on every run.
+[private]
+platform-port-arms:
+    @python3 scripts/check/check-platform-port-arms.py
 
 # issue 1122 — the OTHER road a derived number takes into cargo. `NROS_DERIVED_*`
 # is the Zephyr one (`nros_resolve_knobs()` -> `NROS_RESOLVED_*`, gated by
