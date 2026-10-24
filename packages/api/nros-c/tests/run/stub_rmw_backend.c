@@ -204,6 +204,134 @@ uint32_t nros_stub_rmw_publish_count(void) {
     return s_publish_count;
 }
 
+/* Issue 2015 — action-server / subscription staging.
+ *
+ * Each service server and subscription created in accept mode gets its OWN
+ * token carrying its name, so a test can stage a request (or a sample) for one
+ * entity by the TAIL of its name (`_action/send_goal`, `_action/feedback`) and
+ * read back what a server answered. */
+#define STUB_NAMED_TOKENS 64
+typedef struct {
+    char name[128];
+} stub_named_t;
+static stub_named_t s_named[STUB_NAMED_TOKENS];
+static size_t s_next_named = 0;
+
+static bool is_named_token(const void* p) {
+    return p >= (const void*)&s_named[0] && p < (const void*)&s_named[STUB_NAMED_TOKENS];
+}
+
+static bool accept_named(void** backend_data, const char* name) {
+    if (!s_accept_entities) return false;
+    stub_named_t* t = &s_named[s_next_named % STUB_NAMED_TOKENS];
+    ++s_next_named;
+    size_t n = name != NULL ? strlen(name) : 0;
+    if (n >= sizeof(t->name)) n = sizeof(t->name) - 1;
+    if (n > 0) memcpy(t->name, name, n);
+    t->name[n] = '\0';
+    *backend_data = t;
+    s_live_entities++;
+    return true;
+}
+
+static bool destroy_named(void* backend_data) {
+    if (!is_named_token(backend_data)) return false;
+    s_live_entities--;
+    return true;
+}
+
+static bool name_ends_with(const void* token, const char* suffix) {
+    if (!is_named_token(token) || suffix == NULL) return false;
+    const char* name = ((const stub_named_t*)token)->name;
+    size_t n = strlen(name), m = strlen(suffix);
+    return m <= n && memcmp(name + n - m, suffix, m) == 0;
+}
+
+#define STUB_STAGED_INBOUND 16
+typedef struct {
+    char suffix[64];
+    int64_t seq;
+    uint8_t data[512];
+    size_t len;
+} stub_inbound_t;
+static stub_inbound_t s_inbound[STUB_STAGED_INBOUND];
+static size_t s_inbound_count = 0;
+
+static bool stage_inbound(const char* suffix, int64_t seq, const uint8_t* data, size_t len) {
+    if (s_inbound_count >= STUB_STAGED_INBOUND || suffix == NULL) return false;
+    if (len > sizeof(s_inbound[0].data) || (len > 0 && data == NULL)) return false;
+    if (strlen(suffix) >= sizeof(s_inbound[0].suffix)) return false;
+    stub_inbound_t* r = &s_inbound[s_inbound_count];
+    strcpy(r->suffix, suffix);
+    r->seq = seq;
+    if (len > 0) memcpy(r->data, data, len);
+    r->len = len;
+    ++s_inbound_count;
+    return true;
+}
+
+/* The oldest staged entry for `token`'s name, or `s_inbound_count`. */
+static size_t inbound_for(const void* token) {
+    for (size_t i = 0; i < s_inbound_count; ++i) {
+        if (name_ends_with(token, s_inbound[i].suffix)) return i;
+    }
+    return s_inbound_count;
+}
+
+static rmw_ret_t take_inbound(const void* token, rmw_mut_byte_span_t* out, int64_t* seq_out,
+                              bool* taken) {
+    if (taken != NULL) *taken = false;
+    size_t at = inbound_for(token);
+    if (at == s_inbound_count) return NROS_RMW_RET_OK;
+    if (out == NULL || out->data == NULL) return NROS_RMW_RET_ERROR;
+    const stub_inbound_t* r = &s_inbound[at];
+    if (out->capacity < r->len) {
+        out->len = r->len;
+        return NROS_RMW_RET_BUFFER_TOO_SMALL;
+    }
+    memcpy(out->data, r->data, r->len);
+    out->len = r->len;
+    if (seq_out != NULL) *seq_out = r->seq;
+    if (taken != NULL) *taken = true;
+    memmove(&s_inbound[at], &s_inbound[at + 1], (s_inbound_count - at - 1) * sizeof(stub_inbound_t));
+    --s_inbound_count;
+    return NROS_RMW_RET_OK;
+}
+
+bool nros_stub_rmw_stage_request(const char* service_suffix, int64_t seq, const uint8_t* data,
+                                 size_t len) {
+    return stage_inbound(service_suffix, seq, data, len);
+}
+
+bool nros_stub_rmw_stage_sample(const char* topic_suffix, const uint8_t* data, size_t len) {
+    return stage_inbound(topic_suffix, 0, data, len);
+}
+
+/* The last response a server sent, per service-name tail. */
+#define STUB_RESPONSE_LOG 8
+typedef struct {
+    char name[128];
+    int64_t seq;
+    uint8_t data[512];
+    size_t len;
+} stub_response_t;
+static stub_response_t s_responses[STUB_RESPONSE_LOG];
+static size_t s_response_next = 0;
+
+const uint8_t* nros_stub_rmw_last_response(const char* service_suffix, int64_t* seq, size_t* len) {
+    /* newest first */
+    for (size_t k = 0; k < STUB_RESPONSE_LOG && k < s_response_next; ++k) {
+        stub_response_t* r = &s_responses[(s_response_next - 1 - k) % STUB_RESPONSE_LOG];
+        size_t n = strlen(r->name), m = strlen(service_suffix);
+        if (m <= n && memcmp(r->name + n - m, service_suffix, m) == 0) {
+            if (seq != NULL) *seq = r->seq;
+            if (len != NULL) *len = r->len;
+            return r->data;
+        }
+    }
+    return NULL;
+}
+
 static rmw_ret_t
 stub_create_subscription(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
                          const char* topic_name, uint32_t domain_id, const rmw_qos_profile_t* qos,
@@ -215,31 +343,24 @@ stub_create_subscription(const rmw_node_t* node, const rmw_message_type_support_
     (void)domain_id;
     (void)qos;
     (void)options;
-    (void)out;
-    if (accept_create(&out->backend_data)) return NROS_RMW_RET_OK;
+    if (accept_named(&out->backend_data, topic_name)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
 static rmw_ret_t stub_destroy_subscription(rmw_subscription_t* subscription) {
-    (void)subscription;
-    if (subscription != NULL && accept_destroy(subscription->backend_data)) return NROS_RMW_RET_OK;
+    if (subscription != NULL && destroy_named(subscription->backend_data)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
 static rmw_ret_t stub_take(const rmw_subscription_t* subscription, rmw_mut_byte_span_t* out,
                            bool* taken) {
-    (void)subscription;
-    (void)out;
-    if (taken != NULL) {
-        *taken = false;
-    }
-    return NROS_RMW_RET_OK;
+    /* Issue 2015 — a sample staged for this subscription's topic tail. */
+    return take_inbound(subscription != NULL ? subscription->backend_data : NULL, out, NULL, taken);
 }
 
 static rmw_ret_t stub_has_data(rmw_subscription_t* subscription, bool* out_has_data) {
-    (void)subscription;
     if (out_has_data != NULL) {
-        *out_has_data = false;
+        *out_has_data = subscription != NULL && inbound_for(subscription->backend_data) != s_inbound_count;
     }
     return NROS_RMW_RET_OK;
 }
@@ -254,42 +375,40 @@ static rmw_ret_t stub_create_service(const rmw_node_t* node,
     (void)type_support;
     (void)domain_id;
     (void)qos;
-    (void)out;
-    if (accept_create(&out->backend_data)) return NROS_RMW_RET_OK;
+    if (accept_named(&out->backend_data, service_name)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
 static rmw_ret_t stub_destroy_service(rmw_service_t* server) {
-    (void)server;
-    if (server != NULL && accept_destroy(server->backend_data)) return NROS_RMW_RET_OK;
+    if (server != NULL && destroy_named(server->backend_data)) return NROS_RMW_RET_OK;
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
 static rmw_ret_t stub_take_request(const rmw_service_t* server, rmw_mut_byte_span_t* request,
                                    int64_t* seq_out, bool* taken) {
-    (void)server;
-    (void)request;
-    (void)seq_out;
-    if (taken != NULL) {
-        *taken = false;
-    }
-    return NROS_RMW_RET_OK;
+    /* Issue 2015 — a request staged for this server's service-name tail. */
+    return take_inbound(server != NULL ? server->backend_data : NULL, request, seq_out, taken);
 }
 
 static rmw_ret_t stub_has_request(rmw_service_t* server, bool* out_has_request) {
-    (void)server;
     if (out_has_request != NULL) {
-        *out_has_request = false;
+        *out_has_request = server != NULL && inbound_for(server->backend_data) != s_inbound_count;
     }
     return NROS_RMW_RET_OK;
 }
 
 static rmw_ret_t stub_send_response(const rmw_service_t* server, int64_t seq,
                                     rmw_byte_span_t response) {
-    (void)server;
-    (void)seq;
-    (void)response;
-    return NROS_RMW_RET_UNSUPPORTED;
+    /* Issue 2015 — kept per server name, for `nros_stub_rmw_last_response`. */
+    if (server == NULL || !is_named_token(server->backend_data)) return NROS_RMW_RET_UNSUPPORTED;
+    if (response.len > sizeof(s_responses[0].data)) return NROS_RMW_RET_ERROR;
+    stub_response_t* r = &s_responses[s_response_next % STUB_RESPONSE_LOG];
+    ++s_response_next;
+    strcpy(r->name, ((const stub_named_t*)server->backend_data)->name);
+    r->seq = seq;
+    if (response.len > 0) memcpy(r->data, response.data, response.len);
+    r->len = response.len;
+    return NROS_RMW_RET_OK;
 }
 
 /* Issue 2011 — each client created in accept mode gets its OWN token, so a
@@ -455,6 +574,8 @@ size_t nros_stub_rmw_staged_replies(void) {
 }
 
 void nros_stub_rmw_reset_client(void) {
+    s_inbound_count = 0;
+    s_response_next = 0;
     s_reply_count = 0;
     s_outstanding = 0;
     s_max_outstanding = 0;

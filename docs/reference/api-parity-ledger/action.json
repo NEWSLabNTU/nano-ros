@@ -544,7 +544,12 @@
   },
   "cpp:ClientGoalHandle": {
     "verdict": "divergence",
-    "why": "rclcpp_action hands the client a refcounted `ClientGoalHandle<ActionT>` that owns the goal's futures and its feedback subscription. Ours is a bare `uint8_t goal_id[16]` the caller keeps: no allocator for the shared handle (`no-shared-ptr`), no futures (RFC-0021), and the per-goal state lives in the arena rather than in a handle. `get_status` folds onto `rclc_action_get_goal_status`; `is_feedback_aware` / `is_result_aware` describe rclcpp bookkeeping that has no analogue because our callbacks bind to the client, not to a goal."
+    "disposition": "adopt-bounded",
+    "why": "issue 2015 (2026-10-24) -- LANDED as a HOSTED drop-in. `rclcpp_action::ClientGoalHandle<A>` exists (`packages/api/nros-cpp/include/rclcpp_action/client.hpp`) with `get_goal_id`, `get_status`, `is_feedback_aware`, `is_result_aware`, and on a hosted build (`NROS_CPP_STD`) `SharedPtr` = `std::shared_ptr` plus the nested `WrappedResult` {goal_id, code, result}; it is what `async_send_goal`'s `SendGoalOptions` callbacks receive. THE BOUND, and the platform constraint behind it: the handle is a heap TOKEN over the goal id, not the owner of the goal's futures and feedback subscription -- the client keeps those (RFC-0021: no blocking futures; the per-goal state stays in the arena). A freestanding build has no allocator for the handle, so `SharedPtr` / `WrappedResult` are `detail::Refused<...>` there and any use is a compile error carrying `NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`, which names the goal-id-keyed form (`set_callbacks` + `send_goal_async`). `get_goal_stamp` is absent (see `cpp:ClientGoalHandle::get_goal_stamp`).\n\nEARLIER ROW (superseded): ours was a bare `uint8_t goal_id[16]`; no allocator for the shared handle, no futures.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp_action/client.hpp",
+      "text": "the handle is a heap token over the goal id"
+    }
   },
   "cpp:GoalInfo": {
     "verdict": "declined",
@@ -608,7 +613,12 @@
   },
   "cpp:ServerGoalHandle": {
     "verdict": "divergence",
-    "why": "the server side of `cpp:ClientGoalHandle`. CORRECTED 2026-09-04 (phase-417): this row answered a `cpp:` question entirely in C -- `rclc_action_succeed` / `_abort` / `_canceled` / `rclc_action_execute` / `rclc_action_get_goal_status` -- and never named the C++ surface a porting rclcpp_action user actually writes. THE C++ ANSWER: `succeed`/`abort`/`canceled` are one call, `nros::ActionServer<A>::complete_goal(goal_id, GoalStatus, result)` (`packages/api/nros-cpp/include/rclcpp_action/server.hpp:257`, with a two-argument overload defaulting `Succeeded`), and `is_active`/`is_executing`/`is_canceling` are `ActionServer::for_each_active_goal(f)` (`:284`), which visits `(uuid, status)` for every live goal. `get_goal` has no counterpart -- the arena never keeps the goal payload, so a user who needs it stashes it in the goal callback. THE DIVERGENCE, unchanged: our goal handle is a 16-byte UUID TOKEN, not an owning object. `rclc_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena. rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why the C verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+    "disposition": "adopt-bounded",
+    "why": "issue 2015 (2026-10-24) -- LANDED as a HOSTED drop-in. `rclcpp_action::ServerGoalHandle<A>` (`packages/api/nros-cpp/include/rclcpp_action/server.hpp`) answers `get_goal_id`, `is_active`, `is_executing`, `is_canceling` on every build and, hosted, `get_goal` (the `std::shared_ptr<const Goal>` the goal callback was handed), `publish_feedback`, `succeed`, `abort`, `canceled` taking upstream's `std::shared_ptr`s; `SharedPtr` is `std::shared_ptr`. It is what `rclcpp_action::create_server`'s cancel and accepted callbacks receive. THE BOUND: the handle is a heap token over `(server, goal id)`; every call forwards to `Server<A>` keyed by the id and the goal's lifecycle stays in the server's static arena (RFC-0019), so the status answers come from that arena (`for_each_active_goal`), and a terminal goal reads `Unknown`/inactive. It names its server by address: the server must not move while a handle is in use (a `SharedPtr` does not move it). Used from the executor's task only -- a handle driven from a thread the application started races the executor (RFC-0002, no lock on a one-level image), which is why the stock `std::thread{...}.detach()` in `handle_accepted` stays a documented edit. Freestanding: no allocator, so `SharedPtr` is refused (`NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`) and `Server<A>::succeed(goal_id, result)` etc. are the form. `execute` is absent (see `cpp:ServerGoalHandle::execute`).\n\nEARLIER ROW (superseded, phase-417): the C++ answer was `complete_goal` / `for_each_active_goal` on the server; `get_goal` had no counterpart.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp_action/server.hpp",
+      "text": "Envelope: the handle names its server by address"
+    }
   },
   "cpp:TickCtx::send_goal_raw": {
     "verdict": "extension",
@@ -642,7 +652,7 @@
       "nros::ActionServer::set_goal_callback",
       "nros::ActionServer::set_cancel_callback"
     ],
-    "why": "the free-function factory; ours is the method `nros::Node::create_action_server` plus `ActionServer::set_goal_callback` / `set_cancel_callback`. RE-VERDICTED 2026-09-04 (phase-417), declined -> rename: the capability is present under another spelling, so `declined` -- ROS 2 has it and we deliberately do not -- was never the right word, and the identical shape one entity over is already verdict `rename` at the service stage's `cpp:create_client`. What a porting user rewrites is in `cpp:Node::create_action_server`.\n\nphase-488 (2026-10-21), measured on the stock ros2/examples ports in `packages/api/nros-cpp/tests/compile/rclcpp-examples/` (edit counts in its `edits.json`). MEASURED, decision still open: a free `rclcpp_action::create_server` / `create_client` would save NO line in the stock action examples, because the call they make takes the four `node_interfaces` plus `std::bind`-ed goal-handle callbacks, and the handle-free callback shapes (`cpp:Node::create_action_server`) are what costs the rewrite (79 and 87 edited lines). Adding the free spelling is therefore not a porting reducer and was not done; `<rclcpp_action/rclcpp_action.hpp>` WAS added (an umbrella the stock files include), which saved one line in each.",
+    "why": "issue 2015 (2026-10-24) -- LANDED. `rclcpp_action::create_server<A>(...)` exists at upstream's path (`rclcpp_action/create_server.hpp`, reached from `rclcpp/rclcpp.hpp` and `rclcpp_action/rclcpp_action.hpp`) in upstream's two shapes -- the four `node_interfaces` handles (`Node::get_node_*_interface`) and a node -- taking upstream's three goal-handle callbacks and returning `Server<A>::SharedPtr` (`rclcpp::Owned<Server<A>>`, the server by value). HOSTED only: the callbacks are `std::function`s and each goal handle a heap object; a freestanding build refuses the call (`NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`) and keeps the method `Node::create_action_server` + `set_*_callback_with_ctx`. Upstream's trailing options / callback-group arguments are not taken. Measured on the stock ros2/examples ports: the server example went from 77 edited lines to 6.\n\nEARLIER (phase-488): measured that the free spelling alone would save no line while the handle shapes cost the rewrite, so it was not added. Both landed together here.\n\nthe free-function factory; ours is the method `nros::Node::create_action_server` plus `ActionServer::set_goal_callback` / `set_cancel_callback`. RE-VERDICTED 2026-09-04 (phase-417), declined -> rename: the capability is present under another spelling, so `declined` -- ROS 2 has it and we deliberately do not -- was never the right word, and the identical shape one entity over is already verdict `rename` at the service stage's `cpp:create_client`. What a porting user rewrites is in `cpp:Node::create_action_server`.\n\nphase-488 (2026-10-21), measured on the stock ros2/examples ports in `packages/api/nros-cpp/tests/compile/rclcpp-examples/` (edit counts in its `edits.json`). MEASURED, decision still open: a free `rclcpp_action::create_server` / `create_client` would save NO line in the stock action examples, because the call they make takes the four `node_interfaces` plus `std::bind`-ed goal-handle callbacks, and the handle-free callback shapes (`cpp:Node::create_action_server`) are what costs the rewrite (79 and 87 edited lines). Adding the free spelling is therefore not a porting reducer and was not done; `<rclcpp_action/rclcpp_action.hpp>` WAS added (an umbrella the stock files include), which saved one line in each.",
     "rename": {
       "to": null,
       "category": "B",
@@ -1639,5 +1649,37 @@
     "verdict": "extension",
     "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): installs the hook (a C `fn(event, ctx)` plus its context) the executor calls when a supervised route passes its deadline, with the row's reaction id, index and mechanism; it also stands in for `set_fault_handler` on a `fault` deadline action when none is set. No rclrs counterpart -- ROS 2 has no contract monitors. See `rust:Executor::set_fault_handler`.",
     "bucket": "ours-only"
+  },
+  "cpp:ClientGoalHandle::ClientGoalHandle<A>": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "issue 2015 (2026-10-24) -- the handle's constructor, from the goal id. Upstream's is private (only `Client` makes one, behind `make_shared`); ours is public because the handle is a plain token any code can build over an id, and it is the client (`async_send_goal`) that builds the ones a callback sees. No allocator is implied by the constructor itself -- the `std::shared_ptr` around it is hosted-only."
+  },
+  "cpp:ClientGoalHandle::get_goal_stamp": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "bucket": "theirs-only",
+    "why": "issue 2015 (2026-10-24) -- the acceptance stamp of the goal. The arena does not keep one -- see `c:action_goal_info_t`: time is a board capability (RFC-0036) and the accept path has no clock to read. A user loses the acceptance timestamp; calling it is a compile error (`no member named get_goal_stamp`)."
+  },
+  "cpp:ClientGoalHandle::make_shared": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "bucket": "theirs-only",
+    "why": "issue 2015 (2026-10-24) -- upstream's `RCLCPP_SMART_PTR_DEFINITIONS` static factory. Ours has none: a handle is built by the client from a goal id, and on a hosted build `std::make_shared<ClientGoalHandle<A>>(id)` is the spelling; a freestanding build has no allocator to make one with."
+  },
+  "cpp:ServerGoalHandle::ServerGoalHandle<A>": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "issue 2015 (2026-10-24) -- the handle's constructor, from `(server, goal id)`. Upstream's is private and takes rcl handles; ours is a public token constructor because the goal's state lives in the server's arena and the handle only names it (see `cpp:ServerGoalHandle`)."
+  },
+  "cpp:ServerGoalHandle::execute": {
+    "verdict": "gap",
+    "bucket": "theirs-only",
+    "why": "issue 2015 (2026-10-24) -- moves a goal accepted with ACCEPT_AND_DEFER to EXECUTING. The C surface has it (`rclc_action_execute`) and the Rust handle can, but `rclcpp_action::Server<A>` exposes no C++ call that does, so the handle has nothing to forward to. Not needed by a goal accepted with ACCEPT_AND_EXECUTE (the stock examples); a deferred goal is still completed with `succeed` / `abort` / `canceled`. Calling it is a compile error."
+  },
+  "rust:Executor::retarget_action_server_raw": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "issue 2015 -- the server half of `rust:Executor::retarget_action_client_raw`: re-points a raw action SERVER entry's callback `context` after the C++ `rclcpp_action::Server<A>` that registered it was MOVED. The client got this in issue 1496 and the server did not, so a server moved into an `rclcpp::Owned` (what `rclcpp_action::create_server` returns) dispatched its first goal through the moved-from storage and rejected every later one. rclcpp has no counterpart because its entities are heap objects that never move under the executor. Called by `nros_cpp_action_server_retarget`."
   }
 }

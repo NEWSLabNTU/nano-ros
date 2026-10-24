@@ -139,6 +139,23 @@ size_t nros_stub_rmw_staged_replies(void);
  *  supported), so one probe's leftovers cannot answer the next. */
 void nros_stub_rmw_reset_client(void);
 
+/** Issue 2015 — stage a REQUEST for the service server whose name ends with
+ *  @p service_suffix (e.g. `"/_action/send_goal"`), taken with id @p seq.
+ *  Every accept-mode service server and subscription remembers its name, so a
+ *  staged request (or sample) reaches only the entity it names. `false` when
+ *  the stub's 16 slots are full or the bytes do not fit 512. Cleared by
+ *  `nros_stub_rmw_reset_client`. */
+bool nros_stub_rmw_stage_request(const char* service_suffix, int64_t seq, const uint8_t* data,
+                                 size_t len);
+
+/** Issue 2015 — stage a SAMPLE for the subscription whose topic ends with
+ *  @p topic_suffix (e.g. `"/_action/feedback"`). Same slots as requests. */
+bool nros_stub_rmw_stage_sample(const char* topic_suffix, const uint8_t* data, size_t len);
+
+/** Issue 2015 — the newest response a service server whose name ends with
+ *  @p service_suffix sent: its bytes (NULL if none), id and length. */
+const uint8_t* nros_stub_rmw_last_response(const char* service_suffix, int64_t* seq, size_t* len);
+
 /** Issue 1940 — the entity kinds the per-entity new-data slots are stored by. */
 #define NROS_STUB_ENTITY_SUBSCRIPTION 0
 #define NROS_STUB_ENTITY_SERVICE 1

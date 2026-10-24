@@ -76,20 +76,18 @@
     },
     "minimal_action_server_member_functions": {
       "source": "rclcpp/actions/minimal_action_server/member_functions.cpp",
-      "edited_lines": 77,
+      "edited_lines": 6,
       "edited_lines_before_phase_488": 78,
       "remaining": [
-        "actions: no ServerGoalHandle / rclcpp_action::create_server(node interfaces, std::bind...) \u2014 the server is created in place and callbacks are function pointers keyed by the 16-byte goal id",
-        "no hidden threads: the stock example detaches a std::thread per goal; the port runs the goal in the accepted callback and drops rclcpp::Rate::sleep (it would re-enter the executor from a callback)"
+        "no hidden threads: the stock handle_accepted detaches a std::thread per goal, and a goal handle used from a thread the application started races the executor (RFC-0002; no executor lock on a one-level image). The port runs execute(goal_handle) in the accepted callback and drops rclcpp::Rate::sleep, which would re-enter the executor from that callback (issue 2015)"
       ]
     },
     "minimal_action_client_member_functions": {
       "source": "rclcpp/actions/minimal_action_client/member_functions.cpp",
-      "edited_lines": 87,
+      "edited_lines": 2,
       "edited_lines_before_phase_488": 88,
       "remaining": [
-        "actions: no ClientGoalHandle / create_client(node interfaces) / async_send_goal future; SendGoalOptions are raw function pointers with a context, feedback/result arrive as CDR bytes to deserialize, and the result is requested with get_result_async",
-        "generated sequences are FixedSequence/HeapSequence, not std::vector: `.back()` / `.size()` are spelled `[length() - 1]` / `.length()` (`size` is the layout's length field)"
+        "generated sequences are FixedSequence/HeapSequence, not std::vector: `.back()` is spelled `[length() - 1]` (adding `back()` would move the codegen version surface, RFC-0090, for one line)"
       ]
     },
     "multithreaded_executor": {

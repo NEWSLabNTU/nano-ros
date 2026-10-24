@@ -457,9 +457,14 @@
     }
   },
   "cpp:Node::get_node_clock_interface": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "why": "see the node stage's `cpp:Node::get_node_base_interface`."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "bucket": "theirs-only",
+    "why": "issue 2015 (2026-10-24) -- see the node stage's `cpp:Node::get_node_base_interface`: a non-owning handle naming the node, for `rclcpp_action::create_server` / `create_client`; no clock interface behind it -- the clock is `get_clock()`.",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "The handle has no members of upstream's interface;"
+    }
   },
   "cpp:Node::get_node_time_source_interface": {
     "verdict": "declined",

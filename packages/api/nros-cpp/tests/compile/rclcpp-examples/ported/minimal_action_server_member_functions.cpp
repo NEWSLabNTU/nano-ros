@@ -25,84 +25,87 @@ class MinimalActionServer : public rclcpp::Node
 {
 public:
   using Fibonacci = example_interfaces::action::Fibonacci;
+  using GoalHandleFibonacci = rclcpp_action::ServerGoalHandle<Fibonacci>;
 
   explicit MinimalActionServer(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
   : Node("minimal_action_server", options)
   {
-    (void)this->create_action_server(this->action_server_, "fibonacci");
-    (void)this->action_server_.set_goal_callback_with_ctx(&MinimalActionServer::handle_goal, this);
-    (void)this->action_server_.set_cancel_callback_with_ctx(
-      &MinimalActionServer::handle_cancel, this);
-    (void)this->action_server_.set_accepted_callback_with_ctx(
-      &MinimalActionServer::handle_accepted, this);
+    using namespace std::placeholders;
+
+    this->action_server_ = rclcpp_action::create_server<Fibonacci>(
+      this->get_node_base_interface(),
+      this->get_node_clock_interface(),
+      this->get_node_logging_interface(),
+      this->get_node_waitables_interface(),
+      "fibonacci",
+      std::bind(&MinimalActionServer::handle_goal, this, _1, _2),
+      std::bind(&MinimalActionServer::handle_cancel, this, _1),
+      std::bind(&MinimalActionServer::handle_accepted, this, _1));
   }
 
 private:
-  rclcpp_action::Server<Fibonacci> action_server_;
-  int32_t order_ = 0;
-  bool canceling_ = false;
+  rclcpp_action::Server<Fibonacci>::SharedPtr action_server_;
 
-  static rclcpp_action::GoalResponse handle_goal(
-    const uint8_t uuid[16],
-    const Fibonacci::Goal & goal, void * ctx)
+  rclcpp_action::GoalResponse handle_goal(
+    const rclcpp_action::GoalUUID & uuid,
+    std::shared_ptr<const Fibonacci::Goal> goal)
   {
-    auto * self = static_cast<MinimalActionServer *>(ctx);
-    RCLCPP_INFO(self->get_logger(), "Received goal request with order %d", goal.order);
+    RCLCPP_INFO(this->get_logger(), "Received goal request with order %d", goal->order);
     (void)uuid;
     // Let's reject sequences that are over 9000
-    if (goal.order > 9000) {
+    if (goal->order > 9000) {
       return rclcpp_action::GoalResponse::REJECT;
     }
-    self->order_ = goal.order;
-    self->canceling_ = false;
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
 
-  static rclcpp_action::CancelResponse handle_cancel(const uint8_t uuid[16], void * ctx)
+  rclcpp_action::CancelResponse handle_cancel(
+    const std::shared_ptr<GoalHandleFibonacci> goal_handle)
   {
-    auto * self = static_cast<MinimalActionServer *>(ctx);
-    RCLCPP_INFO(self->get_logger(), "Received request to cancel goal");
-    (void)uuid;
-    self->canceling_ = true;
+    RCLCPP_INFO(this->get_logger(), "Received request to cancel goal");
+    (void)goal_handle;
     return rclcpp_action::CancelResponse::ACCEPT;
   }
 
-  void execute(const uint8_t uuid[16])
+  void execute(const std::shared_ptr<GoalHandleFibonacci> goal_handle)
   {
     RCLCPP_INFO(this->get_logger(), "Executing goal");
-    Fibonacci::Feedback feedback;
-    auto & sequence = feedback.sequence;
+    const auto goal = goal_handle->get_goal();
+    auto feedback = std::make_shared<Fibonacci::Feedback>();
+    auto & sequence = feedback->sequence;
     sequence.push_back(0);
     sequence.push_back(1);
-    Fibonacci::Result result;
+    auto result = std::make_shared<Fibonacci::Result>();
 
-    for (int i = 1; (i < order_) && rclcpp::ok(); ++i) {
+    for (int i = 1; (i < goal->order) && rclcpp::ok(); ++i) {
       // Check if there is a cancel request
-      if (canceling_) {
-        result.sequence = sequence;
-        (void)action_server_.canceled(uuid, result);
+      if (goal_handle->is_canceling()) {
+        result->sequence = sequence;
+        goal_handle->canceled(result);
         RCLCPP_INFO(this->get_logger(), "Goal Canceled");
         return;
       }
       // Update sequence
       sequence.push_back(sequence[i] + sequence[i - 1]);
       // Publish feedback
-      (void)action_server_.publish_feedback(uuid, feedback);
+      goal_handle->publish_feedback(feedback);
       RCLCPP_INFO(this->get_logger(), "Publish Feedback");
+
     }
 
     // Check if goal is done
     if (rclcpp::ok()) {
-      result.sequence = sequence;
-      (void)action_server_.succeed(uuid, result);
+      result->sequence = sequence;
+      goal_handle->succeed(result);
       RCLCPP_INFO(this->get_logger(), "Goal Succeeded");
     }
   }
 
-  static void handle_accepted(const uint8_t uuid[16], void * ctx)
+  void handle_accepted(const std::shared_ptr<GoalHandleFibonacci> goal_handle)
   {
-    // No thread: the goal runs to completion inside the accepted callback.
-    static_cast<MinimalActionServer *>(ctx)->execute(uuid);
+    using namespace std::placeholders;
+    // no thread (nano-ros starts none behind the executor): run the goal here
+    execute(goal_handle);
   }
 };  // class MinimalActionServer
 

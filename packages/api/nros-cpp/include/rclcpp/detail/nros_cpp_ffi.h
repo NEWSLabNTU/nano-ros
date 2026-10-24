@@ -4851,6 +4851,25 @@ nros_cpp_ret_t nros_cpp_action_server_destroy(void *storage);
 nros_cpp_ret_t nros_cpp_action_server_relocate(void *old_storage, void *new_storage);
 
 /**
+ * Re-point the executor's arena entry at a server's NEW storage after
+ * [`nros_cpp_action_server_relocate`] — issue 2015.
+ *
+ * The arena entry's callback `context` is the storage address
+ * `nros_cpp_action_server_register` registered, so it must follow a move, as
+ * the client's does (issue 1496, `nros_cpp_action_client_relocate`). Left
+ * alone it named the moved-from storage: a server moved into an
+ * `rclcpp::Owned` (what `rclcpp_action::create_server` returns) dispatched its
+ * first goal through dead memory and rejected every later one. A separate
+ * call rather than a parameter on `relocate`, because the executor is the C++
+ * object's, not the storage's. No-op for a server never registered.
+ *
+ * # Safety
+ * `storage` is the server's live (new) storage; `executor_handle` the
+ * executor it was registered on, or NULL.
+ */
+nros_cpp_ret_t nros_cpp_action_server_retarget(void *storage, void *executor_handle);
+
+/**
  * Create an action client on a node.
  *
  * # Safety

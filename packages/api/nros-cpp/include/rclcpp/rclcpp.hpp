@@ -1741,4 +1741,12 @@ using WallRate = Rate;
 
 } // namespace rclcpp
 
+// issue 2015 — `rclcpp_action::create_client` / `create_server`, at upstream's
+// paths. Included LAST because they build on everything above
+// (`detail::require_created`); the umbrella reaches them as it reaches
+// `rclcpp_action::Client` / `Server`, so `#include <rclcpp/rclcpp.hpp>` alone
+// is enough for a ported action node, as upstream's transitive includes are.
+#include "rclcpp_action/create_client.hpp"
+#include "rclcpp_action/create_server.hpp"
+
 #endif // NROS_RCLCPP_RCLCPP_HPP

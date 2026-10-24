@@ -1078,6 +1078,49 @@ impl<'s> Executor<'s> {
         }
     }
 
+    /// Re-point a default-sized raw action SERVER entry's callback `context`
+    /// at `context` — issue 2015, the server half of
+    /// [`retarget_action_client_raw`](Executor::retarget_action_client_raw).
+    ///
+    /// The C++ `rclcpp_action::Server<A>` registers its storage address as the
+    /// entry's context. Moving the object (into an `rclcpp::Owned`, which is
+    /// what `rclcpp_action::create_server` returns) relocated the storage and
+    /// left the entry naming the moved-from bytes, so the first goal after the
+    /// move was dispatched through dead memory and every later one rejected.
+    ///
+    /// # Safety
+    /// As [`detach_action_server_raw`](Executor::detach_action_server_raw):
+    /// `handle` must come from the DEFAULT-sized `register_action_server_raw`.
+    /// `context` must be valid for as long as the entry may dispatch.
+    pub unsafe fn retarget_action_server_raw(
+        &mut self,
+        handle: &ActionServerRawHandle,
+        context: *mut core::ffi::c_void,
+    ) -> bool {
+        let Some(meta) = self
+            .entries
+            .get(handle.entry_index)
+            .and_then(|e| e.as_ref())
+        else {
+            return false;
+        };
+        if !matches!(meta.kind, EntryKind::ActionServer) {
+            return false;
+        }
+        let offset = meta.offset;
+        unsafe {
+            let entry = &mut *((self.arena.as_mut_ptr() as *mut u8).add(offset)
+                as *mut ActionServerRawArenaEntry<
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                    4,
+                >);
+            entry.context = context;
+        }
+        true
+    }
+
     /// Detach a raw action CLIENT's arena entry from its owner's storage —
     /// issue 1496, the client half.
     ///

@@ -17,7 +17,9 @@
 #include "rclcpp/detail/callback_context.hpp" // phase-456 W3's one-word context carrier
 #include "rclcpp/detail/config.hpp"
 #include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
+#include "rclcpp/owned.hpp"              // issue 2015 — `Server<A>::SharedPtr`
 #include "rclcpp/result.hpp"
+#include "rclcpp_action/detail/upstream.hpp" // issue 2015 — hosted goal-handle plumbing
 // issue 0964 — the feedback/result TX buffers below size through
 // `detail::buffer_bounds`, so this header needs it directly rather than by
 // luck through a transitive include.
@@ -301,6 +303,11 @@ class Node;
 // renumbering.
 namespace rclcpp_action {
 
+template <typename A> class ServerGoalHandle;
+namespace detail {
+template <typename A> struct ServerUpstream;
+} // namespace detail
+
 /// Typed action server for a ROS 2 action.
 ///
 /// Mirrors upstream's `rclcpp_action::Server<A>` with a callback-based API. The
@@ -329,19 +336,31 @@ namespace rclcpp_action {
 /// - Not a `Waitable`: no `execute` / `is_ready` / `set_on_ready_callback` /
 ///   `clear_on_ready_callback`. RFC-0002's executor drives the server
 ///   directly through the RMW vtable; there is no wait set to join.
-/// - Not created as a `SharedPtr`: there is no `rclcpp_action::create_server`.
-///   The caller owns the object and `node.create_action_server(srv, name)`
-///   initialises it in place (no allocator).
-/// - No `ServerGoalHandle`: the accepted callback receives the goal id, and
-///   feedback and termination are calls on THIS server keyed by that id
-///   (`publish_feedback`, `succeed`, `abort`, `canceled`). Goals live in a
-///   static arena the server owns, not in a handle handed to the application.
-/// Each missing member is a compile error (`no member named ...`).
+/// - Each missing member is a compile error (`no member named ...`).
+///
+/// Issue 2015 — on a HOSTED build (`NROS_CPP_STD`) upstream's construction
+/// is a drop-in: `rclcpp_action::create_server<A>(node interfaces..., name,
+/// handle_goal, handle_cancel, handle_accepted)` returns a `SharedPtr`
+/// (`rclcpp::Owned<Server>`, the server by value) and the callbacks take
+/// upstream's shapes — `std::shared_ptr<const Goal>` and a
+/// `std::shared_ptr<ServerGoalHandle<A>>` whose `publish_feedback` /
+/// `succeed` / `abort` / `canceled` / `is_canceling` forward to THIS server,
+/// keyed by the goal id. The goals still live in the server's static arena;
+/// the handle is a heap token over the id. A freestanding build keeps the
+/// goal-id-keyed form below and refuses the handle shapes.
 template <typename A> class Server {
   public:
     using GoalType = typename A::Goal;
     using ResultType = typename A::Result;
     using FeedbackType = typename A::Feedback;
+
+    /// Issue 2015 — upstream's `Server<A>::SharedPtr`. Not a `std::shared_ptr`:
+    /// `rclcpp::Owned<Server>` holds the server BY VALUE (no allocator), which
+    /// is what `rclcpp_action::create_server` returns and what a member
+    /// `rclcpp_action::Server<A>::SharedPtr action_server_;` stores.
+    using SharedPtr = ::rclcpp::Owned<Server>;
+    /// Upstream's `rclcpp_action::ServerGoalHandle<A>` for this action.
+    using GoalHandle = ::rclcpp_action::ServerGoalHandle<A>;
 
     /// User-facing typed goal callback signature.
     using TypedGoalFn = ::rclcpp_action::GoalResponse (*)(const uint8_t uuid[16],
@@ -686,10 +705,12 @@ template <typename A> class Server {
     }
 
     // Move semantics (non-copyable). Relocation goes through the
-    // `nros_cpp_action_server_relocate` runtime call (Phase 84.C1) and
-    // then `install_callbacks()` re-registers the goal/cancel trampolines
-    // with the new `this` as the arena callback context — this is the one
-    // type in nros-cpp that registers its storage address externally.
+    // `nros_cpp_action_server_relocate` runtime call (Phase 84.C1); then
+    // `nros_cpp_action_server_retarget` re-points the executor's arena entry
+    // (whose callback context is the STORAGE address) at the new storage —
+    // issue 2015: without it a moved server dispatched through the moved-from
+    // bytes — and `install_callbacks()` re-registers the goal/cancel
+    // trampolines with the new `this` as THEIR context.
     Server(Server&& other)
         : executor_(other.executor_), user_goal_fn_(other.user_goal_fn_),
           user_goal_fn_ctx_(other.user_goal_fn_ctx_), user_goal_ctx_(other.user_goal_ctx_),
@@ -697,13 +718,17 @@ template <typename A> class Server {
           user_cancel_ctx_(other.user_cancel_ctx_), user_accepted_fn_(other.user_accepted_fn_),
           user_accepted_fn_ctx_(other.user_accepted_fn_ctx_),
           user_accepted_ctx_(other.user_accepted_ctx_), action_name_{},
-          initialized_(other.initialized_) {
+          initialized_(other.initialized_),
+          upstream_(static_cast<detail::HostedBox&&>(other.upstream_)) {
         ::memcpy(action_name_, other.action_name_, sizeof(action_name_));
         if (other.initialized_) {
             nros_cpp_action_server_relocate(other.storage_, storage_);
+            // issue 2015 — the arena entry follows the storage.
+            (void)nros_cpp_action_server_retarget(storage_, executor_);
             other.initialized_ = false;
-            install_callbacks();
+            (void)install_callbacks();
         }
+        detail::ServerUpstream<A>::rehome(*this);
     }
 
     Server& operator=(Server&& other) {
@@ -727,11 +752,15 @@ template <typename A> class Server {
             user_accepted_ctx_ = other.user_accepted_ctx_;
             ::memcpy(action_name_, other.action_name_, sizeof(action_name_));
             initialized_ = other.initialized_;
+            upstream_ = static_cast<detail::HostedBox&&>(other.upstream_);
             if (other.initialized_) {
                 nros_cpp_action_server_relocate(other.storage_, storage_);
+                // issue 2015 — the arena entry follows the storage.
+                (void)nros_cpp_action_server_retarget(storage_, executor_);
                 other.initialized_ = false;
-                install_callbacks();
+                (void)install_callbacks();
             }
+            detail::ServerUpstream<A>::rehome(*this);
         }
         return *this;
     }
@@ -749,6 +778,31 @@ template <typename A> class Server {
     Server& operator=(const Server&) = delete;
 
     friend class ::rclcpp::Node;
+    // Issue 2015 — the hosted goal handle asks this server for its goal's
+    // status, and `create_server` binds upstream's callbacks onto it.
+    friend class ::rclcpp_action::ServerGoalHandle<A>;
+    friend struct detail::ServerUpstream<A>;
+
+    /// The status of `goal_id` if the server still tracks it as active.
+    bool goal_status(const uint8_t goal_id[16], int8_t& out) {
+        if (!initialized_) return false;
+        struct Query {
+            const uint8_t* id;
+            int8_t status;
+            bool found;
+        } q = {goal_id, 0, false};
+        auto visit = [](const uint8_t(*id)[16], int8_t status, void* ctx) {
+            Query* qq = static_cast<Query*>(ctx);
+            if (::memcmp(*id, qq->id, 16) == 0) {
+                qq->status = status;
+                qq->found = true;
+            }
+        };
+        if (nros_cpp_action_server_for_each_active_goal(storage_, executor_, +visit, &q) != 0)
+            return false;
+        out = q.status;
+        return q.found;
+    }
 
     // ── C trampolines ───────────────────────────────────────────────
     //
@@ -836,7 +890,207 @@ template <typename A> class Server {
     // is read — see `get_action_name()` for why the FFI cannot answer instead.
     char action_name_[::rclcpp_action::ACTION_NAME_MAX];
     bool initialized_;
+    /// Issue 2015 — upstream's `create_server` callbacks and the live goals'
+    /// messages (hosted only; empty and never allocated on a freestanding
+    /// build, and the same two pointers wide in both).
+    detail::HostedBox upstream_;
 };
+
+/// `rclcpp_action::ServerGoalHandle<A>` — issue 2015, upstream's per-goal
+/// handle on a HOSTED build.
+///
+/// A token over `(server, goal id)`, plus the goal message the goal callback
+/// was handed: every call forwards to the server keyed by the id, and the
+/// goal's state stays in the server's static arena (RFC-0019). Obtained only
+/// as the `std::shared_ptr` upstream's `handle_cancel` / `handle_accepted`
+/// receive; a freestanding build has no allocator for it, so `SharedPtr` is
+/// refused there and the goal-id-keyed `Server<A>` calls are the form.
+///
+/// Envelope: the handle names its server by address, so the server must not
+/// move while a handle is in use (it lives in a `SharedPtr`, which does not
+/// move it). Called from the executor's own task only — a goal handle used
+/// from a thread the application started races the executor (RFC-0002: no
+/// hidden threads, and no lock on a one-level image); run the goal from the
+/// accepted callback, or from a timer.
+template <typename A> class ServerGoalHandle {
+  public:
+    using Goal = typename A::Goal;
+    using Feedback = typename A::Feedback;
+    using Result = typename A::Result;
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+    using SharedPtr = ::std::shared_ptr<ServerGoalHandle>;
+    using ConstSharedPtr = ::std::shared_ptr<const ServerGoalHandle>;
+#else
+    using SharedPtr = detail::Refused<ServerGoalHandle>;
+    using ConstSharedPtr = detail::Refused<ServerGoalHandle>;
+#endif
+
+    ServerGoalHandle(Server<A>* server, const GoalUUID& uuid)
+        : server_(server), uuid_(uuid), goal_() {}
+
+    /// The goal's id.
+    const GoalUUID& get_goal_id() const { return uuid_; }
+    /// The goal is CANCELING: a cancel request for it was accepted.
+    bool is_canceling() const { return status() == GoalStatus::Canceling; }
+    /// The goal is EXECUTING.
+    bool is_executing() const { return status() == GoalStatus::Executing; }
+    /// The goal has not reached a terminal state.
+    bool is_active() const {
+        const GoalStatus s = status();
+        return s == GoalStatus::Accepted || s == GoalStatus::Executing ||
+               s == GoalStatus::Canceling;
+    }
+
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+    /// The goal message the goal callback was handed.
+    ::std::shared_ptr<const Goal> get_goal() const {
+        auto* g = goal_.template as<::std::shared_ptr<const Goal>>();
+        return g != nullptr ? *g : ::std::shared_ptr<const Goal>();
+    }
+    /// Publish feedback for this goal (`Server<A>::publish_feedback`).
+    void publish_feedback(::std::shared_ptr<Feedback> feedback) {
+        if (feedback && server_ != nullptr)
+            (void)server_->publish_feedback(uuid_.data(), *feedback);
+    }
+    /// Terminate this goal as SUCCEEDED (`Server<A>::succeed`).
+    void succeed(::std::shared_ptr<Result> result) { terminate(GoalStatus::Succeeded, result); }
+    /// Terminate this goal as ABORTED (`Server<A>::abort`).
+    void abort(::std::shared_ptr<Result> result) { terminate(GoalStatus::Aborted, result); }
+    /// Terminate this goal as CANCELED (`Server<A>::canceled`).
+    void canceled(::std::shared_ptr<Result> result) { terminate(GoalStatus::Canceled, result); }
+#endif
+
+  private:
+    friend struct detail::ServerUpstream<A>;
+
+    GoalStatus status() const {
+        int8_t s = 0;
+        if (server_ == nullptr || !server_->goal_status(uuid_.data(), s))
+            return GoalStatus::Unknown;
+        return static_cast<GoalStatus>(s);
+    }
+
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+    void terminate(GoalStatus status, const ::std::shared_ptr<Result>& result) {
+        if (server_ == nullptr) return;
+        const Result empty{};
+        (void)server_->complete_goal(uuid_.data(), status, result ? *result : empty);
+        detail::ServerUpstream<A>::forget(*server_, uuid_);
+    }
+#endif
+
+    Server<A>* server_;
+    GoalUUID uuid_;
+    /// The goal message (a heap `std::shared_ptr<const Goal>`, hosted only).
+    detail::HostedBox goal_;
+};
+
+namespace detail {
+
+/// Issue 2015 — binds upstream's three `create_server` callbacks onto a
+/// `Server<A>` through its existing goal / cancel / accepted slots, and keeps
+/// each live goal's message so its handle can answer `get_goal()`. Hosted
+/// only; on a freestanding build every member is a no-op and nothing calls
+/// `bind`.
+template <typename A> struct ServerUpstream {
+    using Goal = typename A::Goal;
+    using Handle = ServerGoalHandle<A>;
+
+    /// Point the bound state at `s` after a move.
+    static void rehome(Server<A>& s) {
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+        if (State* st = s.upstream_.template as<State>()) st->server = &s;
+#else
+        (void)s;
+#endif
+    }
+
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+    using GoalFn = ::std::function<GoalResponse(const GoalUUID&, ::std::shared_ptr<const Goal>)>;
+    using CancelFn = ::std::function<CancelResponse(::std::shared_ptr<Handle>)>;
+    using AcceptedFn = ::std::function<void(::std::shared_ptr<Handle>)>;
+
+    struct Entry {
+        GoalUUID id;
+        ::std::shared_ptr<const Goal> goal;
+    };
+    struct State {
+        GoalFn goal;
+        CancelFn cancel;
+        AcceptedFn accepted;
+        Server<A>* server;
+        ::std::vector<Entry> goals;
+    };
+
+    static void destroy(void* p) { delete static_cast<State*>(p); }
+
+    template <typename G, typename C, typename Acc>
+    static ::rclcpp::Result bind(Server<A>& s, G&& goal, C&& cancel, Acc&& accepted) {
+        State* st = new State{GoalFn(static_cast<G&&>(goal)),
+                              CancelFn(static_cast<C&&>(cancel)),
+                              AcceptedFn(static_cast<Acc&&>(accepted)),
+                              &s,
+                              {}};
+        s.upstream_.reset(st, &destroy);
+        ::rclcpp::Result r = s.set_goal_callback_with_ctx(&on_goal, st);
+        if (r.ok()) r = s.set_cancel_callback_with_ctx(&on_cancel, st);
+        if (r.ok()) r = s.set_accepted_callback_with_ctx(&on_accepted, st);
+        return r;
+    }
+
+    /// Drop the kept goal message of a goal that reached a terminal state.
+    static void forget(Server<A>& s, const GoalUUID& id) {
+        State* st = s.upstream_.template as<State>();
+        if (st == nullptr) return;
+        for (size_t i = 0; i < st->goals.size(); ++i) {
+            if (st->goals[i].id == id) {
+                st->goals.erase(st->goals.begin() + static_cast<long>(i));
+                return;
+            }
+        }
+    }
+
+  private:
+    static ::std::shared_ptr<Handle> make_handle(State* st, const GoalUUID& id) {
+        ::std::shared_ptr<Handle> h = ::std::make_shared<Handle>(st->server, id);
+        for (const Entry& e : st->goals) {
+            if (e.id == id) {
+                h->goal_.reset(new ::std::shared_ptr<const Goal>(e.goal), [](void* p) {
+                    delete static_cast<::std::shared_ptr<const Goal>*>(p);
+                });
+                break;
+            }
+        }
+        return h;
+    }
+
+    static GoalResponse on_goal(const uint8_t uuid[16], const Goal& goal, void* ctx) {
+        State* st = static_cast<State*>(ctx);
+        if (!st->goal) return GoalResponse::REJECT;
+        const GoalUUID id(uuid);
+        ::std::shared_ptr<const Goal> msg = ::std::make_shared<const Goal>(goal);
+        const GoalResponse r = st->goal(id, msg);
+        if (r != GoalResponse::REJECT) {
+            forget(*st->server, id);
+            st->goals.push_back(Entry{id, msg});
+        }
+        return r;
+    }
+
+    static CancelResponse on_cancel(const uint8_t uuid[16], void* ctx) {
+        State* st = static_cast<State*>(ctx);
+        if (!st->cancel) return CancelResponse::REJECT;
+        return st->cancel(make_handle(st, GoalUUID(uuid)));
+    }
+
+    static void on_accepted(const uint8_t uuid[16], void* ctx) {
+        State* st = static_cast<State*>(ctx);
+        if (st->accepted) st->accepted(make_handle(st, GoalUUID(uuid)));
+    }
+#endif
+};
+
+} // namespace detail
 
 } // namespace rclcpp_action
 
