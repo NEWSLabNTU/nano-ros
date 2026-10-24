@@ -6,6 +6,12 @@ evidence and runner configuration.** The live-peer host job's one red
 [#2026](../issues/archived/2026-live-peer-xrce-service-client-no-reply.md),
 fixed. #2004's fix landed in c8ec37ffc7 and waits on the run that reads it
 (W5). `host-tests` stopped on ENOSPC plus a rustfmt diff fixed in 70790ce080.
+Tier 2 stopped in its build again 10-22 to 10-24 (`just matrix-triage`): the
+10-24 stop is issue 2032, fixed under phase-513, so W5 waits for the first
+run-matrix after it. `test_ros2_action_xrce_client`'s stale `"Goal accepted"`
+grep, noted in #2026, now reads `action_goal_accepted`. Issue 1365's report
+(`just runner-wait-triage`) has still named no real wait: on 10-24 it read two
+runners online and nothing queued.
 Left: one green scheduled `live-peer` and `host-tests`, W5 read off a tier-2
 run, and issue 1365 (operator-side).
 
