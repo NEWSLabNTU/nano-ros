@@ -160,6 +160,7 @@ launch argument. Nothing is duplicated to express any of that.
 | `args` | Launch arguments bound at resolve time (`{ host = "robot1" }`) — how an image selects one machine out of a multi-host launch tree |
 | `rmw` | Backend for this image. Absent ⇒ `[system] rmw` |
 | `panic` | RFC-0077 panic policy (`platform` \| `halt` \| `own`), forwarded to the generated entry |
+| `before_boot` | `"<package>::<fn>"`, a function the generated entry calls before the board boots; see [Customising an entry](#customising-an-entry). Rust entries only |
 | `profile` | A cargo / CMake build profile name |
 | `conf` | Extra framework config fragments, in order (Zephyr `prj-*.conf`) |
 | `features` | Capability axes for this image, over `[system]`'s list |
@@ -486,11 +487,60 @@ use panic_semihosting as _;
 nros::main!();
 ```
 
-## Escape hatch
+## Customising an entry
 
-If you need more control than the macro provides — custom startup ordering,
-hardware init before the runtime, or a fully manual executor loop — take
-ownership of the generated entry:
+The generated entry is one `nros::main!(…)` line, and the macro behind it
+does a lot: it opens the executor at the size the image declares, applies the
+deploy settings, and registers every launch node, plus the lifecycle,
+parameter services and tiers the system declares. Owning the entry means
+owning all of that, so take the smallest step that works:
+
+| you need | use | the entry stays generated? |
+|---|---|---|
+| a different panic policy, build profile, Kconfig fragment or capability | an `[image.*]` key: `panic`, `profile`, `conf`, `features` | yes |
+| one step before the runtime starts (open a device, check a calibration) | `before_boot`, below | yes |
+| hardware bring-up every image on a board needs (clocks, DMA, flash unlock) | the board's `init_hardware`, in a [board package](../porting/board-trait.md) | yes |
+| startup none of the above can express | `nros materialize`, below: the last resort | no |
+
+### A step before boot: `before_boot`
+
+Name a function in one of the image's node packages:
+
+```toml
+[image.linux_rust_before_boot]
+board = "linux"
+launch = "rust_before_boot.launch.xml"
+before_boot = "rust_before_boot_talker_pkg::prepare"
+```
+
+```rust
+// rust_before_boot_talker_pkg/src/lib.rs
+pub fn prepare() -> Result<(), &'static str> {
+    // open the device, check the calibration, wait for the peripheral …
+    Ok(())
+}
+```
+
+`nros build` writes it into the generated entry as
+`nros::main!(before_boot = rust_before_boot_talker_pkg::prepare, …)`, and the
+entry calls it first, before the board does anything. So nothing has booted
+when it runs: no executor and no session, and a bare-metal board has not
+initialised its hardware yet. Returning `Err("reason")` stops the image there, with the reason
+in the failure. The entry is still generated, so a node you add to the launch
+file still reaches it.
+
+The worked example is `examples/workspaces/features`, image
+`linux_rust_before_boot`. Its node logs `before_boot ran first` on every tick
+when the step ran before the node registered, and a test checks that line.
+
+`before_boot` is a `nros::main!` argument, so it exists for Rust entries. A
+C/C++ image that sets it is refused, and so is an RTIC or Embassy board, whose
+framework owns the first statement: use the framework's own init there.
+
+### The last resort: `nros materialize`
+
+When the entry needs changes that no declaration expresses, take ownership of
+it:
 
 ```console
 $ nros build linux          # generate it first — materialize copies, it does not re-emit
@@ -500,31 +550,20 @@ wrote …/src/linux_entry
 This entry is YOURS now — `nros build` will not regenerate it.
 ```
 
-It lands at `src/<image_id>_entry/`, carries a stamp recording the shape it was
-cut for, and `nros build` warns if that shape later moves. Its derivation stays
-live — `nros::main!` still reads the launch file at compile time, so adding a
-node needs no change here; what is frozen is the *shell*: the panic policy, the
-board boilerplate, the crate type. Inside it you can bypass `nros::main!()`
-entirely:
+It lands at `src/<image_id>_entry/`, carries a stamp recording the board shape
+it was cut for, and `nros build` warns when that shape later moves. What you
+receive is the same one-line `nros::main!(…)` with its crate root around it.
+While you keep calling the macro, the launch file still reaches the entry, and
+what you own is the shell: `#![no_std]` / `#![no_main]`, the panic crate, the
+board boilerplate, the crate type and `Cargo.toml`. Edit those freely.
 
-```rust
-// Option A: delegate init to the board crate, supply your own closure.
-<LinuxBoard as BoardEntry>::run(|runtime| {
-    let node = runtime.create_node("talker", "/", &Default::default())?;
-    // ...
-    Ok(())
-});
-
-// Option B: fully manual — no board crate.
-let executor = nros::Executor::open(&ExecutorConfig::default())?;
-// wire nodes, spin manually ...
-```
-
-Option A is the right choice when you need to run something before the first
-spin (e.g. DMA setup, flash unlock). Option B is there for board-bringup
-authors adding a new platform. Reach for either only after the declarative
-escapes — an `[image.*]` key, a `conf` fragment, a support package — have
-actually run out.
+Replacing the macro call with your own `fn main` is possible but expensive.
+There is no supported expanded form of a Rust entry to start from: the
+generator that once wrote one was retired because its output silently lacked
+tiers, lifecycle and parameter services. So you would be writing the boot,
+the per-node registration, the executor sizing and every capability call
+yourself, and keeping them in step with the launch file by hand. Do it only
+for customisation that extensive, and only after the table above has run out.
 
 ## Running a native image
 

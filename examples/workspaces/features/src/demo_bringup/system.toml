@@ -142,6 +142,11 @@ pkg = "rust_remap_talker_pkg"
 class = "rust_remap_talker_pkg::RemapTalker"
 name = "rust_remap_remap_talker"
 
+[[component]]
+pkg = "rust_before_boot_talker_pkg"
+class = "rust_before_boot_talker_pkg::BeforeBootTalker"
+name = "rust_before_boot_before_boot_talker"
+
 
 # Issue 0951 — the implicit machine this system runs on. A host says WHERE a
 # node runs; what it is built as comes from `[image.*]`. Unscoped and with no
@@ -215,6 +220,10 @@ out    = "rust_qos_model.yaml"
 [[model]]
 launch = "rust_remap.launch.xml"
 out    = "rust_remap_model.yaml"
+
+[[model]]
+launch = "rust_before_boot.launch.xml"
+out    = "rust_before_boot_model.yaml"
 
 [[model]]
 launch = "mixed_qos_talker.launch.xml"
@@ -334,6 +343,13 @@ launch = "rust_qos.launch.xml"
 [image.linux_rust_remap]
 board = "linux"
 launch = "rust_remap.launch.xml"
+
+# RFC-0065 D5 amendment (issue 1511) — a pre-boot step, declared. The generated
+# entry calls this function before the board boots; nothing is materialised.
+[image.linux_rust_before_boot]
+board = "linux"
+launch = "rust_before_boot.launch.xml"
+before_boot = "rust_before_boot_talker_pkg::prepare"
 
 # phase-470 W5.b1 (issue 1288) — MIGRATED, all three. The hand-written
 # `src/zephyr_rust_{lifecycle,params,qos}_entry` packages are gone; `nros build

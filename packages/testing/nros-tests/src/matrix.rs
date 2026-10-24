@@ -373,6 +373,10 @@ pub enum Workload {
     /// Launch/model `<remap>` + `~` private names reach the WIRE remapped
     /// (phase-306 W4, issue 0255).
     Remap,
+    /// RFC-0065 D5 amendment (issue 1511) — an image's declared
+    /// `before_boot` step runs before its node registers, with the entry
+    /// still generated. Single entry, no peer: the node's own log says so.
+    BeforeBoot,
     /// Platform-ABI capability, no messaging: two tasks spawned through
     /// `nros_platform_task_init` prove `errno` is PER-THREAD (issue 0680).
     /// Single image, self-contained, no peer.
@@ -513,6 +517,8 @@ impl Workload {
             Workload::RealtimeTiers => 91,
             Workload::Multihost => 92,
             Workload::Remap => 93,
+            // No peer and no socket the test dials; 83 is free in every band.
+            Workload::BeforeBoot => 83,
             // Needs no port: the fixture opens no socket and has no peer.
             // The offset only has to be unique within the band.
             Workload::Errno => 94,
@@ -1208,6 +1214,9 @@ pub const CELLS: &[Cell] = &[
     // the wire remapped. Rust only: the C/C++ `nros_cpp_declare_remap` path is
     // emitter-unit-tested (W3); a runtime C/C++ cell is residual.
     cell(Linux, Rust,  Zenoh, Remap,     Workspace, Runtime),
+    // RFC-0065 D5 amendment (issue 1511) — `[image.*] before_boot`. Rust
+    // only: the hook is a `nros::main!` argument, and the C/C++ roads refuse it.
+    cell(Linux, Rust,  Zenoh, BeforeBoot, Workspace, Runtime),
     cell(ZephyrNativeSim, Rust, Zenoh, Params,    Workspace, Runtime),
     // Issue 1681 -- the C++ params entry: the one Zephyr C/C++ image that
     // declares `param_services` (+ `lifecycle`), which did not link before.
@@ -1882,7 +1891,13 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
             P::Linux,
             _,
             _,
-            W::CustomMsg | W::Logging | W::Qos | W::Lifecycle | W::Safety | W::Remap,
+            W::CustomMsg
+            | W::Logging
+            | W::Qos
+            | W::Lifecycle
+            | W::Safety
+            | W::Remap
+            | W::BeforeBoot,
             K::Workspace,
         ) => Some(WorkspaceFeatures),
         // ── consumers that hand-list their cases (`assert_consumer_cases`) ─

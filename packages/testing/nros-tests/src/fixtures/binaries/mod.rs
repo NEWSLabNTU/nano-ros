@@ -261,6 +261,7 @@ static NATIVE_WORKSPACE_RUST_LIFECYCLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCel
 
 /// phase-263 B1 (Track D) — cached paths to the cross-process E2E-safety entries.
 static NATIVE_WORKSPACE_RUST_REMAP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_RUST_BEFORE_BOOT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_SAFETY_TALKER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_RUST_SAFETY_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -2845,6 +2846,21 @@ pub fn build_native_workspace_rust_remap_entry() -> TestResult<&'static Path> {
                 "workspace-features-rust-remap",
                 "features",
                 "linux_rust_remap_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// RFC-0065 D5 amendment (issue 1511) — the `features` image that declares
+/// `before_boot` (cached), consumed by `workspace_features_e2e`
+/// (linux_rust_before_boot).
+pub fn build_native_workspace_rust_before_boot_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_RUST_BEFORE_BOOT_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_rust_entry(
+                "workspace-features-rust-before-boot",
+                "features",
+                "linux_rust_before_boot_entry",
             )
         })
         .map(|p| p.as_path())

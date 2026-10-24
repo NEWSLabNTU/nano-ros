@@ -1,5 +1,12 @@
 # Phase 452 — what a new user copies, and what builds it
 
+**Status (2026-10-24). W1–W4 and W6 landed; W5 waits on a logo decision.**
+Re-checked against the tree on 2026-10-24: the design still holds. A surface a
+user copies is built by a lane: `check-template-copy-out` runs on
+`merge_group`, and the scaffold gate on the build lane. Of the homed issues,
+1520 is resolved, 1511 is resolved by W6, and 1782 needs a Zephyr workspace to verify its fix
+(none is provisioned on the host that checked).
+
 **Status (2026-09-25). Opened to give five homeless issues one owner. W1, W2, W3
 and W4 have LANDED — four issues resolved (1058, 1107, 1108, 1116) and three of
 those four boxes turned out to have been closed by other work before anyone
@@ -276,6 +283,28 @@ point: it is not in progress, and it will not start itself.
 - [ ] A logo decision, recorded.
 - [ ] Favicon, logo and accent CSS wired; `mdbook build book` still clean.
 
+### W6 — the entry's escape hatches, smallest first
+
+[Issue 1511](../issues/archived/1511-no-worked-example-of-entry-customisation.md),
+resolved 2026-10-24. Every entry is generated now, so the book has to teach
+the user what to do when the generated one is not enough. Its old "Escape
+hatch" section showed code that does not compile.
+
+- [x] The maintainer ruled (2026-10-24): a pre-boot step is a declaration, and
+      materialising is the last resort, for customisation that replaces the
+      macro. RFC-0065 D5 is amended.
+- [x] `[image.<id>] before_boot = "<pkg>::<fn>"`, forwarded to
+      `nros::main!(before_boot = …)` and called before the board boots, with
+      a typed binding and `RuntimeError::BeforeBoot`. RTIC, Embassy and the
+      C/C++ roads refuse it.
+- [x] A worked example built and run by a lane: `features` image
+      `linux_rust_before_boot`, fixture row
+      `workspace-features-rust-before-boot`, test
+      `workspace_features::rust_before_boot`. Without the key the same image
+      prints `before_boot DID NOT run` (measured), so the cell can fail.
+- [x] The book teaches the decision: "Customising an entry" in
+      `workspace-entry-pkg.md`, the role reference and the CLI reference.
+
 ## Acceptance for the phase
 
 * Every copy-out template and every scaffold variant is built by a lane, from a
@@ -294,7 +323,7 @@ point: it is not in progress, and it will not start itself.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1511](../issues/1511-no-worked-example-of-entry-customisation.md) | every entry is generated now, so nothing shows a user the escape hatch: a worked example of customising an entry. From the archived phase-477. Its deferral condition, issue 1288, was met on 2026-10-11. |
+| [#1511](../issues/archived/1511-no-worked-example-of-entry-customisation.md) | every entry is generated now, so nothing shows a user the escape hatch: a worked example of customising an entry. From the archived phase-477. **RESOLVED 2026-10-24** by W6. |
 | [#1520](../issues/archived/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md) | the `entry =` ambiguity the docs cite was manufactured (issue 1517), so the docs explain a case that no longer exists. From the archived phase-477. **RESOLVED 2026-10-24**: issue 1288 left no `entry =` row in `examples/`; 0085 and the book now say so. |
 
 ## Open issues that name this phase

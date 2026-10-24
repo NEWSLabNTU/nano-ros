@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- RFC-0065 D5 amendment (issue 1511) — one node whose package exports the
+     image's `before_boot` step. The image row in system.toml names the step;
+     this file only says which node runs. -->
+<launch>
+  <node pkg="rust_before_boot_talker_pkg" exec="before_boot_talker" name="before_boot_talker"/>
+</launch>

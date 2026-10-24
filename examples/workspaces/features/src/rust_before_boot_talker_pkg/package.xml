@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rust_before_boot_talker_pkg</name>
+  <version>0.1.0</version>
+  <description>Node pkg — exports a `before_boot` hook the image declares, and proves it ran first.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cargo</build_type>
+  </export>
+</package>

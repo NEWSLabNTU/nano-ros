@@ -70,7 +70,8 @@ use nros_tests::{
         build_native_workspace_mixed_custom_msg_listener_entry,
         build_native_workspace_mixed_custom_msg_talker_entry, build_native_workspace_mixed_entry,
         build_native_workspace_mixed_qos_listener_entry,
-        build_native_workspace_mixed_qos_talker_entry, build_native_workspace_rust_entry,
+        build_native_workspace_mixed_qos_talker_entry,
+        build_native_workspace_rust_before_boot_entry, build_native_workspace_rust_entry,
         build_native_workspace_rust_lifecycle_entry, build_native_workspace_rust_remap_entry,
         build_native_workspace_rust_safety_listener_entry,
         build_native_workspace_rust_safety_talker_entry, require_zenohd,
@@ -163,6 +164,7 @@ fn wl_str(w: MW) -> &'static str {
         MW::Lifecycle => "lifecycle",
         MW::Safety => "safety",
         MW::Remap => "remap",
+        MW::BeforeBoot => "before_boot",
         _ => "?",
     }
 }
@@ -325,6 +327,15 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
                    runtime.remaps; entity creation expands ~/out against /island/remap_talker \
                    and resolves it to /remapped_out before it reaches the RMW",
         },
+        (ML::Rust, MW::BeforeBoot) => Exec {
+            entry: || build_native_workspace_rust_before_boot_entry().map(|p| p.to_path_buf()),
+            peer: None,
+            proof: Proof::LoggingLines(nros_tests::output::WS_BEFORE_BOOT_MARKER),
+            note: "RFC-0065 D5 amendment (issue 1511): `[image.linux_rust_before_boot] \
+                   before_boot` reaches the GENERATED entry as `nros::main!(before_boot = …)`, \
+                   which calls it before the board boots; the node logs whether it ran \
+                   before registration, so a dropped hook prints the other line",
+        },
         (l, w) => panic!(
             "workspace_features_e2e: no execution mapping for matrix cell {l:?}/{w:?} — add an \
              `exec_for` arm (phase-329 W1)"
@@ -435,6 +446,7 @@ const DECLARED_CASES: &[(ML, MW)] = &[
     (ML::Rust, MW::Lifecycle),
     (ML::Rust, MW::Logging),
     (ML::Rust, MW::Remap),
+    (ML::Rust, MW::BeforeBoot),
     (ML::Rust, MW::Safety),
     (ML::C, MW::CustomMsg),
     (ML::C, MW::Lifecycle),
@@ -459,6 +471,7 @@ const DECLARED_CASES: &[(ML, MW)] = &[
 #[case::rust_lifecycle(ML::Rust, MW::Lifecycle)]
 #[case::rust_logging(ML::Rust, MW::Logging)]
 #[case::rust_remap(ML::Rust, MW::Remap)]
+#[case::rust_before_boot(ML::Rust, MW::BeforeBoot)]
 #[case::rust_safety(ML::Rust, MW::Safety)]
 #[case::c_custom_msg(ML::C, MW::CustomMsg)]
 #[case::c_lifecycle(ML::C, MW::Lifecycle)]

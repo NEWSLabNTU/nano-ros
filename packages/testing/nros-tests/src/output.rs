@@ -415,6 +415,11 @@ pub const WS_CUSTOM_MSG_TEMP_FIELD: &str = "temp=";
 /// (`"talker publishing chatter seq=N"` — phase-263 A5 logging demo).
 pub const WS_RUST_LOGGING_MARKER: &str = "talker publishing chatter";
 
+/// The `features` workspace's `rust_before_boot_talker_pkg` per-tick line when
+/// the image's `before_boot` step ran before the node registered (RFC-0065 D5
+/// amendment, issue 1511). The other arm prints `before_boot DID NOT run`.
+pub const WS_BEFORE_BOOT_MARKER: &str = "before_boot ran first";
+
 /// Issue 0469 — the per-tick line the phase-209 port template publishes. The
 /// template vendors the upstream ROS 2 tutorial's `minimal_publisher.cpp`
 /// VERBATIM, so this string is the tutorial's, not ours: changing the template

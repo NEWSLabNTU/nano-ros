@@ -120,7 +120,7 @@ Also in this theme: [1289](../../issues/archived/1289-workspace-node-tables-stil
 entry markers and `default_namespace = "/"` went),
 [1520](../../issues/archived/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md)
 (the `entry =` ambiguity docs cite), and
-[1511](../../issues/1511-no-worked-example-of-entry-customisation.md) (the
+[1511](../../issues/archived/1511-no-worked-example-of-entry-customisation.md) (the
 customisation tutorial, deferred until the last hand-written entry is gone).
 
 **Acceptance:** 1288 closes — each remaining entry migrated or recorded as a
