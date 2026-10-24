@@ -10,7 +10,7 @@ resolved: 2026-10-24
 related: [phase-424, 0945, 0491, 0805, 0360, 0834, 0978, 0985, 0987, 1031, phase-449]
 ---
 
-**Home: [phase-449](../../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-449](../../roadmap/archived/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What is left
 

@@ -10,7 +10,7 @@ related: [issue-1248, phase-449, phase-478, 1279]
 resolved: 2026-10-23
 ---
 
-**Home: [phase-449](../../roadmap/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-449](../../roadmap/archived/phase-449-state-keyed-by-name-not-by-tree.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## Symptom
 
