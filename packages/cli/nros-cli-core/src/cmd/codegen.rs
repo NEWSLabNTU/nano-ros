@@ -501,6 +501,14 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 .iter()
                 .map(|n| n.name.as_deref().unwrap_or(n.exec.as_str()))
                 .collect();
+            let member_stacks: Vec<(&str, u32)> = plan
+                .nodes
+                .iter()
+                .filter_map(|n| {
+                    n.stack_bytes
+                        .map(|b| (n.name.as_deref().unwrap_or(n.exec.as_str()), b))
+                })
+                .collect();
             let record = entry_codegen::priority_record::PriorityRecord {
                 tier_key: family.tier_rtos_key(),
                 plan: plan_ref,
@@ -508,6 +516,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
                 tiers: plan.resolved_tiers.as_ref(),
                 derivation: derivation.as_ref(),
                 nodes: &node_names,
+                member_stacks: &member_stacks,
             };
             for line in record.summary_lines() {
                 eprintln!("codegen entry: {line}");

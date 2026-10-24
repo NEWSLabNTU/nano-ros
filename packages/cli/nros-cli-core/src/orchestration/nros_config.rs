@@ -834,6 +834,7 @@ fn synthesise_self_bringup(
             params_files: Vec::new(),
             entities: None,
             dispatch: single.dispatch.clone(),
+            stack_bytes: None,
         });
     } else {
         // Phase 212.N.12 in-flight — read the multi-shape via the
@@ -855,6 +856,7 @@ fn synthesise_self_bringup(
                 params_files: Vec::new(),
                 entities: None,
                 dispatch: meta.dispatch.clone(),
+                stack_bytes: None,
             });
         }
     }

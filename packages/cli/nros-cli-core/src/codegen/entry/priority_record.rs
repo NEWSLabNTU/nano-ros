@@ -51,6 +51,10 @@ pub struct PriorityRecord<'a> {
     /// phase-509 P7 -- the entry's nodes (bare names, as the tier table names
     /// its members), for `NROS_ENTRY_LEVEL_OF_<node>`.
     pub nodes: &'a [&'a str],
+    /// Issue 2019 -- the stacks the entry's nodes state (`system.toml
+    /// [[component]] stack_bytes`), by bare name: each tier's largest member
+    /// stack, which `mem-report --levels` derives the level's stack from.
+    pub member_stacks: &'a [(&'a str, u32)],
 }
 
 fn direction_str(d: Direction) -> &'static str {
@@ -178,6 +182,15 @@ impl PriorityRecord<'_> {
                         // derived from its members. The cost report
                         // (`mem-report --levels`) reads it.
                         "stack_bytes": r.stack_bytes,
+                        // Issue 2019 -- the largest stack a member states
+                        // (`[[component]] stack_bytes`), the `member` of
+                        // `NROS_LEVEL_STACK_BYTES(member)`; 0 when none does.
+                        "member_stack_bytes": r.members.iter()
+                            .filter_map(|(n, _)| self.member_stacks.iter()
+                                .find(|(m, _)| m == n)
+                                .map(|(_, b)| *b))
+                            .max()
+                            .unwrap_or(0),
                         "members": r.members.iter()
                             .map(|(n, g)| json!([n, g]))
                             .collect::<Vec<_>>(),
@@ -513,6 +526,7 @@ mod tests {
             tiers: Some(&table),
             derivation: Some(&derivation),
             nodes: &["mrm_handler"],
+            member_stacks: &[],
         };
         let j = rec.to_json();
         assert_eq!(j["plan"]["reserved"]["transport"], json!([4, 4]));
@@ -586,6 +600,7 @@ mod tests {
                 "mrm_emergency_stop_operator",
                 "mrm_comfortable_stop_operator",
             ],
+            member_stacks: &[],
         };
         let h = rec.to_header();
         assert!(h.contains("#define NROS_ENTRY_LEVEL_COUNT (2)"), "{h}");
@@ -601,7 +616,27 @@ mod tests {
             h.contains("#define NROS_ENTRY_LEVEL_OF_MRM_COMFORTABLE_STOP_OPERATOR (1)"),
             "{h}"
         );
-        let tierless = PriorityRecord { tiers: None, ..rec };
+        // Issue 2019 -- each tier carries its largest stated member stack,
+        // what `mem-report --levels` derives the level's stack from.
+        let stated = PriorityRecord {
+            member_stacks: &[
+                ("mrm_emergency_stop_operator", 3000),
+                ("mrm_comfortable_stop_operator", 5000),
+            ],
+            ..rec
+        };
+        let j = stated.to_json();
+        let members: Vec<u64> = j["tiers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["member_stack_bytes"].as_u64().unwrap())
+            .collect();
+        assert_eq!(members, [5000, 0], "{j}");
+        let tierless = PriorityRecord {
+            tiers: None,
+            ..stated
+        };
         let h = tierless.to_header();
         assert!(h.contains("#define NROS_ENTRY_LEVEL_COUNT (1)"), "{h}");
         assert!(
@@ -657,6 +692,7 @@ mod tests {
             tiers: None,
             derivation: Some(&derivation),
             nodes: &[],
+            member_stacks: &[],
         };
         let j = rec.to_json();
         assert_eq!(j["levels"][0]["max_levels"], 2);
@@ -698,6 +734,7 @@ mod tests {
             tiers: Some(&table),
             derivation: None,
             nodes: &[],
+            member_stacks: &[],
         };
         assert_eq!(rec.to_json()["tiers"], json!([]));
         let h = rec.to_header();

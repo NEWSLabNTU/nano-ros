@@ -121,6 +121,7 @@ impl RegisteredNode {
                 callback_groups: Vec::new(),
                 sched_context: None,
                 group_tiers: std::collections::BTreeMap::new(),
+                stack_bytes: None,
             }],
             // The generated TU is a function of the CLI ARGUMENTS alone — it
             // reads no file — so there is nothing for a depfile to name. The

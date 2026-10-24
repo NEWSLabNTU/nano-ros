@@ -85,6 +85,7 @@ fn node(pkg: &str, exec: &str, class: Option<(&str, &str)>) -> PlanNode {
         callback_groups: Vec::new(),
         sched_context: None,
         group_tiers: BTreeMap::new(),
+        stack_bytes: None,
     }
 }
 

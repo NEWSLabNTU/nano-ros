@@ -430,7 +430,18 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
             let task_memory = e.tiers.as_ref().and_then(|t| {
                 let mem = raw.and_then(|r| r.tier_task_memory)?;
                 let bytes: Vec<u64> = t.rows.iter().map(|r| r.stack_bytes).collect();
-                Some(LoweredTaskMemory::for_tiers(&mem, &bytes))
+                // Issue 2019 -- each level's largest stated member stack.
+                let members: Vec<u64> = plan
+                    .resolved_tiers
+                    .as_ref()
+                    .map(|rt| {
+                        rt.tiers
+                            .iter()
+                            .map(|tier| member_stack_bytes(plan, tier))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                Some(LoweredTaskMemory::for_tiers(&mem, &bytes, &members))
             });
             e.boot = Some(LoweredBoot {
                 task_memory,
@@ -444,6 +455,19 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
         }
     }
     Ok(e)
+}
+
+/// Issue 2019 -- the largest stack a member of `tier` states
+/// (`system.toml [[component]] stack_bytes`), `0` when none does: the
+/// `member` of `NROS_LEVEL_STACK_BYTES(member)`.
+pub(crate) fn member_stack_bytes(plan: &Plan, tier: &nros_orchestration_ir::ResolvedTier) -> u64 {
+    plan.nodes
+        .iter()
+        .filter(|n| tier.members.iter().any(|(m, _)| m == node_name(n)))
+        .filter_map(|n| n.stack_bytes)
+        .map(u64::from)
+        .max()
+        .unwrap_or(0)
 }
 
 /// The level layout: one setup per tier (level), all on the core's one

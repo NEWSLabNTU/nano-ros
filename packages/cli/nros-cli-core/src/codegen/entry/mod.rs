@@ -195,6 +195,12 @@ pub struct PlanNode {
     /// to assign each callback group's tier directly, without needing
     /// `[[node_overrides]]`.
     pub group_tiers: BTreeMap<String, String>,
+    /// Issue 2019 -- the stack this node's callbacks need, in bytes, from
+    /// `system.toml [[component]] stack_bytes` (carried in the nano-ros
+    /// overlay beside the model). A level's derived stack is its largest
+    /// member's plus the worker frame (`NROS_LEVEL_STACK_BYTES(member)`);
+    /// `None` leaves the member at the port's per-callback default.
+    pub stack_bytes: Option<u32>,
 }
 
 impl PlanNode {
@@ -556,6 +562,9 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
                 group_tiers.insert(group.to_string(), tier.clone());
             }
         }
+        // Issue 2019 -- keyed by the component's `name`, the node's bare name
+        // (as `group_tiers` is).
+        let stack_bytes = model.overlay.component_stacks.get(bare.as_str()).copied();
         nodes.push(PlanNode {
             pkg: inst.pkg.clone().unwrap_or_default(),
             exec,
@@ -575,6 +584,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
             callback_groups: Vec::new(),
             sched_context: None,
             group_tiers,
+            stack_bytes,
         });
     }
     if nodes.is_empty() {
@@ -1156,8 +1166,43 @@ mod tests {
             callback_groups: Vec::new(),
             sched_context: None,
             group_tiers: BTreeMap::new(),
+            stack_bytes: None,
         };
         assert_eq!(n.cmake_link_target(), "talker_pkg_talker_component");
+    }
+
+    /// Issue 2019 -- a component's `stack_bytes`, carried in the overlay
+    /// beside the model (`nros.toml [component.<name>]`), reaches its plan
+    /// node; a node the overlay does not name keeps `None`.
+    #[test]
+    fn a_component_stack_from_the_overlay_reaches_the_plan_node() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let model = tmp.path().join("system_model.yaml");
+        std::fs::write(
+            &model,
+            "meta:\n  version: 1\nstructure:\n  scopes:\n    /: {}\n  nodes:\n\
+             \x20   /urgent:\n      scope: /\n      pkg: urgent_pkg\n      exec: urgent\n\
+             \x20   /lazy:\n      scope: /\n      pkg: lazy_pkg\n      exec: lazy\n\
+             execution: {}\ncontracts: {}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.path()
+                .join(nros_orchestration_ir::overlay::OVERLAY_FILE),
+            "[meta]\nversion = 1\n\n[component.\"urgent\"]\nstack_bytes = 6144\n",
+        )
+        .unwrap();
+        let plan = plan_from_model(&model, Some("zephyr".into())).expect("plan from model");
+        let stack = |name: &str| {
+            plan.nodes
+                .iter()
+                .find(|n| n.name.as_deref() == Some(name))
+                .unwrap()
+                .stack_bytes
+        };
+        assert_eq!(stack("urgent"), Some(6144));
+        assert_eq!(stack("lazy"), None);
     }
 
     /// Issue 0276 + phase-54 — a model's `params_files` project into
@@ -1325,6 +1370,7 @@ contracts: {}
                 callback_groups: Vec::new(),
                 sched_context: None,
                 group_tiers: BTreeMap::new(),
+                stack_bytes: None,
             }],
             depfile_paths: vec![],
             bringup: "demo".into(),
@@ -1492,6 +1538,7 @@ contracts: {}
                     callback_groups: vec!["ctrl_grp".into()],
                     sched_context: None,
                     group_tiers: BTreeMap::new(),
+                    stack_bytes: None,
                 },
                 PlanNode {
                     pkg: "telem_pkg".into(),
@@ -1508,6 +1555,7 @@ contracts: {}
                     callback_groups: vec!["telem_grp".into()],
                     sched_context: None,
                     group_tiers: BTreeMap::new(),
+                    stack_bytes: None,
                 },
             ],
             depfile_paths: vec![],
@@ -1617,6 +1665,7 @@ contracts: {}
                     callback_groups: vec!["ctrl_grp".into()],
                     sched_context: None,
                     group_tiers: ctrl_gt,
+                    stack_bytes: None,
                 },
                 PlanNode {
                     pkg: "telem_pkg".into(),
@@ -1633,6 +1682,7 @@ contracts: {}
                     callback_groups: vec!["telem_grp".into()],
                     sched_context: None,
                     group_tiers: telem_gt,
+                    stack_bytes: None,
                 },
             ],
             depfile_paths: vec![],
@@ -1709,6 +1759,7 @@ contracts: {}
                     callback_groups: Vec::new(),
                     sched_context: None,
                     group_tiers: Default::default(),
+                    stack_bytes: None,
                 }],
                 depfile_paths: vec![],
                 bringup: "demo".into(),
@@ -1931,6 +1982,7 @@ contracts: {}
                 callback_groups: Vec::new(),
                 sched_context: None,
                 group_tiers: BTreeMap::new(),
+                stack_bytes: None,
             }],
             depfile_paths: vec![],
             bringup: "demo".into(),
@@ -2008,6 +2060,7 @@ contracts: {}
             callback_groups: vec!["ctrl".into()],
             sched_context: None,
             group_tiers: BTreeMap::new(),
+            stack_bytes: None,
         };
 
         let mut plan = Plan {

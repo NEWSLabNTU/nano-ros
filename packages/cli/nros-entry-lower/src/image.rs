@@ -176,12 +176,25 @@ pub struct TaskStackRow {
     /// `bytes` is then 0.
     #[serde(default)]
     pub derived: bool,
+    /// Issue 2019 -- the largest stack a member of this level states
+    /// (`system.toml [[component]] stack_bytes`), the `member` of
+    /// `NROS_LEVEL_STACK_BYTES(member)`; `0` when none states one (the
+    /// port's per-callback default). Read only when `derived`.
+    #[serde(default)]
+    pub member_bytes: u64,
 }
 
 impl LoweredTaskMemory {
     /// The rows for a tier table, from the family's lowering
     /// ([`crate::TierTaskMemory::stacks`]). `stack_bytes` 0 is "undeclared".
-    pub fn for_tiers(mem: &crate::TierTaskMemory, stack_bytes: &[u64]) -> Self {
+    /// `member_bytes[i]` is the largest stack a member of tier `i` states (0:
+    /// none, or shorter than the table), what a derived row passes to
+    /// `NROS_LEVEL_STACK_BYTES`.
+    pub fn for_tiers(
+        mem: &crate::TierTaskMemory,
+        stack_bytes: &[u64],
+        member_bytes: &[u64],
+    ) -> Self {
         let declared: alloc::vec::Vec<Option<u64>> =
             stack_bytes.iter().map(|b| (*b > 0).then_some(*b)).collect();
         LoweredTaskMemory {
@@ -194,13 +207,14 @@ impl LoweredTaskMemory {
                     index,
                     spawned: bytes.is_some(),
                     bytes: bytes.unwrap_or(0),
-                    // No member states a stack on any road yet (no contract
-                    // or `system.toml` key carries one), so a derived level
-                    // is `NROS_LEVEL_STACK_BYTES(0)`: the per-callback default
-                    // plus the worker frame.
+                    // A derived level is `NROS_LEVEL_STACK_BYTES(member)`:
+                    // its largest member's stated stack (issue 2019), or the
+                    // per-callback default when none states one, plus the
+                    // worker frame.
                     derived: mem.derives_level_stacks
                         && bytes.is_some()
                         && declared.get(index).copied().flatten().is_none(),
+                    member_bytes: member_bytes.get(index).copied().unwrap_or(0),
                 })
                 .collect(),
         }
@@ -533,7 +547,7 @@ mod tests {
             derives_level_stacks: false,
         };
         // tier 0 declares 4 KiB, tier 1 nothing, tier 2 is the boot tier.
-        let lowered = LoweredTaskMemory::for_tiers(&mem, &[4096, 0, 999]);
+        let lowered = LoweredTaskMemory::for_tiers(&mem, &[4096, 0, 999], &[]);
         assert_eq!(lowered.spawned_bytes(), 4096 + 262_144);
         // A Zephyr-shaped default of 0 defers to a board knob, so it states
         // nothing rather than a number it does not know.
@@ -542,7 +556,7 @@ mod tests {
             ..mem
         };
         assert_eq!(
-            LoweredTaskMemory::for_tiers(&deferred, &[0, 0]).spawned_bytes(),
+            LoweredTaskMemory::for_tiers(&deferred, &[0, 0], &[]).spawned_bytes(),
             0
         );
     }
@@ -557,7 +571,7 @@ mod tests {
             .c_abi_runners()
             .and_then(|r| r.tier_task_memory)
             .expect("Zephyr takes tier task memory");
-        let rows = LoweredTaskMemory::for_tiers(&zephyr, &[0, 0, 8192]).rows;
+        let rows = LoweredTaskMemory::for_tiers(&zephyr, &[0, 0, 8192], &[]).rows;
         let derived: Vec<(bool, bool, u64)> = rows
             .iter()
             .map(|r| (r.spawned, r.derived, r.bytes))
@@ -573,7 +587,7 @@ mod tests {
                 .c_abi_runners()
                 .and_then(|r| r.tier_task_memory)
                 .expect("the family takes tier task memory");
-            let rows: Vec<(bool, bool)> = LoweredTaskMemory::for_tiers(&mem, &[0, 4096, 0])
+            let rows: Vec<(bool, bool)> = LoweredTaskMemory::for_tiers(&mem, &[0, 4096, 0], &[])
                 .rows
                 .iter()
                 .map(|r| (r.spawned, r.derived))

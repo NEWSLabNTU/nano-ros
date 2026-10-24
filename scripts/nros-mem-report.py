@@ -1491,13 +1491,37 @@ def scheduler_seat_bytes(ptr):
     return 8 * ptr + 40
 
 
-def derived_level_stack(member_bytes, kconfig):
-    """`NROS_LEVEL_STACK_BYTES(member)` of <rclc/detail/tier_task_memory_zephyr.h>:
-    the largest member's stated stack, or the per-callback default (the level
-    knob minus the worker frame) when none states one, plus the worker frame."""
-    frame = kconfig["CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME"]
-    default = kconfig["CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE"] - frame
-    return (member_bytes if member_bytes > 0 else default) + frame
+# Issue 2019 -- the FreeRTOS and NuttX headers' knobs, which an entry may
+# override with a `-D`; the image does not record them, so the report states
+# the header defaults it used.
+LEVEL_HEADER_DEFAULTS = {
+    "freertos": ("NROS_FREERTOS_LEVEL_STACK_DEFAULT", 262144,
+                 "NROS_FREERTOS_LEVEL_WORKER_FRAME", 4096),
+    "nuttx": ("NROS_NUTTX_LEVEL_STACK_DEFAULT", 16384,
+              "NROS_NUTTX_LEVEL_WORKER_FRAME", 4096),
+}
+
+
+def level_knobs(family, kconfig):
+    """(level default, worker frame, source) of `family`'s
+    <rclc/detail/tier_task_memory_<family>.h>: Zephyr's from the image's
+    `.config`, FreeRTOS's and NuttX's the header defaults."""
+    if family in LEVEL_HEADER_DEFAULTS:
+        dname, dval, fname, fval = LEVEL_HEADER_DEFAULTS[family]
+        return dval, fval, f"<rclc/detail/tier_task_memory_{family}.h> defaults ({dname}, {fname})"
+    return (
+        kconfig["CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE"],
+        kconfig["CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME"],
+        "CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE, CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME",
+    )
+
+
+def derived_level_stack(member_bytes, level_default, frame):
+    """`NROS_LEVEL_STACK_BYTES(member)` of <rclc/detail/tier_task_memory_*.h>:
+    the largest member's stated stack (issue 2019, `[[component]]
+    stack_bytes`), or the per-callback default (the level default minus the
+    worker frame) when none states one, plus the worker frame."""
+    return (member_bytes if member_bytes > 0 else level_default - frame) + frame
 
 
 def level_order(priorities, smaller_is_urgent):
@@ -1617,10 +1641,13 @@ def level_costs(elf, sizes_header=None):
         return res
     smaller = record.get("plan", {}).get("direction", "") in ("smaller-is-urgent", "smaller")
     family = (record.get("tier_key") or "").split("/")[0]
-    # The runner boots tiers[0] on Zephyr, the last row on FreeRTOS.
-    boot = 0 if family != "freertos" else len(tiers) - 1
+    # The runner boots tiers[0] on Zephyr, the last row on FreeRTOS and NuttX.
+    boot = len(tiers) - 1 if family in ("freertos", "nuttx") else 0
     kconfig, kconfig_src = read_kconfig(elf)
     res["kconfig"] = {"source": kconfig_src, **kconfig}
+    level_default, frame, knob_src = level_knobs(family, kconfig)
+    res["level_knobs"] = {"level_default": level_default, "worker_frame": frame,
+                          "source": knob_src}
     sizes, _used, problem = read_sizes(
         [sizes_header] if sizes_header else find_sizes_headers(elf), None
     )
@@ -1666,13 +1693,17 @@ def level_costs(elf, sizes_header=None):
             "spawned": i != boot,
         }
         stated = t.get("stack_bytes") or 0
+        member = t.get("member_stack_bytes") or 0
         if row["spawned"]:
-            derived = stated if stated else derived_level_stack(0, kconfig)
+            derived = stated if stated else derived_level_stack(member, level_default, frame)
             row["stack_derived"] = derived
+            row["member_stack"] = member
             row["stack_rule"] = (
-                "authored stack_bytes" if stated else "per-callback default + worker frame"
+                "authored stack_bytes" if stated
+                else "largest member stack + worker frame" if member
+                else "per-callback default + worker frame"
             )
-            row["members_defaulted"] = [] if stated else members
+            row["members_defaulted"] = [] if stated or member else members
             st = symbols.get(f"__nros_tier_stack_{i}")
             th = symbols.get(f"__nros_tier_thread_{i}")
             if st:
@@ -1763,6 +1794,12 @@ def level_report(res):
         return out[0] + f"\n  {res['note']}"
     out.append(f"  record: {res['record']}")
     out.append(f"  kconfig: {res['kconfig']['source']}")
+    lk = res.get("level_knobs")
+    if lk:
+        out.append(
+            f"  level stack: default {fmt(lk['level_default'])} B, worker frame "
+            f"{fmt(lk['worker_frame'])} B ({lk['source']})"
+        )
     out.append(f"  layout: {res.get('layout', '?')}")
     out.append(
         f"  {'lvl':>3} {'row':>3} {'name':<24} {'stack':>8} {'derived':>8} {'context':>8} "
@@ -1778,6 +1815,11 @@ def level_report(res):
             f"{fmt(r['worker_record']):>8}  "
             + ", ".join(r["members"])
         )
+        if r.get("member_stack"):
+            out.append(
+                f"        largest stated member stack: {fmt(r['member_stack'])} B "
+                "([[component]] stack_bytes)"
+            )
         if r.get("members_defaulted"):
             out.append(
                 "        per-callback default (no stated stack): "
@@ -1825,8 +1867,13 @@ def selftest_levels():
     assert scheduler_backing_size(3, 8) == 336 and scheduler_backing_size(3, 4) == 232
     assert scheduler_backing_size(1, 4) == 88
     k = dict(LEVEL_KCONFIG_DEFAULTS)
-    assert derived_level_stack(0, k) == 16384, "members that state nothing keep the knob"
-    assert derived_level_stack(6000, k) == 10096, "a stated member plus the worker frame"
+    d, f, _ = level_knobs("zephyr", k)
+    assert derived_level_stack(0, d, f) == 16384, "members that state nothing keep the knob"
+    assert derived_level_stack(6000, d, f) == 10096, "a stated member plus the worker frame"
+    d, f, _ = level_knobs("freertos", k)
+    assert derived_level_stack(0, d, f) == 262144 and derived_level_stack(8192, d, f) == 12288
+    d, f, _ = level_knobs("nuttx", k)
+    assert derived_level_stack(0, d, f) == 16384 and derived_level_stack(2048, d, f) == 6144
     assert level_order([10, 5, 8], True) == [2, 0, 1]
     assert level_order([10, 5, 5], True) == [2, 0, 1], "equal priorities in row order"
     assert level_order([10, 5, 8], False) == [0, 2, 1]

@@ -79,7 +79,7 @@ static uint64_t __nros_tier_executor_storage[{{ boot.n_tiers }}][(NROS_CPP_EXECU
  * tier's `stack_bytes` (or the stated default) and raised to the port's floor
  * by the header's macro. The boot tier runs on the caller's task and has none. */
 #include <{{ boot.task_memory.header }}>
-{% for r in boot.task_memory.rows %}{% if r.spawned %}NROS_TIER_TASK_MEMORY_DEFINE({{ r.index }}, {% if r.derived %}NROS_LEVEL_STACK_BYTES(0u){% else %}{{ r.bytes }}u{% endif %});
+{% for r in boot.task_memory.rows %}{% if r.spawned %}NROS_TIER_TASK_MEMORY_DEFINE({{ r.index }}, {% if r.derived %}NROS_LEVEL_STACK_BYTES({{ r.member_bytes }}u){% else %}{{ r.bytes }}u{% endif %});
 {% endif %}{% endfor %}static const nros_tier_task_memory_t __nros_tier_task_memory[{{ boot.n_tiers }}] = {
 {% for r in boot.task_memory.rows %}    {% if r.spawned %}NROS_TIER_TASK_MEMORY({{ r.index }}){% else %}NROS_TIER_TASK_MEMORY_NONE{% endif %},
 {% endfor %}};
