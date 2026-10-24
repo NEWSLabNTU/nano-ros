@@ -3,7 +3,7 @@ id: 1154
 title: "`config/bare-metal` defines `cortex-m4f` and `riscv32gc` and lists neither, so an STM32F4 or riscv32gc bare-metal build resolves no arch profile"
 status: resolved
 resolved: 2026-10-24
-resolved_in: "PR #TBD"
+resolved_in: "PR #2569"
 type: bug
 area: platform, build
 severity: medium

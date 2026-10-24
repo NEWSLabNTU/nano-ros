@@ -3,7 +3,7 @@ id: 1155
 title: "`nros-board-common`'s `arch_flags` tests run in no lane — `test-unit` activates no features and the module is behind `build-helpers`"
 status: resolved
 resolved: 2026-10-24
-resolved_in: "PR #TBD"
+resolved_in: "PR #2569"
 type: bug
 area: testing, build
 severity: low
