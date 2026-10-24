@@ -698,3 +698,218 @@ fn a_burst_into_a_slow_subscription_ends_on_its_newest_sample(
         "{shape:?}: the ring never filled, so the burst did not test eviction"
     );
 }
+
+/// This thread's CPU time (user + system), from `getrusage(RUSAGE_THREAD)`.
+fn thread_cpu() -> Duration {
+    // SAFETY: `getrusage` writes the struct it is handed and nothing else.
+    let mut usage: libc::rusage = unsafe { core::mem::zeroed() };
+    let rc = unsafe { libc::getrusage(libc::RUSAGE_THREAD, &mut usage) };
+    assert_eq!(rc, 0, "getrusage(RUSAGE_THREAD) failed");
+    let tv = |t: libc::timeval| {
+        Duration::from_secs(t.tv_sec as u64) + Duration::from_micros(t.tv_usec as u64)
+    };
+    tv(usage.ru_utime) + tv(usage.ru_stime)
+}
+
+/// phase-397 W6 — what an idle shared-session member costs while another
+/// member's subscription takes ~1 kHz of arrivals. phase-436 step 5 measured
+/// the fan-out this phase removed: every idle member spun once per arrival,
+/// 999-1000 times a second, at 6.8-9.4 us of thread CPU each (0.7-0.9 % of a
+/// core). With entity wakes the member sleeps out each park. The numbers are
+/// printed for the phase doc; the assertion is the bound that separates the
+/// two behaviours by two orders of magnitude.
+#[rstest]
+fn an_idle_member_parks_through_kilohertz_arrivals_for_another(zenohd_unique: ZenohRouter) {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering::SeqCst},
+    };
+    const RUN: Duration = Duration::from_secs(3);
+    const PARK: Duration = Duration::from_millis(500);
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+
+    let mut owner = open(&locator, "entity_wake_khz_owner", domain);
+    let onode = owner
+        .node_builder("entity_wake_khz_owner")
+        .build()
+        .expect("node");
+    subscribe(&mut owner, onode, "/entity_wake/khz");
+    // SAFETY: `owner` outlives `other` (declared earlier, dropped later) and is
+    // not moved while `other` exists.
+    let mut other = unsafe { Executor::open_with_session_handle(owner.session_handle()) };
+    let xnode = other
+        .node_builder("entity_wake_khz_idle")
+        .build()
+        .expect("node");
+    subscribe(&mut other, xnode, "/entity_wake/khz_unused");
+    let publisher = SendPublisher(
+        owner
+            .node_mut(onode)
+            .create_publisher_raw("/entity_wake/khz", TYPE, "")
+            .expect("publisher"),
+    );
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let published = Arc::new(AtomicU64::new(0));
+    let (stop_t, published_t) = (stop.clone(), published.clone());
+    let publisher_thread = std::thread::spawn(move || {
+        let publisher = publisher;
+        while !stop_t.load(SeqCst) {
+            publisher.0.publish_raw(PAYLOAD).expect("publish");
+            published_t.fetch_add(1, SeqCst);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    });
+
+    let start = Instant::now();
+    while owner.take_entity_ready_bits() == 0 {
+        assert!(
+            start.elapsed() < ARRIVAL_BUDGET,
+            "the owner saw no arrival within {ARRIVAL_BUDGET:?}"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    let published_from = published.load(SeqCst);
+    let cpu_from = thread_cpu();
+    let start = Instant::now();
+    let mut spins = 0u32;
+    while start.elapsed() < RUN {
+        other.spin_once(PARK);
+        spins += 1;
+    }
+    let elapsed = start.elapsed();
+    let cpu = thread_cpu() - cpu_from;
+    let arrivals = published.load(SeqCst) - published_from;
+
+    stop.store(true, SeqCst);
+    publisher_thread.join().unwrap();
+
+    let rate = arrivals as f64 / elapsed.as_secs_f64();
+    eprintln!(
+        "phase-397 W6: idle member over {elapsed:?}: {spins} spins ({:.1}/s), {cpu:?} thread CPU \
+         ({:.3} % of a core), while another member took {rate:.0} arrivals/s",
+        f64::from(spins) / elapsed.as_secs_f64(),
+        cpu.as_secs_f64() * 100.0 / elapsed.as_secs_f64(),
+    );
+    // Control: the arrivals really came at a rate that would have woken a
+    // fan-out member hundreds of times a second.
+    assert!(
+        rate >= 300.0,
+        "only {rate:.0} arrivals/s were published, too few to tell a fan-out member from a \
+         parked one"
+    );
+    assert_ne!(
+        owner.take_entity_ready_bits(),
+        0,
+        "the owner saw no arrival while `other` spun, so `other` staying parked proves nothing"
+    );
+    let bound = (RUN.as_millis() / PARK.as_millis()) as u32 + 2;
+    assert!(
+        spins <= bound,
+        "the idle member spun {spins} times in {elapsed:?} (bound {bound}, one per {PARK:?} \
+         park): another member's arrivals are waking it"
+    );
+}
+
+/// phase-397 W6 — arrival-to-callback latency for an attributed subscription,
+/// with a park far longer than the gap between samples. A dispatch that waited
+/// for the park to end would put the median in the hundreds of milliseconds;
+/// a pushed wake puts it at the router's round trip. Printed for the phase doc.
+#[rstest]
+fn an_attributed_arrival_reaches_its_callback_without_waiting_out_the_park(
+    zenohd_unique: ZenohRouter,
+) {
+    use std::sync::{Arc, Mutex};
+    const SAMPLES: usize = 200;
+    const GAP: Duration = Duration::from_millis(10);
+    const PARK: Duration = Duration::from_millis(1000);
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let domain = u32::from(nros_tests::unique_ros_domain_id());
+
+    let mut exec = open(&locator, "entity_wake_latency", domain);
+    let node = exec
+        .node_builder("entity_wake_latency")
+        .build()
+        .expect("node");
+    let sent: Arc<Mutex<Vec<Option<Instant>>>> = Arc::new(Mutex::new(vec![None; SAMPLES + 1]));
+    let got: Arc<Mutex<Vec<Option<Instant>>>> = Arc::new(Mutex::new(vec![None; SAMPLES + 1]));
+    let got_cb = got.clone();
+    exec.node_mut(node)
+        .subscription("/entity_wake/latency")
+        .generic(TYPE, "")
+        .qos(QoSProfile::default())
+        .rx_buffer::<256>()
+        .build(move |data: &[u8]| {
+            let now = Instant::now();
+            if let Some(seq) = data.get(4..8) {
+                let seq = u32::from_le_bytes(seq.try_into().unwrap()) as usize;
+                if let Some(slot) = got_cb.lock().unwrap().get_mut(seq) {
+                    slot.get_or_insert(now);
+                }
+            }
+        })
+        .expect("register subscription");
+    let publisher = exec
+        .node_mut(node)
+        .create_publisher_raw("/entity_wake/latency", TYPE, "")
+        .expect("publisher");
+    let payload = |seq: u32| {
+        let mut p = [0u8, 1, 0, 0, 0, 0, 0, 0];
+        p[4..8].copy_from_slice(&seq.to_le_bytes());
+        p
+    };
+
+    // Sample 0 until it is dispatched: the route is up before timing starts.
+    let start = Instant::now();
+    while got.lock().unwrap()[0].is_none() {
+        assert!(
+            start.elapsed() < ARRIVAL_BUDGET,
+            "the warm-up sample never arrived"
+        );
+        publisher.publish_raw(&payload(0)).expect("publish");
+        exec.spin_once(Duration::from_millis(50));
+    }
+
+    let publisher = SendPublisher(publisher);
+    let sent_t = sent.clone();
+    let publisher_thread = std::thread::spawn(move || {
+        let publisher = publisher;
+        for seq in 1..=SAMPLES as u32 {
+            sent_t.lock().unwrap()[seq as usize] = Some(Instant::now());
+            publisher.0.publish_raw(&payload(seq)).expect("publish");
+            std::thread::sleep(GAP);
+        }
+    });
+    let budget = GAP * SAMPLES as u32 + ARRIVAL_BUDGET;
+    let start = Instant::now();
+    let received = || got.lock().unwrap()[1..].iter().flatten().count();
+    while received() < SAMPLES && start.elapsed() < budget {
+        exec.spin_once(PARK);
+    }
+    publisher_thread.join().unwrap();
+
+    let (sent, got) = (sent.lock().unwrap(), got.lock().unwrap());
+    let mut latencies: Vec<Duration> = (1..=SAMPLES)
+        .filter_map(|i| Some(got[i]?.saturating_duration_since(sent[i]?)))
+        .collect();
+    latencies.sort_unstable();
+    let n = latencies.len();
+    assert!(
+        n >= SAMPLES * 9 / 10,
+        "only {n} of {SAMPLES} samples were dispatched"
+    );
+    let (median, p90, max) = (latencies[n / 2], latencies[n * 9 / 10], latencies[n - 1]);
+    eprintln!(
+        "phase-397 W6: arrival-to-callback over {n} samples, {PARK:?} park: median {median:?}, \
+         p90 {p90:?}, max {max:?}"
+    );
+    assert!(
+        median < Duration::from_millis(20),
+        "median arrival-to-callback {median:?} with a {PARK:?} park: dispatch waited for the \
+         park instead of the arrival's wake"
+    );
+}

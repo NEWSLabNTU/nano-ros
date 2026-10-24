@@ -66,7 +66,7 @@ client takes `(cb, ctx, token)`. `CffiSubscription` / `CffiService` /
 `CffiClient` forward `register_waker` to it, and a backend that leaves it NULL
 reports "unsupported", so the call can say so rather than return `OK`.
 
-This is the same slot [phase-397](../roadmap/phase-397-pushed-readiness-executor.md)'s
+This is the same slot [phase-397](../../roadmap/archived/phase-397-pushed-readiness-executor.md)'s
 W1 needs: the executor registers each entity's `(wake context, DescIdx)` there.
 So land this first, as phase-397 W1.
 

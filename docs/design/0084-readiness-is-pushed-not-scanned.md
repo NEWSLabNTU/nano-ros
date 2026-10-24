@@ -3,7 +3,7 @@ rfc: 0084
 title: "Readiness is PUSHED by the arrival path, not scanned by the executor — the wake says who, not just that"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-10-19
+last-reviewed: 2026-10-24
 implements-tracked-by: [phase-397]
 amends: [rfc-0052]
 supersedes: []
@@ -301,8 +301,9 @@ already wrong in principle on an image whose whole purpose is bounded latency.
 | executor state | one `AtomicU64` in `WakeCtx` (8 B) |
 | hot path added | one `fetch_or` per arrival |
 | hot path removed | up to 64 indirect calls per spin |
-| backends touched | zenoh (through the Rust adapter, landed) and Cyclone (`on_data_available` receives the reader; still NULL); XRCE, uORB and bare metal leave the slots NULL and keep today's behaviour |
+| backends touched | zenoh (through the Rust adapter) and Cyclone (`on_data_available` receives the reader; all three slots, phase-397 W2.b), both landed; XRCE, uORB and bare metal leave the slots NULL and keep today's behaviour |
 | risk | the arrived-vs-present semantics of §4.4 |
+| measured (phase-397 W6, zenoh, x86_64) | an idle shared-session member under ~950 foreign arrivals/s: 949 spins/s and 0.22 % of a core with the fan-out, 2 spins/s and 0.003 % without; arrival-to-callback median 22 us under a 1 s park |
 
 ## 9. Open questions
 
