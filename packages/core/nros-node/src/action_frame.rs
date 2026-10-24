@@ -24,6 +24,7 @@
 //! header in front of them. That is the shape every callback receives.
 //!
 //! [`CdrWriter`]: nros_core::CdrWriter
+//! [`splice`]: crate::action_frame::splice
 
 use nros_core::{GoalId, GoalStatus};
 

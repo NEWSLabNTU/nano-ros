@@ -85,8 +85,9 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-/// phase-412 -- the boot self-report, for boards with no reachable log sink.
+/// issue 2014 -- the wire framing of action messages: one spelling of every payload offset.
 pub mod action_frame;
+/// phase-412 -- the boot self-report, for boards with no reachable log sink.
 pub mod boot_report;
 pub mod c_waker;
 pub mod config;
