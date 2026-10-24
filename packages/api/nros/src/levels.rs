@@ -3,18 +3,19 @@
 //!
 //! The C-ABI runners reach this through `nros-cpp`'s scheduler FFI
 //! (`nros_cpp_level_open`, `nros_cpp_level_spin_once`); a Rust runner holds
-//! the core's [`ExecutorNodeRuntime`] itself and uses the same three steps:
+//! the core's `ExecutorNodeRuntime` itself and uses the same three steps:
 //!
-//! 1. [`LevelCore::new`] -- the boot level's runtime, leaked for the image's
+//! 1. `LevelCore::new` -- the boot level's runtime, leaked for the image's
 //!    life, with the port's recursive priority-inheriting mutex and the
 //!    calling thread's identity installed as the executor's lock
 //!    ([`nros_node::executor::exec_lock::ExecLock`]) when more than one level
 //!    runs, the level count stated, and the boot level made current.
-//! 2. [`LevelCore::setup_level`] -- on a level's own thread: its worker
-//!    record (leaked with the level), its waiter linked into the executor's
-//!    arrival routing, then the image's setup run on the shared runtime with
-//!    the level's groups active and the level registering, all under the lock.
-//! 3. [`LevelCore::spin_level_once`] / [`LevelCore::spin_boot_once`] -- one
+//! 2. `LevelCore::open_level` + `LevelCore::with_runtime` -- on a level's
+//!    own thread: its worker record (leaked with the level), its waiter
+//!    linked into the executor's arrival routing, then the image's setup run
+//!    on the shared runtime with the level's groups active and the level
+//!    registering, all under the lock.
+//! 3. `LevelCore::spin_level_once` / `LevelCore::spin_boot_once` -- one
 //!    pass of a level's worker (its band, the lock released around each
 //!    callback) or of the boot level (the executor's own worker: transport,
 //!    executor-wide chores, component ticks).
