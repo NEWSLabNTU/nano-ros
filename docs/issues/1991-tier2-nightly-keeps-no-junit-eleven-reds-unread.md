@@ -134,8 +134,13 @@ The `tier 2 nightly (pairwise cover)` job in `.github/workflows/nightly.yml`
 now has the `Upload junit and logs` step (`if: always()`) that run-matrix's
 tier-1 and tier-2 jobs carry, with the same paths: the nextest junit, the
 build logs and `tmp/build-test-fixtures-*/`. The artifact is
-`tier2-nightly-junit`, kept 14 days. The junit has each failure's output, so
-`NROS_TEST_FAILURE_OUTPUT` is left at `never` and the job log stays short.
+`tier2-nightly-junit`, kept 14 days.
+
+The `just ci matrix-nightly` step also sets `NROS_TEST_FAILURE_OUTPUT=final`
+(2026-10-24), so the panic text is in the job log too and
+`gh run view --log` names a red without downloading the artifact. The cost is
+log length: each `[SKIPPED:lane]` panic prints its reason as well, about 215
+of them on a night like 2026-10-20.
 
 This issue stays open for item 2: the first nightly after this lands should
 upload the text for rows 4–14, and each distinct cause gets filed or
