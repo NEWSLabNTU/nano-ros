@@ -1,6 +1,37 @@
 # Phase 436 — The poll/wake revision: a deadline-driven, platform-agnostic executor
 
-**The design now lives in [RFC-0106](../design/0106-executor-park.md).**
+**Status (2026-10-24). DONE — archived.** Every nano-ros item has landed or
+moved; what is left is not this repository's work:
+
+* **Landed:** W1-W7, A2 (with A2b and A2c), A3's accessor, B1 (decided), B2,
+  C1, C2, D1, D2, E1, E3, E4 and E5. E5's heading below still reads "OPEN,
+  next"; its nano-ros half landed on 2026-10-13 (`a53733c48d`), as the
+  "LANDED" paragraph under it records. The homed issue,
+  [#1041](../../issues/archived/1041-timer-missed-deadline-policy-differs-from-rcl.md),
+  is archived.
+* **The safety island's side:** A1 (re-pin), A3's loaded FVP run and E5's exit
+  (the FVP re-measure, then `CONFIG_INIT_STACKS` back on) are changes in the
+  island's repository, tracked in its
+  `docs/roadmap/phase-11-executor-evidence.md`. They wait on the island
+  porting off `ComponentNode`.
+* **Silicon:** Path B's board run and A3's absolute latency are
+  [phase-512](../phase-512-on-hardware-measurements.md) H2 and H1.
+* **C3, bare-metal tickless idle:** deferred, filed as
+  [issue 2022](../../issues/2022-bare-metal-tickless-idle-needs-nic-rx-irq.md).
+  It buys power, not latency, and needs a receive interrupt `lan9118-smoltcp`
+  does not have.
+* **Per-entity wake routing** (checkpoint item 5) was folded into
+  [phase-397](../phase-397-pushed-readiness-executor.md), which landed it.
+
+The design is still the executor's: [RFC-0106](../../design/0106-executor-park.md)'s
+park and wake-source seam is what every entry and tier runner installs, and
+what [phase-509](../phase-509-executor-preemption-levels.md)'s band workers park
+on (`executor/port_park.rs`, `executor/scheduler.rs`). One line of "What this
+phase does not do" is superseded: dispatch within one executor is no longer
+only non-preemptive, because phase-509 (RFC-0108) adds preemption between
+levels.
+
+**The design now lives in [RFC-0106](../../design/0106-executor-park.md).**
 This doc keeps the work breakdown and the evidence; the sections below that
 argue the design are the record of how it was reached.
 
@@ -8,7 +39,7 @@ argue the design are the record of how it was reached.
 (#849), A2 (#871), E3 + E4 (#881), A3's accessor (#899), B2 (2026-09-25), E5
 (2026-10-13), and on 2026-10-15 A2b, A2c, C1, C2, D1, D2's ABI half and the
 wake fan-out. Issue 1196 is resolved by
-[phase-502](archived/phase-502-unbounded-condvar-wait-retirement.md). What
+[phase-502](phase-502-unbounded-condvar-wait-retirement.md). What
 remains, in the order I would take it:
 
 1. **Single-executor entries park too — LANDED 2026-10-16.** The tier runners
@@ -30,10 +61,10 @@ remains, in the order I would take it:
    session and a 50 ms budget, mps2-an385 printed
    `park bounded by Platform(0) at 27000 us`; with the shipped 10 ms budget
    the source never wins. The hardware run moved to
-   [phase-512](phase-512-on-hardware-measurements.md) H2 on 2026-10-23. See
+   [phase-512](../phase-512-on-hardware-measurements.md) H2 on 2026-10-23. See
    Path B's exit.
 5. **Per-entity wake routing — MEASURED 2026-10-16, folded into
-   [phase-397](phase-397-pushed-readiness-executor.md).** One zenoh session,
+   [phase-397](../phase-397-pushed-readiness-executor.md).** One zenoh session,
    an owner executor with a subscription and N tier executors over the same
    session with nothing registered, a publisher in another process at 1 kHz
    (native Linux, aarch64). Every idle tier spun 999-1000 times a second, at
@@ -50,7 +81,7 @@ remains, in the order I would take it:
    becomes the fallback for a backend that reports UNKNOWN. Doing it here
    first would add a second per-entity wake path that phase-397 then replaces.
    The probe also found
-   [issue 1929](../issues/archived/1929-zenoh-async-wake-is-one-process-global-slot.md):
+   [issue 1929](../../issues/archived/1929-zenoh-async-wake-is-one-process-global-slot.md):
    zenoh's arrival wake is one process-global slot, so with two zenoh sessions
    in one process the first executor is never woken by its own data
    (resolved 2026-10-16: the wake table is per session).
@@ -456,23 +487,23 @@ cannot be answered wrongly by a caller who never reads the doc comment.
 
 Each is a filed issue; the issue holds the evidence.
 
-* **W1 — [issue 1192](../issues/archived/1192-executor-wait-ignores-next-timer-deadline.md):
+* **W1 — [issue 1192](../../issues/archived/1192-executor-wait-ignores-next-timer-deadline.md):
   the wait is not bounded by the next timer deadline.** The `TimerSource` of
   §2, and the highest-value item — it is the one place the executor sleeps past
   a deadline it owns. Distinct from resolved issues 0505 (overrun policy) and
   0515 (grid quantization), both of which take the spin boundary as fixed;
   this moves the boundary.
-* **W2 — [issue 1193](../issues/archived/1193-spin-timeout-truncates-to-milliseconds.md):
+* **W2 — [issue 1193](../../issues/archived/1193-spin-timeout-truncates-to-milliseconds.md):
   sub-ms timeouts truncate to a busy loop.** §1. Latent today — nros-cpp clamps
   `max(1_000)` and ASI runs `spin_period_us = 5000` — but `spin_period_us` is a
   microsecond field accepting values it cannot honour.
-* **W3 — [issue 1194](../issues/archived/1194-jitter-measured-in-microseconds-waited-in-milliseconds.md):
+* **W3 — [issue 1194](../../issues/archived/1194-jitter-measured-in-microseconds-waited-in-milliseconds.md):
   jitter measured in µs, waited in ms.** Falls out of W2; the deliverable is
   the declared-granularity contract, not a coarser statistic.
-* **W4 — [issue 1195](../issues/archived/1195-promise-wait-polls-instead-of-using-the-waker.md):
+* **W4 — [issue 1195](../../issues/archived/1195-promise-wait-polls-instead-of-using-the-waker.md):
   `Promise::wait` polls a 10 ms grid and overshoots shorter timeouts.** The one
   place the waker exists and is bypassed.
-* **W5 — [issue 1196](../issues/archived/1196-platform-condvar-wait-is-unbounded.md):
+* **W5 — [issue 1196](../../issues/archived/1196-platform-condvar-wait-is-unbounded.md):
   the unbounded `condvar_wait` in the platform API.** Latent — no callers on
   the executor path — but "no unbounded wait" is only a system property if it
   is an API property.
@@ -507,7 +538,7 @@ Each is a filed issue; the issue holds the evidence.
     insertion that anchors on the `pub fn` line and walks back past attributes
     without knowing doc comments are attributes.
 
-  * **W7.b — [issue 1242](../issues/archived/1242-park-granularity-is-hardcoded-not-queried.md).
+  * **W7.b — [issue 1242](../../issues/archived/1242-park-granularity-is-hardcoded-not-queried.md).
     DONE.** `park_granularity_us()` now reports what the INSTALLED primitive
     declares (`park_granularity_declared_us`), and the port states it because
     only the port knows: ThreadX's 100 Hz tick is 10 ms, coarser than the ABI
@@ -615,7 +646,7 @@ watched run.
     while CTF events carry no CPU id. So A3 on FVP can check that the probe
     measures the right thing in the right place. Absolute latency needs
     silicon (S32Z), or a short, low-idle capture under the 4.295 s wrap. The
-    silicon run is [phase-512](phase-512-on-hardware-measurements.md) H1.
+    silicon run is [phase-512](../phase-512-on-hardware-measurements.md) H1.
   * **E4 measured.** Same painted image, idle boot, with and without E4:
 
     | | without E4 | with E4 |
@@ -803,7 +834,7 @@ outside tests. Every wired port waits; none says WHEN.
   where it was always going to pay. The shipped budget stays 10 ms: on this
   board nothing parks (D5), so a longer budget would only lengthen the
   transport's blocking drive. The hardware run is
-  [phase-512](phase-512-on-hardware-measurements.md) H2, since no board is on
+  [phase-512](../phase-512-on-hardware-measurements.md) H2, since no board is on
   this bench. The original reading, from a sandbox with no router, follows.
 
   **Half met, and the other half MEASURED rather than left silent.** The
@@ -1065,7 +1096,7 @@ wiring that came before it, and both worth a decision rather than a drift:
   1906) moved its closing condition to cover the two zenoh-pico paths that
   never went through this symbol — Zephyr's own system layer and FreeRTOS's
   vendored one — plus deleting `zpico_get` and a class gate for forever-waits;
-  those remain, and [phase-502](archived/phase-502-unbounded-condvar-wait-retirement.md)
+  those remain, and [phase-502](phase-502-unbounded-condvar-wait-retirement.md)
   owns them.
 
 ### Path E — Stack headroom: wired, and on ASI blind.
@@ -1219,4 +1250,4 @@ defect is the executor's timer policy, which is this phase's subject.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1041](../issues/archived/1041-timer-missed-deadline-policy-differs-from-rcl.md) | a repeating timer CATCHES UP after a stall where rcl SKIPS — N callbacks instead of one. Partly fixed already: the executor arena defaults to `Skip`, and `nros-node/src/timer.rs:354` is the unswept sibling, which is the fix-the-class shape rather than a new defect |
+| [#1041](../../issues/archived/1041-timer-missed-deadline-policy-differs-from-rcl.md) | a repeating timer CATCHES UP after a stall where rcl SKIPS — N callbacks instead of one. Partly fixed already: the executor arena defaults to `Skip`, and `nros-node/src/timer.rs:354` is the unswept sibling, which is the fix-the-class shape rather than a new defect |

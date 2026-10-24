@@ -4,7 +4,7 @@
 this RFC records the design that phase-436 built and, until now, held only in
 its phase doc.
 
-**Implemented by:** [phase-436](../roadmap/phase-436-poll-wake-revision-deadline-driven-executor.md)
+**Implemented by:** [phase-436](../roadmap/archived/phase-436-poll-wake-revision-deadline-driven-executor.md)
 (W1–W7, Paths A–E) and [phase-502](../roadmap/archived/phase-502-unbounded-condvar-wait-retirement.md)
 (no condition wait without a deadline). **Sits beside:**
 [RFC-0002](0002-rt-execution-model.md), which owns what the executor DISPATCHES
@@ -203,6 +203,7 @@ budget is a floor on the wait, not a bound on the call.
   poll-only, so D5 never parks there. What remains is a tickless `wfi` inside
   the transport's wait, armed on its deadline, and it needs a NIC receive
   interrupt first; without one it is D5's blind sleep one layer down.
+  Tracked as [issue 2022](../issues/2022-bare-metal-tickless-idle-needs-nic-rx-irq.md).
 - **Per-entity wake routing.** Removes D6's spurious wakes. Measured on a
   native host: 7-9 us of CPU per spurious wake, so about 0.8 % of a core per
   idle member at 1 kHz of arrivals. It needs the arrival to name its entity,

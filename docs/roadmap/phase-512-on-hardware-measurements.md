@@ -7,7 +7,7 @@ from. Only the silicon number is missing. Each item moved here so that the
 phase it came from lists only work someone can do today. Unblock an item when
 its board is attached; each one is independent of the others.
 
-**Prior:** [phase-436](phase-436-poll-wake-revision-deadline-driven-executor.md)
+**Prior:** [phase-436](archived/phase-436-poll-wake-revision-deadline-driven-executor.md)
 (the deadline-driven executor, RFC-0106).
 
 **Gathered 2026-10-24:** [phase-162](phase-162-rt-scheduling-harness.md) 162.C
