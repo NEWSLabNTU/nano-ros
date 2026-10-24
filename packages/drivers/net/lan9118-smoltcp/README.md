@@ -31,6 +31,9 @@ let mut iface = smoltcp::iface::Interface::new(iface_config, &mut eth, instant);
 ## Features
 
 - **Polling mode** - No interrupt handling required
+- **Optional RX interrupt** - `irq::{unmask_rx, mask_rx, rx_frames_pending}`
+  for a board that sleeps between polls (issue 2022). RSFL is a level, so the
+  handler masks it and the drain side unmasks it once the FIFO is empty
 - **no_std compatible** - Suitable for bare-metal embedded systems
 - **smoltcp integration** - Implements `smoltcp::phy::Device` trait
 

@@ -529,6 +529,10 @@ pub fn set_poll_callback(callback: unsafe extern "C" fn()) {
 ///
 /// Default = unset; callers without an armed IRQ should leave it
 /// unset because `wfi` with no pending interrupt deadlocks.
+///
+/// This hook runs BEFORE a wait loop looks at what the poll delivered, so it
+/// is safe only for a sleep something bounds (the RTIC 1 ms tick). A sleep to
+/// the loop's deadline belongs in [`crate::wait_idle`] instead (issue 2022).
 pub fn set_idle_callback(callback: unsafe extern "C" fn()) {
     unsafe {
         IDLE_CALLBACK = Some(callback);

@@ -17,7 +17,7 @@ moved; what is left is not this repository's work:
 * **Silicon:** Path B's board run and A3's absolute latency are
   [phase-512](../phase-512-on-hardware-measurements.md) H2 and H1.
 * **C3, bare-metal tickless idle:** deferred, filed as
-  [issue 2022](../../issues/2022-bare-metal-tickless-idle-needs-nic-rx-irq.md).
+  [issue 2022](../../issues/archived/2022-bare-metal-tickless-idle-needs-nic-rx-irq.md).
   It buys power, not latency, and needs a receive interrupt `lan9118-smoltcp`
   does not have.
 * **Per-entity wake routing** (checkpoint item 5) was folded into

@@ -30,6 +30,9 @@ pub mod nal;
 mod network_state;
 mod platform_macro;
 pub mod util;
+// issue 2022 — the tickless idle a wait loop calls once it has found nothing
+// to do; the board installs the sleep primitive.
+pub mod wait_idle;
 
 // Re-export the network traits so `define_smoltcp_platform!` can reach them
 // via `$crate::Platform*` without the caller crate needing a direct
@@ -53,6 +56,9 @@ pub use bridge::{
     SmoltcpBridge, SmoltcpInitError, clear_idle_callback, do_poll, has_poll_callback,
     poll_callback_diagnostics, poll_count, poll_diagnostics, rx_diagnostics, seed_ephemeral_port,
     set_idle_callback, set_poll_callback,
+};
+pub use wait_idle::{
+    WaitIdleFn, clear_wait_idle, has_wait_idle, idle_until_ms, set_wait_idle,
 };
 
 // Re-export smoltcp types needed by board crates

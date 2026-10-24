@@ -69,7 +69,8 @@ nros-rmw-xrce-cffi = { path = "../../rmw/xrce/nros-rmw-xrce-cffi", default-featu
 # Phase 132 — `mps2-an385-pac` exposes the `Interrupt` enum so
 # `init_serial` can `NVIC::unmask(Interrupt::UARTTX0)` to enable
 # the TX-empty IRQ that backs the cmsdk-uart driver's `wfi`-loop.
-# Optional + only pulled in by `serial`.
+# Optional; pulled in by `serial`, `rtic`, and `ethernet` (issue 2022 — the
+# `ETHERNET` RX vector).
 mps2-an385-pac = { path = "../mps2-an385-pac", optional = true }
 
 # Phase 244.D1 enabler — `nros_platform::BoardEntry` impl (src/entry.rs) needs
@@ -148,7 +149,8 @@ rtic = ["dep:heapless", "dep:mps2-an385-pac", "dep:nros"]
 # run-plan E2E fixture proves deferred dispatch without a live peer.
 e2e-synthetic-callback = []
 # Ethernet transport via LAN9118 + smoltcp
-ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
+# issue 2022 — the PAC for the `ETHERNET` vector the tickless idle binds.
+ethernet = ["dep:nros-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp", "dep:mps2-an385-pac"]
 # Serial transport via CMSDK UART. The `_z_socket_*` symbols
 # peer.c references at link time come from `zpico-sys`'s
 # default-on `platform-aliases` C TU; no shim needed.
