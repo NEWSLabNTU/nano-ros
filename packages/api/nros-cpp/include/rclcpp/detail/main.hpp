@@ -798,6 +798,23 @@ class NuttxBoard {
             node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
             executor_storage, storage_stride);
     }
+
+    /// phase-509 P10 (RFC-0108) — the levels runner a generated entry calls:
+    /// each row of `tiers` is one level over the core's ONE executor, the
+    /// least urgent adopted on the calling thread and every other a SCHED_FIFO
+    /// pthread on `task_memory[i]`'s stack. See
+    /// `nros_board_nuttx_run_levels_in` in `<rclc/detail/main.h>`.
+    static int32_t run_levels(const char* session_name, const char* node_namespace,
+                              const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
+                              size_t storage_stride, const ::nros_tier_backing_t* backings,
+                              const ::nros_tier_task_memory_t* task_memory, void* scheduler_backing,
+                              size_t scheduler_bytes) {
+        return ::nros_board_nuttx_run_levels_in(
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
+            executor_storage, storage_stride, backings, task_memory, scheduler_backing,
+            scheduler_bytes);
+    }
 };
 
 /// Phase 246 — Azure RTOS ThreadX board adapter (C/C++ declarative components
@@ -1027,6 +1044,23 @@ class FreertosBoard {
             NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
             node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
             executor_storage, storage_stride, task_memory);
+    }
+
+    /// phase-509 P10 (RFC-0108) — the levels runner a generated entry calls:
+    /// each row of `tiers` is one level over the core's ONE executor, the
+    /// least urgent adopted on the calling task and every other a worker
+    /// task on `task_memory[i]`. See `nros_board_freertos_run_levels_in` in
+    /// `<rclc/detail/main.h>`.
+    static int32_t run_levels(const char* session_name, const char* node_namespace,
+                              const NativeTierSpec* tiers, size_t n_tiers, void* executor_storage,
+                              size_t storage_stride, const ::nros_tier_backing_t* backings,
+                              const ::nros_tier_task_memory_t* task_memory, void* scheduler_backing,
+                              size_t scheduler_bytes) {
+        return ::nros_board_freertos_run_levels_in(
+            NROS_ENTRY_LOCATOR, static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID), session_name,
+            node_namespace, reinterpret_cast<const ::nros_native_tier_spec_t*>(tiers), n_tiers,
+            executor_storage, storage_stride, backings, task_memory, scheduler_backing,
+            scheduler_bytes);
     }
 };
 

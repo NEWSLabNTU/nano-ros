@@ -43,6 +43,31 @@
          ? (size_t)configMINIMAL_STACK_SIZE                                                        \
          : (((bytes) + sizeof(StackType_t) - 1u) / sizeof(StackType_t)))
 
+/* phase-509 P10 (RFC-0108 D3) — a LEVEL's stack, derived from its members: the
+ * largest member's stated stack, or the per-callback default for a member that
+ * states none, plus the worker's own frame (the spin loop, spin_once and the
+ * transport drive under it). Never the platform's task default. The
+ * per-callback default is the level default minus the frame, so a level whose
+ * members state nothing gets exactly NROS_FREERTOS_LEVEL_STACK_DEFAULT, the
+ * 256 KiB every spawned tier got before (issue #126). A generated entry passes
+ * a spawned level that declares no `stack_bytes` as
+ * `NROS_LEVEL_STACK_BYTES(member)`. Zephyr's header states the same rule over
+ * its own knobs. */
+#ifndef NROS_FREERTOS_LEVEL_STACK_DEFAULT
+#define NROS_FREERTOS_LEVEL_STACK_DEFAULT 262144u
+#endif
+#ifndef NROS_FREERTOS_LEVEL_WORKER_FRAME
+#define NROS_FREERTOS_LEVEL_WORKER_FRAME 4096u
+#endif
+#define NROS_LEVEL_CALLBACK_STACK_DEFAULT_                                                         \
+    (NROS_FREERTOS_LEVEL_STACK_DEFAULT - NROS_FREERTOS_LEVEL_WORKER_FRAME)
+#define NROS_LEVEL_STACK_BYTES(member)                                                             \
+    (((member) > 0u ? (member) : NROS_LEVEL_CALLBACK_STACK_DEFAULT_) +                             \
+     NROS_FREERTOS_LEVEL_WORKER_FRAME)
+#if NROS_FREERTOS_LEVEL_WORKER_FRAME >= NROS_FREERTOS_LEVEL_STACK_DEFAULT
+#error "nros: NROS_FREERTOS_LEVEL_WORKER_FRAME must stay below NROS_FREERTOS_LEVEL_STACK_DEFAULT"
+#endif
+
 /* Tier `i`'s stack and TCB, as file-scope statics named for `mem-report`. */
 #define NROS_TIER_TASK_MEMORY_DEFINE(i, bytes)                                                     \
     static StackType_t __nros_tier_stack_##i[NROS_TIER_TASK_STACK_WORDS_(bytes)];                  \

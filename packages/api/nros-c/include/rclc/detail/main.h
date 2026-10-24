@@ -530,6 +530,24 @@ NROS_PUBLIC int32_t nros_board_native_run_levels_in(
     const nros_tier_backing_t* backings, const nros_tier_task_memory_t* task_memory,
     void* scheduler_backing, size_t scheduler_bytes);
 
+/* phase-509 P10 (RFC-0108) -- the FreeRTOS level runner
+ * (`FreertosBoard::run_levels`): each row of `tiers` is one level, placed by
+ * its urgency (FreeRTOS, bigger is more urgent). The core's ONE executor is
+ * block 0 of `executor_storage`, carved from `backings[0]` when the build
+ * sizes its levels (else inline), locked by the port's recursive mutex
+ * (a FreeRTOS mutex, priority-inheriting) with the running task's handle as
+ * its thread id. The least urgent level (the last row) is adopted on the
+ * calling task; every other level is a worker task over the executor,
+ * created on `task_memory[i]` (its derived stack, `NROS_LEVEL_STACK_BYTES`,
+ * <rclc/detail/tier_task_memory_freertos.h>). A level that does not open,
+ * whose setup fails, or that cannot be spawned fails the boot. Defined in
+ * nros-board-freertos (`freertos_run_tiers.c`). */
+NROS_PUBLIC int32_t nros_board_freertos_run_levels_in(
+    const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
+    const nros_native_tier_spec_t* tiers, size_t n_tiers, void* executor_storage,
+    size_t storage_stride, const nros_tier_backing_t* backings,
+    const nros_tier_task_memory_t* task_memory, void* scheduler_backing, size_t scheduler_bytes);
+
 /* phase-281 W3 (nuttx) (RFC-0015 Model 1) — run a multi-tier embedded C/C++
  * entry on NuttX: open ONE RMW session on the caller's thread (the NuttX
  * `app_main` thread), spawn one `pthread` per non-boot tier (NuttX is POSIX —
@@ -571,6 +589,23 @@ NROS_PUBLIC int32_t nros_board_nuttx_run_tiers_in(const char* locator, uint8_t d
                                                   const nros_native_tier_spec_t* tiers,
                                                   size_t n_tiers, void* executor_storage,
                                                   size_t storage_stride);
+
+/* phase-509 P10 (RFC-0108) -- the NuttX level runner
+ * (`NuttxBoard::run_levels`): each row of `tiers` is one level, placed by its
+ * urgency (SCHED_FIFO, bigger is more urgent). The core's ONE executor is block
+ * 0 of `executor_storage`, carved from `backings[0]` when the build sizes its
+ * levels (else inline), locked by the port's recursive PTHREAD_PRIO_INHERIT
+ * mutex with `pthread_self()` as its thread id. The least urgent level (the
+ * last row) is adopted on the calling thread; every other level is a
+ * SCHED_FIFO pthread over the executor on `task_memory[i]`'s static stack (its
+ * derived `NROS_LEVEL_STACK_BYTES`, <rclc/detail/tier_task_memory_nuttx.h>). A
+ * level that does not open, whose setup fails, or that cannot be spawned fails
+ * the boot. Defined in nros-board-nuttx-qemu (`nuttx_run_tiers.c`). */
+NROS_PUBLIC int32_t nros_board_nuttx_run_levels_in(
+    const char* locator, uint8_t domain_id, const char* session_name, const char* node_namespace,
+    const nros_native_tier_spec_t* tiers, size_t n_tiers, void* executor_storage,
+    size_t storage_stride, const nros_tier_backing_t* backings,
+    const nros_tier_task_memory_t* task_memory, void* scheduler_backing, size_t scheduler_bytes);
 
 #ifdef __cplusplus
 } /* extern "C" */

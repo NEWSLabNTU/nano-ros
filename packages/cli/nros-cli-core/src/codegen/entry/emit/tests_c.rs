@@ -873,65 +873,6 @@ fn typed_emit_bakes_supervised_route_and_reaction_hook() {
     );
 }
 
-/// run_tiers shape: each tier installs ITS nodes' rows on ITS executor.
-#[test]
-fn typed_emit_tiers_slice_monitor_rows_per_tier() {
-    // A board whose runner still gives each tier its own executor (a level
-    // runner installs one table: `typed_emit_levels_install_one_monitor_table`).
-    let mut plan = fixture_plan_with_tiers();
-    plan.board = "freertos".into();
-    let rows = vec![
-        MonitorRow {
-            topic: "/cmd".into(),
-            fqn: "/ctrl/cmd".into(),
-            min_rate_hz_milli: 100_000,
-            max_latency_ms: 5,
-            route_trigger: String::new(),
-            route_max_latency_ms: 0,
-            route_deadline_ms: 0,
-            reaction: String::new(),
-            reaction_id: 0,
-            mechanism: 0,
-        },
-        MonitorRow {
-            topic: "/telemetry".into(),
-            fqn: "/telem/telemetry".into(),
-            min_rate_hz_milli: 1_000,
-            max_latency_ms: 0,
-            route_trigger: String::new(),
-            route_max_latency_ms: 0,
-            route_deadline_ms: 0,
-            reaction: String::new(),
-            reaction_id: 0,
-            mechanism: 0,
-        },
-    ];
-    let src = emit_typed_monitored(&plan, &rows, &[]).expect("tiered C emit ok");
-    assert!(
-        src.contains("__nros_mon_rows_t0[1]") && src.contains("__nros_mon_rows_t1[1]"),
-        "{src}"
-    );
-    let t0 = src
-        .find("static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nros_at)")
-        .unwrap();
-    let t1 = src
-        .find("static int32_t __nros_entry_setup_tier_1_nodes(void* executor, const char** __nros_at)")
-        .unwrap();
-    let setup0 = &src[t0..t1];
-    let setup1 = &src[t1..];
-    assert!(setup0.contains(".rows = __nros_mon_rows_t0,"), "{setup0}");
-    assert!(!setup0.contains("__nros_mon_rows_t1"), "{setup0}");
-    assert!(setup1.contains(".rows = __nros_mon_rows_t1,"), "{setup1}");
-    let i0 = setup0.find("nros_cpp_install_monitors(").unwrap();
-    let c0 = setup0.find("nros_cpp_node_create").unwrap();
-    assert!(i0 < c0, "{setup0}");
-    assert!(
-        !emit_typed(&plan)
-            .unwrap()
-            .contains("nros_cpp_install_monitors")
-    );
-}
-
 /// phase-462 W3b -- a hazard whose guard topic both rows watch is baked as
 /// rows, guards and members over THOSE rows (age 0, rate 0), with storage
 /// sized by all three counts, and installed after the monitor tables.

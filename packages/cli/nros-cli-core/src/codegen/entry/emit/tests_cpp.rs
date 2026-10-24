@@ -1390,10 +1390,10 @@ fn typed_emit_tiers_freertos_embedded_uses_run_tiers_path() {
         src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
         "expected 2-element NativeTierSpec array; src:\n{src}"
     );
-    // FreertosBoard::run_tiers called (not LinuxBoard).
+    // phase-509 P10 -- FreertosBoard::run_levels called (not LinuxBoard).
     assert!(
-        src.contains("::rclcpp::board::FreertosBoard::run_tiers("),
-        "nros_app_main must call FreertosBoard::run_tiers; src:\n{src}"
+        src.contains("::rclcpp::board::FreertosBoard::run_levels("),
+        "nros_app_main must call FreertosBoard::run_levels; src:\n{src}"
     );
     // FreeRTOS embedded entry point: nros_app_main + NROS_APP_MAIN_REGISTER_VOID.
     assert!(
@@ -1514,10 +1514,11 @@ fn typed_emit_tiers_nuttx_embedded_uses_run_tiers_path() {
         src.contains("static const ::rclcpp::board::NativeTierSpec __nros_tiers[2]"),
         "expected 2-element NativeTierSpec array; src:\n{src}"
     );
-    // NuttxBoard::run_tiers called (not LinuxBoard / FreertosBoard / ZephyrBoard).
+    // phase-509 P10 -- NuttxBoard::run_levels called (not LinuxBoard /
+    // FreertosBoard / ZephyrBoard).
     assert!(
-        src.contains("::rclcpp::board::NuttxBoard::run_tiers("),
-        "nros_app_main must call NuttxBoard::run_tiers; src:\n{src}"
+        src.contains("::rclcpp::board::NuttxBoard::run_levels("),
+        "nros_app_main must call NuttxBoard::run_levels; src:\n{src}"
     );
     // NuttX embedded entry point: nros_app_main + NROS_APP_MAIN_REGISTER_VOID
     // (the app_main startup shape, shared with FreeRTOS).
@@ -1787,13 +1788,9 @@ fn boards_with_run_tiers_still_emit_their_own_wrapper() {
         plan.board = board.into();
         let src =
             emit_typed(&plan).unwrap_or_else(|e| panic!("{board} multi-tier emit failed: {e}"));
-        // phase-509 P9/P10 -- Zephyr's and the host's tier runner is its
-        // levels runner.
-        let runner = if board == "zephyr" || board == "linux" {
-            "::run_levels("
-        } else {
-            "::run_tiers("
-        };
+        // phase-509 P9/P10 -- every board's tier runner is its levels
+        // runner.
+        let runner = "::run_levels(";
         assert!(src.contains(runner), "{board} must still call {runner}");
         assert!(
             src.contains(wrapper),
@@ -2083,70 +2080,6 @@ fn typed_emit_monitor_rows_match_namespaced_nodes() {
     assert!(
         src.contains("{ \"/cm_header\", \"/cm/pub/cm_header\", 10000u, 0u, nullptr, 0u },"),
         "{src}"
-    );
-}
-
-/// run_tiers shape: each tier installs ITS nodes' rows on ITS executor,
-/// so a row is checked once. Here `ctrl` is on tier 0 and `telem` on
-/// tier 1.
-#[test]
-fn typed_emit_tiers_slice_monitor_rows_per_tier() {
-    // A board whose runner still gives each tier its own executor (a level
-    // runner installs one table: `typed_emit_levels_install_one_monitor_table`).
-    let mut plan = fixture_plan_with_tiers();
-    plan.board = "freertos".into();
-    let rows = vec![
-        MonitorRow {
-            topic: "/cmd".into(),
-            fqn: "/ctrl/cmd".into(),
-            min_rate_hz_milli: 100_000,
-            max_latency_ms: 5,
-            route_trigger: String::new(),
-            route_max_latency_ms: 0,
-            route_deadline_ms: 0,
-            reaction: String::new(),
-            reaction_id: 0,
-            mechanism: 0,
-        },
-        MonitorRow {
-            topic: "/telemetry".into(),
-            fqn: "/telem/telemetry".into(),
-            min_rate_hz_milli: 1_000,
-            max_latency_ms: 0,
-            route_trigger: String::new(),
-            route_max_latency_ms: 0,
-            route_deadline_ms: 0,
-            reaction: String::new(),
-            reaction_id: 0,
-            mechanism: 0,
-        },
-    ];
-    let src = emit_typed_monitored(&plan, &rows, &[]).expect("tiered emit ok");
-    assert!(
-        src.contains("__nros_mon_rows_t0[1]") && src.contains("__nros_mon_rows_t1[1]"),
-        "{src}"
-    );
-    let t0 = src
-        .find("static int32_t __nros_entry_setup_tier_0_nodes(void* executor, const char** __nros_at)")
-        .unwrap();
-    let t1 = src
-        .find("static int32_t __nros_entry_setup_tier_1_nodes(void* executor, const char** __nros_at)")
-        .unwrap();
-    let setup0 = &src[t0..t1];
-    let setup1 = &src[t1..];
-    assert!(setup0.contains(".rows = __nros_mon_rows_t0,"), "{setup0}");
-    assert!(!setup0.contains("__nros_mon_rows_t1"), "{setup0}");
-    assert!(setup1.contains(".rows = __nros_mon_rows_t1,"), "{setup1}");
-    assert!(setup1.contains("void* __mexec = executor;"), "{setup1}");
-    // Each install precedes that tier's first node.
-    let i0 = setup0.find("nros_cpp_install_monitors(").unwrap();
-    let c0 = setup0.find("::rclcpp::create_node_on(").unwrap();
-    assert!(i0 < c0, "{setup0}");
-    // And the whole tier table region is absent when no tier has rows.
-    assert!(
-        !emit_typed(&plan)
-            .unwrap()
-            .contains("nros_cpp_install_monitors")
     );
 }
 

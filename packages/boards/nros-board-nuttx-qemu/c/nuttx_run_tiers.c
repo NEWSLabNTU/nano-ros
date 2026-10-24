@@ -38,6 +38,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -920,6 +921,355 @@ int32_t nros_board_nuttx_run_tiers_in(const char* locator, uint8_t domain_id,
     }
 
     /* Unreachable — satisfies the compiler. */
+    nros_cpp_fini(boot_storage);
+    return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+/* phase-509 P10 (RFC-0108 "As built in P9b") -- the LEVELS runner.          */
+/* ------------------------------------------------------------------------- */
+
+/* One tier's executor backing and one tier task's memory, owned by the
+ * generated entry. Mirrors of <rclc/detail/main.h>. NuttX has no control
+ * block to hand over (`tcb` is NULL): the stack is the whole of it. */
+typedef struct {
+    void* backing;
+    size_t bytes;
+} nros_tier_backing_t;
+_Static_assert(sizeof(nros_tier_backing_t) == 2u * sizeof(void*),
+               "nros_tier_backing_t mirrors <rclc/detail/main.h>: two pointer-sized fields");
+typedef struct {
+    void* stack;
+    size_t stack_bytes;
+    void* tcb;
+} nros_tier_task_memory_t;
+_Static_assert(sizeof(nros_tier_task_memory_t) == 3u * sizeof(void*),
+               "nros_tier_task_memory_t mirrors <rclc/detail/main.h>: three pointer-sized fields");
+
+extern int32_t nros_cpp_tier_level(const int64_t* first_priority, size_t stride, size_t n,
+                                   size_t index, _Bool smaller_is_urgent);
+extern void* nros_cpp_scheduler_open(uint8_t core, uint8_t n_levels, void* owner, void* backing,
+                                     size_t bytes);
+extern int nros_cpp_level_adopt(void* scheduler, uint8_t level, void* executor, size_t stack_bytes,
+                                const char* name);
+extern int nros_cpp_level_open(void* scheduler, uint8_t level, const char* name,
+                               size_t stack_bytes);
+extern int nros_cpp_level_spin_once(void* scheduler, uint8_t level, int32_t timeout_ms);
+extern void* nros_cpp_scheduler_owner(void* scheduler);
+extern int nros_cpp_init_levels(const char* locator, uint8_t domain_id, const char* node_name,
+                                const char* namespace_, void* storage, void* backing,
+                                size_t backing_bytes);
+extern int nros_cpp_executor_set_lock(void* executor, int8_t (*lock)(void*),
+                                      int8_t (*unlock)(void*), void* ctx);
+extern int nros_cpp_executor_set_thread_id(void* executor, uintptr_t (*thread_id)(void));
+/* The port's recursive mutex: a PTHREAD_MUTEX_RECURSIVE with
+ * PTHREAD_PRIO_INHERIT (nros-platform-posix, which NuttX delegates to;
+ * CONFIG_PRIORITY_INHERITANCE=y in every board defconfig). */
+extern int8_t nros_platform_mutex_rec_init(void* m);
+extern int8_t nros_platform_mutex_rec_lock(void* m);
+extern int8_t nros_platform_mutex_rec_unlock(void* m);
+
+/* The core's executor lock, one per image. */
+static pthread_mutex_t nuttx_exec_mutex;
+
+/* The executor's thread identity: the calling pthread. */
+static uintptr_t nuttx_thread_id(void) {
+    return (uintptr_t)pthread_self();
+}
+
+static const nros_tier_spec_t* nuttx_level_tiers;
+static size_t nuttx_level_n_tiers;
+
+/* The level of tier `t`: its urgency order among the rows, NuttX's
+ * bigger-is-urgent SCHED_FIFO. */
+static uint8_t nuttx_tier_level(const nros_tier_spec_t* t) {
+    if (nuttx_level_tiers == NULL || t < nuttx_level_tiers ||
+        t >= nuttx_level_tiers + nuttx_level_n_tiers) {
+        return 0u;
+    }
+    int32_t l = nros_cpp_tier_level(&nuttx_level_tiers[0].priority, sizeof(nros_tier_spec_t),
+                                    nuttx_level_n_tiers, (size_t)(t - nuttx_level_tiers), 0);
+    return (l < 0) ? 0u : (uint8_t)l;
+}
+
+/* Fail the boot, as Zephyr does (k_panic): a level that did not open, whose
+ * setup failed or that could not be spawned stops the image. Parking left it
+ * half up with nothing to say so. Never returns. */
+static void nuttx_fail_boot(const char* name, const char* what, int rc) {
+    printf("nros: level `%s` %s (rc=%d): failing the boot\n", (name != NULL) ? name : "?", what,
+           rc);
+    fflush(stdout);
+    abort();
+}
+
+typedef struct {
+    void* scheduler;
+    uint8_t level;
+    const char* name;
+    int64_t priority;
+    const char* tier_class;
+    uint64_t budget_us;
+    uint64_t period_us;
+    uint32_t core_plus1;
+    size_t stack_bytes;
+    uint64_t spin_period_us;
+    const char* const* groups;
+    size_t n_groups;
+    nros_tier_setup_fn_t setup;
+    const nros_tier_spec_t* rest;
+    size_t n_rest;
+    const nros_tier_task_memory_t* rest_task_memory;
+} nros_nuttx_level_ctx_t;
+
+static void nuttx_spawn_next_level(void* scheduler, const nros_tier_spec_t* remaining,
+                                   size_t n_remaining, const nros_tier_task_memory_t* task_memory);
+
+/* A WORKER over the core's one executor (the boot level's): open the level,
+ * run its setup on the owner, spawn the next level (issue #144: setups never
+ * overlap), then loop on `level_spin_once`. */
+static void* nuttx_level_thread(void* arg) {
+    nros_nuttx_level_ctx_t* ctx = (nros_nuttx_level_ctx_t*)arg;
+    (void)nros_nuttx_apply_current_priority(ctx->name, (uint32_t)nuttx_clamp_priority(ctx->priority));
+    (void)nros_nuttx_apply_current_sporadic(ctx->name, ctx->tier_class, ctx->budget_us,
+                                            ctx->period_us, ctx->priority);
+    (void)nros_nuttx_apply_current_affinity(ctx->name, ctx->core_plus1);
+    nros_nuttx_report_observed_cpu(ctx->name);
+
+    int rc = nros_cpp_level_open(ctx->scheduler, ctx->level, ctx->name, ctx->stack_bytes);
+    void* owner = nros_cpp_scheduler_owner(ctx->scheduler);
+    if (rc != 0 || owner == NULL) {
+        nuttx_fail_boot(ctx->name, "did not open", rc);
+    }
+    if (ctx->n_groups > 0 && ctx->groups != NULL) {
+        nros_cpp_executor_set_active_groups(owner, ctx->groups, ctx->n_groups);
+    }
+    if (ctx->setup != NULL) {
+        rc = ctx->setup(owner);
+        if (rc != 0) {
+            nuttx_fail_boot(ctx->name, "setup failed", rc);
+        }
+    }
+    nuttx_spawn_next_level(ctx->scheduler, ctx->rest, ctx->n_rest, ctx->rest_task_memory);
+
+    uint32_t period_ms = (uint32_t)(ctx->spin_period_us / 1000u);
+    if (period_ms < SPIN_PERIOD_FLOOR_MS) {
+        period_ms = SPIN_PERIOD_FLOOR_MS;
+    }
+    uint64_t gap_state = 0;
+    int throttle_reported = 0;
+    int declared_prio = nuttx_clamp_priority(ctx->priority);
+    for (;;) {
+        uint64_t iter_start_ns = nros_platform_clock_ns();
+        nros_cpp_level_spin_once(ctx->scheduler, ctx->level, (int32_t)period_ms);
+        gap_state = nros_tier_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
+                                            ctx->spin_period_us);
+        nros_nuttx_report_sporadic_throttle(ctx->name, declared_prio, &throttle_reported);
+    }
+    return NULL;
+}
+
+/* Spawn ONE level thread for remaining[0], carrying remaining[1..], on the
+ * entry's static stack for it (`task_memory`, its derived
+ * `NROS_LEVEL_STACK_BYTES`) or, for an entry without one, a kernel stack of
+ * the declared size. A level that cannot be spawned fails the boot. */
+static void nuttx_spawn_next_level(void* scheduler, const nros_tier_spec_t* remaining,
+                                   size_t n_remaining, const nros_tier_task_memory_t* task_memory) {
+    if (n_remaining == 0u) {
+        return;
+    }
+    const nros_tier_spec_t* t = &remaining[0];
+    nros_nuttx_level_ctx_t* ctx =
+        (nros_nuttx_level_ctx_t*)nros_platform_alloc(sizeof(nros_nuttx_level_ctx_t));
+    if (ctx == NULL) {
+        nuttx_fail_boot(t->name, "has no context (heap)", -1);
+    }
+    ctx->scheduler = scheduler;
+    ctx->level = nuttx_tier_level(t);
+    ctx->name = t->name;
+    ctx->priority = t->priority;
+    ctx->tier_class = t->tier_class;
+    ctx->budget_us = t->budget_us;
+    ctx->period_us = t->period_us;
+    ctx->core_plus1 = t->core_plus1;
+    ctx->spin_period_us = t->spin_period_us;
+    ctx->groups = t->groups;
+    ctx->n_groups = t->n_groups;
+    ctx->setup = t->setup;
+    ctx->rest = remaining + 1;
+    ctx->n_rest = n_remaining - 1u;
+    ctx->rest_task_memory = (task_memory != NULL) ? task_memory + 1 : NULL;
+
+    pthread_attr_t attr;
+    if (pthread_attr_init(&attr) != 0) {
+        nuttx_fail_boot(t->name, "was not spawned (pthread_attr_init)", -1);
+    }
+    (void)pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    int src;
+    if (task_memory != NULL) {
+        ctx->stack_bytes = task_memory->stack_bytes;
+        src = pthread_attr_setstack(&attr, task_memory->stack, task_memory->stack_bytes);
+    } else {
+        ctx->stack_bytes = (t->stack_bytes > 0u) ? t->stack_bytes : NROS_NUTTX_TIER_STACK_BYTES;
+        src = pthread_attr_setstacksize(&attr, ctx->stack_bytes);
+    }
+    if (src != 0) {
+        nuttx_fail_boot(t->name, "was not given its stack", src);
+    }
+    (void)pthread_attr_setschedpolicy(&attr, SCHED_FIFO);
+    (void)pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+    struct sched_param sp;
+    memset(&sp, 0, sizeof(sp));
+    sp.sched_priority = nuttx_clamp_priority(t->priority);
+    (void)pthread_attr_setschedparam(&attr, &sp);
+    pthread_t tid;
+    int ret = pthread_create(&tid, &attr, nuttx_level_thread, ctx);
+    (void)pthread_attr_destroy(&attr);
+    if (ret != 0) {
+        nuttx_fail_boot(t->name, "was not spawned", ret);
+    }
+}
+
+int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
+                                       const char* session_name, const char* node_namespace,
+                                       const nros_tier_spec_t* tiers, size_t n_tiers,
+                                       void* executor_storage, size_t storage_stride,
+                                       const nros_tier_backing_t* backings,
+                                       const nros_tier_task_memory_t* task_memory,
+                                       void* scheduler_backing, size_t scheduler_bytes);
+
+/*
+ * phase-509 P10 (RFC-0108) -- the runner a generated tiered NuttX entry calls
+ * (`CAbiRunners::run_levels`): each row of `tiers` is one LEVEL over ONE
+ * executor (block 0 of `executor_storage`) and one scheduler in the entry's
+ * `scheduler_backing`. The boot level is the LEAST urgent (the last row) and
+ * runs on the caller's thread; every other level is a SCHED_FIFO pthread over
+ * the same executor, on `task_memory[i]`'s static stack (its derived
+ * `NROS_LEVEL_STACK_BYTES`, <rclc/detail/tier_task_memory_nuttx.h>). The
+ * executor carries the port's recursive PTHREAD_PRIO_INHERIT mutex and
+ * `pthread_self()` as its thread id, so each pass releases it around its
+ * callbacks and its park: the levels preempt each other on one executor.
+ */
+int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
+                                       const char* session_name, const char* node_namespace,
+                                       const nros_tier_spec_t* tiers, size_t n_tiers,
+                                       void* executor_storage, size_t storage_stride,
+                                       const nros_tier_backing_t* backings,
+                                       const nros_tier_task_memory_t* task_memory,
+                                       void* scheduler_backing, size_t scheduler_bytes) {
+    if (tiers == NULL || n_tiers == 0 || n_tiers > 32u || executor_storage == NULL ||
+        scheduler_backing == NULL) {
+        return -3; /* NROS_CPP_RET_INVALID_ARGUMENT */
+    }
+    if (nros_cpp_executor_storage_check(executor_storage, storage_stride) != 0) {
+        printf("nros: nuttx run_levels: executor storage refused (stride %u, this build needs "
+               "%u)\n",
+               (unsigned)storage_stride, (unsigned)nros_cpp_executor_storage_size());
+        return -3;
+    }
+    for (size_t i = 1u; i < n_tiers; ++i) {
+        if (tiers[i].priority > tiers[i - 1u].priority) {
+            printf("nros: nuttx run_levels: the level table is not sorted "
+                   "highest-priority-first; refused\n");
+            return -3;
+        }
+    }
+    const size_t boot_idx = n_tiers - 1u;
+    if (task_memory != NULL) {
+        for (size_t i = 0u; i < n_tiers; ++i) {
+            const nros_tier_task_memory_t* m = &task_memory[i];
+            const char* tn = (tiers[i].name != NULL) ? tiers[i].name : "?";
+            if (i == boot_idx) {
+                if (m->stack != NULL) {
+                    printf("nros: nuttx run_levels: the entry gave the BOOT level `%s` a stack "
+                           "(it runs on the caller's thread); refused\n",
+                           tn);
+                    return -3;
+                }
+                continue;
+            }
+            if (m->stack == NULL || m->stack_bytes == 0u) {
+                printf("nros: nuttx run_levels: level `%s` has no stack from the entry; refused "
+                       "before the session opens\n",
+                       tn);
+                return -3;
+            }
+        }
+    }
+
+    nros_board_network_wait();
+
+    const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
+    const char* ns = (node_namespace != NULL && node_namespace[0] != '\0') ? node_namespace : NULL;
+    void* boot_storage = executor_storage;
+    memset(boot_storage, 0, storage_stride);
+
+    int rc = (backings != NULL)
+                 ? nros_cpp_init_levels(locator, domain_id, sn, ns, boot_storage,
+                                        backings[0].backing, backings[0].bytes)
+                 : nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
+    if (rc != 0) {
+        return (int32_t)rc;
+    }
+    if (n_tiers > 1u) {
+        if (nros_platform_mutex_rec_init(&nuttx_exec_mutex) != 0 ||
+            nros_cpp_executor_set_lock(boot_storage, nros_platform_mutex_rec_lock,
+                                       nros_platform_mutex_rec_unlock, &nuttx_exec_mutex) != 0 ||
+            nros_cpp_executor_set_thread_id(boot_storage, nuttx_thread_id) != 0) {
+            printf("nros: nuttx run_levels: the executor lock was not installed; refused\n");
+            nros_cpp_fini(boot_storage);
+            return -1;
+        }
+    }
+    nuttx_level_tiers = tiers;
+    nuttx_level_n_tiers = n_tiers;
+    void* scheduler = nros_cpp_scheduler_open(0u, (uint8_t)n_tiers, boot_storage,
+                                              scheduler_backing, scheduler_bytes);
+    if (scheduler == NULL) {
+        printf("nros: nuttx run_levels: the scheduler did not open (%u levels, %u bytes)\n",
+               (unsigned)n_tiers, (unsigned)scheduler_bytes);
+        nros_cpp_fini(boot_storage);
+        return -3;
+    }
+    printf("nros: scheduler core=0 levels=%u backing=%u\n", (unsigned)n_tiers,
+           (unsigned)scheduler_bytes);
+
+    const nros_tier_spec_t* boot = &tiers[boot_idx];
+    if (boot->n_groups > 0 && boot->groups != NULL) {
+        nros_cpp_executor_set_active_groups(boot_storage, boot->groups, boot->n_groups);
+    }
+    /* The boot level runs on the caller's thread (`app_main`), whose stack
+     * this layer never set: seated with no stack, as on the host. */
+    if (nros_cpp_level_adopt(scheduler, nuttx_tier_level(boot), boot_storage, 0u, boot->name) !=
+        0) {
+        nuttx_fail_boot(boot->name, "was not seated", -1);
+    }
+    if (boot->setup != NULL) {
+        rc = boot->setup(boot_storage);
+        if (rc != 0) {
+            nuttx_fail_boot(boot->name, "setup failed", rc);
+        }
+    }
+    (void)nros_nuttx_apply_current_priority(boot->name,
+                                            (uint32_t)nuttx_clamp_priority(boot->priority));
+    (void)nros_nuttx_apply_current_sporadic(boot->name, boot->tier_class, boot->budget_us,
+                                            boot->period_us, boot->priority);
+    (void)nros_nuttx_apply_current_affinity(boot->name, boot->core_plus1);
+
+    nuttx_spawn_next_level(scheduler, &tiers[0], n_tiers - 1u, task_memory);
+    printf("nros: multi-level run — %u level(s) over one executor\n", (unsigned)n_tiers);
+
+    uint32_t period_ms = (uint32_t)(boot->spin_period_us / 1000u);
+    if (period_ms < SPIN_PERIOD_FLOOR_MS) {
+        period_ms = SPIN_PERIOD_FLOOR_MS;
+    }
+    uint64_t gap_state = 0;
+    for (;;) {
+        uint64_t iter_start_ns = nros_platform_clock_ns();
+        nros_cpp_spin_once(boot_storage, (int32_t)period_ms);
+        gap_state = nros_tier_spin_gap_step(gap_state, iter_start_ns, nros_platform_clock_ns(),
+                                            boot->spin_period_us);
+    }
+
     nros_cpp_fini(boot_storage);
     return 0;
 }
