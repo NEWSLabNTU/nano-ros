@@ -112,9 +112,10 @@ pub struct SchedContextConfig {
     pub executor: String,
     pub class: SchedClass,
     pub priority: Option<u8>,
-    pub period_ms: Option<u64>,
-    pub budget_ms: Option<u64>,
-    pub deadline_ms: Option<u64>,
+    // No `period`/`budget`/`deadline`: the derived schedule travels as
+    // `TierDef` in us (RFC-0079), and nothing ever wrote a number here. The
+    // `_ms` fields were deleted rather than converted (issue 0259); a future
+    // producer adds fields in the runtime's unit.
     pub deadline_policy: DeadlinePolicy,
     pub stack_size: Option<u32>,
     pub core: Option<u32>,

@@ -14,7 +14,7 @@ use eyre::{Result, WrapErr};
 
 use crate::orchestration::{
     plan::{NrosPlan, PlanEntity, TransportKind},
-    schema::{DeadlinePolicy, InterfaceRef, ParameterValue, QosProfile, SchedClass},
+    schema::{InterfaceRef, ParameterValue, QosProfile, SchedClass},
 };
 
 #[derive(Debug, ClapArgs)]
@@ -164,18 +164,6 @@ pub fn render<W: Write>(plan: &NrosPlan, w: &mut W) -> std::io::Result<()> {
             let mut bits = vec![format!("class={}", sched_class_str(&s.class))];
             if let Some(p) = s.priority {
                 bits.push(format!("prio={p}"));
-            }
-            if let Some(v) = s.period_ms {
-                bits.push(format!("period={v}ms"));
-            }
-            if let Some(v) = s.budget_ms {
-                bits.push(format!("budget={v}ms"));
-            }
-            if let Some(v) = s.deadline_ms {
-                bits.push(format!(
-                    "deadline={v}ms({})",
-                    deadline_policy_str(&s.deadline_policy)
-                ));
             }
             if let Some(v) = s.core {
                 bits.push(format!("core={v}"));
@@ -360,15 +348,6 @@ fn sched_class_str(c: &SchedClass) -> &'static str {
         SchedClass::RealTime => "real-time",
         SchedClass::TimeTriggered => "time-triggered",
         SchedClass::Interrupt => "interrupt",
-    }
-}
-
-fn deadline_policy_str(p: &DeadlinePolicy) -> &'static str {
-    match p {
-        DeadlinePolicy::Ignore => "ignore",
-        DeadlinePolicy::Warn => "warn",
-        DeadlinePolicy::Skip => "skip",
-        DeadlinePolicy::Fault => "fault",
     }
 }
 

@@ -35,7 +35,9 @@ pub struct SchedCaps {
     /// Kernel execution-time reservation / sporadic server (NuttX
     /// `SCHED_SPORADIC`, Linux `SCHED_DEADLINE` runtime).
     pub reservation: bool,
-    /// Native preemption-threshold (ThreadX).
+    /// Native preemption-threshold (ThreadX). A board fact the book's
+    /// scheduling matrix reports (`scripts/gen-sched-matrix.py`); the
+    /// threshold itself is RFC-0108's per level, never a realizer dim.
     pub preempt_threshold: bool,
     /// SMP core affinity.
     pub affinity: bool,
@@ -47,9 +49,10 @@ pub struct SchedCaps {
     /// many would excuse a taskset that cannot fit. Both are fabricated
     /// hardware, which is the same failure as a fabricated WCET.
     ///
-    /// Set it per deployment with `[deploy.<board>] cores = <n>`, the same
-    /// bake-authoritative knob shape as `edf`. Until something declares it, the
-    /// utilisation check stays silent and `placement` remains underivable.
+    /// Nothing sets it: issue 0951 deleted the `[deploy.<board>] cores` knob,
+    /// which no authoring path could write, so `sched_caps_for` answers `None`
+    /// for every platform. Until an authored input exists, the utilisation
+    /// check stays silent and `placement` is not derived (issue 0259).
     pub n_cores: Option<u16>,
     /// Number of distinct priority levels.
     pub n_priorities: u16,
@@ -90,7 +93,6 @@ pub struct RealizedNode {
     pub deadline_us: Option<u64>,
     pub budget_us: Option<u64>,
     pub core: Option<u32>,
-    pub preempt_threshold: Option<i64>,
     /// Issue 0259 — the derived BLOCKING term `B_i`, µs: the longest a callback
     /// on this node can be made to wait for a mutually-exclusive sibling.
     ///
@@ -101,7 +103,6 @@ pub struct RealizedNode {
     pub blocking_us: Option<u64>,
     pub deadline_real: DimRealization,
     pub budget_real: DimRealization,
-    pub preempt_real: DimRealization,
     pub placement_real: DimRealization,
 }
 
@@ -569,16 +570,11 @@ pub fn realize_rtos(
             .and_then(|f| f.blocking_ms)
             .map(|ms| (ms * 1000.0).round().max(0.0) as u64);
 
-        // non_preempt_scope + placement: still not derived, and deriving the
-        // preemption THRESHOLD here would be a tautology rather than progress.
-        // Issue 0259's rule is `ceiling = max urgency among the group's
-        // members`; `dense_node_ranks` already gives a node the MINIMUM (best)
-        // rank among its own paths, so that ceiling is the node's own priority
-        // by construction and `preempt_threshold == priority` would say
-        // nothing. A threshold earns its keep only when callbacks inside ONE
-        // task hold DIFFERENT priorities, which this plan does not yet model —
-        // recorded in 0259 rather than papered over with a derived no-op.
-        let preempt_real = DimRealization::NotRequested;
+        // Placement is derived below, over the whole plan. The preemption
+        // threshold is not a realizer dim: RFC-0108 derives it per level
+        // (`levels.rs`, phase-509 P5), so the realizer's always-`None`
+        // threshold and always-`NotRequested` record were deleted rather than
+        // derived a second time (issue 0259).
         let placement_real = DimRealization::NotRequested;
 
         // Issue 0259 — the first CONSUMER of `B_i`: a necessary-condition
@@ -630,11 +626,9 @@ pub fn realize_rtos(
             deadline_us,
             budget_us,
             core: None,
-            preempt_threshold: None,
             blocking_us,
             deadline_real,
             budget_real,
-            preempt_real,
             placement_real,
         });
     }
@@ -838,7 +832,9 @@ pub fn rtos_plan_to_tier_table(plan: &RtosPlan, low_number_is_high: bool) -> Res
                 budget_us: n.budget_us,
                 deadline_us: n.deadline_us,
                 core: n.core,
-                preempt_threshold: n.preempt_threshold,
+                // RFC-0108 derives thresholds per level, not per node; a
+                // kernel threshold reaches a tier only when authored.
+                preempt_threshold: None,
                 members: vec![n.name.clone()],
                 stack_bytes: None,
                 spin_period_us: None,
@@ -1407,16 +1403,6 @@ mod tests {
             n.blocking_us, None,
             "a lone measurement says nothing about how long the others run"
         );
-    }
-
-    /// The preemption THRESHOLD is deliberately still not derived: over a
-    /// node's own callbacks the issue's ceiling equals the node's priority by
-    /// construction, so deriving it would emit a tautology.
-    #[test]
-    fn the_preemption_threshold_is_not_derived_as_a_tautology() {
-        let n = realize_one(node_with_execs("/n", &[Some(3.0), Some(9.0)]));
-        assert_eq!(n.preempt_real, DimRealization::NotRequested);
-        assert_eq!(n.preempt_threshold, None);
     }
 
     // ---- issue 0259: B_i's first consumer, the feasibility check -----------
