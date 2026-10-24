@@ -45,7 +45,7 @@
  * report (`scripts/nros-mem-report.py --levels`) checks the static against the
  * same arithmetic.
  *
- * Issue 2019 — the frame covers the level's own setup (open_level, the
+ * Issue 2019 -- the frame covers the level's own setup (open_level, the
  * members' registration), which runs on the level's stack before its first
  * pass and is that stack's peak on the ports measured (FreeRTOS, NuttX). The
  * 4,096 B default is an estimate on Zephyr: measure a board with
