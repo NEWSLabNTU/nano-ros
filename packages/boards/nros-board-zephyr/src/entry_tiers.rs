@@ -384,11 +384,14 @@ where
     // SAFETY: once, on this level's own thread.
     let worker = match unsafe { core.open_level(level) } {
         Ok(w) => w,
-        Err(e) => fail_boot(tier.name, if e == ::nros::levels::LevelError::BadLevel {
-            "did not open (level out of range)"
-        } else {
-            "did not open"
-        }),
+        Err(e) => fail_boot(
+            tier.name,
+            if e == ::nros::levels::LevelError::BadLevel {
+                "did not open (level out of range)"
+            } else {
+                "did not open"
+            },
+        ),
     };
     // SAFETY: the runtime reference lives inside the closure only.
     let rc = unsafe {
@@ -545,7 +548,10 @@ impl ZephyrBoard {
         } {
             Ok(c) => c,
             Err(e) => {
-                ::log::error!("nros: zephyr run_levels: the level runtime refused: {:?}", e);
+                ::log::error!(
+                    "nros: zephyr run_levels: the level runtime refused: {:?}",
+                    e
+                );
                 return Err(RuntimeError::Spin);
             }
         };
