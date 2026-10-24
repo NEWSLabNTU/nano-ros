@@ -431,6 +431,25 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/entity_remove_cycles
     ./tmp/entity_remove_cycles
+    echo "  - issue 1376: a subscription's slot is sized from its type's bound, through"
+    echo "    every rclc entry point that takes an rcl_subscription_t"
+    # One bounded and one unbounded registration per entry point, arena delta
+    # compared: before the fix the raw/info/group deltas were EQUAL, because
+    # those entry points passed a hint of 0. `test -f` first (issue 0196).
+    test -f packages/api/nros-c/tests/run/subscription_rx_bound.c || { \
+        echo "ERROR: subscription_rx_bound.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/subscription_rx_bound.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/subscription_rx_bound
+    ./tmp/subscription_rx_bound
     echo "  - issue 1940: a per-entity wake callback reaches the backend's"
     echo "    set_on_new_*_callback slot, and a backend without one is reported"
     test -f packages/api/nros-c/tests/run/entity_wake_callback.c || { \
