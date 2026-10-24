@@ -101,3 +101,13 @@ void nros_freertos_set_current_task_priority(uint32_t priority)
     }
     vTaskPrioritySet(NULL, (UBaseType_t)priority);
 }
+
+/*
+ * Issue 2016 -- the executor lock's thread identity for the Rust level
+ * runner (`run_tiers_entry`): the running task's handle, as the C runner's
+ * `freertos_thread_id` gives it (`freertos_run_tiers.c`).
+ */
+uintptr_t nros_freertos_current_task_id(void)
+{
+    return (uintptr_t)xTaskGetCurrentTaskHandle();
+}

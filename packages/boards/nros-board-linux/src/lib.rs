@@ -93,27 +93,6 @@ use std::io::Write as _;
 // family is re-exported at the crate root.
 use nros_platform::{BoardEntry, BoardExit, BoardInit, BoardPrint, RuntimeCtx, TierSpec};
 
-/// `Send` wrapper for the shared raw session pointer so it can cross the
-/// `std::thread::scope` boundary. The pointed-to RMW session type is
-/// `pub(crate)` in `nros-node` (unnameable here), so the wrapper is
-/// generic over `T` and never names it — `T` is inferred from
-/// [`nros::Executor::session_ptr`]. Sharing the pointer is sound under
-/// the per-tier contract: the boot executor owns the one session, the
-/// RMW backend serializes concurrent access through its own locks, and
-/// `thread::scope` guarantees no spawned tier outlives the owner.
-struct SharedSession<T>(*mut T);
-// Hand-written Copy/Clone: `#[derive]` would add a spurious `T: Copy`
-// bound (the session type isn't `Copy`), but a raw pointer always is.
-impl<T> Clone for SharedSession<T> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<T> Copy for SharedSession<T> {}
-// SAFETY: the per-tier model shares one RMW session across tier tasks by
-// design; concurrent access is serialized inside the backend.
-unsafe impl<T> Send for SharedSession<T> {}
-
 /// POSIX family driver ZST. Plug into an Entry pkg `main.rs` via:
 ///
 /// ```ignore
@@ -656,27 +635,29 @@ impl LinuxBoard {
         }
     }
 
-    /// Phase 228.E — per-tier multi-task entry. Opens the one RMW
-    /// session, then runs one `Executor` per [`TierSpec`] over that
-    /// shared session: the LEAST urgent tier runs on the boot task (chosen by
-    /// `boot_tier_index` — issue 0636, because an owner that outranks its peers
-    /// and then spins starves them); the rest are spawned as `std::thread`s. Each tier sets its
-    /// `active_groups` filter, runs `setup` (register-only — only this
-    /// tier's callbacks take), then spins until a termination signal
-    /// (issue 1732).
+    /// Phase 228.E — per-tier multi-task entry. Opens the one RMW session,
+    /// then (issue 2016, RFC-0108 "As built in P10") runs each [`TierSpec`]
+    /// as one LEVEL over the core's ONE executor
+    /// ([`nros::levels::LevelCore`]): the least urgent level runs on the
+    /// calling thread and owns the session (issue 0636), every other level is
+    /// a worker `std::thread` over the same executor, started once the level
+    /// before it has set up (issue #144). Each level sets its
+    /// `active_groups` filter and runs `setup` (register-only — only that
+    /// level's callbacks take, and the level runs them), then spins until a
+    /// termination signal (issue 1732) or a bounded run's deadline.
     ///
-    /// `setup` is `Fn` (not `FnOnce`) — it is invoked once per tier
-    /// executor — and `Sync`, since spawned tiers share `&setup`. It
-    /// must register entities only; the spin loop is owned here so the
-    /// board can install the group filter first. (The single-tier
-    /// [`BoardEntry::run`] path, where `setup` owns the spin, is
-    /// unchanged.)
+    /// `setup` is `Fn` (not `FnOnce`) — it is invoked once per level — and
+    /// `Sync`, since the level threads share `&setup`. It must register
+    /// entities only; the spin loop is owned here so the board can install
+    /// the group filter first. (The single-tier [`BoardEntry::run`] path,
+    /// where `setup` owns the spin, is unchanged.)
     ///
-    /// Native preemption uses the default scheduler; the normalized
-    /// [`TierSpec::priority`] is advisory here (strict ordering needs
-    /// `SCHED_FIFO` + privileges). The FreeRTOS port maps it to real
-    /// task priorities (RFC-0016). Blocks until SIGTERM / SIGINT (server
-    /// semantics), then closes the session and returns `Ok` (issue 1732).
+    /// Each level thread adopts its tier's SCHED_FIFO priority when the
+    /// process may (`CAP_SYS_NICE`), and says so or why not. Blocks until
+    /// SIGTERM / SIGINT (server semantics), then joins the level threads,
+    /// takes the runtime back ([`nros::levels::LevelCore::into_runtime`]),
+    /// closes the session and returns `Ok` (issue 1732). A level whose setup
+    /// fails fails the boot.
     pub fn run_tiers<F, E>(
         deploy: &nros_platform::DeployOverlay,
         tiers: &[TierSpec<'_>],
@@ -864,114 +845,253 @@ impl LinuxBoard {
             census_finish(&path, deploy.node_name.unwrap_or("node"), result.is_ok());
         }
 
-        let shared = SharedSession(boot_crt.executor_mut().session_ptr());
+        // issue 2016 (RFC-0108 "As built in P10") -- each tier is one LEVEL
+        // over the core's ONE executor (`nros::levels::LevelCore`), the shape
+        // the C ABI's `nros_board_native_run_levels_in` and the Zephyr and
+        // ThreadX Rust runners have. The least urgent level runs on this
+        // thread and owns the session (issue 0636: an owner that outranks its
+        // peers and then spins starves them); every other level is a worker
+        // thread over the same executor, started once the level before it has
+        // set up (issue #144), so no two setups overlap on the session. The
+        // tiers' executor backing is still checked against the table (issue
+        // 1571), but one executor serves every level: the slots go unused.
+        let _ = tier_backing;
+        if tiers.len() > ::nros::MAX_LEVELS {
+            <Self as BoardPrint>::println(format_args!(
+                "nros: {} tiers is past the {} levels a core holds",
+                tiers.len(),
+                ::nros::MAX_LEVELS
+            ));
+            <Self as BoardExit>::exit_failure();
+        }
+        let n = tiers.len();
+        // Each tier's level: its urgency among the tiers, POSIX
+        // bigger-is-urgent, equal priorities in table order.
+        let level_of =
+            |i: usize| ::nros::tier_level_by(n, i, false, |j| tiers[j].priority).unwrap_or(0);
+        let boot_index = (0..n).max_by_key(|&i| (level_of(i), i)).unwrap_or(0);
+        let boot_tier = &tiers[boot_index];
 
-        // phase-302 W2 (issue 0262) — posix tier priorities/pins are ADVISORY
-        // (no sched_setscheduler/affinity consumer; strict ordering needs
-        // SCHED_FIFO + privileges — phase-162 territory). Say so ONCE, loudly,
-        // when any tier declares them, instead of silently dropping the knobs.
-        // issue 0765 — priority is no longer advisory here; `core` still is.
-        //
-        // This note used to say BOTH were "advisory (not applied natively)",
-        // which was true and is no longer: each tier now self-applies its
-        // declared SCHED_FIFO priority at entry (`apply_tier_priority`) and
-        // says so, or says why not. Leaving the old wording would have been
-        // worse than the original silence — a reader would believe a
-        // declaration was inert while it was being honoured.
-        //
-        // …and then the `core` half went stale in exactly that way. phase-296
-        // W5.13 landed `apply_tier_affinity`, called for EVERY tier — spawned
-        // (`run_one_tier`) and boot — which pins via `sched_setaffinity` and
-        // prints `core pin tier=…` on success or `core pin FAILED …` on
-        // refusal. So `core` has not been advisory since; the note went on
-        // saying it was, which is the failure the paragraph above describes,
-        // one field over. There is now nothing to announce up front: both
-        // dims report their own outcome per tier, which is strictly better
-        // than a blanket note that can rot.
-        //
-        // Kept as a `linux`, not `posix`, statement — the pin is
-        // `sched_setaffinity`, absent from libc's apple module.
+        // The boot level's own lowering, on the executor before it is shared.
+        // issue 0765 -- its declared priority too: it runs on the calling
+        // thread, the tier most easily forgotten.
+        apply_tier_priority(boot_tier);
+        // issue 1172 -- `Err` means the filter did not fit, and
+        // `set_active_groups` has already cleared it and left filtering ON,
+        // so this level registers NOTHING rather than registering on a
+        // quietly narrower set.
+        let _ = boot_crt.executor_mut().set_active_groups(boot_tier.groups);
+        install_park(&mut boot_crt);
+        apply_tier_sched(&mut boot_crt, boot_tier);
+        apply_tier_affinity::<Self>(boot_tier);
+
+        // The executor's lock, before a second thread can reach it: the
+        // POSIX port's recursive `PTHREAD_PRIO_INHERIT` mutex and
+        // `pthread_self`, so each pass releases it around its callbacks and
+        // its park. One level needs none. The mutex lives for the process.
+        let mutex: *mut core::ffi::c_void = if n > 1 {
+            // SAFETY: a pure size query of the linked port.
+            let words = unsafe { nros_platform_mutex_rec_storage_size() }
+                .div_ceil(8)
+                .max(1);
+            let m: &'static mut [u64] = Box::leak(vec![0u64; words].into_boxed_slice());
+            let mp = m.as_mut_ptr() as *mut core::ffi::c_void;
+            // SAFETY: `mp` is `words` writable words, leaked for the process.
+            if unsafe { nros_platform_mutex_rec_init(mp) } != 0 {
+                <Self as BoardPrint>::println(format_args!(
+                    "nros: native run_levels: the executor lock was not installed; refused"
+                ));
+                <Self as BoardExit>::exit_failure();
+            }
+            mp
+        } else {
+            core::ptr::null_mut()
+        };
+        // SAFETY: no second thread exists yet; the mutex was initialised
+        // above (or is unused with one level); `pthread_self` names the
+        // calling thread.
+        let core = match unsafe {
+            ::nros::levels::LevelCore::new(
+                boot_crt,
+                u8::try_from(n).unwrap_or(u8::MAX),
+                level_of(boot_index),
+                mutex,
+                nros_platform_mutex_rec_lock,
+                nros_platform_mutex_rec_unlock,
+                posix_thread_id,
+            )
+        } {
+            Ok(c) => c,
+            Err(e) => {
+                <Self as BoardPrint>::println(format_args!(
+                    "nros: native run_levels: the level runtime refused: {e:?}"
+                ));
+                <Self as BoardExit>::exit_failure();
+            }
+        };
+
+        // issue #144 -- the boot level's setup FIRST.
+        // SAFETY: the runtime reference lives inside the closure only.
+        let rc = unsafe {
+            core.with_runtime(|crt| {
+                let mut ctx = RuntimeCtx::with_runtime(crt);
+                setup(&mut ctx)
+            })
+        };
+        if let Err(e) = rc {
+            <Self as BoardPrint>::println(format_args!(
+                "nros: boot tier `{}` setup failed: {e:?}",
+                boot_tier.name
+            ));
+            // SAFETY: no other level was started.
+            close_session::<Self>(Some(unsafe { core.into_runtime() }));
+            return Err(e);
+        }
+
         let setup = &setup;
-        // Issue 0447 — held across each tier's `setup` so entity declaration on
-        // the one shared session is serialized (see `run_one_tier`). Issue
-        // 1733 — the one gate every all-at-once tier runner holds (the native
-        // C++ and NuttX Rust runners too), rather than a spelling per board.
-        let setup_lock = ::nros::TierSetupGate::new();
-        let setup_lock = &setup_lock;
-        // issue 0636 — the boot tier is CHOSEN, not `tiers[0]`. POSIX runs
-        // bigger-is-more-urgent, and `resolve_tiers` orders by raw number
-        // descending without inverting per kernel, so `tiers[0]` was the MOST
-        // urgent tier here. An owner that outranks its peers and then spins
-        // starves them on any single-CPU deployment (measured on NuttX, which
-        // runs this same POSIX shape); `boot_tier_index` picks the tier that
-        // outranks nothing. Where every tier declares the same priority — or
-        // none — this is still index 0.
-        let boot_index = ::nros_platform::boot_tier_index(
-            tiers,
-            ::nros_platform::PriorityDirection::BiggerIsMoreUrgent,
-        );
-        // issue 1571 — one `.bss` slot per spawned tier, in spawn order.
-        let mut slots = tier_backing.iter_mut();
+        let deadline = entry_spin_deadline();
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        let stop = &stop;
+        let mut failed = false;
         std::thread::scope(|scope| {
-            // Spawn every tier except the one the boot task runs; each borrows
-            // the shared session pointer and `&setup` from the enclosing scope.
-            for (spawn_index, tier) in tiers.iter().enumerate() {
-                if spawn_index == boot_index {
+            for (i, tier) in tiers.iter().enumerate() {
+                if i == boot_index {
                     continue;
                 }
-                let Some(slot) = slots.next() else {
-                    <Self as BoardPrint>::println(format_args!(
-                        "nros: no executor backing slot left for tier `{}` (issue 1571)",
-                        tier.name
-                    ));
-                    continue;
-                };
+                let level = level_of(i);
+                // 0 setting up, 1 set up, 2 failed.
+                let state = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(0));
+                let st = std::sync::Arc::clone(&state);
                 let mut builder =
                     std::thread::Builder::new().name(format!("nros-tier-{}", tier.name));
-                // phase-302 W2 (issue 0262) — honor a declared per-tier stack
-                // (previously silently ignored; std default otherwise).
+                // phase-302 W2 (issue 0262) -- a declared per-tier stack.
                 if tier.stack_bytes > 0 {
                     builder = builder.stack_size(tier.stack_bytes);
                 }
                 let spawn = builder.spawn_scoped(scope, move || {
-                    // Re-bind the whole wrapper so the closure captures the
-                    // `Send` `SharedSession`, not the bare `*mut` field
-                    // (edition-2021 disjoint capture would grab the field).
-                    let shared = shared;
-                    // SAFETY: `shared.0` aliases the boot executor's
-                    // session, kept alive for this scope by `thread::scope`.
-                    // issue 1571 — over this tier's `.bss` slot, not a leaked `Box`.
-                    let exec = unsafe { ::nros::Executor::open_with_session_slot(shared.0, slot) };
-                    run_one_tier::<Self, F, E>(exec, tier, setup, setup_lock);
+                    use std::sync::atomic::Ordering::SeqCst;
+                    // issue 0765 -- the level's own priority before any work.
+                    apply_tier_priority(tier);
+                    apply_tier_affinity::<Self>(tier);
+                    // SAFETY: once, on this level's own thread.
+                    let worker = match unsafe { core.open_level(level) } {
+                        Ok(w) => w,
+                        Err(e) => {
+                            <Self as BoardPrint>::println(format_args!(
+                                "nros: tier `{}` did not open as level {level}: {e:?}",
+                                tier.name
+                            ));
+                            st.store(2, SeqCst);
+                            return;
+                        }
+                    };
+                    // SAFETY: the runtime reference lives inside the closure.
+                    let rc = unsafe {
+                        core.with_runtime(|crt| {
+                            let _ = crt.executor_mut().set_active_groups(tier.groups);
+                            let mut ctx = RuntimeCtx::with_runtime(crt);
+                            setup(&mut ctx)
+                        })
+                    };
+                    if let Err(e) = rc {
+                        <Self as BoardPrint>::println(format_args!(
+                            "nros: tier `{}` setup failed: {e:?}",
+                            tier.name
+                        ));
+                        st.store(2, SeqCst);
+                        return;
+                    }
+                    st.store(1, SeqCst);
+                    let period = std::time::Duration::from_micros(tier.spin_period_us.max(1));
+                    // issue 0636 option 3 -- every iteration reaches a
+                    // scheduling point.
+                    let mut gap = ::nros_platform::TierSpinGap::new(tier.spin_period_us);
+                    while !stop.load(SeqCst) && !run_should_end(deadline) {
+                        let iter = gap.mark();
+                        // SAFETY: `worker` is this thread's, from `open_level`.
+                        unsafe { core.spin_level_once(worker, period) };
+                        gap.after_spin(iter);
+                    }
                 });
                 if let Err(e) = spawn {
                     <Self as BoardPrint>::println(format_args!(
                         "nros: failed to spawn tier `{}`: {e}",
                         tier.name
                     ));
+                    failed = true;
+                    break;
+                }
+                // The next level starts only once this one has set up.
+                while state.load(std::sync::atomic::Ordering::SeqCst) == 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                if state.load(std::sync::atomic::Ordering::SeqCst) == 2 {
+                    <Self as BoardPrint>::println(format_args!(
+                        "nros: level {level} (`{}`) failed: failing the boot",
+                        tier.name
+                    ));
+                    failed = true;
+                    break;
                 }
             }
-            // Reached once the session is open + every non-boot tier task is
-            // spawned; the boot tier then registers + spins below. Unique line
-            // (the single-tier path never prints it) so an E2E can confirm the
-            // emitted binary entered the per-tier run with a live session.
-            <Self as BoardPrint>::println(format_args!(
-                "nros: multi-tier run — {} tier(s) over one session",
-                tiers.len()
-            ));
-            // Boot tier runs on this task, reusing the owning executor.
-            run_boot_tier::<Self, F, E>(&mut boot_crt, &tiers[boot_index], setup, setup_lock);
+            if !failed {
+                // Unique lines (the single-tier path never prints them) so an
+                // E2E can confirm the image entered the level run with a live
+                // session.
+                <Self as BoardPrint>::println(format_args!(
+                    "nros: multi-tier run — {} tier(s) over one session",
+                    n
+                ));
+                <Self as BoardPrint>::println(format_args!(
+                    "nros: multi-level run — {n} level(s) over one executor"
+                ));
+                let period = std::time::Duration::from_micros(boot_tier.spin_period_us.max(1));
+                let mut gap = ::nros_platform::TierSpinGap::new(boot_tier.spin_period_us);
+                while !run_should_end(deadline) {
+                    let iter = gap.mark();
+                    // SAFETY: this is the boot level's thread.
+                    unsafe { core.spin_boot_once(period) };
+                    gap.after_spin(iter);
+                }
+            }
+            stop.store(true, std::sync::atomic::Ordering::SeqCst);
         });
 
-        // Issue 1732 — reached once a termination signal has ended every tier's
-        // spin and `thread::scope` has joined the spawned ones, so no tier
-        // executor still borrows the session. Close it, then return: the
-        // generated `main` returns and the process exits 0. (Before 1732 this
-        // was unreachable and a signal killed the image with the session open.)
-        close_session::<Self>(Some(boot_crt));
+        // Issue 1732 -- reached once a termination signal (or the bounded
+        // run's deadline) has ended every level's spin and `thread::scope`
+        // has joined the workers, so nothing else reaches the executor. Take
+        // the runtime back from the levels (issue 2016), close the session,
+        // then return: the generated `main` returns and the process exits 0.
+        // SAFETY: every other level's thread was joined by the scope above.
+        close_session::<Self>(Some(unsafe { core.into_runtime() }));
+        if failed {
+            <Self as BoardExit>::exit_failure();
+        }
         <Self as BoardPrint>::println(format_args!("nros: application complete"));
         Ok(())
     }
+}
+
+// issue 2016 -- the POSIX port's recursive priority-inheriting mutex, the
+// level runner's executor lock (`nros-platform-posix`).
+unsafe extern "C" {
+    fn nros_platform_mutex_rec_storage_size() -> usize;
+    fn nros_platform_mutex_rec_init(m: *mut core::ffi::c_void) -> i8;
+    fn nros_platform_mutex_rec_lock(m: *mut core::ffi::c_void) -> i8;
+    fn nros_platform_mutex_rec_unlock(m: *mut core::ffi::c_void) -> i8;
+}
+
+/// The executor lock's thread identity: the calling thread's `pthread_t`.
+unsafe extern "C" fn posix_thread_id() -> usize {
+    // SAFETY: `pthread_self` takes nothing and never fails.
+    unsafe { libc::pthread_self() as usize }
+}
+
+/// Whether a level run ends: a termination signal (issue 1732) or a bounded
+/// run's deadline (`NROS_ENTRY_SPIN_MS`, issue 1310).
+fn run_should_end(deadline: Option<std::time::Instant>) -> bool {
+    ::nros_platform::termination::requested()
+        || deadline.is_some_and(|d| std::time::Instant::now() >= d)
 }
 
 // phase-436 C2 — the POSIX port's microsecond park (`sem_clockwait` on an
@@ -1107,96 +1227,6 @@ fn apply_tier_priority(tier: &TierSpec<'_>) {
 #[cfg(not(unix))]
 fn apply_tier_priority(_tier: &TierSpec<'_>) {}
 
-fn run_one_tier<B, F, E>(
-    exec: ::nros::Executor<'static>,
-    tier: &TierSpec<'_>,
-    setup: &F,
-    setup_lock: &::nros::TierSetupGate,
-) where
-    B: BoardPrint,
-    F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,
-    E: core::fmt::Debug,
-{
-    // issue 0765 — the tier's OWN priority, before it does any work, so the
-    // declaration holds for the setup it is about to run and not just for the
-    // spin loop afterwards.
-    apply_tier_priority(tier);
-    let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
-    // issue 1172 — `Err` means the filter did not fit, and
-    // `set_active_groups` has already cleared it and left filtering ON,
-    // so this tier registers NOTHING rather than registering on a
-    // quietly narrower set. Nothing here can return an error (the tier
-    // runner is `-> ()`), so the fail-closed state IS the report.
-    let _ = crt.executor_mut().set_active_groups(tier.groups);
-    install_park(&mut crt);
-    apply_tier_sched(&mut crt, tier);
-    apply_tier_affinity::<B>(tier);
-    {
-        // Issue 0447 — SERIALIZE registration across tiers. Every tier executor
-        // borrows the ONE shared session and declares its entities on it, and the
-        // boot tier runs its own `setup` concurrently with these spawned ones with
-        // no synchronization. Interleaved declaration bound topics
-        // non-deterministically: the same binary would deliver correctly, or land
-        // the 10 ms tier's samples on the 100 ms tier's topic, or deliver nothing.
-        // Registration happens once per boot and off the hot path, so the mutex
-        // costs nothing that matters; the spin loops stay fully concurrent.
-        let _guard = setup_lock.enter();
-        let mut ctx = RuntimeCtx::with_runtime(&mut crt);
-        if let Err(e) = setup(&mut ctx) {
-            B::println(format_args!(
-                "nros: tier `{}` setup failed: {e:?} — tier task exiting",
-                tier.name
-            ));
-            return;
-        }
-    }
-    spin_forever::<B>(&mut crt, tier);
-}
-
-/// Register + spin the boot tier on the session-owning executor.
-fn run_boot_tier<B, F, E>(
-    crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
-    tier: &TierSpec<'_>,
-    setup: &F,
-    setup_lock: &::nros::TierSetupGate,
-) where
-    B: BoardPrint,
-    F: Fn(&mut RuntimeCtx<'_>) -> Result<(), E>,
-    E: core::fmt::Debug,
-{
-    // issue 0765 — the BOOT tier adopts its declared priority too.
-    //
-    // It runs on the calling thread rather than a spawned one, so it is the
-    // tier most easily forgotten — and forgetting it is not hypothetical: the
-    // same omission was a real defect on FreeRTOS (the boot task adopted
-    // nothing at all) and cost issue 0636 a measurement round on NuttX. A tier
-    // is a tier whichever thread carries it.
-    apply_tier_priority(tier);
-    // issue 1172 — `Err` means the filter did not fit, and
-    // `set_active_groups` has already cleared it and left filtering ON,
-    // so this tier registers NOTHING rather than registering on a
-    // quietly narrower set. Nothing here can return an error (the tier
-    // runner is `-> ()`), so the fail-closed state IS the report.
-    let _ = crt.executor_mut().set_active_groups(tier.groups);
-    install_park(crt);
-    apply_tier_sched(crt, tier);
-    apply_tier_affinity::<B>(tier);
-    {
-        // Issue 0447 — see `run_one_tier`: the boot tier's registration races the
-        // spawned tiers' on the shared session unless they take the same lock.
-        let _guard = setup_lock.enter();
-        let mut ctx = RuntimeCtx::with_runtime(crt);
-        if let Err(e) = setup(&mut ctx) {
-            B::println(format_args!(
-                "nros: boot tier `{}` setup failed: {e:?}",
-                tier.name
-            ));
-            return;
-        }
-    }
-    spin_forever::<B>(crt, tier);
-}
-
 /// The deadline a numeric `NROS_ENTRY_SPIN_MS` puts on a tiered run, or `None`
 /// for an unbounded one (unset, `0`, `forever`, or not a number).
 ///
@@ -1213,32 +1243,6 @@ fn entry_spin_deadline() -> Option<std::time::Instant> {
         .parse()
         .ok()?;
     (ms > 0).then(|| std::time::Instant::now() + std::time::Duration::from_millis(ms))
-}
-
-/// Drive a tier executor's `spin_once` at its declared period until a
-/// termination signal arrives (issue 1732), or a bounded run's deadline passes.
-fn spin_forever<B: BoardPrint>(
-    crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
-    tier: &TierSpec<'_>,
-) {
-    let deadline = entry_spin_deadline();
-    let period = std::time::Duration::from_micros(tier.spin_period_us.max(1));
-    // issue 0636 option 3 — every iteration reaches a scheduling point. The
-    // executor's own wait is SKIPPED whenever a wake already fired, so under
-    // sustained traffic this loop would otherwise never block. On a host under
-    // SCHED_OTHER the kernel preempts anyway; under the SCHED_FIFO this board
-    // asks for when it can get it, a thread that never blocks never lets a
-    // lower-priority tier run. Costs nothing while the spins do block.
-    let mut gap = ::nros_platform::TierSpinGap::new(tier.spin_period_us);
-    while !::nros_platform::termination::requested()
-        && deadline.is_none_or(|d| std::time::Instant::now() < d)
-    {
-        let iter = gap.mark();
-        if let Err(e) = crt.spin_once(period) {
-            B::println(format_args!("nros: tier `{}` spin error: {e:?}", tier.name));
-        }
-        gap.after_spin(iter);
-    }
 }
 
 /// phase-338 W3 — route the `log` facade to stdout on hosted targets.

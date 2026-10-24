@@ -885,14 +885,18 @@ impl ExecutorNodeRuntime {
     /// if any other thread can reach it, and no reference to the runtime is
     /// live in the caller.
     #[cfg(feature = "rmw-cffi")]
-    pub unsafe fn spin_once_shared(this: *mut Self, timeout: Duration) {
+    pub unsafe fn spin_once_shared(
+        this: *mut Self,
+        timeout: Duration,
+    ) -> nros_node::SpinOnceResult {
         // SAFETY: the caller's contract; the lock is taken before any
         // reference to the runtime exists.
         let exec = unsafe { Self::executor_ptr(this) };
         let _g = unsafe { nros_node::executor::exec_lock::ExecGuard::acquire(exec) };
-        let _ = unsafe { Executor::spin_once_shared(exec, timeout) };
+        let result = unsafe { Executor::spin_once_shared(exec, timeout) };
         // SAFETY: under the lock no other thread touches the runtime.
         unsafe { (*this).run_ticks() };
+        result
     }
 
     /// Mutably borrow the underlying executor — for advanced wiring
