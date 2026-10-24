@@ -465,17 +465,39 @@ nros_locate_sdk_trees() {
     export FREERTOS_DIR LWIP_DIR THREADX_DIR NETX_DIR
 }
 
-# nros_locate_artifact <name> [--target <triple>] [--profile <p>] — where a
+# nros_locate_artifact <name> [--target <triple>] [--profile <p>]
+#                      [--placed-dir <dir>] — where a
 # cargo-built nano-ros artifact lands (phase-484 W6b, RFC-0103 D7): `c-archive`,
 # `cpp-archive`, `c-include`, `cpp-include`, `c-config-header`,
 # `cpp-config-header`. The layout is `nros_build_paths::artifact` and the target
-# dir is cargo's own answer, so no caller spells `<root>/target/...`. Fails
+# dir is cargo's own answer, so no caller spells `<root>/target/...`. A header
+# REQUIRES `--placed-dir` (the `nros_cargo_placed` dest, issue 1824). Fails
 # (non-zero, nothing printed) with no CLI — an artifact has no fallback path.
 nros_locate_artifact() {
     local name="${1:?nros_locate_artifact: artifact name}" bin
     shift
     bin="$(nros_cli_bin)" || return 1
     "$bin" locate artifact "$name" "$@"
+}
+
+# nros_cargo_placed <dest> <package>... -- <cargo args>... — run `cargo <args>`
+# and place the per-build config headers of each <package> (`nros-c`,
+# `nros-cpp`) from THAT run's `$OUT_DIR` into <dest> (issue 1824). The ONE
+# shell spelling of `scripts/build/cargo-out-dir-headers.py`; read the result
+# with `nros_locate_artifact <c|cpp>-include --placed-dir <dest>`. Name every
+# package whose header the caller compiles against: a C++ build's C header is
+# written by nros-c's build script, so it needs `nros-cpp nros-c`.
+nros_cargo_placed() {
+    local dest="${1:?nros_cargo_placed: dest}" pkgs=()
+    shift
+    while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
+        pkgs+=(--package "$1")
+        shift
+    done
+    [ "${1:-}" = "--" ] || { echo "nros_cargo_placed: missing -- before the cargo args" >&2; return 2; }
+    shift
+    python3 "$_NROS_CLI_BIN_ROOT/scripts/build/cargo-out-dir-headers.py" "${pkgs[@]}" \
+        --dest "$dest" -- cargo "$@" --message-format=json-render-diagnostics
 }
 
 # The checkout this file is in, captured when it is SOURCED and exported: an

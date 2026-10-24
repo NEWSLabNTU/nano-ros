@@ -524,9 +524,9 @@ set(_nros_edition_feature "ros-${_nros_ros_edition}")
 # =============================================================================
 
 if(CONFIG_NROS_C_API)
-    # Phase 119.3: prepend `<cargo target dir>/nros-c-generated` to the include
-    # path. nros-c's build.rs writes the per-build header there for this Zephyr
-    # build's exact storage sizes. The source-tree header is a stub that
+    # Phase 119.3: prepend `<header root>/nros-c-generated` to the include
+    # path. The cargo build's placer copies nros-c's per-build header there from
+    # its `$OUT_DIR` (issue 1824) for this Zephyr build's exact storage sizes. The source-tree header is a stub that
     # `#error`s if reached.
     # phase-400 W5.a — the directory is `nros_resolve_cargo_dirs()`'s answer, not
     # a literal repeated from nros_cargo_build.cmake. Same path today.

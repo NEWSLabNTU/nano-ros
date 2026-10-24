@@ -3,6 +3,8 @@
 //! crate that path-depends on the real nros-core/nros-serdes, and runs
 //! `cargo check`. Ignored by default (spawns cargo); run with:
 //!   cargo test -p rosidl-codegen --test heap_compile_check -- --ignored
+//! The three C syntax checks also need `NROS_C_CONFIG_INCLUDE` — see
+//! [`c_config_include`] for the commands that produce it (issue 1824).
 
 use rosidl_codegen::{
     CapacityResolver, RosEdition, generate_nros_message_package, generate_nros_service_package,
@@ -20,6 +22,31 @@ mod common;
 /// entire purpose is "the generated C compiles" cannot conclude that without a
 /// compiler, and saying so quietly is how a suite keeps a green tick while
 /// verifying nothing — the class issue 0693 was filed for.
+/// The include root holding nros-c's per-build `rclc/detail/nros_config_generated.h`
+/// (`<rclc/types.h>` includes it). Issue 1824: the header lives in a cargo
+/// `$OUT_DIR`, not under a fixed path, and this crate is a different cargo
+/// workspace from nros-c's — so the caller BUILDS it and names the placed dir.
+/// Refused, never guessed: a stale or missing header here reads as a codegen bug.
+fn c_config_include() -> PathBuf {
+    match std::env::var_os("NROS_C_CONFIG_INCLUDE") {
+        Some(p)
+            if PathBuf::from(&p)
+                .join("rclc/detail/nros_config_generated.h")
+                .is_file() =>
+        {
+            PathBuf::from(p)
+        }
+        other => panic!(
+            "NROS_C_CONFIG_INCLUDE={other:?} holds no rclc/detail/nros_config_generated.h. \
+             From the repo root:\n  \
+             python3 scripts/build/cargo-out-dir-headers.py --package nros-c --dest \"$PWD/build/heap-compile-check\" \
+             -- cargo build -p nros-c --features alloc,platform-posix,rmw-cffi \
+             --message-format=json-render-diagnostics\n  \
+             export NROS_C_CONFIG_INCLUDE=\"$(nros locate artifact c-include --placed-dir \"$PWD/build/heap-compile-check\")\""
+        ),
+    }
+}
+
 fn cc_output(args: &[&str]) -> std::process::Output {
     std::process::Command::new("cc").args(args).output().expect(
         "`cc` not found — this file compiles generated C to check it is well-formed, \
@@ -212,7 +239,7 @@ fn generated_c_with_dheader_wrap_syntax_checks() {
         .to_path_buf();
     let inc = repo_root.join("packages/api/nros-c/include");
     let plat = repo_root.join("packages/platform/nros-platform-api/include");
-    let gen_dir = repo_root.join("target/nros-c-generated");
+    let gen_dir = c_config_include();
     let tmp = tempfile::tempdir().unwrap();
     // Write the generated header next to the source so its #include resolves.
     let hdr = tmp.path().join("my_msgs__msg__framed.h");
@@ -267,7 +294,7 @@ fn generated_c_service_with_dheader_wrap_syntax_checks() {
         .to_path_buf();
     let inc = repo_root.join("packages/api/nros-c/include");
     let plat = repo_root.join("packages/platform/nros-platform-api/include");
-    let gen_dir = repo_root.join("target/nros-c-generated");
+    let gen_dir = c_config_include();
     let tmp = tempfile::tempdir().unwrap();
     let hdr = tmp.path().join(&pkg.header_name);
     fs::create_dir_all(hdr.parent().unwrap()).ok();
@@ -323,7 +350,7 @@ fn generated_c_action_with_dheader_wrap_syntax_checks() {
         .to_path_buf();
     let inc = repo_root.join("packages/api/nros-c/include");
     let plat = repo_root.join("packages/platform/nros-platform-api/include");
-    let gen_dir = repo_root.join("target/nros-c-generated");
+    let gen_dir = c_config_include();
     let tmp = tempfile::tempdir().unwrap();
     let hdr = tmp.path().join(&pkg.header_name);
     fs::create_dir_all(hdr.parent().unwrap()).ok();

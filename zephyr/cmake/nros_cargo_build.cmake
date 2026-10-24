@@ -2144,8 +2144,8 @@ function(nros_cargo_build)
     get_filename_component(_nros_ws_root "${NROS_REPO_DIR}/Cargo.toml" REALPATH)
     # RFC-0071 D9 (phase-506 W4b) — an IMAGE crate (`LIB` given) stands in for
     # the repo root's `nros-c` / `nros-cpp`, so it takes the directory those
-    # used: the per-build headers the module includes are written under it
-    # (`$CARGO_TARGET_DIR/nros-c-generated`). The repo root builds neither API
+    # used: the per-build headers the module includes are PLACED under it
+    # (`nros-c-generated/`, issue 1824). The repo root builds neither API
     # crate in such an image, so the dir still serves ONE root (issue 0616).
     if(_cargo_ws_root STREQUAL _nros_ws_root OR ARG_LIB)
         # phase-400 W5.a — the ROOT workspace's directory is resolved ONCE, by
@@ -2271,6 +2271,7 @@ function(nros_cargo_build)
     nros_generated_header(_nros_c_api_h "${_nros_hdr_root}" c nros_generated.h)
     nros_generated_header(_nros_cpp_cfg_h "${_nros_hdr_root}" cpp nros_cpp_config_generated.h)
     set(_cargo_byproducts ${LIB_PATH})
+    set(_nros_placer_pkgs --package ${_nros_cb_ident})
     if(_nros_cb_ident STREQUAL "nros-c")
         list(APPEND _cargo_byproducts
             ${_nros_c_cfg_h}
@@ -2298,6 +2299,14 @@ function(nros_cargo_build)
                 ${_nros_c_cfg_h}
                 ${_nros_c_api_h}
             )
+            # Issue 1824 — and PLACE them: nros-c's build script writes them
+            # into nros-c's `$OUT_DIR` only, so without its package on the
+            # placer they would be declared and never produced. (They used to
+            # arrive through the flat target-dir copy, which IS this header
+            # root — the side channel the issue deleted.) Not when nros-c has
+            # its own build: that target places them, from the unit its own
+            # archive links.
+            list(APPEND _nros_placer_pkgs --package nros-c)
         endif()
     endif()
 
@@ -2437,7 +2446,7 @@ function(nros_cargo_build)
             # `json-render-diagnostics` keeps diagnostics human on stderr and
             # leaves stdout pure JSON for the placer to read `out_dir` from.
             python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py
-                --package ${_nros_cb_ident}
+                ${_nros_placer_pkgs}
                 --dest ${_nros_hdr_root}
                 -- cargo ${CARGO_ARGS} --message-format=json-render-diagnostics
         BYPRODUCTS ${_cargo_byproducts}

@@ -13,11 +13,12 @@
 #
 # ## Why both the mirror and the stamp RE-RUN on every build (issue 1783)
 #
-# The mirror's SOURCE is a file cargo writes as a side effect of its build
-# script (`<cargo-target-dir>/nros-c-generated/rclc/detail/<name>`,
-# `<cargo-target-dir>/nros-cpp-generated/rclcpp/detail/<name>`). Neither
-# generator has an edge to it — cargo runs behind Corrosion's always-run
-# target, and the shared cargo dir is not a file any CMake rule produces. Issue
+# The mirror's SOURCE is a file cargo's build script writes into its own
+# `$OUT_DIR`, placed into this build by `nros_config_header_place` (issue 1824;
+# before that, the `<cargo-target-dir>/nros-{c,cpp}-generated/` side channel).
+# Neither generator has an edge to it — cargo runs behind Corrosion's
+# always-run target, and the placed copy is not a file any CMake rule
+# produces. Issue
 # 0268 therefore keyed the mirror on a PROXY, `$<TARGET_FILE:nros_{c,cpp}-static>`,
 # on the premise that a header that changes comes with an archive that changes.
 #
@@ -70,51 +71,6 @@ endfunction()
 set(_NROS_CFG_MIRROR_SH
     "${CMAKE_CURRENT_LIST_DIR}/../scripts/build/mirror-generated-header.sh"
     CACHE INTERNAL "issue 1783: the one writer of the in-tree sizes-header mirror")
-
-# nros_config_header_cargo_manifest(<manifest>) — issue 1904
-#
-# Record, for `mirror-generated-header.sh`, WHICH subdir of `${CMAKE_BINARY_DIR}/cargo`
-# this build's cargo writes: call it beside every `corrosion_import_crate()`
-# whose crate writes a mirrored header, with the SAME `MANIFEST_PATH`.
-#
-# Under a shared cargo dir (`nros_share_corrosion_cargo_dir`) `cargo` is a
-# symlink every sharer writes through, and Corrosion puts each import in
-# `cargo/<workspace-folder>_<sha1(manifest)[0:5]>`. A second checkout sharing
-# the keyed dir writes a second subdir beside this one, and pre-phase-340
-# residue (`cargo/build/`, issue 0987) is a third. The mirror used to take the
-# NEWEST header across all of them, so a sibling checkout's build made this
-# build mirror the sibling's header against its own archive. With the subdir
-# recorded, the mirror reads only its own (and REFUSES when only a foreign one
-# has the header, rather than taking it).
-#
-# The name is Corrosion's own formula, Corrosion.cmake `_add_cargo_build`
-# (`cargo_folder_name` + `cargo_path_hash`, pinned v0.6.1-nros1 lines 778-784):
-# Corrosion exposes the directory through no property, variable or argument
-# (issue 0945 checked v0.6.1 and upstream `master`). Re-deriving it here is
-# safe in the direction that matters: if Corrosion ever renames it, the
-# recorded subdir holds no header, the mirror finds a header only in a subdir
-# it was not told about, and it FAILS naming this issue — loud, never a silent
-# wrong copy.
-#
-# The record is configure-scoped: the first call in a configure truncates it,
-# so a subdir a previous configure named does not linger.
-function(nros_config_header_cargo_manifest _manifest)
-    cmake_path(GET _manifest PARENT_PATH _parent)
-    cmake_path(GET _parent PARENT_PATH _grandparent)
-    string(REPLACE "${_grandparent}/" "" _folder "${_parent}")
-    string(SHA1 _hash "${_manifest}")
-    string(SUBSTRING "${_hash}" 0 5 _hash)
-    set(_name "${_folder}_${_hash}")
-    set(_record "${CMAKE_BINARY_DIR}/CMakeFiles/nros-cargo-subdirs.txt")
-    get_property(_seen GLOBAL PROPERTY _NROS_CARGO_SUBDIRS_RECORDED)
-    if(NOT DEFINED _seen OR "${_seen}" STREQUAL "")
-        file(WRITE "${_record}" "${_name}\n")
-        set_property(GLOBAL PROPERTY _NROS_CARGO_SUBDIRS_RECORDED "${_name}")
-    elseif(NOT "${_name}" IN_LIST _seen)
-        file(APPEND "${_record}" "${_name}\n")
-        set_property(GLOBAL APPEND PROPERTY _NROS_CARGO_SUBDIRS_RECORDED "${_name}")
-    endif()
-endfunction()
 
 set(_NROS_CFG_PLACER_PY
     "${CMAKE_CURRENT_LIST_DIR}/../scripts/build/cargo-out-dir-headers.py"
@@ -191,12 +147,10 @@ endfunction()
 
 # nros_config_header_mirror(<target> <after-target> [<src> <gen-subdir> <name> <dest>]...)
 #
-# <src>        the header to mirror: since issue 1824 the copy
-#              `nros_config_header_place` put under its dest dir, with
-#              <gen-subdir> `-`; otherwise build.rs's leaf copy (the corrosion
-#              build dir), the fallback
-# <gen-subdir> `nros-c-generated/rclc/detail` / `nros-cpp-generated/rclcpp/detail` under the
-#              cargo dir (`nros_generated_subpath`)
+# <src>        the header to mirror: the copy `nros_config_header_place` put
+#              under its dest dir (`nros_config_header_placed`) — issue 1824
+# <gen-subdir> always `-` ("<src> is the only source"); the script refuses
+#              anything else, the pre-1824 `cargo/*/` side-channel lookup
 # <name>       header file name
 # <dest>       the mirror path consumers include
 #
@@ -230,8 +184,8 @@ function(nros_config_header_mirror _target _after)
         list(GET ARGN ${_j3} _dest)
         get_filename_component(_dest_dir "${_dest}" DIRECTORY)
         file(MAKE_DIRECTORY "${_dest_dir}")
-        # issue 0805/0978 — the script picks the freshest of the shared
-        # cargo copy and the leaf copy, and writes only on a difference.
+        # issue 1824 — the script copies the placed <src>, only on a
+        # difference, and records that it ran (issue 1911).
         add_custom_command(
             OUTPUT "${_dest}"
             COMMAND bash "${_NROS_CFG_MIRROR_SH}"

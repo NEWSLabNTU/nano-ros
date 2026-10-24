@@ -1,10 +1,13 @@
 //! Where a cargo-built nano-ros ARTIFACT lands — phase-484 W6b (RFC-0103 D7).
 //!
 //! `nros-c` / `nros-cpp` build to two kinds of output a non-cargo consumer has
-//! to find: the staticlib (`lib<crate>.a`) and the per-build config header,
-//! which the build script copies to a FLAT directory under the cargo target
-//! dir (issue 0360) so it is findable without parsing cargo's JSON stream.
-//! Both are a function of (cargo target dir, triple, profile), and before this
+//! to find: the staticlib (`lib<crate>.a`), under the cargo target dir, and
+//! the per-build config header, which the build script writes ONLY to its
+//! `$OUT_DIR` (issue 1824 retired the flat target-dir copy, issue 0360's) and
+//! which a consumer reaches through a PLACED directory —
+//! `scripts/build/cargo-out-dir-headers.py --dest <dir>` copies the
+//! `nros-{c,cpp}-generated/` tree there, and the header artifacts below are
+//! relative to that root, never the target dir. Before this
 //! module PX4's cmake module, NuttX's `Make.defs` and the build scripts that
 //! WRITE the header each spelled that function themselves —
 //! `${NROS_REPO_DIR}/target/release/libnros_cpp.a`, a literal that ignores
@@ -18,9 +21,10 @@
 
 use std::path::{Path, PathBuf};
 
-/// The flat per-build header directory `nros-c`'s build script writes.
+/// The per-build header tree `nros-c`'s build script writes under `$OUT_DIR`
+/// (and the placer keeps under its `--dest`).
 pub const C_GENERATED_DIR: &str = "nros-c-generated";
-/// The flat per-build header directory `nros-cpp`'s build script writes.
+/// The per-build header tree `nros-cpp`'s build script writes under `$OUT_DIR`.
 pub const CPP_GENERATED_DIR: &str = "nros-cpp-generated";
 
 /// Where under an include root a C header nros-c GENERATES sits — the per-build
@@ -76,13 +80,15 @@ impl Artifact {
         Self::ALL.into_iter().find(|a| a.name() == name)
     }
 
-    /// Whether the path depends on the target triple and profile. The
-    /// headers are written FLAT, once per target dir, so they do not.
+    /// Whether the path depends on the target triple and profile — i.e. is an
+    /// archive under the cargo target dir. A header does not: it is relative
+    /// to a placed dir (issue 1824).
     pub fn per_profile(self) -> bool {
         matches!(self, Artifact::CArchive | Artifact::CppArchive)
     }
 
-    /// The path relative to the cargo target dir. `triple` is `None` for a
+    /// The path relative to its root — the cargo target dir for an archive, a
+    /// placed dir for a header. `triple` is `None` for a
     /// host build cargo ran without `--target`; `profile` is the cargo
     /// PROFILE name (`dev`, `release`, a custom one), mapped to its directory
     /// by [`profile_dir`].

@@ -62,11 +62,6 @@ ALLOWED = {
         "synthetic consumer snippets the pairing scan is self-tested against; "
         "they are inputs to a matcher, never a path a build reads"
     ),
-    "packages/cli/rosidl-codegen/tests/heap_compile_check.rs": (
-        "a test in the packages/cli workspace reading the ROOT workspace's "
-        "header; that workspace has no edge to nros-build-paths, and adding one "
-        "moves its lockfile — routed when it gains one"
-    ),
 }
 
 # Files whose language `comments` cannot strip, read as hash-comment text.

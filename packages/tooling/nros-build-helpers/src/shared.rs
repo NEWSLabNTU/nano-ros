@@ -6,36 +6,6 @@ use std::{
 
 pub type SizeMap = HashMap<String, u64>;
 
-/// Identity of the artifact the sizes were probed from, for
-/// [`write_header_if_absent_or_verify`]'s stale-vs-divergent question.
-///
-/// The two fields carry different information, and the verify step needs both:
-///
-/// * the **path** says WHICH probe configuration produced the sizes.
-///   `nros-sizes-build` keys its probe directory by (rustc, target, features),
-///   so two crates that resolved different feature sets probe different paths —
-///   that is divergence, not staleness.
-/// * the **mtime/len** say WHEN that same configuration was last built. Same
-///   path, different mtime ⇒ a header from an earlier build of this very
-///   configuration ⇒ staleness.
-///
-/// Path + mtime + length rather than a content hash: the rlib is tens of
-/// megabytes and this runs in every build script, while the triple already
-/// changes whenever cargo relinks. Returns `None` when the probe itself could
-/// not find the rlib — the caller then treats the stamp as unknown, which is
-/// the conservative direction (it cannot claim a mismatch is stale).
-fn probe_artifact_stamp() -> Option<String> {
-    let rlib = probe_rlib().ok()?;
-    let meta = std::fs::metadata(&rlib).ok()?;
-    let mtime = meta
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    Some(format!("{} {} {}", rlib.display(), mtime, meta.len()))
-}
-
 /// The feature that compiles the `__NROS_SIZE_*` markers into `nros`.
 ///
 /// Issue 1765 — requested HERE, for the probe's own nested build, and nowhere
@@ -528,116 +498,32 @@ fn pid_is_live(pid: u32) -> bool {
     }
 }
 
-/// phase-400 W5.c — the SUPPORTED location for a build script's output.
+/// Write a generated header into this build script's `$OUT_DIR` — the ONLY
+/// place a per-build config header goes (issue 1824).
 ///
 /// `$OUT_DIR` is where cargo says build-script products go: it is per-unit,
 /// hashed by cargo (so two feature sets or two knob sets never collide), it
 /// survives a cache hit, and cargo reports its path on the stable JSON stream —
 /// `{"reason":"build-script-executed", …, "out_dir": …}` — even on a fully
-/// cached run (measured: 13 such events with nothing to rebuild).
+/// cached run. A consumer reaches it one of two ways: a cargo dependent through
+/// the `links` channel (`DEP_NROS_{C,CPP}_CONFIG_INCLUDE`), or any other road
+/// through `scripts/build/cargo-out-dir-headers.py`, which reads that stream and
+/// copies the tree to a directory the caller owns.
 ///
-/// The `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/` copy below is a SIDE CHANNEL
-/// by comparison: a path inside cargo's tree that cargo does not manage, which
-/// works only because nothing cleans it. It is also what blocks W5 — share the
-/// target dir and the second image takes a cache hit, the script never re-runs,
-/// and the directory the consumers were pointed at is never written.
-///
-/// So the header is emitted to BOTH, and this one is the half a consumer should
-/// migrate to. Writing it costs nothing and removes the need for the build
-/// script to have run in THIS build for the header to be findable.
-fn write_header_to_out_dir(relative: &Path, contents: &str) {
+/// Until issue 1824 the header was ALSO written to a flat
+/// `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`, with a `.h.stamp` beside it: a
+/// path inside cargo's tree that cargo does not manage, shared by every unit
+/// in that target dir, so the header there was whichever build wrote it last.
+/// Every reader moved off it (D1–D4) before it was deleted.
+pub fn write_header_to_out_dir(relative: &Path, contents: &str) {
     let Ok(out_dir) = env::var("OUT_DIR") else {
         return;
     };
     // The FULL relative path is preserved — `nros-c-generated/rclc/detail/<name>.h`,
-    // not just the subdir tail. `nros-cpp`'s build script writes BOTH its own
-    // header and the c-format companion (nros-c owns that file; this is a
-    // gap-filler plus an equality check), so a flattened layout would put two
-    // different headers in one directory and leave the consumer's include path
-    // deciding which wins by order — issue 0360's variant collision.
-    //
-    // Keeping the segment means the placer can copy the tree verbatim and every
-    // header lands in the directory its consumers already include, whichever
-    // package produced it.
+    // not just the subdir tail — so the placer can copy several packages' trees
+    // into one destination verbatim and every header lands in the directory its
+    // consumers already include, whichever package produced it.
     write_to(PathBuf::from(out_dir), relative, contents);
-}
-
-pub fn write_header_to_target_dir(relative: &Path, contents: &str) {
-    write_header_to_out_dir(relative, contents);
-
-    let root = if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
-        Some(PathBuf::from(target_dir))
-    } else {
-        nros_sizes_build::cargo_target_dir().ok()
-    };
-    let Some(root) = root else { return };
-    write_shared_header(root, relative, contents);
-
-    // The OWNER must stamp too, or the check it owns goes toothless. This is
-    // the path `nros-c` takes; `write_header_if_absent_or_verify` is the
-    // verifier's. If only the verifier stamped, every subsequent build would
-    // read `None` from disk, conclude "cannot prove same build", and treat a
-    // genuine divergence as staleness — silently overwriting exactly the case
-    // the panic exists to catch. Stamping both writers keeps "same artifact"
-    // answerable no matter which crate got there first.
-    if let Some(dest) = target_dir_path(relative) {
-        write_stamp(
-            &dest.with_extension("h.stamp"),
-            probe_artifact_stamp().as_deref(),
-        );
-    }
-}
-
-/// The `NROS_CONFIG_VARIANT` string a generated header carries, if any.
-fn variant_of(header: &str) -> Option<&str> {
-    header
-        .lines()
-        .map(str::trim)
-        .find_map(|l| l.strip_prefix("#define NROS_CONFIG_VARIANT "))
-        .map(|v| v.trim().trim_matches('"'))
-}
-
-/// Write the SHARED `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/` copy.
-///
-/// Not `write_to`: this path is shared by every unit in the target dir, and a
-/// rewrite of it is not free. It is a `cargo:rerun-if-changed` input of
-/// `write_header_if_absent_or_verify`, it is listed in the staticlib's own
-/// dep-info, and the fixture staleness probe reads that dep-info — so an mtime
-/// move here says "a source was edited" to three different readers.
-///
-/// Two units of `nros-c` with different feature SETS but identical probed sizes
-/// produce headers that differ in exactly one line, `NROS_CONFIG_VARIANT` — a
-/// human-readable slug that [`defines_of`] deliberately excludes from the
-/// mismatch check, that no consumer reads, and that does not reach the size
-/// ANCHOR (issue 0369 derives that from the values). Rewriting for it made the
-/// file oscillate on every build, which is issue 1461: the three C
-/// `linux_example_pubsub_e2e` coordinates spent 18 days reporting a STALE
-/// verdict instead of a runtime result, for a binary that was correct.
-///
-/// So the owner's write uses the same equality its own verifier uses. A
-/// DISAGREEING define is still a real change and is still written. The variant
-/// mismatch is not swallowed — it means two feature sets share this path, which
-/// is issue 1354's unfixed half, so it is SAID rather than silently smoothed
-/// over.
-fn write_shared_header(root: PathBuf, relative: &Path, contents: &str) {
-    let dest = root.join(relative);
-    if let Ok(existing) = std::fs::read_to_string(&dest)
-        && existing != contents
-        && defines_of(&existing) == defines_of(contents)
-    {
-        println!(
-            "cargo:warning=nros: {} already holds an identical header built as variant \
-             '{}'; this unit is '{}'. Two feature sets share one byproduct path (issue \
-             1354). Every probed size agrees, so the file is left alone rather than \
-             rewritten on every build (issue 1461) — but the two cargo invocations that \
-             build this directory should resolve nros-c to ONE feature set.",
-            dest.display(),
-            variant_of(&existing).unwrap_or("<none>"),
-            variant_of(contents).unwrap_or("<none>"),
-        );
-        return;
-    }
-    write_to_path(&dest, contents);
 }
 
 fn write_to(root: PathBuf, relative: &Path, contents: &str) {
@@ -648,210 +534,62 @@ fn write_to(root: PathBuf, relative: &Path, contents: &str) {
     write_atomic(&dest, contents);
 }
 
-/// Write a header only when nobody else has, and FAIL if someone else wrote a
-/// different one (phase-308 follow-up).
+/// Check that the C header nros-cpp derives agrees with the one nros-c's build
+/// script wrote — issue 1824 (formerly `write_header_if_absent_or_verify`,
+/// phase-308 follow-up).
 ///
-/// `nros_config_generated.h` has two potential writers: `nros-c`'s build script
-/// owns it, and `nros-cpp`'s emits the same file so a build without `nros-c`
-/// still finds it rather than the source-tree `#error` stub. Two unconditional
-/// writers to one path is the race that produced a torn header on 2026-07-26;
-/// making both writes atomic removed the tearing but left the deeper problem —
-/// the values are probed from each crate's own view of the runtime, and the
-/// claim that they always agree was a comment, not a check. If they ever
-/// disagreed, the last writer won and one language silently got wrong
-/// `_opaque` sizes.
+/// `nros-cpp` probes the runtime's sizes itself and renders the c-format
+/// `nros_config_generated.h` from them; nros-c OWNS that file. The claim that
+/// the two always agree is the issue-0268 silent-overflow class if it is ever
+/// false (one language sizes its `_opaque` storage wrong), so it is checked
+/// here rather than trusted.
 ///
-/// So: the owner writes; this writes only into a GAP, and otherwise verifies.
+/// nros-c's copy is read from its OWN `$OUT_DIR`, through the `links` channel
+/// (`DEP_NROS_C_CONFIG_INCLUDE`): nros-c is a non-optional dependency, so cargo
+/// runs its build script for THIS unit graph first, and the file there belongs
+/// to this build. That is what retired the `.h.stamp` sidecar and its
+/// stale-vs-divergent heuristic — the shared target-dir copy it compared
+/// against could be an older build's, so a mismatch had two meanings; this one
+/// has one, and it stops the build.
 ///
-/// **A mismatch is one of two very different things, and this used to conflate
-/// them.** The original reasoning was: `nros-c` is a non-optional dependency of
-/// `nros-cpp`, so cargo runs the owner's build script first and any file present
-/// is already current — therefore a difference means divergent features. That
-/// confuses ORDER with EXECUTION. Cargo only *re-runs* a build script when the
-/// crate's fingerprint is dirty; a fresh `nros-c` is skipped entirely, its
-/// header from an earlier build stays in the (long-lived, per-example) target
-/// dir, and a re-probing `nros-cpp` then compares against a file from an older
-/// source state. Observed 2026-08-06 on the freertos fixtures: the guard
-/// reported "different features" for a tree that had none — every half probed
-/// 11025 once the build dirs were wiped, against 10940 on disk.
-///
-/// So ask the question directly, via the identity of the rlib the sizes came
-/// from ([`probe_artifact_stamp`]):
-///
-/// * values agree → nothing to do;
-/// * values differ, stamps differ (or either is unknown) → the file predates
-///   this build. Overwrite it; that is plain staleness, not a defect;
-/// * values differ, stamps MATCH → both halves read the same artifact and still
-///   resolved different layouts. That is the real divergent-features case, and
-///   it must stop the build rather than produce an image whose C and C++ halves
-///   disagree about a struct's size.
-pub fn write_header_if_absent_or_verify(relative: &Path, contents: &str, label: &str) {
-    let Some(dest) = target_dir_path(relative) else {
+/// Values, not bytes: the two writers render from different sources (nros-c
+/// from a `.template`, nros-cpp from an inline string), so comments and spacing
+/// differ when every probed size agrees. nros-cpp writes nothing here — its own
+/// `$OUT_DIR` holds only its own header, so placing both packages into one
+/// destination cannot collide.
+pub fn verify_against_nros_c_header(relative: &Path, contents: &str, label: &str) {
+    // Absent: nros-c published no config include — its probe declined (e.g. a
+    // `cargo check` with no executor sizes). Nothing to compare against, and a
+    // consumer that needs the header reaches the stub's `#error`.
+    let include = env::var_os("DEP_NROS_C_CONFIG_INCLUDE").map(PathBuf::from);
+    verify_against_include(include.as_deref(), relative, contents, label);
+}
+
+/// [`verify_against_nros_c_header`] with the `links` include root passed in.
+fn verify_against_include(include: Option<&Path>, relative: &Path, contents: &str, label: &str) {
+    let Some(include) = include else {
         return;
     };
-    // The edge that makes this function's self-healing REACHABLE.
-    //
-    // This header is a build-script byproduct that nothing declares as an
-    // input, so cargo's freshness never considered it: delete it and the crate
-    // is still up to date, the script does not run, and the header does not
-    // come back. `drop_stamp_without_header`'s doc already describes that state
-    // ("cargo considers the crate up to date, so the byproduct is not
-    // re-emitted") and says this function "already self-heals an absent header
-    // when it RUNS" — the missing half was making it run.
-    //
-    // Cost of not having it, measured on gate.yml's scheduled lane: three
-    // `cxx-syntax` snippets failed every night with the committed stub's
-    // `#error` and `*_OPAQUE_U64S was not declared`, because the generation
-    // step's `cargo build` was up to date and emitted nothing.
-    //
-    // Same shape as the `rerun-if-changed` on the cbindgen output above, and as
-    // issue 0475 one layer down: a file with no edge is a file the build cannot
-    // notice. No rebuild loop — the writers below are conditional, so a steady
-    // state rewrites neither file and the mtimes stay behind the script's own
-    // output stamp.
-    println!("cargo:rerun-if-changed={}", dest.display());
-    println!(
-        "cargo:rerun-if-changed={}",
-        dest.with_extension("h.stamp").display()
-    );
-    // Sidecar rather than a `#define` inside the header: the two writers build
-    // `contents` from different sources (nros-c from a `.template`, nros-cpp
-    // from an inline string), so a stamp define would have to be added to both
-    // and kept in step — the same duplication that produced this bug. A sidecar
-    // keeps the change in this one function.
-    let stamp_path = dest.with_extension("h.stamp");
-    let current_stamp = probe_artifact_stamp();
-    match std::fs::read_to_string(&dest) {
-        // Compare the VALUES, not the bytes. The two writers build this header
-        // from different sources — nros-c from
-        // `templates/nros_config_generated.h.template`, nros-cpp from an inline
-        // string — so comments and spacing differ even when every probed size
-        // agrees. A byte comparison called that divergence and broke EVERY
-        // native C++ build; only a disagreeing `#define` is a real problem.
-        Ok(existing) if defines_of(&existing) == defines_of(contents) => {}
-        Ok(existing) => {
-            let on_disk_stamp = std::fs::read_to_string(&stamp_path).ok();
-            if !stamps_prove_staleness(on_disk_stamp.as_deref(), current_stamp.as_deref()) {
-                panic!(
-                    "{label}: {} was written by another crate with DIFFERENT probed sizes.\n\
-                     The C and C++ halves of this build resolved different runtime layouts, \
-                     so one of them would size its `_opaque` storage wrong (silent overflow \
-                     at runtime). Usually this means nros-c and nros-cpp were built with \
-                     different features — `nros-sizes-build` keys its probe directory by \
-                     (rustc, target, features), so check whether the two probed different \
-                     rlibs:\n  on disk: {}\n  current: {}\nDisagreeing defines:\n{}",
-                    dest.display(),
-                    on_disk_stamp.as_deref().unwrap_or("<no stamp>"),
-                    current_stamp.as_deref().unwrap_or("<unknown>"),
-                    disagreeing_defines(&existing, contents),
-                );
-            }
-            // Stale: SAME probe artifact path, rebuilt since — a header left by
-            // an earlier build of this same configuration.
-            write_to_path(&dest, contents);
-            write_stamp(&stamp_path, current_stamp.as_deref());
-        }
-        Err(_) => {
-            write_to_path(&dest, contents);
-            write_stamp(&stamp_path, current_stamp.as_deref());
-        }
-    }
-}
-
-/// Drop a stamp whose header is gone — issue 0834.
-///
-/// Call this from every path that DECLINES to write a per-build header. The
-/// decline is legitimate (a `cargo check --no-default-features` probe yields no
-/// executor sizes, so there is nothing to ship), but it leaves whatever the
-/// directory already held, and the state that produces is absorbing:
-///
-///   * the mirror directory holds `<name>.h.stamp` and NOT `<name>.h`;
-///   * cargo considers the crate up to date, so the byproduct is not re-emitted;
-///   * the POST_BUILD copy has nothing to copy, and ninja records its custom
-///     command as successful;
-///   * consumers reach the committed source-tree STUB, whose `#error` fires —
-///     or, on the C side, whose absence surfaces as `SESSION_OPAQUE_U64S
-///     undeclared`, which issue 0088 records as latent for a whole phase.
-///
-/// Re-running does not repair it. Clearing the stamp does not. Building the
-/// header target directly does not. Only `rm -rf` on the build dir did, and
-/// that destroyed the evidence — which is why issue 0834 could gate the state
-/// but never root it.
-///
-/// This makes the state unreachable WITHOUT knowing what caused it. A stamp
-/// asserts "the header beside me is current"; with no header that assertion is
-/// simply false, and the honest representation of "nothing was generated" is
-/// neither file, not one of them. `write_header_if_absent_or_verify` already
-/// self-heals an absent header when it RUNS — this covers the paths where it
-/// does not.
-pub fn drop_stamp_without_header(relative: &Path) {
-    let Some(dest) = target_dir_path(relative) else {
+    // `relative` is `nros-c-generated/rclc/detail/<name>.h` and the include
+    // root IS `<OUT_DIR>/nros-c-generated`, so strip the first segment.
+    let tail: PathBuf = relative.components().skip(1).collect();
+    let theirs = include.join(tail);
+    println!("cargo:rerun-if-changed={}", theirs.display());
+    let Ok(existing) = std::fs::read_to_string(&theirs) else {
         return;
     };
-    let stamp_path = dest.with_extension("h.stamp");
-    // Same edge as the writer's. A declining run must watch these too, or the
-    // build that would START emitting them (a later run whose probe finally
-    // yields sizes) is one cargo considers unnecessary.
-    println!("cargo:rerun-if-changed={}", dest.display());
-    println!("cargo:rerun-if-changed={}", stamp_path.display());
-    if !dest.exists() && stamp_path.exists() {
-        // Best-effort: a build script must not fail because a cleanup could
-        // not run. The gate (`check-orphan-generated-stamp`) still catches the
-        // state if this ever cannot.
-        let _ = std::fs::remove_file(&stamp_path);
-    }
-}
-
-/// Do the two stamps prove the value mismatch is mere STALENESS?
-///
-/// Only one shape does: the same probe artifact PATH with a different
-/// mtime/length — i.e. the same crate, same target, same features, rebuilt
-/// since. That is a header left over from an earlier build.
-///
-/// A different PATH is the opposite conclusion, and getting this backwards was
-/// the first version of this function. `nros-sizes-build` keys the probe
-/// directory by `(rustc, target, features)`, so two crates that resolved
-/// DIFFERENT feature sets probe different rlibs — which is exactly the
-/// divergence the guard exists to catch. phase-336 W7 records it happening for
-/// real: `nros-c` and `nros-cpp` resolved `EXECUTOR_SIZE` 88680 vs 89392 in one
-/// workspace. Treating "paths differ" as staleness would overwrite that and
-/// restore the silent last-writer-wins this whole mechanism replaced.
-///
-/// Unknown on either side proves nothing and must NOT be read as staleness, for
-/// the same reason: the unprovable case has to keep the guard's teeth.
-fn stamps_prove_staleness(on_disk: Option<&str>, current: Option<&str>) -> bool {
-    let (Some(a), Some(b)) = (on_disk, current) else {
-        return false;
-    };
-    let (Some((path_a, rest_a)), Some((path_b, rest_b))) =
-        (split_stamp_path(a), split_stamp_path(b))
-    else {
-        return false;
-    };
-    // Same artifact identity entirely: not stale, and the values still differ —
-    // that is a genuine disagreement from one rlib.
-    path_a == path_b && rest_a != rest_b
-}
-
-/// Split `"<path> <mtime> <len>"` into the path and the rest.
-///
-/// The path may contain spaces, so split from the RIGHT: the last two fields
-/// are always the mtime and the length.
-fn split_stamp_path(stamp: &str) -> Option<(&str, &str)> {
-    let (head, len) = stamp.rsplit_once(' ')?;
-    let (path, mtime) = head.rsplit_once(' ')?;
-    let _ = (len, mtime);
-    Some((path, &stamp[path.len() + 1..]))
-}
-
-/// Record which artifact the freshly-written header was probed from. Best
-/// effort: a missing stamp only costs the next build the ability to prove
-/// sameness, and that path is already handled as "assume stale".
-fn write_stamp(path: &Path, stamp: Option<&str>) {
-    if let Some(stamp) = stamp {
-        let _ = std::fs::write(path, stamp);
-    } else {
-        let _ = std::fs::remove_file(path);
+    if defines_of(&existing) != defines_of(contents) {
+        panic!(
+            "{label}: nros-c's {} disagrees with the sizes this crate probed.\n\
+             Both build scripts ran in THIS cargo invocation, so this is not a stale \
+             file: the C and C++ halves resolved different runtime layouts, and one \
+             of them would size its `_opaque` storage wrong (silent overflow at \
+             runtime). Usually nros-c and nros-cpp were resolved with different \
+             features — `nros-sizes-build` keys its probe directory by (rustc, target, \
+             features). Disagreeing defines:\n{}",
+            theirs.display(),
+            disagreeing_defines(&existing, contents),
+        );
     }
 }
 
@@ -894,32 +632,16 @@ fn disagreeing_defines(a: &str, b: &str) -> String {
     for (name, va) in &da {
         match db.iter().find(|(n, _)| n == name) {
             Some((_, vb)) if vb == va => {}
-            Some((_, vb)) => lines.push(format!("  {name}: on-disk={va} vs would-write={vb}")),
-            None => lines.push(format!("  {name}: on-disk={va} vs would-write=<absent>")),
+            Some((_, vb)) => lines.push(format!("  {name}: nros-c={va} vs this-crate={vb}")),
+            None => lines.push(format!("  {name}: nros-c={va} vs this-crate=<absent>")),
         }
     }
     for (name, vb) in &db {
         if !da.iter().any(|(n, _)| n == name) {
-            lines.push(format!("  {name}: on-disk=<absent> vs would-write={vb}"));
+            lines.push(format!("  {name}: nros-c=<absent> vs this-crate={vb}"));
         }
     }
     lines.join("\n")
-}
-
-fn target_dir_path(relative: &Path) -> Option<PathBuf> {
-    let root = if let Ok(d) = env::var("CARGO_TARGET_DIR") {
-        PathBuf::from(d)
-    } else {
-        nros_sizes_build::cargo_target_dir().ok()?
-    };
-    Some(root.join(relative))
-}
-
-fn write_to_path(dest: &std::path::Path, contents: &str) {
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent).expect("create per-build header dir");
-    }
-    write_atomic(dest, contents);
 }
 
 pub fn write_header_to_corrosion(filename: &str, contents: &str) {
@@ -1104,111 +826,41 @@ pub fn variant_suffix_from_sizes(sizes: &[(&str, usize)]) -> String {
 mod tests {
     use super::*;
 
-    /// Issue 1461 — the shared byproduct path must not oscillate on a
-    /// difference no consumer reads.
-    ///
-    /// Two `nros-c` units in one `--target-dir` differ by one feature SPELLING
-    /// and therefore by `NROS_CONFIG_VARIANT`. `write_atomic` compares BYTES,
-    /// so each build rewrote the file the other had just written; the mtime
-    /// moved every build, the staticlib's dep-info carries the path, and the
-    /// fixture probe read that as an edited source. A disagreeing `#define` is
-    /// a different matter and must still be written — that is the sizes
-    /// contract the 0088…0268 family is about.
+    /// Issue 1824 — nros-cpp's check reads nros-c's OWN `$OUT_DIR` header
+    /// (the `links` include root), passes on agreeing VALUES whatever the
+    /// presentation, and stops the build on a disagreeing define. Absent
+    /// channel or file: nothing to compare, no panic.
     #[test]
-    fn a_variant_only_difference_does_not_rewrite_the_shared_header() {
-        let root = std::env::temp_dir().join(format!("nros-1461-{}", std::process::id()));
+    fn nros_cpp_check_reads_nros_c_out_dir_and_refuses_disagreement() {
+        let root = std::env::temp_dir().join(format!("nros-1824-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let rel = nros_build_paths::artifact::Artifact::CConfigHeader.relative(None, "dev");
-        let dest = root.join(&rel);
+        let include = root.join(nros_build_paths::artifact::C_GENERATED_DIR);
+        let theirs = root.join(&rel);
+        std::fs::create_dir_all(theirs.parent().unwrap()).unwrap();
+        std::fs::write(
+            &theirs,
+            "/* nros-c */\n#define NROS_CONFIG_VARIANT \"a\"\n#define NROS_EXECUTOR_SIZE 42\n",
+        )
+        .unwrap();
+        let inc = Some(include.as_path());
 
-        let a = "#define NROS_CONFIG_VARIANT \"alloc_rmw_zenoh\"\n#define NROS_EXECUTOR_SIZE 42\n";
-        let b = "#define NROS_CONFIG_VARIANT \"alloc_cffi_zenoh_cffi_rmw_zenoh\"\n\
-                 #define NROS_EXECUTOR_SIZE 42\n";
-        let c = "#define NROS_CONFIG_VARIANT \"alloc_rmw_zenoh\"\n#define NROS_EXECUTOR_SIZE 43\n";
+        let same = "#define NROS_EXECUTOR_SIZE 42\n#define NROS_CONFIG_VARIANT \"b\"\n";
+        verify_against_include(inc, &rel, same, "t");
 
-        write_shared_header(root.clone(), &rel, a);
-        assert_eq!(
-            std::fs::read_to_string(&dest).unwrap(),
-            a,
-            "first writer creates it"
+        let differ = "#define NROS_EXECUTOR_SIZE 43\n";
+        let r = std::panic::catch_unwind(|| verify_against_include(inc, &rel, differ, "t"));
+        let msg = r.expect_err("a disagreeing define must stop the build");
+        let msg = msg.downcast_ref::<String>().cloned().unwrap_or_default();
+        assert!(
+            msg.contains("NROS_EXECUTOR_SIZE: nros-c=42 vs this-crate=43"),
+            "{msg}"
         );
 
-        write_shared_header(root.clone(), &rel, b);
-        assert_eq!(
-            std::fs::read_to_string(&dest).unwrap(),
-            a,
-            "a variant-only difference leaves the file alone"
-        );
-
-        write_shared_header(root.clone(), &rel, c);
-        assert_eq!(
-            std::fs::read_to_string(&dest).unwrap(),
-            c,
-            "a DISAGREEING define is a real change and is still written"
-        );
-
+        std::fs::remove_file(&theirs).unwrap();
+        verify_against_include(inc, &rel, differ, "t");
+        verify_against_include(None, &rel, differ, "t");
         let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// The variant reader, because the suppression above is only as good as
-    /// what it reports: a header with no variant line must not be mistaken for
-    /// one whose variant is empty.
-    #[test]
-    fn variant_of_reads_the_slug_or_nothing() {
-        assert_eq!(
-            variant_of("#define NROS_CONFIG_VARIANT \"a_b\"\n"),
-            Some("a_b")
-        );
-        assert_eq!(variant_of("#define NROS_EXECUTOR_SIZE 1\n"), None);
-    }
-
-    /// The stale-vs-divergent question `write_header_if_absent_or_verify` asks
-    /// when the probed sizes disagree.
-    ///
-    /// ONLY "same probe-artifact path, rebuilt since" is staleness. Everything
-    /// else keeps the panic, and the direction matters more than it looks:
-    /// `nros-sizes-build` keys the probe dir by (rustc, target, features), so
-    /// two crates with DIFFERENT features probe different PATHS — which is the
-    /// divergence the guard exists for (phase-336 W7 records it happening:
-    /// `EXECUTOR_SIZE` 88680 vs 89392 in one workspace). Reading "paths differ"
-    /// as staleness would overwrite that and restore the silent
-    /// last-writer-wins this mechanism replaced.
-    #[test]
-    fn only_same_path_rebuilt_counts_as_stale() {
-        // Same artifact, rebuilt since: staleness.
-        assert!(stamps_prove_staleness(
-            Some("/p/nros.rlib 41 100"),
-            Some("/p/nros.rlib 42 108")
-        ));
-
-        // DIFFERENT probe path = different (rustc, target, features) key. The
-        // divergence case; must NOT be called stale.
-        assert!(!stamps_prove_staleness(
-            Some("/p/featA/nros.rlib 41 100"),
-            Some("/p/featB/nros.rlib 42 108")
-        ));
-
-        // Identical stamp: one artifact, values still disagree — genuine.
-        assert!(!stamps_prove_staleness(
-            Some("/p/nros.rlib 42 100"),
-            Some("/p/nros.rlib 42 100")
-        ));
-
-        // Unknown proves nothing; keep the guard's teeth.
-        assert!(!stamps_prove_staleness(None, Some("/p/nros.rlib 42 100")));
-        assert!(!stamps_prove_staleness(Some("/p/nros.rlib 42 100"), None));
-        assert!(!stamps_prove_staleness(None, None));
-    }
-
-    /// Probe paths can contain spaces, so the mtime/len split works from the
-    /// RIGHT. Splitting from the left would treat the first path segment as the
-    /// whole path and call two different artifacts the same one.
-    #[test]
-    fn stamp_split_tolerates_spaces_in_the_path() {
-        let (path, rest) = split_stamp_path("/a b/c d/nros.rlib 42 100").unwrap();
-        assert_eq!(path, "/a b/c d/nros.rlib");
-        assert_eq!(rest, "42 100");
-        assert!(split_stamp_path("no-fields").is_none());
     }
 
     /// The cbindgen temp-header sweep removes ONLY orphans of this header

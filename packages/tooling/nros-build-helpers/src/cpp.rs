@@ -14,7 +14,7 @@ use nros_build_paths::artifact::Artifact;
 use crate::shared::{
     compile_c_stub, dep_usize, generate_cbindgen_header, non_zero_or, probe_nros_sizes,
     target_pointer_bytes, watch_param_store_shape, write_header_to_corrosion,
-    write_header_to_target_dir,
+    write_header_to_out_dir,
 };
 
 // Phase 87.11: `target_pointer_bytes()` and `align_up()` removed —
@@ -99,10 +99,8 @@ fn generate_config(
     // — verified by the const-assert in `lib.rs`. Probe = 0 only
     // happens on `cargo check --no-default-features` (no RMW).
     // Phase 119.3: merge is gone. Use probe values directly — each
-    // cargo invocation gets its own per-build header in
-    // `$CARGO_TARGET_DIR/nros-cpp-generated/` (FLAT — the `<variant_slug>`
-    // level was documented but never implemented; issue 0360), so the
-    // source-tree merging from 119.1 is unnecessary.
+    // cargo invocation gets its own per-build header in its `$OUT_DIR`
+    // (issue 1824), so the source-tree merging from 119.1 is unnecessary.
     // `CppContext` = executor + the fields around it. 8 bytes covered
     // `domain_id` + `in_dispatch` (+ padding); issue 0436 added the 8-byte handle
     // `tag` that makes a mixed-up executor handle a clean error instead of memory
@@ -262,18 +260,10 @@ fn generate_config(
         // probe yielded nothing. Skip writing the per-build header.
         // Consumer code that #includes nros_cpp_config_generated.h
         // hits the stub `#error`, which is the desired behavior (no
-        // RMW backend means no executor sizes to ship).
-        //
-        // Issue 0834 — but do not leave a stamp claiming a header that is not
-        // there. Declining to write is legitimate; leaving `<name>.h.stamp`
-        // beside no `<name>.h` is the absorbing state that no re-run, no stamp
-        // deletion and no direct target build could repair. Both generated
-        // trees are cleared, because this build script owns the C header too
-        // (see the `write_header_if_absent_or_verify` call below) and the C
-        // side's symptom — `SESSION_OPAQUE_U64S undeclared` — is the quieter
-        // of the two.
-        crate::shared::drop_stamp_without_header(&Artifact::CppConfigHeader.relative(None, "dev"));
-        crate::shared::drop_stamp_without_header(&Artifact::CConfigHeader.relative(None, "dev"));
+        // RMW backend means no executor sizes to ship). Nothing goes to
+        // `$OUT_DIR` either, so a consumer that needs the header reaches the
+        // stub's `#error` (issue 1824 deleted the shared-dir stamp whose
+        // orphan was issue 0834's absorbing state).
         return;
     }
 
@@ -392,33 +382,21 @@ static const unsigned char *const nros__cpp_config_variant_anchor =
         codegen_version_min = crate::codegen_version::NROS_CODEGEN_VERSION_MIN,
     );
 
-    // Phase 119.3: write the per-build header to two stable locations.
-    // 1. `$CARGO_TARGET_DIR/nros-cpp-generated/rclcpp/detail/...` — Zephyr (and
-    //    any in-tree caller that explicitly sets CARGO_TARGET_DIR)
-    //    prepends `$CARGO_TARGET_DIR/nros-cpp-generated` to its
-    //    include path.
-    // 2. `$CORROSION_BUILD_DIR/nros_cpp_config_generated.h` — cmake-
-    //    corrosion's install rule reads from CMAKE_CURRENT_BINARY_DIR
-    //    (== CORROSION_BUILD_DIR) and installs to
-    //    `include/nros_cpp_<variant>/nros/`.
-    // This USED to say "within any single build context only one cargo
-    // invocation runs against its target dir, so no variant slug is needed".
-    // Issue 0360 disproved it: phase-325 W3 built this crate twice with
-    // different features against the SAME target dir, the second overwrote the
-    // first's archive, and a uORB example that touches no zenoh symbol failed
-    // with 74 undefined references. The path is still flat; the VARIANT STAMP
-    // in the header above is what makes the mismatch loud.
-    write_header_to_target_dir(
+    // Two locations. `$OUT_DIR` (issue 1824: the only per-build copy — a
+    // cargo dependent reads it through `links`, every other road through the
+    // placer), and `$CORROSION_BUILD_DIR/nros_cpp_config_generated.h`, which
+    // only a Corrosion import has and only its install rule reads.
+    write_header_to_out_dir(
         &Artifact::CppConfigHeader.relative(None, "dev"),
         &exact_header,
     );
     write_header_to_corrosion("nros_cpp_config_generated.h", &exact_header);
 
-    // Phase 119.3: also emit a nros-c-format header to
-    // `$CARGO_TARGET_DIR/nros-c-generated/rclc/detail/...`. nros-cpp's user code
+    // Phase 119.3: also render the nros-c-format header. nros-cpp's user code
     // transitively includes the C-side
-    // `<rclc/types.h>` → `<rclc/detail/nros_config_generated.h>`, and without this
-    // the C header would resolve to the source-tree `#error` stub.
+    // `<rclc/types.h>` → `<rclc/detail/nros_config_generated.h>`, which nros-c's
+    // build script writes; issue 1824 made this a CHECK against that file
+    // (nros-c's own `$OUT_DIR`) rather than a second writer.
     //
     // phase-308 follow-up — the original rationale ("in Zephyr CPP-only builds
     // nros-c isn't compiled") is STALE: phase-241 D3-rev made `nros-c` a
@@ -587,10 +565,9 @@ typedef struct ActionServerRawHandle {{
             .filter(|v| v == "1")
             .map_or("0", |_| "1"),
     );
-    // phase-308 follow-up — nros-c OWNS this file; we only fill a gap, and
-    // verify otherwise. See `write_header_if_absent_or_verify` for why a
-    // mismatch is genuine divergence rather than staleness.
-    crate::shared::write_header_if_absent_or_verify(
+    // phase-308 follow-up — nros-c OWNS this file; check it agrees with ours
+    // (issue 1824: against nros-c's own `$OUT_DIR` copy, never a shared one).
+    crate::shared::verify_against_nros_c_header(
         &Artifact::CConfigHeader.relative(None, "dev"),
         &c_format_header,
         "nros-cpp",

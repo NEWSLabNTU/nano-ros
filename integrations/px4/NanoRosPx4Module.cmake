@@ -180,8 +180,8 @@ set(_NROS_PX4_INCLUDES
     "${NROS_REPO_DIR}/packages/platform/nros-platform-api/include")
 
 # The PER-BUILD generated headers (storage sizes, feature constants), emitted by
-# nros-c/nros-cpp build.rs into $CARGO_TARGET_DIR/nros-c-generated/rclc/detail/ and
-# $CARGO_TARGET_DIR/nros-cpp-generated/rclcpp/detail/.
+# nros-c/nros-cpp build.rs into their `$OUT_DIR`s and PLACED under
+# ${_NROS_PX4_HEADER_DIR} (issue 1824).
 # Without these, `#include <rclc/init.h>` hits the checked-in STUB, whose whole
 # body is:
 #

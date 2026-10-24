@@ -1,6 +1,6 @@
 # Phase 424 — does the build graph tell the truth about what needs rebuilding?
 
-**Archived 2026-10-11.** All eight issues are closed: the two the status line below names as open, 1018 and 1050, have since been resolved and archived. Of the three carried-forward items, 2 was superseded by phase-429 / RFC-0090 and 3 was closed on 2026-09-06; item 1 (the generated headers' consumer migration) moved to [issue 1824](../../issues/1824-generated-header-side-channel-consumers-unmigrated.md) on 2026-10-12.
+**Archived 2026-10-11.** All eight issues are closed: the two the status line below names as open, 1018 and 1050, have since been resolved and archived. Of the three carried-forward items, 2 was superseded by phase-429 / RFC-0090 and 3 was closed on 2026-09-06; item 1 (the generated headers' consumer migration) moved to [issue 1824](../../issues/archived/1824-generated-header-side-channel-consumers-unmigrated.md) on 2026-10-12.
 
 **Status (2026-09-05).** **Six of eight closed and archived** — #0820 (a cargo
 custom command with no `DEPFILE`), #0835 (the probe families' oscillation, plus

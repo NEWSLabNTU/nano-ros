@@ -559,16 +559,14 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   green — a bisect whose steps rebuilt clean "converged" on a docs-only commit). When a bisect's
   first-bad is implausible for the symptom, the test tracked a confounder (build state, load,
   ports) — rerun one rev N times before trusting any boundary. → AGENTS.md Test Pitfalls.
-- **A missing per-build sizes header can be ABSORBING, not a race (issue 0834).** The
-  0088-family fixes were all ordering; this one is not. When a mirror dir holds
-  `nros_cpp_config_generated.h.stamp` and NOT the header, cargo is up to date, so the
-  build script does not re-emit the byproduct, the POST_BUILD copy has nothing to copy,
-  and ninja records its custom command as successful. Deleting the stamp does not help;
-  building the header target directly does not help; only `rm -rf` on the west build dir
-  does. Survey with: for each `<zephyr build root>/build-*/nros-rust/nros-cpp-generated/rclcpp/detail`
-  and `…/nros-c-generated/rclc/detail`
-  (`scripts/lib/zephyr-workspace.sh build-root` — per CHECKOUT since issue 1596),
-  a `.stamp` with no `.h` beside it. Two such leaves stopped a whole `lane=all` sweep.
+- **A per-build config header lives in cargo's `$OUT_DIR` ONLY (issue 1824).** The flat
+  `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/` copy and its `.h.stamp` are gone — every
+  reader took the header from whichever build wrote it last, and the stamp's orphan was
+  issue 0834's absorbing state, which went with it. A non-cargo consumer runs its cargo
+  under `scripts/build/cargo-out-dir-headers.py --dest <dir>` (shell:
+  `nros_cargo_placed`) and asks `nros locate artifact <c|cpp>-include --placed-dir <dir>`,
+  which REFUSES a header without one; a cargo dependent reads `DEP_NROS_{C,CPP}_CONFIG_INCLUDE`.
+  A C++ build places `nros-cpp nros-c` — its C header is nros-c's build script's.
 - **`rm -rf` + rebuild is an ANTIPATTERN — it destroys the evidence and fixes nothing.**
   The build system supports incremental builds; if an incremental build produces a wrong
   artifact, that is a MISSING DEPENDENCY EDGE and the edge is the bug. Wiping proves only
@@ -579,9 +577,10 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   artifact actually depend on what changed?), `touch` the input and confirm a relink, and
   read the `.d`/`build.ninja` edge. Issue 0475 is the canonical case — a lib inside a raw
   `-Wl,` flag gets NO edge, and the fix was `LINK_DEPENDS`, not a wipe.
-  The rule has exactly two exemptions, both documented and both about a build that CANNOT
-  converge: the sizes-header mirror reaching a state no re-run repairs (issue 0834), and a
-  core-crate/`repr(C)` change mixing pre/post-append objects. Outside those, if you wiped
+  The rule has exactly one exemption, about a build that CANNOT converge: a
+  core-crate/`repr(C)` change mixing pre/post-append objects. (The sizes-header mirror's
+  unrepairable stamp state, issue 0834, was the second until issue 1824 deleted the
+  stamp.) Outside it, if you wiped
   and it worked, you have a lead — not a diagnosis; say so, and go find the edge.
   **When a GENERATED build file is itself the problem, re-configure — do not wipe.**
   `cmake <build-dir>` re-runs configure from the cached settings and regenerates

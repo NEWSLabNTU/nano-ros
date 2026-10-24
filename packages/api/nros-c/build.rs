@@ -15,11 +15,10 @@ fn main() {
 /// can take (no C startup, no C-reachable board init — see
 /// `examples/mps2-an385-baremetal/c/talker/README.md`).
 ///
-/// `CONFIG_INCLUDE` is the OUT_DIR copy, not the shared
-/// `$CARGO_TARGET_DIR/nros-c-generated/` one, on purpose: the OUT_DIR copy is
-/// written by THIS unit, so it cannot be another feature set's header arriving
-/// first. That collision is real and already diagnosed — issue 1354 warns about
-/// exactly it on the shared path.
+/// `CONFIG_INCLUDE` is the OUT_DIR copy — the only one since issue 1824 retired
+/// the shared `$CARGO_TARGET_DIR/nros-c-generated/` path, whose header could be
+/// another feature set's arriving first (issue 1354). nros-cpp's build script
+/// reads it from here to check its own C header agrees.
 fn emit_include_dirs() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");

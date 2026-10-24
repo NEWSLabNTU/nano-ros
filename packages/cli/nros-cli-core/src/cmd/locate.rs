@@ -68,11 +68,9 @@ pub struct Args {
     pub target_dir: Option<PathBuf>,
 
     /// `artifact` mode: the directory a build PLACED its config headers in
-    /// (`scripts/build/cargo-out-dir-headers.py --dest`, issue 1824). The
-    /// header artifacts resolve under it instead of the target dir: the
-    /// placed copy comes from this build's own `$OUT_DIR`, while the target
-    /// dir's is whichever build wrote it last. An archive is never placed,
-    /// so naming one with this is refused.
+    /// (`scripts/build/cargo-out-dir-headers.py --dest`, issue 1824). REQUIRED
+    /// for the header artifacts, which live only in cargo's `$OUT_DIR`; an
+    /// archive is never placed, so naming one with this is refused.
     #[arg(long)]
     pub placed_dir: Option<PathBuf>,
 
@@ -310,6 +308,8 @@ fn run_artifact(args: &Args, checkout: Option<&std::path::Path>) -> Result<()> {
     }
     if args.placed_dir.is_some() {
         refuse_placed_archive(&wanted)?;
+    } else {
+        refuse_unplaced_header(&wanted)?;
     }
     // Asked only when something resolves under it: a header-only lookup with
     // --placed-dir must not need the cargo workspace.
@@ -358,6 +358,22 @@ fn refuse_placed_archive(wanted: &[nros_build_paths::artifact::Artifact]) -> Res
         bail!(
             "`{}` is cargo's output, never placed — drop --placed-dir, which only header \
              artifacts resolve under",
+            a.name()
+        );
+    }
+    Ok(())
+}
+
+/// Issue 1824 — a config header lives in a cargo `$OUT_DIR`, and nothing writes
+/// one under the target dir any more, so the target-dir join would name a file
+/// that cannot exist. The answer is the dir a placed build copied it to.
+fn refuse_unplaced_header(wanted: &[nros_build_paths::artifact::Artifact]) -> Result<()> {
+    if let Some(a) = wanted.iter().find(|a| !a.per_profile()) {
+        bail!(
+            "`{}` is a per-build header, which lives in cargo's `$OUT_DIR` — pass \
+             --placed-dir <dir>, the --dest of the build that placed it \
+             (`scripts/build/cargo-out-dir-headers.py --package nros-c … --dest <dir> -- \
+             cargo build … --message-format=json-render-diagnostics`; issue 1824)",
             a.name()
         );
     }
@@ -441,7 +457,7 @@ fn cargo_target_dir(checkout: Option<&std::path::Path>) -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{refuse_placed_archive, var_name};
+    use super::{refuse_placed_archive, refuse_unplaced_header, var_name};
     use nros_build_paths::artifact::Artifact;
 
     #[test]
@@ -456,6 +472,13 @@ mod tests {
         for a in [Artifact::CArchive, Artifact::CppArchive] {
             let err = refuse_placed_archive(&[Artifact::CInclude, a]).unwrap_err();
             assert!(err.to_string().contains(a.name()), "{err}");
+        }
+        // Issue 1824 — and the converse: without a placed dir, an archive
+        // resolves and a header is refused (there is no target-dir copy).
+        assert!(refuse_unplaced_header(&[Artifact::CArchive, Artifact::CppArchive]).is_ok());
+        for h in headers {
+            let err = refuse_unplaced_header(&[Artifact::CArchive, h]).unwrap_err();
+            assert!(err.to_string().contains(h.name()), "{err}");
         }
     }
 

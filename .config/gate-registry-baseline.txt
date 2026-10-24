@@ -212,7 +212,6 @@ nuttx-links-snapshot
 nuttx-shared-tree-headers
 one-producer-per-tool
 opaque-storage-guards
-orphan-generated-stamp
 package-directories
 package-routing
 package-xml-comments

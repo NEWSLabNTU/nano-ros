@@ -184,10 +184,7 @@ corrosion_import_crate(
     PROFILE       ${NROS_CARGO_PROFILE}
     ${_nros_c_img_LOCKED}
 )
-# issue 1904 — the mirror reads the cargo subdir THIS manifest gets, never a
-# sibling's (see `nros_config_header_cargo_manifest`).
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
-nros_config_header_cargo_manifest("${_nros_c_cargo_manifest}")
 # issue 1824 — cargo runs under the placer, which copies the build script's
 # headers from `$OUT_DIR` into a dir this configure owns. The mirror below
 # reads that copy, never the `$CARGO_TARGET_DIR` side channel.
@@ -281,15 +278,10 @@ set(_nros_c_gen_config_header "${_nros_c_intree_include_dir}/${_nros_c_hdr_sub}/
 # `nros_config_header_mirror` (cmake/NanoRosConfigHeaderMirror.cmake) is the one
 # spelling for both crates.
 #
-# issue 0805 — the leaf's own copy exists only if the build script RAN for this
-# leaf, and once leaves share a cargo target dir cargo skips it for every leaf
-# after the first. The script falls back to the leaf-independent
-# `nros-c-generated/` copy, which is the same bytes.
-#
-# issue 1824 — and the source is now the PLACED copy (`-` as the gen-subdir):
-# written from the `$OUT_DIR` of the cargo run this build made, so neither the
-# leaf copy's staleness (0978) nor a sibling's shared copy (0987, 1904) can
-# reach it.
+# issue 1824 — the source is the PLACED copy (`-` as the gen-subdir), written
+# from the `$OUT_DIR` of the cargo run this build made. It replaced choosing
+# between the leaf's Corrosion copy and the shared target-dir copy, each of
+# which could be another run's (0805, 0978, 0987, 1904).
 include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosConfigHeaderMirror.cmake")
 nros_config_header_placed(_nros_c_placed_hdr "${_nros_c_placed_dir}" c nros_config_generated.h)
 nros_config_header_mirror(nros_c_config_header cargo-build_nros_c

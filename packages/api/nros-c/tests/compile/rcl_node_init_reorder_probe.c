@@ -34,7 +34,7 @@
  * Run as an expected failure:
  *
  *     cc -fsyntax-only -std=c11 -Wall -Wextra \
- *        -Itarget/nros-c-generated -Ipackages/api/nros-c/include \
+ *        -I"$(nros locate artifact c-include --placed-dir <dir>)" -Ipackages/api/nros-c/include \
  *        packages/api/nros-c/tests/compile/rcl_node_init_reorder_probe.c
  *     # must be NON-ZERO
  */
