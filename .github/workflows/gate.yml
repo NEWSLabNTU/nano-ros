@@ -2668,7 +2668,7 @@ jobs:
       # serve `check-source-gates` and must never run on the cheap PR path.
       #
       # `builder=cxx-syntax`, not the whole manifest: the `cargo-check` and
-      # `cmake-configure` rows need `nros-launch-resolve` / `play_launch_parser`
+      # `cmake-configure` rows need `nros-launch-resolve` (and the in-tree CLI)
       # from `activate.sh`, which this job does not provision — an unfiltered run
       # FAILS on those and never reaches the rows the gate asserts. Measured: 2 s
       # filtered vs 428 s for everything.

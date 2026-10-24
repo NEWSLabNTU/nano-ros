@@ -73,3 +73,70 @@ fn a_python_launch_file_resolves_through_the_shipped_pair() {
         "the node crossed without its package/executable:\n{yaml}"
     );
 }
+
+/// `--record` is the raw parse the retired standalone `play_launch_parser`
+/// binary printed (issue 1413), so it must come out of the SHIPPED resolver
+/// too: `-` prints it and builds no model, a path writes it beside the model.
+#[test]
+fn the_shipped_resolver_prints_the_launch_record() {
+    let Some(resolver) = nros_tests::launch_resolver_bin() else {
+        nros_tests::unmet!("nros-launch-resolve not built (run `just setup-launch-resolve`)");
+    };
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let launch = tmp.path().join("record.launch.xml");
+    std::fs::write(
+        &launch,
+        r#"<launch><node pkg="demo_pkg" exec="demo_exe" name="from_xml"/></launch>"#,
+    )
+    .expect("write launch file");
+    let model = tmp.path().join("model.yaml");
+
+    let out = Command::new(&resolver)
+        .arg(&launch)
+        .args(["--record", "-", "-o"])
+        .arg(&model)
+        .output()
+        .expect("spawn nros-launch-resolve");
+    assert!(
+        out.status.success(),
+        "--record - failed:\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let record: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("--record - printed no JSON record");
+    let names: Vec<&str> = record["node"]
+        .as_array()
+        .expect("the record has no `node` array")
+        .iter()
+        .filter_map(|n| n["name"].as_str())
+        .collect();
+    assert_eq!(names, ["from_xml"], "unexpected record:\n{record:#}");
+    assert!(
+        !model.exists(),
+        "`--record -` must stop before building a model"
+    );
+
+    let record_file = tmp.path().join("record.json");
+    let out = Command::new(&resolver)
+        .arg(&launch)
+        .arg("--record")
+        .arg(&record_file)
+        .arg("-o")
+        .arg(&model)
+        .output()
+        .expect("spawn nros-launch-resolve");
+    assert!(
+        out.status.success(),
+        "--record <path> failed:\nstderr:\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&record_file).expect("no record file"))
+            .expect("record file is not JSON");
+    assert_eq!(written, record, "the file and stdout forms disagree");
+    assert!(
+        model.exists(),
+        "`--record <path>` must still build the model"
+    );
+}

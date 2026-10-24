@@ -18,7 +18,7 @@ tier 2 and the tier-2 nightly before either built anything.
 # Why a gate and not a code review
 
 The rule was already written down, correctly, in
-`check-play-launch-parser-ref.py`: "truncation can only manufacture a FALSE
+`check-play-launch-parser-ref.py` (since retired, issue 1413): "truncation can only manufacture a FALSE
 negative, never a false positive". A second gate wrote it again a fortnight
 later and got half of it — it guarded the object-is-absent negative and not
 the history-is-cut one — and nothing could notice, because both spellings

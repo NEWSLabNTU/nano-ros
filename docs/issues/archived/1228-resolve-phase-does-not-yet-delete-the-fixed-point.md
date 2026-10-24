@@ -8,7 +8,7 @@ found: 2026-09-08
 related: [0940, 0965, 0991, 1002, 1119, 1061, 1125, 1252, phase-439, phase-403, phase-412]
 ---
 
-**Home: [phase-439](../../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-439](../../roadmap/archived/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 # RESOLVED 2026-10-23 — one entity composer (phase-439 W7), and A3 as amended (W8)
 

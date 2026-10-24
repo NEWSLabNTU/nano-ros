@@ -409,17 +409,6 @@ jobs:
           source ./activate.sh
           just setup ${{ matrix.plat }}
 
-      # issue-0037 — the e2e fixture build shells out to `play_launch_parser`, a
-      # separate binary the in-tree `cargo build --bin nros` does NOT produce.
-      # Provision it + point nros at it via NROS_PLAY_LAUNCH_PARSER (env, not PATH:
-      # later `source ./setup.bash` strips ~/.nros/sdk/* from PATH). e2e-only.
-      - name: Provision play_launch_parser (launch-manifest fixtures, #37)
-        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_e2e) }}
-        run: |
-          source ./activate.sh
-          just workspace install-play-launch-parser
-          echo "NROS_PLAY_LAUNCH_PARSER=$HOME/.nros/sdk/play_launch_parser/bin/play_launch_parser" >> "$GITHUB_ENV"
-
       # Container-job host-disk headroom before the heavy SDK+cargo build (the
       # freertos/zephyr cells exhaust the ~14 GB runner). cargo/SDK caches stay.
       - name: Reclaim disk before build (container headroom)

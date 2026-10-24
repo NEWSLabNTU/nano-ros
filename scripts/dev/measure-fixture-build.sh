@@ -36,8 +36,7 @@ mkdir -p tmp
 # that merely inherited a root from ANOTHER checkout (issue 1840).
 # host-tool-path-ok: the question IS "did you source activate.sh" (PATH).
 if ! command -v nros >/dev/null 2>&1; then
-    echo "error: source ./activate.sh first (the sweep contract — PATH wires nros," \
-         "play_launch_parser, zenohd)." >&2
+    echo "error: source ./activate.sh first (the sweep contract — PATH wires nros)." >&2
     exit 2
 fi
 

@@ -99,21 +99,6 @@ function _nros_store_tool_bin -a root tool
     end
 end
 
-# play_launch_parser
-set -l _nros_play_root (set -q NROS_HOME; and echo $NROS_HOME/sdk/play_launch_parser; or echo $HOME/.nros/sdk/play_launch_parser)
-if test -x $_nros_play_root/bin/play_launch_parser
-    set -gx PATH $_nros_play_root/bin $PATH
-else
-    # phase-327 W3 — `nros setup --tool play_launch_parser` installs to the
-    # VERSIONED store layout (sdk/<tool>/<version>/bin), which the unversioned
-    # path above misses. Issue 1563: the PINNED version, constructed — never
-    # whichever version `find` returned first.
-    set -l _plp_bin (_nros_store_tool_bin $_nros_root play_launch_parser)
-    if test -n "$_plp_bin"; and test -x $_plp_bin/play_launch_parser
-        set -gx PATH $_plp_bin $PATH
-    end
-end
-
 # Cross-compiler toolchains installed by `nros setup` (SDK store
 # ~/.nros/sdk/<tool>/<version>/bin). A cross-gcc MUST be on PATH for cargo's
 # `linker=` and NuttX/Zephyr `make` to find it (e.g. riscv-none-elf-gcc, Phase

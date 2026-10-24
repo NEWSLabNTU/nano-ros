@@ -33,7 +33,7 @@
       "id": 0,
       "ns": "/",
       "origin": {
-        "file": "system.launch.xml"
+        "file": "deep_entry.launch.xml"
       },
       "parent": null
     },

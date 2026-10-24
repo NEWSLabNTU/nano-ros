@@ -610,7 +610,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 - **Build-side stale probes must watch the same inputs as test-side gates** — a probe that misses
   `generated/**` lets a museum binary pass every sweep while tests fail STALE (issue 0196).
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires
-  `nros`, `play_launch_parser`). `just doctor` enforces it. The pre-218
+  `nros`). `just doctor` enforces it. The pre-218
   `export PATH="$HOME/.nros/bin:$PATH"` is insufficient.
 
 ## Pitfall index

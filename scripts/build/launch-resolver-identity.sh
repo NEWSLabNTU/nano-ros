@@ -13,8 +13,8 @@
 # `nav2_compat_smoke` fixture build traced with `strace -f -e trace=execve`
 # executes `nros-launch-resolve` twice and `nros` four times across 29,828
 # `execve` calls, and the `play_launch_parser` BINARY in the SDK store
-# (`~/.nros/sdk/play_launch_parser/bin/`) **zero** times. The store binary is a
-# standalone CLI nothing in the build path spawns; the submodule half is what
+# (`~/.nros/sdk/play_launch_parser/bin/`) **zero** times. The store binary was a
+# standalone CLI nothing in the build path spawned (issue 1413 retired it); the submodule half is what
 # parses. So the identity below names the resolver, not the store tool — an
 # edge on the store path would have watched a file no build reads.
 #

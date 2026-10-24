@@ -45,7 +45,7 @@
 #
 # for every generated workspace root, because a generated root deliberately sets
 # no prefix. activate.sh only ever PREPENDS to PATH, so the `$GITHUB_PATH`
-# entries earlier steps add (the in-tree CLI, play_launch_parser) survive it.
+# entries earlier steps add (the in-tree CLI) survive it.
 name: host-tests
 
 on:
@@ -351,19 +351,6 @@ jobs:
         run: |
           source ./activate.sh
           just setup linux
-
-      - name: Export play_launch_parser on PATH
-        run: |
-          # issue 1758 — `just setup linux` provisions it; not finding it is a
-          # provisioning failure, not a step to wave through with `|| true`.
-          # Resolved through activate.sh (the store's PATH SSoT), not a find
-          # under a guessed store root.
-          source ./activate.sh
-          if ! plp="$(command -v play_launch_parser)"; then
-            echo "::error::play_launch_parser not on PATH after just setup linux + activate.sh"
-            exit 1
-          fi
-          dirname "$plp" >> "$GITHUB_PATH"
 
       # The two artifacts `check build` asserts and does not produce — see the
       # same two steps in gate.yml (issue 0898) for the measurement.

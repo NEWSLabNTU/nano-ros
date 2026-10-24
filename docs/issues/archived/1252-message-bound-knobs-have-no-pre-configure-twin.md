@@ -8,7 +8,7 @@ found: 2026-09-10
 related: [1228, 0940, 0965, 0991, 1002, 1119, 1061, 1125, phase-439, phase-403, phase-478]
 ---
 
-**Home: [phase-439](../../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-439](../../roadmap/archived/phase-439-resolve-before-configure.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 # RESOLVED 2026-10-23 — the bound link is seeded (W6) and held to (W8)
 

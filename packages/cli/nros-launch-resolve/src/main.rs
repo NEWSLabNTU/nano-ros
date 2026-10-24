@@ -104,6 +104,14 @@ struct Cli {
     /// Print the merged scheduling plan with provenance per node.
     #[arg(long)]
     explain: bool,
+
+    /// Also write the raw parse — the launch record (`record.json`) the
+    /// SystemModel is built from. `-` writes it to stdout, and then no
+    /// SystemModel is built. This is what the retired standalone
+    /// `play_launch_parser` binary printed (issue 1413): one parser, reached
+    /// through the one binary every build already runs.
+    #[arg(long, value_name = "PATH")]
+    record: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -150,7 +158,17 @@ fn main() -> Result<()> {
         parse_launch_file(&launch_path, arg_binding.clone())
             .map_err(|e| eyre::eyre!("parsing {}: {e}", launch_path.display()))?
     };
-    let dump: LaunchDump = serde_json::from_str(&serde_json::to_string(&record)?)?;
+    let record_json = serde_json::to_string_pretty(&record)?;
+    match cli.record.as_deref() {
+        Some("-") => {
+            println!("{record_json}");
+            return Ok(());
+        }
+        Some(path) => std::fs::write(path, format!("{record_json}\n"))
+            .map_err(|e| eyre::eyre!("writing launch record to {path}: {e}"))?,
+        None => {}
+    }
+    let dump: LaunchDump = serde_json::from_str(&record_json)?;
 
     let model = build_checked_model(ModelBuildInputs {
         dump: &dump,

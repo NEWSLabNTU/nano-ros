@@ -3,14 +3,48 @@ id: 1413
 title: "`[tool.play_launch_parser].source.ref` lags the `play_launch` submodule
   pin, three documents asserted the two cannot disagree, and no gate measured
   it — half the gap is closed; the rest waits on the CLI regaining Python"
-status: open
+status: resolved
 type: tech-debt
 area: cli, build
 found: 2026-09-21
 related: [issue-1273, issue-0897, issue-0609, issue-0507, issue-0500, rfc-0060, rfc-0099, phase-439]
 ---
 
-**Home: [phase-439](../roadmap/phase-439-resolve-before-configure.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-439](../../roadmap/archived/phase-439-resolve-before-configure.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+
+# RESOLVED 2026-10-24 — by retiring the second pin, not by moving it
+
+The question this issue never asked: why are there two binaries at all? Both
+halves come from one repository, and only one of them is ever run. Issue
+1454's trace had already shown it — a full fixture build, 29,828 `execve`
+calls, and a `cmake-configure` row, 37,244, ran `nros-launch-resolve` and
+NEVER the store `play_launch_parser`. Every non-comment mention in the Rust
+sources was gone; `NROS_PLAY_LAUNCH_PARSER`, which `nightly.yml` still
+exported, had no reader. The standalone tool was provisioned, PATH-wired,
+doctor-checked, gated and dist-published for a binary nothing invoked.
+
+So the fix is deletion, and it closes the drift by construction: one pin
+remains, the `packages/cli/third-party/play_launch` gitlink, and two pins
+cannot disagree when there is one.
+
+* `nros-launch-resolve --record <path|->` writes the raw parse (the
+  `record.json` the standalone CLI printed), so the one thing a human used
+  the binary for — re-baking a committed record — has a home. The
+  `orchestration_includes/bake-records.sh` recipe uses it, and re-baked
+  `record-chain.json` byte-identical (it had been dead since phase-296: it
+  called `nros plan` without `--record`, which bails, behind `|| true`).
+* Gone: `[tool.play_launch_parser]` and its dists, the
+  `[prereq.libpython3]`/`[prereq.libexpat1]` rows whose only consumer it was,
+  `check-play-launch-parser-ref` (nothing left to compare), `just workspace
+  install-play-launch-parser`, the doctor block, the `activate.{sh,fish}` PATH
+  wiring, and the provisioning steps in `just/linux.just`, `host-tests.yml`,
+  `live-peer.yml` and `nightly.yml`.
+* Left for the `nano-ros-sdk` repository: `scripts/build-play_launch_parser.sh`
+  and the published `play_launch_parser-0.1.0-nros*` releases. Nothing here
+  reads them any more.
+
+The history below is kept as filed: it is the record of why "move the ref"
+was the wrong fix.
 
 ## The drift
 
