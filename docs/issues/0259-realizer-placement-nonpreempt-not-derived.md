@@ -1,26 +1,145 @@
 ---
 id: 259
-title: "Derived scheduling is quantitatively inert — no WCET in the model, so blocking is unmodelled and budget/placement/non_preempt can't be derived"
+title: "Core assignment is derived by the realizer and ignored by the preemption levels; hardware locality and chain colocation have no inputs"
 status: open
 type: limitation
 area: orchestration
-related: [phase-296, rfc-0052, 0403, 0404, phase-357, phase-460]
+related: [phase-296, rfc-0052, 0403, 0404, phase-357, phase-460, rfc-0108, phase-509]
 ---
 
 **Home: [phase-460](../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". From 2026-10-14 to then, this issue was its own home. It owns what is left of
 [phase-357](../roadmap/archived/phase-357-wcet-as-declared-data.md) W2. That
 phase is archived with W1 (RFC-0078, `wcet.rs`) and W3 (issue 0519) done. Of
 W2, `budget`/`B_i`, feasibility, utilisation and the performance half of
-`placement` were derived (sections below). Still open: **`non_preempt`**,
-which needs per-callback priorities within a tier (`rtos_realizer.rs` still
-initialises `preempt_real = DimRealization::NotRequested` and nothing sets it),
-**hardware-locality placement**, **chain colocation**, and the plan-schema
-unit that issue 0519 raised and phase-357 folded into W1 without settling:
-`SchedContextConfig.period_ms` / `budget_ms` / `deadline_ms`
-(`nros-cli-core/src/orchestration/config.rs`) are still milliseconds, while
-the runtime `SchedContext` is in µs. The title predates
-the 2026-08-19 and 2026-09-04 landings. "budget/placement can't be derived"
-is no longer true of the performance half.
+`placement` were derived (sections below). What is still open, and what has
+moved since, is in "Current design" directly below. Read that first: the
+"Still open" lists further down are history. The filename predates the
+2026-08-19, 2026-09-04 and RFC-0108 landings, and the title was rewritten
+2026-10-24.
+
+## Current design (re-checked 2026-10-24 at `8df999fc28`)
+
+This section replaces the "Still open" lists further down, which are history.
+Two designs landed since the last rewrite, and both change what this issue
+owns: RFC-0108 (preemption levels, Draft 2026-10-21) and phase-509, whose P5
+and P6 are built.
+
+### 1. `non_preempt` moves out: RFC-0108 owns it
+
+This issue's ruling was that a preemption threshold needs callbacks inside one
+task to hold different priorities, plus a runtime that honours them, and that
+this is "a model change, not a realizer change". RFC-0108 is that model change.
+
+* **Derivation.** `levels.rs` (phase-509 P5) bands one core's ranks into
+  preemption levels. Each level's members carry a `threshold`, the band's most
+  urgent rank. Where C exists, the bands come from preemption-threshold
+  response-time analysis (`levels::response_time`); elsewhere they come from a
+  capped merge. That is "derive the ceiling from contention", done over ranks
+  rather than callback groups. It also answers the open question below
+  ("group-granular vs tier-granular"): neither. The granularity is the band.
+* **Runtime.** P6 split the dispatcher into a per-core scheduler and one worker
+  per level. Kernel thresholds per platform are phase-509 P10. ThreadX's
+  `tx_thread_preemption_change` is that item's ThreadX row, still open.
+* **What is left in the realizer is dead.** `RealizedNode.preempt_threshold`
+  is always `None` (`rtos_realizer.rs:633`), `preempt_real` is always
+  `NotRequested` (`:581`), and `level_tier` copies the `None` through
+  (`derive.rs`, `preempt_threshold: lead.preempt_threshold`). The comment at
+  `rtos_realizer.rs:572` still says the plan "does not yet model" different
+  priorities inside one task. That stopped being true with P5. **Remedy:**
+  delete the realizer's preempt dim (`SchedCaps.preempt_threshold`, the field,
+  `preempt_real`), or point it at the level's `threshold`. Don't derive it a
+  second time. General per-callback thresholds (overlapping non-preemptive
+  groups) are out of scope in phase-509 and stay with RFC-0108 D3.
+
+The realizer's `B_i` (`blocking_us`, the second-largest WCET on a node) and
+`levels::response_time`'s blocking term now answer a similar question in two
+places. They are not the same quantity: per node versus per band. Before
+either grows, decide whether the necessary-condition check
+`C_i + B_i > D_i` should read the band's blocking instead.
+
+### 2. Performance placement and the levels disagree about cores (latent)
+
+The 2026-09-04 derivation stands. `realize_rtos` packs measured periodic nodes
+worst-fit onto `n_cores`, sets `RealizedNode.core` and marks
+`placement_real = Native`. But phase-509 P5, which landed after it, derives
+levels over every free node in ONE call. `LevelNode` has no core field
+(`levels.rs:86`), and phase-509 lists "core assignment / load partitioning"
+as out of scope, "keyed by (core, rank) with `core` unset". `level_tier` then
+emits the level's `TierDef.core` from its LEAD member (`derive.rs`,
+`core: lead.core`). Two effects follow:
+
+* A level that merges nodes the realizer put on different cores moves every
+  member onto the lead's core, and nothing reports it.
+* The response-time analysis counts nodes on other cores as same-core
+  preemption and blocking. That errs pessimistic, so it is safe, but it is wrong.
+
+**Latent, not live.** Realizer placement fires only when the deployment
+declares `cores >= 2` AND every periodic node carries a budget. The three bake
+roads select no RFC-0078 profile, so they carry no budget (phase-509 P5, "C
+reaches the analysis only through `derive_tiers_with_wcet`"). Only the
+`derive_tiers_with_wcet` entry point can reach it today.
+
+**Revised design: partition first, then derive levels per core.** That is
+RFC-0108's own scope rule ("one ready set never spans more than one core's
+scheduling domain"):
+
+1. The realizer's worst-fit packing is the partition. Its four refusals stay as
+   they are.
+2. `derive.rs` groups free nodes by `RealizedNode.core` and calls
+   `derive_levels` once per core. Unpinned nodes (`core: None`) form the
+   `core`-unset group they are today.
+3. A level never spans cores. `level_tier`'s `core` becomes the group's core,
+   not the lead's.
+4. A test with `n_cores = 2`, every node measured, and a cap that forces a
+   merge. It asserts that no level's members come from two cores. Sabotage the
+   grouping and the test must fail.
+
+This is this issue's work, not phase-509's. Phase-509 deliberately leaves
+`core` unset, and this issue is where `core` gets set.
+
+### 3. Hardware locality: unchanged, still blocked on a board input
+
+`BoardDescriptor` (`nros-cli-core/src/orchestration/board_descriptor.rs:368`)
+still carries only build facts (names, west board, cmake module, platform,
+target, toolchain, platform feature, local aliases). There is no device or IRQ
+list. The design in finding 2 stands: a node manifest names a DEVICE
+(`drives: imu0`), the board says which core services its IRQ, and that becomes
+a pin that step 1's packing must honour. Fail loudly if the board cannot route
+it. Prerequisite: a board peripheral registry. No work item exists for it.
+
+### 4. Chain colocation: unchanged, now one half of a larger question
+
+Still needs the interference model finding 2 describes. RFC-0108 adds a second
+half: "heterogeneous processors run separate images joined by a transport,
+with the end-to-end deadline split into per-segment budgets". It names who
+splits that deadline as a later phase. Both halves are the same question: which
+chain segments share a core or an image, and what budget each gets. They
+belong together, after step 2 above.
+
+### 5. Plan-schema units: moot today, so delete the fields rather than convert them
+
+`SchedContextConfig` / `PlanSchedContext` still say `period_ms`, `budget_ms`
+and `deadline_ms` (`config.rs:115-117`), while the runtime `SchedContext` and
+every derived `TierDef` say `_us`. But nothing writes a number into them. The
+planner emits exactly one context, `default_executor`, with every timing field
+`null` (`planner.rs:1356`). Its only reader is `nros explain`, which prints
+them when they are present. The derived schedule travels as `TierDef` in µs.
+So no value can be misread today. **Remedy:** delete the three fields, and the
+`explain` lines that print them, rather than renaming them to `_us`. A future
+producer should add fields in the runtime's unit, and should not inherit dead
+ones.
+
+### Summary of what this issue now owns
+
+| item | state | next step |
+| --- | --- | --- |
+| `non_preempt` | owned by RFC-0108 / phase-509 (P5, P6 built; P10 ThreadX open) | delete the realizer's dead preempt dim |
+| performance placement | derived (2026-09-04) | partition first, levels per core (section 2), with a test |
+| hardware locality | blocked | board peripheral registry |
+| chain colocation and per-image budget split | blocked | interference model, after section 2 |
+| plan-schema units | moot | delete the dead `_ms` fields |
+
+Section 2 is the only item with a concrete defect, and it is latent.
 
 ## Original finding (phase-296 W5.5–W5.11, 2026-07-24)
 

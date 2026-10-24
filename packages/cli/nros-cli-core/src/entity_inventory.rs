@@ -3906,9 +3906,11 @@ impl EntityInventory {
     /// -- the same rule, for the same reason, that
     /// `model_ingest::count_callbacks_with_metadata` applies one layer up:
     ///
-    /// * The MODEL has no timer entity. The island runs four timers and the
-    ///   contract cannot express one, so a model-only `MAX_CBS` is short by
-    ///   four and short halts the board.
+    /// * The MODEL sees a timer only where a contract declares one (a
+    ///   `contracts.node_paths` entry with no `input`, read by `from_model`).
+    ///   A timer the code creates and the contract omits is invisible to it,
+    ///   so a model-only `MAX_CBS` is short by every omitted timer, and short
+    ///   halts the board.
     /// * The DECLARATION is hand-written. mrm_handler's said six subscriptions
     ///   where the code creates seven, and nothing compared the two; the model
     ///   gets its seven from an authored contract instead.

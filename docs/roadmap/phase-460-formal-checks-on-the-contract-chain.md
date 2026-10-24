@@ -1,6 +1,6 @@
 # phase-460 - every consumer of the contract chain verifies what it consumes
 
-**Status (2026-10-23). Every wave LANDED; three homed issues remain.** W1 (PR
+**Status (2026-10-24). Every wave LANDED; two homed issues remain.** W1 (PR
 #1165), W2 and W4 (PR #1166), W5 (PR #1229), W6 (PR #1228), W7 (the heap
 exhaustion is fatal under `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL`, and
 `samples_dropped_too_small` is in the boot report; issue 1425 archived) and
@@ -12,8 +12,12 @@ reasons. The Zephyr configure (`_nros_rx_ceiling`, since `4b6025539b`) and
 `nros-rmw-zenoh`'s build, over the ceiling `zpico-sys` publishes, both refuse
 a stated receive class above `max(frag, batch)`. One rule backs both:
 `nros_sizing_descriptor::receive_ceiling`. The W1 and W2 follow-ups
-recorded in those waves are unverified since they were written. Issues 0259,
-1140 and 1376 are homed here (table at the end). The "starts now?" column in
+recorded in those waves are unverified since they were written. Issues 0259
+and 1376 are homed here (table at the end). Both designs were re-checked
+2026-10-24 and rewritten: phase-492 and RFC-0108 had moved what each one
+owns. [Issue 1140](../issues/archived/1140-describes-wiring-misses-timer-only-contract.md)
+was resolved the same day, because phase-486 W9b had deleted its second
+predicate. The "starts now?" column in
 the plan below is as of 2026-09-21.
 
 The phase was opened 2026-09-21 as PROPOSED. It was numbered 460 because
@@ -383,6 +387,6 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md) | WCET, blocking and feasibility as declared data is phase-357 W2's remainder. It is a check over the contract chain. |
-| [#1140](../issues/1140-describes-wiring-misses-timer-only-contract.md) | Two predicates ask whether a contract was authored, and they disagree on a timer-only contract. Their agreement is a contract-chain check. |
-| [#1376](../issues/1376-c-example-listeners-register-with-null-options.md) | Homed 2026-10-23 from phase-394, which was archived that day. Seven C listeners pass `options = NULL`, yet the sizing descriptor credits their image with a supplied hint. A consumer trusts a fact nothing checks, which is this phase's class. |
+| [#0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md) | WCET, blocking and feasibility as declared data is phase-357 W2's remainder. It is a check over the contract chain. Re-scoped 2026-10-24: `non_preempt` is RFC-0108's. What is left is core assignment and how it composes with phase-509's per-core levels, plus hardware locality and chain colocation. |
+| [#1140](../issues/archived/1140-describes-wiring-misses-timer-only-contract.md) | Resolved 2026-10-24. Phase-486 W9b deleted `describes_wiring` with `nros ws entity-facts`, so `from_model` is the one predicate. |
+| [#1376](../issues/1376-c-example-listeners-register-with-null-options.md) | Homed 2026-10-23 from phase-394, which was archived that day. Seven C listeners passed `options = NULL`, yet the sizing descriptor credits their image with a supplied hint. A consumer trusts a fact nothing checks, which is this phase's class. Re-scoped 2026-10-24: phase-492 moved the listeners onto rclc's typed path, which carries the bound. Five of the six rclc entry points still pass 0, so the fix is one API helper. |
