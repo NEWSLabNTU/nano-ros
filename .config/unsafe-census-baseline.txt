@@ -31,7 +31,7 @@ nros-board-freertos                 63   1     1      20      0
 nros-board-linux                    17   0     0       5      0
 nros-board-mps2-an385               34   6     1       5      0
 nros-board-mps2-an385-freertos       3   0     0       1      0
-nros-board-nuttx                    27   0     0      13      0
+nros-board-nuttx                    28   0     0      14      0
 nros-board-nuttx-qemu                7   0     0       4      0
 nros-board-threadx                  44   0     1      13      0
 nros-board-threadx-linux            11   1     0       7      0
@@ -44,7 +44,7 @@ nros-c                             461  85     5     462      0
 nros-cli-core                       22   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
-nros-cpp                          1043  39     0     402      0
+nros-cpp                          1050  39     0     404      0
 nros-log                            23   0     7       1      0
 nros-macros                         16   0     1       2      0
 nros-node                          670  186    35     148      0

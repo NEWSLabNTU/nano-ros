@@ -48,6 +48,24 @@ impl ExecutableNode for Control {
 
     fn on_callback(state: &mut Self::State, callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
         if callback.as_str() == "on_ctrl" {
+            // Issue 2018 -- on NuttX the `high` level declares a 5 ms budget
+            // per 10 ms (`[tiers.high.nuttx]`), which the kernel's
+            // SCHED_SPORADIC server enforces. One tick in fifty runs for
+            // 8 ms, past the budget, so the kernel demotes the level to its
+            // floor priority and the runner reports it ("throttled by the
+            // KERNEL"); the e2e reads that line.
+            #[cfg(target_os = "nuttx")]
+            if *state % 50 == 25 {
+                let t0 = nros::time::now_us();
+                while nros::time::now_us().saturating_sub(t0) < 8000 {
+                    core::hint::spin_loop();
+                }
+                log::info!(
+                    "on_ctrl: overran the level budget at tick {} ({} us)",
+                    *state,
+                    nros::time::now_us().saturating_sub(t0)
+                );
+            }
             let msg = Int32 { data: *state };
             // issue 0572 — the result used to be discarded, which made "the
             // timer never fired" and "every publish failed" the same

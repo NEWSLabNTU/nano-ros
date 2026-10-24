@@ -952,6 +952,62 @@ impl ExecutorNodeRuntime {
         self.executor_mut().set_default_sched_context(sc);
     }
 
+    /// Issue 2018 (RFC-0108 As-built) -- lower a LEVEL's policy onto its own
+    /// scheduling context, the level-runner twin of
+    /// [`apply_tier_sched_policy`](Self::apply_tier_sched_policy). Call it on
+    /// the registering level (after the runner opened or adopted it), before
+    /// its setup: what the setup registers then binds to the level's context
+    /// instead of the executor's default, which every level on the core
+    /// shares.
+    ///
+    /// `kernel_enforces_budget` says the kernel throttles the level's thread
+    /// with the same budget and period (NuttX `SCHED_SPORADIC`, Linux
+    /// `SCHED_DEADLINE`), so the executor does not enforce it a second time
+    /// ([`Executor::defer_budget_to_kernel`](crate::Executor::defer_budget_to_kernel)).
+    /// Returns the context, or `None` when the level declares no policy (it
+    /// keeps the default) or no context slot was free (said on the console:
+    /// the level then runs on the default context, unbudgeted by the
+    /// executor).
+    pub fn apply_level_sched_policy(
+        &mut self,
+        class: Option<&str>,
+        period_us: Option<u64>,
+        budget_us: Option<u64>,
+        deadline_us: Option<u64>,
+        deadline_policy: Option<&str>,
+        kernel_enforces_budget: bool,
+    ) -> Option<crate::SchedContextId> {
+        use crate::SchedContext;
+        let (sc, tt_frame) = SchedContext::from_tier_policy(
+            class,
+            period_us,
+            budget_us,
+            deadline_us,
+            deadline_policy,
+        )?;
+        if let Some(frame_us) = tt_frame {
+            self.executor_mut()
+                .register_time_triggered_dispatcher(frame_us);
+        }
+        match self.executor_mut().set_level_sched_context(sc) {
+            Ok(id) => {
+                if kernel_enforces_budget {
+                    self.executor_mut().defer_budget_to_kernel(id);
+                }
+                Some(id)
+            }
+            Err(e) => {
+                nros_log::log_warn!(
+                    nros_log::get_logger("nros"),
+                    "a level's sched context was not created ({}): the level runs on \
+                     the default context, unbudgeted by the executor",
+                    e
+                );
+                None
+            }
+        }
+    }
+
     /// Number of registered components.
     pub fn component_count(&self) -> usize {
         self.components.len()

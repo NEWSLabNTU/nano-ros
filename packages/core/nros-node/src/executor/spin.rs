@@ -4006,6 +4006,56 @@ impl<'s> Executor<'s> {
     /// levels decides.
     pub fn set_registering_level(&mut self, level: u8) {
         self.worker.registering_level = level.min(super::scheduler::NO_OWNING_LEVEL - 1);
+        // Issue 2018 -- a level's own scheduling context is set after it
+        // becomes the registering level, never inherited from the last one.
+        self.worker.registering_sched = 0;
+    }
+
+    /// Issue 2018 (RFC-0108 As-built) -- give the registering level its own
+    /// scheduling context: the one its tier's policy lowers to
+    /// ([`SchedContext::from_tier_policy`](super::sched_context::SchedContext::from_tier_policy)).
+    /// Callbacks registered from now on, until the registering level
+    /// changes, bind to it unless a node or callback-group binding names
+    /// another. A level's budget is then charged to that level alone, never
+    /// to the executor's default context, which every level shares.
+    ///
+    /// A `Sporadic` context is created with the executor's cooperative
+    /// budget (it skips the level's callbacks once the budget is spent, until
+    /// the period refills it). A runner whose kernel enforces the same
+    /// budget on the level's thread hands it to the kernel with
+    /// [`Self::defer_budget_to_kernel`], so the budget is enforced exactly
+    /// once.
+    pub fn set_level_sched_context(
+        &mut self,
+        sc: super::sched_context::SchedContext,
+    ) -> Result<super::sched_context::SchedContextId, NodeError> {
+        let id = self.create_sched_context(sc)?;
+        self.worker.registering_sched = id.0;
+        Ok(id)
+    }
+
+    /// Issue 2018 -- the kernel enforces `sc`'s budget on the level's thread
+    /// (NuttX `SCHED_SPORADIC`, Linux `SCHED_DEADLINE`), so the executor
+    /// stops enforcing it: the context keeps its class, budget, period and
+    /// deadline, and its callbacks are no longer skipped for want of budget.
+    /// One enforcer per level, with one set of numbers. `false` when `sc`
+    /// carries no cooperative budget (nothing to hand over).
+    pub fn defer_budget_to_kernel(&mut self, sc: super::sched_context::SchedContextId) -> bool {
+        match self.sporadic_states.get_mut(sc.0 as usize) {
+            Some(st @ Some(_)) => {
+                *st = None;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Issue 2018 -- whether `sc`'s budget is enforced by this executor
+    /// (a cooperative `Sporadic` context the kernel was not handed).
+    pub fn enforces_budget(&self, sc: super::sched_context::SchedContextId) -> bool {
+        self.sporadic_states
+            .get(sc.0 as usize)
+            .is_some_and(|s| s.is_some())
     }
 
     /// Issue 2020 -- the level that owns what is registered now, `None` until
@@ -7988,6 +8038,11 @@ impl<'s> Executor<'s> {
         #[cfg(feature = "profile-mode")]
         super::profile::on_register(self.arena.as_ptr() as usize, slot, meta.kind, name);
         self.entries[slot] = Some(meta);
+        // Issue 2018 -- the registering level's own context (0, the default,
+        // when it has none); a node or group binding still overrides it.
+        if let Some(b) = self.sched_context_bindings.get_mut(slot) {
+            *b = super::sched_context::SchedContextId(self.worker.registering_sched);
+        }
         // phase-476 W0 — a new occupant gets a new generation, so every handle
         // issued for the slot's previous occupant stops resolving. Owner is
         // cleared; a registration made for a node sets it after this

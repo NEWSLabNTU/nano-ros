@@ -17524,3 +17524,107 @@ mod p9b_windows {
         assert!(got.contains(&"hi") && got.contains(&"lo"), "{got:?}");
     }
 }
+
+// =========================================================================
+// Issue 2018 -- a level's own scheduling context, and the kernel hand-over
+// =========================================================================
+
+private_test_clock!(level_budget_coop_clock);
+private_test_clock!(level_budget_kernel_clock);
+
+/// Run `spins` cycles of a level whose one timer costs 2 ms against a 1 us
+/// budget per 60 s, and count its dispatches. `kernel` hands the budget to
+/// the kernel before the spins.
+fn level_budget_dispatches(
+    now_us: fn() -> u64,
+    advance_ms: fn(u64),
+    spin: fn(&mut Executor<'static>, u64),
+    kernel: bool,
+) -> (usize, bool) {
+    use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    static COOP: AtomicUsize = AtomicUsize::new(0);
+    static KERNEL: AtomicUsize = AtomicUsize::new(0);
+    let counter: &'static AtomicUsize = if kernel { &KERNEL } else { &COOP };
+
+    let mut executor: Executor = executor_with_clock_fn(MockSession::new(), now_us);
+    // The executor runs level 1 itself, as a runner's adopted level does.
+    assert!(executor.set_level(1));
+    executor.set_registering_level(1);
+    let sc = executor
+        .set_level_sched_context(SchedContext {
+            class: SchedClass::Sporadic,
+            budget_us: OptUs::from_us(1),
+            period_us: OptUs::from_us(60_000_000),
+            ..Default::default()
+        })
+        .expect("a free context slot");
+    let spender = executor
+        .register_timer(TimerDuration::from_millis(1), move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            advance_ms(2);
+        })
+        .unwrap();
+    let slot = executor.live_slot(spender);
+    assert_eq!(
+        executor.sched_context_bindings[slot], sc,
+        "a callback the level registers binds to the level's own context"
+    );
+    if kernel {
+        assert!(executor.defer_budget_to_kernel(sc));
+        assert!(!executor.enforces_budget(sc));
+    } else {
+        assert!(executor.enforces_budget(sc));
+    }
+    for _ in 0..5 {
+        spin(&mut executor, 50);
+    }
+    // The next level starts on the default context, not this one.
+    executor.set_registering_level(2);
+    let other = executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .unwrap();
+    let other_slot = executor.live_slot(other);
+    let other_default = executor.sched_context_bindings[other_slot]
+        == crate::executor::sched_context::SchedContextId(0);
+    (counter.load(Ordering::SeqCst), other_default)
+}
+
+/// Issue 2018 -- the executor enforces a level's budget itself (the
+/// fallback when the kernel does not): one dispatch spends it and the level
+/// is skipped for the rest of the period.
+#[test]
+fn a_level_budget_the_executor_enforces_skips_the_level() {
+    level_budget_coop_clock::claim_at_us(1_000_000);
+    let (dispatches, other_default) = level_budget_dispatches(
+        level_budget_coop_clock::now_us,
+        level_budget_coop_clock::advance_ms,
+        |e, ms| {
+            let _ = level_budget_coop_clock::elapse_then_spin_once(e, ms);
+        },
+        false,
+    );
+    assert_eq!(dispatches, 1, "the cooperative budget throttles the level");
+    assert!(other_default, "the next level does not inherit the context");
+}
+
+/// Issue 2018 -- once the kernel enforces the level's budget, the executor
+/// does not throttle it a second time: the same overrunning callback
+/// dispatches on every cycle, and only the kernel demotes the thread.
+#[test]
+fn a_level_budget_handed_to_the_kernel_is_not_enforced_twice() {
+    level_budget_kernel_clock::claim_at_us(1_000_000);
+    let (dispatches, other_default) = level_budget_dispatches(
+        level_budget_kernel_clock::now_us,
+        level_budget_kernel_clock::advance_ms,
+        |e, ms| {
+            let _ = level_budget_kernel_clock::elapse_then_spin_once(e, ms);
+        },
+        true,
+    );
+    assert_eq!(
+        dispatches, 5,
+        "no cooperative skip once the kernel enforces"
+    );
+    assert!(other_default, "the next level does not inherit the context");
+}
