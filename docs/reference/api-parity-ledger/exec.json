@@ -1614,5 +1614,13 @@
   "rust:Executor::set_level": {
     "verdict": "extension",
     "why": "phase-509 P7 (RFC-0108 D8) -- a board's tier runner places each tier's executor at its level (until P9 a level is a tier). rclrs has no levels."
+  },
+  "rust:LevelCore::spin_boot_once": {
+    "verdict": "extension",
+    "why": "phase-509 P10 -- one pass of the boot level (the executor's own worker and the component ticks) on a shared runtime. rclrs has no levels."
+  },
+  "rust:LevelCore::spin_level_once": {
+    "verdict": "extension",
+    "why": "phase-509 P10 -- one band pass of a spawned level's worker. rclrs has no levels."
   }
 }

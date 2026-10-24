@@ -656,7 +656,10 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   POSIX `PTHREAD_PRIO_INHERIT`, FreeRTOS recursive mutex, NuttX with
   priority inheritance, ThreadX `TX_INHERIT`), installed on the executor by
   the runner before any second thread can reach it
-  (`nros_cpp_executor_set_lock`). Every C and C++ FFI entry that touches
+  (`nros_cpp_executor_set_lock`). Since P10 the Zephyr runners install a
+  bare `k_mutex` through the module's shims instead (`nros_zephyr_exec_lock*`):
+  on a `CONFIG_POSIX_API` image `nros_platform_mutex_rec_*` is a POSIX
+  recursive mutex. Every C and C++ FFI entry that touches
   the executor takes it before its reference exists (`cpp_ctx_checked` /
   `cpp_ctx_locked` return a `CtxRef`, nros-c's `get_executor` a `CExecRef`)
   and gives it back when that reference drops; a lookup that hands back an
@@ -684,6 +687,10 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
     (`nros_platform_mutex_rec_lock` / `_unlock` over a `k_mutex`): 1,380
     cycles avg (1,365-1,818), 8.63 us, five times the raw pair. What the
     port's recursive wrapper spends there is not yet attributed.
+  - P10: the pair through the bare `k_mutex` the Zephyr runner now installs
+    (`nros_zephyr_exec_lock` / `_unlock`; the island's lock probe, 10,000
+    pairs): 2.35 us, against 8.58 us for the POSIX recursive pair measured
+    the same way.
 - **Blocking bound.** With one priority-inheriting lock, a level i's
   callback is blocked, besides the non-preemptive tail of its own band, by
   at most ONE critical section of a less urgent worker:
@@ -845,6 +852,57 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   pass by default); (3) scheduler-owned accounting: per-band timers and
   budgets, one transport driver, per-worker band park; (4) the runner, FFI
   and cost report: `level_open` opens a worker over the core's executor.
+
+**As built in P10** (amended RFC-0107 step 6). Every tier runner is a level
+runner: one executor per core, the least urgent level adopted on the calling
+thread (it owns the session and drives the transport), every other level a
+worker thread over the same executor, spawned in a chain so no two setups
+overlap (issue #144). A level that does not open, whose setup fails, or that
+cannot be spawned fails the boot. The runners and their two port facts, the
+executor's lock and the thread identity:
+
+| runner | entry | lock | thread id | spawned level's stack |
+|---|---|---|---|---|
+| Zephyr (C, P9b) | `nros_board_zephyr_run_levels_in` | bare `k_mutex` (`nros_zephyr_exec_lock*`) | `k_current_get` | entry static, `NROS_LEVEL_STACK_BYTES` |
+| Linux / POSIX (C ABI) | `nros_board_native_run_levels_in` (nros-cpp) | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | the process's (no task memory) |
+| FreeRTOS (C) | `nros_board_freertos_run_levels_in` | `nros_platform_mutex_rec_*` (FreeRTOS recursive mutex) | `xTaskGetCurrentTaskHandle` | entry static (`xTaskCreateStatic`), `NROS_LEVEL_STACK_BYTES` |
+| NuttX (C) | `nros_board_nuttx_run_levels_in` | `nros_platform_mutex_rec_*` (`PTHREAD_PRIO_INHERIT`) | `pthread_self` | entry static (`pthread_attr_setstack`), `NROS_LEVEL_STACK_BYTES` |
+| Zephyr (Rust) | `ZephyrBoard::run_tiers_with_task_memory` | bare `k_mutex` (`nros_zephyr_exec_lock*`) | `k_current_get` | entry static or the pool slot (declared size) |
+| ThreadX (Rust) | `run_tiers_entry` | `nros_platform_mutex_rec_*` (`TX_INHERIT`) | `tx_thread_identify` | byte pool (declared size) |
+
+- **The Rust level core** is `nros::levels::LevelCore`: the core's
+  `ExecutorNodeRuntime`, leaked for the image's life, with the lock and
+  thread identity installed (`Executor::set_exec_lock`), the level count
+  stated and the boot level current. `open_level` seats a level's
+  `BandWorker` (its waiter linked into the arrival routing) and makes it the
+  registering level; `with_runtime` runs the image's setup on the shared
+  runtime under the lock with the level's groups active; `spin_level_once`
+  is a band pass (`Executor::spin_band_once`) and `spin_boot_once` the
+  executor's own pass plus the components' ticks
+  (`ExecutorNodeRuntime::spin_once_shared`). It is the Rust twin of the
+  `nros_cpp_level_*` FFI.
+- **Derived stacks.** FreeRTOS and NuttX derive like Zephyr
+  (`TierTaskMemory::derives_level_stacks`): a spawned level that declares
+  no `stack_bytes` is `NROS_LEVEL_STACK_BYTES(0)`, the per-callback default
+  plus a 4,096 B worker frame, which together are the stack every tier got
+  before (FreeRTOS 256 KiB, `NROS_FREERTOS_LEVEL_STACK_DEFAULT`; NuttX
+  16 KiB, `NROS_NUTTX_LEVEL_STACK_DEFAULT`). NuttX now takes its levels'
+  stacks from the entry (`tier_task_memory_nuttx.h`), which it did not
+  before. The Rust runners keep the declared size: the Rust pack has no
+  derived-stack row yet.
+- **Lock cost.** The Zephyr runner's lock is a bare `k_mutex` through the
+  module's shims, not `nros_platform_mutex_rec_*`: on a `CONFIG_POSIX_API`
+  image that wrapper is a POSIX recursive mutex. On the island (S32K344,
+  the lock probe, 10,000 pairs) the installed pair fell from 8.58 us to
+  2.35 us (raw `k_mutex` pair 1.74 us; the difference is the shim call and
+  the executor's lock indirection) [M].
+- **Not in P10.** The Rust Linux, FreeRTOS and NuttX tier arms
+  (`nros-board-linux`, `nros-board-freertos`, `nros-board-nuttx`) still open
+  one executor per tier over the session; the C-ABI runners above are what
+  every C and C++ entry on those boards calls. FreeRTOS keeps
+  `configUSE_TIME_SLICING` at the kernel default. Kernel budget enforcement
+  (Linux `SCHED_DEADLINE`, NuttX `SCHED_SPORADIC`) is not wired to levels.
+  Each is a filed follow-up.
 
 ## Relation to other RFCs
 
@@ -1178,3 +1236,9 @@ The first draft's open questions, as decided:
   failure fails the boot.
 - 2026-10-24: the island measured the lock on target (I4): `k_mutex` pair
   1.74 us, the installed recursive pair 8.63 us, `L_max` 77.5 us.
+- 2026-10-24: P10 built: every C-ABI tier runner (Zephyr, Linux, FreeRTOS,
+  NuttX) and the Rust Zephyr and ThreadX runners run levels over one executor
+  per core; the Rust level core is `nros::levels::LevelCore`; the Zephyr lock
+  is a bare `k_mutex` (2.35 us per pair on target). The Rust Linux, FreeRTOS
+  and NuttX arms, FreeRTOS time slicing, kernel budgets and member-derived
+  stacks are filed (issues 2016-2021).

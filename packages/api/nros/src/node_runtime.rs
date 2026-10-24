@@ -855,6 +855,39 @@ impl ExecutorNodeRuntime {
         &self.executor
     }
 
+    /// phase-509 P10 -- the executor's address, through a raw runtime
+    /// pointer and without a reference: what a level runner takes the
+    /// executor's lock through before it touches the runtime
+    /// ([`crate::levels::LevelCore`]).
+    ///
+    /// # Safety
+    /// `this` points at a live runtime.
+    pub unsafe fn executor_ptr(this: *mut Self) -> *mut Executor<'static> {
+        // SAFETY: only the field address is computed.
+        unsafe { core::ptr::addr_of_mut!((*this).executor) }
+    }
+
+    /// phase-509 P10 -- [`spin_once`](Self::spin_once) on a runtime other
+    /// level workers share: the executor's lock is taken first, the pass
+    /// releases it around each user callback
+    /// ([`Executor::spin_once_shared`]), and the components' ticks run under
+    /// it.
+    ///
+    /// # Safety
+    /// `this` points at a live runtime whose executor has the lock installed
+    /// if any other thread can reach it, and no reference to the runtime is
+    /// live in the caller.
+    #[cfg(feature = "rmw-cffi")]
+    pub unsafe fn spin_once_shared(this: *mut Self, timeout: Duration) {
+        // SAFETY: the caller's contract; the lock is taken before any
+        // reference to the runtime exists.
+        let exec = unsafe { Self::executor_ptr(this) };
+        let _g = unsafe { nros_node::executor::exec_lock::ExecGuard::acquire(exec) };
+        let _ = unsafe { Executor::spin_once_shared(exec, timeout) };
+        // SAFETY: under the lock no other thread touches the runtime.
+        unsafe { (*this).run_ticks() };
+    }
+
     /// Mutably borrow the underlying executor — for advanced wiring
     /// (parameter services, custom guard conditions). Don't use during
     /// [`spin`](Self::spin) from another thread; the runtime is

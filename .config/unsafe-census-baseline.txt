@@ -23,7 +23,7 @@ logging-smoke-nuttx-qemu-arm         1   0     0       1      0
 logging-smoke-threadx-linux          1   0     0       1      0
 logging-smoke-threadx-riscv64        1   0     0       1      0
 mps2-an385-pac                       0   1     1       2      0
-nros                                90  17     3      31      0
+nros                               104  24     5      31      0
 nros-baremetal-common               24   0     0      21      0
 nros-board-cffi                      3   0     0       6      0
 nros-board-esp32-qemu               11   1     1       0      0
@@ -33,10 +33,10 @@ nros-board-mps2-an385               28   6     1       4      0
 nros-board-mps2-an385-freertos       3   0     0       1      0
 nros-board-nuttx                    19   0     1      11      0
 nros-board-nuttx-qemu                7   0     0       4      0
-nros-board-threadx                  36   0     0      11      0
+nros-board-threadx                  44   0     1      13      0
 nros-board-threadx-linux            11   1     0       7      0
 nros-board-threadx-qemu-riscv64     13   1     0       4      0
-nros-board-zephyr                   19   0     0       8      0
+nros-board-zephyr                   28   0     1      11      0
 nros-bridge                         34   1     0       8      0
 nros-build                           1   0     0       0      0
 nros-build-helpers                   2   0     0       2      0

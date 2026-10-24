@@ -167,6 +167,10 @@ pub mod metadata_mode;
 /// hosted edges that read `$NROS_PROFILE_OUT` (`nros-cpp`, `nros-board-linux`).
 #[cfg(all(feature = "profile-mode", feature = "rmw-cffi"))]
 pub use nros_node::executor::profile;
+/// phase-509 P10 (RFC-0108) -- the Rust tier runners' level core: one
+/// executor per core, a worker per level.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+pub mod levels;
 pub mod node;
 pub mod node_metadata;
 /// Phase 212.M.5.a.2 — executor-backed component runtime.
