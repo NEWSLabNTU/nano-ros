@@ -57,3 +57,21 @@ Two outcomes are defensible.
 
 To tell them apart, the test should log the time it actually took to resume
 when it passes, so a passing run carries the number.
+
+## Instrumentation (phase-513 R5)
+
+The test now prints both times on a pass:
+
+```
+issue 1749: 607 declare rounds ok, 31441 failed across the outage; issue 1976: first declare 39.851851392s after the restart, resumed (50 rounds) 39.851851632s after it
+```
+
+That run was solo on an aarch64 bench, the first after the change. A timeout
+now ends with `first at None (never resumed)` or `first at Some(..) (late)`. A
+mutation run with the limit cut to 5 s printed the first form. The nextest
+override shows a passing run's output and keeps it in junit. The shim's
+per-declare `printf` lines, about 63,000 per run, go to a file during the
+churn. Only their count and the last six reach the log.
+
+Still open: the distribution from a merge-queue batch. Read it from a
+`test-unit` job's log or junit, then pick the "load" or the "hang" fix above.

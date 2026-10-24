@@ -1,9 +1,9 @@
 # Phase 513 — Nightly and merge-queue reds with no home
 
-**Status (2026-10-24). In progress.** R1 and R2 have fixes in review; their
-acceptance is a tier-2 nightly, because this bench is aarch64 and Zephyr 3.7's
-`native_sim` builds only on an x86 host. R3–R5 wait on CI evidence. R6 and R7
-are not started.
+**Status (2026-10-24). In progress.** R1 and R2 are fixed on main (#2579);
+their acceptance is a tier-2 nightly, because this bench is aarch64 and Zephyr
+3.7's `native_sim` builds only on an x86 host. R5's instrumentation, R6 and R7
+are in review. R3, R4 and the rest of R5 wait on CI evidence.
 
 **Prior:** none. This phase gathers open issues whose phases were archived
 while the issue stayed open, plus one new red found while reading them.
@@ -78,8 +78,19 @@ night's text.
 actually took, even when it passes. Then queue runs carry the distribution, and
 the issue can choose between the "load" fix and the "hang" fix.
 
-**Done when** the test prints the measured resume time on success, and the
-issue records the distribution from at least one merge-queue batch.
+The test now records when the first declare succeeded after the restart and
+when the 50-round resume completed. A pass prints both. A timeout says whether
+any declare succeeded ("late") or none did ("never resumed"). Showing a pass's
+output needed one more change: the shim prints every failed declare with
+`printf`, which is the test's stdout, about 63,000 lines per outage. So the
+test sends fd 1 to a file during the churn and prints only the line count and
+the last six lines. The 5 ms retry stays, because the declares must overlap
+`_z_reopen`'s replay for the issue-1749 check to mean anything. The nextest
+override shows the output on pass and keeps it in junit. Measured solo on this
+bench: first declare and full resume both 39.85 s after the restart.
+
+**Done when** the test prints the measured resume time on success (landed),
+and the issue records the distribution from at least one merge-queue batch.
 
 ### R6 — a gate for a port arm that is short of the ABI
 
@@ -93,6 +104,15 @@ of which arm defines what.
 `nros-platform-zephyr/src/platform.c`, has a negative control, and fails on a
 function present in only one arm unless an entry with a reason allows it.
 
+Landed as `just check platform-port-arms`
+(`scripts/check/check-platform-port-arms.py`). It covers every tracked
+`packages/platform/*/src/*.c`, not only Zephyr's, which is 15 files. Every
+multi-arm conditional group must define the same `nros_platform_*` functions in
+each arm. Nested groups are checked on their own and count toward their parent
+arm. The self-test runs on every invocation. Run against the Zephyr port as it
+stood before #2579, the gate reports exactly issue 2032's eight functions. The
+`ALLOWED` table is empty.
+
 ### R7 — a gate for a Zephyr cargo build that drops the panic ending
 
 R1's class is a feature list that reaches cargo without `_nros_panic_suffix`.
@@ -101,6 +121,14 @@ R1's class is a feature list that reaches cargo without `_nros_panic_suffix`.
 **Done when** a buildless gate fails on any `_nros_zephyr_api_cargo_build` or
 `nros_write_runtime_umbrella_crate` call in `zephyr/CMakeLists.txt` whose
 features omit the panic suffix, and has a negative control.
+
+Landed as `just check zephyr-panic-suffix`
+(`scripts/check/check-zephyr-panic-suffix.py`). It reads the file with comments
+stripped. An umbrella's `CPP_FEATURES` may name the suffix through a variable,
+and then the variable's last assignment before the call must carry it. A
+direct `nros_cargo_build` with `FEATURES` must carry it too. One with no
+`FEATURES` must build a generated `MANIFEST_PATH`. Run against the file as it
+stood before #2579, the gate reports the umbrella line issue 2010 was about.
 
 ## Issues homed here
 

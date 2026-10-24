@@ -1714,6 +1714,82 @@ fn declares_keep_running_across_a_reconnect() {
         }
     }
 
+    // Issue 1976 — the shim reports every failed declare with `printf`, and on
+    // POSIX that is this process's stdout: about 63,000 lines per outage
+    // (measured, 4 threads at a 5 ms retry). The retry stays at 5 ms, because a
+    // declare must land while `_z_reopen` replays the cache or the test proves
+    // nothing about issue 1749. Instead fd 1 goes to an unlinked file for the
+    // churn, and is restored on every path — declared before `workers`, so the
+    // threads that print are joined first. The restore prints the line count
+    // and the last lines, so a passing run's output stays readable and a
+    // failing one still shows how the shim ended.
+    struct QuietStdout {
+        saved: i32,
+        file: std::fs::File,
+    }
+    unsafe extern "C" {
+        fn dup(fd: i32) -> i32;
+        fn dup2(from: i32, to: i32) -> i32;
+        fn close(fd: i32) -> i32;
+        fn fflush(stream: *mut core::ffi::c_void) -> i32;
+    }
+    impl QuietStdout {
+        fn start() -> Self {
+            use std::{io::Write, os::fd::AsRawFd};
+            let path = std::env::temp_dir().join(format!("nros-1976-{}.out", std::process::id()));
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&path)
+                .expect("open the stdout capture file");
+            let _ = std::fs::remove_file(&path);
+            let _ = std::io::stdout().flush();
+            // SAFETY: plain fd calls on fds this process owns.
+            let saved = unsafe {
+                fflush(core::ptr::null_mut());
+                let saved = dup(1);
+                assert!(saved >= 0, "dup(1) failed");
+                assert!(dup2(file.as_raw_fd(), 1) >= 0, "dup2 onto stdout failed");
+                saved
+            };
+            QuietStdout { saved, file }
+        }
+        fn restore(&mut self) {
+            use std::io::{Read, Seek, Write};
+            if self.saved < 0 {
+                return;
+            }
+            let _ = std::io::stdout().flush();
+            // SAFETY: `saved` is the dup of the original stdout, taken above.
+            unsafe {
+                fflush(core::ptr::null_mut());
+                dup2(self.saved, 1);
+                close(self.saved);
+            }
+            self.saved = -1;
+            let mut text = String::new();
+            let _ = self.file.rewind();
+            let _ = self.file.read_to_string(&mut text);
+            let lines: Vec<&str> = text.lines().collect();
+            println!(
+                "issue 1976: the shim wrote {} line(s) to stdout during the churn; the last {}:",
+                lines.len(),
+                lines.len().min(6)
+            );
+            for l in &lines[lines.len().saturating_sub(6)..] {
+                println!("    {l}");
+            }
+        }
+    }
+    impl Drop for QuietStdout {
+        fn drop(&mut self) {
+            self.restore();
+        }
+    }
+    let mut quiet = QuietStdout::start();
+
     let stop = Arc::new(AtomicBool::new(false));
     let ok = Arc::new(AtomicU64::new(0));
     let failed = Arc::new(AtomicU64::new(0));
@@ -1761,17 +1837,44 @@ fn declares_keep_running_across_a_reconnect() {
     // 39.8 s, 6 runs of 6, at the default 10 s lease (see the nextest
     // override for this test). Issue 1802: under load it took over 50 s in 1
     // run of 96 (8 copies beside 32 CPU hogs), so the limit leaves 35 s.
-    wait_for(
-        "declares to resume after the restart",
-        Duration::from_secs(75),
-        || ok.load(Ordering::Relaxed) >= before + 50,
-    );
+    //
+    // Issue 1976 — a timeout here is either a LATE resume (load) or NO resume
+    // (a hang), and the two want different fixes. So the wait records when the
+    // first declare succeeded after the restart, the timeout says whether one
+    // ever did, and a pass prints both times (the nextest override shows it).
+    let limit = Duration::from_secs(75);
+    let mut first_ok = None;
+    let resumed = loop {
+        let now = ok.load(Ordering::Relaxed);
+        if first_ok.is_none() && now > before {
+            first_ok = Some(restarted_at.elapsed());
+        }
+        if now >= before + 50 {
+            break restarted_at.elapsed();
+        }
+        assert!(
+            restarted_at.elapsed() < limit,
+            "timed out after {limit:?} waiting for declares to resume after the restart: \
+             {} round(s) ok since the restart, first at {first_ok:?} ({}), {} failed in all",
+            now - before,
+            if first_ok.is_some() {
+                "late"
+            } else {
+                "never resumed"
+            },
+            failed.load(Ordering::Relaxed),
+        );
+        thread::sleep(Duration::from_millis(50));
+    };
     workers.finish();
+    quiet.restore();
     println!(
-        "issue 1749: {} declare rounds ok, {} failed across the outage, resumed {:?} after the restart",
+        "issue 1749: {} declare rounds ok, {} failed across the outage; \
+         issue 1976: first declare {:?} after the restart, resumed (50 rounds) {:?} after it",
         ok.load(Ordering::Relaxed),
         failed.load(Ordering::Relaxed),
-        restarted_at.elapsed()
+        first_ok.expect("resumed implies a first success"),
+        resumed,
     );
     drop(restarted);
 }
