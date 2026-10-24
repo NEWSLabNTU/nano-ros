@@ -382,6 +382,22 @@ typedef enum rclc_goal_status_t {
 } rclc_goal_status_t;
 
 /**
+ * Phase 122.3.c.6.d — overall cancel-RPC return code. Distinct from
+ * the per-goal `rclc_cancel_response_t` (ACCEPT/REJECT) used by the
+ * L2 callback path. These four discriminants mirror
+ * `nros_core::CancelReturnCode` and the `action_msgs/srv/CancelGoal`
+ * wire-CDR `return_code` field. (Issue 0796 — the Rust type was called
+ * `CancelResponse` until it was split; this pair of C names is what the
+ * Rust names now follow.)
+ */
+typedef enum rclc_cancel_return_code_t {
+  RCLC_CANCEL_RC_OK = 0,
+  RCLC_CANCEL_RC_REJECTED = 1,
+  RCLC_CANCEL_RC_UNKNOWN_GOAL = 2,
+  RCLC_CANCEL_RC_GOAL_TERMINATED = 3,
+} rclc_cancel_return_code_t;
+
+/**
  * Node state
  */
 typedef enum rclc_node_state_t {
@@ -634,22 +650,6 @@ typedef enum rclc_qos_liveliness_t {
    */
   RCLC_QOS_LIVELINESS_BEST_AVAILABLE = 5,
 } rclc_qos_liveliness_t;
-
-/**
- * Phase 122.3.c.6.d — overall cancel-RPC return code. Distinct from
- * the per-goal `rclc_cancel_response_t` (ACCEPT/REJECT) used by the
- * L2 callback path. These four discriminants mirror
- * `nros_core::CancelReturnCode` and the `action_msgs/srv/CancelGoal`
- * wire-CDR `return_code` field. (Issue 0796 — the Rust type was called
- * `CancelResponse` until it was split; this pair of C names is what the
- * Rust names now follow.)
- */
-typedef enum rclc_cancel_return_code_t {
-  RCLC_CANCEL_RC_OK = 0,
-  RCLC_CANCEL_RC_REJECTED = 1,
-  RCLC_CANCEL_RC_UNKNOWN_GOAL = 2,
-  RCLC_CANCEL_RC_GOAL_TERMINATED = 3,
-} rclc_cancel_return_code_t;
 
 /**
  * Subscription state
@@ -1147,6 +1147,21 @@ typedef void (*rclc_result_callback_t)(const struct rclc_goal_uuid_t *goal_uuid,
                                        void *context);
 
 /**
+ * Cancel-response callback type (for client) — issue 2030.
+ *
+ * Called from the executor's spin when the server answers a
+ * `rclc_action_cancel_goal`. `goal_uuid` is the goal the request named;
+ * `return_code` is the reply's whole-request status and `goals_canceling`
+ * how many goals it lists as moving to CANCELING (0 when the cancel was
+ * refused). Optional: the executor takes every cancel reply whether or not
+ * one is set, which is what frees the request's slot.
+ */
+typedef void (*rclc_cancel_response_callback_t)(const struct rclc_goal_uuid_t *goal_uuid,
+                                                enum rclc_cancel_return_code_t return_code,
+                                                size_t goals_canceling,
+                                                void *context);
+
+/**
  * Identifier of a registered scheduling context. `0` is the
  * auto-created default `Fifo` SC. Mirrors
  * `nros_node::executor::sched_context::SchedContextId`.
@@ -1227,6 +1242,11 @@ typedef struct rcl_action_client_t {
    * Result callback
    */
   rclc_result_callback_t result_callback;
+  /**
+   * Issue 2030 — cancel-response callback (optional; see
+   * [`rclc_action_client_set_cancel_response_callback`]).
+   */
+  rclc_cancel_response_callback_t cancel_response_callback;
   /**
    * User context pointer
    */
@@ -4027,6 +4047,19 @@ NROS_PUBLIC
 rcl_ret_t rclc_action_client_set_result_callback(struct rcl_action_client_t *client,
                                                  rclc_result_callback_t callback,
                                                  void *context);
+
+/**
+ * Set the cancel-response callback — issue 2030.
+ *
+ * Called during `rclc_executor_spin_some` (or `rclc_action_client_poll`) when
+ * the server answers a `rclc_action_cancel_goal`. The executor takes cancel
+ * replies whether or not a callback is set: each cancel holds one of the
+ * client's request slots until its reply is taken.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_action_client_set_cancel_response_callback(struct rcl_action_client_t *client,
+                                                          rclc_cancel_response_callback_t callback,
+                                                          void *context);
 
 /**
  * Block until the action server's send-goal queryable is discoverable

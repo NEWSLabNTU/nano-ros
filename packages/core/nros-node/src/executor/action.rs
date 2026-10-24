@@ -27,7 +27,8 @@ use super::{
     triple_buffer::TripleBuffer,
     types::{
         HandleId, InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback,
-        RawFeedbackCallback, RawGoalCallback, RawGoalResponseCallback, RawResultCallback,
+        RawCancelResponseCallback, RawFeedbackCallback, RawGoalCallback, RawGoalResponseCallback,
+        RawResultCallback,
     },
 };
 
@@ -132,6 +133,10 @@ pub struct RawActionClientSpec<'a> {
     pub goal_response_callback: Option<RawGoalResponseCallback>,
     pub feedback_callback: Option<RawFeedbackCallback>,
     pub result_callback: Option<RawResultCallback>,
+    /// Issue 2030 — `Some` makes the executor take this client's cancel
+    /// replies and deliver them here. `None` leaves them for the caller's own
+    /// reader. See [`RawCancelResponseCallback`].
+    pub cancel_response_callback: Option<RawCancelResponseCallback>,
     pub context: *mut core::ffi::c_void,
 }
 
@@ -1627,6 +1632,7 @@ impl<'s> Executor<'s> {
             goal_response_callback,
             feedback_callback,
             result_callback,
+            cancel_response_callback,
             context,
         } = spec;
 
@@ -1777,6 +1783,7 @@ impl<'s> Executor<'s> {
                     goal_response_callback,
                     feedback_callback,
                     result_callback,
+                    cancel_response_callback,
                     context,
                 },
             );
@@ -2018,6 +2025,7 @@ impl<'s> Executor<'s> {
         goal_response_callback: Option<RawGoalResponseCallback>,
         feedback_callback: Option<RawFeedbackCallback>,
         result_callback: Option<RawResultCallback>,
+        cancel_response_callback: Option<RawCancelResponseCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<ActionClientRawHandle, NodeError> {
         type Entry<const GB: usize, const RB: usize, const FB: usize> =
@@ -2036,6 +2044,7 @@ impl<'s> Executor<'s> {
                     goal_response_callback,
                     feedback_callback,
                     result_callback,
+                    cancel_response_callback,
                     context,
                 },
             );

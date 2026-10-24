@@ -125,6 +125,9 @@ pub struct rcl_action_client_t {
     pub feedback_callback: rclc_feedback_callback_t,
     /// Result callback
     pub result_callback: rclc_result_callback_t,
+    /// Issue 2030 — cancel-response callback (optional; see
+    /// [`rclc_action_client_set_cancel_response_callback`]).
+    pub cancel_response_callback: rclc_cancel_response_callback_t,
     /// User context pointer
     pub context: *mut c_void,
     /// Pointer to parent node
@@ -193,6 +196,7 @@ impl Default for rcl_action_client_t {
             goal_response_callback: None,
             feedback_callback: None,
             result_callback: None,
+            cancel_response_callback: None,
             context: ptr::null_mut(),
             node: crate::node::rclc_node_ref_t::none(),
             sched_context_id: 0,
@@ -318,6 +322,27 @@ pub unsafe extern "C" fn rclc_action_client_set_result_callback(
 
     let client = &mut *client;
     client.result_callback = callback;
+    client.context = context;
+
+    RCL_RET_OK
+}
+
+/// Set the cancel-response callback — issue 2030.
+///
+/// Called during `rclc_executor_spin_some` (or `rclc_action_client_poll`) when
+/// the server answers a `rclc_action_cancel_goal`. The executor takes cancel
+/// replies whether or not a callback is set: each cancel holds one of the
+/// client's request slots until its reply is taken.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_action_client_set_cancel_response_callback(
+    client: *mut rcl_action_client_t,
+    callback: rclc_cancel_response_callback_t,
+    context: *mut c_void,
+) -> rcl_ret_t {
+    validate_not_null!(client);
+
+    let client = &mut *client;
+    client.cancel_response_callback = callback;
     client.context = context;
 
     RCL_RET_OK
@@ -986,6 +1011,19 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
             };
             let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
             cb(&uuid, c_status, spliced.as_ptr(), n, ctx);
+        }
+    }
+
+    // Poll cancel reply — issue 2030. Taken whether or not a callback is set:
+    // a cancel request holds a request slot until its reply is taken, and this
+    // tier has no other reader, so leaving it refused the fifth cancel.
+    if let Ok(Some((total_len, goal_id))) = core.try_recv_cancel_reply_for() {
+        let reply = &core.result_buffer_ref()[..total_len];
+        let code = cancel_return_code_c(action_frame::cancel_return_code(reply));
+        let n = action_frame::cancel_goals_count(reply).unwrap_or(0);
+        if let Some(cb) = client_ref.cancel_response_callback {
+            let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
+            cb(&uuid, code, n, ctx);
         }
     }
 

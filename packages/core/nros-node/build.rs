@@ -1055,13 +1055,15 @@ fn main() {
     // `ActionServerCore::cancel_buffer` (a fixed `[u8; 256]`).
     const ACTION_CANCEL_BUF: usize = 256;
     // The server's goal / result / pending tables at MAX_CONCURRENT_GOALS (4)
-    // plus its counters: 392 bytes measured.
+    // plus its counters: 392 bytes measured, before issue 2029 added an 8-byte
+    // acceptance stamp per goal (about +44 at 4 goals, with padding).
     const ACTION_SERVER_TABLES: usize = 512;
     // A typed `ActionServer<A>` keeps MAX_GOALS typed goals and results beside
     // the raw tables.
     const ACTION_TYPED_ALLOWANCE: usize = 1024;
     // The client core's counters and in-flight flags, the buffer strategy and
-    // the raw path's four callback words.
+    // the raw path's five callback words (four callbacks since issue 2030,
+    // plus the context).
     const ACTION_CLIENT_FIXED: usize = 256;
     const SERVICE_CLIENT_FIXED: usize = 64;
     const GUARD_CONDITION_FIXED: usize = 32;

@@ -1519,6 +1519,28 @@ pub type RawResultCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 );
 
+/// Raw action client cancel-response callback — issue 2030.
+///
+/// Called when the server answers a `cancel_goal` request this client sent.
+/// `goal_id` is the goal the REQUEST named (all zeros for a cancel-all or
+/// cancel-before request); `return_code` is the reply's whole-request status
+/// and `goals_canceling` how many goals it lists as moving to `CANCELING`.
+///
+/// Registering one is also what makes the executor TAKE cancel replies: each
+/// cancel request holds one of the sub-client's `MAX_CONCURRENT_GOALS` request
+/// slots until its reply is taken, so a client that never takes them refuses
+/// its fifth cancel. A surface with its own reader (the C++ `try_recv_cancel_response`
+/// / `async_cancel_*` futures) registers none.
+///
+/// # Safety
+/// - `goal_id` is valid for the duration of the call
+pub type RawCancelResponseCallback = unsafe extern "C" fn(
+    goal_id: *const nros_core::GoalId,
+    return_code: nros_core::CancelReturnCode,
+    goals_canceling: usize,
+    context: *mut core::ffi::c_void,
+);
+
 /// Raw action client feedback callback.
 ///
 /// Called when feedback is received for an active goal.

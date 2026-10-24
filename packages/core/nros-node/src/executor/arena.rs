@@ -14,10 +14,10 @@ use super::{
     spsc_ring::SpscRing,
     triple_buffer::TripleBuffer,
     types::{
-        InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback, RawFeedbackCallback,
-        RawGoalCallback, RawGoalResponseCallback, RawMessageDeserializeFn, RawResponseCallback,
-        RawResultCallback, RawServiceCallback, RawSubscriptionCallback,
-        RawSubscriptionInfoCallback, TypedSubscriptionCallback,
+        InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback,
+        RawCancelResponseCallback, RawFeedbackCallback, RawGoalCallback, RawGoalResponseCallback,
+        RawMessageDeserializeFn, RawResponseCallback, RawResultCallback, RawServiceCallback,
+        RawSubscriptionCallback, RawSubscriptionInfoCallback, TypedSubscriptionCallback,
     },
 };
 use crate::session;
@@ -452,6 +452,10 @@ pub(crate) struct ActionClientRawArenaEntry<
     pub(crate) goal_response_callback: Option<RawGoalResponseCallback>,
     pub(crate) feedback_callback: Option<RawFeedbackCallback>,
     pub(crate) result_callback: Option<RawResultCallback>,
+    /// Issue 2030 — `Some` makes the dispatcher take cancel replies (freeing
+    /// their request slots) and hand each to this callback; see
+    /// [`RawCancelResponseCallback`].
+    pub(crate) cancel_response_callback: Option<RawCancelResponseCallback>,
     pub(crate) context: *mut core::ffi::c_void,
 }
 
@@ -3318,6 +3322,7 @@ pub(crate) unsafe fn action_client_raw_try_process<
         goal_response_callback,
         feedback_callback,
         result_callback,
+        cancel_response_callback,
         context,
     } = entry;
 
@@ -3403,6 +3408,27 @@ pub(crate) unsafe fn action_client_raw_try_process<
                 trace_cb_end(desc_idx);
             }
         }
+        did_work = true;
+    }
+
+    // 4. Poll cancel reply — issue 2030. Only when a callback is registered:
+    //    a surface with its own reader (C++ `try_recv_cancel_response`, the
+    //    `async_cancel_*` futures) must find the reply still there. Taking it
+    //    retires its request from `pending_cancel`, which is what frees the
+    //    slot; before this, nothing on the C callback tier took one and the
+    //    fifth `rclc_action_cancel_goal` was refused.
+    if let Some(cb) = cancel_response_callback
+        && let Ok(Some((total_len, goal_id))) = core.try_recv_cancel_reply_for()
+    {
+        let reply = &core.result_buffer[..total_len];
+        let code = crate::action_frame::cancel_return_code(reply)
+            .and_then(nros_core::CancelReturnCode::from_i8)
+            .unwrap_or(nros_core::CancelReturnCode::Rejected);
+        let n = crate::action_frame::cancel_goals_count(reply).unwrap_or(0);
+        // Phase 8 — the fourth distinct callback on this entry, its own pair.
+        trace_cb_start(desc_idx);
+        unsafe { cb(&goal_id, code, n, *context) };
+        trace_cb_end(desc_idx);
         did_work = true;
     }
 

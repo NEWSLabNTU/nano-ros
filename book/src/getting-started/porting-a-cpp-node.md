@@ -317,9 +317,9 @@ What stays different, each a compile error or written below:
   without spinning).
 - **A cancel reply is taken when its future is polled** (`spin_until_future_complete`,
   `wait_for`, `get`) or `client->poll()` runs, not by the executor's spin. Code
-  that keeps only the `cancel_callback` calls `poll()` from its loop. A
-  nano-ros SERVER does not yet act on the zero-id cancel-all / cancel-before
-  forms (issue 2029); an rclcpp server does.
+  that keeps only the `cancel_callback` calls `poll()` from its loop (issue
+  2034). A nano-ros server acts on the zero-id cancel-all / cancel-before forms
+  as an rclcpp server does (issue 2029).
 - **A goal handle is driven from the executor's task.** Do not hand it to a
   thread you start (see the 6 lines above). It names its server by address, so
   the server must not move while a handle is in use; a `SharedPtr` does not

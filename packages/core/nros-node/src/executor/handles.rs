@@ -3227,10 +3227,13 @@ impl<
         stored
     }
 
-    /// Try to handle a cancel_goal request.
+    /// Try to handle a cancel_goal request. `cancel_handler` is asked once
+    /// per goal the request selects — a cancel-all or cancel-before request
+    /// selects several (issue 2029; see
+    /// [`ActionServerCore::try_handle_cancel`](super::action_core::ActionServerCore::try_handle_cancel)).
     pub fn try_handle_cancel(
         &mut self,
-        cancel_handler: impl FnOnce(
+        cancel_handler: impl FnMut(
             &nros_core::GoalId,
             nros_core::GoalStatus,
         ) -> nros_core::CancelResponse,
@@ -3263,9 +3266,11 @@ impl<
     /// will hang on `get_result` because `create_action_server()`
     /// servers are not arena-registered.
     ///
-    /// The two callbacks may be called zero or one times per `poll()`:
+    /// The two callbacks may be called zero or more times per `poll()`:
     ///   * `on_goal` fires when a new goal arrives.
-    ///   * `on_cancel` fires when a cancel request arrives.
+    ///   * `on_cancel` fires once per goal a cancel request selects — one
+    ///     for a request naming a goal, one per cancelable goal for a
+    ///     cancel-all / cancel-before request (issue 2029).
     ///
     /// Get-result requests are drained unconditionally (no callback
     /// needed — the result is pulled from the goal's stored state).

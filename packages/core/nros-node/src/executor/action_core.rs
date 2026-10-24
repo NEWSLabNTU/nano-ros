@@ -7,7 +7,9 @@
 //! [`ActionClient`](super::handles::ActionClient) wrap these cores
 //! and add serialization/deserialization at the boundary.
 
-use nros_core::{CdrReader, CdrWriter, GoalId, GoalInfo, GoalStatus, GoalStatusStamped, Serialize};
+use nros_core::{
+    CdrReader, CdrWriter, GoalId, GoalInfo, GoalStatus, GoalStatusStamped, Serialize, Time,
+};
 use nros_rmw::{ClientTrait, Publisher, ServiceTrait, Subscription, TransportError};
 
 use super::types::NodeError;
@@ -117,13 +119,21 @@ pub(crate) const fn status_array_bytes(entries: usize) -> usize {
 // Supporting types
 // ============================================================================
 
-/// Goal tracked by the core — only GoalId + status, no typed data.
+/// Goal tracked by the core — GoalId, status and acceptance stamp; no typed data.
 #[derive(Clone, Copy)]
 pub struct RawActiveGoal {
     /// Goal ID.
     pub goal_id: GoalId,
     /// Current status.
     pub status: GoalStatus,
+    /// Issue 2029 — when the server ACCEPTED the goal, on the ROS clock
+    /// (`Clock::ros_time()`: `/clock` when a source drives it, the port's wall
+    /// clock otherwise — rcl_action stamps with the server's clock the same
+    /// way). A `CancelGoal` request with a stamp cancels the goals accepted at
+    /// or before it, and every `GoalInfo` this server writes carries it. A
+    /// board with no wall clock stamps zero, so a stamped cancel there selects
+    /// every goal.
+    pub stamp: Time,
 }
 
 /// A `get_result` request held until its goal terminates (Phase 237).
@@ -382,11 +392,18 @@ impl<
     pub fn accept_goal(&mut self, goal_id: GoalId, seq: i64) -> Result<(), NodeError> {
         // Serialize first: a serialization failure here must leave no trace,
         // and nothing below depends on the table.
+        // Issue 2029 — the acceptance stamp: written into the reply (upstream's
+        // `SendGoal_Response.stamp`) and kept for cancel-before.
+        let stamp = Self::accept_stamp();
         let mut writer =
             crate::tx_writer(&mut self.cancel_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         writer.write_u8(1).map_err(|_| NodeError::Serialization)?;
-        writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
-        writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
+        writer
+            .write_i32(stamp.sec)
+            .map_err(|_| NodeError::Serialization)?;
+        writer
+            .write_u32(stamp.nanosec)
+            .map_err(|_| NodeError::Serialization)?;
         let reply_len = writer.position();
 
         // Capacity is decided BEFORE anything reaches the wire, so a full
@@ -396,6 +413,7 @@ impl<
             .push(RawActiveGoal {
                 goal_id,
                 status: GoalStatus::Accepted,
+                stamp,
             })
             .is_err()
         {
@@ -428,6 +446,12 @@ impl<
         // not done.
         let _status = self.publish_status_array();
         Ok(())
+    }
+
+    /// Issue 2029 — "now" for a goal being accepted, on the ROS clock (see
+    /// [`RawActiveGoal::stamp`]).
+    fn accept_stamp() -> Time {
+        nros_core::clock::Clock::ros_time().now()
     }
 
     /// Reject a goal: sends the rejection reply.
@@ -889,9 +913,20 @@ impl<
             .map_err(|_| NodeError::Serialization)?;
         for id in accepted {
             write_goal_id(&mut writer, id)?;
-            // GoalInfo.stamp — zero timestamp.
-            writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
-            writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
+            // GoalInfo.stamp — the goal's acceptance stamp (issue 2029), zero
+            // for an id this server does not hold.
+            let stamp = self
+                .active_goals
+                .iter()
+                .find(|g| g.goal_id.uuid == id.uuid)
+                .map(|g| g.stamp)
+                .unwrap_or_default();
+            writer
+                .write_i32(stamp.sec)
+                .map_err(|_| NodeError::Serialization)?;
+            writer
+                .write_u32(stamp.nanosec)
+                .map_err(|_| NodeError::Serialization)?;
         }
         let reply_len = writer.position();
 
@@ -906,10 +941,38 @@ impl<
         Ok(())
     }
 
-    /// Try to handle a cancel_goal request (type-agnostic).
+    /// Try to handle a cancel_goal request (type-agnostic) — upstream
+    /// `rcl_action_process_cancel_request` + rclcpp's per-goal callback loop.
+    ///
+    /// Issue 2029 — the request's `GoalInfo` is read as a PAIR, the way
+    /// `action_msgs/srv/CancelGoal` defines it:
+    ///
+    /// | goal id  | stamp    | goals selected                                   |
+    /// |----------|----------|--------------------------------------------------|
+    /// | zero     | zero     | every cancelable goal (cancel-all)               |
+    /// | zero     | non-zero | every cancelable goal accepted at or before it   |
+    /// | non-zero | zero     | that goal                                        |
+    /// | non-zero | non-zero | that goal, plus those accepted at or before it   |
+    ///
+    /// A goal is cancelable while `Accepted` or `Executing`. `cancel_handler`
+    /// is asked ONCE PER SELECTED GOAL; the goals it accepts move to
+    /// `Canceling` and are listed in the reply's `goals_canceling`, each with
+    /// its acceptance stamp. Return codes: a non-zero id naming no active goal
+    /// answers `UnknownGoal` (or `GoalTerminated` when its result is still
+    /// retained) without asking the handler, exactly as `rcl_action` does;
+    /// otherwise an empty `goals_canceling` is `Rejected` and a non-empty one
+    /// `Ok`. The status array is published once if anything moved.
+    ///
+    /// Before 2029 only the goal id was read: the zero id was an unknown goal,
+    /// so cancel-all and cancel-before cancelled nothing — and the handler was
+    /// asked about a goal that did not exist.
+    ///
+    /// Returns the goal id the request NAMED (zero for the two zero-id forms)
+    /// and [`nros_core::CancelResponse::Accept`] if at least one goal moved to
+    /// `Canceling`.
     pub fn try_handle_cancel(
         &mut self,
-        cancel_handler: impl FnOnce(&GoalId, GoalStatus) -> nros_core::CancelResponse,
+        mut cancel_handler: impl FnMut(&GoalId, GoalStatus) -> nros_core::CancelResponse,
     ) -> Result<Option<(GoalId, nros_core::CancelResponse)>, NodeError> {
         // (issue 0796) the handler answers about ONE goal; the reply below
         // carries the RPC-level return code. They are different types with
@@ -940,35 +1003,60 @@ impl<
                 .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
 
         let goal_id = read_goal_id(&mut reader)?;
+        // GoalInfo.stamp (builtin_interfaces/Time). A pre-2029 nano-ros client
+        // sent the id alone; a missing stamp reads as zero, which is what that
+        // client meant.
+        let stamp_sec = reader.read_i32().unwrap_or(0);
+        let stamp_nanosec = reader.read_u32().unwrap_or(0);
+        let request_stamp = Time::new(stamp_sec, stamp_nanosec);
 
-        let current_status = self.find_goal_status(&goal_id);
-        let response = cancel_handler(&goal_id, current_status);
+        let (selected, early) = self.select_cancel_goals(&goal_id, request_stamp);
 
-        let accepted = response == nros_core::CancelResponse::Accept;
-        if accepted {
-            self.set_goal_status(&goal_id, GoalStatus::Canceling);
+        // Ask the handler per selected goal; keep the ones it accepts.
+        let mut canceling = [false; MAX_GOALS];
+        let mut any = false;
+        for (i, goal) in self.active_goals.iter().enumerate() {
+            if !selected[i] {
+                continue;
+            }
+            if cancel_handler(&goal.goal_id, goal.status) == nros_core::CancelResponse::Accept {
+                canceling[i] = true;
+                any = true;
+            }
+        }
+        for (i, goal) in self.active_goals.iter_mut().enumerate() {
+            if canceling[i] {
+                goal.status = GoalStatus::Canceling;
+            }
         }
 
-        // Serialize response: return_code (i8) + goals_canceling (sequence of GoalInfo)
-        let return_code = if accepted {
-            nros_core::CancelReturnCode::Ok
-        } else {
-            nros_core::CancelReturnCode::Rejected
+        let return_code = match early {
+            Some(code) => code,
+            None if any => nros_core::CancelReturnCode::Ok,
+            None => nros_core::CancelReturnCode::Rejected,
         };
+
+        // Serialize response: return_code (i8) + goals_canceling (sequence of GoalInfo)
         let mut writer =
             crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         writer
             .write_i8(return_code as i8)
             .map_err(|_| NodeError::Serialization)?;
-
-        let num_canceling = if accepted { 1u32 } else { 0u32 };
+        let count = canceling.iter().filter(|c| **c).count() as u32;
         writer
-            .write_u32(num_canceling)
+            .write_u32(count)
             .map_err(|_| NodeError::Serialization)?;
-        if accepted {
-            write_goal_id(&mut writer, &goal_id)?;
-            writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
-            writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
+        for (i, goal) in self.active_goals.iter().enumerate() {
+            if !canceling[i] {
+                continue;
+            }
+            write_goal_id(&mut writer, &goal.goal_id)?;
+            writer
+                .write_i32(goal.stamp.sec)
+                .map_err(|_| NodeError::Serialization)?;
+            writer
+                .write_u32(goal.stamp.nanosec)
+                .map_err(|_| NodeError::Serialization)?;
         }
         let reply_len = writer.position();
 
@@ -976,7 +1064,67 @@ impl<
             .send_response(sequence_number, &self.goal_buffer[..reply_len])
             .map_err(|_| NodeError::ServiceReplyFailed)?;
 
+        if any {
+            let _ = self.publish_status_array();
+        }
+
+        let response = if any {
+            nros_core::CancelResponse::Accept
+        } else {
+            nros_core::CancelResponse::Reject
+        };
         Ok(Some((goal_id, response)))
+    }
+
+    /// Issue 2029 — which active goals a `CancelGoal` request selects, and the
+    /// return code that ends it before any handler runs. See
+    /// [`try_handle_cancel`](Self::try_handle_cancel) for the table.
+    fn select_cancel_goals(
+        &self,
+        goal_id: &GoalId,
+        request_stamp: Time,
+    ) -> ([bool; MAX_GOALS], Option<nros_core::CancelReturnCode>) {
+        let mut selected = [false; MAX_GOALS];
+        let zero_id = goal_id.uuid == [0u8; 16];
+        let zero_stamp = request_stamp.sec == 0 && request_stamp.nanosec == 0;
+        let cancelable =
+            |g: &RawActiveGoal| matches!(g.status, GoalStatus::Accepted | GoalStatus::Executing);
+        let before = |g: &RawActiveGoal| g.stamp.to_nanos() <= request_stamp.to_nanos();
+
+        if !zero_id {
+            match self
+                .active_goals
+                .iter()
+                .position(|g| g.goal_id.uuid == goal_id.uuid)
+            {
+                Some(i) => {
+                    if cancelable(&self.active_goals[i]) {
+                        selected[i] = true;
+                    }
+                }
+                None => {
+                    let code = if self
+                        .completed_results
+                        .iter()
+                        .any(|c| c.goal_id.uuid == goal_id.uuid)
+                    {
+                        nros_core::CancelReturnCode::GoalTerminated
+                    } else {
+                        nros_core::CancelReturnCode::UnknownGoal
+                    };
+                    return (selected, Some(code));
+                }
+            }
+            if zero_stamp {
+                return (selected, None);
+            }
+        }
+        for (i, g) in self.active_goals.iter().enumerate() {
+            if cancelable(g) && (zero_stamp || before(g)) {
+                selected[i] = true;
+            }
+        }
+        (selected, None)
     }
 
     /// Try to handle a get_result request using raw bytes.
@@ -1133,6 +1281,15 @@ impl<
         &self.active_goals
     }
 
+    /// Issue 2029 — the acceptance stamp of an active goal, zero if unknown.
+    pub fn goal_stamp(&self, goal_id: &GoalId) -> Time {
+        self.active_goals
+            .iter()
+            .find(|g| g.goal_id.uuid == goal_id.uuid)
+            .map(|g| g.stamp)
+            .unwrap_or_default()
+    }
+
     /// Find the status of a goal (active or unknown).
     pub fn find_goal_status(&self, goal_id: &GoalId) -> GoalStatus {
         self.active_goals
@@ -1209,7 +1366,8 @@ impl<
             .map_err(|_| NodeError::Serialization)?;
 
         for goal in &self.active_goals {
-            let stamped = GoalStatusStamped::new(GoalInfo::with_id(goal.goal_id), goal.status);
+            let info = GoalInfo::new(goal.goal_id, goal.stamp.sec, goal.stamp.nanosec);
+            let stamped = GoalStatusStamped::new(info, goal.status);
             stamped
                 .serialize(&mut writer)
                 .map_err(|_| NodeError::Serialization)?;

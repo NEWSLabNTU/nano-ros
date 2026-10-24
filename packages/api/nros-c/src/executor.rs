@@ -3411,6 +3411,11 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
         let result_cb: Option<nros_node::executor::RawResultCallback> =
             Some(result_trampoline as nros_node::executor::RawResultCallback);
 
+        // Issue 2030 — registered unconditionally too: its presence is what
+        // makes the arena TAKE cancel replies, freeing each request's slot.
+        let cancel_response_cb: Option<nros_node::executor::RawCancelResponseCallback> =
+            Some(cancel_response_trampoline as nros_node::executor::RawCancelResponseCallback);
+
         let client_ctx = client as *mut core::ffi::c_void;
 
         let action_name =
@@ -3451,6 +3456,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
             goal_response_callback: goal_response_cb,
             feedback_callback: feedback_cb,
             result_callback: result_cb,
+            cancel_response_callback: cancel_response_cb,
             context: client_ctx,
         });
 
@@ -3967,6 +3973,23 @@ unsafe extern "C" fn result_trampoline(
             _ => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
         };
         cb(&uuid, c_status, result_data, result_len, client.context);
+    }
+}
+
+/// Issue 2030 — arena trampoline for a cancel reply.
+unsafe extern "C" fn cancel_response_trampoline(
+    goal_id: *const nros_node::GoalId,
+    return_code: nros_node::CancelReturnCode,
+    goals_canceling: usize,
+    context: *mut core::ffi::c_void,
+) {
+    let client = &*(context as *const rcl_action_client_t);
+    if let Some(cb) = client.cancel_response_callback {
+        let uuid = rclc_goal_uuid_t {
+            uuid: (*goal_id).uuid,
+        };
+        let code = crate::action::cancel_return_code_c(Some(return_code as i8));
+        cb(&uuid, code, goals_canceling, client.context);
     }
 }
 

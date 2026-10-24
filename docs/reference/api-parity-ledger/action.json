@@ -121,6 +121,10 @@
     "verdict": "extension",
     "why": "see `c:action_client_set_feedback_callback`."
   },
+  "c:action_client_set_cancel_response_callback": {
+    "verdict": "extension",
+    "why": "issue 2030 (2026-10-24) -- the ours-only setter for `c:cancel_response_callback_t`, beside `c:action_client_set_result_callback`. Upstream rclc takes a cancel callback in `rclc_executor_add_action_client`; ours keeps the setter family. Setting one is optional: the executor TAKES every cancel reply whether or not a callback is set, because each cancel holds one of the client's four request slots until its reply is taken. Held by `packages/api/nros-c/tests/run/action_cancel_replies.c` (six cancels, through `rclc_executor_spin_some` and `rclc_action_client_poll`)."
+  },
   "c:action_client_state_t": {
     "verdict": "extension",
     "why": "explicit entity lifecycle so double-init and use-after-fini return a code instead of being undefined, and so the L1 and L2 tiers are distinguishable at runtime. See the pubsub stage's `c:publisher_state_t`."
@@ -206,7 +210,7 @@
   },
   "c:action_goal_info_t": {
     "verdict": "divergence",
-    "why": "rcl's goal id + acceptance timestamp. Ours carries the id alone (`rclc_goal_uuid_t`) at the C boundary: the stamp is filled by the arena when it publishes status, and an image with no clock source (RFC-0036: time is a board capability) cannot be asked to supply one at accept time. `nros_core::GoalInfo` keeps both fields for the wire."
+    "why": "rcl's goal id + acceptance timestamp. Ours carries the id alone (`rclc_goal_uuid_t`) at the C boundary: the stamp is filled by the arena when it publishes status, and an image with no clock source (RFC-0036: time is a board capability) cannot be asked to supply one at accept time. `nros_core::GoalInfo` keeps both fields for the wire. Issue 2029 (2026-10-24): the server core now KEEPS each goal's acceptance stamp (`RawActiveGoal::stamp`, read from `Clock::ros_time()` at accept; zero on a board with no wall clock) and writes it into the SendGoal reply, the status array and every `goals_canceling` entry, which is what cancel-before needs; the C boundary still hands a callback the id alone."
   },
   "c:action_goal_state_t": {
     "verdict": "their-rename",
@@ -420,6 +424,10 @@
     "verdict": "divergence",
     "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`."
   },
+  "c:cancel_response_callback_t": {
+    "verdict": "extension",
+    "why": "issue 2030 (2026-10-24) -- the C client's cancel-reply callback: `(goal_uuid, rclc_cancel_return_code_t, goals_canceling, context)`, set with `c:action_client_set_cancel_response_callback` and fired from the executor's spin or `rclc_action_client_poll`. Upstream rclc's `rclc_action_client_cancel_callback_t` (given to `rclc_executor_add_action_client`) hands the goal handle and a bool; ours carries the reply's return code and count instead, the shape `cpp:Client::async_cancel_goal`'s `CancelResponse` has."
+  },
   "c:cancel_response_t": {
     "verdict": "divergence",
     "why": "the cancel callback's per-goal ACCEPT/REJECT decision, matching rclcpp_action::CancelResponse (with the same off-by-one in the discriminants as `c:goal_response_t`, and the same reasons for keeping it -- see `cpp:CancelResponse`). `rclc_cancel_return_code_t` is the RPC-level sibling; issue 0796 made Rust and C++ adopt this pair of names too, so the collision `c:cancel_return_code_t` used to describe is gone."
@@ -535,9 +543,9 @@
     "disposition": "adopt-bounded",
     "envelope": {
       "file": "book/src/getting-started/porting-a-cpp-node.md",
-      "text": "nano-ros SERVER does not yet act on the zero-id cancel-all / cancel-before"
+      "text": "A nano-ros server acts on the zero-id cancel-all / cancel-before forms"
     },
-    "why": "issue 2027 (2026-10-24) -- LANDED on a HOSTED build beside `async_cancel_all_goals`: both send upstream's wire form -- the zero goal id with `stamp` (an `rclcpp::Time`, split into `sec` / `nanosec`), or with the zero stamp for cancel-all (`ActionClientCore::send_cancel_request_stamped`) -- and return the same driven `std::shared_future<CancelResponse::SharedPtr>` as `cpp:Client::async_cancel_goal`, with its bound. THE OTHER HALF IS NOT OURS YET: a nano-ros SERVER reads only the goal id of a CancelGoal request and keeps no acceptance stamp (`c:action_goal_info_t`: time is a board capability, RFC-0036), so it answers a zero-id request UNKNOWN_GOAL_ID rather than cancelling every goal / every goal before the stamp. Against an rclcpp server the call does what upstream's does; against ours it is issue 2029.\n\nEARLIER ROW (superseded): declined as absent, for the stamp the server does not keep -- which is a property of the server, not of the client's request."
+    "why": "issue 2027 (2026-10-24) -- LANDED on a HOSTED build beside `async_cancel_all_goals`: both send upstream's wire form -- the zero goal id with `stamp` (an `rclcpp::Time`, split into `sec` / `nanosec`), or with the zero stamp for cancel-all (`ActionClientCore::send_cancel_request_stamped`) -- and return the same driven `std::shared_future<CancelResponse::SharedPtr>` as `cpp:Client::async_cancel_goal`, with its bound. THE SERVER HALF LANDED with issue 2029 (2026-10-24): `ActionServerCore::try_handle_cancel` reads the request's GoalInfo as upstream's pair (zero id + zero stamp = every cancelable goal, zero id + stamp = those accepted at or before it, an id + stamp = that goal plus those), asks the cancel callback once per selected goal, and stamps each goal at acceptance on the ROS clock, so against a nano-ros server the call now does what it does against rclcpp. The bound left is the clock: a board with no wall clock stamps every goal zero, so a stamped cancel there selects them all.\n\nEARLIER ROW (superseded): declined as absent, for the stamp the server does not keep -- which is a property of the server, not of the client's request."
   },
   "cpp:Client::get_action_name": {
     "verdict": "extension",
