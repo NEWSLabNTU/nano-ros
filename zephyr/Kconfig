@@ -167,6 +167,39 @@ config NROS_SNTP_TIMEOUT_MS
       platform keeps answering 0 and boot continues — an image that cannot
       reach a time source still runs, it just cannot stamp absolute time.
 
+config NROS_EPOCH_FROM_ZENOH
+    bool "Take the wall-clock epoch from zenoh sample timestamps"
+    depends on NROS_RMW_ZENOH
+    help
+      For a board whose only link to the host is the zenoh session itself —
+      zenoh over a UART, no IP stack, so SNTP cannot reach it (phase-478 D4).
+
+      rmw_zenoh's router config enables timestamping, so every sample a ROS 2
+      host sends carries the publishing host's wall clock (or the router's).
+      With this on, the first timestamped sample the image RECEIVES installs
+      the epoch, and the offset is re-installed every
+      NROS_EPOCH_FROM_ZENOH_INTERVAL_MS from the least-delayed sample of the
+      window. Until a sample arrives the platform answers 0, exactly as it
+      does with no epoch source.
+
+      Error: low by the one-way latency of the least-delayed sample in a
+      window — a frame's time on the wire at the link's baud rate, plus the
+      router. An image that never receives a sample never acquires an epoch.
+
+      Can be combined with NROS_SNTP_EPOCH: SNTP installs at boot, and the
+      samples keep it current afterwards.
+
+config NROS_EPOCH_FROM_ZENOH_INTERVAL_MS
+    int "Re-install the zenoh-sample epoch every (ms)"
+    depends on NROS_EPOCH_FROM_ZENOH
+    default 1000
+    range 10 3600000
+    help
+      Window over which the least-delayed sample is kept before its offset
+      replaces the installed one. Shorter tracks a drifting tick (a
+      simulator that fast-forwards idle time, issue 0758) more closely;
+      longer is more likely to contain one low-latency sample.
+
 # =============================================================================
 # Callback-level tracing (phase-8)
 # =============================================================================

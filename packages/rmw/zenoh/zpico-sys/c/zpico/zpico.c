@@ -1513,6 +1513,23 @@ static void sample_handler(z_loaned_sample_t* sample, void* arg) {
         return;
     }
 
+#if defined(__ZEPHYR__)
+    /* phase-478 D4 — offer the sample's timestamp to the platform's epoch.
+     * A no-op unless the image enables CONFIG_NROS_EPOCH_FROM_ZENOH, which is
+     * decided in the platform port: this file sees no CONFIG_* (zpico-sys's
+     * build script forwards none), so it calls unconditionally. A strong
+     * reference, like the `nros_platform_task_attr_init` calls below: the
+     * Zephyr port is always linked beside this shim, and a weak-undefined
+     * call does not relocate on RISC-V (weak-symbols-allowlist.txt). */
+    {
+        extern void nros_zephyr_epoch_observe_ntp64(uint64_t ntp64);
+        const z_timestamp_t* ts = z_sample_timestamp(sample);
+        if (ts != NULL) {
+            nros_zephyr_epoch_observe_ntp64(z_timestamp_ntp64_time(ts));
+        }
+    }
+#endif
+
     // Get payload
     const z_loaned_bytes_t* payload = z_sample_payload(sample);
     size_t payload_len = z_bytes_len(payload);

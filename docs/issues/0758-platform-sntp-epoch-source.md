@@ -253,3 +253,31 @@ FreeRTOS and ThreadX still answer 0 from both symbols, so they stay consistent
 without a change. Re-acquisition (the section above) is still open. Measured
 on ASI's native_sim island after the fix: "nros: wall-clock epoch acquired from
 127.0.0.1:12323" at boot, and its hazard/MRM stamps compare with host time.
+
+## A provider for a board with no IP stack (2026-10-24, phase-478 D4)
+
+The S32K344 island reaches the host only through zenoh over a UART, so no
+SNTP request can leave it. Its epoch now comes from the samples it already
+receives. rmw_zenoh's router config enables timestamping for router, peers and
+clients, so a host's samples arrive stamped with the publisher's HLC: its wall
+clock, NTP64 since the UNIX epoch, or the router's if the publisher left the
+sample unstamped.
+
+`CONFIG_NROS_EPOCH_FROM_ZENOH=y` (Zephyr):
+
+- `zpico.c`'s `sample_handler` passes each sample's timestamp to
+  `nros_zephyr_epoch_observe_ntp64` in the Zephyr port.
+- The first timestamped sample installs the offset.
+- After that, every `CONFIG_NROS_EPOCH_FROM_ZENOH_INTERVAL_MS` (default
+  1000) the offset is re-installed from the window's least-delayed sample.
+
+That re-installation is the requirement the section "Re-acquisition is a
+REQUIREMENT" above sets, met for this source. The SNTP path is still one-shot.
+
+The offset is now one `uint64_t` under a `k_spinlock`, not the hi/lo atomic
+pair. The pair assumed exactly one write, and a re-installing writer can
+straddle a 2^32 us boundary, which made a torn read wrong by 71 minutes.
+
+Not measured on the board yet (phase-478 acceptance, last row). It is low by
+the one-way latency, and an image that receives no sample gets no epoch.
+FreeRTOS and ThreadX still answer 0 (issue 0772).
