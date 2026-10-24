@@ -1528,6 +1528,11 @@ pub struct ComponentSlot {
     /// `nros`-side drop trampoline: reconstitutes + drops the leaked
     /// `Arc<ComponentCell>` at `state`. Run once on `Executor::drop`.
     pub drop: unsafe extern "C" fn(state: *mut core::ffi::c_void),
+    /// Issue 2020 -- the level that registered the component
+    /// (`Executor::set_registering_level` at enrol time), whose pass runs its
+    /// `tick`; `NO_OWNING_LEVEL` on an executor whose levels do not own
+    /// their slots, where the executor's own worker ticks every component.
+    pub level: u8,
 }
 
 // SAFETY: same story as `DispatchSlot` — two raw pointers + two extern
@@ -4003,6 +4008,31 @@ impl<'s> Executor<'s> {
         self.worker.registering_level = level.min(super::scheduler::NO_OWNING_LEVEL - 1);
     }
 
+    /// Issue 2020 -- the level that owns what is registered now, `None` until
+    /// a level runner first calls [`Self::set_registering_level`].
+    pub fn registering_level(&self) -> Option<u8> {
+        (self.worker.registering_level != super::scheduler::NO_OWNING_LEVEL)
+            .then_some(self.worker.registering_level)
+    }
+
+    /// Issue 2020 -- whether a pass ticks a component (or anything else
+    /// registered) owned by `owner`, the level recorded at registration
+    /// (`None`: no level owned it).
+    ///
+    /// `band_level` is the level of a band pass ([`Self::spin_band_once`]),
+    /// `None` for a pass of the executor's own worker. When the levels own
+    /// their slots by registration, a band pass ticks only its level's, and
+    /// the executor's own worker (the boot level) ticks its own level's and
+    /// any registered before a level was set. Otherwise the executor's own
+    /// worker ticks everything and a band pass nothing, as before levels.
+    pub fn pass_ticks_owner(&self, band_level: Option<u8>, owner: Option<u8>) -> bool {
+        let owning = self.worker.registering_level != super::scheduler::NO_OWNING_LEVEL;
+        match band_level {
+            Some(l) => owning && owner == Some(l),
+            None => !owning || owner.is_none() || owner == Some(self.worker.level),
+        }
+    }
+
     /// phase-509 P9b item 2 -- the band the executor's own worker runs:
     /// every level by default. With band workers over the same executor
     /// ([`Self::spin_band_once`]), the bands must partition the levels, so
@@ -4036,8 +4066,10 @@ impl<'s> Executor<'s> {
     /// urgent level first, the lock released around each one as in
     /// [`Self::spin_once_shared`]. A band pass does not park, drive the
     /// transport or run the executor-wide chores (parameter and lifecycle
-    /// services, component ticks, the monitors' rules): the executor's own
-    /// worker does.
+    /// services, the monitors' rules): the executor's own worker does.
+    /// Issue 2020 -- it does tick the components its level registered
+    /// ([`Self::pass_ticks_owner`]), and the executor's own worker then does
+    /// not.
     ///
     /// phase-509 P9b item 3 -- a worker with a waiter
     /// ([`super::scheduler::BandWorker::with_waiter`]) first parks, the lock
@@ -6556,7 +6588,9 @@ impl<'s> Executor<'s> {
     /// `Arc<ComponentCell>` (the slot takes ownership), `tick`/`drop` are the
     /// `nros`-side trampolines (see `ComponentSlot`). The slot's `tick`
     /// runs at the tail of every [`spin_once`](Self::spin_once); its `drop`
-    /// runs once on `Executor::drop`.
+    /// runs once on `Executor::drop`. Issue 2020 -- on an executor whose
+    /// levels own their slots, the component belongs to the registering
+    /// level, and only that level's pass ticks it.
     ///
     /// Returns `Err(())` when the registry is full (`MAX_NODES` — raise via
     /// `NROS_EXECUTOR_MAX_NODES` at build time). On error the caller still
@@ -6577,8 +6611,14 @@ impl<'s> Executor<'s> {
         tick: unsafe extern "C" fn(*mut core::ffi::c_void, *mut core::ffi::c_void),
         drop: unsafe extern "C" fn(*mut core::ffi::c_void),
     ) -> Result<(), ()> {
+        let level = self.worker.registering_level;
         self.component_slots
-            .push(ComponentSlot { state, tick, drop })
+            .push(ComponentSlot {
+                state,
+                tick,
+                drop,
+                level,
+            })
             .map_err(|_| ())
     }
 
@@ -11652,8 +11692,11 @@ impl<'s> Executor<'s> {
             }
 
             // phase-509 P9b item 2 -- the executor-wide chores below are the
-            // executor's own worker's.
+            // executor's own worker's. Issue 2020 -- the band's own
+            // components' ticks are the band's.
             if is_band_pass {
+                // SAFETY: the pass's contract; `s` is not used after it.
+                unsafe { Self::tick_components(this, Some(level)) };
                 return SpinOnceResult::new();
             }
 
@@ -12325,8 +12368,11 @@ impl<'s> Executor<'s> {
             s.violations.record(v);
         }
         // phase-509 P9b item 2 -- the rules and the executor-wide chores
-        // below are the executor's own worker's.
+        // below are the executor's own worker's. Issue 2020 -- the band's
+        // own components' ticks are the band's.
         if is_band_pass {
+            // SAFETY: the pass's contract; `s` is not used after it.
+            unsafe { Self::tick_components(this, Some(level)) };
             return result;
         }
 
@@ -12396,20 +12442,48 @@ impl<'s> Executor<'s> {
         // uses). Index-iterate over `Copy` slots so no borrow of
         // `s.component_slots` is held while `tick` runs (which aliases
         // `self` through `exec_ctx`).
-        let exec_ctx = s as *mut Executor as *mut core::ffi::c_void;
-        let slot_count = s.component_slots.len();
-        for i in 0..slot_count {
-            let slot = s.component_slots[i];
-            // SAFETY: `slot.state` is the leaked cell the matching `tick`
-            // expects (enrolled via `enroll_component`); `exec_ctx` is a live
-            // `*mut Executor` for `self`. The slot was copied out, so no
-            // borrow of `component_slots` is outstanding during the call.
-            unsafe {
-                (slot.tick)(slot.state, exec_ctx);
-            }
-        }
+        //
+        // Issue 2020 -- only the components this pass's level owns.
+        // SAFETY: the pass's contract; `s` is not used after the call.
+        unsafe { Self::tick_components(this, None) };
 
         result
+    }
+
+    /// Phase 258 (Track 2, 2a) -- the component tick pass at the tail of a
+    /// pass: each enrolled component's `tick` (service-client polls,
+    /// action-server completion and feedback), with the whole executor as
+    /// `exec_ctx`. Issue 2020 -- only the components the pass's level owns
+    /// ([`Self::pass_ticks_owner`]): `band_level` is a band pass's level,
+    /// `None` for the executor's own worker.
+    ///
+    /// The lock stays held across every tick, as it always was: a component
+    /// is ticked by one level's thread only, and never by two at once.
+    ///
+    /// # Safety
+    /// As [`Self::pass`], called with the lock held (when installed) and no
+    /// reference to the executor live in the caller.
+    unsafe fn tick_components(this: *mut Self, band_level: Option<u8>) {
+        let exec_ctx = this as *mut core::ffi::c_void;
+        let mut i = 0;
+        loop {
+            // SAFETY: re-derived after each tick, which aliases the executor
+            // through `exec_ctx`; the slot is copied out, so no borrow of
+            // `component_slots` is outstanding during the call.
+            let s: &Self = unsafe { &*this };
+            let Some(slot) = s.component_slots.get(i).copied() else {
+                break;
+            };
+            i += 1;
+            let owner = (slot.level != super::scheduler::NO_OWNING_LEVEL).then_some(slot.level);
+            if !s.pass_ticks_owner(band_level, owner) {
+                continue;
+            }
+            // SAFETY: `slot.state` is the leaked cell the matching `tick`
+            // expects (enrolled via `enroll_component`); `exec_ctx` is a live
+            // `*mut Executor`.
+            unsafe { (slot.tick)(slot.state, exec_ctx) };
+        }
     }
 
     /// The executor's own worker's prelude to a pass: everything

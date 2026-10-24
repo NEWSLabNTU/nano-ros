@@ -756,6 +756,10 @@ impl PublisherResolver for CellResolver<'_> {
 pub struct ExecutorNodeRuntime {
     executor: Executor<'static>,
     components: Vec<Arc<ComponentCell>>,
+    /// Issue 2020 -- the level that registered each of `components`, by
+    /// index (`Executor::registering_level` at registration; `None` before a
+    /// level runner set one). Only that level's pass ticks the component.
+    component_levels: Vec<Option<u8>>,
     /// phase-391 W5.3b — slot storage for [`register_node`](Self::register_node).
     /// Always present: the leaking constructor allocates it once, `new_in`
     /// carves the caller's backing.
@@ -840,6 +844,7 @@ impl ExecutorNodeRuntime {
         Self {
             executor,
             components: Vec::new(),
+            component_levels: Vec::new(),
             pool: ComponentPool {
                 base: backing.as_mut_ptr() as *mut MaybeUninit<u8>,
                 len_bytes: backing.len() * 8,
@@ -871,7 +876,9 @@ impl ExecutorNodeRuntime {
     /// level workers share: the executor's lock is taken first, the pass
     /// releases it around each user callback
     /// ([`Executor::spin_once_shared`]), and the components' ticks run under
-    /// it.
+    /// it. Issue 2020 -- on a level image, only the boot level's components
+    /// (and any registered before a level was set): each other level's pass
+    /// ticks its own ([`crate::levels::LevelCore::spin_level_once`]).
     ///
     /// # Safety
     /// `this` points at a live runtime whose executor has the lock installed
@@ -998,6 +1005,8 @@ impl ExecutorNodeRuntime {
         });
         let component_idx = self.components.len();
         self.components.push(cell.clone());
+        self.component_levels
+            .push(self.executor.registering_level());
 
         let mut sink = ExecutorSink {
             cell: CellHandle::Pooled(cell.clone()),
@@ -1024,6 +1033,7 @@ impl ExecutorNodeRuntime {
             // Roll back the slot push so `component_count` stays
             // consistent with what users observe.
             self.components.pop();
+            self.component_levels.pop();
         }
         result?;
 
@@ -1168,13 +1178,26 @@ impl ExecutorNodeRuntime {
     }
 
     fn run_ticks(&mut self) {
+        self.run_ticks_for(None);
+    }
+
+    /// The registered components' ticks for one pass. Issue 2020 -- only
+    /// those the pass's level owns (`Executor::pass_ticks_owner`):
+    /// `band_level` is a level worker's band pass, `None` the executor's own
+    /// worker (the boot level, or the only one).
+    pub(crate) fn run_ticks_for(&mut self, band_level: Option<u8>) {
         // Per-component tick — each component's resolver is its own cell.
         // Phase 212.M-F.23: the tick reaches the executor (service-client
         // call_raw poll, action-server complete/feedback) through a raw
         // pointer so `&self.components` and `&mut self.executor` (disjoint
         // fields) can be live at once.
         let exec_ptr: *mut Executor<'static> = &mut self.executor;
-        for cell in &self.components {
+        for (cell, owner) in self.components.iter().zip(&self.component_levels) {
+            // SAFETY: a shared read of the executor between ticks; no tick
+            // is running and the `&mut` above is not used meanwhile.
+            if !unsafe { &*exec_ptr }.pass_ticks_owner(band_level, *owner) {
+                continue;
+            }
             tick_one_cell(cell.as_ref(), exec_ptr);
         }
     }

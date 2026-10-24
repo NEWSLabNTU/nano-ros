@@ -763,8 +763,9 @@ carries a fixed floor of about 10.4 KB that one shared backing pays once.
   re-checks, sweeps and drains; another band's arrival bits stay in the
   word. A band worker credits its timers with the time since its own
   previous pass, and leaves the transport drive and the executor-wide
-  chores (services, component ticks, the rules) to the executor's own
-  worker.
+  chores (services, the rules) to the executor's own worker. Component
+  ticks follow the level that registered the component (issue 2020, below
+  "As built in P10").
 - **As landed in item 3.** A band worker parks when it has a `BandWaiter`
   (the port's wake object: a signal entry and a bounded wait entry,
   `'static`), linked into the executor's arrival routing by
@@ -881,9 +882,20 @@ executor's lock and the thread identity:
   registering level; `with_runtime` runs the image's setup on the shared
   runtime under the lock with the level's groups active; `spin_level_once`
   is a band pass (`Executor::spin_band_once`) and `spin_boot_once` the
-  executor's own pass plus the components' ticks
-  (`ExecutorNodeRuntime::spin_once_shared`). It is the Rust twin of the
-  `nros_cpp_level_*` FFI.
+  executor's own pass (`ExecutorNodeRuntime::spin_once_shared`). It is the
+  Rust twin of the `nros_cpp_level_*` FFI.
+- **Component ticks per level** (issue 2020). A component's `tick`
+  (service-client polls, action-server completion and feedback) runs on
+  the level that registered it. Each enrolled component records the
+  registering level (`ComponentSlot::level`), as each slot does
+  (`SlotTag::level`); `ExecutorNodeRuntime::register_node` records it per
+  component too. A band pass ticks its own level's components, and the
+  executor's own pass ticks the boot level's and any registered before a
+  level was set (`Executor::pass_ticks_owner`). The lock stays held across
+  a tick, and a component belongs to one level, so it is never ticked by
+  two threads. This holds for the C-ABI level runners as well, since they
+  run the same band pass. Before this, every tick ran on the boot level
+  (the least urgent), at its priority and period.
 - **Derived stacks.** FreeRTOS and NuttX derive like Zephyr
   (`TierTaskMemory::derives_level_stacks`): a spawned level that declares
   no `stack_bytes` is `NROS_LEVEL_STACK_BYTES(0)`, the per-callback default

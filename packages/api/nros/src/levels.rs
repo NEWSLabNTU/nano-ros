@@ -17,8 +17,10 @@
 //!    registering, all under the lock.
 //! 3. `LevelCore::spin_level_once` / `LevelCore::spin_boot_once` -- one
 //!    pass of a level's worker (its band, the lock released around each
-//!    callback) or of the boot level (the executor's own worker: transport,
-//!    executor-wide chores, component ticks).
+//!    callback, then the ticks of the components its level registered) or
+//!    of the boot level (the executor's own worker: transport, executor-wide
+//!    chores, the boot level's component ticks). Issue 2020: a component
+//!    ticks on the level that registered it, never on two.
 //!
 //! Every access goes through the raw runtime pointer with the lock taken
 //! first, so no reference to the runtime or its executor is live across
@@ -146,7 +148,10 @@ impl LevelCore {
 
     /// One pass of a spawned level's worker: it parks (its waiter, the lock
     /// released) for at most `timeout` or until its band's next timer or an
-    /// arrival, then runs its band's ready callbacks.
+    /// arrival, then runs its band's ready callbacks and (issue 2020) the
+    /// ticks of the components its level registered -- the executor's
+    /// enrolled ones inside the band pass, the runtime's own after it, the
+    /// lock held.
     ///
     /// # Safety
     /// `worker` is the calling thread's, from [`Self::open_level`].
@@ -155,11 +160,13 @@ impl LevelCore {
         // SAFETY: the lock is held once; no reference to the executor lives.
         let _g = unsafe { ExecGuard::acquire(exec) };
         let _ = unsafe { Executor::spin_band_once(exec, worker, timeout) };
+        // SAFETY: under the lock no other thread touches the runtime.
+        unsafe { (*self.rt).run_ticks_for(Some(worker.level())) };
     }
 
     /// One pass of the boot level: the executor's own worker (transport,
-    /// executor-wide chores), then the components' ticks, the lock held
-    /// except around each callback.
+    /// executor-wide chores), then the boot level's components' ticks, the
+    /// lock held except around each callback.
     ///
     /// # Safety
     /// Called from the boot level's thread only.
