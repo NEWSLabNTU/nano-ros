@@ -152,3 +152,37 @@ nothing reads it.
 reader resolves a generated header through `--target-dir`. Measure it with the
 reader table above, not with a grep for the directory name: issue 1852 already
 made that grep miss every reader that asks for the name.
+
+## D1 landed (2026-10-24): the cmake / Corrosion road reads `$OUT_DIR`
+
+`nros_config_header_place(<target> <dest> <package>...)`
+(`cmake/NanoRosConfigHeaderMirror.cmake`) sets `INTERFACE_CORROSION_CARGO` on
+`nros_c` and `nros_cpp` to a generated wrapper that runs Corrosion's own
+`_CORROSION_CARGO` under `scripts/build/cargo-out-dir-headers.py`, and adds
+`--message-format=json-render-diagnostics` through `corrosion_set_cargo_flags`,
+which Corrosion places before its rustc `--`. The mirror's source is the placed
+copy, passed with `-` as the gen-subdir, which `mirror-generated-header.sh`
+reads as "the only source": no `cargo/*` candidate, and a missing one is an
+error naming this issue.
+
+Two things the design did not say, both measured:
+
+- **The C++ image needs TWO packages placed.** nros-cpp's build script writes
+  only the C++ header; the C one the C++ image also mirrors comes from nros-c's
+  build script, a dependency in the same cargo run, into nros-c's own
+  `$OUT_DIR`. The placer takes `--package` repeatedly now.
+- **`check-sizes-header-mirrors` would have hidden drift in a placed mirror.**
+  Its "shared copy gone" exemption fires on `src == leaf`, which is always true
+  for a placed source. Restricted to the old fallback; a self-test case covers
+  it, and reverting the restriction fails that case.
+
+Measured on `examples/linux/{c,cpp}/talker` (zenoh, Ninja): both build and link;
+the placed and mirrored headers are byte-identical; a no-op rebuild is 0.42 s
+with no compile; with the placed copies deleted, a rebuild on a fully cached
+cargo (0.07 s) places all three again. Appending a line to the header in
+cargo's `$OUT_DIR` recompiles `main.cpp.o` and relinks, nothing else; removing
+it does the same. The always-run mirror node (issue 1783) stays.
+
+Left: D2 (NuttX), D3 (PX4), D4 (delete the side channel and its stamp). The
+cargo-dir half of `mirror-generated-header.sh` has no Corrosion caller now and
+goes with D4.

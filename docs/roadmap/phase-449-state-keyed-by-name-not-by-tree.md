@@ -498,5 +498,5 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1824](../issues/1824-generated-header-side-channel-consumers-unmigrated.md) | The per-build config headers still go through `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`. That is state keyed by a tree, not a name. Carried from phase-424. |
+| [#1824](../issues/1824-generated-header-side-channel-consumers-unmigrated.md) | The per-build config headers still go through `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`. That is state keyed by a tree, not a name. Carried from phase-424. D1 landed 2026-10-24: the cmake / Corrosion road places them from `$OUT_DIR`; NuttX, PX4 and the deletion remain. |
 | [#1825](../issues/archived/1825-store-pin-bump-restale-unmeasured.md) | **RESOLVED 2026-10-23.** The claim was false: the generated-code record keyed on the codegen VERSION, so a pin bump between two releases of one version reused the old output. The record now carries the emitter fingerprint (RFC-0104 D5). |

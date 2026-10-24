@@ -223,7 +223,11 @@ def scan(root: Path, fix: bool = False):
             if same(src, dest):
                 compared += 1
                 continue
-            if src == leaf and os.path.getmtime(src) < os.path.getmtime(dest):
+            # Issue 1824 -- a PLACED source (`-` gen-subdir) is not a fallback
+            # standing in for a vanished shared copy: it IS the source, so a
+            # mirror newer than it and different is drift, never "gone".
+            if (gsub != "-" and src == leaf
+                    and os.path.getmtime(src) < os.path.getmtime(dest)):
                 gone += 1  # the shared copy it was mirrored from no longer exists
                 continue
             if not ran_after(build, dest, src, leaf):
@@ -359,6 +363,39 @@ def self_test() -> None:
 
         dest.unlink()
         assert scan(root)[2] == 0, "an unbuilt mirror is not compared"
+
+    # Issue 1824 -- a PLACED source (`-` gen-subdir): the copy the placer put
+    # from cargo's `$OUT_DIR` is the only source. A mirror that differs and was
+    # written after it is drift, never the "shared copy gone" exemption, which
+    # used to fire on `src == leaf` -- always true here.
+    with tempfile.TemporaryDirectory() as t:
+        root = Path(t)
+        b = root / "examples" / "plat" / "c" / "talker" / "build-zenoh"
+        crate = b / "nano_ros" / "packages" / "api" / "nros-c"
+        placed = crate / "nros-placed" / "nros-c-generated" / "rclc" / "detail"
+        stale_shared = b / "cargo" / "ws_1" / "nros-c-generated" / "rclc" / "detail"
+        for p in (crate / "include" / "rclc" / "detail", placed, stale_shared):
+            p.mkdir(parents=True)
+        name = "nros_config_generated.h"
+        (placed / name).write_text("#define X_SIZE 2\n")
+        (stale_shared / name).write_text("#define X_SIZE 9\n")  # must be ignored
+        dest = crate / "include" / "rclc" / "detail" / name
+        (b / "build.ninja").write_text(
+            f"  COMMAND = cd {b} && bash {MIRROR} {placed / name} {b} - {name} {dest}\n")
+        dest.write_text("#define X_SIZE 2\n")
+        r = scan(root)
+        assert (r[2], r[3]) == (1, []), f"a mirror equal to its placed source is current, got {r}"
+        os.utime(placed / name, (1, 1))
+        dest.write_text("#define X_SIZE 1\n")
+        m = marker(str(b), str(dest))
+        m.parent.mkdir(parents=True, exist_ok=True)
+        m.write_text("")
+        r = scan(root)
+        assert [d for d, _ in r[3]] == [str(dest)] and r[5] == 0, \
+            f"a placed mirror that drifted is drift, not 'source gone', got {r}"
+        _, _, _, _, fixed, _, _ = scan(root, fix=True)
+        assert fixed == 1 and dest.read_text() == "#define X_SIZE 2\n", \
+            "--fix re-mirrors from the placed source, never the shared copy"
 
     # issue 1832 — a Makefile-generator build dir (what CI's lanes configure):
     # the command sits in a NESTED subproject's `CMakeFiles/<t>.dir/build.make`

@@ -172,6 +172,27 @@ if [ "${1:-}" = "--self-test" ]; then
     else
         ok "--resolve with no header anywhere fails"
     fi
+    # Issue 1824 -- a PLACED source (`-` gen-subdir) is the only source: a
+    # newer shared copy beside it must not win, and a missing one is an error.
+    d="$(stage SHARED PLACED)"
+    bash "$self" "$d/leaf/h.h" "$d" - h.h "$d/dest.h" >/dev/null
+    [ "$(cat "$d/dest.h")" = "PLACED" ] \
+        && ok "a placed source wins over any shared copy" \
+        || bad "a placed source wins over any shared copy" "got $(cat "$d/dest.h")"
+    [ "$(bash "$self" --resolve "$d/leaf/h.h" "$d" - h.h)" = "$d/leaf/h.h" ] \
+        && ok "--resolve names the placed source" \
+        || bad "--resolve names the placed source" "got $(bash "$self" --resolve "$d/leaf/h.h" "$d" - h.h)"
+    [ -f "$(bash "$self" --marker "$d" "$d/dest.h")" ] \
+        && ok "a placed run records that it ran" \
+        || bad "a placed run records that it ran" "no marker"
+    d="$(stage SHARED -)"
+    if bash "$self" "$d/leaf/h.h" "$d" - h.h "$d/dest.h" >/dev/null 2>"$d/err"; then
+        bad "no placed source is an error" "exited 0, copied $(cat "$d/dest.h" 2>/dev/null)"
+    elif grep -q 1824 "$d/err"; then
+        ok "no placed source is an error naming the issue, never the shared copy"
+    else
+        bad "no placed source is an error" "message did not name the issue"
+    fi
     # Issue 1911 -- every run records that it ran, at the path `--marker` names.
     d="$(stage NEW -)"
     bash "$self" "$d/leaf/h.h" "$d" gen/nros h.h "$d/dest.h" >/dev/null
@@ -274,6 +295,30 @@ leaf_src="$1"; build_dir="$2"; gen_subdir="$3"; name="${4:-}"; dest="${5:-}"
 src=""
 own_record="$build_dir/CMakeFiles/nros-cargo-subdirs.txt"
 cands=()
+# Issue 1824 — a <gen-subdir> of `-` means <corrosion-src> was PLACED from
+# cargo's own `$OUT_DIR` by `cargo-out-dir-headers.py` (the import's cargo runs
+# under it, `nros_config_header_place`). That copy is written by the cargo run
+# THIS build just made, cache hit or not, so it is the only source: there is no
+# shared copy to prefer, and looking for one would re-admit 0978/0987/1904.
+if [ "$gen_subdir" = "-" ]; then
+    if [ ! -f "$leaf_src" ]; then
+        echo "nros: no placed $name at $leaf_src — the cargo build that" >&2
+        echo "      places it from \$OUT_DIR has not run (issue 1824)" >&2
+        exit 1
+    fi
+    if [ "$resolve_only" -eq 1 ]; then
+        printf '%s\n' "$leaf_src"
+        exit 0
+    fi
+    mkdir -p "$(dirname "$dest")"
+    if [ ! -f "$dest" ] || ! cmp -s "$leaf_src" "$dest"; then
+        cp -- "$leaf_src" "$dest"
+    fi
+    marker="$(mirror_ran_marker "$build_dir" "$dest")"
+    mkdir -p "$(dirname "$marker")"
+    : >"$marker"
+    exit 0
+fi
 if [ -f "$own_record" ]; then
     while IFS= read -r _sub || [ -n "$_sub" ]; do
         [ -n "$_sub" ] && cands+=("$build_dir/cargo/$_sub/$gen_subdir/$name")
