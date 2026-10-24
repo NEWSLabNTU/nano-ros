@@ -118,7 +118,7 @@ ran Cyclone's desktop defaults. One predicate now
 Also in this theme: [1289](../../issues/archived/1289-workspace-node-tables-still-in-manifests.md)
 (resolved 2026-10-12: the node tables are registration and stay; the empty
 entry markers and `default_namespace = "/"` went),
-[1520](../../issues/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md)
+[1520](../../issues/archived/1520-ambiguity-example-cited-everywhere-was-the-manufactured-one.md)
 (the `entry =` ambiguity docs cite), and
 [1511](../../issues/1511-no-worked-example-of-entry-customisation.md) (the
 customisation tutorial, deferred until the last hand-written entry is gone).
