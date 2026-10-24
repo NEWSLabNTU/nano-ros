@@ -972,9 +972,10 @@ pin".
   deadline across images. A later phase; this one keeps the derivation keyed
   by (core, rank) with `core` unset. Setting `core` is
   [issue 0259](../../issues/0259-realizer-placement-nonpreempt-not-derived.md)'s
-  work: its realizer already packs measured nodes onto cores, and P5's single
-  `derive_levels` call drops that packing. The issue's "Current design"
-  section 2 has the plan: partition first, then levels per core.
+  work: its realizer packs measured nodes onto cores, and P5's single
+  `derive_levels` call dropped that packing. Fixed there 2026-10-24
+  ("Current design" section 2): the derivation partitions first and calls
+  `derive_levels` once per core.
 - **EDF across levels.** EDF orders work within a level only, until an image
   needs more.
 

@@ -21,7 +21,7 @@ use crate::{
     CallbackGroupDecl, CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
     mapper_input::mapper_input_from_model,
     priority_plan::PriorityPlan,
-    rtos_realizer::{Degradation, realize_rtos, sched_caps_for},
+    rtos_realizer::{Degradation, SchedCaps, realize_rtos, sched_caps_for},
 };
 
 /// The outcome of deriving a schedule from the contract layer.
@@ -77,12 +77,15 @@ pub struct DerivedSchedule {
     /// on one that supervises a deadline it is refused before this runs
     /// ([`crate::task_record::check_model`]).
     pub tasks: Vec<crate::task_record::TaskRecord>,
-    /// phase-509 P5 (RFC-0108 D4) - the preemption levels: the derived nodes
-    /// banded under the image's cap, the authored tiers as pins. `None` when
-    /// nothing ranked. Each derived level is one tier in [`Self::tiers`]
-    /// (`derived-<node>` when it holds one node, `derived-level-<k>` when it
-    /// holds several) until the level runners (phase-509 P9) run levels.
-    pub levels: Option<crate::levels::LevelPlan>,
+    /// phase-509 P5 (RFC-0108 D4) - the preemption levels, one plan per
+    /// core: the derived nodes banded under the image's cap, the authored
+    /// tiers as pins. The realizer's core placement partitions the nodes
+    /// first, so no level spans two cores (issue 0259); with nothing placed
+    /// there is one plan, `core: None`. Empty when nothing ranked. Each
+    /// derived level is one tier in [`Self::tiers`] (`derived-<node>` when it
+    /// holds one node, `derived-level-<k>` or `derived-core<c>-level-<k>` when
+    /// it holds several) until the level runners (phase-509 P9) run levels.
+    pub levels: Vec<crate::levels::LevelPlan>,
 }
 
 /// The node FQNs whose contract supervises a deadline: a node path
@@ -433,6 +436,35 @@ pub fn derive_tiers_with_wcet(
     named_above_transport: &std::collections::BTreeSet<String>,
     wcet: Option<&crate::wcet::WcetProfile>,
 ) -> DerivedSchedule {
+    derive_tiers_with_caps(
+        model,
+        target_rtos,
+        callback_groups,
+        priority_plan,
+        named_above_transport,
+        wcet,
+        &mapper_input_from_model(model),
+        &sched_caps_for(target_rtos),
+    )
+}
+
+/// [`derive_tiers_with_wcet`] over a stated mapper input and board
+/// capabilities. Every entry point passes `mapper_input_from_model(model)`,
+/// which carries no execution time, and `sched_caps_for(target_rtos)`, whose
+/// `n_cores` is `None` since issue 0951 removed the only input that set it.
+/// So the realizer's core placement, which needs both, fires on no entry
+/// point today; a test states them here to reach it (issue 0259).
+#[allow(clippy::too_many_arguments)]
+fn derive_tiers_with_caps(
+    model: &SystemModel,
+    target_rtos: &str,
+    callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
+    priority_plan: &PriorityPlan,
+    named_above_transport: &std::collections::BTreeSet<String>,
+    wcet: Option<&crate::wcet::WcetProfile>,
+    input: &ros_launch_manifest_sched::MapperInput,
+    caps: &SchedCaps,
+) -> DerivedSchedule {
     // phase-509 P4 (RFC-0108 D1) - the task record, and its report on an
     // image that supervises nothing. Before the rank, so an image with
     // nothing to rank still reports an unbounded input.
@@ -442,8 +474,7 @@ pub fn derive_tiers_with_wcet(
     } else {
         Vec::new()
     };
-    let input = mapper_input_from_model(model);
-    let ranked = chain_aware_rank(&input);
+    let ranked = chain_aware_rank(input);
     if ranked.items.is_empty() {
         return DerivedSchedule {
             degradations: unanalysable,
@@ -472,13 +503,13 @@ pub fn derive_tiers_with_wcet(
     // Issue 0259 wants exactly this override to exist. Whoever builds it needs
     // an AUTHORING path first (a real table with a real reader), not this
     // plumbing — which is why deleting it is the honest move: keeping it made
-    // a knob that does nothing look supported.
-    let caps = sched_caps_for(target_rtos);
+    // a knob that does nothing look supported. So `caps.n_cores` is `None`
+    // on every entry point (see `derive_tiers_with_caps`).
     // phase-459 W4 (issue 1427) - the priority is ALLOCATED out of the board's
     // address plan, not read off the rank. Issue 1508 - the plan is the
     // caller's: `derive_tiers_from_contracts` passes the tier key's projection,
     // a road holding the image's `.config` passes the image's own.
-    let mut plan = realize_rtos(&ranked, &input, &caps, priority_plan);
+    let mut plan = realize_rtos(&ranked, input, caps, priority_plan);
     // RFC-0079 section 6 - a tier that names the transport band is
     // allocated above it; nothing else crosses (issue 1967).
     let mut lift = std::collections::BTreeSet::new();
@@ -544,10 +575,15 @@ pub fn derive_tiers_with_wcet(
     // phase-509 P5 (RFC-0108 D4) - rule 4 no longer makes a tier per node:
     // the nodes no tier binds are collected here, banded into levels below,
     // and each derived level is one tier. Authored tiers (rules 1 and 2) are
-    // the levels' pins: `pins` keeps each one's members.
+    // the levels' pins: `pins` keeps each one's authored priority, authored
+    // core and members.
     let mut free: Vec<(&crate::rtos_realizer::RealizedNode, Vec<&CallbackGroupDecl>)> = Vec::new();
-    let mut pins: BTreeMap<String, (Option<i64>, Vec<&crate::rtos_realizer::RealizedNode>)> =
-        BTreeMap::new();
+    type Pin<'n> = (
+        Option<i64>,
+        Option<u32>,
+        Vec<&'n crate::rtos_realizer::RealizedNode>,
+    );
+    let mut pins: BTreeMap<String, Pin<'_>> = BTreeMap::new();
 
     for n in &plan.nodes {
         let node = bare(&n.name).to_string();
@@ -576,11 +612,13 @@ pub fn derive_tiers_with_wcet(
                             authored: authored.priority,
                             allocated: n.priority,
                         });
-                        let pin = pins
-                            .entry(g.tier.clone())
-                            .or_insert((Some(authored.priority), Vec::new()));
-                        if !pin.1.iter().any(|m| m.name == n.name) {
-                            pin.1.push(n);
+                        let pin = pins.entry(g.tier.clone()).or_insert((
+                            Some(authored.priority),
+                            authored.core,
+                            Vec::new(),
+                        ));
+                        if !pin.2.iter().any(|m| m.name == n.name) {
+                            pin.2.push(n);
                         }
                     } else if authors_any_placement(t) {
                         // Rule 3 — placed, for another board. `resolve_tiers`
@@ -593,9 +631,11 @@ pub fn derive_tiers_with_wcet(
                             n.priority,
                             n.preempt_threshold,
                         ));
-                        let pin = pins.entry(g.tier.clone()).or_insert((None, Vec::new()));
-                        if !pin.1.iter().any(|m| m.name == n.name) {
-                            pin.1.push(n);
+                        let pin = pins
+                            .entry(g.tier.clone())
+                            .or_insert((None, None, Vec::new()));
+                        if !pin.2.iter().any(|m| m.name == n.name) {
+                            pin.2.push(n);
                         }
                     }
                 }
@@ -628,21 +668,22 @@ pub fn derive_tiers_with_wcet(
 
     // phase-509 P5 (RFC-0108 D4) - the levels: the free nodes banded, the
     // authored tiers pinned, the cap the image's or the platform's.
+    //
+    // Issue 0259 - partition first, then band each core. The realizer's
+    // worst-fit packing (`RealizedNode::core`) is the partition, and one
+    // `derive_levels` call never spans two cores' scheduling domains
+    // (RFC-0108 D3). One call over every free node let a merged level carry
+    // members the realizer had put on different cores onto its lead's core,
+    // and counted other cores' nodes as same-core preemption.
+    //
+    // Unpinned nodes (`core: None`) can run on any core, so they form their
+    // own group, and that group sees every pin. A placed core sees the pins
+    // authored for it and the unpinned ones. When unpinned work sits beside
+    // placed work, no single call sees all the interference on a core, so the
+    // analysed merge is off in every group (`floating_interference`). With
+    // nothing placed - every bake road today - there is one group, `None`,
+    // with every pin: the single call this replaced.
     let supervised = supervised_nodes(model);
-    let level_nodes: Vec<crate::levels::LevelNode> = free
-        .iter()
-        .map(|(n, _)| crate::levels::LevelNode {
-            node: n.name.clone(),
-            priority: n.priority,
-            protected: if supervised.contains(&n.name) {
-                Some("supervised")
-            } else if n.deadline_us.is_some() {
-                Some("deadline")
-            } else {
-                None
-            },
-        })
-        .collect();
     let most_urgent = |ps: &mut dyn Iterator<Item = i64>| {
         if caps.low_number_is_high {
             ps.min()
@@ -650,25 +691,17 @@ pub fn derive_tiers_with_wcet(
             ps.max()
         }
     };
-    let pinned: Vec<crate::levels::PinnedBand> = pins
-        .iter()
-        .filter_map(|(tier, (authored, members))| {
-            let priority =
-                authored.or_else(|| most_urgent(&mut members.iter().map(|m| m.priority)))?;
-            Some(crate::levels::PinnedBand {
-                tier: tier.clone(),
-                priority,
-                members: members
-                    .iter()
-                    .map(|m| crate::levels::LevelNode {
-                        node: m.name.clone(),
-                        priority: m.priority,
-                        protected: None,
-                    })
-                    .collect(),
-            })
-        })
-        .collect();
+    let mut cores: std::collections::BTreeSet<Option<u32>> =
+        free.iter().map(|(n, _)| n.core).collect();
+    if !cores.contains(&None) {
+        // A pin authored for a core no free node is placed on still needs a
+        // plan to be recorded in.
+        cores.extend(pins.values().filter_map(|(_, core, _)| core.map(Some)));
+    }
+    if cores.is_empty() {
+        cores.insert(None);
+    }
+    let floating_interference = cores.len() > 1 && cores.contains(&None);
     let (max_levels, cap_source) = match priority_plan.max_levels {
         Some(n) => (n, "image"),
         None => (
@@ -676,57 +709,102 @@ pub fn derive_tiers_with_wcet(
             "platform",
         ),
     };
-    let levels = crate::levels::derive_levels(&crate::levels::LevelInput {
-        free: &level_nodes,
-        pinned: &pinned,
-        tasks: &out.tasks,
-        max_levels,
-        cap_source,
-        low_number_is_high: caps.low_number_is_high,
-        time_slicing: crate::levels::time_slices_equal_priorities(target_rtos),
-        ranked_priorities: &plan.nodes.iter().map(|n| n.priority).collect::<Vec<_>>(),
-    });
-    out.degradations.extend(levels.degradations.iter().cloned());
-
-    for level in &levels.levels {
-        let members: Vec<&(&crate::rtos_realizer::RealizedNode, Vec<&CallbackGroupDecl>)> = level
-            .derived_members()
-            .filter_map(|m| free.iter().find(|(n, _)| n.name == m.node))
+    let ranked_priorities: Vec<i64> = plan.nodes.iter().map(|n| n.priority).collect();
+    for core in cores {
+        let level_nodes: Vec<crate::levels::LevelNode> = free
+            .iter()
+            .filter(|(n, _)| n.core == core)
+            .map(|(n, _)| crate::levels::LevelNode {
+                node: n.name.clone(),
+                priority: n.priority,
+                protected: if supervised.contains(&n.name) {
+                    Some("supervised")
+                } else if n.deadline_us.is_some() {
+                    Some("deadline")
+                } else {
+                    None
+                },
+            })
             .collect();
-        if members.is_empty() {
-            continue;
-        }
-        // D4 rule 8 put these nodes on an authored tier's level: bind their
-        // groups to that tier.
-        let tier_name = match level.tiers.first() {
-            Some(t) => t.clone(),
-            None => {
-                let name = match members.as_slice() {
-                    // One node: the tier keeps the node's name, as before.
-                    [(n, _)] => format!("derived{}", n.name.replace('/', "-")),
-                    _ => format!("derived-level-{}", level.index),
-                };
-                out.tiers.insert(
-                    name.clone(),
-                    level_tier(&members, target_rtos, &mut out.degradations),
-                );
-                name
+        let pinned: Vec<crate::levels::PinnedBand> = pins
+            .iter()
+            .filter(|(_, (_, pin_core, _))| {
+                core.is_none() || pin_core.is_none() || *pin_core == core
+            })
+            .filter_map(|(tier, (authored, _, members))| {
+                let priority =
+                    authored.or_else(|| most_urgent(&mut members.iter().map(|m| m.priority)))?;
+                Some(crate::levels::PinnedBand {
+                    tier: tier.clone(),
+                    priority,
+                    members: members
+                        .iter()
+                        .map(|m| crate::levels::LevelNode {
+                            node: m.name.clone(),
+                            priority: m.priority,
+                            protected: None,
+                        })
+                        .collect(),
+                })
+            })
+            .collect();
+        let levels = crate::levels::derive_levels(&crate::levels::LevelInput {
+            core,
+            floating_interference,
+            free: &level_nodes,
+            pinned: &pinned,
+            tasks: &out.tasks,
+            max_levels,
+            cap_source,
+            low_number_is_high: caps.low_number_is_high,
+            time_slicing: crate::levels::time_slices_equal_priorities(target_rtos),
+            ranked_priorities: &ranked_priorities,
+        });
+        out.degradations.extend(levels.degradations.iter().cloned());
+
+        for level in &levels.levels {
+            let members: Vec<&(&crate::rtos_realizer::RealizedNode, Vec<&CallbackGroupDecl>)> =
+                level
+                    .derived_members()
+                    .filter_map(|m| free.iter().find(|(n, _)| n.name == m.node))
+                    .collect();
+            if members.is_empty() {
+                continue;
             }
-        };
-        for (n, groups) in &members {
-            out.overrides.push(NodeOverride {
-                name: bare(&n.name).to_string(),
-                callback_groups: groups
-                    .iter()
-                    .map(|g| CallbackGroupOverride {
-                        id: g.id.clone(),
-                        tier: tier_name.clone(),
-                    })
-                    .collect(),
-            });
+            // D4 rule 8 put these nodes on an authored tier's level: bind
+            // their groups to that tier.
+            let tier_name = match level.tiers.first() {
+                Some(t) => t.clone(),
+                None => {
+                    let name = match (members.as_slice(), core) {
+                        // One node: the tier keeps the node's name, as before.
+                        ([(n, _)], _) => format!("derived{}", n.name.replace('/', "-")),
+                        (_, None) => format!("derived-level-{}", level.index),
+                        // Level indices restart on every core.
+                        (_, Some(c)) => format!("derived-core{c}-level-{}", level.index),
+                    };
+                    out.tiers.insert(
+                        name.clone(),
+                        level_tier(&members, core, target_rtos, &mut out.degradations),
+                    );
+                    name
+                }
+            };
+            for (n, groups) in &members {
+                out.overrides.push(NodeOverride {
+                    name: bare(&n.name).to_string(),
+                    callback_groups: groups
+                        .iter()
+                        .map(|g| CallbackGroupOverride {
+                            id: g.id.clone(),
+                            tier: tier_name.clone(),
+                        })
+                        .collect(),
+                });
+            }
         }
+        out.levels.push(levels);
     }
-    out.levels = Some(levels);
 
     // issue 1426 rule 2 — one priority per NAMED, unplaced tier.
     //
@@ -812,6 +890,7 @@ pub fn derive_tiers_with_wcet(
 /// `budget` degradation naming the node.
 fn level_tier(
     members: &[&(&crate::rtos_realizer::RealizedNode, Vec<&CallbackGroupDecl>)],
+    core: Option<u32>,
     target_rtos: &str,
     degradations: &mut Vec<Degradation>,
 ) -> TierDef {
@@ -873,7 +952,8 @@ fn level_tier(
         period_us,
         budget_us,
         deadline_us,
-        core: lead.core,
+        // The level's core: every member was placed there (issue 0259).
+        core,
         ..Default::default()
     };
     let slot = match target_rtos {
@@ -1322,6 +1402,135 @@ mod tests {
         m
     }
 
+    /// Issue 0259 - partition first, then band each core. Four measured
+    /// periodic nodes on two cores: worst-fit decreasing puts `/a` (U 0.4)
+    /// and `/d` (U 0.1) on core 0, `/b` (U 0.3) and `/c` (U 0.2) on core 1.
+    /// The ranks interleave across the cores (a > b > c > d), and a cap of
+    /// one level per core forces a merge. One `derive_levels` call over all
+    /// four made one level and moved every member onto its lead's core; per
+    /// core, each level holds one core's members and its tier is pinned
+    /// there.
+    #[test]
+    fn a_level_never_spans_two_cores() {
+        let rates = [("a", 100.0), ("b", 50.0), ("c", 20.0), ("d", 10.0)];
+        let utilisation = [("a", 0.4), ("b", 0.3), ("c", 0.2), ("d", 0.1)];
+        let mut m = contract_model();
+        m.structure.nodes.clear();
+        m.structure.topics.clear();
+        m.contracts.node_paths.clear();
+        m.contracts.pub_endpoints.clear();
+        let mut g = BTreeMap::new();
+        for (name, rate_hz) in rates {
+            let node = format!("/{name}");
+            let out = format!("{node}/out");
+            m.structure.nodes.insert(
+                node.clone(),
+                NodeInstance {
+                    scope: "/".into(),
+                    ..Default::default()
+                },
+            );
+            m.structure.topics.insert(
+                format!("/{name}_out"),
+                TopicWiring {
+                    msg_type: "std_msgs/Int32".into(),
+                    publishers: vec![out.clone()],
+                    subscribers: vec![],
+                },
+            );
+            m.contracts.node_paths.insert(
+                format!("{node}/loop"),
+                PathContract {
+                    input: vec![],
+                    output: vec![out.clone()],
+                    trigger: Some(EffectiveTrigger::Timer { rate_hz }),
+                    max_latency_ms: Some(1000.0 / rate_hz),
+                    ..Default::default()
+                },
+            );
+            m.contracts
+                .pub_endpoints
+                .insert(out, PubContract::default());
+            g.insert(name.to_string(), vec![cbg("main", crate::DEFAULT_TIER)]);
+        }
+        // The stated execution times: no entry point carries one today.
+        let mut input = mapper_input_from_model(&m);
+        for n in &mut input.nodes {
+            let (rate, u) = rates
+                .iter()
+                .zip(utilisation)
+                .find(|((r, _), _)| format!("/{r}") == n.name)
+                .map(|((_, hz), (_, u))| (*hz, u))
+                .expect("a stated node");
+            for p in &mut n.paths {
+                p.exec_ms = Some(u * 1000.0 / rate);
+            }
+        }
+        let caps = SchedCaps {
+            n_cores: Some(2),
+            ..sched_caps_for("zephyr")
+        };
+        let mut plan = island_plan();
+        plan.max_levels = Some(1);
+        let d = derive_tiers_with_caps(
+            &m,
+            "zephyr",
+            &g,
+            &plan,
+            &BTreeSet::new(),
+            None,
+            &input,
+            &caps,
+        );
+
+        let core_of = |node: &str| {
+            d.realized
+                .iter()
+                .find(|n| n.name == node)
+                .and_then(|n| n.core)
+                .expect("placed")
+        };
+        assert_eq!(
+            ["/a", "/b", "/c", "/d"].map(core_of),
+            [0, 1, 1, 0],
+            "the partition this test is about"
+        );
+        assert_eq!(
+            d.levels.iter().map(|p| p.core).collect::<Vec<_>>(),
+            [Some(0), Some(1)],
+            "one plan per core"
+        );
+        for p in &d.levels {
+            for level in &p.levels {
+                for m in &level.members {
+                    assert_eq!(
+                        Some(core_of(&m.node)),
+                        p.core,
+                        "level {} of core {:?} holds `{}`",
+                        level.index,
+                        p.core,
+                        m.node
+                    );
+                }
+            }
+        }
+        assert_eq!(
+            d.tiers.keys().collect::<Vec<_>>(),
+            ["derived-core0-level-0", "derived-core1-level-0"]
+        );
+        assert_eq!(d.tiers["derived-core0-level-0"].core, Some(0));
+        assert_eq!(d.tiers["derived-core1-level-0"].core, Some(1));
+        let bound = |tier: &str| -> Vec<&str> {
+            d.overrides
+                .iter()
+                .filter(|o| o.callback_groups.iter().any(|c| c.tier == tier))
+                .map(|o| o.name.as_str())
+                .collect()
+        };
+        assert_eq!(bound("derived-core0-level-0"), ["a", "d"]);
+        assert_eq!(bound("derived-core1-level-0"), ["b", "c"]);
+    }
+
     /// phase-509 P5 (RFC-0108 D4) - with no tier authored, the three ranks
     /// are three levels, each a tier of its own; under a cap of 2 where every
     /// band holds a deadline, the least urgent pair is merged anyway, named,
@@ -1334,7 +1543,9 @@ mod tests {
             g.insert(node.to_string(), vec![cbg("main", "default")]);
         }
         let d = derive_tiers_in_plan(&m, "zephyr", &g, &island_plan());
-        let levels = d.levels.as_ref().expect("levels derived");
+        let [levels] = d.levels.as_slice() else {
+            panic!("one plan, nothing placed: {:?}", d.levels)
+        };
         assert_eq!(levels.levels.len(), 3);
         assert_eq!((levels.max_levels, levels.cap_source), (8, "platform"));
         assert_eq!(
@@ -1349,7 +1560,9 @@ mod tests {
         let mut capped = island_plan();
         capped.max_levels = Some(2);
         let d = derive_tiers_in_plan(&m, "zephyr", &g, &capped);
-        let levels = d.levels.as_ref().expect("levels derived");
+        let [levels] = d.levels.as_slice() else {
+            panic!("one plan, nothing placed: {:?}", d.levels)
+        };
         assert_eq!(levels.method, crate::levels::LevelMethod::Capped);
         assert_eq!((levels.max_levels, levels.cap_source), (2, "image"));
         assert_eq!(
@@ -1422,7 +1635,9 @@ mod tests {
         assert_eq!(d.placements["mrm"].priority, ranks[0]);
         // phase-509 P5 - the authored tier is a pin: one level, all three
         // members, and nothing derived beside it.
-        let levels = d.levels.as_ref().expect("levels derived");
+        let [levels] = d.levels.as_slice() else {
+            panic!("one plan, nothing placed: {:?}", d.levels)
+        };
         assert_eq!(levels.levels.len(), 1);
         assert_eq!(levels.levels[0].tiers, vec!["mrm".to_string()]);
         assert_eq!(levels.levels[0].members.len(), 3);

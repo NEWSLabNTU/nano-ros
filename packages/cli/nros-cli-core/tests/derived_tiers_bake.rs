@@ -153,7 +153,9 @@ fn the_cmake_keyword_makes_the_fixture_derive_a_schedule() {
         ["derived-level-0", "derived-level-1"],
         "`derive_tiers_from_contracts` derives a tier per level"
     );
-    let levels = derived.levels.as_ref().expect("the levels are recorded");
+    let [levels] = derived.levels.as_slice() else {
+        panic!("one plan, nothing placed: {:?}", derived.levels)
+    };
     assert_eq!(levels.levels.len(), 2);
     for level in &levels.levels {
         assert_eq!(level.members.len(), 2, "{level:?}");

@@ -219,14 +219,14 @@ impl PriorityRecord<'_> {
             "above_transport": self.derivation.map(|d| d.above_transport.clone()).unwrap_or_default(),
             "supervisor_priority": self.derivation.and_then(|d| d.supervisor_priority),
             "ranks": ranks,
-            // phase-509 P5 (RFC-0108 D4): the preemption levels - the cap and
-            // where it came from, how the bands were chosen, and each level's
-            // priority, threshold rank and members. `null` when nothing was
-            // derived.
+            // phase-509 P5 (RFC-0108 D4): the preemption levels, one plan per
+            // core (issue 0259) - the core, the cap and where it came from,
+            // how the bands were chosen, and each level's priority, threshold
+            // rank and members. Empty when nothing was derived.
             "levels": self
                 .derivation
-                .and_then(|d| d.levels.as_ref())
-                .map(|l| serde_json::to_value(l).unwrap_or(Value::Null)),
+                .map(|d| serde_json::to_value(&d.levels).unwrap_or(Value::Null))
+                .unwrap_or_else(|| Value::Array(Vec::new())),
             "degradations": self.derivation.map(|d| d.degradations.clone()).unwrap_or_default(),
             "shadowed": self.derivation.map(|d| d.shadowed.clone()).unwrap_or_default(),
         })
@@ -321,9 +321,10 @@ impl PriorityRecord<'_> {
                 "  supervisor of the supervised deadlines: priority {p}"
             ));
         }
-        if let Some(l) = self.derivation.and_then(|d| d.levels.as_ref()) {
+        for l in self.derivation.map_or(&[][..], |d| d.levels.as_slice()) {
             out.push(format!(
-                "  levels: {} of max_levels {} ({} cap), {}",
+                "  levels{}: {} of max_levels {} ({} cap), {}",
+                l.core.map_or_else(String::new, |c| format!(" on core {c}")),
                 l.levels.len(),
                 l.max_levels,
                 l.cap_source,
@@ -537,7 +538,7 @@ mod tests {
         );
         assert_eq!(j["tiers"][0]["above_transport"], true);
         assert_eq!(j["supervisor_priority"], 4);
-        assert_eq!(j["levels"], Value::Null, "nothing banded in this fixture");
+        assert_eq!(j["levels"], json!([]), "nothing banded in this fixture");
         assert!(
             h.contains("#define NROS_PRIORITY_PLAN_SUPERVISOR_PRIORITY (4)"),
             "{h}"
@@ -633,6 +634,8 @@ mod tests {
             },
         ];
         let levels = derive_levels(&LevelInput {
+            core: None,
+            floating_interference: false,
             free: &free,
             pinned: &[],
             tasks: &[],
@@ -643,7 +646,7 @@ mod tests {
             ranked_priorities: &[],
         });
         let derivation = EntryDerivation {
-            levels: Some(levels),
+            levels: vec![levels],
             ..Default::default()
         };
         let plan = island_plan();
@@ -656,20 +659,20 @@ mod tests {
             nodes: &[],
         };
         let j = rec.to_json();
-        assert_eq!(j["levels"]["max_levels"], 2);
-        assert_eq!(j["levels"]["cap_source"], "image");
-        assert_eq!(j["levels"]["method"], "capped");
+        assert_eq!(j["levels"][0]["max_levels"], 2);
+        assert_eq!(j["levels"][0]["cap_source"], "image");
+        assert_eq!(j["levels"][0]["method"], "capped");
         assert_eq!(
-            j["levels"]["levels"][0]["members"][0]["node"],
+            j["levels"][0]["levels"][0]["members"][0]["node"],
             "/mrm_handler"
         );
-        assert_eq!(j["levels"]["levels"][1]["priority"], 7);
-        assert_eq!(j["levels"]["levels"][1]["threshold"], 1);
+        assert_eq!(j["levels"][0]["levels"][1]["priority"], 7);
+        assert_eq!(j["levels"][0]["levels"][1]["threshold"], 1);
         assert_eq!(
-            j["levels"]["levels"][1]["members"][1]["node"],
+            j["levels"][0]["levels"][1]["members"][1]["node"],
             "/mrm_comfortable_stop_operator"
         );
-        assert_eq!(j["levels"]["levels"][1]["members"][1]["rank"], 2);
+        assert_eq!(j["levels"][0]["levels"][1]["members"][1]["rank"], 2);
         let lines = rec.summary_lines();
         assert!(
             lines

@@ -14,7 +14,9 @@ a stated receive class above `max(frag, batch)`. One rule backs both:
 `nros_sizing_descriptor::receive_ceiling`. The W1 and W2 follow-ups
 recorded in those waves are unverified since they were written. Issue 0259
 is homed here (table at the end). Its design was re-checked 2026-10-24 and
-rewritten, because RFC-0108 had moved what it owns. Two other homed issues
+rewritten, because RFC-0108 had moved what it owns; its one concrete defect,
+the preemption levels ignoring the realizer's core placement, was fixed the
+same day, and what it still lacks is inputs. Two other homed issues
 closed that day.
 [Issue 1140](../issues/archived/1140-describes-wiring-misses-timer-only-contract.md)
 was resolved because phase-486 W9b had deleted its second predicate.
@@ -390,6 +392,6 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md) | WCET, blocking and feasibility as declared data is phase-357 W2's remainder. It is a check over the contract chain. Re-scoped 2026-10-24: `non_preempt` is RFC-0108's. What is left is core assignment and how it composes with phase-509's per-core levels, plus hardware locality and chain colocation. |
+| [#0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md) | WCET, blocking and feasibility as declared data is phase-357 W2's remainder. It is a check over the contract chain. Re-scoped 2026-10-24: `non_preempt` is RFC-0108's. The levels are partitioned per core since 2026-10-24. What is left is an input for the core count and for C to the realizer, plus hardware locality and chain colocation. |
 | [#1140](../issues/archived/1140-describes-wiring-misses-timer-only-contract.md) | Resolved 2026-10-24. Phase-486 W9b deleted `describes_wiring` with `nros ws entity-facts`, so `from_model` is the one predicate. |
 | [#1376](../issues/archived/1376-c-example-listeners-register-with-null-options.md) | Homed 2026-10-23 from phase-394, which was archived that day. Seven C listeners passed `options = NULL`, yet the sizing descriptor credits their image with a supplied hint. A consumer trusts a fact nothing checks, which is this phase's class. Re-scoped 2026-10-24: phase-492 moved the listeners onto rclc's typed path, which carries the bound. Resolved the same day: four of the five entry points that take a subscription passed 0, and one API helper now forwards the bound, with a gate and an arena measurement. |
