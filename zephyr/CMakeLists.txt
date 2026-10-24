@@ -159,6 +159,10 @@ set(NROS_REPO_DIR ${CMAKE_CURRENT_LIST_DIR}/.. CACHE PATH
 # one point every route to this module passes through.
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_checkout_guard.cmake)
 nros_assert_single_checkout("${NROS_REPO_DIR}" "${APPLICATION_SOURCE_DIR}")
+# phase-478 I2 — the same question of the toolchain: a shared workspace's
+# `env.sh` written before issue 1254 names an SDK inside whichever checkout
+# provisioned it.
+nros_assert_sdk_not_foreign("${NROS_REPO_DIR}" "${ZEPHYR_SDK_INSTALL_DIR}")
 
 # issue 1324 — ONE heap. `nros-platform[platform-zephyr]` installs the image's
 # `#[global_allocator]` over `nros_platform_alloc` (the rlsf arena sized by

@@ -196,6 +196,13 @@ zephyr-module-allowlist:
 zephyr-sdk-path-asked:
     @python3 scripts/check/check-zephyr-sdk-path-asked.py
 
+# phase-478 I2 -- the Zephyr module's two checkout refusals (an application,
+# and now the SDK, from another nano-ros checkout), run row by row under
+# `cmake -P`. No lane has two checkouts, so nothing else ever reaches them.
+[group("checks")]
+zephyr-checkout-guard:
+    @bash scripts/check/check-zephyr-checkout-guard.sh
+
 # phase-460 W6 -- the Zephyr stack-slot pool gives back what it hands out.
 #
 # `zephyr/nros_platform_zephyr_shims.c` owns the ENTIRE task pool of the Zephyr

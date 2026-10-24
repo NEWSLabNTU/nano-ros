@@ -911,6 +911,23 @@ _require-worktree-provisioning:
         || missing+=("binary     nros (this checkout's CLI)              -> just setup-cli")
     [ -x "$(nros_launch_resolve_built_bin .)" ] \
         || missing+=("binary     nros-launch-resolve                     -> just setup-launch-resolve")
+    # phase-478 D1.3 — the third thing a fresh worktree lacks is the repo's
+    # hooks. Not a precondition of THIS lane (it passes without them), so it is
+    # a note on the same report rather than an item above — but it belongs in
+    # the one message: without `core.hooksPath` the pre-push gate tier, the
+    # duplicate-id refusal and the pin-rewind refusal are all inert (issue 0840).
+    # shellcheck source=scripts/lib/git-settings.sh
+    source scripts/lib/git-settings.sh
+    while IFS=$'\t' read -r key want _sev; do
+        [ -n "$key" ] || continue
+        got="$(git config --get "$key" 2>/dev/null || true)"
+        # An absolute spelling of the same directory is the same setting.
+        case "$got" in
+            /*) [ "$(readlink -f "$got" 2>/dev/null)" = "$(readlink -f "$want" 2>/dev/null)" ] && got="$want" ;;
+        esac
+        [ "$got" = "$want" ] \
+            || echo "worktree-provisioning: NOTE git $key=${got:-<unset>} (want $want) -> just setup-hooks; until then pushes skip the pre-push gates" >&2
+    done < <(nros_git_settings required)
     if [ "${#missing[@]}" -eq 0 ]; then
         echo "worktree-provisioning: OK (every gate-tier submodule and both binaries present)."
         exit 0

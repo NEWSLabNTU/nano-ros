@@ -549,10 +549,16 @@ doctor:
             nros_path_status="stale-shadow"
         else
             # in-tree CLI not built yet; whatever's on PATH is the only
-            # `nros` the user has. We can't classify it as a shadow
-            # because we have nothing to shadow. Leave as "ok" — the
-            # user is on the transitional / external-install path.
-            :
+            # `nros` the user has. Nothing to shadow — UNLESS it is another
+            # checkout's build (phase-478 I1): a fresh worktree that has not
+            # run `just setup-cli` inherits the parent shell's PATH, and that
+            # `nros` refuses or mis-generates against THIS tree's sources.
+            # An install that belongs to no checkout stays "ok" — the
+            # transitional / external-install path.
+            # shellcheck source=scripts/lib/checkout-paths.sh
+            source "{{justfile_directory()}}/scripts/lib/checkout-paths.sh"
+            nros_borrowed_from="$(nros_foreign_checkout_of "$nros_resolved_real" "{{justfile_directory()}}")"
+            [ -z "$nros_borrowed_from" ] || nros_path_status="borrowed"
         fi
     elif [ -n "$nros_intree" ] && [ -x "$nros_intree" ]; then
         nros_path_status="needs-activate"
@@ -565,7 +571,13 @@ doctor:
     if [ ${#tool_missing[@]} -eq 0 ] && [ "$nros_path_status" = "ok" ]; then
         echo "  [OK] cargo-tools"
     else
-        if [ "$nros_path_status" = "stale-shadow" ]; then
+        if [ "$nros_path_status" = "borrowed" ]; then
+            echo "  [FAIL] nros on PATH ($nros_resolved) is ANOTHER checkout's build:"
+            echo "             $nros_borrowed_from"
+            echo "         This checkout has no CLI of its own yet. Build it and put it first:"
+            echo "             just setup-cli && source ./activate.sh"
+            fail=1
+        elif [ "$nros_path_status" = "stale-shadow" ]; then
             echo "  [FAIL] nros on PATH ($nros_resolved) shadows the in-tree CLI" \
                  "($nros_intree)."
             echo "         A stale pre-218 \`nros\` emits outdated"

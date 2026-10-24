@@ -122,3 +122,65 @@ function(nros_assert_single_checkout module_root app_dir)
         "-DNROS_ALLOW_FOREIGN_MODULE=ON downgrades this to a warning. Say why: a "
         "deliberately mixed image is a measurement of neither tree.")
 endfunction()
+
+# Refuse a Zephyr SDK that lives inside ANOTHER nano-ros checkout — phase-478 I2.
+#
+# The same three rows as above, asked of the toolchain instead of the
+# application. Before issue 1254 moved the SDK into the store, `just zephyr
+# setup` installed it under `<checkout>/scripts/zephyr/sdk/`, and a shared west
+# workspace's `env.sh` exported that path to every checkout on the host: on
+# 2026-10-05 both lines of this host's shared workspace compiled every image
+# with the safety island's vendored submodule's SDK copy. A workspace
+# provisioned then, or an `env.sh` copied from one, still does that, and the
+# image is compiled by a toolchain whose version is whatever that other tree
+# pinned.
+#
+#   the SDK dir is …                       | behaviour
+#   ---------------------------------------|----------------------------------
+#   outside any nano-ros checkout          | ACCEPT — the store
+#                                          | (`~/.nros/sdk/zephyr-sdk/<v>`) or
+#                                          | a user's own install
+#   inside THIS module's checkout          | ACCEPT — the legacy checkout arm
+#                                          | of `scripts/lib/zephyr-sdk.sh`
+#   inside a DIFFERENT nano-ros checkout   | REFUSE, naming both
+#
+# Ownership, not `nros-sdk.lock`, decides it: the lock records VERSIONS, and the
+# defect is a PATH — a store SDK at a version the lock does not name is
+# `nros_cli_core::orchestration::drift`'s `tool` kind, a different question.
+function(nros_assert_sdk_not_foreign module_root sdk_dir)
+    if(NOT sdk_dir)
+        return() # no Zephyr SDK toolchain (a host or GNU Arm build)
+    endif()
+    if(NROS_ALLOW_FOREIGN_SDK)
+        message(WARNING
+            "nano-ros: NROS_ALLOW_FOREIGN_SDK is set — not checking whether the "
+            "Zephyr SDK belongs to another nano-ros checkout (phase-478 I2).")
+        return()
+    endif()
+    get_filename_component(_sdk_real "${sdk_dir}" REALPATH)
+    _nros_checkout_root_of("${_sdk_real}" _sdk_checkout)
+    if(NOT _sdk_checkout)
+        return() # row 1
+    endif()
+    get_filename_component(_module_real "${module_root}" REALPATH)
+    _nros_checkout_root_of("${_module_real}" _module_checkout)
+    if(NOT _module_checkout OR _sdk_checkout STREQUAL _module_checkout)
+        return() # a vendored module, or row 2
+    endif()
+    message(FATAL_ERROR
+        "nano-ros: the Zephyr SDK belongs to ANOTHER nano-ros checkout (phase-478 I2).\n"
+        "  SDK in use:    ${_sdk_real}\n"
+        "    its checkout: ${_sdk_checkout}\n"
+        "  nros module:   ${_module_real}\n"
+        "    its checkout: ${_module_checkout}\n"
+        "\n"
+        "This image would be compiled by whatever toolchain that other tree "
+        "installed. The SDK belongs in the shared store, where every checkout "
+        "finds the version its own index pins (issue 1254). Re-register it from "
+        "THIS checkout, then reconfigure:\n"
+        "    just zephyr setup\n"
+        "or point the build at the store copy:\n"
+        "    export ZEPHYR_SDK_INSTALL_DIR=\"$(bash scripts/lib/zephyr-sdk.sh resolve)\"\n"
+        "\n"
+        "-DNROS_ALLOW_FOREIGN_SDK=ON downgrades this to a warning. Say why.")
+endfunction()

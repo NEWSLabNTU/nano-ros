@@ -138,6 +138,34 @@ nros_reroot_checkout_path() {
     return 0
 }
 
+# nros_foreign_checkout_of <path> <here>
+#
+# Print the root of the checkout `<path>` belongs to when that checkout is NOT
+# `<here>`, and nothing otherwise (no owner, the same tree, or no usable
+# `<here>`). The same three rows as the rule above, asked as a question instead
+# of applied as a rewrite: a tool resolved through PATH cannot be re-rooted
+# after the fact, only refused, so its callers need the owner's NAME.
+#
+# phase-478 I1: on 2026-09-24 a fresh worktree ran a downstream project's
+# vendored, older `nros` from PATH and every check said OK, because "is `nros`
+# on PATH" and "is it THIS checkout's" are different questions. Callers pass a
+# symlink-resolved path (`readlink -f`), since a `~/.local/bin/nros` symlink
+# into a checkout belongs to that checkout.
+nros_foreign_checkout_of() {
+    _nros_fc_owner="$(nros_checkout_root "${1:-}")"
+    if [ -z "$_nros_fc_owner" ] || [ -z "${2:-}" ]; then
+        unset _nros_fc_owner
+        return 0
+    fi
+    _nros_fc_owner_real="$(cd "$_nros_fc_owner" 2>/dev/null && pwd -P)" || _nros_fc_owner_real="$_nros_fc_owner"
+    _nros_fc_here_real="$(cd "$2" 2>/dev/null && pwd -P)" || _nros_fc_here_real=""
+    if [ -n "$_nros_fc_here_real" ] && [ "$_nros_fc_owner_real" != "$_nros_fc_here_real" ]; then
+        printf '%s' "$_nros_fc_owner_real"
+    fi
+    unset _nros_fc_owner _nros_fc_owner_real _nros_fc_here_real
+    return 0
+}
+
 # nros_reroot_checkout_pathlist <list> <here>
 #
 # The same rule, applied to each entry of a `:`-separated search list — PATH.

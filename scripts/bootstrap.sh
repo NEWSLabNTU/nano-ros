@@ -11,6 +11,19 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd -P "${SCRIPT_DIR}/.." && pwd -P)"
 
+# shellcheck source=scripts/lib/checkout-paths.sh
+source "${SCRIPT_DIR}/lib/checkout-paths.sh"
+
+# The checkout root of the `nros` PATH resolves to, when that checkout is not
+# this one; empty otherwise (none on PATH, this checkout's, or an install that
+# belongs to no checkout). phase-478 I1.
+borrowed_nros_owner() {
+    local p
+    # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
+    p="$(command -v nros 2>/dev/null)" || return 0
+    nros_foreign_checkout_of "$(readlink -f "$p" 2>/dev/null || printf '%s' "$p")" "$REPO_ROOT"
+}
+
 # Global flags — set by main() before subcommand dispatch.
 DRY_RUN=0
 PROMPT=0
@@ -238,8 +251,11 @@ build_in_tree_cli() {
         echo "bootstrap: cargo not on PATH; rustup install must have failed." >&2
         return 1
     fi
+    # Both markers sit ABOVE their call: a comment line inside the `\`
+    # continuation ended it, so `run_cmd` got a label and no command and the
+    # cargo build ran on its own — `--dry-run` built the CLI. phase-478 I1.
+    # profile-literal-ok: host tool: builds the CLI before any profile machinery exists
     run_cmd "building in-tree nros CLI (packages/cli/)" \
-        # profile-literal-ok: host tool: builds the CLI before any profile machinery exists
         cargo build --release --manifest-path "${REPO_ROOT}/packages/cli/Cargo.toml" --bin nros \
         || return 0
     # phase-368 W4 — the launch resolver is part of the front door, not an
@@ -261,8 +277,8 @@ build_in_tree_cli() {
     # "next →" banner anyway, and the failure surfaced two commands later as
     # a cmake configure error naming a `just` recipe. A front door that
     # cannot build what the quick start needs must say so HERE.
+    # profile-literal-ok: host tool: the launch resolver's own binary, same rule as the CLI build above
     run_cmd "building nros-launch-resolve (the launch resolver)" \
-        # profile-literal-ok: host tool: the launch resolver's own binary, same rule as the CLI build above
         cargo build --release --manifest-path "${REPO_ROOT}/packages/cli/nros-launch-resolve/Cargo.toml" \
         || { echo "bootstrap: nros-launch-resolve build FAILED — the workspace quick start needs it (see error above; libclang missing is the common cause)" >&2; return 1; }
     export PATH="${REPO_ROOT}/packages/cli/target/release:$PATH"
@@ -277,7 +293,16 @@ build_in_tree_cli() {
 install_nros_source() {
     ensure_path
     # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
-    if command -v nros >/dev/null 2>&1; then
+    local borrowed
+    borrowed="$(borrowed_nros_owner)"
+    if [[ -n "$borrowed" ]]; then
+        # phase-478 I1: another checkout's `nros` is not this checkout's CLI.
+        # Accepting it is how a worktree ran a downstream project's vendored,
+        # older CLI and read the resulting codegen refusal as a host red.
+        # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
+        echo "bootstrap: the nros on PATH ($(command -v nros)) belongs to ANOTHER checkout ($borrowed); building this one's."
+    # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
+    elif command -v nros >/dev/null 2>&1; then
         # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
         echo "bootstrap: nros already on PATH ($(command -v nros))."
         echo "bootstrap: next →  nros setup <board>   then use cargo / cmake / west / idf.py"
@@ -407,7 +432,19 @@ shell_doctor() {
 
     # 1. nros on PATH?
     # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
-    if command -v nros >/dev/null 2>&1; then
+    local borrowed
+    borrowed="$(borrowed_nros_owner)"
+    if [[ -n "$borrowed" ]]; then
+        # phase-478 I1: the version-lockstep line below catches a different
+        # VERSION, never a different CHECKOUT at the same version.
+        # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
+        echo "[FAIL] nros on PATH ($(command -v nros)) belongs to ANOTHER checkout:"
+        echo "         $borrowed"
+        echo "       This checkout is ${REPO_ROOT}. Build its own CLI and put it first:"
+        echo "         just setup-cli && source ./activate.sh"
+        fail=1
+    # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
+    elif command -v nros >/dev/null 2>&1; then
         # host-tool-path-ok: the user installer/doctor: the question IS whether nros is on PATH.
         echo "[OK] nros on PATH: $(command -v nros)"
     else
