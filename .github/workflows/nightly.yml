@@ -1236,17 +1236,18 @@ jobs:
       # and the junit stayed in the persistent fixture tree, where the next
       # nextest run there rewrote it. The fixture-build logs ride along, so a
       # red build step is readable too (issue 1842).
+      # Issue 1991 -- the tree is kept across runs, and so is an earlier run's
+      # junit: a run whose tests never started uploaded it as its own. Upload
+      # only the reports this run wrote (`fixture-tree.sh reports`).
+      - name: Collect this run's junit and logs
+        if: always()
+        run: scripts/ci/fixture-tree.sh reports "${{ runner.temp }}/nros-run-reports"
       - name: Upload junit and logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tier2-nightly-junit
-          path: |
-            ${{ env.NROS_FIXTURE_TREE }}/target/nextest/**/junit*.xml
-            ${{ env.NROS_FIXTURE_TREE }}/build/**/*.log
-            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.log
-            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/**/*.log
-            ${{ env.NROS_FIXTURE_TREE }}/tmp/build-test-fixtures-*/*.joblog
+          path: ${{ runner.temp }}/nros-run-reports/
           if-no-files-found: ignore
           retention-days: 14
       - name: Sweep orphans and disk
