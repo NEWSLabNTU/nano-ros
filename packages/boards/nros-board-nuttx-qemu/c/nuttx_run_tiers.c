@@ -454,6 +454,19 @@ static void nros_nuttx_report_sporadic_throttle(const char* name, int declared_p
 #endif
 }
 
+/* Issue 2018 -- the same report for the Rust level runner
+ * (`nros-board-nuttx`), which calls it after each of a level's passes: one
+ * implementation, one marker. `priority` is the tier's declared value,
+ * clamped here as at spawn. */
+int nros_nuttx_report_current_sporadic_throttle(const char* name, int64_t priority,
+                                                int* already_reported);
+int nros_nuttx_report_current_sporadic_throttle(const char* name, int64_t priority,
+                                                int* already_reported) {
+    int before = *already_reported;
+    nros_nuttx_report_sporadic_throttle(name, nuttx_clamp_priority(priority), already_reported);
+    return (!before && *already_reported) ? 1 : 0;
+}
+
 static void* nuttx_tier_thread(void* arg) {
     nros_nuttx_tier_ctx_t* ctx = (nros_nuttx_tier_ctx_t*)arg;
 
@@ -956,6 +969,12 @@ extern int nros_cpp_level_open(void* scheduler, uint8_t level, const char* name,
                                size_t stack_bytes);
 extern int nros_cpp_level_spin_once(void* scheduler, uint8_t level, int32_t timeout_ms);
 extern void* nros_cpp_scheduler_owner(void* scheduler);
+/* issue 2018 -- a level's own sched context, and the kernel hand-over. */
+extern int nros_cpp_level_set_sched_policy(void* scheduler, const char* class_, uint64_t period_us,
+                                           uint64_t budget_us, uint64_t deadline_us,
+                                           const char* deadline_policy,
+                                           uint8_t kernel_enforces_budget, uint8_t* out_sc_id);
+extern int nros_cpp_sched_context_defer_budget_to_kernel(void* scheduler, uint8_t sc_id);
 extern int nros_cpp_init_levels(const char* locator, uint8_t domain_id, const char* node_name,
                                 const char* namespace_, void* storage, void* backing,
                                 size_t backing_bytes);
@@ -1019,19 +1038,48 @@ typedef struct {
     const nros_tier_spec_t* rest;
     size_t n_rest;
     const nros_tier_task_memory_t* rest_task_memory;
+    /* issue 2018 -- the level's own row, for its sched context's deadline. */
+    const nros_tier_spec_t* spec;
 } nros_nuttx_level_ctx_t;
 
 static void nuttx_spawn_next_level(void* scheduler, const nros_tier_spec_t* remaining,
                                    size_t n_remaining, const nros_tier_task_memory_t* task_memory);
+
+/* Issue 2018 (RFC-0108 As-built) -- the registering level's own sched
+ * context, from its row's policy: what its setup registers binds to it, not
+ * to the executor's default, which every level shares. `kernel` says the
+ * kernel accepted SCHED_SPORADIC for this level's thread with the same budget
+ * and period, so the executor does not enforce it again: one enforcer per
+ * level. Without the kernel's server (no CONFIG_SCHED_SPORADIC, or a
+ * rejection) the executor's cooperative budget is the enforcement. Returns
+ * the context id (0: the level keeps the default). */
+static uint8_t nuttx_level_sched_policy(void* scheduler, const nros_tier_spec_t* t, int kernel) {
+    uint8_t sc = 0;
+    int rc = nros_cpp_level_set_sched_policy(scheduler, t->tier_class, t->period_us, t->budget_us,
+                                             t->deadline_us, t->deadline_policy,
+                                             (uint8_t)(kernel ? 1 : 0), &sc);
+    if (rc != 0) {
+        printf("nros: level `%s` sched context not created (rc=%d): it runs on the default\n",
+               (t->name != NULL) ? t->name : "?", (int)rc);
+        return 0;
+    }
+    if (sc != 0u && t->budget_us != 0u && t->period_us != 0u) {
+        printf("nros: level budget tier=`%s` %lluus/%lluus enforced by the %s\n",
+               (t->name != NULL) ? t->name : "?", (unsigned long long)t->budget_us,
+               (unsigned long long)t->period_us, kernel ? "KERNEL" : "EXECUTOR");
+    }
+    return sc;
+}
 
 /* A WORKER over the core's one executor (the boot level's): open the level,
  * run its setup on the owner, spawn the next level (issue #144: setups never
  * overlap), then loop on `level_spin_once`. */
 static void* nuttx_level_thread(void* arg) {
     nros_nuttx_level_ctx_t* ctx = (nros_nuttx_level_ctx_t*)arg;
-    (void)nros_nuttx_apply_current_priority(ctx->name, (uint32_t)nuttx_clamp_priority(ctx->priority));
-    (void)nros_nuttx_apply_current_sporadic(ctx->name, ctx->tier_class, ctx->budget_us,
-                                            ctx->period_us, ctx->priority);
+    (void)nros_nuttx_apply_current_priority(ctx->name,
+                                            (uint32_t)nuttx_clamp_priority(ctx->priority));
+    int kernel_budget = nros_nuttx_apply_current_sporadic(
+        ctx->name, ctx->tier_class, ctx->budget_us, ctx->period_us, ctx->priority);
     (void)nros_nuttx_apply_current_affinity(ctx->name, ctx->core_plus1);
     nros_nuttx_report_observed_cpu(ctx->name);
 
@@ -1040,6 +1088,7 @@ static void* nuttx_level_thread(void* arg) {
     if (rc != 0 || owner == NULL) {
         nuttx_fail_boot(ctx->name, "did not open", rc);
     }
+    (void)nuttx_level_sched_policy(ctx->scheduler, ctx->spec, kernel_budget);
     if (ctx->n_groups > 0 && ctx->groups != NULL) {
         nros_cpp_executor_set_active_groups(owner, ctx->groups, ctx->n_groups);
     }
@@ -1098,6 +1147,7 @@ static void nuttx_spawn_next_level(void* scheduler, const nros_tier_spec_t* rema
     ctx->rest = remaining + 1;
     ctx->n_rest = n_remaining - 1u;
     ctx->rest_task_memory = (task_memory != NULL) ? task_memory + 1 : NULL;
+    ctx->spec = t;
 
     pthread_attr_t attr;
     if (pthread_attr_init(&attr) != 0) {
@@ -1203,10 +1253,9 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
     void* boot_storage = executor_storage;
     memset(boot_storage, 0, storage_stride);
 
-    int rc = (backings != NULL)
-                 ? nros_cpp_init_levels(locator, domain_id, sn, ns, boot_storage,
-                                        backings[0].backing, backings[0].bytes)
-                 : nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
+    int rc = (backings != NULL) ? nros_cpp_init_levels(locator, domain_id, sn, ns, boot_storage,
+                                                       backings[0].backing, backings[0].bytes)
+                                : nros_cpp_init(locator, domain_id, sn, ns, boot_storage);
     if (rc != 0) {
         return (int32_t)rc;
     }
@@ -1222,8 +1271,8 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
     }
     nuttx_level_tiers = tiers;
     nuttx_level_n_tiers = n_tiers;
-    void* scheduler = nros_cpp_scheduler_open(0u, (uint8_t)n_tiers, boot_storage,
-                                              scheduler_backing, scheduler_bytes);
+    void* scheduler = nros_cpp_scheduler_open(0u, (uint8_t)n_tiers, boot_storage, scheduler_backing,
+                                              scheduler_bytes);
     if (scheduler == NULL) {
         printf("nros: nuttx run_levels: the scheduler did not open (%u levels, %u bytes)\n",
                (unsigned)n_tiers, (unsigned)scheduler_bytes);
@@ -1243,6 +1292,10 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
         0) {
         nuttx_fail_boot(boot->name, "was not seated", -1);
     }
+    /* Issue 2018 -- the boot level's context before its setup; the kernel's
+     * answer comes after it (the priority and server are applied once the
+     * setup is done), and the budget is handed over then. */
+    uint8_t boot_sc = nuttx_level_sched_policy(scheduler, boot, 0);
     if (boot->setup != NULL) {
         rc = boot->setup(boot_storage);
         if (rc != 0) {
@@ -1251,8 +1304,12 @@ int32_t nros_board_nuttx_run_levels_in(const char* locator, uint8_t domain_id,
     }
     (void)nros_nuttx_apply_current_priority(boot->name,
                                             (uint32_t)nuttx_clamp_priority(boot->priority));
-    (void)nros_nuttx_apply_current_sporadic(boot->name, boot->tier_class, boot->budget_us,
-                                            boot->period_us, boot->priority);
+    if (nros_nuttx_apply_current_sporadic(boot->name, boot->tier_class, boot->budget_us,
+                                          boot->period_us, boot->priority) == 1 &&
+        boot_sc != 0u && nros_cpp_sched_context_defer_budget_to_kernel(scheduler, boot_sc) == 0) {
+        printf("nros: level budget tier=`%s` handed to the KERNEL\n",
+               (boot->name != NULL) ? boot->name : "?");
+    }
     (void)nros_nuttx_apply_current_affinity(boot->name, boot->core_plus1);
 
     nuttx_spawn_next_level(scheduler, &tiers[0], n_tiers - 1u, task_memory);

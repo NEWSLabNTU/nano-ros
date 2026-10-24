@@ -970,9 +970,50 @@ executor's lock and the thread identity:
   all three. The hosted Linux arm ends its run (a termination signal or
   `NROS_ENTRY_SPIN_MS`) by joining the level threads and taking the runtime
   back (`LevelCore::into_runtime`, the lock removed) to close the session.
+- **A level's own sched context** (issue 2018). A level's tier policy
+  (class, budget, period, deadline) lowers through
+  `SchedContext::from_tier_policy` onto a context of the level's own
+  (`Executor::set_level_sched_context`; C ABI
+  `nros_cpp_level_set_sched_policy`; Rust
+  `ExecutorNodeRuntime::apply_level_sched_policy`), set after the level
+  opens and before its setup. What the setup registers binds to it unless a
+  node or callback-group binding names another, so a level's budget is
+  charged to that level alone. Before, the levels shared the executor's
+  default context: the C runners lowered nothing, and the Rust arms lowered
+  the boot level's policy onto the default, which every level's callbacks
+  then ran on.
+- **Kernel budgets: one enforcer per level** (issue 2018). Where the
+  kernel enforces a level's budget on its thread, the executor does not
+  enforce it again: the level's context keeps its class, budget, period and
+  deadline, and its cooperative budget (the callback-boundary grade) is
+  handed to the kernel (`Executor::defer_budget_to_kernel`), so the level is
+  never skipped for want of budget by the executor. Where the kernel does
+  not enforce it, the executor's cooperative budget is the enforcement,
+  with the same numbers. The runner prints which
+  (`nros: level budget tier=... enforced by the KERNEL|EXECUTOR`). The
+  choice is to defer rather than to double-account: two enforcers of one
+  budget throttle a level twice, once demoted by the kernel and once
+  skipped by the executor on refill boundaries that do not line up.
+  - **NuttX** (C level runner and Rust arm). A level declaring
+    `real_time` with a budget and period gets `SCHED_SPORADIC` on its
+    thread (budget, replenishment period, floor priority
+    `sched_get_priority_min(SCHED_FIFO)`); when the kernel accepts it, the
+    executor defers. Without `CONFIG_SCHED_SPORADIC`, or on a rejection,
+    the executor enforces. The C runner sets the boot level's context
+    before its setup and hands the budget over once the kernel accepted
+    the server after it. The Rust arm keeps the session-owning boot level
+    unbudgeted (issue #246), by the kernel and the executor alike; only its
+    deadline lowers. Both runners report a kernel throttle once per level
+    (`throttled by the KERNEL`, the thread observed at its floor priority);
+    the Rust arm now calls the C seam's report after each pass, as the C
+    runner did. `sched_dims_applied_e2e`
+    `nuttx_level_budget_overrun_is_throttled_by_the_kernel` boots
+    `ws-realtime-cpp` and `ws-realtime-rust` on QEMU (their `high` member
+    overruns 8 ms of a 5 ms per 10 ms budget once in fifty ticks on NuttX)
+    and asserts the kernel throttle, a later overrun (the level still
+    dispatches), and no executor budget skip.
 - **Not in P10.** FreeRTOS keeps `configUSE_TIME_SLICING` at the kernel
-  default. Kernel budget enforcement (Linux `SCHED_DEADLINE`, NuttX
-  `SCHED_SPORADIC`) is not wired to levels. Each is a filed follow-up.
+  default. Linux `SCHED_DEADLINE` is not wired to levels yet (issue 2018).
 
 ## Relation to other RFCs
 

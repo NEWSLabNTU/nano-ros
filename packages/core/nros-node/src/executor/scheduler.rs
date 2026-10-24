@@ -171,6 +171,11 @@ pub(crate) struct Worker {
     /// executor-wide fact, kept here among the worker's small fields so it
     /// shares their padding.
     pub(crate) registering_level: u8,
+    /// Issue 2018 -- the scheduling context the callbacks registered now
+    /// bind to when no node or group binding names one: the registering
+    /// level's own (`Executor::set_level_sched_context`), else 0, the
+    /// default. Reset to 0 whenever the registering level changes.
+    pub(crate) registering_sched: u8,
 }
 
 /// phase-509 P9b item 4 -- no level owns slots by registration.
@@ -197,6 +202,7 @@ impl Worker {
             stack_headroom_spins_since_check: 0,
             stack_headroom_checks: 0,
             registering_level: NO_OWNING_LEVEL,
+            registering_sched: 0,
         }
     }
 }
