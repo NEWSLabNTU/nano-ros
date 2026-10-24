@@ -163,6 +163,9 @@ macro_rules! __define_smoltcp_platform_impl {
                             }
                             return -1;
                         }
+
+                        // issue 2022 — nothing yet; sleep to the next event.
+                        $crate::wait_idle::idle_until_ms(start + timeout + 1);
                     }
                 }
 
@@ -225,6 +228,7 @@ macro_rules! __define_smoltcp_platform_impl {
 
                     while total < len {
                         SmoltcpBridge::poll_network();
+                        let mut progressed = false;
 
                         if SmoltcpBridge::tcp_can_recv(handle) {
                             let remaining = len - total;
@@ -235,6 +239,7 @@ macro_rules! __define_smoltcp_platform_impl {
                             if received > 0 {
                                 total += received as usize;
                                 start = SmoltcpBridge::clock_now_ms();
+                                progressed = true;
                             }
                         }
 
@@ -244,6 +249,12 @@ macro_rules! __define_smoltcp_platform_impl {
 
                         if SmoltcpBridge::clock_now_ms() - start > SOCKET_TIMEOUT_MS {
                             return usize::MAX;
+                        }
+
+                        // issue 2022 — no bytes moved this round; sleep to the
+                        // next event rather than spinning to the timeout.
+                        if !progressed {
+                            $crate::wait_idle::idle_until_ms(start + SOCKET_TIMEOUT_MS + 1);
                         }
                     }
 
@@ -265,6 +276,7 @@ macro_rules! __define_smoltcp_platform_impl {
 
                     while total < len {
                         SmoltcpBridge::poll_network();
+                        let mut progressed = false;
 
                         if SmoltcpBridge::tcp_can_send(handle) {
                             let remaining = len - total;
@@ -274,6 +286,7 @@ macro_rules! __define_smoltcp_platform_impl {
                             if sent > 0 {
                                 total += sent as usize;
                                 start = SmoltcpBridge::clock_now_ms();
+                                progressed = true;
                             }
                         }
 
@@ -283,6 +296,12 @@ macro_rules! __define_smoltcp_platform_impl {
 
                         if SmoltcpBridge::clock_now_ms() - start > SOCKET_TIMEOUT_MS {
                             return usize::MAX;
+                        }
+
+                        // issue 2022 — no bytes moved this round; sleep to the
+                        // next event rather than spinning to the timeout.
+                        if !progressed {
+                            $crate::wait_idle::idle_until_ms(start + SOCKET_TIMEOUT_MS + 1);
                         }
                     }
 
@@ -373,6 +392,9 @@ macro_rules! __define_smoltcp_platform_impl {
                         if SmoltcpBridge::clock_now_ms() - start > timeout {
                             return usize::MAX;
                         }
+
+                        // issue 2022 — nothing yet; sleep to the next event.
+                        $crate::wait_idle::idle_until_ms(start + timeout + 1);
                     }
                 }
 
@@ -391,6 +413,7 @@ macro_rules! __define_smoltcp_platform_impl {
 
                     while total < len {
                         SmoltcpBridge::poll_network();
+                        let mut progressed = false;
 
                         if SmoltcpBridge::udp_can_recv(handle) {
                             let remaining = len - total;
@@ -401,11 +424,18 @@ macro_rules! __define_smoltcp_platform_impl {
                             if received > 0 {
                                 total += received as usize;
                                 start = SmoltcpBridge::clock_now_ms();
+                                progressed = true;
                             }
                         }
 
                         if SmoltcpBridge::clock_now_ms() - start > SOCKET_TIMEOUT_MS {
                             return usize::MAX;
+                        }
+
+                        // issue 2022 — no bytes moved this round; sleep to the
+                        // next event rather than spinning to the timeout.
+                        if !progressed {
+                            $crate::wait_idle::idle_until_ms(start + SOCKET_TIMEOUT_MS + 1);
                         }
                     }
 
@@ -433,6 +463,7 @@ macro_rules! __define_smoltcp_platform_impl {
 
                     while total < len {
                         SmoltcpBridge::poll_network();
+                        let mut progressed = false;
 
                         if SmoltcpBridge::udp_can_send(handle) {
                             let remaining = len - total;
@@ -442,11 +473,18 @@ macro_rules! __define_smoltcp_platform_impl {
                             if sent > 0 {
                                 total += sent as usize;
                                 start = SmoltcpBridge::clock_now_ms();
+                                progressed = true;
                             }
                         }
 
                         if SmoltcpBridge::clock_now_ms() - start > SOCKET_TIMEOUT_MS {
                             return usize::MAX;
+                        }
+
+                        // issue 2022 — no bytes moved this round; sleep to the
+                        // next event rather than spinning to the timeout.
+                        if !progressed {
+                            $crate::wait_idle::idle_until_ms(start + SOCKET_TIMEOUT_MS + 1);
                         }
                     }
 

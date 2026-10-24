@@ -30,6 +30,7 @@
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
 
+pub mod irq;
 pub mod regs;
 
 use core::{
@@ -457,6 +458,14 @@ impl Lan9118 {
     // ========================================================================
     // TX/RX FIFO operations
     // ========================================================================
+
+    /// Whether a frame has been read out of the FIFO and is waiting in the
+    /// driver for smoltcp to take it. `receive` holds one back while the TX
+    /// FIFO is full, so an empty FIFO does not by itself mean nothing is
+    /// pending — a board deciding whether to sleep asks both (issue 2022).
+    pub fn rx_buffered(&self) -> bool {
+        self.rx_len > 0
+    }
 
     /// Check if there are packets waiting in the RX FIFO.
     fn rx_packets_pending(&self) -> u32 {
