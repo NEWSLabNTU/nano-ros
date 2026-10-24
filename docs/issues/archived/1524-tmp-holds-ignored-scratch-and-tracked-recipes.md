@@ -3,15 +3,16 @@ id: 1524
 title: "`tmp/` is both ignored scratch and TRACKED recipes, so the instruction that
   sends every session there does not warn that `rm -rf tmp` destroys committed
   files — and it has, twice"
-status: open
+status: resolved
 type: bug
 area: [tooling, docs]
 severity: medium
 found: 2026-09-28
+resolved: 2026-10-24
 related: [1513, 0196, phase-395]
 ---
 
-**Home: [phase-395](../roadmap/phase-395-dev-workflow-migration.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-395](../../roadmap/archived/phase-395-dev-workflow-migration.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 ## What is wrong
 
@@ -78,6 +79,17 @@ sessions actually act on.
 
 This issue takes (3) now as the stop-gap, because the warning costs a line and
 the moves need an owner.
+
+## Resolution (2026-10-24) — option 1
+
+The ten recipes moved to `scripts/oneshot/` (`git mv`, history kept), with a
+README saying what each one did and that nothing runs them. Their own `Usage:`
+lines were updated to the new path. `git ls-files tmp` is now empty, so
+`rm -rf tmp` deletes only scratch, and CLAUDE.md's instruction is true as
+written; the stop-gap warning there was replaced by a pointer to the new home.
+
+No gate was added: `.gitignore`'s `/tmp/` already refuses a new file without
+`git add -f`, which is how a tracked file would have to get back in.
 
 ## Not this issue
 

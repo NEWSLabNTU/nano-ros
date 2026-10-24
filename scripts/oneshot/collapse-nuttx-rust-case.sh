@@ -2,7 +2,7 @@
 # Phase 118.B.5 — collapse one qemu-armv7a-nuttx/rust/<rmw>/<case>
 # sibling into qemu-armv7a-nuttx/rust/<case>.
 #
-# Usage: tmp/collapse-nuttx-rust-case.sh <case>
+# Usage: scripts/oneshot/collapse-nuttx-rust-case.sh <case>
 set -euo pipefail
 
 case_name="${1:?usage: $0 <case>}"

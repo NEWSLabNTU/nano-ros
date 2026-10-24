@@ -3,11 +3,11 @@
 # (lang=c|cpp, cmake build) sibling into examples/<plat>/<lang>/<case>.
 # RMW selection moves to cmake `-DNROS_RMW=<rmw>` cache var.
 #
-# Usage: tmp/collapse-rtos-cmake-case.sh <plat> <lang> <case>
+# Usage: scripts/oneshot/collapse-rtos-cmake-case.sh <plat> <lang> <case>
 #
 # Examples:
-#   tmp/collapse-rtos-cmake-case.sh qemu-arm-freertos c talker
-#   tmp/collapse-rtos-cmake-case.sh qemu-armv7a-nuttx cpp listener
+#   scripts/oneshot/collapse-rtos-cmake-case.sh qemu-arm-freertos c talker
+#   scripts/oneshot/collapse-rtos-cmake-case.sh qemu-armv7a-nuttx cpp listener
 set -euo pipefail
 
 plat="${1:?usage: $0 <plat> <lang> <case>}"

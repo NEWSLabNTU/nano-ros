@@ -9,7 +9,7 @@ related: [0992, 0876, 0883, phase-413, phase-395]
 resolved: 2026-10-14
 ---
 
-**Home: [phase-395](../../roadmap/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-413, which is archived.
+**Home: [phase-395](../../roadmap/archived/phase-395-dev-workflow-migration.md)** — re-homed 2026-10-12 from phase-413, which is archived.
 
 Audit of all 11 workflows against the four properties they are supposed to have:
 a workflow reads as a user session; provisioning goes through `nros setup`; each

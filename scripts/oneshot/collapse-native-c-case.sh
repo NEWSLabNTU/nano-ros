@@ -3,7 +3,7 @@
 # linux/c/<case>. Idempotent: skips if the target dir already exists.
 # XRCE C variant is currently deferred (main.c diverges — manual CDR).
 #
-# Usage: tmp/collapse-native-c-case.sh <case>
+# Usage: scripts/oneshot/collapse-native-c-case.sh <case>
 set -euo pipefail
 
 case_name="${1:?usage: $0 <case>}"
