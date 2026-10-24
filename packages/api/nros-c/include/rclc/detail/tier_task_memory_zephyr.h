@@ -43,7 +43,13 @@
  * stack every tier got before. A generated entry passes a spawned level that
  * declares no `stack_bytes` as `NROS_LEVEL_STACK_BYTES(member)`, and the cost
  * report (`scripts/nros-mem-report.py --levels`) checks the static against the
- * same arithmetic. */
+ * same arithmetic.
+ *
+ * Issue 2019 — the frame covers the level's own setup (open_level, the
+ * members' registration), which runs on the level's stack before its first
+ * pass and is that stack's peak on the ports measured (FreeRTOS, NuttX). The
+ * 4,096 B default is an estimate on Zephyr: measure a board with
+ * CONFIG_THREAD_ANALYZER and set CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME. */
 #ifdef CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME
 #define NROS_LEVEL_WORKER_FRAME_ CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME
 #else

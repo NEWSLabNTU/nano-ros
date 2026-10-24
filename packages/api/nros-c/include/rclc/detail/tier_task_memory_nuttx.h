@@ -28,8 +28,14 @@
 #ifndef NROS_NUTTX_LEVEL_STACK_DEFAULT
 #define NROS_NUTTX_LEVEL_STACK_DEFAULT 16384u
 #endif
+/* Issue 2019 — the frame is measured, not estimated: a spawned level runs its
+ * own setup (open_level, the members' registration) on its own stack before
+ * its first pass, and that setup is the stack's peak. The C level runner's
+ * spawned level on QEMU virt cortex-a7 (realtime-c, stack coloration) peaked
+ * at 10,384 B after setup and no deeper after 3,000 passes; rounded up to the
+ * next KiB. */
 #ifndef NROS_NUTTX_LEVEL_WORKER_FRAME
-#define NROS_NUTTX_LEVEL_WORKER_FRAME 4096u
+#define NROS_NUTTX_LEVEL_WORKER_FRAME 11264u
 #endif
 #if NROS_NUTTX_LEVEL_WORKER_FRAME >= NROS_NUTTX_LEVEL_STACK_DEFAULT
 #error "nros: NROS_NUTTX_LEVEL_WORKER_FRAME must stay below NROS_NUTTX_LEVEL_STACK_DEFAULT"

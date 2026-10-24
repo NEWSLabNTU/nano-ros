@@ -56,8 +56,13 @@
 #ifndef NROS_FREERTOS_LEVEL_STACK_DEFAULT
 #define NROS_FREERTOS_LEVEL_STACK_DEFAULT 262144u
 #endif
+/* Issue 2019 — the frame is measured, not estimated: a spawned level runs its
+ * own setup (open_level, the members' registration) on its own stack before
+ * its first pass, and that setup is the stack's peak. The C level runner's
+ * spawned level on mps2-an385 QEMU (realtime-c) peaked at 9,448 B after setup
+ * and no deeper after 3,000 passes; rounded up to the next KiB. */
 #ifndef NROS_FREERTOS_LEVEL_WORKER_FRAME
-#define NROS_FREERTOS_LEVEL_WORKER_FRAME 4096u
+#define NROS_FREERTOS_LEVEL_WORKER_FRAME 10240u
 #endif
 #define NROS_LEVEL_CALLBACK_STACK_DEFAULT_                                                         \
     (NROS_FREERTOS_LEVEL_STACK_DEFAULT - NROS_FREERTOS_LEVEL_WORKER_FRAME)
