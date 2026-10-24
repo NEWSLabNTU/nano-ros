@@ -2,8 +2,9 @@
 #
 # A PERSISTENT checkout for the self-hosted fixture lanes. phase-489 W6.
 #
-# usage: scripts/ci/fixture-tree.sh sync        bring the tree to this job's commit
-#        scripts/ci/fixture-tree.sh path        print where the tree lives
+# usage: scripts/ci/fixture-tree.sh sync           bring the tree to this job's commit
+#        scripts/ci/fixture-tree.sh reports <dest>  copy THIS run's junit and logs to <dest>
+#        scripts/ci/fixture-tree.sh path           print where the tree lives
 #        scripts/ci/fixture-tree.sh --self-test
 #
 # WHAT THIS IS FOR
@@ -64,6 +65,17 @@
 # in it and in its submodules is removed — object stores are kept — and the
 # age restarts. That also bounds what the tree can accumulate.
 #
+# WHAT `reports` IS FOR — issue 1991
+#
+# Kept files include REPORTS: the nextest junit and the fixture-build logs.
+# A job whose tests never ran left the previous run's junit in place, and the
+# upload shipped it as this run's: nightly 40073092367 (2026-10-24) failed in
+# `just build tier2-nightly`, ran no test, and uploaded a junit dated
+# 2026-10-21 naming three failures. So `sync` stamps the run's start, and
+# `reports <dest>` copies only the reports written AFTER it, keeping their
+# paths relative to the tree. Upload <dest>, never the tree;
+# `check-fixture-tree-persistence` R4 holds every tree job to that.
+#
 # One job runs on a runner at a time, so the tree has one writer.
 set -euo pipefail
 
@@ -72,6 +84,7 @@ die() { printf 'fixture-tree: FAIL — %s\n' "$*" >&2; exit 1; }
 
 TREE_NAME=nros-fixture-tree
 BORN_MARK=nros-fixture-tree-born   # under .git/, so no clean removes it
+RUN_MARK=nros-fixture-tree-run-start   # under .git/; its mtime is this run's start
 
 # The tree for a checkout at $1: a SIBLING of it, never inside it.
 tree_for() { printf '%s/%s' "$(dirname "$1")" "$TREE_NAME"; }
@@ -108,6 +121,8 @@ sync_tree() {
     born_mark="$(git -C "$tree" rev-parse --path-format=absolute --git-path "$BORN_MARK")"
     lock="$(git -C "$tree" rev-parse --path-format=absolute --git-path index.lock)"
     [ "$fresh" -eq 0 ] || date +%s > "$born_mark"
+    # Every report written from here on is this run's (`reports`).
+    : > "$(git -C "$tree" rev-parse --path-format=absolute --git-path "$RUN_MARK")"
     # A lock at job start is a killed job's: one job per runner, one writer.
     if [ -f "$lock" ]; then
         say "removing a stale index.lock (an earlier job was killed mid-checkout)"
@@ -161,6 +176,7 @@ sync_tree() {
         git init -q "$tree"
         born_mark="$(git -C "$tree" rev-parse --path-format=absolute --git-path "$BORN_MARK")"
         echo "$born" > "$born_mark"
+        : > "$(git -C "$tree" rev-parse --path-format=absolute --git-path "$RUN_MARK")"
         [ -z "$url" ] || git -C "$tree" remote add origin "$url"
         fetch_head
     fi
@@ -199,6 +215,35 @@ sync_tree() {
         echo "NROS_FIXTURE_TREE=$tree" >> "$GITHUB_ENV"
     fi
     say "ready: $tree"
+}
+
+# The reports this run wrote, copied to $2 at their tree-relative paths. The
+# globs are the ones the upload steps named before issue 1991's fix; a file
+# older than the run mark is an earlier run's and is left behind, counted.
+collect_reports() {
+    local tree="$1" dest="$2" mark
+    [ -e "$tree/.git" ] || die "no fixture tree at $tree (did \`sync\` run?)"
+    mark="$(git -C "$tree" rev-parse --path-format=absolute --git-path "$RUN_MARK")"
+    [ -f "$mark" ] || die "no run mark at $mark: \`sync\` did not run in this job, so no report can be told from an earlier run's"
+    mkdir -p "$dest"
+    dest="$(cd "$dest" && pwd -P)"
+    local fresh=0 stale=0 f
+    while IFS= read -r -d '' f; do
+        # Not OLDER than the mark: file times come from a coarse kernel clock,
+        # so a report written just after `sync` can tie it. A tie is this run's.
+        if ! [ "$mark" -nt "$tree/$f" ]; then
+            (cd "$tree" && cp --parents -p -- "$f" "$dest/")
+            fresh=$((fresh + 1))
+        else
+            stale=$((stale + 1))
+        fi
+    done < <(cd "$tree" && {
+        [ ! -d target/nextest ] || find target/nextest -type f -name 'junit*.xml' -print0
+        [ ! -d build ] || find build -type f -name '*.log' -print0
+        [ ! -d tmp ] || find tmp -mindepth 1 -maxdepth 1 -type d -name 'build-test-fixtures-*' \
+            -exec find {} -type f \( -name '*.log' -o -name '*.joblog' \) -print0 \;
+    })
+    say "reports: $fresh written by this run copied to $dest; $stale from earlier runs left behind"
 }
 
 self_test() {
@@ -249,6 +294,36 @@ self_test() {
         && pass "an unchanged source keeps its mtime across a pull" || fail "unchanged a.c rewritten"
     [ "$(stat -c %Y "$tree/b.c")" -gt "$(date -d '2002-02-02' +%s)" ] && [ "$(cat "$tree/b.c")" = b2 ] \
         && pass "a changed source is rewritten with a newer mtime" || fail "changed b.c not rewritten"
+
+    # Issue 1991: `reports` copies what THIS run wrote, never an earlier run's.
+    mkdir -p "$tree/target/nextest/default" "$tree/tmp/build-test-fixtures-1/x"
+    echo old > "$tree/target/nextest/default/junit.xml"
+    echo oldlog > "$tree/tmp/build-test-fixtures-1/x/zephyr.log"
+    touch -d '2001-01-01' "$tree/target/nextest/default/junit.xml" "$tree/tmp/build-test-fixtures-1/x/zephyr.log"
+    sync_tree "$ws" "$tree" 7 >/dev/null
+    local rep="$t/reports"
+    local said
+    said="$(collect_reports "$tree" "$rep")"
+    # It SAW both old files and left them: an empty <dest> alone would also be
+    # what a scan that never found them produces.
+    [ -z "$(find "$rep" -type f)" ] && [[ "$said" == *"0 written by this run"*"; 2 from earlier runs"* ]] \
+        && pass "a run that wrote no report uploads none, not the last run's junit" \
+        || fail "stale reports: said '$said', copied: $(find "$rep" -type f)"
+    echo new > "$tree/target/nextest/default/junit.xml"
+    echo b > "$tree/tmp/build-test-fixtures-1/x/zephyr.log"
+    echo j > "$tree/tmp/build-test-fixtures-1/run.joblog"
+    collect_reports "$tree" "$rep" >/dev/null
+    [ "$(cat "$rep/target/nextest/default/junit.xml" 2>/dev/null)" = new ] \
+        && [ -f "$rep/tmp/build-test-fixtures-1/x/zephyr.log" ] && [ -f "$rep/tmp/build-test-fixtures-1/run.joblog" ] \
+        && pass "reports this run wrote are copied at their tree-relative paths" \
+        || fail "fresh reports not copied: $(cd "$rep" && find . -type f)"
+    rm -f "$(git -C "$tree" rev-parse --path-format=absolute --git-path "$RUN_MARK")"
+    if (collect_reports "$tree" "$t/reports2") >/dev/null 2>&1; then
+        fail "reports ran with no run mark"
+    else
+        pass "reports refuses when sync did not stamp this run"
+    fi
+    rm -rf "$tree/target" "$tree/tmp"
 
     # Inside the checkout is refused: the checkout's clean would remove it.
     if (sync_tree "$ws" "$ws/inner" 7) >/dev/null 2>&1; then
@@ -380,10 +455,15 @@ case "$cmd" in
         sync_tree "$GITHUB_WORKSPACE" "$(tree_for "$GITHUB_WORKSPACE")" \
             "${NROS_FIXTURE_TREE_MAX_AGE_DAYS:-7}"
         ;;
+    reports)
+        [ -n "${GITHUB_WORKSPACE:-}" ] || die "GITHUB_WORKSPACE is unset (this is a CI step)"
+        [ -n "${2:-}" ] || die "usage: fixture-tree.sh reports <dest>"
+        collect_reports "$(tree_for "$GITHUB_WORKSPACE")" "$2"
+        ;;
     path)
         [ -n "${GITHUB_WORKSPACE:-}" ] || die "GITHUB_WORKSPACE is unset"
         tree_for "$GITHUB_WORKSPACE"; echo
         ;;
     --self-test) self_test ;;
-    *) die "usage: fixture-tree.sh sync | path | --self-test (got '${cmd}')" ;;
+    *) die "usage: fixture-tree.sh sync | reports <dest> | path | --self-test (got '${cmd}')" ;;
 esac
