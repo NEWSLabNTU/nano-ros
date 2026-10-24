@@ -727,6 +727,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     crate::orchestration::image::validate_panic(Some(p))
                         .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
                 }
+
                 // phase-445 W6 — same shape, and now load-bearing: `transport`
                 // IMPLIES two link knobs below, so a typo would leave both
                 // unapplied rather than merely unread.
@@ -1166,6 +1167,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                             .is_file()
                         {
                             return None;
+                        }
+                        if img.before_boot.is_some() {
+                            return Some(Err(before_boot_not_on_c_road(&id)));
                         }
                         let b = img.board.clone().unwrap_or_default();
                         Some(Ok(crate::builder::cmake_root::CmakeEntry {
@@ -2936,6 +2940,9 @@ fn generate_entry(
     // that routes a NATIVE image to the cmake driver. One predicate, so the
     // language a workspace is built in cannot differ by platform.
     if has_non_rust {
+        if image.before_boot.is_some() {
+            return Err(before_boot_not_on_c_road(image_id));
+        }
         let mut app = crate::builder::west_app::resolve_cmake(
             root,
             &entry_dir_for_deps,
@@ -3179,11 +3186,15 @@ fn generate_entry(
     // `[patch]` walk from them (`registry_patches_from`).
     let spec_nodes_dirs: Vec<PathBuf> = nodes.iter().map(|(_, d)| d.clone()).collect();
 
+    // Every Rust road reaches this spec, so the key is checked here once.
+    crate::orchestration::image::validate_before_boot(image.before_boot.as_deref())
+        .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
     let mut spec = EntrySpec {
         image_id: image_id.to_string(),
         launch,
         args: image.args.clone(),
         panic: image.panic.clone(),
+        before_boot: image.before_boot.clone(),
         nodes,
         nano_ros_root: nros_root.to_path_buf(),
         facade_dir,
@@ -4710,6 +4721,18 @@ fn generated_output_collision_message(collisions: &[(PathBuf, Vec<String>)]) -> 
 /// ambiguity case, its `board` misread as `native_sim/native/64` making
 /// `fvp_entry` and `zephyr_entry` both match) until issue 1288 deleted its
 /// hand-written application.
+/// RFC-0065 D5 amendment — `before_boot` is a `nros::main!` argument, so it
+/// has a home only in a Rust entry. A C/C++ generated entry is a
+/// `nano_ros_entry(...)` TU with no such hook yet; refusing names the image
+/// rather than dropping the step silently.
+fn before_boot_not_on_c_road(image_id: &str) -> eyre::Report {
+    eyre::eyre!(
+        "`[image.{image_id}] before_boot` applies to a Rust entry, and this image's entry is \
+         C/C++ (its package graph holds a C/C++ package). Run the step from a node's \
+         `register`, or materialise the entry (`nros materialize {image_id}`)."
+    )
+}
+
 fn west_application_dir(
     image_id: &str,
     image: &crate::orchestration::image::ImageBlock,

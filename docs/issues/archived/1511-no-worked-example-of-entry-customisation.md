@@ -1,7 +1,8 @@
 ---
 id: 1511
 title: "Generating every entry removes the last example of a hand-written one, and there is no tutorial for the escape hatch it leaves behind"
-status: open
+status: resolved
+resolved: 2026-10-24
 type: docs
 area: docs, examples, tooling
 severity: medium
@@ -9,7 +10,7 @@ related: [1288, 0865, rfc-0065, rfc-0098, phase-445, phase-477, phase-452]
 found: 2026-09-27
 ---
 
-**Home: [phase-452](../roadmap/phase-452-copy-out-front-door.md)**, re-homed 2026-10-13 from phase-477, archived that day, which named it without owning it.
+**Home: [phase-452](../../roadmap/phase-452-copy-out-front-door.md)**, re-homed 2026-10-13 from phase-477, archived that day, which named it without owning it.
 
 # The escape hatch will exist in the code and nowhere in the docs
 
@@ -118,3 +119,38 @@ sentence can be true.
 - `nros materialize` (RFC-0065 D5) — the escape hatch this issue is about.
 - Issue 1288 — the hand-written Zephyr west entries (fifteen packages, of which
   seven are Rust) still hand-written; the migration this defers behind.
+
+## Resolution (2026-10-24)
+
+The maintainer ruled on the shape: the commonest customisation, one step
+before the runtime starts, becomes a DECLARATION, and materialising stays the
+last resort, for customisation that replaces the macro. RFC-0065 D5 is
+amended to say so.
+
+- **`[image.<id>] before_boot = "<pkg>::<fn>"`**, forwarded as
+  `nros::main!(before_boot = …)`.
+  - The macro calls it first on the OwnedSpin, Zephyr and esp-hal shells.
+  - The binding is typed `fn() -> Result<(), &'static str>`, and an `Err`
+    becomes `RuntimeError::BeforeBoot`.
+  - RTIC and Embassy refuse it, and so do the C/C++ roads, each naming why.
+- **The worked example is built and run by a lane.**
+  `examples/workspaces/features`, image `linux_rust_before_boot`, node
+  package `rust_before_boot_talker_pkg`. Fixture row
+  `workspace-features-rust-before-boot`, matrix cell
+  `(Linux, Rust, Zenoh, BeforeBoot, Workspace)`, test
+  `workspace_features::rust_before_boot`. The node logs whether the step ran
+  before it registered. Without the key the same image prints `before_boot
+  DID NOT run`, which was measured, so the cell can fail.
+- **The tutorial** is "Customising an entry" in
+  `book/src/getting-started/workspace-entry-pkg.md`. It is a table of
+  escapes, smallest first, then `before_boot`, then `nros materialize` with
+  what the user owns afterwards. It replaces the old "Escape hatch" section,
+  whose Option A called `runtime.create_node` (which `RuntimeCtx` does not
+  have) and whose Option B could not be written as shown.
+
+On this issue's point 1, a worked example of a *materialised* entry: the
+example demonstrates the declaration instead. The tutorial states what a
+materialised entry is (the same one-line macro plus the shell the user now
+owns) and why replacing the macro is expensive: no supported expanded Rust
+form exists, because `codegen entry --lang rust` was retired for silently
+dropping tiers, lifecycle and parameter services.

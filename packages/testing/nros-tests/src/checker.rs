@@ -54,6 +54,8 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // marker sets from `output`; delivery here means "the demo's
         // final line appeared".
         Workload::Logging => output::LISTENER_LOG_PREFIX,
+        // The node's own boot-order line, from the entry's stdout.
+        Workload::BeforeBoot => output::WS_BEFORE_BOOT_MARKER,
         Workload::Params | Workload::Lifecycle | Workload::Safety => output::LISTENER_LOG_PREFIX,
         // Not delivery at all — the fixture's own verdict line. `assert_delivery`
         // counting it once is exactly the contract.

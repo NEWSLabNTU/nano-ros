@@ -1,9 +1,9 @@
 //! `nros materialize <image>` — take ownership of a generated entry
 //! (phase-383 W7.b, RFC-0065 D5).
 //!
-//! The last resort, and it says so. Known escapes — `panic`, `profile` — are
-//! declarations on the image and never leave generation; this is for what
-//! nobody foresaw.
+//! The last resort, and it says so. Known escapes — `panic`, `profile`,
+//! `before_boot` — are declarations on the image and never leave generation;
+//! this is for what nobody foresaw.
 //!
 //! **One way, deliberately.** Expo shipped `eject`, found it *"a one-way door
 //! for most projects"*, and replaced it with always-generate plus declarative

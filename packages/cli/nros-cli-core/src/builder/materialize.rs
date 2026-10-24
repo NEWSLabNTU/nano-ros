@@ -11,8 +11,8 @@
 //! losing your changes the next time you run `prebuild --clean`."*
 //!
 //! So the escapes that are KNOWN are declarations on the image — `panic`,
-//! `profile` — and never leave generation. This module is for what nobody
-//! foresaw.
+//! `profile`, `before_boot` (a pre-boot step, the 2026-10-24 amendment) — and
+//! never leave generation. This module is for what nobody foresaw.
 //!
 //! ## What materialising does and does NOT freeze
 //!

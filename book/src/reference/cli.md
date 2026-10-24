@@ -342,8 +342,8 @@ board's `rustflags` onto themselves.
 ### `nros materialize <image> [--workspace <dir>] [--force]`
 
 Take ownership of a generated entry package (RFC-0065 D5) — the last resort,
-after which `nros build` stops regenerating it. `panic` and `profile` are
-declarations on the image and need no materialising. A second run without
+after which `nros build` stops regenerating it. `panic`, `profile` and
+`before_boot` are declarations on the image and need no materialising. A second run without
 `--force` is refused, because it would discard the edits the first one existed
 to enable.
 

@@ -88,6 +88,15 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panic: Option<String>,
 
+    /// RFC-0065 D5 amendment (2026-10-24) — a function the generated entry
+    /// calls FIRST, before the board boots: `before_boot = "my_pkg::open_can"`,
+    /// typed `fn() -> Result<(), &'static str>`. Forwarded to `nros::main!`
+    /// as a path. It is the declared escape for a pre-boot step, so an image
+    /// needing one keeps a generated entry instead of materialising.
+    /// Rust entries only; the C/C++ roads refuse it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before_boot: Option<String>,
+
     /// RMW backend for this image. Absent ⇒ the system header's `rmw`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rmw: Option<String>,
@@ -342,6 +351,7 @@ impl ImageBlock {
                 merged
             },
             panic: pick(&self.panic, &base.panic),
+            before_boot: pick(&self.before_boot, &base.before_boot),
             rmw: pick(&self.rmw, &base.rmw),
             domain_id: self.domain_id.or(base.domain_id),
             locator: pick(&self.locator, &base.locator),
@@ -672,6 +682,53 @@ pub fn validate_panic(policy: Option<&str>) -> Result<(), String> {
              UNDER the `own` policy, not instead of one.",
             PANIC_POLICIES.join(" | ")
         )),
+    }
+}
+
+/// Validate an image's `before_boot` as a Rust path to a function in a crate.
+///
+/// Checked here so a typo is reported against `system.toml` rather than as a
+/// macro error inside a generated file. At least two segments: the function
+/// lives in a package the entry depends on (a node package of the launch), so
+/// a bare name has nowhere to resolve.
+pub fn validate_before_boot(path: Option<&str>) -> Result<(), String> {
+    let Some(p) = path else { return Ok(()) };
+    let ident = |s: &str| {
+        let mut c = s.chars();
+        c.next()
+            .is_some_and(|f| f == '_' || f.is_ascii_alphabetic())
+            && c.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+    };
+    let segments: Vec<&str> = p.split("::").collect();
+    if segments.len() >= 2 && segments.iter().all(|s| ident(s)) {
+        Ok(())
+    } else {
+        Err(format!(
+            "`before_boot = \"{p}\"` is not a path to a function in a package \
+             (expected `<package>::<fn>`, e.g. `\"my_pkg::open_can\"`)"
+        ))
+    }
+}
+
+#[cfg(test)]
+mod before_boot_tests {
+    use super::validate_before_boot;
+
+    #[test]
+    fn before_boot_must_name_a_function_in_a_package() {
+        assert!(validate_before_boot(None).is_ok());
+        assert!(validate_before_boot(Some("my_pkg::open_can")).is_ok());
+        assert!(validate_before_boot(Some("my_pkg::hw::open_can")).is_ok());
+        for bad in [
+            "open_can",
+            "my-pkg::open_can",
+            "my_pkg::",
+            "::open_can",
+            "my_pkg::open can",
+        ] {
+            let e = validate_before_boot(Some(bad)).unwrap_err();
+            assert!(e.contains("<package>::<fn>"), "{bad}: {e}");
+        }
     }
 }
 

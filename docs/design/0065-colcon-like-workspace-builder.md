@@ -3,7 +3,7 @@ rfc: 0065
 title: "A colcon-like builder: `nros build`, and the entry stops being hand-written"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-09
+last-reviewed: 2026-10
 implements-tracked-by: [phase-383]
 supersedes: []
 superseded-by: null
@@ -452,6 +452,50 @@ support for D6: the runtime policy was already understood as a property of the
 That covers every escape the survey found (D4): the panic policy and the
 per-board build profile. The custom spin loop already has its own supported
 seam, RFC-0024 §11.8.
+
+**Amended 2026-10-24 (issue 1511): a pre-boot step is a declaration too.**
+
+```toml
+[image.linux]
+board       = "linux"
+before_boot = "my_pkg::open_can"   # fn() -> Result<(), &'static str>
+```
+
+`nros build` forwards it as `nros::main!(before_boot = my_pkg::open_can, …)`.
+The macro emits the call as the first statement of the boot, before the board
+does anything:
+
+- in the OwnedSpin entry (hosted, NuttX, FreeRTOS, bare metal) it runs before
+  `setup_transport`;
+- on Zephyr it runs after `rust_main` has set up the log sinks and before
+  `wait_network`;
+- on esp-hal it runs before `run_with_deploy`.
+
+An `Err` becomes `RuntimeError::BeforeBoot(reason)` and the board's failure
+exit. The binding is typed against the documented signature, so a wrong
+function is a type mismatch naming that signature rather than an error deep
+in the expansion.
+
+Why this is a declaration and not a reason to materialise: running one step
+before the runtime starts was the commonest case that pushed a user towards
+`nros materialize`, and materialising for it handed them everything the macro
+does, which is far more than the step. The hook leaves the entry generated,
+so the launch file still reaches it.
+
+Its reach is deliberately limited:
+
+- **Rust entries only.** It is a `nros::main!` argument. The C/C++ roads
+  refuse it, naming the image, rather than dropping the step silently.
+- **Not on RTIC or Embassy**, whose framework owns the first statement and
+  has its own init. The macro refuses it there.
+- **Nothing has booted when it runs.** On a bare-metal board that includes
+  the board's own hardware init. Hardware every image on a board needs
+  (clocks, DMA, flash unlock) still belongs in the board's `init_hardware`
+  (D11).
+
+The order of escapes is now: an `[image.*]` key, then `before_boot`, then a
+board package, and `nros materialize` last, for customisation extensive enough
+to replace the macro.
 
 `nros materialize <image>` remains for the genuinely unforeseen. It writes the
 generated entry into `src/<name>_entry/` as a real, owned package, and the
@@ -1186,6 +1230,10 @@ rejected here, because neither has a derivation to perform.
 
 ## Changelog
 
+- **2026-10-24** — D5 amended (issue 1511): `[image.<id>] before_boot`, a
+  pre-boot step declared on the image and forwarded to `nros::main!`. It is
+  Rust only; the C/C++ roads, RTIC and Embassy refuse it. Materialising stays
+  the last resort, for customisation that replaces the macro.
 - **2026-10-11** — D1 amended (phase-485 W3): stage 5 waits on the native
   command with inherited stdio instead of `exec`ing it, so `nros build` can
   record `nros-sdk.lock` after the build (RFC-0104 D4). Diagnostics and the

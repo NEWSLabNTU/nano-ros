@@ -1,0 +1,22 @@
+[package]
+name = "rust_before_boot_talker_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Node pkg — exports a `before_boot` hook the image declares, and proves it ran first."
+
+# Node pkg shape — lib only. The generated Entry pkg calls `prepare` (named by
+# `[image.linux_rust_before_boot] before_boot`) before the board boots, then
+# registers this node as usual.
+[lib]
+path = "src/lib.rs"
+
+[package.metadata.nros.node]
+class = "rust_before_boot_talker_pkg::BeforeBootTalker"
+name = "before_boot_talker"
+
+[dependencies]
+nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
+    "alloc",
+    "rmw-cffi", "macros"] }
+log = { version = "0.4", default-features = false }

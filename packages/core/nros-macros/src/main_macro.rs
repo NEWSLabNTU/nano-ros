@@ -105,6 +105,17 @@ struct MainArgs {
     /// `#[panic_handler]`, so exactly one provider must be chosen before rustc
     /// runs, and `own` is what suppresses emission at that same point.
     panic: PanicPolicy,
+    /// RFC-0065 D5 amendment (2026-10-24) — `before_boot = path::to_fn`.
+    ///
+    /// A function the entry calls FIRST, before the board boots, typed
+    /// `fn() -> Result<(), &'static str>`. It is the declared escape for the
+    /// commonest reason to materialise an entry (one step before the runtime
+    /// starts), so the macro keeps doing everything else and the launch file
+    /// still reaches the entry. An `Err` becomes
+    /// `RuntimeError::BeforeBoot` and the board's failure exit.
+    before_boot: Option<SynPath>,
+    /// Span of the `before_boot` key, for the framework refusal.
+    before_boot_span: Option<Span>,
 }
 
 /// What ends this image (RFC-0077's three values, identical on the cmake side).
@@ -260,6 +271,27 @@ impl Parse for MainArgs {
                         }
                     };
                 }
+                "before_boot" => {
+                    let path = match value {
+                        KvValue::Path(p) => p,
+                        KvValue::Str(s) => {
+                            return Err(syn::Error::new(
+                                s.span(),
+                                "`before_boot = ` takes a function PATH, not a string \
+                                 (`before_boot = my_pkg::open_can`)",
+                            ));
+                        }
+                        _ => {
+                            return Err(syn::Error::new(
+                                key.span(),
+                                "`before_boot = ` takes a function path \
+                                 (`before_boot = my_pkg::open_can`)",
+                            ));
+                        }
+                    };
+                    out.before_boot = Some(path);
+                    out.before_boot_span = Some(key.span());
+                }
                 "custom_tasks" => {
                     // Phase 216.B.4 — `custom_tasks = [ident, ident,
                     // ...]`. Stored even when empty so the framework-
@@ -282,7 +314,7 @@ impl Parse for MainArgs {
                         key.span(),
                         format!(
                             "unknown `nros::main!` argument `{other}` \
-                             (expected one of: board, launch, model, args, custom_tasks, spin, panic)"
+                             (expected one of: board, launch, model, args, custom_tasks, spin, panic, before_boot)"
                         ),
                     ));
                 }
@@ -306,10 +338,10 @@ struct KeyValue {
 }
 
 enum KvValue {
-    /// A bare path value. No live key takes one since the retired
-    /// `board = X` (phase-484 W8c); it is parsed so a path argument still gets
-    /// the key's own diagnostic rather than a generic syn error.
-    Path,
+    /// A bare path value: `before_boot = my_pkg::open_can`. The retired
+    /// `board = X` (phase-484 W8c) parses here too, so it still gets its own
+    /// diagnostic rather than a generic syn error.
+    Path(SynPath),
     /// `launch = "demo_bringup:sim.launch.xml"`
     Str(LitStr),
     /// `args = [("use_sim", "true"), ...]`
@@ -359,10 +391,10 @@ impl Parse for KeyValue {
                 value: KvValue::Str(s),
             });
         }
-        let _path: SynPath = input.parse()?;
+        let path: SynPath = input.parse()?;
         Ok(KeyValue {
             key,
-            value: KvValue::Path,
+            value: KvValue::Path(path),
         })
     }
 }
@@ -713,6 +745,40 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             ),
         ));
     }
+
+    // RFC-0065 D5 amendment — `before_boot` has a splice point only where the
+    // macro writes the first statement of the boot: the OwnedSpin, Zephyr and
+    // esp-hal entry bodies. RTIC's `#[init]` and Embassy's `main` belong to
+    // the framework, which has its own init hook for exactly this.
+    if args.before_boot.is_some() && matches!(framework, Framework::Rtic | Framework::Embassy) {
+        let span = args.before_boot_span.unwrap_or_else(Span::call_site);
+        let label = if framework == Framework::Rtic {
+            "RTIC"
+        } else {
+            "Embassy"
+        };
+        return Err(syn::Error::new(
+            span,
+            format!(
+                "nros::main!: `before_boot` is not available on the {label} framework, \
+                 whose own init owns the first statement. Put the step in the board's \
+                 `init_hardware`, or in the framework's init."
+            ),
+        ));
+    }
+    // The hook's call, typed through a binding so a wrong signature is reported
+    // as a mismatch against the documented one rather than deep in the body.
+    let before_boot_call: proc_macro2::TokenStream = match &args.before_boot {
+        Some(path) => quote! {
+            {
+                let __nros_before_boot: fn() -> ::core::result::Result<(), &'static str> = #path;
+                __nros_before_boot().map_err(
+                    ::nros::__macro_support::nros_platform::RuntimeError::BeforeBoot,
+                )?;
+            }
+        },
+        None => quote! {},
+    };
 
     // --- Phase 228.G — per-tier resolution state (RFC-0032 §6) ---
     // Populated only in the launch arm (where bringup_dir + node pkgs are in
@@ -2204,6 +2270,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
+                // RFC-0065 D5 amendment — the image's declared pre-boot step,
+                // before the board does anything.
+                #before_boot_call
                 // Phase 244.D1 — custom-transport install seam. Install a
                 // board custom transport (e.g. the XRCE-over-UART vtable)
                 // selected by `deploy.transport`, BEFORE the RMW registers.
@@ -2350,6 +2419,9 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
+                // RFC-0065 D5 amendment — the declared pre-boot step. After
+                // the log sinks (`rust_main` set them up), before the network.
+                #before_boot_call
                 // Carrier / link-up gate. Use the `nros_platform::zephyr::
                 // wait_network` C-symbol wrapper (Phase 248 C7 step 1 — relocated
                 // from `nros::platform::zephyr`) — it exposes a real linkable
@@ -2450,6 +2522,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 (),
                 ::nros::__macro_support::nros_platform::RuntimeError,
             > {
+                // RFC-0065 D5 amendment — the declared pre-boot step.
+                #before_boot_call
                 // Phase 244.D2 — `run_with_deploy` (not `run`) so the
                 // `[package.metadata.nros.deploy.<board>]` overlay (locator / ip /
                 // domain) reaches `BoardEntry::run_with_deploy`; with `run` the
@@ -6329,6 +6403,56 @@ mod leaf_axis_tests {
         assert!(!out.contains("axis_leaf_nros_selection"), "{out}");
         let out = expand_in("panic = \"own\"", "qemu-mps2-an385", "", "").unwrap();
         assert!(!out.contains("axis_leaf_nros_selection"), "{out}");
+    }
+
+    /// RFC-0065 D5 amendment — `before_boot` is the FIRST statement of the
+    /// boot on every shell that has one, typed against the documented
+    /// signature, and its error is the variant that names it.
+    #[test]
+    fn before_boot_runs_first_on_the_owned_spin_zephyr_and_esp32_shells() {
+        for (board, first_after) in [
+            ("linux", "setup_transport"),
+            ("zephyr", "wait_network"),
+            ("esp32-qemu", "run_with_deploy"),
+        ] {
+            let out = expand("before_boot = my_pkg::open_can", board, "").unwrap();
+            let hook = out
+                .find("my_pkg :: open_can")
+                .unwrap_or_else(|| panic!("{board}: hook not emitted:\n{out}"));
+            let next = out[hook..]
+                .find(first_after)
+                .unwrap_or_else(|| panic!("{board}: `{first_after}` not after the hook"));
+            assert!(next > 0, "{board}");
+            assert!(
+                out.contains("fn () -> :: core :: result :: Result < () , & 'static str >"),
+                "{board}: hook not typed against the documented signature:\n{out}"
+            );
+            assert!(out.contains("RuntimeError :: BeforeBoot"), "{board}");
+        }
+        // Absent ⇒ nothing emitted.
+        let out = expand("", "linux", "").unwrap();
+        assert!(!out.contains("__nros_before_boot"), "{out}");
+    }
+
+    /// RTIC's `#[init]` owns the first statement, so the key is refused there,
+    /// naming the framework, rather than silently dropped.
+    #[test]
+    fn before_boot_is_refused_on_a_framework_that_owns_init() {
+        let err = expand("before_boot = my_pkg::open_can", "rtic-mps2-an385", "").unwrap_err();
+        assert!(err.contains("before_boot") && err.contains("RTIC"), "{err}");
+    }
+
+    /// A string is the commonest slip (every other key takes one), so it gets
+    /// a message showing the path form.
+    #[test]
+    fn before_boot_takes_a_path_not_a_string() {
+        let err = match syn::parse_str::<MainArgs>("before_boot = \"my_pkg::open_can\"") {
+            Ok(_) => panic!("a string must be refused"),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains("function PATH"), "{err}");
+        let ok = syn::parse_str::<MainArgs>("before_boot = my_pkg::open_can").unwrap();
+        assert!(ok.before_boot.is_some());
     }
 
     /// The case issue 1766 measured: `param_services` declared, nothing

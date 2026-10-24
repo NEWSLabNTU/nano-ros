@@ -192,13 +192,12 @@ resolves that input into a SystemModel under `<ws>/build/nros/models/<bringup>/`
 (a build artifact — never committed; gate `check-no-tracked-models`), and the
 macro bakes from it. `launch` and `model` are mutually exclusive.
 
-**Escape hatch:** `nros materialize <image>` copies the generated entry to
-`src/<image_id>_entry/` and stamps it; `nros build` then leaves it alone and
-warns if the shape it was cut for moves. Inside it you can skip the macro and
-call `<LinuxBoard as BoardEntry>::run(|runtime| { ... })`, or go fully manual
-with `nros::Executor::open(&ExecutorConfig::default())`. Reach for it only
-after the declarative escapes — an `[image.*]` key, a `conf` fragment, a
-support package — have run out.
+**Escape hatches, smallest first:** an `[image.*]` key (`panic`, `profile`,
+`conf`, `features`); `before_boot = "<pkg>::<fn>"` for one step before the
+runtime starts; the board's `init_hardware` for hardware every image on that
+board needs; and, last, `nros materialize <image>`, which copies the generated
+entry to `src/<image_id>_entry/` for you to own. See
+[Customising an entry](../getting-started/workspace-entry-pkg.md#customising-an-entry).
 
 **C++ / C analogue:** the generated cmake root emits one
 `nano_ros_add_executable(<name> BOARD … BRINGUP … LAUNCH … LANG … TYPED DEPLOY …)`
@@ -371,5 +370,6 @@ more nodes means a workspace with a Bringup pkg.
 | Same nodes on multiple boards | One Node pkg set + one `[image.*]` row per board |
 | Launch topology + the image table | Bringup pkg (declarative — the one package a workspace must have) |
 | A Zephyr application directory | `nros new entry <name> --platform zephyr` |
+| One step before the runtime starts | `[image.<id>] before_boot = "<pkg>::<fn>"` |
 | Startup the declarations cannot express | `nros materialize <image>`, then edit `src/<image>_entry/` |
 | Board hardware bringup | `Board` trait family (see [porting chapter](../porting/board-trait.md)) |

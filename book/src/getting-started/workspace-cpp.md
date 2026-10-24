@@ -366,7 +366,8 @@ package's own `CMakeLists.txt`:
   it with `nros new entry <name> --platform zephyr`.
 - **Startup the declarations cannot express** — `nros materialize <image>`
   writes the generated entry out to `src/<image>_entry/` and `nros build`
-  then leaves it alone.
+  then leaves it alone. (A Rust image has a smaller step first,
+  `[image.*] before_boot`; the C/C++ entry has no such hook yet.)
 
 Either way the entry package needs no source file of its own: the cmake
 function generates the whole body (the `main` above), so an entry's

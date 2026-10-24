@@ -457,6 +457,10 @@ pub enum RuntimeError {
     /// The hosted Entry spin loop failed or did not observe the
     /// requested runtime condition before its bounded test deadline.
     Spin,
+
+    /// RFC-0065 D5 amendment — the image's `before_boot` step returned an
+    /// error, with its reason. Nothing else has run yet.
+    BeforeBoot(&'static str),
 }
 
 impl core::fmt::Display for RuntimeError {
@@ -474,6 +478,7 @@ impl core::fmt::Display for RuntimeError {
                  declares it, so the entry cannot run without it"
             ),
             Self::Spin => write!(f, "entry spin failed"),
+            Self::BeforeBoot(reason) => write!(f, "before_boot failed: {reason}"),
         }
     }
 }

@@ -70,6 +70,8 @@ pub struct EntrySpec {
     /// RFC-0077 panic policy, already validated. `None` leaves the macro's own
     /// default in place.
     pub panic: Option<String>,
+    /// RFC-0065 D5 amendment — `[image.<id>] before_boot`, already validated.
+    pub before_boot: Option<String>,
     /// Node packages the launch file names, as (crate name, directory).
     pub nodes: Vec<(String, PathBuf)>,
     /// The nano-ros checkout, for `nros` / board / platform crate paths.
@@ -701,6 +703,9 @@ pub fn render_source(spec: &EntrySpec, board: &BoardFacts) -> String {
     if let Some(p) = &spec.panic {
         out.push_str(&format!("    panic = \"{p}\",\n"));
     }
+    if let Some(f) = &spec.before_boot {
+        out.push_str(&format!("    before_boot = {f},\n"));
+    }
     out.push_str(&format!("    launch = \"{}\",\n", spec.launch));
     if !spec.args.is_empty() {
         let pairs: Vec<String> = spec
@@ -796,6 +801,7 @@ mod tests {
             launch: "demo_bringup:system.launch.xml".to_string(),
             args: BTreeMap::new(),
             panic: None,
+            before_boot: None,
             nodes: vec![
                 (
                     "talker_pkg".to_string(),
@@ -1011,6 +1017,14 @@ mod tests {
         s.args.insert("host".to_string(), "robot1".to_string());
         let src = render_source(&s, &hosted());
         assert!(src.contains("args = [(\"host\", \"robot1\")]"), "{src}");
+    }
+
+    #[test]
+    fn a_before_boot_hook_is_forwarded_as_a_path() {
+        let mut s = spec();
+        s.before_boot = Some("talker_pkg::open_can".to_string());
+        assert!(render_source(&s, &freertos()).contains("before_boot = talker_pkg::open_can,"));
+        assert!(!render_source(&spec(), &freertos()).contains("before_boot"));
     }
 
     #[test]
