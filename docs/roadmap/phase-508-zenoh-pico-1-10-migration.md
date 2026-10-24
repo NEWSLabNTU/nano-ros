@@ -4,8 +4,12 @@
 ships zenoh 1.10.1, so the target is 1.10.1, not "1.10" in general. The port
 survey is done (22 conflicting files, half of phase-415's 42), and a 1.8.0
 image interoperates with a 1.10.1 `rmw_zenohd` (27 of 27 interop tests, the
-same as against 1.8.0), so the move is planned work, not a fix. Nothing has
-moved on the fork or the pin.** The phase
+same as against 1.8.0), so the move is planned work, not a fix. A second
+survey found the move is bigger than a rebase: upstream 1.9 replaced the read
+and lease threads with an async executor, and renamed the platform link ABI,
+so `zpico.c`'s session driving and every platform's link shims change too
+(issue 0910's second-pass survey). Nothing has moved on the fork or the
+pin.** The phase
 was opened on 2026-10-17 to give issue 0910 a home after
 [phase-355](archived/phase-355-dependency-and-fork-debt.md) was archived on
 2026-10-12. At that point the move was parked: issue 0910's 2026-09-04 update
@@ -74,9 +78,26 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       had 42), 2 of 92 commits are carried upstream, and the generator leaves
       55 of 96 knobs to upstream defaults. Numbers and the conflict list are in
       issue 0910's 2026-10-24 survey.
+- [x] Survey what upstream 1.9's async executor does to our 21 transport and
+      session patches and to `zpico.c`. DONE 2026-10-24: 5 obsolete, 12 port,
+      2 redesign (#0899 teardown, the read-task frame budget), 2 depend on how
+      single-thread builds poll. Issue 0910's second-pass survey has the table.
+- [ ] Decide how each build drives the executor: multi-thread builds run
+      `zp_start_read_task` (one executor thread, which replaces the read and
+      lease tasks and collapses issue 0623's priority band to one), and
+      single-thread builds run a bounded `zp_spin_once` loop. The ThreadX
+      multi-thread arm calls `zp_read`, which 1.10.1 compiles out, so it must
+      pick one. Emit `Z_RUNTIME_MAX_TASKS` and
+      `Z_RUNTIME_IDLE_READ_TASK_SLEEP`.
 - [ ] Rebase the fork's `nano-ros` patch line onto upstream 1.10.1, keeping the
       patches as individual commits (CLAUDE.md, vendored-fork workflow). Drop
-      each patch that upstream now carries, and record each drop.
+      each patch that upstream now carries, and record each drop. Redesign
+      `ae59aa48` (#0899) and `00f8e2f0` (frame budget) for the executor rather
+      than replaying them.
+- [ ] Re-port nano-ros's platform link shims to 1.10.1's renamed link ABI:
+      the alias TU, ThreadX `network.c`, `zpico-serial`'s FFI, the
+      `extra_sources` rows in `nros-rmw.toml`, and our CAN, ISO-TP, IVC and
+      custom links.
 - [ ] Generate `config.h` the way upstream does, and close the gap between the
       knobs upstream defines and the ones our generator emits. Stop emitting
       `Z_FEATURE_PERIODIC_TASKS`, which 1.10.1 removed.
