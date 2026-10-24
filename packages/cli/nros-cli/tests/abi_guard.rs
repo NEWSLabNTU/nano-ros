@@ -282,4 +282,9 @@ fn the_binary_reports_the_version_it_emits() {
         out.contains(&format!("codegen version {EMITTED_VERSION}")),
         "`nros version` must name the codegen version.\n{out}",
     );
+    // phase-478 I7 — and the grammar it judges contracts with.
+    assert!(
+        out.contains(nros_cli_core::BUILD_INFO) && out.contains("ros-launch-manifest v"),
+        "`nros version` must name the vendored play_launch commit and the rlm tag.\n{out}",
+    );
 }

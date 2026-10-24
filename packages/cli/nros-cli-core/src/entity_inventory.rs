@@ -1642,6 +1642,36 @@ pub fn c_array_pool_floor(demand: usize) -> usize {
     demand.max(C_ARRAY_POOL_FLOOR)
 }
 
+/// phase-478 D3 -- a derived pool knob's value WITH its arithmetic: the terms
+/// the derivation added, each with its count, in the order it added them.
+///
+/// The island recorded its liveliness pool as a bare 25 that nobody could
+/// check, while the formula it did write down was for an earlier image and
+/// named a term the code does not have. The derivation always had the terms;
+/// it printed them as prose and only the TOTAL as a number. One format, so the
+/// fragment, `image-facts` and the configure STATUS line say the same thing,
+/// and a test can hold [`Self::total`] equal to the knob it explains.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Composition {
+    /// The `NROS_DERIVED_*` name without its prefix, e.g. `MAX_LIVELINESS`.
+    pub knob: &'static str,
+    /// `(what, count)`, zero terms included: a 0 is a statement too.
+    pub terms: Vec<(&'static str, usize)>,
+}
+
+impl Composition {
+    /// The sum of the terms -- by construction the knob's derived value.
+    pub fn total(&self) -> usize {
+        self.terms.iter().map(|(_, n)| n).sum()
+    }
+
+    /// `25 = 4 node tokens + 14 publishers + ...`.
+    pub fn line(&self) -> String {
+        let terms: Vec<String> = self.terms.iter().map(|(w, n)| format!("{n} {w}")).collect();
+        format!("{} = {}", self.total(), terms.join(" + "))
+    }
+}
+
 /// The knobs an entity inventory can answer, plus how it got there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DerivedEntityKnobs {
@@ -1909,9 +1939,19 @@ pub struct DerivedEntityKnobs {
     /// Per-component `(pkg, component, entities, slots)`, so the output records
     /// which declaration contributed what.
     pub per_component: Vec<(String, String, usize, usize)>,
+    /// phase-478 D3 -- how each summed pool knob was composed. One row per
+    /// knob that is a SUM of declared counts; a knob that is one count, a
+    /// max, or a flag has no composition to show.
+    pub compositions: Vec<Composition>,
 }
 
 impl DerivedEntityKnobs {
+    /// The composition of `knob` (an `NROS_DERIVED_` name without the
+    /// prefix), when it is one of the summed pools.
+    pub fn composition(&self, knob: &str) -> Option<&Composition> {
+        self.compositions.iter().find(|c| c.knob == knob)
+    }
+
     /// Issue 1701 -- the knobs ONE runtime needs to serve every image in
     /// `per_image`, when each process runs exactly one of them: the
     /// field-by-field reduction for a shared runtime (RFC-0100 D12, as amended
@@ -2002,6 +2042,20 @@ impl DerivedEntityKnobs {
             tl_slots: m(|k| k.tl_slots),
             per_kind,
             per_component,
+            // phase-478 D3 -- per knob, the composition of the image that set
+            // the max, so the merged line still sums to the merged value. A
+            // per-TERM max would not: it describes no image at all.
+            compositions: {
+                let mut out: Vec<Composition> = Vec::new();
+                for c in per_image.iter().flat_map(|k| k.compositions.iter()) {
+                    match out.iter_mut().find(|o| o.knob == c.knob) {
+                        Some(o) if c.total() > o.total() => *o = c.clone(),
+                        Some(_) => {}
+                        None => out.push(c.clone()),
+                    }
+                }
+                out
+            },
         }
     }
 }
@@ -4417,6 +4471,56 @@ impl EntityInventory {
              must be the whole pool"
         );
 
+        // phase-478 D3 -- the same sums, as terms. Each mirrors its `let`
+        // above term for term; `compositions_sum_to_their_knobs` holds the
+        // totals equal to the knobs.
+        let compositions = vec![
+            Composition {
+                knob: "MAX_SUBSCRIBERS",
+                terms: vec![
+                    ("subscriptions", n(EntityKind::Subscription.tag())),
+                    (
+                        "action-client feedback subscriptions",
+                        n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SUBSCRIPTIONS,
+                    ),
+                ],
+            },
+            Composition {
+                knob: "MAX_PUBLISHERS",
+                terms: vec![
+                    ("publishers", n(EntityKind::Publisher.tag())),
+                    (
+                        "action-server publishers",
+                        n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS,
+                    ),
+                    ("runtime publishers", infra_publishers),
+                    ("contract reporters", contract_reporters),
+                ],
+            },
+            Composition {
+                knob: "MAX_QUERYABLES",
+                terms: vec![
+                    ("service servers", n(EntityKind::ServiceServer.tag())),
+                    (
+                        "action-server queryables",
+                        n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES,
+                    ),
+                    ("transient-local cache queryables", tl_queryables),
+                    ("runtime servers", infra_queryables),
+                ],
+            },
+            Composition {
+                knob: "MAX_LIVELINESS",
+                terms: vec![
+                    ("node tokens", node_tokens),
+                    ("publishers", max_publishers),
+                    ("subscribers", max_subscribers),
+                    ("queryables", max_queryables - tl_queryables),
+                    ("service clients", service_clients),
+                ],
+            },
+        ];
+
         Derivation::Derived(Box::new(DerivedEntityKnobs {
             max_cbs,
             heavy_slots,
@@ -4441,6 +4545,7 @@ impl EntityInventory {
             tl_slots: tl_queryables,
             per_kind,
             per_component,
+            compositions,
         }))
     }
 
@@ -5140,6 +5245,16 @@ impl EntityInventory {
                 // phase-412 W2 / issue 1130 -- additive, like the two above.
                 doc.insert("max_liveliness".into(), k.max_liveliness.into());
                 doc.insert("max_cell_entities".into(), k.max_cell_entities.into());
+                // phase-478 D3 -- additive: each summed pool as its terms.
+                doc.insert(
+                    "compositions".into(),
+                    serde_json::Value::Object(
+                        k.compositions
+                            .iter()
+                            .map(|c| (c.knob.to_string(), c.line().into()))
+                            .collect(),
+                    ),
+                );
                 doc.insert(
                     "per_kind".into(),
                     serde_json::Value::Object(
@@ -5589,6 +5704,17 @@ impl EntityInventory {
                     "set(NROS_DERIVED_MAX_LIVELINESS {})\n",
                     k.max_liveliness
                 ));
+                // phase-478 D3 -- every summed pool, as its arithmetic. Not
+                // `NROS_DERIVED_*`: that prefix is the set of FACTS delivered to
+                // the compiler (check-knob-delivery), and this is a sentence for
+                // the configure's STATUS line (`_nros_resolve_derivable_knob`).
+                for c in &k.compositions {
+                    s.push_str(&format!(
+                        "set(NROS_COMPOSITION_{} \"{}\")\n",
+                        c.knob,
+                        c.line()
+                    ));
+                }
                 // Issue 1549 -- same-session queries. A presence test over the
                 // two sides, with both counts on the line so the provenance of
                 // a 0 or a 1 is readable without re-deriving it.
@@ -7594,6 +7720,64 @@ contracts:
 
     /// phase-412 W2 -- the liveliness pool is every token THIS session
     /// declares, term by term against the zenoh shim (`shim/session.rs`).
+    /// phase-478 D3 / I4 -- every composition sums to the knob it explains,
+    /// on an image that exercises every term (actions, a latched-by-default
+    /// publisher, the parameter and lifecycle families), and the merge across
+    /// images keeps a composition that still sums to the merged value.
+    #[test]
+    fn compositions_sum_to_their_knobs() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated(
+            "p",
+            "n",
+            &[
+                "publisher",
+                "sub",
+                "timer",
+                "service_server",
+                "service_client",
+                "action_server",
+                "action_client",
+            ],
+        ));
+        let k = inv.derive().knobs().expect("derived").clone();
+        let want = [
+            ("MAX_SUBSCRIBERS", k.max_subscribers),
+            ("MAX_PUBLISHERS", k.max_publishers),
+            ("MAX_QUERYABLES", k.max_queryables),
+            ("MAX_LIVELINESS", k.max_liveliness),
+        ];
+        assert_eq!(k.compositions.len(), want.len(), "{:?}", k.compositions);
+        for (knob, value) in want {
+            let c = k
+                .composition(knob)
+                .unwrap_or_else(|| panic!("no composition for {knob}"));
+            assert_eq!(c.total(), value, "{knob}: {}", c.line());
+            assert!(c.line().starts_with(&format!("{value} = ")), "{}", c.line());
+        }
+        let cmake = inv.to_cmake();
+        assert!(
+            cmake.contains(&format!(
+                "set(NROS_COMPOSITION_MAX_LIVELINESS \"{}\")\n",
+                k.composition("MAX_LIVELINESS").unwrap().line()
+            )),
+            "{cmake}"
+        );
+
+        let mut small = EntityInventory::new("test");
+        small.insert(stated("p", "m", &["publisher"]));
+        let s = small.derive().knobs().expect("derived").clone();
+        let merged = DerivedEntityKnobs::max_over(&[s, k.clone()]);
+        for (knob, value) in [
+            ("MAX_SUBSCRIBERS", merged.max_subscribers),
+            ("MAX_PUBLISHERS", merged.max_publishers),
+            ("MAX_QUERYABLES", merged.max_queryables),
+            ("MAX_LIVELINESS", merged.max_liveliness),
+        ] {
+            assert_eq!(merged.composition(knob).unwrap().total(), value, "{knob}");
+        }
+    }
+
     #[test]
     fn liveliness_demand_counts_every_token_the_session_declares() {
         let mut inv = EntityInventory::new("test");
@@ -11654,6 +11838,7 @@ mod shared_runtime_tests {
             tl_slots: 1,
             per_kind: BTreeMap::new(),
             per_component: Vec::new(),
+            compositions: Vec::new(),
         };
         // A client-only image and a server-only image: no image queries its
         // own session, so the feature stays off.

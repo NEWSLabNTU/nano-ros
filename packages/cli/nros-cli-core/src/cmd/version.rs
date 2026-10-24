@@ -9,5 +9,10 @@ pub fn run() -> Result<()> {
     // are different questions, and conflating them is what the old ABI guard
     // did. `nros --codegen-version` prints the number on its own, for scripts.
     println!("codegen version {}", crate::abi_guard::EMITTED_VERSION);
+    // phase-478 I7 — and "which grammar judged this contract": the vendored
+    // play_launch commit and the ros-launch-manifest tag. Here, not on
+    // `--version`, because `install.sh`, `check-release-manifest.py` and the
+    // launcher's dispatch read `--version` as one line.
+    println!("{}", crate::BUILD_INFO);
     Ok(())
 }

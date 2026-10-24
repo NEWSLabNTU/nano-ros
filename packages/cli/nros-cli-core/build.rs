@@ -31,6 +31,9 @@ fn main() {
     // phase-494 W1 — FIRST, before the out-of-tree early return below: an
     // out-of-tree build still renders entries, so it still needs its packs.
     generate_entry_packs();
+    // phase-478 I7 — and before it too: the rlm tag is read from this crate's
+    // OWN manifest, which exists in every build, in-tree or not.
+    emit_rlm_tag();
 
     // issue 1558 — the marker walk, not a hop count (RFC-0101 D3).
     // `try_repo_root` and not `repo_root`: this build script must keep working
@@ -193,4 +196,25 @@ fn main() {
     // lives inside `play_launch_pin` now, so it cannot be forgotten at one site.
     let pin = play_launch_pin(&root).unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=NROS_PLAY_LAUNCH_SHA={pin}");
+}
+
+/// phase-478 I7 — the ros-launch-manifest tag this CLI parses contracts with,
+/// as `NROS_RLM_TAG`, so `nros --version` can name the grammar that judged a
+/// contract. Read from the `ros-launch-manifest-types` dependency row, the one
+/// the model types come from; CLAUDE.md requires ONE tag across every crate,
+/// so any row would answer the same. `unknown` when the row is not a tagged
+/// git dependency (a `path =` override while developing rlm).
+fn emit_rlm_tag() {
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+    let tag = std::fs::read_to_string(&manifest)
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find(|l| l.trim_start().starts_with("ros-launch-manifest-types"))
+                .and_then(|l| l.split("tag = \"").nth(1))
+                .and_then(|rest| rest.split('"').next())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:rustc-env=NROS_RLM_TAG={tag}");
 }
