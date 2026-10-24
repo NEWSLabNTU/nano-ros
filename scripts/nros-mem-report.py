@@ -1493,12 +1493,14 @@ def scheduler_seat_bytes(ptr):
 
 # Issue 2019 -- the FreeRTOS and NuttX headers' knobs, which an entry may
 # override with a `-D`; the image does not record them, so the report states
-# the header defaults it used.
+# the header defaults it used. The worker frames are the C level runner's
+# measured setup peaks (issue 2019), which the selftest reads back from the
+# headers.
 LEVEL_HEADER_DEFAULTS = {
     "freertos": ("NROS_FREERTOS_LEVEL_STACK_DEFAULT", 262144,
-                 "NROS_FREERTOS_LEVEL_WORKER_FRAME", 4096),
+                 "NROS_FREERTOS_LEVEL_WORKER_FRAME", 10240),
     "nuttx": ("NROS_NUTTX_LEVEL_STACK_DEFAULT", 16384,
-              "NROS_NUTTX_LEVEL_WORKER_FRAME", 4096),
+              "NROS_NUTTX_LEVEL_WORKER_FRAME", 11264),
 }
 
 
@@ -1871,9 +1873,17 @@ def selftest_levels():
     assert derived_level_stack(0, d, f) == 16384, "members that state nothing keep the knob"
     assert derived_level_stack(6000, d, f) == 10096, "a stated member plus the worker frame"
     d, f, _ = level_knobs("freertos", k)
-    assert derived_level_stack(0, d, f) == 262144 and derived_level_stack(8192, d, f) == 12288
+    assert derived_level_stack(0, d, f) == 262144 and derived_level_stack(8192, d, f) == 18432
     d, f, _ = level_knobs("nuttx", k)
-    assert derived_level_stack(0, d, f) == 16384 and derived_level_stack(2048, d, f) == 6144
+    assert derived_level_stack(0, d, f) == 16384 and derived_level_stack(2048, d, f) == 13312
+    detail = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "packages", "api",
+                          "nros-c", "include", "rclc", "detail")
+    for family, (dname, dval, fname, fval) in LEVEL_HEADER_DEFAULTS.items():
+        with open(os.path.join(detail, f"tier_task_memory_{family}.h")) as fh:
+            text = fh.read()
+        for name, val in ((dname, dval), (fname, fval)):
+            m = re.search(rf"^#define {name} (\d+)u?$", text, re.M)
+            assert m and int(m.group(1)) == val, f"{family}: {name} drifted from its header"
     assert level_order([10, 5, 8], True) == [2, 0, 1]
     assert level_order([10, 5, 5], True) == [2, 0, 1], "equal priorities in row order"
     assert level_order([10, 5, 8], False) == [0, 2, 1]

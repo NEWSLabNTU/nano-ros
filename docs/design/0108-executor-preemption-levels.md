@@ -625,10 +625,10 @@ differ from the step above:
 - **Member stacks.** A spawned level that declares no `stack_bytes` gets
   `NROS_LEVEL_STACK_BYTES(member)`: the largest member's stack plus the
   worker frame (`CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`, 4,096 B, an
-  estimate). No contract or `system.toml` key stated a member's stack in
-  P9, so every member took the per-callback default
-  (`CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE` minus the frame) and the cost
-  report named it; a level's stack was then exactly the knob, as before.
+  estimate; issue 2019 measured FreeRTOS and NuttX, below). No contract or
+  `system.toml` key stated a member's stack in P9, so every member took
+  the per-callback default (`CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE` minus the
+  frame) and the cost report named it; a level's stack was then exactly the knob, as before.
   Issue 2019 added the key (`[[component]] stack_bytes`, below "As built
   in P10").
 
@@ -926,6 +926,33 @@ executor's lock and the thread identity:
   spawned level's static against the same rule per family (Zephyr's
   `.config` knobs; FreeRTOS's and NuttX's header defaults, the last row
   booting on both).
+- **Worker frame** (issue 2019). A spawned level runs its own setup
+  (`open_level`, its members' registration) on its own stack before its
+  first pass, and that setup, not any later pass, is the stack's peak, so
+  the frame must cover it. Measured on QEMU over the `realtime-c` and
+  `realtime-rust` workspaces' spawned `high` level, as the stack
+  high-water mark after setup and again after 300 and 3,000 passes (no
+  pass went deeper than setup), and rounded up to the next KiB:
+
+  | Port | Runner | Setup peak | Frame |
+  |------|--------|-----------:|------:|
+  | FreeRTOS (mps2-an385) | C | 9,448 B | 10,240 B |
+  | FreeRTOS (mps2-an385) | Rust | 46,840 B | 48,128 B |
+  | NuttX (virt, cortex-a7) | C | 10,384 B | 11,264 B |
+  | NuttX (virt, cortex-a7) | Rust | 32,384 B | 32,768 B |
+
+  The C frames are the headers' defaults (`NROS_FREERTOS_LEVEL_WORKER_FRAME`,
+  `NROS_NUTTX_LEVEL_WORKER_FRAME`; a `-D` still overrides), and the per-level
+  default stays the same total (256 KiB, 16 KiB), so a level whose members
+  state nothing is unchanged and only the per-callback default shrinks. The
+  Rust frames are `level_worker_frame_bytes(rtos, LevelRunner::Rust)`, which
+  `derive_level_stacks` adds. Each peak includes the fixture's own
+  callbacks, so it bounds the frame from above for that fixture. Zephyr
+  keeps the 4,096 B estimate (`CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`); a
+  board measures its own with `CONFIG_THREAD_ANALYZER` and sets the knob.
+  ThreadX keeps it too: the Linux port runs its threads on host pthreads
+  with no stack checking (`TX_ENABLE_STACK_CHECKING` is off), so there is
+  nothing to measure there.
 - **Lock cost.** The Zephyr runner's lock is a bare `k_mutex` through the
   module's shims, not `nros_platform_mutex_rec_*`: on a `CONFIG_POSIX_API`
   image that wrapper is a POSIX recursive mutex. On the island (S32K344,

@@ -489,8 +489,12 @@ config NROS_ZEPHYR_LEVEL_WORKER_FRAME
       The stack a level's worker uses itself, outside any callback: the
       runner's spin loop, spin_once and the transport drive under it
       (phase-509 P9, RFC-0108 D3). A level's stack is its largest member's
-      stack plus this. The default is an estimate, not a measurement;
-      measure an image's per-level high-water with CONFIG_THREAD_ANALYZER.
+      stack plus this. A spawned level runs its own setup (open_level, the
+      members' registration) on its own stack before its first pass, and
+      that setup is the stack's peak, so the frame must cover it (issue
+      2019: FreeRTOS's C runner measured 9,448 B, NuttX's 10,384 B). The
+      default is an estimate, not a measurement on Zephyr; measure a
+      board's per-level high-water with CONFIG_THREAD_ANALYZER and set it.
       It must stay below NROS_ZEPHYR_TIER_STACK_SIZE, whose difference
       with it is the per-callback default.
 

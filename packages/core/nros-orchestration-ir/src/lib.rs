@@ -943,15 +943,43 @@ fn default_tier(members: Vec<(String, String)>) -> ResolvedTier {
 // platform-applicability validation (RFC-0052 / phase-296 W2)
 // =============================================================================
 
+/// Issue 2019 -- which level runner a worker frame is for. A spawned level
+/// runs its own setup (`open_level`, the members' registration) on its own
+/// stack before its first pass, and that setup, not any later pass, is the
+/// stack's peak; the C-ABI runner (every C and C++ entry) and the Rust board
+/// runner (`nros::main!`) reach different depths there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LevelRunner {
+    /// The C-ABI level runner (`nros_cpp_level_*`), sized by the C headers.
+    C,
+    /// The Rust board crates' level runner, sized by [`derive_level_stacks`].
+    Rust,
+}
+
 /// Issue 2019 -- the worker frame a LEVEL's stack carries above its largest
-/// member's: the level's own loop, the executor pass and the transport drive
-/// under it, outside any callback. The same number the C headers state
-/// (`<rclc/detail/tier_task_memory_<rtos>.h>`) and `mem-report --levels`
-/// checks against. `None` on a host (`posix`), whose threads' stacks are the
-/// process's to map.
-pub fn level_worker_frame_bytes(rtos: &str) -> Option<u32> {
-    match rtos {
-        "zephyr" | "freertos" | "nuttx" | "threadx" => Some(4096),
+/// member's: the level's own setup and loop, the executor pass and the
+/// transport drive under it. `None` on a host (`posix`), whose threads'
+/// stacks are the process's to map.
+///
+/// FreeRTOS and NuttX are measured (QEMU, the `realtime-c` and
+/// `realtime-rust` workspaces' spawned `high` level, the stack high-water
+/// mark after setup and again after 300 and 3,000 passes, rounded up to the
+/// next KiB): FreeRTOS C 9,448 B, Rust 46,840 B; NuttX C 10,384 B, Rust
+/// 32,384 B. No pass went deeper than setup. Zephyr and ThreadX keep a
+/// 4,096 B estimate: Zephyr is measured per board through
+/// `CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`, and the ThreadX Linux port runs
+/// its threads on host pthreads with no stack checking.
+///
+/// The C values are the headers' defaults
+/// (`<rclc/detail/tier_task_memory_<rtos>.h>`), which `mem-report --levels`
+/// checks against; a test keeps them equal.
+pub fn level_worker_frame_bytes(rtos: &str, runner: LevelRunner) -> Option<u32> {
+    match (rtos, runner) {
+        ("freertos", LevelRunner::C) => Some(10 * 1024),
+        ("freertos", LevelRunner::Rust) => Some(47 * 1024),
+        ("nuttx", LevelRunner::C) => Some(11 * 1024),
+        ("nuttx", LevelRunner::Rust) => Some(32 * 1024),
+        ("zephyr" | "threadx", _) => Some(4096),
         _ => None,
     }
 }
@@ -959,7 +987,7 @@ pub fn level_worker_frame_bytes(rtos: &str) -> Option<u32> {
 /// Issue 2019 -- derive the stack of every tier (level) that authors none
 /// from its members: the largest `member_stacks` entry among the tier's
 /// members (`system.toml [[component]] stack_bytes`, keyed by component name)
-/// plus [`level_worker_frame_bytes`]. A tier none of whose members states a
+/// plus the Rust runner's [`level_worker_frame_bytes`]. A tier none of whose members states a
 /// stack keeps `None` (the port's default, which is the per-callback default
 /// plus the frame), and an authored `stack_bytes` is the expert override.
 /// The Rust pack's spelling of the C headers' `NROS_LEVEL_STACK_BYTES(member)`.
@@ -969,7 +997,7 @@ pub fn derive_level_stacks(
     member_stacks: &BTreeMap<String, u32>,
     rtos: &str,
 ) -> usize {
-    let Some(frame) = level_worker_frame_bytes(rtos) else {
+    let Some(frame) = level_worker_frame_bytes(rtos, LevelRunner::Rust) else {
         return 0;
     };
     let mut derived = 0;
@@ -1852,5 +1880,55 @@ mod applicability_tests {
         };
         assert_eq!(derive_level_stacks(&mut host, &stacks, "posix"), 0);
         assert_eq!(host.tiers[0].stack_bytes, None);
+    }
+
+    /// Issue 2019 -- the Rust pack derives over the Rust runner's measured
+    /// frame, which differs from the C runner's on FreeRTOS and NuttX.
+    #[test]
+    fn the_rust_pack_derives_over_the_rust_runner_frame() {
+        let mut urgent = base();
+        urgent.name = "urgent".into();
+        urgent.members = vec![("a".into(), "g".into())];
+        let stacks: BTreeMap<String, u32> = [("a".to_string(), 2048)].into();
+        for (rtos, frame) in [("freertos", 48_128), ("nuttx", 32_768), ("threadx", 4096)] {
+            let mut t = table(urgent.clone());
+            assert_eq!(derive_level_stacks(&mut t, &stacks, rtos), 1);
+            assert_eq!(t.tiers[0].stack_bytes, Some(2048 + frame), "{rtos}");
+            assert_eq!(
+                level_worker_frame_bytes(rtos, LevelRunner::Rust),
+                Some(frame)
+            );
+        }
+        assert_eq!(level_worker_frame_bytes("posix", LevelRunner::C), None);
+    }
+
+    /// Issue 2019 -- the C runner's frames here are the C headers' defaults,
+    /// which size every C and C++ entry's levels and which `mem-report
+    /// --levels` checks against: the three must not drift apart.
+    #[test]
+    fn the_c_runner_frames_match_the_c_headers() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../api/nros-c/include/rclc/detail");
+        for (rtos, macro_name) in [
+            ("freertos", "NROS_FREERTOS_LEVEL_WORKER_FRAME"),
+            ("nuttx", "NROS_NUTTX_LEVEL_WORKER_FRAME"),
+            ("zephyr", "NROS_LEVEL_WORKER_FRAME_"),
+        ] {
+            let path = dir.join(format!("tier_task_memory_{rtos}.h"));
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+            let prefix = format!("#define {macro_name} ");
+            let value: u32 = text
+                .lines()
+                .filter_map(|l| l.trim().strip_prefix(prefix.as_str()))
+                .map(|v| v.trim().trim_end_matches('u').parse().expect("a number"))
+                .next_back()
+                .unwrap_or_else(|| panic!("{} defines no {macro_name}", path.display()));
+            assert_eq!(
+                level_worker_frame_bytes(rtos, LevelRunner::C),
+                Some(value),
+                "{rtos}: the header's {macro_name}"
+            );
+        }
     }
 }
