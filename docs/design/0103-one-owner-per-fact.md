@@ -4,7 +4,7 @@ title: "One owner per fact: every configuration fact and every resource location
   has one authored home, and every road reads the resolved answer"
 status: Stable
 since: 2026-10
-last-reviewed: 2026-10-15
+last-reviewed: 2026-10-24
 implements-tracked-by: [phase-484, phase-497]
 supersedes: []
 superseded-by: null
@@ -81,7 +81,7 @@ descriptor's `force = true`; cmake cache before ENV).
 | --- | --- | --- | --- | --- |
 | 0 infra | this repo | `nros-sdk-index.toml` | resource pins, kinds, the one env name per resource | knob values |
 | 1 platform | RTOS port | `nros-platform.toml` | RTOS capabilities, knob defaults, priority plan | paths, board facts |
-| 2 board | board author | `nros-board.toml` + board-owned files (`memory.x`, `FreeRTOSConfig.h`, config dirs) | identity, triple, link, toolchain file, `west_board`, capabilities, knob defaults, **network interfaces** (D10) | user choices; no `force`; a network's subnet or an image's address |
+| 2 board | board author | `nros-board.toml` + board-owned files (`memory.x`, `FreeRTOSConfig.h`, config dirs) | identity, triple, link, toolchain file, `west_board`, capabilities, knob defaults, **who owns the network and which links it carries** (RFC-0109 D2/D3) | user choices; no `force`; an address (the OS's, or the board file's) |
 | 3 backend | RMW / serdes | `nros-rmw.toml`, `nros-serdes.toml` | link, capabilities | knob values |
 | 4 package | node author | `package.xml`, `Cargo.toml`/`CMakeLists.txt`, `nros-codegen.toml`, `nros::node!` | build type, entities, message bounds | board, RMW, network |
 | 5 project | integrator | **`system.toml`** + launch + `*.contract.yaml`; per developer, `.envrc` | every SELECTION (board, RMW, domain, locator, IP, transport), knob overrides, `[sources]` | — |
@@ -485,192 +485,28 @@ reader stays the interim for consumers that want the per-unit copy.
 - **Census completeness**: `nros-build-wiring.py` fails on any UNCLASSIFIED row
   (issue 1768).
 
-### D10 — Networks: the board has interfaces, the project has networks, the image has addresses
+### D10 — Networks *(superseded 2026-10-24 by RFC-0109)*
 
-Added 2026-10-12. D1 first gave the board "network defaults", one identity
-per board. A bridge breaks that: many boards, or many instances of one board,
-share ONE network, and a board can sit on several networks (a QEMU run, a lab
-bridge, a docker network) or have several NICs. Measured on the tree, the
-QEMU boards had already split one fact three ways: their `Config` presets
-said `192.0.3.10`, their entry paths said `10.0.2.30` / `.40` / `.50`, and
-`mps2-an385` carried a third network behind a `docker` feature. The fact has
-three owners:
+D10 (2026-10-12) and its 2026-10-15 amendment D10a–D10g gave nano-ros config
+the network: interfaces on the board, `[network.<name>]` in the project,
+addresses in `[image.<id>.net.<if>]`, a derived router on `qemu`, and one
+carrier, `NROS_IMAGE_NET`. Phase-497 built it.
+[RFC-0109](0109-network-config-layers.md) moves the device facts to the layer
+that owns them on each platform (the OS, or the board package where nano-ros
+is the OS) and the wiring to the RMW's own file. What survives, and where:
 
-| fact | example | owner | authored in |
-| --- | --- | --- | --- |
-| **interfaces** — the network hardware | one LAN9118, two NICs, a MAC prefix | board | `nros-board.toml` `[board.net]` |
-| **network** — subnet, gateway, how it is realised | `10.0.2.0/24` via SLIRP; `192.0.3.0/24` on bridge `qemu-br` | project | `system.toml` `[network.<name>]` |
-| **address** — this image's IP / MAC on a network | talker `.10`, listener `.11` | image | `[image.<id>.net.<ifname>]` |
-
-- **One default network for every QEMU board**: `qemu`, QEMU's own user-mode
-  (SLIRP) network exactly as QEMU configures it for a plain `-nic user` —
-  `10.0.2.0/24`, gateway (and host) `10.0.2.2`, first guest `10.0.2.15`. No
-  launcher passes `net=`/`host=` for it, and an image someone runs by hand
-  with a plain `-nic user` reaches its router. It is the network every QEMU
-  board but one family already ran on; the FreeRTOS C/C++ images alone ran
-  `192.0.3.0/24` behind a launcher that reconfigured SLIRP to match, so they
-  moved. A board's router default is derived from its gateway, so it is
-  `tcp/10.0.2.2:<port>` on every QEMU board and every road. `192.0.3.0/24`
-  stays what the TAP/bridge setup scripts (`scripts/qemu/setup-network.sh`)
-  already make it: a bridge network, and the platform default
-  (`BaseConfig::default()`) for a board that names no network (real
-  hardware, the threadx-linux host simulation).
-- **A bridge** is a network many images name; each states its own address,
-  and the resolver refuses a duplicate address or MAC. That turns the
-  "identical IP+MAC, identical zenoh ZID, silent no-delivery" trap into a
-  build error.
-- **A multi-NIC board** gets one `[image.<id>.net.<ifname>]` per interface.
-- **A deployment network** (mps2's `docker`) is a `[network.*]` row, not a
-  board feature.
-
-Staged: phase-484 W4b-2 moves every QEMU board onto the one default network
-and keeps the existing per-image last-octet override. The `[network.*]` table,
-bridge/TAP launch, multi-NIC and the collision refusal are
-[phase-497](../roadmap/archived/phase-497-networks-have-owners.md).
-
-#### D10 amended 2026-10-15 — physical networks, DHCP, interface kinds, host-OS boards
-
-The text above was written from the QEMU lanes, and read against two
-deployments it does not cover, it leaves six questions open: a multi-port box
-running a Linux bridge with real boards plugged into it, and a board whose
-network driver (or whole transport) is the user's own. The amendment answers
-them without moving any owner.
-
-**D10a — A network says what it IS; how an emulator ATTACHES is separate.**
-`mode = slirp | bridge | tap | none` mixed the two: for a physical board on a
-lab switch, nano-ros neither creates the network nor attaches anything to it.
-`[network.<name>]` states the network's own facts —
-
-| key | meaning |
+| D10 piece | under RFC-0109 |
 | --- | --- |
-| `subnet` | CIDR, e.g. `192.168.50.0/24` (required, except on the built-in `qemu`) |
-| `gateway` | the subnet's default route, if any |
-| `router` | the zenoh/XRCE locator an image on this network uses by default (D10d) |
-| `dhcp` | `true` when the network hands out leases (dnsmasq on the box, a lab DHCP server) |
-| `attach` | how an EMULATED image joins it: `"slirp"`, `{ bridge = "<host dev>" }` or `{ tap = "<host dev>" }`. Absent ⇒ physical boards only, and an emulated image naming the network is refused at sync |
+| D10e host-OS boards own no network facts (`[board.net] stack = "host"`) | **kept and generalised:** `stack` is `"host"`, `"os"` or `"board"`, naming who owns layer 1 (RFC-0109 D2) |
+| D10f one carrier, `NROS_IMAGE_NET`, on all three roads | **kept**, fed from the board package's own file instead of `system.toml` (RFC-0109 D4) |
+| D10b static or leased; unique MACs, derived per image; collision refusal | **kept**, applied to those files at `nros sync` |
+| D10c interface kinds | **become** the board descriptor's `links` (RFC-0109 D3) |
+| D10a `[network.<name>]`, `attach` | **retired:** `attach` → `[image.<id>.run] nic`; subnet / gateway / `dhcp` → the board file |
+| D10d derived router; `[image]` / `[system] locator` | **retired:** the router is wiring, in the RMW's own file (or a file-less domain's `locator`) |
+| D10g single-interface spellings | **refusal kept**; the remedy now names the board file |
+| `[image.<id>.net.<if>]`, `[board.net]` addresses | **retired:** the board file (`os_config`) on a `"board"`-stack board; the RTOS's own config on an `"os"`-stack board |
 
-— and the built-in `qemu` network is `subnet = 10.0.2.0/24`, `gateway =
-router-host = 10.0.2.2`, `attach = "slirp"`, `dhcp = false`. A lab bridge is
-`[network.lab] subnet = …, gateway = …, router = "tcp/192.168.50.1:7447"` with
-no `attach`; QEMU guests can join the same bridge by adding
-`attach = { bridge = "br0" }`, and then real boards and guests share one
-address plan, one collision check and one router. *Built 2026-10-16
-(phase-497 W3):* `attach` reaches the launcher through the resolved network,
-and ONE renderer (`nros_board_common::image_net::qemu_nic`, also behind
-`nros ws qemu-nic`) turns it into QEMU's `-nic`; a network with no `attach`
-refuses an emulated image there.
-
-**D10b — An address is static or leased, and a MAC is always unique.**
-`[image.<id>.net.<if>]` takes `network`, then exactly one of `address` (full
-IPv4), `host` (last octet within `subnet`) or `address = "dhcp"`, and an
-optional `mac`. *Staged 2026-10-15:* until W2's resolver, `network` is
-required next to an address — the `nros::main!` reader has no board catalog,
-so a board-default network taken by the CLI alone would resolve one
-`system.toml` two ways. *Landed 2026-10-16 (W2):* the macro stopped resolving
-— it bakes the CLI's answer (D10f) — so `network` defaults to the board's
-again, and an interface on `qemu` with no address takes `10.0.2.15`, QEMU's
-first guest. Rules, all refused at sync naming both images:
-
-- two STATIC addresses equal on one SHARED network, or one equal to its
-  `gateway`, or one outside its `subnet`. `qemu` is never shared: every
-  `-nic user` makes a private SLIRP copy per VM, so two images on it do not
-  meet;
-- two MACs equal on one network — leased interfaces included, because a DHCP
-  server keys its lease on the MAC, so two equal MACs collide whatever the
-  address mode;
-- `address = "dhcp"` on a network without `dhcp = true`.
-
-An unstated `mac` is DERIVED, never copied from a board constant: the board's
-MAC prefix (`[board.net] interfaces.<if>.mac_prefix`, else `02:00:00`) plus a
-suffix from `(system name, image id, network, interface)`. Today's trap was
-exactly a board constant shared by two images; deriving per image removes it
-rather than asking every author to remember. *Amended 2026-10-16 (W2):* the
-key gained the system's name, because an image id is unique only within its
-project — every single-package FreeRTOS leaf calls its image
-`mps2-an385-freertos`, and a talker/listener pair is two projects.
-
-**D10c — An interface has a KIND, and only IP kinds take an address.**
-`[board.net.<if>] kind = "ethernet" | "wifi" | "serial" | "custom"`. Ethernet
-and Wi-Fi interfaces get addresses. A `serial` interface (`zpico-serial`, IVC)
-or a `custom` one (the `nros_transport_ops_t` vtable a user installs, a link
-nano-ros does not model) gets none: `[image.<id>.net.<if>]` on it is refused,
-and its endpoint is the image's `locator` (`serial/…`, `custom://…`), which is
-already where it lives. A board crate with its OWN Ethernet or Wi-Fi driver —
-in-tree or out-of-tree — states the interface like any other and reads the
-resolved answer through D10f; it never re-derives an address.
-
-**D10d — The router default is derived on `qemu` only.** There the guest's
-gateway is QEMU's host alias, so `tcp/10.0.2.2:<port>` is right on every road.
-On any other network the router is usually a host on the subnet that is NOT
-the gateway (the bridge box itself), so the default is that network's
-`router`, else the image's `locator`, else a sync error naming both keys.
-The platform fallback (`tcp/192.0.3.1:7447`, `BaseConfig::default()`) is no
-longer reached by an image that names a network. *Built 2026-10-16 (W2), as
-a precedence:* the image's own `locator` (`[image.<id>]` >
-`[image_defaults]`), else the `router` of the network its first interface
-sits on, else `[system] locator`; an image whose first network is not `qemu`
-and reaches none of the three is refused. A network is more specific than the
-project, so its router outranks `[system] locator`; an image's own statement
-outranks both.
-
-**D10e — Host-OS boards own no network facts.** On a board whose network
-stack is the host operating system — `linux`, `threadx-linux`,
-`freertos-posix`, Zephyr `native_sim` (NSOS) — the kernel owns interfaces,
-addresses and routes, and a nano-ros image only opens sockets
-(threadx-linux's NSOS shim forwards NetX's BSD calls to the host and ignores
-the IP fields it is handed). `[image.<id>.net.*]` on such a board is refused
-naming that reason. The board says so: `[board.net] stack = "host"` (phase-497
-W1). *Corrected 2026-10-15:* this text first proposed reading the predicate off
-`supported_netstacks = []`, which is wrong — NuttX and Zephyr list `[]` too,
-because their OS brings its own stack — so the statement is explicit, on
-`linux`, `freertos-posix` and threadx-linux. In particular a Linux box that BRIDGES
-its ports is configured with Linux tools, not with `system.toml`; what
-`system.toml` describes is the network the box makes, for the boards on it.
-Forwarding between two NICs inside one image is likewise out of scope: W4's
-multi-NIC is about which interface each address lives on, and which
-interface a session binds is the middleware's (phase-206).
-
-**D10f — One output, per interface, that every consumer reads.** The
-resolver's answer for an image is
-`(interface) -> { kind, ip | dhcp, netmask, gateway, mac }`, rendered once
-into `<build>/nros/net/<image>.toml` (D7) and from there into the three
-carriers that exist today: the Rust `BOARD_NET_*` constants
-(`nros_board_common::board_net::emit_for_crate`, now per interface), the C
-`nros_app_config_t.network[]` initializer, and the cmake board module's
-variables. A custom driver reads one of those, by interface name; none of
-them is a place to state a value. *Built 2026-10-16 (W2):* the carrier is ONE
-text, `NROS_IMAGE_NET` (`nros_board_common::image_net`, `no_std` decoder, one
-encoder): a cargo `[env]` row on both cargo roads, `-DNROS_IMAGE_NET` on the
-workspace cmake road, the top-level leaf's `nros ws leaf-system` row on the
-standalone cmake road. `nros::main!` bakes it verbatim into
-`DeployOverlay::net` (the macro resolves nothing, so it needs no board
-catalog); `nros board net --image-net` renders the C initializer from it; and
-the one board whose C startup bakes the address before the kernel runs
-(riscv64's `NROS_APP_CONFIG`) reads it in its build script. A second
-interface rides the same text (W4); a single-NIC board applies the first.
-
-**D10g — The single-interface spellings retire.** `[image.<id>] ip` /
-`gateway` / `netmask` (38 tracked `system.toml` files on 2026-10-15) and
-`[board.net] ip` / `netmask` / `gateway` / `mac` were the one-NIC form of
-these facts. Phase-497 W1 migrates every tracked use and then refuses each,
-naming its home: an image's address goes to `[image.<id>.net.<if>]`, a
-gateway or netmask to `[network.<name>]`, a MAC to the image (or is
-derived). *Staged 2026-10-15:* W1 retired the IMAGE keys; the BOARD keys
-retire in W2 with `mac`, because the board default they hold has copies a
-descriptor edit cannot reach (the riscv64 board's C `cfg_ip`, its cmake
-`NROS_APP_NET_IP_LAST` default), and only W2's one resolver feeds those.
-*Landed 2026-10-16 (W2):* the board keys are refused when the descriptor is
-read, and the copies they fed are gone with them — the C statics are zero
-until `nros_threadx_set_config` runs, and the 23 fixture rows that passed
-`NROS_ENTRY_IP_LAST` / `NROS_APP_NET_{IP,MAC}_LAST` state `host` (and, for the
-riscv64 Cyclone pair whose launcher pins the virtio MAC, `mac`) in the leaf's
-own `system.toml`.
-`[board.net] network` stays: it is the board's DEFAULT network for
-an image that names none, which is how a QEMU board lands on `qemu` without
-a line of `system.toml`.
-
-IPv4 only. IPv6 and Wi-Fi credentials are not network-address facts and are
-not in D10.
+The full text is in git history at the commit before RFC-0109's.
 
 ## 3. Where each fact lives
 
@@ -679,8 +515,8 @@ not in D10.
 | board | `[image.<id>] board` | west `-b` (via `west_board`), cmake, cargo | `NROS_BOARD`, `main!(board=)`, `-DNANO_ROS_BOARD` (retired); alias casing (match case-insensitively) |
 | RMW | `[image.<id>] rmw` | Kconfig choice, snippet, cargo features | inert `rmw-*` features, `CMakeLists --features` (the conf lines are phase-481's) |
 | domain id | `[system] domain_id`, `[image]` override | Kconfig (closes 1550), baked default | `NROS_DOMAIN_ID`, `CYCLONE_DOMAIN_ID` as inputs; `ROS_DOMAIN_ID` stays the runtime override |
-| locator, transport | `[image]` → platform default | Kconfig, baked default, cmake config | board `config.rs` literals, `ZENOH_LOCATOR`; `NROS_LOCATOR` stays the runtime override |
-| network, address | `[network.<name>]` + `[image.<id>.net.<if>]` (D10); interfaces in `[board.net]` | baked default, cmake `NROS_APP_CONFIG`, the QEMU launcher's NIC | per-board subnets (`10.0.2.x` entry defaults), cmake `NROS_APP_CONFIG` literals, the mps2 `docker` feature |
+| session wiring (locator, router, interfaces) | the RMW's own file (`[[domain]] config`), or a file-less domain's `locator` (RFC-0109 D6/D8) | Kconfig, baked default, session properties | `[image]`/`[system] locator`, `[network] router`, `[image] transport` (now derived); board `config.rs` literals, `ZENOH_LOCATOR`; `NROS_LOCATOR` stays the runtime override (RFC-0109 D6a) |
+| network devices, addresses | the OS (`stack = host / os`), or the board package's file named by `os_config` (`stack = board`) (RFC-0109 D2/D4) | `NROS_IMAGE_NET` → baked default, cmake `NROS_APP_CONFIG`, the QEMU launcher's NIC | `[network.<name>]`, `[image.<id>.net.<if>]`, `[board.net]` addresses, per-board subnets, the mps2 `docker` feature |
 | knobs | `[knobs]` (platform, board), `[image.<id>.knobs]` (project) | env / Kconfig / cmake by D6 | `ZPICO_*` as user names, the pairs table, leaf `.cargo [env]` |
 | triple, link | `nros-board.toml` | `cargo.toml`, cmake toolchain | 23 leaf `.cargo/config.toml` |
 | board config dirs | `nros-board.toml`, board-relative | — | `THREADX_CONFIG_DIR` `force`, `sdk-env.just` defaults |
@@ -778,6 +614,11 @@ Still open:
    hook does not read (board fragments, snippets).
 
 ## Changelog
+
+- 2026-10-24 — D10 superseded by RFC-0109 (three layers: OS devices, the
+  RMW's own file for wiring, ROS-level facts here). D10e, D10f and D10b's rules
+  survive in the form the table under D10 records; §3's network and locator
+  rows point at RFC-0109.
 
 - 2026-10-15 — Phase-497 W1 landed D10's schema. Three corrections from
   implementing it: the host-OS predicate is `[board.net] stack = "host"`, not

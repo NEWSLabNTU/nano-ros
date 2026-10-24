@@ -3,7 +3,7 @@ rfc: 0004
 title: "Configuration model: language-agnostic config across single-node and workspace"
 status: Stable
 since: 2026-05
-last-reviewed: 2026-09
+last-reviewed: 2026-10
 implements-tracked-by: [phase-212, phase-227]
 supersedes: []
 superseded-by: null
@@ -246,195 +246,42 @@ gateway = "192.168.1.1"
 netmask = "255.255.255.0"
 ```
 
-## 6. Transports — the multi-session / cross-RMW topology schema
+## 6. Sessions, links and the middleware's own configuration
 
-> **Scope (2026-06).** This schema is the design for **explicit multi-session and
-> cross-RMW topology** (cases A-D below) — read by the planner overlay +
-> `PlanBuildOptions::validate_transports`. It is **not** the embedded single-app net
-> home: that is the `deploy` class (§3, "Config in practice"), where one app's
-> physical link is a flat set of `[..deploy.<t>]` fields (`ip`/`gateway`/`netmask`/
-> `locator`), not a `[[transport]]` file block (no example declares one). A future
-> tidy folds the genuinely-needed multi-session topology under `system.toml`
-> (alongside `[[domain]]`/`[[bridge]]`); the `nros.toml` `[[transport]]` file is part
-> of the retired surface.
+> **Superseded 2026-10-24 by [RFC-0109](0109-network-config-layers.md).** This
+> section used to hold the `[[transport]]` schema (`kind`, `ip`, `mac`,
+> `gateway`, `interfaces`, `device`, `baudrate`, `rmw`, `locator`) and the
+> 2026-09-04 amendment that deleted its NIC axis. Both are replaced; what
+> survives is stated here in brief, and the design lives in RFC-0109.
 
-A **transport** is a physical link + the RMW session that rides it (historically
-declared at top level in `nros.toml`), independent of nodes:
+- **A session is a `[[domain]]`** (`name`, `rmw`, `id`, `config`), and an
+  image with none has one implicit default domain from `[system]` /
+  `[image]` (RFC-0109 D6). `[[transport]]` is retired from `system.toml`:
+  it parsed, its address keys were already refused
+  (`RETIRED_TRANSPORT_ADDRESS_REMEDY`, RFC-0103 D10g), and no example used it.
+  N sessions are still N separate sessions (`Executor::open_multi`, one per
+  spec, segregate — phase-172 K.5); merging links is the middleware's job.
+- **nano-ros models no NIC in its own config** — the principle of the
+  2026-09-04 amendment, kept. RFC-0109 makes it exact: devices belong to the
+  OS (on bare metal and on kernels without network config, the board package),
+  wiring belongs to the RMW's own file (`cyclonedds.xml`, zenoh json5), and
+  `system.toml` states ROS-level facts only.
+- **The middleware's configuration is carried verbatim** in its own language
+  and parsed by its own parser. Cyclone takes the XML document; zenoh-pico has
+  no document format, so a zenoh json5 is lowered to `zp_config_insert`
+  properties ON THE HOST (RFC-0109 D8). The amendment's "nano-ros must not add
+  a JSON5 parser" therefore narrows to: no parser on an embedded target.
+- **`rmw_session_options_t` carries `properties`** (phase-206 W3's correction,
+  kept): the seam carries whatever the backend's own configuration language
+  cannot be delivered by the build — nothing for a document format, the
+  key/value pairs for a programmatic one.
+- **Binding:** a node binds to exactly one session; with N > 1 each node names
+  its domain. In-process multi-RMW is `[[bridge]]` (RFC-0009).
 
-```toml
-[[transport]]
-id      = "eth"            # optional; defaults to `rmw` when each rmw is unique
-kind    = "ethernet"       # ethernet | wifi | serial | can
-ip      = "10.0.2.50/24"   # CIDR carries the prefix
-mac     = "02:00:00:00:00:01"
-gateway = "10.0.2.2"
-rmw     = "zenoh"
-locator = "tcp/10.0.2.2:7447"
-
-[[transport]]
-id       = "bus"
-kind     = "serial"
-device   = "UART0"
-baudrate = 115200
-rmw      = "cyclonedds"
-```
-
-Per-kind field rules (validated by `PlanBuildOptions::validate_transports`):
-
-| kind | fields |
-|------|--------|
-| `ethernet` | `ip` (CIDR), `mac`, `gateway` |
-| `wifi` | `ip` (optional/static), `ssid`, `password` |
-| `serial` / `can` | `device`, `baudrate` |
-| all | `id`, `rmw`, `locator` |
-
-The `id` makes a transport first-class and addressable, and disambiguates two
-transports that share an `rmw`.
-
-### No NIC axis: nano-ros does not model interfaces
-
-An earlier revision of this document gave `ethernet`/`wifi` an `interfaces` list
-("multi-homing": one session spanning several NICs) and a two-axis taxonomy built
-on it. **That vocabulary is deleted (phase-206 W5)** and nothing replaces it.
-
-Devices are the board's job and are up before ROS exists; what the *middleware*
-binds to belongs in the middleware's own configuration — CycloneDDS
-`<General><Interfaces>` via `CYCLONEDDS_URI`, a zenoh config's `listen`/`connect`
-endpoints plus `scouting/multicast/interface`. A nano-ros-owned NIC name would
-need a resolver, a gate and a per-platform story that only Linux can satisfy, in
-exchange for re-spelling a setting both backends already accept.
-
-The list was never lowered to anything: it parsed, validated, reached the IR and
-was written into `<bake>/nros-plan.json`, and no consumer ever read it. Its board
-seam, `BoardTransportConfig::set_interfaces`, was a no-op default with zero
-overrides. The remaining axis is the one that always did work — **N
-`[[transport]]` entries = N separate sessions**, bound per node by `rmw` (or by
-`id` for two same-backend sessions deliberately not merged).
-
-The upstream `ros-launch-manifest` schema still carries `TransportBlock.interfaces`,
-so the key can still arrive from a `system.toml`. `plan_transports` refuses it,
-naming the backend config above; the plan schema rejects it outright
-(`deny_unknown_fields`).
-
-## Amendment (2026-09-04) — the middleware's configuration is the middleware's own
-
-**Retracts:** the `interface` / `interfaces` transport fields, the two-axes
-taxonomy that was built on them (replaced above by §"No NIC axis"), and the
-per-backend multi-homing mapping. The surviving axis — N `[[transport]]`
-entries = N separate sessions, bound by `rmw` or by `id` — is stated there.
-**Tracked by:** [phase-206](../roadmap/phase-206-multi-homing-transport-interfaces.md).
-**Sibling reading:** RFC-0087 (a package is a `package.xml`) applies the same
-"do not invent a second vocabulary" move to provider identity.
-
-### The principle
-
-> **nano-ros transports the user's backend config VERBATIM; it does not
-> re-model it.** The board brings the devices up before ROS exists; the
-> middleware is configured in the middleware's own language, parsed by the
-> middleware's own parser.
-
-This is what ROS 2 does, and it is why a ROS 2 user never writes an interface
-list into a node: they set `CYCLONEDDS_URI`, or hand zenoh a config, naming an
-IP or a device. The application code knows nothing about NICs.
-
-### Why the retracted design could not work
-
-`interfaces = ["eth0", "eth1"]` requires nano-ros to own a second vocabulary for
-NICs, and there is no vocabulary that spans the targets:
-
-| platform | how a NIC is named |
-| --- | --- |
-| POSIX | `getifaddrs` / `ifa_name` — real names, resolved at run time by the HOST |
-| Zephyr | `net_if_get_default()` — **cannot be named at all** |
-| smoltcp | exactly one `Interface`, **no names** |
-| lwIP / FreeRTOS / esp-idf / ThreadX | the platform `iface` argument is accepted and ignored; the ports say so in their own source |
-
-A portable declaration naming `eth0` is issue 0623's shape one layer up — a
-value authored in one vocabulary and resolved in another, with nothing checking
-they agree. Every fix for that needs a resolver, a gate, and a per-platform
-story only Linux can satisfy.
-
-### The feature already exists, in the backend
-
-Measured 2026-09-04 in the CycloneDDS we link (`third-party/dds/cyclonedds`,
-0.10.5, `src/core/ddsi/include/dds/ddsi/ddsi_cfgelems.h:79-88`):
-
-```c
-GROUP("NetworkInterface", NULL, network_interface_attributes, INT_MAX,
-  MEMBER(network_interfaces), ...
-```
-
-`INT_MAX` multiplicity — an unbounded `<NetworkInterface>` list, each with
-`name` / `address` / `autodetermine` / `priority`, and the group's own
-description: *"Multiple interfaces can be specified with an assigned priority.
-The list in use will be sorted by priority."* Multi-homing is therefore not a
-nano-ros feature at all; it is an element in a config the user writes.
-
-### What each backend's "own language" IS — and it differs
-
-The verbatim unit is **not the same shape for both backends**, because the
-backends are not the same shape. This is the part most likely to be
-mis-generalised, so it is written down:
-
-| backend | native config surface | how nano-ros carries it |
-| --- | --- | --- |
-| **CycloneDDS** | an XML **document**, and `dds_create_domain` parses inline XML itself (`ddsrt_xmlp_new_string`) | hand the file's bytes over as one comma token; **nano-ros parses no XML** |
-| **zenoh-pico** | **no document format exists** — the API is `z_config_default` / `zp_config_insert(config, uint8_t key, const char *value)` over ~23 numbered keys | a flat `key = value` list whose key NAMES are upstream's; each pair goes to `zp_config_insert` |
-
-**Cyclone composes; nano-ros must stop replacing.** `dds_create_domain` accepts
-a comma-separated list of sources and merges every token into one `cfgst`
-(`ddsi_config.c:2538-2570`). nano-ros selects exactly one with a three-way
-ternary, so a user config **silently discards the baked baseline** — including
-`<Threads>` stack sizes that are load-bearing on FreeRTOS and ThreadX.
-
-**zenoh-pico's lack of a config file is a position, not a gap.** Upstream's
-manual defines three categories and names run-time options — `zp_config_insert`
-— as *"the primary configuration method"*. JSON5/YAML config files are
-documented for **`zenohd`**, the router; the zenoh-pico manual does not mention
-a file format at all. **nano-ros must not add a JSON5 parser**: that would mean
-owning a parser for a format its own backend does not speak, which is this
-amendment's mistake wearing a friendlier hat.
-
-### Consequences for this RFC's model
-
-* `[[transport]]` keeps `id`, `rmw`, `locator`, and the device fields that name
-  hardware (`device`, `baudrate`, `ip`, `mac`, `gateway`, `ssid`, `password`).
-  It does **not** grow transport tuning: `system.toml` says what the system
-  IS — nodes, topics, capabilities — and the middleware's tuning lives in the
-  middleware's own config. That is the ROS 2 split.
-* `Executor::open_multi([SessionSpec…])` stays exactly as it is: one session per
-  spec, **segregate**, which is phase-172 K.5. There is no "merge" primitive to
-  build, because merging NICs is something Cyclone does inside one participant
-  when its config says so.
-* `rmw_session_options_t` does not grow a list field **for the interface
-  case** — CycloneDDS's config is a DOCUMENT the build bakes and the domain
-  parses, so nothing about NIC binding has to cross the session-open seam.
-
-  **Corrected 2026-09-05, by phase-206 W3.** An earlier revision of this bullet
-  said flatly that "config does not need it", generalising from the Cyclone case
-  to both backends. That is false of zenoh-pico, which has **no config document
-  format at all**: its configuration IS `zp_config_insert(key, value)` at
-  session-open time, so key/value pairs have nowhere to travel except that seam.
-  The struct therefore carries `properties` + `property_count`, appended after
-  `enclave` so every existing field keeps its offset — the growth the header's
-  own note sanctioned ("one break, then the struct grows"). And it was not
-  merely unused: `create_session_trampoline` discarded the options pointer and
-  built `properties: &[]`, so **no C or C++ entry could state any transport
-  configuration, on any platform**.
-
-  The general rule survives the correction, and is the useful form: *the seam
-  carries whatever the backend's own configuration language cannot be delivered
-  by the build.* For a document format that is nothing; for a programmatic
-  key/value API it is the pairs.
-
-### Runtime mapping & binding
-
-Each `[[transport]]` becomes one `SessionSpec { rmw, locator, domain_id, … }`;
-the executor opens them with `Executor::open_multi([specs])`. A node binds to
-exactly one transport: 0 transports → board default + the single linked RMW
-(`Executor::open`); 1 → implicit; N → each node names its transport (default =
-the `default = true` one). In-process multi-RMW is the explicit `[[bridge]]`
-path (RFC-0009).
+The standalone direct-mode `config.toml` (§5) still has a `[[transport]]`
+block, with device fields. That file belongs to a hand-written `no_std` app
+that brings its own network up, so the app is its own board package and the
+file is its D4 file in RFC-0109's terms; it is out of `system.toml`'s scope.
 
 ## 7. Scheduling / RT — `[node.rt]` *(nros.toml form unused)*
 
@@ -549,6 +396,13 @@ on the next callback.
 - `book/src/reference/nros-bridge-toml.md` — the separate runtime topic-forward bridge config.
 
 ## Changelog
+
+- 2026-10-24 (RFC-0109) — §6 replaced. The `[[transport]]` schema retires
+  from `system.toml`, sessions are `[[domain]]`, and the NIC/wiring split of
+  the 2026-09-04 amendment becomes RFC-0109's three layers (OS devices, the
+  RMW's own file, ROS-level `system.toml`). The amendment's no-JSON5 rule
+  narrows to embedded targets. The superseded text is in git history at the
+  commit before this one.
 
 - 2026-10-12 (phase-486 W8) — `[deploy.*]` and `[param_services]` are no
   longer parsed: every nano-ros reader refuses them BY NAME

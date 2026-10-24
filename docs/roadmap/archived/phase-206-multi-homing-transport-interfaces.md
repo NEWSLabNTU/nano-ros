@@ -16,6 +16,14 @@ format.
 reason this phase was rescoped: the old plan built a nano-ros abstraction over
 something the backends already have words for.
 
+**Status (2026-10-24). ARCHIVED — closed by [RFC-0109](../../design/0109-network-config-layers.md).**
+Its principle (nano-ros models no NIC; the middleware is configured in its own
+language) is RFC-0109's layer 2, and its W1–W5 seams (Cyclone verbatim bake,
+session `properties`) stay. The two open acceptance items are replaced:
+zenoh `listen` through the RMW's own file is phase-514 W3 (via json5, the flat
+`zenoh.conf` retires); hosted multi-homing on `lo` + a NIC is the
+middleware's own feature (RFC-0109 U6), not a nano-ros acceptance item.
+
 **Status (2026-10-14). W1–W5 landed, W6 is out of scope, and two acceptance
 items are open. The phase stays active because no other phase owns them.**
 W2's RTOS gap closed at LINK stage on 2026-09-06 (`9ae2711744`:
@@ -32,7 +40,7 @@ predates that. The two open items:
   interface.
 
 A board that STATES several NICs (interface facts, a network per interface)
-is [phase-497](archived/phase-497-networks-have-owners.md) W4 (RFC-0103 D10), not this
+is [phase-497](phase-497-networks-have-owners.md) W4 (RFC-0103 D10), not this
 phase. This phase stays "nano-ros models no NICs" for the middleware config.
 
 **Earlier status (2026-09-05). W1, W2, W3 and W5 LANDED; W4 landed
@@ -129,7 +137,7 @@ Cyclone `<Interfaces>` emission), and a multi-NIC target to verify against
 (206.4). Distinct from Phase 172.K.5 (multi-domain = *segregate* sessions); this
 is *merge* — one session, many NICs.
 
-Design: [`docs/design/0004-configuration-and-transports.md`](../design/0004-configuration-and-transports.md)
+Design: [`docs/design/0004-configuration-and-transports.md`](../../design/0004-configuration-and-transports.md)
 ("Two axes" taxonomy, cases B/C).
 
 ## Landed (Phase 172.K.7 schema + plumbing, 2026-05-29) — MOSTLY SINCE REMOVED
@@ -265,7 +273,7 @@ it delegates to (`nros_board_freertos::run_entry`, which carries the board
 **the board owns the devices and they are up before ROS exists.** What does not
 hold is that the two mixin traits are how it happens.
 
-Filed as [issue 1067](../issues/archived/1067-board-device-contract-traits-have-no-callers.md)
+Filed as [issue 1067](../../issues/archived/1067-board-device-contract-traits-have-no-callers.md)
 and **resolved by W4 below**: the two mixins are gone, and the contract is now
 `BoardEntry::run` — the one that runs.
 
@@ -780,7 +788,7 @@ does not belong in this phase.
       freertos, mps2-an385, esp32-qemu) and **no caller either**. Deleting a
       seam with no impl and no caller is a cleanup; deleting one with five impls
       is a decision about who writes a board's IP now the generator is gone.
-      Flagged on the trait and filed as [issue 1064](../issues/archived/1064-board-transport-setters-have-impls-but-no-callers.md) rather than swept in here.
+      Flagged on the trait and filed as [issue 1064](../../issues/archived/1064-board-transport-setters-have-impls-but-no-callers.md) rather than swept in here.
 ### 206.W6 — Fast DDS whitelist (unchanged: out of scope)
 - [ ] Not actionable; no Fast DDS backend exists. Under the new principle it
       needs no nano-ros work at all when one does — a Fast DDS user writes a Fast

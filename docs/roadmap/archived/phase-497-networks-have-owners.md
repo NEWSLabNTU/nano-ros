@@ -249,7 +249,7 @@ and the per-interface output (W2) carries both.
 test. A runtime test only where a two-NIC board exists.
 
 This is the board half of multi-homing.
-[Phase-206](../phase-206-multi-homing-transport-interfaces.md) owns the
+[Phase-206](phase-206-multi-homing-transport-interfaces.md) owns the
 middleware half: the user's own Cyclone `<Interfaces>` or zenoh config
 reaches the backend verbatim, and nano-ros models no NIC there. Its open
 hosted lo-plus-NIC acceptance is the runtime counterpart of this item.

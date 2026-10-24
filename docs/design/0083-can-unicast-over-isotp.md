@@ -197,3 +197,13 @@ Extended and mixed addressing (§3). Hardware validation, which remains
 untouched across all of these phases. The upstream PRs, which are the campaign's
 later phases. And any change to the existing multicast link, which keeps working
 and keeps its own use case.
+
+## Amendment — RFC-0109 (2026-10-24)
+
+The ISO-TP link assumes a started controller. On Zephyr the fork's
+`can_start()` call moves from the link into nano-ros's Zephyr board glue, which
+runs before any session opens; on a `"board"`-stack board the board package
+starts the controller from its own file
+([RFC-0109](0109-network-config-layers.md) D10). `tx_id` / `rx_id` /
+`prio_classes` stay in the locator: they are wiring, and differ per image on a
+shared bus (RFC-0109 U11).
