@@ -546,6 +546,31 @@ template <typename A> class Server {
         return complete_goal(goal_id.data(), ::rclcpp_action::GoalStatus::Succeeded, result);
     }
 
+    /// Start EXECUTING the accepted goal `goal_id` — issue 2027.
+    ///
+    /// Moves the goal from ACCEPTED to EXECUTING and publishes the status
+    /// array: upstream's `goal_handle->execute()`, keyed by goal id, and C's
+    /// `rclc_action_execute`. A goal the goal callback answered
+    /// `GoalResponse::ACCEPT_AND_DEFER` starts this way, from the accepted
+    /// callback or later. `NotFound` for a goal this server no longer holds,
+    /// `NotAllowed` for one that is not ACCEPTED (already executing,
+    /// canceling, or terminal), where upstream raises; nothing is changed or
+    /// published then.
+    ///
+    /// The goal-id API leaves a goal ACCEPTED after `ACCEPT_AND_EXECUTE` (the
+    /// status the Rust core records on accept); `create_server`'s upstream
+    /// binding executes it for you before `handle_accepted`, as upstream does.
+    ::rclcpp::Result execute(const uint8_t goal_id[16]) {
+        if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
+        return ::rclcpp::Result(nros_cpp_action_server_execute(
+            storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
+    }
+
+    /// @ref execute taking a `GoalUUID` value.
+    ::rclcpp::Result execute(const ::rclcpp_action::GoalUUID& goal_id) {
+        return execute(goal_id.data());
+    }
+
     /// Terminate `goal_id` as SUCCEEDED — phase-417 W4.b.
     ///
     /// C has `rclc_action_succeed` / `_abort` / `_canceled`, Rust has
@@ -934,6 +959,15 @@ template <typename A> class ServerGoalHandle {
     bool is_canceling() const { return status() == GoalStatus::Canceling; }
     /// The goal is EXECUTING.
     bool is_executing() const { return status() == GoalStatus::Executing; }
+    /// Start EXECUTING this goal — issue 2027, upstream's `execute()`:
+    /// ACCEPTED -> EXECUTING, publishing the status array. How a goal
+    /// accepted with `GoalResponse::ACCEPT_AND_DEFER` starts (`create_server`
+    /// already does it for `ACCEPT_AND_EXECUTE`, before `handle_accepted`).
+    /// Upstream raises for a goal that is not ACCEPTED; this changes nothing
+    /// then. `Server<A>::execute(goal_id)` reports which case it was.
+    void execute() {
+        if (server_ != nullptr) (void)server_->execute(uuid_.data());
+    }
     /// The goal has not reached a terminal state.
     bool is_active() const {
         const GoalStatus s = status();
@@ -1013,6 +1047,9 @@ template <typename A> struct ServerUpstream {
     struct Entry {
         GoalUUID id;
         ::std::shared_ptr<const Goal> goal;
+        /// Issue 2027 — answered ACCEPT_AND_EXECUTE: the server executes it
+        /// before `handle_accepted`, as upstream's does.
+        bool execute;
     };
     struct State {
         GoalFn goal;
@@ -1072,7 +1109,7 @@ template <typename A> struct ServerUpstream {
         const GoalResponse r = st->goal(id, msg);
         if (r != GoalResponse::REJECT) {
             forget(*st->server, id);
-            st->goals.push_back(Entry{id, msg});
+            st->goals.push_back(Entry{id, msg, r == GoalResponse::ACCEPT_AND_EXECUTE});
         }
         return r;
     }
@@ -1085,7 +1122,18 @@ template <typename A> struct ServerUpstream {
 
     static void on_accepted(const uint8_t uuid[16], void* ctx) {
         State* st = static_cast<State*>(ctx);
-        if (st->accepted) st->accepted(make_handle(st, GoalUUID(uuid)));
+        const GoalUUID id(uuid);
+        // Issue 2027 — upstream's server calls `execute()` itself for
+        // ACCEPT_AND_EXECUTE, so the goal is EXECUTING (and the status array
+        // says so) by the time `handle_accepted` sees it; ACCEPT_AND_DEFER
+        // stays ACCEPTED until the handle's `execute()`.
+        for (const Entry& e : st->goals) {
+            if (e.id == id) {
+                if (e.execute) (void)st->server->execute(uuid);
+                break;
+            }
+        }
+        if (st->accepted) st->accepted(make_handle(st, id));
     }
 #endif
 };

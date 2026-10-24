@@ -896,6 +896,28 @@ inline void spin_some(const Node::SharedPtr& node) {
 /// client->send_request(req))` — the pairing the poll client's own doc
 /// recommends — did not compile, and the only thing the drift snippet ever
 /// passed was a fake with a `const` `is_ready()`. Both now bind.
+namespace detail {
+/// Issue 2027 — "has this future completed?" for each future shape
+/// `spin_until_future_complete` takes: anything with `is_ready()`
+/// (`rclcpp::Future`, `rclcpp_action::detail::DrivenSharedFuture`, which also
+/// drives its client) and, hosted, a bare `std::shared_future` / `std::future`
+/// (a zero-length `wait_for`).
+template <typename F> inline bool future_is_ready(F& f) {
+    return f.is_ready();
+}
+#if defined(NROS_CPP_HAS_STD_FUTURE) // hosted-family: future-interop
+template <typename T> inline bool future_is_ready(const ::std::shared_future<T>& f) {
+    return f.valid() && f.wait_for(::std::chrono::seconds(0)) == ::std::future_status::ready;
+}
+template <typename T> inline bool future_is_ready(::std::shared_future<T>& f) {
+    return f.valid() && f.wait_for(::std::chrono::seconds(0)) == ::std::future_status::ready;
+}
+template <typename T> inline bool future_is_ready(::std::future<T>& f) {
+    return f.valid() && f.wait_for(::std::chrono::seconds(0)) == ::std::future_status::ready;
+}
+#endif
+} // namespace detail
+
 template <typename Future>
 inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node, Future&& future,
                                                    int32_t timeout_ms = -1) {
@@ -909,14 +931,14 @@ inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node, 
     const uint64_t budget_ns = bounded ? static_cast<uint64_t>(timeout_ms) * 1000000ull : 0ull;
 
     while (::rclcpp::ok()) {
-        if (future.is_ready()) {
+        if (::rclcpp::detail::future_is_ready(future)) {
             return FutureReturnCode::SUCCESS;
         }
         (void)::rclcpp::spin_once(kPollMs);
         // Re-check before the deadline test: a future that became ready on the
         // spin just above must report SUCCESS even if the budget expired in
         // the same slice.
-        if (future.is_ready()) {
+        if (::rclcpp::detail::future_is_ready(future)) {
             return FutureReturnCode::SUCCESS;
         }
         if (bounded && nros_cpp_time_ns() - start_ns >= budget_ns) {

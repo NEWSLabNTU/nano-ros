@@ -207,6 +207,22 @@
 #define NROS_CPP_ACTION_CDR_HEADER_LEN 4
 
 /**
+ * Issue 2027 — the `send_goal` sub-client, for
+ * [`nros_cpp_action_client_forget`].
+ */
+#define NROS_CPP_ACTION_CHANNEL_SEND_GOAL 0
+
+/**
+ * Issue 2027 — the `cancel_goal` sub-client.
+ */
+#define NROS_CPP_ACTION_CHANNEL_CANCEL 1
+
+/**
+ * Issue 2027 — the `get_result` sub-client.
+ */
+#define NROS_CPP_ACTION_CHANNEL_GET_RESULT 2
+
+/**
  * `rclcpp::SchedClass` mirror. Phase 110.B.
  */
 enum nros_cpp_sched_class_t
@@ -1278,6 +1294,24 @@ typedef struct nros_cpp_action_hashes_t {
    */
   const char *status;
 } nros_cpp_action_hashes_t;
+
+/**
+ * One `action_msgs/msg/GoalInfo` of a `CancelGoal` reply — issue 2027.
+ */
+typedef struct nros_cpp_action_goal_info_t {
+  /**
+   * The goal id.
+   */
+  uint8_t uuid[16];
+  /**
+   * When the server accepted it: seconds.
+   */
+  int32_t stamp_sec;
+  /**
+   * ...and nanoseconds.
+   */
+  uint32_t stamp_nanosec;
+} nros_cpp_action_goal_info_t;
 
 typedef struct nros_cpp_wake_state_t {
   uint64_t _opaque[2];
@@ -4731,6 +4765,25 @@ nros_cpp_ret_t nros_cpp_action_server_complete_goal(void *handle,
                                                     size_t result_len);
 
 /**
+ * Start EXECUTING an accepted goal — issue 2027, `ServerGoalHandle::execute`.
+ *
+ * Upstream's `execute()` moves a goal from ACCEPTED to EXECUTING and
+ * publishes the status array; it is how a goal the goal callback answered
+ * `ACCEPT_AND_DEFER` starts (and what the server does itself, before
+ * `handle_accepted`, for `ACCEPT_AND_EXECUTE`). Returns `NROS_CPP_RET_OK`
+ * when the goal moved, `NROS_CPP_RET_NOT_FOUND` when this server has no such
+ * live goal, and `NROS_CPP_RET_NOT_ALLOWED` when the goal is not ACCEPTED
+ * (upstream raises there; nothing is changed or published).
+ *
+ * # Safety
+ * `handle` must be a valid `CppActionServer` storage pointer,
+ * `executor_handle` a valid `CppContext`, and `goal_id` 16 readable bytes.
+ */
+nros_cpp_ret_t nros_cpp_action_server_execute(void *handle,
+                                              void *executor_handle,
+                                              const uint8_t (*goal_id)[16]);
+
+/**
  * Iterate over every goal currently live in the arena.
  *
  * Calls `visitor(uuid, status, ctx)` for each entry in the
@@ -5155,6 +5208,75 @@ nros_cpp_ret_t nros_cpp_action_client_cancel_goal(void *handle, const uint8_t (*
  */
 nros_cpp_ret_t nros_cpp_action_client_try_recv_cancel_response(void *handle,
                                                                int8_t *out_return_code);
+
+/**
+ * Forget ONE pending request about `goal_id` on one sub-client — issue 2027.
+ *
+ * Each sub-client holds at most `MAX_CONCURRENT_GOALS` requests in flight,
+ * and a slot used to come back only when its reply arrived. A C++ future
+ * whose last owner let go first (dropped, cancelled, moved over) — with no
+ * client-wide callback and no upstream goal handle still waiting for the
+ * reply — left the slot taken for good, so the fifth abandoned goal refused
+ * every later send. The header calls this from the future's abandonment; the
+ * reply, if it still comes, is dropped by the correlator.
+ *
+ * `channel` is one of the `NROS_CPP_ACTION_CHANNEL_*` constants. Returns `1`
+ * when a request was forgotten, `0` when none about `goal_id` was pending,
+ * or a negative `NROS_CPP_RET_*` code.
+ *
+ * # Safety
+ * `handle` must be a valid action client storage and `goal_id` 16 readable
+ * bytes.
+ */
+nros_cpp_ret_t nros_cpp_action_client_forget(void *handle,
+                                             int32_t channel,
+                                             const uint8_t (*goal_id)[16]);
+
+/**
+ * Send a `CancelGoal` request carrying a goal id AND a stamp — issue 2027.
+ *
+ * `rclcpp_action::Client::async_cancel_all_goals` is the zero id with a zero
+ * stamp, `async_cancel_goals_before(stamp)` the zero id with `stamp`. The
+ * reply is correlated under `goal_id` (the zero id for both), and taken with
+ * [`nros_cpp_action_client_take_cancel_reply`]. `seq_out` (may be NULL)
+ * receives the request's sequence id, which the reply carries back — the
+ * only thing that tells two pending cancels about one goal apart.
+ *
+ * # Safety
+ * All non-NULL pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_client_cancel_goals(void *handle,
+                                                   const uint8_t (*goal_id)[16],
+                                                   int32_t stamp_sec,
+                                                   uint32_t stamp_nanosec,
+                                                   int64_t *seq_out);
+
+/**
+ * Take one `CancelGoal` reply, attributed to the request it answers — issue 2027.
+ *
+ * Writes the goal the REQUEST named (the zero id for a cancel-all /
+ * cancel-before) to `goal_id_out`, that request's sequence id to `seq_out`
+ * (may be NULL; `INT64_MIN` from a backend that assigns none), the RPC
+ * return code to
+ * `return_code_out`, the reply's `goals_canceling` count to `count_out`, and
+ * the first `min(count, infos_cap)` of them to `infos`. `infos` may be NULL
+ * when `infos_cap` is 0.
+ *
+ * Returns `NROS_CPP_RET_OK` when a reply was taken, `NROS_CPP_RET_TRY_AGAIN`
+ * when none is pending, and `NROS_CPP_RET_ERROR` for a malformed reply (it
+ * is consumed, and `goal_id_out` / `seq_out` still name the request it
+ * answered; issue 0223's rule — a truncation is not "no goals").
+ *
+ * # Safety
+ * All non-NULL pointers must be valid; `infos` must hold `infos_cap` entries.
+ */
+nros_cpp_ret_t nros_cpp_action_client_take_cancel_reply(void *handle,
+                                                        uint8_t (*goal_id_out)[16],
+                                                        int8_t *return_code_out,
+                                                        struct nros_cpp_action_goal_info_t *infos,
+                                                        size_t infos_cap,
+                                                        size_t *count_out,
+                                                        int64_t *seq_out);
 
 /**
  * Poll action client for pending replies (non-blocking).

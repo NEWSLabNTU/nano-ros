@@ -354,6 +354,15 @@ opts.result_callback = [](const rclcpp_action::Client<Fibonacci>::WrappedResult&
     // r.code: rclcpp_action::ResultCode::SUCCEEDED / ABORTED / CANCELED; r.result
 };
 auto fut = client->async_send_goal(goal, opts);   // rclcpp::Future<GoalAccept>
+
+// Issue 2027 — the handle-taking calls return upstream's std::shared_future.
+auto result = client->async_get_result(goal_handle);   // shared_future<WrappedResult>
+auto cancel = client->async_cancel_goal(goal_handle);  // shared_future<CancelResponse::SharedPtr>
+if (rclcpp::spin_until_future_complete(node, result) == rclcpp::FutureReturnCode::SUCCESS) {
+    const auto& wrapped = result.get();
+}
+// server, after handle_goal returned ACCEPT_AND_DEFER:
+goal_handle->execute();   // ACCEPTED -> EXECUTING, status array published
 ```
 
 `X<A>::SharedPtr` is `rclcpp::Owned<X<A>>` (the entity by value), and the
@@ -364,8 +373,33 @@ executor's task only — not from a thread you started — and do not move the
 server while a handle is in use. The callbacks run from the executor's
 dispatch, beside the client-wide `set_callbacks` ones. `async_send_goal`
 returns the goal-keyed `rclcpp::Future<GoalAccept>`, not a
-`std::shared_future`; `get_goal_stamp` and `ServerGoalHandle::execute` are
-absent. On a freestanding build each of these shapes is a compile error
+`std::shared_future`; `get_goal_stamp` is absent.
+
+`async_get_result` / `async_cancel_goal` / `async_cancel_all_goals` /
+`async_cancel_goals_before` (issue 2027) return a
+`rclcpp_action::detail::DrivenSharedFuture<T>`, which IS-A
+`std::shared_future<T>`: its `is_ready()` (what `spin_until_future_complete`
+polls), `wait_for` and `get` drive the client's dispatch and executor while
+they wait, since no other thread fulfils it. Converted to a bare
+`std::shared_future` it still completes, but only when something else drives
+the client. Every `async_get_result` for one goal returns the handle's own
+future; a result-aware goal's handle is kept by the client until its result
+arrives, as upstream's pending request keeps it. Cancel replies are taken by
+that future (or `poll()`), not by the executor's spin. These need
+`std::promise`, so they are hosted-only twice over: a libstdc++ built without
+threads (arm-none-eabi) refuses them like a freestanding build does.
+
+`ServerGoalHandle::execute()` and `Server<A>::execute(goal_id)` move an
+ACCEPTED goal to EXECUTING and publish the status array; the latter reports
+`NotFound` / `NotAllowed` where upstream raises. `create_server` executes an
+`ACCEPT_AND_EXECUTE` goal before `handle_accepted`; the goal-id API leaves it
+ACCEPTED, as the Rust core records it.
+
+**Goal slots.** Each action sub-client holds at most `MAX_CONCURRENT_GOALS` (4)
+requests in flight. A future dropped (or `cancel()`ed) before its reply frees
+its request's slot, unless something else still waits on that reply — a
+client-wide `set_callbacks` hook, or an upstream goal (`async_send_goal` with
+callbacks, `async_get_result`). A late reply for a freed slot is dropped. On a freestanding build each of these shapes is a compile error
 (`NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`) naming the goal-id-keyed form above;
 `create_client` alone works there.
 

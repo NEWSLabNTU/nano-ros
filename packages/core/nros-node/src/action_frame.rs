@@ -16,7 +16,8 @@
 //! * `GetResult` reply: `[encap 4][status i8][pad to 4 → byte 8][result fields]`
 //! * `FeedbackMessage`: `[encap 4][GoalId.uuid 16][feedback fields]`
 //! * `SendGoal` request (server side): `[encap 4][GoalId.uuid 16][goal fields]`
-//! * `CancelGoal` reply: `[encap 4][return_code i8][goals_canceling …]`
+//! * `CancelGoal` reply: `[encap 4][return_code i8][pad to 4 → byte 8][count u32]
+//!   [GoalInfo { uuid 16, stamp.sec i32, stamp.nanosec u32 } × count]`
 //!
 //! The payload fields arrive WITHOUT an encapsulation header of their own on
 //! every backend (RFC-0069 / issue 0418), and every deserializer reads with
@@ -48,7 +49,20 @@ pub const FEEDBACK_PAYLOAD_OFFSET: usize =
 /// as feedback: the GoalId follows the header.
 pub const GOAL_REQUEST_PAYLOAD_OFFSET: usize = FEEDBACK_PAYLOAD_OFFSET;
 
+/// Byte holding the `goals_canceling` sequence length of a `CancelGoal`
+/// reply: the `i8` return code, then CDR alignment to 4 (issue 2027).
+pub const CANCEL_GOALS_COUNT_OFFSET: usize = (REPLY_STATUS_OFFSET + 1 + 3) & !3;
+
+/// First `GoalInfo` of a `CancelGoal` reply's `goals_canceling`.
+pub const CANCEL_GOALS_OFFSET: usize = CANCEL_GOALS_COUNT_OFFSET + 4;
+
+/// One `action_msgs/msg/GoalInfo` on the wire: the UUID (`uint8[16]`), then
+/// `builtin_interfaces/Time` (`int32 sec`, `uint32 nanosec`, 4-aligned, which
+/// 16 bytes in already is).
+pub const GOAL_INFO_LEN: usize = GoalId::UUID_LEN + 4 + 4;
+
 const _: () = assert!(RESULT_PAYLOAD_OFFSET == 8);
+const _: () = assert!(CANCEL_GOALS_OFFSET == 12);
 const _: () = assert!(FEEDBACK_PAYLOAD_OFFSET == 20);
 
 /// The `accepted` flag of a `SendGoal` reply (`false` for a short frame).
@@ -109,6 +123,35 @@ pub fn cancel_return_code(reply: &[u8]) -> Option<i8> {
     reply.get(REPLY_STATUS_OFFSET).map(|b| *b as i8)
 }
 
+/// How many goals a `CancelGoal` reply says are canceling — issue 2027.
+/// `None` when the frame is too short to hold the count, or the count names
+/// more `GoalInfo`s than the frame carries (a truncation is not "none").
+pub fn cancel_goals_count(reply: &[u8]) -> Option<usize> {
+    let raw = reply.get(CANCEL_GOALS_COUNT_OFFSET..CANCEL_GOALS_OFFSET)?;
+    let n = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]) as usize;
+    let need = n
+        .checked_mul(GOAL_INFO_LEN)?
+        .checked_add(CANCEL_GOALS_OFFSET)?;
+    (reply.len() >= need).then_some(n)
+}
+
+/// The `i`-th `GoalInfo` of a `CancelGoal` reply's `goals_canceling`: the
+/// goal and its acceptance stamp `(sec, nanosec)`. `None` past the count (or
+/// on a short frame).
+pub fn cancel_goal_info(reply: &[u8], i: usize) -> Option<(GoalId, i32, u32)> {
+    if i >= cancel_goals_count(reply)? {
+        return None;
+    }
+    let at = CANCEL_GOALS_OFFSET + i * GOAL_INFO_LEN;
+    let b = reply.get(at..at + GOAL_INFO_LEN)?;
+    let mut uuid = [0u8; GoalId::UUID_LEN];
+    uuid.copy_from_slice(&b[..GoalId::UUID_LEN]);
+    let s = GoalId::UUID_LEN;
+    let sec = i32::from_le_bytes([b[s], b[s + 1], b[s + 2], b[s + 3]]);
+    let nanosec = u32::from_le_bytes([b[s + 4], b[s + 5], b[s + 6], b[s + 7]]);
+    Some((GoalId { uuid }, sec, nanosec))
+}
+
 /// Write `frame`'s own encapsulation header followed by `fields` into `out`,
 /// truncating `fields` to what fits. Returns the bytes written, or `None` when
 /// `frame` has no header or `out` cannot hold one.
@@ -150,6 +193,28 @@ mod tests {
         let mut out = [0u8; 16];
         let n = splice_result(&reply, &mut out).unwrap();
         assert_eq!(&out[..n], &[0, 1, 0, 0, 0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn cancel_reply_lists_its_canceling_goals() {
+        // [encap][code=0][pad][count=2][uuid 16, sec, nsec] x 2
+        let mut reply = [0u8; CANCEL_GOALS_OFFSET + 2 * GOAL_INFO_LEN];
+        reply[..4].copy_from_slice(&[0, 1, 0, 0]);
+        reply[5..8].copy_from_slice(&[0xEE; 3]);
+        reply[8..12].copy_from_slice(&2u32.to_le_bytes());
+        reply[12] = 9;
+        reply[28..32].copy_from_slice(&5i32.to_le_bytes());
+        reply[32..36].copy_from_slice(&7u32.to_le_bytes());
+        reply[36] = 10;
+        assert_eq!(cancel_return_code(&reply), Some(0));
+        assert_eq!(cancel_goals_count(&reply), Some(2));
+        let (g, sec, ns) = cancel_goal_info(&reply, 0).unwrap();
+        assert_eq!((g.uuid[0], sec, ns), (9, 5, 7));
+        assert_eq!(cancel_goal_info(&reply, 1).unwrap().0.uuid[0], 10);
+        assert!(cancel_goal_info(&reply, 2).is_none());
+        // A count naming more entries than the frame holds is a truncation.
+        assert_eq!(cancel_goals_count(&reply[..CANCEL_GOALS_OFFSET + 4]), None);
+        assert_eq!(cancel_goals_count(&[0, 1, 0, 0, 0]), None);
     }
 
     #[test]

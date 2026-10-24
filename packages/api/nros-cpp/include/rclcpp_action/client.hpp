@@ -22,6 +22,7 @@
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
 #include "rclcpp/future.hpp"
 #include "rclcpp/stream.hpp"
+#include "rclcpp/time.hpp" // issue 2027 — `async_cancel_goals_before(const rclcpp::Time&)`
 // Issue 0796 — `CancelReturnCode` (the `action_msgs/srv/CancelGoal` RPC status
 // `cancel_goal` resolves to) is declared beside its per-goal sibling
 // `CancelResponse` in action_server.hpp, which is also where
@@ -89,6 +90,12 @@ enum class ResultCode : int8_t {
     ABORTED = 6,
 };
 
+/// Issue 2027 — how many `goals_canceling` entries a cancel response passed
+/// to an `async_cancel_*` future carries; a reply listing more keeps its first
+/// this many. Four times the goals a server holds at once
+/// (`MAX_CONCURRENT_GOALS`).
+static const size_t MAX_CANCEL_INFOS = 16;
+
 template <typename A> class Client;
 
 /// `rclcpp_action::ClientGoalHandle<A>` — issue 2015, upstream's client-side
@@ -128,6 +135,8 @@ template <typename A> class ClientGoalHandle {
     explicit ClientGoalHandle(const GoalUUID& id)
         : goal_id_(id), status_(static_cast<int8_t>(GoalStatus::Accepted)), feedback_aware_(false),
           result_aware_(false) {}
+    ClientGoalHandle(const ClientGoalHandle&) = delete;
+    ClientGoalHandle& operator=(const ClientGoalHandle&) = delete;
 
     /// The goal's id.
     const GoalUUID& get_goal_id() const { return goal_id_; }
@@ -140,11 +149,75 @@ template <typename A> class ClientGoalHandle {
 
   private:
     friend class Client<A>;
+
+#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
+    /// Issue 2027 — the promise behind `async_get_result`'s future, created
+    /// the first time one is asked for; upstream keeps the same pair in its
+    /// goal handle.
+    struct ResultState {
+        ::std::promise<WrappedResult> promise;
+        ::std::shared_future<WrappedResult> future;
+        bool done = false;
+    };
+    ResultState* result_state() {
+        ResultState* st = result_.template as<ResultState>();
+        if (st == nullptr) {
+            st = new ResultState();
+            st->future = st->promise.get_future().share();
+            result_.reset(st, [](void* p) { delete static_cast<ResultState*>(p); });
+        }
+        return st;
+    }
+    /// Fulfil the result future, if anyone asked for one; once.
+    void set_result(const WrappedResult& wrapped) {
+        ResultState* st = result_.template as<ResultState>();
+        if (st != nullptr && !st->done) {
+            st->done = true;
+            st->promise.set_value(wrapped);
+        }
+    }
+    bool result_done() const {
+        ResultState* st = result_.template as<ResultState>();
+        return st != nullptr && st->done;
+    }
+#endif
+
     GoalUUID goal_id_;
     int8_t status_;
     bool feedback_aware_;
     bool result_aware_;
+    /// Issue 2027 — the result promise (hosted only; the same two pointers
+    /// wide, and never allocated, on a freestanding build).
+    detail::HostedBox result_;
 };
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: action-interop
+namespace detail {
+/// Issue 2027 — one `action_msgs/msg/GoalInfo` of a cancel response, in
+/// upstream's field names (`info.goal_id.uuid`, `info.stamp.sec`).
+struct CancelGoalInfo {
+    struct {
+        uint8_t uuid[16];
+    } goal_id;
+    struct {
+        int32_t sec;
+        uint32_t nanosec;
+    } stamp;
+};
+/// Issue 2027 — upstream's `Client<A>::CancelResponse`
+/// (`action_msgs/srv/CancelGoal_Response`): the RPC's return code, its four
+/// constants, and the goals the server is now canceling.
+struct CancelResponse {
+    static constexpr int8_t ERROR_NONE = 0;
+    static constexpr int8_t ERROR_REJECTED = 1;
+    static constexpr int8_t ERROR_UNKNOWN_GOAL_ID = 2;
+    static constexpr int8_t ERROR_GOAL_TERMINATED = 3;
+    using SharedPtr = ::std::shared_ptr<CancelResponse>;
+    int8_t return_code = ERROR_NONE;
+    ::std::vector<CancelGoalInfo> goals_canceling;
+};
+} // namespace detail
+#endif
 
 /// Typed action client for a ROS 2 action.
 ///
@@ -177,6 +250,15 @@ template <typename A> class Client {
     using GoalHandle = ::rclcpp_action::ClientGoalHandle<A>;
     /// Upstream's result wrapper (hosted; refused on a freestanding build).
     using WrappedResult = typename GoalHandle::WrappedResult;
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: action-interop
+    /// Issue 2027 — upstream's cancel response and the two callbacks the
+    /// handle-taking calls accept.
+    using CancelResponse = detail::CancelResponse;
+    using CancelCallback = ::std::function<void(typename CancelResponse::SharedPtr)>;
+    using ResultCallback = typename GoalHandle::ResultCallback;
+#else
+    using CancelResponse = detail::Refused<Client>;
+#endif
 
   private:
 #ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
@@ -617,12 +699,12 @@ template <typename A> class Client {
     async_send_goal(const GoalType& goal, const SendGoalOptions& options = SendGoalOptions()) {
         uint8_t goal_id[16];
         if (!send_goal_async(goal, goal_id).ok()) return ::rclcpp::Future<GoalAccept>();
-        UpstreamState* st = upstream_.template as<UpstreamState>();
-        if (st == nullptr) {
-            st = new UpstreamState();
-            upstream_.reset(st, [](void* p) { delete static_cast<UpstreamState*>(p); });
-        }
-        st->goals.push_back(UpstreamGoal{GoalUUID(goal_id), options, nullptr});
+        UpstreamState* st = upstream_state();
+        prune_upstream(st);
+        UpstreamGoal g;
+        g.id = GoalUUID(goal_id);
+        g.options = options;
+        st->goals.push_back(g);
         return ::rclcpp::Future<GoalAccept>(storage_, &nros_cpp_action_client_poll, goal_id,
                                             &accepts_, executor_);
     }
@@ -633,6 +715,128 @@ template <typename A> class Client {
                                                  const SendGoalOptions& = SendGoalOptions()) {
         static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE);
         return ::rclcpp::Future<GoalAccept>();
+    }
+#endif
+
+#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
+    /// `async_get_result(goal_handle, result_callback)` — issue 2027,
+    /// upstream's handle-taking result request.
+    ///
+    /// Makes the goal RESULT-AWARE: requests its result unless that was
+    /// already done (by `async_send_goal` with a `result_callback`, or an
+    /// earlier call), and installs `result_callback` when one is given. The
+    /// returned future is the HANDLE's, as upstream's is — every call for one
+    /// goal returns the same future — and resolves to the `WrappedResult` when
+    /// the result arrives. Correlated by goal id on the client's keyed path
+    /// (issue 2011), so other goals' results never reach it.
+    ///
+    /// The future is a `std::shared_future<WrappedResult>` that DRIVES the
+    /// client while it is polled or waited on (`detail::DrivenSharedFuture`):
+    /// `rclcpp::spin_until_future_complete(node, f)` then `f.get()` work
+    /// unchanged. Empty (`valid()` false) for a null handle or a request that
+    /// could not be sent — including a full table, `MAX_CONCURRENT_GOALS`
+    /// get_result requests pending — where upstream throws.
+    ///
+    /// The client keeps a result-aware goal's handle until its result arrives,
+    /// as upstream's pending result request does; that request's slot is
+    /// therefore held until then whatever the caller drops.
+    detail::DrivenSharedFuture<WrappedResult>
+    async_get_result(typename GoalHandle::SharedPtr goal_handle,
+                     ResultCallback result_callback = nullptr) {
+        if (!initialized_ || !goal_handle) return detail::DrivenSharedFuture<WrappedResult>();
+        typename GoalHandle::ResultState* rs = goal_handle->result_state();
+        detail::DrivenSharedFuture<WrappedResult> fut(rs->future, pump_cell());
+        if (rs->done) return fut;
+        UpstreamState* st = upstream_state();
+        size_t at = 0;
+        bool created = false;
+        if (upstream_goal(goal_handle->get_goal_id().data(), at) == nullptr) {
+            UpstreamGoal g;
+            g.id = goal_handle->get_goal_id();
+            g.accepted = true;
+            st->goals.push_back(g);
+            at = st->goals.size() - 1;
+            created = true;
+        }
+        if (!goal_handle->result_aware_) {
+            if (!get_result_async(goal_handle->get_goal_id()).ok()) {
+                if (created) st->goals.erase(st->goals.begin() + static_cast<long>(at));
+                return detail::DrivenSharedFuture<WrappedResult>();
+            }
+            goal_handle->result_aware_ = true;
+        }
+        UpstreamGoal& g = st->goals[at];
+        g.accepted = true;
+        g.handle = goal_handle;
+        g.weak.reset();
+        if (result_callback) g.options.result_callback = result_callback;
+        return fut;
+    }
+
+    /// `async_cancel_goal(goal_handle, cancel_callback)` — issue 2027,
+    /// upstream's handle-taking cancel.
+    ///
+    /// Sends the `CancelGoal` request for the handle's goal and returns a
+    /// `std::shared_future<CancelResponse::SharedPtr>` that drives the client
+    /// while it is polled or waited on; `cancel_callback`, when given, runs
+    /// with the same response. The reply is matched to THIS request by goal id
+    /// (the Rust core correlates the cancel sub-client's replies by request
+    /// id, issue 2009). Empty (`valid()` false) for a null handle or a request
+    /// that could not be sent (a full table) — where upstream throws.
+    ///
+    /// THE BOUND: a cancel reply is taken by the client's own dispatch, which
+    /// runs when this future is polled (`is_ready`, `spin_until_future_complete`,
+    /// `wait_for`, `get`) or `poll()` is called — the executor's spin takes
+    /// acceptances, feedback and results, not cancel replies. A caller that
+    /// keeps only the callback calls `poll()` from its loop.
+    detail::DrivenSharedFuture<typename CancelResponse::SharedPtr>
+    async_cancel_goal(typename GoalHandle::SharedPtr goal_handle,
+                      CancelCallback cancel_callback = nullptr) {
+        if (!goal_handle) return detail::DrivenSharedFuture<typename CancelResponse::SharedPtr>();
+        return send_cancel(goal_handle->get_goal_id(), 0, 0, cancel_callback);
+    }
+
+    /// `async_cancel_all_goals(cancel_callback)` — issue 2027: a `CancelGoal`
+    /// with the zero goal id and the zero stamp, which the server reads as
+    /// "every goal". Same future and bound as @ref async_cancel_goal.
+    detail::DrivenSharedFuture<typename CancelResponse::SharedPtr>
+    async_cancel_all_goals(CancelCallback cancel_callback = nullptr) {
+        return send_cancel(GoalUUID(), 0, 0, cancel_callback);
+    }
+
+    /// `async_cancel_goals_before(stamp, cancel_callback)` — issue 2027: the
+    /// zero goal id with `stamp`, which the server reads as "every goal
+    /// accepted at or before `stamp`". Same future and bound as
+    /// @ref async_cancel_goal.
+    detail::DrivenSharedFuture<typename CancelResponse::SharedPtr>
+    async_cancel_goals_before(const ::rclcpp::Time& stamp,
+                              CancelCallback cancel_callback = nullptr) {
+        const int64_t ns = stamp.nanoseconds();
+        const int64_t sec = ns >= 0 ? ns / 1000000000LL : -((-ns + 999999999LL) / 1000000000LL);
+        const int64_t nsec = ns - sec * 1000000000LL;
+        return send_cancel(GoalUUID(), static_cast<int32_t>(sec), static_cast<uint32_t>(nsec),
+                           cancel_callback);
+    }
+#endif
+#ifndef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
+    /// **REFUSED** without `std::promise` — issue 2027: a freestanding build,
+    /// or a hosted libstdc++ built without threads (the arm-none-eabi and RTOS
+    /// toolchains declare `std::promise` and never define it). The goal-id-keyed
+    /// forms are `get_result_future` and `cancel_goal` + `try_recv_cancel_response`.
+    template <typename T = void, typename... Args> void async_get_result(Args&&...) {
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE);
+    }
+    /// **REFUSED** without `std::promise` — issue 2027.
+    template <typename T = void, typename... Args> void async_cancel_goal(Args&&...) {
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE);
+    }
+    /// **REFUSED** without `std::promise` — issue 2027.
+    template <typename T = void, typename... Args> void async_cancel_all_goals(Args&&...) {
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE);
+    }
+    /// **REFUSED** without `std::promise` — issue 2027.
+    template <typename T = void, typename... Args> void async_cancel_goals_before(Args&&...) {
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE);
     }
 #endif
 
@@ -669,6 +873,12 @@ template <typename A> class Client {
     ::rclcpp::Result try_recv_cancel_response(::rclcpp_action::CancelReturnCode& out) {
         if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
         int8_t code = 0;
+        // Issue 2027 — a reply the handle-taking cancels' dispatch took off the
+        // wire for a request none of them sent is kept here, not dropped.
+        if (take_stray_cancel(code)) {
+            out = static_cast<::rclcpp_action::CancelReturnCode>(code);
+            return ::rclcpp::Result::success();
+        }
         nros_cpp_ret_t ret = nros_cpp_action_client_try_recv_cancel_response(storage_, &code);
         if (ret != 0) return ::rclcpp::Result(ret);
         out = static_cast<::rclcpp_action::CancelReturnCode>(code);
@@ -721,6 +931,7 @@ template <typename A> class Client {
     void poll() {
         if (!initialized_) return;
         nros_cpp_action_client_poll(storage_);
+        pump_cancels(); // issue 2027 — the handle-taking cancels' replies
     }
 
     /// Check if the action client is initialized and valid.
@@ -740,6 +951,7 @@ template <typename A> class Client {
     /// Issue 2011 -- a future still pending on this client becomes invalid
     /// (`valid()` false) instead of pointing at freed storage.
     ~Client() {
+        abandon_upstream(); // issue 2027 — waiting futures settle; no future names this client
         accepts_.orphan_all();
         results_.orphan_all();
         if (initialized_) {
@@ -766,6 +978,7 @@ template <typename A> class Client {
 
     Client& operator=(Client&& other) {
         if (this != &other) {
+            abandon_upstream();
             accepts_.orphan_all();
             results_.orphan_all();
             if (initialized_) {
@@ -792,14 +1005,45 @@ template <typename A> class Client {
 
     /// Issue 2011 -- install this client's own callbacks (context = `this`).
     ::rclcpp::Result install_dispatch() {
+        // Issue 2027 — an abandoned future tells THIS client, which frees the
+        // request's slot unless something else still waits on its reply.
+        accepts_.forget = &Client::forget_accept;
+        accepts_.forget_ctx = this;
+        results_.forget = &Client::forget_result;
+        results_.forget_ctx = this;
         return ::rclcpp::Result(nros_cpp_action_client_set_callbacks(
             storage_, &Client::on_goal_response, &Client::on_feedback, &Client::on_result, this));
+    }
+
+    // Issue 2027 — the goal-slot leak. A request in the Rust core's bounded
+    // per-sub-client table (`MAX_CONCURRENT_GOALS`) used to come back only
+    // with its reply, so a future dropped first — with a reply that never
+    // came — held its slot forever, and the fifth such goal refused every
+    // later send. The future is the request's owner; when it is abandoned the
+    // request is forgotten, UNLESS another owner still waits on that reply:
+    // a client-wide callback (`set_callbacks`) or an upstream goal
+    // (`async_send_goal` / `async_get_result`). A late reply for a forgotten
+    // request is dropped by the correlator.
+    static void forget_accept(void* ctx, const uint8_t goal[16]) {
+        static_cast<Client*>(ctx)->forget_request(NROS_CPP_ACTION_CHANNEL_SEND_GOAL, goal);
+    }
+    static void forget_result(void* ctx, const uint8_t goal[16]) {
+        static_cast<Client*>(ctx)->forget_request(NROS_CPP_ACTION_CHANNEL_GET_RESULT, goal);
+    }
+    void forget_request(int32_t channel, const uint8_t goal[16]) {
+        if (!initialized_) return;
+        const bool accept = channel == NROS_CPP_ACTION_CHANNEL_SEND_GOAL;
+        if (accept ? user_.goal_response != nullptr : user_.result != nullptr) return;
+        if (upstream_wants(accept, goal)) return;
+        (void)nros_cpp_action_client_forget(storage_, channel,
+                                            reinterpret_cast<const uint8_t(*)[16]>(goal));
     }
 
     /// Take over `other`'s storage, pending futures, callbacks and feedback.
     void adopt(Client& other) {
         user_ = other.user_;
         upstream_ = static_cast<detail::HostedBox&&>(other.upstream_);
+        repoint_pump(); // issue 2027 — the futures this client handed out follow it
         feedback_len_ = other.feedback_len_;
         feedback_ready_ = other.feedback_ready_;
         feedback_truncated_ = other.feedback_truncated_;
@@ -865,14 +1109,48 @@ template <typename A> class Client {
     // Issue 2015 — upstream's per-goal callbacks (`async_send_goal`). Hosted
     // only: `upstream_` is empty on a freestanding build, so these do nothing.
 #ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+    /// One goal upstream's API is tracking. Before acceptance it carries the
+    /// `SendGoalOptions` it was sent with; after, its handle — held STRONGLY
+    /// while the goal is result-aware (upstream's pending result request
+    /// keeps it alive too) and only WEAKLY for a feedback-only goal, so a
+    /// caller that drops that handle drops the entry (issue 2027).
     struct UpstreamGoal {
         GoalUUID id;
         SendGoalOptions options;
         typename GoalHandle::SharedPtr handle;
+        ::std::weak_ptr<GoalHandle> weak;
+        bool accepted = false;
     };
+#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
+    /// Issue 2027 — one `async_cancel_*` waiting for its reply, keyed by the
+    /// goal its request named (the zero id for cancel-all / cancel-before).
+    struct CancelWaiter {
+        GoalUUID key;
+        /// The request's sequence id: two cancels about one goal (or two
+        /// broadcasts, both keyed by the zero id) are told apart by it.
+        int64_t seq;
+        ::std::promise<typename CancelResponse::SharedPtr> promise;
+        CancelCallback callback;
+    };
+#endif
     struct UpstreamState {
         ::std::vector<UpstreamGoal> goals;
+#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
+        ::std::vector<CancelWaiter> cancels;
+#endif
+        /// Cancel return codes taken for no waiter, for `try_recv_cancel_response`.
+        ::std::vector<int8_t> stray_cancels;
+        ::std::shared_ptr<detail::PumpCell> pump;
     };
+
+    UpstreamState* upstream_state() {
+        UpstreamState* st = upstream_.template as<UpstreamState>();
+        if (st == nullptr) {
+            st = new UpstreamState();
+            upstream_.reset(st, [](void* p) { delete static_cast<UpstreamState*>(p); });
+        }
+        return st;
+    }
 
     UpstreamState* upstream_goal(const uint8_t goal_id[16], size_t& at) const {
         UpstreamState* st = upstream_.template as<UpstreamState>();
@@ -882,7 +1160,195 @@ template <typename A> class Client {
             if (st->goals[at].id == id) return st;
         return nullptr;
     }
+
+    /// Drop accepted, feedback-only goals whose handle nobody holds any more.
+    static void prune_upstream(UpstreamState* st) {
+        for (size_t i = 0; i < st->goals.size();) {
+            const UpstreamGoal& g = st->goals[i];
+            if (g.accepted && !g.handle && g.weak.expired())
+                st->goals.erase(st->goals.begin() + static_cast<long>(i));
+            else
+                ++i;
+        }
+    }
+
+    /// The shared cell every `DrivenSharedFuture` this client hands out polls.
+    ::std::shared_ptr<detail::PumpCell> pump_cell() {
+        UpstreamState* st = upstream_state();
+        if (!st->pump) {
+            st->pump = ::std::make_shared<detail::PumpCell>();
+            st->pump->fn = &Client::pump_entry;
+        }
+        st->pump->ctx = this;
+        st->pump->executor = executor_;
+        return st->pump;
+    }
+
+    static void pump_entry(void* ctx) {
+        Client* self = static_cast<Client*>(ctx);
+        if (!self->initialized_) return;
+        (void)nros_cpp_action_client_poll(self->storage_);
+        self->pump_cancels();
+    }
 #endif
+
+    /// Issue 2027 — does an upstream goal still wait on this reply? The
+    /// acceptance: a goal not yet accepted whose options gave any callback
+    /// (feedback / result need the acceptance to proceed). One with none is
+    /// dropped here: nobody could observe its reply. The result: a goal whose
+    /// handle is result-aware.
+    bool upstream_wants(bool accept, const uint8_t goal_id[16]) {
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+        size_t at = 0;
+        UpstreamState* st = upstream_goal(goal_id, at);
+        if (st == nullptr) return false;
+        UpstreamGoal& g = st->goals[at];
+        if (accept) {
+            if (g.accepted) return false;
+            const bool wanted = static_cast<bool>(g.options.goal_response_callback) ||
+                                static_cast<bool>(g.options.feedback_callback) ||
+                                static_cast<bool>(g.options.result_callback);
+            if (!wanted) st->goals.erase(st->goals.begin() + static_cast<long>(at));
+            return wanted;
+        }
+        return g.handle && g.handle->result_aware_;
+#else
+        (void)accept;
+        (void)goal_id;
+        return false;
+#endif
+    }
+
+    /// Point the futures this client handed out at its current address.
+    void repoint_pump() {
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+        UpstreamState* st = upstream_.template as<UpstreamState>();
+        if (st != nullptr && st->pump) {
+            st->pump->ctx = this;
+            st->pump->executor = executor_;
+        }
+#endif
+    }
+
+    /// The client is going away (or being moved over): every future it
+    /// handed out stops driving it, a waiting cancel settles to a null
+    /// response, and a result-aware goal still waiting settles to UNKNOWN with
+    /// no result — so no future waits on a client that is gone.
+    void abandon_upstream() {
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+        UpstreamState* st = upstream_.template as<UpstreamState>();
+        if (st == nullptr) return;
+        if (st->pump) st->pump->ctx = nullptr;
+#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
+        for (CancelWaiter& w : st->cancels)
+            w.promise.set_value(typename CancelResponse::SharedPtr());
+        st->cancels.clear();
+        for (UpstreamGoal& g : st->goals) {
+            if (g.handle && g.handle->result_aware_) {
+                WrappedResult wrapped;
+                wrapped.goal_id = g.id;
+                wrapped.code = ResultCode::UNKNOWN;
+                g.handle->set_result(wrapped);
+            }
+        }
+#endif
+        upstream_.reset();
+#endif
+    }
+
+#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
+    detail::DrivenSharedFuture<typename CancelResponse::SharedPtr>
+    send_cancel(const GoalUUID& key, int32_t sec, uint32_t nanosec, CancelCallback& cb) {
+        using Fut = detail::DrivenSharedFuture<typename CancelResponse::SharedPtr>;
+        if (!initialized_) return Fut();
+        int64_t seq = ::rclcpp::detail::SEQUENCE_ID_UNKNOWN;
+        if (nros_cpp_action_client_cancel_goals(storage_,
+                                                reinterpret_cast<const uint8_t(*)[16]>(key.data()),
+                                                sec, nanosec, &seq) != 0)
+            return Fut();
+        UpstreamState* st = upstream_state();
+        CancelWaiter w;
+        w.key = key;
+        w.seq = seq;
+        w.callback = cb;
+        ::std::shared_future<typename CancelResponse::SharedPtr> f = w.promise.get_future().share();
+        st->cancels.push_back(static_cast<CancelWaiter&&>(w));
+        return Fut(f, pump_cell());
+    }
+#endif
+
+    /// Issue 2027 — take the cancel replies the handle-taking cancels wait
+    /// for, each matched to the waiter whose request it answers. Only
+    /// while one waits: otherwise the replies stay for `try_recv_cancel_response`.
+    void pump_cancels() {
+#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
+        UpstreamState* st = upstream_.template as<UpstreamState>();
+        if (st == nullptr || !initialized_) return;
+        for (int i = 0; i < ::rclcpp::detail::MAX_STALE_DRAIN_PER_POLL && !st->cancels.empty();
+             ++i) {
+            uint8_t goal[16] = {};
+            int8_t code = 0;
+            size_t count = 0;
+            int64_t seq = ::rclcpp::detail::SEQUENCE_ID_UNKNOWN;
+            bool taken = false; // a malformed reply still names its request
+            nros_cpp_action_goal_info_t infos[::rclcpp_action::MAX_CANCEL_INFOS];
+            const nros_cpp_ret_t ret = nros_cpp_action_client_take_cancel_reply(
+                storage_, reinterpret_cast<uint8_t(*)[16]>(goal), &code, infos,
+                ::rclcpp_action::MAX_CANCEL_INFOS, &count, &seq);
+            if (ret == NROS_CPP_RET_TRY_AGAIN) break;
+            if (ret != 0 && seq == ::rclcpp::detail::SEQUENCE_ID_UNKNOWN) continue;
+            taken = ret == 0;
+            // The waiter whose REQUEST this answers: by sequence id, or — from
+            // a backend that assigns none, which holds one cancel in flight —
+            // by the goal the request named.
+            const GoalUUID key(goal);
+            size_t at = 0;
+            while (at < st->cancels.size() &&
+                   !(seq != ::rclcpp::detail::SEQUENCE_ID_UNKNOWN ? st->cancels[at].seq == seq
+                                                                  : st->cancels[at].key == key))
+                ++at;
+            if (at == st->cancels.size()) {
+                if (taken) st->stray_cancels.push_back(code);
+                continue;
+            }
+            CancelWaiter w = static_cast<CancelWaiter&&>(st->cancels[at]);
+            st->cancels.erase(st->cancels.begin() + static_cast<long>(at));
+            if (!taken) { // malformed: the request is over, with no response
+                w.promise.set_value(typename CancelResponse::SharedPtr());
+                if (w.callback) w.callback(typename CancelResponse::SharedPtr());
+                continue;
+            }
+            typename CancelResponse::SharedPtr resp = ::std::make_shared<CancelResponse>();
+            resp->return_code = code;
+            const size_t n = count < ::rclcpp_action::MAX_CANCEL_INFOS
+                                 ? count
+                                 : ::rclcpp_action::MAX_CANCEL_INFOS;
+            for (size_t k = 0; k < n; ++k) {
+                detail::CancelGoalInfo info;
+                for (int b = 0; b < 16; ++b)
+                    info.goal_id.uuid[b] = infos[k].uuid[b];
+                info.stamp.sec = infos[k].stamp_sec;
+                info.stamp.nanosec = infos[k].stamp_nanosec;
+                resp->goals_canceling.push_back(info);
+            }
+            w.promise.set_value(resp);
+            if (w.callback) w.callback(resp);
+        }
+#endif
+    }
+
+    bool take_stray_cancel(int8_t& code) {
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+        UpstreamState* st = upstream_.template as<UpstreamState>();
+        if (st == nullptr || st->stray_cancels.empty()) return false;
+        code = st->stray_cancels.front();
+        st->stray_cancels.erase(st->stray_cancels.begin());
+        return true;
+#else
+        (void)code;
+        return false;
+#endif
+    }
 
     void upstream_goal_response(bool accepted, const uint8_t goal_id[16]) {
 #ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
@@ -890,20 +1356,33 @@ template <typename A> class Client {
         UpstreamState* st = upstream_goal(goal_id, at);
         if (st == nullptr) return;
         UpstreamGoal& g = st->goals[at];
+        if (g.accepted) return; // a duplicate acceptance
         auto cb = g.options.goal_response_callback;
         if (!accepted) {
             st->goals.erase(st->goals.begin() + static_cast<long>(at));
             if (cb) cb(nullptr);
             return;
         }
-        g.handle = ::std::make_shared<GoalHandle>(g.id);
-        g.handle->feedback_aware_ = static_cast<bool>(g.options.feedback_callback);
-        g.handle->result_aware_ = static_cast<bool>(g.options.result_callback);
-        typename GoalHandle::SharedPtr handle = g.handle;
+        typename GoalHandle::SharedPtr handle = ::std::make_shared<GoalHandle>(g.id);
+        handle->feedback_aware_ = static_cast<bool>(g.options.feedback_callback);
+        handle->result_aware_ = static_cast<bool>(g.options.result_callback);
+        g.accepted = true;
+        if (handle->result_aware_)
+            g.handle = handle; // the pending result request keeps it, as upstream's does
+        else
+            g.weak = handle; // feedback-only: the caller's copy keeps it
         if (!handle->feedback_aware_ && !handle->result_aware_)
             st->goals.erase(st->goals.begin() + static_cast<long>(at));
+        // `g` may be gone from here on: the callback can send another goal.
         if (cb) cb(handle);
-        if (handle->result_aware_) (void)get_result_async(goal_id);
+        if (handle->result_aware_ && !get_result_async(goal_id).ok()) {
+            // Nobody could ever answer it: unbind, as upstream would have thrown.
+            handle->result_aware_ = false;
+            if (upstream_goal(goal_id, at) != nullptr) {
+                st->goals[at].handle.reset();
+                st->goals[at].weak = handle;
+            }
+        }
 #else
         (void)accepted;
         (void)goal_id;
@@ -915,9 +1394,15 @@ template <typename A> class Client {
         size_t at = 0;
         UpstreamState* st = upstream_goal(goal_id, at);
         if (st == nullptr) return;
-        auto cb = st->goals[at].options.feedback_callback;
-        typename GoalHandle::SharedPtr handle = st->goals[at].handle;
-        if (!cb || !handle) return;
+        UpstreamGoal& g = st->goals[at];
+        typename GoalHandle::SharedPtr handle = g.handle ? g.handle : g.weak.lock();
+        if (!handle) {
+            // A feedback-only goal whose handle the caller dropped (issue 2027).
+            if (g.accepted) st->goals.erase(st->goals.begin() + static_cast<long>(at));
+            return;
+        }
+        auto cb = g.options.feedback_callback;
+        if (!cb) return;
         ::std::shared_ptr<FeedbackType> fb = ::std::make_shared<FeedbackType>();
         if (FeedbackType::ffi_deserialize(data, len, fb.get()) != 0) return;
         cb(handle, fb);
@@ -936,8 +1421,8 @@ template <typename A> class Client {
         if (st == nullptr) return;
         UpstreamGoal g = st->goals[at];
         st->goals.erase(st->goals.begin() + static_cast<long>(at));
-        if (g.handle) g.handle->status_ = static_cast<int8_t>(status);
-        if (!g.options.result_callback) return;
+        typename GoalHandle::SharedPtr handle = g.handle ? g.handle : g.weak.lock();
+        if (handle) handle->status_ = static_cast<int8_t>(status);
         WrappedResult wrapped;
         wrapped.goal_id = g.id;
         wrapped.code = (status == 4 || status == 5 || status == 6) ? static_cast<ResultCode>(status)
@@ -946,7 +1431,10 @@ template <typename A> class Client {
         if (ResultType::ffi_deserialize(data, len, wrapped.result.get()) != 0) {
             wrapped.result.reset();
         }
-        g.options.result_callback(wrapped);
+#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
+        if (handle) handle->set_result(wrapped);
+#endif
+        if (g.options.result_callback) g.options.result_callback(wrapped);
 #else
         (void)goal_id;
         (void)status;

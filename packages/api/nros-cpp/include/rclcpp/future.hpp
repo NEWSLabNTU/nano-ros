@@ -126,6 +126,14 @@ struct PendingLink {
 struct PendingList {
     PendingLink* head = nullptr;
     uint8_t orphans = 0;
+    /// Issue 2027 — what the OWNER of this list does when a goal-keyed future
+    /// is abandoned (cancelled, destroyed, moved over) before its reply: the
+    /// action client frees the request's slot in the Rust core unless
+    /// something else still waits on that reply. Null for a service client's
+    /// list, whose requests hold no slot here (the transport's own limit
+    /// bounds them, and an abandoned one costs nothing once it times out).
+    void (*forget)(void* ctx, const uint8_t goal[16]) = nullptr;
+    void* forget_ctx = nullptr;
 
     size_t count() const {
         size_t n = 0;
@@ -156,6 +164,10 @@ struct PendingList {
                 // removal costs no later reply (issue 2011).
                 if (abandoned && !l->by_goal && l->seq == SEQUENCE_ID_UNKNOWN && orphans < 255)
                     ++orphans;
+                // Issue 2027 — an abandoned goal-keyed future was the owner of
+                // one request in the Rust core's bounded table; tell the list's
+                // owner, so the slot does not outlive the last owner.
+                if (abandoned && l->by_goal && forget != nullptr) forget(forget_ctx, l->goal_id);
                 return true;
             }
         }

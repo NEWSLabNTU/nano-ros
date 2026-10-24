@@ -290,14 +290,23 @@ spellings are drop-ins (issue 2015):
   `is_executing`, `is_canceling`, and `publish_feedback` / `succeed` / `abort` /
   `canceled` take upstream's `std::shared_ptr`s. Each call forwards to the
   server, keyed by the goal id; the goal itself lives in the server's static
-  arena, and the handle is a token over it. `execute()` (for
-  `ACCEPT_AND_DEFER`) is not there yet.
+  arena, and the handle is a token over it. `execute()` moves a goal accepted
+  with `ACCEPT_AND_DEFER` to EXECUTING and publishes the status (issue 2027);
+  for `ACCEPT_AND_EXECUTE` the server does that itself before
+  `handle_accepted`, as upstream's does.
 - `Client<A>::SendGoalOptions` carries upstream's `goal_response_callback`
   (a `ClientGoalHandle<A>::SharedPtr`, null when rejected), `feedback_callback`
   (`std::shared_ptr<const Feedback>`) and `result_callback`
   (`WrappedResult{goal_id, code, result}`), and `async_send_goal(goal, options)`
   binds them to that goal. Giving a result callback requests the result once the
   goal is accepted, as upstream does.
+- `async_get_result(goal_handle, result_callback)` and
+  `async_cancel_goal(goal_handle, cancel_callback)`, plus
+  `async_cancel_all_goals` / `async_cancel_goals_before(stamp)`, return
+  upstream's `std::shared_future` (of a `WrappedResult`, or a
+  `CancelResponse::SharedPtr` with `return_code` and `goals_canceling`), so
+  `rclcpp::spin_until_future_complete(node, f)` then `f.get()` work unchanged
+  (issue 2027). The future drives the client while it is polled or waited on.
 
 What stays different, each a compile error or written below:
 
@@ -305,8 +314,12 @@ What stays different, each a compile error or written below:
   future `send_goal_future` returns, not a `std::shared_future` of a goal
   handle. `auto f = client->async_send_goal(goal, opts);` compiles; a caller
   that waits on `f` gets the acceptance (RFC-0021: the future never blocks
-  without spinning). `async_cancel_goal` / `async_get_result` with a goal
-  handle are not there: cancel with `cancel_goal(goal_id)`.
+  without spinning).
+- **A cancel reply is taken when its future is polled** (`spin_until_future_complete`,
+  `wait_for`, `get`) or `client->poll()` runs, not by the executor's spin. Code
+  that keeps only the `cancel_callback` calls `poll()` from its loop. A
+  nano-ros SERVER does not yet act on the zero-id cancel-all / cancel-before
+  forms (issue 2029); an rclcpp server does.
 - **A goal handle is driven from the executor's task.** Do not hand it to a
   thread you start (see the 6 lines above). It names its server by address, so
   the server must not move while a handle is in use; a `SharedPtr` does not
