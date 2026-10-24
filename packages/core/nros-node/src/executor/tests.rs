@@ -17109,6 +17109,220 @@ mod p9b_windows {
         drop(executor);
     }
 
+    /// Issue 2020 -- a component enrolled for the tests: its `tick` logs its
+    /// tag and the thread it ran on, and, given an action server, completes
+    /// every active goal of it.
+    struct Ticker {
+        tag: &'static str,
+        log: Arc<Mutex<Vec<(&'static str, usize)>>>,
+        server: Option<crate::executor::ActionServerRawHandle>,
+    }
+
+    unsafe extern "C" fn ticker_tick(state: *mut core::ffi::c_void, exec: *mut core::ffi::c_void) {
+        // SAFETY: the tests enrol a leaked `Ticker` and the executor hands
+        // itself as `exec`, the lock held.
+        let t = unsafe { &*(state as *const Ticker) };
+        let me = unsafe { thread_id() };
+        t.log.lock().unwrap().push((t.tag, me));
+        if let Some(server) = t.server {
+            let exec = unsafe { &mut *(exec as *mut Executor<'static>) };
+            let mut goals = Vec::new();
+            server.for_each_active_goal(exec, |g| goals.push(g.goal_id));
+            for g in goals {
+                server
+                    .complete_goal_raw(exec, &g, nros_core::GoalStatus::Succeeded, &[0u8; 4])
+                    .unwrap();
+                t.log.lock().unwrap().push(("completed", me));
+            }
+        }
+    }
+
+    unsafe extern "C" fn ticker_drop(_state: *mut core::ffi::c_void) {}
+
+    fn enrol_ticker(
+        executor: &mut Executor<'static>,
+        tag: &'static str,
+        log: &Arc<Mutex<Vec<(&'static str, usize)>>>,
+        server: Option<crate::executor::ActionServerRawHandle>,
+    ) {
+        let t = std::boxed::Box::leak(std::boxed::Box::new(Ticker {
+            tag,
+            log: log.clone(),
+            server,
+        }));
+        // SAFETY: `t` is leaked, so it outlives the executor; the drop is a
+        // no-op for it.
+        unsafe {
+            executor
+                .enroll_component(t as *mut Ticker as *mut _, ticker_tick, ticker_drop)
+                .unwrap()
+        };
+    }
+
+    fn tags(log: &Arc<Mutex<Vec<(&'static str, usize)>>>) -> Vec<&'static str> {
+        log.lock().unwrap().iter().map(|(t, _)| *t).collect()
+    }
+
+    /// Issue 2020, test 1 -- on an executor whose levels own their slots
+    /// (a level runner), a component ticks on the pass of the level that
+    /// registered it: a band pass ticks only its level's, the executor's own
+    /// worker (the boot level) only its own. Without level ownership the
+    /// executor's own worker ticks every component and a band pass none, as
+    /// before.
+    #[test]
+    fn a_component_ticks_on_the_level_that_registered_it() {
+        let mut executor = executor_with_clock(MockSession::new());
+        install_lock(&mut executor);
+        let log = Arc::new(Mutex::new(Vec::new()));
+
+        // Before levels: every tick is the executor's own worker's.
+        enrol_ticker(&mut executor, "plain", &log, None);
+        let shared = Shared(&mut executor);
+        let mut w1 = BandWorker::new(1, Band::ALL);
+        shared.spin_band(&mut w1);
+        assert!(
+            tags(&log).is_empty(),
+            "a band pass ticked: {:?}",
+            tags(&log)
+        );
+        shared.spin_shared();
+        assert_eq!(tags(&log), ["plain"]);
+        log.lock().unwrap().clear();
+
+        // A level runner: boot level 1 of 2, the urgent level 0 set up second.
+        assert!(executor.set_level(1));
+        executor.set_registering_level(1);
+        enrol_ticker(&mut executor, "boot", &log, None);
+        executor.set_registering_level(0);
+        enrol_ticker(&mut executor, "urgent", &log, None);
+        let shared = Shared(&mut executor);
+        let mut w0 = BandWorker::new(0, Band::ALL);
+
+        shared.spin_band(&mut w0);
+        assert_eq!(tags(&log), ["urgent"], "the urgent pass ticks its own");
+        log.lock().unwrap().clear();
+        shared.spin_shared();
+        // `plain` was enrolled before any level owned a slot: the boot
+        // level keeps it.
+        assert_eq!(tags(&log), ["plain", "boot"], "the boot pass ticks its own");
+        drop(executor);
+    }
+
+    /// Issue 2020, test 2 -- the issue's fixture: an urgent level's action
+    /// server completes its goal on the urgent level's own thread. The goal
+    /// is accepted by the urgent band pass and completed by the tick that
+    /// band pass runs; the boot level, spinning beside it on another thread,
+    /// neither accepts nor completes it.
+    #[test]
+    fn an_urgent_levels_action_server_completes_on_its_own_level() {
+        use crate::executor::{RawActionServerSpec, arena::ActionServerRawArenaEntry};
+        const B: usize = crate::config::DEFAULT_RX_BUF_SIZE;
+        const MG: usize = 4;
+
+        let mut executor = executor_with_clock(MockSession::new());
+        install_lock(&mut executor);
+        let log = Arc::new(Mutex::new(Vec::new()));
+        assert!(executor.set_level(1));
+
+        // The urgent level's setup: the server and the component that
+        // completes its goals.
+        executor.set_registering_level(0);
+        let server = executor
+            .register_action_server_raw(RawActionServerSpec {
+                node_id: None,
+                action_name: "/urgent_verb",
+                type_name: "test_msgs/action/Fibonacci",
+                type_hash: "RIHS01_0000",
+                hashes: nros_rmw::ActionEndpointHashes::uniform("RIHS01_0000"),
+                qos: nros_rmw::QoSProfile::services_default(),
+                goal_callback: defer_every_goal,
+                cancel_callback: refuse_every_cancel,
+                accepted_callback: None,
+                context: core::ptr::null_mut(),
+            })
+            .unwrap();
+        enrol_ticker(&mut executor, "urgent", &log, Some(server));
+        // The boot level's setup.
+        executor.set_registering_level(1);
+        enrol_ticker(&mut executor, "boot", &log, None);
+
+        let offset = executor.entries[server.entry_index]
+            .as_ref()
+            .unwrap()
+            .offset;
+        let entry_ptr = unsafe { (executor.arena.as_mut_ptr() as *mut u8).add(offset) };
+        let entry = unsafe { &mut *(entry_ptr as *mut ActionServerRawArenaEntry<B, B, B, MG>) };
+        let g = nros_core::GoalId { uuid: [0x20u8; 16] };
+        let (req, len) = mk_send_goal_req(&g);
+        entry.core.send_goal_server.load(req, len);
+
+        let shared = Shared(&mut executor);
+        // The boot level alone: the goal waits for its level.
+        for _ in 0..3 {
+            shared.spin_shared();
+        }
+        assert_eq!(server.active_goal_count(unsafe { &*shared.ptr() }), 0);
+        assert!(
+            !tags(&log).contains(&"urgent") && !tags(&log).contains(&"completed"),
+            "the boot level ran the urgent level's work: {:?}",
+            tags(&log)
+        );
+
+        let urgent_log = log.clone();
+        let urgent_thread = std::thread::scope(|sc| {
+            let urgent = sc.spawn(move || {
+                let mut w0 = BandWorker::new(0, Band::ALL);
+                for _ in 0..200 {
+                    shared.spin_band(&mut w0);
+                    if log_has(&urgent_log, "completed") {
+                        break;
+                    }
+                }
+                // SAFETY: callable from any thread.
+                unsafe { thread_id() }
+            });
+            // The boot level keeps spinning on this thread meanwhile.
+            while !urgent.is_finished() {
+                shared.spin_shared();
+                std::thread::sleep(std::time::Duration::from_micros(200));
+            }
+            urgent.join().unwrap()
+        });
+
+        let got = log.lock().unwrap().clone();
+        let completed: Vec<usize> = got
+            .iter()
+            .filter(|(t, _)| *t == "completed")
+            .map(|(_, th)| *th)
+            .collect();
+        assert_eq!(
+            completed,
+            [urgent_thread],
+            "completed once, on the urgent level: {got:?}"
+        );
+        assert!(
+            got.iter()
+                .filter(|(t, _)| *t == "urgent")
+                .all(|(_, th)| *th == urgent_thread),
+            "the urgent component ticked only on its level: {got:?}"
+        );
+        assert!(
+            got.iter()
+                .filter(|(t, _)| *t == "boot")
+                .all(|(_, th)| *th != urgent_thread),
+            "the boot component never ticked on the urgent level: {got:?}"
+        );
+        // Accepted, then completed: the reply said ACCEPTED and no goal is
+        // left active.
+        assert_eq!(entry.core.send_goal_server.sent.borrow()[0].1[4], 1);
+        assert_eq!(server.active_goal_count(unsafe { &*shared.ptr() }), 0);
+        drop(executor);
+    }
+
+    fn log_has(log: &Arc<Mutex<Vec<(&'static str, usize)>>>, tag: &str) -> bool {
+        log.lock().unwrap().iter().any(|(t, _)| *t == tag)
+    }
+
     /// A port wake object for the tests: a counting semaphore.
     struct Sem {
         count: Mutex<u32>,

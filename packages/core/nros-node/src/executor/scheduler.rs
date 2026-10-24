@@ -322,6 +322,12 @@ impl BandWorker {
     pub const fn band(&self) -> Band {
         self.band
     }
+
+    /// Issue 2020 -- the image level this worker checks in as, 0 the most
+    /// urgent: whose components' ticks its passes run.
+    pub const fn level(&self) -> u8 {
+        self.level
+    }
 }
 
 /// How a scheduler signals a worker's wake object (`NodeWake` on a real
