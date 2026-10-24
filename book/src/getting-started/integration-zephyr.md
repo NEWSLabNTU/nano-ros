@@ -448,9 +448,12 @@ The Zephyr images in `examples/workspaces/*` are the worked examples:
 ```toml
 [image.zephyr]
 board = "zephyr"
-entry = "zephyr_entry"          # only when several entries match, see below
 conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
 ```
+
+None of them sets `entry`: `nros build` generates each image's application, so
+there is nothing to choose between. `entry` is for an application you wrote
+by hand, below.
 
 * **`conf`** names the app's own Kconfig fragments, in order. They are looked
   for beside the board config dir, then **beside the application**, then beside
