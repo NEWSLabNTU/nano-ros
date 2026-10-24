@@ -225,6 +225,20 @@ int main(void) {
     CHECK(rclc_parameter_declare_bool(&ps, "rate", true) == RCL_RET_ERROR,
           "re-declaring with a different type was accepted");
 
+    /* Issue 2023 — `notify_changed_over_dds = false` OPTS the node out of
+     * `/parameter_events`: the services the server registered bring the
+     * events up for every other node (rclcpp's default), and not for this
+     * one. So no published frame may name the talker. */
+    {
+        size_t len = 0;
+        const uint8_t* last = nros_stub_rmw_last_payload(&len);
+        bool names_talker = false;
+        for (size_t i = 0; i + 7 <= len; ++i) {
+            if (memcmp(last + i, "/talker", 7) == 0) names_talker = true;
+        }
+        CHECK(!names_talker, "a node with notify_changed_over_dds = false published an event");
+    }
+
     /* A second node's server keeps its own table, and its own quota. */
     rclc_parameter_options_t small = opts;
     small.max_params = 2;

@@ -170,6 +170,13 @@ pub(crate) struct ParamState<'s> {
     /// publisher is announced under the node that enabled it first.
     #[cfg(feature = "param-services")]
     pub(crate) event_publisher: Option<crate::session::RmwPublisher>,
+    /// Issue 2023 — nodes that OPTED OUT of `/parameter_events`
+    /// (`Executor::disable_parameter_events_on`: rclc's
+    /// `notify_changed_over_dds = false`). Every other node whose six services
+    /// `reconcile_parameter_services` brings up also publishes its events,
+    /// which is rclcpp's and rclrs's default.
+    #[cfg(feature = "param-services")]
+    pub(crate) events_opt_out: nros_params::NodeFlags,
     /// Issue 1271 -- whether a failed reconcile has already been logged.
     ///
     /// The spin retries the reconcile every pass while a node lacks its six,
@@ -256,6 +263,7 @@ impl<'s> ParamState<'s> {
                 addr_of_mut!((*dst).buffers).write(buffers);
                 addr_of_mut!((*dst).staged).write(InternalValue::NotSet);
                 addr_of_mut!((*dst).event_publisher).write(None);
+                addr_of_mut!((*dst).events_opt_out).write(nros_params::NodeFlags::new());
                 addr_of_mut!((*dst).reconcile_failure_reported).write(false);
                 addr_of_mut!((*dst).reconcile_failure).write(None);
             }

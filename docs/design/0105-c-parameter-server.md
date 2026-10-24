@@ -369,5 +369,17 @@ items are tracked in phase-491 § Progress.
   spin's services; an overflow is counted and logged, never blocked on. The
   stamp is the executor's wall clock where one is installed, else its
   monotonic clock. Depth: `NROS_PARAM_EVENTS_DEPTH`, 1000 hosted / 1 otherwise.
+- **D8 (2026-10-24, issue 2023).** The C++ and Rust surfaces turned it on
+  through the same emitter, as the paragraph above anticipated:
+  `Executor::register_parameter_services` now enables events on every node its
+  reconcile serves, and rclc's `notify_changed_over_dds = false` is an
+  explicit per-node opt-out (`Executor::disable_parameter_events_on`). Enabling
+  queues a START-UP event: one `New` per parameter the node already holds (one
+  empty event when it holds none), so a declaration made before the publisher
+  existed is reported, as rclcpp's (whose publisher predates every
+  declaration) reports it. The publisher is counted in the sizing
+  (`PARAM_EVENT_PUBLISHERS`, one per executor, held to its one creation site by
+  `check-infra-queryable-counts`). An event that does not fit the reply buffer
+  is refused whole and logged as an error, never truncated.
 - **String arrays** landed with W6 (`rclc_parameter_*_string_array`).
 - **Not yet:** C components (phase-492 W4).

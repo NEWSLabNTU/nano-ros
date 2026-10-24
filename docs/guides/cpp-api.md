@@ -434,6 +434,31 @@ executor.spin_once(10);
 executor.spin_for(5000, 50);    // bounded; executor.spin() blocks until shutdown
 ```
 
+### Parameters and `/parameter_events`
+
+Parameters are methods on the node (`declare_parameter<T>`, `get_parameter<T>`,
+`set_parameter<T>`, `undeclare_parameter`), over the executor's one store.
+`node.start_parameter_services()` serves them on the six `rcl_interfaces`
+services, so `ros2 param` reaches them, and publishes `/parameter_events`
+(`rcl_interfaces/msg/ParameterEvent`, `rmw_qos_profile_parameter_events`) as
+rclcpp's node does (issue 2023):
+
+```cpp
+rclcpp::Node node;
+RCLCPP_TRY(executor.create_node(node, "ctrl"));
+node.declare_parameter<int64_t>("gain", 3);   // before or after: both reported
+RCLCPP_TRY(node.start_parameter_services());  // start-up event: new_parameters = [gain]
+node.set_parameter<int64_t>("gain", 4);       // changed_parameters = [gain]
+node.undeclare_parameter("gain");             // deleted_parameters = [gain]
+```
+
+Each event names the node's fully qualified name in `node`; the events are
+published on the next spin. The image needs the `param_services` capability.
+One publisher per executor serves every node. It is always on for a served node:
+`NodeOptions::start_parameter_event_publisher` is refused at compile time,
+because `NodeOptions` carries no runtime state. `rclcpp::ParameterEventHandler`,
+which subscribes to OTHER nodes' events, is not offered yet (issue 2024).
+
 ## Error Handling
 
 All fallible operations return `rclcpp::Result`. Use `RCLCPP_TRY` for early return:

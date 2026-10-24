@@ -291,6 +291,22 @@ Rust through `Executor::declare_parameter` and `Node::parameter`.
   warning (the reply message has no field to say so). A `set_parameters`
   request is answered per parameter, so a value or name past those bounds
   gets `successful = false` with a reason while the rest are applied.
+- `/parameter_events`, from every language (issue 2023). A node whose
+  parameters are served publishes `rcl_interfaces/msg/ParameterEvent` with
+  `rmw_qos_profile_parameter_events` (RELIABLE, VOLATILE; depth 1000 hosted,
+  `NROS_PARAM_EVENTS_DEPTH` on an RTOS): one start-up event naming what the
+  node already holds, then one per declare, set and undeclare, with `node`
+  set to the node's fully qualified name. C++ gets it from
+  `Node::start_parameter_services()`, Rust from `[param_services]` (or
+  `Executor::register_parameter_services`), C from rclc's
+  `notify_changed_over_dds` (default on; `false` opts that node out). One
+  publisher per executor serves every node, so `param_services` costs one
+  publisher slot and one liveliness token on top of the six services per
+  node, and no queryable. An event too big for
+  `NROS_PARAM_SERVICE_BUFFER_SIZE` is not published (logged as an error),
+  never truncated. Subscribing to OTHER nodes' events through
+  `rclcpp::ParameterEventHandler` is not offered yet (issue 2024); a plain
+  `create_subscription<rcl_interfaces::msg::ParameterEvent>` works.
 
 **What we drop, and why**
 

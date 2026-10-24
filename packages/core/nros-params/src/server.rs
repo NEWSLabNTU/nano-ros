@@ -23,6 +23,11 @@ pub enum ParameterEventKind {
     Changed,
     /// Undeclared.
     Deleted,
+    /// Issue 2023 — the node's start-up event when it holds no parameter at
+    /// the moment events go on: the node's name and three EMPTY lists. A
+    /// node that does hold parameters announces itself with one `New` per
+    /// parameter instead (see [`ParameterServer::pop_initial_parameter_event`]).
+    Announce,
 }
 
 /// One change waiting to be published on `/parameter_events`.
@@ -466,6 +471,16 @@ pub struct ParameterServer<'s> {
     event_log: heapless::Deque<PendingParameterEvent, PARAMETER_EVENT_LOG_LEN>,
     /// phase-491 W3 — changes that found the log full since the last read.
     events_dropped: u32,
+    /// Issue 2023 — nodes whose events just went ON and whose start-up
+    /// event (every parameter they already hold, as `New`) is not yet
+    /// drained. rclcpp's publisher exists before the first declaration, so
+    /// a subscriber sees every parameter arrive; ours goes on later (the
+    /// node table is built after the store), and this is what keeps the two
+    /// equal without a log entry per parameter.
+    events_initial: NodeFlags,
+    /// Issue 2023 — how far the start-up drain of [`Self::events_initial`]'s
+    /// lowest node has got, as an index into that node's parameters.
+    initial_cursor: usize,
     /// phase-417 W4.a — the bounded on-set-parameters registry. See
     /// [`MAX_ON_SET_CALLBACKS`] for why it is bounded and why 4.
     on_set: [Option<OnSetCallbackSlot>; MAX_ON_SET_CALLBACKS],
@@ -531,6 +546,8 @@ impl<'s> ParameterServer<'s> {
             events_enabled: NodeFlags::new(),
             event_log: heapless::Deque::new(),
             events_dropped: 0,
+            events_initial: NodeFlags::new(),
+            initial_cursor: 0,
         }
     }
 
@@ -554,8 +571,67 @@ impl<'s> ParameterServer<'s> {
     /// phase-491 W3 — log `node`'s changes for `/parameter_events`
     /// (rclc's `notify_changed_over_dds`). Off by default, so a node nobody
     /// asked events for pays nothing.
+    ///
+    /// Issue 2023 — switching it ON (from off) also queues the node's
+    /// START-UP event: every parameter the node already holds is reported as
+    /// `New` by [`pop_initial_parameter_event`](Self::pop_initial_parameter_event),
+    /// or one [`ParameterEventKind::Announce`] when it holds none, so a
+    /// subscriber sees what rclcpp's would although our publisher comes up
+    /// after the first declarations.
     pub fn set_parameter_events(&mut self, node: NodeKey, on: bool) {
+        if on && !self.events_enabled.get(node) {
+            self.events_initial.set(node, true);
+        }
+        if !on {
+            self.events_initial.set(node, false);
+            if self.events_initial.first().is_none() {
+                self.initial_cursor = 0;
+            }
+        }
         self.events_enabled.set(node, on);
+    }
+
+    /// Whether `node`'s changes are logged for `/parameter_events`.
+    pub fn parameter_events_enabled(&self, node: NodeKey) -> bool {
+        self.events_enabled.get(node)
+    }
+
+    /// Issue 2023 — the next entry of a node's START-UP event, queued when its
+    /// events went on: one `New` per parameter it held then (read at drain
+    /// time, so it reports the current value), or one `Announce` for a node
+    /// that holds none. Drain this BEFORE [`pop_parameter_event`](Self::pop_parameter_event);
+    /// while a node's start-up event is pending its changes are not logged
+    /// separately, because the drain reports them.
+    ///
+    /// Bounded and allocation-free: a cursor into the fixed table, no copy of
+    /// the node's parameter list.
+    pub fn pop_initial_parameter_event(&mut self) -> Option<PendingParameterEvent> {
+        loop {
+            let node = self.events_initial.first()?;
+            let k = self.initial_cursor;
+            let next = self.iter(node).nth(k).map(|p| p.name.clone());
+            match next {
+                Some(name) => {
+                    self.initial_cursor = k + 1;
+                    return Some(PendingParameterEvent {
+                        node,
+                        kind: ParameterEventKind::New,
+                        name,
+                    });
+                }
+                None => {
+                    self.events_initial.set(node, false);
+                    self.initial_cursor = 0;
+                    if k == 0 {
+                        return Some(PendingParameterEvent {
+                            node,
+                            kind: ParameterEventKind::Announce,
+                            name: String::new(),
+                        });
+                    }
+                }
+            }
+        }
     }
 
     /// phase-491 W3 — the oldest change waiting for `/parameter_events`.
@@ -572,7 +648,9 @@ impl<'s> ParameterServer<'s> {
     /// Record a change for `/parameter_events`, merging into an entry already
     /// pending for the same name.
     fn note_event(&mut self, node: NodeKey, kind: ParameterEventKind, name: &str) {
-        if !self.events_enabled.get(node) {
+        // Issue 2023 — a node whose start-up event is still pending is
+        // reported by that drain, which reads the table as it stands.
+        if !self.events_enabled.get(node) || self.events_initial.get(node) {
             return;
         }
         if let Some(e) = self
@@ -2384,6 +2462,15 @@ mod tests {
         assert!(server.pop_parameter_event().is_none(), "off by default");
 
         server.set_parameter_events(NODE, true);
+        // Issue 2023 — the start-up event names what the node already holds.
+        let e = server
+            .pop_initial_parameter_event()
+            .expect("the start-up event");
+        assert_eq!(
+            (e.name.as_str(), e.kind),
+            ("quiet", ParameterEventKind::New)
+        );
+        assert!(server.pop_initial_parameter_event().is_none());
         assert!(server.declare(NODE, "a", ParameterValue::Integer(1)));
         assert_eq!(
             server.set(NODE, "a", ParameterValue::Integer(2)),
@@ -2407,6 +2494,56 @@ mod tests {
             server.take_parameter_events_dropped(),
             0,
             "the count resets"
+        );
+    }
+
+    /// Issue 2023 — the start-up event: one `New` per parameter the node held
+    /// when events went on, at its CURRENT value; an `Announce` for a node
+    /// holding none; changes made while it is pending fold into it rather
+    /// than doubling up in the log; and re-enabling is not a second start-up.
+    #[test]
+    fn the_start_up_event_reports_what_the_node_holds() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        let other = NodeKey::new(1);
+        assert!(server.declare(NODE, "a", ParameterValue::Integer(1)));
+        assert!(server.declare(NODE, "b", ParameterValue::Integer(2)));
+        assert!(server.declare(other, "x", ParameterValue::Integer(9)));
+
+        server.set_parameter_events(NODE, true);
+        server.set_parameter_events(NodeKey::new(2), true);
+        // Pending: a declaration and a removal fold into the drain.
+        assert!(server.declare(NODE, "c", ParameterValue::Integer(3)));
+        assert!(server.remove(NODE, "b"));
+        assert!(server.pop_parameter_event().is_none(), "not logged twice");
+
+        let mut seen = heapless::Vec::<(u8, ParameterEventKind, String<8>), 8>::new();
+        while let Some(e) = server.pop_initial_parameter_event() {
+            let mut n = String::new();
+            n.push_str(e.name.as_str()).unwrap();
+            seen.push((e.node.raw(), e.kind, n)).unwrap();
+        }
+        let names: heapless::Vec<(u8, ParameterEventKind, &str), 8> =
+            seen.iter().map(|(n, k, s)| (*n, *k, s.as_str())).collect();
+        assert_eq!(
+            names.as_slice(),
+            &[
+                (0, ParameterEventKind::New, "a"),
+                (0, ParameterEventKind::New, "c"),
+                (2, ParameterEventKind::Announce, ""),
+            ],
+            "node 1 never enabled events; node 2 holds nothing"
+        );
+
+        // Already on: a second enable is not a second start-up.
+        server.set_parameter_events(NODE, true);
+        assert!(server.pop_initial_parameter_event().is_none());
+        // After it drained, changes are logged as before.
+        assert!(server.remove(NODE, "a"));
+        let e = server.pop_parameter_event().expect("a logged deletion");
+        assert_eq!(
+            (e.name.as_str(), e.kind),
+            ("a", ParameterEventKind::Deleted)
         );
     }
 

@@ -543,8 +543,15 @@ mod imp {
         exec.delete_parameters_on_not_set_on(id, true);
         // rclc's `notify_changed_over_dds` (default on): one
         // `/parameter_events` publisher for the node (RFC-0105 D8).
-        if opts.notify_changed_over_dds && exec.enable_parameter_events_on(id).is_err() {
-            return RCL_RET_ERROR;
+        // Issue 2023 — OFF is now an explicit opt-out: the services this
+        // server registers (`register_parameter_services`) bring the events up
+        // for every node that did not opt out, which is rclcpp's default.
+        if opts.notify_changed_over_dds {
+            if exec.enable_parameter_events_on(id).is_err() {
+                return RCL_RET_ERROR;
+            }
+        } else {
+            exec.disable_parameter_events_on(id);
         }
         *s = rclc_parameter_server_t {
             executor,

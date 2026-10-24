@@ -774,6 +774,73 @@ impl Drop for RefuseParameterStore {
     }
 }
 
+/// Issue 2023 — create the executor's ONE `/parameter_events` publisher,
+/// `rcl_interfaces/msg/ParameterEvent`, announced under `node`.
+///
+/// The ONE creation site `check-infra-queryable-counts` holds
+/// [`PARAM_EVENT_PUBLISHERS`](crate::parameter_services::PARAM_EVENT_PUBLISHERS)
+/// to. A node with a record goes through the node's own publisher path (its
+/// session, QoS overrides and the declared-QoS check); an executor with no
+/// registered node — a direct-API image whose parameter services the
+/// reconcile serves under the executor's own identity — publishes under that
+/// same identity on the primary session, so the events and the six services
+/// name one node.
+#[cfg(feature = "param-services")]
+fn create_param_event_pub(
+    exec: &mut Executor<'_>,
+    node: super::node_record::NodeId,
+    qos: QoSProfile,
+) -> Result<session::RmwPublisher, NodeError> {
+    type Event = nros_rcl_interfaces::msg::ParameterEvent;
+    const TOPIC: &str = "/parameter_events";
+    if exec.nodes.get(node.index()).is_some() {
+        return exec.create_raw_publisher_handle_on(
+            node,
+            TOPIC,
+            <Event as RosMessage>::TYPE_NAME,
+            <Event as RosMessage>::TYPE_HASH,
+            qos,
+        );
+    }
+    let node_name = exec.node_name.clone();
+    let namespace = exec.namespace.clone();
+    let mut topic = TopicInfo::new(
+        TOPIC,
+        <Event as RosMessage>::TYPE_NAME,
+        <Event as RosMessage>::TYPE_HASH,
+    )
+    .with_domain(exec.domain_id)
+    .with_namespace(&namespace);
+    if !node_name.is_empty() {
+        topic = topic.with_node_name(&node_name);
+    }
+    let session = &mut *exec.session;
+    super::node::validate_qos_or_report(
+        &qos,
+        Session::supported_qos_policies(session),
+        "publisher",
+        TOPIC,
+    )?;
+    session
+        .create_publisher(&topic, qos)
+        .map_err(|_| NodeError::Transport(TransportError::PublisherCreationFailed))
+}
+
+/// Issue 2023 — say that `/parameter_events` could not be created for a node
+/// whose parameter services did come up. Cold: it formats.
+#[cfg(feature = "param-services")]
+#[cold]
+#[inline(never)]
+fn report_parameter_events_refused(e: NodeError) {
+    nros_log::log_error!(
+        nros_log::get_logger("nros"),
+        "/parameter_events could not be created ({:?}); the parameter services are up, \
+         but no parameter change is published. A publisher slot the image did not size \
+         for is the usual cause (issue 2023).",
+        e
+    );
+}
+
 /// Issue 1706 -- say, once, that the parameter store did not fit.
 ///
 /// The RFC-0100 D11 shape, one layer up from Cyclone's boot check: the
@@ -12988,6 +13055,15 @@ impl<'s> Executor<'s> {
     /// Parameter services are stored outside the arena and don't consume
     /// callback slots.
     ///
+    /// Issue 2023 — every node served this way also PUBLISHES
+    /// `/parameter_events` (`rcl_interfaces/msg/ParameterEvent`), rclcpp's and
+    /// rclrs's default: a start-up event, then one event per declare, set and
+    /// undeclare. One VOLATILE publisher per executor
+    /// ([`PARAM_EVENT_PUBLISHERS`](crate::parameter_services::PARAM_EVENT_PUBLISHERS)).
+    /// A node opts out with
+    /// [`disable_parameter_events_on`](Self::disable_parameter_events_on)
+    /// (rclc's `notify_changed_over_dds = false`).
+    ///
     /// # Example
     ///
     /// ```ignore
@@ -13247,6 +13323,12 @@ impl<'s> Executor<'s> {
             // acceptance, so re-seeding PRIMARY here neither duplicates the
             // entry nor re-marks an application's own declaration as ours.
             self.seed_use_sim_time_default(super::node_record::NodeId::from_raw(index));
+            // Issue 2023 — and `/parameter_events`, as rclcpp's and rclrs's
+            // node does from its constructor. Seeded AFTER `use_sim_time`, so
+            // the node's start-up event names it, as upstream's does.
+            self.start_parameter_events_for_served_node(super::node_record::NodeId::from_raw(
+                index,
+            ));
         }
         // Issue 1271 -- every node is served now, so a later failure (a node
         // registered after this one) is news again and earns its own line.
@@ -14464,6 +14546,43 @@ impl<'s> Executor<'s> {
     }
 
     #[cfg(feature = "param-services")]
+    /// Issue 2023 — the serving half of `/parameter_events`: a node whose six
+    /// services just came up publishes its events unless it opted out. A
+    /// failure is LOGGED and the services stay up: `ros2 param` still works,
+    /// and a publisher slot the image did not size for is a fact to report,
+    /// not a reason to take the services down with it.
+    #[inline(never)]
+    fn start_parameter_events_for_served_node(&mut self, node: super::node_record::NodeId) {
+        if self
+            .params
+            .as_deref()
+            .is_some_and(|p| p.events_opt_out.get(node.into()))
+        {
+            return;
+        }
+        if let Err(e) = self.enable_parameter_events_on(node) {
+            report_parameter_events_refused(e);
+        }
+    }
+
+    #[cfg(feature = "param-services")]
+    /// Issue 2023 — `node` publishes no `/parameter_events` (rclc's
+    /// `notify_changed_over_dds = false`; rclcpp's
+    /// `start_parameter_event_publisher(false)`). Stops logging its changes,
+    /// and keeps [`register_parameter_services`](Self::register_parameter_services)
+    /// from switching them on. The executor's one publisher stays up if
+    /// another node uses it.
+    pub fn disable_parameter_events_on(&mut self, node: super::node_record::NodeId) {
+        if !self.ensure_parameter_store() {
+            return;
+        }
+        if let Some(params) = self.params.as_deref_mut() {
+            params.events_opt_out.set(node.into(), true);
+            params.server.set_parameter_events(node.into(), false);
+        }
+    }
+
+    #[cfg(feature = "param-services")]
     /// phase-491 W3 (RFC-0105 D8) — publish `node`'s parameter changes on
     /// `/parameter_events` (rclc's `notify_changed_over_dds`).
     ///
@@ -14479,7 +14598,6 @@ impl<'s> Executor<'s> {
         &mut self,
         node: super::node_record::NodeId,
     ) -> Result<(), NodeError> {
-        use nros_core::RosMessage;
         type Event = nros_rcl_interfaces::msg::ParameterEvent;
         if !self.ensure_parameter_store() {
             return Err(NodeError::Transport(TransportError::BadAlloc));
@@ -14487,6 +14605,10 @@ impl<'s> Executor<'s> {
         let idx = node.index();
         if idx >= crate::param_sizing::MAX_SERVICE_SETS {
             return Err(NodeError::NodeTableFull);
+        }
+        // Issue 2023 — an explicit request overrides an earlier opt-out.
+        if let Some(params) = self.params.as_deref_mut() {
+            params.events_opt_out.set(node.into(), false);
         }
         if self
             .params
@@ -14514,13 +14636,7 @@ impl<'s> Executor<'s> {
         }
         crate::rmw_type_registry::register_type::<Event>()?;
         let qos = QoSProfile::parameter_events_default().depth(nros_params::PARAM_EVENTS_DEPTH);
-        let handle = self.create_raw_publisher_handle_on(
-            node,
-            "/parameter_events",
-            <Event as RosMessage>::TYPE_NAME,
-            <Event as RosMessage>::TYPE_HASH,
-            qos,
-        )?;
+        let handle = create_param_event_pub(self, node, qos)?;
         if let Some(params) = self.params.as_mut() {
             params.event_publisher = Some(handle);
             params.server.set_parameter_events(node.into(), true);
@@ -14542,7 +14658,12 @@ impl<'s> Executor<'s> {
             let Some(params) = self.params.as_mut() else {
                 return;
             };
-            let Some(event) = params.server.pop_parameter_event() else {
+            // Issue 2023 — a node's start-up event first, then the log.
+            let Some(event) = params
+                .server
+                .pop_initial_parameter_event()
+                .or_else(|| params.server.pop_parameter_event())
+            else {
                 break;
             };
             let idx = event.node.index();
@@ -14611,12 +14732,15 @@ impl<'s> Executor<'s> {
     #[cfg(feature = "param-services")]
     #[cold]
     fn report_parameter_events_lost(lost: u32) {
-        nros_log::log_warn!(
+        // Issue 2023 — an event that does not fit is REFUSED whole, never
+        // truncated into a malformed sample; this line is how anyone hears.
+        nros_log::log_error!(
             nros_log::get_logger("nros"),
             "{} /parameter_events message(s) were not published: the change log \
-             (PARAMETER_EVENT_LOG_LEN) filled between two flushes, a value did not fit the \
-             parameter-service reply buffer (NROS_PARAM_SERVICE_BUFFER_SIZE), or the \
-             publish failed. The parameters themselves changed (phase-491 W3).",
+             (PARAMETER_EVENT_LOG_LEN) filled between two flushes, an event did not fit the \
+             parameter-service reply buffer (NROS_PARAM_SERVICE_BUFFER_SIZE) and was refused \
+             rather than truncated, or the publish failed. The parameters themselves changed \
+             (phase-491 W3, issue 2023).",
             lost
         );
     }

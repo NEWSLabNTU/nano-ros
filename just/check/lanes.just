@@ -1239,6 +1239,9 @@ cpp: cpp-fmt
     # both suffixes back in the gate's harvest.
     gen_cyclone_embedded="$(nros_scoped_target_dir check-cpp-cyclone-embedded)"
     gen_clippy_zenoh="$(nros_scoped_target_dir check-cpp-clippy-zenoh)"
+    # issue 2023 -- the `param-services` shape `parameter_events_runtime` links;
+    # derived here, before the export below, for the same reason as the two above.
+    pe_dir="$(nros_scoped_target_dir check-cpp-param-services)"
     gen="$(nros_scoped_target_dir check-cpp)"
     export CARGO_TARGET_DIR="$gen"
     # issue 1852 — the per-build header dirs under this lane's target dir,
@@ -1898,6 +1901,40 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/status_event_setters_runtime
+    # issue 2023 — a served C++ node PUBLISHES `/parameter_events`: the
+    # start-up event, then one frame per set / declare / undeclare, each naming
+    # the node's FQN, read back from the stub's last published payload. Needs a
+    # SECOND `nros-cpp` shape (the shipped set has no parameter store), in its
+    # OWN target dir for the reason the C lane's `param-services` build gives:
+    # the per-build sizes headers are a build-script side effect, so one dir
+    # per feature shape keeps header and archive one build. Negative control,
+    # measured: `start_parameter_events_for_served_node` made a no-op -> 13
+    # failures.
+    test -f packages/api/nros-cpp/tests/compile/parameter_events_runtime.cpp || { \
+        echo "ERROR: parameter_events_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - a served C++ node publishes /parameter_events on start-up, set, declare, undeclare (runtime, issue 2023)"
+    CARGO_TARGET_DIR="$pe_dir" \
+        cargo build -p nros-cpp --no-default-features \
+        --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
+    # profile-literal-ok: unprofiled: a plain `cargo build`, so `<dir>/debug/` IS
+    # its derived output dir, and the mirrored headers beside it are from this
+    # same build.
+    pe_lib="$pe_dir/debug/libnros_cpp.a"
+    c++ -std=c++17 -fno-exceptions -fno-rtti \
+        -I"$(CARGO_TARGET_DIR="$pe_dir" nros_locate_artifact cpp-include)" \
+        -I"$(CARGO_TARGET_DIR="$pe_dir" nros_locate_artifact c-include)" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/parameter_events_runtime \
+        packages/api/nros-cpp/tests/compile/parameter_events_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$pe_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/parameter_events_runtime
     # phase-476 W2 — a C++ timer's callable lives in the executor arena: it
     # fires from the arena's copy, a capture that owns something is destroyed
     # exactly once (on `timer_.reset()` or node destruction), `timer_->reset()`

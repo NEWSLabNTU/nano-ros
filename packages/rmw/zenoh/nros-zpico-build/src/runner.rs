@@ -43,6 +43,11 @@ use nros_sizing_descriptor::infra::{PARAM_SERVICE_QUERYABLES, declared_nodes, st
 /// two above.
 const LIFECYCLE_SERVICE_PUBLISHERS: usize = 1;
 
+/// Publishers the ROS parameter family claims (`/parameter_events`, one per
+/// executor), mirroring `nros_node::parameter_services::PARAM_EVENT_PUBLISHERS`
+/// (issue 2023). A liveliness token, no queryable; held like the one above.
+const PARAM_EVENT_PUBLISHERS: usize = 1;
+
 /// The session's own node token, declared once at session open whatever the
 /// image creates (`shim/session.rs`, the primary-node path). Mirrors
 /// `nros_cli_core::entity_inventory::PRIMARY_NODE_LIVELINESS_TOKENS`.
@@ -566,6 +571,7 @@ fn liveliness_default_from(
     // table: a short liveliness pool is a silent graph outage (issue 0283),
     // an over-long one is a few bytes a slot.
     let lifecycle = !matches!(infra, Some("none") | Some("param"));
+    let param = !matches!(infra, Some("none") | Some("lifecycle"));
     // One token per node NAME: the larger of the components and the model's
     // nodes (the parameter family is per node), plus the executor's when the
     // lifecycle family registers under it. Errs high by one where the
@@ -576,7 +582,8 @@ fn liveliness_default_from(
             LIFECYCLE_SERVICE_PUBLISHERS
         } else {
             0
-        };
+        }
+        + if param { PARAM_EVENT_PUBLISHERS } else { 0 };
     PRIMARY_NODE_LIVELINESS_TOKENS
         + node_names
         + runtime
@@ -1007,8 +1014,9 @@ mod liveliness_default_tests {
     /// The tokens `linux_rust_qos` declares, counted in the issue from the
     /// shim's creation calls: the session's node, two node names, three
     /// application endpoints, the parameter family on both nodes, the
-    /// lifecycle family's five servers and its `transition_event` publisher.
-    const NATIVE_RUST_QOS_TOKENS: usize = 1 + 2 + 3 + 6 * 2 + 5 + 1;
+    /// lifecycle family's five servers and its `transition_event` publisher,
+    /// and (issue 2023) the parameter family's one `/parameter_events` writer.
+    const NATIVE_RUST_QOS_TOKENS: usize = 1 + 2 + 3 + 6 * 2 + 5 + 1 + 1;
 
     #[test]
     fn a_param_and_lifecycle_image_on_two_nodes_is_not_short() {
@@ -1032,13 +1040,13 @@ mod liveliness_default_tests {
         assert!(got < NATIVE_RUST_QOS_TOKENS);
         assert_eq!(
             NATIVE_RUST_QOS_TOKENS - got,
-            8,
-            "the issue's eight lost services"
+            8 + PARAM_EVENT_PUBLISHERS,
+            "the issue's eight lost services, plus issue 2023's /parameter_events writer"
         );
     }
 
     /// With a descriptor the count is EXACT, not a budget: the same image
-    /// described down to its three endpoints derives its 24 tokens plus the
+    /// described down to its three endpoints derives its 25 tokens plus the
     /// one the lifecycle node name errs high by when it shares a component's.
     #[test]
     fn a_described_image_is_counted_exactly() {
@@ -1055,7 +1063,11 @@ mod liveliness_default_tests {
             "session node + one node name + two entities"
         );
         let param = liveliness_default_from(Some(2), Some(1), Some("param"), Some("1"));
-        assert_eq!(param - base, PARAM_SERVICE_QUERYABLES);
+        // six servers per node, one `/parameter_events` writer per executor.
+        assert_eq!(
+            param - base,
+            PARAM_SERVICE_QUERYABLES + PARAM_EVENT_PUBLISHERS
+        );
         let lc = liveliness_default_from(Some(2), Some(1), Some("lifecycle"), Some("1"));
         // five servers, the `transition_event` publisher, the executor's node.
         assert_eq!(
