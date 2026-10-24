@@ -2,7 +2,9 @@
 
 **Status (2026-10-24). In progress, and now the TRACKED target: ROS Humble
 ships zenoh 1.10.1, so the target is 1.10.1, not "1.10" in general. The port
-survey is done (22 conflicting files, half of phase-415's 42); nothing has
+survey is done (22 conflicting files, half of phase-415's 42), and a 1.8.0
+image interoperates with a 1.10.1 `rmw_zenohd` (27 of 27 interop tests, the
+same as against 1.8.0), so the move is planned work, not a fix. Nothing has
 moved on the fork or the pin.** The phase
 was opened on 2026-10-17 to give issue 0910 a home after
 [phase-355](archived/phase-355-dependency-and-fork-debt.md) was archived on
@@ -33,9 +35,7 @@ next sync.
 
 So a Humble host that runs `apt upgrade` today runs an `rmw_zenohd` two minors
 ahead of our 1.8.0 pin. The wire protocol is stable across 1.x (issue 0291), so
-interop is expected to hold, but nothing has MEASURED a 1.8.0 image against a
-1.10.1 router. That measurement is the first work item, because it decides how
-urgent the rest is.
+interop was expected to hold. The first work item measured it, and it does.
 
 Upstream zenoh-pico tags 1.10.0 (2026-08-14) and 1.10.1 (2026-09-07); 1.10.1
 is the newest release.
@@ -46,18 +46,26 @@ is the newest release.
 taken from the pre-phase-415 pin (`dac320e3`, 1.7.2), so its counts overstate
 the gap from today's 1.8.0 line and are re-measured by the second work item.
 Our fork's pin is behind upstream, and upstream has since restructured the
-link transports. It now ships its own Zephyr UART backend and serial protocol,
-generates `config.h` from `config.h.in`, and has knobs our config generator
-does not emit. Most of our Zephyr serial code now has an upstream equivalent,
-so the migration is mostly deletion. The system ABI our shims implement
-(`_z_mutex_*`, `_z_task_*`) is unchanged.
+link transports into `src/link/transport/{tcp,udp,serial}/*_<platform>.c`.
+It now ships its own Zephyr UART backend and serial protocol, generates
+`config.h` from `config.h.in`, and has knobs our config generator does not
+emit. This doc used to say most of our Zephyr serial code now has an upstream
+equivalent, so the migration is mostly deletion. Measured, it is not: ours is
+2451 lines with interrupt-driven and async receive, and upstream's
+`uart_zephyr.c` is 129 lines. Our serial code moves into upstream's layout
+rather than being deleted (issue 0910's 2026-10-24 correction). The system ABI
+our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
 
 ## Work items
 
-- [ ] Measure a 1.8.0 image against a 1.10.1 `rmw_zenohd` (Humble's
+- [x] Measure a 1.8.0 image against a 1.10.1 `rmw_zenohd` (Humble's
       `rmw_zenoh_cpp` 0.1.11, in the ros2 distrobox or a live-peer lane): pub,
       sub, service and liveliness/graph. A failure here makes the rest urgent
-      and is filed as its own issue.
+      and is filed as its own issue. DONE 2026-10-24: the zenoh live-peer
+      interop binaries pass 27 of 27 against both 0.1.9 (zenoh 1.8.0) and
+      0.1.11 (zenoh 1.10.1), with router and `ros2` peer both on the overlay.
+      The setup and the test list are in issue 0910's 2026-10-24
+      measurement.
 - [x] Survey the port the way phase-415 surveyed 1.7.2 → 1.8.0: merge the
       `nano-ros` patch line onto upstream `1.10.1` and record what applies
       clean, what conflicts and what upstream now carries, plus the config-knob
@@ -70,9 +78,14 @@ so the migration is mostly deletion. The system ABI our shims implement
       patches as individual commits (CLAUDE.md, vendored-fork workflow). Drop
       each patch that upstream now carries, and record each drop.
 - [ ] Generate `config.h` the way upstream does, and close the gap between the
-      knobs upstream defines and the ones our generator emits.
-- [ ] Move Zephyr serial onto upstream's `uart_zephyr.c` and serial protocol,
-      then delete ours.
+      knobs upstream defines and the ones our generator emits. Stop emitting
+      `Z_FEATURE_PERIODIC_TASKS`, which 1.10.1 removed.
+- [ ] Move our Zephyr serial implementation into upstream's layout as
+      `src/link/transport/serial/uart_zephyr.c`, keeping its interrupt-driven
+      and async receive paths, and take upstream's serial protocol framing
+      where it matches ours. Upstream's 129-line backend does not replace it.
+- [ ] Extend upstream's `tty_posix.c` with the baud rates above `B230400`
+      that ours supports (up to 921600), then drop our POSIX serial code.
 - [ ] Bump the superproject pin forward only, after the fork branch is pushed.
 
 ## Acceptance
