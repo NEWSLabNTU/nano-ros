@@ -1,15 +1,41 @@
 ---
 id: 2025
-title: "Zephyr native_sim XRCE C/C++ leaves fail to link: `nros-platform-posix`'s platform.c is in both libnros.a and libnros_cpp.a"
-status: open
+title: "RETIRED, duplicate of #2032 — Zephyr native_sim XRCE C/C++ leaves fail to link: `nros-platform-posix`'s platform.c is in both libnros.a and libnros_cpp.a"
+status: resolved
 type: bug
 area: [zephyr, build, rmw-xrce, platform]
 severity: high
 found: 2026-10-24
-related: [issue-0282, issue-1824]
+related: [issue-2032, issue-0282, issue-1824, phase-513]
 ---
 
-**Home: none.** Seen on the scheduled tier-2 run of 2026-10-24.
+**Home: [phase-513](../../roadmap/phase-513-nightly-reds-with-no-home.md)** — R2, through #2032.
+
+## Retired as a duplicate of #2032
+
+Filed 2026-10-24 from the scheduled `run-matrix` run.
+[#2032](../2032-zephyr-kernel-arm-lacks-lock-storage-probes.md) was filed the
+same day from the tier-2 nightly, for the same link failure, and carries the
+cause and the fix (#2579). It is canonical, and its acceptance now includes
+this issue's `run-matrix` leaves. This file is kept for its run and job IDs.
+
+The question this issue left open, why a native_sim image's `libnros_cpp.a`
+carries the POSIX port's `platform.o`, is answered there. The member is
+always in the archive: `nros-rmw-xrce-cffi/build.rs` compiles the POSIX port
+whenever the target OS is Linux, which a `native_sim` build's is. It stayed
+out of the link while nothing asked for a symbol that only it defines. Then
+phase-509's native level runner (`97abd95450`, inside this issue's
+`6e00553ede..62b661ac1c` window) called
+`nros_platform_mutex_rec_storage_size`. The Zephyr port's non-`CONFIG_POSIX_API`
+arm did not define it, and the XRCE confs do not set `CONFIG_POSIX_API`. The
+16 symbols listed below are the ones both ports define, so they are the
+collisions. The symbol that pulled the member is not among them, which is why
+the link output never named it.
+
+Checked 2026-10-24: across all its arms and the module shims, the Zephyr port
+now defines every function the POSIX `platform.c` does, so no other symbol is
+left to pull the member in. `just check platform-port-arms` keeps the two arms
+in step.
 
 ## What failed
 
