@@ -7,6 +7,15 @@
 > compiling against `nros-cpp` + `nros generate cpp` + small build-script
 > changes. They are complementary, not duplicates.
 
+> **Re-checked 2026-10-24 ([phase-488](../roadmap/phase-488-larger-cpp-port-fixture.md) W1).**
+> Two of the three tier-1 picks below have moved upstream.
+> `autoware_external_cmd_selector` on upstream `main` is built on
+> `autoware_agnocast_wrapper`; tag 0.45.0 is still plain rclcpp, so pin that.
+> `autoware_steer_offset_estimator` is now 835 lines and pulls in yaml-cpp,
+> tf2 and `fmt`, so it is no longer tier 1. `topic_state_monitor` has been a
+> port template since phase-482. Phase-488 W1 holds the current
+> cross-project shortlist.
+
 **Question.** How much work does it take to port a normal ROS 2 C++ node into
 nano-ros? Ideally — "just change the build scripts + a few `#include`s." Are
 there Autoware nodes that fit that shape, especially safety-island candidates?
