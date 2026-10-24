@@ -1387,6 +1387,10 @@ mod tests {
                 // windows' list; the records live in the passes' frames, one
                 // per window. One pointer, scales with nothing.
                 + size_of::<*mut super::super::exec_lock::Running>()
+                // Issue 2018 -- the registering level's own sched context id
+                // (`Worker::registering_sched`), one byte that tipped the
+                // worker's padding; scales with nothing.
+                + size_of::<u32>()
                 + size_of::<
                     [Option<super::super::spin::WakeSourceSlot>;
                         super::super::spin::MAX_WAKE_SOURCES],
