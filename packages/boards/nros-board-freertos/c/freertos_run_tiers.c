@@ -20,6 +20,20 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+/* Issue 2017 (RFC-0108 D6) -- the build said this is a level image; a board
+ * FreeRTOSConfig.h that ignores the input would still slice. */
+#if defined(NROS_FREERTOS_LEVEL_IMAGE) && NROS_FREERTOS_LEVEL_IMAGE && \
+    (configUSE_TIME_SLICING != 0)
+#error "nros: NROS_FREERTOS_LEVEL_IMAGE is set but this FreeRTOSConfig.h keeps configUSE_TIME_SLICING (issue 2017)"
+#endif
+
+/* Issue 2017 -- the kernel's time-slicing setting, for the level runners'
+ * boot line (the Rust runner reads it through this). */
+int nros_freertos_kernel_time_slicing(void);
+int nros_freertos_kernel_time_slicing(void) {
+    return configUSE_TIME_SLICING;
+}
+
 /* --- nros-cpp C FFI forward declarations ---
  *
  * These symbols are defined in nros-cpp (Rust) and linked into the final binary.
@@ -1303,6 +1317,9 @@ int32_t nros_board_freertos_run_levels_in(const char* locator, uint8_t domain_id
         nros_board_freertos_console_write("nros: multi-level run — ");
         nros_board_freertos_console_write(freertos_u32_dec((uint32_t)n_tiers, nb, sizeof(nb)));
         nros_board_freertos_console_write(" level(s) over one executor\n");
+        nros_board_freertos_console_write(nros_freertos_kernel_time_slicing()
+                                              ? "nros: kernel time slicing ON (issue 2017)\n"
+                                              : "nros: kernel time slicing OFF\n");
     }
 
     uint32_t period_ms = (uint32_t)(boot->spin_period_us / 1000u);

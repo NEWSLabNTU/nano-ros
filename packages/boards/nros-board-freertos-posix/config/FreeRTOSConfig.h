@@ -33,6 +33,14 @@
  * No `configCPU_CLOCK_HZ`: the POSIX port drives the tick from a host interval
  * timer, and defining a core clock it never reads would be decoration. */
 #define configUSE_PREEMPTION                    1
+/* Issue 2017 (RFC-0108 D6) -- a level image's kernel does not time-slice;
+ * `nano_ros_entry` defines NROS_FREERTOS_LEVEL_IMAGE for a tiered entry (see
+ * nros-board-freertos's FreeRTOSConfig.h). Otherwise the kernel default, 1. */
+#if defined(NROS_FREERTOS_LEVEL_IMAGE) && NROS_FREERTOS_LEVEL_IMAGE
+#define configUSE_TIME_SLICING                  0
+#else
+#define configUSE_TIME_SLICING                  1
+#endif
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 0
 #define configUSE_TICKLESS_IDLE                 0
 #define configTICK_RATE_HZ                      ((TickType_t)1000)

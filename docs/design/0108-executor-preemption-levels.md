@@ -1037,8 +1037,30 @@ executor's lock and the thread identity:
     CPU at 2 ms per 10 ms must take at least 80 ms of wall time; on a host
     that refuses the reservation it checks the fallback instead and prints
     that the throttle half did not run).
-- **Not in P10.** FreeRTOS keeps `configUSE_TIME_SLICING` at the kernel
-  default.
+- **FreeRTOS time slicing (D6, issue 2017).** A FreeRTOS level image's
+  kernel is built with `configUSE_TIME_SLICING 0`; every other FreeRTOS image
+  keeps the kernel default, 1. The setting is compiled into the kernel, so the
+  image states the fact and the kernel build reads it as
+  `NROS_FREERTOS_LEVEL_IMAGE` (the boards' `FreeRTOSConfig.h`, including the
+  POSIX simulator's own file). Two roads deliver it: a tiered C/C++ entry's
+  link-libs sidecar sets `NROS_LEVEL_IMAGE` on the executable and
+  `nano_ros_entry` defines it on `freertos_config` (issue 1197's carrier, the
+  one every kernel TU reads); a multi-tier Rust schedule gets the board
+  crate's `level-image` feature from `nros build`
+  (`schedule_board_features`, the same predicate as `nros::main!`'s
+  multi-tier arm), and `nros-board-freertos`'s build.rs defines it on every
+  `cc::Build`. A tiered entry refuses to build against a slicing kernel
+  (`tier_task_memory_freertos.h`; a host with its own config states
+  `NROS_FREERTOS_ALLOW_TIME_SLICING` to keep it), and both level runners say
+  what the kernel was built with (`nros: kernel time slicing OFF`). With
+  slicing off, equal-priority tasks rotate only when one blocks. The
+  transport tasks all block: lwIP's `tcpip_thread` on its mailbox, the
+  netif poll task on its notification with the poll interval as a ceiling,
+  zenoh-pico's lease task in its sleep and its read task in `recv` with the
+  socket timeout. The read task runs without blocking only while frames are
+  pending, which the socket buffer bounds; `Z_RX_TASK_BUDGET_FRAMES`, when a
+  board states it, adds a rest every N frames. The levels themselves sit at
+  distinct priorities and park each pass.
 
 ## Relation to other RFCs
 
