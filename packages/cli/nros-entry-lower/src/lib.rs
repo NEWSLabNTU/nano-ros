@@ -191,7 +191,9 @@ impl BoardFamily {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: Some("nros_board_freertos_run_tiers_tasks_in"),
                 run_tiers_backed: None,
-                run_levels: None,
+                // phase-509 P10 -- one worker task per level over the core's
+                // one executor, whose scheduler the entry owns.
+                run_levels: Some("nros_board_freertos_run_levels_in"),
                 takes_executor_storage: true,
                 // Issue 1598 — each spawned tier's stack + TCB are the entry's
                 // statics (`xTaskCreateStatic`), not heap_4 blocks. The
@@ -203,8 +205,10 @@ impl BoardFamily {
                     header: "rclc/detail/tier_task_memory_freertos.h",
                     boot_tier: BootTier::Last,
                     default_stack_bytes: 262_144,
-                    // Its runner is phase-509 P10's.
-                    derives_level_stacks: false,
+                    // phase-509 P10 -- a level that declares no stack gets
+                    // `NROS_LEVEL_STACK_BYTES`: its largest member's stack
+                    // plus the worker frame.
+                    derives_level_stacks: true,
                 }),
             }),
             BoardFamily::Zephyr => Some(CAbiRunners {
@@ -238,11 +242,21 @@ impl BoardFamily {
                 run_components: Some("nros_board_rtos_run_components_in"),
                 run_tiers: Some("nros_board_nuttx_run_tiers_in"),
                 run_tiers_backed: None,
-                run_levels: None,
+                // phase-509 P10 -- one SCHED_FIFO pthread per level over the
+                // core's one executor, whose scheduler the entry owns.
+                run_levels: Some("nros_board_nuttx_run_levels_in"),
                 takes_executor_storage: true,
-                // A NuttX tier is a pthread whose stack the kernel allocates;
-                // not moved (yet).
-                tier_task_memory: None,
+                // phase-509 P10 -- each spawned level's stack is the entry's
+                // static (`pthread_attr_setstack`), sized from its members
+                // when it declares none; the boot level runs on `app_main`'s
+                // thread, the last row. 16 KiB is the stack every tier pthread
+                // got before (`NROS_NUTTX_TIER_STACK_BYTES`).
+                tier_task_memory: Some(TierTaskMemory {
+                    header: "rclc/detail/tier_task_memory_nuttx.h",
+                    boot_tier: BootTier::Last,
+                    default_stack_bytes: 16_384,
+                    derives_level_stacks: true,
+                }),
             }),
             BoardFamily::Threadx => Some(CAbiRunners {
                 run_components: Some("nros_board_rtos_run_components_in"),

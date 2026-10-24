@@ -149,7 +149,9 @@ __attribute__((section(".nros_boot_config"), used))
  * is no honest size to write. The runner asks the linked library whether the
  * block is big enough and refuses it if not. */
 #include <rclcpp/detail/nros_cpp_config_generated.h>
-static uint64_t __nros_tier_executor_storage[2][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
+/* phase-509 P9b (RFC-0108 "As built in P9b") — a level runner opens ONE
+ * executor per core, so ONE block: every level works on it. */
+static uint64_t __nros_tier_executor_storage[1][(NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) / 8u];
 
 /* Issue 1598 — each spawned tier's TASK memory (stack + control block), as
  * statics the linker places and prices: an image whose stacks do not fit RAM
@@ -157,14 +159,36 @@ static uint64_t __nros_tier_executor_storage[2][(NROS_CPP_EXECUTOR_STORAGE_SIZE 
  * tier's `stack_bytes` (or the stated default) and raised to the port's floor
  * by the header's macro. The boot tier runs on the caller's task and has none. */
 #include <rclc/detail/tier_task_memory_freertos.h>
-NROS_TIER_TASK_MEMORY_DEFINE(0, 262144u);
+NROS_TIER_TASK_MEMORY_DEFINE(0, NROS_LEVEL_STACK_BYTES(0u));
 static const nros_tier_task_memory_t __nros_tier_task_memory[2] = {
     NROS_TIER_TASK_MEMORY(0),
     NROS_TIER_TASK_MEMORY_NONE,
 };
 
+/* phase-509 P9 (RFC-0108) — this core's level scheduler: the session every
+ * level shares and one seat per level, in a static the linker places and the
+ * cost report (`mem-report --levels`) names. Each row of the table above is one
+ * level; the runner spawns one worker per level over it. */
+#define NROS_CPP_SCHEDULER_BACKING_SIZE_0 NROS_CPP_SCHEDULER_BACKING_SIZE(2u)
+static uint64_t __nros_scheduler_0[NROS_CPP_SCHEDULER_BACKING_SIZE_0 / 8u];
+/* phase-509 P9b (RFC-0108 "As built in P9b") — the core's ONE executor
+ * backing, when this build sizes its levels: every level's members, summed
+ * (NROS_CPP_LEVELS_BACKING_SIZE), and the context above carries none inline.
+ * A build that sizes no level keeps the whole-image executor inline. The
+ * library refuses a backing short of the levels' layout before the session
+ * opens. */
+#if defined(NROS_CPP_LEVELS_BACKING_SIZE)
+static uint64_t __nros_levels_backing[NROS_CPP_LEVELS_BACKING_SIZE / 8u];
+static const nros_tier_backing_t __nros_level_backings[1] = {
+    {__nros_levels_backing, sizeof(__nros_levels_backing)},
+};
+#define NROS_ENTRY_LEVEL_BACKINGS __nros_level_backings
+#else
+#define NROS_ENTRY_LEVEL_BACKINGS nullptr
+#endif
+
 extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
-    return ::rclcpp::board::FreertosBoard::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), __nros_tier_task_memory);
+    return ::rclcpp::board::FreertosBoard::run_levels(nros_boot_config_node_name(&NROS_BOOT_CONFIG), nros_boot_config_namespace(&NROS_BOOT_CONFIG), __nros_tiers, 2u, __nros_tier_executor_storage, sizeof(__nros_tier_executor_storage[0]), NROS_ENTRY_LEVEL_BACKINGS, __nros_tier_task_memory, __nros_scheduler_0, sizeof(__nros_scheduler_0));
 }
 
 NROS_APP_MAIN_REGISTER_VOID();

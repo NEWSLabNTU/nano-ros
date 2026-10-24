@@ -137,6 +137,8 @@ NROS_EXECUTOR_STATE_SPINNING	RCLC_EXECUTOR_STATE_SPINNING	ours	API constant with
 NROS_EXECUTOR_STATE_UNINITIALIZED	RCLC_EXECUTOR_STATE_UNINITIALIZED	ours	API constant with no upstream spelling
 NROS_EXECUTOR_STORAGE_SIZE	NROS_EXECUTOR_STORAGE_SIZE	build	build or configuration fact
 NROS_FEATURES	NROS_FEATURES	build	build or configuration fact
+NROS_FREERTOS_LEVEL_STACK_DEFAULT	NROS_FREERTOS_LEVEL_STACK_DEFAULT	hook	defined by the application or entry, called by startup code
+NROS_FREERTOS_LEVEL_WORKER_FRAME	NROS_FREERTOS_LEVEL_WORKER_FRAME	hook	defined by the application or entry, called by startup code
 NROS_GENERATED_H	NROS_GENERATED_H	build	build or configuration fact
 NROS_GOAL_ACCEPT_AND_DEFER	RCLC_GOAL_ACCEPT_AND_DEFER	ours	API constant with no upstream spelling
 NROS_GOAL_ACCEPT_AND_EXECUTE	RCLC_GOAL_ACCEPT_AND_EXECUTE	ours	API constant with no upstream spelling
@@ -221,6 +223,8 @@ NROS_NODE_STATE_SHUTDOWN	RCLC_NODE_STATE_SHUTDOWN	ours	API constant with no upst
 NROS_NODE_STATE_UNINITIALIZED	RCLC_NODE_STATE_UNINITIALIZED	ours	API constant with no upstream spelling
 NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES	NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES	build	build or configuration fact
 NROS_NUTTX_EXTERNAL_APP	NROS_NUTTX_EXTERNAL_APP	hook	defined by the application or entry, called by startup code
+NROS_NUTTX_LEVEL_STACK_DEFAULT	NROS_NUTTX_LEVEL_STACK_DEFAULT	hook	defined by the application or entry, called by startup code
+NROS_NUTTX_LEVEL_WORKER_FRAME	NROS_NUTTX_LEVEL_WORKER_FRAME	hook	defined by the application or entry, called by startup code
 NROS_PKG_NAME	NROS_PKG_NAME	build	build or configuration fact
 NROS_PUBLIC	NROS_PUBLIC	build	build or configuration fact
 NROS_PUBLISHER_GID_SIZE	NROS_PUBLISHER_GID_SIZE	build	build or configuration fact
@@ -320,6 +324,7 @@ NROS_TIER_TASK_MEMORY	NROS_TIER_TASK_MEMORY	hook	defined by the application or e
 NROS_TIER_TASK_MEMORY_DEFINE	NROS_TIER_TASK_MEMORY_DEFINE	hook	defined by the application or entry, called by startup code
 NROS_TIER_TASK_MEMORY_FREERTOS_H	NROS_TIER_TASK_MEMORY_FREERTOS_H	hook	defined by the application or entry, called by startup code
 NROS_TIER_TASK_MEMORY_NONE	NROS_TIER_TASK_MEMORY_NONE	hook	defined by the application or entry, called by startup code
+NROS_TIER_TASK_MEMORY_NUTTX_H	NROS_TIER_TASK_MEMORY_NUTTX_H	hook	defined by the application or entry, called by startup code
 NROS_TIER_TASK_MEMORY_ZEPHYR_H	NROS_TIER_TASK_MEMORY_ZEPHYR_H	hook	defined by the application or entry, called by startup code
 NROS_TIER_TASK_STACK_BYTES_	NROS_TIER_TASK_STACK_BYTES_	hook	defined by the application or entry, called by startup code
 NROS_TIER_TASK_STACK_DEFAULT_	NROS_TIER_TASK_STACK_DEFAULT_	hook	defined by the application or entry, called by startup code
@@ -425,6 +430,7 @@ nros_app_main	nros_app_main	hook	defined by the application or entry, called by 
 nros_app_main_returned	nros_app_main_returned	hook	defined by the application or entry, called by startup code
 nros_b	rclc_b	ours	ours-only
 nros_baked_boot_config	nros_baked_boot_config	hook	defined by the application or entry, called by startup code
+nros_board_freertos_run_levels_in	nros_board_freertos_run_levels_in	seam	declared by a port seam or the C++ FFI
 nros_board_freertos_run_tiers	nros_board_freertos_run_tiers	seam	declared by a port seam or the C++ FFI
 nros_board_freertos_run_tiers_in	nros_board_freertos_run_tiers_in	seam	declared by a port seam or the C++ FFI
 nros_board_freertos_run_tiers_ns	nros_board_freertos_run_tiers_ns	seam	declared by a port seam or the C++ FFI
@@ -438,6 +444,7 @@ nros_board_native_run_tiers	nros_board_native_run_tiers	seam	declared by a port 
 nros_board_native_run_tiers_in	nros_board_native_run_tiers_in	seam	declared by a port seam or the C++ FFI
 nros_board_native_run_tiers_ns	nros_board_native_run_tiers_ns	seam	declared by a port seam or the C++ FFI
 nros_board_network_wait	nros_board_network_wait	seam	declared by a port seam or the C++ FFI
+nros_board_nuttx_run_levels_in	nros_board_nuttx_run_levels_in	seam	declared by a port seam or the C++ FFI
 nros_board_nuttx_run_tiers	nros_board_nuttx_run_tiers	seam	declared by a port seam or the C++ FFI
 nros_board_nuttx_run_tiers_in	nros_board_nuttx_run_tiers_in	seam	declared by a port seam or the C++ FFI
 nros_board_nuttx_run_tiers_ns	nros_board_nuttx_run_tiers_ns	seam	declared by a port seam or the C++ FFI

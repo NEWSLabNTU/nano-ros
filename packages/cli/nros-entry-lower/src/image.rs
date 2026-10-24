@@ -564,16 +564,19 @@ mod tests {
             derived,
             [(false, false, 0), (true, true, 0), (true, false, 8192)]
         );
-        let freertos = crate::BoardFamily::Freertos
-            .c_abi_runners()
-            .and_then(|r| r.tier_task_memory)
-            .expect("FreeRTOS takes tier task memory");
-        assert!(
-            LoweredTaskMemory::for_tiers(&freertos, &[0, 0])
+        // phase-509 P10 -- FreeRTOS and NuttX boot the LAST row and derive
+        // the spawned ones too.
+        for family in [crate::BoardFamily::Freertos, crate::BoardFamily::Nuttx] {
+            let mem = family
+                .c_abi_runners()
+                .and_then(|r| r.tier_task_memory)
+                .expect("the family takes tier task memory");
+            let rows: Vec<(bool, bool)> = LoweredTaskMemory::for_tiers(&mem, &[0, 4096, 0])
                 .rows
                 .iter()
-                .all(|r| !r.derived),
-            "FreeRTOS keeps its stated default until its P10 runner"
-        );
+                .map(|r| (r.spawned, r.derived))
+                .collect();
+            assert_eq!(rows, [(true, true), (true, false), (false, false)]);
+        }
     }
 }

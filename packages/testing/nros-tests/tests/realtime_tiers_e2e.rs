@@ -889,23 +889,49 @@ fn run_one(pcell: &MCell, cell: &Exec) {
     if let Proof::SerialTicks(tiers) = cell.proof {
         let mut qemu = QemuProcess::start_mps2_an385_networked(&entry)
             .unwrap_or_else(|e| panic!("boot {} {} QEMU: {e}", platform, lang));
+        // phase-509 P10 -- every C/C++ FreeRTOS tier table runs on the level
+        // runner (`nros_board_freertos_run_levels_in`): one executor, one
+        // worker task per level. Its line comes first; the stream is consumed
+        // as it is read, so the ticks are then checked against everything
+        // seen (a level spawned at a higher priority may tick before the boot
+        // level prints).
+        let levels = "level(s) over one executor";
+        let mut seen = qemu
+            .wait_for_output_pattern(levels, Duration::from_secs(90))
+            .unwrap_or_else(|e| {
+                qemu.kill();
+                panic!(
+                    "[{} {}] the level runner never ran (`{levels}` absent) — {}.\nerr: {e:?}",
+                    platform, lang, cell.note
+                )
+            });
+        assert!(
+            !seen.contains("failing the boot"),
+            "[{} {}] a level failed the boot:\n{seen}",
+            platform,
+            lang
+        );
         // The boot tier connects + publishes first (its tick proves the
         // run_tiers boot session reached the host zenohd), so it gets the
         // cold-boot budget; each subsequent tier only needs its own period.
         let mut timeout = Duration::from_secs(90);
         for tier in tiers {
             let marker = nros_tests::output::tier_tick_marker(tier);
+            if seen.contains(&marker) {
+                continue;
+            }
             let out = qemu
                 .wait_for_output_pattern(&marker, timeout)
                 .unwrap_or_else(|e| {
                     qemu.kill();
                     panic!(
                         "[{} {}] tier `{tier}` never published (`{marker}` absent) — \
-                         {}.\nerr: {e:?}",
+                         {}.\nerr: {e:?}\n--- guest console so far ---\n{seen}",
                         platform, lang, cell.note
                     )
                 });
-            assert!(out.contains(&marker));
+            seen.push_str(&out);
+            assert!(seen.contains(&marker));
             timeout = Duration::from_secs(30);
         }
         qemu.kill();
