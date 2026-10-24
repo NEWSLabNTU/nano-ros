@@ -221,3 +221,50 @@ Reproduce, from a clone of `jerry73204/zenoh-pico` with the two upstream tags
 fetched: `git checkout 1.10.1 && git merge --no-commit 57bbde9e` and count
 `git diff --name-only --diff-filter=U`; `git cherry 1.10.1 57bbde9e 1.8.0` for
 the carried commits.
+
+## Measurement 2026-10-24 — a 1.8.0 image against a 1.10.1 `rmw_zenohd`
+
+Interop holds, so the move is not urgent. The same nano-ros fixtures (zenoh-pico
+pin `57bbde9e`, 1.8.0) ran the zenoh live-peer interop binaries against two ROS
+stacks on one host:
+
+| stack | router and `ros2` peer | zenoh-c | result |
+| --- | --- | --- | --- |
+| installed Humble | `rmw_zenoh_cpp` 0.1.9 | 1.8.0 | 27 passed, 3 skipped |
+| Humble 0.1.11 overlay | `rmw_zenoh_cpp` 0.1.11 | 1.10.1 | 27 passed, 3 skipped |
+
+The same 27 tests passed in both runs; each run also skipped 3, among them
+the ignored `ros2_topic_echo_sees_each_nodes_parameter_events`. The binaries were `interop_e2e`,
+`graph_interop`, `rosout_interop`, `params_per_node_interop` and
+`qos_event_interop`, plus the zenoh tests of `ros2_action_e2e`. Together they
+cover pub/sub in both directions, a stock `demo_nodes_cpp` peer, services in
+both directions, the lifecycle cycle, graph enumeration and the graph-change
+guard, publisher GIDs, `/rosout`, per-node `ros2 param`, the liveliness event,
+and actions in both directions. The filter also caught some Cyclone and XRCE
+cases, which say nothing about zenoh; they passed in both runs too.
+
+How the overlay was arranged, so the run can be repeated without sudo:
+`apt-get download` the jammy `ros-humble-rmw-zenoh-cpp` and
+`ros-humble-zenoh-cpp-vendor` at `0.1.11-1jammy.20261011`, `dpkg -x` both into
+one prefix, then prepend `<prefix>/opt/ros/humble` to `AMENT_PREFIX_PATH`,
+prepend its `opt/zenoh_cpp_vendor/lib` and `lib` to `LD_LIBRARY_PATH`, and set
+`NROS_RMW_ZENOHD` to its `lib/rmw_zenoh_cpp/rmw_zenohd`. The router then loads
+the overlay's `libzenohc.so`, because `paired_zenoh_library_dir` derives it from
+that path. The `ros2` peer loads it too: re-sourcing `/opt/ros/humble/setup.bash`
+keeps the overlay first, and `ldd` on the resolved `librmw_zenoh_cpp.so`
+confirms it. Before the run, `strings` on that `libzenohc.so` showed
+`ZENOH_C "1.10.1"`.
+
+## Correction 2026-10-24 — Zephyr serial is a re-port, not a deletion
+
+This issue, and phase-508 before today, said most of our Zephyr serial code has
+an upstream equivalent, so the migration would mostly delete it. Measured, it
+does not. Ours is `src/system/zephyr/network.c`, 2451 lines at the pin, with an
+interrupt-driven and async receive path (119 lines reference `uart_irq`,
+`uart_rx_enable`, async or DMA). Upstream 1.10.1's
+`src/link/transport/serial/uart_zephyr.c` is 129 lines. On POSIX, upstream's
+`tty_posix.c` (183 lines) maps baud rates only up to `B230400`; ours reaches
+921600. So the plan is to carry our implementation into upstream's
+`src/link/transport/{tcp,udp,serial}/*_<platform>.c` layout, take upstream's
+serial protocol framing where it matches ours, and add the higher baud rates
+to `tty_posix.c` rather than keeping a second POSIX serial backend.
