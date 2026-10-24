@@ -1,41 +1,9 @@
 
-## zenoh build blocks (phase-290)
+## zenoh build data
 
-Each platform directory's `nros-platform.toml` carried a `[build.zenoh]`
-block relocated verbatim from the retired central
-`packages/rmw/zenoh/zpico-sys/zenoh_platforms.toml` (phase-136.4 → phase-290).
-phase-349 W2b moved those blocks again, to `[port.<platform>]` rows in
-`packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml`, keeping `arch` (as
-`arch_profiles`), `compile` and `required_env` on the platform. The keys are
-unchanged. Original file header preserved below for the schema commentary:
-
-```
-# Phase 136.1 / 136.4 — canonical zenoh-pico build manifest.
-#
-# build.rs reads this once. Cargo features select the platform.
-# Per-platform blocks declare every datum the unified
-# `build_zenoh_pico(plat: &ResolvedPlatform, target: &str, …)`
-# consumer needs:
-#   - `defines` / `defines_kv` / `defines_env` — preprocessor flags
-#   - `include` — glob roots under `zenoh-pico/src/` for core sources
-#   - `extra_sources` — additional .c files outside `zenoh-pico/src/`
-#     (interpolated via `{nros}` / `{src}` / `{out}` / `{env:VAR}`)
-#   - `required_env` — SDK paths the build needs, with help text
-#     and optional sub-dir validation
-#   - `include_paths` / `include_paths_conditional` — header search
-#     paths (interpolated; gated by `target_match` / `target_not` /
-#     `if_env`)
-#   - `arch` — name of `[arch.*]` block to apply for target-arch
-#     compiler flags
-#   - `compile` — opt_level / warnings / extra cflags
-#   - `pic` — `cc::Build::pic` override (NuttX flat builds)
-#   - `link.*` — per-link-feature policy mask (Phase 134)
-#
-# Adding a new platform = one new `[platform.<name>]` block; no
-# `build.rs` edits.
-
-# ----------------------------------------------------------------
-# Arch profiles — reusable target-arch compiler flag tables.
-# ----------------------------------------------------------------
-
-```
+A platform file here holds the platform's half of a vendored C build:
+`arch_profiles`, `compile`, `required_env` and its `[arch.*]` profiles. The
+zenoh-pico half is `[port.<platform>]` in
+`packages/rmw/zenoh/nros-rmw-zenoh/nros-rmw.toml` (phase-349 W2b). Both
+schemas, and how a build joins them, are in the book chapter
+[`internals/zpico-build.md`](../book/src/internals/zpico-build.md).

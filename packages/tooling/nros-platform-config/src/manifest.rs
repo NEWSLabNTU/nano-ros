@@ -1,4 +1,11 @@
-//! Manifest parser for `<kernel>_platforms.toml` files.
+//! The resolved C-build manifest for a vendored component (zenoh-pico today).
+//!
+//! Nothing reads this shape from one file any more: a platform's
+//! `nros-platform.toml` supplies `arch_profiles` / `compile` / `required_env`
+//! / `[arch.*]`, the backend's `nros-rmw.toml` supplies `[port.<platform>]`
+//! ([`PortRow`]), and `PlatformsTree::as_platform_manifest` joins them into
+//! the [`PlatformManifest`] below. Reference:
+//! `book/src/internals/zpico-build.md`.
 //!
 //! Phase 136.1 / 136.4 landed the loader + per-platform resolver
 //! inside `zpico-sys/build/`. Phase 152.5 lifted it into the
@@ -24,8 +31,8 @@
 //!
 //! Use from `build.rs`:
 //! ```ignore
-//! use nros_board_common::manifest::PlatformManifest;
-//! let m = PlatformManifest::load("zenoh_platforms.toml".as_ref())?;
+//! let ports = manifest::load_port_rows(&nros_rmw_toml)?;
+//! let m = tree.as_platform_manifest(&ports)?;
 //! let resolved = m.for_platform("posix")?;
 //! ```
 
@@ -94,22 +101,10 @@ pub struct PlatformEntry {
     /// validates these.
     #[serde(default)]
     pub include: Vec<String>,
-    /// Glob roots under `zenoh-pico/src/` to exclude from
-    /// `include` matches.
-    #[serde(default)]
-    pub exclude: Vec<String>,
-    /// `cargo:rustc-link-lib=` system libraries (POSIX hosts).
-    #[serde(default)]
-    pub system_libs: Vec<String>,
     /// Where mbedTLS comes from when `link-tls` is active:
     /// `pkg-config`, `vendored`, or `none`.
     #[serde(default)]
     pub mbedtls: Option<String>,
-    /// Per-link-feature overrides declared in the manifest.
-    /// `LinkOverride::On(false)` forces off; `Mode("feature")`
-    /// defers to `CARGO_FEATURE_LINK_<X>`.
-    #[serde(default)]
-    pub link: BTreeMap<String, LinkOverride>,
     /// Extra source files (paths interpolated; see `{nros}` /
     /// `{src}` tokens), optionally conditional on env presence
     /// and pulling in additional defines when included.
@@ -185,13 +180,7 @@ pub struct PortRow {
     #[serde(default)]
     pub include: Vec<String>,
     #[serde(default)]
-    pub exclude: Vec<String>,
-    #[serde(default)]
-    pub system_libs: Vec<String>,
-    #[serde(default)]
     pub mbedtls: Option<String>,
-    #[serde(default)]
-    pub link: BTreeMap<String, LinkOverride>,
     #[serde(default)]
     pub extra_sources: Vec<ExtraSource>,
     #[serde(default)]
@@ -222,10 +211,7 @@ impl PortRow {
             defines_kv: self.defines_kv,
             defines_env: self.defines_env,
             include: self.include,
-            exclude: self.exclude,
-            system_libs: self.system_libs,
             mbedtls: self.mbedtls,
-            link: self.link,
             extra_sources: self.extra_sources,
             required_env,
             include_paths: self.include_paths,
@@ -319,17 +305,6 @@ pub struct ArchEntry {
     /// probe (cargo doesn't auto-set CC for bare-metal RISC-V).
     #[serde(default)]
     pub needs_riscv_compiler: bool,
-}
-
-/// Per-link-feature override declared in `zenoh_platforms.toml`.
-/// `bool` collapses to On / Off; a string like `"feature"` defers
-/// to the matching `CARGO_FEATURE_*` env var. Distinct from the
-/// build-script `LinkPolicy` struct in `build/policy.rs`.
-#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
-#[serde(untagged)]
-pub enum LinkOverride {
-    On(bool),
-    Mode(String),
 }
 
 /// Env-var-backed define: value comes from `env`, falls back to
@@ -460,10 +435,7 @@ pub struct ResolvedPlatform {
     pub defines_kv: BTreeMap<String, String>,
     pub defines_env: BTreeMap<String, EnvDefault>,
     pub include: Vec<String>,
-    pub exclude: Vec<String>,
-    pub system_libs: Vec<String>,
     pub mbedtls: Option<String>,
-    pub link: BTreeMap<String, LinkOverride>,
     pub extra_sources: Vec<ExtraSource>,
     pub required_env: Vec<RequiredEnv>,
     pub include_paths: Vec<String>,
@@ -505,10 +477,7 @@ impl PlatformManifest {
             defines_kv: entry.defines_kv,
             defines_env: entry.defines_env,
             include: entry.include,
-            exclude: entry.exclude,
-            system_libs: entry.system_libs,
             mbedtls: entry.mbedtls,
-            link: entry.link,
             extra_sources: entry.extra_sources,
             required_env: entry.required_env,
             include_paths: entry.include_paths,
@@ -563,13 +532,7 @@ fn merge(parent: Option<PlatformEntry>, mut child: PlatformEntry) -> PlatformEnt
     defines_env.extend(std::mem::take(&mut child.defines_env));
     let mut include = parent.include;
     include.append(&mut child.include);
-    let mut exclude = parent.exclude;
-    exclude.append(&mut child.exclude);
-    let mut system_libs = parent.system_libs;
-    system_libs.append(&mut child.system_libs);
     let mbedtls = child.mbedtls.or(parent.mbedtls);
-    let mut link = parent.link;
-    link.extend(std::mem::take(&mut child.link));
     let mut extra_sources = parent.extra_sources;
     extra_sources.append(&mut child.extra_sources);
     let mut required_env = parent.required_env;
@@ -607,10 +570,7 @@ fn merge(parent: Option<PlatformEntry>, mut child: PlatformEntry) -> PlatformEnt
         defines_kv,
         defines_env,
         include,
-        exclude,
-        system_libs,
         mbedtls,
-        link,
         extra_sources,
         required_env,
         include_paths,
@@ -638,7 +598,7 @@ impl std::fmt::Display for ManifestError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io { path, source } => write!(f, "read {path}: {source}"),
-            Self::Parse(e) => write!(f, "parse zenoh_platforms.toml: {e}"),
+            Self::Parse(e) => write!(f, "parse platform manifest: {e}"),
             Self::UnknownPlatform(name) => write!(f, "unknown platform: {name}"),
             Self::InheritCycle(name) => write!(f, "inherits cycle through {name}"),
         }
@@ -864,9 +824,9 @@ fn match_target(target: &str, needle: &str) -> bool {
     }
 }
 
-// Note: the loader is exercised at build time — `build.rs` parses
-// `zenoh_platforms.toml` + resolves every platform on every cargo
-// build. A typo, broken `inherits` chain, or shape regression
+// Note: the loader is exercised at build time — `nros-zpico-build` joins
+// every platform file with its port row and resolves every platform on every
+// cargo build. A typo, broken `inherits` chain, or shape regression
 // surfaces as a build-script panic. There is no separate
 // `#[test]`-style suite because `cargo test` doesn't link build
 // scripts; the build-time invariant is the real gate.
