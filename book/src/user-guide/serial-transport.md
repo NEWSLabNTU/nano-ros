@@ -39,7 +39,7 @@ Serial transport support varies by platform:
 |----------|----------------------|--------------------|
 | Bare-metal (MPS2-AN385) | `zpico-serial` + UART driver | Yes |
 | ESP32-QEMU (esp-hal, no IDF) | **Not wired** — see [issue 1499](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1499-esp32-serial-transport-is-documented-and-does-not-compile.md) | — |
-| Zephyr | zenoh-pico built-in (`uart_poll_in/out`) | No |
+| Zephyr | zenoh-pico built-in; interrupt-driven RX ring with `CONFIG_UART_INTERRUPT_DRIVEN` (issue 0852), else `uart_poll_in/out` | No |
 | FreeRTOS / NuttX | zenoh-pico built-in (POSIX `/dev/ttyXXX`) | No |
 | ThreadX | zenoh-pico built-in (HAL DMA) | No |
 
@@ -267,6 +267,34 @@ Higher baud rates increase throughput but may cause framing errors on noisy or l
 zenoh-pico serial uses a 1500-byte MTU with COBS framing. The maximum wire frame is 1516 bytes. `zpico-serial` uses a 2048-byte RX ring buffer per port, which accommodates one full frame plus overhead.
 
 For high-throughput scenarios, ensure the MCU's UART FIFO is drained frequently by calling `executor.spin_once(0)` in a tight loop. The budget is required (phase-417 stage 3): `0` drains what is ready and returns, which is what a tight loop wants; a millisecond value sleeps until work arrives or the budget expires.
+
+### Zephyr: a board that joins over a UART
+
+Two settings decide whether a Zephyr board can join a domain whose peers are
+already sending, and neither default is right for a serial link yet. The
+safety island found both by measurement (issue 1534):
+
+```
+CONFIG_MAIN_THREAD_PRIORITY=5
+CONFIG_NROS_ZENOH_SERIAL_RX_RING_BYTES=4096
+```
+
+- **Main thread below the read task.** Zephyr's default main priority, 0,
+  outranks zenoh-pico's read task while `main` registers entities. The UART
+  ISR then fills the receive ring while the read task cannot run, and the
+  frames lost to the overflow carry the router's replies to the publishers'
+  interests. The island's joins into a live domain failed 3 of 3 at 0 and
+  passed at 5. The configure prints a `WARNING` naming the number to use when
+  main is not below the read task on a serial link.
+- **Receive ring.** The default 1024 bytes is 11 ms of line at 921600 baud.
+  The island measured a high water of 815–1024 bytes at a join, and one join
+  in five overflowed. Read `_z_zephyr_serial_stats.ring_high_water` and
+  `ring_overflows` on your board and size the ring from them; the RAM is
+  static.
+
+A board that only joins an idle domain stays well inside both defaults. Once
+phase-474 T3 measures them, both become `configdefault`s under
+`CONFIG_NROS_ZENOH_LINK_SERIAL`, and a board conf can still override them.
 
 ## Troubleshooting
 
