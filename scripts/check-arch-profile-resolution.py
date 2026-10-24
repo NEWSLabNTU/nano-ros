@@ -106,7 +106,8 @@ R2 and R5 are different defects with different remedies — "nobody lists it"
 is fixed by editing an `arch_profiles`, "it matches nothing" by fixing a
 `target_match` or provisioning a triple — so `KNOWN_UNLISTED` and
 `KNOWN_INERT` are separate, and a profile that is both appears in both.
-`config/bare-metal`'s `riscv32gc` is exactly that. Merging them would mean
+`config/bare-metal`'s `riscv32gc` was exactly that until issue 1154 deleted
+it. Merging them would mean
 fixing one half silently keeps suppressing the other, which is the shape of
 allowlist that stops being a ratchet. Two self-test cases pin the
 non-suppression in both directions.
@@ -141,41 +142,28 @@ ROOTS = ("config", "packages/platform")
 TARGET_LIST = ROOT / "config" / "rust-targets.txt"
 
 # R2 debt: defined, and no platform lists it. NOT a general exemption — an
-# unreachable profile is still a defect; these are its pre-existing instances,
-# found BY this gate on the day it was written, in a file phase-418 418.3 does
-# not own.
-#
-# `config/bare-metal` declares `arch_profiles = ["cortex-m3", "riscv32imc"]` while
-# defining four profiles. So a bare-metal `thumbv7em-none-eabihf` (STM32F4) or
-# `riscv32gc` build resolves NOTHING and panics — phase-385 W1's defect,
-# untouched, two more times. Fixing it means editing that platform's list,
-# which is a behaviour change for those boards and belongs to whoever owns
-# them.
-# Each row names a TRACKED issue, not just a reason: a gap that is real but
-# open is tolerable, an unattributed one is a silent exemption (CLAUDE.md, the
+# unreachable profile is still a defect; a row here is a pre-existing instance
+# with a TRACKED issue, not just a reason: a gap that is real but open is
+# tolerable, an unattributed one is a silent exemption (CLAUDE.md, the
 # rmw-parity rule).
-KNOWN_UNLISTED = {
-    ("config/bare-metal", "cortex-m4f"):
-        "issue 1154 — bare-metal lists only cortex-m3 + riscv32imc",
-    ("config/bare-metal", "riscv32gc"):
-        "issue 1154 — bare-metal lists only cortex-m3 + riscv32imc",
-}
+#
+# EMPTY since issue 1154. The gate found two on the day it was written, both in
+# `config/bare-metal`: `cortex-m4f` (now listed, matching only
+# `thumbv7em-none-eabihf`) and `riscv32gc` (deleted). Before the fix a
+# bare-metal `thumbv7em-none-eabihf` build matched no profile and nros-zpico-build
+# compiled zenoh-pico with no arch flags at all — silently, since only the
+# FreeRTOS kernel build refuses a missing profile.
+KNOWN_UNLISTED: dict[tuple[str, str], str] = {}
 
 # R5 debt: defined, and it admits no triple anybody provisions. A DIFFERENT
-# fault from the list above with a DIFFERENT remedy, so a separate list —
-# `riscv32gc` is in both because it is both, and removing it from one must not
-# stop the other from being reported.
+# fault from the list above with a DIFFERENT remedy, so a separate list — a
+# profile that is both appears in both, and removing it from one must not stop
+# the other from being reported.
 #
-# `[arch.riscv32gc]` matches the substring `riscv32gc`, which appears in no row
-# of `config/rust-targets.txt` (the provisioned RISC-V triples are
-# `riscv32imc-unknown-none-elf`, `riscv64gc-unknown-none-elf` and
-# `riscv32imac-unknown-nuttx-elf`). So even once bare-metal lists it, it still
-# resolves for nothing.
-KNOWN_INERT = {
-    ("config/bare-metal", "riscv32gc"):
-        "issue 1154 (second fault) — no provisioned triple contains `riscv32gc`, "
-        "so listing it is necessary and NOT sufficient",
-}
+# EMPTY since issue 1154. Its one row was `config/bare-metal`'s `riscv32gc`,
+# whose `target_match` appeared in no row of `config/rust-targets.txt` (and in
+# no bare-metal triple rustc knows); it was deleted rather than listed.
+KNOWN_INERT: dict[tuple[str, str], str] = {}
 
 # Triples whose ABI this gate can read off the name. Only the ARM EABI family
 # spells float ABI in the triple; `riscv*` encodes it in `-mabi=` on both sides

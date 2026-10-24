@@ -293,7 +293,7 @@ mod tests {
     /// The search path reaches BOTH descriptor roots, not just the first.
     ///
     /// phase-468 W1 / issue 1486's class. `bare-metal` lives in `config/`, the
-    /// SECOND root, and it declares four `[arch.*]` profiles. Under the old
+    /// SECOND root, and it declares three `[arch.*]` profiles. Under the old
     /// one-root `config_root()` this lookup answered `Ok(None)` — "declares no
     /// profile that admits this triple" — about a file declaring exactly such a
     /// profile, and nothing in the tree asked, because the only live caller
@@ -324,6 +324,44 @@ mod tests {
         assert_eq!(
             via_alias, rv,
             "an alias must resolve the same profiles as the canonical name"
+        );
+    }
+
+    /// Issue 1154 — `config/bare-metal` defined `[arch.cortex-m4f]` and did
+    /// not list it, so a bare-metal `thumbv7em-none-eabihf` build resolved no
+    /// profile. It resolves the M4F hard-float flags now; the soft-float
+    /// triple still resolves nothing rather than inheriting
+    /// `-mfloat-abi=hard`; and `thumbv7m` keeps the cortex-m3 profile listed
+    /// ahead of it.
+    #[test]
+    fn bare_metal_resolves_cortex_m4f_for_hard_float_thumbv7em_only() {
+        let roots = platform_search_path().expect("in-tree checkout");
+
+        let m4f = cflags_for_target(&roots, "bare-metal", "thumbv7em-none-eabihf")
+            .expect("readable")
+            .expect("thumbv7em-none-eabihf must select [arch.cortex-m4f] — issue 1154");
+        assert!(
+            m4f.iter().any(|f| f == "-mcpu=cortex-m4"),
+            "thumbv7em-none-eabihf selected {m4f:?}, expected the cortex-m4f profile"
+        );
+        assert!(
+            m4f.iter().any(|f| f == "-mfloat-abi=hard"),
+            "the hard-float triple must select hard-float flags, got {m4f:?}"
+        );
+
+        let soft =
+            cflags_for_target(&roots, "bare-metal", "thumbv7em-none-eabi").expect("readable");
+        assert!(
+            soft.is_none(),
+            "soft-float thumbv7em must select no profile, not the hard-float one; got {soft:?}"
+        );
+
+        let m3 = cflags_for_target(&roots, "bare-metal", "thumbv7m-none-eabi")
+            .expect("readable")
+            .expect("thumbv7m must still select cortex-m3");
+        assert!(
+            m3.iter().any(|f| f == "-mcpu=cortex-m3"),
+            "thumbv7m selected {m3:?}, expected the cortex-m3 profile"
         );
     }
 

@@ -1,7 +1,9 @@
 ---
 id: 1155
 title: "`nros-board-common`'s `arch_flags` tests run in no lane — `test-unit` activates no features and the module is behind `build-helpers`"
-status: open
+status: resolved
+resolved: 2026-10-24
+resolved_in: "PR #TBD"
 type: bug
 area: testing, build
 severity: low
@@ -9,7 +11,7 @@ found: 2026-09-06
 related: [0652, phase-418, phase-413, phase-395]
 ---
 
-**Home: none** — stands on its own since 2026-10-24, when [phase-395](../roadmap/archived/phase-395-dev-workflow-migration.md) was archived with every remaining wave either landed or deliberately not shipped. Before that, re-homed 2026-10-12 from phase-413, which is archived.
+**Home: none** — stands on its own since 2026-10-24, when [phase-395](../../roadmap/archived/phase-395-dev-workflow-migration.md) was archived with every remaining wave either landed or deliberately not shipped. Before that, re-homed 2026-10-12 from phase-413, which is archived.
 
 # Six tests that only run when someone asks for them by name
 
@@ -54,3 +56,13 @@ Worth checking at the same time whether any OTHER crate in the workspace has
 feature-gated tests in the same position — the answer to "which crates have
 tests that `--workspace` with no features cannot see" is not recorded anywhere,
 and issue 0652 found four such targets the last time someone asked.
+
+## Resolution (2026-10-24)
+
+`just check node-std-tests` — the lane that already runs `nros-node`, `nros`,
+`nros-core` and `zpico-alloc` under the features `--workspace` leaves off —
+now runs `cargo test -p nros-board-common --features build-helpers --lib`
+through its `ran_tests` guard, which fails on a run of zero tests. That lane is
+on both merge-gating events (`gate.yml`, issue 1059). Measured: 40 tests, 9 of
+them `arch_flags` (the six this issue counted, plus two since and issue 1154's
+new one).
