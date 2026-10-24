@@ -229,7 +229,6 @@ defines_conditional = [
 # it; POSIX should too.
 defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1" }
 include = ["system/common"]
-exclude = ["tests", "example"]
 extra_sources = [
   # Phase 156 option B — compile zenoh-pico's upstream
   # `system/unix/network.c` so the by-value socket TCP/UDP
@@ -244,10 +243,11 @@ extra_sources = [
   { path = "{src}/system/unix/network.c" },
   { path = "{src}/system/unix/tls.c" },
 ]
-# phase-500 W1 — `rt` (timer_*) is a glibc split, a Linux fact; it is linked
-# where the target is derived (`nros-platform-cffi/build.rs`, the posix
-# CMakeLists), not listed here for every POSIX system.
-system_libs = ["pthread"]
+# No link libraries here: `pthread` is emitted by nros-zpico-build itself, and
+# `rt` (timer_*) is a glibc split, a Linux fact, linked where the target is
+# derived (`nros-platform-cffi/build.rs`, the posix CMakeLists) — phase-500 W1.
+# The `system_libs`, `exclude` and `link` keys were parsed and read by nothing
+# (issue 2031), so they are gone and a row naming one is refused.
 mbedtls = "pkg-config"
 # Phase 154 — `nros-platform-api/include` carries
 # `<nros/platform_net.h>` which the zpico.c TU pulls in for

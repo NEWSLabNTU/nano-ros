@@ -3140,7 +3140,7 @@ fn build_zenoh_pico_unified(
         }
         let path_str = manifest::interpolate(&extra.path, interp).unwrap_or_else(|e| {
             panic!(
-                "zenoh_platforms.toml: platform `{}` extra_sources `{}`: {e}",
+                "zenoh port row `[port.{}]` extra_sources `{}`: {e}",
                 plat.name, extra.path
             )
         });
@@ -3161,7 +3161,7 @@ fn build_zenoh_pico_unified(
     for raw in &plat.include_paths {
         let path = manifest::interpolate(raw, interp).unwrap_or_else(|e| {
             panic!(
-                "zenoh_platforms.toml: platform `{}` include_paths `{raw}`: {e}",
+                "zenoh port row `[port.{}]` include_paths `{raw}`: {e}",
                 plat.name
             )
         });
@@ -3179,7 +3179,7 @@ fn build_zenoh_pico_unified(
         }
         let path = manifest::interpolate(&cond.path, interp).unwrap_or_else(|e| {
             panic!(
-                "zenoh_platforms.toml: platform `{}` conditional include `{}`: {e}",
+                "zenoh port row `[port.{}]` conditional include `{}`: {e}",
                 plat.name, cond.path
             )
         });

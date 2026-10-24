@@ -462,4 +462,4 @@ link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
 - [issue 1155](../issues/archived/1155-arch-flags-tests-in-no-lane.md) — **resolved 2026-10-24** (the tests run in `node-std-tests`) — `nros-board-common`'s `arch_flags` tests run in no lane — `test-unit` activates no features and the module is behind …
-- [issue 2031](../issues/2031-zpico-build-chapter-describes-deleted-manifest.md) — the book's zpico-sys build chapter documents `zenoh_platforms.toml`, a file that no longer exists (found while removing its stale `orin-spe` entry for this phase's deferral)
+- [issue 2031](../issues/archived/2031-zpico-build-chapter-describes-deleted-manifest.md) — the book's zpico-sys build chapter documents `zenoh_platforms.toml`, a file that no longer exists (found while removing its stale `orin-spe` entry for this phase's deferral)
