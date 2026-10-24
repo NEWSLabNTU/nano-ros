@@ -264,6 +264,9 @@ fn explain(args: ExplainArgs) -> Result<()> {
         ("component_slot_bytes", 512),
         ("max_class_instances", 2),
         ("max_cell_entities", 8),
+        // Issue 2013 — read by `nros-build-helpers/src/c.rs` for the C API's
+        // LET buffer, not by `nros/build.rs`, and its 512 default lives there.
+        ("let_buffer_size", 512),
     ];
     for (name, r) in tree
         .resolve_runtime(
@@ -405,6 +408,98 @@ fn explain(args: ExplainArgs) -> Result<()> {
         println!(
             "{:<34} {:<10} {}  [{}]",
             format!("params.{name}"),
+            r.value,
+            r.source.as_str(),
+            r.env_key
+        );
+    }
+
+    // Issue 2013 — the zenoh wire tenant. Its batch and fragmentation
+    // builtins are COMPUTED by `nros-zpico-build`'s
+    // `zenoh_buffer_config_from_env` from the platform family, and these
+    // mirror that table: the hosted-style ports (posix, nuttx, threadx) take
+    // 65535/65535/8192, every other port 2048/1024/1024. A serial-only link
+    // lowers the unicast batch to 1500, and that is a link-set fact this
+    // command cannot see. `rx_task_budget_frames` shows 0 when nothing states
+    // it, which means "no budget", not "a budget of zero".
+    let hosted_wire = matches!(args.platform.as_str(), "posix" | "nuttx" | "threadx");
+    let (frag, batch_uni, batch_multi) = if hosted_wire {
+        (65535, 65535, 8192)
+    } else {
+        (2048, 1024, 1024)
+    };
+    let wire_defaults: &[(&str, usize)] = &[
+        ("batch_unicast_size", batch_uni),
+        ("batch_multicast_size", batch_multi),
+        ("frag_max_size", frag),
+        ("get_reply_buf_size", 4096),
+        ("get_poll_interval_ms", 10),
+        ("rx_task_budget_frames", 0),
+        ("rx_task_budget_rest_us", 1000),
+    ];
+    for (name, r) in tree
+        .resolve_wire(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.zenoh.wire),
+            &env_get,
+            wire_defaults,
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!(
+            "{:<34} {:<10} {}  [{}]",
+            format!("zenoh.wire.{name}"),
+            r.value,
+            r.source.as_str(),
+            r.env_key
+        );
+    }
+
+    // Issue 2013 — the zenoh limits tenant. Defaults mirror
+    // `packages/rmw/zenoh/nros-rmw-zenoh/build.rs`. `subscriber_ring_depth`
+    // can also be DERIVED from the image's sizing descriptor, below both
+    // stated rungs; an image is not a fact this command has, so it shows 4.
+    let limit_defaults: &[(&str, usize)] = &[
+        ("keyexpr_string_size", 256),
+        (
+            "service_timeout_ms",
+            nros_board_common::platform_config::BUILTIN_SERVICE_TIMEOUT_MS,
+        ),
+        ("subscriber_ring_depth", 4),
+    ];
+    for (name, r) in tree
+        .resolve_zenoh_limits(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.zenoh.limits),
+            &env_get,
+            limit_defaults,
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!(
+            "{:<34} {:<10} {}  [{}]",
+            format!("zenoh.limits.{name}"),
+            r.value,
+            r.source.as_str(),
+            r.env_key
+        );
+    }
+
+    // Issue 2013 — the XRCE tenant. Defaults mirror the `knob` rows in
+    // `packages/rmw/xrce/xrce-config.txt` (MTU) and `internal.h` (history).
+    let xrce_defaults: &[(&str, usize)] = &[("custom_transport_mtu", 4096), ("stream_history", 16)];
+    for (name, r) in tree
+        .resolve_xrce(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.xrce),
+            &env_get,
+            xrce_defaults,
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!(
+            "{:<34} {:<10} {}  [{}]",
+            format!("xrce.{name}"),
             r.value,
             r.source.as_str(),
             r.env_key

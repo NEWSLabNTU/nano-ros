@@ -94,4 +94,4 @@ so a separate open issue would only duplicate it.
 **Found while closing:** `nros config explain` prints none of the
 `zenoh.wire`, `zenoh.limits` or `xrce` tenants. That covers 12 ladder knobs,
 including the timeout rung this issue fixed. It is
-[issue 2013](../2013-explain-omits-three-ladder-tenants.md).
+[issue 2013](2013-explain-omits-three-ladder-tenants.md).

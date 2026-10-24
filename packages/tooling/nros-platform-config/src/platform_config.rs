@@ -1468,6 +1468,43 @@ pub fn memory_env_is_kib_for(platform: &str, knob: &str) -> bool {
         && matches!(knob, "heap_bytes" | "app_stack_bytes")
 }
 
+/// The board > platform > builtin pick, then the env front-end, for one
+/// tenant of plain `usize` knobs. Shared by the tenants that need nothing
+/// else (issue 2013); the older resolvers keep their own loops.
+fn resolve_usize_tenant(
+    defaults: &[(&'static str, usize)],
+    board: impl Fn(&str) -> Option<usize>,
+    plat: impl Fn(&str) -> Option<usize>,
+    env: &dyn Fn(&str) -> Option<String>,
+    env_key_of: fn(&str) -> &'static str,
+) -> Vec<(&'static str, ResolvedUsize)> {
+    defaults
+        .iter()
+        .map(|(name, builtin)| {
+            let (mut value, mut source) = match (board(name), plat(name)) {
+                (Some(v), _) => (v, KnobSource::Board),
+                (None, Some(v)) => (v, KnobSource::Platform),
+                (None, None) => (*builtin, KnobSource::Builtin),
+            };
+            let env_key = env_key_of(name);
+            if let Some(raw) = knob_env(env, env_key)
+                && let Ok(n) = raw.trim().parse::<usize>()
+            {
+                value = n;
+                source = KnobSource::Env;
+            }
+            (
+                *name,
+                ResolvedUsize {
+                    value,
+                    source,
+                    env_key,
+                },
+            )
+        })
+        .collect()
+}
+
 /// One resolved executor knob: value, rung, and the env name that is still its
 /// front-end. The name travels with the value so `explain` can tell a reader
 /// which variable to set, without a second table to keep in step.
@@ -2442,6 +2479,60 @@ impl PlatformsTree {
         platform: &str,
     ) -> Result<ZenohLimitKnobs, ConfigError> {
         self.platform_zenoh_limit_knobs(platform)
+    }
+
+    /// Issue 2013 — resolve the XRCE tenant over the RFC-0049 ladder, with
+    /// the rung that set each value, so `nros config explain` can print it.
+    ///
+    /// `defaults` are the caller's: the authority on them is the `knob` rows
+    /// in `packages/rmw/xrce/xrce-config.txt`, not this crate.
+    pub fn resolve_xrce(
+        &self,
+        platform: &str,
+        board: Option<&XrceKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_xrce_knobs(platform)?;
+        let pick = |k: &XrceKnobs, name: &str| match name {
+            "custom_transport_mtu" => k.custom_transport_mtu,
+            "stream_history" => k.stream_history,
+            _ => None,
+        };
+        Ok(resolve_usize_tenant(
+            defaults,
+            |name| board.and_then(|b| pick(b, name)),
+            |name| pick(&plat, name),
+            env,
+            xrce_env_key,
+        ))
+    }
+
+    /// Issue 2013 — resolve the zenoh limits tenant over the RFC-0049 ladder.
+    ///
+    /// `service_timeout_ms`'s builtin is [`BUILTIN_SERVICE_TIMEOUT_MS`]; the
+    /// other two come from the caller, mirroring `nros-rmw-zenoh/build.rs`.
+    pub fn resolve_zenoh_limits(
+        &self,
+        platform: &str,
+        board: Option<&ZenohLimitKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_zenoh_limit_knobs(platform)?;
+        let pick = |k: &ZenohLimitKnobs, name: &str| match name {
+            "keyexpr_string_size" => k.keyexpr_string_size,
+            "service_timeout_ms" => k.service_timeout_ms,
+            "subscriber_ring_depth" => k.subscriber_ring_depth,
+            _ => None,
+        };
+        Ok(resolve_usize_tenant(
+            defaults,
+            |name| board.and_then(|b| pick(b, name)),
+            |name| pick(&plat, name),
+            env,
+            zenoh_limit_env_key,
+        ))
     }
 
     /// The `[knobs.zenoh.wire]` rungs for a platform, inherits chain applied.
@@ -4038,6 +4129,45 @@ mod tests {
             ..ZenohLimitKnobs::default()
         };
         assert_eq!(resolve_service_timeout_ms(&stated), 5_000);
+    }
+
+    // ---- issue 2013 — the two tenants `explain` could not report ----
+
+    #[test]
+    fn xrce_and_zenoh_limits_resolve_with_their_rung() {
+        let tmp = write_tree(&[(
+            "p",
+            "[knobs.xrce]\nstream_history = 4\n\
+             [knobs.zenoh.limits]\nservice_timeout_ms = 5000\n",
+        )]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let find = |r: &[(&str, ResolvedUsize)], n: &str| {
+            let r = &r.iter().find(|(k, _)| *k == n).unwrap().1;
+            (r.value, r.source)
+        };
+
+        let xrce_defaults: &[(&str, usize)] =
+            &[("custom_transport_mtu", 4096), ("stream_history", 16)];
+        let board = XrceKnobs {
+            custom_transport_mtu: Some(512),
+            ..Default::default()
+        };
+        let r = tree
+            .resolve_xrce("p", Some(&board), &no_env, xrce_defaults)
+            .unwrap();
+        assert_eq!(find(&r, "stream_history"), (4, KnobSource::Platform));
+        assert_eq!(find(&r, "custom_transport_mtu"), (512, KnobSource::Board));
+
+        let limit_defaults: &[(&str, usize)] = &[
+            ("keyexpr_string_size", 256),
+            ("service_timeout_ms", BUILTIN_SERVICE_TIMEOUT_MS),
+        ];
+        let env = |k: &str| (k == "NROS_KEYEXPR_STRING_SIZE").then(|| "128".to_string());
+        let r = tree
+            .resolve_zenoh_limits("p", None, &env, limit_defaults)
+            .unwrap();
+        assert_eq!(find(&r, "service_timeout_ms"), (5000, KnobSource::Platform));
+        assert_eq!(find(&r, "keyexpr_string_size"), (128, KnobSource::Env));
     }
 
     // ---- issue 2006 — the retired transport tenant ----
