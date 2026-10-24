@@ -35,6 +35,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | RFC | Doc | Status | One-liner |
 | --- | --- | --- | --- |
 | 0005 | [rmw-layer-design](0005-rmw-layer-design.md) | Stable | middleware abstraction (delink zenoh-only) |
+| 0110 | [zenoh-pico-executor-driving](0110-zenoh-pico-executor-driving.md) | Draft | **How `zpico.c` drives zenoh-pico 1.10's async executor** (phase-508, issue 0910). Two modes chosen in one place: THREAD (POSIX/Zephyr/NuttX/FreeRTOS — `zp_start_read_task` starts the one executor thread that replaces the read and lease tasks; the lease knobs are refused, not ignored; the executor stack is measured) and CALLER (bare metal, and ThreadX whose host-port `recv` is invisible to its scheduler — a bounded `zp_spin_once` loop with `Z_RUNTIME_IDLE_READ_TASK_SLEEP = 1`; ThreadX needs a fork patch running the multi-thread executor from the caller under a try-lock, plus a non-blocking receive in our shim). `zp_read` and the executor never mix. Pings use `_zp_send_keep_alive`; `Z_RUNTIME_MAX_TASKS` defaults to 8 |
 | 0006 | [portable-rmw-platform-interface](0006-portable-rmw-platform-interface.md) | Stable | Rust trait + C vtable dual API |
 | 0007 | [service-qos](0007-service-qos.md) | Stable | service/action QoS design |
 | 0008 | [service-qos-gap](0008-service-qos-gap.md) | Superseded | gap analysis → resolved by RFC-0007 (Phase 189.M3.3) |
