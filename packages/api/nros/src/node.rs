@@ -1092,6 +1092,27 @@ pub trait DeclarativeNode {
         period: TimerDuration,
         clock: TimerClockSource,
     ) -> NodeResult<NodeTimer<'entity>> {
+        self.declare_timer_with_autostart(id, callback_id, period, clock, true)
+    }
+
+    /// The ONE timer declaration — issue 2038. Every other timer verb on this
+    /// trait is this with `autostart = true` (and, for the wall spellings,
+    /// [`TimerClockSource::Steady`]).
+    ///
+    /// `autostart == false` declares the timer STOPPED: the runtime registers
+    /// it cancelled (rcl's `rcl_timer_init2(..., autostart = false)`, the same
+    /// executor call `Node::create_timer_with_info` makes), so it does not fire
+    /// until it is reset.
+    #[track_caller]
+    #[doc(hidden)]
+    fn declare_timer_with_autostart<'entity, 'callback>(
+        &mut self,
+        id: EntityId<'entity>,
+        callback_id: CallbackId<'callback>,
+        period: TimerDuration,
+        clock: TimerClockSource,
+        autostart: bool,
+    ) -> NodeResult<NodeTimer<'entity>> {
         let mut metadata = entity_metadata(EntityMetadataSpec {
             id,
             node_id: self.__node_id()?,
@@ -1107,6 +1128,7 @@ pub trait DeclarativeNode {
         metadata.period_ms = Some(period.as_millis());
         metadata.period_us = Some(period.as_micros());
         metadata.timer_clock = clock;
+        metadata.timer_autostart = autostart;
         self.__declare_entity(metadata)?;
         Ok(NodeTimer::new(id))
     }
@@ -1148,6 +1170,41 @@ pub trait DeclarativeNode {
         clock: TimerClockSource,
     ) -> NodeResult<NodeTimer<'callback>> {
         self.create_timer_for_callback_on_clock(CallbackId::new(callback_name), period, clock)
+    }
+
+    /// [`create_timer_for_callback_name_on_clock`](Self::create_timer_for_callback_name_on_clock)
+    /// with rcl's `autostart` flag — issue 2038, the declarative spelling of
+    /// [`Node::create_timer_with_info`](crate::Node::create_timer_with_info)'s
+    /// flag and of C++'s `create_wall_timer(period, cb, group, autostart)`.
+    ///
+    /// `autostart == false` declares the timer STOPPED: it is registered
+    /// cancelled and does not fire until it is reset. Like every declared timer,
+    /// its callback can read the activation's call info with
+    /// [`CallbackCtx::timer_info`].
+    ///
+    /// ```ignore
+    /// node.create_timer_for_callback_name_with_autostart(
+    ///     "on_tick",
+    ///     TimerDuration::from_millis(100),
+    ///     TimerClockSource::Steady,
+    ///     false,
+    /// )?;
+    /// ```
+    #[track_caller]
+    fn create_timer_for_callback_name_with_autostart<'callback>(
+        &mut self,
+        callback_name: &'callback str,
+        period: TimerDuration,
+        clock: TimerClockSource,
+        autostart: bool,
+    ) -> NodeResult<NodeTimer<'callback>> {
+        self.declare_timer_with_autostart(
+            EntityId::new(callback_name),
+            CallbackId::new(callback_name),
+            period,
+            clock,
+            autostart,
+        )
     }
 
     /// Declare a service server. Stable service and callback IDs are required.
@@ -1854,6 +1911,10 @@ pub struct CallbackCtx<'a> {
     /// a multi-node executor came to read the primary's values.
     #[cfg(feature = "param-store")]
     param_node: nros_params::NodeKey,
+    /// Issue 2038 — the activation's call info, for a TIMER callback the
+    /// runtime dispatched (`None` for every other callback). Read with
+    /// [`timer_info`](Self::timer_info).
+    timer_info: Option<crate::TimerCallInfo>,
 }
 
 impl<'a> CallbackCtx<'a> {
@@ -1875,6 +1936,7 @@ impl<'a> CallbackCtx<'a> {
             // first node and what a single-node image means.
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
+            timer_info: None,
         }
     }
 
@@ -1903,6 +1965,7 @@ impl<'a> CallbackCtx<'a> {
             // first node and what a single-node image means.
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
+            timer_info: None,
         }
     }
 
@@ -1934,6 +1997,7 @@ impl<'a> CallbackCtx<'a> {
             // first node and what a single-node image means.
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
+            timer_info: None,
         }
     }
 
@@ -1960,6 +2024,7 @@ impl<'a> CallbackCtx<'a> {
             // first node and what a single-node image means.
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
+            timer_info: None,
         }
     }
 
@@ -1985,6 +2050,7 @@ impl<'a> CallbackCtx<'a> {
             // first node and what a single-node image means.
             #[cfg(feature = "param-store")]
             param_node: nros_params::NodeKey::PRIMARY,
+            timer_info: None,
         }
     }
 
@@ -2076,6 +2142,24 @@ impl<'a> CallbackCtx<'a> {
     /// Raw CDR payload of the triggering message / request. Empty for timers.
     pub fn payload(&self) -> &[u8] {
         self.payload
+    }
+
+    /// Issue 2038 — the call info of the timer activation being dispatched:
+    /// when it was due (`expected_call_time`) and when the executor ran it
+    /// (`actual_call_time`), in nanoseconds on the timer's clock. `Some` only
+    /// in a declared TIMER's callback; `None` for subscriptions, services and
+    /// actions. The same two numbers `Node::create_timer_with_info` and C++'s
+    /// `rclcpp::TimerInfo` receive — one producer, the executor's dispatcher.
+    pub fn timer_info(&self) -> Option<&crate::TimerCallInfo> {
+        self.timer_info.as_ref()
+    }
+
+    /// Issue 2038 — attach a timer activation's call info. The runtime's
+    /// timer dispatch calls this after construction, as it does
+    /// `set_param_server`.
+    #[doc(hidden)]
+    pub fn set_timer_info(&mut self, info: crate::TimerCallInfo) {
+        self.timer_info = Some(info);
     }
 
     /// Phase 250 (Wave 2) — E2E message-integrity status (CRC + sequence gap/dup)
@@ -2896,6 +2980,30 @@ mod tests {
         // A reply-less ctx (timer / subscription) rejects a reply.
         let mut ctx2 = CallbackCtx::new(&[], &resolver);
         assert!(ctx2.reply_raw(&[1, 2, 3]).is_err());
+    }
+
+    // Issue 2038 — a context carries a timer's call info only when the
+    // dispatch site attached one; every constructor starts without.
+    #[test]
+    fn callback_ctx_timer_info_is_attached_by_the_dispatch_site() {
+        struct NoopResolver;
+        impl PublisherResolver for NoopResolver {
+            fn publish_raw(&self, _entity_id: &str, _data: &[u8]) -> NodeResult<()> {
+                Ok(())
+            }
+        }
+        let resolver = NoopResolver;
+        let mut ctx = CallbackCtx::new(&[], &resolver);
+        assert!(ctx.timer_info().is_none());
+        let info = crate::TimerCallInfo {
+            expected_call_time: 1_000,
+            actual_call_time: 1_250,
+            clock: crate::TimerClockSource::Ros,
+            ..Default::default()
+        };
+        ctx.set_timer_info(info);
+        assert_eq!(ctx.timer_info(), Some(&info));
+        assert_eq!(ctx.timer_info().map(|i| i.lateness_ns()), Some(250));
     }
 
     // Phase 264 W4c — a callback reads the live parameter value through

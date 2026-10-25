@@ -917,6 +917,10 @@ pub use nros_node::{TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, Time
 // metadata-mode build compiles with no transport linked. A type the metadata
 // layer cannot name is a type the metadata layer re-invents.
 pub use nros_node::timer::TimerClockSource;
+// Issue 2038 — what a declared timer's callback reads through
+// `CallbackCtx::timer_info` (issue 1974's call info). Ungated for the reason
+// `TimerClockSource` is: the declarative surface compiles in metadata mode.
+pub use nros_node::timer::TimerCallInfo;
 
 /// phase-467 Q4 / ledger row `c:logging_rosout_enabled` — the `/rosout` log
 /// bridge. A module re-export rather than a flat one: the names a caller

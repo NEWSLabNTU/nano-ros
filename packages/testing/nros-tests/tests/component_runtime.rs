@@ -135,6 +135,59 @@ impl ExecutableNode for Talker {
 static TALKER_FIRES: AtomicU32 = AtomicU32::new(0);
 static TALKER_PUB_ERRORS: AtomicU32 = AtomicU32::new(0);
 
+/// Issue 2038 — a component with two declared timers on the steady clock:
+/// `on_info`, armed, whose callback records the activation's call info, and
+/// `on_stopped`, declared with `autostart = false`, which must never fire.
+struct TimerInfoComp;
+impl Component for TimerInfoComp {
+    const NAME: &'static str = "timer_info";
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+        let mut node = ctx.create_node(NodeOptions::new("timer_info"))?;
+        let _armed = node.create_timer_for_callback_name_with_autostart(
+            "on_info",
+            nros::TimerDuration::from_millis(10),
+            nros::TimerClockSource::Steady,
+            true,
+        )?;
+        let _stopped = node.create_timer_for_callback_name_with_autostart(
+            "on_stopped",
+            nros::TimerDuration::from_millis(10),
+            nros::TimerClockSource::Steady,
+            false,
+        )?;
+        Ok(())
+    }
+}
+impl ExecutableNode for TimerInfoComp {
+    type State = ();
+    fn init() -> Self::State {}
+    fn on_callback(_s: &mut (), callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+        match callback.as_str() {
+            "on_info" => {
+                TIMER_INFO_FIRES.fetch_add(1, Ordering::SeqCst);
+                match ctx.timer_info() {
+                    Some(info)
+                        if info.actual_call_time >= info.expected_call_time
+                            && info.expected_call_time > 0
+                            && info.clock == nros::TimerClockSource::Steady =>
+                    {
+                        TIMER_INFO_GOOD.fetch_add(1, Ordering::SeqCst);
+                    }
+                    _ => {}
+                }
+            }
+            "on_stopped" => {
+                TIMER_STOPPED_FIRES.fetch_add(1, Ordering::SeqCst);
+            }
+            _ => {}
+        }
+    }
+}
+
+static TIMER_INFO_FIRES: AtomicU32 = AtomicU32::new(0);
+static TIMER_INFO_GOOD: AtomicU32 = AtomicU32::new(0);
+static TIMER_STOPPED_FIRES: AtomicU32 = AtomicU32::new(0);
+
 /// Node whose declarative `register` always errors — used to
 /// verify the runtime rolls back on init failure.
 struct FailingComp;
@@ -184,6 +237,48 @@ fn runtime_registers_single_component_and_spins_once(zenohd_unique: ZenohRouter)
     assert!(
         fires >= 3,
         "timer fired {fires} times under runtime — expected ≥ 3"
+    );
+}
+
+/// Issue 2038 — a DECLARED timer's callback reads the activation's call info
+/// through `CallbackCtx::timer_info` (expected <= actual, on the timer's own
+/// clock), and a timer declared with `autostart = false` is registered
+/// stopped: across the same window it never fires while its armed sibling
+/// fires repeatedly.
+#[rstest]
+fn declared_timer_reports_call_info_and_honours_autostart(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let config = ExecutorConfig::new(&locator)
+        .node_name("i2038_timer_info")
+        .domain_id(175);
+    let executor = Executor::open(&config).expect("Executor::open failed");
+    let mut runtime = ExecutorNodeRuntime::from_executor(executor);
+    runtime
+        .register_node::<TimerInfoComp>()
+        .expect("register_node");
+
+    for _ in 0..8 {
+        std::thread::sleep(Duration::from_millis(10));
+        runtime
+            .spin_once(Duration::from_millis(0))
+            .expect("spin_once");
+    }
+
+    let fires = TIMER_INFO_FIRES.load(Ordering::SeqCst);
+    let good = TIMER_INFO_GOOD.load(Ordering::SeqCst);
+    let stopped = TIMER_STOPPED_FIRES.load(Ordering::SeqCst);
+    assert!(
+        fires >= 3,
+        "armed declared timer fired {fires} times — expected >= 3"
+    );
+    assert_eq!(
+        good, fires,
+        "every activation must carry call info (expected <= actual, steady clock): {good} of {fires} did"
+    );
+    assert_eq!(
+        stopped, 0,
+        "a timer declared with autostart = false fired {stopped} times — it must stay stopped"
     );
 }
 

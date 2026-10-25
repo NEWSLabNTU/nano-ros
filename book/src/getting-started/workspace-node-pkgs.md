@@ -220,6 +220,12 @@ Key points:
   executor each time a callback fires. `state` is your per-node mutable storage.
 - `nros::node!(Talker)` **must be the last public API call** in the file.
   It generates the `extern "C"` trampolines the entry macro imports.
+- A declared timer's callback can read when the activation was due and when it
+  ran: `ctx.timer_info()` is `Some(&TimerCallInfo)` in a timer callback
+  (`expected_call_time`, `actual_call_time`, `lateness_ns()`, on the timer's
+  clock) and `None` elsewhere. `create_timer_for_callback_name_with_autostart(name,
+  period, clock, false)` declares a timer STOPPED; a component cannot start it
+  yet (issue 2038).
 - There is **no `fn main()`** in a Node pkg.
 - `ENTITY_BOUNDS` is **static RAM you either pay or do not** (issue 0857).
   `nros::node!` emits a `static` sized from it, and a publisher slot carries a
