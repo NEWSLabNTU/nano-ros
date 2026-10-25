@@ -5398,8 +5398,8 @@ fn report_declared_depends(
              declare that instead, in the `system.toml` that names the image \
              (RFC-0098 D3):\n\
              \n  [image.<id>]\n  board = \"<board>\"\n\
-             \nand provision it with `nros setup <board>` (see `nros setup --workspace`, \
-             which reports what a workspace needs).\n\
+             \nand provision it with `nros setup` run in the workspace, which installs \
+             every image's board (`nros setup --check` only reports).\n\
              \n  NROS_ALLOW_INFRA_DEPS=1  to continue with a warning.",
         );
         if std::env::var_os("NROS_ALLOW_INFRA_DEPS").is_some() {
