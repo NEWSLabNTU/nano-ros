@@ -34,7 +34,7 @@ ESP32 support is **dormant** (issue 1525): the board, platform crate and example
 
 ## NuttX
 
-Lanes for [NuttX (QEMU)](../getting-started/nuttx.md) and
+Lanes for [NuttX (QEMU)](./nuttx-in-tree.md) and
 [Integration: NuttX external app](../getting-started/integration-nuttx.md).
 
 Build (arm QEMU):
@@ -69,7 +69,7 @@ described under "Auto-configure glue" in
 
 ## Zephyr
 
-Lanes for [Zephyr (native_sim)](../getting-started/zephyr.md) and
+Lanes for [Zephyr (native_sim)](./zephyr-in-tree.md) and
 [Zephyr Integration (west module)](../getting-started/integration-zephyr.md).
 
 E2E testing:

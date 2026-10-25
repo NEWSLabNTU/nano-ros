@@ -35,10 +35,10 @@ into its own directory, so no object files from another backend linger.
 
 A standalone package that consumes nano-ros in source form — either
 `find_package(nano_ros REQUIRED)` (the ament-shape entry point,
-`nano_rosConfig.cmake` at the checkout root, located via
+`nano_rosConfig.cmake` at the SDK root, located via
 `-Dnano_ros_ROOT`, which `nros build` passes; RFC-0048) or a raw
 `add_subdirectory` — for
-example a copied-out leaf like `examples/linux/c/talker/` — picks its
+example a scaffolded C leaf (`nros new … --lang c`) — picks its
 backend on the configure line:
 
 ```bash
@@ -73,9 +73,9 @@ written in a conf file (phase-481).
 
 See the platform guides for the concrete per-platform workflow:
 
-- [Zephyr](../getting-started/zephyr.md)
+- [Zephyr](../getting-started/integration-zephyr.md)
 - [FreeRTOS](../getting-started/freertos.md)
-- [NuttX](../getting-started/nuttx.md)
+- [NuttX](../getting-started/integration-nuttx.md)
 - [ThreadX](../getting-started/threadx.md)
 - [ESP32](../getting-started/esp32.md)
 

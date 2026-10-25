@@ -32,7 +32,7 @@ net     = { eth0 = { network = "qemu", host = 10 } }
 Everything that choice implies — the target triple, the linker flags,
 the QEMU runner, the cross compiler for the `cc` crate, the pool sizes
 derived from the components, the `[patch.crates-io]` table that resolves
-nano-ros's registry-style names into your checkout — is **generated**,
+nano-ros's registry-style names into the SDK — is **generated**,
 never written by hand. Retargeting is editing the `board` line: in a
 workspace that is the whole edit, and in a single-package Rust leaf too
 once it depends on its generated `<pkg>_nros_selection` package instead of
@@ -98,21 +98,22 @@ If you see any of the three, run `nros sync`.
 they work from a fresh clone. It is the hand-run build in a leaf that
 needs you to run it yourself.
 
-You need it **once per checkout location**, not once per build. Re-run
+You need it **once per project location**, not once per build. Re-run
 it after editing a `.msg`, `.srv`, or `.action` file, after changing
-`system.toml`, and after moving the checkout.
+`system.toml`, after moving the project, and after installing another
+release.
 
 ## Which builder your cell uses
 
 Each cell is the builder that nano-ros's own CI uses for that pair, read
-from `examples/fixtures.toml` — the manifest the fixture builds and the
+from [`examples/fixtures.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/fixtures.toml) — the manifest the fixture builds and the
 staleness probe both consume. A dash means the pair has no in-tree
 coverage today, not that it is forbidden.
 
 The row names are the manifest's, which are shorter than the ones you
 type: `freertos` here is the platform whose board is
 `mps2-an385-freertos` and whose examples live in
-`examples/mps2-an385-freertos/`. The per-platform table further down maps
+[`examples/mps2-an385-freertos`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos). The per-platform table further down maps
 all three spellings.
 
 | platform | rust | c | cpp | mixed |
@@ -131,7 +132,7 @@ all three spellings.
 Where a row lists two builders, both are real and they build different
 things: on Zephyr, `west` builds the single-node examples under
 `examples/zephyr/<lang>/`, and `cargo`/`cmake` build the workspace
-examples under `examples/workspaces/`.
+examples under [`examples/workspaces`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces).
 
 ## The three command shapes
 
@@ -141,14 +142,14 @@ that live on the platform's own starter page.
 ### cargo — Rust, every platform
 
 ```bash
-./scripts/bootstrap.sh          # builds the in-tree nros CLI
-source ./activate.sh            # OR: direnv allow / source ./activate.fish
 nros setup <board> --rmw zenoh  # toolchain + SDK for the target
 
 cd <leaf>
-nros sync                       # ← the step above; once per checkout
+nros sync                       # ← the step above; once per location
 nros build                      # every [image.*]; or: nros build <image-id>
 ```
+
+(`nros` is the installed CLI — [Installation](../getting-started/installation.md).)
 
 The artifact lands under `build/`, keyed on the image:
 `<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>`. **No
@@ -175,13 +176,14 @@ in it.
 ### cmake — C and C++
 
 ```bash
-./scripts/bootstrap.sh
-source ./activate.sh
 nros setup <board> --rmw zenoh
 
 cd <leaf>
+nros build                      # configures + builds into build/<image>/cmake
+# or, driving CMake yourself:
 cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)" \
-    -DCMAKE_TOOLCHAIN_FILE=<toolchain> -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_TOOLCHAIN_FILE="$(nros sdk-root)/cmake/toolchain/<toolchain>.cmake" \
+    -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
@@ -199,61 +201,49 @@ file — [issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issu
 
 Zephyr owns the build. See
 [Zephyr (west module)](../getting-started/integration-zephyr.md) for the
-module wiring; the Rust leaves under `examples/zephyr/rust/` still need
+module wiring; the Rust leaves under [`examples/zephyr/rust`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/rust) still need
 `nros sync` first, because west drives cargo and cargo needs the
 generated message crates either way.
 
-### In the checkout, or copied out?
+### Where a leaf comes from
 
-The commands above are written as `cd <leaf>` inside the nano-ros
-checkout, which is the fastest way to see something run. For anything
-beyond that, copy the example directory out — examples are standalone
-copy-out projects with no workspace walk-up, so a copied one builds on
-its own.
+`<leaf>` above is a package of yours: `nros new <name> --platform
+<platform> --lang <lang>` scaffolds one, and the examples on
+[GitHub](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples) are
+standalone copy-out projects with no workspace walk-up, so the files of
+one copied into a directory of yours build there too.
 
-Either way the build output goes to the same place — `build/<image>/`,
-under the leaf, because the generated settings file names that
-`target-dir` — so an in-tree build leaves no `target/` beside the
-sources for the repo's own gate to reject
-(`check-example-leaf-target-dirs`). A copied-out example carries no path
-into the checkout at all: `nros` ties it to the SDK the binary belongs
-to, and `--nano-ros-path` names another on the command line rather than
-in a file.
-
-So: exploring in the checkout, `cd <leaf> && nros sync && nros build`.
-Building your own thing, copy the example out and run the same two
-commands there.
+The build output goes to `build/<image>/`, under the leaf, because the
+generated settings file names that `target-dir`. A leaf carries no path
+into the SDK at all: `nros` ties it to the SDK the binary belongs to, and
+`--nano-ros-path` names another on the command line rather than in a
+file.
 
 ## Per platform
 
 | platform | grid row | `nros setup <board>` | examples under | recipes (contributors) | starter page |
 |---|---|---|---|---|---|
-| Linux host | `linux` | `linux` | `examples/linux/` | `just linux …` | [Native host build](../platform-guides/native-host.md) |
-| FreeRTOS (QEMU MPS2-AN385) | `freertos` | `mps2-an385-freertos` | `examples/mps2-an385-freertos/` | `just freertos …` | [FreeRTOS](../getting-started/freertos.md) |
-| NuttX (Arm) | `nuttx` | `qemu-armv7a-nuttx` | `examples/qemu-armv7a-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
-| NuttX (RISC-V) | `nuttx-riscv` | `rv-virt-nuttx` | `examples/rv-virt-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
-| ThreadX (Linux sim) | `threadx-linux` | `threadx-linux` | `examples/threadx-linux/` | `just threadx_linux …` | [ThreadX](../getting-started/threadx.md) |
-| ThreadX (QEMU RISC-V 64) | `threadx-riscv64` | `rv-virt-threadx` | `examples/rv-virt-threadx/` | `just threadx_riscv64 …` | [ThreadX](../getting-started/threadx.md) |
-| Zephyr | `zephyr`, `zephyr-cortex-m` | `zephyr` | `examples/zephyr/` | `just zephyr …` | [Zephyr](../getting-started/integration-zephyr.md) |
-| ESP32 (dormant, issue 1525) | `esp32` | `esp32-c3-baremetal` | `examples/esp32-c3-baremetal/` | — (module not mounted) | [ESP32](../getting-started/esp32.md) |
-| Bare-metal Cortex-M3 | `baremetal` | `mps2-an385-baremetal` | `examples/mps2-an385-baremetal/` | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
+| Linux host | `linux` | `linux` | [`examples/linux`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux) | `just linux …` | [Native host build](../platform-guides/native-host.md) |
+| FreeRTOS (QEMU MPS2-AN385) | `freertos` | `mps2-an385-freertos` | [`examples/mps2-an385-freertos`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos) | `just freertos …` | [FreeRTOS](../getting-started/freertos.md) |
+| NuttX (Arm) | `nuttx` | `qemu-armv7a-nuttx` | [`examples/qemu-armv7a-nuttx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx) | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
+| NuttX (RISC-V) | `nuttx-riscv` | `rv-virt-nuttx` | [`examples/rv-virt-nuttx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/rv-virt-nuttx) | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
+| ThreadX (Linux sim) | `threadx-linux` | `threadx-linux` | [`examples/threadx-linux`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux) | `just threadx_linux …` | [ThreadX](../getting-started/threadx.md) |
+| ThreadX (QEMU RISC-V 64) | `threadx-riscv64` | `rv-virt-threadx` | [`examples/rv-virt-threadx`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/rv-virt-threadx) | `just threadx_riscv64 …` | [ThreadX](../getting-started/threadx.md) |
+| Zephyr | `zephyr`, `zephyr-cortex-m` | `zephyr` | [`examples/zephyr`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr) | `just zephyr …` | [Zephyr](../getting-started/integration-zephyr.md) |
+| ESP32 (dormant, issue 1525) | `esp32` | `esp32-c3-baremetal` | [`examples/esp32-c3-baremetal`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32-c3-baremetal) | — (module not mounted) | [ESP32](../getting-started/esp32.md) |
+| Bare-metal Cortex-M3 | `baremetal` | `mps2-an385-baremetal` | [`examples/mps2-an385-baremetal`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal) | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
 | Arm FVP (Cortex-A SMP) | — | `zephyr` + the Arm FVP (`nros setup --tool arm-fvp`, x86_64 only) | — | — | [ARM FVP](../getting-started/arm-fvp.md) |
 
 Multi-node workspace examples do not follow that directory rule: they
-all live under `examples/workspaces/`, selected by fixture row rather
+all live under [`examples/workspaces`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces), selected by fixture row rather
 than by directory. So ESP32's single-node and workspace examples share
 one grid row, `esp32`: a grid row names a platform FAMILY, never a board
 (RFC-0093 R6), and `esp32` carries both. Zephyr is the case that does
 split — `zephyr` and `zephyr-cortex-m` build the SAME examples for
 different boards.
 
-**Contributors (in-tree checkout):** each module's recipes are
-discoverable rather than memorized:
-
-```bash
-just --list freertos          # every FreeRTOS recipe, grouped
-just --list zephyr
-```
+**Contributors (in-tree checkout):** each module's recipes are listed in
+[Per-Platform Contributor Lanes](../internals/platform-lanes.md).
 
 ## More than one node
 

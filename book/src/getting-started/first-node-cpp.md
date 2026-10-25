@@ -1,68 +1,46 @@
 # First Node — C++ (Linux)
 
 Build, run, and verify a single nano-ros publisher node on Linux from
-C++14. Uses CMake, the Zenoh backend, and `add_subdirectory`
-consumption.
+C++. Uses CMake and the Zenoh backend, with one `find_package(nano_ros)`.
 
 > **Stuck?** See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md) for the common first-build errors.
 
 ## Prereqs
 
-Pick one path from a fresh checkout — `just` is NOT a prereq.
+The `nros` CLI on PATH ([Installation](./installation.md) — `install.sh`
+puts it in `~/.nros/bin`), then provision the Linux host (installs the
+zenoh client stack into a shared store; the router itself comes from
+your ROS 2 install — `ros2 run rmw_zenoh_cpp rmw_zenohd`):
 
-**A. Front door** (bare machine OK — no Rust, no `just`):
-```sh
-./scripts/bootstrap.sh
-```
-Installs rustup if needed and builds the in-tree `nros` CLI from
-source at `packages/cli/target/release/nros`, leaving it on PATH for
-this shell (in a checkout, the tree's own build is the binary this tree
-accepts — RFC-0090 / phase-431).
-
-**B. Already have cargo** (equivalent — same build, same binary):
-```sh
-git submodule update --init packages/cli/third-party/play_launch
-cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.toml
-export PATH="$PWD/packages/cli/target/release:$PATH"
-```
-
-Every subsequent shell sources the workspace env via one of:
-```sh
-direnv allow                  # if you use direnv
-source ./activate.sh          # bash / zsh
-source ./activate.fish        # fish
-```
-
-Then provision the Linux host (installs the zenoh client stack into a
-shared store; the router itself comes from your ROS 2 install —
-`ros2 run rmw_zenoh_cpp rmw_zenohd`):
 ```sh
 nros setup linux --rmw zenoh
 ```
 
-See [Install + first build (Linux)](./installation.md) for more.
+## Scaffold the talker
 
-## Project layout
+```sh
+nros new cpp_talker --platform linux --lang cpp --rmw zenoh
+cd cpp_talker
+```
 
-The talker is a **standalone CMake project**. Three files matter:
+The talker is a **standalone CMake project**. Four files matter:
 
 ```text
-examples/linux/cpp/talker/
+cpp_talker/
 ├── system.toml         # WHAT this deploys to — the one file you edit
 ├── CMakeLists.txt      # find_package + targets; no board facts
 ├── package.xml         # ROS-style manifest
 └── src/
-    └── main.cpp        # ~70-line talker
+    └── main.cpp        # the talker
 ```
 
 `system.toml` is the whole deployment statement — `[system]` for the
-RMW and domain, `[[component]]` for what runs, and one `[image.<id>]`
-per target naming its `board` (RFC-0098). `find_package(nano_ros)`
+RMW and domain, and one `[image.<id>]` per target naming its `board`
+(RFC-0098). `find_package(nano_ros)`
 reads it and derives the platform from the board, so no line of
 `CMakeLists.txt` names a platform, a board or an RMW. Switching this
-example to a board is editing `[image.linux] board` and re-running
-cmake; see [First Node — C](first-node-c.md#project-layout) for the
+package to a board is editing `[image.linux] board` and re-running
+`nros build`; see [First Node — C](first-node-c.md#project-layout) for the
 file in full.
 
 Native (host) talkers read the locator + domain from arguments passed to
@@ -73,17 +51,16 @@ network file `os_config` names, and bakes them at build time. The `package.xml`
 tuple is retired and refused.
 
 The CMakeLists is the **ament shape you already know** — this is the
-complete canonical file at
-[`examples/linux/cpp/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/cpp/talker/CMakeLists.txt),
-verbatim (RFC-0048: `nano_rosConfig.cmake` at the checkout root makes
-`find_package(nano_ros)` resolve source-side, and the message-package
-Find-stubs make `find_package(std_msgs)` generate bindings on the fly):
+scaffolded file, comments trimmed (RFC-0048: `nano_rosConfig.cmake` at
+the SDK root makes `find_package(nano_ros)` resolve source-side, and the
+message-package Find-stubs make `find_package(std_msgs)` generate
+bindings on the fly):
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
-project(cpp_talker LANGUAGES C CXX)
+project(cpp_talker VERSION 0.1.0 LANGUAGES C CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(nano_ros REQUIRED)
@@ -105,6 +82,15 @@ The C++ entry point is **`int main(int argc, char** argv)`**, as in any
 rclcpp program; the build reaches it from the platform's entry, as for C.
 Write that exact signature: the build declares the renamed function with it,
 so another form fails at link naming `nros_ported_main(int, char**)`.
+
+The scaffolded `src/main.cpp` is the smallest rclcpp program that does
+something: it creates a node and a `std_msgs/Int32` publisher on
+`/chatter`, publishes one message, prints
+`cpp_talker: published 0 on /chatter`,
+and exits. A talker that keeps publishing adds a timer and a spin, as in
+the full
+[`examples/linux/cpp/talker/src/main.cpp`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/cpp/talker/src/main.cpp)
+on GitHub, which you can paste over the scaffold's `main.cpp`.
 
 The body uses typed `rclcpp::Publisher<M>` / `rclcpp::Subscription<M>`
 wrappers over the C ABI:
@@ -188,20 +174,25 @@ needs neither argument.
 ## Build
 
 ```bash
-cd examples/linux/cpp/talker
-cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
-                        # raw cmake names the root; `nros build` (or the
-                        # CMakePresets `nros init` writes) passes it for you
-cmake --build build
+nros build
 ```
 
-No `nros sync` here: a C++ leaf's message bindings are generated inside
-CMake, at configure time. (A Rust leaf needs sync, because its message
-crates and its build settings have to exist before cargo parses
-anything.) `nros build` in the leaf
-runs these same two `cmake` lines, into `build/<image>/cmake`, with the
-board's toolchain file ([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)); in a
-[multi-node workspace](workspace-cpp.md) it is the only build verb.
+`nros build` reads `[image.linux]`, configures the package with CMake
+into `build/linux/cmake` (passing the SDK root and the board's
+toolchain file), and builds it; the binary lands at
+`build/linux/cmake/cpp_talker`. No `nros sync` here: a C++ leaf's
+message bindings are generated inside CMake, at configure time. (A Rust
+leaf needs sync, because its message crates and its build settings have
+to exist before cargo parses anything.) In a
+[multi-node workspace](workspace-cpp.md) `nros build` is the only build
+verb.
+
+Driving CMake yourself works too; name the SDK root:
+
+```bash
+cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
+cmake --build build
+```
 
 First configure builds nano-ros's Rust staticlibs (~3 minutes).
 Re-builds finish in seconds.
@@ -213,12 +204,14 @@ Three terminals.
 ```bash
 # 1. zenoh router (ROS 2's own):
 source /opt/ros/humble/setup.bash
-ros2 run rmw_zenoh_cpp rmw_zenohd    # or: just zenohd
+ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # 2. Run the talker:
-cd examples/linux/cpp/talker
-./build/cpp_talker
-# Expected:
+cd cpp_talker
+./build/linux/cmake/cpp_talker
+# Expected from the scaffold (it publishes once, then exits):
+#   cpp_talker: published 0 on /chatter
+# Expected from the full examples/linux/cpp/talker main.cpp:
 #   nros C++ Talker
 #   ===================
 #   Node created: talker
@@ -238,11 +231,11 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
 
-**Readiness signal.** Within ~6 seconds of `./build/cpp_talker`
-(session open + the first 1 s timer tick), the binary should print
-`Publishing: 'Hello World: 1'` — Rust + C + C++ all start the count
-at 1, matching the official ROS 2 demo talker. If no `Publishing:`
-line in 30 seconds:
+**Readiness signal.** The scaffold prints its one line as soon as the
+session opens. The full example, within ~6 seconds (session open + the
+first 1 s timer tick), prints `Publishing: 'Hello World: 1'` — Rust + C
++ C++ all start the count at 1, matching the official ROS 2 demo
+talker. If neither appears in 30 seconds:
 
 1. Confirm the router is running (terminal 1). Without it,
    `rclcpp::init_in` returns `-100` (TransportError) — the
@@ -253,7 +246,7 @@ line in 30 seconds:
 
 ## GitHub source
 
-Canonical, copy-out:
+The full talker, to read or to paste over the scaffold:
 [`examples/linux/cpp/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/cpp/talker)
 
 ## Next

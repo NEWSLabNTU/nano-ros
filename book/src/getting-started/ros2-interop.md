@@ -26,11 +26,12 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 ```
 
 ```bash
-# Terminal 2: Run the nano-ros talker
-cd examples/linux/rust/talker
+# Terminal 2: Scaffold, build and run a nano-ros talker
+nros new my_talker --platform linux --lang rust --rmw zenoh
+cd my_talker
 nros sync                            # generated/ bindings + build settings (once)
 nros build
-RUST_LOG=info ./build/linux/target/debug/talker
+RUST_LOG=info ./build/linux/target/debug/my_talker
 ```
 
 ```bash
@@ -54,18 +55,29 @@ data: 'Hello World: 2'
 
 ROS 2 publishers also work with nano-ros subscribers:
 
+The scaffolded workspace carries a listener node (`listener_pkg`, which
+subscribes to `std_msgs/Int32` on `/chatter`) beside its talker:
+
 ```bash
-# Terminal 2: Run the nano-ros listener instead
-cd examples/linux/rust/listener
+# Terminal 2: Run a nano-ros workspace with a listener instead
+nros new my_ws --workspace --lang rust --rmw zenoh
+cd my_ws
 nros sync && nros build
-RUST_LOG=info ./build/linux/target/debug/listener
+RUST_LOG=info ./build/posix-zenoh/linux_entry/target/debug/linux_entry
 
 # Terminal 3: ROS 2 talker
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
-ros2 topic pub /chatter std_msgs/msg/String "{data: 'Hello from ROS 2'}" --qos-reliability best_effort
+ros2 topic pub /chatter std_msgs/msg/Int32 "{data: 42}" --qos-reliability best_effort
 ```
+
+Among the workspace talker's own messages, the listener logs
+`I heard: 42` for each one ROS 2 publishes. A standalone listener — the
+shape of
+[`examples/linux/rust/listener`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/listener)
+on GitHub — is not a scaffold `nros new` offers yet: `--use-case
+listener` still writes a talker.
 
 ## Discovery
 
@@ -147,11 +159,14 @@ The edition is declared like the RMW, per image, in `system.toml`:
 `[system] ros_edition`). `nros sync --image <id>` generates the messages
 for that edition and `nros build <id>` builds the image; the
 `ros-<edition>` cargo features are what the build lowers it to, not
-something you pass. The native examples declare `linux_jazzy`,
-`linux_xrce_jazzy`, … for this:
+something you pass. A package is scaffolded for one edition —
+`nros new my_talker --platform linux --lang rust --ros-edition jazzy` —
+and a project that builds for several declares one image per edition,
+as
+[`examples/linux/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/rust/talker/system.toml)
+does (`linux_jazzy`, `linux_xrce_jazzy`, …), then picks one:
 
 ```bash
-cd examples/linux/rust/talker
 nros sync --image linux_jazzy && nros build linux_jazzy
 ```
 

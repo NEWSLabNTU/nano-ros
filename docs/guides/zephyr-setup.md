@@ -246,7 +246,7 @@ means the build derives the number from this image's message-bound inventory
 state wins; the derived number is an upper bound over the interface closure you
 LINK; and one unbounded type in that closure refuses the derivation outright and
 says which. Full explanation, and what to do when the type it names is not one
-you receive, in the [book](../../book/src/getting-started/zephyr.md) and
+you receive, in the [book](../../book/src/internals/zephyr-in-tree.md) and
 [embedded-tuning.md](embedded-tuning.md).
 
 ### XRCE Options (visible when `CONFIG_NROS_RMW_XRCE=y`)

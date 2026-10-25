@@ -107,7 +107,7 @@ Two shapes, and the RTIC choice is made in the same place in both: one
 `[image.<id>] board` in `system.toml` naming an RTIC board.
 
 **A single package** is what every in-tree RTIC example is — see
-`examples/mps2-an385-baremetal/rust/talker-rtic`:
+[`examples/mps2-an385-baremetal/rust/talker-rtic`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust/talker-rtic):
 
 ```text
 talker-rtic/

@@ -4,6 +4,118 @@ This chapter covers the development workflow for nano-ros.
 
 ## Development Setup
 
+This is the **contributor** setup: a checkout of the repository and the
+CLI built from it. If you only want to *use* nano-ros, install a release
+instead — [Installation](../getting-started/installation.md); every user
+chapter of this book assumes the installed CLI and no checkout.
+
+Inside a nano-ros checkout the tree's own build is the only correct
+`nros`: a released `nros` run against a checkout is refused outright,
+because it emits *its own* generated code and this tree's runtime is the
+one that has to compile it
+([RFC-0090](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0090-codegen-version-is-the-compatibility-token.md)).
+**One checkout = one CLI version = one runtime ABI** — no global
+install, no `~/.nros/bin` PATH skew across worktrees.
+
+The host prerequisites are the ones in
+[Installation § Host prerequisites](../getting-started/installation.md#host-prerequisites)
+(`python3-dev` is needed here: `bootstrap.sh` builds the launch resolver,
+which embeds CPython to parse ROS launch files).
+
+### From a fresh checkout
+
+```sh probe=20 track=checkout
+# 1. Pull the source (`main`, or a release tag `nros-<version>`):
+git clone https://github.com/NEWSLabNTU/nano-ros.git
+cd nano-ros
+
+# 2. Build the `nros` CLI from source (installs rustup if needed):
+./scripts/bootstrap.sh
+
+# 3. Wire the workspace env into this (and every future) shell:
+source ./activate.sh          # or: direnv allow / source ./activate.fish
+
+# 4. Provision the toolchains + RMW daemon for your target:
+nros setup <board> --rmw <zenoh|xrce|cyclonedds>    # e.g. `linux`
+```
+
+`bootstrap.sh` builds the in-tree `nros` CLI **from source** at
+`packages/cli/target/release/nros` and leaves it on PATH for that shell
+(`just` is NOT a prerequisite; rustup is installed on demand). Already
+have cargo? The equivalent by hand:
+
+```sh
+git submodule update --init packages/cli/third-party/play_launch
+cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.toml
+export PATH="$PWD/packages/cli/target/release:$PATH"
+```
+
+Both builds are needed for a workspace flow: `nros sync` and `nros
+build` call `nros-launch-resolve` to resolve launch files, so a bare
+`cargo build --bin nros` alone is not equivalent.
+
+### Every subsequent shell
+
+Every new shell needs the workspace env wired in. All three wire the
+same env exports + PATH entries from `activate.sh`:
+
+```bash
+direnv allow                  # auto-activates on `cd nano-ros` (recommended)
+source ./activate.sh          # bash / zsh, one-shot per shell
+source ./activate.fish        # fish, one-shot per shell
+```
+
+`activate.sh` is the after-install step, not a prerequisite: it presumes
+the `nros` binary already exists at `packages/cli/target/release/nros`.
+It also sources `/opt/ros/humble/setup.bash` if present (used by the
+rmw_zenoh interop tests, and it lets codegen resolve message packages
+from the ament index). It exports no checkout root: the in-tree `nros`
+knows the checkout it was built in. Without ROS 2 it says so:
+
+```
+activate.sh: /opt/ros/humble/setup.bash not found — ROS-dependent recipes
+  will fail (interop tests, `ros2` CLI verification). The setup, codegen
+  and first-node flows do not need it.
+```
+
+On a host without `just` it also prints one line about RTOS SDK path
+defaults (`FREERTOS_DIR`, `NUTTX_DIR`, `THREADX_DIR`, …) not being
+loaded — only the in-tree `just` recipes (test lanes, fixture builds)
+read them (`cargo install just`).
+
+### Provisioning through `just`
+
+The `just` setup recipes are thin wrappers over the same `nros setup`
+index — `just setup <module>` calls `nros setup <board>` under the hood,
+so the toolchains a contributor gets are identical to a user's:
+
+```bash
+just setup freertos           # → nros setup mps2-an385-freertos
+just setup nuttx              # → nros setup qemu-armv7a-nuttx
+just setup threadx_linux      # → nros setup threadx-linux
+just doctor tier=all          # diagnose missing tools (read-only)
+```
+
+A checkout's version is its tag: the CLI built from a `nros-<version>`
+tree prints the same number (`scripts/check-version-lockstep.sh` and
+`bootstrap.sh shell-doctor` enforce binary↔tree agreement), and the
+tree's committed `nros-sdk-index.toml` pins the toolchains. Upgrading =
+checking out a newer tag, re-running `./scripts/bootstrap.sh`, then
+`nros setup`.
+
+### Docker environment
+
+For a containerized environment with QEMU 7.2+ (in-tree checkout):
+
+```bash
+just docker build
+just docker shell      # Interactive shell with all tools
+just docker test-qemu  # Run QEMU tests in container
+```
+
+### Setup tiers
+
 Choose the setup tier. `base` is enough for most code review and
 native development; `all` prepares the full `test-all` matrix:
 

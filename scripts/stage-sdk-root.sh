@@ -105,6 +105,13 @@
 #                       provisioning, invoked by the board overlay) and
 #                       `scripts/check-shared-cargo-dir-used.sh` (build-time
 #                       assertion when NROS_SHARED_CARGO_ROOT is set).
+#   integrations/      the copy-out shells a user's OWN build tree takes in:
+#                       PX4's `module-template/` (EXTERNAL_MODULES_LOCATION),
+#                       NuttX's `apps/external` shell, the PlatformIO and
+#                       S32DS glue. The book's user chapters copy them from
+#                       `$(nros sdk-root)/integrations/…` (phase-517 W2), which
+#                       without this line names a directory only a checkout
+#                       has. 276 KB.
 #   CMakeLists.txt     `_nros_import_once` does `add_subdirectory("${root}")`,
 #                       so the root listfile IS executed by every workspace.
 #   nano_rosConfig.cmake
@@ -186,6 +193,7 @@ locks
 packages
 zephyr
 scripts
+integrations
 CMakeLists.txt
 nano_rosConfig.cmake
 Cargo.toml
@@ -266,6 +274,7 @@ need -f packages/core/nros-core/Cargo.toml \
 need -f cmake/NanoRosWorkspace.cmake "the workspace modules every user CMakeLists includes"
 need -f .nros-ignore "the marker that keeps a walk from above out of this tree (issue 1810)"
 need -f nano_rosConfig.cmake "the find_package(nano_ros) entry point"
+need -d integrations/px4/module-template "the PX4 external-module shell the book copies from the SDK root"
 need -f CMakeLists.txt "the listfile _nros_import_once add_subdirectory()s"
 need -f Cargo.toml "the workspace manifest every member inherits from"
 need -f Cargo.lock "the resolution this release was built on"

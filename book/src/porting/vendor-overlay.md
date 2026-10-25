@@ -130,10 +130,10 @@ description = "STM32F4 + FreeRTOS overlay on nros-board-freertos"
 repository = "https://github.com/<you>/nros-board-stm32f4-freertos"
 
 [dependencies]
-# Path into your vendored nano-ros checkout (or a git dep on your fork).
-# nano-ros is source-only: these names are NOT on crates.io.
-nros-board-freertos = { path = "../nano-ros/packages/boards/nros-board-freertos" }
-nros-platform = { path = "../nano-ros/packages/platform/nros-platform", default-features = false }
+# nano-ros is source-only: these names are NOT on crates.io. `nros sync`
+# writes the [patch.crates-io] rows that resolve them into the SDK root.
+nros-board-freertos = { version = "*" }
+nros-platform = { version = "*", default-features = false }
 
 [build-dependencies]
 cc = "1.0"
@@ -246,10 +246,11 @@ the per-file walkthrough.
 nano-ros is **source-only** (decision 2026-05-14): nothing — including
 board crates — is on crates.io, so do not `cargo publish`. Ship the
 overlay as a git repository and have consumers take it as a `git` or
-`path` dependency next to their vendored nano-ros checkout. Tag
-releases against the `nros-v<X.Y.Z>` tag of nano-ros you developed
-against, and state that pairing in your README — the board-trait
-surface is versioned with the tree, not semver-independent.
+`path` dependency, or point `NROS_EXTRA_BOARD_PATH` at it. Tag
+releases against the nano-ros release you developed against
+(`nros version`), and state that pairing in your README — the
+board-trait surface is versioned with the release, not
+semver-independent.
 
 ## Related
 

@@ -9,11 +9,11 @@ verify ROS 2 communication.
 Two commands, whatever the workspace shape:
 
 ```bash
-# A single Rust package:
-cd examples/linux/rust/talker
+# A single Rust package (`nros new my_talker --platform linux --lang rust`):
+cd my_talker
 nros sync
 nros build
-./build/linux/target/debug/talker
+./build/linux/target/debug/my_talker
 
 # A workspace — same two commands, one entry generated per [image.*]:
 cd my_robot

@@ -196,7 +196,7 @@ constant `0.0.0` version), then run `nros sync` from the workspace
 root — the package index finds `src/my_msgs/` by its `package.xml`,
 generates the `generated/my_msgs` crate, and wires the cargo patch
 table. The shipped precedent is
-`examples/workspaces/features/src/custom_msgs/` with its
+[`examples/workspaces/features/src/custom_msgs`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/features/src/custom_msgs) with its
 `rust_reading_listener_pkg` consumer. Full
 detail: [Message Generation](../user-guide/message-generation.md).
 

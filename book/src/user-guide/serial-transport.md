@@ -88,8 +88,15 @@ before either side starts.
 
 ### 1. Build the Serial Talker
 
+Scaffold a bare-metal Rust package and give its image a serial locator
+(the shape of
+[`examples/mps2-an385-baremetal/rust/serial-talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust/serial-talker)
+on GitHub):
+
 ```bash
-cd examples/mps2-an385-baremetal/rust/serial-talker
+nros new serial_talker --platform baremetal --lang rust --rmw zenoh
+cd serial_talker
+# edit system.toml as below, then:
 nros sync                       # generated/ + this image's build settings
 nros build
 ```
@@ -98,7 +105,7 @@ The serial locator is part of the image's identity, so it is stated in the
 leaf's `system.toml` rather than passed to the build:
 
 ```toml
-[image.mps2-an385-baremetal]
+[image.baremetal]
 board   = "qemu-mps2-an385"
 locator = "serial/UART_0#baudrate=115200"
 ```
@@ -132,12 +139,12 @@ The board's `cargo run` runner uses semihosting only (no serial
 device) — boot QEMU explicitly, wiring UART0 to the pair:
 
 ```bash
-qemu-system-arm -cpu cortex-m3 -machine mps2-an385 \
+"$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 \
     -display none -monitor none \
     -icount shift=auto -semihosting-config enable=on,target=native \
     -chardev serial,id=ser0,path=/tmp/nros-serial-qemu \
     -serial chardev:ser0 \
-    -kernel build/mps2-an385-baremetal/target/thumbv7m-none-eabi/release/qemu-serial-talker
+    -kernel build/baremetal/target/thumbv7m-none-eabi/debug/serial_talker
 ```
 
 (`-display none -monitor none`, not `-nographic` — `-nographic`

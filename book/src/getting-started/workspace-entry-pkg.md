@@ -25,30 +25,8 @@ own.
 
 ## Prereqs
 
-Pick one path from a fresh checkout:
-
-**A. Front door** (bare machine OK — no Rust):
-```sh
-./scripts/bootstrap.sh
-```
-Installs rustup if needed and builds the in-tree `nros` CLI from
-source at `packages/cli/target/release/nros`, leaving it on PATH for
-this shell (in a checkout, the tree's own build is the binary this tree
-accepts — RFC-0090 / phase-431).
-
-**B. Already have cargo** (equivalent — same build, same binary):
-```sh
-git submodule update --init packages/cli/third-party/play_launch
-cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-export PATH="$PWD/packages/cli/target/release:$PATH"
-```
-
-Every subsequent shell sources the workspace env via one of:
-```sh
-direnv allow                  # if you use direnv
-source ./activate.sh          # bash / zsh
-source ./activate.fish        # fish
-```
+The `nros` CLI on PATH ([Installation](./installation.md) — `install.sh`
+puts it in `~/.nros/bin`).
 
 Then provision the native host (the canonical first image target; for Zephyr /
 FreeRTOS / ESP32 swap in the matching `nros setup` board):
@@ -59,8 +37,11 @@ nros sync                     # generated message bindings, once per workspace
 
 ## What a workspace looks like
 
-The four reference workspaces in `examples/workspaces/` all have the same
-shape. Node pkgs, one Bringup pkg, and nothing else:
+`nros new my_ws --workspace` scaffolds one, and the four reference
+workspaces in
+[`examples/workspaces/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces)
+on GitHub all have the same shape. Node pkgs, one Bringup pkg, and nothing
+else — here the C one:
 
 ```text
 examples/workspaces/c/
@@ -86,8 +67,7 @@ And no entry packages, except the Zephyr one. Fourteen images ship out of that
 directory. `nros build` with no argument lists them:
 
 ```console
-$ cd examples/workspaces/c
-$ nros build
+$ nros build                  # in examples/workspaces/c
 Error: this workspace declares 14 images and no default.
 
   demo_bringup:freertos
@@ -116,7 +96,7 @@ directory. Under the old shape that was fourteen directories.
 ## Declaring an image
 
 Images live in the Bringup pkg beside the topology they boot —
-`examples/workspaces/c/src/demo_bringup/system.toml`:
+[`examples/workspaces/c/src/demo_bringup/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/workspaces/c/src/demo_bringup/system.toml):
 
 ```toml
 [image_defaults]
@@ -205,7 +185,7 @@ settings and nothing generated ever appears beside a package — no leaf
 
 The coordinate is the platform and the RMW, plus — for cmake, which pins one
 compiler per configure — the board. So `[image.linux]` in
-`examples/workspaces/c` configures `build/posix-zenoh-linux/` into
+[`examples/workspaces/c`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/c) configures `build/posix-zenoh-linux/` into
 `build/posix-zenoh-linux/cmake/` and leaves its binary at
 `build/posix-zenoh-linux/cmake/linux_entry`. On the cargo driver `nros build`
 names the entry package it wrote as it goes:
@@ -250,7 +230,7 @@ instead, where it changes no image's hash. `nros image-facts` prints each
 image's `cmake_build_dir`; never derive it by hand.
 
 On Zephyr the same `env` rows are rendered into the image's Kconfig fragment
-instead (see [Configuring an image](zephyr.md#configuring-an-image-systemtoml-not-prjconf)).
+instead (see [Configuring an image](./integration-zephyr.md#configuring-an-image-systemtoml-not-prjconf)).
 
 The generated entry is the same few lines you would have written. RFC-0065 D4
 measured them before deciding to derive them: every Rust entry in the tree was
@@ -476,7 +456,7 @@ crate and executor backend, and the same model resolves its tier table for
 whichever RTOS that board targets. On Embassy / RTIC targets it emits the
 framework-specific `#[embassy_executor::main]` or `#[rtic::app]` body, so the
 crate root stays a single line — as in
-`examples/mps2-an385-baremetal/rust/talker-rtic/src/main.rs`:
+[`examples/mps2-an385-baremetal/rust/talker-rtic/src/main.rs`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-baremetal/rust/talker-rtic/src/main.rs):
 
 ```rust
 #![no_std]
@@ -529,7 +509,7 @@ initialised its hardware yet. Returning `Err("reason")` stops the image there, w
 in the failure. The entry is still generated, so a node you add to the launch
 file still reaches it.
 
-The worked example is `examples/workspaces/features`, image
+The worked example is [`examples/workspaces/features`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/features), image
 `linux_rust_before_boot`. Its node logs `before_boot ran first` on every tick
 when the step ran before the node registered, and a test checks that line.
 
@@ -570,7 +550,8 @@ for customisation that extensive, and only after the table above has run out.
 Build it, start a router if your backend needs one, run the binary:
 
 ```bash
-cd examples/workspaces/c
+nros new my_ws --workspace --lang c --rmw zenoh
+cd my_ws
 nros sync
 nros build linux
 
@@ -584,15 +565,16 @@ The binary opens the executor, registers `talker` + `listener` composed into a
 single process, and runs the topology. The launch product *is* the binary —
 there is no separate launch step.
 
-`examples/workspaces/{c,cpp,rust,mixed}/` are the four canonical workspaces and
-each carries a README with the commands verified green today.
+[`examples/workspaces/{c,cpp,rust,mixed}/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces)
+on GitHub are the four canonical workspaces, to read; each carries a README
+with the commands verified green today.
 
 ## C / C++ images
 
 Nothing above is Rust-specific: the driver is chosen by the **board**, not by
 the language mix, and cmake wins whenever the package graph crosses languages
 (corrosion makes cargo consumable from cmake; nothing makes cmake consumable
-from cargo). `examples/workspaces/c` and `examples/workspaces/cpp` declare
+from cargo). [`examples/workspaces/c`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/c) and [`examples/workspaces/cpp`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp) declare
 their images exactly as shown here. See
 [C / C++ multi-node workspaces](./workspace-cpp.md).
 

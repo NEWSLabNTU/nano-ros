@@ -8,7 +8,7 @@ own kernel build and you want to add ROS 2 communication.
 
 > **Contributor path?** Building nano-ros's own NuttX QEMU examples
 > straight from this repository (no NuttX-managed workspace) is
-> covered at [NuttX (contributor)](./nuttx.md). The page below is
+> covered at [NuttX in-tree examples (contributor)](../internals/nuttx-in-tree.md). The page below is
 > the canonical user entry.
 
 > **Prereqs.** Install the `nros` CLI once per machine, then run
@@ -19,10 +19,10 @@ own kernel build and you want to add ROS 2 communication.
 > a cross-toolchain and do **not** need a ROS 2 install:
 >
 > ```bash
-> ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros (Phase 218)
-> source ./activate.sh        # OR: direnv allow / source ./activate.fish
 > nros setup qemu-armv7a-nuttx --rmw zenoh
 > ```
+>
+> (`nros` is the installed CLI — [Installation](./installation.md).)
 >
 > You still need a NuttX ≥ nuttx-12 checkout with an `apps/` sibling
 > and Python 3.10+ for the NuttX configure scripts.
@@ -36,7 +36,7 @@ NuttX's "external apps" pattern places the app shim under
 $NUTTX_DIR/                              # NuttX kernel checkout
 $NUTTX_APPS_DIR/                             # sibling: apps tree
 └── external/
-    └── nano-ros/                        # symlink or submodule of
+    └── nano-ros/                        # symlink to the SDK root's
         ├── Make.defs                    #   integrations/nuttx/
         ├── Makefile
         ├── CMakeLists.txt               #   (cmake-driven NuttX builds)
@@ -53,29 +53,26 @@ Wire the shell into your NuttX apps tree. Two commands, both run once:
 
 ```bash
 nros setup qemu-armv7a-nuttx --rmw zenoh    # toolchain + NuttX sources + SDK
-# from the nano-ros checkout:
-scripts/nuttx/stage-external-apps.sh "$NUTTX_APPS_DIR"
+"$(nros sdk-root)/scripts/nuttx/stage-external-apps.sh" "$NUTTX_APPS_DIR"
 ```
 
 The staging script writes `$NUTTX_APPS_DIR/external/Make.defs` + `Kconfig`
-and symlinks the integration shell in as `external/nano-ros`. Menuconfig
+and symlinks the integration shell in as `external/nano-ros`. (The SDK
+root carries `integrations/` in releases cut after 0.6.0-nros4.) Menuconfig
 surfaces it under `Application Configuration → External Modules`.
-
-> **Contributors (in-tree checkout):** `just setup nuttx` runs both of the
-> above in one step against this repository's own NuttX checkout.
 
 The script stages the integration shell only. A NuttX **workspace image** (a
 bringup with several components) is not built through the apps tree: add an
 `[image.<id>]` with `board = "qemu-armv7a-nuttx"` to the bringup's
-`system.toml` and run `nros build` — see `examples/workspaces/rust`
-`[image.nuttx]`. The script's old `--bringup <dir>` / `--image <id>` flags
+`system.toml` and run `nros build` — see `[image.nuttx]` in
+[`examples/workspaces/rust`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/workspaces/rust/src/demo_bringup/system.toml). The script's old `--bringup <dir>` / `--image <id>` flags
 staged a per-bringup app that could not build an image, and now refuse
 (issue 1883).
 
 If you'd rather wire it yourself (e.g. into a vendored apps tree):
 
 ```bash
-ln -s /path/to/nano-ros/integrations/nuttx \
+ln -s "$(nros sdk-root)/integrations/nuttx" \
       $NUTTX_APPS_DIR/external/nano-ros
 # then copy integrations/nuttx/external-Make.defs.in →
 # $NUTTX_APPS_DIR/external/Make.defs and add a matching
@@ -288,4 +285,4 @@ not on PATH"`); install it before retrying.
   Zephyr DDS profile under
   [Choosing an RMW Backend](../user-guide/rmw-backends.md)).
 - Build nano-ros's own NuttX QEMU tests without a NuttX-managed
-  workspace: [NuttX (contributor)](./nuttx.md).
+  workspace: [NuttX in-tree examples (contributor)](../internals/nuttx-in-tree.md).

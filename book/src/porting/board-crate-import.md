@@ -20,32 +20,13 @@ Before importing a board crate, the consumer needs:
 
 1. **A Zephyr 3.7+ workspace managed by west.** Zephyr 3.7 is the floor (the official in-tree `zephyr-lang-rust` module did not exist below it, so nothing earlier can link the nano-ros Rust staticlib); newer LTS lines work too.
 2. **All gated SDK packages for the target board.** Run `nros doctor --board <name>` to check; missing items can be installed with `nros setup <board>` (or `nros setup --tool <t>` for a single dependency). See `nros setup` in the [build commands reference](../reference/build-commands.md).
-3. **nano-ros listed as a project in your `west.yml`**, and nano-ros's Zephyr module exported on `ZEPHYR_EXTRA_MODULES` so Zephyr picks up its Kconfig + DTS roots.
-
-A minimal `west.yml` fragment:
-
-```yaml
-manifest:
-  remotes:
-    - name: newslab
-      url-base: https://github.com/NEWSLabNTU
-  projects:
-    - name: nano-ros
-      remote: newslab
-      revision: nros-v0.6.0    # pin a release tag — a moving branch
-                                 # unships your tested pairing (see
-                                 # installation.md "Pinning a version")
-      path: deps/nano-ros
-      import: false
-  self:
-    west-commands: deps/nano-ros/scripts/west-commands.yml
-```
-
-And the matching environment:
+3. **nano-ros's Zephyr module exported on `ZEPHYR_EXTRA_MODULES`** so Zephyr picks up its Kconfig + DTS roots. The module ships in the installed SDK root (the directory holding `zephyr/module.yml`); `nros build` passes it for you, and a `west build` you run yourself names it:
 
 ```sh
-export ZEPHYR_EXTRA_MODULES="$PWD/deps/nano-ros/zephyr"
+export ZEPHYR_EXTRA_MODULES="$(nros sdk-root)"
 ```
+
+The release you installed is the pin ([Pinning a version](../getting-started/installation.md#pinning-a-version)); nothing in your `west.yml` names nano-ros.
 
 ## The one-call pattern
 
@@ -66,7 +47,7 @@ target_sources(app PRIVATE src/main.cpp)
 
 **Call order matters.** `nano_ros_use_board()` MUST precede `find_package(Zephyr ...)`. Zephyr reads `BOARD`, `EXTRA_CONF_FILE`, and `DTC_OVERLAY_FILE` during its `find_package` call; setting them after that point has no effect. The pattern above is the canonical shape -- copy it verbatim and only fill in the board name.
 
-`nano_ros_use_board()` is shipped by the nano-ros Zephyr module. It is available the moment `ZEPHYR_EXTRA_MODULES` includes `deps/nano-ros/zephyr`; no extra `include()` is required.
+`nano_ros_use_board()` is shipped by the nano-ros Zephyr module. It is available the moment `ZEPHYR_EXTRA_MODULES` includes the SDK root; no extra `include()` is required.
 
 > **Out-of-tree boards.** The lookup searches
 > `<nano-ros>/packages/boards/` plus every root named by
@@ -160,7 +141,7 @@ Things that LOOK reasonable but the one-call pattern obviates:
 - **Don't hardcode `BOARD=<id>` in a `build.sh`.** The call sets it; hardcoding it short-circuits the `nros board info` inspection and the drift audit.
 - **Don't carry your own copy of `boards/<id>.conf` or `boards/<id>.overlay` mirroring the board crate's.** Vendor a delta only -- the base ships in the crate.
 - **Don't reimplement the FVP launch in a `build.sh`.** Export `ARMFVP_BIN_PATH` and use `west build -t run`; Zephyr's own `armfvp` runner covers `FVP_BaseR_AEMv8R` and the other supported simulators with the right CLI flags, the same way `west build` covers compilation.
-- **Don't `include()` files from `deps/nano-ros/cmake/` directly.** The public surface is `nano_ros_use_board()`; anything else is internal and may move.
+- **Don't `include()` files from the SDK root's `cmake/` directly.** The public surface is `nano_ros_use_board()`; anything else is internal and may move.
 
 ## Migrating an existing hand-glued consumer
 

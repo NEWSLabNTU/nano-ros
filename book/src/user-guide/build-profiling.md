@@ -9,6 +9,14 @@ toolchain (`west`, `cmake`, `idf.py`, `cargo`); the profiler only *reads* the ti
 artifacts that build already produced. It never compiles or flashes anything, and it
 adds no `nros` build/test command — `nros` stays setup + codegen.
 
+## Installing it
+
+The profiler ships as source in the SDK root; install it once with cargo:
+
+```bash
+cargo install --locked --path "$(nros sdk-root)/packages/testing/nros-build-profile"
+```
+
 ## How it works
 
 Every backend already emits timing data:
@@ -24,9 +32,8 @@ optional per-unit drill-down and diagnostic hints.
 ## Flow 1 — Zephyr / cmake / esp32-idf (no opt-in)
 
 ```console
-$ west build -b qemu_cortex_a53 examples/zephyr/rust/talker   # build/.ninja_log written
-$ cargo build -p nros-build-profile      # once; builds the profiler bin
-$ ./target/debug/nros-build-profile examples/zephyr/rust/talker
+$ west build -b qemu_cortex_a53 my_app        # build/.ninja_log written
+$ nros-build-profile my_app
 
 Backend: ninja (west)        Total: 41.2s
 
@@ -44,8 +51,9 @@ hints:
 The coarse table works with any build; the per-crate drill-down needs `--timings`:
 
 ```console
-$ cd examples/linux/rust/talker && cargo build --timings   # target/cargo-timings/ written
-$ ./target/debug/nros-build-profile examples/linux/rust/talker --deep
+$ cargo build --timings --manifest-path my_talker/Cargo.toml \
+      --config my_talker/build/linux/nros-cargo.toml   # build/linux/target/cargo-timings/ written
+$ nros-build-profile my_talker/build/linux --deep
 
 Backend: cargo               Total: 30.3s
 
@@ -70,8 +78,8 @@ telling you how to enable the drill-down — never an error.
 ## Flow 3 — machine-readable (CI regression diffing)
 
 ```console
-$ ./target/debug/nros-build-profile examples/zephyr/rust/talker --json
-wrote examples/zephyr/rust/talker/nros-build-profile.json
+$ nros-build-profile my_app --json
+wrote my_app/nros-build-profile.json
 ```
 
 A CI step can diff `nros-build-profile.json` across commits to catch build-time
@@ -79,7 +87,8 @@ regressions (a stage's seconds or a unit's share jumping).
 
 ## External (copy-out) projects
 
-For copy-out example projects, run the installed bin the same way:
+For any other project, run the installed bin the same way, on the
+directory holding its `build*/` or `target*/`:
 
 ```console
 $ nros-build-profile <project-dir> --deep

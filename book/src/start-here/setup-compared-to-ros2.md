@@ -44,23 +44,21 @@ zenoh backend needs a ROS 2 install on the router host, while Cyclone DDS
 needs no daemon at all and xrce uses the agent `nros setup` installs.
 
 ```bash
-# 1. Get the nros CLI (analogous to installing a ROS distro). Users install
-#    a release — `scripts/install.sh`, see Installation; this walk-through
-#    runs inside a nano-ros checkout, so it builds the in-tree one:
-./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
-source ./activate.sh        # OR: direnv allow / source ./activate.fish
+# 1. Get the nros CLI (analogous to installing a ROS distro):
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
 
 # 2. Provision a board + RMW (analogous to `rosdep install`):
 nros setup linux --rmw zenoh
 
-# 3. Build and run something (analogous to `colcon build`):
+# 3. Scaffold, build and run something (analogous to `colcon build`):
 #    `nros sync` generates the message bindings and the build settings
-#    the target implies; both live under gitignored directories, so a
-#    fresh clone cannot build without this step.
-cd examples/linux/rust/talker
+#    the target implies, under build/ and generated/.
+nros new my_talker --platform linux --lang rust
+cd my_talker
 nros sync
 nros build
-./build/linux/target/debug/talker
+RUST_LOG=info ./build/linux/target/debug/my_talker
 ```
 
 Step 3 is the one that maps most directly onto ROS 2, and it maps
@@ -125,7 +123,7 @@ Multi-RMW bridges (one binary, two or more backends) use
 
 ## What Stays Familiar
 
-- Workspace layout: one source checkout next to your packages.
+- Workspace layout: a `src/` of packages with `package.xml` manifests.
 - Package metadata: downstream packages still use `package.xml`.
 - ROS vocabulary: nodes, publishers, subscriptions, services, actions,
   QoS profiles, parameters, and message packages keep ROS-shaped names.

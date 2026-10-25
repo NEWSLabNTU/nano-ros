@@ -31,7 +31,7 @@ consumable from cmake, and nothing makes cmake consumable from cargo (RFC-0024
 §6.3). So a mixed workspace builds exactly like the C++ one:
 
 ```console
-$ cd examples/workspaces/mixed
+$ cd my_mixed_ws              # e.g. a copy of examples/workspaces/mixed
 $ nros sync
 $ nros build linux
 ```

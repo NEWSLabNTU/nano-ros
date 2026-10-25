@@ -2,7 +2,7 @@
 
 Use the host (`linux`) board for first experiments, CI smoke tests, and
 ROS 2 interoperability checks on Linux. It uses OS sockets, the
-host process environment, and the same source checkout layout as the
+host process environment, and the same project layout as the
 embedded targets.
 
 The host board is named `linux` (`[image.<id>] board = "linux"`) because
@@ -33,11 +33,10 @@ installed: it comes from a ROS 2 install
 (`ros2 run rmw_zenoh_cpp rmw_zenohd`, RFC-0075). No ROS 2 on this
 machine? Use `--rmw cyclonedds` — it needs no daemon.
 
-```bash
-# Users install a release (`scripts/install.sh`); in a checkout, build the in-tree nros CLI:
-./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
-source ./activate.sh        # OR: direnv allow / source ./activate.fish
+With the `nros` CLI on PATH ([Installation](../getting-started/installation.md) —
+`install.sh` puts it in `~/.nros/bin`):
 
+```bash
 # Provision the Linux host (zenoh RMW is the default):
 nros setup linux --rmw zenoh        # or: --rmw xrce / --rmw cyclonedds
 ```
@@ -67,11 +66,12 @@ my_native_node/
     └── main.rs         # or main.c / main.cpp
 ```
 
-Examples are copy-out ready, and nothing in a copied one names a path back
-into the checkout. For Rust, `cp -r` the example, then
-`nros sync` and `nros build` (`nros` finds its own SDK; `--nano-ros-path`
-names another). For C/C++, `cp -r` and run `nros build`, or configure a raw
-`cmake` with `-Dnano_ros_ROOT=<nano-ros checkout>` — a single-package C/C++
+`nros new <name> --platform linux --lang <rust|c|cpp>` scaffolds that
+shape, and the examples on GitHub are copy-out ready: nothing in one names
+a path into the SDK. For Rust, run `nros sync` and `nros build` (`nros`
+finds its own SDK; `--nano-ros-path` names another). For C/C++, run
+`nros build`, or configure a raw `cmake` with
+`-Dnano_ros_ROOT="$(nros sdk-root)"` — a single-package C/C++
 leaf needs no `nros sync`, because
 its message bindings are a CMake-time output.
 

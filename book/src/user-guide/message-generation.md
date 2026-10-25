@@ -9,7 +9,7 @@ The binding generator lives in the in-tree CLI sub-workspace at `packages/cli/` 
 - Pure Rust, `no_std` compatible output using `heapless` types
 - Automatic dependency resolution via ament index or bundled interfaces
 - the `[patch.crates-io]` rows that point the nano-ros runtime crates at
-  your checkout, written into the image's generated build settings
+  the SDK root, written into the image's generated build settings
 
 ## Prerequisites
 
@@ -32,12 +32,10 @@ The binding generator lives in the in-tree CLI sub-workspace at `packages/cli/` 
 
 2. **nros tool built + on PATH**
 
-   The `nros` CLI is built from the in-tree sub-workspace at
-   `packages/cli/` and put on PATH by the activate file:
+   Install a release; `install.sh` puts `nros` in `~/.nros/bin`:
    ```bash
-   # From the nano-ros repository root
-   ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
-   source ./activate.sh        # OR: direnv allow / source ./activate.fish
+   curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
+   export PATH="$HOME/.nros/bin:$PATH"
    ```
    See [Installation](../getting-started/installation.md) for the full
    walkthrough.
@@ -99,7 +97,7 @@ bare name resolves against the public crates.io instead (RFC-0067).
 The nano-ros runtime crates are the other case — `nros`,
 `nros-board-<board>`, the backends — and they *are* registry-named with
 `version = "*"`, because `nros sync` writes the `[patch.crates-io]` rows
-that redirect them into your nano-ros checkout.
+that redirect them into the nano-ros SDK root.
 
 ### Why msg crates are RMW-agnostic
 
@@ -132,21 +130,21 @@ Tracking + sizing knob (`NROS_CYCLONEDDS_MAX_TYPES`): see
 [`docs/roadmap/archived/phase-212-ux-cargo-native-and-file-consolidation.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-212-ux-cargo-native-and-file-consolidation.md)
 section 212.K.7.
 
-## Outside the nano-ros checkout
+## Where the nano-ros sources come from
 
-A project that lives somewhere else uses the SDK the `nros` binary
-belongs to — a release's own `share/nano-ros`, or the checkout an
-in-tree `nros` was built in — so a plain `nros sync` works. To name a
-different tree, pass it:
+A project uses the SDK root the `nros` binary belongs to — a release's
+own `share/nano-ros` (`nros sdk-root` prints it) — so a plain `nros sync`
+works anywhere. To name a different SDK root, pass it:
 
 ```bash
-nros sync --nano-ros-path /path/to/nano-ros
+nros sync --nano-ros-path <sdk-root>
 ```
 
 `nros sync` then writes the `[patch.crates-io]` rows into that image's
 generated settings file, pointing each `nros*` requirement at a directory
-in your checkout. Nothing about the location is baked into a tracked file,
-so moving the checkout is one re-sync, not an edit.
+in the SDK root. Nothing about the location is baked into a tracked file,
+so moving the project, or installing another release, is one re-sync, not
+an edit.
 
 **Use in code**
 
@@ -271,13 +269,15 @@ structural bound, so it needs the named trait. There is no `Result`: `nros`'s
 
 ## Standalone Package Mode
 
-Examples are standalone copy-out projects: each carries its own
-`system.toml` and resolves on its own, so you can copy one out of the
-checkout and build it where it lands. Build each from its own directory:
+A single package — what `nros new <name> --platform … --lang …`
+scaffolds, and what each
+[example on GitHub](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples)
+is — carries its own `system.toml` and resolves on its own, so it builds
+wherever it lives. Build each from its own directory:
 
 ```bash
-cd examples/linux/rust/talker && nros sync && nros build
-cd examples/linux/rust/service-client && nros sync && nros build
+cd my_talker && nros sync && nros build
+cd my_service_client && nros sync && nros build
 ```
 
 ## Regenerating Bindings
@@ -343,4 +343,4 @@ submodule is retired); cmake auto-resolves it from
 
 ### Usage
 
-See `examples/linux/c/custom-msg/CMakeLists.txt` for a complete example.
+See [`examples/linux/c/custom-msg/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/c/custom-msg/CMakeLists.txt) for a complete example.
