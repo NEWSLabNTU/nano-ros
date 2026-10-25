@@ -22,7 +22,7 @@ With the `nros` CLI on PATH ([Installation](./installation.md) —
 `install.sh` puts it in `~/.nros/bin`), provision the board (`--rmw` defaults to `zenoh`; pick `xrce`
 or `cyclonedds` to match the example you intend to run):
 
-```bash
+```bash probe=30
 nros setup mps2-an385-freertos --rmw zenoh
 ```
 
@@ -48,19 +48,15 @@ fr_talker/
 └── src/main.c
 ```
 
-The scaffold writes `board = "freertos"`, a board *alias*; the C/C++
-build road needs the board's full name, so edit `system.toml` to:
-
-```toml
-[image.freertos]
-board = "mps2-an385-freertos"
-```
+The scaffold's image is `[image.freertos]` with `board =
+"mps2-an385-freertos"` — the platform's one board, which `nros new` picks
+for you (`--board` names another).
 
 **Rust** on FreeRTOS is a node package plus a generated entry, so it
 starts as a workspace (single-package Rust scaffolding is not offered
 for FreeRTOS — `nros new` says so and names the alternative):
 
-```bash
+```bash probe=40
 nros new fr_ws --workspace --lang rust --rmw zenoh
 cd fr_ws
 nros new --image freertos --board mps2-an385-freertos   # adds [image.freertos]
@@ -136,21 +132,20 @@ host port **7800**; with no `locator` an image dials the board's default
 
 ## Build
 
-C / C++, in the scaffolded package. No `nros sync`: a C or C++ leaf's
-message bindings are a CMake-time output. `nros build` passes the
-board's cross-toolchain file and the SDK root:
+C / C++, in the scaffolded package (`fr_talker/`, where `nros new` left
+you). No `nros sync`: a C or C++ leaf's message bindings are a CMake-time
+output. `nros build` passes the board's cross-toolchain file and the SDK
+root:
 
 ```bash
-cd fr_talker
 nros build
 ```
 
-Rust, in the workspace. `nros sync` first: it writes the generated
-message bindings and the resolved launch model the entry is built from.
-Without it the build stops at its preflight naming sync:
+Rust, in the workspace (`fr_ws/`). `nros sync` first: it writes the
+generated message bindings and the resolved launch model the entry is
+built from. Without it the build stops at its preflight naming sync:
 
-```bash
-cd fr_ws
+```bash probe=50
 nros sync
 nros build freertos
 ```
@@ -203,33 +198,66 @@ for why the sync requirement is per language rather than per platform.
 
 ## Run on QEMU
 
-```bash
-# 1. Start the router (ROS's `rmw_zenohd`) on the host, on the port
-#    your image's `locator` names (7447 by default; 7800 in the example
-#    shown above). It must listen on 0.0.0.0 for the Slirp gateway:
-#    Slirp forwards guest 10.0.2.2:<p> → host:<p>.
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd &
+Three terminals: the router, the board, and a stock ROS 2 peer.
 
-# 2. Boot the talker in QEMU — the store's patched qemu-system-arm
-#    (`nros setup mps2-an385-freertos` installed it), with the LAN9118 on
-#    Slirp and the `-icount` the test harness uses. Rust workspace image:
-cd fr_ws
+**1. The router** — ROS's `rmw_zenohd`, on the port your image's `locator`
+names (7447 when it names none, as a scaffolded image; 7800 in the
+example shown above). It must listen on `0.0.0.0` for the Slirp gateway:
+Slirp forwards the guest's `10.0.2.2:<p>` to the host's `<p>`.
+
+```bash probe=60 probe-run=60 probe-keep
+source /opt/ros/humble/setup.bash
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd
+```
+
+```text probe-expect=60
+Started Zenoh router with id
+```
+
+**2. The board** — the store's patched `qemu-system-arm` (`nros setup
+mps2-an385-freertos` installed it), with the LAN9118 on Slirp and the
+`-icount` the test harness uses. From the workspace (`fr_ws/`):
+
+```bash probe=70 probe-run=120 probe-keep
 "$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
     -icount shift=auto \
     -semihosting-config enable=on,target=native \
     -kernel build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/debug/freertos_entry \
     -nic user,model=lan9118
-#    …or the C / C++ package's image — same flags, its own ELF:
-#    -kernel build/freertos/cmake/fr_talker
+```
 
-# 3. Verify from stock ROS 2:
+The workspace image runs the scaffold's talker and listener in one board,
+so it prints both sides of `/chatter` (a `std_msgs/Int32` counter from 0):
+
+```text probe-expect=70
+Network ready.
+[INFO] Publishing: 0
+[INFO] I heard: 0
+[INFO] Publishing: 1
+[INFO] I heard: 1
+...
+```
+
+The C / C++ package's image boots with the same flags and its own ELF,
+`-kernel build/freertos/cmake/fr_talker` from `fr_talker/`. The scaffolded C
+talker publishes once and returns, so it prints one line,
+`fr_talker: published 0 on /chatter`; paste the
+[example's `main.c`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-freertos/c/talker/src/main.c)
+over it for a timer-driven talker.
+
+**3. A stock ROS 2 peer.** The talker publishes best-effort; stock `ros2 topic
+echo` defaults to RELIABLE, so the QoS-mismatched echo silently delivers
+nothing. Force best-effort to receive:
+
+```bash probe=80 probe-run=90
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-# Talker publishes best-effort; stock `ros2 topic echo` defaults to
-# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
-# Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+```
+
+```text probe-expect=80
+data:
 ```
 
 QEMU exits via Ctrl-A x.
@@ -237,10 +265,11 @@ QEMU exits via Ctrl-A x.
 > **Contributors:** the in-tree fixture run/test lanes for this platform are in
 > [Per-Platform Contributor Lanes](../internals/platform-lanes.md#freertos).
 
-**Readiness signal.** Within ~20 seconds of QEMU boot, the talker
-should print `Publishing: 'Hello World: 1'` on its semihosting
-stdout — the count starts at 1, matching the official ROS 2 demo
-talker. QEMU cold-boot through FreeRTOS init + lwIP DHCP + zenoh
+**Readiness signal.** Within ~20 seconds of QEMU boot, the workspace
+image prints `[INFO] Publishing: 0` on its semihosting stdout (the
+[GitHub examples](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos)
+print `Publishing: 'Hello World: 1'` instead — a `std_msgs/String`
+counted from 1, like the official ROS 2 demo talker). QEMU cold-boot through FreeRTOS init + lwIP DHCP + zenoh
 session open typically takes 10–15 s. If no `Publishing:` line in
 30 seconds:
 

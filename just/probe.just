@@ -38,6 +38,52 @@ checkout:
 installed:
     PROBE_TRACK=installed ./scripts/probe/run-bootstrap-probe.sh
 
+# phase-517 W10 — the installed track, one QEMU chapter per recipe: install the
+# release asset into a clean `ros:humble` container (the chapters' router is
+# ROS's `rmw_zenohd`), then replay the chapter's `probe=NN` blocks — setup,
+# scaffold, build, and each Run step, which must print the output block the
+# chapter documents beside it (`probe-expect`). Opt-in: never part of a tier or
+# a merge-gating lane; the weekly `probe-platforms` workflow runs every one.
+# PROBE_ASSET=<dir> skips the asset build (`platform-asset` below makes one).
+# `platform` is the one recipe; the named ones below spell each chapter.
+# Replay one platform chapter on the installed track (see the recipes below).
+[group("main")]
+platform name:
+    PROBE_TRACK=installed PROBE_PLATFORM={{name}} ./scripts/probe/run-bootstrap-probe.sh
+
+# Build the release asset once, for several `PROBE_ASSET=<out> just probe <platform>`.
+[group("main")]
+platform-asset out="tmp/probe-asset":
+    PROBE_TRACK=installed PROBE_ASSET_OUT={{out}} ./scripts/probe/run-bootstrap-probe.sh
+
+# book/src/getting-started/bare-metal.md — Rust talker on QEMU MPS2-AN385.
+[group("main")]
+baremetal: (platform "baremetal")
+
+# book/src/getting-started/freertos.md — Rust workspace image on QEMU MPS2-AN385.
+[group("main")]
+freertos: (platform "freertos")
+
+# book/src/getting-started/threadx.md — the Linux simulator flavour.
+[group("main")]
+threadx-linux: (platform "threadx-linux")
+
+# book/src/getting-started/threadx.md — the RISC-V 64 QEMU flavour.
+[group("main")]
+threadx-riscv64: (platform "threadx-riscv64")
+
+# book/src/getting-started/integration-nuttx.md — QEMU Arm `virt`.
+[group("main")]
+nuttx-arm: (platform "nuttx-arm")
+
+# book/src/getting-started/integration-nuttx.md — QEMU RISC-V `rv-virt`.
+[group("main")]
+nuttx-riscv: (platform "nuttx-riscv")
+
+# book/src/getting-started/integration-zephyr.md — native_sim.
+[group("main")]
+zephyr: (platform "zephyr")
+
 # Same probe on a NON-Debian, NON-bash host (issue 0373). The book's install
 # path was only ever exercised on ubuntu+bash, which is how an apt-only prereq
 # block, a `just` contradiction, an unactionable ROS warning and a zsh-fatal

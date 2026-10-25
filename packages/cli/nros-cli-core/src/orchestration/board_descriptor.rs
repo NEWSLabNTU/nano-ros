@@ -292,6 +292,20 @@ pub struct BoardEntry {
     /// second grammar to keep in step with cargo's.
     #[serde(default)]
     pub crate_root_deps: Vec<String>,
+    /// The RFC-0077 panic policy a GENERATED entry takes when its image states
+    /// none — `"own"` on a board whose [`Self::crate_root_extra`] already
+    /// brings the `#[panic_handler]` (`use panic_semihosting as _;`).
+    ///
+    /// Same "one fact, one place" as [`Self::crate_root_deps`]: the line that
+    /// links a panic crate and the policy that keeps `nros::main!` from
+    /// emitting a SECOND handler are halves of one fact. With only the first
+    /// in the descriptor, every image that did not repeat `panic = "own"` —
+    /// which `nros new --image <id> --board mps2-an385-freertos` never writes —
+    /// failed to compile with `E0152: duplicate lang item panic_impl`
+    /// (phase-517 W10, found replaying `freertos.md`). An image's own `panic`
+    /// still wins.
+    #[serde(default)]
+    pub panic: Option<String>,
     /// Builder-chain suffix appended inside the closure; empty for most boards.
     #[serde(default)]
     pub closure_extra: String,

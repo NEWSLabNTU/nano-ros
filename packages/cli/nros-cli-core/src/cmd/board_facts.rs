@@ -352,11 +352,29 @@ fn board_sources(
 }
 
 /// The `[env]` rows of a board descriptor's `cargo_config`, `${workspace}`
-/// resolved. A row is a string or `{ value = "…", … }`; `force`/`relative` are
-/// cargo-config spellings and mean nothing to a process environment.
+/// resolved. A row is a string or `{ value = "…", … }`; `relative` is a
+/// cargo-config spelling and means nothing to a process environment.
+///
+/// `force` does mean something, and the same thing on both roads (phase-517
+/// W10): cargo applies a non-forced `[env]` row only when the variable is not
+/// already in the environment, so a row this carries onto the cmake road —
+/// where Corrosion's `cmake -E env` would otherwise OVERWRITE the variable — is
+/// dropped when the environment already states it. That is what lets a board
+/// name its default cross compiler (`CC_<triple>`) while a lane that resolved
+/// a different one (`nros_riscv64_export_cc`) keeps its own on either road.
 fn descriptor_env_rows(
     descriptor: &BoardDescriptor,
     nano_ros_root: &Path,
+) -> Vec<(String, String)> {
+    descriptor_env_rows_with(descriptor, nano_ros_root, |k| {
+        std::env::var_os(k).is_some_and(|v| !v.is_empty())
+    })
+}
+
+fn descriptor_env_rows_with(
+    descriptor: &BoardDescriptor,
+    nano_ros_root: &Path,
+    env_has: impl Fn(&str) -> bool,
 ) -> Vec<(String, String)> {
     let Some(text) = descriptor.cargo_config_rendered(nano_ros_root) else {
         return Vec::new();
@@ -369,11 +387,19 @@ fn descriptor_env_rows(
     };
     env.iter()
         .filter_map(|(k, v)| {
-            let value = match v {
-                toml::Value::String(s) => s.clone(),
-                toml::Value::Table(t) => t.get("value")?.as_str()?.to_string(),
+            let (value, force) = match v {
+                toml::Value::String(s) => (s.clone(), false),
+                toml::Value::Table(t) => (
+                    t.get("value")?.as_str()?.to_string(),
+                    t.get("force")
+                        .and_then(toml::Value::as_bool)
+                        .unwrap_or(false),
+                ),
                 _ => return None,
             };
+            if !force && env_has(k) {
+                return None;
+            }
             Some((k.clone(), value))
         })
         .collect()
@@ -868,6 +894,27 @@ mod tests {
     /// phase-484 W2b — a board's own `[env]` facts reach every road through
     /// this verb, and a `system.toml`-less cargo leaf is attributed to the one
     /// board crate it depends on.
+    #[test]
+    fn an_environment_value_beats_a_non_forced_descriptor_row_only() {
+        // phase-517 W10 — cargo's own `[env]` rule, on the cmake road too.
+        let root = repo_root();
+        let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+            .expect("in-tree catalog");
+        let d = resolve_board(&catalog, "rv-virt-threadx").expect("rv-virt-threadx");
+        let cc = "CC_riscv64gc_unknown_none_elf";
+        let all = descriptor_env_rows_with(d, &root, |_| false);
+        assert!(all.iter().any(|(k, _)| k == cc), "{all:?}");
+        let set = descriptor_env_rows_with(d, &root, |_| true);
+        assert!(
+            !set.iter().any(|(k, _)| k == cc),
+            "a lane's CC wins: {set:?}"
+        );
+        assert!(
+            set.iter().any(|(k, _)| k == "THREADX_PORT"),
+            "a forced row is delivered whatever the environment says: {set:?}"
+        );
+    }
+
     #[test]
     fn a_cargo_leaf_gets_its_boards_descriptor_env_rows() {
         let root = repo_root();

@@ -37,6 +37,22 @@ NETX_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-threadx-qem
 THREADX_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-threadx-qemu-riscv64/config", force = true }
 THREADX_PORT = { value = "risc-v64/gnu", force = true }
 THREADX_EXTRA_INCLUDES = { value = "ports/risc-v64/gnu/example_build/qemu_virt", force = true }
+# The cc-crate cross compiler for this triple — the toolchain `nros setup
+# rv-virt-threadx` provisions (xPack `riscv-none-elf-gcc`), named the way the
+# mps2 boards name theirs. Without it cc-rs derives `riscv64-unknown-elf-gcc`
+# from the triple, which that toolchain does not contain, and an installed
+# user's first `nros build` died in zpico-sys's build script (phase-517 W10,
+# measured on the installed track). Not forced: the in-tree lanes resolve
+# xPack-or-Ubuntu themselves (`nros_riscv64_export_cc`) and export these, and a
+# process env var beats a non-forced `[env]` row — on the cargo road by cargo's
+# rule, on the cmake road by `nros ws board-facts` applying the same one
+# (`descriptor_env_rows`). The ABI flags must stay
+# identical to that helper's and to cmake/toolchain/riscv64-threadx.cmake's.
+CC_riscv64gc_unknown_none_elf = "riscv-none-elf-gcc"
+CXX_riscv64gc_unknown_none_elf = "riscv-none-elf-g++"
+AR_riscv64gc_unknown_none_elf = "riscv-none-elf-ar"
+CFLAGS_riscv64gc_unknown_none_elf = "-march=rv64gc -mabi=lp64d -mcmodel=medany"
+CXXFLAGS_riscv64gc_unknown_none_elf = "-march=rv64gc -mabi=lp64d -mcmodel=medany"
 '''
 
 # phase-484 W4b (RFC-0103 D1, D10) — the board's network defaults, the ONE

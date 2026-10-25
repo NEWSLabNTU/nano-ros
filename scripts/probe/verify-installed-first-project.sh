@@ -56,13 +56,13 @@ bin=./build/posix-cyclonedds-linux/cmake/linux_entry
 [ -x "$bin" ] || probe_fail "the entry binary first-project.md runs is missing at $PWD/${bin#./}"
 
 log=/tmp/installed-first-project.log
-# `NROS_DEADLINE` travels in front of this script with grep-q.sh (see
-# run-bootstrap-probe.sh): the installed track has no checkout to source it from.
+# `NROS_DEADLINE` travels at the head of the probe script with grep-q.sh (the
+# `--prelude` in run-bootstrap-probe.sh): the installed track has no checkout to source it from.
 "${NROS_DEADLINE[@]}" 60 "$bin" >"$log" 2>&1 &
 entry_pid=$!
 deadline=$((SECONDS + 45))
 # `nros_grep_q` comes from scripts/lib/grep-q.sh, which run-bootstrap-probe.sh
-# prepends to the post-install check in this same shell. A grep that cannot run
+# places at the head of the probe script (`--prelude`), in this same shell. A grep that cannot run
 # exits 2 here rather than reading as "not published yet" for 45 s (issue 0726).
 until nros_grep_q "Published: 1" "$log" && nros_grep_q "Received: 1" "$log"; do
     if ! kill -0 "$entry_pid" 2>/dev/null; then

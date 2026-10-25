@@ -2438,6 +2438,14 @@ function(nros_cargo_build)
     # phase-336 — the preset's definition rides on the command, so a crate whose
     # own manifest declares no `nros-*` profile still resolves the name. Empty
     # for a user-owned profile, whose manifest governs.
+    # phase-517 W10 — the cargo this command runs, resolved the way every
+    # other cargo here is (`nros_rust_tool`, issue 1304): PATH, then rustup's
+    # proxies, then `~/.cargo/bin`. A bare `cargo` failed for any reader of
+    # integration-zephyr.md whose `west build` ran in a shell without
+    # `~/.cargo/bin` on PATH — `nros setup` installs rustup there and touches no
+    # PATH — as `FileNotFoundError: … 'cargo'` from the header placer
+    # (measured on the installed track).
+    nros_rust_tool(_nros_cb_cargo cargo)
     add_custom_target(${_target_name}_build
         COMMAND ${CMAKE_COMMAND} -E env
             ${_rustup_override}
@@ -2454,7 +2462,7 @@ function(nros_cargo_build)
             python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py
                 ${_nros_placer_pkgs}
                 --dest ${_nros_hdr_root}
-                -- cargo ${CARGO_ARGS} --message-format=json-render-diagnostics
+                -- ${_nros_cb_cargo} ${CARGO_ARGS} --message-format=json-render-diagnostics
         BYPRODUCTS ${_cargo_byproducts}
         COMMENT "Building ${_nros_cb_ident} via Cargo"
         VERBATIM

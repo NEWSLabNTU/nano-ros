@@ -86,14 +86,29 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
             // have failed too. The requirement these targets DO have is the
             // `rust-src` component, because the leaf builds them with
             // `-Zbuild-std`.
+            //
+            // On the toolchain the board BUILDS with: a `toolchain = "nightly"`
+            // board is built by the pinned nightly (Corrosion's configure asks
+            // for it by name), so `rust-src` on rustup's default stable answers
+            // a question nobody asked — phase-517 W10 measured both halves:
+            // preflight refused a host whose nightly HAD `rust-src` because the
+            // default did not, and would have passed one whose nightly lacked it.
             Provisioning::BuildStd => {
-                if !rust_component_installed("rust-src") {
+                let channel = (board.toolchain
+                    == crate::orchestration::board_descriptor::Toolchain::Nightly)
+                    .then(|| pinned_nightly(nano_ros_root))
+                    .flatten();
+                if !rust_component_installed("rust-src", channel.as_deref()) {
+                    let on = channel
+                        .as_deref()
+                        .map(|c| format!(" --toolchain {c}"))
+                        .unwrap_or_default();
                     out.push(Missing {
                         what: format!(
                             "`rust-src` for build-std target `{target}` (board `{}`)",
                             board.names[0]
                         ),
-                        remedy: "rustup component add rust-src".to_string(),
+                        remedy: format!("rustup component add rust-src{on}"),
                     });
                 }
             }
@@ -120,6 +135,33 @@ pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>)
     }
 
     out
+}
+
+/// What rustup must add for `board`'s cross target — the same rule [`check`]
+/// refuses a build by, so `nros setup <board>` installs exactly what that check
+/// would ask for (phase-517 W10): a prebuilt `rust-std` for an ordinary
+/// triple, the `rust-src` component for a build-std one, nothing for a host
+/// board.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RustNeed {
+    /// `rustup target add <triple>`.
+    Target(String),
+    /// `rustup component add <name>` — `rust-src`, for `-Zbuild-std`.
+    Component(String),
+}
+
+#[must_use]
+pub fn rust_need(board: &BoardDescriptor, nano_ros_root: Option<&Path>) -> Option<RustNeed> {
+    let target = board.target.as_deref()?;
+    let provisioning = if board_builds_std(board) {
+        Provisioning::BuildStd
+    } else {
+        target_provisioning(nano_ros_root, target)
+    };
+    Some(match provisioning {
+        Provisioning::Rustup => RustNeed::Target(target.to_string()),
+        Provisioning::BuildStd => RustNeed::Component("rust-src".to_string()),
+    })
 }
 
 /// Whether the board's own cargo config builds `core`/`alloc` from source
@@ -179,15 +221,33 @@ fn target_provisioning(nano_ros_root: Option<&Path>, target: &str) -> Provisioni
     Provisioning::Rustup
 }
 
-/// Whether `rustup` reports a COMPONENT as installed.
+/// The pinned nightly channel a `toolchain = "nightly"` board builds with —
+/// the `nightly-*` row of `config/rust-toolchains.txt`, the generated listing
+/// of every `rust-toolchain.toml` in the tree (the NuttX FFI crates' among
+/// them, which is what pins Corrosion's configure). Read from that listing
+/// because it is what an INSTALLED SDK root ships; `tools/` is not staged.
+/// `None` when unreadable: the check then asks rustup's default, as before.
+fn pinned_nightly(nano_ros_root: Option<&Path>) -> Option<String> {
+    let text = std::fs::read_to_string(nano_ros_root?.join("config/rust-toolchains.txt")).ok()?;
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .filter_map(|l| l.split_whitespace().next())
+        .find(|c| c.starts_with("nightly-"))
+        .map(str::to_string)
+}
+
+/// Whether `rustup` reports a COMPONENT as installed (on `toolchain`, or the
+/// default when `None`).
 ///
 /// Same false-negative-is-safe rule as [`rust_target_installed`]: no rustup ⇒
 /// report installed and let the build speak.
-fn rust_component_installed(component: &str) -> bool {
-    let Ok(out) = std::process::Command::new("rustup")
-        .args(["component", "list", "--installed"])
-        .output()
-    else {
+fn rust_component_installed(component: &str, toolchain: Option<&str>) -> bool {
+    let mut args = vec!["component", "list", "--installed"];
+    if let Some(t) = toolchain {
+        args.extend(["--toolchain", t]);
+    }
+    let Ok(out) = std::process::Command::new("rustup").args(&args).output() else {
         return true;
     };
     if !out.status.success() {

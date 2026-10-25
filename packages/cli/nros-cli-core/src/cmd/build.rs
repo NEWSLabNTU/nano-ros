@@ -632,6 +632,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         if !missing.is_empty() {
             eyre::bail!("{}", crate::builder::preflight::report(&missing));
         }
+        crate::cmd::setup::expose_store_tools(descriptor, nano_ros_root.as_deref());
 
         // Issue 1716 — a QUERY stops here. Everything it answers is fixed by
         // now (the push below reads only the image, its board descriptor and
@@ -1917,6 +1918,7 @@ fn plan_leaf_image(
     // image named; `leaf_settings` resolves the same answer into the build.
     leaf_image_net(descriptor, &img.board, Some(&nros_root), &img.decl)
         .map_err(|e| eyre::eyre!("`{qual}` cannot be built: {e}"))?;
+    crate::cmd::setup::expose_store_tools(descriptor, Some(&nros_root));
     let mut missing = crate::builder::preflight::check(descriptor, root, Some(&nros_root));
     // The toolchain half only. preflight's sync probe is a WORKSPACE heuristic
     // (a `src/` with neither `generated/` nor `build/nros/`), and a leaf's
@@ -2181,6 +2183,7 @@ fn plan_single_package_cmake(
     // The toolchain half of preflight, as on the cargo leaf road; its sync
     // probe is a workspace heuristic, and this configure generates its own
     // message bindings.
+    crate::cmd::setup::expose_store_tools(descriptor, Some(&nros_root));
     let mut missing = crate::builder::preflight::check(descriptor, root, Some(&nros_root));
     missing.retain(|m| m.remedy != "nros sync");
     if !missing.is_empty() {

@@ -170,6 +170,179 @@ fn cargo_bins() -> Vec<PathBuf> {
     dirs
 }
 
+/// The cargo `bin` directory to put in FRONT of this process's `PATH`, when
+/// `PATH` reaches no `cargo` but the place `nros setup` installs rustup does.
+///
+/// phase-517 W10. `nros setup` installs rustup into `~/.cargo` "where `cmake`
+/// finds it without any PATH change" (installation.md), and the C/C++ road
+/// honoured that — Corrosion looks in `~/.cargo/bin` itself. The cargo road did
+/// not: `nros build` spawns `cargo` by name, so on a fresh machine the very
+/// next command after `nros setup` died with `running cargo update …: No such
+/// file or directory`, naming no remedy (measured replaying `bare-metal.md` on
+/// the installed track). Every `cargo`/`rustc` this process starts — and every
+/// one `cmake` starts on its behalf — inherits the fix from one place.
+///
+/// `None` when `PATH` already has a `cargo` (whichever toolchain a user put
+/// there wins, as it always did) or when no candidate holds one.
+#[must_use]
+pub fn cargo_bin_to_prepend() -> Option<PathBuf> {
+    cargo_bin_to_prepend_with(std::env::var_os("PATH").as_deref(), &cargo_bins(), |p| {
+        p.is_file()
+    })
+}
+
+/// Put [`cargo_bin_to_prepend`]'s directory in front of this process's `PATH`
+/// — called once by the `nros` binary before it dispatches a command.
+pub fn expose_cargo_bin() {
+    let Some(dir) = cargo_bin_to_prepend() else {
+        return;
+    };
+    let mut parts = vec![dir];
+    if let Some(cur) = std::env::var_os("PATH") {
+        parts.extend(std::env::split_paths(&cur));
+    }
+    crate::cmd::setup::set_process_path(parts);
+}
+
+fn cargo_bin_to_prepend_with(
+    path: Option<&std::ffi::OsStr>,
+    candidates: &[PathBuf],
+    is_file: impl Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    let on_path = path.is_some_and(|p| std::env::split_paths(p).any(|d| is_file(&d.join("cargo"))));
+    if on_path {
+        return None;
+    }
+    candidates
+        .iter()
+        .find(|d| is_file(&d.join("cargo")))
+        .cloned()
+}
+
+/// Add each of `needs` that rustup does not list as installed; returns the
+/// one-line summary `nros setup` prints. Each need names the toolchain it
+/// belongs to — `None` is rustup's default (the stable channel [`ensure`]
+/// installs), `Some(channel)` a pinned one (a build-std board's nightly), which
+/// is installed first when absent.
+///
+/// phase-517 W10. The chapters promised `nros setup mps2-an385-baremetal`
+/// provisions "the Rust `thumbv7m-none-eabi` target", and nothing did: on a
+/// fresh machine the next `nros build` stopped at preflight with `rustup target
+/// add thumbv7m-none-eabi`; on NuttX it wanted `rust-src` (the toolchain
+/// `nros setup` installs is rustup's minimal profile) and then Corrosion
+/// refused the configure outright — `Could not find toolchain
+/// 'nightly-2026-04-11'` — because the board builds with the pinned nightly
+/// and nothing had installed it (all measured on the installed track). Without
+/// rustup (a distro toolchain) there is nothing this can install, and the
+/// build's own preflight still names the need, so that is a note rather than
+/// an error.
+pub fn ensure_needs(
+    needs: &[(Option<String>, crate::builder::preflight::RustNeed)],
+    dry_run: bool,
+) -> Result<String, String> {
+    use crate::builder::preflight::RustNeed;
+    if needs.is_empty() {
+        return Ok("no cross target for this board".to_string());
+    }
+    let label = |(tc, n): &(Option<String>, RustNeed)| {
+        let what = match n {
+            RustNeed::Target(t) => format!("target {t}"),
+            RustNeed::Component(c) => format!("component {c}"),
+        };
+        match tc {
+            Some(c) => format!("{what} ({c})"),
+            None => what,
+        }
+    };
+    let all = needs.iter().map(label).collect::<Vec<_>>().join(", ");
+    let Some(bin) = find_rustup() else {
+        return Ok(format!(
+            "{all} — no rustup to install with; the build's preflight checks it"
+        ));
+    };
+    let rustup = |args: &[&str]| -> Result<String, String> {
+        let out = Command::new(&bin)
+            .args(args)
+            .current_dir("/")
+            .env_remove("RUSTUP_TOOLCHAIN")
+            .output()
+            .map_err(|e| format!("run {} {}: {e}", bin.display(), args.join(" ")))?;
+        Ok(String::from_utf8_lossy(&out.stdout).to_string())
+    };
+    let run = |args: &[&str]| -> Result<(), String> {
+        let st = Command::new(&bin)
+            .args(args)
+            .current_dir("/")
+            .env_remove("RUSTUP_TOOLCHAIN")
+            .status()
+            .map_err(|e| format!("run {} {}: {e}", bin.display(), args.join(" ")))?;
+        if st.success() {
+            Ok(())
+        } else {
+            Err(format!("`rustup {}` exited {st}", args.join(" ")))
+        }
+    };
+    let toolchains = rustup(&["toolchain", "list"])?;
+    let mut done = Vec::new();
+    // A pinned channel that is not installed yet: install it, minimal profile,
+    // before anything is added to it.
+    let mut channels: Vec<&str> = needs.iter().filter_map(|(c, _)| c.as_deref()).collect();
+    channels.sort_unstable();
+    channels.dedup();
+    for c in channels {
+        if toolchains.lines().any(|l| {
+            l.split_whitespace()
+                .next()
+                .is_some_and(|t| t.starts_with(c))
+        }) {
+            continue;
+        }
+        if dry_run {
+            done.push(format!("would install toolchain {c}"));
+            continue;
+        }
+        run(&["toolchain", "install", c, "--profile", "minimal"])?;
+        done.push(format!("installed toolchain {c}"));
+    }
+    for need in needs {
+        let (tc, n) = need;
+        let mut tc_args: Vec<&str> = Vec::new();
+        if let Some(c) = tc.as_deref() {
+            tc_args = vec!["--toolchain", c];
+        }
+        let (verb, name) = match n {
+            RustNeed::Target(t) => ("target", t.as_str()),
+            RustNeed::Component(c) => ("component", c.as_str()),
+        };
+        let mut list = vec![verb, "list", "--installed"];
+        list.extend(&tc_args);
+        // An uninstalled pinned channel (dry run) lists nothing: report it as
+        // missing, which is what it is.
+        let installed = rustup(&list).unwrap_or_default();
+        // `component list --installed` prints `rust-src` bare and host-suffixed
+        // components as `<name>-<host>`.
+        let present = installed.lines().any(|l| {
+            l.trim() == name || (verb == "component" && l.trim().starts_with(&format!("{name}-")))
+        });
+        if present {
+            continue;
+        }
+        if dry_run {
+            done.push(format!("would add {}", label(need)));
+            continue;
+        }
+        let mut add = vec![verb, "add", name];
+        add.extend(&tc_args);
+        run(&add)?;
+        done.push(format!("added {}", label(need)));
+    }
+    if done.is_empty() {
+        Ok(format!("{all} present"))
+    } else {
+        Ok(done.join(", "))
+    }
+}
+
 fn find_rustup() -> Option<PathBuf> {
     on_path("rustup").or_else(|| {
         cargo_bins()
@@ -323,6 +496,33 @@ pub fn ensure(index: &SdkIndex, host: &str, dry_run: bool) -> Result<Outcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_path_with_cargo_is_left_alone() {
+        let has =
+            |p: &Path| p == Path::new("/usr/bin/cargo") || p == Path::new("/h/.cargo/bin/cargo");
+        let path = std::ffi::OsString::from("/usr/bin");
+        assert_eq!(
+            cargo_bin_to_prepend_with(Some(&path), &[PathBuf::from("/h/.cargo/bin")], has),
+            None
+        );
+    }
+
+    #[test]
+    fn a_path_without_cargo_gets_the_installed_bin() {
+        let has = |p: &Path| p == Path::new("/h/.cargo/bin/cargo");
+        let path = std::ffi::OsString::from("/usr/bin");
+        let bins = [PathBuf::from("/c/bin"), PathBuf::from("/h/.cargo/bin")];
+        assert_eq!(
+            cargo_bin_to_prepend_with(Some(&path), &bins, has),
+            Some(PathBuf::from("/h/.cargo/bin"))
+        );
+        // …and nothing when no candidate holds one either.
+        assert_eq!(
+            cargo_bin_to_prepend_with(Some(&path), &bins, |_| false),
+            None
+        );
+    }
 
     fn index(extra: &str) -> SdkIndex {
         SdkIndex::parse(&format!(

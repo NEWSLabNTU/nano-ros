@@ -62,8 +62,8 @@ sdk_root="$(cd "$HOME" && nros sdk-root --explain 2>/tmp/sdk-root.explain)" || r
 cat /tmp/sdk-root.explain
 [ "$rc" -eq 0 ] \
     || probe_fail "\`nros sdk-root\` exited $rc — this release carries no SDK root, so no scaffolded project can configure (RFC-0099 D1; staged by scripts/stage-sdk-root.sh)"
-# `nros_grep_q` (scripts/lib/grep-q.sh, prepended to this file by
-# run-bootstrap-probe.sh): a grep that fails to RUN exits 2 instead of reading
+# `nros_grep_q` (scripts/lib/grep-q.sh, at the head of the probe script —
+# run-bootstrap-probe.sh's `--prelude`): a grep that fails to RUN exits 2 instead of reading
 # as "the rung was not named" (issue 0726).
 nros_grep_q "via this toolchain's own share/nano-ros" /tmp/sdk-root.explain \
     || probe_fail "the SDK root was answered by a rung other than the shipped one: $sdk_root"
