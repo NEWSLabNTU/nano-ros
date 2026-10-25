@@ -1148,6 +1148,21 @@ test-ignored package="":
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
+    # Issue 2059 — rosidl-codegen's C syntax checks compile against nros-c's
+    # per-build config header, which lives in a cargo `$OUT_DIR` since issue
+    # 1824 and is a different workspace from theirs. This lane is the one that
+    # runs them, so it places the header and names it; without it all three
+    # refused (correctly) with `NROS_C_CONFIG_INCLUDE=None` every night.
+    if [ -z "{{package}}" ] || [ "{{package}}" = "rosidl-codegen" ]; then
+        placed="$PWD/build/heap-compile-check"
+        nros_cargo_placed "$placed" nros-c -- build -q -p nros-c \
+            --features alloc,platform-posix,rmw-cffi
+        if ! NROS_C_CONFIG_INCLUDE="$(nros_locate_artifact c-include --placed-dir "$placed")"; then
+            echo "test-ignored: nros-c's config header was not placed in $placed" >&2
+            exit 1
+        fi
+        export NROS_C_CONFIG_INCLUDE
+    fi
     echo "Running #[ignore]d tests (external infra may be required)…"
     rc=0
     if [ -n "{{package}}" ]; then
