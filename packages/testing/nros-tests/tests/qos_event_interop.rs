@@ -50,19 +50,50 @@
 //! either half of the surface. A live peer changes nothing about that; the
 //! missing piece is a runtime poll path. Issue 1164.
 //!
-//! Interop cell: `native-qos-event-rust-zenoh-r2n` (`interop::CELLS`).
+//! Interop cells (`interop::CELLS`): `native-qos-event-rust-zenoh-r2n`
+//! (the Rust probe, below) and `native-qos-event-c-zenoh-bidir` (issue 2039,
+//! the C API's matched + `LivelinessChanged` callbacks; see
+//! [`c_matched_and_liveliness_callbacks_follow_stock_ros2_peers`]).
 
 use nros_tests::fixtures::RequireFixture;
-use std::process::Command;
+use std::{
+    process::Command,
+    time::{Duration, Instant},
+};
 
 use nros_tests::{
     fixtures, interop,
     output::{
-        QOS_EVENT_LIVELINESS_CHANGED, QOS_EVENT_PROBE_NONE, QOS_EVENT_PROBE_READY,
-        QOS_EVENT_PROBE_UNSUPPORTED, QOS_EVENT_SUPPORTS,
+        MATCHED_PROBE_LIVELINESS, MATCHED_PROBE_PUB, MATCHED_PROBE_READY, MATCHED_PROBE_SUB,
+        MATCHED_PROBE_UNSUPPORTED, QOS_EVENT_LIVELINESS_CHANGED, QOS_EVENT_PROBE_NONE,
+        QOS_EVENT_PROBE_READY, QOS_EVENT_PROBE_UNSUPPORTED, QOS_EVENT_SUPPORTS,
     },
+    process::ManagedProcess,
     ros2::{DEFAULT_ROS_DISTRO, Ros2Process, require_ros2},
 };
+
+/// Both cells this binary hosts. Each case states the full set because
+/// `assert_test_bound` compares against every `Tier::Runtime` cell of the
+/// binary; `interop::CASE_CELLS` says which case is evidence for which.
+fn bound_cells() {
+    interop::assert_test_bound(
+        "qos_event_interop",
+        &[
+            (
+                nros_tests::matrix::PlatformId::Linux,
+                nros_tests::matrix::Lang::Rust,
+                nros_tests::matrix::Rmw::Zenoh,
+                nros_tests::matrix::Workload::QosEvents,
+            ),
+            (
+                nros_tests::matrix::PlatformId::Linux,
+                nros_tests::matrix::Lang::C,
+                nros_tests::matrix::Rmw::Zenoh,
+                nros_tests::matrix::Workload::QosEvents,
+            ),
+        ],
+    );
+}
 
 /// A stock ROS 2 publisher appearing on our topic delivers a
 /// `LivelinessChanged` event to a nano-ros application callback.
@@ -91,15 +122,7 @@ fn stock_ros2_publisher_raises_a_liveliness_event() {
     // the binary this test spawns — `fixtures::build_qos_event_probe()`, whose
     // `examples/fixtures.toml` row is `lang = "rust"` (phase-433 W3: the
     // language axis was once inverted and agreed with itself).
-    interop::assert_test_bound(
-        "qos_event_interop",
-        &[(
-            nros_tests::matrix::PlatformId::Linux,
-            nros_tests::matrix::Lang::Rust,
-            nros_tests::matrix::Rmw::Zenoh,
-            nros_tests::matrix::Workload::QosEvents,
-        )],
-    );
+    bound_cells();
 
     require_ros2();
     let router = fixtures::or_unmet(fixtures::ZenohRouter::start_unique());
@@ -179,5 +202,173 @@ fn stock_ros2_publisher_raises_a_liveliness_event() {
         "the event must report a POSITIVE `alive_count_change` — the stock \
          talker appearing. A zero delta is what a liveliness poll that resolved \
          no tokens also reports:\n{output}"
+    );
+}
+
+/// One field of a probe marker line (`current=3` -> 3).
+fn field(line: &str, key: &str) -> Option<i64> {
+    line.split_whitespace()
+        .find_map(|f| f.strip_prefix(key))
+        .and_then(|v| v.parse::<i64>().ok())
+}
+
+/// The `current=` value of the LAST `marker` line in `transcript`.
+fn last_current(transcript: &str, marker: &str) -> Option<i64> {
+    transcript
+        .lines()
+        .filter(|l| l.contains(marker))
+        .filter_map(|l| field(l, "current="))
+        .next_back()
+}
+
+/// Keep reading the probe into `transcript` until `done(transcript)` or the
+/// deadline. `collect_until` hands back only what arrived during the call, so
+/// the transcript is the caller's to keep.
+fn pump_until(
+    probe: &mut ManagedProcess,
+    transcript: &mut String,
+    within: Duration,
+    done: impl Fn(&str) -> bool,
+) -> bool {
+    let deadline = Instant::now() + within;
+    while Instant::now() < deadline {
+        if done(transcript) {
+            return true;
+        }
+        transcript.push_str(&probe.collect_until("\u{0}", Duration::from_millis(500)));
+    }
+    done(transcript)
+}
+
+/// Issue 2039 — the C API's matched and status-event callbacks, driven by
+/// STOCK ROS 2 peers (cell `native-qos-event-c-zenoh-bidir`).
+///
+/// The probe (`bins/matched-events-probe-c`) publishes on `/i2039_out` and
+/// subscribes to `/i2039_in`, with three callbacks registered through the
+/// public setters. Then:
+///
+/// 1. a stock `ros2 topic echo /i2039_out` and a stock `ros2 topic pub
+///    /i2039_in` start, and the C callbacks must report the counts RISING:
+///    the publisher's matched `current >= 1`, the subscription's matched
+///    `current >= 1`, and a `LivelinessChanged` with a positive
+///    `alive_change` (the stock publisher appearing);
+/// 2. both peers stop, and the PUBLISHER's matched callback must report
+///    `current` falling back to 0 (a negative `change=`).
+///
+/// NOT asserted, because it does not happen, and that is a finding rather than
+/// a test gap: the SUBSCRIPTION's matched count never falls once the stock
+/// publisher leaves (issue 2060). The zenoh shim observes a subscription's
+/// matched / liveliness / deadline status inside `has_data`, and the executor
+/// skips `has_data` for a wake-attributed slot with no arrival — so after the
+/// last publisher is gone nothing ever asks. The publisher side falls because
+/// `rcl_publish` is its poll point. The case prints whether the subscription
+/// fall arrived, so the day 2060 is fixed the transcript says so.
+///
+/// The path under test is nros-c's — the process-wide `status_event_slots`
+/// table and the generation-tagged slot reference between the backend and
+/// the user's callback — which the Rust cell above does not reach.
+#[test]
+fn c_matched_and_liveliness_callbacks_follow_stock_ros2_peers() {
+    bound_cells();
+
+    require_ros2();
+    let router = fixtures::or_unmet(fixtures::ZenohRouter::start_unique());
+    let locator = router.locator();
+
+    let bin = fixtures::build_cmake_leaf_rmw(
+        "packages/testing/nros-tests/bins/matched-events-probe-c",
+        "matched_events_probe_c",
+        nros_tests::fixtures::Rmw::Zenoh,
+    )
+    .require("prebuilt matched-events-probe-c");
+    let mut cmd = Command::new(&bin);
+    cmd.env("NROS_LOCATOR", &locator)
+        .env("MATCHED_EVENTS_PROBE_TIMEOUT_MS", "90000");
+    let mut probe = ManagedProcess::spawn_command(cmd, "matched-events-probe-c")
+        .unwrap_or_else(|e| panic!("spawn matched-events-probe-c: {e}"));
+
+    let mut transcript = String::new();
+    let ready = pump_until(&mut probe, &mut transcript, Duration::from_secs(20), |t| {
+        t.contains(MATCHED_PROBE_READY) || t.contains(MATCHED_PROBE_UNSUPPORTED)
+    });
+    assert!(
+        !transcript.contains(MATCHED_PROBE_UNSUPPORTED),
+        "the zenoh backend refused a C matched / liveliness registration:\n{transcript}"
+    );
+    assert!(
+        ready,
+        "the probe never reached READY (publisher, subscription and three \
+         callbacks in place):\n{transcript}"
+    );
+
+    // Phase 1 — the stock peers appear.
+    let mut echo = Ros2Process::topic_echo_for(
+        "/i2039_out",
+        "std_msgs/msg/String",
+        &locator,
+        DEFAULT_ROS_DISTRO,
+        Duration::from_secs(60),
+    )
+    .expect("start the stock subscriber");
+    let mut publisher = Ros2Process::topic_pub(
+        "/i2039_in",
+        "std_msgs/msg/String",
+        "{data: i2039}",
+        2,
+        &locator,
+        DEFAULT_ROS_DISTRO,
+    )
+    .expect("start the stock publisher");
+
+    let risen = |t: &str| {
+        last_current(t, MATCHED_PROBE_PUB).is_some_and(|c| c >= 1)
+            && last_current(t, MATCHED_PROBE_SUB).is_some_and(|c| c >= 1)
+            && t.lines().any(|l| {
+                l.contains(MATCHED_PROBE_LIVELINESS)
+                    && field(l, "alive_change=").is_some_and(|d| d > 0)
+            })
+    };
+    let rose = pump_until(&mut probe, &mut transcript, Duration::from_secs(40), risen);
+    assert!(
+        rose,
+        "with a stock `ros2 topic echo` and `ros2 topic pub` running, the C \
+         callbacks must report: publisher matched current >= 1, subscription \
+         matched current >= 1, and a LivelinessChanged with alive_change > 0.\n\
+         Probe said:\n{transcript}"
+    );
+    // The rise is a CHANGE, not a level: a positive `change=` on each side.
+    for marker in [MATCHED_PROBE_PUB, MATCHED_PROBE_SUB] {
+        assert!(
+            transcript
+                .lines()
+                .any(|l| l.contains(marker) && field(l, "change=").is_some_and(|d| d > 0)),
+            "`{marker}` never reported a positive current_count_change:\n{transcript}"
+        );
+    }
+
+    // Phase 2 — the stock peers leave; the publisher's count must fall to 0.
+    echo.kill();
+    publisher.kill();
+    let fell = pump_until(&mut probe, &mut transcript, Duration::from_secs(40), |t| {
+        last_current(t, MATCHED_PROBE_PUB) == Some(0)
+    });
+    // Issue 2060 — reported, not asserted (see the doc comment).
+    let sub_fell = last_current(&transcript, MATCHED_PROBE_SUB) == Some(0);
+    eprintln!(
+        "qos_event_interop: subscription matched fall after the stock publisher left: {} \
+         (issue 2060)",
+        if sub_fell { "REPORTED" } else { "not reported" }
+    );
+    probe.kill();
+    assert!(
+        fell,
+        "after the stock subscriber stopped, the C publisher's matched callback \
+         must report current falling back to 0.\nProbe said:\n{transcript}"
+    );
+    assert!(
+        transcript
+            .lines()
+            .any(|l| l.contains(MATCHED_PROBE_PUB) && field(l, "change=").is_some_and(|d| d < 0)),
+        "`{MATCHED_PROBE_PUB}` never reported a negative current_count_change:\n{transcript}"
     );
 }

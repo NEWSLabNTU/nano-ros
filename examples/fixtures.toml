@@ -3742,6 +3742,21 @@ lang = "rust"
 rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/qos-event-probe"
 
+# issue 2039 — the C API's matched + status-event callbacks against a STOCK
+# ROS 2 peer: a C leaf that registers `rclc_publisher_set_matched_callback`,
+# `rclc_subscription_set_matched_callback` and
+# `rclc_subscription_set_liveliness_changed_callback` and prints each status.
+# `tests/qos_event_interop.rs` (cell `native-qos-event-c-zenoh-bidir`) starts
+# a stock `ros2 topic echo` / `ros2 topic pub` against it. Zenoh only, for the
+# reason the Rust probe above is: Cyclone delivers no status event to an
+# application at all (issue 1164).
+[[fixture]]
+id = "matched-events-probe-c"
+platform = "linux"
+lang = "c"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/matched-events-probe-c"
+
 # =============================================================================
 # Compile-check lane (phase-319 W2, issue 0351) — built by
 # `scripts/build/compile-check-fixtures.sh`.

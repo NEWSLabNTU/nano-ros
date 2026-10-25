@@ -267,6 +267,16 @@ where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "3 case(s) produced a result in interop_e2e.xml"
 
 [[verdict]]
+cell = "native-qos-event-c-zenoh-bidir"
+date = "2026-10-25"
+verdict = "pass"
+tests = ["c_matched_and_liveliness_callbacks_follow_stock_ros2_peers"]
+run = "cargo nextest run -p nros-tests --test qos_event_interop"
+where = "ros2 distrobox (Ubuntu 22.04, ROS humble, rmw_zenoh_cpp + rmw_zenohd), 2026-10-25"
+evidence = "1 case(s) produced a result in junit.xml"
+issue = "2039"
+
+[[verdict]]
 cell = "native-qos-event-rust-zenoh-r2n"
 date = "2026-09-12"
 verdict = "pass"
