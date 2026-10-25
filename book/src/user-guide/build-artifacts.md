@@ -34,6 +34,7 @@ workspace crosses languages:
 | --- | --- | --- |
 | Rust single package, any non-Zephyr board (ESP32 included — see below) | `cargo` | `<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>` |
 | Rust-only workspace, the same boards | `cargo` | `<ws>/build/<coordinate>/<image>_entry/target/[<triple>/]<profile>/<image>_entry` |
+| C / C++ single package, any non-Zephyr board | `cmake` | `<leaf>/build/<image-id>/cmake/<name>` — `<name>` from the leaf's `nano_ros_add_executable` |
 | any workspace containing C or C++ | `cmake` | `<ws>/build/<coordinate>/cmake/<image>_entry` |
 | a `zephyr` board | `west` | `<ws>/build/<coordinate>/<bringup>__<image>_west/zephyr/zephyr.{elf,bin,exe}` |
 | an `esp32` board, image crossing languages | `idf.py` | ESP-IDF's own `build/` in the project directory — an OUT-OF-TREE project; nano-ros ships no ESP-IDF component |
@@ -49,7 +50,22 @@ coincidence: a workspace has **no root `Cargo.toml` and no root
 colcon workspace, and every generated thing — the entry, the root build
 file, the cargo settings, the compiled output — lives in `build/`.
 
-One path the build *does* print is easy to mistake for the binary:
+After a successful build `nros build` prints the artifact itself, and the
+board's own command that runs or flashes it — never running either:
+
+```text
+nros build: next for `c_talker:linux`:
+  artifact: /home/you/c_talker/build/linux/cmake/c_talker
+  run:
+    /home/you/c_talker/build/linux/cmake/c_talker
+```
+
+What the `run:` (or `flash`) line is depends on the board: the binary for a
+host board, the board's QEMU runner with the provisioned `qemu-system-*` for an
+emulated one, `west build -d <dir> -t run` / `west flash -d <dir>` for Zephyr.
+`--dry-run` and `--check` build nothing, so they print no such block.
+
+One path the build *also* prints is easy to mistake for the binary:
 
 ```text
 nros build:   entry → …/build/posix-zenoh/linux_entry
@@ -160,17 +176,19 @@ Which of `.exe` and `.bin` appears is Zephyr's choice, not nano-ros's: a
 `native_sim` build produces `zephyr.exe`, a Cortex-M build produces
 `zephyr.bin`.
 
-**Next step — Zephyr's own verbs:**
+**Next step — Zephyr's own verbs**, against the image's build directory
+(`nros build` prints whichever the board supports):
 
 ```bash
-./build/zephyr/zephyr.exe     # native_sim: just run it
-west build -t run             # emulated boards: Zephyr's runner
-west flash                    # hardware: the runner declared by the board
+west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run   # native_sim and emulated boards
+west flash -d build/zephyr-zenoh/demo_bringup__zephyr_west          # hardware: the board's flash runner
+./build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.exe    # native_sim: the same as -t run
 ```
 
-`west flash` picks its runner from the board's own `board.cmake`; nano-ros adds
-nothing to it. Note that these are run against the west build directory, so
-they work from wherever you would normally run `west`.
+The `-d` is not optional here: without it `west` uses `build/` under the
+current directory, which is not where `nros build` put the image. `west flash`
+picks its runner from the board's own `board.cmake`; nano-ros adds nothing to
+it.
 
 ## ESP32
 

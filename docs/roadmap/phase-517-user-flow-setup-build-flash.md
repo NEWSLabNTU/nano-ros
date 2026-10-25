@@ -1,6 +1,6 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-25). Open; W5 in review (PR #2644), the rest not started.** Opened from a gap audit of the
+**Status (2026-10-25). Open; W5 in review (PR #2644); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate) — each work item records what landed.** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
@@ -471,6 +471,47 @@ harness rather than share code with it (the harness is a test crate); the
   escape hatch ("Build as a CMake subdirectory"), and the artifact path quoted
   is the one `nros build` writes.
 
+**Done (2026-10-25)** — every listed chapter leads with `nros build`, quotes
+the artifact path the plan records (`build_next::BuildOutput`: cargo leaf
+`build/<image>/target/[<triple>/]<profile>/<bin>`, cargo workspace
+`build/<platform>-<rmw>/<image>_entry/target/…`, cmake leaf
+`build/<image>/cmake/<nano_ros_add_executable name>`, west
+`build/<platform>-<rmw>/<bringup>__<image>_west`), shows the `nros build: next
+for …` block, and names raw `cmake` / `west build` as the escape hatch (linking
+"Build as a CMake subdirectory"). Per chapter: `deployment.md` Zephyr section
+rewritten around `nros build` + `west … -d` (the "not yet generated / issue
+1288" claim and the `zephyr-workspace/env.sh` + `nros/examples/…` checkout path
+are gone); `integration-zephyr.md` — `nros build` is the flow, "One image per
+RMW" is `nros build <image>` with `-DNROS_IMAGE` as the escape hatch, the BYO
+`west build` block is a named "Driving west yourself" section, the five-command
+transcript runs `west build -d … -t run`; `build-artifacts.md` — a C/C++
+single-package row, the printed `next` block, and `-d` on every follow-up
+`west` verb (its own `./build/zephyr/zephyr.exe` is gone);
+`workflow-by-platform.md` — the cmake and west shapes lead with `nros build`
+and name the escape hatch; `freertos.md` — exact C/C++ artifact, the printed
+block, the cmake escape-hatch line (from `nros build --dry-run`);
+`first-node-c.md` / `first-node-cpp.md` — the printed block and a cmake line
+that matches `--dry-run`; `your-own-msg-package.md` — `nros build` builds the
+no-bringup workspace colcon-style (`build/my_app/cmake/pkg/my_app/my_app`, the
+`local_msg_pkg` compile-check row's output), the hand umbrella is the escape
+hatch and names the SDK root instead of `/path/to/nano-ros`;
+`workspace-entry-pkg.md` — "plain west stays the primary flow" reversed.
+Measured: `nros new … --platform linux --lang c` + `nros build` prints the
+quoted block; `nros build --dry-run` for FreeRTOS / NuttX C packages and a
+Zephyr C package prints the quoted cmake / west lines.
+
+**Left:**
+
+* `nros new <name> --platform zephyr --lang c` writes a `find_package(nano_ros)`
+  CMakeLists, not a Zephyr application: `nros sync && nros build` reaches
+  `west build` and the configure fails (`nros_feature_set: unknown PLATFORM
+  'zephyr'`, measured). The chapter's "Start from an example" still offers that
+  scaffold. A CLI fix (template), not a docs one.
+* `nros new`'s own "Next steps" for a C package say `cargo build`.
+* `user-guide/build-artifacts.md` and `deployment.md` still describe an
+  `idf.py` road that RFC-0065 D3 deleted; their ESP32 sections are dormant
+  text (issue 1525) and were left unchanged.
+
 ### W8 — no dependency boilerplate in Rust build files (L; design first)
 
 Today a Rust node or entry hand-writes `nros = {version = "*", features =
@@ -528,6 +569,77 @@ convention. Concretely:
 **Gate:** `check-book-board-run-sections` — every tier 1–3 board has a run
 block in the chapter its registry row names, and a board flagged as hardware
 has a flash block.
+
+**Done (2026-10-25)** — each tier 1–3 row of `board-support.toml` now names
+its chapter section: `book_run = "<chapter>.md#<anchor>"`, plus
+`real_hardware` (required on an `execution_class = "hardware"` row, because
+that class covers both the S32Z270 and the FVP, and only the first is flashed)
+and `book_flash` (required when `real_hardware = true`). Chapters:
+`freertos.md` — "Run on QEMU" (Rust and C/C++ ELF, store QEMU, LAN9118), "Run
+on the POSIX simulator" (`freertos-posix`), "Flash a real board" (no in-tree
+board is flashed; S32Z270 build-only, flash with your S32 tooling; your own
+board via the porting guide) — the STM32F4/LPC55/MSP432 claim is deleted;
+`bare-metal.md` — "Run on QEMU", "Flash a real board" (probe-rs / OpenOCD on a
+board crate of your own, STM32F4 worked example); `threadx.md` — "Run on the
+Linux simulator", "Run on QEMU (RISC-V 64)", C/C++ paths added, "Flash a real
+board" says none is supported; `integration-nuttx.md` — `nros build` road
+added beside NuttX's own `make`, "Run on QEMU (Arm virt)" with the store QEMU,
+"Run on QEMU (RISC-V rv-virt)", "Flash a real board" (NuttX's own flow); the
+CMake line was wrong twice (`-DBOARD=… -DCONFIG=…`; NuttX's CMakeLists takes
+`-DBOARD_CONFIG=<board>:<config>`, and `qemu-armv7a` has no `nsh_smp` config —
+read off the pinned NuttX tree), now `-DBOARD_CONFIG=qemu-armv7a:nsh`;
+`integration-zephyr.md` — "Run on native_sim", "Run on QEMU (mps2-an385)",
+"Flash a real board" (`west flash -d`), `qemu_cortex_a9` is called a QEMU
+machine; `arm-fvp.md` — a Build section (`nros build demo_bringup:fvp`) and
+"Run on the FVP" (`west build -d … -t run`); `px4.md` — one tree: every step is
+`make -C PX4-Autopilot <target> EXTERNAL_MODULES_LOCATION=…` (the old
+`cmake -B build -S PX4-Autopilot` configured a tree the following `make` never
+used), the `-DNROS_RMW` knob it named is read by nothing (backends are the
+module's `BACKENDS` list), SITL is `gz_x500` (this PX4 has no Gazebo-classic
+`gazebo` target), flash is `make … upload`; `first-project.md` — the run step
+names the printed `run:` line. Gate `check-book-board-run-sections`
+(`scripts/check-book-board-run-sections.py`, fast line via
+`just/check/docs.just`): the named heading exists under that mdbook id, reads
+"Run …"/"Flash …", and its section holds a fenced command; dormant chapters
+(SUMMARY "(…, dormant)") are skipped. Self-test: a board's run block removed
+from its chapter fails.
+
+**Where the book and `next_steps` disagree** (the docs say the right thing; the
+CLI is the side to fix):
+
+* (Not a disagreement, measured.) MPS2-AN385: `next_steps` prints the
+  descriptor `runner`, with no `-nic` and no `-icount`; the chapters said that
+  boots "without networking". It does not: QEMU's default user-mode network
+  lands on the LAN9118, and both that line and the chapter's harness line
+  (`-icount shift=auto … -nic user,model=lan9118`) took the bare-metal Rust
+  scaffold to `Publishing: 'Hello World: N'` against a local `rmw_zenohd`. The
+  chapters now say both work and why theirs adds `-icount`.
+* `rv-virt-nuttx`: `next_steps` prints `qemu-system-riscv32`, which the
+  store's QEMU (`--target-list=arm-softmmu,riscv64-softmmu`) does not build, so
+  after `nros setup rv-virt-nuttx` the printed `nros locate tool
+  qemu-system-riscv32` answers nothing. The chapter says to install a distro
+  `qemu-system-riscv32` and set `QEMU_SYSTEM_RISCV32` (the ladder's env rung).
+* `build_next::chapter()` names `book/src/getting-started/zephyr.md` and
+  `…/nuttx.md`, which do not exist (the chapters are `integration-zephyr.md`
+  and `integration-nuttx.md`).
+
+**Left:**
+
+* Booted here: the Linux C talker (its printed block), and the bare-metal
+  Rust scaffold under both QEMU lines against `rmw_zenohd`. Every other QEMU,
+  FVP, SITL and flash line is unverified until W10's per-chapter probes run
+  it (the FreeRTOS C build stopped at configure on this host for want of the
+  FreeRTOS kernel source, not on a chapter step).
+* ARM FVP: the spec asked for "license-gated; say so". It is not
+  licence-gated (index `[tool.arm-fvp]`, measured 2026-09-06); the chapter
+  says so instead.
+* Zephyr has no tier-3 hardware board to give a flash block; the chapter's
+  "Flash a real board" is the generic `west flash -d` flow for a board
+  package of the reader's own.
+* The `mps2-an385-zephyr` image's network (address, locator) is not supplied
+  by its board package the way the fixture lanes' `cmake/zephyr/mps2-an385.conf`
+  supplies it; the chapter tells the reader to state it, unmeasured.
+* The two `next_steps` disagreements above (rv-virt QEMU, chapter paths) are CLI fixes.
 
 ### W10 — every platform chapter is probed (L)
 

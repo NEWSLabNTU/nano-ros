@@ -147,28 +147,48 @@ target_link_libraries(my_app
 ament_package()
 ```
 
-## The nano-ros umbrella — the only nano-ros-specific file
+## Build it with `nros build`
 
-The two `src/` packages are stock ROS. One umbrella CMakeLists.txt at the
-workspace root pulls nano-ros in:
+There is no nano-ros-specific file to add: a workspace has no root build file
+(RFC-0098 D9). With no bringup, `nros build` builds it the way `colcon build`
+does — every package it finds by its `package.xml`, in `<depend>` order, each
+in its own `build/<pkg>/`. For `my_app` it generates the CMake root that used
+to be hand-written (nano-ros, `NROS_INTERFACE_SEARCH_PATH` at `./src/`, the
+rclcpp / ament surface); `my_msgs` is not built on its own — its bindings are
+generated into the package that uses it.
+
+```sh
+nros sync
+nros build
+./build/my_app/cmake/pkg/my_app/my_app
+```
+
+In a workspace that also has a bringup (the `my_robot` scaffold), the same two
+commands build `my_msgs` into whichever image's packages depend on it.
+
+**Escape hatch — a hand-written umbrella.** For a CMake tree that is not a
+nano-ros workspace, one top-level `CMakeLists.txt` pulls nano-ros in as a
+subdirectory, naming the SDK root on the configure line
+([Build as a CMake subdirectory](build-as-subdirectory.md) has the
+mechanism):
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
 project(my_workspace LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 14)
 
-# Pull nano-ros.
+# Pull nano-ros — the installed SDK root, passed as -DNANO_ROS_SDK=….
 set(NROS_PLATFORM posix)
 set(NROS_RMW "zenoh" CACHE STRING "Active RMW.")
 set(NROS_RMW "${NROS_RMW}")
-add_subdirectory(/path/to/nano-ros nano_ros)
+add_subdirectory("${NANO_ROS_SDK}" nano_ros)
 
 # Point the message-package resolver at this workspace (must precede the
 # ament-surface include so the workspace Find<pkg>.cmake auto-emit picks it up).
 set(NROS_INTERFACE_SEARCH_PATH "${CMAKE_SOURCE_DIR}/src")
 
 # nano-ros's ament / rclcpp surface (find_package(rclcpp), ament_* verbs).
-include(/path/to/nano-ros/cmake/NanoRosAmentSurface.cmake)
+include("${NANO_ROS_SDK}/cmake/NanoRosAmentSurface.cmake")
 
 # Bulk-build every workspace msg pkg in topo order. One line, no
 # add_subdirectory(src/<pkg>) per pkg.
@@ -178,10 +198,8 @@ nros_workspace_interfaces()
 add_subdirectory(src/my_app)
 ```
 
-Build:
-
 ```sh
-cmake -B build -S .
+cmake -B build -S . -DNANO_ROS_SDK="$(nros sdk-root)"
 cmake --build build -j
 ./build/src/my_app/my_app
 ```

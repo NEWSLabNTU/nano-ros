@@ -50,6 +50,10 @@ where that came from.
 
 ## Run
 
+The build's last lines name what it produced and how to start it —
+`nros build: next for …`, an `artifact:` path and a `run:` command. On the
+host board the command is the program itself:
+
 ```bash
 ./build/posix-cyclonedds-linux/cmake/linux_entry
 ```

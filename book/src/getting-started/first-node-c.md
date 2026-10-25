@@ -168,12 +168,28 @@ must exist before cargo parses anything. See
 In a [multi-node workspace](workspace-cpp.md) `nros build` is the only
 build verb.
 
-**Driving CMake yourself** works too; it must be told where nano-ros is:
+When it finishes, `nros build` prints what it built and how to run it:
+
+```text
+nros build: next for `c_talker:linux`:
+  artifact: /home/you/c_talker/build/linux/cmake/c_talker
+  run:
+    /home/you/c_talker/build/linux/cmake/c_talker
+```
+
+**Escape hatch — driving CMake yourself.** For a CMake tree that is not a
+nano-ros package, or a build you want to steer by hand, configure it the way
+`nros build` does (`nros build --dry-run` prints its exact line). It must be
+told where nano-ros is; a cross board also needs the toolchain file its
+starter page names:
 
 ```bash
-cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
-cmake --build build
+cmake -S . -B build/linux/cmake -DNROS_IMAGE=linux -Dnano_ros_ROOT="$(nros sdk-root)"
+cmake --build build/linux/cmake
 ```
+
+Without a `system.toml` at all, see
+[Build as a CMake subdirectory](./build-as-subdirectory.md).
 
 `nros sdk-root` prints the SDK root the `nros` on PATH resolves (the
 one its release carries). `nros build`, and the CMakePresets

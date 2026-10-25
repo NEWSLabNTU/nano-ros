@@ -180,30 +180,49 @@ nros setup <board> --rmw zenoh
 
 cd <leaf>
 nros build                      # configures + builds into build/<image>/cmake
-# or, driving CMake yourself:
-cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)" \
-    -DCMAKE_TOOLCHAIN_FILE="$(nros sdk-root)/cmake/toolchain/<toolchain>.cmake" \
-    -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
 ```
 
-No `nros sync`, and no `-DNROS_BOARD` / `-DNROS_RMW` either:
-`find_package(nano_ros)` reads the leaf's `system.toml` and derives the
-platform from the board it names. The toolchain file is still per
-platform — see the starter page. `-D_NANO_ROS_CODEGEN_TOOL=` is not
-needed when `nros` is on PATH; CMake resolves it.
+The executable lands at `<leaf>/build/<image-id>/cmake/<name>`, where
+`<name>` is what the leaf's `nano_ros_add_executable(<name> …)` calls it;
+`nros build` prints that path and the command that runs it. No `nros sync`,
+and no `-DNROS_BOARD` / `-DNROS_RMW` either: `find_package(nano_ros)` reads
+the leaf's `system.toml` and derives the platform from the board it names,
+and `nros build` passes the board's cross-toolchain file and the SDK root
+([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)).
+It drives the same cmake pair in a C/C++ **workspace**.
 
-`nros build` drives exactly this cmake pair for you, in a
-*single-package* leaf (into `build/<image>/cmake`, with the board's toolchain
-file — [issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md)) as in a C/C++ **workspace**.
+**Escape hatch — driving CMake yourself.** `nros build --dry-run` prints the
+exact configure line; its core is the SDK root, the image and, for a cross
+board, the toolchain file the board's starter page names:
 
-### west — Zephyr single-node examples
+```bash
+cmake -S . -B build/<image-id>/cmake -DNROS_IMAGE=<image-id> \
+    -Dnano_ros_ROOT="$(nros sdk-root)" \
+    -DCMAKE_TOOLCHAIN_FILE="$(nros sdk-root)/cmake/toolchain/<toolchain>.cmake"
+cmake --build build/<image-id>/cmake --parallel
+```
 
-Zephyr owns the build. See
-[Zephyr (west module)](../getting-started/integration-zephyr.md) for the
-module wiring; the Rust leaves under [`examples/zephyr/rust`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/zephyr/rust) still need
-`nros sync` first, because west drives cargo and cargo needs the
-generated message crates either way.
+`-D_NANO_ROS_CODEGEN_TOOL=` is not needed when `nros` is on PATH; CMake
+resolves it. A CMake tree with no `system.toml` at all is
+[Build as a CMake subdirectory](../getting-started/build-as-subdirectory.md).
+
+### west — Zephyr
+
+```bash
+nros setup zephyr --rmw zenoh
+
+cd <leaf-or-workspace>
+nros sync
+nros build <image>              # runs `west build -d build/<coordinate>/<bringup>__<image>_west`
+```
+
+`nros build` resolves the west application and the image's overlays, runs
+`west build` with that image's own build directory, and prints Zephyr's next
+command for it — `west build -d <dir> -t run` for an emulated board,
+`west flash -d <dir>` for one with a flash runner. `nros sync` comes first on
+Zephyr whatever the language, because the build stops at its preflight on a
+workspace that was never synced. Driving `west build` yourself is the escape
+hatch; see [Zephyr (west module)](../getting-started/integration-zephyr.md).
 
 ### Where a leaf comes from
 
