@@ -7,7 +7,7 @@
 > compiling against `nros-cpp` + `nros generate cpp` + small build-script
 > changes. They are complementary, not duplicates.
 
-> **Re-checked 2026-10-24 ([phase-488](../roadmap/phase-488-larger-cpp-port-fixture.md) W1).**
+> **Re-checked 2026-10-24 ([phase-488](../roadmap/archived/phase-488-larger-cpp-port-fixture.md) W1).**
 > Two of the three tier-1 picks below have moved upstream.
 > `autoware_external_cmd_selector` on upstream `main` is built on
 > `autoware_agnocast_wrapper`; tag 0.45.0 is still plain rclcpp, so pin that.

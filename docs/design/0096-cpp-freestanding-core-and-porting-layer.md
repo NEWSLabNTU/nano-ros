@@ -406,7 +406,7 @@ an edit, and every one is a compile error naming the exact site:
    spin verbs take the `std::shared_ptr` itself.
 
 The rest of this list was measured by
-[phase-488](../roadmap/phase-488-larger-cpp-port-fixture.md) (2026-10-25),
+[phase-488](../roadmap/archived/phase-488-larger-cpp-port-fixture.md) (2026-10-25),
 which ported Autoware's `autoware_external_cmd_selector`, ros2/demos
 `composition` and Nav2's `nav2_velocity_smoother` with its `nav2_util`. Each is
 a compile error, or a configure error, at the site:
