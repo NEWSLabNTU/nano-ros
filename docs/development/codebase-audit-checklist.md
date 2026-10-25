@@ -1,4 +1,4 @@
-# Codebase Audit Checklist (tech-debt / antipatterns / UX)
+# Codebase Audit Checklist (tech-debt / antipatterns / UX / gate reach)
 
 Reusable checklist for a periodic sweep of nano-ros for **tech debt**,
 **antipatterns**, and **developer/user UX issues**. Re-run it each cycle and
@@ -16,6 +16,16 @@ Prior one-off audits this supersedes/absorbs: the 214 antipattern audit
 - **Deep audit** — one agent per category below, each emitting findings with
   `file:line`, severity, and a fix sketch; then an adversarial verify pass
   (drop false positives) and a ranked report. Best run as a fan-out workflow.
+- **Gate-reach audit** — category **K** alone, by mutation: plant the defect a
+  gate names and require it to go red. This is the method of
+  [phase-472](../roadmap/archived/phase-472-gate-reach-sweep.md) and of the
+  2026-09-28, 2026-10-01 and 2026-10-07 findings logs; re-run it whenever a
+  class fix lands.
+
+**A gate beats a grep.** Where an item names a gate (`just check <name>`), the
+class is enforced: do not re-run the item's grep and re-judge its hits — ask
+the K question of the gate instead (can it fail on the case it names, and does
+a lane run it?). A grep is for the classes no gate covers yet.
 
 Each finding: `category · file:line · severity(P1–P3) · one-line · fix sketch`.
 File new durable items into the right series (issue / RFC / phase) and link
@@ -60,14 +70,18 @@ verdict).**
 - **B5 no_std cleanliness — Rust AND C/C++.** Rust: code pulling `std` (or
   `alloc` needlessly) that could be `no_std`/stack-only on an embedded path;
   `#![no_std]` presence + `std` feature gating; embedded crates must compile
-  `no_std`. Detect: `grep -rn 'use std::' packages/` in crates meant to be
-  `no_std`. C/C++: headers stay freestanding-compatible — hosted-only
-  includes (`<string>`, `<vector>`, `<cstdio>` beyond the gated uses) behind
-  `NROS_CPP_STD` (NOT `__STDC_HOSTED__` alone — the 0112 pitfall), no
-  heap/libc calls on paths embedded builds compile, no exceptions/RTTI.
-  Detect: `grep -rn '#include <(string|vector|map|iostream|functional)>'
-  packages/api/nros-cpp/include packages/api/nros-c/include` then confirm
-  each is `NROS_CPP_STD`-gated.
+  `no_std`; `std` is being DELETED from the core crates (ARCHITECTURE §2,
+  phase-359), so new `std::` there is a finding. Detect: `grep -rn 'use std::'
+  packages/` in crates meant to be `no_std`; `std::`-qualified stdio in a
+  `#![no_std]` crate is gated (`just check no-std-stdio`, issue 0589).
+  C/C++: headers stay freestanding-compatible — no heap/libc calls on paths
+  embedded builds compile, no exceptions/RTTI, and a hosted-only include
+  (`<string>`, `<vector>`, …) needs BOTH probes, in the one spelling
+  `#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__
+  && __has_include(<hdr>))` — `__STDC_HOSTED__` alone misses `-nostdinc++`
+  (0112), `__has_include` alone opens a freestanding libstdc++'s `#error`
+  (1240), and `NROS_CPP_STD` alone removes the surface everywhere, because
+  nothing that ships defines it. Gated: `just check cpp-freestanding-includes`.
 - **B6 Magic numbers.** Hardcoded sizes/caps/timeouts (stack sizes, buffer
   lengths like `char buf[128]`, retry counts, ms delays, port numbers) instead
   of a named const / Kconfig / board-metadata / config knob. **No magic
@@ -101,7 +115,7 @@ verdict).**
   RMW and platform axes are selected via env → cargo-feature / `-D` lowering
   (one consistent mechanism across Rust/C/C++ — RFC-0031/ARCHITECTURE §2),
   and both axes cross into the core ONLY through their stable C-ABI vtable
-  bridges (`nros-rmw-cffi`, `nros_platform_*`). Flag: core crates (`nros`,
+  bridges (`nros-rmw-cffi` at `packages/rmw/cffi/`, `nros_platform_*`). Flag: core crates (`nros`,
   `nros-node`, `nros-c`, `nros-cpp`, `nros-core`) carrying
   backend/platform-specific code or `cfg(feature = "rmw-…"/"platform-…")`
   branches beyond the sanctioned registration seams; low-level backend types
@@ -121,9 +135,12 @@ verdict).**
   reshapes of standard concepts are drift); signature drift between the three
   language surfaces for the same concept; cmake verbs that require
   nano-ros-specific ceremony where the ament shape exists. Sample:
-  `packages/api/nros-cpp/include/nros/*.hpp` vs rclcpp class list,
-  `nros-c/include/{rclc,rcl,...}/*.h` vs rclc, `nros`/`nros-node` pub API vs rclrs,
-  `cmake/NanoRosVerbs.cmake` vs ament verbs.
+  `packages/api/nros-cpp/include/rclcpp*/` vs the rclcpp class list,
+  `packages/api/nros-c/include/{rcl,rclc,rcl_action,rclc_lifecycle,…}/` vs rclc
+  (the C user surface is rclc-only since phase-501; `nros/*.h` is internal),
+  `nros`/`nros-node` pub API vs rclrs, `cmake/NanoRosVerbs.cmake` vs ament verbs.
+  The recorded differences have their own review in
+  [phase-515](../roadmap/phase-515-api-stock-shape-review.md); start there.
 - **C7 RMW vtable API mirrors rmw.h.** `nros-rmw` / `nros-rmw-cffi`'s vtable
   is our analogue of the official `rmw.h` entry-point set — same concept
   coverage, naming derivable from the rmw counterpart, same ownership/
@@ -132,8 +149,13 @@ verdict).**
   rmw.h counterpart and no documented rationale; rmw.h concepts we cover via
   a different-shaped seam without a note; backend-specific parameters or
   types in the vtable signature (belongs behind the backend); semantics
-  drift (e.g. an entry that blocks where rmw's is non-blocking). Sample:
-  `packages/core/nros-rmw*/src/` vtable defs vs the rmw.h function list.
+  drift (e.g. an entry that blocks where rmw's is non-blocking). Coverage and
+  shape are gated (phase-376): `just check rmw-api-parity` (every contract
+  symbol is CLASSIFIED, cross-checked against the vtable) and `just check
+  rmw-abi-shape` (the vtable mirrors name, args, return). The reader judges
+  what those cannot: each `gap` row's reason and tracked issue, and ownership/
+  blocking semantics. Sample: `packages/core/nros-rmw/src/`,
+  `packages/core/nros-rmw-abi/`.
 
 ## D. Codegen / interfaces
 
@@ -158,11 +180,17 @@ verdict).**
   cell); `rg -L 'require_prebuilt|stale' <new fixture resolvers>`.
 - **E2 Pass-on-unmet-precondition.** Bare `eprintln!`+`return` reports PASS;
   must `assert!`/`bail!`/`nros_tests::unmet!` (issue 1758: a skip is only
-  `lane_skip!` from the lane's scope). Detect in test bodies.
+  `lane_skip!` from the lane's scope). Gated: `just check no-vacuous-tests`
+  (a body whose only effects are prints) and the skip budget (`_check-skip-budget`,
+  any non-`lane` skip). Read for what both miss: an early return after a
+  probe that is not a print.
 - **E3 Phase-numbered test names** (`phase212_n9_…`) — forbidden; name by
-  behavior (CLAUDE.md). Detect: `grep -rnE 'fn .*phase[0-9]' packages/`.
-- **E4 Skipped / ignored / flaky** (`#[ignore]`, issue 0035 native_sim);
-  fixture-orchestration gaps (phase 226).
+  behavior (CLAUDE.md). Detect: `grep -rnE 'fn .*phase[0-9]' packages/` (0 hits
+  on 2026-10-24 — record the count; any hit is new).
+- **E4 Skipped / ignored / flaky.** Every `#[ignore]` names its reason and a
+  tracked issue; a QEMU red is retested SOLO before it is called flaky
+  (CLAUDE.md). Detect: `grep -rn '#\[ignore' packages/testing/`. (Historical
+  instances: issue 0035, phase-226 — both archived.)
 - **E5 Coverage matrix: RMW × language × platform.** Every supported cell of
   the three axes has a runtime test lane (or a documented carve-out — e.g.
   "nuttx cells are arm-only by design", experimental gating). Cross-read
@@ -177,9 +205,10 @@ verdict).**
   the declared test matrix (platform × language × RMW × workload), consumed
   by a parametrized matrix file — not a hand-written per-cell test file.
   Detect: a NEW `tests/*_e2e.rs` that spawns a fixture pair without
-  consuming the matrix table (`matrix::CELLS` once phase-295 lands; until
-  then: any new `{c,cpp,mixed,rust}_<platform>_*_e2e.rs` per-cell file is a
-  finding — the `rtos_e2e.rs` rstest shape is the required pattern).
+  consuming the matrix tables — `matrix::CELLS` for baked cells,
+  `interop::CELLS` for peer/bridge cells (phase-324). Coverage is gated by
+  `matrix_fixture_coverage.rs` G1–G4; read for a test that hand-picks a
+  fixture without a cell.
 - **E7 Output-marker discipline.** Example nodes follow the stock ROS 2 demo
   behavior contract, and ALL output markers live in
   `nros-tests/src/output.rs`; tests assert via the shared checker, never an
@@ -197,14 +226,16 @@ verdict).**
   exclusive RESOURCE it guards (license, daemon, host-load — shared ports
   are an allocator bug, not a serialization case).
 - **E9 Launch convention + micro-test budget.** Runtime launches derive from
-  the RTOS framework's runner metadata (Zephyr `runners.yaml`, IDF
-  `flasher_args.json`, board-crate runner fields) with prebuilt artifacts —
+  the RTOS framework's runner metadata (Zephyr `runners.yaml`, board-crate
+  runner fields; IDF `flasher_args.json` only for the dormant esp32 lane —
+  RFC-0065 D3 retired the ESP-IDF road, issue 1525) with prebuilt artifacts —
   a hand-rolled emulator command outside the `qemu.rs` interpreter needs a
   sanctioned-bypass doc-comment (E1-exception pattern). Micro-test budget:
   phase/wave-named test FILES (`w1d_*`, `phase_*`) are automatic findings
   (E3 covers fn names; this covers files); record the
   `nros-tests/tests/` file count in the findings log each audit — an
-  upward trend without new matrix cells is a finding.
+  upward trend without new matrix cells is a finding (215 tracked files on
+  2026-10-24).
 
 ## F. CLI / developer UX
 
@@ -224,8 +255,13 @@ verdict).**
 
 ## G. Repo hygiene & self-containment
 
-- **G1 Submodule dirty-state / stray dirs** (e.g. the leftover untracked
-  `packages/codegen/` per CLAUDE.md); gitignored-but-present cruft.
+- **G1 Submodule dirty-state / stray dirs; gitignored-but-present cruft.**
+  A submodule behind its pin (`just check tier-preconditions` names it), a
+  vendored tree with local edits (e.g. a formatter run over
+  `third-party/`), a stale gitignored root that breaks a build (issue 1366).
+  Count with `git ls-files` / `git grep`, never `find` from the checkout root —
+  that walks `.claude/worktrees/*` and every submodule and counts another
+  repository (issue 1565; gated by `just check repo-root-walk-scope`).
 - **G2 Packages are self-contained.** A package/example must NOT search up the
   tree for the nano-ros project root, NOR hardcode absolute paths. No
   `../../../..` walk-ups to find the repo, no `/home/...` or build-host
@@ -233,7 +269,9 @@ verdict).**
   own deps / `find_package` / relative-to-self / a passed variable. Detect:
   `grep -rnE '/\.\./\.\./\.\.|/home/|/Users/|/opt/ros' packages/ examples/
   cmake/ zephyr/ --include=*.cmake --include=*.txt --include=*.rs
-  --include=*.toml` then read (some walk-ups are legit-but-flagged in CLAUDE.md).
+  --include=*.toml` then read (some walk-ups are legit-but-flagged in CLAUDE.md;
+  `/opt/ros` is legitimate in the router resolver, RFC-0075). Example build
+  config is generated, not committed (`just check example-cargo-dirs`).
 - **G3 TODO/FIXME/HACK/XXX density + age**; open-issue backlog triage. Detect:
   `grep -rnE 'TODO|FIXME|HACK|XXX' packages/ --include=*.rs --include=*.c
   --include=*.cpp --include=*.h --include=*.hpp`.
@@ -241,8 +279,11 @@ verdict).**
 ## H. Docs / DX
 
 - **H1 Stale / wrong docs.** Content that describes a different project or an
-  obsolete design (e.g. `packages/cli/CLAUDE.md` carrying old
-  `colcon-cargo-ros2` text). CLAUDE.md / AGENTS.md accuracy vs reality.
+  obsolete design; CLAUDE.md / AGENTS.md accuracy vs reality. A doc stating a
+  VERSION or a COUNT drifts (CLAUDE.md stopped stating the
+  `ros-launch-manifest` tag after it drifted twice) — prefer a doc that names
+  the command that answers. This checklist is in scope too: an item citing a
+  path, phase or gate that moved is a finding.
 - **H2 Cross-link rot.** RFC ↔ issue ↔ phase links resolve; no orphaned docs;
   archived items actually archived.
 - **H3 Book coverage/staleness** vs the current CLI/API surface.
@@ -259,6 +300,11 @@ verdict).**
   does".
 - **I3 Silent fallbacks / swallowed errors** — warn-and-continue where it
   should hard-fail; `catch`/`Result` discarded; `|| true`.
+- **I4 Duplicated SSoT.** The same fact configured in N places (issue 0042:
+  capability macros across ~10 sites; domain-ID; zephyr-line; board metadata).
+  One source, derived everywhere else.
+- **I5 Platform `#ifdef` thickets** — sprawling per-platform conditionals that
+  should be a capability/trait seam.
 - **I6 Class fixes that landed only at the reported site.** For each issue
   resolved since the last audit whose defect was *grep-able*, re-run the grep and
   check the siblings were swept — and that the fix added ONE shared helper rather
@@ -269,11 +315,7 @@ verdict).**
   — audit 2026-07-28 found four whose coverage was narrower than their rule (#321,
   #328, #332, #334). Detect: for a resolved issue's characteristic grep, compare
   hit count at fix-commit vs HEAD.
-- **I4 Duplicated SSoT.** The same fact configured in N places (issue 0042:
-  capability macros across ~10 sites; domain-ID; zephyr-line; board metadata).
-  One source, derived everywhere else.
-- **I5 Platform `#ifdef` thickets** — sprawling per-platform conditionals that
-  should be a capability/trait seam.
+  The gate half of this is category **K**.
 
 ## J. Copy-out examples
 
@@ -286,7 +328,41 @@ verdict).**
   example-source cleanliness sweep.) Detect: read each example's `src/` +
   `CMakeLists.txt` for anything a ROS 2 user wouldn't recognize from the
   rclcpp/rclpy equivalent; grep examples for `#[no_mangle]`, `extern "C"`,
-  `unsafe`, `__nros_`, raw linker flags.
+  `unsafe`, `__nros_`, raw linker flags (exclude `*/generated/`). An example's
+  build configuration is generated (RFC-0098 D1) — a tracked
+  `examples/**/.cargo/*` is gated (`just check example-cargo-dirs`).
+
+## K. Gate reach
+
+A gate is a claim that a class cannot recur. Audit the claim, by mutation
+(method: [phase-472](../roadmap/archived/phase-472-gate-reach-sweep.md); the
+2026-09-28 / 10-01 / 10-07 findings logs are its records). Per gate: plant the
+defect it names in a scratch tree, run it the way its lane does, restore, and
+refuse to continue unless the tree is back at baseline. rc≠0 is CLEAN; rc=0
+needs a control (the same defect where the gate demonstrably reads) before it
+is a HOLE.
+
+- **K1 Can it fail?** A gate whose population is narrower than its rule
+  (issue 0196) or wider than it (issue 1452 — a false red is a hole too). Fix
+  by deriving the population, never by widening a declaration.
+- **K2 Does it run?** A gate no merge-gating lane reaches answers nothing
+  (issue 1226): `just check default-gates-run-somewhere` covers `just check`
+  names and the `ci gate` steps. A gate in an affordability tier may resolve
+  only artifacts its own job builds (`check-lane-contracts`).
+- **K3 Does it say NOT VERIFIED rather than OK?** A gate that cannot see its
+  subject reports a skip through the `nros_check_skip` ledger (issue 1043's
+  third outcome), never a pass — e.g. ancestry from a shallow clone (issue 1476).
+- **K4 Classes CLAUDE.md names, and the gate for each.** Re-read the gate's
+  reach whenever one of these recurs:
+  `set -e` swallowing a status at an assignment (`set-e-bare-assignment`,
+  issue 1249) or in argument position (`check-workflow-indexed-apt`, issue
+  1466); a git-hook script leaking `GIT_DIR` (`hook-repo-side-effects`, issues
+  0986/1465); `rerun-if-env-changed` on a PATH-valued variable
+  (`path-env-fingerprints`, issue 0491); a configure-time emitter with no
+  reconfigure edge on its tool (`codegen-tool-reconfigure`, issue 1018); a
+  propagated usage requirement conditioned on the build tree
+  (`check-runtime-umbrella-link-sites`, issue 1467).
+
 
 ---
 
