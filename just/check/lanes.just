@@ -2102,6 +2102,34 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$pe_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/parameter_events_runtime
+    # issue 2056 -- upstream's value-object parameter surface on the one store:
+    # declare through `ParameterValue` (vectors and a descriptor MESSAGE
+    # included), read back a `Parameter`, and a `std::vector<Parameter>` on-set
+    # callback that votes on a local write AND on a `~/set_parameters` request
+    # staged on the stub backend, seeing the proposed array elements. Same
+    # `param-services` archive. Negative controls, measured: the trampoline's
+    # `double_array` left NULL -> 6 failures, "the proposed ELEMENTS" and both
+    # refusals among them; the handle's destructor made a no-op -> the next
+    # write calls the freed handle and the run dies (SIGBUS), so it cannot
+    # report ok.
+    test -f packages/api/nros-cpp/tests/compile/parameter_value_runtime.cpp || { \
+        echo "ERROR: parameter_value_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - ParameterValue / Parameter / a vector on-set callback vote on local and remote writes (runtime, issue 2056)"
+    c++ -std=c++17 -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
+        -I"$(nros_locate_artifact cpp-include --placed-dir "$pe_dir/placed")" \
+        -I"$(nros_locate_artifact c-include --placed-dir "$pe_dir/placed")" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/parameter_value_runtime \
+        packages/api/nros-cpp/tests/compile/parameter_value_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$pe_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/parameter_value_runtime
     # phase-488 -- the ament verbs define NROS_AMENT_START_PARAMETER_SERVICES
     # when the runtime carries `param_services`, and the node constructor then
     # serves the parameters, as upstream's does. The port-surface TU again, on

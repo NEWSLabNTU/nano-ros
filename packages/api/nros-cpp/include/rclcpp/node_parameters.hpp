@@ -67,6 +67,7 @@
 #include "rclcpp/detail/nros_cpp_ffi.h"
 
 #ifdef NROS_CPP_STD // hosted-family: container-interop
+#include <memory>   // std::unique_ptr -- the std::vector<bool> forms
 #include <string>
 #include <vector>
 #endif
@@ -596,6 +597,45 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::st
         node, name, out,
         ::rclcpp::tr::integral_constant<bool,
                                         ::rclcpp::tr::is_same<T, node_param_slot<T>>::value>());
+}
+
+// --- std::vector<bool> (issue 2056) ------------------------------------------
+//
+// `std::vector<bool>` is a bit-packed specialization with no `data()`, so the
+// templates above did not compile for it: `declare_parameter<std::vector<bool>>`
+// was an error inside this header. These cross through a contiguous `bool`
+// copy. Non-templates, so they win over the `std::vector<T>` forms.
+
+inline Result node_param_declare(const nros_cpp_node_t* node, const char* name,
+                                 const ::std::vector<bool>& v) {
+    ::std::unique_ptr<bool[]> flat(new bool[v.size() + 1]);
+    for (::size_t i = 0; i < v.size(); ++i) {
+        flat[i] = v[i];
+    }
+    return Result(node_param_declare_array_ffi(node, name, flat.get(), v.size()));
+}
+inline Result node_param_set(const nros_cpp_node_t* node, const char* name,
+                             const ::std::vector<bool>& v) {
+    ::std::unique_ptr<bool[]> flat(new bool[v.size() + 1]);
+    for (::size_t i = 0; i < v.size(); ++i) {
+        flat[i] = v[i];
+    }
+    return Result(node_param_set_array_ffi(node, name, flat.get(), v.size()));
+}
+inline Result node_param_get(const nros_cpp_node_t* node, const char* name,
+                             ::std::vector<bool>& out) {
+    ::size_t len = 0;
+    nros_cpp_ret_t probe =
+        node_param_get_array_ffi(node, name, static_cast<bool*>(nullptr), 0, &len);
+    if (probe != NROS_CPP_RET_OK && probe != NROS_CPP_RET_FULL) {
+        return Result(probe);
+    }
+    ::std::unique_ptr<bool[]> flat(new bool[len + 1]);
+    nros_cpp_ret_t r = node_param_get_array_ffi(node, name, flat.get(), len, &len);
+    if (r == NROS_CPP_RET_OK) {
+        out.assign(flat.get(), flat.get() + len);
+    }
+    return Result(r);
 }
 
 #endif // NROS_CPP_STD

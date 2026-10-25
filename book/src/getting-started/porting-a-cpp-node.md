@@ -235,7 +235,9 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 | several packages in one workspace (a library package such as Nav2's `nav2_util`, a cmake-only one such as `nav2_common`, and the node that finds them) | `find_package(<sibling>)` resolves to the sibling configured earlier in the same run: `<pkg>::<pkg>` over what it exported with `ament_export_libraries` / `_targets` / `_dependencies`, its `include/`, and its `ament_package(CONFIG_EXTRAS …)` files run | Add each package before the packages that find it; the configure refuses an out-of-order find by name. Every package configures in ONE CMake run, so `${CMAKE_SOURCE_DIR}` is the workspace root, not the package: write `${PROJECT_SOURCE_DIR}` (rare: 0 of 417 Autoware CMakeLists name it). |
 | `find_package(<pkg>)` for an upstream C++ library nano-ros does not ship (`bondcpp`, `tf2_ros`, …) | refused at configure, naming the package and the installed file CMake fell back to | Remove the dependency, or port the library into your workspace as a package of its own. |
 | `rclcpp::Time(msg->header.stamp)` | implicit, from any `{sec, nanosec}` message, on the ROS clock | |
-| `rclcpp::ParameterValue`, `rclcpp::Parameter`, a `std::vector<rclcpp::Parameter>` on-set-parameters callback returning `SetParametersResult` | **not yet** (issue 2056) | The typed `declare_parameter<T>` / `get_parameter<T>` (with `std::vector<T>` on hosted builds) work today. |
+| `declare_parameter(name, rclcpp::ParameterValue(...)[, descriptor])`, `get_parameter(name)` as an `rclcpp::Parameter`, `set_parameter(rclcpp::Parameter(...))` | the same store the typed `declare_parameter<T>` uses; the descriptor may be an `rcl_interfaces::msg::ParameterDescriptor` | Hosted builds. A byte or string array can be built but not declared. A wrong-type `as_double()` answers `0.0`, not an exception. |
+| `add_on_set_parameters_callback(std::bind(&C::cb, this, _1))` with `cb(std::vector<rclcpp::Parameter>)` returning `SetParametersResult` | runs on every write, local or `ros2 param set`; `successful = false` refuses it; the returned handle unregisters on destruction | One parameter per call, because writes are validated one at a time. The `reason` does not reach the remote caller. Keep the handle as a member of your node class, so it goes before the node does. |
+| `node->get_node_parameters_interface()` | `has_parameter`, `declare_parameter`, `get_parameter` through `->` | `get_parameter_overrides()` is absent (issue 2057). |
 | `pub_->publish(std::move(msg))` with a `std::unique_ptr<M>` | publishes `*msg`; the message is freed when the call returns | Hosted builds. Every publish serializes, so there is no intra-process hand-over to save a copy. A null pointer is refused and logged. |
 | `rclcpp::Client<S>::SharedPtr client_ = create_client<S>(name);` + `client_->async_send_request(req, callback)` | **not supported** (issue 2055) | `create_client<S>(name)` returns the poll client by value: store it as `rclcpp::Owned<rclcpp::PollClient<S>>` and keep the `FutureAndRequestId` that `async_send_request(req)` returns as a member. Read it on a later callback with `future.is_ready()` and `get()`. Inside a callback, ask `service_is_ready()` instead of calling `wait_for_service`, which drives the executor. |
 | `diagnostic_updater::Updater updater_{this};` | publishes `/diagnostics` on its own timer, every `period` (`setPeriod`), as upstream's does | `update()` still works and is no longer required. |
@@ -540,8 +542,8 @@ tracked as ROS-convention codegen work.
 ## When the port hits a gap
 
 Known open follow-ups: pool sizing on the ament road (issue 2043, below),
-the per-request client callback (issue 2055), the hosted parameter API (issue
-2056), and the in-tree migration of legacy
+the per-request client callback (issue 2055), listing parameter overrides
+(issue 2057), and the in-tree migration of legacy
 `nros_generate_interfaces(<pkg>)` call sites. If your port surfaces a *new*
 gap, file an issue with a reduced case — a fix lands either tree-side (in
 `packages/api/nros-cpp/`, `cmake/NanoRosAmentSurface.cmake` or `cmake/find/`)

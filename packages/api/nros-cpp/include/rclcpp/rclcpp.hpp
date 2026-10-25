@@ -1689,6 +1689,267 @@ inline Result Node::remove_on_set_parameters_callback(ParameterCallbackHandle ha
 
 } // namespace rclcpp
 
+// --- issue 2056: the value-object parameter surface (hosted) -----------------
+//
+// Dispatchers from `ParameterValue` / `Parameter` onto the typed methods
+// above. No state: a `Parameter` read here is built from the store each time.
+
+#ifdef NROS_CPP_STD // hosted-family: parameter-interop
+namespace rclcpp {
+namespace detail {
+
+template <typename T>
+inline T node_declare_typed(Node& n, const char* name, T v, const ParameterDescriptor* d) {
+    return d != nullptr ? n.template declare_parameter<T>(name, v, *d)
+                        : n.template declare_parameter<T>(name, v);
+}
+
+inline ParameterValue node_declare_value(Node& n, const char* name, const ParameterValue& v,
+                                         const ParameterDescriptor* d) {
+    switch (v.get_type()) {
+    case PARAMETER_BOOL:
+        return ParameterValue(node_declare_typed<bool>(n, name, v.as_bool(), d));
+    case PARAMETER_INTEGER:
+        return ParameterValue(
+            static_cast<long long>(node_declare_typed<int64_t>(n, name, v.as_int(), d)));
+    case PARAMETER_DOUBLE:
+        return ParameterValue(node_declare_typed<double>(n, name, v.as_double(), d));
+    case PARAMETER_STRING:
+        return ParameterValue(node_declare_typed<::std::string>(n, name, v.as_string(), d));
+    case PARAMETER_BOOL_ARRAY:
+        return ParameterValue(
+            node_declare_typed<::std::vector<bool>>(n, name, v.as_bool_array(), d));
+    case PARAMETER_INTEGER_ARRAY:
+        return ParameterValue(
+            node_declare_typed<::std::vector<int64_t>>(n, name, v.as_integer_array(), d));
+    case PARAMETER_DOUBLE_ARRAY:
+        return ParameterValue(
+            node_declare_typed<::std::vector<double>>(n, name, v.as_double_array(), d));
+    default:
+        // NOT_SET, a byte array or a string array: no store form.
+        return ParameterValue();
+    }
+}
+
+/// `rcl_interfaces::msg::ParameterDescriptor` lowered to the borrowed-text
+/// descriptor. The pointers borrow `m`'s strings, so the result must not
+/// outlive `m`; one range of each kind is read, as upstream permits at most one.
+template <typename D> inline ParameterDescriptor descriptor_from_message(const D& m) {
+    ParameterDescriptor d = ::rclcpp::parameter_descriptor();
+    d.description = m.description.c_str();
+    d.additional_constraints = m.additional_constraints.c_str();
+    d.read_only = m.read_only;
+    for (const auto& r : m.floating_point_range) {
+        d.has_range = true;
+        d.double_from = r.from_value;
+        d.double_to = r.to_value;
+        d.double_step = r.step;
+        break;
+    }
+    for (const auto& r : m.integer_range) {
+        d.has_range = true;
+        d.integer_from = r.from_value;
+        d.integer_to = r.to_value;
+        d.integer_step = static_cast<int64_t>(r.step);
+        break;
+    }
+    return d;
+}
+
+inline Node::SetParametersOutcome node_set_outcome(Result r) {
+    Node::SetParametersOutcome o;
+    o.successful = r.ok();
+    if (!o.successful) {
+        o.reason = "set_parameter refused (nano-ros code " + ::std::to_string(r.raw()) + ")";
+    }
+    return o;
+}
+
+} // namespace detail
+
+inline ParameterValue Node::declare_parameter(const char* name,
+                                              const ParameterValue& default_value) {
+    return ::rclcpp::detail::node_declare_value(*this, name, default_value, nullptr);
+}
+
+inline ParameterValue Node::declare_parameter(const char* name, const ParameterValue& default_value,
+                                              const ParameterDescriptor& descriptor) {
+    return ::rclcpp::detail::node_declare_value(*this, name, default_value, &descriptor);
+}
+
+template <typename D, typename>
+inline ParameterValue Node::declare_parameter(const char* name, const ParameterValue& default_value,
+                                              const D& descriptor) {
+    const ParameterDescriptor d = ::rclcpp::detail::descriptor_from_message(descriptor);
+    return ::rclcpp::detail::node_declare_value(*this, name, default_value, &d);
+}
+
+template <typename T, typename D, typename>
+inline T Node::declare_parameter(const char* name, T default_value, const D& descriptor) {
+    const ParameterDescriptor d = ::rclcpp::detail::descriptor_from_message(descriptor);
+    return this->template declare_parameter<T>(name, default_value, d);
+}
+
+inline bool Node::get_parameter(const char* name, Parameter& out) const {
+    ParameterValue v;
+    switch (this->get_parameter_type(name)) {
+    case PARAMETER_BOOL: {
+        bool x = false;
+        if (!this->template get_parameter<bool>(name, x)) return false;
+        v = ParameterValue(x);
+        break;
+    }
+    case PARAMETER_INTEGER: {
+        int64_t x = 0;
+        if (!this->template get_parameter<int64_t>(name, x)) return false;
+        v = ParameterValue(static_cast<long long>(x));
+        break;
+    }
+    case PARAMETER_DOUBLE: {
+        double x = 0.0;
+        if (!this->template get_parameter<double>(name, x)) return false;
+        v = ParameterValue(x);
+        break;
+    }
+    case PARAMETER_STRING: {
+        ::std::string x;
+        if (!this->template get_parameter<::std::string>(name, x)) return false;
+        v = ParameterValue(x);
+        break;
+    }
+    case PARAMETER_BOOL_ARRAY: {
+        ::std::vector<bool> x;
+        if (!this->template get_parameter<::std::vector<bool>>(name, x)) return false;
+        v = ParameterValue(x);
+        break;
+    }
+    case PARAMETER_INTEGER_ARRAY: {
+        ::std::vector<int64_t> x;
+        if (!this->template get_parameter<::std::vector<int64_t>>(name, x)) return false;
+        v = ParameterValue(x);
+        break;
+    }
+    case PARAMETER_DOUBLE_ARRAY: {
+        ::std::vector<double> x;
+        if (!this->template get_parameter<::std::vector<double>>(name, x)) return false;
+        v = ParameterValue(x);
+        break;
+    }
+    default:
+        return false;
+    }
+    out = Parameter(::std::string(name), v);
+    return true;
+}
+
+inline Parameter Node::get_parameter(const ::std::string& name) const {
+    Parameter p(name);
+    (void)this->get_parameter(name.c_str(), p);
+    return p;
+}
+
+inline ::std::vector<Parameter>
+Node::get_parameters(const ::std::vector<::std::string>& names) const {
+    ::std::vector<Parameter> out;
+    out.reserve(names.size());
+    for (const auto& n : names) {
+        out.push_back(this->get_parameter(n));
+    }
+    return out;
+}
+
+inline Node::SetParametersOutcome Node::set_parameter(const Parameter& p) {
+    const char* name = p.get_name().c_str();
+    Result r(NROS_CPP_RET_UNSUPPORTED);
+    switch (p.get_type()) {
+    case PARAMETER_BOOL:
+        r = this->template set_parameter<bool>(name, p.as_bool());
+        break;
+    case PARAMETER_INTEGER:
+        r = this->template set_parameter<int64_t>(name, p.as_int());
+        break;
+    case PARAMETER_DOUBLE:
+        r = this->template set_parameter<double>(name, p.as_double());
+        break;
+    case PARAMETER_STRING:
+        r = this->template set_parameter<::std::string>(name, p.as_string());
+        break;
+    case PARAMETER_BOOL_ARRAY:
+        r = this->template set_parameter<::std::vector<bool>>(name, p.as_bool_array());
+        break;
+    case PARAMETER_INTEGER_ARRAY:
+        r = this->template set_parameter<::std::vector<int64_t>>(name, p.as_integer_array());
+        break;
+    case PARAMETER_DOUBLE_ARRAY:
+        r = this->template set_parameter<::std::vector<double>>(name, p.as_double_array());
+        break;
+    default:
+        break;
+    }
+    return ::rclcpp::detail::node_set_outcome(r);
+}
+
+inline ::std::vector<Node::SetParametersOutcome>
+Node::set_parameters(const ::std::vector<Parameter>& parameters) {
+    ::std::vector<SetParametersOutcome> out;
+    out.reserve(parameters.size());
+    for (const auto& p : parameters) {
+        out.push_back(this->set_parameter(p));
+    }
+    return out;
+}
+
+template <typename F>
+inline node_interfaces::OnSetParametersCallbackHandle::SharedPtr
+Node::add_on_set_parameters_callback(F callback) {
+    using Handle = node_interfaces::OnSetParametersCallbackHandle;
+    auto handle = ::std::make_shared<Handle>();
+    handle->callback = [callback](const ::std::vector<Parameter>& params) mutable -> bool {
+        return static_cast<bool>(callback(params).successful);
+    };
+    handle->node = this->ffi_handle();
+    Result r = ::rclcpp::detail::node_param_add_on_set_callback(handle->node, &Handle::trampoline,
+                                                                handle.get(), &handle->token);
+    if (!r.ok()) {
+        return nullptr;
+    }
+    handle->registered = true;
+    return handle;
+}
+
+inline void Node::remove_on_set_parameters_callback(
+    const node_interfaces::OnSetParametersCallbackHandle* handle) {
+    if (handle != nullptr) {
+        const_cast<node_interfaces::OnSetParametersCallbackHandle*>(handle)->unregister();
+    }
+}
+
+namespace node_interfaces {
+inline bool NodeParametersInterface::has_parameter(const ::std::string& name) const {
+    return node_ != nullptr && node_->has_parameter(name);
+}
+inline ParameterValue NodeParametersInterface::declare_parameter(const ::std::string& name,
+                                                                 const ParameterValue& v) {
+    return node_ == nullptr ? ParameterValue() : node_->declare_parameter(name, v);
+}
+template <typename D>
+inline ParameterValue NodeParametersInterface::declare_parameter(const ::std::string& name,
+                                                                 const ParameterValue& v,
+                                                                 const D& descriptor) {
+    return node_ == nullptr ? ParameterValue() : node_->declare_parameter(name, v, descriptor);
+}
+inline bool NodeParametersInterface::get_parameter(const ::std::string& name,
+                                                   Parameter& out) const {
+    return node_ != nullptr && node_->get_parameter(name, out);
+}
+inline Parameter NodeParametersInterface::get_parameter(const ::std::string& name) const {
+    return node_ == nullptr ? Parameter(name) : node_->get_parameter(name);
+}
+} // namespace node_interfaces
+
+} // namespace rclcpp
+#endif // NROS_CPP_STD
+
 // --- Rate / WallRate (phase-417 W2.d) ----------------------------------------
 //
 // A FORWARDER onto `rclcpp::spin(remaining_ms, poll_ms)`, which budgets by wall

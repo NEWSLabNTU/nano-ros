@@ -5,9 +5,10 @@ projects. W2 and W3 done for node 1 (`autoware_external_cmd_selector`): it
 builds with no source edit and runs against a stock ROS 2 peer, with its pool
 sizes still raised by hand (issue 2043). Node 3 (ros2/demos `composition`) done
 the same way: one source edit (issue 2055) and two out-of-scope targets
-dropped. W4 updated for nodes 1 and 3. Node 2 (Nav2) configures, and its
-messages compile; it stops at the hosted parameter API (issue 2056), which is
-built next.** Rescoped 2026-10-24. The ported code is the
+dropped. W4 updated for nodes 1 and 3. Node 2 (Nav2) configures, its
+messages compile, and its parameter half compiles unchanged on the hosted
+parameter API built for it (issue 2056, resolved). Its remaining errors are
+the non-parameter findings listed under node 2.** Rescoped 2026-10-24. The ported code is the
 user's work and is not committed here. What this phase lands is what the ports
 expose: nros-cpp, codegen and build fixes, issues, and porting-guide changes.
 The original W2 ("add it as a port template") and W3 (runtime cells for it)
@@ -256,6 +257,15 @@ layer nros-cpp does not have. It is the largest gap this phase measured:
 0.45.1 workspace. The issue is filed with a design. It is built next, as its
 own PR, and the port is finished on it.
 
+**Issue 2056 landed (2026-10-25).** On it, every parameter-API error is gone
+from the smoother and `nav2_util`. The smoother's 13 `ParameterValue`
+declarations and its `dynamicParametersCallback` compile unchanged. An
+on-set callback now sees a proposed array's elements; before, every
+`as_double_array().size() != 3` check would have refused every write.
+`nav2_util/node_utils.hpp` keeps two stated edits: `rclcpp::exceptions`
+becomes `std::invalid_argument`, and `get_parameter_overrides()` is
+replaced, because there is no listing of overrides (issue 2057).
+
 | finding | disposition |
 | --- | --- |
 | `find_package(ament_cmake_python)` (`nav2_common`) loaded the installed CONFIG (`Unknown CMake command "get_executable_path"`); node 3's `rcutils` the same | fixed: find modules for both, `ament_python_install_package` accepted |
@@ -267,9 +277,12 @@ own PR, and the port is finished on it.
 | `rclcpp::Time(msg->header.stamp)` (78 Autoware sources) | fixed: an implicit constructor from any `{sec, nanosec}` message, on the ROS clock |
 | `<rclcpp/logger.hpp>`, `<rclcpp/parameter_service.hpp>` missing | fixed: each is the nros-cpp header that declares what upstream's does |
 | `nav2_util/src/CMakeLists.txt` names `${CMAKE_SOURCE_DIR}/include`, the workspace root when every package configures in one run | logged porter edit (`PROJECT_SOURCE_DIR`); 0 of 417 Autoware CMakeLists name it, and redefining it per package would move the `DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"` passes; porting-guide note |
-| `rclcpp::ParameterValue`, `rclcpp::Parameter`, `declare_parameter(name, value, rcl_interfaces::msg::ParameterDescriptor)`, the vector on-set callback with `SetParametersResult`, `NodeParametersInterface` | issue 2056 |
+| `rclcpp::ParameterValue`, `rclcpp::Parameter`, `declare_parameter(name, value, rcl_interfaces::msg::ParameterDescriptor)`, the vector on-set callback with `SetParametersResult`, `NodeParametersInterface` | fixed: issue 2056 (hosted layer over the one store; the on-set write now carries arrays) |
+| `rcl_interfaces::msg::ParameterDescriptor` / `ParameterType` named without an include (upstream's `rclcpp.hpp` reaches them) | fixed: included when the user's build generated `rcl_interfaces` |
+| `NodeParametersInterface::get_parameter_overrides()` (`nav2_util::declare_or_get_parameter`) | issue 2057; a stated edit until then |
+| `declare_parameter<std::vector<bool>>` did not compile (`std::vector<bool>` has no `data()`) | fixed with issue 2056 |
 | `rclcpp::exceptions::*` (`nav2_util::declare_parameter_if_not_declared`) | refused by design (RFC-0018); a stated edit |
-| still to classify, after issue 2056: `Clock::SharedPtr`, `Node::WeakPtr`, `NodeOptions::arguments({...})`, `FixedSequence::resize` on a generated descriptor range, `static_pointer_cast` of a non-owning `Node::SharedPtr`, `[[nodiscard]]` on `set_parameter` under `-Werror` | W3 continues once the parameter half compiles |
+| still to classify, measured on issue 2056's build: `Clock::SharedPtr`; `Node::WeakPtr` / `LifecycleNode::WeakPtr`; `NodeOptions::arguments({...})` (refused by design, phase-417 W3.f); `FixedSequence::resize` on a generated descriptor range; `static_pointer_cast` of a non-owning `Node::SharedPtr`; `[[nodiscard]]` on `timer_->cancel()` under `-Werror`; `rclcpp::Context`; `LifecyclePublisher::get_subscription_count` and `publish(std::unique_ptr)`; `rclcpp::spin(get_node_base_interface())`; `builtin_interfaces::msg::Time + rclcpp::Duration`, `msg::Time = rclcpp::Time`; `Twist == Twist`; `SystemDefaultsQoS` (refused by design, issue 0829); an unbounded `frame_id` in a subscribed `TwistStamped`; a missing `<cstring>` | W3 continues |
 
 In-tree tests: case 10 of `tests/cmake-ament-surface-tests.sh`, which fails
 11 of 11 against the CMake before the change; the empty-message serializer

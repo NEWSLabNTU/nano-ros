@@ -98,8 +98,12 @@
   },
   "cpp:Node::add_on_set_parameters_callback": {
     "verdict": "divergence",
-    "disposition": "refuse-loud",
-    "why": "upstream takes a `std::function` over a `std::vector<rclcpp::Parameter>` returning a `SetParametersResult`, and hands back an owning `ParameterCallbackHandle` shared_ptr whose destruction unregisters. With no allocator ours is a plain function pointer plus a `void*` context seeing ONE write at a time as scalars, answering `bool` — upstream's `successful` — and `out_handle` receives a `uint16_t` token because there is nothing to own. The registry is bounded (`nros_params::MAX_ON_SET_CALLBACKS`, 4) and a full one answers `Result::FULL` rather than evicting somebody else's hook. The hook runs AFTER the store's read-only / type / range rules and on every write that reaches the store, local or over `~/set_parameters`, because `apply` is the one seam. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "The callback sees ONE write per call, because the store validates"
+    },
+    "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. Hosted: `add_on_set_parameters_callback(f)` with `f` over `const std::vector<rclcpp::Parameter>&` returning anything with a `successful` member (upstream's `SetParametersResult`), returning `node_interfaces::OnSetParametersCallbackHandle::SharedPtr` whose destruction unregisters. The proposed write's arrays now cross the FFI (`nros_cpp_param_write_t`'s `*_array` fields), so `as_double_array()` sees the proposed elements. THE BOUND: one write per call, because the store validates writes one at a time, and the `reason` is dropped because the store's hook answers `bool`. The freestanding function-pointer form is unchanged. Previous text: upstream takes a `std::function` over a `std::vector<rclcpp::Parameter>` returning a `SetParametersResult`, and hands back an owning `ParameterCallbackHandle` shared_ptr whose destruction unregisters. With no allocator ours is a plain function pointer plus a `void*` context seeing ONE write at a time as scalars, answering `bool` — upstream's `successful` — and `out_handle` receives a `uint16_t` token because there is nothing to own. The registry is bounded (`nros_params::MAX_ON_SET_CALLBACKS`, 4) and a full one answers `Result::FULL` rather than evicting somebody else's hook. The hook runs AFTER the store's read-only / type / range rules and on every write that reaches the store, local or over `~/set_parameters`, because `apply` is the one seam. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
   },
   "cpp:Node::declare_parameters": {
     "verdict": "divergence",
@@ -127,9 +131,13 @@
     "why": "RE-VERDICTED phase-417 W4.a. was `gap`. the vector form of `describe_parameter`, which ships one name at a time into caller storage (phase-417 W4.a). Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
   },
   "cpp:Node::get_node_parameters_interface": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "why": "see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an injected node (RFC-0044)."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "`get_parameter_overrides()` is absent (issue 2057): the executor applies `-p` and"
+    },
+    "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. A view of the node, in the node-interface handle shape issue 2015 gave the other slices: `SharedPtr` is the view itself and `->` reaches it, with `has_parameter`, `declare_parameter` (a descriptor message included) and `get_parameter`, each forwarding to the node. Nav2's `nav2_util::declare_or_get_parameter` takes one. THE BOUND: no `get_parameter_overrides()` (issue 2057), because the executor applies `-p` / `--params-file` overrides at declaration and offers no listing of them. Previous text: see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `node_interfaces::Node*Interface` slices exist so a component can be handed the part it needs; our components are declared, not constructed with an injected node (RFC-0044)."
   },
   "cpp:Node::get_parameter_type": {
     "verdict": "extension",
@@ -141,15 +149,13 @@
     "why": "upstream takes a `std::vector<std::string>` and returns a `std::vector<rclcpp::ParameterType>`; both need an allocator, and the freestanding lane has neither. Ours is `get_parameter_types(names, count, out)` over caller storage, plus the singular `get_parameter_type(name)`. An undeclared name answers `PARAMETER_NOT_SET`, as upstream's service does. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
   },
   "cpp:Node::get_parameters": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "provides": [
-      "nros::Node::get_parameter",
-      "nros::Node::set_parameter",
-      "nros::Node::describe_parameter",
-      "nros::Node::set_parameters_atomically"
-    ],
-    "why": "RE-VERDICTED phase-417 W4.a. was `gap`. the read half: upstream returns `std::vector<rclcpp::Parameter>` for a vector of names. Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/parameter_value.hpp",
+      "text": "value. There are no exceptions here (RFC-0018), so a wrong-type read answers"
+    },
+    "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. Hosted: `get_parameters(names)` returns one `Parameter` per name, each read from the store; an undeclared name answers `PARAMETER_NOT_SET` rather than throwing. Freestanding keeps the singular typed reads. Previous text: RE-VERDICTED phase-417 W4.a. was `gap`. the read half: upstream returns `std::vector<rclcpp::Parameter>` for a vector of names. Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
   },
   "cpp:Node::list_parameters": {
     "verdict": "divergence",
@@ -164,19 +170,21 @@
   },
   "cpp:Node::remove_on_set_parameters_callback": {
     "verdict": "divergence",
-    "disposition": "refuse-loud",
-    "why": "the unregister half. Upstream takes the owning handle; ours takes the `rclcpp::ParameterCallbackHandle` token (a `uint16_t`) its registration returned. See `cpp:Node::add_on_set_parameters_callback`. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "`remove_on_set_parameters_callback(handle)` — unregister early."
+    },
+    "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. Hosted: `remove_on_set_parameters_callback(handle.get())` takes upstream's owning handle and unregisters it early; destroying the handle does the same. The freestanding token form is unchanged. Previous text: the unregister half. Upstream takes the owning handle; ours takes the `rclcpp::ParameterCallbackHandle` token (a `uint16_t`) its registration returned. See `cpp:Node::add_on_set_parameters_callback`. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
   },
   "cpp:Node::set_parameters": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "provides": [
-      "nros::Node::get_parameter",
-      "nros::Node::set_parameter",
-      "nros::Node::describe_parameter",
-      "nros::Node::set_parameters_atomically"
-    ],
-    "why": "RE-VERDICTED phase-417 W4.a. was `gap`. the non-atomic write half: upstream takes `std::vector<rclcpp::Parameter>` and returns a `std::vector<SetParametersResult>`, one verdict per element. `Node::set_parameters_atomically` DOES ship (phase-417 W4.a) over `rclcpp::ParameterWrite`, so the capability is reachable; what is declined is the per-element-result vector, which needs `SetParametersResult`. Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "`set_parameter(parameter)` — through the same store write a remote"
+    },
+    "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. Hosted: `set_parameters(parameters)` returns one outcome per element, in order, each the same store write `ros2 param set` takes, so the on-set callbacks vote. THE BOUND: the outcome is a nano-ros struct with upstream's `successful` and `reason` fields, not the generated `SetParametersResult` (which lives in the user's build), and a string or byte array is refused. Previous text: RE-VERDICTED phase-417 W4.a. was `gap`. the non-atomic write half: upstream takes `std::vector<rclcpp::Parameter>` and returns a `std::vector<SetParametersResult>`, one verdict per element. `Node::set_parameters_atomically` DOES ship (phase-417 W4.a) over `rclcpp::ParameterWrite`, so the capability is reachable; what is declined is the per-element-result vector, which needs `SetParametersResult`. Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
   },
   "cpp:Node::set_parameters_atomically": {
     "verdict": "divergence",
@@ -225,10 +233,14 @@
     "verdict": "divergence",
     "disposition": "adopt-bounded",
     "envelope": {
-      "file": "packages/api/nros-cpp/include/rclcpp/parameter_event_handler.hpp",
-      "text": "returns the type's zero value where upstream throws"
+      "file": "packages/api/nros-cpp/include/rclcpp/parameter_value.hpp",
+      "text": "value. There are no exceptions here (RFC-0018), so a wrong-type read answers"
     },
-    "why": "issue 2024 (2026-10-25) -- re-verdicted from declined: a HOSTED `rclcpp::Parameter` exists now, the value a `ParameterEventHandler` parameter callback receives -- a name plus a type-tagged value with upstream's readers `get_name`, `get_type`, `get_type_name`, `as_bool`, `as_int`, `as_double`, `as_string`, `as_byte_array`, `as_bool_array`, `as_integer_array`, `as_double_array`, `as_string_array`. THE BOUND, and the constraints behind it: it owns `std::string` / `std::vector` storage, so a freestanding build (no allocator) has no `rclcpp::Parameter`; reading the wrong type returns that type's zero value where upstream throws `ParameterTypeException` (no exceptions, RFC-0018), so check `get_type()` first; it is not yet the currency of the node's own `get_parameters` / `set_parameters` / on-set callback, which keep the typed out-param forms and `ParameterWrite` (`cpp:ParameterWrite`); the message conversions and `value_to_string` are their own rows.\n\nEARLIER ROW (superseded): declined, absent -- the type could not exist without an allocator, so C++ passed values through the typed template methods."
+    "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). Merged with issue 2024's hosted `Parameter` (#2648, the value a `ParameterEventHandler` callback receives), which now IS this type: one `rclcpp::Parameter` for the event handler, the node and the on-set callback. OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. `rclcpp::Parameter` is a name plus an `rclcpp::ParameterValue`, a VALUE object over the executor's one store: `Node::get_parameter(name)` builds one from the store, and the on-set callback's is built from the proposed write. It exists in every arm with one layout (a heap pointer for the name); the name and the string/vector accessors are hosted methods. THE BOUND: a wrong-type `as_*` answers the zero value, not `ParameterTypeException` (no exceptions, RFC-0018). Previous text: rclcpp's parameter VALUE OBJECT: a name plus a type-tagged value, copied around by value and the currency of `set_parameters`, `get_parameters` and the on-set callback. Every accessor on it (`as_string`, `as_double_array`, `value_to_string`, `to_parameter_msg`) returns an owned `std::string` or `std::vector`, so the type cannot exist without an allocator. Our C++ passes values through the typed template methods instead (`ParameterServer::get_parameter<T>(name, out&)`), which is the out-param form of the same read. What a user loses: a heterogeneous parameter list. Note C and Rust both DO have the record type (`nros_parameter_t`, `nros_params::Parameter`) -- theirs holds the value inline rather than owning it."
+  },
+  "cpp:Parameter::from_write": {
+    "verdict": "extension",
+    "why": "issue 2056: builds the `Parameter` an on-set callback sees from the store's proposed write (`rclcpp::ParameterWrite`), arrays included. Public because a user who registers the freestanding function-pointer hook can lift its write into upstream's shape with it."
   },
   "cpp:ParameterCallbackHandle": {
     "verdict": "declined",
@@ -292,9 +304,54 @@
     "why": "thrown when a `Parameter` is read as the wrong type. nros-cpp is built `-fno-exceptions` (RFC-0018); every failure here is an `nros::Result` carrying an `rcl_ret_t`, and a type mismatch is `RCL_RET_INVALID_ARGUMENT`."
   },
   "cpp:ParameterValue": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/parameter_value.hpp",
+      "text": "`ParameterValue` can still HOLD a byte or string array, so ported code that"
+    },
+    "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. A type tag, the three scalar slots and ONE pointer to a hosted heap block holding the string or array, so the layout is the same in every arm (`check-cpp-capability-layout`); freestanding keeps the scalar constructors and accessors. `declare_parameter(name, ParameterValue)` dispatches on the tag to the typed `declare_parameter<T>`, so the store, the contract check and the node keying are one implementation. THE BOUND: the store's array FFI carries bool, integer and double arrays only, so a byte or string array can be HELD but declaring one answers `PARAMETER_NOT_SET`; a wrong-type read answers the zero value. Previous text: the value half of `cpp:Parameter`, with the same allocator problem: `get<std::string>()` and `to_value_msg()` both hand back owned storage. Rust's `ParameterValue` is the no-allocator equivalent (heapless `String`/`Vec`, accessors that return borrows); C++ has no counterpart."
+  },
+  "cpp:ParameterValue::as_bool": {
+    "verdict": "extension",
+    "why": "issue 2056: a nano-ros convenience on the value object, not in upstream's `ParameterValue` (which reads through `get<T>()` only; upstream's `as_*` are on `Parameter`). `rclcpp::Parameter`'s `as_*` forward to these, and a freestanding build has the scalar ones. A wrong-type read answers the zero value (see `cpp:ParameterValue`)."
+  },
+  "cpp:ParameterValue::as_bool_array": {
+    "verdict": "extension",
+    "why": "issue 2056: a nano-ros convenience on the value object, not in upstream's `ParameterValue` (which reads through `get<T>()` only; upstream's `as_*` are on `Parameter`). `rclcpp::Parameter`'s `as_*` forward to these, and a freestanding build has the scalar ones. A wrong-type read answers the zero value (see `cpp:ParameterValue`)."
+  },
+  "cpp:ParameterValue::as_byte_array": {
+    "verdict": "extension",
+    "why": "issue 2056: a nano-ros convenience on the value object, not in upstream's `ParameterValue` (which reads through `get<T>()` only; upstream's `as_*` are on `Parameter`). `rclcpp::Parameter`'s `as_*` forward to these, and a freestanding build has the scalar ones. A wrong-type read answers the zero value (see `cpp:ParameterValue`)."
+  },
+  "cpp:ParameterValue::as_double": {
+    "verdict": "extension",
+    "why": "issue 2056: a nano-ros convenience on the value object, not in upstream's `ParameterValue` (which reads through `get<T>()` only; upstream's `as_*` are on `Parameter`). `rclcpp::Parameter`'s `as_*` forward to these, and a freestanding build has the scalar ones. A wrong-type read answers the zero value (see `cpp:ParameterValue`)."
+  },
+  "cpp:ParameterValue::as_double_array": {
+    "verdict": "extension",
+    "why": "issue 2056: a nano-ros convenience on the value object, not in upstream's `ParameterValue` (which reads through `get<T>()` only; upstream's `as_*` are on `Parameter`). `rclcpp::Parameter`'s `as_*` forward to these, and a freestanding build has the scalar ones. A wrong-type read answers the zero value (see `cpp:ParameterValue`)."
+  },
+  "cpp:ParameterValue::as_int": {
+    "verdict": "extension",
+    "why": "issue 2056: a nano-ros convenience on the value object, not in upstream's `ParameterValue` (which reads through `get<T>()` only; upstream's `as_*` are on `Parameter`). `rclcpp::Parameter`'s `as_*` forward to these, and a freestanding build has the scalar ones. A wrong-type read answers the zero value (see `cpp:ParameterValue`)."
+  },
+  "cpp:ParameterValue::as_integer_array": {
+    "verdict": "extension",
+    "why": "issue 2056: a nano-ros convenience on the value object, not in upstream's `ParameterValue` (which reads through `get<T>()` only; upstream's `as_*` are on `Parameter`). `rclcpp::Parameter`'s `as_*` forward to these, and a freestanding build has the scalar ones. A wrong-type read answers the zero value (see `cpp:ParameterValue`)."
+  },
+  "cpp:ParameterValue::as_string": {
+    "verdict": "extension",
+    "why": "issue 2056: a nano-ros convenience on the value object, not in upstream's `ParameterValue` (which reads through `get<T>()` only; upstream's `as_*` are on `Parameter`). `rclcpp::Parameter`'s `as_*` forward to these, and a freestanding build has the scalar ones. A wrong-type read answers the zero value (see `cpp:ParameterValue`)."
+  },
+  "cpp:ParameterValue::as_string_array": {
+    "verdict": "extension",
+    "why": "issue 2056: a nano-ros convenience on the value object, not in upstream's `ParameterValue` (which reads through `get<T>()` only; upstream's `as_*` are on `Parameter`). `rclcpp::Parameter`'s `as_*` forward to these, and a freestanding build has the scalar ones. A wrong-type read answers the zero value (see `cpp:ParameterValue`)."
+  },
+  "cpp:ParameterValue::to_value_msg": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "the value half of `cpp:Parameter`, with the same allocator problem: `get<std::string>()` and `to_value_msg()` both hand back owned storage. Rust's `ParameterValue` is the no-allocator equivalent (heapless `String`/`Vec`, accessors that return borrows); C++ has no counterpart."
+    "why": "the value as an `rcl_interfaces::msg::ParameterValue`. The `rcl_interfaces` message types are generated in the USER's build, not shipped by nano-ros, so the runtime headers cannot name them in a signature; the declare overload that takes a descriptor message is a template over its shape for the same reason. The value and its name are reachable through the accessors. issue 2056."
   },
   "cpp:ParameterWrite": {
     "verdict": "divergence",
