@@ -323,8 +323,8 @@ three plan-level tests in `build_verb_pipeline.rs`.
 done-when's "runs the image" half is verified only for the shapes the tests
 pin); the three QEMU invocations derived for NuttX/ThreadX riscv64 restate the
 harness rather than share code with it (the harness is a test crate); the
-`nros-tests` QEMU ladder and this one are two Rust spellings of one ladder;
-no `-v` flag exists to document.
+`nros-tests` QEMU ladder and this one are two Rust spellings of one ladder.
+(`nros build -v`, landed with W5, is now in `reference/cli.md`.)
 
 ### W7 — one build flow per language in the book (M)
 
