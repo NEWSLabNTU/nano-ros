@@ -37,7 +37,8 @@ many release gaps exceeded period plus deadline. `load` prints one
 `[<name>] tick=` line per release, with the CPU it burned, the wall time that
 took, and its longest stretch off the CPU. `tests/rt_sched_levels_e2e.rs`
 reads both. It runs only on a lane that claims `rt-sched`, because without
-`CAP_SYS_NICE` the kernel refuses every level's priority and budget; the book's
+`CAP_SYS_NICE` the kernel refuses every level's priority and budget. The test
+runs each image in a docker container granted it, so no `sudo`; the book's
 [Real-Time Execution Model](../../../book/src/internals/rt-execution-model.md)
 chapter says how to run it.
 

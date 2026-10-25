@@ -32,6 +32,13 @@ fire on that schedule: over a pinned 4 s run, `attitude`'s longest gap
 between releases was 4.5–5.0 ms (default policy, no `SCHED_FIFO`), not
 10 ms. So the warning describes a cadence that did not happen.
 
+Under `SCHED_FIFO` (phase-162 W2, 2026-10-25, levels on their real-time
+priorities in a container granted `SYS_NICE`), the same boot still prints the
+warning, and `attitude` kept 1 kHz: 59 windows of 1000 releases in 60 s,
+worst gap 1.4-3.4 ms, 0-5 gaps over 2 ms in 59,000. A 10 ms burst would put
+a gap over 2 ms on most releases. So the warning is wrong and the dispatch is
+right.
+
 Not measured: whether the audit runs before the spawned level has claimed the
 slot (an ordering race), or reads the executor's default spin period rather
 than the level's.
@@ -39,8 +46,7 @@ than the level's.
 ## Why it matters
 
 It is the warning a reader looking at a real-time image would trust, and it
-says a 1 kHz loop runs in 10 ms bursts. Under `SCHED_FIFO` the phase-162 S1
-test will show which is true, and either the warning or the dispatch is wrong.
+says a 1 kHz loop runs in 10 ms bursts, which it does not.
 
 ## Closes when
 

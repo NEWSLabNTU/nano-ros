@@ -1,16 +1,15 @@
 # Phase 162 — Real-time verification of executor levels on a privileged host
 
-**Status (2026-10-25). Code landed; the acceptance run waits on a privileged
-host.** W1–W3 are built: the `rt-sched` lane capability, three tests in
+**Status (2026-10-25). W1-W3 met on a run that claims `rt-sched`; the CI
+lane is written and waits for its first run.** The `rt-sched` lane
+capability, three tests in
 `packages/testing/nros-tests/tests/rt_sched_levels_e2e.rs` over three new
-`levels-cpp` images, and the book chapter. On this host (no `CAP_SYS_NICE`,
-`ulimit -r` 0) the tests skip by lane by default and fail `[UNMET
-PRECONDITION]` when the scope is claimed, which is the designed behaviour; the
-S1 negative control was seen to miss before that check. What is left is one
-run on a host where an operator granted the capability (the chapter's
-"Running the real-time tests"), and recording its numbers here. Every
-self-hosted runner is `--cap-drop ALL`, so no lane can claim `rt-sched` until
-one is started with `--cap-add SYS_NICE`.
+`levels-cpp` images, and the book chapter are built. The capability comes
+from a container, not from `sudo`: the tests' default launcher runs each image
+in a throwaway `docker run --cap-add SYS_NICE --ulimit rtprio=99`, which needs
+only `docker` group membership, and host-tests' `rt-sched` job grants the same
+to its job container. All three pass that way (numbers under W1 and W2).
+Archive once the `rt-sched` job has run green.
 
 **Implements:** [RFC-0002](../design/0002-rt-execution-model.md) scenarios S1
 and S3, on [RFC-0108](../design/0108-executor-preemption-levels.md) levels.
@@ -64,9 +63,15 @@ an unclaimed run deselects through `lane_skip!`, and a claimed run without
 - `linux_levels_preempt_in_rank_order_on_one_cpu` runs the three-level
   `linux` image under `taskset -c 0` and applies `level_order_verdict`, now in
   `nros_tests::levels`.
-- An operator provides the lane: a runner started with `--cap-add SYS_NICE`,
-  or `setcap cap_sys_nice+ep` on the fixture binaries of a local run. Nothing
-  here may need `sudo` from the agent.
+- The capability comes from the launcher, `NROS_RT_SCHED_LAUNCHER`. `docker`
+  (the default) runs each image in a throwaway container started with
+  `--cap-add SYS_NICE --ulimit rtprio=99`, sharing the host's network and
+  CPUs, with only the fixture's directory mounted read-only. Its image is the
+  host's own distribution and release (`ubuntu:22.04` on jammy), or
+  `NROS_RT_SCHED_IMAGE`. `direct` runs the binary as it is, for a process that
+  already holds the capability: host-tests' `rt-sched` job, whose job
+  container is granted `SYS_NICE` and runs as root, or a `setcap`'d fixture.
+  Nothing needs `sudo`. The CI job is the only lane that claims `rt-sched`.
 
 Two things the build found. A derived level is allocated from the top of the
 app pool (`SCHED_FIFO` 88 on Linux), so a derived level beside an authored
@@ -79,7 +84,15 @@ is not pinned.
 **Done when** both tests pass on a lane that claims `rt-sched`, and every other
 lane reports them as `[SKIPPED:lane]`.
 
-### W2 — S1 on levels: zero deadline misses under load
+Measured 2026-10-25 with the docker launcher (48-CPU host, generic
+6.8.0-138 kernel with `PREEMPT_DYNAMIC`, load average 8-15 from other work):
+both pass. The budget run printed ``deadline budget set tier=`capped`
+2000us/10000us`` and ``enforced by the KERNEL``, and each 10 ms burn took
+22.7-32.1 ms of wall time with 6.8-8.0 ms stretches off the CPU: the kernel's
+throttle, which the executor's own enforcement cannot produce. With
+`rt-sched` unclaimed all three are `[SKIPPED:lane]`.
+
+### W2 — S1 on levels: deadlines kept under load
 
 RFC-0002 S1 on Linux levels, `levels-cpp`'s `linux_s1` image: `attitude`, a
 1 kHz timer with 300 us of work and a 1 ms deadline, on its own derived level,
@@ -90,9 +103,24 @@ deadline, a lower bound on deadline misses. The test
 (`s1_critical_loop_meets_every_deadline_on_its_own_level`) pins both runs to
 one CPU and is in scope for `rt-sched` only.
 
-**Done when** 60 s of the run records zero misses on the urgent level, and the
-negative control records misses. The second half shows the test can see a
-miss. Unprivileged, pinned, both images miss (16–33 a second), as expected
+**Done when** 60 s of the run keeps the urgent level's deadlines, and the
+negative control records misses, which shows the test can see a miss. "Keeps"
+depends on the kernel (`s1_verdict` in `nros_tests::levels`):
+
+- On a `PREEMPT_RT` kernel (`/sys/kernel/realtime` is 1), zero misses.
+- On a generic kernel, a miss rate at least 50 times below the negative
+  control's. Zero is not a property any program has there: a bare C loop at
+  the same `SCHED_FIFO` 88, on the same CPU, with no nano-ros and no load,
+  missed 2 of 60,000 releases (worst gap 2.6 ms) on CPU 0 and 0 on CPU 23.
+  What the levels own is that telemetry no longer runs in front of the
+  critical loop, and that is what the bound measures.
+
+Measured 2026-10-25, same host as W1, pinned to CPU 0, six runs: the
+negative control missed 128-181 of 6,000-7,000 releases (about 2 %, worst gap
+5.4-7.4 ms, one telemetry burn), and S1 missed 0-5 of 59,000 (under 0.01 %,
+worst gap 1.4-3.4 ms). The first S1 assertion was `misses == 0`; it failed on
+5 of 6 runs, and the bare C loop is what showed the misses were the host's,
+not the levels'. Unprivileged, both images miss 16-33 a second, as expected
 with no preemption.
 
 ### W3 — the RT execution model chapter
@@ -108,9 +136,11 @@ the test that measured it, or says it is unmeasured. Done on 2026-10-25.
 
 ## Acceptance
 
-- [ ] W1: the kernel throttle and Linux level preemption pass on a lane that
+- [x] W1: the kernel throttle and Linux level preemption pass on a run that
       claims `rt-sched`, and skip by lane everywhere else.
-- [ ] W2: S1 on levels, zero misses in 60 s, with the negative control.
+- [x] W2: S1 on levels, with the negative control: zero misses on a
+      `PREEMPT_RT` kernel, the host's floor on a generic one.
+- [ ] The host-tests `rt-sched` job runs green on GitHub.
 - [x] W3: the chapter is published and phase-110's archive note points to it.
 
 ## Issues found here
@@ -123,7 +153,7 @@ phase's scope. They are homed here so they have an owner.
   every multi-level boot as an error.
 - [Issue 2050](../issues/2050-spin-quantization-warning-names-a-spawned-level-timer.md):
   the spin-quantization audit warns that `attitude`'s 1 ms timer runs in 10 ms
-  bursts, which the run did not show. W2's privileged run tells which is wrong.
+  bursts. W2's run under `SCHED_FIFO` showed the warning is the wrong half.
 
 ## Not in this phase
 

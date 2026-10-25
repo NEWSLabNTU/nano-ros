@@ -8,6 +8,8 @@
 #                   `just test-doc` (doctests, both workspaces).
 #   - feature-sweep : `just check feature-sweep` — per-feature clippy.
 #   - gates       : `just ci tier1 gates` — tier 1's `just check` half.
+#   - rt-sched    : `rt_sched_levels_e2e` (phase-162) in a container granted
+#                   `SYS_NICE`, the only lane that claims `rt-sched`.
 #
 # Tier 1's OTHER half — `just build-test-fixtures lane=tier1` + `just ci tier1
 # run` (preconditions + rust-rtos-link-check + `test-all`) — is NOT here. It
@@ -456,3 +458,77 @@ jobs:
           path: build/ci-logs/
           if-no-files-found: ignore
           retention-days: 7
+
+  # phase-162 — the one lane that claims `rt-sched`. Executor levels on Linux
+  # need `CAP_SYS_NICE` for `SCHED_FIFO` and `SCHED_DEADLINE`, and the job
+  # container is granted it here (`--cap-add SYS_NICE`, plus an RT priority
+  # limit) instead of by `sudo setcap` on each fixture. The job runs as root
+  # inside it, so the launcher is `direct`: the tests run the binaries as they
+  # are. Every other lane leaves `rt-sched` unclaimed, so there the three tests
+  # are `[SKIPPED:lane]`.
+  rt-sched:
+    name: real-time levels (rt-sched)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    concurrency:
+      group: host-tests-rt-sched-${{ github.ref }}-${{ github.event_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --cap-add SYS_NICE --ulimit rtprio=99
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Restore CLI build cache (Phase 218)
+        id: cli-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Build nros CLI from packages/cli/ (Phase 218)
+        uses: ./.github/actions/setup-nros-cli
+
+      # `rmw_zenohd` comes from the declared system closure (the image carries
+      # no zenoh packages; see nightly.yml's platform job).
+      - name: Provision the declared system closure and the Linux scope
+        run: |
+          source ./activate.sh
+          nros setup --system --sudo
+          just setup linux
+
+      - name: Build the levels-cpp fixtures
+        run: |
+          source ./activate.sh
+          for id in workspace-cpp-native-levels workspace-cpp-native-levels-s1 \
+                    workspace-cpp-native-levels-s1-flat workspace-cpp-native-levels-budget; do
+            NROS_FIXTURE_ID="$id" scripts/build/workspace-fixtures-build.sh linux cpp
+          done
+
+      - name: Probe the granted scheduling
+        run: |
+          chrt -f 80 true && echo "SCHED_FIFO: granted"
+          chrt -d --sched-runtime 2000000 --sched-deadline 10000000 \
+               --sched-period 10000000 0 true && echo "SCHED_DEADLINE: granted"
+          nproc
+
+      - name: rt_sched_levels_e2e
+        env:
+          NROS_TEST_UNCLAIMED: ""
+          NROS_RT_SCHED_LAUNCHER: direct
+        run: |
+          source ./activate.sh
+          cargo nextest run -p nros-tests --test rt_sched_levels_e2e \
+            --no-fail-fast --success-output immediate
