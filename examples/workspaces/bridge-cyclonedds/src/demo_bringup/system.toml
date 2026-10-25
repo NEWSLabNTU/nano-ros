@@ -2,7 +2,6 @@
 name = "bridge_demo"
 rmw = "zenoh"
 domain_id = 0
-locator = "tcp/127.0.0.1:7447"
 default_launch = "system.launch.xml"
 
 # phase-263 B3 — cross-RMW bridge showcase. `talker_pkg` is a plain talker: it
@@ -18,16 +17,22 @@ class = "talker_pkg::Talker"
 name = "talker"
 
 # The two bridged sessions. Each `[[bridge]]` endpoint is an `<rmw>:<domain>`
-# selector resolved to these `[[domain]]` ids.
+# selector resolved to these `[[domain]]` ids. Each domain's wiring is its
+# middleware's OWN file (RFC-0109 D6, U5): the zenoh session dials what
+# `rmw/zenoh-zen.json5` says, the Cyclone participant reads
+# `rmw/cyclonedds-dds.xml` — the two documents `rmw_zenoh` and
+# `rmw_cyclonedds_cpp` would read on a ROS 2 host.
 [[domain]]
 name = "zen"
 rmw = "zenoh"
 id = 0
+config = "rmw/zenoh-zen.json5"
 
 [[domain]]
 name = "dds"
 rmw = "cyclonedds"
 id = 5
+config = "rmw/cyclonedds-dds.xml"
 
 [[bridge]]
 name = "gw"

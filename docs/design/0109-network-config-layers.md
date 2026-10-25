@@ -313,6 +313,47 @@ interfaces, and wiring uses those names.
      hand-written json5 reader (the `json5` crate pulls `pest` into every
      board lock). The build and the hosted runtime call the same `lower`.
 
+- **Amendment (phase-514 W3b, 2026-10-25) — naming a file, and a domain's
+  own.** Calls taken while implementing:
+  1. **Precedence for the default session** is `[image.<id>] rmw_config =
+     "<file>"` (over `[image_defaults]`), then `[system] rmw_config`, then the
+     conventional file. A NAMED file that does not exist is refused, never
+     read as "no file"; a backend with no file format (XRCE) refuses one,
+     naming `locator`.
+  2. **A `[[domain]]` is a session a `[[bridge]]` opens.** The examples above
+     that show a lone `[[domain]] main` as an image's session are spelled
+     `[system] rmw_config` until a lone domain becomes the default session;
+     a `[[domain]] config` that no bridge opens is refused, because nothing
+     would read it. A named domain has no conventional file (the convention
+     is the default session's). `rmw_config = { <domain> = "<file>" }`
+     overrides one domain's file and must name a declared domain — and is
+     refused at sync until it has a carrier (issue 2062, see 4).
+  3. **A domain's file travels as its session's properties**, so one image
+     can open two domains with two files: a `session-json5` file lowered, a
+     `verbatim-xml` one as its whole text under the one neutral key
+     `config` (`nros_orchestration_ir::session_properties::DOCUMENT`).
+     Cyclone takes that key in place of its baked document, under the
+     baseline and under `CYCLONEDDS_URI`; every other key is still refused.
+     Composition is Cyclone's own: a scalar the environment states wins,
+     but a LIST element (`<Interfaces>`, `<Peers>`) appends to the file's —
+     measured on the U5 example, where a loopback file plus the test
+     harness's loopback `CYCLONEDDS_URI` stopped delivery, and a scalar-only
+     file did not.
+     The cffi seam copies a value past its 256-byte stack buffer to the heap
+     on an `alloc` build and refuses it without one.
+  4. **The bridge's own runtime overrides** — `NROS_BRIDGE_<N>_LOCATOR`
+     replaces a domain file's wiring whole, as `ZENOH_SESSION_CONFIG_URI`
+     replaces a baked table (D6a); kept, the file's `connect` would outrank
+     it and the override would be silently unread. The bridge config is one
+     per bringup, so an image's per-domain override reaches a bridge only
+     through the bringup's `[[domain]] config`.
+  5. **One resolver on every road.** The CMake road asks
+     `nros ws rmw-config <bringup> --rmw <backend> [--image <id>]` (the
+     generated workspace root passes each entry's `IMAGE`); it no longer
+     spells `rmw/zenoh.json5` or `rmw/cyclonedds.xml` itself. Without an
+     image, the images on that backend must agree on one file or the
+     configure is refused, naming `-DNROS_IMAGE`.
+
 ### D9 — Checks at `nros sync`
 
 1. A retired key (D6) is refused, naming its new home.

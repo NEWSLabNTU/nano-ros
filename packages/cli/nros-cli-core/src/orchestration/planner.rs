@@ -759,7 +759,11 @@ fn schema_plan_json(
         let topics = forwarded_topics(&plan_instances);
         obj.insert(
             "bridges".to_string(),
-            json!(bridge_plan_entries(s, &topics)),
+            json!(bridge_plan_entries(
+                s,
+                system_toml.and_then(Path::parent),
+                &topics
+            )?),
         );
     }
     obj.insert("build".to_string(), build);
@@ -901,7 +905,7 @@ fn schema_build_json(
         // The endpoints in `plan.bridges` (emitted by `schema_plan_json`) carry
         // the SAME (rmw, domain, locator) so `bridge_endpoint_session_idx`
         // resolves each to its slot.
-        let transports = bridge_transports(s);
+        let transports = bridge_transports(s, system_toml.and_then(Path::parent))?;
         if !transports.is_empty() {
             obj.insert("transports".to_string(), json!(transports));
         }
@@ -909,16 +913,27 @@ fn schema_build_json(
     Ok(build)
 }
 
-/// Issue 0099 — resolve a `[[bridge]]` endpoint selector to `(rmw, domain_id,
-/// locator)`. Mirrors [`SystemToml::bridged_rmws`] parsing: `"<rmw>:<domain>"`
-/// splits on `:` (prefix = rmw, suffix = a `[[domain]]` name resolved to its
-/// `id`); a bare endpoint is a `[[domain]]` name resolved to its `rmw` + `id`.
-/// The locator is `[system].locator` for the endpoint on the system's own rmw
+/// One session a `[[bridge]]` endpoint opens: `(rmw, domain_id, locator)`
+/// plus what its domain's RMW file hands the backend (RFC-0109 D6).
+type BridgeSession = (String, u32, Option<String>, Vec<(String, String)>);
+
+/// Issue 0099 — resolve a `[[bridge]]` endpoint selector to its session.
+/// Mirrors [`SystemToml::bridged_rmws`] parsing: `"<rmw>:<domain>"` splits on
+/// `:` (prefix = rmw, suffix = a `[[domain]]` name resolved to its `id`); a
+/// bare endpoint is a `[[domain]]` name resolved to its `rmw` + `id`. The
+/// locator is `[system].locator` for the endpoint on the system's own rmw
 /// (the other side is a DDS/multicast peer discovered by domain, no locator).
+///
+/// RFC-0109 D6 (phase-514 W3b) — with `dir` (the `system.toml`'s directory),
+/// a domain's RMW file is that session's wiring: its `config`, else — for the
+/// endpoint on the system's own rmw — the bringup's default-session file
+/// (`[system] rmw_config`, or the backend's conventional one). With a file the
+/// session states no locator, as an image with one does not (D9-2).
 fn resolve_bridge_endpoint(
     sys: &super::cargo_metadata_schema::SystemToml,
+    dir: Option<&Path>,
     endpoint: &str,
-) -> (String, u32, Option<String>) {
+) -> Result<BridgeSession> {
     let (rmw, domain_name) = match endpoint.split_once(':') {
         Some((rmw, domain)) => (rmw.to_string(), domain.to_string()),
         None => {
@@ -933,6 +948,34 @@ fn resolve_bridge_endpoint(
     };
     let domain = sys.domains.iter().find(|d| d.name == domain_name);
     let domain_id = domain.map(|d| d.id).unwrap_or(sys.system.domain_id);
+    let file = match dir {
+        Some(dir) => {
+            let own = match domain {
+                Some(d) => sys
+                    .domain_file(dir, &d.name, None)
+                    .map_err(|e| eyre!("{e}"))?,
+                None => None,
+            };
+            match own {
+                Some(f) => Some(f),
+                None if rmw == sys.system.rmw => super::rmw_config::resolve(
+                    dir,
+                    Some(rmw.as_str()),
+                    sys.system.rmw_config.as_deref(),
+                    None,
+                    domain_id,
+                    "system",
+                )
+                .map_err(|e| eyre!("{e}"))?,
+                None => None,
+            }
+        }
+        None => None,
+    };
+    if let Some(f) = file {
+        let properties = f.session_properties().map_err(|e| eyre!("{e}"))?;
+        return Ok((rmw, domain_id, None, properties));
+    }
     // The endpoint on the system's own rmw uses `[system].locator`; any other
     // side uses its `[[domain]].locator` when set (xrce agent addr — phase-267),
     // else `None` (a DDS/multicast peer discovered by domain id).
@@ -941,36 +984,40 @@ fn resolve_bridge_endpoint(
     } else {
         domain.and_then(|d| d.locator.clone())
     };
-    (rmw, domain_id, locator)
+    Ok((rmw, domain_id, locator, Vec::new()))
 }
 
 /// Issue 0099 — one `plan.build.transports` entry per distinct bridge endpoint
-/// (deduped by `(rmw, domain, locator)`). `kind = "ethernet"` (bridge sessions
-/// are IP-based on the host; the network fields stay `None`). Consumed by
-/// `SESSION_SPECS` codegen, which reads only `rmw` / `locator` / `domain`.
-fn bridge_transports(sys: &super::cargo_metadata_schema::SystemToml) -> Vec<Value> {
-    let mut seen: Vec<(String, u32, Option<String>)> = Vec::new();
+/// (deduped by session). `kind = "ethernet"` (bridge sessions are IP-based on
+/// the host; the network fields stay `None`). Consumed by `SESSION_SPECS`
+/// codegen, which reads only `rmw` / `locator` / `domain` / `properties`.
+fn bridge_transports(
+    sys: &super::cargo_metadata_schema::SystemToml,
+    dir: Option<&Path>,
+) -> Result<Vec<Value>> {
+    let mut seen: Vec<BridgeSession> = Vec::new();
     let mut out: Vec<Value> = Vec::new();
     for bridge in &sys.bridges {
         for endpoint in [&bridge.from, &bridge.to] {
-            let (rmw, domain, locator) = resolve_bridge_endpoint(sys, endpoint);
-            if rmw.is_empty() {
+            let key = resolve_bridge_endpoint(sys, dir, endpoint)?;
+            if key.0.is_empty() || seen.contains(&key) {
                 continue;
             }
-            let key = (rmw.clone(), domain, locator.clone());
-            if seen.contains(&key) {
-                continue;
-            }
+            let (rmw, domain, locator, properties) = key.clone();
             seen.push(key);
-            out.push(json!({
+            let mut t = json!({
                 "kind": "ethernet",
                 "rmw": rmw,
                 "domain": domain,
                 "locator": locator,
-            }));
+            });
+            if !properties.is_empty() {
+                t["properties"] = json!(properties);
+            }
+            out.push(t);
         }
     }
-    out
+    Ok(out)
 }
 
 /// Issue 0099 — one `plan.bridges` entry per `[[bridge]]`: `connect` = the two
@@ -980,11 +1027,16 @@ fn bridge_transports(sys: &super::cargo_metadata_schema::SystemToml) -> Vec<Valu
 /// the plan interfaces, so `topics` is the set of declared pub/sub topic names.
 fn bridge_plan_entries(
     sys: &super::cargo_metadata_schema::SystemToml,
+    dir: Option<&Path>,
     topics: &[String],
-) -> Vec<Value> {
-    let endpoint = |e: &str| {
-        let (rmw, domain, locator) = resolve_bridge_endpoint(sys, e);
-        json!({ "rmw": rmw, "domain": domain, "locator": locator })
+) -> Result<Vec<Value>> {
+    let endpoint = |e: &str| -> Result<Value> {
+        let (rmw, domain, locator, properties) = resolve_bridge_endpoint(sys, dir, e)?;
+        let mut v = json!({ "rmw": rmw, "domain": domain, "locator": locator });
+        if !properties.is_empty() {
+            v["properties"] = json!(properties);
+        }
+        Ok(v)
     };
     sys.bridges
         .iter()
@@ -998,12 +1050,12 @@ fn bridge_plan_entries(
             } else {
                 &b.topics
             };
-            json!({
+            Ok(json!({
                 "name": b.name,
-                "connect": [endpoint(&b.from), endpoint(&b.to)],
+                "connect": [endpoint(&b.from)?, endpoint(&b.to)?],
                 "topics": forwarded,
                 "bidirectional": b.bidirectional,
-            })
+            }))
         })
         .collect()
 }
@@ -3776,6 +3828,65 @@ mod tests {
         assert_eq!(opts.transports[1].locator, None);
     }
 
+    /// RFC-0109 U5 (phase-514 W3b) — two domains, two files: each bridged
+    /// session carries its OWN domain's file (zenoh's lowered, Cyclone's whole
+    /// document) and no locator, and the bridge endpoints carry the same, so
+    /// each resolves to its session. The `[system] locator` the zenoh side
+    /// used to take is not read once its domain has a file.
+    #[test]
+    fn a_bridged_domain_carries_its_own_rmw_file() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("rmw")).unwrap();
+        std::fs::write(
+            dir.path().join("rmw/zenoh-can.json5"),
+            "{ mode: 'client', connect: { endpoints: ['tcp/10.0.0.1:7447'] } }",
+        )
+        .unwrap();
+        let xml = "<CycloneDDS><Domain id=\"any\"><General/></Domain></CycloneDDS>";
+        std::fs::write(dir.path().join("rmw/cyclonedds-eth.xml"), xml).unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [[domain]]\nname=\"ecu\"\nrmw=\"zenoh\"\nid=0\nconfig=\"rmw/zenoh-can.json5\"\n\
+             [[domain]]\nname=\"ctl\"\nrmw=\"cyclonedds\"\nid=5\n\
+             config=\"rmw/cyclonedds-eth.xml\"\n\
+             [[bridge]]\nname=\"gw\"\nfrom=\"zenoh:ecu\"\nto=\"cyclonedds:ctl\"\n",
+        )
+        .unwrap();
+        let build = schema_build_json(Some(&st), None, None, None).expect("build json");
+        let opts: crate::orchestration::plan::PlanBuildOptions =
+            serde_json::from_value(build).unwrap();
+        assert_eq!(opts.transports.len(), 2);
+        let zen = &opts.transports[0];
+        assert_eq!(zen.locator, None, "the file is the zenoh session's wiring");
+        assert_eq!(
+            zen.properties,
+            [
+                ("connect".to_string(), "tcp/10.0.0.1:7447".to_string()),
+                ("mode".to_string(), "client".to_string()),
+            ]
+        );
+        let cyc = &opts.transports[1];
+        assert_eq!(cyc.domain, Some(5));
+        assert_eq!(
+            cyc.properties,
+            [(
+                nros_orchestration_ir::session_properties::DOCUMENT.to_string(),
+                xml.to_string()
+            )]
+        );
+
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+            toml::from_str(&std::fs::read_to_string(&st).unwrap()).unwrap();
+        let bridges: Vec<crate::orchestration::plan::PlanBridge> = serde_json::from_value(json!(
+            bridge_plan_entries(&sys, Some(dir.path()), &["/chatter".to_string()]).unwrap()
+        ))
+        .unwrap();
+        assert_eq!(bridges[0].connect[0].properties, zen.properties);
+        assert_eq!(bridges[0].connect[1].properties, cyc.properties);
+    }
+
     /// Issue 0099 — `[[bridge]]` → `PlanBridge`: endpoints resolve to
     /// `(rmw, domain, locator)` byte-matching the transports, topics carry the
     /// phase-267 W1c/C1 — an explicit `[[bridge]] topics = [...]` selects the
@@ -3795,7 +3906,7 @@ mod tests {
 
         // forward-all fallback list is IGNORED when the bridge names topics.
         let bridges: Vec<crate::orchestration::plan::PlanBridge> = serde_json::from_value(json!(
-            bridge_plan_entries(&sys, &["/other".to_string(), "/extra".to_string()])
+            bridge_plan_entries(&sys, None, &["/other".to_string(), "/extra".to_string()]).unwrap()
         ))
         .unwrap();
         assert_eq!(bridges[0].topics, vec!["/chatter".to_string()]);
@@ -3805,9 +3916,10 @@ mod tests {
         let mut sys2 = sys.clone();
         sys2.bridges[0].topics.clear();
         sys2.bridges[0].bidirectional = false;
-        let b2: Vec<crate::orchestration::plan::PlanBridge> =
-            serde_json::from_value(json!(bridge_plan_entries(&sys2, &["/all".to_string()])))
-                .unwrap();
+        let b2: Vec<crate::orchestration::plan::PlanBridge> = serde_json::from_value(json!(
+            bridge_plan_entries(&sys2, None, &["/all".to_string()]).unwrap()
+        ))
+        .unwrap();
         assert_eq!(b2[0].topics, vec!["/all".to_string()]);
         assert!(!b2[0].bidirectional);
     }
@@ -3824,7 +3936,8 @@ mod tests {
         .unwrap();
         let topics = vec!["/chatter".to_string()];
         let bridges: Vec<crate::orchestration::plan::PlanBridge> =
-            serde_json::from_value(json!(bridge_plan_entries(&sys, &topics))).unwrap();
+            serde_json::from_value(json!(bridge_plan_entries(&sys, None, &topics).unwrap()))
+                .unwrap();
         assert_eq!(bridges.len(), 1);
         assert_eq!(bridges[0].name, "gw");
         assert_eq!(bridges[0].connect.len(), 2);

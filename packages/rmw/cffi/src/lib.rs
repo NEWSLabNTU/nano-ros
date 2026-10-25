@@ -1799,7 +1799,9 @@ const NAME_BUF_LEN: usize = 256;
 /// zeroes in every session on an MCU.
 const NODE_NAME_BUF_LEN: usize = 64;
 /// Per-string bound for a marshalled session property. 256 so a TLS
-/// certificate PATH fits; anything longer is refused rather than truncated.
+/// certificate PATH fits; a longer KEY is refused rather than truncated, and
+/// a longer VALUE goes to the heap on an `alloc` build (a whole document,
+/// phase-514 W3b) and is refused without one.
 const SESSION_PROPERTY_BUF_LEN: usize = 256;
 /// `usize` spelling of the header's `RMW_SESSION_MAX_PROPERTIES` (RFC-0054:
 /// the header is the SSoT; bindgen emits it as `i32`).
@@ -2253,22 +2255,39 @@ impl CffiSession {
             key: core::ptr::null(),
             value: core::ptr::null(),
         }; MAX_SESSION_PROPERTIES];
+        // A value too long for its stack buffer — a whole configuration
+        // document the backend parses itself (RFC-0109 D6, phase-514 W3b) —
+        // is copied to the heap where there is one. Each inner buffer keeps
+        // its address when the outer `Vec` grows.
+        #[cfg(feature = "alloc")]
+        let mut long_values: alloc::vec::Vec<alloc::vec::Vec<u8>> = alloc::vec::Vec::new();
         for (i, (key, value)) in properties.iter().enumerate() {
             // Empty or over-long is REFUSED. `to_c_str` truncates, which for a
             // name is a wrong-but-visible entity and for a TLS certificate
             // path is a session that fails somewhere unrelated.
-            if key.is_empty()
-                || value.is_empty()
-                || key.len() >= SESSION_PROPERTY_BUF_LEN
-                || value.len() >= SESSION_PROPERTY_BUF_LEN
-            {
+            if key.is_empty() || value.is_empty() || key.len() >= SESSION_PROPERTY_BUF_LEN {
                 return Err(TransportError::InvalidArgument);
             }
             key_bufs[i][..key.len()].copy_from_slice(key.as_bytes());
-            val_bufs[i][..value.len()].copy_from_slice(value.as_bytes());
+            let value_ptr = if value.len() < SESSION_PROPERTY_BUF_LEN {
+                val_bufs[i][..value.len()].copy_from_slice(value.as_bytes());
+                val_bufs[i].as_ptr()
+            } else {
+                #[cfg(feature = "alloc")]
+                {
+                    let mut owned = alloc::vec::Vec::with_capacity(value.len() + 1);
+                    owned.extend_from_slice(value.as_bytes());
+                    owned.push(0);
+                    let p = owned.as_ptr();
+                    long_values.push(owned);
+                    p
+                }
+                #[cfg(not(feature = "alloc"))]
+                return Err(TransportError::InvalidArgument);
+            };
             entries[i] = rmw_session_property_t {
                 key: key_bufs[i].as_ptr().cast(),
-                value: val_bufs[i].as_ptr().cast(),
+                value: value_ptr.cast(),
             };
         }
         let options = NrosRmwSessionOptions {

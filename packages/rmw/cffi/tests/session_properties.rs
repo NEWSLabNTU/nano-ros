@@ -311,16 +311,32 @@ fn an_empty_key_or_value_is_refused() {
 }
 
 #[test]
-fn an_over_long_value_is_refused_not_clipped() {
-    // A TLS certificate path clipped at the buffer edge names a different file
-    // — one that probably does not exist, and whose absence is reported by the
-    // TLS layer as something unrelated to the configuration that caused it.
-    let long = "/".repeat(4096);
+fn an_over_long_key_is_refused_not_clipped() {
+    let long = "k".repeat(4096);
     assert_eq!(
-        open_with(&[("tls_root_ca_certificate", long.as_str())])
-            .0
-            .err(),
+        open_with(&[(long.as_str(), "x")]).0.err(),
         Some(TransportError::InvalidArgument),
-        "an over-long value must be refused rather than truncated"
+        "an over-long key must be refused rather than truncated"
     );
+}
+
+/// A value longer than the stack buffer is a whole document — a domain's
+/// Cyclone XML (RFC-0109 D6, phase-514 W3b). With a heap it reaches the
+/// backend INTACT; without one it is refused, never clipped: a TLS certificate
+/// path clipped at the buffer edge names a different file, whose absence the
+/// TLS layer reports as something unrelated to the configuration.
+#[test]
+fn an_over_long_value_reaches_the_backend_whole_or_is_refused() {
+    let long = "/".repeat(4096);
+    let (result, seen) = open_with(&[("tls_root_ca_certificate", long.as_str())]);
+    if cfg!(feature = "alloc") {
+        result.expect("a heap build carries a long value");
+        assert_eq!(seen, [("tls_root_ca_certificate".to_string(), long)]);
+    } else {
+        assert_eq!(
+            result.err(),
+            Some(TransportError::InvalidArgument),
+            "an over-long value must be refused rather than truncated"
+        );
+    }
 }

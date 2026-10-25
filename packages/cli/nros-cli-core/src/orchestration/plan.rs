@@ -139,6 +139,10 @@ pub struct PlanBridgeEndpoint {
     pub domain: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locator: Option<String>,
+    /// RFC-0109 D6 (phase-514 W3b) — what the domain's RMW file hands this
+    /// session's backend (`RmwFile::session_properties`). Empty: no file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub properties: Vec<(String, String)>,
 }
 
 /// Phase 250 (Wave 3) — the declared parameter-server capability. A pure
@@ -715,6 +719,11 @@ pub struct PlanTransport {
     /// unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain: Option<u32>,
+    /// RFC-0109 D6 (phase-514 W3b) — the session properties its domain's RMW
+    /// file hands the backend (a bridge endpoint's
+    /// [`PlanBridgeEndpoint::properties`]). Empty: no file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub properties: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

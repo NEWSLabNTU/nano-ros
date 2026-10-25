@@ -1985,6 +1985,9 @@ pub unsafe extern "C" fn nros_cpp_init_multi(
             domain_id: spec.domain_id,
             node_name,
             namespace,
+            // A C++ spec carries no RMW file; a bridge's per-domain file
+            // reaches the Rust bridge runner (`nros-bridge.toml`) only.
+            properties: &[],
         });
     }
     let mut flat: [nros_node::executor::SessionSpec<'_>; MAX_SPECS] =

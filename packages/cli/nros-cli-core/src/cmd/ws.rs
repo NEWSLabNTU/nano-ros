@@ -145,6 +145,16 @@ pub enum Sub {
     #[command(name = "leaf-system")]
     LeafSystem(crate::cmd::leaf_system::LeafSystemArgs),
 
+    /// RFC-0109 D6 (phase-514 W3b) — print a bringup's default session RMW
+    /// file for one backend, checked, as `NROS_RMW_CONFIG_FILE=<path>` and
+    /// `NROS_RMW_CONFIG_FORMAT=<format>` (nothing when there is none).
+    ///
+    /// The seam for the CMake road, which bakes the file but must not encode
+    /// how it is found: `[image.<id>] rmw_config`, `[system] rmw_config`, then
+    /// the backend's conventional file, by the same rule `nros sync` checks.
+    #[command(name = "rmw-config")]
+    RmwConfig(RmwConfigArgs),
+
     /// phase-497 W3 (RFC-0103 D10a) — the QEMU `-nic` value for a leaf's
     /// image: its `[image.<id>.run] nic` (SLIRP, bridge or TAP), the board's NIC
     /// `--model`, the image's MAC. An image that states no network gets QEMU's
@@ -732,6 +742,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::SeedLock(a) => run_seed_lock(a),
         Sub::CheckLock(a) => run_check_lock(a),
         Sub::LeafSystem(a) => crate::cmd::leaf_system::run(a),
+        Sub::RmwConfig(a) => run_rmw_config(a),
         Sub::QemuNic(a) => crate::cmd::leaf_system::qemu_nic(a),
         Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),
         Sub::EntityCensus(a) => crate::cmd::entity_census::run(a),
@@ -8293,4 +8304,29 @@ mod generated_freshness_tests {
         assert_eq!(refresh_generated(t.path(), true).unwrap(), ["my_msgs"]);
         assert_eq!(fs::read_to_string(&record).unwrap(), before);
     }
+}
+
+/// `nros ws rmw-config` arguments.
+#[derive(Debug, clap::Args)]
+pub struct RmwConfigArgs {
+    /// The bringup (or single-package leaf) directory holding `system.toml`.
+    pub path: std::path::PathBuf,
+    /// The backend the build links (`zenoh`, `cyclonedds`, …).
+    #[arg(long)]
+    pub rmw: String,
+    /// The image this build is; empty or absent ⇒ the file every image on
+    /// `--rmw` agrees on.
+    #[arg(long)]
+    pub image: Option<String>,
+}
+
+fn run_rmw_config(a: RmwConfigArgs) -> Result<()> {
+    let image = a.image.as_deref().filter(|i| !i.is_empty());
+    let file = crate::orchestration::rmw_config::default_session_file(&a.path, &a.rmw, image)
+        .map_err(|e| eyre::eyre!("{e}"))?;
+    if let Some(f) = file {
+        println!("NROS_RMW_CONFIG_FILE={}", f.path.display());
+        println!("NROS_RMW_CONFIG_FORMAT={}", f.format);
+    }
+    Ok(())
 }

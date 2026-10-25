@@ -388,6 +388,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             // adds `ros_edition = "iron"|"jazzy"|…` when targeting a newer distro.
             ros_edition: None,
             locator: None,
+            rmw_config: None,
             default_launch: Some("system.launch.xml".to_string()),
             // Deprecated with the retired `[deploy.*]`; the scaffold stops emitting it
             // so a new workspace carries no vocabulary it will be asked to

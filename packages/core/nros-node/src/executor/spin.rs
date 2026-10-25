@@ -593,6 +593,11 @@ pub struct SessionSpec<'cfg> {
     pub domain_id: u32,
     pub node_name: &'cfg str,
     pub namespace: &'cfg str,
+    /// The session's backend-specific properties (`RmwConfig::properties`):
+    /// what its domain's RMW file lowers to (RFC-0109 D6, phase-514 W3b).
+    /// Empty: none — the image's baked table is the DEFAULT session's and is
+    /// never given to a spec.
+    pub properties: &'cfg [(&'cfg str, &'cfg str)],
 }
 
 #[cfg(feature = "rmw-cffi")]
@@ -606,7 +611,14 @@ impl<'cfg> SessionSpec<'cfg> {
             domain_id: 0,
             node_name: "",
             namespace: "",
+            properties: &[],
         }
+    }
+
+    /// The session's backend-specific properties.
+    pub const fn properties(mut self, properties: &'cfg [(&'cfg str, &'cfg str)]) -> Self {
+        self.properties = properties;
+        self
     }
 
     pub const fn domain_id(mut self, domain_id: u32) -> Self {
@@ -631,7 +643,7 @@ impl<'cfg> SessionSpec<'cfg> {
             domain_id: self.domain_id,
             node_name: self.node_name,
             namespace: self.namespace,
-            properties: &[],
+            properties: self.properties,
         }
     }
 }

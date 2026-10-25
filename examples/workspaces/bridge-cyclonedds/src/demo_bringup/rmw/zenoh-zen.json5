@@ -1,0 +1,7 @@
+// The zenoh side of the gateway: a client of the zenoh router the talker
+// also reaches. On a ROS 2 host this is the document `ZENOH_SESSION_CONFIG_URI`
+// names; `$ZENOH_SESSION_CONFIG_URI` replaces it at run time here too.
+{
+  mode: "client",
+  connect: { endpoints: ["tcp/127.0.0.1:7447"] },
+}

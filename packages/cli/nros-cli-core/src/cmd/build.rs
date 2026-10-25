@@ -1188,6 +1188,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         }
                         let b = img.board.clone().unwrap_or_default();
                         Some(Ok(crate::builder::cmake_root::CmakeEntry {
+                            image: id.clone(),
                             launch: img.launch.clone().unwrap_or_else(|| "default".to_string()),
                             args: img
                                 .args

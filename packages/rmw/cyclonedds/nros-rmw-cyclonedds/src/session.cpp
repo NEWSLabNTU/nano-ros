@@ -438,12 +438,32 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
     // phase-206 W3 — a property this backend cannot honour is REFUSED, not
     // dropped. `mode` and `localhost_only` are hints a backend without the
     // concept may ignore; a configuration PROPERTY is not, because a silently
-    // dropped one is indistinguishable from one that took effect. Cyclone's
-    // own run-time configuration arrives as CYCLONEDDS_URI (see below), not
-    // through this list; when the two are joined this becomes a lookup.
+    // dropped one is indistinguishable from one that took effect.
+    //
+    // RFC-0109 D6 (phase-514 W3b) — the ONE property this backend takes is
+    // `config`: a whole Cyclone XML document, the RMW file of a `[[domain]]`
+    // this session joins (a bridge's second domain, which the image's baked
+    // `rmw/cyclonedds.xml` does not describe). It stands where that baked
+    // document stands in the composition below, so the baseline still applies
+    // under it and CYCLONEDDS_URI still overrides it.
+    const char* session_user_config = nullptr;
     if (options != nullptr && options->property_count != 0) {
-        return NROS_RMW_RET_UNSUPPORTED;
+        if (options->properties == nullptr) {
+            return NROS_RMW_RET_INVALID_ARGUMENT;
+        }
+        for (size_t i = 0; i < options->property_count; ++i) {
+            const rmw_session_property_t& p = options->properties[i];
+            if (p.key == nullptr || p.value == nullptr || std::strcmp(p.key, "config") != 0) {
+                return NROS_RMW_RET_UNSUPPORTED;
+            }
+            if (session_user_config != nullptr) {
+                return NROS_RMW_RET_INVALID_ARGUMENT; // two documents for one session
+            }
+            session_user_config = p.value;
+        }
     }
+    const char* user_config =
+        session_user_config != nullptr ? session_user_config : kUserCycloneConfig;
 
     // phase-454 W6.c — RFC-0100 D11. The image's configured heap, against the
     // floor this image's own type set needs. FIRST, before a single byte is
@@ -499,7 +519,7 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
 #  define NROS_CYC_COMPOSE_DOMAIN 0
 #endif
 
-if (NROS_CYC_COMPOSE_DOMAIN || has_user_cyclone_config()) {
+if (NROS_CYC_COMPOSE_DOMAIN || user_config[0] != '\0') {
     // Phase 192.4 — honor a user-supplied CYCLONEDDS_URI (inline XML or
     // `file://` ref) so the baked embedded runtime profile (buffer/stack
     // sizes, MaxAutoParticipantIndex, the 127.0.0.1 peer) is overridable
@@ -545,7 +565,7 @@ if (NROS_CYC_COMPOSE_DOMAIN || has_user_cyclone_config()) {
     // without rebuilding, and taking that away would be the opposite of this
     // phase's goal.
     const char* frags[4] = {kEmbeddedCycloneConfig, kKconfigCycloneConfig,
-                            kUserCycloneConfig, env_lookup("CYCLONEDDS_URI")};
+                            user_config, env_lookup("CYCLONEDDS_URI")};
     // Static, not a local: `session_create` runs on the app task, and 4 KiB of
     // stack is a real ask on an RTOS whose Cyclone threads are hand-sized just
     // above. Cyclone copies the string (`ddsrt_strdup` in `ddsi_config_init`),
@@ -568,7 +588,7 @@ if (NROS_CYC_COMPOSE_DOMAIN || has_user_cyclone_config()) {
     if (domain > 0) {
         state->domain = domain;
     }
-}  // NROS_CYC_COMPOSE_DOMAIN || has_user_cyclone_config()
+}  // NROS_CYC_COMPOSE_DOMAIN || user_config[0] != '\0'
 
     /* issue 0808 — honour `localhost_only`, so the field is a real control
      * rather than a carried value nobody reads (which the issue calls an inert

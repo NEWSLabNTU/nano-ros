@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The Cyclone side of the gateway, in Cyclone's own language: the document
+     `CYCLONEDDS_URI` names on a ROS 2 host. Multicast for discovery only;
+     samples go unicast. Name an interface here (`<Interfaces>`) to pin the
+     gateway to one NIC. `id="any"` because the domain id is the `[[domain]]`
+     row's (5); `$CYCLONEDDS_URI` still overrides this file at run time. -->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <AllowMulticast>spdp</AllowMulticast>
+    </General>
+  </Domain>
+</CycloneDDS>

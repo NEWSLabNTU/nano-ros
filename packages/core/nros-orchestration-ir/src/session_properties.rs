@@ -16,6 +16,13 @@
 /// The variable that carries an image's session properties to its build.
 pub const ENV: &str = "NROS_SESSION_PROPERTIES";
 
+/// The property that carries a configuration file a backend parses itself
+/// (`[rmw.config] format = "verbatim-xml"`, Cyclone's XML) to a session that
+/// is not the image's default one — a `[[domain]]` a bridge opens (phase-514
+/// W3b). Its value is the file's whole text; a backend that reads such a file
+/// takes it in place of the document its road bakes for the default session.
+pub const DOCUMENT: &str = "config";
+
 /// The text for `props`.
 #[must_use]
 pub fn encode(props: &[(String, String)]) -> String {

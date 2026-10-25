@@ -137,7 +137,7 @@ function(nano_ros_add_executable name)
     # and removed the callee's half of it; this is the other half. Parsing them
     # explicitly also makes the chain checkable: `check-generated-cmake-keywords`
     # compares what `cmake_root.rs` emits against BOTH frames' keyword sets.
-    cmake_parse_arguments(_NRE "TYPED;ROS2_MAIN" "BOARD;BRINGUP;LAUNCH;MODEL;HOST;LANG;PANIC;DOMAIN_ID" "DEPLOY;SOURCES;LAUNCH_ARGS" ${ARGN})
+    cmake_parse_arguments(_NRE "TYPED;ROS2_MAIN" "BOARD;BRINGUP;LAUNCH;MODEL;HOST;LANG;PANIC;DOMAIN_ID;IMAGE" "DEPLOY;SOURCES;LAUNCH_ARGS" ${ARGN})
     set(_srcs ${_NRE_SOURCES} ${_NRE_UNPARSED_ARGUMENTS})
     if(NOT _srcs AND NOT _NRE_LAUNCH AND NOT _NRE_BRINGUP AND NOT _NRE_MODEL)
         message(FATAL_ERROR
@@ -214,6 +214,11 @@ function(nano_ros_add_executable name)
     endif()
     if(_NRE_PANIC)
         list(APPEND _entry_extra PANIC ${_NRE_PANIC})
+    endif()
+    # RFC-0109 D6 (phase-514 W3b) — which image this entry is, for the facts
+    # images of one configure may state differently (its RMW file).
+    if(_NRE_IMAGE)
+        list(APPEND _entry_extra IMAGE ${_NRE_IMAGE})
     endif()
     # Issue 1946 — the image's resolved domain, emitted per entry by the
     # generated root. `DEFINED`, not truthiness: domain 0 is a domain.

@@ -323,7 +323,7 @@ function(nano_ros_entry)
     # HOST is kept solely to fail loudly for a pre-phase-326 caller.
     cmake_parse_arguments(_NRA
         "TYPED"
-        "NAME;BOARD;LAUNCH;LANG;HOST;BRINGUP;PANIC;DOMAIN_ID"
+        "NAME;BOARD;LAUNCH;LANG;HOST;BRINGUP;PANIC;DOMAIN_ID;IMAGE"
         "SOURCES;DEPLOY;LAUNCH_ARGS"
         ${ARGN})
 
@@ -657,6 +657,7 @@ function(nano_ros_entry)
             MODEL     "${_NRA_MODEL}"
             BOARD     "${_NRA_BOARD}"
             BRINGUP   "${_NRA_BRINGUP}"
+            IMAGE     "${_NRA_IMAGE}"
             ARGS_LIST ""
             TYPED     "${_NRA_TYPED}"
             OUT_VAR_GEN     _gen_tu
@@ -889,6 +890,7 @@ function(nano_ros_entry)
             set(_nra_cfg_dir "${CMAKE_BINARY_DIR}/nros-rmw-user-config")
             nros_bake_rmw_user_config(
                 BRINGUP "${_NRA_BRINGUP}"
+                IMAGE   "${_NRA_IMAGE}"
                 BACKEND "${_nra_rmw}"
                 OUT_DIR "${_nra_cfg_dir}"
                 RESULT  _nra_cfg_header)
@@ -1235,7 +1237,7 @@ endfunction()
 function(_nros_entry_invoke_codegen)
     cmake_parse_arguments(_NRX
         ""
-        "NAME;LANG;LAUNCH;MODEL;BOARD;BRINGUP;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
+        "NAME;LANG;LAUNCH;MODEL;BOARD;BRINGUP;IMAGE;TYPED;OUT_VAR_GEN;OUT_VAR_LINKLIB"
         "ARGS_LIST"
         ${ARGN})
 
@@ -1366,15 +1368,18 @@ function(_nros_entry_invoke_codegen)
     # session config in zenoh's language, `<bringup>/rmw/zenoh.json5` (the
     # document `rmw_zenoh` reads from ZENOH_SESSION_CONFIG_URI). The CLI lowers
     # it to zenoh-pico session properties and the entry bakes them; CMake parses
-    # nothing. Convention, not declaration, as `nros_bake_rmw_user_config` is
-    # for CycloneDDS's XML. Editing the file must re-configure, so it is a
-    # configure dependency (the museum-binary class, issue 0196).
+    # nothing. Editing the file must re-configure, so it is a configure
+    # dependency (the museum-binary class, issue 0196).
+    #
+    # WHICH file is the CLI's answer (`nros_rmw_user_config_file`: an image's
+    # or the bringup's `rmw_config`, else the backend's conventional file —
+    # RFC-0109 D6, phase-514 W3b); only a `session-json5` one is lowered here.
     if(_NRX_BRINGUP)
         _nros_entry_resolve_rmw(_nrx_rmw)
-        set(_nrx_rmw_cfg "${_NRX_BRINGUP}/rmw/zenoh.json5")
-        if(_nrx_rmw STREQUAL "zenoh" AND EXISTS "${_nrx_rmw_cfg}")
+        nros_rmw_user_config_file(_nrx_rmw_cfg
+            BRINGUP "${_NRX_BRINGUP}" BACKEND "${_nrx_rmw}" IMAGE "${_NRX_IMAGE}")
+        if(_nrx_rmw_cfg AND _nrx_rmw_cfg_FORMAT STREQUAL "session-json5")
             list(APPEND _cli_args --rmw-config "${_nrx_rmw_cfg}")
-            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_nrx_rmw_cfg}")
         endif()
     endif()
     if(_NRX_ARGS_LIST)

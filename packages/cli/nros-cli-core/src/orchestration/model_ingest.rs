@@ -1926,6 +1926,7 @@ pub fn plan_transports(
             rmw: t.rmw.clone(),
             locator: t.locator.clone(),
             domain: t.domain.map(u32::from),
+            properties: Vec::new(),
         });
     }
     Ok(out)
