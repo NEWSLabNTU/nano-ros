@@ -468,6 +468,14 @@ pub struct EntityMetadata {
     /// component's `declare()`, so the sidecar schema does not have to move for
     /// the capability to work.
     pub timer_clock: TimerClockSource,
+    /// Issue 2038 — whether the declared timer starts ARMED (`true`, the
+    /// default and every timer declared before 2038) or is registered
+    /// cancelled (`false`, rcl's `rcl_timer_init2(..., autostart = false)`),
+    /// firing only once something resets it. Read by the runtime with
+    /// `timer_clock`, and like it not emitted in the metadata JSON.
+    ///
+    /// Meaningless for every other entity kind.
+    pub timer_autostart: bool,
     /// phase-463 W1 -- the ABI entry the timer came through (see [`TimerKind`]).
     /// Emitted as `kind` on the timer row; `Wall` for every other entity kind.
     pub timer_kind: TimerKind,
@@ -1331,6 +1339,7 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
         period_ms: None,
         period_us: None,
         timer_clock: TimerClockSource::Steady,
+        timer_autostart: true,
         timer_kind: TimerKind::Wall,
         parameter_type: None,
         parameter_default: None,

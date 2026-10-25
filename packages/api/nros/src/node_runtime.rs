@@ -1824,10 +1824,24 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                 // called `register_timer` unconditionally and the declarative
                 // surface could not express a clock, which is why a
                 // `nros::main!` component had no way to own a ROS-time timer.
+                //
+                // Issue 2038 — and ONE registrar for the call info and the
+                // autostart flag too: `register_timer_with_info` is the entry
+                // `register_timer_on_clock` builds (same arena entry, same
+                // seed) with the dispatcher's `TimerCallInfo` handed to the
+                // closure and rcl's `autostart` honoured, the call
+                // `Node::create_timer_with_info` makes. The info reaches the
+                // component as `CallbackCtx::timer_info`.
+                let autostart = metadata.timer_autostart;
                 executor
-                    .register_timer_on_clock(period, metadata.timer_clock, move || {
-                        dispatch_into_cell(cell.view(), &cb_id_owned, &[]);
-                    })
+                    .register_timer_with_info(
+                        period,
+                        metadata.timer_clock,
+                        autostart,
+                        move |info: &nros_node::TimerCallInfo| {
+                            dispatch_timer_into_cell(cell.view(), &cb_id_owned, info);
+                        },
+                    )
                     .map_err(decl_err_from_node)?;
                 // Issue 1419 — a Rust timer never reaches the RMW, so this hook
                 // is how it enters the census. Recorded AFTER the tier gate
@@ -2162,6 +2176,19 @@ fn dispatch_into_cell(cell: &dyn CellView, cb_id: &str, payload: &[u8]) {
     // tick hook on the same cell, etc.) the view drops this dispatch. In
     // practice the borrow succeeds because subscription / timer
     // callbacks run sequentially under the single-threaded executor.
+    cell.try_with_slot_mut(&mut |slot| slot.dispatch(cb_id, &mut ctx));
+}
+
+/// Issue 2038 — dispatch a declared timer's activation into the component's
+/// `on_callback`, with its call info readable as `CallbackCtx::timer_info`.
+/// The timer twin of [`dispatch_into_cell`] (a timer has no payload).
+fn dispatch_timer_into_cell(cell: &dyn CellView, cb_id: &str, info: &nros_node::TimerCallInfo) {
+    cell.note_dispatch(false);
+    let resolver = CellResolver { cell };
+    let mut ctx = CallbackCtx::new(&[], &resolver);
+    ctx.set_timer_info(*info);
+    #[cfg(feature = "param-store")]
+    ctx.set_param_server(cell.view_param_server(), cell.view_param_node());
     cell.try_with_slot_mut(&mut |slot| slot.dispatch(cb_id, &mut ctx));
 }
 

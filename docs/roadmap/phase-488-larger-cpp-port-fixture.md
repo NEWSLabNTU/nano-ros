@@ -83,6 +83,7 @@ parity work around them:
 | [2024](../issues/archived/2024-parameter-event-handler.md) | (2026-10-25) | `rclcpp::ParameterEventHandler` (hosted) |
 | [2035](../issues/archived/2035-cpp-node-options-param-event-publisher-off.md) | (2026-10-25) | `start_parameter_event_publisher(false)` honoured |
 | [2036](../issues/archived/2036-cpp-subscription-message-info-callback.md) | (2026-10-25) | `rclcpp::MessageInfo` subscription callbacks (hosted) |
+| [2038](../issues/archived/2038-declarative-timer-autostart-and-info.md) | (2026-10-25) | declared Rust timers: call info + autostart |
 
 #2612 (in the merge queue on this date) closes the two action-cancel issues,
 #2029 (cancel-all / cancel-before on the server) and #2030 (the C tier takes
@@ -110,8 +111,6 @@ after 2015. The other issues in the table moved no example's count.
 
 **Open issues the stock examples or the parity work still point at:**
 
-- [issue 2038](../issues/2038-declarative-timer-autostart-and-info.md): the
-  declarative Rust timer has no autostart flag or call info.
 - [issue 2039](../issues/2039-c-api-matched-status-events-interop.md): no
   interop cell drives the C matched and status-event callbacks from stock ROS 2.
 
