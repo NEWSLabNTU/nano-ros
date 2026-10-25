@@ -88,9 +88,9 @@ pub mod qos_override;
 // phase-486 W8 — the `system.toml` tables nano-ros retired (`[deploy.*]`,
 // `[param_services]`), refused by every reader with one message.
 pub mod retired_tables;
-/// RFC-0109 D8 (phase-514 W3) — the session properties an image bakes from
-/// its bringup's RMW file, as the one backend-neutral text the CLI hands the
-/// build (`NROS_SESSION_PROPERTIES`).
+// RFC-0109 D8 (phase-514 W3) — the session properties an image bakes from
+// its bringup's RMW file, as the one backend-neutral text the CLI hands the
+// build (`NROS_SESSION_PROPERTIES`).
 pub mod session_properties;
 // phase-459 W4 (issue 1427, RFC-0079) - the board's priority ADDRESS PLAN,
 // which the realizer allocates a derived tier out of. Without it `realize_rtos`
