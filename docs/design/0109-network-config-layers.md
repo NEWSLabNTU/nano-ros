@@ -224,7 +224,12 @@ builder.
   binds to exactly one transport; N > 1 ⇒ each names its own).
 - **`locator` on a domain** is permitted only when that domain has no
   `config` — the case for a backend with no file format (XRCE), or a quick
-  start. A domain with both is refused.
+  start. A domain with both is refused. The implicit default domain's
+  `locator` is spelled `[image.<id>] locator` / `[image_defaults] locator` /
+  `[system] locator` (most specific first), and is refused beside an
+  `rmw_config` the same way (amendment 2026-10-25, phase-514 W4: 88 tracked
+  single-session images state one locator line; moving each into an RMW file
+  would add a file per image and gain no single owner it lacks today).
 - **`[[bridge]]`** is unchanged (RFC-0009).
 - **`[image.<id>]`** keeps `board`, `rmw` (its default domain's backend),
   `env`, `knobs`, and gains:
@@ -238,11 +243,13 @@ builder.
   { bridge = "<dev>" }`. Read by the launcher and the test harness only.
 - **Retired** (each refused with a remedy naming its new home):
   `[[transport]]` (whole table), `[image] locator` / `[system] locator`
-  (→ the domain's `config`, or its `locator` when it has none),
-  `[image] transport` (→ derived from the domain's wiring + the board's
+  **on an image that names an `rmw_config`** (→ that file; amended
+  2026-10-25, see `locator` above), `[image] transport` (→ derived from the domain's wiring + the board's
   `links`), `[image.<id>.net.*]` and `[board.net]` addresses (→ D4's file),
-  `[network.<name>]` (→ `router` to layer 2, `attach` to `[image.<id>.run]`,
-  subnet/gateway/dhcp to D4's file).
+  `[network.<name>]` (→ `router` to the image's `locator` or its RMW file,
+  `attach` to `[image.<id>.run] nic`, subnet/gateway/dhcp to a
+  `[network.<name>]` table in D4's file, beside the interface on it; two
+  images' files naming one network must agree).
 - **Kept:** `[system] domain_id` / `rmw` and their `[image]` overrides
   (layer 3).
 

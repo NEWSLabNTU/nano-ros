@@ -21,9 +21,10 @@
 ///   address.
 ///
 /// - **Docker** (`tests/qemu-baremetal`): not a board mode. The container's
-///   network is a project network, `[network.docker]` in the leaves the
-///   compose test runs, and their `[image.docker]` addresses on it (RFC-0103
-///   D10, phase-497 W3 — this was a `docker` cargo feature).
+///   network is a project network, `[network.docker]` in the board network
+///   file the leaves' `[image.docker]` names, with the image's address on it
+///   and `[image.docker.run] nic` the TAP (RFC-0109 D4/D6; this was a `docker`
+///   cargo feature).
 ///
 /// - **QEMU user-mode / slirp** ([`Config::qemu_slirp`], NOT the default):
 ///   - IP: 10.0.2.10/24

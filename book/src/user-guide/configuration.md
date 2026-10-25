@@ -22,7 +22,7 @@ standalone `config.toml` for hand-written `no_std` apps.
 
 | File | Owns | Per |
 |------|------|-----|
-| **`system.toml`** | **Everything about the deployment** — `[system]` (RMW, domain, capability axes like `features = ["param_services"]` and the `[safety]` block, tiers), `[[component]]` (what runs, and its entities), and one `[image.<id>]` per target (`board`, `locator`, and the image's address on a network, `net = { eth0 = { network = "qemu", host = 10 } }`; a project's own networks are `[network.<name>]`). One schema for Rust, C and C++, and the same file whether the project is one package or a workspace. | package, or bringup pkg |
+| **`system.toml`** | **Everything about the deployment** — `[system]` (RMW, domain, capability axes like `features = ["param_services"]` and the `[safety]` block, tiers), `[[component]]` (what runs, and its entities), and one `[image.<id>]` per target (`board`, `locator`, the board network file holding its address, `os_config = ["board-net.toml"]`, and how it runs, `[image.<id>.run]`). One schema for Rust, C and C++, and the same file whether the project is one package or a workspace. | package, or bringup pkg |
 | `Cargo.toml` | Rust toolchain facts only: crate, language deps, the RMW **feature menu** (`rmw-zenoh`/`rmw-cyclonedds`/`rmw-xrce`) the generated entry selects from. No board, no target triple, no deploy block. | Rust project |
 | `CMakeLists.txt` | C/C++ toolchain facts only: targets and language deps, via `find_package(nano_ros)` + `nano_ros_add_executable` / `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057; `nano_ros_node_register` remains as the compat spelling) / `nano_ros_entry`. No platform, board or RMW `set()`. | C/C++ project |
 | `build/<image>/nros-cargo.toml` | **GENERATED, never edited** — every cargo setting the board choice implies: `[build] target`, `[target.*]` runner and rustflags, the cross compiler, the derived pool sizes as `[env]`, the nano-ros profiles, and the `[patch.crates-io]` rows that resolve nano-ros's registry-style names into your checkout. Written by `nros sync`, passed to cargo with `--config`. | image |
@@ -96,12 +96,12 @@ generated glue. Nothing is written in `Cargo.toml`, in `package.xml` or on a
 
 ### Networks and addresses
 
-A network fact has three owners (RFC-0103 D10): the **board** states its
-interfaces, the **project** states its networks, and the **image** states its
-address on one. The image's half lives in a **board network file** the image
-names with `os_config` (RFC-0109 D4 — on a board where nano-ros is the OS, the
-board package owns the device, so the address is in the board's own file), one
-table per interface:
+An image's address is a layer-1 fact (RFC-0109): the operating system owns the
+network device. On Linux that is the kernel; on Zephyr and NuttX it is their
+own configuration (Kconfig, devicetree, `defconfig`); on a board where nano-ros
+is the OS (the reference FreeRTOS, ThreadX and bare-metal boards) it is the
+board package, through a small **board network file** the image names with
+`os_config` — one table per interface:
 
 ```toml
 [image.talker]
@@ -116,26 +116,32 @@ network = "qemu"
 host = 10                      # 10.0.2.10 on QEMU's network
 ```
 
-The older inline spelling, `net = { eth0 = { … } }` in `[image.<id>]`, is still
-read; stating one interface in both places is refused. Zephyr and NuttX boards
-own their network in their own configuration, and a host-OS board (Linux) in
-the operating system, so neither takes a board network file.
-
 `qemu` is built in: QEMU's own user-mode (SLIRP) network, `10.0.2.0/24` with
 gateway and router host `10.0.2.2`. Every `-nic user` makes a private copy of
-it, so two images on `qemu` never meet. Any other network is the project's,
-stated once and named by every image on it:
+it, so two images on `qemu` never meet. Any other network is defined in the
+board network file beside the interface on it, and the image states its
+router as its own `locator`:
 
 ```toml
+# board-net-sensor.toml
+[eth0]
+network = "lab"
+address = "192.168.50.20"
+
 [network.lab]                  # e.g. a switch or a Linux bridge with boards on it
 subnet  = "192.168.50.0/24"
 gateway = "192.168.50.1"
-router  = "tcp/192.168.50.1:7447"    # the locator its images dial by default
+```
 
+```toml
 [image.sensor]
 board = "qemu-mps2-an385"
-os_config = ["board-net-sensor.toml"]   # [eth0] network = "lab", address = "192.168.50.20"
+os_config = ["board-net-sensor.toml"]
+locator = "tcp/192.168.50.1:7447"
 ```
+
+Two images on one network each define it in their own file, and the files must
+agree: one network has one subnet, gateway and lease policy.
 
 Per interface:
 
@@ -148,27 +154,30 @@ Per interface:
 - `mac` is optional. Left out, it is derived from the board interface's
   `mac_prefix` and the system, image, network and interface names, so two
   images never share one by accident.
-- The gateway and netmask come from the network, so an image never states them.
-- An image dials its own `locator`, else its network's `router`, else
-  `[system] locator`. On a network other than `qemu` one of the three must be
-  stated.
+- The gateway and netmask come from the network, so an interface never states
+  them.
+- An image dials its own `locator`, else `[system] locator`. On a network other
+  than `qemu` one of the two must be stated.
 
 A board may have several interfaces. An image addresses each on its own
 network, one table each: `[eth0]`, `[eth1]`.
 
 These fail the build, naming the image (and, for a duplicate, both images):
 
-- an address outside its subnet, equal to the gateway, or on a network that
-  does not exist;
+- an address outside its subnet, equal to the gateway, or on a network no file
+  defines;
 - two images with the same static address, or the same MAC, on one network
-  other than `qemu`;
-- `net` on a board whose network belongs to the host operating system (`linux`,
-  `freertos-posix`, threadx-linux), or on a board that declares no interfaces
-  (Zephyr boards take their address from Kconfig);
-- the old flat `ip` / `gateway` / `netmask` keys on `[image.<id>]`.
+  other than `qemu`, or two files defining one network differently;
+- a board network file on a board whose network belongs to the host operating
+  system (`linux`, `freertos-posix`, threadx-linux), or on a board that
+  declares no interfaces (Zephyr boards take their address from Kconfig);
+- the retired spellings, each refused naming its new home: `[network.<name>]`
+  and `[image.<id>.net.<if>]` in `system.toml`, and the flat `ip` / `gateway` /
+  `netmask` keys on `[image.<id>]`.
 
-The board's half is `[board.net]` in its descriptor: `network` (its default
-network) and `interfaces`, each a kind (`eth0 = "ethernet"`) or a table
+The board's half is `[board.net]` in its descriptor: `stack` (who owns the
+network: `host`, `os` or `board`), `links`, `network` (its default network) and
+`interfaces`, each a kind (`eth0 = "ethernet"`) or a table
 (`eth0 = { kind = "ethernet", mac_prefix = "52:54:00", dhcp = true }`). A board
 states no address: `[board.net] ip` / `mac` are refused.
 
@@ -176,20 +185,21 @@ The resolved answer for an image is written to
 `build/nros/net/<image>.toml` (beside the workspace or leaf) and reaches the firmware as
 `NROS_IMAGE_NET`.
 
-An emulated image joins its network through the network's `attach`:
-`"slirp"` (QEMU's own user-mode network, what `qemu` is), `{ bridge = "<dev>" }`
-or `{ tap = "<dev>" }` on the host. A network with no `attach` is physical only,
-and an emulated image on it is refused at launch. `nros ws qemu-nic <leaf>
---model <nic-model>` prints the `-nic` value for a leaf's image, for a script
-that starts QEMU itself:
+How an emulated image joins its network is a fact about how it is RUN, not
+built, so it has its own table, read only by the QEMU launchers and the test
+harness:
 
 ```toml
-[network.br]
-subnet = "192.0.3.0/24"
-gateway = "192.0.3.1"
-router = "tcp/192.0.3.1:7447"
-attach = { bridge = "qemu-br" }   # QEMU: -nic bridge,br=qemu-br,…
+[image.sensor.run]
+nic = { bridge = "qemu-br" }   # QEMU: -nic bridge,br=qemu-br,…
 ```
+
+`nic` is `"slirp"` (QEMU's own user-mode network, the default on `qemu`),
+`{ bridge = "<dev>" }` or `{ tap = "<dev>" }` on the host, and applies to the
+image's first interface. An image on any other network with no `nic` is
+physical only, and launching it under QEMU is refused. `nros ws qemu-nic <leaf>
+--model <nic-model>` prints the `-nic` value for a leaf's image, for a script
+that starts QEMU itself.
 
 ### Per-image build knobs
 

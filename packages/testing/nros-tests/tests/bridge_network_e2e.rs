@@ -1,7 +1,8 @@
 //! RFC-0103 D10a (phase-497 W3) — two emulated images on ONE shared network.
 //!
 //! `examples/workspaces/rust`'s multihost pair, built as `freertos_br_robot1`
-//! (talker) and `freertos_br_robot2` (listener), sits on `[network.br]`: the
+//! (talker) and `freertos_br_robot2` (listener), sits on network `br` (each
+//! image's board network file) attached by `[image.<id>.run] nic` to the
 //! host bridge `qemu-br` (`scripts/qemu/setup-network.sh` makes it,
 //! 192.0.3.1/24), each guest at its own static address, both dialing the
 //! router on the bridge. The launcher takes each guest's `-nic` from the

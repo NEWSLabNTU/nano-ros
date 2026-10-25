@@ -36,7 +36,7 @@ board_features = ["image-runtime"]
 
 # RFC-0103 D10e (phase-497 W1) — the host operating system owns this board's
 # network: the kernel's interfaces, addresses and routes. An image states none
-# (`[image.<id>.net.*]` is refused naming this).
+# (a board network file in its `os_config` is refused naming this, RFC-0109 D4).
 [board.net]
 stack = "host"
 # RFC-0109 D3 — the link kinds this board carries.

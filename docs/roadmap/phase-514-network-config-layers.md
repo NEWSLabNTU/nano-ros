@@ -1,10 +1,15 @@
 # Phase 514 — Network and middleware configuration in three layers
 
-**Status (2026-10-24). W1 and W2 landed; W3–W6 not started.** W1: every
+**Status (2026-10-25). W1, W2 landed; W4's network half and W6 in review;
+W3, W5 and the rest of W4 not started.** W1: every
 board descriptor states `[board.net] stack` and `links`, from one link
 vocabulary (`LINK_KINDS`, a superset of the image `TRANSPORT_KINDS`). W2: an
 image's address lives in the board network file its `os_config` names; all 78
-in-tree rows moved, each resolving byte-identically. Implements
+in-tree rows moved, each resolving byte-identically. W4a + W6: `[network.*]`
+and the inline `[image.<id>.net.*]` are refused naming their homes; a network's
+subnet/gateway/dhcp moved into the board network files, its router into the
+image's `locator`, its attach into `[image.<id>.run] nic` (3 tracked files).
+Implements
 [RFC-0109](../design/0109-network-config-layers.md). Opened with the RFC so
 its work and phase-206's leftovers have one home.
 
@@ -55,6 +60,19 @@ json5 key zenoh-pico cannot take is refused at sync.
 its new home. `conf` becomes an alias of `os_config`. NuttX's `[board.net]`
 moves to its `defconfig`.
 
+Taken while implementing (RFC-0109 D6 amended 2026-10-25): `[image]` /
+`[system] locator` is NOT retired — it is the implicit default domain's
+`locator`, refused only beside an `rmw_config` (W3). Split in two:
+
+- **W4a (with W6)** — `[network.<name>]`, inline `[image.<id>.net.*]` /
+  `[image_defaults.net]` and a top-level `[[transport]]` refused by name
+  (`nros_orchestration_ir::retired_tables`), for every reader (the CLI schema,
+  the leaf reader, `nros::main!`). Done.
+- **W4b** — `[image] transport` derived from the locator scheme (`custom://`
+  becomes a link kind); `conf` an alias of `os_config`, tracked uses moved;
+  D9 check 6; the `[[transport]]` in the four test-bin `config.toml`s read by
+  `Config::from_toml`; NuttX `BOARD_NET_*` generated from its `defconfig`.
+
 **Done when** no tracked file uses a retired key and each refusal has a test.
 
 ### W5 — CAN controllers are started by layer 1
@@ -70,7 +88,10 @@ Zephyr board glue starts the controller; CAN locators refuse `bitrate` /
 `[image.<id>.run] nic` read by the QEMU launcher and the test harness,
 replacing `[network.<name>] attach`.
 
-**Done when** the bridge/TAP QEMU cells run from it.
+**Done when** the bridge/TAP QEMU cells run from it. The launchers read the
+attach from `NROS_IMAGE_NET` (unchanged text), which the resolver now fills
+from `run.nic` (`ImageRun::attach_for`), so they do; the workspace road's test
+asserts the multihost pair resolves to `bridge=qemu-br`.
 
 ## Acceptance
 

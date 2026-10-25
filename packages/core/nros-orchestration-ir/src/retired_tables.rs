@@ -19,6 +19,8 @@ use std::path::Path;
 pub struct RetiredTable {
     /// The top-level key, as written (`deploy`, `param_services`).
     pub key: &'static str,
+    /// What retired it (`issue 1809, 0.6.0`, `RFC-0109 D6`).
+    pub by: &'static str,
     /// What to write instead — the whole remedy, in the user's vocabulary.
     pub replacement: &'static str,
 }
@@ -27,12 +29,14 @@ pub struct RetiredTable {
 pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
     RetiredTable {
         key: "param_services",
+        by: "issue 1809, 0.6.0",
         replacement: "declare the axis under `[system]` instead: \
                       `features = [\"param_services\"]` (the typed block was deprecated \
                       sugar for it since phase-261)",
     },
     RetiredTable {
         key: "deploy",
+        by: "issue 1809, 0.6.0",
         replacement: "`[deploy.<name>]` conflated a build with a machine, and each half has \
                       its own table now: what is BUILT goes in `[image.<id>]` (`board`, \
                       `rmw`, `profile`, `features`, with `[image_defaults]` for \
@@ -41,7 +45,66 @@ pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
                       `domain_id`, `locator`). A `kind = \"self\"` block with no nodes is \
                       the implicit single host and needs no table at all",
     },
+    RetiredTable {
+        key: "network",
+        by: "RFC-0109 D6, phase-514",
+        replacement: "a network is a layer-1 fact, so it lives in the board network file an \
+                      image names in `os_config` (RFC-0109 D4): move `subnet` / `gateway` / \
+                      `dhcp` there as `[network.<name>]`, put `router` in the image's \
+                      `locator`, and `attach` in `[image.<id>.run] nic`",
+    },
+    RetiredTable {
+        key: "transport",
+        by: "RFC-0109 D6, phase-514",
+        replacement: "a session is a `[[domain]]` (its `rmw`, `id`, and `config = \
+                      \"rmw/<file>\"`, the RMW's own file); an image with one session needs \
+                      no table at all — `[system] rmw` / `domain_id` and the image's \
+                      `locator` are its implicit default domain",
+    },
 ];
+
+/// One retired key of an `[image.<id>]` / `[image_defaults]` table.
+pub type RetiredImageKey = RetiredTable;
+
+/// Every retired image key. A reader refuses any of them.
+pub const RETIRED_IMAGE_KEYS: &[RetiredImageKey] = &[RetiredTable {
+    key: "net",
+    by: "RFC-0109 D4, phase-514",
+    replacement: "an image's address is a board fact: name a board network file in the \
+                  image's `os_config = [\"board-net.toml\"]` and move each \
+                  `[<table>.net.<if>]` there as `[<if>]` (with `network`, `host` or \
+                  `address`, `mac`), and any `[network.<name>]` it sits on beside it",
+}];
+
+/// The refusal for key `key` of image table `at` (`image.a`,
+/// `image_defaults`), or `None` when it is not retired.
+#[must_use]
+pub fn retired_image_key_message(at: &str, key: &str) -> Option<String> {
+    RETIRED_IMAGE_KEYS.iter().find(|t| t.key == key).map(|t| {
+        format!(
+            "`[{at}] {}` is retired ({}): {}",
+            t.key,
+            t.by,
+            t.replacement.replace("<table>", at)
+        )
+    })
+}
+
+/// Refuse an image table (`at`) carrying any retired key.
+///
+/// # Errors
+/// The first retired key found, with its replacement.
+pub fn refuse_retired_image_keys(table: Option<&toml::Table>, at: &str) -> Result<(), String> {
+    let Some(t) = table else {
+        return Ok(());
+    };
+    for k in RETIRED_IMAGE_KEYS {
+        if t.contains_key(k.key) {
+            return Err(retired_image_key_message(at, k.key).unwrap_or_default());
+        }
+    }
+    Ok(())
+}
 
 /// The refusal for top-level key `key`, or `None` when it is not retired.
 #[must_use]
@@ -49,12 +112,7 @@ pub fn retired_table_message(key: &str) -> Option<String> {
     RETIRED_SYSTEM_TABLES
         .iter()
         .find(|t| t.key == key)
-        .map(|t| {
-            format!(
-                "`[{}]` is retired (issue 1809, 0.6.0): {}",
-                t.key, t.replacement
-            )
-        })
+        .map(|t| format!("`[{}]` is retired ({}): {}", t.key, t.by, t.replacement))
 }
 
 /// Refuse a parsed `system.toml` carrying any retired table, naming the file.
@@ -98,6 +156,38 @@ mod tests {
         }
         let deploy = retired_table_message("deploy").unwrap();
         assert!(deploy.contains("[host.<name>]"), "{deploy}");
+        assert!(deploy.contains("issue 1809"), "{deploy}");
+    }
+
+    /// RFC-0109 D6 (phase-514 W4) — the network and session tables moved out.
+    #[test]
+    fn the_network_and_transport_tables_are_refused_naming_their_homes() {
+        let p = Path::new("s.toml");
+        for (src, key, names) in [
+            (
+                "[network.lab]\nsubnet = \"192.168.1.0/24\"\n",
+                "network",
+                "[image.<id>.run] nic",
+            ),
+            ("[[transport]]\nname = \"t\"\n", "transport", "[[domain]]"),
+        ] {
+            let doc: toml::Table = toml::from_str(src).unwrap();
+            let e = refuse_retired_tables(&doc, p).unwrap_err();
+            assert!(
+                e.contains(&format!("`[{key}]` is retired (RFC-0109")),
+                "{e}"
+            );
+            assert!(e.contains(names), "{e}");
+        }
+        let doc: toml::Table =
+            toml::from_str("[image.a.net.eth0]\nhost = 5\n[image.b]\nboard = \"x\"\n").unwrap();
+        let img = |id: &str| doc["image"][id].as_table();
+        let e = refuse_retired_image_keys(img("a"), "image.a").unwrap_err();
+        assert!(
+            e.contains("`[image.a] net` is retired") && e.contains("`[image.a.net.<if>]`"),
+            "{e}"
+        );
+        assert!(refuse_retired_image_keys(img("b"), "image.b").is_ok());
     }
 
     #[test]

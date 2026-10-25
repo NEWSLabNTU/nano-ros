@@ -110,8 +110,8 @@ libc = { path = "${workspace}/third-party/nuttx/libc" }
 # address on top; a project-defined network is phase-497.
 [board.net]
 network = "qemu"
-# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
-# `[image.<id>.net.eth0]`.
+# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as `[eth0]`
+# in the board network file its `os_config` names (RFC-0109 D4).
 interfaces = { eth0 = "ethernet" }
 # RFC-0109 D2 — the RTOS's own configuration owns the network devices.
 stack = "os"
@@ -264,8 +264,8 @@ libc = { path = "${workspace}/third-party/nuttx/libc" }
 # address on top; a project-defined network is phase-497.
 [board.net]
 network = "qemu"
-# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
-# `[image.<id>.net.eth0]`.
+# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as `[eth0]`
+# in the board network file its `os_config` names (RFC-0109 D4).
 interfaces = { eth0 = "ethernet" }
 # RFC-0109 D2 — the RTOS's own configuration owns the network devices.
 stack = "os"

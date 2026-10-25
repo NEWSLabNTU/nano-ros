@@ -7292,8 +7292,8 @@ mod zephyr_leaf_application_tests {
 mod board_net_file_tests {
     /// RFC-0109 D4 (phase-514 W2) — the workspace road reads an image's
     /// interfaces from the board network file its `os_config` names. The Rust
-    /// workspace's multihost pair sits on `[network.br]` through those files
-    /// alone, each at its own address.
+    /// workspace's multihost pair sits on the `br` network those files define,
+    /// each at its own address.
     #[test]
     fn the_workspace_road_resolves_interfaces_from_board_net_files() {
         use nros_board_common::image_net::Address;
@@ -7312,6 +7312,14 @@ mod board_net_file_tests {
             assert_eq!(eth0.name, "eth0");
             assert_eq!(eth0.network, "br");
             assert_eq!(eth0.address, Address::Static([192, 0, 3, host]), "{image}");
+            // RFC-0109 D6 (phase-514 W6) — how the launcher attaches it is the
+            // image's `[image.<id>.run] nic`, and a bridge is shared.
+            assert_eq!(
+                eth0.attach,
+                crate::orchestration::image_net::NetAttach::Bridge("qemu-br".into()),
+                "{image}"
+            );
+            assert!(!eth0.per_image, "{image}");
         }
     }
 }

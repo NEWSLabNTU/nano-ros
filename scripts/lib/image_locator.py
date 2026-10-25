@@ -2,9 +2,9 @@
 """The locator an image STATES in its `system.toml` — issue 1865.
 
 An embedded image dials the locator `nros::main!` bakes from its `system.toml`
-(`[image.<id>] locator` over `[image_defaults]`, then the `router` of the
-network its first interface sits on (RFC-0103 D10d, phase-497 W2), then
-`[system]` — the overlay `nros_orchestration_ir::leaf_system` resolves). Whoever starts the router that
+(`[image.<id>] locator` over `[image_defaults]`, then `[system]` — the
+overlay `nros_orchestration_ir::leaf_system` resolves; RFC-0109 D6 retired
+the network `router` that once ranked between them). Whoever starts the router that
 image dials must listen on THAT port. When a recipe spelled the port itself,
 the two parted: `just qemu test-rtic-main-e2e` listened on 10200 while its
 image baked the board default `tcp/10.0.2.2:7450`, and nothing compared them.
@@ -53,50 +53,16 @@ def leaf_image_id(doc):
 
 def stated_locator(doc, image_id, base_dir=None):
     """`(locator | None, error | None)` for `[image.<image_id>]`. `base_dir`
-    is the directory holding the `system.toml`, where the image's
-    `os_config` board network files live (RFC-0109 D4)."""
+    is accepted for callers that pass the `system.toml`'s directory; the
+    locator is never in a board network file (RFC-0109 D4), so it is unused."""
+    del base_dir
     image = doc.get("image", {}).get(image_id)
     if image is None:
         return None, f"`[image.{image_id}]` is not declared"
-    for table in (image, doc.get("image_defaults", {})):
+    for table in (image, doc.get("image_defaults", {}), doc.get("system", {})):
         if isinstance(table.get("locator"), str):
             return table["locator"], None
-    router = network_router(doc, image, base_dir)
-    if router is not None:
-        return router, None
-    system = doc.get("system", {})
-    if isinstance(system.get("locator"), str):
-        return system["locator"], None
     return None, None
-
-
-def board_net_files(image, base_dir):
-    """RFC-0109 D4 (phase-514 W2) — the interfaces the image's `os_config`
-    board network files (its `.toml` entries) state. Mirrors
-    `nros_orchestration_ir::system_net::fold_board_net_files`."""
-    out = {}
-    if base_dir is None:
-        return out
-    for f in image.get("os_config", []) or []:
-        if isinstance(f, str) and f.endswith(".toml"):
-            with open(os.path.join(base_dir, f), "rb") as fh:
-                out.update(tomllib.load(fh))
-    return out
-
-
-def network_router(doc, image, base_dir=None):
-    """D10d — the `router` of the network the image's FIRST interface (by name,
-    `[image.<id>.net]` and its board network files over `[image_defaults.net]`)
-    names, or None. Mirrors `nros_orchestration_ir::system_net::network_router`."""
-    ifs = dict(doc.get("image_defaults", {}).get("net", {}) or {})
-    ifs.update(image.get("net", {}) or {})
-    ifs.update(board_net_files(image, base_dir))
-    if not ifs:
-        return None
-    first = ifs[sorted(ifs)[0]]
-    name = first.get("network") if isinstance(first, dict) else None
-    router = doc.get("network", {}).get(name, {}).get("router") if name else None
-    return router if isinstance(router, str) else None
 
 
 def locator_port(locator):

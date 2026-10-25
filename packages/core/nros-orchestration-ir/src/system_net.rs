@@ -1,23 +1,26 @@
-//! RFC-0103 D10 (phase-497) — the network slice of a `system.toml`:
-//! `[network.<name>]` (the project's networks) and `[image.<id>.net.<if>]`
-//! (an image's address on one of them), parsed ONE way.
+//! RFC-0109 D4 (phase-514) — an image's network, read ONE way: the board
+//! network files its `os_config` names, and the runner's NIC in
+//! `[image.<id>.run]`.
 //!
-//! D10 gives a network fact three owners: the board states its INTERFACES
-//! (`[board.net]` in `nros-board.toml`), the project states its NETWORKS, and
-//! the image states its ADDRESS on each. This module owns the project's and
-//! the image's halves, typed, and checks what can be checked without the
-//! board ([`check_image_interfaces`]).
+//! An image's address is a layer-1 fact. Where nano-ros is the OS (a
+//! reference FreeRTOS / ThreadX / bare-metal board, `[board.net] stack =
+//! "board"`), it lives in the board package's small network file — one
+//! `[<interface>]` table per interface, and a `[network.<name>]` table for each
+//! network other than the built-in [`QEMU_NETWORK`] — named by the image's
+//! `os_config` and read here. How an EMULATED image joins that network is a
+//! runner fact, `[image.<id>.run] nic`, and nothing else in the image reads it.
 //!
 //! The board's half — which interfaces it has, the default network an
 //! unnamed interface lands on, the MAC an image does not state, and the
 //! duplicate-address refusal across images — needs the board catalog, so it is
-//! the CLI's resolver (`nros_cli_core::orchestration::image_net`, W2). Its
-//! answer reaches every build as one text (`nros_board_common::image_net`);
+//! the CLI's resolver (`nros_cli_core::orchestration::image_net`). Its answer
+//! reaches every build as one text (`nros_board_common::image_net`);
 //! `nros::main!` bakes that text and does not resolve anything itself.
 //!
-//! The flat single-interface spellings this replaced (`[image.<id>] ip` /
-//! `gateway` / `netmask`) are refused by [`refuse_flat_image_net`], naming
-//! the new home (D10g).
+//! The spellings this replaced — `[network.<name>]` and `[image.<id>.net.*]`
+//! in `system.toml` (RFC-0103 D10, phase-497), and before them the flat
+//! `[image.<id>] ip` / `gateway` / `netmask` (D10g) — are refused by name,
+//! naming the new home (`crate::retired_tables`, [`refuse_flat_image_net`]).
 
 use std::collections::BTreeMap;
 
@@ -30,30 +33,25 @@ pub const QEMU_NETWORK: &str = "qemu";
 /// The keys D10g retired from `[image.<id>]` / `[image_defaults]`.
 pub const RETIRED_FLAT_KEYS: &[&str] = &["ip", "gateway", "netmask"];
 
-/// `[network.<name>]` (D10a): what a network IS, and how an emulated image
-/// attaches to it.
+/// `[network.<name>]` in a board network file: what a network IS. How an
+/// emulated image attaches to it is the image's `[image.<id>.run] nic`, and
+/// the locator it dials is the image's `locator` (RFC-0109 D6).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkDef {
-    /// The subnet, CIDR (`192.168.50.0/24`). Required for a project network.
+    /// The subnet, CIDR (`192.168.50.0/24`). Required.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subnet: Option<String>,
     /// The subnet's default route, if it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gateway: Option<String>,
-    /// The locator an image on this network uses by default (D10d, W2).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub router: Option<String>,
     /// The network hands out DHCP leases.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub dhcp: bool,
-    /// How an EMULATED image joins it (rendered by the QEMU launchers,
-    /// phase-497 W3). Absent ⇒ physical boards only.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub attach: Option<Attach>,
 }
 
-/// `attach = "slirp"`, `{ bridge = "<host dev>" }` or `{ tap = "<host dev>" }`.
+/// `nic = "slirp"`, `{ bridge = "<host dev>" }` or `{ tap = "<host dev>" }`:
+/// how an emulated image's NIC joins the host.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Attach {
@@ -71,11 +69,91 @@ pub enum Attach {
     },
 }
 
-/// `[image.<id>.net.<if>]` (D10b): an image's address on one interface.
+impl Attach {
+    /// QEMU's user-mode network, private to each VM.
+    #[must_use]
+    pub fn slirp() -> Self {
+        Self::Mode("slirp".to_string())
+    }
+
+    /// Whether every image attached this way gets a PRIVATE instance of its
+    /// network, so two of them never meet and cannot collide: QEMU's SLIRP,
+    /// which every `-nic user` creates per VM. A bridge or a TAP is shared,
+    /// and the resolver refuses a duplicate address or MAC on it.
+    #[must_use]
+    pub fn is_per_image(&self) -> bool {
+        matches!(self, Self::Mode(m) if m == "slirp")
+    }
+
+    /// Check the value. `at` names the key, for the message.
+    pub fn validate(&self, at: &str) -> Result<(), String> {
+        match self {
+            Self::Mode(m) if m == "slirp" => Ok(()),
+            // phase-497 W3 — the QEMU launchers render these (`-nic bridge` /
+            // `-nic tap`, `nros_board_common::image_net::qemu_nic`).
+            Self::Bridge { bridge: d } | Self::Tap { tap: d } => check_host_device(at, d),
+            Self::Mode(m) => Err(format!(
+                "{at}: nic = {m:?} — the bare value is \"slirp\"; a bridge or TAP names its \
+                 host device: `nic = {{ bridge = \"br0\" }}` / `{{ tap = \"tap0\" }}`"
+            )),
+        }
+    }
+}
+
+/// `[image.<id>.run]` (RFC-0109 D6, phase-514 W6): facts about how this image
+/// is RUN, read by the QEMU launchers and the test harness only. The image's
+/// build never reads them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageRun {
+    /// How the emulator attaches the image's first interface. Absent: QEMU's
+    /// user-mode network on [`QEMU_NETWORK`], and none (a physical board) on
+    /// any other network.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nic: Option<Attach>,
+}
+
+impl ImageRun {
+    /// Check the stated facts. `id` is the image id.
+    pub fn validate(&self, id: &str) -> Result<(), String> {
+        match &self.nic {
+            Some(n) => n.validate(&format!("[image.{id}.run]")),
+            None => Ok(()),
+        }
+    }
+
+    /// How an interface on `network` attaches: the stated `nic` for the
+    /// image's FIRST interface (`first`), else QEMU's user-mode network on
+    /// [`QEMU_NETWORK`], else none.
+    #[must_use]
+    pub fn attach_for(&self, network: &str, first: bool) -> Option<Attach> {
+        match (&self.nic, first) {
+            (Some(n), true) => Some(n.clone()),
+            _ if network == QEMU_NETWORK => Some(Attach::slirp()),
+            _ => None,
+        }
+    }
+}
+
+/// `[image.<id>.run]` from an image's raw table (the leaf road), checked.
+pub fn parse_run(image: Option<&toml::Table>, id: &str) -> Result<ImageRun, String> {
+    let Some(v) = image.and_then(|t| t.get("run")) else {
+        return Ok(ImageRun::default());
+    };
+    let run: ImageRun = v
+        .clone()
+        .try_into()
+        .map_err(|e| format!("[image.{id}.run]: {e}"))?;
+    run.validate(id)?;
+    Ok(run)
+}
+
+/// One interface's address, as a board network file states it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ImageNetIf {
-    /// The network this interface sits on: `qemu` or a `[network.<name>]`.
+    /// The network this interface sits on: `qemu`, or a `[network.<name>]` of
+    /// the same file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network: Option<String>,
     /// A full IPv4 address, or `"dhcp"` for a lease.
@@ -84,7 +162,7 @@ pub struct ImageNetIf {
     /// The last octet within the network's subnet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<u8>,
-    /// The interface's MAC (`02:00:00:00:00:01`). Derived when absent (W2).
+    /// The interface's MAC (`02:00:00:00:00:01`). Derived when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mac: Option<String>,
 }
@@ -111,9 +189,7 @@ pub fn builtin(name: &str) -> Option<NetworkDef> {
     (name == QEMU_NETWORK).then(|| NetworkDef {
         subnet: Some("10.0.2.0/24".to_string()),
         gateway: Some("10.0.2.2".to_string()),
-        router: None,
         dhcp: false,
-        attach: Some(Attach::Mode("slirp".to_string())),
     })
 }
 
@@ -132,13 +208,13 @@ pub fn parse_ipv4(s: &str) -> Result<[u8; 4], String> {
     Ok(out)
 }
 
-/// A bridge or TAP `attach` names a host network device, which the QEMU
+/// A bridge or TAP `nic` names a host network device, which the QEMU
 /// launcher splices into a `-nic` argument: empty, whitespace or a comma
 /// would not survive that.
 fn check_host_device(at: &str, d: &str) -> Result<(), String> {
     if d.is_empty() || d.contains(char::is_whitespace) || d.contains(',') {
         return Err(format!(
-            "{at}: attach names host device {d:?}, which is not a device name"
+            "{at}: nic names host device {d:?}, which is not a device name"
         ));
     }
     Ok(())
@@ -214,68 +290,79 @@ impl NetworkDef {
                 ));
             }
         }
-        match &self.attach {
-            None => {}
-            Some(Attach::Mode(m)) if m == "slirp" => {}
-            // phase-497 W3 — the QEMU launchers render these (`-nic bridge` /
-            // `-nic tap`, `nros_board_common::image_net::qemu_nic`).
-            Some(Attach::Bridge { bridge: d } | Attach::Tap { tap: d }) => {
-                check_host_device(&at, d)?;
-            }
-            Some(Attach::Mode(m)) => {
-                return Err(format!(
-                    "{at}: attach = {m:?} — the bare value is \"slirp\"; a bridge or TAP names \
-                     its host device: `attach = {{ bridge = \"br0\" }}` / `{{ tap = \"tap0\" }}`"
-                ));
-            }
-        }
-        // D10d — the locator an image on this network dials by default.
-        if let Some(r) = &self.router
-            && (r.is_empty() || r.contains(char::is_whitespace) || !r.contains('/'))
-        {
-            return Err(format!(
-                "{at}: router = {r:?} is not a locator — write it the way an image's `locator` \
-                 is written, e.g. \"tcp/192.168.50.1:7447\""
-            ));
-        }
         Ok(())
     }
+
+    /// The subnet, parsed. Validated networks always have one.
+    pub fn subnet(&self, name: &str) -> Result<Subnet, String> {
+        Subnet::parse(self.subnet.as_deref().unwrap_or_default())
+            .map_err(|e| format!("[network.{name}]: {e}"))
+    }
+
+    /// The gateway, parsed.
+    pub fn gateway_octets(&self, name: &str) -> Result<Option<[u8; 4]>, String> {
+        self.gateway
+            .as_deref()
+            .map(|g| parse_ipv4(g).map_err(|e| format!("[network.{name}] gateway: {e}")))
+            .transpose()
+    }
 }
 
-/// `[network.*]` of a `system.toml` document, typed and validated. Redefining
-/// the built-in `qemu` is refused: it is QEMU's own plan, not a project's.
-pub fn parse_networks(doc: &toml::Table) -> Result<BTreeMap<String, NetworkDef>, String> {
-    let Some(v) = doc.get("network") else {
-        return Ok(BTreeMap::new());
-    };
-    let nets: BTreeMap<String, NetworkDef> = v
-        .clone()
-        .try_into()
-        .map_err(|e| format!("[network.*]: {e}"))?;
-    for (name, def) in &nets {
+/// The keys a `[network.<name>]` held in `system.toml` (RFC-0103 D10a) that do
+/// not move into a board network file with it, and where each went.
+const MOVED_NETWORK_KEYS: &[(&str, &str)] = &[
+    (
+        "router",
+        "the locator an image dials is the image's own `locator` (or `[system] locator`) — \
+         RFC-0109 D6",
+    ),
+    (
+        "attach",
+        "how an emulated image joins a network is a runner fact: `[image.<id>.run] nic = \
+         \"slirp\" | { bridge = \"<dev>\" } | { tap = \"<dev>\" }` — RFC-0109 D6",
+    ),
+];
+
+/// The `[network.*]` of one board network file (`file` names it), typed and
+/// validated. Redefining the built-in `qemu` is refused: it is QEMU's own
+/// plan, not a project's.
+fn parse_network_table(
+    v: &toml::Value,
+    file: &str,
+) -> Result<BTreeMap<String, NetworkDef>, String> {
+    let t = v
+        .as_table()
+        .ok_or_else(|| format!("{file}: `network` must be a table of `[network.<name>]`"))?;
+    let mut out = BTreeMap::new();
+    for (name, def) in t {
+        let at = format!("{file}: [network.{name}]");
         if builtin(name).is_some() {
             return Err(format!(
-                "[network.{name}]: `{name}` is built in (QEMU's own SLIRP network, \
-                 10.0.2.0/24) and cannot be redefined; name your network something else"
+                "{at}: `{name}` is built in (QEMU's own SLIRP network, 10.0.2.0/24) and \
+                 cannot be redefined; name your network something else"
             ));
         }
-        def.validate(name)?;
+        if let Some((key, home)) = MOVED_NETWORK_KEYS
+            .iter()
+            .find(|(k, _)| def.get(k).is_some())
+        {
+            return Err(format!("{at}: `{key}` does not belong here — {home}"));
+        }
+        let def: NetworkDef = def.clone().try_into().map_err(|e| format!("{at}: {e}"))?;
+        def.validate(name).map_err(|e| format!("{file}: {e}"))?;
+        out.insert(name.clone(), def);
     }
-    Ok(nets)
+    Ok(out)
 }
 
-/// `[image.<id>.net]` (or `[image_defaults.net]`) — `table` is the image
-/// table — typed.
-pub fn parse_image_net(
-    image: Option<&toml::Table>,
-    at: &str,
-) -> Result<BTreeMap<String, ImageNetIf>, String> {
-    let Some(v) = image.and_then(|t| t.get("net")) else {
-        return Ok(BTreeMap::new());
-    };
-    v.clone()
-        .try_into()
-        .map_err(|e| format!("{at}.net: {e} (each interface is `[{at}.net.<if>]`)"))
+/// One board network file (RFC-0109 D4), read.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BoardNetFile {
+    /// `[<interface>]` — the image's address on each interface.
+    pub interfaces: BTreeMap<String, ImageNetIf>,
+    /// `[network.<name>]` — the networks those interfaces sit on, other than
+    /// the built-in [`QEMU_NETWORK`].
+    pub networks: BTreeMap<String, NetworkDef>,
 }
 
 /// RFC-0109 D4 (phase-514 W2) — the board config files an image names.
@@ -304,50 +391,90 @@ pub fn parse_os_config(image: Option<&toml::Table>, at: &str) -> Result<Vec<Stri
 }
 
 /// Read one board network file: a table per interface, each with the fields
-/// of [`ImageNetIf`] (`network`, `host` or `address`, `mac`).
-pub fn read_board_net_file(path: &std::path::Path) -> Result<BTreeMap<String, ImageNetIf>, String> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| format!("{}: {e} (named by `os_config`)", path.display()))?;
-    toml::from_str(&text).map_err(|e| {
+/// of [`ImageNetIf`] (`network`, `host` or `address`, `mac`), and a
+/// `[network.<name>]` table per network they name.
+pub fn read_board_net_file(path: &std::path::Path) -> Result<BoardNetFile, String> {
+    let file = path.display().to_string();
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("{file}: {e} (named by `os_config`)"))?;
+    let mut doc: toml::Table = toml::from_str(&text).map_err(|e| format!("{file}: {e}"))?;
+    let networks = match doc.remove("network") {
+        Some(v) => parse_network_table(&v, &file)?,
+        None => BTreeMap::new(),
+    };
+    let interfaces = toml::Value::Table(doc).try_into().map_err(|e| {
         format!(
-            "{}: {e} (a board network file is one `[<interface>]` table per interface, \
-             with `network`, `host` or `address`, and `mac` — RFC-0109 D4)",
-            path.display()
+            "{file}: {e} (a board network file is one `[<interface>]` table per interface, \
+             with `network`, `host` or `address`, and `mac`, plus a `[network.<name>]` per \
+             network other than `qemu` — RFC-0109 D4)"
         )
+    })?;
+    Ok(BoardNetFile {
+        interfaces,
+        networks,
     })
 }
 
-/// An image's interfaces: its inline `net` plus every board network file its
-/// `os_config` names, resolved against `dir` (the `system.toml`'s directory).
-/// An interface stated in two places is refused, naming both: one owner per
-/// fact (RFC-0103), and the file is that owner (RFC-0109 D4).
+/// An image's network: every board network file its `os_config` names,
+/// resolved against `dir` (the `system.toml`'s directory). An interface stated
+/// in two files is refused, naming both: one owner per fact (RFC-0103), and a
+/// file is that owner (RFC-0109 D4). A network two files define differently is
+/// refused the same way. `at` names the image table.
 pub fn fold_board_net_files(
-    inline: &BTreeMap<String, ImageNetIf>,
     dir: &std::path::Path,
     os_config: &[String],
     at: &str,
-) -> Result<BTreeMap<String, ImageNetIf>, String> {
-    let mut out = inline.clone();
-    let mut owner: BTreeMap<String, String> = inline
-        .keys()
-        .map(|k| (k.clone(), format!("[{at}.net.{k}]")))
-        .collect();
+) -> Result<BoardNetFile, String> {
+    let mut out = BoardNetFile::default();
+    let mut owner: BTreeMap<String, String> = BTreeMap::new();
     for file in board_net_files(os_config) {
         let path = dir.join(file);
-        for (name, decl) in read_board_net_file(&path)? {
+        let read = read_board_net_file(&path)?;
+        for (name, decl) in read.interfaces {
             if let Some(prev) = owner.get(&name) {
                 return Err(format!(
                     "`{at}`: interface `{name}` is stated twice — in {prev} and in {} — so \
-                     the image has two owners for one address (RFC-0109 D4: the board \
-                     network file named by `os_config` is its one home)",
+                     the image has two owners for one address (RFC-0109 D4: one board \
+                     network file owns each interface)",
                     path.display()
                 ));
             }
             owner.insert(name.clone(), path.display().to_string());
-            out.insert(name, decl);
+            out.interfaces.insert(name, decl);
         }
+        merge_networks(
+            &mut out.networks,
+            read.networks,
+            &path.display().to_string(),
+        )?;
     }
     Ok(out)
+}
+
+/// Add `more` (from `from`) to `into`, refusing a network defined twice with
+/// different facts. Used within one image's files and, by the workspace
+/// resolver, across images: one network has one subnet.
+pub fn merge_networks(
+    into: &mut BTreeMap<String, NetworkDef>,
+    more: BTreeMap<String, NetworkDef>,
+    from: &str,
+) -> Result<(), String> {
+    for (name, def) in more {
+        match into.get(&name) {
+            Some(prev) if *prev != def => {
+                return Err(format!(
+                    "{from}: [network.{name}] disagrees with another board network file's \
+                     ({prev:?} vs {def:?}) — one network has one subnet, gateway and lease \
+                     policy; make the files agree"
+                ));
+            }
+            Some(_) => {}
+            None => {
+                into.insert(name, def);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// D10g — refuse a flat `ip` / `gateway` / `netmask` on `table`, naming the
@@ -366,28 +493,18 @@ pub fn refuse_flat_image_net(table: Option<&toml::Table>, at: &str) -> Result<()
 #[must_use]
 pub fn flat_key_refusal(at: &str, key: &str) -> String {
     format!(
-        "`{at}` states `{key}`, which is retired (RFC-0103 D10g, phase-497 W1): an image's \
-         address is per interface and per network now. Write\n\n    [{at}.net.eth0]\n    \
-         network = \"qemu\"          # or a [network.<name>] you define\n    host = 50                   \
-         # or: address = \"10.0.2.50\"\n\nand drop `ip` / `gateway` / `netmask` — the gateway and \
-         netmask are the network's (`[network.<name>] subnet` / `gateway`)."
+        "`{at}` states `{key}`, which is retired (RFC-0103 D10g): an image's address is a \
+         board fact now (RFC-0109 D4). Name a board network file in the image's \
+         `os_config = [\"board-net.toml\"]`, holding\n\n    [eth0]\n    network = \"qemu\"          \
+         # or a [network.<name>] defined in the same file\n    host = 50                   \
+         # or: address = \"10.0.2.50\"\n\nand drop `ip` / `gateway` / `netmask` — the gateway \
+         and netmask are the network's (`[network.<name>] subnet` / `gateway`)."
     )
 }
 
-/// Overlay `image` interfaces on `defaults` (D5.1's image-over-defaults rule):
-/// an interface the image states replaces the defaults' one whole.
-#[must_use]
-pub fn overlay(
-    defaults: &BTreeMap<String, ImageNetIf>,
-    image: &BTreeMap<String, ImageNetIf>,
-) -> BTreeMap<String, ImageNetIf> {
-    let mut out = defaults.clone();
-    out.extend(image.iter().map(|(k, v)| (k.clone(), v.clone())));
-    out
-}
-
 /// The network named `name`: the built-in [`QEMU_NETWORK`] or one of the
-/// project's. `at` is the table that named it, for the message.
+/// image's board network files'. `at` is the table that named it, for the
+/// message.
 pub fn network_def(
     name: &str,
     networks: &BTreeMap<String, NetworkDef>,
@@ -397,35 +514,10 @@ pub fn network_def(
         Some(b) => Ok(b),
         None => networks.get(name).cloned().ok_or_else(|| {
             format!(
-                "{at}: network = {name:?} names no `[network.{name}]` and is not the built-in \
-                 \"{QEMU_NETWORK}\""
+                "{at}: network = {name:?} is not the built-in \"{QEMU_NETWORK}\", and no \
+                 board network file of this image defines `[network.{name}]`"
             )
         }),
-    }
-}
-
-impl NetworkDef {
-    /// The subnet, parsed. Validated networks always have one.
-    pub fn subnet(&self, name: &str) -> Result<Subnet, String> {
-        Subnet::parse(self.subnet.as_deref().unwrap_or_default())
-            .map_err(|e| format!("[network.{name}]: {e}"))
-    }
-
-    /// The gateway, parsed.
-    pub fn gateway_octets(&self, name: &str) -> Result<Option<[u8; 4]>, String> {
-        self.gateway
-            .as_deref()
-            .map(|g| parse_ipv4(g).map_err(|e| format!("[network.{name}] gateway: {e}")))
-            .transpose()
-    }
-
-    /// Whether images on this network each get a PRIVATE instance of it, so two
-    /// of them never meet and cannot collide: QEMU's SLIRP, which every
-    /// `-nic user` creates per VM. A bridge, a TAP or a physical network is
-    /// shared, and the resolver refuses a duplicate address or MAC on it.
-    #[must_use]
-    pub fn is_per_image(&self) -> bool {
-        matches!(&self.attach, Some(Attach::Mode(m)) if m == "slirp")
     }
 }
 
@@ -518,7 +610,7 @@ pub fn check_image_interfaces(
     ifs: &BTreeMap<String, ImageNetIf>,
 ) -> Result<(), String> {
     for (ifname, i) in ifs {
-        let at = format!("[image.{id}.net.{ifname}]");
+        let at = format!("image `{id}`, interface `{ifname}`");
         if let Some(m) = &i.mac {
             parse_mac(&at, m)?;
         }
@@ -531,19 +623,6 @@ pub fn check_image_interfaces(
         }
     }
     Ok(())
-}
-
-/// D10d — the locator an image dials by default, from its networks: the
-/// `router` of the network its FIRST interface sits on. `None` when that
-/// network states none (on [`QEMU_NETWORK`] the board's own default, the
-/// gateway, is right; elsewhere the caller refuses an image with no locator).
-#[must_use]
-pub fn network_router(
-    networks: &BTreeMap<String, NetworkDef>,
-    ifs: &BTreeMap<String, ImageNetIf>,
-) -> Option<String> {
-    let (_, first) = ifs.iter().next()?;
-    networks.get(first.network.as_deref()?)?.router.clone()
 }
 
 #[cfg(test)]
@@ -559,8 +638,8 @@ mod tests {
     }
 
     /// RFC-0109 D4 (phase-514 W2) — a board network file supplies an image's
-    /// interfaces; an interface stated inline AND in a file has two owners and
-    /// is refused; a non-`.toml` entry belongs to the RTOS and is not read.
+    /// interfaces; an interface stated in two files has two owners and is
+    /// refused; a non-`.toml` entry belongs to the RTOS and is not read.
     #[test]
     fn os_config_board_net_files_fold_into_the_image_net() {
         let dir = scratch("fold");
@@ -569,166 +648,214 @@ mod tests {
             "[eth0]\nnetwork = \"qemu\"\nhost = 10\n",
         )
         .unwrap();
+        std::fs::write(dir.join("again.toml"), "[eth0]\nhost = 11\n").unwrap();
         let files = vec!["prj.conf".to_string(), "board-net.toml".to_string()];
 
-        let got = fold_board_net_files(&BTreeMap::new(), &dir, &files, "image.t").unwrap();
-        assert_eq!(got["eth0"].network.as_deref(), Some("qemu"));
-        assert_eq!(got["eth0"].host, Some(10));
+        let got = fold_board_net_files(&dir, &files, "image.t").unwrap();
+        assert_eq!(got.interfaces["eth0"].network.as_deref(), Some("qemu"));
+        assert_eq!(got.interfaces["eth0"].host, Some(10));
+        assert!(got.networks.is_empty());
 
-        let inline: BTreeMap<String, ImageNetIf> = [(
-            "eth0".to_string(),
-            ImageNetIf {
-                host: Some(11),
-                ..ImageNetIf::default()
-            },
-        )]
-        .into();
-        let e = fold_board_net_files(&inline, &dir, &files, "image.t").unwrap_err();
+        let twice = vec!["board-net.toml".to_string(), "again.toml".to_string()];
+        let e = fold_board_net_files(&dir, &twice, "image.t").unwrap_err();
         assert!(
-            e.contains("`eth0` is stated twice") && e.contains("[image.t.net.eth0]"),
+            e.contains("`eth0` is stated twice") && e.contains("again.toml"),
             "{e}"
         );
 
-        let e = fold_board_net_files(
-            &BTreeMap::new(),
-            &dir,
-            &["missing.toml".to_string()],
-            "image.t",
-        )
-        .unwrap_err();
+        let e = fold_board_net_files(&dir, &["missing.toml".to_string()], "image.t").unwrap_err();
         assert!(e.contains("missing.toml") && e.contains("os_config"), "{e}");
 
         std::fs::write(dir.join("bad.toml"), "[eth0]\nhots = 1\n").unwrap();
-        let e = fold_board_net_files(&BTreeMap::new(), &dir, &["bad.toml".to_string()], "image.t")
-            .unwrap_err();
+        let e = fold_board_net_files(&dir, &["bad.toml".to_string()], "image.t").unwrap_err();
         assert!(e.contains("RFC-0109 D4"), "a misspelt key is refused: {e}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    fn doc(s: &str) -> toml::Table {
-        s.parse().expect("toml")
+    /// RFC-0109 D4/D6 (phase-514 W4) — a project network moves into the board
+    /// network file with its `subnet` / `gateway` / `dhcp`; its `router` and
+    /// `attach` do not, and are refused there naming where they went.
+    #[test]
+    fn a_board_net_file_defines_its_networks_and_refuses_router_and_attach() {
+        let dir = scratch("nets");
+        std::fs::write(
+            dir.join("lab.toml"),
+            "[eth0]\nnetwork = \"lab\"\nhost = 20\n\n\
+             [network.lab]\nsubnet = \"192.168.50.0/24\"\ngateway = \"192.168.50.1\"\n",
+        )
+        .unwrap();
+        let got = fold_board_net_files(&dir, &["lab.toml".to_string()], "image.a").unwrap();
+        assert_eq!(got.networks["lab"].gateway.as_deref(), Some("192.168.50.1"));
+        check_image_interfaces("a", &got.networks, &got.interfaces).unwrap();
+
+        for (body, key, names) in [
+            (
+                "router = \"tcp/192.168.50.1:7447\"\n",
+                "router",
+                "`locator`",
+            ),
+            (
+                "attach = { tap = \"tap0\" }\n",
+                "attach",
+                "[image.<id>.run] nic",
+            ),
+        ] {
+            std::fs::write(
+                dir.join("moved.toml"),
+                format!("[network.lab]\nsubnet = \"192.168.50.0/24\"\n{body}"),
+            )
+            .unwrap();
+            let e = fold_board_net_files(&dir, &["moved.toml".to_string()], "image.a").unwrap_err();
+            assert!(
+                e.contains(&format!("`{key}` does not belong here")) && e.contains(names),
+                "{e}"
+            );
+        }
+
+        // Two files of one image, one network, two subnets: refused.
+        std::fs::write(
+            dir.join("lab2.toml"),
+            "[eth1]\nnetwork = \"lab\"\nhost = 21\n\n\
+             [network.lab]\nsubnet = \"192.168.51.0/24\"\n",
+        )
+        .unwrap();
+        let e = fold_board_net_files(
+            &dir,
+            &["lab.toml".to_string(), "lab2.toml".to_string()],
+            "image.a",
+        )
+        .unwrap_err();
+        assert!(e.contains("disagrees"), "{e}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
-    fn image_net(d: &toml::Table, id: &str) -> BTreeMap<String, ImageNetIf> {
-        let img = d
-            .get("image")
-            .and_then(|i| i.get(id))
-            .and_then(|i| i.as_table());
-        parse_image_net(img, &format!("image.{id}")).expect("image net")
+    #[test]
+    fn the_run_nic_is_the_first_interfaces_attach() {
+        let run = ImageRun {
+            nic: Some(Attach::Tap { tap: "tap0".into() }),
+        };
+        assert_eq!(
+            run.attach_for("lab", true),
+            Some(Attach::Tap { tap: "tap0".into() })
+        );
+        assert_eq!(run.attach_for("qemu", false), Some(Attach::slirp()));
+        assert_eq!(run.attach_for("lab", false), None, "a physical network");
+        let none = ImageRun::default();
+        assert_eq!(none.attach_for("qemu", true), Some(Attach::slirp()));
+        assert!(Attach::slirp().is_per_image(), "SLIRP is per VM");
+        assert!(
+            !Attach::Bridge {
+                bridge: "br0".into()
+            }
+            .is_per_image(),
+            "a bridge is shared"
+        );
+
+        let parse = |src: &str| {
+            let t: toml::Table = src.parse().unwrap();
+            parse_run(t["image"]["a"].as_table(), "a")
+        };
+        assert!(
+            parse("[image.a.run]\nnic = \"tap\"\n")
+                .unwrap_err()
+                .contains("bare value")
+        );
+        assert!(
+            parse("[image.a.run]\nnic = { tap = \"tap 0\" }\n")
+                .unwrap_err()
+                .contains("not a device name")
+        );
+        assert!(
+            parse("[image.a.run]\nmode = 1\n")
+                .unwrap_err()
+                .contains("unknown field")
+        );
+        assert_eq!(
+            parse("[image.a.run]\nnic = { bridge = \"qemu-br\" }\n")
+                .unwrap()
+                .nic,
+            Some(Attach::Bridge {
+                bridge: "qemu-br".into()
+            })
+        );
     }
 
-    fn check(src: &str) -> Result<(), String> {
-        let d = doc(src);
-        check_image_interfaces("a", &parse_networks(&d)?, &image_net(&d, "a"))
+    fn one(network: &str, host: Option<u8>, address: Option<&str>) -> ImageNetIf {
+        ImageNetIf {
+            network: Some(network.into()),
+            host,
+            address: address.map(str::to_string),
+            mac: None,
+        }
     }
 
-    fn addr(src: &str) -> Result<Option<StatedAddress>, String> {
-        let d = doc(src);
-        let nets = parse_networks(&d)?;
-        let ifs = image_net(&d, "a");
-        let (_, i) = ifs.iter().next().expect("one interface");
+    fn lab(dhcp: bool) -> BTreeMap<String, NetworkDef> {
+        [(
+            "lab".to_string(),
+            NetworkDef {
+                subnet: Some("192.168.50.0/24".into()),
+                gateway: Some("192.168.50.1".into()),
+                dhcp,
+            },
+        )]
+        .into()
+    }
+
+    fn addr(
+        nets: &BTreeMap<String, NetworkDef>,
+        i: &ImageNetIf,
+    ) -> Result<Option<StatedAddress>, String> {
         let n = i.network.as_deref().expect("a network");
-        stated_address("at", n, &network_def(n, &nets, "at")?, i)
+        stated_address("at", n, &network_def(n, nets, "at")?, i)
     }
 
     #[test]
     fn host_on_the_builtin_qemu_network_is_an_address_in_its_subnet() {
         assert_eq!(
-            addr("[image.a.net.eth0]\nnetwork = \"qemu\"\nhost = 50\n").unwrap(),
+            addr(&BTreeMap::new(), &one("qemu", Some(50), None)).unwrap(),
             Some(StatedAddress::Static([10, 0, 2, 50]))
         );
     }
 
     #[test]
-    fn an_explicit_physical_network_needs_no_attach() {
-        let src = "[network.lab]\nsubnet = \"192.168.50.0/24\"\ngateway = \"192.168.50.1\"\n\n\
-                   [image.a.net.eth0]\nnetwork = \"lab\"\naddress = \"192.168.50.20\"\n";
-        let nets = parse_networks(&doc(src)).unwrap();
-        assert!(nets["lab"].attach.is_none());
-        assert!(!nets["lab"].is_per_image(), "a physical network is shared");
-        assert!(builtin("qemu").unwrap().is_per_image(), "SLIRP is per VM");
+    fn an_address_on_a_defined_network_is_checked_against_its_subnet() {
         assert_eq!(
-            addr(src).unwrap(),
+            addr(&lab(false), &one("lab", None, Some("192.168.50.20"))).unwrap(),
             Some(StatedAddress::Static([192, 168, 50, 20]))
         );
-    }
-
-    #[test]
-    fn an_interface_that_states_nothing_is_left_to_the_resolver() {
+        assert_eq!(addr(&lab(false), &one("qemu", None, None)).unwrap(), None);
         assert_eq!(
-            addr("[image.a.net.eth0]\nnetwork = \"qemu\"\n").unwrap(),
-            None
+            addr(&lab(true), &one("lab", None, Some("dhcp"))).unwrap(),
+            Some(StatedAddress::Dhcp)
         );
-        // No network at all: the board's default network, which only the
-        // resolver knows — not checkable here, and not an error here.
-        check("[image.a.net.eth0]\nhost = 50\n").unwrap();
-    }
-
-    #[test]
-    fn a_lease_needs_a_network_that_leases() {
-        let src = "[network.lab]\nsubnet = \"192.168.50.0/24\"\ndhcp = true\n\n\
-                   [image.a.net.eth0]\nnetwork = \"lab\"\naddress = \"dhcp\"\n";
-        assert_eq!(addr(src).unwrap(), Some(StatedAddress::Dhcp));
     }
 
     #[test]
     fn refusals_name_what_to_write() {
+        let nets = lab(false);
+        let mac = |m: &str| ImageNetIf {
+            mac: Some(m.into()),
+            ..one("qemu", None, None)
+        };
         let cases = [
-            (
-                "[image.a.net.eth0]\nnetwork = \"lab\"\nhost = 5\n",
-                "names no `[network.lab]`",
-            ),
-            (
-                "[image.a.net.eth0]\nnetwork = \"qemu\"\nhost = 2\n",
-                "gateway",
-            ),
-            (
-                "[image.a.net.eth0]\nnetwork = \"qemu\"\naddress = \"10.0.3.5\"\n",
-                "not a host address",
-            ),
-            (
-                "[image.a.net.eth0]\nnetwork = \"qemu\"\nhost = 5\naddress = \"10.0.2.5\"\n",
-                "not both",
-            ),
-            (
-                "[image.a.net.eth0]\nnetwork = \"qemu\"\naddress = \"dhcp\"\n",
-                "states no `dhcp = true`",
-            ),
-            (
-                "[image.a.net.eth0]\nnetwork = \"qemu\"\nmac = \"02:00:00:00:01\"\n",
-                "six hex bytes",
-            ),
-            (
-                "[image.a.net.eth0]\nnetwork = \"qemu\"\nmac = \"03:00:00:00:00:01\"\n",
-                "multicast",
-            ),
+            (one("other", Some(5), None), "defines `[network.other]`"),
+            (one("qemu", Some(2), None), "gateway"),
+            (one("qemu", None, Some("10.0.3.5")), "not a host address"),
+            (one("qemu", Some(5), Some("10.0.2.5")), "not both"),
+            (one("lab", None, Some("dhcp")), "states no `dhcp = true`"),
+            (mac("02:00:00:00:01"), "six hex bytes"),
+            (mac("03:00:00:00:00:01"), "multicast"),
         ];
-        for (src, want) in cases {
-            let e = check(src).expect_err(src);
-            assert!(e.contains(want), "{src}\n-> {e}");
+        for (i, want) in cases {
+            let ifs = [("eth0".to_string(), i.clone())].into();
+            let e = check_image_interfaces("a", &nets, &ifs).expect_err(want);
+            assert!(e.contains(want), "{i:?}\n-> {e}");
         }
     }
 
     #[test]
-    fn the_router_of_the_first_interfaces_network_is_the_default_locator() {
-        let d = doc(
-            "[network.lab]\nsubnet = \"192.168.50.0/24\"\nrouter = \"tcp/192.168.50.1:7447\"\n\n\
-             [image.a.net.eth0]\nnetwork = \"lab\"\nhost = 20\n",
-        );
-        let nets = parse_networks(&d).unwrap();
-        assert_eq!(
-            network_router(&nets, &image_net(&d, "a")).as_deref(),
-            Some("tcp/192.168.50.1:7447")
-        );
-        let e = parse_networks(&doc(
-            "[network.lab]\nsubnet = \"192.168.50.0/24\"\nrouter = \"192.168.50.1\"\n",
-        ))
-        .unwrap_err();
-        assert!(e.contains("not a locator"), "{e}");
-    }
-
-    #[test]
     fn network_tables_are_validated() {
+        let dir = scratch("validate");
         for (src, want) in [
             ("[network.qemu]\nsubnet = \"10.0.2.0/24\"\n", "built in"),
             (
@@ -741,66 +868,27 @@ mod tests {
                 "not a host address",
             ),
             (
-                "[network.lab]\nsubnet = \"192.168.1.0/24\"\nattach = \"tap\"\n",
-                "bare value",
-            ),
-            (
                 "[network.lab]\nsubnet = \"192.168.1.0/24\"\nmode = \"bridge\"\n",
                 "unknown field",
             ),
         ] {
-            let e = parse_networks(&doc(src)).expect_err(src);
+            std::fs::write(dir.join("n.toml"), src).unwrap();
+            let e = read_board_net_file(&dir.join("n.toml")).expect_err(src);
             assert!(e.contains(want), "{src}\n-> {e}");
         }
-        let br = parse_networks(&doc(
-            "[network.br]\nsubnet = \"192.168.1.0/24\"\nattach = { bridge = \"br0\" }\n",
-        ))
-        .unwrap();
-        assert_eq!(
-            br["br"].attach,
-            Some(Attach::Bridge {
-                bridge: "br0".into()
-            })
-        );
-        assert!(!br["br"].is_per_image(), "a bridge is shared");
-        let e = parse_networks(&doc(
-            "[network.br]\nsubnet = \"192.168.1.0/24\"\nattach = { tap = \"tap 0\" }\n",
-        ))
-        .unwrap_err();
-        assert!(e.contains("not a device name"), "{e}");
-        let ok = parse_networks(&doc(
-            "[network.lan]\nsubnet = \"192.168.1.0/24\"\nattach = \"slirp\"\n",
-        ))
-        .unwrap();
-        assert_eq!(ok["lan"].attach, Some(Attach::Mode("slirp".into())));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn the_flat_spellings_are_refused_naming_the_new_home() {
-        let d = doc("[image.a]\nboard = \"x\"\nip = \"10.0.2.50\"\n");
+        let d: toml::Table = "[image.a]\nboard = \"x\"\nip = \"10.0.2.50\"\n"
+            .parse()
+            .unwrap();
         let img = d
             .get("image")
             .and_then(|i| i.get("a"))
             .and_then(|i| i.as_table());
         let e = refuse_flat_image_net(img, "image.a").unwrap_err();
-        assert!(
-            e.contains("[image.a.net.eth0]") && e.contains("D10g"),
-            "{e}"
-        );
-    }
-
-    #[test]
-    fn image_interfaces_replace_the_defaults_per_interface() {
-        let d = doc(
-            "[image_defaults.net.eth0]\nnetwork = \"qemu\"\nhost = 10\n\n\
-             [image.a.net.eth0]\nnetwork = \"qemu\"\nhost = 11\n",
-        );
-        let base = parse_image_net(
-            d.get("image_defaults").and_then(|t| t.as_table()),
-            "image_defaults",
-        )
-        .unwrap();
-        let merged = overlay(&base, &image_net(&d, "a"));
-        assert_eq!(merged["eth0"].host, Some(11));
+        assert!(e.contains("os_config") && e.contains("D10g"), "{e}");
     }
 }
