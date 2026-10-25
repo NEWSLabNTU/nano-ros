@@ -251,6 +251,23 @@ struct PendingList {
         return n;
     }
 
+    /// Issue 2037 — forget the pending request whose sequence id is `seq`, as
+    /// `remove_pending_request(request_id)` does upstream: its future becomes
+    /// invalid and its reply, if it still comes, is dropped. False when no
+    /// request with that id is pending (answered, removed, or another
+    /// client's). `SEQUENCE_ID_UNKNOWN` names nothing.
+    bool remove_seq(int64_t seq) {
+        if (seq == SEQUENCE_ID_UNKNOWN) return false;
+        for (PendingLink* l = head; l != nullptr; l = l->next) {
+            if (l->by_goal || l->seq != seq) continue;
+            (void)unlink(l, true);
+            l->list = nullptr;
+            l->orphaned = true;
+            return true;
+        }
+        return false;
+    }
+
     /// The poll client that owns this list is going away: every pending future
     /// becomes invalid (`valid()` false) instead of pointing at freed storage.
     void orphan_all() {

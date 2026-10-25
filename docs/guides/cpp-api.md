@@ -385,7 +385,11 @@ they wait, since no other thread fulfils it. Converted to a bare
 the client. Every `async_get_result` for one goal returns the handle's own
 future; a result-aware goal's handle is kept by the client until its result
 arrives, as upstream's pending request keeps it. Cancel replies are taken by
-that future (or `poll()`), not by the executor's spin. These need
+the executor's spin (issue 2034), as upstream's executor delivers them: the
+spin settles the waiting `async_cancel_*` future and runs its
+`cancel_callback`, so a caller that keeps only the callback needs no `poll()`.
+A reply no future claims is kept for `try_recv_cancel_response`, oldest first,
+up to `rclcpp_action::CANCEL_STASH_CAP` (4) per client. These need
 `std::promise`, so they are hosted-only twice over: a libstdc++ built without
 threads (arm-none-eabi) refuses them like a freestanding build does.
 

@@ -3412,13 +3412,14 @@ pub(crate) unsafe fn action_client_raw_try_process<
     }
 
     // 4. Poll cancel reply — issue 2030. Only when a callback is registered:
-    //    a surface with its own reader (C++ `try_recv_cancel_response`, the
-    //    `async_cancel_*` futures) must find the reply still there. Taking it
+    //    a surface with no callback must find the reply still there. Taking it
     //    retires its request from `pending_cancel`, which is what frees the
     //    slot; before this, nothing on the C callback tier took one and the
-    //    fifth `rclc_action_cancel_goal` was refused.
+    //    fifth `rclc_action_cancel_goal` was refused. Issue 2034 — the request's
+    //    sequence id and the whole frame go along, so C++ can hand the reply to
+    //    the future waiting on THAT request, with its `goals_canceling` list.
     if let Some(cb) = cancel_response_callback
-        && let Ok(Some((total_len, goal_id))) = core.try_recv_cancel_reply_for()
+        && let Ok(Some((total_len, seq, goal_id))) = core.try_recv_cancel_reply_seq()
     {
         let reply = &core.result_buffer[..total_len];
         let code = crate::action_frame::cancel_return_code(reply)
@@ -3427,7 +3428,17 @@ pub(crate) unsafe fn action_client_raw_try_process<
         let n = crate::action_frame::cancel_goals_count(reply).unwrap_or(0);
         // Phase 8 — the fourth distinct callback on this entry, its own pair.
         trace_cb_start(desc_idx);
-        unsafe { cb(&goal_id, code, n, *context) };
+        unsafe {
+            cb(
+                &goal_id,
+                seq,
+                code,
+                n,
+                reply.as_ptr(),
+                reply.len(),
+                *context,
+            )
+        };
         trace_cb_end(desc_idx);
         did_work = true;
     }

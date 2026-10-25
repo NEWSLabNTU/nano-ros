@@ -168,9 +168,10 @@ fn generate_config(
     // 48 bytes), then +3 pointer-sized fields (goal_cb, cancel_cb,
     // cb_ctx). On 32-bit that's 6*4 + 3*4 = 36 bytes.
     let action_server_fallback = ptr_bytes * 9; // 9*ptr = 72 on 64-bit, 36 on 32-bit
-    // CppActionClientLayout: 4-pointer callbacks (32 on 64-bit, 16 on
-    // 32-bit) + i32 + pad + *mut c_void. Alignment pads to 8 on 64-bit.
-    let action_client_fallback = ptr_bytes * 5 + if ptr_bytes == 8 { 8 } else { 4 };
+    // CppActionClientLayout: 5-pointer callbacks (40 on 64-bit, 20 on
+    // 32-bit; the fifth is issue 2034's cancel-reply callback) + i32 + pad +
+    // *mut c_void. Alignment pads to 8 on 64-bit.
+    let action_client_fallback = ptr_bytes * 6 + if ptr_bytes == 8 { 8 } else { 4 };
 
     let action_server_storage = non_zero_or(
         probed.get("CPP_ACTION_SERVER_SIZE").copied().unwrap_or(0) as usize,

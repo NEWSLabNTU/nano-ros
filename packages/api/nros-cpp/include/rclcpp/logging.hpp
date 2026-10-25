@@ -356,6 +356,16 @@ template <typename T> struct refuse {
     "Future::get() before the reply: nano-ros never blocks without spinning (RFC-0021). "          \
     "Call spin_until_future_complete first. Returning nullptr."
 
+// issue 2037 — `FutureAndRequestId::share()`. The shared future a request
+// shares into is a `std::shared_future` over a `std::promise`, which a
+// freestanding build (and a hosted libstdc++ without threads) does not have.
+#define NROS_RCLCPP_REFUSE_SHARED_FUTURE                                                           \
+    "FutureAndRequestId::share() is REFUSED by nano-ros without std::promise (RFC-0089, issue "    \
+    "2037): a SharedFutureAndRequestId is a std::shared_future, which needs std::promise and a "   \
+    "heap; a freestanding build, or a hosted libstdc++ built without threads, has neither. Keep "  \
+    "the one FutureAndRequestId: its .request_id is there, and .future.try_take(resp) / "          \
+    ".future.wait(executor_handle, timeout_ms, resp) read the reply into storage you own."
+
 #define NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK                                             \
     "the shared_ptr service-callback shape is REFUSED by nano-ros (RFC-0089, phase-417 W2.c). "    \
     "rclcpp's create_service/create_client callback takes std::shared_ptr<Request> and "           \

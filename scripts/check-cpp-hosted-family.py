@@ -77,6 +77,14 @@ FAMILY = {
         "fixed-width members (`detail::HostedBox`, `UpstreamCallback`), so no "
         "layout follows the flag; freestanding refuses each one",
     ),
+    "shared-future-interop": (
+        {"NROS_CPP_HAS_STD_PROMISE"},
+        "the driven `std::shared_future` (`rclcpp::detail::DrivenSharedFuture`, "
+        "issue 2027) and what returns one outside `rclcpp_action`: a service "
+        "request's `FutureAndRequestId::share()` and `SharedFutureAndRequestId` "
+        "(issue 2037), over a `std::promise` and a heap shared state. Freestanding "
+        "refuses `share()`",
+    ),
     "chrono-interop": (
         {"NROS_CPP_HAS_STD_CHRONO"},
         "`std::chrono::duration` overloads that convert to `nros::Duration` and "

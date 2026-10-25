@@ -54,6 +54,16 @@ nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
     void* handle, nros_cpp_action_client_goal_response_callback_t goal_response,
     nros_cpp_action_client_feedback_callback_t feedback,
     nros_cpp_action_client_result_callback_t result, void* context);
+
+/// Issue 2034 — `(goal_id, seq, reply, reply_len, ctx)`: a cancel reply the
+/// executor's spin took, with its request's sequence id and whole frame.
+typedef void (*nros_cpp_action_client_cancel_reply_callback_t)(const uint8_t goal_id[16],
+                                                               int64_t seq, const uint8_t* reply,
+                                                               size_t reply_len, void* ctx);
+
+nros_cpp_ret_t
+nros_cpp_action_client_set_cancel_reply_callback(void* handle,
+                                                 nros_cpp_action_client_cancel_reply_callback_t cb);
 } // extern "C"
 
 /// `rclcpp::Node` is named by the friend declaration below and by the
@@ -95,6 +105,13 @@ enum class ResultCode : int8_t {
 /// this many. Four times the goals a server holds at once
 /// (`MAX_CONCURRENT_GOALS`).
 static const size_t MAX_CANCEL_INFOS = 16;
+
+/// Issue 2034 — how many cancel return codes a client keeps for
+/// `try_recv_cancel_response` once the executor's spin has taken their replies
+/// and no `async_cancel_*` future or callback claimed them. The number of
+/// cancels one client can have in flight (`MAX_CONCURRENT_GOALS`); a further
+/// unread reply evicts the OLDEST kept one.
+static const size_t CANCEL_STASH_CAP = 4;
 
 template <typename A> class Client;
 
@@ -867,14 +884,20 @@ template <typename A> class Client {
 
     /// Try to read the reply to a `cancel_goal()` (non-blocking).
     ///
+    /// Issue 2034 — the executor's spin takes every cancel reply (which frees
+    /// its request's slot) and keeps the ones no `async_cancel_*` future or
+    /// callback claimed, oldest first; this reads those, then a reply nothing
+    /// has taken yet. At most `CANCEL_STASH_CAP` are kept: a reply nobody
+    /// reads past that evicts the oldest.
+    ///
     /// @param out  Receives the RPC return code on success.
     /// @return Result::success() when a reply was consumed;
     ///         ErrorCode::TryAgain when none has arrived yet.
     ::rclcpp::Result try_recv_cancel_response(::rclcpp_action::CancelReturnCode& out) {
         if (!initialized_) return ::rclcpp::Result(::rclcpp::ErrorCode::NotInitialized);
         int8_t code = 0;
-        // Issue 2027 — a reply the handle-taking cancels' dispatch took off the
-        // wire for a request none of them sent is kept here, not dropped.
+        // Issue 2034 — a reply the spin took off the wire for a request no
+        // future or callback waits on is kept here, not dropped.
         if (take_stray_cancel(code)) {
             out = static_cast<::rclcpp_action::CancelReturnCode>(code);
             return ::rclcpp::Result::success();
@@ -930,8 +953,8 @@ template <typename A> class Client {
     /// Call this in the spin loop after spin_once().
     void poll() {
         if (!initialized_) return;
+        // Issue 2034 — cancel replies included: they reach `on_cancel_reply`.
         nros_cpp_action_client_poll(storage_);
-        pump_cancels(); // issue 2027 — the handle-taking cancels' replies
     }
 
     /// Check if the action client is initialized and valid.
@@ -1011,8 +1034,13 @@ template <typename A> class Client {
         accepts_.forget_ctx = this;
         results_.forget = &Client::forget_result;
         results_.forget_ctx = this;
-        return ::rclcpp::Result(nros_cpp_action_client_set_callbacks(
-            storage_, &Client::on_goal_response, &Client::on_feedback, &Client::on_result, this));
+        const nros_cpp_ret_t ret = nros_cpp_action_client_set_callbacks(
+            storage_, &Client::on_goal_response, &Client::on_feedback, &Client::on_result, this);
+        if (ret != 0) return ::rclcpp::Result(ret);
+        // Issue 2034 — the executor's spin takes cancel replies and hands them
+        // here (same `this` context).
+        return ::rclcpp::Result(
+            nros_cpp_action_client_set_cancel_reply_callback(storage_, &Client::on_cancel_reply));
     }
 
     // Issue 2027 — the goal-slot leak. A request in the Rust core's bounded
@@ -1046,6 +1074,11 @@ template <typename A> class Client {
         repoint_pump(); // issue 2027 — the futures this client handed out follow it
         feedback_len_ = other.feedback_len_;
         feedback_ready_ = other.feedback_ready_;
+        for (size_t i = 0; i < CANCEL_STASH_CAP; ++i)
+            stash_codes_[i] = other.stash_codes_[i];
+        stash_head_ = other.stash_head_;
+        stash_len_ = other.stash_len_;
+        other.stash_len_ = 0;
         feedback_truncated_ = other.feedback_truncated_;
         for (size_t i = 0; i < feedback_len_; ++i)
             feedback_buf_[i] = other.feedback_buf_[i];
@@ -1138,8 +1171,6 @@ template <typename A> class Client {
 #ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
         ::std::vector<CancelWaiter> cancels;
 #endif
-        /// Cancel return codes taken for no waiter, for `try_recv_cancel_response`.
-        ::std::vector<int8_t> stray_cancels;
         ::std::shared_ptr<detail::PumpCell> pump;
     };
 
@@ -1187,8 +1218,7 @@ template <typename A> class Client {
     static void pump_entry(void* ctx) {
         Client* self = static_cast<Client*>(ctx);
         if (!self->initialized_) return;
-        (void)nros_cpp_action_client_poll(self->storage_);
-        self->pump_cancels();
+        (void)nros_cpp_action_client_poll(self->storage_); // cancels too (issue 2034)
     }
 #endif
 
@@ -1277,75 +1307,89 @@ template <typename A> class Client {
     }
 #endif
 
-    /// Issue 2027 — take the cancel replies the handle-taking cancels wait
-    /// for, each matched to the waiter whose request it answers. Only
-    /// while one waits: otherwise the replies stay for `try_recv_cancel_response`.
-    void pump_cancels() {
-#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
-        UpstreamState* st = upstream_.template as<UpstreamState>();
-        if (st == nullptr || !initialized_) return;
-        for (int i = 0; i < ::rclcpp::detail::MAX_STALE_DRAIN_PER_POLL && !st->cancels.empty();
-             ++i) {
-            uint8_t goal[16] = {};
-            int8_t code = 0;
-            size_t count = 0;
-            int64_t seq = ::rclcpp::detail::SEQUENCE_ID_UNKNOWN;
-            bool taken = false; // a malformed reply still names its request
-            nros_cpp_action_goal_info_t infos[::rclcpp_action::MAX_CANCEL_INFOS];
-            const nros_cpp_ret_t ret = nros_cpp_action_client_take_cancel_reply(
-                storage_, reinterpret_cast<uint8_t(*)[16]>(goal), &code, infos,
-                ::rclcpp_action::MAX_CANCEL_INFOS, &count, &seq);
-            if (ret == NROS_CPP_RET_TRY_AGAIN) break;
-            if (ret != 0 && seq == ::rclcpp::detail::SEQUENCE_ID_UNKNOWN) continue;
-            taken = ret == 0;
-            // The waiter whose REQUEST this answers: by sequence id, or — from
-            // a backend that assigns none, which holds one cancel in flight —
-            // by the goal the request named.
-            const GoalUUID key(goal);
-            size_t at = 0;
-            while (at < st->cancels.size() &&
-                   !(seq != ::rclcpp::detail::SEQUENCE_ID_UNKNOWN ? st->cancels[at].seq == seq
-                                                                  : st->cancels[at].key == key))
-                ++at;
-            if (at == st->cancels.size()) {
-                if (taken) st->stray_cancels.push_back(code);
-                continue;
-            }
-            CancelWaiter w = static_cast<CancelWaiter&&>(st->cancels[at]);
-            st->cancels.erase(st->cancels.begin() + static_cast<long>(at));
-            if (!taken) { // malformed: the request is over, with no response
-                w.promise.set_value(typename CancelResponse::SharedPtr());
-                if (w.callback) w.callback(typename CancelResponse::SharedPtr());
-                continue;
-            }
-            typename CancelResponse::SharedPtr resp = ::std::make_shared<CancelResponse>();
-            resp->return_code = code;
-            const size_t n = count < ::rclcpp_action::MAX_CANCEL_INFOS
-                                 ? count
-                                 : ::rclcpp_action::MAX_CANCEL_INFOS;
-            for (size_t k = 0; k < n; ++k) {
-                detail::CancelGoalInfo info;
-                for (int b = 0; b < 16; ++b)
-                    info.goal_id.uuid[b] = infos[k].uuid[b];
-                info.stamp.sec = infos[k].stamp_sec;
-                info.stamp.nanosec = infos[k].stamp_nanosec;
-                resp->goals_canceling.push_back(info);
-            }
-            w.promise.set_value(resp);
-            if (w.callback) w.callback(resp);
+    /// Issue 2034 — a cancel reply the executor's spin (or `poll()`) took off
+    /// this client. It goes to the `async_cancel_*` future and callback
+    /// waiting on the request it answers (issue 2027), matched by sequence id
+    /// or — from a backend that assigns none, which holds one cancel in
+    /// flight — by the goal the request named. A reply nobody waits on is kept
+    /// for `try_recv_cancel_response` (`CANCEL_STASH_CAP`, oldest evicted).
+    /// Before this, only a polled future or `poll()` took cancel replies, so a
+    /// cancel nobody polled for kept its request's slot and the fifth was
+    /// refused.
+    static void on_cancel_reply(const uint8_t goal[16], int64_t seq, const uint8_t* reply,
+                                size_t len, void* ctx) {
+        Client* self = static_cast<Client*>(ctx);
+        int8_t code = 0;
+        size_t count = 0;
+        nros_cpp_action_goal_info_t infos[::rclcpp_action::MAX_CANCEL_INFOS];
+        const bool taken =
+            nros_cpp_action_cancel_reply_decode(reply, len, &code, infos,
+                                                ::rclcpp_action::MAX_CANCEL_INFOS, &count) == 0;
+        if (self->upstream_cancel_reply(goal, seq, taken, code, infos, count)) return;
+        if (taken) self->stash_cancel(code);
+    }
+
+    /// Keep one unclaimed cancel return code, evicting the oldest when full.
+    void stash_cancel(int8_t code) {
+        if (stash_len_ == CANCEL_STASH_CAP) {
+            stash_head_ = static_cast<uint8_t>((stash_head_ + 1) % CANCEL_STASH_CAP);
+            --stash_len_;
         }
-#endif
+        stash_codes_[(stash_head_ + stash_len_) % CANCEL_STASH_CAP] = code;
+        ++stash_len_;
     }
 
     bool take_stray_cancel(int8_t& code) {
-#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: action-interop
+        if (stash_len_ == 0) return false;
+        code = stash_codes_[stash_head_];
+        stash_head_ = static_cast<uint8_t>((stash_head_ + 1) % CANCEL_STASH_CAP);
+        --stash_len_;
+        return true;
+    }
+
+    /// Hand a cancel reply to the `async_cancel_*` waiter whose request it
+    /// answers. False when none waits (always, without `std::promise`).
+    bool upstream_cancel_reply(const uint8_t goal[16], int64_t seq, bool taken, int8_t code,
+                               const nros_cpp_action_goal_info_t* infos, size_t count) {
+#ifdef NROS_CPP_HAS_STD_PROMISE // hosted-family: action-interop
         UpstreamState* st = upstream_.template as<UpstreamState>();
-        if (st == nullptr || st->stray_cancels.empty()) return false;
-        code = st->stray_cancels.front();
-        st->stray_cancels.erase(st->stray_cancels.begin());
+        if (st == nullptr) return false;
+        const GoalUUID key(goal);
+        size_t at = 0;
+        while (at < st->cancels.size() &&
+               !(seq != ::rclcpp::detail::SEQUENCE_ID_UNKNOWN ? st->cancels[at].seq == seq
+                                                              : st->cancels[at].key == key))
+            ++at;
+        if (at == st->cancels.size()) return false;
+        CancelWaiter w = static_cast<CancelWaiter&&>(st->cancels[at]);
+        st->cancels.erase(st->cancels.begin() + static_cast<long>(at));
+        if (!taken) { // malformed: the request is over, with no response
+            w.promise.set_value(typename CancelResponse::SharedPtr());
+            if (w.callback) w.callback(typename CancelResponse::SharedPtr());
+            return true;
+        }
+        typename CancelResponse::SharedPtr resp = ::std::make_shared<CancelResponse>();
+        resp->return_code = code;
+        const size_t n =
+            count < ::rclcpp_action::MAX_CANCEL_INFOS ? count : ::rclcpp_action::MAX_CANCEL_INFOS;
+        for (size_t k = 0; k < n; ++k) {
+            detail::CancelGoalInfo info;
+            for (int b = 0; b < 16; ++b)
+                info.goal_id.uuid[b] = infos[k].uuid[b];
+            info.stamp.sec = infos[k].stamp_sec;
+            info.stamp.nanosec = infos[k].stamp_nanosec;
+            resp->goals_canceling.push_back(info);
+        }
+        w.promise.set_value(resp);
+        if (w.callback) w.callback(resp);
         return true;
 #else
+        (void)goal;
+        (void)seq;
+        (void)taken;
         (void)code;
+        (void)infos;
+        (void)count;
         return false;
 #endif
     }
@@ -1487,6 +1531,11 @@ template <typename A> class Client {
     size_t feedback_len_ = 0;
     bool feedback_ready_ = false;
     bool feedback_truncated_ = false;
+    /// Issue 2034 — cancel return codes the spin took for no waiter, oldest
+    /// first, for `try_recv_cancel_response`. A ring: no heap on any build.
+    int8_t stash_codes_[CANCEL_STASH_CAP] = {};
+    uint8_t stash_head_ = 0;
+    uint8_t stash_len_ = 0;
     /// Issue 2015 — the goals `async_send_goal` bound upstream callbacks to
     /// (hosted only; empty, and the same two pointers wide, on a freestanding
     /// build).
