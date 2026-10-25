@@ -57,9 +57,7 @@ pub use bridge::{
     poll_callback_diagnostics, poll_count, poll_diagnostics, rx_diagnostics, seed_ephemeral_port,
     set_idle_callback, set_poll_callback,
 };
-pub use wait_idle::{
-    WaitIdleFn, clear_wait_idle, has_wait_idle, idle_until_ms, set_wait_idle,
-};
+pub use wait_idle::{WaitIdleFn, clear_wait_idle, has_wait_idle, idle_until_ms, set_wait_idle};
 
 // Re-export smoltcp types needed by board crates
 pub use smoltcp::{
