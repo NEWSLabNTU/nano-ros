@@ -536,3 +536,69 @@ configuration into three layers (OS devices, the RMW's own file, ROS-level
 D5's "`ip`, `gateway`, `netmask`, `locator` … live in `system.toml`" is
 superseded for those four keys: addresses belong to layer 1 and the locator to
 layer 2. `domain_id` and `rmw` stay here.
+
+## Proposed amendment — a `<depend>` is one edit for Rust too (2026-10-25, phase-517 W8)
+
+**State: PROPOSED, awaiting maintainer acceptance. Nothing below is
+implemented; phase-517 W8 writes no code until it is accepted.**
+
+A Rust node package still hand-writes three kinds of dependency that the tree
+already knows:
+
+```toml
+[dependencies]
+nros = { path = "…/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
+example_interfaces = { path = "../../generated/example_interfaces", default-features = false }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }
+```
+
+(`examples/workspaces/rust/src/action_client_pkg/Cargo.toml`, one of six such
+manifests in that workspace.) The message rows repeat `package.xml`'s
+`<depend>`, so adding a message package is two edits, and the C/C++ road needs
+one: a `<depend>` reaches `nros_generate_interfaces()` with nothing else
+written. D6 (amended 2026-10-11) already removed the image-only rows — board,
+RMW, runtime — through the generated `<pkg>_nros_selection` package. This
+amendment proposes the same for the two rows that are left.
+
+**Proposal: `nros sync` owns a marked block of the package's own
+`[dependencies]`.** For every Rust package that `nros sync` reads, it writes
+the rows it can derive, one per line, each tagged `# nros-managed`:
+
+- one row per `<depend>` / `<build_depend>` / `<exec_depend>` that resolves to a
+  message package (`<pkg> = { path = "<rel>/generated/<pkg>",
+  default-features = false }`), with the relative path computed from the
+  package to the workspace's `generated/` tree;
+- the `nros` row, with the feature set the package's `[package.metadata.nros.*]`
+  shape implies (a node package: `alloc`, `rmw-cffi`, `macros`), as a path
+  dependency in a checkout and the release's spelling in an installed SDK.
+
+It never touches a row without the tag, so a user's own `heapless = "0.8"` and a
+deliberate override of a managed row (delete the tag) both survive. A tagged row
+whose `<depend>` is gone is removed. The result is committed like any manifest,
+so a clone that has not run `nros sync` still reads a complete `Cargo.toml`.
+
+**Why this, and not the three candidates W8 named:**
+
+| candidate | why not |
+| --- | --- |
+| inject `[dependencies]` through the generated `nros-cargo.toml` (`--config`) | cargo's `--config` cannot add a dependency: `[dependencies]` is not a config table, and `[patch]` only replaces a dependency that already exists. |
+| a generated `Cargo.toml` fragment the user's manifest includes | cargo has no `include` for manifests. |
+| a generated wrapper crate that re-exports the messages | every `use std_msgs::…` becomes `use <wrapper>::std_msgs::…`, which is a source change for every node and breaks the ROS 2 spelling the generated crates exist to keep. |
+
+The marked block is the precedent the tree already has: in-repo
+`[patch.crates-io]` rows in `.cargo/config.toml` are written by sync and tagged
+`# nros-managed` (issue 0457). It is the `cargo add` shape — a tool edits the
+manifest, the developer reviews and commits the edit — with the edit's input
+being `package.xml` instead of a command line.
+
+**What acceptance commits to:** the `nros new` templates and the six
+`examples/workspaces/rust` node manifests carry only tagged rows for these
+dependencies; a gate refuses an untagged path row into `generated/` in a
+tracked manifest; and adding a message `<depend>` then `nros sync` is the whole
+change. `nros build` runs the same step before planning (it already refreshes
+the generated crates first, RFC-0104 D5).
+
+**Open questions for the maintainer:** whether the `nros` row is managed too or
+stays authored (it carries a feature choice a user might reasonably make), and
+whether sync writes the block or only checks it and prints the edit (the
+`cargo add` vs `cargo check` choice).

@@ -325,6 +325,14 @@ needs measuring) versus a generated `Cargo.toml` fragment the user's manifest
 scaffold carries no message path dep and no selection dep, and adding a
 `<depend>` is one edit.
 
+**Design note (2026-10-25): PROPOSED, awaiting acceptance** —
+[RFC-0098, "a `<depend>` is one edit for Rust too"](../design/0098-generated-leaf-build-config.md).
+`nros sync` owns a `# nros-managed` block of the package's own `[dependencies]`
+(the issue-0457 marker precedent). The three candidates above each fail on a
+cargo fact: `--config` cannot add a dependency, a manifest has no `include`, and
+a wrapper crate changes every `use` path. The selection dep is already generated
+(RFC-0098 D6 amendment, 2026-10-11).
+
 ### W9 — flash and run, per platform, honestly (M)
 
 For each board in `packages/boards/board-support.toml` at tier 1–3, the
@@ -385,6 +393,17 @@ does not satisfy it.
 
 **Done when** the design is accepted, `nros new` writes the field, and a probe
 on a project pinned to an older release installs and builds with it.
+
+**Already provided (found 2026-10-25), so no new design:** RFC-0095 D7–D9,
+phase-440 W7. `nros-toolchain.toml` (`[toolchain] version = "<store version>"`)
+is the project's pin; the first `nros build` writes it and says "Commit it"
+(`nros-launcher/src/pin.rs`), CI refuses to write one (RFC-0097 D11), and the
+launcher reads it before clap and runs the pinned toolchain, fetching it through
+the release's own `install.sh` when it is absent (`nros-launcher/src/dispatch.rs`).
+What remains is evidence, not mechanism: the W10 installed-track probe should
+build a project pinned to an older release, and the book (W2) should name the
+file. `nros new` does not write it, by D9's design (pin on first BUILD, not on
+scaffold), which this phase keeps.
 
 ## Order and dependencies
 
