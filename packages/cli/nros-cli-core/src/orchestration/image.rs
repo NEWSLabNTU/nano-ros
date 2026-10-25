@@ -139,15 +139,30 @@ pub struct ImageBlock {
         skip_serializing
     )]
     pub retired_netmask: super::cargo_metadata_schema::RetiredTable,
-    /// `[image.<id>.net.<if>]` — this image's address on each interface
-    /// (RFC-0103 D10b): a `network` (`qemu`, or a `[network.<name>]`) and a
-    /// `host` octet or full `address`. Lowered by
-    /// `nros_orchestration_ir::system_net::lower`, the one reader.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    /// `[image.<id>.net.*]` — RETIRED (RFC-0109 D4, phase-514 W4): refused by
+    /// name, pointing at the board network file `os_config` names.
+    #[serde(
+        default,
+        rename = "net",
+        deserialize_with = "refuse_retired_net",
+        skip_serializing
+    )]
+    pub retired_net: super::cargo_metadata_schema::RetiredTable,
+    /// This image's address on each interface — RESOLVED, never authored here:
+    /// read from the board network files of [`Self::os_config`] by
+    /// [`super::cargo_metadata_schema::SystemToml::fold_os_config`].
+    #[serde(skip)]
     pub net: BTreeMap<String, nros_orchestration_ir::system_net::ImageNetIf>,
+    /// The `[network.<name>]` of those files, resolved the same way.
+    #[serde(skip)]
+    pub networks: BTreeMap<String, nros_orchestration_ir::system_net::NetworkDef>,
+    /// `[image.<id>.run]` — how the image is run (RFC-0109 D6, phase-514 W6):
+    /// read by the QEMU launchers and the test harness, never by the build.
+    #[serde(default, skip_serializing_if = "is_default_run")]
+    pub run: nros_orchestration_ir::system_net::ImageRun,
     /// RFC-0109 D4/D6 (phase-514 W2) — this image's layer-1 files, relative to
     /// its `system.toml`. A `.toml` one is the board package's network file,
-    /// folded into [`Self::net`] by
+    /// read into [`Self::net`] by
     /// [`super::cargo_metadata_schema::SystemToml::fold_os_config`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub os_config: Vec<String>,
@@ -317,6 +332,19 @@ fn refuse_flat<'de, D: serde::Deserializer<'de>>(
         nros_orchestration_ir::system_net::flat_key_refusal("image.<id>", key),
     ))
 }
+fn refuse_retired_net<'de, D: serde::Deserializer<'de>>(
+    _: D,
+) -> Result<super::cargo_metadata_schema::RetiredTable, D::Error> {
+    Err(serde::de::Error::custom(
+        nros_orchestration_ir::retired_tables::retired_image_key_message("image.<id>", "net")
+            .unwrap_or_default(),
+    ))
+}
+
+fn is_default_run(r: &nros_orchestration_ir::system_net::ImageRun) -> bool {
+    *r == nros_orchestration_ir::system_net::ImageRun::default()
+}
+
 fn refuse_flat_ip<'de, D: serde::Deserializer<'de>>(
     _: D,
 ) -> Result<super::cargo_metadata_schema::RetiredTable, D::Error> {
@@ -364,8 +392,22 @@ impl ImageBlock {
             retired_ip: Default::default(),
             retired_gateway: Default::default(),
             retired_netmask: Default::default(),
-            // Per interface: one the image states replaces the base's whole.
-            net: nros_orchestration_ir::system_net::overlay(&base.net, &self.net),
+            retired_net: Default::default(),
+            // Resolved from `os_config`'s files, so they follow it: the image's
+            // own when it names files, else the base's.
+            net: if self.os_config.is_empty() {
+                base.net.clone()
+            } else {
+                self.net.clone()
+            },
+            networks: if self.os_config.is_empty() {
+                base.networks.clone()
+            } else {
+                self.networks.clone()
+            },
+            run: nros_orchestration_ir::system_net::ImageRun {
+                nic: self.run.nic.clone().or_else(|| base.run.nic.clone()),
+            },
             // A list the image states replaces the base's whole, like a scalar.
             os_config: if self.os_config.is_empty() {
                 base.os_config.clone()

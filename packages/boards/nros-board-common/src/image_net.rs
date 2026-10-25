@@ -1,9 +1,9 @@
 //! RFC-0103 D10f (phase-497 W2) — an image's resolved network, as ONE line of
 //! text every carrier reads.
 //!
-//! `nros sync` / `nros build` resolve an image's `[image.<id>.net.<if>]`
-//! against its project's `[network.<name>]` tables and its board's
-//! `[board.net]`, write the answer to `<build>/nros/net/<image>.toml`, and hand
+//! `nros sync` / `nros build` resolve the board network files an image's
+//! `os_config` names (its interfaces and their networks, RFC-0109 D4), its
+//! `[image.<id>.run] nic` and its board's `[board.net]`, write the answer to `<build>/nros/net/<image>.toml`, and hand
 //! it to the build as `NROS_IMAGE_NET` — a cargo `[env]` row, a cmake cache
 //! variable. The consumers are:
 //!
@@ -54,7 +54,7 @@ pub struct NetIf<'a> {
     pub name: &'a str,
     /// Its kind: `ethernet` or `wifi` (only those take an address).
     pub kind: &'a str,
-    /// The network it sits on (`qemu`, or a project `[network.<name>]`).
+    /// The network it sits on (`qemu`, or a board network file's `[network.<name>]`).
     pub network: &'a str,
     /// Its address.
     pub address: Address,
@@ -68,7 +68,7 @@ pub struct NetIf<'a> {
     pub attach: Attach<'a>,
 }
 
-/// `[network.<name>] attach` (D10a): how an EMULATED image joins a network.
+/// `[image.<id>.run] nic` (RFC-0109 D6): how an EMULATED image joins a network.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Attach<'a> {
     /// QEMU's user-mode network, private to the VM.
@@ -271,14 +271,14 @@ pub fn slirp_nic(model: &str) -> String {
 }
 
 /// QEMU's `-nic` value for interface `i` of an emulated image (D10a,
-/// phase-497 W3): its network's `attach`, the board's NIC `model`, and the
+/// phase-497 W3): the image's `run.nic`, the board's NIC `model`, and the
 /// image's MAC. A user-mode network off QEMU's own `10.0.2.0/24` passes its
 /// subnet and gateway (`net=` / `host=`), so the guest's static address is
 /// on the network QEMU makes.
 ///
 /// # Errors
 ///
-/// A network with no `attach` is physical-only: an emulated image cannot
+/// An interface with no attach is physical-only: an emulated image cannot
 /// join it, and launching one anyway would put the guest on no network.
 #[cfg(feature = "build-helpers")]
 pub fn qemu_nic(i: &NetIf<'_>, model: &str) -> Result<String, String> {
@@ -309,11 +309,11 @@ pub fn qemu_nic(i: &NetIf<'_>, model: &str) -> Result<String, String> {
             "tap,ifname={dev},script=no,downscript=no,model={model},mac={mac}"
         )),
         Attach::None => Err(format!(
-            "interface `{}` sits on network `{}`, which states no `attach` — it is a \
-             physical-only network, and an emulated image cannot join it (RFC-0103 D10a). \
-             Add `attach = \"slirp\"`, `{{ bridge = \"<dev>\" }}` or `{{ tap = \"<dev>\" }}` to \
-             `[network.{}]`",
-            i.name, i.network, i.network
+            "interface `{}` sits on network `{}` and the image states no `nic` — it is a \
+             physical-only network, and an emulated image cannot join it. Add \
+             `[image.<id>.run] nic = \"slirp\"`, `{{ bridge = \"<dev>\" }}` or \
+             `{{ tap = \"<dev>\" }}` (RFC-0109 D6)",
+            i.name, i.network
         )),
     }
 }
@@ -371,8 +371,8 @@ mod tests {
         assert_eq!(back[1].ip(), None);
     }
 
-    /// phase-497 W3 — the launcher's `-nic` comes from the network's
-    /// `attach`, and a physical-only network refuses an emulated image.
+    /// phase-497 W3 — the launcher's `-nic` comes from the image's attach
+    /// (`run.nic`), and a physical-only network refuses an emulated image.
     #[cfg(feature = "build-helpers")]
     #[test]
     fn qemu_nic_renders_the_attach_and_refuses_a_physical_network() {
@@ -411,7 +411,11 @@ mod tests {
             attach: Attach::None,
             ..lan
         };
-        assert!(qemu_nic(&phys, "lan9118").unwrap_err().contains("D10a"));
+        assert!(
+            qemu_nic(&phys, "lan9118")
+                .unwrap_err()
+                .contains("RFC-0109 D6")
+        );
         assert_eq!(slirp_nic("lan9118"), "user,model=lan9118");
     }
 

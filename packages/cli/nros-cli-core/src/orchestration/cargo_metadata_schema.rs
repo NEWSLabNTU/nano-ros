@@ -620,18 +620,24 @@ pub struct SystemToml {
     /// [`Self::image_ros_edition`] for the edition, issue 1305).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_defaults: Option<ImageBlock>,
-    /// `[network.<name>]` — the project's networks (RFC-0103 D10a, phase-497
-    /// W1): `subnet`, `gateway`, `router`, `dhcp`, `attach`. Typed and
-    /// validated by `nros_orchestration_ir::system_net` (the one reader), so
-    /// every loader of this file refuses a malformed network the same way;
-    /// redefining the built-in `qemu` is refused. An image's address on one is
-    /// checked against it by [`Self::validate_image_networks`].
+    /// `[network.<name>]` — RETIRED (RFC-0109 D6, phase-514 W4): a network is
+    /// a layer-1 fact and lives in the board network file an image's
+    /// `os_config` names. Present only so the schema refuses it BY NAME.
     #[serde(
         default,
-        deserialize_with = "deserialize_networks",
-        skip_serializing_if = "BTreeMap::is_empty"
+        rename = "network",
+        deserialize_with = "refuse_retired_network",
+        skip_serializing
     )]
-    pub network: BTreeMap<String, nros_orchestration_ir::system_net::NetworkDef>,
+    pub retired_network: RetiredTable,
+    /// `[[transport]]` — RETIRED (RFC-0109 D6): a session is a `[[domain]]`.
+    #[serde(
+        default,
+        rename = "transport",
+        deserialize_with = "refuse_retired_transport",
+        skip_serializing
+    )]
+    pub retired_transport: RetiredTable,
     /// `[board_config.<board>]` — the SITE half of a board (RFC-0072 §5,
     /// issue 0951).
     ///
@@ -1054,13 +1060,16 @@ fn refuse_retired<'de, D: serde::Deserializer<'de>>(key: &str) -> Result<Retired
     ))
 }
 
-fn deserialize_networks<'de, D: serde::Deserializer<'de>>(
-    d: D,
-) -> Result<BTreeMap<String, nros_orchestration_ir::system_net::NetworkDef>, D::Error> {
-    let raw = toml::Value::deserialize(d)?;
-    let mut doc = toml::Table::new();
-    doc.insert("network".into(), raw);
-    nros_orchestration_ir::system_net::parse_networks(&doc).map_err(serde::de::Error::custom)
+fn refuse_retired_network<'de, D: serde::Deserializer<'de>>(
+    _: D,
+) -> Result<RetiredTable, D::Error> {
+    refuse_retired::<D>("network")
+}
+
+fn refuse_retired_transport<'de, D: serde::Deserializer<'de>>(
+    _: D,
+) -> Result<RetiredTable, D::Error> {
+    refuse_retired::<D>("transport")
 }
 
 fn refuse_retired_deploy<'de, D: serde::Deserializer<'de>>(_: D) -> Result<RetiredTable, D::Error> {
@@ -1279,57 +1288,56 @@ impl SystemToml {
     /// error channel call this first; `select_default_images` is the one
     /// implementation of the rule, so this cannot drift from what
     /// `nros build` enforces.
-    /// RFC-0103 D10b (phase-497 W1) — every image's address, lowered against
-    /// its network: inside the subnet, not the gateway, a network that exists.
-    /// The board-free half: `nros_orchestration_ir::system_net::check_image_interfaces`,
-    /// the check the leaf road runs too, so a workspace image and a leaf cannot
-    /// be held to two rules. The board's half is
-    /// [`crate::orchestration::image_net::resolve_system`].
+    /// RFC-0109 D4 — every image's address, checked against its networks
+    /// (inside the subnet, not the gateway, a network that exists) and its
+    /// `[image.<id>.run]`. The board-free half:
+    /// `nros_orchestration_ir::system_net::check_image_interfaces`, the check
+    /// the leaf road runs too, so a workspace image and a leaf cannot be held
+    /// to two rules. The board's half is
+    /// [`crate::orchestration::image_net::resolve_system`]. Call after
+    /// [`Self::fold_os_config`].
     pub fn validate_image_networks(&self) -> Result<(), String> {
-        for (id, ifs) in self.image_interfaces() {
-            nros_orchestration_ir::system_net::check_image_interfaces(&id, &self.network, &ifs)?;
-        }
-        Ok(())
-    }
-
-    /// RFC-0109 D4 (phase-514 W2) — fold every image's board network files
-    /// (the `.toml` entries of its `os_config`, relative to `dir`, the
-    /// directory holding this `system.toml`) into its `net`. Call once after
-    /// parsing, before anything reads an image's interfaces; an interface
-    /// stated both inline and in a file is refused.
-    pub fn fold_os_config(&mut self, dir: &std::path::Path) -> Result<(), String> {
-        for (id, img) in &mut self.image {
-            img.net = nros_orchestration_ir::system_net::fold_board_net_files(
+        for (id, img) in self.resolved_images() {
+            nros_orchestration_ir::system_net::check_image_interfaces(
+                &id,
+                &img.networks,
                 &img.net,
-                dir,
-                &img.os_config,
-                &format!("image.{id}"),
             )?;
+            img.run.validate(&id)?;
         }
         Ok(())
     }
 
-    /// Every image's `[image.<id>.net.<if>]` over `[image_defaults.net]`.
+    /// RFC-0109 D4 (phase-514 W2) — read every image's board network files
+    /// (the `.toml` entries of its `os_config`, relative to `dir`, the
+    /// directory holding this `system.toml`) into its `net` and `networks`.
+    /// Call once after parsing, before anything reads an image's interfaces.
+    pub fn fold_os_config(&mut self, dir: &std::path::Path) -> Result<(), String> {
+        let blocks = self
+            .image
+            .iter_mut()
+            .map(|(id, img)| (format!("image.{id}"), img))
+            .chain(
+                self.image_defaults
+                    .as_mut()
+                    .map(|d| ("image_defaults".to_string(), d)),
+            );
+        for (at, img) in blocks {
+            let files =
+                nros_orchestration_ir::system_net::fold_board_net_files(dir, &img.os_config, &at)?;
+            img.net = files.interfaces;
+            img.networks = files.networks;
+        }
+        Ok(())
+    }
+
+    /// Every image folded over `[image_defaults]` ([`ImageBlock::with_base`]).
     #[must_use]
-    pub fn image_interfaces(
-        &self,
-    ) -> Vec<(
-        String,
-        BTreeMap<String, nros_orchestration_ir::system_net::ImageNetIf>,
-    )> {
-        let base = self
-            .image_defaults
-            .as_ref()
-            .map(|d| d.net.clone())
-            .unwrap_or_default();
+    pub fn resolved_images(&self) -> Vec<(String, ImageBlock)> {
+        let base = self.image_defaults.clone().unwrap_or_default();
         self.image
             .iter()
-            .map(|(id, img)| {
-                (
-                    id.clone(),
-                    nros_orchestration_ir::system_net::overlay(&base, &img.net),
-                )
-            })
+            .map(|(id, img)| (id.clone(), img.with_base(&base)))
             .collect()
     }
 
@@ -3107,28 +3115,46 @@ class = "listener_pkg::Listener"
 
     /// `deny_unknown_fields` on `[system]` catches typos at the bringup
     /// surface.
-    /// RFC-0103 D10 (phase-497 W1) — the workspace road reads `system.toml`
+    /// RFC-0109 D4/D6 (phase-514 W4) — the workspace road reads `system.toml`
     /// through this schema, so it must hold the same network rules the leaf
-    /// road's `leaf_system` holds: a malformed or redefined network fails at
-    /// parse, a flat image address is refused naming `net`, and an address is
-    /// checked against its network.
+    /// road's `leaf_system` holds: the address and its networks come from the
+    /// board network file `os_config` names and are checked there, and the
+    /// spellings they replaced are refused naming the new home.
     #[test]
-    fn system_toml_networks_and_image_addresses_follow_d10() {
+    fn system_toml_networks_and_image_addresses_follow_rfc_0109() {
         let head = "[system]\nname = \"d\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
-        let ok = toml::from_str::<SystemToml>(&format!(
-            "{head}[network.lab]\nsubnet = \"192.168.50.0/24\"\ngateway = \"192.168.50.1\"\n\
-             [image.a]\nboard = \"qemu-mps2-an385\"\n\
-             net = {{ eth0 = {{ network = \"lab\", host = 20 }} }}\n"
+        let dir = std::env::temp_dir().join(format!("nros-schema-net-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("lab.toml"),
+            "[eth0]\nnetwork = \"lab\"\nhost = 20\n\
+             [network.lab]\nsubnet = \"192.168.50.0/24\"\ngateway = \"192.168.50.1\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("gw.toml"),
+            "[eth0]\nnetwork = \"qemu\"\nhost = 2\n",
+        )
+        .unwrap();
+        let mut ok = toml::from_str::<SystemToml>(&format!(
+            "{head}[image.a]\nboard = \"qemu-mps2-an385\"\nos_config = [\"lab.toml\"]\n\
+             [image.a.run]\nnic = {{ bridge = \"qemu-br\" }}\n"
         ))
-        .expect("a lab network and an address on it parse");
-        assert_eq!(ok.network["lab"].gateway.as_deref(), Some("192.168.50.1"));
+        .expect("an image naming a board network file parses");
+        ok.fold_os_config(&dir).unwrap();
+        assert_eq!(
+            ok.image["a"].networks["lab"].gateway.as_deref(),
+            Some("192.168.50.1")
+        );
+        assert!(ok.image["a"].run.nic.is_some());
         ok.validate_image_networks()
             .expect("the address is in the lab subnet");
 
-        let off = toml::from_str::<SystemToml>(&format!(
-            "{head}[image.a]\nboard = \"b\"\nnet = {{ eth0 = {{ network = \"qemu\", host = 2 }} }}\n"
+        let mut off = toml::from_str::<SystemToml>(&format!(
+            "{head}[image.a]\nboard = \"b\"\nos_config = [\"gw.toml\"]\n"
         ))
         .unwrap();
+        off.fold_os_config(&dir).unwrap();
         assert!(
             off.validate_image_networks()
                 .unwrap_err()
@@ -3136,19 +3162,30 @@ class = "listener_pkg::Listener"
         );
 
         for (body, want) in [
-            ("[network.qemu]\nsubnet = \"10.0.2.0/24\"\n", "built in"),
             (
-                "[network.lab]\ngateway = \"192.168.1.1\"\n",
-                "`subnet` is required",
+                "[network.lab]\nsubnet = \"10.0.2.0/24\"\n",
+                "`[network]` is retired (RFC-0109",
+            ),
+            ("[[transport]]\nname = \"t\"\n", "`[transport]` is retired"),
+            (
+                "[image.a]\nboard = \"b\"\nnet = { eth0 = { host = 20 } }\n",
+                "`[image.<id>] net` is retired",
+            ),
+            (
+                "[image.a]\nboard = \"b\"\n[image.a.run]\nnic = \"tap\"\n",
+                "the bare value is \"slirp\"",
             ),
             ("[image.a]\nboard = \"b\"\nip = \"10.0.2.50\"\n", "D10g"),
             ("[image_defaults]\nnetmask = \"255.255.255.0\"\n", "D10g"),
         ] {
-            let e = toml::from_str::<SystemToml>(&format!("{head}{body}"))
-                .expect_err(body)
-                .to_string();
+            let parsed = toml::from_str::<SystemToml>(&format!("{head}{body}"));
+            let e = match parsed {
+                Err(e) => e.to_string(),
+                Ok(s) => s.validate_image_networks().unwrap_err(),
+            };
             assert!(e.contains(want), "{body}\n-> {e}");
         }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

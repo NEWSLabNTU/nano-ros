@@ -29,12 +29,13 @@ os_config = ["board-net-mps2-an385-baremetal.toml"]
 # image on: each container's own bridge `br0` (192.168.100.1/24, NAT'd onto the
 # compose network where zenohd is 172.20.0.2), joined through TAP `tap0`. It
 # replaced the board crate's `docker` feature, which hard-coded the same plan.
-[network.docker]
-subnet = "192.168.100.0/24"
-gateway = "192.168.100.1"
-router = "tcp/172.20.0.2:7447"
-attach = { tap = "tap0" }
+# RFC-0109 D6 (phase-514 W4) — the network's subnet lives in the image's board
+# network file, its router in the image's `locator`, its TAP in `run.nic`.
 
 [image.docker]
 board = "qemu-mps2-an385"
 os_config = ["board-net-docker.toml"]
+locator = "tcp/172.20.0.2:7447"
+
+[image.docker.run]
+nic = { tap = "tap0" }

@@ -371,7 +371,8 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         tools: Default::default(),
         image,
         image_defaults: None,
-        network: Default::default(),
+        retired_network: Default::default(),
+        retired_transport: Default::default(),
         system: SystemHeader {
             // The image `nros build` builds when given no argument — the
             // `[image.*]` counterpart of the `default_target` below.

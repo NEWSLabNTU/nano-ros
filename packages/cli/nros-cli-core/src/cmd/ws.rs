@@ -146,9 +146,9 @@ pub enum Sub {
     LeafSystem(crate::cmd::leaf_system::LeafSystemArgs),
 
     /// phase-497 W3 (RFC-0103 D10a) — the QEMU `-nic` value for a leaf's
-    /// image: its network's `attach` (SLIRP, bridge or TAP), the board's NIC
+    /// image: its `[image.<id>.run] nic` (SLIRP, bridge or TAP), the board's NIC
     /// `--model`, the image's MAC. An image that states no network gets QEMU's
-    /// own user-mode network; one on a physical-only network (no `attach`) is
+    /// own user-mode network; one on a physical-only network (no `nic`) is
     /// refused, because no emulated image can join it.
     ///
     /// For a launcher that cannot link the resolver (a `just` recipe, a

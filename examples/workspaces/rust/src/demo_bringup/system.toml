@@ -152,14 +152,9 @@ args = { host = "robot2" }
 # phase-497 W3 (RFC-0103 D10) — the multihost pair on a SHARED network: two
 # QEMU guests on the host bridge `qemu-br` (`scripts/qemu/setup-network.sh`
 # makes it, 192.0.3.1/24), each at its own address, both dialing the router on
-# the bridge. The launcher renders `attach` as `-nic bridge,br=qemu-br`; on a
+# the bridge. The launcher renders `run.nic` as `-nic bridge,br=qemu-br`; on a
 # host with no bridge the e2e that runs them reports NOT VERIFIED. Two images
 # on one shared network are also what the duplicate-address/MAC refusal checks.
-[network.br]
-subnet = "192.0.3.0/24"
-gateway = "192.0.3.1"
-router = "tcp/192.0.3.1:7870"
-attach = { bridge = "qemu-br" }
 
 [image.freertos_br_robot1]
 board = "mps2-an385-freertos"
@@ -167,6 +162,10 @@ panic = "own"
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
 os_config = ["board-net-freertos_br_robot1.toml"]
+locator = "tcp/192.0.3.1:7870"
+
+[image.freertos_br_robot1.run]
+nic = { bridge = "qemu-br" }
 
 [image.freertos_br_robot2]
 board = "mps2-an385-freertos"
@@ -174,6 +173,10 @@ panic = "own"
 launch = "multihost.launch.xml"
 args = { host = "robot2" }
 os_config = ["board-net-freertos_br_robot2.toml"]
+locator = "tcp/192.0.3.1:7870"
+
+[image.freertos_br_robot2.run]
+nic = { bridge = "qemu-br" }
 
 [image.linux_service_client]
 board = "linux"

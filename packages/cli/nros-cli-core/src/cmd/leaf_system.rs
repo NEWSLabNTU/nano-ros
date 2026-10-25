@@ -471,7 +471,7 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     } else {
         let catalog = catalog.as_ref().ok_or_else(|| {
             eyre!(
-                "{}: states `[image.<id>.net]`, and resolving it needs the board catalog — no \
+                "{}: names a board network file in `os_config`, and resolving it needs the board catalog — no \
                  nano-ros checkout found (pass --nano-ros-path)",
                 leaf.origin_path().display()
             )

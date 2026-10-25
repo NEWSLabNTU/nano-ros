@@ -4,3 +4,7 @@
 [eth0]
 network = "br"
 host = 10
+
+[network.br]
+subnet = "192.0.3.0/24"
+gateway = "192.0.3.1"

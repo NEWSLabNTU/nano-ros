@@ -47,8 +47,8 @@ THREADX_EXTRA_INCLUDES = { value = "ports/risc-v64/gnu/example_build/qemu_virt",
 # OUI and the default image address is `.40` (an image states its own).
 [board.net]
 network = "qemu"
-# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as
-# `[image.<id>.net.eth0]`.
+# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as `[eth0]`
+# in the board network file its `os_config` names (RFC-0109 D4).
 # QEMU's own MAC prefix, for a MAC derived per image (D10b). The virtio
 # device's MAC is the one QEMU's `-device` names, which NetX reads back, so a
 # leaf whose launcher pins one states the same `mac` (`threadx_riscv64_qemu.rs`).

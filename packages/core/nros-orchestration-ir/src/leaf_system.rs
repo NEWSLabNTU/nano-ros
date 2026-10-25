@@ -136,14 +136,16 @@ pub const TRANSPORT_KINDS: &[&str] = &["serial", "tcp", "udp"];
 pub struct Network {
     pub domain_id: Option<u32>,
     pub locator: Option<String>,
-    /// `[image.<id>.net.<if>]` over `[image_defaults.net.<if>]` (RFC-0103 D10),
-    /// checked against the networks without the board
+    /// The image's interfaces, from the board network files its `os_config`
+    /// names (RFC-0109 D4), checked against the networks without the board
     /// (`crate::system_net::check_image_interfaces`). The CLI's resolver
     /// combines it with the board and hands the answer to every build as
     /// `NROS_IMAGE_NET`; `nros::main!` only needs to know whether there IS one.
     pub net: BTreeMap<String, crate::system_net::ImageNetIf>,
-    /// `[network.<name>]`, the project's networks.
+    /// `[network.<name>]` of those files: the networks the interfaces sit on.
     pub networks: BTreeMap<String, crate::system_net::NetworkDef>,
+    /// `[image.<id>.run]` — how the image is run (RFC-0109 D6).
+    pub run: crate::system_net::ImageRun,
     /// `[system] name` — part of the key a MAC the image does not state is
     /// derived from (D10b), so two projects' images with the same id differ.
     pub system: Option<String>,
@@ -720,42 +722,36 @@ fn image_system(
             TRANSPORT_KINDS.join(", ")
         ));
     }
-    // RFC-0103 D10 (phase-497 W1) — the address is `[image.<id>.net.<if>]` on a
-    // `[network.<name>]`, lowered here to the triple every carrier still takes.
-    // The flat `ip` / `gateway` / `netmask` it replaces are refused by name.
+    // The flat `ip` / `gateway` / `netmask` (RFC-0103 D10g) and the inline
+    // `[image.<id>.net.*]` (RFC-0109 D4) are refused by name.
     crate::system_net::refuse_flat_image_net(image, &format!("image.{id}"))
         .and_then(|()| crate::system_net::refuse_flat_image_net(defaults, "image_defaults"))
+        .and_then(|()| {
+            crate::retired_tables::refuse_retired_image_keys(image, &format!("image.{id}"))
+        })
+        .and_then(|()| crate::retired_tables::refuse_retired_image_keys(defaults, "image_defaults"))
         .map_err(|e| format!("{}: {e}", path.display()))?;
-    let networks =
-        crate::system_net::parse_networks(doc).map_err(|e| format!("{}: {e}", path.display()))?;
-    let net = {
-        let base = crate::system_net::parse_image_net(defaults, "image_defaults")
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-        let at = format!("image.{id}");
-        let inline = crate::system_net::parse_image_net(image, &at)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-        // RFC-0109 D4 (phase-514 W2) — and the board network files the image
-        // names in `os_config`, beside this `system.toml`.
-        let os_config = crate::system_net::parse_os_config(image, &at)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-        let dir = path.parent().unwrap_or_else(|| Path::new("."));
-        let own = crate::system_net::fold_board_net_files(&inline, dir, &os_config, &at)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-        crate::system_net::overlay(&base, &own)
-    };
-    crate::system_net::check_image_interfaces(id, &networks, &net)
+    // RFC-0109 D4 (phase-514) — the image's address and networks are the board
+    // network files it names in `os_config`, beside this `system.toml`.
+    let at = format!("image.{id}");
+    let os_config = crate::system_net::parse_os_config(image, &at)
         .map_err(|e| format!("{}: {e}", path.display()))?;
-    // D10d — the image's own `locator`, else the `router` of the network it
-    // sits on, else the project's `[system] locator`. A network more specific
-    // than the project outranks the project's default.
-    let locator = pick("locator")
-        .or_else(|| crate::system_net::network_router(&networks, &net))
-        .or_else(|| str_key(system, "locator"));
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let files = crate::system_net::fold_board_net_files(dir, &os_config, &at)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    crate::system_net::check_image_interfaces(id, &files.networks, &files.interfaces)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    let run =
+        crate::system_net::parse_run(image, id).map_err(|e| format!("{}: {e}", path.display()))?;
+    // The image's own `locator`, else the project's `[system] locator`
+    // (RFC-0109 D6: the default domain's endpoint when it has no RMW file).
+    let locator = pick("locator").or_else(|| str_key(system, "locator"));
     let network = Network {
         domain_id,
         locator,
-        net,
-        networks,
+        net: files.interfaces,
+        networks: files.networks,
+        run,
         system: str_key(system, "name"),
         transport,
     };
@@ -1027,8 +1023,10 @@ dispatch = "deferred"
 [image.esp32]
 board = "esp32-c3-baremetal"
 locator = "tcp/10.0.2.2:9800"
-net = { eth0 = { network = "qemu", host = 50 } }
 "#;
+
+    /// A board network file for [`SYSTEM`]'s image (RFC-0109 D4).
+    const BOARD_NET: &str = "[eth0]\nnetwork = \"qemu\"\nhost = 50\n";
 
     /// phase-481 W1 — an image named explicitly is resolved from a leaf with
     /// several (where [`read`] refuses to choose) and from a bringup (where
@@ -1113,7 +1111,12 @@ net = { eth0 = { network = "qemu", host = 50 } }
 
     #[test]
     fn a_single_package_leaf_resolves_from_its_system_toml() {
-        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", SYSTEM)]);
+        let sys = format!("{SYSTEM}os_config = [\"board-net.toml\"]\n");
+        let d = leaf(&[
+            ("Cargo.toml", CARGO),
+            ("system.toml", &sys),
+            ("board-net.toml", BOARD_NET),
+        ]);
         let l = read(d.path()).unwrap().expect("declared");
         assert!(matches!(l.origin, Origin::SystemToml(_)));
         assert_eq!(l.image.as_deref(), Some("esp32"));
@@ -1123,8 +1126,9 @@ net = { eth0 = { network = "qemu", host = 50 } }
         // through to `[system]`.
         assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:9800"));
         assert_eq!(l.network.domain_id, Some(3));
-        // RFC-0103 D10 — `host = 50` on the built-in `qemu` network, carried
-        // as stated: the CLI's resolver turns it into an address.
+        // RFC-0109 D4 — `host = 50` on the built-in `qemu` network, from the
+        // board network file, carried as stated: the CLI's resolver turns it
+        // into an address.
         let eth0 = &l.network.net["eth0"];
         assert_eq!(eth0.network.as_deref(), Some("qemu"));
         assert_eq!(eth0.host, Some(50));
@@ -1458,27 +1462,48 @@ domain_id = 4
         }
     }
 
-    /// RFC-0103 D10d (phase-497 W2) — an image on a network that states a
-    /// `router` dials it, unless the image states its own `locator`; the
-    /// project's `[system] locator` is the fallback below both.
+    /// RFC-0109 D6 (phase-514 W4/W6) — `[network.<name>]` and the inline
+    /// `[image.<id>.net.*]` are refused naming their new homes; the locator is
+    /// the image's own over `[system]`'s; `[image.<id>.run] nic` is read.
     #[test]
-    fn the_networks_router_is_the_default_locator_below_the_images_own() {
-        let net = "[network.lab]\nsubnet = \"192.168.50.0/24\"\n\
-                   router = \"tcp/192.168.50.1:7447\"\n";
-        let base = format!(
-            "[system]\nname = \"t\"\nlocator = \"tcp/10.0.2.2:7447\"\n{net}\
-             [image.a]\nboard = \"x\"\n[image.a.net.eth0]\nnetwork = \"lab\"\nhost = 20\n"
-        );
-        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &base)]);
+    fn network_tables_moved_out_and_the_run_nic_is_read() {
+        for (extra, names) in [
+            (
+                "[network.lab]\nsubnet = \"192.168.50.0/24\"\n[image.a]\nboard = \"x\"\n",
+                "`[network]` is retired",
+            ),
+            (
+                "[image.a]\nboard = \"x\"\n[image.a.net.eth0]\nhost = 20\n",
+                "`[image.a] net` is retired",
+            ),
+            (
+                "[image.a]\nboard = \"x\"\n[image_defaults.net.eth0]\nhost = 20\n",
+                "`[image_defaults] net` is retired",
+            ),
+        ] {
+            let t = format!("[system]\nname = \"t\"\n{extra}");
+            let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &t)]);
+            let e = read(d.path()).unwrap_err();
+            assert!(e.contains(names) && e.contains("RFC-0109"), "{e}");
+        }
+        let t = "[system]\nname = \"t\"\nlocator = \"tcp/10.0.2.2:7447\"\n\
+                 [image.a]\nboard = \"x\"\nos_config = [\"lab.toml\"]\n\
+                 [image.a.run]\nnic = { bridge = \"qemu-br\" }\n";
+        let lab = "[eth0]\nnetwork = \"lab\"\nhost = 20\n\
+                   [network.lab]\nsubnet = \"192.168.50.0/24\"\n";
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", t), ("lab.toml", lab)]);
         let l = read(d.path()).unwrap().unwrap();
-        assert_eq!(l.network.locator.as_deref(), Some("tcp/192.168.50.1:7447"));
-        let own = base.replace(
-            "board = \"x\"\n",
-            "board = \"x\"\nlocator = \"tcp/192.168.50.9:7447\"\n",
+        assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:7447"));
+        assert_eq!(
+            l.network.networks["lab"].subnet.as_deref(),
+            Some("192.168.50.0/24")
         );
-        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &own)]);
-        let l = read(d.path()).unwrap().unwrap();
-        assert_eq!(l.network.locator.as_deref(), Some("tcp/192.168.50.9:7447"));
+        assert_eq!(
+            l.network.run.nic,
+            Some(crate::system_net::Attach::Bridge {
+                bridge: "qemu-br".into()
+            })
+        );
     }
 
     /// phase-445 W6 — the APP rung. `[image.<id>] env` is what replaced the
