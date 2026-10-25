@@ -19,6 +19,23 @@ if(NOT TARGET diagnostic_updater::diagnostic_updater)
     add_subdirectory("${_du_dir}" nros-diagnostic-updater EXCLUDE_FROM_ALL)
 endif()
 
+# phase-488 — `<diagnostic_updater/diagnostic_updater.hpp>` includes
+# `diagnostic_msgs`, so the target carries that dependency, as upstream's
+# `diagnostic_updaterConfig.cmake` does. Without it every consumer had to name
+# `diagnostic_msgs__nano_ros_cpp` itself, and a stock package that names only
+# `diagnostic_updater` failed on the header. The message target is a normal
+# (global) target, so linking it by name here reaches every consumer.
+if(TARGET nros-diagnostic-updater)
+    get_target_property(_du_msgs nros-diagnostic-updater NROS_LINKS_DIAGNOSTIC_MSGS)
+    if(NOT _du_msgs)
+        if(NOT TARGET diagnostic_msgs__nano_ros_cpp)
+            find_package(diagnostic_msgs MODULE REQUIRED)
+        endif()
+        target_link_libraries(nros-diagnostic-updater INTERFACE diagnostic_msgs__nano_ros_cpp)
+        set_target_properties(nros-diagnostic-updater PROPERTIES NROS_LINKS_DIAGNOSTIC_MSGS TRUE)
+    endif()
+endif()
+
 if(TARGET diagnostic_updater::diagnostic_updater)
     set(diagnostic_updater_FOUND TRUE)
 else()

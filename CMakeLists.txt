@@ -62,9 +62,11 @@ set_property(CACHE NROS_ROS_EDITION PROPERTY STRINGS ${NROS_KNOWN_ROS_EDITIONS})
 # knob (e.g. `safety` → `NROS_SAFETY_E2E ON`) HERE, before the core libs'
 # `add_subdirectory` below evaluates the matching `option()` — so a declared axis
 # reaches the C/C++ build, not just the informational `system_config.h` `#define`.
-set(NROS_FEATURES "" CACHE STRING
-    "Declared nano-ros capability axes (e.g. safety) — C/C++ projection of system.toml [system].features")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCapabilities.cmake")
+# phase-488 — an ament package that declares nothing gets upstream's defaults.
+nros_ament_port_default_features(_nros_default_features)
+set(NROS_FEATURES "${_nros_default_features}" CACHE STRING
+    "Declared nano-ros capability axes (e.g. safety) — C/C++ projection of system.toml [system].features")
 nros_lower_system_features("${NROS_FEATURES}")
 
 # phase-314 — the ONE cargo feature-set computation, shared by nros-c, nros-cpp

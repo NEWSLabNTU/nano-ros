@@ -100,23 +100,96 @@ function(_nros_ament_apply_target_settings target)
     # targets created through the ament verbs, so it follows the ported code
     # instead of leaking into images that use `rclcpp::Node` directly.
     target_compile_definitions(${target} PRIVATE NROS_CPP_STD=1)
+    # phase-488 — and upstream's parameter services, when the runtime has them
+    # (an ament package on a host gets `param_services` by default —
+    # `nros_ament_port_default_features`). The node constructor starts them.
+    if("param_services" IN_LIST NROS_FEATURES)
+        target_compile_definitions(${target} PRIVATE NROS_AMENT_START_PARAMETER_SERVICES=1)
+    endif()
 endfunction()
 
 # --- ament_cmake_auto shims ---------------------------------------------------
 
+# phase-488 — upstream's `ament_auto_find_build_dependencies()` reads the
+# package's `package.xml`, `find_package()`s every build dependency, and the
+# `ament_auto_add_*` verbs then give each target the package's `include/` and
+# every dependency found. This used to be a no-op, which only worked for a
+# package whose sources include nothing but `rclcpp` and messages linked by
+# hand; a stock Autoware package (`autoware_package()` calls this) failed on its
+# own header.
+#
+# A dependency is looked up only when nano-ros can answer for it: a module on
+# `CMAKE_MODULE_PATH` (`cmake/find/`, or a message-package stub). Anything
+# else would resolve in CONFIG mode against an installed ROS package — upstream
+# rclcpp-linked C++ — so it is reported and skipped instead; if the sources
+# include it, the compile names the missing header.
 function(ament_auto_find_build_dependencies)
-    # nano-ros deps come from `target_link_libraries(NanoRos::NanoRosCpp)` (set
-    # by the *_auto_add_* functions below) — there is no manifest-scan step.
+    set(_px "${CMAKE_CURRENT_SOURCE_DIR}/package.xml")
+    set(_found "")
+    if(EXISTS "${_px}")
+        nros_read_package_xml_body("${_px}" _body)
+        string(REGEX MATCHALL
+            "<(depend|build_depend|build_export_depend)[^>]*>[ \t\r\n]*[A-Za-z0-9_]+[ \t\r\n]*</"
+            _tags "${_body}")
+        set(_deps "")
+        foreach(_tag IN LISTS _tags)
+            string(REGEX REPLACE ".*>[ \t\r\n]*([A-Za-z0-9_]+)[ \t\r\n]*</$" "\\1" _dep "${_tag}")
+            list(APPEND _deps "${_dep}")
+        endforeach()
+        list(REMOVE_DUPLICATES _deps)
+        foreach(_dep IN LISTS _deps)
+            set(_module "")
+            foreach(_dir IN LISTS CMAKE_MODULE_PATH)
+                if(EXISTS "${_dir}/Find${_dep}.cmake")
+                    set(_module "${_dir}/Find${_dep}.cmake")
+                    break()
+                endif()
+            endforeach()
+            if(NOT _module)
+                message(STATUS
+                    "nano-ros: ${PROJECT_NAME} depends on `${_dep}`, which nano-ros "
+                    "does not provide; it is not looked up. A source that includes "
+                    "it will fail to compile (phase-488).")
+                continue()
+            endif()
+            find_package(${_dep} MODULE QUIET)
+            if(${_dep}_FOUND OR TARGET ${_dep}::${_dep})
+                list(APPEND _found "${_dep}")
+            endif()
+        endforeach()
+    endif()
+    set(${PROJECT_NAME}_FOUND_BUILD_DEPENDS "${_found}" PARENT_SCOPE)
+endfunction()
+
+# What `ament_auto_add_*` gives a target beyond the runtime, as upstream does:
+# the package's `include/` and every dependency the find step answered.
+function(_nros_ament_auto_target_deps target)
+    if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include")
+        get_target_property(_type ${target} TYPE)
+        if(_type STREQUAL "EXECUTABLE")
+            target_include_directories(${target} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+        else()
+            target_include_directories(${target} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
+        endif()
+    endif()
+    if(${PROJECT_NAME}_FOUND_BUILD_DEPENDS)
+        ament_target_dependencies(${target} ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS})
+    endif()
 endfunction()
 
 function(ament_auto_add_library target kind)
-    # kind ∈ SHARED | STATIC | MODULE — nano-ros prefers STATIC for the
-    # single-binary embedded case; the kind argument is honoured (a host
-    # tooling consumer may legitimately want SHARED) but the default is STATIC.
+    # kind ∈ SHARED | STATIC | MODULE. Every kind builds STATIC (phase-488).
+    # Upstream builds a component SHARED so class_loader can dlopen it; nano-ros
+    # has no class_loader, and its runtime is a static archive. A SHARED library
+    # linked that archive into itself, the executable linked it again, and the
+    # image ran two runtimes: Autoware's `autoware_external_cmd_selector`
+    # (`ament_auto_add_library(... SHARED ...)`, the stock component shape)
+    # linked and then died at start-up on `undefined symbol:
+    # nros_config_variant_sz_...`. One image is one binary.
     set(_srcs ${ARGN})
     if("${kind}" STREQUAL "SHARED" OR "${kind}" STREQUAL "STATIC"
        OR "${kind}" STREQUAL "MODULE")
-        add_library(${target} ${kind} ${_srcs})
+        add_library(${target} STATIC ${_srcs})
     else()
         # If no kind keyword was passed (ament_cmake_auto often omits it),
         # treat the first arg as a source path.
@@ -128,12 +201,14 @@ function(ament_auto_add_library target kind)
     # the NuttX boards match that name as a string.
     nros_link_runtime_umbrella(${target} PUBLIC CANDIDATES NanoRos::NanoRosCpp)
     _nros_ament_apply_target_settings(${target})
+    _nros_ament_auto_target_deps(${target})
 endfunction()
 
 function(ament_auto_add_executable target)
     add_executable(${target} ${ARGN})
     target_link_libraries(${target} PRIVATE NanoRos::NanoRosCpp)
     _nros_ament_apply_target_settings(${target})
+    _nros_ament_auto_target_deps(${target})
     if(COMMAND nros_platform_link_app)
         nros_platform_link_app(${target})
     endif()
@@ -162,6 +237,8 @@ endfunction()
 
 # --- rclcpp_components_register_node ------------------------------------------
 
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosComponentMain.cmake")
+
 function(rclcpp_components_register_node component_target)
     cmake_parse_arguments(_RCRN "" "PLUGIN;EXECUTABLE;RESOURCE_INDEX" "" ${ARGN})
     if(NOT _RCRN_EXECUTABLE OR NOT _RCRN_PLUGIN)
@@ -173,42 +250,10 @@ function(rclcpp_components_register_node component_target)
     set(_gen_dir "${CMAKE_CURRENT_BINARY_DIR}/nros_ament_main")
     set(_gen_src "${_gen_dir}/${_RCRN_EXECUTABLE}_main.cpp")
     file(MAKE_DIRECTORY "${_gen_dir}")
-    # Generated entry point. Prefer the stock ROS 2 component constructor
-    # `T(rclcpp::NodeOptions{})`, then keep the older nano-ros smoke shapes
-    # `T()` and `T(std::string)` source-compatible.
-    file(GENERATE OUTPUT "${_gen_src}" CONTENT
-        "// Generated by NanoRosAmentSurface.cmake for ${_RCRN_EXECUTABLE}\n"
-        "// (PLUGIN ${_RCRN_PLUGIN}). nano-ros is single-binary; this entry\n"
-        "// point replaces the runtime ComponentManager loading dance.\n"
-        "#include <rclcpp/rclcpp.hpp>\n"
-        "#include <memory>\n"
-        "#include <string>\n"
-        "#include <type_traits>\n"
-        "namespace nros_ament_component_detail {\n"
-        "template <typename T>\n"
-        "typename std::enable_if<std::is_constructible<T, rclcpp::NodeOptions>::value, std::shared_ptr<T>>::type\n"
-        "make_component(const char*) {\n"
-        "    return std::make_shared<T>(rclcpp::NodeOptions{});\n"
-        "}\n"
-        "template <typename T>\n"
-        "typename std::enable_if<!std::is_constructible<T, rclcpp::NodeOptions>::value && std::is_constructible<T>::value, std::shared_ptr<T>>::type\n"
-        "make_component(const char*) {\n"
-        "    return std::make_shared<T>();\n"
-        "}\n"
-        "template <typename T>\n"
-        "typename std::enable_if<!std::is_constructible<T, rclcpp::NodeOptions>::value && !std::is_constructible<T>::value && std::is_constructible<T, const std::string&>::value, std::shared_ptr<T>>::type\n"
-        "make_component(const char* name) {\n"
-        "    return std::make_shared<T>(std::string(name));\n"
-        "}\n"
-        "} // namespace nros_ament_component_detail\n"
-        "extern \"C\" int main(int argc, char** argv) {\n"
-        "    rclcpp::init(argc, argv);\n"
-        "    auto node = nros_ament_component_detail::make_component<${_RCRN_PLUGIN}>(\"${_RCRN_EXECUTABLE}\");\n"
-        "    rclcpp::spin(std::dynamic_pointer_cast<rclcpp::Node>(node));\n"
-        "    rclcpp::shutdown();\n"
-        "    return 0;\n"
-        "}\n"
-    )
+    # Generated entry point: NanoRosComponentMain.cmake says what it holds and
+    # why it declares the class rather than including its header.
+    nros_component_main_source("${_RCRN_PLUGIN}" "${_RCRN_EXECUTABLE}" _gen_content)
+    file(GENERATE OUTPUT "${_gen_src}" CONTENT "${_gen_content}")
     add_executable(${_RCRN_EXECUTABLE} "${_gen_src}")
     target_link_libraries(${_RCRN_EXECUTABLE} PRIVATE
         ${component_target} NanoRos::NanoRosCpp)
