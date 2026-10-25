@@ -1,5 +1,11 @@
 # Phase 452 — what a new user copies, and what builds it
 
+**Status (2026-10-25). W1–W4 and W6 landed; W5 waits on a logo decision; W7
+opened.** W7 homes three copy-out defects the audit's new G2/C8 items found
+(issues 2044–2046): the documented copy-out configure fails, example manifests
+pin the ROS edition the declaration owns, and the px4 bridge reaches core by
+repository layout.
+
 **Status (2026-10-24). W1–W4 and W6 landed; W5 waits on a logo decision.**
 Re-checked against the tree on 2026-10-24: the design still holds. A surface a
 user copies is built by a lane: `check-template-copy-out` runs on
@@ -305,6 +311,30 @@ hatch" section showed code that does not compile.
 - [x] The book teaches the decision: "Customising an entry" in
       `workspace-entry-pkg.md`, the role reference and the CLI reference.
 
+### W7 — a copied-out example builds by its README, from its declaration
+
+Found 2026-10-24/25 measuring checklist G2 (colcon-style self-containment) and
+C8 (language-neutral selection). Each item below was reproduced on a copy made
+the way a user makes it, not argued from a grep.
+
+- [ ] [Issue 2044](../issues/2044-example-readmes-configure-with-a-retired-root-variable.md)
+      — 148 example READMEs, the root README and `_nros_bootstrap`'s refusal
+      teach `NROS_REPO_DIR`, which RFC-0103 D6 retired as an input. The C/C++
+      configure line FAILS at `find_package(nano_ros)`. One spelling
+      (`nros build`, or `-Dnano_ros_ROOT`), and a check whose population
+      includes documentation.
+- [ ] [Issue 2045](../issues/2045-example-manifests-hand-set-the-ros-edition-feature.md)
+      — 41 example manifests hand-set `ros-humble` on `nros`, so declaring
+      `ros_edition = "jazzy"` is a compile error. Remove the lowered form;
+      `nros sync` refuses a leaf manifest that names a lowered axis feature.
+- [ ] [Issue 2046](../issues/2046-px4-bridge-ffi-reaches-core-by-repo-path.md)
+      — the px4 bridge's FFI crate reaches `nros-serdes` by five `..`; name
+      it, and pass the root through the generated patch.
+
+Acceptance: a copied-out C leaf configures by its README's own line; the
+copied-out mps2 talker builds with `ros_edition = "jazzy"`; the px4 bridge
+builds from outside the checkout.
+
 ## Acceptance for the phase
 
 * Every copy-out template and every scaffold variant is built by a lane, from a
@@ -341,3 +371,11 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | issue | why it belongs here |
 | --- | --- |
 | [#1782](../issues/1782-port-template-zephyr-leaf-board-not-in-data.md) | A copy-out template names the generic `zephyr` board, so `check-template-copy-out` cannot derive its build. |
+
+## Issues homed here (2026-10-25)
+
+| issue | why it belongs here |
+| --- | --- |
+| [#2044](../issues/2044-example-readmes-configure-with-a-retired-root-variable.md) | The copy-out instructions every example carries configure with a retired variable and fail. W7. |
+| [#2045](../issues/2045-example-manifests-hand-set-the-ros-edition-feature.md) | A copied-out example cannot take the edition its own `system.toml` declares. W7. |
+| [#2046](../issues/2046-px4-bridge-ffi-reaches-core-by-repo-path.md) | A copy-into-PX4 source only builds in place. W7. |
