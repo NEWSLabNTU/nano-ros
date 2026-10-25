@@ -2626,7 +2626,7 @@ config NROS_ZENOH_RX_TASK_BUDGET_FRAMES
     range -1 65535
     help
       RFC-0074 / phase-462 W6a. The most frames the zenoh-pico read task
-      processes back to back before it sleeps NROS_ZENOH_RX_TASK_BUDGET_REST_US.
+      processes back to back before it rests NROS_ZENOH_RX_TASK_BUDGET_REST_US.
       Bounds the task's contiguous CPU occupancy at FRAMES x per-frame cost
       (~0.94 ms a frame measured on FreeRTOS mps2-an385), so a flood cannot
       stall the tiers below the transport band. It defers rather than drops:
@@ -2648,9 +2648,14 @@ config NROS_ZENOH_RX_TASK_BUDGET_REST_US
     default -1
     range -1 1000000
     help
-      RFC-0074 / phase-462 W6a. How long the zenoh-pico read task sleeps after
+      RFC-0074 / phase-462 W6a. How long the zenoh-pico read task rests after
       NROS_ZENOH_RX_TASK_BUDGET_FRAMES frames. Read only when the frame budget
       is in force. RFC-0074's measured cells use 1000.
+
+      On zenoh-pico 1.10 the read task is an executor future, so it yields for
+      the rest instead of sleeping, rounded up to whole milliseconds and never
+      less than 2 ms: the executor does not wait for a wake-up 1 ms or less
+      away (RFC-0110 D6).
 
       -1 (phase-462 W6b) states nothing: the value derived from the contract's
       declared subscriber ingress applies (burst x 10^6 / rate_hz of the

@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""zenoh-pico's `config.h` must stay derivable from `config.h.in`.
+"""zenoh-pico's committed `config.h` must stay derivable from `config.h.in`.
 
-`zenoh-pico/CMakeLists.txt` runs `configure_file(config.h.in -> config.h)` INTO
-THE SOURCE TREE, so `config.h` is a generated artifact -- and it is also
-committed, and it is the only config nano-ros actually reads (both lanes,
-`zpico-sys` via cc-rs and the Zephyr module, compile zenoh-pico's sources
-directly and never run that CMakeLists).
+Since zenoh-pico 1.10, `CMakeLists.txt` runs `configure_file(config.h.in ->
+config.h)` into the BINARY dir and upstream's tree carries no header. Every
+nano-ros build that reads one compiles zenoh-pico's sources without running
+that CMake -- the Zephyr module above all, which overrides knobs with `-D` --
+so our fork commits the header that a default configure writes (fork commit
+"config: carry a generated config.h for builds that do not run this CMake").
+`zpico-sys` builds with ZENOH_GENERIC and reads `zenoh_generic_config.h`
+instead.
 
-Being both at once is how it drifted:
+A committed copy of a generated file drifts, and on the 1.8.0 line this one
+did, in both directions:
 
-  * the `#ifndef` guards from `49012370` lived only in `config.h`, so one cmake
-    run deleted them and every `-D` on the Zephyr line went silently inert
-    (`-DZ_FEATURE_MATCHING=0` yielding MATCHING=1);
+  * the `#ifndef` guards from `49012370` lived only in `config.h`, so a
+    regenerate deleted them and every `-D` on the Zephyr line went silently
+    inert (`-DZ_FEATURE_MATCHING=0` yielding MATCHING=1);
   * `config.h` was missing three of OUR OWN features that the template had
     (`Z_FEATURE_LINK_ISOTP`, `..._VENDORED`, `Z_FEATURE_LINK_CUSTOM`);
   * the template could not express the `#ifdef ZENOH_NUTTX` split on
@@ -24,10 +28,11 @@ same shape RFC-0054 uses for the committed bindgen output plus
 `check-abi-bindings`: make generation reproducible, commit the output, gate the
 drift.
 
-It does NOT run cmake -- that would be slow, need a configure, and write into
-the source tree. Instead it checks the property cmake's `configure_file` gives
-us: the two files are line-for-line identical except that a `@TOKEN@` in the
-template stands where a value sits in the header.
+It does NOT run cmake -- that would be slow and need a configure. Instead it
+checks the property cmake's `configure_file` gives us: the two files are
+line-for-line identical except that a `@TOKEN@` in the template stands where a
+value sits in the header, and a `#cmakedefine X` line became either
+`#define X ...` or `/* #undef X */` (1.10's template has two).
 """
 
 import re
@@ -42,14 +47,28 @@ SUB = located_or_dest("zenoh-pico")
 HEADER = SUB / "include/zenoh-pico/config.h"
 TEMPLATE = SUB / "include/zenoh-pico/config.h.in"
 
+GENERATOR = ROOT / "packages/rmw/zenoh/nros-zpico-build/src/lib.rs"
+
 TOKEN = re.compile(r"@([A-Za-z_0-9]+)@")
+DEFINE = re.compile(r"#define ([A-Za-z_][A-Za-z_0-9]*)")
+
+
+CMAKEDEFINE = re.compile(r"#cmakedefine ([A-Za-z_0-9]+)(.*)$")
 
 
 def line_matches(tpl: str, hdr: str) -> bool:
     """A template line matches a header line if they are equal, or equal once
-    every `@TOKEN@` is allowed to stand for one whitespace-free value."""
+    every `@TOKEN@` is allowed to stand for one whitespace-free value. A
+    `#cmakedefine X rest` line matches `/* #undef X */` (unset) or
+    `#define X rest` (set), the two shapes `configure_file` writes."""
     if tpl == hdr:
         return True
+    m = CMAKEDEFINE.match(tpl)
+    if m:
+        name, rest = m.group(1), m.group(2)
+        if hdr == f"/* #undef {name} */":
+            return True
+        return line_matches(f"#define {name}{rest}", hdr)
     if "@" not in tpl:
         return False
     pattern = "".join(
@@ -77,6 +96,42 @@ def check(template_text: str, header_text: str):
     return bad
 
 
+def generic_branch_tokens(template_text: str) -> set[str]:
+    """Macros the template defines in its non-generic branch: the ones a
+    ZENOH_GENERIC build skips, and so must get from `zenoh_generic_config.h`."""
+    lines = template_text.split("\n")
+    try:
+        start = lines.index("#ifdef ZENOH_GENERIC")
+        end = next(i for i, line in enumerate(lines) if line.startswith("#endif /* ZENOH_GENERIC"))
+    except (ValueError, StopIteration):
+        return set()
+    out = set()
+    for line in lines[start + 1 : end]:
+        m = DEFINE.match(line) or CMAKEDEFINE.match(line)
+        if m:
+            out.add(m.group(1))
+    return out
+
+
+def generator_macros(rust_text: str) -> set[str]:
+    """Every macro `config_header()` writes, conditionally or not."""
+    start = rust_text.index("pub fn config_header(")
+    body = rust_text[start : rust_text.index("\n}\n", start)]
+    return set(DEFINE.findall(body))
+
+
+def generic_gaps(template_text: str, rust_text: str) -> list[str]:
+    """Template knobs `config_header()` never states.
+
+    A ZENOH_GENERIC build takes NOTHING from `config.h.in`'s substituted
+    branch, so a knob there that our generator does not write has no value at
+    all -- upstream's CMake default never reaches it. At 1.10.1 that was seven
+    (the executor's two runtime knobs and the two link timeouts among them),
+    and the ones that size an array or a timeout are a compile error, while a
+    feature flag silently reads as 0 under `#if`. Issue 0910."""
+    return sorted(generic_branch_tokens(template_text) - generator_macros(rust_text))
+
+
 def self_test():
     """The gate spent no time able to pass without comparing anything — prove it."""
     cases = [
@@ -90,6 +145,10 @@ def self_test():
         ("#ifndef X", "#define X 1", False),
         # a token may not swallow whitespace, or `@X@` would match a whole line
         ("#define X @X@", "#define X 1 2", False),
+        # `#cmakedefine`, both outcomes, and a renamed one
+        ("#cmakedefine X", "/* #undef X */", True),
+        ('#cmakedefine H "@H@"', '#define H "p.h"', True),
+        ("#cmakedefine X", "/* #undef Y */", False),
     ]
     failures = 0
     for tpl, hdr, ok in cases:
@@ -98,12 +157,17 @@ def self_test():
             print(f"self-test FAILED: {tpl!r} vs {hdr!r} -> {got}, want {ok}", file=sys.stderr)
             failures += 1
     # and a real one: a dropped line must be caught, not absorbed
+    tpl = "#ifdef ZENOH_GENERIC\n#include <g.h>\n#else\n#define Z_A @A@\n#cmakedefine Z_B\n#endif /* ZENOH_GENERIC */\n"
+    rs = 'pub fn config_header(\n    writeln!(h, "#define Z_A 1").unwrap();\n}\n'
+    if generic_gaps(tpl, rs) != ["Z_B"]:
+        print(f"self-test FAILED: generic gap {generic_gaps(tpl, rs)!r}, want ['Z_B']", file=sys.stderr)
+        failures += 1
     if not check("a\nb\nc", "a\nc"):
         print("self-test FAILED: a dropped line read as derivable", file=sys.stderr)
         failures += 1
     if failures:
         return False
-    print("check-zenoh-config-template self-test: OK (6 shape(s) + line-count)")
+    print(f"check-zenoh-config-template self-test: OK ({len(cases)} shape(s) + line-count)")
     return True
 
 
@@ -122,12 +186,21 @@ def main() -> int:
         if len(bad) > 20:
             print(f"  ... and {len(bad) - 20} more", file=sys.stderr)
         print("", file=sys.stderr)
-        print("  `configure_file(config.h.in -> config.h)` writes into the SOURCE", file=sys.stderr)
-        print("  tree, so whichever file you edited, a `cmake` run in the submodule", file=sys.stderr)
-        print("  will overwrite the header with what the TEMPLATE says. Mirror the", file=sys.stderr)
-        print("  change into both, then re-run. Verify with:", file=sys.stderr)
-        print("      cmake -S <submodule> -B /tmp/zpcfg && git -C <submodule> diff --exit-code \\", file=sys.stderr)
-        print("          include/zenoh-pico/config.h", file=sys.stderr)
+        print("  The committed header is what `configure_file` writes from the", file=sys.stderr)
+        print("  TEMPLATE, so edit the template and regenerate the header from it:", file=sys.stderr)
+        print("      cmake -S <submodule> -B /tmp/zpcfg && cp /tmp/zpcfg/include/zenoh-pico/config.h \\", file=sys.stderr)
+        print("          <submodule>/include/zenoh-pico/", file=sys.stderr)
+        return 1
+    gaps = generic_gaps(TEMPLATE.read_text(), GENERATOR.read_text())
+    if gaps:
+        print("check-zenoh-config-template: `config_header()` states nothing for", file=sys.stderr)
+        for g in gaps:
+            print(f"  {g}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("  config.h.in defines these only for a build that is NOT ZENOH_GENERIC,", file=sys.stderr)
+        print("  so every zpico-sys build has no value for them. Emit each from", file=sys.stderr)
+        print(f"  {GENERATOR.relative_to(ROOT)} (and mirror it in", file=sys.stderr)
+        print("  scripts/qemu/build-zenoh-pico.sh), stating why its value is ours.", file=sys.stderr)
         return 1
     n = sum(1 for line in TEMPLATE.read_text().split("\n") if TOKEN.search(line))
     print(f"check-zenoh-config-template: OK (config.h derivable from config.h.in; {n} substituted line(s))")
