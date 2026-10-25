@@ -218,10 +218,11 @@ The static cost is `XRCE_SUBSCRIBER_RING_DEPTH x XRCE_BUFFER_SIZE` per
 subscriber, which is why the default is small — raise it deliberately, and
 consider lowering the ring depth at the same time.
 
-Raising it stops helping at the transport MTU: at 4096 samples arrive
-*corrupted* rather than refused, with no error and no counter. That is
-[issue 0819](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/0819-xrce-payloads-near-the-mtu-arrive-corrupted.md),
-open at time of writing. Keep payloads comfortably below the MTU.
+A payload at or above the transport MTU (4096) arrives fragmented. That
+used to deliver it *corrupted* with no error; the receive path now reads
+the fragment chain
+([issue 0819](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/0819-xrce-payloads-near-the-mtu-arrive-corrupted.md),
+resolved).
 
 #### Compile-time only (not environment variables)
 

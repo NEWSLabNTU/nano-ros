@@ -31,15 +31,6 @@ image's `rmw`, and for a Rust image `nros sync` writes the selection
 facade that gives the board crate the backend feature. Each image builds
 into its own directory, so no object files from another backend linger.
 
-> **Known issue ([1295](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1295-rust-cyclonedds-workspace-entry-no-publisher.md)).**
-> A *Rust* image on `cyclonedds` also needs the `nros` crate's
-> `rmw-cyclonedds` feature — the type-descriptor gate: Cyclone DDS
-> resolves topic types through a runtime descriptor registry, and this
-> feature registers a message's descriptor before its topic is created.
-> The generated facade does not name it yet, so such an entry builds and
-> then fails `PublisherCreationFailed` at startup. Zenoh and XRCE need no
-> such feature, and C/C++ images are not affected.
-
 ## Single C/C++ package (no workspace function)
 
 A standalone package that consumes nano-ros in source form — either

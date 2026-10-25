@@ -13,14 +13,17 @@ for the policy.
 > or any RTOS, use the [FreeRTOS starter](./freertos.md) instead —
 > it's more ergonomic and produces smaller code overall.
 
-> **Prereqs.** Install the `nros` CLI once per machine, then provision
-> this board. `nros setup` fetches a prebuilt bare-metal toolchain
-> (`arm-none-eabi-gcc`, `qemu-system-arm`, the zenoh router) plus the
-> Rust `thumbv7m-none-eabi` target into a shared store — no manual
-> cross-compiler install, no ROS 2 needed.
+> **Prereqs.** Install the `nros` CLI once per machine (`scripts/install.sh`,
+> see [Installation](installation.md)), then provision this board.
+> `nros setup` fetches a prebuilt bare-metal toolchain
+> (`arm-none-eabi-gcc`, `qemu-system-arm`) plus the Rust
+> `thumbv7m-none-eabi` target into a shared store — no manual
+> cross-compiler install. It provides no zenoh router: that is ROS's
+> `rmw_zenohd` ([RFC-0075](../design/rmw.md)), so running a zenoh image
+> needs it from a ROS 2 install.
 
 ```bash
-# Build the in-tree nros CLI (Phase 218):
+# Inside a nano-ros checkout, build the in-tree nros CLI instead:
 ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
 

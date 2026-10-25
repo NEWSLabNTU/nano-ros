@@ -23,6 +23,23 @@ old spelling where you set it.
 | `NANO_ROS_ROOT` (cmake variable) | `NROS_REPO_DIR` |
 | `NANO_ROS_ROOT <path>` (keyword of `nano_ros_workspace()` and friends) | `NROS_REPO_DIR <path>` |
 
+## Retired board names
+
+The host board is `linux`. Two other words used to name it and are now
+refused wherever a board is named — `nros setup <board>`, `nros new
+--platform`, `nros new --image … --board`, an `[image.<id>] board` row —
+with an error that names `linux` (phase-500):
+
+| Retired | Use instead | Why |
+|---|---|---|
+| `native` | `linux` | `native` names every general-purpose host, and the host board builds on Linux only |
+| `posix` | `linux` | `posix` is the platform (`nros-platform-posix`), not a board |
+
+`posix` stays correct as a PLATFORM name and in `[tiers.*.posix]`. This
+page is the only place in the book that spells either word as a board;
+`just check book-board-names` holds the rest of the book to the index's
+`[board.*]` keys and the board descriptors' `names`.
+
 ## Retired knob spellings
 
 Build-time knobs have one env spelling, `NROS_<ID>` (RFC-0103 D2b), held in

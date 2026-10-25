@@ -202,7 +202,7 @@ mechanisms, layered:
    `nros_rmw_register_backend!` macro. `rclc_support_init` /
    `Executor::open` walks the slice and calls each entry. Canonical
    on the hosted targets whose linker sections `linkme` recognises —
-   of which nano-ros builds only the `native` host board. Macro
+   of which nano-ros builds only the `linux` host board. Macro
    expands to a no-op on RTOS targets where `linkme` can't recognise
    the section (NuttX, Zephyr, FreeRTOS, bare-metal).
 2. **Rust ctor** (legacy fallback): `#[unsafe(link_section =

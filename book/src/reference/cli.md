@@ -19,8 +19,8 @@ curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/in
 
 It verifies the sha256, installs into `~/.nros/sdk/nros/<version>/` and points
 `~/.nros/bin/nros` at the newest installed version — one command, however many
-versions accumulate. (No release is cut yet; the installer says so and sends
-you to the source build.)
+versions accumulate. `--version <v>` installs a named release instead of the
+newest; the repository's GitHub Releases page lists them.
 
 **Working on nano-ros** — build the CLI from the checkout. That is not a
 fallback: in a checkout the tree's own build is the only binary this tree
@@ -35,27 +35,29 @@ activate the workspace to put it on PATH:
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
 ```
 
-Equivalent, if you already have cargo (same build, same binary):
-`git submodule update --init packages/cli/third-party/play_launch`
+Equivalent, if you already have cargo (same build, same binaries):
+`git submodule update --init packages/cli/third-party/play_launch`,
 then `cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros`
-(bootstrap runs both for you; `just setup-cli` is the internal alias).
+and `cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.toml`
+— the launch resolver the workspace flow needs (bootstrap runs all three for
+you; `just setup-cli` + `just setup-launch-resolve` are the internal aliases).
 
 The resulting binary lives at `packages/cli/target/release/nros`. One
 checkout = one CLI version = one runtime ABI; contributors with
 multiple nano-ros worktrees get per-tree CLIs with no global PATH
-skew. Once on PATH, `nros --help` lists every verb. The transitional
-`${NROS_HOME:-~/.nros}/bin/nros` install location remains supported
-for users mid-migration from the pre-218 release-fetch shape.
+skew. Once on PATH, `nros --help` lists every verb. `${NROS_HOME:-~/.nros}/bin/nros`
+is where `install.sh` puts a release; inside a checkout `just doctor` fails
+when that one shadows the tree's own build.
 
 ## Verbs
 
-### `nros setup [<board>] [--rmw <rmw>] [--tool <name>] [--source <name>] [--prefix <dir>] [--list] [--licenses] [--dry-run]`
+### `nros setup [<board>] [--rmw <rmw>] [--tool <name>] [--source <name>] [--prefix <dir>] [--list] [--licenses] [--system] [--workspace [<path>]] [--check] [--sudo] [--dry-run]`
 
 Provision the toolchain/SDK for a board. `nros setup` is the single
 canonical provisioning command. Most components are **prebuilt per platform
-per RMW** (cross-compiler, emulator, RMW host daemon, SDK sources), fetched
+per RMW** (cross-compiler, emulator, RMW host tools, SDK sources), fetched
 from a pinned index into a shared store (`${NROS_HOME:-~/.nros}/sdk`). No
-hand-installed cross-toolchains; no ROS distro required.
+hand-installed cross-toolchains.
 
 Packages are prebuilt where the index has a binary for your host and built
 from source otherwise; the vendored submodules (`zenoh-pico`, `mbedtls`,
@@ -64,25 +66,38 @@ fetching. Full explanation:
 [Installation](../getting-started/installation.md#provision-your-toolchain-with-nros-setup).
 
 Note `setup` does **not** provision a zenoh router: since RFC-0075 that is
-ROS's `rmw_zenoh_cpp/rmw_zenohd`. See
+ROS's `rmw_zenoh_cpp/rmw_zenohd`, so a zenoh run needs a ROS 2 install;
+Cyclone DDS needs no daemon. See
 [Do I need ROS 2 installed?](../getting-started/installation.md#do-i-need-ros-2-installed).
 
 ```sh
 nros setup linux --rmw zenoh            # host build (router comes from ROS)
 nros setup mps2-an385-freertos --rmw xrce  # arm-none-eabi-gcc, qemu, FreeRTOS, XRCE agent
-nros setup zephyr                        # Zephyr west workspace + SDK bits
+nros setup zephyr                        # the Zephyr SDK + RMW transport sources
 ```
 
 | Flag | Effect |
 |---|---|
 | `<board>` | resolve + fetch this board's package set (see [Supported Boards](supported-boards.md)) |
-| `--rmw <zenoh\|xrce\|cyclonedds>` | also provision the RMW's host daemon/tool (default `zenoh`); resolves `board ∪ rmw` packages |
+| `--rmw <zenoh\|xrce\|cyclonedds>` | also provision the RMW's host tools — the XRCE agent, Cyclone's `idlc`; zenoh has none here (default `zenoh`); resolves `board ∪ rmw` packages |
 | `--tool <name>` | install tools by name (e.g. `--tool qemu`); repeatable — `--tool ninja --tool make` is one plan, with one system-package ask for the union |
 | `--source <name>` | provision a single source package by name (repeatable) |
 | `--prefix <dir>` | install a `--tool` here instead of the shared store |
 | `--list` | list every package in the index + its version |
 | `--licenses` | show license-gated packages + how to install them |
+| `--system` | resolve the OS-package closure for this host's package manager and PRINT the one install command (it never runs it without `--sudo`) |
+| `--workspace [<path>]` | plan from what the workspace at `<path>` (default `.`) declares — its `package.xml` dependencies, build types and the boards its `[image.*]` rows name; prints the plan, installs nothing |
+| `--role <role>` | narrow `--system` to entries of this role (repeatable) |
+| `--check` | run presence probes instead of installing; exits 1 when anything is missing. With `--system`, the OS packages only; alone, every declared class |
+| `--sudo` | with `--system` (or a `--tool` that declares OS build deps): EXECUTE the composed install command instead of printing it |
+| `--build-sources` | provision the whole build-stage source union the repo's tests need (contributors); with `--check`, verify only |
+| `--full` / `--shallow` | full git history / force `--depth 1` for provisioned sources |
+| `-j, --jobs <n>` | packages installed at once (default: CPU count; `NROS_SETUP_JOBS`) |
+| `--index <path>` | the SDK index to read (default `nros-sdk-index.toml`) |
 | `--dry-run` | resolve + print the plan without fetching anything |
+
+`nros setup board <name> --zephyr-workspace <dir> [--workspace <nano-ros>]`
+provisions a downstream Zephyr consumer's tree for a nano-ros board.
 
 `--tool` and `--source` combine: `nros setup --tool arm-none-eabi-gcc
 --source freertos-kernel --source lwip` installs the tool, then the
@@ -91,13 +106,15 @@ beside `--tool`/`--source`, anything beside `--list`/`--licenses`/
 `--system`, `--source` with `--check`, `--rmw` without a `<board>` — are
 **refused**, naming the flag, never silently ignored (issue 1935).
 
-Board names (the full set — RFC-0093 names each board for the reach of
-its build): `native`, `posix`, `mps2-an385-baremetal`,
-`mps2-an385-freertos`, `mps3-an536-freertos`, `s32z270-freertos`,
-`freertos-posix`, `qemu-armv7a-nuttx`, `rv-virt-nuttx`, `rv-virt-threadx`,
-`threadx-linux`, `esp32-c3-baremetal`, `fvp-aemv8r-smp`, `zephyr`. A wrong
-one lists the rest; `nros setup <board> --dry-run` resolves without fetching.
-Names retired by phase-437 are in the
+Board names (the full set — the index's `[board.*]` keys; RFC-0093 names each
+board for the reach of its build):
+<!-- board-names:begin (generated by scripts/check-book-board-names.py --write) -->
+`freertos-posix`, `fvp-aemv8r-smp`, `linux`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `mps3-an536-freertos`, `qemu-armv7a-nuttx`, `rv-virt-nuttx`, `rv-virt-threadx`, `s32z270-freertos`, `threadx-linux`, `zephyr`.
+<!-- board-names:end -->
+A wrong one lists the rest; `nros setup <board> --dry-run` resolves without
+fetching. `native` and `posix` are refused with a hint naming `linux`
+([Retired names](retired-names.md#retired-board-names)); names retired by
+phase-437 are in the
 [retired board names](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/retired-board-names.md)
 ledger.
 
@@ -116,17 +133,27 @@ nros init                 # writes ./CMakePresets.json
 cmake --preset qemu-armv7a-nuttx
 ```
 
-### `nros new <name> --platform <plat> [--rmw <rmw>] [--lang <lang>] [--use-case <case>] [--force]`
+### `nros new <name> --platform <plat> [--rmw <rmw>] [--lang <lang>] [--use-case <case>] [--ros-edition <e>] [--force]`
 
 Scaffold a new nano-ros project. Emits a colcon-compatible
 `package.xml` plus a hello-world Rust / C / C++ skeleton tuned for the
 chosen platform.
 
+**Workspace mode:** `nros new <name> --workspace [--lang <lang>] [--rmw <rmw>]`
+scaffolds a multi-node workspace instead — two node packages (`talker_pkg`,
+`listener_pkg`) and a `demo_bringup` with its `system.toml` and launch file,
+no root build file ([First Project](../getting-started/first-project.md)). It
+defaults to `--lang cpp --rmw cyclonedds`, the combination that needs no
+router, and builds for the host (`--platform linux`, the only one it accepts);
+add embedded targets afterwards with `nros new --image <name> --board <b>`.
+
 | Flag | Values | Default |
 |---|---|---|
-| `--platform` | `linux`, `freertos`, `nuttx`, `threadx`, `zephyr`, `esp32`, `baremetal` | (required) |
-| `--rmw` | `zenoh`, `xrce`, `cyclonedds` | `zenoh` |
-| `--lang` | `rust`, `c`, `cpp` | `rust` |
+| `--platform` | `linux`, `freertos`, `nuttx`, `threadx`, `zephyr`, `baremetal` | (required, except with `--workspace`) |
+| `--rmw` | `zenoh`, `xrce`, `cyclonedds` | `zenoh` (`cyclonedds` with `--workspace`) |
+| `--lang` | `rust`, `c`, `cpp` | `rust` (`cpp` with `--workspace`) |
+| `--ros-edition` | `humble`, `iron`, `jazzy` | `humble` |
+| `--workspace` | scaffold the multi-node workspace above | off |
 | `--use-case` | `talker`, `listener`, `service`, `action` | `talker` |
 | `--force` | overwrite an existing directory | off |
 
@@ -335,9 +362,10 @@ cargo build --manifest-path <leaf>/Cargo.toml \
             --config <leaf>/build/<image-id>/nros-cargo.toml
 ```
 
-The working-directory rule is temporary: until phase-445 W6 deletes the leaf's
-`.cargo/`, running cargo inside the leaf reads it a second time and joins the
-board's `rustflags` onto themselves.
+Run that from the directory above the package: `nros sync` also wires the same
+file into the package's gitignored `.cargo/config.toml` (so a plain `cargo build`
+inside the package works), and naming it again with `--config` from inside would
+join the board's `rustflags` onto themselves.
 
 ### `nros materialize <image> [--workspace <dir>] [--force]`
 
@@ -408,6 +436,65 @@ Enumerate every `nros-board-*` crate under `packages/boards/`. Output
 columns are `name | description`; structured `chip | flash | ram |
 supported_rmw` fields are deferred to a future board-descriptor TOML.
 
+### `nros sdk-root [--workspace <dir>] [--nano-ros-path <dir>] [--explain]`
+
+Print the nano-ros SDK root this `nros` resolves — the directory holding the
+runtime sources and `nano_rosConfig.cmake` that a build compiles against: an
+explicit `--nano-ros-path`, else a nano-ros checkout found by walking up from
+`--workspace` (default: the current directory), else this binary's own SDK
+(a release's `share/nano-ros`, or the checkout an in-tree `nros` was built in).
+`--explain` names the rung that answered on stderr; stdout stays the bare path.
+
+```sh
+nros sdk-root --explain
+```
+
+### `nros locate <name>… [--all] [--why] [--format <path|sh|cmake>] [--project <dir>]`
+
+Where a resource is, and with `--why`, every rung of the one ladder (argument >
+env > the project's `system.toml` `[sources]` > local edit > store > checkout)
+and what each saw. A name is an index `[source.<name>]`, or `store` / `nano-ros`
+for the two roots; `nros locate artifact <name>…` (`c-archive`, `cpp-archive`,
+`c-include`, …, with `--target`, `--profile`, `--target-dir`, `--placed-dir`)
+locates a cargo-built artifact, and `nros locate tool <name>` a first-party host
+binary (`nros-launch-resolve`). `--all` locates every `[source.*]` row.
+
+```sh
+nros locate zenoh-pico --why
+```
+
+### `nros store <list|gc>`
+
+Inspect and shrink the SDK store, which only grows: provisioning never
+overwrites, so a new version lands beside the old one.
+
+| Subcommand | Effect |
+|---|---|
+| `list [--root <dir>]` | every entry with its version, size and when it was last read |
+| `gc --older-than <dur> [--delete] [--dry-run] [--pin-file <f>…] [--ignore-pins] [--root <dir>]` | propose removing entries not read for `<dur>` (`90d`, `12h`, `2w`); removes nothing without `--delete`, and never an entry a pin names |
+
+### `nros toolchain <uninstall|manifest>`
+
+| Subcommand | Effect |
+|---|---|
+| `uninstall <version> [--dry-run] [--pin-file <f>…] [--ignore-pins] [--root <dir>]` | remove one installed nano-ros toolchain; refuses while a pin names it, or when no pin file could be consulted |
+| `manifest [--store-version <v>] [--index <date>] [--nano-ros <commit>] [--write <path>]` | read (or, with `--write`, stamp) the `share/nros/manifest.toml` a release declares it is made of |
+
+### `nros pin [<version>] [--dir <dir>] [--root <dir>] [--dry-run]`
+
+Report this project's `nros-toolchain.toml` pin, or move it to `<version>` (the
+store version, e.g. `0.6.0-nros3`, not the crate version `nros --version`
+prints). A move reports the codegen delta between the two toolchains first, so
+an upgrade that would invalidate already-generated code warns before anything
+is written.
+
+### `nros update (--pins [--prune] | --crate <n> [--precise <v>] | --source <n> [--ref <sha>] [--allow-rewind] | --tool <n> [--to-version <v>] | --west <m> [--revision <r>]) [--nano-ros-path <dir>]`
+
+Move ONE pin of a nano-ros checkout's pin set — a registry crate, a vendored
+source, a host tool or a west project — and leave one diff to review.
+`--pins` regenerates the registry pin set from the locked roots. A contributor
+verb: an installed SDK's pin set is read-only.
+
 ### `nros version`
 
 Print toolchain + library versions.
@@ -440,13 +527,12 @@ recipes (build matrices, CI orchestration) keep their current shape.
 
 ## Release pipeline status
 
-There is no crates.io / Arduino zip / ESP-IDF binary / GitHub Releases
-tarball channel. Per the archive decision (2026-05-19), nano-ros is
-consumed by `git clone --branch=v<X.Y.Z>` plus the in-tree build
-recipes documented at
-[Installation](../getting-started/installation.md). (A hidden,
-maintainer-only `nros release` verb exists behind the `release` cargo
-feature; the default build does not carry it.)
+The `nros` CLI is released as a GitHub Releases asset (`nros-<host>.tar.zst`,
+carrying the CLI and its SDK root) and installed with `scripts/install.sh` —
+[Installation](../getting-started/installation.md). There is no crates.io,
+Arduino zip or ESP-IDF binary channel. (A hidden, maintainer-only
+`nros release` verb exists behind the `release` cargo feature; the default
+build does not carry it.)
 Downstream RTOS package managers (Zephyr `west`,
 ESP-IDF `idf_component_yml`, NuttX `Kconfig`) consume the same source
 tree via the integration shells under `integrations/<rtos>/`.

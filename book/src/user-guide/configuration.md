@@ -405,7 +405,7 @@ environment — shed the parts a brokered client doesn't need:
 Honest, reproducible numbers per `(platform, transport, backend, profile)` —
 built with the in-tree examples, the **release** profile is cargo's default
 (opt-3), the **size** profile is the scaffolded `[profile.size]` (opt-`s` + `lto`
-+ `strip`, see the [size-tuned release profile notes](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-204-embedded-binary-size.md#2043--size-tuned-embedded-release-profile)).
++ `strip`, see the [size-tuned release profile notes](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-204-embedded-binary-size.md#2043--size-tuned-embedded-release-profile----x-done-2026-05-30)).
 RAM = `data + bss`. All cells are after `--gc-sections` + the size knobs above
 are applied where noted; the serial cell ships with the recipe below.
 

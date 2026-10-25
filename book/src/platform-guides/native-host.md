@@ -34,17 +34,17 @@ installed: it comes from a ROS 2 install
 machine? Use `--rmw cyclonedds` — it needs no daemon.
 
 ```bash
-# Build the in-tree nros CLI:
+# Users install a release (`scripts/install.sh`); in a checkout, build the in-tree nros CLI:
 ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
 
-# Provision the native host (zenoh RMW is the default):
+# Provision the Linux host (zenoh RMW is the default):
 nros setup linux --rmw zenoh        # or: --rmw xrce / --rmw cyclonedds
 ```
 
-`native` and `linux` are the two names of this board (`native` the role,
-`linux` the reach); `posix` names the platform layer underneath it, not the
-board.
+`linux` is this board's one name; `posix` names the platform layer underneath
+it, and `native` names no board at all
+([Retired names](../reference/retired-names.md#retired-board-names)).
 
 For a colcon consumer workspace that already has nano-ros under
 `src/`:

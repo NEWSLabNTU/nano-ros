@@ -36,12 +36,17 @@ Where standard ROS 2 installs a distro and resolves system packages with
 `rosdep`, nano-ros provisions a **per-board toolchain** with one command.
 `nros setup` replaces the distro install + `rosdep`: it ships **prebuilt
 toolchains per platform per RMW** — the cross-compiler, emulator, RMW host
-daemon, and SDK sources for a board are fetched from a pinned index into a
-shared store (`${NROS_HOME:-~/.nros}/sdk`). You do not install cross-toolchains by hand,
-and you do not need a ROS distro on the machine.
+tools (the XRCE agent, Cyclone's `idlc`) and SDK sources for a board are
+fetched from a pinned index into a shared store (`${NROS_HOME:-~/.nros}/sdk`).
+You do not install cross-toolchains by hand. The one thing it does not
+provide is a zenoh router: that is ROS's `rmw_zenohd` (RFC-0075), so the
+zenoh backend needs a ROS 2 install on the router host, while Cyclone DDS
+needs no daemon at all and xrce uses the agent `nros setup` installs.
 
 ```bash
-# 1. Build the in-tree nros CLI (analogous to installing a ROS distro, Phase 218):
+# 1. Get the nros CLI (analogous to installing a ROS distro). Users install
+#    a release — `scripts/install.sh`, see Installation; this walk-through
+#    runs inside a nano-ros checkout, so it builds the in-tree one:
 ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
 
@@ -67,7 +72,7 @@ the components — and nothing in `Cargo.toml` or `CMakeLists.txt`
 mentions a target (RFC-0098). Changing target is editing the `board =`
 line and re-running `nros sync`.
 
-For embedded targets, name the board instead of `native`; `nros setup`
+For embedded targets, name the board instead of `linux`; `nros setup`
 fetches the matching prebuilt cross-toolchain + emulator + SDK:
 
 ```bash
@@ -126,17 +131,18 @@ Multi-RMW bridges (one binary, two or more backends) use
   QoS profiles, parameters, and message packages keep ROS-shaped names.
 - `colcon build` still works as a consumer-side build for POSIX C++
   workspaces that already use it; `nros build` is the equivalent that
-  also reaches embedded targets, driving `cmake`, `cargo`, `west` or
-  `idf.py` for you.
+  also reaches embedded targets, driving `cmake`, `cargo` or `west`
+  for you.
 - Interop: POSIX nano-ros nodes can communicate with standard ROS 2
   nodes through compatible RMW backends (Zenoh, Cyclone DDS, XRCE).
 
 ## What Changes
 
-- **Source-only.** No binary SDK tarball, no crates.io umbrella crate,
-  no Arduino zip / ESP-IDF binary component / GitHub Releases artifact.
-  The locked policy is `git clone --branch=v<X.Y.Z>` +
-  in-tree build.
+- **One release, no package registry.** The `nros` CLI is released on
+  GitHub and installed with `scripts/install.sh`; the library ships as
+  source inside that release (its SDK root, `nros sdk-root`) and is compiled
+  into your build. Nothing is published to crates.io, and there is no
+  Arduino zip or ESP-IDF binary component.
 - **Per-board provisioning, no `rosdep`.** `nros setup <board> --rmw <rmw>`
   is the single setup command. It fetches toolchains (cross-gcc, emulator)
   and SDK sources for exactly that board+RMW into `~/.nros/sdk` — no
@@ -152,8 +158,8 @@ Multi-RMW bridges (one binary, two or more backends) use
   from there into the build.
 - **No install prefix.** Phase 140 removed `just install-local`; there
   is no `cmake --install` step for nano-ros itself — consumers pull it
-  into their build via `add_subdirectory(<repo-root>)` or
-  `find_package(nano_ros)` from the checkout. (Example packages still
+  into their build via `find_package(nano_ros)` against the SDK root (a
+  release's or a checkout's) or `add_subdirectory(<sdk-root>)`. (Example packages still
   carry their own `install(TARGETS …)` for colcon compatibility.) The
   integration shells under `integrations/<rtos>/` re-export the same
   root CMake under each RTOS's native package manager.
