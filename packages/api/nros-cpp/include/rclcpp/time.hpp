@@ -66,6 +66,22 @@ class Time {
               static_cast<int64_t>(nanoseconds)),
           clock_type_(clock_type) {}
 
+    /// From a generated `builtin_interfaces/msg/Time` — anything with `sec` and
+    /// `nanosec` members, the shape `to_msg` below binds to (phase-488).
+    /// Upstream's `Time(const builtin_interfaces::msg::Time&, rcl_clock_type_t
+    /// = RCL_ROS_TIME)` is implicit, and ported code leans on that:
+    /// `rclcpp::Time(msg->header.stamp)` appears in 78 of the 2944 sources of
+    /// an Autoware 0.45.1 workspace, and Nav2's `nav2_util` writes it too.
+    /// A template rather than the message type, because message types are
+    /// generated per user package and this header cannot name one.
+    template <typename TimeMsgT, typename = decltype(static_cast<int64_t>(TimeMsgT().sec) +
+                                                     static_cast<int64_t>(TimeMsgT().nanosec))>
+    // NOLINTNEXTLINE(google-explicit-constructor)
+    constexpr Time(const TimeMsgT& msg, rcl_clock_type_t clock_type = RCL_ROS_TIME)
+        : ns_(static_cast<int64_t>(msg.sec) * ::rclcpp::NANOSECONDS_PER_SECOND +
+              static_cast<int64_t>(msg.nanosec)),
+          clock_type_(clock_type) {}
+
     /// The largest representable time — `rclcpp::Time::max()`'s value.
     static constexpr Time max() { return Time(INT32_MAX, 999999999u); }
 

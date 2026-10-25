@@ -365,3 +365,36 @@ bool DISABLED=false
 
     Ok(())
 }
+
+/// phase-488 — a message that NESTS an empty one (Nav2's
+/// `nav2_msgs/srv/ClearEntireCostmap`, a `std_msgs/Empty` field) calls the
+/// nested type's field serializers, so the C++ pack's TYPES half must emit them
+/// for an empty message too. It emitted none, and the nesting package's FFI
+/// crate failed with `cannot find function serialize_std_msgs_msg_empty_fields`.
+/// They carry rosidl's one padding member (issue 1293), as the C and Rust
+/// packs' nested serializers already do.
+#[test]
+fn an_empty_message_has_the_field_serializers_a_nesting_message_calls() {
+    let msg = parse_message("").unwrap();
+    let resolver = rosidl_codegen::CapacityResolver::empty();
+    let pkg =
+        rosidl_codegen::generate_cpp_message_package("std_msgs", "Empty", &msg, "h", &resolver)
+            .unwrap();
+    let types = &pkg.ffi.types_rs;
+    assert!(
+        types.contains("pub fn serialize_std_msgs_msg_empty_fields("),
+        "no field serializer for an empty message:\n{types}"
+    );
+    assert!(
+        types.contains("pub fn deserialize_std_msgs_msg_empty_fields("),
+        "no field deserializer for an empty message:\n{types}"
+    );
+    assert!(
+        types.contains("writer.write_u8(0)?;"),
+        "the padding member is not written"
+    );
+    assert!(
+        types.contains("out._dummy = reader.read_u8()?;"),
+        "the padding member is not read"
+    );
+}

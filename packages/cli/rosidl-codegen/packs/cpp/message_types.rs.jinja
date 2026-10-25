@@ -262,6 +262,22 @@ pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_n
 {%- endfor %}
     Ok(())
 }
+{%- else %}
+/// Serialize fields to CDR — an empty message is rosidl's one padding member
+/// (`structure_needs_at_least_one_member`, issue 1293), so a message that
+/// NESTS it (Nav2's `nav2_msgs/srv/ClearEntireCostmap`, a `std_msgs/Empty`
+/// field) calls this as it calls any nested serializer (phase-488; it did not
+/// exist, and the nesting package's FFI crate did not compile).
+pub fn {{ serialize_fn }}(_msg: &{{ repr_c_struct_name }}, writer: &mut CdrWriter) -> Result<(), SerError> {
+    writer.write_u8(0)?;
+    Ok(())
+}
+
+/// Deserialize fields from CDR — the padding member, whatever its value.
+pub fn {{ deserialize_fn }}(reader: &mut CdrReader, out: &mut {{ repr_c_struct_name }}) -> Result<(), DeserError> {
+    out._dummy = reader.read_u8()?;
+    Ok(())
+}
 {%- endif %}
 {%- if has_view %}
 

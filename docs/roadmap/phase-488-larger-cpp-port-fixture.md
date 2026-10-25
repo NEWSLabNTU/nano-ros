@@ -5,7 +5,9 @@ projects. W2 and W3 done for node 1 (`autoware_external_cmd_selector`): it
 builds with no source edit and runs against a stock ROS 2 peer, with its pool
 sizes still raised by hand (issue 2043). Node 3 (ros2/demos `composition`) done
 the same way: one source edit (issue 2055) and two out-of-scope targets
-dropped. W4 updated for nodes 1 and 3. Node 2 not started.** Rescoped 2026-10-24. The ported code is the
+dropped. W4 updated for nodes 1 and 3. Node 2 (Nav2) configures, and its
+messages compile; it stops at the hosted parameter API (issue 2056), which is
+built next.** Rescoped 2026-10-24. The ported code is the
 user's work and is not committed here. What this phase lands is what the ports
 expose: nros-cpp, codegen and build fixes, issues, and porting-guide changes.
 The original W2 ("add it as a port template") and W3 (runtime cells for it)
@@ -236,6 +238,46 @@ In-tree tests, none of which use the ported code:
 without a `param_services` runtime) plus a link of the generated component
 main. Also `a_capturing_raw_service_destroys_and_releases_its_capture` in
 nros-node.
+
+### W2/W3 progress — node 2, Nav2 `nav2_velocity_smoother` @jazzy (2026-10-25, in progress)
+
+The smoother, `nav2_util`, `nav2_common` and `nav2_msgs` were copied verbatim
+into a scratch workspace. `nav2_util` is a dependency LIBRARY, so a porter
+carries their own cut of it, as they would any upstream C++ library nano-ros
+does not ship. That cut drops bondcpp, tf2 (from `robot_utils`, only
+`validateTwist` is kept), the node thread, costmap/lifecycle-client helpers
+and the two executables. Every rclcpp use is kept, so nano-ros's own gaps
+show. The workspace now configures, and every message package compiles.
+
+**The port stops at the parameter API (issue 2056), as ruled.** The
+smoother's 13 `rclcpp::ParameterValue` declarations, its
+`std::vector<rclcpp::Parameter>` dynamic-parameters callback, and
+`nav2_util`'s descriptor and `NodeParametersInterface` helpers need a hosted
+layer nros-cpp does not have. It is the largest gap this phase measured:
+`std::vector<rclcpp::Parameter>` is in 183 of the 2944 sources of an Autoware
+0.45.1 workspace. The issue is filed with a design. It is built next, as its
+own PR, and the port is finished on it.
+
+| finding | disposition |
+| --- | --- |
+| `find_package(ament_cmake_python)` (`nav2_common`) loaded the installed CONFIG (`Unknown CMake command "get_executable_path"`); node 3's `rcutils` the same | fixed: find modules for both, `ament_python_install_package` accepted |
+| `find_package(bondcpp)` loaded the installed upstream library's CMake (`Unknown CMake command "list_append_unique"`), which names neither the package nor the fix | fixed, for the class: the six ament internals an installed config calls first (214 of the 330 Humble `*Config.cmake` call one) are traps that name the package, the file and the two choices (drop it, or port it into the workspace) |
+| `find_package(rclcpp_lifecycle)` / `(rclcpp_action)`: nros-cpp ships both headers, and there were no find modules | fixed: `Findrclcpp_lifecycle` / `Findrclcpp_action` over `rclcpp::rclcpp` |
+| the smoother's `find_package(nav2_util)` found the INSTALLED upstream `nav2_util`, not the workspace's port | fixed: `ament_export_libraries` / `_targets` / `_dependencies` and `ament_package(CONFIG_EXTRAS ...)` record what a package exports; a library package of the workspace gets a Find stub that resolves to `<pkg>::<pkg>` and runs its CONFIG_EXTRAS (`nav2_common`'s `nav2_package()`), and refuses by name when the package is not configured yet |
+| codegen: a message that nests `std_msgs/Empty` (`nav2_msgs/srv/ClearEntireCostmap` and the other costmap-clearing services) called `serialize_std_msgs_msg_empty_fields`, which the C++ pack never emitted, so the `nav2_msgs` FFI crate failed to compile | fixed: the empty message's field serializers write and read rosidl's padding byte, as the C and Rust packs' already do |
+| `${geometry_msgs_TARGETS}` (the modern spelling) named nothing; `rcl_interfaces` was a no-op module, so `rcl_interfaces/msg/parameter_descriptor.hpp` existed nowhere | fixed: the resolver sets `<pkg>_TARGETS`; `rcl_interfaces` routes to codegen |
+| `rclcpp::Time(msg->header.stamp)` (78 Autoware sources) | fixed: an implicit constructor from any `{sec, nanosec}` message, on the ROS clock |
+| `<rclcpp/logger.hpp>`, `<rclcpp/parameter_service.hpp>` missing | fixed: each is the nros-cpp header that declares what upstream's does |
+| `nav2_util/src/CMakeLists.txt` names `${CMAKE_SOURCE_DIR}/include`, the workspace root when every package configures in one run | logged porter edit (`PROJECT_SOURCE_DIR`); 0 of 417 Autoware CMakeLists name it, and redefining it per package would move the `DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"` passes; porting-guide note |
+| `rclcpp::ParameterValue`, `rclcpp::Parameter`, `declare_parameter(name, value, rcl_interfaces::msg::ParameterDescriptor)`, the vector on-set callback with `SetParametersResult`, `NodeParametersInterface` | issue 2056 |
+| `rclcpp::exceptions::*` (`nav2_util::declare_parameter_if_not_declared`) | refused by design (RFC-0018); a stated edit |
+| still to classify, after issue 2056: `Clock::SharedPtr`, `Node::WeakPtr`, `NodeOptions::arguments({...})`, `FixedSequence::resize` on a generated descriptor range, `static_pointer_cast` of a non-owning `Node::SharedPtr`, `[[nodiscard]]` on `set_parameter` under `-Werror` | W3 continues once the parameter half compiles |
+
+In-tree tests: case 10 of `tests/cmake-ament-surface-tests.sh`, which fails
+11 of 11 against the CMake before the change; the empty-message serializer
+test in `rosidl-codegen/tests/edge_case_test.rs`, which fails without the
+template change; and the `Time` and header checks in
+`ament_port_surface_runtime.cpp`.
 
 ### W2/W3 progress — node 3, ros2/demos `composition` @jazzy (2026-10-25)
 

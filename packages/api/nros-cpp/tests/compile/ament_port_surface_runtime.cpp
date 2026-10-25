@@ -35,6 +35,9 @@
 #include <diagnostic_updater/update_functions.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_components/register_node_macro.hpp>
+// Nav2's `nav2_util` includes these by name (phase-488 node 2).
+#include <rclcpp/logger.hpp>
+#include <rclcpp/parameter_service.hpp>
 
 extern "C" {
 #include "stub_rmw_backend.h"
@@ -228,6 +231,21 @@ RCLCPP_COMPONENTS_REGISTER_NODE(demo::Selector)
 #if !defined(NROS_PORT_SURFACE_COMPONENT_ONLY)
 
 namespace {
+
+// `rclcpp::Time(msg->header.stamp)` (phase-488 node 2; 78 Autoware sources):
+// from anything shaped like `builtin_interfaces/msg/Time`, on the ROS clock by
+// default, as upstream's implicit constructor is.
+struct StampLike {
+    int32_t sec;
+    uint32_t nanosec;
+};
+constexpr StampLike kStamp{3, 250000000u};
+static_assert(rclcpp::Time(kStamp).nanoseconds() == 3250000000LL,
+              "rclcpp::Time from a stamp keeps its seconds and nanoseconds");
+static_assert(rclcpp::Time(kStamp).get_clock_type() == RCL_ROS_TIME,
+              "rclcpp::Time from a stamp is on the ROS clock, as upstream's is");
+static_assert(rclcpp::Time(kStamp, RCL_STEADY_TIME).get_clock_type() == RCL_STEADY_TIME,
+              "rclcpp::Time from a stamp takes a clock type");
 
 int g_failures = 0;
 
