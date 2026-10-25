@@ -45,7 +45,8 @@ pub enum Args {
 pub struct NetArgs {
     /// Board key.
     pub name: String,
-    /// Path to the nano-ros workspace root (auto-detected if omitted).
+    /// nano-ros SDK root holding the board catalog. Default: a checkout
+    /// enclosing cwd, then this `nros` binary's own SDK root.
     #[arg(long)]
     pub workspace: Option<PathBuf>,
     /// `c-network`: the `.network = { … }` body of a C `nros_app_config_t`
@@ -66,8 +67,9 @@ pub struct NetArgs {
 
 #[derive(Debug, ClapArgs)]
 pub struct ListArgs {
-    /// Path to the nano-ros workspace root (auto-detected by walking
-    /// upward from cwd if omitted)
+    /// nano-ros SDK root holding the board catalog. Default:
+    /// `$NROS_WORKSPACE_ROOT`, a checkout enclosing cwd, then this `nros`
+    /// binary's own SDK root (the installed track needs no flag).
     #[arg(long)]
     pub workspace: Option<PathBuf>,
 }
@@ -80,9 +82,9 @@ pub struct InfoArgs {
     /// (`packages/boards/nros-board-<family>/boards/<name>/`) — e.g.
     /// `fvp-aemv8r-smp` is `nros-board-zephyr/boards/fvp-aemv8r-smp/`.
     pub name: String,
-    /// Path to the nano-ros workspace root (auto-detected by walking
-    /// upward from cwd if omitted). May also be set via
-    /// `NROS_WORKSPACE_ROOT`.
+    /// nano-ros SDK root holding the board catalog. Default:
+    /// `$NROS_WORKSPACE_ROOT`, a checkout enclosing cwd, then this `nros`
+    /// binary's own SDK root.
     #[arg(long)]
     pub workspace: Option<PathBuf>,
 }
@@ -91,8 +93,8 @@ pub struct InfoArgs {
 pub struct CmakeVarsArgs {
     /// Board key, as `nano_ros_use_board(<key>)` spells it.
     pub name: String,
-    /// Path to the nano-ros workspace root (auto-detected by walking upward
-    /// from cwd if omitted).
+    /// nano-ros SDK root holding the board catalog. Default: a checkout
+    /// enclosing cwd, then this `nros` binary's own SDK root.
     #[arg(long)]
     pub workspace: Option<PathBuf>,
     /// Where to write the projection. Its directory also receives the
@@ -112,10 +114,7 @@ pub fn run(args: Args) -> Result<()> {
 }
 
 fn list(args: ListArgs) -> Result<()> {
-    let root = match args.workspace {
-        Some(p) => p,
-        None => find_workspace_root()?,
-    };
+    let root = catalog_root(args.workspace)?;
     let boards_dir = root.join("packages").join("boards");
     if !boards_dir.is_dir() {
         return Err(eyre!(
@@ -253,10 +252,7 @@ fn resolve(root: &Path, name: &str) -> Result<(BoardDescriptor, PathBuf)> {
 
 fn net(args: NetArgs) -> Result<()> {
     use nros_board_common::board_net::{ResolvedNet, resolve as resolve_net};
-    let root = match args.workspace {
-        Some(p) => p,
-        None => find_workspace_root()?,
-    };
+    let root = catalog_root(args.workspace)?;
     let (_board, dir) = resolve(&root, &args.name)?;
     let n = resolve_net(
         &dir.join("nros-board.toml"),
@@ -316,10 +312,7 @@ fn net(args: NetArgs) -> Result<()> {
 }
 
 fn info(args: InfoArgs) -> Result<()> {
-    let root = match args.workspace {
-        Some(p) => p,
-        None => find_workspace_root()?,
-    };
+    let root = catalog_root(args.workspace)?;
     let (board, board_dir) = resolve(&root, &args.name)?;
     // A module dir is needed to project, but `info` writes nothing — name the
     // path the build WOULD use rather than inventing a second spelling.
@@ -338,10 +331,7 @@ fn info(args: InfoArgs) -> Result<()> {
 }
 
 fn cmake_vars(args: CmakeVarsArgs) -> Result<()> {
-    let root = match args.workspace {
-        Some(p) => p,
-        None => find_workspace_root()?,
-    };
+    let root = catalog_root(args.workspace)?;
     let (board, board_dir) = resolve(&root, &args.name)?;
 
     let out_dir = args
@@ -368,9 +358,67 @@ fn cmake_vars(args: CmakeVarsArgs) -> Result<()> {
     Ok(())
 }
 
+/// The SDK root whose board catalog the read-only `nros board` verbs (and
+/// `nros setup board`) answer from — phase-517 W2.
+///
+/// `--workspace`, then `$NROS_WORKSPACE_ROOT`, then the SDK-root ladder every
+/// other verb asks ([`crate::orchestration::nano_ros_root`]): a checkout
+/// enclosing cwd, then this `nros` binary's own SDK root. The checkout walk-up
+/// used to be the ONLY rung, so on the installed track (no checkout anywhere)
+/// `nros board list` failed unless the user typed `--workspace "$(nros
+/// sdk-root)"` — the answer the binary already had.
+pub(crate) fn catalog_root(workspace: Option<PathBuf>) -> Result<PathBuf> {
+    let cwd = std::env::current_dir()?;
+    resolve_catalog_root(
+        workspace,
+        std::env::var_os("NROS_WORKSPACE_ROOT").map(PathBuf::from),
+        crate::orchestration::nano_ros_root::Rungs {
+            explicit: None,
+            workspace: Some(&cwd),
+            exe: nros_launcher::checkout::canonical_current_exe(),
+            built_in: Some(nros_launcher::checkout::built_in_dir().to_path_buf()),
+        },
+    )
+}
+
+/// [`catalog_root`] over its inputs, so the order is testable without
+/// touching cwd, the environment or `current_exe`.
+fn resolve_catalog_root(
+    workspace: Option<PathBuf>,
+    env: Option<PathBuf>,
+    rungs: crate::orchestration::nano_ros_root::Rungs<'_>,
+) -> Result<PathBuf> {
+    if let Some(p) = workspace {
+        return Ok(p);
+    }
+    if let Some(p) = env {
+        if !p.exists() {
+            return Err(eyre!(
+                "NROS_WORKSPACE_ROOT=`{}` does not exist on disk",
+                p.display()
+            ));
+        }
+        return Ok(p);
+    }
+    crate::orchestration::nano_ros_root::resolve_from(rungs).ok_or_else(|| {
+        eyre!(
+            "no nano-ros SDK root found, so there is no board catalog to read. Resolved \
+             in order: --workspace, $NROS_WORKSPACE_ROOT, a nano-ros checkout enclosing \
+             the current directory, then this `nros` binary's own SDK root (share/nano-ros \
+             beside a released `nros`, or the checkout an in-tree `nros` was built in). \
+             Pass --workspace <root> to name one."
+        )
+    })
+}
+
 /// Walk upward from cwd until a directory containing `packages/boards/`
 /// is found. The `NROS_WORKSPACE_ROOT` env var, when set, short-
 /// circuits the walk (matches `nros_build::pkg_index::detect_workspace_root`).
+///
+/// A CHECKOUT question, kept for the verbs that need one: `nros board new`
+/// writes into `packages/boards/`, and `nros doctor` runs the checkout's
+/// `just doctor`. A verb that only READS the board catalog asks
+/// [`catalog_root`], which also answers on the installed track.
 pub(crate) fn find_workspace_root() -> Result<PathBuf> {
     if let Some(override_) = std::env::var_os("NROS_WORKSPACE_ROOT") {
         let p = PathBuf::from(override_);
@@ -398,5 +446,106 @@ pub(crate) fn find_workspace_root() -> Result<PathBuf> {
                 ));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod catalog_root_tests {
+    use super::*;
+    use crate::orchestration::nano_ros_root::{Rungs, SHIPPED_SUBDIR};
+
+    /// A prefix laid out like an installed release: `<p>/bin/nros` beside
+    /// `<p>/share/nano-ros/<marker>`, with a board directory under it.
+    fn installed_prefix(dir: &Path) -> (PathBuf, PathBuf) {
+        let root = dir.join(SHIPPED_SUBDIR);
+        std::fs::create_dir_all(root.join("packages/core/nros-core")).unwrap();
+        std::fs::create_dir_all(root.join("packages/boards")).unwrap();
+        std::fs::write(
+            root.join(nros_launcher::checkout::MONOREPO_MARKER),
+            "[package]\nname = \"nros-core\"\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        let exe = dir.join("bin/nros");
+        std::fs::write(&exe, "").unwrap();
+        (exe, root)
+    }
+
+    /// phase-517 W2 — from a directory in NO checkout, the read-only board
+    /// verbs answer from the binary's own SDK root. The checkout walk-up was
+    /// the only rung, so `nros board list` failed on the installed track
+    /// unless the user passed `--workspace "$(nros sdk-root)"`.
+    #[test]
+    fn outside_every_checkout_the_installed_sdk_root_answers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (exe, root) = installed_prefix(&tmp.path().join("prefix"));
+        let project = tmp.path().join("users/project");
+        std::fs::create_dir_all(&project).unwrap();
+        // The old rung, asked from the same place, finds nothing: no ancestor
+        // holds `packages/boards/` (the negative control).
+        assert!(
+            project
+                .ancestors()
+                .all(|a| !a.join("packages").join("boards").is_dir()),
+            "the temp project must sit outside every checkout"
+        );
+        let got = resolve_catalog_root(
+            None,
+            None,
+            Rungs {
+                workspace: Some(&project),
+                exe: Some(exe),
+                ..Rungs::default()
+            },
+        )
+        .expect("the installed SDK root answers");
+        assert_eq!(got, root);
+    }
+
+    /// The explicit rungs still win, in order: `--workspace`, then
+    /// `$NROS_WORKSPACE_ROOT` (which must exist).
+    #[test]
+    fn explicit_rungs_win_over_the_ladder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (exe, _) = installed_prefix(&tmp.path().join("prefix"));
+        let rungs = || Rungs {
+            workspace: Some(tmp.path()),
+            exe: Some(exe.clone()),
+            ..Rungs::default()
+        };
+        let flag = tmp.path().join("flag");
+        assert_eq!(
+            resolve_catalog_root(Some(flag.clone()), Some(tmp.path().into()), rungs()).unwrap(),
+            flag
+        );
+        assert_eq!(
+            resolve_catalog_root(None, Some(tmp.path().into()), rungs()).unwrap(),
+            tmp.path()
+        );
+        let err = resolve_catalog_root(None, Some(tmp.path().join("gone")), rungs())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("does not exist"), "{err}");
+    }
+
+    /// No rung answers: the error names the ladder, not a bare "pass
+    /// --workspace".
+    #[test]
+    fn no_rung_names_the_ladder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = resolve_catalog_root(
+            None,
+            None,
+            Rungs {
+                workspace: Some(tmp.path()),
+                ..Rungs::default()
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("--workspace") && err.contains("own SDK root"),
+            "{err}"
+        );
     }
 }
