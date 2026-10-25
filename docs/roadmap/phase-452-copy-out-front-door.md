@@ -13,6 +13,11 @@ user copies is built by a lane: `check-template-copy-out` runs on
 1520 is resolved, 1511 is resolved by W6, and 1782 needs a Zephyr workspace to verify its fix
 (none is provisioned on the host that checked).
 
+The steps AROUND what a user copies (one `nros setup`, `nros build` for a
+board, the platform's own run and flash commands, and a probe per platform
+chapter) are [phase-517](phase-517-user-flow-setup-build-flash.md), opened
+2026-10-25 from a book-vs-CLI audit.
+
 **Status (2026-09-25). Opened to give five homeless issues one owner. W1, W2, W3
 and W4 have LANDED — four issues resolved (1058, 1107, 1108, 1116) and three of
 those four boxes turned out to have been closed by other work before anyone
