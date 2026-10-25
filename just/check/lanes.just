@@ -1950,6 +1950,25 @@ cpp: cpp-fmt
         -o "$gen/nros-cpp-tests"/selector_component \
         "$gen/nros-cpp-tests/selector_component_main.cpp" "$_ps" \
         "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
+    # issue 2053 -- `diagnostic_updater`'s task classes. A RUN: a
+    # `FrequencyStatus` ticked by a timer reports OK inside its band and WARN
+    # on either side of it, a `TimeStampStatus` judges a stale stamp, and
+    # `Updater::add(DiagnosticTask&)` runs the task on a publish. Negative
+    # controls, measured: the too-low branch made dead -> the under-band case
+    # fails; `add(DiagnosticTask&)` made a no-op -> the updater case fails.
+    _dt=packages/api/nros-cpp/tests/compile/diagnostic_tasks_runtime.cpp
+    test -f "$_dt" || { echo "ERROR: $_dt is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - diagnostic_updater's FrequencyStatus / TimeStampStatus / Heartbeat report upstream's levels (runtime, issue 2053)"
+    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests"/diagnostic_tasks_runtime "$_dt" \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/diagnostic_tasks_runtime
+    # issue 2054 -- upstream's `rmw_qos_profile_t` on the std surface: named,
+    # copied from a constant, edited field by field, turned into a `QoS` and
+    # read back. Every value claim is a static_assert, so compiling is the check.
+    _rq=packages/api/nros-cpp/tests/compile/rmw_qos_profile_type.cpp
+    test -f "$_rq" || { echo "ERROR: $_rq is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - rmw_qos_profile_t has upstream's fields and values, and converts to and from QoS (issue 2054)"
+    c++ "${_ps_flags[@]}" -fsyntax-only "$_rq"
     # issue 1456 — an `rclcpp`-shape component's IDENTITY. The shape constructs
     # its own node, so the launch-declared name and namespace reach it only
     # through the `NodeHandle` the entry hands it; before the fix they reached

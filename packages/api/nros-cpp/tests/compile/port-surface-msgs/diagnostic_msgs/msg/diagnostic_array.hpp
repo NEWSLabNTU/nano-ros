@@ -4,8 +4,8 @@
 // same namespace, member types and static metadata. Two things differ, both
 // on purpose. The capacities are smaller than the codegen defaults (64
 // elements, 256-byte strings), which would make a DiagnosticArray about 2 MiB;
-// and the FFI bodies are inline stubs, because the runtime check only counts
-// publishes and never reads the bytes. Fields `diagnostic_updater` does not
+// and the FFI bodies are inline stubs that put an empty body on the wire,
+// because the runtime checks only count publishes and never read the bytes. Fields `diagnostic_updater` does not
 // touch (the array's `header`) are left out.
 
 #ifndef NROS_PORT_SURFACE_DIAGNOSTIC_MSGS_MSG_DIAGNOSTIC_ARRAY_HPP
@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "rclcpp/detail/nros_cpp_ffi.h"
 #include "rclcpp/detail/serialization_format.hpp"
 #include "rclcpp/detail/std_detect.hpp"
 #include "rclcpp/fixed_sequence.hpp"
@@ -34,7 +35,12 @@ struct DiagnosticArray {
     static constexpr const char* TYPE_HASH = "RIHS01_stub_diagnostic_msgs_diagnostic_array";
     static constexpr size_t SERIALIZED_SIZE_MAX = 64;
 
-    static int ffi_publish(void*, const void*) { return 0; }
+    static int ffi_publish(void* handle, const void* m) {
+        uint8_t buf[4];
+        size_t len = 0;
+        if (ffi_serialize(m, buf, sizeof(buf), &len) != 0) return -1;
+        return nros_cpp_publish_raw(handle, buf, len);
+    }
     static int ffi_serialize(const void*, uint8_t* buf, size_t cap, size_t* out_len) {
         // An empty CDR body: the encapsulation header only.
         if (cap < 4) return -1;

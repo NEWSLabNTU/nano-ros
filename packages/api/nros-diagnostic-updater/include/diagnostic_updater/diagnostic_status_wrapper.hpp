@@ -65,17 +65,30 @@ public:
         this->message = "";
     }
 
+    /// Upstream's merge rule (issue 2053): the worse level wins; when BOTH
+    /// levels are above OK the messages are joined with "; ", and otherwise
+    /// the worse status's message replaces the other. So merging an OK status
+    /// changes nothing, which is why a composite of OK tasks carries an empty
+    /// message upstream and here. This concatenated unconditionally until
+    /// `CompositeDiagnosticTask` needed upstream's answer.
     void mergeSummary(uint8_t lvl, const std::string& msg) {
-        // Worst-of: keep the higher level; concatenate message.
+        if (lvl > OK && this->level > OK) {
+            std::string cur(this->message.c_str());
+            if (!cur.empty()) {
+                cur += "; ";
+            }
+            cur += msg;
+            this->message = cur.c_str();
+        } else if (lvl > this->level) {
+            this->message = msg.c_str();
+        }
         if (lvl > this->level) {
             this->level = lvl;
         }
-        std::string cur(this->message.c_str());
-        if (!cur.empty() && !msg.empty()) {
-            cur += "; ";
-        }
-        cur += msg;
-        this->message = cur.c_str();
+    }
+
+    void mergeSummary(const DiagnosticStatusWrapper& src) {
+        mergeSummary(src.level, std::string(src.message.c_str()));
     }
 
     // --- add(key, value) ----------------------------------------------------
