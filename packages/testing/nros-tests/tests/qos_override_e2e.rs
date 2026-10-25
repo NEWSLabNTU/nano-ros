@@ -302,7 +302,7 @@ fn every_parameter_service_is_visible_to_a_ros2_peer(zenohd_unique: ZenohRouter)
         missing.is_empty(),
         "{} of the {} parameter services never appeared in `ros2 service list` within {}s: \
          {missing:?}. They work and are invisible -- the liveliness pool \
-         (ZPICO_MAX_LIVELINESS) is short for this image (issue 1713).\nlisted:\n{listed}",
+         (NROS_ZENOH_MAX_LIVELINESS) is short for this image (issue 1713).\nlisted:\n{listed}",
         missing.len(),
         expected.len(),
         BUDGET.as_secs()

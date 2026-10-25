@@ -249,7 +249,7 @@ fn test_pubsub_loopback() {
 #[test]
 #[cfg_attr(
     not(zpico_multi_session),
-    ignore = "needs a shim built with ZPICO_MAX_SESSIONS>=2 — `just test-zpico-multisession` (issue 1704)"
+    ignore = "needs a shim built with NROS_ZENOH_MAX_SESSIONS>=2 — `just test-zpico-multisession` (issue 1704)"
 )]
 fn two_sessions_deliver_cross_session_through_router() {
     let _router = router();
@@ -272,7 +272,7 @@ fn two_sessions_deliver_cross_session_through_router() {
     let mut session_b = ZenohTransport::open(&config).unwrap_or_else(|e| {
         panic!(
             "second session refused ({e:?}) in a build compiled with \
-             ZPICO_MAX_SESSIONS={} — the pool should hold two",
+             NROS_ZENOH_MAX_SESSIONS={} — the pool should hold two",
             nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS
         )
     });
@@ -361,7 +361,7 @@ fn two_sessions_deliver_cross_session_through_router() {
 #[test]
 #[cfg_attr(
     not(zpico_multi_session),
-    ignore = "needs a shim built with ZPICO_MAX_SESSIONS>=2 — `just test-zpico-multisession` (issue 1704)"
+    ignore = "needs a shim built with NROS_ZENOH_MAX_SESSIONS>=2 — `just test-zpico-multisession` (issue 1704)"
 )]
 fn two_sessions_arrival_wakes_only_its_own_session() {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -388,7 +388,7 @@ fn two_sessions_arrival_wakes_only_its_own_session() {
     let mut session_b = ZenohTransport::open(&config).unwrap_or_else(|e| {
         panic!(
             "second session refused ({e:?}) in a build compiled with \
-             ZPICO_MAX_SESSIONS={} — the pool should hold two",
+             NROS_ZENOH_MAX_SESSIONS={} — the pool should hold two",
             nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS
         )
     });

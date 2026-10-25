@@ -39,6 +39,15 @@ script now refuses:
 Every form is also refused inside a Rust raw string or a Python string that
 holds TOML, through the inline `env = { .. }` rule, which is file-kind blind.
 
+  Messages (issue 2042) — a retired name inside a Rust string literal that is
+           PROSE (holds whitespace): "Raise ZPICO_X to keep more", "ZPICO_X={}
+           exhausted", a generated doc line "(set via ZPICO_X, default 8)".
+           Following such advice turns a warning into a build refusal, and
+           the text is what a person reads. Found by a small string lexer,
+           because these messages run across `\`-continued lines. Not a
+           literal that names the C macro as CODE (`const ZPICO_X`,
+           `#define ZPICO_X`, `-DZPICO_X`, `ZPICO_X: usize`).
+
 Exempt: the registry and its generated tables (the error table), its
 generator, this gate, history (phase docs, archived issues, the changelog),
 the book's retired-names page, vendored trees — any LINE that says the
@@ -226,6 +235,81 @@ def scan(text: str, kind: str, rules) -> list[tuple[int, str]]:
     return hits
 
 
+
+def rust_string_literals(text: str):
+    """(start offset, content) of every string literal in Rust source `text`.
+
+    A small lexer, not a regex: a message is routinely split across lines with
+    a trailing `\\`, and a line-local rule cannot tell its continuation lines
+    from code. Comments are skipped; raw strings (`r"..."`, `r#"..."#`) and
+    byte strings are literals too. A `'"'` char literal is not a string.
+    """
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if text.startswith("//", i):
+            j = text.find("\n", i)
+            i = n if j < 0 else j
+            continue
+        if text.startswith("/*", i):
+            j = text.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            continue
+        if c == "'":
+            # A char literal ('"', '\\'') or a lifetime ('a): skip both.
+            m = re.match(r"'(?:\\.|[^\\'])'", text[i:i + 4])
+            i += len(m.group(0)) if m else 1
+            continue
+        m = re.match(r'b?r(#*)"', text[i:i + 12]) if c in "br" else None
+        if m and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+            close = '"' + m.group(1)
+            start = i + len(m.group(0))
+            j = text.find(close, start)
+            j = n if j < 0 else j
+            yield start, text[start:j]
+            i = j + len(close)
+            continue
+        if c == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            yield i + 1, text[i + 1:j]
+            i = j + 1
+            continue
+        i += 1
+
+
+# A retired name inside a literal that is generated CODE, not a message to a
+# person: a constant or macro definition, a `-D` flag, an index.
+_CODE_BEFORE = re.compile(r"(?:\bconst\s+|#\s*(?:define|ifndef|ifdef|if)\s+|defined\(|-D|\[\s*)$")
+# ...or as a typed item (`ZPICO_X: usize`), the shape a test asserts on.
+_CODE_AFTER = re.compile(r"^\s*:\s*[a-z]")
+
+
+def scan_rust_prose(text: str, names) -> list[tuple[int, str]]:
+    """issue 2042 -- a retired name in a MESSAGE: a Rust string literal that is
+    prose (it holds whitespace) and names the spelling as something to set.
+    Following such advice turns a runtime warning into a build refusal. A
+    literal that IS the name (`.define("ZPICO_X", ..)`, a C macro table) or
+    names it as generated code is not a message, and a line that says the
+    spelling is retired is exempt as everywhere else."""
+    alt = "|".join(sorted(map(re.escape, names), key=len, reverse=True))
+    word = re.compile(rf"(?<![A-Za-z0-9_{{]){{0}}(?:{alt})(?![A-Za-z0-9_}}])".replace("{0}", ""))
+    hits = []
+    lines = text.splitlines()
+    for start, body in rust_string_literals(text):
+        if not re.search(r"\s", body):
+            continue
+        for m in word.finditer(body):
+            if _CODE_BEFORE.search(body[: m.start()]) or _CODE_AFTER.match(body[m.end():]):
+                continue
+            line_no = text.count("\n", 0, start + m.start()) + 1
+            raw = lines[line_no - 1] if line_no - 1 < len(lines) else ""
+            if "retired" in raw.lower():
+                continue
+            hits.append((line_no, raw))
+    return hits
+
 # (kind, text, should it be a finding)
 SELF_TESTS = [
     ("rust", 'let q = knob("ZPICO_X").resolve(8);', True),
@@ -276,6 +360,24 @@ SELF_TESTS = [
 ]
 
 
+# issue 2042 -- (text, should it be a finding) for `scan_rust_prose`.
+PROSE_TESTS = [
+    ('log_warn!(l, "ring holds {}. Raise ZPICO_X to keep more.", n);', True),
+    ('log_warn!(l, "qos: ring holds {}. Raise \\\n    ZPICO_X to keep more.", n);', True),
+    ('panic!("rejected: ZPICO_X={} exhausted", v)', True),
+    ('"/// Max publishers (set via ZPICO_X, default 8).\\n\\\n pub const ZPICO_X: usize = {};"', True),
+    ('"pub const ZPICO_X: usize = {};\\n"', False),
+    ('assert!(body.contains("ZPICO_X: usize = 1;"));', False),
+    ('build.define("ZPICO_X", Some("4"));', False),
+    ('let s = "-DZPICO_X=4 -DZPICO_SMOLTCP_Y=1";', False),
+    ('// Raise ZPICO_X to keep more.', False),
+    ('log_warn!(l, "Raise NROS_ZENOH_X to keep more.");', False),
+    ('log_warn!(l, "ZPICO_X is retired; set NROS_ZENOH_X");', False),
+    ('let c = \'"\'; log!("Raise ZPICO_X now");', True),
+    ('r#"Raise ZPICO_X to keep more"#', True),
+]
+
+
 def self_test() -> int:
     rules = compile_rules(["ZPICO_X", "ZPICO_SMOLTCP_Y"])
     bad = 0
@@ -284,6 +386,11 @@ def self_test() -> int:
         if got != want:
             bad += 1
             print(f"  self-test: {'missed' if want else 'false hit on'} ({kind}): {text!r}")
+    for text, want in PROSE_TESTS:
+        got = bool(scan_rust_prose(text, ["ZPICO_X", "ZPICO_SMOLTCP_Y"]))
+        if got != want:
+            bad += 1
+            print(f"  self-test: {'missed' if want else 'false hit on'} (rust prose): {text!r}")
     # The registry is the input, so its own parse is a case too.
     table = retired_names('[[knob]]\nid = "ZENOH_X"\nlegacy = ["ZPICO_X"]\n')
     if table != {"ZPICO_X": "NROS_ZENOH_X"}:
@@ -325,7 +432,11 @@ def main() -> int:
         scanned += 1
         if not word.search(text):
             continue
-        for i, line in scan(text, kind, rules):
+        hits = scan(text, kind, rules)
+        if kind == "rust":
+            seen = {i for i, _ in hits}
+            hits += [h for h in scan_rust_prose(text, names) if h[0] not in seen]
+        for i, line in sorted(set(hits)):
             old = word.search(line).group(0)
             findings.append(f"  {rel}:{i}: {line.strip()[:110]}\n      -> {old} is retired; use {names[old]}")
     if findings:
@@ -340,8 +451,9 @@ def main() -> int:
             "\nis exempt."
         )
         return 1
-    print(f"check-retired-knob-spellings: OK — {len(names)} retired spelling(s), no env reader"
-          f" or writer in {scanned} tracked file(s) (self-test: {len(SELF_TESTS)} cases)")
+    print(f"check-retired-knob-spellings: OK — {len(names)} retired spelling(s), no env reader,"
+          f" writer or message advising one in {scanned} tracked file(s)"
+          f" (self-test: {len(SELF_TESTS) + len(PROSE_TESTS)} cases)")
     return 0
 
 

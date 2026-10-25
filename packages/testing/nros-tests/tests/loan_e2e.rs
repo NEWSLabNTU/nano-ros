@@ -97,7 +97,7 @@ fn loan_commit_delivers_to_subscriber(zenohd_unique: ZenohRouter) {
     // runtime error could otherwise name. `just test-zpico-multisession` sets it.
     assert!(
         nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS >= 2,
-        "this build allows ZPICO_MAX_SESSIONS={} and the test opens two \
+        "this build allows NROS_ZENOH_MAX_SESSIONS={} and the test opens two \
          sessions (publisher + subscriber, in one process). Run \
          `just test-zpico-multisession`, which builds with the pool this needs.",
         nros_rmw_zenoh::zpico::ZPICO_MAX_SESSIONS

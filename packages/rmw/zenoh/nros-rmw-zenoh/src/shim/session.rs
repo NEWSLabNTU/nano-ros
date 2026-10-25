@@ -920,7 +920,7 @@ impl ZenohSession {
                         "liveliness: declare failed ({:?}) for a {}-byte keyexpr \
                          — this entity is created and WORKING but invisible to \
                          `ros2 node list` / `ros2 topic info`. If this is \
-                         `Full`, the image exceeded ZPICO_MAX_LIVELINESS: every \
+                         `Full`, the image exceeded NROS_ZENOH_MAX_LIVELINESS: every \
                          node takes one token and every publisher, subscriber, \
                          service server and client takes one more.",
                         e,
@@ -1012,7 +1012,7 @@ impl ZenohSession {
             self.graph_discovery_off = true;
             nros_log::log_info!(
                 nros_log::get_logger("nros_rmw_zenoh"),
-                "graph discovery is compiled out (ZPICO_GRAPH_DISCOVERY=0): no \
+                "graph discovery is compiled out (NROS_ZENOH_GRAPH_DISCOVERY=0): no \
                  liveliness subscriber and no graph cache. This image's own \
                  tokens are still declared; graph queries answer Unsupported and \
                  service clients call by key expression."
@@ -1199,7 +1199,7 @@ impl ZenohSession {
                     nros_log::get_logger("nros_rmw_zenoh"),
                     "liveliness: node name `{}` exceeds the {}-byte dedup key, \
                      so this node will be RE-DECLARED on every entity it \
-                     creates and will exhaust ZPICO_MAX_LIVELINESS.",
+                     creates and will exhaust NROS_ZENOH_MAX_LIVELINESS.",
                     node_name,
                     key.capacity()
                 );

@@ -337,7 +337,7 @@ pub(super) fn admit(
                          this image retains {} sample(s) per transient-local publisher \
                          and replays them on a late joiner's query. Granting {} and \
                          advertising it to the graph. Declare the publisher's depth, or \
-                         raise ZPICO_TL_RETAIN_DEPTH, to keep more.",
+                         raise NROS_ZENOH_TL_RETAIN_DEPTH, to keep more.",
                         name,
                         requested.depth,
                         capacity,
@@ -348,7 +348,7 @@ pub(super) fn admit(
                         nros_log::get_logger("nros_rmw_zenoh"),
                         "qos: {} '{}' asked for KEEP_LAST({}); this image's receive ring \
                          holds {}. Granting {} and advertising it to the graph. Raise \
-                         ZPICO_SUBSCRIBER_RING_DEPTH to keep more.",
+                         NROS_ZENOH_SUBSCRIBER_RING_DEPTH to keep more.",
                         kind.label(),
                         name,
                         requested.depth,

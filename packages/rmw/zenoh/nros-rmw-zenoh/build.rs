@@ -466,11 +466,11 @@ fn main() {
             "/// Subscriber buffer size (set via NROS_SUBSCRIBER_BUFFER_SIZE, default 1024).\n\
              pub const SUBSCRIBER_BUFFER_SIZE: usize = {sub_size};\n\
              /// phase-461 W1 - the one-release alias of `SERVICE_INBOX_BYTES` (set via\n\
-             /// ZPICO_SERVICE_BUFFER_SIZE; default is the largest declared service/action\n\
+             /// NROS_ZENOH_SERVICE_BUFFER_SIZE; default is the largest declared service/action\n\
              /// bound, floored at 1024 - phase-454 W6.a). `NROS_SERVICE_INBOX_BYTES` wins.\n\
              pub const SERVICE_BUFFER_SIZE: usize = {service_inbox_bytes};\n\
              /// phase-461 W1 - the user-service family's slot size (set via\n\
-             /// NROS_SERVICE_INBOX_BYTES; default is what ZPICO_SERVICE_BUFFER_SIZE resolved).\n\
+             /// NROS_SERVICE_INBOX_BYTES; default is what NROS_ZENOH_SERVICE_BUFFER_SIZE resolved).\n\
              pub const SERVICE_INBOX_BYTES: usize = {service_inbox_bytes};\n\
              /// phase-461 W1 - the user-service family's ring depth (set via\n\
              /// NROS_SERVICE_INBOX_DEPTH, default {SERVICE_INBOX_DEPTH_DEFAULT}).\n\
@@ -507,35 +507,35 @@ fn main() {
              /// Key expression buffer size (KEYEXPR_STRING_SIZE + 1 for null terminator).\n\
              pub const KEYEXPR_BUFFER_SIZE: usize = {keyexpr_buf_size};\n\
              /// Phase 124.D.3.c — per-subscriber SPSC ring depth (set via\n\
-             /// ZPICO_SUBSCRIBER_RING_DEPTH or the board's `subscriber_ring_depth` rung;\n\
+             /// NROS_ZENOH_SUBSCRIBER_RING_DEPTH or the board's `subscriber_ring_depth` rung;\n\
              /// default is the largest declared subscription depth, else 4 — phase-454 W6.a).\n\
              pub const SUBSCRIBER_RING_DEPTH: usize = {ring_depth};\n\
              /// Phase 231 (RFC-0038) — `large` size-class slot size\n\
-             /// (set via ZPICO_SUBSCRIBER_LARGE_SIZE, default 16384).\n\
+             /// (set via NROS_ZENOH_SUBSCRIBER_LARGE_SIZE, default 16384).\n\
              pub const SUBSCRIBER_LARGE_SIZE: usize = {large_size};\n\
              /// Phase 231 — rx_buffer_hint above this routes to the `large` class\n\
-             /// (set via ZPICO_SUBSCRIBER_SIZE_THRESHOLD, default 2048).\n\
+             /// (set via NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD, default 2048).\n\
              pub const SUBSCRIBER_SIZE_THRESHOLD: usize = {size_threshold};\n\
              /// Phase 231 — max concurrent `large`-class subscribers\n\
-             /// (set via ZPICO_MAX_LARGE_SUBSCRIBERS, default 2).\n\
+             /// (set via NROS_ZENOH_MAX_LARGE_SUBSCRIBERS, default 2).\n\
              pub const MAX_LARGE_SUBSCRIBERS: usize = {max_large};\n\
              /// Phase 268 — per-session per-node NN liveliness token cap, tracking\n\
              /// `nros-node`'s NROS_EXECUTOR_MAX_NODES (default 4): one session hosts\n\
              /// at most that many graph nodes.\n\
              pub const MAX_PER_NODE_LIVELINESS: usize = {max_nodes};\n\
              /// Issue 0813 — per-publisher TX arena capacity for the zero-copy\n\
-             /// loan path (set via ZPICO_PUBLISHER_TX_BUFFER_SIZE, default 1024).\n\
+             /// loan path (set via NROS_ZENOH_PUBLISHER_TX_BUFFER_SIZE, default 1024).\n\
              pub const PUBLISHER_TX_BUFFER_SIZE: usize = {publisher_tx_size};\n\
              /// phase-455 W5 — how many TRANSIENT_LOCAL publishers this image can\n\
-             /// serve at once (set via ZPICO_MAX_TL_PUBLISHERS; default is the\n\
+             /// serve at once (set via NROS_ZENOH_MAX_TL_PUBLISHERS; default is the\n\
              /// declared demand, else {TL_PUBLISHERS_DEFAULT}). Each costs one\n\
              /// retention slot here AND one slot in the C shim's queryable table.\n\
              pub const MAX_TL_PUBLISHERS: usize = {max_tl_publishers};\n\
              /// phase-455 W5 — bytes one retained TRANSIENT_LOCAL sample may hold\n\
-             /// (set via ZPICO_TL_RETAIN_BYTES, default {TL_RETAIN_BYTES_DEFAULT}).\n\
+             /// (set via NROS_ZENOH_TL_RETAIN_BYTES, default {TL_RETAIN_BYTES_DEFAULT}).\n\
              pub const TL_RETAIN_BYTES: usize = {tl_retain_bytes};\n\
              /// phase-455 W5 / issue 1709 — how many samples a TRANSIENT_LOCAL\n\
-             /// publisher retains (set via ZPICO_TL_RETAIN_DEPTH; default is the\n\
+             /// publisher retains (set via NROS_ZENOH_TL_RETAIN_DEPTH; default is the\n\
              /// deepest KEEP_LAST a transient-local publisher declares, else\n\
              /// {TL_RETAIN_DEPTH_DEFAULT}). `shim/qos.rs` grants min(asked, this) and\n\
              /// advertises the grant, so a deeper request is reported, not pocketed.\n\
@@ -565,7 +565,7 @@ fn declared_tl_retain_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
         Fact::Refused(reason) => {
             warn(&format!(
                 "{reason}. Each transient-local publisher retains \
-                 {TL_RETAIN_DEPTH_DEFAULT} sample (ZPICO_TL_RETAIN_DEPTH), and `shim/qos.rs` \
+                 {TL_RETAIN_DEPTH_DEFAULT} sample (NROS_ZENOH_TL_RETAIN_DEPTH), and `shim/qos.rs` \
                  grants and advertises that depth to anything that asks for more"
             ));
             None
@@ -835,7 +835,7 @@ fn declared_ring_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
                 warn(&format!(
                     "sizing descriptor refuses `depth` on subscription {}: {reason}. The \
                      per-subscriber ring keeps {SUBSCRIBER_RING_DEPTH_DEFAULT} \
-                     (ZPICO_SUBSCRIBER_RING_DEPTH), and `shim/qos.rs` reports the clamp for \
+                     (NROS_ZENOH_SUBSCRIBER_RING_DEPTH), and `shim/qos.rs` reports the clamp for \
                      anything that asks for more",
                     s.topic
                 ));
@@ -863,7 +863,7 @@ fn declared_ring_depth(desc: Option<&SizingDescriptor>) -> Option<usize> {
         warn(
             "sizing descriptor states KEEP_LAST(0) on a subscription; a zero-slot receive ring \
              cannot be indexed, so the per-subscriber ring keeps its default of \
-             ZPICO_SUBSCRIBER_RING_DEPTH",
+             NROS_ZENOH_SUBSCRIBER_RING_DEPTH",
         );
         return None;
     }
@@ -938,7 +938,7 @@ fn transient_local_retain_demand(desc: Option<&SizingDescriptor>) -> Option<usiz
         Fact::Absent => None,
         Fact::Refused(reason) => {
             warn(&format!(
-                "{reason}. The transient-local retention slot (ZPICO_TL_RETAIN_BYTES) keeps \
+                "{reason}. The transient-local retention slot (NROS_ZENOH_TL_RETAIN_BYTES) keeps \
                  its builtin of {TL_RETAIN_BYTES_DEFAULT} B"
             ));
             None
@@ -949,7 +949,7 @@ fn transient_local_retain_demand(desc: Option<&SizingDescriptor>) -> Option<usiz
 /// RFC-0100 D6's LOUD half for the retention pool's worst case (issue 1572).
 fn warn_tl_worst_case(reason: &str, bound: usize) {
     warn(&format!(
-        "{reason}. The transient-local retention pool (ZPICO_MAX_TL_PUBLISHERS) is \
+        "{reason}. The transient-local retention pool (NROS_ZENOH_MAX_TL_PUBLISHERS) is \
          sized for the WORST CASE of {bound} slot(s): every publisher that states no \
          durability is counted as transient-local. Stating it gives the slots back"
     ));
@@ -974,13 +974,13 @@ fn resolve_max_tl_publishers(demand: Option<usize>) -> usize {
                  A transient-local publisher retains its last sample and answers a \
                  late-joining subscriber's history query, so it costs one retention \
                  slot here AND one slot in the zenoh queryable table \
-                 (ZPICO_MAX_QUERYABLES) — an action server's \
+                 (NROS_ZENOH_MAX_QUERYABLES) — an action server's \
                  `<action>/_action/status` is one of these, and every action_server \
                  row counts one whether or not it states a durability.\n  \
-                 Raise ZPICO_MAX_TL_PUBLISHERS, or stop declaring the endpoint. \
+                 Raise NROS_ZENOH_MAX_TL_PUBLISHERS, or stop declaring the endpoint. \
                  It has no Kconfig symbol yet, so a Zephyr image sets the env \
                  var rather than a CONFIG_ line.\n  \
-                 Each slot costs ZPICO_TL_RETAIN_BYTES plus the keyexpr and \
+                 Each slot costs NROS_ZENOH_TL_RETAIN_BYTES plus the keyexpr and \
                  attachment it replies with."
             );
         }
