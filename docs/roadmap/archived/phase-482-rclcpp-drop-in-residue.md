@@ -1,6 +1,6 @@
 # Phase 482 — a ported ROS 2 C++ node builds and runs on every platform, with no compat layer
 
-**Status (2026-10-11). Done; archived.** W1–W7 are done; 209.G.4, the larger real-world port fixture, moved to [phase-488](../phase-488-larger-cpp-port-fixture.md) unattempted. Consolidates the open residue of four phases
+**Status (2026-10-11). Done; archived.** W1–W7 are done; 209.G.4, the larger real-world port fixture, moved to [phase-488](phase-488-larger-cpp-port-fixture.md) unattempted. Consolidates the open residue of four phases
 that each owned a slice of the same acceptance, and archives them:
 [phase-209](phase-209-cpp-port-friction-reduction.md) (C++ port
 friction), [phase-379](phase-379-api-parity-with-ros2-client-libraries.md)
@@ -226,7 +226,7 @@ Measured: `cargo nextest run -p nros-tests --test port_templates_e2e`, 9/9 pass
 built through the FreeRTOS cmake lane and the west lane.
 
 G.4, the larger real-world port fixture, was not attempted here. It moved to
-[phase-488](../phase-488-larger-cpp-port-fixture.md) on 2026-10-11 when this
+[phase-488](phase-488-larger-cpp-port-fixture.md) on 2026-10-11 when this
 phase was archived: W3's acceptance line holds without it.
 
 ### W4 — `rclcpp_lifecycle::LifecycleNode`
@@ -375,7 +375,7 @@ The RFC-0089 and RFC-0096 status lines were checked and both read "Stable".
 
 A ported rclcpp node, meaning the upstream tutorial publisher and subscriber
 plus the `topic-state-monitor` and the W3 port templates (the larger G.4
-fixture is [phase-488](../phase-488-larger-cpp-port-fixture.md)'s):
+fixture is [phase-488](phase-488-larger-cpp-port-fixture.md)'s):
 
 - builds against nano-ros on posix, Zephyr and FreeRTOS;
 - needs no edit to its class body, and needs exactly the `main` and

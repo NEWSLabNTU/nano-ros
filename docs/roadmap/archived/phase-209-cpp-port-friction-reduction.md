@@ -336,7 +336,7 @@ just a single fixture.
       next round of compat gaps (composition, multi-node, intra-process).
       Picked after **Phase 210** (codegen workspace) lands so the
       codegen glue is one line, not three.
-      **Moved to [phase-488](../phase-488-larger-cpp-port-fixture.md)**
+      **Moved to [phase-488](phase-488-larger-cpp-port-fixture.md)**
       (2026-10-11), via phase-482 W3, which did not attempt it.
 - [ ] **209.G.5 — Book-page refresh post-Phase 210.** Once 210 collapses
       the three codegen glue lines to `nros_workspace_interfaces()` /

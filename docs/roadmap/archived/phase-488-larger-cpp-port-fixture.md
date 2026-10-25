@@ -1,6 +1,6 @@
 # Phase 488 — real-world ROS 2 C++ nodes, ported, and the friction fixed
 
-**Status (2026-10-25). W1 done: three nodes picked from a survey of nine
+**Status (2026-10-25). Done; archived.** W1 done: three nodes picked from a survey of nine
 projects. W2 and W3 done for node 1 (`autoware_external_cmd_selector`): it
 builds with no source edit and runs against a stock ROS 2 peer, with its pool
 sizes still raised by hand (issue 2043). Node 3 (ros2/demos `composition`) done
@@ -11,18 +11,18 @@ parameters (a vector on-set callback refusing a remote set) and its
 `cmd_vel` -> `cmd_vel_smoothed` path, with 9 logged porter edits, each
 classified. W4 updated for all three nodes. Every logged edit is fixed with an
 in-tree test, stated in RFC-0096 D5, or an issue naming this phase (2043,
-2055, 2057). Zephyr and FreeRTOS were not attempted.** Rescoped 2026-10-24. The ported code is the
+2055, 2057). Zephyr and FreeRTOS were not attempted. The three issues stay open on their own. Rescoped 2026-10-24. The ported code is the
 user's work and is not committed here. What this phase lands is what the ports
 expose: nros-cpp, codegen and build fixes, issues, and porting-guide changes.
 The original W2 ("add it as a port template") and W3 (runtime cells for it)
 are replaced below.
 
 **Opened 2026-10-11.** Carries phase-209 G.4, which
-[phase-482](archived/phase-482-rclcpp-drop-in-residue.md) W3 inherited and did
+[phase-482](phase-482-rclcpp-drop-in-residue.md) W3 inherited and did
 not attempt. Phase-482 was archived without it, because its acceptance line
 ("every port template has a runtime cell on posix, Zephyr and FreeRTOS") holds
 for the three templates it has. Implements no new RFC decision: it measures
-[RFC-0096](../design/0096-cpp-freestanding-core-and-porting-layer.md) D5 (the
+[RFC-0096](../../design/0096-cpp-freestanding-core-and-porting-layer.md) D5 (the
 `main` and `CMakeLists.txt` edits a port is allowed) against a node bigger than
 the ones it was written from.
 
@@ -72,22 +72,22 @@ parity work around them:
 
 | issue | PR | what |
 | --- | --- | --- |
-| [1995](../issues/archived/1995-cpp-pointer-shaped-subscription-callbacks.md) | #2513 | pointer-shaped subscription callbacks (hosted) |
-| [1996](../issues/archived/1996-cpp-client-shared-future-shape.md) | #2524 | the client future's `get` / `wait_for` / `valid` |
-| [2009](../issues/archived/2009-cpp-client-sequence-correlation.md) | #2533 | replies matched to requests by sequence id, every client |
-| [2011](../issues/archived/2011-cpp-action-client-future-global-stash.md) | #2540 | C++ action futures keyed per goal |
-| [2014](../issues/archived/2014-polling-action-client-result-offset.md) | #2552 | the get_result payload offset, spelled once |
-| [2015](../issues/archived/2015-rclcpp-action-upstream-dropins.md) | #2561 | upstream `rclcpp_action` spellings as drop-ins |
-| [2023](../issues/archived/2023-cpp-rust-parameter-events.md) | #2575, #2581 | C++ and Rust publish `/parameter_events` |
-| [2027](../issues/archived/2027-action-goal-handle-api.md) | #2587 | handle-taking action calls, `ServerGoalHandle::execute` |
-| [2033](../issues/archived/2033-typed-client-helpers-drop-seq.md) | #2595 | the typed Rust client helpers carry the sequence id |
-| [2034](../issues/archived/2034-cpp-executor-cancel-reply-callback.md) | (2026-10-25) | the executor's spin takes C++ cancel replies |
-| [2037](../issues/archived/2037-cpp-client-future-and-request-id.md) | (2026-10-25) | `FutureAndRequestId`: `.future`, `.request_id`, `share()` |
-| [2024](../issues/archived/2024-parameter-event-handler.md) | (2026-10-25) | `rclcpp::ParameterEventHandler` (hosted) |
-| [2035](../issues/archived/2035-cpp-node-options-param-event-publisher-off.md) | (2026-10-25) | `start_parameter_event_publisher(false)` honoured |
-| [2036](../issues/archived/2036-cpp-subscription-message-info-callback.md) | (2026-10-25) | `rclcpp::MessageInfo` subscription callbacks (hosted) |
-| [2038](../issues/archived/2038-declarative-timer-autostart-and-info.md) | (2026-10-25) | declared Rust timers: call info + autostart |
-| [2039](../issues/archived/2039-c-api-matched-status-events-interop.md) | (2026-10-25) | interop cell: C matched + liveliness callbacks vs stock ROS 2 |
+| [1995](../../issues/archived/1995-cpp-pointer-shaped-subscription-callbacks.md) | #2513 | pointer-shaped subscription callbacks (hosted) |
+| [1996](../../issues/archived/1996-cpp-client-shared-future-shape.md) | #2524 | the client future's `get` / `wait_for` / `valid` |
+| [2009](../../issues/archived/2009-cpp-client-sequence-correlation.md) | #2533 | replies matched to requests by sequence id, every client |
+| [2011](../../issues/archived/2011-cpp-action-client-future-global-stash.md) | #2540 | C++ action futures keyed per goal |
+| [2014](../../issues/archived/2014-polling-action-client-result-offset.md) | #2552 | the get_result payload offset, spelled once |
+| [2015](../../issues/archived/2015-rclcpp-action-upstream-dropins.md) | #2561 | upstream `rclcpp_action` spellings as drop-ins |
+| [2023](../../issues/archived/2023-cpp-rust-parameter-events.md) | #2575, #2581 | C++ and Rust publish `/parameter_events` |
+| [2027](../../issues/archived/2027-action-goal-handle-api.md) | #2587 | handle-taking action calls, `ServerGoalHandle::execute` |
+| [2033](../../issues/archived/2033-typed-client-helpers-drop-seq.md) | #2595 | the typed Rust client helpers carry the sequence id |
+| [2034](../../issues/archived/2034-cpp-executor-cancel-reply-callback.md) | (2026-10-25) | the executor's spin takes C++ cancel replies |
+| [2037](../../issues/archived/2037-cpp-client-future-and-request-id.md) | (2026-10-25) | `FutureAndRequestId`: `.future`, `.request_id`, `share()` |
+| [2024](../../issues/archived/2024-parameter-event-handler.md) | (2026-10-25) | `rclcpp::ParameterEventHandler` (hosted) |
+| [2035](../../issues/archived/2035-cpp-node-options-param-event-publisher-off.md) | (2026-10-25) | `start_parameter_event_publisher(false)` honoured |
+| [2036](../../issues/archived/2036-cpp-subscription-message-info-callback.md) | (2026-10-25) | `rclcpp::MessageInfo` subscription callbacks (hosted) |
+| [2038](../../issues/archived/2038-declarative-timer-autostart-and-info.md) | (2026-10-25) | declared Rust timers: call info + autostart |
+| [2039](../../issues/archived/2039-c-api-matched-status-events-interop.md) | (2026-10-25) | interop cell: C matched + liveliness callbacks vs stock ROS 2 |
 
 #2612 (in the merge queue on this date) closes the two action-cancel issues,
 #2029 (cancel-all / cancel-before on the server) and #2030 (the C tier takes
@@ -115,7 +115,7 @@ after 2015. The other issues in the table moved no example's count.
 
 **Open issues the stock examples or the parity work still point at:**
 
-- [issue 2060](../issues/2060-subscription-events-unpolled-without-arrivals.md)
+- [issue 2060](../../issues/2060-subscription-events-unpolled-without-arrivals.md)
   (found by 2039's cell): a wake-attributed subscription's status events are
   not polled without an arrival, so its matched count never falls when the last
   publisher leaves.
