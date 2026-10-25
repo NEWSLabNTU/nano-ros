@@ -1,22 +1,22 @@
 # Phase 162 — Real-time verification of executor levels on a privileged host
 
-**Status (2026-10-25). W1-W3 met on a run that claims `rt-sched`; the CI
-lane is written and waits for its first run.** The `rt-sched` lane
+**Status (2026-10-25). Complete; archived.** The `rt-sched` lane
 capability, three tests in
 `packages/testing/nros-tests/tests/rt_sched_levels_e2e.rs` over three new
 `levels-cpp` images, and the book chapter are built. The capability comes
 from a container, not from `sudo`: the tests' default launcher runs each image
 in a throwaway `docker run --cap-add SYS_NICE --ulimit rtprio=99`, which needs
 only `docker` group membership, and host-tests' `rt-sched` job grants the same
-to its job container. All three pass that way (numbers under W1 and W2).
-Archive once the `rt-sched` job has run green.
+to its job container. All three pass both ways (numbers under W1 and W2). The
+two issues the build found are homed in
+[phase-516](../phase-516-low-severity-issues-with-no-home.md) W6 and W7.
 
-**Implements:** [RFC-0002](../design/0002-rt-execution-model.md) scenarios S1
-and S3, on [RFC-0108](../design/0108-executor-preemption-levels.md) levels.
+**Implements:** [RFC-0002](../../design/0002-rt-execution-model.md) scenarios S1
+and S3, on [RFC-0108](../../design/0108-executor-preemption-levels.md) levels.
 
-**Prior:** [phase-110](archived/phase-110-rt-execution-model.md) (runtime and
-API), [phase-509](archived/phase-509-executor-preemption-levels.md) (levels),
-[issue 2018](../issues/archived/2018-level-kernel-budget-enforcement.md)
+**Prior:** [phase-110](phase-110-rt-execution-model.md) (runtime and
+API), [phase-509](phase-509-executor-preemption-levels.md) (levels),
+[issue 2018](../../issues/archived/2018-level-kernel-budget-enforcement.md)
 (kernel budgets on levels).
 
 ---
@@ -35,7 +35,7 @@ against the tree on 2026-10-25:
 | 162.A.4: watchdog S3, multi-executor preemption | **Mostly met.** phase-509 feeds the watchdog only when every level is alive (RFC-0108 D8), and `realtime_tiers_e2e` reads preemption order off the console for the levels cells. On Linux, tier priority preemption is still advisory, because `SCHED_FIFO` needs the capability too. That half moves to W1. |
 | 162.A.5: Linux `SCHED_DEADLINE` budget enforcement | **Built** by issue 2018. `nros-board-linux`'s `a_level_past_its_deadline_budget_is_throttled_by_the_kernel` exists, but on an unprivileged host it checks only the fallback and prints that the throttle half did not run. W1. |
 | 162.B: NuttX `SCHED_SPORADIC` bench crate | **Done another way.** Issue 2018 put `SCHED_SPORADIC` on every budgeted NuttX level thread. `sched_dims_applied_e2e::nuttx_level_budget_overrun_is_throttled_by_the_kernel` passes under QEMU. |
-| 162.C: Cortex-M3 wake latency on silicon | **Moved** to [phase-512](phase-512-on-hardware-measurements.md) H4 on 2026-10-24. |
+| 162.C: Cortex-M3 wake latency on silicon | **Moved** to [phase-512](../phase-512-on-hardware-measurements.md) H4 on 2026-10-24. |
 | 162.D: PiCAS evaluation | **Dropped.** `OsPrioritySet` is gone from the tree, and levels are the dispatch model. |
 | 162.E: book chapter | **Kept** as W3. |
 
@@ -92,6 +92,11 @@ both pass. The budget run printed ``deadline budget set tier=`capped`
 throttle, which the executor's own enforcement cannot produce. With
 `rt-sched` unclaimed all three are `[SKIPPED:lane]`.
 
+On GitHub (host-tests run 40164384448, `ubuntu-22.04`, 4 vCPUs, the job
+container granted `SYS_NICE`, launcher `direct`): all three pass. The capped
+level's burns took 50.0-50.2 ms of wall time each, with 8.0-8.3 ms stretches
+off the CPU.
+
 ### W2 — S1 on levels: deadlines kept under load
 
 RFC-0002 S1 on Linux levels, `levels-cpp`'s `linux_s1` image: `attitude`, a
@@ -120,7 +125,8 @@ negative control missed 128-181 of 6,000-7,000 releases (about 2 %, worst gap
 5.4-7.4 ms, one telemetry burn), and S1 missed 0-5 of 59,000 (under 0.01 %,
 worst gap 1.4-3.4 ms). The first S1 assertion was `misses == 0`; it failed on
 5 of 6 runs, and the bare C loop is what showed the misses were the host's,
-not the levels'. Unprivileged, both images miss 16-33 a second, as expected
+not the levels'. On GitHub's 4-vCPU runner (the same run as W1) the control
+missed 88 of 7,000 and S1 1 of 59,000 (worst gap 2.1 ms). Unprivileged, both images miss 16-33 a second, as expected
 with no preemption.
 
 ### W3 — the RT execution model chapter
@@ -129,7 +135,7 @@ with no preemption.
 level, the scheduling classes, how levels give preemption, which kernel
 enforces a budget on each platform (issue 2018's table), and S1–S12 with each
 one's measured status. Linked from
-[phase-110](archived/phase-110-rt-execution-model.md)'s archive note.
+[phase-110](phase-110-rt-execution-model.md)'s archive note.
 
 **Done when** the chapter is in the rendered book, and each scenario row names
 the test that measured it, or says it is unmeasured. Done on 2026-10-25.
@@ -140,23 +146,26 @@ the test that measured it, or says it is unmeasured. Done on 2026-10-25.
       claims `rt-sched`, and skip by lane everywhere else.
 - [x] W2: S1 on levels, with the negative control: zero misses on a
       `PREEMPT_RT` kernel, the host's floor on a generic one.
-- [ ] The host-tests `rt-sched` job runs green on GitHub.
+- [x] The host-tests `rt-sched` job runs green on GitHub: run 40164384448,
+      2026-10-25, 4 vCPUs, all three passed (none skipped).
 - [x] W3: the chapter is published and phase-110's archive note points to it.
 
 ## Issues found here
 
 Both came out of the first runs of the new images and are outside this
-phase's scope. They are homed here so they have an owner.
+phase's scope. They were homed here while the phase was open, and moved to
+[phase-516](../phase-516-low-severity-issues-with-no-home.md) (W6, W7) when it
+was archived.
 
-- [Issue 2049](../issues/2049-cpp-levels-runner-info-lines-logged-as-errors.md):
+- [Issue 2049](../../issues/2049-cpp-levels-runner-info-lines-logged-as-errors.md):
   the C++ runners log three status lines at ERROR, so the boot report counts
   every multi-level boot as an error.
-- [Issue 2050](../issues/2050-spin-quantization-warning-names-a-spawned-level-timer.md):
+- [Issue 2050](../../issues/2050-spin-quantization-warning-names-a-spawned-level-timer.md):
   the spin-quantization audit warns that `attitude`'s 1 ms timer runs in 10 ms
   bursts. W2's run under `SCHED_FIFO` showed the warning is the wrong half.
 
 ## Not in this phase
 
-- Silicon measurements: [phase-512](phase-512-on-hardware-measurements.md).
+- Silicon measurements: [phase-512](../phase-512-on-hardware-measurements.md).
 - WCET numbers from a real run for phase-357's derivations: #259, homed in
   phase-460.

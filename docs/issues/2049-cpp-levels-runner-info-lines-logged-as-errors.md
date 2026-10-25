@@ -6,7 +6,7 @@ type: bug
 area: [api, logging]
 severity: low
 found: 2026-10-25
-related: [1036, 2018, phase-162]
+related: [1036, 2018, phase-162, phase-516]
 ---
 
 ## What

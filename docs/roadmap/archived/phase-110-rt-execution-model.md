@@ -7,7 +7,7 @@ Remaining acceptance items require either bare-metal Cortex-M3
 hardware (P99 wake-latency on real silicon) or a privileged-
 scheduling harness (CAP_SYS_NICE / RT kernel / NuttX
 SCHED_SPORADIC). Split out to
-[Phase 162](../phase-162-rt-scheduling-harness.md), which documents
+[Phase 162](phase-162-rt-scheduling-harness.md), which documents
 harness setup plus the test plan that closes the remaining v1 /
 post-v1 acceptance criteria.
 

@@ -71,6 +71,27 @@ not work this until it is revived.
 **Done when** both methods read the port's heap, the way mps2-an385 does, or
 the issue is closed `wontfix` because ESP32 was retired.
 
+### W6 — C++ runner status lines logged at ERROR ([issue 2049](../issues/2049-cpp-levels-runner-info-lines-logged-as-errors.md))
+
+Filed by phase-162, which was archived on 2026-10-25 with it open. The C++
+tier and level runners print "multi-tier run", "multi-level run" and "level
+budget ... enforced by" through `cpp_diag!`, which is `log_error!`, so the
+boot report counts every multi-level boot as an error.
+
+**Done when** those lines log at INFO and a `levels-cpp` `linux_s1` boot
+reports no error.
+
+### W7 — the spin-quantization warning on a spawned level's timer ([issue 2050](../issues/2050-spin-quantization-warning-names-a-spawned-level-timer.md))
+
+Also filed by phase-162. The audit warns that `attitude`'s 1 ms timer runs in
+10 ms bursts against a spin period that is neither level's. phase-162's run
+under `SCHED_FIFO` showed the timer keeps 1 kHz, so the warning is the wrong
+half.
+
+**Done when** the issue's own condition holds: the audit judges each timer
+against its level's spin period, and a `linux_s1` boot prints no warning for
+`attitude`.
+
 ## Issues homed here
 
 | Issue | Item | Severity |
@@ -80,6 +101,8 @@ the issue is closed `wontfix` because ESP32 was retired.
 | [1205](../issues/1205-doc-commit-citations-local-fetch-state.md) | W3 | unrated |
 | [1808](../issues/1808-sizing-knobs-with-no-static-derivation.md) | W4 | low |
 | [1823](../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | W5 | low |
+| [2049](../issues/2049-cpp-levels-runner-info-lines-logged-as-errors.md) | W6 | low |
+| [2050](../issues/2050-spin-quantization-warning-names-a-spawned-level-timer.md) | W7 | low |
 
 ## Acceptance
 

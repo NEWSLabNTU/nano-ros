@@ -113,7 +113,7 @@ as covered.
 ### The obstacle is SMP, not privilege
 
 [phase-356](../roadmap/phase-356-test-evidence-and-measurement-trust.md) W3
-recorded this item as blocked on [phase-162](../roadmap/phase-162-rt-scheduling-harness.md)
+recorded this item as blocked on [phase-162](../../roadmap/archived/phase-162-rt-scheduling-harness.md)
 because "accepting these dims needs capabilities a normal test host does not
 have". That is not what this issue says, and it is not true of what remains:
 
