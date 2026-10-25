@@ -132,4 +132,5 @@ NROS_ZENOH_READ_PRIORITY | not-a-size | | a task priority
 NROS_MULTIGOAL_GOALS | test-only | | `action-client-multigoal` test binary
 NROS_MULTIGOAL_SOAK_MS | test-only | | `action-client-multigoal` test binary
 ROSOUT_PROBE_PERIOD_MS | test-only | | `rosout-talker` test binary
+NROS_RT_SCHED_CPU | test-only | | `rt_sched_levels_e2e`: the CPU its pinned runs use (default 0)
 ROSOUT_PROBE_RECORDS | test-only | | `rosout-talker` test binary

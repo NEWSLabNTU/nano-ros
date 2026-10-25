@@ -186,9 +186,87 @@ pub fn throttle_verdict(ticks: &[LoadTick], budget_us: u64, period_us: u64) -> R
     Ok(())
 }
 
+/// How many times the one-level negative control's miss RATE the S1 run may
+/// reach on a kernel without `PREEMPT_RT`. Measured on a generic 6.8 kernel:
+/// the control misses 128-181 of 7,000 releases (~2 %) and S1 0-5 of 59,000
+/// (<0.01 %), so S1 fails only past ~20x what it measured, and a level that
+/// let telemetry run in front of the critical loop (the control's rate) fails
+/// by 50x.
+pub const S1_GENERIC_KERNEL_RATE_DIVISOR: u64 = 50;
+
+/// Whether the running kernel is `PREEMPT_RT` (`/sys/kernel/realtime` is `1`).
+pub fn kernel_is_preempt_rt() -> bool {
+    std::fs::read_to_string("/sys/kernel/realtime").is_ok_and(|s| s.trim() == "1")
+}
+
+/// phase-162 W2 -- RFC-0002 S1's verdict on the two-level `run` against the
+/// one-level `control`.
+///
+/// On a `PREEMPT_RT` kernel the critical loop on its own level misses no
+/// deadline. A generic kernel cannot promise that to ANY program: a bare C
+/// loop at the same priority, on the same CPU, with nothing else of ours
+/// running, missed 2 of 60,000 releases on the host this was written on. So
+/// there the claim is the part the levels own: telemetry no longer runs in
+/// front of the critical loop, which shows as a miss rate at least
+/// [`S1_GENERIC_KERNEL_RATE_DIVISOR`] times below the control's.
+pub fn s1_verdict(
+    run: &AttitudeRun,
+    control: &AttitudeRun,
+    preempt_rt: bool,
+) -> Result<(), String> {
+    if preempt_rt {
+        return if run.misses == 0 {
+            Ok(())
+        } else {
+            Err(format!(
+                "on a PREEMPT_RT kernel the critical loop missed {} deadlines on its own \
+                 level ({run:?})",
+                run.misses
+            ))
+        };
+    }
+    if control.ticks == 0 || control.misses == 0 {
+        return Err(format!("the negative control saw no miss ({control:?})"));
+    }
+    // run.misses / run.ticks * divisor <= control.misses / control.ticks
+    if run.misses * control.ticks * S1_GENERIC_KERNEL_RATE_DIVISOR <= control.misses * run.ticks {
+        Ok(())
+    } else {
+        Err(format!(
+            "on a generic kernel the critical loop's miss rate ({}/{}) is not {}x below \
+             the one-level control's ({}/{}): telemetry still runs in front of it",
+            run.misses, run.ticks, S1_GENERIC_KERNEL_RATE_DIVISOR, control.misses, control.ticks
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn att(ticks: u64, misses: u64) -> AttitudeRun {
+        AttitudeRun {
+            windows: ticks / 1000,
+            ticks,
+            misses,
+            worst_gap_us: 0,
+        }
+    }
+
+    #[test]
+    fn the_s1_verdict_is_zero_misses_on_preempt_rt_and_a_rate_bound_elsewhere() {
+        let control = att(7_000, 131);
+        assert!(s1_verdict(&att(59_000, 0), &control, true).is_ok());
+        assert!(s1_verdict(&att(59_000, 1), &control, true).is_err());
+        // Measured on a generic kernel: 0-5 of 59,000.
+        assert!(s1_verdict(&att(59_000, 5), &control, false).is_ok());
+        // 131/7000 / 50 * 59000 = 22.08: 22 passes, 23 does not.
+        assert!(s1_verdict(&att(59_000, 22), &control, false).is_ok());
+        assert!(s1_verdict(&att(59_000, 23), &control, false).is_err());
+        // Telemetry in front of the loop: the control's own rate.
+        assert!(s1_verdict(&att(59_000, 1_100), &control, false).is_err());
+        assert!(s1_verdict(&att(59_000, 0), &att(7_000, 0), false).is_err());
+    }
 
     #[test]
     fn the_level_order_verdict_reads_preemption_off_the_console() {

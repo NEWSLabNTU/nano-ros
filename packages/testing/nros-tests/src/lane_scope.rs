@@ -250,7 +250,7 @@ pub fn require_host_bridge_claimed() {
 pub fn require_rt_sched_claimed() {
     if !claims(Capability::RtScheduling) {
         crate::lane_skip!(
-            "NOT VERIFIED: needs real-time scheduling (CAP_SYS_NICE, root-granted); this lane \
+            "NOT VERIFIED: needs real-time scheduling (CAP_SYS_NICE: a container granted SYS_NICE, or setcap); this lane \
              does not claim it ({UNCLAIMED_ENV} contains `rt-sched`)"
         );
     }

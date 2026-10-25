@@ -91,7 +91,7 @@ it, or says that none has.
 
 | Scenario | Status |
 | --- | --- |
-| S1, drone flight controller: 1 kHz critical loop beside 5 ms telemetry | Linux, on levels: `rt_sched_levels_e2e::s1_critical_loop_meets_every_deadline_on_its_own_level` (60 s, zero misses, plus a one-level negative control). It runs only on a lane that claims `rt-sched`. |
+| S1, drone flight controller: 1 kHz critical loop beside 5 ms telemetry | Linux, on levels: `rt_sched_levels_e2e::s1_critical_loop_meets_every_deadline_on_its_own_level` (60 s, zero misses on a `PREEMPT_RT` kernel and the host's own floor on a generic one, plus a one-level negative control). It runs only on a lane that claims `rt-sched`. |
 | S2, sense, plan and act at 10 Hz on one thread | No dedicated test. |
 | S3, watchdog liveness | Levels feed the watchdog only when every level is alive (RFC-0108 D8). Measured on the S32K344 safety island in phase-509. |
 | S4, Autoware-style mixed rates on Linux | No dedicated test. |
@@ -113,19 +113,30 @@ Three tests need the kernel's real-time scheduling, and live in
 - a spawned level past its `SCHED_DEADLINE` budget, throttled by the kernel;
 - S1, above.
 
-No lane claims the `rt-sched` capability, so each is a `[SKIPPED:lane]`
-everywhere by default. To run them on a host you control, build the fixtures,
-grant the capability to the four `levels-cpp` binaries (it is bound to the
-file's contents, so again after every rebuild), and claim the capability:
+Only host-tests' `rt-sched` job claims the `rt-sched` capability, so
+everywhere else each is a `[SKIPPED:lane]`. None of them needs `sudo`. By
+default each image runs in a throwaway docker container granted `SYS_NICE`
+and an RT priority limit, so a member of the `docker` group can run them on
+any Linux host:
 
 ```sh
 NROS_FIXTURE_ID=workspace-cpp-native-levels-s1 scripts/build/workspace-fixtures-build.sh linux cpp
 # ... and -levels, -levels-s1-flat, -levels-budget
-cd examples/workspaces/levels-cpp/build/posix-zenoh-linux/cmake
-sudo setcap cap_sys_nice+ep linux_entry linux_s1_entry linux_s1_flat_entry linux_budget_entry
-cd -
 NROS_TEST_UNCLAIMED= cargo nextest run -p nros-tests --test rt_sched_levels_e2e
 ```
+
+The container's image is the host's own distribution and release, so the
+binary finds the C++ runtime it was linked against; `NROS_RT_SCHED_IMAGE`
+names another. `NROS_RT_SCHED_LAUNCHER=direct` runs the binaries as they are,
+for a process that already holds the capability: a CI job container started
+with `--cap-add SYS_NICE`, or fixtures given `setcap cap_sys_nice+ep` (bound
+to the file's contents, so again after every rebuild).
+`NROS_RT_SCHED_CPU` moves the pinned runs off CPU 0.
+
+S1 asserts zero misses only on a `PREEMPT_RT` kernel. A generic kernel misses
+the odd release for any program: a bare C loop at the same priority missed 2
+in 60 s. There the test asserts a miss rate at least 50 times below the
+one-level control's, which is what the levels change.
 
 A run that claims `rt-sched` on a host without the capability fails with
 `[UNMET PRECONDITION]` and names the binary to grant it to.
