@@ -222,7 +222,7 @@ locator = "tcp/127.0.0.1:9030"
 # image names one — a fragment is only applied when `conf` lists it.
 [image.zephyr]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 locator = "tcp/10.0.2.2:7430"
 
 [image.zephyr.knobs.zephyr]
@@ -238,7 +238,7 @@ heap_size = 262144
 # hand-written package kept alive to exercise it.
 [image.zephyr_robot1]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 launch = "multihost.launch.xml"
 args = { host = "robot1" }
 locator = "tcp/10.0.2.2:7469"

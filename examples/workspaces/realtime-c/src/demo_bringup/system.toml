@@ -116,7 +116,7 @@ board = "rv-virt-nuttx"
 
 [image.zephyr]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 # phase-477 W1 (issue 1288) — the west application is GENERATED, as in every
 # other C/C++ workspace since phase-470 W5.b3. `panic` is the one fact the
 # deleted `src/zephyr_entry/CMakeLists.txt` stated that no other declaration

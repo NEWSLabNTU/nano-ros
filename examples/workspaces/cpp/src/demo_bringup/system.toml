@@ -143,7 +143,7 @@ board = "threadx-linux"
 
 [image.zephyr]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 # phase-470 W5.b3 (issue 1288) — `entry = "zephyr_entry"` is GONE, and with it
 # the ambiguity it was added to resolve. That line existed because two images
 # shared one bringup and `west_application_dir` had to DERIVE which of two
@@ -165,7 +165,7 @@ conf = ["prj-zenoh.conf"]
 [image.zephyr_cyclonedds]
 board = "zephyr"
 rmw = "cyclonedds"
-conf = ["prj-cyclonedds.conf"]
+os_config = ["prj-cyclonedds.conf"]
 # phase-470 W5.b3 (issue 1288) — GENERATED, so no `entry =`. The two images
 # still get separate applications, for a better reason than a declaration: the
 # coordinate carries the RMW, so this one lands in

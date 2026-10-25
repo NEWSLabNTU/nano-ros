@@ -125,7 +125,7 @@ pub fn resolve_in(
 
     // The image's own fragments (F3: per-image, not per-board — rt-eval builds
     // one app on one board twice, differing only here).
-    for name in &image.conf {
+    for name in &image.os_fragments() {
         let path = resolve_fragment(bringup_dir, app_dir, &config_dir, name)?;
         if is_devicetree(&path) {
             out.extra_dtc_overlay_file.push(path);

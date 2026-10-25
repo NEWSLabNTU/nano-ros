@@ -61,7 +61,7 @@ rmw = "zenoh"
 # `nros build` refuses two bringups generating one id now.
 [image.zephyr_derived]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 locator = "tcp/127.0.0.1:7491"
 # Issue 1537 -- THE AXIS OF THIS IMAGE: a lowered transport band. On the
 # 15-priority native_sim image `NROS_ZENOH_READ_PRIORITY = 100` (Kconfig

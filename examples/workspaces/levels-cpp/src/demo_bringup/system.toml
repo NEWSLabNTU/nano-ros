@@ -130,7 +130,7 @@ launch = "budget.launch.xml"
 
 [image.zephyr]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 # phase-470 W5.b3 (issue 1288) — the west application is GENERATED, so no
 # `entry =`: a generated application is found by construction at
 # `build/<coord>/<image>_entry/`, which is the ambiguity `entry =` existed to

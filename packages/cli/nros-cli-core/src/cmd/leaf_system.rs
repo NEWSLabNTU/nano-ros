@@ -566,7 +566,7 @@ mod tests {
     fn image_env_is_written_as_an_unforced_env_table() {
         let td = leaf_dir(
             "[system]\nname = \"c\"\nrmw = \"zenoh\"\n\n\
-             [image.linux]\nboard = \"linux\"\ntransport = \"serial\"\n\
+             [image.linux]\nboard = \"linux\"\nlocator = \"serial/ttyUSB0\"\n\
              env = { NROS_LINK_IP = \"1\", Q = \"a\\\"b\" }\n\
              knobs = { log = { max_level = \"warn\" } }\n",
         );

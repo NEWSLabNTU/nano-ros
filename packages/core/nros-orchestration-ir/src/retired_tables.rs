@@ -67,14 +67,22 @@ pub const RETIRED_SYSTEM_TABLES: &[RetiredTable] = &[
 pub type RetiredImageKey = RetiredTable;
 
 /// Every retired image key. A reader refuses any of them.
-pub const RETIRED_IMAGE_KEYS: &[RetiredImageKey] = &[RetiredTable {
-    key: "net",
-    by: "RFC-0109 D4, phase-514",
-    replacement: "an image's address is a board fact: name a board network file in the \
+pub const RETIRED_IMAGE_KEYS: &[RetiredImageKey] = &[
+    RetiredTable {
+        key: "transport",
+        by: "RFC-0109 D6, phase-514",
+        replacement: "an image's link is its locator's scheme (`serial/…`, `tcp/…`, `udp/…`, \
+                      `custom://…`), derived, never stated beside it — drop the key",
+    },
+    RetiredTable {
+        key: "net",
+        by: "RFC-0109 D4, phase-514",
+        replacement: "an image's address is a board fact: name a board network file in the \
                   image's `os_config = [\"board-net.toml\"]` and move each \
                   `[<table>.net.<if>]` there as `[<if>]` (with `network`, `host` or \
                   `address`, `mac`), and any `[network.<name>]` it sits on beside it",
-}];
+    },
+];
 
 /// The refusal for key `key` of image table `at` (`image.a`,
 /// `image_defaults`), or `None` when it is not retired.

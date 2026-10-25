@@ -29,11 +29,26 @@ fn main() {
     // family driver `nros-board-nuttx`, which now receives the merged pair).
     println!("cargo:rerun-if-env-changed=NROS_LOCATOR");
     println!("cargo:rerun-if-env-changed=NROS_DOMAIN_ID");
-    // phase-484 W4b-2 (RFC-0103 D10) — the network defaults, ONCE and before
-    // any early return, because `src/config.rs` `include!`s what it writes:
-    // this crate's `[board.net]` (`network = "qemu"`, QEMU's own SLIRP network)
-    // over the platform default. Both arches share it.
-    nros_board_common::board_net::emit_for_crate(
+    // RFC-0109 D2 (phase-514 W4) — the network defaults, ONCE and before any
+    // early return, because `src/config.rs` `include!`s what it writes. NuttX
+    // owns this board's network (`[board.net] stack = "os"`), so the address
+    // is the KERNEL's: this package's `defconfig` for the target arch, the
+    // file the kernel is configured from (`NROS_NUTTX_DEFCONFIG`), never a
+    // second statement in `nros-board.toml`. arm and arm-smp state one plan.
+    let arch = if std::env::var("TARGET")
+        .unwrap_or_default()
+        .starts_with("riscv")
+    {
+        "riscv"
+    } else {
+        "arm"
+    };
+    let kernel_config = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("nuttx-config")
+        .join(arch)
+        .join("defconfig");
+    nros_board_common::board_net::emit_from_kconfig(
+        &kernel_config,
         nros_board_common::board_net::ResolvedNet::platform_default(),
     );
     // issue 0288 — skip the NuttX cross-compile when host tooling builds this

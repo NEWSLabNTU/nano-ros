@@ -61,8 +61,9 @@ pub extern "C" fn main(_argc: i32, _argv: *const *const core::ffi::c_char) -> i3
     // locator would fail `Transport(ConnectionFailed)`. Push the guest IP into
     // eth0 via the SAME shared helper the Rust path uses. IP/netmask/gateway are
     // baked per-entry via `option_env!` (channel mirrors `NROS_ENTRY_LOCATOR`);
-    // absent a bake, the board's SLIRP defaults (its `[board.net]`: `10.0.2.15/24`
-    // via `10.0.2.2`, RFC-0103 D10) apply so an un-overridden C entry still connects.
+    // absent a bake, the board's SLIRP defaults (its kernel defconfig's
+    // `10.0.2.15/24` via `10.0.2.2`, RFC-0109 D2) apply so an un-overridden C
+    // entry still connects.
     use nros_board_nuttx_qemu::{
         SLIRP_DEFAULT_GATEWAY, SLIRP_DEFAULT_IP, SLIRP_DEFAULT_PREFIX, configure_entry_eth0,
     };

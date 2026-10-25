@@ -3254,6 +3254,42 @@ impl BoardNet {
         }
     }
 
+    /// RFC-0109 D9 check 6 (phase-514 W4) — refuse a layer-1 file the image's
+    /// `os_config` names that this board's network owner does not read: a
+    /// board network file (`.toml`, D4) where the host OS or the RTOS owns the
+    /// network, or an RTOS fragment (`prj.conf`, a devicetree overlay) where
+    /// the host OS or the board package does. A board that states no `stack`
+    /// is not checked.
+    pub fn check_os_config(&self, files: &[String]) -> Result<(), String> {
+        let Some(owner) = self.stack_owner()? else {
+            return Ok(());
+        };
+        for f in files {
+            let board_file = f.ends_with(".toml");
+            let refusal = match (owner, board_file) {
+                (StackOwner::Board, true) | (StackOwner::Os, false) => continue,
+                (StackOwner::Host, true) => {
+                    "the host operating system owns this board's network (`[board.net] stack = \
+                     \"host\"`): configure the interface there, and state only the locator"
+                }
+                (StackOwner::Os, true) => {
+                    "this board's RTOS owns its network (`[board.net] stack = \"os\"`): state \
+                     the address in its own configuration (Kconfig / devicetree / defconfig), \
+                     named in `os_config` as such a file"
+                }
+                (StackOwner::Host | StackOwner::Board, false) => {
+                    "it is an RTOS configuration fragment, and nothing on this board reads one \
+                     (its network is the host's or the board package's; a board package reads \
+                     only its `.toml` network file)"
+                }
+            };
+            return Err(format!(
+                "os_config names `{f}`, which this board does not take: {refusal} (RFC-0109 D9)"
+            ));
+        }
+        Ok(())
+    }
+
     /// Whether the host operating system owns this board's network
     /// (`stack = "host"`), checked.
     pub fn host_stack(&self) -> Result<bool, String> {
@@ -3679,6 +3715,34 @@ mod board_capability_tests {
 
 #[cfg(test)]
 mod tests {
+    /// RFC-0109 D9 check 6 — a layer-1 file goes to the network's owner.
+    #[test]
+    fn os_config_files_must_match_the_boards_network_owner() {
+        let net = |stack: &str| BoardNet {
+            stack: Some(stack.into()),
+            ..BoardNet::default()
+        };
+        let files = |f: &[&str]| f.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        net("board")
+            .check_os_config(&files(&["board-net.toml"]))
+            .unwrap();
+        net("os")
+            .check_os_config(&files(&["prj-zenoh.conf", "app.overlay"]))
+            .unwrap();
+        for (stack, f, want) in [
+            ("os", "board-net.toml", "RTOS owns its network"),
+            ("host", "board-net.toml", "host operating system owns"),
+            ("board", "prj.conf", "RTOS configuration fragment"),
+            ("host", "prj.conf", "RTOS configuration fragment"),
+        ] {
+            let e = net(stack).check_os_config(&files(&[f])).unwrap_err();
+            assert!(e.contains(want) && e.contains(f) && e.contains("D9"), "{e}");
+        }
+        BoardNet::default()
+            .check_os_config(&files(&["anything.toml", "x.conf"]))
+            .unwrap();
+    }
+
     /// RFC-0109 D2 — `stack` names who owns the network: three values, and
     /// `host_stack` keeps answering only for the first.
     #[test]

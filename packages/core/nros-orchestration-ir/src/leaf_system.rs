@@ -115,21 +115,36 @@ pub const LEAF_SELECTION_DIR: &str = "build/nros/selection";
 /// rule. Lives here because the macro and the CLI must spell it the same.
 pub const IMAGE_ENV: &str = "NROS_IMAGE";
 
-/// The link kinds `[image.<id>] transport` may name (RFC-0098 D4). This is the
-/// one list: the `[knobs.transport]` tenant that once restated it in
-/// `nros-platform-config` was retired by issue 2006, since no build read it.
+/// The link kinds an image's session can ride, as its locator's scheme spells
+/// them (RFC-0109 D6: an image's link is DERIVED from its wiring, never stated
+/// beside it). This is the one list; `nros::main!` maps each onto a
+/// `nros_platform::LinkKind` variant.
 ///
-/// An unknown value is an
-/// ERROR here for RFC-0086 D2's own reason — a typo that silently selected
-/// nothing would leave every implication unapplied and the image would build
-/// with the wrong links on, which is exactly what
-/// `examples/mps2-an385-baremetal/rust/talker-xrce` did: it named the RMW
-/// (`transport = "xrce"`) where the link kind goes. (One reader DID read the
-/// key — the mps2 board's XRCE registration, comparing it with `"xrce"` — so
-/// the W6 rename silently unregistered that image's backend, issue 1601. The
-/// value now reaches boards as the typed `nros_platform::LinkKind`, which
-/// `nros::main!` maps from this list.)
-pub const TRANSPORT_KINDS: &[&str] = &["serial", "tcp", "udp"];
+/// The key it replaced, `[image.<id>] transport`, is refused by name
+/// (`crate::retired_tables`). It was a second home for a fact the locator
+/// already states — and the two once disagreed in the worst way, when
+/// `examples/mps2-an385-baremetal/rust/talker-xrce` named its RMW (`transport =
+/// "xrce"`) where the link goes and silently unregistered its backend (issue
+/// 1601).
+pub const TRANSPORT_KINDS: &[&str] = &["serial", "tcp", "udp", "custom"];
+
+/// The link kind `locator` rides — its scheme (`tcp/…`, `serial/…`,
+/// `custom://…`) when that is one of [`TRANSPORT_KINDS`], else `None` (a
+/// scheme no board link carries, which the board's own `links` refuse).
+#[must_use]
+pub fn link_kind_of_locator(locator: &str) -> Option<&'static str> {
+    let scheme = locator.split(['/', ':']).next()?;
+    TRANSPORT_KINDS.iter().copied().find(|k| *k == scheme)
+}
+
+/// Whether a link kind is a byte stream with no IP stack under it (`serial`,
+/// and the `custom` transport nano-ros frames over one, XRCE's UART link): an
+/// image on one builds without the IP link set (`ZPICO_NO_SMOLTCP`,
+/// `NROS_LINK_IP=0`) and with the board's serial driver.
+#[must_use]
+pub fn is_byte_stream_link(kind: Option<&str>) -> bool {
+    matches!(kind, Some("serial" | "custom"))
+}
 
 /// Deployment identity (RFC-0098 D5): what the image dials and what it is.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -303,9 +318,10 @@ pub struct LeafSystem {
     /// much as the `entities` declaration beside it, which is why it is read
     /// only where that declaration exists.
     pub features: Vec<String>,
-    /// `[image.<id>] conf` — the framework config fragments this image needs,
-    /// in merge order: `[image_defaults] conf` first, then the image's own,
-    /// CONCATENATED (the overlay `ImageBlock::with_base` gives a list).
+    /// The RTOS's own config fragments among [`Self::os_config`] (every file
+    /// but a board network file), in merge order: `[image_defaults]`'s first,
+    /// then the image's own, CONCATENATED (the overlay `ImageBlock::with_base`
+    /// gives a list).
     ///
     /// phase-481 W3. On Zephyr these are the Zephyr-native fragments an RMW
     /// needs (`prj-xrce.conf`'s `CONFIG_NET_TCP`, heap and POSIX sizing): the
@@ -314,6 +330,10 @@ pub struct LeafSystem {
     /// relative to the directory holding `system.toml`; this reader keeps them
     /// as written and leaves resolution to the caller, which knows the road.
     pub conf: Vec<String>,
+    /// `[image.<id>] os_config` (with its alias `conf`) over
+    /// `[image_defaults]`'s — every layer-1 file the image names (RFC-0109
+    /// D6), for the check that each suits its board's network owner.
+    pub os_config: Vec<String>,
 }
 
 impl LeafSystem {
@@ -711,17 +731,6 @@ fn image_system(
             None => u32_key(system, "domain_id", path)?,
         },
     };
-    let transport = pick("transport");
-    if let Some(t) = &transport
-        && !TRANSPORT_KINDS.contains(&t.as_str())
-    {
-        return Err(format!(
-            "{}: `[image.{id}] transport = \"{t}\"` is not a link kind — it is one of {} \
-             (RFC-0086 D2). The RMW is `rmw = \"…\"`, which is a different choice.",
-            path.display(),
-            TRANSPORT_KINDS.join(", ")
-        ));
-    }
     // The flat `ip` / `gateway` / `netmask` (RFC-0103 D10g) and the inline
     // `[image.<id>.net.*]` (RFC-0109 D4) are refused by name.
     crate::system_net::refuse_flat_image_net(image, &format!("image.{id}"))
@@ -734,8 +743,11 @@ fn image_system(
     // RFC-0109 D4 (phase-514) — the image's address and networks are the board
     // network files it names in `os_config`, beside this `system.toml`.
     let at = format!("image.{id}");
-    let os_config = crate::system_net::parse_os_config(image, &at)
-        .map_err(|e| format!("{}: {e}", path.display()))?;
+    // `[image_defaults]`'s files first, then the image's, CONCATENATED (the
+    // overlay `ImageBlock::with_base` gives a list); `conf` is read as the
+    // alias of `os_config` it became (RFC-0109 D6).
+    let mut os_config = os_config_list(defaults, path, "image_defaults")?;
+    os_config.extend(os_config_list(image, path, &at)?);
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     let files = crate::system_net::fold_board_net_files(dir, &os_config, &at)
         .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -746,6 +758,11 @@ fn image_system(
     // The image's own `locator`, else the project's `[system] locator`
     // (RFC-0109 D6: the default domain's endpoint when it has no RMW file).
     let locator = pick("locator").or_else(|| str_key(system, "locator"));
+    // RFC-0109 D6 — the link is the locator's, never a second key.
+    let transport = locator
+        .as_deref()
+        .and_then(link_kind_of_locator)
+        .map(str::to_string);
     let network = Network {
         domain_id,
         locator,
@@ -802,8 +819,11 @@ fn image_system(
     env.extend(env_table(image, path, id)?);
     let mut knobs = knobs_table(defaults, path, "image_defaults.knobs")?;
     knobs.extend(knobs_table(image, path, &format!("image.{id}.knobs"))?);
-    let mut conf = conf_list(defaults, path, "image_defaults")?;
-    conf.extend(conf_list(image, path, &format!("image.{id}"))?);
+    let conf = os_config
+        .iter()
+        .filter(|f| !f.ends_with(".toml"))
+        .cloned()
+        .collect();
 
     Ok(LeafSystem {
         origin,
@@ -816,17 +836,34 @@ fn image_system(
         knobs,
         features: features_key(system, path)?,
         conf,
+        os_config,
     })
 }
 
-/// `conf = ["<fragment>", …]` of one table — an array of strings, or absent.
-fn conf_list(block: Option<&toml::Table>, path: &Path, table: &str) -> Result<Vec<String>, String> {
-    let Some(v) = block.and_then(|b| b.get("conf")) else {
+/// `os_config = ["<file>", …]` of one table, with the `conf` it generalised
+/// read as its alias (RFC-0109 D6) — an array of strings, or absent. A table
+/// stating both is refused.
+fn os_config_list(
+    block: Option<&toml::Table>,
+    path: &Path,
+    table: &str,
+) -> Result<Vec<String>, String> {
+    if block.is_some_and(|b| b.contains_key("conf") && b.contains_key("os_config")) {
+        return Err(format!(
+            "{}: `[{table}]` states both `conf` and `os_config`; `conf` is the Zephyr-only \
+             spelling of `os_config` (RFC-0109 D6) — move its entries into `os_config`",
+            path.display()
+        ));
+    }
+    let Some((key, v)) = ["conf", "os_config"]
+        .iter()
+        .find_map(|k| block.and_then(|b| b.get(*k)).map(|v| (*k, v)))
+    else {
         return Ok(Vec::new());
     };
     let arr = v.as_array().ok_or_else(|| {
         format!(
-            "{}: `[{table}] conf` must be an ARRAY of fragment names, e.g. [\"prj-xrce.conf\"]",
+            "{}: `[{table}] {key}` must be an ARRAY of file names, e.g. [\"prj-xrce.conf\"]",
             path.display()
         )
     })?;
@@ -834,7 +871,7 @@ fn conf_list(block: Option<&toml::Table>, path: &Path, table: &str) -> Result<Ve
         .map(|item| {
             item.as_str().map(str::to_string).ok_or_else(|| {
                 format!(
-                    "{}: every `[{table}] conf` element must be a string; found {item}",
+                    "{}: every `[{table}] {key}` element must be a string; found {item}",
                     path.display()
                 )
             })
@@ -1506,6 +1543,29 @@ domain_id = 4
         );
     }
 
+    /// RFC-0109 D6 (phase-514 W4) — `conf` is read as the alias of
+    /// `os_config`, over `[image_defaults]`'s files; the RTOS fragments are
+    /// `conf`, the whole list `os_config`; a table stating both is refused.
+    #[test]
+    fn conf_is_an_alias_of_os_config() {
+        let t = "[system]\nname = \"t\"\n[image_defaults]\nconf = [\"prj-a.conf\"]\n\
+                 [image.a]\nboard = \"x\"\nos_config = [\"prj-b.conf\", \"net.toml\"]\n";
+        let d = leaf(&[
+            ("Cargo.toml", CARGO),
+            ("system.toml", t),
+            ("net.toml", BOARD_NET),
+        ]);
+        let l = read(d.path()).unwrap().unwrap();
+        assert_eq!(l.conf, ["prj-a.conf", "prj-b.conf"]);
+        assert_eq!(l.os_config, ["prj-a.conf", "prj-b.conf", "net.toml"]);
+        assert_eq!(l.network.net["eth0"].host, Some(50));
+        let both = "[system]\nname = \"t\"\n\
+                    [image.a]\nboard = \"x\"\nconf = [\"a.conf\"]\nos_config = [\"b.conf\"]\n";
+        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", both)]);
+        let e = read(d.path()).unwrap_err();
+        assert!(e.contains("both `conf` and `os_config`"), "{e}");
+    }
+
     /// phase-445 W6 — the APP rung. `[image.<id>] env` is what replaced the
     /// `[env]` block a leaf hand-wrote in its own `.cargo/config.toml`.
     #[test]
@@ -1597,26 +1657,40 @@ domain_id = 4
         assert!(e.contains("N = \"256\""), "{e}");
     }
 
-    /// RFC-0086 D2 — a transport that is not a link kind is an ERROR, not a
-    /// pass-through. `talker-xrce` named its RMW here for four phases.
+    /// RFC-0109 D6 (phase-514 W4) — the link is DERIVED from the locator's
+    /// scheme; the `transport` key that stated it beside the locator is
+    /// refused by name, whatever it holds (`talker-xrce` once named its RMW
+    /// there, issue 1601).
     #[test]
-    fn a_transport_that_is_not_a_link_kind_is_refused() {
-        let bad = SYSTEM.replace("[image.esp32]", "[image.esp32]\ntransport = \"xrce\"\n#");
-        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &bad)]);
-        let e = read(d.path()).unwrap_err();
-        assert!(e.contains("serial, tcp, udp"), "{e}");
+    fn the_link_is_the_locators_and_a_stated_transport_is_refused() {
+        for (loc, want) in [
+            ("tcp/10.0.2.2:7447", Some("tcp")),
+            ("udp/127.0.0.1:2018", Some("udp")),
+            ("serial/UART_0#baudrate=115200", Some("serial")),
+            ("custom://uart", Some("custom")),
+            ("can/can0", None),
+        ] {
+            assert_eq!(link_kind_of_locator(loc), want, "{loc}");
+            let t = SYSTEM.replace("tcp/10.0.2.2:9800", loc);
+            let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &t)]);
+            let l = read(d.path()).unwrap().unwrap();
+            assert_eq!(l.network.transport.as_deref(), want, "{loc}");
+        }
+        assert!(is_byte_stream_link(Some("serial")) && is_byte_stream_link(Some("custom")));
+        assert!(!is_byte_stream_link(Some("tcp")) && !is_byte_stream_link(None));
 
-        let good = bad.replace("transport = \"xrce\"", "transport = \"serial\"");
-        let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &good)]);
-        assert_eq!(
-            read(d.path())
-                .unwrap()
-                .unwrap()
-                .network
-                .transport
-                .as_deref(),
-            Some("serial")
-        );
+        for v in ["xrce", "serial"] {
+            let bad = SYSTEM.replace(
+                "[image.esp32]",
+                &format!("[image.esp32]\ntransport = \"{v}\""),
+            );
+            let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", &bad)]);
+            let e = read(d.path()).unwrap_err();
+            assert!(
+                e.contains("`[image.esp32] transport` is retired") && e.contains("scheme"),
+                "{e}"
+            );
+        }
     }
 
     #[test]

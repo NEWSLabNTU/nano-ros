@@ -1359,10 +1359,14 @@ def west_leaf_image(entry):
     _require_image(entry, system_toml, image)
     _require_image_rmw(entry, system_toml, image)
     doc = _load_toml(entry, system_toml)
-    conf = list((doc.get("image_defaults") or {}).get("conf") or [])
-    conf += list(((doc.get("image") or {}).get(image) or {}).get("conf") or [])
+    # RFC-0109 D6 — `os_config`, with `conf` read as its alias; a board
+    # network file (`.toml`) is not a west fragment.
+    conf = []
+    for table in ((doc.get("image_defaults") or {}), ((doc.get("image") or {}).get(image) or {})):
+        conf += list(table.get("conf") or []) + list(table.get("os_config") or [])
+    conf = [c for c in conf if not c.endswith(".toml")]
     for name in conf:
-        _require_file(entry, system_toml.parent / name, f"[image.{image}] conf fragment")
+        _require_file(entry, system_toml.parent / name, f"[image.{image}] os_config fragment")
     return image, conf
 
 

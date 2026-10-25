@@ -161,13 +161,27 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "is_default_run")]
     pub run: nros_orchestration_ir::system_net::ImageRun,
     /// RFC-0109 D4/D6 (phase-514 W2) — this image's layer-1 files, relative to
-    /// its `system.toml`. A `.toml` one is the board package's network file,
-    /// read into [`Self::net`] by
-    /// [`super::cargo_metadata_schema::SystemToml::fold_os_config`].
+    /// its `system.toml`, in order. A `.toml` one is the board package's
+    /// network file, read into [`Self::net`] by
+    /// [`super::cargo_metadata_schema::SystemToml::fold_os_config`]; any other
+    /// (a Zephyr `prj-*.conf`, a devicetree overlay) is the RTOS's own, handed
+    /// to its build ([`Self::os_fragments`]).
+    ///
+    /// Per-image, not per-board: `nano-ros-rt-eval` builds one app on one board
+    /// twice — with `prj-edf.conf` and without — and `autoware-safety-island`
+    /// carries `tracing.conf` / `tracing_stats.conf`, named by concern
+    /// (phase-383 F3).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub os_config: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub transport: Option<String>,
+    /// `[image.<id>] transport` — RETIRED (RFC-0109 D6, phase-514 W4): the
+    /// link is the locator's scheme ([`Self::link_kind`]). Refused by name.
+    #[serde(
+        default,
+        rename = "transport",
+        deserialize_with = "refuse_retired_transport",
+        skip_serializing
+    )]
+    pub retired_transport: super::cargo_metadata_schema::RetiredTable,
 
     /// Serialization format for this image, by PROVIDER NAME (phase-421 W4,
     /// RFC-0088 D6). Absent ⇒ the system header's `serdes`, then `cdr`.
@@ -194,12 +208,11 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variant: Option<String>,
 
-    /// Extra framework config fragments for THIS image, in order.
-    ///
-    /// Per-image, not per-board: `nano-ros-rt-eval` builds one app on one board
-    /// twice — with `prj-edf.conf` and without — and `autoware-safety-island`
-    /// carries `tracing.conf` / `tracing_stats.conf`, named by concern
-    /// (phase-383 F3).
+    /// `conf` — the Zephyr-only spelling [`Self::os_config`] generalised
+    /// (RFC-0109 D6), read as an alias of it: its entries come first. A table
+    /// stating both is refused
+    /// ([`super::cargo_metadata_schema::SystemToml::fold_os_config`]); read it
+    /// through [`Self::os_config_files`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conf: Vec<String>,
 
@@ -341,6 +354,15 @@ fn refuse_retired_net<'de, D: serde::Deserializer<'de>>(
     ))
 }
 
+fn refuse_retired_transport<'de, D: serde::Deserializer<'de>>(
+    _: D,
+) -> Result<super::cargo_metadata_schema::RetiredTable, D::Error> {
+    Err(serde::de::Error::custom(
+        nros_orchestration_ir::retired_tables::retired_image_key_message("image.<id>", "transport")
+            .unwrap_or_default(),
+    ))
+}
+
 fn is_default_run(r: &nros_orchestration_ir::system_net::ImageRun) -> bool {
     *r == nros_orchestration_ir::system_net::ImageRun::default()
 }
@@ -362,6 +384,36 @@ fn refuse_flat_netmask<'de, D: serde::Deserializer<'de>>(
 }
 
 impl ImageBlock {
+    /// The link this image's session rides — its `locator`'s scheme
+    /// (RFC-0109 D6), `None` when it states no locator or one no board link
+    /// carries. Read from the image (over `[image_defaults]`) alone: a
+    /// project-wide `[system] locator` is a default router, which is an IP
+    /// link in every tracked workspace, and an image on a byte-stream link
+    /// names its own device.
+    #[must_use]
+    pub fn link_kind(&self) -> Option<&'static str> {
+        self.locator
+            .as_deref()
+            .and_then(nros_orchestration_ir::leaf_system::link_kind_of_locator)
+    }
+
+    /// Every layer-1 file this table names: the `conf` alias's, then
+    /// `os_config`'s (RFC-0109 D6).
+    #[must_use]
+    pub fn os_config_files(&self) -> Vec<String> {
+        self.conf.iter().chain(&self.os_config).cloned().collect()
+    }
+
+    /// The RTOS's own fragments among [`Self::os_config_files`] — every file
+    /// but a board network file (`.toml`) — in order.
+    #[must_use]
+    pub fn os_fragments(&self) -> Vec<String> {
+        self.os_config_files()
+            .into_iter()
+            .filter(|f| !f.ends_with(".toml"))
+            .collect()
+    }
+
     /// Overlay `self` (an `[image.<id>]`) onto `base` (the `[image]` table),
     /// per-field, with the specific block winning.
     ///
@@ -393,28 +445,24 @@ impl ImageBlock {
             retired_gateway: Default::default(),
             retired_netmask: Default::default(),
             retired_net: Default::default(),
-            // Resolved from `os_config`'s files, so they follow it: the image's
-            // own when it names files, else the base's.
-            net: if self.os_config.is_empty() {
-                base.net.clone()
-            } else {
-                self.net.clone()
-            },
-            networks: if self.os_config.is_empty() {
-                base.networks.clone()
-            } else {
-                self.networks.clone()
-            },
+            // Resolved from the base's and the image's files together
+            // (`SystemToml::fold_os_config`), so the image's already hold both.
+            net: self.net.clone(),
+            networks: self.networks.clone(),
             run: nros_orchestration_ir::system_net::ImageRun {
                 nic: self.run.nic.clone().or_else(|| base.run.nic.clone()),
             },
-            // A list the image states replaces the base's whole, like a scalar.
-            os_config: if self.os_config.is_empty() {
-                base.os_config.clone()
-            } else {
-                self.os_config.clone()
-            },
-            transport: pick(&self.transport, &base.transport),
+            // Layer-1 files CONCATENATE base-then-specific: fragments are
+            // ordered and later ones override earlier, which is exactly
+            // Zephyr's CONF_FILE semantics, and a board network file in both
+            // owns its interfaces once (one stated twice is refused).
+            os_config: base
+                .os_config
+                .iter()
+                .chain(self.os_config.iter())
+                .cloned()
+                .collect(),
+            retired_transport: Default::default(),
             serdes: pick(&self.serdes, &base.serdes),
             ros_edition: pick(&self.ros_edition, &base.ros_edition),
             profile: pick(&self.profile, &base.profile),
@@ -782,61 +830,6 @@ mod before_boot_tests {
         ] {
             let e = validate_before_boot(Some(bad)).unwrap_err();
             assert!(e.contains("<package>::<fn>"), "{bad}: {e}");
-        }
-    }
-}
-
-/// Validate an image's `transport` against the link kinds
-/// (`nros_orchestration_ir::leaf_system::TRANSPORT_KINDS`).
-///
-/// phase-445 W6. The leaf road already refuses an unknown value — that reader
-/// is `leaf_system`, the one RFC-0098 D5 names — and this is the WORKSPACE
-/// road's half of it. Two readers of one file with one of them validating is
-/// how `examples/mps2-an385-baremetal/rust/talker-xrce` carried
-/// `transport = "xrce"` (the RMW name, in the slot that names the link) for
-/// four phases with nothing to say so.
-///
-/// The value is load-bearing now: it IMPLIES `ZPICO_NO_SMOLTCP` and
-/// `NROS_LINK_IP`, so a typo would leave both unapplied and the image would
-/// build with the wrong links on — RFC-0086 D2's own reason for making an
-/// unknown transport an error rather than a pass-through.
-pub fn validate_transport(kind: Option<&str>) -> Result<(), String> {
-    use nros_orchestration_ir::leaf_system::TRANSPORT_KINDS;
-    match kind {
-        None => Ok(()),
-        Some(k) if TRANSPORT_KINDS.contains(&k) => Ok(()),
-        Some(other) => Err(format!(
-            "`transport = \"{other}\"` is not a link kind (expected one of: {}). \
-             The RMW is `rmw = \"…\"`, which is a different choice.",
-            TRANSPORT_KINDS.join(" | ")
-        )),
-    }
-}
-
-#[cfg(test)]
-mod transport_tests {
-    use super::*;
-
-    #[test]
-    fn a_link_kind_passes_and_an_rmw_name_does_not() {
-        assert!(validate_transport(None).is_ok());
-        assert!(validate_transport(Some("serial")).is_ok());
-        let e = validate_transport(Some("xrce")).unwrap_err();
-        assert!(e.contains("serial | tcp | udp"), "{e}");
-        assert!(e.contains("rmw"), "names the key that DOES take it: {e}");
-    }
-
-    /// RFC-0109 D3 — one link vocabulary: every kind an image may name is a
-    /// kind a board's `[board.net] links` may carry.
-    #[test]
-    fn image_transport_kinds_are_board_link_kinds() {
-        use nros_board_common::platform_config::LINK_KINDS;
-        use nros_orchestration_ir::leaf_system::TRANSPORT_KINDS;
-        for k in TRANSPORT_KINDS {
-            assert!(
-                LINK_KINDS.contains(k),
-                "image transport `{k}` is not in LINK_KINDS"
-            );
         }
     }
 }
@@ -1301,5 +1294,48 @@ mod launch_tests {
         assert!(validate_image_launch("linux", &img, bringup).is_ok());
         img.launch = None;
         assert!(validate_image_launch("linux", &img, bringup).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+
+    /// RFC-0109 D6 — the link is the locator's scheme, and the `transport`
+    /// key that once restated it is refused by name.
+    #[test]
+    fn the_link_is_the_locators_and_transport_is_refused() {
+        let img = |loc: &str| ImageBlock {
+            locator: Some(loc.into()),
+            ..ImageBlock::default()
+        };
+        assert_eq!(
+            img("serial/UART_0#baudrate=115200").link_kind(),
+            Some("serial")
+        );
+        assert_eq!(img("custom://uart").link_kind(), Some("custom"));
+        assert_eq!(img("tcp/10.0.2.2:7447").link_kind(), Some("tcp"));
+        assert_eq!(ImageBlock::default().link_kind(), None);
+        let e = toml::from_str::<ImageBlock>("transport = \"serial\"\n")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("transport` is retired") && e.contains("scheme"),
+            "{e}"
+        );
+    }
+
+    /// RFC-0109 D3 — one link vocabulary: every kind an image's locator may
+    /// name is a kind a board's `[board.net] links` may carry.
+    #[test]
+    fn image_transport_kinds_are_board_link_kinds() {
+        use nros_board_common::platform_config::LINK_KINDS;
+        use nros_orchestration_ir::leaf_system::TRANSPORT_KINDS;
+        for k in TRANSPORT_KINDS {
+            assert!(
+                LINK_KINDS.contains(k),
+                "image transport `{k}` is not in LINK_KINDS"
+            );
+        }
     }
 }

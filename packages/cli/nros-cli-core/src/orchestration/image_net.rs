@@ -359,8 +359,9 @@ pub fn check_collisions(images: &[(&str, &ImageNet)]) -> Result<(), String> {
 
 /// Resolve every image of a workspace bringup's `system.toml`, then refuse a
 /// collision across them. `board_net_of(image id)` answers the image's
-/// board's `[board.net]`; it is asked only for an image that states an
-/// interface. The map holds the images that do.
+/// board's `[board.net]`; it is asked only for an image that names an
+/// `os_config` file, each of which is checked against the board's network
+/// owner (RFC-0109 D9 check 6). The map holds the images that do.
 pub fn resolve_system(
     sys: &super::cargo_metadata_schema::SystemToml,
     mut board_net_of: impl FnMut(&str) -> Result<BoardNet, String>,
@@ -370,6 +371,22 @@ pub fn resolve_system(
     // states it.
     let mut networks = BTreeMap::new();
     for (id, img) in sys.resolved_images() {
+        let files = img.os_config_files();
+        if files.is_empty() {
+            continue;
+        }
+        // An image with no interface is resolved here only for this check, so
+        // a board this checkout cannot resolve is that image's own build's
+        // error to report, not every sibling's.
+        let board = match board_net_of(&id) {
+            Ok(b) => b,
+            Err(_) if img.net.is_empty() => continue,
+            Err(e) => return Err(e),
+        };
+        // RFC-0109 D9 check 6 — each layer-1 file goes to the network's owner.
+        board
+            .check_os_config(&files)
+            .map_err(|e| format!("image `{id}`: {e}"))?;
         if img.net.is_empty() {
             continue;
         }
@@ -379,7 +396,6 @@ pub fn resolve_system(
             &format!("image `{id}`"),
         )?;
         let locator = img.locator.clone().or_else(|| sys.system.locator.clone());
-        let board = board_net_of(&id)?;
         if let Some(n) = resolve(
             &ImageDecl {
                 system: Some(&sys.system.name),

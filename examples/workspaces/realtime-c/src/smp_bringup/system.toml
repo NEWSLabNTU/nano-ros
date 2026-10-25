@@ -146,7 +146,7 @@ rmw = "zenoh"
 # deleted `CMakeLists.txt` stated.
 [image.zephyr_smp]
 board = "qemu-cortex-a53"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 panic = "platform"
 
 # phase-276 W2 / phase-481 W3 -- the tiers need tx windows well inside their

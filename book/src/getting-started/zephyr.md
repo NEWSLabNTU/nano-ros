@@ -168,7 +168,7 @@ What the module renders, and from where:
 | `[image.<id>.knobs.zenoh] max_queryables = 12` | `CONFIG_NROS_MAX_QUERYABLES=12` — a registry knob, spelled as a board's `[knobs]` is (see [Configuration](../user-guide/configuration.md#per-image-build-knobs)) |
 | `[image.<id>.knobs.xrce] max_subscribers = 0` | `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS=0` — likewise |
 | `env = { NROS_ZEPHYR_TASK_STACK_SIZE = "16384" }` | `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE=16384` — any other option in the reference below, spelled without `CONFIG_` |
-| `conf = ["prj-xrce.conf"]` | that Zephyr-native fragment, added ahead of your own `EXTRA_CONF_FILE` |
+| `os_config = ["prj-xrce.conf"]` | that Zephyr-native fragment, added ahead of your own `EXTRA_CONF_FILE` |
 
 An `env` row with no Kconfig symbol is not lost: it reaches the image's cargo
 builds as an `[env]` row instead (issue 1712). A row whose type does not fit
@@ -190,12 +190,12 @@ default_images = ["zephyr_zenoh"]
 [image.zephyr_zenoh]
 board = "zephyr"
 rmw = "zenoh"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 
 [image.zephyr_xrce]
 board = "zephyr"
 rmw = "xrce"
-conf = ["prj-xrce.conf"]
+os_config = ["prj-xrce.conf"]
 locator = "udp/127.0.0.1:2018"
 
 [image.zephyr_xrce.knobs.xrce]
@@ -206,7 +206,7 @@ max_service_clients = 0
 [image.zephyr_cyclonedds]
 board = "zephyr"
 rmw = "cyclonedds"
-conf = ["prj-cyclonedds.conf"]
+os_config = ["prj-cyclonedds.conf"]
 ```
 
 ```bash
@@ -228,7 +228,7 @@ the snippets and Kconfig defaults still choose.
 
 ### What each RMW's Zephyr-native fragment needs
 
-The image's `conf` file carries what the backend needs from Zephyr itself:
+The image's `os_config` file carries what the backend needs from Zephyr itself:
 
 - **Zenoh** (the Kconfig default): TCP and POSIX threads for zenoh-pico —
   `CONFIG_NET_TCP=y`, `CONFIG_POSIX_API=y`, and pthread pools big enough for

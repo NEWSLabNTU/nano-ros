@@ -175,9 +175,59 @@ fn emit_from(descriptor: &Path, fallback: ResolvedNet) -> ResolvedNet {
     let board = std::env::var("NROS_BOARD").ok().filter(|b| !b.is_empty());
     let net = resolve(descriptor, board.as_deref(), fallback)
         .unwrap_or_else(|e| panic!("{}: {e}", descriptor.display()));
+    write_consts(&format!("{} [board.net]", descriptor.display()), net);
+    net
+}
+
+/// RFC-0109 D2 (phase-514 W4) — a board whose RTOS owns its network
+/// (`[board.net] stack = "os"`) reads the address its kernel configuration
+/// states rather than restating one: `CONFIG_NETINIT_IPADDR` /
+/// `CONFIG_NETINIT_DRIPADDR` / `CONFIG_NETINIT_NETMASK` of a NuttX `.config` or
+/// `defconfig` (hex, `0x0a00020f` = `10.0.2.15`). A key the file does not set
+/// keeps `fallback`'s value, as NuttX's own Kconfig default would; the MAC is
+/// always `fallback`'s, since the RTOS takes its MAC from the device.
+///
+/// # Errors
+///
+/// A key that is set but is not a 32-bit hex value.
+pub fn from_kconfig(text: &str, fallback: ResolvedNet) -> Result<ResolvedNet, String> {
+    let mut net = fallback;
+    for line in text.lines() {
+        let Some((key, value)) = line.trim().split_once('=') else {
+            continue;
+        };
+        let slot = match key {
+            "CONFIG_NETINIT_IPADDR" => &mut net.ip,
+            "CONFIG_NETINIT_DRIPADDR" => &mut net.gateway,
+            "CONFIG_NETINIT_NETMASK" => &mut net.netmask,
+            _ => continue,
+        };
+        let v = value
+            .strip_prefix("0x")
+            .and_then(|h| u32::from_str_radix(h, 16).ok())
+            .ok_or_else(|| format!("{key}={value} is not a 32-bit hex value (0x0a00020f)"))?;
+        *slot = v.to_be_bytes();
+    }
+    Ok(net)
+}
+
+/// For an `"os"`-stack board's build script: [`from_kconfig`] over the
+/// kernel configuration at `config`, watched, written to
+/// `$OUT_DIR/nros_board_net.rs` the way [`emit_for_crate`] writes it. Panics
+/// with the file's error: the right failure in a build script.
+pub fn emit_from_kconfig(config: &Path, fallback: ResolvedNet) -> ResolvedNet {
+    println!("cargo:rerun-if-changed={}", config.display());
+    let text = std::fs::read_to_string(config)
+        .unwrap_or_else(|e| panic!("read {}: {e}", config.display()));
+    let net = from_kconfig(&text, fallback).unwrap_or_else(|e| panic!("{}: {e}", config.display()));
+    write_consts(&config.display().to_string(), net);
+    net
+}
+
+fn write_consts(source: &str, net: ResolvedNet) {
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("nros_board_net.rs");
     let body = format!(
-        "// Generated from {} [board.net] (phase-484 W4b). Do not edit.\n\
+        "// Generated from {} (phase-484 W4b, RFC-0109 D2). Do not edit.\n\
          #[allow(dead_code)]\n\
          pub(crate) const BOARD_NET_IP: [u8; 4] = {:?};\n\
          #[allow(dead_code)]\n\
@@ -193,7 +243,7 @@ fn emit_from(descriptor: &Path, fallback: ResolvedNet) -> ResolvedNet {
          /// listens elsewhere (`board_net_locator!(\"7448\")`).\n\
          #[allow(unused_macros)]\n\
          macro_rules! board_net_locator {{ ($port:literal) => {{ concat!(\"tcp/{}.{}.{}.{}:\", $port) }}; }}\n",
-        descriptor.display(),
+        source,
         net.ip,
         net.netmask,
         net.gateway,
@@ -208,12 +258,50 @@ fn emit_from(descriptor: &Path, fallback: ResolvedNet) -> ResolvedNet {
         net.gateway[3]
     );
     std::fs::write(&out, body).unwrap_or_else(|e| panic!("write {}: {e}", out.display()));
-    net
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// RFC-0109 D2 — an `"os"`-stack board reads its kernel config's address:
+    /// each of the three keys, an unset one keeping the fallback, and a value
+    /// that is not hex refused naming the key.
+    #[test]
+    fn a_kernel_config_states_the_address() {
+        let q = ResolvedNet::qemu_network();
+        let got = from_kconfig(
+            "# CONFIG_NETINIT_NOMAC is not set\nCONFIG_NETINIT_IPADDR=0x0a00020f\n\
+             CONFIG_NETINIT_DRIPADDR=0x0a000202\nCONFIG_NETINIT_NETMASK=0xffff0000\n",
+            ResolvedNet::platform_default(),
+        )
+        .unwrap();
+        assert_eq!((got.ip, got.gateway), (q.ip, q.gateway));
+        assert_eq!(got.netmask, [255, 255, 0, 0]);
+        assert_eq!(got.mac, ResolvedNet::platform_default().mac);
+        let partial = from_kconfig("CONFIG_NETINIT_IPADDR=0x0a000210\n", q).unwrap();
+        assert_eq!((partial.ip, partial.netmask), ([10, 0, 2, 16], q.netmask));
+        let e = from_kconfig("CONFIG_NETINIT_IPADDR=10.0.2.15\n", q).unwrap_err();
+        assert!(e.contains("CONFIG_NETINIT_IPADDR"), "{e}");
+    }
+
+    /// The board package's own NuttX kernel configs agree with QEMU's SLIRP
+    /// plan, which is what the runtime `SIOCSIFADDR` push applies.
+    #[test]
+    fn the_in_tree_nuttx_defconfigs_state_qemus_plan() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../nros-board-nuttx-qemu/nuttx-config");
+        for arch in ["arm", "arm-smp", "riscv"] {
+            let text = std::fs::read_to_string(dir.join(arch).join("defconfig")).unwrap();
+            let got = from_kconfig(&text, ResolvedNet::platform_default()).unwrap();
+            let q = ResolvedNet::qemu_network();
+            assert_eq!(
+                (got.ip, got.gateway, got.netmask),
+                (q.ip, q.gateway, q.netmask),
+                "{arch}"
+            );
+        }
+    }
 
     /// RFC-0103 D10 — `network = "qemu"` starts from QEMU's SLIRP plan, an
     /// unknown network is refused, and the board-level identity is retired.

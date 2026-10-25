@@ -22,7 +22,7 @@ board = "linux"
 
 [image.zephyr]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 panic = "platform"
 # phase-481 W2: nano-ros knobs live here, not in the conf files (RFC-0098
 # D10/D11). The socket timeout keeps tx windows inside the 10 Hz period

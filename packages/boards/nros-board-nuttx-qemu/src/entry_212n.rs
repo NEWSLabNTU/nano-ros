@@ -215,9 +215,10 @@ fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) -> crate::confi
     cfg
 }
 
-/// The SLIRP defaults an un-overridden entry pushes into `eth0`: this board's
-/// `[board.net]` (`network = "qemu"`, RFC-0103 D10), generated into
-/// `crate::config` by the build script — never restated here.
+/// The SLIRP defaults an un-overridden entry pushes into `eth0`: the kernel
+/// `defconfig`'s `CONFIG_NETINIT_*` (RFC-0109 D2 — NuttX owns this board's
+/// network), generated into `crate::config` by the build script — never
+/// restated here.
 ///
 /// phase-484 W4b-2 — these were per-arch literals mirroring each kernel
 /// defconfig's `NETINIT` address (arm `10.0.2.30`, rv-virt `10.0.2.15`). The

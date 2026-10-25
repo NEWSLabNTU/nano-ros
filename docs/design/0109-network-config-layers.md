@@ -125,8 +125,8 @@ it is an `"os"` row whose layer-1 file is `sdkconfig.defaults`.
   `supported_netstacks`, and a new `links` — the link kinds the board can
   carry, from ONE vocabulary, `LINK_KINDS` in `nros-platform-config`:
   `serial`, `tcp`, `udp`, `can`, `isotp`, `ivc`, `raweth`, `custom`. It is a
-  superset of the image-side `TRANSPORT_KINDS` (`serial | tcp | udp`, pinned by
-  a test) and maps onto zenoh-pico's `link-*` features (`tcp` / `udp` →
+  superset of the image-side `TRANSPORT_KINDS` (`serial | tcp | udp |
+  custom`, pinned by a test) and maps onto zenoh-pico's `link-*` features (`tcp` / `udp` →
   `link-ip`). *(Landed: phase-514 W1.)* These choose which
   zenoh-pico / XRCE link code is compiled (today's `[image] transport`
   implication, now derived: D6). An image whose wiring names a link the board
@@ -234,7 +234,9 @@ builder.
 - **`[image.<id>]`** keeps `board`, `rmw` (its default domain's backend),
   `env`, `knobs`, and gains:
   - `os_config = [ … ]` — layer-1 files for that platform; generalises today's
-    Zephyr-only `conf` (D11), which becomes an alias then retires;
+    Zephyr-only `conf` (D11), which becomes an alias then retires (alias
+    since phase-514 W4: read before `os_config`'s own entries, a table stating
+    both refused; lists concatenate over `[image_defaults]`);
   - `rmw_config = "<file>"` for the default domain, or
     `{ <domain> = "<file>" }` — a per-image override of a domain's `config`,
     for the case where wiring differs per image (two ECUs with different CAN
@@ -244,8 +246,9 @@ builder.
 - **Retired** (each refused with a remedy naming its new home):
   `[[transport]]` (whole table), `[image] locator` / `[system] locator`
   **on an image that names an `rmw_config`** (→ that file; amended
-  2026-10-25, see `locator` above), `[image] transport` (→ derived from the domain's wiring + the board's
-  `links`), `[image.<id>.net.*]` and `[board.net]` addresses (→ D4's file),
+  2026-10-25, see `locator` above), `[image] transport` (→ derived from the
+  domain's wiring + the board's `links`; since phase-514 W4, the scheme of the
+  default domain's locator, `custom://` naming link kind `custom`), `[image.<id>.net.*]` and `[board.net]` addresses (→ D4's file),
   `[network.<name>]` (→ `router` to the image's `locator` or its RMW file,
   `attach` to `[image.<id>.run] nic`, subnet/gateway/dhcp to a
   `[network.<name>]` table in D4's file, beside the interface on it; two
