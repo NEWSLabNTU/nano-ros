@@ -1,5 +1,5 @@
 ---
-id: 2040
+id: 2053
 title: "diagnostic_updater has no DiagnosticTask hierarchy: FrequencyStatus, TimeStampStatus and Heartbeat are absent"
 status: open
 type: enhancement

@@ -216,12 +216,12 @@ heartbeat, and a remote gear command is forwarded.
 | `diagnostic_updater` did not carry `diagnostic_msgs` | fixed, #2620 |
 | `ament_auto_add_library(... SHARED)` linked the runtime twice; start-up `undefined symbol` | fixed, #2620 (every kind STATIC) |
 | `ros2 param get` timed out: the ament road declared no `param_services` | fixed, #2620 + C++ PR (host ament packages default to it; the node constructor starts them) |
-| `<diagnostic_updater/update_functions.hpp>` missing | header added, C++ PR; its classes are issue 2040 |
+| `<diagnostic_updater/update_functions.hpp>` missing | header added, C++ PR; its classes are issue 2053 |
 | `Updater` never published unless `update()` was called (18 of 55 Autoware users never call it) | fixed, C++ PR (own timer) |
 | `diagnostic_updater::Updater updater_{this};` | fixed, C++ PR |
 | `pub->publish(msg);` an error under `-Wall -Werror` (`[[nodiscard]]`) | fixed, C++ PR: ignorable and logged on the std surface; embedded keeps the warning |
 | `CallbackGroupType`, `CallbackGroup::SharedPtr`, `SubscriptionOptions::callback_group` absent | fixed, C++ PR: unnamed groups run on the node default |
-| `create_service(name, cb, rmw_qos_profile_services_default, group)` | fixed, C++ PR; the `rmw_qos_profile_t` TYPE is issue 2041 |
+| `create_service(name, cb, rmw_qos_profile_services_default, group)` | fixed, C++ PR; the `rmw_qos_profile_t` TYPE is issue 2054 |
 | four-argument `create_subscription(topic, qos, cb, options)` | fixed, C++ PR |
 | a `std::bind(&X::f, this, _1, _2)` service handler returning `bool` was refused | fixed, C++ PR: a stateful handler's capture lives in the service's arena entry |
 | `ExecutorFull`, then liveliness, publisher, subscriber and queryable tables full at start-up | issue 2043 (census sizing on the ament road, as ruled); the executor log now names its knob |
