@@ -1490,6 +1490,115 @@ pub enum DeployResolution<'a> {
     Ambiguous(Vec<String>),
 }
 
+/// phase-517 W3 — what `nros setup` provisions for a board word.
+///
+/// An image names its board by any of the descriptor's `names` aliases
+/// (`qemu-mps2-an385`, `freertos`, `nuttx`, …); `nros setup` provisions by the
+/// index's `[board.*]` keys (`mps2-an385-baremetal`, …). Those were two
+/// vocabularies with nothing joining them, so `nros setup --workspace` printed
+/// "not an index board key" for most images and the user had to find the key by
+/// hand. This is the one join, asked by `nros setup <board>`, `nros setup
+/// --workspace` and `nros build`'s preflight alike.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetupBoard {
+    /// The word IS an index key.
+    Key(String),
+    /// The word is a descriptor alias; `key` is the index board it provisions.
+    Alias { key: String, descriptor: String },
+}
+
+impl SetupBoard {
+    pub fn key(&self) -> &str {
+        match self {
+            SetupBoard::Key(k) | SetupBoard::Alias { key: k, .. } => k,
+        }
+    }
+}
+
+impl BoardDescriptor {
+    /// The index `[board.*]` key this descriptor provisions through, DERIVED —
+    /// the descriptor states no extra field (its schema is
+    /// `deny_unknown_fields` and read by several parsers):
+    ///
+    /// 1. its `cmake_module`, when that is an index key (nine boards: the
+    ///    module stem and the setup key are one name);
+    /// 2. else one of its `names` that is an index key (`linux`, `zephyr`,
+    ///    `fvp-aemv8r-smp`);
+    /// 3. else the index key spelled like its PLATFORM (`zephyr`): a Zephyr
+    ///    board is provisioned by the Zephyr workspace whatever its silicon.
+    ///
+    /// `None` when none applies — the caller refuses rather than guessing.
+    pub fn setup_key(&self, is_index_key: &dyn Fn(&str) -> bool) -> Option<String> {
+        if let Some(m) = self.cmake_module.as_deref()
+            && is_index_key(m)
+        {
+            return Some(m.to_string());
+        }
+        if let Some(n) = self.names.iter().find(|n| is_index_key(n)) {
+            return Some(n.clone());
+        }
+        let platform = self.platform.kebab();
+        is_index_key(platform).then(|| platform.to_string())
+    }
+}
+
+impl BoardCatalog {
+    /// Resolve a board word to the index key `nros setup` provisions — see
+    /// [`SetupBoard`]. An index key answers itself; otherwise the word must
+    /// name exactly one descriptor (or several that agree on one key), and that
+    /// descriptor must reach an index key. Every refusal says which.
+    pub fn setup_board(
+        &self,
+        word: &str,
+        is_index_key: &dyn Fn(&str) -> bool,
+    ) -> Result<SetupBoard, String> {
+        if is_index_key(word) {
+            return Ok(SetupBoard::Key(word.to_string()));
+        }
+        if let Some(hint) = nros_entry_lower::retired_board_key_hint(word) {
+            return Err(hint.to_string());
+        }
+        let named: Vec<&BoardDescriptor> = self
+            .descriptors
+            .iter()
+            .filter(|d| d.answers_to(word))
+            .collect();
+        if named.is_empty() {
+            return Err(format!(
+                "`{word}` is neither an index board key nor a name any board descriptor answers to"
+            ));
+        }
+        let mut keys: Vec<(String, &BoardDescriptor)> = Vec::new();
+        for d in &named {
+            match d.setup_key(is_index_key) {
+                Some(k) => keys.push((k, d)),
+                None => {
+                    return Err(format!(
+                        "board `{word}` ({}) reaches no index board key: its cmake_module, \
+                         names and platform name none of the index's [board.*] entries",
+                        descriptor_labels(&[d]).join(", ")
+                    ));
+                }
+            }
+        }
+        keys.sort_by(|a, b| a.0.cmp(&b.0));
+        keys.dedup_by(|a, b| a.0 == b.0);
+        match keys.as_slice() {
+            [(key, d)] => Ok(SetupBoard::Alias {
+                key: key.clone(),
+                descriptor: d.names.first().cloned().unwrap_or_default(),
+            }),
+            _ => Err(format!(
+                "board `{word}` is ambiguous for setup: it names {} — use one of the keys",
+                keys.iter()
+                    .map(|(k, d)| format!("`{k}` ({})", d.names.join("/")))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        }
+    }
+}
+
 /// Error loading or parsing board descriptors.
 #[derive(Debug)]
 pub enum BoardLoadError {
@@ -1659,6 +1768,123 @@ mod tests {
                 "{spelling} did not resolve"
             );
         }
+    }
+
+    // ── phase-517 W3 — one board vocabulary from image to setup ─────────
+
+    fn real_index() -> crate::orchestration::sdk_index::SdkIndex {
+        crate::orchestration::sdk_index::SdkIndex::load(
+            &repo_root_for_tests().join("nros-sdk-index.toml"),
+        )
+        .expect("load nros-sdk-index.toml")
+    }
+
+    #[test]
+    fn an_image_board_alias_resolves_to_its_setup_key() {
+        let cat = BoardCatalog::load(&repo_root_for_tests()).expect("load catalog");
+        let index = real_index();
+        let is_key = |k: &str| index.board.contains_key(k);
+        let key = |w: &str| cat.setup_board(w, &is_key).map(|b| b.key().to_string());
+        assert_eq!(
+            key("qemu-mps2-an385").as_deref(),
+            Ok("mps2-an385-baremetal")
+        );
+        assert_eq!(
+            key("rtic-mps2-an385").as_deref(),
+            Ok("mps2-an385-baremetal")
+        );
+        assert_eq!(key("freertos").as_deref(), Ok("mps2-an385-freertos"));
+        assert_eq!(key("nuttx").as_deref(), Ok("qemu-armv7a-nuttx"));
+        assert_eq!(key("nuttx-riscv").as_deref(), Ok("rv-virt-nuttx"));
+        assert_eq!(key("qemu-cortex-a53").as_deref(), Ok("zephyr"));
+        assert_eq!(
+            cat.setup_board("linux", &is_key),
+            Ok(SetupBoard::Key("linux".to_string()))
+        );
+        // Two descriptors answer to `threadx` and reach two keys: refused,
+        // naming both, never the first one found.
+        let err = key("threadx").expect_err("threadx is ambiguous");
+        assert!(
+            err.contains("threadx-linux") && err.contains("rv-virt-threadx"),
+            "{err}"
+        );
+        assert!(
+            key("native").is_err(),
+            "a retired board word must not resolve"
+        );
+        assert!(
+            key("stm32f4").is_err(),
+            "a word no descriptor answers to must not resolve"
+        );
+    }
+
+    /// The gate, both directions: every `[image.*] board` a tracked
+    /// `system.toml` names reaches an index key through the same join
+    /// `nros setup` uses, and every index board key is reached by some
+    /// descriptor (an unreachable key is provisioning nothing builds for).
+    #[test]
+    fn every_image_board_reaches_an_index_key_and_every_key_is_reached() {
+        let root = repo_root_for_tests();
+        let cat = BoardCatalog::load(&root).expect("load catalog");
+        let index = real_index();
+        let is_key = |k: &str| index.board.contains_key(k);
+
+        let listed = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&root)
+            .args(["ls-files", "--", "*system.toml"])
+            .output()
+            .expect("git ls-files");
+        let mut bad = Vec::new();
+        let mut seen = 0usize;
+        for rel in String::from_utf8_lossy(&listed.stdout).lines() {
+            if rel.contains("esp32") {
+                continue; // dormant (issue 1525)
+            }
+            let Ok(raw) = std::fs::read_to_string(root.join(rel)) else {
+                continue;
+            };
+            let Ok(doc) = raw.parse::<toml::Table>() else {
+                continue;
+            };
+            let Some(images) = doc.get("image").and_then(|v| v.as_table()) else {
+                continue;
+            };
+            for (id, img) in images {
+                let Some(board) = img.get("board").and_then(|b| b.as_str()) else {
+                    continue;
+                };
+                if board.contains("esp32") {
+                    continue;
+                }
+                seen += 1;
+                if let Err(why) = cat.setup_board(board, &is_key) {
+                    bad.push(format!("{rel} [image.{id}] board = \"{board}\": {why}"));
+                }
+            }
+        }
+        assert!(
+            seen > 20,
+            "the scan found only {seen} image boards; it is not reading the tree"
+        );
+
+        let reached: std::collections::BTreeSet<String> = cat
+            .descriptors()
+            .iter()
+            .filter_map(|d| d.setup_key(&is_key))
+            .collect();
+        for k in index.board.keys().filter(|k| !k.contains("esp32")) {
+            if !reached.contains(k) {
+                bad.push(format!(
+                    "index [board.{k}] is reached by no board descriptor"
+                ));
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "board vocabulary does not join:\n  {}",
+            bad.join("\n  ")
+        );
     }
 
     // ── NROS_EXTRA_BOARD_PATH — out-of-tree board roots ──────────────────
