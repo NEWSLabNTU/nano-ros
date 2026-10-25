@@ -16,6 +16,16 @@
 //! LAN9118 flow-control patch that the store carries (issues 0830/0917). When
 //! no rung answers, the caller says how to provision one instead.
 //!
+//! That reason holds only for a target the store BUILDS. The store's target
+//! list is a fact of the index (`[tool.qemu.source] configure`'s
+//! `--target-list`, which `check-qemu-configure` keeps equal to the prebuilt's
+//! recipe) — `arm` and `riscv64` today. For any other target
+//! (`qemu-system-riscv32`, the NuttX rv-virt board) no rung past the env
+//! override can ever answer, and pointing the user at `nros setup --tool qemu`
+//! would send them to provision something that does not contain it. Such a
+//! QEMU is the host's ([`QemuBin::Host`]): the printed command names it bare
+//! and a note says where to install it.
+//!
 //! Front door: `nros locate tool qemu-system-<arch>`.
 
 use std::{
@@ -34,6 +44,10 @@ pub enum QemuBin {
     },
     /// No rung answered; `why` says what was looked at and how to fix it.
     Missing { why: String },
+    /// The store builds no QEMU for this target, so it is the host's own
+    /// (resolved from `$PATH` when the command runs); `why` says so and where
+    /// to install it.
+    Host { why: String },
 }
 
 /// The inputs the ladder reads, gathered by the caller so the ladder itself is
@@ -47,6 +61,10 @@ pub struct Ctx<'a> {
     pub pin: Option<String>,
     /// The store's pinned qemu ROOT (`sdk_store::tool_dir`), rung 3.
     pub store_dir: Option<PathBuf>,
+    /// The `qemu-system-<arch>` arches the store's QEMU is configured for
+    /// (`arm`, `riscv64`), read from the index; `None` when no index was
+    /// readable (every target is then assumed to be the store's).
+    pub store_targets: Option<Vec<String>>,
 }
 
 impl Ctx<'static> {
@@ -67,7 +85,47 @@ impl Ctx<'static> {
             store_dir: index
                 .as_ref()
                 .and_then(|i| crate::orchestration::sdk_store::tool_dir(i, "qemu")),
+            store_targets: index.as_ref().and_then(store_targets),
         }
+    }
+}
+
+/// The arches `[tool.qemu.source] configure`'s `--target-list` builds —
+/// `arm-softmmu,riscv64-softmmu` → `["arm", "riscv64"]`. The prebuilt is held
+/// to the same flags by `check-qemu-configure`, so this is the store's set
+/// whichever way it was provisioned.
+#[must_use]
+pub fn store_targets(index: &crate::orchestration::sdk_index::SdkIndex) -> Option<Vec<String>> {
+    let configure = index
+        .tool
+        .get("qemu")?
+        .source
+        .as_ref()?
+        .configure
+        .as_deref()?;
+    targets_of_configure(configure)
+}
+
+/// The `-softmmu` arches a QEMU `./configure` line's `--target-list` names.
+#[must_use]
+pub fn targets_of_configure(configure: &str) -> Option<Vec<String>> {
+    let list = configure
+        .split_whitespace()
+        .find_map(|w| w.strip_prefix("--target-list="))?;
+    Some(
+        list.split(',')
+            .filter_map(|t| t.strip_suffix("-softmmu"))
+            .map(str::to_string)
+            .collect(),
+    )
+}
+
+/// The distro package that carries `exe`, for the install hint.
+fn distro_hint(exe: &str) -> &'static str {
+    match exe {
+        "qemu-system-arm" => "qemu-system-arm",
+        "qemu-system-x86_64" | "qemu-system-i386" => "qemu-system-x86",
+        _ => "qemu-system-misc",
     }
 }
 
@@ -93,6 +151,20 @@ pub fn locate(exe: &str, ctx: &Ctx<'_>) -> QemuBin {
         return QemuBin::Found {
             path: PathBuf::from(v),
             rung: "env",
+        };
+    }
+    let arch = exe.strip_prefix("qemu-system-").unwrap_or(exe);
+    if let Some(targets) = &ctx.store_targets
+        && !targets.iter().any(|t| t == arch)
+    {
+        return QemuBin::Host {
+            why: format!(
+                "the nros store's QEMU is built for {} only, so `{exe}` is your host's: install \
+                 it from your distribution (Debian/Ubuntu: `apt install {}`) or point ${var} \
+                 at one",
+                targets.join(", "),
+                distro_hint(exe)
+            ),
         };
     }
     let mut stale = None;
@@ -188,6 +260,7 @@ mod tests {
             build_root: Some(d.join("build")),
             pin: Some("11.0".into()),
             store_dir: Some(store.clone()),
+            store_targets: None,
         };
         // No prefix: the store answers.
         assert_eq!(
@@ -236,5 +309,46 @@ mod tests {
             other => panic!("{other:?}"),
         }
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A target the store does not build is the host's — never `nros setup
+    /// --tool qemu`, which would provision a QEMU without it — unless the env
+    /// override names one.
+    #[test]
+    fn a_target_the_store_does_not_build_is_the_hosts() {
+        assert_eq!(
+            targets_of_configure(
+                "./configure --prefix={prefix} --target-list=arm-softmmu,riscv64-softmmu --x"
+            ),
+            Some(vec!["arm".to_string(), "riscv64".to_string()])
+        );
+        let none = |_: &str| None;
+        let ctx = Ctx {
+            getenv: &none,
+            build_root: None,
+            pin: None,
+            store_dir: None,
+            store_targets: Some(vec!["arm".into(), "riscv64".into()]),
+        };
+        match locate("qemu-system-riscv32", &ctx) {
+            QemuBin::Host { why } => {
+                assert!(why.contains("apt install qemu-system-misc"), "{why}");
+                assert!(!why.contains("nros setup"), "{why}");
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(
+            locate("qemu-system-arm", &ctx),
+            QemuBin::Missing { .. }
+        ));
+        let env = |k: &str| (k == "QEMU_SYSTEM_RISCV32").then(|| OsString::from("/opt/rv32"));
+        let ctx = Ctx {
+            getenv: &env,
+            ..ctx
+        };
+        assert!(matches!(
+            locate("qemu-system-riscv32", &ctx),
+            QemuBin::Found { rung: "env", .. }
+        ));
     }
 }

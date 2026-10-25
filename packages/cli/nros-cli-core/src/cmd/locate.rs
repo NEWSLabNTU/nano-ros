@@ -408,6 +408,16 @@ fn run_tool(
         match locate(name, &Ctx::for_sdk(Some(sdk_root))) {
             QemuBin::Found { path, rung } => (path, rung),
             QemuBin::Missing { why } => bail!("{why}"),
+            // The store builds no QEMU for this target: the host's, from
+            // `$PATH`, is the only answer there is.
+            QemuBin::Host { why } => match std::env::var_os("PATH").and_then(|p| {
+                std::env::split_paths(&p)
+                    .map(|d| d.join(name))
+                    .find(|c| c.is_file())
+            }) {
+                Some(p) => (p, "host $PATH (the store builds no such target)"),
+                None => bail!("{why}"),
+            },
         }
     } else if name == LAUNCH_RESOLVER {
         let exe = std::env::current_exe()?;
