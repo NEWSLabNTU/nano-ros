@@ -189,6 +189,14 @@ First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 `build/baremetal/target/thumbv7m-none-eabi/debug/bm_talker` — under
 `build/`, never beside your sources.
 
+After a successful build `nros build` prints that path and a `run:` line —
+the board's own QEMU runner with the store's `qemu-system-arm` filled in.
+Pasted, it boots the talker, and QEMU's default user-mode network lands on
+the board's LAN9118, so it reaches a router on the host. The command under
+[Run on QEMU](#run-on-qemu) is the one the test harness boots: it adds
+`-icount shift=auto`, which keeps the board's timer in step with Slirp's
+I/O, and names the NIC explicitly.
+
 **Driving cargo yourself** (an IDE, a CI step, `--release`) is supported: run
 `nros sync` first, then point cargo at the generated settings file, from the
 directory above the package (`nros build --dry-run` prints this line):
@@ -209,7 +217,7 @@ Rust-toolchain preferences go where cargo already looks for them — a parent
 directory or `$CARGO_HOME`. See
 [Workflow by Platform and Language](../user-guide/workflow-by-platform.md).
 
-## Run
+## Run on QEMU
 
 ```bash
 # 1. Bring up the router on the host, on the port your image's
@@ -219,10 +227,9 @@ directory or `$CARGO_HOME`. See
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
-# 2. Boot the talker in QEMU. Invoke qemu-system-arm directly with the
-#    LAN9118 networking wiring the example expects — the board's own
-#    runner is bare `-kernel`, so it boots QEMU without networking. The
-#    patched qemu-system-arm is provisioned by
+# 2. Boot the talker in QEMU, with the LAN9118 on Slirp and the
+#    `-icount` the test harness uses (the `run:` line `nros build`
+#    printed works too). The patched qemu-system-arm is provisioned by
 #    `nros setup mps2-an385-baremetal` into the SDK store, which
 #    `nros sdk-path qemu` prints:
 "$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
@@ -254,17 +261,35 @@ talker. If no `Publishing:` line:
 
 1. Router not running — talker spins on smoltcp poll until
    killed.
-2. Wrong LAN9118 emulation flag — `qemu-system-arm` needs
-   `-nic user,model=lan9118` (or equivalent). The board's runner (in
-   the generated `build/mps2-an385-baremetal/nros-cargo.toml`) is bare
-   `-kernel`, so booting through it gives you QEMU without networking;
-   the direct `qemu-system-arm` invocation shown above carries the
-   LAN9118 wiring and is the working invocation for this tutorial. If
-   you copy the runner out, mirror those flags.
+2. No network on the guest — an explicit `-nic`/`-netdev` that does
+   not reach the LAN9118 (or `-nic none`, `-nodefaults`) leaves it
+   unwired. With no network option at all QEMU's default user-mode
+   network attaches to it, which is why the board's bare runner works;
+   `-nic user,model=lan9118` says so explicitly.
 3. Cooperative spin starvation — if you added a long-running
    callback, the entire executor stalls; bare-metal has no
    preemption.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
+## Flash a real board
+
+Nothing in-tree is flashed: `mps2-an385` is a QEMU machine, and `nros setup`
+provisions no probe or flash tooling for it. A real Cortex-M board is a board
+crate of your own — [Worked Example — STM32F4 Out of Tree](../porting/stm32f4-out-of-tree.md)
+takes one through the whole ladder — and its ELF goes to the board with the
+probe tool its vendor supports, which reads the same `build/<image>/target/…`
+path:
+
+```bash
+nros build
+probe-rs run --chip STM32F407VGTx build/<image>/target/thumbv7em-none-eabihf/debug/<bin>
+# or OpenOCD:
+#   openocd -f interface/stlink.cfg -f target/stm32f4x.cfg \
+#       -c "program build/<image>/target/thumbv7em-none-eabihf/debug/<bin> verify reset exit"
+```
+
+The chip, interface and triple above are the STM32F4-Discovery's; yours come
+from your board.
 
 ## GitHub source
 

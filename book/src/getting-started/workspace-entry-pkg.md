@@ -332,11 +332,13 @@ conf  = ["prj-zenoh.conf"]
 nros sync                              # generated message bindings, once
 nros build demo_bringup:zephyr         # resolves the app + overlays, runs west build
 nros build demo_bringup:zephyr -- -t run
+west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run   # what `nros build` prints next
 ```
 
-Plain `west` keeps working and stays the primary flow — `nros build` is the
-convenience that applies an image's overlays for you, never a required layer
-between you and west:
+`nros build` is the flow; it picks the image's own build directory, which is
+why the follow-up `west` command names it with `-d` (`west flash -d <dir>` for
+a board with a flash runner). Plain `west` keeps working as the escape hatch —
+`nros build` is never a required layer between you and west:
 
 ```sh
 west build -b native_sim/native/64 build/zephyr-zenoh/zephyr_entry \

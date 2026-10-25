@@ -60,8 +60,15 @@ nros build                     # or: nros build <image-id>
 
 # C / C++ single package — no sync needed; `nros build` drives its CMake:
 nros build
-# (or raw CMake, naming the SDK root: cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)")
 ```
+
+After a successful build `nros build` prints the artifact and the board's own
+next command (a QEMU line, `west build -d … -t run`, `west flash -d …`); each
+platform chapter's **Run on QEMU / simulator** and **Flash a real board**
+sections say the same. Driving CMake yourself is the escape hatch —
+`nros build --dry-run` prints the line it would run, and
+[Build as a CMake subdirectory](../getting-started/build-as-subdirectory.md)
+covers a tree with no `system.toml`.
 
 > **Contributors:** the in-tree fixture build/test lanes are in
 > [Per-Platform Contributor Lanes](../internals/platform-lanes.md#freertos).
@@ -105,30 +112,25 @@ Platform guides should show:
 
 ## Zephyr
 
-Zephyr deployment uses `west`:
+Zephyr builds with `west`, and `nros build` runs it for you — the board comes
+from `system.toml` like everywhere else; the descriptor states the `-b` west
+receives:
 
 ```bash
-nros setup zephyr --rmw zenoh
-# **Contributors (in-tree checkout):** `just setup zephyr` creates
-# zephyr-workspace/ (west init + SDK) — then:
-source zephyr-workspace/env.sh      # in-tree workspace layout
+nros setup zephyr --rmw zenoh       # Zephyr SDK + a west workspace in the store
+cd my_robot
 nros sync
-west build -b native_sim/native/64 nros/examples/zephyr/rust/talker
-./build/zephyr/zephyr.exe
+nros build demo_bringup:zephyr
+west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run   # native_sim / QEMU
+west flash -d build/zephyr-zenoh/demo_bringup__zephyr_west          # a board with a flash runner
 ```
 
-Zephyr is the one target that still names its board on the command line.
-Everywhere else the board comes from `system.toml` and `nros build` hands
-it to the tool; here the west *application* around the entry is not yet
-generated
-([issue 1288](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1288-zephyr-rust-workspace-entries-not-generated.md)),
-so west's own `-b` is what selects the board. `nros sync` still runs
-first, for the message crates and the resolved model.
-
-Bringing your own west workspace instead? Follow
-[Zephyr Integration](../getting-started/integration-zephyr.md) — the
-`zephyr-workspace/env.sh` line above is specific to the in-tree
-workspace layout.
+`nros build` generates the west application around the entry (issue 1288 made
+that the case for Rust workspaces too), passes the image's overlays, and builds
+into the image's own directory, which is why the follow-up `west` commands
+name it with `-d`. When it finishes it prints whichever of the two lines
+the board supports. Bringing your own west workspace, or driving `west build`
+by hand: [Zephyr Integration](../getting-started/integration-zephyr.md).
 
 ## ESP32
 

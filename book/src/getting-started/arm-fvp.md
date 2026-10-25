@@ -102,19 +102,49 @@ contributor who is not working on the FVP should not be blocked by its absence;
 
 ## Build
 
+The FVP is a Zephyr board, `fvp-aemv8r-smp`, so an image names it in its
+bringup's `system.toml` and `nros build` hands it to `west` like any Zephyr
+image ([the Zephyr chapter](./integration-zephyr.md#nros-build-on-zephyr-it-hands-off-it-does-not-take-over)
+has the workspace flow). The worked example is
+[`examples/workspaces/realtime-cpp`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/realtime-cpp/src/demo_bringup)'s
+`[image.fvp]`, a Cyclone DDS image:
+
+```toml
+[image.fvp]
+board = "fvp-aemv8r-smp"
+rmw = "cyclonedds"
+```
+
+```bash
+nros setup zephyr --rmw cyclonedds     # the Zephyr workspace + SDK
+nros setup fvp-aemv8r-smp              # the model (x86_64 Linux only)
+nros sync
+nros build demo_bringup:fvp
+```
+
+The model must be resolvable when the build **configures**: Zephyr caches the
+`FVP_BaseR_AEMv8R` path then, so an image configured before the model was
+installed (or before `ARMFVP_BIN_PATH` was set) has to be reconfigured
+(`nros build demo_bringup:fvp -- --pristine`). `nros build` says so in the note
+it prints after the build.
+
 > **Contributors:** the in-tree FVP build lanes (and the `zephyr.elf`
 > paths they produce) are in
 > [Per-Platform Contributor Lanes](../internals/platform-lanes.md#arm-fvp).
 
-> Two standalone talker lanes (`build-fvp-aemv8r-cyclonedds{,-rust}`, over
-> `examples/zephyr/{cpp,rust}/talker-aemv8r`) used to live here. Their
-> tests were deleted and the lanes later retired, so the chapter no
-> longer documents a lane whose output nobody consumes.
+## Run on the FVP
 
-## Run
+`nros build` ends by printing Zephyr's run target for the image's build
+directory; it invokes `FVP_BaseR_AEMv8R` with the board's cluster and UART
+settings and pipes the UARTs to your terminal:
 
-Once the build artifacts and `ARM_FVP_DIR` / `ARMFVP_BIN_PATH` are in
-place:
+```bash
+west build -d build/zephyr-cyclonedds/demo_bringup__fvp_west -t run
+```
+
+The model is a free download, **not licence-gated** (see
+[Prereqs](#prereqs)); what keeps it off a CI lane is cost and its x86_64-only
+host build. It runs until you stop it (Ctrl-C).
 
 > **Contributors:** the in-tree FVP run lanes (and what they do under
 > the hood) are in

@@ -335,14 +335,21 @@ os_config = ["prj-cyclonedds.conf"]
 ```
 
 ```bash
-west build -b native_sim/native/64 my_app                       # default_images: zenoh
-west build -b native_sim/native/64 my_app -- -DNROS_IMAGE=zephyr_xrce
+nros sync
+nros build                    # the default_images: zephyr_zenoh
+nros build zephyr_xrce        # another image — its own west build dir
 ```
 
-`-DNROS_IMAGE` is a CMake cache variable like any `-D`: re-running `west build`
-on the same build directory WITHOUT it keeps the image it last built, exactly
-as `-b` keeps the board. Pass it every time, or use `-p` when switching. A name
-the `system.toml` does not declare is refused, listing the ones it does.
+Each image builds into its own directory,
+`build/<platform>-<rmw>/<package>__<image>_west`, so switching images never
+reuses another image's cache.
+
+Driving west yourself, the image is a CMake cache variable:
+`west build -b native_sim/native/64 my_app -- -DNROS_IMAGE=zephyr_xrce`. Like
+any `-D` it sticks: re-running `west build` on the same build directory
+WITHOUT it keeps the image it last built, exactly as `-b` keeps the board. Pass
+it every time, or use `-p` when switching. A name the `system.toml` does not
+declare is refused, listing the ones it does.
 
 Precedence, last wins: the conf files, then a 4.x `-S nros-<rmw>` snippet,
 then the image's rendering, then any `-DCONFIG_…` on the command line (how a
@@ -439,9 +446,12 @@ it composes an install command and prints it rather than running `sudo` for you:
 where the tool is yours, nano-ros hands you the command instead of assuming it
 may act.
 
-**The plain `west build` below keeps working and is still the primary flow.**
-`nros build` is the convenience that applies an image's overlays for you; it
-never becomes a required layer between you and west.
+**`nros build` is the flow this chapter teaches**, for a workspace and for a
+single application alike: it applies the image's overlays, picks the build
+directory and, when it finishes, prints the artifact and the Zephyr command
+that runs or flashes it. It never becomes a required layer between you and
+west — [driving west yourself](#driving-west-yourself) stays the escape hatch,
+for an application with no `system.toml` or a build you want to steer by hand.
 
 #### Starting from nothing: `nros new node` and `nros new entry`
 
@@ -515,8 +525,10 @@ nros build demo_bringup:zephyr
 #    keeps running. Listens on tcp/127.0.0.1:7447.
 ros2 run rmw_zenoh_cpp rmw_zenohd
 
-# 4. run the image (its own build dir: build/<coordinate>/<bringup>__<image>_west).
-./build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.exe
+# 4. run the image — `nros build` printed this, with its own build dir
+#    (build/<coordinate>/<bringup>__<image>_west):
+west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run
+#    (on native_sim that runs ./build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.exe)
 ```
 
 ```text
@@ -777,10 +789,13 @@ ERROR: "kconfig" key in …/extra_module/zephyr/module.yml has value
 which is the message you would get from a plain `west build`, because it is a
 plain `west build`.
 
-The transports + `px4-rs` come from the [prerequisites](#prerequisites) step.
-With the Zephyr SDK exported (also prerequisites), build your app — `nros` on
-PATH is auto-resolved as the codegen tool, and the module is the installed
-SDK root:
+### Driving west yourself
+
+The escape hatch: an application with no `system.toml`, or a build you want to
+steer by hand. The transports + `px4-rs` come from the
+[prerequisites](#prerequisites) step. With the Zephyr SDK exported (also
+prerequisites), build your app — `nros` on PATH is auto-resolved as the
+codegen tool, and the module is the installed SDK root:
 
 ```bash
 sdk="$(nros sdk-root)"
@@ -790,7 +805,8 @@ overlay="$sdk/cmake/zephyr/native-sim-line-3.7.conf"
 west build -b native_sim/native/64 apps/my_app -- \
     -DZEPHYR_EXTRA_MODULES="$sdk" -DCONF_FILE="prj.conf;$overlay"
 
-# A real board, e.g. Cortex-A9 (no native_sim overlay):
+# An emulated Cortex-A9 — `qemu_cortex_a9` is a QEMU machine, not a real
+# board (no native_sim overlay):
 west build -b qemu_cortex_a9 apps/my_app -- -DZEPHYR_EXTRA_MODULES="$sdk"
 ```
 
@@ -830,24 +846,66 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
 
 ## Run
 
+`nros build` ends by printing what to type next, read from the finished build
+itself — the emulators Zephyr's board declares (`run_<emu>` targets in
+`build.ninja`) and its flash runner (`zephyr/runners.yaml`). For an image in
+build directory `<dir>` that is one or both of
+
+```text
+west build -d <dir> -t run        # an emulated board: native_sim, QEMU
+west flash -d <dir>               # a board with a flash runner
+```
+
+Both are Zephyr's own commands; nano-ros adds nothing to them. The router
+comes first either way:
+
 ```bash
-# 1. Start the router (ROS's `rmw_zenohd` — nano-ros ships no router
-#    of its own) on port 7447, the port your app dials by default
-#    (an image with no `locator` gets "tcp/127.0.0.1:7447"; change
-#    either side to match):
+# Start the router (ROS's `rmw_zenohd` — nano-ros ships no router of its
+# own) on port 7447, the port your app dials by default (an image with no
+# `locator` gets "tcp/127.0.0.1:7447"; change either side to match):
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
+```
 
-# 2. Boot the app from your BYO west workspace:
-# QEMU Cortex-A9:
-west build -t run
-# native_sim:
-./build/zephyr/zephyr.exe
+### Run on native_sim
 
-# 3. Verify from stock ROS 2 in another terminal. Match the message
-# type to the app you booted: the canonical in-tree talker publishes
-# std_msgs/String; the raw BYO Talker.c shown above publishes
-# std_msgs/Int32.
+`board = "zephyr"` is Zephyr's `native_sim/native/64`: the image is a host
+executable, and its sockets are the host's (NSOS), so it reaches the router on
+loopback with no network setup.
+
+```bash
+nros build demo_bringup:zephyr
+west build -d build/zephyr-zenoh/demo_bringup__zephyr_west -t run
+# — the same as running the executable directly:
+./build/zephyr-zenoh/demo_bringup__zephyr_west/zephyr/zephyr.exe
+```
+
+(A build you drove with plain `west build`, into west's default `build/`:
+`west build -t run`, or `./build/zephyr/zephyr.exe`.)
+
+### Run on QEMU (mps2-an385)
+
+The Cortex-M3 witness is Zephyr's `mps2/an385` under QEMU, with Zephyr's own
+IP stack on the emulated SMSC911x. An image names it `board =
+"mps2-an385-zephyr"`; `west build -t run` boots it under the QEMU the Zephyr
+SDK ships (`nros setup zephyr` installed it):
+
+```bash
+# in system.toml:  [image.zephyr_m3] board = "mps2-an385-zephyr"
+nros build demo_bringup:zephyr_m3
+west build -d build/zephyr-zenoh/demo_bringup__zephyr_m3_west -t run
+```
+
+The guest sits on QEMU's user-mode network: give the image an address there
+(`10.0.2.15`, gateway `10.0.2.2`) and a `locator = "tcp/10.0.2.2:<port>"`, and
+start the router on `0.0.0.0:<port>` so the Slirp gateway reaches it.
+
+### Verify from stock ROS 2
+
+```bash
+# Match the message type to the app you booted: the canonical in-tree
+# talker publishes std_msgs/String; the raw BYO Talker.c shown above
+# publishes std_msgs/Int32.
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
@@ -869,9 +927,9 @@ above prints `Published: 0`, `Published: 1`, ...
 
 **Readiness signal.** On `native_sim`, expect the first publish line
 (`Publishing: 'Hello World: 1'` for the in-tree talker;
-`Published: 0` for the BYO app) within 5 seconds of boot (or
-`./build/zephyr/zephyr.exe`); on `qemu_cortex_a9` expect it within
-~15 seconds (QEMU cold boot + Zephyr init). If no publish line
+`Published: 0` for the BYO app) within 5 seconds of boot; on a QEMU
+board (`mps2-an385-zephyr`, or a `qemu_cortex_a9` you built yourself)
+expect it within ~15 seconds (QEMU cold boot + Zephyr init). If no publish line
 in 30 seconds:
 
 1. Confirm `CONFIG_NROS=y` lit up via `west build -t menuconfig`;
@@ -892,6 +950,27 @@ in 30 seconds:
   — that symbol was renamed `ETH_NATIVE_TAP` in 4.x; the version-aware
   NSOS overlay handles it (**contributors:** the in-tree `just zephyr
   build-one` recipe applies it automatically).
+
+## Flash a real board
+
+nano-ros ships no Zephyr hardware board of its own — the boards above are
+`native_sim` and QEMU machines, and the ARM FVP is a model
+([its chapter](./arm-fvp.md)). Any board Zephyr supports is reached with a
+board package that names it (`west_board`, see
+[Which boards you can name](#which-boards-you-can-name)), and flashed with the
+runner Zephyr's own board definition declares:
+
+```bash
+# src/my_board/nros-board.toml names west_board = "nucleo_f767zi" (say);
+# in system.toml:  [image.nucleo] board = "my-board"
+nros build demo_bringup:nucleo
+west flash -d build/zephyr-zenoh/demo_bringup__nucleo_west
+```
+
+`nros build` prints that `west flash` line when the build's
+`zephyr/runners.yaml` names a flash runner. The runner (J-Link, nrfjprog,
+OpenOCD, pyOCD, …) and its probe are Zephyr's and your bench's; nano-ros adds
+nothing to them. The board must also have a network nano-ros can use.
 
 ## Zephyr 4.x: select the RMW with a snippet
 
@@ -973,8 +1052,8 @@ for the canonical in-repo surface.
 
 ## Next
 
-- Pick a real board (Nordic, NXP, STM32, …): swap `-b <board>` and
-  add a board-specific overlay to your `prj.conf`.
+- Pick a real board (Nordic, NXP, STM32, …): a board package naming its
+  `west_board`, then [Flash a real board](#flash-a-real-board).
 - Cyclone DDS on Cortex-A/R: see the DDS section of
   [Choosing an RMW Backend](../user-guide/rmw-backends.md) for the
   required Kconfig deltas.

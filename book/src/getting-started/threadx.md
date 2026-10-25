@@ -219,35 +219,57 @@ preflight with one line naming what is missing and telling you to run sync in
 that directory. See
 [Workflow by Platform and Language](../user-guide/workflow-by-platform.md).
 
-## Run
+After a successful build, `nros build` prints the artifact and the command
+that runs it: the binary itself for `threadx-linux`, and for
+`rv-virt-threadx` the QEMU line below with the store's
+`qemu-system-riscv64` filled in. The C / C++ package's image is
+`build/threadx/cmake/tx_talker` (`build/<image>/cmake/` plus the name
+`nano_ros_add_executable` gives it).
+
+## Run on the Linux simulator
+
+`threadx-linux` is an ordinary host process — no QEMU:
 
 ```bash
-# threadx-linux (no QEMU). Step 1 brings up the router (ROS's
-# `rmw_zenohd`) on the port your image's `locator` names (9000 in the
-# example above). Step 2 runs the talker the workspace built:
+# 1. The router (ROS's `rmw_zenohd`) on the port your image's `locator`
+#    names (9000 in the example above):
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:9000"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
+
+# 2. The talker. Rust workspace image:
 cd tx_ws
 ./build/threadx-linux-zenoh/tx_linux_entry/target/debug/tx_linux_entry
+#    …or the C / C++ package (board = "threadx-linux"):
+#    cd tx_talker && ./build/threadx/cmake/tx_talker
 # Expected:
 #   Publishing: 'Hello World: 1'
 #   Publishing: 'Hello World: 2'
 #   ...
+```
 
-# threadx-riscv64 (QEMU virt). Same shape — the router on the image's
-# port first (9400 in the example above; the guest dials 10.0.2.2:<p>
-# through QEMU Slirp):
+## Run on QEMU (RISC-V 64)
+
+`rv-virt-threadx` boots on QEMU's RISC-V `virt` machine, UART on stdio,
+virtio-net on Slirp:
+
+```bash
+# 1. The router on the image's port (9400 in the example above; the
+#    guest dials 10.0.2.2:<p> through QEMU Slirp):
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:9400"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
-# Then boot the built image in QEMU (UART on stdio, Slirp networking):
+# 2. Boot the built image with the store's qemu-system-riscv64
+#    (`nros setup rv-virt-threadx` installed it):
+cd tx_ws
 "$(nros sdk-path qemu)/bin/qemu-system-riscv64" -M virt -m 256M -bios none -nographic \
     -global virtio-mmio.force-legacy=false \
-    -kernel build/threadx-riscv64-zenoh/tx_riscv_entry/target/riscv64gc-unknown-none-elf/debug/tx_riscv_entry \
     -netdev user,id=net0 \
-    -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0
+    -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0 \
+    -kernel build/threadx-riscv64-zenoh/tx_riscv_entry/target/riscv64gc-unknown-none-elf/debug/tx_riscv_entry
+#    …or the C / C++ package (board = "rv-virt-threadx"):
+#    -kernel build/threadx/cmake/tx_talker
 
-# Verify from stock ROS 2:
+# 3. Verify from stock ROS 2 (either flavour):
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Talker publishes best-effort; stock `ros2 topic echo` defaults to
@@ -255,6 +277,8 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 # Force best-effort to receive:
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
 ```
+
+QEMU exits via Ctrl-A x.
 
 > **Contributors:** the in-tree fixture run/test lanes are in
 > [Per-Platform Contributor Lanes](../internals/platform-lanes.md#threadx).
@@ -272,6 +296,15 @@ before the first publish lands. threadx-riscv64
    fine for this tutorial (`nros setup threadx-linux` does not create
    the interface).
 3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
+
+## Flash a real board
+
+No real ThreadX board is supported. Both boards here are simulated — a
+Linux process and a QEMU machine — and nano-ros ships no ThreadX board
+package for physical hardware. A board of your own starts from the
+[porting guide](../porting/custom-board.md), with the
+`nros-board-threadx` family crate and the riscv64 arch port as the
+pieces to reuse; it is then flashed with that board vendor's tooling.
 
 ## Multi-tier scheduling (phase-297)
 

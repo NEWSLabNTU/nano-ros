@@ -187,12 +187,28 @@ to exist before cargo parses anything.) In a
 [multi-node workspace](workspace-cpp.md) `nros build` is the only build
 verb.
 
-Driving CMake yourself works too; name the SDK root:
+When it finishes, `nros build` prints what it built and how to run it:
+
+```text
+nros build: next for `cpp_talker:linux`:
+  artifact: /home/you/cpp_talker/build/linux/cmake/cpp_talker
+  run:
+    /home/you/cpp_talker/build/linux/cmake/cpp_talker
+```
+
+**Escape hatch — driving CMake yourself.** For a CMake tree that is not a
+nano-ros package, or a build you want to steer by hand, configure it the way
+`nros build` does (`nros build --dry-run` prints its exact line). It must be
+told where nano-ros is; a cross board also needs the toolchain file its
+starter page names:
 
 ```bash
-cmake -B build -Dnano_ros_ROOT="$(nros sdk-root)"
-cmake --build build
+cmake -S . -B build/linux/cmake -DNROS_IMAGE=linux -Dnano_ros_ROOT="$(nros sdk-root)"
+cmake --build build/linux/cmake
 ```
+
+Without a `system.toml` at all, see
+[Build as a CMake subdirectory](./build-as-subdirectory.md).
 
 First configure builds nano-ros's Rust staticlibs (~3 minutes).
 Re-builds finish in seconds.
