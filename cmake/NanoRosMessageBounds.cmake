@@ -1121,7 +1121,7 @@ macro(_nros_bounds_append_tl_retain _content)
     if(DEFINED NROS_DERIVED_TL_RETAIN_BYTES)
         string(APPEND ${_content}
             "# The transient-local retention slot: the largest serialized bound over\n"
-            "# the types this image publishes TRANSIENT_LOCAL (ZPICO_TL_RETAIN_BYTES).\n"
+            "# the types this image publishes TRANSIENT_LOCAL (NROS_ZENOH_TL_RETAIN_BYTES).\n"
             "set(NROS_DERIVED_TL_RETAIN_BYTES ${NROS_DERIVED_TL_RETAIN_BYTES})\n")
     endif()
 endmacro()
@@ -1174,7 +1174,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
     string(APPEND _c "# runtime's M::MAX_SERIALIZED_SIZE_XCDR* uses. NOT the C++ pack's\n")
     string(APPEND _c "# SERIALIZED_SIZE_MAX, which is an estimate (phase-403 W6).\n")
     string(APPEND _c "#\n")
-    string(APPEND _c "# small/large class split: ${_ceiling} B (policy -- ZPICO_SUBSCRIBER_SIZE_THRESHOLD)\n")
+    string(APPEND _c "# small/large class split: ${_ceiling} B (policy -- NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD)\n")
     string(APPEND _c "\n")
     string(APPEND _c "set(NROS_MESSAGE_BOUNDS_STATUS \"${_status}\")\n")
     if(_status STREQUAL "refused")

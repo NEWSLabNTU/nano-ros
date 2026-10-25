@@ -477,7 +477,7 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
     }
     if requested < sizing.default {
         println!(
-            "cargo:warning=ZPICO_MAX_QUERYABLES={requested} is under the budgeted {} \
+            "cargo:warning=NROS_ZENOH_MAX_QUERYABLES={requested} is under the budgeted {} \
              ({} provably claimed at boot, plus {} of headroom for application service \
              servers the model does not describe). It will boot; an application \
              declaring more than {} service servers will not (phase-392 W5.f).",
@@ -1349,9 +1349,9 @@ fn resolve_graph_discovery(link: &LinkFeatures) -> bool {
             let derived = crate::graph_discovery_derived(link);
             if !derived {
                 println!(
-                    "cargo:warning=nros: ZPICO_GRAPH_DISCOVERY=0 DERIVED from this build's \
+                    "cargo:warning=nros: NROS_ZENOH_GRAPH_DISCOVERY=0 DERIVED from this build's \
                      links (serial/CAN only, no IP link): no liveliness subscriber and no \
-                     graph cache. Set ZPICO_GRAPH_DISCOVERY=1 to keep them."
+                     graph cache. Set NROS_ZENOH_GRAPH_DISCOVERY=1 to keep them."
                 );
             }
             derived

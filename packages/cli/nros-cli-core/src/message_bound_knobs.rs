@@ -540,7 +540,7 @@ fn write_output(
     c.push_str("# SERIALIZED_SIZE_MAX, which is an estimate (phase-403 W6).\n");
     c.push_str("#\n");
     c.push_str(&format!(
-        "# small/large class split: {ceiling} B (policy -- ZPICO_SUBSCRIBER_SIZE_THRESHOLD)\n"
+        "# small/large class split: {ceiling} B (policy -- NROS_ZENOH_SUBSCRIBER_SIZE_THRESHOLD)\n"
     ));
     c.push('\n');
     c.push_str(&format!("set(NROS_MESSAGE_BOUNDS_STATUS \"{status}\")\n"));
@@ -560,7 +560,7 @@ fn write_output(
         if let Some(b) = p.tl_retain_bytes {
             c.push_str(
                 "# The transient-local retention slot: the largest serialized bound over\n\
-                 # the types this image publishes TRANSIENT_LOCAL (ZPICO_TL_RETAIN_BYTES).\n",
+                 # the types this image publishes TRANSIENT_LOCAL (NROS_ZENOH_TL_RETAIN_BYTES).\n",
             );
             c.push_str(&format!("set(NROS_DERIVED_TL_RETAIN_BYTES {b})\n"));
         }

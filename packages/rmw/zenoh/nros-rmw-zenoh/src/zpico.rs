@@ -289,10 +289,10 @@ fn acquire_session_slot() -> Result<*mut zpico_sys::zpico_session_t> {
     if handle.is_null() {
         nros_log::log_error!(
             nros_log::get_logger("nros_rmw_zenoh"),
-            "{} — this build allows ZPICO_MAX_SESSIONS={} and one is already \
+            "{} — this build allows NROS_ZENOH_MAX_SESSIONS={} and one is already \
              open. A non-bridge application opens exactly ONE session; two \
              usually means something opened a second executor instead of \
-             reusing the global one. Rebuild with ZPICO_MAX_SESSIONS=<n> only if \
+             reusing the global one. Rebuild with NROS_ZENOH_MAX_SESSIONS=<n> only if \
              the extra session is genuinely wanted (a bridge).",
             SESSION_POOL_EXHAUSTED_MARKER,
             crate::zpico::ZPICO_MAX_SESSIONS

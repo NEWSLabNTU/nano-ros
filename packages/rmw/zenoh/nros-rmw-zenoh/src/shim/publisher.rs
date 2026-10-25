@@ -301,7 +301,7 @@ pub(super) mod transient_local {
                 "qos: transient-local publisher '{}' published {} bytes; the retention \
                  slot holds {}. The sample was sent but NOT retained, so a late joiner \
                  gets nothing rather than a truncated message. Raise \
-                 ZPICO_TL_RETAIN_BYTES.",
+                 NROS_ZENOH_TL_RETAIN_BYTES.",
                 name,
                 len,
                 TL_RETAIN_BYTES
@@ -710,14 +710,14 @@ impl ZenohPublisher {
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_zenoh"),
                 "qos: TRANSIENT_LOCAL retention pool exhausted ({} slot(s), all taken) \
-                 — raise ZPICO_MAX_TL_PUBLISHERS. Each such publisher retains its last \
+                 — raise NROS_ZENOH_MAX_TL_PUBLISHERS. Each such publisher retains its last \
                  sample and answers a late joiner's query from it. topic '{}'",
                 crate::config::MAX_TL_PUBLISHERS,
                 topic_key
             );
             return Err(TransportError::Backend(
                 "zenoh transient-local retention pool exhausted — raise \
-                 ZPICO_MAX_TL_PUBLISHERS. A TRANSIENT_LOCAL publisher retains its last \
+                 NROS_ZENOH_MAX_TL_PUBLISHERS. A TRANSIENT_LOCAL publisher retains its last \
                  sample and declares a queryable to serve it to a late joiner.",
             ));
         };
@@ -791,7 +791,7 @@ impl ZenohPublisher {
                     // before the reason and the knob were reached. Cause first
                     // now; the topic is the part that may truncate.
                     "qos: TRANSIENT_LOCAL cache queryable refused ({:?}); if Full raise \
-                     ZPICO_MAX_QUERYABLES (Zephyr: CONFIG_NROS_MAX_QUERYABLES) — a TL \
+                     NROS_ZENOH_MAX_QUERYABLES (Zephyr: CONFIG_NROS_MAX_QUERYABLES) — a TL \
                      publisher is a queryable on top of every service server, and an \
                      action server has one for /status. topic '{}'",
                     e,

@@ -1088,17 +1088,17 @@ impl ZenohServiceServer {
                      from what the resolved SystemModel declares — so the table is not \
                      too small, the declaration is incomplete. Declare the service \
                      server in the launch file (a service server is a queryable, and an \
-                     action server is three). Raising ZPICO_MAX_QUERYABLES also works \
+                     action server is three). Raising NROS_ZENOH_MAX_QUERYABLES also works \
                      and leaves the model disagreeing with the image.",
                     ZPICO_MAX_QUERYABLES,
                     session_index,
                 );
             } else {
                 log::error!(
-                    "service server rejected: ZPICO_MAX_QUERYABLES={} exhausted for \
+                    "service server rejected: NROS_ZENOH_MAX_QUERYABLES={} exhausted for \
                      session {} (a service server is a queryable, and the ROS \
                      parameter and REP-2002 lifecycle services claim theirs before \
-                     the application declares anything). Raise ZPICO_MAX_QUERYABLES \
+                     the application declares anything). Raise NROS_ZENOH_MAX_QUERYABLES \
                      and rebuild.",
                     ZPICO_MAX_QUERYABLES,
                     session_index,
@@ -1129,7 +1129,7 @@ impl ZenohServiceServer {
                  server in the launch file (an action server declares three)."
             } else {
                 "zenoh queryable table exhausted — raise CONFIG_NROS_MAX_QUERYABLES \
-                 (env ZPICO_MAX_QUERYABLES). A service server IS a queryable, and the \
+                 (env NROS_ZENOH_MAX_QUERYABLES). A service server IS a queryable, and the \
                  ROS parameter and REP-2002 lifecycle services claim theirs before an \
                  entry's own callbacks."
             }));
@@ -1159,7 +1159,7 @@ impl ZenohServiceServer {
                         return Err(TransportError::Backend(
                             "zenoh service inbox tables exhausted - a queryable header was \
                              free but no ring was; USER_SERVICE_INBOX, ACTION_INBOX and \
-                             BUILTIN_INBOX must hold ZPICO_MAX_QUERYABLES rings per session \
+                             BUILTIN_INBOX must hold NROS_ZENOH_MAX_QUERYABLES rings per session \
                              between them",
                         ));
                     }

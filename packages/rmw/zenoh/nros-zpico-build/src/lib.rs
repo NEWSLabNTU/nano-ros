@@ -147,17 +147,17 @@ impl ShimConfig {
     /// Generate `$OUT_DIR/shim_constants.rs` contents with Rust const declarations.
     pub fn rust_consts(&self) -> String {
         format!(
-            "/// Maximum number of concurrent publishers (set via ZPICO_MAX_PUBLISHERS, default 8).\n\
+            "/// Maximum number of concurrent publishers (set via NROS_ZENOH_MAX_PUBLISHERS, default 8).\n\
              pub const ZPICO_MAX_PUBLISHERS: usize = {};\n\
-             /// Maximum number of concurrent subscribers (set via ZPICO_MAX_SUBSCRIBERS, default 8).\n\
+             /// Maximum number of concurrent subscribers (set via NROS_ZENOH_MAX_SUBSCRIBERS, default 8).\n\
              pub const ZPICO_MAX_SUBSCRIBERS: usize = {};\n\
-             /// Maximum number of concurrent queryables (set via ZPICO_MAX_QUERYABLES, default 8).\n\
+             /// Maximum number of concurrent queryables (set via NROS_ZENOH_MAX_QUERYABLES, default 8).\n\
              pub const ZPICO_MAX_QUERYABLES: usize = {};\n\
-             /// Maximum number of concurrent liveliness tokens (set via ZPICO_MAX_LIVELINESS; default derived from the declared node and entity facts, 16 when nothing is declared — issue 1713).\n\
+             /// Maximum number of concurrent liveliness tokens (set via NROS_ZENOH_MAX_LIVELINESS; default derived from the declared node and entity facts, 16 when nothing is declared — issue 1713).\n\
              pub const ZPICO_MAX_LIVELINESS: usize = {};\n\
-             /// Maximum number of concurrent pending get operations (set via ZPICO_MAX_PENDING_GETS, default 4).\n\
+             /// Maximum number of concurrent pending get operations (set via NROS_ZENOH_MAX_PENDING_GETS, default 4).\n\
              pub const ZPICO_MAX_PENDING_GETS: usize = {};\n\
-             /// Size of the session pool (set via ZPICO_MAX_SESSIONS, default 1). phase-328 / issue 0348.\n\
+             /// Size of the session pool (set via NROS_ZENOH_MAX_SESSIONS, default 1). phase-328 / issue 0348.\n\
              pub const ZPICO_MAX_SESSIONS: usize = {};\n\
              /// phase-392 W5.e — whether the queryable table was sized from the entry's\n\
              /// DECLARATION rather than from the backend's own budget. Decides which\n\

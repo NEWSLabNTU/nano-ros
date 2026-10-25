@@ -346,7 +346,7 @@ fn exec_for(platform: MP, lang: ML) -> Vec<Exec> {
                 proof: Proof::ConsoleTicks(DERIVED_TIERS_CPP_NODES),
                 note: "issue 1733: derived-tiers-cpp — four DERIVED tiers, three spawned at once \
                        over one session, each arming a /diagnostics reporter: lost 2-3 tiers \
-                       per boot to ZPICO_MAX_PUBLISHERS sized for one reporter",
+                       per boot to NROS_ZENOH_MAX_PUBLISHERS sized for one reporter",
             },
         ],
         (MP::ZephyrNativeSim, ML::Rust) => vec![Exec {
