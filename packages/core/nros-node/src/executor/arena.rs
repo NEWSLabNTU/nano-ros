@@ -547,6 +547,10 @@ pub(crate) struct SrvRawEntry<const REQ_BUF: usize, const REPLY_BUF: usize> {
     pub(crate) reply_buffer: [u8; REPLY_BUF],
     pub(crate) callback: RawServiceCallback,
     pub(crate) context: *mut core::ffi::c_void,
+    /// phase-488 — the arena's copy of a C++ handler's capture (a `std::bind`
+    /// over `this`, a capturing lambda), destroyed with the entry. `drop: None`
+    /// when the context is not a capture, which is every C caller.
+    pub(crate) capture: CaptureGuard,
 }
 
 /// Concrete guard condition entry stored in the arena.
@@ -3806,6 +3810,7 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
         reply_buffer,
         callback,
         context,
+        capture: _,
     } = entry;
     let buf_start = req_buffer.as_ptr() as usize;
     let (data_offset, data_len, seq_num) = match handle.take_request(req_buffer) {

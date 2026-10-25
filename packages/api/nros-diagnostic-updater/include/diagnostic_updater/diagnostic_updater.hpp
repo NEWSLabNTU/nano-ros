@@ -13,11 +13,11 @@
 //   * `add(name, T* obj, void (T::*method)(DiagnosticStatusWrapper&))`.
 //   * `setHardwareID(id)` / `getHardwareID()`.
 //   * `force_update()` — publish immediately.
+//   * A wall timer at `period` publishes, as upstream's does (phase-488): 18 of
+//     Autoware 0.45's 55 `Updater` users never call `update()` themselves, so
+//     without it they compiled and published no `/diagnostics` at all.
 //   * `update()` — publish if `period_` has elapsed since last publish (no-op
-//     otherwise); intended to be called from the node's executor loop. The
-//     application is responsible for invoking it (typically from a periodic
-//     timer or from `rclcpp::spin_some`'s caller); nano-ros has no
-//     auto-firing timer registration through `rclcpp::Node` yet.
+//     otherwise), for a caller that drives it from its own loop as well.
 //   * `broadcast(level, message)` — publishes a single status with the given
 //     summary, no add(...)s.
 //
@@ -33,6 +33,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -55,8 +56,20 @@ class Updater {
         if (node_) {
             publisher_ = node_->create_publisher<::diagnostic_msgs::msg::DiagnosticArray>(
                 "/diagnostics", rclcpp::QoS(10));
+            start_timer();
         }
     }
+
+    // Upstream's `template <class NodeT> Updater(NodeT node, ...)` takes a raw
+    // node pointer too: `diagnostic_updater::Updater updater_{this};` is the
+    // member every Autoware node declares (phase-488).
+    template <typename NodeT, typename = typename std::enable_if<
+                                  std::is_convertible<NodeT*, rclcpp::Node*>::value>::type>
+    explicit Updater(NodeT* node, double period_seconds = 1.0)
+        : Updater(rclcpp::Node::SharedPtr(static_cast<rclcpp::Node*>(node)), period_seconds) {}
+
+    // The timer captures `this`, and dropping its handle would leave it firing.
+    ~Updater() { timer_.reset(); }
 
     // Legacy upstream form: (node, period_seconds, frequency_hz). Frequency
     // arg is ignored — `period_seconds` wins.
@@ -120,10 +133,22 @@ class Updater {
 
     void setPeriod(double period_seconds) {
         period_seconds_ = period_seconds > 0.0 ? period_seconds : period_seconds_;
+        if (node_) {
+            timer_.reset();
+            start_timer();
+        }
     }
+
+    double getPeriod() const { return period_seconds_; }
 
   private:
     using Task = std::pair<std::string, TaskCallback>;
+
+    void start_timer() {
+        timer_ = node_->create_wall_timer(
+            rclcpp::Duration::from_nanoseconds(static_cast<int64_t>(period_seconds_ * 1e9)),
+            [this]() { publish_now(); });
+    }
 
     void publish_now() {
         if (!publisher_) {
@@ -150,6 +175,7 @@ class Updater {
     // spells a publisher handle `rclcpp::Owned<Publisher<M>>`; upstream spells it
     // `std::shared_ptr`. Only the alias compiles against both.
     ::rclcpp::Publisher<::diagnostic_msgs::msg::DiagnosticArray>::SharedPtr publisher_;
+    ::rclcpp::TimerBase::SharedPtr timer_;
 };
 
 } // namespace diagnostic_updater

@@ -1,7 +1,9 @@
 # Phase 488 — real-world ROS 2 C++ nodes, ported, and the friction fixed
 
-**Status (2026-10-24). W1 done: three nodes picked from a survey of nine
-projects. W2–W4 not started.** Rescoped 2026-10-24. The ported code is the
+**Status (2026-10-25). W1 done: three nodes picked from a survey of nine
+projects. W2 and W3 done for node 1 (`autoware_external_cmd_selector`): it
+builds with no source edit and runs against a stock ROS 2 peer, with its pool
+sizes still raised by hand (issue 2043). Nodes 2 and 3 and W4 not started.** Rescoped 2026-10-24. The ported code is the
 user's work and is not committed here. What this phase lands is what the ports
 expose: nros-cpp, codegen and build fixes, issues, and porting-guide changes.
 The original W2 ("add it as a port template") and W3 (runtime cells for it)
@@ -192,6 +194,46 @@ For each logged edit, choose one:
 The stock-example check from W0 (`packages/api/nros-cpp/tests/compile/rclcpp-examples/`,
 `edits.json`) is the in-tree regression for a drop-in. Where a finding reduces
 to an API shape the stock examples also use, its test goes there.
+
+### W2/W3 progress — node 1, `autoware_external_cmd_selector` @0.45.0 (2026-10-25)
+
+The package was copied verbatim into a scratch workspace whose umbrella
+`CMakeLists.txt` adds nano-ros and the package, with the Autoware 0.45.1
+install sourced (that is how its message packages and `autoware_cmake` reach a
+user's machine). It needed **no source edit and no D5 edit** once the fixes
+below landed. It runs on posix against ROS 2 Humble `rmw_zenoh_cpp` on one
+router. The peer sees the node and its 19 topics. A
+`select_external_command` call switches the mode from 1 to 2 (`success=True`).
+`ros2 param get` answers from the params file, `/diagnostics` publishes the
+heartbeat, and a remote gear command is forwarded.
+
+| finding | disposition |
+| --- | --- |
+| `rclcpp_components_register_node(... EXECUTABLE)` failed on every call (`file(GENERATE)` argument error) | fixed, #2620 |
+| the generated component main named the class without declaring it | fixed, #2620 (`make_component<T>` factory defined by `RCLCPP_COMPONENTS_REGISTER_NODE`) |
+| `ament_auto_find_build_dependencies` was a no-op: no `include/`, no package.xml deps | fixed, #2620 |
+| an AMENT message package resolved to the installed ROS package | fixed, #2620 (Find stubs for the AMENT layer) |
+| `diagnostic_updater` did not carry `diagnostic_msgs` | fixed, #2620 |
+| `ament_auto_add_library(... SHARED)` linked the runtime twice; start-up `undefined symbol` | fixed, #2620 (every kind STATIC) |
+| `ros2 param get` timed out: the ament road declared no `param_services` | fixed, #2620 + C++ PR (host ament packages default to it; the node constructor starts them) |
+| `<diagnostic_updater/update_functions.hpp>` missing | header added, C++ PR; its classes are issue 2040 |
+| `Updater` never published unless `update()` was called (18 of 55 Autoware users never call it) | fixed, C++ PR (own timer) |
+| `diagnostic_updater::Updater updater_{this};` | fixed, C++ PR |
+| `pub->publish(msg);` an error under `-Wall -Werror` (`[[nodiscard]]`) | fixed, C++ PR: ignorable and logged on the std surface; embedded keeps the warning |
+| `CallbackGroupType`, `CallbackGroup::SharedPtr`, `SubscriptionOptions::callback_group` absent | fixed, C++ PR: unnamed groups run on the node default |
+| `create_service(name, cb, rmw_qos_profile_services_default, group)` | fixed, C++ PR; the `rmw_qos_profile_t` TYPE is issue 2041 |
+| four-argument `create_subscription(topic, qos, cb, options)` | fixed, C++ PR |
+| a `std::bind(&X::f, this, _1, _2)` service handler returning `bool` was refused | fixed, C++ PR: a stateful handler's capture lives in the service's arena entry |
+| `ExecutorFull`, then liveliness, publisher, subscriber and queryable tables full at start-up | issue 2043 (census sizing on the ament road, as ruled); the executor log now names its knob |
+| zenoh warnings advise a retired `ZPICO_*` env spelling | issue 2042 |
+| `find_package(autoware_cmake)` needs the project's install sourced | porting-guide note (W4); no fix |
+
+In-tree tests, none of which use the ported code:
+`just check cmake-ament-surface` (`tests/cmake-ament-surface-tests.sh`), and
+`ament_port_surface_runtime.cpp` in `just check cpp`, built twice (with and
+without a `param_services` runtime) plus a link of the generated component
+main. Also `a_capturing_raw_service_destroys_and_releases_its_capture` in
+nros-node.
 
 ### W4 — the porting guide says what the ports learned
 

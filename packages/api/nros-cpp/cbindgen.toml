@@ -92,6 +92,9 @@ exclude = [
     # leaving the symbol undefined in the header. Declared locally in
     # service.hpp with a matching plain fn-ptr typedef instead.
     "nros_cpp_service_server_register",
+    # phase-488 — the capturing variant, same reason (`RawServiceCallback`).
+    # Declared locally in service.hpp.
+    "nros_cpp_service_server_register_capturing",
     # Phase 189.M3.3.f — same reason (`RawResponseCallback` alias); declared
     # locally in client.hpp. (`nros_cpp_service_client_send_on_handle` takes no
     # callback, so it stays in the cbindgen output.)

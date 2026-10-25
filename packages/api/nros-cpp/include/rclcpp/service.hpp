@@ -53,6 +53,13 @@ nros_cpp_ret_t nros_cpp_service_server_register(const nros_cpp_node_t* node,
                                                 nros_cpp_service_request_callback_t callback,
                                                 void* context, uint8_t sched_context,
                                                 size_t* out_handle_id);
+
+// phase-488 — the capturing twin, excluded from cbindgen for the same reason.
+nros_cpp_ret_t nros_cpp_service_server_register_capturing(
+    const nros_cpp_node_t* node, const char* service_name, const char* type_name,
+    const char* type_hash, nros_cpp_qos_t qos, nros_cpp_service_request_callback_t callback,
+    const uint8_t* capture, size_t capture_len, void (*capture_drop)(void*), uint8_t sched_context,
+    size_t* out_handle_id);
 } // extern "C"
 
 /// `rclcpp::Node` is named by the friend declaration below and by the
@@ -351,7 +358,8 @@ Result Node::register_service_(Service<S>& out, const char* service_name,
                                bool (*trampoline)(const uint8_t*, size_t, uint8_t*, size_t, size_t*,
                                                   void*),
                                void* context, const ::rclcpp::QoS& qos,
-                               const ::rclcpp::ServiceOptions& options) {
+                               const ::rclcpp::ServiceOptions& options, const void* capture,
+                               size_t capture_len, void (*capture_drop)(void*)) {
     if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
 
@@ -359,9 +367,14 @@ Result Node::register_service_(Service<S>& out, const char* service_name,
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
-    nros_cpp_ret_t ret = nros_cpp_service_server_register(&handle_, service_name, S::TYPE_NAME,
-                                                          S::Request::TYPE_HASH, ffi_qos,
-                                                          trampoline, context, sched, &handle);
+    nros_cpp_ret_t ret =
+        (capture != nullptr && capture_len != 0)
+            ? nros_cpp_service_server_register_capturing(
+                  &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, trampoline,
+                  static_cast<const uint8_t*>(capture), capture_len, capture_drop, sched, &handle)
+            : nros_cpp_service_server_register(&handle_, service_name, S::TYPE_NAME,
+                                               S::Request::TYPE_HASH, ffi_qos, trampoline, context,
+                                               sched, &handle);
     if (ret == 0) {
         out.handle_id_ = handle;
         // phase-444 — remember the name for `get_service_name()`; the runtime
@@ -376,7 +389,8 @@ Result Node::register_service_(Service<S>& out, const char* service_name,
 }
 } // namespace rclcpp
 
-#include "rclcpp/logging.hpp" // phase-488 — NROS_RCLCPP_SAY_REFUSED for the shared_ptr handler
+#include "rclcpp/logging.hpp"    // phase-488 — NROS_RCLCPP_SAY_REFUSED for the shared_ptr handler
+#include "rclcpp/inplace_fn.hpp" // phase-488 — a stateful handler's arena capture
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
 /// `rmw_request_id_t` — phase-488. The request header upstream's three-argument
@@ -472,40 +486,147 @@ template <typename S, typename F> struct service_ptr_shape {
                                                                                          : 0;
 };
 
+/// One delivery through the lent `shared_ptr` shape: deserialize, lend the
+/// request, response and header from this frame, call `invoke(header, request,
+/// response)`, refuse a retained pointer, serialize. Shared by the function-
+/// pointer handler and the stateful one below; they differ only in what holds
+/// the callable.
+template <typename S, typename Invoke>
+inline bool serve_lent(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
+                       size_t* resp_len, const Invoke& invoke) {
+    typename S::Request request;
+    if (S::Request::ffi_deserialize(req, req_len, &request) != 0) return false;
+    typename S::Response response;
+    ::rmw_request_id_t header = {};
+    {
+        FrameBlock request_block;
+        FrameBlock response_block;
+        FrameBlock header_block;
+        ::std::shared_ptr<typename S::Request> request_ptr =
+            lend_from_frame(&request, &request_block);
+        ::std::shared_ptr<typename S::Response> response_ptr =
+            lend_from_frame(&response, &response_block);
+        ::std::shared_ptr<::rmw_request_id_t> header_ptr = lend_from_frame(&header, &header_block);
+        invoke(header_ptr, request_ptr, response_ptr);
+        if (request_ptr.use_count() != 1 || response_ptr.use_count() != 1 ||
+            header_ptr.use_count() != 1) {
+            NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_RETAINED_SERVICE_PTR);
+            ::std::abort();
+        }
+    }
+    size_t len = 0;
+    if (S::Response::ffi_serialize(&response, resp, resp_cap, &len) != 0) return false;
+    *resp_len = len;
+    return true;
+}
+
 template <typename S, int Shape> struct shared_ptr_service_trampoline {
     static bool call(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
                      size_t* resp_len, void* ctx) {
         using Fn = shared_ptr_service_fn<S>;
-        typename S::Request request;
-        if (S::Request::ffi_deserialize(req, req_len, &request) != 0) return false;
-        typename S::Response response;
-        ::rmw_request_id_t header = {};
-        {
-            FrameBlock request_block;
-            FrameBlock response_block;
-            FrameBlock header_block;
-            ::std::shared_ptr<typename S::Request> request_ptr =
-                lend_from_frame(&request, &request_block);
-            ::std::shared_ptr<typename S::Response> response_ptr =
-                lend_from_frame(&response, &response_block);
-            ::std::shared_ptr<::rmw_request_id_t> header_ptr =
-                lend_from_frame(&header, &header_block);
-            if (Shape == 3) {
-                fn_from_context<typename Fn::three>(ctx)(header_ptr, request_ptr, response_ptr);
-            } else {
-                fn_from_context<typename Fn::two>(ctx)(request_ptr, response_ptr);
-            }
-            if (request_ptr.use_count() != 1 || response_ptr.use_count() != 1 ||
-                header_ptr.use_count() != 1) {
-                NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_RETAINED_SERVICE_PTR);
-                ::std::abort();
-            }
-        }
-        size_t len = 0;
-        if (S::Response::ffi_serialize(&response, resp, resp_cap, &len) != 0) return false;
-        *resp_len = len;
-        return true;
+        return serve_lent<S>(req, req_len, resp, resp_cap, resp_len,
+                             [ctx](::std::shared_ptr<::rmw_request_id_t>& h,
+                                   ::std::shared_ptr<typename S::Request>& rq,
+                                   ::std::shared_ptr<typename S::Response>& rs) {
+                                 if (Shape == 3) {
+                                     fn_from_context<typename Fn::three>(ctx)(h, rq, rs);
+                                 } else {
+                                     (void)h;
+                                     fn_from_context<typename Fn::two>(ctx)(rq, rs);
+                                 }
+                             });
     }
+};
+
+/// phase-488 — a service handler with STATE: upstream's
+/// `std::bind(&Node::on_request, this, _1, _2)`, or a capturing lambda, in any
+/// of the three shapes (`[header,] shared_ptr request, shared_ptr response`, or
+/// the reference `const Request&, Response&`). Whatever the callable returns is
+/// discarded, as upstream's `std::function<void(...)>` discards it (Autoware
+/// handlers commonly return `bool`).
+///
+/// Which shape `F` is invocable as: 3, 2, 1 (the reference shape), or 0.
+template <typename S, typename F> class stateful_service_shape {
+    using Rq = typename S::Request;
+    using Rs = typename S::Response;
+    using H = ::std::shared_ptr<::rmw_request_id_t>;
+    template <typename G>
+    static auto probe3(int)
+        -> decltype(::std::declval<G&>()(::std::declval<H&>(),
+                                         ::std::declval<::std::shared_ptr<Rq>&>(),
+                                         ::std::declval<::std::shared_ptr<Rs>&>()),
+                    char(0)) {
+        return 0;
+    }
+    template <typename G> static long probe3(...) { return 0; }
+    template <typename G>
+    static auto probe2(int)
+        -> decltype(::std::declval<G&>()(::std::declval<::std::shared_ptr<Rq>&>(),
+                                         ::std::declval<::std::shared_ptr<Rs>&>()),
+                    char(0)) {
+        return 0;
+    }
+    template <typename G> static long probe2(...) { return 0; }
+    template <typename G>
+    static auto probe1(int)
+        -> decltype(::std::declval<G&>()(::std::declval<const Rq&>(), ::std::declval<Rs&>()),
+                    char(0)) {
+        return 0;
+    }
+    template <typename G> static long probe1(...) { return 0; }
+
+  public:
+    static const int value = sizeof(probe3<F>(0)) == sizeof(char)   ? 3
+                             : sizeof(probe2<F>(0)) == sizeof(char) ? 2
+                             : sizeof(probe1<F>(0)) == sizeof(char) ? 1
+                                                                    : 0;
+};
+
+/// The callable the arena holds for a stateful handler: one signature for all
+/// three shapes, so one trampoline serves them. Its capacity is the arena's
+/// business, not a cross-language constant (the runtime copies `sizeof` bytes),
+/// and eight words hold upstream's `std::bind(&Node::member, this, _1, _2)`
+/// inside the adapter lambda with room.
+template <typename S>
+using StatefulServiceFn = ::rclcpp::InplaceFn<void(::std::shared_ptr<::rmw_request_id_t>&,
+                                                   ::std::shared_ptr<typename S::Request>&,
+                                                   ::std::shared_ptr<typename S::Response>&),
+                                              8 * sizeof(void*)>;
+
+template <typename S, int Shape> struct stateful_service_adapter;
+template <typename S> struct stateful_service_adapter<S, 3> {
+    template <typename F> static StatefulServiceFn<S> wrap(F f) {
+        return StatefulServiceFn<S>(
+            [f](::std::shared_ptr<::rmw_request_id_t>& h,
+                ::std::shared_ptr<typename S::Request>& rq,
+                ::std::shared_ptr<typename S::Response>& rs) mutable { (void)f(h, rq, rs); });
+    }
+};
+template <typename S> struct stateful_service_adapter<S, 2> {
+    template <typename F> static StatefulServiceFn<S> wrap(F f) {
+        return StatefulServiceFn<S>(
+            [f](::std::shared_ptr<::rmw_request_id_t>&, ::std::shared_ptr<typename S::Request>& rq,
+                ::std::shared_ptr<typename S::Response>& rs) mutable { (void)f(rq, rs); });
+    }
+};
+template <typename S> struct stateful_service_adapter<S, 1> {
+    template <typename F> static StatefulServiceFn<S> wrap(F f) {
+        return StatefulServiceFn<S>([f](::std::shared_ptr<::rmw_request_id_t>&,
+                                        ::std::shared_ptr<typename S::Request>& rq,
+                                        ::std::shared_ptr<typename S::Response>& rs) mutable {
+            (void)f(static_cast<const typename S::Request&>(*rq), *rs);
+        });
+    }
+};
+
+/// The trampoline over the ARENA's copy of the stateful callable.
+template <typename S> struct stateful_service_trampoline {
+    static bool call(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
+                     size_t* resp_len, void* ctx) {
+        const StatefulServiceFn<S>* fn = static_cast<const StatefulServiceFn<S>*>(ctx);
+        return serve_lent<S>(req, req_len, resp, resp_cap, resp_len, *fn);
+    }
+    static void destroy(void* ctx) { static_cast<StatefulServiceFn<S>*>(ctx)->clear(); }
 };
 
 /// The context the arena stores for shape `Shape`: the handler converted to

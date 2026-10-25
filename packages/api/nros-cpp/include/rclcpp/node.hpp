@@ -754,6 +754,14 @@ class Node {
     explicit Node(const char* name, const char* ns = nullptr)
         : handle_(), initialized_(false), executor_handle_(nullptr), clock_(RCL_ROS_TIME) {
         (void)this->init(name, ns);
+#if defined(NROS_AMENT_START_PARAMETER_SERVICES)
+        // phase-488 — upstream starts the six parameter services in every node
+        // (`NodeOptions::start_parameter_services` defaults to true). The ament
+        // verbs define this when the runtime carries `param_services`, so a
+        // ported node gets them with no call of ours; elsewhere the entry or
+        // the user calls `start_parameter_services()`. Idempotent per executor.
+        if (initialized_) (void)this->start_parameter_services();
+#endif
     }
 
     /// Explicit-code construction — the channel a `-fno-exceptions` target
@@ -1035,6 +1043,24 @@ class Node {
     typename ::rclcpp::Subscription<M>::SharedPtr create_subscription(const ::std::string& topic,
                                                                       ::size_t depth, Cb cb);
 
+    /// `create_subscription<M>(topic, qos, callback, options)` (phase-488).
+    template <typename M, typename Cb>
+    typename ::rclcpp::Subscription<M>::SharedPtr
+    create_subscription(const ::std::string& topic, const ::rclcpp::QoS& qos, Cb cb,
+                        const ::rclcpp::SubscriptionOptions& options) {
+        return this->create_subscription<M>(topic.c_str(), qos, ::rclcpp::tr::forward_rvalue(cb),
+                                            options);
+    }
+
+    /// `create_subscription<M>(topic, depth, callback, options)` (phase-488).
+    template <typename M, typename Cb>
+    typename ::rclcpp::Subscription<M>::SharedPtr
+    create_subscription(const ::std::string& topic, ::size_t depth, Cb cb,
+                        const ::rclcpp::SubscriptionOptions& options) {
+        return this->create_subscription<M>(topic.c_str(), depth, ::rclcpp::tr::forward_rvalue(cb),
+                                            options);
+    }
+
     /// Poll-style service server (`create_service<S>(name, qos)`). Not an
     /// upstream signature — upstream requires a callback — so it claims
     /// nothing. Drain with `service->take_request(...)`.
@@ -1070,6 +1096,15 @@ class Node {
               typename = void>
     typename ::rclcpp::Service<S>::SharedPtr
     create_service(const ::std::string&, F, const ::rclcpp::QoS& = ::rclcpp::QoS::services());
+
+    /// `create_service<S>(name, callback, qos, group)` (phase-488).
+    template <typename S, typename F>
+    typename ::rclcpp::Service<S>::SharedPtr create_service(const ::std::string& name, F callback,
+                                                            const ::rclcpp::QoS& qos,
+                                                            const ::rclcpp::CallbackGroup* group) {
+        return this->template create_service<S>(name.c_str(),
+                                                ::rclcpp::tr::forward_rvalue(callback), qos, group);
+    }
 
     /// Future-style service client (`create_client<S>(name, qos)`) — pair with
     /// `spin_until_future_complete`.
@@ -1159,6 +1194,23 @@ class Node {
     typename ::rclcpp::Subscription<M>::SharedPtr create_subscription(const char* topic,
                                                                       ::size_t depth, Cb cb);
 
+    /// `create_subscription<M>(topic, qos, callback, options)` — upstream's
+    /// four-argument shape (phase-488). `options.callback_group` is the
+    /// anonymous group token and selects the node default, as everywhere else.
+    /// The other `SubscriptionOptions` fields are read by the caller-placed
+    /// overload only; on this one a set `sched_context` is refused rather than
+    /// dropped.
+    template <typename M, typename Cb>
+    typename ::rclcpp::Subscription<M>::SharedPtr
+    create_subscription(const char* topic, const ::rclcpp::QoS& qos, Cb cb,
+                        const ::rclcpp::SubscriptionOptions& options);
+
+    /// `create_subscription<M>(topic, depth, callback, options)`.
+    template <typename M, typename Cb>
+    typename ::rclcpp::Subscription<M>::SharedPtr
+    create_subscription(const char* topic, ::size_t depth, Cb cb,
+                        const ::rclcpp::SubscriptionOptions& options);
+
     /// Poll-style service server (`create_service<S>(name, qos)`). Not an
     /// upstream signature; see the `std::string` overload's note.
     template <typename S>
@@ -1186,6 +1238,17 @@ class Node {
               typename = void>
     typename ::rclcpp::Service<S>::SharedPtr
     create_service(const char*, F, const ::rclcpp::QoS& = ::rclcpp::QoS::services());
+
+    /// `create_service<S>(name, callback, qos, group)` — upstream's trailing
+    /// callback group (phase-488). `group` is upstream's anonymous token, which
+    /// reads as null (the node default); the call is otherwise the three-
+    /// argument one. A NAMED group (`&create_callback_group("x")`) is refused at
+    /// the call: a service cannot be bound to a group's context here, and
+    /// dispatching it on the default would be a placement nobody asked for.
+    template <typename S, typename F>
+    typename ::rclcpp::Service<S>::SharedPtr create_service(const char* name, F callback,
+                                                            const ::rclcpp::QoS& qos,
+                                                            const ::rclcpp::CallbackGroup* group);
 
     /// Future-style service client (`create_client<S>(name, qos)`); see the
     /// `std::string` overload's note on the divergence.
@@ -2271,6 +2334,20 @@ class Node {
         return ::rclcpp::CallbackGroup{name};
     }
 
+    /// `create_callback_group(rclcpp::CallbackGroupType, automatically_add)` —
+    /// upstream's anonymous group (phase-488). Returns a token that every
+    /// group-taking verb reads as the node default: one executor task already
+    /// keeps every callback mutually exclusive, so the kind asks for nothing
+    /// that is not already true. `automatically_add_to_executor_with_node` is
+    /// accepted for the same reason: the node's callbacks are on its executor.
+    /// Named groups (the tier derivation's) are `create_callback_group("name")`.
+    ::rclcpp::CallbackGroup::SharedPtr
+    create_callback_group(::rclcpp::CallbackGroupType type,
+                          bool automatically_add_to_executor_with_node = true) {
+        (void)automatically_add_to_executor_with_node;
+        return ::rclcpp::CallbackGroup::SharedPtr(type);
+    }
+
     /// Create a repeating timer **in** a callback group (RFC-0047).
     ///
     /// Like `create_wall_timer` but associates the timer with `group` so the
@@ -2634,12 +2711,32 @@ class Node {
     /// hosted `shared_ptr` shape (`create_service<S>(name, cb)`). They differ
     /// only in the trampoline that adapts the arena's bytes to the handler, so
     /// that is the parameter; everything the arena records is this body.
+    ///
+    /// A handler with STATE (`std::bind` over `this`, a capturing lambda) passes
+    /// its bytes as `capture` instead of a `context` word: the arena copies them
+    /// into the service's entry and dispatches with its own copy, and
+    /// `capture_drop` destroys that copy when the service is released.
     template <typename S>
     Result register_service_(::rclcpp::Service<S>& out, const char* service_name,
                              bool (*trampoline)(const uint8_t*, size_t, uint8_t*, size_t, size_t*,
                                                 void*),
                              void* context, const ::rclcpp::QoS& qos,
-                             const ::rclcpp::ServiceOptions& options);
+                             const ::rclcpp::ServiceOptions& options, const void* capture = nullptr,
+                             size_t capture_len = 0, void (*capture_drop)(void*) = nullptr);
+
+    /// phase-488 — the hosted non-reference service handler, split by what holds
+    /// it: `tag 0` a handler that converts to a function pointer (the context IS
+    /// the pointer), `tag 1` one with state (copied into the arena entry). Two
+    /// overloads rather than an `if`, because each body only compiles for its
+    /// own kind of `F`. Defined in `rclcpp.hpp`'s hosted block.
+    template <typename S, typename F>
+    Result register_hosted_service_(::rclcpp::Service<S>& out, const char* name, F callback,
+                                    const ::rclcpp::QoS& qos,
+                                    ::rclcpp::tr::integral_constant<int, 0>);
+    template <typename S, typename F>
+    Result register_hosted_service_(::rclcpp::Service<S>& out, const char* name, F callback,
+                                    const ::rclcpp::QoS& qos,
+                                    ::rclcpp::tr::integral_constant<int, 1>);
 
     /// issue 1975 -- what the `(name, options)` constructors do with their
     /// options: keep them for `get_node_options()` and build the node clock

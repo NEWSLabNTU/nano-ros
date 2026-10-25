@@ -26,6 +26,7 @@
 // phase-417 stage 6 step A — `rclcpp::detail::refuse` and
 // `NROS_RCLCPP_REFUSE_NODE_OPTIONS`, used by `rclcpp::NodeOptions` below.
 #include "rclcpp/logging.hpp"
+#include "rclcpp/callback_group.hpp" // phase-488 — `SubscriptionOptions::callback_group`
 
 namespace rclcpp {
 
@@ -75,6 +76,11 @@ struct SubscriptionOptions {
     /// site is stable and the bind path activates transparently once the
     /// FFI grows a handle id.
     int sched_context = SCHED_CONTEXT_UNSET;
+
+    /// `options.callback_group = group_;` — upstream's anonymous group token
+    /// (phase-488). Accepted and read as the node default, the same as every
+    /// other group-taking verb's null group; see `rclcpp::CallbackGroupToken`.
+    ::rclcpp::CallbackGroup::SharedPtr callback_group;
 
     /// RESERVED — not yet implemented.
     ///

@@ -1924,6 +1924,32 @@ cpp: cpp-fmt
     _rx_names=()
     for _src in "$_rx"/ported/*.cpp; do _rx_names+=("$(basename "$_src" .cpp)"); done
     scripts/check-rclcpp-examples-boot.sh "$gen/nros-cpp-tests/rclcpp-examples" "${_rx_names[@]}"
+    # phase-488 W3 -- the hosted surface a stock ROS 2 package spells, found by
+    # porting Autoware's `autoware_external_cmd_selector`: grouped four-argument
+    # subscriptions, a stateful `std::bind` / capturing-lambda service handler
+    # (its capture held by the entry, destroyed once), `rmw_qos_profile_*`, an
+    # ignorable `publish()` under `-Werror`, `diagnostic_updater::Updater`'s own
+    # timer, and the component factory. A RUN; then the generated component main
+    # (`cmake/NanoRosComponentMain.cmake`, which declares the class without its
+    # header) is LINKED against the same file built as a component only.
+    _ps=packages/api/nros-cpp/tests/compile/ament_port_surface_runtime.cpp
+    test -f "$_ps" || { echo "ERROR: $_ps is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - the hosted surface a stock ROS 2 package uses; the generated component main links (runtime, phase-488)"
+    _ps_flags=(-std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti -Wall -Wextra -Werror
+        -I"$cppgen" -I"$cgen"
+        -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include
+        -Ipackages/core/nros-rmw-abi/include -Ipackages/platform/nros-platform-api/include
+        -Ipackages/api/nros-c/tests/run -Ipackages/api/nros-diagnostic-updater/include
+        -Ipackages/api/nros-cpp/tests/compile/port-surface-msgs)
+    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests"/ament_port_surface_runtime "$_ps" \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/ament_port_surface_runtime
+    cmake -DPLUGIN=demo::Selector -DEXECUTABLE=selector \
+        -DOUT="$gen/nros-cpp-tests/selector_component_main.cpp" -P cmake/NanoRosComponentMain.cmake
+    c++ "${_ps_flags[@]}" -DNROS_PORT_SURFACE_COMPONENT_ONLY=1 \
+        -o "$gen/nros-cpp-tests"/selector_component \
+        "$gen/nros-cpp-tests/selector_component_main.cpp" "$_ps" \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
     # issue 1456 — an `rclcpp`-shape component's IDENTITY. The shape constructs
     # its own node, so the launch-declared name and namespace reach it only
     # through the `NodeHandle` the entry hands it; before the fix they reached
@@ -2057,6 +2083,24 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$pe_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/parameter_events_runtime
+    # phase-488 -- the ament verbs define NROS_AMENT_START_PARAMETER_SERVICES
+    # when the runtime carries `param_services`, and the node constructor then
+    # serves the parameters, as upstream's does. The port-surface TU again, on
+    # this runtime. Negative control, measured: the constructor's call made
+    # dead -> "the node serves its parameters with no call of ours" fails.
+    echo "  - an ament-built node serves its parameters with no call of ours (runtime, phase-488)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -DNROS_AMENT_START_PARAMETER_SERVICES=1 \
+        -fno-exceptions -fno-rtti -Wall -Wextra -Werror \
+        -I"$(nros_locate_artifact cpp-include --placed-dir "$pe_dir/placed")" \
+        -I"$(nros_locate_artifact c-include --placed-dir "$pe_dir/placed")" \
+        -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run -Ipackages/api/nros-diagnostic-updater/include \
+        -Ipackages/api/nros-cpp/tests/compile/port-surface-msgs \
+        -o "$gen/nros-cpp-tests"/ament_port_surface_param_services \
+        packages/api/nros-cpp/tests/compile/ament_port_surface_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$pe_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/ament_port_surface_param_services
     # phase-476 W2 — a C++ timer's callable lives in the executor arena: it
     # fires from the arena's copy, a capture that owns something is destroyed
     # exactly once (on `timer_.reset()` or node destruction), `timer_->reset()`

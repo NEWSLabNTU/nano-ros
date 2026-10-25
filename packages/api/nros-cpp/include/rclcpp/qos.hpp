@@ -997,4 +997,25 @@ constexpr QoS KeepAll() {
 
 } // namespace rclcpp
 
+#if defined(NROS_CPP_STD) // hosted-family: rmw-profile-names
+// phase-488 — upstream's `rmw_qos_profile_*` constants, as ported code passes
+// them: `create_service<S>(name, cb, rmw_qos_profile_services_default, group)`
+// (Humble's signature takes the rmw struct). Here each is the `rclcpp::QoS`
+// row of the table above, so it binds to every verb's `QoS` parameter. There is
+// no `rmw_qos_profile_t` type: code that names it, or reads its fields, does not
+// compile. Std surface only, because these are global names and freestanding
+// code has no ported caller for them. `system_default` is absent for the
+// table's reason: every field of it is a sentinel.
+static constexpr ::rclcpp::QoS rmw_qos_profile_default =
+    ::rclcpp::detail::qos_table::default_profile();
+static constexpr ::rclcpp::QoS rmw_qos_profile_sensor_data =
+    ::rclcpp::detail::qos_table::sensor_data();
+static constexpr ::rclcpp::QoS rmw_qos_profile_services_default =
+    ::rclcpp::detail::qos_table::services_default();
+static constexpr ::rclcpp::QoS rmw_qos_profile_parameters =
+    ::rclcpp::detail::qos_table::parameters();
+static constexpr ::rclcpp::QoS rmw_qos_profile_parameter_events =
+    ::rclcpp::detail::qos_table::parameter_events();
+#endif
+
 #endif // NROS_RCLCPP_QOS_HPP

@@ -17907,3 +17907,80 @@ fn releasing_an_entry_keeps_the_budget_of_the_context_with_its_number() {
         "context 1 keeps its budget when the entry in slot 1 is released"
     );
 }
+
+// ============================================================================
+// phase-488 — a raw service whose handler's capture the arena holds
+// ============================================================================
+
+static CAPTURED_SRV_DROPS: portable_atomic::AtomicUsize = portable_atomic::AtomicUsize::new(0);
+const CAPTURED_SRV_MARK: usize = 0x5E7C;
+
+unsafe extern "C" fn captured_srv_drop(ctx: *mut core::ffi::c_void) {
+    let words = ctx as *const usize;
+    if unsafe { *words.add(1) } == CAPTURED_SRV_MARK {
+        CAPTURED_SRV_DROPS.fetch_add(1, portable_atomic::Ordering::SeqCst);
+    }
+}
+
+/// A C++ service handler with state (`std::bind(&X::f, this, _1, _2)`, a
+/// capturing lambda) is a capture, not a context word. Its bytes live at the
+/// end of the service's own entry: the destructor hook runs exactly once, on
+/// release, reading the capture while it is still the capture; and a
+/// create/release loop reuses the region instead of growing the arena.
+#[test]
+fn a_capturing_raw_service_destroys_and_releases_its_capture() {
+    use portable_atomic::Ordering::SeqCst;
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let capture: [usize; 4] = [0, CAPTURED_SRV_MARK, 0, 0];
+    let bytes = unsafe {
+        core::slice::from_raw_parts(
+            capture.as_ptr() as *const u8,
+            core::mem::size_of_val(&capture),
+        )
+    };
+    let register = |e: &mut Executor<'_>| {
+        e.register_service_raw_capturing::<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(
+            None,
+            "/capture_srv",
+            "test/srv/T",
+            "h",
+            QoSProfile::default(),
+            release_probe_srv,
+            Some(bytes),
+            Some(captured_srv_drop),
+        )
+    };
+    let before = CAPTURED_SRV_DROPS.load(SeqCst);
+    let first = register(&mut executor).expect("register");
+    assert_eq!(
+        CAPTURED_SRV_DROPS.load(SeqCst),
+        before,
+        "registering drops nothing"
+    );
+    let high_water = executor.arena_used();
+    assert!(unsafe { executor.release_service(first) });
+    assert_eq!(
+        CAPTURED_SRV_DROPS.load(SeqCst),
+        before + 1,
+        "release drops the capture once"
+    );
+    assert!(!unsafe { executor.release_service(first) });
+    assert_eq!(
+        CAPTURED_SRV_DROPS.load(SeqCst),
+        before + 1,
+        "a second release drops nothing"
+    );
+    for i in 0..200 {
+        let h = register(&mut executor).expect("re-register");
+        assert_eq!(
+            executor.arena_used(),
+            high_water,
+            "iteration {i}: the arena grew; the capture was not released with its entry"
+        );
+        assert!(unsafe { executor.release_service(h) });
+    }
+    assert_eq!(CAPTURED_SRV_DROPS.load(SeqCst), before + 201);
+}

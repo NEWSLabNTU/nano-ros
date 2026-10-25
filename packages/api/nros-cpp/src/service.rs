@@ -181,6 +181,89 @@ pub unsafe extern "C" fn nros_cpp_service_server_register(
     sched_context: u8,
     out_handle_id: *mut usize,
 ) -> nros_cpp_ret_t {
+    unsafe {
+        service_server_register_impl(
+            node,
+            service_name,
+            type_name,
+            type_hash,
+            qos,
+            callback,
+            context,
+            None,
+            None,
+            sched_context,
+            out_handle_id,
+        )
+    }
+}
+
+/// phase-488 — [`nros_cpp_service_server_register`] whose handler carries
+/// STATE, the service twin of `nros_cpp_subscription_register_capturing`.
+///
+/// The first `capture_len` bytes at `capture` are COPIED into the arena entry,
+/// and the dispatch context is the entry's own copy, so the caller keeps
+/// nothing. `capture_drop`, when non-NULL, is called on that copy when the
+/// service is released. A C++ `std::bind(&Node::on_request, this, _1, _2)` or a
+/// capturing lambda needs this: one context word holds a `[this]`, not a
+/// pointer-to-member plus its object. `capture_len == 0` (or a NULL `capture`)
+/// is exactly `nros_cpp_service_server_register` with a NULL context.
+///
+/// # Safety
+/// All non-NULL pointers must be valid; `callback` must be a valid trampoline
+/// whose context is the captured bytes; `capture` must point to `capture_len`
+/// readable bytes for the duration of THIS CALL only.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_service_server_register_capturing(
+    node: *const nros_cpp_node_t,
+    service_name: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    callback: nros_node::RawServiceCallback,
+    capture: *const u8,
+    capture_len: usize,
+    capture_drop: Option<unsafe extern "C" fn(*mut c_void)>,
+    sched_context: u8,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
+    let bytes = if capture.is_null() || capture_len == 0 {
+        None
+    } else {
+        Some(unsafe { core::slice::from_raw_parts(capture, capture_len) })
+    };
+    unsafe {
+        service_server_register_impl(
+            node,
+            service_name,
+            type_name,
+            type_hash,
+            qos,
+            callback,
+            core::ptr::null_mut(),
+            bytes,
+            capture_drop,
+            sched_context,
+            out_handle_id,
+        )
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn service_server_register_impl(
+    node: *const nros_cpp_node_t,
+    service_name: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    callback: nros_node::RawServiceCallback,
+    context: *mut c_void,
+    capture: Option<&[u8]>,
+    capture_drop: Option<unsafe extern "C" fn(*mut c_void)>,
+    sched_context: u8,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
     if node.is_null()
         || service_name.is_null()
         || type_name.is_null()
@@ -224,7 +307,18 @@ pub unsafe extern "C" fn nros_cpp_service_server_register(
     let svc_str = resolved_svc.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
-    let result = if crate::node_id_opt(node_ref).is_some() {
+    let result = if capture.is_some() {
+        ctx.executor.register_service_raw_capturing::<BUF, BUF>(
+            crate::node_id_opt(node_ref),
+            svc_str,
+            type_str,
+            hash_str,
+            qos.to_qos_settings(),
+            callback,
+            capture,
+            capture_drop,
+        )
+    } else if crate::node_id_opt(node_ref).is_some() {
         ctx.executor.register_service_raw_sized_on::<BUF, BUF>(
             crate::node_id_opt(node_ref).expect("guarded above"),
             svc_str,

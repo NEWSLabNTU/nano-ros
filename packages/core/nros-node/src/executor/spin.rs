@@ -10443,6 +10443,8 @@ impl<'s> Executor<'s> {
             qos,
             callback,
             context,
+            None,
+            None,
         )
     }
 
@@ -10467,6 +10469,41 @@ impl<'s> Executor<'s> {
             qos,
             callback,
             context,
+            None,
+            None,
+        )
+    }
+
+    /// phase-488 — [`Self::register_service_raw_sized`] / `_on` with the
+    /// handler's CAPTURE copied into the entry's own region, as
+    /// [`Self::add_arena_subscription_c_callback_with_capture`] does for a
+    /// subscription. The dispatch context becomes the arena's copy, and
+    /// `capture_drop` (when given) destroys it with the entry. This is what lets a
+    /// C++ service handler carry state (`std::bind(&Node::on_x, this, _1, _2)`,
+    /// a capturing lambda): a context word holds a `[this]` and not a
+    /// pointer-to-member plus its object.
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_service_raw_capturing<const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        qos: QoSProfile,
+        callback: RawServiceCallback,
+        capture: Option<&[u8]>,
+        capture_drop: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+    ) -> Result<HandleId, NodeError> {
+        self.register_service_raw_sized_inner::<REQ_BUF, REPLY_BUF>(
+            node_id,
+            service_name,
+            service_type,
+            service_hash,
+            qos,
+            callback,
+            core::ptr::null_mut(),
+            capture,
+            capture_drop,
         )
     }
 
@@ -10480,6 +10517,8 @@ impl<'s> Executor<'s> {
         qos: QoSProfile,
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
+        capture: Option<&[u8]>,
+        capture_drop: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
     ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
@@ -10515,7 +10554,20 @@ impl<'s> Executor<'s> {
                 .map_err(NodeError::Transport)?
         };
 
-        let offset = self.arena_alloc::<SrvRawEntry<REQ_BUF, REPLY_BUF>>()?;
+        // phase-488 — a capture rides at the end of the entry's own region, as
+        // a subscription's does, so releasing the entry gives it back. No
+        // capture keeps `arena_alloc`, so a C caller's arena use does not move.
+        let capture_len = Self::capture_trailing_len(capture);
+        let (offset, context) = if capture_len == 0 {
+            (
+                self.arena_alloc::<SrvRawEntry<REQ_BUF, REPLY_BUF>>()?,
+                context,
+            )
+        } else {
+            let (offset, capture_at) =
+                self.arena_alloc_with_trailing::<SrvRawEntry<REQ_BUF, REPLY_BUF>>(capture_len)?;
+            (offset, self.place_capture(capture_at, capture, context))
+        };
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
@@ -10528,6 +10580,10 @@ impl<'s> Executor<'s> {
                     reply_buffer: [0u8; REPLY_BUF],
                     callback,
                     context,
+                    capture: super::arena::CaptureGuard {
+                        ctx: context,
+                        drop: capture_drop,
+                    },
                 },
             );
         }

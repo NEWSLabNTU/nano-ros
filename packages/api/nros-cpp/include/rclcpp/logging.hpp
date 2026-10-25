@@ -382,12 +382,10 @@ template <typename T> struct refuse {
 // handler shape is taken (hosted, function pointer or capture-less lambda).
 #define NROS_RCLCPP_REFUSE_SERVICE_CALLBACK_SHAPE                                                  \
     "this service-callback shape is REFUSED by nano-ros (RFC-0089, phase-488). A service handler " \
-    "is stored in the executor arena as ONE function pointer, so it must be a plain function or "  \
-    "a CAPTURE-LESS lambda taking either void(const S::Request&, S::Response&) or upstream's "     \
+    "must be invocable as void(const S::Request&, S::Response&) or as upstream's "                 \
     "void([std::shared_ptr<rmw_request_id_t>,] std::shared_ptr<S::Request>, "                      \
-    "std::shared_ptr<S::Response>) (hosted builds). A capturing lambda or std::bind has state "    \
-    "the arena cannot hold: bind a member function with rclcpp::bind_service<S, C, &C::method>, "  \
-    "or reach your object through a global the way the stock minimal_service example does."
+    "std::shared_ptr<S::Response>) (hosted builds). A plain function, a lambda with or without "   \
+    "captures and std::bind(&C::method, this, _1, _2) all qualify; its return value is ignored."
 
 // phase-488 — a shared_ptr service handler kept a request/response past its call.
 #define NROS_RCLCPP_REFUSE_RETAINED_SERVICE_PTR                                                    \

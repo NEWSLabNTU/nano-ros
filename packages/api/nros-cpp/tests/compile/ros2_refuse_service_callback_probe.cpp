@@ -10,11 +10,12 @@
  * under `rclcpp-examples/` is the stock upstream file compiling, linking and
  * booting with that shape.
  *
- * What is STILL refused, and what this TU now holds: a handler with STATE —
- * a capturing lambda or a `std::bind` result. The arena stores one function
- * pointer per service, so there is nowhere for the captures to live. Absence
- * would give "no matching function for call to create_service"; the refusal
- * names both accepted shapes and `rclcpp::bind_service` instead.
+ * A handler with STATE — a capturing lambda, `std::bind(&X::f, this, _1, _2)` —
+ * is taken too since phase-488 W3: its capture is copied into the service's
+ * arena entry (`ament_port_surface_runtime.cpp` runs one). What is still
+ * refused, and what this TU holds, is a handler invocable as NONE of the
+ * accepted shapes. Absence would give "no matching function for call to
+ * create_service"; the refusal names the shapes instead.
  *
  * `just check cpp` requires this TU to FAIL. The shapes nano-ros takes are in
  * the POSITIVE probe (`ros2_api_adoption_stage2.cpp`) and in the ported
@@ -57,17 +58,12 @@ struct AddTwoInts {
     static constexpr const char* TYPE_HASH = "RIHS01_add_two_ints_stub";
 };
 
-// Upstream's handler signature, verbatim.
 } // namespace
 
 int ros2_refuse_service_callback_probe(rclcpp::Node& node);
 int ros2_refuse_service_callback_probe(rclcpp::Node& node) {
-    int64_t offset = 1;
     auto service = node.create_service<AddTwoInts>(
-        "add_two_ints", [offset](const std::shared_ptr<AddTwoInts::Request> request,
-                                 std::shared_ptr<AddTwoInts::Response> response) {
-            response->sum = request->a + request->b + offset;
-        });
+        "add_two_ints", [](const std::shared_ptr<AddTwoInts::Request> request) { (void)request; });
     (void)service;
     return 0;
 }
