@@ -1829,7 +1829,7 @@ mod tests {
         let index = real_index();
         let is_key = |k: &str| index.board.contains_key(k);
 
-        let listed = std::process::Command::new("git")
+        let listed = crate::source_stamp::nros_git_command("git")
             .arg("-C")
             .arg(&root)
             .args(["ls-files", "--", "*system.toml"])
