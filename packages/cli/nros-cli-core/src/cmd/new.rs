@@ -139,7 +139,12 @@ pub struct Args {
     #[arg(long)]
     pub target: Option<String>,
 
-    /// Board this image is built for (`--image` mode).
+    /// Board this image is built for (`--image` mode), or the board a C/C++
+    /// project scaffold's image names. A project defaults to the platform's
+    /// own board from the board catalog (`freertos` -> `mps2-an385-freertos`)
+    /// and refuses, naming the candidates, when the platform has several
+    /// (`threadx`). Not taken by a Rust project, whose board key is fixed by
+    /// its template.
     #[arg(long)]
     pub board: Option<String>,
 
@@ -588,15 +593,74 @@ pub fn run(args: Args) -> Result<()> {
     let platform = args
         .platform
         .ok_or_else(|| eyre::eyre!("`nros new <name>` requires `--platform <p>`"))?;
+    let lang = language_arg(args.lang.as_deref(), nros_lang::Language::Rust)?;
+    // phase-517 W2 — a C/C++ project's image board is resolved through the
+    // board catalog, the join every road that builds it reads. The platform
+    // word it used to write (`freertos`) reached the cmake road as its own
+    // deploy token and configured with no board module.
+    let board = match lang {
+        nros_lang::Language::Rust => {
+            if let Some(b) = &args.board {
+                bail!(
+                    "nros new: `--board {b}` is for a C/C++ project (or `--image`); a Rust \
+                     project's board key is fixed by its `--platform` template — edit \
+                     `[image.*] board` in its system.toml afterwards"
+                );
+            }
+            None
+        }
+        nros_lang::Language::C | nros_lang::Language::Cpp => {
+            let cwd = std::env::current_dir()?;
+            let root =
+                crate::orchestration::nano_ros_root::resolve(None, &cwd).ok_or_else(|| {
+                    eyre::eyre!("{}", crate::orchestration::nano_ros_root::not_found_help())
+                })?;
+            let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&root)
+                .map_err(|e| eyre::eyre!("board catalog under {}: {e}", root.display()))?;
+            Some(project_board(&catalog, &platform, args.board.as_deref())?)
+        }
+    };
     scaffold_package(&ScaffoldConfig {
         name,
-        lang: language_arg(args.lang.as_deref(), nros_lang::Language::Rust)?,
+        lang,
         platform,
         rmw: args.rmw.unwrap_or_else(|| "zenoh".to_string()),
         ros_edition: args.ros_edition,
         use_case: args.use_case,
         force: args.force,
+        board,
     })
+}
+
+/// The `board` a C/C++ project scaffold for `--platform <platform>` writes
+/// (phase-517 W2): `--board` when given — resolved the way `nros build`
+/// resolves an image board, and required to be a board OF that platform —
+/// else the platform's default board's
+/// [`canonical_name`](crate::orchestration::board_descriptor::BoardDescriptor::canonical_name).
+pub(crate) fn project_board(
+    catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+    platform: &str,
+    given: Option<&str>,
+) -> Result<String> {
+    let Some(word) = given else {
+        let d = catalog
+            .default_board_for_platform(platform)
+            .map_err(|e| eyre::eyre!("nros new --platform {platform}: {e}"))?;
+        return Ok(d.canonical_name().to_string());
+    };
+    let image = crate::orchestration::image::ImageBlock {
+        board: Some(word.to_string()),
+        ..Default::default()
+    };
+    let d = crate::orchestration::image::resolve_image_board(catalog, platform, &image)
+        .map_err(|e| eyre::eyre!("nros new: {e}"))?;
+    if d.platform.cmake_deploy() != Some(platform) {
+        bail!(
+            "nros new: `--board {word}` is a `{}` board, not a `--platform {platform}` one",
+            d.platform.cmake_deploy().unwrap_or(d.platform.kebab())
+        );
+    }
+    Ok(word.to_string())
 }
 
 #[cfg(test)]
@@ -636,5 +700,198 @@ mod retired_platform_tests {
             !values.contains("native") && !values.contains("posix"),
             "{values}"
         );
+    }
+}
+
+#[cfg(test)]
+mod project_board_tests {
+    use super::*;
+    use crate::orchestration::board_descriptor::BoardCatalog;
+    use clap::CommandFactory;
+    use std::path::Path;
+
+    #[derive(clap::Parser)]
+    struct Cli {
+        #[command(flatten)]
+        args: Args,
+    }
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf()
+    }
+
+    /// Every `--platform` value `nros new` OFFERS (hidden retired aliases
+    /// excluded), read from the parser itself so a new platform is covered
+    /// with no edit here.
+    fn offered_platforms() -> Vec<String> {
+        let cmd = Cli::command();
+        let arg = cmd
+            .get_arguments()
+            .find(|a| a.get_id() == "platform")
+            .expect("--platform");
+        arg.get_possible_values()
+            .into_iter()
+            .filter(|v| !v.is_hide_set())
+            .map(|v| v.get_name().to_string())
+            .collect()
+    }
+
+    fn index_board_keys(root: &Path) -> std::collections::BTreeSet<String> {
+        let text = std::fs::read_to_string(root.join("nros-sdk-index.toml")).expect("index");
+        let doc: toml::Table = toml::from_str(&text).expect("parse index");
+        doc["board"]
+            .as_table()
+            .expect("[board.*]")
+            .keys()
+            .cloned()
+            .collect()
+    }
+
+    /// The board word resolves on every road that builds a C/C++ leaf:
+    /// `nros build` (the image road), the cmake road (`nros ws leaf-system`,
+    /// read by `find_package(nano_ros)` and the Zephyr module alike), and
+    /// `nros setup` (the index join).
+    fn assert_every_road_builds(cat: &BoardCatalog, root: &Path, platform: &str, board: &str) {
+        let image = crate::orchestration::image::ImageBlock {
+            board: Some(board.to_string()),
+            ..Default::default()
+        };
+        let d = crate::orchestration::image::resolve_image_board(cat, platform, &image)
+            .unwrap_or_else(|e| panic!("{platform}: `{board}` refused by the image road: {e}"));
+        assert_eq!(
+            d.platform.cmake_deploy(),
+            Some(platform),
+            "{platform}: `{board}` is not a board of the platform it was written for"
+        );
+
+        let deploy = crate::cmd::leaf_system::deploy_token(Some(cat), board);
+        assert_eq!(deploy, platform, "{platform}: `{board}` deploys elsewhere");
+        let provider = crate::cmd::leaf_system::cmake_board_provider(Some(cat), board);
+        if provider.is_empty() {
+            assert!(
+                d.cmake_module.is_none(),
+                "{platform}: `{board}` reads as its own platform on the cmake road, but its \
+                 descriptor names the board module `{:?}` — the configure would look for \
+                 `nano-ros-board-.cmake`",
+                d.cmake_module
+            );
+        } else {
+            let overlay = root
+                .join("cmake/board")
+                .join(format!("nano-ros-board-{provider}.cmake"));
+            assert!(
+                overlay.is_file(),
+                "{platform}: `{board}` names board module `{provider}` and {} is missing",
+                overlay.display()
+            );
+        }
+
+        let keys = index_board_keys(root);
+        cat.setup_board(board, &|k| keys.contains(k))
+            .unwrap_or_else(|e| panic!("{platform}: `{board}` refused by `nros setup`: {e}"));
+    }
+
+    /// phase-517 W2 — for every platform `nros new` offers, a C and a C++
+    /// project's written board resolves through the road that builds it (plan
+    /// level, nothing compiled). `freertos`, `nuttx` and `baremetal` were
+    /// written as the platform word and configured with an EMPTY board module;
+    /// `threadx` named two boards.
+    #[test]
+    fn every_offered_platform_scaffolds_a_board_every_road_builds() {
+        let root = repo_root();
+        let cat = BoardCatalog::load(&root).expect("in-tree board catalog");
+        let platforms = offered_platforms();
+        assert!(platforms.len() >= 6, "offered: {platforms:?}");
+        assert!(
+            !platforms.iter().any(|p| p == "esp32"),
+            "esp32 is dormant (issue 1525) and must not be offered"
+        );
+        let mut checked = 0;
+        for platform in &platforms {
+            for lang in ["c", "cpp"] {
+                match project_board(&cat, platform, None) {
+                    Ok(board) => {
+                        // `linux` and `zephyr` ARE their platform's board, so
+                        // the word may equal the platform; the roads decide.
+                        assert_every_road_builds(&cat, &root, platform, &board);
+                        checked += 1;
+                    }
+                    Err(e) => {
+                        // A refusal must be a USABLE one: it names candidates,
+                        // and each of them, given as `--board`, builds.
+                        let e = e.to_string();
+                        let named: Vec<&str> = e
+                            .split('`')
+                            .skip(1)
+                            .step_by(2)
+                            .filter(|w| *w != platform.as_str() && !w.starts_with("--"))
+                            .collect();
+                        assert!(named.len() >= 2, "{platform}/{lang}: {e}");
+                        for b in named {
+                            let got = project_board(&cat, platform, Some(b))
+                                .unwrap_or_else(|e| panic!("{platform}: candidate `{b}`: {e}"));
+                            assert_every_road_builds(&cat, &root, platform, &got);
+                            checked += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            checked >= 12,
+            "only {checked} (platform, lang, board) rows checked"
+        );
+    }
+
+    /// The measured defaults — the derivation, pinned so a catalog edit that
+    /// moves one is a reviewed change.
+    #[test]
+    fn the_derived_defaults() {
+        let cat = BoardCatalog::load(&repo_root()).expect("catalog");
+        for (platform, want) in [
+            ("freertos", "mps2-an385-freertos"),
+            ("nuttx", "qemu-armv7a-nuttx"),
+            ("baremetal", "mps2-an385-baremetal"),
+            ("linux", "linux"),
+            ("zephyr", "zephyr"),
+        ] {
+            assert_eq!(project_board(&cat, platform, None).unwrap(), want);
+        }
+        let e = project_board(&cat, "threadx", None)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains("`threadx-linux`")
+                && e.contains("`rv-virt-threadx`")
+                && e.contains("--board"),
+            "{e}"
+        );
+    }
+
+    /// `--board` is resolved like an image board, and must belong to the
+    /// platform: a framework id and a board of another platform are refused.
+    #[test]
+    fn a_given_board_is_resolved_and_must_match_the_platform() {
+        let cat = BoardCatalog::load(&repo_root()).expect("catalog");
+        assert_eq!(
+            project_board(&cat, "freertos", Some("mps3-an536-freertos")).unwrap(),
+            "mps3-an536-freertos"
+        );
+        let e = project_board(&cat, "nuttx", Some("mps2-an385-freertos"))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("is a `freertos` board"), "{e}");
+        let e = project_board(&cat, "zephyr", Some("native_sim/native/64"))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("FRAMEWORK"), "{e}");
+        let e = project_board(&cat, "threadx", Some("threadx"))
+            .unwrap_err()
+            .to_string();
+        assert!(e.contains("ambiguous"), "{e}");
     }
 }

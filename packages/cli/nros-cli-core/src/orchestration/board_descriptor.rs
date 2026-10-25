@@ -737,7 +737,8 @@ impl BoardDescriptor {
 
     /// Does this board answer to `key`?
     ///
-    /// Its declared `names`, plus its Zephyr board id when it has one. The
+    /// Its declared `names`, its `cmake_module` (its setup key, phase-517 W2),
+    /// plus its Zephyr board id when it has one. The
     /// second is a DERIVATION, not a second place to write a name: a Zephyr
     /// build is configured with `BOARD=<id>`, so an id has to resolve, and
     /// before RFC-0064 R5 the id was smuggled into `names` instead — the
@@ -758,7 +759,17 @@ impl BoardDescriptor {
         // so `FreeRTOS` / `freertos` are one alias, not two entries to keep in
         // step. The framework ids below are the downstream ecosystem's own
         // spellings and stay exact.
+        //
+        // phase-517 W2 — its `cmake_module` too, which is the board's
+        // `nros setup` key ([`Self::setup_key`] rule 1), so the join from an
+        // image word to a setup key runs both ways. `mps2-an385-baremetal` was
+        // the one key `nros setup` and `nros build --board` took and an image
+        // could not name: it is that board's module and none of its `names`.
         self.names.iter().any(|n| n.eq_ignore_ascii_case(key))
+            || self
+                .cmake_module
+                .as_deref()
+                .is_some_and(|m| m.eq_ignore_ascii_case(key))
             || self.zephyr.as_ref().is_some_and(|z| z.west_board == key)
             || self.nuttx.as_ref().is_some_and(|n| n.board_config == key)
             || self.platformio.as_ref().is_some_and(|p| p.board == key)
@@ -1542,7 +1553,69 @@ impl BoardDescriptor {
     }
 }
 
+impl BoardDescriptor {
+    /// The board's own unambiguous name — what `nros new` writes as an image's
+    /// `board` (phase-517 W2): its `cmake_module` (the module stem, which is
+    /// also its `nros setup` key — rule 1 of [`Self::setup_key`] — and a word
+    /// it [answers to](Self::answers_to)), else its first name.
+    ///
+    /// Not an alias such as `freertos`: an alias that spells a PLATFORM reads
+    /// as that platform to anyone who meets it later, and `threadx` names two
+    /// boards.
+    #[must_use]
+    pub fn canonical_name(&self) -> &str {
+        self.cmake_module
+            .as_deref()
+            .or_else(|| self.names.first().map(String::as_str))
+            .unwrap_or_default()
+    }
+}
+
 impl BoardCatalog {
+    /// The board `nros new --platform <platform>` scaffolds for when no
+    /// `--board` is given (phase-517 W2) — DERIVED, never a table: among the
+    /// descriptors whose C/C++ platform ([`PlatformKind::cmake_deploy`]) is
+    /// `platform`, the one that answers to the platform word itself
+    /// (`freertos` names `mps2-an385-freertos`), else the only one there is.
+    ///
+    /// Several candidates are a refusal naming each one's
+    /// [`BoardDescriptor::canonical_name`]: `threadx` is a name of both the
+    /// Linux simulator and the qemu-riscv64 board, and picking one would be a
+    /// guess the user has to discover.
+    pub fn default_board_for_platform(&self, platform: &str) -> Result<&BoardDescriptor, String> {
+        let on_platform: Vec<&BoardDescriptor> = self
+            .descriptors
+            .iter()
+            .filter(|d| d.platform.cmake_deploy() == Some(platform))
+            .collect();
+        let named: Vec<&BoardDescriptor> = on_platform
+            .iter()
+            .copied()
+            .filter(|d| d.answers_to(platform))
+            .collect();
+        let candidates = if named.is_empty() { on_platform } else { named };
+        match candidates.as_slice() {
+            [d] => Ok(d),
+            [] => Err(format!(
+                "no board descriptor is a `{platform}` board, so there is no default board \
+                 to scaffold for"
+            )),
+            many => {
+                let mut names: Vec<&str> = many.iter().map(|d| d.canonical_name()).collect();
+                names.sort_unstable();
+                Err(format!(
+                    "`{platform}` names {} boards: {} — pass `--board <one of them>`",
+                    names.len(),
+                    names
+                        .iter()
+                        .map(|n| format!("`{n}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+            }
+        }
+    }
+
     /// Resolve a board word to the index key `nros setup` provisions — see
     /// [`SetupBoard`]. An index key answers itself; otherwise the word must
     /// name exactly one descriptor (or several that agree on one key), and that

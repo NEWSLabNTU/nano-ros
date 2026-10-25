@@ -340,6 +340,14 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
         false,
     ),
     ("mps2-an385", "::nros_board_mps2_an385::Mps2An385", false),
+    // phase-517 W2 — the board's `nros setup` key (its descriptor's
+    // `cmake_module`, which the catalog answers to), so an image may author
+    // the word `nros setup` provisions.
+    (
+        "mps2-an385-baremetal",
+        "::nros_board_mps2_an385::Mps2An385",
+        false,
+    ),
 ];
 
 /// The board ZST the Rust pack names for `key`, or `None` for a key it does

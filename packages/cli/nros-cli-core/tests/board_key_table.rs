@@ -871,3 +871,118 @@ fn every_entry_key_resolves_in_the_board_catalog() {
     assert!(ambiguous >= 1, "no ambiguous key checked");
     assert!(keys.len() >= 25, "only {} keys checked", keys.len());
 }
+
+/// phase-517 W2 — every `nros setup` key (the index's `[board.*]`) is a word
+/// an image may author, on every road: the catalog resolves it to the ONE
+/// board it provisions (and that board's setup key is it again, so the join
+/// is a round trip), the image road accepts it, the cmake road names a board
+/// module that exists, and the entry tables of the board's own Rust/C pack
+/// accept it.
+///
+/// `mps2-an385-baremetal` was the one key that failed: `nros setup` and
+/// `nros build --board` took it, and an image naming it was refused, because
+/// it was the board's `cmake_module` and no descriptor `names` entry (the
+/// catalog answers to a `cmake_module` since). ESP32
+/// boards (dormant, issue 1525) are skipped by platform; the index lists none.
+#[test]
+fn setup_keys_are_image_board_words() {
+    use nros_cli_core::orchestration::{
+        board_descriptor::{BoardCatalog, DeployResolution, PlatformKind},
+        image::{ImageBlock, resolve_image_board},
+    };
+
+    let root = repo_root();
+    let catalog = BoardCatalog::load_with_extra(&root, &[]).expect("in-tree board catalog");
+    let index_text =
+        std::fs::read_to_string(root.join("nros-sdk-index.toml")).expect("read the index");
+    let index: toml::Table = toml::from_str(&index_text).expect("parse the index");
+    let keys: BTreeSet<String> = index["board"]
+        .as_table()
+        .expect("[board.*]")
+        .keys()
+        .cloned()
+        .collect();
+    let is_key = |k: &str| keys.contains(k);
+
+    let mut bad = Vec::new();
+    let mut checked = 0;
+    for key in &keys {
+        let d = match catalog.resolve_deploy(key) {
+            DeployResolution::Board(d) => d,
+            other => {
+                bad.push(format!("`{key}`: the catalog answers {other:?}"));
+                continue;
+            }
+        };
+        if d.platform == PlatformKind::Esp32 {
+            continue;
+        }
+        checked += 1;
+        if d.setup_key(&is_key).as_deref() != Some(key.as_str()) {
+            bad.push(format!(
+                "`{key}` resolves to {:?}, whose setup key is {:?}",
+                d.names,
+                d.setup_key(&is_key)
+            ));
+        }
+        let image = ImageBlock {
+            board: Some(key.clone()),
+            ..Default::default()
+        };
+        if let Err(e) = resolve_image_board(&catalog, "x", &image) {
+            bad.push(format!("`{key}`: the image road refuses it: {e}"));
+        }
+        let provider = nros_cli_core::cmd::leaf_system::cmake_board_provider(Some(&catalog), key);
+        if provider.is_empty() {
+            if d.cmake_module.is_some() {
+                bad.push(format!(
+                    "`{key}`: the cmake road reads it as its own platform, but it names \
+                     board module {:?}",
+                    d.cmake_module
+                ));
+            }
+        } else if d.cmake_module.is_none() {
+            // A Zephyr board other than `zephyr` itself: the Zephyr arm of
+            // `find_package(nano_ros)` takes it as NROS_BOARD and west owns the
+            // board, so there is no cmake overlay to name.
+            if d.platform != PlatformKind::Zephyr {
+                bad.push(format!(
+                    "`{key}`: the cmake road names board module `{provider}`, but the \
+                     descriptor states no cmake_module"
+                ));
+            }
+        } else if !root
+            .join(format!("cmake/board/nano-ros-board-{provider}.cmake"))
+            .is_file()
+        {
+            bad.push(format!(
+                "`{key}`: the cmake road names board module `{provider}`, which has no overlay"
+            ));
+        }
+        if let Some(family) = d.platform.board_family()
+            && board_family(key) != Ok(family)
+        {
+            bad.push(format!(
+                "`{key}`: BOARD_KEYS answers {:?}, the descriptor implies {}",
+                board_family(key).map(BoardFamily::as_str),
+                family.as_str()
+            ));
+        }
+        // The Rust pack: a board with ANY `BOARD_PATHS` key reachable through
+        // the catalog takes this one too.
+        let has_rust_entry = nros_orchestration_ir::BOARD_PATHS.iter().any(|(k, _, _)| {
+            matches!(catalog.resolve_deploy(k), DeployResolution::Board(o) if std::ptr::eq(o, d))
+        });
+        if has_rust_entry && nros_orchestration_ir::board_path_for(key).is_none() {
+            bad.push(format!(
+                "`{key}`: the board has a Rust entry (`BOARD_PATHS`), but not under this key"
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "setup keys an image cannot author:\n  {}",
+        bad.join("\n  ")
+    );
+    assert!(checked >= 10, "only {checked} setup keys checked");
+}

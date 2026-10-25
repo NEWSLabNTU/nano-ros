@@ -184,6 +184,12 @@ pub struct ScaffoldConfig {
     pub ros_edition: String,
     pub use_case: String,
     pub force: bool,
+    /// The `[image.<platform>] board` to write, already resolved by the caller
+    /// through the board catalog (phase-517 W2 — `nros new` derives the
+    /// platform's default board there, or takes `--board`). `None` keeps the
+    /// platform spec's own token, which is right for the Rust shapes: their
+    /// board key is the Rust pack's (`BOARD_PATHS`), not a cmake one.
+    pub board: Option<String>,
 }
 
 pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
@@ -256,7 +262,14 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     fs::create_dir_all(dir.join("src"))?;
     fs::write(
         dir.join("system.toml"),
-        scaffold_system_toml(&cfg.name, cfg.lang, &cfg.platform, &spec, rmw.cmake_value),
+        scaffold_system_toml(
+            &cfg.name,
+            cfg.lang,
+            &cfg.platform,
+            &spec,
+            rmw.cmake_value,
+            cfg.board.as_deref(),
+        ),
     )?;
 
     let package_xml = format!(
@@ -317,10 +330,13 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
 /// D3/D5, phase-445 W3b) — the same schema a workspace bringup and every
 /// in-tree single-package example use.
 ///
-/// `board` is the token the package deployed to before: the self-bringup's
-/// `nros::main!()` board key (`board_path_for`), and otherwise the platform
-/// token, whose C/C++ deploy is derived from it by `nros ws leaf-system`
-/// exactly as the retired `deploy=` attribute named it. Only the Rust
+/// `board` is the caller's resolved board when it passes one (`nros new`
+/// always does for C/C++: the platform's default board from the catalog,
+/// phase-517 W2); else the self-bringup's `nros::main!()` board key
+/// (`board_path_for`), the host board, or the platform token. The last was
+/// the C/C++ default until phase-517 W2, and `freertos`/`nuttx`/`baremetal`
+/// then reached the cmake road as their own deploy token and configured with
+/// no board module; `threadx` named two boards. Only the Rust
 /// self-bringup declares its node: its `main.rs` is `nros::main!()`, which
 /// boots the `[[component]]` this file names. The hosted and C/C++ starters
 /// are plain executables with their own `main`.
@@ -330,13 +346,16 @@ fn scaffold_system_toml(
     platform: &str,
     spec: &PlatformSpec,
     rmw_value: &str,
+    resolved_board: Option<&str>,
 ) -> String {
     let self_bringup =
         lang == Language::Rust && matches!(spec.kind, PlatformKind::SelfBringup { .. });
     // Issue 1109 / phase-500 — a hosted image names the host board by its
     // board key (`linux`), never by the `--platform` word (`posix` is not a
     // board, `native` no longer one).
-    let board = if self_bringup || matches!(spec.kind, PlatformKind::Hosted) {
+    let board = if let Some(b) = resolved_board {
+        b
+    } else if self_bringup || matches!(spec.kind, PlatformKind::Hosted) {
         spec.deploy_token
     } else {
         platform
@@ -1620,6 +1639,7 @@ mod tests {
             ros_edition: "humble".to_string(),
             use_case: "talker".to_string(),
             force: false,
+            board: None,
         };
         let err = scaffold_package(&cfg).expect_err("unknown rmw must fail");
         assert!(err.to_string().contains("dust-dds"), "{err}");
@@ -1642,6 +1662,7 @@ mod tests {
             "baremetal",
             &platform_spec("baremetal").unwrap(),
             "zenoh",
+            None,
         );
         let doc: toml::Table = bm.parse().expect("parses");
         assert_eq!(doc["system"]["rmw"].as_str(), Some("zenoh"));
@@ -1660,9 +1681,14 @@ mod tests {
             "freertos",
             &platform_spec("freertos").unwrap(),
             "xrce",
+            Some("mps2-an385-freertos"),
         );
         let doc: toml::Table = cf.parse().expect("parses");
-        assert_eq!(doc["image"]["freertos"]["board"].as_str(), Some("freertos"));
+        // phase-517 W2 — the caller's resolved board, under the platform's id.
+        assert_eq!(
+            doc["image"]["freertos"]["board"].as_str(),
+            Some("mps2-an385-freertos")
+        );
         assert_eq!(doc["system"]["rmw"].as_str(), Some("xrce"));
         assert!(
             doc.get("component").is_none(),
@@ -1790,6 +1816,7 @@ mod tests {
                 ros_edition: "humble".to_string(),
                 use_case: "talker".to_string(),
                 force: false,
+                board: None,
             };
             let err = scaffold_package(&cfg).expect_err("deferred platform must bail");
             assert!(
