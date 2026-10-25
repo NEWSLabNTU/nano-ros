@@ -1,11 +1,12 @@
 ---
 id: 2042
 title: "zenoh runtime and build diagnostics tell the user to set a retired ZPICO_* env spelling"
-status: open
+status: resolved
 type: bug
 area: [rmw-zenoh, ux]
 severity: medium
 found: 2026-10-25
+resolved: 2026-10-25
 related: [phase-484, phase-488]
 ---
 
@@ -55,3 +56,33 @@ macro or constant definition, with an allowlist of definition sites.
 
 No runtime or build message advises a retired spelling, and the gate above
 refuses a new one.
+
+## Resolution
+
+Fixed by #2624 (`b3c36d27da`).
+
+- **The messages.** Every prose occurrence of a retired spelling in a Rust
+  string literal now names the registry's canonical env spelling. That is 52
+  Rust sites, from the zenoh shim's qos, publisher, service, session and
+  zpico messages to the build-script warnings of `nros-rmw-zenoh` and
+  `nros-zpico-build`, the message-bound comments and the test failure text.
+  The 2 cmake twins in `cmake/NanoRosMessageBounds.cmake` were changed too.
+  The C macro and Rust constant names (`ZPICO_MAX_QUERYABLES` as a `const`,
+  a `-D` or a `#define`) are unchanged, because RFC-0103 keeps them as
+  backend-internal names.
+- **The gate.** `check-retired-knob-spellings` gained a message rule. A small
+  Rust string lexer finds the literals, which run across `\`-continued lines
+  that no per-line rule can read. A retired name in a literal that contains
+  whitespace is refused, unless it is code (`const X`, `#define X`, `-DX`,
+  `X: usize`). The rule has 13 self-test cases.
+
+Two parts of "Fix the class" were not taken:
+
+- **The names are literals, not read from the registry.** The gate makes a
+  literal safe: a retired spelling cannot come back unrefused. Reading
+  `knobs.toml` from runtime log text would add a build dependency to every
+  message site.
+- **Messages do not also name the Kconfig symbol.** This was not done in
+  #2624. A Zephyr user reads the canonical env name and finds its symbol in
+  `knobs.toml`. If that lookup turns out to cost Zephyr users, it is a new
+  issue.

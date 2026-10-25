@@ -38,10 +38,6 @@
 #         untouched. Deleting the citation would delete the reason W0 is first.
 #         REMOVE THIS ROW when #1123 merges.
 #
-#   2042  IN FLIGHT — filed on PR #2621 (phase-488's C++ port surface); the
-#         retired-knob gate's message rule that fixes it cites it. REMOVE THIS
-#         ROW when #2621 merges.
-#
 #   1610  IN FLIGHT — filed on PR #1514 (the Zephyr shim's LoC budget and the
 #         Cyclone domain check it was hiding). phase-475 and issue 1620 cite it
 #         as the red that started the census. REMOVE BOTH ROWS when #1514
@@ -60,4 +56,3 @@
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
-scripts/check/check-retired-knob-spellings.py:2042
