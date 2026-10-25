@@ -16,7 +16,9 @@ Design + decisions: `docs/superpowers/specs/2026-07-16-audit-skill-design.md`.
 
 `/audit [quick|deep] [categories]`
 
-- Depth: `quick` (default), `deep`, or `gates`.
+- Depth: `quick` (default), `deep`, `gates`, or `full`. Every depth but
+  `full` is DIFF-SCOPED against the last findings log (checklist "Running it
+  cheaply"); `full` reads every surface and is run only on request.
 - Categories: comma-separated checklist letters (`A`–`K`), default all
   (`gates` implies `K`).
   Example: `/audit deep C,I,J`.
@@ -29,7 +31,9 @@ that; never escalate to it on your own (see Guardrails).
 ### 1. Baseline
 
 - Read the newest `docs/development/audit-findings-*.md` (if any) — the
-  previous run's findings are the diff baseline.
+  previous run's findings are the diff baseline, and its `Baseline commit:`
+  header line is the `<sha>` every later step diffs against. (Older logs
+  without one: use the `origin/main at <sha>` their header names.)
 - List open + archived issues so already-tracked findings are not re-filed:
   `just issues [text]` (offline, ~20 ms), plus `docs/issues/archived/`.
 - Work in a worktree branched from a fresh `origin/main` (`git fetch origin`),
@@ -40,8 +44,20 @@ that; never escalate to it on your own (see Guardrails).
 
 ### 2. Collect candidates
 
-**quick** — for each selected category, run the checklist's detection greps
-(where given) and scan the named directories. Spawn a small number of
+**Free first, every depth** (no agent, no reading):
+
+- `just check fast` — enforced classes. Keep only its reds and NOT VERIFIED
+  lines.
+- `python3 scripts/audit-nets.py --since <sha> --hits` — every net's total, and
+  the hit lines in files changed since the baseline. These hit lines are the
+  ONLY net output a reader is given.
+- `git diff --name-only <sha>` — the surfaces that moved. An item none of them
+  touches is carried over from the baseline with its count, unread.
+- Kick off the chain probe for this run's scope in the background
+  (checklist "Chain probe"); read only its failing step when it finishes.
+
+**quick** — for each selected category still in scope after that, hand its
+changed-file hits to a reader. Spawn a small number of
 parallel Explore agents (one per 2–3 categories) to READ each grep hit and
 confirm or kill it — the grep is the net, not the verdict. Judgment-heavy
 categories (C — incl. the C5 axis-agnosticism, C6 user-API-shape-vs-rclc/
@@ -110,7 +126,12 @@ Match candidates to the previous findings log + the issue tracker:
 
 Write `docs/development/audit-findings-<YYYY-MM-DD>.md`:
 
-- Header: date, depth, categories run, baseline file, commit sha.
+- Header: date, depth, categories run, baseline file, and a line
+  `Baseline commit: <sha>` naming the commit THIS run audited (the next run's
+  `--since`).
+- The `audit-nets.py` table (totals and changed counts), so counts trend.
+- Which rotating judgement item ran (C6 / J1 / H3 / I2), which scope the chain
+  probe took, and which gates K mutated.
 - Findings ranked P1 → P3, each tagged new/carried-over, formatted per the
   checklist (`category · file:line · severity · one-line · fix sketch`).
 - A `Resolved since last run` section.
@@ -135,6 +156,19 @@ issue index: `docs/issues/open.md` is a generated, gitignored artifact (issue
 - `main` takes no direct pushes (ruleset + merge queue). Push the branch and
   open a PR only when the operator asks; then `just ci gate` first, `gh pr
   merge --auto --rebase`, and confirm `autoMergeRequest` is set.
+
+## Token budget
+
+Reading is the cost; locating and counting are free. So:
+
+- Never hand an agent a whole net, a directory to "scan", or a file it must
+  locate. Brief it with the changed-file hit list and exact paths.
+- `quick`: at most one reader per two or three categories, and G2 + C8 get
+  their own reader; nothing else spawns.
+- Carried-over items are copied from the baseline, not re-verified.
+- If a net's changed-hit list is still too long to read (over ~40 lines),
+  read a sample, say so in Coverage, and recommend a targeted
+  `/audit deep <item>`. Do not silently truncate.
 
 ## Guardrails
 

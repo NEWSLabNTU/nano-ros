@@ -251,6 +251,14 @@ ledger-doc-single-home:
 markdown-links:
     @python3 scripts/check-markdown-links.py
 
+# The codebase audit's detection nets live in one place, the checklist
+# (`docs/development/codebase-audit-checklist.md`), and `scripts/audit-nets.py`
+# runs them for the audit. This gate runs every one, so a net with a typo
+# fails here instead of reading as "0 hits" during an audit. Buildless, ~0.3 s.
+[private]
+audit-nets:
+    @python3 scripts/audit-nets.py --check
+
 # issue 1103 — a phase SECTION whose declared `**Files:**` all exist while its
 # boxes stay open. `check-roadmap-claims` beside this compares a document against
 # ITSELF (status text vs box counts, an `**Owns:**` link vs an issue's

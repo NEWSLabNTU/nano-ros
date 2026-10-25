@@ -27,6 +27,35 @@ class is enforced: do not re-run the item's grep and re-judge its hits — ask
 the K question of the gate instead (can it fail on the case it names, and does
 a lane run it?). A grep is for the classes no gate covers yet.
 
+### Running it cheaply
+
+Reading is what costs; locating and counting are free, so a machine does them
+and a reader sees only what changed. In order:
+
+1. **Baseline.** Every findings log records the commit it audited
+   (`Baseline commit: <sha>` in its header). The next run diffs against it.
+2. **Gates first.** `just check fast` (and, when it is fresh, the last
+   nightly) answers every enforced class for no reading at all. Read only its
+   reds and its NOT VERIFIED lines.
+3. **Nets by script.** `python3 scripts/audit-nets.py --since <sha>` runs every
+   net in this file (each is a one-line `git grep`, so the file stays the one
+   source of them), prints each net's total, and lists only the hits in files
+   changed since the baseline. A reader gets that list, never the whole net.
+   Counts that moved without a changed file are reported, not read.
+4. **Scope by diff.** An item whose surface no changed file touches is
+   CARRIED OVER from the baseline with its count, unread. `full` is the only
+   depth that reads everything, and it is run on request.
+5. **Rotate the judgement items.** C6, J1, H3 and I2 are reads with no net;
+   run ONE per audit, in that order, and record which ran. G2 and C8 are the
+   exception: they run every time (maintainer priority).
+6. **K by change.** Mutate only the gates whose script or population changed
+   since the last gate-reach run, plus new gates; the whole set (~470) is a
+   `gates` run on request.
+7. **Chain probe.** Pick ONE scope per audit, rotating (`native`, then each
+   platform), and run `just setup <scope> && just build <scope> && just test
+   <scope>` in a fresh worktree, in the background. It costs machine time,
+   not tokens: read only the step that failed (E11, F4).
+
 Each finding: `category · file:line · severity(P1–P3) · one-line · fix sketch`.
 File new durable items into the right series (issue / RFC / phase) and link
 them back here. **Detection hints are starting points, not proof — every hit
@@ -51,7 +80,8 @@ verdict).**
 - **A2 `STREQUAL ""` on maybe-unset vars.** An omitted `cmake_parse_arguments`
   one-value keyword leaves the var UNSET; `X STREQUAL ""` then compares the
   literal name → branch fires wrong (cf. 246.3). Prefer `if(X)` truthiness.
-  Detect: `grep -rn 'STREQUAL ""' cmake/ zephyr/cmake/`.
+  Detect:
+  `git grep -n 'STREQUAL ""' -- cmake zephyr/cmake`
 - **A3 CMake version-floor / genex availability.** `$<LINK_LIBRARY:…>` (3.24)
   guarded for the 3.22 floor; `cmake_minimum_required` consistent.
 - **A4 Absolute paths / walk-up to repo root.** See **G2** (self-containment) —
@@ -61,8 +91,11 @@ verdict).**
 ## B. Rust / C / C++ code
 
 - **B1 `unsafe` discipline.** Every `unsafe {}` has a `// SAFETY:` rationale;
-  edition-2024 forms (`unsafe extern`, `#[unsafe(no_mangle)]`). Detect:
-  `grep -rn 'unsafe' --include=*.rs` then read.
+  edition-2024 forms (`unsafe extern`, `#[unsafe(no_mangle)]`). Detect with
+  the compiler, not a grep (every `unsafe {` is 4,500+ lines; the lint reports
+  only the blocks with no `// SAFETY:`): `cargo clippy --workspace --
+  -W clippy::undocumented_unsafe_blocks`, and read its NEW sites since the
+  baseline.
 - **B2 FFI boundary.** `#[repr(C)]` on all crossing types; cbindgen config
   current; no duplicate `#[no_mangle]` symbols (the E0428 class).
 - **B3 `unwrap()`/`expect()`/`panic!` in non-test runtime** on embedded paths.
@@ -71,8 +104,10 @@ verdict).**
   `alloc` needlessly) that could be `no_std`/stack-only on an embedded path;
   `#![no_std]` presence + `std` feature gating; embedded crates must compile
   `no_std`; `std` is being DELETED from the core crates (ARCHITECTURE §2,
-  phase-359), so new `std::` there is a finding. Detect: `grep -rn 'use std::'
-  packages/` in crates meant to be `no_std`; `std::`-qualified stdio in a
+  phase-359), so new `std::` there is a finding. Detect (in crates meant to
+  be `no_std`):
+  `git grep -n 'use std::' -- 'packages/core/*.rs' 'packages/api/*.rs' ':!*/generated/*'`
+  `std::`-qualified stdio in a
   `#![no_std]` crate is gated (`just check no-std-stdio`, issue 0589).
   C/C++: headers stay freestanding-compatible — no heap/libc calls on paths
   embedded builds compile, no exceptions/RTTI, and a hosted-only include
@@ -86,12 +121,12 @@ verdict).**
   lengths like `char buf[128]`, retry counts, ms delays, port numbers) instead
   of a named const / Kconfig / board-metadata / config knob. **No magic
   numbers** — every literal with semantic meaning is named + sourced. Detect:
-  `grep -rnE '\[[0-9]{2,}\]|= ?[0-9]{3,}' packages/` then read.
+  `git grep -nE '\[[0-9]{2,}\]|= ?[0-9]{3,}' -- 'packages/*.rs' 'packages/*.c' 'packages/*.h' ':!*/generated/*'`
 - **B7 Non-gated debug messages.** `printf`/`eprintln!`/`LOG_*`/`println!`/
   `dbg!` that fire unconditionally instead of behind a log-level / Kconfig /
-  `log` macro / debug feature. Noise on the hot path + binary bloat. Detect:
-  `grep -rnE 'eprintln!|println!|dbg!|printf\(|fprintf\(stderr' packages/ |
-  grep -v test` and check each is level-gated.
+  `log` macro / debug feature. Noise on the hot path + binary bloat. Detect
+  (then check each is level-gated):
+  `git grep -nE 'eprintln!|println!|dbg!|printf\(|fprintf\(stderr' -- 'packages/*/src/*' ':!packages/testing/**' ':!packages/cli/**' ':!*/generated/*'`
 
 ## C. API design & layering
 
@@ -118,11 +153,11 @@ verdict).**
   `nros-node`, `nros-c`, `nros-cpp`, `nros-core`) carrying
   backend/platform-specific code or `cfg(feature = "rmw-…"/"platform-…")`
   branches beyond the sanctioned registration seams; low-level backend types
-  or boilerplate leaking through the bridge into agnostic code. Detect:
-  `rg -n 'cfg\(feature = "(rmw|platform)-' packages/core/` then judge each
-  hit against the registration-seam allowlist; `rg -n 'zenoh|cyclonedds|xrce'
-  packages/core/nros-node/src packages/api/nros/src` (names of concrete
-  backends appearing in agnostic layers).
+  or boilerplate leaking through the bridge into agnostic code. Detect (judge
+  each hit against the registration-seam allowlist; the second net is names
+  of concrete backends in agnostic layers):
+  `git grep -nE 'cfg\(feature = "(rmw|platform)-' -- packages/core`
+  `git grep -niE 'zenoh|cyclonedds|xrce' -- packages/core/nros-node/src packages/api/nros/src`
 - **C6 User-API shape follows standard ROS conventions.** The C, C++, and
   Rust user surfaces mirror rclc / rclcpp / rclrs respectively (RFC-0018/0019
   + RFC-0044's rclcpp-faithful component model), and the CMake surface
@@ -204,10 +239,10 @@ verdict).**
   `cmake-fixture-stale.sh` class), and error toward the build recipe when
   the artifact is missing or stale. Flag BOTH directions: a test that
   compiles, AND a fixture consumer that skips the staleness check (museum-
-  binary trap, issues 0148/0164/0196/#215). Detect:
-  `grep -rnE 'Command::new\("(cargo|cmake|west|idf.py)"' packages/testing/`
-  (each hit must be a version probe or a documented compile-check-fixture
-  cell); `rg -L 'require_prebuilt|stale' <new fixture resolvers>`.
+  binary trap, issues 0148/0164/0196/#215). Detect (each hit must be a
+  version probe or a documented compile-check-fixture cell; for a NEW fixture
+  resolver, read that it reaches the staleness probe):
+  `git grep -nE 'Command::new\("(cargo|cmake|west|idf.py)"' -- packages/testing`
 - **E2 Pass-on-unmet-precondition.** Bare `eprintln!`+`return` reports PASS;
   must `assert!`/`bail!`/`nros_tests::unmet!` (issue 1758: a skip is only
   `lane_skip!` from the lane's scope). Gated: `just check no-vacuous-tests`
@@ -215,11 +250,13 @@ verdict).**
   any non-`lane` skip). Read for what both miss: an early return after a
   probe that is not a print.
 - **E3 Phase-numbered test names** (`phase212_n9_…`) — forbidden; name by
-  behavior (CLAUDE.md). Detect: `grep -rnE 'fn .*phase[0-9]' packages/` (0 hits
-  on 2026-10-24 — record the count; any hit is new).
+  behavior (CLAUDE.md). Detect (0 hits on 2026-10-24 — any hit is new):
+  `git grep -nE 'fn [a-z_]*phase[0-9]' -- packages`
 - **E4 Skipped / ignored / flaky.** Every `#[ignore]` names its reason and a
   tracked issue; a QEMU red is retested SOLO before it is called flaky
-  (CLAUDE.md). Detect: `grep -rn '#\[ignore' packages/testing/`. (Historical
+  (CLAUDE.md). Detect:
+  `git grep -n '#\[ignore' -- packages/testing`
+  (Historical
   instances: issue 0035, phase-226 — both archived.)
 - **E5 Coverage matrix: RMW × language × platform.** Every supported cell of
   the three axes has a runtime test lane (or a documented carve-out — e.g.
@@ -242,16 +279,17 @@ verdict).**
 - **E7 Output-marker discipline.** Example nodes follow the stock ROS 2 demo
   behavior contract, and ALL output markers live in
   `nros-tests/src/output.rs`; tests assert via the shared checker, never an
-  inline literal. Detect: `grep -rn '"Received:"\|"I heard"\|"Publishing:"'
-  packages/testing/nros-tests/tests/` — every hit outside `output.rs`
-  consumers is a finding (22 such literals existed at the 2026-07-17
+  inline literal. Detect (every hit outside `output.rs` consumers is a
+  finding):
+  `git grep -nE '"Received:"|"I heard"|"Publishing:"' -- packages/testing/nros-tests/tests`
+  (3 on 2026-10-24; 22 such literals existed at the 2026-07-17
   survey).
 - **E8 Isolation discipline.** Ports and ROS domains come from the single
   allocator (`nros_tests::alloc` / the fixtures.toml derived columns) —
   deterministic, injective across the matrix, so lanes parallelize by
-  construction. Detect: port literals in test bodies
-  (`grep -rnE 'tcp/[0-9.]+:(7[0-9]{3}|17[0-9]{3})'
-  packages/testing/nros-tests/tests/`) that hand-mirror a fixtures.toml
+  construction. Detect port literals in test bodies
+  `git grep -nE 'tcp/[0-9.]+:(7[0-9]{3}|17[0-9]{3})' -- packages/testing/nros-tests/tests`
+  that hand-mirror a fixtures.toml
   bake; a new nextest serialization group whose comment does not name the
   exclusive RESOURCE it guards (license, daemon, host-load — shared ports
   are an allocator bug, not a serialization case).
@@ -266,6 +304,36 @@ verdict).**
   `nros-tests/tests/` file count in the findings log each audit — an
   upward trend without new matrix cells is a finding (215 tracked files on
   2026-10-24).
+
+- **E10 Every test belongs to a lane, and every lane to a tier.** A test is
+  run by at least one lane of a declared tier (RFC-0061: `ci gate`, tier 1,
+  tier 2, the nightly, `ci full`), and its SCOPE says where: coordinates
+  (`fixtures::lane::require_*_in_lane`) or a host capability the lane claims
+  (`lane_scope`), never what this host happens to have. Flag: a test target no
+  lane builds (cargo skips a `required-features` target SILENTLY — gated,
+  `just check required-features-reachable`); a test whose lane membership is
+  decided by host state; a tier no workflow runs (`just check
+  tier-has-ci-owner`); a skippable test reached by a runner that cannot read a
+  skip (`just check skippable-tests-tolerant`). Reader's part: for each test
+  FILE added since the baseline, name the lane and tier that runs it; "none"
+  is the finding (issue 1314's target was in no lane at all and read as a
+  flake for weeks).
+- **E11 The chain is honest: `setup → build → test` on one scope.** A test
+  never passes because something it needs is absent — a missing tool, peer,
+  SDK or fixture FAILS (`[UNMET PRECONDITION]`, issue 1758); the only skip is
+  `lane_skip!`, decided by the lane's declared scope before any probe. In
+  exchange the chain must be complete for a precise scope:
+  `just setup <scope>` provisions everything `just build <scope>` needs, and
+  `just build <scope>` builds every fixture `just test <scope>` resolves —
+  link by link, so a `doctor` that says OK where `build` then refuses is the
+  same lie. Flag: a precondition mapped to no setup step; a fixture a lane's
+  tests resolve that the lane's build does not produce; a probe placed before
+  the scope check; a NOT VERIFIED that a test reports as a pass. Gates:
+  `preconditions-provisioned` (both directions of the precondition→setup
+  map), `tier-preconditions`, `lane-contracts`, `test-precondition-guards`,
+  `no-vacuous-tests`, `out-of-lane-deselected`, `workflow-doctor-after-setup`,
+  and `lane_build_covers_run` (build set ⊇ run set, by membership). The
+  audit's own test of the rule is to RUN it — see "Chain probe" below.
 
 ## F. CLI / developer UX
 
@@ -282,6 +350,32 @@ verdict).**
   provisioning. Every documented command/env var/package must still exist and
   match; every required step must be documented. (A REAL clean-system run of
   those steps is issue #204 — a containerized probe, out of audit scope.)
+
+- **F4 Dependencies are declared in `package.xml`, resolved through ONE
+  list, and obtained by `nros setup` — the rosdep experience.** A user states
+  what a package needs as `package.xml` keys (`<depend>`, `<build_depend>`,
+  `<buildtool_depend>`, `<test_depend>`), as on ROS. Every key resolves
+  through the index's `[prereq.*]` — one namespace over four providers, rosdep
+  key NAMES kept, an unknown key an error (RFC-0062) — and `nros setup`
+  obtains it the way `rosdep install` would. Flag:
+  - **a second list** — a dependency stated anywhere but the index for a tool
+    or system package (a README's `apt install …`, a just recipe or script
+    installing it, a workflow's hand-written apt line — the last is gated,
+    `just check workflow-indexed-apt`; sudo remedy text is gated,
+    `sysdep-remedies`);
+  - **a duplicate** — one package under two keys, one key with two
+    providers that disagree, or the same message package declared in
+    `package.xml` and again as a hand-written manifest dependency (message
+    deps are path deps that `nros sync` writes, RFC-0067);
+  - **a need `nros setup` does not meet** — a build or test that requires
+    something no `[prereq.*]`/`[tool.*]`/`[source.*]` row provides
+    (E11's chain, seen from the dependency side);
+  - **an undeclared runtime dependency** of a prebuilt dist (gated,
+    `dist-runtime-deps`).
+  Gates over part of this: `prereq-roles`, `rosdep-snapshot`,
+  `dist-runtime-deps`, `workflow-indexed-apt`, `sysdep-remedies`. Detect (a
+  hit outside a generated file or the index is a second list):
+  `git grep -nE '(apt(-get)?|dnf|brew|pip3?) install' -- '*.md' 'just/*' 'scripts/*' ':!docs/issues/**' ':!docs/roadmap/**' ':!CHANGELOG.md'`
 
 ## G. Repo hygiene & self-containment
 
@@ -335,8 +429,7 @@ verdict).**
   `git grep -n 'NROS_REPO_DIR' -- 'examples/**/README.md'` (149 READMEs);
   `git grep -nE '/home/|/Users/' -- packages examples cmake zephyr`.
 - **G3 TODO/FIXME/HACK/XXX density + age**; open-issue backlog triage. Detect:
-  `grep -rnE 'TODO|FIXME|HACK|XXX' packages/ --include=*.rs --include=*.c
-  --include=*.cpp --include=*.h --include=*.hpp`.
+  `git grep -nE 'TODO|FIXME|HACK|XXX' -- 'packages/*.rs' 'packages/*.c' 'packages/*.cpp' 'packages/*.h' 'packages/*.hpp' ':!*/generated/*'`
 
 ## H. Docs / DX
 
@@ -389,8 +482,9 @@ verdict).**
   the gap, don't bless the boilerplate. (Successor to issue 0049's
   example-source cleanliness sweep.) Detect: read each example's `src/` +
   `CMakeLists.txt` for anything a ROS 2 user wouldn't recognize from the
-  rclcpp/rclpy equivalent; grep examples for `#[no_mangle]`, `extern "C"`,
-  `unsafe`, `__nros_`, raw linker flags (exclude `*/generated/`). An example's
+  rclcpp/rclpy equivalent; and the net for FFI plumbing and raw link flags:
+  `git grep -nE '#\[(unsafe\()?no_mangle|extern "C"|__nros_|-Wl,' -- examples ':!*/generated/*'`
+  An example's
   build configuration is generated (RFC-0098 D1) — a tracked
   `examples/**/.cargo/*` is gated (`just check example-cargo-dirs`).
 
