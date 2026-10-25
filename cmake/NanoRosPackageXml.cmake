@@ -448,10 +448,16 @@ function(nano_ros_read_leaf_system)
         set_property(GLOBAL PROPERTY NROS_TOP_LEAF_DOMAIN_ID "${_NROS_LEAF_DOMAIN_ID}")
     endif()
 
-    # A board that IS its deploy token (`linux`, `zephyr`) names no separate
+    # A board that IS its platform (`linux`, `zephyr`) names no separate
     # provider — exactly the tuple shape `<nano_ros deploy="native"/>` had.
+    # `nros ws leaf-system` decides that from the board CATALOG and says so by
+    # printing an empty NROS_LEAF_CMAKE_BOARD (phase-517 W2). This used to be a
+    # LEXICAL test here (board word == deploy token), which also emptied every
+    # board whose alias happens to spell its platform — `freertos`, `nuttx`,
+    # `baremetal`, the words `nros new --platform <p>` wrote — and the configure
+    # then looked for `cmake/board/nano-ros-board-.cmake`.
     set(_board "${_NROS_LEAF_BOARD}")
-    if(_board STREQUAL _NROS_LEAF_DEPLOY)
+    if("${_NROS_LEAF_CMAKE_BOARD}" STREQUAL "")
         set(_board "")
     endif()
 
@@ -470,11 +476,8 @@ function(nano_ros_read_leaf_system)
     # phase-484 W4f — the board's own cmake MODULE (its descriptor's
     # `cmake_module`), which is what `cmake/board/nano-ros-board-<x>.cmake`
     # is keyed on; the leaf may name its board by any alias. Empty for a board
-    # that IS its deploy token, like NROS_EXPORT_BOARD above.
+    # that IS its platform, like NROS_EXPORT_BOARD above.
     set(_cmake_board "${_NROS_LEAF_CMAKE_BOARD}")
-    if(_board STREQUAL "" OR _cmake_board STREQUAL "")
-        set(_cmake_board "${_board}")
-    endif()
     set(NROS_EXPORT_CMAKE_BOARD "${_cmake_board}" PARENT_SCOPE)
     set(NROS_EXPORT_RMW "${_NROS_LEAF_RMW}" PARENT_SCOPE)
     # board= and rmw= are provider selections (RFC-0087 D3) — desugar them the

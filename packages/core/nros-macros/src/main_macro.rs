@@ -4969,8 +4969,14 @@ fn known_boards_csv() -> String {
 /// have no C runtime — the reset vector needs a `#[cortex_m_rt::entry]`. The
 /// macro keys the entry-emit shape off this. RTIC bare-metal boards are NOT
 /// here: they route through the RTIC framework, which owns its own entry.
+///
+/// phase-517 W2 — DERIVED from the key's board ZST rather than a second list of
+/// its spellings: every key [`board_path_for`] maps to the direct-exec
+/// `Mps2An385` is this board, so a key added to `BOARD_PATHS`
+/// (`mps2-an385-baremetal`) gets the entry shape with no edit here.
 fn is_baremetal_cortexm_deploy(deploy: Option<&str>) -> bool {
-    matches!(deploy, Some("qemu-mps2-an385" | "mps2-an385"))
+    deploy.and_then(nros_orchestration_ir::board_path_for)
+        == Some("::nros_board_mps2_an385::Mps2An385")
 }
 
 /// Issue 1759 — the `cfg` on the C-ABI `main(argc, argv)` arm.

@@ -283,6 +283,49 @@ platform (`zephyr`). A word two descriptors claim with different keys
 `every_image_board_reaches_an_index_key_and_every_key_is_reached`, which runs in
 `check cli-tests` on every pull request; both directions hold today.
 
+**Follow-up (2026-10-25), two installed-track gaps the W2 book rewrite
+measured.** Recorded here because W2's "Left" list is not on `main` yet.
+
+* **The scaffold's board word now resolves on every road that builds it.**
+  `nros new --platform <p> --lang c|cpp` wrote the PLATFORM word as the image
+  board (`freertos`, `nuttx`, `baremetal`, `threadx`). The catalog took the
+  first three as aliases, but the cmake road decided "this board IS its
+  platform" LEXICALLY (`board == deploy token`, `NanoRosPackageXml.cmake`),
+  emptied the board, and configured against `nano-ros-board-.cmake`;
+  `threadx` named two boards. Now `nros ws leaf-system` decides it over the
+  RESOLVED values (`cmake_board_provider`: empty only when the board's module is
+  its platform — `linux`, `zephyr`) and refuses an ambiguous board as
+  `nros build` does; `nros new` writes the platform's default board from the
+  catalog (`BoardCatalog::default_board_for_platform` →
+  `BoardDescriptor::canonical_name`: `mps2-an385-freertos`,
+  `qemu-armv7a-nuttx`, `mps2-an385-baremetal`, `linux`, `zephyr`), refuses
+  `threadx` naming `rv-virt-threadx` and `threadx-linux`, and takes `--board`
+  for a C/C++ project (resolved like an image board, and required to be a board
+  of that platform). Test: `every_offered_platform_scaffolds_a_board_every_road_builds`
+  (every offered platform × C/C++, through the image road, the cmake road and
+  the setup join — plan level).
+* **Every setup key is an image board word.** `mps2-an385-baremetal` was the one
+  index key no descriptor `names` (it was only the board's `cmake_module`), so
+  `nros setup` and `nros build --board` took it and an image naming it was
+  refused. The catalog now answers to a board's `cmake_module` (its setup key,
+  `setup_key` rule 1), so the join runs both ways for any board; the key is a
+  `BOARD_PATHS` entry for the Rust road, and `nros::main!`'s bare-metal entry
+  shape is derived from the key's board type instead of a second list of its
+  spellings. Test: `setup_keys_are_image_board_words` (every index key: catalog
+  round trip, image road, cmake overlay, entry tables). Not done as a new
+  `names` entry: that made `check-board-name-reach` reach this descriptor for
+  the first time, and it then reports its existing alias `qemu-mps2-an385`
+  (names the emulator, RFC-0093) — a real violation the gate cannot see today
+  because none of the descriptor's `names` is an overlay board.
+* **`nros board list|info|cmake-vars|net` and `nros setup board` work outside a
+  checkout.** They found the catalog only by a walk-up for `packages/boards/`;
+  they now ask the SDK-root ladder (`--workspace`, `$NROS_WORKSPACE_ROOT`, a
+  checkout, then the binary's own SDK root). Two siblings read SDK data the same
+  way and moved too: `nros config`'s platforms tree and the executor-capacity
+  check's platform config (which fell back to the default silently). `nros
+  board new` and `nros doctor` keep the checkout walk-up: they write into, or
+  run `just` in, a checkout.
+
 ### W4 — `nros setup` installs the workspace (L)
 
 `nros setup` with no board, inside a workspace (or `--workspace <dir>`),

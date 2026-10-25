@@ -194,6 +194,25 @@ pub fn cmake_board_module(catalog: Option<&BoardCatalog>, board: &str) -> String
     }
 }
 
+/// The board PROVIDER module the cmake road prints as `NROS_LEAF_CMAKE_BOARD`
+/// (phase-517 W2): [`cmake_board_module`], or EMPTY when the board IS its
+/// platform — `linux`, `zephyr`, whose module is the platform module itself
+/// and which name no `cmake/board/nano-ros-board-<x>.cmake`.
+///
+/// Decided over the RESOLVED values, never over the authored word. The cmake
+/// reader used to compare the authored board with the deploy token, so an
+/// alias that happens to spell its platform (`freertos`, `nuttx`,
+/// `baremetal` — exactly what `nros new --platform <p>` wrote) emptied the
+/// board and the configure looked for `nano-ros-board-.cmake`.
+pub fn cmake_board_provider(catalog: Option<&BoardCatalog>, board: &str) -> String {
+    let module = cmake_board_module(catalog, board);
+    if module == deploy_token(catalog, board) {
+        String::new()
+    } else {
+        module
+    }
+}
+
 /// The C/C++ deploy token (the `NROS_PLATFORM` axis) a board implies:
 /// its descriptor's platform FAMILY (`PlatformKind::cmake_deploy`). A board
 /// no single descriptor claims, or one whose platform has no C/C++ module, is
@@ -397,8 +416,19 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
     // linked worktree never answers with the PARENT's.
     let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &dir);
     let catalog = root.as_deref().and_then(|r| BoardCatalog::load(r).ok());
+    // phase-517 W2 — a board several descriptors claim (`threadx`) is refused
+    // here exactly as `nros build` refuses it, naming the candidates. Passed
+    // through, it reached the cmake road as its own deploy token and the
+    // configure looked for an empty board module.
+    if let Some(cat) = catalog.as_ref()
+        && let DeployResolution::Ambiguous(_) = cat.resolve_deploy(&board)
+    {
+        let origin = format!("[image.{}] board", leaf.image.as_deref().unwrap_or(""));
+        crate::orchestration::image::resolve_board_id(cat, &origin, &board)
+            .map_err(|e| eyre!("{}: {e}", leaf.origin_path().display()))?;
+    }
     let deploy = deploy_token(catalog.as_ref(), &board);
-    let cmake_board = cmake_board_module(catalog.as_ref(), &board);
+    let cmake_board = cmake_board_provider(catalog.as_ref(), &board);
     let mut build_dir: Option<PathBuf> = None;
     let settings = match root.as_deref() {
         Some(r) if leaf_system::is_package_dir(&dir) && args.write_settings => {
