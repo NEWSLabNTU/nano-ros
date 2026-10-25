@@ -366,6 +366,17 @@ template <typename T> struct refuse {
     "the one FutureAndRequestId: its .request_id is there, and .future.try_take(resp) / "          \
     ".future.wait(executor_handle, timeout_ms, resp) read the reply into storage you own."
 
+// issue 2024 — `rclcpp::ParameterEventHandler` hands its callbacks
+// `std::function`s, `std::string` names and an owning `shared_ptr` per
+// registration, and decodes each event into heap-backed `rclcpp::Parameter`s.
+#define NROS_RCLCPP_REFUSE_PARAMETER_EVENT_HANDLER                                                 \
+    "rclcpp::ParameterEventHandler is REFUSED by nano-ros on a freestanding build (RFC-0089, "     \
+    "issue 2024): its callbacks are std::function, its handles std::shared_ptr and the "           \
+    "rclcpp::Parameter it decodes each event into holds std::string / std::vector values. A "      \
+    "hosted build (-DNROS_CPP_STD) takes it as written. Freestanding, subscribe to "               \
+    "/parameter_events (rcl_interfaces/msg/ParameterEvent) with Node::create_subscription and "    \
+    "read the generated message."
+
 #define NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK                                             \
     "the shared_ptr service-callback shape is REFUSED by nano-ros (RFC-0089, phase-417 W2.c). "    \
     "rclcpp's create_service/create_client callback takes std::shared_ptr<Request> and "           \

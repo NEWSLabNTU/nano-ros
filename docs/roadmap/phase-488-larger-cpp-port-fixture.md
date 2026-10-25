@@ -75,6 +75,8 @@ parity work around them:
 | [2033](../issues/archived/2033-typed-client-helpers-drop-seq.md) | #2595 | the typed Rust client helpers carry the sequence id |
 | [2034](../issues/archived/2034-cpp-executor-cancel-reply-callback.md) | (2026-10-25) | the executor's spin takes C++ cancel replies |
 | [2037](../issues/archived/2037-cpp-client-future-and-request-id.md) | (2026-10-25) | `FutureAndRequestId`: `.future`, `.request_id`, `share()` |
+| [2024](../issues/archived/2024-parameter-event-handler.md) | (2026-10-25) | `rclcpp::ParameterEventHandler` (hosted) |
+| [2035](../issues/archived/2035-cpp-node-options-param-event-publisher-off.md) | (2026-10-25) | `start_parameter_event_publisher(false)` honoured |
 
 #2612 (in the merge queue on this date) closes the two action-cancel issues,
 #2029 (cancel-all / cancel-before on the server) and #2030 (the C tier takes
@@ -102,10 +104,6 @@ after 2015. The other issues in the table moved no example's count.
 
 **Open issues the stock examples or the parity work still point at:**
 
-- [issue 2024](../issues/2024-parameter-event-handler.md): no `ParameterEventHandler`.
-- [issue 2035](../issues/2035-cpp-node-options-param-event-publisher-off.md):
-  `NodeOptions::start_parameter_event_publisher(false)` is refused, so C++
-  cannot turn off one node's `/parameter_events`.
 - [issue 2036](../issues/2036-cpp-subscription-message-info-callback.md): no
   `rclcpp::MessageInfo`, so the `(const MsgT&, const MessageInfo&)` callback
   does not compile.

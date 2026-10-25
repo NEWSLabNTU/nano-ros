@@ -492,10 +492,33 @@ node.undeclare_parameter("gain");             // deleted_parameters = [gain]
 
 Each event names the node's fully qualified name in `node`; the events are
 published on the next spin. The image needs the `param_services` capability.
-One publisher per executor serves every node. It is always on for a served node:
-`NodeOptions::start_parameter_event_publisher` is refused at compile time,
-because `NodeOptions` carries no runtime state. `rclcpp::ParameterEventHandler`,
-which subscribes to OTHER nodes' events, is not offered yet (issue 2024).
+One publisher per executor serves every node. It is on for every served node
+unless the node was built with
+`rclcpp::NodeOptions().start_parameter_event_publisher(false)` (issue 2035),
+which opts that one node out; the other nodes keep publishing.
+
+To react to OTHER nodes' changes, a hosted build has
+`rclcpp::ParameterEventHandler` (issue 2024). It subscribes to
+`/parameter_events` once, on the node you give it:
+
+```cpp
+auto handler = std::make_shared<rclcpp::ParameterEventHandler>(node);
+auto h = handler->add_parameter_callback(
+    "gain", [](const rclcpp::Parameter& p) { use(p.as_int()); }, "/controller");
+auto e = handler->add_parameter_event_callback(
+    [](const rcl_interfaces::msg::ParameterEvent& ev) { /* every event */ });
+```
+
+Keep the handles: dropping one unregisters it, as upstream's do. An empty node
+name means this node, and a relative one resolves against this node's
+namespace. A parameter callback sees new and changed values, never deletions.
+An event callback receives the type it takes, so `rcl_interfaces` must be
+generated for the image. The per-parameter handle is
+`ParameterEventHandler::ParameterCallbackHandle`, because
+`rclcpp::ParameterCallbackHandle` is the on-set token here.
+`get_parameter(s)_from_event` are absent. A freestanding build refuses the
+handler at compile time; there, subscribe to `/parameter_events` with
+`create_subscription` yourself.
 
 ## Error Handling
 
