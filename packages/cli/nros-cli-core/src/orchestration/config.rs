@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    schema::{DeadlinePolicy, ParameterTable, RemapRule, SchedClass},
+    schema::{ParameterTable, RemapRule},
     source_metadata::ComponentLanguage,
 };
 
@@ -102,25 +102,9 @@ pub struct ComponentOverrides {
 // `EndpointMapping`, `BuildConfig`) is retired. Deployment config now lives in
 // the bringup `system.toml` (`[image.<id>]` is the build, `[host.<name>]` the
 // placement; RFC-0004 §4, phase-486 W8). What remains here is the component manifest
-// (`ComponentConfig`) + the scheduling tier (`SchedContextConfig`, consumed by
-// the planner).
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SchedContextConfig {
-    pub id: String,
-    pub executor: String,
-    pub class: SchedClass,
-    pub priority: Option<u8>,
-    // No `period`/`budget`/`deadline`: the derived schedule travels as
-    // `TierDef` in us (RFC-0079), and nothing ever wrote a number here. The
-    // `_ms` fields were deleted rather than converted (issue 0259); a future
-    // producer adds fields in the runtime's unit.
-    pub deadline_policy: DeadlinePolicy,
-    pub stack_size: Option<u32>,
-    pub core: Option<u32>,
-    pub task: Option<String>,
-}
+// (`ComponentConfig`). The scheduling tier is the plan's `PlanSchedContext`;
+// the `SchedContextConfig` twin that once sat here had no reader and was
+// deleted (issue 0259).
 
 #[cfg(test)]
 mod tests {

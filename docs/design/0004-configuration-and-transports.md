@@ -302,7 +302,7 @@ zenoh_lease_priority = 16; zenoh_lease_stack_bytes = 5120
 poll_priority = 16; poll_interval_ms = 5
 ```
 
-In planned mode this maps to the `SchedContextConfig` the planner carries
+In planned mode this maps to the `PlanSchedContext` the planner carries
 (RFC-0015/0016). **Multi-node RT home (decided 2026-06):** the *node* declares its
 callback groups (`[package.metadata.nros.node]` / `nano_ros_node_register`);
 `system.toml` owns tier definitions + group→tier assignment

@@ -169,8 +169,8 @@ fixtures under `nros-cli-core/tests/fixtures/orchestration/` lost the same
 keys; they carried numbers there (`"budget_ms": 20`), but only the schema test
 read those plans, and only their `class`. A plan written by an older CLI no
 longer parses (`deny_unknown_fields`). It is a build artifact, so rebuilding
-regenerates it. `SchedContextConfig` has no user left at all; deleting it is
-a separate cleanup.
+regenerates it. `SchedContextConfig` had no user left at all and was deleted
+separately (2026-10-25).
 
 The realizer's preempt dim went the same day (section 1):
 `RealizedNode.preempt_threshold` and `RealizedNode.preempt_real`. Every
