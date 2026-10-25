@@ -1695,6 +1695,55 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/client_future_and_request_id_runtime
+    # issue 2036 -- rclcpp::MessageInfo: the four upstream two-argument
+    # subscription shapes ((const M&|shared_ptr<const M>|shared_ptr<M>|
+    # unique_ptr<M>, const MessageInfo&)) each get the message AND what the
+    # backend's take_with_info reported (timestamps, sequence numbers, gid);
+    # a sample reported without metadata arrives all-zero.
+    # Negative control, measured: `from_info(None)` in nros-cpp's
+    # subscription.rs -> 4 failures.
+    test -f packages/api/nros-cpp/tests/compile/subscription_message_info_runtime.cpp || { \
+        echo "ERROR: subscription_message_info_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - subscription callbacks taking rclcpp::MessageInfo get the sample's metadata (runtime, issue 2036)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/subscription_message_info_runtime \
+        packages/api/nros-cpp/tests/compile/subscription_message_info_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/subscription_message_info_runtime
+    # ...and WITHOUT the hosted surface the MessageInfo shapes are refused,
+    # naming MessageInfo (the metadata path keeps the callable on the heap).
+    _smi=packages/api/nros-cpp/tests/compile/subscription_message_info_freestanding_probe.cpp
+    test -f "$_smi" || { echo "ERROR: $_smi is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - MessageInfo subscription callbacks are REFUSED without NROS_CPP_STD (issue 2036)"
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
+    mkdir -p tmp
+    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -I"$cppgen" -I"$cgen" \
+        -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        "$_smi" 2>tmp/refuse-subscription-message-info-freestanding.log; then
+        echo "ERROR: $_smi COMPILED -- a MessageInfo callback was accepted with no allocator." >&2
+        exit 1
+    fi
+    for _needle in "REFUSED by nano-ros" "rclcpp::MessageInfo"; do
+        nros_grep_q "$_needle" tmp/refuse-subscription-message-info-freestanding.log && _rc=0 || _rc=$?
+        if [ "$_rc" -ne 0 ]; then
+            echo "ERROR: $_smi failed WITHOUT '$_needle' -- it broke for another reason." >&2
+            echo "       See tmp/refuse-subscription-message-info-freestanding.log" >&2
+            exit 1
+        fi
+    done
     # issue 2015 -- upstream rclcpp_action spellings as HOSTED drop-ins:
     # create_server / create_client over the node interfaces, std::bind-ed
     # goal-handle callbacks, ServerGoalHandle's get_goal / publish_feedback /

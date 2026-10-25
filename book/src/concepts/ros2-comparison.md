@@ -61,6 +61,10 @@ nano-ros treats them as equals. A subscription created via
 registered via `executor.node_mut(nid).create_subscription::<M, _>("/topic", callback)`
 runs the callback during `spin_once`. Pick whichever fits the control loop.
 
+A C++ callback may also take upstream's `const rclcpp::MessageInfo&` as its
+second argument (hosted builds; issue 2036). The fields are what the backend
+reports per sample, so on XRCE and uORB they are all zero.
+
 **Why.** Embedded apps often want the predictability of an explicit
 poll inside a real-time loop. Callback dispatch is great for
 event-driven services but adds indirection that real-time engineers

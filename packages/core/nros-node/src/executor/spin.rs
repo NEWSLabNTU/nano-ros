@@ -23,19 +23,20 @@ use super::{
         BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientCallbackEntry,
         ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry, SrvRawEntry,
         SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry, SubBufferedRawInfoCEntry,
-        SubBufferedRawInfoEntry, SubBufferedTypedCEntry, SubBufferedViewEntry, SubInfoEntry,
-        SubInplaceEntry, TimerClockSource, TimerEntry, TimerHeader, TimerOverrunPolicy, TraceName,
-        always_ready, buffered_region_size, drop_entry, guard_has_data, guard_try_process,
-        no_pre_sample, service_client_callback_try_process, service_client_raw_try_process,
-        srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
-        sub_buffered_has_data, sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process,
-        sub_buffered_raw_has_data, sub_buffered_raw_info_c_has_data,
-        sub_buffered_raw_info_c_try_process, sub_buffered_raw_info_has_data,
-        sub_buffered_raw_info_try_process, sub_buffered_raw_try_process, sub_buffered_try_process,
-        sub_buffered_typed_c_has_data, sub_buffered_typed_c_try_process,
-        sub_buffered_view_has_data, sub_buffered_view_try_process, sub_info_has_data,
-        sub_info_pre_sample, sub_info_try_process, sub_inplace_has_data, sub_inplace_try_process,
-        timer_try_process,
+        SubBufferedRawInfoEntry, SubBufferedRawMsgInfoEntry, SubBufferedTypedCEntry,
+        SubBufferedViewEntry, SubInfoEntry, SubInplaceEntry, TimerClockSource, TimerEntry,
+        TimerHeader, TimerOverrunPolicy, TraceName, always_ready, buffered_region_size, drop_entry,
+        guard_has_data, guard_try_process, no_pre_sample, service_client_callback_try_process,
+        service_client_raw_try_process, srv_has_data, srv_raw_has_data, srv_raw_try_process,
+        srv_try_process, sub_buffered_has_data, sub_buffered_raw_c_has_data,
+        sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
+        sub_buffered_raw_info_c_has_data, sub_buffered_raw_info_c_try_process,
+        sub_buffered_raw_info_has_data, sub_buffered_raw_info_try_process,
+        sub_buffered_raw_msg_info_has_data, sub_buffered_raw_msg_info_try_process,
+        sub_buffered_raw_try_process, sub_buffered_try_process, sub_buffered_typed_c_has_data,
+        sub_buffered_typed_c_try_process, sub_buffered_view_has_data,
+        sub_buffered_view_try_process, sub_info_has_data, sub_info_pre_sample,
+        sub_info_try_process, sub_inplace_has_data, sub_inplace_try_process, timer_try_process,
     },
     node::NodeHandle,
     spsc_ring::SpscRing,
@@ -10232,6 +10233,89 @@ impl<'s> Executor<'s> {
             })
         };
         self.apply_node_default_sched(slot, node_id, group);
+        Ok(self.handle_for(slot))
+    }
+
+    /// Issue 2036 — register a raw subscription whose closure receives each
+    /// sample's [`MessageInfo`](nros_core::MessageInfo) (`None` from a backend
+    /// that reports none): the raw twin of the typed `with_info` path, for a
+    /// caller that deserializes itself. Backs the C++
+    /// `(const M&, const rclcpp::MessageInfo&)` subscription callback
+    /// (`nros_cpp_subscription_register_message_info`).
+    ///
+    /// `rx_buffer_hint` sizes both the backend's payload class and the arena
+    /// slot, as on [`add_arena_subscription_c_info_callback`](Self::add_arena_subscription_c_info_callback);
+    /// 0 falls back to `DEFAULT_RX_BUF_SIZE`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_arena_subscription_msg_info_closure<F>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QoSProfile,
+        rx_buffer_hint: usize,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut(&[u8], Option<&nros_core::MessageInfo>) + 'static,
+    {
+        type Entry<F> = SubBufferedRawMsgInfoEntry<F>;
+
+        let SubscriptionOpen {
+            slot,
+            handle,
+            slot_bytes: rx_bytes,
+            ..
+        } = self.open_subscription(&SubscriptionRequest {
+            node_id,
+            topic_name,
+            type_name,
+            type_hash,
+            qos,
+            backend_hint: Some(rx_buffer_hint),
+            slot_bytes: if rx_buffer_hint != 0 {
+                rx_buffer_hint
+            } else {
+                crate::config::DEFAULT_RX_BUF_SIZE
+            },
+            // The metadata comes with a COPYING take (`take_serialized_with_info`).
+            in_place_capable: false,
+        })?;
+
+        let (offset, trailing_offset) = self.arena_alloc_with_trailing::<Entry<F>>(rx_bytes)?;
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let buffer = super::arena::TrailingBuf::init(arena_ptr.add(trailing_offset), rx_bytes);
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<F>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer,
+                    callback,
+                },
+            );
+        }
+
+        let meta = CallbackMeta {
+            offset,
+            kind: EntryKind::Subscription,
+            arena_len: super::arena::ArenaLen::UNRECORDED,
+            try_process: sub_buffered_raw_msg_info_try_process::<F>,
+            has_data: sub_buffered_raw_msg_info_has_data::<F>,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<Entry<F>>,
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        // SAFETY: an `Entry<F>` was written at `offset` just above.
+        unsafe {
+            self.arm_entry_wake::<Entry<F>>(slot, offset, |e, w| {
+                nros_rmw::Subscription::register_waker(&e.handle, w)
+            })
+        };
+        self.apply_node_default_sched(slot, node_id, None);
         Ok(self.handle_for(slot))
     }
 

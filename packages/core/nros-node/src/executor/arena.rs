@@ -2060,6 +2060,60 @@ pub(crate) unsafe fn sub_buffered_raw_info_has_data<F>(ptr: *const u8) -> bool {
     entry.handle.has_data()
 }
 
+/// Issue 2036 — raw buffered subscription whose closure receives the sample's
+/// [`MessageInfo`] (`take_serialized_with_info`): the timestamps, sequence
+/// numbers and publisher gid a backend reports, or `None` from one that
+/// reports none. The raw twin of [`SubInfoEntry`], for a caller that
+/// deserializes itself — the C++ `(const M&, const rclcpp::MessageInfo&)`
+/// subscription callback. [`SubBufferedRawInfoEntry`] carries the ATTACHMENT
+/// bytes instead, and its `RawMessageInfo` metadata is defaulted.
+#[repr(C)]
+pub(crate) struct SubBufferedRawMsgInfoEntry<F> {
+    pub(crate) handle: session::RmwSubscriber,
+    /// The receive slot, in the arena's trailing region, sized at registration.
+    pub(crate) buffer: TrailingBuf,
+    pub(crate) callback: F,
+}
+
+/// Dispatch for [`SubBufferedRawMsgInfoEntry`]: one sample per call.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubBufferedRawMsgInfoEntry<F>`.
+pub(crate) unsafe fn sub_buffered_raw_msg_info_try_process<F>(
+    ptr: *mut u8,
+    _delta_us: u64,
+    desc_idx: u8,
+) -> Result<bool, TransportError>
+where
+    F: FnMut(&[u8], Option<&MessageInfo>),
+{
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawMsgInfoEntry<F>) };
+    match entry
+        .handle
+        .take_serialized_with_info(entry.buffer.as_mut_slice())
+    {
+        // Phase 8 — hooked, one pair per sample, as the other raw entries.
+        Ok(Some((len, info))) => {
+            trace_take(desc_idx, &entry.buffer.as_slice()[..len], None);
+            trace_cb_start(desc_idx);
+            (entry.callback)(&entry.buffer.as_slice()[..len], info.as_ref());
+            trace_cb_end(desc_idx);
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(_) => Err(TransportError::DeserializationError),
+    }
+}
+
+/// Readiness check for [`SubBufferedRawMsgInfoEntry`].
+///
+/// # Safety
+/// `ptr` must point to a valid `SubBufferedRawMsgInfoEntry<F>`.
+pub(crate) unsafe fn sub_buffered_raw_msg_info_has_data<F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawMsgInfoEntry<F>) };
+    entry.handle.has_data()
+}
+
 /// C-style (fn-ptr + context) raw buffered subscription with attachment
 /// (Phase 189.M3.4 — the C analog of [`SubBufferedRawInfoEntry`]). Flat
 /// payload + attachment buffers, one sample per dispatch.

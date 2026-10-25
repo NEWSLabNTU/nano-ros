@@ -82,16 +82,14 @@ struct SubscriptionOptions {
     /// other group-taking verb's null group; see `rclcpp::CallbackGroupToken`.
     ::rclcpp::CallbackGroup::SharedPtr callback_group;
 
-    /// RESERVED — not yet implemented.
-    ///
-    /// When wired, this selects the with-`MessageInfo` delivery path so
-    /// callbacks observe per-sample metadata (source timestamp, GID,
-    /// sequence number). That requires a new "with-info" subscription
-    /// create FFI + a `SubBufferedRawInfoCEntry`-style arena entry in
-    /// `nros-node` — none of which exists yet.
-    ///
-    /// TODO(M3.4): wire `message_info` to the new arena with-info path.
-    /// Setting it today has no effect (it is intentionally ignored).
+    /// Issue 2036 — upstream has no such field: rclcpp delivers metadata to a
+    /// callback that TAKES it, `(msg, const rclcpp::MessageInfo&)`, and so
+    /// does `create_subscription` here. Kept for source compatibility and
+    /// READ: `true` with a callback that takes no `rclcpp::MessageInfo` is
+    /// refused at create (the create aborts naming
+    /// `options.message_info`, as a failed create does), because it would
+    /// otherwise configure nothing.
+    /// With a `MessageInfo` callback it changes nothing.
     bool message_info = false;
 };
 

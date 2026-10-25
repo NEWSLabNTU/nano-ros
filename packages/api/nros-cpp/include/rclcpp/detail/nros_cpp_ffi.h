@@ -1176,6 +1176,40 @@ typedef struct nros_cpp_subscription_options_t {
 } nros_cpp_subscription_options_t;
 
 /**
+ * Issue 2036 — one sample's metadata, upstream's `rmw_message_info_t` field
+ * for field (`rclcpp::MessageInfo::get_rmw_message_info()` is filled from
+ * it). A backend that reports none (XRCE, uORB) hands every field zeroed.
+ */
+typedef struct nros_cpp_message_info_t {
+  /**
+   * Publisher's clock at publication, ns; 0 = not reported.
+   */
+  int64_t source_timestamp;
+  /**
+   * Subscriber's clock at reception, ns; 0 = not reported.
+   */
+  int64_t received_timestamp;
+  /**
+   * The publisher's sequence number for this sample; 0 = not reported.
+   */
+  uint64_t publication_sequence_number;
+  /**
+   * This subscription's reception count; 0 = not reported.
+   */
+  uint64_t reception_sequence_number;
+  /**
+   * The publisher's GID, zero-padded to `RMW_GID_STORAGE_SIZE` (24); all
+   * zero = not reported. How many bytes mean anything is backend-specific
+   * (`nros_core::MessageInfo::publisher_gid`).
+   */
+  uint8_t publisher_gid[24];
+  /**
+   * `true` when the backend reported metadata for this sample at all.
+   */
+  bool has_info;
+} nros_cpp_message_info_t;
+
+/**
  * Phase 252 / issue 0073 — E2E message-integrity status for the C++ receive
  * path ([`nros_cpp_subscription_take_validated`]). The C++ analog of the
  * Rust `IntegrityStatus` / `rclc_integrity_status_t`.
@@ -4274,6 +4308,35 @@ nros_cpp_ret_t nros_cpp_subscription_create(const struct nros_cpp_node_t *node,
  * "inherit"/"off", identical to passing NULL.
  */
 struct nros_cpp_subscription_options_t nros_cpp_subscription_default_options(void);
+
+/**
+ * Register a **callback-style** subscription whose callback receives each
+ * sample's metadata — issue 2036, the runtime half of the C++
+ * `(const M&, const rclcpp::MessageInfo&)` subscription callback (hosted).
+ *
+ * `invoke(data, len, info, context)` runs during `spin_once` with the CDR
+ * bytes and an [`nros_cpp_message_info_t`] filled from the backend's
+ * `take_serialized_with_info`. `context` is a heap capture the registration
+ * OWNS from here on: `context_drop(context)` runs once, when the
+ * subscription is released (or right away if registration fails).
+ *
+ * # Safety
+ * All pointers must be valid; `invoke` and `context_drop` must be callable
+ * for the life of the subscription.
+ */
+nros_cpp_ret_t nros_cpp_subscription_register_message_info(const struct nros_cpp_node_t *node,
+                                                           const char *topic,
+                                                           const char *type_name,
+                                                           const char *type_hash,
+                                                           struct nros_cpp_qos_t qos,
+                                                           void (*invoke)(const uint8_t*,
+                                                                          size_t,
+                                                                          const struct nros_cpp_message_info_t*,
+                                                                          void*),
+                                                           void *context,
+                                                           void (*context_drop)(void*),
+                                                           size_t *out_handle_id,
+                                                           const struct nros_cpp_subscription_options_t *options);
 
 /**
  * Try to receive raw CDR data from a subscription (non-blocking).

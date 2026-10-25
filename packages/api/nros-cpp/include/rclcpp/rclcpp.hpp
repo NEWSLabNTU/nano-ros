@@ -1066,9 +1066,13 @@ inline FutureReturnCode spin_until_future_complete(const ::std::shared_ptr<N>& n
 
 namespace rclcpp {
 
+namespace detail {
+
+/// The one-argument callback path (`void(const M&)`, or a hosted pointer shape).
 template <typename M, typename Cb>
 inline typename Subscription<M>::SharedPtr
-Node::create_subscription(const char* topic, const ::rclcpp::QoS& qos, Cb cb) {
+create_subscription_dispatch(::rclcpp::Node& node, const char* topic, const ::rclcpp::QoS& qos,
+                             Cb cb, ::rclcpp::tr::false_type /* takes MessageInfo */) {
     // phase-456 W2 — the arena owns everything, so this allocates nothing.
     //
     // This used to `make_shared` a `detail::SubscriptionCallback<M>` cell whose
@@ -1089,14 +1093,56 @@ Node::create_subscription(const char* topic, const ::rclcpp::QoS& qos, Cb cb) {
         ::rclcpp::tr::forward_rvalue(cb)));
     ::size_t handle_id = 0;
     const ::rclcpp::Result r = ::rclcpp::detail::register_subscription_capturing<M>(
-        *this, topic, qos, captured, &handle_id);
+        node, topic, qos, captured, &handle_id);
     // phase-476 W2 — the arena's copy owns the callable now and destroys it on
     // release; ours must not destroy it too.
     if (r.ok()) {
         captured.relinquish();
     }
     ::rclcpp::detail::require_created(r, "create_subscription", topic);
-    return typename Subscription<M>::SharedPtr(this->executor_handle(), handle_id);
+    return typename Subscription<M>::SharedPtr(node.executor_handle(), handle_id);
+}
+
+/// Issue 2036 — the two-argument path: the callback also takes
+/// `const rclcpp::MessageInfo&`, so the runtime takes each sample with its
+/// metadata. Hosted only (the callable lives on the heap).
+template <typename M, typename Cb>
+inline typename Subscription<M>::SharedPtr
+create_subscription_dispatch(::rclcpp::Node& node, const char* topic, const ::rclcpp::QoS& qos,
+                             Cb cb, ::rclcpp::tr::true_type /* takes MessageInfo */) {
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    constexpr int shape = ::rclcpp::detail::subscription_info_callback_shape<M, Cb>::value;
+    auto fn = ::rclcpp::detail::subscription_info_adapter<M, Cb, shape>::wrap(
+        ::rclcpp::tr::forward_rvalue(cb));
+    ::size_t handle_id = 0;
+    const ::rclcpp::Result r = ::rclcpp::detail::register_subscription_message_info<M>(
+        node, topic, qos, static_cast<decltype(fn)&&>(fn), &handle_id);
+    ::rclcpp::detail::require_created(r, "create_subscription", topic);
+    return typename Subscription<M>::SharedPtr(node.executor_handle(), handle_id);
+#else
+    static_assert(::rclcpp::detail::refuse<Cb>::value, NROS_RCLCPP_REFUSE_MESSAGE_INFO_CALLBACK);
+    (void)topic;
+    (void)qos;
+    (void)cb;
+    return typename Subscription<M>::SharedPtr(node.executor_handle(), 0);
+#endif // NROS_CPP_HAS_SHARED_PTR
+}
+
+} // namespace detail
+
+template <typename M, typename Cb>
+inline typename Subscription<M>::SharedPtr
+Node::create_subscription(const char* topic, const ::rclcpp::QoS& qos, Cb cb) {
+    // issue 2036 — a callback that takes no one-argument shape but does take
+    // `(message, const MessageInfo&)` goes down the metadata path; every other
+    // callback (including one that would take both) keeps the one-argument path.
+    constexpr bool takes_info = ::rclcpp::detail::subscription_callback_shape<M, Cb>::value ==
+                                    ::rclcpp::detail::SUB_SHAPE_NONE &&
+                                ::rclcpp::detail::subscription_info_callback_shape<M, Cb>::value !=
+                                    ::rclcpp::detail::SUB_SHAPE_NONE;
+    return ::rclcpp::detail::create_subscription_dispatch<M>(
+        *this, topic, qos, ::rclcpp::tr::forward_rvalue(cb),
+        ::rclcpp::tr::integral_constant<bool, takes_info>());
 }
 
 template <typename M, typename Cb>
@@ -1118,6 +1164,22 @@ Node::create_subscription(const char* topic, const ::rclcpp::QoS& qos, Cb cb,
     if (options.sched_context != ::rclcpp::SCHED_CONTEXT_UNSET) {
         ::rclcpp::detail::require_created(::rclcpp::Result(::rclcpp::ErrorCode::Unsupported),
                                           "create_subscription(..., options.sched_context)", topic);
+    }
+    // issue 2036 — metadata delivery is chosen by the CALLBACK, as upstream
+    // chooses it: a callback taking `const rclcpp::MessageInfo&` gets it.
+    // `options.message_info = true` with a callback that cannot receive it
+    // would configure nothing, so it is refused rather than ignored.
+    constexpr bool cb_takes_info =
+        ::rclcpp::detail::subscription_callback_shape<M, Cb>::value ==
+            ::rclcpp::detail::SUB_SHAPE_NONE &&
+        ::rclcpp::detail::subscription_info_callback_shape<M, Cb>::value !=
+            ::rclcpp::detail::SUB_SHAPE_NONE;
+    if (options.message_info && !cb_takes_info) {
+        ::rclcpp::detail::require_created(
+            ::rclcpp::Result(::rclcpp::ErrorCode::Unsupported),
+            "create_subscription(..., options.message_info) with a callback taking no "
+            "rclcpp::MessageInfo",
+            topic);
     }
     return this->create_subscription<M>(topic, qos, ::rclcpp::tr::forward_rvalue(cb));
 }
