@@ -225,7 +225,7 @@ heartbeat, and a remote gear command is forwarded.
 | four-argument `create_subscription(topic, qos, cb, options)` | fixed, C++ PR |
 | a `std::bind(&X::f, this, _1, _2)` service handler returning `bool` was refused | fixed, C++ PR: a stateful handler's capture lives in the service's arena entry |
 | `ExecutorFull`, then liveliness, publisher, subscriber and queryable tables full at start-up | issue 2043 (census sizing on the ament road, as ruled); the executor log now names its knob |
-| zenoh warnings advise a retired `ZPICO_*` env spelling | issue 2042 |
+| zenoh warnings advise a retired `ZPICO_*` env spelling | fixed, #2624 (issue 2042) |
 | `find_package(autoware_cmake)` needs the project's install sourced | porting-guide note (W4); no fix |
 
 In-tree tests, none of which use the ported code:
