@@ -299,14 +299,18 @@ Rust through `Executor::declare_parameter` and `Node::parameter`.
   set to the node's fully qualified name. C++ gets it from
   `Node::start_parameter_services()`, Rust from `[param_services]` (or
   `Executor::register_parameter_services`), C from rclc's
-  `notify_changed_over_dds` (default on; `false` opts that node out). One
+  `notify_changed_over_dds` (default on; `false` opts that node out; C++'s
+  `NodeOptions().start_parameter_event_publisher(false)` does the same,
+  issue 2035). One
   publisher per executor serves every node, so `param_services` costs one
   publisher slot and one liveliness token on top of the six services per
   node, and no queryable. An event too big for
   `NROS_PARAM_SERVICE_BUFFER_SIZE` is not published (logged as an error),
-  never truncated. Subscribing to OTHER nodes' events through
-  `rclcpp::ParameterEventHandler` is not offered yet (issue 2024); a plain
-  `create_subscription<rcl_interfaces::msg::ParameterEvent>` works.
+  never truncated. To subscribe to OTHER nodes' events, a hosted C++ build
+  has `rclcpp::ParameterEventHandler` (issue 2024): per-parameter callbacks
+  taking `rclcpp::Parameter`, and whole-event callbacks taking the image's
+  generated `rcl_interfaces::msg::ParameterEvent`. A freestanding build, C
+  and Rust use a plain `/parameter_events` subscription.
 
 **What we drop, and why**
 

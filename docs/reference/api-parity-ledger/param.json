@@ -222,13 +222,13 @@
     "why": "Upstream's is a `std::function<SetParametersResult(const std::vector<Parameter>&)>`. Ours is a plain function pointer plus a `void*` context over one `rclcpp::ParameterWrite`, answering `bool` — upstream's `successful`. The allocator is the constraint for the closure and the vector, and `<functional>` is absent from the freestanding lane entirely. phase-417 W4.a."
   },
   "cpp:Parameter": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "provides": [
-      "nros::ParameterServer::get_parameter",
-      "nros::ParameterServer::set_parameter"
-    ],
-    "why": "rclcpp's parameter VALUE OBJECT: a name plus a type-tagged value, copied around by value and the currency of `set_parameters`, `get_parameters` and the on-set callback. Every accessor on it (`as_string`, `as_double_array`, `value_to_string`, `to_parameter_msg`) returns an owned `std::string` or `std::vector`, so the type cannot exist without an allocator. Our C++ passes values through the typed template methods instead (`ParameterServer::get_parameter<T>(name, out&)`), which is the out-param form of the same read. What a user loses: a heterogeneous parameter list. Note C and Rust both DO have the record type (`nros_parameter_t`, `nros_params::Parameter`) -- theirs holds the value inline rather than owning it."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/parameter_event_handler.hpp",
+      "text": "returns the type's zero value where upstream throws"
+    },
+    "why": "issue 2024 (2026-10-25) -- re-verdicted from declined: a HOSTED `rclcpp::Parameter` exists now, the value a `ParameterEventHandler` parameter callback receives -- a name plus a type-tagged value with upstream's readers `get_name`, `get_type`, `get_type_name`, `as_bool`, `as_int`, `as_double`, `as_string`, `as_byte_array`, `as_bool_array`, `as_integer_array`, `as_double_array`, `as_string_array`. THE BOUND, and the constraints behind it: it owns `std::string` / `std::vector` storage, so a freestanding build (no allocator) has no `rclcpp::Parameter`; reading the wrong type returns that type's zero value where upstream throws `ParameterTypeException` (no exceptions, RFC-0018), so check `get_type()` first; it is not yet the currency of the node's own `get_parameters` / `set_parameters` / on-set callback, which keep the typed out-param forms and `ParameterWrite` (`cpp:ParameterWrite`); the message conversions and `value_to_string` are their own rows.\n\nEARLIER ROW (superseded): declined, absent -- the type could not exist without an allocator, so C++ passed values through the typed template methods."
   },
   "cpp:ParameterCallbackHandle": {
     "verdict": "declined",
@@ -250,14 +250,22 @@
     "why": "Upstream's is `rcl_interfaces::msg::ParameterDescriptor`, a generated ROS message whose strings OWN their storage. Ours BORROWS its text: the `const char*` are read during the call that consumes the descriptor — the store copies into its own slot — and never retained, so a descriptor is a string-literal aggregate on the stack with no allocator anywhere. Reading one back is the mirror of that and takes a caller-owned text buffer (`Node::describe_parameter`). The platform constraint is the allocator; there is no shape in which a returned descriptor owns its strings without one. phase-417 W4.a."
   },
   "cpp:ParameterEventCallbackHandle": {
-    "verdict": "gap",
-    "disposition": "absent",
-    "why": "the whole-event form of `cpp:ParameterCallbackHandle`. the `/parameter_events` family. PUBLISHING is done on every surface since issue 2023: a node whose parameters are served (C's rclc `notify_changed_over_dds`, C++'s `Node::start_parameter_services`, Rust's `[param_services]` / `Executor::register_parameter_services`) publishes `rcl_interfaces/msg/ParameterEvent` on `/parameter_events` -- a start-up event, then one per declare/set/undeclare -- through ONE core path (`Executor::enable_parameter_events_on` -> `create_param_event_pub`). SUBSCRIBING is the gap, issue 2024: no surface offers a handler that reacts to ANOTHER node's events. It is not declined: a hosted C++ build has `std::function` and `shared_ptr`, and a bounded registry over a typed `rcl_interfaces/msg/ParameterEvent` subscription is plain work nobody has done; the freestanding build would need a fixed-size callback table. A user can already `create_subscription<rcl_interfaces::msg::ParameterEvent>(\"/parameter_events\", ...)` and filter by `node` by hand. (CORRECTED 2026-10-18: this said we publish no `/parameter_events` at all. CORRECTED 2026-10-24, issue 2023: this said only C publishes, and declined the handler on an allocator argument that does not hold on a hosted build.) Phase 379 W3."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/parameter_event_handler.hpp",
+      "text": "The callback is TYPE-ERASED over the frame — upstream's member is typed to"
+    },
+    "why": "issue 2024 (2026-10-25) -- LANDED on a HOSTED build: the owning handle `ParameterEventHandler::add_parameter_event_callback` returns, `ParameterEventCallbackHandle::SharedPtr` = `std::shared_ptr<ParameterEventCallbackHandle>`; dropping every copy unregisters, as upstream's does. THE BOUND: it has no public `callback` member. The callback is a heap `std::function<void(const uint8_t*, size_t)>` over the CDR frame behind a private pointer -- type-erased because without runtime typesupport this header cannot name `rcl_interfaces::msg::ParameterEvent` (the handler wraps the user's typed callback in it), and behind a pointer so the type has one layout on every build (`check-cpp-capability-layout`). Hosted only, with the handler (no allocator on a freestanding build). See `cpp:ParameterEventHandler`.\n\nEARLIER ROW (superseded): gap, absent."
   },
   "cpp:ParameterEventHandler": {
-    "verdict": "gap",
-    "disposition": "absent",
-    "why": "the `/parameter_events` family. PUBLISHING is done on every surface since issue 2023: a node whose parameters are served (C's rclc `notify_changed_over_dds`, C++'s `Node::start_parameter_services`, Rust's `[param_services]` / `Executor::register_parameter_services`) publishes `rcl_interfaces/msg/ParameterEvent` on `/parameter_events` -- a start-up event, then one per declare/set/undeclare -- through ONE core path (`Executor::enable_parameter_events_on` -> `create_param_event_pub`). SUBSCRIBING is the gap, issue 2024: no surface offers a handler that reacts to ANOTHER node's events. It is not declined: a hosted C++ build has `std::function` and `shared_ptr`, and a bounded registry over a typed `rcl_interfaces/msg/ParameterEvent` subscription is plain work nobody has done; the freestanding build would need a fixed-size callback table. A user can already `create_subscription<rcl_interfaces::msg::ParameterEvent>(\"/parameter_events\", ...)` and filter by `node` by hand. (CORRECTED 2026-10-18: this said we publish no `/parameter_events` at all. CORRECTED 2026-10-24, issue 2023: this said only C publishes, and declined the handler on an allocator argument that does not hold on a hosted build.) Phase 379 W3."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/parameter_event_handler.hpp",
+      "text": "Differences from upstream, each a compile error or written here:"
+    },
+    "why": "issue 2024 (2026-10-25) -- LANDED on a HOSTED build: `rclcpp::ParameterEventHandler(node[, qos])` (a `shared_ptr` to a `Node` or a derived type, or `this` from a derived constructor) creates ONE `/parameter_events` subscription (`rcl_interfaces/msg/ParameterEvent`, upstream's `QoS(KeepLast(1))` default) through `Node::create_subscription`, so the entity inventory and the receive-buffer sizing count it like any other subscription (`NROS_PARAM_EVENT_RX_BYTES`, default 4096, is its frame bound). `add_parameter_callback(name, cb, node_name = \"\")` hands `cb` an `rclcpp::Parameter` for each new or changed value of that parameter of that node (this node when empty, a relative name resolved against this node's namespace, upstream's `resolve_path`), never for a deletion; `add_parameter_event_callback(cb)` hands `cb` every event decoded into the type `cb` takes; both return owning `shared_ptr` handles the handler keeps only weakly, and `remove_*` drop them. THE BOUND, and the platform constraints behind it: a freestanding build has no `std::function`, `std::string` or allocator for the callbacks, handles and decoded values, so constructing one is refused at compile time (`NROS_RCLCPP_REFUSE_PARAMETER_EVENT_HANDLER`); `rclcpp::ParameterCallbackHandle` is already the on-set token here (`cpp:ParameterCallbackHandle`), so the per-parameter handle is `ParameterEventHandler::ParameterCallbackHandle`; there is no runtime typesupport, so an event callback takes the caller's GENERATED `rcl_interfaces::msg::ParameterEvent` (deduced from the callback) and that message must be generated for the image; the static `get_parameter(s)_from_event` helpers are a gap (their own rows). Held by `parameter_event_handler_runtime.cpp` and `parameter_event_handler_freestanding_probe.cpp` in `just check cpp`.\n\nEARLIER ROW (superseded): gap, absent -- every surface published the topic (issue 2023) and none subscribed to it."
   },
   "cpp:ParameterEventsQoS::ParameterEventsQoS": {
     "verdict": "declined",
@@ -846,5 +854,64 @@
       "jazzy"
     ],
     "why": "builds `Parameter` vectors from rcl_yaml_param_parser's runtime YAML map; parameters are authored in `system.toml`/launch and resolved at build time, and `cpp:Parameter` is declined."
+  },
+  "cpp:Parameter::from_parameter_msg": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "builds a `Parameter` from a generated `rcl_interfaces::msg::Parameter`. There is no runtime typesupport here, so the C++ surface names no `rcl_interfaces` message; a `ParameterEventHandler` decodes the wire frame into `rclcpp::Parameter` itself (issue 2024)."
+  },
+  "cpp:Parameter::to_parameter_msg": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "the inverse of `cpp:Parameter::from_parameter_msg`; same reason: the C++ surface names no generated `rcl_interfaces` message (no runtime typesupport)."
+  },
+  "cpp:Parameter::get_value_message": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "returns the value as a generated `rcl_interfaces::msg::ParameterValue`; same reason as `cpp:Parameter::from_parameter_msg`."
+  },
+  "cpp:Parameter::get_parameter_value": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "returns an `rclcpp::ParameterValue`, which C++ does not have (`cpp:ParameterValue`, declined: owned storage behind every accessor). The typed `as_*` readers on `rclcpp::Parameter` are the read (issue 2024)."
+  },
+  "cpp:Parameter::get_value": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "`get_value<T>()`, a template that throws `ParameterTypeException` on a mismatch. No exceptions here (RFC-0018); the typed `as_*` readers, which return the type's zero value on a mismatch, are the read (issue 2024)."
+  },
+  "cpp:Parameter::value_to_string": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "formats the value into an owned `std::string` for logging. Not provided: a `Parameter` is read field by field (`get_type()` + `as_*`), and `RCLCPP_*` formats those (issue 2024)."
+  },
+  "cpp:ParameterEventCallbackHandle::make_shared": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "`RCLCPP_SMART_PTR_DEFINITIONS` factories. The handler builds the handle (`add_parameter_event_callback` returns its `SharedPtr`); `std::make_shared<rclcpp::ParameterEventCallbackHandle>()` works on a hosted build where a caller wants one. See `cpp:ParameterEventCallbackHandle` (issue 2024)."
+  },
+  "cpp:ParameterEventCallbackHandle::make_unique": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "`RCLCPP_SMART_PTR_DEFINITIONS` factories. The handler builds the handle (`add_parameter_event_callback` returns its `SharedPtr`); `std::make_shared<rclcpp::ParameterEventCallbackHandle>()` works on a hosted build where a caller wants one. See `cpp:ParameterEventCallbackHandle` (issue 2024)."
+  },
+  "cpp:ParameterEventHandler::add_parameter_event_callback": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/parameter_event_handler.hpp",
+      "text": "an event callback takes the caller's GENERATED"
+    },
+    "why": "issue 2024 -- a TEMPLATE over the callable rather than upstream's `std::function<void(const rcl_interfaces::msg::ParameterEvent&)>`: there is no runtime typesupport, so the event type is DEDUCED from the callback's parameter (a lambda, a function pointer or a `std::function`) and filled by that type's own generated `ffi_deserialize`. Every upstream call site (`add_parameter_event_callback(cb)`) compiles unchanged once `rcl_interfaces` is generated for the image. Hosted only. See `cpp:ParameterEventHandler`."
+  },
+  "cpp:ParameterEventHandler::get_parameter_from_event": {
+    "verdict": "gap",
+    "disposition": "absent",
+    "why": "issue 2024 left these open: the static helpers read upstream's `rcl_interfaces::msg::ParameterEvent` fields, and the C++ surface cannot name that generated type (no runtime typesupport). A per-parameter callback (`add_parameter_callback`) already receives the decoded `rclcpp::Parameter`; a helper over the caller's generated event type is plain work nobody has done."
+  },
+  "cpp:ParameterEventHandler::get_parameters_from_event": {
+    "verdict": "gap",
+    "disposition": "absent",
+    "why": "issue 2024 left these open: the static helpers read upstream's `rcl_interfaces::msg::ParameterEvent` fields, and the C++ surface cannot name that generated type (no runtime typesupport). A per-parameter callback (`add_parameter_callback`) already receives the decoded `rclcpp::Parameter`; a helper over the caller's generated event type is plain work nobody has done."
   }
 }

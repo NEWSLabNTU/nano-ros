@@ -133,6 +133,18 @@ PROBE_CONTEXT = {
         "includes": ["packages/api/nros-cpp/include"],
         "defines": [],
     },
+    # issue 2024 — the ParameterEventHandler's frame buffer. The header pulls
+    # in the whole umbrella (`rclcpp/rclcpp.hpp`, for `Node::create_subscription`),
+    # which reaches the per-build `nros_cpp_config_generated.h` — node.hpp's
+    # reason above.
+    "packages/api/nros-cpp/include/rclcpp/parameter_event_handler.hpp": {
+        "mode": "preprocess",
+        "cc": "c++",
+        "std": "c++14",
+        "defines": [],
+        "why": "nros_cpp_config_generated.h (reached through rclcpp.hpp) is a per-build artifact",
+        "enclosing": "none — the guard sits at file scope, after the #ifndef default",
+    },
     "packages/platform/nros-platform-threadx/src/timer.c": {
         "mode": "preprocess",
         "cc": "cc",

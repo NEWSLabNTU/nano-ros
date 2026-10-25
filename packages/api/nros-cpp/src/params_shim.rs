@@ -55,6 +55,38 @@ pub unsafe extern "C" fn nros_cpp_register_parameter_services(
     }
 }
 
+/// Issue 2035 — `node` publishes no `/parameter_events`: rclcpp's
+/// `NodeOptions::start_parameter_event_publisher(false)`, the C++ binding of
+/// `Executor::disable_parameter_events_on` (which C's
+/// `notify_changed_over_dds = false` also reaches).
+///
+/// Called by the `rclcpp::Node(name, options)` constructors when the option is
+/// off. The opt-out sticks: a later `start_parameter_services` (or the
+/// reconcile that serves every node) does not switch the events on for this
+/// node. Returns `NROS_CPP_RET_UNSUPPORTED` on a build without parameter
+/// services, where no node publishes the topic anyway.
+///
+/// # Safety
+/// `node` must be null or point to a live `nros_cpp_node_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_disable_parameter_events(
+    node: *const crate::nros_cpp_node_t,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+    {
+        let Some((mut ctx, id)) = (unsafe { node_param_target(node) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        ctx.executor.disable_parameter_events_on(id);
+        NROS_CPP_RET_OK
+    }
+    #[cfg(not(all(feature = "param-services", feature = "rmw-cffi")))]
+    {
+        let _ = node;
+        crate::NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
 /// Seed a launch parameter, given as a string, on the node the executor will
 /// build NEXT.
 ///

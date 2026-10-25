@@ -2745,6 +2745,12 @@ class Node {
     /// clock at ROS time rather than reading zero forever.
     void apply_options_(const ::rclcpp::NodeOptions& options) {
         options_ = options;
+        // issue 2035 -- the per-node opt-out C's `notify_changed_over_dds =
+        // false` reaches. UNSUPPORTED on a build with no parameter services,
+        // where no node publishes the topic: nothing to switch off.
+        if (!options.start_parameter_event_publisher() && initialized_) {
+            (void)nros_cpp_node_disable_parameter_events(&handle_);
+        }
         Clock chosen(options.clock_type());
         if (!chosen.is_valid()) {
             this->set_error("NodeOptions::clock_type (not a clock)",

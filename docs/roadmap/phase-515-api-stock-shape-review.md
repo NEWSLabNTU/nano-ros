@@ -57,7 +57,7 @@ Each was left without a phase when its finding phase closed.
 | issue | severity | item |
 | --- | --- | --- |
 | [2030](../issues/archived/2030-c-callback-tier-cancel-reply-slot.md) — the C callback tier never takes a cancel reply (resolved 2026-10-24) | medium | C7 |
-| [2024](../issues/2024-parameter-event-handler.md) — no `ParameterEventHandler` | low | P6 |
+| [2024](../issues/archived/2024-parameter-event-handler.md) — no `ParameterEventHandler` (**resolved 2026-10-25**, hosted C++) | low | P6 |
 | [1942](../issues/1942-rclrs-service-info-no-counterpart.md) — no `ServiceInfo` for a service callback | low | R7 |
 | [2029](../issues/archived/2029-action-server-cancel-all-before.md) — cancel-all / cancel-before answer `UNKNOWN_GOAL_ID` (resolved 2026-10-24) | low | X1 |
 
@@ -264,6 +264,10 @@ if no hash source exists, make it REFUSE-LOUD (RFC-0089 already uses
 **P6 — `ParameterEventHandler` (11 `gap` rows), issue 2024.** We publish
 `/parameter_events`; nothing subscribes to another node's. A bounded handler
 table over a typed `rcl_interfaces/msg/ParameterEvent` subscription.
+**Resolved 2026-10-25 (hosted C++):** `rclcpp::ParameterEventHandler` and a
+hosted `rclcpp::Parameter`; the two static `get_parameter(s)_from_event`
+helpers stay `gap`, and freestanding refuses the handler (issue 2024's Still
+open).
 
 **P7 — two polling subscription types.** `PollSubscription` (20 members) and
 `PollingSubscription` (7) both ship. Confirm each has a distinct contract, or

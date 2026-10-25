@@ -1841,5 +1841,8 @@ using WallRate = Rate;
 // is enough for a ported action node, as upstream's transitive includes are.
 #include "rclcpp_action/create_client.hpp"
 #include "rclcpp_action/create_server.hpp"
+// issue 2024 — `rclcpp::ParameterEventHandler`, at upstream's umbrella. LAST for
+// the same reason: it builds on `Node::create_subscription`.
+#include "rclcpp/parameter_event_handler.hpp"
 
 #endif // NROS_RCLCPP_RCLCPP_HPP

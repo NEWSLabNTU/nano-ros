@@ -31,12 +31,13 @@ int ros2_refuse_node_options_probe() {
     // ...and the read-back, which reports a policy that does not exist.
     (void)options.use_intra_process_comms();
 
-    // The other nine, so a partial fix cannot pass this probe.
+    // The other eight, so a partial fix cannot pass this probe.
+    // (`start_parameter_event_publisher` left the list with issue 2035: it is
+    // READ now, by the `Node(name, options)` constructors.)
     (void)rclcpp::NodeOptions().arguments(std::vector<std::string>{"--ros-args"});
     (void)rclcpp::NodeOptions().use_global_arguments(false);
     (void)rclcpp::NodeOptions().enable_rosout(true);
     (void)rclcpp::NodeOptions().start_parameter_services(true);
-    (void)rclcpp::NodeOptions().start_parameter_event_publisher(true);
     (void)rclcpp::NodeOptions().allow_undeclared_parameters(true);
     (void)rclcpp::NodeOptions().automatically_declare_parameters_from_overrides(true);
     (void)rclcpp::NodeOptions().enable_topic_statistics(true);

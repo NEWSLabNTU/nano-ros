@@ -242,7 +242,7 @@ class NodeOptions {
   public:
     NodeOptions() = default;
 
-    // --- LIVE: the one option with something behind it ----------------------
+    // --- LIVE: the options with something behind them -----------------------
 
     /// `rclcpp::NodeOptions::clock_type()` (Jazzy) -- which clock the node's
     /// own clock (`Node::get_clock()`, `Node::now()`) is. issue 1975.
@@ -261,6 +261,24 @@ class NodeOptions {
     /// throws (RFC-0018).
     NodeOptions& clock_type(const rcl_clock_type_t& clock_type) {
         clock_type_ = clock_type;
+        return *this;
+    }
+
+    /// `rclcpp::NodeOptions::start_parameter_event_publisher()` -- issue 2035.
+    /// Whether the node publishes `/parameter_events` once its parameters are
+    /// served. Defaults to `true`, upstream's default (issue 2023 made every
+    /// served node publish).
+    bool start_parameter_event_publisher() const { return start_parameter_event_publisher_; }
+
+    /// Turn one node's `/parameter_events` off (or back on) -- issue 2035, the
+    /// setter upstream pairs with the getter. READ by the `Node(name, options)`
+    /// constructors: `false` opts the node out in the executor
+    /// (`Executor::disable_parameter_events_on`, the switch C's
+    /// `notify_changed_over_dds = false` reaches), so serving its parameters
+    /// later publishes nothing for it. A build without parameter services
+    /// publishes the topic for no node, so there the option changes nothing.
+    NodeOptions& start_parameter_event_publisher(bool start) {
+        start_parameter_event_publisher_ = start;
         return *this;
     }
 
@@ -307,15 +325,6 @@ class NodeOptions {
         return *this;
     }
     template <typename T = void> bool start_parameter_services() const {
-        static_assert(detail::refuse<T>::value, NROS_RCLCPP_REFUSE_NODE_OPTIONS);
-        return false;
-    }
-
-    template <typename T = void> NodeOptions& start_parameter_event_publisher(bool) {
-        static_assert(detail::refuse<T>::value, NROS_RCLCPP_REFUSE_NODE_OPTIONS);
-        return *this;
-    }
-    template <typename T = void> bool start_parameter_event_publisher() const {
         static_assert(detail::refuse<T>::value, NROS_RCLCPP_REFUSE_NODE_OPTIONS);
         return false;
     }
@@ -373,6 +382,9 @@ class NodeOptions {
     static const char* const* no_arguments_() { return nullptr; }
 
     rcl_clock_type_t clock_type_ = RCL_ROS_TIME;
+    // issue 2035 -- unconditional, so `sizeof(NodeOptions)` (a `Node` member)
+    // stays probe-independent.
+    bool start_parameter_event_publisher_ = true;
 };
 
 } // namespace rclcpp

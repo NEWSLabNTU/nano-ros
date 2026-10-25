@@ -2120,6 +2120,78 @@ cpp: cpp-fmt
         packages/api/nros-cpp/tests/compile/ament_port_surface_runtime.cpp \
         "$gen/nros-cpp-tests"/stub_rmw_backend.o "$pe_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/ament_port_surface_param_services
+    # issue 2035 -- NodeOptions().start_parameter_event_publisher(false) turns
+    # ONE node's /parameter_events off (Executor::disable_parameter_events_on,
+    # the switch C's notify_changed_over_dds reaches): its set publishes
+    # nothing, a default node beside it still publishes. Same param-services
+    # build. Negative control, measured: the opt-out call in Node's
+    # apply_options_ removed -> failures.
+    test -f packages/api/nros-cpp/tests/compile/node_options_param_events_runtime.cpp || { \
+        echo "ERROR: node_options_param_events_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - NodeOptions::start_parameter_event_publisher(false) silences one node (runtime, issue 2035)"
+    c++ -std=c++17 -fno-exceptions -fno-rtti \
+        -I"$(nros_locate_artifact cpp-include --placed-dir "$pe_dir/placed")" \
+        -I"$(nros_locate_artifact c-include --placed-dir "$pe_dir/placed")" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/node_options_param_events_runtime \
+        packages/api/nros-cpp/tests/compile/node_options_param_events_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$pe_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/node_options_param_events_runtime
+    # issue 2024 -- rclcpp::ParameterEventHandler, the subscribing half: per-
+    # parameter callbacks (this node, a relative and an absolute node name; not
+    # another node, not a deletion), an event callback decoded into the type it
+    # takes, handles that unregister when dropped, a truncated frame dropped.
+    # The shipped build: the handler needs no parameter store. Negative
+    # control, measured: the node-name match in State::dispatch removed ->
+    # failures.
+    test -f packages/api/nros-cpp/tests/compile/parameter_event_handler_runtime.cpp || { \
+        echo "ERROR: parameter_event_handler_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - rclcpp::ParameterEventHandler: parameter + event callbacks, handles, truncation (runtime, issue 2024)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/parameter_event_handler_runtime \
+        packages/api/nros-cpp/tests/compile/parameter_event_handler_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/parameter_event_handler_runtime
+    # ...and refused without the hosted surface, naming what works there.
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
+    mkdir -p tmp
+    _peh=packages/api/nros-cpp/tests/compile/parameter_event_handler_freestanding_probe.cpp
+    test -f "$_peh" || { echo "ERROR: $_peh is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - rclcpp::ParameterEventHandler is REFUSED without NROS_CPP_STD (issue 2024)"
+    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -I"$cppgen" -I"$cgen" \
+        -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        "$_peh" 2>tmp/refuse-parameter-event-handler.log; then
+        echo "ERROR: $_peh COMPILED -- ParameterEventHandler was accepted with no allocator." >&2
+        exit 1
+    fi
+    for _needle in "REFUSED by nano-ros" "issue 2024"; do
+        nros_grep_q "$_needle" tmp/refuse-parameter-event-handler.log && _rc=0 || _rc=$?
+        if [ "$_rc" -ne 0 ]; then
+            echo "ERROR: $_peh failed WITHOUT '$_needle' -- it broke for another reason." >&2
+            echo "       See tmp/refuse-parameter-event-handler.log" >&2
+            exit 1
+        fi
+    done
     # phase-476 W2 — a C++ timer's callable lives in the executor arena: it
     # fires from the arena's copy, a capture that owns something is destroyed
     # exactly once (on `timer_.reset()` or node destruction), `timer_->reset()`
