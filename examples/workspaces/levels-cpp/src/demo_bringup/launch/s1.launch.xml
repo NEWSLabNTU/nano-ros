@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- phase-162 W2 - RFC-0002 S1 on levels: the 1 kHz critical loop and S1's
+     5 ms best-effort telemetry. The node `name`s match system.toml
+     [[component]].name and the `nodes:` keys of s1.contract.yaml. -->
+<launch>
+    <node pkg="attitude_pkg" exec="attitude" name="attitude"/>
+    <node pkg="load_pkg" exec="load" name="load">
+        <param name="burn_us" value="5000"/>
+    </node>
+</launch>

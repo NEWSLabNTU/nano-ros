@@ -51,6 +51,7 @@ pub mod capture;
 pub mod ci_lane;
 pub mod interop;
 pub mod lane_scope;
+pub mod levels;
 pub mod matrix;
 pub mod output;
 pub mod platform;

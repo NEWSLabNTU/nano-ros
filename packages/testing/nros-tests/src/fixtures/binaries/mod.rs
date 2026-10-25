@@ -306,6 +306,9 @@ static NATIVE_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell:
 static NATIVE_WORKSPACE_CPP_DERIVED_TIERS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// phase-509 P10 -- the native LEVELS C++ entry (`levels-cpp`'s linux image).
 static NATIVE_WORKSPACE_CPP_LEVELS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_LEVELS_S1_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_LEVELS_S1_FLAT_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_CPP_LEVELS_BUDGET_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 272 W3 — cached path to the rclcpp-shape 2-tier realtime workspace entry.
 static NATIVE_WORKSPACE_CPP_RCLCPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 273 W4 — cached path to the sub-node 2-group realtime workspace entry (RFC-0047 proof).
@@ -4092,6 +4095,49 @@ pub fn build_native_workspace_cpp_levels_entry() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_LEVELS_ENTRY_BINARY
         .get_or_try_init(|| {
             build_workspace_cmake_entry("workspace-cpp-native-levels", "levels-cpp", "linux_entry")
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-162 W2 -- RFC-0002 S1 on levels (cached): `levels-cpp`'s
+/// `linux_s1` image, a 1 kHz critical loop and S1's 5 ms telemetry on two
+/// derived levels.
+pub fn build_native_workspace_cpp_levels_s1_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_LEVELS_S1_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-levels-s1",
+                "levels-cpp",
+                "linux_s1_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-162 W2 -- the S1 negative control (cached): `linux_s1_flat`, the
+/// same two nodes on one authored tier.
+pub fn build_native_workspace_cpp_levels_s1_flat_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_LEVELS_S1_FLAT_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-levels-s1-flat",
+                "levels-cpp",
+                "linux_s1_flat_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-162 W1 -- a spawned level past its SCHED_DEADLINE budget (cached):
+/// `linux_budget`, 10 ms of CPU per release against 2 ms per 10 ms.
+pub fn build_native_workspace_cpp_levels_budget_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_CPP_LEVELS_BUDGET_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-cpp-native-levels-budget",
+                "levels-cpp",
+                "linux_budget_entry",
+            )
         })
         .map(|p| p.as_path())
 }

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!-- phase-162 W1 - one level that runs past its kernel budget: `load_capped`
+     burns 10 ms of CPU per release on the authored `capped` tier (2 ms per
+     10 ms, SCHED_DEADLINE). `load_boot` is on the lower `background` tier, so
+     it is the boot level that owns the session; the kernel reservation goes
+     only on a spawned level (issue 2018). -->
+<launch>
+    <node pkg="load_pkg" exec="load" name="load_capped">
+        <param name="burn_us" value="10000"/>
+    </node>
+    <node pkg="load_pkg" exec="load" name="load_boot">
+        <param name="burn_us" value="100"/>
+    </node>
+</launch>

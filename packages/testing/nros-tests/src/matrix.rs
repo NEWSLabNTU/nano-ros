@@ -1772,6 +1772,14 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("ros_editions_nano_interop", NonCell::Edition),
     ("ros_editions_smoke", NonCell::Edition),
     (
+        "rt_sched_levels_e2e",
+        NonCell::Secondary(
+            "Linux/Cpp/Zenoh/RealtimeTiers/Workspace — answered by realtime_tiers_e2e; this one \
+             asserts preemption order, a kernel budget throttle and RFC-0002 S1 under \
+             SCHED_FIFO/SCHED_DEADLINE, on an rt-sched lane only (phase-162)",
+        ),
+    ),
+    (
         "sched_dims_applied_e2e",
         NonCell::Secondary(
             "the matrix::SCHED_CELLS consumer (RFC-0051 §6a); its RealtimeTiers cells are answered by realtime_tiers_e2e",

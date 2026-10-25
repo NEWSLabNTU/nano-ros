@@ -1,0 +1,34 @@
+# Node interface contract for budget.launch.xml (phase-162 W1).
+#
+# Both nodes are pinned to authored tiers by system.toml (`capped` and the
+# lower `background`), so their rates derive nothing; `load_boot` is the boot
+# level.
+
+version: 1
+
+nodes:
+  load_capped:
+    params:
+      burn_us: { type: integer }
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 10 } }
+        output: [tick]
+    pub:
+      tick: { min_rate_hz: 1 }
+
+  load_boot:
+    params:
+      burn_us: { type: integer }
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 10 } }
+        output: [tick]
+    pub:
+      tick: { min_rate_hz: 1 }
+
+topics:
+  /levels/load:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [load_capped/tick, load_boot/tick]

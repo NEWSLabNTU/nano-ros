@@ -19,6 +19,31 @@ ready, so the only way another marker prints between a `begin=` and its
 inside a `[lazy]` pair, and never a less urgent marker inside a more urgent
 pair. It also checks each spawned level's stack is the derived one.
 
+## The real-time verification images (phase-162)
+
+Three more Linux images share this bringup, each with its own launch file.
+The three-node `linux` and `zephyr` images above launch none of their nodes,
+and those nodes are the only reason the bringup has `[tiers.*]` and
+`group_tiers` at all.
+
+| Image | Launch | What it runs |
+| --- | --- | --- |
+| `linux_s1` | `s1.launch.xml` | RFC-0002 S1: `attitude` (1 kHz, 300 us of work, 1 ms deadline) and `load` (5 ms of CPU at 10 Hz) on two derived levels |
+| `linux_s1_flat` | `s1_flat.launch.xml` | the same two nodes bound to one authored tier: the negative control |
+| `linux_budget` | `budget.launch.xml` | `load_capped` (10 ms of CPU per release) on the `capped` tier, 2 ms per 10 ms under `SCHED_DEADLINE`, beside the boot level `load_boot` |
+
+`attitude` prints one `[attitude] window=` line per 1000 releases, with how
+many release gaps exceeded period plus deadline. `load` prints one
+`[<name>] tick=` line per release, with the CPU it burned, the wall time that
+took, and its longest stretch off the CPU. `tests/rt_sched_levels_e2e.rs`
+reads both. It runs only on a lane that claims `rt-sched`, because without
+`CAP_SYS_NICE` the kernel refuses every level's priority and budget; the book's
+[Real-Time Execution Model](../../../book/src/internals/rt-execution-model.md)
+chapter says how to run it.
+
+They share one bringup, not one each, because every Linux cmake image of a
+workspace builds in one cmake tree (`build/posix-zenoh-linux/cmake`).
+
 ## Configure
 
 ```sh

@@ -1,0 +1,40 @@
+# Node interface contract for s1.launch.xml (phase-162 W2).
+#
+# Two timer paths at two rates, so the derivation gives two preemption levels
+# (RFC-0108 D4 rule 1): 1000 Hz is level 0, 10 Hz level 1. The code's timer
+# periods (1 and 100 ms) state the same loops.
+
+version: 1
+
+nodes:
+  attitude:
+    # No parameters: stated, so the store is sized from every node.
+    params: {}
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 1000 } }
+        output: [tick]
+    pub:
+      tick: { min_rate_hz: 500 }
+
+  load:
+    params:
+      burn_us: { type: integer }
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 10 } }
+        output: [tick]
+    pub:
+      tick: { min_rate_hz: 1 }
+
+# Every topic leaves the image; nothing here subscribes, so the derivation
+# places nodes by their timers alone.
+topics:
+  /levels/attitude:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [attitude/tick]
+  /levels/load:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [load/tick]

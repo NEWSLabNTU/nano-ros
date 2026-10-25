@@ -41,6 +41,13 @@ Parked under Phase 162 (privileged scheduling harness + hardware):
 - v1 acceptance line 516 — book chapter on RT execution model
   + scenario catalogue
 
+**2026-10-25:** the chapter is
+[The Real-Time Execution Model](../../../book/src/internals/rt-execution-model.md),
+with the scenario catalogue's measured status. Phase 162 rebuilt S1 and the
+`SCHED_DEADLINE` verification on executor levels (RFC-0108), which replaced
+110.D's multi-executor design; 110.F's PiCAS items were dropped with
+`OsPrioritySet`.
+
 **Priority:** High
 
 **Depends on:** Phase 79 (PlatformYield trait), Phase 76 (config.toml plumbing), Phase 77 (`zpico_spin_once` wake primitive). Coordinates with Phase 94 (RTOS orchestration — emits per-callback `SchedContext` bindings from launch manifests in future) and Phase 88 (nros-log — uses `BestEffort` SC for log sinks). **Absorbs former Phase 105** — the RMW-side `Session::next_deadline_ms` work lives here as 110.0; former 105's `max_callbacks` + timer/GC interleaving + wall-clock budget are all subsumed by 110.A's Activator + ReadySet design (cap and budget enforcement live in the executor's dispatch loop, not in `drive_io`). **Absorbs Phase 104's E-thread tail** — the cross-backend bridge follow-ups (former 104.E.2 PiCAS bridge test, 104.E.4 ARINC TT bridge example) migrated to 110.F.bridge + 110.G.bridge respectively since their runtime gates live here, not in the bridge-design phase.

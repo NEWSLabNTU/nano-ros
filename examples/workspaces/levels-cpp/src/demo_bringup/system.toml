@@ -28,6 +28,83 @@ pkg = "lazy_pkg"
 class = "lazy_pkg::Lazy"
 name = "lazy"
 
+# phase-162 -- the real-time verification images (the three `linux_*` images
+# below), Linux only. Each picks its nodes with its own launch file; the
+# components it does not launch are not in it. One bringup rather than three:
+# every Linux cmake image of this workspace builds in one cmake tree
+# (`build/posix-zenoh-linux/cmake`), and a second bringup would re-configure
+# it from under the first. The c workspace's service and action images are the
+# precedent.
+#
+# W2, RFC-0002 S1 on levels (s1.launch.xml): `attitude`, a 1 kHz loop with a
+# 1 ms deadline, and `load`, S1's 5 ms best-effort telemetry at 10 Hz. Neither
+# is bound, so the contract's two rates derive two levels.
+[[component]]
+pkg = "attitude_pkg"
+class = "attitude_pkg::Attitude"
+name = "attitude"
+
+[[component]]
+pkg = "load_pkg"
+class = "load_pkg::Load"
+name = "load"
+
+# W2's negative control (s1_flat.launch.xml): the same two classes, both bound
+# to the authored `flat` tier, so they share one level and the 1 kHz loop
+# waits behind every telemetry callback. It shows the miss count can see a
+# miss.
+[[component]]
+pkg = "attitude_pkg"
+class = "attitude_pkg::Attitude"
+name = "attitude_flat"
+group_tiers = { main = "flat" }
+
+[[component]]
+pkg = "load_pkg"
+class = "load_pkg::Load"
+name = "load_flat"
+group_tiers = { main = "flat" }
+
+# W1, the kernel budget (budget.launch.xml): `load_capped` burns 10 ms of CPU
+# per release on the authored `capped` tier, whose SCHED_DEADLINE reservation
+# is 2 ms per 10 ms, so the kernel throttles it. `load_boot` (100 us per
+# release) runs beside it on the authored `background` tier, below `capped`, so
+# it is the boot level that owns the session: the reservation goes only on a
+# spawned level (issue 2018). It is pinned rather than derived because a
+# derived level is allocated from the top of the app pool (SCHED_FIFO 88
+# here), above `capped`, and would make `capped` the boot level. It is a
+# `load_pkg` node because no node of that package runs unbound in the default
+# launch; a bound `lazy_pkg` component is refused there (issue 0398).
+[[component]]
+pkg = "load_pkg"
+class = "load_pkg::Load"
+name = "load_capped"
+group_tiers = { main = "capped" }
+
+[[component]]
+pkg = "load_pkg"
+class = "load_pkg::Load"
+name = "load_boot"
+group_tiers = { main = "background" }
+
+# `real_time` is what selects SCHED_DEADLINE for a level with a budget
+# (`nros_posix_deadline_attr`); the budget is posix-scoped, so no other
+# platform's image changes.
+[tiers.capped]
+class = "real_time"
+[tiers.capped.posix]
+priority = 80
+budget = "2000us"
+period = "10000us"
+
+[tiers.flat]
+[tiers.flat.posix]
+priority = 50
+
+[tiers.background]
+[tiers.background.posix]
+priority = 10
+
 # Issue 0951 - the implicit machine this system runs on. Unscoped and with no
 # `nodes`, so it governs every launch file and every node.
 [host.native]
@@ -38,6 +115,18 @@ rmw = "zenoh"
 
 [image.linux]
 board = "linux"
+
+[image.linux_s1]
+board = "linux"
+launch = "s1.launch.xml"
+
+[image.linux_s1_flat]
+board = "linux"
+launch = "s1_flat.launch.xml"
+
+[image.linux_budget]
+board = "linux"
+launch = "budget.launch.xml"
 
 [image.zephyr]
 board = "zephyr"
