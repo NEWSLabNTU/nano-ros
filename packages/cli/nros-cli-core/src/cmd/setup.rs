@@ -482,7 +482,12 @@ pub fn run(args: Args) -> Result<()> {
         // from a board's `[tool.*]`/`[source.*]` package set. Narrowing it is a
         // redesign of the doctor, not a fix for the silent typo, so the report
         // says what it covered instead of implying the board scoped it.
-        if let Some(notice) = check_board_argument(&index, args.board.as_deref())? {
+        let checked = args
+            .board
+            .as_deref()
+            .map(|b| canonical_setup_board(&index, index_path.parent(), b))
+            .transpose()?;
+        if let Some(notice) = check_board_argument(&index, checked.as_deref())? {
             eprintln!("{notice}");
         }
         return run_check_all(&index, &index_workspace(&index_path));
@@ -517,11 +522,12 @@ pub fn run(args: Args) -> Result<()> {
     }
 
     let board = match args.board.as_deref() {
-        Some(b) => b,
+        Some(b) => canonical_setup_board(&index, index_path.parent(), b)?,
         None => {
             bail!("nros setup: give a <board>, `--tool <name>`, `--list`, or `--licenses`")
         }
     };
+    let board = board.as_str();
 
     let packages = resolve_packages_with_rmw(&index, board, args.rmw.as_deref())?;
     eprintln!(
@@ -1894,6 +1900,37 @@ fn describe(action: &InstallAction, version: &str, host: &str) -> String {
 /// board was ever looked up), and a unit test on this function cannot see
 /// dispatch order. It binds the rule; the single call site above is what makes
 /// the rule reachable, and only running the binary proves that.
+/// phase-517 W3 — the index key a board word provisions, through the one join
+/// ([`BoardCatalog::setup_board`]): an index key answers itself, a descriptor
+/// alias (`qemu-mps2-an385`) resolves to its key (`mps2-an385-baremetal`) and
+/// says so. With no catalog to read (an index outside any SDK root) the word is
+/// returned unchanged, so the index lookup that follows refuses it as before.
+pub fn canonical_setup_board(
+    index: &SdkIndex,
+    sdk_root: Option<&std::path::Path>,
+    word: &str,
+) -> Result<String> {
+    use crate::orchestration::board_descriptor::{BoardCatalog, SetupBoard};
+    if index.board.contains_key(word) {
+        return Ok(word.to_string());
+    }
+    let Some(catalog) = sdk_root.and_then(|r| BoardCatalog::load(r).ok()) else {
+        return Ok(word.to_string());
+    };
+    match catalog.setup_board(word, &|k| index.board.contains_key(k)) {
+        Ok(SetupBoard::Key(k)) => Ok(k),
+        Ok(SetupBoard::Alias { key, .. }) => {
+            eprintln!("nros setup: board `{word}` is provisioned as `{key}`");
+            Ok(key)
+        }
+        Err(why) => {
+            let mut known: Vec<&str> = index.board.keys().map(String::as_str).collect();
+            known.sort_unstable();
+            bail!("nros setup: {why}. Index boards: {}.", known.join(", "))
+        }
+    }
+}
+
 fn check_board_argument(index: &SdkIndex, board: Option<&str>) -> Result<Option<String>> {
     let Some(board) = board else {
         return Ok(None);
@@ -5239,17 +5276,22 @@ fn run_workspace_scan(
         // for the other four would hand an out-of-tree user — the one person
         // this mode exists for, and the one with no justfile — a command that
         // fails.
-        match t.board.as_deref() {
-            Some(b) if index.board.contains_key(b) => {
+        // phase-517 W3 — resolved through the same join `nros setup <board>`
+        // uses, so the command printed is the one that works.
+        match (t.board.as_deref(), catalog.as_ref()) {
+            (Some(b), _) if index.board.contains_key(b) => {
                 println!("      provision with:  nros setup {b}");
             }
-            Some(b) => {
+            (Some(b), Some(cat)) => match cat.setup_board(b, &|k| index.board.contains_key(k)) {
+                Ok(sb) => println!("      provision with:  nros setup {}", sb.key()),
+                Err(why) => println!("      board `{b}`: {why}"),
+            },
+            (Some(b), None) => {
                 println!(
-                    "      board `{b}` is not an index board key — `nros setup {b}` \
-                     would fail; use the scope below from a nano-ros checkout"
+                    "      board `{b}` is not an index board key (no board catalog here to resolve it)"
                 );
             }
-            None => {}
+            (None, _) => {}
         }
         // One arm, because both cases end in the same remedy: either no scope
         // list could be read at all, or the deploy name IS a scope. Split, the
