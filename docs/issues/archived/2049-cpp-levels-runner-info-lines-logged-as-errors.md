@@ -1,11 +1,12 @@
 ---
 id: 2049
 title: "The C++ tier and level runners log their informational lines at ERROR, so the boot report counts every multi-level boot as an error"
-status: open
+status: resolved
 type: bug
 area: [api, logging]
 severity: low
 found: 2026-10-25
+resolved: 2026-10-25
 related: [1036, 2018, phase-162, phase-516]
 ---
 
@@ -49,3 +50,19 @@ message text, not the level, so they are unaffected.
 
 A `levels-cpp` boot's console shows the three lines at INFO, and its boot
 record counts no error.
+
+## Resolution
+
+`nros-cpp` has a `cpp_info!` beside `cpp_diag!`: the same logger and sink,
+at INFO. The three status lines use it; `cpp_diag!` stays for failures. The
+POSIX port writes every severity to the same stream, and the e2e greps
+(`linux_orchestration_tiers`, `rt_sched_levels_e2e`, `sched_dims_applied_e2e`)
+match the message text, so none of them moves.
+
+Swept: every other `cpp_diag!` and `log_error!` in `packages/api` reports a
+failure or refusal. The Rust boards print the same three lines through their
+console or at `info`, so the C++ arm was the only one.
+
+Measured after, `levels-cpp` `linux_s1` booted for 3 s against a local
+router: `[INFO] nros: ... nros: multi-level run — 2 level(s) over one
+executor`, and no `ERROR` line in the boot.
