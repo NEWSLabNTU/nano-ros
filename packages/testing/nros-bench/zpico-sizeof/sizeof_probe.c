@@ -42,10 +42,10 @@ int main(void) {
     printf("z_owned_query_t                %zu B\n", sizeof(z_owned_query_t));
     printf("z_owned_config_t               %zu B\n", sizeof(z_owned_config_t));
     printf("\n=== zpico entry-table per-slot overhead ===\n");
-    printf("publisher_entry_t              %zu B (×ZPICO_MAX_PUBLISHERS)\n", sizeof(publisher_entry_t));
-    printf("subscriber_entry_t             %zu B (×ZPICO_MAX_SUBSCRIBERS)\n", sizeof(subscriber_entry_t));
-    printf("queryable_entry_t              %zu B (×ZPICO_MAX_QUERYABLES)\n", sizeof(queryable_entry_t));
-    printf("liveliness_entry_t             %zu B (×ZPICO_MAX_LIVELINESS)\n", sizeof(liveliness_entry_t));
-    printf("g_stored_query slot            %zu B (×ZPICO_MAX_QUERYABLES)\n", sizeof(z_owned_query_t) + sizeof(bool));
+    printf("publisher_entry_t              %zu B (×NROS_ZENOH_MAX_PUBLISHERS)\n", sizeof(publisher_entry_t));
+    printf("subscriber_entry_t             %zu B (×NROS_ZENOH_MAX_SUBSCRIBERS)\n", sizeof(subscriber_entry_t));
+    printf("queryable_entry_t              %zu B (×NROS_ZENOH_MAX_QUERYABLES)\n", sizeof(queryable_entry_t));
+    printf("liveliness_entry_t             %zu B (×NROS_ZENOH_MAX_LIVELINESS)\n", sizeof(liveliness_entry_t));
+    printf("g_stored_query slot            %zu B (×NROS_ZENOH_MAX_QUERYABLES)\n", sizeof(z_owned_query_t) + sizeof(bool));
     return 0;
 }

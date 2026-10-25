@@ -30,6 +30,14 @@
 #   8. with `param_services` in `NROS_FEATURES`, an ament target (and
 #      `rclcpp::rclcpp`) is compiled with NROS_AMENT_START_PARAMETER_SERVICES,
 #      so its node constructor serves the parameters; without it, it is not.
+#   9. the plain-CMake component shape (ros2/demos `composition` @jazzy):
+#      `add_library(<c> SHARED)` builds STATIC (an IMPORTED SHARED library is
+#      left alone); `rclcpp_components_register_nodes` and
+#      `ament_environment_hooks` are accepted; `ament_target_dependencies`
+#      claims no `target_link_libraries` signature, so a plain AND a keyword
+#      link beside it both configure, a library passes its dependencies on and
+#      `INTERFACE` passes them on only; and a plain `add_executable` that takes
+#      rclcpp that way gets the platform link pass, once.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
@@ -245,5 +253,66 @@ out="$(mk_ps off 'set(NROS_FEATURES "")')"
 refute "8. not without param_services" "NROS_AMENT_START_PARAMETER_SERVICES" "$out"
 
 fi  # have_cli (case 8)
+
+if [ "$have_cli" -eq 1 ]; then
+# 9.
+d="$WORK/comp"; mkdir -p "$d"; : > "$d/a.cpp"; : > "$d/m.cpp"
+cat > "$d/CMakeLists.txt" <<CML
+cmake_minimum_required(VERSION 3.22)
+project(comp CXX)
+add_library(nros_runtime_stand_in INTERFACE)
+add_library(NanoRos::NanoRosCpp ALIAS nros_runtime_stand_in)
+# Stand-in for the platform pass: records each target it is run for.
+function(nros_platform_link_app t)
+    set_property(GLOBAL APPEND PROPERTY LINKED_APPS \${t})
+endfunction()
+include("$ROOT/cmake/NanoRosAmentSurface.cmake")
+include("$ROOT/cmake/NanoRosAmentSurface.cmake")
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
+add_library(talker SHARED a.cpp)
+add_library(prebuilt SHARED IMPORTED)
+ament_target_dependencies(talker rclcpp rclcpp_components)
+rclcpp_components_register_nodes(talker "demo::Talker")
+ament_environment_hooks("hook.sh")
+add_executable(plain m.cpp)
+target_link_libraries(plain talker)
+ament_target_dependencies(plain rclcpp)
+ament_target_dependencies(plain rclcpp)
+add_executable(keyword m.cpp)
+target_link_libraries(keyword PRIVATE talker)
+ament_target_dependencies(keyword rclcpp)
+add_library(iface INTERFACE)
+ament_target_dependencies(iface INTERFACE rclcpp)
+foreach(_t talker prebuilt)
+    get_target_property(_ty \${_t} TYPE)
+    message(STATUS "\${_t} TYPE=[\${_ty}]")
+endforeach()
+get_target_property(_l talker LINK_LIBRARIES)
+get_target_property(_il talker INTERFACE_LINK_LIBRARIES)
+get_target_property(_pl plain LINK_LIBRARIES)
+get_target_property(_fl iface INTERFACE_LINK_LIBRARIES)
+message(STATUS "talker LINK=[\${_l}] IFACE=[\${_il}]")
+message(STATUS "plain LINK=[\${_pl}]")
+message(STATUS "iface IFACE=[\${_fl}]")
+function(_report)
+    get_property(_a GLOBAL PROPERTY LINKED_APPS)
+    message(STATUS "linked=[\${_a}]")
+endfunction()
+cmake_language(DEFER CALL _report)
+CML
+rc=0
+out="$(AMENT_PREFIX_PATH= cmake -S "$d" -B "$d/b" 2>&1)" || rc=$?
+expect "9. the composition shape configures" "Generating done" "$out"
+expect "9. add_library(SHARED) builds STATIC" "talker TYPE=[STATIC_LIBRARY]" "$out"
+expect "9. ...and says so" "add_library(talker SHARED) builds STATIC" "$out"
+expect "9. an IMPORTED SHARED library is left alone" "prebuilt TYPE=[SHARED_LIBRARY]" "$out"
+expect "9. a library takes its dependencies and passes them on" \
+    "talker LINK=[rclcpp::rclcpp;rclcpp_components::rclcpp_components] IFACE=[rclcpp::rclcpp;rclcpp_components::rclcpp_components]" "$out"
+expect "9. a plain link beside it keeps both" "plain LINK=[talker;rclcpp::rclcpp;rclcpp::rclcpp]" "$out"
+expect "9. INTERFACE passes them on only" "iface IFACE=[rclcpp::rclcpp]" "$out"
+expect "9. each executable taking rclcpp gets the platform pass, once" "linked=[plain;keyword]" "$out"
+
+fi  # have_cli (case 9)
 
 [ "$fail" -eq 0 ] && echo "cmake-ament-surface: OK" || { echo "cmake-ament-surface: FAILED"; exit 1; }

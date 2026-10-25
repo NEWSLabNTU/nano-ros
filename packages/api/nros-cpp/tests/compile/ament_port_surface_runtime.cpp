@@ -16,7 +16,8 @@
 //   3. a capturing lambda as a service handler: its capture is copied into the
 //      service's entry, so it survives the registering call, and is destroyed
 //      exactly once when the node goes;
-//   4. `pub_->publish(msg);` as a statement, under `-Wall -Wextra -Werror`: the
+//   4. `pub_->publish(msg);` as a statement, under `-Wall -Wextra -Werror`, and
+//      `pub_->publish(std::move(unique_ptr))` (ros2/demos `composition`): the
 //      std surface's publish result may be ignored;
 //   5. `diagnostic_updater::Updater updater_{this};` publishes on its own
 //      timer, with nobody calling `update()`;
@@ -177,6 +178,19 @@ class Selector : public rclcpp::Node {
         pub_->publish(msg); // -Werror: the std surface's result is ignorable
     }
 
+    // ros2/demos `composition`'s talker: the message handed over as a
+    // `std::unique_ptr`.
+    void publish_mode_owned() {
+        auto msg = std::make_unique<Mode>();
+        msg->data = current_;
+        pub_->publish(std::move(msg));
+    }
+
+    bool publish_null_refused() {
+        return pub_->publish(std::unique_ptr<Mode>()).raw() ==
+               static_cast<int32_t>(rclcpp::ErrorCode::InvalidArgument);
+    }
+
     int32_t current_ = 1;
     int32_t last_input_ = 0;
     int32_t offset_ = 100;
@@ -292,6 +306,10 @@ int main(int argc, char** argv) {
         sel->publish_mode();
         check(nros_stub_rmw_publish_count() == before + 1,
               "publish() with its result ignored publishes");
+        sel->publish_mode_owned();
+        check(nros_stub_rmw_publish_count() == before + 2, "publish(std::unique_ptr<M>) publishes");
+        check(sel->publish_null_refused() && nros_stub_rmw_publish_count() == before + 2,
+              "publish() of a null unique_ptr is refused and sends nothing");
 
 #if defined(NROS_AMENT_START_PARAMETER_SERVICES)
         // (7) `[encap][prefixes: u32 0][pad][depth: u64 0]`, an empty request.
