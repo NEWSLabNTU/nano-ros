@@ -121,6 +121,26 @@ verdict is one of:
               produce is red too: the reason it was kept has stopped being
               true, and a stale exemption absorbs the next real defect.
 
+`retired_quotes` -- call quotes in `why` that describe a RETIRED shape
+              (phase-515 W0). `--check` reads every call-shaped code span in
+              a `why`, `` `name(a, b)` ``, and when the extraction knows
+              `name` (either side, any language, any edition) it must accept
+              that many arguments. Empty parens name a function and are not
+              read; an unknown name is not judged. This is what kept
+              `rust:Publisher::publish` describing a buffer argument the API
+              had dropped.
+
+              History is legitimate ("it replaced the old `resolve(baked,
+              hosted_env: bool)`"), and issue 1012 measured that a heuristic
+              cannot read tense. So the row states it: list each such quote
+              verbatim, without the backticks:
+
+                "retired_quotes": ["resolve(baked, hosted_env: bool)"]
+
+              A listed quote the `why` no longer contains is red, so the list
+              cannot outlive its prose. Not a place for a live quote that is
+              wrong: fix the prose.
+
 `envelope` -- where an `adopt-bounded` row's envelope is WRITTEN (issue 1637).
 
               RFC-0089's `adopt-bounded` says "same name and contract, weaker

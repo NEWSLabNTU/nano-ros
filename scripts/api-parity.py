@@ -1675,6 +1675,100 @@ def unreferenced_refusals(ledger, macros):
     return sorted(set(macros) - cited)
 
 
+# A call-shaped code span in a `why`: `name(args)`, one level of nested
+# parentheses allowed in the args. A span with empty args is how the ledger
+# NAMES a function (`take_request()`), not how it quotes one, so it is skipped.
+QUOTED_CALL_RE = re.compile(r"`([A-Za-z_][\w:]*)\(([^`()]*(?:\([^`()]*\)[^`()]*)*)\)`")
+
+
+def _quoted_arg_count(args):
+    depth = 0
+    count = 1
+    for ch in args:
+        if ch in "(<[{":
+            depth += 1
+        elif ch in ")>]}":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            count += 1
+    return count
+
+
+def signature_arities(records):
+    """name -> set of (min, max) argument counts, over raw extraction records.
+
+    Indexed by the qualified name and every `::` suffix of it, a type's
+    members as `<type qual>::<member>` likewise, so a prose quote can name a
+    function at whatever depth it likes. A defaulted parameter widens the
+    range; a leading Rust `self` widens it by one at the bottom, because prose
+    quotes a method both ways (`publish(&self, msg)` and `publish(msg)`).
+    """
+    index = {}
+
+    def add(qual, params):
+        hi = len(params)
+        lo = sum(1 for p in params if not p.get("default"))
+        spans = {(lo, hi)}
+        if params and params[0].get("name") == "self":
+            spans.add((lo - 1, hi - 1))
+        parts = qual.split("::")
+        for i in range(len(parts)):
+            index.setdefault("::".join(parts[i:]), set()).update(spans)
+
+    for rec in records:
+        qual = rec.get("qual") or rec.get("name") or ""
+        if "params" in rec:
+            add(qual, rec["params"])
+        for member in rec.get("members") or ():
+            if "params" in member:
+                add(qual + "::" + member["name"], member["params"])
+    return index
+
+
+def misquoted_signatures(ledger, index):
+    """Rows whose `why` quotes a call with an argument count no declaration of
+    that name accepts, on either side, in any language (phase-515 W0).
+
+    `check-ledger-orphan-refs` checks a cited FILE and issue 1012 a cited
+    symbol; neither reads a quoted SIGNATURE, which is how
+    `rust:Publisher::publish` kept describing a caller-supplied buffer the API
+    had dropped. A name the extraction does not know is not judged -- prose
+    legitimately quotes retired names as history, enum variants and macros --
+    so this catches a quote that NAMES something real and describes it wrong.
+    Only meaningful over every language at once: a C row quotes rclcpp.
+
+    A quote that describes a RETIRED shape on purpose -- "it replaced the old
+    `resolve(baked, hosted_env: bool)`" -- is listed verbatim (without the
+    backticks) in the row's `retired_quotes`. Tense is what issue 1012 found a
+    heuristic cannot read, so the row states it; a listed quote the prose no
+    longer contains is itself a finding, or the list would outlive its text.
+    """
+    findings = []
+    for key, value in sorted(ledger.items()):
+        why = value.get("why", "")
+        retired = set(value.get("retired_quotes") or ())
+        for quote in sorted(retired):
+            if "`%s`" % quote not in why:
+                findings.append((key, "`retired_quotes` lists `%s`, which the `why` no "
+                                      "longer quotes; drop it from the list" % quote))
+        for match in QUOTED_CALL_RE.finditer(why):
+            name, args = match.group(1), match.group(2).strip()
+            if not args or "..." in args or "…" in args:
+                continue
+            if "%s(%s)" % (name, match.group(2)) in retired:
+                continue
+            spans = index.get(name)
+            if not spans:
+                continue
+            count = _quoted_arg_count(args)
+            if not any(lo <= count <= hi for lo, hi in spans):
+                accepted = ", ".join(
+                    str(lo) if lo == hi else "%d-%d" % (lo, hi) for lo, hi in sorted(spans))
+                findings.append((key, "`%s(%s)` passes %d argument(s); `%s` takes %s"
+                                 % (name, args, count, name, accepted)))
+    return findings
+
+
 # --------------------------------------------------------------------------
 # report
 # --------------------------------------------------------------------------
@@ -2114,6 +2208,30 @@ def _report_one(langs, show, check, suggest, include_internal, grep=None, topic=
             for key, reason in dead_targets:
                 print("  %s  %s" % (key, reason), file=sys.stderr)
             return 1
+        if set(langs) == set(LANGS):
+            # Every edition's surface, not this run's: one ledger serves both,
+            # and a row quoting Jazzy's `Rate(double, Clock::SharedPtr)` is
+            # right while the Humble pass is running.
+            records = [r for lang in langs for r in _OURS_CACHE[lang]]
+            for lang in langs:
+                for edition in EDITIONS:
+                    path = theirs_path(lang, edition)
+                    if os.path.exists(path):
+                        with open(path) as fh:
+                            records.extend(json.load(fh)["records"])
+            index = signature_arities(records)
+            misquoted = misquoted_signatures(ledger, index)
+            if misquoted:
+                print(
+                    "\n%d ledger row(s) quote a call whose argument count no declaration "
+                    "of that name accepts (phase-515 W0). A quoted signature is a claim "
+                    "about the code; re-read the code and correct the prose:"
+                    % len(misquoted),
+                    file=sys.stderr,
+                )
+                for key, reason in misquoted:
+                    print("  %s  %s" % (key, reason), file=sys.stderr)
+                return 1
         closed = closed_gap_findings(ledger, per_lang_rows)
         if closed:
             print(
@@ -3188,6 +3306,36 @@ def self_test():
                          "disposition": "refuse-loud"}},
               {"NROS_RCLCPP_REFUSE_ONE", "NROS_RCLCPP_REFUSE_TWO"}),
           ["NROS_RCLCPP_REFUSE_TWO"])
+    # phase-515 W0 -- quoted signatures. The mutation each case pins: the
+    # `rust:Publisher::publish` row that described a dropped buffer argument.
+    _sig_index = signature_arities([
+        {"qual": "nros::EmbeddedPublisher", "kind": "type", "members": [
+            {"name": "publish", "params": [{"name": "self", "default": False},
+                                           {"name": "msg", "default": False}]}]},
+        {"qual": "rclcpp_action::create_server", "kind": "function", "params": [
+            {"name": "node", "default": False}, {"name": "name", "default": False},
+            {"name": "options", "default": True}]},
+    ])
+    _sig_row = lambda why, **kw: {"x:k": dict({"verdict": "divergence", "why": why}, **kw)}
+    check("a quote with an argument the API dropped is reported",
+          [k for k, _ in misquoted_signatures(
+              _sig_row("ours is `publish(&self, msg: &M, buf: &mut [u8])`"), _sig_index)],
+          ["x:k"])
+    check("a quote matching the live arity is not reported, self written or omitted",
+          misquoted_signatures(_sig_row("`EmbeddedPublisher::publish(&self, msg)` and "
+                                        "`publish(msg)`"), _sig_index), [])
+    check("a defaulted parameter may be left out of a quote",
+          misquoted_signatures(_sig_row("`create_server(node, name)`"), _sig_index), [])
+    check("empty parens NAME a function and an unknown name is not judged",
+          misquoted_signatures(_sig_row("`publish()` and `gone(a, b, c)`"), _sig_index), [])
+    check("a quote listed in retired_quotes is history, not a claim",
+          misquoted_signatures(_sig_row("it was `publish(&self, msg, buf)`",
+                                        retired_quotes=["publish(&self, msg, buf)"]),
+                               _sig_index), [])
+    check("a retired_quotes entry the prose no longer contains is reported",
+          [k for k, _ in misquoted_signatures(
+              _sig_row("nothing quoted", retired_quotes=["publish(a, b, c)"]), _sig_index)],
+          ["x:k"])
     check("a cited refusal macro is not reported, whatever the row's disposition",
           unreferenced_refusals(
               {"cpp:X": {"verdict": "divergence", "why": "NROS_RCLCPP_REFUSE_ONE at :1",

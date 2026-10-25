@@ -1505,7 +1505,10 @@
   },
   "rust:resolve_hosted": {
     "verdict": "extension",
-    "why": "phase-428 Q1 follow-through (2026-09-06) — `nros::env::resolve_hosted(baked: BootConfig) -> ExecutorConfig` (`packages/api/nros/src/env.rs:207`): RFC-0045 precedence model A with the environment rung on top of the baked one, the hosted counterpart of `rust:ExecutorConfig::resolve` (which is the same ladder WITHOUT an environment, for the five ports that have none). It replaced the old `ExecutorConfig::resolve(baked, hosted_env: bool)`, whose flag was a compile-time constant at every call site. rclrs has no counterpart because its `Context::from_env` is one rung and requires a process environment. Panics on a malformed variable; the fallible form is `rust:try_resolve_hosted`."
+    "why": "phase-428 Q1 follow-through (2026-09-06) — `nros::env::resolve_hosted(baked: BootConfig) -> ExecutorConfig` (`packages/api/nros/src/env.rs:207`): RFC-0045 precedence model A with the environment rung on top of the baked one, the hosted counterpart of `rust:ExecutorConfig::resolve` (which is the same ladder WITHOUT an environment, for the five ports that have none). It replaced the old `ExecutorConfig::resolve(baked, hosted_env: bool)`, whose flag was a compile-time constant at every call site. rclrs has no counterpart because its `Context::from_env` is one rung and requires a process environment. Panics on a malformed variable; the fallible form is `rust:try_resolve_hosted`.",
+    "retired_quotes": [
+      "ExecutorConfig::resolve(baked, hosted_env: bool)"
+    ]
   },
   "rust:RETIRED_ENV_VARS": {
     "verdict": "extension",
