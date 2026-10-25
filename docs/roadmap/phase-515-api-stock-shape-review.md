@@ -1,10 +1,10 @@
 # Phase 515 — Re-audit the recorded API differences against stock ROS 2 shape
 
-**Status (2026-10-24). Open; nothing started.** Opened from a review of the
+**Status (2026-10-25). Open; W0.a landed (#2627), D1–D4 decided.** Opened from a review of the
 `api-parity` report on main `1a30bcbb22`. The work items below are candidates:
 each starts by confirming its reason against the code, because W0 found that
-the ledger's prose has drifted. Four decisions (D1–D4) are the maintainer's and
-gate the items that name them.
+the ledger's prose has drifted. The four decisions (D1–D4) are taken;
+see Decisions.
 
 **Prior:** [phase-379](archived/phase-379-api-parity-with-ros2-client-libraries.md)
 (the measurement and the ledger),
@@ -63,21 +63,45 @@ Each was left without a phase when its finding phase closed.
 
 ## Decisions
 
-These change what gets built. Items that depend on one say so.
+Taken 2026-10-25 (maintainer). Items that depend on one say so.
 
-* **D1 — hosted-only stock items.** May a stock-shaped item exist only where
-  the platform has a C++ standard library or Rust `std` (Linux, hosted Zephyr,
-  NuttX), behind the both-probes include rule, or must every item also work
-  freestanding? Decides P3, P5 and part of the `make_shared` family.
-* **D2 — what a C timer callback receives.** rclc's `rcl_timer_callback_t`
-  gets `last_call_time`; ours gets the caller's `context`. Support both
-  contracts (the arena entry records which), or keep ours alone? Decides C1.
-* **D3 — Rust's primary model.** Keep the declarative component model
-  (RFC-0043) first, or make the rclrs handle model
-  (`node.create_subscription(…, closure)`) the main path, with components on
-  top? Bounds how far R1–R5 go.
-* **D4 — Rust facade internals.** Move the C/C++ shim entry points and action
-  cores out of the public `nros` surface? See R9.
+* **D1 — hosted-only stock items: NO. Freestanding only.** Every stock-shaped
+  item must work on every target; nothing is added behind a `<chrono>`,
+  `<string>`/`<vector>` or Rust `std` probe. Std-shaped items stay `declined`
+  and a hosted port edits those call sites. Effect: P3 shrinks to the bounded
+  `rclcpp::Parameter` / `ParameterValue` record (works freestanding); its
+  vector-taking `get_parameters` / `set_parameters` forms stay declined. P5
+  loses `Duration::to_chrono` (declined); `Clock::sleep_for` / `sleep_until`
+  take rclcpp's own `Duration` / `Time`, not `<chrono>` types, so they remain
+  candidates under RFC-0021. The `make_shared` family stays declined. The
+  existing `Rate(std::chrono::duration)` overload (phase-442 W5, behind
+  `NROS_CPP_HAS_STD_CHRONO`) predates this ruling; whether it stays is
+  phase-442 W8's call, not this phase's.
+* **D2 — C timer callback: rclc's contract ONLY, and migrate.** The timer
+  callback becomes rclc's `rcl_timer_callback_t`, `(rcl_timer_t *, int64_t)`,
+  registered with `rclc_timer_init_default`; `rclc_timer_init_with_context`
+  is removed and its 34 in-tree call sites move. Measured before deciding: of
+  the 34, 23 pass `self` and embed the timer in that same struct
+  (`&self->timer`), 8 pass a sibling field of the struct holding the timer
+  (`&app.talker_ctx` beside `&app.timer`), 3 pass NULL, and the executor calls back with the caller's own `rcl_timer_t *`
+  (`executor.rs`, `c_callback(timer_ptr, c_context)`), never a copy. So every
+  in-tree context is recoverable from the timer pointer by the embedded-struct
+  idiom (`offsetof`), and no RTOS capability is lost; a timer kept apart from
+  its state would need a lookup, and none exists in the tree. Decides C1.
+  Open inside C1: rclc's init takes a `support`, and a C component hosted by
+  the generated entry has none (`rcl_compat.h` section 4); and the
+  `rclc_timer_init_with_info` flavour also carries a context.
+* **D3 — Rust's primary model: already settled, no decision here.**
+  phase-483 (decisions 3 and 4, 2026-10-09) made `nros` rclrs-shaped, with
+  `use nros as rclrs;` reading as rclrs and ONE `nros::Node` type, the
+  component model an extension on top. This phase listed D3 by mistake. R1–R5
+  are remaining gaps against that ruling and need no further decision.
+* **D4 — Rust facade internals: a SEALED FFI TRAIT.** Methods that exist only
+  for nros-c / nros-cpp move off `Executor`'s inherent impl into a sealed
+  extension trait in `nros-node` (working name `nros_node::ffi::ExecutorFfi`)
+  that the shims import and `nros` never re-exports. Both shims already
+  depend on `nros-node` directly. Not `#[doc(hidden)]`, which would leave them
+  callable and semver-visible. Decides R9.
 
 ## Work items
 
@@ -148,8 +172,9 @@ prose fix for each stale one. Not started; C++ and Rust names are not measured.
 The common rclc timer call. Refused because rclc's callback receives
 `last_call_time` and ours receives a `context`. The arena timer entry already
 stores a function and a context; recording which contract it holds and
-computing `last_call_time` at dispatch is a few bytes. *Needs D2.* Adopt with
-rclc's signature and `rcl_timer_callback_t`.
+computing `last_call_time` at dispatch is a few bytes. *D2: rclc's contract
+only* -- adopt rclc's signature and `rcl_timer_callback_t`, remove
+`rclc_timer_init_with_context`, and migrate its 34 call sites.
 
 **C2 — context-less `rclc_executor_add_subscription(exec, sub, msg, cb, invocation)`.**
 Refused because a `void (*)(const void *)` callback would need a trampoline that
@@ -206,7 +231,8 @@ loudly; `spin_all` maps onto the bounded spin. Adopt-bounded.
 `set_parameters` over vectors.** Declined because the value object owns
 `std::string`/`std::vector`. Rust's `nros_params::Parameter` is already a
 bounded inline record (C has typed get/set on `rclc_parameter_server_t` and no
-record type). A bounded `rclcpp::Parameter` works freestanding; the vector forms need D1. *Needs D1.*
+record type). A bounded `rclcpp::Parameter` works freestanding. *D1: freestanding only* --
+adopt the bounded record; the vector forms stay declined.
 
 **P4 — `GenericPublisher` / `GenericSubscription`.** Declined as runtime-typed.
 They move serialized bytes plus a type NAME, and our raw entities move bytes.
@@ -216,8 +242,8 @@ if no hash source exists, make it REFUSE-LOUD (RFC-0089 already uses
 `create_generic_subscription` as its example) rather than absent.
 
 **P5 — `Duration::to_chrono`, `Clock::sleep_for`, `Clock::sleep_until`.**
-Declined because `<chrono>` is absent freestanding. *Needs D1.* `sleep_*` must
-also satisfy RFC-0021 (drive the executor, or not block the transport).
+*D1: `to_chrono` stays declined.* `sleep_for` / `sleep_until` take rclcpp's
+`Duration` / `Time` and remain candidates; they must satisfy RFC-0021 (drive the executor, or not block the transport).
 
 **P6 — `ParameterEventHandler` (11 `gap` rows), issue 2024.** We publish
 `/parameter_events`; nothing subscribes to another node's. A bounded handler
@@ -268,7 +294,7 @@ liveliness_lease}_duration`, `ValueConversionError`, `SetParameterResult`,
 `ActionClientCore::is_server_ready`, and their members. Land each, or
 re-verdict it with a reason.
 
-**R9 — internals in the public facade. *Needs D4.*** `Executor` has 276 public
+**R9 — internals in the public facade. *D4: sealed FFI trait.*** `Executor` has 276 public
 members; at least 66 are entry points the C/C++ layers call
 (`add_arena_subscription_c_callback`, `from_session_ptr`, `*_on`, `*_raw`).
 `ActionServerCore`, `ActionClientCore` and the raw handles add about 75 more.
