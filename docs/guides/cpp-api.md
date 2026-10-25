@@ -173,6 +173,29 @@ if (sub.take(msg).ok()) {
 }
 ```
 
+On a hosted build (`NROS_CPP_STD`) a dispatch subscription's callback may take
+upstream's `const rclcpp::MessageInfo&` as a second argument, after the message
+in any of its four forms (`const M&`, `std::shared_ptr<const M>`,
+`std::shared_ptr<M>`, `std::unique_ptr<M>`) (issue 2036):
+
+```cpp
+auto sub = node->create_subscription<std_msgs::msg::Int32>(
+    "/chatter", 10, [](const std_msgs::msg::Int32& msg, const rclcpp::MessageInfo& info) {
+        const auto& r = info.get_rmw_message_info();
+        printf("%d from seq %llu at %lld ns\n", msg.data,
+               (unsigned long long)r.publication_sequence_number, (long long)r.source_timestamp);
+    });
+```
+
+`get_rmw_message_info()` carries `source_timestamp`, `received_timestamp`,
+`publication_sequence_number`, `reception_sequence_number` and the 24-byte
+`publisher_gid`, as the backend reported them. A backend that reports none
+(XRCE, uORB) leaves every field zero. `from_intra_process` is always `false`.
+A freestanding build refuses the shape at compile time: the metadata path keeps
+the callable on the heap. `SubscriptionOptions::message_info = true` with a
+callback that takes no `MessageInfo` aborts the create, because it would
+otherwise configure nothing.
+
 ### Service Server
 
 ```cpp

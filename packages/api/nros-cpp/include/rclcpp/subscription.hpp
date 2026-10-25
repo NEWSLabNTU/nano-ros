@@ -46,6 +46,7 @@
 // `nros_cpp_qos_*_t` enums ITSELF under `#ifndef NROS_CPP_FFI_H`, so
 // reaching it first makes the cbindgen header a REDEFINITION of all four.
 #include "rclcpp/qos.hpp"
+#include "rclcpp/message_info.hpp" // issue 2036 — the two-argument callback shapes
 
 // Phase 189.M3.x — `nros_cpp_subscription_register` is excluded from cbindgen
 // (its Rust signature uses `RawSubscriptionCallback`, an external-crate type
@@ -790,6 +791,120 @@ template <typename M, typename F, int Shape> struct subscription_callback_adapte
     };
     template <typename G> static Copying wrap(G&& f) { return Copying{static_cast<G&&>(f)}; }
 };
+#endif // NROS_CPP_HAS_SHARED_PTR
+
+/// Issue 2036 — `true` iff `F&` can be called with `(A, B)`.
+template <typename F, typename A, typename B, typename = void>
+struct sub_callable_with2 : ::rclcpp::tr::false_type {};
+template <typename F, typename A, typename B>
+struct sub_callable_with2<F, A, B,
+                          decltype((void)sub_declval<F&>()(sub_declval<A>(), sub_declval<B>()))>
+    : ::rclcpp::tr::true_type {};
+
+/// Issue 2036 — the upstream two-argument shapes: the message in one of the
+/// four forms above, then `const rclcpp::MessageInfo&`. The values are the
+/// one-argument shape's, so `subscription_heap_copy<M, Shape>` serves both.
+/// Detected in the same order, for the same reason (a generic lambda is
+/// instantiated with a smart pointer only when `const M&` failed).
+template <typename M, typename D,
+          bool = sub_callable_with2<D, const M&, const ::rclcpp::MessageInfo&>::value>
+struct sub_info_shape_ref;
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+template <
+    typename M, typename D,
+    bool = sub_callable_with2<D, ::std::shared_ptr<const M>, const ::rclcpp::MessageInfo&>::value>
+struct sub_info_shape_const_shared;
+template <typename M, typename D,
+          bool = sub_callable_with2<D, ::std::shared_ptr<M>, const ::rclcpp::MessageInfo&>::value>
+struct sub_info_shape_shared;
+template <typename M, typename D,
+          bool = sub_callable_with2<D, ::std::unique_ptr<M>, const ::rclcpp::MessageInfo&>::value>
+struct sub_info_shape_unique;
+template <typename M, typename D>
+struct sub_info_shape_unique<M, D, true>
+    : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_UNIQUE_PTR> {};
+template <typename M, typename D>
+struct sub_info_shape_unique<M, D, false> : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_NONE> {};
+template <typename M, typename D>
+struct sub_info_shape_shared<M, D, true>
+    : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_SHARED_PTR> {};
+template <typename M, typename D>
+struct sub_info_shape_shared<M, D, false> : sub_info_shape_unique<M, D> {};
+template <typename M, typename D>
+struct sub_info_shape_const_shared<M, D, true>
+    : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_CONST_SHARED_PTR> {};
+template <typename M, typename D>
+struct sub_info_shape_const_shared<M, D, false> : sub_info_shape_shared<M, D> {};
+template <typename M, typename D>
+struct sub_info_shape_ref<M, D, false> : sub_info_shape_const_shared<M, D> {};
+#else
+template <typename M, typename D>
+struct sub_info_shape_ref<M, D, false> : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_NONE> {};
+#endif // NROS_CPP_HAS_SHARED_PTR
+template <typename M, typename D>
+struct sub_info_shape_ref<M, D, true> : ::rclcpp::tr::integral_constant<int, SUB_SHAPE_REF> {};
+
+/// Which two-argument (`MessageInfo`) shape `F` is for `M`; `SUB_SHAPE_NONE`
+/// when it takes no `MessageInfo`.
+template <typename M, typename F>
+struct subscription_info_callback_shape
+    : sub_info_shape_ref<M, typename ::rclcpp::tr::decay<F>::type> {};
+
+/// Issue 2036 — the MessageInfo the runtime reported, in upstream's layout.
+inline ::rclcpp::MessageInfo message_info_from_ffi(const nros_cpp_message_info_t& c) {
+    ::rclcpp::RmwMessageInfo r;
+    r.source_timestamp = c.source_timestamp;
+    r.received_timestamp = c.received_timestamp;
+    r.publication_sequence_number = c.publication_sequence_number;
+    r.reception_sequence_number = c.reception_sequence_number;
+    for (int i = 0; i < 24; ++i)
+        r.publisher_gid.data[i] = c.publisher_gid[i];
+    return ::rclcpp::MessageInfo(r);
+}
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+/// Issue 2036 — a two-argument callback of shape `Shape`, as a callable taking
+/// `(const M&, const MessageInfo&)`: the pointer shapes get one heap copy of
+/// the message per call, as their one-argument twins do.
+template <typename M, typename F, int Shape> struct subscription_info_adapter {
+    struct Copying {
+        typename ::rclcpp::tr::decay<F>::type fn;
+        void operator()(const M& msg, const ::rclcpp::MessageInfo& info) {
+            fn(subscription_heap_copy<M, Shape>::make(msg), info);
+        }
+    };
+    template <typename G> static Copying wrap(G&& f) { return Copying{static_cast<G&&>(f)}; }
+};
+template <typename M, typename F> struct subscription_info_adapter<M, F, SUB_SHAPE_REF> {
+    template <typename G> static typename ::rclcpp::tr::decay<G>::type wrap(G&& f) {
+        return static_cast<G&&>(f);
+    }
+};
+
+/// Issue 2036 — register a `(const M&, const MessageInfo&)` callable. HOSTED:
+/// the callable lives on the heap and the registration owns it (freed once,
+/// when the subscription is released, by the runtime calling `drop`). The
+/// runtime takes each sample WITH its metadata
+/// (`nros_cpp_subscription_register_message_info`).
+template <typename M, typename Fn>
+inline Result register_subscription_message_info(::rclcpp::Node& node, const char* topic,
+                                                 const QoS& qos, Fn fn, size_t* out_handle_id) {
+    const nros_cpp_node_t* h = node.ffi_handle();
+    if (h == nullptr) return Result(ErrorCode::NotInitialized);
+    Fn* heap = new Fn(static_cast<Fn&&>(fn));
+    void (*invoke)(const uint8_t*, size_t, const nros_cpp_message_info_t*, void*) =
+        [](const uint8_t* data, size_t len, const nros_cpp_message_info_t* info, void* ctx) {
+            M msg;
+            if (M::ffi_deserialize(data, len, &msg) != 0 || info == nullptr) return;
+            (*static_cast<Fn*>(ctx))(static_cast<const M&>(msg), message_info_from_ffi(*info));
+        };
+    void (*drop)(void*) = [](void* ctx) { delete static_cast<Fn*>(ctx); };
+    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
+    nros_cpp_subscription_options_t opts = {};
+    opts.rx_buffer_hint = static_cast<uint32_t>(::rclcpp::rx_buffer_capacity<M>::value);
+    return Result(nros_cpp_subscription_register_message_info(
+        h, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, invoke, heap, drop, out_handle_id, &opts));
+}
 #endif // NROS_CPP_HAS_SHARED_PTR
 
 /// phase-456 W2 — register a capturing callback, with the capture in the ARENA.

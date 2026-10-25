@@ -639,6 +639,172 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
     }
 }
 
+/// Issue 2036 — one sample's metadata, upstream's `rmw_message_info_t` field
+/// for field (`rclcpp::MessageInfo::get_rmw_message_info()` is filled from
+/// it). A backend that reports none (XRCE, uORB) hands every field zeroed.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct nros_cpp_message_info_t {
+    /// Publisher's clock at publication, ns; 0 = not reported.
+    pub source_timestamp: i64,
+    /// Subscriber's clock at reception, ns; 0 = not reported.
+    pub received_timestamp: i64,
+    /// The publisher's sequence number for this sample; 0 = not reported.
+    pub publication_sequence_number: u64,
+    /// This subscription's reception count; 0 = not reported.
+    pub reception_sequence_number: u64,
+    /// The publisher's GID, zero-padded to `RMW_GID_STORAGE_SIZE` (24); all
+    /// zero = not reported. How many bytes mean anything is backend-specific
+    /// (`nros_core::MessageInfo::publisher_gid`).
+    pub publisher_gid: [u8; 24],
+    /// `true` when the backend reported metadata for this sample at all.
+    pub has_info: bool,
+}
+
+impl nros_cpp_message_info_t {
+    fn from_info(info: Option<&nros::MessageInfo>) -> Self {
+        match info {
+            Some(i) => Self {
+                source_timestamp: i.source_timestamp().to_nanos(),
+                received_timestamp: i.received_timestamp().to_nanos(),
+                publication_sequence_number: i.publication_sequence_number() as u64,
+                reception_sequence_number: i.reception_sequence_number() as u64,
+                publisher_gid: *i.publisher_gid(),
+                has_info: true,
+            },
+            None => Self {
+                source_timestamp: 0,
+                received_timestamp: 0,
+                publication_sequence_number: 0,
+                reception_sequence_number: 0,
+                publisher_gid: [0; 24],
+                has_info: false,
+            },
+        }
+    }
+}
+
+/// Issue 2036 — the C++ side of a MessageInfo subscription: the invoker, the
+/// heap capture it is handed, and how to free that capture. Owned by the
+/// arena entry's closure, so the capture is freed exactly once, when the
+/// subscription is released.
+struct CppMessageInfoSink {
+    invoke: unsafe extern "C" fn(*const u8, usize, *const nros_cpp_message_info_t, *mut c_void),
+    context: *mut c_void,
+    drop: unsafe extern "C" fn(*mut c_void),
+}
+
+impl Drop for CppMessageInfoSink {
+    fn drop(&mut self) {
+        // SAFETY: `context` is the capture the C++ side allocated for this
+        // registration, and this is its one owner.
+        unsafe { (self.drop)(self.context) };
+    }
+}
+
+/// Register a **callback-style** subscription whose callback receives each
+/// sample's metadata — issue 2036, the runtime half of the C++
+/// `(const M&, const rclcpp::MessageInfo&)` subscription callback (hosted).
+///
+/// `invoke(data, len, info, context)` runs during `spin_once` with the CDR
+/// bytes and an [`nros_cpp_message_info_t`] filled from the backend's
+/// `take_serialized_with_info`. `context` is a heap capture the registration
+/// OWNS from here on: `context_drop(context)` runs once, when the
+/// subscription is released (or right away if registration fails).
+///
+/// # Safety
+/// All pointers must be valid; `invoke` and `context_drop` must be callable
+/// for the life of the subscription.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_subscription_register_message_info(
+    node: *const nros_cpp_node_t,
+    topic: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    invoke: unsafe extern "C" fn(*const u8, usize, *const nros_cpp_message_info_t, *mut c_void),
+    context: *mut c_void,
+    context_drop: unsafe extern "C" fn(*mut c_void),
+    out_handle_id: *mut usize,
+    options: *const nros_cpp_subscription_options_t,
+) -> nros_cpp_ret_t {
+    // Owns the capture from the first line: every early return frees it.
+    let sink = CppMessageInfoSink {
+        invoke,
+        context,
+        drop: context_drop,
+    };
+    let (sched_context, callback_group, rx_buffer_hint) =
+        unsafe { read_subscription_options(options) };
+    let _ = callback_group;
+    if node.is_null()
+        || topic.is_null()
+        || type_name.is_null()
+        || type_hash.is_null()
+        || out_handle_id.is_null()
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let node_ref = unsafe { &*node };
+    if node_ref.executor.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Some(topic_str) = (unsafe { cstr_to_str(topic) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(type_str) = (unsafe { cstr_to_str(type_name) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    // Issue 0312 — an empty hash would land in the liveliness keyexpr as an
+    // empty segment.
+    let Some(hash_str) = (unsafe { cstr_to_str(type_hash) }).map(crate::normalize_type_hash) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
+    let resolved_topic = match crate::resolve_node_entity_name(ctx, node_ref, topic_str) {
+        Ok(r) => r,
+        Err(()) => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+    let node_id = crate::node_id_opt(node_ref);
+    let result = ctx.executor.add_arena_subscription_msg_info_closure(
+        node_id,
+        resolved_topic.as_str(),
+        type_str,
+        hash_str,
+        qos.to_qos_settings(),
+        rx_buffer_hint as usize,
+        move |data: &[u8], info: Option<&nros::MessageInfo>| {
+            // Name the WHOLE `sink`: edition-2021 closures capture disjoint
+            // fields, and capturing only the two `Copy` fields would leave
+            // `sink` (and its `Drop`, which frees the capture) behind in this
+            // frame — freed at return, called after.
+            let sink = &sink;
+            let c_info = nros_cpp_message_info_t::from_info(info);
+            // SAFETY: `invoke` / `context` are the C++ side's, alive while the
+            // entry (and so this closure, which owns `sink`) is.
+            unsafe { (sink.invoke)(data.as_ptr(), data.len(), &c_info, sink.context) };
+        },
+    );
+    match result {
+        Ok(handle_id) => {
+            if sched_context != 0 {
+                let sc_id = nros_node::executor::sched_context::SchedContextId(sched_context);
+                if ctx
+                    .executor
+                    .bind_handle_to_sched_context(handle_id, sc_id)
+                    .is_err()
+                {
+                    return NROS_CPP_RET_INVALID_ARGUMENT;
+                }
+            }
+            crate::issue_owned_handle(ctx.executor, node_ref, handle_id, out_handle_id);
+            NROS_CPP_RET_OK
+        }
+        Err(e) => crate::node_error_to_cpp_ret(e),
+    }
+}
+
 /// Phase 269 W3 — register a **callback-style** subscription that surfaces the
 /// sample's E2E integrity status (CRC + sequence gap/dup) alongside the CDR bytes
 /// — the C/C++ component-callback analog of Rust's

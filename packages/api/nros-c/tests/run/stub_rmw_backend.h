@@ -152,6 +152,21 @@ bool nros_stub_rmw_stage_request(const char* service_suffix, int64_t seq, const 
  *  @p topic_suffix (e.g. `"/_action/feedback"`). Same slots as requests. */
 bool nros_stub_rmw_stage_sample(const char* topic_suffix, const uint8_t* data, size_t len);
 
+/** Issue 2036 — the metadata a staged sample carries (`rmw_message_info_t`'s
+ *  fields, without the RMW headers). */
+typedef struct nros_stub_message_info_t {
+    int64_t source_timestamp;
+    int64_t received_timestamp;
+    uint64_t publication_sequence_number;
+    uint64_t reception_sequence_number;
+    uint8_t publisher_gid[24];
+} nros_stub_message_info_t;
+
+/** Issue 2036 — `nros_stub_rmw_stage_sample` plus the metadata the backend's
+ *  `take_with_info` slot reports with it. */
+bool nros_stub_rmw_stage_sample_info(const char* topic_suffix, const uint8_t* data, size_t len,
+                                     const nros_stub_message_info_t* info);
+
 /** Issue 2015 — the newest response a service server whose name ends with
  *  @p service_suffix sent: its bytes (NULL if none), id and length. */
 const uint8_t* nros_stub_rmw_last_response(const char* service_suffix, int64_t* seq, size_t* len);

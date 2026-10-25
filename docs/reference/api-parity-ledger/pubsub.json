@@ -512,7 +512,20 @@
   },
   "cpp:MessageInfo": {
     "verdict": "divergence",
-    "why": "both sides carry per-message metadata; rclcpp wraps `rmw_message_info_t` and exposes it whole (`get_rmw_message_info`), ours is a flat struct of the fields the backends actually populate (source/received timestamps, sequence numbers, publisher GID) because `rmw_message_info_t` is a DDS-shaped type two of three backends would fill with zeroes.\n\nTracked as issue 2036 (2026-10-25): the C++ surface has no `rclcpp::MessageInfo` type at all. The metadata reaches C++ only as raw attachment bytes through `create_subscription_with_info`, so upstream's `(const MsgT&, const rclcpp::MessageInfo&)` callback does not compile."
+    "disposition": "adopt-bounded",
+    "why": "both sides carry per-message metadata. SHIPPED 2026-10-25 (issue 2036): `rclcpp::MessageInfo` (`packages/api/nros-cpp/include/rclcpp/message_info.hpp`) exists and is what a hosted `(msg, const rclcpp::MessageInfo&)` subscription callback receives, in all four message forms. `get_rmw_message_info()` is upstream's accessor, both constnesses.\n\nTHE DIVERGENCE, and its constraint: upstream's accessor returns `rmw_message_info_t`; ours returns `rclcpp::RmwMessageInfo`, the same members under the same names (`source_timestamp`, `received_timestamp`, `publication_sequence_number`, `reception_sequence_number`, `publisher_gid.data[24]`, `from_intra_process`), because the C++ surface does not include the RMW ABI headers that define the C type. Member access reads the same; a declaration spelled `rmw_message_info_t` is a COMPILE ERROR. `publisher_gid.implementation_identifier` is null (one RMW per session) and `from_intra_process` is always false.\n\nPOPULATION is a backend property: the values come from the backend's `take_with_info` (Rust `nros::MessageInfo`, see `rust:MessageInfo`); a backend that reports none (XRCE, uORB) leaves every field zero, so zero means \"not reported\". A freestanding build refuses the callback shape at compile time (`NROS_RCLCPP_REFUSE_MESSAGE_INFO_CALLBACK`): the metadata path keeps the callable on the heap.\n\nTest: `packages/api/nros-cpp/tests/compile/subscription_message_info_runtime.cpp` (stub backend, all four shapes, `just check cpp`).",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/message_info.hpp",
+      "text": "/// zero is \"not reported\", never \"published at time zero\"."
+    }
+  },
+  "cpp:RmwGid": {
+    "verdict": "extension",
+    "why": "issue 2036 (2026-10-25): the `publisher_gid` member of `cpp:RmwMessageInfo`. It has upstream `rmw_gid_t`'s members (`implementation_identifier`, `data[24]`) under our name, because the C++ surface does not include the RMW ABI headers that define the C type. `implementation_identifier` is null. How many of the 24 bytes mean anything depends on the backend; see `rust:MessageInfo`."
+  },
+  "cpp:RmwMessageInfo": {
+    "verdict": "extension",
+    "why": "issue 2036 (2026-10-25): what `rclcpp::MessageInfo::get_rmw_message_info()` returns. It has upstream `rmw_message_info_t`'s members under the same names, but the type has our name, because the C++ surface does not include the RMW ABI headers that define the C type. Member access reads the same as upstream; a declaration spelled `rmw_message_info_t` does not compile. See `cpp:MessageInfo` for population and why it diverges."
   },
   "cpp:Node::create_generic_publisher": {
     "verdict": "declined",
@@ -1054,7 +1067,7 @@
   },
   "cpp:SubscriptionOptions::message_info": {
     "verdict": "extension",
-    "why": "phase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-17, second of three. NO DISPOSITION IS WRITTEN. The four dispositions are what clause 1 does to a CANDIDATE FROM CLAUSE 2 (RFC-0089); this item has no upstream candidate, so there is nothing for a constraint to permit, weaken or refuse. Forcing one here would invent a decision about upstream that nobody made.\n\nTHE FINDING: `bool message_info = false` (`packages/api/nros-cpp/include/rclcpp/options.hpp:89`) is stored and READ BY NOTHING. Repo-wide the only occurrences in `include/` and `src/` are the declaration, three doc comments and a `TODO` at `packages/api/nros-cpp/include/rclcpp/subscription.hpp:672`. The field's own doc says setting it \"has no effect (it is intentionally ignored)\".\n\nHOW A USER FINDS OUT: SILENTLY WRONG — the setter compiles, the create succeeds, and no message info arrives. This is the `NodeOptions` shape RFC-0089's hazard section names: a stored-and-never-read option that makes the idiomatic call configure nothing. The constraint that would justify it does not exist — `Node::create_subscription_with_info` already delivers the capability under another verb — so the honest end state is either to honour the flag or to delete it, not to keep an inert field the header apologises for. Re-verified by hand against the current worktree before this row was written.\n\nTracked as issue 2036 (2026-10-25), which honours the flag through a `rclcpp::MessageInfo` callback shape.",
+    "why": "issue 2036 (2026-10-25) — the field is READ now. Upstream has no such field: rclcpp delivers metadata by callback arity, and so does `create_subscription` here (a callback taking `const rclcpp::MessageInfo&` gets it; see `cpp:MessageInfo`). The field is kept for source compatibility, and the four-argument `create_subscription(topic, qos, cb, options)` reads it: `message_info = true` with a callback that takes no `MessageInfo` ABORTS the create naming `options.message_info`, the way a failed create does, because it would otherwise configure nothing. With a `MessageInfo` callback it changes nothing.\n\nHistory: phase-428 W5 (2026-09-06) found it stored and read by nothing — a setter that compiled and configured nothing, the `NodeOptions` hazard RFC-0089 names. No disposition is written: there is no upstream candidate for clause 1 to act on.",
     "unextracted": "a struct field; the extractor records types and callables, not fields"
   },
   "cpp:SubscriptionOptions::sched_context": {
@@ -1286,6 +1299,10 @@
   "rust:Executor::add_arena_subscription_c_info_callback": {
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Which one `nros::` leads with is settled: rclrs's shape, with `nros::Node` as the one node type and the component model as the `nros::Component` / `nros::DeclarativeNode` extension on top (phase-483; issue 0784, resolved)."
+  },
+  "rust:Executor::add_arena_subscription_msg_info_closure": {
+    "verdict": "divergence",
+    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Which one `nros::` leads with is settled: rclrs's shape, with `nros::Node` as the one node type and the component model as the `nros::Component` / `nros::DeclarativeNode` extension on top (phase-483; issue 0784, resolved).\n\nIssue 2036 (2026-10-25): this verb is the raw, self-deserializing twin of the typed with-info subscription. Its closure takes `(&[u8], Option<&MessageInfo>)`, and it backs the C++ `(msg, const rclcpp::MessageInfo&)` callback through `nros_cpp_subscription_register_message_info`."
   },
   "rust:Executor::add_arena_subscription_c_typed_callback": {
     "verdict": "extension",

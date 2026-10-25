@@ -253,6 +253,9 @@ typedef struct {
     int64_t seq;
     uint8_t data[512];
     size_t len;
+    /* Issue 2036 — the metadata `take_with_info` reports for this sample. */
+    bool has_info;
+    nros_stub_message_info_t info;
 } stub_inbound_t;
 static stub_inbound_t s_inbound[STUB_STAGED_INBOUND];
 static size_t s_inbound_count = 0;
@@ -266,6 +269,8 @@ static bool stage_inbound(const char* suffix, int64_t seq, const uint8_t* data, 
     r->seq = seq;
     if (len > 0) memcpy(r->data, data, len);
     r->len = len;
+    r->has_info = false;
+    memset(&r->info, 0, sizeof(r->info));
     ++s_inbound_count;
     return true;
 }
@@ -278,8 +283,8 @@ static size_t inbound_for(const void* token) {
     return s_inbound_count;
 }
 
-static rmw_ret_t take_inbound(const void* token, rmw_mut_byte_span_t* out, int64_t* seq_out,
-                              bool* taken) {
+static rmw_ret_t take_inbound_info(const void* token, rmw_mut_byte_span_t* out, int64_t* seq_out,
+                                   bool* taken, rmw_message_info_t* info_out) {
     if (taken != NULL) *taken = false;
     size_t at = inbound_for(token);
     if (at == s_inbound_count) return NROS_RMW_RET_OK;
@@ -292,10 +297,26 @@ static rmw_ret_t take_inbound(const void* token, rmw_mut_byte_span_t* out, int64
     memcpy(out->data, r->data, r->len);
     out->len = r->len;
     if (seq_out != NULL) *seq_out = r->seq;
+    if (info_out != NULL) {
+        memset(info_out, 0, sizeof(*info_out));
+        if (r->has_info) {
+            info_out->source_timestamp = r->info.source_timestamp;
+            info_out->received_timestamp = r->info.received_timestamp;
+            info_out->publication_sequence_number = r->info.publication_sequence_number;
+            info_out->reception_sequence_number = r->info.reception_sequence_number;
+            memcpy(info_out->publisher_gid.data, r->info.publisher_gid,
+                   sizeof(r->info.publisher_gid));
+        }
+    }
     if (taken != NULL) *taken = true;
     memmove(&s_inbound[at], &s_inbound[at + 1], (s_inbound_count - at - 1) * sizeof(stub_inbound_t));
     --s_inbound_count;
     return NROS_RMW_RET_OK;
+}
+
+static rmw_ret_t take_inbound(const void* token, rmw_mut_byte_span_t* out, int64_t* seq_out,
+                              bool* taken) {
+    return take_inbound_info(token, out, seq_out, taken, NULL);
 }
 
 bool nros_stub_rmw_stage_request(const char* service_suffix, int64_t seq, const uint8_t* data,
@@ -305,6 +326,16 @@ bool nros_stub_rmw_stage_request(const char* service_suffix, int64_t seq, const 
 
 bool nros_stub_rmw_stage_sample(const char* topic_suffix, const uint8_t* data, size_t len) {
     return stage_inbound(topic_suffix, 0, data, len);
+}
+
+bool nros_stub_rmw_stage_sample_info(const char* topic_suffix, const uint8_t* data, size_t len,
+                                     const nros_stub_message_info_t* info) {
+    if (!stage_inbound(topic_suffix, 0, data, len)) return false;
+    if (info != NULL) {
+        s_inbound[s_inbound_count - 1].has_info = true;
+        s_inbound[s_inbound_count - 1].info = *info;
+    }
+    return true;
 }
 
 /* The last response a server sent, per service-name tail. */
@@ -356,6 +387,15 @@ static rmw_ret_t stub_take(const rmw_subscription_t* subscription, rmw_mut_byte_
                            bool* taken) {
     /* Issue 2015 — a sample staged for this subscription's topic tail. */
     return take_inbound(subscription != NULL ? subscription->backend_data : NULL, out, NULL, taken);
+}
+
+/* Issue 2036 — `take` plus the metadata staged with the sample (all zero
+ * when it was staged without any). */
+static rmw_ret_t stub_take_with_info(const rmw_subscription_t* subscription,
+                                     rmw_mut_byte_span_t* out, bool* taken,
+                                     rmw_message_info_t* message_info) {
+    return take_inbound_info(subscription != NULL ? subscription->backend_data : NULL, out, NULL,
+                             taken, message_info);
 }
 
 static rmw_ret_t stub_has_data(rmw_subscription_t* subscription, bool* out_has_data) {
@@ -762,6 +802,7 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .create_subscription = stub_create_subscription,
     .destroy_subscription = stub_destroy_subscription,
     .take = stub_take,
+    .take_with_info = stub_take_with_info,
     .has_data = stub_has_data,
     .create_service = stub_create_service,
     .destroy_service = stub_destroy_service,
