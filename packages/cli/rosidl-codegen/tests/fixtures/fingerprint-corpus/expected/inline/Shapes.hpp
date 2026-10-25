@@ -16,12 +16,13 @@
 #include "rclcpp/heap_string.hpp"
 #include "rclcpp/size_bound.hpp"
 #include "rclcpp/detail/serialization_format.hpp"
+#include "rclcpp/detail/message_equality.hpp" // phase-488 — rosidl's operator==
 #include "rclcpp/detail/std_detect.hpp" // issue 1995 — NROS_CPP_HAS_SHARED_PTR for the pointer aliases
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 18. */
-#define NROS_EMITTED_CODEGEN_VERSION 18
+/* RFC-0090 — emitted by nano-ros codegen version 19. */
+#define NROS_EMITTED_CODEGEN_VERSION 19
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -58,6 +59,29 @@ struct Shapes {
     double arr_fixed[3] = {};
     rclcpp::FixedSequence<int32_t, 4> seq_bounded = {};
     rclcpp::FixedString<8> str_bounded = {};
+
+    // rosidl's field-wise equality (phase-488).
+    bool operator==(const Shapes& other) const {
+        return true
+            && ::rclcpp::detail::msg_field_eq(flag, other.flag)
+            && ::rclcpp::detail::msg_field_eq(i8_v, other.i8_v)
+            && ::rclcpp::detail::msg_field_eq(u8_v, other.u8_v)
+            && ::rclcpp::detail::msg_field_eq(i16_v, other.i16_v)
+            && ::rclcpp::detail::msg_field_eq(u16_v, other.u16_v)
+            && ::rclcpp::detail::msg_field_eq(i32_v, other.i32_v)
+            && ::rclcpp::detail::msg_field_eq(u32_v, other.u32_v)
+            && ::rclcpp::detail::msg_field_eq(i64_v, other.i64_v)
+            && ::rclcpp::detail::msg_field_eq(u64_v, other.u64_v)
+            && ::rclcpp::detail::msg_field_eq(f32_v, other.f32_v)
+            && ::rclcpp::detail::msg_field_eq(f64_v, other.f64_v)
+            && ::rclcpp::detail::msg_field_eq(text, other.text)
+            && ::rclcpp::detail::msg_field_eq(seq_prim, other.seq_prim)
+            && ::rclcpp::detail::msg_field_eq(seq_string, other.seq_string)
+            && ::rclcpp::detail::msg_field_eq(arr_fixed, other.arr_fixed)
+            && ::rclcpp::detail::msg_field_eq(seq_bounded, other.seq_bounded)
+            && ::rclcpp::detail::msg_field_eq(str_bounded, other.str_bounded);
+    }
+    bool operator!=(const Shapes& other) const { return !(*this == other); }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
     // rosidl's smart-pointer aliases (issue 1995) — hosted builds only.

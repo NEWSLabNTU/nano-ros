@@ -16,13 +16,14 @@
 #include "rclcpp/heap_string.hpp"
 #include "rclcpp/size_bound.hpp"
 #include "rclcpp/detail/serialization_format.hpp"
+#include "rclcpp/detail/message_equality.hpp" // phase-488 — rosidl's operator==
 #include "rclcpp/detail/std_detect.hpp" // issue 1995 — NROS_CPP_HAS_SHARED_PTR for the pointer aliases
 #include "msg/fingerprint_corpus_msg_shapes.hpp"
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 18. */
-#define NROS_EMITTED_CODEGEN_VERSION 18
+/* RFC-0090 — emitted by nano-ros codegen version 19. */
+#define NROS_EMITTED_CODEGEN_VERSION 19
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -44,6 +45,14 @@ namespace fingerprint_corpus { namespace msg {
 struct Nested {
     fingerprint_corpus::msg::Shapes one = {};
     rclcpp::FixedSequence<fingerprint_corpus::msg::Shapes, 64> many = {};
+
+    // rosidl's field-wise equality (phase-488).
+    bool operator==(const Nested& other) const {
+        return true
+            && ::rclcpp::detail::msg_field_eq(one, other.one)
+            && ::rclcpp::detail::msg_field_eq(many, other.many);
+    }
+    bool operator!=(const Nested& other) const { return !(*this == other); }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
     // rosidl's smart-pointer aliases (issue 1995) — hosted builds only.

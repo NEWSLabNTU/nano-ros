@@ -1672,6 +1672,26 @@ mod tests {
             );
         }
 
+        /// phase-488 node 2 — a lifecycle node CREATED on the executor is
+        /// served under its own name, not the executor's default identity
+        /// (`node`), which is what a hosted C++ `rclcpp_lifecycle::LifecycleNode`
+        /// registers through.
+        #[test]
+        fn lifecycle_services_on_a_created_node_are_named_after_it() {
+            let session = MockSession::new();
+            let mut executor: Executor = Executor::from_session(session);
+            let id = executor
+                .node_builder("velocity_smoother")
+                .build()
+                .expect("node");
+            executor.register_lifecycle_services_on(id).unwrap();
+            let topic = executor
+                .lifecycle_transition_event_publisher()
+                .expect("registration creates the publisher")
+                .topic_name();
+            assert_eq!(topic, "/velocity_smoother/transition_event");
+        }
+
         #[test]
         fn a_transition_is_announced_on_transition_event() {
             let session = MockSession::new();

@@ -16,12 +16,13 @@
 #include "rclcpp/heap_string.hpp"
 #include "rclcpp/size_bound.hpp"
 #include "rclcpp/detail/serialization_format.hpp"
+#include "rclcpp/detail/message_equality.hpp" // phase-488 — rosidl's operator==
 #include "rclcpp/detail/std_detect.hpp" // issue 1995 — NROS_CPP_HAS_SHARED_PTR for the pointer aliases
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 18. */
-#define NROS_EMITTED_CODEGEN_VERSION 18
+/* RFC-0090 — emitted by nano-ros codegen version 19. */
+#define NROS_EMITTED_CODEGEN_VERSION 19
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -44,6 +45,15 @@ struct Capped {
     rclcpp::FixedString<256> label = {};
     rclcpp::FixedSequence<int64_t, 64> samples = {};
     rclcpp::FixedSequence<rclcpp::FixedString<256>, 64> tags = {};
+
+    // rosidl's field-wise equality (phase-488).
+    bool operator==(const Capped& other) const {
+        return true
+            && ::rclcpp::detail::msg_field_eq(label, other.label)
+            && ::rclcpp::detail::msg_field_eq(samples, other.samples)
+            && ::rclcpp::detail::msg_field_eq(tags, other.tags);
+    }
+    bool operator!=(const Capped& other) const { return !(*this == other); }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
     // rosidl's smart-pointer aliases (issue 1995) — hosted builds only.

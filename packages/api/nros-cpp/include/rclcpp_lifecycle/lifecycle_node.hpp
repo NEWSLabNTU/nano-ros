@@ -530,7 +530,14 @@ class LifecycleEngine {
     /// Register the five REP-2002 services and bind the `on_*` trampolines. Call
     /// once during setup; afterwards `ros2 lifecycle set|get|list` drives this node.
     ::rclcpp::Result register_services() {
-        ::rclcpp::Result r = ::rclcpp::Result(nros_cpp_register_lifecycle_services(exec_));
+        // Named after the BOUND node when there is one (phase-488): the
+        // executor's own identity is the default `node` on the process
+        // executor a hosted node is created on.
+        const nros_cpp_node_t* bound = node_ != nullptr ? node_->ffi_handle() : nullptr;
+        ::rclcpp::Result r =
+            bound != nullptr
+                ? ::rclcpp::Result(nros_cpp_register_lifecycle_services_for_node(bound))
+                : ::rclcpp::Result(nros_cpp_register_lifecycle_services(exec_));
         if (!r) {
             return r;
         }
@@ -1236,6 +1243,26 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
         return pub_.publish(msg);
     }
 
+    /// `get_subscription_count` — `rclcpp::Publisher<M>::get_subscription_count`
+    /// on the wrapped publisher, with its executor argument and out-parameter
+    /// (see there for why both). It was missing here (phase-488).
+    ::rclcpp::Result get_subscription_count(::rclcpp::Executor& executor, size_t* out_count) const {
+        return pub_.get_subscription_count(executor, out_count);
+    }
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    /// Upstream's `publish(std::unique_ptr<M, D>)` (phase-488; Nav2's
+    /// `TwistPublisher` writes `pub_->publish(std::move(msg))`). Dropped when
+    /// inactive, like the by-reference form; otherwise
+    /// `rclcpp::Publisher<M>::publish(std::unique_ptr)`, which refuses null.
+    template <typename D>::rclcpp::detail::PublishResult publish(::std::unique_ptr<M, D> msg) {
+        if (!this->is_activated()) {
+            return ::rclcpp::Result();
+        }
+        return pub_.publish(static_cast<::std::unique_ptr<M, D>&&>(msg));
+    }
+#endif
+
   private:
     ::rclcpp::Publisher<M> pub_;
 };
@@ -1323,6 +1350,18 @@ class LifecycleNode : public ::rclcpp::Node, public node_interfaces::LifecycleNo
   public:
     using SharedPtr = ::rclcpp::Handle<LifecycleNode>;
     using ConstSharedPtr = ::rclcpp::Handle<const LifecycleNode>;
+    /// See `rclcpp::Node::WeakPtr`.
+    using WeakPtr = ::rclcpp::Handle<LifecycleNode>;
+    /// Const spelling of `WeakPtr`.
+    using ConstWeakPtr = ::rclcpp::Handle<const LifecycleNode>;
+
+    /// `shared_from_this()` as THIS type, as upstream's is (phase-488). It was
+    /// `rclcpp::Node::shared_from_this()`, inherited, so the handle named a
+    /// plain `Node` and the lifecycle methods were unreachable through it.
+    /// Non-owning, like `Node`'s (see `rclcpp::Node::shared_from_this`).
+    SharedPtr shared_from_this() { return SharedPtr(this); }
+    /// Const overload of [`shared_from_this`].
+    ConstSharedPtr shared_from_this() const { return ConstSharedPtr(this); }
     using CallbackReturn = node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
     /// `LifecycleNode(node_name, options)` — upstream's shape, on the global

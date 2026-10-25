@@ -156,6 +156,19 @@ int main() {
     spin(exec);
     check(nros_stub_rmw_publish_count() == started + 3, "no change, no event");
 
+    // phase-488 -- a burst bigger than the change log (PARAMETER_EVENT_LOG_LEN,
+    // 8) with no spin between, as Nav2's on_configure declares ~20: each call
+    // publishes its own event, so none is lost. Before, the C++ calls queued
+    // until the next spin and the log dropped the 9th onwards.
+    const uint32_t burst_before = nros_stub_rmw_publish_count();
+    char burst_name[16];
+    for (int i = 0; i < 12; ++i) {
+        std::snprintf(burst_name, sizeof burst_name, "burst_%d", i);
+        (void)node.declare_parameter<int64_t>(burst_name, i);
+    }
+    check(nros_stub_rmw_publish_count() == burst_before + 12,
+          "12 declares in one callback publish 12 events, with no spin between");
+
     if (g_failures) {
         std::fprintf(stderr, "parameter_events_runtime: %d failure(s)\n", g_failures);
         return 1;

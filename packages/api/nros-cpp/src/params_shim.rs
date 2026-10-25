@@ -481,6 +481,35 @@ unsafe fn node_param_target<'a>(
 /// both "taken" and "full" (`rust:ParameterServer::declare` has the gap
 /// ledgered) — so the distinction is made here, once, instead of in each
 /// facade.
+/// Publish the `/parameter_events` the last store call queued — what the C
+/// API does after every parameter call (`nros-c/src/parameter.rs`).
+///
+/// phase-488 node 2: the C++ shim never did, so the change log
+/// (`PARAMETER_EVENT_LOG_LEN`, 8) only drained on the next spin, and Nav2's
+/// velocity smoother, which declares ~20 parameters in one `on_configure`,
+/// lost 6 events. With no publisher (services not started) the queued events
+/// are discarded, as the C path's are.
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
+fn flush_events(ctx: &mut crate::CppContext) {
+    #[cfg(feature = "param-services")]
+    ctx.executor.flush_parameter_events();
+    #[cfg(not(feature = "param-services"))]
+    let _ = ctx;
+}
+
+/// `set_parameter_on`, its verdict as an FFI code, then [`flush_events`].
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
+fn set_on_node(
+    ctx: &mut crate::CppContext,
+    id: nros_node::executor::NodeId,
+    name: &str,
+    value: ParameterValue,
+) -> nros_cpp_ret_t {
+    let r = set_result_to_ret(ctx.executor.set_parameter_on(id, name, value));
+    flush_events(ctx);
+    r
+}
+
 #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 fn declare_on_node(
     ctx: &mut crate::CppContext,
@@ -489,6 +518,7 @@ fn declare_on_node(
     value: ParameterValue,
 ) -> nros_cpp_ret_t {
     if ctx.executor.declare_parameter_on(id, name, value) {
+        flush_events(ctx);
         NROS_CPP_RET_OK
     } else if ctx.executor.get_parameter_on(id, name).is_some() {
         NROS_CPP_RET_ALREADY_EXISTS
@@ -880,10 +910,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_bool(
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        set_result_to_ret(
-            ctx.executor
-                .set_parameter_on(id, name, ParameterValue::from_bool(value)),
-        )
+        set_on_node(&mut ctx, id, name, ParameterValue::from_bool(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
@@ -906,11 +933,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_integer(
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        set_result_to_ret(ctx.executor.set_parameter_on(
-            id,
-            name,
-            ParameterValue::from_integer(value),
-        ))
+        set_on_node(&mut ctx, id, name, ParameterValue::from_integer(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
@@ -933,11 +956,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_double(
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        set_result_to_ret(ctx.executor.set_parameter_on(
-            id,
-            name,
-            ParameterValue::from_double(value),
-        ))
+        set_on_node(&mut ctx, id, name, ParameterValue::from_double(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
@@ -966,7 +985,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_string(
         let Some(pv) = ParameterValue::from_string(value) else {
             return NROS_CPP_RET_FULL;
         };
-        set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
+        set_on_node(&mut ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
@@ -1283,7 +1302,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_double_array(
         let Some(pv) = ParameterValue::from_double_array(slice) else {
             return NROS_CPP_RET_FULL;
         };
-        set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
+        set_on_node(&mut ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
@@ -1313,7 +1332,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_integer_array(
         let Some(pv) = ParameterValue::from_integer_array(slice) else {
             return NROS_CPP_RET_FULL;
         };
-        set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
+        set_on_node(&mut ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
@@ -1343,7 +1362,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_bool_array(
         let Some(pv) = ParameterValue::from_bool_array(slice) else {
             return NROS_CPP_RET_FULL;
         };
-        set_result_to_ret(ctx.executor.set_parameter_on(id, name, pv))
+        set_on_node(&mut ctx, id, name, pv)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
@@ -1695,6 +1714,7 @@ pub unsafe extern "C" fn nros_cpp_node_undeclare_param(
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
         if ctx.executor.undeclare_parameter_on(id, name) {
+            flush_events(&mut ctx);
             NROS_CPP_RET_OK
         } else {
             NROS_CPP_RET_NOT_FOUND
@@ -2213,7 +2233,9 @@ pub unsafe extern "C" fn nros_cpp_node_set_params_atomically(
                 Some((name, value))
             }),
         );
-        set_result_to_ret(verdict)
+        let r = set_result_to_ret(verdict);
+        flush_events(ctx);
+        r
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {

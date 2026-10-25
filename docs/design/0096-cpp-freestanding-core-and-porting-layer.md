@@ -405,6 +405,34 @@ an edit, and every one is a compile error naming the exact site:
    owner. `rclcpp::spin(std::make_shared<MyNode>())` is unaffected: the hosted
    spin verbs take the `std::shared_ptr` itself.
 
+The rest of this list was measured by
+[phase-488](../roadmap/phase-488-larger-cpp-port-fixture.md) (2026-10-25),
+which ported Autoware's `autoware_external_cmd_selector`, ros2/demos
+`composition` and Nav2's `nav2_velocity_smoother` with its `nav2_util`. Each is
+a compile error, or a configure error, at the site:
+
+6. **`std::static_pointer_cast<Derived>(shared_from_this())`.** Nav2's
+   `nav2_util::LifecycleNode::shared_from_this()` does this. The handle owns
+   nothing (item 5), so there is no `std::shared_ptr` to cast. Drop the
+   override; `rclcpp_lifecycle::LifecycleNode::shared_from_this()` returns its
+   own type's handle.
+7. **`rclcpp::exceptions::*`**, thrown or caught. There are no exceptions
+   (RFC-0018). Throw a standard exception, or check the result.
+8. **The `rclcpp::NodeOptions` setter chain** (`.arguments({...})`,
+   `.start_parameter_services(false)`, …). Each setter is a `static_assert`
+   naming the reason (phase-417 W3.f). Name the node directly.
+9. **`rclcpp::SystemDefaultsQoS()`**, refused because it names no concrete
+   policy (issue 0829). Name the QoS: `rclcpp::QoS(10)` is the ROS default.
+10. **`get_subscription_count()` with no arguments.** It takes the executor and
+    an out-parameter (phase-444), on `Publisher` and `LifecyclePublisher`.
+11. **A subscription to a message with an unbounded string or sequence**
+    (`std_msgs/Header.frame_id`): the build stops at
+    `NROS_UNBOUNDED__<pkg>_msg_<type>__field_<field>`. Give the field a bound in
+    `nros-codegen.toml`. This is a project file, not a source edit.
+12. **`NodeParametersInterface::get_parameter_overrides()`** is absent until
+    issue 2057.
+13. **A `rclcpp::Client` per-request callback** is absent until issue 2055.
+
 What this does not promise: an arbitrary third-party ROS 2 package that uses
 `std::string` internally will not become freestanding because our API is. The
 claim is about code written against the rclcpp API, not about the whole ROS

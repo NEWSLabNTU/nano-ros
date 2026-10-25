@@ -54,6 +54,19 @@ template <typename T, size_t N> struct FixedSequence {
     /// Current number of elements.
     uint32_t length() const { return size; }
 
+    /// Upstream's bounded-sequence `resize(n)` (phase-488; Nav2 writes
+    /// `descriptor.floating_point_range.resize(1)`). New elements are
+    /// value-initialized. A length past the capacity is refused: the sequence
+    /// is unchanged and the answer is `false`, where rosidl's `BoundedVector`
+    /// throws `std::length_error`.
+    bool resize(size_t n) {
+        if (n > N) return false;
+        for (size_t i = size; i < n; ++i)
+            data[i] = T();
+        size = static_cast<uint32_t>(n);
+        return true;
+    }
+
     /// Maximum capacity.
     static constexpr size_t max_size() { return N; }
 

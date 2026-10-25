@@ -29,7 +29,14 @@
 //   7. built with `NROS_AMENT_START_PARAMETER_SERVICES` (what the ament verbs
 //      define when the runtime carries `param_services`) and linked against
 //      such a runtime, the node serves its parameters with no call of ours:
-//      a `list_parameters` request is answered.
+//      a `list_parameters` request is answered;
+//   8. the Nav2 shapes (phase-488 node 2): `Node::WeakPtr::lock()`,
+//      `rclcpp::Clock::SharedPtr clock_ = get_clock();`, `timer_->cancel();`
+//      as a statement, `FixedSequence::resize`, `stamp = rclcpp::Time(...)` and
+//      `stamp + duration` on a `{sec, nanosec}` message,
+//      `spin_some(get_node_base_interface())`, and a `std::function`
+//      pre-shutdown hook on `get_node_base_interface()->get_context()` that
+//      runs on `rclcpp::shutdown()`.
 
 #include <diagnostic_updater/diagnostic_updater.hpp>
 #include <diagnostic_updater/update_functions.hpp>
@@ -45,6 +52,7 @@ extern "C" {
 
 #include <cstdio>
 #include <cstring>
+#include <chrono>
 #include <ctime>
 #include <functional>
 #include <memory>
@@ -248,6 +256,7 @@ static_assert(rclcpp::Time(kStamp, RCL_STEADY_TIME).get_clock_type() == RCL_STEA
               "rclcpp::Time from a stamp takes a clock type");
 
 int g_failures = 0;
+int g_pre_shutdown_runs = 0;
 
 void check(bool ok, const char* what) {
     if (!ok) {
@@ -353,7 +362,57 @@ int main(int argc, char** argv) {
     }
     check(Tracked::live == live_before,
           "destroying the node destroys the service handler's capture, exactly once");
+
+    // (8) the Nav2 shapes.
+    {
+        auto owner = std::make_shared<rclcpp::Node>("nav2_shapes");
+        rclcpp::Node::SharedPtr shared = owner;
+        rclcpp::Node::WeakPtr weak = shared;
+        auto locked = weak.lock();
+        check(locked && locked.get() == owner.get() && !weak.expired(),
+              "Node::WeakPtr::lock() hands back the node");
+
+        rclcpp::Clock::SharedPtr clock = owner->get_clock();
+        check(clock != nullptr && clock->get_clock_type() == RCL_ROS_TIME,
+              "rclcpp::Clock::SharedPtr holds the node's clock");
+
+        int ticks = 0;
+        auto timer =
+            owner->create_wall_timer(std::chrono::milliseconds(1), [&ticks]() { ++ticks; });
+        timer->cancel(); // a statement, under -Werror (upstream returns void)
+        check(timer->is_canceled(), "timer_->cancel() as a statement cancels");
+        timer->reset();
+        check(!timer->is_canceled(), "timer_->reset() as a statement restarts");
+
+        rclcpp::FixedSequence<int32_t, 1> range;
+        check(range.resize(1) && range.length() == 1 && range[0] == 0,
+              "FixedSequence::resize within the bound value-initializes");
+        check(!range.resize(2) && range.length() == 1,
+              "FixedSequence::resize past the bound is refused, unchanged");
+
+        StampLike stamp{0, 0};
+        stamp = rclcpp::Time(5, 0);
+        check(stamp.sec == 5 && stamp.nanosec == 0, "a stamp is assigned from rclcpp::Time");
+        StampLike later = stamp + rclcpp::Duration::from_seconds(1.5);
+        check(later.sec == 6 && later.nanosec == 500000000u, "stamp + rclcpp::Duration");
+        StampLike earlier = stamp - rclcpp::Duration::from_seconds(0.5);
+        check(earlier.sec == 4 && earlier.nanosec == 500000000u, "stamp - rclcpp::Duration");
+
+        rclcpp::spin_some(owner->get_node_base_interface());
+
+        rclcpp::Context::SharedPtr context = owner->get_node_base_interface()->get_context();
+        check(context->is_valid(), "the node's context is valid before shutdown");
+        rclcpp::PreShutdownCallbackHandle dropped =
+            context->add_pre_shutdown_callback([]() { g_pre_shutdown_runs += 100; });
+        check(dropped.valid(), "a std::function pre-shutdown hook registers");
+        check(context->remove_pre_shutdown_callback(dropped), "...and removes");
+        rclcpp::PreShutdownCallbackHandle kept =
+            context->add_pre_shutdown_callback([]() { ++g_pre_shutdown_runs; });
+        check(kept.valid(), "a second hook registers in the freed slot");
+    }
     rclcpp::shutdown();
+    check(g_pre_shutdown_runs == 1,
+          "rclcpp::shutdown() runs the kept pre-shutdown hook, once, and not the removed one");
     if (g_failures != 0) {
         std::fprintf(stderr, "ament_port_surface_runtime: %d failure(s)\n", g_failures);
         return 1;

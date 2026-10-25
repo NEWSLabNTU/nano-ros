@@ -15,6 +15,7 @@
 #include "rclcpp/heap_string.hpp"
 #include "rclcpp/size_bound.hpp"
 #include "rclcpp/detail/serialization_format.hpp"
+#include "rclcpp/detail/message_equality.hpp" // phase-488 — rosidl's operator==
 #include "rclcpp/detail/std_detect.hpp" // issue 1995 — NROS_CPP_HAS_SHARED_PTR for the pointer aliases
 {%- if has_view %}
 #include "rclcpp/span.hpp"
@@ -49,6 +50,19 @@ struct {{ message_name }} {
 {%- if not has_fields %}
     uint8_t _dummy; // Empty struct placeholder
 {%- endif %}
+
+    // rosidl's field-wise equality (phase-488).
+{%- if has_fields %}
+    bool operator==(const {{ message_name }}& other) const {
+        return true
+{%- for field in fields %}
+            && ::rclcpp::detail::msg_field_eq({{ field.name }}, other.{{ field.name }})
+{%- endfor %};
+    }
+{%- else %}
+    bool operator==(const {{ message_name }}&) const { return true; }
+{%- endif %}
+    bool operator!=(const {{ message_name }}& other) const { return !(*this == other); }
 {%- if constants %}
 
     // Message constants (rosidl C++ convention: `Msg::CONSTANT`)

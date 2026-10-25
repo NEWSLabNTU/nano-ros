@@ -44,7 +44,7 @@ pub struct PendingParameterEvent {
 /// How many changes the store holds between two flushes of
 /// `/parameter_events`.
 ///
-/// A flush runs after every C parameter call and on every spin, so this only
+/// A flush runs after every C or C++ parameter call and on every spin, so this only
 /// has to cover the changes ONE spin's parameter services make; a burst past
 /// it is counted ([`ParameterServer::take_parameter_events_dropped`]) and
 /// reported, never blocked on. A second change to a name already pending

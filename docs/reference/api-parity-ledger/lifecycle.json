@@ -477,6 +477,10 @@
     "verdict": "divergence",
     "why": "phase-482 W4 (2026-10-07): on `rclcpp_lifecycle::LifecycleNode` too, forwarding to the engine; `register_on_*` takes `CallbackReturn (*)(const State&, void*)` plus a context, not a `std::function`.\n\nBefore phase-482 W4: RE-VERDICTED phase-417 W4.f. was `gap`, and the capability now SHIPS: `LifecycleNode::register_on_shutdown(callback, context)` runs `callback` instead of the `on_shutdown` virtual, so a ported node registers a transition callback rather than subclassing -- which C (`nros_lifecycle_register_on_*`) and Rust (`LifecyclePollingNode::register_on_*`) had all along and C++ did not, even though `register_services()` already called the FFI's own `register_on_*` one layer down. THE DIVERGENCE IS THE CALLBACK TYPE: upstream takes a `std::function<CallbackReturn(const State&)>`, which allocates; ours is a `CallbackReturn (*)(LifecycleState, void*)` plus a context, because six `std::function`s stored on this class would need an allocator AND would make `sizeof(LifecycleNode)` depend on a capability probe, which `check-cpp-capability-layout` forbids. `previous` is the `LifecycleState` enum rather than a `rclcpp_lifecycle::State` object for the reason `cpp:Transition` records. The callback is stored HERE and the trampoline picks it over the virtual, so registering before or after `register_services()` behaves the same and there is still exactly one registrant at the C seam; registering at the FFI directly would let `register_services()` silently overwrite a callback set first."
   },
+  "cpp:LifecycleNode::shared_from_this": {
+    "verdict": "extension",
+    "why": "phase-488. Upstream's comes from `std::enable_shared_from_this<LifecycleNode>`, which the extractor does not see as a declared member. Ours returns `LifecycleNode::SharedPtr` (a non-owning handle, like `cpp:Node::shared_from_this`). It was `Node::shared_from_this`, inherited, so the handle named a plain `Node`."
+  },
   "cpp:LifecycleNode::shutdown": {
     "disposition": "adopt",
     "verdict": "divergence",

@@ -5796,6 +5796,21 @@ nros_cpp_ret_t nros_cpp_has_custom_transport(void);
 nros_cpp_ret_t nros_cpp_register_lifecycle_services(void *executor);
 
 /**
+ * Register the five REP-2002 lifecycle services under `node`'s own name.
+ *
+ * phase-488 node 2 — what `rclcpp_lifecycle::LifecycleNode` calls once it is
+ * bound to its node. [`nros_cpp_register_lifecycle_services`] names the
+ * services after the EXECUTOR's identity, which for the process executor a
+ * hosted node is created on is the default `node`: `ros2 lifecycle get
+ * /<name>` then answered "Node not found".
+ *
+ * # Safety
+ * `node` must be a live `nros_cpp_node_t*` whose executor is a valid
+ * `CppContext*`.
+ */
+nros_cpp_ret_t nros_cpp_register_lifecycle_services_for_node(const struct nros_cpp_node_t *node);
+
+/**
  * Trigger a lifecycle transition on the C++ executor's state machine.
  *
  * `transition_id` is a `lifecycle_msgs/msg/Transition` id — the SAME numbering

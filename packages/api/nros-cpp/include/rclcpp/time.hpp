@@ -153,6 +153,18 @@ class Time {
         out.nanosec = t.nanosec;
     }
 
+    /// Upstream's implicit `operator builtin_interfaces::msg::Time()`
+    /// (phase-488; Nav2 writes `msg.header.stamp = now();`). The same
+    /// `{sec, nanosec}` template as the constructor above, through `to_msg`.
+    template <typename TimeMsgT, typename = decltype(static_cast<int64_t>(TimeMsgT().sec) +
+                                                     static_cast<int64_t>(TimeMsgT().nanosec))>
+    // NOLINTNEXTLINE(google-explicit-constructor)
+    operator TimeMsgT() const {
+        TimeMsgT out{};
+        to_msg(out);
+        return out;
+    }
+
   private:
     int64_t ns_;
     rcl_clock_type_t clock_type_;
@@ -163,6 +175,26 @@ class Time {
 /// sides.
 constexpr Time operator+(const Duration& lhs, const Time& rhs) {
     return rhs + lhs;
+}
+
+/// Upstream's `builtin_interfaces::msg::Time operator+(const
+/// builtin_interfaces::msg::Time&, const rclcpp::Duration&)` and its `-`
+/// (phase-488; Nav2 writes `stamp + delta`). Over any `{sec, nanosec}`
+/// message, found by argument-dependent lookup through `Duration`.
+template <typename TimeMsgT, typename = decltype(static_cast<int64_t>(TimeMsgT().sec) +
+                                                 static_cast<int64_t>(TimeMsgT().nanosec))>
+inline TimeMsgT operator+(const TimeMsgT& lhs, const Duration& rhs) {
+    TimeMsgT out{};
+    (Time(lhs) + rhs).to_msg(out);
+    return out;
+}
+/// @see operator+(const TimeMsgT&, const Duration&)
+template <typename TimeMsgT, typename = decltype(static_cast<int64_t>(TimeMsgT().sec) +
+                                                 static_cast<int64_t>(TimeMsgT().nanosec))>
+inline TimeMsgT operator-(const TimeMsgT& lhs, const Duration& rhs) {
+    TimeMsgT out{};
+    (Time(lhs) - rhs).to_msg(out);
+    return out;
 }
 
 } // namespace rclcpp

@@ -48,7 +48,9 @@ endfunction()
 # parameter services in every node, so a ported node is written against them
 # (`ros2 param get` against it timed out until this, on the Autoware
 # `autoware_external_cmd_selector` port), and the package has no `system.toml`
-# to declare them in. The road is a property of the CONSUMER's source tree,
+# to declare them in. A package that depends on `rclcpp_lifecycle` gets
+# `lifecycle` as well, since upstream's managed node serves its lifecycle
+# services the same way. The road is a property of the CONSUMER's source tree,
 # asked here before the runtime is configured, never of the build tree.
 # A declaration still wins: any `NROS_FEATURES` the consumer sets, `-D`s or
 # caches, including the empty one, is taken as written.
@@ -61,21 +63,33 @@ function(nros_ament_port_default_features out_var)
     # The package itself, or a colcon-layout umbrella over `src/<pkg>/`.
     file(GLOB _pxs "${CMAKE_SOURCE_DIR}/package.xml" "${CMAKE_SOURCE_DIR}/src/*/package.xml")
     set(_px "")
+    set(_lifecycle "")
     foreach(_candidate IN LISTS _pxs)
         file(READ "${_candidate}" _body)
         if(_body MATCHES "<buildtool_depend>[ \t\r\n]*ament_cmake[A-Za-z_]*[ \t\r\n]*</buildtool_depend>")
-            set(_px "${_candidate}")
-            break()
+            if(_px STREQUAL "")
+                set(_px "${_candidate}")
+            endif()
+            # A managed node: upstream's rclcpp_lifecycle serves the five
+            # lifecycle services, so the runtime needs `lifecycle` too
+            # (phase-488 node 2, Nav2 — without it the image did not LINK).
+            if(_body MATCHES "<(build_|exec_)?depend>[ \t\r\n]*rclcpp_lifecycle[ \t\r\n]*</")
+                set(_lifecycle "${_candidate}")
+            endif()
         endif()
     endforeach()
     if(_px STREQUAL "")
         return()
     endif()
+    set(_features "param_services")
+    if(NOT _lifecycle STREQUAL "")
+        list(APPEND _features "lifecycle")
+    endif()
     message(STATUS
         "nano-ros: ${_px} is an ament package on a host, so its runtime carries "
-        "`param_services` as upstream rclcpp's does. Set NROS_FEATURES to declare "
+        "`${_features}` as upstream rclcpp's does. Set NROS_FEATURES to declare "
         "the capabilities yourself (phase-488).")
-    set(${out_var} "param_services" PARENT_SCOPE)
+    set(${out_var} "${_features}" PARENT_SCOPE)
 endfunction()
 
 # nros_lower_system_features(<features>)  — phase-261 W5

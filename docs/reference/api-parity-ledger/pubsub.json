@@ -487,6 +487,10 @@
     "verdict": "divergence",
     "why": "upstream constructs from a node handle, a topic, a QoS and an allocator, all as `shared_ptr`-shaped arguments. Ours is DEFAULT-constructed and filled by `rclcpp::Node::create_publisher(pub.publisher(), topic)` -- the same out-reference creation every entity in this API uses (RFC-0022: no allocator, so a constructor cannot fail and cannot hand back a handle). See `cpp:LifecycleNode::add_managed_entity` for why the node does not do it for you. FILED HERE, not in `lifecycle.json`, because the topic classifier keys on the NAME: this is a lifecycle row and the shard is the taxonomy's answer, not a claim about the subject (same observation as `cpp:LifecycleNode::get_transition_graph`)."
   },
+  "cpp:LifecyclePublisher::get_subscription_count": {
+    "verdict": "extension",
+    "why": "phase-488. Upstream's is inherited from `rclcpp::Publisher`; ours forwards to the wrapped publisher with its signature (executor + out-parameter; see `cpp:Publisher::get_subscription_count`)."
+  },
   "cpp:LifecyclePublisher::make_shared": {
     "verdict": "declined",
     "disposition": "absent",

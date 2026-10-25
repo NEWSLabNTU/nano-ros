@@ -181,6 +181,122 @@ inline bool remove_on_shutdown_callback(OnShutdownCallbackHandle handle) {
     return nros_cpp_remove_on_shutdown_callback(executor, handle.value()) == 0;
 }
 
+/// `rclcpp::Context` (phase-488) — a VIEW of one executor's lifetime: its
+/// pre- and on-shutdown hooks (issue 0790) and whether it is still running.
+///
+/// Upstream's context owns the rcl init state and is reached through a
+/// `shared_ptr`. nano-ros's executor owns that state, so this names one by its
+/// handle: `SharedPtr` is the view itself and `->` reaches it, so
+/// `rclcpp::Context::SharedPtr c = node->get_node_base_interface()->get_context();
+/// c->add_pre_shutdown_callback(cb)` spells as upstream's does. The hooks share
+/// the executor's fixed table (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2): a
+/// full table returns an INVALID handle on the std surface, where upstream
+/// would allocate.
+class Context {
+  public:
+    using SharedPtr = Context;
+    Context() : executor_(nullptr) {}
+    explicit Context(void* executor) : executor_(executor) {}
+    Context* operator->() { return this; }
+    const Context* operator->() const { return this; }
+    /// The executor handle this context names; null for an empty one.
+    void* executor_handle() const { return executor_; }
+    /// `Context::is_valid()` — named, and not yet shut down.
+    bool is_valid() const { return executor_ != nullptr && ::rclcpp::ok(); }
+
+    /// The C-callback forms, on every target. See `rclcpp::pre_shutdown`.
+    Result add_pre_shutdown_callback(ShutdownCallback callback, void* context,
+                                     PreShutdownCallbackHandle* out = nullptr) {
+        if (executor_ == nullptr) return Result(ErrorCode::NotInitialized);
+        nros_cpp_shutdown_callback_handle_t raw = NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID;
+        nros_cpp_ret_t ret = nros_cpp_add_pre_shutdown_callback(executor_, callback, context, &raw);
+        if (out != nullptr) *out = PreShutdownCallbackHandle(raw);
+        return Result(ret);
+    }
+    /// @see add_pre_shutdown_callback
+    Result add_on_shutdown_callback(ShutdownCallback callback, void* context,
+                                    OnShutdownCallbackHandle* out = nullptr) {
+        if (executor_ == nullptr) return Result(ErrorCode::NotInitialized);
+        nros_cpp_shutdown_callback_handle_t raw = NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID;
+        nros_cpp_ret_t ret = nros_cpp_add_on_shutdown_callback(executor_, callback, context, &raw);
+        if (out != nullptr) *out = OnShutdownCallbackHandle(raw);
+        return Result(ret);
+    }
+    /// `true` when `handle` named a live callback.
+    bool remove_pre_shutdown_callback(const PreShutdownCallbackHandle& handle) {
+        if (executor_ == nullptr) return false;
+        const bool removed = nros_cpp_remove_pre_shutdown_callback(executor_, handle.value()) == 0;
+#if defined(NROS_CPP_STD) // hosted-family: shutdown-interop
+        if (removed) release_closure(handle.value());
+#endif
+        return removed;
+    }
+    /// @see remove_pre_shutdown_callback
+    bool remove_on_shutdown_callback(const OnShutdownCallbackHandle& handle) {
+        if (executor_ == nullptr) return false;
+        const bool removed = nros_cpp_remove_on_shutdown_callback(executor_, handle.value()) == 0;
+#if defined(NROS_CPP_STD) // hosted-family: shutdown-interop
+        if (removed) release_closure(handle.value());
+#endif
+        return removed;
+    }
+
+#if defined(NROS_CPP_STD) // hosted-family: shutdown-interop
+    /// Upstream's `add_pre_shutdown_callback(std::function<void()>)`. The
+    /// closure is held on the heap until the hook is removed.
+    PreShutdownCallbackHandle add_pre_shutdown_callback(::std::function<void()> callback) {
+        PreShutdownCallbackHandle h(NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID);
+        auto* fn = new ::std::function<void()>(static_cast<::std::function<void()>&&>(callback));
+        if (!add_pre_shutdown_callback(&Context::run_closure, fn, &h).ok()) {
+            delete fn;
+            return PreShutdownCallbackHandle(NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID);
+        }
+        closures()[h.value()].reset(fn);
+        return h;
+    }
+    /// Upstream's `add_on_shutdown_callback(std::function<void()>)`.
+    OnShutdownCallbackHandle add_on_shutdown_callback(::std::function<void()> callback) {
+        OnShutdownCallbackHandle h(NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID);
+        auto* fn = new ::std::function<void()>(static_cast<::std::function<void()>&&>(callback));
+        if (!add_on_shutdown_callback(&Context::run_closure, fn, &h).ok()) {
+            delete fn;
+            return OnShutdownCallbackHandle(NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID);
+        }
+        closures()[h.value()].reset(fn);
+        return h;
+    }
+
+  private:
+    static void run_closure(void* fn) {
+        if (fn != nullptr) (*static_cast<::std::function<void()>*>(fn))();
+    }
+    using ClosureMap =
+        ::std::map<nros_cpp_shutdown_callback_handle_t, ::std::unique_ptr<::std::function<void()>>>;
+    static ClosureMap& closures() {
+        static ClosureMap m;
+        return m;
+    }
+    static void release_closure(nros_cpp_shutdown_callback_handle_t h) { closures().erase(h); }
+#else
+  private:
+#endif
+    void* executor_;
+};
+
+namespace contexts {
+/// `rclcpp::contexts::get_global_default_context()` — the context of the
+/// executor `rclcpp::init` created.
+inline Context get_global_default_context() {
+    return Context(global_handle());
+}
+} // namespace contexts
+
+namespace node_interfaces {
+template <int Tag> inline Context NodeInterfaceHandle<Tag>::get_context() const {
+    return Context(node_ != nullptr ? node_->executor_handle() : nullptr);
+}
+} // namespace node_interfaces
+
 /// Phase 123.B.2 — block until `rclcpp::ok()` returns false.
 ///
 /// Mirror of `rclcpp::spin(node)`. The typical pattern in user
@@ -859,6 +975,12 @@ inline void spin(const Node::SharedPtr& node) {
     (void)::rclcpp::spin_in();
 }
 
+/// `rclcpp::spin(node->get_node_base_interface())` (phase-488; Nav2's
+/// `main`s write it) — the node the handle names.
+inline void spin(const node_interfaces::NodeBaseInterface& base) {
+    spin(Node::SharedPtr(base.node()));
+}
+
 inline void spin_some(const Node::SharedPtr& node) {
     if (!node || !node->initialized()) {
         return;
@@ -870,6 +992,11 @@ inline void spin_some(const Node::SharedPtr& node) {
     void* const executor = ::rclcpp::global_handle();
     if (executor == nullptr) return;
     (void)nros_cpp_spin_some(executor, 0);
+}
+
+/// `rclcpp::spin_some(node->get_node_base_interface())`; see `spin`.
+inline void spin_some(const node_interfaces::NodeBaseInterface& base) {
+    spin_some(Node::SharedPtr(base.node()));
 }
 
 // Future type is templated rather than `const auto& future` so the header

@@ -382,4 +382,22 @@ namespace rclcpp {
 using ::rclcpp::Result;
 } // namespace rclcpp
 
+#if defined(NROS_CPP_STD) // hosted-family: ported-publish
+namespace rclcpp {
+namespace detail {
+/// phase-488 — what a call upstream returns `void` from answers on the std
+/// surface (`timer_->cancel()`, `timer_->reset()`): the same `Result`, minus
+/// `[[nodiscard]]`, because ported code calls it as a statement under
+/// `-Werror` (Nav2 builds `-Wall -Wextra -Wpedantic -Werror`). A derived class
+/// does not inherit the attribute (see `detail::PublishResult`, the same
+/// reasoning for `publish()`). A caller who looks still reads `ok()` /
+/// `code()`. Freestanding code keeps the attribute.
+class StatementResult : public ::rclcpp::ResultOf<void> {
+  public:
+    constexpr StatementResult(::rclcpp::ResultOf<void> r) : ::rclcpp::ResultOf<void>(r) {}
+};
+} // namespace detail
+} // namespace rclcpp
+#endif
+
 #endif // NROS_RCLCPP_RESULT_HPP
