@@ -111,16 +111,14 @@ verdict).**
   baked into board files), no bypass of the resolution order, no new ad-hoc
   config channel beside it. Check `cmake/board/`, `packages/boards/*/config/`,
   `config/`, per-example `config.toml` handling.
-- **C5 Axis-agnostic core + C-ABI bridges (cargo-feature discipline).** The
-  RMW and platform axes are selected via env → cargo-feature / `-D` lowering
-  (one consistent mechanism across Rust/C/C++ — RFC-0031/ARCHITECTURE §2),
-  and both axes cross into the core ONLY through their stable C-ABI vtable
+- **C5 Axis-agnostic core + C-ABI bridges.** The RMW and platform axes are
+  DECLARED once and LOWERED per language (C8), and both axes cross into the
+  core ONLY through their stable C-ABI vtable
   bridges (`nros-rmw-cffi` at `packages/rmw/cffi/`, `nros_platform_*`). Flag: core crates (`nros`,
   `nros-node`, `nros-c`, `nros-cpp`, `nros-core`) carrying
   backend/platform-specific code or `cfg(feature = "rmw-…"/"platform-…")`
   branches beyond the sanctioned registration seams; low-level backend types
-  or boilerplate leaking through the bridge into agnostic code; a new knob
-  selected any way other than the env/feature lowering. Detect:
+  or boilerplate leaking through the bridge into agnostic code. Detect:
   `rg -n 'cfg\(feature = "(rmw|platform)-' packages/core/` then judge each
   hit against the registration-seam allowlist; `rg -n 'zenoh|cyclonedds|xrce'
   packages/core/nros-node/src packages/api/nros/src` (names of concrete
@@ -156,6 +154,38 @@ verdict).**
   what those cannot: each `gap` row's reason and tracked issue, and ownership/
   blocking semantics. Sample: `packages/core/nros-rmw/src/`,
   `packages/core/nros-rmw-abi/`.
+
+- **C8 Feature selection is language-neutral; a cargo feature is only a
+  lowering.** Every choice a USER makes — RMW, board/platform, ROS edition,
+  capabilities (params, lifecycle, safety-e2e, …), knobs — is declared ONCE
+  in a language-neutral input (`system.toml` `[image.<id>]`/`[system]`,
+  `package.xml`, launch files, the board descriptor, `[knobs.<group>]`) and
+  the toolchain LOWERS it to each language's mechanism: a cargo feature, a
+  CMake cache var / `-D`, a C define, a Kconfig symbol (RFC-0031, RFC-0004 §1,
+  RFC-0103 D6 knob spellings). A cargo feature cannot be the knob because a C
+  or C++ project has no `Cargo.toml` to set it in (RFC-0031 "Alternatives":
+  rejected as Rust-only). Flag:
+  - a user-facing choice that exists ONLY as a cargo feature, or only as a
+    CMake `option()` / `-D` — one language can select it and the others
+    cannot;
+  - the same concept with a different NAME, default or value set per
+    language (e.g. `rmw-zenoh` vs `NROS_RMW=zenoh` disagreeing on which
+    backends exist);
+  - a user manifest (an example, a template, a scaffold `nros new` writes)
+    hand-setting the LOWERED form — `features = ["rmw-…", "platform-…",
+    "ros-<edition>"]` in a `Cargo.toml`, `-DNROS_RMW=` / `set(NROS_RMW …)` in a
+    `CMakeLists.txt`, a `CONFIG_NROS_*` in a leaf conf (gated:
+    `just check leaf-conf-nros-knobs`) — instead of declaring it;
+  - a lowering that exists for one language and not its siblings.
+  Out of scope: crate-internal features no user sets (`std`/`alloc` plumbing,
+  `rmw-cffi`) — but a feature a README tells users to set IS a user choice.
+  Gates over part of this: `just check feature-contract`, `feature-set-ssot`,
+  `knob-registry`, `knob-single-reader`. Detect:
+  `git grep -nE 'features *= *\[[^]]*"(rmw|platform|ros)-' -- 'examples/**/Cargo.toml' ':!*/generated/*'`
+  (113 lines on 2026-10-24 — split lowered axis names from capability
+  features, and for each capability ask where a C/C++ user declares it);
+  `git grep -nE '^\s*option\(NROS_' -- cmake packages` (14) — each needs a
+  neutral declaration it is lowered from, or is not a user choice.
 
 ## D. Codegen / interfaces
 
@@ -262,16 +292,48 @@ verdict).**
   Count with `git ls-files` / `git grep`, never `find` from the checkout root —
   that walks `.claude/worktrees/*` and every submodule and counts another
   repository (issue 1565; gated by `just check repo-root-walk-scope`).
-- **G2 Packages are self-contained.** A package/example must NOT search up the
-  tree for the nano-ros project root, NOR hardcode absolute paths. No
-  `../../../..` walk-ups to find the repo, no `/home/...` or build-host
-  absolute paths baked into sources/cmake/configs; resolve via the package's
-  own deps / `find_package` / relative-to-self / a passed variable. Detect:
-  `grep -rnE '/\.\./\.\./\.\.|/home/|/Users/|/opt/ros' packages/ examples/
-  cmake/ zephyr/ --include=*.cmake --include=*.txt --include=*.rs
-  --include=*.toml` then read (some walk-ups are legit-but-flagged in CLAUDE.md;
-  `/opt/ros` is legitimate in the router resolver, RFC-0075). Example build
-  config is generated, not committed (`just check example-cargo-dirs`).
+- **G2 Packages are self-contained, colcon-style.** The model is a colcon
+  package: it builds from its OWN directory plus what its DECLARED
+  dependencies export, wherever it sits — moved to another tree, copied out
+  alone, or built with `--packages-select` against an installed underlay. It
+  never assumes where it lives in this repository. Flag:
+  - **a path into another package** — `path = "../../../packages/core/x"` in
+    a `Cargo.toml`, `${CMAKE_CURRENT_SOURCE_DIR}/../../<pkg>/include`, a
+    `build.rs` doing `CARGO_MANIFEST_DIR` + `..` to reach a sibling. A
+    dependency is reached by NAME through the build system (a cargo dep
+    resolved by the workspace or the central `[patch]`, `find_package`, a
+    `package.xml` `<depend>`), and a path to it lives in ONE place — the
+    workspace root manifest or generated config — never per package;
+  - **assuming it is the top project** — `CMAKE_SOURCE_DIR` /
+    `CMAKE_BINARY_DIR` where `PROJECT_SOURCE_DIR` / `CMAKE_CURRENT_*` is meant
+    (it breaks under `add_subdirectory`, colcon and FetchContent — our
+    cyclonedds fork carries exactly this fix);
+  - **finding nano-ros by a checkout path** — a README, script or build file
+    that has the user `export NROS_REPO_DIR` / the retired `NANO_ROS_ROOT`, or reads one
+    from the environment. RFC-0103 D6 retired both as inputs: `find_package
+    (nano_ros)` with the `nano_ros_ROOT` hint, the `nros` binary's own SDK
+    root, and a cmake module locating itself by `CMAKE_CURRENT_LIST_DIR` are
+    the ladder. Code reads are gated (`just check repo-dir-readers`); DOCS are
+    not, so read them;
+  - **build-host absolute paths** — `/home/…`, `/Users/…` baked into
+    sources/cmake/configs (`/opt/ros` is legitimate in the router resolver,
+    RFC-0075);
+  - **a package that builds only in place** — the copy-out test: copied to
+    an empty directory with only its declared deps, does it build? Gated for
+    templates (`just check template-copy-out`, merge group) and for tracked
+    example build config (`just check example-cargo-dirs`); every other
+    example is a reader's question.
+  Sanctioned walk-ups, which are NOT findings: the SDK-root ladder of
+  RFC-0103 D6 (`nros_build_paths`, the `CHECKOUT_MARKER` walk from
+  `CARGO_MANIFEST_DIR` / `current_exe`), and a workspace inside a checkout
+  building that checkout. Detect (baselines 2026-10-24; each is a net):
+  `git grep -nE 'path *= *"\.\./' -- 'packages/**/Cargo.toml' 'examples/**/Cargo.toml' ':!*/generated/*'`
+  (600 lines; minus workspace-root manifests, 102 files — most are in-repo crates reaching
+  siblings; judge each against the "ONE place" rule);
+  `git grep -nE 'CMAKE_CURRENT_(LIST|SOURCE)_DIR\}/\.\./\.\.' -- cmake packages examples zephyr` (119);
+  `git grep -n 'CMAKE_SOURCE_DIR' -- cmake packages zephyr ':!*/generated/*'` (45);
+  `git grep -n 'NROS_REPO_DIR' -- 'examples/**/README.md'` (149 READMEs);
+  `git grep -nE '/home/|/Users/' -- packages examples cmake zephyr`.
 - **G3 TODO/FIXME/HACK/XXX density + age**; open-issue backlog triage. Detect:
   `grep -rnE 'TODO|FIXME|HACK|XXX' packages/ --include=*.rs --include=*.c
   --include=*.cpp --include=*.h --include=*.hpp`.
@@ -361,7 +423,9 @@ is a HOLE.
   (`path-env-fingerprints`, issue 0491); a configure-time emitter with no
   reconfigure edge on its tool (`codegen-tool-reconfigure`, issue 1018); a
   propagated usage requirement conditioned on the build tree
-  (`check-runtime-umbrella-link-sites`, issue 1467).
+  (`check-runtime-umbrella-link-sites`, issue 1467); a build reading the
+  nano-ros root from the environment (`repo-dir-readers`, issues 1280/1641,
+  RFC-0103 D6).
 
 
 ---
