@@ -494,8 +494,10 @@ fn resolve_max_cbs_through_ladder(platform: &str) -> Option<usize> {
     use nros_board_common::platform_config::PlatformsTree;
     use nros_orchestration_ir::executor_sizing as sz;
 
-    // The one root walk (RFC-0103 D6).
-    let repo = nros_launcher::checkout::find_monorepo_root(&std::env::current_dir().ok()?)?;
+    // The one SDK-root ladder (RFC-0103 D6): a checkout enclosing cwd, then
+    // this binary's own SDK root, so an installed `nros` reads its shipped
+    // tree instead of falling back to the default (phase-517 W2).
+    let repo = super::nano_ros_root::resolve(None, &std::env::current_dir().ok()?)?;
     let path = PlatformsTree::default_search_path(
         &repo,
         std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),

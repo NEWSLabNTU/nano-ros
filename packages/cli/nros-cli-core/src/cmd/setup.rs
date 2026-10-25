@@ -18,13 +18,10 @@ mod session;
 use self::session::{
     Jobs, Mode, PlanInputs, PrereqState, SessionLedger, SessionPlan, run_pipelined,
 };
-use crate::{
-    cmd::board::find_workspace_root,
-    orchestration::{
-        python_provider,
-        sdk_index::{SdkIndex, ToolPackage, ZephyrModule, host_key},
-        sdk_store::{InstallAction, SourceDisposition, execute, provision_source, store_root},
-    },
+use crate::orchestration::{
+    python_provider,
+    sdk_index::{SdkIndex, ToolPackage, ZephyrModule, host_key},
+    sdk_store::{InstallAction, SourceDisposition, execute, provision_source, store_root},
 };
 
 #[derive(Debug, ClapArgs)]
@@ -197,9 +194,9 @@ pub struct BoardSetupArgs {
     #[arg(long)]
     pub zephyr_workspace: PathBuf,
 
-    /// nano-ros workspace root (where the board crate, `scripts/zephyr/`, and
-    /// `nros-sdk-index.toml` live). Auto-detected by walking up from cwd, or
-    /// via `NROS_WORKSPACE_ROOT`, if omitted.
+    /// nano-ros SDK root (where the board crate, `scripts/zephyr/`, and
+    /// `nros-sdk-index.toml` live). Default: `$NROS_WORKSPACE_ROOT`, a
+    /// checkout enclosing cwd, then this `nros` binary's own SDK root.
     #[arg(long)]
     pub workspace: Option<PathBuf>,
 
@@ -817,13 +814,10 @@ fn verify_zephyr_line(zephyr_ws: &Path, zephyr_line: &str) -> Result<()> {
 /// `rustup target add` is a no-op when installed.
 fn run_board(args: BoardSetupArgs) -> Result<()> {
     // 1. Resolve the nano-ros workspace root (board crate + scripts + index).
-    let root = match args.workspace {
-        Some(p) => p,
-        None => find_workspace_root().wrap_err(
-            "nros setup board: could not locate the nano-ros workspace root \
-             (pass --workspace <path> or set NROS_WORKSPACE_ROOT)",
-        )?,
-    };
+    // phase-517 W2 — the same ladder `nros board` reads the catalog through,
+    // so the installed track needs no `--workspace`.
+    let root = crate::cmd::board::catalog_root(args.workspace)
+        .wrap_err("nros setup board: could not locate the nano-ros SDK root")?;
 
     // 2. Validate the consumer's Zephyr workspace.
     let zephyr_ws = &args.zephyr_workspace;
