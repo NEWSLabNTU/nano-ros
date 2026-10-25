@@ -120,6 +120,7 @@ fn selected_args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) ->
         zephyr_workspace: None,
         all: false,
         dry_run: true,
+        verbose: false,
         offline: false,
         packages_select: select.iter().map(|s| (*s).to_string()).collect(),
         packages_up_to: up_to.iter().map(|s| (*s).to_string()).collect(),

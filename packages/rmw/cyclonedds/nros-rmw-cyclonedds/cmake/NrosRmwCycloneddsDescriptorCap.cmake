@@ -125,7 +125,7 @@ function(_nros_cyclonedds_apply_descriptor_cap)
         message(STATUS
             "nano-ros: Cyclone descriptor table keeps its default "
             "${_default} rows "
-            "(${_count} distinct type(s) generated in this configure, issue 1663)")
+            "(${_count} distinct type(s) generated in this configure)")
         return()
     endif()
     if(_target STREQUAL "")

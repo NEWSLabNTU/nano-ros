@@ -1814,9 +1814,14 @@ fn described_closure_bound(
     let desc = desc?;
     let fact = desc.types.max_wire_bound_bytes();
     if let Some(why) = fact.refusal() {
+        // phase-517 W5 -- one line: a refusal's reason ends in the list of
+        // every unbounded type, which a correct hello-world printed as a
+        // 15-entry warning. The list stays in the descriptor's `[types.refused]`
+        // (`nros ws sizing-descriptor --descriptor <path>` prints it).
+        let why = why.split(':').next().unwrap_or(why).trim_end();
         println!(
-            "cargo::warning=nros-node: the sizing descriptor cannot size RX_BUF: {why}. \
-             The 1024 default decides it instead"
+            "cargo::warning=nros-node: RX_BUF keeps its 1024-byte default -- {why} \
+             (the descriptor's [types.refused] lists them)"
         );
     }
     fact.stated().copied()

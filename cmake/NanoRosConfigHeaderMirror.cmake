@@ -337,7 +337,7 @@ function(_nros_config_header_stamp _out_var _owner)
                 COMMAND ${CMAKE_COMMAND} -E make_directory "${_dir}"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_hdr}" "${_stamp}"
                 DEPENDS "${_rerun}" ${_deps}
-                COMMENT "nano-ros: config-header stamp ${_crate}/${_stem} (issues 0740, 1783)"
+                COMMENT "nano-ros: config-header stamp ${_crate}/${_stem}"
                 VERBATIM)
             set_property(DIRECTORY APPEND PROPERTY _NROS_CFG_STAMPS "${_stamp}")
         endif()

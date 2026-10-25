@@ -171,6 +171,8 @@
 
 include_guard(GLOBAL)
 
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+
 # What a schema refusal must be able to cite (issue 1389).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSchemaReader.cmake")
 
@@ -643,7 +645,15 @@ function(nros_derive_message_bound_knobs)
             "${_open_count} of ${_type_count} types in the linked interface closure have no derived bound, so no class size can be trusted:\n${_open_block}")
         _nros_bounds_publish(NROS_MESSAGE_BOUNDS_REASON "${_why}")
         if(NOT _B_QUIET)
-            message(WARNING
+            # phase-517 W5 -- a refusal keeps every knob at its configured
+            # value, which is safe, so a correct build states it in one line;
+            # the type list and the reasoning are detail.
+            message(STATUS
+                "nros: message sizes not derived (${_open_count} of "
+                "${_type_count} message types are unbounded); size knobs keep "
+                "their configured values. `nros build -v` lists them and how to "
+                "bound them.")
+            nros_message_detail(
                 "nros: message-bound sizing REFUSED -- every size knob keeps its "
                 "configured value.\n"
                 "  ${_open_count} of ${_type_count} types in the linked "
@@ -970,7 +980,7 @@ function(_nros_bounds_join_subscribed _frag _ceiling
     if(NOT NROS_ENTITY_INVENTORY_STATUS STREQUAL "derived"
        AND DEFINED NROS_ENTITY_INVENTORY_REASON
        AND NROS_ENTITY_INVENTORY_REASON STREQUAL "no entity inventory composed yet")
-        message(STATUS
+        nros_message_detail(
             "nros: the entity inventory has not been composed in this build dir "
             "yet, so the payload classes derive over the LINKED CLOSURE this "
             "pass -- an over-approximation.\n"

@@ -317,7 +317,13 @@ pub struct ProbeOutcome {
 /// sidecar. Batching the build would make one bad component lose every
 /// component's metadata, which is a robustness regression against the
 /// per-component projects this replaces.
-pub fn run_probes(probe_dir: &Path, comps: &[CmakeProbeOptions]) -> Result<Vec<ProbeOutcome>> {
+/// `rmw` is the backend the probe project compiles beside the recording one —
+/// see [`probe_rmw`]; the probe never talks through it.
+pub fn run_probes(
+    probe_dir: &Path,
+    comps: &[CmakeProbeOptions],
+    rmw: &str,
+) -> Result<Vec<ProbeOutcome>> {
     if comps.is_empty() {
         return Ok(Vec::new());
     }
@@ -369,7 +375,7 @@ pub fn run_probes(probe_dir: &Path, comps: &[CmakeProbeOptions]) -> Result<Vec<P
     let mut live: Vec<&CmakeProbeOptions> = comps.iter().collect();
     let mut rejected: Vec<(String, String)> = Vec::new();
     let configure = loop {
-        match configure_project(probe_dir, &build_dir, nano_ros) {
+        match configure_project(probe_dir, &build_dir, nano_ros, rmw) {
             Ok(()) => break Ok(()),
             Err(why) => {
                 let blamed = components_named_in(&format!("{why:#}"), &live);
@@ -542,7 +548,7 @@ pub const PROBE_EXECUTOR_MAX_CBS: usize = 64;
 /// `-D` overwrites the cached entries in place — a reconfigure, never a wipe —
 /// and the cache is then READ BACK ([`check_probe_root`]) so a value some
 /// other rung re-derived cannot slip past.
-fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path) -> Result<()> {
+fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path, rmw: &str) -> Result<()> {
     let mut cmd = Command::new("cmake");
     cmd.arg("-S")
         .arg(probe_dir)
@@ -550,7 +556,9 @@ fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path) -> Res
         .arg(build_dir)
         .arg(format!("-DCMAKE_PREFIX_PATH={}", nano_ros.display()))
         // `nano_rosConfig.cmake` sits at the checkout root.
-        .arg(format!("-Dnano_ros_DIR={}", nano_ros.display()));
+        .arg(format!("-Dnano_ros_DIR={}", nano_ros.display()))
+        // Always passed, so a cache from an earlier answer never decides it.
+        .arg(format!("-DNROS_RMW={rmw}"));
     // phase-489 W4 — the C/C++ half of issue 0522. Every workspace's probe
     // project compiled its OWN copy of the runtime staticlib (`nros-cpp` with
     // `metadata-mode`, plus the nested sizes-probe builds): ~60-120 s and
@@ -576,6 +584,30 @@ fn configure_project(probe_dir: &Path, build_dir: &Path, nano_ros: &Path) -> Res
     }
     run_step(&mut cmd, "configure", "workspace")?;
     check_probe_root(build_dir, nano_ros)
+}
+
+/// The network backend the probe project compiles, chosen from what the
+/// workspace's own images select.
+///
+/// The probe talks only through the recording backend (`NROS_RMW=metadata` at
+/// run time), but the runtime it links is built with one network backend too,
+/// and nano-ros's cmake defaults that to zenoh. A workspace whose images all
+/// use Cyclone therefore compiled `zpico-sys` for its probe — which an
+/// installed SDK cannot do until zenoh-pico is provisioned, so the documented
+/// first project panicked in a build script for a backend it never uses
+/// (phase-517 W5). Compiling what the images compile instead needs nothing
+/// `nros setup` did not already provide for them.
+///
+/// `rmws` is every image's resolved RMW. Only host-buildable backends are
+/// candidates (uORB's runtime is a PX4 module), in a fixed order so the answer
+/// does not depend on discovery order; with none, the cmake default stands.
+pub fn probe_rmw<'a>(rmws: impl IntoIterator<Item = &'a str>) -> &'static str {
+    const HOST_BUILDABLE: [&str; 3] = ["zenoh", "cyclonedds", "xrce"];
+    let seen: Vec<&str> = rmws.into_iter().collect();
+    HOST_BUILDABLE
+        .into_iter()
+        .find(|r| seen.contains(r))
+        .unwrap_or(HOST_BUILDABLE[0])
 }
 
 /// The environment every probe cmake invocation carries — configure AND build,
@@ -968,6 +1000,16 @@ mod tests {
 
     /// phase-313 — ONE project for the workspace. Per-component dirs are what
     /// made every probe rebuild the runtime and the nested sizes probes.
+    #[test]
+    fn the_probe_compiles_the_backend_the_images_select() {
+        assert_eq!(probe_rmw(["cyclonedds"]), "cyclonedds");
+        assert_eq!(probe_rmw(["xrce", "cyclonedds"]), "cyclonedds");
+        assert_eq!(probe_rmw(["cyclonedds", "zenoh"]), "zenoh");
+        // Nothing host-buildable, or no images: the cmake default.
+        assert_eq!(probe_rmw(["uorb"]), "zenoh");
+        assert_eq!(probe_rmw([]), "zenoh");
+    }
+
     #[test]
     fn the_probe_project_is_per_workspace() {
         assert_eq!(

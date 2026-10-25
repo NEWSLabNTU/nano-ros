@@ -55,6 +55,7 @@ pub fn run(args: Args) -> Result<()> {
         zephyr_workspace: None,
         all: false,
         dry_run: true,
+        verbose: false,
         offline: true,
         // phase-420 W7 — a QUERY resolves the whole workspace. Narrowing it
         // would answer a question nobody asked.

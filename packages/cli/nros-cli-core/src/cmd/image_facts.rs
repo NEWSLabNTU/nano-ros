@@ -154,6 +154,7 @@ pub fn run(args: Args) -> Result<()> {
         // can be chosen.
         all: args.for_entry.is_some(),
         dry_run: true,
+        verbose: false,
         offline: true,
         // phase-420 W7 — a QUERY resolves the whole workspace. Narrowing it
         // would answer a question nobody asked.

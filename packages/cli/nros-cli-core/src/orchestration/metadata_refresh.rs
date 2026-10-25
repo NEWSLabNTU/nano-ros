@@ -293,7 +293,10 @@ pub fn refresh_stale_sidecars(
         // whose compile was another tree reads as stale, never as authority.
         let compile_root =
             || crate::orchestration::metadata_probe_cmake::cached_probe_root(&dir.join("build"));
-        match crate::orchestration::metadata_probe_cmake::run_probes(&dir, &cpp_batch) {
+        let rmws = workspace_image_rmws(&workspace);
+        let rmw =
+            crate::orchestration::metadata_probe_cmake::probe_rmw(rmws.iter().map(String::as_str));
+        match crate::orchestration::metadata_probe_cmake::run_probes(&dir, &cpp_batch, rmw) {
             Ok(outcomes) => {
                 for (o, opts) in outcomes.iter().zip(cpp_batch.iter()) {
                     match &o.result {
@@ -442,6 +445,33 @@ fn cpp_probe_options(
             probe_dir: probe_root.to_path_buf(),
         },
     ))
+}
+
+/// Every image's resolved RMW across the workspace's `system.toml` files (a
+/// file with no `[image.*]` contributes its system default). A file that does
+/// not parse contributes nothing here; the build reports it where it is read.
+fn workspace_image_rmws(workspace: &Workspace) -> Vec<String> {
+    use crate::orchestration::cargo_metadata_schema::SystemToml;
+    let mut out = Vec::new();
+    for path in workspace
+        .packages
+        .iter()
+        .filter_map(|p| p.system_toml.as_ref())
+    {
+        let Some(sys) = std::fs::read_to_string(path)
+            .ok()
+            .and_then(|raw| toml::from_str::<SystemToml>(&raw).ok())
+        else {
+            continue;
+        };
+        if sys.image.is_empty() {
+            out.push(sys.resolved_rmw(None, None));
+        }
+        for id in sys.image.keys() {
+            out.push(sys.resolved_rmw(Some(id), None));
+        }
+    }
+    out
 }
 
 fn build_options(

@@ -1,0 +1,33 @@
+{
+  "_comment": "Default-level cmake output citing an issue, RFC or phase, per file -- see scripts/check-cmake-user-output-refs.py. A SHRINKING backlog: move the reference into nros_message_detail() and lower the count.",
+  "counts": {
+    "cmake/NanoRosAmentSurface.cmake": 1,
+    "cmake/NanoRosCapabilities.cmake": 1,
+    "cmake/NanoRosCargoProfile.cmake": 2,
+    "cmake/NanoRosCorrosion.cmake": 3,
+    "cmake/NanoRosDomainAgreement.cmake": 1,
+    "cmake/NanoRosEntityFacts.cmake": 1,
+    "cmake/NanoRosGenerateInterfaces.cmake": 1,
+    "cmake/NanoRosImageCrate.cmake": 1,
+    "cmake/NanoRosLeafEntityFacts.cmake": 3,
+    "cmake/NanoRosMessageBounds.cmake": 1,
+    "cmake/NanoRosPackageXml.cmake": 2,
+    "cmake/NanoRosPoolFloor.cmake": 1,
+    "cmake/NanoRosReconfigure.cmake": 2,
+    "cmake/NanoRosRustTool.cmake": 2,
+    "cmake/NanoRosSharedCargoLink.cmake": 1,
+    "cmake/NanoRosSizingDescriptor.cmake": 10,
+    "cmake/toolchain/NanoRosCrossToolchain.cmake": 2,
+    "integrations/px4/NanoRosPx4Module.cmake": 2,
+    "packages/api/nros-c/cmake/nros-freertos.cmake": 1,
+    "packages/api/nros-c/cmake/nros-nuttx.cmake": 1,
+    "packages/api/nros-c/cmake/nros-threadx.cmake": 2,
+    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsDescriptorCap.cmake": 2,
+    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/NrosRmwCycloneddsTypeSupport.cmake": 4,
+    "packages/rmw/cyclonedds/nros-rmw-cyclonedds/cmake/ProvideCycloneDDS.cmake": 2,
+    "zephyr/cmake/nros_cargo_build.cmake": 6,
+    "zephyr/cmake/nros_checkout_guard.cmake": 2,
+    "zephyr/cmake/nros_image_kconfig.cmake": 4,
+    "zephyr/cmake/nros_rmw_zenoh.cmake": 2
+  }
+}

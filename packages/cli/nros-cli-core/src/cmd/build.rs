@@ -69,6 +69,13 @@ pub struct Args {
     #[arg(long)]
     pub dry_run: bool,
 
+    /// Also print the explanation behind each configure note: why a pass
+    /// re-runs, why a size was not derived (phase-517 W5). Sets
+    /// `NROS_VERBOSE=1` for every native command; a correct build without it
+    /// prints one line per fact.
+    #[arg(short, long)]
+    pub verbose: bool,
+
     /// Do not fetch anything; fail naming what is missing (RFC-0065 D14).
     ///
     /// Note this is a SCOPED guarantee: stages 1–4 touch no network, and stage
@@ -2159,6 +2166,13 @@ pub fn run(args: Args) -> Result<()> {
     }
 
     let mut plans = plan_builds(&args)?;
+    if args.verbose {
+        for p in &mut plans {
+            for h in p.configure.iter_mut().chain(p.handoff.iter_mut()) {
+                h.env.push(("NROS_VERBOSE".into(), "1".into()));
+            }
+        }
+    }
     if let Some(tool) = args.check {
         retarget_to_check(&mut plans, tool)?;
     }
@@ -4438,7 +4452,7 @@ fn resolve_image(
                 // refusal that only lives in a file nobody opens is the silent
                 // shape RFC-0094 exists to remove.
                 None => eprintln!(
-                    "nros build:   resolved → {} (no count derived; see [provenance].refused)",
+                    "nros build:   resolved → {} (entity counts not derived; configured defaults kept)",
                     w.toml_path.display()
                 ),
             }
@@ -6041,6 +6055,7 @@ mod selection_wiring_tests {
             zephyr_workspace: None,
             all: false,
             dry_run: true,
+            verbose: false,
             offline: true,
             packages_select: select.iter().map(|s| (*s).to_string()).collect(),
             packages_up_to: up_to.iter().map(|s| (*s).to_string()).collect(),
@@ -6435,6 +6450,7 @@ mod single_package_tests {
             zephyr_workspace: None,
             all: false,
             dry_run: true,
+            verbose: false,
             offline: false,
             packages_select: Vec::new(),
             packages_up_to: Vec::new(),

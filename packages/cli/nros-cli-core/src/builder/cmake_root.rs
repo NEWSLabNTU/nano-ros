@@ -347,6 +347,16 @@ pub fn render(
              \x20   \"${{CMAKE_CURRENT_LIST_DIR}}/{IMAGE_ENV_FILE}\")\n\n"
         ));
     }
+    // phase-517 W5 — the image's RMW in the CACHE as well as in BACKEND below.
+    // Otherwise nano-ros's own `NROS_RMW` default (`zenoh`) is what the first
+    // configure caches, and every re-configure after it reads that default
+    // back as a user's `-DNROS_RMW=zenoh` and warns that BACKEND overrode it.
+    // FORCE because this file is generated from `system.toml`, which is where
+    // the RMW is chosen.
+    out.push_str(&format!(
+        "set(NROS_RMW \"{}\" CACHE STRING \"RMW backend (from system.toml)\" FORCE)\n",
+        spec.rmw
+    ));
     out.push_str("find_package(nano_ros REQUIRED COMPONENTS workspace)\n");
     out.push('\n');
 

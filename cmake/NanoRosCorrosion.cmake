@@ -456,7 +456,7 @@ function(_nros_shared_cargo_link_order)
         COMMAND "${CMAKE_COMMAND}"
             "-DNROS_SHARED_CARGO_LINK=${CMAKE_BINARY_DIR}/cargo"
             -P "${_NROS_SHARED_CARGO_LINK_SCRIPT}"
-        COMMENT "nano-ros: checking the shared cargo dir behind ${CMAKE_BINARY_DIR}/cargo (issue 1990)"
+        COMMENT "nano-ros: checking the shared cargo dir behind ${CMAKE_BINARY_DIR}/cargo"
         VERBATIM)
     foreach(_t IN LISTS _cargo_targets)
         add_dependencies(${_t} nros_shared_cargo_link)
