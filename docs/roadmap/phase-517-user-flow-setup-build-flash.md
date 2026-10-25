@@ -1,6 +1,6 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-25). Open; nothing started.** Opened from a gap audit of the
+**Status (2026-10-25). Open; W5 in review (PR #2644), the rest not started.** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
@@ -233,6 +233,27 @@ chapters, and `cli.md`, teach this command first.
 **Done when** `just probe installed`'s log for the first project contains no
 panic, no `REFUSED`, and no issue numbers, and the image derives its pools (no
 "no producer" line).
+
+**Progress (2026-10-25, PR #2644).** The probe compiles the backend the
+workspace's images select, so the cyclonedds first project builds no
+`zpico-sys` and both components are probed ("2 rebuilt"). The false
+`-DNROS_RMW=zenoh is OVERRIDDEN` warning on every re-configure is gone (the
+generated root caches the image's RMW). Each clean-build note is one line; the
+reasoning prints under the new `nros build -v` or `cmake --log-level=VERBOSE`
+through `nros_message_detail()`, and `check-cmake-user-output-refs` ratchets the
+63 default-level cmake messages that still cite an issue, RFC or phase. Measured
+with `just probe installed`: no panic, no `REFUSED`, no "no producer", no issue
+number in cmake output.
+
+**Remaining — the pools are still not derived.** The probe's sidecars only
+FLOOR a launch-file contract (`metadata_refresh::contract_inventory`); with no
+`<bringup>/launch/*.contract.yaml` — and the template ships none — every
+component's declaration stays `Absent`, the entity inventory refuses, and the
+image keeps its configured `NROS_EXECUTOR_MAX_CBS`. Correct, not tight. Closing
+it needs a sizing decision first (RFC-0100): may the fresh probe sidecars of a
+workspace stand as a component's declaration when no contract names it, and
+with what freshness rule? Then the template either relies on that or ships a
+contract.
 
 ### W6 — build by board, and print the platform's next command (M)
 
