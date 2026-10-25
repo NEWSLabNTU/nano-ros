@@ -334,6 +334,10 @@ fn qemu_line(
                     notes.push(why);
                     words.push(format!("\"$(nros locate tool {a})\""));
                 }
+                QemuBin::Host { why } => {
+                    notes.push(why);
+                    words.push(shell_word(a));
+                }
             }
         } else {
             words.push(shell_word(a));
@@ -1081,5 +1085,106 @@ mod tests {
         let e = images_for_board(&leaf, Some(&root), "zephyr").expect_err("none");
         assert!(format!("{e}").contains("demo:host"), "{e}");
         let _ = std::fs::remove_dir_all(&leaf);
+    }
+
+    /// The class behind phase-517's rv-virt finding: EVERY board whose next
+    /// step names a `qemu-system-*` names one the store builds (resolved to
+    /// the store path), or a bare one the notes say to install from the host
+    /// — never a store QEMU that does not exist, never `nros setup --tool
+    /// qemu` for a target it would not provide. The store's target list is
+    /// the index's, not restated here. ESP32 boards are dormant (issue 1525).
+    #[test]
+    fn every_printed_qemu_is_the_stores_or_named_for_host_install() {
+        use crate::orchestration::qemu_bin::{self, Ctx};
+        let root = repo_root();
+        let index =
+            crate::orchestration::sdk_index::SdkIndex::load(&root.join("nros-sdk-index.toml"))
+                .expect("index");
+        let targets = qemu_bin::store_targets(&index).expect("[tool.qemu.source] target list");
+        let store = tmp("every-qemu");
+        for t in &targets {
+            let b = store.join("bin").join(format!("qemu-system-{t}"));
+            std::fs::create_dir_all(b.parent().unwrap()).unwrap();
+            std::fs::write(&b, "").unwrap();
+        }
+        let none = |_: &str| None;
+        let ctx = Ctx {
+            getenv: &none,
+            build_root: None,
+            pin: None,
+            store_dir: Some(store.clone()),
+            store_targets: Some(targets.clone()),
+        };
+        let qemu = |e: &str| qemu_bin::locate(e, &ctx);
+        let cat = catalog();
+        let (mut from_store, mut from_host) = (Vec::new(), Vec::new());
+        for d in cat.descriptors() {
+            if matches!(d.platform, PlatformKind::Zephyr | PlatformKind::Esp32) {
+                continue;
+            }
+            let name = d.names.first().cloned().unwrap_or_default();
+            let out = BuildOutput::Cargo {
+                target_dir: "/t".into(),
+                triple: d
+                    .target
+                    .as_deref()
+                    .map(|t| triple_of_build_target(t).to_string()),
+                profile_dir: "debug".into(),
+                bin: Some("e".into()),
+            };
+            let s = next_steps(&plan(&name, Driver::Cargo, out), d, &qemu);
+            // Every word naming a QEMU, in whatever form it was printed
+            // (store path, bare, or a paste-time `"$(nros locate …)"`).
+            let words = s.commands.iter().flat_map(|(_, c)| c.split_whitespace());
+            for first in words.filter(|w| w.contains("qemu-system-")) {
+                let at = first.find("qemu-system-").unwrap();
+                let exe: String = first[at..]
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                    .collect();
+                let arch = &exe["qemu-system-".len()..];
+                if targets.iter().any(|t| t == arch) {
+                    assert!(
+                        Path::new(first).starts_with(&store),
+                        "{name}: `{exe}` is a store target but printed as {first}"
+                    );
+                    from_store.push(name.clone());
+                } else {
+                    assert_eq!(first, exe, "{name}: a host QEMU is printed bare");
+                    assert!(
+                        s.notes
+                            .iter()
+                            .any(|n| n.contains(&format!("`{exe}` is your host's"))
+                                && n.contains("apt install")
+                                && !n.contains("nros setup")),
+                        "{name}: `{exe}` is not in the store ({targets:?}) and no note says \
+                         where it comes from: {:?}",
+                        s.notes
+                    );
+                    from_host.push(name.clone());
+                }
+            }
+        }
+        // The sweep reached both kinds (a vacuous pass is a red).
+        assert!(from_store.len() >= 3, "{from_store:?}");
+        assert!(
+            from_host.iter().any(|n| cat
+                .descriptors()
+                .iter()
+                .any(|d| d.names.contains(n) && d.platform == PlatformKind::Nuttx)),
+            "the rv-virt NuttX board should print a host QEMU: {from_host:?}"
+        );
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    /// Every chapter a next-step note points at exists.
+    #[test]
+    fn every_chapter_a_note_names_exists() {
+        let root = repo_root();
+        for d in catalog().descriptors() {
+            if let Some(c) = chapter(d) {
+                assert!(root.join(c).is_file(), "{:?}: {c} does not exist", d.names);
+            }
+        }
     }
 }

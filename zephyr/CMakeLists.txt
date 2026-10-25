@@ -152,6 +152,20 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/nano_ros_use_board.cmake)
 set(NROS_REPO_DIR ${CMAKE_CURRENT_LIST_DIR}/.. CACHE PATH
     "nano-ros repo root (parent of zephyr/ module dir)" FORCE)
 
+# phase-517 — and the root the application's `find_package(nano_ros)` reads
+# (`nano_rosConfig.cmake` sits at it). The module IS that root, so a plain
+# `west build … -- -DZEPHYR_EXTRA_MODULES="$(nros sdk-root)"` — the book's
+# primary Zephyr flow — must not also need `-Dnano_ros_ROOT`: without this it
+# died with "Could not find a package configuration file provided by nano_ros"
+# for every app, the in-tree examples included. The cmake roads (issue 1304)
+# and `nros build`'s west handoff (issue 1998) each passed the root on their
+# own line; this answers it where the root is known. `nano_ros_DIR` is where
+# find_package looks first, so it is the module's tree and never a second one
+# (FORCE, for issue 1379's reason: derived, not a knob).
+get_filename_component(_nros_module_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+set(nano_ros_DIR "${_nros_module_root}" CACHE PATH
+    "nano_rosConfig.cmake's dir: the nano-ros Zephyr module's own root" FORCE)
+
 # issue 1379 — and this is the FIRST thing done with it. `NROS_REPO_DIR` is
 # derived from where the MODULE was found, so on a west workspace bound to
 # another checkout (issue 1258) every line below silently reaches into that
