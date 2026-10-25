@@ -68,6 +68,10 @@ crate_root_extra = "use panic_semihosting as _;"
 # until the caller's timeout — what every hand-written mps2 Rust leaf named,
 # and what its generated selection package (issue 1305) keeps.
 crate_root_deps = ["panic-semihosting = { version = \"0.6\", features = [\"exit\"] }"]
+# The line above IS this image's `#[panic_handler]`, so a generated entry takes
+# RFC-0077 `panic = "own"` unless its image states otherwise — without it
+# `nros::main!` emits a second handler (E0152), phase-517 W10.
+panic = "own"
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
 #

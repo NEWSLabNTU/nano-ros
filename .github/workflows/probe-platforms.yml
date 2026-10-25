@@ -1,0 +1,101 @@
+# The QEMU platform chapters, EXECUTED — phase-517 W10.
+#
+# `probe.yml` replays the Linux front doors (the checkout track and the
+# installed track's first-project.md). Every other user chapter — bare-metal,
+# FreeRTOS, ThreadX, NuttX, Zephyr — had only been proofread: their setup,
+# scaffold, build and run lines were checked to PLAN (`nros build --dry-run`),
+# never run on a machine without a checkout. This lane installs the release
+# asset into a clean container per chapter and replays that chapter's
+# `probe=NN` blocks, and each Run step must print the output block the chapter
+# documents beside it (`probe-expect`), so a chapter whose command is wrong
+# fails on the step that is wrong.
+#
+# WEEKLY, plus dispatch. NOT on pull_request and not in any merge-gating lane:
+# each chapter provisions a cross toolchain and QEMU and builds an image, tens
+# of minutes cold, and a lane nobody can afford per push gets skipped. Hosted
+# runners only (the probe drives `docker run` itself, so it needs the runner,
+# not a container) — no self-hosted runner is involved.
+#
+# The asset is built ONCE (`just probe platform-asset`, the same steps
+# `release-nros.yml` runs) and handed to one job per chapter, so a red names
+# its chapter and one chapter's failure never hides another's.
+name: probe-platforms
+
+on:
+  schedule:
+    # Mondays 09:00 UTC — clear of the daily lanes (02:00-08:00) and probe (08).
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probe-platforms-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  asset:
+    name: build the release asset
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      # See probe.yml for why these lanes install `just` themselves.
+      - name: Install just (if absent)
+        run: |
+          set -euo pipefail
+          if ! command -v just >/dev/null 2>&1; then
+            bash scripts/ci/install-just.sh --to "$HOME/.local/bin"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+      - name: just probe platform-asset
+        env:
+          # `actions/checkout` leaves a detached HEAD; the probe clones a named ref.
+          PROBE_BRANCH: ${{ github.ref_name }}
+          PROBE_RELEASE_CACHE: "0"
+        run: |
+          source ./activate.sh
+          just probe platform-asset "$RUNNER_TEMP/asset"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-asset
+          path: ${{ runner.temp }}/asset
+          retention-days: 7
+
+  chapter:
+    name: book probe — ${{ matrix.platform }}
+    needs: asset
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - baremetal
+          - freertos
+          - threadx-linux
+          - threadx-riscv64
+          - nuttx-arm
+          - nuttx-riscv
+          - zephyr
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install just (if absent)
+        run: |
+          set -euo pipefail
+          if ! command -v just >/dev/null 2>&1; then
+            bash scripts/ci/install-just.sh --to "$HOME/.local/bin"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: probe-asset
+          path: ${{ runner.temp }}/asset
+      - name: just probe ${{ matrix.platform }}
+        env:
+          PROBE_BRANCH: ${{ github.ref_name }}
+          PROBE_ASSET: ${{ runner.temp }}/asset
+        run: |
+          source ./activate.sh
+          just probe ${{ matrix.platform }}

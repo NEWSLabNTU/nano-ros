@@ -667,6 +667,13 @@ fn provision_boards(
     let rust = crate::orchestration::rust_toolchain::ensure(index, &host, args.dry_run)
         .wrap_err("provision a Rust toolchain (every board's runtime is compiled by cargo)")?;
     eprintln!("  {:<22} {}", "rust", rust.line);
+    // phase-517 W10 — and the target each board's images cross-compile for,
+    // read off the board descriptors that provision through these keys: the
+    // one fact `nros build`'s preflight refuses on, installed here instead.
+    let needs = board_rust_needs(&workspace, index, boards);
+    let line = crate::orchestration::rust_toolchain::ensure_needs(&needs, args.dry_run)
+        .map_err(|e| eyre::eyre!("nros setup: {e}"))?;
+    eprintln!("  {:<22} {line}", "rust target");
 
     let lock = (!args.dry_run).then_some(lock_path.as_path());
     let jobs = Jobs::from_env(args.jobs)?;
@@ -712,6 +719,54 @@ fn provision_boards(
         }
     }
     Ok(())
+}
+
+/// What rustup must add for the descriptors behind `boards` — every descriptor
+/// whose [`setup_key`](crate::orchestration::board_descriptor::BoardDescriptor::setup_key)
+/// is one of these index keys, through the preflight rule
+/// ([`crate::builder::preflight::rust_need`]). No catalog under `sdk_root`
+/// contributes none: the build's own preflight still names a missing need.
+fn board_rust_needs(
+    sdk_root: &Path,
+    index: &SdkIndex,
+    boards: &[(String, Option<String>)],
+) -> Vec<(Option<String>, crate::builder::preflight::RustNeed)> {
+    use crate::orchestration::board_descriptor::Toolchain;
+    let Ok(catalog) = crate::orchestration::board_descriptor::BoardCatalog::load(sdk_root) else {
+        return Vec::new();
+    };
+    let is_key = |k: &str| index.board.contains_key(k);
+    let mut out = Vec::new();
+    for d in catalog.descriptors() {
+        let Some(key) = d.setup_key(&is_key) else {
+            continue;
+        };
+        if !boards.iter().any(|(b, _)| *b == key) {
+            continue;
+        }
+        // The channel the board BUILDS with: a build-std board's pinned nightly
+        // (the index's `[rust.toolchain.nightly-pinned]`, the one Corrosion's
+        // configure asks for), else rustup's default. The Xtensa `esp`
+        // toolchain is espup's, not rustup's, and is left to it.
+        let channel = match d.toolchain {
+            Toolchain::Nightly => index
+                .rust
+                .toolchain
+                .get("nightly-pinned")
+                .map(|t| t.channel.clone()),
+            Toolchain::Stable | Toolchain::Esp => None,
+        };
+        if d.toolchain == Toolchain::Esp {
+            continue;
+        }
+        if let Some(n) = crate::builder::preflight::rust_need(d, Some(sdk_root)) {
+            let row = (channel, n);
+            if !out.contains(&row) {
+                out.push(row);
+            }
+        }
+    }
+    out
 }
 
 /// Resolve the board's `[board.cmake] toolchain_file` and write
@@ -1405,11 +1460,98 @@ pub fn activate_store_path(dirs: &[PathBuf]) {
     if let Some(cur) = std::env::var_os("PATH") {
         parts.extend(std::env::split_paths(&cur));
     }
+    set_process_path(parts);
+}
+
+/// The ONE place this process rewrites its own `PATH` — [`activate_store_path`]
+/// (prepend), [`expose_store_tools`] (append) and the launcher's cargo bin
+/// ([`crate::orchestration::rust_toolchain::expose_cargo_bin`]) all go through
+/// it, so the edition-2024 `unsafe` lives here once.
+pub(crate) fn set_process_path(parts: Vec<PathBuf>) {
     if let Ok(joined) = std::env::join_paths(parts) {
-        // SAFETY: a CLI invocation activating its own toolchain for the child
-        // processes it is about to spawn; set before any thread reads the env.
+        // SAFETY: a CLI invocation pointing the child processes it is about to
+        // spawn at its own toolchain; every caller runs before the command
+        // spawns a thread or a child, so nothing reads the environment
+        // concurrently.
         unsafe { std::env::set_var("PATH", joined) };
     }
+}
+
+/// phase-517 W10 — put the `bin/` dirs of the tools `nros setup <board>`
+/// provisioned for `descriptor`'s board at the END of this process's `PATH`,
+/// so a build's children find them by the bare names the board descriptors
+/// use (`CC_thumbv7m_none_eabi = "arm-none-eabi-gcc"`).
+///
+/// Nothing called [`activate_store_path`] any more, so on a machine whose only
+/// toolchain is the store — every user of an installed `nros` — the cargo road
+/// failed in `zpico-sys`'s build script with `failed to find tool
+/// "arm-none-eabi-gcc"` right after `nros setup mps2-an385-freertos` reported
+/// it installed (measured replaying `bare-metal.md`, `freertos.md` and
+/// `threadx.md` on the installed track; every contributor's `activate.sh`
+/// puts the store on PATH, which is why nothing noticed).
+///
+/// APPENDED, not prepended, and nothing is installed: a toolchain the user put
+/// on `PATH` keeps winning, and only what `nros setup` already placed in the
+/// store is exposed — the lazy install [`ensure_tools`] performs is a different
+/// decision this does not take on a build's behalf.
+pub fn expose_store_tools(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    sdk_root: Option<&Path>,
+) {
+    let dirs = store_tool_dirs(descriptor, sdk_root);
+    if dirs.is_empty() {
+        return;
+    }
+    let mut parts: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect())
+        .unwrap_or_default();
+    let before = parts.len();
+    for d in dirs {
+        if !parts.contains(&d) {
+            parts.push(d);
+        }
+    }
+    if parts.len() == before {
+        return;
+    }
+    set_process_path(parts);
+}
+
+/// The store `bin/` dirs of `descriptor`'s board's tools that EXIST — the
+/// plan `nros setup <its key>` would run, resolved without running it.
+fn store_tool_dirs(
+    descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
+    sdk_root: Option<&Path>,
+) -> Vec<PathBuf> {
+    let Some(index_path) = locate_index(sdk_root) else {
+        return Vec::new();
+    };
+    let Ok(index) = SdkIndex::load(&index_path) else {
+        return Vec::new();
+    };
+    let Some(key) = descriptor.setup_key(&|k| index.board.contains_key(k)) else {
+        return Vec::new();
+    };
+    let Ok(packages) = resolve_packages_with_rmw(&index, &key, None) else {
+        return Vec::new();
+    };
+    let root = store_root();
+    let host = host_key();
+    let Ok(plan) = SessionPlan::resolve(
+        &index,
+        &packages,
+        &PlanInputs {
+            root: &root,
+            host: &host,
+            prefix_override: None,
+            mode: Mode::Lazy,
+        },
+        &mut |_| PrereqState::Present,
+        &Default::default(),
+    ) else {
+        return Vec::new();
+    };
+    plan.bin_dirs().into_iter().filter(|b| b.is_dir()).collect()
 }
 
 /// Locate the SDK index for auto-setup: cwd, then the passed workspace, then

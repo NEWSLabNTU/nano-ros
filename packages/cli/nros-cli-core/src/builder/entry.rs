@@ -124,6 +124,9 @@ pub struct BoardFacts {
     /// WITH it — a crate-root `use` whose crate is not a dependency is a
     /// generated entry that does not compile.
     pub crate_root_deps: Vec<String>,
+    /// The panic policy the board's entry takes when the image states none —
+    /// [`crate::orchestration::board_descriptor::BoardEntry::panic`].
+    pub default_panic: Option<String>,
 }
 
 /// The board crate `nros::main!` will emit a reference to, if any.
@@ -199,6 +202,7 @@ impl BoardFacts {
                 .as_ref()
                 .map(|e| e.crate_root_deps.clone())
                 .unwrap_or_default(),
+            default_panic: d.entry.as_ref().and_then(|e| e.panic.clone()),
         }
     }
 }
@@ -654,6 +658,19 @@ pub fn render_manifest(
         ));
     }
 
+    // A `board-run` entry is `#![no_std]`, so nothing in it can unwind — and on
+    // a HOST triple (`threadx-linux`, issue 1759) the precompiled `core` is
+    // `panic = "unwind"`, which rustc refuses for a no_std binary ("unwinding
+    // panics are not supported without std"). A cross triple's target spec
+    // already defaults to abort, so stating it costs those nothing; leaving it
+    // out cost `nros new --image tx_linux --board threadx-linux` its first build
+    // (phase-517 W10, measured replaying threadx.md on the installed track).
+    if board.entry_kind == EntryKind::BoardRun {
+        out.push_str(
+            "\n[profile.dev]\npanic = \"abort\"\n\n[profile.release]\npanic = \"abort\"\n",
+        );
+    }
+
     // ---- the west application's manifest half (phase-470 W5.a) -------------
     //
     // Everything below is here because the Zephyr road has no `--config` seam:
@@ -722,7 +739,7 @@ pub fn render_source(spec: &EntrySpec, board: &BoardFacts) -> String {
     }
 
     out.push_str("nros::main!(\n");
-    if let Some(p) = &spec.panic {
+    if let Some(p) = spec.panic.as_ref().or(board.default_panic.as_ref()) {
         out.push_str(&format!("    panic = \"{p}\",\n"));
     }
     if let Some(f) = &spec.before_boot {
@@ -866,6 +883,7 @@ mod tests {
             platform_feature: "platform-posix".to_string(),
             crate_root_extra: String::new(),
             crate_root_deps: Vec::new(),
+            default_panic: None,
         }
     }
 
@@ -878,6 +896,7 @@ mod tests {
             platform_feature: "platform-freertos".to_string(),
             crate_root_extra: "use panic_semihosting as _;".to_string(),
             crate_root_deps: vec!["panic-semihosting = \"0.6\"".to_string()],
+            default_panic: None,
         }
     }
 
@@ -904,7 +923,9 @@ mod tests {
         );
         let m = render_manifest(&spec(), &freertos(), Path::new(DIR)).expect("renders");
         assert!(
-            !m.contains("census") && !m.contains("profile"),
+            // `"profile"` the FEATURE — a board-run entry's `[profile.*]`
+            // tables (panic = "abort") are not the profiler.
+            !m.contains("census") && !m.contains("\"profile\""),
             "an RTOS entry never links the recorder or the profiler (phase-463 W7): {m}"
         );
     }
@@ -1063,6 +1084,36 @@ mod tests {
         s.before_boot = Some("talker_pkg::open_can".to_string());
         assert!(render_source(&s, &freertos()).contains("before_boot = talker_pkg::open_can,"));
         assert!(!render_source(&spec(), &freertos()).contains("before_boot"));
+    }
+
+    /// phase-517 W10 — a no_std board-run entry aborts on panic in both
+    /// profiles (a host-triple `core` would otherwise demand unwinding); a
+    /// hosted main keeps std's default.
+    #[test]
+    fn a_board_run_entry_aborts_on_panic() {
+        let m = render_manifest(&spec(), &freertos(), Path::new(DIR)).expect("renders");
+        assert!(
+            m.contains("[profile.dev]\npanic = \"abort\"")
+                && m.contains("[profile.release]\npanic = \"abort\""),
+            "{m}"
+        );
+        let h = render_manifest(&spec(), &hosted(), Path::new(DIR)).expect("renders");
+        assert!(!h.contains("panic = \"abort\""), "{h}");
+    }
+
+    /// phase-517 W10 — a board whose crate root links the panic handler
+    /// states the policy that goes with it; an image that states nothing gets
+    /// it, and an image that states one keeps its own.
+    #[test]
+    fn the_board_panic_policy_applies_when_the_image_states_none() {
+        let mut board = freertos();
+        board.default_panic = Some("own".to_string());
+        assert!(render_source(&spec(), &board).contains("panic = \"own\""));
+        let mut s = spec();
+        s.panic = Some("halt".to_string());
+        let src = render_source(&s, &board);
+        assert!(src.contains("panic = \"halt\""), "{src}");
+        assert!(!src.contains("panic = \"own\""), "{src}");
     }
 
     #[test]

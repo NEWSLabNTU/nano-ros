@@ -308,6 +308,12 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 # between "the bytes arrived" and "a compiler in here runs" a MEASURED one.
 version = "0.16.8"
 upstream = "v0.16.8" # sdk-ng release tag (SSOT for the URLs below)
+# phase-517 W10 — the SDK's own `setup.sh` (`post_install` below) refuses to
+# run without `wget` ([prereq.wget] says why). Declared HERE so the plan asks
+# for it before the 1.4 GiB fetch rather than after: replaying
+# `integration-zephyr.md` on the installed track fetched for 17 minutes and then
+# failed the post-install step with exit 91.
+system = ["wget"]
 # The tarball's own top-level directory. `{version}` keeps it tied to the pin —
 # the alternative is a literal that has to be edited in lockstep with the line
 # above, which is the drift `scripts/lib/zephyr-sdk.sh` was carrying by hand.

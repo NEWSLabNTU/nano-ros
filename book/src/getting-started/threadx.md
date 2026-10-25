@@ -40,11 +40,17 @@ source otherwise. `--dry-run` prints the plan for your host. See
 [Installation](installation.md#provision-your-toolchain-with-nros-setup) for the full explanation.
 
 With the `nros` CLI on PATH ([Installation](./installation.md) —
-`install.sh` puts it in `~/.nros/bin`), provision the ThreadX flavour you need (+ the RMW):
+`install.sh` puts it in `~/.nros/bin`), provision the ThreadX flavour you
+need (+ the RMW; `--rmw` defaults to zenoh). The POSIX-sim flavour:
 
-```bash
-nros setup threadx-linux --rmw zenoh          # POSIX-sim flavour; --rmw defaults to zenoh
-nros setup rv-virt-threadx --rmw zenoh   # only if you need the RISC-V64 QEMU flow
+```bash probe=30 variant=linux
+nros setup threadx-linux --rmw zenoh
+```
+
+and, if you need the RISC-V64 QEMU flow:
+
+```bash probe=30 variant=riscv64
+nros setup rv-virt-threadx --rmw zenoh
 ```
 
 The RMW host daemon must be **running** before any example: for zenoh the
@@ -53,14 +59,13 @@ Micro-XRCE-DDS agent (installed by `nros setup … --rmw xrce`).
 
 ## Project layout
 
-**C / C++** is a single package — `nros new` scaffolds it. The scaffold
-writes `board = "threadx"`, which names both flavours, so set the one you
-mean:
+**C / C++** is a single package — `nros new` scaffolds it. `threadx`
+names two boards, so `nros new` asks which one (`--board`) and refuses
+without it:
 
 ```bash
-nros new tx_talker --platform threadx --lang c      # or --lang cpp
+nros new tx_talker --platform threadx --lang c --board threadx-linux   # or rv-virt-threadx; --lang cpp
 cd tx_talker
-# then in system.toml: board = "threadx-linux"   (or "rv-virt-threadx")
 ```
 
 ```text
@@ -75,7 +80,7 @@ tx_talker/
 starts as a workspace (single-package Rust scaffolding is not offered
 for ThreadX — `nros new` says so and names the alternative):
 
-```bash
+```bash probe=40
 nros new tx_ws --workspace --lang rust --rmw zenoh
 cd tx_ws
 nros new --image tx_linux --board threadx-linux       # hosted flavour
@@ -190,20 +195,26 @@ Slirp's default `10.0.2.2` gateway just like the FreeRTOS QEMU flow.
 
 ## Build
 
-C / C++, in the scaffolded package (no `nros sync` — its message
-bindings are a CMake-time output):
+C / C++, in the scaffolded package (`tx_talker/`, where `nros new` left
+you; no `nros sync` — its message bindings are a CMake-time output):
 
 ```bash
-cd tx_talker
 nros build
 ```
 
-Rust, in the workspace — `nros sync` first, then the image:
+Rust, in the workspace (`tx_ws/`) — `nros sync` first, then the image.
+The hosted flavour:
 
-```bash
-cd tx_ws
+```bash probe=50 variant=linux
 nros sync
-nros build tx_linux          # or: nros build tx_riscv
+nros build tx_linux
+```
+
+or the QEMU flavour:
+
+```bash probe=50 variant=riscv64
+nros sync
+nros build tx_riscv
 ```
 
 First setup builds ThreadX + NetX Duo (~3 min). Subsequent builds finish
@@ -228,54 +239,91 @@ that runs it: the binary itself for `threadx-linux`, and for
 
 ## Run on the Linux simulator
 
-`threadx-linux` is an ordinary host process — no QEMU:
+`threadx-linux` is an ordinary host process — no QEMU. First the router
+(ROS's `rmw_zenohd`), on the port your image's `locator` names — 7447 when
+it names none, as a scaffolded image; 9000 in the example above:
 
-```bash
-# 1. The router (ROS's `rmw_zenohd`) on the port your image's `locator`
-#    names (9000 in the example above):
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:9000"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd &
-
-# 2. The talker. Rust workspace image:
-cd tx_ws
-./build/threadx-linux-zenoh/tx_linux_entry/target/debug/tx_linux_entry
-#    …or the C / C++ package (board = "threadx-linux"):
-#    cd tx_talker && ./build/threadx/cmake/tx_talker
-# Expected:
-#   Publishing: 'Hello World: 1'
-#   Publishing: 'Hello World: 2'
-#   ...
+```bash probe=60 probe-run=60 probe-keep variant=linux
+source /opt/ros/humble/setup.bash
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
+
+```text probe-expect=60 variant=linux
+Started Zenoh router with id
+```
+
+Then the image, from the workspace (`tx_ws/`). It runs the scaffold's talker
+and listener together, so it prints both sides of `/chatter` (a
+`std_msgs/Int32` counter from 0):
+
+```bash probe=70 probe-run=120 variant=linux
+./build/threadx-linux-zenoh/tx_linux_entry/target/debug/tx_linux_entry
+```
+
+```text probe-expect=70 variant=linux
+Publishing: 0
+I heard: 0
+...
+```
+
+The C / C++ package's image is `./build/threadx/cmake/tx_talker`, run from
+`tx_talker/` (board `threadx-linux`). The scaffolded C talker publishes once
+and returns: `tx_talker: published 0 on /chatter`.
 
 ## Run on QEMU (RISC-V 64)
 
 `rv-virt-threadx` boots on QEMU's RISC-V `virt` machine, UART on stdio,
-virtio-net on Slirp:
+virtio-net on Slirp. Three terminals: the router, the board, and a stock
+ROS 2 peer.
 
-```bash
-# 1. The router on the image's port (9400 in the example above; the
-#    guest dials 10.0.2.2:<p> through QEMU Slirp):
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:9400"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd &
+**1. The router**, on the image's port (7447 for a scaffolded image; 9400 in
+the example above). The guest dials `10.0.2.2:<p>` through QEMU Slirp, so it
+listens on `0.0.0.0`:
 
-# 2. Boot the built image with the store's qemu-system-riscv64
-#    (`nros setup rv-virt-threadx` installed it):
-cd tx_ws
+```bash probe=60 probe-run=60 probe-keep variant=riscv64
+source /opt/ros/humble/setup.bash
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd
+```
+
+```text probe-expect=60 variant=riscv64
+Started Zenoh router with id
+```
+
+**2. The board** — boot the built image with the store's
+`qemu-system-riscv64` (`nros setup rv-virt-threadx` installed it), from the
+workspace (`tx_ws/`):
+
+```bash probe=70 probe-run=150 probe-keep variant=riscv64
 "$(nros sdk-path qemu)/bin/qemu-system-riscv64" -M virt -m 256M -bios none -nographic \
     -global virtio-mmio.force-legacy=false \
     -netdev user,id=net0 \
     -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0 \
     -kernel build/threadx-riscv64-zenoh/tx_riscv_entry/target/riscv64gc-unknown-none-elf/debug/tx_riscv_entry
-#    …or the C / C++ package (board = "rv-virt-threadx"):
-#    -kernel build/threadx/cmake/tx_talker
+```
 
-# 3. Verify from stock ROS 2 (either flavour):
+```text probe-expect=70 variant=riscv64
+Publishing: 0
+I heard: 0
+...
+```
+
+The C / C++ package's image (board `rv-virt-threadx`) boots with the same
+flags and `-kernel build/threadx/cmake/tx_talker`.
+
+**3. A stock ROS 2 peer** (either flavour). The talker publishes
+best-effort; stock `ros2 topic echo` defaults to RELIABLE, so the
+QoS-mismatched echo silently delivers nothing. Force best-effort to receive:
+
+```bash probe=80 probe-run=90 variant=riscv64
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-# Talker publishes best-effort; stock `ros2 topic echo` defaults to
-# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
-# Force best-effort to receive:
-ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
+```
+
+```text probe-expect=80 variant=riscv64
+data:
 ```
 
 QEMU exits via Ctrl-A x.
@@ -283,8 +331,9 @@ QEMU exits via Ctrl-A x.
 > **Contributors:** the in-tree fixture run/test lanes are in
 > [Per-Platform Contributor Lanes](../internals/platform-lanes.md#threadx).
 
-**Readiness signal.** threadx-linux: `Publishing: 'Hello World: 1'`
-within a few seconds of starting the binary **on a warm
+**Readiness signal.** threadx-linux: `Publishing: 0` (the
+[GitHub examples](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux)
+print `Publishing: 'Hello World: 1'`) within a few seconds of starting the binary **on a warm
 cache**; a cold first `nros build` compiles the Rust image (~80 s)
 before the first publish lands. threadx-riscv64
 (QEMU): within ~15 seconds of QEMU boot. If no `Publishing:` line:

@@ -41,6 +41,13 @@
 #                    rustup, cargo registry and two target dirs in named docker
 #                    volumes `nros-probe-release-*`; 0 builds cold, as a
 #                    release runner does
+#   PROBE_ASSET_OUT=<dir>  installed track: build the asset, copy it (+ its
+#                    .sha256) to <dir>, and stop — what the weekly platform
+#                    lane does once before fanning out with PROBE_ASSET
+#   PROBE_PLATFORM   installed track: which chapter is replayed after the
+#                    install — linux (default, first-project.md) | baremetal |
+#                    freertos | threadx-linux | threadx-riscv64 | nuttx-arm | nuttx-riscv |
+#                    zephyr (phase-517 W10; see the case table below)
 #   PROBE_EXTRACT_ONLY=<path>  extract the probe script to <path> and exit
 #                    (drift check — no docker, no execution)
 #
@@ -130,10 +137,35 @@ BOOK_TRACK=checkout
 # `release-nros.yml` stages and `install.sh` derives from the host key.
 RELEASE_MOUNT=/probe-release
 ASSET_NAME=nros-linux-x86_64.tar.zst
+# phase-517 W10 — the installed track replays ONE chapter per platform. The
+# default (`linux`) is first-project.md; every other value names a QEMU
+# chapter, replayed after the same install, against the same no-checkout
+# assertions, with the chapter's own `nros setup <board>` step provisioning.
+# `variant` selects the run of a chapter that documents several (NuttX's Arm
+# and RISC-V boots; ThreadX's two flavours) — extract-book-steps.py --variant.
+# Each chapter ends in a `probe-run` step whose `probe-expect` block is the
+# output the chapter documents; extract-book-steps.py refuses a run without one.
+PROBE_PLATFORM="${PROBE_PLATFORM:-linux}"
+PROBE_VARIANT=""
+case "$PROBE_PLATFORM" in
+    linux)           PLATFORM_CHAPTER=book/src/getting-started/first-project.md ;;
+    baremetal)       PLATFORM_CHAPTER=book/src/getting-started/bare-metal.md ;;
+    freertos)        PLATFORM_CHAPTER=book/src/getting-started/freertos.md ;;
+    threadx-linux)   PLATFORM_CHAPTER=book/src/getting-started/threadx.md; PROBE_VARIANT=linux ;;
+    threadx-riscv64) PLATFORM_CHAPTER=book/src/getting-started/threadx.md; PROBE_VARIANT=riscv64 ;;
+    nuttx-arm)       PLATFORM_CHAPTER=book/src/getting-started/integration-nuttx.md; PROBE_VARIANT=arm ;;
+    nuttx-riscv)     PLATFORM_CHAPTER=book/src/getting-started/integration-nuttx.md; PROBE_VARIANT=riscv ;;
+    zephyr)          PLATFORM_CHAPTER=book/src/getting-started/integration-zephyr.md; PROBE_VARIANT=native-sim ;;
+    *) echo "probe: unknown PROBE_PLATFORM '$PROBE_PLATFORM' (want linux|baremetal|freertos|threadx-linux|threadx-riscv64|nuttx-arm|nuttx-riscv|zephyr)" >&2; exit 2 ;;
+esac
+if [[ "$PROBE_PLATFORM" != linux && "$PROBE_TRACK" != installed ]]; then
+    echo "probe: PROBE_PLATFORM=$PROBE_PLATFORM is an installed-track chapter (user chapters have no checkout track — phase-517 W2)" >&2
+    exit 2
+fi
 if [[ "$PROBE_TRACK" = "installed" ]]; then
     CHAPTERS=(
         book/src/getting-started/installation.md
-        book/src/getting-started/first-project.md
+        "$PLATFORM_CHAPTER"
     )
     PROBE_RMW="cyclonedds"
     VERIFIER="verify-installed-first-project.sh"
@@ -148,6 +180,19 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
     # step, not at the end — see the header of check-installed-sdk-root.sh
     # for the measurement that moved it. Assembled below, once $workdir exists.
     INSTALLED_CHECK=1
+    SETUP_SUBST="nros setup linux --rmw $PROBE_RMW"
+    if [[ "$PROBE_PLATFORM" != linux ]]; then
+        # A platform chapter provisions its own board in its own setup step,
+        # which the probe runs as written; installation.md's generic
+        # `nros setup <board>` line is the one step that chapter replaces.
+        SETUP_SUBST=": the $PROBE_PLATFORM chapter provisions its own board, in its own setup step"
+        VERIFIER="verify-installed-platform.sh"
+        # The QEMU chapters dial ROS's `rmw_zenohd` (RFC-0075: nano-ros ships
+        # no router), so the reader they describe has a ROS 2 install. The
+        # user container is that host: the release's own base plus ROS — the
+        # same jammy, so the asset's ABI floor still holds.
+        default_platform_image="ros:humble"
+    fi
 elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
     # first-node-rust.md is IN this track: its zenoh-default `nros sync &&
     # cargo build` is exactly what a reader on the interop path runs, and it
@@ -174,15 +219,13 @@ fi
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
-# The installed track's post-install check, with scripts/lib/grep-q.sh in front
-# of it. The container has no checkout to source a library from — that is the
-# point of the track — so the helper travels inside the script, and every check
-# after it (the final verifier too, same shell) greps through `nros_grep_q`.
+# The installed track's post-install check. scripts/lib/grep-q.sh and
+# deadline.sh travel at the head of the script (`--prelude` below): the
+# container has no checkout to source a library from — that is the point of the
+# track — so every check (the final verifier too, same shell) greps through
+# `nros_grep_q` and bounds through `NROS_DEADLINE`.
 if [[ "${INSTALLED_CHECK:-0}" = 1 ]]; then
-    cat "$REPO_ROOT/scripts/lib/grep-q.sh" "$REPO_ROOT/scripts/lib/deadline.sh" \
-        "$SCRIPT_DIR/check-installed-sdk-root.sh" \
-        >"$workdir/check-installed-sdk-root.sh"
-    C_CD_SUBST=(--after-step "20=$workdir/check-installed-sdk-root.sh")
+    C_CD_SUBST=(--after-step "20=$SCRIPT_DIR/check-installed-sdk-root.sh")
 fi
 
 python3 "$SCRIPT_DIR/extract-book-steps.py" \
@@ -190,7 +233,11 @@ python3 "$SCRIPT_DIR/extract-book-steps.py" \
     --distro "$PROBE_DISTRO" \
     --track "$BOOK_TRACK" \
     "${CLONE_SUBST[@]}" \
-    --subst "nros setup <board> --rmw <zenoh|xrce|cyclonedds>:::nros setup linux --rmw $PROBE_RMW" \
+    --subst "nros setup <board> --rmw <zenoh|xrce|cyclonedds>:::${SETUP_SUBST:-nros setup linux --rmw $PROBE_RMW}" \
+    --prelude "$REPO_ROOT/scripts/lib/grep-q.sh" \
+    --prelude "$REPO_ROOT/scripts/lib/deadline.sh" \
+    --prelude "$SCRIPT_DIR/probe-run.sh" \
+    ${PROBE_VARIANT:+--variant "$PROBE_VARIANT"} \
     ${C_CD_SUBST[@]+"${C_CD_SUBST[@]}"} \
     "${CHAPTERS[@]/#/$REPO_ROOT/}"
 
@@ -216,7 +263,7 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         --step "Stage the prefix" \
         --expr "inputs.version=${PROBE_RELEASE_VERSION:-0.0.0-probe}"
     RELEASE_BUILDER_IMAGE="$(cat "$workdir/runner-image")"
-    PROBE_IMAGE="${PROBE_IMAGE:-$RELEASE_BUILDER_IMAGE}"
+    PROBE_IMAGE="${PROBE_IMAGE:-${default_platform_image:-$RELEASE_BUILDER_IMAGE}}"
 fi
 
 # (The C-chapter cd subst is declared with its track above; it resolves the
@@ -225,6 +272,10 @@ fi
 
 # Probe-owned runtime verification (the book's Run sections are interactive).
 cat "$SCRIPT_DIR/$VERIFIER" >>"$workdir/probe.sh"
+# Parse the assembled script before any container starts: a substitution or a
+# book block that unbalances a quote otherwise surfaces as a syntax error after
+# the install, tens of minutes in (measured — an apostrophe in a substitution).
+bash -n "$workdir/probe.sh"
 
 if [[ -n "${PROBE_EXTRACT_ONLY:-}" ]]; then
     cp "$workdir/probe.sh" "$PROBE_EXTRACT_ONLY"
@@ -235,7 +286,7 @@ fi
 rm_flag=(--rm)
 [[ "${PROBE_KEEP:-0}" = 1 ]] && rm_flag=()
 
-echo "probe: track=$PROBE_TRACK image=$PROBE_IMAGE distro=$PROBE_DISTRO shell=$PROBE_SHELL branch=$PROBE_BRANCH url=$PROBE_CLONE_URL"
+echo "probe: track=$PROBE_TRACK platform=$PROBE_PLATFORM image=$PROBE_IMAGE distro=$PROBE_DISTRO shell=$PROBE_SHELL branch=$PROBE_BRANCH url=$PROBE_CLONE_URL"
 
 # Two host-configuration shims, not book prerequisites: `sudo` (the book's
 # prereq block uses it; real user machines have it, the root container doesn't)
@@ -273,6 +324,13 @@ if [[ "$PROBE_SHELL" != "bash" ]]; then
     shell_pkg="$PROBE_SHELL"
 fi
 install_shim="${install_shim/SHELLPKG/$shell_pkg}"
+# A QEMU platform chapter's reader has a ROS 2 install with `rmw_zenoh_cpp` —
+# the router those chapters start is ROS's `rmw_zenohd` (RFC-0075), and the
+# chapters say so as a prerequisite rather than as a step. The ros:humble image
+# is that install minus the one package; adding it is host shape, like tzdata.
+if [[ "$PROBE_TRACK" = installed && "${PROBE_PLATFORM:-linux}" != linux ]]; then
+    install_shim="$install_shim && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ros-humble-rmw-zenoh-cpp >/dev/null"
+fi
 
 # The repository's GIT DIR, not its worktree. In a linked worktree (every agent
 # session here) `$REPO_ROOT/.git` is a FILE naming a host path the container
@@ -323,6 +381,15 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
             "$RELEASE_BUILDER_IMAGE" \
             bash /probe/build-release-asset.sh
     fi
+    # PROBE_ASSET_OUT=<dir>: stop after the asset — the weekly platform lane
+    # builds it ONCE and hands it to one job per chapter (PROBE_ASSET), rather
+    # than paying the release build per platform.
+    if [[ -n "${PROBE_ASSET_OUT:-}" ]]; then
+        mkdir -p "$PROBE_ASSET_OUT"
+        cp "$workdir/release/$ASSET_NAME" "$workdir/release/$ASSET_NAME.sha256" "$PROBE_ASSET_OUT/"
+        echo "probe: asset -> $PROBE_ASSET_OUT (PROBE_ASSET_OUT set; no user container run)"
+        exit 0
+    fi
     # The installer a user curls — the branch's own, so the asset and the
     # script that unpacks it come from one commit.
     git -C "$REPO_ROOT" show "$under_test:scripts/install.sh" >"$workdir/release/install.sh"
@@ -339,11 +406,17 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
     # No repo mount, no git dir, no PROBE_BRANCH: the user container sees the
     # asset directory and the probe script, and verify-installed-first-project.sh
     # asserts that nothing else resembling a nano-ros root reached it.
+    # `--entrypoint ''`: the ros:humble image's entrypoint sources ROS into
+    # EVERY command, which would make the whole chapter — setup and build too —
+    # run in a ROS-sourced shell. The chapters source ROS in the steps that use
+    # it (the router), so the probe does exactly that and no more.
     docker run "${rm_flag[@]}" \
         --name "nros-bootstrap-probe-$$" \
+        --entrypoint '' \
         -v "$workdir/probe.sh:/probe.sh:ro" \
         -v "$workdir/release:$RELEASE_MOUNT:ro" \
         -e PROBE_SHELL="$PROBE_SHELL" \
+        -e PROBE_PLATFORM="$PROBE_PLATFORM" \
         -e NROS_INDEX_URL="file://$RELEASE_MOUNT/nros-sdk-index.toml" \
         -w /root \
         "$PROBE_IMAGE" \

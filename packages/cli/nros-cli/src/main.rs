@@ -62,6 +62,11 @@ fn main() -> Result<()> {
         eyre::bail!(e);
     }
     nros_cli_core::orchestration::dispatch::redispatch()?;
+    // phase-517 W10 — `nros setup` installs rustup into `~/.cargo` without
+    // touching the user's PATH, so every `cargo` this process (or a `cmake` it
+    // drives) spawns must find it there. One place, for every spawn site;
+    // before clap and before any command spawns a thread.
+    nros_cli_core::orchestration::rust_toolchain::expose_cargo_bin();
     let cli = Cli::parse();
     if cli.codegen_version {
         println!("{}", nros_cli_core::abi_guard::EMITTED_VERSION);

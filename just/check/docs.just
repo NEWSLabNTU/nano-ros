@@ -119,6 +119,16 @@ book-board-names:
 book-board-run-sections:
     @python3 scripts/check-book-board-run-sections.py
 
+# phase-517 W10 — every book probe track still EXTRACTS. `just probe <platform>`
+# replays a QEMU chapter in a container weekly (probe-platforms.yml); per push,
+# this asserts the cheap half: each track's tags still assemble (a `probe-run`
+# step keeps its `probe-expect` output block, a `variant=` selects something,
+# the harness substitution matches once) and the script parses. Tracks are read
+# from run-bootstrap-probe.sh's PROBE_PLATFORM table. Buildless, ~0.5 s.
+[private]
+book-probe-tracks:
+    @python3 scripts/check-book-probe-tracks.py
+
 # phase-517 W2 — a user chapter never assumes a nano-ros checkout. Users
 # install the CLI (`install.sh`); no code block in getting-started/,
 # start-here/, user-guide/, platform-guides/ or porting/ may clone this

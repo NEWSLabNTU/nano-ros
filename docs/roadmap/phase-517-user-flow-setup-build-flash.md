@@ -1,6 +1,6 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-25). Open; W5 in review (PR #2644); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate) — each work item records what landed.** Opened from a gap audit of the
+**Status (2026-10-26). Open; W5 in review (PR #2644); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, with NuttX red on issue 2064 — each work item records what landed.** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
@@ -215,6 +215,9 @@ checkout fallback — the chapter says what is missing instead):
   --platform linux --lang {rust,c,cpp}`) build with the in-tree CLI; the
   FreeRTOS / ThreadX / NuttX / bare-metal / Zephyr flows were checked to
   scaffold and to plan (`nros build <image> --dry-run`), not built or booted.
+  → **Replayed (W10, 2026-10-26):** bare-metal, FreeRTOS, ThreadX (both
+  flavours) and Zephyr native_sim run green on the installed track; NuttX
+  builds its kernel and stops at issue 2064.
 * **`integrations/` reaches users only from the next release.** `0.6.0-nros4`
   predates the staging change, so `$(nros sdk-root)/integrations/…`
   (`integration-px4.md`, `px4.md`, `integration-nuttx.md`) is empty there; the
@@ -247,9 +250,16 @@ checkout fallback — the chapter says what is missing instead):
   path, and `nros sdk-path --source` refuses them. What `nros setup
   qemu-armv7a-nuttx` / `nros setup --source px4-rs` do with no checkout is
   unmeasured. `px4.md` now has the reader clone PX4 themselves.
+  → **Measured (W10):** with no checkout, `nros setup qemu-armv7a-nuttx` /
+  `rv-virt-nuttx` provision `nuttx-kernel`, `nuttx-apps` and `nuttx-libc` into
+  the installed SDK root's own `third-party/nuttx/` (`[provisioned]`), and the
+  kernel then builds there. `px4-rs` / `cyclonedds-src` / `tonbandgeraet` stay
+  unmeasured (no W10 chapter reaches them).
 * **QEMU is not on PATH.** `nros setup` provisions `qemu-system-*` into the
   store but `~/.nros/bin` does not front it; the chapters run
-  `"$(nros sdk-path qemu)/bin/qemu-system-arm"`.
+  `"$(nros sdk-path qemu)/bin/qemu-system-arm"`. → Measured working (W10): the
+  bare-metal, FreeRTOS and ThreadX riscv64 tracks boot through exactly that
+  line.
 * **`nros board list` needs a checkout.** `find_workspace_root` walks up for
   `packages/boards/` and never asks the SDK-root ladder, so outside a checkout
   it fails unless given `--workspace "$(nros sdk-root)"`. The book no longer
@@ -689,6 +699,16 @@ CLI is the side to fix):
   FVP, SITL and flash line is unverified until W10's per-chapter probes run
   it (the FreeRTOS C build stopped at configure on this host for want of the
   FreeRTOS kernel source, not on a chapter step).
+  → **Settled by W10's runs (2026-10-26):** the QEMU lines of
+  `bare-metal.md`, `freertos.md` (Rust workspace image) and `threadx.md`
+  (riscv64), `threadx.md`'s Linux simulator line and `integration-zephyr.md`'s
+  native_sim quick start, boot on the installed
+  track and print the output their chapters now show, and the chapters'
+  `ros2 topic echo` lines deliver. The `-icount shift=auto -nic
+  user,model=lan9118` line is measured on both MPS2-AN385 chapters. The NuttX
+  QEMU lines are not reached (the build stops at issue 2064), so they — with
+  the FVP, SITL, flash, and the C/C++ "same flags, its own ELF" alternatives the
+  tracks do not take — stay unverified.
 * ARM FVP: the spec asked for "license-gated; say so". It is not
   licence-gated (index `[tool.arm-fvp]`, measured 2026-09-06); the chapter
   says so instead.
@@ -713,6 +733,110 @@ reading.
 
 **Done when** each platform chapter has a probe track, the weekly lane runs
 them, and a planted wrong command in one chapter fails its track.
+
+**Status (2026-10-26) — harness, recipes, weekly lane and gate landed; six of
+eight tracks GREEN — Linux, bare-metal, FreeRTOS, ThreadX (both flavours) and
+Zephyr native_sim — and both NuttX tracks red on issue 2064.** Every number
+below is a run of the track on the installed asset this branch builds, in a
+clean `ros:humble` container (the chapters' router is ROS's `rmw_zenohd`);
+the last sweep ran all eight in parallel.
+
+*Harness — one, with a platform parameter.* `PROBE_TRACK=installed
+PROBE_PLATFORM=<p>` (`scripts/probe/run-bootstrap-probe.sh`) installs the
+release asset exactly as the Linux track does, keeps its no-checkout assertions
+(`check-installed-sdk-root.sh` after the install,
+`verify-installed-platform.sh` at the end), and replays `installation.md` plus
+the platform's chapter; a chapter that documents several runs selects one with
+`variant=` (NuttX `arm`/`riscv`, ThreadX `linux`/`riscv64`). The book states
+the assertion: a Run step is `probe=NN probe-run=SECS` (plus `probe-keep` for
+the router a later step needs) and the chapter's output block beside it is
+`probe-expect=NN`, so the track passes only if the command prints what the
+chapter says it prints (`scripts/probe/probe-run.sh`, which runs the step in its
+own session and kills it as a group). `extract-book-steps.py` refuses a run
+step with no output block, an output block with no step, and a `--variant` that
+selects nothing, and the harness parses the assembled script (`bash -n`) before
+any container starts. `PROBE_ASSET_OUT=<dir>` builds the asset once for several
+tracks.
+
+*Recipes and lane.* `just probe {baremetal,freertos,threadx-linux,
+threadx-riscv64,nuttx-arm,nuttx-riscv,zephyr}` (one `just probe platform
+<name>` underneath; `just probe platform-asset`), opt-in, in no tier.
+`.github/workflows/probe-platforms.yml`: Mondays 09:00 UTC + dispatch, hosted
+`ubuntu-latest` only, the asset built once and one job per chapter
+(`fail-fast: false`), in no merge-gating lane. Per push, gate
+`check-book-probe-tracks` (fast line, ~0.5 s) extracts every track from the
+harness's own platform table, so a broken tag fails at review instead of a week
+later; its self-test is a run step stripped of its output block.
+
+*Measured (installed track):*
+
+| Track | Result | What the run asserted |
+|---|---|---|
+| `linux` (first-project.md) | GREEN, 291 s | unchanged by the harness rework |
+| `baremetal` | GREEN, 291 s | router up; QEMU prints `Publishing: 'Hello World: 1'`/`2`; `ros2 topic echo` prints `data: 'Hello World: 5'` |
+| `freertos` | GREEN, 313 s | Rust workspace image: `[INFO] Publishing: 0` / `[INFO] I heard: 0` …; `ros2 topic echo … Int32` delivers |
+| `threadx-linux` | GREEN, 123 s solo | `Publishing: 0` / `I heard: 0` from the host process. Red ONCE in the 8-way sweep: `zpico Session -> ConnectionFailed` 0.13 s after the router printed its start line, and this image opens its session once rather than retrying as the QEMU boards do; green solo before and after |
+| `threadx-riscv64` | GREEN, 314 s | QEMU riscv64 prints both sides; `ros2 topic echo` delivers |
+| `nuttx-arm`, `nuttx-riscv` | RED | kernel builds; `nros-c` then fails its opaque-size guard because the sizes probe returns 0 on an installed SDK — issue 2064 |
+| `zephyr` (native_sim) | GREEN, 599 s | Zephyr SDK (1.4 GiB) + a 3.7 west workspace + `west build` of `nros new --platform zephyr --lang c`; `zephyr.exe` prints `Published: 0`/`1`/`2` against the router |
+
+*A planted wrong command fails its track.* `bare-metal.md`'s QEMU line with
+`-kernel …/release/bm_talker` (the debug ELF is what `nros build` writes):
+`PROBE FAIL: step 70 exited before printing its documented output; missing:
+Publishing: 'Hello World: 1' Publishing: 'Hello World: 2'`, rc 1, after
+`qemu-system-arm: Could not load kernel …`.
+
+*Chapter fixes the runs forced.* Every chapter told the reader to `cd` into the
+package twice (the scaffold step already had). FreeRTOS/ThreadX documented the
+in-tree example's output (`Publishing: 'Hello World: 1'`, `std_msgs/String`) for
+a scaffold that prints `Publishing: 0`/`I heard: 0` over `std_msgs/Int32`, so
+the chapters' `ros2 topic echo … String` received nothing. FreeRTOS still said
+the scaffold writes `board = "freertos"` and must be edited (it writes
+`mps2-an385-freertos` since W3). ThreadX's `nros new … --platform threadx`
+REFUSES without `--board` (two boards). NuttX had no `nros new` step at all,
+claimed "no ROS 2 install" (the zenoh router is ROS's) and a NuttX checkout for
+the `nros build` road (only the `make` road needs one), and needs
+`python3-venv` + `unzip` on the host (kconfiglib venv; NuttX's own build
+unzips `dtc`/`libmetal`). Zephyr gained a linear "Quick start: native_sim from
+nothing" — host tools (incl. `wget`, which the SDK's own `setup.sh` requires),
+`nros setup zephyr`, a west workspace with the same module allowlist nano-ros
+uses, `nros new --platform zephyr --lang c`, `west build`, run.
+
+*CLI / build fixes the runs forced* (each a dead end for every installed user,
+invisible from a checkout because `activate.sh` and the root
+`.cargo/config.toml` supplied what was missing):
+`nros` puts `~/.cargo/bin` on its own PATH when PATH has no `cargo` (setup
+installs rustup there; the cargo road died `No such file or directory`);
+`nros setup <board>` installs the board's Rust target, `rust-src`, and the
+pinned nightly a build-std board builds with (preflight asked for
+`thumbv7m-none-eabi`, Corrosion for `nightly-2026-04-11`), and preflight now
+asks `rust-src` of that nightly; `nros build` appends the board's store tool
+`bin/` dirs to the build's PATH (cc-rs found no `arm-none-eabi-gcc`); the
+generated entry of a `board-run` board aborts on panic (threadx-linux: "unwinding
+panics are not supported without std") and the mps2 boards' descriptors state
+`[board.entry] panic = "own"` (the FreeRTOS workspace image linked two
+`panic_impl`s, E0152); the rv-virt ThreadX descriptor names
+`riscv-none-elf-gcc` for cc-rs (it derived `riscv64-unknown-elf-gcc`); the
+rv-virt NuttX provision script gets the board's `NUTTX_CROSS`; the NuttX FFI
+cargo command carries the `nros-minsizerel` profile definition; `[tool.zephyr-sdk]`
+declares `system = ["wget"]` so setup asks before the 1.4 GiB fetch.
+
+`integration-zephyr.md` also needed the `native_sim` NSOS overlay on its
+`west build` line (`-DEXTRA_CONF_FILE="$(nros sdk-root)/cmake/zephyr/native-sim-line-3.7.conf"`):
+without it the image tried a TAP interface (`eth_posix: Cannot create zeth`)
+and SEGFAULTED at boot; and the Zephyr module's cargo build now resolves
+`cargo` like every other cargo invocation there (`nros_rust_tool`) — the
+reader's own `west build` ran in a shell with no `~/.cargo/bin` and died
+`FileNotFoundError: … 'cargo'`.
+
+**Left:** NuttX, both boards (issue 2064 — the kernel builds, then `nros-c`'s
+opaque-size guard refuses a sizes probe that returned 0 on an installed SDK).
+`threadx-linux`'s one-shot session open is a race against a router started
+seconds earlier (a user's second terminal) that the QEMU boards' retry hides —
+recorded, not fixed. The tracks probe one road per chapter (the Rust workspace
+for FreeRTOS/ThreadX, the Rust package for bare-metal, the C package for
+NuttX/Zephyr); the other language's "same flags, its own ELF" lines stay
+unreplayed.
 
 ### W11 — the project states its nros version (design first, M)
 

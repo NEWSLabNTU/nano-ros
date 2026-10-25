@@ -22,7 +22,7 @@ for the policy.
 > `rmw_zenohd` ([RFC-0075](../design/rmw.md)), so running a zenoh image
 > needs it from a ROS 2 install.
 
-```bash
+```bash probe=30
 # Provision the bare-metal Cortex-M3 board (zenoh RMW is the default):
 nros setup mps2-an385-baremetal --rmw zenoh
 ```
@@ -38,7 +38,7 @@ nros setup mps2-an385-baremetal --rmw zenoh
 
 Scaffold a single Rust package for the board:
 
-```bash
+```bash probe=40
 nros new bm_talker --platform baremetal --lang rust --rmw zenoh
 cd bm_talker
 ```
@@ -178,8 +178,9 @@ or edit the `locator` above to the port you prefer.
 
 ## Build
 
-```bash
-cd bm_talker
+In the package directory (where the scaffold step left you):
+
+```bash probe=50
 nros sync            # message bindings + build/baremetal/nros-cargo.toml
 nros build           # builds the image `[image.baremetal]` declares
 ```
@@ -219,36 +220,57 @@ directory or `$CARGO_HOME`. See
 
 ## Run on QEMU
 
-```bash
-# 1. Bring up the router on the host, on the port your image's
-#    `locator` names (Slirp forwards 10.0.2.2:<p> → host:<p>). With
-#    no `locator` the board dials 10.0.2.2:7447; the example above
-#    dials 10500:
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
-    ros2 run rmw_zenoh_cpp rmw_zenohd &
+Three terminals: the router, the board, and a stock ROS 2 peer.
 
-# 2. Boot the talker in QEMU, with the LAN9118 on Slirp and the
-#    `-icount` the test harness uses (the `run:` line `nros build`
-#    printed works too). The patched qemu-system-arm is provisioned by
-#    `nros setup mps2-an385-baremetal` into the SDK store, which
-#    `nros sdk-path qemu` prints:
+**1. The router** — ROS's `rmw_zenohd`, on the port your image's `locator`
+names (Slirp forwards the guest's `10.0.2.2:<p>` to the host's `<p>`). The
+scaffold states no `locator`, so the board dials `10.0.2.2:7447`; the example
+above dials 10500. It must listen on `0.0.0.0` for the Slirp gateway:
+
+```bash probe=60 probe-run=60 probe-keep
+source /opt/ros/humble/setup.bash
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd
+```
+
+```text probe-expect=60
+Started Zenoh router with id
+```
+
+**2. The board** — boot the talker in QEMU, with the LAN9118 on Slirp and the
+`-icount` the test harness uses (the `run:` line `nros build` printed works
+too). The patched `qemu-system-arm` is provisioned by `nros setup
+mps2-an385-baremetal` into the SDK store, which `nros sdk-path qemu` prints.
+From the package directory:
+
+```bash probe=70 probe-run=120 probe-keep
 "$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
     -icount shift=auto \
     -semihosting-config enable=on,target=native \
     -kernel build/baremetal/target/thumbv7m-none-eabi/debug/bm_talker \
     -nic user,model=lan9118
-# Expected serial-over-semihosting output:
-#   Publishing: 'Hello World: 1'
-#   Publishing: 'Hello World: 2'
-#   ...
+```
 
-# 3. Verify from stock ROS 2:
+Expected serial-over-semihosting output:
+
+```text probe-expect=70
+Publishing: 'Hello World: 1'
+Publishing: 'Hello World: 2'
+...
+```
+
+**3. A stock ROS 2 peer.** The talker publishes best-effort; stock `ros2 topic
+echo` defaults to RELIABLE, so the QoS-mismatched echo silently delivers
+nothing. Force best-effort to receive:
+
+```bash probe=80 probe-run=90
 source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-# Talker publishes best-effort; stock `ros2 topic echo` defaults to
-# RELIABLE, so the QoS-mismatched echo silently delivers nothing.
-# Force best-effort to receive:
 ros2 topic echo /chatter std_msgs/msg/String --qos-reliability best_effort
+```
+
+```text probe-expect=80
+data: 'Hello World:
 ```
 
 QEMU exits via Ctrl-A x.

@@ -463,11 +463,24 @@ function(nros_nuttx_build_example)
         if(NROS_NUTTX_BOARD_MAKEDEFS)
             set(_nnbe_makedefs_env "NUTTX_BOARD_MAKEDEFS=${NROS_NUTTX_BOARD_MAKEDEFS}")
         endif()
+        # phase-517 W10 — and the board's cross compiler. The script's presence
+        # check defaults `NUTTX_CROSS` to the Arm board's `arm-none-eabi-gcc`,
+        # so the rv-virt board's `nros build` died there ("NuttX cross-compiler
+        # 'arm-none-eabi-gcc' not found on PATH") on a host whose only
+        # toolchain is the `riscv-none-elf-gcc` `nros setup rv-virt-nuttx`
+        # provisioned (measured on the installed track). A NUTTX_CROSS the
+        # configure's environment already states wins, as the script's own
+        # default does.
+        set(_nnbe_cross_env "")
+        if(NROS_NUTTX_CROSS AND "$ENV{NUTTX_CROSS}" STREQUAL "")
+            set(_nnbe_cross_env "NUTTX_CROSS=${NROS_NUTTX_CROSS}")
+        endif()
         set(_provision_cmd
             COMMAND ${CMAKE_COMMAND} -E env
                 "NUTTX_DIR=${NUTTX_DIR}" "NUTTX_APPS_DIR=${_nnbe_apps_dir}"
                 ${_nnbe_defconfig_env}
                 ${_nnbe_makedefs_env}
+                ${_nnbe_cross_env}
                 ${CMAKE_COMMAND} -E chdir "${NUTTX_DIR}"
                 bash "${NROS_NUTTX_PROVISION_SCRIPT}")
     endif()
@@ -527,7 +540,15 @@ function(nros_nuttx_build_example)
     add_custom_command(
         OUTPUT "${_output_binary}"
         ${_provision_cmd}
+        # phase-517 W10 — the carve-out profile's DEFINITION travels with its
+        # name. `--profile nros-minsizerel` resolved only because a checkout's
+        # root `.cargo/config.toml` defines it; an installed SDK root ships no
+        # such file, so every NuttX image an installed `nros build` made died
+        # with "profile `nros-minsizerel` is not defined" (measured on the
+        # installed track). `nros profile env` is what the Corrosion lanes
+        # already get through `nros_cargo_profile_env`.
         COMMAND ${CMAKE_COMMAND} -E env
+            ${_NROS_NUTTX_ENV}
             ${_nnbe_entity_env}
             ${NROS_BOARD_FACTS_ENV}
             "APP_MAIN_CPP=${_NNBE_MAIN_SOURCE}"

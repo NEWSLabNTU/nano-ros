@@ -194,6 +194,92 @@ The zenoh router must be **running** before an example connects
 ros2 run rmw_zenoh_cpp rmw_zenohd`); for xrce, the Micro-XRCE-DDS agent
 `nros setup … --rmw xrce` installed; for cyclonedds, nothing.
 
+## Quick start: a talker on native_sim, from nothing
+
+The sections after this one explain each piece; this is the whole path in
+order, for a C talker on `native_sim` (a host executable, so no emulator).
+Zephyr's own host tools come first — `west` and the build tools
+[Zephyr's Getting Started](https://docs.zephyrproject.org/3.7.0/develop/getting_started/index.html)
+lists; `nros setup` installs no system packages. On Debian/Ubuntu:
+
+```bash probe=30 variant=native-sim
+sudo apt-get install -y --no-install-recommends git cmake ninja-build gperf \
+    device-tree-compiler python3-pip python3-venv xz-utils file wget
+pip3 install --user west
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Provision the board and RMW (the Zephyr SDK, zenoh-pico, mbedtls):
+
+```bash probe=32 variant=native-sim
+nros setup zephyr --rmw zenoh
+export ZEPHYR_SDK_INSTALL_DIR="$(nros sdk-path zephyr-sdk --require)"
+```
+
+A west workspace that pins Zephyr 3.7 and fetches only the modules nano-ros's
+boards build with (`nros setup zephyr` lists them; `import: true` would fetch
+every vendor HAL, ~2.5 GB more):
+
+```bash probe=34 variant=native-sim
+mkdir -p my_zephyr_ws/manifest && cd my_zephyr_ws
+cat > manifest/west.yml <<'WEST_YML'
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v3.7.0
+      import:
+        name-allowlist: [cmsis, picolibc, mbedtls, tinycrypt, mcuboot, net-tools]
+  self:
+    path: manifest
+WEST_YML
+west init -l manifest
+west update --narrow -o=--depth=1
+pip3 install --user -r zephyr/scripts/requirements-base.txt
+export ZEPHYR_BASE="$PWD/zephyr"
+```
+
+Scaffold a C application (a stock Zephyr app: `find_package(Zephyr)`, a typed
+talker component, `CONFIG_NROS=y` in `prj.conf`) and build it, naming the
+nano-ros module on the line, plus the `native_sim` network overlay the SDK
+ships: it routes the app's sockets to the host's (Zephyr's NSOS) instead of a
+TAP interface. Without it `native_sim` tries to create one (`eth_posix: Cannot
+create zeth`), which needs privileges a container or an ordinary user does not
+have, and the image never reaches the router:
+
+```bash probe=40 variant=native-sim
+nros new my_app --platform zephyr --lang c
+west build -b native_sim/native/64 my_app -- -DZEPHYR_EXTRA_MODULES="$(nros sdk-root)" \
+    -DEXTRA_CONF_FILE="$(nros sdk-root)/cmake/zephyr/native-sim-line-3.7.conf"
+```
+
+Run it against a router on the host's loopback — `native_sim` uses the host's
+sockets, and the image dials `tcp/127.0.0.1:7447` unless `system.toml` states a
+`locator`:
+
+```bash probe=60 probe-run=60 probe-keep variant=native-sim
+source /opt/ros/humble/setup.bash
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
+    ros2 run rmw_zenoh_cpp rmw_zenohd
+```
+
+```text probe-expect=60 variant=native-sim
+Started Zenoh router with id
+```
+
+```bash probe=70 probe-run=120 variant=native-sim
+./build/zephyr/zephyr.exe
+```
+
+```text probe-expect=70 variant=native-sim
+Published: 0
+Published: 1
+...
+```
+
 ## Configure
 
 nano-ros's Zephyr module ships in the installed SDK — the directory

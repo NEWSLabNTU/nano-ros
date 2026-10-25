@@ -34,6 +34,12 @@ set(NROS_NUTTX_DEFCONFIG "${_NROS_NUTTX_BOARD_DIR}/nuttx-config/riscv/defconfig"
     CACHE FILEPATH "Board NuttX defconfig consumed by the provisioning script")
 set(NROS_NUTTX_BOARD_MAKEDEFS "boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs"
     CACHE STRING "Board Make.defs path (relative to NUTTX_DIR) for the provisioning script")
+# phase-517 W10 — the cross compiler the provisioning script checks for: the
+# xPack toolchain `nros setup rv-virt-nuttx` provisions, the same one the board
+# descriptor's cargo `[env] NUTTX_CROSS` names. The script defaults to the Arm
+# board's `arm-none-eabi-gcc` otherwise.
+set(NROS_NUTTX_CROSS "riscv-none-elf-gcc"
+    CACHE STRING "NuttX cross compiler the provisioning script checks for")
 
 if(NOT DEFINED NUTTX_FFI_CRATE_DIR AND DEFINED ENV{NUTTX_FFI_CRATE_DIR})
     set(NUTTX_FFI_CRATE_DIR "$ENV{NUTTX_FFI_CRATE_DIR}")
