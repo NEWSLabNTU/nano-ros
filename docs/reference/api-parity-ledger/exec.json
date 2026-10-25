@@ -1526,7 +1526,7 @@
   },
   "c:executor_add_subscription": {
     "verdict": "divergence",
-    "why": "rclc's typed registration, `rclc_executor_add_subscription(exec, sub, void *msg, callback, invocation)`. Ours is `rclc_executor_add_subscription_typed`, which takes ONE argument more, the deserialiser, because `rclc_message_type_t` has no deserialiser slot (see `c:executor_add_subscription_typed`); the generated per-type macro `<Msg>_executor_add_subscription` collapses it back to rclc's arity. The bare `nros_executor_add_subscription(exec, sub, invocation)` that used this name until phase-487 W1 had a different contract — it dispatched the byte callback the init call had stored in the struct — and went when the struct stopped storing one; `rclc_executor_add_subscription_raw` takes that callback directly."
+    "why": "the CONTEXT-LESS form, `rclc_executor_add_subscription(exec, sub, void *msg, callback, invocation)` with a `void (*)(const void *)` callback. Refused: adapting that callback onto our dispatch needs a trampoline that remembers the user's function pointer, and state held in the wrapper is the RFC-0019/0020 violation, not an ergonomic (`nros_generated.h`, the doc of `rclc_executor_add_subscription_with_context`; `<rcl/types.h>` records the refusal). The context-carrying form is rclc's own, argument for argument: `rclc_executor_add_subscription_with_context(exec, sub, &msg, cb, ctx, invocation)`, so a port adds a `void *context` parameter to its callback and passes `NULL`. CORRECTED 2026-10-25 (phase-515 W0): this row used to cite an extra deserialiser argument and a generated per-type macro; phase-492 W8 put the codec in the descriptor and deleted both."
   },
   "c:executor_add_service": {
     "verdict": "divergence",

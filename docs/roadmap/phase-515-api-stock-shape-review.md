@@ -94,8 +94,10 @@ no longer describes the code, and two candidates that are already done:
 | `cpp:Rate`, `cpp:WallRate`, free `spin_until_future_complete` | (correct) | shipped, `adopt-bounded` — not candidates |
 | `cpp:KeepLast::KeepLast` | declined: tag type not needed | `constexpr QoS KeepLast(size_t)` in `qos.hpp` makes `rclcpp::QoS(rclcpp::KeepLast(10))` compile; only the constructor row is theirs-only — not a candidate |
 
-`check-ledger-orphan-refs` validates cited FILES, and issue 1012 validated
-cited symbols. Nothing checks a quoted SIGNATURE, which is the drift above.
+`check-ledger-orphan-refs` validates cited FILES. Issue 1012 fixed 23 rows
+citing renamed symbols but left its gate undone, because a heuristic cannot
+tell a historical mention from a stale one. Nothing checked a quoted
+SIGNATURE, which is the drift above.
 
 **Do:** re-read every `declined` and `divergence` row in the families the
 review marked (async helpers, parameter objects, per-process config, callback
@@ -105,6 +107,40 @@ extracted surface the report already holds.
 
 **Done when** each reviewed row's reason matches the code at the commit it is
 reviewed against, and the rows in the table above are corrected.
+
+**W0.a — LANDED 2026-10-25: quoted signatures are checked.** `--check` now reads
+every call-shaped span in a `why` and, when the extraction knows the name (both
+sides, all languages, both editions, defaulted parameters and a Rust `self`
+allowed for), requires that argument count to be accepted. A quote describing a
+retired shape is listed in the row's `retired_quotes` (SCHEMA.md), so tense is
+stated rather than guessed, and a listed quote the prose dropped is itself red.
+First run: 35 findings, 33 real, 2 false (Jazzy-only `Rate` constructors, fixed
+by indexing every edition; an unqualified `from_baked` matching a different
+type, fixed by qualifying the quote). Corrected, with a dated note in each row:
+
+| row(s) | was | now |
+| --- | --- | --- |
+| the table above | as listed | rewritten from the code |
+| `c:{publisher,subscription}_get_*_count` + 3 C++/Rust twins | C shipped as `rcl_*_get_*_count(…, executor, out_count)` "on upstream's name" | shipped as `rclc_*`; neither `rcl_` name exists |
+| `c:init_options_*` | `rclc_support_init(support, locator, domain_id)` | rclc's `(support, argc, argv, allocator)` since phase-492; values from build/env |
+| `c:node_ref_t` | we keep `rcl_publisher_fini(&pub)` | rcl's `(pub, node)`; the identity check stays |
+| six `c:*_clock_{init,fini}` | `rcl_clock_init(clock, type)`, no allocator | rcl's `(type, &clock, &allocator)` |
+| `c:publisher_init` | five-argument `_with_options` | six, with `qos` |
+| `cpp:init`, `cpp:remove_ros_arguments` | native `nros::init(...)` | `rclcpp::init_in` / `rclcpp::init` (phase-483) |
+| `cpp:SerializedMessage` | `Subscription::take_serialized` | `PollSubscription::take_serialized` (phase-456 W2b) |
+| `rust:ParameterBuilder::new` | `(&mut ParameterServer, name)` | `(&mut ParameterServer, NodeKey, name)` |
+| `c:executor_add_{subscription,service}_raw` | cite `rclc_executor_add_subscription_typed` + per-message macro | `rclc_executor_add_subscription_with_context` (found by hand; names, not arity) |
+
+**W0.b — OPEN: retired NAMES.** The arity check judges only names the
+extraction knows, so a quote of a deleted function passes. Measured over the C
+prefixes alone (`rclc_`, `rcl_`, `nros_` in backticks, resolved against both
+surfaces plus every token in our installed headers): **100 distinct names in
+259 references** resolve nowhere. Some are history (deprecated aliases, dated
+CORRECTED notes), some are not C symbols (crate names, Rust functions, macros),
+and some are stale current-tense claims like the `_typed` pair above, which is
+1012's tense problem again. W0.a's escape field generalises to it (a
+`retired_names` list beside `retired_quotes`), and the sweep is that list plus a
+prose fix for each stale one. Not started; C++ and Rust names are not measured.
 
 ### C — rclc / rcl
 

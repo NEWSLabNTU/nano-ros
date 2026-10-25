@@ -127,12 +127,12 @@
   "c:ros_clock_fini": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(clock, type)` -- because a per-kind entry point buys nothing when the kinds are an enum, and the allocator argument they also carry does not exist."
+    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(type, &clock, &allocator)`, rcl's own argument order -- because a per-kind entry point buys nothing when the kinds are an enum. The allocator is accepted for the signature and must be NULL or the default one; nothing allocates. CORRECTED 2026-10-25 (phase-515 W0): this row quoted `(clock, type)` and said the allocator argument did not exist."
   },
   "c:ros_clock_init": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(clock, type)` -- because a per-kind entry point buys nothing when the kinds are an enum, and the allocator argument they also carry does not exist."
+    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(type, &clock, &allocator)`, rcl's own argument order -- because a per-kind entry point buys nothing when the kinds are an enum. The allocator is accepted for the signature and must be NULL or the default one; nothing allocates. CORRECTED 2026-10-25 (phase-515 W0): this row quoted `(clock, type)` and said the allocator argument did not exist."
   },
   "c:sleep_ms": {
     "verdict": "declined",
@@ -142,22 +142,22 @@
   "c:steady_clock_fini": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(clock, type)` -- because a per-kind entry point buys nothing when the kinds are an enum, and the allocator argument they also carry does not exist."
+    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(type, &clock, &allocator)`, rcl's own argument order -- because a per-kind entry point buys nothing when the kinds are an enum. The allocator is accepted for the signature and must be NULL or the default one; nothing allocates. CORRECTED 2026-10-25 (phase-515 W0): this row quoted `(clock, type)` and said the allocator argument did not exist."
   },
   "c:steady_clock_init": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(clock, type)` -- because a per-kind entry point buys nothing when the kinds are an enum, and the allocator argument they also carry does not exist."
+    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(type, &clock, &allocator)`, rcl's own argument order -- because a per-kind entry point buys nothing when the kinds are an enum. The allocator is accepted for the signature and must be NULL or the default one; nothing allocates. CORRECTED 2026-10-25 (phase-515 W0): this row quoted `(clock, type)` and said the allocator argument did not exist."
   },
   "c:system_clock_fini": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(clock, type)` -- because a per-kind entry point buys nothing when the kinds are an enum, and the allocator argument they also carry does not exist."
+    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(type, &clock, &allocator)`, rcl's own argument order -- because a per-kind entry point buys nothing when the kinds are an enum. The allocator is accepted for the signature and must be NULL or the default one; nothing allocates. CORRECTED 2026-10-25 (phase-515 W0): this row quoted `(clock, type)` and said the allocator argument did not exist."
   },
   "c:system_clock_init": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(clock, type)` -- because a per-kind entry point buys nothing when the kinds are an enum, and the allocator argument they also carry does not exist."
+    "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(type, &clock, &allocator)`, rcl's own argument order -- because a per-kind entry point buys nothing when the kinds are an enum. The allocator is accepted for the signature and must be NULL or the default one; nothing allocates. CORRECTED 2026-10-25 (phase-515 W0): this row quoted `(clock, type)` and said the allocator argument did not exist."
   },
   "c:time_add": {
     "verdict": "extension",
@@ -238,7 +238,7 @@
   "c:timer_init_default": {
     "verdict": "declined",
     "disposition": "adopt",
-    "why": "rclc's default wrapper; `rcl_timer_init` IS the default form. See `c:publisher_init_default`."
+    "why": "refused over the CALLBACK CONTRACT, not the arity (`rclc/detail/rcl_compat.h` section 4). rclc's `rcl_timer_callback_t` receives `(rcl_timer_t *, int64_t last_call_time)`; ours, `rclc_timer_callback_with_context_t`, receives `(rcl_timer_t *, void *context)`. Same count, same leading timer, different information in the second slot, so a ported timer callback is a different FUNCTION and taking rclc's name would compile-and-differ on any target where `int64_t` and `void *` convert. Ours is `rclc_timer_init_with_context(timer, period_ns, callback, context)` under a distinct name; it takes no `support`, which the init never read. Closing this needs a decision about what our timer callback receives (phase-515 D2), not a rename. CORRECTED 2026-10-25 (phase-515 W0): the row used to say \"`rcl_timer_init` IS the default form\"; phase-492 W1.b renamed that function precisely because it had taken upstream's name over this contract."
   },
   "c:timer_is_valid": {
     "verdict": "extension",

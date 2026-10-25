@@ -520,7 +520,7 @@
   },
   "rust:ParameterBuilder::new": {
     "verdict": "divergence",
-    "why": "rclrs's builder is produced by `Node::declare_parameter(name)` and borrows the node; ours is `ParameterBuilder::new(&mut ParameterServer, name)` and borrows the SERVER, because there is no `Arc<Node>` holding parameters. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time."
+    "why": "rclrs's builder is produced by `Node::declare_parameter(name)` and borrows the node; ours is `ParameterBuilder::new(&mut ParameterServer, NodeKey, name)` and borrows the SERVER, naming the node by key, because there is no `Arc<Node>` holding parameters. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time."
   },
   "rust:ParameterBuilder::optional": {
     "verdict": "rename",
