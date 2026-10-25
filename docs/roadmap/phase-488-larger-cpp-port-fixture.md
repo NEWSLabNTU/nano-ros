@@ -3,7 +3,9 @@
 **Status (2026-10-25). W1 done: three nodes picked from a survey of nine
 projects. W2 and W3 done for node 1 (`autoware_external_cmd_selector`): it
 builds with no source edit and runs against a stock ROS 2 peer, with its pool
-sizes still raised by hand (issue 2043). Nodes 2 and 3 and W4 not started.** Rescoped 2026-10-24. The ported code is the
+sizes still raised by hand (issue 2043). Node 3 (ros2/demos `composition`) done
+the same way: one source edit (issue 2055) and two out-of-scope targets
+dropped. W4 updated for nodes 1 and 3. Node 2 not started.** Rescoped 2026-10-24. The ported code is the
 user's work and is not committed here. What this phase lands is what the ports
 expose: nros-cpp, codegen and build fixes, issues, and porting-guide changes.
 The original W2 ("add it as a port template") and W3 (runtime cells for it)
@@ -234,6 +236,49 @@ In-tree tests, none of which use the ported code:
 without a `param_services` runtime) plus a link of the generated component
 main. Also `a_capturing_raw_service_destroys_and_releases_its_capture` in
 nros-node.
+
+### W2/W3 progress — node 3, ros2/demos `composition` @jazzy (2026-10-25)
+
+`manual_composition` and its four components (talker, listener, AddTwoInts
+server and client) were copied verbatim into a scratch workspace and built on
+posix. Against ROS 2 Humble `rmw_zenoh_cpp`, the peer sees all four nodes,
+`/chatter` and `/add_two_ints`:
+
+- `ros2 topic echo /chatter` reads the talker;
+- three `ros2 topic pub` messages reach the listener;
+- `ros2 service call /add_two_ints {a: 40, b: 2}` returns 42;
+- inside the image, the client's call is answered by the server, so several
+  nodes run on one executor in one process, the item phase-209 G.4 asked for.
+
+The port needed these edits:
+
+- **One source edit, the client (issue 2055).**
+- **Two CMakeLists edits, both out of scope:** the `class_loader` targets and
+  the non-Node component were dropped.
+- **One workspace file:** a `nros-codegen.toml` cap for `std_msgs/String.data`.
+- **Pool sizes raised by hand (issue 2043).** Without them, the last two nodes
+  are invisible to ROS 2: the liveliness pool runs out.
+
+| finding | disposition |
+| --- | --- |
+| `find_package(rcutils)`: no nano-ros module, so CONFIG mode loads the installed `rcutilsConfig.cmake`, which fails (`Unknown CMake command "normalize_path"`); the sources use no rcutils API | logged CMakeLists edit (drop the line); the class (a ROS package nano-ros does not model resolves against the install) is the one node 2 meets with `nav2_util` |
+| `rclcpp_components_register_nodes` (plural) unknown | fixed: accepted, records nothing (no resource index, no container) |
+| `ament_environment_hooks` unknown | fixed: accepted, installs nothing |
+| `ament_target_dependencies` linked `PRIVATE`, so the plain `target_link_libraries(manual_composition talker_component ...)` beside it failed ("all-keyword or all-plain") | fixed: it appends to the link properties and claims no signature (four in-tree packages mix keyword links with it, so upstream's plain signature would break them); upstream's `SYSTEM` / `INTERFACE` / `PUBLIC` and its transitivity are taken |
+| plain `add_library(<c> SHARED)` linked the static runtime into each `.so` (`undefined reference to nros_app_register_backends`, or two runtimes) | fixed, as ruled: `NanoRosAmentSurface.cmake` overrides `add_library`, so a SHARED or MODULE library builds STATIC and the configure says so (IMPORTED, ALIAS, OBJECT and INTERFACE libraries are left alone) |
+| a plain `add_executable` taking rclcpp through `ament_target_dependencies` never got the platform link pass | fixed: one helper, `_nros_ament_link_app`, deferred and once per target, for that and for the ament verbs |
+| `pub_->publish(std::move(unique_ptr))` had no overload | fixed: std surface `publish(std::unique_ptr<M, D>)`; null is refused with `InvalidArgument` |
+| unbounded `std_msgs/String.data`: a subscription stops at `NROS_UNBOUNDED__std_msgs_msg_string__field_data` | logged edit: `nros-codegen.toml` `[fields] "std_msgs/String.data" = 256` (RFC-0033); the porting guide did not mention it (W4) |
+| client: `Client<S>::SharedPtr` member from `create_client<S>(name)`, `async_send_request(req, callback)` with `Client<S>::SharedFuture`, `wait_for_service(1s)` inside a timer | issue 2055; logged edit (poll the future on the next tick, `service_is_ready()`) |
+| `linktime_composition` / `dlopen_composition` need `class_loader` | out of scope (no dynamic loading); logged edit (drop the targets) |
+| `node_like_listener_component`: a non-Node component returning `NodeBaseInterface`, built from `std::make_shared<rclcpp::Node>` into `Node::SharedPtr` | out of scope (no node interfaces; the non-owning `Node::SharedPtr` is W0's known edit); logged edit (drop the target) |
+| the zpico shim's `liveliness pool exhausted (ZPICO_MAX_LIVELINESS=16)` named the retired spelling: issue 2042's sweep read `.rs` only | fixed: the message and the bench probe's five labels name `NROS_ZENOH_*`, and `check-retired-knob-spellings` reads C and C++ string literals too (a preprocessor line names the C macro and is exempt) |
+
+In-tree tests: case 9 of `tests/cmake-ament-surface-tests.sh` (the plain
+CMake component shape; all eight of its assertions fail against the CMake
+before the fix), the `unique_ptr` publish cases in
+`ament_port_surface_runtime.cpp`, and the C self-tests of
+`check-retired-knob-spellings`.
 
 ### W4 — the porting guide says what the ports learned
 

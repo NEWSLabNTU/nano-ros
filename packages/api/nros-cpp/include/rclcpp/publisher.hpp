@@ -16,6 +16,7 @@
 
 #include "rclcpp/detail/traits.hpp"
 #include "rclcpp/detail/config.hpp"
+#include "rclcpp/detail/std_detect.hpp"  // phase-488 — `NROS_CPP_HAS_SHARED_PTR`
 #include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "rclcpp/executor.hpp"           // phase-444 — the graph counter these forward to
 #include "rclcpp/owned.hpp" // phase-456 W5 — `Publisher<M>::SharedPtr` IS `Owned<Publisher<M>>`
@@ -249,6 +250,22 @@ template <typename M> class Publisher {
         if (!r.ok()) ::rclcpp::detail::report_failed_publish<M>(get_topic_name(), r.raw());
         return r;
     }
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    /// Upstream's `publish(std::unique_ptr<M, D>)` (phase-488, ros2/demos
+    /// `composition`'s talker: `pub_->publish(std::move(msg));`). Upstream hands
+    /// the message to intra-process delivery without a copy; here every publish
+    /// serializes, so this publishes `*msg` and the message is freed when the
+    /// call returns, as it would be after upstream's call. A null pointer, which
+    /// upstream throws on, is refused with `InvalidArgument` and logged.
+    template <typename D>::rclcpp::detail::PublishResult publish(::std::unique_ptr<M, D> msg) {
+        if (!msg) {
+            const Result r(::rclcpp::ErrorCode::InvalidArgument);
+            ::rclcpp::detail::report_failed_publish<M>(get_topic_name(), r.raw());
+            return r;
+        }
+        return publish(static_cast<const M&>(*msg));
+    }
+#endif
 #else
     Result publish(const M& msg) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);

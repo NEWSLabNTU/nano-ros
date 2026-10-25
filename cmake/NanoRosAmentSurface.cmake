@@ -86,6 +86,53 @@ if(NOT TARGET NanoRos::NanoRosCpp)
         "or build inside a Zephyr application with CONFIG_NROS_CPP_API=y.")
 endif()
 
+# --- add_library: a SHARED or MODULE library builds STATIC -------------------
+#
+# phase-488 (ros2/demos `composition`). The stock component shape is a plain
+# `add_library(<name> SHARED ...)` that links rclcpp, so that class_loader can
+# `dlopen` it. nano-ros has no class_loader, and its runtime is a static
+# archive. A SHARED library that links rclcpp takes its own copy of that
+# archive. The image then fails to link (`undefined reference to
+# nros_app_register_backends` from each `.so`), or links and runs two runtimes,
+# which is how Autoware's component died at start-up. One image is one binary,
+# so a SHARED or MODULE library builds STATIC, and the configure says so once
+# per target. `ament_auto_add_library` already did this; this covers the plain
+# `add_library` a stock CMakeLists writes beside it.
+#
+# This overrides the CMake builtin for every `add_library` processed after this
+# file is included, which is the user's package: nano-ros declares its own
+# targets before a project can include this file. Left alone:
+#   * an IMPORTED library, because it names a file that already exists;
+#   * an ALIAS, OBJECT or INTERFACE library, and one with no type (which
+#     follows `BUILD_SHARED_LIBS`).
+# CMake keeps the previous definition as `_add_library`, one level deep. A
+# GLOBAL property makes the override happen once, so a second include of this
+# file, from a scope where the include guard variable is not visible, does not
+# wrap the wrapper. A project that overrides `add_library` itself after this
+# include replaces this override, and its SHARED components then build SHARED
+# again.
+get_property(_nros_add_library_wrapped GLOBAL PROPERTY NROS_AMENT_ADD_LIBRARY_WRAPPED)
+if(NOT _nros_add_library_wrapped)
+    set_property(GLOBAL PROPERTY NROS_AMENT_ADD_LIBRARY_WRAPPED TRUE)
+    function(add_library name)
+        set(_nal_args ${ARGN})
+        list(LENGTH _nal_args _nal_n)
+        set(_nal_kind "")
+        if(_nal_n GREATER 0)
+            list(GET _nal_args 0 _nal_kind)
+        endif()
+        if((_nal_kind STREQUAL "SHARED" OR _nal_kind STREQUAL "MODULE")
+           AND NOT "IMPORTED" IN_LIST _nal_args)
+            list(REMOVE_AT _nal_args 0)
+            message(STATUS "nano-ros: add_library(${name} ${_nal_kind}) builds STATIC: "
+                           "the image is one binary with one runtime (phase-488)")
+            _add_library(${name} STATIC ${_nal_args})
+        else()
+            _add_library(${name} ${ARGN})
+        endif()
+    endfunction()
+endif()
+
 # --- Per-target settings for an ament-built target ---------------------------
 function(_nros_ament_apply_target_settings target)
     if(NOT TARGET ${target})
@@ -209,9 +256,7 @@ function(ament_auto_add_executable target)
     target_link_libraries(${target} PRIVATE NanoRos::NanoRosCpp)
     _nros_ament_apply_target_settings(${target})
     _nros_ament_auto_target_deps(${target})
-    if(COMMAND nros_platform_link_app)
-        nros_platform_link_app(${target})
-    endif()
+    _nros_ament_link_app(${target})
 endfunction()
 
 # --- ament_target_dependencies / ament_export_* shims -------------------------
@@ -258,9 +303,27 @@ function(rclcpp_components_register_node component_target)
     target_link_libraries(${_RCRN_EXECUTABLE} PRIVATE
         ${component_target} NanoRos::NanoRosCpp)
     _nros_ament_apply_target_settings(${_RCRN_EXECUTABLE})
-    if(COMMAND nros_platform_link_app)
-        nros_platform_link_app(${_RCRN_EXECUTABLE})
-    endif()
+    _nros_ament_link_app(${_RCRN_EXECUTABLE})
+endfunction()
+
+# phase-488 — upstream's plural form, `rclcpp_components_register_nodes(<target>
+# [RESOURCE_INDEX <index>] <class>...)`, records each class in the ament
+# resource index for the runtime component container to `dlopen`. That is all
+# it does: it never emits an executable. nano-ros has no container and no
+# resource index, and the factory `RCLCPP_COMPONENTS_REGISTER_NODE` defines in
+# the source is what a hand-written main (ros2/demos `manual_composition`)
+# uses, so there is nothing to record. A stock CMakeLists calls it once per
+# component, and was refused as an unknown command.
+function(rclcpp_components_register_nodes component_target)
+endfunction()
+
+# --- ament_environment_hooks -------------------------------------------------
+
+# phase-488 — upstream installs shell hooks that `setup.bash` sources (ros2/demos
+# `composition` adds one to put its component libraries on the library path).
+# nano-ros has no install layout and no `setup.bash`, so there is no hook to
+# install.
+function(ament_environment_hooks)
 endfunction()
 
 # --- ament_auto_package + ament_package --------------------------------------

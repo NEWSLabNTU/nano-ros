@@ -157,6 +157,8 @@ def kind_of(rel: str) -> str | None:
     base = os.path.basename(rel)
     if rel.endswith(".rs"):
         return "rust"
+    if rel.endswith((".c", ".h", ".cc", ".cpp", ".hpp")):
+        return "c"
     if rel.endswith(".toml"):
         return "toml"
     if rel.endswith(".cmake") or base == "CMakeLists.txt":
@@ -286,18 +288,35 @@ _CODE_BEFORE = re.compile(r"(?:\bconst\s+|#\s*(?:define|ifndef|ifdef|if)\s+|defi
 _CODE_AFTER = re.compile(r"^\s*:\s*[a-z]")
 
 
-def scan_rust_prose(text: str, names) -> list[tuple[int, str]]:
+def scan_rust_prose(text: str, names, lang: str = "rust") -> list[tuple[int, str]]:
     """issue 2042 -- a retired name in a MESSAGE: a Rust string literal that is
     prose (it holds whitespace) and names the spelling as something to set.
     Following such advice turns a runtime warning into a build refusal. A
     literal that IS the name (`.define("ZPICO_X", ..)`, a C macro table) or
     names it as generated code is not a message, and a line that says the
-    spelling is retired is exempt as everywhere else."""
+    spelling is retired is exempt as everywhere else.
+
+    phase-488 -- C and C++ sources too (`lang="c"`): the zpico shim's
+    `printk("... pool exhausted (ZPICO_MAX_LIVELINESS=%d) ...")` advised the
+    retired spelling after 2042's Rust sweep, because the sweep read `.rs`
+    only. The lexer is the same (C's literals and comments are Rust's without
+    the raw and byte prefixes). A literal on a preprocessor line (`#error
+    "ZPICO_X must be >= 1"`) names the C MACRO the compiler checked, which
+    RFC-0103 keeps, so it is not a message to set an env name. A bare
+    `getenv("ZPICO_X")` is the C env reader, and is a finding."""
     alt = "|".join(sorted(map(re.escape, names), key=len, reverse=True))
     word = re.compile(rf"(?<![A-Za-z0-9_{{]){{0}}(?:{alt})(?![A-Za-z0-9_}}])".replace("{0}", ""))
     hits = []
     lines = text.splitlines()
     for start, body in rust_string_literals(text):
+        if lang == "c":
+            line_no = text.count("\n", 0, start) + 1
+            raw = lines[line_no - 1] if line_no - 1 < len(lines) else ""
+            if raw.lstrip().startswith("#"):
+                continue
+            if body in names and re.search(r"\bgetenv\(\s*$", text[max(0, start - 40):start - 1]):
+                hits.append((line_no, raw))
+                continue
         if not re.search(r"\s", body):
             continue
         for m in word.finditer(body):
@@ -378,6 +397,20 @@ PROSE_TESTS = [
 ]
 
 
+# phase-488 -- (text, should it be a finding) for `scan_rust_prose(lang="c")`.
+C_PROSE_TESTS = [
+    ('printk("pool exhausted (ZPICO_X=%d) for \'%s\'\\n", ZPICO_X, k);', True),
+    ('printf("raise ZPICO_X"\n       " to keep more\\n");', True),
+    ('const char *v = getenv("ZPICO_X");', True),
+    ('#error "ZPICO_X must be >= 1: it sizes a C array"', False),
+    ('#  error "ZPICO_X must be >= 1"', False),
+    ('static int a[ZPICO_X];', False),
+    ('/* raise ZPICO_X to keep more */', False),
+    ('printk("pool exhausted (NROS_ZENOH_X=%d)\\n", ZPICO_X);', False),
+    ('char c = \'"\'; printk("raise ZPICO_X now");', True),
+]
+
+
 def self_test() -> int:
     rules = compile_rules(["ZPICO_X", "ZPICO_SMOLTCP_Y"])
     bad = 0
@@ -391,6 +424,11 @@ def self_test() -> int:
         if got != want:
             bad += 1
             print(f"  self-test: {'missed' if want else 'false hit on'} (rust prose): {text!r}")
+    for text, want in C_PROSE_TESTS:
+        got = bool(scan_rust_prose(text, ["ZPICO_X", "ZPICO_SMOLTCP_Y"], lang="c"))
+        if got != want:
+            bad += 1
+            print(f"  self-test: {'missed' if want else 'false hit on'} (c prose): {text!r}")
     # The registry is the input, so its own parse is a case too.
     table = retired_names('[[knob]]\nid = "ZENOH_X"\nlegacy = ["ZPICO_X"]\n')
     if table != {"ZPICO_X": "NROS_ZENOH_X"}:
@@ -432,7 +470,10 @@ def main() -> int:
         scanned += 1
         if not word.search(text):
             continue
-        hits = scan(text, kind, rules)
+        if kind == "c":
+            hits = scan_rust_prose(text, names, lang="c")
+        else:
+            hits = scan(text, kind, rules)
         if kind == "rust":
             seen = {i for i, _ in hits}
             hits += [h for h in scan_rust_prose(text, names) if h[0] not in seen]
@@ -453,7 +494,7 @@ def main() -> int:
         return 1
     print(f"check-retired-knob-spellings: OK — {len(names)} retired spelling(s), no env reader,"
           f" writer or message advising one in {scanned} tracked file(s)"
-          f" (self-test: {len(SELF_TESTS) + len(PROSE_TESTS)} cases)")
+          f" (self-test: {len(SELF_TESTS) + len(PROSE_TESTS) + len(C_PROSE_TESTS)} cases)")
     return 0
 
 
