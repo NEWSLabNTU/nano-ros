@@ -46,6 +46,22 @@ refute() {
 }
 
 # A package with a component, a tool executable and its own header.
+# Every case but 7 includes NanoRosAmentSurface.cmake, whose message-package
+# resolver needs this checkout's `nros`. A pristine clone (`git worktree add`)
+# has none, so those cases are a REPORTED skip there, never a failure and never
+# a pass (issues 1373, 1043); case 7 needs no CLI and always runs.
+# shellcheck source=scripts/build/cargo.sh
+source "$ROOT/scripts/build/cargo.sh"
+have_cli=1
+nros_cli_bin --checkout-only >/dev/null 2>&1 || have_cli=0
+if [ "$have_cli" -eq 0 ]; then
+    # shellcheck source=scripts/build/check-skip.sh
+    . "$ROOT/scripts/build/check-skip.sh"
+    nros_check_skip cmake-ament-surface \
+        "cases 1-6 and 8 NOT VERIFIED -- this checkout built no \`nros\` (run \`just setup-cli\`)"
+fi
+
+if [ "$have_cli" -eq 1 ]; then
 mk() {
     local d="$WORK/$1"
     mkdir -p "$d/src" "$d/include/demo_pkg"
@@ -162,6 +178,8 @@ expect "6. diagnostic_updater links diagnostic_msgs" ";diagnostic_msgs__nano_ros
 refute "6. ...once, however often it is found" \
     "diagnostic_msgs__nano_ros_cpp;diagnostic_msgs__nano_ros_cpp" "$out"
 
+fi  # have_cli (cases 1-6)
+
 # 7. The default is asked from the nano-ros root's directory, so the probe
 #    calls it from a subdirectory standing in for that root.
 mk_caps() {
@@ -198,6 +216,7 @@ expect "7. an embedded platform gets nothing" "default=[]" \
 expect "7. a project that is not an ament package gets nothing" "default=[]" \
     "$(mk_caps plain '<package><buildtool_depend>catkin</buildtool_depend></package>' 'set(NROS_PLATFORM posix)')"
 
+if [ "$have_cli" -eq 1 ]; then
 # 8.
 mk_ps() {
     local d="$WORK/ps-$1"; mkdir -p "$d"; : > "$d/a.cpp"
@@ -224,5 +243,7 @@ expect "8. ...and so does rclcpp::rclcpp" \
     "rclcpp DEFS=[NROS_CPP_STD=1;NROS_AMENT_START_PARAMETER_SERVICES=1]" "$out"
 out="$(mk_ps off 'set(NROS_FEATURES "")')"
 refute "8. not without param_services" "NROS_AMENT_START_PARAMETER_SERVICES" "$out"
+
+fi  # have_cli (case 8)
 
 [ "$fail" -eq 0 ] && echo "cmake-ament-surface: OK" || { echo "cmake-ament-surface: FAILED"; exit 1; }
