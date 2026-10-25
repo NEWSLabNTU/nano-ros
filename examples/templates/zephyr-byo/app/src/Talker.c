@@ -25,9 +25,9 @@ typedef struct {
     int32_t count;
 } talker_t;
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    talker_t* self = (talker_t*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    talker_t* self = RCLC_CONTAINER_OF(timer, talker_t, timer);
+    (void)last_call_time;
     std_msgs__msg__Int32 msg = {.data = self->count};
     if (rcl_publish(&self->pub, &msg, NULL) == RCL_RET_OK) {
         printf("Published: %d\n", (int)self->count);
@@ -45,7 +45,7 @@ static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor, t
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_with_context(&self->timer, 1000ULL * 1000000ULL, on_tick, self);
+    rc = rclc_timer_init_default(&self->timer, NULL, 1000ULL * 1000000ULL, on_tick);
     if (rc != RCL_RET_OK) {
         return rc;
     }

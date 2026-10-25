@@ -27,9 +27,9 @@ typedef struct {
     int32_t count;
 } reading_talker_t;
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    reading_talker_t* self = (reading_talker_t*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    reading_talker_t* self = RCLC_CONTAINER_OF(timer, reading_talker_t, timer);
+    (void)last_call_time;
 
     custom_msgs__msg__Reading msg;
     memset(&msg, 0, sizeof(msg));
@@ -56,7 +56,7 @@ static rcl_ret_t reading_talker_configure(rcl_node_t* node, rclc_executor_t* exe
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rcl_ret_t trc = rclc_timer_init_with_context(&self->timer, 1000ULL * 1000000ULL, on_tick, self);
+    rcl_ret_t trc = rclc_timer_init_default(&self->timer, NULL, 1000ULL * 1000000ULL, on_tick);
     if (trc != RCL_RET_OK) {
         return trc;
     }

@@ -28,9 +28,9 @@ typedef struct {
     std_msgs__msg__String__Storage msg_storage;
 } talker_t;
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    talker_t* self = (talker_t*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    talker_t* self = RCLC_CONTAINER_OF(timer, talker_t, timer);
+    (void)last_call_time;
     /* Pre-increment so the first payload is "Hello World: 1", matching the
      * official ROS 2 demo talker. */
     self->count++;
@@ -54,7 +54,7 @@ static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor, t
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rcl_ret_t trc = rclc_timer_init_with_context(&self->timer, 500ULL * 1000000ULL, on_tick, self);
+    rcl_ret_t trc = rclc_timer_init_default(&self->timer, NULL, 500ULL * 1000000ULL, on_tick);
     if (trc != RCL_RET_OK) {
         return trc;
     }

@@ -65,9 +65,9 @@ static void on_result(const rclc_goal_uuid_t* goal_id, rclc_goal_status_t status
     print_sequence("Result received: ", data, len);
 }
 
-static void on_poll(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    fib_client_t* self = (fib_client_t*)ctx;
+static void on_poll(rcl_timer_t* timer, int64_t last_call_time) {
+    fib_client_t* self = RCLC_CONTAINER_OF(timer, fib_client_t, timer);
+    (void)last_call_time;
     (void)rclc_action_client_poll(&self->client); /* drain replies -> callbacks */
 }
 
@@ -89,7 +89,7 @@ static rcl_ret_t client_configure(rcl_node_t* node, rclc_executor_t* executor, f
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_with_context(&self->timer, 20ULL * 1000000ULL, on_poll, self);
+    rc = rclc_timer_init_default(&self->timer, NULL, 20ULL * 1000000ULL, on_poll);
     if (rc != RCL_RET_OK) {
         return rc;
     }

@@ -69,8 +69,10 @@ OVERRIDES = {
     # contract match, and W1 adopted them all; these took upstream's name over
     # a different contract. `check-c-api-upstream-signatures` measures that now.
     # Each value is (new, class, why).
-    "nros_timer_init": ("rclc_timer_init_with_context", "ours", "differs from `rcl_timer_init`: our callback gets the caller's context (rcl_compat.h §4) (phase-492 W1.b)"),
-    "nros_timer_callback_t": ("rclc_timer_callback_with_context_t", "ours", "differs from `rcl_timer_callback_t`: context, not last_call_time (phase-492 W1.b)"),
+    # phase-515 D2 took rclc's timer contract; the map points at the live names.
+    "nros_timer_init": ("rclc_timer_init_default", "adopt", "rclc's signature; phase-515 D2 removed rclc_timer_init_with_context (state via RCLC_CONTAINER_OF on the timer)"),
+    "nros_timer_callback_t": ("rcl_timer_callback_t", "adopt", "rcl's contract, (timer, last_call_time); phase-515 D2 removed the context-carrying rclc_timer_callback_with_context_t"),
+    "nros_timer_init_on_clock": ("rcl_timer_init", "adopt", "rcl's signature; was rclc_timer_init_on_clock until phase-515 D2"),
     "nros_clock_get_now": ("rclc_clock_get_now_time", "ours", "differs from `rcl_clock_get_now`: writes an rclc_time_t (phase-492 W1.b)"),
     "nros_clock_get_now_ns": ("rcl_clock_get_now", "adopt", "conforms to upstream `rcl_clock_get_now` (measured) (phase-492 W1.b)"),
     "nros_node_resolve_name": ("rclc_node_resolve_name", "ours", "differs from `rcl_node_resolve_name`: caller buffer, no allocator (phase-492 W1.b)"),

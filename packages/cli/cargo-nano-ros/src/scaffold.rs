@@ -869,9 +869,9 @@ typedef struct {{
     int32_t count;
 }} {state_ty};
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {{
-    (void)timer;
-    {state_ty}* self = ({state_ty}*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {{
+    {state_ty}* self = RCLC_CONTAINER_OF(timer, {state_ty}, timer);
+    (void)last_call_time;
     std_msgs__msg__Int32 msg = {{.data = self->count}};
     if (rcl_publish(&self->pub, &msg, NULL) == RCL_RET_OK) {{
         printf("Published: %d\n", (int)self->count);
@@ -888,7 +888,7 @@ static rcl_ret_t {configure_fn}(rcl_node_t* node, rclc_executor_t* executor, {st
         return rc;
     }}
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_with_context(&self->timer, 1000000000ULL, on_tick, self);
+    rc = rclc_timer_init_default(&self->timer, NULL, 1000000000ULL, on_tick);
     if (rc != RCL_RET_OK) {{
         return rc;
     }}

@@ -24,9 +24,9 @@ typedef struct {
     int done;
 } add_client_t;
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    add_client_t* self = (add_client_t*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    add_client_t* self = RCLC_CONTAINER_OF(timer, add_client_t, timer);
+    (void)last_call_time;
     uint8_t scratch[64];
     if (self->done) {
         return;
@@ -65,7 +65,7 @@ static rcl_ret_t client_configure(rcl_node_t* node, rclc_executor_t* executor, a
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_with_context(&self->timer, 1000ULL * 1000000ULL, on_tick, self);
+    rc = rclc_timer_init_default(&self->timer, NULL, 1000ULL * 1000000ULL, on_tick);
     if (rc != RCL_RET_OK) {
         return rc;
     }

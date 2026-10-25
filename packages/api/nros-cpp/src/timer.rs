@@ -241,7 +241,7 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
     //
     // phase-430 W1 — the mapping itself is `nros_c::nros_timer_clock_source`,
     // the one place the `rcl_clock_type_t` discriminants are decoded, so the C
-    // verb (`rclc_timer_init_on_clock`) and this one cannot disagree about what
+    // verb (`rcl_timer_init`) and this one cannot disagree about what
     // a clock kind means.
     let Some(source) = nros_c::nros_timer_clock_source(clock_type) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;

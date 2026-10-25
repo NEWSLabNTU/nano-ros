@@ -9,19 +9,34 @@ use crate::{
     error::*,
 };
 
-/// Timer callback function type.
+/// rcl's timer callback — `typedef void (*)(rcl_timer_t *, int64_t)`, the ONE
+/// timer callback contract (phase-515 D2).
+///
+/// The second argument is rcl's: the time since the previous call, or since
+/// init/reset for the first one, in nanoseconds. It is the value
+/// [`rcl_timer_get_time_since_last_call`] reports just before the call, so it
+/// carries that function's envelope — microsecond resolution (issue #505),
+/// measured from the previous DUE POINT rather than the previous callback
+/// start, which for a timer running on time is the same number.
+///
+/// There is no context pointer, as in rcl. A callback reaches its state
+/// through the timer it is handed: embed the `rcl_timer_t` in the state struct
+/// and recover the struct with `offsetof` (`RCLC_CONTAINER_OF` in
+/// `<rclc/timer.h>`). The executor always passes the caller's own timer, never
+/// a copy. Until phase-515 C1 ours passed a `void *context` instead, which made
+/// a ported rclc callback a different function.
 ///
 /// # Parameters
 /// * `timer` - Pointer to the timer that triggered
-/// * `context` - User-provided context pointer
-pub type rclc_timer_callback_with_context_t =
-    Option<unsafe extern "C" fn(timer: *mut rcl_timer_t, context: *mut c_void)>;
+/// * `last_call_time` - Nanoseconds since the previous call (rcl's name)
+pub type rcl_timer_callback_t =
+    Option<unsafe extern "C" fn(timer: *mut rcl_timer_t, last_call_time: i64)>;
 
 /// When a timer activation was due and when it ran — Jazzy rcl's
 /// `rcl_timer_call_info_t` (issue 1974), same name, same two fields.
 ///
 /// Both are `rcl_time_point_value_t` nanoseconds on the TIMER'S clock: the
-/// clock it was initialised on (`rclc_timer_init_on_clock*`), or the platform
+/// clock it was initialised on (`rcl_timer_init*`), or the platform
 /// steady clock for a wall timer. `actual_call_time >= expected_call_time`
 /// always; the difference is the activation's lateness.
 ///
@@ -51,19 +66,14 @@ impl From<nros_node::TimerCallInfo> for rcl_timer_call_info_t {
 /// rcl hands call info out through `rcl_timer_call_with_info`, a dispatch
 /// entry point the caller's own wait-set loop calls; here the executor
 /// dispatches, so the info rides on the callback instead. `info` is valid for
-/// the duration of the call only.
+/// the duration of the call only. Like [`rcl_timer_callback_t`] it carries no
+/// context pointer (phase-515 D2): the state is reached through `timer`.
 ///
 /// # Parameters
 /// * `timer` - Pointer to the timer that triggered
 /// * `info` - Expected vs actual call time of this activation
-/// * `context` - User-provided context pointer
-pub type rclc_timer_callback_with_info_t = Option<
-    unsafe extern "C" fn(
-        timer: *mut rcl_timer_t,
-        info: *const rcl_timer_call_info_t,
-        context: *mut c_void,
-    ),
->;
+pub type rclc_timer_callback_with_info_t =
+    Option<unsafe extern "C" fn(timer: *mut rcl_timer_t, info: *const rcl_timer_call_info_t)>;
 
 /// Timer state
 #[repr(C)]
@@ -84,12 +94,13 @@ pub enum rclc_timer_state_t {
 /// Already an arena handle before phase-487: `rclc_executor_add_timer`
 /// creates the timer inside the executor arena and records
 /// `(handle_id, _executor)` here, and every live accessor forwards there. The
-/// period, callback, context and clock are the REGISTRATION INPUTS:
+/// period, callback and clock are the REGISTRATION INPUTS:
 /// rclc's `rclc_timer_init_default(timer, support, period, callback)` takes
 /// them at init, before any executor exists, and a removed timer can be added
 /// again, so they stay. phase-487 W3 removed the one field that was a copy,
 /// `last_call_time_ns`: written by init and reset, read by nothing, and stale
-/// for any timer the executor ran (issue 1049).
+/// for any timer the executor ran (issue 1049). phase-515 C1 removed the
+/// `context` pointer with the callback contract that carried it.
 #[repr(C)]
 pub struct rcl_timer_t {
     /// Current state
@@ -97,11 +108,9 @@ pub struct rcl_timer_t {
     /// Period in nanoseconds
     pub period_ns: u64,
     /// User callback function
-    pub callback: rclc_timer_callback_with_context_t,
-    /// User context pointer
-    pub context: *mut c_void,
+    pub callback: rcl_timer_callback_t,
     /// The clock this timer is scheduled against, or NULL for the WALL timer
-    /// `rclc_timer_init_with_context` creates (phase-430 W1).
+    /// `rclc_timer_init_default` creates (phase-430 W1).
     ///
     /// rcl's `rcl_timer_init` takes a `rcl_clock_t *` here and rcl's timer
     /// keeps it; ours does the same, in the same position, so a reader of one
@@ -124,7 +133,6 @@ impl Default for rcl_timer_t {
             state: rclc_timer_state_t::RCLC_TIMER_STATE_UNINITIALIZED,
             period_ns: 0,
             callback: None,
-            context: ptr::null_mut(),
             clock: ptr::null(),
             handle_id: usize::MAX,
             _executor: ptr::null_mut(),
@@ -136,18 +144,13 @@ impl Default for rcl_timer_t {
 // Internal helper methods for executor
 impl rcl_timer_t {
     /// Get the callback function
-    pub(crate) fn get_callback(&self) -> rclc_timer_callback_with_context_t {
+    pub(crate) fn get_callback(&self) -> rcl_timer_callback_t {
         self.callback
     }
 
     /// Get the call-info callback (issue 1974)
     pub(crate) fn get_info_callback(&self) -> rclc_timer_callback_with_info_t {
         self.info_callback
-    }
-
-    /// Get the user context
-    pub(crate) fn get_context(&self) -> *mut c_void {
-        self.context
     }
 
     /// Set the handle ID from executor registration
@@ -167,184 +170,101 @@ pub extern "C" fn rcl_get_zero_initialized_timer() -> rcl_timer_t {
     rcl_timer_t::default()
 }
 
-/// Initialize a WALL timer — the clock-less case (phase-430 W1).
+/// rclc's `rclc_timer_init_default`, signature for signature — a WALL timer
+/// (phase-515 C1, decision D2).
 ///
-/// phase-492 W1.b: this was spelled `rcl_timer_init`, which is rcl's name for
-/// a different contract (`<rclc/detail/rcl_compat.h>` §4), and took the support as a
-/// validity witness it never otherwise read. It takes rclc's `_with_context`
-/// spelling — the callback gets the caller's context — and no witness: the
-/// timer belongs to no node and no session until `rclc_executor_add_timer`,
-/// which is where the executor is checked. So a C component the generated
-/// entry hosts, which has no support, creates timers like any other caller.
+/// `rclc_timer_init_default(&timer, &support, RCL_MS_TO_NS(100), cb)`
+/// compiles as an rclc program writes it, and `cb` is rclc's
+/// [`rcl_timer_callback_t`]. Until phase-515 this name was refused, because
+/// ours handed the callback a `void *context` where rclc hands it the time
+/// since its last call; D2 took rclc's contract and removed ours
+/// (`rclc_timer_init_with_context`).
 ///
-/// The timer is scheduled against the executor's monotonic spin delta, which
-/// is what every wall-timer caller has always got and is what rclcpp
-/// spells `create_wall_timer`: a paused simulator does not pause it. For a
-/// timer that follows ROS time — a bag replay, a simulator's `/clock` — use
-/// [`rclc_timer_init_on_clock`], which takes the clock in the position
-/// `rcl_timer_init` puts it.
+/// The timer is scheduled against the executor's monotonic spin delta — what
+/// rclcpp spells `create_wall_timer`: a paused simulator does not pause it.
+/// For a timer that follows ROS time, use [`rcl_timer_init`] with a clock.
+///
+/// **`support` may be NULL**, which rclc refuses. The timer belongs to no
+/// node and no session until `rclc_executor_add_timer`, which is where the
+/// executor is checked, so the support is never read; and a C component the
+/// generated entry hosts has none to pass (`<rclc/detail/rcl_compat.h>` §4).
+/// Accepting NULL widens rclc's domain without changing any call rclc
+/// accepts.
 ///
 /// # Parameters
 /// * `timer` - Pointer to a zero-initialized timer
-/// * `period_ns` - Timer period in nanoseconds
-/// * `callback` - Callback function to invoke when timer fires
-/// * `context` - User context pointer passed to callback (can be NULL)
+/// * `support` - The support, or NULL (never read)
+/// * `timeout_ns` - Timer period in nanoseconds
+/// * `callback` - Callback function to invoke when the timer fires
 ///
 /// # Returns
 /// * `RCL_RET_OK` on success
-/// * `RCL_RET_INVALID_ARGUMENT` if any required pointer is NULL or period is 0
+/// * `RCL_RET_INVALID_ARGUMENT` if `timer` or `callback` is NULL or the
+///   period is 0
 ///
 /// # Safety
-/// * All required pointers must be valid
+/// * `timer` must be NULL or valid for writes
 /// * `callback` must be a valid function pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_timer_init_with_context(
+pub unsafe extern "C" fn rclc_timer_init_default(
     timer: *mut rcl_timer_t,
-    period_ns: u64,
-    callback: rclc_timer_callback_with_context_t,
-    context: *mut c_void,
+    support: *mut crate::support::rclc_support_t,
+    timeout_ns: u64,
+    callback: rcl_timer_callback_t,
 ) -> rcl_ret_t {
+    let _ = support;
     unsafe {
         timer_init_inner(
             timer,
             ptr::null(),
-            period_ns,
-            TimerCallback::Plain(callback),
-            context,
+            timeout_ns,
+            TimerCallback::Rcl(callback),
             true,
         )
     }
 }
 
-/// [`rclc_timer_init_with_context`] with Jazzy's `autostart` flag — issue 1974,
-/// our counterpart of `rclc_timer_init_default2`.
+/// Jazzy rclc's `rclc_timer_init_default2` — [`rclc_timer_init_default`]
+/// with `autostart` (issue 1974).
 ///
 /// `autostart == false` creates the timer CANCELLED: `rclc_executor_add_timer`
 /// registers it cancelled and it does not fire until `rcl_timer_reset`, whose
-/// call starts its first period. `true` is exactly
-/// [`rclc_timer_init_with_context`].
-///
-/// Not spelled `rclc_timer_init_default2` for the reason
-/// `rclc_timer_init_default` is refused (`<rclc/detail/rcl_compat.h>` §4):
-/// rclc's callback receives the time since its last call, ours the caller's
-/// context.
+/// call starts its first period.
 ///
 /// # Safety
-/// As [`rclc_timer_init_with_context`].
+/// As [`rclc_timer_init_default`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_timer_init_with_context2(
+pub unsafe extern "C" fn rclc_timer_init_default2(
     timer: *mut rcl_timer_t,
-    period_ns: u64,
-    callback: rclc_timer_callback_with_context_t,
-    context: *mut c_void,
+    support: *mut crate::support::rclc_support_t,
+    timeout_ns: u64,
+    callback: rcl_timer_callback_t,
     autostart: bool,
 ) -> rcl_ret_t {
+    let _ = support;
     unsafe {
         timer_init_inner(
             timer,
             ptr::null(),
-            period_ns,
-            TimerCallback::Plain(callback),
-            context,
+            timeout_ns,
+            TimerCallback::Rcl(callback),
             autostart,
         )
     }
 }
 
-/// [`rclc_timer_init_on_clock`] with Jazzy's `autostart` flag — issue 1974,
-/// our counterpart of `rcl_timer_init2(..., autostart)`: clock second, as
-/// rcl's, and `autostart` last, as rcl's.
+/// rcl's `rcl_timer_init`, signature for signature — a timer scheduled
+/// against `clock` (phase-430 W1; rcl's NAME since phase-515 C1).
 ///
-/// `autostart == false` creates the timer cancelled; `rcl_timer_reset` starts
-/// it, and its first period counts from that reset on the timer's own clock.
-///
-/// # Safety
-/// As [`rclc_timer_init_on_clock`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_timer_init_on_clock2(
-    timer: *mut rcl_timer_t,
-    clock: *const rcl_clock_t,
-    period_ns: u64,
-    callback: rclc_timer_callback_with_context_t,
-    context: *mut c_void,
-    autostart: bool,
-) -> rcl_ret_t {
-    if clock.is_null() {
-        return RCL_RET_INVALID_ARGUMENT;
-    }
-    unsafe {
-        timer_init_inner(
-            timer,
-            clock,
-            period_ns,
-            TimerCallback::Plain(callback),
-            context,
-            autostart,
-        )
-    }
-}
-
-/// Initialise a timer whose callback receives the activation's
-/// [`rcl_timer_call_info_t`] — issue 1974, the C counterpart of Jazzy's
-/// `rcl_timer_call_with_info` / `rclcpp::TimerInfoCallbackType`.
-///
-/// `clock` NULL is the wall timer ([`rclc_timer_init_with_context`]'s
-/// schedule, call times on the platform steady clock); a non-NULL clock
-/// selects the schedule exactly as [`rclc_timer_init_on_clock`] does, and the
-/// call times are on that clock. `autostart` as in
-/// [`rclc_timer_init_on_clock2`].
-///
-/// # Returns
-/// * `RCL_RET_OK` on success
-/// * `RCL_RET_INVALID_ARGUMENT` if `timer` or `callback` is NULL, the period
-///   is 0, or the clock names no schedule
-/// * `RCL_RET_NOT_INIT` if the clock is not initialized
-///
-/// # Safety
-/// As [`rclc_timer_init_on_clock`]; `clock` may be NULL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_timer_init_with_info(
-    timer: *mut rcl_timer_t,
-    clock: *const rcl_clock_t,
-    period_ns: u64,
-    callback: rclc_timer_callback_with_info_t,
-    context: *mut c_void,
-    autostart: bool,
-) -> rcl_ret_t {
-    unsafe {
-        timer_init_inner(
-            timer,
-            clock,
-            period_ns,
-            TimerCallback::WithInfo(callback),
-            context,
-            autostart,
-        )
-    }
-}
-
-/// Which of the two callback flavours an init verb supplied.
-enum TimerCallback {
-    Plain(rclc_timer_callback_with_context_t),
-    WithInfo(rclc_timer_callback_with_info_t),
-}
-
-/// Initialize a timer scheduled against `clock` — rcl's shape (phase-430 W1).
-///
-/// `rcl_timer_init(timer, clock, context, period, callback, allocator)` takes
-/// its `rcl_clock_t *` immediately after the timer, and so does this: the
-/// clock is the second parameter. That is RFC-0089's "C
-/// takes rcl's spellings" applied to the ARGUMENT LIST, which is the half of
-/// the spelling that survives our different callback contract —
-/// `<rclc/detail/rcl_compat.h>` §4 records why the NAME `rcl_timer_init` stays
-/// refused (rcl hands the callback the time since its last call, we hand it
-/// the user's context, so a ported timer callback is a different FUNCTION and
-/// taking the name would be a compile-and-differ).
+/// `rcl_timer_init(timer, clock, context, period, callback, allocator)`.
+/// Until phase-515 this was `rclc_timer_init_on_clock`, taking rcl's argument
+/// ORDER but not its name, because the callback contract differed; D2 took
+/// rcl's contract, so the name followed.
 ///
 /// The clock's TYPE selects the schedule, through the one mapping
 /// [`crate::clock::nros_timer_clock_source`]:
 ///
-/// * `RCL_STEADY_TIME` — identical to [`rclc_timer_init_with_context`].
+/// * `RCL_STEADY_TIME` — identical to [`rclc_timer_init_default`].
 /// * `RCL_ROS_TIME` — follows the ROS clock. It stops while a
 ///   simulator is paused, halves with a bag replayed at 0.5x, and restarts its
 ///   period on a backwards jump. With no `/clock` override installed it reads
@@ -354,24 +274,23 @@ enum TimerCallback {
 ///
 /// An UNINITIALIZED clock is REJECTED rather than treated as steady: a timer
 /// created on a clock the caller never initialised would silently be a wall
-/// timer, which is the confusion this verb exists to remove.
+/// timer, which is the confusion a clock-taking init exists to remove.
 ///
 /// The clock must outlive the timer. Its type is read again by
 /// `rclc_executor_add_timer`, which is where the schedule is chosen; rcl has
 /// the same obligation and states it the same way.
 ///
-/// # Parameters
-/// * `timer` - Pointer to a zero-initialized timer
-/// * `clock` - Pointer to an initialized clock (must NOT be NULL — the
-///   clock-less form is [`rclc_timer_init_with_context`])
-/// * `period_ns` - Timer period in nanoseconds
-/// * `callback` - Callback function to invoke when timer fires
-/// * `context` - User context pointer passed to callback (can be NULL)
+/// `context` may be NULL and is never read, for the reason
+/// [`rclc_timer_init_default`]'s `support` is not. `allocator` must be rcl's
+/// default (`rcl_get_default_allocator()`): nothing here allocates, and a
+/// caller-supplied one is refused rather than silently unused, as every
+/// other init that takes one.
 ///
 /// # Returns
 /// * `RCL_RET_OK` on success
-/// * `RCL_RET_INVALID_ARGUMENT` if any required pointer is NULL, the period
-///   is 0, or the clock names no schedule (uninitialized clock type)
+/// * `RCL_RET_INVALID_ARGUMENT` if `timer`, `clock` or `callback` is NULL,
+///   the period is not positive, the clock names no schedule, or the
+///   allocator is not the default
 /// * `RCL_RET_NOT_INIT` if the clock is not initialized
 ///
 /// # Safety
@@ -379,26 +298,93 @@ enum TimerCallback {
 /// * `callback` must be a valid function pointer
 /// * `clock` must remain valid for as long as the timer is registered
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_timer_init_on_clock(
+pub unsafe extern "C" fn rcl_timer_init(
+    timer: *mut rcl_timer_t,
+    clock: *mut rcl_clock_t,
+    context: *mut crate::support::rcl_context_t,
+    period: i64,
+    callback: rcl_timer_callback_t,
+    allocator: crate::allocator::rcl_allocator_t,
+) -> rcl_ret_t {
+    unsafe { rcl_timer_init2(timer, clock, context, period, callback, allocator, true) }
+}
+
+/// Jazzy rcl's `rcl_timer_init2` — [`rcl_timer_init`] with `autostart`
+/// (issue 1974): clock second, as rcl's, and `autostart` last, as rcl's.
+///
+/// `autostart == false` creates the timer cancelled; `rcl_timer_reset` starts
+/// it, and its first period counts from that reset on the timer's own clock.
+///
+/// # Safety
+/// As [`rcl_timer_init`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_timer_init2(
+    timer: *mut rcl_timer_t,
+    clock: *mut rcl_clock_t,
+    context: *mut crate::support::rcl_context_t,
+    period: i64,
+    callback: rcl_timer_callback_t,
+    allocator: crate::allocator::rcl_allocator_t,
+    autostart: bool,
+) -> rcl_ret_t {
+    let _ = context;
+    if clock.is_null() || period <= 0 {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    unsafe {
+        if !crate::allocator::allocator_is_accepted(&allocator) {
+            return RCL_RET_INVALID_ARGUMENT;
+        }
+        timer_init_inner(
+            timer,
+            clock,
+            period as u64,
+            TimerCallback::Rcl(callback),
+            autostart,
+        )
+    }
+}
+
+/// Initialise a timer whose callback receives the activation's
+/// [`rcl_timer_call_info_t`] — issue 1974, the C counterpart of Jazzy's
+/// `rcl_timer_call_with_info` / `rclcpp::TimerInfoCallbackType`.
+///
+/// `clock` NULL is the wall timer ([`rclc_timer_init_default`]'s
+/// schedule, call times on the platform steady clock); a non-NULL clock
+/// selects the schedule exactly as [`rcl_timer_init`] does, and the
+/// call times are on that clock. `autostart` as in [`rcl_timer_init2`].
+///
+/// # Returns
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` if `timer` or `callback` is NULL, the period
+///   is 0, or the clock names no schedule
+/// * `RCL_RET_NOT_INIT` if the clock is not initialized
+///
+/// # Safety
+/// As [`rcl_timer_init`]; `clock` may be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_timer_init_with_info(
     timer: *mut rcl_timer_t,
     clock: *const rcl_clock_t,
     period_ns: u64,
-    callback: rclc_timer_callback_with_context_t,
-    context: *mut c_void,
+    callback: rclc_timer_callback_with_info_t,
+    autostart: bool,
 ) -> rcl_ret_t {
-    if clock.is_null() {
-        return RCL_RET_INVALID_ARGUMENT;
-    }
     unsafe {
         timer_init_inner(
             timer,
             clock,
             period_ns,
-            TimerCallback::Plain(callback),
-            context,
-            true,
+            TimerCallback::WithInfo(callback),
+            autostart,
         )
     }
+}
+
+/// Which of the two callback flavours an init verb supplied.
+enum TimerCallback {
+    Rcl(rcl_timer_callback_t),
+    WithInfo(rclc_timer_callback_with_info_t),
 }
 
 /// The one body behind every init verb. `clock` NULL means the wall timer;
@@ -411,13 +397,12 @@ unsafe fn timer_init_inner(
     clock: *const rcl_clock_t,
     period_ns: u64,
     callback: TimerCallback,
-    context: *mut c_void,
     autostart: bool,
 ) -> rcl_ret_t {
     validate_not_null!(timer);
 
     let (callback, info_callback) = match callback {
-        TimerCallback::Plain(cb) => (cb, None),
+        TimerCallback::Rcl(cb) => (cb, None),
         TimerCallback::WithInfo(cb) => (None, cb),
     };
     if (callback.is_none() && info_callback.is_none()) || period_ns == 0 {
@@ -448,7 +433,6 @@ unsafe fn timer_init_inner(
     timer.period_ns = period_ns;
     timer.callback = callback;
     timer.info_callback = info_callback;
-    timer.context = context;
     timer.clock = clock;
     timer.state = if autostart {
         rclc_timer_state_t::RCLC_TIMER_STATE_RUNNING
@@ -563,7 +547,7 @@ pub unsafe extern "C" fn rcl_timer_fini(timer: *mut rcl_timer_t) -> rcl_ret_t {
     }
 
     timer.callback = None;
-    timer.context = ptr::null_mut();
+    timer.info_callback = None;
     timer.handle_id = usize::MAX;
     timer._executor = ptr::null_mut();
     timer.state = rclc_timer_state_t::RCLC_TIMER_STATE_SHUTDOWN;
@@ -632,7 +616,7 @@ pub unsafe extern "C" fn rclc_timer_get_period(timer: *const rcl_timer_t) -> u64
 ///   overdue by that amount". Unsigned cannot express it, so lateness read as
 ///   `0` — which is also what "fires now" reads as.
 /// * the SOURCE OF TRUTH. It computed from `rcl_timer_t::last_call_time_ns`
-///   (removed by phase-487 W3), which `rclc_timer_init_with_context` and `rcl_timer_reset`
+///   (removed by phase-487 W3), which the timer init and `rcl_timer_reset`
 ///   wrote and no dispatch path ever updated, so for any timer the executor was actually running the
 ///   answer was permanently `0` (issue 1049). It forwards to the arena now, the
 ///   same way W5.c's [`rcl_timer_get_time_since_last_call`] and
@@ -843,7 +827,7 @@ pub unsafe extern "C" fn rcl_timer_is_ready(
 /// Forwards to `Executor::timer_elapsed_us`, the arena's `elapsed_us`
 /// counter. **This is why the accessor could not read `rcl_timer_t` and had
 /// to reach the executor:** `rcl_timer_t::last_call_time_ns` was written by
-/// `rclc_timer_init_with_context` and `rcl_timer_reset` and by nothing else — no
+/// the timer init and `rcl_timer_reset` and by nothing else — no
 /// dispatch path updated it — so a struct-local computation answered `0` for
 /// every timer that had ever fired. phase-487 W3 removed the field.
 ///
@@ -926,7 +910,7 @@ pub unsafe extern "C" fn rcl_timer_get_time_since_last_call(
 ///
 /// **`old_period` is the exact nanosecond value last supplied**, not the
 /// microsecond-quantised one the arena holds: the struct's copy is written
-/// unquantised by `rclc_timer_init_with_context` and by this function, so a caller reading
+/// unquantised by the timer init and by this function, so a caller reading
 /// back what it wrote gets what it wrote. The DISPATCHER's resolution is still
 /// microseconds (issue #505), so a period below 1 µs schedules as 0 — the same
 /// quantisation `rcl_timer_init` has always applied, surfaced here rather than
@@ -1015,7 +999,7 @@ pub unsafe extern "C" fn rcl_timer_exchange_period(
 /// The timer's own, which is the property that makes the answer comparable
 /// with anything else the caller timestamps:
 ///
-/// * a timer created by `rclc_timer_init_on_clock` carries an
+/// * a timer created by `rcl_timer_init` carries an
 ///   `rcl_clock_t *`, and that clock is read — so a `RCL_ROS_TIME`
 ///   timer answers on `/clock`'s timeline and stops advancing when the
 ///   playback does, exactly as its dispatch does;

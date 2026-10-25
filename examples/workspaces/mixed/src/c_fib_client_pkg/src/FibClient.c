@@ -88,9 +88,9 @@ static void send_goal(fib_client_t* self) {
     }
 }
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    fib_client_t* self = (fib_client_t*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    fib_client_t* self = RCLC_CONTAINER_OF(timer, fib_client_t, timer);
+    (void)last_call_time;
 
     /* Pump pending replies -> fires the goal-response / result callbacks. */
     (void)rclc_action_client_poll(&self->client);
@@ -147,7 +147,7 @@ static rcl_ret_t fib_client_configure(rcl_node_t* node, rclc_executor_t* executo
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_with_context(&self->timer, 500ULL * 1000000ULL, on_tick, self);
+    rc = rclc_timer_init_default(&self->timer, NULL, 500ULL * 1000000ULL, on_tick);
     if (rc != RCL_RET_OK) {
         return rc;
     }

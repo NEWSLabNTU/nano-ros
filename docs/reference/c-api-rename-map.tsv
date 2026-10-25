@@ -926,11 +926,11 @@ nros_time_from_nanoseconds	rclc_time_from_nanoseconds	ours	ours-only
 nros_time_sub	rclc_time_sub	ours	ours-only
 nros_time_t	rclc_time_t	ours	ours-only
 nros_time_to_nanoseconds	rclc_time_to_nanoseconds	ours	ours-only
-nros_timer_callback_t	rclc_timer_callback_with_context_t	ours	differs from `rcl_timer_callback_t`: context, not last_call_time (phase-492 W1.b)
+nros_timer_callback_t	rcl_timer_callback_t	adopt	rcl's contract, (timer, last_call_time); phase-515 D2 removed the context-carrying rclc_timer_callback_with_context_t
 nros_timer_get_period	rclc_timer_get_period	ours	differs: keeps a distinct name
 nros_timer_get_time_since_last_call	rcl_timer_get_time_since_last_call	adopt	given upstream `rcl_timer_get_time_since_last_call`'s signature and adopted (measured, phase-492 W1.b)
-nros_timer_init	rclc_timer_init_with_context	ours	differs from `rcl_timer_init`: our callback gets the caller's context (rcl_compat.h §4) (phase-492 W1.b)
-nros_timer_init_on_clock	rclc_timer_init_on_clock	ours	ours-only
+nros_timer_init	rclc_timer_init_default	adopt	rclc's signature; phase-515 D2 removed rclc_timer_init_with_context (state via RCLC_CONTAINER_OF on the timer)
+nros_timer_init_on_clock	rcl_timer_init	adopt	rcl's signature; was rclc_timer_init_on_clock until phase-515 D2
 nros_timer_is_valid	rclc_timer_is_valid	ours	ours-only
 nros_timer_state_t	rclc_timer_state_t	ours	ours-only
 nros_timer_t	rcl_timer_t	alias	`rcl_timer_t` already names it (a compat alias); the definition takes it

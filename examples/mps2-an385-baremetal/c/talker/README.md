@@ -63,7 +63,7 @@ a C reset/vector startup, and a C-callable board init).
 
 `src/talker.c` is the same program as its FreeRTOS sibling: `rclc_support_init`,
 `rclc_node_init_default`, `rclc_publisher_init_default`, a 1 Hz
-`rclc_timer_init_with_context`, `rclc_executor_init`, `rclc_executor_spin_period`. The C API
+`rclc_timer_init_default`, `rclc_executor_init`, `rclc_executor_spin_period`. The C API
 is not subset here — `nros-c` is built with the `platform-mps2-an385` arm and
 carries its whole surface.
 

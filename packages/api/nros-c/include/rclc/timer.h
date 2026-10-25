@@ -3,8 +3,9 @@
  * @ingroup grp_executor
  * @brief Periodic timer API.
  *
- * Create timers with rclc_timer_init_with_context() and register them with an
- * executor via rclc_executor_add_timer().
+ * Create timers with rclc_timer_init_default() (or rcl_timer_init() for a
+ * timer on a clock) and register them with an executor via
+ * rclc_executor_add_timer().
  */
 
 #ifndef NROS_TIMER_H
@@ -14,6 +15,31 @@
  * This per-module header is kept as a thin shim so existing code that
  * does `#include <rclc/timer.h>` continues to compile. */
 #include "rclc/types.h"
+
+#include <stddef.h>
+
+/**
+ * @brief Recover the struct that embeds a member, from a pointer to that member.
+ *
+ * rcl's timer callback, `void (*)(rcl_timer_t *timer, int64_t last_call_time)`,
+ * carries no context pointer (phase-515 D2). A callback reaches its state the
+ * standard C way: embed the `rcl_timer_t` in the state struct and step back
+ * from the timer to the struct. The executor always hands the callback the
+ * caller's own timer, never a copy, so this is exact.
+ *
+ * ```c
+ * typedef struct { rcl_publisher_t pub; rcl_timer_t timer; int32_t count; } talker_t;
+ *
+ * static void on_tick(rcl_timer_t *timer, int64_t last_call_time) {
+ *     talker_t *self = RCLC_CONTAINER_OF(timer, talker_t, timer);
+ *     ...
+ * }
+ * ```
+ *
+ * Ours, not rclc's: rclc programs write the `offsetof` arithmetic by hand,
+ * which this expands to, so a ported callback needs no change.
+ */
+#define RCLC_CONTAINER_OF(ptr, type, member) ((type*)(void*)((char*)(ptr)-offsetof(type, member)))
 
 /**
  * @brief Compute the duration between two time points: `finish - start`.

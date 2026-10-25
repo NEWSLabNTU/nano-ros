@@ -143,7 +143,7 @@ pub fn begin_node(name: &str, namespace: &str, domain_id: u32) -> bool {
 }
 
 /// Issue 1556 item 1 -- is a node open? An executor-side entity the C API
-/// allows before any node (`rclc_timer_init_with_context` needs only a support context)
+/// allows before any node (`rclc_timer_init_default` needs only a support context)
 /// asks this before it records, so it can open the executor scope instead of
 /// failing.
 pub fn has_current_node() -> bool {

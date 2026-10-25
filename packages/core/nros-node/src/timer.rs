@@ -305,7 +305,7 @@ impl TimerClockSource {
 /// dispatched only once `elapsed_us >= period_us`, so the difference — the
 /// activation's lateness, [`Self::lateness_ns`] — is never negative.
 ///
-/// `Copy`, two words, no allocation: it lives on the dispatcher's stack for
+/// `Copy`, a few words, no allocation: it lives on the dispatcher's stack for
 /// the duration of the callback.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(C)]
@@ -320,6 +320,14 @@ pub struct TimerCallInfo {
     /// consumer that wraps the numbers in a typed time (C++'s
     /// `rclcpp::Time(ns, clock_type)`) needs no second lookup.
     pub clock: TimerClockSource,
+    /// Nanoseconds since the previous activation, or since registration or
+    /// the last reset for the first one — the argument rcl's
+    /// `rcl_timer_callback_t` receives (phase-515 C1). It is the dispatcher's
+    /// `elapsed_us` at the moment the activation became due, so it reads the
+    /// same as `Executor::timer_elapsed_us` just before the call, at the same
+    /// microsecond resolution (issue #505). Measured from the previous DUE
+    /// POINT, which for a timer running on time is the previous call.
+    pub since_last_call_ns: i64,
 }
 
 impl TimerCallInfo {

@@ -1,9 +1,15 @@
 /* phase-430 W1 — the C timer verb takes a clock, and the clock DECIDES.
  *
- * `rclc_timer_init_with_context` never took one, so a C caller could not make a ROS-time
- * timer at all while `rclc_timer_init_with_context` and our own C++ `Node::create_timer`
- * both could. `rclc_timer_init_on_clock` closes that, taking its
- * `rcl_clock_t *` in the position `rcl_timer_init` puts it.
+ * The clock-less init never took one, so a C caller could not make a ROS-time
+ * timer at all while our own C++ `Node::create_timer` could. phase-430 W1
+ * added a clock-taking verb with the clock where rcl puts it; phase-515 C1 gave
+ * it rcl's name and contract, `rcl_timer_init`, and the clock-less verb rclc's
+ * `rclc_timer_init_default`.
+ *
+ * phase-515 C1 also pins rcl's CALLBACK contract, `(timer, last_call_time)`:
+ * the second argument is the time since the previous call (or the reset), and
+ * the timer pointer is the caller's own, so `RCLC_CONTAINER_OF` reaches the
+ * state the timer is embedded in.
  *
  * This is a compile-AND-RUN probe rather than a signature probe because the
  * defect it pins is a BEHAVIOUR: a clock argument that is accepted, stored and
@@ -52,15 +58,15 @@ void nros_app_register_backends(void) {
 static unsigned s_ros_fires = 0;
 static unsigned s_wall_fires = 0;
 
-static void ros_timer_cb(struct rcl_timer_t* timer, void* context) {
+static void ros_timer_cb(struct rcl_timer_t* timer, int64_t last_call_time) {
     (void)timer;
-    (void)context;
+    (void)last_call_time;
     s_ros_fires++;
 }
 
-static void wall_timer_cb(struct rcl_timer_t* timer, void* context) {
+static void wall_timer_cb(struct rcl_timer_t* timer, int64_t last_call_time) {
     (void)timer;
-    (void)context;
+    (void)last_call_time;
     s_wall_fires++;
 }
 
@@ -70,23 +76,37 @@ static struct rcl_timer_call_info_t s_last_info;
 static unsigned s_late_fires = 0;
 static unsigned s_group_fires = 0;
 
-static void info_timer_cb(struct rcl_timer_t* timer, const struct rcl_timer_call_info_t* info,
-                          void* context) {
+static void info_timer_cb(struct rcl_timer_t* timer, const struct rcl_timer_call_info_t* info) {
     (void)timer;
-    (void)context;
     s_last_info = *info;
     s_info_fires++;
 }
 
-static void late_timer_cb(struct rcl_timer_t* timer, void* context) {
+static int64_t s_late_last_call_time = -1;
+
+static void late_timer_cb(struct rcl_timer_t* timer, int64_t last_call_time) {
     (void)timer;
-    (void)context;
+    s_late_last_call_time = last_call_time;
     s_late_fires++;
 }
 
-static void group_timer_cb(struct rcl_timer_t* timer, void* context) {
-    (void)timer;
-    (void)context;
+/* phase-515 C1 — state reached through the timer, not a context pointer. The
+ * timer is deliberately NOT the first member, so a callback that cast the
+ * timer pointer straight to the struct would read the wrong bytes. */
+typedef struct {
+    uint32_t marker;
+    struct rcl_timer_t timer;
+    unsigned fires;
+} grouped_state_t;
+
+static grouped_state_t s_group = {.marker = 0x5eed5eedu};
+
+static void group_timer_cb(struct rcl_timer_t* timer, int64_t last_call_time) {
+    (void)last_call_time;
+    grouped_state_t* self = RCLC_CONTAINER_OF(timer, grouped_state_t, timer);
+    if (self == &s_group && self->marker == 0x5eed5eedu) {
+        self->fires++;
+    }
     s_group_fires++;
 }
 
@@ -161,10 +181,11 @@ int main(void) {
      * wall timer's period is short against the spin loop below. */
     struct rcl_timer_t ros_timer = rcl_get_zero_initialized_timer();
     struct rcl_timer_t wall_timer = rcl_get_zero_initialized_timer();
-    CHECK_RET(rclc_timer_init_on_clock(&ros_timer, &ros_clock, 1000000ull, ros_timer_cb, NULL),
+    CHECK_RET(rcl_timer_init(&ros_timer, &ros_clock, &support.context, 1000000ll, ros_timer_cb,
+                             rcl_get_default_allocator()),
               RCL_RET_OK, "ROS-time timer created on the ROS clock");
-    CHECK_RET(rclc_timer_init_with_context(&wall_timer, 1000000ull, wall_timer_cb, NULL),
-              RCL_RET_OK, "the pre-existing clock-less verb still creates a wall timer");
+    CHECK_RET(rclc_timer_init_default(&wall_timer, NULL, 1000000ull, wall_timer_cb), RCL_RET_OK,
+              "the pre-existing clock-less verb still creates a wall timer");
     CHECK(ros_timer.clock == &ros_clock, "the ROS timer kept its clock, as rcl's does");
     CHECK(wall_timer.clock == NULL, "the wall timer has no clock");
 
@@ -200,13 +221,23 @@ int main(void) {
     /* --- 3. The refusals the verb owes its caller. ------------------------- */
     struct rcl_timer_t rejected = rcl_get_zero_initialized_timer();
     struct rcl_clock_t uninit_clock = rclc_clock_get_zero_initialized();
-    CHECK_RET(rclc_timer_init_on_clock(&rejected, &uninit_clock, 1000000ull, ros_timer_cb, NULL),
+    CHECK_RET(rcl_timer_init(&rejected, &uninit_clock, NULL, 1000000ll, ros_timer_cb,
+                             rcl_get_default_allocator()),
               RCL_RET_NOT_INIT,
               "a clock the caller never initialised is REFUSED, not treated as a wall clock");
-    CHECK_RET(rclc_timer_init_on_clock(&rejected, NULL, 1000000ull, ros_timer_cb, NULL),
+    CHECK_RET(
+        rcl_timer_init(&rejected, NULL, NULL, 1000000ll, ros_timer_cb, rcl_get_default_allocator()),
+        RCL_RET_INVALID_ARGUMENT,
+        "the clock-taking verb requires a clock; the clock-less form is "
+        "rclc_timer_init_default");
+    CHECK_RET(rcl_timer_init(&rejected, &ros_clock, NULL, -1ll, ros_timer_cb,
+                             rcl_get_default_allocator()),
+              RCL_RET_INVALID_ARGUMENT, "a negative period is refused");
+    struct rcl_allocator_t foreign = rcl_get_default_allocator();
+    foreign.allocate = NULL;
+    CHECK_RET(rcl_timer_init(&rejected, &ros_clock, NULL, 1000000ll, ros_timer_cb, foreign),
               RCL_RET_INVALID_ARGUMENT,
-              "the clock-taking verb requires a clock; the clock-less form is "
-              "rclc_timer_init_with_context");
+              "a caller-supplied allocator is refused rather than silently unused");
     CHECK(rejected.state == RCLC_TIMER_STATE_UNINITIALIZED, "a refused init left the timer alone");
 
     /* --- 4. issue 1974: call info, autostart, and a grouped clock timer. ---
@@ -214,21 +245,19 @@ int main(void) {
      * every assertion is an equality. The two timers above are removed first:
      * the builtin executor holds four handles (NROS_EXECUTOR_MAX_HANDLES). */
     CHECK_RET(rclc_executor_remove_timer(&executor, &ros_timer), RCL_RET_OK, "ROS timer removed");
-    CHECK_RET(rclc_executor_remove_timer(&executor, &wall_timer), RCL_RET_OK,
-              "wall timer removed");
+    CHECK_RET(rclc_executor_remove_timer(&executor, &wall_timer), RCL_RET_OK, "wall timer removed");
     const int64_t t0 = sim_epoch_ns + 1000000000ll; /* 2 s */
     CHECK_RET(rcl_set_ros_time_override(&ros_clock, t0), RCL_RET_OK, "freeze /clock at t0");
 
     struct rcl_timer_t info_timer = rcl_get_zero_initialized_timer();
-    CHECK_RET(rclc_timer_init_with_info(&info_timer, &ros_clock, 10000000ull, info_timer_cb, NULL,
-                                        true),
+    CHECK_RET(rclc_timer_init_with_info(&info_timer, &ros_clock, 10000000ull, info_timer_cb, true),
               RCL_RET_OK, "a call-info timer on the ROS clock");
     CHECK_RET(rclc_executor_add_timer(&executor, &info_timer), RCL_RET_OK,
               "call-info timer registered");
 
     struct rcl_timer_t late_timer = rcl_get_zero_initialized_timer();
-    CHECK_RET(rclc_timer_init_on_clock2(&late_timer, &ros_clock, 10000000ull, late_timer_cb, NULL,
-                                        false),
+    CHECK_RET(rcl_timer_init2(&late_timer, &ros_clock, &support.context, 10000000ll, late_timer_cb,
+                              rcl_get_default_allocator(), false),
               RCL_RET_OK, "autostart=false timer on the ROS clock");
     CHECK(late_timer.state == RCLC_TIMER_STATE_CANCELED, "autostart=false is created CANCELLED");
     CHECK_RET(rclc_executor_add_timer(&executor, &late_timer), RCL_RET_OK,
@@ -239,10 +268,11 @@ int main(void) {
 
     /* The class fix: the in-group verb used to drop the clock and register a
      * WALL timer, so this one would fire on every spin while /clock is frozen. */
-    struct rcl_timer_t group_timer = rcl_get_zero_initialized_timer();
-    CHECK_RET(rclc_timer_init_on_clock(&group_timer, &ros_clock, 1000000ull, group_timer_cb, NULL),
+    s_group.timer = rcl_get_zero_initialized_timer();
+    CHECK_RET(rcl_timer_init(&s_group.timer, &ros_clock, &support.context, 1000000ll,
+                             group_timer_cb, rcl_get_default_allocator()),
               RCL_RET_OK, "grouped ROS-time timer");
-    CHECK_RET(rclc_executor_add_timer_in_group(&executor, &group_timer, "ctrl"), RCL_RET_OK,
+    CHECK_RET(rclc_executor_add_timer_in_group(&executor, &s_group.timer, "ctrl"), RCL_RET_OK,
               "grouped timer registered");
 
     spin_n(&executor, 50);
@@ -263,6 +293,8 @@ int main(void) {
           "an activation never runs before its deadline");
     CHECK(s_late_fires == 0, "still cancelled after /clock moved");
     CHECK(s_group_fires > 0, "the grouped ROS-time timer fires when /clock advances");
+    CHECK(s_group.fires == s_group_fires,
+          "RCLC_CONTAINER_OF reached the struct embedding the timer on every call");
 
     /* reset starts it, and the first period counts from the reset — not from
      * creation, which would make it fire at once. */
@@ -272,13 +304,15 @@ int main(void) {
     CHECK_RET(rcl_set_ros_time_override(&ros_clock, t0 + 45000000ll), RCL_RET_OK, "/clock +10 ms");
     spin_n(&executor, 3);
     CHECK(s_late_fires == 1, "fires one period after the reset");
+    CHECK(s_late_last_call_time == 10000000ll,
+          "rcl's last_call_time: the 10 ms since the reset, not the 45 ms since creation");
     if (s_failures != 0) {
         fprintf(stderr, "       info=%u late=%u group=%u expected=%lld actual=%lld\n", s_info_fires,
                 s_late_fires, s_group_fires, (long long)s_last_info.expected_call_time,
                 (long long)s_last_info.actual_call_time);
     }
 
-    CHECK_RET(rclc_timer_init_with_info(&rejected, NULL, 1000000ull, NULL, NULL, true),
+    CHECK_RET(rclc_timer_init_with_info(&rejected, NULL, 1000000ull, NULL, true),
               RCL_RET_INVALID_ARGUMENT, "a call-info timer needs a callback");
 
     CHECK(nros_stub_rmw_drive_io_calls() > 0, "the stub backend was actually driven");

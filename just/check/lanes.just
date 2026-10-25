@@ -234,7 +234,7 @@ c: c-fmt
         'rc_locator = rclc_support_init_with_locator(' "$_pp_bare" match
     echo "  - phase-430 W1: a C timer created on a ROS clock FOLLOWS that clock"
     # The second COMPILE+LINK+RUN TU, and for the same reason as the first: the
-    # defect is a behaviour, not a signature. `rclc_timer_init_on_clock` could
+    # defect is a behaviour, not a signature. `rcl_timer_init` (then `rclc_timer_init_on_clock`) could
     # accept an `rcl_clock_t *`, store it, and schedule the timer on the wall
     # anyway — that compiles, links, and reads as a ROS-time timer, which is
     # RFC-0089's "compiles and differs". So the probe stops the simulated clock

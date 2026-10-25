@@ -204,7 +204,7 @@
   "c:timer_clock": {
     "verdict": "declined",
     "disposition": "absent",
-    "why": "RE-VERDICTED 2026-09-07 (phase-430 W1). The original reason is now FALSE and is kept below so the change is legible: a timer CAN be created on a clock other than the executor's, via `rclc_timer_init_on_clock`, so the accessor would no longer return a constant.\n\nStill declined, for a different reason: rcl's `rcl_timer_clock(timer, rcl_clock_t **)` exists because `rcl_timer_t` is opaque. Ours is not -- `rcl_timer_t` is a transparent struct in `<rclc/detail/nros_generated.h>` and the clock is the public field `timer.clock` (NULL for a wall timer). The accessor would be a function around a field read, which is the inverse of `c:clock_get_type`'s reasoning and the same answer.\n\nORIGINAL ROW: reads back the clock a timer was created against. Ours are created on the executor's clock and cannot be created on another, so the accessor would return a constant."
+    "why": "RE-VERDICTED 2026-09-07 (phase-430 W1). The original reason is now FALSE and is kept below so the change is legible: a timer CAN be created on a clock other than the executor's, via `rcl_timer_init` (then spelled `rclc_timer_init_on_clock`), so the accessor would no longer return a constant.\n\nStill declined, for a different reason: rcl's `rcl_timer_clock(timer, rcl_clock_t **)` exists because `rcl_timer_t` is opaque. Ours is not -- `rcl_timer_t` is a transparent struct in `<rclc/detail/nros_generated.h>` and the clock is the public field `timer.clock` (NULL for a wall timer). The accessor would be a function around a field read, which is the inverse of `c:clock_get_type`'s reasoning and the same answer.\n\nORIGINAL ROW: reads back the clock a timer was created against. Ours are created on the executor's clock and cannot be created on another, so the accessor would return a constant."
   },
   "c:timer_exchange_callback": {
     "verdict": "declined",
@@ -236,9 +236,13 @@
     "why": "rcl's pimpl; our handles carry their state inline. See `c:publisher_impl_t`."
   },
   "c:timer_init_default": {
-    "verdict": "declined",
-    "disposition": "adopt",
-    "why": "refused over the CALLBACK CONTRACT, not the arity (`rclc/detail/rcl_compat.h` section 4). rclc's `rcl_timer_callback_t` receives `(rcl_timer_t *, int64_t last_call_time)`; ours, `rclc_timer_callback_with_context_t`, receives `(rcl_timer_t *, void *context)`. Same count, same leading timer, different information in the second slot, so a ported timer callback is a different FUNCTION and taking rclc's name would compile-and-differ on any target where `int64_t` and `void *` convert. Ours is `rclc_timer_init_with_context(timer, period_ns, callback, context)` under a distinct name; it takes no `support`, which the init never read. Closing this needs a decision about what our timer callback receives (phase-515 D2), not a rename. CORRECTED 2026-10-25 (phase-515 W0): the row used to say \"`rcl_timer_init` IS the default form\"; phase-492 W1.b renamed that function precisely because it had taken upstream's name over this contract."
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-c/src/timer.rs",
+      "text": "**`support` may be NULL**"
+    },
+    "why": "phase-515 C1 (decision D2) -- ADOPTED with rclc's signature and rclc's callback contract, `rcl_timer_callback_t`. Until then this name was refused because our callback received a `void *context` where rclc's receives the time since its last call; D2 removed ours (`rclc_timer_init_with_context`) and moved all 34 in-tree callers, which reach their state through the timer with `RCLC_CONTAINER_OF` (the executor hands the callback the caller's own timer). ADOPT-BOUNDED, the envelope at the definition: `support` may be NULL, which rclc refuses -- it is never read, and a C component the generated entry hosts has none. Every call rclc accepts behaves as rclc's; `last_call_time`'s resolution is `c:timer_callback_t`'s."
   },
   "c:timer_is_valid": {
     "verdict": "extension",
@@ -1250,10 +1254,6 @@
     "verdict": "extension",
     "why": "issue 1975 — a read of the arena's own `TimerHeader::clock_source`, the field `arena::timer_try_process` reads, exposed so `nros-cpp`'s `Timer::get_clock` (`cpp:Timer::get_clock`) forwards rather than keeping a second copy of the clock beside the registration. Sits on the executor for the reason its `timer_is_ready` / `timer_elapsed_us` siblings do: RFC-0002's arena owns timer state, so there is no owning `Timer` object to hang it on. Returns `Option`: \"not a timer handle\" is a different answer from `Steady`, which is issue 1008's shape."
   },
-  "c:timer_init_on_clock": {
-    "verdict": "divergence",
-    "why": "phase-430 W1 -- the clock-taking timer verb in C. rcl has ONE init, `rcl_timer_init(timer, clock, context, period, callback, allocator)`, and its clock is not optional; C has no overloading, so a single verb here would have to grow the parameter and break every existing caller. The platform constraint that decides it is the SAME no-allocator/no-runtime-env one that already made `timer_init` a `rule:no-allocator systematic` match: our timers live in an executor arena the caller supplies, so an init is cheap and a second one costs an image nothing but a symbol.\n\nSo the pair is `rcl_timer_init` (the wall timer -- what every caller has always got, unchanged, and what rclcpp spells `create_wall_timer`) and `rclc_timer_init_on_clock`, which takes an `rcl_clock_t *` IN RCL'S POSITION: second, immediately after the timer, ahead of the context-carrying `support`. That is RFC-0089's \"C takes rcl's spellings\" applied to the ARGUMENT LIST, which is the half of the spelling that survives.\n\nThe NAME `rcl_timer_init` stays refused, and for the reason `<rclc/detail/rcl_compat.h>` sec. 4 already records rather than a new one: `rcl_timer_callback_t` is `void(*)(rcl_timer_t *, int64_t last_call_time)` and ours is `void(*)(rcl_timer_t *, void *context)`, so a ported timer callback is a different FUNCTION and taking the name would be a compile-and-differ. Adding the clock does not change that; closing it still needs a decision about what our callback receives.\n\n`rcl_timer_t` grew one field, `const rcl_clock_t *clock` (NULL = the wall timer), which is what rcl's timer keeps too. Both verbs end at the ONE dispatch `Executor::register_timer_on_clock`, and the clock kind is mapped by the ONE `nros_c::nros_timer_clock_source`, shared with `nros_cpp_timer_create_on_clock` so a `RCL_ROS_TIME` cannot mean one thing in a C image and another in a C++ one. An UNINITIALIZED clock is refused rather than defaulted to steady. Behaviour pinned by `packages/api/nros-c/tests/run/timer_clock_source.c` in `just check c`."
-  },
   "cpp:Timer::cancel": {
     "disposition": "adopt",
     "verdict": "divergence",
@@ -1387,19 +1387,21 @@
   },
   "c:timer_init": {
     "verdict": "divergence",
-    "why": "rcl's `rcl_timer_init(timer, clock, context, period, callback, allocator)` hands its callback the time since the last call; ours hands it the caller's context, so ours is `rclc_timer_init_with_context` (see that row). Platform constraint: no allocator and no state in a wrapper (RFC-0019/0020) -- a context-less callback could only reach its state through a trampoline that remembers it. `<rclc/detail/rcl_compat.h>` section 4 records the refusal. phase-492 W1.b moved ours off this name."
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-c/src/timer.rs",
+      "text": "`context` may be NULL and is never read"
+    },
+    "why": "phase-515 C1 -- ADOPTED with rcl's signature, `rcl_timer_init(timer, clock, context, period, callback, allocator)`. phase-430 W1 had taken rcl's argument ORDER as `rclc_timer_init_on_clock` while the callback contract still differed; D2 took rcl's contract, so the name followed and the old verb is gone. ADOPT-BOUNDED, the envelope at the definition: `context` may be NULL (never read), and `allocator` must be the default -- a caller-supplied one is REFUSED with RCL_RET_INVALID_ARGUMENT rather than silently unused, as every init here that takes one. An uninitialised clock is refused (RCL_RET_NOT_INIT) rather than defaulted to a wall timer."
   },
   "c:timer_callback_t": {
     "verdict": "divergence",
-    "why": "rcl's `void (*)(rcl_timer_t *, int64_t last_call_time)`; ours is `rclc_timer_callback_with_context_t`, `void (*)(rcl_timer_t *, void *context)`. Same constraint as `c:timer_init`. phase-492 W1.b."
-  },
-  "c:timer_init_with_context": {
-    "verdict": "divergence",
-    "why": "our wall-timer init: `(timer, period_ns, callback, context)`. The callback receives the caller's context, not rcl's last-call time (`c:timer_init`); there is no clock (the clock-taking verb is `rclc_timer_init_on_clock`), no rcl context (a timer belongs to no session until `rclc_executor_add_timer`) and no allocator. Platform constraints: no allocator, no state in a wrapper (RFC-0019/0020). Was `rcl_timer_init` until phase-492 W1.b, which took upstream's name over this contract."
-  },
-  "c:timer_callback_with_context_t": {
-    "verdict": "divergence",
-    "why": "see `c:timer_callback_t`: the context-carrying timer callback, under rclc's `_with_context` spelling. phase-492 W1.b."
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-c/src/timer.rs",
+      "text": "carries that function's envelope"
+    },
+    "why": "phase-515 C1 (decision D2) -- ADOPTED: `void (*)(rcl_timer_t *, int64_t last_call_time)` is the one C timer callback contract, and the context-carrying one is gone. The second argument is the executor's elapsed count at dispatch, the value `rcl_timer_get_time_since_last_call` reports: ADOPT-BOUNDED because the executor's timer accounting is microsecond-based (issue #505) and it is measured from the previous DUE POINT rather than the previous callback start -- the same number for a timer running on time. Pinned by `packages/api/nros-c/tests/run/timer_clock_source.c` (10 ms after a reset reads exactly 10 ms)."
   },
   "c:clock_get_now_time": {
     "verdict": "extension",
@@ -1421,18 +1423,18 @@
     "why": "issue 1974 — rcl's DISPATCH entry point: the caller's own wait-set loop calls it to run the timer callback and receive the call info, exactly as `c:timer_call` (declined) runs it without. Here the executor dispatches and a user never calls a timer, so the CAPABILITY is delivered on the callback instead: `rclc_timer_init_with_info` registers an `rclc_timer_callback_with_info_t` that receives the same `rcl_timer_call_info_t`. A ported file calling `rcl_timer_call_with_info` gets `undeclared identifier`."
   },
   "c:timer_init2": {
-    "verdict": "divergence",
+    "verdict": "extension",
     "editions": [
-      "jazzy"
+      "humble"
     ],
-    "why": "issue 1974 — `rcl_timer_init2(timer, clock, context, period, callback, allocator, autostart)` is `rcl_timer_init` plus `autostart`, and ours is `rclc_timer_init_on_clock2(timer, clock, period_ns, callback, context, autostart)`: clock second and `autostart` last, as rcl's. The NAME is not taken for the reason `c:timer_init` gives — rcl's callback receives the time since its last call, ours the caller's context (`<rclc/detail/rcl_compat.h>` section 4), so a ported callback is a different function; and there is no rcl context or allocator (no allocator, RFC-0019/0020). `autostart == false` creates the timer cancelled; `rclc_executor_add_timer` registers it cancelled and `rcl_timer_reset` starts it, its first period counting from the reset (the executor re-seeds a clock timer's reading on reset)."
+    "why": "issue 1974 / phase-515 C1 -- Jazzy's `rcl_timer_init2(timer, clock, context, period, callback, allocator, autostart)`, shipped under Jazzy's name and signature on every edition. Against Humble it is ours-only, hence this row; against Jazzy it correlates `same`. Before phase-515 it was spelled `rclc_timer_init_on_clock2` because the callback contract differed. `autostart == false` creates the timer cancelled; `rclc_executor_add_timer` registers it cancelled and `rcl_timer_reset` starts it, its first period counting from the reset."
   },
   "c:timer_init_default2": {
-    "verdict": "divergence",
+    "verdict": "extension",
     "editions": [
-      "jazzy"
+      "humble"
     ],
-    "why": "issue 1974 — rclc's `rclc_timer_init_default2(timer, support, period, callback, autostart)`; ours is `rclc_timer_init_with_context2(timer, period_ns, callback, context, autostart)`. Same constraint as `c:timer_init_default`/`c:timer_init`: the callback contract differs (context, not last-call time), and no support is taken because the timer belongs to no session until `rclc_executor_add_timer`. See `c:timer_init2` for what autostart does."
+    "why": "issue 1974 / phase-515 C1 -- Jazzy's `rclc_timer_init_default2(timer, support, timeout_ns, callback, autostart)`, shipped under Jazzy's name and signature on every edition. Against Humble it is ours-only, hence this row; against Jazzy it correlates `same`. Before phase-515 it was spelled `rclc_timer_init_with_context2` because the callback contract differed. `autostart == false` creates the timer cancelled; `rclc_executor_add_timer` registers it cancelled and `rcl_timer_reset` starts it, its first period counting from the reset."
   },
   "c:timer_on_reset_callback_data_t": {
     "verdict": "declined",
@@ -1547,19 +1549,11 @@
   },
   "c:timer_callback_with_info_t": {
     "verdict": "divergence",
-    "why": "issue 1974 — `void (*)(rcl_timer_t *, const rcl_timer_call_info_t *, void *context)`: the timer callback that receives Jazzy's call info. rcl hands the info out of `rcl_timer_call_with_info`, a dispatch call the user's own loop makes (`c:timer_call_with_info`, declined); here the executor dispatches, so the info rides on the callback, beside the context every callback here carries (`c:timer_callback_with_context_t`). The info pointer is valid for the duration of the call. One producer: the executor's timer dispatcher (`arena::timer_call_info`, `nros_node::TimerCallInfo`) computes expected = actual - (elapsed - period) at the moment it decides the activation is due; C, C++ and Rust copy those two numbers, none computes its own."
+    "why": "issue 1974 — `void (*)(rcl_timer_t *, const rcl_timer_call_info_t *)`: the timer callback that receives Jazzy's call info. rcl hands the info out of `rcl_timer_call_with_info`, a dispatch call the user's own loop makes (`c:timer_call_with_info`, declined); here the executor dispatches, so the info rides on the callback. The info pointer is valid for the duration of the call. One producer: the executor's timer dispatcher (`arena::timer_call_info`, `nros_node::TimerCallInfo`) computes expected = actual - (elapsed - period) at the moment it decides the activation is due; C, C++ and Rust copy those two numbers, none computes its own. CORRECTED 2026-10-25 (phase-515 C1): the trailing `void *context` went with D2."
   },
   "c:timer_init_with_info": {
     "verdict": "divergence",
-    "why": "issue 1974 — `rclc_timer_init_with_info(timer, clock /*NULL = wall*/, period_ns, callback_with_info, context, autostart)` registers a `c:timer_callback_with_info_t`. Upstream reaches call info through `rcl_timer_call_with_info` (a dispatch call, `c:timer_call_with_info`); ours is an init verb because the executor dispatches. Times are on the timer's clock (the platform steady clock for a NULL clock); `autostart` as `c:timer_init2`."
-  },
-  "c:timer_init_on_clock2": {
-    "verdict": "divergence",
-    "why": "issue 1974 — our spelling of `rcl_timer_init2` (`c:timer_init2`): `rclc_timer_init_on_clock` plus Jazzy's trailing `autostart`."
-  },
-  "c:timer_init_with_context2": {
-    "verdict": "divergence",
-    "why": "issue 1974 — our spelling of `rclc_timer_init_default2` (`c:timer_init_default2`): `rclc_timer_init_with_context` plus Jazzy's trailing `autostart`."
+    "why": "issue 1974 — `rclc_timer_init_with_info(timer, clock /*NULL = wall*/, period_ns, callback_with_info, autostart)` registers a `c:timer_callback_with_info_t`. Upstream reaches call info through `rcl_timer_call_with_info` (a dispatch call, `c:timer_call_with_info`); ours is an init verb because the executor dispatches. Times are on the timer's clock (the platform steady clock for a NULL clock); `autostart` as `c:timer_init2`. CORRECTED 2026-10-25 (phase-515 C1): the trailing `context` went with D2; the callback reaches its state through the timer, as an `rcl_timer_callback_t` does."
   },
   "rust:Executor::register_timer_with_info": {
     "verdict": "extension",

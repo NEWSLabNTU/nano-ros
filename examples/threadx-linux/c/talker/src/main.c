@@ -58,9 +58,10 @@ static void signal_handler(int signum) {
 // Timer callback - publish a message
 // ----------------------------------------------------------------------------
 
-static void timer_callback(struct rcl_timer_t* timer, void* context) {
+static void timer_callback(struct rcl_timer_t* timer, int64_t last_call_time) {
     (void)timer;
-    talker_context_t* ctx = (talker_context_t*)context;
+    talker_context_t* ctx = &app.talker_ctx;
+    (void)last_call_time;
 
     // Pre-increment so the first payload is "Hello World: 1", matching the
     // official ROS 2 demo talker (demo_nodes_cpp `talker.cpp`).
@@ -106,9 +107,8 @@ int main(int argc, char** argv) {
     };
     std_msgs__msg__String__init_in(&app.talker_ctx.message, &app.talker_ctx.message_storage);
 
-    RCLC_CHECK_RET(
-        rclc_timer_init_with_context(&app.timer, 1000000000ULL, timer_callback, &app.talker_ctx),
-        1);
+    RCLC_CHECK_RET(rclc_timer_init_default(&app.timer, &app.support, 1000000000ULL, timer_callback),
+                   1);
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     g_executor = &app.executor;
     RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);

@@ -9789,7 +9789,7 @@ impl<'s> Executor<'s> {
 
     /// [`register_timer_with_info`](Self::register_timer_with_info) bound to a
     /// node and an optional callback group — the executor primitive behind
-    /// `Node::create_timer_with_info` and the C `rclc_timer_init_*2` /
+    /// `Node::create_timer_with_info` and the C `rcl_timer_init2` / `rclc_timer_init_default2` /
     /// `rclc_timer_init_with_info` timers (issue 1974). `node_id`/`group` feed
     /// the sched binding exactly as [`register_timer_on`](Self::register_timer_on).
     pub fn register_timer_with_info_on<F>(

@@ -102,9 +102,9 @@ static rclc_logger_t g_logger = NULL;
  * - Publish telemetry
  * - Update control loops
  */
-static void timer_callback(struct rcl_timer_t* timer, void* context) {
+static void timer_callback(struct rcl_timer_t* timer, int64_t last_call_time) {
     (void)timer;
-    (void)context;
+    (void)last_call_time;
 
     app.count++;
     app.message.data = app.count;
@@ -312,7 +312,7 @@ int main(int argc, char** argv) {
 
     // Initialize timer (500ms period)
     app.timer = rcl_get_zero_initialized_timer();
-    ret = rclc_timer_init_with_context(&app.timer, 500000000ULL, timer_callback, NULL);
+    ret = rclc_timer_init_default(&app.timer, &app.support, 500000000ULL, timer_callback);
     if (ret != RCL_RET_OK) {
         fprintf(stderr, "Failed to init timer: %d\n", ret);
         exit_code = 1;
