@@ -245,6 +245,16 @@ on the next publish. Apps should still call
 `Subscriber::supports_event(kind)` first or design for graceful
 fallback.
 
+The subscription side has the mirror-image limit today (issue 2060). It was
+measured on zenoh-pico; Cyclone drains its events from the same `has_data`
+and has not been measured. Its statuses are polled from `has_data`, and the
+executor does not call `has_data` on a subscription that has an arrival waker
+and nothing new to read. So once the last publisher has gone, a subscription's
+matched count does not fall, its liveliness count does not drop, and
+`RequestedDeadlineMissed` does not fire, until a sample arrives. Rises are
+reported, because the first sample triggers the poll. Measured against stock
+ROS 2 by the interop cell `native-qos-event-c-zenoh-bidir`.
+
 The `Subscriber::supports_event(kind)` query lets applications check
 support before registering:
 

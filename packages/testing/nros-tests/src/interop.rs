@@ -658,6 +658,20 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-qos-event-rust-zenoh-r2n",
        c(Linux, Rust, Zenoh, QosEvents, Interop, Runtime),
        LinuxFixtures, RosEdition(Zenoh), RosToNano, "qos_event_interop"),
+    // Issue 2039 — the same family through the C API. The Rust cell above
+    // reaches the backend through `nros-node`; a C application goes through
+    // nros-c's process-wide `status_event_slots` table and the
+    // generation-tagged slot reference between the backend and the user's
+    // callback, which no live foreign peer had met. The probe
+    // (`bins/matched-events-probe-c`) registers the publisher + subscription
+    // MATCHED callbacks and `LivelinessChanged`; a stock `ros2 topic echo`
+    // matches its publisher and a stock `ros2 topic pub` its subscription, so
+    // both directions are exercised — BiDir — and the counts must rise when
+    // the peers start and fall when they stop. Zenoh only: Cyclone delivers no
+    // status event to an application (issue 1164, the carve-out below).
+    ic("native-qos-event-c-zenoh-bidir",
+       c(Linux, C, Zenoh, QosEvents, Interop, Runtime),
+       LinuxFixtures, RosEdition(Zenoh), BiDir, "qos_event_interop"),
     // Cyclone's half, carved rather than run — and the carve-out IS the W6
     // finding for that backend, measured from `vtable.cpp` rather than assumed.
     //
@@ -878,6 +892,15 @@ pub const CASE_CELLS: &[CaseOwner] = &[
        "native-action-rust-zenoh-r2n"),
     co("ros2_action_e2e", "the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh",
        "native-action-rust-zenoh-n2r"),
+
+    // ── qos_event_interop — issue 2039 gave it a second cell ────────────
+    // One case per language; each spawns its own probe (the Rust cargo
+    // fixture, or the C cmake leaf), so a C failure is no evidence about the
+    // Rust cell and vice versa.
+    co("qos_event_interop", "stock_ros2_publisher_raises_a_liveliness_event",
+       "native-qos-event-rust-zenoh-r2n"),
+    co("qos_event_interop", "c_matched_and_liveliness_callbacks_follow_stock_ros2_peers",
+       "native-qos-event-c-zenoh-bidir"),
 
     // ── xrce_ros2_interop — pubsub, service, and three cases with no cell ─
     co("xrce_ros2_interop", "test_xrce_to_ros2_pubsub",      "native-pubsub-rust-xrce-n2r"),

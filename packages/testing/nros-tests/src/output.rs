@@ -1333,6 +1333,26 @@ pub const QOS_EVENT_SUPPORTS: &str = "QOS_EVENT_SUPPORTS";
 /// spinning. The peer may start.
 pub const QOS_EVENT_PROBE_READY: &str = "QOS_EVENT_PROBE_READY";
 
+/// Issue 2039 — `matched-events-probe-c` has its publisher, its subscription
+/// and all three C callbacks registered, and is spinning. The peers may start.
+pub const MATCHED_PROBE_READY: &str = "matched-events-probe-c: READY";
+
+/// Issue 2039 — the C publisher's MATCHED callback fired. A PREFIX: the probe
+/// prints `current=<n> change=<d> total=<n>` after it, and the test reads the
+/// counts.
+pub const MATCHED_PROBE_PUB: &str = "matched-events-probe-c: PUB_MATCHED";
+
+/// Issue 2039 — the C subscription's MATCHED callback fired (same fields).
+pub const MATCHED_PROBE_SUB: &str = "matched-events-probe-c: SUB_MATCHED";
+
+/// Issue 2039 — the C subscription's `LivelinessChanged` callback fired; the
+/// probe prints `alive=<n> alive_change=<d>` after it.
+pub const MATCHED_PROBE_LIVELINESS: &str = "matched-events-probe-c: LIVELINESS";
+
+/// Issue 2039 — a C setter was refused (the backend does not generate that
+/// event); the probe exits 3.
+pub const MATCHED_PROBE_UNSUPPORTED: &str = "matched-events-probe-c: UNSUPPORTED";
+
 /// phase-381 verification — the probe exercised ALL ELEVEN graph slots against
 /// a live peer and every one answered.
 ///

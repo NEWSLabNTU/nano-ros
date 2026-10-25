@@ -1,0 +1,15 @@
+# issue 2039 — the C matched / status-event probe. Host build; the locator and
+# domain stay runtime env (`NROS_LOCATOR` / `ROS_DOMAIN_ID`).
+
+[system]
+name = "matched_events_probe_c"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "matched_events_probe_c"
+class = "matched_events_probe_c::Probe"
+name = "matched_events_probe"
+
+[image.linux]
+board = "linux"

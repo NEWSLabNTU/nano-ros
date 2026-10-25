@@ -40,7 +40,12 @@
 //! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 24 | 11 | 22 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 20 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config | 37 | 35 | 69 % |
-//! | tier 3 | everything | 248 | 51 | 100 % |
+//! | tier 3 | everything | 249 | 51 | 100 % |
+//!
+//! Re-measured 2026-10-25 (issue 2039): the C QoS-event interop cell
+//! (`native-qos-event-c-zenoh-bidir`) joined at an existing coordinate, so
+//! tier 3 went 248 -> 249 cells over the same 51 coordinates and no lane's
+//! selection moved.
 //!
 //! Re-measured 2026-10-24 (issue 1511): the `BeforeBoot` workload joined with
 //! one Linux Rust Zenoh Runtime cell. A new workload is something only tier 1's
@@ -1065,8 +1070,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 248,
-            "the table's tier-3 cell count (248) is stale; recomputed {total_cells}"
+            total_cells, 249,
+            "the table's tier-3 cell count (249) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 51,

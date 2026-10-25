@@ -1,0 +1,5 @@
+# RFC-0033 capacity for the stock `std_msgs/String` this probe publishes and
+# receives (issue 0964: an unbounded type states its bound beside
+# `package.xml`). The payloads are one short line ("i2039 N").
+[fields]
+"std_msgs/String.data" = 256
