@@ -89,7 +89,13 @@ template <typename R, typename... A> class UpstreamCallback<R(A...)> {
     ~UpstreamCallback() { clear(); }
     UpstreamCallback(const UpstreamCallback& o) : fn_(nullptr) { copy_from(o); }
     UpstreamCallback& operator=(const UpstreamCallback& o) {
-        if (this != &o) {
+        // Not `&o`: a unary `&` on this type looks up `operator&` by ADL, whose
+        // associated classes include every type in `Sig` -- and on a
+        // freestanding build those are `Refused<...>`, so the lookup completes
+        // one and fires its refusal on a plain `options` copy that assigns no
+        // upstream field (`Client::set_callbacks`). No `<memory>` freestanding,
+        // so the builtin `std::addressof` is built on.
+        if (this != __builtin_addressof(o)) {
             clear();
             copy_from(o);
         }
