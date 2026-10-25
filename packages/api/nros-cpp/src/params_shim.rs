@@ -1454,10 +1454,15 @@ fn infer_param_value(raw: &str) -> ParameterValue {
 /// scalars a freestanding C++ TU can read.
 ///
 /// `string_value` is NULL unless `param_type` is the string code, and it
-/// points at a buffer that lives only for the duration of the call. An ARRAY
-/// value arrives as its `param_type` with every scalar zeroed: the proposed
-/// elements are not in the store yet, so publishing a pointer to them would be
-/// a borrow this ABI cannot state.
+/// points at a buffer that lives only for the duration of the call.
+///
+/// A byte, bool, integer or double ARRAY arrives through the matching
+/// `*_array` pointer plus `array_len` (issue 2056); the other pointers are
+/// NULL. The elements are the proposed value the store is validating, borrowed
+/// for the call only, exactly like `string_value`. A STRING array still
+/// arrives as its `param_type` with every value field zeroed: the store holds
+/// it as fixed-capacity strings, not as NUL-terminated pointers, so there is
+/// nothing to borrow.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct nros_cpp_param_write_t {
@@ -1473,6 +1478,21 @@ pub struct nros_cpp_param_write_t {
     pub double_value: f64,
     /// The proposed value when `param_type` is the string code; else NULL.
     pub string_value: *const c_char,
+    /// The proposed elements when `param_type` is the byte-array code; else
+    /// NULL. `array_len` elements, valid for the call only.
+    pub byte_array: *const u8,
+    /// The proposed elements when `param_type` is the bool-array code; else
+    /// NULL.
+    pub bool_array: *const bool,
+    /// The proposed elements when `param_type` is the integer-array code;
+    /// else NULL.
+    pub integer_array: *const i64,
+    /// The proposed elements when `param_type` is the double-array code;
+    /// else NULL.
+    pub double_array: *const f64,
+    /// The element count behind whichever `*_array` pointer is non-NULL; 0
+    /// otherwise.
+    pub array_len: usize,
 }
 
 /// An accept/reject hook. `false` REFUSES the write — rclcpp's
@@ -2000,6 +2020,25 @@ fn cpp_on_set_trampoline(
         integer_value: value.as_integer().unwrap_or(0),
         double_value: value.as_double().unwrap_or(0.0),
         string_value,
+        byte_array: value
+            .as_byte_array()
+            .map_or(core::ptr::null(), <[u8]>::as_ptr),
+        bool_array: value
+            .as_bool_array()
+            .map_or(core::ptr::null(), <[bool]>::as_ptr),
+        integer_array: value
+            .as_integer_array()
+            .map_or(core::ptr::null(), <[i64]>::as_ptr),
+        double_array: value
+            .as_double_array()
+            .map_or(core::ptr::null(), <[f64]>::as_ptr),
+        array_len: value
+            .as_byte_array()
+            .map(<[u8]>::len)
+            .or_else(|| value.as_bool_array().map(<[bool]>::len))
+            .or_else(|| value.as_integer_array().map(<[i64]>::len))
+            .or_else(|| value.as_double_array().map(<[f64]>::len))
+            .unwrap_or(0),
     };
     // SAFETY: the caller promised a valid function pointer and a context that
     // outlives the registration.
@@ -2108,9 +2147,11 @@ pub unsafe extern "C" fn nros_cpp_node_remove_on_set_params_callback(
 /// the only way to reach our own atomic set was over the wire. `writes` reuses
 /// [`nros_cpp_param_write_t`], which is already a name plus a tagged value.
 ///
-/// Nothing is written unless every element passes. Array elements are refused
-/// (`NROS_CPP_RET_INVALID_ARGUMENT`): the struct carries scalars only, and
-/// silently dropping one would make an "atomic" batch partial.
+/// Nothing is written unless every element passes. A byte, bool, integer or
+/// double array is read from its `*_array` pointer and `array_len`; a string
+/// array is refused (`NROS_CPP_RET_INVALID_ARGUMENT`), because the struct
+/// cannot carry one and silently dropping it would make an "atomic" batch
+/// partial.
 ///
 /// # Safety
 /// `node` as [`nros_cpp_node_declare_param_bool`]; `writes` must point to
@@ -2155,6 +2196,18 @@ pub unsafe extern "C" fn nros_cpp_node_set_params_atomically(
                     4 => nros_node::ParameterValue::from_string(unsafe {
                         cstr_to_str(w.string_value)?
                     })?,
+                    5 => nros_node::ParameterValue::from_byte_array(unsafe {
+                        array_arg(w.byte_array, w.array_len)?
+                    })?,
+                    6 => nros_node::ParameterValue::from_bool_array(unsafe {
+                        array_arg(w.bool_array, w.array_len)?
+                    })?,
+                    7 => nros_node::ParameterValue::from_integer_array(unsafe {
+                        array_arg(w.integer_array, w.array_len)?
+                    })?,
+                    8 => nros_node::ParameterValue::from_double_array(unsafe {
+                        array_arg(w.double_array, w.array_len)?
+                    })?,
                     _ => return None,
                 };
                 Some((name, value))
@@ -2167,6 +2220,22 @@ pub unsafe extern "C" fn nros_cpp_node_set_params_atomically(
         let _ = (node, writes, count);
         NROS_CPP_RET_UNSUPPORTED
     }
+}
+
+/// The elements a C++ write names, or `None` for a NULL pointer with a
+/// non-zero length. An empty array may arrive as NULL.
+///
+/// # Safety
+/// A non-NULL `ptr` must point to `len` initialised elements.
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
+unsafe fn array_arg<'a, T>(ptr: *const T, len: usize) -> Option<&'a [T]> {
+    if len == 0 {
+        return Some(&[]);
+    }
+    if ptr.is_null() {
+        return None;
+    }
+    Some(unsafe { core::slice::from_raw_parts(ptr, len) })
 }
 
 #[cfg(test)]

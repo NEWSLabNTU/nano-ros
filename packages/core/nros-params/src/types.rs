@@ -297,6 +297,12 @@ impl ParameterValue {
     pub fn from_double_array(values: &[f64]) -> Option<Self> {
         Some(Self::DoubleArray(Vec::from_slice(values).ok()?))
     }
+
+    /// Create a byte-array value from a slice; `None` past
+    /// [`MAX_BYTE_ARRAY_LEN`]. See [`from_bool_array`](Self::from_bool_array).
+    pub fn from_byte_array(values: &[u8]) -> Option<Self> {
+        Some(Self::ByteArray(Vec::from_slice(values).ok()?))
+    }
 }
 
 /// Floating point range constraints for parameters

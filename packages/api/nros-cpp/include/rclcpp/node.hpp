@@ -110,6 +110,10 @@
 // includes nothing that includes this file. `nros.hpp` included it already;
 // the declarations here are why it moves onto node.hpp's own include list.
 #include "rclcpp/node_parameters.hpp"
+// issue 2056 -- `rclcpp::ParameterValue` / `rclcpp::Parameter`, which the
+// hosted parameter overloads below take and return. It includes
+// `node_parameters.hpp` and the traits header only, so no cycle.
+#include "rclcpp/parameter_value.hpp"
 #include "rclcpp/logging.hpp"
 #include "rclcpp/guard_condition.hpp"
 #include "rclcpp/executor.hpp"
@@ -243,6 +247,92 @@ using NodeClockInterface = NodeInterfaceHandle<1>;
 using NodeGraphInterface = NodeInterfaceHandle<2>;
 using NodeLoggingInterface = NodeInterfaceHandle<3>;
 using NodeWaitablesInterface = NodeInterfaceHandle<4>;
+
+#ifdef NROS_CPP_STD // hosted-family: parameter-interop
+/// Issue 2056 — upstream's `NodeParametersInterface`, as a VIEW of one node.
+///
+/// Upstream's is a slice object reached through a `shared_ptr`; helper
+/// libraries take it (Nav2's `nav2_util::declare_or_get_parameter`) and call
+/// `declare_parameter` / `has_parameter` / `get_parameter` through `->`. Ours
+/// is the node-interface handle shape above with those methods on it: each
+/// forwards to the `rclcpp::Node` it names, so there is still one store.
+/// `SharedPtr` is the view itself and `->` reaches it, so
+/// `NodeParametersInterface::SharedPtr p = node->get_node_parameters_interface();
+/// p->has_parameter(name)` compiles as written.
+///
+/// `get_parameter_overrides()` is absent (issue 2057): the executor applies `-p` and
+/// `--params-file` overrides at declaration and offers no listing of them.
+class NodeParametersInterface {
+  public:
+    using SharedPtr = NodeParametersInterface;
+    NodeParametersInterface() : node_(nullptr) {}
+    explicit NodeParametersInterface(Node* node) : node_(node) {}
+    NodeParametersInterface* operator->() { return this; }
+    const NodeParametersInterface* operator->() const { return this; }
+    explicit operator bool() const { return node_ != nullptr; }
+    Node* node() const { return node_; }
+
+    inline bool has_parameter(const ::std::string& name) const;
+    inline ParameterValue declare_parameter(const ::std::string& name,
+                                            const ParameterValue& default_value);
+    template <typename D>
+    inline ParameterValue declare_parameter(const ::std::string& name,
+                                            const ParameterValue& default_value,
+                                            const D& descriptor);
+    inline bool get_parameter(const ::std::string& name, Parameter& out) const;
+    inline Parameter get_parameter(const ::std::string& name) const;
+
+  private:
+    Node* node_;
+};
+
+/// Issue 2056 — the owning handle `add_on_set_parameters_callback(f)` returns.
+///
+/// Destroying it unregisters the callback, as upstream's does when the last
+/// `shared_ptr` goes. `remove_on_set_parameters_callback(handle.get())`
+/// unregisters it early.
+///
+/// It names its node by the node's FFI handle, so it must not outlive the
+/// node: release it first. A member of the node's own subclass does (members
+/// are destroyed before the base), which is how upstream code holds one.
+struct OnSetParametersCallbackHandle {
+    using SharedPtr = ::std::shared_ptr<OnSetParametersCallbackHandle>;
+    using WeakPtr = ::std::weak_ptr<OnSetParametersCallbackHandle>;
+    /// The callback, adapted to the store's accept/reject vote. Upstream's
+    /// member returns a `SetParametersResult`; its `reason` has nowhere to go
+    /// here, since the store's hook answers with a `bool`.
+    using OnParametersSetCallbackType = ::std::function<bool(const ::std::vector<Parameter>&)>;
+
+    OnSetParametersCallbackHandle() : node(nullptr), token(0), registered(false) {}
+    OnSetParametersCallbackHandle(const OnSetParametersCallbackHandle&) = delete;
+    OnSetParametersCallbackHandle& operator=(const OnSetParametersCallbackHandle&) = delete;
+    ~OnSetParametersCallbackHandle() { unregister(); }
+
+    /// Remove the registration; idempotent.
+    void unregister() {
+        if (registered) {
+            (void)::rclcpp::detail::node_param_remove_on_set_callback(node, token);
+            registered = false;
+        }
+    }
+
+    /// The store's hook: one proposed write, as a one-element vector.
+    static bool trampoline(const ParameterWrite* write, void* context) {
+        auto* self = static_cast<OnSetParametersCallbackHandle*>(context);
+        if (write == nullptr || self == nullptr || !self->callback) {
+            return true;
+        }
+        ::std::vector<Parameter> params;
+        params.push_back(Parameter::from_write(*write));
+        return self->callback(params);
+    }
+
+    OnParametersSetCallbackType callback;
+    const nros_cpp_node_t* node;
+    ParameterCallbackHandle token;
+    bool registered;
+};
+#endif // NROS_CPP_STD
 
 } // namespace node_interfaces
 
@@ -1401,6 +1491,97 @@ class Node {
 
     /// `rclcpp::Node::remove_on_set_parameters_callback(handle)`.
     Result remove_on_set_parameters_callback(ParameterCallbackHandle handle);
+
+#ifdef NROS_CPP_STD // hosted-family: parameter-interop
+    // ---- issue 2056: upstream's value-object parameter surface --------------
+    //
+    // Each of these dispatches on a `ParameterValue`'s tag to the typed form
+    // above, so the store, the declared-parameter contract check and the
+    // per-node keying are still reached through one implementation. Methods
+    // only; nothing here is a member.
+
+    /// `declare_parameter(name, ParameterValue)` — returns the value in effect
+    /// (an override's, if one applies). A byte or string array, or a
+    /// `PARAMETER_NOT_SET` value, has no store form: nothing is declared and
+    /// the answer is `PARAMETER_NOT_SET`.
+    ParameterValue declare_parameter(const char* name, const ParameterValue& default_value);
+    /// The same with nano-ros's borrowed-text descriptor.
+    ParameterValue declare_parameter(const char* name, const ParameterValue& default_value,
+                                     const ParameterDescriptor& descriptor);
+    /// The same with upstream's descriptor MESSAGE
+    /// (`rcl_interfaces::msg::ParameterDescriptor`, generated in the user's
+    /// build, so this is a template over its shape). Its strings are borrowed
+    /// for the call; one range of each kind is read.
+    template <typename D, typename = decltype(&D::floating_point_range)>
+    ParameterValue declare_parameter(const char* name, const ParameterValue& default_value,
+                                     const D& descriptor);
+    /// Typed declare with upstream's descriptor message.
+    template <typename T, typename D, typename = decltype(&D::floating_point_range)>
+    T declare_parameter(const char* name, T default_value, const D& descriptor);
+    ParameterValue declare_parameter(const ::std::string& name,
+                                     const ParameterValue& default_value) {
+        return this->declare_parameter(name.c_str(), default_value);
+    }
+    ParameterValue declare_parameter(const ::std::string& name, const ParameterValue& default_value,
+                                     const ParameterDescriptor& descriptor) {
+        return this->declare_parameter(name.c_str(), default_value, descriptor);
+    }
+    template <typename D, typename = decltype(&D::floating_point_range)>
+    ParameterValue declare_parameter(const ::std::string& name, const ParameterValue& default_value,
+                                     const D& descriptor) {
+        return this->declare_parameter(name.c_str(), default_value, descriptor);
+    }
+    template <typename T, typename D, typename = decltype(&D::floating_point_range)>
+    T declare_parameter(const ::std::string& name, T default_value, const D& descriptor) {
+        return this->declare_parameter(name.c_str(), default_value, descriptor);
+    }
+
+    /// `get_parameter(name)` — the parameter as a `Parameter`;
+    /// `PARAMETER_NOT_SET` when the name is not declared (upstream throws).
+    Parameter get_parameter(const ::std::string& name) const;
+    /// `get_parameter(name, out)` — `false` when the name is not declared.
+    bool get_parameter(const char* name, Parameter& out) const;
+    bool get_parameter(const ::std::string& name, Parameter& out) const {
+        return this->get_parameter(name.c_str(), out);
+    }
+    /// `get_parameters(names)`.
+    ::std::vector<Parameter> get_parameters(const ::std::vector<::std::string>& names) const;
+
+    /// What `set_parameter(const Parameter&)` answers: upstream's
+    /// `SetParametersResult` fields, which ported code reads by name. Not
+    /// `[[nodiscard]]`, because upstream's is not and ported code calls the
+    /// setter as a statement.
+    struct SetParametersOutcome {
+        bool successful;
+        ::std::string reason;
+    };
+    /// `set_parameter(parameter)` — through the same store write a remote
+    /// `ros2 param set` takes, so the on-set callbacks vote on it.
+    SetParametersOutcome set_parameter(const Parameter& parameter);
+    /// `set_parameters(parameters)` — one outcome per parameter, in order.
+    ::std::vector<SetParametersOutcome> set_parameters(const ::std::vector<Parameter>& parameters);
+
+    /// `add_on_set_parameters_callback(f)`, where `f` takes
+    /// `const std::vector<rclcpp::Parameter>&` and returns anything with a
+    /// `successful` member (upstream's `rcl_interfaces::msg::SetParametersResult`).
+    ///
+    /// The callback sees ONE write per call, because the store validates
+    /// writes one at a time; `successful = false` refuses it. Its `reason` is
+    /// dropped: the store's hook answers with a `bool`. Returns null when
+    /// every hook slot is taken. Destroying the returned handle unregisters.
+    template <typename F>
+    node_interfaces::OnSetParametersCallbackHandle::SharedPtr
+    add_on_set_parameters_callback(F callback);
+    /// `remove_on_set_parameters_callback(handle)` — unregister early.
+    void
+    remove_on_set_parameters_callback(const node_interfaces::OnSetParametersCallbackHandle* handle);
+
+    /// `get_node_parameters_interface()` — a view of this node; see
+    /// `rclcpp::node_interfaces::NodeParametersInterface`.
+    node_interfaces::NodeParametersInterface::SharedPtr get_node_parameters_interface() {
+        return node_interfaces::NodeParametersInterface(this);
+    }
+#endif // NROS_CPP_STD
 
 #ifdef NROS_CPP_HAS_STD_STRING // hosted-family: string-interop
     /// `std::string`-keyed overloads. rclcpp keys on `std::string`, which does

@@ -1352,10 +1352,15 @@ typedef uint8_t (*nros_cpp_lifecycle_callback_t)(void*);
  * scalars a freestanding C++ TU can read.
  *
  * `string_value` is NULL unless `param_type` is the string code, and it
- * points at a buffer that lives only for the duration of the call. An ARRAY
- * value arrives as its `param_type` with every scalar zeroed: the proposed
- * elements are not in the store yet, so publishing a pointer to them would be
- * a borrow this ABI cannot state.
+ * points at a buffer that lives only for the duration of the call.
+ *
+ * A byte, bool, integer or double ARRAY arrives through the matching
+ * `*_array` pointer plus `array_len` (issue 2056); the other pointers are
+ * NULL. The elements are the proposed value the store is validating, borrowed
+ * for the call only, exactly like `string_value`. A STRING array still
+ * arrives as its `param_type` with every value field zeroed: the store holds
+ * it as fixed-capacity strings, not as NUL-terminated pointers, so there is
+ * nothing to borrow.
  */
 typedef struct nros_cpp_param_write_t {
   /**
@@ -1382,6 +1387,31 @@ typedef struct nros_cpp_param_write_t {
    * The proposed value when `param_type` is the string code; else NULL.
    */
   const char *string_value;
+  /**
+   * The proposed elements when `param_type` is the byte-array code; else
+   * NULL. `array_len` elements, valid for the call only.
+   */
+  const uint8_t *byte_array;
+  /**
+   * The proposed elements when `param_type` is the bool-array code; else
+   * NULL.
+   */
+  const bool *bool_array;
+  /**
+   * The proposed elements when `param_type` is the integer-array code;
+   * else NULL.
+   */
+  const int64_t *integer_array;
+  /**
+   * The proposed elements when `param_type` is the double-array code;
+   * else NULL.
+   */
+  const double *double_array;
+  /**
+   * The element count behind whichever `*_array` pointer is non-NULL; 0
+   * otherwise.
+   */
+  size_t array_len;
 } nros_cpp_param_write_t;
 
 /**
@@ -6380,9 +6410,11 @@ nros_cpp_ret_t nros_cpp_node_remove_on_set_params_callback(const struct nros_cpp
  * the only way to reach our own atomic set was over the wire. `writes` reuses
  * [`nros_cpp_param_write_t`], which is already a name plus a tagged value.
  *
- * Nothing is written unless every element passes. Array elements are refused
- * (`NROS_CPP_RET_INVALID_ARGUMENT`): the struct carries scalars only, and
- * silently dropping one would make an "atomic" batch partial.
+ * Nothing is written unless every element passes. A byte, bool, integer or
+ * double array is read from its `*_array` pointer and `array_len`; a string
+ * array is refused (`NROS_CPP_RET_INVALID_ARGUMENT`), because the struct
+ * cannot carry one and silently dropping it would make an "atomic" batch
+ * partial.
  *
  * # Safety
  * `node` as [`nros_cpp_node_declare_param_bool`]; `writes` must point to

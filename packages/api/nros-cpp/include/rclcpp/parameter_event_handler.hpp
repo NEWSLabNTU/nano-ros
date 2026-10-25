@@ -4,8 +4,8 @@
 /**
  * @file parameter_event_handler.hpp
  * @ingroup grp_params
- * @brief `rclcpp::ParameterEventHandler` and the hosted `rclcpp::Parameter`
- *        value it hands its callbacks (issue 2024).
+ * @brief `rclcpp::ParameterEventHandler` (issue 2024). The `rclcpp::Parameter`
+ *        it hands its callbacks is `rclcpp/parameter_value.hpp`'s (issue 2056).
  *
  * Every surface PUBLISHES `/parameter_events` since issue 2023. This is the
  * subscribing half: one `rcl_interfaces/msg/ParameterEvent` subscription per
@@ -45,6 +45,7 @@
 #include "rclcpp/detail/std_detect.hpp" // NROS_CPP_HAS_SHARED_PTR, NROS_CPP_STD
 #include "rclcpp/logging.hpp"           // NROS_RCLCPP_REFUSE_PARAMETER_EVENT_HANDLER, refuse
 #include "rclcpp/node_parameters.hpp"   // rclcpp::ParameterType
+#include "rclcpp/parameter_value.hpp"   // rclcpp::Parameter, rclcpp::ParameterValue
 #include "rclcpp/qos.hpp"
 
 #ifdef NROS_CPP_STD // hosted-family: container-interop
@@ -106,135 +107,13 @@ struct ParameterEventFrame {
     }
 };
 
-#ifdef NROS_CPP_STD // hosted-family: container-interop
-/// The heap value behind a hosted `rclcpp::Parameter`.
-struct ParameterValueImpl {
-    ::std::string name;
-    ::rclcpp::ParameterType type = PARAMETER_NOT_SET;
-    bool b = false;
-    int64_t i = 0;
-    double d = 0.0;
-    ::std::string s;
-    ::std::vector<uint8_t> bytes;
-    ::std::vector<bool> bools;
-    ::std::vector<int64_t> ints;
-    ::std::vector<double> doubles;
-    ::std::vector<::std::string> strings;
-    static void free(void* p) { delete static_cast<ParameterValueImpl*>(p); }
-};
-#endif
-
 } // namespace detail
 
-/// `rclcpp::Parameter` — issue 2024: a name plus a type-tagged value, what a
-/// `ParameterEventHandler` parameter callback receives.
-///
-/// The value accessors upstream's callers use (`get_name`, `get_type`,
-/// `get_type_name`, `as_bool` … `as_string_array`), on a HOSTED build. Reading
-/// the wrong type
-/// returns the type's zero value where upstream throws
-/// `ParameterTypeException` (RFC-0018: no exceptions); check `get_type()`
-/// first. The value lives on the heap behind two pointers, so the type has one
-/// layout everywhere; a freestanding build has the type and no accessors.
-class Parameter {
-  public:
-    Parameter() {}
-    ~Parameter() { reset(); }
-
-#ifdef NROS_CPP_STD // hosted-family: container-interop
-    explicit Parameter(const ::std::string& name) { impl().name = name; }
-    Parameter(const Parameter& o) {
-        if (o.p_ != nullptr) adopt(new detail::ParameterValueImpl(o.v()));
-    }
-    Parameter& operator=(const Parameter& o) {
-        if (this != &o) {
-            reset();
-            if (o.p_ != nullptr) adopt(new detail::ParameterValueImpl(o.v()));
-        }
-        return *this;
-    }
-    Parameter(Parameter&& o) noexcept : p_(o.p_), free_(o.free_) {
-        o.p_ = nullptr;
-        o.free_ = nullptr;
-    }
-    Parameter& operator=(Parameter&& o) noexcept {
-        if (this != &o) {
-            reset();
-            p_ = o.p_;
-            free_ = o.free_;
-            o.p_ = nullptr;
-            o.free_ = nullptr;
-        }
-        return *this;
-    }
-
-    const ::std::string& get_name() const { return v().name; }
-    ::rclcpp::ParameterType get_type() const { return v().type; }
-
-    /// Upstream's `rclcpp::to_string(ParameterType)` spelling.
-    const char* get_type_name() const {
-        switch (v().type) {
-        case PARAMETER_BOOL:
-            return "bool";
-        case PARAMETER_INTEGER:
-            return "integer";
-        case PARAMETER_DOUBLE:
-            return "double";
-        case PARAMETER_STRING:
-            return "string";
-        case PARAMETER_BYTE_ARRAY:
-            return "byte_array";
-        case PARAMETER_BOOL_ARRAY:
-            return "bool_array";
-        case PARAMETER_INTEGER_ARRAY:
-            return "integer_array";
-        case PARAMETER_DOUBLE_ARRAY:
-            return "double_array";
-        case PARAMETER_STRING_ARRAY:
-            return "string_array";
-        default:
-            return "not set";
-        }
-    }
-
-    bool as_bool() const { return v().b; }
-    int64_t as_int() const { return v().i; }
-    double as_double() const { return v().d; }
-    const ::std::string& as_string() const { return v().s; }
-    const ::std::vector<uint8_t>& as_byte_array() const { return v().bytes; }
-    const ::std::vector<bool>& as_bool_array() const { return v().bools; }
-    const ::std::vector<int64_t>& as_integer_array() const { return v().ints; }
-    const ::std::vector<double>& as_double_array() const { return v().doubles; }
-    const ::std::vector<::std::string>& as_string_array() const { return v().strings; }
-#else
-    Parameter(const Parameter&) = delete;
-    Parameter& operator=(const Parameter&) = delete;
-#endif
-
-  private:
-    friend struct detail::ParameterEventDecoder;
-#ifdef NROS_CPP_STD // hosted-family: container-interop
-    const detail::ParameterValueImpl& v() const {
-        static const detail::ParameterValueImpl empty;
-        return p_ != nullptr ? *static_cast<const detail::ParameterValueImpl*>(p_) : empty;
-    }
-    detail::ParameterValueImpl& impl() {
-        if (p_ == nullptr) adopt(new detail::ParameterValueImpl());
-        return *static_cast<detail::ParameterValueImpl*>(p_);
-    }
-    void adopt(detail::ParameterValueImpl* i) {
-        p_ = i;
-        free_ = &detail::ParameterValueImpl::free;
-    }
-#endif
-    void reset() {
-        if (free_ != nullptr) free_(p_);
-        p_ = nullptr;
-        free_ = nullptr;
-    }
-    void* p_ = nullptr;
-    void (*free_)(void*) = nullptr;
-};
+// `rclcpp::Parameter`, what a parameter callback receives, is the ONE
+// value object in `rclcpp/parameter_value.hpp` (issue 2056): the node's own
+// `get_parameter` and on-set callback hand back the same type. Issue 2024
+// landed a second, event-only `Parameter` here the same day; the decoder below
+// builds the shared one instead.
 
 /// `rclcpp::ParameterEventCallbackHandle` — issue 2024: the owning handle
 /// `ParameterEventHandler::add_parameter_event_callback` returns, as a
@@ -301,27 +180,63 @@ struct ParameterEventDecoder {
         return true;
     }
     bool parameter(::rclcpp::Parameter& out) {
-        ParameterValueImpl& v = out.impl();
+        ::std::string name;
+        ::std::string sv;
         uint8_t type = 0;
         uint8_t b = 0;
-        if (!str(v.name) || !scalar(type, 1) || !scalar(b, 1) || !scalar(v.i, 8) ||
-            !scalar(v.d, 8) || !str(v.s))
+        int64_t i = 0;
+        double d = 0.0;
+        if (!str(name) || !scalar(type, 1) || !scalar(b, 1) || !scalar(i, 8) || !scalar(d, 8) ||
+            !str(sv))
             return false;
-        v.type = static_cast<::rclcpp::ParameterType>(type);
-        v.b = b != 0;
-        if (!seq<uint8_t>(v.bytes, 1)) return false;
+        ::std::vector<uint8_t> bytes;
         ::std::vector<uint8_t> bools;
-        if (!seq<uint8_t>(bools, 1)) return false;
-        v.bools.assign(bools.begin(), bools.end());
-        if (!seq<int64_t>(v.ints, 8) || !seq<double>(v.doubles, 8)) return false;
+        ::std::vector<int64_t> ints;
+        ::std::vector<double> doubles;
+        if (!seq<uint8_t>(bytes, 1) || !seq<uint8_t>(bools, 1) || !seq<int64_t>(ints, 8) ||
+            !seq<double>(doubles, 8))
+            return false;
         uint32_t n = 0;
         if (!u32(n)) return false;
-        v.strings.clear();
+        ::std::vector<::std::string> strings;
         for (uint32_t k = 0; k < n; ++k) {
             ::std::string x;
             if (!str(x)) return false;
-            v.strings.push_back(x);
+            strings.push_back(x);
         }
+        ::rclcpp::ParameterValue v;
+        switch (type) {
+        case PARAMETER_BOOL:
+            v = ::rclcpp::ParameterValue(b != 0);
+            break;
+        case PARAMETER_INTEGER:
+            v = ::rclcpp::ParameterValue(static_cast<long long>(i));
+            break;
+        case PARAMETER_DOUBLE:
+            v = ::rclcpp::ParameterValue(d);
+            break;
+        case PARAMETER_STRING:
+            v = ::rclcpp::ParameterValue(sv);
+            break;
+        case PARAMETER_BYTE_ARRAY:
+            v = ::rclcpp::ParameterValue(bytes);
+            break;
+        case PARAMETER_BOOL_ARRAY:
+            v = ::rclcpp::ParameterValue(::std::vector<bool>(bools.begin(), bools.end()));
+            break;
+        case PARAMETER_INTEGER_ARRAY:
+            v = ::rclcpp::ParameterValue(ints);
+            break;
+        case PARAMETER_DOUBLE_ARRAY:
+            v = ::rclcpp::ParameterValue(doubles);
+            break;
+        case PARAMETER_STRING_ARRAY:
+            v = ::rclcpp::ParameterValue(strings);
+            break;
+        default:
+            break; // NOT_SET: a deleted parameter, or a type this side does not know
+        }
+        out = ::rclcpp::Parameter(name, v);
         return true;
     }
     bool parameters(::std::vector<::rclcpp::Parameter>& out) {

@@ -115,6 +115,17 @@ FAMILY = {
         "between RMW sessions runs on a hosted target. Hosted-only BY DESIGN, "
         "not interop",
     ),
+    "parameter-interop": (
+        {"NROS_CPP_STD"},
+        "upstream's value-object parameter surface (issue 2056): "
+        "`rclcpp::ParameterValue` / `Parameter` holding a `std::string` or "
+        "`std::vector`, `declare_parameter(name, ParameterValue[, descriptor "
+        "message])`, the `std::function` on-set callback over "
+        "`std::vector<Parameter>` and its `shared_ptr` handle, and "
+        "`NodeParametersInterface`. The heap block sits behind one pointer "
+        "member, so no layout follows the flag; freestanding keeps the scalar "
+        "constructors and accessors and the typed forms",
+    ),
     "ported-publish": (
         {"NROS_CPP_STD"},
         "`publish()` on the porting surface returns a result that may be "

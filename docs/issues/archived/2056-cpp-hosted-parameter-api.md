@@ -1,12 +1,13 @@
 ---
 id: 2056
 title: "The hosted C++ surface has no rclcpp::Parameter, rclcpp::ParameterValue or vector-shaped on-set-parameters callback"
-status: open
+status: resolved
 type: limitation
 area: [api, cpp, params]
 severity: medium
 found: 2026-10-25
-related: [phase-488, 2024, 2035]
+resolved: 2026-10-25
+related: [phase-488, 2024, 2035, 2057]
 ---
 
 ## What
@@ -102,3 +103,84 @@ A runtime test on the stub backend:
 - registers a vector callback;
 - sends a `set_parameters` request;
 - asserts that the callback saw the write and that its refusal was honoured.
+
+## Resolution
+
+Built as sketched, on the hosted (`NROS_CPP_STD`) surface, forwarding to the
+executor's one store.
+
+- `rclcpp::ParameterValue` and `rclcpp::Parameter`
+  (`packages/api/nros-cpp/include/rclcpp/parameter_value.hpp`). They exist in
+  every arm with one layout: a type tag, the three scalar slots, and one
+  pointer to a heap block only a hosted build allocates.
+  `check-cpp-capability-layout` measures them in all three arms. Freestanding
+  keeps the scalar constructors and accessors. A string literal is refused
+  there rather than silently becoming a `bool`.
+- `Node::declare_parameter(name, ParameterValue[, descriptor])` dispatches on
+  the tag to the typed `declare_parameter<T>`. The descriptor may be
+  nano-ros's or `rcl_interfaces::msg::ParameterDescriptor`, which is a
+  template over the generated shape, as are its text, `read_only` and the
+  ranges. The typed `declare_parameter<T>(name, v, descriptor message)` form
+  is included too.
+- `get_parameter(name)`, `get_parameter(name, Parameter&)`,
+  `get_parameters`, `set_parameter(const Parameter&)` and `set_parameters`.
+  The setters return `successful` and `reason`, and are not `[[nodiscard]]`.
+- `add_on_set_parameters_callback(f)` over `std::vector<rclcpp::Parameter>`.
+  It returns `node_interfaces::OnSetParametersCallbackHandle::SharedPtr`,
+  whose destruction unregisters, and
+  `remove_on_set_parameters_callback(handle.get())` unregisters it early.
+- `get_node_parameters_interface()`, a view in issue 2015's node-interface
+  handle shape.
+- The FFI half: `nros_cpp_param_write_t` gained `byte_array`, `bool_array`,
+  `integer_array`, `double_array` and `array_len`. The hook therefore sees a
+  proposed array's ELEMENTS. Before this, an array arrived as its type with
+  every field zeroed, so Nav2's `as_double_array().size() != 3` check would
+  have refused every write. `set_parameters_atomically` now accepts those
+  arrays, and `ParameterValue::from_byte_array` joins the other three
+  constructors.
+- When the user's build generated `rcl_interfaces`, the header includes the
+  `rcl_interfaces` messages upstream's `rclcpp.hpp` reaches transitively
+  (`ParameterType`, `ParameterValue`, `Parameter`, `ParameterDescriptor`,
+  `SetParametersResult`, `ListParametersResult`). Nav2 names them without
+  including them.
+- Found on the way: `declare_parameter<std::vector<bool>>` did not compile,
+  because `std::vector<bool>` has no `data()`. It now crosses through a
+  contiguous copy.
+
+**Bounds.**
+
+- The callback still sees one write per call, and its `reason` is dropped,
+  because the store's hook answers `bool`.
+- A byte or string array can be HELD but not declared, since the store FFI
+  carries neither.
+- A wrong-type `as_*` answers the zero value, not an exception (RFC-0018).
+- `get_parameter_overrides()` is absent. That is issue 2057.
+- `rclcpp::exceptions` stays refused by design.
+
+**Test.** `packages/api/nros-cpp/tests/compile/parameter_value_runtime.cpp`,
+in `just check cpp`, on the `param-services` archive:
+
+- it declares through `ParameterValue`, vectors and a descriptor message
+  included;
+- it registers a `std::bind` callback;
+- it votes on a local write and on a `~/set_parameters` request staged on the
+  stub backend, and asserts both that the refusal is the remote caller's
+  answer and that the store is unchanged.
+
+Negative controls, measured:
+
+- the trampoline's `double_array` left NULL gives 6 failures;
+- a no-op handle destructor makes the next write call a freed handle (SIGBUS).
+
+**Done-when, measured on the Nav2 port** (phase-488 node 2):
+
+- every parameter-API error is gone from `nav2_velocity_smoother` and
+  `nav2_util`;
+- `velocity_smoother.cpp`'s 13 `ParameterValue` declarations and its
+  `dynamicParametersCallback` compile unchanged;
+- `node_utils.hpp` keeps two stated edits: `rclcpp::exceptions` becomes
+  `std::invalid_argument`, and the `get_parameter_overrides()` test becomes
+  issue 2057's edit.
+
+The port's remaining errors are not parameter API. They are node 2's next
+findings.
