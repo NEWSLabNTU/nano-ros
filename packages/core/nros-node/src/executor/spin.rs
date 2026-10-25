@@ -4670,14 +4670,43 @@ impl<'s> Executor<'s> {
     }
 
     fn audit_spin_quantization(&mut self, spin_us: u64) {
+        self.spin_quantized_timers(spin_us, |period_us, early_us, late_us| {
+            nros_log::log_warn!(
+                nros_log::get_logger("nros"),
+                "timer period {} us is not a multiple of the {} us spin period: activations will alternate between {} us and {} us (mean cadence preserved)",
+                period_us,
+                spin_us,
+                early_us,
+                late_us
+            );
+        });
+    }
+
+    /// Each timer the executor's own worker runs whose period `spin_us`
+    /// quantizes, as `(period_us, early_us, late_us)`. Split out of
+    /// [`Self::audit_spin_quantization`], which only logs, so the choice of
+    /// timers can be asserted.
+    ///
+    /// Issue 2050 -- only the timers in the worker's own band
+    /// ([`Self::band_slots`], the same mask its pass dispatches from). In a
+    /// level runner the executor's own worker is the boot level, paced at the
+    /// boot level's spin period, while a spawned level's timers run on that
+    /// level's band worker, whose park is bounded by its next timer deadline.
+    /// Auditing every timer judged a 1 ms timer on a spawned level against a
+    /// 10 ms boot spin it never ran under.
+    pub(crate) fn spin_quantized_timers(&self, spin_us: u64, mut f: impl FnMut(u64, u64, u64)) {
         if spin_us == 0 {
             return;
         }
+        let mask = self.band_slots(self.worker.level, self.worker.band);
         let arena_ptr = self.arena.as_ptr() as *const u8;
-        for i in 0..self.entries.len() {
-            let Some(meta) = self.entries[i].as_ref() else {
+        for (i, meta) in self.entries.iter().enumerate() {
+            let Some(meta) = meta.as_ref() else {
                 continue;
             };
+            if i < 64 && mask & (1u64 << i) == 0 {
+                continue;
+            }
             if !matches!(meta.kind, EntryKind::Timer) || Self::slot_held(self.slot_tags, i) {
                 continue;
             }
@@ -4690,14 +4719,7 @@ impl<'s> Executor<'s> {
             else {
                 continue;
             };
-            nros_log::log_warn!(
-                nros_log::get_logger("nros"),
-                "timer period {} us is not a multiple of the {} us spin period: activations will alternate between {} us and {} us (mean cadence preserved)",
-                period_us,
-                spin_us,
-                early_us,
-                late_us
-            );
+            f(period_us, early_us, late_us);
         }
     }
 

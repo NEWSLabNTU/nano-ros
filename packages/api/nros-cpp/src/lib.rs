@@ -1604,6 +1604,22 @@ macro_rules! cpp_diag {
 #[allow(unused_imports)]
 pub(crate) use cpp_diag;
 
+// issue 2049 — `cpp_diag!`'s sibling for status lines a healthy boot prints
+// ("multi-level run — N level(s)"). Those went out at ERROR, and the boot
+// record counts every ERROR (issue 1036), so each multi-level boot read as one
+// with errors and its first recorded error was a status line. Same sink and
+// stream, so a test matching the text is unaffected.
+#[allow(unused_macros)]
+macro_rules! cpp_info {
+    ($($arg:tt)+) => {{
+        let logger: &'static nros_log::Logger = nros_log::get_logger("nros_cpp");
+        nros_log::log_info!(logger, $($arg)+);
+    }};
+}
+
+#[allow(unused_imports)]
+pub(crate) use cpp_info;
+
 /// issue 0586 — map `TransportError` to the closest `NROS_CPP_RET_*` code.
 ///
 /// The sibling of [`node_error_to_cpp_ret`], and the reason that one no longer
@@ -8556,7 +8572,7 @@ pub unsafe extern "C" fn nros_board_native_run_tiers_in(
         }
     }
 
-    crate::cpp_diag!(
+    crate::cpp_info!(
         "nros: multi-tier run — {} tier(s) over one session",
         n_tiers
     );
@@ -8852,7 +8868,7 @@ unsafe fn native_level_sched_policy(sched: *mut c_void, t: &NativeTierSpecC, ker
         return;
     }
     if sc != 0 && t.budget_us != 0 && t.period_us != 0 {
-        crate::cpp_diag!(
+        crate::cpp_info!(
             "nros: level budget tier=`{name}` {}us/{}us enforced by the {}",
             t.budget_us,
             t.period_us,
@@ -9197,7 +9213,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             return fini(rc);
         }
     }
-    crate::cpp_diag!("nros: multi-level run — {n_tiers} level(s) over one executor");
+    crate::cpp_info!("nros: multi-level run — {n_tiers} level(s) over one executor");
 
     // The adopted level's loop, bounded as the tier runner's.
     let bound_ms: u64 = entry_spin_ms();

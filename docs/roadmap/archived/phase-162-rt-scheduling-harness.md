@@ -157,10 +157,10 @@ phase's scope. They were homed here while the phase was open, and moved to
 [phase-516](../phase-516-low-severity-issues-with-no-home.md) (W6, W7) when it
 was archived.
 
-- [Issue 2049](../../issues/2049-cpp-levels-runner-info-lines-logged-as-errors.md):
+- [Issue 2049](../../issues/archived/2049-cpp-levels-runner-info-lines-logged-as-errors.md):
   the C++ runners log three status lines at ERROR, so the boot report counts
   every multi-level boot as an error.
-- [Issue 2050](../../issues/2050-spin-quantization-warning-names-a-spawned-level-timer.md):
+- [Issue 2050](../../issues/archived/2050-spin-quantization-warning-names-a-spawned-level-timer.md):
   the spin-quantization audit warns that `attitude`'s 1 ms timer runs in 10 ms
   bursts. W2's run under `SCHED_FIFO` showed the warning is the wrong half.
 

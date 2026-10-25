@@ -1,6 +1,6 @@
 # Phase 516 — Open issues whose phases were archived
 
-**Status (2026-10-25). Open; nothing started.** Each item below is one open
+**Status (2026-10-25). Open; W6 and W7 done.** Each item below is one open
 issue whose phase was archived while it stayed open. None is a red in a gating
 or nightly lane. W5 is parked until ESP32 is revived.
 
@@ -71,7 +71,7 @@ not work this until it is revived.
 **Done when** both methods read the port's heap, the way mps2-an385 does, or
 the issue is closed `wontfix` because ESP32 was retired.
 
-### W6 — C++ runner status lines logged at ERROR ([issue 2049](../issues/2049-cpp-levels-runner-info-lines-logged-as-errors.md))
+### W6 — C++ runner status lines logged at ERROR ([issue 2049](../issues/archived/2049-cpp-levels-runner-info-lines-logged-as-errors.md))
 
 Filed by phase-162, which was archived on 2026-10-25 with it open. The C++
 tier and level runners print "multi-tier run", "multi-level run" and "level
@@ -81,7 +81,10 @@ boot report counts every multi-level boot as an error.
 **Done when** those lines log at INFO and a `levels-cpp` `linux_s1` boot
 reports no error.
 
-### W7 — the spin-quantization warning on a spawned level's timer ([issue 2050](../issues/2050-spin-quantization-warning-names-a-spawned-level-timer.md))
+**Done (2026-10-25).** A `cpp_info!` beside `cpp_diag!` logs the three at
+INFO; a `linux_s1` boot prints no `ERROR`. Issue 2049 resolved.
+
+### W7 — the spin-quantization warning on a spawned level's timer ([issue 2050](../issues/archived/2050-spin-quantization-warning-names-a-spawned-level-timer.md))
 
 Also filed by phase-162. The audit warns that `attitude`'s 1 ms timer runs in
 10 ms bursts against a spin period that is neither level's. phase-162's run
@@ -92,6 +95,10 @@ half.
 against its level's spin period, and a `linux_s1` boot prints no warning for
 `attitude`.
 
+**Done (2026-10-25).** The audit walks only its own worker's band, so the boot
+level no longer judges a spawned level's timer; a `linux_s1` boot prints no
+quantization warning. Issue 2050 resolved.
+
 ## Issues homed here
 
 | Issue | Item | Severity |
@@ -101,8 +108,8 @@ against its level's spin period, and a `linux_s1` boot prints no warning for
 | [1205](../issues/1205-doc-commit-citations-local-fetch-state.md) | W3 | unrated |
 | [1808](../issues/1808-sizing-knobs-with-no-static-derivation.md) | W4 | low |
 | [1823](../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | W5 | low |
-| [2049](../issues/2049-cpp-levels-runner-info-lines-logged-as-errors.md) | W6 | low |
-| [2050](../issues/2050-spin-quantization-warning-names-a-spawned-level-timer.md) | W7 | low |
+| [2049](../issues/archived/2049-cpp-levels-runner-info-lines-logged-as-errors.md) | W6 | low |
+| [2050](../issues/archived/2050-spin-quantization-warning-names-a-spawned-level-timer.md) | W7 | low |
 
 ## Acceptance
 

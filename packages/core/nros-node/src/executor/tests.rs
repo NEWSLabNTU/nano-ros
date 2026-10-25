@@ -17252,6 +17252,42 @@ mod p9b_windows {
         drop(executor);
     }
 
+    /// Issue 2050 -- the spin-quantization audit judges only the timers the
+    /// executor's own worker runs. In a level runner that worker is the boot
+    /// level, paced at the boot level's spin period; a 1 ms timer a spawned
+    /// level registered runs on that level's band worker and was warned about
+    /// against the boot level's 10 ms spin.
+    #[test]
+    fn the_spin_quantization_audit_judges_only_its_own_levels_timers() {
+        let mut executor = executor_with_clock(MockSession::new());
+        let quantized = |e: &Executor, spin_us| {
+            let mut v = Vec::new();
+            e.spin_quantized_timers(spin_us, |p, _, _| v.push(p));
+            v
+        };
+
+        // A one-level executor: every timer is its own worker's.
+        executor
+            .register_timer(TimerDuration::from_millis(25), || {})
+            .unwrap();
+        assert_eq!(quantized(&executor, 10_000), [25_000]);
+
+        // A level runner: boot level 1 (the slow one), urgent level 0.
+        let mut executor = executor_with_clock(MockSession::new());
+        assert!(executor.set_level(1));
+        executor.set_registering_level(0);
+        executor
+            .register_timer(TimerDuration::from_millis(1), || {})
+            .unwrap();
+        executor.set_registering_level(1);
+        executor
+            .register_timer(TimerDuration::from_millis(15), || {})
+            .unwrap();
+        // The urgent level's 1 ms timer is not judged against the boot
+        // level's spin; the boot level's own 15 ms timer still is.
+        assert_eq!(quantized(&executor, 10_000), [15_000]);
+    }
+
     /// Issue 2020, test 2 -- the issue's fixture: an urgent level's action
     /// server completes its goal on the urgent level's own thread. The goal
     /// is accepted by the urgent band pass and completed by the tick that
