@@ -41,7 +41,7 @@ that down is what surfaced issue 1029 (`1029-zephyr-nightly-never-produces-a-ver
 nobody was looking for.
 
 The corrected phases: 403, 296, 209, 356, 357, 196, 230, plus 275 misfiled as a
-phase at all, and 41's stale paths. [phase-162](../phase-162-rt-scheduling-harness.md)
+phase at all, and 41's stale paths. [phase-162](phase-162-rt-scheduling-harness.md)
 was checked and is CORRECT — recorded here because after eight in a row the next
 error is assuming every old status line is wrong.
 

@@ -10,7 +10,7 @@ its board is attached; each one is independent of the others.
 **Prior:** [phase-436](archived/phase-436-poll-wake-revision-deadline-driven-executor.md)
 (the deadline-driven executor, RFC-0106).
 
-**Gathered 2026-10-24:** [phase-162](phase-162-rt-scheduling-harness.md) 162.C
+**Gathered 2026-10-24:** [phase-162](archived/phase-162-rt-scheduling-harness.md) 162.C
 (H4), [phase-418](phase-418-orin-safety-island-and-spe.md) 418.5 and 418.7
 (H5), the board leg of [phase-474](phase-474-safety-island-board-findings.md)
 T4 (H6), [issue 1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md)

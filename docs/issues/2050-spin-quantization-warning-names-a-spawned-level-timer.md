@@ -6,7 +6,7 @@ type: bug
 area: [executor, logging]
 severity: low
 found: 2026-10-25
-related: [phase-162, phase-509]
+related: [phase-162, phase-516, phase-509]
 ---
 
 ## What
