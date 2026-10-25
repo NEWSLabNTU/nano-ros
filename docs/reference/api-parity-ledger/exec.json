@@ -339,7 +339,12 @@
   },
   "cpp:CallbackGroupType": {
     "verdict": "divergence",
-    "why": "rclcpp's `CallbackGroupType` is a CONCURRENCY policy -- `MutuallyExclusive` or `Reentrant` -- and it only means anything to a multi-threaded executor deciding whether two callbacks from one group may run at once. RFC-0002 puts one executor on one RTOS task with non-preemptive run-to-completion dispatch, so every group is mutually exclusive by construction and `Reentrant` is unrepresentable: there is no second thread to be reentrant from. The axis our group carries instead is a NAME that `system.toml` maps to a scheduling tier (RFC-0047, RFC-0079) -- the thing a mixed-criticality image actually needs from grouping. `automatically_add_to_executor_with_node` (rclcpp's second constructor argument) is meaningless for the same reason as `cpp:Executor::add_node`."
+    "why": "rclcpp's `CallbackGroupType` is a CONCURRENCY policy -- `MutuallyExclusive` or `Reentrant` -- and it only means anything to a multi-threaded executor deciding whether two callbacks from one group may run at once. RFC-0002 puts one executor on one RTOS task with non-preemptive run-to-completion dispatch, so every group is mutually exclusive by construction and `Reentrant` is unrepresentable: there is no second thread to be reentrant from. The axis our group carries instead is a NAME that `system.toml` maps to a scheduling tier (RFC-0047, RFC-0079) -- the thing a mixed-criticality image actually needs from grouping. `automatically_add_to_executor_with_node` (rclcpp's second constructor argument) is meaningless for the same reason as `cpp:Executor::add_node`.\n\nphase-488 W3 (2026-10-25) -- ADOPTED as a spelling, BOUNDED in meaning. Ported code names the enum (Autoware's `autoware_external_cmd_selector`: `create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive)` for every subscription), so `rclcpp::CallbackGroupType { MutuallyExclusive, Reentrant }` exists and both values are accepted. Neither changes dispatch: the group is the anonymous `CallbackGroupToken`, which every group-taking verb reads as the node default, and a `Reentrant` group's callbacks still run one at a time. The bound is stated where it is created (`callback_group.hpp`); parallelism stays a tier (RFC-0047).",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/callback_group.hpp",
+      "text": "Both are accepted and neither changes dispatch"
+    }
   },
   "cpp:Executor::add_callback_group": {
     "verdict": "declined",
@@ -555,7 +560,12 @@
   },
   "cpp:Node::create_callback_group": {
     "verdict": "divergence",
-    "why": "same shape as `cpp:CallbackGroup::CallbackGroup`: ours takes the group NAME, rclcpp's takes the concurrency type and the auto-add flag. rclcpp's `CallbackGroupType` is a CONCURRENCY policy -- `MutuallyExclusive` or `Reentrant` -- and it only means anything to a multi-threaded executor deciding whether two callbacks from one group may run at once. RFC-0002 puts one executor on one RTOS task with non-preemptive run-to-completion dispatch, so every group is mutually exclusive by construction and `Reentrant` is unrepresentable: there is no second thread to be reentrant from. The axis our group carries instead is a NAME that `system.toml` maps to a scheduling tier (RFC-0047, RFC-0079) -- the thing a mixed-criticality image actually needs from grouping. `automatically_add_to_executor_with_node` (rclcpp's second constructor argument) is meaningless for the same reason as `cpp:Executor::add_node`. OUR LANGUAGES DISAGREE: RFC-0047 promised ONE mechanism across the three languages and shipped three. C++ has a `CallbackGroup` token type and `Node::create_callback_group`; C has no group type and no creation call at all -- the group is a bare `const char*` passed to `rclc_executor_add_subscription_in_group` / `_add_timer_in_group`, and ONLY those two entity kinds (a C service, client or action server cannot be put in a group); Rust has a sticky mode, `DeclaredNode::callback_group(&str)`, that labels every entity declared after it. Three spellings, and C's is missing capability rather than only a name."
+    "why": "same shape as `cpp:CallbackGroup::CallbackGroup`: ours takes the group NAME, rclcpp's takes the concurrency type and the auto-add flag. rclcpp's `CallbackGroupType` is a CONCURRENCY policy -- `MutuallyExclusive` or `Reentrant` -- and it only means anything to a multi-threaded executor deciding whether two callbacks from one group may run at once. RFC-0002 puts one executor on one RTOS task with non-preemptive run-to-completion dispatch, so every group is mutually exclusive by construction and `Reentrant` is unrepresentable: there is no second thread to be reentrant from. The axis our group carries instead is a NAME that `system.toml` maps to a scheduling tier (RFC-0047, RFC-0079) -- the thing a mixed-criticality image actually needs from grouping. `automatically_add_to_executor_with_node` (rclcpp's second constructor argument) is meaningless for the same reason as `cpp:Executor::add_node`. OUR LANGUAGES DISAGREE: RFC-0047 promised ONE mechanism across the three languages and shipped three. C++ has a `CallbackGroup` token type and `Node::create_callback_group`; C has no group type and no creation call at all -- the group is a bare `const char*` passed to `rclc_executor_add_subscription_in_group` / `_add_timer_in_group`, and ONLY those two entity kinds (a C service, client or action server cannot be put in a group); Rust has a sticky mode, `DeclaredNode::callback_group(&str)`, that labels every entity declared after it. Three spellings, and C's is missing capability rather than only a name.\n\nphase-488 W3 (2026-10-25) -- upstream's overload ADDED beside ours, BOUNDED: `create_callback_group(rclcpp::CallbackGroupType, bool automatically_add = true)` returns `CallbackGroup::SharedPtr`, a `CallbackGroupToken` that converts to the null group every verb reads as the node default (`create_wall_timer`, `SubscriptionOptions::callback_group`, `create_service`'s trailing group). The name-taking overload still makes the tier-mapped NAMED group, which the token cannot hold, so a named group cannot be lost through it. Runtime: `ament_port_surface_runtime.cpp`.",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+      "text": "group-taking verb reads as the node default"
+    }
   },
   "cpp:Node::create_guard_condition": {
     "verdict": "extension",
@@ -1647,5 +1657,21 @@
   "rust:LevelCore::spin_level_once": {
     "verdict": "extension",
     "why": "phase-509 P10 -- one band pass of a spawned level's worker. rclrs has no levels."
+  },
+  "cpp:CallbackGroupToken": {
+    "verdict": "extension",
+    "why": "phase-488 W3 (2026-10-25) -- what `cpp:Node::create_callback_group(CallbackGroupType)` returns and `CallbackGroup::SharedPtr` names: upstream's ANONYMOUS group as a token. It converts to the null `const CallbackGroup*` every group-taking verb reads as the node default, so a ported node's groups compile as written and dispatch on the node's default context; it cannot hold a NAMED (tier-mapped) group, so one cannot be lost through it. Ours-only because upstream's group is a `std::shared_ptr<CallbackGroup>` object with scheduling meaning this executor does not have (see `cpp:CallbackGroupType`)."
+  },
+  "cpp:CallbackGroupToken::CallbackGroupToken": {
+    "verdict": "extension",
+    "why": "phase-488 W3 -- from a `CallbackGroupType` (what `create_callback_group(type)` builds), or empty / `nullptr` (no group). See `cpp:CallbackGroupToken`."
+  },
+  "cpp:CallbackGroupToken::reset": {
+    "verdict": "extension",
+    "why": "phase-488 W3 -- `group_.reset()`, the `shared_ptr` spelling ported code uses to drop its group; afterwards `if (group_)` is false. See `cpp:CallbackGroupToken`."
+  },
+  "cpp:CallbackGroupToken::type": {
+    "verdict": "extension",
+    "why": "phase-488 W3 -- `group_->type()`, the kind it was created with; it changes no dispatch (`cpp:CallbackGroupType`). See `cpp:CallbackGroupToken`."
   }
 }
