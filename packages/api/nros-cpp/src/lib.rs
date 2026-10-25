@@ -1840,7 +1840,9 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
     // routes through `nros_log`, so gating the CALL SITE only threw the
     // information away on the one platform whose return code is often all that
     // reaches the console. The macro picks the sink; callers do not.
-    crate::cpp_diag!("nros: NodeError::{err:?}");
+    // phase-488 — the Display text too: it names the knob that sizes the table
+    // (`NROS_EXECUTOR_MAX_CBS` for `ExecutorFull`), which the variant alone does not.
+    crate::cpp_diag!("nros: NodeError::{err:?}: {err}");
     match err {
         E::NameTooLong => NROS_CPP_RET_INVALID_ARGUMENT,
         E::Serialization | E::Deserialization => NROS_CPP_RET_ERROR,

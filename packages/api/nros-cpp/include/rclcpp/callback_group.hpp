@@ -28,6 +28,50 @@
 
 namespace rclcpp {
 
+struct CallbackGroup;
+
+/// `rclcpp::CallbackGroupType` — upstream's two group kinds (phase-488).
+///
+/// Both are accepted and neither changes dispatch: an executor here runs its
+/// callbacks on one task, so every group is mutually exclusive by
+/// construction, and a `Reentrant` group's callbacks still run one at a time.
+/// Parallelism is a tier (RFC-0047), never a group kind.
+enum class CallbackGroupType { MutuallyExclusive, Reentrant };
+
+/// What `create_callback_group(CallbackGroupType, ...)` returns, and the type
+/// `CallbackGroup::SharedPtr` names: upstream's ANONYMOUS group (phase-488).
+///
+/// A ported node creates groups to keep a multi-threaded executor's callbacks
+/// apart, and names none of them. It is a token, not a scheduling group: it
+/// converts to the null `const CallbackGroup*` every group-taking verb here
+/// already reads as "the node default", so `create_wall_timer(p, cb, group)`,
+/// `rclcpp::create_timer(..., group)`, `SubscriptionOptions::callback_group`
+/// and the service and client overloads take it as written and dispatch on
+/// the node's default context. A NAMED group, the one that feeds the tier
+/// derivation, is `create_callback_group("name")`, which returns a
+/// `CallbackGroup` by value; this token cannot hold one, so a named group
+/// cannot be lost through it.
+class CallbackGroupToken {
+  public:
+    CallbackGroupToken() = default;
+    CallbackGroupToken(decltype(nullptr)) {}
+    explicit CallbackGroupToken(CallbackGroupType type) : valid_(true), type_(type) {}
+
+    /// Every group-taking verb reads null as the node default.
+    operator const CallbackGroup*() const { return nullptr; }
+    /// `if (group_)` — whether one was created, as upstream's `shared_ptr`.
+    explicit operator bool() const { return valid_; }
+    /// `group_->type()`.
+    const CallbackGroupToken* operator->() const { return this; }
+    CallbackGroupType type() const { return type_; }
+    /// `group_.reset()`.
+    void reset() { valid_ = false; }
+
+  private:
+    bool valid_ = false;
+    CallbackGroupType type_ = CallbackGroupType::MutuallyExclusive;
+};
+
 /// Named callback-group token (RFC-0047 / Phase 273).
 ///
 /// Create via `Node::create_callback_group("ctrl")` or
@@ -39,6 +83,11 @@ namespace rclcpp {
 /// The pointed-at string MUST outlive the group token and every entity that
 /// references it — use compile-time string literals.
 struct CallbackGroup {
+    /// `rclcpp::CallbackGroup::SharedPtr` — upstream's anonymous group, a token
+    /// (see `CallbackGroupToken`). phase-488.
+    using SharedPtr = CallbackGroupToken;
+    using WeakPtr = CallbackGroupToken;
+
     /// Group name, null-terminated. `nullptr` behaves like no group (node default).
     const char* name;
 

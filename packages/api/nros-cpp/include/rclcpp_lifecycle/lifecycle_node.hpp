@@ -1222,8 +1222,14 @@ template <typename M> class LifecyclePublisher : public SimpleManagedEntity {
     /// Const overload of [`publisher`].
     const ::rclcpp::Publisher<M>& publisher() const { return pub_; }
 
-    /// Publish `msg` if the node is Active; drop it otherwise.
+    /// Publish `msg` if the node is Active; drop it otherwise. Returns what
+    /// `Publisher<M>::publish` returns, so the std surface may drop it there too
+    /// (phase-488).
+#if defined(NROS_CPP_STD) // hosted-family: ported-publish
+    ::rclcpp::detail::PublishResult publish(const M& msg) {
+#else
     ::rclcpp::Result publish(const M& msg) {
+#endif
         if (!this->is_activated()) {
             return ::rclcpp::Result();
         }

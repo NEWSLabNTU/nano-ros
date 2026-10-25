@@ -1106,6 +1106,30 @@ inline typename Subscription<M>::SharedPtr Node::create_subscription(const char*
                                         ::rclcpp::tr::forward_rvalue(cb));
 }
 
+template <typename M, typename Cb>
+inline typename Subscription<M>::SharedPtr
+Node::create_subscription(const char* topic, const ::rclcpp::QoS& qos, Cb cb,
+                          const ::rclcpp::SubscriptionOptions& options) {
+    // phase-488 — `options.callback_group` is upstream's anonymous group, which
+    // selects the node default (`rclcpp::CallbackGroupToken`), so it needs no
+    // handling here. A scheduling context is a different matter: this overload
+    // cannot bind one, and dropping it would schedule the callback somewhere
+    // the caller did not ask for.
+    if (options.sched_context != ::rclcpp::SCHED_CONTEXT_UNSET) {
+        ::rclcpp::detail::require_created(::rclcpp::Result(::rclcpp::ErrorCode::Unsupported),
+                                          "create_subscription(..., options.sched_context)", topic);
+    }
+    return this->create_subscription<M>(topic, qos, ::rclcpp::tr::forward_rvalue(cb));
+}
+
+template <typename M, typename Cb>
+inline typename Subscription<M>::SharedPtr
+Node::create_subscription(const char* topic, ::size_t depth, Cb cb,
+                          const ::rclcpp::SubscriptionOptions& options) {
+    return this->create_subscription<M>(topic, ::rclcpp::QoS(static_cast<uint32_t>(depth)),
+                                        ::rclcpp::tr::forward_rvalue(cb), options);
+}
+
 template <typename S>
 inline ::rclcpp::Owned<::rclcpp::PollService<S>> Node::create_service(const char* name,
                                                                       const ::rclcpp::QoS& qos) {
@@ -1139,18 +1163,20 @@ inline typename Service<S>::SharedPtr Node::create_service(const char* name, F c
                                                            const ::rclcpp::QoS& qos) {
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
     // phase-488 — upstream's `shared_ptr` handler, lent from the dispatch frame
-    // (`detail::shared_ptr_service_trampoline`, no heap). Anything else that is
-    // not the reference shape is still refused, naming both shapes.
+    // (`detail::shared_ptr_service_trampoline`, no heap), when it converts to a
+    // function pointer. A handler with STATE — `std::bind(&X::on_req, this, _1,
+    // _2)`, a capturing lambda — is copied into the service's arena entry
+    // instead (`detail::stateful_service_trampoline`), in any of the three
+    // shapes. Anything invocable as none of them is refused, naming them.
     constexpr int shape = ::rclcpp::detail::service_ptr_shape<S, F>::value;
-    static_assert(shape != 0 || ::rclcpp::detail::refuse<F>::value,
+    constexpr int stateful = ::rclcpp::detail::stateful_service_shape<S, F>::value;
+    static_assert(shape != 0 || stateful != 0 || ::rclcpp::detail::refuse<F>::value,
                   NROS_RCLCPP_REFUSE_SERVICE_CALLBACK_SHAPE);
     Service<S> s;
     ::rclcpp::detail::require_created(
-        this->template register_service_<S>(
-            s, name, &::rclcpp::detail::shared_ptr_service_trampoline<S, shape>::call,
-            ::rclcpp::detail::shared_ptr_service_context<S>(
-                callback, ::rclcpp::tr::integral_constant<int, (shape == 3 ? 3 : 2)>()),
-            qos, ::rclcpp::ServiceOptions()),
+        this->template register_hosted_service_<S>(
+            s, name, ::rclcpp::tr::forward_rvalue(callback), qos,
+            ::rclcpp::tr::integral_constant<int, (shape != 0 ? 0 : 1)>()),
         "create_service", name);
     return typename Service<S>::SharedPtr(this->executor_handle(), s.handle_id());
 #else
@@ -1160,6 +1186,51 @@ inline typename Service<S>::SharedPtr Node::create_service(const char* name, F c
     static_assert(::rclcpp::detail::refuse<F>::value, NROS_RCLCPP_REFUSE_SERVICE_CALLBACK_SHAPE);
     return typename Service<S>::SharedPtr();
 #endif // NROS_CPP_HAS_SHARED_PTR
+}
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+template <typename S, typename F>
+inline Result Node::register_hosted_service_(Service<S>& out, const char* name, F callback,
+                                             const ::rclcpp::QoS& qos,
+                                             ::rclcpp::tr::integral_constant<int, 0>) {
+    constexpr int shape = ::rclcpp::detail::service_ptr_shape<S, F>::value;
+    return this->template register_service_<S>(
+        out, name, &::rclcpp::detail::shared_ptr_service_trampoline<S, shape>::call,
+        ::rclcpp::detail::shared_ptr_service_context<S>(
+            callback, ::rclcpp::tr::integral_constant<int, (shape == 3 ? 3 : 2)>()),
+        qos, ::rclcpp::ServiceOptions());
+}
+
+template <typename S, typename F>
+inline Result Node::register_hosted_service_(Service<S>& out, const char* name, F callback,
+                                             const ::rclcpp::QoS& qos,
+                                             ::rclcpp::tr::integral_constant<int, 1>) {
+    constexpr int stateful = ::rclcpp::detail::stateful_service_shape<S, F>::value;
+    using Fn = ::rclcpp::detail::StatefulServiceFn<S>;
+    Fn captured(::rclcpp::detail::stateful_service_adapter<S, (stateful != 0 ? stateful : 1)>::wrap(
+        ::rclcpp::tr::forward_rvalue(callback)));
+    const Result r = this->template register_service_<S>(
+        out, name, &::rclcpp::detail::stateful_service_trampoline<S>::call, nullptr, qos,
+        ::rclcpp::ServiceOptions(), &captured, sizeof(Fn),
+        &::rclcpp::detail::stateful_service_trampoline<S>::destroy);
+    // The arena's copy owns the callable now and destroys it on release.
+    if (r.ok()) {
+        captured.relinquish();
+    }
+    return r;
+}
+#endif // NROS_CPP_HAS_SHARED_PTR
+
+template <typename S, typename F>
+inline typename Service<S>::SharedPtr Node::create_service(const char* name, F callback,
+                                                           const ::rclcpp::QoS& qos,
+                                                           const ::rclcpp::CallbackGroup* group) {
+    // phase-488 — see the declaration: an anonymous group is null here.
+    if (group != nullptr && group->get_name() != nullptr) {
+        ::rclcpp::detail::require_created(::rclcpp::Result(::rclcpp::ErrorCode::Unsupported),
+                                          "create_service(..., named callback group)", name);
+    }
+    return this->template create_service<S>(name, ::rclcpp::tr::forward_rvalue(callback), qos);
 }
 
 template <typename S>

@@ -20,6 +20,9 @@
 #include "rclcpp/executor.hpp"           // phase-444 — the graph counter these forward to
 #include "rclcpp/owned.hpp" // phase-456 W5 — `Publisher<M>::SharedPtr` IS `Owned<Publisher<M>>`
 #include "rclcpp/result.hpp"
+#if defined(NROS_CPP_STD) // hosted-family: ported-publish
+#include <rclc/log.h>     // phase-488 — `detail::report_failed_publish`
+#endif
 // RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
 #include "rclcpp/detail/serialization_format.hpp"
 
@@ -138,6 +141,39 @@ namespace rclcpp {
 /// RCLCPP_TRY(node.create_publisher(pub, "/chatter"));
 /// pub.publish_raw(cdr_data, cdr_len);
 /// ```
+#if defined(NROS_CPP_STD) // hosted-family: ported-publish
+namespace detail {
+/// phase-488 — what `Publisher<M>::publish` returns on the std surface (the one
+/// ported code gets, through the ament verbs): the same `Result`, minus
+/// `[[nodiscard]]`. Upstream's `publish()` returns `void` and throws, so ported
+/// code writes `pub->publish(msg);` as a statement, and Autoware builds every
+/// package `-Wall -Wextra -Wpedantic -Werror` (`autoware_package()`): under the
+/// attribute that is one hard error per publish. A derived class does not
+/// inherit a class's `[[nodiscard]]` (measured: gcc 11 and clang 14 both warn
+/// for the base only), so this keeps the `ok()` / `code()` a caller who looks
+/// can read. The failure is not silent either: `publish` logs it, which stands
+/// in for upstream's throw. Freestanding code keeps the attribute.
+class PublishResult : public ::rclcpp::ResultOf<void> {
+  public:
+    constexpr PublishResult(::rclcpp::ResultOf<void> r) : ::rclcpp::ResultOf<void>(r) {}
+};
+
+/// Log a failed publish: the first one per message type, then one in 1024, so a
+/// dead transport under a 100 Hz publisher does not flood the log. A counter
+/// per message type rather than per publisher, because a member would change
+/// `Publisher<M>`'s layout between the std and freestanding surfaces.
+template <typename M> inline void report_failed_publish(const char* topic, int32_t code) {
+    static unsigned long failures = 0;
+    if ((failures++ % 1024UL) == 0) {
+        RCLC_LOG_ERROR(rclc_log_default_logger(),
+                       "rclcpp::Publisher::publish on \"%.64s\" failed: rclcpp::ErrorCode %d "
+                       "(%lu failure(s) so far)",
+                       topic, static_cast<int>(code), failures);
+    }
+}
+} // namespace detail
+#endif
+
 template <typename M> class Publisher {
   public:
     /// `rclcpp::Publisher<M>::SharedPtr` — phase-456 W5.
@@ -201,12 +237,24 @@ template <typename M> class Publisher {
     /// on failure.
     ///
     /// Returns `Result`, where upstream returns `void` and throws: no exceptions
-    /// here (RFC-0018). `Result` is `[[nodiscard]]`, so a ported `pub->publish(msg);`
-    /// warns; an uninitialised publisher answers `NotInitialized` and sends nothing.
+    /// here (RFC-0018). An uninitialised publisher answers `NotInitialized` and
+    /// sends nothing. In freestanding code `Result` is `[[nodiscard]]`, so a
+    /// dropped one warns. On the std surface (ported code) the result may be
+    /// dropped, as upstream's `void` is, and a failure is logged instead
+    /// (`detail::PublishResult`, phase-488).
+#if defined(NROS_CPP_STD) // hosted-family: ported-publish
+    ::rclcpp::detail::PublishResult publish(const M& msg) {
+        const Result r = initialized_ ? Result(M::ffi_publish(storage_, &msg))
+                                      : Result(::rclcpp::ErrorCode::NotInitialized);
+        if (!r.ok()) ::rclcpp::detail::report_failed_publish<M>(get_topic_name(), r.raw());
+        return r;
+    }
+#else
     Result publish(const M& msg) {
         if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(M::ffi_publish(storage_, &msg));
     }
+#endif
 
     /// Publish raw CDR bytes.
     Result publish_raw(const uint8_t* data, size_t len) {

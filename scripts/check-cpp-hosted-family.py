@@ -115,6 +115,20 @@ FAMILY = {
         "between RMW sessions runs on a hosted target. Hosted-only BY DESIGN, "
         "not interop",
     ),
+    "ported-publish": (
+        {"NROS_CPP_STD"},
+        "`publish()` on the porting surface returns a result that may be "
+        "ignored, and logs a failure (phase-488): ported code calls it as a "
+        "statement, under `-Wall -Werror` in Autoware, so `[[nodiscard]]` made "
+        "every publish a build error. Code written for nano-ros keeps the "
+        "`[[nodiscard]] Result` (RFC-0018)",
+    ),
+    "rmw-profile-names": (
+        {"NROS_CPP_STD"},
+        "upstream's global `rmw_qos_profile_*` constants (phase-488), as "
+        "`rclcpp::QoS` values: global names that only ported code spells, "
+        "over the freestanding `rclcpp::QoS` presets they alias",
+    ),
 }
 
 CONDITIONAL = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif)\b(.*)$")
