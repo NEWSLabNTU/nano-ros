@@ -1,31 +1,26 @@
 # Installation
 
-The **library** is distributed as source and compiled into your build. A
-release carries it as its SDK root (`nros sdk-root` prints where), and a
-checkout or vendored copy (git submodule, `west` manifest) works the same
-way. A CMake project reaches it with `find_package(nano_ros)`, which
-`nros build` points at that root; a non-workspace CMake tree can instead
-`add_subdirectory()` it. There is no prebuilt library and no system-wide
-install step.
+You need two things, and a release carries both:
 
-The **`nros` CLI** is a separate question with a separate answer, and
-which one you want depends on who you are:
+* the **`nros` CLI**, which provisions toolchains, scaffolds projects,
+  generates message bindings and drives the build; and
+* the **library**, which is distributed as source and compiled into your
+  build. It ships inside the release as its *SDK root* — `nros sdk-root`
+  prints where — and `nros build` points your project at it. There is no
+  prebuilt library and no system-wide install step.
 
-| you are… | you get `nros` by… |
-| --- | --- |
-| **using** nano-ros to build your own project | installing a release — `scripts/install.sh`, below |
-| **developing** nano-ros itself | building it from the checkout — `./scripts/bootstrap.sh` |
+You do not clone nano-ros, and your project never names a path into it.
+Your project is its own directory of packages plus a `system.toml`; the
+installed SDK is everything else.
 
-That is not a preference. Inside a nano-ros checkout the tree's own
-build is the only correct binary: a released `nros` run against a
-checkout is refused outright, because it emits *its own* generated code
-and this tree's runtime is the one that has to compile it
-([RFC-0090](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0090-codegen-version-is-the-compatibility-token.md)).
+> Working on nano-ros itself? That is a different setup — a checkout and
+> its own build of the CLI — and it lives in
+> [Contributing](../internals/contributing.md#development-setup).
 
 ## Host prerequisites
 
 Everything toolchain-shaped — rustup, cross-compilers, emulators, RMW
-host tools — is provisioned by the steps below. The zenoh router is the
+host tools — is provisioned by `nros setup` below. The zenoh router is the
 exception: it is ROS's `rmw_zenohd` (RFC-0075) and `nros setup` provides
 none — see [Do I need ROS 2 installed?](#do-i-need-ros-2-installed); Cyclone
 DDS needs no daemon. The host itself only
@@ -68,9 +63,9 @@ pip install --user catkin_pkg 'empy==3.3.4' lark PyYAML
 `ca-certificates` ships with the base system.)
 
 (`cmake` builds the C/C++ quick start and every workspace root; `zstd`
-unpacks the prebuilt SDK assets `nros setup` fetches; `python3-dev` is
-needed once, while `bootstrap.sh` builds the launch resolver — it embeds
-CPython to parse ROS launch files. Each tool's absence produces an error
+unpacks the release and the prebuilt SDK assets `nros setup` fetches;
+`python3-dev` is only used by a from-source build of the launch resolver,
+which a release ships prebuilt. Each tool's absence produces an error
 naming it. The Python packages feed `rosidl_adapter`, the ROS
 message-to-IDL step the CycloneDDS backend uses — on Fedora/Arch
 install `catkin_pkg`, `empy==3.3.4`, `lark` and `PyYAML` via pip or your
@@ -85,78 +80,78 @@ nros setup --system          # what is missing + the exact install command
 ```
 
 That command needs the `nros` CLI, which is why the basics above come
-first: they are what it takes to clone the repo and build the CLI.
+first.
 
 ## The whole flow, end to end
 
 Four steps take a bare machine to a building project; each is detailed
 in a section below.
 
-> **Why step 2 builds the CLI here.** These four steps are the *contributor*
-> flow — they start by cloning the repository, so step 2 is the checkout's own
-> build, which is the only binary that may be used against it.
->
-> Prebuilt binaries were shipped early and withdrawn, because a released binary
-> emitted code that had drifted from the runtime — and drifted generated code
-> *compiles*, so the failure was silent. Restoring the download needed one
-> question to have a checkable answer: *can this binary's output work with this
-> runtime?*
-> [RFC-0090](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0090-codegen-version-is-the-compatibility-token.md)
-> answers it with a codegen version that every generated artifact carries and
-> every runtime asserts, and every arm of it refuses at compile time.
->
-> **Releases exist now.** If you only want to *use* nano-ros, install a
-> release with `scripts/install.sh` ([§1 below](#1-get-the-nros-cli-onto-path))
-> instead of these four steps — the installed CLI is how users get `nros`.
-> The repository's GitHub Releases page lists every release cut so far.
+```sh
+# 1. Install the `nros` CLI (and the SDK it carries):
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
 
-```sh probe=20 track=checkout
-# 1. Pull the source at a pinned version (or `main` for latest):
-git clone --branch nros-v0.6.0 https://github.com/NEWSLabNTU/nano-ros.git
-cd nano-ros
+# 2. Put it on PATH (install.sh prints this line):
+export PATH="$HOME/.nros/bin:$PATH"
 
-# 2. Build the `nros` CLI from source (installs rustup if needed):
-./scripts/bootstrap.sh
+# 3. Provision the toolchains for your target:
+nros setup linux --rmw cyclonedds
 
-# 3. Wire the workspace env into this (and every future) shell:
-source ./activate.sh          # or: direnv allow / source ./activate.fish
-
-# 4. Provision the toolchains + RMW daemon for your target:
-nros setup <board> --rmw <zenoh|xrce|cyclonedds>    # e.g. `linux`
+# 4. Scaffold a project, then build it:
+nros new my_robot --workspace
+cd my_robot && nros sync && nros build
 ```
 
-Then scaffold a project and build it: `nros new`, then `nros sync` and
-`nros build` — [First Project](./first-project.md) walks it end to end.
+[First Project](./first-project.md) walks steps 3 and 4 end to end.
 Your project says what it deploys to with a board name in its
 `system.toml`; it does not name a path, a triple or a backend crate in
 any build file. [Consuming nano-ros](#consuming-nano-ros) below has the
-shape, and [Pinning a version](#pinning-a-version) how the tag relates
-to `nros version`.
+shape, and [Pinning a version](#pinning-a-version) how to hold a project
+to one release.
 
-> **`activate.sh` is the after-install step, NOT a prereq.** Sourcing
-> `activate.sh` (or `activate.fish`, or `direnv allow`) only wires the
-> workspace env into a new shell — it presumes the `nros` binary
-> already exists at `packages/cli/target/release/nros`. The bootstrap
-> front door below is what produces that binary; the activate file is
-> what makes it findable in every subsequent shell.
+## Install the `nros` CLI
 
-> [build-as-subdirectory.md](build-as-subdirectory.md) is the
-> lower-level CMake escape hatch, for a C/C++ tree that is not a
-> nano-ros workspace. This page walks the surrounding workspace +
-> per-target setup choices.
+```sh probe=20 track=installed
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"   # install.sh prints this line too
+```
+
+`install.sh` downloads the newest release for your host, verifies its
+sha256 (and refuses an asset it cannot verify), installs it into
+`~/.nros/sdk/nros/<version>/` and points `~/.nros/bin/nros` at the newest
+version installed — so however many versions accumulate, `nros` means
+one command. Add the `export PATH=…` line to your shell's startup file so
+every new shell finds it.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \
+    | sh -s -- --version 0.6.0-nros4     # a specific release instead of the newest
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \
+    | sh -s -- --dry-run                 # print what would happen, change nothing
+```
+
+`NROS_HOME` moves the install root away from `~/.nros`. The repository's
+GitHub Releases page lists every release.
+
+Check the install:
+
+```sh
+nros version        # the CLI and library versions
+nros sdk-root       # where the library source this CLI builds against lives
+nros doctor         # SDK paths, toolchains, environment
+```
 
 ## Do I need ROS 2 installed?
 
 **Building, no. Running two zenoh nodes, yes — or use Cyclone.** `nros
-sync` generates the message bindings from the interface sources vendored
-in `packages/cli/interfaces/`, so nothing about setup, codegen or
-compilation needs ROS 2.
+sync` generates the message bindings from interface sources the release
+bundles, so nothing about setup, codegen or compilation needs ROS 2.
 
 Running is where it splits, and the reason is the **router**. zenoh-pico
 connects in client mode, so any two-process example needs a zenoh router
 — and since [RFC-0075](../design/rmw.md) that router is
-`rmw_zenoh_cpp/rmw_zenohd`, which ships with ROS 2. nano-ros no longer
-vendors one. So on a host with no ROS 2:
+`rmw_zenoh_cpp/rmw_zenohd`, which ships with ROS 2. nano-ros does not
+vendor one. So on a host with no ROS 2:
 
 * **`--rmw cyclonedds` works standalone** — Cyclone is in-process, there
   is no daemon to start. This is the ROS-less path.
@@ -204,27 +199,17 @@ remove it.
 
 | Task | Needs a ROS 2 install? |
 |---|---|
-| `nros setup`, `nros sync`, message codegen | **No** — interface sources are vendored |
+| `nros setup`, `nros sync`, message codegen | **No** — interface sources are bundled |
 | Building any node (Rust / C / C++), any RMW | **No** |
 | Embedded targets (Zephyr, FreeRTOS, NuttX, ThreadX) | **No** |
 | Cyclone DDS backend, build *and* run | **No** — `idlc` comes from the index dist, and there is no daemon |
 | **Running a multi-process zenoh example** | **Yes** — the router is ROS's `rmw_zenohd` (or set `NROS_RMW_ZENOHD`) |
 | Verifying with `ros2 topic echo` / `ros2 node list` | **Yes** |
-| Interop tests against `rmw_zenoh_cpp` / a real ROS 2 graph | **Yes** |
-| Contributor lanes that bridge to ROS 2 (`just test-all` interop cells) | **Yes** |
+| Interop against `rmw_zenoh_cpp` / a real ROS 2 graph | **Yes** |
 
-When you source `activate.sh` without ROS 2 present it says so:
-
-```
-activate.sh: /opt/ros/humble/setup.bash not found — ROS-dependent recipes
-  will fail (interop tests, `ros2` CLI verification). The setup, codegen
-  and first-node flows do not need it.
-```
-
-That line is informational on a getting-started host. If you *do* want
-the ROS 2 side and your distro has no Humble packages (Arch, for
-example), a container is the usual answer — nano-ros itself stays on the
-host.
+If you *do* want the ROS 2 side and your distro has no Humble packages
+(Arch, for example), a container is the usual answer — nano-ros itself
+stays on the host.
 
 ## Consuming nano-ros
 
@@ -270,27 +255,20 @@ nros build                     # or: nros build linux
 uses colcon can still be built by `colcon build`; the packages keep
 their `package.xml` and their own `CMakeLists.txt`.
 
-A complete working example lives at
+A single package works the same way: `nros new my_node --platform linux
+--lang <rust|c|cpp>` scaffolds one directory with its own `system.toml`
+(the [First Node](./first-node-rust.md) chapters).
+
+A complete working example to read lives at
 [`examples/templates/multi-package-workspace/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/multi-package-workspace).
 
-### Pattern B: nano-ros as a third-party subdirectory
+### Pattern B: nano-ros inside an existing CMake tree
 
 For a C/C++ project that is **not** a nano-ros workspace — an existing
-CMake tree with its own layout, that wants nano-ros as a subdirectory
-and nothing else:
-
-```
-~/my_project/
-├── CMakeLists.txt
-├── src/main.c
-└── third_party/
-    └── nano-ros/             # git submodule
-```
-
-There the platform and backend are cache variables set before
-`add_subdirectory()`, because there is no `system.toml` for the build
-to read them from. That is the lower-level shape and it has its own
-page, with the full variable table:
+CMake tree with its own layout — the platform and backend are cache
+variables set before nano-ros is added, because there is no
+`system.toml` for the build to read them from. That is the lower-level
+shape and it has its own page, with the full variable table:
 [Build as a CMake subdirectory](build-as-subdirectory.md). Reach for it
 when Pattern A does not fit your tree, not before.
 
@@ -298,8 +276,8 @@ when Pattern A does not fit your tree, not before.
 
 `nros setup` is the single command that prepares a machine to build
 nano-ros for a given board. The cross-compiler, emulator, RMW host
-tools and any SDK sources a board needs are resolved from a pinned
-index and placed in a shared store (`~/.nros/sdk`). You do **not**
+tools and any SDK sources a board needs are resolved from the index the
+release pins and placed in a shared store (`~/.nros/sdk`). You do **not**
 install cross-toolchains by hand. It provides no zenoh router — that is
 ROS's `rmw_zenohd` (RFC-0075) — and Cyclone DDS needs no daemon.
 
@@ -313,87 +291,8 @@ nros setup: 1 package(s) have no prebuilt for linux-x86_64 — BUILDING FROM SOU
   Expect minutes (tens of minutes for a large recipe) and hundreds of MB under …
 ```
 
-Source recipes build with the **workspace's** pinned Rust channel, so a
-recipe carrying its own pin does not make rustup fetch a second
-toolchain behind your back. `nros setup <board> --dry-run` prints the
-whole plan, prebuilt vs source, without fetching anything — on the
-`linux` board it is two source packages (`zenoh-pico` and `mbedtls`,
-both vendored submodules) and no daemon at all.
-
-### 1. Get the `nros` CLI onto PATH
-
-**If you only want to use nano-ros**, install a release — no checkout,
-no cargo, no `just`:
-
-```sh probe=20 track=installed
-curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
-export PATH="$HOME/.nros/bin:$PATH"   # install.sh prints this line too
-```
-
-It verifies the download's sha256 (and refuses an asset it cannot
-verify), installs into `~/.nros/sdk/nros/<version>/` and points
-`~/.nros/bin/nros` at the newest version installed — so however many
-versions accumulate, `nros` means one command. Put `~/.nros/bin` on
-your PATH. `--version <v>` installs a specific release instead of the
-newest.
-
-**If you are working on nano-ros itself**, build the CLI from the
-checkout — that binary is the only one this tree accepts. One front
-door from a fresh checkout (`just` is NOT a prereq; rustup is installed
-on demand):
-
-> Sourcing `activate.sh` on a host without `just` prints one line about
-> RTOS SDK path defaults (`FREERTOS_DIR`, `NUTTX_DIR`, `THREADX_DIR`, …)
-> not being loaded. Harmless — nothing in the user flows reads them,
-> and embedded builds go through `nros sync` + `nros build`, which
-> drives cargo, cmake or west for you. `just` is a
-> **contributor** tool: only the in-tree `just` recipes (test lanes,
-> fixture builds) need it (`cargo install just`).
-
-```sh
-git clone https://github.com/NEWSLabNTU/nano-ros.git
-cd nano-ros
-./scripts/bootstrap.sh
-```
-
-Builds the in-tree `nros` CLI **from source** at
-`packages/cli/target/release/nros` and leaves it on PATH for this
-shell.
-
-Already have cargo? The equivalent by hand (same build, same binary):
-```sh
-git submodule update --init packages/cli/third-party/play_launch
-cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.toml
-export PATH="$PWD/packages/cli/target/release:$PATH"
-```
-
-Both produce the per-checkout binary at
-`packages/cli/target/release/nros`. **One checkout = one CLI version =
-one runtime ABI** — no global install, no `~/.nros/bin` PATH skew
-across worktrees.
-
-### 2. Activate the workspace (every subsequent shell)
-
-The bootstrap path you ran in §1 left `nros` on PATH for *that* shell
-only. Every new shell needs the workspace env wired in. Pick whichever
-fits your shell — all three wire the same env exports + PATH entries
-from the Phase 218.C SSoT `activate.sh`:
-
-```bash
-direnv allow                  # auto-activates on `cd nano-ros` (recommended)
-source ./activate.sh          # bash / zsh, one-shot per shell
-source ./activate.fish        # fish, one-shot per shell
-```
-
-The activate file also sources `/opt/ros/humble/setup.bash` if
-present (used by the rmw_zenoh interop tests, and it lets codegen
-resolve message packages from the ament index; building with any RMW —
-Cyclone included — does NOT require ROS 2, only the pip-installable
-`rosidl_adapter` Python packages from the prerequisites). It exports no
-checkout root: the in-tree `nros` knows the checkout it was built in.
-
-### 3. Provision a board (+ RMW)
+`nros setup <board> --dry-run` prints the whole plan, prebuilt vs
+source, without fetching anything.
 
 ```bash probe=25 track=installed
 nros setup <board> --rmw <zenoh|xrce|cyclonedds>
@@ -450,6 +349,7 @@ Each board's exact package set lives in the index; run
 > `nros setup --tool arm-none-eabi-gcc`, or point
 > `-DNROS_ARM_NONE_EABI_PREFIX=<dir>/bin/arm-none-eabi` at a GCC ≥ 11. A
 > C-only image is not refused; it gets a warning (issue 1936).
+
 See [Supported Boards](../reference/supported-boards.md) for the full
 board list and [`nros` CLI](../reference/cli.md) for every subcommand.
 
@@ -490,31 +390,20 @@ Zephyr, NuttX, …) for the board's build + run steps.
 ## Rust-only consumers
 
 Nothing of nano-ros is published to crates.io (decision 2026-05-14);
-the crates ship as source in the release's SDK root or a checkout. The full `nros` crate can't be published
-because it depends transitively on C/C++ submodules (zenoh-pico,
-mbedtls); `nros-core` isn't carved out for crates.io either, to
-avoid a hybrid distribution model with version drift between the
-crates.io snapshot and in-repo HEAD.
+the crates ship as source in the release's SDK root. The full `nros`
+crate can't be published because it depends transitively on C/C++
+sources (zenoh-pico, mbedtls); `nros-core` isn't carved out for
+crates.io either, to avoid a hybrid distribution model with version
+drift between a crates.io snapshot and the SDK.
 
-Rust packages consume nano-ros one of two ways:
-
-- **Registry-style names + patch redirection** (what every shipped
-  example uses): declare `nros = { version = "*" }` (+ msg crates) and
-  let `nros sync` resolve the names into the SDK root (the checkout the
-  project sits in, else the `nros` binary's own; `--nano-ros-path` names
-  one). The `[patch.crates-io]` block it writes
-  goes into the generated settings file under `build/`, not into your
-  package — `nros build` hands that file to cargo with `--config`, and
-  a cargo command you drive yourself passes the same path. Copy the
-  project anywhere; re-run `nros sync` to re-point.
-- **Explicit path dependency** on the in-workspace checkout:
-
-```toml
-[dependencies]
-nros = { path = "src/nano-ros/packages/api/nros",
-         default-features = false,
-         features = ["alloc", "env", "log", "rmw-cffi", "ros-humble"] }
-```
+So a Rust package declares registry-style names and lets `nros sync`
+redirect them: `nros = { version = "*" }` (+ msg crates), resolved into
+the SDK root the `nros` on PATH carries (`--nano-ros-path` names a
+different one). The `[patch.crates-io]` block it writes goes into the
+generated settings file under `build/`, not into your package —
+`nros build` hands that file to cargo with `--config`, and a cargo
+command you drive yourself passes the same path. Copy the project
+anywhere; re-run `nros sync` to re-point.
 
 A Rust package carries no build settings of its own — no target triple,
 no linker flag, no patch table. It states its board in `system.toml`
@@ -525,74 +414,34 @@ for a package in that shape, and
 
 ## Pinning a version
 
-Consumers pin the **source tree**, not a package: clone (or submodule)
-at a `nros-v<X.Y.Z>` git tag —
+A release fixes the whole surface at once: the CLI, the library source
+in its SDK root, and the `nros-sdk-index.toml` that pins every
+toolchain and SDK version `nros setup` provisions. So pinning nano-ros
+is pinning a release:
 
 ```sh
-git clone --branch nros-v0.6.0 https://github.com/NEWSLabNTU/nano-ros.git
-# or, as a submodule in your project:
-git submodule add -b main https://github.com/NEWSLabNTU/nano-ros third_party/nano-ros
-git -C third_party/nano-ros checkout nros-v0.6.0
+# install a specific release (several can sit side by side in ~/.nros/sdk/nros/):
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh \
+    | sh -s -- --version 0.6.0-nros4
+
+# report this project's pin (nros-toolchain.toml), or move it:
+nros pin
+nros pin 0.6.0-nros4
 ```
 
-The tag names the **bundle version**: the `nros` CLI built from that
-tree prints the same number (`nros version` → `nros 0.5.0`; the
-`scripts/check-version-lockstep.sh` gate + `bootstrap.sh shell-doctor`
-enforce binary↔tree agreement), and the tree's committed
-`nros-sdk-index.toml` pins the exact toolchain/SDK versions
-`nros setup` will provision for it. One tag therefore fixes the whole
-surface: runtime source, CLI behavior, and provisioned toolchains.
-Upgrading = checking out a newer tag and re-running
-`./scripts/bootstrap.sh` (rebuilds the CLI to match) + `nros setup`
-(reconciles the SDK store against the new index; already-current
-packages are no-ops). See
+`nros pin <version>` reports the **codegen delta** between the two
+releases before it writes anything, so an upgrade that would invalidate
+already-generated bindings warns first; re-run `nros sync` after one
+that does. After installing a newer release, re-run `nros setup <board>`
+— it reconciles the SDK store against the new index, and packages that
+are already current are no-ops. See
 [versioning](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/development/versioning.md)
-for how the bundle number is chosen.
+for how the release number is chosen.
 
-## Contributor setup (working on nano-ros itself)
+## Migrating from an older nano-ros
 
-Contributors clone the repo and drive everything through `just`. The
-`just` setup recipes are thin wrappers over the same `nros setup` index —
-`just setup <module>` calls `nros setup <board>` under the hood, so the
-toolchains a contributor gets are identical to a user's.
-
-```bash
-git clone https://github.com/NEWSLabNTU/nano-ros.git
-cd nano-ros
-./scripts/bootstrap.sh base   # path A from §1 above; gets rustup + just + nros
-source ./activate.sh          # OR: direnv allow / source ./activate.fish
-just setup all                # provision every supported board's SDK/toolchain
-```
-
-Diagnose missing tools (read-only):
-
-```bash
-just doctor tier=all
-```
-
-Provision one module:
-
-```bash
-just setup freertos           # → nros setup mps2-an385-freertos
-just setup nuttx              # → nros setup qemu-armv7a-nuttx
-just setup threadx_linux      # → nros setup threadx-linux
-```
-
-## Docker environment (contributors)
-
-For a containerized environment with QEMU 7.2+ (in-tree checkout):
-
-```bash
-just docker build
-just docker shell      # Interactive shell with all tools
-just docker test-qemu  # Run QEMU tests in container
-```
-
-## Migrating from a pre-140 checkout
-
-If you were on a nano-ros version that still had the (contributor)
-`just install-local` recipe,
-see
+If you used nano-ros from a checkout with the old `install-local`
+recipe, see
 [migration-install-local-removal.md](../release/migration-install-local-removal.md)
 for the one-page rewrite.
 

@@ -2,7 +2,9 @@
 
 Single-node starter on FreeRTOS + lwIP, cross-compiled for Cortex-M3
 and booted in QEMU MPS2-AN385. Slirp networking; no host TAP /
-bridge / sudo. Rust, C, and C++ talkers all live in-tree.
+bridge / sudo. Rust, C, and C++ talkers are on
+[GitHub](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos)
+as reading material; this page scaffolds your own.
 
 > **Prereqs.** `nros setup mps2-an385-freertos` is the single command
 > that prepares your machine for this board. It fetches a prebuilt
@@ -16,14 +18,8 @@ bridge / sudo. Rust, C, and C++ talkers all live in-tree.
 
 ## Setup
 
-Build the in-tree `nros` CLI (Phase 218):
-
-```bash
-./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
-source ./activate.sh        # OR: direnv allow / source ./activate.fish
-```
-
-Then provision the board (`--rmw` defaults to `zenoh`; pick `xrce`
+With the `nros` CLI on PATH ([Installation](./installation.md) —
+`install.sh` puts it in `~/.nros/bin`), provision the board (`--rmw` defaults to `zenoh`; pick `xrce`
 or `cyclonedds` to match the example you intend to run):
 
 ```bash
@@ -37,53 +33,61 @@ NOT installed — it comes from your ROS 2 install (RFC-0075).
 
 ## Project layout
 
-Each language uses the standard nano-ros canonical example shape —
-standalone Cargo (Rust) or CMake (C / C++) project under
-`examples/mps2-an385-freertos/<lang>/<example>/`.
+**C / C++** is a single package — `nros new` scaffolds it:
 
-```text
-examples/mps2-an385-freertos/
-├── rust/talker/             # Cargo package
-│   ├── system.toml                 # WHAT this deploys to — the one file you edit
-│   ├── Cargo.toml                  # Rust deps only; nothing here names a board
-│   ├── package.xml
-│   ├── generated/                  # generated message bindings (gitignored)
-│   ├── build/                      # everything `nros sync` generates (gitignored)
-│   └── src/lib.rs                  # the component class; nros::main! generates the entry
-├── c/talker/                 # CMake project, add_subdirectory consumption
-│   ├── system.toml                 # the same file, same schema
-│   ├── CMakeLists.txt              # targets only
-│   ├── package.xml
-│   └── src/Talker.c
-└── cpp/talker/               # CMake C++14 project
-    ├── system.toml
-    ├── CMakeLists.txt
-    ├── package.xml
-    └── src/Talker.cpp
+```bash
+nros new fr_talker --platform freertos --lang c      # or --lang cpp
+cd fr_talker
 ```
 
-All three languages state their deployment in the same `system.toml`, and
-nothing else does. The Rust leaf has no `.cargo/` to edit — the
-`thumbv7m-none-eabi` triple, the `-Tmps2_an385.ld --nmagic --gc-sections` link
-group, the QEMU runner and the `[patch.crates-io]` rows all come from the board
-and are written by `nros sync` into
-`build/mps2-an385-freertos/nros-cargo.toml` (RFC-0098). The C / C++ leaves have
-no `<nano_ros deploy=… board=… rmw=…/>` tuple in their `package.xml`:
-`find_package(nano_ros)` reads `system.toml` instead, and derives the platform
-from the board.
+```text
+fr_talker/
+├── system.toml          # WHAT this deploys to — the one file you edit
+├── CMakeLists.txt       # find_package(nano_ros) + targets; no board facts
+├── package.xml
+└── src/main.c
+```
 
-The Rust `Cargo.toml` pulls the FreeRTOS board crate
-(`nros-board-mps2-an385-freertos`), which wraps the kernel + lwIP +
-LAN9118 driver build. The C / C++ `CMakeLists.txt` follows the
-canonical `add_subdirectory(<repo-root>) +
-nano_ros_link_rmw(<target> RMW zenoh)` pattern.
+The scaffold writes `board = "freertos"`, a board *alias*; the C/C++
+build road needs the board's full name, so edit `system.toml` to:
+
+```toml
+[image.freertos]
+board = "mps2-an385-freertos"
+```
+
+**Rust** on FreeRTOS is a node package plus a generated entry, so it
+starts as a workspace (single-package Rust scaffolding is not offered
+for FreeRTOS — `nros new` says so and names the alternative):
+
+```bash
+nros new fr_ws --workspace --lang rust --rmw zenoh
+cd fr_ws
+nros new --image freertos --board mps2-an385-freertos   # adds [image.freertos]
+```
+
+Either way the deployment is stated in a `system.toml` (the single
+package's own, or the workspace bringup's), and nothing else does. The
+Rust side has no `.cargo/` to edit — the `thumbv7m-none-eabi` triple,
+the `-Tmps2_an385.ld --nmagic --gc-sections` link group, the QEMU
+runner and the `[patch.crates-io]` rows all come from the board and are
+written by `nros sync` / `nros build` into the image's
+`nros-cargo.toml` under `build/` (RFC-0098). The C / C++ leaves have no
+`<nano_ros deploy=… board=… rmw=…/>` tuple in their `package.xml`:
+`find_package(nano_ros)` reads `system.toml` instead, and derives the
+platform from the board.
+
+The board crate (`nros-board-mps2-an385-freertos`) wraps the kernel +
+lwIP + LAN9118 driver build; the generated entry depends on it, so
+nothing you write names it.
 
 ## Configure
 
 Board, RMW, domain and network identity are declared in `system.toml` and
-**baked at compile time** — there is no config file on the device. Verbatim
-from the in-tree
-[`examples/mps2-an385-freertos/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-freertos/rust/talker/system.toml):
+**baked at compile time** — there is no config file on the device. For
+example,
+[`examples/mps2-an385-freertos/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-freertos/rust/talker/system.toml)
+on GitHub:
 
 ```toml
 [system]
@@ -102,20 +106,19 @@ locator = "tcp/10.0.2.2:7800"
 os_config = ["board-net.toml"]    # [eth0] network = "qemu", host = 15
 ```
 
-The C and C++ leaves carry the *same* file, in the same schema — only the
-names and the locator differ. Nothing about the deployment lives in
-`Cargo.toml`, in `CMakeLists.txt`, or in the `package.xml` `<export>` block
-any more.
+Your image takes the same keys: add `locator` (the QEMU guest reaches the
+host's router through the Slirp gateway `10.0.2.2`) and `os_config` (the
+board network file) to the `[image.freertos]` table `nros new` wrote.
+The C and C++ examples carry the *same* file, in the same schema — only
+the names and the locator differ. Nothing about the deployment lives in
+`Cargo.toml`, in `CMakeLists.txt`, or in the `package.xml` `<export>`
+block.
 
-For a C or C++ leaf, switching board really is editing `[image.<id>] board`
-(a cross build still passes its own `-DCMAKE_TOOLCHAIN_FILE`). The **Rust**
-leaf switches on the same one line: it names no board crate, only
-`freertos_rs_talker_nros_selection = { path = "build/nros/selection" }`, a
-package `nros sync` and `nros build` generate for the image's board (with
-`nros-board-mps2-an385-freertos`, its RMW and `nros-platform`'s FreeRTOS
-feature). Its image also states `panic = "platform"`, as its `main.rs` does,
-so that package does not add the board's own panic handler. See
-[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md).
+Switching board is editing `[image.<id>] board` and rebuilding: `nros
+build` picks the cross-toolchain file the board names, and for Rust it
+regenerates the `<pkg>_nros_selection` package that carries the board
+crate, its RMW and `nros-platform`'s FreeRTOS feature
+([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
 Task stacks / priorities come from the board crate's defaults (Cargo
 features), not a config file — see the
@@ -124,84 +127,68 @@ features), not a config file — see the
 The `10.0.2.0/24` subnet is QEMU Slirp's default; `10.0.2.2` is the
 Slirp gateway that forwards to host loopback. No TAP, no sudo.
 
-Ports: read your image's own `locator`. The shipped Rust talker dials host
-port **7800**; the C and C++ talkers declare a `[system] locator` of their
-own.
+Ports: read your image's own `locator`. The example Rust talker dials
+host port **7800**; with no `locator` an image dials the board's default
+(`tcp/10.0.2.2:7447`).
 
 > **Contributors:** the prebuilt test fixtures bake different ports —
 > see [Per-Platform Contributor Lanes](../internals/platform-lanes.md#freertos).
 
 ## Build
 
-```bash
-# Rust — `nros sync` first, once per checkout location. It writes the
-# generated message bindings AND build/<image>/nros-cargo.toml, which
-# carries this board's triple, link group and [patch.crates-io] table
-# (RFC-0098 D1). Without it cargo builds for the host, or fails while
-# PARSING the manifest with an error that never names sync (see below).
-cd examples/mps2-an385-freertos/rust/talker
-nros sync
-nros build          # or: cargo build --config build/<image>/nros-cargo.toml
+C / C++, in the scaffolded package. No `nros sync`: a C or C++ leaf's
+message bindings are a CMake-time output. `nros build` passes the
+board's cross-toolchain file and the SDK root:
 
-# C / C++ — the leaf's own CMake, with the cross-toolchain file (the `nros`
-# CLI on PATH auto-resolves the codegen tool — no `-D_NANO_ROS_CODEGEN_TOOL=`
-# needed, and no `-DNROS_BOARD=` / `-DNROS_RMW=`: both come from
-# system.toml). The toolchain file path is relative to the nano-ros SDK root,
-# which `nros sdk-root` prints:
-toolchain="$(nros sdk-root)/cmake/toolchain/arm-freertos-armcm3.cmake"
-cd examples/mps2-an385-freertos/c/talker
-cmake -B build -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
-              -Dnano_ros_ROOT="$(nros sdk-root)" \
-              -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
+```bash
+cd fr_talker
+nros build
 ```
 
-> **Contributors:** the in-tree fixture build lanes for this platform are in
-> [Per-Platform Contributor Lanes](../internals/platform-lanes.md#freertos).
+Rust, in the workspace. `nros sync` first: it writes the generated
+message bindings and the resolved launch model the entry is built from.
+Without it the build stops at its preflight naming sync:
+
+```bash
+cd fr_ws
+nros sync
+nros build freertos
+```
 
 First Rust build pulls + cross-compiles deps (~5 min); the ELF lands at
-`build/mps2-an385-freertos/target/thumbv7m-none-eabi/debug/talker`. The
-C / C++ build also compiles FreeRTOS kernel + lwIP — first run ~3 min.
+`build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/debug/freertos_entry`
+(`nros build freertos --dry-run` prints the paths without building). The
+C / C++ build lands under `build/freertos/cmake/` and also compiles the
+FreeRTOS kernel + lwIP — first run ~3 min.
 
-**Driving cargo yourself** (an IDE, a CI step, `--release`) is supported:
-run `nros sync` first, then point cargo at the generated settings file. Run it
-from the directory *above* the package, so the package's own `.cargo/` is not
-read a second time — phase-445 W6 deletes that directory, after which the
-working directory stops mattering:
+**Driving cargo yourself** (an IDE, a CI step, `--release`) is
+supported: run `nros sync` first, then point cargo at the generated
+settings file — `nros build freertos --dry-run` prints the exact
+`cargo build --manifest-path … --config …/nros-cargo.toml` line.
 
-```bash
-cd examples/mps2-an385-freertos/rust
-cargo build --manifest-path talker/Cargo.toml \
-            --config talker/build/mps2-an385-freertos/nros-cargo.toml
-```
-
-If you skipped `nros sync`, the Rust build stops at its preflight with one
-line naming what is missing and telling you to run sync in that directory —
-not with a cargo error four frames down. The single-package C / C++ builds
-above do not need sync at all: their message bindings are a CMake-time output.
 See
 [Workflow by Platform and Language](../user-guide/workflow-by-platform.md)
-for why the requirement is per language rather than per platform.
+for why the sync requirement is per language rather than per platform.
 
 ## Run
 
 ```bash
-# 1. Start the router (ROS's `rmw_zenohd`) on the host, on port 7800 —
-#    the locator the Rust example bakes from its system.toml
-#    ([image.mps2-an385-freertos] locator, shown above).
+# 1. Start the router (ROS's `rmw_zenohd`) on the host, on the port
+#    your image's `locator` names (7447 by default; 7800 in the example
+#    shown above). It must listen on 0.0.0.0 for the Slirp gateway:
 #    Slirp forwards guest 10.0.2.2:<p> → host:<p>.
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7800"];scouting/multicast/enabled=false' \
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # 2. Boot the talker in QEMU. Invoke qemu-system-arm directly, with the
 #    LAN9118 + Slirp wiring the example expects — the board's own cargo
 #    runner is bare `-kernel`, so booting through it gives you QEMU
 #    without networking:
-cd examples/mps2-an385-freertos/rust/talker
-qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+cd fr_ws
+"$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
     -icount shift=auto \
     -semihosting-config enable=on,target=native \
-    -kernel build/mps2-an385-freertos/target/thumbv7m-none-eabi/debug/talker \
+    -kernel build/freertos-zenoh/freertos_entry/target/thumbv7m-none-eabi/debug/freertos_entry \
     -nic user,model=lan9118
 
 # 3. Verify from stock ROS 2:
@@ -226,8 +213,8 @@ session open typically takes 10–15 s. If no `Publishing:` line in
 30 seconds:
 
 1. Confirm the router is running on the host on the port the image
-   dials — the `locator` in its `system.toml` (7800 for the Rust
-   talker; Slirp forwards `10.0.2.2:7800` → host:7800). Without it the talker retries the
+   dials — the `locator` in its `system.toml` (Slirp forwards
+   `10.0.2.2:<p>` → host:<p>). Without it the talker retries the
    zenoh handshake until QEMU is killed.
 2. Check the talker's early log for `lwIP DHCP timeout` or
    `Failed to open session`.
@@ -238,7 +225,7 @@ session open typically takes 10–15 s. If no `Publishing:` line in
 
 ## GitHub source
 
-Canonical, copy-out:
+The full examples, to read:
 
 - Rust: [`examples/mps2-an385-freertos/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos/rust/talker)
 - C: [`examples/mps2-an385-freertos/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos/c/talker)

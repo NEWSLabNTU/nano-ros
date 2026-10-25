@@ -23,16 +23,16 @@ the generated message crate `std_msgs` (generated/std_msgs).
 
 The example's `Cargo.toml` declares nano-ros crates registry-style
 (`nros = { version = "*" }` — they are not published to crates.io);
-the `[patch.crates-io]` block that resolves them into a nano-ros
-checkout is GENERATED, into `build/<image>/nros-cargo.toml`, which
+the `[patch.crates-io]` block that resolves them into the nano-ros
+SDK is GENERATED, into `build/<image>/nros-cargo.toml`, which
 `nros build` hands cargo with `--config` (RFC-0098 D1). This error
-means that file has not been written yet, or its relative paths no
-longer reach a checkout (typical right after copying the example
-somewhere else). Fix:
+means that file has not been written yet, or its paths no longer
+reach the SDK (typical right after copying the package somewhere else,
+or installing a different release). Fix:
 
 ```bash
-cd <the example dir>
-nros sync        # or: nros sync --nano-ros-path /path/to/nano-ros
+cd <the package dir>
+nros sync        # or: nros sync --nano-ros-path <another SDK root>
 ```
 
 Driving cargo directly skips that refusal and gets cargo's own version of it
@@ -48,33 +48,28 @@ the SDK / source-package payload (zenoh-pico, mbedtls, cyclonedds,
 
 ### A2. nros codegen tool not found
 
-<!-- no-just-ok: the fence below quotes tool output verbatim -->
-```
+```text
 nros (codegen tool) not found on PATH or in packages/cli/target/release/
-or ${NROS_HOME:-~/.nros}/bin. nano-ros assumes `nros` is provided
-(the CLI lives in-tree at packages/cli/). Build it with:
-  just setup-cli                 # or: just setup
+or ${NROS_HOME:-~/.nros}/bin. …
 ```
 
-(The message names the contributor recipe; `./scripts/bootstrap.sh`
-runs the same build without `just`.)
+(The rest of the message names how a *contributor* builds the CLI from
+a checkout; as a user you install it instead.)
 
-Missing the `nros` binary on PATH **and** in the per-checkout location.
-It builds from the in-tree sub-workspace; build it, then
-activate the workspace:
+The `nros` binary is not installed, or not on PATH. Install a release
+and put `~/.nros/bin` on PATH:
 
 ```bash
-./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
-source ./activate.sh        # OR: direnv allow / source ./activate.fish
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
 ```
 
-If `packages/cli/target/release/nros` exists but PATH doesn't see it —
-that's the `[PATH]` doctor status (D2 below), not this branch (the
-activate file is what puts it on PATH).
+If `~/.nros/bin/nros` exists but PATH doesn't see it — that's the
+`[PATH]` doctor status (D2 below), not this branch.
 
 The `nros` binary ships the codegen — there is no separate
-`nros-codegen` build step. CMake examples auto-resolve `nros` from
-PATH / `packages/cli/target/release/` / `${NROS_HOME:-~/.nros}/bin/`;
+`nros-codegen` build step. CMake projects auto-resolve `nros` from
+PATH / `${NROS_HOME:-~/.nros}/bin/`;
 `-D_NANO_ROS_CODEGEN_TOOL=<path>` is an override, not a requirement.
 
 ### A3. Rust target not installed
@@ -140,9 +135,8 @@ rmw = "cyclonedds"
 ```
 
 ```bash
-cd examples/linux/c/talker        # (or cpp)
-cmake -B build-cyclone -Dnano_ros_ROOT="$(nros sdk-root)"
-cmake --build build-cyclone
+cd my_c_talker                    # a C or C++ leaf (`nros new … --lang c`)
+nros build
 ```
 
 A single-package C / C++ leaf needs no `nros sync` — its message bindings are
@@ -151,10 +145,12 @@ the command line disagrees with the one the rest of the build resolves from
 `system.toml`, which is the drift RFC-0098 removes.
 
 A Rust example does not take `--features rmw-cyclonedds` at all: its RMW is
-its image's (issue 1305). `examples/linux/rust/talker` declares
-`linux_cyclonedds`, and `nros sync --image linux_cyclonedds && nros build
-linux_cyclonedds` builds it — the board crate's `rmw-cyclonedds` builds
-Cyclone through `nros-rmw-cyclonedds-sys`.
+its image's (issue 1305). A leaf that declares a `linux_cyclonedds`
+image (as
+[`examples/linux/rust/talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/talker)
+does) builds it with `nros sync --image linux_cyclonedds && nros build
+linux_cyclonedds` — the board crate's `rmw-cyclonedds` builds Cyclone
+through `nros-rmw-cyclonedds-sys`.
 
 ### A7. The board name is a typo
 
@@ -187,13 +183,12 @@ NROS_PLATFORM_CFFI_INCLUDE not set (direnv allow, or build via just)
 FREERTOS_PORT not set
 ```
 
-(The quoted message is emitted by the build script; "build via just"
-in it refers to the contributor recipes.) The
-common build sites autoresolve these from
-the in-tree checkout, so a fresh `cargo build` no longer panics on
-them in canonical examples. If your custom build site still does,
-run `direnv allow` once after clone, or set the env explicitly
-(**contributors** can build via the in-tree `just <plat>` recipe).
+(The quoted message is emitted by the build script; "direnv allow" and
+"build via just" in it refer to a contributor checkout.) `nros build`
+passes these to cargo from the board's settings, so a build driven by
+`nros build` — or by cargo with the generated `--config` file — does not
+hit it. If a cargo command you drive yourself does, you skipped the
+`--config build/<image>/nros-cargo.toml` argument.
 
 ## B. Binary runs but no output
 
@@ -309,21 +304,13 @@ recipes.)
 
 ### D2. `[PATH] nros built but not on PATH`
 
-The doctor now reports this distinct from `[MISSING]` when the
-binary is built at `packages/cli/target/release/nros` (or the
-transitional `${NROS_HOME:-~/.nros}/bin/nros`) but PATH doesn't see
-it. Activate the workspace — it wires PATH:
+The doctor reports this distinct from `[MISSING]` when the binary is
+installed at `${NROS_HOME:-~/.nros}/bin/nros` but PATH doesn't see it.
+Put the directory on PATH (and in your shell's startup file):
 
 ```bash
-source ./activate.sh        # bash / zsh
-# OR
-source ./activate.fish      # fish
-# OR
-direnv allow                # auto-activates on `cd nano-ros`
+export PATH="$HOME/.nros/bin:$PATH"
 ```
-
-Don't loop on the contributor recipe `just workspace cargo-tools` — that re-runs the
-build which short-circuits on the same PATH miss.
 
 ### D3. Full sweep (slow)
 
@@ -348,7 +335,7 @@ When all else fails, include:
 ## What success looks like
 
 A correctly-running Rust Linux talker
-(`examples/linux/rust/talker`) prints something like this on
+([`examples/linux/rust/talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/talker)) prints something like this on
 stderr (with `RUST_LOG=info`):
 
 ```text
@@ -360,7 +347,7 @@ stderr (with `RUST_LOG=info`):
 (That is the full expected output — the talker logs one line per
 publish, nothing else.)
 
-A correctly-running C talker (`examples/linux/c/talker`) prints
+A correctly-running C talker ([`examples/linux/c/talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/c/talker)) prints
 on stdout:
 
 ```text

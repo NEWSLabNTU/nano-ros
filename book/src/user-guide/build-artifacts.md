@@ -81,8 +81,8 @@ For a single package the artifact is that package's own binary:
 <leaf>/build/<image-id>/target/[<triple>/]<profile-dir>/<bin>
 ```
 
-`examples/linux/rust/talker` lands at `build/linux/target/debug/talker`;
-its bare-metal sibling `examples/mps2-an385-baremetal/rust/talker` at
+[`examples/linux/rust/talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/talker) lands at `build/linux/target/debug/talker`;
+its bare-metal sibling [`examples/mps2-an385-baremetal/rust/talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust/talker) at
 `build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker`.
 The triple level appears whenever the board pins one — which it does in the
 generated `[build] target`, not on your command line.
@@ -121,7 +121,7 @@ executable lands at the top of that directory:
 <ws>/build/<coordinate>/cmake/<image>_entry
 ```
 
-For example, `examples/workspaces/c` builds `[image.linux]` to
+For example, [`examples/workspaces/c`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/c) builds `[image.linux]` to
 `build/posix-zenoh-linux/cmake/linux_entry` and its FreeRTOS image to
 `build/freertos-zenoh-mps2-an385-freertos/cmake/freertos_entry`. (Node packages
 also build their own executables, under `cmake/pkg/<pkg>/<pkg>`; the *image* is

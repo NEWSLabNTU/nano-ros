@@ -309,4 +309,4 @@ Set `$NROS_ZEPHYR_WORKSPACE` to install elsewhere. Legacy sibling installs
 at `../nano-ros-workspace/` are auto-detected; run
 `./scripts/zephyr/migrate-workspace.sh` to consolidate.
 
-See [Zephyr](../getting-started/zephyr.md) for full details.
+See [Zephyr](../internals/zephyr-in-tree.md) for full details.

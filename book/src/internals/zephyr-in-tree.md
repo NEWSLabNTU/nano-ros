@@ -3,7 +3,7 @@
 > **Looking for the user-facing path?** This page covers building
 > nano-ros's own Zephyr examples from this repository.
 > If you're consuming nano-ros as a Zephyr module in YOUR Zephyr
-> workspace, see [Integration: Zephyr (`west` module)](./integration-zephyr.md)
+> workspace, see [Integration: Zephyr (`west` module)](../getting-started/integration-zephyr.md)
 > instead.
 
 Complete setup procedure for Zephyr `native_sim` testing. Networking uses
@@ -68,7 +68,7 @@ need ROS 2 installed.
 Packages are prebuilt where the index has a binary for your host and built from
 source otherwise — `zenohd` is the notable source build, and zenoh is the default
 `--rmw`. `--dry-run` prints the plan for your host. See
-[Installation](installation.md#provision-your-toolchain-with-nros-setup) for the full explanation.
+[Installation](../getting-started/installation.md#provision-your-toolchain-with-nros-setup) for the full explanation.
 
 ## Step 1: Initialize Workspace (One-Time)
 
@@ -148,108 +148,15 @@ west build -b native_sim/native/64 ../examples/zephyr/rust/talker
 
 ## Configuring an image: `system.toml`, not `prj.conf`
 
-An application's nano-ros configuration lives in ONE place, its
-`system.toml` (RFC-0098 D10, phase-481). The nano-ros Zephyr module renders
-the selected image into a Kconfig fragment and merges it **last**, after every
-conf file. So the `prj*.conf` files hold Zephyr's own settings only (networking,
-POSIX, stacks, heaps) and **never a `CONFIG_NROS_*` line**: one there is either
-dead (the image overrides it) or a second source that can disagree with the
-first. A gate (`check-leaf-conf-nros-knobs`) refuses one in the tree.
-
-What the module renders, and from where:
-
-| You write in `system.toml` | The build gets |
-|---|---|
-| `[image.<id>] rmw = "xrce"` | `CONFIG_NROS_RMW_XRCE=y` |
-| (nothing — the package's language) | `CONFIG_NROS_{C,CPP,RUST}_API=y` |
-| `locator = "tcp/…"` (zenoh) | `CONFIG_NROS_ZENOH_LOCATOR` |
-| `locator = "udp/<host>:<port>"` (XRCE) | `CONFIG_NROS_XRCE_AGENT_ADDR` + `_PORT` |
-| `domain_id = 7` (image, `[defaults]` or `[system]`) | `CONFIG_NROS_DOMAIN_ID` |
-| `[image.<id>.knobs.zenoh] max_queryables = 12` | `CONFIG_NROS_MAX_QUERYABLES=12` — a registry knob, spelled as a board's `[knobs]` is (see [Configuration](../user-guide/configuration.md#per-image-build-knobs)) |
-| `[image.<id>.knobs.xrce] max_subscribers = 0` | `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS=0` — likewise |
-| `env = { NROS_ZEPHYR_TASK_STACK_SIZE = "16384" }` | `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE=16384` — any other option in the reference below, spelled without `CONFIG_` |
-| `os_config = ["prj-xrce.conf"]` | that Zephyr-native fragment, added ahead of your own `EXTRA_CONF_FILE` |
-
-An `env` row with no Kconfig symbol is not lost: it reaches the image's cargo
-builds as an `[env]` row instead (issue 1712). A row whose type does not fit
-its symbol, or that only exists under another RMW, is refused at configure
-time, naming the `system.toml` line.
-
-### One image per RMW
-
-An application built for several backends states one image per RMW, and
-picks one at build time. From `examples/zephyr/c/talker/system.toml`:
-
-```toml
-[system]
-name = "nros_zephyr_talker_c"
-rmw = "zenoh"
-domain_id = 0
-default_images = ["zephyr_zenoh"]
-
-[image.zephyr_zenoh]
-board = "zephyr"
-rmw = "zenoh"
-os_config = ["prj-zenoh.conf"]
-
-[image.zephyr_xrce]
-board = "zephyr"
-rmw = "xrce"
-os_config = ["prj-xrce.conf"]
-locator = "udp/127.0.0.1:2018"
-
-[image.zephyr_xrce.knobs.xrce]
-max_subscribers = 0
-max_service_servers = 0
-max_service_clients = 0
-
-[image.zephyr_cyclonedds]
-board = "zephyr"
-rmw = "cyclonedds"
-os_config = ["prj-cyclonedds.conf"]
-```
+How an image's `system.toml` becomes the Zephyr build's Kconfig — and why a
+`prj*.conf` never carries a `CONFIG_NROS_*` line — is user material:
+[Zephyr (west module) § Configuring an image](../getting-started/integration-zephyr.md#configuring-an-image-systemtoml-not-prjconf).
+For the in-tree examples, each leaf's `system.toml` declares one image per
+RMW; pick one with `-DNROS_IMAGE=<id>`:
 
 ```bash
-west build -b native_sim/native/64 ../examples/zephyr/c/talker                       # default_images: zenoh
 west build -b native_sim/native/64 ../examples/zephyr/c/talker -- -DNROS_IMAGE=zephyr_xrce
 ```
-
-`-DNROS_IMAGE` is a CMake cache variable like any `-D`: re-running `west build`
-on the same build directory WITHOUT it keeps the image it last built, exactly
-as `-b` keeps the board. Pass it every time, or use `-p` when switching. A name
-the `system.toml` does not declare is refused, listing the ones it does.
-
-Precedence, last wins: the conf files, then a 4.x `-S nros-<rmw>` snippet,
-then the image's rendering, then any `-DCONFIG_…` on the command line (how a
-test harness passes a per-run port). A snippet naming a DIFFERENT RMW than the
-image is refused rather than silently overridden; one that agrees is
-redundant. An application with no `system.toml` gets no rendering, so for it
-the snippets and Kconfig defaults still choose.
-
-### What each RMW's Zephyr-native fragment needs
-
-The image's `os_config` file carries what the backend needs from Zephyr itself:
-
-- **Zenoh** (the Kconfig default): TCP and POSIX threads for zenoh-pico —
-  `CONFIG_NET_TCP=y`, `CONFIG_POSIX_API=y`, and pthread pools big enough for
-  it (`examples/zephyr/rust/talker/prj-zenoh.conf` uses
-  `CONFIG_MAX_PTHREAD_MUTEX_COUNT=64`, `CONFIG_MAX_PTHREAD_COND_COUNT=16`).
-- **XRCE-DDS**: `CONFIG_NET_TCP=y`, on top of the BSD sockets
-  (`CONFIG_NET_SOCKETS=y`) every image's shared `prj.conf` enables. The agent
-  endpoint is the image's `locator`.
-- **Cyclone DDS**: brokerless RTPS, wire-compatible with stock ROS 2
-  (`rmw_cyclonedds_cpp`). Its source is C++, so `CONFIG_CPP=y` even for Rust
-  callers; it needs a large stack (`CONFIG_MAIN_STACK_SIZE=524288`), pthread
-  pools, and `CONFIG_NET_IPV4_IGMP=y` for SPDP multicast. The bool
-  prerequisites (thread-local storage, dynamic threads, `NET_TCP`, …) are
-  `select`ed by `CONFIG_NROS_RMW_CYCLONEDDS`. Its `ddsrt_malloc` draws on the
-  nano-ros platform heap, 1 MiB by default under Cyclone — raise it with
-  `[image.<id>.knobs.zephyr] heap_size = …` on the image, not in the conf.
-
-On `native_sim`, add the NSOS host-socket offload
-(`CONFIG_NET_SOCKETS_OFFLOAD=y` + `CONFIG_NET_NATIVE_OFFLOADED_SOCKETS=y`) so
-discovery uses host BSD sockets instead of zeth/TAP. See
-`examples/zephyr/rust/talker/prj-cyclonedds.conf` for the full fragment.
 
 ## API Selection
 

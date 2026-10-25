@@ -14,8 +14,9 @@ C++ only — PX4's uORB binding is C++-only (Rust + C not in the
 ## Project layout
 
 PX4 external modules live **outside** the PX4 source tree and are
-hooked in at configure time. The template at
-`integrations/px4/module-template/` has the PX4-required
+hooked in at configure time. The template — shipped in the SDK root at
+`integrations/px4/module-template/` (`nros sdk-root` prints where) — has
+the PX4-required
 `src/modules/<name>/` shape:
 
 ```text
@@ -31,13 +32,13 @@ my_drone_firmware/
                     └── nano_ros_app.cpp    # the user-editable app
 ```
 
-> **Prereq.** PX4 is a full-tier dependency. Provision the source
-> trees first to populate `third-party/px4/PX4-Autopilot` and
-> `third-party/px4/px4-rs`, then initialize PX4's own submodules.
+> **Prereq.** PX4 is your own checkout — the firmware tree you
+> already build. Clone it (or use the one you have) and initialize its
+> submodules; nano-ros is tested against PX4 v1.17.0.
 
 ```bash
-nros setup --source px4-autopilot --source px4-rs
-git -C third-party/px4/PX4-Autopilot submodule update --init \
+git clone --branch v1.17.0 https://github.com/PX4/PX4-Autopilot.git
+git -C PX4-Autopilot submodule update --init \
     --depth 1 --recommend-shallow --recursive
 ```
 
@@ -46,12 +47,18 @@ PX4's own Python dependencies come from its `Tools/setup` scripts
 documentation if the firmware build complains about missing Python
 modules.
 
-**Contributors (in-tree checkout):** `just px4 doctor` reports the
-provisioning gap on a fresh clone.
+Copy the template into your firmware repo, then point PX4 at its
+parent directory:
 
-Vendor the template into your firmware repo, then point PX4 at its
-parent directory. The template finds nano-ros itself: an explicit
-`-DNROS_REPO_DIR=<path>` cache variable wins, otherwise it asks the
+```bash
+mkdir -p px4-modules
+cp -r "$(nros sdk-root)/integrations/px4/module-template" px4-modules/nano-ros
+```
+
+(Releases after 0.6.0-nros4 ship the template; with an older one, copy
+it from
+[GitHub](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/px4/module-template).) The template finds nano-ros itself: an explicit
+`-Dnano_ros_ROOT=<path>` cache variable wins, otherwise it asks the
 `nros` on PATH (`nros sdk-root`), which answers with the SDK that binary
 belongs to. No environment variable is read (RFC-0103 D6):
 
@@ -59,7 +66,7 @@ belongs to. No environment variable is read (RFC-0103 D6):
 cmake -B build -S PX4-Autopilot \
       -DCONFIG=px4_fmu-v5_default \
       -DEXTERNAL_MODULES_LOCATION=$PWD/px4-modules/nano-ros \
-      -DNROS_REPO_DIR=$PWD/../nano-ros           # optional: name your clone
+      -Dnano_ros_ROOT="$(nros sdk-root)"         # optional: name the SDK root
 ```
 
 (`EXTERNAL_MODULES_LOCATION` must point at the dir containing

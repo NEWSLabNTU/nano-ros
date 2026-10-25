@@ -29,7 +29,6 @@
 # Regenerate deliberately with --write-baseline and read the diff.
 
 AGENTS.md	install-local
-book/src/getting-started/installation.md	install-local
 book/src/internals/creating-examples.md	install-local
 book/src/release/migration-install-local-removal.md	install-local
 book/src/start-here/setup-compared-to-ros2.md	install-local

@@ -64,7 +64,7 @@ also what the in-tree reference does.
 Languages mix per *package*, not per file, and the bringup does not care:
 a `[[component]]` row names a package and a class/entry point, whatever
 implements it. The in-tree reference workspace
-(`examples/workspaces/mixed/`) runs a C talker, a C++ listener, and a
+([`examples/workspaces/mixed`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/mixed)) runs a C talker, a C++ listener, and a
 Rust heartbeat, composed into one binary:
 
 ```text

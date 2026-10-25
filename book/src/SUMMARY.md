@@ -39,9 +39,7 @@
 - [How Integration Works](./getting-started/how-integration-works.md)
 - [FreeRTOS (QEMU)](./getting-started/freertos.md)
 - [Zephyr (west module)](./getting-started/integration-zephyr.md)
-  - [Zephyr (contributor)](./getting-started/zephyr.md)
 - [NuttX (apps/external)](./getting-started/integration-nuttx.md)
-  - [NuttX (contributor)](./getting-started/nuttx.md)
 - [ThreadX](./getting-started/threadx.md)
 - [ESP32 (esp-hal, dormant)](./getting-started/esp32.md)
 - [ESP32 (ESP-IDF component, retired)](./getting-started/integration-esp-idf.md)
@@ -139,6 +137,8 @@
 - [XRCE-DDS Symbol Reference](./internals/porting-platform/xrce-dds.md)
 - [Creating Examples](./internals/creating-examples.md)
 - [Per-Platform Contributor Lanes](./internals/platform-lanes.md)
+  - [Zephyr in-tree examples (contributor)](./internals/zephyr-in-tree.md)
+  - [NuttX in-tree examples (contributor)](./internals/nuttx-in-tree.md)
 - [Contributing](./internals/contributing.md)
 
 # Reference

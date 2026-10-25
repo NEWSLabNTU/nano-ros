@@ -9,7 +9,7 @@
 # probe cannot drift from what users actually read.
 #
 # Substitutions (both fail loudly if the book text drifts):
-#   - the pinned release tag in the clone line -> the branch/URL under test
+#   - the clone line (contributing.md) -> the branch/URL under test
 #   - the `nros setup <board>` placeholder     -> `native --rmw zenoh`
 #
 # Env knobs:
@@ -119,7 +119,10 @@ fi
 # cmake path, which bootstraps them at configure) — that page's flow belongs
 # to a future zenoh-track probe run under `--rmw zenoh`. Rust coverage lives
 # in verify-first-node.sh's scaffolded-workspace run instead.
-CLONE_SUBST=(--subst 'git clone --branch nros-v0.6.0 https://github.com/NEWSLabNTU/nano-ros.git:::git clone --branch "$PROBE_BRANCH" "$PROBE_CLONE_URL" nano-ros')
+# phase-517 W2 — the clone + bootstrap steps are CONTRIBUTOR material now and
+# live in internals/contributing.md; no user chapter clones this repository.
+# The book clones `main`, never a tag, so the line substituted is the bare clone.
+CLONE_SUBST=(--subst 'git clone https://github.com/NEWSLabNTU/nano-ros.git:::git clone --branch "$PROBE_BRANCH" "$PROBE_CLONE_URL" nano-ros')
 C_CD_SUBST=()
 # Which `track=` blocks of the book this run reads — how the reader got `nros`.
 BOOK_TRACK=checkout
@@ -151,6 +154,7 @@ elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
     # needs the zenoh-pico source that only `--rmw zenoh` provisions.
     CHAPTERS=(
         book/src/getting-started/installation.md
+        book/src/internals/contributing.md
         book/src/getting-started/first-node-rust.md
     )
     PROBE_RMW="zenoh"
@@ -158,13 +162,13 @@ elif [[ "$PROBE_TRACK" = "zenoh" ]]; then
 else
     CHAPTERS=(
         book/src/getting-started/installation.md
+        book/src/internals/contributing.md
         book/src/getting-started/first-node-c.md
     )
     PROBE_RMW="cyclonedds"
     VERIFIER="verify-first-node.sh"
-    # The C-chapter `cd` subst rides only this track (each --subst must match
-    # EXACTLY ONCE, and the zenoh track does not extract that chapter).
-    C_CD_SUBST=(--subst 'cd examples/linux/c/talker:::cd "$(git rev-parse --show-toplevel)/examples/linux/c/talker"')
+    # The C chapter needed a `cd examples/…` subst here until phase-517 W2;
+    # it scaffolds its talker with `nros new` now, so no checkout path is left.
 fi
 
 workdir="$(mktemp -d)"

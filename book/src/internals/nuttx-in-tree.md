@@ -4,7 +4,7 @@
 > nano-ros's own NuttX examples on QEMU from this repository.
 > If you're integrating nano-ros into YOUR NuttX app at
 > `apps/external/nano-ros/`, see
-> [Integration: NuttX external app](./integration-nuttx.md) instead.
+> [Integration: NuttX external app](../getting-started/integration-nuttx.md) instead.
 
 nano-ros runs on NuttX, targeting QEMU ARM virt (Cortex-A7 + virtio-net).
 NuttX provides POSIX-compatible BSD sockets, which makes it the most

@@ -252,7 +252,7 @@ rmw = "cyclonedds"
 os_config = ["prj-cyclonedds.conf"]
 ```
 
-See [Configuring an image](../getting-started/zephyr.md#configuring-an-image-systemtoml-not-prjconf).
+See [Configuring an image](../getting-started/integration-zephyr.md#configuring-an-image-systemtoml-not-prjconf).
 
 ## Cyclone DDS — per-platform configuration profile
 

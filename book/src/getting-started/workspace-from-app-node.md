@@ -81,30 +81,8 @@ This group starts broad and then drills into each part:
 
 ## Prereqs
 
-Pick one path from a fresh checkout — `just` is NOT a prereq.
-
-**A. Front door** (bare machine OK — no Rust, no `just`):
-```sh
-./scripts/bootstrap.sh
-```
-Installs rustup if needed and builds the in-tree `nros` CLI from
-source at `packages/cli/target/release/nros`, leaving it on PATH for
-this shell (in a checkout, the tree's own build is the binary this tree
-accepts — RFC-0090 / phase-431).
-
-**B. Already have cargo** (equivalent — same build, same binary):
-```sh
-git submodule update --init packages/cli/third-party/play_launch
-cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-export PATH="$PWD/packages/cli/target/release:$PATH"
-```
-
-Every subsequent shell sources the workspace env via one of:
-```sh
-direnv allow                  # if you use direnv
-source ./activate.sh          # bash / zsh
-source ./activate.fish        # fish
-```
+The `nros` CLI on PATH ([Installation](./installation.md) — `install.sh`
+puts it in `~/.nros/bin`).
 
 Then provision the native host:
 ```sh
@@ -147,7 +125,7 @@ nros build     # every [image.*]; or name one: nros build linux
 a `.msg` or move the checkout. A workspace that has never been synced makes
 `nros build` stop at preflight with one line naming it.
 
-The app-node shape you already know (`examples/linux/rust/talker/`) is a
+The app-node shape you already know ([`examples/linux/rust/talker`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/talker)) is a
 single package that is both the logic and the boot point — no bringup and
 no entry, but the same `system.toml` beside its `Cargo.toml`, stating its
 board in an `[image.*]` row (RFC-0098 D3). `nros::main!()` reads it. That

@@ -16,26 +16,32 @@ for, because there is no `system.toml` to read it from. The mechanism
 is unchanged by RFC-0098 — `nros build` sets exactly these variables in
 the root it generates.
 
-The repo's top-level `CMakeLists.txt` exposes everything via
-`add_subdirectory(...)`. The higher-level, ament-shaped alternative is
+The SDK root's top-level `CMakeLists.txt` (`nros sdk-root` prints the
+directory) exposes everything via `add_subdirectory(...)`. The
+higher-level, ament-shaped alternative is
 `find_package(nano_ros REQUIRED)` — `nano_rosConfig.cmake` at the
-checkout root, located via `-Dnano_ros_ROOT=<root>` (RFC-0048), which
+SDK root, located via `-Dnano_ros_ROOT=<root>` (RFC-0048), which
 `nros build` and the CMakePresets `nros init` writes pass for you (a raw
 `cmake` names it; no shell exports it) — which every in-tree example
 reaches through the workspace helpers. Either way there
 is NO install step: phase-140 removed the install prefix and the old
-`find_package(NanoRos)` (capital) config pipeline. Vendoring the repo
-into a company tree (pinning, offline CI, upgrade workflow) has its own
-page: [Integrating into a Vendored Tree](vendored-tree.md).
+`find_package(NanoRos)` (capital) config pipeline. Pinning a release
+for a company tree (offline CI, upgrade workflow) has its own page:
+[Integrating into a Vendored Tree](vendored-tree.md).
 
 ## Layout
 
 ```
 my_app/
 ├── CMakeLists.txt
-├── main.c
-└── third_party/
-    └── nano-ros/        # git clone / git submodule of this repo
+└── main.c
+```
+
+nano-ros itself is the installed SDK root; the configure names it:
+
+```bash
+cmake -B build -DNANO_ROS_SDK="$(nros sdk-root)"
+cmake --build build
 ```
 
 ## User project `CMakeLists.txt`
@@ -48,7 +54,7 @@ project(my_app C)
 set(NROS_PLATFORM posix)   # posix | freertos | nuttx | threadx | zephyr | baremetal
 set(NROS_RMW     zenoh)    # zenoh | xrce | cyclonedds
 
-add_subdirectory(third_party/nano-ros nano_ros)
+add_subdirectory("${NANO_ROS_SDK}" nano_ros)
 
 add_executable(my_app main.c)
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
@@ -76,7 +82,7 @@ libraries (`pthread`, `dl`, `m`), and the per-build
 |----------|---------|--------|
 | `NROS_PLATFORM` | `posix` | `posix`, `freertos`, `nuttx`, `threadx` (legacy spellings: `freertos_armcm3`, `nuttx_armv7a`, `threadx_linux`, `threadx_riscv64`). `esp_idf` was accepted until phase-468 W2 and is now REJECTED. Zephyr and bare-metal are not add_subdirectory platforms — they enter via the [Zephyr module](integration-zephyr.md) / cargo directly |
 | `NROS_BOARD` | (unset) | required for `threadx` (`threadx-linux` or `rv-virt-threadx`) |
-| `NROS_SKIP_BOOTSTRAP` | `OFF` | `ON` skips the configure-time bootstrap (git submodule updates). **Required for air-gapped/mirrored CI** — pre-seed submodules. Corrosion is never fetched: a configure without it in the SDK store stops and names `nros setup --tool corrosion` |
+| `NROS_SKIP_BOOTSTRAP` | `OFF` | `ON` skips the configure-time submodule bootstrap — which only a source checkout has; an installed SDK root takes its sources from `nros setup`. Corrosion is never fetched: a configure without it in the SDK store stops and names `nros setup --tool corrosion` |
 | `NROS_FEATURES` | (empty) | extra cargo features forwarded to the Rust build |
 | `NROS_RMW` | `zenoh` | `zenoh`, `dds`, `xrce`, `cyclonedds` |
 | `NROS_ROS_EDITION` | `humble` | `humble`, `iron`, `jazzy` |
@@ -102,15 +108,17 @@ your binary, not nano-ros itself.
 
 For RTOS users who want a more idiomatic surface than raw
 `add_subdirectory`, see the integration shells under
-`integrations/<rtos>/` — they translate west / esp-idf / NuttX / PX4
+`integrations/<rtos>/` in the SDK root — they translate NuttX / PX4
 manifests into the same root CMake. Each shell is a
-~20-line wrapper around `add_subdirectory(<repo>)`.
+~20-line wrapper around `add_subdirectory(<sdk root>)`.
 
 ## What the in-tree examples do instead
 
 Worth reading as the contrast, because it is the shape most projects
-want. `examples/linux/c/talker/CMakeLists.txt` is fourteen lines and
-sets no cache variable at all:
+want. What `nros new my_talker --platform linux --lang c` scaffolds
+(and
+[`examples/linux/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/linux/c/talker/CMakeLists.txt))
+is a dozen lines and sets no cache variable at all:
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
@@ -140,5 +148,5 @@ cmake --build build
 ([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1296-nros-build-c-leaf-bringup-name-mismatch.md), resolved). A C/C++ *workspace* builds with
 `nros sync` + `nros build` as usual.)
 
-All in-tree C/C++ examples follow that shape. The `add_subdirectory`
+All the C/C++ examples follow that shape. The `add_subdirectory`
 mechanism on this page sits underneath it.

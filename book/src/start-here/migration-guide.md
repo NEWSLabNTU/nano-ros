@@ -22,15 +22,13 @@ existing `rclcpp`, `rclc`, or `rclrs` node toward nano-ros.
 ## Setup
 
 Standard ROS 2 usually starts from a distro install and a runtime RMW
-choice. nano-ros starts from a source checkout + a compile-time target
-tuple:
+choice. nano-ros starts from an installed release of the `nros` CLI + a
+compile-time target tuple:
 
 ```bash
-git clone --branch=v<X.Y.Z> https://github.com/NEWSLabNTU/nano-ros.git
-cd nano-ros
-./scripts/bootstrap.sh              # build the nros CLI (no `just` needed)
-source ./activate.sh
-nros setup linux --rmw zenoh       # native/ROS/zenoh quick start
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
+export PATH="$HOME/.nros/bin:$PATH"
+nros setup linux --rmw zenoh       # Linux host, zenoh quick start
 ```
 
 Read [Setup Compared to Standard ROS 2](setup-compared-to-ros2.md)

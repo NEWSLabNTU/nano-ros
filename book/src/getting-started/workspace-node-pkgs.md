@@ -13,30 +13,8 @@ An image is what boots the binary; the Node pkg is what runs inside it.
 
 ## Prereqs
 
-Pick one path from a fresh checkout — `just` is NOT a prereq.
-
-**A. Front door** (bare machine OK — no Rust, no `just`):
-```sh
-./scripts/bootstrap.sh
-```
-Installs rustup if needed and builds the in-tree `nros` CLI from
-source at `packages/cli/target/release/nros`, leaving it on PATH for
-this shell (in a checkout, the tree's own build is the binary this tree
-accepts — RFC-0090 / phase-431).
-
-**B. Already have cargo** (equivalent — same build, same binary):
-```sh
-git submodule update --init packages/cli/third-party/play_launch
-cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-export PATH="$PWD/packages/cli/target/release:$PATH"
-```
-
-Every subsequent shell sources the workspace env via one of:
-```sh
-direnv allow                  # if you use direnv
-source ./activate.sh          # bash / zsh
-source ./activate.fish        # fish
-```
+The `nros` CLI on PATH ([Installation](./installation.md) — `install.sh`
+puts it in `~/.nros/bin`).
 
 Then provision the native host:
 ```sh
@@ -90,7 +68,7 @@ its dependencies, and nothing that describes a deployment. Who this node *is*
 — which package provides it, which type implements it, what it is called — is
 one `[[component]]` row in the Bringup pkg's `system.toml`, beside the rows for
 every other node in the system (RFC-0098 D5). From
-[`examples/workspaces/rust/src/demo_bringup/system.toml`](../../../examples/workspaces/rust/src/demo_bringup/system.toml):
+[`examples/workspaces/rust/src/demo_bringup/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/workspaces/rust/src/demo_bringup/system.toml):
 
 ```toml
 [[component]]
@@ -120,7 +98,7 @@ file's to give, as it is for a C/C++ node
 
 The manifest beside `src/lib.rs` is then just this — what
 `nros new <name> --workspace --lang rust` writes for `talker_pkg`
-(`examples/templates/multi-node-workspace/src/talker_pkg/Cargo.toml`):
+([`examples/templates/multi-node-workspace/src/talker_pkg/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/templates/multi-node-workspace/src/talker_pkg/Cargo.toml)):
 
 ```toml
 [lib]
@@ -171,7 +149,7 @@ and bind its callback by NAME, which is what lets the board dispatch callbacks
 from its own tasks and lets `nros sync` measure the component without running it.
 
 Here is the essential shape, drawn from
-[`examples/workspaces/rust/src/talker_pkg/src/lib.rs`](../../../examples/workspaces/rust/src/talker_pkg/src/lib.rs)
+[`examples/workspaces/rust/src/talker_pkg/src/lib.rs`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/workspaces/rust/src/talker_pkg/src/lib.rs)
 (see that file for the full worked version):
 
 ```rust

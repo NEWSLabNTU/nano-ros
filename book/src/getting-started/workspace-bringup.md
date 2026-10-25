@@ -13,30 +13,8 @@ any compiled code of its own.
 
 ## Prereqs
 
-Pick one path from a fresh checkout — `just` is NOT a prereq.
-
-**A. Front door** (bare machine OK — no Rust, no `just`):
-```sh
-./scripts/bootstrap.sh
-```
-Installs rustup if needed and builds the in-tree `nros` CLI from
-source at `packages/cli/target/release/nros`, leaving it on PATH for
-this shell (in a checkout, the tree's own build is the binary this tree
-accepts — RFC-0090 / phase-431).
-
-**B. Already have cargo** (equivalent — same build, same binary):
-```sh
-git submodule update --init packages/cli/third-party/play_launch
-cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-export PATH="$PWD/packages/cli/target/release:$PATH"
-```
-
-Every subsequent shell sources the workspace env via one of:
-```sh
-direnv allow                  # if you use direnv
-source ./activate.sh          # bash / zsh
-source ./activate.fish        # fish
-```
+The `nros` CLI on PATH ([Installation](./installation.md) — `install.sh`
+puts it in `~/.nros/bin`).
 
 Then provision the native host:
 ```sh
@@ -297,7 +275,7 @@ It lands under `build/`, never beside your source: `build/<coordinate>/cmake/`
 on the cmake driver, `build/<coordinate>/<entry>/target/` on the cargo one.
 
 Both `nros check` forms pass for the canonical template at
-`examples/workspaces/rust/`.
+[`examples/workspaces/rust`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/rust).
 
 > **Caveat — `nros plan` with this template**
 >
@@ -311,14 +289,14 @@ Both `nros check` forms pass for the canonical template at
 >   pre-collected-sidecar pipeline.
 >
 > The canonical template README at
-> `examples/workspaces/rust/README.md` is the source of
+> [`examples/workspaces/rust/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/workspaces/rust/README.md) is the source of
 > truth for the current CLI state.
 
 ---
 
 ## Runnable copy-out
 
-`examples/workspaces/rust/` is the canonical Rust workspace that pairs with
+[`examples/workspaces/rust`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/rust) is the canonical Rust workspace that pairs with
 this guide. Copy the whole directory out and rename the packages, then:
 
 ```bash
@@ -332,7 +310,7 @@ generates the entry and the build root that compiles it — both under `build/`,
 neither beside your source — and hands off to cargo. `nros check` still works
 and is worth running; it is just no longer something you have to type.
 
-The workspace README at `examples/workspaces/rust/README.md`
+The workspace README at [`examples/workspaces/rust/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/workspaces/rust/README.md)
 documents the exact CLI commands that are verified green today.
 
 ---

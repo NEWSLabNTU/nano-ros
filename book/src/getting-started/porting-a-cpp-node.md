@@ -141,7 +141,7 @@ discovery. Existing in-tree examples will migrate as part of Phase
 
 The same source runs on an RTOS, `main` included. Build glue for each platform
 sits beside the source, and the source itself does not change.
-`examples/templates/cpp-port-minimal-publisher/` carries two such directories,
+[`examples/templates/cpp-port-minimal-publisher`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/cpp-port-minimal-publisher) carries two such directories,
 `mps2-an385-freertos/` and `zephyr/`, each with a `CMakeLists.txt` built
 around one line:
 

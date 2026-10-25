@@ -23,10 +23,6 @@ for the policy.
 > needs it from a ROS 2 install.
 
 ```bash
-# Inside a nano-ros checkout, build the in-tree nros CLI instead:
-./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
-source ./activate.sh        # OR: direnv allow / source ./activate.fish
-
 # Provision the bare-metal Cortex-M3 board (zenoh RMW is the default):
 nros setup mps2-an385-baremetal --rmw zenoh
 ```
@@ -40,21 +36,29 @@ nros setup mps2-an385-baremetal --rmw zenoh
 
 ## Project layout
 
+Scaffold a single Rust package for the board:
+
+```bash
+nros new bm_talker --platform baremetal --lang rust --rmw zenoh
+cd bm_talker
+```
+
 ```text
-examples/mps2-an385-baremetal/rust/talker/
+bm_talker/
 ├── system.toml                # WHAT this deploys to — the one file you edit
-├── Cargo.toml                 # Rust deps only; nothing here names a board
+├── Cargo.toml                 # Rust deps only
 ├── package.xml                # ROS-style manifest (drives codegen tooling)
-├── generated/                 # generated message bindings (gitignored)
-├── build/                     # everything `nros sync` generates (gitignored)
-└── src/                       # lib.rs component class + main.rs entry
+├── generated/                 # message bindings `nros sync` writes
+├── build/                     # everything `nros sync` / `nros build` generate
+└── src/main.rs
 ```
 
 There is no `.cargo/` to edit. The target triple, the linker script, the
 `--gc-sections` flag, the QEMU runner and the `[patch.crates-io]` rows that
 resolve nano-ros's crates all come from the board, and `nros sync` writes them
-into `build/mps2-an385-baremetal/nros-cargo.toml` — a generated file `nros
-build` hands cargo with `--config` (RFC-0098).
+into `build/<image>/nros-cargo.toml` — a generated file `nros build` hands
+cargo with `--config` (RFC-0098). The scaffold's image is
+`[image.baremetal]`.
 
 The board crate is `nros-board-mps2-an385` (note: no `-freertos`
 suffix — this is the bare-metal variant) which provides:
@@ -102,8 +106,9 @@ file, named by `os_config` (below).
 The whole deployment statement is `system.toml`, beside the manifest — the
 same schema a multi-node workspace's bringup package uses. It is baked at
 compile time: `nros::main!()` folds the image's network identity into a
-`DeployOverlay` the board's boot `Config` applies. Verbatim from the in-tree
-[`examples/mps2-an385-baremetal/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-baremetal/rust/talker/system.toml):
+`DeployOverlay` the board's boot `Config` applies. For example,
+[`examples/mps2-an385-baremetal/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-baremetal/rust/talker/system.toml)
+on GitHub:
 
 ```toml
 [system]
@@ -138,7 +143,7 @@ backend. Everything the board implies — triple, linker script, runner, cross
 compiler, `[patch.crates-io]` — follows the `board =` line on the next
 `nros sync`, so no linker flag and no triple ever moves by hand.
 
-That includes the board crate. This leaf's `Cargo.toml` names no board: its
+That includes the board crate. The example's `Cargo.toml` names no board: its
 image-only dependencies (the board crate with the features its entry needs,
 the RMW backend, the runtime and the panic handler) come from one generated
 path dependency,
@@ -174,26 +179,24 @@ or edit the `locator` above to the port you prefer.
 ## Build
 
 ```bash
-cd examples/mps2-an385-baremetal/rust/talker
-nros sync            # message bindings + build/mps2-an385-baremetal/nros-cargo.toml
-nros build           # builds the image `[image.mps2-an385-baremetal]` declares
+cd bm_talker
+nros sync            # message bindings + build/baremetal/nros-cargo.toml
+nros build           # builds the image `[image.baremetal]` declares
 ```
 
 First build (~5 min) cross-compiles all of nano-ros's Rust deps for
 `thumbv7m-none-eabi`. Re-builds finish in seconds. The ELF lands at
-`build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker` —
-under `build/`, never beside your sources.
+`build/baremetal/target/thumbv7m-none-eabi/debug/bm_talker` — under
+`build/`, never beside your sources.
 
 **Driving cargo yourself** (an IDE, a CI step, `--release`) is supported: run
-`nros sync` first, then point cargo at the generated settings file. Run it from
-the directory *above* the package, so the package's own `.cargo/` is not read a
-second time — phase-445 W6 deletes that directory, after which the working
-directory stops mattering:
+`nros sync` first, then point cargo at the generated settings file, from the
+directory above the package (`nros build --dry-run` prints this line):
 
 ```bash
-cd examples/mps2-an385-baremetal/rust
-cargo build --manifest-path talker/Cargo.toml \
-            --config talker/build/mps2-an385-baremetal/nros-cargo.toml
+cd ..
+cargo build --manifest-path bm_talker/Cargo.toml \
+            --config bm_talker/build/baremetal/nros-cargo.toml
 ```
 
 Skipping `nros sync` is not a mysterious failure: `nros build` stops at its
@@ -209,24 +212,25 @@ directory or `$CARGO_HOME`. See
 ## Run
 
 ```bash
-# 1. Bring up the router on the host (Slirp forwards 10.0.2.2:10500 →
-#    host 127.0.0.1:10500). This example dials 10500, NOT zenoh's
-#    default 7447 — edit `[image.mps2-an385-baremetal] locator` in
-#    system.toml if you want 7447:
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:10500"];scouting/multicast/enabled=false' \
+# 1. Bring up the router on the host, on the port your image's
+#    `locator` names (Slirp forwards 10.0.2.2:<p> → host:<p>). With
+#    no `locator` the board dials 10.0.2.2:7447; the example above
+#    dials 10500:
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # 2. Boot the talker in QEMU. Invoke qemu-system-arm directly with the
 #    LAN9118 networking wiring the example expects — the board's own
 #    runner is bare `-kernel`, so it boots QEMU without networking. The
 #    patched qemu-system-arm is provisioned by
-#    `nros setup mps2-an385-baremetal` and reaches PATH via activate.sh:
-qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+#    `nros setup mps2-an385-baremetal` into the SDK store, which
+#    `nros sdk-path qemu` prints:
+"$(nros sdk-path qemu)/bin/qemu-system-arm" -cpu cortex-m3 -machine mps2-an385 -nographic \
     -icount shift=auto \
     -semihosting-config enable=on,target=native \
-    -kernel build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker \
+    -kernel build/baremetal/target/thumbv7m-none-eabi/debug/bm_talker \
     -nic user,model=lan9118
-# Expected serial-over-semihosting output (per src/lib.rs):
+# Expected serial-over-semihosting output:
 #   Publishing: 'Hello World: 1'
 #   Publishing: 'Hello World: 2'
 #   ...
@@ -287,7 +291,7 @@ For Cortex-M3 with an RTOS, switch to the
 ## Next
 
 - Subscriber / service / action peers under the same
-  `examples/mps2-an385-baremetal/rust/` tree.
+  [`examples/mps2-an385-baremetal/rust`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust) tree.
 - Wake-callback opt-in: the `wake-callback` (latency-probe) bench
   under `packages/testing/nros-bench/wake-latency-cortex-m3/` shows
   how to feed a backend's transport-notify into the cooperative

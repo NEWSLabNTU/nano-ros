@@ -80,26 +80,26 @@ Zephyr or NuttX workspace? Two-step path:
    nano-ros plugs into it. One chapter per host build system follows it.
 3. **Company tree, own BSP, forked RTOS?** Start at
    [Integrating into a Vendored Tree](../getting-started/vendored-tree.md)
-   (pinning, air-gapped CI, the patch set you carry), then the
+   (pinning a release, air-gapped CI), then the
    Porting Guide: [Build as a CMake
    subdirectory](../getting-started/build-as-subdirectory.md),
    [Custom Board Package](../porting/custom-board.md),
    [Vendor Overlay](../porting/vendor-overlay.md), and the
    [STM32F4 out-of-tree worked example](../porting/stm32f4-out-of-tree.md).
-   Know up front: adding a *platform* (new RTOS) or an in-catalog
-   *board* still means carrying a small patch set inside your vendored
-   nano-ros checkout — plan for a fork-with-rebase workflow against
-   the `nros-v<X.Y.Z>` tags.
+   Know up front: a *board* of yours lives in your tree
+   (`NROS_EXTRA_BOARD_PATH`), but adding a *platform* (new RTOS) still
+   edits nano-ros itself — a fork, built the way
+   [Contributing](../internals/contributing.md) describes.
 
 ## 🚀 I want to get started shipping something
 
 You've decided to use nano-ros and want a working system on Linux
 first, then move it to your target.
 
-1. **[Install](../getting-started/installation.md)** — three commands:
-   `./scripts/bootstrap.sh`, `source ./activate.sh` (every new shell),
-   then `nros setup linux --rmw cyclonedds`. Those set up the machine;
-   the per-project step comes next.
+1. **[Install](../getting-started/installation.md)** — install the
+   `nros` CLI with `install.sh`, put `~/.nros/bin` on PATH, then
+   `nros setup linux --rmw cyclonedds`. Those set up the machine; the
+   per-project step comes next.
 2. **[First Project](../getting-started/first-project.md)** — one
    scaffolded workspace, then `nros sync` and `nros build`, publishing
    with nothing else running. Rust variant on the same page: same two

@@ -263,7 +263,7 @@ def self_test():
     # really are scanned -- a scan set that silently narrows is the failure
     # this whole gate exists to prevent.
     paths = doc_paths()
-    assert "book/src/getting-started/zephyr.md" in paths, "book not scanned"
+    assert "book/src/internals/zephyr-in-tree.md" in paths, "book not scanned"
     assert "AGENTS.md" in paths, "AGENTS.md not scanned"
     assert "examples/README.md" in paths, "READMEs not scanned"
     assert not any(p.startswith("docs/roadmap/") for p in paths), "roadmap scanned"

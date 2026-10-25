@@ -114,7 +114,7 @@ def self_test() -> int:
     expect("cli template NOT allowed",
            allowed("packages/cli/nros-cli-core/src/cmd/new_entry.rs"), False)
     expect("book getting-started NOT allowed",
-           allowed("book/src/getting-started/zephyr.md"), False)
+           allowed("book/src/getting-started/integration-zephyr.md"), False)
 
     print("check-cyclone-domain-not-pinned --self-test: " + ("OK" if ok else "FAILED"))
     return 0 if ok else 1
