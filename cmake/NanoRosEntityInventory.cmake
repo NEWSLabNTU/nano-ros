@@ -213,6 +213,8 @@
 
 include_guard(GLOBAL)
 
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+
 # What a schema refusal must be able to cite (issue 1389).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSchemaReader.cmake")
 # phase-462 W6c -- `_nros_board_rx_cost_args`, the board's `[board.rx]`.
@@ -882,9 +884,9 @@ function(nros_derive_entity_inventory_knobs)
         endif()
     else()
         message(STATUS
-            "nros: entity sizing not available this configure -- "
-            "NROS_EXECUTOR_MAX_CBS keeps its configured value.\n"
-            "  ${NROS_ENTITY_INVENTORY_REASON}")
+            "nros: entity counts not derived this configure; "
+            "NROS_EXECUTOR_MAX_CBS keeps its configured value.")
+        nros_message_detail("nros:   ${NROS_ENTITY_INVENTORY_REASON}")
     endif()
 endfunction()
 

@@ -813,7 +813,7 @@ fn report_arena_headroom(used: usize, capacity: usize) {
         // memory the backing came from.
         "arena over-provisioned: set NROS_EXECUTOR_ARENA_SIZE={suggest} \
          (Zephyr: CONFIG_ prefix). {used}/{capacity} bytes claimed at first \
-         spin; later registrations need more. issue 0900"
+         spin; later registrations need more."
     );
 }
 

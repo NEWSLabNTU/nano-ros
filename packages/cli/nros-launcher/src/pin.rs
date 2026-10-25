@@ -392,7 +392,7 @@ pub fn describe(outcome: &PinOutcome) -> Option<String> {
             "nros build: pinned this project to nano-ros {version}\n\
              \x20   wrote {}\n\
              \x20   Commit it. It is what makes this build reproducible on \
-             another machine (RFC-0095 D9).",
+             another machine.",
             path.display()
         )),
         // A contributor is told nothing: their nano-ros is the clone they are

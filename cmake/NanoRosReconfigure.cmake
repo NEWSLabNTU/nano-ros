@@ -180,6 +180,8 @@
 
 include_guard(GLOBAL)
 
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+
 set(NROS_RECONFIGURE_FUTURE_SECONDS 120 CACHE STRING
     "issue 0991: how far ahead a changed nano-ros fragment is dated so ninja re-runs cmake. Must exceed the remainder of the configure; too small only means the lag does not close.")
 set(NROS_RECONFIGURE_MAX_PASSES 3 CACHE STRING
@@ -437,8 +439,8 @@ function(nros_reconfigure_on_change _path _before)
 
     message(STATUS
         "nros: ${_label} changed after the readers of this pass had run, so "
-        "cmake will run once more before this build proceeds (issue 0991).\n"
-        "  This is expected on a CLEAN build dir and after a declaration "
-        "change. The readers of that next pass see the new answer; nothing "
-        "here is silent.")
+        "cmake will run once more before this build proceeds.")
+    nros_message_detail(
+        "nros:   expected on a clean build dir and after a declaration "
+        "change; the readers of that next pass see the new answer (issue 0991).")
 endfunction()

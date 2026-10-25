@@ -236,7 +236,9 @@ derive() {
         out="$TEST_TMPDIR/parity-$BASHPID-$RANDOM.cmake"
         extra=(-DNROS_BOUNDS_OUTPUT="$out")
     fi
-    cmake -DNROS_BOUNDS_FRAGMENTS="$frags" "$@" "${extra[@]}" -P "$MODULE" 2>&1
+    # phase-517 W5 -- the refusal's type list and remedy are DETAIL, printed
+    # only when asked for; these cases assert that content, so they ask.
+    NROS_VERBOSE=1 cmake -DNROS_BOUNDS_FRAGMENTS="$frags" "$@" "${extra[@]}" -P "$MODULE" 2>&1
     parity_check "$frags" "$out" "$ceiling" "$entity"
 }
 
@@ -417,6 +419,16 @@ fi
 check
 if ! nros_grep_q -qi "nros-codegen.toml" <<< "$OUT"; then
     fail "C: the refusal must name a remedy the user can act on:"; echo "$OUT"
+fi
+# phase-517 W5 -- without NROS_VERBOSE a correct build says it in ONE line
+# and points at where the detail is; the type list stays out of it.
+_c_default="$(cmake -DNROS_BOUNDS_FRAGMENTS="$T/a2.cmake;$T/c1.cmake" \
+    -DNROS_BOUNDS_OUTPUT="$T/c-default-out.cmake" -P "$MODULE" 2>&1)"
+check
+if ! nros_grep_q "message sizes not derived" <<< "$_c_default" \
+   || ! nros_grep_q -F "nros build -v" <<< "$_c_default" \
+   || nros_grep_q "frame_id" <<< "$_c_default"; then
+    fail "C default: the refusal must be one line naming \`nros build -v\`, with no type list:"; echo "$_c_default"
 fi
 # Negative control: the same closure with that type bounded DOES derive. A
 # refusal that fires unconditionally would pass every assertion above.

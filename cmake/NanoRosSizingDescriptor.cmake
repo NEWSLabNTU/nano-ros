@@ -46,6 +46,8 @@
 
 include_guard(GLOBAL)
 
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+
 # phase-462 W6c -- `_nros_board_rx_cost_args`, the board's `[board.rx]`.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardRxCost.cmake")
 
@@ -958,7 +960,7 @@ function(nros_sizing_descriptor_apply_cyclonedds)
     if(NOT _defs)
         message(STATUS
             "nano-ros: ${_path} states no Cyclone fact, so ${_nac_TARGET} keeps its "
-            "header defaults (RFC-0100 D6)")
+            "header defaults")
         return()
     endif()
     target_compile_definitions(${_nac_TARGET} PRIVATE ${_defs})
@@ -1058,7 +1060,7 @@ function(nros_sizing_descriptor_read _descriptor)
     endforeach()
 
     if(NOT _nsd_QUIET)
-        message(STATUS
+        nros_message_detail(
             "nano-ros: sizing descriptor ${_stem} -- status ${NROS_SIZING_STATUS}, "
             "basis ${NROS_SIZING_BASIS}, ${NROS_SIZING_ENDPOINT_COUNT} endpoint(s)")
     endif()
