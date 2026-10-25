@@ -1,6 +1,6 @@
 # phase-460 - every consumer of the contract chain verifies what it consumes
 
-**Status (2026-10-24). Every wave LANDED; one homed issue remains.** W1 (PR
+**Status (2026-10-25). Every wave LANDED; the one homed issue left, 0259, is DEFERRED by the maintainer.** W1 (PR
 #1165), W2 and W4 (PR #1166), W5 (PR #1229), W6 (PR #1228), W7 (the heap
 exhaustion is fatal under `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL`, and
 `samples_dropped_too_small` is in the boot report; issue 1425 archived) and
@@ -19,7 +19,9 @@ cmake road does. Their claim lines below record how. Issue 0259
 is homed here (table at the end). Its design was re-checked 2026-10-24 and
 rewritten, because RFC-0108 had moved what it owns; its one concrete defect,
 the preemption levels ignoring the realizer's core placement, was fixed the
-same day, and what it still lacks is inputs. Two other homed issues
+same day, and what it still lacks is inputs. On 2026-10-25 the maintainer
+deferred it: it stays open and homed here, and nothing in this phase waits on
+it. Two other homed issues
 closed that day.
 [Issue 1140](../issues/archived/1140-describes-wiring-misses-timer-only-contract.md)
 was resolved because phase-486 W9b had deleted its second predicate.
@@ -291,7 +293,7 @@ already carries `CONFIG_NROS_BOOT_REPORT=y`. This wave does not run on
 silicon inside nano-ros (issue 1036 records why no lane can); it ships the
 fields, the reader and the recipe, and the island runs it.
 
-Claim: phase-460-W5. Depends on: none. Owns: packages/core/nros-node/src/boot_report.rs, scripts/check-boot-report-layout.py, scripts/read-boot-report.py, packages/platform/nros-platform-zephyr/src/platform.c, just/check/tools.just, docs/design/0077-image-runtime-is-the-images-choice.md. Gate: just check boot-report-layout plus the new heap-headroom recipe on a fixture dump. Status: landed in PR #1229 (the status header records it; this line said "in the queue" until 2026-10-24); the record is 22 fields / 88 bytes at VERSION 4, `heap_peak_bytes` and `heap_capacity_bytes` appended, written from `nros_platform_alloc` and `nros_platform_realloc` so the record is current at every stage transition and on the exhaustion path before the printk. Gates: `check-boot-report-layout` OK, `read-boot-report --self-test` OK (peak 0 refused, headroom 4096 refused, headroom exactly 24576 passes, peak above capacity refused). Issue 1424 stays OPEN: the board half of its acceptance, a non-zero peak from a real dump, is the island's (island-W4). Doc correction: this wave was written as "the stage transitions in platform.c" and platform.c has none, so the numbers are PUSHED from the allocator instead, which is strictly finer and needs no callback the cross-port ABI does not carry.
+Claim: phase-460-W5. Depends on: none. Owns: packages/core/nros-node/src/boot_report.rs, scripts/check-boot-report-layout.py, scripts/read-boot-report.py, packages/platform/nros-platform-zephyr/src/platform.c, just/check/tools.just, docs/design/0077-image-runtime-is-the-images-choice.md. Gate: just check boot-report-layout plus the new heap-headroom recipe on a fixture dump. Status: landed in PR #1229 (the status header records it; this line said "in the queue" until 2026-10-24); the record is 22 fields / 88 bytes at VERSION 4, `heap_peak_bytes` and `heap_capacity_bytes` appended, written from `nros_platform_alloc` and `nros_platform_realloc` so the record is current at every stage transition and on the exhaustion path before the printk. Gates: `check-boot-report-layout` OK, `read-boot-report --self-test` OK (peak 0 refused, headroom 4096 refused, headroom exactly 24576 passes, peak above capacity refused). Issue 1424 stayed open for the board half of its acceptance, a non-zero peak from a real dump; it was resolved 2026-10-02 on a live-image gate with its negative control (archived). Doc correction: this wave was written as "the stage transitions in platform.c" and platform.c has none, so the numbers are PUSHED from the allocator instead, which is strictly finer and needs no callback the cross-port ABI does not carry.
 
 ### W6 - the slot release survives a reconnect (gate only)
 
@@ -363,7 +365,9 @@ All but W5's board run and W7's native_sim half run in the fast tier
 * W5 gives the island the instrument; the number it produces is the island's
   to write into its `.conf`.
 * W7 names two faults. Issue 1036's "sibling sweep" (every `nros_log` site
-  reachable only on a target with no sink) is still the open enumeration.
+  reachable only on a target with no sink) was closed by construction on
+  2026-10-02 (PR #1580): the boot report listens to `nros_log` itself, so every
+  ERROR/FATAL site reaches the record. Issue 1036 is archived.
 
 ## Docs to update
 
@@ -395,6 +399,6 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md) | WCET, blocking and feasibility as declared data is phase-357 W2's remainder. It is a check over the contract chain. Re-scoped 2026-10-24: `non_preempt` is RFC-0108's. The levels are partitioned per core since 2026-10-24. What is left is an input for the core count and for C to the realizer, plus hardware locality and chain colocation. |
+| [#0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md) | **Deferred by the maintainer 2026-10-25.** WCET, blocking and feasibility as declared data is phase-357 W2's remainder. It is a check over the contract chain. Re-scoped 2026-10-24: `non_preempt` is RFC-0108's. The levels are partitioned per core since 2026-10-24. What is left is an input for the core count and for C to the realizer, plus hardware locality and chain colocation. |
 | [#1140](../issues/archived/1140-describes-wiring-misses-timer-only-contract.md) | Resolved 2026-10-24. Phase-486 W9b deleted `describes_wiring` with `nros ws entity-facts`, so `from_model` is the one predicate. |
 | [#1376](../issues/archived/1376-c-example-listeners-register-with-null-options.md) | Homed 2026-10-23 from phase-394, which was archived that day. Seven C listeners passed `options = NULL`, yet the sizing descriptor credits their image with a supplied hint. A consumer trusts a fact nothing checks, which is this phase's class. Re-scoped 2026-10-24: phase-492 moved the listeners onto rclc's typed path, which carries the bound. Resolved the same day: four of the five entry points that take a subscription passed 0, and one API helper now forwards the bound, with a gate and an arena measurement. |

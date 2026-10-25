@@ -17,6 +17,13 @@ moved since, is in "Current design" directly below. Read that first: the
 2026-08-19, 2026-09-04 and RFC-0108 landings, and the title was rewritten
 2026-10-24.
 
+**Deferred (2026-10-25, maintainer).** Nothing here is actionable until
+someone decides where its inputs come from: a core count for the realizer,
+WCET reaching it (`derive_tiers_with_wcet` drops the profile), a board
+peripheral registry, and an interference model. It stays open and homed in
+phase-460, which has no other open work. Pick it up by settling those inputs
+first; the design below is current as of 2026-10-24.
+
 ## Current design (re-checked 2026-10-24 at `8df999fc28`)
 
 This section replaces the "Still open" lists further down, which are history.
