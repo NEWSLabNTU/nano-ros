@@ -359,3 +359,99 @@ every platform, with two patches to redesign and the platform link ABI to
 re-port. The first four commits replayed cleanly onto 1.10.1, and two
 carried commits were dropped; that work is kept on the scratch branch
 `port/wip-1.10.1-partial`, which was not pushed.
+
+## Rebase 2026-10-25 — the patch line on 1.10.1
+
+The 92-commit `nano-ros` line (tip `57bbde9e`, on 1.8.0) is rebased onto
+`1.10.1` as branch `nano-ros-1.10.1`: 70 commits. It is a local branch in the
+superproject's zenoh-pico module store
+(`.git/modules/packages/rmw/zenoh/zpico-sys/zenoh-pico`), not yet on the fork
+remote, so the maintainer pushes it:
+
+    git -C packages/rmw/zenoh/zpico-sys/zenoh-pico push origin nano-ros-1.10.1
+
+Every original commit is accounted for: 64 replayed (one, `0101b80d`, under a
+new subject because only its NuttX timeout split still applies), 14 dropped,
+and 14 folded into one. Five commits are new: the Zephyr ISO-TP binding moved
+beside the other link transports, the `_tp_ready` half of the #0899 redesign,
+and the three under "Also new on the line" below.
+
+**Dropped (14), each with the reason:**
+
+| commit | why |
+| --- | --- |
+| `66b5bf9b`, `75dd7713`, `0343ad1b` | carried upstream (empty on 1.10.1) |
+| `0ac5c201` | upstream guards the batch mutex helpers itself |
+| `a1c741db` | upstream compares the template flag against 1 |
+| `5c000233` | upstream tracks Zephyr stack slots itself, released on join as ours was |
+| `03f55931` | upstream already uses `snprintf` in every example it touched |
+| `d59a7d3e` | 1.10.1 has no committed `config.h`; its guards land in `config.h.in` with `fb50388e` |
+| `87d381c6` | unix serial moved to `tty_posix.c`, which includes its own header |
+| `23a117d2` | #0959's chunked lease sleep: the lease task is an executor future now |
+| `0844ab0f` | its knobs are in `config.h.in` already (the split lock) or obsolete (the lease chunk) |
+| `7335492a` | the client read task no longer reaches `_zp_unicast_process_peer_event` |
+| `66556c99`, `97557b00` | a change and its revert |
+
+**Folded (14 into 1):** the Zephyr serial commits `97cc8412` … `17b14961`
+(the list is in the commit "zephyr: carry nano-ros's UART serial backend into
+uart_zephyr.c"). Each changed the serial section of a file 1.10.1 no longer
+has, against an ABI it no longer has, so a replay would only have produced
+intermediate states that never built. Our backend keeps its own framing,
+through a new `ZP_PLATFORM_SERIAL_FRAMING` hook in upstream's serial protocol
+layer: receiving whole frames by interrupt or DMA, and returning from a send
+that fits the TX ring, both depend on owning it. The wire format is
+upstream's either way. The same hook is what `zpico-serial`, which also frames
+for itself, will implement.
+
+**Redesigned, not replayed:**
+
+- `ae59aa48` (#0899). Upstream 1.10.1 already clears the transport under
+  `_mutex_transport`; what it lacked is the send side, so `_z_send_n_msg` and
+  `_z_send_n_batch` now hold it. That alone would make every publisher wait
+  out a reconnect, which holds the same mutex across a blocking `_z_open`, so
+  a second commit adds `_z_session_t::_tp_ready`. A send checks it before the
+  lock and fails at once during an outage. Measured on Linux against
+  `rmw_zenohd`, router frozen for 10 s: the slowest put went from 6836 ms to
+  0.2 ms, and both builds recovered at the restart. The 1.8.0 fix had
+  published `_Z_TRANSPORT_NONE` and skipped the free, which leaked a transport
+  per lapse; this one frees it.
+- `00f8e2f0` (frame budget). The read task is an executor future that returns
+  `continue` while data keeps coming, so the budget now counts those polls and
+  returns `wake_up_after`, at least 2 ms. Sleeping inside the future would have
+  blocked the whole executor.
+- `717153c1` (#0924) keeps its abortive close in `tcp_lwip.c` and drops its
+  `_reconnecting` claim: one executor runs the failover, so there is no second
+  lease task to race.
+- `6b574173` keeps its cache locks and atomic entity id and adds the missing
+  lock around the replay in the executor's reopen task.
+
+**Kept for now, obsolete under RFC-0110:** `81459416` and `f13ae3b5` (the
+polled-read drain and compaction) still apply to `_zp_unicast_read`, which
+1.10.1 keeps. They go when CALLER mode replaces `zp_read` with `zp_spin_once`.
+
+**Also new on the line:** `1f41f817` from the 1.10.0 integration branch
+(`Z_HAS_SOCKET_LINK`: a build with no socket link at all), a Zephyr
+`network.c` that builds without an IP stack (the socket half of `97cc8412`),
+and a generated `config.h` for builds that do not run zenoh-pico's CMake.
+Upstream's own Zephyr module is one of those and has no header on 1.10.1.
+
+**Verified:** builds with zenoh-pico's own CMake on Linux in five feature sets
+(default; CAN + ISO-TP + serial + split lock + frame budget; vendored ISO-TP;
+single-threaded; the custom link). Upstream's unit tests pass in three of them.
+The only failure is `z_package_mylinux_test` with serial on, which fails the
+same way on pristine 1.10.1. **Not verified:** nothing on Zephyr, FreeRTOS,
+NuttX or ThreadX has been compiled against this line, because nano-ros cannot
+build it until `zpico.c` and the link shims are re-ported. The FreeRTOS
+lease-lapse reproduction (#0899), RFC-0074's stall count (frame budget) and
+the serial cells are the acceptance tests still owed.
+
+**The config knobs.** The gap between the template and the generator was 7
+knobs, not 55: a ZENOH_GENERIC build skips only the template's non-generic
+branch, and that branch's knobs new in 1.10 are `Z_RUNTIME_MAX_TASKS`,
+`Z_RUNTIME_IDLE_READ_TASK_SLEEP`, the accept and connect timeouts,
+`Z_FEATURE_CONNECTIVITY`, `Z_FEATURE_ADMIN_SPACE` and
+`Z_FEATURE_LINK_ISOTP_VENDORED`. The generator states them on the local
+branch `feat/508-zenoh-1.10-knobs`. That branch also stops emitting the 1.8
+lease chunk, the periodic scheduler's knobs and `Z_FEATURE_SCOUTING_UDP`,
+and teaches `check-zenoh-config-template` to fail on the next such gap. It
+does not build against the 1.8.0 pin, so it lands with the bump.
