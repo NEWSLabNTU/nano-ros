@@ -174,6 +174,93 @@ contributor chapters only.
 that has W5, the gate is on the fast line, and `just probe installed` replays
 every user chapter it can reach with no checkout in the container.
 
+**Done (2026-10-25)** — steps 1–3 and the gate. Release `0.6.0-nros4` is
+published (tag `nros-0.6.0-nros4`) and `[tool.nros]` pins it.
+`installation.md` has one user path — `install.sh` (`--version` to pin, `nros
+pin` for the project) — and no "no release" note; the clone, `bootstrap.sh`,
+`activate.sh`, "Path B", `just setup` and Docker material moved to
+`internals/contributing.md` § Development Setup, which now holds the probe's
+`probe=20 track=checkout` block (cloning `main`, never a tag). The two
+"(contributor)" chapters left getting-started: they are
+`internals/{zephyr,nuttx}-in-tree.md` under "Per-Platform Contributor Lanes",
+and the user material `zephyr.md` held (§ Configuring an image) moved into
+`integration-zephyr.md`. Every chapter under `getting-started/`, `start-here/`,
+`user-guide/`, `platform-guides/` and `porting/` (ESP32 pages excepted, issue
+1525) now scaffolds with `nros new` instead of `cd examples/…`, links examples
+on GitHub as reading material, names the SDK root through `nros sdk-root` (or
+nothing, where `nros build` resolves it), puts `~/.nros/bin` on PATH instead
+of sourcing `activate.sh`, and runs no `just`. The Zephyr chapters name the
+module as `ZEPHYR_EXTRA_MODULES="$(nros sdk-root)"` (what `nros build`'s west
+handoff passes) instead of a `west.yml` project pinned at `nros-v0.6.0`;
+`vendored-tree.md` is now "pin and mirror a release" (`NROS_INSTALL_URL`,
+`NROS_INDEX_URL` / `--index` / `NROS_OFFLINE`, cached `NROS_HOME`). Staging:
+`scripts/stage-sdk-root.sh` now ships `integrations/` (276 KB — the PX4 module
+template and the NuttX `apps/external` shell the chapters copy from
+`$(nros sdk-root)`). Probe: the checkout and zenoh tracks read
+`installation.md` (prereqs) + `contributing.md` (clone/bootstrap) + the
+first-node chapter, whose talker is now `nros new`-scaffolded
+(`verify-zenoh-interop.sh` runs `my_talker`). Gate:
+`check-book-no-checkout` (`scripts/check-book-no-checkout.py`, fast line via
+`just/check/docs.just`) — no fenced block in a user chapter clones this
+repository, runs `bootstrap.sh`, sources `activate.sh`, names `NROS_REPO_DIR`,
+runs `just` or `cd`s into `examples/`; user chapters are decided by directory,
+parked pages by SUMMARY's "(…, dormant)"; blockquoted fences are read too. Its
+self-test fails on a planted `git clone …/nano-ros.git` in `first-project.md`.
+
+**Left** (each an installed-track gap found while rewriting; none got a
+checkout fallback — the chapter says what is missing instead):
+
+* **Not replayed.** No chapter beyond `first-project.md` has run on the
+  installed track yet (W10). The Linux single-package scaffolds (`nros new
+  --platform linux --lang {rust,c,cpp}`) build with the in-tree CLI; the
+  FreeRTOS / ThreadX / NuttX / bare-metal / Zephyr flows were checked to
+  scaffold and to plan (`nros build <image> --dry-run`), not built or booted.
+* **`integrations/` reaches users only from the next release.** `0.6.0-nros4`
+  predates the staging change, so `$(nros sdk-root)/integrations/…`
+  (`integration-px4.md`, `px4.md`, `integration-nuttx.md`) is empty there; the
+  chapters say so and link GitHub for that release.
+* **`nros new --platform {freertos,threadx,nuttx,baremetal} --lang c|cpp`
+  writes a board alias the C/C++ road cannot resolve.** The scaffold says
+  `board = "freertos"` (resp. `threadx`, `nuttx`, `baremetal`); `nros build`
+  then fails at configure with `no board overlay at
+  …/nano-ros-board-.cmake` (measured for FreeRTOS; with `board =
+  "mps2-an385-freertos"` the configure gets past it). The chapters tell the
+  reader to set the full board name; the fix belongs with W3's one vocabulary.
+  The same split shows the other way: `[image.*] board =
+  "mps2-an385-baremetal"` (the setup key) is refused by the image road, which
+  knows `qemu-mps2-an385` / `baremetal`.
+* **No single-package Rust scaffold off Linux / bare-metal.** `nros new
+  --platform {freertos,nuttx,threadx,zephyr} --lang rust` refuses (issue 0333
+  follow-up); the chapters start Rust as a workspace plus `nros new --image
+  <id> --board <board>`. Zephyr Rust has no scaffold at all — the chapter
+  points at the GitHub example.
+* **`nros new --use-case listener|service|action` still writes a talker**
+  ("template diversification: TODO"), and the C/C++ talker template publishes
+  once and exits where the chapters' examples publish on a timer. The
+  first-node C/C++ chapters show the scaffold's real output and link the full
+  example's `main.c`/`main.cpp` to paste over it; `ros2-interop.md` uses the
+  workspace scaffold's `listener_pkg` for "the other direction".
+* **Workspace-located index sources.** `nuttx-kernel`, `nuttx-apps`,
+  `nuttx-libc`, `px4-autopilot`, `px4-rs`, `cyclonedds-src` and
+  `tonbandgeraet` have no `location = "store"`: their `dest` is a checkout
+  path, and `nros sdk-path --source` refuses them. What `nros setup
+  qemu-armv7a-nuttx` / `nros setup --source px4-rs` do with no checkout is
+  unmeasured. `px4.md` now has the reader clone PX4 themselves.
+* **QEMU is not on PATH.** `nros setup` provisions `qemu-system-*` into the
+  store but `~/.nros/bin` does not front it; the chapters run
+  `"$(nros sdk-path qemu)/bin/qemu-system-arm"`.
+* **`nros board list` needs a checkout.** `find_workspace_root` walks up for
+  `packages/boards/` and never asks the SDK-root ladder, so outside a checkout
+  it fails unless given `--workspace "$(nros sdk-root)"`. The book no longer
+  sends users to it.
+* **`nros-build-profile` is not shipped as a binary.** `build-profiling.md`
+  installs it with `cargo install --locked --path "$(nros
+  sdk-root)/packages/testing/nros-build-profile"` (measured against a staged
+  SDK root).
+* **Zephyr `west nros`** (`scripts/west-commands.yml`) has no installed-track
+  spelling: a `west.yml` `self: west-commands:` needs a literal path, and the
+  SDK root is versioned. `board-crate-import.md` dropped the line.
+
 ### W3 — one board vocabulary from image to setup (M)
 
 An image's `board` resolves to its descriptor (`names` aliases); the

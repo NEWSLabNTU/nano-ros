@@ -3,9 +3,11 @@
 
 phase-368 W12 (issue 0694's sibling): a user has `nros`, their vendor's build
 tool, and a shell. Every `just` invocation on the user track either got a
-user spelling (the front door `./scripts/bootstrap.sh`, `nros setup`,
-`ros2 run rmw_zenoh_cpp rmw_zenohd`, the platform's own tool) or was wrapped
-in an explicitly contributor-marked block. This gate keeps it that way.
+user spelling (`nros setup`, `ros2 run rmw_zenoh_cpp rmw_zenohd`, the
+platform's own tool) or was wrapped in an explicitly contributor-marked block.
+This gate keeps it that way. (phase-517 W2's `check-book-no-checkout` is
+stricter about code blocks — no `just` at all in a user chapter's fences —
+and also reads porting/; this one still covers inline `just <recipe>` spans.)
 
 Scope: tracked .md under book/src/{getting-started,user-guide,start-here,
 platform-guides}. Everything else (internals/, porting/, reference/, …) is
