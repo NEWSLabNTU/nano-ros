@@ -104,6 +104,10 @@ struct NodeCfg {
     domain_id: u32,
     #[serde(default)]
     namespace: String,
+    /// RFC-0109 D6 (phase-514 W3b) — what this session's domain RMW file
+    /// hands its backend, `[["key", "value"], …]`, written by `nros sync`.
+    #[serde(default)]
+    properties: Vec<[String; 2]>,
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -318,8 +322,18 @@ fn run_from_config_source(
             "config must declare at least one [[node]]".into(),
         ));
     }
+    let props: Vec<Vec<(&str, &str)>> = cfg
+        .node
+        .iter()
+        .map(|n| {
+            n.properties
+                .iter()
+                .map(|[k, v]| (k.as_str(), v.as_str()))
+                .collect()
+        })
+        .collect();
     let mut specs: Vec<SessionSpec<'_>> = Vec::with_capacity(cfg.node.len());
-    for n in &cfg.node {
+    for (n, props) in cfg.node.iter().zip(&props) {
         let spec = SessionSpec::new(n.rmw.as_str(), n.locator.as_str())
             .domain_id(n.domain_id)
             .node_name(n.name.as_str())
@@ -327,7 +341,8 @@ fn run_from_config_source(
                 "/"
             } else {
                 n.namespace.as_str()
-            });
+            })
+            .properties(props);
         specs.push(spec);
     }
 
@@ -482,7 +497,12 @@ fn apply_node_env_overrides(nodes: &mut [NodeCfg]) {
         if let Ok(loc) = std::env::var(format!("NROS_BRIDGE_{key}_LOCATOR"))
             && !loc.is_empty()
         {
+            // The override replaces the session's wiring WHOLE, as
+            // `ZENOH_SESSION_CONFIG_URI` replaces a baked table (RFC-0109
+            // D6a): kept, a file's `connect` would outrank the locator and
+            // the override would be silently unread.
             n.locator = loc;
+            n.properties.clear();
         }
         if let Ok(dom) = std::env::var(format!("NROS_BRIDGE_{key}_DOMAIN"))
             && let Ok(d) = dom.trim().parse::<u32>()
@@ -581,6 +601,24 @@ mod tests {
         assert_eq!(env_key("field-control.1"), "FIELD_CONTROL_1");
     }
 
+    /// RFC-0109 D6 (phase-514 W3b) — a node's domain-file properties parse,
+    /// a multi-line document among them.
+    #[test]
+    fn a_node_carries_its_domain_file_properties() {
+        let cfg: ConfigFile = toml::from_str(
+            "[[node]]\nname = \"s0\"\nrmw = \"cyclonedds\"\ndomain_id = 5\n\
+             properties = [[\"config\", \"<CycloneDDS>\\n</CycloneDDS>\"]]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.node[0].properties,
+            [[
+                "config".to_string(),
+                "<CycloneDDS>\n</CycloneDDS>".to_string()
+            ]]
+        );
+    }
+
     #[test]
     fn apply_node_env_overrides_replaces_locator_and_domain() {
         // Unique var names so the test is parallel-safe (env is process-global).
@@ -594,10 +632,14 @@ mod tests {
             locator: "tcp/127.0.0.1:7447".into(),
             domain_id: 0,
             namespace: String::new(),
+            properties: vec![["connect".into(), "tcp/127.0.0.1:7500".into()]],
         }];
         apply_node_env_overrides(&mut nodes);
         assert_eq!(nodes[0].locator, "tcp/10.0.0.9:7448");
         assert_eq!(nodes[0].domain_id, 42);
+        // The locator replaces the domain file's wiring rather than losing
+        // to its `connect`.
+        assert!(nodes[0].properties.is_empty());
         unsafe {
             std::env::remove_var("NROS_BRIDGE_ENVT_LOCATOR");
             std::env::remove_var("NROS_BRIDGE_ENVT_DOMAIN");

@@ -233,6 +233,52 @@ does for `rmw_zenoh`.
 The flat `rmw/zenoh.conf` list (`key = value`) is retired and refused, naming
 the json5 that replaced it.
 
+The names above are the default. To ship a different file — one per site, one
+for a QEMU run and one for the lab — name it:
+
+```toml
+[system]
+rmw_config = "rmw/zenoh-lab.json5"      # every image's default session
+
+[image.qemu]
+board = "mps2-an385-freertos"
+rmw_config = "rmw/zenoh-qemu.json5"     # this image's own
+```
+
+A named file that does not exist is refused. XRCE has no file format; its
+endpoint is the image's `locator`.
+
+A bridge opens one session per `[[domain]]`, and each domain names its own
+file, so one image can speak to a CAN zenoh network and an Ethernet DDS one
+with two documents (RFC-0109 U5; `examples/workspaces/bridge-cyclonedds`):
+
+```toml
+[[domain]]
+name = "zen"
+rmw = "zenoh"
+config = "rmw/zenoh-zen.json5"
+
+[[domain]]
+name = "dds"
+rmw = "cyclonedds"
+id = 5
+config = "rmw/cyclonedds-dds.xml"
+
+[[bridge]]
+name = "gw"
+from = "zenoh:zen"
+to = "cyclonedds:dds"
+```
+
+A domain with a `config` states no `locator` (the file is its wiring), and a
+domain `config` that no `[[bridge]]` opens is refused, since nothing would
+read it. An image cannot yet override one domain's file
+(`rmw_config = { dds = "…" }` is refused, issue 2062): the bridge
+configuration is one per bringup. At run time
+`ZENOH_SESSION_CONFIG_URI` and `CYCLONEDDS_URI` still replace a hosted
+bridge's files, and `NROS_BRIDGE_<SESSION>_LOCATOR` replaces that session's
+file whole.
+
 ### Per-image build knobs
 
 A build knob that one image needs, and that its board does not state, goes in

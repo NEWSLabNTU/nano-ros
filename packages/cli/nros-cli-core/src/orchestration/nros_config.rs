@@ -811,6 +811,7 @@ fn synthesise_self_bringup(
         // thread a component-declared edition here if one is added).
         ros_edition: None,
         locator: first_deploy.locator.clone(),
+        rmw_config: None,
         default_launch: None,
         default_target: None,
         features: Vec::new(),

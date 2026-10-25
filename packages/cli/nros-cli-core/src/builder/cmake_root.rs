@@ -65,6 +65,9 @@ use super::discover::Discovered;
 pub struct CmakeEntry {
     /// Target name — `<image>_entry`, the same derivation the Rust side uses.
     pub name: String,
+    /// `IMAGE` — the image id, so a fact several images of one configure may
+    /// state differently (its RMW file, RFC-0109 D6) is asked per entry.
+    pub image: String,
     /// `LAUNCH` — a launch file name, or `default` for the bringup's own.
     pub launch: String,
     /// `LAUNCH_ARGS k=v` — how an image selects a machine.
@@ -405,6 +408,7 @@ pub fn render(
         out.push_str(&format!(
             "    BRINGUP \"${{CMAKE_CURRENT_SOURCE_DIR}}/{bringup_rel}\"\n"
         ));
+        out.push_str(&format!("    IMAGE   {}\n", e.image));
         out.push_str(&format!("    LAUNCH  {}\n", e.launch));
         for (k, v) in &e.args {
             out.push_str(&format!("    LAUNCH_ARGS {k}={v}\n"));
@@ -642,6 +646,7 @@ mod tests {
         sp.board = Some("linux".to_string());
         sp.entries = vec![CmakeEntry {
             name: "linux_robot1_entry".to_string(),
+            image: String::from("img"),
             launch: "multihost.launch.xml".to_string(),
             args: vec![("host".to_string(), "robot1".to_string())],
             lang: Language::C,
@@ -699,6 +704,7 @@ mod tests {
             .iter()
             .map(|(name, dom)| CmakeEntry {
                 name: (*name).to_string(),
+                image: String::from("img"),
                 launch: "talker.launch.xml".to_string(),
                 args: vec![],
                 lang: Language::Cpp,
@@ -736,6 +742,7 @@ mod tests {
             .iter()
             .map(|host| CmakeEntry {
                 name: format!("native_{host}_entry"),
+                image: String::from("img"),
                 launch: "multihost.launch.xml".to_string(),
                 args: vec![("host".to_string(), (*host).to_string())],
                 lang: Language::C,

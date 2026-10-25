@@ -1,6 +1,6 @@
 # Phase 514 — Network and middleware configuration in three layers
 
-**Status (2026-10-25). W1, W2 landed; W4, W6 and W3a in review; W3b and W5
+**Status (2026-10-25). W1, W2, W4, W6 landed; W3a and W3b in review; W5
 not started.** W1: every board descriptor states `[board.net] stack` and
 `links`, from one link vocabulary (`LINK_KINDS`, a superset of the image
 `TRANSPORT_KINDS`). W2: an image's address lives in the board network file
@@ -14,7 +14,10 @@ lines moved), D9 check 6 refuses a layer-1 file its board's network owner
 does not read, and NuttX's address default is its kernel `defconfig`.
 W3a: a bringup's `rmw/zenoh.json5` is lowered on the host, baked into every
 road's entry and installed before the session opens; `$ZENOH_SESSION_CONFIG_URI`
-replaces it on hosted builds. W5 needs a host with `vcan0` to verify.
+replaces it on hosted builds. W3b: the file is named (`[image] rmw_config`,
+`[system] rmw_config`, `[[domain]] config`) and one resolver answers every
+road, a bridged domain's file travels as that session's properties, and the
+`bridge-cyclonedds` example is U5. W5 needs a host with `vcan0` to verify.
 Implements
 [RFC-0109](../design/0109-network-config-layers.md). Opened with the RFC so
 its work and phase-206's leftovers have one home.
@@ -102,8 +105,38 @@ is its only route. The bake itself is pinned by
 A Rust Zephyr west application has no carrier for the lowered text yet, so
 `nros build` refuses one whose bringup ships the file (issue 2051).
 
-**W3b — remainder:** `[[domain]] config`, the per-image `rmw_config`
-override, and the U5 bridge shape (two domains, two files).
+**W3b — naming the file; a domain's own (done, RFC-0109 D8 amendment W3b).**
+
+- `[[domain]] config`, `[image.<id>] rmw_config = "<file>" | { <domain> =
+  "<file>" }` (merged over `[image_defaults]`, a table key by key) and
+  `[system] rmw_config`. Default session: image, then system, then the
+  conventional file. Checked at sync (`SystemToml::check_rmw_files`): a named
+  file that is absent, a file for a backend with none (XRCE), a domain with
+  `config` and `locator`, a Cyclone `<Domain id>` against the DOMAIN's id, an
+  override naming no declared domain, and a domain `config` that no
+  `[[bridge]]` opens (it would be read by nothing).
+- A bridged domain's file is its session's properties
+  (`RmwFile::session_properties`): planner endpoints and transports carry
+  them, `nros-bridge.toml` `[[node]] properties` and `SessionSpec::properties`
+  deliver them, and `NROS_BRIDGE_<N>_LOCATOR` replaces them whole. Cyclone
+  takes one `config` property — a whole document — in place of its baked one
+  (`nros_rmw_cyclonedds_session_config_property`, mutation-checked: dropping
+  the property fails it); the cffi seam heap-copies a value past 256 bytes on
+  `alloc` builds.
+- The CMake road asks `nros ws rmw-config` (`nros_rmw_user_config_file`),
+  with each generated entry's `IMAGE`, for the file and its format: a
+  `session-json5` one goes to `--rmw-config`, a `verbatim-xml` one to the
+  bake. No CMake file spells an RMW file name any more.
+- U5: `examples/workspaces/bridge-cyclonedds` names `rmw/zenoh-zen.json5` and
+  `rmw/cyclonedds-dds.xml` on its two domains and drops `[system] locator`;
+  `declarative_zenoh_to_cyclonedds_bridge_to_nano_listener` drives the zenoh side with
+  `ZENOH_SESSION_CONFIG_URI` and the Cyclone side opens with the domain's XML.
+
+Not done, stated: an image's `rmw_config = { <domain> = … }` is checked and
+then refused, because the bridge configuration is per bringup (issue 2062);
+a C++ `NrosCppSessionSpec` carries no properties (a C/C++
+multi-session image has no per-domain file), and a lone `[[domain]]` is not
+yet an image's default session (spelled `[system] rmw_config` meanwhile).
 
 ### W4 — retire the keys RFC-0109 moves
 

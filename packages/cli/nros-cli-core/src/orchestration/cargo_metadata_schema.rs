@@ -1347,10 +1347,92 @@ impl SystemToml {
     /// never joins, and a session key the target cannot take are refused here,
     /// at sync, naming the image. Run by [`Self::fold_os_config`].
     pub fn check_rmw_files(&self, dir: &std::path::Path) -> Result<(), String> {
-        for (id, _) in self.resolved_images() {
+        for d in &self.domains {
+            // A `[[domain]]` is a session a `[[bridge]]` opens; the image's
+            // default session takes `rmw_config` (RFC-0109 D6 amendment,
+            // phase-514 W3b). A file on a domain nothing opens would be read
+            // by nothing, which reads exactly like one that applied.
+            let opened = self.bridges.iter().any(|b| {
+                [&b.from, &b.to]
+                    .iter()
+                    .any(|e| e.rsplit(':').next() == Some(d.name.as_str()))
+            });
+            if d.config.is_some() && !opened {
+                return Err(format!(
+                    "`[[domain]]` `{}` names `config = \"{}\"`, but no `[[bridge]]` opens that \
+                     domain, so nothing would read the file — a single-session image's file is \
+                     `[system] rmw_config` (or `[image.<id>] rmw_config`) (RFC-0109 D6)",
+                    d.name,
+                    d.config.as_deref().unwrap_or_default()
+                ));
+            }
+            self.domain_file(dir, &d.name, None)?;
+        }
+        for (id, img) in self.resolved_images() {
             self.rmw_file_for(dir, &id)?;
+            if let Some(super::image::RmwConfigSel::PerDomain(m)) = &img.rmw_config {
+                for name in m.keys() {
+                    if !self.domains.iter().any(|d| &d.name == name) {
+                        let known: Vec<&str> =
+                            self.domains.iter().map(|d| d.name.as_str()).collect();
+                        return Err(format!(
+                            "`[image.{id}] rmw_config` names domain `{name}`, which no \
+                             `[[domain]]` declares (declared: {known:?}) — a per-domain file \
+                             overrides a `[[domain]]`'s `config`; the default session's file \
+                             is `rmw_config = \"<file>\"`"
+                        ));
+                    }
+                    self.domain_file(dir, name, Some(&id))?;
+                }
+                // Checked, then refused: the bridge configuration that carries
+                // a domain's file is written once per bringup, so an image's
+                // override would be read by nothing.
+                return Err(format!(
+                    "`[image.{id}] rmw_config` overrides a `[[domain]]`'s file, which is not \
+                     delivered yet: one bridge configuration serves every image of a bringup \
+                     (issue 2062) — name the file on the `[[domain]]` itself (`config`)"
+                ));
+            }
         }
         Ok(())
+    }
+
+    /// `[[domain]]` `name`'s RMW file (RFC-0109 D6, phase-514 W3b): image
+    /// `image`'s `rmw_config.<name>` override when it states one, else the
+    /// domain's own `config`, checked against that domain's backend and id.
+    /// `None`: no such domain, or neither names a file — a named domain has
+    /// no conventional file, because its backend's convention is the default
+    /// session's.
+    pub fn domain_file(
+        &self,
+        dir: &std::path::Path,
+        name: &str,
+        image: Option<&str>,
+    ) -> Result<Option<crate::orchestration::rmw_config::RmwFile>, String> {
+        let Some(d) = self.domains.iter().find(|d| d.name == name) else {
+            return Ok(None);
+        };
+        let over = image.and_then(|id| {
+            self.resolved_images()
+                .into_iter()
+                .find(|(i, _)| i == id)
+                .and_then(|(_, img)| img.rmw_config)
+        });
+        let (explicit, at) = match over.as_ref().and_then(|o| o.domain_file(name)) {
+            Some(f) => (Some(f), format!("image.{}", image.unwrap_or_default())),
+            None => (d.config.as_deref(), format!("domain.{name}")),
+        };
+        let Some(explicit) = explicit else {
+            return Ok(None);
+        };
+        crate::orchestration::rmw_config::resolve(
+            dir,
+            Some(d.rmw.as_str()),
+            Some(explicit),
+            d.locator.as_deref(),
+            d.id,
+            &at,
+        )
     }
 
     /// Image `id`'s RMW file, found through its backend's descriptor beside
@@ -1366,9 +1448,17 @@ impl SystemToml {
             return Ok(None);
         };
         let rmw = img.rmw.clone().unwrap_or_else(|| self.system.rmw.clone());
+        // The image's own file, else the bringup's (`[system] rmw_config`),
+        // else the backend's conventional one.
+        let explicit = img
+            .rmw_config
+            .as_ref()
+            .and_then(super::image::RmwConfigSel::default_file)
+            .or(self.system.rmw_config.as_deref());
         crate::orchestration::rmw_config::resolve(
             dir,
             Some(rmw.as_str()),
+            explicit,
             img.locator.as_deref(),
             img.domain_id.unwrap_or(self.system.domain_id),
             &format!("image.{id}"),
@@ -1608,6 +1698,12 @@ pub struct SystemHeader {
     /// Optional default locator. Per-deploy blocks can override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub locator: Option<String>,
+    /// RFC-0109 D6 (phase-514 W3b) — the default session's RMW file, relative
+    /// to this `system.toml`, for every image that names none of its own
+    /// (`[image.<id>] rmw_config`). Absent ⇒ the file the backend's
+    /// descriptor names by convention (`rmw/zenoh.json5`, …), if shipped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rmw_config: Option<String>,
     /// Optional default launch filename — RELATIVE to `<bringup>/launch/`
     /// (per docs/system-toml-schema-v0.1.md §3.1, design-doc §11.3
     /// 2026-06-03). Names the launch file picked when neither CLI flag nor
@@ -1787,6 +1883,12 @@ pub struct SystemDomainEntry {
     /// DDS/multicast backends (cyclonedds) it stays `None` (domain-discovered).
     #[serde(default)]
     pub locator: Option<String>,
+    /// RFC-0109 D6 (phase-514 W3b) — this domain's RMW file (layer 2, the
+    /// middleware's own language), relative to the `system.toml`. Exclusive
+    /// with [`Self::locator`]: the file is the session's wiring. An image may
+    /// override it (`[image.<id>] rmw_config = { <name> = "<file>" }`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<String>,
 }
 
 /// `[[bridge]]` row.

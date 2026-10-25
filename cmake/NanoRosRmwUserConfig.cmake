@@ -22,48 +22,107 @@
 # directory the tree says is disposable. `rmw/` sits beside `launch/`, which is
 # the existing precedent for authored, typed, per-bringup input.
 #
-# CONVENTION, NOT DECLARATION. There is no `system.toml` key naming the file:
-# the active backend is already declared (`[system] rmw = "..."`), so the build
-# knows which name to look for, and a second declaration is a second thing to
-# keep in sync. RFC-0087's "derived from convention" applied one axis over.
+# CONVENTION, THEN DECLARATION (RFC-0109 D6, phase-514 W3b). With no key the
+# file is the one the backend's descriptor names (`rmw/cyclonedds.xml`,
+# RFC-0087's "derived from convention"); `[system] rmw_config` names another
+# for the bringup, `[image.<id>] rmw_config` one for an image. WHICH file is
+# the CLI's answer (`nros ws rmw-config`), never spelled here: this module
+# once encoded the convention itself, which is exactly the second reader a
+# declared key would have silently bypassed.
 
-# Bake `<bringup>/rmw/<backend>.<ext>` into `<out_dir>/nros_<backend>_user_config.h`.
+# The bringup's default-session RMW file for BACKEND, and how it is carried:
+# `<out>` gets the path ("" when there is none), `<out>_FORMAT` the
+# descriptor's `[rmw.config] format` (`session-json5`, `verbatim-xml`). IMAGE
+# names the image this build is (default `NROS_IMAGE`); without one the CLI
+# answers the file every image on BACKEND agrees on, and refuses otherwise.
+function(nros_rmw_user_config_file _out)
+    cmake_parse_arguments(_NRF "" "BRINGUP;BACKEND;IMAGE" "" ${ARGN})
+    set(${_out} "" PARENT_SCOPE)
+    set(${_out}_FORMAT "" PARENT_SCOPE)
+    if(NOT _NRF_BRINGUP OR NOT _NRF_BACKEND OR NOT EXISTS "${_NRF_BRINGUP}/system.toml")
+        return()
+    endif()
+    if(NOT COMMAND nros_resolve_cli)
+        include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/NanoRosCli.cmake")
+    endif()
+    nros_resolve_cli(_nros CONTEXT "the bringup's RMW file (RFC-0109 D6)")
+    set(_img "${_NRF_IMAGE}")
+    if(NOT _img AND DEFINED NROS_IMAGE)
+        set(_img "${NROS_IMAGE}")
+    endif()
+    set(_img_arg "")
+    if(_img)
+        set(_img_arg --image "${_img}")
+    endif()
+    execute_process(
+        COMMAND "${_nros}" ws rmw-config "${_NRF_BRINGUP}" --rmw "${_NRF_BACKEND}" ${_img_arg}
+        OUTPUT_VARIABLE _o
+        ERROR_VARIABLE _e
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    # The answer is baked, so a rebuilt `nros` and an edited `system.toml`
+    # must both re-run this configure (issue 1018).
+    if(COMMAND nros_codegen_tool_reconfigure)
+        nros_codegen_tool_reconfigure("${_nros}")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_NRF_BRINGUP}/system.toml")
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR "nano-ros: ${_NRF_BRINGUP}/system.toml: ${_e}")
+    endif()
+    set(_file "")
+    set(_fmt "")
+    string(REPLACE "\n" ";" _lines "${_o}")
+    foreach(_l IN LISTS _lines)
+        if(_l MATCHES "^NROS_RMW_CONFIG_FILE=(.*)$")
+            set(_file "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_RMW_CONFIG_FORMAT=(.*)$")
+            set(_fmt "${CMAKE_MATCH_1}")
+        endif()
+    endforeach()
+    if(_file)
+        # CONFIGURE_DEPENDS is not available for `file(READ)`, so editing the
+        # file must re-configure explicitly — the museum-binary class (0196).
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_file}")
+    endif()
+    set(${_out} "${_file}" PARENT_SCOPE)
+    set(${_out}_FORMAT "${_fmt}" PARENT_SCOPE)
+endfunction()
+
+# Bake the bringup's default-session RMW file for BACKEND into
+# `<out_dir>/nros_<backend>_user_config.h`, when the backend parses that file
+# itself (`verbatim-xml`). FILE names it directly (the ctest's fixture);
+# otherwise BRINGUP is asked through `nros_rmw_user_config_file`.
 #
-# Writes nothing when the bringup ships no config — the consuming header guards
-# on `__has_include`, so an image with no config compiles with no cmake
-# participation at all.
+# Writes nothing when there is no such file — the consuming header guards on
+# `__has_include`, so an image with no config compiles with no cmake
+# participation at all. A `session-json5` file is not baked here: CMake cannot
+# parse it, so `nros codegen entry --rmw-config` lowers it and the entry bakes
+# the result (RFC-0109 D8).
 function(nros_bake_rmw_user_config)
-    cmake_parse_arguments(_NBR "" "BRINGUP;BACKEND;OUT_DIR;RESULT" "" ${ARGN})
-    if(NOT _NBR_BRINGUP OR NOT _NBR_BACKEND OR NOT _NBR_OUT_DIR)
+    cmake_parse_arguments(_NBR "" "BRINGUP;IMAGE;BACKEND;OUT_DIR;RESULT;FILE" "" ${ARGN})
+    if((NOT _NBR_BRINGUP AND NOT _NBR_FILE) OR NOT _NBR_BACKEND OR NOT _NBR_OUT_DIR)
         message(FATAL_ERROR
-            "nros_bake_rmw_user_config: BRINGUP, BACKEND and OUT_DIR are required")
+            "nros_bake_rmw_user_config: BRINGUP or FILE, BACKEND and OUT_DIR are required")
+    endif()
+    if(_NBR_RESULT)
+        set(${_NBR_RESULT} "" PARENT_SCOPE)
     endif()
 
-    # One extension per backend, because the backends' native config languages
-    # genuinely differ (RFC-0004 amendment): CycloneDDS has an XML *document*
-    # and parses it itself, so its bytes are baked here verbatim.
-    #
-    # zenoh's file is `rmw/zenoh.json5`, zenoh's own language, which a CMake
-    # function cannot parse: `nros codegen entry --rmw-config` lowers it and the
-    # entry bakes the result (RFC-0109 D8, phase-514 W3). The flat
-    # `rmw/zenoh.conf` this function once looked for is retired, and `nros sync`
-    # refuses one naming the json5.
-    if(_NBR_BACKEND STREQUAL "cyclonedds")
-        set(_ext "xml")
+    if(_NBR_FILE)
+        set(_src "${_NBR_FILE}")
+        set(_fmt "verbatim-xml")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_src}")
     else()
-        # Not an error: a backend with no user-config surface simply has none.
-        if(_NBR_RESULT)
-            set(${_NBR_RESULT} "" PARENT_SCOPE)
-        endif()
+        nros_rmw_user_config_file(_src
+            BRINGUP "${_NBR_BRINGUP}" BACKEND "${_NBR_BACKEND}" IMAGE "${_NBR_IMAGE}")
+        set(_fmt "${_src_FORMAT}")
+    endif()
+    # Not an error: a backend with no file, or one whose file is lowered.
+    if(NOT _src OR NOT _fmt STREQUAL "verbatim-xml")
         return()
     endif()
-
-    set(_src "${_NBR_BRINGUP}/rmw/${_NBR_BACKEND}.${_ext}")
     if(NOT EXISTS "${_src}")
-        if(_NBR_RESULT)
-            set(${_NBR_RESULT} "" PARENT_SCOPE)
-        endif()
-        return()
+        message(FATAL_ERROR "nros_bake_rmw_user_config: ${_src} does not exist")
     endif()
 
     file(READ "${_src}" _body)
@@ -78,12 +137,6 @@ function(nros_bake_rmw_user_config)
             "delimiter in cmake/NanoRosRmwUserConfig.cmake, or remove that "
             "byte sequence from the file.")
     endif()
-
-    # CONFIGURE_DEPENDS is not available for `file(READ)`, so the dependency is
-    # stated explicitly — otherwise editing the config would not re-configure,
-    # and the image would keep the previous bytes. That is the museum-binary
-    # class (issue 0196) applied to a config file.
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_src}")
 
     set(_out "${_NBR_OUT_DIR}/nros_${_NBR_BACKEND}_user_config.h")
     file(MAKE_DIRECTORY "${_NBR_OUT_DIR}")

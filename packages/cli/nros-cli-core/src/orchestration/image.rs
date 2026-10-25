@@ -50,6 +50,37 @@ use serde::{Deserialize, Serialize};
 
 use super::board_descriptor::{BoardCatalog, BoardDescriptor, DeployResolution};
 
+/// `[image.<id>] rmw_config` (RFC-0109 D6): the image's RMW file for its
+/// default session, or one per `[[domain]]` it opens.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RmwConfigSel {
+    /// `rmw_config = "<file>"` — the default session's file.
+    Default(String),
+    /// `rmw_config = { <domain> = "<file>" }` — a named domain's file.
+    PerDomain(BTreeMap<String, String>),
+}
+
+impl RmwConfigSel {
+    /// The default session's file, when this names one.
+    #[must_use]
+    pub fn default_file(&self) -> Option<&str> {
+        match self {
+            Self::Default(f) => Some(f),
+            Self::PerDomain(_) => None,
+        }
+    }
+
+    /// The file this names for domain `name`.
+    #[must_use]
+    pub fn domain_file(&self, name: &str) -> Option<&str> {
+        match self {
+            Self::Default(_) => None,
+            Self::PerDomain(m) => m.get(name).map(String::as_str),
+        }
+    }
+}
+
 /// `[image]` / `[image.<id>]` — a buildable image.
 ///
 /// `deny_unknown_fields` for upstream's stated reason: a mistyped key must be
@@ -173,6 +204,14 @@ pub struct ImageBlock {
     /// (phase-383 F3).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub os_config: Vec<String>,
+    /// RFC-0109 D6 (phase-514 W3b) — this image's RMW file, overriding the
+    /// bringup's: `"<file>"` for its default session, or `{ <domain> =
+    /// "<file>" }` per `[[domain]]` (two ECUs with different CAN ids, a router
+    /// that differs between a QEMU run and the lab). Relative to the
+    /// `system.toml`; resolved and checked by
+    /// [`super::cargo_metadata_schema::SystemToml::rmw_file_for`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rmw_config: Option<RmwConfigSel>,
     /// `[image.<id>] transport` — RETIRED (RFC-0109 D6, phase-514 W4): the
     /// link is the locator's scheme ([`Self::link_kind`]). Refused by name.
     #[serde(
@@ -456,6 +495,18 @@ impl ImageBlock {
             // ordered and later ones override earlier, which is exactly
             // Zephyr's CONF_FILE semantics, and a board network file in both
             // owns its interfaces once (one stated twice is refused).
+            // A string replaces; a per-domain table MERGES over the base's,
+            // like `args` (a base binding one domain's file is a default for
+            // the images that bind another). A string over a table, or the
+            // reverse, is the specific block's choice.
+            rmw_config: match (&self.rmw_config, &base.rmw_config) {
+                (Some(RmwConfigSel::PerDomain(s)), Some(RmwConfigSel::PerDomain(b))) => {
+                    let mut merged = b.clone();
+                    merged.extend(s.clone());
+                    Some(RmwConfigSel::PerDomain(merged))
+                }
+                (s, b) => s.clone().or_else(|| b.clone()),
+            },
             os_config: base
                 .os_config
                 .iter()

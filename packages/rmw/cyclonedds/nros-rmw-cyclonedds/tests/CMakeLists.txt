@@ -217,6 +217,24 @@ add_test(
     COMMAND nros_rmw_cyclonedds_graph_counts
 )
 
+# RFC-0109 D6 (phase-514 W3b) — a `[[domain]]`'s Cyclone XML reaches its
+# session as the `config` property: a malformed document fails the open (so it
+# was handed to Cyclone), other keys and a second document are refused.
+add_executable(nros_rmw_cyclonedds_session_config_property
+    session_config_property.cpp
+    ${_test_string_sources}
+)
+target_link_libraries(nros_rmw_cyclonedds_session_config_property PRIVATE nros_rmw_cyclonedds)
+target_include_directories(nros_rmw_cyclonedds_session_config_property
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+        "${CMAKE_CURRENT_BINARY_DIR}/types"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_session_config_property
+    COMMAND nros_rmw_cyclonedds_session_config_property
+)
+
 # Issue 1269 — one `ros_discovery_info` NodeEntitiesInfo per node, each with its
 # own gids, republished on change. Reads the sample back from a separate
 # participant, so it needs the generated graph wire type the backend compiles.
@@ -1013,8 +1031,11 @@ configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/bringup_cyclonedds.xml
     ${_w2_bringup}/rmw/cyclonedds.xml
     COPYONLY)
+# FILE, not BRINGUP: WHICH file a bringup uses is the CLI's answer
+# (`nros ws rmw-config`, RFC-0109 D6), and this standalone lane has no CLI.
+# What is under test here is the bake's output shape.
 nros_bake_rmw_user_config(
-    BRINGUP ${_w2_bringup}
+    FILE ${_w2_bringup}/rmw/cyclonedds.xml
     BACKEND cyclonedds
     OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/w2_gen
     RESULT  _w2_header)

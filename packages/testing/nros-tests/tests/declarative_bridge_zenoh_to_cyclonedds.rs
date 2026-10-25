@@ -27,6 +27,14 @@
 //! domain (overriding the baked `s0` locator + `s1` domain), with no fixed-port /
 //! fixed-domain collision risk.
 //!
+//! RFC-0109 U5 (phase-514 W3b) — each bridged domain names its own RMW file
+//! (`rmw/zenoh-zen.json5`, `rmw/cyclonedds-dds.xml`), carried as that session's
+//! properties. The first case points the zenoh session at its router the way
+//! a ROS 2 user would, with `ZENOH_SESSION_CONFIG_URI` (D6a: it replaces the
+//! baked file whole), and its Cyclone session opens with the domain's own XML
+//! — which Cyclone refused as an unknown session property before W3b. The
+//! nested case keeps `NROS_BRIDGE_S0_LOCATOR`, which replaces the file too.
+//!
 //! Skips cleanly when `zenohd` is absent, or when this run's lane does not
 //! select the fixtures' coordinates.
 //!
@@ -159,10 +167,21 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener() {
     // at the ephemeral router and the cyclone egress (`s1`) at the unique domain.
     // The entry connects to zenohd, opens the cyclone egress, stages the descriptor,
     // and pumps. It has no startup banner, so give it a moment.
+    // RFC-0109 D6a — the zenoh session's file is replaced at run time by the
+    // document `ZENOH_SESSION_CONFIG_URI` names, as on a ROS 2 host.
+    let session_cfg = tempfile::Builder::new()
+        .suffix(".json5")
+        .tempfile()
+        .expect("temp session config");
+    std::fs::write(
+        session_cfg.path(),
+        format!("{{ mode: 'client', connect: {{ endpoints: ['{zenoh_locator}'] }} }}"),
+    )
+    .expect("write session config");
     let mut bridge_cmd = Command::new(&bridge_bin);
     bridge_cmd
         .env("RUST_LOG", "info")
-        .env(format!("NROS_BRIDGE_{ZENOH_NODE}_LOCATOR"), &zenoh_locator)
+        .env("ZENOH_SESSION_CONFIG_URI", session_cfg.path())
         .env(
             format!("NROS_BRIDGE_{CYCLONE_NODE}_DOMAIN"),
             domain.to_string(),
