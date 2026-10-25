@@ -6,10 +6,10 @@ type: tech-debt
 area: [platform, memory]
 severity: low
 found: 2026-10-12
-related: [phase-230, rfc-0034, 1525, phase-394]
+related: [phase-230, rfc-0034, 1525, phase-394, phase-516]
 ---
 
-**Home: none — parked while ESP32 is dormant ([issue 1525](archived/1525-esp32-c-cpp-has-no-build-road.md)).** Re-homed 2026-10-23 from phase-394, archived that day. Do not work it until ESP32 is revived.
+**Home: [phase-516](../roadmap/phase-516-low-severity-issues-with-no-home.md) W5** since 2026-10-25. Parked while ESP32 is dormant ([issue 1525](archived/1525-esp32-c-cpp-has-no-build-road.md)). Re-homed 2026-10-23 from phase-394, archived that day. Do not work it until ESP32 is revived.
 
 ## What is left
 

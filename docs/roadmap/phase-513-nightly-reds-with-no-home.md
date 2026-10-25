@@ -148,5 +148,6 @@ stood before #2579, the gate reports the umbrella line issue 2010 was about.
 ## Not in this phase
 
 The seven low or unrated homeless issues (1808, 1155, 1942, 1823, 1997, 1205,
-1091) are not reds in a gating or nightly lane. They stay unhomed until someone
-picks them up.
+1091) are not reds in a gating or nightly lane. On 2026-10-25 the four of them
+still open and unhomed (1808, 1823, 1205, 1091) moved to
+[phase-516](phase-516-low-severity-issues-with-no-home.md), together with 0506.
