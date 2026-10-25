@@ -209,11 +209,15 @@ pub struct NextSteps {
 
 /// The book chapter for a platform's run/flash flow, when it has one.
 fn chapter(d: &BoardDescriptor) -> Option<&'static str> {
-    Some(match d.platform {
+    platform_chapter(&d.platform)
+}
+
+fn platform_chapter(platform: &PlatformKind) -> Option<&'static str> {
+    Some(match platform {
         PlatformKind::Freertos => "book/src/getting-started/freertos.md",
         PlatformKind::BareMetal => "book/src/getting-started/bare-metal.md",
-        PlatformKind::Nuttx => "book/src/getting-started/nuttx.md",
-        PlatformKind::Zephyr => "book/src/getting-started/zephyr.md",
+        PlatformKind::Nuttx => "book/src/getting-started/integration-nuttx.md",
+        PlatformKind::Zephyr => "book/src/getting-started/integration-zephyr.md",
         PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => {
             "book/src/getting-started/threadx.md"
         }
@@ -652,6 +656,26 @@ pub fn refuse_board_with(images: &[String], all: bool) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// Every chapter a printed note points at exists — phase-517 W2 moved
+    /// `getting-started/{zephyr,nuttx}.md` to `internals/` and this table kept
+    /// naming them.
+    #[test]
+    fn every_chapter_named_exists() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let kinds = [
+            PlatformKind::Freertos,
+            PlatformKind::BareMetal,
+            PlatformKind::Nuttx,
+            PlatformKind::Zephyr,
+            PlatformKind::ThreadxLinux,
+            PlatformKind::ThreadxRiscv64,
+        ];
+        for k in kinds {
+            let ch = platform_chapter(&k).unwrap_or_else(|| panic!("{k:?} names no chapter"));
+            assert!(root.join(ch).is_file(), "{k:?}: {ch} does not exist");
+        }
+    }
     use super::*;
     use crate::{builder::plan::Driver, cmd::build::ResolvedBuild};
 
