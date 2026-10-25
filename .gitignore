@@ -119,6 +119,9 @@ nros-sdk.lock
 # the required entries from the call sites instead of trusting this list.
 /target-excluded-tests/
 /target-feature-sweep/
+# Issue 1824 -- `just test-ignored` builds nros-c to place its config header for
+# rosidl-codegen's heap_compile_check.
+/target-test-ignored-c/
 
 # Issue 1354's five scoped dirs, added the same way: `check-c`, `check-cpp` and
 # the two cpp clippy/embedded probes each build with their own feature set, and
