@@ -161,8 +161,9 @@ trap "rm -rf '$tmp'" EXIT INT TERM
 if ! curl -fsSL $proto_args -o "$tmp/nros.tar.zst" "$url"; then
     die "could not download $url
 
-No release for this host yet? nano-ros is still a source distribution until
-phase-431 W5 cuts the first one. Build it instead:
+Releases are listed at https://github.com/$REPO/releases -- check that the
+version exists and has an asset for this host. A host with no asset can build
+nros from source:
   git clone https://github.com/$REPO && cd nano-ros && ./scripts/bootstrap.sh"
 fi
 
