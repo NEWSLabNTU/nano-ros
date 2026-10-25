@@ -316,7 +316,7 @@ what `nros ws status` reports non-fatally. `--dry-run` prints what it would do.
 `nros generate-rust` stays the low-level codegen-only primitive (no side
 effects beyond `generated/`).
 
-### `nros build [<image>…] [--board <board>] [--workspace <dir>] [--all] [--dry-run] [--offline] [--check[=clippy]] [--packages-select <p>…] [--packages-up-to <p>…] [-- <native args>]`
+### `nros build [<image>…] [--board <board>] [--workspace <dir>] [--all] [--dry-run] [--offline] [-v] [--check[=clippy]] [--packages-select <p>…] [--packages-up-to <p>…] [-- <native args>]`
 
 The colcon-like build verb: discover packages, resolve the image, preflight,
 generate the build root, then hand off to the native tool. The final stage is an
@@ -356,6 +356,10 @@ Zephyr image prints `west build -d <dir> -t run` and/or `west flash -d <dir>`,
 read from what its build supports. QEMU is the store's patched build
 (`nros locate tool qemu-system-arm`), never whatever `$PATH` holds. A board
 with no derivable command (S32Z270) gets a pointer to its platform chapter.
+
+`-v` / `--verbose` shows the configure's detail notes: why a re-configure
+happened, which message bounds were refused and why. Without it each is one
+line. A raw cmake run gets the same with `--log-level=VERBOSE`.
 
 A build without a sync fails at the first preflight with one line naming
 `nros sync`, rather than four frames down in cargo's manifest parser. `--dry-run`
