@@ -123,12 +123,6 @@ FAMILY = {
         "every publish a build error. Code written for nano-ros keeps the "
         "`[[nodiscard]] Result` (RFC-0018)",
     ),
-    "rmw-profile-names": (
-        {"NROS_CPP_STD"},
-        "upstream's global `rmw_qos_profile_*` constants (phase-488), as "
-        "`rclcpp::QoS` values: global names that only ported code spells, "
-        "over the freestanding `rclcpp::QoS` presets they alias",
-    ),
 }
 
 CONDITIONAL = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif)\b(.*)$")

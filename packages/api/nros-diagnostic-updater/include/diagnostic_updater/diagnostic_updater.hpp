@@ -20,11 +20,10 @@
 //     otherwise), for a caller that drives it from its own loop as well.
 //   * `broadcast(level, message)` — publishes a single status with the given
 //     summary, no add(...)s.
-//
-// Out of scope (deferred): `DiagnosticTask` class (the function-call form
-// covers most uses), `CompositeDiagnosticTask`, frequency-based stats helpers
-// (`FrequencyStatus`/`TimeStampStatus` from `update_functions.hpp`). Add as
-// new ports surface them.
+//   * `DiagnosticTask`, `GenericFunctionDiagnosticTask` /
+//     `FunctionDiagnosticTask` and `CompositeDiagnosticTask`, and
+//     `add(DiagnosticTask&)` (issue 2053). The statistics tasks built on them
+//     are in `update_functions.hpp`, the topic monitors in `publisher.hpp`.
 
 #ifndef NROS_DIAGNOSTIC_UPDATER_DIAGNOSTIC_UPDATER_HPP
 #define NROS_DIAGNOSTIC_UPDATER_DIAGNOSTIC_UPDATER_HPP
@@ -45,6 +44,69 @@
 #include "diagnostic_updater/diagnostic_status_wrapper.hpp"
 
 namespace diagnostic_updater {
+
+/// Upstream's `DiagnosticTask`: a named producer of one status (issue 2053).
+///
+/// An `Updater` holds a REFERENCE to a task added with `add(DiagnosticTask&)`,
+/// as upstream's does, so the task must outlive the updater or be removed from
+/// it first; a node that declares both as members declares the task first.
+class DiagnosticTask {
+  public:
+    explicit DiagnosticTask(const std::string name) : name_(name) {}
+    virtual ~DiagnosticTask() {}
+
+    const std::string& getName() { return name_; }
+
+    /// Fill in `stat`. Called by the updater on every publish.
+    virtual void run(DiagnosticStatusWrapper& stat) = 0;
+
+  private:
+    const std::string name_;
+};
+
+/// Upstream's `GenericFunctionDiagnosticTask<T>`: a task whose `run` is a
+/// function taking `T&`, for a `T` derived from `DiagnosticStatusWrapper`.
+template <class T> class GenericFunctionDiagnosticTask : public DiagnosticTask {
+  public:
+    GenericFunctionDiagnosticTask(const std::string& name, std::function<void(T&)> fn)
+        : DiagnosticTask(name), fn_(std::move(fn)) {}
+
+    void run(DiagnosticStatusWrapper& stat) override { fn_(stat); }
+
+  private:
+    const std::function<void(T&)> fn_;
+};
+
+using FunctionDiagnosticTask = GenericFunctionDiagnosticTask<DiagnosticStatusWrapper>;
+
+/// Upstream's `CompositeDiagnosticTask`: several tasks reported as ONE status.
+/// Each child runs on the status as the caller handed it in, and the summaries
+/// are merged worst-first by `DiagnosticStatusWrapper::mergeSummary`, so the
+/// level is the worst child's and the message joins every non-OK child's. The
+/// key/value pairs accumulate across children.
+class CompositeDiagnosticTask : public DiagnosticTask {
+  public:
+    explicit CompositeDiagnosticTask(const std::string name) : DiagnosticTask(name) {}
+
+    void run(DiagnosticStatusWrapper& stat) override {
+        DiagnosticStatusWrapper combined_summary;
+        DiagnosticStatusWrapper original_summary;
+        original_summary.summary(stat);
+        for (DiagnosticTask* task : tasks_) {
+            stat.summary(original_summary);
+            task->run(stat);
+            combined_summary.mergeSummary(stat);
+        }
+        stat.summary(combined_summary);
+    }
+
+    /// Add a child. Held by pointer, as upstream holds it: the child must
+    /// outlive this task.
+    void addTask(DiagnosticTask* t) { tasks_.push_back(t); }
+
+  private:
+    std::vector<DiagnosticTask*> tasks_;
+};
 
 class Updater {
   public:
@@ -93,6 +155,13 @@ class Updater {
     template <typename T>
     void add(const std::string& name, T* obj, void (T::*method)(DiagnosticStatusWrapper&)) {
         add(name, [obj, method](DiagnosticStatusWrapper& w) { (obj->*method)(w); });
+    }
+
+    /// Upstream's `add(DiagnosticTask&)` (issue 2053): reported under the
+    /// task's own name. The updater keeps a reference — see `DiagnosticTask`.
+    void add(DiagnosticTask& task) {
+        DiagnosticTask* t = &task;
+        add(task.getName(), [t](DiagnosticStatusWrapper& w) { t->run(w); });
     }
 
     void removeByName(const std::string& name) {

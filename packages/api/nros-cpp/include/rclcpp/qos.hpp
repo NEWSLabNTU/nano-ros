@@ -96,6 +96,15 @@ struct nros_cpp_qos_t {
 }
 #endif // NROS_CPP_FFI_H
 
+// issue 2054 — upstream's rmw profile struct, under its upstream TAG.
+// Declared here, incomplete, so `QoS` below can name it in three member
+// declarations; it is DEFINED at the bottom of this file, after `QoS` is
+// complete, because its conversion to `QoS` needs the whole class. The tag is
+// upstream's `rmw_qos_profile_s`, not `rmw_qos_profile_t`, which is the RMW
+// ABI's own struct in `<nros/rmw_entity.h>` — a different type with ABI field
+// widths, which this declaration does not touch.
+struct rmw_qos_profile_s;
+
 namespace rclcpp {
 
 // -- Policy enums (phase 379 W5) ------------------------------------------
@@ -191,6 +200,7 @@ enum class LivelinessPolicy : int {
 };
 
 class QoS;
+struct QoSInitialization;
 
 namespace detail {
 
@@ -279,6 +289,15 @@ class QoS {
     /// derived `rclcpp::QoS` added the implicit one; the two are one class now.
     // NOLINTNEXTLINE(google-explicit-constructor)
     constexpr QoS(::size_t depth) : QoS() { depth_ = static_cast<int>(depth); }
+
+    /// Upstream's `QoS(QoSInitialization, rmw_qos_profile_t)` and its
+    /// one-argument form, which starts from `rmw_qos_profile_default` (issue
+    /// 2054): the profile's policies, with the history and depth `init` states.
+    /// `rclcpp::QoS(rclcpp::QoSInitialization::from_rmw(p), p)` is the ported
+    /// spelling. Defined beside `rmw_qos_profile_t` at the bottom of this
+    /// file.
+    explicit constexpr QoS(const QoSInitialization& init);
+    constexpr QoS(const QoSInitialization& init, const ::rmw_qos_profile_s& profile);
 
     // -- Chainable setters (match rclcpp fluent API) --
 
@@ -431,6 +450,13 @@ class QoS {
     }
     /// Whether this publisher's samples bypass transport tx batching.
     constexpr bool tx_express() const { return tx_express_ != 0; }
+
+    /// Upstream's `get_rmw_qos_profile()` — this profile as an
+    /// `rmw_qos_profile_t` (issue 2054). Returns by VALUE where upstream hands
+    /// back a reference to its stored struct: `QoS` stores the C ABI's fields,
+    /// not upstream's, so there is no struct to refer to, and a copy is what
+    /// every ported caller (`auto p = qos.get_rmw_qos_profile();`) takes anyway.
+    constexpr ::rmw_qos_profile_s get_rmw_qos_profile() const;
 
   private:
     // issue 1437 — the ONE function allowed to write these directly.
@@ -851,6 +877,10 @@ template <typename F> class is_qos_arg {
     // Declared, never defined: both calls live in `sizeof`, which does not
     // evaluate its operand.
     static yes_t& probe(const ::rclcpp::QoS*);
+    // issue 2054 — an `rmw_qos_profile_t` is a profile argument too, as
+    // `create_service<S>(name, rmw_qos_profile_services_default)` passes it.
+    // Incomplete here, which a pointer probe does not mind.
+    static yes_t& probe(const ::rmw_qos_profile_s*);
     static no_t& probe(...);
     static typename qos_arg_strip<F>::type* arg();
 
@@ -997,25 +1027,298 @@ constexpr QoS KeepAll() {
 
 } // namespace rclcpp
 
-#if defined(NROS_CPP_STD) // hosted-family: rmw-profile-names
-// phase-488 — upstream's `rmw_qos_profile_*` constants, as ported code passes
-// them: `create_service<S>(name, cb, rmw_qos_profile_services_default, group)`
-// (Humble's signature takes the rmw struct). Here each is the `rclcpp::QoS`
-// row of the table above, so it binds to every verb's `QoS` parameter. There is
-// no `rmw_qos_profile_t` type: code that names it, or reads its fields, does not
-// compile. Std surface only, because these are global names and freestanding
-// code has no ported caller for them. `system_default` is absent for the
-// table's reason: every field of it is a sentinel.
-static constexpr ::rclcpp::QoS rmw_qos_profile_default =
-    ::rclcpp::detail::qos_table::default_profile();
-static constexpr ::rclcpp::QoS rmw_qos_profile_sensor_data =
-    ::rclcpp::detail::qos_table::sensor_data();
-static constexpr ::rclcpp::QoS rmw_qos_profile_services_default =
-    ::rclcpp::detail::qos_table::services_default();
-static constexpr ::rclcpp::QoS rmw_qos_profile_parameters =
-    ::rclcpp::detail::qos_table::parameters();
-static constexpr ::rclcpp::QoS rmw_qos_profile_parameter_events =
-    ::rclcpp::detail::qos_table::parameter_events();
+// phase-488, issue 2054 — upstream's `rmw_qos_profile_t`, its policy enums and
+// its `rmw_qos_profile_*` constants, as ported code spells them:
+//
+//     create_service<S>(name, cb, rmw_qos_profile_services_default, group);
+//     rmw_qos_profile_t profile = rmw_qos_profile_default;
+//     profile.depth = 1;
+//     rclcpp::QoS qos(rclcpp::QoSInitialization::from_rmw(profile), profile);
+//
+// Field names, field types and enumerator values are upstream's
+// (`rmw/types.h` and `rmw/time.h`, ROS 2 Humble; the BEST_AVAILABLE values are
+// Iron's, and Humble code never names them). A profile converts IMPLICITLY to
+// `rclcpp::QoS`, which is what every verb here takes, so Humble's
+// `create_service(..., const rmw_qos_profile_t&, ...)` call sites compile
+// unchanged; `QoS::get_rmw_qos_profile()` goes back.
+//
+// On every target, as the rest of this header is: RFC-0096 D1 is one API on
+// every platform, and `rclcpp::QoSInitialization` is a public type. Nothing
+// here needs the STL.
+//
+// The RMW ABI's `<nros/rmw_entity.h>` also defines a struct named
+// `rmw_qos_profile_t` — the backend vtable's, with ABI field widths
+// (`uint16_t depth`, `uint32_t deadline_ms`). That header is for a backend's
+// implementation, never for a node, so a translation unit that includes both
+// is a backend that also includes rclcpp; it is refused below with the reason
+// rather than left to a redefinition error naming two files.
+//
+// `rmw_qos_profile_system_default` is still absent: every field of it is a
+// sentinel, which a `QoS` request may not carry (see `qos_table`), and the two
+// reference RMWs resolve it differently (issue 0829).
+#if defined(NROS_RMW_ENTITY_H)
+#error                                                                                             \
+    "<rclcpp/qos.hpp> defines upstream's rmw_qos_profile_t, and <nros/rmw_entity.h> defines the RMW ABI's struct under the same name. A node includes rclcpp only; a backend includes the ABI header only (issue 2054)."
 #endif
+
+#include <stddef.h>
+
+/// Upstream's `rmw_time_t` (`rmw/time.h`): a duration as seconds plus
+/// nanoseconds, both unsigned.
+typedef struct rmw_time_s {
+    uint64_t sec;
+    uint64_t nsec;
+} rmw_time_t;
+
+#define RMW_DURATION_INFINITE                                                                      \
+    { 9223372036LL, 854775807LL }
+#define RMW_DURATION_UNSPECIFIED                                                                   \
+    { 0LL, 0LL }
+#define RMW_QOS_POLICY_DEPTH_SYSTEM_DEFAULT 0
+#define RMW_QOS_DEADLINE_DEFAULT RMW_DURATION_UNSPECIFIED
+#define RMW_QOS_DEADLINE_BEST_AVAILABLE                                                            \
+    { 9223372036LL, 854775806LL }
+#define RMW_QOS_LIFESPAN_DEFAULT RMW_DURATION_UNSPECIFIED
+#define RMW_QOS_LIVELINESS_LEASE_DURATION_DEFAULT RMW_DURATION_UNSPECIFIED
+#define RMW_QOS_LIVELINESS_LEASE_DURATION_BEST_AVAILABLE                                           \
+    { 9223372036LL, 854775806LL }
+
+typedef enum rmw_qos_reliability_policy_e {
+    RMW_QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT = 0,
+    RMW_QOS_POLICY_RELIABILITY_RELIABLE = 1,
+    RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT = 2,
+    RMW_QOS_POLICY_RELIABILITY_UNKNOWN = 3,
+    RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE = 4,
+} rmw_qos_reliability_policy_t;
+
+typedef enum rmw_qos_history_policy_e {
+    RMW_QOS_POLICY_HISTORY_SYSTEM_DEFAULT = 0,
+    RMW_QOS_POLICY_HISTORY_KEEP_LAST = 1,
+    RMW_QOS_POLICY_HISTORY_KEEP_ALL = 2,
+    RMW_QOS_POLICY_HISTORY_UNKNOWN = 3,
+} rmw_qos_history_policy_t;
+
+typedef enum rmw_qos_durability_policy_e {
+    RMW_QOS_POLICY_DURABILITY_SYSTEM_DEFAULT = 0,
+    RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL = 1,
+    RMW_QOS_POLICY_DURABILITY_VOLATILE = 2,
+    RMW_QOS_POLICY_DURABILITY_UNKNOWN = 3,
+    RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE = 4,
+} rmw_qos_durability_policy_t;
+
+typedef enum rmw_qos_liveliness_policy_e {
+    RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT = 0,
+    RMW_QOS_POLICY_LIVELINESS_AUTOMATIC = 1,
+    /// Deprecated upstream; kept because the value is upstream's.
+    RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_NODE = 2,
+    RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC = 3,
+    RMW_QOS_POLICY_LIVELINESS_UNKNOWN = 4,
+    RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE = 5,
+} rmw_qos_liveliness_policy_t;
+
+namespace rclcpp {
+namespace detail {
+
+/// A C ABI window (milliseconds, `0` = unset) as upstream's `rmw_time_t`.
+///
+/// `0` is upstream's UNSPECIFIED `{0, 0}`, which is what every upstream profile
+/// states and what both sides read as "no window". The two sentinels map onto
+/// upstream's: `UINT32_MAX` (explicit infinite) onto `RMW_DURATION_INFINITE`,
+/// `UINT32_MAX - 1` (best available) onto `RMW_QOS_DEADLINE_BEST_AVAILABLE`.
+constexpr rmw_time_t qos_window_to_rmw(uint32_t ms) {
+    return ms == 0u                ? rmw_time_t{0u, 0u}
+           : ms == UINT32_MAX      ? rmw_time_t{9223372036u, 854775807u}
+           : ms == UINT32_MAX - 1u ? rmw_time_t{9223372036u, 854775806u}
+                                   : rmw_time_t{ms / 1000u, (ms % 1000u) * 1000000u};
+}
+
+/// The inverse, rounding as `qos_window_ms` does: up to the next whole
+/// millisecond, saturating to infinite, never wrapping into a short window.
+constexpr uint32_t qos_window_from_rmw(const rmw_time_t& t) {
+    return (t.sec == 0u && t.nsec == 0u)                    ? 0u
+           : (t.sec == 9223372036u && t.nsec == 854775807u) ? UINT32_MAX
+           : (t.sec == 9223372036u && t.nsec == 854775806u)
+               ? UINT32_MAX - 1u
+               : (t.sec > 9000000000u ? UINT32_MAX
+                                      : qos_window_ms(Duration::from_nanoseconds(
+                                            static_cast<int64_t>(t.sec) * 1000000000 +
+                                            static_cast<int64_t>(t.nsec))));
+}
+
+// Each policy as a switch, because the two vocabularies number them
+// differently (`rclcpp::ReliabilityPolicy::Reliable` is 0, upstream's
+// `RMW_QOS_POLICY_RELIABILITY_RELIABLE` is 1), so no cast could be right.
+constexpr rmw_qos_reliability_policy_t qos_reliability_to_rmw(ReliabilityPolicy p) {
+    return p == ReliabilityPolicy::Reliable        ? RMW_QOS_POLICY_RELIABILITY_RELIABLE
+           : p == ReliabilityPolicy::BestEffort    ? RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT
+           : p == ReliabilityPolicy::Unknown       ? RMW_QOS_POLICY_RELIABILITY_UNKNOWN
+           : p == ReliabilityPolicy::BestAvailable ? RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE
+                                                   : RMW_QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT;
+}
+constexpr ReliabilityPolicy qos_reliability_from_rmw(rmw_qos_reliability_policy_t p) {
+    return p == RMW_QOS_POLICY_RELIABILITY_RELIABLE         ? ReliabilityPolicy::Reliable
+           : p == RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT    ? ReliabilityPolicy::BestEffort
+           : p == RMW_QOS_POLICY_RELIABILITY_UNKNOWN        ? ReliabilityPolicy::Unknown
+           : p == RMW_QOS_POLICY_RELIABILITY_BEST_AVAILABLE ? ReliabilityPolicy::BestAvailable
+                                                            : ReliabilityPolicy::SystemDefault;
+}
+constexpr rmw_qos_history_policy_t qos_history_to_rmw(HistoryPolicy p) {
+    return p == HistoryPolicy::KeepLast  ? RMW_QOS_POLICY_HISTORY_KEEP_LAST
+           : p == HistoryPolicy::KeepAll ? RMW_QOS_POLICY_HISTORY_KEEP_ALL
+           : p == HistoryPolicy::Unknown ? RMW_QOS_POLICY_HISTORY_UNKNOWN
+                                         : RMW_QOS_POLICY_HISTORY_SYSTEM_DEFAULT;
+}
+constexpr HistoryPolicy qos_history_from_rmw(rmw_qos_history_policy_t p) {
+    return p == RMW_QOS_POLICY_HISTORY_KEEP_LAST  ? HistoryPolicy::KeepLast
+           : p == RMW_QOS_POLICY_HISTORY_KEEP_ALL ? HistoryPolicy::KeepAll
+           : p == RMW_QOS_POLICY_HISTORY_UNKNOWN  ? HistoryPolicy::Unknown
+                                                  : HistoryPolicy::SystemDefault;
+}
+constexpr rmw_qos_durability_policy_t qos_durability_to_rmw(DurabilityPolicy p) {
+    return p == DurabilityPolicy::Volatile         ? RMW_QOS_POLICY_DURABILITY_VOLATILE
+           : p == DurabilityPolicy::TransientLocal ? RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL
+           : p == DurabilityPolicy::Unknown        ? RMW_QOS_POLICY_DURABILITY_UNKNOWN
+           : p == DurabilityPolicy::BestAvailable  ? RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE
+                                                   : RMW_QOS_POLICY_DURABILITY_SYSTEM_DEFAULT;
+}
+constexpr DurabilityPolicy qos_durability_from_rmw(rmw_qos_durability_policy_t p) {
+    return p == RMW_QOS_POLICY_DURABILITY_VOLATILE          ? DurabilityPolicy::Volatile
+           : p == RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL ? DurabilityPolicy::TransientLocal
+           : p == RMW_QOS_POLICY_DURABILITY_UNKNOWN         ? DurabilityPolicy::Unknown
+           : p == RMW_QOS_POLICY_DURABILITY_BEST_AVAILABLE  ? DurabilityPolicy::BestAvailable
+                                                            : DurabilityPolicy::SystemDefault;
+}
+constexpr rmw_qos_liveliness_policy_t qos_liveliness_to_rmw(LivelinessPolicy p) {
+    return p == LivelinessPolicy::Automatic       ? RMW_QOS_POLICY_LIVELINESS_AUTOMATIC
+           : p == LivelinessPolicy::ManualByTopic ? RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC
+           : p == LivelinessPolicy::ManualByNode  ? RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_NODE
+           : p == LivelinessPolicy::Unknown       ? RMW_QOS_POLICY_LIVELINESS_UNKNOWN
+           : p == LivelinessPolicy::BestAvailable ? RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE
+                                                  : RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT;
+}
+constexpr LivelinessPolicy qos_liveliness_from_rmw(rmw_qos_liveliness_policy_t p) {
+    return p == RMW_QOS_POLICY_LIVELINESS_AUTOMATIC         ? LivelinessPolicy::Automatic
+           : p == RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_TOPIC ? LivelinessPolicy::ManualByTopic
+           : p == RMW_QOS_POLICY_LIVELINESS_MANUAL_BY_NODE  ? LivelinessPolicy::ManualByNode
+           : p == RMW_QOS_POLICY_LIVELINESS_UNKNOWN         ? LivelinessPolicy::Unknown
+           : p == RMW_QOS_POLICY_LIVELINESS_BEST_AVAILABLE  ? LivelinessPolicy::BestAvailable
+                                                            : LivelinessPolicy::SystemDefault;
+}
+
+} // namespace detail
+} // namespace rclcpp
+
+/// Upstream's `rmw_qos_profile_t` (`rmw/types.h`): same fields, same order,
+/// same types. An aggregate, so upstream's brace initialisers compile.
+///
+/// The one addition is the conversion to `rclcpp::QoS`, which is what lets a
+/// profile reach a verb that takes `QoS` — Humble's `create_service` takes the
+/// struct, ours takes `QoS`. A profile carrying a `SYSTEM_DEFAULT` or `UNKNOWN`
+/// policy converts to a `QoS` carrying the same sentinel, exactly as a
+/// `get_actual_qos()` read-back does; no constant below carries one except
+/// liveliness, which every upstream profile leaves to the middleware.
+typedef struct rmw_qos_profile_s {
+    rmw_qos_history_policy_t history;
+    size_t depth;
+    rmw_qos_reliability_policy_t reliability;
+    rmw_qos_durability_policy_t durability;
+    rmw_time_t deadline;
+    rmw_time_t lifespan;
+    rmw_qos_liveliness_policy_t liveliness;
+    rmw_time_t liveliness_lease_duration;
+    bool avoid_ros_namespace_conventions;
+
+    // NOLINTNEXTLINE(google-explicit-constructor)
+    constexpr operator ::rclcpp::QoS() const {
+        nros_cpp_qos_t f{};
+        f.reliability = static_cast<nros_cpp_qos_reliability_t>(
+            ::rclcpp::detail::qos_reliability_from_rmw(reliability));
+        f.durability = static_cast<nros_cpp_qos_durability_t>(
+            ::rclcpp::detail::qos_durability_from_rmw(durability));
+        f.history =
+            static_cast<nros_cpp_qos_history_t>(::rclcpp::detail::qos_history_from_rmw(history));
+        f.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(
+            ::rclcpp::detail::qos_liveliness_from_rmw(liveliness));
+        f.depth = static_cast<int>(depth);
+        f.deadline_ms = ::rclcpp::detail::qos_window_from_rmw(deadline);
+        f.lifespan_ms = ::rclcpp::detail::qos_window_from_rmw(lifespan);
+        f.liveliness_lease_ms = ::rclcpp::detail::qos_window_from_rmw(liveliness_lease_duration);
+        f.avoid_ros_namespace_conventions = avoid_ros_namespace_conventions ? 1 : 0;
+        return ::rclcpp::detail::qos_from_ffi(f);
+    }
+} rmw_qos_profile_t;
+
+namespace rclcpp {
+namespace detail {
+
+/// `QoS` → upstream's struct, field by field. `tx_express` has no upstream
+/// field and is dropped, as it is from every upstream-shaped read.
+constexpr rmw_qos_profile_t qos_to_rmw(const QoS& q) {
+    return rmw_qos_profile_t{qos_history_to_rmw(q.history()),
+                             static_cast<size_t>(q.depth() < 0 ? 0 : q.depth()),
+                             qos_reliability_to_rmw(q.reliability()),
+                             qos_durability_to_rmw(q.durability()),
+                             qos_window_to_rmw(qos_to_ffi(q).deadline_ms),
+                             qos_window_to_rmw(qos_to_ffi(q).lifespan_ms),
+                             qos_liveliness_to_rmw(q.liveliness()),
+                             qos_window_to_rmw(qos_to_ffi(q).liveliness_lease_ms),
+                             q.avoid_ros_namespace_conventions()};
+}
+
+} // namespace detail
+
+/// Upstream's `QoSInitialization` (`rclcpp/qos.hpp`): the history policy and
+/// depth a `QoS` is built from. ADOPT-BOUNDED: upstream's `KeepLast` and
+/// `KeepAll` derive from it, and ours are functions returning a whole `QoS`
+/// (see `KeepLast` above), so this converts implicitly from a `QoS` instead,
+/// taking its history and depth — `rclcpp::QoS(rclcpp::KeepLast(1), profile)`
+/// compiles either way.
+struct QoSInitialization {
+    rmw_qos_history_policy_t history_policy;
+    size_t depth;
+
+    constexpr QoSInitialization(rmw_qos_history_policy_t history_policy_arg, size_t depth_arg)
+        : history_policy(history_policy_arg), depth(depth_arg) {}
+
+    // NOLINTNEXTLINE(google-explicit-constructor)
+    constexpr QoSInitialization(const QoS& qos)
+        : history_policy(detail::qos_history_to_rmw(qos.history())),
+          depth(static_cast<size_t>(qos.depth() < 0 ? 0 : qos.depth())) {}
+
+    static constexpr QoSInitialization from_rmw(const rmw_qos_profile_t& profile) {
+        return QoSInitialization(profile.history, profile.depth);
+    }
+};
+
+constexpr QoS::QoS(const QoSInitialization& init, const ::rmw_qos_profile_s& profile)
+    : QoS(static_cast<QoS>(profile)) {
+    history_ = detail::qos_history_from_rmw(init.history_policy);
+    depth_ = static_cast<int>(init.depth);
+}
+
+constexpr ::rmw_qos_profile_s QoS::get_rmw_qos_profile() const {
+    return detail::qos_to_rmw(*this);
+}
+
+} // namespace rclcpp
+
+/// Upstream's five concrete profiles, each the row of `rclcpp::detail::
+/// qos_table` lowered to upstream's struct, so the table is still the one place
+/// a profile's policies are spelled.
+static constexpr rmw_qos_profile_t rmw_qos_profile_default =
+    ::rclcpp::detail::qos_to_rmw(::rclcpp::detail::qos_table::default_profile());
+static constexpr rmw_qos_profile_t rmw_qos_profile_sensor_data =
+    ::rclcpp::detail::qos_to_rmw(::rclcpp::detail::qos_table::sensor_data());
+static constexpr rmw_qos_profile_t rmw_qos_profile_services_default =
+    ::rclcpp::detail::qos_to_rmw(::rclcpp::detail::qos_table::services_default());
+static constexpr rmw_qos_profile_t rmw_qos_profile_parameters =
+    ::rclcpp::detail::qos_to_rmw(::rclcpp::detail::qos_table::parameters());
+static constexpr rmw_qos_profile_t rmw_qos_profile_parameter_events =
+    ::rclcpp::detail::qos_to_rmw(::rclcpp::detail::qos_table::parameter_events());
+
+namespace rclcpp {
+// Defined after the constants because it starts from one of them.
+constexpr QoS::QoS(const QoSInitialization& init) : QoS(init, ::rmw_qos_profile_default) {}
+} // namespace rclcpp
 
 #endif // NROS_RCLCPP_QOS_HPP
