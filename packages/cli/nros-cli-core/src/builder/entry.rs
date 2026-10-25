@@ -322,6 +322,22 @@ pub fn schedule_board_features(
     out
 }
 
+/// The words an image's deploy token and board crate are searched by, most
+/// specific first: the BOARD the user declared, then the image id, then the
+/// platform. ONE order for the workspace road (`cmd::build`) and the
+/// single-package leaf road (`cmd::leaf_settings`).
+///
+/// The image id is a label that may happen to be a board token too. Taking it
+/// first resolved `[image.freertos] board = "mps2-an385-freertos"` to the
+/// generic `freertos` board (issue 0798), and on the leaf road, which kept
+/// that order, `[image.mps2-an385-baremetal] board = "rtic-mps2-an385"` took
+/// `board-entry` instead of `rtic` once `mps2-an385-baremetal` became a
+/// `BOARD_PATHS` key (phase-517 W2).
+#[must_use]
+pub fn deploy_candidates<'a>(board: &'a str, image_id: &'a str, platform: &'a str) -> [&'a str; 3] {
+    [board, image_id, platform]
+}
+
 /// The board-crate feature that turns on the ENTRY surface `nros::main!`
 /// drives, for the framework the image's board key selects.
 ///
@@ -774,6 +790,22 @@ fn write_if_changed(path: &Path, body: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// phase-517 W2 — an RTIC leaf whose image id is itself a board key keeps
+    /// its board word's framework: the declared board is searched first.
+    #[test]
+    fn a_declared_board_outranks_an_image_id_that_is_also_a_board_key() {
+        let candidates = deploy_candidates("rtic-mps2-an385", "mps2-an385-baremetal", "bare-metal");
+        assert_eq!(
+            entry_surface_features(&candidates, |_| true),
+            vec!["rtic".to_string()]
+        );
+        let candidates = deploy_candidates("mps2-an385-baremetal", "rtic-mps2-an385", "bare-metal");
+        assert_eq!(
+            entry_surface_features(&candidates, |_| true),
+            vec!["board-entry".to_string()]
+        );
+    }
 
     use nros_orchestration_ir::{ResolvedTier, ResolvedTierTable};
 

@@ -3374,7 +3374,7 @@ fn generate_entry(
     // The hand-written entry said `DEPLOY mps2-an385-freertos`. A generated one
     // must not quietly pick a different board than the image names — that is
     // issue 0798 with the roles reversed.
-    let candidates = [board_name.as_str(), image_id, platform];
+    let candidates = crate::builder::entry::deploy_candidates(&board_name, image_id, platform);
 
     // Where the entry will be written — needed to make its dependency paths
     // relative, and computed before the spec because the spec carries them.
