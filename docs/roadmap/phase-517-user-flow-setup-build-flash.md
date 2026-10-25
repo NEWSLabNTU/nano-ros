@@ -187,6 +187,15 @@ function. `nros setup qemu-mps2-an385` then works and means
 **Gate:** every `[image.*] board` in a tracked `system.toml` resolves to an
 index key (both directions: an index key no descriptor reaches is reported).
 
+**Done (2026-10-25)** — `BoardCatalog::setup_board`, with the key DERIVED per
+descriptor rather than a new `setup_key` field (the descriptor schema is
+`deny_unknown_fields` and has several readers): its `cmake_module` when that is
+an index key, else a `names` entry that is, else the key spelled like its
+platform (`zephyr`). A word two descriptors claim with different keys
+(`threadx`) is refused naming both. The gate is a unit test,
+`every_image_board_reaches_an_index_key_and_every_key_is_reached`, which runs in
+`check cli-tests` on every pull request; both directions hold today.
+
 ### W4 — `nros setup` installs the workspace (L)
 
 `nros setup` with no board, inside a workspace (or `--workspace <dir>`),
@@ -209,6 +218,17 @@ becomes the rosdep-shaped front door:
 
 `nros build`'s preflight refusal (`check_declared_depends`, `build.rs:5396`)
 then names `nros setup` (no args) instead of a board.
+
+**Done (2026-10-25), with three items left:** plain `nros setup` at a workspace
+root (a `package.xml` there or in a child of `src/`) is `nros setup --workspace
+.`; it prints the report, provisions every image's `(board, rmw)` in one store
+plan, reports ROS's `rmw_zenohd` for a zenoh image (found, or the apt names),
+then the OS closure (installed with `--sudo`, else printed); `--check` stays
+report-only. Measured in `examples/workspaces/c` with `--dry-run`. Left:
+(1) the OS closure is the index's whole `[prereq.*]` set, not the workspace's
+own keys; (2) an unknown `<depend>` is counted, not refused — telling a ROS
+package from a typo needs the ament index; (3) no `--yes`, because nothing asks
+for confirmation (`nros setup <board>` never did either).
 
 **No checkout:** the plan is computed from the project's config files and the
 installed SDK alone; nothing in it reads or asks for a nano-ros checkout.
