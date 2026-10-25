@@ -456,6 +456,84 @@ const GRAPH_NAMES_MAX: usize = 64;
 /// a partial graph, and a topic with one of its two types is still true.
 const GRAPH_TYPES_MAX: usize = 8;
 
+/// RFC-0109 D6a — `$ZENOH_SESSION_CONFIG_URI`, lowered: `None` when unset.
+/// The value is a path (or a `file://` URL), as `rmw_zenoh` takes it. A file
+/// that cannot be read, or holds a key zenoh-pico cannot take, refuses the
+/// session rather than opening one the caller did not ask for.
+///
+/// Read through the C library, not `std`: a hosted C/C++ image links this
+/// crate without `std` (phase-359 W10), and a `std::env` reader left the
+/// variable silently unread there — the talker dialled the default router.
+#[cfg(all(feature = "session-config-uri", feature = "alloc"))]
+fn session_config_uri_properties()
+-> Result<Option<alloc::vec::Vec<(alloc::string::String, alloc::string::String)>>, TransportError> {
+    use core::ffi::{CStr, c_char, c_void};
+    unsafe extern "C" {
+        fn getenv(name: *const c_char) -> *const c_char;
+        fn fopen(path: *const c_char, mode: *const c_char) -> *mut c_void;
+        fn fread(ptr: *mut c_void, size: usize, n: usize, f: *mut c_void) -> usize;
+        fn ferror(f: *mut c_void) -> i32;
+        fn fclose(f: *mut c_void) -> i32;
+    }
+    let refuse = |why: &dyn core::fmt::Display| {
+        nros_log::log_error!(
+            nros_log::get_logger("nros_rmw_zenoh"),
+            "ZENOH_SESSION_CONFIG_URI: {}",
+            why
+        );
+        TransportError::InvalidArgument
+    };
+    // SAFETY: the name is NUL-terminated; `getenv` returns NULL or a
+    // NUL-terminated string that lives for the process.
+    let uri = unsafe {
+        let p = getenv(c"ZENOH_SESSION_CONFIG_URI".as_ptr());
+        if p.is_null() {
+            return Ok(None);
+        }
+        CStr::from_ptr(p)
+    };
+    let Ok(uri) = uri.to_str() else {
+        return Err(refuse(&"the value is not UTF-8"));
+    };
+    if uri.is_empty() {
+        return Ok(None);
+    }
+    let path = uri.strip_prefix("file://").unwrap_or(uri);
+    let mut cpath = alloc::vec::Vec::with_capacity(path.len() + 1);
+    cpath.extend_from_slice(path.as_bytes());
+    cpath.push(0);
+    // SAFETY: both strings are NUL-terminated (`path` came from a C string, so
+    // it holds no NUL); `f` is checked before use and closed exactly once;
+    // `fread` writes at most `chunk.len()` bytes.
+    let bytes = unsafe {
+        let f = fopen(cpath.as_ptr().cast(), c"rb".as_ptr());
+        if f.is_null() {
+            return Err(refuse(&format_args!("{path}: cannot be opened")));
+        }
+        let mut out = alloc::vec::Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            let n = fread(chunk.as_mut_ptr().cast(), 1, chunk.len(), f);
+            out.extend_from_slice(&chunk[..n]);
+            if n < chunk.len() {
+                break;
+            }
+        }
+        let failed = ferror(f) != 0;
+        fclose(f);
+        if failed {
+            return Err(refuse(&format_args!("{path}: cannot be read")));
+        }
+        out
+    };
+    let Ok(text) = core::str::from_utf8(&bytes) else {
+        return Err(refuse(&format_args!("{path}: is not UTF-8")));
+    };
+    nros_zenoh_session_config::lower(text)
+        .map(Some)
+        .map_err(|e| refuse(&format_args!("{path}: {e}")))
+}
+
 impl ZenohSession {
     /// Create a new shim session with the given configuration
     ///
@@ -467,6 +545,28 @@ impl ZenohSession {
     ///
     /// A new session or error if connection fails
     pub fn new(config: &TransportConfig) -> Result<Self, TransportError> {
+        // RFC-0109 D6a (phase-514 W3) — on a hosted image `$ZENOH_SESSION_CONFIG_URI`
+        // names a whole session config, as it does for `rmw_zenoh`: it REPLACES
+        // the properties the image baked from its bringup's `rmw/zenoh.json5`
+        // (the environment overrides the build), lowered by the same code.
+        #[cfg(all(feature = "session-config-uri", feature = "alloc"))]
+        let uri_props = session_config_uri_properties()?;
+        #[cfg(all(feature = "session-config-uri", feature = "alloc"))]
+        let uri_refs: Option<alloc::vec::Vec<(&str, &str)>> = uri_props
+            .as_ref()
+            .map(|v| v.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect());
+        #[cfg(all(feature = "session-config-uri", feature = "alloc"))]
+        let properties: &[(&str, &str)] = uri_refs.as_deref().unwrap_or(config.properties);
+        #[cfg(not(all(feature = "session-config-uri", feature = "alloc")))]
+        let properties: &[(&str, &str)] = config.properties;
+        // A session config's own `mode` and `connect` decide what is dialed:
+        // `mode: "peer"` is a peer whatever the API's mode said (zpico inserts
+        // the property after the argument), and a `connect` list replaces the
+        // backend's default router, so nothing else is dialed beside it.
+        let prop_peer = properties.iter().any(|(k, v)| *k == "mode" && *v == "peer");
+        let prop_connect = properties.iter().any(|(k, _)| *k == "connect");
+        let peer = matches!(config.mode, SessionMode::Peer) || prop_peer;
+
         // Issue 0682 — peer mode rests on zenoh-pico's multicast transport and
         // scouting, and this shim is compiled WITHOUT them (a size decision, see
         // `nros_zpico_build::MULTICAST_TRANSPORT`). Refuse here, where the reason
@@ -478,7 +578,7 @@ impl ZenohSession {
         // build could have explained exactly was the one it explained least.
         // `NROS_SESSION_MODE=peer` is a documented value; a documented value
         // that cannot work has to say so rather than look like a network fault.
-        if matches!(config.mode, SessionMode::Peer) && !crate::zpico::ZPICO_PEER_MODE_SUPPORTED {
+        if peer && !crate::zpico::ZPICO_PEER_MODE_SUPPORTED {
             // Kept under nros-log's 256-byte buffer: a message that overflows is
             // replaced by "…", and a diagnostic nobody can read is the failure
             // this guard exists to prevent.
@@ -498,9 +598,10 @@ impl ZenohSession {
         // Build the locator string with null terminator
         // `None` here means "dial nothing" — peer mode, or a no_std client with
         // no locator supplied (multicast scouting).
-        let dial: Option<&str> = match &config.mode {
-            SessionMode::Client => effective_client_locator(supplied_locator),
-            SessionMode::Peer => None,
+        let dial: Option<&str> = if peer || (supplied_locator.is_none() && prop_connect) {
+            None
+        } else {
+            effective_client_locator(supplied_locator)
         };
 
         let locator = match dial {
@@ -551,19 +652,18 @@ impl ZenohSession {
         // this work item is about: a configuration line that is silently
         // dropped is indistinguishable from one that took effect, so the next
         // person debugs the transport rather than the input.
-        if config.properties.len() > MAX_SESSION_PROPERTIES {
+        if properties.len() > MAX_SESSION_PROPERTIES {
             nros_log::log_error!(
                 nros_log::get_logger("nros_rmw_zenoh"),
                 "session config: {} properties supplied, this build carries at most {} \
                  (raise MAX_SESSION_PROPERTIES in nros-rmw-zenoh's shim; it is a stack \
                  array, so the embedded cap is deliberately small)",
-                config.properties.len(),
+                properties.len(),
                 MAX_SESSION_PROPERTIES
             );
             return Err(TransportError::InvalidArgument);
         }
-        for i in 0..config.properties.len() {
-            let (key, value) = config.properties[i];
+        for &(key, value) in properties {
             let key_bytes = key.as_bytes();
             let val_bytes = value.as_bytes();
             if key_bytes.len() >= CONFIG_PROPERTY_SIZE || val_bytes.len() >= CONFIG_PROPERTY_SIZE {
@@ -604,7 +704,7 @@ impl ZenohSession {
             ];
             for &(env_name, prop_key) in env_mappings {
                 if let Ok(val) = std::env::var(env_name) {
-                    let already_set = config.properties.iter().any(|(k, _)| *k == prop_key);
+                    let already_set = properties.iter().any(|(k, _)| *k == prop_key);
                     if already_set {
                         continue;
                     }

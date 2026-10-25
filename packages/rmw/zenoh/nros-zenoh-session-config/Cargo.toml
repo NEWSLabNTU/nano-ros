@@ -1,0 +1,32 @@
+[package]
+name = "nros-zenoh-session-config"
+version.workspace = true
+publish = false
+edition = "2024"
+description = "Lower an upstream zenoh session config (json5) to zenoh-pico session properties"
+license = "MIT OR Apache-2.0"
+repository.workspace = true
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+
+# RFC-0109 D8 — host-only: `nros sync`, `nros::main!` and the C/C++ entry
+# codegen lower a bringup's `rmw/zenoh.json5` at build time, and a hosted
+# zenoh image lowers `$ZENOH_SESSION_CONFIG_URI` at run time. No embedded
+# target ever parses json5. `no_std` + `alloc` all the same: the hosted C/C++
+# road is `no_std` (phase-359 W10), so its backend reads the file through the
+# C library and lowers the text with `lower`; `lower_file` is the `std` half.
+#
+# The json5 reader is this crate's own (`src/json5.rs`): the `json5` crate
+# brings `pest` and four more packages into every lock this crate reaches.
+[features]
+# No default: a `no_std` crate never hands its consumer `std` unasked
+# (ARCHITECTURE §2). The CLI names `std` for `lower_file`.
+std = ["serde_json/std"]
+
+[dependencies]
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+
+[package.metadata.nros]
+host-only = true
+host-only-reason = "parses json5 on a host only: the CLI at build time, and a hosted zenoh image (platform-posix) for $ZENOH_SESSION_CONFIG_URI; no embedded target reaches it"

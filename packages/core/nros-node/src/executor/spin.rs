@@ -281,22 +281,26 @@ impl<'s> Executor<'s> {
             }
         }
 
-        let rmw_config = nros_rmw::RmwConfig {
-            locator: config.locator,
-            mode: config.mode,
-            domain_id: config.domain_id,
-            node_name: config.node_name,
-            namespace: config.namespace,
-            properties: &[],
-        };
-        let session = if let Some(name) = selector {
-            // Selector path: route to the specific named backend so
-            // the env-var-disambiguated outcome matches what the
-            // resolver above identified.
-            nros_rmw_cffi::CffiRmw::open_with_rmw(name, &rmw_config)
-        } else {
-            nros_rmw_cffi::CffiRmw.open(&rmw_config)
-        }
+        // RFC-0109 D8 — the image's baked session properties (its bringup's
+        // own `rmw/<backend>` file, lowered at build time).
+        let session = super::session_props::with_session_properties(&[], |properties| {
+            let rmw_config = nros_rmw::RmwConfig {
+                locator: config.locator,
+                mode: config.mode,
+                domain_id: config.domain_id,
+                node_name: config.node_name,
+                namespace: config.namespace,
+                properties,
+            };
+            if let Some(name) = selector {
+                // Selector path: route to the specific named backend so
+                // the env-var-disambiguated outcome matches what the
+                // resolver above identified.
+                nros_rmw_cffi::CffiRmw::open_with_rmw(name, &rmw_config)
+            } else {
+                nros_rmw_cffi::CffiRmw.open(&rmw_config)
+            }
+        })
         .map_err(|e| {
             // Issue 0465 — do not relabel. This used to discard the backend's
             // error and report `ConnectionFailed` for every open failure, so an
@@ -523,16 +527,20 @@ impl<'s> Executor<'s> {
             return Err(NodeError::Transport(TransportError::ConnectionFailed));
         }
 
-        let rmw_config = nros_rmw::RmwConfig {
-            locator: config.locator,
-            mode: config.mode,
-            domain_id: config.domain_id,
-            node_name: config.node_name,
-            namespace: config.namespace,
-            properties: &[],
-        };
-        let session = nros_rmw_cffi::CffiRmw::open_with_rmw(rmw_name, &rmw_config)
-            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+        let session = super::session_props::with_session_properties(&[], |properties| {
+            nros_rmw_cffi::CffiRmw::open_with_rmw(
+                rmw_name,
+                &nros_rmw::RmwConfig {
+                    locator: config.locator,
+                    mode: config.mode,
+                    domain_id: config.domain_id,
+                    node_name: config.node_name,
+                    namespace: config.namespace,
+                    properties,
+                },
+            )
+        })
+        .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
         // SAFETY: forwarded from this fn's contract.
         let mut executor = unsafe { Self::from_session_in(session, backing, sizing) };
         {

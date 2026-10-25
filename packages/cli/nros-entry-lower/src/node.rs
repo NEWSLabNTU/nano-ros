@@ -219,6 +219,12 @@ pub struct LoweredEntry {
     /// `Some` for a metadata probe (phase-308).
     #[serde(default)]
     pub probe: Option<crate::LoweredProbe>,
+    /// RFC-0109 D8 (phase-514 W3) -- the image's baked RMW session
+    /// properties, `(key, value)` in order: its bringup's `rmw/zenoh.json5`,
+    /// lowered on the host. The packs emit one `static const` table and
+    /// install it before the runner opens a session. Empty: none baked.
+    #[serde(default)]
+    pub session_properties: Vec<(String, String)>,
 }
 
 impl LoweredEntry {

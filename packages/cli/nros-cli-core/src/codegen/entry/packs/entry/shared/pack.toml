@@ -19,4 +19,6 @@ templates = [
     { key = "declare_calls.jinja", file = "declare_calls.jinja" },
     { key = "launch_remap_table.jinja", file = "launch_remap_table.jinja" },
     { key = "launch_remap_install.jinja", file = "launch_remap_install.jinja" },
+    { key = "session_properties_table.jinja", file = "session_properties_table.jinja" },
+    { key = "session_properties_install.jinja", file = "session_properties_install.jinja" },
 ]

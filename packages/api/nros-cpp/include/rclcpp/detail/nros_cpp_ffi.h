@@ -955,6 +955,23 @@ typedef struct nros_cpp_launch_remap_t {
 } nros_cpp_launch_remap_t;
 
 /**
+ * One baked RMW session property as the generated C/C++ entry emits it
+ * (RFC-0109 D8, phase-514 W3): two NUL-terminated strings with static
+ * lifetime (literals in the entry's `.rodata`), lowered at build time from
+ * the bringup's own `rmw/<backend>` file.
+ */
+typedef struct nros_cpp_session_property_t {
+  /**
+   * The backend's property name (`connect`, `listen`, `mode`, ...).
+   */
+  const char *key;
+  /**
+   * Its value.
+   */
+  const char *value;
+} nros_cpp_session_property_t;
+
+/**
  * phase-503 — what the reaction hook receives: the C spelling of
  * `nros_node::executor::monitor::ReactionEvent`, field for field (the layout
  * is asserted equal below, which is what lets the hook be handed to the
@@ -2792,6 +2809,26 @@ nros_cpp_ret_t nros_cpp_declare_remap(void *handle,
  * array of string literals).
  */
 nros_cpp_ret_t nros_cpp_set_launch_remaps(const struct nros_cpp_launch_remap_t *table, size_t len);
+
+/**
+ * Install the image's baked RMW session properties: ONE `static const`
+ * table the generated entry emits, handed to the backend by every default
+ * session open that states none of its own (RFC-0109 D8).
+ *
+ * Call it once at boot, BEFORE the board runner opens any session. The
+ * generated entry does exactly that.
+ *
+ * Returns `NROS_CPP_RET_OK`, or `NROS_CPP_RET_INVALID_ARGUMENT` when `table`
+ * is NULL with `len > 0`, a row has a NULL or non-UTF-8 string, or there are
+ * more rows than one session open carries (nothing is installed then).
+ *
+ * # Safety
+ * `table` must point at `len` rows that, with every string they point at,
+ * live for the rest of the program and are never written (a `static const`
+ * array of string literals).
+ */
+nros_cpp_ret_t nros_cpp_set_session_properties(const struct nros_cpp_session_property_t *table,
+                                               size_t len);
 
 /**
  * Honour `--ros-args` from a C++ `argc`/`argv`: parse it with rcl's grammar

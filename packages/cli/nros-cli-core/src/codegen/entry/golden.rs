@@ -1198,3 +1198,69 @@ fn both_entry_packs_check_every_sched_binding() {
         "every (board x plan x pack) render must be checked"
     );
 }
+
+/// RFC-0109 D8/D9 (phase-514 W3) -- an image whose bringup ships
+/// `rmw/zenoh.json5` bakes the lowered properties as one table, installs it
+/// before the runner opens a session, and states no locator beside it.
+#[test]
+fn a_zenoh_rmw_file_bakes_its_session_properties_and_no_locator() {
+    for lang in [Lang::C, Lang::Cpp] {
+        let mut p = plan("linux", vec![c_node("c_talker_pkg", "talker")]);
+        if lang == Lang::Cpp {
+            p = plan("linux", vec![typed_node("talker_pkg", "talker")]);
+        }
+        p.session.locator = Some("tcp/127.0.0.1:7447".into());
+        let props = vec![
+            ("mode".to_string(), "client".to_string()),
+            ("connect".to_string(), "tcp/10.0.0.1:7447".to_string()),
+        ];
+        let (src, lowered) = super::emit::emit_typed_image_lowered(
+            lang,
+            &p,
+            &[],
+            &[],
+            None,
+            &[],
+            &super::emit::ModeTier::default(),
+            &[],
+            &props,
+        )
+        .unwrap_or_else(|e| panic!("{lang:?}: {e}"));
+        assert_eq!(lowered.session_properties, props, "{lang:?}");
+        assert!(
+            src.contains("__nros_session_properties[2] = {")
+                && src.contains(r#"{"connect", "tcp/10.0.0.1:7447"},"#),
+            "{lang:?}: the table is baked:\n{src}"
+        );
+        let install = src
+            .find("nros_cpp_set_session_properties(")
+            .unwrap_or_else(|| panic!("{lang:?}: installed:\n{src}"));
+        let table = src.find("__nros_session_properties[2]").unwrap();
+        assert!(table < install, "{lang:?}: table before its install");
+        assert!(
+            !src.contains("tcp/127.0.0.1:7447"),
+            "{lang:?}: the file is the wiring, so no locator is baked:\n{src}"
+        );
+
+        let (plain, _) = super::emit::emit_typed_image_lowered(
+            lang,
+            &p,
+            &[],
+            &[],
+            None,
+            &[],
+            &super::emit::ModeTier::default(),
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert!(
+            !plain.contains("session_propert"),
+            "{lang:?}: no file, nothing emitted"
+        );
+        assert!(
+            plain.contains("tcp/127.0.0.1:7447"),
+            "{lang:?}: locator kept"
+        );
+    }
+}

@@ -87,6 +87,10 @@ pub struct LowerOptions<'a> {
     /// ([`super::EntryDerivation::node_ranks`]). Empty when nothing was
     /// derived, which seeds no rank.
     pub node_ranks: &'a [(String, u8)],
+    /// RFC-0109 D8 (phase-514 W3) -- the image's baked RMW session properties
+    /// (`nros_orchestration_ir::rmw_config`), handed to the packs as
+    /// [`LoweredEntry::session_properties`].
+    pub session_properties: &'a [(String, String)],
 }
 
 /// phase-462 W4c -- how one executor names the sched context a tier runs
@@ -420,7 +424,16 @@ pub fn lower_image(plan: &Plan, opts: &LowerOptions<'_>) -> Result<LoweredEntry,
             });
         }
         None => {
-            e.boot_config = Some(boot_config(plan)?);
+            let mut bc = boot_config(plan)?;
+            // RFC-0109 D9 -- with an RMW file the file is the session's
+            // wiring: a baked locator would be a second endpoint beside it
+            // (the zenoh shim dials a locator AND every `connect`), so the
+            // blob states none and the file's endpoints are the image's.
+            if !opts.session_properties.is_empty() {
+                bc.locator = None;
+            }
+            e.boot_config = Some(bc);
+            e.session_properties = opts.session_properties.to_vec();
             let runners: LoweredRunners =
                 family.c_abi_runners().map(Into::into).unwrap_or_default();
             let raw = family.c_abi_runners();

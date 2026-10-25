@@ -201,6 +201,38 @@ physical only, and launching it under QEMU is refused. `nros ws qemu-nic <leaf>
 --model <nic-model>` prints the `-nic` value for a leaf's image, for a script
 that starts QEMU itself.
 
+### The middleware's own file
+
+How a session finds its peers — which router to dial, which endpoints to
+listen on — is the middleware's own configuration, written in its own
+language (RFC-0109 layer 2). A bringup ships it beside its `system.toml`, and
+it applies to every image of that backend:
+
+| Backend | File | The same document ROS 2 reads as |
+| --- | --- | --- |
+| zenoh | `rmw/zenoh.json5` | `ZENOH_SESSION_CONFIG_URI` |
+| CycloneDDS | `rmw/cyclonedds.xml` | `CYCLONEDDS_URI` |
+
+```json5
+// rmw/zenoh.json5
+{
+  mode: "client",
+  connect: { endpoints: ["tcp/192.168.50.1:7447"] },
+}
+```
+
+zenoh-pico has no json5 parser, so the build reads the file on the host,
+lowers each key to a zenoh-pico session property and bakes the result into the
+image. A key zenoh-pico cannot take is refused, naming the key — never
+dropped. With a file, the file IS the wiring: the image's `connect` list
+replaces the default router, and an image that also states a `locator` is
+refused (a `[system] locator` is simply not used). On a hosted build
+`ZENOH_SESSION_CONFIG_URI` replaces the baked file at run time, whole, as it
+does for `rmw_zenoh`.
+
+The flat `rmw/zenoh.conf` list (`key = value`) is retired and refused, naming
+the json5 that replaced it.
+
 ### Per-image build knobs
 
 A build knob that one image needs, and that its board does not state, goes in

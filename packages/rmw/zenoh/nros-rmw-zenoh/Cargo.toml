@@ -65,6 +65,7 @@ platform-posix = [
     "zpico-sys/platform-aliases",
     "zpico-sys/link-ip",
     "nros-platform/platform-posix",
+    "session-config-uri",
 ]
 # Embedded targets keep `nros-platform/platform-<rtos>` opt-in —
 # their providers live in C ports linked at the consumer's
@@ -95,7 +96,13 @@ link-isotp = ["zpico-sys/link-isotp"]
 # backend it linked asked for it. `Clock::system()` was the one thing that
 # depended on it, and it now reaches the platform's wall clock instead
 # (`nros-core/platform-clock`), so the forward has nothing left to carry.
-std = ["alloc", "zpico-sys/std", "log"]
+std = ["alloc", "zpico-sys/std", "log", "session-config-uri"]
+# RFC-0109 D6a — `$ZENOH_SESSION_CONFIG_URI` on a hosted image, read through
+# the C library. Hosted is not `std` here: the C/C++ road links this crate with
+# `platform-posix` and no `std` (phase-359 W10), so both turn it on. It reads
+# only with `alloc` as well (the lowered list is owned); a C/C++ image forwards
+# its heap here through `[rmw.capabilities] alloc` in `nros-rmw.toml`.
+session-config-uri = ["dep:nros-zenoh-session-config"]
 alloc = ["nros-rmw/alloc"]
 rtic = []
 polling = []
@@ -140,6 +147,10 @@ ros-jazzy = []
 # real image: `nros-node` deps `nros-log` non-optionally, so anything that links
 # an RMW backend already has it.
 nros-log = { workspace = true }
+# RFC-0109 D6a (phase-514 W3) — a hosted image reads `$ZENOH_SESSION_CONFIG_URI`
+# (the json5 `rmw_zenoh` reads) through the SAME lowering the build runs on a
+# bringup's `rmw/zenoh.json5`. `std` only: no embedded target parses json5.
+nros-zenoh-session-config = { path = "../nros-zenoh-session-config", optional = true, default-features = false }
 # Issue 1577 — `Subscription::supports_process_in_place` is unconditionally
 # `true` here, and this is where that is DECLARED to the build: `nros-node`
 # prices an `in_place` descriptor row at no receive region only when a backend

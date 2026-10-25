@@ -93,6 +93,33 @@ pub fn emit_typed_ranked_lowered(
     mode_tier: &ModeTier,
     node_ranks: &[(String, u8)],
 ) -> Result<(String, LoweredEntry), String> {
+    emit_typed_image_lowered(
+        language,
+        plan,
+        monitors,
+        ages,
+        hazard_model,
+        modes,
+        mode_tier,
+        node_ranks,
+        &[],
+    )
+}
+
+/// [`emit_typed_ranked_lowered`], also baking the image's RMW session
+/// properties (RFC-0109 D8, phase-514 W3).
+#[allow(clippy::too_many_arguments)]
+pub fn emit_typed_image_lowered(
+    language: Lang,
+    plan: &Plan,
+    monitors: &[MonitorRow],
+    ages: &[AgeRow],
+    hazard_model: Option<&ros_launch_manifest_model::SystemModel>,
+    modes: &[(String, Vec<MonitorRow>, Vec<AgeRow>)],
+    mode_tier: &ModeTier,
+    node_ranks: &[(String, u8)],
+    session_properties: &[(String, String)],
+) -> Result<(String, LoweredEntry), String> {
     emit_lowered(
         language,
         plan,
@@ -105,6 +132,7 @@ pub fn emit_typed_ranked_lowered(
             mode_switch: &mode_tier.switch,
             probe: None,
             node_ranks,
+            session_properties,
         },
     )
 }

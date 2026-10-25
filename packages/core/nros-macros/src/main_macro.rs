@@ -1572,6 +1572,23 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         ));
     }
 
+    // RFC-0109 D8 (phase-514 W3) — the session properties the CLI lowered from
+    // the bringup's RMW file, handed over as one backend-neutral text
+    // (`session_properties::ENV`), baked as a static table and installed
+    // before the board opens its session. Only a leaf-declared entry reads it.
+    let session_props: Vec<(String, String)> = match &leaf_decl {
+        Some(_) => {
+            use nros_orchestration_ir::session_properties as sp;
+            match sp::decode(&std::env::var(sp::ENV).unwrap_or_default()) {
+                Ok(p) => p,
+                Err(e) => {
+                    return Err(syn::Error::new(proc_macro2::Span::call_site(), e));
+                }
+            }
+        }
+        None => Vec::new(),
+    };
+
     // De-duplicate the tracked list — pkg-index walks can revisit
     // a pkg dir's `package.xml` from multiple paths.
     tracked.sort();
@@ -1769,6 +1786,27 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     if let [only] = node_instances.as_slice() {
         deploy_overlay_lit.node_name = Some(only.clone());
     }
+    // With a file the file is the wiring (RFC-0109 D9): no locator is baked
+    // beside it, and the link is its first endpoint's.
+    if !session_props.is_empty() {
+        deploy_overlay_lit.session_properties = true;
+        deploy_overlay_lit.locator = None;
+        deploy_overlay_lit.transport =
+            nros_orchestration_ir::session_properties::endpoint(&session_props)
+                .and_then(nros_orchestration_ir::leaf_system::link_kind_of_locator)
+                .map(str::to_string);
+    }
+    let (session_props_static_ts, session_props_install_ts) =
+        session_properties_tokens(&session_props);
+    // The text is read at EXPANSION, which cargo's dep-info cannot see; naming
+    // it in the expansion puts it there, so a changed (or removed) file
+    // re-expands this entry rather than baking the old table.
+    let session_props_track_ts = if leaf_decl.is_some() {
+        let var = nros_orchestration_ir::session_properties::ENV;
+        quote! { const _: ::core::option::Option<&str> = ::core::option_env!(#var); }
+    } else {
+        quote! {}
+    };
     let deploy_overlay_ts = deploy_overlay_tokens(&deploy_overlay_lit);
 
     // Issue #129 (RFC-0031 C5b amendment) — explicit backend register for the
@@ -2449,6 +2487,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 // (`rmw-<x> = ["dep:nros-rmw-<x>"]`). Without it the CFFI registry
                 // is empty and `Executor::open` fails Transport(ConnectionFailed).
                 #zephyr_rmw_register_ts
+
+                // RFC-0109 D8 — the Zephyr arm opens its session itself, so the
+                // baked session properties are installed here too.
+                #session_props_install_ts
 
                 // Phase 249 P1 — RMW register is board-owned (Phase 248 C5a); the
                 // backend-agnostic `nros` crate cannot register (no backend dep), so
@@ -3171,6 +3213,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // body so `&NROS_BOOT_CONFIG` is in scope at every overlay use site.
         #boot_config_static_ts
 
+        // RFC-0109 D8 — the session properties baked from the RMW file.
+        #session_props_static_ts
+        #session_props_track_ts
+
         // issue 1676 — the baked contract-monitor tables (empty stream for an
         // uncontracted image, which therefore carries none of it).
         #contract_items_ts
@@ -3676,6 +3722,9 @@ struct DeployOverlayLit {
     /// one node). NOT read from `[deploy.*]`: it is a launch identity, threaded
     /// in by the caller after the launch is parsed.
     node_name: Option<String>,
+    /// RFC-0109 D8 — whether the image bakes session properties from its
+    /// bringup's RMW file; the overlay expression then installs them first.
+    session_properties: bool,
 }
 
 /// The leaf's deployment identity (RFC-0098 D5), as the overlay the board's
@@ -3695,6 +3744,7 @@ fn overlay_from_leaf(leaf: &nros_orchestration_ir::leaf_system::LeafSystem) -> D
         // Issue #98 — not a deployment key; the caller fills this from the
         // parsed launch when it declares exactly one node.
         node_name: None,
+        session_properties: false,
     }
 }
 
@@ -3819,8 +3869,15 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
         Some(s) => quote! { ::core::option::Option::Some(#s) },
         None => quote! { ::core::option::Option::None },
     };
+    // The overlay is the one expression every board arm evaluates before it
+    // opens a session, so the install rides it rather than each arm.
+    let install = if lit.session_properties {
+        quote! { __nros_install_session_properties(); }
+    } else {
+        quote! {}
+    };
     quote! {
-        ::nros::__macro_support::nros_platform::DeployOverlay {
+        { #install ::nros::__macro_support::nros_platform::DeployOverlay {
             locator: #locator,
             net: #net,
             domain_id: #domain_id,
@@ -3828,8 +3885,48 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
             rmw: #rmw,
             node_name: #node_name,
             boot_config: ::core::option::Option::Some(&NROS_BOOT_CONFIG),
-        }
+        } }
     }
+}
+
+/// RFC-0109 D8 (phase-514 W3) — the baked session-property table and the
+/// installer the overlay expression calls. Both empty for an image whose
+/// bringup ships no lowered RMW file, which therefore carries none of it.
+fn session_properties_tokens(
+    props: &[(String, String)],
+) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+    if props.is_empty() {
+        return (quote! {}, quote! {});
+    }
+    let mut rows = Vec::with_capacity(props.len());
+    for (k, v) in props {
+        let (Ok(k), Ok(v)) = (
+            std::ffi::CString::new(k.as_str()),
+            std::ffi::CString::new(v.as_str()),
+        ) else {
+            let msg =
+                format!("session property `{k}` (from the bringup's RMW file) holds a NUL byte");
+            return (quote! { ::core::compile_error!(#msg); }, quote! {});
+        };
+        let k = proc_macro2::Literal::c_string(&k);
+        let v = proc_macro2::Literal::c_string(&v);
+        rows.push(quote! { ::nros::__macro_support::SessionProperty::new(#k, #v) });
+    }
+    let n = rows.len();
+    let statics = quote! {
+        static __NROS_SESSION_PROPERTIES: [::nros::__macro_support::SessionProperty; #n] =
+            [#(#rows),*];
+        fn __nros_install_session_properties() {
+            if ::nros::__macro_support::set_session_properties(&__NROS_SESSION_PROPERTIES)
+                .is_err()
+            {
+                ::core::panic!(
+                    "the bringup's RMW file lowers to more session properties than the executor holds"
+                );
+            }
+        }
+    };
+    (statics, quote! { __nros_install_session_properties(); })
 }
 
 /// issue 1410 — the namespace that goes into the baked blob's ONE identity slot.

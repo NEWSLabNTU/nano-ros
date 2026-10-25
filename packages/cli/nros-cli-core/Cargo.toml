@@ -79,6 +79,10 @@ ros-launch-manifest-sched = { git = "https://github.com/NEWSLabNTU/ros-launch-ma
 # `nros::main!()` proc-macro consumes, so tier resolution can't drift between
 # the CLI bake path and the codegen path.
 nros-orchestration-ir = { path = "../../core/nros-orchestration-ir" }
+# RFC-0109 D8 (phase-514 W3) — a backend's `session-json5` config file is
+# lowered here, at sync, and handed to the build as backend-neutral text
+# (`orchestration::rmw_config`); core never links the lowering (RFC-0071).
+nros-zenoh-session-config = { path = "../../rmw/zenoh/nros-zenoh-session-config", features = ["std"] }
 # phase-336 — the build-profile table behind `nros profile`. Path dep across
 # the workspace boundary, same as nros-orchestration-ir above: ONE table, read
 # by this verb, by nros-tests, and (through the verb) by cmake and bash.

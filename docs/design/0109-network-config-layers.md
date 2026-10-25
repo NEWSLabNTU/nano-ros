@@ -293,6 +293,25 @@ interfaces, and wiring uses those names.
   `cmake/NanoRosRmwUserConfig.cmake` is replaced, which is new work rather
   than a rename).
 - **XRCE:** no file format exists; the domain's `locator` is the sole owner.
+- **Amendment (phase-514 W3a, 2026-10-25) — how the default domain finds its
+  file, and what the file displaces.** Until `[[domain]] config` lands, the
+  default domain's file is found BY CONVENTION beside the `system.toml`:
+  `rmw/zenoh.json5` for a zenoh image, `rmw/cyclonedds.xml` for a Cyclone one
+  (the backend is declared, so the name follows; RFC-0087). Three rules the
+  lowering needed that the text above left open, taken as calls:
+  1. **The file is the wiring.** With a file, the image bakes no locator (a
+     `[system] locator` is unused; an image's own is refused, D9-2), and the
+     zenoh shim treats the file's `connect` as REPLACING the backend's default
+     router, never as a second endpoint dialed beside it. `mode: "peer"` in
+     the file makes the session a peer whatever the API said — which on the
+     shipped shim is refused, because peer mode needs zenoh-pico's multicast
+     transport (issue 0682).
+  2. **`ZENOH_SESSION_CONFIG_URI` replaces the baked table, whole** (D6a). It
+     is not merged key by key: rmw_zenoh reads it as a complete session
+     config, and so do we.
+  3. **One lowering, one reader** — `nros-zenoh-session-config`, a small
+     hand-written json5 reader (the `json5` crate pulls `pest` into every
+     board lock). The build and the hosted runtime call the same `lower`.
 
 ### D9 — Checks at `nros sync`
 

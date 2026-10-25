@@ -67,6 +67,11 @@ zero-copy-receive = "unstable-zenoh-api"   # -> zpico-sys -> Z_FEATURE_UNSTABLE_
 # registry; the backend declares it here instead, so a third-party backend can
 # offer `safety` without an edit to core.
 safety = "safety-e2e"
+# RFC-0109 D6a — the image's heap. A C/C++ umbrella forwards an API feature to
+# the backend when this table names it, and the backend reads
+# `$ZENOH_SESSION_CONFIG_URI` only with `alloc` (`session-config-uri`): the
+# image crate otherwise names `platform-posix` alone, and the URI went unread.
+alloc = "alloc"
 
 # RFC-0071 D9 (phase-506 W4a) — the backend feature for each nros platform
 # feature an image may select. A generated C/C++ umbrella forwards the image's
@@ -417,3 +422,13 @@ include_paths = [
 [port.generic]
 defines = ["ZENOH_GENERIC"]
 include = ["system/common"]
+
+# RFC-0109 D8 (phase-514 W3) — this backend's own configuration file, found by
+# convention beside a `system.toml`: zenoh's session config, the json5
+# `rmw_zenoh` reads as `ZENOH_SESSION_CONFIG_URI`. zenoh-pico cannot parse it,
+# so the toolchain lowers it on the host to session properties and the image
+# bakes them (`session-json5`). `retired` is phase-206 W3's flat list.
+[rmw.config]
+file = "rmw/zenoh.json5"
+format = "session-json5"
+retired = "rmw/zenoh.conf"

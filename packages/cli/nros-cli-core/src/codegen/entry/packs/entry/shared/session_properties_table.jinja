@@ -1,0 +1,21 @@
+{#-
+  RFC-0109 D8 (phase-514 W3) -- the image's RMW session properties, as ONE
+  `static const` table in flash: its bringup's `rmw/zenoh.json5`, lowered on
+  the host (`nros_orchestration_ir::rmw_config`). The same shape as the launch
+  remap table beside it.
+
+  `session_properties_install.jinja` hands it to the runtime before the runner
+  is called, so before any session opens. An image whose bringup ships no RMW
+  file emits nothing at all.
+-#}
+{%- if session_properties -%}
+/* RFC-0109 D8 -- this image's RMW session properties (its bringup's own
+ * rmw/zenoh.json5, lowered at build time), installed below before the runner
+ * opens a session. */
+static const nros_cpp_session_property_t __nros_session_properties[{{ session_properties | length }}] = {
+{%- for p in session_properties %}
+    {"{{ p[0] | c_str }}", "{{ p[1] | c_str }}"},
+{%- endfor %}
+};
+
+{% endif -%}

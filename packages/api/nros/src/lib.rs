@@ -1117,20 +1117,31 @@ pub mod internals {
         node_name: &str,
         rmw: Option<&str>,
     ) -> Result<RmwSession, nros_rmw::TransportError> {
-        use nros_rmw::Rmw;
-
         // Phase 249 P4b.1 — every linked backend self-registered via
         // its `.init_array` ctor before `main` (RFC-0042 §D3.3); no
         // runtime section walk.
 
-        let config = nros_rmw::RmwConfig {
-            locator,
-            mode,
-            domain_id,
-            node_name,
-            namespace: "",
-            properties: &[],
-        };
+        // RFC-0109 D8 — the image's baked session properties, as
+        // `Executor::open` hands them (`nros_node::with_session_properties`).
+        nros_node::with_session_properties(&[], |properties| {
+            let config = nros_rmw::RmwConfig {
+                locator,
+                mode,
+                domain_id,
+                node_name,
+                namespace: "",
+                properties,
+            };
+            open_with(rmw, &config)
+        })
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    fn open_with(
+        rmw: Option<&str>,
+        config: &nros_rmw::RmwConfig<'_>,
+    ) -> Result<RmwSession, nros_rmw::TransportError> {
+        use nros_rmw::Rmw;
         // Phase 155.B — propagate the real `TransportError` instead of
         // collapsing every backend failure to `ConnectionFailed`. The
         // C-side `rclc_support_init` decodes the variant into a
@@ -1142,9 +1153,9 @@ pub mod internals {
         // about two. The environment still wins; it wins in `ExecutorConfig`,
         // where every other field's precedence is decided, instead of here.
         if let Some(name) = rmw {
-            return nros_rmw_cffi::CffiRmw::open_with_rmw(name, &config);
+            return nros_rmw_cffi::CffiRmw::open_with_rmw(name, config);
         }
-        nros_rmw_cffi::CffiRmw.open(&config)
+        nros_rmw_cffi::CffiRmw.open(config)
     }
 
     /// Drive middleware I/O for pull-based backends.
@@ -1343,6 +1354,8 @@ pub use nros_platform::DispatchStrategy;
 /// `nros::node!()`; the macro routes through here automatically.
 #[doc(hidden)]
 pub mod __macro_support {
+    /// RFC-0109 D8 — the baked `rmw/zenoh.json5` session-property table.
+    pub use ::nros_node::{SessionProperty, set_session_properties};
     pub use ::nros_platform;
 
     /// phase-314 — whether THIS `nros` build carries the parameter services.
