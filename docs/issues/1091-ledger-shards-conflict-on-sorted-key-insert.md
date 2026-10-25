@@ -5,10 +5,10 @@ title: "The api-parity ledger is the largest PR-conflict cluster left: 17 sorted
 status: open
 type: tech-debt
 area: tooling, docs
-related: [0883, 0884, 1071, 1072, phase-396, phase-395]
+related: [0883, 0884, 1071, 1072, phase-396, phase-395, phase-516]
 ---
 
-**Home: none** — stands on its own since 2026-10-24, when [phase-395](../roadmap/archived/phase-395-dev-workflow-migration.md) was archived with every remaining wave either landed or deliberately not shipped. Before that, re-homed 2026-10-12 from phase-396, which is archived.
+**Home: [phase-516](../roadmap/phase-516-low-severity-issues-with-no-home.md) W2** since 2026-10-25. Before that, it stood on its own from 2026-10-24, when [phase-395](../roadmap/archived/phase-395-dev-workflow-migration.md) was archived with every remaining wave either landed or deliberately not shipped. Before that, re-homed 2026-10-12 from phase-396, which is archived.
 
 ## The measurement
 
