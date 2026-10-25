@@ -292,6 +292,40 @@ contract.
 the image; a test asserts the printed command for one cargo, one west and one
 cmake board.
 
+**Done (2026-10-25)** — `nros build --board <b>` (`cmd::build_next`): an image
+matches when its authored board equals `<b>` (any case), both resolve to one
+descriptor, or `<b>` is the index key its descriptor provisions through (W3's
+`setup_key`). One match is planned exactly as `nros build <image>`; several or
+none is refused naming the qualified ids (and each image's board); with image
+arguments or `--all` it is refused. After a successful build (not `--dry-run`,
+not `--check`) each image prints its artifact and next command from ONE
+function, `build_next::next_steps(plan, descriptor, qemu)`, which runs nothing.
+The artifact location is a plan fact (`ResolvedBuild::output`), recorded where
+the handoff is assembled: cargo's target dir (the caller's `--target-dir` /
+`CARGO_TARGET_DIR` when named), triple, profile and the manifest's one bin;
+cmake's `-B` dir plus the generated entry (or a leaf's own
+`nano_ros_add_executable` name); west's `-d`. Per class: host boards print the
+binary; a descriptor `runner` (mps2-an385, its FreeRTOS twin, mps3-an536) is
+printed with QEMU from the ladder; NuttX (arm `virt`, rv-virt) and ThreadX
+riscv64 print the test harness's QEMU line; west prints `-t run` / `west flash`
+from what the build's own `build.ninja` (`run_<emu>`) and `runners.yaml`
+(`flash-runner`) say; FVP prints `-t run` plus the configure-time model note;
+anything else (S32Z270) names its book chapter. QEMU comes from
+`orchestration::qemu_bin` — the CLI twin of `nros_qemu_bin` /
+`nros_tests::qemu::qemu_system_path`, without the `$PATH` rung — also exposed
+as `nros locate tool qemu-system-<arch>`; with nothing provisioned the printed
+command asks `nros locate` at paste time and a note says to run
+`nros setup --tool qemu`. Tests: `build_next` unit tests (one cargo, west, FVP,
+cmake host + cross, NuttX/ThreadX/S32Z270, `--board` one/many/none, a leaf) and
+three plan-level tests in `build_verb_pipeline.rs`.
+
+**Left:** no printed command has been pasted on every tier-1/2 board yet (the
+done-when's "runs the image" half is verified only for the shapes the tests
+pin); the three QEMU invocations derived for NuttX/ThreadX riscv64 restate the
+harness rather than share code with it (the harness is a test crate); the
+`nros-tests` QEMU ladder and this one are two Rust spellings of one ladder;
+no `-v` flag exists to document.
+
 ### W7 — one build flow per language in the book (M)
 
 * **Zephyr:** `nros build` is primary everywhere; `nros new entry` is the
