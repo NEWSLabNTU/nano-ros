@@ -214,6 +214,7 @@ template <typename S> class PollClient;
 template <typename S> class ClientHandle;
 
 class Node;
+class Context;
 
 /// Issue 2015 — upstream's node-interface slices, as HANDLES ON THE ONE NODE.
 ///
@@ -223,8 +224,8 @@ class Node;
 /// and each `get_node_*_interface()` returns a non-owning handle naming it,
 /// whose only use is to be passed to those factories. That keeps the stock
 /// call `rclcpp_action::create_server<A>(this->get_node_base_interface(), ...)`
-/// compiling as written. The handle has no members of upstream's interface;
-/// calling one is a compile error.
+/// compiling as written. Of upstream's interface members the handle has only
+/// `get_context()` (phase-488); calling any other is a compile error.
 namespace node_interfaces {
 
 /// One slice's handle; `Tag` only keeps the five spellings distinct types.
@@ -237,6 +238,13 @@ template <int Tag> class NodeInterfaceHandle {
     /// The node this handle names (null for a default-constructed one).
     Node* node() const { return node_; }
     explicit operator bool() const { return node_ != nullptr; }
+    /// `->` reaches the handle itself, so `get_node_base_interface()->...`
+    /// spells as upstream's does (phase-488).
+    const NodeInterfaceHandle* operator->() const { return this; }
+    /// `NodeBaseInterface::get_context()` (phase-488; Nav2's lifecycle node
+    /// registers its pre-shutdown hook through it): the context of the
+    /// executor the node was created on. Defined in `rclcpp.hpp`.
+    inline Context get_context() const;
 
   private:
     Node* node_;
@@ -1029,6 +1037,11 @@ class Node {
     using SharedPtr = ::rclcpp::Handle<Node>;
     /// `rclcpp::Node::ConstSharedPtr`.
     using ConstSharedPtr = ::rclcpp::Handle<const Node>;
+    /// `Node::WeakPtr` (phase-488) — the same non-owning handle; `lock()` hands
+    /// it back. See `rclcpp::Handle::lock` for what it cannot detect.
+    using WeakPtr = ::rclcpp::Handle<Node>;
+    /// Const spelling of `WeakPtr`.
+    using ConstWeakPtr = ::rclcpp::Handle<const Node>;
 
     /// `rclcpp::Node::shared_from_this()`.
     ///

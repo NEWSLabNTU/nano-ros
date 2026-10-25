@@ -49,6 +49,38 @@ pub unsafe extern "C" fn nros_cpp_register_lifecycle_services(
     }
 }
 
+/// Register the five REP-2002 lifecycle services under `node`'s own name.
+///
+/// phase-488 node 2 — what `rclcpp_lifecycle::LifecycleNode` calls once it is
+/// bound to its node. [`nros_cpp_register_lifecycle_services`] names the
+/// services after the EXECUTOR's identity, which for the process executor a
+/// hosted node is created on is the default `node`: `ros2 lifecycle get
+/// /<name>` then answered "Node not found".
+///
+/// # Safety
+/// `node` must be a live `nros_cpp_node_t*` whose executor is a valid
+/// `CppContext*`.
+#[cfg(all(feature = "lifecycle-services", feature = "rmw-cffi"))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_register_lifecycle_services_for_node(
+    node: *const crate::nros_cpp_node_t,
+) -> nros_cpp_ret_t {
+    if node.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let node = unsafe { &*node };
+    let Some(mut ctx) = (unsafe { cpp_ctx_checked(node.executor) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(id) = crate::node_id_opt(node) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    match ctx.executor.register_lifecycle_services_on(id) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 /// Trigger a lifecycle transition on the C++ executor's state machine.
 ///
 /// `transition_id` is a `lifecycle_msgs/msg/Transition` id — the SAME numbering

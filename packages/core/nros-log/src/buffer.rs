@@ -68,9 +68,21 @@ impl Write for FormatBuffer {
                 // exposes capacity / len; shrink without splitting a
                 // multi-byte UTF-8 boundary.
                 let target_len = CAPACITY.saturating_sub(3);
-                let bytes = self.inner.as_bytes();
-                let mut trunc_at = bytes.len().min(target_len);
-                while trunc_at > 0 && (bytes[trunc_at - 1] & 0b1100_0000) == 0b1000_0000 {
+                // Keep as much of THIS write as fits before the ellipsis
+                // (phase-488). It used to be dropped whole, so a message whose
+                // long argument came second logged as its first few bytes:
+                // `"{} {}"` with a long string printed `6…`.
+                let room = target_len.saturating_sub(self.inner.len());
+                let mut cut = s.len().min(room);
+                while cut > 0 && !s.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                let _ = self.inner.push_str(&s[..cut]);
+                // `is_char_boundary`, not a test of the byte BEFORE the cut:
+                // that one stopped on a lead byte and split the character
+                // (heapless's `truncate` panics on it).
+                let mut trunc_at = self.inner.len().min(target_len);
+                while trunc_at > 0 && !self.inner.as_str().is_char_boundary(trunc_at) {
                     trunc_at -= 1;
                 }
                 self.inner.truncate(trunc_at);
@@ -100,6 +112,34 @@ mod tests {
         let pad = "x".repeat(CAPACITY * 2);
         write!(b, "{}", pad).unwrap();
         assert!(b.truncated());
+        assert!(b.as_str().ends_with('\u{2026}'));
+        assert!(b.as_str().len() <= CAPACITY);
+    }
+
+    /// phase-488 — an overflowing write keeps the part that fits. Before,
+    /// the whole write was dropped, so this logged `6…`.
+    #[test]
+    fn an_overflowing_write_keeps_what_fits() {
+        let mut b = FormatBuffer::new();
+        let pad = "y".repeat(CAPACITY * 2);
+        write!(b, "{} {}", 6, pad).unwrap();
+        assert!(b.truncated());
+        assert!(b.as_str().starts_with("6 yyy"), "got {:?}", b.as_str());
+        assert!(b.as_str().ends_with('\u{2026}'));
+        assert!(b.as_str().len() <= CAPACITY);
+        assert!(
+            b.as_str().len() >= CAPACITY - 3,
+            "fills the buffer: {}",
+            b.as_str().len()
+        );
+    }
+
+    /// A multi-byte character that does not fit is not split.
+    #[test]
+    fn an_overflowing_write_does_not_split_a_character() {
+        let mut b = FormatBuffer::new();
+        let pad = "\u{00e9}".repeat(CAPACITY);
+        write!(b, "x{}", pad).unwrap();
         assert!(b.as_str().ends_with('\u{2026}'));
         assert!(b.as_str().len() <= CAPACITY);
     }

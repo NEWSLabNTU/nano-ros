@@ -12,9 +12,9 @@
 #
 # Regenerate after a DELIBERATE surface move (bump the constant first):
 #     python3 scripts/check-codegen-version-surface.py --write-baseline
-version 18
+version 19
 9a40c1a1fadbae06 cpp|fn|rclcpp/detail/component.hpp|bind_subscription_sized
-4e2616f1497bc854 cpp|struct|rclcpp/fixed_sequence.hpp|FixedSequence
+b6d43fd88d42eb91 cpp|struct|rclcpp/fixed_sequence.hpp|FixedSequence
 05b2ecfd67796b30 cpp|struct|rclcpp/fixed_string.hpp|FixedString
 c2bd21803d713aa0 cpp|struct|rclcpp/heap_sequence.hpp|HeapSequence
 4ce650fb152a9df1 cpp|struct|rclcpp/heap_string.hpp|HeapString

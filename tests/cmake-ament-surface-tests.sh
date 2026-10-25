@@ -231,6 +231,11 @@ expect "7. a declared (empty) NROS_FEATURES wins" "default=[]" \
 set(NROS_FEATURES "")')"
 expect "7. an embedded platform gets nothing" "default=[]" \
     "$(mk_caps rtos "$ament_xml" 'set(NROS_PLATFORM freertos)')"
+lc_xml='<package><buildtool_depend>ament_cmake</buildtool_depend><depend>rclcpp_lifecycle</depend></package>'
+expect "7. a package depending on rclcpp_lifecycle also gets lifecycle" \
+    "default=[param_services;lifecycle]" "$(mk_caps lifecycle "$lc_xml" 'set(NROS_PLATFORM posix)')"
+expect "7. ...not one that does not" "default=[param_services]" \
+    "$(mk_caps nolc '<package><buildtool_depend>ament_cmake</buildtool_depend><depend>rclcpp</depend></package>' 'set(NROS_PLATFORM posix)')"
 expect "7. a project that is not an ament package gets nothing" "default=[]" \
     "$(mk_caps plain '<package><buildtool_depend>catkin</buildtool_depend></package>' 'set(NROS_PLATFORM posix)')"
 

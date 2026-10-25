@@ -66,7 +66,90 @@
   "cpp:Context": {
     "verdict": "divergence",
     "bucket": "theirs-only",
-    "why": "rclcpp lets several contexts coexist so one process can host independent ROS graphs, and every entity holds a `Context::SharedPtr`. An image is ONE graph and has no allocator for a context registry, so `nros::init()` initialises the single global one and nothing carries a context pointer. The accessors (`get_rcl_context`, `get_sub_context`, `get_init_options`) exist to reach into that per-context state."
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/rclcpp.hpp",
+      "text": "the executor's fixed table (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2): a"
+    },
+    "why": "phase-488 (2026-10-25), measured on Nav2's `nav2_util::LifecycleNode`, which registers its pre-shutdown hook through `get_node_base_interface()->get_context()`. OVERRIDDEN, absent -> adopt-bounded. `rclcpp::Context` is now a VIEW of one executor's lifetime: `SharedPtr` is the view itself and `->` reaches it; `add_pre_shutdown_callback` / `add_on_shutdown_callback` (C callbacks everywhere, `std::function` on the std surface, held on the heap until removed), their `remove_*`, `is_valid()`, and `rclcpp::contexts::get_global_default_context()`. One layout (an executor pointer) in every arm. THE BOUND: one context per executor, no `get_rcl_context` / init options, and the hooks share the executor's fixed table, so a full one answers an INVALID handle where upstream would allocate. Previous text: rclcpp lets several contexts coexist so one process can host independent ROS graphs, and every entity holds a `Context::SharedPtr`. An image is ONE graph and has no allocator for a context registry, so `nros::init()` initialises the single global one and nothing carries a context pointer. The accessors (`get_rcl_context`, `get_sub_context`, `get_init_options`) exist to reach into that per-context state."
+  },
+  "cpp:Context::add_on_shutdown_callback": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/rclcpp.hpp",
+      "text": "the executor's fixed table (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2): a"
+    },
+    "why": "phase-488. Upstream's `std::function<void()>` form, on the std surface, returning the handle; plus a freestanding C-callback form with a context pointer and an out-handle (the extra arity). Both share the executor's fixed shutdown-callback table (see `cpp:Context`)."
+  },
+  "cpp:Context::add_pre_shutdown_callback": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "envelope": {
+      "file": "packages/api/nros-cpp/include/rclcpp/rclcpp.hpp",
+      "text": "the executor's fixed table (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2): a"
+    },
+    "why": "phase-488. Upstream's `std::function<void()>` form, on the std surface, returning the handle; plus a freestanding C-callback form with a context pointer and an out-handle (the extra arity). Both share the executor's fixed shutdown-callback table (see `cpp:Context`)."
+  },
+  "cpp:Context::get_domain_id": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). The domain is a boot fact of the executor (`NROS_DOMAIN_ID`), not of a context."
+  },
+  "cpp:Context::get_init_options": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). There are no runtime init options; the executor is configured at build/boot."
+  },
+  "cpp:Context::get_on_shutdown_callbacks": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). The hooks live in the executor's fixed table, which offers no listing."
+  },
+  "cpp:Context::get_pre_shutdown_callbacks": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). The hooks live in the executor's fixed table, which offers no listing."
+  },
+  "cpp:Context::get_rcl_context": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). There is no rcl."
+  },
+  "cpp:Context::get_sub_context": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). There is no per-context state to reach."
+  },
+  "cpp:Context::init": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). `rclcpp::init` initialises the one executor; a context is not initialised separately."
+  },
+  "cpp:Context::make_shared": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). `SharedPtr` is the view itself, so there is nothing to allocate."
+  },
+  "cpp:Context::make_unique": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). `SharedPtr` is the view itself, so there is nothing to allocate."
+  },
+  "cpp:Context::on_shutdown": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). Upstream deprecated it for `add_on_shutdown_callback`, which exists."
+  },
+  "cpp:Context::shutdown": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). `rclcpp::shutdown()` shuts the executor down; a context has no separate shutdown."
+  },
+  "cpp:Context::shutdown_reason": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). `rclcpp::shutdown()` takes no reason here."
   },
   "cpp:ContextAlreadyInitialized": {
     "verdict": "declined",

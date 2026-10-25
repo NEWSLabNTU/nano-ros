@@ -69,10 +69,23 @@ inline ClockValuePtr timer_clock(void* executor, size_t handle_id) {
 class TimerOps {
   public:
     /// Stop the timer firing. It stays registered; `reset()` restarts it.
-    Result cancel() { return Result(nros_cpp_timer_cancel(executor_, handle_id_)); }
+    /// On the std surface the result may be ignored (`detail::StatementResult`).
+#if defined(NROS_CPP_STD) // hosted-family: ported-publish
+    ::rclcpp::detail::StatementResult cancel() {
+#else
+    Result cancel() {
+#endif
+        return Result(nros_cpp_timer_cancel(executor_, handle_id_));
+    }
 
     /// Restart the timer from zero elapsed time; un-cancels a cancelled one.
-    Result reset() { return Result(nros_cpp_timer_reset(executor_, handle_id_)); }
+#if defined(NROS_CPP_STD) // hosted-family: ported-publish
+    ::rclcpp::detail::StatementResult reset() {
+#else
+    Result reset() {
+#endif
+        return Result(nros_cpp_timer_reset(executor_, handle_id_));
+    }
 
     /// Whether the timer is cancelled. A released or empty handle answers true:
     /// nothing will fire it.
@@ -228,15 +241,24 @@ class Timer {
     using UniquePtr = ::rclcpp::TimerHandle;
 
     /// Cancel the timer. It stops firing but remains in the executor.
-    /// Use `reset()` to restart it.
+    /// Use `reset()` to restart it. On the std surface the result may be
+    /// ignored (`detail::StatementResult`).
+#if defined(NROS_CPP_STD) // hosted-family: ported-publish
+    ::rclcpp::detail::StatementResult cancel() {
+#else
     Result cancel() {
+#endif
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_timer_cancel(executor_, handle_id_));
     }
 
     /// Reset the timer (restart from zero elapsed time).
     /// If cancelled, this also un-cancels it.
+#if defined(NROS_CPP_STD) // hosted-family: ported-publish
+    ::rclcpp::detail::StatementResult reset() {
+#else
     Result reset() {
+#endif
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_timer_reset(executor_, handle_id_));
     }

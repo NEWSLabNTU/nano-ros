@@ -5,10 +5,13 @@ projects. W2 and W3 done for node 1 (`autoware_external_cmd_selector`): it
 builds with no source edit and runs against a stock ROS 2 peer, with its pool
 sizes still raised by hand (issue 2043). Node 3 (ros2/demos `composition`) done
 the same way: one source edit (issue 2055) and two out-of-scope targets
-dropped. W4 updated for nodes 1 and 3. Node 2 (Nav2) configures, its
-messages compile, and its parameter half compiles unchanged on the hosted
-parameter API built for it (issue 2056, resolved). Its remaining errors are
-the non-parameter findings listed under node 2.** Rescoped 2026-10-24. The ported code is the
+dropped. Node 2 (Nav2 `nav2_velocity_smoother` + `nav2_util`) done: it
+builds and runs against a stock ROS 2 peer, through its lifecycle, its
+parameters (a vector on-set callback refusing a remote set) and its
+`cmd_vel` -> `cmd_vel_smoothed` path, with 9 logged porter edits, each
+classified. W4 updated for all three nodes. Every logged edit is fixed with an
+in-tree test, stated in RFC-0096 D5, or an issue naming this phase (2043,
+2055, 2057). Zephyr and FreeRTOS were not attempted.** Rescoped 2026-10-24. The ported code is the
 user's work and is not committed here. What this phase lands is what the ports
 expose: nros-cpp, codegen and build fixes, issues, and porting-guide changes.
 The original W2 ("add it as a port template") and W3 (runtime cells for it)
@@ -235,7 +238,7 @@ without a `param_services` runtime) plus a link of the generated component
 main. Also `a_capturing_raw_service_destroys_and_releases_its_capture` in
 nros-node.
 
-### W2/W3 progress — node 2, Nav2 `nav2_velocity_smoother` @jazzy (2026-10-25, in progress)
+### W2/W3 progress — node 2, Nav2 `nav2_velocity_smoother` @jazzy (2026-10-25)
 
 The smoother, `nav2_util`, `nav2_common` and `nav2_msgs` were copied verbatim
 into a scratch workspace. `nav2_util` is a dependency LIBRARY, so a porter
@@ -279,13 +282,56 @@ replaced, because there is no listing of overrides (issue 2057).
 | `NodeParametersInterface::get_parameter_overrides()` (`nav2_util::declare_or_get_parameter`) | issue 2057; a stated edit until then |
 | `declare_parameter<std::vector<bool>>` did not compile (`std::vector<bool>` has no `data()`) | fixed with issue 2056 |
 | `rclcpp::exceptions::*` (`nav2_util::declare_parameter_if_not_declared`) | refused by design (RFC-0018); a stated edit |
-| still to classify, measured on issue 2056's build: `Clock::SharedPtr`; `Node::WeakPtr` / `LifecycleNode::WeakPtr`; `NodeOptions::arguments({...})` (refused by design, phase-417 W3.f); `FixedSequence::resize` on a generated descriptor range; `static_pointer_cast` of a non-owning `Node::SharedPtr`; `[[nodiscard]]` on `timer_->cancel()` under `-Werror`; `rclcpp::Context`; `LifecyclePublisher::get_subscription_count` and `publish(std::unique_ptr)`; `rclcpp::spin(get_node_base_interface())`; `builtin_interfaces::msg::Time + rclcpp::Duration`, `msg::Time = rclcpp::Time`; `Twist == Twist`; `SystemDefaultsQoS` (refused by design, issue 0829); an unbounded `frame_id` in a subscribed `TwistStamped`; a missing `<cstring>` | W3 continues |
+| `Node::WeakPtr` / `LifecycleNode::WeakPtr` + `lock()` (`OdomSmoother`) | fixed: the non-owning handle, with `lock()` / `expired()` |
+| `rclcpp::Clock::SharedPtr clock_` | fixed: `Clock*`, what `get_clock()` returns |
+| `descriptor.floating_point_range.resize(1)` on a generated bounded sequence | fixed: `FixedSequence::resize`, refused past the bound |
+| `timer_->cancel();` as a statement under `-Werror` | fixed: ignorable on the std surface, as `publish()` is |
+| `rclcpp::Context` / `get_node_base_interface()->get_context()` / `add_pre_shutdown_callback(std::function)` (`nav2_util::LifecycleNode`) | fixed: a view of the executor's shutdown hooks (issue 0790), plus `contexts::get_global_default_context()` |
+| `LifecyclePublisher::publish(std::unique_ptr)`; `rclcpp::spin(get_node_base_interface())` | fixed |
+| `msg.header.stamp = now()`, `stamp + rclcpp::Duration` | fixed: conversion and free `+` / `-` over any `{sec, nanosec}` message |
+| `last_cmd_.twist == geometry_msgs::msg::Twist()` | fixed: codegen emits rosidl's field-wise `operator==` for messages |
+| `rclcpp_lifecycle::LifecycleNode::shared_from_this()` returned a plain `Node` handle | fixed: its own type, as upstream's |
+| the image did not LINK (`nros_cpp_lifecycle_*` undefined): an ament package's default runtime had no `lifecycle` | fixed: a package that depends on `rclcpp_lifecycle` gets `lifecycle` with `param_services` |
+| run: the lifecycle services were served as `/node/change_state` beside a phantom `/node`, so `ros2 lifecycle get /velocity_smoother` answered "Node not found" | fixed: `Executor::register_lifecycle_services_on(node)`, which the C++ lifecycle node calls; served under its own name |
+| run: 6 `/parameter_events` were dropped while `on_configure` declared ~20 parameters | fixed: the C++ shim flushes after every parameter call, as the C API does; the change log only had to cover one spin |
+| run: that error logged as `6…` | fixed: an overflowing log write keeps what fits (it was dropped whole), and the truncation no longer splits a UTF-8 character (a latent panic) |
+| `std::static_pointer_cast<nav2_util::LifecycleNode>(shared_from_this())` | stated edit (RFC-0096 D5 item 6) |
+| `rclcpp::exceptions::ParameterUninitializedException` caught (`node_utils.hpp`) | stated edit (D5 item 7) |
+| `NodeOptions().arguments({...})` chain (`generate_internal_node`), and its `make_shared` into a non-owning `Node::SharedPtr` | stated edits (D5 items 8 and 5) |
+| `rclcpp::SystemDefaultsQoS()` (`odometry_utils.cpp`, `service_client.hpp`) | stated edit (D5 item 9) |
+| `get_subscription_count()` with no arguments (`TwistPublisher`, used only by Nav2's tests) | stated edit (D5 item 10); the porter dropped the wrapper |
+| subscriptions to `nav_msgs/Odometry` and `TwistStamped`, whose `frame_id`s are unbounded | project file (D5 item 11): `nros-codegen.toml` bounds `std_msgs/Header.frame_id` and `nav_msgs/Odometry.child_frame_id` |
+| `std::strerror` without `<cstring>` (`node_utils.cpp`; upstream reaches it transitively) | porter edit, one include |
 
-In-tree tests: case 10 of `tests/cmake-ament-surface-tests.sh`, which fails
-11 of 11 against the CMake before the change; the empty-message serializer
-test in `rosidl-codegen/tests/edge_case_test.rs`, which fails without the
-template change; and the `Time` and header checks in
-`ament_port_surface_runtime.cpp`.
+**Run**, posix, against ROS 2 Humble `rmw_zenoh_cpp`:
+
+- `ros2 lifecycle` shows the node `unconfigured [1]`, then `configure` and
+  `activate` succeed and it reads `active [3]`;
+- `ros2 param get max_velocity` answers `[0.5, 0.0, 2.5]`;
+- `ros2 param set max_velocity "[-1.0, 0.0, 1.0]"` fails with "Rejected by
+  an on-set-parameters callback", the smoother's own `dynamicParametersCallback`
+  logging "Negative values set of max_velocity!";
+- `[0.4, 0.0, 2.0]` is accepted and read back;
+- `/cmd_vel` at `linear.x = 1.0` comes out of `/cmd_vel_smoothed`
+  acceleration-limited (`0.125`).
+
+In-tree tests:
+
+- case 10 of `tests/cmake-ament-surface-tests.sh`, which fails 11 of 11
+  against the CMake before the change;
+- case 7's `rclcpp_lifecycle` default, and the empty-message serializer test
+  in `rosidl-codegen/tests/edge_case_test.rs`;
+- `ament_port_surface_runtime.cpp` case 8: `WeakPtr`, `Clock::SharedPtr`,
+  timer statements, `resize`, `Time` conversions, `spin_some(base)`, and a
+  pre-shutdown hook that runs once on `rclcpp::shutdown()`;
+- `message_equality_runtime.cpp` over the committed `Shapes.hpp` golden
+  (negative control: the `FixedString` overload forced true, 2 failures);
+- `parameter_value_runtime.cpp` (issue 2056), and `parameter_events_runtime.cpp`'s
+  12-declare burst (negative control: the shim's flush made a no-op);
+- nros-node's `lifecycle_services_on_a_created_node_are_named_after_it`, now in
+  `node-std-tests` with `lifecycle-services` (negative control: the executor's
+  identity instead, giving `//transition_event`);
+- nros-log's two truncation tests.
 
 ### W2/W3 progress — node 3, ros2/demos `composition` @jazzy (2026-10-25)
 

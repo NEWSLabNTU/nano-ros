@@ -61,6 +61,15 @@ namespace rclcpp {
 /// read as per-clock state.
 class Clock {
   public:
+    /// `Clock::SharedPtr` (phase-488) — what `Node::get_clock()` returns: a
+    /// pointer to the clock the node holds, valid as long as the node is.
+    /// Ported code stores it (`rclcpp::Clock::SharedPtr clock_ = get_clock();`)
+    /// and calls through it; a clock it would `std::make_shared` itself is a
+    /// value here (`rclcpp::Clock clock(RCL_STEADY_TIME)`).
+    using SharedPtr = Clock*;
+    /// Const spelling of `SharedPtr`.
+    using ConstSharedPtr = const Clock*;
+
     /// Construct a clock of the given type.
     ///
     /// Defaults to `RCL_SYSTEM_TIME`, matching

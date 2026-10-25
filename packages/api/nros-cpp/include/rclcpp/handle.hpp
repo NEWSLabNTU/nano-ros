@@ -96,6 +96,14 @@ template <typename T> class Handle {
     /// leaves the object running rather than pretending otherwise.
     void reset() { p_ = nullptr; }
 
+    /// Upstream `WeakPtr::lock()` (phase-488): the same handle. A handle owns
+    /// nothing, so a `WeakPtr` (`Node::WeakPtr`) is this type too, and `lock()`
+    /// cannot tell a destroyed object from a live one: it answers null only for
+    /// a handle that was never set or was `reset()`.
+    constexpr Handle lock() const { return *this; }
+    /// Upstream `WeakPtr::expired()`: true only for a null handle (see `lock`).
+    constexpr bool expired() const { return p_ == nullptr; }
+
   private:
     T* p_;
 };

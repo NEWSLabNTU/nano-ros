@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 18;
+pub const NROS_CODEGEN_VERSION: u32 = 19;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -245,6 +245,12 @@ pub const NROS_CODEGEN_VERSION: u32 = 18;
 /// `rclcpp_action/` and `rclcpp_lifecycle/`, again with no forwarding headers.
 /// A version-17 C++ tree includes `<nros/heap_string.hpp>`, which this runtime
 /// no longer ships, so it is refused by version rather than failing to compile.
+///
+/// 19 (phase-488), MIN unchanged: a generated C++ message has rosidl's
+/// `operator==`, through the new `<rclcpp/detail/message_equality.hpp>`, and
+/// `rclcpp::FixedSequence` gained `resize`. A version-18 tree still compiles
+/// against this runtime, since nothing it names moved; a version-19 tree
+/// includes a header an 18 runtime does not ship, which is what the bump says.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

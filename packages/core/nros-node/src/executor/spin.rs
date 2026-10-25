@@ -13860,6 +13860,32 @@ impl<'s> Executor<'s> {
     /// The caller must keep the callback code and any context it captures
     /// valid for as long as the executor processes services.
     pub fn register_lifecycle_services(&mut self) -> Result<(), NodeError> {
+        let ns = self.namespace.clone();
+        let nn = self.node_name.clone();
+        self.register_lifecycle_services_named(&ns, &nn)
+    }
+
+    /// [`register_lifecycle_services`](Self::register_lifecycle_services),
+    /// named after `node` rather than the executor's own identity.
+    ///
+    /// phase-488 node 2 (Nav2): a hosted C++ `rclcpp_lifecycle::LifecycleNode`
+    /// is a node CREATED on the process executor, whose own identity is the
+    /// default `node`. Registering through the executor served
+    /// `/node/change_state` beside a phantom `/node`, and `ros2 lifecycle get
+    /// /velocity_smoother` answered "Node not found". Parameter services were
+    /// already per node (the reconcile); this is the same for lifecycle.
+    pub fn register_lifecycle_services_on(
+        &mut self,
+        node: super::node_record::NodeId,
+    ) -> Result<(), NodeError> {
+        let (ns, nn) = {
+            let r = self.node(node).ok_or(NodeError::NotInitialized)?;
+            (r.namespace.clone(), r.name.clone())
+        };
+        self.register_lifecycle_services_named(&ns, &nn)
+    }
+
+    fn register_lifecycle_services_named(&mut self, ns: &str, nn: &str) -> Result<(), NodeError> {
         use crate::{
             lifecycle::LifecyclePollingNodeCtx,
             lifecycle_services::{
@@ -13878,8 +13904,6 @@ impl<'s> Executor<'s> {
         // Build the node FQN from namespace + node_name (same convention as
         // register_parameter_services).
         let mut node_fqn = heapless::String::<256>::new();
-        let ns: &str = &self.namespace;
-        let nn: &str = &self.node_name;
         if ns.is_empty() || ns == "/" {
             node_fqn.push_str("/").map_err(|_| NodeError::NameTooLong)?;
             node_fqn.push_str(nn).map_err(|_| NodeError::NameTooLong)?;
@@ -14947,7 +14971,7 @@ impl<'s> Executor<'s> {
     #[cfg(feature = "param-services")]
     /// phase-491 W3 — publish every pending parameter change, one
     /// `ParameterEvent` each, oldest first. Runs after each spin's parameter
-    /// services and after every C parameter call; nothing allocates.
+    /// services and after every C or C++ parameter call; nothing allocates.
     pub fn flush_parameter_events(&mut self) {
         let stamp_ns = self
             .epoch_us_fn

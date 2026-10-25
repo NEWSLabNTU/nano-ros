@@ -467,7 +467,7 @@
     "why": "issue 2015 (2026-10-24) -- see the node stage's `cpp:Node::get_node_base_interface`: a non-owning handle naming the node, for `rclcpp_action::create_server` / `create_client`; no clock interface behind it -- the clock is `get_clock()`.",
     "envelope": {
       "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
-      "text": "The handle has no members of upstream's interface;"
+      "text": "Of upstream's interface members the handle has only"
     }
   },
   "cpp:Node::get_node_time_source_interface": {
@@ -1540,12 +1540,9 @@
     "why": "converts an `rcl_time_point_value_t` into a `builtin_interfaces/Time` message; rcl time points are not part of our C++ surface (our `Time` carries nanoseconds directly)."
   },
   "cpp:operator-": {
-    "verdict": "declined",
-    "disposition": "absent",
-    "editions": [
-      "jazzy"
-    ],
-    "why": "`builtin_interfaces::msg::Time - rclcpp::Duration`, an operator on a GENERATED message struct. Our time arithmetic lives on `rclcpp::Time`/`Duration`; codegen emits plain message PODs with no operators."
+    "verdict": "divergence",
+    "disposition": "adopt",
+    "why": "phase-488 (Nav2's velocity smoother writes `stamp + delta`). OVERRIDDEN, declined/absent -> divergence/adopt. `builtin_interfaces::msg::Time - rclcpp::Duration` (and `+`), upstream's free operators, as templates over any `{sec, nanosec}` message, because the message is generated in the user's build; found by argument-dependent lookup through `Duration`. Same result as upstream's. Humble's extractor surface has no upstream row for it, so it correlates as ours-only there. Previous text: `builtin_interfaces::msg::Time - rclcpp::Duration`, an operator on a GENERATED message struct. Our time arithmetic lives on `rclcpp::Time`/`Duration`; codegen emits plain message PODs with no operators."
   },
   "c:timer_callback_with_info_t": {
     "verdict": "divergence",

@@ -85,6 +85,13 @@ FAMILY = {
         "(issue 2037), over a `std::promise` and a heap shared state. Freestanding "
         "refuses `share()`",
     ),
+    "shutdown-interop": (
+        {"NROS_CPP_STD"},
+        "`rclcpp::Context::add_pre_shutdown_callback` / `add_on_shutdown_callback` "
+        "taking a `std::function<void()>` (phase-488, Nav2's lifecycle node), held "
+        "on the heap until removed. The context is one executor pointer in every "
+        "arm, and the C-callback forms are freestanding",
+    ),
     "chrono-interop": (
         {"NROS_CPP_HAS_STD_CHRONO"},
         "`std::chrono::duration` overloads that convert to `nros::Duration` and "
@@ -131,8 +138,9 @@ FAMILY = {
         "`publish()` on the porting surface returns a result that may be "
         "ignored, and logs a failure (phase-488): ported code calls it as a "
         "statement, under `-Wall -Werror` in Autoware, so `[[nodiscard]]` made "
-        "every publish a build error. Code written for nano-ros keeps the "
-        "`[[nodiscard]] Result` (RFC-0018)",
+        "every publish a build error. The same for a call upstream returns `void` "
+        "from (`timer_->cancel()`, `timer_->reset()`, `detail::StatementResult`). "
+        "Code written for nano-ros keeps the `[[nodiscard]] Result` (RFC-0018)",
     ),
 }
 

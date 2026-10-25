@@ -3,6 +3,10 @@
     "Schema: see docs/reference/api-parity-ledger/SCHEMA.md — the one home for what",
     "a row means. Do NOT copy it back here; issue 1095 is what that cost."
   ],
+  "cpp:Context::executor_handle": {
+    "verdict": "extension",
+    "why": "phase-488. The executor this context VIEW names (see `cpp:Context`); null for an empty one."
+  },
   "rust:CPP_CONTEXT_TAG": {
     "verdict": "extension",
     "why": "issue 1535/1787 -- the word nros-cpp stamps at offset 0 of its executor context. It is public only so nros-cpp and nros share one definition: the Rust component-install seam reads it to refuse a C/C++ handle that was not unwrapped with `nros_cpp_executor_inner`. ROS 2 has no equivalent because rclcpp never passes a C++ executor to a Rust callee."
