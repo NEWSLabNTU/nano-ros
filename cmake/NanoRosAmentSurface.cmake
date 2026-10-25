@@ -62,6 +62,7 @@ include("${_nros_ament_find_dir}/_NrosFindRosMsgPackage.cmake")
 # issue 1467 — `nros_link_runtime_umbrella()`: the ONE decision about which
 # runtime umbrella a target links, and whether the consumer wants one.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRuntimeUmbrella.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
 
 # --- Sanity: nros-cpp must be loaded -----------------------------------------
 # Two consumption shapes for `NanoRos::NanoRosCpp`:
@@ -242,7 +243,11 @@ function(ament_auto_find_build_dependencies)
                 message(STATUS
                     "nano-ros: ${PROJECT_NAME} depends on `${_dep}`, which nano-ros "
                     "does not provide; it is not looked up. A source that includes "
-                    "it will fail to compile (phase-488).")
+                    "it will fail to compile.")
+                nros_message_detail(
+                    "nano-ros:   `${_dep}` has no Find module on CMAKE_MODULE_PATH, "
+                    "so the ament surface skips it rather than failing the configure "
+                    "(phase-488).")
                 continue()
             endif()
             find_package(${_dep} MODULE QUIET)
