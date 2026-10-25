@@ -1316,3 +1316,51 @@ and a class whose configuration changed leaves its old tree behind until the
 target dir is cleaned (the CI fixture tree's 7-day reset bounds it). Gate: the
 premise is checked by `check-path-env-fingerprints` (`SHARED_TARGET_PREMISE`),
 because the 1623 exemption rests on it.
+
+### Proposed amendment — the probe census sizes a contract-less image (2026-10-25, phase-517 W5)
+
+**State: PROPOSED, awaiting maintainer acceptance; no code until it is.**
+
+The book's first project — two C++ components, one launch file, no
+`<bringup>/launch/*.contract.yaml` — builds with its executor pool at the
+configured default. After phase-517 W5 the metadata probe runs and writes a
+fresh sidecar per component (`sync: source metadata — 2 rebuilt`), and the
+entity inventory still refuses ("2 of 2 components in this image declare no
+entities"). The sidecars reach the derivation only as a FLOOR under a contract
+(`metadata_refresh::contract_inventory` → `floor_by_recorded`, issue 1694), so
+with no contract every component's declaration stays `Absent`.
+
+The 2026-10-03 ruling above is why this is a proposal: *"Introducing a derived
+size on a road is its own change, with its own runtime evidence."*
+
+**Proposal.** On the model road, when a launched component has NO contract
+row and its probe sidecar is FRESH (`probe_inputs_key`, the rule
+`refresh_stale_sidecars` and issue 1594's join already trust), its
+declaration is the sidecar's counts — `Declaration::Stated`, with provenance
+`probe` rather than `contract` — instead of `Absent`. A stale, missing or
+unreadable sidecar keeps `Absent`, and the refusal it causes today.
+
+**Why the probe is evidence and not a guess.** The probe RUNS the component's
+constructor against the recording backend and counts what it registers; the
+contract floor already treats that count as the code's own statement of what it
+creates (issue 1694). What the probe cannot see is an entity registered LATER
+than construction — a lazily created publisher, a client opened in a callback.
+That is the under-size risk, and it is the same risk the floor carries today
+for a contract that omits such an entity.
+
+**Evidence plan (what acceptance requires before the change lands):**
+
+1. Run every in-tree contract-less model image twice — configured default vs
+   probe-derived counts — and compare `NodeTableFull` / `ExecutorFull` /
+   `BAD_ALLOC` at boot and through its test; any image that fails derived and
+   passes default is a lazily registering component and blocks the change.
+2. Search the components for registration outside construction (`create_*`
+   reached from a callback); each one found gets a contract row, since a probe
+   cannot count it.
+3. The descriptor names the provenance (`basis = "probe"`), so a consumer that
+   wants contract-only facts can still tell them apart.
+
+**Rejected:** shipping a contract file in the `nros new` template. It fixes the
+first project only, and a user who adds a node without editing the contract
+gets the refusal back — the contract becomes boilerplate the probe already
+answers.
