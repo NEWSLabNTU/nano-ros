@@ -105,6 +105,20 @@ book-links:
 book-board-names:
     @python3 scripts/check-book-board-names.py
 
+# phase-517 W2 — a user chapter never assumes a nano-ros checkout. Users
+# install the CLI (`install.sh`); no code block in getting-started/,
+# start-here/, user-guide/, platform-guides/ or porting/ may clone this
+# repository, run `bootstrap.sh`, source `activate.sh`, name `NROS_REPO_DIR`,
+# run `just`, or `cd` into the checkout's `examples/`. Contributor material
+# lives in internals/ — exempt by SECTION, never by a file list — and the
+# parked ESP32 pages (SUMMARY "(…, dormant)") are skipped. The book cloned a
+# tag 663 commits behind main for weeks. Self-test (a planted
+# `git clone …/nano-ros.git` in first-project.md must fail) runs every call.
+# Buildless, ~0.1 s.
+[private]
+book-no-checkout:
+    @python3 scripts/check-book-no-checkout.py
+
 # The book's USER track (getting-started/, user-guide/, start-here/,
 # platform-guides/) teaches no `just` — it is a contributor dependency a user
 # does not have (phase-368 W12). An invocation is allowed only inside an
