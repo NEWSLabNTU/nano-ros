@@ -122,8 +122,10 @@ pub struct Args {
     /// package.xml — RFC-0098 D3; the retired `<nano_ros deploy=…/>` tuple
     /// was the spelling before phase-445 W3b).
     ///
-    /// Prints the plan; it does not install. Same contract as `--system`:
-    /// composing the command is this tool's job, running it is the user's.
+    /// Prints the plan, then installs it (phase-517 W4): every image's board
+    /// and RMW in one store plan, then the OS-package closure — installed with
+    /// `--sudo`, otherwise printed as the command to run. `--check` stops after
+    /// the plan. Plain `nros setup` inside a workspace means `--workspace .`.
     #[arg(long = "workspace", value_name = "PATH", num_args = 0..=1, default_missing_value = ".")]
     pub workspace_scan: Option<PathBuf>,
     /// Narrow `--system` to keys of these roles (repeatable).
@@ -258,6 +260,35 @@ impl Route {
 /// Precedence is the historical one — the arms are unchanged; what is new is
 /// that a selector they would have ignored is an error naming it, never an
 /// exit 0 over work that did not happen.
+/// phase-517 W4 — `nros setup` with no board, no flag naming other work, run
+/// at a workspace root ([`is_workspace_root`]): the
+/// rosdep-shaped front door, `nros setup --workspace .`.
+fn bare_in_workspace(args: &Args) -> bool {
+    args.board.is_none()
+        && !args.list
+        && !args.licenses
+        && !args.system
+        && !args.build_sources
+        && args.tools.is_empty()
+        && args.sources.is_empty()
+        && args.rmw.is_none()
+        && args.prefix.is_none()
+        && args.roles.is_empty()
+        && std::env::current_dir()
+            .map(|d| is_workspace_root(&d))
+            .unwrap_or(false)
+}
+
+/// A colcon-shaped root: a `package.xml` here, or one in a direct child of
+/// `src/`. Shallow on purpose — a deep walk from any directory above a
+/// workspace (a crate directory with test fixtures under it, say) would turn
+/// a bare `nros setup` into a workspace install nobody asked for.
+fn is_workspace_root(dir: &std::path::Path) -> bool {
+    dir.join("package.xml").is_file()
+        || std::fs::read_dir(dir.join("src"))
+            .is_ok_and(|rd| rd.flatten().any(|e| e.path().join("package.xml").is_file()))
+}
+
 fn route(args: &Args) -> Result<Route> {
     // (flag as the user typed it, given?)
     let given: [(&str, bool); 12] = [
@@ -278,7 +309,7 @@ fn route(args: &Args) -> Result<Route> {
         Route::List
     } else if args.licenses {
         Route::Licenses
-    } else if args.workspace_scan.is_some() {
+    } else if args.workspace_scan.is_some() || bare_in_workspace(args) {
         Route::Workspace
     } else if args.system {
         Route::System
@@ -299,7 +330,7 @@ fn route(args: &Args) -> Result<Route> {
     let consumes: &[&str] = match route {
         Route::List => &["--list"],
         Route::Licenses => &["--licenses"],
-        Route::Workspace => &["--workspace"],
+        Route::Workspace => &["--workspace", "--check"],
         Route::System => &["--system", "--check", "--role"],
         Route::BuildSources => &["--build-sources", "--check"],
         Route::CheckTools => &["--check", "--tool"],
@@ -388,7 +419,6 @@ pub fn run(args: Args) -> Result<()> {
 
     let index_path = resolve_index(&args.index)?;
     let index = SdkIndex::load(&index_path)?;
-    let host = host_key();
 
     if route == Route::List {
         print_list(&index);
@@ -398,16 +428,19 @@ pub fn run(args: Args) -> Result<()> {
         print_licenses(&index);
         return Ok(());
     }
-    if let (Route::Workspace, Some(ws)) = (route, args.workspace_scan.clone()) {
-        let root = index_path.parent().map(std::path::Path::to_path_buf);
-        return run_workspace_scan(&index, &ws, root.as_deref());
+    if route == Route::Workspace {
+        let ws = args
+            .workspace_scan
+            .clone()
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        return run_workspace_install(&index, &index_path, &ws, &args);
     }
     // `--sudo` means "execute the install", and there are exactly two things it
     // can install: the `[system.*]` closure (`--system`) or a tool's own
     // `[tool.<name>] system = [..]` build deps (`--tool`). Alone it names no
     // target. Checked here rather than as `requires = "system"` on the arg,
     // which is what made the `--tool` form unreachable (issue 1038).
-    if args.sudo && !args.system && args.tools.is_empty() {
+    if args.sudo && !args.system && args.tools.is_empty() && route != Route::Workspace {
         bail!(
             "`--sudo` executes an install and needs to know WHAT to install.\n               --system --sudo   the `[system.*]` OS-package closure\n               --tool <name> --sudo   that tool's own `[tool.<name>] system = [..]` build deps"
         );
@@ -529,22 +562,57 @@ pub fn run(args: Args) -> Result<()> {
     };
     let board = board.as_str();
 
-    let packages = resolve_packages_with_rmw(&index, board, args.rmw.as_deref())?;
-    eprintln!(
-        "nros setup: {board} (rmw {}) needs {} package(s):",
-        args.rmw.as_deref().unwrap_or("zenoh"),
-        packages.len()
-    );
+    provision_boards(
+        &index,
+        &index_path,
+        &[(board.to_string(), args.rmw.clone())],
+        &args,
+    )
+}
+
+/// Provision one or more boards in ONE session plan: the union of each
+/// `(board, rmw)`'s package set, resolved once, fetched once (phase-517 W4 —
+/// `nros setup` in a workspace installs every image's boards together, the way
+/// `nros setup <board>` installs one).
+fn provision_boards(
+    index: &SdkIndex,
+    index_path: &Path,
+    boards: &[(String, Option<String>)],
+    args: &Args,
+) -> Result<()> {
+    let mut packages: Vec<&str> = Vec::new();
+    for (board, rmw) in boards {
+        let own = resolve_packages_with_rmw(index, board, rmw.as_deref())?;
+        eprintln!(
+            "nros setup: {board} (rmw {}) needs {} package(s):",
+            rmw.as_deref().unwrap_or("zenoh"),
+            own.len()
+        );
+        for p in own {
+            if !packages.contains(&p) {
+                packages.push(p);
+            }
+        }
+    }
+    let board = boards
+        .iter()
+        .map(|(b, _)| b.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let board = board.as_str();
+    let host = host_key();
 
     // phase-447 F1 (issue 1275) — a Zephyr board's real cost is not its
     // `packages` list. `packages = ["zephyr-sdk"]` is a ~1 GB toolchain; the
     // `west update` that `scripts/zephyr/setup.sh` runs on top of it fetches
     // the module set, which used to be 2.5 GB of vendor HALs nothing here
     // targets and which this command could not name, let alone price.
-    report_zephyr_modules(&index, board);
+    for (b, _) in boards {
+        report_zephyr_modules(index, b);
+    }
 
     let root = store_root();
-    let workspace = index_workspace(&index_path);
+    let workspace = index_workspace(index_path);
     let lock_path = project_lock_path();
     let ledger = SessionLedger::from_env();
     let prereqs = index.prereqs();
@@ -556,7 +624,7 @@ pub fn run(args: Args) -> Result<()> {
     // what its tools declare. The loop that used to interleave deciding with
     // downloading is `run_pipelined` now, over this plan (E3).
     let plan = SessionPlan::resolve(
-        &index,
+        index,
         &packages,
         &PlanInputs {
             root: &root,
@@ -564,13 +632,13 @@ pub fn run(args: Args) -> Result<()> {
             prefix_override: None,
             mode: Mode::Board,
         },
-        &mut |k| prereq_state(&index, &prereqs, k, repo_root.as_deref(), offline),
+        &mut |k| prereq_state(index, &prereqs, k, repo_root.as_deref(), offline),
         &ledger.asked(),
     )?;
     // issue 0374 — announce the source builds together, before the first fetch.
     warn_source_builds(&plan.source_builds(), &host);
     announce_system_ask(
-        &index,
+        index,
         &plan.system,
         &ledger,
         &format!(
@@ -599,7 +667,7 @@ pub fn run(args: Args) -> Result<()> {
     // ensured BEFORE `run_pipelined` because a `[source.*]` step inside the
     // pipeline may be a cargo build itself, and because the plan's output is
     // folded in plan order — this line belongs above it, not interleaved.
-    let rust = crate::orchestration::rust_toolchain::ensure(&index, &host, args.dry_run)
+    let rust = crate::orchestration::rust_toolchain::ensure(index, &host, args.dry_run)
         .wrap_err("provision a Rust toolchain (every board's runtime is compiled by cargo)")?;
     eprintln!("  {:<22} {}", "rust", rust.line);
 
@@ -608,7 +676,7 @@ pub fn run(args: Args) -> Result<()> {
     let mut report = run_pipelined(
         &plan,
         &workspace,
-        shallow_override(&args),
+        shallow_override(args),
         args.dry_run,
         jobs,
     )
@@ -624,7 +692,7 @@ pub fn run(args: Args) -> Result<()> {
         // phase-447 C1 — BEFORE the `ready` line, because a set containing a
         // package that cannot run is not ready and must never say so. The lock
         // is already saved: those files are on disk whatever the probes say.
-        report.conclude(&index)?;
+        report.conclude(index)?;
         if installed {
             eprintln!(
                 "nros setup: {board} ready; locked in {}",
@@ -639,10 +707,12 @@ pub fn run(args: Args) -> Result<()> {
     // `nros init` + `cmake --preset <board>` cross-configure with no hand-set
     // toolchain. Best-effort: a failure here never fails provisioning. The store
     // bin dirs fold onto its PATH in PLAN order (RFC-0099 D7).
-    if !args.dry_run
-        && let Err(e) = emit_board_cmake_preset(board, &workspace, &bin_dirs)
-    {
-        eprintln!("nros setup: CMakePreset not written: {e:#}");
+    if !args.dry_run {
+        for (b, _) in boards {
+            if let Err(e) = emit_board_cmake_preset(b, &workspace, &bin_dirs) {
+                eprintln!("nros setup: CMakePreset not written for {b}: {e:#}");
+            }
+        }
     }
     Ok(())
 }
@@ -5054,6 +5124,138 @@ mod probe_kind_tests {
 }
 
 /// One deploy target a workspace declares.
+/// phase-517 W4 — the `(index board key, rmw)` pairs a workspace's images
+/// need, through W3's one join, plus one line per image that cannot be planned.
+fn workspace_boards(
+    index: &SdkIndex,
+    ws: &std::path::Path,
+    sdk_root: Option<&std::path::Path>,
+) -> (Vec<(String, Option<String>)>, Vec<String>) {
+    let catalog =
+        sdk_root.and_then(|r| crate::orchestration::board_descriptor::BoardCatalog::load(r).ok());
+    let mut boards: Vec<(String, Option<String>)> = Vec::new();
+    let mut problems = Vec::new();
+    for f in workspace_package_xmls(ws) {
+        let Some(sys_path) = f.parent().map(|d| d.join("system.toml")) else {
+            continue;
+        };
+        let Ok(sys) = std::fs::read_to_string(&sys_path) else {
+            continue;
+        };
+        for t in deploy_targets(&sys, catalog.as_ref()) {
+            let word = t.board.clone().unwrap_or_else(|| t.deploy.clone());
+            if word.contains("esp32") {
+                // Dormant (issue 1525): not provisioned, and not a reason to
+                // refuse the rest of the workspace.
+                eprintln!(
+                    "nros setup: skipping {}'s ESP32 image (`{word}`): not provisioned",
+                    sys_path.display()
+                );
+                continue;
+            }
+            let key = if index.board.contains_key(&word) {
+                Ok(word.clone())
+            } else if let Some(cat) = &catalog {
+                cat.setup_board(&word, &|k| index.board.contains_key(k))
+                    .map(|b| b.key().to_string())
+            } else {
+                Err(format!(
+                    "`{word}` is not an index board key and no board catalog was found"
+                ))
+            };
+            match key {
+                Ok(k) => {
+                    let pair = (k, t.rmw.clone());
+                    if !boards.contains(&pair) {
+                        boards.push(pair);
+                    }
+                }
+                Err(why) => problems.push(format!("{}: {why}", sys_path.display())),
+            }
+        }
+    }
+    boards.sort();
+    (boards, problems)
+}
+
+/// The zenoh router a zenoh image talks to — ROS's `rmw_zenohd` (RFC-0075) —
+/// resolved in the order the scripts' `nros_zenohd_bin` uses:
+/// `NROS_RMW_ZENOHD`, then each `AMENT_PREFIX_PATH` prefix, then
+/// `/opt/ros/$ROS_DISTRO`. PATH and a `/opt/ros/*` glob are not searched.
+fn resolve_rmw_zenohd() -> Option<std::path::PathBuf> {
+    if let Some(p) = std::env::var_os("NROS_RMW_ZENOHD").map(std::path::PathBuf::from)
+        && p.is_file()
+    {
+        return Some(p);
+    }
+    let rel = std::path::Path::new("lib/rmw_zenoh_cpp/rmw_zenohd");
+    if let Some(paths) = std::env::var_os("AMENT_PREFIX_PATH") {
+        for prefix in std::env::split_paths(&paths) {
+            let p = prefix.join(rel);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+    }
+    let distro = std::env::var("ROS_DISTRO").ok()?;
+    let p = std::path::Path::new("/opt/ros").join(distro).join(rel);
+    p.is_file().then_some(p)
+}
+
+/// phase-517 W4 — `nros setup` inside a workspace (or `--workspace <dir>`):
+/// report, then install every image's boards in one plan, then the OS-package
+/// closure (installed with `--sudo`, otherwise printed). `--check` stops after
+/// the report — the pre-W4 behaviour.
+fn run_workspace_install(
+    index: &SdkIndex,
+    index_path: &Path,
+    ws: &std::path::Path,
+    args: &Args,
+) -> Result<()> {
+    let root = index_path.parent().map(std::path::Path::to_path_buf);
+    run_workspace_scan(index, ws, root.as_deref())?;
+    if args.check {
+        return Ok(());
+    }
+    let (boards, problems) = workspace_boards(index, ws, root.as_deref());
+    if !problems.is_empty() {
+        bail!(
+            "nros setup: {} image(s) in {} cannot be provisioned:\n  {}",
+            problems.len(),
+            ws.display(),
+            problems.join("\n  ")
+        );
+    }
+    println!();
+    if boards.is_empty() {
+        println!(
+            "nros setup: no image in {} names a board — nothing to provision.",
+            ws.display()
+        );
+    } else {
+        provision_boards(index, index_path, &boards, args)?;
+    }
+    if boards
+        .iter()
+        .any(|(_, r)| r.as_deref().unwrap_or("zenoh") == "zenoh")
+    {
+        match resolve_rmw_zenohd() {
+            Some(p) => println!("nros setup: zenoh router: rmw_zenohd at {}", p.display()),
+            None => {
+                let distro = std::env::var("ROS_DISTRO").unwrap_or_else(|_| "humble".into());
+                println!(
+                    "nros setup: a zenoh image needs ROS's router, `rmw_zenohd`, and none was found \
+                     (NROS_RMW_ZENOHD, AMENT_PREFIX_PATH, /opt/ros/{distro}).\n  \
+                     Install it from the ROS apt source: \
+                     sudo apt-get install ros-{distro}-rmw-zenoh-cpp ros-{distro}-zenoh-cpp-vendor\n  \
+                     (a cyclonedds image needs no router)"
+                );
+            }
+        }
+    }
+    run_system(index, false, args.sudo, root.as_deref(), &[])
+}
+
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 struct DeployTarget {
     deploy: String,
@@ -5111,6 +5313,35 @@ fn deploy_targets(
 /// to already know the answer (a board, a `--tool`, a scope). Nothing read
 /// their tree. Yet the tree states it in three places, and 90+ package.xml
 /// files in this repo already carry the deploy export.
+/// Every `package.xml` under `ws`, skipping build output, VCS and vendored
+/// trees — the set `nros setup --workspace` plans from.
+fn workspace_package_xmls(ws: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut out: Vec<std::path::PathBuf> = Vec::new();
+    let mut stack = vec![ws.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().into_owned();
+            if p.is_dir() {
+                if !matches!(
+                    name.as_str(),
+                    "build" | "target" | ".git" | "external" | "third-party" | "node_modules"
+                ) && !name.starts_with("target-")
+                {
+                    stack.push(p);
+                }
+            } else if name == "package.xml" {
+                out.push(p);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 fn run_workspace_scan(
     index: &SdkIndex,
     ws: &std::path::Path,
@@ -5118,32 +5349,7 @@ fn run_workspace_scan(
 ) -> Result<()> {
     use crate::orchestration::{prereq_resolve as pr, sdk_index::PrereqRole};
 
-    let files = {
-        let mut out: Vec<std::path::PathBuf> = Vec::new();
-        let mut stack = vec![ws.to_path_buf()];
-        while let Some(dir) = stack.pop() {
-            let Ok(rd) = std::fs::read_dir(&dir) else {
-                continue;
-            };
-            for e in rd.flatten() {
-                let p = e.path();
-                let name = e.file_name().to_string_lossy().into_owned();
-                if p.is_dir() {
-                    if !matches!(
-                        name.as_str(),
-                        "build" | "target" | ".git" | "external" | "third-party" | "node_modules"
-                    ) && !name.starts_with("target-")
-                    {
-                        stack.push(p);
-                    }
-                } else if name == "package.xml" {
-                    out.push(p);
-                }
-            }
-        }
-        out.sort();
-        out
-    };
+    let files = workspace_package_xmls(ws);
 
     if files.is_empty() {
         bail!(
@@ -5459,6 +5665,46 @@ mod workspace_scan_tests {
             .expect("repo root");
         crate::orchestration::board_descriptor::BoardCatalog::load(root)
             .expect("the shipped board catalog loads")
+    }
+
+    /// phase-517 W4 — a workspace's images plan as INDEX board keys with
+    /// their RMWs, through W3's join: the C workspace's aliases (`freertos`,
+    /// `nuttx`, …) arrive as the keys `nros setup` installs, with no image
+    /// left unplannable.
+    /// Bare `nros setup` installs a workspace only at a colcon-shaped root,
+    /// never from any directory that merely has package.xml files far below.
+    #[test]
+    fn bare_setup_routes_to_a_workspace_only_at_its_root() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root");
+        assert!(is_workspace_root(&root.join("examples/workspaces/c")));
+        assert!(!is_workspace_root(Path::new(env!("CARGO_MANIFEST_DIR"))));
+        assert!(!is_workspace_root(&root.join("examples")));
+    }
+
+    #[test]
+    fn a_workspace_plans_every_image_as_an_index_board_key() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root");
+        let index = SdkIndex::load(&root.join("nros-sdk-index.toml")).expect("index");
+        let (boards, problems) =
+            workspace_boards(&index, &root.join("examples/workspaces/c"), Some(root));
+        assert!(problems.is_empty(), "unplannable images: {problems:?}");
+        assert!(!boards.is_empty(), "the C workspace declares images");
+        for (key, _) in &boards {
+            assert!(
+                index.board.contains_key(key),
+                "`{key}` is not an index board key"
+            );
+        }
+        assert!(
+            boards.iter().any(|(k, _)| k == "linux"),
+            "the host image plans as `linux`: {boards:?}"
+        );
     }
 
     /// A leaf's `[image] board` is its deploy target; the DEPLOY token is
