@@ -93,6 +93,18 @@ book-links:
     @python3 scripts/gen-config-surface.py >/dev/null
     @python3 scripts/check-book-links.py
 
+# phase-517 W1 — every board the book names is one `nros` accepts: an index
+# `[board.*]` key or a board descriptor's `names` alias, both DERIVED per run.
+# The retired host-board words (`RETIRED_BOARD_KEYS`, harvested from
+# nros-entry-lower) appear as a board only in `reference/retired-names.md`, and
+# a full board list is a generated `board-names` block (`--write` refreshes
+# it). The book said `nros setup native` for weeks after phase-500 refused it,
+# and listed a `stm32f4` key the index never had. Its self-test (a planted
+# `nros setup native` must fail) runs on every call. Buildless, ~0.2 s.
+[private]
+book-board-names:
+    @python3 scripts/check-book-board-names.py
+
 # The book's USER track (getting-started/, user-guide/, start-here/,
 # platform-guides/) teaches no `just` — it is a contributor dependency a user
 # does not have (phase-368 W12). An invocation is allowed only inside an

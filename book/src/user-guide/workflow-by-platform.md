@@ -157,10 +157,11 @@ is in the generated settings file, which is also where its linker flags
 and its QEMU runner live.
 
 If you would rather drive cargo yourself — an IDE, a CI step,
-`--release` — run `nros sync` and then point cargo at that file. Run it
-from the directory *above* the package, so the package's own `.cargo/`
-is not read a second time; phase-445 W6 deletes that directory, and then
-the working directory stops mattering:
+`--release` — run `nros sync`; then a plain `cargo build` inside the
+package works, because sync wires that file into the package's
+gitignored `.cargo/config.toml`. To name the file explicitly instead,
+run from the directory *above* the package — inside it cargo would read
+the settings twice and join the board's rustflags onto themselves:
 
 ```bash
 cd <leaf-parent>

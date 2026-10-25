@@ -118,7 +118,9 @@ row is one bringup's choice to run it. It names no namespace: that is the launch
 file's to give, as it is for a C/C++ node
 ([issue 1289](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1289-workspace-node-tables-still-in-manifests.md)).
 
-The manifest beside `src/lib.rs` is then just this:
+The manifest beside `src/lib.rs` is then just this — what
+`nros new <name> --workspace --lang rust` writes for `talker_pkg`
+(`examples/templates/multi-node-workspace/src/talker_pkg/Cargo.toml`):
 
 ```toml
 [lib]
@@ -129,9 +131,19 @@ class = "talker_pkg::Talker"
 name = "talker"
 
 [dependencies]
-nros = { path = "../../../../../packages/api/nros", default-features = false,
-         features = ["alloc", "rmw-cffi"] }
+nros = { version = "*", default-features = false, features = [
+    "alloc",
+    "rmw-cffi", "macros"] }
+log = { version = "0.4", default-features = false }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }
 ```
+
+`nros` is named like a registry crate but is never fetched from one:
+`nros sync` writes a `[patch.crates-io]` row that points it at the SDK
+root, into the generated `build/<image>/nros-cargo.toml` rather than into
+your package, and `std_msgs` is the crate `nros sync` generates under
+`generated/`. No path in the manifest names where nano-ros lives, so the
+package copies anywhere.
 
 A Node pkg names **no** platform and **no** RMW. `alloc` is the universal
 baseline and `rmw-cffi` is the vtable seam; the concrete backend and the

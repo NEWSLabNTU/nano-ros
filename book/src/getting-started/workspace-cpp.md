@@ -210,7 +210,7 @@ count and the derived `MAX_CBS` are legitimately different numbers.
 #### The census: the contract checked against the code
 
 Since the contract is still a statement beside the code, a CROSS image (any
-image whose board is not `native`) checks it before it configures: the native
+image whose board is not `linux`) checks it before it configures: the host
 image generated from the same launch file is run once in census mode — it
 constructs every component against a recording backend, writes what they
 created, and exits without spinning or dialling a router — and the configure

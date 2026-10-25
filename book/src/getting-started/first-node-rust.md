@@ -25,6 +25,7 @@ accepts — RFC-0090 / phase-431).
 ```sh
 git submodule update --init packages/cli/third-party/play_launch
 cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.toml
 export PATH="$PWD/packages/cli/target/release:$PATH"
 ```
 
@@ -35,7 +36,7 @@ source ./activate.sh          # bash / zsh
 source ./activate.fish        # fish
 ```
 
-Then provision the native host (installs the zenoh client stack into a
+Then provision the Linux host (installs the zenoh client stack into a
 shared store; the router itself comes from your ROS 2 install):
 ```sh
 nros setup linux --rmw zenoh

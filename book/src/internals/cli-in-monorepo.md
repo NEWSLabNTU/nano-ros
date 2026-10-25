@@ -7,7 +7,7 @@ The `nros` CLI lives in-tree at `packages/cli/` as a **sub-workspace**
 `just setup-cli` → `packages/cli/target/release/nros`, then put on
 `PATH` by the activate file. See also:
 
-- [Phase 218 roadmap doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/phase-218-merge-cli-into-monorepo.md)
+- [Phase 218 roadmap doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-218-merge-cli-into-monorepo.md)
 - [Phase 218 design spec](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/superpowers/specs/2026-06-04-cli-monorepo-merge-design.md)
 
 ## Why sub-workspace, not root member

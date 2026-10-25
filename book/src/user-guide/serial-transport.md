@@ -38,7 +38,7 @@ Serial transport support varies by platform:
 | Platform | Serial Implementation | Extra Crate Needed |
 |----------|----------------------|--------------------|
 | Bare-metal (MPS2-AN385) | `zpico-serial` + UART driver | Yes |
-| ESP32-QEMU (esp-hal, no IDF) | **Not wired** — see [issue 1499](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1499-esp32-serial-transport-is-documented-and-does-not-compile.md) | — |
+| ESP32-QEMU (esp-hal, no IDF) | **Not wired** — see [issue 1499](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1499-esp32-serial-transport-is-documented-and-does-not-compile.md) | — |
 | Zephyr | zenoh-pico built-in; interrupt-driven RX ring with `CONFIG_UART_INTERRUPT_DRIVEN` (issue 0852), else `uart_poll_in/out` | No |
 | FreeRTOS / NuttX | zenoh-pico built-in (POSIX `/dev/ttyXXX`) | No |
 | ThreadX | zenoh-pico built-in (HAL DMA) | No |
@@ -341,4 +341,4 @@ combination, which is why it went unnoticed.
 
 Use the ethernet transport on ESP32-QEMU. Tracking, with the measurement and
 the two ways out: [issue
-1499](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1499-esp32-serial-transport-is-documented-and-does-not-compile.md).
+1499](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1499-esp32-serial-transport-is-documented-and-does-not-compile.md).

@@ -5,7 +5,8 @@ run it. C++ and CMake, publishing on your machine, with **nothing else
 running** — no router, no daemon, no ROS 2 installation.
 
 This assumes the two-step [install](installation.md) is done (`nros` on
-your PATH, `nros setup linux --rmw cyclonedds` run once).
+your PATH — a release installed with `scripts/install.sh` — and
+`nros setup linux --rmw cyclonedds` run once).
 
 ## Scaffold
 
@@ -91,12 +92,6 @@ RUST_LOG=info ./build/posix-cyclonedds/linux_entry/target/debug/linux_entry
 ```
 
 (The Rust talker ticks at 1 s.)
-
-> **Known issue ([1295](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1295-rust-cyclonedds-workspace-entry-no-publisher.md)).**
-> On CycloneDDS — the scaffold's default RMW — the generated Rust entry
-> currently stops at startup with
-> `NodeError::Transport(PublisherCreationFailed)`. The C++ path above is
-> not affected.
 
 Same workspace shape, same `system.toml`, same launch file, same two
 commands — only the node implementations and the driver `nros build`

@@ -168,33 +168,38 @@ surface is on the app include path even though `Talker.c` itself is C.
 
 ## Prerequisites
 
-`nros setup` provisions the parts nano-ros owns — the **RMW host daemon**
-(`zenohd` / Micro-XRCE-DDS agent) and the **RMW transport submodules**
-(zenoh-pico + mbedtls for zenoh, the cyclonedds fork) — from a pinned index into
-`${NROS_HOME:-~/.nros}/sdk` / the nano-ros checkout. It does **not** replace Zephyr's own SDK,
-and interface codegen still needs the ROS message definitions.
+`nros setup zephyr` provisions what the index declares for the board — the
+**Zephyr SDK** (`[board.zephyr] packages = ["zephyr-sdk"]`) and the **RMW
+transport sources** (zenoh-pico + mbedtls for zenoh, the cyclonedds fork) —
+from a pinned index into `${NROS_HOME:-~/.nros}/sdk`. The Zephyr sources and
+modules themselves are a `west` workspace, which you keep the standard Zephyr
+way. It provides **no zenoh router**: that is ROS's `rmw_zenohd`
+([RFC-0075](../design/rmw.md)); Cyclone DDS needs no daemon at all.
 
-1. **Build the in-tree `nros` CLI** (Phase 218, from the nano-ros checkout):
+1. **Get the `nros` CLI** — install a release with `scripts/install.sh`
+   ([Installation](installation.md)). Working inside a nano-ros checkout
+   instead, build the in-tree one:
    ```bash
    ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
    source ./activate.sh        # OR: direnv allow / source ./activate.fish
    ```
-2. **Provision the RMW (daemon + transports)** from the nano-ros checkout:
+2. **Provision the board + RMW**:
    ```bash
-   ( cd modules/nano-ros && nros setup zephyr --rmw zenoh )  # zenohd + zenoh-pico + mbedtls
+   ( cd modules/nano-ros && nros setup zephyr --rmw zenoh )  # Zephyr SDK + zenoh-pico + mbedtls
    ( cd modules/nano-ros && nros setup --source px4-rs )     # workspace cargo-load dep
    ```
-3. **Install the Zephyr SDK** the standard Zephyr way (`nros setup` does *not*
-   provide it) and expose it — `export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk-<ver>`
-   (or register it via the SDK's `setup.sh -c`).
-4. **Message definitions for codegen.** The interface codegen resolves a
-   package's `msg/*.msg` from `NROS_<PKG>_DIR` (e.g.
-   `export NROS_STD_MSGS_DIR=/opt/ros/humble/share/std_msgs`) — point it at a ROS
-   install or any dir holding the `.msg` files.
+3. **Point Zephyr at the SDK** if your shell does not already find it —
+   `export ZEPHYR_SDK_INSTALL_DIR="$(nros sdk-path zephyr-sdk --require)"` (or
+   register it via the SDK's `setup.sh -c`).
+4. **Message definitions need no setup.** `find_package(<pkg>)` resolves a
+   message package from `NROS_INTERFACE_SEARCH_PATH`, then `AMENT_PREFIX_PATH`,
+   then the definitions bundled with nano-ros (`packages/cli/interfaces/`), so
+   `std_msgs` and the other stock packages build with no ROS install.
 
-The RMW host daemon must be **running** before an example connects
-(for zenoh: `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false'
-ros2 run rmw_zenoh_cpp rmw_zenohd`; the Micro-XRCE-DDS agent for xrce).
+The zenoh router must be **running** before an example connects
+(`ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false'
+ros2 run rmw_zenoh_cpp rmw_zenohd`); for xrce, the Micro-XRCE-DDS agent
+`nros setup … --rmw xrce` installed; for cyclonedds, nothing.
 
 ## Configure
 
@@ -713,10 +718,12 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
    ```
 
    This writes `generated/<pkg>/` (the message crates) and a `.cargo/config.toml`
-   whose `[patch.crates-io]` points the `nros-*` crates at your
-   `modules/nano-ros/packages/core/*` and the generated interfaces at
-   `generated/*`. Adjust `--nano-ros-path` to your workspace's
-   `modules/nano-ros/packages/core` (the dir holding `nros-core`, `nros-node`, …).
+   whose `[patch.crates-io]` points the `nros-*` crates into your nano-ros
+   module and the generated interfaces at `generated/*`. `--nano-ros-path`
+   takes the nano-ros SDK ROOT — the module directory itself
+   (`modules/nano-ros`, the one holding `nano_rosConfig.cmake`), not a
+   subdirectory of it. `nros sdk-root --explain` prints the root `nros` would
+   pick without the flag.
    In-tree examples commit no `.cargo/config.toml` at all (phase-445 W6): their
    equivalent is generated into `build/<image>/nros-cargo.toml` and is likewise
    repo-relative, so it is no more copyable than the old file was.
