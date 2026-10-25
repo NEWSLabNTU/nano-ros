@@ -1149,6 +1149,23 @@ test-ignored package="":
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     echo "Running #[ignore]d tests (external infra may be required)…"
+    # Issue 1824 (D4) — rosidl-codegen's `heap_compile_check` C syntax checks
+    # compile against nros-c's per-build `rclc/detail/nros_config_generated.h`,
+    # which lives only in a cargo `$OUT_DIR` now. The test takes its include
+    # root from NROS_C_CONFIG_INCLUDE and REFUSES without it, so this lane
+    # builds nros-c, places the header, and names the dir; before this, every
+    # scheduled run failed those three tests on the refusal (host-tests run
+    # 40157702519). Built in a scoped target dir: the CLI workspace below is a
+    # different cargo root and cannot build nros-c itself.
+    c_target="$(nros_scoped_target_dir test-ignored-c)"
+    c_placed="$c_target/placed"
+    (
+        export CARGO_TARGET_DIR="$c_target"
+        nros_cargo_placed "$c_placed" nros-c -- build -p nros-c \
+            --features alloc,platform-posix,rmw-cffi --quiet
+    )
+    NROS_C_CONFIG_INCLUDE="$(nros_locate_artifact c-include --placed-dir "$c_placed")"
+    export NROS_C_CONFIG_INCLUDE
     rc=0
     if [ -n "{{package}}" ]; then
         # A named package may live in EITHER workspace; try the root first,
