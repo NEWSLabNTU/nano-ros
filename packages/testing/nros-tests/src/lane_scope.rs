@@ -161,6 +161,15 @@ pub enum Capability {
     /// which is `--cap-drop ALL`) has one, and no lane claims it; a run that
     /// does claim it reaches the probe and fails when it is absent.
     HostBridge,
+    /// Real-time scheduling on the host (phase-162 W1): the process may
+    /// select `SCHED_FIFO` and `SCHED_DEADLINE`, i.e. it holds
+    /// `CAP_SYS_NICE`. Granting it needs root (`setcap cap_sys_nice+ep` on
+    /// the binary, or a runner started with `--cap-add SYS_NICE`), so no
+    /// unprivileged lane and no self-hosted runner (`--cap-drop ALL`) has it,
+    /// and no lane claims it. Without it the kernel refuses every level's
+    /// priority and budget, so a test of preemption or of a kernel budget
+    /// would measure the default policy instead.
+    RtScheduling,
 }
 
 impl Capability {
@@ -169,10 +178,15 @@ impl Capability {
         match self {
             Capability::Ros2 => "ros2",
             Capability::HostBridge => "host-bridge",
+            Capability::RtScheduling => "rt-sched",
         }
     }
 
-    const ALL: &[Capability] = &[Capability::Ros2, Capability::HostBridge];
+    const ALL: &[Capability] = &[
+        Capability::Ros2,
+        Capability::HostBridge,
+        Capability::RtScheduling,
+    ];
 }
 
 /// Parse an [`UNCLAIMED_ENV`] value. An unknown token is a HARD error: a typo
@@ -229,6 +243,19 @@ pub fn require_host_bridge_claimed() {
     }
 }
 
+/// Lane-skip unless this run claims real-time scheduling (phase-162 W1) --
+/// the counterpart of [`require_ros2_claimed`], called before any probe. A
+/// run that claims it and then finds the kernel refusing `SCHED_FIFO` or
+/// `SCHED_DEADLINE` fails with [`crate::unmet!`].
+pub fn require_rt_sched_claimed() {
+    if !claims(Capability::RtScheduling) {
+        crate::lane_skip!(
+            "NOT VERIFIED: needs real-time scheduling (CAP_SYS_NICE, root-granted); this lane \
+             does not claim it ({UNCLAIMED_ENV} contains `rt-sched`)"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,6 +267,10 @@ mod tests {
         assert_eq!(
             parse_unclaimed("ros2,host-bridge"),
             vec![Capability::Ros2, Capability::HostBridge]
+        );
+        assert_eq!(
+            parse_unclaimed("host-bridge,rt-sched"),
+            vec![Capability::HostBridge, Capability::RtScheduling]
         );
     }
 

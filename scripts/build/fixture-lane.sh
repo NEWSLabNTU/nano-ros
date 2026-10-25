@@ -242,11 +242,12 @@ nros_lane_unclaimed() {
     case "$lane" in
         # The tier runners carry the zenoh router and no ROS 2 CLI; their ROS 2
         # interop tests belong to live-peer (`.config/interop-verdicts.toml`).
-        # No lane claims a host bridge (phase-497 W3): it needs root to
-        # provision, so its e2e runs only where a person claims it on purpose.
-        tier1 | tier2 | tier2-nightly) echo "ros2,host-bridge" ;;
-        # Module-level lanes claim everything they select, but the bridge.
-        all | linux) echo "host-bridge" ;;
+        # No lane claims a host bridge (phase-497 W3) or real-time scheduling
+        # (phase-162 W1): both need root to grant, so their e2e runs only where
+        # a person claims it on purpose.
+        tier1 | tier2 | tier2-nightly) echo "ros2,host-bridge,rt-sched" ;;
+        # Module-level lanes claim everything they select, but those two.
+        all | linux) echo "host-bridge,rt-sched" ;;
         *)
             echo "fixture-lane: no unclaimed set declared for '$lane' — add it to" >&2
             echo "              nros_lane_unclaimed AND CiLane::unclaimed" >&2

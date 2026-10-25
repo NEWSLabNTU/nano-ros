@@ -1020,6 +1020,51 @@ image = "linux"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-linux/cmake"
 
+# phase-162 W2 -- RFC-0002 S1 on levels (levels-cpp's `linux_s1` image): a
+# 1 kHz critical loop on its own level and S1's 5 ms telemetry on a less urgent
+# one. Consumed by `tests/rt_sched_levels_e2e.rs`, only on a lane that claims
+# `rt-sched`: pinned to one CPU, 60 s with zero deadline misses.
+[[workspace_fixture]]
+id = "workspace-cpp-native-levels-s1"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/levels-cpp"
+bringup = "src/demo_bringup"
+image = "linux_s1"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build/posix-zenoh-linux/cmake"
+
+# phase-162 W2 -- the negative control for the row above (`linux_s1_flat`):
+# the same two nodes on ONE authored tier, so the test sees misses and the
+# zero above means something.
+[[workspace_fixture]]
+id = "workspace-cpp-native-levels-s1-flat"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/levels-cpp"
+bringup = "src/demo_bringup"
+image = "linux_s1_flat"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build/posix-zenoh-linux/cmake"
+
+# phase-162 W1 -- a spawned level past its SCHED_DEADLINE budget
+# (`linux_budget`): 10 ms of CPU per release against 2 ms per 10 ms. Consumed
+# by `tests/rt_sched_levels_e2e.rs` on an `rt-sched` lane: the kernel, not the
+# executor, enforces the budget, and the callback takes several periods of
+# wall time.
+[[workspace_fixture]]
+id = "workspace-cpp-native-levels-budget"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/levels-cpp"
+bringup = "src/demo_bringup"
+image = "linux_budget"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build/posix-zenoh-linux/cmake"
+
 # Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape variant of realtime-cpp.
 # Same 2-tier scheduling (ctrl_node → high 10 ms, telem_node → low 100 ms) but
 # components are IS-A-node ComponentNode subclasses (SHAPE rclcpp). The bind_node_name_sched

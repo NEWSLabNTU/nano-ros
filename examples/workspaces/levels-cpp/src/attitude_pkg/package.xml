@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>attitude_pkg</name>
+  <version>0.1.0</version>
+  <description>phase-162 W2 - RFC-0002 S1's critical loop: a 1 kHz timer with 300 us of work that reports how often its releases came more than a deadline apart.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

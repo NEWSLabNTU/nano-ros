@@ -1,0 +1,40 @@
+# Node interface contract for s1_flat.launch.xml (phase-162 W2).
+#
+# The same two loops as s1.contract.yaml. Here the rates derive nothing:
+# system.toml binds both components to the authored `flat` tier, and an
+# authored tier wins (RFC-0108 D4 rule 6), so both run on one level.
+
+version: 1
+
+nodes:
+  attitude_flat:
+    # No parameters: stated, so the store is sized from every node.
+    params: {}
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 1000 } }
+        output: [tick]
+    pub:
+      tick: { min_rate_hz: 500 }
+
+  load_flat:
+    params:
+      burn_us: { type: integer }
+    paths:
+      on_timer:
+        trigger: { timer: { rate_hz: 10 } }
+        output: [tick]
+    pub:
+      tick: { min_rate_hz: 1 }
+
+# Every topic leaves the image; nothing here subscribes, so the derivation
+# places nodes by their timers alone.
+topics:
+  /levels/attitude:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [attitude_flat/tick]
+  /levels/load:
+    type: std_msgs/msg/Int32
+    external: sub
+    pub: [load_flat/tick]

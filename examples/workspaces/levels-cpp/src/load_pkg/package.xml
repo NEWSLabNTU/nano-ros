@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>load_pkg</name>
+  <version>0.1.0</version>
+  <description>phase-162 W1/W2 - a 10 Hz timer that burns `burn_us` of CPU per release and reports how long that took in wall time, and the longest stretch it was off the CPU.</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
+</package>

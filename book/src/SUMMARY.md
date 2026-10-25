@@ -128,6 +128,7 @@
 - [Scheduling Models](./internals/scheduling-models.md)
 - [Dispatch Strategy](./internals/dispatch-strategy.md)
 - [Real-Time Analysis](./internals/realtime-analysis.md)
+- [The Real-Time Execution Model](./internals/rt-execution-model.md)
 - [Build System & Caching](./internals/build-system.md)
 - [CLI Lives in the Monorepo (Phase 218)](./internals/cli-in-monorepo.md)
 - [zpico-sys Build Architecture](./internals/zpico-build.md)

@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- phase-162 W2 - the negative control for s1.launch.xml: the same two
+     classes, as components system.toml binds to ONE authored tier (`flat`),
+     so the 1 kHz loop waits behind every 5 ms telemetry callback. -->
+<launch>
+    <node pkg="attitude_pkg" exec="attitude" name="attitude_flat"/>
+    <node pkg="load_pkg" exec="load" name="load_flat">
+        <param name="burn_us" value="5000"/>
+    </node>
+</launch>
