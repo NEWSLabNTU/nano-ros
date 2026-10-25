@@ -145,7 +145,7 @@ args = { host = "robot1" }
 
 [image.zephyr]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 ```
 
 Read it as a table of variants over one topology. `linux` and
@@ -162,7 +162,7 @@ launch argument. Nothing is duplicated to express any of that.
 | `panic` | RFC-0077 panic policy (`platform` \| `halt` \| `own`), forwarded to the generated entry |
 | `before_boot` | `"<package>::<fn>"`, a function the generated entry calls before the board boots; see [Customising an entry](#customising-an-entry). Rust entries only |
 | `profile` | A cargo / CMake build profile name |
-| `conf` | Extra framework config fragments, in order (Zephyr `prj-*.conf`) |
+| `os_config` | Layer-1 files, in order: Zephyr `prj-*.conf` / `.overlay` fragments, or a board network file (`.toml`, RFC-0109 D4). `os_config` is read as its old alias |
 | `features` | Capability axes for this image, over `[system]`'s list |
 | `entry` | The application package — **normally omitted**; see [the exception](#the-exception-when-a-framework-owns-the-application) |
 
@@ -173,7 +173,7 @@ is its own entry and does not yet get that: see
 [Role reference](../user-guide/component-and-entry-pkg.md#single-package-convenience).
 
 `[image_defaults]` is the base every block folds over (RFC-0065 D5.1): scalars
-are replaced by the specific block, `args` merges, `conf` and `features`
+are replaced by the specific block, `args` merges, `os_config` and `features`
 concatenate. Without it an eight-image workspace repeats its RMW eight times,
 and eight copies of one fact is how they start disagreeing.
 
@@ -290,7 +290,7 @@ lives with the bringup:
 ```text
 src/demo_bringup/boards/native_sim_native_64/
 ├── prj.conf                            # APPLICATION_CONFIG_DIR
-├── prj-zenoh.conf                      # named by [image.<id>] conf
+├── prj-zenoh.conf                      # named by [image.<id>] os_config
 └── boards/
     └── native_sim_native_64.conf       # Zephyr's own per-board discovery
 ```
@@ -309,10 +309,10 @@ base `prj.conf`, `boards/<board>.conf` and `boards/<board>.overlay`.
 `nros build` hands those to the generated application as the first
 `EXTRA_CONF_FILE` / `EXTRA_DTC_OVERLAY_FILE` entries, by the same rule
 `nano_ros_use_board()` applies to a hand-written one. They merge AFTER the
-bringup's `prj.conf` (Zephyr's `CONF_FILE`) and BEFORE the image's `conf`
-fragments, so a value that must beat the board goes in a `conf` fragment.
+bringup's `prj.conf` (Zephyr's `CONF_FILE`) and BEFORE the image's `os_config`
+fragments, so a value that must beat the board goes in a `os_config` fragment.
 `realtime-cpp`'s `[image.fvp]` (`fvp-aemv8r-smp`) is the in-tree case: it lists
-its own `prj.conf` in `conf` again so that its `CONFIG_RUST=n` lands after the
+its own `prj.conf` in `os_config` again so that its `CONFIG_RUST=n` lands after the
 board's `CONFIG_RUST=y`.
 
 For a Rust workspace whose image needs a hand-written application after all —
@@ -497,7 +497,7 @@ owning all of that, so take the smallest step that works:
 
 | you need | use | the entry stays generated? |
 |---|---|---|
-| a different panic policy, build profile, Kconfig fragment or capability | an `[image.*]` key: `panic`, `profile`, `conf`, `features` | yes |
+| a different panic policy, build profile, Kconfig fragment or capability | an `[image.*]` key: `panic`, `profile`, `os_config`, `features` | yes |
 | one step before the runtime starts (open a device, check a calibration) | `before_boot`, below | yes |
 | hardware bring-up every image on a board needs (clocks, DMA, flash unlock) | the board's `init_hardware`, in a [board package](../porting/board-trait.md) | yes |
 | startup none of the above can express | `nros materialize`, below: the last resort | no |

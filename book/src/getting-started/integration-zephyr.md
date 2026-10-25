@@ -369,7 +369,7 @@ It writes the package — `Cargo.toml`, `CMakeLists.txt`, `build.rs`,
 `src/lib.rs`, `prj.conf`, `prj-zenoh.conf`, `boards/<board>.conf` — and three
 things outside it that are easy to miss and invisible until they fail:
 
-* the **`[image.*]` block**, with `board`, `entry` and the `conf` overlay the
+* the **`[image.*]` block**, with `board`, `entry` and the `os_config` overlay the
   entry's own `CMakeLists.txt` requires;
 * an **`exclude` entry in every enclosing cargo workspace**, because a
   west-built `staticlib` must not be an ordinary cargo member;
@@ -455,7 +455,7 @@ None of them sets `entry`: `nros build` generates each image's application, so
 there is nothing to choose between. `entry` is for an application you wrote
 by hand, below.
 
-* **`conf`** names the app's own Kconfig fragments, in order. They are looked
+* **`os_config`** names the app's own Kconfig fragments, in order. They are looked
   for beside the board config dir, then **beside the application**, then beside
   the bringup — the app rung matters because a Zephyr app keeps its
   `prj-<rmw>.conf` next to the `CMakeLists.txt` west builds. These entries
@@ -587,8 +587,8 @@ application `CMakeLists.txt` is yours (RFC-0065 D5) and `nros build` runs
 | a driver in that module | `zephyr_library()` + `zephyr_library_sources()`, gated on your own Kconfig | none |
 | its devicetree binding | `dts/bindings/` + `settings: {dts_root: .}` in the module's `zephyr/module.yml` | none |
 | an out-of-tree board / SoC / arch / snippet | the matching `*_root` in the same `module.yml` (`board_root`, `soc_root`, `arch_root`, `snippet_root`, `module_ext_root`) | none |
-| turning your Kconfig on for one image | a `conf` fragment on `[image.*]` | passed as `EXTRA_CONF_FILE` |
-| a devicetree overlay for one image | an `.overlay` in the same `conf` list | passed as `EXTRA_DTC_OVERLAY_FILE` |
+| turning your Kconfig on for one image | a `os_config` fragment on `[image.*]` | passed as `EXTRA_CONF_FILE` |
+| a devicetree overlay for one image | an `.overlay` in the same `os_config` list | passed as `EXTRA_DTC_OVERLAY_FILE` |
 
 Only the last two rows are ours, and they are how an IMAGE differs from its
 siblings — the module itself is a property of the application, not of one
@@ -644,7 +644,7 @@ enabled through the image:
 
 ```toml
 [image.zephyr]
-conf = ["prj-zenoh.conf", "prj-user-extra.conf", "user-widget.overlay"]
+os_config = ["prj-zenoh.conf", "prj-user-extra.conf", "user-widget.overlay"]
 ```
 
 ```text

@@ -102,20 +102,19 @@ pub struct DeployOverlay {
 
 impl DeployOverlay {
     /// Does the image declare RMW `rmw` riding link `link`? Both halves are
-    /// required: the backend is `rmw`, the link is `[image.<id>] transport`,
-    /// and neither stands in for the other (issue 1601).
+    /// required: the backend is `rmw`, the link is its locator's (RFC-0109
+    /// D6), and neither stands in for the other (issue 1601).
     pub fn selects(&self, rmw: &str, link: LinkKind) -> bool {
         self.rmw == Some(rmw) && self.transport == Some(link)
     }
 }
 
-/// The link kind an image rides — `[image.<id>] transport` (RFC-0086 D2).
+/// The link kind an image rides — its locator's scheme (RFC-0109 D6).
 ///
-/// The same three words as `nros_orchestration_ir::leaf_system::TRANSPORT_KINDS`
-/// (and `nros_platform_config`'s copy), which `nros::main!` maps onto these
-/// variants: an unknown word is refused when the leaf is read, and a word the
-/// macro maps to a variant missing here fails the image's compile. It names a
-/// LINK, never an RMW — `"xrce"` is not one (issue 1601).
+/// The same words as `nros_orchestration_ir::leaf_system::TRANSPORT_KINDS`,
+/// which `nros::main!` maps onto these variants: a word the macro maps to a
+/// variant missing here fails the image's compile. It names a LINK, never an
+/// RMW — `"xrce"` is not one (issue 1601).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LinkKind {
     /// A byte-stream link (UART, USB-CDC, …).
@@ -124,11 +123,19 @@ pub enum LinkKind {
     Tcp,
     /// UDP over the board's IP stack.
     Udp,
+    /// A transport the board supplies itself (`custom://…`) — on the
+    /// reference boards, XRCE framed over a UART.
+    Custom,
 }
 
 impl LinkKind {
     /// Every link kind, in `TRANSPORT_KINDS` order.
-    pub const ALL: [LinkKind; 3] = [LinkKind::Serial, LinkKind::Tcp, LinkKind::Udp];
+    pub const ALL: [LinkKind; 4] = [
+        LinkKind::Serial,
+        LinkKind::Tcp,
+        LinkKind::Udp,
+        LinkKind::Custom,
+    ];
 
     /// The `system.toml` spelling.
     pub const fn name(self) -> &'static str {
@@ -136,6 +143,7 @@ impl LinkKind {
             LinkKind::Serial => "serial",
             LinkKind::Tcp => "tcp",
             LinkKind::Udp => "udp",
+            LinkKind::Custom => "custom",
         }
     }
 

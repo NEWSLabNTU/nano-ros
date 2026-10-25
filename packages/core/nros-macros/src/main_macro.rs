@@ -3664,8 +3664,9 @@ struct DeployOverlayLit {
     /// the overlay bakes that text verbatim (`DeployOverlay::net`).
     net: bool,
     domain_id: Option<u32>,
-    /// `[image.<id>] transport` — a LINK kind (`leaf_system::TRANSPORT_KINDS`),
-    /// baked as `nros_platform::LinkKind` (issue 1601).
+    /// The image's link — its locator's scheme, a LINK kind
+    /// (`leaf_system::TRANSPORT_KINDS`, RFC-0109 D6), baked as
+    /// `nros_platform::LinkKind` (issue 1601).
     transport: Option<String>,
     /// The image's declared RMW (`LeafSystem::rmw`). A board keys backend
     /// registration on THIS, never on `transport` (issue 1601).
@@ -3697,7 +3698,7 @@ fn overlay_from_leaf(leaf: &nros_orchestration_ir::leaf_system::LeafSystem) -> D
     }
 }
 
-/// Map a `[image.<id>] transport` word onto its `nros_platform::LinkKind`
+/// Map a link-kind word (`leaf_system::TRANSPORT_KINDS`) onto its `nros_platform::LinkKind`
 /// variant. Total over `leaf_system::TRANSPORT_KINDS` (bound by
 /// `link_kind_tests`); anything else — an RMW name in the link slot, which is
 /// issue 1601's shape — is an error naming the vocabulary.
@@ -3706,10 +3707,11 @@ fn link_kind_variant(word: &str) -> Result<proc_macro2::Ident, String> {
         "serial" => "Serial",
         "tcp" => "Tcp",
         "udp" => "Udp",
+        "custom" => "Custom",
         other => {
             return Err(format!(
-                "nros::main!: `transport = \"{other}\"` is not a link kind — it is one of {} \
-                 (RFC-0086 D2); the RMW is `rmw = \"…\"`",
+                "nros::main!: `{other}` is not a link kind — it is one of {} (RFC-0086 D2); \
+                 the RMW is `rmw = \"…\"`",
                 nros_orchestration_ir::leaf_system::TRANSPORT_KINDS.join(", ")
             ));
         }
@@ -3745,7 +3747,8 @@ mod link_kind_tests {
     /// Issue 1601, the leaf half, without booting QEMU: the overlay the macro
     /// bakes for `examples/mps2-an385-baremetal/rust/talker-xrce` must carry
     /// exactly the pair `nros-board-mps2-an385` registers XRCE on —
-    /// `DeployOverlay::selects("xrce", LinkKind::Serial)`. Before the fix the
+    /// `DeployOverlay::selects("xrce", LinkKind::Custom)`, the link its
+    /// `custom://uart` locator names (RFC-0109 D6). Before the fix the
     /// board asked for `transport == "xrce"`, which no leaf can state any more,
     /// and the only witness was a QEMU e2e no merge lane runs.
     #[test]
@@ -3759,14 +3762,14 @@ mod link_kind_tests {
         assert_eq!(lit.rmw.as_deref(), Some("xrce"), "the backend is `rmw`");
         assert_eq!(
             lit.transport.as_deref(),
-            Some("serial"),
-            "the link is `transport`"
+            Some("custom"),
+            "the link is the locator's"
         );
         let ts = super::deploy_overlay_tokens(&lit).to_string();
         assert!(
-            ts.contains("LinkKind :: Serial")
+            ts.contains("LinkKind :: Custom")
                 && ts.contains("rmw : :: core :: option :: Option :: Some (\"xrce\")"),
-            "the baked overlay must carry rmw = xrce over LinkKind::Serial:\n{ts}"
+            "the baked overlay must carry rmw = xrce over LinkKind::Custom:\n{ts}"
         );
     }
 }
@@ -3786,8 +3789,8 @@ fn deploy_overlay_tokens(lit: &DeployOverlayLit) -> proc_macro2::TokenStream {
         quote! {
             ::core::option::Option::Some(::core::env!(
                 "NROS_IMAGE_NET",
-                "this image states `[image.<id>.net.<if>]`, which the nano-ros CLI resolves \
-                 into NROS_IMAGE_NET (RFC-0103 D10f) — build it with `nros build` (or run \
+                "this image names a board network file in `os_config`, which the nano-ros CLI \
+                 resolves into NROS_IMAGE_NET (RFC-0109 D4) — build it with `nros build` (or run \
                  `nros sync` first so cargo reads the generated settings)"
             ))
         }

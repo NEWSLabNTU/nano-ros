@@ -380,16 +380,6 @@ pub fn board_net_files(os_config: &[String]) -> Vec<&str> {
         .collect()
 }
 
-/// `os_config` from an image's raw table (the leaf road).
-pub fn parse_os_config(image: Option<&toml::Table>, at: &str) -> Result<Vec<String>, String> {
-    let Some(v) = image.and_then(|t| t.get("os_config")) else {
-        return Ok(Vec::new());
-    };
-    v.clone()
-        .try_into()
-        .map_err(|e| format!("{at}.os_config: {e} (a list of file paths)"))
-}
-
 /// Read one board network file: a table per interface, each with the fields
 /// of [`ImageNetIf`] (`network`, `host` or `address`, `mac`), and a
 /// `[network.<name>]` table per network they name.

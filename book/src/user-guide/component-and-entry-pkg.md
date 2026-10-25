@@ -110,14 +110,14 @@ args   = { host = "robot1" }
 | `rmw` | Backend for this image. Absent ⇒ `[system] rmw` |
 | `panic` | RFC-0077 panic policy: `platform` \| `halt` \| `own` |
 | `profile` | cargo / CMake build profile name |
-| `conf` | Extra framework config fragments, in order (Zephyr `prj-*.conf`) |
+| `os_config` | Layer-1 files, in order: Zephyr `prj-*.conf` / `.overlay` fragments, or a board network file (`.toml`, RFC-0109 D4). `os_config` is read as its old alias |
 | `variant` | Framework build-variant name (Zephyr `prj_<buildtype>.conf`) |
 | `features` | Capability axes for this image, over `[system]`'s list |
 | `serdes`, `ros_edition` | Serialization provider and ROS edition. Absent ⇒ the `[system]` value |
 | `entry` | The application package — **only** for the framework-owned case below |
 
 Folding is per-key: scalars are replaced by the specific block, `args` merges,
-`conf` and `features` concatenate base-then-specific. `[system] default_images
+`os_config` and `features` concatenate base-then-specific. `[system] default_images
 = ["native"]` is what a bare `nros build` builds; without it, `nros build`
 lists the declared images and stops.
 
@@ -193,7 +193,7 @@ resolves that input into a SystemModel under `<ws>/build/nros/models/<bringup>/`
 macro bakes from it. `launch` and `model` are mutually exclusive.
 
 **Escape hatches, smallest first:** an `[image.*]` key (`panic`, `profile`,
-`conf`, `features`); `before_boot = "<pkg>::<fn>"` for one step before the
+`os_config`, `features`); `before_boot = "<pkg>::<fn>"` for one step before the
 runtime starts; the board's `init_hardware` for hardware every image on that
 board needs; and, last, `nros materialize <image>`, which copies the generated
 entry to `src/<image_id>_entry/` for you to own. See

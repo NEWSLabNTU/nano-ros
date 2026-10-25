@@ -104,16 +104,12 @@ libc = { path = "${workspace}/third-party/nuttx/libc" }
 # it (preserves the pre-195.C behaviour byte-for-byte).
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
-# phase-484 W4b-2 (RFC-0103 D10) — this board runs under QEMU, so its network
-# defaults are QEMU's own SLIRP network (10.0.2.0/24, gateway 10.0.2.2, guest
-# 10.0.2.15) and its router default is that gateway. An image states its own
-# address on top; a project-defined network is phase-497.
+# RFC-0109 D2 (phase-514 W4) — NuttX owns this board's network: its address,
+# gateway and netmask are the kernel's `CONFIG_NETINIT_*` in
+# `nuttx-config/<arch>/defconfig` (QEMU's SLIRP plan, 10.0.2.15/24 via
+# 10.0.2.2), which the build script reads. This table states no network and no
+# interfaces, and an image names no board network file here (RFC-0109 D9).
 [board.net]
-network = "qemu"
-# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as `[eth0]`
-# in the board network file its `os_config` names (RFC-0109 D4).
-interfaces = { eth0 = "ethernet" }
-# RFC-0109 D2 — the RTOS's own configuration owns the network devices.
 stack = "os"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]
@@ -258,16 +254,12 @@ libc = { path = "${workspace}/third-party/nuttx/libc" }
 # nsh_main override in src/entry.rs), identical to the arm witness.
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).
-# phase-484 W4b-2 (RFC-0103 D10) — this board runs under QEMU, so its network
-# defaults are QEMU's own SLIRP network (10.0.2.0/24, gateway 10.0.2.2, guest
-# 10.0.2.15) and its router default is that gateway. An image states its own
-# address on top; a project-defined network is phase-497.
+# RFC-0109 D2 (phase-514 W4) — NuttX owns this board's network: its address,
+# gateway and netmask are the kernel's `CONFIG_NETINIT_*` in
+# `nuttx-config/<arch>/defconfig` (QEMU's SLIRP plan, 10.0.2.15/24 via
+# 10.0.2.2), which the build script reads. This table states no network and no
+# interfaces, and an image names no board network file here (RFC-0109 D9).
 [board.net]
-network = "qemu"
-# RFC-0103 D10c (phase-497 W1) — the interface an image addresses as `[eth0]`
-# in the board network file its `os_config` names (RFC-0109 D4).
-interfaces = { eth0 = "ethernet" }
-# RFC-0109 D2 — the RTOS's own configuration owns the network devices.
 stack = "os"
 # RFC-0109 D3 — the link kinds this board carries.
 links = ["tcp", "udp"]

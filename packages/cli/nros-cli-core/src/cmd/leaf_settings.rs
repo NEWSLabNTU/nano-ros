@@ -389,7 +389,7 @@ pub(crate) fn transport_implications_of(
     transport: Option<&str>,
     env: &mut BTreeMap<String, String>,
 ) {
-    if transport != Some("serial") {
+    if !nros_orchestration_ir::leaf_system::is_byte_stream_link(transport) {
         return;
     }
     env.insert("ZPICO_NO_SMOLTCP".to_string(), "1".to_string());
@@ -572,7 +572,7 @@ pub fn image_block_layers(
     image: &crate::orchestration::image::ImageBlock,
 ) -> Result<BTreeMap<String, String>> {
     let mut env = BTreeMap::new();
-    transport_implications_of(image.transport.as_deref(), &mut env);
+    transport_implications_of(image.link_kind(), &mut env);
     env.extend(app_rung(image_id, &image.knobs.0, &image.env)?);
     Ok(env)
 }
@@ -1238,6 +1238,7 @@ mod tests {
             // states the empty claim once instead of per test.
             features: Vec::new(),
             conf: Vec::new(),
+            os_config: Vec::new(),
         }
     }
 

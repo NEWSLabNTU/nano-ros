@@ -244,12 +244,12 @@ module renders it into the Kconfig choice (`CONFIG_NROS_RMW_ZENOH` /
 [image.zephyr_zenoh]
 board = "zephyr"
 rmw = "zenoh"
-conf = ["prj-zenoh.conf"]       # Zephyr-native settings that backend needs
+os_config = ["prj-zenoh.conf"]       # Zephyr-native settings that backend needs
 
 [image.zephyr_cyclonedds]       # Cyclone: Cortex-A/R and native_sim targets
 board = "zephyr"
 rmw = "cyclonedds"
-conf = ["prj-cyclonedds.conf"]
+os_config = ["prj-cyclonedds.conf"]
 ```
 
 See [Configuring an image](../getting-started/zephyr.md#configuring-an-image-systemtoml-not-prjconf).

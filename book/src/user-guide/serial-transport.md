@@ -103,6 +103,11 @@ board   = "qemu-mps2-an385"
 locator = "serial/UART_0#baudrate=115200"
 ```
 
+The `serial/` scheme is also the image's LINK (RFC-0109 D6): `nros sync`
+derives the serial-only build from it (`ZPICO_NO_SMOLTCP=1`, `NROS_LINK_IP=0`,
+the board's `serial` feature), so nothing else names it. The `transport =
+"serial"` key that used to restate it is refused.
+
 ### 2. Create the PTY pair and start the router
 
 ```bash

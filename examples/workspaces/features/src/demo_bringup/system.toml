@@ -373,7 +373,7 @@ before_boot = "rust_before_boot_talker_pkg::prepare"
 # this one, and an image writing it is refused.
 [image.zephyr_rust_lifecycle]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 launch = "rust_lifecycle.launch.xml"
 locator = "tcp/10.0.2.2:7463"
 
@@ -390,7 +390,7 @@ max_queryables = 16
 
 [image.zephyr_rust_params]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 launch = "rust_params.launch.xml"
 locator = "tcp/10.0.2.2:7461"
 
@@ -407,7 +407,7 @@ max_queryables = 16
 
 [image.zephyr_rust_qos]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 launch = "rust_qos.launch.xml"
 locator = "tcp/10.0.2.2:7465"
 
@@ -441,7 +441,7 @@ max_queryables = 16
 # the shared Rust `prj.conf` into a C/C++ image.
 [image.zephyr_cpp_params]
 board = "zephyr"
-conf = ["prj-zenoh.conf", "prj-cpp.conf"]
+os_config = ["prj-zenoh.conf", "prj-cpp.conf"]
 launch = "cpp_params.launch.xml"
 # issue 0460 / phase-481 W3 -- every image here registers six parameter + five
 # lifecycle services: 11 executor slots and 11 queryables on top of its own

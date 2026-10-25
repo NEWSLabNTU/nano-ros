@@ -136,7 +136,7 @@ launch = "rust_safety_talker.launch.xml"
 # `nros` dep names `safety-e2e` unconditionally.
 [image.zephyr_rust_safety]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 launch = "rust_safety.launch.xml"
 locator = "tcp/10.0.2.2:7467"
 # issue 1324 / phase-481 W3 -- the nano-ros platform heap (zenoh-pico and the

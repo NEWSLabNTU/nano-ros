@@ -1309,22 +1309,31 @@ impl SystemToml {
     }
 
     /// RFC-0109 D4 (phase-514 W2) — read every image's board network files
-    /// (the `.toml` entries of its `os_config`, relative to `dir`, the
-    /// directory holding this `system.toml`) into its `net` and `networks`.
-    /// Call once after parsing, before anything reads an image's interfaces.
+    /// (the `.toml` entries of its `os_config`, over `[image_defaults]`'s,
+    /// relative to `dir`, the directory holding this `system.toml`) into its
+    /// `net` and `networks`. Call once after parsing, before anything reads an
+    /// image's interfaces. A table stating both `conf` and the `os_config` it
+    /// is an alias of is refused (RFC-0109 D6).
     pub fn fold_os_config(&mut self, dir: &std::path::Path) -> Result<(), String> {
-        let blocks = self
-            .image
-            .iter_mut()
-            .map(|(id, img)| (format!("image.{id}"), img))
-            .chain(
-                self.image_defaults
-                    .as_mut()
-                    .map(|d| ("image_defaults".to_string(), d)),
-            );
-        for (at, img) in blocks {
-            let files =
-                nros_orchestration_ir::system_net::fold_board_net_files(dir, &img.os_config, &at)?;
+        let both = |at: &str, img: &ImageBlock| {
+            if img.conf.is_empty() || img.os_config.is_empty() {
+                return Ok(());
+            }
+            Err(format!(
+                "`[{at}]` states both `conf` and `os_config`; `conf` is the Zephyr-only \
+                 spelling of `os_config` (RFC-0109 D6) — move its entries into `os_config`"
+            ))
+        };
+        let base = self.image_defaults.clone().unwrap_or_default();
+        both("image_defaults", &base)?;
+        for (id, img) in &mut self.image {
+            let at = format!("image.{id}");
+            both(&at, img)?;
+            let files = nros_orchestration_ir::system_net::fold_board_net_files(
+                dir,
+                &img.with_base(&base).os_config_files(),
+                &at,
+            )?;
             img.net = files.interfaces;
             img.networks = files.networks;
         }

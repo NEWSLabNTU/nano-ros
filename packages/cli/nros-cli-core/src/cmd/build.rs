@@ -731,12 +731,6 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
                 }
 
-                // phase-445 W6 — same shape, and now load-bearing: `transport`
-                // IMPLIES two link knobs below, so a typo would leave both
-                // unapplied rather than merely unread.
-                crate::orchestration::image::validate_transport(image.transport.as_deref())
-                    .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
-
                 // `rmw` reaches the build on this driver too, since issue 0831.
                 //
                 // It used to be inert here and the build REFUSED an image whose
@@ -4040,10 +4034,16 @@ pub(crate) fn leaf_image_net(
     nano_ros_root: Option<&std::path::Path>,
     decl: &nros_orchestration_ir::leaf_system::LeafSystem,
 ) -> Result<Option<crate::orchestration::image_net::ImageNet>> {
-    if decl.network.net.is_empty() {
+    if decl.os_config.is_empty() {
         return Ok(None);
     }
     let net = descriptor_board_net(descriptor, board, nano_ros_root)?;
+    // RFC-0109 D9 check 6 — each layer-1 file goes to the network's owner.
+    net.check_os_config(&decl.os_config)
+        .map_err(|e| eyre::eyre!("on board `{board}`: {e}"))?;
+    if decl.network.net.is_empty() {
+        return Ok(None);
+    }
     crate::orchestration::image_net::resolve_leaf(decl, &net)
         .map_err(|e| eyre::eyre!("on board `{board}`: {e}"))
 }
@@ -7013,7 +7013,7 @@ mod per_image_configure_tests {
     use super::*;
     use crate::orchestration::image::ImageBlock;
 
-    fn image(env: &[(&str, &str)], transport: Option<&str>) -> ImageBlock {
+    fn image(env: &[(&str, &str)], locator: Option<&str>) -> ImageBlock {
         ImageBlock {
             board: Some("native".to_string()),
             rmw: Some("zenoh".to_string()),
@@ -7021,7 +7021,7 @@ mod per_image_configure_tests {
                 .iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
-            transport: transport.map(str::to_string),
+            locator: locator.map(str::to_string),
             ..Default::default()
         }
     }
@@ -7112,7 +7112,7 @@ mod per_image_configure_tests {
     fn a_transport_implication_is_configuration() {
         let serial = cmake_coordinate(
             "native",
-            &image(&[], Some("serial")),
+            &image(&[], Some("serial/UART_0")),
             Path::new("/nonexistent"),
         );
         assert_ne!(
@@ -7120,7 +7120,7 @@ mod per_image_configure_tests {
             cmake_coordinate("native", &image(&[], None), Path::new("/nonexistent"))
         );
         assert_eq!(
-            crate::cmd::leaf_settings::image_block_layers(None, &image(&[], Some("serial")))
+            crate::cmd::leaf_settings::image_block_layers(None, &image(&[], Some("serial/UART_0")))
                 .unwrap()
                 .get("ZPICO_NO_SMOLTCP")
                 .map(String::as_str),
@@ -7321,6 +7321,53 @@ mod board_net_file_tests {
             );
             assert!(!eth0.per_image, "{image}");
         }
+    }
+
+    /// RFC-0109 D9 check 6 (phase-514 W4) — every tracked image names only
+    /// layer-1 files its board's network owner reads: Zephyr fragments on a
+    /// Zephyr board, board network files on a reference board. The sweep is
+    /// the tree's own `system.toml`s, so a migration that put a file on the
+    /// wrong board fails here rather than at that image's build.
+    #[test]
+    fn every_tracked_image_names_layer_1_files_its_board_reads() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap();
+        let catalog =
+            crate::orchestration::board_descriptor::BoardCatalog::load(&repo).expect("catalog");
+        let out = crate::source_stamp::nros_git_command("git")
+            .args(["ls-files", "*system.toml"])
+            .current_dir(&repo)
+            .output()
+            .expect("git ls-files");
+        let (mut checked, mut problems) = (0, Vec::new());
+        for rel in String::from_utf8_lossy(&out.stdout).lines() {
+            let path = repo.join(rel);
+            let Ok(sys) = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(
+                &std::fs::read_to_string(&path).unwrap(),
+            ) else {
+                continue;
+            };
+            for (id, img) in sys.resolved_images() {
+                let files = img.os_config_files();
+                if files.is_empty() {
+                    continue;
+                }
+                let Ok(d) = crate::orchestration::image::resolve_image_board(&catalog, &id, &img)
+                else {
+                    continue;
+                };
+                let board = img.board.clone().unwrap_or_default();
+                let net = super::descriptor_board_net(d, &board, Some(&repo)).unwrap();
+                checked += 1;
+                if let Err(e) = net.check_os_config(&files) {
+                    problems.push(format!("{rel} [image.{id}]: {e}"));
+                }
+            }
+        }
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
+        assert!(checked > 50, "the sweep reached only {checked} images");
     }
 }
 

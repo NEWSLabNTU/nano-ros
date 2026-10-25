@@ -112,7 +112,7 @@ board = "threadx-linux"
 
 [image.zephyr]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

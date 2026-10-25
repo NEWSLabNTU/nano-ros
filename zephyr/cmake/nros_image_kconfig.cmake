@@ -19,7 +19,7 @@
 #    that on the workspace road, where `nros build` passes the image's own
 #    `prj-zenoh.conf` that way, and it merged after the fragment. Last in the
 #    cache is last of every conf FILE, so the fragment beats the leaf's
-#    `prj.conf`/`prj-<rmw>.conf`, the image's `conf` files and a snippet, and
+#    `prj.conf`/`prj-<rmw>.conf`, the image's `os_config` files and a snippet, and
 #    still loses to the per-run `-DCONFIG_*` values a harness passes (those
 #    merge after every file). The fragment sits in a SUBDIRECTORY because a
 #    `*.conf` at the top of the build dir merges after `-DCONFIG_*` too.
@@ -53,7 +53,7 @@
 #    rendering, so a plain `west build -- -DNROS_IMAGE=zephyr_xrce` gets them
 #    with no `CONF_FILE` to assemble, a board tail passed as an extra still
 #    overrides them, and a fragment the caller already names is left where it
-#    is. A bringup's `conf` is `nros build`'s to pass (RFC-0085 D4), never added
+#    is. A bringup's `os_config` is `nros build`'s to pass (RFC-0085 D4), never added
 #    here.
 #
 # 5. THE KNOBS (phase-484 W5b, RFC-0103 D2a/D2b). The module's knob section
@@ -134,7 +134,7 @@ function(nros_image_kconfig_hook)
 
     # Drop an earlier rendering of ours from the cache value, whatever happens
     # below. A path that no longer exists would otherwise fail Kconfig.
-    # phase-481 W3 -- and the image's own `conf` fragments an earlier configure
+    # phase-481 W3 -- and the image's own `os_config` fragments an earlier configure
     # inserted (recorded in NROS_IMAGE_CONF_FILES), so an image switch leaves
     # none of the previous image's behind.
     set(_user "")
@@ -307,9 +307,9 @@ function(nros_image_kconfig_hook)
         _nros_image_kconfig_drop_cli_overridden("${_kconfig}")
     endif()
 
-    # phase-481 W3 -- the image's Zephyr-native fragments (`[image.<id>] conf`
+    # phase-481 W3 -- the image's Zephyr-native fragments (`[image.<id>] os_config`
     # of a single-package leaf; the CLI answers nothing for a bringup, whose
-    # `conf` `nros build` passes itself). They go FIRST in the cache value:
+    # `os_config` `nros build` passes itself). They go FIRST in the cache value:
     # before the user's own entries -- a board tail a harness passes as
     # `-DEXTRA_CONF_FILE` must still override them, exactly as it did when the
     # same file sat in `CONF_FILE` ahead of it -- and before the rendering. A
@@ -341,7 +341,7 @@ function(nros_image_kconfig_hook)
     # phase-484 W5b -- a knob assigned in a conf file this image merges is a
     # Kconfig error too (no prompt); refuse it here, naming the file, the line
     # and where the value belongs. The files the build names, the image's own
-    # `conf`, and Zephyr's default `prj.conf` when no CONF_FILE is given; a
+    # `os_config`, and Zephyr's default `prj.conf` when no CONF_FILE is given; a
     # board fragment or a snippet still meets Kconfig's error as the backstop.
     set(_scan ${_named} ${_user} ${_image_conf})
     if(NOT DEFINED CACHE{CONF_FILE} AND NOT DEFINED CONF_FILE)

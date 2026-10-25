@@ -288,7 +288,7 @@ def untracked_refs(files, roots):
             except (OSError, tomllib.TOMLDecodeError):
                 continue
             under = [t for t in tracked if t.startswith(base + "/")]
-            # `conf` fragments, per image: the overlay resolver looks under the
+            # `os_config` (alias `conf`) fragments, per image: the overlay resolver looks under the
             # bringup's board directory, then in the image's west APPLICATION
             # (a hand-written `[image.<id>] entry`, else `<id>_entry`), then in
             # the bringup (`builder/zephyr.rs::resolve_fragment`).
@@ -296,13 +296,15 @@ def untracked_refs(files, roots):
                 if not isinstance(img, dict):
                     continue
                 app = _norm(base, "../" + (img.get("entry") or f"{img_id}_entry"))
-                for v in img.get("conf") or []:
+                for v in [*(img.get("conf") or []), *(img.get("os_config") or [])]:
+                    if v.endswith(".toml"):
+                        continue  # a board network file, beside system.toml
                     ok = any(os.path.basename(t) == v for t in under) or \
                         any(t.startswith(app + "/") and os.path.basename(t) == v
                             for t in tracked)
                     if not ok:
                         found.setdefault(f, []).append(
-                            f"[image.{img_id}] conf `{v}` is tracked neither under the "
+                            f"[image.{img_id}] os_config `{v}` is tracked neither under the "
                             f"bringup nor in its application")
             for key, v in _toml_values(doc, {"launch", "default_launch"}):
                 pkg_dir, file_ = base, v

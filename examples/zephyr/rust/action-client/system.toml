@@ -28,12 +28,12 @@ name = "action_client"
 [image.zephyr_zenoh]
 board = "zephyr"
 rmw = "zenoh"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 
 [image.zephyr_xrce]
 board = "zephyr"
 rmw = "xrce"
-conf = ["prj-xrce.conf"]
+os_config = ["prj-xrce.conf"]
 # The Micro-XRCE-DDS agent. A test harness passes its own port per run
 # (`-DCONFIG_NROS_XRCE_AGENT_PORT=…`, which merges after this).
 locator = "udp/127.0.0.1:2018"
@@ -54,4 +54,4 @@ max_service_clients = 3
 [image.zephyr_cyclonedds]
 board = "zephyr"
 rmw = "cyclonedds"
-conf = ["prj-cyclonedds.conf"]
+os_config = ["prj-cyclonedds.conf"]

@@ -16,7 +16,7 @@
 #
 # That gets D14's actual goal — the two derivations cannot silently disagree —
 # without taking the standalone path away. The disagreement is not theoretical:
-# `[image.demo] rmw = "cyclonedds"` with a `prj-zenoh.conf` on the `conf` list
+# `[image.demo] rmw = "cyclonedds"` with a `prj-zenoh.conf` on the `os_config` list
 # builds a zenoh image while the workspace says Cyclone, and every symptom of
 # that appears at RUNTIME as "nothing is discovered", one layer below anything
 # that names an RMW.
@@ -229,7 +229,7 @@ function(nros_check_image_agreement)
 Kconfig is what the build uses, so the image's `rmw` is not being honoured.
 Either name the matching overlay on the image —
     [image.…]
-    conf = [\"prj-${_declared}.conf\"]
+    os_config = [\"prj-${_declared}.conf\"]
 — or set `rmw = \"${_selected}\"` if the overlay is the one you want.
 Declared in ${NROS_IMAGE_WORKSPACE}.")
     endif()

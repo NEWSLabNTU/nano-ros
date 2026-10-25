@@ -391,7 +391,7 @@ pub fn image_link_features(
     features: &mut Vec<String>,
     declares: impl Fn(&str) -> bool,
 ) {
-    if transport != Some("serial") || !declares("serial") {
+    if !nros_orchestration_ir::leaf_system::is_byte_stream_link(transport) || !declares("serial") {
         return;
     }
     features.retain(|f| f != IP_LINK_FEATURE);

@@ -191,7 +191,7 @@ rmw = "cyclonedds"
 # merges BEFORE the board package's fragments, and this one's `CONFIG_RUST=n`
 # must land AFTER the board's `CONFIG_RUST=y`. The hand-written application
 # re-appended it for the same reason.
-conf = ["prj.conf", "prj-cyclonedds.conf"]
+os_config = ["prj.conf", "prj-cyclonedds.conf"]
 
 [image.linux]
 board = "linux"
@@ -212,7 +212,7 @@ board = "rv-virt-nuttx"
 
 [image.zephyr]
 board = "zephyr"
-conf = ["prj-zenoh.conf"]
+os_config = ["prj-zenoh.conf"]
 # phase-470 W5.b3 (issue 1288) — the west application is GENERATED, so no
 # `entry =`: a generated application is found by construction at
 # `build/<coord>/<image>_entry/`, which is the ambiguity `entry =` existed to

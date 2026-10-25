@@ -1,14 +1,17 @@
 # Phase 514 — Network and middleware configuration in three layers
 
-**Status (2026-10-25). W1, W2 landed; W4's network half and W6 in review;
-W3, W5 and the rest of W4 not started.** W1: every
-board descriptor states `[board.net] stack` and `links`, from one link
-vocabulary (`LINK_KINDS`, a superset of the image `TRANSPORT_KINDS`). W2: an
-image's address lives in the board network file its `os_config` names; all 78
-in-tree rows moved, each resolving byte-identically. W4a + W6: `[network.*]`
-and the inline `[image.<id>.net.*]` are refused naming their homes; a network's
-subnet/gateway/dhcp moved into the board network files, its router into the
-image's `locator`, its attach into `[image.<id>.run] nic` (3 tracked files).
+**Status (2026-10-25). W1, W2 landed; W4 and W6 in review; W3 and W5 not
+started.** W1: every board descriptor states `[board.net] stack` and
+`links`, from one link vocabulary (`LINK_KINDS`, a superset of the image
+`TRANSPORT_KINDS`). W2: an image's address lives in the board network file
+its `os_config` names; all 78 in-tree rows moved, each resolving
+byte-identically. W4a + W6: `[network.*]` and the inline `[image.<id>.net.*]`
+are refused naming their homes; a network's subnet/gateway/dhcp moved into
+the board network files, its router into the image's `locator`, its attach
+into `[image.<id>.run] nic`. W4b: the link is derived from the locator
+(`[image] transport` refused), `conf` is an alias of `os_config` (75 tracked
+lines moved), D9 check 6 refuses a layer-1 file its board's network owner
+does not read, and NuttX's address default is its kernel `defconfig`.
 Implements
 [RFC-0109](../design/0109-network-config-layers.md). Opened with the RFC so
 its work and phase-206's leftovers have one home.
@@ -68,10 +71,21 @@ Taken while implementing (RFC-0109 D6 amended 2026-10-25): `[image]` /
   `[image_defaults.net]` and a top-level `[[transport]]` refused by name
   (`nros_orchestration_ir::retired_tables`), for every reader (the CLI schema,
   the leaf reader, `nros::main!`). Done.
-- **W4b** — `[image] transport` derived from the locator scheme (`custom://`
-  becomes a link kind); `conf` an alias of `os_config`, tracked uses moved;
-  D9 check 6; the `[[transport]]` in the four test-bin `config.toml`s read by
-  `Config::from_toml`; NuttX `BOARD_NET_*` generated from its `defconfig`.
+- **W4b** — `[image] transport` derived from the locator scheme
+  (`leaf_system::link_kind_of_locator`; `custom://` is a link kind now,
+  `nros_platform::LinkKind::Custom`, which the mps2 board's XRCE-over-UART
+  keys on), with one predicate for the byte-stream implications
+  (`is_byte_stream_link`); `conf` an alias of `os_config` (concatenating
+  over `[image_defaults]`, a table stating both refused), 75 tracked lines
+  moved; D9 check 6 (`BoardNet::check_os_config`, swept over every tracked
+  image); NuttX `BOARD_NET_*` generated from `nuttx-config/<arch>/defconfig`
+  (`board_net::from_kconfig`), its `[board.net]` reduced to `stack`, and the
+  arm defconfigs moved `10.0.2.30` → `10.0.2.15` so the generated value is
+  the address the board already applied. Done. Two things deliberately left,
+  each an issue: the direct-mode `config.toml` `[[transport]]` that seven
+  board crates' `Config::from_toml` read (a board API for apps with no
+  `system.toml`, issue 2047), and the NuttX board's run-time `SIOCSIFADDR`
+  push that overrides the kernel it now reads (issue 2048).
 
 **Done when** no tracked file uses a retired key and each refusal has a test.
 

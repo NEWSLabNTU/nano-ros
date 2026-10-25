@@ -255,10 +255,10 @@ fn add_image_block(
     block["entry"] = value(entry_name.to_string());
     let mut conf = Array::new();
     conf.push(format!("prj-{}.conf", cfg.rmw));
-    block["conf"] = value(conf);
+    block["os_config"] = value(conf);
     block.decor_mut().set_prefix(format!(
         "\n# Scaffolded by `nros new entry {entry_name}`.\n\
-         # `conf` names the RMW overlay this entry's CMakeLists requires;\n\
+         # `os_config` names the RMW overlay this entry's CMakeLists requires;\n\
          # `entry` names the application west is pointed at.\n"
     ));
     images.insert(image_id, Item::Table(block));
@@ -519,12 +519,12 @@ elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     set(EXTRA_CARGO_ARGS --no-default-features --features rmw-cyclonedds)
 else()
     # Not a defensive check — this is reachable, and it is the failure a
-    # missing `conf` on the image produces. Naming the fix here is the whole
+    # missing `os_config` on the image produces. Naming the fix here is the whole
     # value of the branch.
     message(FATAL_ERROR
         "{name} requires an RMW overlay. Declare it on the image:\n"
         "    [image.{name}]\n"
-        "    conf = [\"prj-zenoh.conf\"]\n"
+        "    os_config = [\"prj-zenoh.conf\"]\n"
         "or pass it yourself: west build -- -DEXTRA_CONF_FILE=prj-zenoh.conf")
 endif()
 

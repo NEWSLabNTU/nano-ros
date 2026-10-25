@@ -21,20 +21,20 @@ dispatch = "deferred"
 [image.mps2-an385-baremetal]
 board = "qemu-mps2-an385"
 locator = "custom://uart"
-# Serial-only firmware (phase-132 / phase-204.7), stated ONCE (phase-445 W6):
-# `nros sync` derives `ZPICO_NO_SMOLTCP=1` + `NROS_LINK_IP=0` from it, and
+# Serial-only firmware (phase-132 / phase-204.7). The `custom://` locator IS the
+# link, kind `custom` (RFC-0109 D6 derives it): XRCE framed over UART0, which
+# the board installs for `rmw = "xrce"` over `LinkKind::Custom`. `nros sync`
+# derives `ZPICO_NO_SMOLTCP=1` + `NROS_LINK_IP=0` from it, and
 # `NROS_LINK_IP=0` is what drops the XRCE UDP/TCP transports too
 # (`nros-rmw-xrce-cffi/build.rs`, issue 1068). Both were hand-written in this
 # leaf's `.cargo/config.toml` `[env]`. What the pair is worth is measured on
 # the sibling `serial-talker`, whose `system.toml` carries the numbers.
 #
-# This key read `transport = "xrce"` until phase-445 W6 — the RMW name, which
-# is `[system] rmw`, in the slot that names the LINK; it is refused now
-# (`leaf_system::TRANSPORT_KINDS`). One thing DID read it: the board's XRCE
-# registration compared it against "xrce", so the rename left this image
-# booting with no backend (issue 1601). The board now keys on `rmw` AND the
-# link (`DeployOverlay::selects`), and the link is a typed `LinkKind`.
-transport = "serial"
+# A `transport` key here read `"xrce"` until phase-445 W6 — the RMW name in
+# the slot that names the LINK — and the board's XRCE registration compared it
+# against "xrce", so the rename left this image booting with no backend (issue
+# 1601). The board keys on `rmw` AND the link (`DeployOverlay::selects`), and
+# since RFC-0109 D6 the link is the locator's, so the second home is gone.
 
 # The APP rung (RFC-0049, RFC-0098 D4) — the XRCE session pools, stated by the
 # IMAGE that needs them tight. Phase 207.6 shrank `xrce_session_state_t` from
