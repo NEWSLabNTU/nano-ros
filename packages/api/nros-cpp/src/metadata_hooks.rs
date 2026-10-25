@@ -664,7 +664,7 @@ mod census_hooks_reach_every_api {
         }
     }
 
-    unsafe extern "C" fn timer_noop(_t: *mut nros_c::rcl_timer_t, _c: *mut c_void) {}
+    unsafe extern "C" fn timer_noop(_t: *mut nros_c::rcl_timer_t, _since_last_call: i64) {}
     unsafe extern "C" fn guard_noop(_c: *mut c_void) {}
 
     /// A C node opened through `nros-c`'s own node entry point: its timer,
@@ -710,11 +710,11 @@ mod census_hooks_reach_every_api {
 
         let mut timer = alloc::boxed::Box::new(rcl_get_zero_initialized_timer());
         let rc = unsafe {
-            rclc_timer_init_with_context(
+            rclc_timer_init_default(
                 &mut *timer,
+                core::ptr::null_mut(),
                 50_000_000,
                 Some(timer_noop),
-                core::ptr::null_mut(),
             )
         };
         assert_eq!(rc, RCL_RET_OK);
@@ -800,7 +800,7 @@ mod census_hooks_reach_every_api {
         nros::metadata_mode::reset();
     }
 
-    /// A C timer registered before ANY node -- legal (`rclc_timer_init_with_context` takes
+    /// A C timer registered before ANY node -- legal (`rclc_timer_init_default` takes
     /// no node; `nros-c`'s `timer_clock_source.c` does it). The
     /// slot is counted under the executor scope instead of panicking the
     /// process, which is what a bare `record` with no current node would do in
@@ -831,11 +831,11 @@ mod census_hooks_reach_every_api {
         );
         let mut timer = alloc::boxed::Box::new(rcl_get_zero_initialized_timer());
         let rc = unsafe {
-            rclc_timer_init_with_context(
+            rclc_timer_init_default(
                 &mut *timer,
+                core::ptr::null_mut(),
                 10_000_000,
                 Some(timer_noop),
-                core::ptr::null_mut(),
             )
         };
         assert_eq!(rc, RCL_RET_OK);

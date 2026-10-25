@@ -335,70 +335,47 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  * one fails to compile.
  *
  * ═══════════════════════════════════════════════════════════════════════════
- * 4. Still refused: `rclc_timer_init_default`
+ * 4. ADOPTED by phase-515 C1: `rclc_timer_init_default` and `rcl_timer_init`
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * The one `_init_default` that did NOT converge, and the reason is the
+ * The last `_init_default` to converge, and the reason it took longest was the
  * CALLBACK CONTRACT rather than the arity:
  *
- *   rclc: rcl_ret_t rclc_timer_init_default(
- *             rcl_timer_t *timer, rclc_support_t *support,
- *             const uint64_t timeout_ns, const rcl_timer_callback_t callback)
- *   ours: rcl_ret_t rclc_timer_init_with_context(
- *             struct rcl_timer_t *timer, uint64_t period_ns,
- *             rclc_timer_callback_with_context_t callback, void *context)
+ *   rcl_timer_callback_t = void (*)(rcl_timer_t *, int64_t last_call_time)
  *
- *   rcl_timer_callback_t               = void (*)(rcl_timer_t *, int64_t last_call_time)
- *   rclc_timer_callback_with_context_t = void (*)(struct rcl_timer_t *, void *context)
+ * Until phase-515 ours was `void (*)(rcl_timer_t *, void *context)`: two
+ * parameters, both leading with the timer, and the SECOND carrying entirely
+ * different information. A ported timer callback was a different FUNCTION, so
+ * the init took a distinct name (`rclc_timer_init_with_context`) rather than
+ * compile-and-differ under rclc's.
  *
- * Both are two-parameter and both lead with the timer; the SECOND parameter
- * carries entirely different information. Upstream hands the callback the time
- * since its last call, we hand it the user's context pointer. A ported timer
- * callback is therefore a different FUNCTION, not a differently-registered
- * one, so dropping our trailing `void *context` to reach rclc's arity would
- * buy a matching argument COUNT over a mismatched contract — which is the
- * "compile and differ" the rule exists to prevent. It happens to fail to
- * compile on assignment (`int64_t` against `void *`), but the refusal does not
- * rest on that: a target where the two are assignable would make the mistake
- * silent.
+ * phase-515 decision D2 took rclc's contract and removed ours. The context
+ * was always recoverable: every in-tree caller (34) embedded the timer in the
+ * struct its context pointed at, or in a struct beside it, and the executor
+ * hands the callback the caller's OWN timer, never a copy. So the state is
+ * reached the standard C way, `RCLC_CONTAINER_OF(timer, my_t, timer)` in
+ * `<rclc/timer.h>`, which is the `offsetof` arithmetic an rclc program writes
+ * by hand. Now native, with upstream's signatures:
  *
- * So our init takes a DISTINCT name, `rclc_timer_init_with_context` — rclc's
- * `_with_context` spelling for a context-carrying callback — and keeps its
- * arity and its `context`. phase-492 W1.b: the W3 rename had spelled it
- * `rcl_timer_init` and its callback type `rcl_timer_callback_t`, i.e. took
- * upstream's names over exactly this contract; `check-c-api-upstream-signatures`
- * now refuses that. It takes no support either: the support was a validity
- * witness the init never otherwise read, and a C component the generated
- * entry hosts has none. Closing the gap for real needs a decision about what
- * our timer callback receives, not a rename.
+ *   rclc_timer_init_default(timer, support, timeout_ns, callback)
+ *   rclc_timer_init_default2(timer, support, timeout_ns, callback, autostart)   (Jazzy)
+ *   rcl_timer_init(timer, clock, context, period, callback, allocator)
+ *   rcl_timer_init2(timer, clock, context, period, callback, allocator, autostart) (Jazzy)
  *
- * Jazzy's `rcl_timer_init2` / `rclc_timer_init_default2` (issue 1974) add a
- * trailing `bool autostart` and inherit the same refusal: ours are
- * `rclc_timer_init_on_clock2` / `rclc_timer_init_with_context2`, the two
- * verbs above plus that flag. Jazzy's call info (`rcl_timer_call_info_t`, same
- * name and fields) reaches a callback registered with
- * `rclc_timer_init_with_info` rather than through `rcl_timer_call_with_info`,
- * which is a dispatch call our executor makes for the user.
+ * The envelope, stated at each definition:
+ *   - `support` and `context` may be NULL, which rclc and rcl refuse: neither
+ *     is read, and a C component the generated entry hosts has no support.
+ *   - `allocator` must be the default; a caller-supplied one is refused.
+ *   - `last_call_time` is the executor's elapsed count at dispatch, the value
+ *     `rcl_timer_get_time_since_last_call` reports: microsecond resolution
+ *     (issue #505), measured from the previous due point.
  *
- * ── The CLOCK, though, is taken (phase-430 W1) ────────────────────────────
- *
- * The refusal above is about the NAME and the callback contract; it says
- * nothing about the argument list, and rcl's argument list is
- *
- *   rcl:  rcl_ret_t rcl_timer_init(rcl_timer_t *timer, rcl_clock_t *clock,
- *             rcl_context_t *context, int64_t period,
- *             const rcl_timer_callback_t callback, rcl_allocator_t allocator)
- *
- * — clock SECOND, immediately after the timer. `rclc_timer_init_on_clock`
- * takes an `rcl_clock_t *` in exactly that position, which is RFC-0089's
- * "C takes rcl's spellings"
- * applied to the half of the spelling that survives our callback contract.
- *
- * It is a SECOND verb rather than a widened `rclc_timer_init_with_context` because C has no
- * overloading and every existing caller passes five arguments. The clock-less
- * form is the wall timer (rclcpp's `create_wall_timer`), which is what those
- * callers have always had; the clock-taking form is how a C node asks for a
- * ROS-time timer that follows `/clock`. Ledger row `c:timer_init_on_clock`.
+ * The clock goes where rcl puts it, SECOND (phase-430 W1 took that position
+ * under the name `rclc_timer_init_on_clock` while the contract still
+ * differed). Jazzy's call info (`rcl_timer_call_info_t`) reaches a callback
+ * registered with `rclc_timer_init_with_info(timer, clock, period, cb,
+ * autostart)` rather than through `rcl_timer_call_with_info`, a dispatch call
+ * our executor makes for the user; that callback carries no context either.
  *
  * ── Also still refused, and why, so the absence is a record ───────────────
  *

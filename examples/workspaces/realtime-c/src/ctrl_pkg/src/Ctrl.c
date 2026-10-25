@@ -22,9 +22,9 @@ typedef struct {
     int32_t count;
 } ctrl_t;
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    ctrl_t* self = (ctrl_t*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    ctrl_t* self = RCLC_CONTAINER_OF(timer, ctrl_t, timer);
+    (void)last_call_time;
     std_msgs__msg__Int32 msg;
     memset(&msg, 0, sizeof(msg));
     msg.data = self->count;
@@ -45,7 +45,7 @@ static rcl_ret_t ctrl_configure(rcl_node_t* node, rclc_executor_t* executor, ctr
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rcl_ret_t trc = rclc_timer_init_with_context(&self->timer, 10ULL * 1000000ULL, on_tick, self);
+    rcl_ret_t trc = rclc_timer_init_default(&self->timer, NULL, 10ULL * 1000000ULL, on_tick);
     if (trc != RCL_RET_OK) {
         return trc;
     }

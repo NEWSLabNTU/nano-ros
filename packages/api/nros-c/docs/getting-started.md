@@ -107,8 +107,8 @@ Create `src/main.c`:
 static rcl_publisher_t g_pub;
 static std_msgs__msg__Int32 g_msg;
 
-static void timer_cb(struct rcl_timer_t *timer, void *ctx) {
-    (void)timer; (void)ctx;
+static void timer_cb(struct rcl_timer_t *timer, int64_t last_call_time) {
+    (void)timer; (void)last_call_time;
     g_msg.data++;
     /* Serialised through the descriptor the publisher was created with, into
      * a transmit buffer bounded at build time. Nothing allocates. */
@@ -142,7 +142,7 @@ int main(void) {
                                     "/chatter") != RCL_RET_OK) return 1;
 
     rcl_timer_t timer = rcl_get_zero_initialized_timer();
-    rclc_timer_init_with_context(&timer, 1000000000ULL, timer_cb, NULL);
+    rclc_timer_init_default(&timer, &support, 1000000000ULL, timer_cb);
 
     rclc_executor_t exec = rclc_executor_get_zero_initialized_executor();
     rclc_executor_init(&exec, &support.context, 4, NULL);

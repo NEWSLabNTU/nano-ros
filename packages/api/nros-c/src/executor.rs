@@ -2627,7 +2627,7 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
 ///
 /// Before this the two were copies, and the in-group copy had already drifted:
 /// it ignored the timer's clock and registered every grouped timer as a WALL
-/// timer, so `rclc_timer_init_on_clock` + `_add_timer_in_group` silently lost
+/// timer, so `rcl_timer_init` + `_add_timer_in_group` silently lost
 /// ROS time. Both now take the clock, the callback flavour (plain context or
 /// call info) and the autostart state from the timer, and land on the one
 /// executor primitive `Executor::register_timer_with_info_on`, whose
@@ -2683,7 +2683,7 @@ unsafe fn add_timer_inner(
     }
 
     // phase-430 W1 — the clock the timer was initialised on selects the
-    // schedule. A NULL clock is the wall timer `rclc_timer_init_with_context`
+    // schedule. A NULL clock is the wall timer `rclc_timer_init_default`
     // makes, which is `TimerClockSource::Steady`. The clock's type is read HERE
     // rather than cached at init because that is where rcl reads it too, and
     // because the mapping has exactly one implementation
@@ -2703,13 +2703,14 @@ unsafe fn add_timer_inner(
         }
     };
 
-    let c_context = timer_ref.get_context();
     let timer_ptr = timer;
     let period = nros_node::TimerDuration::from_micros(period_us);
     let mut rust_exec = get_executor(executor);
 
-    // SAFETY (both closures): the C callback and timer/context pointers remain
-    // valid for the lifetime of the executor (same guarantee as rclc).
+    // SAFETY (both closures): the C callback and timer pointer remain valid for
+    // the lifetime of the executor (same guarantee as rclc). The callback gets
+    // the caller's OWN timer, never a copy, which is what lets an rcl callback
+    // with no context reach its state through `offsetof` (phase-515 D2).
     let registered = match (timer_ref.get_callback(), timer_ref.get_info_callback()) {
         (Some(c_callback), _) => rust_exec.register_timer_with_info_on(
             None,
@@ -2717,7 +2718,9 @@ unsafe fn add_timer_inner(
             source,
             autostart,
             group,
-            move |_: &nros_node::TimerCallInfo| unsafe { c_callback(timer_ptr, c_context) },
+            move |info: &nros_node::TimerCallInfo| unsafe {
+                c_callback(timer_ptr, info.since_last_call_ns)
+            },
         ),
         (None, Some(c_callback)) => rust_exec.register_timer_with_info_on(
             None,
@@ -2727,7 +2730,7 @@ unsafe fn add_timer_inner(
             group,
             move |info: &nros_node::TimerCallInfo| {
                 let info = crate::timer::rcl_timer_call_info_t::from(*info);
-                unsafe { c_callback(timer_ptr, &info, c_context) }
+                unsafe { c_callback(timer_ptr, &info) }
             },
         ),
         (None, None) => return Err(RCL_RET_INVALID_ARGUMENT),
@@ -4979,7 +4982,7 @@ pub unsafe extern "C" fn rclc_executor_bind_handle_to_sched_context(
 // A LOCAL alias, not `nros_node::ShutdownCallbackFn`. cbindgen runs with
 // `parse_deps = false`, so a type owned by another crate in an `extern "C"`
 // signature degrades to an opaque struct that C cannot call through — the same
-// reason `rclc_timer_callback_with_context_t` is spelled here rather than imported.
+// reason `rcl_timer_callback_t` is spelled in `timer.rs` rather than imported.
 pub type rclc_shutdown_callback_t = Option<unsafe extern "C" fn(context: *mut core::ffi::c_void)>;
 
 /// Handle to a registered shutdown hook.

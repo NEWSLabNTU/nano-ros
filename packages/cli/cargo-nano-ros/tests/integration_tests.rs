@@ -863,7 +863,7 @@ mod component_scaffold {
             );
         }
         assert!(source.contains("rclc_publisher_init_default("));
-        assert!(source.contains("rclc_timer_init_with_context("));
+        assert!(source.contains("rclc_timer_init_default("));
         assert!(
             !source.contains("nros_cpp_"),
             "a C component never calls the C++ FFI:\n{source}"

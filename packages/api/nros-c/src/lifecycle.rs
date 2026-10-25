@@ -157,7 +157,7 @@ const _: () = {
 /// translation unit could not form the argument, and all twelve
 /// `*_register_on_*` entry points were uncallable from C. A local
 /// `Option<fn>` alias renders as a plain nullable function pointer (the same
-/// shape `rclc_guard_condition_callback_t` and `rclc_timer_callback_with_context_t`
+/// shape `rclc_guard_condition_callback_t` and `rclc_subscription_callback_with_context_t`
 /// already use, and the same one the C++ shim's
 /// `nros_cpp_lifecycle_callback_t` uses). The ABI is unchanged: a nullable
 /// `extern "C" fn` is one pointer either way.

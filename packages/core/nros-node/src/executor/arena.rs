@@ -2981,6 +2981,7 @@ pub(crate) fn timer_call_info(
         expected_call_time: actual.saturating_sub(late_ns),
         actual_call_time: actual,
         clock: clock_source,
+        since_last_call_ns: i64::try_from(elapsed_us.saturating_mul(1_000)).unwrap_or(i64::MAX),
     }
 }
 

@@ -40,9 +40,9 @@ static void send_next(add_client_t* self) {
     self->a++;
 }
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    add_client_t* self = (add_client_t*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    add_client_t* self = RCLC_CONTAINER_OF(timer, add_client_t, timer);
+    (void)last_call_time;
 
     if (self->in_flight) {
         example_interfaces__srv__AddTwoInts_Response r;
@@ -91,7 +91,7 @@ static rcl_ret_t add_client_configure(rcl_node_t* node, rclc_executor_t* executo
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_with_context(&self->timer, 500ULL * 1000000ULL, on_tick, self);
+    rc = rclc_timer_init_default(&self->timer, NULL, 500ULL * 1000000ULL, on_tick);
     if (rc != RCL_RET_OK) {
         return rc;
     }

@@ -160,9 +160,10 @@ static void signal_handler(int signum) {
     }
 }
 
-static void timer_callback(rcl_timer_t* timer, void* arg) {
+static void timer_callback(rcl_timer_t* timer, int64_t last_call_time) {
     (void)timer;
-    demo_ctx_t* ctx = (demo_ctx_t*)arg;
+    demo_ctx_t* ctx = &app.demo_ctx;
+    (void)last_call_time;
     ctx->message.data = ctx->tick++;
     // Phase 212.M native/c sweep — replace the never-defined
     // `nros_publisher_publish` symbol with the canonical typed
@@ -225,8 +226,8 @@ int main(int argc, char** argv) {
     app.demo_ctx.tick = 0;
     memset(&app.demo_ctx.message, 0, sizeof(app.demo_ctx.message));
 
-    RCLC_CHECK_RET(rclc_timer_init_with_context(&app.timer, 500ULL * 1000 * 1000 /* 500ms */,
-                                                timer_callback, &app.demo_ctx),
+    RCLC_CHECK_RET(rclc_timer_init_default(&app.timer, &app.support,
+                                           500ULL * 1000 * 1000 /* 500ms */, timer_callback),
                    1);
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 4, NULL), 1);
     RCLC_CHECK_RET(rclc_executor_add_timer(&app.executor, &app.timer), 1);

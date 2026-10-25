@@ -21,9 +21,9 @@ typedef struct {
     int32_t count;
 } telem_t;
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    telem_t* self = (telem_t*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    telem_t* self = RCLC_CONTAINER_OF(timer, telem_t, timer);
+    (void)last_call_time;
     std_msgs__msg__Int32 msg = {.data = self->count};
     if (rcl_publish(&self->pub, &msg, NULL) == RCL_RET_OK) {
         printf("[telem] tick=%d\n", (int)self->count);
@@ -42,7 +42,7 @@ static rcl_ret_t telem_configure(rcl_node_t* node, rclc_executor_t* executor, te
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_with_context(&self->timer, 100ULL * 1000000ULL, on_tick, self);
+    rc = rclc_timer_init_default(&self->timer, NULL, 100ULL * 1000000ULL, on_tick);
     if (rc != RCL_RET_OK) {
         return rc;
     }

@@ -228,7 +228,7 @@ pub fn on_param_declare(_name: &str, _value: &crate::ParameterValue) {
 }
 
 /// The node an executor-side entity is attributed to when the code created it
-/// before ANY node — legal in C (`rclc_timer_init_with_context` takes only a support
+/// before ANY node — legal in C (`rclc_timer_init_default` takes only a support
 /// context, and `nros-c`'s own `timer_clock_source.c` run test does exactly
 /// that). Recording it under a named scope keeps the slot in the count and
 /// makes the census say plainly that no node owns it; failing would turn a

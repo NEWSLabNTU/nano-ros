@@ -99,9 +99,9 @@ static void on_message_info(const uint8_t* data, size_t len, const uint8_t* atta
     (void)ctx;
 }
 
-static void on_timer(struct rcl_timer_t* timer, void* ctx) {
+static void on_timer(struct rcl_timer_t* timer, int64_t last_call_time) {
     (void)timer;
-    (void)ctx;
+    (void)last_call_time;
 }
 
 static bool on_request(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
@@ -169,7 +169,7 @@ static rcl_ret_t sub_info_add(rig_t* rig, entity_t* e) {
 
 static rcl_ret_t timer_init(entity_t* e, rig_t* rig) {
     e->timer = rcl_get_zero_initialized_timer();
-    return rclc_timer_init_with_context(&e->timer, 1000000000ULL, on_timer, NULL);
+    return rclc_timer_init_default(&e->timer, rig->support, 1000000000ULL, on_timer);
 }
 static rcl_ret_t timer_add(rig_t* rig, entity_t* e) {
     return rclc_executor_add_timer(&rig->executor, &e->timer);

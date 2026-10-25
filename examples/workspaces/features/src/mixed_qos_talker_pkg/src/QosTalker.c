@@ -45,9 +45,9 @@ static rclc_qos_t qos_profile(void) {
     return q;
 }
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    qos_talker_t* self = (qos_talker_t*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    qos_talker_t* self = RCLC_CONTAINER_OF(timer, qos_talker_t, timer);
+    (void)last_call_time;
     std_msgs__msg__Int32 msg;
     memset(&msg, 0, sizeof(msg));
     msg.data = self->count;
@@ -71,7 +71,7 @@ static rcl_ret_t qos_talker_configure(rcl_node_t* node, rclc_executor_t* executo
         return rc;
     }
     self->timer = rcl_get_zero_initialized_timer();
-    rcl_ret_t trc = rclc_timer_init_with_context(&self->timer, 1000ULL * 1000000ULL, on_tick, self);
+    rcl_ret_t trc = rclc_timer_init_default(&self->timer, NULL, 1000ULL * 1000000ULL, on_tick);
     if (trc != RCL_RET_OK) {
         return trc;
     }

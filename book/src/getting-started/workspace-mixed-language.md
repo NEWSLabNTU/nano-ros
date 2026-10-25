@@ -78,9 +78,9 @@ typedef struct {
     int32_t count;
 } c_talker_pkg_t;
 
-static void on_tick(rcl_timer_t* timer, void* ctx) {
-    (void)timer;
-    c_talker_pkg_t* self = (c_talker_pkg_t*)ctx;
+static void on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    c_talker_pkg_t* self = RCLC_CONTAINER_OF(timer, c_talker_pkg_t, timer);
+    (void)last_call_time;
     std_msgs__msg__Int32 msg = {.data = self->count};
     (void)rcl_publish(&self->pub, &msg, NULL);
     self->count++;
@@ -94,7 +94,7 @@ static rcl_ret_t talker_configure(rcl_node_t* node, rclc_executor_t* executor,
         &self->pub, node, ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "/chatter");
     if (rc != RCL_RET_OK) return rc;
     self->timer = rcl_get_zero_initialized_timer();
-    rc = rclc_timer_init_with_context(&self->timer, 1000000000ULL, on_tick, self);
+    rc = rclc_timer_init_default(&self->timer, NULL, 1000000000ULL, on_tick);
     if (rc != RCL_RET_OK) return rc;
     return rclc_executor_add_timer(executor, &self->timer);
 }

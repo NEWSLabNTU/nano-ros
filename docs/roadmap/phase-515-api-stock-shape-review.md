@@ -1,6 +1,6 @@
 # Phase 515 — Re-audit the recorded API differences against stock ROS 2 shape
 
-**Status (2026-10-25). Open; W0.a landed (#2627), D1–D4 decided.** Opened from a review of the
+**Status (2026-10-25). Open; W0.a landed (#2627), D1–D4 decided, C1 landed.** Opened from a review of the
 `api-parity` report on main `1a30bcbb22`. The work items below are candidates:
 each starts by confirming its reason against the code, because W0 found that
 the ledger's prose has drifted. The four decisions (D1–D4) are taken;
@@ -168,13 +168,29 @@ prose fix for each stale one. Not started; C++ and Rust names are not measured.
 
 ### C — rclc / rcl
 
-**C1 — `rclc_timer_init_default(timer, support, timeout_ns, callback)`.**
-The common rclc timer call. Refused because rclc's callback receives
-`last_call_time` and ours receives a `context`. The arena timer entry already
-stores a function and a context; recording which contract it holds and
-computing `last_call_time` at dispatch is a few bytes. *D2: rclc's contract
-only* -- adopt rclc's signature and `rcl_timer_callback_t`, remove
-`rclc_timer_init_with_context`, and migrate its 34 call sites.
+**C1 — `rclc_timer_init_default(timer, support, timeout_ns, callback)`.
+LANDED 2026-10-25.** rclc's and rcl's timer surface, with their signatures and
+callback contract (the upstream-signature gate measures all four names):
+`rcl_timer_callback_t` `(timer, int64_t last_call_time)`,
+`rclc_timer_init_default` / `_default2`, `rcl_timer_init` / `_init2`.
+Removed: `rclc_timer_init_with_context`, `_with_context2`,
+`rclc_timer_init_on_clock`, `_on_clock2`, `rclc_timer_callback_with_context_t`
+and the `context` field of `rcl_timer_t`; `rclc_timer_init_with_info` and its
+callback lost their context too. All 34 call sites moved (23 components,
+8 `main.c` examples, 3 tests), plus the `nros new` C scaffold, the book and
+the nros-c guide. A component's callback reaches its state with
+`RCLC_CONTAINER_OF(timer, my_t, timer)` (new, `<rclc/timer.h>`); a `main.c`
+reads its file-scope `app` as an rclc program does.
+
+`last_call_time` comes from the dispatcher: `TimerCallInfo` gained
+`since_last_call_ns`, the `elapsed_us` count at the moment the activation is
+due, i.e. what `rcl_timer_get_time_since_last_call` reports, so it survives
+`rcl_timer_exchange_period` and `rcl_timer_reset`. Resolved in-item: `support`
+(rclc) and `context` (rcl) may be NULL, since neither is read and a hosted C
+component has no support; a non-default allocator is refused. All three are
+the rows' `adopt-bounded` envelope. `timer_clock_source.c` pins 10 ms after a
+reset reading exactly 10 ms and `RCLC_CONTAINER_OF` reaching a timer embedded
+mid-struct.
 
 **C2 — context-less `rclc_executor_add_subscription(exec, sub, msg, cb, invocation)`.**
 Refused because a `void (*)(const void *)` callback would need a trampoline that

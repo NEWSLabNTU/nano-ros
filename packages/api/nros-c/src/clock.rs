@@ -52,7 +52,7 @@ pub enum rcl_clock_type_t {
 /// timer clock source, and the reason it lives here rather than in
 /// `nros-node`: these discriminants belong to `rcl_clock_type_t`, so a copy
 /// of them a crate away is the hand-mirror drift 0135/0160 measured one layer
-/// down. Both FFI crates call this — `rclc_timer_init_on_clock` (C) and
+/// down. Both FFI crates call this — `rcl_timer_init` (C) and
 /// `nros_cpp_timer_create_on_clock` (C++) — so a clock kind cannot mean one
 /// thing in a C image and another in a C++ one.
 ///
