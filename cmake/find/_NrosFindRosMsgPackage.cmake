@@ -46,6 +46,33 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosPackageXml.cmake")
 # Find-stub per pkg into `${CMAKE_BINARY_DIR}/nros-find-stubs/` so a stock
 # `find_package(<pkg>)` call from a consumer resolves through the smart
 # helper. Idempotent; safe to call multiple times.
+# Write `<emit_dir>/Find<pkg>.cmake`, a two-line delegator to
+# `_nros_find_ros_msg_package(<pkg>)`, which picks the layer itself. So one body
+# serves a workspace package and an AMENT one alike.
+function(_nros_write_find_stub emit_dir pname)
+    set(_stub "${emit_dir}/Find${pname}.cmake")
+    # Issue 1746 (found in its sweep) -- WRITE-IF-DIFFERENT, never
+    # write-once. The stub names this file by ABSOLUTE path, and an
+    # `if(NOT EXISTS)` guard kept the first configure's path forever:
+    # after phase-482 W1 moved this file out of `cmake/compat/stubs/`,
+    # every workspace build dir configured before it failed with
+    # `include could not find requested file: .../cmake/compat/stubs/
+    # _NrosFindRosMsgPackage.cmake`. Byte-identical content is not
+    # rewritten, so an unchanged stub costs nothing.
+    set(_stub_body
+        "# Auto-emitted Find-stub for ${pname} (Phase 210.A.4 / phase-488).\n"
+        "include(\"${CMAKE_CURRENT_FUNCTION_LIST_DIR}/_NrosFindRosMsgPackage.cmake\")\n"
+        "_nros_find_ros_msg_package(${pname})\n")
+    string(JOIN "" _stub_body ${_stub_body})
+    set(_stub_old "")
+    if(EXISTS "${_stub}")
+        file(READ "${_stub}" _stub_old)
+    endif()
+    if(NOT _stub_old STREQUAL _stub_body)
+        file(WRITE "${_stub}" "${_stub_body}")
+    endif()
+endfunction()
+
 function(_nros_emit_workspace_find_stubs)
     set(_search_roots "")
     if(DEFINED NROS_INTERFACE_SEARCH_PATH AND NOT NROS_INTERFACE_SEARCH_PATH STREQUAL "")
@@ -97,30 +124,49 @@ function(_nros_emit_workspace_find_stubs)
             if(NOT _is_msg_pkg)
                 continue()
             endif()
-            set(_stub "${_emit_dir}/Find${_pname}.cmake")
-            # Issue 1746 (found in its sweep) -- WRITE-IF-DIFFERENT, never
-            # write-once. The stub names this file by ABSOLUTE path, and an
-            # `if(NOT EXISTS)` guard kept the first configure's path forever:
-            # after phase-482 W1 moved this file out of `cmake/compat/stubs/`,
-            # every workspace build dir configured before it failed with
-            # `include could not find requested file: .../cmake/compat/stubs/
-            # _NrosFindRosMsgPackage.cmake`. Byte-identical content is not
-            # rewritten, so an unchanged stub costs nothing.
-            set(_stub_body
-                "# Auto-emitted Find-stub for ${_pname} (Phase 210.A.4 workspace pkg).\n"
-                "include(\"${CMAKE_CURRENT_FUNCTION_LIST_DIR}/_NrosFindRosMsgPackage.cmake\")\n"
-                "_nros_find_ros_msg_package(${_pname})\n")
-            string(JOIN "" _stub_body ${_stub_body})
-            set(_stub_old "")
-            if(EXISTS "${_stub}")
-                file(READ "${_stub}" _stub_old)
-            endif()
-            if(NOT _stub_old STREQUAL _stub_body)
-                file(WRITE "${_stub}" "${_stub_body}")
-            endif()
+            _nros_write_find_stub("${_emit_dir}" "${_pname}")
         endforeach()
     endforeach()
 endfunction()
+
+# phase-488 — the AMENT layer gets stubs too. A message package installed under
+# `AMENT_PREFIX_PATH` that nano-ros ships no `Find<pkg>.cmake` for (every
+# Autoware one: `autoware_vehicle_msgs`, `tier4_control_msgs`, …) used to fall
+# through `find_package()` to CONFIG mode — the INSTALLED ROS package's
+# `<pkg>Config.cmake`, whose targets are upstream rosidl C++ — whenever the
+# user's environment had sourced that install, which is how such a package
+# reaches a machine at all. The resolver below already reads layer 2; only the
+# stub that routes `find_package()` to it was missing. Workspace stubs are
+# written after these and name the same delegator, so shadowing is still
+# decided by `_nros_find_ros_msg_package`'s layer order. A package nano-ros
+# ships a module for is skipped: that module wins.
+function(_nros_emit_ament_find_stubs)
+    if(NOT DEFINED ENV{AMENT_PREFIX_PATH} OR "$ENV{AMENT_PREFIX_PATH}" STREQUAL "")
+        return()
+    endif()
+    set(_emit_dir "${CMAKE_BINARY_DIR}/nros-find-stubs")
+    file(MAKE_DIRECTORY "${_emit_dir}")
+    if(NOT "${_emit_dir}" IN_LIST CMAKE_MODULE_PATH)
+        list(PREPEND CMAKE_MODULE_PATH "${_emit_dir}")
+        set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" PARENT_SCOPE)
+    endif()
+    string(REPLACE ":" ";" _ament_paths "$ENV{AMENT_PREFIX_PATH}")
+    foreach(_prefix IN LISTS _ament_paths)
+        file(GLOB _shares LIST_DIRECTORIES true "${_prefix}/share/*")
+        foreach(_share IN LISTS _shares)
+            if(NOT IS_DIRECTORY "${_share}/msg" AND NOT IS_DIRECTORY "${_share}/srv"
+               AND NOT IS_DIRECTORY "${_share}/action")
+                continue()
+            endif()
+            get_filename_component(_pname "${_share}" NAME)
+            if(EXISTS "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/Find${_pname}.cmake")
+                continue()
+            endif()
+            _nros_write_find_stub("${_emit_dir}" "${_pname}")
+        endforeach()
+    endforeach()
+endfunction()
+_nros_emit_ament_find_stubs()
 
 # Emit workspace-pkg stubs immediately on first include — picks up any
 # NROS_INTERFACE_SEARCH_PATH set BEFORE NanoRosAmentSurface.cmake is pulled in.

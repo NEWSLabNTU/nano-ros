@@ -36,6 +36,48 @@ function(nros_board_capability_defines board_dir out_var)
     set(${out_var} "${_defs}" PARENT_SCOPE)
 endfunction()
 
+# nros_ament_port_default_features(<out_var>)  — phase-488
+#
+#   <out_var> : set to the capability axes a configure that DECLARED none gets,
+#               which is nothing except on the one road below.
+#
+# A stock ROS 2 C++ package built on a host — the ament road: its own
+# `package.xml` (or, for an umbrella over a colcon-layout `src/`, one of
+# `src/*/package.xml`) names `ament_cmake` as a buildtool, and it pulls nano-ros
+# in with `add_subdirectory()` — gets `param_services`. Upstream rclcpp runs the six
+# parameter services in every node, so a ported node is written against them
+# (`ros2 param get` against it timed out until this, on the Autoware
+# `autoware_external_cmd_selector` port), and the package has no `system.toml`
+# to declare them in. The road is a property of the CONSUMER's source tree,
+# asked here before the runtime is configured, never of the build tree.
+# A declaration still wins: any `NROS_FEATURES` the consumer sets, `-D`s or
+# caches, including the empty one, is taken as written.
+function(nros_ament_port_default_features out_var)
+    set(${out_var} "" PARENT_SCOPE)
+    if(DEFINED NROS_FEATURES OR NOT NROS_PLATFORM STREQUAL "posix"
+       OR CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        return()
+    endif()
+    # The package itself, or a colcon-layout umbrella over `src/<pkg>/`.
+    file(GLOB _pxs "${CMAKE_SOURCE_DIR}/package.xml" "${CMAKE_SOURCE_DIR}/src/*/package.xml")
+    set(_px "")
+    foreach(_candidate IN LISTS _pxs)
+        file(READ "${_candidate}" _body)
+        if(_body MATCHES "<buildtool_depend>[ \t\r\n]*ament_cmake[A-Za-z_]*[ \t\r\n]*</buildtool_depend>")
+            set(_px "${_candidate}")
+            break()
+        endif()
+    endforeach()
+    if(_px STREQUAL "")
+        return()
+    endif()
+    message(STATUS
+        "nano-ros: ${_px} is an ament package on a host, so its runtime carries "
+        "`param_services` as upstream rclcpp's does. Set NROS_FEATURES to declare "
+        "the capabilities yourself (phase-488).")
+    set(${out_var} "param_services" PARENT_SCOPE)
+endfunction()
+
 # nros_lower_system_features(<features>)  — phase-261 W5
 #
 #   <features> : a CMake list of declared capability axes by name, e.g.

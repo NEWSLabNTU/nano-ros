@@ -777,6 +777,24 @@ cmake-leaf-cache:
     fi
     ./tests/cmake-leaf-cache-tests.sh
 
+# phase-488 W3 — the ament verbs against a stock ROS 2 package's CMakeLists:
+# `rclcpp_components_register_node(... EXECUTABLE ...)` generates a main that
+# declares the component, `ament_auto_add_library(... SHARED ...)` builds STATIC,
+# `ament_auto_add_*` take `include/` and the `package.xml` deps nano-ros answers
+# for, and an AMENT message package gets a Find stub
+# (tests/cmake-ament-surface-tests.sh).
+[private]
+cmake-ament-surface:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cmake-ament-surface "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-ament-surface-tests.sh
+
 # issue 1990 — a build dir's `cargo` link whose target the runner sweep removed
 # is re-created at BUILD time, before any cargo edge, so a swept cache costs a
 # rebuild rather than `File exists (os error 17)`

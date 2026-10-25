@@ -23,5 +23,9 @@ if(NOT TARGET rclcpp::rclcpp)
     # this INTERFACE target without calling the per-target helper. INTERFACE,
     # because the flag has to reach whatever links this target.
     target_compile_definitions(rclcpp::rclcpp INTERFACE NROS_CPP_STD=1)
+    # phase-488 — the parameter-services half of that equivalence.
+    if("param_services" IN_LIST NROS_FEATURES)
+        target_compile_definitions(rclcpp::rclcpp INTERFACE NROS_AMENT_START_PARAMETER_SERVICES=1)
+    endif()
 endif()
 set(rclcpp_FOUND TRUE)
