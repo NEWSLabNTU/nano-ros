@@ -1,292 +1,97 @@
-# Phase 162 — RT Scheduling Harness + Hardware Acceptance for Phase 110
+# Phase 162 — Real-time verification of executor levels on a privileged host
 
-**Goal.** Stand up the privileged-scheduling test harness and
-hardware-in-the-loop pathway needed to close the remaining
-Phase 110 acceptance items. Phase 110 archived all CI-reachable
-work; this phase owns the host-side / kernel-side / board-side
-setup that turns the parked acceptance criteria into runnable
-gates.
+**Status (2026-10-25). PARKED, rescoped.** Not started. Rewritten around
+RFC-0108's executor levels, which replaced the multi-executor design this phase
+was first written against. W1 and W2 need a host or runner with
+`CAP_SYS_NICE`. This host has none (no capabilities, `ulimit -r` 0, a
+`PREEMPT_DYNAMIC` kernel, not `PREEMPT_RT`), and every self-hosted runner is
+`--cap-drop ALL`. W3 is a writing task and can start now. Unpark W1 and W2 when
+an operator provides a privileged lane.
 
-**Status (2026-10-24). PARKED.** Not started. 162.C, the silicon run, moved
-to [phase-512](phase-512-on-hardware-measurements.md) H4 on 2026-10-24.
-The tree has no `rt-harness`, no `nros-bench/nuttx-sched-sporadic` and no
-`just/rt.just`. 162.A needs a `CAP_SYS_NICE`/RT-kernel host, and no lane
-provides one. 162.B is the exception:
-`CONFIG_SCHED_SPORADIC=y` is already in the NuttX QEMU defconfigs, so its
-bench and budget assertion (B.2/B.3) could run under QEMU today. A CPU-budget
-number from an emulator is weak evidence, though, and nobody has asked for
-it. Unpark the phase when an RT host or a board exists. Until then,
-phase-357's WCET derivations (now tracked by #259) run only on declared,
-synthetic numbers.
+**Implements:** [RFC-0002](../design/0002-rt-execution-model.md) scenarios S1
+and S3, on [RFC-0108](../design/0108-executor-preemption-levels.md) levels.
 
-**Earlier status.** Not Started — re-audited against the tree 2026-09-06.
+**Prior:** [phase-110](archived/phase-110-rt-execution-model.md) (runtime and
+API), [phase-509](archived/phase-509-executor-preemption-levels.md) (levels),
+[issue 2018](../issues/archived/2018-level-kernel-budget-enforcement.md)
+(kernel budgets on levels).
 
-None of this phase's six new deliverables exist (`rt-harness`,
-`nuttx-sched-sporadic`, `just/rt.just`, the RT chapter, the procurement doc),
-so "Not Started" is accurate for the WORK. Four of its PREMISES had drifted,
-and are corrected in place below rather than left to mislead the next reader:
+---
 
-| premise as written | tree, 2026-09-06 |
+## What changed on 2026-10-25
+
+The phase as first written (2026-05, re-audited 2026-09-06) planned a
+standalone harness around `Executor::open_threaded` and
+`SchedPolicy::Deadline`, a NuttX bench crate, and a PiCAS item. Measured
+against the tree on 2026-10-25:
+
+| Old item | Now |
 | --- | --- |
-| 162.B.1 adds `CONFIG_SCHED_SPORADIC=y` to the arm defconfig | **already `=y`, in all THREE** — `arm`, `arm-smp`, `riscv` |
-| 162.C.4 lands a number in `wake-latency-cortex-m3/README.md` | that README **does not exist**; the crate has none |
-| 162.C.4 patches `wake_alloc.rs::nros_rmw_runtime_wake_cb` | `wake_alloc.rs` is **gone**; the symbol is `executor/spin.rs:706` |
-| the bench "already produces a P99 histogram" | true, but it had ROTTED into no build lane (issue 0317) and was resurrected by phase-313; it now has a `fixtures.toml` row and builds in the `freertos` group |
+| 162.A.1–A.2: `nros-rt-harness` crate and `just rt-test` | **Dropped.** Levels run as ordinary images, and their tests are ordinary tests. `SchedPolicy::Deadline` has no hits in the tree. What is missing is a lane with the capability, not a harness (W1). |
+| 162.A.3: drone S1, zero deadline misses under load | **Kept** as W2, on levels. |
+| 162.A.4: watchdog S3, multi-executor preemption | **Mostly met.** phase-509 feeds the watchdog only when every level is alive (RFC-0108 D8), and `realtime_tiers_e2e` reads preemption order off the console for the levels cells. On Linux, tier priority preemption is still advisory, because `SCHED_FIFO` needs the capability too. That half moves to W1. |
+| 162.A.5: Linux `SCHED_DEADLINE` budget enforcement | **Built** by issue 2018. `nros-board-linux`'s `a_level_past_its_deadline_budget_is_throttled_by_the_kernel` exists, but on an unprivileged host it checks only the fallback and prints that the throttle half did not run. W1. |
+| 162.B: NuttX `SCHED_SPORADIC` bench crate | **Done another way.** Issue 2018 put `SCHED_SPORADIC` on every budgeted NuttX level thread. `sched_dims_applied_e2e::nuttx_level_budget_overrun_is_throttled_by_the_kernel` passes under QEMU. |
+| 162.C: Cortex-M3 wake latency on silicon | **Moved** to [phase-512](phase-512-on-hardware-measurements.md) H4 on 2026-10-24. |
+| 162.D: PiCAS evaluation | **Dropped.** `OsPrioritySet` is gone from the tree, and levels are the dispatch model. |
+| 162.E: book chapter | **Kept** as W3. |
 
-The blockers are unchanged and are the reason nothing has moved: a
-`CAP_SYS_NICE`/RT-kernel host, real Cortex-M3 silicon, and a NuttX kernel built
-with sporadic scheduling. Stock CI provides none of them.
-
-**Priority.** P2 — the runtime is shipping today on every
-CI-tested target with the documented "soft-RT only" caveat
-(`docs/design/0002-rt-execution-model.md` § 4.6, single-thread
-non-preemption note). Closing 162 promotes the existing
-deadline / sporadic / multi-executor surfaces from "compiles +
-unit tested" to "verified against real-time guarantees" — gate
-for safety-cert pipelines, not a blocker for the soft-RT cases
-already in production use.
-
-**Depends on.** Phase 110 (archived — runtime + API surface
-already in tree).
-
----
-
-## Why this phase exists
-
-Phase 110 split into "runtime + API" (closed) and "real-time
-verification" (parked). The parked items can't run in stock CI
-because they need one or more of:
-
-1. **`CAP_SYS_NICE` / RT-kernel host.** SCHED_DEADLINE +
-   SCHED_FIFO priority changes require either `CAP_SYS_NICE` on
-   the running process or a PREEMPT_RT kernel with `chrt`
-   permissions configured. GitHub Actions Linux runners give
-   neither by default.
-2. **Bare-metal Cortex-M3 hardware.** P99 wake-latency ≤ 100 µs
-   needs an MPS2-AN385 dev board or STM32F4 Discovery; QEMU's
-   DWT CYCCNT emulation is best-effort and the Phase 141 host
-   runner `[SKIPPED]`s cleanly when CYCCNT returns 0.
-3. **NuttX kernel with `CONFIG_SCHED_SPORADIC=y`** to exercise
-   the SCHED_SPORADIC syscall path the runtime emits.
-
-162 documents the setup once and wires the runnable harness so
-future regression sweeps don't re-discover the same kernel /
-toolchain prerequisites.
-
----
-
-## Architecture
-
-### A — Linux privileged-scheduling harness
-
-A single host-side harness binary (`nros-rt-harness`) plus a
-`just rt-test` recipe that:
-
-1. Detects whether the running process has `CAP_SYS_NICE` (or
-   equivalent under `chrt`).
-2. Drops a structured `[SKIPPED]` if not — same shape as
-   `nros_tests::skip!`.
-3. Otherwise runs the parametrised scenario suite (drone S1,
-   watchdog S3, sporadic budget enforcement) against the
-   Phase 110.D `Executor::open_threaded` path with real
-   `SchedPolicy::Deadline` / `Sporadic` policies.
-
-Reused infra:
-- `PlatformScheduler` trait from Phase 110.D (POSIX impl already
-  emits the `sched_setattr` / `sched_setscheduler` syscalls).
-- `nros-tests` skip mechanism + JUnit XML at
-  `target/nextest/default/junit.xml`.
-
-### B — NuttX SCHED_SPORADIC verification
-
-NuttX exposes SCHED_SPORADIC via `sched_setscheduler` +
-augmented `sched_param`. Verification harness:
-
-1. NuttX QEMU build with `CONFIG_SCHED_SPORADIC=y` in the
-   board defconfig (`packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/`).
-2. App pins a callback to a `Sporadic`-class SC with a known
-   budget / period.
-3. Long-running BE callback in another priority slot.
-4. Harness asserts the Sporadic SC's elapsed CPU stays within
-   budget over N major periods.
-
-### C — Bare-metal Cortex-M3 wake-latency on real silicon
-
-Phase 141.D bench crate
-(`packages/testing/nros-bench/wake-latency-cortex-m3/`)
-already produces a P99 histogram via DWT CYCCNT — but note its history before
-relying on that sentence: it had rotted into NO build lane and did not compile
-(issue 0317: retired `_start` entry, phase-230 feature drift, a libc-stub
-duplicate symbol), and was resurrected by phase-313. It now carries a
-`fixtures.toml` row and builds in the `freertos` group, so the QEMU flow this
-item calls "the CI fallback" is real again. Phase 162:
-
-1. Procurement-tracking checklist for MPS2-AN385 or
-   STM32F4-Discovery dev kit.
-2. Programming guide for the bench binary on hardware (the
-   QEMU flow stays the CI fallback).
-3. Host-side capture path (UART or RTT) that pipes the CSV
-   into the existing host runner.
-4. 10× baseline measurement (Phase 141 acceptance item) —
-   patch `wake_alloc.rs::nros_rmw_runtime_wake_cb` to no-op,
-   capture pre-141 P99 on the same hardware, restore.
-
-### D — Documentation pass
-
-The "book chapter on RT execution model + scenario catalogue"
-acceptance item from Phase 110 v1 (line 516) lives here so
-it tracks against the verification runs rather than the runtime
-landing.
-
-Target chapter: `book/src/internals/0002-rt-execution-model.md`.
-Contents:
-- Non-preemptive single-thread bound
-- SchedClass selection guide (when Fifo / Edf / Sporadic /
-  TimeTriggered each apply)
-- Scenario catalogue S1–S12 from the design doc, each with
-  measured acceptance status (hardware available vs CI-only)
-- Pointer to the harness recipes from sections A–C
-
----
+The old test design would also break today's rule: it planned to print
+`[SKIPPED]` on stock CI. Issue 1758 requires the lane to declare its scope
+instead, and a claimed capability that is absent to fail.
 
 ## Work items
 
-### 162.A — Linux privileged-scheduling harness
+### W1 — a lane that claims real-time scheduling, and the tests that need it
 
-- [ ] **162.A.1** `tools/rt-harness/` binary or
-      `packages/testing/nros-rt-harness/` crate that wraps the
-      Phase 110.D Executor + `SchedPolicy::Deadline /
-      Sporadic` configuration. Reads scenario manifest from
-      argv.
-- [ ] **162.A.2** `just rt-test` recipe + a documented setup
-      path for `setcap cap_sys_nice+eip` or PREEMPT_RT install.
-- [ ] **162.A.3** Drone S1 scenario:
-      `nros-rt-harness --scenario=drone-s1` enforces 1 ms
-      deadline under sustained 5 ms BE-load on Linux. Asserts
-      P99 deadline-miss = 0 over 60 s. Closes Phase 110 v1
-      acceptance line 510.
-- [ ] **162.A.4** Watchdog S3 scenario: multi-executor
-      preemption verified — high-priority executor pre-empts
-      low-priority within N µs. Closes Phase 110 v1 acceptance
-      line 511.
-- [ ] **162.A.5** Sporadic budget enforcement scenario:
-      Linux SCHED_DEADLINE path emits the expected
-      throttle-on-budget-exhaust behaviour. Closes Phase 110
-      post-v1 acceptance line 520 (Linux side).
+Add a `Capability::RtScheduling` (token `rt-sched`) to
+`nros_tests::lane_scope`, shaped like `HostBridge`: no lane claims it today,
+an unclaimed run deselects through `lane_skip!`, and a claimed run without
+`CAP_SYS_NICE` fails through `unmet!`. Then:
 
-### 162.B — NuttX SCHED_SPORADIC verification
+- `a_level_past_its_deadline_budget_is_throttled_by_the_kernel` reaches the
+  scope check first. Out of scope, it skips. In scope, a refused reservation
+  is a failure, not a printed note. The fallback assertion stays as its own
+  test, which runs everywhere.
+- A Linux levels cell asserts preemption order, the way the levels cells do
+  with `level_order_verdict`, in scope only.
+- An operator provides the lane: a runner started with `--cap-add SYS_NICE`
+  (and `--ulimit rtprio=99`), or `setcap cap_sys_nice+ep` on the test binary
+  of a local run. Nothing here may need `sudo` from the agent.
 
-- [ ] **162.B.1** Add `CONFIG_SCHED_SPORADIC=y` to the
-      `nros-board-nuttx-qemu` arm defconfig. **NOTHING TO DO — already true in
-      the tree as of 2026-09-06, and wider than this item asked**: set in
-      `arm`, `arm-smp` AND `riscv` defconfigs. Verified, not assumed.
+**Done when** both tests pass on a lane that claims `rt-sched`, and every other
+lane reports them as `[SKIPPED:lane]`.
 
-      Left UNTICKED deliberately. The box tracks work this phase performs, and
-      this phase has performed none; the setting arrived from elsewhere. A tick
-      here would also contradict the header (`check-roadmap-claims` R1 catches
-      exactly that, and did). So B is smaller than it reads — the Kconfig half
-      needs nobody, and only the bench (B.2) and the budget assertion (B.3)
-      remain.
-- [ ] **162.B.2** Bench binary in
-      `packages/testing/nros-bench/nuttx-sched-sporadic/` that
-      runs the same scenario as 162.A.5 against NuttX QEMU.
-- [ ] **162.B.3** Host runner asserts the Sporadic SC's
-      cumulative CPU stays within budget. Closes Phase 110
-      post-v1 acceptance line 520 (NuttX side).
+### W2 — S1 on levels: zero deadline misses under load
 
-### 162.C — Cortex-M3 P99 wake-latency on real silicon
+RFC-0002 S1 on Linux levels: a 1 kHz critical timer (0.8 ms WCET, 1 ms
+deadline) on the urgent level, and a best-effort level that keeps the CPU busy
+with 5 ms callbacks. In scope for `rt-sched` only.
 
-**Moved 2026-10-24 to [phase-512](phase-512-on-hardware-measurements.md) H4**
-(162.C.1–C.4 are H4.1–H4.4), which gathers every item that needs a board. The
-history and corrections for this section stay above, under "C".
+**Done when** 60 s of the run records zero deadline misses on the urgent level,
+and the same image with both levels at one priority records misses. The second
+half is the negative control: it shows the test can see a miss.
 
-### 162.D — PiCAS evaluation (optional / deferred)
+### W3 — the RT execution model chapter
 
-The Phase 110.F `OsPrioritySet<N>` stub is in place but the
-real dispatch model is reframed as "future node-orchestration
-phase." 162.D is a placeholder: once an orchestration phase
-proposes a callback-to-priority mapping, the PiCAS interop
-acceptance items (Phase 110 line 521-522) land here.
+`book/src/internals/rt-execution-model.md`: the non-preemption bound of one
+level, how to choose a `SchedClass`, how levels give preemption, which kernel
+enforces a budget on each platform (issue 2018's table), and S1–S12 with each
+one's measured status. Link it from
+[phase-110](archived/phase-110-rt-execution-model.md)'s archive note.
 
-- [ ] **162.D.1** (deferred) Wire 110.F `OsPrioritySet`
-      dispatch through the orchestration layer.
-- [ ] **162.D.2** (deferred) PiCAS RTAS '21 baseline
-      reproduction on Linux (Xavier-class platform).
-- [ ] **162.D.3** (deferred) `packages/testing/nros-tests/tests/bridge_picas_priority.rs`
-      — Phase 110.F.bridge.
+**Done when** the chapter is in the rendered book, and each scenario row names
+the test that measured it, or says it is unmeasured.
 
-### 162.E — Documentation
+## Acceptance
 
-- [ ] **162.E.1** `book/src/internals/0002-rt-execution-model.md`:
-      non-preemption bound, SchedClass selection guide,
-      scenario catalogue S1–S12 with measured status,
-      pointer to harness recipes.
-- [ ] **162.E.2** Cross-link archive note in
-      `docs/roadmap/archived/phase-110-0002-rt-execution-model.md`
-      to the chapter once it lands.
+- [ ] W1: the kernel throttle and Linux level preemption pass on a lane that
+      claims `rt-sched`, and skip by lane everywhere else.
+- [ ] W2: S1 on levels, zero misses in 60 s, with the negative control.
+- [ ] W3: the chapter is published and phase-110's archive note points to it.
 
----
+## Not in this phase
 
-## Files
-
-### New
-
-- `tools/rt-harness/` or `packages/testing/nros-rt-harness/`:
-  Linux privileged-scheduling harness binary.
-- `packages/testing/nros-bench/nuttx-sched-sporadic/`:
-  NuttX SCHED_SPORADIC bench.
-- `book/src/internals/0002-rt-execution-model.md`: chapter.
-- `docs/reference/hardware-procurement.md`: dev-board
-  procurement + flashing checklist. (162.C.1 calls this a "new section"; the
-  FILE does not exist, so it is a new file.)
-- `packages/testing/nros-bench/wake-latency-cortex-m3/README.md`: hardware
-  capture path + the 10× baseline number. Listed under *Modified* until
-  2026-09-06; the crate has never had a README.
-- `just/rt.just`: `just rt-test` recipe + capability detection.
-
-### Modified
-
-- ~~`packages/boards/nros-board-nuttx-qemu/nuttx-config/arm/`: defconfig adds
-  `CONFIG_SCHED_SPORADIC=y`.~~ **Done already** (all three defconfigs).
-- `packages/core/nros-node/src/executor/spin.rs`: the 10× baseline needs
-  `nros_rmw_runtime_wake_cb` (:706) AND `..._from_isr` (:916) no-op'd for the
-  measurement, then restored. (This list previously named `wake_alloc.rs`,
-  which no longer exists.)
-
-`wake-latency-cortex-m3/README.md` moved to the NEW list above: the crate has
-no README to modify.
-
----
-
-## Acceptance criteria
-
-- [ ] `just rt-test` runs locally on a host with
-      `cap_sys_nice` set; `[SKIPPED]` cleanly on stock CI hosts.
-- [ ] Phase 110 v1 line 510 (drone S1) closed.
-- [ ] Phase 110 v1 line 511 (watchdog S3) closed.
-- [ ] Phase 110 post-v1 line 520 (Sporadic enforcement on
-      NuttX + Linux + user-space) closed.
-- [ ] Phase 141 spec acceptance (P99 ≤ 100 µs on Cortex-M3
-      hardware) closed against at least one of MPS2-AN385 /
-      STM32F4-Discovery.
-- [ ] Phase 141 10× baseline captured as static reference.
-- [ ] `book/src/internals/0002-rt-execution-model.md` published in
-      the rendered book; archive note in Phase 110 points to it.
-- [ ] 162.D PiCAS items stay deferred until orchestration
-      phase ships — explicit `[ ] (deferred)` marker, not a
-      blocker.
-
----
-
-## Notes
-
-- The harness binary is intentionally *out of* `just test-all` —
-  privileged scheduling is opt-in. CI runs see `[SKIPPED]` and
-  pass; local / RT-kernel runs flip to PASS / FAIL.
-- Hardware procurement isn't a code task; the checklist exists
-  so the next person picking up 162.C has a one-stop reference.
-  MPS2-AN385 (Arm) and STM32F4-Discovery (ST) are both
-  inexpensive ($50-150 range) and well-documented.
-- The book chapter is a writing task, not a coding task. Land
-  the harness first (162.A–C) so the chapter can cite measured
-  numbers instead of theoretical ones.
+- Silicon measurements: [phase-512](phase-512-on-hardware-measurements.md).
+- WCET numbers from a real run for phase-357's derivations: #259, homed in
+  phase-460.

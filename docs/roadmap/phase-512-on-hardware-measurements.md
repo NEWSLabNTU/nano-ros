@@ -85,7 +85,11 @@ reproduction, with the RX FIFO depth and the drain interval recorded).
 
 ### H4 — Cortex-M3 P99 wake latency on silicon
 
-From phase-162 162.C, which keeps its history and corrections.
+From phase-162 162.C. The items below carry 162.C's 2026-09-06 corrections
+(`wake_alloc.rs` is gone, so the hooks are in `spin.rs`; the crate never had a
+README). The bench once rotted into no build lane and did not compile
+([0317](../issues/archived/0317-wake-latency-cortex-m3-bench-rotted-off-lane.md)); phase-313
+resurrected it.
 
 The `wake-latency-cortex-m3` bench (`packages/testing/nros-bench/`) builds in
 the `freertos` fixture group and runs under QEMU, but QEMU's timing says
