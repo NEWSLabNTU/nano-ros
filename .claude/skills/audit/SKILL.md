@@ -1,13 +1,13 @@
 ---
 name: audit
-description: Run the periodic codebase audit (quality / architecture / UX) per docs/development/codebase-audit-checklist.md. Use when the user invokes /audit or asks for a tech-debt / antipattern / UX sweep. Args: [quick|deep] [category letters, e.g. C,I,J]. quick (default) = grep-led triage + reader confirmation; deep = multi-agent fan-out with adversarial verify.
+description: Run the periodic codebase audit (quality / architecture / UX / gate reach) per docs/development/codebase-audit-checklist.md. Use when the user invokes /audit or asks for a tech-debt / antipattern / UX sweep, or a gate-reach re-audit. Args: [quick|deep|gates] [category letters, e.g. C,I,J]. quick (default) = grep-led triage + reader confirmation; deep = multi-agent fan-out with adversarial verify; gates = category K by mutation (phase-472's method).
 ---
 
 # /audit — periodic codebase audit
 
 Automates the audit cycle defined in
 `docs/development/codebase-audit-checklist.md`. That checklist is the SSoT
-for categories (A–J), detection greps, and severity rules — read it FIRST
+for categories (A–K), detection greps, and severity rules — read it FIRST
 each run; never duplicate its content here or drift from it.
 
 Design + decisions: `docs/superpowers/specs/2026-07-16-audit-skill-design.md`.
@@ -16,9 +16,13 @@ Design + decisions: `docs/superpowers/specs/2026-07-16-audit-skill-design.md`.
 
 `/audit [quick|deep] [categories]`
 
-- Depth: `quick` (default) or `deep`.
-- Categories: comma-separated checklist letters (`A`–`J`), default all.
+- Depth: `quick` (default), `deep`, or `gates`.
+- Categories: comma-separated checklist letters (`A`–`K`), default all
+  (`gates` implies `K`).
   Example: `/audit deep C,I,J`.
+
+Deep mode spawns several agents. Invoking `/audit deep` is the opt-in for
+that; never escalate to it on your own (see Guardrails).
 
 ## Procedure
 
@@ -26,10 +30,13 @@ Design + decisions: `docs/superpowers/specs/2026-07-16-audit-skill-design.md`.
 
 - Read the newest `docs/development/audit-findings-*.md` (if any) — the
   previous run's findings are the diff baseline.
-- List open + archived issue titles (`docs/issues/`, `docs/issues/archived/`)
-  so already-tracked findings are not re-filed.
-- `git fetch origin` and note origin's highest issue id across open +
-  archived (parallel sessions push to main; ids must not collide).
+- List open + archived issues so already-tracked findings are not re-filed:
+  `just issues [text]` (offline, ~20 ms), plus `docs/issues/archived/`.
+- Work in a worktree branched from a fresh `origin/main` (`git fetch origin`),
+  never in a dirty main checkout.
+- Where a checklist item names a gate, the item is enforced: do not re-judge
+  its grep hits — ask the K question of the gate instead (checklist "A gate
+  beats a grep").
 
 ### 2. Collect candidates
 
@@ -45,6 +52,14 @@ micro-test budget) get one reader each over their
 named surfaces; the API-shape items compare against the upstream ROS
 convention, so brief the reader to name the standard counterpart for every
 flagged divergence.
+
+**gates** — the checklist's category K, by mutation, as
+`docs/roadmap/archived/phase-472-gate-reach-sweep.md` ran it: per gate, plant
+the defect it names in a scratch tree (its own worktree when agents run in
+parallel, so mutations cannot collide), run it the way its lane does, restore,
+and refuse to continue unless `git status` is back at baseline. rc≠0 → CLEAN;
+rc=0 → run a control before calling it a HOLE. Report a table per gate
+(gate · mutation · rc · control rc · verdict) like the 2026-10-07 log.
 
 **deep** — orchestrate with the Workflow tool. Economy principles: the MAIN
 loop runs every detection grep first and hands each agent a pre-scoped brief
@@ -98,17 +113,22 @@ Write `docs/development/audit-findings-<YYYY-MM-DD>.md`:
 
 ### 5. File issues
 
-For each confirmed **P1/P2** finding that is not already tracked: create
-`docs/issues/<next-id>-<slug>.md` (frontmatter per `docs/issues/README.md`
-conventions, next id = max(local, origin) + 1), link the finding, and add the
-README index entry. **P3 findings stay in the findings doc** — do not file.
+For each confirmed **P1/P2** finding that is not already tracked: reserve the
+id with `just issue-new <slug>` — never by reading the highest number, which
+races parallel sessions (seven collisions) — then fill in the file it creates
+(frontmatter per `docs/issues/README.md`) and link the finding. Do NOT edit an
+issue index: `docs/issues/open.md` is a generated, gitignored artifact (issue
+0884). **P3 findings stay in the findings doc** — do not file.
 
 ### 6. Land
 
 - `just format` on touched files if any code was changed (normally none —
   the audit only writes docs).
-- Commit the findings doc + any new issues locally with a
-  `docs(audit): ...` message. **Never push** — the operator pushes.
+- Commit the findings doc + any new issues on the audit branch with a
+  `docs(audit): ...` message, staging explicit paths (never `git add -A`).
+- `main` takes no direct pushes (ruleset + merge queue). Push the branch and
+  open a PR only when the operator asks; then `just ci gate` first, `gh pr
+  merge --auto --rebase`, and confirm `autoMergeRequest` is set.
 
 ## Guardrails
 
@@ -116,6 +136,11 @@ README index entry. **P3 findings stay in the findings doc** — do not file.
   schedules fixes). Exception: none.
 - Respect CLAUDE.md pitfalls when reading (e.g. vendored `third-party/`,
   `*/generated/` are out of audit scope except for the C3 boundary check).
+  Count what the tree holds with `git ls-files` / `git grep`, never a `find`
+  from the checkout root (issue 1565).
+- The checklist is itself audited (H1): an item citing a path, phase or gate
+  that no longer exists is a P3 finding — report it in the findings doc rather
+  than silently skipping the item.
 - Deep mode is token-heavy; do not auto-escalate quick → deep. If quick
   produces a suspicious-but-unconfirmable finding, note it in the report and
   recommend a targeted deep run (`/audit deep <category>`).
