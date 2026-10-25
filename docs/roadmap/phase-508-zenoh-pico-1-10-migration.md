@@ -1,6 +1,6 @@
 # Phase 508 — move the zenoh-pico fork onto 1.10
 
-**Status (2026-10-24). In progress, and now the TRACKED target: ROS Humble
+**Status (2026-10-25). In progress, and now the TRACKED target: ROS Humble
 ships zenoh 1.10.1, so the target is 1.10.1, not "1.10" in general. The port
 survey is done (22 conflicting files, half of phase-415's 42), and a 1.8.0
 image interoperates with a 1.10.1 `rmw_zenohd` (27 of 27 interop tests, the
@@ -8,8 +8,11 @@ same as against 1.8.0), so the move is planned work, not a fix. A second
 survey found the move is bigger than a rebase: upstream 1.9 replaced the read
 and lease threads with an async executor, and renamed the platform link ABI,
 so `zpico.c`'s session driving and every platform's link shims change too
-(issue 0910's second-pass survey). Nothing has moved on the fork or the
-pin.** The phase
+(issue 0910's second-pass survey). On 2026-10-25 the patch line was rebased
+onto 1.10.1 and the config generator brought up to its knobs, both on local
+branches: the fork branch waits for the maintainer to push it, and the pin
+cannot move until `zpico.c` and the link shims are re-ported (issue 0910's
+2026-10-25 rebase section).** The phase
 was opened on 2026-10-17 to give issue 0910 a home after
 [phase-355](archived/phase-355-dependency-and-fork-debt.md) was archived on
 2026-10-12. At that point the move was parked: issue 0910's 2026-09-04 update
@@ -93,20 +96,38 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       patches as individual commits (CLAUDE.md, vendored-fork workflow). Drop
       each patch that upstream now carries, and record each drop. Redesign
       `ae59aa48` (#0899) and `00f8e2f0` (frame budget) for the executor rather
-      than replaying them.
+      than replaying them. DONE LOCALLY 2026-10-25 as branch `nano-ros-1.10.1`
+      (70 commits on `1.10.1`) in the superproject's zenoh-pico module store,
+      not yet on the fork remote. Every one of the 92 commits is accounted for
+      in issue 0910's 2026-10-25 section. Builds upstream-style on Linux in
+      five feature sets, with upstream's unit tests passing. Checked off when
+      the branch is pushed.
 - [ ] Re-port nano-ros's platform link shims to 1.10.1's renamed link ABI:
       the alias TU, ThreadX `network.c`, `zpico-serial`'s FFI, the
       `extra_sources` rows in `nros-rmw.toml`, and our CAN, ISO-TP, IVC and
       custom links.
 - [ ] Generate `config.h` the way upstream does, and close the gap between the
       knobs upstream defines and the ones our generator emits. Stop emitting
-      `Z_FEATURE_PERIODIC_TASKS`, which 1.10.1 removed.
+      `Z_FEATURE_PERIODIC_TASKS`, which 1.10.1 removed. DONE ON A LOCAL BRANCH
+      2026-10-25 (`feat/508-zenoh-1.10-knobs`, commit "state the knobs
+      zenoh-pico 1.10 reads"): the gap was 7 knobs, not the 55 first counted,
+      because only the template's non-generic branch is skipped by a
+      ZENOH_GENERIC build. `check-zenoh-config-template` now fails on any
+      such knob the generator does not state. The fork carries the header a
+      default configure writes, for builds that do not run its CMake. The
+      branch does not build against the 1.8.0 pin, so it lands with the bump.
 - [ ] Move our Zephyr serial implementation into upstream's layout as
       `src/link/transport/serial/uart_zephyr.c`, keeping its interrupt-driven
       and async receive paths, and take upstream's serial protocol framing
       where it matches ours. Upstream's 129-line backend does not replace it.
+      DONE ON THE FORK BRANCH, NOT YET BUILT FOR ZEPHYR: ours keeps its own
+      framing, through a new `ZP_PLATFORM_SERIAL_FRAMING` hook in upstream's
+      serial protocol layer, because receiving whole frames by interrupt or
+      DMA depends on owning it. The wire format is upstream's either way.
+      Checked off when a Zephyr serial image builds and passes its cells.
 - [ ] Extend upstream's `tty_posix.c` with the baud rates above `B230400`
-      that ours supports (up to 921600), then drop our POSIX serial code.
+      that ours supports (up to 921600), then drop our POSIX serial code. DONE
+      on the fork branch (the port of `e2b48046`); checked off with the push.
 - [ ] Bump the superproject pin forward only, after the fork branch is pushed.
 
 ## Acceptance
