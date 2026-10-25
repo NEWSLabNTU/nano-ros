@@ -284,7 +284,9 @@ pub struct ZenohBufferConfig {
 }
 
 /// A stated budget on zenoh-pico's unicast read task (RFC-0074 enforcement
-/// point 2): at most `frames` frames back to back, then a `rest_us` sleep.
+/// point 2): at most `frames` frames back to back, then a `rest_us` rest. On
+/// zenoh-pico 1.10 the rest is a `wake_up_after`, which the fork rounds up to
+/// whole milliseconds with a 2 ms floor (RFC-0110 D6).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RxTaskBudget {
     pub frames: usize,
@@ -403,17 +405,47 @@ pub fn config_header(
         writeln!(header, "#define Z_RX_TASK_BUDGET_REST_US {}", b.rest_us).unwrap();
     }
     writeln!(header, "#define Z_TRANSPORT_LEASE_EXPIRE_FACTOR 3").unwrap();
-    // issue 0959 — the lease task sleeps in chunks of this many ms rather than
-    // for a whole keep-alive interval, so `stop_lease_task`'s join does not have
-    // to wait out the remainder. Bounds teardown latency at ~1 s instead of
-    // `lease / EXPIRE_FACTOR`, which #0906's 60 s lease made 20 s. Costs one
-    // wakeup per second on an idle task.
-    writeln!(header, "#define Z_TRANSPORT_LEASE_TASK_SLEEP_CHUNK_MS 1000").unwrap();
-    writeln!(header, "#define ZP_PERIODIC_SCHEDULER_MAX_TASKS 8").unwrap();
+    // zenoh-pico 1.10 opens a session with these two; upstream's CMake defaults.
+    // They are new in 1.9/1.10 and live only in `config.h.in`'s non-generic
+    // branch, so a ZENOH_GENERIC build has no value unless this header states
+    // one (issue 0910).
+    writeln!(header, "#define Z_TRANSPORT_ACCEPT_TIMEOUT 1000").unwrap();
+    writeln!(header, "#define Z_TRANSPORT_CONNECT_TIMEOUT 10000").unwrap();
+    writeln!(header).unwrap();
+    // RFC-0110 D6 — zenoh-pico 1.10's async executor. The read, keep-alive and
+    // lease tasks are executor futures now, so the 1.8 lease task's sleep chunk
+    // (issue 0959) and the periodic scheduler's task cap are gone with them.
+    //
+    // `Z_RUNTIME_MAX_TASKS` is the executor's task table. Upstream's 64 is
+    // sized for peer mode and advanced pub/sub; a client session runs five
+    // (read, keep-alive, lease, query timeout, reconnect). 8 leaves headroom
+    // and is an estimate: RFC-0110 lists measuring the floor before it leaves
+    // Draft.
+    writeln!(header, "#define Z_RUNTIME_MAX_TASKS 8").unwrap();
     writeln!(header).unwrap();
     writeln!(header, "// Core Features").unwrap();
     writeln!(header, "#ifndef Z_FEATURE_MULTI_THREAD").unwrap();
     writeln!(header, "#define Z_FEATURE_MULTI_THREAD 0").unwrap();
+    writeln!(header, "#endif").unwrap();
+    // How long the read future waits when a poll finds nothing: 0 returns
+    // `continue`, 1 returns `wake_up_after(1)`. A build that runs the
+    // background executor thread (RFC-0110's THREAD mode: multi-threaded and
+    // not ThreadX) blocks in the socket read anyway and wants 0. A build
+    // whose caller drives the executor (CALLER mode: single-threaded, or
+    // ThreadX) needs `zp_spin_once` to report an idle executor, which it only
+    // does when this is > 0 (RFC-0110 D3). Decided here rather than in Rust
+    // because `Z_FEATURE_MULTI_THREAD` reaches this header as a `-D`, which is
+    // also why this follows its default just above.
+    writeln!(header, "#ifndef Z_RUNTIME_IDLE_READ_TASK_SLEEP").unwrap();
+    writeln!(
+        header,
+        "#if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZENOH_THREADX)"
+    )
+    .unwrap();
+    writeln!(header, "#define Z_RUNTIME_IDLE_READ_TASK_SLEEP 0").unwrap();
+    writeln!(header, "#else").unwrap();
+    writeln!(header, "#define Z_RUNTIME_IDLE_READ_TASK_SLEEP 1").unwrap();
+    writeln!(header, "#endif").unwrap();
     writeln!(header, "#endif").unwrap();
     writeln!(header, "#define Z_FEATURE_PUBLICATION 1").unwrap();
     writeln!(header, "#define Z_FEATURE_ADVANCED_PUBLICATION 0").unwrap();
@@ -461,6 +493,9 @@ pub fn config_header(
     // RFC-0080 — CAN / CAN FD.
     writeln!(header, "#define Z_FEATURE_LINK_CAN {}", link.can_flag()).unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_ISOTP {}", link.isotp_flag()).unwrap();
+    // RFC-0083 — the fork's vendored ISO-TP is the unix test oracle's twin; no
+    // nano-ros build selects it, and the kernel socket is the unix binding.
+    writeln!(header, "#define Z_FEATURE_LINK_ISOTP_VENDORED 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_TLS {}", link.tls_flag()).unwrap();
     writeln!(
         header,
@@ -486,14 +521,6 @@ pub fn config_header(
         multicast_transport_flag()
     )
     .unwrap();
-    writeln!(header, "#ifndef Z_FEATURE_SCOUTING_UDP").unwrap();
-    writeln!(
-        header,
-        "#define Z_FEATURE_SCOUTING_UDP {}",
-        multicast_transport_flag()
-    )
-    .unwrap();
-    writeln!(header, "#endif").unwrap();
     writeln!(header).unwrap();
     if unstable_api {
         writeln!(header, "#define Z_FEATURE_UNSTABLE_API").unwrap();
@@ -566,7 +593,10 @@ pub fn config_header(
     // only platform that set this to 0 (IVC has no reconnect notion).
     writeln!(header, "#define Z_FEATURE_AUTO_RECONNECT 1").unwrap();
     writeln!(header, "#define Z_FEATURE_MULTICAST_DECLARATIONS 0").unwrap();
-    writeln!(header, "#define Z_FEATURE_PERIODIC_TASKS 0").unwrap();
+    // New in 1.10 and off in upstream's CMake defaults; like the timeouts above
+    // they have no value in a ZENOH_GENERIC build unless stated here.
+    writeln!(header, "#define Z_FEATURE_CONNECTIVITY 0").unwrap();
+    writeln!(header, "#define Z_FEATURE_ADMIN_SPACE 0").unwrap();
     writeln!(header).unwrap();
     writeln!(header, "#endif /* ZENOH_GENERIC_CONFIG_H */").unwrap();
 
