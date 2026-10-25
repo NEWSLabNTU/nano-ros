@@ -72,6 +72,7 @@
 #include "rclcpp/detail/config.hpp"
 #include "rclcpp/detail/entity_name.hpp" // phase-444 — the one entity-name copy
 #include "rclcpp/future.hpp"
+#include "rclcpp/detail/driven_future.hpp" // issue 2037 — what share() returns
 #include "rclcpp/logging.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
 #include "rclcpp/result.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::rx_buffer_capacity<M> — the receive-buffer size
@@ -121,6 +122,104 @@ template <typename S> class PollClient {
   public:
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+    /// Upstream's `Client<S>::SharedRequest` / `SharedResponse`.
+    using SharedRequest = ::std::shared_ptr<RequestType>;
+    using SharedResponse = ::std::shared_ptr<ResponseType>;
+#endif
+
+    struct SharedFutureAndRequestId;
+
+    /// `rclcpp::Client<S>::FutureAndRequestId` — issue 2037. ADOPT-BOUNDED.
+    ///
+    /// What `async_send_request` returns: the request's future as the public
+    /// member `future` and its sequence id as `request_id`, the id
+    /// `remove_pending_request(request_id)` takes and the id the reply is
+    /// matched on (issue 2009). `get()`, `wait_for()`, `valid()` and the
+    /// `is_ready()` that `spin_until_future_complete` polls forward to
+    /// `future`, as upstream's do; `share()` turns it into a
+    /// `SharedFutureAndRequestId` several waiters can hold.
+    ///
+    /// THE BOUND: `future` is an `rclcpp::Future<Response>`, not a
+    /// `std::future`. Nothing here fulfils a promise from another thread
+    /// (RFC-0021), so its waits DRIVE the executor instead (`wait_for`,
+    /// `rclcpp::Future::get` after the reply); it has the members a ported
+    /// caller uses — `get()` returning `std::shared_ptr<Response>`,
+    /// `wait_for()`, `valid()` — and `share()` is where a real
+    /// `std::shared_future` comes from. Move-only, as `std::future` is.
+    struct FutureAndRequestId {
+        ::rclcpp::Future<ResponseType> future;
+        int64_t request_id = ::rclcpp::detail::SEQUENCE_ID_UNKNOWN;
+
+        FutureAndRequestId() {}
+        FutureAndRequestId(::rclcpp::Future<ResponseType>&& f, int64_t id)
+            : future(static_cast<::rclcpp::Future<ResponseType>&&>(f)), request_id(id) {}
+
+        /// `future.valid()`.
+        bool valid() const { return future.valid(); }
+        /// What `spin_until_future_complete` polls: `future.is_ready()`.
+        bool is_ready() { return future.is_ready(); }
+        /// Upstream's `operator->`: the future.
+        ::rclcpp::Future<ResponseType>* operator->() { return &future; }
+
+#if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
+        /// `future.get()`: the reply as a `std::shared_ptr<Response>`, consuming
+        /// the future (see `rclcpp::Future::get` for the bound).
+        ::std::shared_ptr<ResponseType> get() { return future.get(); }
+#endif
+#if defined(NROS_CPP_HAS_STD_FUTURE) // hosted-family: future-interop
+        /// `future.wait_for(timeout)`, which drives the executor (issue 1996).
+        template <typename Rep, typename Period>
+        ::std::future_status wait_for(::std::chrono::duration<Rep, Period> timeout) {
+            return future.wait_for(timeout);
+        }
+#endif
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+        /// `share()` — issue 2037. Moves the future into shared state and returns
+        /// a `SharedFutureAndRequestId` whose `future` IS-A
+        /// `std::shared_future<std::shared_ptr<Response>>`
+        /// (`rclcpp::detail::DrivenSharedFuture`): copy it to as many waiters as
+        /// you like, and each `get()` returns the SAME response. Its waits
+        /// drive the executor the client was created on; a request whose client
+        /// went away (or that was removed) settles to a null response instead
+        /// of waiting forever. This object is left empty, as upstream's is.
+        SharedFutureAndRequestId share() {
+            return PollClient::share_request(static_cast<FutureAndRequestId&&>(*this));
+        }
+#else
+        /// **REFUSED** without `std::promise` — issue 2037: a freestanding
+        /// build, or a hosted libstdc++ without threads. Keep the one
+        /// `FutureAndRequestId` and read it with `future.try_take` / `wait`.
+        template <typename T = void> void share() {
+            static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_SHARED_FUTURE);
+        }
+#endif
+    };
+
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+    /// `rclcpp::Client<S>::SharedFuture` — issue 2037: a
+    /// `std::shared_future<SharedResponse>` that drives the executor while it
+    /// waits (`rclcpp::detail::DrivenSharedFuture`).
+    using SharedFuture = ::rclcpp::detail::DrivenSharedFuture<::std::shared_ptr<ResponseType>>;
+
+    /// `rclcpp::Client<S>::SharedFutureAndRequestId` — issue 2037: what
+    /// `FutureAndRequestId::share()` returns. Copyable; every copy's `get()`
+    /// returns the same response.
+    struct SharedFutureAndRequestId {
+        SharedFuture future;
+        int64_t request_id = ::rclcpp::detail::SEQUENCE_ID_UNKNOWN;
+
+        bool valid() const { return future.valid(); }
+        bool is_ready() const { return future.is_ready(); }
+        const ::std::shared_ptr<ResponseType>& get() const { return future.get(); }
+        template <typename Rep, typename Period>
+        ::std::future_status wait_for(::std::chrono::duration<Rep, Period> timeout) const {
+            return future.wait_for(timeout);
+        }
+        const SharedFuture* operator->() const { return &future; }
+    };
+#endif
 
     /// Send a request and return a Future for the response (non-blocking).
     ///
@@ -195,10 +294,15 @@ template <typename S> class PollClient {
     ///
     /// Absent on a freestanding build, where there is no `<memory>`: send the
     /// request by reference with `send_request(req)`.
-    ::rclcpp::Future<ResponseType>
-    async_send_request(const ::std::shared_ptr<RequestType>& request) {
-        if (!request) return ::rclcpp::Future<ResponseType>();
-        return send_request(*request);
+    ///
+    /// Issue 2037 — returns upstream's `FutureAndRequestId`: the future as
+    /// `.future` and the request's sequence id as `.request_id`, with `get()`,
+    /// `wait_for()`, `valid()` and `share()` beside them.
+    FutureAndRequestId async_send_request(const ::std::shared_ptr<RequestType>& request) {
+        if (!request) return FutureAndRequestId();
+        ::rclcpp::Future<ResponseType> f = send_request(*request);
+        const int64_t id = f.valid() ? f.link_.seq : ::rclcpp::detail::SEQUENCE_ID_UNKNOWN;
+        return FutureAndRequestId(static_cast<::rclcpp::Future<ResponseType>&&>(f), id);
     }
 #endif // NROS_CPP_HAS_SHARED_PTR
 
@@ -227,6 +331,27 @@ template <typename S> class PollClient {
         future.cancel();
         return true;
     }
+
+    /// `remove_pending_request(const FutureAndRequestId&)` — issue 2037: the
+    /// stock `minimal_client`'s spelling, on what `async_send_request` returns.
+    bool remove_pending_request(FutureAndRequestId& future) {
+        return remove_pending_request(future.future);
+    }
+
+    /// `remove_pending_request(int64_t request_id)` — issue 2037. Forgets the
+    /// pending request with that sequence id: the future waiting on it becomes
+    /// invalid and a reply that arrives later is dropped. False when this
+    /// client has no pending request with that id.
+    bool remove_pending_request(int64_t request_id) { return pending_.remove_seq(request_id); }
+
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+    /// `remove_pending_request(const SharedFutureAndRequestId&)` — issue 2037:
+    /// by its request id. Every copy of the shared future then settles to a
+    /// null response on its next poll.
+    bool remove_pending_request(const SharedFutureAndRequestId& future) {
+        return remove_pending_request(future.request_id);
+    }
+#endif
 
     /// `rclcpp::Client::prune_pending_requests()` — issue 2009.
     ///
@@ -494,6 +619,51 @@ template <typename S> class PollClient {
     PollClient& operator=(const PollClient&) = delete;
 
     friend class ::rclcpp::Node;
+
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+    /// Issue 2037 — what a `SharedFutureAndRequestId` drives: the request's own
+    /// future, moved off the caller, and the promise every copy waits on. The
+    /// pump cell is the first member so a `shared_ptr<PumpCell>` can alias this
+    /// object and keep it alive for as long as any copy exists.
+    struct SharedRequestState {
+        ::rclcpp::detail::PumpCell cell;
+        ::rclcpp::Future<ResponseType> future;
+        ::std::promise<::std::shared_ptr<ResponseType>> promise;
+        bool settled = false;
+
+        /// One poll of the request: fulfil the promise with the reply, or with
+        /// a null response once the request can never be answered (removed,
+        /// or its client destroyed / moved over), so no copy waits forever.
+        static void pump(void* ctx) {
+            SharedRequestState* st = static_cast<SharedRequestState*>(ctx);
+            if (st->settled) return;
+            if (st->future.is_ready()) {
+                st->settled = true;
+                st->promise.set_value(st->future.get());
+            } else if (!st->future.valid()) {
+                st->settled = true;
+                st->promise.set_value(::std::shared_ptr<ResponseType>());
+            }
+        }
+    };
+
+    static SharedFutureAndRequestId share_request(FutureAndRequestId&& f) {
+        SharedFutureAndRequestId out;
+        out.request_id = f.request_id;
+        if (!f.future.valid()) return out; // an empty future shares as an empty one
+        ::std::shared_ptr<SharedRequestState> st = ::std::make_shared<SharedRequestState>();
+        st->cell.fn = &SharedRequestState::pump;
+        st->cell.ctx = st.get();
+        st->cell.executor = f.future.executor_;
+        st->future = static_cast<::rclcpp::Future<ResponseType>&&>(f.future);
+        f.request_id = ::rclcpp::detail::SEQUENCE_ID_UNKNOWN;
+        ::std::shared_future<::std::shared_ptr<ResponseType>> sf = st->promise.get_future().share();
+        ::std::shared_ptr<::rclcpp::detail::PumpCell> cell(st, &st->cell);
+        out.future = SharedFuture(sf, cell);
+        SharedRequestState::pump(st.get()); // a reply already in settles now
+        return out;
+    }
+#endif
 
     /// The two directions differ only in which out-pointer is read, so one
     /// body serves both and they cannot end up swapped (issue 1437).

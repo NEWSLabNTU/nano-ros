@@ -1529,15 +1529,29 @@ pub type RawResultCallback = unsafe extern "C" fn(
 /// Registering one is also what makes the executor TAKE cancel replies: each
 /// cancel request holds one of the sub-client's `MAX_CONCURRENT_GOALS` request
 /// slots until its reply is taken, so a client that never takes them refuses
-/// its fifth cancel. A surface with its own reader (the C++ `try_recv_cancel_response`
-/// / `async_cancel_*` futures) registers none.
+/// its fifth cancel. Every in-tree surface registers one: C hands the reply to
+/// its user callback, C++ (issue 2034) to the `async_cancel_*` future or
+/// callback waiting on the request, keeping an unclaimed reply for its
+/// `try_recv_cancel_response`.
+///
+/// `seq` is the sequence id of the request the reply answers
+/// ([`nros_rmw::SEQUENCE_ID_UNKNOWN`] from a backend that assigns none) — the
+/// only thing that tells two pending cancels about one goal apart — and
+/// `reply` / `reply_len` the whole `CancelGoal_Response` CDR frame (its
+/// `goals_canceling` list included), for a reader that needs more than the
+/// count (issue 2034). `return_code` is `Rejected` and `goals_canceling` 0 for
+/// a malformed frame.
 ///
 /// # Safety
 /// - `goal_id` is valid for the duration of the call
+/// - `reply` points to `reply_len` valid bytes for the duration of the call
 pub type RawCancelResponseCallback = unsafe extern "C" fn(
     goal_id: *const nros_core::GoalId,
+    seq: i64,
     return_code: nros_core::CancelReturnCode,
     goals_canceling: usize,
+    reply: *const u8,
+    reply_len: usize,
     context: *mut core::ffi::c_void,
 );
 

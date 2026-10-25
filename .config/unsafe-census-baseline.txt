@@ -23,7 +23,7 @@ logging-smoke-nuttx-qemu-arm         1   0     0       1      0
 logging-smoke-threadx-linux          1   0     0       1      0
 logging-smoke-threadx-riscv64        1   0     0       1      0
 mps2-an385-pac                       0   1     1       2      0
-nros                               107  25     5      31      0
+nros                               107  25     5      32      0
 nros-baremetal-common               24   0     0      21      0
 nros-board-cffi                      3   0     0       6      0
 nros-board-esp32-qemu               11   1     1       0      0
@@ -44,7 +44,7 @@ nros-c                             461  85     5     465      0
 nros-cli-core                       22   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
-nros-cpp                          1056  40     0     405      0
+nros-cpp                          1065  40     0     411      0
 nros-log                            23   0     7       1      0
 nros-macros                         16   0     1       2      0
 nros-node                          672  186    35     149      0

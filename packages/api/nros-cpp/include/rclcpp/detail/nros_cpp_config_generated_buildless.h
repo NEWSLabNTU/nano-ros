@@ -52,7 +52,10 @@
  * width: the host generator now emits 128 where it emitted 120. Raised by 8 to
  * keep this snapshot the UPPER BOUND its header comment requires. */
 #define NROS_CPP_ACTION_SERVER_STORAGE_SIZE 88
-#define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE 48
+/* issue 2034 — was 48. `CppActionClient` gained the cancel-reply callback
+ * slot (one function pointer), so the host value rose from 48 to 56. Raised
+ * by 8 to keep this snapshot the upper bound. */
+#define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE 56
 #define NROS_EXECUTOR_SIZE 98296
 #define NROS_GUARD_CONDITION_SIZE 24
 /* Issue 1568 — MEASURED BELOW THE BUILD and raised: the realtime-c

@@ -5325,6 +5325,28 @@ nros_cpp_ret_t nros_cpp_action_client_take_cancel_reply(void *handle,
                                                         int64_t *seq_out);
 
 /**
+ * Decode a `CancelGoal` reply frame — issue 2034.
+ *
+ * The frame a cancel-reply callback receives
+ * ([`nros_cpp_action_client_set_cancel_reply_callback`]). Writes the RPC
+ * return code to `return_code_out`, the `goals_canceling` count to
+ * `count_out` and the first `min(count, infos_cap)` goals to `infos` (may be
+ * NULL when `infos_cap` is 0). Returns `NROS_CPP_RET_OK`, or
+ * `NROS_CPP_RET_ERROR` for a malformed frame (issue 0223's rule: a
+ * truncation is not "no goals").
+ *
+ * # Safety
+ * `reply` must hold `reply_len` readable bytes; non-NULL out pointers must be
+ * valid; `infos` must hold `infos_cap` entries.
+ */
+nros_cpp_ret_t nros_cpp_action_cancel_reply_decode(const uint8_t *reply,
+                                                   size_t reply_len,
+                                                   int8_t *return_code_out,
+                                                   struct nros_cpp_action_goal_info_t *infos,
+                                                   size_t infos_cap,
+                                                   size_t *count_out);
+
+/**
  * Poll action client for pending replies (non-blocking).
  *
  * Checks for goal acceptance reply, feedback, and result reply.

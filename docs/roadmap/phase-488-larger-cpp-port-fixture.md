@@ -71,6 +71,8 @@ parity work around them:
 | [2023](../issues/archived/2023-cpp-rust-parameter-events.md) | #2575, #2581 | C++ and Rust publish `/parameter_events` |
 | [2027](../issues/archived/2027-action-goal-handle-api.md) | #2587 | handle-taking action calls, `ServerGoalHandle::execute` |
 | [2033](../issues/archived/2033-typed-client-helpers-drop-seq.md) | #2595 | the typed Rust client helpers carry the sequence id |
+| [2034](../issues/archived/2034-cpp-executor-cancel-reply-callback.md) | (2026-10-25) | the executor's spin takes C++ cancel replies |
+| [2037](../issues/archived/2037-cpp-client-future-and-request-id.md) | (2026-10-25) | `FutureAndRequestId`: `.future`, `.request_id`, `share()` |
 
 #2612 (in the merge queue on this date) closes the two action-cancel issues,
 #2029 (cancel-all / cancel-before on the server) and #2030 (the C tier takes
@@ -105,13 +107,10 @@ after 2015. The other issues in the table moved no example's count.
 - [issue 2036](../issues/2036-cpp-subscription-message-info-callback.md): no
   `rclcpp::MessageInfo`, so the `(const MsgT&, const MessageInfo&)` callback
   does not compile.
-- [issue 2037](../issues/2037-cpp-client-future-and-request-id.md): no
-  `.future` / `.request_id` / `share()` on the client future.
 - [issue 2038](../issues/2038-declarative-timer-autostart-and-info.md): the
   declarative Rust timer has no autostart flag or call info.
 - [issue 2039](../issues/2039-c-api-matched-status-events-interop.md): no
   interop cell drives the C matched and status-event callbacks from stock ROS 2.
-- #2034 (filed by #2612): the C++ executor's spin does not take cancel replies.
 
 ## Work items
 

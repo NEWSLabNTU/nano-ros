@@ -182,7 +182,7 @@ copy on the handle; price the bytes per entity before deciding.
 `rclc_action_cancel_goal` is refused. Medium severity; it is a correctness gap,
 not a shape choice. **Resolved 2026-10-24:** the arena entry has a cancel-response
 slot, C registers it, and `rclc_action_client_set_cancel_response_callback` is new.
-The C++ half (taking replies in the spin) is issue 2034.
+The C++ half (taking replies in the spin) is issue 2034, **resolved 2026-10-25**: the C++ client registers the slot and the spin feeds its `async_cancel_*` futures and callbacks.
 
 **C8 — open renames (5):** `rcl_publish_serialized_message` (ours
 `rclc_publish_raw`), `rcl_service_server_is_available`,

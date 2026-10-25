@@ -273,6 +273,8 @@ mod rmw_sizes {
         Option<unsafe extern "C" fn(*const [u8; 16], *const u8, usize, *mut c_void)>;
     type CppActionResultCb =
         Option<unsafe extern "C" fn(*const [u8; 16], i32, *const u8, usize, *mut c_void)>;
+    type CppActionCancelReplyCb =
+        Option<unsafe extern "C" fn(*const [u8; 16], i64, *const u8, usize, *mut c_void)>;
 
     #[repr(C)]
     #[doc(hidden)]
@@ -280,6 +282,8 @@ mod rmw_sizes {
         pub goal_response: CppActionGoalResponseCb,
         pub feedback: CppActionFeedbackCb,
         pub result: CppActionResultCb,
+        /// Issue 2034 — the cancel-reply callback.
+        pub cancel_reply: CppActionCancelReplyCb,
         pub context: *mut c_void,
     }
 

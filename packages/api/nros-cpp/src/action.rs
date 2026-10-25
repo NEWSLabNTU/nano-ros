@@ -909,8 +909,18 @@ pub(crate) struct CppActionClientCallbacks {
             ctx: *mut c_void,
         ),
     >,
+    /// Issue 2034 — a `CancelGoal` reply the executor's spin (or `poll`) took,
+    /// with the sequence id of the request it answers and its whole CDR frame
+    /// (decode with [`nros_cpp_action_cancel_reply_decode`]). Installed with
+    /// [`nros_cpp_action_client_set_cancel_reply_callback`].
+    pub cancel_reply: CppCancelReplyCb,
     pub context: *mut c_void,
 }
+
+/// Issue 2034 — the C++ client's cancel-reply callback:
+/// `(goal_id, seq, reply, reply_len, context)`.
+pub(crate) type CppCancelReplyCb =
+    Option<unsafe extern "C" fn(*const [u8; 16], i64, *const u8, usize, *mut c_void)>;
 
 // Not derived: that needs `Default` for a raw pointer, which is Rust 1.88, and
 // this crate's clippy MSRV is 1.87 (`clippy.toml`). The pinned stable clippy
@@ -922,6 +932,7 @@ impl Default for CppActionClientCallbacks {
             goal_response: None,
             feedback: None,
             result: None,
+            cancel_reply: None,
             context: core::ptr::null_mut(),
         }
     }
@@ -985,6 +996,33 @@ unsafe extern "C" fn cpp_goal_response_trampoline(
     let client = unsafe { &*(context as *const CppActionClient) };
     if let Some(cb) = client.callbacks.goal_response {
         unsafe { cb(accepted, &(*goal_id).uuid, client.callbacks.context) };
+    }
+}
+
+/// Issue 2034 — the arena's cancel-reply callback: forward the reply, with its
+/// request's sequence id and whole frame, to the C++ client's own callback.
+/// A client with none installed yet drops it (the C++ `Client<A>` installs one
+/// at creation, before anything can be sent).
+unsafe extern "C" fn cpp_cancel_response_trampoline(
+    goal_id: *const nros::GoalId,
+    seq: i64,
+    _return_code: nros::CancelReturnCode,
+    _goals_canceling: usize,
+    reply: *const u8,
+    reply_len: usize,
+    context: *mut c_void,
+) {
+    let client = unsafe { &*(context as *const CppActionClient) };
+    if let Some(cb) = client.callbacks.cancel_reply {
+        unsafe {
+            cb(
+                &(*goal_id).uuid,
+                seq,
+                reply,
+                reply_len,
+                client.callbacks.context,
+            )
+        };
     }
 }
 
@@ -1167,6 +1205,22 @@ unsafe extern "C" fn waiter_result(
     }
 }
 
+/// Issue 2034 — a blocking wait wants no cancel reply: forward each one to the
+/// client's own callback, so a cancel future or stash the wait's spin feeds
+/// still gets it.
+unsafe extern "C" fn waiter_cancel_reply(
+    goal_id: *const [u8; 16],
+    seq: i64,
+    reply: *const u8,
+    len: usize,
+    ctx: *mut c_void,
+) {
+    let w = unsafe { &mut *(ctx as *mut BlockingWaiter) };
+    if let Some(cb) = w.orig.cancel_reply {
+        unsafe { cb(goal_id, seq, reply, len, w.orig.context) };
+    }
+}
+
 /// Installs a [`BlockingWaiter`]'s callbacks on a client and restores the
 /// previous ones when dropped.
 struct WaiterInstall {
@@ -1184,6 +1238,7 @@ impl WaiterInstall {
             goal_response: Some(waiter_goal_response),
             feedback: Some(waiter_feedback),
             result: Some(waiter_result),
+            cancel_reply: Some(waiter_cancel_reply),
             context: waiter as *mut c_void,
         };
         Self { client, orig }
@@ -1268,11 +1323,13 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
             goal_response_callback: Some(cpp_goal_response_trampoline),
             feedback_callback: Some(cpp_feedback_trampoline),
             result_callback: Some(cpp_result_trampoline),
-            // Issue 2030 — `None`: the C++ tier reads its cancel replies itself
-            // (`try_recv_cancel_response`, the `async_cancel_*` futures), so the
-            // executor must leave them in place. Taking them in the spin needs a
-            // per-request stash those readers could collect from — issue 2034.
-            cancel_response_callback: None,
+            // Issue 2034 — the spin TAKES every cancel reply (which frees its
+            // request's slot, `MAX_CONCURRENT_GOALS`) and hands it to the C++
+            // client: to the `async_cancel_*` future / callback waiting on that
+            // request, else to the stash `try_recv_cancel_response` reads. It
+            // was `None`, so a cancel nobody polled for held its slot and the
+            // fifth was refused.
+            cancel_response_callback: Some(cpp_cancel_response_trampoline),
             context: storage, // context = CppActionClient pointer
         }) {
         Ok(h) => h,
@@ -2295,6 +2352,90 @@ pub unsafe extern "C" fn nros_cpp_action_client_take_cancel_reply(
     NROS_CPP_RET_OK
 }
 
+/// Install the client's cancel-reply callback — issue 2034.
+///
+/// While one is installed the executor's spin (and
+/// [`nros_cpp_action_client_poll`]) TAKES every `CancelGoal` reply off this
+/// client and calls `cb(goal_id, seq, reply, reply_len, context)`, where
+/// `goal_id` is the goal the request named (the zero id for a cancel-all /
+/// cancel-before), `seq` that request's sequence id (`INT64_MIN` from a
+/// backend that assigns none), `reply` the whole CDR frame (decode it with
+/// [`nros_cpp_action_cancel_reply_decode`]) and `context` the one
+/// [`nros_cpp_action_client_set_callbacks`] installed. Taking the reply is
+/// what frees its request's slot (`MAX_CONCURRENT_GOALS` per client). NULL
+/// uninstalls: replies then stay for
+/// [`nros_cpp_action_client_take_cancel_reply`] /
+/// [`nros_cpp_action_client_try_recv_cancel_response`].
+///
+/// # Safety
+/// `handle` must be a valid action client storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_set_cancel_reply_callback(
+    handle: *mut c_void,
+    cb: Option<unsafe extern "C" fn(*const [u8; 16], i64, *const u8, usize, *mut c_void)>,
+) -> nros_cpp_ret_t {
+    if handle.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    client.callbacks.cancel_reply = cb;
+    NROS_CPP_RET_OK
+}
+
+/// Decode a `CancelGoal` reply frame — issue 2034.
+///
+/// The frame a cancel-reply callback receives
+/// ([`nros_cpp_action_client_set_cancel_reply_callback`]). Writes the RPC
+/// return code to `return_code_out`, the `goals_canceling` count to
+/// `count_out` and the first `min(count, infos_cap)` goals to `infos` (may be
+/// NULL when `infos_cap` is 0). Returns `NROS_CPP_RET_OK`, or
+/// `NROS_CPP_RET_ERROR` for a malformed frame (issue 0223's rule: a
+/// truncation is not "no goals").
+///
+/// # Safety
+/// `reply` must hold `reply_len` readable bytes; non-NULL out pointers must be
+/// valid; `infos` must hold `infos_cap` entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_cancel_reply_decode(
+    reply: *const u8,
+    reply_len: usize,
+    return_code_out: *mut i8,
+    infos: *mut nros_cpp_action_goal_info_t,
+    infos_cap: usize,
+    count_out: *mut usize,
+) -> nros_cpp_ret_t {
+    if reply.is_null()
+        || return_code_out.is_null()
+        || count_out.is_null()
+        || (infos.is_null() && infos_cap != 0)
+    {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let reply = unsafe { core::slice::from_raw_parts(reply, reply_len) };
+    let (Some(code), Some(count)) = (
+        action_frame::cancel_return_code(reply),
+        action_frame::cancel_goals_count(reply),
+    ) else {
+        return NROS_CPP_RET_ERROR;
+    };
+    unsafe {
+        *return_code_out = code;
+        *count_out = count;
+    }
+    for i in 0..count.min(infos_cap) {
+        if let Some((g, sec, nanosec)) = action_frame::cancel_goal_info(reply, i) {
+            unsafe {
+                *infos.add(i) = nros_cpp_action_goal_info_t {
+                    uuid: g.uuid,
+                    stamp_sec: sec,
+                    stamp_nanosec: nanosec,
+                };
+            }
+        }
+    }
+    NROS_CPP_RET_OK
+}
+
 /// Register async callbacks on the action client.
 ///
 /// # Safety
@@ -2341,6 +2482,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
     let goal_response_cb = client.callbacks.goal_response;
     let feedback_cb = client.callbacks.feedback;
     let result_cb = client.callbacks.result;
+    let cancel_reply_cb = client.callbacks.cancel_reply;
     let ctx = client.callbacks.context;
     let idx = client.arena_entry_index;
     let eptr = client.executor_ptr;
@@ -2390,6 +2532,15 @@ pub unsafe extern "C" fn nros_cpp_action_client_poll(handle: *mut c_void) -> nro
         ) {
             unsafe { cb(&goal_id.uuid, status as i32, spliced.as_ptr(), n, ctx) };
         }
+    }
+
+    // Issue 2034 — a cancel reply, exactly as the executor's dispatch takes
+    // it: only when the client has a cancel-reply callback to hand it to.
+    if let Some(cb) = cancel_reply_cb
+        && let Ok(Some((total_len, seq, goal_id))) = core.try_recv_cancel_reply_seq()
+    {
+        let reply = &core.result_buffer_ref()[..total_len];
+        unsafe { cb(&goal_id.uuid, seq, reply.as_ptr(), reply.len(), ctx) };
     }
 
     NROS_CPP_RET_OK

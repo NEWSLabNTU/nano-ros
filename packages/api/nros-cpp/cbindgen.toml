@@ -84,6 +84,9 @@ exclude = [
     # action_server.hpp and mirrored in nros-c's component.h.
     "nros_cpp_action_server_set_accepted_callback",
     "nros_cpp_action_client_set_callbacks",
+    # issue 2034 — same reason (`Option<extern "C" fn>`); declared in
+    # rclcpp_action/client.hpp.
+    "nros_cpp_action_client_set_cancel_reply_callback",
     # Phase 189.M3.3.e — takes `RawServiceCallback` (a type alias from the
     # external nros-node crate); cbindgen names it without emitting a typedef,
     # leaving the symbol undefined in the header. Declared locally in

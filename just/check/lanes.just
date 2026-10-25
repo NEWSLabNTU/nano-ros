@@ -1673,6 +1673,28 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/client_seq_correlation_runtime
+    # issue 2037 -- upstream's FutureAndRequestId on what async_send_request
+    # returns: .future / .request_id (structured bindings too), the id is the
+    # one the reply is matched on, remove_pending_request by id or wrapper, and
+    # share() -> a SharedFutureAndRequestId whose copies all get one response.
+    test -f packages/api/nros-cpp/tests/compile/client_future_and_request_id_runtime.cpp || { \
+        echo "ERROR: client_future_and_request_id_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - client FutureAndRequestId: .future / .request_id / share(), removal by id (runtime, issue 2037)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/client_future_and_request_id_runtime \
+        packages/api/nros-cpp/tests/compile/client_future_and_request_id_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/client_future_and_request_id_runtime
     # issue 2015 -- upstream rclcpp_action spellings as HOSTED drop-ins:
     # create_server / create_client over the node interfaces, std::bind-ed
     # goal-handle callbacks, ServerGoalHandle's get_goal / publish_feedback /
@@ -1761,7 +1783,13 @@ cpp: cpp-fmt
     # id on the C++ polling client and the callback client. Negative control,
     # measured: PollingActionClient decoding feedback from byte 0 (issue 2014's
     # defect) -> failures.
-    for _tu in action_goal_handle_api_runtime action_feedback_decode_runtime; do
+    # issue 2034 -- the EXECUTOR's spin takes the callback tier's cancel replies:
+    # six cancels only spun for are all sent (slots freed), unclaimed codes are
+    # kept for try_recv_cancel_response (oldest first, CANCEL_STASH_CAP), and an
+    # async_cancel_goal callback + future complete inside the spin, unpolled.
+    # Negative control, measured: `cancel_response_callback: None` restored in
+    # nros-cpp's action.rs -> failures (the fifth cancel is refused).
+    for _tu in action_goal_handle_api_runtime action_feedback_decode_runtime action_cancel_reply_spin_runtime; do
         test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
             echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -1769,7 +1797,8 @@ cpp: cpp-fmt
     done
     echo "  - rclcpp_action goal handles: async_get_result / async_cancel_*, execute(), no slot leak (runtime, issue 2027)"
     echo "  - action feedback decodes to payload + goal id on the polling and callback clients (runtime, issue 2027)"
-    for _tu in action_goal_handle_api_runtime action_feedback_decode_runtime; do
+    echo "  - action cancel replies taken by the spin: slots freed, futures + callbacks fed, stash kept (runtime, issue 2034)"
+    for _tu in action_goal_handle_api_runtime action_feedback_decode_runtime action_cancel_reply_spin_runtime; do
         c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
             -I"$cppgen" \
             -I"$cgen" \
@@ -1828,6 +1857,27 @@ cpp: cpp-fmt
         if [ "$_rc" -ne 0 ]; then
             echo "ERROR: $_cfg failed WITHOUT '$_needle' -- it broke for another reason." >&2
             echo "       See tmp/refuse-future-get-freestanding.log" >&2
+            exit 1
+        fi
+    done
+    # ...and FutureAndRequestId::share() is refused the same way (issue 2037):
+    # a SharedFutureAndRequestId is a std::shared_future over a std::promise.
+    _cfg=packages/api/nros-cpp/tests/compile/client_share_freestanding_probe.cpp
+    test -f "$_cfg" || { echo "ERROR: $_cfg is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - FutureAndRequestId::share() is REFUSED without NROS_CPP_STD (issue 2037)"
+    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -I"$cppgen" -I"$cgen" \
+        -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        "$_cfg" 2>tmp/refuse-client-share-freestanding.log; then
+        echo "ERROR: $_cfg COMPILED -- share() was accepted with no std::promise." >&2
+        exit 1
+    fi
+    for _needle in "REFUSED by nano-ros" "issue 2037"; do
+        nros_grep_q "$_needle" tmp/refuse-client-share-freestanding.log && _rc=0 || _rc=$?
+        if [ "$_rc" -ne 0 ]; then
+            echo "ERROR: $_cfg failed WITHOUT '$_needle' -- it broke for another reason." >&2
+            echo "       See tmp/refuse-client-share-freestanding.log" >&2
             exit 1
         fi
     done

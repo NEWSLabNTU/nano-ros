@@ -3977,10 +3977,16 @@ unsafe extern "C" fn result_trampoline(
 }
 
 /// Issue 2030 — arena trampoline for a cancel reply.
+///
+/// The C callback takes the code and the count; the request's `seq` and the
+/// whole frame (issue 2034, for C++) are not part of its signature.
 unsafe extern "C" fn cancel_response_trampoline(
     goal_id: *const nros_node::GoalId,
+    _seq: i64,
     return_code: nros_node::CancelReturnCode,
     goals_canceling: usize,
+    _reply: *const u8,
+    _reply_len: usize,
     context: *mut core::ffi::c_void,
 ) {
     let client = &*(context as *const rcl_action_client_t);
