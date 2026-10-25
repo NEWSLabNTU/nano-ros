@@ -104,7 +104,7 @@ function(ament_target_dependencies target)
         # phase-488 — a plain `add_executable` that takes rclcpp this way
         # (ros2/demos `manual_composition`) is an image, and never reached the
         # platform link pass the ament verbs run.
-        if(_atd_type STREQUAL "EXECUTABLE" AND _dep MATCHES "^rclcpp(_components)?$")
+        if(_atd_type STREQUAL "EXECUTABLE" AND _dep MATCHES "^rclcpp(_components|_lifecycle|_action)?$")
             _nros_ament_link_app(${_atd_into})
         endif()
     endforeach()

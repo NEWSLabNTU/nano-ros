@@ -38,6 +38,16 @@
 #      link beside it both configure, a library passes its dependencies on and
 #      `INTERFACE` passes them on only; and a plain `add_executable` that takes
 #      rclcpp that way gets the platform link pass, once.
+#  10. the multi-package shape (Nav2's `nav2_common` / `nav2_util` /
+#      `nav2_velocity_smoother`): a library package of the workspace is found
+#      by its sibling through a workspace Find stub, as `<pkg>::<pkg>` over what
+#      it exported, with its CONFIG_EXTRAS run (the macro it defines exists) and
+#      `<pkg>_TARGETS` set; a package found before it is configured is refused
+#      by name; `find_package()` of an INSTALLED package nano-ros has no module
+#      for is refused naming the package and the file, not as an unknown ament
+#      command; `rclcpp_lifecycle`, `rclcpp_action`, `ament_cmake_python` and
+#      `rcutils` resolve; and a message package's `<pkg>_TARGETS` is set
+#      (`rcl_interfaces` included, which was a no-op module).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
@@ -314,5 +324,106 @@ expect "9. INTERFACE passes them on only" "iface IFACE=[rclcpp::rclcpp]" "$out"
 expect "9. each executable taking rclcpp gets the platform pass, once" "linked=[plain;keyword]" "$out"
 
 fi  # have_cli (case 9)
+
+if [ "$have_cli" -eq 1 ]; then
+# 10.
+w="$WORK/ws"; mkdir -p "$w/src/libpkg/include/libpkg" "$w/src/libpkg/cmake" "$w/src/user" \
+    "$w/ament/share/upstream_lib/cmake"
+: > "$w/src/libpkg/a.cpp"; : > "$w/src/user/u.cpp"
+for p in libpkg user; do
+    printf '<package format="3"><name>%s</name><buildtool_depend>ament_cmake</buildtool_depend></package>\n' "$p" \
+        > "$w/src/$p/package.xml"
+done
+cat > "$w/src/libpkg/cmake/libpkg_macro.cmake" <<'CML'
+macro(libpkg_setup)
+    set(LIBPKG_SETUP_RAN TRUE)
+endmacro()
+CML
+cat > "$w/src/libpkg/libpkg-extras.cmake" <<'CML'
+include("${libpkg_DIR}/libpkg_macro.cmake")
+CML
+cat > "$w/src/libpkg/CMakeLists.txt" <<'CML'
+project(libpkg CXX)
+find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
+ament_python_install_package(libpkg)
+add_library(libpkg_core SHARED a.cpp)
+ament_export_libraries(libpkg_core)
+ament_package(CONFIG_EXTRAS "libpkg-extras.cmake")
+CML
+cat > "$w/src/user/CMakeLists.txt" <<'CML'
+project(user CXX)
+find_package(ament_cmake REQUIRED)
+find_package(libpkg REQUIRED)
+libpkg_setup()
+find_package(rclcpp_lifecycle REQUIRED)
+find_package(rclcpp_action REQUIRED)
+find_package(rcutils REQUIRED)
+add_library(user_lib STATIC u.cpp)
+ament_target_dependencies(user_lib libpkg rclcpp_lifecycle)
+get_target_property(_l user_lib LINK_LIBRARIES)
+get_target_property(_li libpkg::libpkg INTERFACE_LINK_LIBRARIES)
+get_target_property(_ii libpkg::libpkg INTERFACE_INCLUDE_DIRECTORIES)
+message(STATUS "setup=[${LIBPKG_SETUP_RAN}] TARGETS=[${libpkg_TARGETS}]")
+message(STATUS "user LINK=[${_l}]")
+message(STATUS "libpkg IFACE=[${_li}] INC=[${_ii}]")
+if(TARGET libpkg::libpkg_core)
+    message(STATUS "aliased")
+endif()
+foreach(_p rclcpp_lifecycle rclcpp_action)
+    if(TARGET ${_p}::${_p})
+        message(STATUS "${_p}: target")
+    endif()
+endforeach()
+CML
+cat > "$w/ament/share/upstream_lib/cmake/upstream_libConfig.cmake" <<'CML'
+include("${CMAKE_CURRENT_LIST_DIR}/ament_cmake_export_include_directories-extras.cmake")
+CML
+cat > "$w/ament/share/upstream_lib/cmake/ament_cmake_export_include_directories-extras.cmake" <<'CML'
+normalize_path(_d "${CMAKE_CURRENT_LIST_DIR}")
+CML
+mkws() {
+    cat > "$w/CMakeLists.txt" <<CML
+cmake_minimum_required(VERSION 3.22)
+project(ws CXX)
+add_library(nros_runtime_stand_in INTERFACE)
+add_library(NanoRos::NanoRosCpp ALIAS nros_runtime_stand_in)
+set(NROS_INTERFACE_SEARCH_PATH "\${CMAKE_SOURCE_DIR}/src")
+include("$ROOT/cmake/NanoRosAmentSurface.cmake")
+# Stand-in for a message package codegen already wired.
+add_library(vendor_msgs__nano_ros_cpp INTERFACE)
+add_library(rcl_interfaces__nano_ros_cpp INTERFACE)
+include("$ROOT/cmake/find/_NrosFindRosMsgPackage.cmake")
+_nros_find_ros_msg_package(vendor_msgs)
+find_package(rcl_interfaces REQUIRED)
+message(STATUS "msg TARGETS=[\${vendor_msgs_TARGETS}] rcl=[\${rcl_interfaces_TARGETS}]")
+$1
+CML
+    rm -rf "$w/b"
+    AMENT_PREFIX_PATH= cmake -S "$w" -B "$w/b" -DCMAKE_PREFIX_PATH="$w/ament" 2>&1
+}
+out="$(mkws 'add_subdirectory(src/libpkg)
+add_subdirectory(src/user)')" || true
+expect "10. the multi-package workspace configures" "Generating done" "$out"
+expect "10. a sibling finds the library package and its CONFIG_EXTRAS ran" \
+    "setup=[TRUE] TARGETS=[libpkg::libpkg]" "$out"
+expect "10. ament_target_dependencies links it" "user LINK=[libpkg::libpkg;rclcpp_lifecycle::rclcpp_lifecycle]" "$out"
+expect "10. <pkg>::<pkg> carries the exported library and the package include/" \
+    "libpkg IFACE=[libpkg_core] INC=[$w/src/libpkg/include]" "$out"
+expect "10. an exported library is aliased <pkg>::<target>" "aliased" "$out"
+expect "10. rclcpp_lifecycle resolves to a target" "rclcpp_lifecycle: target" "$out"
+expect "10. rclcpp_action resolves to a target" "rclcpp_action: target" "$out"
+expect "10. a message package states <pkg>_TARGETS, rcl_interfaces too" \
+    "msg TARGETS=[vendor_msgs::vendor_msgs] rcl=[rcl_interfaces::rcl_interfaces]" "$out"
+out="$(mkws 'add_subdirectory(src/user)
+add_subdirectory(src/libpkg)')" || true
+expect "10. a package found before it is configured is refused by name" \
+    "find_package(libpkg) asks for a package of this workspace" "$out"
+out="$(mkws 'find_package(upstream_lib REQUIRED)')" || true
+expect "10. an installed package with no module is refused naming it" \
+    "find_package(upstream_lib) loaded the INSTALLED ROS 2 package's" "$out"
+refute "10. ...not as an unknown ament command" 'Unknown CMake command "normalize_path"' "$out"
+
+fi  # have_cli (case 10)
 
 [ "$fail" -eq 0 ] && echo "cmake-ament-surface: OK" || { echo "cmake-ament-surface: FAILED"; exit 1; }

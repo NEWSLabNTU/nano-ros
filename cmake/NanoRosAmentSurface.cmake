@@ -133,6 +133,52 @@ if(NOT _nros_add_library_wrapped)
     endfunction()
 endif()
 
+# --- An installed ROS 2 package nano-ros does not model ----------------------
+#
+# phase-488. `find_package(<pkg>)` for a package with no module here falls to
+# CONFIG mode, and with a ROS install sourced it loads the installed
+# `<pkg>Config.cmake`. That is upstream's CMake for upstream's C++ build of the
+# package (Nav2's `nav2_util` finds `bondcpp` and `tf2_ros`; ros2/demos finds
+# `rcutils`), and it calls ament internals nano-ros does not define. The
+# configure then died on "Unknown CMake command normalize_path", which names
+# neither the package nor what to do. Measured over the 330 `*Config.cmake`
+# files of a ROS 2 Humble install: 214 call one of the six internals trapped
+# below (`normalize_path` the first of them in 125, `list_append_unique` in
+# 51). The other 116 call none of them: ament's own `ament_cmake_*` tool
+# packages and plain-CMake vendor packages, which this trap does not reach. A
+# message package is among the 214, and nano-ros routes it to its own codegen
+# before CONFIG mode is tried. No supported build reaches the six, since they
+# are undefined today, so
+# a trap changes only what such a configure says: the package, the file and
+# the choices. A real ament on the module path (a project that includes
+# ament_cmake itself) keeps its own definitions.
+function(_nros_ament_installed_package_refusal command)
+    set(_file "${CMAKE_CURRENT_LIST_FILE}")
+    set(_pkg "")
+    if(_file MATCHES "/share/([^/]+)/cmake/")
+        set(_pkg "${CMAKE_MATCH_1}")
+    endif()
+    message(FATAL_ERROR
+        "nano-ros: find_package(${_pkg}) loaded the INSTALLED ROS 2 package's "
+        "CMake (${_file}), which called the ament internal `${command}`.\n"
+        "nano-ros provides no module for `${_pkg}`, so CMake fell back to the "
+        "copy your sourced ROS install carries: upstream's C++ build of it, "
+        "which cannot link into a nano-ros image.\n"
+        "Either remove the find_package(${_pkg}) (and the code that uses it), "
+        "or port `${_pkg}` into your workspace as a package of its own, built "
+        "with the same ament verbs. If it is a message package, put it under "
+        "NROS_INTERFACE_SEARCH_PATH or AMENT_PREFIX_PATH with its .msg files.")
+endfunction()
+foreach(_nros_trap normalize_path list_append_unique get_executable_path
+        ament_register_extension ament_index_get_resources ament_index_register_resource)
+    if(NOT COMMAND ${_nros_trap})
+        cmake_language(EVAL CODE "
+            function(${_nros_trap})
+                _nros_ament_installed_package_refusal(${_nros_trap})
+            endfunction()")
+    endif()
+endforeach()
+
 # --- Per-target settings for an ament-built target ---------------------------
 function(_nros_ament_apply_target_settings target)
     if(NOT TARGET ${target})
@@ -249,6 +295,7 @@ function(ament_auto_add_library target kind)
     nros_link_runtime_umbrella(${target} PUBLIC CANDIDATES NanoRos::NanoRosCpp)
     _nros_ament_apply_target_settings(${target})
     _nros_ament_auto_target_deps(${target})
+    set_property(GLOBAL APPEND PROPERTY NROS_WS_AUTO_LIBS_${PROJECT_NAME} ${target})
 endfunction()
 
 function(ament_auto_add_executable target)
@@ -265,19 +312,33 @@ endfunction()
 # `nano_rosConfig.cmake` includes it without the rest of this surface.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosAmentTargetDeps.cmake")
 
+# phase-488 (Nav2) — what a package exports, recorded for its siblings.
+#
+# Upstream installs a package and its siblings find the installed copy. In a
+# nano-ros workspace every package is configured in one CMake run, so a
+# sibling's `find_package(<pkg>)` must reach the targets `<pkg>` declared in
+# that run (Nav2's `nav2_velocity_smoother` finds `nav2_util`; before this it
+# found the installed upstream copy). These verbs record the exports per
+# project, and `ament_package()` turns them into `<pkg>::<pkg>`. The
+# workspace Find stub (`_nros_find_workspace_package`) resolves to it.
+# Include directories are not taken from `ament_export_include_directories`,
+# which names INSTALL paths (`include/${PROJECT_NAME}`, a directory the
+# source tree does not have); `ament_package()` exports the package's own
+# `include/` instead, which is where the installed headers come from.
 function(ament_export_dependencies)
-    # No-op — nano-ros has no ament install layout; the embedded build does not
-    # need exported package deps.
+    set_property(GLOBAL APPEND PROPERTY NROS_WS_EXPORT_DEPS_${PROJECT_NAME} ${ARGN})
 endfunction()
 
 function(ament_export_include_directories)
-    # No-op — INSTALL_INTERFACE include dirs are an ament-install concept.
 endfunction()
 
 function(ament_export_libraries)
+    set_property(GLOBAL APPEND PROPERTY NROS_WS_EXPORT_LIBS_${PROJECT_NAME} ${ARGN})
 endfunction()
 
 function(ament_export_targets)
+    cmake_parse_arguments(_AET "HAS_LIBRARY_TARGET" "" "" ${ARGN})
+    set_property(GLOBAL APPEND PROPERTY NROS_WS_EXPORT_LIBS_${PROJECT_NAME} ${_AET_UNPARSED_ARGUMENTS})
 endfunction()
 
 # --- rclcpp_components_register_node ------------------------------------------
@@ -317,6 +378,13 @@ endfunction()
 function(rclcpp_components_register_nodes component_target)
 endfunction()
 
+# --- ament_python_install_package --------------------------------------------
+
+# phase-488 — Nav2's `nav2_common` installs its launch helpers as a Python
+# package. nano-ros has no install layout, so there is nothing to install.
+function(ament_python_install_package)
+endfunction()
+
 # --- ament_environment_hooks -------------------------------------------------
 
 # phase-488 — upstream installs shell hooks that `setup.bash` sources (ros2/demos
@@ -330,9 +398,72 @@ endfunction()
 
 function(ament_auto_package)
     # Stock form: `ament_auto_package(INSTALL_TO_SHARE config launch)`. The
-    # nano-ros embedded target has no `share/<pkg>` install layout; the args
-    # are silently ignored. Launch/yaml is Phase 209.F.
+    # nano-ros embedded target has no `share/<pkg>` install layout, so
+    # INSTALL_TO_SHARE is ignored (launch/yaml is Phase 209.F). What upstream's
+    # exports for its siblings, every `ament_auto_add_library` target and the
+    # package's build dependencies, is recorded as `ament_package()` records it.
+    cmake_parse_arguments(_AAP "" "" "INSTALL_TO_SHARE;CONFIG_EXTRAS" ${ARGN})
+    get_property(_libs GLOBAL PROPERTY NROS_WS_AUTO_LIBS_${PROJECT_NAME})
+    if(_libs)
+        ament_export_libraries(${_libs})
+    endif()
+    if(${PROJECT_NAME}_FOUND_BUILD_DEPENDS)
+        ament_export_dependencies(${${PROJECT_NAME}_FOUND_BUILD_DEPENDS})
+    endif()
+    ament_package(CONFIG_EXTRAS ${_AAP_CONFIG_EXTRAS})
 endfunction()
 
+# phase-488 — `<pkg>::<pkg>`: an INTERFACE target over what the package
+# exported (see `ament_export_libraries` above), with an `<pkg>::<target>`
+# alias per exported library target, as upstream's `ament_export_targets`
+# namespaces them. Its CONFIG_EXTRAS files (Nav2's `nav2_common` defines
+# `nav2_package()` in one) are recorded and run by the sibling's
+# `find_package(<pkg>)`, with `<pkg>_DIR` set to the directory upstream
+# installs them into: the package's `cmake/` when it has one (which upstream
+# installs beside the extras), its root otherwise.
 function(ament_package)
+    cmake_parse_arguments(_AP "" "" "CONFIG_EXTRAS;CONFIG_EXTRAS_POST" ${ARGN})
+    set(_pkg "${PROJECT_NAME}")
+    get_property(_done GLOBAL PROPERTY NROS_WS_PACKAGE_${_pkg} SET)
+    if(_done)
+        return()
+    endif()
+    set(_extras "")
+    foreach(_e IN LISTS _AP_CONFIG_EXTRAS _AP_CONFIG_EXTRAS_POST)
+        get_filename_component(_abs "${_e}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        list(APPEND _extras "${_abs}")
+    endforeach()
+    set(_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+    if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+        set(_dir "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+    endif()
+    set_property(GLOBAL PROPERTY NROS_WS_PACKAGE_DIR_${_pkg} "${_dir}")
+    set_property(GLOBAL PROPERTY NROS_WS_PACKAGE_EXTRAS_${_pkg} "${_extras}")
+    set_property(GLOBAL PROPERTY NROS_WS_PACKAGE_${_pkg} "${CMAKE_CURRENT_SOURCE_DIR}")
+    # A message package already has `<pkg>::<pkg>`, from codegen.
+    if(TARGET ${_pkg}::${_pkg})
+        return()
+    endif()
+    add_library(_nros_ws_${_pkg} INTERFACE)
+    add_library(${_pkg}::${_pkg} ALIAS _nros_ws_${_pkg})
+    get_property(_libs GLOBAL PROPERTY NROS_WS_EXPORT_LIBS_${_pkg})
+    list(REMOVE_DUPLICATES _libs)
+    foreach(_l IN LISTS _libs)
+        if(TARGET ${_l})
+            target_link_libraries(_nros_ws_${_pkg} INTERFACE ${_l})
+            if(NOT TARGET ${_pkg}::${_l})
+                add_library(${_pkg}::${_l} ALIAS ${_l})
+            endif()
+        endif()
+    endforeach()
+    get_property(_deps GLOBAL PROPERTY NROS_WS_EXPORT_DEPS_${_pkg})
+    list(REMOVE_DUPLICATES _deps)
+    foreach(_d IN LISTS _deps)
+        if(TARGET ${_d}::${_d})
+            target_link_libraries(_nros_ws_${_pkg} INTERFACE ${_d}::${_d})
+        endif()
+    endforeach()
+    if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include")
+        target_include_directories(_nros_ws_${_pkg} INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    endif()
 endfunction()

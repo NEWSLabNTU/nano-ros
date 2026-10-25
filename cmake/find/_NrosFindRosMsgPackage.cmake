@@ -73,6 +73,53 @@ function(_nros_write_find_stub emit_dir pname)
     endif()
 endfunction()
 
+# phase-488 — the Find stub for a LIBRARY package of the workspace (not a
+# message package): an ament package whose `package.xml` names an
+# `ament_cmake*` build tool, such as Nav2's `nav2_util` or `nav2_common`.
+# Without it a sibling's `find_package(<pkg>)` fell to CONFIG mode and loaded
+# the installed upstream copy of the same package.
+function(_nros_write_workspace_package_stub emit_dir pname pdir)
+    set(_stub "${emit_dir}/Find${pname}.cmake")
+    set(_stub_body
+        "# Auto-emitted Find-stub for ${pname}, a package of this workspace (phase-488).\n"
+        "include(\"${CMAKE_CURRENT_FUNCTION_LIST_DIR}/_NrosFindRosMsgPackage.cmake\")\n"
+        "_nros_find_workspace_package(${pname} \"${pdir}\")\n")
+    string(JOIN "" _stub_body ${_stub_body})
+    set(_stub_old "")
+    if(EXISTS "${_stub}")
+        file(READ "${_stub}" _stub_old)
+    endif()
+    if(NOT _stub_old STREQUAL _stub_body)
+        file(WRITE "${_stub}" "${_stub_body}")
+    endif()
+endfunction()
+
+# `find_package(<pkg>)` for a library package of the workspace. A MACRO, so the
+# package's CONFIG_EXTRAS run in the finder's scope as upstream's
+# `<pkg>Config.cmake` runs them. `<pkg>::<pkg>` is what `ament_package()`
+# declared; `<pkg>_TARGETS` / `<pkg>_LIBRARIES` name it for the modern and the
+# old spelling, and `ament_target_dependencies(<t> <pkg>)` links it.
+macro(_nros_find_workspace_package _nfwp_pkg _nfwp_dir)
+    get_property(_nfwp_src GLOBAL PROPERTY NROS_WS_PACKAGE_${_nfwp_pkg})
+    if(NOT _nfwp_src)
+        message(FATAL_ERROR
+            "nano-ros: find_package(${_nfwp_pkg}) asks for a package of this workspace "
+            "(${_nfwp_dir}) that has not been configured yet, or that never reached "
+            "ament_package(). In one CMake run a package must be added before the "
+            "packages that find it: add_subdirectory(${_nfwp_dir}) earlier in the "
+            "workspace CMakeLists.txt.")
+    endif()
+    get_property(${_nfwp_pkg}_DIR GLOBAL PROPERTY NROS_WS_PACKAGE_DIR_${_nfwp_pkg})
+    get_property(_nfwp_extras GLOBAL PROPERTY NROS_WS_PACKAGE_EXTRAS_${_nfwp_pkg})
+    foreach(_nfwp_e IN LISTS _nfwp_extras)
+        include("${_nfwp_e}")
+    endforeach()
+    set(${_nfwp_pkg}_FOUND TRUE)
+    set(${_nfwp_pkg}_TARGETS ${_nfwp_pkg}::${_nfwp_pkg})
+    set(${_nfwp_pkg}_LIBRARIES ${_nfwp_pkg}::${_nfwp_pkg})
+    set(${_nfwp_pkg}_INCLUDE_DIRS "")
+endmacro()
+
 function(_nros_emit_workspace_find_stubs)
     set(_search_roots "")
     if(DEFINED NROS_INTERFACE_SEARCH_PATH AND NOT NROS_INTERFACE_SEARCH_PATH STREQUAL "")
@@ -122,6 +169,9 @@ function(_nros_emit_workspace_find_stubs)
                 set(_is_msg_pkg TRUE)
             endif()
             if(NOT _is_msg_pkg)
+                if(_pxbody MATCHES "<buildtool_depend>[ \t\r\n]*ament_cmake")
+                    _nros_write_workspace_package_stub("${_emit_dir}" "${_pname}" "${_pxdir}")
+                endif()
                 continue()
             endif()
             _nros_write_find_stub("${_emit_dir}" "${_pname}")
@@ -327,6 +377,11 @@ function(_nros_find_ros_msg_package pkg)
             set(${pkg}_INCLUDE_DIRS "${_NROS_PKG_${pkg}_INCLUDE_DIRS}" PARENT_SCOPE)
         endif()
         set(${pkg}_LIBRARIES "${pkg}__nano_ros_cpp" PARENT_SCOPE)
+        # phase-488 — the modern spelling (`target_link_libraries(<t> PUBLIC
+        # ${geometry_msgs_TARGETS})`, Nav2's `nav2_util`): it named nothing,
+        # so the link added no include path and the first `#include
+        # <geometry_msgs/msg/...>` failed.
+        set(${pkg}_TARGETS "${pkg}::${pkg}" PARENT_SCOPE)
         set(${pkg}_FOUND TRUE PARENT_SCOPE)
         return()
     endif()
@@ -405,6 +460,9 @@ function(_nros_find_ros_msg_package pkg)
     # see an empty `${dep}_GENERATED_RS_FILES` for non-direct deps.
     set(${pkg}_INCLUDE_DIRS       "${${pkg}_INCLUDE_DIRS}"       PARENT_SCOPE)
     set(${pkg}_LIBRARIES          "${${pkg}_LIBRARIES}"          PARENT_SCOPE)
+    if(TARGET ${pkg}::${pkg})
+        set(${pkg}_TARGETS "${pkg}::${pkg}" PARENT_SCOPE)
+    endif()
     set(${pkg}_GENERATED_HEADERS  "${${pkg}_GENERATED_HEADERS}"  PARENT_SCOPE)
     set(${pkg}_GENERATED_SOURCES  "${${pkg}_GENERATED_SOURCES}"  PARENT_SCOPE)
     set(${pkg}_GENERATED_RS_FILES "${${pkg}_GENERATED_RS_FILES}" PARENT_SCOPE)
