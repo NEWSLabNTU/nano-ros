@@ -103,6 +103,7 @@ pub mod sched_context;
 // Issue 1971 -- the image's launch remap table, one `const` table in flash
 // that every executor reads (RFC-0107 step 1). No RMW: it is plain data.
 pub mod launch_remap;
+pub mod session_props;
 
 /// phase-509 P9b -- the executor's lock (RFC-0108 "As built in P9b").
 pub mod exec_lock;
@@ -200,6 +201,10 @@ pub use scheduler::{Band, BandWaitFn, BandWaiter, BandWorker, WorkerWakeFn};
 // fn-pointer types, so all four are already public API; without these a caller
 // outside the crate could receive a value it cannot name or match on.
 pub use launch_remap::{BadLaunchRemap, LaunchRemap, launch_remaps, set_launch_remaps};
+pub use session_props::{
+    BadSessionProperties, MAX_SESSION_PROPERTIES, SessionProperty, session_properties,
+    set_session_properties, with_session_properties,
+};
 #[cfg(any(has_rmw, test))]
 pub use spin::SessionHandle;
 #[cfg(all(any(has_rmw, test), feature = "rmw-cffi"))]

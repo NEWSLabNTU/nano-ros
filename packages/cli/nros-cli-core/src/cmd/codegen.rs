@@ -274,6 +274,14 @@ pub struct EntryArgs {
     /// where Kconfig has already run. Refused for a non-Zephyr board.
     #[arg(long, value_name = "PATH")]
     pub dotconfig: Option<PathBuf>,
+
+    /// RFC-0109 D8 (phase-514 W3) — the bringup's own zenoh session config
+    /// (`<bringup>/rmw/zenoh.json5`). Lowered here to zenoh-pico session
+    /// properties the entry bakes as one table and installs before the runner
+    /// opens a session; a key zenoh-pico cannot take is refused.
+    /// `nano_ros_entry` passes it when the file exists for a zenoh image.
+    #[arg(long, value_name = "PATH")]
+    pub rmw_config: Option<PathBuf>,
 }
 
 fn parse_link_libs(s: &str) -> std::result::Result<(String, PathBuf), String> {
@@ -597,7 +605,12 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             .as_ref()
             .map(|d| d.node_ranks(image_plan_direction))
             .unwrap_or_default();
-        entry_codegen::emit::emit_typed_ranked_lowered(
+        let session_properties = match args.rmw_config.as_deref() {
+            Some(p) => crate::orchestration::rmw_config::session_properties(p)
+                .map_err(|e| eyre!("--rmw-config: {e}"))?,
+            None => Vec::new(),
+        };
+        entry_codegen::emit::emit_typed_image_lowered(
             lang,
             &plan,
             &monitor_rows,
@@ -606,6 +619,7 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             &mode_rows,
             &mode_tier,
             &node_ranks,
+            &session_properties,
         )
         .map_err(|e| eyre!("{e}"))?
     } else {

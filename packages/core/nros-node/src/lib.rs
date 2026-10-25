@@ -280,7 +280,11 @@ pub use executor::{
     Trigger, baked_domain_from_c_abi,
 };
 // Issue 1971 -- the launch remap table (RFC-0107 step 1).
-pub use executor::{BadLaunchRemap, LaunchRemap, launch_remaps, set_launch_remaps};
+pub use executor::{
+    BadLaunchRemap, BadSessionProperties, LaunchRemap, MAX_SESSION_PROPERTIES, SessionProperty,
+    launch_remaps, session_properties, set_launch_remaps, set_session_properties,
+    with_session_properties,
+};
 
 // Re-export RMW-dependent executor types
 #[cfg(any(has_rmw, test))]

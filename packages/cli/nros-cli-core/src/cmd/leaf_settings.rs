@@ -994,6 +994,17 @@ pub fn write_shared(
         }
     }
 
+    // RFC-0109 D8 (phase-514 W3) — the session properties lowered from the
+    // leaf's RMW file, the one backend-neutral text `nros::main!` bakes.
+    if let Some(text) = crate::orchestration::rmw_config::session_text(leaf, &img.image_id)
+        .map_err(|e| eyre!("{e}"))?
+    {
+        env.insert(
+            nros_orchestration_ir::session_properties::ENV.to_string(),
+            text,
+        );
+    }
+
     // Issue 1305 — WHICH image this file builds, for `nros::main!`: a leaf
     // with several images reads `system.toml` for this one (its board,
     // locator, RMW overlay), not for the leaf's default. Each image has its

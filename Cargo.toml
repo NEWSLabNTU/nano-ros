@@ -87,6 +87,8 @@ members = [
     # XRCE-DDS FFI bindings
     # Zenoh RMW backend (shim + zpico wrapper)
     "packages/rmw/zenoh/nros-rmw-zenoh",
+    # RFC-0109 D8 — json5 session config -> zenoh-pico properties (host only).
+    "packages/rmw/zenoh/nros-zenoh-session-config",
     # Phase 123.A.1.x.4.a — standalone staticlib wrapper. Emits
     # `libnros_rmw_zenoh_staticlib.a` separately from `libnros_c.a`
     # so the SDK matrix can ship them decoupled.

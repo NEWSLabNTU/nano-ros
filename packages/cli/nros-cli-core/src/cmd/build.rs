@@ -836,6 +836,17 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         .map_err(|e| eyre::eyre!("{e}"))?;
                     env.insert(nros_board_common::image_net::ENV.to_string(), n.text());
                 }
+                // RFC-0109 D8 (phase-514 W3) — the session properties lowered
+                // from the bringup's RMW file, for `nros::main!` to bake.
+                if let Some(text) =
+                    crate::orchestration::rmw_config::session_text(&bringup_dir, &image_id)
+                        .map_err(|e| eyre::eyre!("{e}"))?
+                {
+                    env.insert(
+                        nros_orchestration_ir::session_properties::ENV.to_string(),
+                        text,
+                    );
+                }
                 let image_for = |wiring| crate::sizing_descriptor::ModelImage {
                     build_dir: &image_dir,
                     entry: &image_id,
@@ -1370,6 +1381,22 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 )
             }
             Driver::West => {
+                // RFC-0109 D8 (phase-514 W3a) — a C/C++ west application bakes
+                // the bringup's lowered RMW file through `nano_ros_entry()`; a
+                // Rust one has no carrier yet, and baking nothing would boot it
+                // on the board's default router instead (issue 2051).
+                if !image_has_non_rust(&image, &bringup_dir)
+                    && crate::orchestration::rmw_config::session_text(&bringup_dir, &image_id)
+                        .map_err(|e| eyre::eyre!("{e}"))?
+                        .is_some()
+                {
+                    eyre::bail!(
+                        "`{qual}`: a Rust Zephyr application cannot bake its bringup's RMW \
+                         file yet — the west lane does not carry the lowered session \
+                         properties to its cargo build (issue 2051). State the endpoint as \
+                         the image's `locator` instead, or build a C/C++ entry"
+                    );
+                }
                 // Issue 1419 — a RUST west application (`rust_cargo_application()`)
                 // calls no `nano_ros_entry()`, so the configure-time census check
                 // a C/C++ Zephyr entry runs never reaches it. Stage 4 is that
@@ -4577,17 +4604,10 @@ fn image_config_digest(
     Some(format!("{:x}", h.finalize())[..10].to_string())
 }
 
-/// The bringup's own RMW config for `rmw`, by the convention
-/// `cmake/NanoRosRmwUserConfig.cmake` bakes (`<bringup>/rmw/<backend>.<ext>`,
-/// one extension per backend), when that file exists.
+/// The bringup's own RMW config for `rmw` — the file its backend's descriptor
+/// names (`[rmw.config] file`, RFC-0109 D8) — when that file exists.
 fn rmw_user_config_file(bringup_dir: &Path, rmw: Option<&str>) -> Option<PathBuf> {
-    let ext = match rmw? {
-        "cyclonedds" => "xml",
-        "zenoh" => "conf",
-        _ => return None,
-    };
-    let f = bringup_dir.join("rmw").join(format!("{}.{ext}", rmw?));
-    f.is_file().then_some(f)
+    crate::orchestration::rmw_config::find(bringup_dir, rmw)
 }
 
 /// Where `nros build` GENERATES an image's entry package:

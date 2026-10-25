@@ -71,11 +71,25 @@ pub struct ResolvedRmw {
     /// `[rmw.provides.cargo] type_register_crate`: where `register::<T>()`
     /// lives, for a backend that needs per-type descriptors. Empty otherwise.
     pub type_register_crate: &'static str,
+    /// `[rmw.config]` — the backend's own configuration file (RFC-0109 D8).
+    pub config: RmwConfigFile,
     /// Phase 241 W13/R1 (RFC-0042 §D3 bullet 2) — the **link dispatch** data,
     /// the one place that records how each backend reaches the final link.
     /// Consumed by both the W11 synthesized `nros_ws_runtime` crate's nros-cpp
     /// feature and the cmake link extras (formerly hand-maintained prose).
     pub dispatch: RmwDispatch,
+}
+
+/// A backend's own configuration file, as its descriptor declares it
+/// (`[rmw.config]`, RFC-0109 D8). All empty for a backend with no file format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RmwConfigFile {
+    /// The file, relative to a `system.toml`.
+    pub file: &'static str,
+    /// One of `rmw_descriptor::CONFIG_FORMATS`.
+    pub format: &'static str,
+    /// A retired file sync refuses naming `file`, or empty.
+    pub retired: &'static str,
 }
 
 /// How a backend reaches the final binary's link (Phase 241 W13/R1). One SSoT for
@@ -187,6 +201,11 @@ pub fn resolve_rmw(declared: &str) -> Result<ResolvedRmw, UnknownRmw> {
             register_crate: r.register_crate,
             register_fn: r.register_fn,
             type_register_crate: r.type_register_crate,
+            config: RmwConfigFile {
+                file: r.config_file,
+                format: r.config_format,
+                retired: r.config_retired,
+            },
             dispatch: RmwDispatch {
                 rlib_dep: (!r.rlib_dep.is_empty()).then_some(r.rlib_dep),
                 link_strategy: r.link_strategy,
@@ -494,6 +513,15 @@ mod tests {
             assert_eq!(
                 d.per_message_hook, baked.per_message_hook,
                 "{name}: per_message_hook"
+            );
+            assert_eq!(d.config_file, baked.config.file, "{name}: config_file");
+            assert_eq!(
+                d.config_format, baked.config.format,
+                "{name}: config_format"
+            );
+            assert_eq!(
+                d.config_retired, baked.config.retired,
+                "{name}: config_retired"
             );
             assert_eq!(
                 d.link_strategy, baked.dispatch.link_strategy,

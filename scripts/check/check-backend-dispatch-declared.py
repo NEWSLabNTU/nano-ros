@@ -102,6 +102,11 @@ CLASSIFICATION: dict[str, tuple[str | None, tuple[str, ...], str]] = {
         "the ROUTER — every image reaches its backend through it",
     ),
     "nros-bridge": (None, (), "composes backends; each declares for itself"),
+    "nros-zenoh-session-config": (
+        None,
+        (),
+        "host-side json5 lowering the CLI and hosted zenoh link (RFC-0109 D8); no dispatch",
+    ),
     "nros-transport-callbacks": (
         None,
         (),

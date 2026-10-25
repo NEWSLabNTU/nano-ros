@@ -1362,6 +1362,21 @@ function(_nros_entry_invoke_codegen)
             --typed
             --metadata "${CMAKE_BINARY_DIR}/nros-metadata.json")
     endif()
+    # RFC-0109 D8 (phase-514 W3) — a zenoh image's bringup may ship its own
+    # session config in zenoh's language, `<bringup>/rmw/zenoh.json5` (the
+    # document `rmw_zenoh` reads from ZENOH_SESSION_CONFIG_URI). The CLI lowers
+    # it to zenoh-pico session properties and the entry bakes them; CMake parses
+    # nothing. Convention, not declaration, as `nros_bake_rmw_user_config` is
+    # for CycloneDDS's XML. Editing the file must re-configure, so it is a
+    # configure dependency (the museum-binary class, issue 0196).
+    if(_NRX_BRINGUP)
+        _nros_entry_resolve_rmw(_nrx_rmw)
+        set(_nrx_rmw_cfg "${_NRX_BRINGUP}/rmw/zenoh.json5")
+        if(_nrx_rmw STREQUAL "zenoh" AND EXISTS "${_nrx_rmw_cfg}")
+            list(APPEND _cli_args --rmw-config "${_nrx_rmw_cfg}")
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_nrx_rmw_cfg}")
+        endif()
+    endif()
     if(_NRX_ARGS_LIST)
         # The cmake list uses `;` separators; the CLI expects `,`.
         string(REPLACE ";" "," _cli_args_csv "${_NRX_ARGS_LIST}")

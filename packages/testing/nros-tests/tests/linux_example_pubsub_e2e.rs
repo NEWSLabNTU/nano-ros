@@ -309,6 +309,78 @@ fn run_cell(cell: &MCell) {
     );
 }
 
+/// RFC-0109 D6a (phase-514 W3) — a hosted image's whole zenoh session comes
+/// from `$ZENOH_SESSION_CONFIG_URI`, the json5 `rmw_zenoh` reads, lowered by
+/// the same code the build runs on a bringup's `rmw/zenoh.json5`.
+///
+/// The talker gets NO `NROS_LOCATOR`: the router listens on a unique port, so
+/// the only route to it is the file's `connect` list. Delivery therefore proves
+/// the file was read, lowered and dialed — and that its `connect` replaced the
+/// default router rather than sitting beside it (a dial of the default that
+/// failed would refuse the session). Runs on the rust/zenoh cell's fixtures.
+#[rstest]
+#[case::rust(ML::Rust)]
+#[case::c(ML::C)]
+fn native_zenoh_session_config_file_is_the_route(#[case] lang: ML) {
+    let prefix = listener_prefix(lang);
+    let talker = resolve(lang, "talker", talker_bin(lang), MR::Zenoh)
+        .unwrap_or_else(|e| panic!("{} talker fixture not built: {e}", lang.as_str()));
+    let listener = resolve(lang, "listener", listener_bin(lang), MR::Zenoh)
+        .unwrap_or_else(|e| panic!("{} listener fixture not built: {e}", lang.as_str()));
+    require_zenohd();
+    let router = ZenohRouter::start_unique()
+        .unwrap_or_else(|e| nros_tests::unmet!("zenohd failed to start: {e}"));
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = dir.path().join("zenoh.json5");
+    std::fs::write(
+        &config,
+        format!(
+            "// the session's wiring, in zenoh's own language\n{{\n  mode: \"client\",\n  \
+             connect: {{ endpoints: [\"{}\"] }},\n}}\n",
+            router.locator()
+        ),
+    )
+    .expect("write zenoh.json5");
+
+    let mut listener_cmd = Command::new(&listener);
+    listener_cmd
+        .env("RUST_LOG", "info")
+        .env("NROS_LOCATOR", router.locator());
+    let mut talker_cmd = Command::new(&talker);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env_remove("NROS_LOCATOR")
+        .env("ZENOH_SESSION_CONFIG_URI", &config);
+
+    let mut listener_proc = ManagedProcess::spawn_command(listener_cmd, "session-config-listener")
+        .unwrap_or_else(|e| panic!("spawn listener: {e}"));
+    let mut talker_proc = ManagedProcess::spawn_command(talker_cmd, "session-config-talker")
+        .unwrap_or_else(|e| {
+            listener_proc.kill();
+            panic!("spawn talker: {e}")
+        });
+    let out = listener_proc
+        .wait_for_output_count(prefix, 3, Duration::from_secs(25))
+        .unwrap_or_else(|e| {
+            talker_proc.kill();
+            listener_proc.kill();
+            panic!(
+                "[{}] the talker reached no router through ZENOH_SESSION_CONFIG_URI's \
+                 `connect` — listener: {e}",
+                lang.as_str()
+            )
+        });
+    talker_proc.kill();
+    listener_proc.kill();
+    let n = nros_tests::count_pattern(&out, prefix);
+    assert!(
+        n >= 3,
+        "[{}] expected ≥3 deliveries, got {n}",
+        lang.as_str()
+    );
+}
+
 /// RFC-0051 §7c (phase-510 W3) — the cases this file runs are exactly the
 /// Runtime cells `matrix::consumer_of` assigns to it. Fixture-free: a cell
 /// added, retiered or reassigned without this list moving is a red here.

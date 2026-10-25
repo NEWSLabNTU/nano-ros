@@ -1337,7 +1337,42 @@ impl SystemToml {
             img.net = files.interfaces;
             img.networks = files.networks;
         }
+        self.check_rmw_files(dir)
+    }
+
+    /// RFC-0109 D8/D9 (phase-514 W3) — every image's RMW file (layer 2, the
+    /// file its backend's descriptor names beside this `system.toml`), checked
+    /// by the one rule every road runs (`crate::orchestration::rmw_config`):
+    /// a retired file, a locator stated beside a file, an XML domain the image
+    /// never joins, and a session key the target cannot take are refused here,
+    /// at sync, naming the image. Run by [`Self::fold_os_config`].
+    pub fn check_rmw_files(&self, dir: &std::path::Path) -> Result<(), String> {
+        for (id, _) in self.resolved_images() {
+            self.rmw_file_for(dir, &id)?;
+        }
         Ok(())
+    }
+
+    /// Image `id`'s RMW file, found through its backend's descriptor beside
+    /// this `system.toml` (in `dir`) and checked — the one answer the check
+    /// above and every road that bakes the file read. `None`: the bringup
+    /// ships none for that backend, or there is no such image.
+    pub fn rmw_file_for(
+        &self,
+        dir: &std::path::Path,
+        id: &str,
+    ) -> Result<Option<crate::orchestration::rmw_config::RmwFile>, String> {
+        let Some((_, img)) = self.resolved_images().into_iter().find(|(i, _)| i == id) else {
+            return Ok(None);
+        };
+        let rmw = img.rmw.clone().unwrap_or_else(|| self.system.rmw.clone());
+        crate::orchestration::rmw_config::resolve(
+            dir,
+            Some(rmw.as_str()),
+            img.locator.as_deref(),
+            img.domain_id.unwrap_or(self.system.domain_id),
+            &format!("image.{id}"),
+        )
     }
 
     /// Every image folded over `[image_defaults]` ([`ImageBlock::with_base`]).

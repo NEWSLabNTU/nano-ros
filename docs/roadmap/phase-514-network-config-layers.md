@@ -1,7 +1,7 @@
 # Phase 514 — Network and middleware configuration in three layers
 
-**Status (2026-10-25). W1, W2 landed; W4 and W6 in review; W3 and W5 not
-started.** W1: every board descriptor states `[board.net] stack` and
+**Status (2026-10-25). W1, W2 landed; W4, W6 and W3a in review; W3b and W5
+not started.** W1: every board descriptor states `[board.net] stack` and
 `links`, from one link vocabulary (`LINK_KINDS`, a superset of the image
 `TRANSPORT_KINDS`). W2: an image's address lives in the board network file
 its `os_config` names; all 78 in-tree rows moved, each resolving
@@ -12,6 +12,9 @@ into `[image.<id>.run] nic`. W4b: the link is derived from the locator
 (`[image] transport` refused), `conf` is an alias of `os_config` (75 tracked
 lines moved), D9 check 6 refuses a layer-1 file its board's network owner
 does not read, and NuttX's address default is its kernel `defconfig`.
+W3a: a bringup's `rmw/zenoh.json5` is lowered on the host, baked into every
+road's entry and installed before the session opens; `$ZENOH_SESSION_CONFIG_URI`
+replaces it on hosted builds. W5 needs a host with `vcan0` to verify.
 Implements
 [RFC-0109](../design/0109-network-config-layers.md). Opened with the RFC so
 its work and phase-206's leftovers have one home.
@@ -55,6 +58,52 @@ the same lowering for `ZENOH_SESSION_CONFIG_URI` (D6a).
 **Done when** a native C bringup with a `rmw/zenoh.json5` stating a `listen`
 endpoint is reached by a peer in a test cell (phase-206's open item), and a
 json5 key zenoh-pico cannot take is refused at sync.
+
+**W3a — the default domain's file, by convention (in review).** A bringup's
+`rmw/zenoh.json5` (beside its `system.toml`, as `rmw/cyclonedds.xml` already
+was) applies to every zenoh image of it; there is no key naming it yet.
+
+- One lowering, `nros-zenoh-session-config` (a hand-written json5 reader —
+  the `json5` crate would have added `pest` to eleven tracked locks): a leaf
+  path zenoh-pico has a property for lowers to it, anything else is REFUSED
+  naming the key. `nros_orchestration_ir::rmw_config` finds the file and runs
+  the D9 checks: the retired flat `rmw/zenoh.conf` is refused naming the
+  json5, an image `locator` beside a file is refused (a `[system]` locator is
+  simply unused), and a Cyclone `<Domain id>` other than `any` or the
+  image's domain is refused.
+- Every road bakes the lowered table and installs it before the first session
+  opens: `nros::main!` (a static installed by the deploy-overlay expression,
+  plus the Zephyr arm), and the C/C++ entry (`nros codegen entry
+  --rmw-config`, passed by `nano_ros_entry` when the file exists;
+  `nros_cpp_set_session_properties`). The registry is `nros-node`'s
+  (`with_session_properties`, beside `launch_remap`), so every executor open
+  path reads it. With a file the entry bakes no locator: the file is the
+  wiring.
+- The shim treats `mode: "peer"` and a `connect` list as the session's own:
+  a `connect` replaces the default router instead of being dialed beside it.
+- Hosted builds read `$ZENOH_SESSION_CONFIG_URI` through the same lowering
+  (D6a); it REPLACES the baked table. The backend reads it through the C
+  library (`getenv` + `fopen`), not `std`: the C/C++ road links the backend
+  with `platform-posix` and no `std` (phase-359 W10), and a `std::env` reader
+  left the variable unread there, so the C talker dialled the default router.
+  `nros-zenoh-session-config` is `no_std` + `alloc` for the same reason, and
+  the zenoh descriptor's `[rmw.capabilities] alloc = "alloc"` forwards the
+  image's heap to the backend (the C/C++ image crate otherwise names only
+  `platform-posix` on it).
+
+Acceptance as built differs from the line above in one respect, on purpose:
+a `listen` endpoint reached by a peer needs zenoh-pico's multicast transport,
+which the shipped shim compiles out (issue 0682), so the test cell proves the
+other half — `native_zenoh_session_config_file_is_the_route` (rust + C): the
+talker gets no locator and a router on a unique port, so the file's `connect`
+is its only route. The bake itself is pinned by
+`a_zenoh_rmw_file_bakes_its_session_properties_and_no_locator`.
+
+A Rust Zephyr west application has no carrier for the lowered text yet, so
+`nros build` refuses one whose bringup ships the file (issue 2051).
+
+**W3b — remainder:** `[[domain]] config`, the per-image `rmw_config`
+override, and the U5 bridge shape (two domains, two files).
 
 ### W4 — retire the keys RFC-0109 moves
 

@@ -436,7 +436,7 @@ pub(super) mod transient_local {
             assert_eq!(v(5, 2, 5), [2, 3, 4, 0, 1]);
             // Depth one -- the pre-1709 shape -- is the one slot, whatever head is.
             assert_eq!(v(1, 0, 1), [0]);
-            assert_eq!(v(4, 0, 0), []);
+            assert_eq!(v(4, 0, 0), [0usize; 0]);
         }
 
         /// Issue 1709 -- the ring keeps at most `DEPTH` and an oversize publish

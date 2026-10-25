@@ -1,0 +1,11 @@
+{#-
+  RFC-0109 D8 (phase-514 W3) -- install the session properties table
+  (`session_properties_table.jinja`) before the runner opens any session.
+  Nothing when the image bakes none.
+-#}
+{%- if session_properties %}
+    {
+        nros_cpp_ret_t src = nros_cpp_set_session_properties(__nros_session_properties, sizeof(__nros_session_properties) / sizeof(__nros_session_properties[0]));
+        if (src != NROS_CPP_RET_OK) return (int)src;
+    }
+{%- endif -%}

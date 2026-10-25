@@ -43,6 +43,17 @@ pub const LINK_UMBRELLA: &str = "umbrella";
 /// nothing and a plain archive link would drop it.
 pub const LINK_CMAKE: &str = "cmake";
 
+/// `[rmw.config].format` values (RFC-0109 D8). A FILE-FORMAT axis, which the
+/// toolchain implements once per format and a backend picks by name:
+///
+/// - `verbatim-xml` — the file's bytes reach the backend unchanged, which
+///   parses them on the target (CycloneDDS's `dds_create_domain`). The host
+///   checks only that its `<Domain id>` agrees with the image's domain.
+/// - `session-json5` — a json5 session config the target cannot parse, lowered
+///   on the host to the backend's session properties and baked
+///   (`nros-zenoh-session-config`).
+pub const CONFIG_FORMATS: &[&str] = &["verbatim-xml", "session-json5"];
+
 /// What a backend's `nros-rmw.toml` says.
 ///
 /// Split into what convention CANNOT produce (the fields below) and what it
@@ -110,6 +121,17 @@ pub struct RmwDescriptor {
     pub platform_features: Vec<(String, String)>,
     /// `[rmw.codegen].per_message` — a cmake command run per message type.
     pub per_message_hook: String,
+    /// `[rmw.config].file` — the backend's own configuration file, relative
+    /// to a `system.toml` (RFC-0109 D8, phase-514 W3): the document the
+    /// middleware reads, found by convention because the backend is declared.
+    /// Empty: the backend has no file format (XRCE, uORB).
+    pub config_file: String,
+    /// `[rmw.config].format` — how the toolchain carries that file
+    /// ([`CONFIG_FORMATS`]): handed over verbatim, or lowered on the host.
+    pub config_format: String,
+    /// `[rmw.config].retired` — an older file a bringup may still ship, which
+    /// sync refuses naming `config_file`. Empty: none.
+    pub config_retired: String,
 
     // ---- restatements of derivable facts (RFC-0087 D4) --------------------
     /// `[rmw].names`, if the descriptor still restates the announcements.
@@ -207,10 +229,20 @@ pub fn parse_rmw_descriptor(text: &str, origin: &str) -> Result<RmwDescriptor, S
             ("rmw.link", "edition_feature") => d.edition_feature = scalar(),
             ("rmw.capabilities", k) => d.capabilities.push((k.to_string(), scalar())),
             ("rmw.codegen", "per_message") => d.per_message_hook = scalar(),
+            ("rmw.config", "file") => d.config_file = scalar(),
+            ("rmw.config", "format") => d.config_format = scalar(),
+            ("rmw.config", "retired") => d.config_retired = scalar(),
             _ => {}
         }
     }
 
+    if !d.config_file.is_empty() && !CONFIG_FORMATS.contains(&d.config_format.as_str()) {
+        return Err(format!(
+            "{origin}: [rmw.config].format = {:?} — one of {CONFIG_FORMATS:?} \
+             (`[rmw.config].file` is set, so the toolchain must know how to carry it)",
+            d.config_format
+        ));
+    }
     if !d.link_strategy.is_empty() && !LINK_STRATEGIES.contains(&d.link_strategy.as_str()) {
         return Err(format!(
             "{origin}: [rmw.link].strategy is {:?}, which is not one of {} — a typo \

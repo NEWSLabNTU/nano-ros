@@ -6471,6 +6471,73 @@ pub unsafe extern "C" fn nros_cpp_set_launch_remaps(
     }
 }
 
+/// One baked RMW session property as the generated C/C++ entry emits it
+/// (RFC-0109 D8, phase-514 W3): two NUL-terminated strings with static
+/// lifetime (literals in the entry's `.rodata`), lowered at build time from
+/// the bringup's own `rmw/<backend>` file.
+#[cfg(feature = "rmw-cffi")]
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_session_property_t {
+    /// The backend's property name (`connect`, `listen`, `mode`, ...).
+    pub key: *const c_char,
+    /// Its value.
+    pub value: *const c_char,
+}
+
+// The C row IS `nros_node::SessionProperty`: same two pointers, same order,
+// both `#[repr(C)]`, so the table is lent to the runtime without a copy.
+#[cfg(feature = "rmw-cffi")]
+const _: () = {
+    assert!(
+        core::mem::size_of::<nros_cpp_session_property_t>()
+            == core::mem::size_of::<nros_node::SessionProperty>()
+    );
+    assert!(
+        core::mem::align_of::<nros_cpp_session_property_t>()
+            == core::mem::align_of::<nros_node::SessionProperty>()
+    );
+};
+
+/// Install the image's baked RMW session properties: ONE `static const`
+/// table the generated entry emits, handed to the backend by every default
+/// session open that states none of its own (RFC-0109 D8).
+///
+/// Call it once at boot, BEFORE the board runner opens any session. The
+/// generated entry does exactly that.
+///
+/// Returns `NROS_CPP_RET_OK`, or `NROS_CPP_RET_INVALID_ARGUMENT` when `table`
+/// is NULL with `len > 0`, a row has a NULL or non-UTF-8 string, or there are
+/// more rows than one session open carries (nothing is installed then).
+///
+/// # Safety
+/// `table` must point at `len` rows that, with every string they point at,
+/// live for the rest of the program and are never written (a `static const`
+/// array of string literals).
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_set_session_properties(
+    table: *const nros_cpp_session_property_t,
+    len: usize,
+) -> nros_cpp_ret_t {
+    let rows: &'static [nros_node::SessionProperty] = if len == 0 {
+        &[]
+    } else if table.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    } else {
+        // SAFETY: the caller's contract (`len` static, immutable rows), and the
+        // two row types share one layout (asserted above).
+        unsafe { core::slice::from_raw_parts(table as *const nros_node::SessionProperty, len) }
+    };
+    match nros_node::set_session_properties(rows) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(e) => {
+            cpp_diag!("nros_cpp_set_session_properties: {e}");
+            NROS_CPP_RET_INVALID_ARGUMENT
+        }
+    }
+}
+
 /// Honour `--ros-args` from a C++ `argc`/`argv`: parse it with rcl's grammar
 /// and install the `-r`/`--remap` rules as the executor's FALLBACK remap tier,
 /// beneath the launch rules `nros_cpp_declare_remap` records.

@@ -757,6 +757,9 @@ fn image_system(
         crate::system_net::parse_run(image, id).map_err(|e| format!("{}: {e}", path.display()))?;
     // The image's own `locator`, else the project's `[system] locator`
     // (RFC-0109 D6: the default domain's endpoint when it has no RMW file).
+    // (An image whose bringup ships an RMW file uses none of this: the CLI
+    // refuses an image locator beside one, and `nros::main!` bakes the file's
+    // endpoints instead — RFC-0109 D9, `crate::session_properties`.)
     let locator = pick("locator").or_else(|| str_key(system, "locator"));
     // RFC-0109 D6 — the link is the locator's, never a second key.
     let transport = locator

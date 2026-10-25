@@ -14,7 +14,7 @@
 # WHERE THE FILE LIVES, and why not `config/`:
 #
 #     <bringup>/rmw/cyclonedds.xml     authored, tracked, reviewed
-#     <bringup>/rmw/zenoh.conf         (phase-206 W3)
+#     <bringup>/rmw/zenoh.json5        (RFC-0109 D8 — lowered by the CLI, not here)
 #     <bringup>/config/*.yaml          GENERATED, gitignored (phase-330 W4.a)
 #
 # `<bringup>/config/` already means "build artifact, never committed" — putting
@@ -41,12 +41,15 @@ function(nros_bake_rmw_user_config)
 
     # One extension per backend, because the backends' native config languages
     # genuinely differ (RFC-0004 amendment): CycloneDDS has an XML *document*
-    # and parses it itself; zenoh-pico has no document format at all, so its
-    # unit is a flat `key = value` list fed to `zp_config_insert`.
+    # and parses it itself, so its bytes are baked here verbatim.
+    #
+    # zenoh's file is `rmw/zenoh.json5`, zenoh's own language, which a CMake
+    # function cannot parse: `nros codegen entry --rmw-config` lowers it and the
+    # entry bakes the result (RFC-0109 D8, phase-514 W3). The flat
+    # `rmw/zenoh.conf` this function once looked for is retired, and `nros sync`
+    # refuses one naming the json5.
     if(_NBR_BACKEND STREQUAL "cyclonedds")
         set(_ext "xml")
-    elseif(_NBR_BACKEND STREQUAL "zenoh")
-        set(_ext "conf")
     else()
         # Not an error: a backend with no user-config surface simply has none.
         if(_NBR_RESULT)
