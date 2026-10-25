@@ -33,7 +33,8 @@ pub struct Args {
     /// `nano-ros` for the two roots. `artifact <name>…` instead locates a
     /// cargo-built artifact (`c-archive`, `cpp-archive`, `c-include`,
     /// `cpp-include`, `c-config-header`, `cpp-config-header`); `tool <name>`
-    /// a first-party host binary (`nros-launch-resolve`).
+    /// a host binary (`nros-launch-resolve`, or `qemu-system-<arch>` through
+    /// the one QEMU ladder).
     pub names: Vec<String>,
 
     /// Every `[source.*]` row. A row that resolves nowhere is skipped in
@@ -161,11 +162,11 @@ pub fn run(args: Args) -> Result<()> {
     let index_path = crate::cmd::setup::resolve_index(&args.index)?;
     let index = SdkIndex::load(&index_path)?;
     // Absolute: a `--why` trace and a cmake `set()` are read from other cwds.
-    let checkout = nros_build_paths::canonical(&crate::cmd::setup::index_workspace(&index_path));
-    let checkout = checkout
+    let sdk_root = nros_build_paths::canonical(&crate::cmd::setup::index_workspace(&index_path));
+    let checkout = sdk_root
         .join(nros_build_paths::CHECKOUT_MARKER)
         .is_file()
-        .then_some(checkout);
+        .then(|| sdk_root.clone());
     let store = crate::orchestration::store::root();
     let project = project_dir(args.project.as_deref());
 
@@ -173,7 +174,7 @@ pub fn run(args: Args) -> Result<()> {
         return run_artifact(&args, checkout.as_deref());
     }
     if args.names.first().map(String::as_str) == Some("tool") {
-        return run_tool(&args, checkout.as_deref());
+        return run_tool(&args, checkout.as_deref(), &sdk_root);
     }
 
     let mut names = args.names.clone();
@@ -386,21 +387,40 @@ fn refuse_unplaced_header(wanted: &[nros_build_paths::artifact::Artifact]) -> Re
 /// itself spawns, so the shell's `nros_launch_resolve_bin` (and the identity
 /// fixtures record) can never name a different binary from the one that ran.
 /// "This checkout" is the one the index belongs to, else this binary's own.
-fn run_tool(args: &Args, checkout: Option<&std::path::Path>) -> Result<()> {
+///
+/// phase-517 W6 — and `qemu-system-<arch>`, through
+/// [`crate::orchestration::qemu_bin`]: the QEMU `nros build` prints for a QEMU
+/// board. It has no `$PATH` rung, so a host with nothing provisioned is told
+/// to run `nros setup --tool qemu` rather than handed the distro build.
+fn run_tool(
+    args: &Args,
+    checkout: Option<&std::path::Path>,
+    sdk_root: &std::path::Path,
+) -> Result<()> {
     use crate::orchestration::model_location::{LAUNCH_RESOLVER, launch_resolver_bin_for_exe};
     let [_, name] = args.names.as_slice() else {
         bail!("name one tool: `nros locate tool {LAUNCH_RESOLVER}`");
     };
-    if name != LAUNCH_RESOLVER {
-        bail!("no tool `{name}` — known: {LAUNCH_RESOLVER}");
-    }
-    let exe = std::env::current_exe()?;
-    let Some(path) = launch_resolver_bin_for_exe(&exe, checkout) else {
-        bail!(
-            "{LAUNCH_RESOLVER} not found ($NROS_LAUNCH_RESOLVE, this checkout's build, beside \
-             this nros, the store) — run `just setup-launch-resolve` (or \
-             ./scripts/bootstrap.sh)"
-        );
+    // phase-517 W6 — the QEMU ladder (issue 1851), the CLI's twin of
+    // `nros_qemu_bin`: what `nros build` prints for a QEMU board.
+    let (path, rung) = if name.starts_with("qemu-system-") {
+        use crate::orchestration::qemu_bin::{Ctx, QemuBin, locate};
+        match locate(name, &Ctx::for_sdk(Some(sdk_root))) {
+            QemuBin::Found { path, rung } => (path, rung),
+            QemuBin::Missing { why } => bail!("{why}"),
+        }
+    } else if name == LAUNCH_RESOLVER {
+        let exe = std::env::current_exe()?;
+        let Some(path) = launch_resolver_bin_for_exe(&exe, checkout) else {
+            bail!(
+                "{LAUNCH_RESOLVER} not found ($NROS_LAUNCH_RESOLVE, this checkout's build, \
+                 beside this nros, the store) — run `just setup-launch-resolve` (or \
+                 ./scripts/bootstrap.sh)"
+            );
+        };
+        (path, "model_location::launch_resolver_from")
+    } else {
+        bail!("no tool `{name}` — known: {LAUNCH_RESOLVER}, qemu-system-<arch>");
     };
     match args.format {
         Format::Path => println!("{}", path.display()),
@@ -416,11 +436,7 @@ fn run_tool(args: &Args, checkout: Option<&std::path::Path>) -> Result<()> {
         ),
     }
     if args.why {
-        eprintln!(
-            "  {:<10} {} (model_location::launch_resolver_from)",
-            "tool",
-            path.display()
-        );
+        eprintln!("  {:<10} {} ({rung})", "tool", path.display());
     }
     Ok(())
 }

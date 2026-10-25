@@ -125,6 +125,14 @@ pub fn settings_path(leaf: &Path, image_id: &str) -> PathBuf {
         .join(cargo_config::FILE_NAME)
 }
 
+/// `<leaf>/build/<image>/target` — the cargo target dir the settings file
+/// names for one image. One spelling: the writer and `nros build`'s artifact
+/// location (phase-517 W6) both ask here.
+#[must_use]
+pub fn target_dir(leaf: &Path, image_id: &str) -> PathBuf {
+    leaf.join("build").join(image_id).join("target")
+}
+
 /// The `[package] name` of `leaf` when it is a single-package leaf candidate —
 /// a `system.toml` beside a `[package]` manifest — else `None`. The cheap half
 /// of [`resolve`], for a caller that must know it is looking at a leaf before
@@ -1079,7 +1087,7 @@ pub fn write_shared(
             .canonicalize()
             .unwrap_or_else(|_| nano_ros_root.to_path_buf()),
         workspace: leaf.to_path_buf(),
-        target_dir: leaf.join("build").join(&img.image_id).join("target"),
+        target_dir: target_dir(leaf, &img.image_id),
         env,
         path_env,
         patches: crate::cmd::build::registry_patches(leaf, nano_ros_root, leaf),

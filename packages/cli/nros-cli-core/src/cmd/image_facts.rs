@@ -152,6 +152,7 @@ pub fn run(args: Args) -> Result<()> {
         zephyr_workspace: None,
         // Selecting BY ENTRY means every image has to be resolved before one
         // can be chosen.
+        board: None,
         all: args.for_entry.is_some(),
         dry_run: true,
         verbose: false,
@@ -290,6 +291,8 @@ mod tests {
             capabilities: capabilities.iter().map(|c| c.to_string()).collect(),
             configure: None,
             record: Default::default(),
+            output: None,
+            descriptor: None,
         }
     }
 

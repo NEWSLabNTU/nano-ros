@@ -14,6 +14,7 @@ pub mod board_facts;
 pub mod board_new;
 pub mod bringup;
 pub mod build;
+pub mod build_next;
 pub mod check;
 pub mod check_workspace;
 pub mod codegen;

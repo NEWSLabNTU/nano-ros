@@ -118,6 +118,7 @@ fn selected_args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) ->
         // These are PLAN tests: they assert what would be run, never run it,
         // so no Zephyr is resolved and none is named.
         zephyr_workspace: None,
+        board: None,
         all: false,
         dry_run: true,
         verbose: false,
@@ -1473,4 +1474,111 @@ fn image_facts_writes_nothing() {
         tree_snapshot(ws) == after,
         "plan_query wrote to the workspace"
     );
+}
+
+// ── phase-517 W6 — `--board`, and where each road's artifact lands ──────
+
+/// `--board` names an image: the plan is exactly the plan for that image.
+#[test]
+fn board_selects_the_one_image_on_that_board() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let mut a = args(tmp.path(), &[]);
+    a.board = Some("Zephyr".into());
+    let plans = plan_builds(&a).expect("one image on that board");
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].qualified, "demo_bringup:zephyr");
+    assert_eq!(plans[0].driver, Driver::West);
+
+    // No image on the board: refused, listing each image with its board.
+    a.board = Some("mps2-an385-freertos".into());
+    let e = format!("{:#}", plan_builds(&a).expect_err("no image"));
+    assert!(e.contains("demo_bringup:linux — board `linux`"), "{e}");
+
+    // With an image argument: refused rather than guessed.
+    let mut b = args(tmp.path(), &["linux"]);
+    b.board = Some("zephyr".into());
+    let e = format!("{:#}", plan_builds(&b).expect_err("both"));
+    assert!(e.contains("not both"), "{e}");
+}
+
+/// The west artifact's dir is the `-d` the handoff passes — the image's own,
+/// or the caller's when it names one.
+#[test]
+fn a_west_plan_records_the_build_dir_its_handoff_names() {
+    use nros_cli_core::cmd::build_next::BuildOutput;
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let plans = plan_builds(&args(tmp.path(), &["zephyr"])).expect("resolves");
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    assert_eq!(
+        plans[0].output,
+        Some(BuildOutput::West {
+            build_dir: Some(root.join("build/zephyr-zenoh/demo_bringup__zephyr_west")),
+        })
+    );
+    let mut a = args(tmp.path(), &["zephyr"]);
+    a.native_args = vec!["-d".into(), "/elsewhere/bld".into()];
+    let plans = plan_builds(&a).expect("resolves");
+    assert_eq!(
+        plans[0].output,
+        Some(BuildOutput::West {
+            build_dir: Some("/elsewhere/bld".into()),
+        })
+    );
+}
+
+/// The cmake artifact is the generated entry, at the top of the binary dir
+/// the handoff builds; the cargo one is under the target dir the settings file
+/// names, in cargo's `<profile>` layout.
+#[test]
+fn cmake_and_cargo_plans_record_where_their_handoff_builds() {
+    use nros_cli_core::cmd::build_next::BuildOutput;
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    write(
+        &tmp.path().join("src/talker_pkg/CMakeLists.txt"),
+        "# c pkg\n",
+    );
+    let root = std::fs::canonicalize(tmp.path()).unwrap();
+    let plans = plan_builds(&args(tmp.path(), &["linux"])).expect("resolves");
+    assert_eq!(plans[0].driver, Driver::CMake);
+    assert!(
+        plans[0]
+            .handoff
+            .as_ref()
+            .unwrap()
+            .display()
+            .contains("--build build/posix-zenoh-linux/cmake")
+    );
+    assert_eq!(
+        plans[0].output,
+        Some(BuildOutput::CMake {
+            build_dir: root.join("build/posix-zenoh-linux/cmake"),
+            executable: Some("linux_entry".into()),
+        })
+    );
+
+    let tmp2 = tempfile::tempdir().unwrap();
+    fixture(tmp2.path());
+    let root2 = std::fs::canonicalize(tmp2.path()).unwrap();
+    let mut a = args(tmp2.path(), &["linux"]);
+    a.native_args = vec!["--release".into()];
+    let plans = plan_builds(&a).expect("resolves");
+    match &plans[0].output {
+        Some(BuildOutput::Cargo {
+            target_dir,
+            triple,
+            profile_dir,
+            ..
+        }) => {
+            assert_eq!(
+                target_dir,
+                &root2.join("build/posix-zenoh/linux_entry/target")
+            );
+            assert_eq!(triple, &None, "a host board pins no triple");
+            assert_eq!(profile_dir, "release");
+        }
+        other => panic!("{other:?}"),
+    }
 }

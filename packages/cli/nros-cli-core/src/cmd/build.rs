@@ -27,7 +27,7 @@ use crate::builder::{
     plan::{self, Driver},
 };
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 pub struct Args {
     /// Image(s) to build — `linux`, or `<bringup>:linux` when two bringups
     /// declare the same id. Empty uses `[system] default_images`.
@@ -58,6 +58,17 @@ pub struct Args {
     /// Build every declared image.
     #[arg(long)]
     pub all: bool,
+
+    /// Build the image whose `[image.*] board` is this board (phase-517 W6).
+    ///
+    /// Matches the authored word (any case), any alias of the same board
+    /// descriptor, or the `nros setup` index key the board provisions through
+    /// (`nros build --board mps2-an385-baremetal` finds a `qemu-mps2-an385`
+    /// image). One match builds exactly that image, as if it were named; several
+    /// or none is refused, listing them — the image id stays the unit
+    /// (RFC-0065). Not with image arguments or `--all`.
+    #[arg(long, value_name = "BOARD")]
+    pub board: Option<String>,
 
     /// Print the stages and the command that would run, then stop.
     ///
@@ -246,6 +257,15 @@ pub struct ResolvedBuild {
     /// for the project lock: the cargo roots it resolved and the build
     /// directories whose records say which sources it read.
     pub record: crate::orchestration::project_lock::BuildRecord,
+
+    /// phase-517 W6 — where the build puts its artifact, recorded from the
+    /// values the native command was given (target dir, triple, profile, bin;
+    /// cmake binary dir + executable; west `-d`). `None` for a query and for
+    /// package mode. Read by [`crate::cmd::build_next::next_steps`].
+    pub output: Option<crate::cmd::build_next::BuildOutput>,
+    /// phase-517 W6 — the board descriptor the image resolved to, for the
+    /// follow-up command (`runner`, triple, platform). `None` for a query.
+    pub descriptor: Option<crate::orchestration::board_descriptor::BoardDescriptor>,
 }
 
 /// What a plan is FOR — issue 1716.
@@ -313,6 +333,23 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
     // relative paths in generated files that are supposed to be byte-identical.
     let root = std::fs::canonicalize(&root)
         .wrap_err_with(|| format!("resolving workspace root {}", root.display()))?;
+
+    // phase-517 W6 — `--board` is a way of NAMING an image, so it is resolved
+    // to one here and the rest of planning sees exactly `nros build <image>`.
+    if let Some(want) = &args.board {
+        if let Some(why) = crate::cmd::build_next::refuse_board_with(&args.images, args.all) {
+            eyre::bail!("{why}");
+        }
+        let nros_root =
+            crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
+        let image = crate::cmd::build_next::images_for_board(&root, nros_root.as_deref(), want)?;
+        eprintln!("nros build: --board {want} selects `{image}`");
+        let mut named = args.clone();
+        named.board = None;
+        named.images = vec![image];
+        named.workspace = Some(root);
+        return plan_for(&named, planning);
+    }
 
     // phase-445 W4b (RFC-0098 D1) — a single-package example is a workspace of
     // one: its own `Cargo.toml` is the cargo root, and its settings come from
@@ -617,6 +654,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 profile: image.profile.clone(),
                 record: Default::default(),
                 capabilities: owned_caps(&bringup_dir),
+                output: None,
+                descriptor: None,
             });
             continue;
         }
@@ -666,6 +705,9 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
         // native image would be recorded as reading FreeRTOS.
         let mut record_dirs: Vec<std::path::PathBuf> = Vec::new();
         let mut cargo_prepare: Option<Handoff> = None;
+        // phase-517 W6 — where this road puts the artifact, from the values
+        // the native command below is given.
+        let output: Option<crate::cmd::build_next::BuildOutput>;
         let handoff = match driver {
             Driver::Cargo => {
                 // Issue 1419 — the cargo road's census check, BEFORE anything is
@@ -1120,6 +1162,25 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     ));
                 }
                 a.extend(args.native_args.iter().cloned());
+                output = Some(crate::cmd::build_next::BuildOutput::Cargo {
+                    // A caller-named target dir wins over the settings file's,
+                    // as it does for cargo itself (CLI/env above config).
+                    target_dir: crate::builder::shared_target::caller_target_dir(
+                        &args.native_args,
+                        &|k| std::env::var(k).ok(),
+                        &root,
+                    )
+                    .unwrap_or_else(|| image_dir.join("target")),
+                    triple: descriptor.target.as_deref().map(|t| {
+                        crate::orchestration::board_descriptor::triple_of_build_target(t)
+                            .to_string()
+                    }),
+                    profile_dir: crate::cmd::build_next::cargo_profile_dir(
+                        image.profile.as_deref(),
+                        &args.native_args,
+                    ),
+                    bin: crate::cmd::build_next::cargo_bin_name(&manifest_dir),
+                });
                 // From the workspace root, which no longer carries anything: the
                 // manifest and the settings are both NAMED. cargo still reads
                 // `.cargo/config.toml` from the cwd's ancestors (it always does),
@@ -1372,6 +1433,24 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 }
                 a.extend(args.native_args.iter().cloned());
                 cmake_configure = Some(Handoff::new("cmake", a).in_dir(&root));
+                // A generated entry is a top-level target of the generated
+                // root; a hand-written `src/<entry>` package is a subdirectory
+                // (the fixture locator's two shapes).
+                output = Some(crate::cmd::build_next::BuildOutput::CMake {
+                    build_dir: manifest_dir.join("cmake"),
+                    executable: Some(
+                        if root
+                            .join("src")
+                            .join(&want_entry)
+                            .join("CMakeLists.txt")
+                            .is_file()
+                        {
+                            format!("src/{want_entry}/{want_entry}")
+                        } else {
+                            want_entry.clone()
+                        },
+                    ),
+                });
                 Some(
                     Handoff::new(
                         "cmake",
@@ -1576,6 +1655,15 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // for application …, but source directory … was specified").
                 // In the FIRST zone and before the positional: `-d` takes one
                 // value, so it cannot swallow the application path.
+                output = Some(crate::cmd::build_next::BuildOutput::West {
+                    build_dir: if names_west_build_dir(&west_extra) {
+                        crate::cmd::build_next::west_dir_from_args(&west_extra, &root)
+                    } else {
+                        Some(west_build_dir(
+                            &root, &platform, &image, &bringup, &image_id,
+                        ))
+                    },
+                });
                 if !names_west_build_dir(&west_extra) {
                     record_dirs.push(west_build_dir(
                         &root, &platform, &image, &bringup, &image_id,
@@ -1729,6 +1817,8 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 build_dirs: record_dirs,
             },
             capabilities: owned_caps(&bringup_dir),
+            output,
+            descriptor: Some(descriptor.clone()),
         });
     }
     Ok(out)
@@ -1892,6 +1982,8 @@ fn plan_leaf_image(
             capabilities: owned_caps(root),
             configure: None,
             record: Default::default(),
+            output: None,
+            descriptor: None,
         }]));
     }
 
@@ -1950,6 +2042,20 @@ fn plan_leaf_image(
         }
     }
     a.extend(args.native_args.iter().cloned());
+    let output = crate::cmd::build_next::BuildOutput::Cargo {
+        target_dir: crate::builder::shared_target::caller_target_dir(
+            &args.native_args,
+            &|k| std::env::var(k).ok(),
+            &cwd,
+        )
+        .unwrap_or_else(|| crate::cmd::leaf_settings::target_dir(&img.leaf, &img.image_id)),
+        triple: img
+            .target
+            .as_deref()
+            .map(|t| crate::orchestration::board_descriptor::triple_of_build_target(t).to_string()),
+        profile_dir: crate::cmd::build_next::cargo_profile_dir(None, &args.native_args),
+        bin: crate::cmd::build_next::cargo_bin_name(&img.leaf),
+    };
     Ok(Some(vec![ResolvedBuild {
         qualified: qual,
         board: img.board.clone(),
@@ -1972,6 +2078,8 @@ fn plan_leaf_image(
                 .unwrap_or_default(),
         },
         capabilities: owned_caps(root),
+        output: Some(output),
+        descriptor: Some(descriptor.clone()),
     }]))
 }
 
@@ -2079,6 +2187,7 @@ fn plan_single_package_cmake(
     }
 
     let build_dir = format!("build/{image_id}/cmake");
+    let output_dir = root.join(&build_dir);
     let mut a = vec![
         "-S".to_string(),
         ".".to_string(),
@@ -2120,6 +2229,11 @@ fn plan_single_package_cmake(
             cargo_roots: Vec::new(),
             build_dirs: vec![root.join("build").join(&image_id)],
         },
+        output: Some(crate::cmd::build_next::BuildOutput::CMake {
+            build_dir: output_dir,
+            executable: crate::cmd::build_next::cmake_leaf_executable(root),
+        }),
+        descriptor: Some(descriptor.clone()),
     }]))
 }
 
@@ -2220,6 +2334,9 @@ pub fn run(args: Args) -> Result<()> {
                         crate::orchestration::drift::report(&drifts)
                     );
                 }
+                if args.check.is_none() {
+                    print_next_steps(&args, &plans);
+                }
             }
             Ok(())
         }
@@ -2238,6 +2355,27 @@ pub fn run(args: Args) -> Result<()> {
 /// RFC-0104 D9 (phase-485 W4) — what can be checked BEFORE the build: each
 /// cargo root that already has a lock (realigned onto the pins in a checkout,
 /// refused where that cannot be done), and each tool the project lock records.
+/// phase-517 W6 — after a successful build, what to type next for each image
+/// ([`crate::cmd::build_next::next_steps`]). Runs nothing. A plan with no
+/// board descriptor (package mode) has no platform follow-up and prints none.
+fn print_next_steps(args: &Args, plans: &[ResolvedBuild]) {
+    let root = args
+        .workspace
+        .clone()
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default();
+    let nros_root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
+    let ctx = crate::orchestration::qemu_bin::Ctx::for_sdk(nros_root.as_deref());
+    let qemu = |exe: &str| crate::orchestration::qemu_bin::locate(exe, &ctx);
+    for p in plans {
+        let Some(d) = &p.descriptor else {
+            continue;
+        };
+        let steps = crate::cmd::build_next::next_steps(p, d, &qemu);
+        print!("{}", crate::cmd::build_next::render(&p.qualified, &steps));
+    }
+}
+
 fn drift_before_build(
     plans: &[ResolvedBuild],
     nano_ros_path: Option<std::path::PathBuf>,
@@ -2833,6 +2971,8 @@ fn plan_packages(
                 },
                 build_dirs: vec![build_dir.clone(), pkg.dir.join("target")],
             },
+            output: None,
+            descriptor: None,
         });
     }
     if out.is_empty() {
@@ -6073,6 +6213,7 @@ mod selection_wiring_tests {
             workspace: Some(root.to_path_buf()),
             nano_ros_path: None,
             zephyr_workspace: None,
+            board: None,
             all: false,
             dry_run: true,
             verbose: false,
@@ -6247,6 +6388,8 @@ mod multi_image_drive_tests {
             capabilities: Vec::new(),
             configure: None,
             record: Default::default(),
+            output: None,
+            descriptor: None,
         }
     }
 
@@ -6468,6 +6611,7 @@ mod single_package_tests {
             workspace: Some(leaf.to_path_buf()),
             nano_ros_path: Some(nros_root()),
             zephyr_workspace: None,
+            board: None,
             all: false,
             dry_run: true,
             verbose: false,
