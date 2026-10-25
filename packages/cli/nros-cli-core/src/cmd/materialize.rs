@@ -53,6 +53,7 @@ pub fn run(args: Args) -> Result<()> {
         // Materialize resolves an image; it never runs west, so no Zephyr is
         // needed and none is looked for.
         zephyr_workspace: None,
+        board: None,
         all: false,
         dry_run: true,
         verbose: false,

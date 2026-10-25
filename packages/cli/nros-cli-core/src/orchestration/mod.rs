@@ -58,6 +58,7 @@ pub mod project_lock;
 /// RFC-0109 D8/D9 (phase-514 W3) — a bringup's own RMW file, found through
 /// its backend's descriptor and checked at sync.
 pub mod rmw_config;
+pub mod qemu_bin;
 
 pub mod prereq_resolve;
 /// Issue 1481 — whether a `[python.*]` remedy names apt or pip on THIS host,

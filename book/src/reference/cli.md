@@ -316,7 +316,7 @@ what `nros ws status` reports non-fatally. `--dry-run` prints what it would do.
 `nros generate-rust` stays the low-level codegen-only primitive (no side
 effects beyond `generated/`).
 
-### `nros build [<image>…] [--workspace <dir>] [--all] [--dry-run] [--offline] [--check[=clippy]] [--packages-select <p>…] [--packages-up-to <p>…] [-- <native args>]`
+### `nros build [<image>…] [--board <board>] [--workspace <dir>] [--all] [--dry-run] [--offline] [--check[=clippy]] [--packages-select <p>…] [--packages-up-to <p>…] [-- <native args>]`
 
 The colcon-like build verb: discover packages, resolve the image, preflight,
 generate the build root, then hand off to the native tool. The final stage is an
@@ -331,6 +331,31 @@ nros build                       # every default image
 nros build linux                # one image by id
 nros build linux -- --release   # arguments after `--` go to the native tool
 ```
+
+`--board <board>` builds the image whose `[image.*] board` is that board —
+the authored word in any case, another alias of the same board, or the
+`nros setup` key it provisions through (`--board mps2-an385-baremetal` finds a
+`qemu-mps2-an385` image). One match is the same as naming the image; several
+or none is refused with the image ids listed, so name one. It cannot be
+combined with image arguments or `--all`.
+
+After a successful build (not `--dry-run`, not `--check`) `nros build` prints,
+per image, where the artifact is and the platform's own next command — it runs
+nothing:
+
+```text
+nros build: next for `demo:qemu`:
+  artifact: <leaf>/build/qemu/target/thumbv7m-none-eabi/debug/demo
+  run:
+    <store>/sdk/qemu/<ver>/bin/qemu-system-arm -cpu cortex-m3 -machine mps2-an385 … -kernel <artifact>
+```
+
+A host board prints the binary; a cargo board with a descriptor `runner` prints
+that runner; NuttX and ThreadX riscv64 print the QEMU line the tests use; a
+Zephyr image prints `west build -d <dir> -t run` and/or `west flash -d <dir>`,
+read from what its build supports. QEMU is the store's patched build
+(`nros locate tool qemu-system-arm`), never whatever `$PATH` holds. A board
+with no derivable command (S32Z270) gets a pointer to its platform chapter.
 
 A build without a sync fails at the first preflight with one line naming
 `nros sync`, rather than four frames down in cargo's manifest parser. `--dry-run`
