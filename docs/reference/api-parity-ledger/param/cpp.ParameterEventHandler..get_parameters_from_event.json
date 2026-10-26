@@ -2,5 +2,5 @@
   "key": "cpp:ParameterEventHandler::get_parameters_from_event",
   "disposition": "absent",
   "verdict": "gap",
-  "why": "issue 2024 left these open: the static helpers read upstream's `rcl_interfaces::msg::ParameterEvent` fields, and the C++ surface cannot name that generated type (no runtime typesupport). A per-parameter callback (`add_parameter_callback`) already receives the decoded `rclcpp::Parameter`; a helper over the caller's generated event type is plain work nobody has done."
+  "why": "issue 2080 (filed 2026-10-26, the residue of issue 2024, which is resolved): the static helpers read upstream's `rcl_interfaces::msg::ParameterEvent` fields, and the C++ surface cannot name that generated type (no runtime typesupport). A per-parameter callback (`add_parameter_callback`) already receives the decoded `rclcpp::Parameter`; a helper templated over the caller's generated event type is plain work nobody has done."
 }
