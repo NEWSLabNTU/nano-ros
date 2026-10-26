@@ -1259,6 +1259,16 @@ ref = "d0c2e80e2da61e274f8f53505b1974fcad7d1071"
 [source.nuttx-kernel]
 # Issue 1834 — built in place, so `locate` does not watch the whole tree.
 builds_in_place = true
+# Issue 2068 — host tools the KERNEL BUILD needs, asked by `nros setup <board>`
+# before anything is fetched (the same plan code that reads a `[tool.*]`
+# `system`). `unzip`: NuttX's own build downloads and unpacks the `dtc` and
+# `libmetal` archives. `python3-venv`: with no `kconfig-frontends` on the host,
+# `scripts/nuttx/build-nuttx.sh` provisions `kconfiglib` into a venv. That one
+# is an ALTERNATIVE to `[prereq.kconfig-frontends]`, which the prereq model has
+# no way to say (its `providers` order ways to satisfy ONE key, not a choice
+# between keys), so the venv is asked for: it is the route that works on every
+# host and needs no sudo at build time.
+system = ["python3-venv", "unzip"]
 env = "NUTTX_DIR"
 version = "12.13.0"
 dest = "third-party/nuttx/nuttx"
@@ -1978,7 +1988,7 @@ check = { cmd = "cmake" }
 
 [prereq.unzip]
 role = "workspace"
-why = "unpacks the upstream ninja and verus release zips ([tool.ninja] / [tool.verus] dist install steps); tar cannot read a zip"
+why = "unpacks the upstream ninja and verus release zips ([tool.ninja] / [tool.verus] dist install steps) and the dtc/libmetal archives the NuttX kernel build downloads ([source.nuttx-kernel], issue 2068); tar cannot read a zip"
 apt = ["unzip"]
 dnf = ["unzip"]
 pacman = ["unzip"]
@@ -2171,6 +2181,12 @@ apt = ["python3-venv"]
 dnf = ["python3"]
 pacman = ["python"]
 brew = ["python"]
+# Issue 2068 — the property is "`python3 -m venv` can seed pip", and what
+# Debian/Ubuntu split out into `python3.X-venv` is `ensurepip` itself (dpkg -S
+# /usr/lib/python3.10/ensurepip → python3.10-venv): `venv` imports fine without
+# it and only the venv CREATION fails. Every other distro ships it with python,
+# so there it reads present, which is the truth. No python3 ⇒ the probe abstains.
+check = { python_import = "ensurepip" }
 
 [prereq.python3-pip]
 role = "buildtool"

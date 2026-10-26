@@ -3274,6 +3274,8 @@ mod tests {
             builds_in_place: false,
             check: None,
             python: Default::default(),
+            // Provisioning does not read it (issue 2068: only the plan does).
+            system: Vec::new(),
         };
         assert_eq!(
             provision_source("lwip", &clone, &ws, false, None).unwrap(),
@@ -3409,6 +3411,8 @@ mod tests {
             builds_in_place: false,
             check: None,
             python: Default::default(),
+            // Provisioning does not read it (issue 2068: only the plan does).
+            system: Vec::new(),
         }
     }
 
