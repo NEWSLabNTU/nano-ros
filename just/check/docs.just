@@ -222,9 +222,11 @@ doc-recipe-refs:
 #
 # A RATCHET over `.config/doc-commit-citations-baseline.txt`, whose entries
 # split into FOREIGN (correct references to a submodule, an upstream project or
-# a box tree — never resolvable here) and DEAD (real debt). Buildless, ~0.08 s,
-# one `cat-file --batch-check` for the whole set. SKIPS on a shallow clone,
-# where a live commit and an unfetched one are indistinguishable.
+# a box tree — never resolvable here) and DEAD (real debt). Buildless, one
+# `rev-list` of the default branch for the whole set: a citation resolves only
+# when its commit has LANDED, never because this clone fetched a work branch
+# (issue 1205). SKIPS on a shallow clone, where a live commit and an unfetched
+# one are indistinguishable.
 #
 # That skip used to be an `echo` and an exit 0, so the lane's "Fast checks
 # passed!" spoke for a gate that verified nothing — issue 0650's defect, and

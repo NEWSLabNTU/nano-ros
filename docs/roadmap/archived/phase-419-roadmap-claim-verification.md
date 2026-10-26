@@ -204,4 +204,4 @@ evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1205](../../issues/1205-doc-commit-citations-local-fetch-state.md) | `check-doc-commit-citations` resolves hashes against whatever the local tree can see, so the ratchet answers 'in my object store' rather than 'in this history'. The doc-gate family is W1's — **re-homed to [phase-395](phase-395-dev-workflow-migration.md) 2026-10-12** |
+| [#1205](../../issues/archived/1205-doc-commit-citations-local-fetch-state.md) | `check-doc-commit-citations` resolves hashes against whatever the local tree can see, so the ratchet answers 'in my object store' rather than 'in this history'. The doc-gate family is W1's — **re-homed to [phase-395](phase-395-dev-workflow-migration.md) 2026-10-12** |
