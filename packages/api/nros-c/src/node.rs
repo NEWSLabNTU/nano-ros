@@ -10,6 +10,7 @@ use crate::{
     error::*,
     support::{rclc_support_state_t, rclc_support_t},
 };
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 /// issue 0972 — decode the C ABI `domain_id` byte, ONCE, for every caller.
 ///

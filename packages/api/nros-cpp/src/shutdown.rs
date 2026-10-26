@@ -17,6 +17,8 @@
 //! rather than blind-cast, like every other shim in this crate.
 
 use core::ffi::c_void;
+#[cfg(feature = "rmw-cffi")]
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 // Gated exactly like the four entry points below, and for the same reason: the
 // module itself is UNGATED so the callback typedef and `NROS_CPP_MAX_SHUTDOWN_HOOKS`

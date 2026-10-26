@@ -19,6 +19,7 @@ use crate::{
     publisher::rclc_service_type_t,
     qos::rclc_qos_t,
 };
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 // ============================================================================
 // Waker helper — creates a Waker that sets an AtomicBool

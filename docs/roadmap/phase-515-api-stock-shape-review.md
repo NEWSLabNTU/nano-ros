@@ -1,6 +1,6 @@
 # Phase 515 — Re-audit the recorded API differences against stock ROS 2 shape
 
-**Status (2026-10-25). Open; W0.a landed (#2627), D1–D4 decided, C1 landed.** Opened from a review of the
+**Status (2026-10-26). Open; W0.a landed (#2627), D1–D4 decided, C1 landed, R9 stage 1 (`Executor`) landed.** Opened from a review of the
 `api-parity` report on main `1a30bcbb22`. The work items below are candidates:
 each starts by confirming its reason against the code, because W0 found that
 the ledger's prose has drifted. The four decisions (D1–D4) are taken;
@@ -329,6 +329,47 @@ members; at least 66 are entry points the C/C++ layers call
 (`add_arena_subscription_c_callback`, `from_session_ptr`, `*_on`, `*_raw`).
 `ActionServerCore`, `ActionClientCore` and the raw handles add about 75 more.
 They are public so the shims can reach them, not so a Rust user can.
+
+**Stage 1 (`Executor`) — LANDED 2026-10-26.** Measured on main `1a30bcbb22`+C1:
+307 `pub fn`s on `Executor`'s inherent impls; by caller, 110 only nros-c/nros-cpp call, 74
+nothing outside nros-node calls, 123 `nros` or another crate calls. "Only the
+shims call it" is not the cut line. About 45 of the 110 are recorded in the ledger as Rust
+features (`set_parameter_on`, `wait_for_publishers`, `cancel_timer`,
+`is_spinning`, …) that no Rust caller happens to use yet. The cut line, taken
+2026-10-26 (maintainer), is **C-shaped signature, plus shim plumbing**:
+
+* C-shaped: a raw pointer, `extern "C"` callback, `c_void` or `unsafe fn` in
+  the signature (`add_arena_subscription_c_*`, `from_session_ptr*`,
+  `open_with_session_{in,slot,handle_slot}`, the `release_*` / `detach_*` /
+  `retarget_*` raw paths, `register_service*_raw*`, `register_timer_c_capturing*`,
+  `subscription_handle*`, `service_{server,client}_handle`, `wake_raw_ptr`,
+  `set_park_primitive`, the shutdown-hook pair);
+* plumbing: shim-only, and the method's own doc or row says it serves the FFI
+  (`enter_spin_loop` / `exit_spin_loop`, `exec_lock`, `node_session_mut`,
+  `register_action_{client,server}_raw`, `install_wake_signal_on_primary`,
+  `set_entry_owner`, `set_primary_identity`, `session_io_failures`,
+  `timer_elapsed_us` / `timer_is_ready` / `exchange_timer_period_us`);
+* four C-shaped methods the `nros` runtime calls internally
+  (`register_service{,_client}_raw_sized_on`, `service_client_entry_mut`,
+  `action_client_core_mut`): `nros` imports the trait and does not re-export it.
+
+63 methods in all. Each stays an inherent method, now `pub(crate)`, so nros-node's
+own call sites are untouched. `nros_node::executor::ffi::ExecutorFfi` is a
+sealed trait that forwards to them, and inside the crate the inherent method
+wins resolution. The shims import it (`use … ExecutorFfi as _`). Outside
+nros-node an inaccessible inherent method does not shadow the trait method.
+44 `rust:Executor::*` ledger rows went with them, since the extractor counts a
+trait impl as the trait's surface, not the type's.
+
+**Not moved, and why:** entry points that generated code, boards or tests call
+(`dispatch_callback` and `register_dispatch_slot` from `nros-macros` expansion,
+`register_wake_source` from boards, `open_in` / `open_threaded`,
+`set_violation_sink`, `spin_band_once`). Plumbing that no doc ties to the FFI
+(`age_table`, `monitor_table`, launch-remap setters). Rust features with a
+Rust-shaped signature. R4 and R10 re-home those.
+
+**Stage 2 — OPEN:** `ActionServerCore`, `ActionClientCore` and the raw handles
+(about 75 members), the same way.
 
 **R10 — three parameter receivers.** `ParameterServer` (55 rows), `Executor`
 (~29) and `Node` each carry parameter verbs; rclrs keeps them on the node.

@@ -8,6 +8,7 @@ use crate::{
     clock::{rcl_clock_t, rclc_clock_state_t},
     error::*,
 };
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 /// rcl's timer callback — `typedef void (*)(rcl_timer_t *, int64_t)`, the ONE
 /// timer callback contract (phase-515 D2).

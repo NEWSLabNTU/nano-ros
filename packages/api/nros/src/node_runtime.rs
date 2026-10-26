@@ -66,6 +66,9 @@ use core::{
 // Via nros-core's re-export rather than a new direct dependency — every graph
 // containing `nros` would otherwise move (16 leaf lockfiles, measured on W5.1).
 use nros_core::heapless;
+// phase-515 R9: the raw service/client entry points this runtime drives are
+// the executor's FFI surface. Imported, never re-exported.
+use nros_node::executor::ffi::ExecutorFfi as _;
 use portable_atomic::{AtomicUsize, Ordering};
 #[cfg(feature = "alloc")]
 use portable_atomic_util::Arc;

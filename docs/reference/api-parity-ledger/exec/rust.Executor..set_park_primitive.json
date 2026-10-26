@@ -1,5 +1,0 @@
-{
-  "key": "rust:Executor::set_park_primitive",
-  "verdict": "extension",
-  "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 W7. Installs THE thing that blocks — singular by nature, since only one primitive can actually wait, so it replaces whatever was there. Takes the port's `granularity_us` because only the port knows it: the ABI signature is not the limit, an RTOS tick is a coarser one and a timespec primitive a finer one."
-}

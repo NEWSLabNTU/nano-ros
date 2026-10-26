@@ -1,5 +1,0 @@
-{
-  "key": "rust:Executor::timer_is_ready",
-  "verdict": "divergence",
-  "why": "phase-417 W5.c — a read of the arena's own timer accounting, exposed so the C accessors forward rather than recompute. rclrs puts the equivalents on `Timer`; RFC-0002's arena owns timer state here, so there is no owning `Timer` object to hang them on and they sit on the executor. Returns `Option` deliberately: \"not a timer handle\" is a different answer from `0`/`false`, which is issue 1008's shape."
-}

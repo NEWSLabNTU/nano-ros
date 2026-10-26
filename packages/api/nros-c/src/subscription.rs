@@ -15,6 +15,7 @@ use crate::{
     publisher::rclc_message_type_t,
     qos::rclc_qos_t,
 };
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 /// Subscription callback function type.
 ///

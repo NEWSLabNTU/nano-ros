@@ -1,5 +1,0 @@
-{
-  "key": "rust:Executor::add_on_shutdown_callback",
-  "verdict": "extension",
-  "why": "The post-teardown half of `rust:Executor::add_pre_shutdown_callback`; rclrs has neither. Issue 0790."
-}

@@ -2570,8 +2570,8 @@ pub enum ShutdownPhase {
 /// slot index is only meaningful next to the table it indexes, and there are
 /// two tables.
 ///
-/// [`Executor::add_pre_shutdown_callback`]: crate::executor::Executor::add_pre_shutdown_callback
-/// [`Executor::add_on_shutdown_callback`]: crate::executor::Executor::add_on_shutdown_callback
+/// [`ExecutorFfi::add_pre_shutdown_callback`](crate::executor::ffi::ExecutorFfi::add_pre_shutdown_callback): crate::executor::Executor::add_pre_shutdown_callback
+/// [`ExecutorFfi::add_on_shutdown_callback`](crate::executor::ffi::ExecutorFfi::add_on_shutdown_callback): crate::executor::Executor::add_on_shutdown_callback
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShutdownCallbackHandle(pub u32);
