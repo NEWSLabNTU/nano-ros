@@ -11,7 +11,7 @@ resolved: 2026-10-26
 resolved_in: "phase-512 batch A, 2026-10-26"
 ---
 
-**Home: [phase-512](../roadmap/phase-512-on-hardware-measurements.md)** — H7, moved 2026-10-24 from phase-474, where it had been homed since 2026-10-17.
+**Home: [phase-512](../../roadmap/phase-512-on-hardware-measurements.md)** — H7, moved 2026-10-24 from phase-474, where it had been homed since 2026-10-17.
 
 ## What is missing
 
