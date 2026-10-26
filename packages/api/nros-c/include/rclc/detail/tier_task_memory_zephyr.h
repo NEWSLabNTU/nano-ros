@@ -47,13 +47,14 @@
  *
  * Issue 2019 -- the frame covers the level's own setup (open_level, the
  * members' registration), which runs on the level's stack before its first
- * pass and is that stack's peak on the ports measured (FreeRTOS, NuttX). The
- * 4,096 B default is an estimate on Zephyr: measure a board with
- * CONFIG_THREAD_ANALYZER and set CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME. */
+ * pass and is that stack's peak on every port measured. Issue 2065 measured
+ * the C runner on Zephyr (the S32K344 island: setup peak 12,464 B, steady
+ * 6,920 B), so the default is 13,312 B; a board whose members register more
+ * measures its own and sets CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME. */
 #ifdef CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME
 #define NROS_LEVEL_WORKER_FRAME_ CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME
 #else
-#define NROS_LEVEL_WORKER_FRAME_ 4096
+#define NROS_LEVEL_WORKER_FRAME_ 13312
 #endif
 #define NROS_LEVEL_CALLBACK_STACK_DEFAULT_                                                         \
     (NROS_TIER_TASK_STACK_DEFAULT_ - NROS_LEVEL_WORKER_FRAME_)

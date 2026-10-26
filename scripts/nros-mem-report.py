@@ -1714,9 +1714,11 @@ def check_storage_roles():
 
 PRIORITY_RECORD = "nros_priority_plan.json"
 # zephyr/Kconfig defaults, used when the image's .config is not beside it.
+# The worker frame is the C level runner's measured setup peak (issue 2065,
+# the S32K344 island); the selftest reads both back from zephyr/Kconfig.
 LEVEL_KCONFIG_DEFAULTS = {
     "CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE": 16384,
-    "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME": 4096,
+    "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME": 13312,
 }
 _KCONFIG_INT = re.compile(r"^(CONFIG_[A-Z0-9_]+)=([0-9]+)\s*$", re.M)
 _LEVEL_SYM = re.compile(
@@ -2119,13 +2121,20 @@ def selftest_levels():
     k = dict(LEVEL_KCONFIG_DEFAULTS)
     d, f, _ = level_knobs("zephyr", k)
     assert derived_level_stack(0, d, f) == 16384, "members that state nothing keep the knob"
-    assert derived_level_stack(6000, d, f) == 10096, "a stated member plus the worker frame"
+    assert derived_level_stack(6000, d, f) == 19312, "a stated member plus the worker frame"
     d, f, _ = level_knobs("freertos", k)
     assert derived_level_stack(0, d, f) == 262144 and derived_level_stack(8192, d, f) == 18432
     d, f, _ = level_knobs("nuttx", k)
     assert derived_level_stack(0, d, f) == 16384 and derived_level_stack(2048, d, f) == 13312
-    detail = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "packages", "api",
-                          "nros-c", "include", "rclc", "detail")
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    # Issue 2065 -- the Zephyr defaults above are zephyr/Kconfig's.
+    with open(os.path.join(root, "zephyr", "Kconfig")) as fh:
+        kconfig_text = fh.read()
+    for sym, val in LEVEL_KCONFIG_DEFAULTS.items():
+        m = re.search(rf"^config {sym[len('CONFIG_'):]}\n(?:[ \t]+.*\n)*?[ \t]+default (\d+)$",
+                      kconfig_text, re.M)
+        assert m and int(m.group(1)) == val, f"{sym} drifted from zephyr/Kconfig"
+    detail = os.path.join(root, "packages", "api", "nros-c", "include", "rclc", "detail")
     for family, (dname, dval, fname, fval) in LEVEL_HEADER_DEFAULTS.items():
         with open(os.path.join(detail, f"tier_task_memory_{family}.h")) as fh:
             text = fh.read()

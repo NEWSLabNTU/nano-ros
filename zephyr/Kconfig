@@ -483,18 +483,32 @@ config NROS_ZEPHYR_TIER_STACK_SIZE
 
 config NROS_ZEPHYR_LEVEL_WORKER_FRAME
     int "nano-ros level worker frame (bytes)"
-    default 4096
+    default 13312
     range 0 1048576
     help
       The stack a level's worker uses itself, outside any callback: the
       runner's spin loop, spin_once and the transport drive under it
       (phase-509 P9, RFC-0108 D3). A level's stack is its largest member's
       stack plus this. A spawned level runs its own setup (open_level, the
-      members' registration) on its own stack before its first pass, and
-      that setup is the stack's peak, so the frame must cover it (issue
-      2019: FreeRTOS's C runner measured 9,448 B, NuttX's 10,384 B). The
-      default is an estimate, not a measurement on Zephyr; measure a
-      board's per-level high-water with CONFIG_THREAD_ANALYZER and set it.
+      members' registration, the next level's spawn) on its own stack
+      before its first pass, and that setup is the stack's peak, so the
+      frame must cover it.
+
+      The default is MEASURED for the C-ABI runner (every C and C++ entry;
+      issue 2065): the S32K344 island (Cortex-M7, three levels of C++
+      nodes, -Os), the two spawned levels' setup peaks 12,328-12,464 B and
+      their steady peaks 5,584-6,920 B over 3,463-4,777 passes, across a
+      normal and a 300 ms overrun act. Setup is the peak; 12,464 B rounded
+      up to the next KiB is 13,312 B. It includes that fixture's own node
+      registration, so it bounds the frame from above for that fixture; a
+      board whose members register more measures its own (the thread
+      analyzer's high-water at the first pass) and sets this.
+
+      The Rust runner (nros::main!) does not read this knob: it derives
+      over level_worker_frame_bytes("zephyr", LevelRunner::Rust), 51,200 B
+      (issue 2065, mps2/an385 under QEMU, setup peak 50,968 B debug,
+      47,456 B release; steady 5,952 B / 5,816 B).
+
       It must stay below NROS_ZEPHYR_TIER_STACK_SIZE, whose difference
       with it is the per-callback default.
 
