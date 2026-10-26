@@ -17,6 +17,9 @@
 
 #include "rclc/visibility_control.h"
 #include "rclc/detail/nros_config_generated.h"
+/* issue 2081 — `rmw_request_id_t`, hand-written under the guard the RMW ABI
+ * and rclcpp share; excluded from export below. */
+#include "rclc/detail/request_id.h"
 
 /* Forward declarations for callback typedefs that reference these
  * structs before they appear in source-order output. Without these,
@@ -2665,6 +2668,33 @@ typedef bool (*rclc_service_raw_callback_t)(const uint8_t *request_data,
                                             size_t response_capacity,
                                             size_t *response_len,
                                             void *context);
+
+/**
+ * Issue 2081 — a raw service callback that also receives the request's
+ * [`rmw_request_id_t`], registered with
+ * `rclc_executor_add_service_raw_with_request_id`.
+ *
+ * rclc's `rclc_service_callback_with_request_id_t` is
+ * `void (*)(const void *request, rmw_request_id_t *request_id, void *response)`;
+ * this is the same three, in that order, in the CDR-byte form every raw
+ * callback here takes — with the byte lengths, the context word, and the
+ * `bool` that decides whether a reply is sent (see
+ * [`rclc_service_raw_callback_t`]).
+ *
+ * # Parameters
+ * * `request_data` / `request_len` — the request's CDR bytes.
+ * * `request_id` — who sent it; valid for the call only.
+ * * `response_data` / `response_capacity` / `response_len` — as for
+ *   [`rclc_service_raw_callback_t`].
+ * * `context` — the pointer given at registration.
+ */
+typedef bool (*rclc_service_raw_callback_with_request_id_t)(const uint8_t *request_data,
+                                                            size_t request_len,
+                                                            rmw_request_id_t *request_id,
+                                                            uint8_t *response_data,
+                                                            size_t response_capacity,
+                                                            size_t *response_len,
+                                                            void *context);
 
 /**
  * Internal state for the service client (Phase 82).
@@ -5983,6 +6013,41 @@ rcl_ret_t rclc_executor_add_service_raw(struct rclc_executor_t *executor,
                                         struct rcl_service_t *service,
                                         rclc_service_raw_callback_t callback,
                                         void *context);
+
+/**
+ * Issue 2081 — [`rclc_executor_add_service_raw`] whose callback also receives
+ * the request's `rmw_request_id_t`: rclc's
+ * `rclc_executor_add_service_with_request_id`, in this API's CDR-byte form.
+ *
+ * rclc passes `(request, request_id, response)`; so does
+ * `rclc_service_raw_callback_with_request_id_t`, with the byte lengths and the
+ * context word every raw callback here carries:
+ *
+ * ```c
+ * static bool on_request(const uint8_t *req, size_t req_len,
+ *                        rmw_request_id_t *request_id,
+ *                        uint8_t *resp, size_t resp_cap, size_t *resp_len,
+ *                        void *context);
+ * rclc_executor_add_service_raw_with_request_id(&exec, &service, on_request, ctx);
+ * ```
+ *
+ * `request_id` names who sent the request being answered — the client's
+ * writer GUID and the sequence number that client assigned — as the RMW
+ * backend reported it. A backend that reports no id leaves it all zero.
+ * Which backends report it: zenoh, Cyclone DDS and XRCE-DDS (issue 2081).
+ *
+ * # Returns
+ * As [`rclc_executor_add_service_raw`].
+ *
+ * # Safety
+ * As [`rclc_executor_add_service_raw`]. `request_id` is valid for the
+ * duration of the callback only.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_service_raw_with_request_id(struct rclc_executor_t *executor,
+                                                        struct rcl_service_t *service,
+                                                        rclc_service_raw_callback_with_request_id_t callback,
+                                                        void *context);
 
 /**
  * Add a service client to the executor (Phase 82).

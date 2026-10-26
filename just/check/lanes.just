@@ -562,6 +562,22 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/subscription_status_poll
     ./tmp/subscription_status_poll
+    echo "  - issue 2081: rclc_executor_add_service_raw_with_request_id hands the"
+    echo "    callback the request's id from the backend's take_request_with_info slot"
+    test -f packages/api/nros-c/tests/run/service_request_id.c || { \
+        echo "ERROR: service_request_id.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/service_request_id.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/service_request_id
+    ./tmp/service_request_id
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in
@@ -2059,6 +2075,17 @@ cpp: cpp-fmt
     c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests"/ament_port_surface_runtime "$_ps" \
         "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/ament_port_surface_runtime
+    # issue 2081 -- the three-argument handler's request header carries the
+    # request id the backend's take_request_with_info slot reported (a frame-
+    # lent function pointer and an arena-captured lambda), zero when none.
+    # Negative control, measured: `serve_lent` ignoring its id fails the
+    # header-only service_shared_ptr_handler_runtime above, which runs first.
+    _rh=packages/api/nros-cpp/tests/compile/service_request_header_runtime.cpp
+    test -f "$_rh" || { echo "ERROR: $_rh is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - rclcpp's three-argument service handler gets the request id (runtime, issue 2081)"
+    c++ "${_ps_flags[@]}" -o "$gen/nros-cpp-tests"/service_request_header_runtime "$_rh" \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/service_request_header_runtime
     cmake -DPLUGIN=demo::Selector -DEXECUTABLE=selector \
         -DOUT="$gen/nros-cpp-tests/selector_component_main.cpp" -P cmake/NanoRosComponentMain.cmake
     c++ "${_ps_flags[@]}" -DNROS_PORT_SURFACE_COMPONENT_ONLY=1 \

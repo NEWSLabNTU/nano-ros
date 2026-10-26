@@ -1,0 +1,5 @@
+{
+  "key": "c:service_raw_callback_with_request_id_t",
+  "verdict": "extension",
+  "why": "issue 2081 (2026-10-26) -- the callback `rclc_executor_add_service_raw_with_request_id` takes: `bool (*)(const uint8_t *request, size_t request_len, rmw_request_id_t *request_id, uint8_t *response, size_t response_capacity, size_t *response_len, void *context)`. These are rclc's `rclc_service_callback_with_request_id_t` three (request, request id, response) in rclc's order, in the CDR-byte form of `c:service_raw_callback_t`: byte lengths, the context word, and the `bool` that decides whether a reply goes on the wire. `rmw_request_id_t` is upstream's struct, declared by `<rclc/detail/request_id.h>` under the include guard the RMW ABI and rclcpp share."
+}

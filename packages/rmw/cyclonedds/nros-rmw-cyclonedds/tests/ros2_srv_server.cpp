@@ -89,10 +89,22 @@ int main() {
             int64_t seq = -1;
             size_t n = 0;
             bool took = false;
-            /* Phase 376 W3.b/W3.d step A. */
-            if (nros_test_take_request(g_vt, &srv, rbuf, sizeof(rbuf), &seq, &n, &took) ==
-                    NROS_RMW_RET_OK &&
-                took && n > 0) {
+            /* Issue 2081 — through the info slot, so the stock client's
+             * identity is reported (printed as REQUEST_ID for the e2e). */
+            rmw_service_info_t info;
+            std::memset(&info, 0, sizeof(info));
+            rmw_mut_byte_span_t span{rbuf, sizeof(rbuf), 0};
+            const rmw_ret_t trc = g_vt->take_request_with_info(&srv, &span, &seq, &took, &info);
+            n = span.len;
+            if (trc == NROS_RMW_RET_OK && took && n > 0) {
+                std::printf("REQUEST_ID guid=");
+                for (int i = 0; i < 16; ++i)
+                    std::printf("%02x", static_cast<unsigned>(
+                                            static_cast<uint8_t>(info.request_id.writer_guid[i])));
+                std::printf(" seq=%lld source_ts=%lld received_ts=%lld\n",
+                            static_cast<long long>(info.request_id.sequence_number),
+                            static_cast<long long>(info.source_timestamp),
+                            static_cast<long long>(info.received_timestamp));
                 int64_t a = get_le64(rbuf + 4);
                 int64_t b = get_le64(rbuf + 12);
                 uint8_t reply[12] = {0x00, 0x01, 0x00, 0x00};

@@ -328,6 +328,9 @@ rmw_ret_t service_create(const rmw_node_t* node,
 rmw_ret_t           service_destroy(rmw_service_t *server);
 rmw_ret_t service_take_request(const rmw_service_t *server, rmw_mut_byte_span_t *request,
                                     int64_t *seq_out, bool *taken);
+rmw_ret_t service_take_request_with_info(const rmw_service_t *server,
+                                         rmw_mut_byte_span_t *request, int64_t *seq_out,
+                                         bool *taken, rmw_service_info_t *service_info);
 rmw_ret_t service_has_request(rmw_service_t *server, bool *out_has_request);
 rmw_ret_t service_send_response(const rmw_service_t *server, int64_t seq,
                                   rmw_byte_span_t response);

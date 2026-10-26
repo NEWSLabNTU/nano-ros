@@ -16,8 +16,9 @@ use super::{
     types::{
         InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback,
         RawCancelResponseCallback, RawFeedbackCallback, RawGoalCallback, RawGoalResponseCallback,
-        RawMessageDeserializeFn, RawResponseCallback, RawResultCallback, RawServiceCallback,
-        RawSubscriptionCallback, RawSubscriptionInfoCallback, TypedSubscriptionCallback,
+        RawMessageDeserializeFn, RawRequestId, RawResponseCallback, RawResultCallback,
+        RawServiceCallback, RawServiceRequestIdCallback, RawSubscriptionCallback,
+        RawSubscriptionInfoCallback, TypedSubscriptionCallback,
     },
 };
 use crate::session;
@@ -540,12 +541,21 @@ pub(crate) fn take_client_reply(
 }
 
 /// Concrete service entry for raw (untyped) callbacks.
+///
+/// Issue 2081 — `C` is the callback's shape: [`RawServiceCallback`] (the
+/// request bytes alone) or [`RawServiceRequestIdCallback`] (plus the request's
+/// id). Both are one function pointer, so the entry's size does not depend on
+/// which.
 #[repr(C)]
-pub(crate) struct SrvRawEntry<const REQ_BUF: usize, const REPLY_BUF: usize> {
+pub(crate) struct SrvRawEntry<
+    const REQ_BUF: usize,
+    const REPLY_BUF: usize,
+    C: RawServiceDispatch = RawServiceCallback,
+> {
     pub(crate) handle: session::RmwServiceServer,
     pub(crate) req_buffer: [u8; REQ_BUF],
     pub(crate) reply_buffer: [u8; REPLY_BUF],
-    pub(crate) callback: RawServiceCallback,
+    pub(crate) callback: C,
     pub(crate) context: *mut core::ffi::c_void,
     /// phase-488 — the arena's copy of a C++ handler's capture (a `std::bind`
     /// over `this`, a capturing lambda), destroyed with the entry. `drop: None`
@@ -3903,16 +3913,73 @@ where
     Ok(did_work)
 }
 
+/// Issue 2081 — how a raw service entry calls its callback: with the request
+/// bytes alone, or with the request's id beside them.
+pub(crate) trait RawServiceDispatch: Copy {
+    /// Call the callback for one taken request. `handle` is the server the
+    /// request was just taken from, so its `request_info()` describes it.
+    ///
+    /// # Safety
+    /// The pointers are the dispatch's own buffers, valid for the call.
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn invoke(
+        self,
+        handle: &session::RmwServiceServer,
+        req: *const u8,
+        req_len: usize,
+        resp: *mut u8,
+        resp_cap: usize,
+        resp_len: *mut usize,
+        context: *mut core::ffi::c_void,
+    ) -> bool;
+}
+
+impl RawServiceDispatch for RawServiceCallback {
+    unsafe fn invoke(
+        self,
+        _handle: &session::RmwServiceServer,
+        req: *const u8,
+        req_len: usize,
+        resp: *mut u8,
+        resp_cap: usize,
+        resp_len: *mut usize,
+        context: *mut core::ffi::c_void,
+    ) -> bool {
+        unsafe { self(req, req_len, resp, resp_cap, resp_len, context) }
+    }
+}
+
+impl RawServiceDispatch for RawServiceRequestIdCallback {
+    unsafe fn invoke(
+        self,
+        handle: &session::RmwServiceServer,
+        req: *const u8,
+        req_len: usize,
+        resp: *mut u8,
+        resp_cap: usize,
+        resp_len: *mut usize,
+        context: *mut core::ffi::c_void,
+    ) -> bool {
+        // The take that just succeeded is the one `request_info` describes.
+        let mut id = RawRequestId::from_service_info(&nros_rmw::ServiceTrait::request_info(handle));
+        unsafe { self(req, req_len, &mut id, resp, resp_cap, resp_len, context) }
+    }
+}
+
 /// Monomorphized raw service dispatch function.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SrvRawEntry<REQ_BUF, REPLY_BUF>`.
-pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: usize>(
+/// `ptr` must point to a valid, aligned `SrvRawEntry<REQ_BUF, REPLY_BUF, C>`.
+pub(crate) unsafe fn srv_raw_try_process<
+    const REQ_BUF: usize,
+    const REPLY_BUF: usize,
+    C: RawServiceDispatch,
+>(
     ptr: *mut u8,
     _delta_us: u64,
     desc_idx: u8,
 ) -> Result<bool, TransportError> {
-    let entry = unsafe { &mut *(ptr as *mut SrvRawEntry<REQ_BUF, REPLY_BUF>) };
+    let entry = unsafe { &mut *(ptr as *mut SrvRawEntry<REQ_BUF, REPLY_BUF, C>) };
     let SrvRawEntry {
         handle,
         req_buffer,
@@ -3944,7 +4011,8 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
     // sits AFTER `trace_cb_end`, so no early exit can strand an open span.
     trace_cb_start(desc_idx);
     let ok = unsafe {
-        (*callback)(
+        callback.invoke(
+            handle,
             req_buffer.as_ptr().add(data_offset),
             data_len,
             reply_buffer.as_mut_ptr(),
@@ -4026,9 +4094,11 @@ pub(crate) unsafe fn srv_has_data<Svc: RosService, F, const RQ: usize, const RP:
 /// Raw service readiness.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SrvRawEntry<RQ, RP>`.
-pub(crate) unsafe fn srv_raw_has_data<const RQ: usize, const RP: usize>(ptr: *const u8) -> bool {
-    let entry = unsafe { &*(ptr as *const SrvRawEntry<RQ, RP>) };
+/// `ptr` must point to a valid `SrvRawEntry<RQ, RP, C>`.
+pub(crate) unsafe fn srv_raw_has_data<const RQ: usize, const RP: usize, C: RawServiceDispatch>(
+    ptr: *const u8,
+) -> bool {
+    let entry = unsafe { &*(ptr as *const SrvRawEntry<RQ, RP, C>) };
     entry.handle.has_request()
 }
 

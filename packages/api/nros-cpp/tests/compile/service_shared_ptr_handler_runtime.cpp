@@ -95,7 +95,8 @@ void keeps_request(std::shared_ptr<AddTwoInts::Request> request,
     g_kept = request; // upstream allows this; the lent object dies with the frame
 }
 
-template <int Shape, typename Fn> int64_t dispatch(Fn fn, int64_t a, int64_t b, bool* ok) {
+template <int Shape, typename Fn>
+int64_t dispatch(Fn fn, int64_t a, int64_t b, bool* ok, rmw_request_id_t* id = nullptr) {
     using S = AddTwoInts;
     static_assert(::rclcpp::detail::service_ptr_shape<S, Fn>::value == Shape,
                   "the handler must classify as the shape under test");
@@ -110,7 +111,7 @@ template <int Shape, typename Fn> int64_t dispatch(Fn fn, int64_t a, int64_t b, 
     void* ctx = ::rclcpp::detail::shared_ptr_service_context<S>(
         fn, ::rclcpp::tr::integral_constant<int, Shape>());
     *ok = ::rclcpp::detail::shared_ptr_service_trampoline<S, Shape>::call(
-        in, in_len, out, sizeof(out), &out_len, ctx);
+        in, in_len, id, out, sizeof(out), &out_len, ctx);
     S::Response resp;
     if (*ok) expect(S::Response::ffi_deserialize(out, out_len, &resp) == 0, "deserialize reply");
     return resp.sum;
@@ -127,7 +128,13 @@ int main() {
     bool ok = false;
     expect(dispatch<2>(&two_arg, 40, 2, &ok) == 42 && ok, "two-argument handler: 40 + 2");
     expect(dispatch<3>(&three_arg, 6, 7, &ok) == 42 && ok, "three-argument handler: 6 * 7");
-    expect(g_seen_header == 0, "the request header is delivered, zero-filled");
+    expect(g_seen_header == 0, "no id from the runtime: the request header is zero-filled");
+    // Issue 2081 — the id the runtime hands the trampoline is the header.
+    rmw_request_id_t id = {};
+    id.writer_guid[0] = 9;
+    id.sequence_number = 31;
+    expect(dispatch<3>(&three_arg, 6, 7, &ok, &id) == 42 && ok, "three-argument handler with id");
+    expect(g_seen_header == 31, "the request header carries the runtime's request id");
     auto lambda = [](std::shared_ptr<AddTwoInts::Request> rq,
                      std::shared_ptr<AddTwoInts::Response> rs) { rs->sum = rq->a - rq->b; };
     expect(dispatch<2>(+lambda, 50, 8, &ok) == 42 && ok, "capture-less lambda handler");

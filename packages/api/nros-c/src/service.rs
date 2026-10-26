@@ -118,6 +118,44 @@ pub type rclc_service_raw_callback_t = Option<
     ) -> bool,
 >;
 
+/// Issue 2081 — upstream `rmw_request_id_t`: who sent a service request (the
+/// client's writer GUID) and the sequence number it assigned.
+///
+/// Declared in C by `<rclc/detail/request_id.h>` (cbindgen does not emit it);
+/// this alias is the same layout, `nros_node::RawRequestId`. All zero when the
+/// backend reports no id.
+#[allow(non_camel_case_types)]
+pub type rmw_request_id_t = nros_node::RawRequestId;
+
+/// Issue 2081 — a raw service callback that also receives the request's
+/// [`rmw_request_id_t`], registered with
+/// `rclc_executor_add_service_raw_with_request_id`.
+///
+/// rclc's `rclc_service_callback_with_request_id_t` is
+/// `void (*)(const void *request, rmw_request_id_t *request_id, void *response)`;
+/// this is the same three, in that order, in the CDR-byte form every raw
+/// callback here takes — with the byte lengths, the context word, and the
+/// `bool` that decides whether a reply is sent (see
+/// [`rclc_service_raw_callback_t`]).
+///
+/// # Parameters
+/// * `request_data` / `request_len` — the request's CDR bytes.
+/// * `request_id` — who sent it; valid for the call only.
+/// * `response_data` / `response_capacity` / `response_len` — as for
+///   [`rclc_service_raw_callback_t`].
+/// * `context` — the pointer given at registration.
+pub type rclc_service_raw_callback_with_request_id_t = Option<
+    unsafe extern "C" fn(
+        request_data: *const u8,
+        request_len: usize,
+        request_id: *mut rmw_request_id_t,
+        response_data: *mut u8,
+        response_capacity: usize,
+        response_len: *mut usize,
+        context: *mut c_void,
+    ) -> bool,
+>;
+
 /// Service server state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

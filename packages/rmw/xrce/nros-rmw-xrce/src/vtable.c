@@ -52,6 +52,9 @@ static const nros_rmw_vtable_t kVtable = {
     .create_service             = xrce_service_create,
     .destroy_service            = xrce_service_destroy,
     .take_request               = xrce_service_take_request,
+    /* Issue 2081 — the request's SampleIdentity (client writer GUID +
+     * sequence number); no timestamps reach the client library. */
+    .take_request_with_info     = xrce_service_take_request_with_info,
     .has_request                = xrce_service_has_request,
     .send_response                 = xrce_service_send_response,
 

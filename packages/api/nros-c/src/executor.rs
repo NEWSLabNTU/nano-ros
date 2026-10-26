@@ -2964,6 +2964,68 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw(
     callback: crate::service::rclc_service_raw_callback_t,
     context: *mut core::ffi::c_void,
 ) -> rcl_ret_t {
+    let callback = match callback {
+        Some(cb) => ServiceRawCallback::Plain(cb),
+        None => return RCL_RET_INVALID_ARGUMENT,
+    };
+    unsafe { add_service_raw(executor, service, callback, context) }
+}
+
+/// Issue 2081 — [`rclc_executor_add_service_raw`] whose callback also receives
+/// the request's `rmw_request_id_t`: rclc's
+/// `rclc_executor_add_service_with_request_id`, in this API's CDR-byte form.
+///
+/// rclc passes `(request, request_id, response)`; so does
+/// `rclc_service_raw_callback_with_request_id_t`, with the byte lengths and the
+/// context word every raw callback here carries:
+///
+/// ```c
+/// static bool on_request(const uint8_t *req, size_t req_len,
+///                        rmw_request_id_t *request_id,
+///                        uint8_t *resp, size_t resp_cap, size_t *resp_len,
+///                        void *context);
+/// rclc_executor_add_service_raw_with_request_id(&exec, &service, on_request, ctx);
+/// ```
+///
+/// `request_id` names who sent the request being answered — the client's
+/// writer GUID and the sequence number that client assigned — as the RMW
+/// backend reported it. A backend that reports no id leaves it all zero.
+/// Which backends report it: zenoh, Cyclone DDS and XRCE-DDS (issue 2081).
+///
+/// # Returns
+/// As [`rclc_executor_add_service_raw`].
+///
+/// # Safety
+/// As [`rclc_executor_add_service_raw`]. `request_id` is valid for the
+/// duration of the callback only.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_service_raw_with_request_id(
+    executor: *mut rclc_executor_t,
+    service: *mut rcl_service_t,
+    callback: crate::service::rclc_service_raw_callback_with_request_id_t,
+    context: *mut core::ffi::c_void,
+) -> rcl_ret_t {
+    let callback = match callback {
+        Some(cb) => ServiceRawCallback::WithRequestId(cb),
+        None => return RCL_RET_INVALID_ARGUMENT,
+    };
+    unsafe { add_service_raw(executor, service, callback, context) }
+}
+
+/// Issue 2081 — the two raw service callback shapes one registration body
+/// serves.
+#[derive(Clone, Copy)]
+enum ServiceRawCallback {
+    Plain(nros_node::RawServiceCallback),
+    WithRequestId(nros_node::RawServiceRequestIdCallback),
+}
+
+unsafe fn add_service_raw(
+    executor: *mut rclc_executor_t,
+    service: *mut rcl_service_t,
+    callback: ServiceRawCallback,
+    context: *mut core::ffi::c_void,
+) -> rcl_ret_t {
     validate_not_null!(executor, service);
 
     let executor = &mut *executor;
@@ -2995,11 +3057,6 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw(
         let type_hash_str =
             core::str::from_utf8_unchecked(&service_ref.type_hash[..service_ref.type_hash_len]);
 
-        let callback = match callback {
-            Some(cb) => cb,
-            None => return RCL_RET_INVALID_ARGUMENT,
-        };
-
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(&mut rust_exec, service_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
@@ -3020,25 +3077,41 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw(
         // Phase 189.M3.3.a — capture the requested sched-context slot before the
         // `&mut *service` reborrow in the Ok arm (avoids an aliasing borrow).
         let requested_sc = service_ref.sched_context_id;
-        let result = if let Some(node_id) = node_id {
-            rust_exec.register_service_raw_sized_on::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
-                node_id,
-                service_name,
-                type_str,
-                type_hash_str,
-                svc_qos,
-                callback,
-                context,
-            )
-        } else {
-            rust_exec.register_service_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
-                service_name,
-                type_str,
-                type_hash_str,
-                svc_qos,
-                callback,
-                context,
-            )
+        let result = match (callback, node_id) {
+            (ServiceRawCallback::Plain(callback), Some(node_id)) => rust_exec
+                .register_service_raw_sized_on::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
+                    node_id,
+                    service_name,
+                    type_str,
+                    type_hash_str,
+                    svc_qos,
+                    callback,
+                    context,
+                ),
+            (ServiceRawCallback::Plain(callback), None) => rust_exec
+                .register_service_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
+                    service_name,
+                    type_str,
+                    type_hash_str,
+                    svc_qos,
+                    callback,
+                    context,
+                ),
+            (ServiceRawCallback::WithRequestId(callback), node_id) => rust_exec
+                .register_service_raw_with_request_id_sized::<
+                    MESSAGE_BUFFER_SIZE,
+                    MESSAGE_BUFFER_SIZE,
+                >(
+                    node_id,
+                    service_name,
+                    type_str,
+                    type_hash_str,
+                    svc_qos,
+                    callback,
+                    context,
+                    None,
+                    None,
+                ),
         };
 
         match result {

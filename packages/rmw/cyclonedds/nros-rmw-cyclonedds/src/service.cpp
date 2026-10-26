@@ -560,8 +560,12 @@ rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
 //
 // Issue 1632 — on BUFFER_TOO_SMALL, `*refused_total` (when non-null) gets the
 // serdata's whole wire size; the sample is consumed either way.
+//
+// Issue 2081 — `*info_out` (when non-null) gets the taken sample's
+// `dds_sample_info_t` on success: the source timestamp and the publication
+// handle a request's `rmw_service_info_t` is built from.
 int32_t take_typed_wire(dds_entity_t reader, uint8_t* out_buf, size_t out_cap,
-                        size_t* refused_total = nullptr) {
+                        size_t* refused_total = nullptr, dds_sample_info_t* info_out = nullptr) {
     if (reader <= 0 || out_buf == nullptr) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
 
     struct ddsi_serdata* d = nullptr;
@@ -585,6 +589,7 @@ int32_t take_typed_wire(dds_entity_t reader, uint8_t* out_buf, size_t out_cap,
     }
     ddsi_serdata_to_ser(d, 0, total, out_buf);
     ddsi_serdata_unref(d);
+    if (info_out != nullptr) *info_out = si[0];
     return static_cast<int32_t>(total);
 }
 
@@ -892,8 +897,34 @@ static size_t user_len_of_wire(size_t wire_total) {
     return wire_total > kHeaderBytes ? wire_total - kHeaderBytes : 0;
 }
 
+// Issue 2081 — a taken request's `rmw_service_info_t`, filled the way stock
+// `rmw_cyclonedds_cpp` fills it (`rmw_take_response_request`), so a server here
+// reports what a stock server reports for the same request:
+//
+//   request_id.writer_guid      the request header's 8-byte guid, then the
+//                               sample's 8-byte publication handle
+//   request_id.sequence_number  the request header's seq (the client's)
+//   source_timestamp            the sample's source timestamp
+//   received_timestamp          0 — Cyclone 0.10 has no reception timestamp,
+//                               and upstream writes 0 here too
+//
+// Bytes are written little-endian, which is what upstream's `memcpy` of the
+// two host-order words produces on every little-endian host.
+static void fill_service_info(const RequestId& id, const dds_sample_info_t& si,
+                              rmw_service_info_t* out) {
+    std::memset(out, 0, sizeof(*out));
+    uint8_t guid[16];
+    put_le64(guid, static_cast<int64_t>(id.guid));
+    put_le64(guid + 8, static_cast<int64_t>(si.publication_handle));
+    std::memcpy(out->request_id.writer_guid, guid, sizeof(guid));
+    out->request_id.sequence_number = id.seq;
+    out->source_timestamp = static_cast<rmw_time_point_value_t>(si.source_timestamp);
+    out->received_timestamp = 0;
+}
+
 static int32_t service_take_request_len(const rmw_service_t* server, uint8_t* buf, size_t buf_len,
-                                        int64_t* seq_out, size_t* refused) {
+                                        int64_t* seq_out, size_t* refused,
+                                        rmw_service_info_t* info_out = nullptr) {
     if (server == nullptr || server->backend_data == nullptr || buf == nullptr) {
         return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     }
@@ -925,7 +956,8 @@ static int32_t service_take_request_len(const rmw_service_t* server, uint8_t* bu
 
     uint8_t wire[kWireScratch];
     size_t wire_total = 0;
-    int32_t wire_len = take_typed_wire(state->reader, wire, sizeof(wire), &wire_total);
+    dds_sample_info_t si{};
+    int32_t wire_len = take_typed_wire(state->reader, wire, sizeof(wire), &wire_total, &si);
     if (wire_is_status(wire_len) && wire_status_code(wire_len) == NROS_RMW_RET_BUFFER_TOO_SMALL) {
         *refused = user_len_of_wire(wire_total);
     }
@@ -942,6 +974,7 @@ static int32_t service_take_request_len(const rmw_service_t* server, uint8_t* bu
     state->slots[slot].id = id;
     state->slots[slot].in_use = true;
     if (seq_out != nullptr) *seq_out = static_cast<int64_t>(slot);
+    if (info_out != nullptr) fill_service_info(id, si, info_out);
     return user_len;
 }
 
@@ -951,8 +984,9 @@ static int32_t service_take_request_len(const rmw_service_t* server, uint8_t* bu
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t* request,
-                               int64_t* seq_out, bool* taken) {
+static rmw_ret_t service_take_request_impl(const rmw_service_t* server,
+                                           rmw_mut_byte_span_t* request, int64_t* seq_out,
+                                           bool* taken, rmw_service_info_t* info_out) {
     /* phase-406 W2 — see the XRCE sibling: one span in, the old names out. */
     if (request == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -964,7 +998,7 @@ rmw_ret_t service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t*
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     size_t refused = NROS_RMW_TAKE_LEN_UNKNOWN;
-    int32_t n = service_take_request_len(server, buf, buf_len, seq_out, &refused);
+    int32_t n = service_take_request_len(server, buf, buf_len, seq_out, &refused, info_out);
     if (wire_is_status(n)) {
         const rmw_ret_t st = wire_status_code(n);
         // Issue 1632 — the size the refused request needed.
@@ -990,6 +1024,20 @@ rmw_ret_t service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t*
     *out_len = (size_t)n;
     *taken = true;
     return NROS_RMW_RET_OK;
+}
+
+rmw_ret_t service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t* request,
+                               int64_t* seq_out, bool* taken) {
+    return service_take_request_impl(server, request, seq_out, taken, nullptr);
+}
+
+/* Issue 2081 — `take_request` plus the request's `rmw_service_info_t`, written
+ * only when a request was taken (`fill_service_info`). */
+rmw_ret_t service_take_request_with_info(const rmw_service_t* server,
+                                         rmw_mut_byte_span_t* request, int64_t* seq_out,
+                                         bool* taken, rmw_service_info_t* service_info) {
+    if (service_info == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    return service_take_request_impl(server, request, seq_out, taken, service_info);
 }
 
 rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request) {

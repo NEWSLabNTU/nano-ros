@@ -124,6 +124,26 @@ pub struct rmw_message_info_t {
     #[doc = " True when the sample never left the image (Zephyr's\n  `Z_FEATURE_LOCAL_SUBSCRIBER`, DDS intra-process)."]
     pub from_intra_process: bool,
 }
+#[doc = " Identity of one service request — upstream `rmw_request_id_t`, field for\n  field.\n\n  `sequence_number` is the number the CLIENT assigned to the request, which\n  together with `writer_guid` makes the pair unique across clients. It is not\n  the backend's reply-correlation token (`take_request_with_info`'s\n  `seq_out`), and the two need not agree."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_request_id_t {
+    #[doc = " The requesting client's identity. All zero = not reported."]
+    pub writer_guid: [i8; 16usize],
+    #[doc = " The client-assigned sequence number of this request."]
+    pub sequence_number: i64,
+}
+#[doc = " Per-request metadata — upstream `rmw_service_info_t`, field for field.\n\n  Issue 2081. Filled by `take_request_with_info`. As in `rmw_message_info_t`,\n  a field the backend cannot report is ZERO: a timestamp of 0 means \"not\n  stamped\", and an all-zero `request_id.writer_guid` means the request id is\n  not reported. The runtime turns each into `None`, never into a value."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_service_info_t {
+    #[doc = " Client's clock when the request was sent, ns. 0 = not reported."]
+    pub source_timestamp: rmw_time_point_value_t,
+    #[doc = " Server's clock when the request was received, ns. 0 = not reported."]
+    pub received_timestamp: rmw_time_point_value_t,
+    #[doc = " Who sent the request."]
+    pub request_id: rmw_request_id_t,
+}
 #[doc = " Full DDS-shaped QoS profile.\n\n Matches the field set of upstream `rmw_qos_profile_t`. Backends\n advertise per-policy support via the runtime's\n `supported_qos_policies()` query; entities created with a profile\n the active backend can't honour return\n `NROS_RMW_RET_INCOMPATIBLE_QOS` synchronously at create time\n — no silent downgrade.\n\n Zero-valued fields (\"off\") preserve the cheap default for apps\n that don't request the policy:\n  - `deadline_ms = 0`            → infinite deadline (no check).\n  - `lifespan_ms = 0`            → infinite lifespan (no expiry).\n  - `liveliness_kind = NONE`     → no liveliness tracking.\n  - `liveliness_lease_ms = 0`    → infinite lease.\n\n **Boundary semantics (phase-301, issue 0241).** Durations are u32\n MILLISECONDS; that width is part of the contract:\n  - `0` = unset/no-check (matches upstream `RMW_QOS_*_DEFAULT`, the\n    zero time — a \"real 0-duration\" is inexpressible upstream too).\n  - `NROS_RMW_DURATION_INFINITE_MS` = explicit infinite.\n  - Callers lowering finer-grained times MUST round sub-ms values UP\n    to 1 ms (rounding down would silently turn a real deadline into\n    \"no deadline\") and MUST reject values past the u32-ms range\n    (other than the infinite sentinel) at create time\n    (`NROS_RMW_RET_INVALID_ARGUMENT`) — never clamp.\n\n `depth` is `uint16_t` (max 65 535). Embedded ROS application queue\n depths are typically 1–100; the 16-bit width saves two bytes per\n entity vs the upstream 32-bit choice. A requested depth the width\n cannot represent is a create-time error, never a silent saturate\n (phase-301, issue 0241).\n\n **Pure policy mirror (phase-301, issue 0240).** Transport hints\n (`tx_express`, `rx_buffer_hint`) moved OUT of this struct into\n `rmw_publisher_options_t` / `rmw_subscription_options_t` —\n the upstream `rmw_publisher_options_t` / `rmw_subscription_options_t`\n home for exactly that class. QoS carries DDS policy only; hint growth\n no longer churns this ABI."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -448,7 +468,7 @@ pub struct nros_rmw_vtable_t {
     >,
     pub destroy_service:
         ::core::option::Option<unsafe extern "C" fn(server: *mut rmw_service_t) -> rmw_ret_t>,
-    #[doc = " Upstream `rmw_take_request`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a request was copied, `*out_len` how\n  many bytes, `*seq_out` the sequence number to reply against.\n  All three are written only on `NROS_RMW_RET_OK`.\n\n  Deviations from upstream, declared: the payload is bytes\n  (`buf` / `buf_len` / `*out_len`) rather than a typed\n  `void *ros_request`, and `*seq_out` stands in for\n  `rmw_service_info_t *` — an RTOS reply needs the sequence\n  and nothing else in that struct.\n\n  `taken = false` with `NROS_RMW_RET_OK` means NOTHING WAS\n  PENDING, and only that (upstream `rmw.h`). A backend that\n  holds a request it cannot accept right now — every\n  reply-correlation slot held by a request not yet answered\n  with `send_response` — returns `NROS_RMW_RET_WOULD_BLOCK`,\n  consumes nothing, and leaves the request for a later take.\n  Folding that into `taken = false` makes a saturated server\n  indistinguishable from an idle one (issue 1088).\n\n  Issue 1632 — a request bigger than `request->capacity` is refused with\n  `NROS_RMW_RET_BUFFER_TOO_SMALL`, and `request->len` then carries the\n  size it NEEDED (`NROS_RMW_TAKE_LEN_UNKNOWN`, which the caller pre-sets,\n  when the backend cannot know) — the `take` slot's rule, widened."]
+    #[doc = " Upstream `rmw_take_request`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a request was copied, `*out_len` how\n  many bytes, `*seq_out` the sequence number to reply against.\n  All three are written only on `NROS_RMW_RET_OK`.\n\n  Deviations from upstream, declared: the payload is bytes\n  (`buf` / `buf_len` / `*out_len`) rather than a typed\n  `void *ros_request`, and `*seq_out` stands in for\n  `rmw_service_info_t *` — an RTOS reply needs the sequence\n  and nothing else in that struct. A backend that has the rest\n  (who sent the request, when) reports it through\n  `take_request_with_info` (issue 2081).\n\n  `taken = false` with `NROS_RMW_RET_OK` means NOTHING WAS\n  PENDING, and only that (upstream `rmw.h`). A backend that\n  holds a request it cannot accept right now — every\n  reply-correlation slot held by a request not yet answered\n  with `send_response` — returns `NROS_RMW_RET_WOULD_BLOCK`,\n  consumes nothing, and leaves the request for a later take.\n  Folding that into `taken = false` makes a saturated server\n  indistinguishable from an idle one (issue 1088).\n\n  Issue 1632 — a request bigger than `request->capacity` is refused with\n  `NROS_RMW_RET_BUFFER_TOO_SMALL`, and `request->len` then carries the\n  size it NEEDED (`NROS_RMW_TAKE_LEN_UNKNOWN`, which the caller pre-sets,\n  when the backend cannot know) — the `take` slot's rule, widened."]
     pub take_request: ::core::option::Option<
         unsafe extern "C" fn(
             server: *const rmw_service_t,
@@ -913,6 +933,16 @@ pub struct nros_rmw_vtable_t {
     #[doc = " Upstream `rmw_event_type_is_supported` (Jazzy). Exact parity.\n\n  A STATIC per-backend answer: whether ANY entity of this backend can\n  carry status event @p event_type, through either event shape\n  (`*_event_init` callback or `*_take_event` poll). It is the question a\n  port asks at configuration so it fails there rather than at entity\n  creation; registration stays the per-entity authority (a kind the\n  backend supports can still be refused for one entity).\n\n  A `true` is only meaningful where the backend also fills an event path\n  for that kind's side; the runtime requires both.\n\n  NULL slot: the backend states nothing per kind, and the runtime falls\n  back to slot granularity — a kind is supported iff its side has an\n  event path. A backend with neither (XRCE, uORB) therefore answers\n  `false` for every kind. The runtime reads this slot through ONE helper\n  (cffi's `backend_event_type_is_supported`), never a per-layer guess."]
     pub event_type_is_supported:
         ::core::option::Option<unsafe extern "C" fn(event_type: rmw_event_type_t::Type) -> bool>,
+    #[doc = " Upstream `rmw_take_request`, with its `rmw_service_info_t`.\n\n  Issue 2081 — optional, appended. `take_request` plus the request's metadata — who sent it\n  (`request_id`: the client's writer GUID and its sequence number) and the\n  timestamps the backend has — written to caller-owned storage. The\n  service twin of `take_with_info`.\n\n  Deviations from upstream, declared: the payload is bytes, as for\n  `take_request`; and `*seq_out`, the backend's reply-correlation token\n  that `send_response` takes back, is reported BESIDE the struct rather\n  than as its `request_id.sequence_number`, because a backend's token\n  (a reply-slot index on Cyclone, XRCE and zenoh) is not the client's\n  sequence number, and both are needed.\n\n  Every other rule is `take_request`'s: `*taken`, `request->len`,\n  `*seq_out` and `*service_info` are written only on `NROS_RMW_RET_OK`\n  with `*taken = true`; a field the backend cannot report is zero (see\n  `rmw_service_info_t`).\n\n  DISPATCHED when non-NULL: the runtime takes every request through this\n  slot and converts the struct to its `ServiceInfo`. A NULL slot falls\n  back to `take_request` plus the Rust adapter's side table, which is\n  metadata for a Rust backend and none for a C/C++ one."]
+    pub take_request_with_info: ::core::option::Option<
+        unsafe extern "C" fn(
+            server: *const rmw_service_t,
+            request: *mut rmw_mut_byte_span_t,
+            seq_out: *mut i64,
+            taken: *mut bool,
+            service_info: *mut rmw_service_info_t,
+        ) -> rmw_ret_t,
+    >,
 }
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 #[repr(C)]
@@ -986,6 +1016,7 @@ pub const NROS_RMW_HISTORY_UNKNOWN: i32 = 3;
 pub const RMW_GID_STORAGE_SIZE: i32 = 24;
 pub const NROS_RMW_TAKE_LEN_UNKNOWN: i32 = 0;
 pub const NROS_RMW_SEQUENCE_ID_UNKNOWN: i64 = -9223372036854775808;
+pub const RMW_REQUEST_ID_WRITER_GUID_SIZE: i32 = 16;
 pub const RMW_INET_ADDRSTRLEN: i32 = 48;
 pub const NROS_RMW_DURATION_INFINITE_MS: i64 = 4294967295;
 pub const NROS_RMW_DURATION_BEST_AVAILABLE_MS: i64 = 4294967294;

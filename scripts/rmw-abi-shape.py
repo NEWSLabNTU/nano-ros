@@ -244,6 +244,23 @@ ADDED = {
     # grouped targets, so removing them made both slots report as undeclared
     # extras. Fixed at the union instead of by parking them here, and the
     # self-test now refuses the overlap outright.
+    "take_request_with_info": Added(
+        ret="rmw_ret_t",
+        args=(
+            "const rmw_service_t *",
+            "rmw_mut_byte_span_t *",
+            "int64_t *",
+            "bool *",
+            "rmw_service_info_t *",
+        ),
+        why=(
+            "issue 2081 — upstream `rmw_take_request` WITH its `rmw_service_info_t`, which "
+            "`take_request` (its grouped answer) replaces by a bare `*seq_out`. Not the same "
+            "slot because both are needed: the backend's reply token (`seq_out`, a reply-slot "
+            "index on Cyclone, XRCE and zenoh) is not the client's sequence number "
+            "(`request_id.sequence_number`). Bytes for the typed request, as `take_request`"
+        ),
+    ),
     "drive_io": Added(
         ret="rmw_ret_t",
         args=("rmw_session_t *", "int32_t"),

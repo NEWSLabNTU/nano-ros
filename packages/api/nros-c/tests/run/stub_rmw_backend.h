@@ -38,7 +38,8 @@ int32_t nros_stub_rmw_register_as(const char* name);
 
 /** Issue 2074 — register the stub under @p name WITHOUT its `take_with_info`
  *  slot, so a sample carries no metadata channel at all (the XRCE / uORB
- *  case). Lets a probe tell "nothing reported" apart from "zeros reported". */
+ *  case). Lets a probe tell "nothing reported" apart from "zeros reported".
+ *  Issue 2081 — `take_request_with_info` is left out too. */
 int32_t nros_stub_rmw_register_without_message_info(const char* name);
 
 /** Issue 1405 — sessions this stub has opened since process start. Session N
@@ -171,6 +172,21 @@ typedef struct nros_stub_message_info_t {
  *  `take_with_info` slot reports with it. */
 bool nros_stub_rmw_stage_sample_info(const char* topic_suffix, const uint8_t* data, size_t len,
                                      const nros_stub_message_info_t* info);
+
+/** Issue 2081 — the metadata a staged request carries (`rmw_service_info_t`'s
+ *  fields, without the RMW headers). Zero means "not reported", as there. */
+typedef struct nros_stub_service_info_t {
+    int64_t source_timestamp;
+    int64_t received_timestamp;
+    int8_t writer_guid[16];
+    int64_t sequence_number;
+} nros_stub_service_info_t;
+
+/** Issue 2081 — `nros_stub_rmw_stage_request` plus the metadata the backend's
+ *  `take_request_with_info` slot reports with it. */
+bool nros_stub_rmw_stage_request_info(const char* service_suffix, int64_t seq,
+                                      const uint8_t* data, size_t len,
+                                      const nros_stub_service_info_t* info);
 
 /** Issue 2015 — the newest response a service server whose name ends with
  *  @p service_suffix sent: its bytes (NULL if none), id and length. */

@@ -322,7 +322,9 @@ typedef struct nros_rmw_vtable_t {
      *  (`buf` / `buf_len` / `*out_len`) rather than a typed
      *  `void *ros_request`, and `*seq_out` stands in for
      *  `rmw_service_info_t *` — an RTOS reply needs the sequence
-     *  and nothing else in that struct.
+     *  and nothing else in that struct. A backend that has the rest
+     *  (who sent the request, when) reports it through
+     *  `take_request_with_info` (issue 2081).
      *
      *  `taken = false` with `NROS_RMW_RET_OK` means NOTHING WAS
      *  PENDING, and only that (upstream `rmw.h`). A backend that
@@ -1571,6 +1573,33 @@ typedef struct nros_rmw_vtable_t {
      *  `false` for every kind. The runtime reads this slot through ONE helper
      *  (cffi's `backend_event_type_is_supported`), never a per-layer guess. */
     bool (*event_type_is_supported)(rmw_event_type_t event_type);
+
+    /** Upstream `rmw_take_request`, with its `rmw_service_info_t`.
+     *
+     *  Issue 2081 — optional, appended. `take_request` plus the request's metadata — who sent it
+     *  (`request_id`: the client's writer GUID and its sequence number) and the
+     *  timestamps the backend has — written to caller-owned storage. The
+     *  service twin of `take_with_info`.
+     *
+     *  Deviations from upstream, declared: the payload is bytes, as for
+     *  `take_request`; and `*seq_out`, the backend's reply-correlation token
+     *  that `send_response` takes back, is reported BESIDE the struct rather
+     *  than as its `request_id.sequence_number`, because a backend's token
+     *  (a reply-slot index on Cyclone, XRCE and zenoh) is not the client's
+     *  sequence number, and both are needed.
+     *
+     *  Every other rule is `take_request`'s: `*taken`, `request->len`,
+     *  `*seq_out` and `*service_info` are written only on `NROS_RMW_RET_OK`
+     *  with `*taken = true`; a field the backend cannot report is zero (see
+     *  `rmw_service_info_t`).
+     *
+     *  DISPATCHED when non-NULL: the runtime takes every request through this
+     *  slot and converts the struct to its `ServiceInfo`. A NULL slot falls
+     *  back to `take_request` plus the Rust adapter's side table, which is
+     *  metadata for a Rust backend and none for a C/C++ one. */
+    rmw_ret_t (*take_request_with_info)(const rmw_service_t *server,
+        rmw_mut_byte_span_t *request, int64_t *seq_out, bool *taken,
+        rmw_service_info_t *service_info);
 
 } nros_rmw_vtable_t;
 
