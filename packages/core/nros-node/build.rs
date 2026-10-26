@@ -1968,8 +1968,9 @@ fn declared_param_service_shapes(
 ///
 /// **The descriptor is read WITHOUT `descriptor_subscriptions`' two guards, and
 /// that is the same split W10 already made one layer up.** Arena sizing refuses
-/// a partial picture (`basis == contract`, `undeclared_endpoints == 0`) because
-/// it prices every subscription or none. A per-ENDPOINT check needs neither:
+/// a partial picture (`basis == contract`, a KNOWN `undeclared_endpoints`, and a
+/// depth on every subscription row -- issue 2041) because it prices every
+/// subscription or none. A per-ENDPOINT check needs neither:
 /// whether `/chatter`'s declared depth matches the depth registered on
 /// `/chatter` is a question about `/chatter`, and requiring the whole image to
 /// declare before any of it is checked would turn one silent endpoint into no

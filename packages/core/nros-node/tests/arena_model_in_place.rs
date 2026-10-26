@@ -66,9 +66,22 @@ fn sub_row(topic: &str, depth: Option<u32>, path: Option<&str>) -> String {
 }
 
 fn descriptor(rows: &[String]) -> nros_sizing_descriptor::SizingDescriptor {
+    descriptor_undeclared(rows, Some(0))
+}
+
+/// [`descriptor`] with `[meta] undeclared_endpoints` stated as `undeclared`, or
+/// left out (`None`: the inventory could not count, which is not zero).
+fn descriptor_undeclared(
+    rows: &[String],
+    undeclared: Option<usize>,
+) -> nros_sizing_descriptor::SizingDescriptor {
+    let undeclared = match undeclared {
+        Some(n) => format!("undeclared_endpoints = {n}\n"),
+        None => String::new(),
+    };
     let text = format!(
         "schema_version = {}\n\n[meta]\nentry = \"native\"\nstatus = \"partial\"\n\
-         basis = \"contract\"\nundeclared_endpoints = 0\n\n\
+         basis = \"contract\"\n{undeclared}\n\
          [target]\npointer_bytes = 8\nmax_align = 8\n\n{}\
          [image]\nsubscription_entities = {}\n",
         nros_sizing_descriptor::SCHEMA_VERSION,
@@ -202,4 +215,57 @@ fn an_in_place_row_with_no_depth_refuses_the_whole_sum() {
         sub_row("/b", None, Some("in_place")),
     ]);
     assert_eq!(price(&rows(&desc, true)), None);
+}
+
+/// Issue 2041 -- an endpoint that is NOT a subscription and declared nothing
+/// (the reference island's four service endpoints carry no QoS fact) does not
+/// take the subscription rows off the descriptor road. These rows price only
+/// subscriptions; refusing on the image-wide count put the island back on the
+/// env road, which prices an `in_place` subscription at a receive region it
+/// never claims.
+#[test]
+fn an_undeclared_non_subscription_endpoint_keeps_the_rows() {
+    let subs: Vec<String> = ["/a", "/b"]
+        .iter()
+        .map(|t| sub_row(t, Some(1), Some("in_place")))
+        .collect();
+    let all_declared = price(&rows(&descriptor(&subs), true)).unwrap();
+    let desc = descriptor_undeclared(&subs, Some(4));
+    let with_silent_services =
+        descriptor_subscriptions(&desc, DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE, true).expect(
+            "four silent non-subscription endpoints leave the subscription rows attributable",
+        );
+    assert_eq!(price(&with_silent_services), Some(all_declared));
+    assert_eq!(all_declared, 2 * arena_model::PUBSUB_STRUCT);
+}
+
+/// Issue 2041 -- the count must still be KNOWN: an inventory that could not
+/// count its silent endpoints refuses, because absence is not zero.
+#[test]
+fn an_unknown_undeclared_count_still_refuses() {
+    let desc = descriptor_undeclared(&[sub_row("/a", Some(1), Some("in_place"))], None);
+    assert!(
+        descriptor_subscriptions(&desc, DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE, true).is_none(),
+        "an absent undeclared_endpoints is not zero"
+    );
+}
+
+/// Issue 2041 -- a SUBSCRIPTION that declared nothing still refuses the sum,
+/// row by row, whatever the image-wide count says.
+#[test]
+fn an_undeclared_subscription_still_refuses_the_sum() {
+    let desc = descriptor_undeclared(
+        &[
+            sub_row("/a", Some(1), Some("in_place")),
+            sub_row("/silent", None, Some("in_place")),
+        ],
+        Some(1),
+    );
+    let rows = descriptor_subscriptions(&desc, DEFAULT_RX_BUF_SIZE, DEFAULT_RX_BUF_SIZE, true)
+        .expect("the count is known");
+    assert_eq!(
+        price(&rows),
+        None,
+        "a depth-less subscription row refuses the sum"
+    );
 }
