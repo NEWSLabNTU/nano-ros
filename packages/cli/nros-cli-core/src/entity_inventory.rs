@@ -4127,6 +4127,24 @@ impl EntityInventory {
         let mut seen: Vec<&str> = Vec::new();
 
         for decl_row in &self.components {
+            // phase-517 W5 -- a probe-stated model keys its rows by NODE name and
+            // records the registered component in `class`; a metadata row for
+            // that component (register NAME = launch `exec`, which differs from
+            // the node name whenever the launch file renames the node) says
+            // nothing the probe row does not, so it is covered, not "launched and
+            // undescribed". Only for a probe-stated side: every launched node of
+            // it is described (all or nothing), so dropping the row drops no
+            // instance.
+            if model.stated_by == StatedBy::Probe
+                && matches!(decl_row.declaration, Declaration::Absent)
+                && !model_rows.contains_key(decl_row.component.as_str())
+                && model
+                    .components
+                    .iter()
+                    .any(|m| !m.class.is_empty() && m.class == decl_row.component)
+            {
+                continue;
+            }
             let Some(model_row) = model_rows.get(decl_row.component.as_str()) else {
                 // Issue 1694 -- a component the launch tree STARTS and the
                 // contract does not describe is NOT "not launched": it runs,
@@ -12327,6 +12345,66 @@ structure:
             EntityInventory::from_probe("probe", &empty, &stock_sidecars()).unwrap_err(),
             Vec::<String>::new()
         );
+    }
+
+    /// A launch file that RENAMES its node (`exec="ctrl" name="ctrl_node"`)
+    /// keys the probe row by node name; the cmake road's metadata row for the
+    /// same component is keyed by its register NAME (= `exec`). Composed, the
+    /// probe row covers it -- measured on `examples/workspaces/realtime-c`,
+    /// whose configure refused "2 of 4 components declare no entities" over
+    /// exactly these two rows while the resolve phase derived.
+    #[test]
+    fn a_probe_row_covers_the_metadata_row_of_a_renamed_node() {
+        let m = nros_orchestration_ir::overlay::LoadedModel::bare(
+            serde_yaml_ng::from_str(
+                r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /ctrl_node:
+      { scope: system.launch.xml, pkg: ctrl_pkg, exec: ctrl, node_name: ctrl_node }
+"#,
+            )
+            .expect("parses"),
+        );
+        let probe = EntityInventory::from_probe(
+            "probe",
+            &m,
+            &[probe(
+                "ctrl_pkg",
+                "ctrl",
+                vec![
+                    EntityDecl::bare(
+                        EntityKind::Publisher,
+                        Some("std_msgs/msg/Int32".into()),
+                        Some("/ctrl".into()),
+                    ),
+                    EntityDecl::bare(EntityKind::Timer, None, Some("on_tick".into())),
+                ],
+            )],
+        )
+        .expect("the one launched node is described");
+        let mut metadata = EntityInventory::new("nros-metadata.json");
+        metadata.insert(ComponentEntities {
+            pkg: "ctrl_pkg".into(),
+            component: "ctrl".into(),
+            class: "ctrl_pkg::Ctrl".into(),
+            declaration: Declaration::Absent,
+        });
+        let composed = metadata.merged_per_kind_max(&probe);
+        let d = composed.derive();
+        let k = d.knobs().unwrap_or_else(|| panic!("derives: {d:?}"));
+        assert_eq!((k.max_cbs, k.max_publishers), (1, 1), "{k:?}");
+
+        // The cover is the PROBE side's alone: the same metadata row against a
+        // contract that describes only the renamed node still refuses, as it
+        // did before (that road is issue 1694's, unchanged here).
+        let mut contract_side = probe.clone();
+        contract_side.set_stated_by(StatedBy::Contract);
+        assert!(matches!(
+            metadata.merged_per_kind_max(&contract_side).derive(),
+            Derivation::Refused { .. }
+        ));
     }
 
     /// A contract anywhere in a composition makes it a contract's: the probe
