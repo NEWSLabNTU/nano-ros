@@ -1,10 +1,13 @@
 # Phase 516 — Open issues whose phases were archived
 
-**Status (2026-10-26). Open; W2, W3, W4, W6 and W7 done.** Each item below is one open
-issue whose phase was archived while it stayed open. None is a red in a gating
-or nightly lane. W5 is parked until ESP32 is revived.
+**Status (2026-10-26). Archived: every issue homed here is closed.** Each
+item below was one open issue whose phase was archived while it stayed open.
+W1, W2, W3, W4, W6 and W7 are done. W5 is closed `wontfix` while ESP32 is
+dormant. W1d and W1e did not land and moved to
+[phase-519](../phase-519-rmw-daemons.md) (W1, W2), which owns router-side and
+agent-side work.
 
-**Prior:** [phase-513](phase-513-nightly-reds-with-no-home.md), which homed the
+**Prior:** [phase-513](../phase-513-nightly-reds-with-no-home.md), which homed the
 medium-severity reds from the same sweep and left these unhomed on purpose.
 This phase gives each of them a home, so every open issue names an active phase
 that names it back.
@@ -21,7 +24,7 @@ here ends in a fix or in an explicit `wontfix`.
 
 ## Work items
 
-### W1 — the router `downsampling` rule ([issue 0506](../issues/archived/0506-transport-band-unbounded-preemption.md))
+### W1 — the router `downsampling` rule ([issue 0506](../../issues/archived/0506-transport-band-unbounded-preemption.md))
 
 The device-side half of the ingress budget landed in phase-462. What is left is
 RFC-0074's enforcement point 1: a router `downsampling` rule the resolver emits
@@ -62,14 +65,15 @@ topic take the lowest rate. Split:
       the native listener declared at 20 Hz: 113-114 samples in 6 s with the
       rule (cap 120) and the router's drop line logged, 1199-1200 without, over
       three runs; with the rule removed the cell is red. Closes issue 0506.
-- [ ] **W1d — a stated interface.** An `[image.<id>]` deployment fact that
-      lowers to the rule's `interfaces`, for a router that is not an edge
-      router. Never inferred.
-- [ ] **W1e — upstream.** A zenoh feature request for a token-bucket
-      (burst) mode on `downsampling`, filed by a maintainer; until it lands the
-      router half stays at burst 1.
+- **W1d — a stated interface.** Deferred, moved to
+      [phase-519](../phase-519-rmw-daemons.md) W1 on 2026-10-26. It matters
+      only on a router shared with other consumers, and nothing in the tree
+      deploys one.
+- **W1e — upstream.** Deferred, moved to
+      [phase-519](../phase-519-rmw-daemons.md) W2 on 2026-10-26. A maintainer
+      files it.
 
-### W2 — the api-parity ledger stops conflicting ([issue 1091](../issues/archived/1091-ledger-shards-conflict-on-sorted-key-insert.md))
+### W2 — the api-parity ledger stops conflicting ([issue 1091](../../issues/archived/1091-ledger-shards-conflict-on-sorted-key-insert.md))
 
 Two branches that add adjacent keys to a sorted ledger shard always conflict.
 The issue names the layout that does not. Land the open ledger PRs first, then
@@ -91,7 +95,7 @@ the old `pubsub.json` conflicted. `just check api-parity` is green. The
 self-test now plants a row under the wrong topic directory and requires the
 misfiling, mutation-tested. Measurements are in the issue's Resolution.
 
-### W3 — `check-doc-commit-citations` reads history, not the object store ([issue 1205](../issues/archived/1205-doc-commit-citations-local-fetch-state.md))
+### W3 — `check-doc-commit-citations` reads history, not the object store ([issue 1205](../../issues/archived/1205-doc-commit-citations-local-fetch-state.md))
 
 The gate resolves a hash against whatever the clone has fetched. A fetched PR
 branch therefore makes it demand removal of baseline entries that every other
@@ -106,7 +110,7 @@ so a fetched branch changes no verdict. CI already unshallows the base branch
 for it (`gate.yml`, commits only). The baseline shrank from 16 entries to 2.
 Issue 1205 resolved.
 
-### W4 — the seven hand-set sizing knobs ([issue 1808](../issues/archived/1808-sizing-knobs-with-no-static-derivation.md))
+### W4 — the seven hand-set sizing knobs ([issue 1808](../../issues/archived/1808-sizing-knobs-with-no-static-derivation.md))
 
 phase-412 derived every pool the entity inventory can answer. Seven knobs on
 the safety island are still set by hand, each with its own blocker.
@@ -121,16 +125,19 @@ their own), three ruled permanently operator-stated with the measurement named
 in their help (the Zephyr heap, the task stack, `CONFIG_MAIN_STACK_SIZE`), and
 the graph cache was already closed. Issue 1808 resolved.
 
-### W5 — esp32-qemu heap accounting ([issue 1823](../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md)) — PARKED
+### W5 — esp32-qemu heap accounting ([issue 1823](../../issues/archived/1823-esp32-qemu-heap-used-bytes-reports-zero.md)) — CLOSED `wontfix`
 
 `heap_used_bytes` / `heap_total_bytes` report 0 on esp32-qemu. ESP32 is dormant
-([issue 1525](../issues/archived/1525-esp32-c-cpp-has-no-build-road.md)), so do
+([issue 1525](../../issues/archived/1525-esp32-c-cpp-has-no-build-road.md)), so do
 not work this until it is revived.
 
 **Done when** both methods read the port's heap, the way mps2-an385 does, or
 the issue is closed `wontfix` because ESP32 was retired.
 
-### W6 — C++ runner status lines logged at ERROR ([issue 2049](../issues/archived/2049-cpp-levels-runner-info-lines-logged-as-errors.md))
+**Closed `wontfix` (2026-10-26)** by maintainer decision, while ESP32 is
+dormant rather than retired. Reopen issue 1823 if ESP32 is revived.
+
+### W6 — C++ runner status lines logged at ERROR ([issue 2049](../../issues/archived/2049-cpp-levels-runner-info-lines-logged-as-errors.md))
 
 Filed by phase-162, which was archived on 2026-10-25 with it open. The C++
 tier and level runners print "multi-tier run", "multi-level run" and "level
@@ -143,7 +150,7 @@ reports no error.
 **Done (2026-10-25).** A `cpp_info!` beside `cpp_diag!` logs the three at
 INFO; a `linux_s1` boot prints no `ERROR`. Issue 2049 resolved.
 
-### W7 — the spin-quantization warning on a spawned level's timer ([issue 2050](../issues/archived/2050-spin-quantization-warning-names-a-spawned-level-timer.md))
+### W7 — the spin-quantization warning on a spawned level's timer ([issue 2050](../../issues/archived/2050-spin-quantization-warning-names-a-spawned-level-timer.md))
 
 Also filed by phase-162. The audit warns that `attitude`'s 1 ms timer runs in
 10 ms bursts against a spin period that is neither level's. phase-162's run
@@ -162,15 +169,15 @@ quantization warning. Issue 2050 resolved.
 
 | Issue | Item | Severity |
 | --- | --- | --- |
-| [0506](../issues/archived/0506-transport-band-unbounded-preemption.md) | W1 | unrated |
-| [1091](../issues/archived/1091-ledger-shards-conflict-on-sorted-key-insert.md) | W2 | unrated |
-| [1205](../issues/archived/1205-doc-commit-citations-local-fetch-state.md) | W3 | unrated |
-| [1808](../issues/archived/1808-sizing-knobs-with-no-static-derivation.md) | W4 | low |
-| [1823](../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | W5 | low |
-| [2049](../issues/archived/2049-cpp-levels-runner-info-lines-logged-as-errors.md) | W6 | low |
-| [2050](../issues/archived/2050-spin-quantization-warning-names-a-spawned-level-timer.md) | W7 | low |
+| [0506](../../issues/archived/0506-transport-band-unbounded-preemption.md) | W1 | unrated |
+| [1091](../../issues/archived/1091-ledger-shards-conflict-on-sorted-key-insert.md) | W2 | unrated |
+| [1205](../../issues/archived/1205-doc-commit-citations-local-fetch-state.md) | W3 | unrated |
+| [1808](../../issues/archived/1808-sizing-knobs-with-no-static-derivation.md) | W4 | low |
+| [1823](../../issues/archived/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | W5 | low |
+| [2049](../../issues/archived/2049-cpp-levels-runner-info-lines-logged-as-errors.md) | W6 | low |
+| [2050](../../issues/archived/2050-spin-quantization-warning-names-a-spawned-level-timer.md) | W7 | low |
 
 ## Acceptance
 
-- [ ] Each issue above is resolved, closed `wontfix` with its reason, or moved
+- [x] Each issue above is resolved, closed `wontfix` with its reason, or moved
       to a phase that owns its work.

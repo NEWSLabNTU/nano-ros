@@ -8,7 +8,7 @@ resolved: 2026-10-26
 related: [issue-0505, phase-462, phase-464, rfc-0074, 1948, 1949, phase-516]
 ---
 
-**Resolved 2026-10-26 by [phase-516](../../roadmap/phase-516-low-severity-issues-with-no-home.md) W1** — see the last section. **Home: [phase-516](../../roadmap/phase-516-low-severity-issues-with-no-home.md) W1** since 2026-10-25. Before that, no home from 2026-10-24, when [phase-464](../../roadmap/archived/phase-464-contract-chain-program.md) (an umbrella owning no code) was archived. What is left is RFC-0074's router `downsampling` rule, a contract term the resolver would lower into the ROUTER's config, and no phase owns router-side lowering yet. Before that, homed at phase-464 from 2026-10-18 (re-homed from [phase-462](../../roadmap/archived/phase-462-safety-vocabulary-on-target.md), archived with every wave landed), and before that at phase-358.
+**Resolved 2026-10-26 by [phase-516](../../roadmap/archived/phase-516-low-severity-issues-with-no-home.md) W1** — see the last section. **Home: [phase-516](../../roadmap/archived/phase-516-low-severity-issues-with-no-home.md) W1** since 2026-10-25. Before that, no home from 2026-10-24, when [phase-464](../../roadmap/archived/phase-464-contract-chain-program.md) (an umbrella owning no code) was archived. What is left is RFC-0074's router `downsampling` rule, a contract term the resolver would lower into the ROUTER's config, and no phase owns router-side lowering yet. Before that, homed at phase-464 from 2026-10-18 (re-homed from [phase-462](../../roadmap/archived/phase-462-safety-vocabulary-on-target.md), archived with every wave landed), and before that at phase-358.
 
 ## Problem
 
