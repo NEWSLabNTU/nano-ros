@@ -63,7 +63,7 @@ normatively, because this implementation must reproduce it byte for byte:
 | frame length | `len + 1`, rounded up to the next of {12, 16, 20, 24, 32, 48, 64} when in FD mode and `len + 1 > 8` |
 | flags | `CANFD_BRS` whenever the socket is in FD mode |
 | write size | `CANFD_MTU` (72) in FD mode, `CAN_MTU` (16) in classic |
-| MTU | 63 in FD mode, 7 in classic |
+| MTU | 63 (CAN FD; a classic interface is refused, §4.5) |
 | filter | one `can_filter { can_id: match, can_mask: mask }` |
 | receive | drop frames whose sender equals our own `id`; drop when `mask != 0 && (sender & mask) != match`; drop when `frame.len < 1`; drop when `data[0] > frame.len - 1` |
 
@@ -225,9 +225,8 @@ can/<device>#bitrate=500000;dbitrate=2000000;id=0x100;match=0;mask=0
 ```
 
 `bitrate` and `dbitrate` are advisory on Linux — rates are set out of band with
-`ip link set` and a virtual interface has none — but `dbitrate=0` still selects
-classic CAN, and the link reports the mode it actually obtained rather than the
-one requested.
+`ip link set` and a virtual interface has none. CAN FD is required (§4.5); the
+interface's mode decides it, not `dbitrate`.
 
 `id` is a real-time decision, not a name: a **lower identifier wins
 arbitration**, priority is **per peer** today, and the defaults are a starting
@@ -263,16 +262,24 @@ out of band, and the parts we do need are three `setsockopt` calls.
 
 ### 4.5 MTU and mode negotiation
 
-`CAN_RAW_FD_FRAMES` is requested only when `dbitrate != 0`. If the interface
-refuses it we fall back to classic framing rather than failing, and the link's
-MTU becomes 7 rather than 63 — matching RFC-0080's rule that the MTU tracks the
-mode obtained, not the mode requested. Declaring 63 on a classic interface would
-truncate every frame.
+**The link is CAN FD only, and refuses a classic interface at open.** This
+section first proposed falling back to classic framing with a warning, at MTU 7;
+the implementation refuses instead, and the reason is stronger than the
+per-fragment overhead (about 16 bytes, RFC-0080 §8) originally given. A
+multicast session opens by sending a JOIN, a transport message zenoh never
+fragments, so it must fit one batch — one frame here. The smallest JOIN is 13
+bytes and a real one about 31, so a classic interface could never open a
+session at all: the failure would not be a session that appears to hang but
+one that never starts. zenoh-pico's link refuses the same way (RFC-0080 §4.1,
+issue 2091). On classic-only hardware, use the ISO-TP link (RFC-0083).
 
-**A 7-byte MTU is legal but close to useless**, since zenoh's per-fragment
-overhead is about 16 bytes (RFC-0080 §8) — larger than the MTU itself. The link
-therefore **warns loudly** when it falls back, because the failure mode is
-otherwise a session that merely appears to hang.
+The FD-versus-classic decision is read from the interface, not requested from
+the locator (RFC-0109 D10): `dbitrate` no longer selects anything. **Read it
+from the interface MTU (`SIOCGIFMTU`: `CANFD_MTU` 72 versus `CAN_MTU` 16), not
+from `setsockopt(CAN_RAW_FD_FRAMES)`** — the kernel accepts that option on every
+CAN_RAW socket and checks the device only at send, so a refusal built on it
+never fires: measured, the first implementation opened a session on a classic
+`vcan0` and reported a put every second with no frame on the bus (issue 2091).
 
 ### 4.6 What changes outside the crate
 

@@ -123,9 +123,16 @@ Options:
 
 **Proposed: (a).** One byte, no layering violation, receiver is a memcpy.
 Classic CAN (8-byte) falls out of the same scheme at MTU 7 — for the FRAMING
-only: a multicast session cannot open at MTU 7, because its JOIN (~31 bytes) is
-a transport message zenoh never fragments. Measured 2026-10-27; issue 2091. On
-classic-only hardware the working link is ISO-TP (RFC-0083).
+only. A multicast session cannot open at MTU 7: it opens by sending a JOIN, a
+TRANSPORT message zenoh never fragments, so the JOIN must fit one batch, which
+on this link is one frame. The smallest JOIN is 13 bytes (header, version,
+flags, a 1-byte ZID, lease, two sequence numbers of up to 4 bytes each); with
+the 16-byte ZID zenoh-pico generates it is 31, measured on the bus. This is the
+zenoh protocol, not this link, and no framing choice here can change it. So the
+link is **CAN FD only** and refuses a classic interface at open, naming FD and
+ISO-TP as the ways out — as zenoh-rs's link does (RFC-0081 §4.5). On
+classic-only hardware the working link is ISO-TP (RFC-0083), which segments a
+PDU of up to 4095 bytes over 8-byte frames. Issue 2091.
 
 ### 4.2 Addressing
 
