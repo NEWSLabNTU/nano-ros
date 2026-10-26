@@ -72,9 +72,11 @@ pub use server::{
     OnSetParameterHandle, PARAMETER_EVENT_LOG_LEN, ParameterEventKind, ParameterServer,
     ParameterSlot, ParameterStorage, ParameterTable, PendingParameterEvent,
 };
+#[allow(deprecated)]
+pub use typed::UndeclaredParameters;
 pub use typed::{
-    MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, RangeConvertible,
-    ReadOnlyParameter, UndeclaredParameters,
+    MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, Parameters,
+    RangeConvertible, ReadOnlyParameter,
 };
 pub use types::{
     FloatingPointRange, IMPLIED_STORE_SLOTS, IntegerRange, MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN,

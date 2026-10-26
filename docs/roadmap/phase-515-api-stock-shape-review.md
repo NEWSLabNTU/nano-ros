@@ -294,7 +294,12 @@ fold one into the other.
 
 **P8 — open renames (5):** `rclcpp_action::create_server` /
 `create_client` (ours `Node::create_action_server` / `_client`),
-`create_subscription`, `create_server`, `Client::service_is_ready`.
+`create_subscription`, `create_server`, `Client::service_is_ready`. **Re-read 2026-10-27:** `create_subscription` and
+`Client::service_is_ready` are `landed` records (where our old name went), not
+open. `rclcpp_action::create_server` / `create_client` shipped with issue 2015,
+so `cpp:create_server` is `adopt-bounded` (hosted) like `cpp:create_client`,
+and the member factories `Node::create_action_{server,client}` are
+`extension`s kept beside them.
 
 ### R — rclrs
 
@@ -349,7 +354,18 @@ other C-ABI backends report nothing until the C `take_request` slot carries it
 `GoalId` → `GoalUuid`, `CancelReturnCode`, `QoSProfile::{deadline,lifespan,
 liveliness_lease}_duration`, `ValueConversionError`, `SetParameterResult`,
 `ActionClientCore::is_server_ready`, and their members. Land each, or
-re-verdict it with a reason. (`ActionClientCore::is_server_ready` closed
+re-verdict it with a reason. Decided 2026-10-27 (maintainer): each lands as rclrs's name
+with the old one kept one release as a `#[deprecated]` alias and every in-tree
+caller moved. **Parameter family LANDED 2026-10-27:** `UndeclaredParameters` →
+`Parameters` (with rclrs's generic `get::<T>` / `set`), `ValueConversionError` →
+`RmwParameterConversionError`. `ParameterBuilder`'s `ParameterError` vs rclrs's
+`DeclarationError` is not a rename (ours already has a `DeclarationError`, and
+`ParameterError` also serves get/set), so it is worked separately. **Also LANDED 2026-10-27:** rclrs's
+`QoSProfile::{deadline,lifespan,liveliness_lease}_duration(Duration)` builders
+(stored as the shared record's whole milliseconds, sub-millisecond rounding up
+so it never reads as infinite); and the five `rust:nros_{debug..fatal}` rows,
+whose `blocked-needs-decision` was stale -- phase-417 had already shipped
+rclrs's `log_*!` and removed the `nros_*!` forwarders. (`ActionClientCore::is_server_ready` closed
 2026-10-27 by R9 stage 2: it left the Rust surface, so Rust ships the one
 spelling `ActionClient::action_server_is_ready` and its row was deleted.)
 

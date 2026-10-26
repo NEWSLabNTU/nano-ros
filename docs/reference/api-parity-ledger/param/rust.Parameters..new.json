@@ -1,0 +1,6 @@
+{
+  "key": "rust:Parameters::new",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the constructor `Executor::use_undeclared_parameters` calls, from a borrowed `ParameterServer` and the node's `NodeKey`. rclrs builds its handle inside the node and exposes no constructor; ours is public because the store is caller-owned (RFC-0002), so a caller holding a `ParameterServer` directly can open the handle too."
+}

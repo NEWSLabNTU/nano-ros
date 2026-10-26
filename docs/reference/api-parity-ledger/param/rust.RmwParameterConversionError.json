@@ -3,11 +3,11 @@
   "disposition": "adopt-bounded",
   "envelope": {
     "file": "packages/core/nros-node/src/parameter_services.rs",
-    "text": "rclrs names this `RmwParameterConversionError`; the role is the same (why a"
+    "text": "rclrs's `RmwParameterConversionError` (phase-515 R8): why a wire value was"
   },
   "provides": [
     "nros::ValueConversionError"
   ],
-  "verdict": "rename",
-  "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and the complaint it was filed under is closed: the `nros` facade exports the type now, so a user can match on WHY a wire value was rejected rather than reading the sentence `reason()` put in the `SetParametersResult`. What remains is the NAME — rclrs's `RmwParameterConversionError` against our `ValueConversionError`, which is where the conversion actually happens (`nros-node`'s `parameter_services`, between an `rcl_interfaces` value and the store's). `rename` because no platform constraint picks either spelling; the export is what a porting user needed.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the rename was stated only in plain `//` facade comments; `ValueConversionError`'s own rustdoc now names rclrs's spelling."
+  "verdict": "divergence",
+  "why": "LANDED 2026-10-27 (phase-515 R8): ours is named `RmwParameterConversionError` now, rclrs's name; `ValueConversionError` is a `#[deprecated]` alias for one release. The variants are ours (compile-time capacity, unknown `type_` code), which is the envelope. PRIOR ROW: RE-VERDICTED phase-417 W4.a. was `gap`, and the complaint it was filed under is closed: the `nros` facade exports the type now, so a user can match on WHY a wire value was rejected rather than reading the sentence `reason()` put in the `SetParametersResult`. What remains is the NAME — rclrs's `RmwParameterConversionError` against our `ValueConversionError`, which is where the conversion actually happens (`nros-node`'s `parameter_services`, between an `rcl_interfaces` value and the store's). `rename` because no platform constraint picks either spelling; the export is what a porting user needed.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the rename was stated only in plain `//` facade comments; `ValueConversionError`'s own rustdoc now names rclrs's spelling."
 }
