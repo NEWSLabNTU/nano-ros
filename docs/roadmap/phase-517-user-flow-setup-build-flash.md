@@ -450,6 +450,63 @@ workspace stand as a component's declaration when no contract names it, and
 with what freshness rule? Then the template either relies on that or ships a
 contract.
 
+**Decision and evidence (2026-10-26) — BLOCKED, issue 2076.** The maintainer
+accepted RFC-0100 Amendment 3 with its evidence plan as a precondition. The
+amendment lets fresh probe sidecars stand as a contract-less image's
+declaration, with `basis = "probe"`. It was implemented on a branch,
+`feat/517-w5-probe-sizing`, which was not pushed, and measured against
+`origin/main` 37b950503e.
+
+*First project* (`nros new my_robot --workspace`, C++ talker + listener,
+CycloneDDS, no contract):
+
+| | entity counts | executor arena | run (6 s) |
+| --- | --- | --- | --- |
+| default | refused: "the launch tree resolved, and it declares neither wiring nor parameters" | 74,240 B | 12 `Received:` |
+| probe-derived | DERIVED from 2 components: 3 entities, `max_cbs 2`, `max_nodes 2`, `basis = "probe"` | 14,488 B | 12 `Received:` |
+
+*Every contract-less model image* (`nros build --dry-run --all` over every
+in-tree colcon workspace): 112 images go from REFUSED to derived. On
+`multi-package-workspace` and `image_config_ws` not every launched node has a
+fresh sidecar, so they stay refused (all or nothing).
+
+*Linux lane at runtime* (`just build linux` + `just test linux`, both trees):
+
+| tree | passed | lane-deselected | real failures |
+| --- | --- | --- | --- |
+| default | 3097 | 186 | 0 |
+| probe-derived | 3093 | 186 | 4 |
+
+The 4 failures come from 2 images, and each reproduces when run alone:
+
+| image (fixture row) | derived | default | derived result |
+| --- | --- | --- | --- |
+| `bridge-cyclonedds` linux (`workspace-rust-native-bridge`) | `max_cbs 1`, `nodes 1` | crate defaults; passes | boot: `OpenSession("NodeTableFull")`; `declarative_bridge_zenoh_to_cyclonedds` ×2 and `rmw_coordinate_truth` fail |
+| `bridge-xrce` linux (`workspace-rust-native-bridge-xrce`) | `max_cbs 1`, `nodes 1` | crate defaults; passes | no node registration; `declarative_bridge_zenoh_to_xrce` fails |
+
+The other 65 linux images that moved from refused to derived passed in the lane
+above. These include `rmw_coordinate_truth`, which boots every generated
+linux entry and checks node registration. Among them: rust, c and mixed
+`linux`/service/action/robot rows; `features` ×22; `safety` ×6; `managed`;
+`realtime-{c,cpp,rust}`; `sizing` (`max_cbs 6`); `launch`; cpp robot1/2.
+
+*Why the bridge fails.* A `[[bridge]]` is not a component. The runtime creates
+its nodes and endpoints from `system.toml`, so no probe sees them. That is a
+blocker under the plan's rule: an image that fails derived and passes default.
+It is not lazy registration. The static search found no `create_*` call reached
+from a callback in any model-road component, so no contract row was added.
+
+*Also found.* The cmake configure keys metadata rows by `exec` and probe rows by
+node name. A renamed node (`realtime-c`, `realtime-cpp`) therefore refused at
+configure while the resolve phase derived. The branch covers this.
+
+*Not run.* No embedded platform ran. The linux blocker stopped the plan first.
+
+**Next:** issue 2076. Count a bridge's nodes and endpoints in the model's frame,
+or refuse the probe arm for an image that declares a bridge. Then re-run this
+evidence, embedded lanes included, before anything lands. Until then the first
+project keeps its configured pool knobs.
+
 ### W6 — build by board, and print the platform's next command (M)
 
 * `nros build --board <b>` builds the image(s) whose board resolves to `<b>`
