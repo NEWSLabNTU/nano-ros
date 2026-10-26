@@ -92,9 +92,8 @@ pub(crate) fn descriptor_subscriptions(
     if desc.meta.basis != Basis::Contract {
         return None;
     }
-    if desc.meta.undeclared_endpoints().get().is_none() {
-        return None;
-    }
+    // Known, whatever its value (see the guard list above).
+    desc.meta.undeclared_endpoints().get()?;
     let rows: Vec<SubEndpoint> = desc
         .endpoints
         .iter()
