@@ -96,6 +96,10 @@ enum Scenario {
     /// zenoh: drive an nros lifecycle node through the REP-2002 service
     /// surface via `ros2 lifecycle …` (`ros2_lifecycle_interop.rs`).
     ZenohLifecycle,
+    /// zenoh: a `ros2 topic pub` flood → router → nano listener, with and
+    /// without the `downsampling` rule the listener's declared ingress lowers
+    /// to (phase-516 W1c, RFC-0074 enforcement point 1).
+    ZenohRouterDownsampling,
 }
 
 impl Scenario {
@@ -129,9 +133,10 @@ impl Scenario {
 fn scenario_coord(s: Scenario) -> (PlatformId, Lang, Rmw, Workload) {
     use Scenario::*;
     let (lang, rmw, workload) = match s {
-        ZenohPubsubNanoToRos2 | ZenohPubsubRos2ToNano | ZenohPubsubStockDemoToNano => {
-            (Lang::Rust, Rmw::Zenoh, Workload::Pubsub)
-        }
+        ZenohPubsubNanoToRos2
+        | ZenohPubsubRos2ToNano
+        | ZenohPubsubStockDemoToNano
+        | ZenohRouterDownsampling => (Lang::Rust, Rmw::Zenoh, Workload::Pubsub),
         ZenohServiceNanoServer | ZenohServiceRos2Server => {
             (Lang::Rust, Rmw::Zenoh, Workload::Service)
         }
@@ -244,6 +249,94 @@ fn poll_ros2_until(locator: &str, subcommand: &str, marker: &str, timeout: Durat
     last
 }
 
+/// phase-516 W1c — the subscriber's declared ingress rate, the flood rate
+/// that exceeds it tenfold, and the window the listener is counted over once
+/// the first sample lands.
+const INGRESS_RATE_HZ: u32 = 20;
+const FLOOD_RATE_HZ: u32 = 200;
+const COUNT_WINDOW: Duration = Duration::from_secs(6);
+
+/// The router override a listener declaring `ingress: { rate_hz:
+/// INGRESS_RATE_HZ }` on `TOPIC` lowers to — produced the way `nros sync` and
+/// `nros ws router-config` produce it: the model and its bringup on disk,
+/// [`router_rule::write_beside`], then the override read back from the
+/// written artifact.
+fn ingress_router_override() -> String {
+    use nros_orchestration_ir::router_rule;
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::write(
+        dir.path().join("system.toml"),
+        "[system]\nname = \"ingress_cell\"\nrmw = \"zenoh\"\ndomain_id = 0\n",
+    )
+    .expect("write system.toml");
+    let model = dir.path().join("system.yaml");
+    std::fs::write(
+        &model,
+        format!(
+            "meta: {{ version: 1 }}\n\
+             structure:\n  topics:\n    {TOPIC}:\n      type: {STRING_MSG}\n      \
+             sub: [/listener/chatter]\n\
+             contracts:\n  sub_endpoints:\n    /listener/chatter:\n      \
+             ingress: {{ rate_hz: {INGRESS_RATE_HZ}, burst: 4 }}\n"
+        ),
+    )
+    .expect("write model");
+    // The CLI's answer to "which RMWs cross the router" (`write_beside_model`).
+    let routed = |rmw: Option<&str>| rmw.is_none_or(|r| r.is_empty() || r == "zenoh");
+    let artifact = router_rule::write_beside(&model, dir.path(), &routed)
+        .expect("lower the declared ingress")
+        .expect("a declared ingress on a zenoh bringup writes a rule");
+    let text = std::fs::read_to_string(&artifact).expect("read router rule");
+    router_rule::config_override_from_artifact(&text).expect("artifact parses")
+}
+
+/// Flood `TOPIC` at `FLOOD_RATE_HZ` through `router` into a nano listener and
+/// count what the listener received over `COUNT_WINDOW` after its first sample.
+fn flood_count(router: &ZenohRouter, note: &str) -> usize {
+    let locator = router.locator();
+    // The rule's keyexpr names domain 0, the domain the ros2 peer
+    // environment (`ros2_env_setup_with_locator`) chooses and the one every
+    // zenoh cell here shares with it.
+    let mut listener = spawn_nano_zenoh(&listener_binary(), "native-rs-listener", &locator);
+    listener
+        .wait_for_output_pattern(output::LISTENER_READY_MARKER, Duration::from_secs(5))
+        .expect("nros listener did not become ready");
+    let mut ros2 = match Ros2Process::topic_pub(
+        TOPIC,
+        STRING_MSG,
+        "{data: 'flood'}",
+        FLOOD_RATE_HZ,
+        &locator,
+        DEFAULT_ROS_DISTRO,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            listener.kill();
+            unmet!("ROS 2 publisher could not start: {e}");
+        }
+    };
+    // #146 — rmw_zenoh pub → zenoh-pico sub discovery is ~10 s.
+    let (_, first) =
+        listener.collect_until_count(output::LISTENER_LOG_PREFIX, 1, Duration::from_secs(25));
+    if let Some(why) = first {
+        ros2.kill();
+        listener.kill();
+        panic!("the flood never reached the nano listener ({note}){why}");
+    }
+    // A terminal drain: it kills the listener at the window's end.
+    let out = match listener.wait_for_output(COUNT_WINDOW) {
+        Ok(out) => out,
+        Err(e) => {
+            ros2.kill();
+            panic!(
+                "the listener printed nothing in the {COUNT_WINDOW:?} count window ({note}): {e}"
+            );
+        }
+    };
+    ros2.kill();
+    count_pattern(&out, output::LISTENER_LOG_PREFIX)
+}
+
 // =============================================================================
 // The parametrized matrix consumer
 // =============================================================================
@@ -300,6 +393,12 @@ fn poll_ros2_until(locator: &str, subcommand: &str, marker: &str, timeout: Durat
            (nodes/get/list + set configure→activate→deactivate→cleanup) against an \
            nros lifecycle node, asserting each transition, its on_* callback, and \
            the resulting state",
+})]
+#[case::zenoh_pubsub_router_downsampling(Cell {
+    scenario: Scenario::ZenohRouterDownsampling,
+    note: "phase-516 W1c: the router rule a declared `ingress` lowers to drops a \
+           ros2 flood to the declared rate before the nano subscriber decodes it; \
+           the same flood without the rule is the negative control",
 })]
 fn interop(#[case] cell: Cell) {
     // Issue 0352 / phase-324 W4.d — per-case binding: the coordinate this case
@@ -411,6 +510,53 @@ fn interop(#[case] cell: Cell) {
                 out.contains("Hello World: 42"),
                 "ROS 2 → nros data integrity: payload 'Hello World: 42' missing ({}).\n\
                  nros output:\n{out}",
+                cell.note
+            );
+        }
+
+        // ── zenoh router downsampling: ros2 flood → router rule → nano ────
+        Scenario::ZenohRouterDownsampling => {
+            let window = COUNT_WINDOW.as_secs_f64();
+            let cap = f64::from(INGRESS_RATE_HZ) * window;
+
+            // Negative control first: the same flood, no rule.
+            let bare = start_zenoh_router();
+            let uncapped = flood_count(&bare, cell.note);
+            drop(bare);
+            assert!(
+                uncapped as f64 > 3.0 * cap,
+                "negative control: without the rule the listener received {uncapped} \
+                 samples in {window} s, not clearly above the {INGRESS_RATE_HZ} Hz cap \
+                 ({cap} samples) — the flood is too slow to show the rule ({})",
+                cell.note
+            );
+
+            let rule = ingress_router_override();
+            let router =
+                ZenohRouter::start_unique_with_overrides(std::slice::from_ref(&rule), "zenoh=info")
+                    .unwrap_or_else(|e| unmet!("zenohd failed to start with the rule: {e}"));
+            let capped = flood_count(&router, cell.note);
+            let log = std::fs::read_to_string(router.log_path()).unwrap_or_default();
+            let launch = router.launch_line().to_string();
+            drop(router);
+            // The upper bound is the rule; the lower bound proves it PACES
+            // rather than blocks (a rule matching nothing reads as the control,
+            // a rule matching everything as zero).
+            assert!(
+                capped as f64 <= 1.25 * cap + 5.0 && capped as f64 >= 0.5 * cap,
+                "with the rule the listener received {capped} samples in {window} s; the \
+                 declared {INGRESS_RATE_HZ} Hz allows ~{cap} (control: {uncapped}) ({}).\n\
+                 Router: {launch}",
+                cell.note
+            );
+            eprintln!(
+                "router downsampling: {capped} samples in {window} s with the rule, \
+                 {uncapped} without (declared {INGRESS_RATE_HZ} Hz, flood {FLOOD_RATE_HZ} Hz)"
+            );
+            assert!(
+                log.contains("dropped by the downsampling interceptor"),
+                "the router never logged a downsampling drop, so the excess was not shed \
+                 there ({}).\nRouter: {launch}\nRouter log:\n{log}",
                 cell.note
             );
         }

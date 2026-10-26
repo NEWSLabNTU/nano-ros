@@ -21,7 +21,7 @@ here ends in a fix or in an explicit `wontfix`.
 
 ## Work items
 
-### W1 — the router `downsampling` rule ([issue 0506](../issues/0506-transport-band-unbounded-preemption.md))
+### W1 — the router `downsampling` rule ([issue 0506](../issues/archived/0506-transport-band-unbounded-preemption.md))
 
 The device-side half of the ingress budget landed in phase-462. What is left is
 RFC-0074's enforcement point 1: a router `downsampling` rule the resolver emits
@@ -53,12 +53,15 @@ topic take the lowest rate. Split:
       router logged its drop line. Both host nodes had to be in CLIENT mode:
       in rmw_zenoh's default peer mode they linked directly and the rule saw
       nothing (500 Hz with it).
-- [ ] **W1c — the cell.** Native Linux, a nano-ros subscriber: a host
-      publisher floods a topic far above the subscriber's declared `rate_hz`;
-      with the generated override the subscriber's received rate is at most
-      the declared rate and the router logs the downsampling drop line;
-      without it (negative control) the excess arrives. Needs a public
-      extra-override entry on the `ZenohRouter` fixture.
+- [x] **W1c — the cell.** `interop_e2e`'s `zenoh_pubsub_router_downsampling`
+      (Linux, Rust, Zenoh, Pubsub — an existing `interop::CELLS` coordinate):
+      the rule is lowered the way `nros sync` lowers it (model + `system.toml`
+      on disk, `router_rule::write_beside`, override read back from the
+      artifact) and handed to the router through the new
+      `ZenohRouter::start_unique_with_overrides`. A 200 Hz `ros2 topic pub` to
+      the native listener declared at 20 Hz: 113-114 samples in 6 s with the
+      rule (cap 120) and the router's drop line logged, 1199-1200 without, over
+      three runs; with the rule removed the cell is red. Closes issue 0506.
 - [ ] **W1d — a stated interface.** An `[image.<id>]` deployment fact that
       lowers to the rule's `interfaces`, for a router that is not an edge
       router. Never inferred.
@@ -159,7 +162,7 @@ quantization warning. Issue 2050 resolved.
 
 | Issue | Item | Severity |
 | --- | --- | --- |
-| [0506](../issues/0506-transport-band-unbounded-preemption.md) | W1 | unrated |
+| [0506](../issues/archived/0506-transport-band-unbounded-preemption.md) | W1 | unrated |
 | [1091](../issues/archived/1091-ledger-shards-conflict-on-sorted-key-insert.md) | W2 | unrated |
 | [1205](../issues/archived/1205-doc-commit-citations-local-fetch-state.md) | W3 | unrated |
 | [1808](../issues/archived/1808-sizing-knobs-with-no-static-derivation.md) | W4 | low |

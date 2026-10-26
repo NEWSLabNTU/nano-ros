@@ -7,7 +7,7 @@ doc. What it has left (issue 0259's inputs, and re-checking the W1/W2
 follow-ups) needs no ordering against anything here. The units outside this
 repository (play_launch phase 78, rlm design issue #52, the island's phase 5)
 are tracked in their own repositories. The one issue homed here,
-[#0506](../../issues/0506-transport-band-unbounded-preemption.md), is now
+[#0506](../../issues/archived/0506-transport-band-unbounded-preemption.md), is now
 "Home: none", because no phase owns router-side lowering, and the section at
 the end says so. The table below is the state at archiving:
 
@@ -189,7 +189,7 @@ reason.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0506](../../issues/0506-transport-band-unbounded-preemption.md) | Re-homed from phase-462 when it archived. Its device side landed there (the `ingress` declaration, the read-task budget, its derivation, the per-board frame cost); what remains is RFC-0074's router `downsampling` rule, a contract term the resolver would lower into the ROUTER's config. No phase owns router-side lowering yet. |
+| [#0506](../../issues/archived/0506-transport-band-unbounded-preemption.md) | Re-homed from phase-462 when it archived. Its device side landed there (the `ingress` declaration, the read-task budget, its derivation, the per-board frame cost); what remains is RFC-0074's router `downsampling` rule, a contract term the resolver would lower into the ROUTER's config. No phase owns router-side lowering yet. |
 
 ## Not in this program
 

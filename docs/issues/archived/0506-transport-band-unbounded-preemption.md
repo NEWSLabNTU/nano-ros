@@ -1,13 +1,14 @@
 ---
 id: 506
 title: "Transport tasks above application tiers is the right default but has no budget — inbound overload preempts every tier for ~200 ms bursts"
-status: open
+status: resolved
 type: enhancement
 area: embedded
+resolved: 2026-10-26
 related: [issue-0505, phase-462, phase-464, rfc-0074, 1948, 1949, phase-516]
 ---
 
-**Home: [phase-516](../roadmap/phase-516-low-severity-issues-with-no-home.md) W1** since 2026-10-25. Before that, no home from 2026-10-24, when [phase-464](../roadmap/archived/phase-464-contract-chain-program.md) (an umbrella owning no code) was archived. What is left is RFC-0074's router `downsampling` rule, a contract term the resolver would lower into the ROUTER's config, and no phase owns router-side lowering yet. Before that, homed at phase-464 from 2026-10-18 (re-homed from [phase-462](../roadmap/archived/phase-462-safety-vocabulary-on-target.md), archived with every wave landed), and before that at phase-358.
+**Resolved 2026-10-26 by [phase-516](../../roadmap/phase-516-low-severity-issues-with-no-home.md) W1** — see the last section. **Home: [phase-516](../../roadmap/phase-516-low-severity-issues-with-no-home.md) W1** since 2026-10-25. Before that, no home from 2026-10-24, when [phase-464](../../roadmap/archived/phase-464-contract-chain-program.md) (an umbrella owning no code) was archived. What is left is RFC-0074's router `downsampling` rule, a contract term the resolver would lower into the ROUTER's config, and no phase owns router-side lowering yet. Before that, homed at phase-464 from 2026-10-18 (re-homed from [phase-462](../../roadmap/archived/phase-462-safety-vocabulary-on-target.md), archived with every wave landed), and before that at phase-358.
 
 ## Problem
 
@@ -993,3 +994,31 @@ rule** — the only mechanism measured to save the device's CPU rather than
 bound it. Nothing in the tree emits one (`git grep downsampling -- packages
 scripts` is empty). It is a resolver output deployed with the router config,
 so it is not a device change, and it is the reason this issue stays open.
+
+## 2026-10-26 — resolved: the router rule is emitted and measured
+
+Phase-516 W1 landed RFC-0074's enforcement point 1 (design: RFC-0074 "As
+lowered").
+
+* **The resolver emits it.** `nros sync` writes `<model-stem>.router.json5`
+  beside every resolved model whose subscribers declare an `ingress`: one zenoh
+  `downsampling` item, a rule per (topic, domain) on the subscriber wildcard
+  `<domain>/<topic>/<dds type>/*`, `freq` = the lowest declared rate on the
+  topic (`nros_orchestration_ir::router_rule`). `nros ws router-config --model
+  <path>` prints it as the `ZENOH_CONFIG_OVERRIDE` entry `rmw_zenohd` reads, and
+  `just <platform>::zenohd <model>` runs it.
+* **The cell shows the router shedding before the device decodes.**
+  `interop_e2e`'s `zenoh_pubsub_router_downsampling`: a 200 Hz `ros2 topic pub`
+  through `rmw_zenohd` to the native nano-ros listener declared at 20 Hz. With
+  the generated rule the listener received 113-114 samples in 6 s (cap 120) and
+  the router logged `Some message(s) have been dropped by the downsampling
+  interceptor`; without it, 1199-1200 (three runs each). Removing the rule from
+  the second router turns the cell red (1199 against the 120 cap).
+
+Two limits are properties of zenoh's interceptor, recorded in the RFC rather
+than left open here: the router carries the rate at burst 1 (the device budget
+still compiles the burst), and a rule cannot select one peer, so the default is
+untargeted and the deployment answer is an edge router per device. The
+remaining phase-516 W1 items — a stated `interfaces` selector (W1d) and an
+upstream token-bucket request (W1e) — refine the rule; neither is needed for
+the router to save the device's CPU.
