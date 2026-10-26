@@ -339,9 +339,9 @@ pub use nros_core::heapless;
 // sweep — the helper had no live callers after the BSP baker + macro
 // extern emit were deleted.)
 pub use node::{
-    Callback, CallbackCtx, EntityBounds, NodeActionClient, NodeActionServer, NodeDeclError,
-    NodeOptions, NodeParameter, NodePublisher, NodeResult, NodeRuntime, NodeServiceClient,
-    NodeServiceServer, NodeSubscription, NodeTimer, TickCtx,
+    Callback, CallbackCtx, EntityBounds, IntoNodeOptions, NodeActionClient, NodeActionServer,
+    NodeDeclError, NodeOptions, NodeParameter, NodePublisher, NodeResult, NodeRuntime,
+    NodeServiceClient, NodeServiceServer, NodeSubscription, NodeTimer, TickCtx,
 };
 // phase-483 W3 — the component API registers into a live executor, so it
 // exists where the executor does.
@@ -1575,9 +1575,9 @@ pub mod prelude {
     pub use crate::{Component, DeclarativeNode, NodeContext};
     #[cfg(feature = "alloc")]
     pub use crate::{
-        NodeActionClient, NodeActionServer, NodeDeclError, NodeOptions, NodeParameter,
-        NodePublisher, NodeResult, NodeServiceClient, NodeServiceServer, NodeSubscription,
-        NodeTimer, ParameterDefault, node,
+        NodeActionClient, NodeActionServer, NodeDeclError, NodeParameter, NodePublisher,
+        NodeResult, NodeServiceClient, NodeServiceServer, NodeSubscription, NodeTimer,
+        ParameterDefault, node,
     };
     pub use crate::{
         log_debug, log_error, log_fatal, log_info, log_warn, nros_debug_throttle,
@@ -1585,6 +1585,9 @@ pub mod prelude {
         nros_fatal_throttle_at, nros_info_throttle, nros_info_throttle_at, nros_warn_throttle,
         nros_warn_throttle_at,
     };
+
+    // phase-515 R2 -- `executor.create_node("talker".namespace("/ns"))`.
+    pub use crate::{IntoNodeOptions, NodeOptions};
 
     // Re-export lifecycle types
     pub use crate::{

@@ -1,0 +1,7 @@
+{
+  "key": "rust:IntoNodeOptions::arguments",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's `IntoNodeOptions::arguments` -- node-scoped command-line arguments (`--ros-args` remaps, parameter overrides). Remaps and parameters are resolved at build time from `system.toml` and the launch file (RFC-0045), and the image carries no argv to parse per node. Absent, so a call is a compile error (`no method named `arguments``); the envelope on `rust:IntoNodeOptions` states the bound. phase-515 R2 (2026-10-27): rows filed when `IntoNodeOptions` itself was adopted, which made its members correlate."
+}

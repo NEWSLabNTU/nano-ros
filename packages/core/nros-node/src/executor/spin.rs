@@ -6362,18 +6362,48 @@ impl<'s> Executor<'s> {
     /// bound doing its job: a node the executor does not know about cannot
     /// carry a sched context, a QoS override, or a graph identity. Repeated
     /// calls with the SAME name are free.
-    pub fn create_node(&mut self, name: &str) -> Result<super::node::Node<'_, 's>, NodeError> {
+    ///
+    /// phase-515 R2 -- takes rclrs's `impl IntoNodeOptions`: a bare name
+    /// (`create_node("talker")`) or a [`NodeOptions`](crate::NodeOptions)
+    /// (`create_node("talker".namespace("/robot"))`). Here the options'
+    /// DEFAULTS mean "the executor's": namespace `/` places the node in the
+    /// executor's own namespace and domain `0` on its own session, as a bare
+    /// name always did. A non-default value is applied, so an explicit `/`
+    /// under an executor configured with another namespace, or an explicit
+    /// domain 0 under another domain, is not expressible here; open a node on
+    /// another domain with [`create_node_on_with_domain`](Self::create_node_on_with_domain).
+    pub fn create_node<'o>(
+        &mut self,
+        options: impl crate::IntoNodeOptions<'o>,
+    ) -> Result<super::node::Node<'_, 's>, NodeError> {
+        let options = options.into_node_options();
+        let name = options.name;
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
         }
-        // Dedup against the executor's own namespace, which is the namespace
-        // `node_builder` gives a node when none is named. phase-483 W2: this
-        // returns THE node type (`Node`, re-exported as `nros::Node`), the
-        // same handle `node_mut` gives a component, where it used to return a
-        // session-borrowing `NodeHandle` with a different method set.
-        let id = match self.node_id_by_name(name, self.namespace.clone().as_str()) {
+        let namespace = (options.namespace != "/").then_some(options.namespace);
+        // Dedup against the namespace the node lands in -- the executor's
+        // own when none is named, which is what `node_builder` gives it.
+        // phase-483 W2: this returns THE node type (`Node`, re-exported as
+        // `nros::Node`), the same handle `node_mut` gives a component, where
+        // it used to return a session-borrowing `NodeHandle` with a different
+        // method set.
+        let lookup_ns = match namespace {
+            Some(ns) => heapless::String::<64>::try_from(ns).map_err(|_| NodeError::NameTooLong)?,
+            None => self.namespace.clone(),
+        };
+        let id = match self.node_id_by_name(name, lookup_ns.as_str()) {
             Some(id) => id,
-            None => self.node_builder(name).build()?,
+            None => {
+                let mut builder = self.node_builder(name);
+                if let Some(ns) = namespace {
+                    builder = builder.namespace(ns);
+                }
+                if options.domain_id != 0 {
+                    builder = builder.domain_id(options.domain_id);
+                }
+                builder.build()?
+            }
         };
         Ok(super::node::Node::new(self, id))
     }

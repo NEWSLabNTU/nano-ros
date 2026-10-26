@@ -1,0 +1,7 @@
+{
+  "key": "rust:IntoNodeOptions::clock_type",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's `IntoNodeOptions::clock_type` -- picks the node's clock (system / steady / ROS time). The clock is the platform port's and sim-time a build feature (`sim-time`), set per image, not per node. Absent, so a call is a compile error (`no method named `clock_type``); the envelope on `rust:IntoNodeOptions` states the bound. phase-515 R2 (2026-10-27): rows filed when `IntoNodeOptions` itself was adopted, which made its members correlate."
+}

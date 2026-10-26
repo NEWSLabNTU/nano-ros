@@ -110,6 +110,7 @@ pub mod lifecycle;
 pub mod limits;
 pub mod names;
 mod node;
+mod node_options;
 mod publisher;
 pub mod ros_args;
 #[cfg(any(has_rmw, test))]
@@ -256,6 +257,9 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator};
 
 // Re-export publisher/subscriber options (topic + QoS; backend-agnostic).
 pub use node::{PublisherOptions, SubscriptionOptions};
+
+/// phase-515 R2 -- rclrs's node options and `IntoNodeOptions`.
+pub use node_options::{IntoNodeOptions, NodeOptions};
 
 // Re-export session mode (used by ExecutorConfig)
 pub use nros_rmw::SessionMode;
