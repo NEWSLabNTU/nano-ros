@@ -7,7 +7,7 @@ area: [executor, codegen, memory]
 severity: low
 found: 2026-10-25
 resolved: 2026-10-26
-resolved_in: "fix/2041-level-arena (nros-node arena model, nros-build-helpers size probe)"
+resolved_in: "PR #2678 (nros-node arena model, nros-build-helpers size probe)"
 related: [phase-509, rfc-0108, 2019, 2040]
 ---
 
