@@ -1,12 +1,13 @@
 ---
 id: 2064
 title: "An installed `nros build` of a NuttX C image fails: the sizes probe returns 0"
-status: open
+status: resolved
 type: bug
 area: [nuttx, build, installed-sdk]
 severity: high
 found: 2026-10-26
-related: [phase-517, RFC-0099, issue-0472, issue-0665]
+resolved: 2026-10-26
+related: [phase-517, RFC-0099, issue-0472, issue-0665, issue-2068]
 ---
 
 ## What
@@ -72,3 +73,36 @@ them as a step; the setup plan should ask for them as it does a tool's
 
 `just probe nuttx-arm` and `just probe nuttx-riscv` print the chapter's
 documented `my_app: published 0 on /chatter` and pass.
+
+## Resolution (2026-10-26)
+
+Two faults, the second hidden behind the first.
+
+**1. The probe read a bitcode rlib with no `llvm-nm`.** `nros-minsizerel` (every
+NuttX image) is fat LTO, so the probe's nested `nros` build emitted LLVM
+bitcode members (`BC\xC0\xDE`, measured in the container). The `object`
+reader skips bitcode; the only fallback is rustc's `llvm-nm`, from the
+`llvm-tools` component — on a contributor host, not under an installed SDK's
+nightly (measured: absent from its rustlib `bin/`). `extract_sizes` then
+returned an EMPTY map, read as size 0. The leads above were half right: LTO,
+not a checkout path — the patched `libc` was found.
+
+Fix (`nros-sizes-build`): the probe's isolated build passes
+`--config profile.<p>.lto="off"` (LTO does not change `size_of`; the image
+keeps its profile), and an unreadable bitcode rlib is an error naming
+`llvm-tools` rather than an empty map.
+
+**2. The image dialled the wrong network.** With the build fixed, both images
+booted silent: the cmake entry locator baked `tcp/192.0.3.1:7447` on QEMU's
+10.0.2.0/24. `_nros_resolve_entry_locator` asks `nros board net` for the
+board's gateway, which ignored `stack = "os"` and answered the platform
+default, while the board crate read `CONFIG_NETINIT_*` from its defconfig
+(10.0.2.2). Every in-tree NuttX fixture row passes `-DNROS_ENTRY_LOCATOR`, so
+the default rung never ran. Fix: `[board.net] kernel_config` names the
+defconfig, `board_net::resolve` reads it with the build script's own
+`from_kconfig`, and a test holds the two equal.
+
+Measured: `just probe nuttx-arm` and `just probe nuttx-riscv` PASS on an
+asset built from the fix, each printing `my_app: published 0 on /chatter`.
+
+The `nros setup` host-tool gap ("Also seen") is issue 2068.

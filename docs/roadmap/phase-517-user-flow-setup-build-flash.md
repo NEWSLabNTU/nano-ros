@@ -1,6 +1,6 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-26). Open; W5 in review (PR #2644); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, with NuttX red on issue 2064 — each work item records what landed.** Opened from a gap audit of the
+**Status (2026-10-26). Open; W5 in review (PR #2644); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
@@ -217,7 +217,7 @@ checkout fallback — the chapter says what is missing instead):
   scaffold and to plan (`nros build <image> --dry-run`), not built or booted.
   → **Replayed (W10, 2026-10-26):** bare-metal, FreeRTOS, ThreadX (both
   flavours) and Zephyr native_sim run green on the installed track; NuttX
-  builds its kernel and stops at issue 2064.
+  (both boards) too, since issue 2064 was fixed.
 * **`integrations/` reaches users only from the next release.** `0.6.0-nros4`
   predates the staging change, so `$(nros sdk-root)/integrations/…`
   (`integration-px4.md`, `px4.md`, `integration-nuttx.md`) is empty there; the
@@ -742,9 +742,9 @@ CLI is the side to fix):
   track and print the output their chapters now show, and the chapters'
   `ros2 topic echo` lines deliver. The `-icount shift=auto -nic
   user,model=lan9118` line is measured on both MPS2-AN385 chapters. The NuttX
-  QEMU lines are not reached (the build stops at issue 2064), so they — with
-  the FVP, SITL, flash, and the C/C++ "same flags, its own ELF" alternatives the
-  tracks do not take — stay unverified.
+  QEMU lines boot on the installed track too (issue 2064, fixed). The FVP,
+  SITL and flash lines, and the C/C++ "same flags, its own ELF" alternatives
+  the tracks do not take, stay unverified.
 * ARM FVP: the spec asked for "license-gated; say so". It is not
   licence-gated (index `[tool.arm-fvp]`, measured 2026-09-06); the chapter
   says so instead.
@@ -772,7 +772,7 @@ them, and a planted wrong command in one chapter fails its track.
 
 **Status (2026-10-26) — harness, recipes, weekly lane and gate landed; six of
 eight tracks GREEN — Linux, bare-metal, FreeRTOS, ThreadX (both flavours) and
-Zephyr native_sim — and both NuttX tracks red on issue 2064.** Every number
+Zephyr native_sim; both NuttX tracks went green after issue 2064 was fixed.** Every number
 below is a run of the track on the installed asset this branch builds, in a
 clean `ros:humble` container (the chapters' router is ROS's `rmw_zenohd`);
 the last sweep ran all eight in parallel.
@@ -813,7 +813,7 @@ later; its self-test is a run step stripped of its output block.
 | `freertos` | GREEN, 313 s | Rust workspace image: `[INFO] Publishing: 0` / `[INFO] I heard: 0` …; `ros2 topic echo … Int32` delivers |
 | `threadx-linux` | GREEN, 123 s solo | `Publishing: 0` / `I heard: 0` from the host process. Red ONCE in the 8-way sweep: `zpico Session -> ConnectionFailed` 0.13 s after the router printed its start line, and this image opens its session once rather than retrying as the QEMU boards do; green solo before and after |
 | `threadx-riscv64` | GREEN, 314 s | QEMU riscv64 prints both sides; `ros2 topic echo` delivers |
-| `nuttx-arm`, `nuttx-riscv` | RED | kernel builds; `nros-c` then fails its opaque-size guard because the sizes probe returns 0 on an installed SDK — issue 2064 |
+| `nuttx-arm`, `nuttx-riscv` | GREEN (2026-10-26, after issue 2064) | was RED: the sizes probe read a fat-LTO bitcode rlib with no `llvm-nm`, then the image dialled `192.0.3.1` on QEMU's 10.0.2.0/24 — both fixed |
 | `zephyr` (native_sim) | GREEN, 599 s | Zephyr SDK (1.4 GiB) + a 3.7 west workspace + `west build` of `nros new --platform zephyr --lang c`; `zephyr.exe` prints `Published: 0`/`1`/`2` against the router |
 
 *A planted wrong command fails its track.* `bare-metal.md`'s QEMU line with
@@ -865,8 +865,8 @@ and SEGFAULTED at boot; and the Zephyr module's cargo build now resolves
 reader's own `west build` ran in a shell with no `~/.cargo/bin` and died
 `FileNotFoundError: … 'cargo'`.
 
-**Left:** NuttX, both boards (issue 2064 — the kernel builds, then `nros-c`'s
-opaque-size guard refuses a sizes probe that returned 0 on an installed SDK).
+**Left:** `nros setup` for a NuttX board still does not ask for
+`python3-venv` / `unzip` (issue 2068; the chapter names them as a step).
 `threadx-linux`'s one-shot session open is a race against a router started
 seconds earlier (a user's second terminal) that the QEMU boards' retry hides —
 recorded, not fixed. The tracks probe one road per chapter (the Rust workspace
