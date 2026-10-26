@@ -1508,13 +1508,26 @@ fn take_reporting_drop(
 
 #[cold]
 fn report_dropped_take(err: &TransportError, buf_len: usize, recorded: Option<usize>) {
-    let needed = nros_rmw::RefusedLen::for_error(err, recorded);
     let n = DROPPED_TAKES.fetch_add(1, portable_atomic::Ordering::Relaxed);
-    // First, then every 64th. A 40-participant graph must not turn one
-    // misconfigured subscription into a log flood (issue 0371's shape).
-    if n != 0 && !n.is_multiple_of(64) {
-        return;
+    if drop_is_reported(n) {
+        log_dropped_take(err, buf_len, recorded, n);
     }
+}
+
+/// First, then every 64th. A 40-participant graph must not turn one
+/// misconfigured subscription into a log flood (issue 0371's shape).
+///
+/// Apart from [`report_dropped_take`] so a test asks it with a count of its
+/// own, never through [`DROPPED_TAKES`], which every cell in the binary that
+/// drops a take advances (issue 2082).
+fn drop_is_reported(n: u32) -> bool {
+    n == 0 || n.is_multiple_of(64)
+}
+
+/// The line for drop number `n + 1`, unconditionally.
+#[cold]
+fn log_dropped_take(err: &TransportError, buf_len: usize, recorded: Option<usize>, n: u32) {
+    let needed = nros_rmw::RefusedLen::for_error(err, recorded);
     nros_log::log_error!(
         nros_log::get_logger("nros"),
         "subscription take DROPPED ({err:?}): {needed}-byte sample, {buf_len}-byte \
@@ -4909,10 +4922,11 @@ mod handle_offset_tests {
 /// beside the buffer, as the C++ one has since issue 1612.
 ///
 /// The sink keeps what was logged, so the test reads what a human would see.
-/// Process-global counter and sink, so the cells serialise and reset.
+/// The sink is process-global, so the cells serialise; the drop counter is
+/// never touched, since other cells advance it too (issue 2082).
 #[cfg(test)]
 mod dropped_take_log_tests {
-    use super::{DROPPED_TAKES, report_dropped_take};
+    use super::{drop_is_reported, log_dropped_take};
     use nros_rmw::TransportError;
 
     struct CapturingSink {
@@ -4933,6 +4947,9 @@ mod dropped_take_log_tests {
     static CAPTURE: std::sync::OnceLock<&'static CapturingSink> = std::sync::OnceLock::new();
     static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+    /// The line this call logged. The sink is process-global, so another
+    /// cell's drop may land beside it; `cap` picks this call's line out, and
+    /// each call site passes a buffer size no other cell uses (issue 2082).
     fn logged_one(err: TransportError, cap: usize, recorded: Option<usize>) -> std::string::String {
         let _g = SERIAL
             .lock()
@@ -4945,34 +4962,33 @@ mod dropped_take_log_tests {
             assert!(nros_log::add_sink(sink), "no sink slot left");
             sink
         });
-        let lines = || {
+        let marker = std::format!("{cap}-byte buffer");
+        let mine = || -> std::vec::Vec<std::string::String> {
             sink.lines
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
-                .clone()
+                .iter()
+                .filter(|l| l.contains(&marker))
+                .cloned()
+                .collect()
         };
         sink.lines
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clear();
-        // The FIRST drop is always reported; a cell that inherited another
-        // cell's count would be asserting about drop number N instead. Reset
-        // inside the emit, because a record nros_log lost is raised again and
-        // must again be drop number one.
+        // A record nros_log lost to its hold queue (issue 2000) is raised
+        // again. Always as drop number one, never through DROPPED_TAKES.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         let seen = nros_log::early::emit_until_delivered(
-            || {
-                DROPPED_TAKES.store(0, portable_atomic::Ordering::Relaxed);
-                report_dropped_take(&err, cap, recorded);
-            },
-            || !lines().is_empty(),
+            || log_dropped_take(&err, cap, recorded, 0),
+            || !mine().is_empty(),
             || {
                 std::thread::yield_now();
                 std::time::Instant::now() < deadline
             },
         );
-        let lines = lines();
-        assert!(seen, "the first drop must be reported: {lines:?}");
+        let lines = mine();
+        assert!(seen, "no line for a {cap}-byte buffer: {lines:?}");
         // A re-raise can deliver the line twice; every copy is the same drop.
         assert!(
             lines.iter().all(|l| *l == lines[0]),
@@ -4983,21 +4999,31 @@ mod dropped_take_log_tests {
 
     #[test]
     fn the_drop_log_names_the_sample_size_beside_the_buffer() {
-        let line = logged_one(TransportError::BufferTooSmall, 16, Some(1000));
+        let line = logged_one(TransportError::BufferTooSmall, 4093, Some(1000));
         assert!(line.contains("1000-byte sample"), "no sample size: {line}");
-        assert!(line.contains("16-byte buffer"), "no buffer size: {line}");
+        assert!(line.contains("4093-byte buffer"), "no buffer size: {line}");
         // nros_log's buffer is all-or-nothing; the issue number is the tail.
         assert!(line.contains("(issue 0757)"), "truncated: {line}");
     }
 
     #[test]
     fn an_unknown_size_and_a_staging_refusal_print_as_unknown() {
-        let unknown = logged_one(TransportError::BufferTooSmall, 64, None);
+        let unknown = logged_one(TransportError::BufferTooSmall, 4091, None);
         assert!(unknown.contains("?-byte sample"), "{unknown}");
         // `MessageTooLarge` is the backend's staging buffer, refused before a
         // take measured anything: an earlier take's size must not be printed.
-        let staging = logged_one(TransportError::MessageTooLarge, 64, Some(1000));
+        let staging = logged_one(TransportError::MessageTooLarge, 4087, Some(1000));
         assert!(staging.contains("?-byte sample"), "{staging}");
         assert!(!staging.contains("1000"), "{staging}");
+    }
+
+    #[test]
+    fn the_first_drop_and_every_64th_are_reported() {
+        assert!(drop_is_reported(0));
+        assert!(!drop_is_reported(1));
+        assert!(!drop_is_reported(63));
+        assert!(drop_is_reported(64));
+        assert!(!drop_is_reported(65));
+        assert!(drop_is_reported(128));
     }
 }
