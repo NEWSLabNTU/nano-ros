@@ -14081,16 +14081,10 @@ impl<'s> Executor<'s> {
             lifecycle::LifecyclePollingNodeCtx,
             lifecycle_services::{
                 ChangeState, GetAvailableStates, GetAvailableTransitions, GetState,
-                LIFECYCLE_SERVICE_BUFFER_SIZE, LifecycleRuntimeState, LifecycleServiceServers,
+                LifecycleRuntimeState, LifecycleServiceServers,
             },
         };
         use nros_core::RosService;
-
-        type LcSrv<Svc> = super::handles::EmbeddedServiceServer<
-            Svc,
-            LIFECYCLE_SERVICE_BUFFER_SIZE,
-            LIFECYCLE_SERVICE_BUFFER_SIZE,
-        >;
 
         // Build the node FQN from namespace + node_name (same convention as
         // register_parameter_services).
@@ -14237,42 +14231,15 @@ impl<'s> Executor<'s> {
             crate::lifecycle_services::transition_event_qos(),
         )?;
 
-        let servers = LifecycleServiceServers::new(
-            LcSrv::<ChangeState> {
-                handle: cs_handle,
-                req_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
-            LcSrv::<GetState> {
-                handle: gs_handle,
-                req_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
-            LcSrv::<GetAvailableStates> {
-                handle: gas_handle,
-                req_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
-            LcSrv::<GetAvailableTransitions> {
-                handle: gat_handle,
-                req_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
-            LcSrv::<GetAvailableTransitions> {
-                handle: gtg_handle,
-                req_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; LIFECYCLE_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
-        );
+        // Issue 2070 -- built in their allocation, never on this frame.
+        let servers = LifecycleServiceServers::try_new_boxed([
+            cs_handle, gs_handle, gas_handle, gat_handle, gtg_handle,
+        ])
+        .ok_or(NodeError::Transport(TransportError::BadAlloc))?;
 
         self.lifecycle = Some(alloc::boxed::Box::new(LifecycleRuntimeState {
             state_machine: LifecyclePollingNodeCtx::new(),
-            services: alloc::boxed::Box::new(servers),
+            services: servers,
             transition_event: te_handle,
         }));
 
@@ -14690,6 +14657,29 @@ impl<'s> Executor<'s> {
             })
     }
 
+    /// Issue 2070 — does an argv override name this parameter? The cheap
+    /// question [`declare_parameter_on_ref`](Self::declare_parameter_on_ref)
+    /// asks before it enters the frame that types one.
+    #[cfg(not(feature = "alloc"))]
+    fn has_argv_param_override(&self, _node: super::node_record::NodeId, _name: &str) -> bool {
+        false
+    }
+
+    #[cfg(feature = "alloc")]
+    fn has_argv_param_override(&self, node: super::node_record::NodeId, name: &str) -> bool {
+        let Some(state) = self.params.as_deref() else {
+            return false;
+        };
+        if state.argv_overrides.is_empty() {
+            return false;
+        }
+        let node_name = self.node(node).map(|r| r.name.as_str()).unwrap_or("");
+        state
+            .argv_overrides
+            .iter()
+            .any(|o| o.name == name && o.node.as_deref().is_none_or(|n| n == node_name))
+    }
+
     /// The value a declaration of `name` on `node` should take — the last
     /// matching argv override, typed by `declared`, or `declared` itself — and
     /// whether an override was applied.
@@ -14779,13 +14769,59 @@ impl<'s> Executor<'s> {
         name: &str,
         value: nros_params::ParameterValue,
     ) -> bool {
+        self.declare_parameter_on_ref(node, name, &value)
+    }
+
+    /// [`declare_parameter_on`](Self::declare_parameter_on), borrowing the
+    /// value — issue 2070, and THE declare path the by-value spelling forwards
+    /// to. A `ParameterValue` is ~8 KiB at the default capacities, and moving
+    /// it through each frame of the declare path cost ~57 KiB of stack for one
+    /// `declare_parameter<double>` (aarch64; ~67 KiB on Cortex-M3). Borrowed,
+    /// it is copied once, into its slot.
+    #[must_use]
+    pub fn declare_parameter_on_ref(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: &nros_params::ParameterValue,
+    ) -> bool {
         self.ensure_parameter_store();
-        let (value, _) = self.apply_argv_param_override(node, name, value);
+        // The argv override is a hosted-edge input and rare; its frame (which
+        // holds the typed override) is entered only when one applies, so the
+        // common path carries no second value.
+        if self.has_argv_param_override(node, name) {
+            return self.declare_parameter_overridden(node, name, value);
+        }
+        self.declare_parameter_resolved(node, name, value)
+    }
+
+    /// Issue 2070 — the override branch of
+    /// [`declare_parameter_on_ref`](Self::declare_parameter_on_ref), in its
+    /// own frame.
+    #[inline(never)]
+    fn declare_parameter_overridden(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        declared: &nros_params::ParameterValue,
+    ) -> bool {
+        let (value, _) = self.apply_argv_param_override(node, name, declared.clone());
+        self.declare_parameter_resolved(node, name, &value)
+    }
+
+    /// The store write and the reserved-name hook, for a value whose argv
+    /// override has already been applied.
+    fn declare_parameter_resolved(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: &nros_params::ParameterValue,
+    ) -> bool {
         // phase-430 W2 — an application declaring `use_sim_time` itself wins
         // over the auto-declared default, so the placeholder leaves first.
         let yielded = self.yield_seeded_use_sim_time(node, name);
         let accepted = match &mut self.params {
-            Some(params) => params.server.declare(node.into(), name, value),
+            Some(params) => params.server.declare_ref(node.into(), name, value),
             None => false,
         };
         if yielded && !accepted {
@@ -14977,36 +15013,19 @@ impl<'s> Executor<'s> {
         // phase-430 W2 — same rule as the sibling above: the app's own
         // declaration, descriptor and all, replaces the auto-declared default.
         let yielded = self.yield_seeded_use_sim_time(node, name);
-        // phase-482 W5 — an argv override that the DESCRIPTOR refuses (out of
-        // range, or read-only with a different value) must not cost the
-        // parameter its existence: log it, then declare the code's default.
-        let (overridden, differs) = self.apply_argv_param_override(node, name, value.clone());
-        let mut accepted = match &mut self.params {
-            Some(params) => params.server.declare_with_descriptor(
-                node.into(),
-                name,
-                overridden,
-                Some(descriptor.clone()),
-            ),
-            None => false,
-        };
-        if !accepted && differs {
-            nros_log::log_error!(
-                nros_log::get_logger("nros"),
-                "parameter override for `{}` was refused by its descriptor; the declared \
-                 default stands",
-                name
-            );
-            accepted = match &mut self.params {
-                Some(params) => params.server.declare_with_descriptor(
-                    node.into(),
-                    name,
-                    value,
-                    Some(descriptor),
-                ),
+        // Issue 2070 — borrowed, as on the sibling path; the override branch
+        // has its own frame.
+        let accepted = if self.has_argv_param_override(node, name) {
+            self.declare_described_overridden(node, name, &value, descriptor)
+        } else {
+            match &mut self.params {
+                Some(params) => params
+                    .server
+                    .try_declare_ref(node.into(), name, &value, Some(descriptor))
+                    .is_ok(),
                 None => false,
-            };
-        }
+            }
+        };
         if yielded && !accepted {
             self.seed_use_sim_time_default(node);
         }
@@ -15019,6 +15038,47 @@ impl<'s> Executor<'s> {
             self.note_reserved_parameter(name);
         }
         accepted
+    }
+
+    /// Issue 2070 — the override branch of
+    /// [`declare_parameter_with_descriptor_on`](Self::declare_parameter_with_descriptor_on),
+    /// in its own frame.
+    ///
+    /// phase-482 W5 — an argv override that the DESCRIPTOR refuses (out of
+    /// range, or read-only with a different value) must not cost the
+    /// parameter its existence: log it, then declare the code's default.
+    #[inline(never)]
+    fn declare_described_overridden(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        declared: &nros_params::ParameterValue,
+        descriptor: nros_params::ParameterDescriptor,
+    ) -> bool {
+        let (overridden, differs) = self.apply_argv_param_override(node, name, declared.clone());
+        let Some(params) = &mut self.params else {
+            return false;
+        };
+        if params
+            .server
+            .try_declare_ref(node.into(), name, &overridden, Some(descriptor.clone()))
+            .is_ok()
+        {
+            return true;
+        }
+        if !differs {
+            return false;
+        }
+        nros_log::log_error!(
+            nros_log::get_logger("nros"),
+            "parameter override for `{}` was refused by its descriptor; the declared \
+             default stands",
+            name
+        );
+        params
+            .server
+            .try_declare_ref(node.into(), name, declared, Some(descriptor))
+            .is_ok()
     }
 
     /// THE writer — phase-426 W2.

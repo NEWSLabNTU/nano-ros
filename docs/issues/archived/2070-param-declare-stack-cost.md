@@ -1,12 +1,14 @@
 ---
 id: 2070
 title: "Declaring one parameter costs ~67 KiB of task stack at the default capacities; the C++ FreeRTOS carrier's 64 KiB app stack overflows silently into kernel globals"
-status: open
+status: resolved
 type: bug
 area: [params, freertos, cpp, sizing]
 severity: high
 found: 2026-10-26
 related: [2043, 1146, phase-518, phase-488]
+resolved: 2026-10-27
+resolved_in: "the PR that archives this file"
 ---
 
 ## What
@@ -102,3 +104,59 @@ services.
    and neither has directions 1 or 2, so this stays open: at the default
    capacities a ported node that declares a parameter still needs more stack
    than the default gives it.
+
+## Resolution
+
+Direction 2, plus a second instance of the same class that node 2 exposed.
+
+**The declare path borrows the value.** `Executor::declare_parameter_on_ref`,
+`ParameterServer::declare_ref` / `try_declare_ref` and
+`ParameterValue::assign_from` carry a `&ParameterValue` down to the table slot.
+The slot is written in place with `NotSet`, then the value is copied into it
+once. The by-value spellings forward to them. The argv-override branch,
+which has to own a typed copy, runs in its own `#[inline(never)]` frame, so the
+common path carries no second value. Each `nros_cpp_node_declare_param_*`
+builds one value and lends it to both the census hook and the store.
+
+**Lifecycle registration builds its servers in their allocation.**
+`register_lifecycle_services_named` built the five REP-2002 servers by value,
+with ten receive buffers of `PARAM_SERVICE_BUFFER_SIZE` each, and then boxed
+them. Its frame was 92,160 bytes on Cortex-M3 for node 2, whose buffers derive
+to 9,216 bytes. That frame, not the declare path, was node 2's 100 KiB.
+`LifecycleServiceServers::try_new_boxed` now initialises them through
+`try_box_uninit`, the pattern `leak_parameter_storage` already uses, and a
+failed allocation is a `BadAlloc` refusal.
+
+Directions 1 and 3's early warning were not needed for this and were not taken.
+Direction 1 is unsound for a lifecycle node anyway: Nav2 declares its
+parameters in `on_configure`, which a census never reaches.
+
+## Measured
+
+Frame sizes for one `declare_parameter<double>`, aarch64, same sources
+(phase-488 node 1 host build, bytes). The table is bounded by each symbol's
+`nm -S` size:
+
+| frame | before | after |
+| --- | --- | --- |
+| `nros_cpp_node_declare_param_double` | 8,608 | 8,640 |
+| `Executor::declare_parameter_on` | 17,024 | 32 (forwards) |
+| `Executor::declare_parameter_on_ref` | -- | 80 |
+| `apply_argv_param_override` | 8,928 | override branch only |
+| `ParameterServer::try_declare_with_descriptor` | 5,920 | 32 (forwards) |
+| `Parameter::new` | 8,656 | not on the path |
+| `ParameterServer::declare_ref` + `try_declare_ref` | -- | 416 + 672 |
+| `ParameterValue::assign_from` | -- | 624 |
+
+On Cortex-M3 (QEMU mps2-an385, FreeRTOS, lwIP, stock ROS 2 Humble peer),
+both phase-518 nodes ran at the DEFAULT capacities (string 256, array 32) and
+the DEFAULT 64 KiB app stack:
+
+- node 1 (`autoware_external_cmd_selector`): `app task stack peak 12504 of
+  65536 bytes`, in `ros2 node list`, publishes its mode, and answers
+  `select_external_command` (`success=True`, mode 1 -> 2). Before, the same
+  image overflowed into the kernel globals.
+- node 2 (`nav2_velocity_smoother`): `app task stack peak 16800 of 65536
+  bytes`, configures and activates through its lifecycle services, and
+  publishes smoothed velocity. Before: a 101,352-byte peak, and `*** STACK
+  OVERFLOW: app ***` at 64 KiB.

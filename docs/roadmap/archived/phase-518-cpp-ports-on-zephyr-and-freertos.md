@@ -233,7 +233,7 @@ Node 1 found two runtime bugs before that:
 - [Issue 2071](../../issues/archived/2071-ros-time-frozen-without-rtc.md), fixed:
   with no RTC, ROS time never advanced, so the node's
   `rclcpp::create_timer(this, get_clock(), ...)` never fired.
-- [Issue 2070](../../issues/2070-param-declare-stack-cost.md), open: declaring one
+- [Issue 2070](../../issues/archived/2070-param-declare-stack-cost.md), since fixed: declaring one
   parameter at the default capacities costs ~70 KiB of stack, and the C++
   FreeRTOS app stack is 64 KiB. The overflow corrupted the kernel's globals
   without any stack-overflow report.

@@ -515,9 +515,9 @@ fn declare_on_node(
     ctx: &mut crate::CppContext,
     id: nros_node::executor::NodeId,
     name: &str,
-    value: ParameterValue,
+    value: &ParameterValue,
 ) -> nros_cpp_ret_t {
-    if ctx.executor.declare_parameter_on(id, name, value) {
+    if ctx.executor.declare_parameter_on_ref(id, name, value) {
         flush_events(ctx);
         NROS_CPP_RET_OK
     } else if ctx.executor.get_parameter_on(id, name).is_some() {
@@ -623,17 +623,20 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool(
 ) -> nros_cpp_ret_t {
     // issue 1679 -- the census hook, BEFORE the store's cfg split: a
     // declaration is recorded whatever this build compiled the store for.
+    // Issue 2070 -- ONE value serves the hook and the store: each one built
+    // is ~8 KiB of this frame.
+    let v = nros::ParameterValue::from_bool(value);
     if let Some(n) = unsafe { census_name(node, name) } {
-        nros::census_hooks::on_param_declare(n, &nros::ParameterValue::from_bool(value));
+        nros::census_hooks::on_param_declare(n, &v);
     }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        declare_on_node(&mut ctx, id, name, ParameterValue::from_bool(value))
+        declare_on_node(&mut ctx, id, name, &v)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
-        let _ = (node, name, value);
+        let _ = (node, name, v);
         NROS_CPP_RET_UNSUPPORTED
     }
 }
@@ -651,17 +654,20 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer(
 ) -> nros_cpp_ret_t {
     // issue 1679 -- the census hook, BEFORE the store's cfg split: a
     // declaration is recorded whatever this build compiled the store for.
+    // Issue 2070 -- ONE value serves the hook and the store: each one built
+    // is ~8 KiB of this frame.
+    let v = nros::ParameterValue::from_integer(value);
     if let Some(n) = unsafe { census_name(node, name) } {
-        nros::census_hooks::on_param_declare(n, &nros::ParameterValue::from_integer(value));
+        nros::census_hooks::on_param_declare(n, &v);
     }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        declare_on_node(&mut ctx, id, name, ParameterValue::from_integer(value))
+        declare_on_node(&mut ctx, id, name, &v)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
-        let _ = (node, name, value);
+        let _ = (node, name, v);
         NROS_CPP_RET_UNSUPPORTED
     }
 }
@@ -679,17 +685,20 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double(
 ) -> nros_cpp_ret_t {
     // issue 1679 -- the census hook, BEFORE the store's cfg split: a
     // declaration is recorded whatever this build compiled the store for.
+    // Issue 2070 -- ONE value serves the hook and the store: each one built
+    // is ~8 KiB of this frame.
+    let v = nros::ParameterValue::from_double(value);
     if let Some(n) = unsafe { census_name(node, name) } {
-        nros::census_hooks::on_param_declare(n, &nros::ParameterValue::from_double(value));
+        nros::census_hooks::on_param_declare(n, &v);
     }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        declare_on_node(&mut ctx, id, name, ParameterValue::from_double(value))
+        declare_on_node(&mut ctx, id, name, &v)
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
-        let _ = (node, name, value);
+        let _ = (node, name, v);
         NROS_CPP_RET_UNSUPPORTED
     }
 }
@@ -709,19 +718,21 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_string(
 ) -> nros_cpp_ret_t {
     // issue 1679 -- the census hook, BEFORE the store's cfg split: a
     // declaration is recorded whatever this build compiled the store for.
+    // Issue 2070 -- ONE value serves the hook and the store.
+    let text = unsafe { crate::cstr_to_str(value) };
+    let pv = text.and_then(nros::ParameterValue::from_string);
     if let Some(n) = unsafe { census_name(node, name) }
-        && let Some(v) =
-            unsafe { crate::cstr_to_str(value) }.and_then(nros::ParameterValue::from_string)
+        && let Some(v) = &pv
     {
-        nros::census_hooks::on_param_declare(n, &v);
+        nros::census_hooks::on_param_declare(n, v);
     }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        let Some(value) = (unsafe { cstr_to_str(value) }) else {
+        if text.is_none() {
             return NROS_CPP_RET_INVALID_ARGUMENT;
-        };
-        let Some(pv) = ParameterValue::from_string(value) else {
+        }
+        let Some(pv) = &pv else {
             return NROS_CPP_RET_FULL;
         };
         declare_on_node(&mut ctx, id, name, pv)
@@ -1056,19 +1067,21 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_double_array(
 ) -> nros_cpp_ret_t {
     // issue 1679 -- the census hook, BEFORE the store's cfg split: a
     // declaration is recorded whatever this build compiled the store for.
+    // Issue 2070 -- ONE value serves the hook and the store.
+    let slice = unsafe { slice_or_empty(data, len) };
+    let pv = slice.and_then(nros::ParameterValue::from_double_array);
     if let Some(n) = unsafe { census_name(node, name) }
-        && let Some(v) =
-            unsafe { slice_or_empty(data, len) }.and_then(nros::ParameterValue::from_double_array)
+        && let Some(v) = &pv
     {
-        nros::census_hooks::on_param_declare(n, &v);
+        nros::census_hooks::on_param_declare(n, v);
     }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
+        if slice.is_none() {
             return NROS_CPP_RET_INVALID_ARGUMENT;
-        };
-        let Some(pv) = ParameterValue::from_double_array(slice) else {
+        }
+        let Some(pv) = &pv else {
             return NROS_CPP_RET_FULL;
         };
         declare_on_node(&mut ctx, id, name, pv)
@@ -1094,19 +1107,21 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_integer_array(
 ) -> nros_cpp_ret_t {
     // issue 1679 -- the census hook, BEFORE the store's cfg split: a
     // declaration is recorded whatever this build compiled the store for.
+    // Issue 2070 -- ONE value serves the hook and the store.
+    let slice = unsafe { slice_or_empty(data, len) };
+    let pv = slice.and_then(nros::ParameterValue::from_integer_array);
     if let Some(n) = unsafe { census_name(node, name) }
-        && let Some(v) =
-            unsafe { slice_or_empty(data, len) }.and_then(nros::ParameterValue::from_integer_array)
+        && let Some(v) = &pv
     {
-        nros::census_hooks::on_param_declare(n, &v);
+        nros::census_hooks::on_param_declare(n, v);
     }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
+        if slice.is_none() {
             return NROS_CPP_RET_INVALID_ARGUMENT;
-        };
-        let Some(pv) = ParameterValue::from_integer_array(slice) else {
+        }
+        let Some(pv) = &pv else {
             return NROS_CPP_RET_FULL;
         };
         declare_on_node(&mut ctx, id, name, pv)
@@ -1132,19 +1147,21 @@ pub unsafe extern "C" fn nros_cpp_node_declare_param_bool_array(
 ) -> nros_cpp_ret_t {
     // issue 1679 -- the census hook, BEFORE the store's cfg split: a
     // declaration is recorded whatever this build compiled the store for.
+    // Issue 2070 -- ONE value serves the hook and the store.
+    let slice = unsafe { slice_or_empty(data, len) };
+    let pv = slice.and_then(nros::ParameterValue::from_bool_array);
     if let Some(n) = unsafe { census_name(node, name) }
-        && let Some(v) =
-            unsafe { slice_or_empty(data, len) }.and_then(nros::ParameterValue::from_bool_array)
+        && let Some(v) = &pv
     {
-        nros::census_hooks::on_param_declare(n, &v);
+        nros::census_hooks::on_param_declare(n, v);
     }
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
+        if slice.is_none() {
             return NROS_CPP_RET_INVALID_ARGUMENT;
-        };
-        let Some(pv) = ParameterValue::from_bool_array(slice) else {
+        }
+        let Some(pv) = &pv else {
             return NROS_CPP_RET_FULL;
         };
         declare_on_node(&mut ctx, id, name, pv)
