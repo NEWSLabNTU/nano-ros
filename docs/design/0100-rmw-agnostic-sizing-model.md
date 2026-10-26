@@ -8,7 +8,10 @@ see also
 which adds D12 and revises D4's producer and road language against RFC-0065's
 unified build path, and
 [Amendment 2](#amendment-2-2026-10-13--d13-a-shared-target-dir-keys-its-build-on-the-descriptors-content),
-which adds D13 for images sharing one cargo target dir)
+which adds D13 for images sharing one cargo target dir, and
+[Amendment 3](#amendment-3-2026-10-26--the-probe-census-sizes-a-contract-less-image-proposed-2026-10-25-phase-517-w5),
+which lets probe sidecars size a contract-less image: accepted 2026-10-26, and
+blocked by its own evidence, issue 2076)
 
 Builds on RFC-0049 (the four-rung knob ladder supplies the precedence this model
 needs and is not re-litigated), RFC-0033 (storage modes decide whether a cap
@@ -1317,9 +1320,15 @@ target dir is cleaned (the CI fixture tree's 7-day reset bounds it). Gate: the
 premise is checked by `check-path-env-fingerprints` (`SHARED_TARGET_PREMISE`),
 because the 1623 exemption rests on it.
 
-### Proposed amendment — the probe census sizes a contract-less image (2026-10-25, phase-517 W5)
+### Amendment 3 (2026-10-26) — the probe census sizes a contract-less image (proposed 2026-10-25, phase-517 W5)
 
-**State: PROPOSED, awaiting maintainer acceptance; no code until it is.**
+**State: ACCEPTED (2026-10-26), conditional on the evidence plan below, and
+BLOCKED by that evidence (issue 2076).** The maintainer accepted the
+proposal with the evidence plan as a precondition. The behaviour change lands
+only when every in-tree contract-less model image has run with the configured
+default and with the probe-derived counts, and none fails derived that passes
+default. Two images do: the `[[bridge]]` workspaces. See "Evidence" at the end
+of this section. Nothing that changes behaviour has landed.
 
 The book's first project — two C++ components, one launch file, no
 `<bringup>/launch/*.contract.yaml` — builds with its executor pool at the
@@ -1364,3 +1373,41 @@ for a contract that omits such an entity.
 first project only, and a user who adds a node without editing the contract
 gets the refusal back — the contract becomes boilerplate the probe already
 answers.
+
+**Evidence (2026-10-26).** The change was implemented on a branch that was not
+pushed. A contract-less image whose every launched node has exactly one fresh
+sidecar becomes `StatedBy::Probe`, and its descriptor states
+`basis = "probe"`. That branch was measured against `origin/main` (37b950503e).
+The full record, with the table, is in phase-517 W5.
+
+- **Static survey.** `nros sync` plus `nros build --dry-run --all` ran over
+  every colcon workspace in `examples/workspaces`, `examples/templates` and
+  `packages/testing/nros-tests/fixtures`. 112 images moved from REFUSED to
+  derived. No contract image moved, because the contract arm is untouched.
+  Three images whose models already describe wiring print a different line, and the cause is the
+  harness, not the change. The "before" binary judged the sidecars written by
+  the "after" CLI stale, because the probe key includes the CLI. Those three
+  are `cpp` `linux_action_{client,server}` and `features` `linux_rust_remap`.
+- **Runtime, linux lane.** `just build linux` then `just test linux` ran on
+  both trees. On `origin/main`: 3097 passed, 186 deselected, 0 real failures.
+  On the branch: 3093 passed, 4 real failures. All 4 reproduce alone, and all 4
+  are the two `[[bridge]]` images. The derived `bridge-cyclonedds` entry exits
+  at boot with `OpenSession("NodeTableFull")`; the default entry runs. The
+  bridge's runtime-created nodes and endpoints come from `system.toml`, not
+  from a component, so no probe sees them. That blocks this amendment
+  (issue 2076). The other 65 linux images that moved from refused to derived passed, including
+  `rmw_coordinate_truth`'s boot of every generated linux entry.
+- **Lazy registration** (plan item 2). A search found no `create_*` call reached
+  from a callback in any model-road component, so no contract row was added.
+  The failure the evidence found is a different class: entities the runtime
+  creates on the bringup's behalf.
+- **Found on the way, and needed when this lands.** The cmake road composes the
+  probe inventory with `nros-metadata.json`. Metadata rows are keyed by register
+  NAME, which is the launch `exec`; probe rows are keyed by node name. A launch
+  file that renames a node (`realtime-c`, `realtime-cpp`: `exec="ctrl"
+  name="ctrl_node"`) therefore refused at configure, even though the resolve
+  phase derived. The branch fixes this: on a probe-stated side, the probe row
+  covers the metadata row of its own component.
+- **Not run.** No embedded platform ran (FreeRTOS, ThreadX, Zephyr, NuttX, FVP,
+  mps3-an536). The linux blocker stopped the plan before them, so no embedded
+  result exists either way.
