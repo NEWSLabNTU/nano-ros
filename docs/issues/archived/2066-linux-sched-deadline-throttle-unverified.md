@@ -7,7 +7,7 @@ area: [executor, linux, testing]
 severity: low
 found: 2026-10-26
 resolved: 2026-10-27
-resolved_in: "PR #TBD (2026-10-27)"
+resolved_in: "PR #2727 (2026-10-27)"
 related: [phase-505, phase-509, rfc-0108, 2018]
 ---
 
