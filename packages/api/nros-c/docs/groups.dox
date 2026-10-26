@@ -48,7 +48,7 @@
  * @code
  * rcl_publisher_t pub = nros_publisher_get_zero_initialized();
  * nros_publisher_init(&pub, &node, &type_info, "/chatter");
- * rclc_publish_raw(&pub, cdr_buf, cdr_len);
+ * rclc_publish_serialized(&pub, cdr_buf, cdr_len);
  * @endcode
  *
  * @see @ref grp_executor, @ref grp_qos
@@ -144,7 +144,7 @@
  * need to call these directly — `nano_ros_generate_interfaces()` emits
  * fully serialised types.
  *
- * @see @ref grp_pubsub for `rclc_publish_raw` / `rclc_polling_subscription_take_serialized`
+ * @see @ref grp_pubsub for `rclc_publish_serialized` / `rclc_polling_subscription_take_serialized`
  *      (the consumers of CDR-encoded buffers)
  */
 

@@ -4,7 +4,7 @@
  * @brief Topic publisher API.
  *
  * Create publishers with rclc_publisher_init_default() and publish serialised
- * messages with rclc_publish_raw().
+ * messages with rclc_publish_serialized().
  */
 
 #ifndef NROS_PUBLISHER_H
@@ -14,6 +14,26 @@
  * This per-module header is kept as a thin shim so existing code that
  * does `#include <rclc/publisher.h>` continues to compile. */
 #include "rclc/types.h"
+
+/**
+ * @brief Deprecated: renamed to rclc_publish_serialized() (phase-515 C8).
+ *
+ * Kept one release so existing callers still compile, with a warning that
+ * names the replacement. Define `NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS` to drop
+ * it early. A `static inline` rather than a `#define` so the compiler can say
+ * the name is retired instead of resolving it silently. It sits ahead of the
+ * best-effort forwarder and names no `struct` tag: the codegen-surface gate
+ * reads a tagged declaration up to the next top-level `;`.
+ */
+#ifndef NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((deprecated("renamed to rclc_publish_serialized (phase-515 C8)")))
+#endif
+static inline rcl_ret_t
+rclc_publish_raw(const rcl_publisher_t* publisher, const uint8_t* data, size_t len) {
+    return rclc_publish_serialized(publisher, data, len);
+}
+#endif /* NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS */
 
 /**
  * @brief rclc's best-effort preset constructor for a publisher.

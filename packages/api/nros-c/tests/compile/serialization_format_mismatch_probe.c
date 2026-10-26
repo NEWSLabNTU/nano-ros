@@ -40,5 +40,5 @@ rcl_ret_t nros_probe_publish_vehicle_status(struct rcl_publisher_t* publisher,
 
 rcl_ret_t nros_probe_publish_vehicle_status(struct rcl_publisher_t* publisher,
                                             const uint8_t* payload, size_t payload_len) {
-    return rclc_publish_raw(publisher, payload, payload_len);
+    return rclc_publish_serialized(publisher, payload, payload_len);
 }

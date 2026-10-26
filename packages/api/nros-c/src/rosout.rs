@@ -98,7 +98,7 @@ pub unsafe extern "C" fn rclc_rosout_publisher_init(
         // The descriptor above lives in this frame, so the publisher must not
         // keep it (phase-492 W8): `rcl_publish` on it answers UNSUPPORTED
         // rather than reading a dead stack slot. The rosout records go out
-        // through `rclc_publish_raw`.
+        // through `rclc_publish_serialized`.
         if !publisher.is_null() {
             (*publisher).type_support = core::ptr::null();
         }
@@ -174,7 +174,8 @@ pub unsafe extern "C" fn rclc_rosout_pump(
     {
         validate_not_null!(publisher);
         let (sent, ret) = match nros_node::rosout::pump_raw(|bytes| {
-            match crate::publisher::rclc_publish_raw(publisher, bytes.as_ptr(), bytes.len()) {
+            match crate::publisher::rclc_publish_serialized(publisher, bytes.as_ptr(), bytes.len())
+            {
                 RCL_RET_OK => Ok(()),
                 _ => Err(()),
             }

@@ -1,0 +1,1 @@
+The publish-bytes call is now named for what it takes, matching the receive side's `take_serialized`: C `rclc_publish_serialized`, C++ `Publisher::publish_serialized`, Rust `EmbeddedPublisher::publish_serialized` and `EmbeddedRawPublisher::publish_serialized[_with_attachment]`. The `publish_raw` spellings still compile for one release and warn with the new name (phase-515 C8).

@@ -148,7 +148,7 @@ fn run_talker(exec: &mut Executor<'static>, overrides: &'static [QoSOverride]) {
     info!("publishing Int32 on {TOPIC} every 1s...");
     let mut count: i32 = 0;
     loop {
-        match publisher.publish_raw(&int32_cdr(count)) {
+        match publisher.publish_serialized(&int32_cdr(count)) {
             Ok(()) => info!("Published: {count}"),
             Err(e) => error!("publish error: {e:?}"),
         }

@@ -131,9 +131,9 @@ int main() {
     // The sibling entry points, so a fix that guarded only the reported site
     // cannot pass: every one of these already had the guard, and this is what
     // keeps them having it.
-    check(pub.publish_raw(reinterpret_cast<const uint8_t*>("x"), 1).code() ==
+    check(pub.publish_serialized(reinterpret_cast<const uint8_t*>("x"), 1).code() ==
               rclcpp::ErrorCode::NotInitialized,
-          "publish_raw keeps its guard");
+          "publish_serialized keeps its guard");
     check(pub.assert_liveliness().code() == rclcpp::ErrorCode::NotInitialized,
           "assert_liveliness keeps its guard");
     check(!pub.loan(8).ok(), "loan keeps its guard");

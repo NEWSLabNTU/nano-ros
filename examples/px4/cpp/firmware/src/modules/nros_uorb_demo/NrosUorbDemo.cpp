@@ -167,12 +167,12 @@ void NrosUorbDemo::Run() {
     std::strncpy(msg.key, "nros", sizeof(msg.key) - 1);
     msg.value = _counter;
 
-    if (_debug_pub.publish_raw(reinterpret_cast<const uint8_t*>(&msg), sizeof(msg)).ok()) {
+    if (_debug_pub.publish_serialized(reinterpret_cast<const uint8_t*>(&msg), sizeof(msg)).ok()) {
         _published++;
         _counter += 1.0F;
 
     } else {
-        PX4_ERR("publish_raw failed");
+        PX4_ERR("publish_serialized failed");
     }
 
     // --- subscribe: read what a stock PX4 module published -------------------

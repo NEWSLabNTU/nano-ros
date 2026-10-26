@@ -8720,7 +8720,7 @@ impl<'s> Executor<'s> {
     /// })??;
     /// exec.register_subscription_buffered_raw_on::<_, 1024>(
     ///     node_in, "/src", TYPE, HASH, qos(),
-    ///     move |bytes: &[u8]| { let _ = pub_out.publish_raw(bytes); },
+    ///     move |bytes: &[u8]| { let _ = pub_out.publish_serialized(bytes); },
     /// )?;
     /// ```
     pub(crate) fn register_subscription_buffered_raw_on<F, const RX_BUF: usize>(

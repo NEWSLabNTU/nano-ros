@@ -212,7 +212,7 @@ pub fn pump(publisher: &EmbeddedPublisher<Log>) -> Result<usize, (usize, NodeErr
 }
 
 /// [`pump`] for a surface that holds an UNTYPED publisher — the C and C++
-/// handles, which publish CDR bytes (`rclc_publish_raw`,
+/// handles, which publish CDR bytes (`rclc_publish_serialized`,
 /// `nros_cpp_publish_raw`). Each record is encoded into [`TX_BUF`] bytes of
 /// this frame and handed to `send`; `send` answering `Err` is a transport
 /// failure, reported exactly as [`pump`] reports one.

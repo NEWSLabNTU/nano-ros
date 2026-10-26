@@ -77,8 +77,9 @@
 
 /// `NROS_CPP_DEPRECATED_MSG(msg)` — a deprecation that names its replacement.
 ///
-/// Kept with no current user (phase-482 W6 retired every deprecated item) for
-/// the next forwarder, so it does not get re-invented with a second spelling.
+/// Phase-482 W6 retired every deprecated item and kept this for the next
+/// forwarder, so it does not get re-invented with a second spelling; its user
+/// now is `Publisher::publish_raw` (phase-515 C8).
 /// Declared here because `result.hpp` is the one header every other
 /// `nros/*.hpp` already pulls in — the same reason `NROS_NODISCARD` lives above.
 ///

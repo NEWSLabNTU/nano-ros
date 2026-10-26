@@ -134,7 +134,7 @@ const GOAL_UUID_SIZE: usize = 16;
 /// - [`publish`](Self::publish) / [`publish_with_buffer`](Self::publish_with_buffer)
 ///   — accept `&M: RosMessage`, CDR-encode into a stack buffer, then
 ///   call [`Publisher::publish_raw`](nros_rmw::Publisher::publish_raw).
-/// - [`publish_raw`](Self::publish_raw) — accepts pre-encoded CDR bytes
+/// - [`publish_serialized`](Self::publish_serialized) — accepts pre-encoded CDR bytes
 ///   for callers that already produced the wire payload.
 ///
 /// **No typed `loan()` exists.** Loan/borrow live exclusively on
@@ -212,12 +212,23 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
         crate::executor::profile::on_publish(self.handle.topic_name());
     }
 
-    /// Publish raw CDR-encoded data (must include CDR header).
-    pub fn publish_raw(&self, data: &[u8]) -> Result<(), NodeError> {
+    /// Publish CDR-encoded data (must include the CDR header) — rcl's
+    /// `rcl_publish_serialized_message`, rclcpp's `publish(SerializedMessage)`.
+    pub fn publish_serialized(&self, data: &[u8]) -> Result<(), NodeError> {
         self.bump_monitor();
         self.handle
             .publish_raw(data)
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+    }
+
+    /// Renamed to [`publish_serialized`](Self::publish_serialized) (phase-515
+    /// C8), the transmit word of the receive side's `take_serialized`.
+    #[deprecated(
+        since = "0.6.0",
+        note = "renamed to `publish_serialized` (phase-515 C8)"
+    )]
+    pub fn publish_raw(&self, data: &[u8]) -> Result<(), NodeError> {
+        self.publish_serialized(data)
     }
 
     /// Phase 124.E.1 — streamed publish. Use a closure-driven writer
@@ -812,7 +823,7 @@ use portable_atomic::{AtomicBool, Ordering};
 ///
 /// Two publish paths:
 ///
-/// - [`publish_raw`](Self::publish_raw): user supplies a `&[u8]`, backend
+/// - [`publish_serialized`](Self::publish_serialized): user supplies a `&[u8]`, backend
 ///   memcpys into its outbound buffer. One copy.
 /// - [`try_loan`](Self::try_loan): backend (or, without `rmw-lending`, a
 ///   per-publisher arena) hands user a `&mut [u8]` slice. User writes in
@@ -821,7 +832,7 @@ use portable_atomic::{AtomicBool, Ordering};
 ///   one that fills the loan slots (no payload copy, measured in issue 0814)
 ///   — and REFUSED where it does not (Cyclone, XRCE, uORB):
 ///   `LoanError::Backend(Unsupported)`, permanent, the same in every build.
-///   The arena path is one copy, the same as `publish_raw`.
+///   The arena path is one copy, the same as `publish_serialized`.
 ///
 /// The const-generic `TX_BUF` sizes the inline arena slot (default
 /// [`DEFAULT_LOAN_BUF`]). Loans larger than `TX_BUF` return
@@ -969,11 +980,21 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     ///   4-byte CDR header.
     /// - **uORB**: raw POD struct bytes (no header). Length must equal
     ///   `size_of::<T::Msg>()` for the registered topic.
-    pub fn publish_raw(&self, data: &[u8]) -> Result<(), NodeError> {
+    pub fn publish_serialized(&self, data: &[u8]) -> Result<(), NodeError> {
         self.bump_monitor();
         self.handle
             .publish_raw(data)
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+    }
+
+    /// Renamed to [`publish_serialized`](Self::publish_serialized) (phase-515
+    /// C8), the transmit word of the receive side's `take_serialized`.
+    #[deprecated(
+        since = "0.6.0",
+        note = "renamed to `publish_serialized` (phase-515 C8)"
+    )]
+    pub fn publish_raw(&self, data: &[u8]) -> Result<(), NodeError> {
+        self.publish_serialized(data)
     }
 
     /// Phase 128.F.4 — raw publish with a wire-level attachment block.
@@ -981,14 +1002,14 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     /// `attachment` rides alongside the payload on backends that
     /// natively support it (zenoh-pico, Cyclone DDS). Backends without
     /// native support silently discard `attachment` and fall back to
-    /// the regular [`publish_raw`](Self::publish_raw) path — the
+    /// the regular [`publish_serialized`](Self::publish_serialized) path — the
     /// default `Publisher::publish_raw_with_attachment` body in
     /// `nros-rmw` does this delegation.
     ///
     /// Primary use case: cross-RMW bridges stamp the source backend's
     /// RMW name as `bridge_origin` so a paired return bridge can drop
     /// echoed frames deterministically.
-    pub fn publish_raw_with_attachment(
+    pub fn publish_serialized_with_attachment(
         &self,
         data: &[u8],
         attachment: &[u8],
@@ -997,6 +1018,21 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
         self.handle
             .publish_raw_with_attachment(data, attachment)
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+    }
+
+    /// Renamed to
+    /// [`publish_serialized_with_attachment`](Self::publish_serialized_with_attachment)
+    /// (phase-515 C8).
+    #[deprecated(
+        since = "0.6.0",
+        note = "renamed to `publish_serialized_with_attachment` (phase-515 C8)"
+    )]
+    pub fn publish_raw_with_attachment(
+        &self,
+        data: &[u8],
+        attachment: &[u8],
+    ) -> Result<(), NodeError> {
+        self.publish_serialized_with_attachment(data, attachment)
     }
 
     /// Phase 108.B — manually assert this publisher's liveliness.

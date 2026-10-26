@@ -117,7 +117,7 @@ fn run_talker() {
 
     for seq in 0..publish_count {
         build_payload(&mut buf, seq, actual_size);
-        match publisher.publish_raw(&buf[..actual_size]) {
+        match publisher.publish_serialized(&buf[..actual_size]) {
             Ok(()) => {
                 println!("Published: seq={} size={}", seq, actual_size);
             }
