@@ -41,7 +41,7 @@ before registration with PC=0xffffffec, an EXC_RETURN loaded into the PC (the
 
 Reopen if a board run with this setup reads below 50/50 again.
 
-**Home: [phase-512](../roadmap/phase-512-on-hardware-measurements.md)** — H8, moved 2026-10-24 from phase-474 because its open step is a hand run on the MR-CANHUBK344. Before that: re-homed 2026-10-13 from phase-433, archived that day, because this is a board run over a direct serial link, which is 474's subject. phase-433 had re-homed it on 2026-10-12 from phase-358, also archived.
+**Home: [phase-512](../../roadmap/phase-512-on-hardware-measurements.md)** — H8, moved 2026-10-24 from phase-474 because its open step is a hand run on the MR-CANHUBK344. Before that: re-homed 2026-10-13 from phase-433, archived that day, because this is a board run over a direct serial link, which is 474's subject. phase-433 had re-homed it on 2026-10-12 from phase-358, also archived.
 
 ## Measurement
 
@@ -65,7 +65,7 @@ argument:
 
 - **Not a session expiry.** Zero `Closing session because it has expired`
   messages across a 160 s session that included five goals
-  ([issue 0839](archived/0839-action-image-session-expires-every-20s.md) is
+  ([issue 0839](../archived/0839-action-image-session-expires-every-20s.md) is
   resolved on exactly this evidence).
 - **Not a crash.** Zero faults; the board is alive and answering afterwards.
 - **Not discovery.** `ros2 node list` and `ros2 action list` resolve before and
@@ -90,7 +90,7 @@ The instrumentation for this already exists and is proven on this board:
   `get_result` query and its reply reach the wire, and in which direction the
   exchange stops. It does not halt the core.
 - RTT shows whether the application layer saw the query — but attaching it
-  perturbs the link ([issue 0913](0913-the-debugger-is-not-a-passive-instrument.md)),
+  perturbs the link ([issue 0913](../0913-the-debugger-is-not-a-passive-instrument.md)),
   so use it after the fact, not during.
 
 Capture one *failing* goal on the tap and establish whether the reply is never
@@ -152,7 +152,7 @@ the tap dumps.
 ## The measurement table credits the wrong issue
 
 The row "after the 0882 allocator fix — 9/10" is
-[#0912](archived/0912-transport-failure-teardown-crashes.md), not 0882. **0882
+[#0912](../archived/0912-transport-failure-teardown-crashes.md), not 0882. **0882
 is the NuttX cmake carrier bug and contains no allocator fix**; 0912 is the
 `k_free` on a TLSF block -> `z_free` one, on this board, and its final table
 reads 9/10. 0912 is also the direct predecessor — it established that "the
@@ -419,7 +419,7 @@ server's queryable never holds more than one query at a time, so the allocation
 never fails and the counter can never move. Reverting the fix changes no
 observable here, so **the negative control this measurement was supposed to
 carry does not exist on this lane** — filed as
-[issue 1332](archived/1332-native-lane-cannot-exercise-zenoh-reply-slot-table.md) with
+[issue 1332](../archived/1332-native-lane-cannot-exercise-zenoh-reply-slot-table.md) with
 the three routes that would create one.
 
 Why (read off the code, not instrumented): the declined-query shape that feeds
