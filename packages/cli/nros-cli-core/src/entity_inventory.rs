@@ -862,6 +862,9 @@ pub struct EntityInventory {
     /// bridges are expanded into rows: the image LINKS each of them, which is
     /// what its descriptor's `backend_count` must say.
     bridge_backends: std::collections::BTreeSet<String>,
+    /// Issue 2076 -- bridges whose rows could not be expanded (they forward
+    /// every declared topic and no runtime config was read). Refuses.
+    unresolved_bridges: Vec<String>,
 }
 
 /// phase-517 W5 -- who stated an inventory's rows (RFC-0100 amendment of
@@ -879,6 +882,84 @@ pub enum StatedBy {
     Probe,
     /// A contract described the image's wiring ([`EntityInventory::from_model`]).
     Contract,
+}
+
+/// Issue 2076 -- the bringup's generated `nros-bridge.toml`, reduced to what
+/// the runtime creates: its `[[node]]` sessions and, per `[[bridge]]` row, the
+/// node it subscribes on and the node it publishes on.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BridgeRuntime {
+    pub nodes: Vec<String>,
+    pub links: Vec<BridgeLink>,
+}
+
+/// One `[[bridge]]` row of `nros-bridge.toml`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BridgeLink {
+    pub from: String,
+    pub topic: String,
+    pub to: String,
+    pub to_topic: String,
+    /// The ROS type (`ros_type`, else read off the DDS-mangled `type`).
+    pub ros_type: Option<String>,
+}
+
+impl BridgeRuntime {
+    /// Parse the file `cmd::ws` writes (`bridge_gen::render_bridge_runtime_config`).
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let doc: toml::Table = toml::from_str(text).map_err(|e| e.to_string())?;
+        let mut rt = Self::default();
+        for n in doc
+            .get("node")
+            .and_then(|n| n.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let name = n
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or("a `[[node]]` without a `name`")?;
+            rt.nodes.push(name.to_string());
+        }
+        for b in doc
+            .get("bridge")
+            .and_then(|n| n.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let end = |k: &str| -> Result<(String, String), String> {
+                let t = b.get(k).ok_or(format!("a `[[bridge]]` without `{k}`"))?;
+                let node = t.get("node").and_then(|v| v.as_str());
+                let topic = t.get("topic").and_then(|v| v.as_str());
+                match (node, topic) {
+                    (Some(n), Some(tp)) => Ok((n.to_string(), tp.to_string())),
+                    _ => Err(format!("a `[[bridge]] {k}` without `node` and `topic`")),
+                }
+            };
+            let (from, topic) = end("from")?;
+            let (to, to_topic) = end("to")?;
+            let ros_type = b
+                .get("ros_type")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .or_else(|| {
+                    // `std_msgs::msg::dds_::Header_` -> `std_msgs/msg/Header`.
+                    let t = b.get("type")?.as_str()?;
+                    let mut parts: Vec<&str> = t.split("::").filter(|p| *p != "dds_").collect();
+                    let last = parts.pop()?.trim_end_matches('_');
+                    parts.push(last);
+                    Some(parts.join("/"))
+                });
+            rt.links.push(BridgeLink {
+                from,
+                topic,
+                to,
+                to_topic,
+                ros_type,
+            });
+        }
+        Ok(rt)
+    }
 }
 
 /// Issue 2076 -- the bridges of two compositions, once by name, in order.
@@ -3176,6 +3257,7 @@ impl EntityInventory {
             stated_by: StatedBy::Unstated,
             bridges: Vec::new(),
             bridge_backends: std::collections::BTreeSet::new(),
+            unresolved_bridges: Vec::new(),
         }
     }
 
@@ -4084,85 +4166,99 @@ impl EntityInventory {
     }
 
     /// Issue 2076 -- this inventory with each `[[bridge]]` expanded into the
-    /// rows of what the RUNTIME creates for it (`nros-bridge`'s
-    /// `run_from_config_source`): a node on each side, and per forwarded topic
-    /// a raw subscription on the source node and a raw publisher on the
-    /// destination node (both ways when `bidirectional`).
+    /// rows of what the RUNTIME creates for it, so every pool below counts
+    /// them by the rule a component's rows use.
     ///
-    /// Upper bounds by construction, the safe direction: two nodes per bridge
-    /// although the runtime shares a session two bridges name alike, and each
-    /// subscription takes an executor callback slot although the bridge polls
-    /// it. A bridge with no `topics` forwards every declared pub/sub topic (the
-    /// planner's rule, `bridge_plan_entries`), read here off the image's own
-    /// rows. A topic's type comes from the row that names it, when one does.
+    /// `runtime` is the bringup's generated `nros-bridge.toml`, the file the
+    /// runtime itself reads (`nros-bridge`'s `run_from_config_source`): one node
+    /// per `[[node]]` session, and per `[[bridge]]` row a raw subscription on
+    /// its `from` node and a raw publisher on its `to` node (a bidirectional
+    /// bridge is already two rows there). Exact, because it is the same input.
     ///
-    /// The result carries no bridges, so deriving it does not expand twice.
+    /// Without it, a bridge that names its `topics` is charged an upper bound
+    /// (a node per side, a sub and a pub per topic, both ways when
+    /// bidirectional). A bridge that names none forwards every topic the
+    /// workspace's packages DECLARE (the planner's rule), a set this inventory
+    /// does not hold, so it is left UNRESOLVED and [`Self::derive`] refuses --
+    /// the configured pools stand, never a count short of the bridge.
+    ///
+    /// Each subscription also takes an executor callback slot although the
+    /// bridge polls it: an over-count, the safe direction. The result carries
+    /// no bridges, so deriving it does not expand twice.
     #[must_use]
-    pub fn with_bridge_rows(&self) -> EntityInventory {
+    pub fn with_bridge_rows(&self, runtime: Option<&BridgeRuntime>) -> EntityInventory {
         let mut out = self.clone();
         out.bridge_backends = self.bridge_backends();
         out.bridges.clear();
-        // Every pub/sub topic the image's rows name, with its type.
-        let mut declared: Vec<(String, Option<String>)> = Vec::new();
-        for c in &self.components {
-            if matches!(c.declaration, Declaration::NotLaunched) {
+        if self.bridges.is_empty() {
+            return out;
+        }
+        if let Some(rt) = runtime {
+            for node in &rt.nodes {
+                let ents: Vec<EntityDecl> = rt
+                    .links
+                    .iter()
+                    .flat_map(|l| {
+                        let mut v = Vec::new();
+                        if l.from == *node {
+                            v.push(EntityDecl::bare(
+                                EntityKind::Subscription,
+                                l.ros_type.clone(),
+                                Some(l.topic.clone()),
+                            ));
+                        }
+                        if l.to == *node {
+                            v.push(EntityDecl::bare(
+                                EntityKind::Publisher,
+                                l.ros_type.clone(),
+                                Some(l.to_topic.clone()),
+                            ));
+                        }
+                        v
+                    })
+                    .collect();
+                out.insert_bridge_row(&format!("bridge:{node}"), ents);
+            }
+            return out;
+        }
+        for b in &self.bridges {
+            if b.topics.is_empty() {
+                out.unresolved_bridges.push(b.name.clone());
                 continue;
             }
-            for e in c.declaration.entities() {
-                if !matches!(e.kind, EntityKind::Publisher | EntityKind::Subscription) {
-                    continue;
-                }
-                let Some(topic) = e.source_topic.clone().or_else(|| e.name.clone()) else {
-                    continue;
-                };
-                if !declared.iter().any(|(t, _)| *t == topic) {
-                    declared.push((topic, e.type_name.clone()));
-                }
-            }
-        }
-        let type_of = |topic: &str| {
-            declared
-                .iter()
-                .find(|(t, _)| t == topic)
-                .and_then(|(_, ty)| ty.clone())
-        };
-        for b in &self.bridges {
-            let topics: Vec<String> = if b.topics.is_empty() {
-                declared.iter().map(|(t, _)| t.clone()).collect()
-            } else {
-                b.topics.clone()
-            };
-            let side = |kind_fwd: EntityKind, kind_back: EntityKind| -> Vec<EntityDecl> {
+            let side = |fwd: EntityKind, back: EntityKind| -> Vec<EntityDecl> {
                 let mut v = Vec::new();
-                for t in &topics {
-                    v.push(EntityDecl::bare(kind_fwd, type_of(t), Some(t.clone())));
+                for t in &b.topics {
+                    v.push(EntityDecl::bare(fwd, None, Some(t.clone())));
                     if b.bidirectional {
-                        v.push(EntityDecl::bare(kind_back, type_of(t), Some(t.clone())));
+                        v.push(EntityDecl::bare(back, None, Some(t.clone())));
                     }
                 }
                 v
             };
-            for (end, ents) in [
-                (
-                    "from",
-                    side(EntityKind::Subscription, EntityKind::Publisher),
-                ),
-                ("to", side(EntityKind::Publisher, EntityKind::Subscription)),
-            ] {
-                let id = format!("bridge:{}:{end}", b.name);
-                out.insert(ComponentEntities {
-                    pkg: id.clone(),
-                    component: id,
-                    class: "nros_bridge".into(),
-                    declaration: if ents.is_empty() {
-                        Declaration::None
-                    } else {
-                        Declaration::Stated(ents)
-                    },
-                });
-            }
+            out.insert_bridge_row(
+                &format!("bridge:{}:from", b.name),
+                side(EntityKind::Subscription, EntityKind::Publisher),
+            );
+            out.insert_bridge_row(
+                &format!("bridge:{}:to", b.name),
+                side(EntityKind::Publisher, EntityKind::Subscription),
+            );
         }
         out
+    }
+
+    fn insert_bridge_row(&mut self, id: &str, ents: Vec<EntityDecl>) {
+        self.insert(ComponentEntities {
+            pkg: id.to_string(),
+            component: id.to_string(),
+            class: "nros_bridge".into(),
+            declaration: if ents.is_empty() {
+                Declaration::None
+            } else {
+                Declaration::Stated(ents)
+            },
+        });
     }
 
     /// Issue 1701 -- the per-image views of a shared runtime's inventory,
@@ -4260,6 +4356,12 @@ impl EntityInventory {
             .union(&model.bridge_backends)
             .cloned()
             .collect();
+        out.unresolved_bridges = self.unresolved_bridges.clone();
+        for b in &model.unresolved_bridges {
+            if !out.unresolved_bridges.contains(b) {
+                out.unresolved_bridges.push(b.clone());
+            }
+        }
         let mut seen: Vec<&str> = Vec::new();
 
         for decl_row in &self.components {
@@ -4462,7 +4564,18 @@ impl EntityInventory {
         // synthetic rows, so every pool below counts them by the same rule as
         // a component's. Once: the expansion clears `bridges`.
         if !self.bridges.is_empty() {
-            return self.with_bridge_rows().derive_single();
+            return self.with_bridge_rows(None).derive_single();
+        }
+        if !self.unresolved_bridges.is_empty() {
+            return Derivation::Refused {
+                reason: format!(
+                    "the `[[bridge]]` {} forwards every topic the workspace declares, and the \
+                     bringup's generated `nros-bridge.toml` -- which names them -- was not read \
+                     here, so the nodes and endpoints the bridge creates are not known. Run \
+                     `nros sync`, or name the bridge's `topics` in `system.toml` (issue 2076).",
+                    self.unresolved_bridges.join(", ")
+                ),
+            };
         }
         if self.components.is_empty() {
             return Derivation::Refused {
@@ -12551,11 +12664,8 @@ structure:
 
     /// Issue 2076 -- `examples/workspaces/bridge-cyclonedds`'s shape: one
     /// talker launched, and a `[[bridge]]` that forwards every declared topic.
-    /// The bridge's two runtime nodes and its sub/pub per topic are counted in
-    /// the derived pools; without them the image booted `NodeTableFull`.
-    #[test]
-    fn a_bridge_images_derived_pools_include_the_bridge() {
-        let model = nros_orchestration_ir::overlay::LoadedModel {
+    fn bridge_model(topics: Vec<String>) -> nros_orchestration_ir::overlay::LoadedModel {
+        nros_orchestration_ir::overlay::LoadedModel {
             model: serde_yaml_ng::from_str(
                 r#"
 meta: { version: 1 }
@@ -12569,48 +12679,110 @@ structure:
             overlay: nros_orchestration_ir::overlay::Overlay {
                 bridges: vec![nros_orchestration_ir::overlay::OverlayBridge {
                     name: "gw".into(),
-                    topics: vec![],
+                    topics,
                     bidirectional: false,
                     rmws: vec!["zenoh".into(), "cyclonedds".into()],
                 }],
                 ..Default::default()
             },
-        };
-        let talker: Vec<ProbeRow> = stock_sidecars()
+        }
+    }
+
+    fn talker_only() -> Vec<ProbeRow> {
+        stock_sidecars()
             .into_iter()
             .filter(|r| r.entities.pkg == "talker_pkg")
-            .collect();
-        let inv = EntityInventory::from_probe("probe", &model, &talker).expect("described");
+            .collect()
+    }
+
+    /// The bridge's runtime config, as `nros sync` writes it for that
+    /// workspace: two sessions, and `/chatter` + `/header` forwarded s0 -> s1.
+    const BRIDGE_RUNTIME: &str = r#"
+[[node]]
+name = "s0"
+rmw = "zenoh"
+domain_id = 0
+
+[[node]]
+name = "s1"
+rmw = "cyclonedds"
+domain_id = 5
+
+[[bridge]]
+type = "std_msgs::msg::dds_::Int32_"
+from = { node = "s0", topic = "/chatter" }
+to = { node = "s1", topic = "/chatter" }
+ros_type = "std_msgs/msg/Int32"
+
+[[bridge]]
+type = "std_msgs::msg::dds_::Header_"
+from = { node = "s0", topic = "/header" }
+to = { node = "s1", topic = "/header" }
+"#;
+
+    /// The bridge's nodes and endpoints, read from the runtime's own config,
+    /// are in the derived pools; without them the image booted `NodeTableFull`
+    /// (the derivation said `max_nodes 1`). A subscription the bridge creates
+    /// for a topic NO component of the image names (`/header`) is counted too,
+    /// which is why the rows cannot come from the image's own declarations.
+    #[test]
+    fn a_bridge_images_derived_pools_include_the_bridge() {
+        let model = bridge_model(vec![]);
+        let inv = EntityInventory::from_probe("probe", &model, &talker_only()).expect("described");
         assert_eq!(inv.bridges().len(), 1, "the frame carries the bridge");
-
-        let k = inv.derive().knobs().expect("derives").clone();
-        // talker + the bridge's two nodes.
-        assert!(k.max_nodes >= 3, "the bridge's nodes: {k:?}");
-        // the talker's timer + the bridge's /chatter subscription.
-        assert!(k.max_cbs >= 2, "the bridge's subscription: {k:?}");
-        assert!(
-            k.max_subscribers >= 1,
-            "the bridge's raw subscription: {k:?}"
-        );
-        assert!(
-            k.max_publishers >= 2,
-            "talker's + the bridge's publisher: {k:?}"
+        let rt = BridgeRuntime::parse(BRIDGE_RUNTIME).expect("parses");
+        assert_eq!(
+            rt.links[1].ros_type.as_deref(),
+            Some("std_msgs/msg/Header"),
+            "the type read off the mangled name"
         );
 
-        // Expanded once at the composition point, every consumer of the rows
-        // sees them, and deriving the expansion counts them exactly once.
-        let expanded = inv.with_bridge_rows();
+        let expanded = inv.with_bridge_rows(Some(&rt));
         assert!(expanded.bridges().is_empty());
-        assert_eq!(expanded.derive().knobs().expect("derives"), &k);
+        let k = expanded.derive().knobs().expect("derives").clone();
+        assert_eq!(k.max_nodes, 3, "talker + s0 + s1: {k:?}");
+        assert_eq!(k.max_subscribers, 2, "/chatter + /header on s0: {k:?}");
+        assert!(k.max_publishers >= 3, "talker's + two on s1: {k:?}");
+        assert!(
+            k.max_cbs >= 3,
+            "talker's timer + the bridge's two subs: {k:?}"
+        );
 
         // The control: the same image without the bridge sizes for the talker.
         let mut bare = inv.clone();
         bare.bridges.clear();
         let b = bare.derive().knobs().expect("derives").clone();
-        assert!(
-            b.max_nodes < k.max_nodes && b.max_subscribers < k.max_subscribers,
-            "{b:?} vs {k:?}"
+        assert_eq!((b.max_nodes, b.max_subscribers), (1, 0), "{b:?}");
+    }
+
+    /// No runtime config: a bridge that names its topics is charged an upper
+    /// bound; one that forwards everything cannot be bounded here and refuses,
+    /// so the configured pools stand -- never a count short of the bridge.
+    #[test]
+    fn a_bridge_without_its_runtime_config_is_bounded_or_refused() {
+        let named = EntityInventory::from_probe(
+            "probe",
+            &bridge_model(vec!["/chatter".into()]),
+            &talker_only(),
+        )
+        .expect("described");
+        let k = named.derive().knobs().expect("bounded").clone();
+        assert_eq!(k.max_nodes, 3, "{k:?}");
+        assert_eq!(k.max_subscribers, 1, "{k:?}");
+        assert_eq!(
+            named.with_bridge_rows(None).derive().knobs(),
+            Some(&k),
+            "expanding first counts the same, once"
         );
+
+        let all = EntityInventory::from_probe("probe", &bridge_model(vec![]), &talker_only())
+            .expect("described");
+        match all.derive() {
+            Derivation::Refused { reason } => {
+                assert!(reason.contains("gw") && reason.contains("2076"), "{reason}")
+            }
+            d => panic!("a forward-all bridge with no runtime config must refuse: {d:?}"),
+        }
     }
 
     /// A contract anywhere in a composition makes it a contract's: the probe

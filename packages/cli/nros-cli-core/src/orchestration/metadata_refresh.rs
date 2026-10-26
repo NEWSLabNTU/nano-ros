@@ -605,6 +605,11 @@ pub fn contract_inventory(
     who: &str,
 ) -> Option<crate::entity_inventory::EntityInventory> {
     let source = source.into();
+    // Issue 2076 -- a `[[bridge]]`'s runtime-created rows, expanded HERE so
+    // every consumer of this composition (knobs, descriptor rows, fragments)
+    // reads them, not only the derivation; from the runtime's own config when
+    // the workspace has it.
+    let runtime = workspace.and_then(|ws| bridge_runtime_for(model, &source, ws, who));
     let Some(contract) =
         crate::entity_inventory::EntityInventory::from_model(source.clone(), model)
     else {
@@ -613,19 +618,66 @@ pub fn contract_inventory(
         for n in notes {
             eprintln!("{who}: {n}");
         }
-        // Issue 2076 -- a bridge's runtime-created rows, expanded HERE so every
-        // consumer of this composition (knobs, descriptor rows, fragments)
-        // reads them, not only the derivation.
-        return inv.map(|i| i.with_bridge_rows());
+        return inv.map(|i| i.with_bridge_rows(runtime.as_ref()));
     };
     let Some(ws) = workspace else {
-        return Some(contract.with_bridge_rows());
+        return Some(contract.with_bridge_rows(None));
     };
     let (floored, _read, notes) = floor_by_recorded(ws, model, &contract);
     for n in notes {
         eprintln!("{who}: {n}");
     }
-    Some(floored.with_bridge_rows())
+    Some(floored.with_bridge_rows(runtime.as_ref()))
+}
+
+/// Issue 2076 -- the bringup's generated `nros-bridge.toml` (`nros sync`'s
+/// `generate_bridge_configs`), for a model whose overlay declares a bridge.
+///
+/// The bringup is the directory the model was resolved into
+/// (`build/nros/models/<bringup>/`), found among the workspace's packages. A
+/// model with no bridge reads nothing. A file that is missing or does not
+/// parse is `None` with a note, which leaves a forward-all bridge unresolved
+/// and the derivation refused.
+fn bridge_runtime_for(
+    model: &nros_orchestration_ir::overlay::LoadedModel,
+    source: &str,
+    ws: &Path,
+    who: &str,
+) -> Option<crate::entity_inventory::BridgeRuntime> {
+    if model.overlay.bridges.is_empty() {
+        return None;
+    }
+    let bringup = Path::new(source)
+        .parent()?
+        .file_name()?
+        .to_str()?
+        .to_string();
+    let workspace = Workspace::discover(ws).ok()?;
+    let pkg = workspace
+        .packages
+        .iter()
+        .find(|p| p.name == bringup && p.system_toml.is_some())?;
+    let path = pkg.root.join("nros-bridge.toml");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!(
+                "{who}: {}: {e}; the bridge's rows are not read",
+                path.display()
+            );
+            return None;
+        }
+    };
+    match crate::entity_inventory::BridgeRuntime::parse(&text) {
+        Ok(rt) => Some(rt),
+        Err(e) => {
+            eprintln!(
+                "{who}: {}: {e}; the bridge's rows are not read",
+                path.display()
+            );
+            None
+        }
+    }
 }
 
 /// phase-517 W5 (RFC-0100 amendment of 2026-10-25, accepted 2026-10-26) --
