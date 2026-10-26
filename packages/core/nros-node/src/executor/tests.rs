@@ -14033,36 +14033,17 @@ fn log_sinks_lock() -> std::sync::MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Raise a record with `emit` until `delivered()` sees it, for up to 5 s.
-///
-/// A record that finds another thread delivering is HELD in `nros_log`'s
-/// bounded queue (`NROS_LOG_EARLY_RECORDS`, builtin 4) and one that does not
-/// fit is dropped and COUNTED (`early::overflowed`, issue 2000). Every test in
-/// this binary may log from its own thread, so under load a record can be
-/// lost outright, and no amount of waiting or `flush` delivers it. Measured: 8
-/// copies of this binary at `--test-threads=64` failed 1 run in 48, with
-/// nros_log counting 16 lost records, both of the caller's markers among them.
-///
-/// So a counted loss re-raises the record; otherwise this waits. The loss may
-/// have been a sibling's record while the caller's was still held, so the
-/// caller can see a record TWICE and must assert on every copy.
+/// [`nros_log::early::emit_until_delivered`] with this binary's budget: 5 s,
+/// yielding between polls. Every test here may log from its own thread, so a
+/// record a test asserts on can be lost outright under load (issue 2000's
+/// bounded hold queue); see the callee for why a counted loss re-raises it
+/// and why the caller must assert on every copy.
 fn emit_until_delivered(emit: impl Fn(), delivered: impl Fn() -> bool) -> bool {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    'raise: while std::time::Instant::now() < deadline {
-        let lost = nros_log::early::overflowed();
-        emit();
-        while std::time::Instant::now() < deadline {
-            nros_log::flush();
-            if delivered() {
-                return true;
-            }
-            if nros_log::early::overflowed() != lost {
-                continue 'raise;
-            }
-            std::thread::yield_now();
-        }
-    }
-    delivered()
+    nros_log::early::emit_until_delivered(emit, delivered, || {
+        std::thread::yield_now();
+        std::time::Instant::now() < deadline
+    })
 }
 
 /// phase-474 I2 -- tests that put an executor in "armed on call" mode, which
