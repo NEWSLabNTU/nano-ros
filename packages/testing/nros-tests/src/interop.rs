@@ -786,17 +786,20 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     // (tests/interop_e2e.rs), and those five coordinates are distinct, so the
     // assignment is the one the per-case tripwire already asserts — written
     // where a tool without a compiler can read it. Direction does NOT split a
-    // cell: `case_2`/`case_3` run ROS-2-to-nano against the cell whose id ends
+    // cell: `case_02`/`case_03`/`case_10` run ROS-2-to-nano against the cell whose id ends
     // `-n2r`, exactly as `coords_for` collapses the two.
-    co("interop_e2e", "interop::case_1_zenoh_pubsub_nano_to_ros2",      "native-pubsub-rust-zenoh-n2r"),
-    co("interop_e2e", "interop::case_2_zenoh_pubsub_ros2_to_nano",      "native-pubsub-rust-zenoh-n2r"),
-    co("interop_e2e", "interop::case_3_zenoh_pubsub_stock_demo_nodes_cpp", "native-pubsub-rust-zenoh-n2r"),
-    co("interop_e2e", "interop::case_4_zenoh_service_nano_server",      "native-service-rust-zenoh-r2n"),
-    co("interop_e2e", "interop::case_5_zenoh_service_ros2_server",      "native-service-rust-zenoh-r2n"),
-    co("interop_e2e", "interop::case_6_cyclone_pubsub_nano_to_ros2",    "native-pubsub-c-cyclone-n2r"),
-    co("interop_e2e", "interop::case_7_cyclone_pubsub_ros2_to_nano",    "native-pubsub-c-cyclone-n2r"),
-    co("interop_e2e", "interop::case_8_cyclone_service_nano_server",    "native-service-c-cyclone-r2n"),
-    co("interop_e2e", "interop::case_9_zenoh_lifecycle_full_cycle",     "native-lifecycle-rust-zenoh"),
+    co("interop_e2e", "interop::case_01_zenoh_pubsub_nano_to_ros2",      "native-pubsub-rust-zenoh-n2r"),
+    co("interop_e2e", "interop::case_02_zenoh_pubsub_ros2_to_nano",      "native-pubsub-rust-zenoh-n2r"),
+    co("interop_e2e", "interop::case_03_zenoh_pubsub_stock_demo_nodes_cpp", "native-pubsub-rust-zenoh-n2r"),
+    co("interop_e2e", "interop::case_04_zenoh_service_nano_server",      "native-service-rust-zenoh-r2n"),
+    co("interop_e2e", "interop::case_05_zenoh_service_ros2_server",      "native-service-rust-zenoh-r2n"),
+    co("interop_e2e", "interop::case_06_cyclone_pubsub_nano_to_ros2",    "native-pubsub-c-cyclone-n2r"),
+    co("interop_e2e", "interop::case_07_cyclone_pubsub_ros2_to_nano",    "native-pubsub-c-cyclone-n2r"),
+    co("interop_e2e", "interop::case_08_cyclone_service_nano_server",    "native-service-c-cyclone-r2n"),
+    co("interop_e2e", "interop::case_09_zenoh_lifecycle_full_cycle",     "native-lifecycle-rust-zenoh"),
+    // phase-516 W1c — a ros2 flood through the router rule to the nano
+    // listener: ROS-2-to-nano on the pubsub cell, like `case_02`.
+    co("interop_e2e", "interop::case_10_zenoh_pubsub_router_downsampling", "native-pubsub-rust-zenoh-n2r"),
 
     // ── pubsub_freertos_an536_cyclone_ros2_interop_e2e — phase-441 W6 ───
     // The talker cell and the fragmented-sample listener (issue 0917): one

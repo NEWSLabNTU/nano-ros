@@ -404,6 +404,31 @@ impl ZenohRouter {
         port: u16,
         log_filter: Option<&str>,
     ) -> TestResult<Self> {
+        Self::start_on_with(bind_addr, port, log_filter, &[])
+    }
+
+    /// phase-516 W1c — a loopback router on a leased port that also runs
+    /// `extra` config override entries (`key=value`, as `ZENOH_CONFIG_OVERRIDE`
+    /// spells them), with its log written to [`Self::log_path`] under
+    /// `log_filter`.
+    ///
+    /// The entry point for a test that deploys generated router config — the
+    /// `downsampling` rule a declared ingress lowers to
+    /// (`nros_orchestration_ir::router_rule::RouterRule::config_override`).
+    pub fn start_unique_with_overrides(extra: &[String], log_filter: &str) -> TestResult<Self> {
+        let lease = lease_ephemeral_port()
+            .map_err(|e| TestError::ProcessFailed(format!("Failed to lease port: {}", e)))?;
+        let mut router = Self::start_on_with("127.0.0.1", lease.port(), Some(log_filter), extra)?;
+        router._lease = Some(lease);
+        Ok(router)
+    }
+
+    fn start_on_with(
+        bind_addr: &str,
+        port: u16,
+        log_filter: Option<&str>,
+        extra: &[String],
+    ) -> TestResult<Self> {
         if !crate::process::is_local_tcp_listener_available() {
             return Err(TestError::ProcessFailed(
                 "local TCP listeners unavailable in this environment".to_string(),
@@ -415,7 +440,9 @@ impl ZenohRouter {
 
         let locator = format!("tcp/{}:{}", bind_addr, port);
 
-        let mut cmd = router_command(&[format!("listen/endpoints=[\"{locator}\"]")])?;
+        let mut overrides = vec![format!("listen/endpoints=[\"{locator}\"]")];
+        overrides.extend_from_slice(extra);
+        let mut cmd = router_command(&overrides)?;
         // Diagnostic log capture per port — opt-in, unified dir. Enabled by
         // ZENOHD_LOG=trace|debug (also sets RUST_LOG level), by a caller-named
         // filter, or by NROS_TEST_LOGS; the file lands in test-logs/fixtures/
@@ -620,6 +647,13 @@ impl ZenohRouter {
     /// Get the port number
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    /// Where this router's log goes — written only when a log filter was
+    /// named (`ZENOHD_LOG`, a `*_with_log_filter` caller, or
+    /// [`Self::start_unique_with_overrides`]) or `NROS_TEST_LOGS` is set.
+    pub fn log_path(&self) -> std::path::PathBuf {
+        crate::fixtures::fixture_log_path(&format!("zenohd-{}", self.port))
     }
 
     /// How this router was actually started — binary plus the

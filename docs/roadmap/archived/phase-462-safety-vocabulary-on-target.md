@@ -754,7 +754,7 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 0506](../../issues/0506-transport-band-unbounded-preemption.md) — Transport tasks above application tiers is the right default but has no budget — inbound overload preempts every tier …
+- [issue 0506](../../issues/archived/0506-transport-band-unbounded-preemption.md) — Transport tasks above application tiers is the right default but has no budget — inbound overload preempts every tier …
 
 ## Issues homed here (2026-10-17)
 
@@ -763,4 +763,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | issue | why it belongs here |
 | --- | --- |
 | [#1374](../../issues/archived/1374-contract-cannot-express-qos-durability.md) (resolved 2026-10-18: issues 1256 and 1608 plus W5) | A contract's `qos:` carries only depth, so durability the code depends on is invisible to the contract, which is the vocabulary this phase brings on target. |
-| [#0506](../../issues/0506-transport-band-unbounded-preemption.md) (re-homed 2026-10-18 to phase-464) | The transport band's unbounded preemption: W6a-W6c bounded it on the device; the router rule is what is left, and it is not a device change. |
+| [#0506](../../issues/archived/0506-transport-band-unbounded-preemption.md) (re-homed 2026-10-18 to phase-464) | The transport band's unbounded preemption: W6a-W6c bounded it on the device; the router rule is what is left, and it is not a device change. |
