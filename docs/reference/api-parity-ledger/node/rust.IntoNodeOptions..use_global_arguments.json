@@ -1,0 +1,7 @@
+{
+  "key": "rust:IntoNodeOptions::use_global_arguments",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's `IntoNodeOptions::use_global_arguments` -- opts a node out of the process's global `--ros-args`. There is no global argument set to opt out of (RFC-0045); see `rust:IntoNodeOptions::arguments`. Absent, so a call is a compile error (`no method named `use_global_arguments``); the envelope on `rust:IntoNodeOptions` states the bound. phase-515 R2 (2026-10-27): rows filed when `IntoNodeOptions` itself was adopted, which made its members correlate."
+}

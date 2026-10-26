@@ -10431,6 +10431,38 @@ fn create_node_registers_and_dedups_by_name() {
     assert_ne!(first, other, "distinct names are distinct nodes");
 }
 
+/// phase-515 R2 -- rclrs's `executor.create_node(impl IntoNodeOptions)`: a
+/// bare name keeps the executor's namespace, the `.namespace(..)` step on a
+/// name places the node there, and the same name in two namespaces is two
+/// nodes.
+#[test]
+fn create_node_takes_rclrs_into_node_options() {
+    use crate::{IntoNodeOptions, NodeOptions};
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let ns: heapless::String<64> = executor.namespace.clone();
+
+    let _ = executor.create_node("talker").unwrap();
+    let bare = executor
+        .node_id_by_name("talker", ns.as_str())
+        .expect("a bare name lands in the executor's namespace");
+
+    let _ = executor.create_node("talker".namespace("/robot")).unwrap();
+    let placed = executor
+        .node_id_by_name("talker", "/robot")
+        .expect("`.namespace` places the node");
+    assert_ne!(bare, placed, "one name in two namespaces is two nodes");
+
+    // A full `NodeOptions` with the defaults is the bare name: it dedups
+    // onto the first record rather than registering a third.
+    let _ = executor.create_node(NodeOptions::new("talker")).unwrap();
+    assert_eq!(
+        executor.node_id_by_name("talker", ns.as_str()),
+        Some(bare),
+        "default options mean the executor's namespace"
+    );
+    assert_eq!(executor.nodes().len(), 2);
+}
+
 // ============================================================================
 // Shutdown hooks (issue 0790)
 // ============================================================================

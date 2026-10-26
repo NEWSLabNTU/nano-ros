@@ -291,6 +291,16 @@ in `no_std`, and is the usual rclrs create-site spelling. Adopt.
 **R2 — `IntoNodeOptions`: `create_node("name")` (9 rows).** `NodeOptions` is
 already `Copy` with three fields; `From<&str>` plus an `impl Into` parameter
 closes it. Adopt.
+**LANDED 2026-10-27.** `nros_node::IntoNodeOptions` (re-exported as
+`nros::IntoNodeOptions`, and in the prelude) for `&str` and `NodeOptions`, with
+rclrs's `into_node_options` and `namespace`. `NodeOptions` moved to `nros-node`
+so `Executor::create_node` can take it (`nros` re-exports it unchanged); both
+`Executor::create_node` and `NodeContext::create_node` take
+`impl IntoNodeOptions`. On the executor the options' defaults mean the
+executor's own namespace and session, as a bare name always did. rclrs's six
+other builder steps are build-time here (RFC-0045) and got `declined` rows;
+`rust:IntoNodeOptions` is `adopt-bounded` with its envelope on the trait.
+Test: `create_node_takes_rclrs_into_node_options`.
 
 **R3 — `ToLogParams`: `log_info!(logger.once(), …)`, `.throttle(d)`,
 `.only_if(b)` (14 rows).** Declined as an overload trait. The modifiers need no

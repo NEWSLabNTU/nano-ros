@@ -360,21 +360,7 @@ pub trait Component {
     fn register(context: &mut NodeContext<'_>) -> NodeResult<()>;
 }
 
-/// Runtime-neutral node construction options.
-///
-/// ADOPT-BOUNDED against rclrs's `NodeOptions` / `IntoNodeOptions` builder: three
-/// public fields (`name`, `namespace`, `domain_id`) and nothing else. There are no
-/// node ARGUMENTS and no rosout toggle — both are fixed at build time here
-/// (RFC-0045), so an rclrs builder call for either is a compile error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NodeOptions<'a> {
-    /// Source node name. Launch planning may remap/namespace later.
-    pub name: &'a str,
-    /// Source namespace. Defaults to `/`.
-    pub namespace: &'a str,
-    /// ROS domain ID hint. Defaults to `0`.
-    pub domain_id: u32,
-}
+pub use nros_node::{IntoNodeOptions, NodeOptions};
 
 /// Runtime callback event delivered to an executable Node.
 ///
@@ -400,29 +386,6 @@ impl<'a> Callback<'a> {
     #[doc(hidden)]
     pub const fn __from_id(id: CallbackId<'a>) -> Self {
         Self { id }
-    }
-}
-
-impl<'a> NodeOptions<'a> {
-    /// Create node options with default namespace and domain.
-    pub const fn new(name: &'a str) -> Self {
-        Self {
-            name,
-            namespace: "/",
-            domain_id: 0,
-        }
-    }
-
-    /// Set source namespace.
-    pub const fn namespace(mut self, namespace: &'a str) -> Self {
-        self.namespace = namespace;
-        self
-    }
-
-    /// Set ROS domain ID hint.
-    pub const fn domain_id(mut self, domain_id: u32) -> Self {
-        self.domain_id = domain_id;
-        self
     }
 }
 
@@ -735,10 +698,15 @@ impl<'a> NodeContext<'a> {
     /// The node's name is the launch file's when it names one, otherwise
     /// `options.name`, which is also the component-stable node id the
     /// declarations are keyed on.
-    pub fn create_node(
+    ///
+    /// phase-515 R2 -- takes rclrs's `impl IntoNodeOptions`, so
+    /// `context.create_node("talker")` reads as rclrs does. Unlike the
+    /// executor's, a component's options are applied as written.
+    pub fn create_node<'o>(
         &mut self,
-        options: NodeOptions<'_>,
+        options: impl IntoNodeOptions<'o>,
     ) -> NodeResult<crate::Node<'_, 'static>> {
+        let options = options.into_node_options();
         self.create_node_with_id(NodeId::new(options.name), options)
     }
 

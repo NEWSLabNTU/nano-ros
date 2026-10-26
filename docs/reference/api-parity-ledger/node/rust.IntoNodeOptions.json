@@ -1,7 +1,11 @@
 {
   "key": "rust:IntoNodeOptions",
   "bucket": "theirs-only",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "the trait letting rclrs accept `&str` or a full options struct wherever a node is created. Our `NodeOptions` is one concrete type taken by value; the ergonomic overload needs a blanket impl that buys nothing when there is one caller shape."
+  "disposition": "adopt-bounded",
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 R2), was `declined`/`absent` on the reason that the overload \"buys nothing when there is one caller shape\" -- a preference, not an RTOS constraint. `nros_node::IntoNodeOptions<'a>` (re-exported as `nros::IntoNodeOptions` and in the prelude) is implemented for `&'a str` and `NodeOptions<'a>`, with rclrs's `into_node_options` and `namespace`; `Executor::create_node` and `NodeContext::create_node` take `impl IntoNodeOptions`, so `executor.create_node(\"talker\")` and `create_node(\"talker\".namespace(\"/robot\"))` read as rclrs. ENVELOPE: rclrs's other builder steps (`arguments`, `use_global_arguments`, `enable_rosout`, `start_parameter_services`, `clock_type`, `clock_qos`) configure what RFC-0045 fixes at build time, so they are absent and a call is a compile error. On the executor, the options' defaults (namespace `/`, domain 0) mean the executor's own namespace and session, as a bare name always did. PRIOR ROW: the trait letting rclrs accept `&str` or a full options struct wherever a node is created. Our `NodeOptions` is one concrete type taken by value; the ergonomic overload needs a blanket impl that buys nothing when there is one caller shape.",
+  "envelope": {
+    "file": "packages/core/nros-node/src/node_options.rs",
+    "text": "configure what is fixed at build time here"
+  }
 }

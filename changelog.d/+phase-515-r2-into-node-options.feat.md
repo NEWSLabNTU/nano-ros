@@ -1,0 +1,1 @@
+`create_node` takes rclrs's `IntoNodeOptions`: `executor.create_node("talker")` and `executor.create_node("talker".namespace("/robot"))` work as they do in rclrs, on the executor and in a component's `NodeContext`. `nros::IntoNodeOptions` is in the prelude; `NodeOptions` now lives in `nros-node` and is re-exported unchanged. (phase-515 R2)

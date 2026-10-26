@@ -1,0 +1,7 @@
+{
+  "key": "rust:IntoNodeOptions::enable_rosout",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's `IntoNodeOptions::enable_rosout` -- toggles the node's `/rosout` publisher. Whether an image publishes `/rosout` is a build-time capability, not a per-node runtime choice (RFC-0045). Absent, so a call is a compile error (`no method named `enable_rosout``); the envelope on `rust:IntoNodeOptions` states the bound. phase-515 R2 (2026-10-27): rows filed when `IntoNodeOptions` itself was adopted, which made its members correlate."
+}
