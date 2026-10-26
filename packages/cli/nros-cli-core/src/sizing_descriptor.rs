@@ -233,6 +233,8 @@ pub struct ModelHorizon {
 const FROM_MODEL: &str = "the resolved SystemModel and `nros-metadata.json`";
 const FROM_LEAF_DECLARATION: &str =
     "the leaf's own `system.toml` `[[component]] entities` declaration alone";
+const FROM_LEAF_CENSUS: &str =
+    "the leaf's census (its program built for the host and run, `entities = \"census\"`)";
 
 /// Why an endpoint's registration is UNOBSERVED, per SOURCE.
 ///
@@ -277,6 +279,21 @@ impl ModelHorizon {
             from: FROM_LEAF_DECLARATION,
             unobserved: A_DECLARATION_IS_NOT_A_CALL_SITE,
             leaf_declaration: true,
+        }
+    }
+
+    /// Issue 2043 -- the standalone-leaf road when its entities are its
+    /// CENSUS (`entities = "census"`): the inventory is what the program
+    /// created when it was run, so the image-wide counts the declaration road
+    /// refuses ([`Self::is_leaf_declaration`]) are stated. A census records
+    /// entities, never the call site that registered each, so a row's
+    /// registration path stays unobserved as on the declaration road.
+    pub fn for_leaf_census(road: impl Into<String>) -> Self {
+        Self {
+            road: road.into(),
+            from: FROM_LEAF_CENSUS,
+            unobserved: A_DECLARATION_IS_NOT_A_CALL_SITE,
+            leaf_declaration: false,
         }
     }
 
@@ -5964,6 +5981,28 @@ contracts:
         // the service-server queryables, whose carrier DOES reach that road.
         assert!(desc.image.node_count().is_stated());
         assert!(desc.image.service_server_queryables().is_stated());
+    }
+
+    /// Issue 2043 -- the same leaf road with its entities taken from its
+    /// CENSUS states them: the program was run, so the counts are observed.
+    #[test]
+    fn the_leaf_census_road_states_image_counts() {
+        let inv = inventory(vec![sub("std_msgs/msg/String", "/chatter", Some(1))]);
+        let crate::entity_inventory::Derivation::Derived(k) = inv.derive() else {
+            panic!("a fully declared inventory derives");
+        };
+        let mut inputs = model_only(&inv);
+        inputs.horizon = Some(ModelHorizon::for_leaf_census("a standalone cmake leaf"));
+        let desc = build(&inputs);
+        assert_eq!(desc.image.callback_slots().stated(), Some(&k.max_cbs));
+        assert_eq!(
+            desc.image.publisher_count().stated(),
+            Some(&k.max_publishers)
+        );
+        assert_eq!(
+            desc.image.entity_liveliness_tokens().stated(),
+            Some(&k.entity_liveliness_tokens)
+        );
     }
 }
 

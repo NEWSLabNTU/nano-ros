@@ -1,12 +1,14 @@
 ---
 id: 2043
 title: "An ament-road port declares no entities, so every pool sits at its embedded default and start-up dies one pool at a time"
-status: open
+status: resolved
 type: bug
 area: [cmake, cpp, sizing]
 severity: high
 found: 2026-10-25
-related: [1556, 1407, phase-463, phase-488, phase-518, 2070]
+related: [1556, 1407, phase-463, phase-488, phase-518, 2070, 2073, 2086]
+resolved: 2026-10-26
+resolved_in: "PR #2712 (2026-10-27)"
 ---
 
 ## What
@@ -119,3 +121,70 @@ Porting a stock node that needs more than every embedded default
 match its census. A fixture or `just check` lane measures this on an in-tree
 ament package that creates more entities than the defaults, and fails if a
 pool is left at its default.
+
+## Fix (2026-10-26, phase-518 W3)
+
+A ported workspace states that its entities are what its program creates:
+`[[component]] entities = "census"` in its `system.toml`, the opt-in issue
+1556 gave a standalone leaf. Four pieces make that work for an ament
+workspace on both cmake roads:
+
+- **The configure takes the census.** `nros_record_leaf_entity_facts`
+  (NanoRosLeafEntityFacts.cmake) runs `nros ws entity-census take --leaf`
+  when the census is missing or stale: a host build of the same sources into
+  `<leaf>/build/census-host` (`-DNROS_LEAF_BOARD=linux`), run once. A current
+  census returns at once. `NROS_LEAF_CENSUS_TAKE=OFF` leaves it to the caller.
+  The add_subdirectory road reads the leaf's descriptor too (`CMakeLists.txt`,
+  beside its leaf read); before, only the find_package road did.
+- **The census build names its program.** An ament workspace adds its
+  executables in packages outside its root, so `take --leaf` could not find
+  `nano_ros_add_executable` in the root `CMakeLists.txt`. The host build now
+  writes `<build>/nros/census-program.txt`, which lists every executable and
+  every project source directory. nano-ros's own directories are left out,
+  but the leaf's own tree never is. The verb runs the one executable, or the
+  one the `[[component]] name` picks. The census is stale against the listed
+  package directories.
+- **The census is a complete observation, so the descriptor states every
+  count.** The standalone-leaf road refused `callback_slots`,
+  `publisher_count`, `entity_liveliness_tokens` and the rest, because a
+  hand-written declaration was checked only for its queryables (issue 1378's
+  rule, 1655). A census-backed leaf now uses its own horizon
+  (`ModelHorizon::for_leaf_census`), which states them.
+- **The census run gets the node's parameters.** Node 1 throws on an unset
+  `initial_selector_mode`, so its census run aborted. Issue 2073's
+  `params_files` / `ros_args` bake the launch parameters into the image, and
+  the host census build inherits them. A board leaf's network files are
+  skipped when `nros ws leaf-system --board` answers for the host
+  (`leaf-system.rs`); the host refused them.
+
+### Measured
+
+- **Node 1, Linux, add_subdirectory road, no sizing knob.** The descriptor
+  read `subscriber_count = 12`, `callback_slots = 21`, `publisher_count = 9`,
+  `service_server_queryables = 7` and `entity_liveliness_tokens = 28`, and
+  nros-node built `MAX_CBS = 21`. Against a stock Humble `rmw_zenoh_cpp`
+  peer, all 19 topics, the parameter services and the select service were
+  visible. The service returned `success=True`, `update_rate` read 10.0 (from
+  the baked param file), and a remote gear command was forwarded.
+- **The ament-workspace-port template, FreeRTOS (mps2-an385), find_package
+  road.** The census was taken on the host (`1 pub / 1 timer`) and the cross
+  image built `MAX_CBS = 1` from it. `cpp_port_ament_workspace_publishes_on_freertos`
+  passed.
+- **The gate.** `just check ament-census-sizing` builds
+  `packages/testing/nros-tests/bins/ament-census-port`: six subscriptions,
+  six publishers, two timers, and no size stated anywhere. It fails if the
+  descriptor does not state the counts, or if nros-node's `MAX_CBS` is not
+  the descriptor's value or is its default. Green: 14 callback slots against
+  a default of 4. Without `entities = "census"` it fails. It runs in the
+  merge group beside `template-copy-out`.
+
+### Still open
+
+- **Zephyr**: the module does not record the leaf's entities, so a ported
+  Zephyr image is still sized by hand
+  ([issue 2086](../2086-zephyr-ported-image-not-census-sized.md)).
+- **The heap and parameter capacities** are not census answers. The census
+  records parameters, but `[params]` stays `store = "none"` on this road, and
+  the heap and app stack are a board's (issue 2070).
+- **One census per image.** A workspace that builds several executables
+  into one configure is censused for the one its `[[component]] name` picks.

@@ -1,0 +1,1 @@
+A ported ament workspace is sized from its own program: a `system.toml` stating `[[component]] entities = "census"` makes the configure take a census (a host build of the same sources, run once) and size the pools from it, on the `add_subdirectory` road and the `find_package` road, for a host or a board image. No sizing knob is needed (issue 2043).

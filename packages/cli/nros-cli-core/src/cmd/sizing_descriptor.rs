@@ -712,6 +712,7 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
     let origin = system.origin_path().display().to_string();
     let mut rows = Vec::new();
     let mut any_declared = false;
+    let mut census_backed = false;
     for (i, c) in system.components.iter().enumerate() {
         let declaration = match &c.entities {
             // Issue 1556 -- `entities = "census"`: the leaf's census answers,
@@ -722,6 +723,7 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
                 match crate::leaf_entity_env::declared_entities(&dir)? {
                     Some(decls) => {
                         any_declared = true;
+                        census_backed = true;
                         if decls.is_empty() {
                             Declaration::None
                         } else {
@@ -774,9 +776,18 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         // that resolved it more specifically (a cmake `-D`).
         rmw: args.rmw.clone().or_else(|| system.rmw.clone()),
         bound_inventories: &args.bound_inventory,
-        horizon: crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(
-            args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
-        ),
+        // Issue 2043 -- a leaf whose entities are its CENSUS states every
+        // image-wide count: they were observed by running the program, not
+        // written by hand and checked for queryables alone.
+        horizon: if census_backed {
+            crate::sizing_descriptor::ModelHorizon::for_leaf_census(
+                args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
+            )
+        } else {
+            crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(
+                args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
+            )
+        },
     };
     if !any_declared {
         // Issue 1706 -- `[system] features` can still imply a parameter store.

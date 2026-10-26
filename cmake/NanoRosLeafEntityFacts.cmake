@@ -38,6 +38,72 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityFacts.cmake")
 # that works. Both modules are `include_guard(GLOBAL)`, so this costs nothing.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSizingDescriptor.cmake")
 
+# Issue 2043 — the program a HOST census build of a leaf runs, written as
+# `<build>/nros/census-program.txt` at generate time:
+#
+#     executable=<target>=<path of its binary>
+#     source=<a directory of the project, nano-ros's own excluded>
+#
+# A standalone leaf names its program with `nano_ros_add_executable` in its own
+# `CMakeLists.txt`, which `nros ws entity-census take --leaf` reads. A ported
+# ament workspace does not: its executables are `ament_auto_add_executable` /
+# `add_executable` calls in packages that sit outside the leaf directory (the
+# workspace's `src/`). So the census build states them itself, and the package
+# directories it lists are what the census is stale against.
+#
+# Armed only in the host census build (`NROS_LEAF_CENSUS_HOST`), which is the
+# build the verb reads it from.
+function(_nros_census_program_walk dir skip)
+    get_property(_src DIRECTORY "${dir}" PROPERTY SOURCE_DIR)
+    file(REAL_PATH "${_src}" _src)
+    # nano-ros itself, and the nano-ros packages a port's `find_package`
+    # brings in (`nros-diagnostic-updater`), are not the program: the binary
+    # digest already covers what they compile into it. The leaf's own tree is,
+    # always, even when the leaf sits inside a nano-ros checkout (an in-tree
+    # fixture under `packages/testing`).
+    file(REAL_PATH "${CMAKE_SOURCE_DIR}" _leaf)
+    string(FIND "${_src}/" "${_leaf}/" _in_leaf)
+    if(NOT _in_leaf EQUAL 0 AND (_src STREQUAL skip OR _src MATCHES "^${skip}/packages/"))
+        return()
+    endif()
+    get_property(_tgts DIRECTORY "${dir}" PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(_t IN LISTS _tgts)
+        get_target_property(_type ${_t} TYPE)
+        if(_type STREQUAL "EXECUTABLE")
+            set_property(GLOBAL APPEND PROPERTY _NROS_CENSUS_PROGRAM_LINES
+                "executable=${_t}=$<TARGET_FILE:${_t}>")
+        endif()
+    endforeach()
+    set_property(GLOBAL APPEND PROPERTY _NROS_CENSUS_PROGRAM_LINES "source=${_src}")
+    get_property(_subs DIRECTORY "${dir}" PROPERTY SUBDIRECTORIES)
+    foreach(_s IN LISTS _subs)
+        _nros_census_program_walk("${_s}" "${skip}")
+    endforeach()
+endfunction()
+
+function(_nros_census_program_write)
+    get_property(_skip GLOBAL PROPERTY _NROS_CENSUS_PROGRAM_SKIP)
+    set_property(GLOBAL PROPERTY _NROS_CENSUS_PROGRAM_LINES "")
+    _nros_census_program_walk("${CMAKE_SOURCE_DIR}" "${_skip}")
+    get_property(_lines GLOBAL PROPERTY _NROS_CENSUS_PROGRAM_LINES)
+    list(JOIN _lines "\n" _text)
+    file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/nros/census-program.txt"
+        CONTENT "${_text}\n")
+endfunction()
+
+function(_nros_census_program_arm)
+    get_property(_armed GLOBAL PROPERTY _NROS_CENSUS_PROGRAM_ARMED)
+    if(_armed OR "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY _NROS_CENSUS_PROGRAM_ARMED TRUE)
+    # nano-ros's own directory (and so every target under it) is not the
+    # program: on the add_subdirectory road it is a subdirectory of the leaf.
+    file(REAL_PATH "${NROS_REPO_DIR}" _skip)
+    set_property(GLOBAL PROPERTY _NROS_CENSUS_PROGRAM_SKIP "${_skip}")
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _nros_census_program_write)
+endfunction()
+
 # nros_record_leaf_entity_facts(<leaf-dir>)
 #
 # Write the sizing descriptor for what a standalone leaf's `system.toml`
@@ -89,7 +155,30 @@ function(nros_record_leaf_entity_facts _dir)
     file(STRINGS "${_dir}/system.toml" _nros_leaf_census_optin
         REGEX "^[ \t]*entities[ \t]*=[ \t]*\"census\"")
 
+    if(_nros_leaf_census_optin AND "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
+        # Issue 2043 — the census is TAKEN here when it is missing or stale, so
+        # a leaf that states `entities = "census"` is sized from its program by
+        # a plain configure, with no step a user has to know about. The verb
+        # builds the same sources for the host into `<leaf>/build/census-host`
+        # and runs them in census mode; a current census returns at once.
+        # `NROS_LEAF_CENSUS_TAKE=OFF` leaves taking it to the caller (a fixture
+        # prepass that has already taken it, or a build with no host compiler).
+        if(NOT DEFINED NROS_LEAF_CENSUS_TAKE OR NROS_LEAF_CENSUS_TAKE)
+            message(STATUS "nano-ros: ${_dir} -- taking its census")
+            execute_process(
+                COMMAND "${_nros}" ws entity-census take --leaf "${_dir}"
+                OUTPUT_VARIABLE _nros_take_out
+                ERROR_VARIABLE _nros_take_out
+                RESULT_VARIABLE _nros_take_rc)
+            if(NOT _nros_take_rc EQUAL 0)
+                message(FATAL_ERROR
+                    "nano-ros: ${_dir}/system.toml states `entities = \"census\"`, and "
+                    "taking the census failed:\n${_nros_take_out}")
+            endif()
+        endif()
+    endif()
     if(_nros_leaf_census_optin)
+        _nros_census_program_arm()
         # Re-taking the census (after a `src/` edit) must reconfigure, because
         # this configure is what read it. ASKED for, never spelled: the CLI
         # owns where a leaf's census lives.
@@ -114,9 +203,11 @@ function(nros_record_leaf_entity_facts _dir)
     # A census leaf has no other statement to fall back on, so a census that
     # cannot answer is FATAL here (issue 1556), as it was on the verb.
     #
-    # `PROJECT_NAME` is the entry name: a standalone leaf's `project()` runs
+    # The top-level `project()` is the entry name: a standalone leaf's runs
     # before its `find_package(nano_ros)`, so this is the name every other
-    # per-entry artifact in this build dir is keyed by.
+    # per-entry artifact in this build dir is keyed by. `CMAKE_PROJECT_NAME`
+    # and not `PROJECT_NAME`, because on the add_subdirectory road this runs
+    # inside nano-ros's own `project()` (issue 2043).
     set(_nros_leaf_required "")
     if(_nros_leaf_census_optin)
         set(_nros_leaf_required REQUIRED)
@@ -124,7 +215,7 @@ function(nros_record_leaf_entity_facts _dir)
     nros_sizing_descriptor_from_leaf(_nros_leaf_descriptor ${_nros_leaf_required}
         CLI       "${_nros}"
         LEAF      "${_dir}"
-        ENTRY     "${PROJECT_NAME}"
+        ENTRY     "${CMAKE_PROJECT_NAME}"
         BUILD_DIR "${CMAKE_BINARY_DIR}")
     if(_nros_leaf_descriptor)
         message(STATUS

@@ -266,6 +266,7 @@ build:
 # contributes is POSITION; this is that argument, one lane earlier.
 [private]
 build-serial: \
+    ament-census-sizing \
     borrowed-e2e \
     c \
     census-hooks-complete \

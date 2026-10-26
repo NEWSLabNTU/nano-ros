@@ -2254,6 +2254,15 @@ jobs:
           source ./activate.sh
           just check template-copy-out
 
+      # Issue 2043 — a ported ament workspace is sized from its census: the
+      # same cost class as the templates above (it builds one, twice: the
+      # census host build and the image), so it rides the same job.
+      - name: just check ament-census-sizing (pools sized from the program)
+        if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check ament-census-sizing
+
       - name: Disk report (after template-copy-out) — issue 1353
         if: ${{ contains(fromJSON('["merge_group","workflow_dispatch"]'), github.event_name) && always() }}
         run: scripts/ci/disk-report.sh "after just check template-copy-out"

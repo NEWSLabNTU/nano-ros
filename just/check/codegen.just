@@ -360,6 +360,15 @@ census-hooks-complete:
 entity-census:
     @bash scripts/check-entity-census.sh
 
+# Issue 2043 (phase-518 W3) -- a ported ament workspace is sized from its own
+# program: `bins/ament-census-port` states `entities = "census"` and no size,
+# and this fails if a pool the census answers is left at its default. It
+# builds the fixture twice (the census host build and the image), so it is a
+# BUILD-tier gate (`build-serial`), and gate.yml runs it in the merge group
+# beside `template-copy-out`.
+ament-census-sizing:
+    @bash scripts/check-ament-census-sizing.sh
+
 # phase-403 W9 (issue 0965) -- the READER for the ENTITY inventory, the second
 # source `NanoRosMessageBounds.cmake` says by name that it needs.
 #

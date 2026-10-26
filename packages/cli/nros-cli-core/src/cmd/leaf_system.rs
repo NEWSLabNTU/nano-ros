@@ -496,7 +496,12 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
         None => None,
     };
     let conf = leaf_conf_paths(&leaf).map_err(|e| eyre!(e))?;
-    let image_net = if leaf.network.net.is_empty() {
+    // Issue 2043 -- `--board` answers for ANOTHER board than the image's (the
+    // host census build of an RTOS leaf), and the image's board network files
+    // are its own board's: the host owns the host's network. Resolving them
+    // against the host board refuses them, so a leaf with a network file
+    // could never be censused.
+    let image_net = if leaf.network.net.is_empty() || args.board.is_some() {
         None
     } else {
         let catalog = catalog.as_ref().ok_or_else(|| {

@@ -265,11 +265,28 @@ What the phase-518 ports needed edited in the source, on both boards:
 
 What a workspace image still has to state:
 
-- **Pool sizes.** The image declares no entities, so every pool keeps its
-  embedded default. On Zephyr the same holds for same-session service calls:
-  a client and a server in one image meet only with
-  `[image.<id>.knobs.rmw] local_queryable = 1`. Both are
-  [issue 2043](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2043-ament-port-pool-sizing-census.md).
+- **Pool sizes: let the census answer.** Say that the image's entities are
+  what its program creates, and state no size:
+
+  ```toml
+  [[component]]
+  pkg = "my_pkg"
+  class = "my_pkg::MyNode"
+  name = "my_node"        # the executable, when the workspace builds several
+  entities = "census"
+  ```
+
+  The configure then builds the same sources for the host, runs the program
+  once in census mode, and sizes the publisher, subscriber, queryable,
+  liveliness and executor-callback pools from what it created. Nothing has to
+  be built twice by hand, and a current census is reused. This works on the
+  `add_subdirectory` and `find_package` roads, for a host image and a FreeRTOS
+  one ([issue 2043](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2043-ament-port-pool-sizing-census.md)).
+  The census run constructs the node, so it needs the node's parameters: state
+  them with `params_files` (above). Zephyr does not read the census yet
+  ([issue 2086](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2086-zephyr-ported-image-not-census-sized.md)):
+  there, state the pools in `[image.<id>.knobs]`, and a client and a server
+  in one image meet only with `[image.<id>.knobs.rmw] local_queryable = 1`.
 - **Message bounds.** An unbounded sequence or string in a message the node
   publishes gets the default bound, which can make one message megabytes.
   Bound it in `nros-codegen.toml`, for example
