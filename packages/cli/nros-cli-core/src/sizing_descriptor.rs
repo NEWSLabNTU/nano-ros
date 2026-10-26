@@ -4685,7 +4685,7 @@ mod tests {
             overlay: nros_orchestration_ir::overlay::Overlay {
                 bridges: vec![nros_orchestration_ir::overlay::OverlayBridge {
                     name: "gw".into(),
-                    topics: vec![],
+                    topics: vec!["/chatter".into()],
                     bidirectional: false,
                     rmws: vec!["zenoh".into(), "cyclonedds".into()],
                 }],
@@ -4710,7 +4710,7 @@ mod tests {
         };
         let inv = EntityInventory::from_probe("probe", &model, &[row])
             .expect("described")
-            .with_bridge_rows();
+            .with_bridge_rows(None);
         let d = build(&model_only(&inv));
         assert_eq!(
             d.image.backend_count().stated(),

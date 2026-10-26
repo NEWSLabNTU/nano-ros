@@ -746,6 +746,24 @@ mod tests {
         );
     }
 
+    /// Issue 2076 -- the entity inventory sizes a bridge image from THIS file,
+    /// so its reader must read what this writer writes: every session, and a
+    /// from/to pair per forwarded row (a bidirectional bridge is two rows).
+    #[test]
+    fn the_inventory_reads_the_runtime_config_this_writes() {
+        for (bidir, rows) in [(false, 1), (true, 2)] {
+            let mut plan = bridge_plan(&["/chatter"], true);
+            plan.bridges[0].bidirectional = bidir;
+            let toml = render_bridge_runtime_config(&plan, std::path::Path::new("/nonexistent"))
+                .expect("a runtime config");
+            let rt = crate::entity_inventory::BridgeRuntime::parse(&toml)
+                .unwrap_or_else(|e| panic!("{e}: {toml}"));
+            assert_eq!(rt.nodes, vec!["s0".to_string(), "s1".to_string()], "{toml}");
+            assert_eq!(rt.links.len(), rows, "{toml}");
+            assert_eq!(rt.links[0].topic, "/chatter");
+        }
+    }
+
     #[test]
     fn parse_fields_const_extracts_name_and_primitive() {
         // phase-267 W-B2 — mirrors the generated `Message::FIELDS` shape; a drift
