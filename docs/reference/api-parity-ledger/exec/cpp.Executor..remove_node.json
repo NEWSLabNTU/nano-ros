@@ -1,6 +1,6 @@
 {
   "key": "cpp:Executor::remove_node",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "see `cpp:Executor::add_node`."
+  "disposition": "refuse-loud",
+  "verdict": "divergence",
+  "why": "RE-DISPOSITIONED 2026-10-27 (phase-515 P2), `declined`/`absent` -> `refuse-loud`. Arena registration is one-way, so a node cannot leave the executor that created it (`cpp:Executor::add_node`). The name now EXISTS on `rclcpp::Executor` and `executors::SingleThreadedExecutor` as a member template whose body is `static_assert(detail::refuse<T>::value, NROS_RCLCPP_REFUSE_REMOVE_NODE)`, so a ported `executor.remove_node(node)` is a compile error carrying the reason, not \"no member named 'remove_node'\". Probe: `ros2_refuse_remove_node_probe.cpp` in `just check cpp`. PRIOR ROW: see `cpp:Executor::add_node`."
 }

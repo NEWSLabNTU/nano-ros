@@ -1,6 +1,10 @@
 {
   "key": "cpp:Executor::spin_all",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "rclcpp's 'keep collecting and executing until the ready set is empty or `max_duration` expires'. Same answer as `cpp:Executor::spin_some`: `spin_once` already drains the ready set, and `spin_for` is the duration-bounded loop -- differing from `spin_all` in that it keeps waiting for new work rather than returning when work runs out."
+  "disposition": "adopt-bounded",
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 P2), was `declined`/`absent`. The prior row was right that the behaviour already existed: our `spin_some` re-runs a zero-timeout pass until a pass does no work, which is rclcpp's `spin_all` contract, not its `spin_some`'s. `spin_all(uint32_t max_duration_ms)` is that drain with upstream's precondition: zero is refused (`ErrorCode::InvalidArgument`; rclcpp throws `std::invalid_argument`). ENVELOPE: milliseconds, not `std::chrono::nanoseconds` (D1). Held by `executor_node_members_runtime.cpp`. PRIOR ROW: rclcpp's 'keep collecting and executing until the ready set is empty or `max_duration` expires'. Same answer as `cpp:Executor::spin_some`: `spin_once` already drains the ready set, and `spin_for` is the duration-bounded loop -- differing from `spin_all` in that it keeps waiting for new work rather than returning when work runs out.",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/executor.hpp",
+    "text": "for it. The bound is MILLISECONDS, not a `std::chrono::nanoseconds`"
+  }
 }

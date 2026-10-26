@@ -27,7 +27,10 @@
 // the home), so the forward declaration has to be there too.
 namespace rclcpp {
 class Node;
-}
+// phase-515 P1 -- defined in `rclcpp.hpp`; `Executor::spin_until_future_complete`
+// returns it. Opaque scoped-enum declaration, underlying type `int` as there.
+enum class FutureReturnCode;
+} // namespace rclcpp
 
 namespace rclcpp {
 
@@ -279,6 +282,69 @@ class Executor {
     Result spin_some(uint32_t max_ms = 0) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_spin_some(storage_, max_ms));
+    }
+
+    /// `spin_all(max_duration)` — phase-515 P2. ADOPT-BOUNDED.
+    ///
+    /// rclcpp's "keep collecting and executing until nothing is ready or
+    /// `max_duration` expires" is exactly what [`spin_some`] already runs
+    /// here (pass after pass until a pass does nothing), so this is that
+    /// drain with upstream's precondition: a zero bound is refused
+    /// (`ErrorCode::InvalidArgument`), as rclcpp throws `std::invalid_argument`
+    /// for it. The bound is MILLISECONDS, not a `std::chrono::nanoseconds`
+    /// (decision D1: this surface is freestanding).
+    Result spin_all(uint32_t max_duration_ms) {
+        if (max_duration_ms == 0) return Result(ErrorCode::InvalidArgument);
+        return spin_some(max_duration_ms);
+    }
+
+    /// `spin_until_future_complete(future, timeout)` — phase-515 P1.
+    /// ADOPT-BOUNDED, the free function's envelope on this executor: the
+    /// timeout is `int32_t` MILLISECONDS (`-1`, the default, = unbounded), and
+    /// the executor is driven in 10 ms `spin_once` slices, so the deadline is
+    /// quantised to 10 ms. Returns upstream's `FutureReturnCode`. Defined in
+    /// `rclcpp.hpp`, after the future traits it polls through.
+    template <typename Future>
+    FutureReturnCode spin_until_future_complete(Future&& future, int32_t timeout_ms = -1);
+
+    /// `add_node(node, notify)` — phase-515 P2. ADOPT-BOUNDED.
+    ///
+    /// A node's entities live in the arena of the executor that CREATED it
+    /// (RFC-0002), so attachment is already done by [`create_node`]. This
+    /// CHECKS it: a node created on this executor is a no-op; any other node
+    /// (uninitialised, or created on another executor) aborts naming it,
+    /// because spinning this executor would never reach its callbacks.
+    /// `notify` is accepted and ignored — there is no waiting executor to
+    /// wake. Takes rclcpp's `Node::SharedPtr` (or any pointer-like to a node).
+    template <typename NodePtr> void add_node(const NodePtr& node, bool notify = true);
+
+    /// **REFUSED** — `remove_node`. phase-515 P2. Registration in the arena
+    /// is one-way: no slot is reclaimed and no handle invalidated, so a node
+    /// cannot leave the executor that created it. Using the name is a compile
+    /// error carrying `NROS_RCLCPP_REFUSE_REMOVE_NODE`.
+    template <typename NodePtr, typename T = void>
+    void remove_node(const NodePtr& node, bool notify = true) {
+        (void)node;
+        (void)notify;
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_REMOVE_NODE);
+    }
+
+    /// `spin_node_some(node)` — phase-515 P2. ADOPT-BOUNDED: [`add_node`]'s
+    /// check, then [`spin_some`] on this executor. The envelope: it drains
+    /// EVERY node on this executor, not only `node`, because the arena is
+    /// indexed by handle, not by node — a node is not a unit of dispatch here.
+    template <typename NodePtr> Result spin_node_some(const NodePtr& node) {
+        add_node(node);
+        return spin_some();
+    }
+
+    /// `spin_node_once(node, timeout)` — phase-515 P2. ADOPT-BOUNDED:
+    /// [`add_node`]'s check, then [`spin_once`] on this executor, which
+    /// dispatches every ready entry of every node on it. The budget is
+    /// required, as for `spin_once`.
+    template <typename NodePtr> Result spin_node_once(const NodePtr& node, int32_t timeout_ms) {
+        add_node(node);
+        return spin_once(timeout_ms);
     }
 
     /// Phase 124.F.3 — session-level connectivity probe.

@@ -1,6 +1,10 @@
 {
   "key": "cpp:Executor::spin_node_once",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "spins ONE node's callbacks on a temporary executor. RFC-0002 puts one executor per RTOS task, SHARED by every node in that tier, and the arena is indexed by `HandleId`, not by node -- a node is not a unit of dispatch here. What a user loses: draining one node's queue while another node's callbacks stay pending. Also needs a throwaway executor per call, which no allocator -- one global `nros_platform_alloc` and inline caller-owned storage. See `cpp:Node::make_shared` and the `no-shared-ptr` rule in signature_rules.py."
+  "disposition": "adopt-bounded",
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 P2), was `declined`/`absent`. `spin_node_once(node, int32_t timeout_ms)` is `add_node`'s check followed by `spin_once(timeout_ms)` on this executor. ENVELOPE, stated on the method: one pass dispatches every ready entry of every node on the executor (see `cpp:Executor::spin_once`), and the budget is REQUIRED -- upstream's default `-1` blocks forever, which `spin_once` refuses (RFC-0021). Held by `executor_node_members_runtime.cpp`. PRIOR ROW: spins ONE node's callbacks on a temporary executor. RFC-0002 puts one executor per RTOS task, SHARED by every node in that tier, and the arena is indexed by `HandleId`, not by node -- a node is not a unit of dispatch here. What a user loses: draining one node's queue while another node's callbacks stay pending. Also needs a throwaway executor per call, which no allocator -- one global `nros_platform_alloc` and inline caller-owned storage. See `cpp:Node::make_shared` and the `no-shared-ptr` rule in signature_rules.py.",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/executor.hpp",
+    "text": "dispatches every ready entry of every node on it. The budget is"
+  }
 }

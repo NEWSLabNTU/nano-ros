@@ -1076,6 +1076,66 @@ inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node, 
     return FutureReturnCode::INTERRUPTED;
 }
 
+namespace detail {
+/// phase-515 P1 — `spin_until_future_complete` on ONE executor handle: the
+/// free function's loop (10 ms `spin_once` slices, the future re-checked
+/// after each, a deadline only when `timeout_ms >= 0`), shared by
+/// `rclcpp::Executor` and `executors::SingleThreadedExecutor`. `process` says
+/// which "still running?" applies: the process executor's `rclcpp::ok()`, or,
+/// for an explicit executor that `rclcpp::init` never saw, only the
+/// termination request (SIGINT) every spin honours.
+template <typename Future>
+inline FutureReturnCode spin_executor_until_future_complete(void* executor, Future& future,
+                                                            int32_t timeout_ms, bool process) {
+    if (executor == nullptr) return FutureReturnCode::INTERRUPTED;
+    constexpr int32_t kPollMs = 10;
+    const bool bounded = timeout_ms >= 0;
+    const uint64_t start_ns = nros_cpp_time_ns();
+    const uint64_t budget_ns = bounded ? static_cast<uint64_t>(timeout_ms) * 1000000ull : 0ull;
+    while (process ? ::rclcpp::ok() : !::nros_cpp_termination_requested()) {
+        if (::rclcpp::detail::future_is_ready(future)) return FutureReturnCode::SUCCESS;
+        (void)nros_cpp_spin_once(executor, kPollMs);
+        if (::rclcpp::detail::future_is_ready(future)) return FutureReturnCode::SUCCESS;
+        if (bounded && nros_cpp_time_ns() - start_ns >= budget_ns) return FutureReturnCode::TIMEOUT;
+    }
+    return FutureReturnCode::INTERRUPTED;
+}
+
+/// phase-515 P2 — the `add_node` check, against one executor handle.
+template <typename NodePtr>
+inline void check_node_on_executor(const NodePtr& node, void* executor, bool process) {
+    const bool live = node && node->initialized();
+    const char* name = live ? node->get_name() : "";
+    if (!live) {
+        ::rclcpp::detail::abort_failed_create("add_node", name,
+                                              static_cast<int32_t>(ErrorCode::NotInitialized));
+    }
+    if (node->executor_handle() != executor) {
+        // `say_refused` takes a LITERAL (its length is checked against the
+        // log buffer), so the two refusals are spelled out, not passed in.
+        if (process) {
+            NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_FOREIGN_EXECUTOR_NODE);
+        } else {
+            NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_FOREIGN_NODE);
+        }
+        ::rclcpp::detail::abort_failed_create("add_node", name,
+                                              static_cast<int32_t>(ErrorCode::Unsupported));
+    }
+}
+} // namespace detail
+
+template <typename Future>
+inline FutureReturnCode Executor::spin_until_future_complete(Future&& future, int32_t timeout_ms) {
+    if (!initialized_) return FutureReturnCode::INTERRUPTED;
+    return ::rclcpp::detail::spin_executor_until_future_complete(storage_, future, timeout_ms,
+                                                                 false);
+}
+
+template <typename NodePtr> inline void Executor::add_node(const NodePtr& node, bool notify) {
+    (void)notify;
+    ::rclcpp::detail::check_node_on_executor(node, static_cast<void*>(storage_), false);
+}
+
 // --- rclcpp::executors (phase-488) --------------------------------------------
 namespace executors {
 
@@ -1106,16 +1166,51 @@ class SingleThreadedExecutor {
     /// ignored, as there is no waiting executor to wake.
     void add_node(const ::rclcpp::Node::SharedPtr& node, bool notify = true) {
         (void)notify;
-        const char* name = (node && node->initialized()) ? node->get_name() : "";
-        if (!node || !node->initialized()) {
-            ::rclcpp::detail::abort_failed_create("add_node", name,
-                                                  static_cast<int32_t>(ErrorCode::NotInitialized));
+        ::rclcpp::detail::check_node_on_executor(node, ::rclcpp::global_handle(), true);
+    }
+
+    /// **REFUSED** — `remove_node`; see `rclcpp::Executor::remove_node`.
+    /// phase-515 P2.
+    template <typename NodePtr, typename T = void>
+    void remove_node(const NodePtr& node, bool notify = true) {
+        (void)node;
+        (void)notify;
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_REMOVE_NODE);
+    }
+
+    /// `spin_until_future_complete(future, timeout)` on the process executor —
+    /// phase-515 P1, the envelope of `rclcpp::spin_until_future_complete`
+    /// (`int32_t` milliseconds, `-1` = unbounded, 10 ms slices).
+    template <typename Future>
+    FutureReturnCode spin_until_future_complete(Future&& future, int32_t timeout_ms = -1) {
+        return ::rclcpp::detail::spin_executor_until_future_complete(::rclcpp::global_handle(),
+                                                                     future, timeout_ms, true);
+    }
+
+    /// `spin_all(max_duration)` — phase-515 P2; see `rclcpp::Executor::spin_all`.
+    /// A zero bound is refused, as upstream throws for it.
+    void spin_all(uint32_t max_duration_ms) {
+        if (max_duration_ms == 0) {
+            NROS_RCLCPP_SAY_REFUSED("spin_all(0) REFUSED: max_duration must be positive, as in "
+                                    "rclcpp.");
+            return;
         }
-        if (node->executor_handle() != ::rclcpp::global_handle()) {
-            NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_FOREIGN_EXECUTOR_NODE);
-            ::rclcpp::detail::abort_failed_create("add_node", name,
-                                                  static_cast<int32_t>(ErrorCode::Unsupported));
-        }
+        spin_some(max_duration_ms);
+    }
+
+    /// `spin_node_some(node)` — phase-515 P2: `add_node`'s check, then
+    /// `spin_some`, which drains every node on the process executor.
+    void spin_node_some(const ::rclcpp::Node::SharedPtr& node) {
+        add_node(node);
+        spin_some();
+    }
+
+    /// `spin_node_once(node, timeout)` — phase-515 P2: `add_node`'s check, then
+    /// one `spin_once` of the process executor (every node's ready work). The
+    /// budget is required, as for `rclcpp::spin_once`.
+    void spin_node_once(const ::rclcpp::Node::SharedPtr& node, int32_t timeout_ms) {
+        add_node(node);
+        (void)::rclcpp::spin_once(timeout_ms);
     }
 
     /// Block until `rclcpp::ok()` goes false — `rclcpp::spin_in()`.

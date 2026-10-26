@@ -1549,7 +1549,7 @@ cpp: cpp-fmt
     # to `c++`: the driver picks the language by EXTENSION, and `c++ foo.c`
     # compiles C as C++, which mangles `nros_stub_rmw_register` and fails to
     # link against the `extern "C"` declaration in the header.
-    for _tu in executor_cancel_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime jazzy_small_accessors_runtime timer_call_info_runtime status_event_setters_runtime; do \
+    for _tu in executor_cancel_runtime executor_node_members_runtime logger_names_and_levels_runtime node_launch_identity_runtime node_qos_overrides_runtime node_unset_namespace_runtime node_destroy_releases_entries_runtime arena_capture_lifetime_runtime jazzy_small_accessors_runtime timer_call_info_runtime status_event_setters_runtime; do \
         test -f "packages/api/nros-cpp/tests/compile/$_tu.cpp" || { \
             echo "ERROR: $_tu.cpp is MISSING -- this check would pass on absence." >&2; \
             exit 1; \
@@ -1587,6 +1587,26 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/executor_cancel_runtime
+    # phase-515 P1/P2 -- rclcpp's executor members with upstream's signatures
+    # on an explicit executor: spin_until_future_complete returns SUCCESS
+    # without burning its timeout and TIMEOUT no earlier than the budget;
+    # add_node / spin_node_some / spin_node_once on an own node; spin_all(0)
+    # refused. Negative control, measured: the helper's loop condition made
+    # `rclcpp::ok()` (false without rclcpp::init) -> 4 failures.
+    echo "  - rclcpp::Executor spin_until_future_complete / add_node / spin_node_* / spin_all (runtime, phase-515 P1/P2)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/executor_node_members_runtime \
+        packages/api/nros-cpp/tests/compile/executor_node_members_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/executor_node_members_runtime
     # W4.d — two nodes in one image under DISTINCT logger names, independent
     # thresholds through `rclcpp::Logger::set_level`, and ONE resolve-or-create
     # helper behind both the node accessor and the named lookup. The C twin is
@@ -3273,7 +3293,7 @@ cpp: cpp-fmt
     for probe in node_options system_defaults_qos log_throttle service_callback \
                  unbounded_spin unbounded_wait unbounded_wait_dispatch \
                  unbounded_wait_handle unbounded_action_wait multi_threaded_executor \
-                 subscription_callback; do \
+                 subscription_callback remove_node; do \
         f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
         test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
         if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
