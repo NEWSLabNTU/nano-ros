@@ -252,17 +252,17 @@ fn pump_until(
 ///    the publisher's matched `current >= 1`, the subscription's matched
 ///    `current >= 1`, and a `LivelinessChanged` with a positive
 ///    `alive_change` (the stock publisher appearing);
-/// 2. both peers stop, and the PUBLISHER's matched callback must report
-///    `current` falling back to 0 (a negative `change=`).
+/// 2. both peers stop, and BOTH matched callbacks must report `current`
+///    falling back to 0 with a negative `change=`, and the `LivelinessChanged`
+///    callback a negative `alive_change` (the stock publisher leaving).
 ///
-/// NOT asserted, because it does not happen, and that is a finding rather than
-/// a test gap: the SUBSCRIPTION's matched count never falls once the stock
-/// publisher leaves (issue 2060). The zenoh shim observes a subscription's
-/// matched / liveliness / deadline status inside `has_data`, and the executor
-/// skips `has_data` for a wake-attributed slot with no arrival — so after the
-/// last publisher is gone nothing ever asks. The publisher side falls because
-/// `rcl_publish` is its poll point. The case prints whether the subscription
-/// fall arrived, so the day 2060 is fixed the transcript says so.
+/// The subscription's half of (2) is issue 2060's regression check. The zenoh
+/// shim observes a subscription's matched / liveliness / deadline status inside
+/// `has_data`, and the executor used to skip `has_data` for a wake-attributed
+/// slot with no arrival, so once the last publisher was gone nothing ever
+/// asked and the count never fell. A subscription with a status callback is now
+/// probed every pass (`Executor::entity_status_polled`). The publisher side
+/// always fell, because `rcl_publish` is its poll point.
 ///
 /// The path under test is nros-c's — the process-wide `status_event_slots`
 /// table and the generation-tagged slot reference between the backend and
@@ -346,29 +346,32 @@ fn c_matched_and_liveliness_callbacks_follow_stock_ros2_peers() {
         );
     }
 
-    // Phase 2 — the stock peers leave; the publisher's count must fall to 0.
+    // Phase 2 — the stock peers leave; both counts must fall to 0, and the
+    // stock publisher's liveliness must drop.
     echo.kill();
     publisher.kill();
-    let fell = pump_until(&mut probe, &mut transcript, Duration::from_secs(40), |t| {
+    let fallen = |t: &str| {
         last_current(t, MATCHED_PROBE_PUB) == Some(0)
-    });
-    // Issue 2060 — reported, not asserted (see the doc comment).
-    let sub_fell = last_current(&transcript, MATCHED_PROBE_SUB) == Some(0);
-    eprintln!(
-        "qos_event_interop: subscription matched fall after the stock publisher left: {} \
-         (issue 2060)",
-        if sub_fell { "REPORTED" } else { "not reported" }
-    );
+            && last_current(t, MATCHED_PROBE_SUB) == Some(0)
+            && t.lines().any(|l| {
+                l.contains(MATCHED_PROBE_LIVELINESS)
+                    && field(l, "alive_change=").is_some_and(|d| d < 0)
+            })
+    };
+    let fell = pump_until(&mut probe, &mut transcript, Duration::from_secs(40), fallen);
     probe.kill();
     assert!(
         fell,
-        "after the stock subscriber stopped, the C publisher's matched callback \
-         must report current falling back to 0.\nProbe said:\n{transcript}"
+        "after the stock peers stopped, the C callbacks must report: publisher \
+         matched current 0, subscription matched current 0 (issue 2060), and a \
+         LivelinessChanged with alive_change < 0.\nProbe said:\n{transcript}"
     );
-    assert!(
-        transcript
-            .lines()
-            .any(|l| l.contains(MATCHED_PROBE_PUB) && field(l, "change=").is_some_and(|d| d < 0)),
-        "`{MATCHED_PROBE_PUB}` never reported a negative current_count_change:\n{transcript}"
-    );
+    for marker in [MATCHED_PROBE_PUB, MATCHED_PROBE_SUB] {
+        assert!(
+            transcript
+                .lines()
+                .any(|l| l.contains(marker) && field(l, "change=").is_some_and(|d| d < 0)),
+            "`{marker}` never reported a negative current_count_change:\n{transcript}"
+        );
+    }
 }

@@ -245,15 +245,20 @@ on the next publish. Apps should still call
 `Subscriber::supports_event(kind)` first or design for graceful
 fallback.
 
-The subscription side has the mirror-image limit today (issue 2060). It was
-measured on zenoh-pico; Cyclone drains its events from the same `has_data`
-and has not been measured. Its statuses are polled from `has_data`, and the
-executor does not call `has_data` on a subscription that has an arrival waker
-and nothing new to read. So once the last publisher has gone, a subscription's
-matched count does not fall, its liveliness count does not drop, and
-`RequestedDeadlineMissed` does not fire, until a sample arrives. Rises are
-reported, because the first sample triggers the poll. Measured against stock
-ROS 2 by the interop cell `native-qos-event-c-zenoh-bidir`.
+The subscription side has no such limit (issue 2060). Its statuses are also
+polled from `has_data`, and a subscription with an arrival waker is normally
+asked only after something arrives. Registering any status callback on a
+subscription changes that: the executor then asks it on every spin, arrival or
+not. So once the last publisher has gone, the matched count falls, the
+liveliness count drops, and `RequestedDeadlineMissed` fires, on the next spin
+after the backend notices. On zenoh that is within one liveliness query and one
+graph walk (at most every 50 ms). The interop cell
+`native-qos-event-c-zenoh-bidir` measures both falls against stock ROS 2. A
+subscription with no status callback is still asked only after an arrival, so
+it costs an idle executor nothing. On Cyclone DDS, whose `has_data` always
+answers "maybe", a subscription with a status callback is dispatched on every
+spin; when nothing is waiting, the take finds nothing and the callback does not
+run.
 
 The `Subscriber::supports_event(kind)` query lets applications check
 support before registering:
