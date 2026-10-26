@@ -37,10 +37,16 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 24 | 11 | 22 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k,config + pairwise l × r | 25 | 11 | 22 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k, config | 11 | 10 | 20 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k + platform × config | 37 | 35 | 69 % |
-//! | tier 3 | everything | 249 | 51 | 100 % |
+//! | tier 3 | everything | 252 | 51 | 100 % |
+//!
+//! Re-measured 2026-10-26 (phase-518 W4): the `PortWorkspace` workload joined
+//! with three C++ Zenoh Runtime cells (Linux, FreeRTOS, Zephyr), each at an
+//! existing coordinate. Tier 1's 1-wise workload axis took the Linux one, 24 ->
+//! 25 cells at the same 11 coordinates; tiers 2 and nightly did not move. Tier 3
+//! went 249 -> 252 cells over the same 51 coordinates.
 //!
 //! Re-measured 2026-10-25 (issue 2039): the C QoS-event interop cell
 //! (`native-qos-event-c-zenoh-bidir`) joined at an existing coordinate, so
@@ -1046,7 +1052,7 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 24, 11),
+            (CiLane::Tier1, 25, 11),
             (CiLane::Tier2, 11, 10),
             (CiLane::Tier2Nightly, 37, 35),
         ];
@@ -1070,8 +1076,8 @@ _tier-build:
         // tier-3 row was only ever checked for its coordinates.
         let total_cells = all_runtime_cells().count();
         assert_eq!(
-            total_cells, 249,
-            "the table's tier-3 cell count (249) is stale; recomputed {total_cells}"
+            total_cells, 252,
+            "the table's tier-3 cell count (252) is stale; recomputed {total_cells}"
         );
         assert_eq!(
             total_coords, 51,

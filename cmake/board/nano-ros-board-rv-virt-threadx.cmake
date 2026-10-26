@@ -697,6 +697,8 @@ nros_riscv64_rustflags_env(${_crate_target}-static)
     nros_apply_panic_policy(platform
         "nros_threadx_rv64_rust_app(${target})")
 
+    # phase-518 — the board's own image, past the ament surface's wrapper.
+    set(_NROS_IN_IMAGE_ADD_EXECUTABLE TRUE)
     add_executable(${target} "${_anchor}")
     # issue 1467 — say so ONCE, where the fact lives: this executable's app is a
     # Rust staticlib, so `nros`, `nros-platform` and `nros-rmw-cffi` — the whole

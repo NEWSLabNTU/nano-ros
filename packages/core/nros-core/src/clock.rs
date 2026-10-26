@@ -329,6 +329,17 @@ impl Clock {
         if let Some(t) = platform_wall_clock() {
             return t;
         }
+        // phase-518 (issue 2071) -- a port with no RTC (FreeRTOS, ThreadX)
+        // answers 0, and the counter below is the constant 0 on every image
+        // with a port linked, because nothing advances it. So a `RosTime`
+        // timer with no `/clock` source never fired on those ports: the
+        // stock `rclcpp::create_timer(this, get_clock(), ...)` of every
+        // Autoware node was dead. Boot-relative time is what issue 0758
+        // already says those images stamp with, and it ADVANCES, which is the
+        // property a timer needs. A port that can state an epoch still wins.
+        if let Some(t) = platform_steady_clock() {
+            return t;
+        }
         Time::from_nanos(atomic_time::get_steady())
     }
 

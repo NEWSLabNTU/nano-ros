@@ -502,3 +502,26 @@ function(nano_ros_read_leaf_system)
         "domain_id=${_NROS_LEAF_DOMAIN_ID} locator=${_NROS_LEAF_LOCATOR}")
 endfunction()
 
+# ---------------------------------------------------------------------------
+# nros_apply_leaf_identity() — the deployment identity a leaf's system.toml
+# states, applied to the scope that builds its images (RFC-0098 D5).
+#
+# A MACRO over what `nano_ros_read_leaf_system()` just read: the leaf's
+# locator becomes `NROS_ENTRY_LOCATOR` unless a `-D` already spoke (every RTOS
+# fixture row passes one, and it wins exactly as it wins over the per-platform
+# defaults in NanoRosEntryLocator.cmake), and its domain becomes
+# `NROS_DOMAIN_ID` (issue 1946; a disagreeing `-DNROS_DOMAIN_ID` was refused by
+# the read). Directory scope, never the cache. Both roads that read a leaf call
+# it: `find_package(nano_ros)` in the leaf's own scope, and the nano-ros root
+# when a project pulls it in with `add_subdirectory()` (phase-518), which then
+# forwards the two values to the project.
+# ---------------------------------------------------------------------------
+macro(nros_apply_leaf_identity)
+    if(NOT NROS_LEAF_LOCATOR STREQUAL "" AND NOT DEFINED NROS_ENTRY_LOCATOR)
+        set(NROS_ENTRY_LOCATOR "${NROS_LEAF_LOCATOR}")
+    endif()
+    if(NOT NROS_LEAF_DOMAIN_ID STREQUAL "")
+        set(NROS_DOMAIN_ID "${NROS_LEAF_DOMAIN_ID}")
+    endif()
+endmacro()
+

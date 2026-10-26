@@ -489,7 +489,7 @@ template <typename S> class PollClient {
     ::rclcpp::ResultOf<bool> service_is_ready() const {
         if (!initialized_)
             return ::rclcpp::ResultOf<bool>::error(::rclcpp::ErrorCode::NotInitialized);
-        int out = -1;
+        int32_t out = -1;
         nros_cpp_ret_t ret = nros_cpp_service_client_server_available(
             const_cast<uint8_t*>(storage_), nullptr, 0, &out);
         // A failed CALL and a backend that cannot ANSWER are different facts,

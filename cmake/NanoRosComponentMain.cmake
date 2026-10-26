@@ -51,7 +51,10 @@ function(nros_component_main_source plugin executable out_var)
         "std::shared_ptr<rclcpp::Node>\n"
         "nros_ament_component_detail::make_component<${plugin}>(\n"
         "    const rclcpp::NodeOptions& options, const char* name);\n"
-        "extern \"C\" int main(int argc, char** argv) {\n"
+        # Plain C++ linkage: on a board ROS2_MAIN renames `main` to
+        # `nros_ported_main`, which the entry TU declares as a C++ function, so
+        # an `extern "C"` here left the call unresolved at link.
+        "int main(int argc, char** argv) {\n"
         "    rclcpp::init(argc, argv);\n"
         "    auto node = nros_ament_component_detail::make_component<${plugin}>(\n"
         "        rclcpp::NodeOptions{}, \"${executable}\");\n"

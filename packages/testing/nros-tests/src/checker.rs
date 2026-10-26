@@ -88,6 +88,9 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // The monitor's own diagnostics, received by the host diagsink. Its
         // full contract (stale first, then live per topic) is the test's.
         Workload::PortMonitor => output::CONTRACT_MONITOR_DIAG_PREFIX,
+        // The workspace port's Int32 topic, received by the host `int32-sink`
+        // (phase-518 W4).
+        Workload::PortWorkspace => output::INT32_LISTENER_LOG_PREFIX,
         // Not the image's output at all: the image has no console. The
         // decoder's verdict over a dump of the halted guest (issue 1036).
         Workload::BootReport => output::BOOT_REPORT_ARENA_EXHAUSTED,

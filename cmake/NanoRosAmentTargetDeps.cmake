@@ -86,7 +86,33 @@ function(ament_target_dependencies target)
             set(_atd_carries_interface TRUE)
         endif()
     endif()
+    # phase-518 — a message package `find_package(nano_ros)` only VALIDATED.
+    # That road leaves generation to `nano_ros_add_*`, which knows the leaf's
+    # language; a stock package's own `add_library` / `add_executable` never
+    # reaches it, so its first `#include <std_msgs/msg/string.hpp>` failed on
+    # FreeRTOS and Zephyr while the same package built on posix. The consumer
+    # here is a target, so its language is known: one with C++ sources gets the
+    # package generated in C++ now. A C target does not, which keeps the reason
+    # for validating (no C++ interface library in a C leaf's scope).
+    set(_atd_cxx FALSE)
+    if(TARGET ${target})
+        get_target_property(_atd_srcs ${target} SOURCES)
+        foreach(_s IN LISTS _atd_srcs)
+            if(_s MATCHES "\\.(cc|cpp|cxx|C)$")
+                set(_atd_cxx TRUE)
+            endif()
+        endforeach()
+    endif()
     foreach(_dep IN LISTS _atd_deps)
+        if(NOT TARGET ${_dep}::${_dep} AND _atd_cxx AND NROS_FIND_PACKAGE_VALIDATE_ONLY
+           AND COMMAND _nros_find_ros_msg_package)
+            get_property(_atd_validated GLOBAL PROPERTY NROS_VALIDATED_MSG_PACKAGES)
+            if(_dep IN_LIST _atd_validated)
+                set(NROS_FIND_PACKAGE_VALIDATE_ONLY FALSE)
+                _nros_find_ros_msg_package(${_dep})
+                set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
+            endif()
+        endif()
         if(NOT TARGET ${_dep}::${_dep})
             continue()
         endif()

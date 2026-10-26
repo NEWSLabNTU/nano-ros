@@ -161,7 +161,7 @@ template <typename S> class ClientHandle {
         if (executor_ == nullptr) {
             return ::rclcpp::ResultOf<bool>::error(::rclcpp::ErrorCode::NotInitialized);
         }
-        int out = -1;
+        int32_t out = -1;
         nros_cpp_ret_t ret =
             nros_cpp_service_client_server_available(nullptr, executor_, handle_id_, &out);
         if (ret != 0) return ::rclcpp::ResultOf<bool>::error(static_cast<::rclcpp::ErrorCode>(ret));

@@ -5,7 +5,7 @@
  * (`nros_freertos_start_scheduler`, `nros_freertos_create_task`,
  * `nros_freertos_set_current_task_priority`) moved to
  * `freertos_task_glue.c`. They touch no lwIP symbol, but this TU includes
- * `lwip/*.h` unconditionally, so a board whose network stack is the HOST's
+ * `lwip/<name>.h` unconditionally, so a board whose network stack is the HOST's
  * could not reach them without dragging in a stack it does not have. The
  * FreeRTOS POSIX simulator is that board. Splitting was the alternative to a
  * second copy of `xTaskCreate` in a second file.

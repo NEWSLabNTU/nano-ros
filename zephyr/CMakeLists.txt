@@ -545,6 +545,11 @@ if(CONFIG_NROS_C_API)
     # phase-400 W5.a — the directory is `nros_resolve_cargo_dirs()`'s answer, not
     # a literal repeated from nros_cargo_build.cmake. Same path today.
     nros_generated_dir(_nros_c_gen_dir c)
+    # phase-518 — the directory exists from the configure on, though cargo fills
+    # it at build time: an IMPORTED target that propagates it (`rclcpp::rclcpp`,
+    # which a ported package links) is refused at generate time while it is
+    # missing ("includes non-existent path").
+    file(MAKE_DIRECTORY "${NROS_GENERATED_HEADER_DIR}/${_nros_c_gen_dir}")
     zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/${_nros_c_gen_dir})
     # Add nros-c include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-c/include)
@@ -680,6 +685,9 @@ if(CONFIG_NROS_CPP_API)
     # so both variants must resolve to the per-build versions.
     nros_generated_dir(_nros_cpp_gen_dir cpp)
     nros_generated_dir(_nros_c_gen_dir c)
+    # phase-518 — made at configure, as the C directory above is.
+    file(MAKE_DIRECTORY "${NROS_GENERATED_HEADER_DIR}/${_nros_cpp_gen_dir}"
+                        "${NROS_GENERATED_HEADER_DIR}/${_nros_c_gen_dir}")
     zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/${_nros_cpp_gen_dir})
     zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/${_nros_c_gen_dir})
     # `cxx-compat/` ships a stripped-down `<cstdlib>` / `<cstdio>` /
@@ -790,11 +798,13 @@ if(CONFIG_NROS_CPP_API)
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-cpp/include)
     # Phase 112.C — nros-c also exposes `<rclc/detail/app_main.h>` (the
     # unified user-entry contract used by both C and C++ examples).
-    # Cpp Zephyr builds need the nros-c include dir for that header
-    # plus the Zephyr Kconfig synthesis variant of `<rclc/detail/app_config.h>`
-    # under `nros/zephyr/`.
+    # Cpp Zephyr builds need the nros-c include dir for that header. The
+    # Zephyr Kconfig synthesis variant of `<rclc/detail/app_config.h>` is
+    # included by its full path, `<rclc/detail/zephyr/app_config.h>`, so it
+    # needs no directory of its own (phase-518: the `nros/zephyr/` one this
+    # named had not existed since phase-501 W2, and an IMPORTED target that
+    # propagates it, `rclcpp::rclcpp`, is refused for it at generate time).
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-c/include)
-    zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-c/include/nros/zephyr)
 
     # Make nros_generate_interfaces() + nros_find_interfaces() available
     # for C++ examples (see the C-API path above for the rationale).

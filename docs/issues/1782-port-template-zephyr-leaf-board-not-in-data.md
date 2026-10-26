@@ -6,7 +6,7 @@ type: bug
 area: [examples, tooling]
 severity: low
 found: 2026-10-10
-related: [issue-1764, phase-482, issue-1296, issue-1308, phase-452]
+related: [issue-1764, phase-482, issue-1296, issue-1308, phase-452, phase-518]
 ---
 
 **Home: [phase-452](../roadmap/phase-452-copy-out-front-door.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
@@ -62,3 +62,16 @@ build of each:
 Either way, acceptance is: a copy of the template builds in `zephyr/` by a
 road derived from its data, and `check-template-copy-out` builds it instead of
 skipping it where Zephyr is installed.
+
+## Also hit by a ported workspace (2026-10-26, phase-518 W4)
+
+`examples/templates/ament-workspace-port/zephyr` and the ported ros2/demos
+`composition` both need the same tail. The board package's own `prj.conf`
+(`packages/boards/nros-board-mps2-an385-zephyr/prj.conf`) is comments only, so
+`nros build` with `board = "mps2-an385-zephyr"` produced an image that failed to
+link: `undefined reference to z_impl_sys_rand_get`, because nothing set
+`CONFIG_TEST_RANDOM_GENERATOR`. The port built and ran once a copy of
+`cmake/zephyr/mps2-an385.conf` was named in the image's `os_config`. This
+confirms the direction above: the fragment belongs to the board package, where
+`board_projection::board_files` already looks (`prj.conf`,
+`boards/<flat>.conf`).

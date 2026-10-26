@@ -274,7 +274,7 @@ template <typename S> class Client {
     ::rclcpp::ResultOf<bool> service_is_ready() const {
         if (!initialized_)
             return ::rclcpp::ResultOf<bool>::error(::rclcpp::ErrorCode::NotInitialized);
-        int out = -1;
+        int32_t out = -1;
         nros_cpp_ret_t ret =
             nros_cpp_service_client_server_available(nullptr, executor_, handle_id_, &out);
         // A failed CALL and a backend that cannot ANSWER are different facts;

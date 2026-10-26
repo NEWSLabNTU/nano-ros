@@ -445,6 +445,13 @@ pub const CPP_PORT_SMOKE_DIAG_TASK: &str = "publish_count";
 /// The smoke node's `Updater::setHardwareID`.
 pub const CPP_PORT_SMOKE_HARDWARE_ID: &str = "smoke";
 
+/// phase-518 W4 — `examples/templates/ament-workspace-port`'s node constructor
+/// log, which every build of it prints once it is up.
+pub const AMENT_WORKSPACE_PORT_UP_MARKER: &str = "workspace_port up";
+
+/// phase-518 W4 — the topic that template publishes `std_msgs/Int32` on.
+pub const AMENT_WORKSPACE_PORT_TOPIC: &str = "/workspace_port_topic";
+
 /// `topic-state-monitor-port`'s start-up log line, printed once both
 /// subscriptions and the updater exist.
 pub const CPP_PORT_MONITOR_UP_MARKER: &str = "topic_state_monitor up";

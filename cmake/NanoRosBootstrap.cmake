@@ -10,6 +10,7 @@
 # `cmake/NanoRosVerbs.cmake` only.
 
 include_guard(GLOBAL)
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLinkAppDependency.cmake")  # phase-518
 
 # --------------------------------------------------------------------------
 # _nros_bootstrap([ROOT <path>])
@@ -66,7 +67,7 @@ function(_nros_link target)
     get_directory_property(_nros_iface_libs NROS_GENERATED_INTERFACE_LIBS)
     foreach(_lib IN LISTS _nros_iface_libs)
         if(TARGET ${_lib})
-            target_link_libraries(${target} PRIVATE ${_lib})
+            nros_link_app_dependency(${target} ${_lib})
         endif()
     endforeach()
 

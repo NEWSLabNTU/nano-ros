@@ -3243,6 +3243,18 @@ rmw = "zenoh"
 dir = "examples/templates/topic-state-monitor-port/mps2-an385-freertos"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8089" }
 
+# phase-518 W4 — a stock ament_cmake WORKSPACE on FreeRTOS: the template's
+# unmodified `src/` package, configured by the root beside it. Port 8086 =
+# `alloc::port_of(FreertosMps2, Cpp, PortWorkspace)`; consumed by
+# tests/port_templates_e2e.rs.
+[[fixture]]
+id = "freertos-cpp-port-ament-workspace"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/templates/ament-workspace-port/mps2-an385-freertos"
+cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8086" }
+
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
@@ -4031,6 +4043,14 @@ id = "cpp_port_topic_state_monitor"
 builder = "cmake-configure"
 dir = "examples/templates/topic-state-monitor-port"
 output = "topic_state_monitor"
+
+# phase-518 W4 — the workspace port's posix root; its program is built in the
+# package's own binary directory.
+[[compile_check_fixture]]
+id = "cpp_port_ament_workspace"
+builder = "cmake-configure"
+dir = "examples/templates/ament-workspace-port/posix"
+output = "workspace_port_nodes/workspace_port"
 
 # phase-445 W5 (RFC-0098 D9, issue 1108) — the five WORKSPACE templates below
 # have no root build file any more, so `cmake-configure` builds them the way a
@@ -5462,6 +5482,21 @@ board = "mps2_an385"
 west_role = "port-topic-state-monitor"
 west_build_name = "build-cortex-m-cpp-port-topic-state-monitor-zenoh"
 west_zenoh_locator = "tcp/10.0.2.2:10889"
+conf_files = ["prj.conf", "prj-zenoh.conf"]
+
+# phase-518 W4 — the workspace port on Zephyr, the (ZephyrQemuCortexM, Cpp,
+# PortWorkspace) cell. Port 10886 = `alloc::port_of(ZephyrQemuCortexM, Cpp,
+# PortWorkspace)`; consumed by tests/port_templates_e2e.rs.
+[[fixture]]
+platform = "zephyr-cortex-m"
+lang = "cpp"
+rmw = "zenoh"
+builder = "west"
+dir = "examples/templates/ament-workspace-port/zephyr"
+board = "mps2_an385"
+west_role = "port-ament-workspace"
+west_build_name = "build-cortex-m-cpp-port-ament-workspace-zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10886"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 
 [[fixture]]

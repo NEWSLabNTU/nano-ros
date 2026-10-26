@@ -196,6 +196,43 @@ Zephyr's `native_sim` cannot run a ported node. There Zephyr links its own C
 library, and the host's libstdc++ cannot run on top of it. Use a Cortex-M
 board such as `mps2/an385` in QEMU, which is what the template targets.
 
+### A whole workspace on a board
+
+A ported workspace keeps each package's own `CMakeLists.txt`, unchanged. Only
+the root that configures the packages is new.
+[`examples/templates/ament-workspace-port`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/templates/ament-workspace-port)
+has three roots over one stock package:
+
+- **FreeRTOS:** `find_package(nano_ros)`, then `add_subdirectory` for each
+  package, with `system.toml` naming the board. Build with `nros build`.
+- **Zephyr:** `find_package(Zephyr)` first, then the same two lines, plus a
+  `package.xml` and the Kconfig fragments beside them. Build with `nros sync`
+  and then `nros build`.
+- **posix:** the same root you already use.
+
+On a board, nano-ros reads the stock CMake verbs this way:
+
+- `add_executable` builds an image, as
+  `nano_ros_add_executable(... ROS2_MAIN)` does. The board's entry calls your
+  `main`, and the image gets its locator and domain from `system.toml`.
+- `add_library(... SHARED)` builds `STATIC`, because an image is one binary.
+- A package that finds `rclcpp` gets the C++ standard library. Its directory
+  is compiled without `-ffreestanding`.
+- `ament_target_dependencies(<target> std_msgs)` on a C++ target generates the
+  message package if nothing has yet.
+- A plain `target_link_libraries(<exe> <lib>)` keeps working beside nano-ros's
+  own links.
+
+What a workspace image still has to state:
+
+- **Pool sizes.** The image declares no entities, so every pool keeps its
+  embedded default. On Zephyr the same holds for same-session service calls:
+  a client and a server in one image meet only with
+  `[image.<id>.knobs.rmw] local_queryable = 1`. Both are
+  [issue 2043](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2043-ament-port-pool-sizing-census.md).
+- **The Zephyr board's QEMU network fragment,** which a copy names in
+  `os_config` ([issue 1782](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1782-port-template-zephyr-leaf-board-not-in-data.md)).
+
 ## What "just works" without source edits
 
 nano-ros covers the patterns a typical ROS 2 C++ node uses:
