@@ -322,6 +322,17 @@ template <typename T> struct refuse {
     "rclcpp::spin(node)). For parallelism, give the work its own TIER -- one executor per RTOS "   \
     "task, declared in system.toml -- rather than its own callback group."
 
+// phase-515 P2 — `Executor::remove_node` / `SingleThreadedExecutor::remove_node`.
+#define NROS_RCLCPP_REFUSE_REMOVE_NODE                                                             \
+    "remove_node REFUSED by nano-ros: a node's entities live in the arena of the executor that "   \
+    "created it, and arena registration is one-way (RFC-0002), so a node cannot leave it. Keep "   \
+    "the node on its executor, or stop spinning that executor."
+
+// phase-515 P2 — `Executor::add_node` on a node another executor created.
+#define NROS_RCLCPP_REFUSE_FOREIGN_NODE                                                            \
+    "add_node REFUSED: this node was created on another executor, and its entities live in "       \
+    "that executor's arena (RFC-0002). Spin that executor instead."
+
 // phase-488 — `SingleThreadedExecutor::add_node` on a node from another executor.
 #define NROS_RCLCPP_REFUSE_FOREIGN_EXECUTOR_NODE                                                   \
     "add_node REFUSED: this node was created on an explicit rclcpp::Executor, not the process "    \

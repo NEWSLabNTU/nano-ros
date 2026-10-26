@@ -1,6 +1,10 @@
 {
   "key": "cpp:Executor::spin_node_some",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "see `cpp:Executor::spin_node_once`."
+  "disposition": "adopt-bounded",
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 P2), was `declined`/`absent`. `spin_node_some(node)` is `add_node`'s check followed by `spin_some` on this executor (no temporary executor, so nothing to allocate). ENVELOPE, stated on the method: it drains EVERY node on the executor, not only `node`, because the arena is indexed by handle, not by node -- the capability the prior row says is lost (draining one node while another's callbacks stay pending) is still lost. Held by `executor_node_members_runtime.cpp`. PRIOR ROW: see `cpp:Executor::spin_node_once`.",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/executor.hpp",
+    "text": "EVERY node on this executor, not only `node`, because the arena is"
+  }
 }

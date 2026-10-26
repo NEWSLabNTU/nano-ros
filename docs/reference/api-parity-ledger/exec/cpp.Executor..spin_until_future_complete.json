@@ -1,6 +1,10 @@
 {
   "key": "cpp:Executor::spin_until_future_complete",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "drives the executor until a `std::shared_future` resolves. RFC-0021: no futures and no async runtime. Every blocking helper takes the executor and drives it (`promise.wait(&mut executor, timeout)`), because on a single-threaded executor awaiting a result that only that executor can produce is a deadlock. See `cpp:Future`. Ours inverts it: the blocking helper is a method on the thing being waited FOR and it takes the executor (`promise.wait(&mut executor, timeout)`, `Client::call`), which is the same capability with the deadlock made unrepresentable. See `cpp:Future::wait` and the service stage's `cpp:Client::async_send_request`."
+  "disposition": "adopt-bounded",
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 P1), was `declined`/`absent`. `rclcpp::Executor::spin_until_future_complete(future, int32_t timeout_ms = -1)` and the same member on `executors::SingleThreadedExecutor` drive THAT executor exactly as the free `rclcpp::spin_until_future_complete` drives the process one: 10 ms `spin_once` slices, the future re-checked after each slice, SUCCESS as soon as it is ready, TIMEOUT no earlier than the budget. RFC-0021's objection was to a future awaited WITHOUT driving the executor that produces it; this one drives it, which is why the free function already shipped `adopt-bounded`. ENVELOPE (stated on the method): the timeout is `int32_t` MILLISECONDS (`-1` = unbounded, the default), not a `std::chrono::duration` (decision D1: freestanding only), and the deadline is quantised to 10 ms. An explicit executor stops on the termination request (SIGINT), since `rclcpp::ok()` describes only the process executor. Held by `executor_node_members_runtime.cpp` in `just check cpp`. PRIOR ROW: drives the executor until a `std::shared_future` resolves. RFC-0021: no futures and no async runtime. Every blocking helper takes the executor and drives it (`promise.wait(&mut executor, timeout)`), because on a single-threaded executor awaiting a result that only that executor can produce is a deadlock. See `cpp:Future`. Ours inverts it: the blocking helper is a method on the thing being waited FOR and it takes the executor (`promise.wait(&mut executor, timeout)`, `Client::call`), which is the same capability with the deadlock made unrepresentable. See `cpp:Future::wait` and the service stage's `cpp:Client::async_send_request`.",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/executor.hpp",
+    "text": "ADOPT-BOUNDED, the free function's envelope on this executor: the"
+  }
 }

@@ -239,11 +239,26 @@ reason.
 function ships (`adopt-bounded`); the executor member does not. Declined under
 RFC-0021, but the member drives the executor exactly as the free function
 does. Adopt-bounded with the same envelope.
+**LANDED 2026-10-27** with P2: `rclcpp::Executor::spin_until_future_complete(future,
+int32_t timeout_ms = -1)` and the same member on
+`executors::SingleThreadedExecutor`, the free function's loop on that
+executor (10 ms slices, the future re-checked after each). An explicit executor
+stops on the termination request, since `rclcpp::ok()` describes only the
+process executor. Test: `executor_node_members_runtime.cpp`.
 
 **P2 — `Executor::add_node`, `remove_node`, `spin_node_some`,
 `spin_node_once`, `spin_all`.** Declined because nodes are created by the
 executor. The executor can accept its own node (no-op) and refuse a foreign one
 loudly; `spin_all` maps onto the bounded spin. Adopt-bounded.
+**LANDED 2026-10-27.** On `rclcpp::Executor` and
+`executors::SingleThreadedExecutor`: `add_node(node, notify)` checks the
+attachment construction made (own node: no-op; foreign or uninitialised:
+abort naming it); `spin_node_some(node)` / `spin_node_once(node, timeout_ms)`
+are that check plus `spin_some` / `spin_once`, and drain every node on the
+executor (the arena is indexed by handle, not node); `spin_all(max_ms)` is
+`spin_some`'s drain, which already re-polls until a pass does nothing, with
+zero refused as upstream throws for it. `remove_node` is REFUSE-LOUD
+(`ros2_refuse_remove_node_probe.cpp`): arena registration is one-way.
 
 **P3 — `rclcpp::Parameter`, `ParameterValue`, `Node::get_parameters` /
 `set_parameters` over vectors.** Declined because the value object owns
