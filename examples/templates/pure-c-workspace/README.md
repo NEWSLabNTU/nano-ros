@@ -14,7 +14,7 @@ D4): `nros build` generates the cmake root and the image's C entry
 resolved from the launch file.
 
 ```sh
-export NROS_REPO_DIR=/path/to/nano-ros
+source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
 nros sync
 nros build linux
 ./build/posix-zenoh-linux/cmake/linux_entry

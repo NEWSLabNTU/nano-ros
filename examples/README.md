@@ -56,11 +56,11 @@ at `<platform>/<language>/<role>`. No exceptions.
 
 Each example is a standalone Cargo + CMake package — no walk-up in the manifests, no workspace coupling. The tested copy-out contract (phase-277 W6):
 
-- **Rust** — manifests declare nano-ros crates registry-style (`nros = { version = "*" }`) and carry Rust-toolchain facts only. Which board the leaf deploys to is stated once, in `system.toml` beside the manifest (`[image.<id>] board`, RFC-0098 D3); `nros sync` turns that choice into the generated build settings under `build/<image>/`, and `nros build` reads them. Copy the directory anywhere, point it at your checkout, and build:
+- **Rust** — manifests declare nano-ros crates registry-style (`nros = { version = "*" }`) and carry Rust-toolchain facts only. Which board the leaf deploys to is stated once, in `system.toml` beside the manifest (`[image.<id>] board`, RFC-0098 D3); `nros sync` turns that choice into the generated build settings under `build/<image>/`, and `nros build` reads them. Copy the directory anywhere, put your checkout's `nros` on PATH, and build:
 
   ```bash
   cp -r examples/linux/rust/talker ~/my-talker && cd ~/my-talker
-  export NROS_REPO_DIR=/path/to/nano-ros
+  source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
   nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
   nros build    # or: nros build linux
   ```
@@ -75,11 +75,11 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
 
   A single-package **Rust** leaf is its own entry, and on a supported board it names no board crate: it depends on `<pkg>_nros_selection = { path = "build/nros/selection" }`, which `nros sync` / `nros build` generate with the image's board crate, RMW backend and runtime crates (RFC-0098 D6), so switching it to another board is the `[image.*] board` line, as it is for a C/C++ leaf and a workspace ([issue 1305](../docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
-- **C / C++** — every CMakeLists resolves the nano-ros root through one guard: `-DNROS_REPO_DIR=<path>` cache var, else the `NROS_REPO_DIR` env var (exported by `activate.sh`), else the in-repo relative walk-up. That flag says where the checkout is and nothing else — the board, the RMW, the domain and the network identity come from the leaf's `system.toml`, not from `-D` flags and not from the retired `package.xml` `<nano_ros deploy= board= rmw=/>` tuple. A single-package C/C++ leaf needs no `nros sync`: its message bindings are a CMake-time output. Copy the directory anywhere, then:
+- **C / C++** — every CMakeLists finds nano-ros with `find_package(nano_ros)`, and a copied-out leaf names the checkout with `-Dnano_ros_ROOT=<path>`, the hint that call reads (RFC-0103 D6; `nros build` passes it for you). That hint says where the checkout is and nothing else — the board, the RMW, the domain and the network identity come from the leaf's `system.toml`, not from `-D` flags and not from the retired `package.xml` `<nano_ros deploy= board= rmw=/>` tuple. A single-package C/C++ leaf needs no `nros sync`: its message bindings are a CMake-time output. Copy the directory anywhere, then:
 
   ```bash
   cp -r examples/linux/c/talker ~/my-c-talker && cd ~/my-c-talker
-  cmake -S . -B build -DNROS_REPO_DIR=/path/to/nano-ros   # or: export NROS_REPO_DIR=…
+  cmake -S . -B build -Dnano_ros_ROOT=/path/to/nano-ros   # or: nros build
   cmake --build build
   ```
 
@@ -478,7 +478,7 @@ project's build system.
 
 ## Quick start
 
-Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run rmw_zenoh_cpp rmw_zenohd` (contributor shortcut inside a checkout: `just linux zenohd`). C/C++ examples resolve the nano-ros root through the `-DNROS_REPO_DIR` / `NROS_REPO_DIR` guard described in the copy-out contract above; no install step required.
+Each block assumes a zenoh router running on `tcp/127.0.0.1:7447` — `ros2 run rmw_zenoh_cpp rmw_zenohd` (contributor shortcut inside a checkout: `just linux zenohd`). C/C++ examples find nano-ros with `find_package(nano_ros)`, given `-Dnano_ros_ROOT` as the copy-out contract above describes; no install step required.
 
 ### Native Rust + zenoh
 

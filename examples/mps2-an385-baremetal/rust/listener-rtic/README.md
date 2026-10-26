@@ -7,7 +7,7 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ```bash
 cp -r examples/mps2-an385-baremetal/rust/listener-rtic ~/my-listener-rtic && cd ~/my-listener-rtic
-export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros checkout
+source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
 nros sync     # generated/ message crates + build/<image>/nros-cargo.toml
 nros build    # or: nros build mps2-an385-baremetal
 ```

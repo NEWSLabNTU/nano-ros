@@ -10,8 +10,9 @@ source ./activate.sh          # PATH: nros (zenohd stays off PATH; `just linux z
 nros setup linux             # host toolchains (zenoh RMW default)
 ```
 
-No SDK env vars needed for Rust. C/C++ copy-outs resolve the nano-ros root via
-`-DNROS_REPO_DIR=<path>` or the `NROS_REPO_DIR` env var.
+No SDK env vars are needed. `nros build` finds the checkout its own `nros`
+came from; a plain cmake configure of a C/C++ copy-out names it with
+`-Dnano_ros_ROOT=<path>`, `find_package(nano_ros)`'s hint.
 
 ## RMW selection
 

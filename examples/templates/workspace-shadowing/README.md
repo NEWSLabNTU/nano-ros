@@ -32,7 +32,7 @@ source /opt/ros/humble/setup.bash
 #    builds each package into its own `build/<pkg>/`, generating the cmake
 #    root the consumer needs (phase-445 W5).
 cd examples/templates/workspace-shadowing
-export NROS_REPO_DIR=/path/to/nano-ros
+source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
 nros sync
 nros build
 

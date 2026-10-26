@@ -322,12 +322,17 @@ Found 2026-10-24/25 measuring checklist G2 (colcon-style self-containment) and
 C8 (language-neutral selection). Each item below was reproduced on a copy made
 the way a user makes it, not argued from a grep.
 
-- [ ] [Issue 2044](../issues/2044-example-readmes-configure-with-a-retired-root-variable.md)
+- [x] [Issue 2044](../issues/archived/2044-example-readmes-configure-with-a-retired-root-variable.md)
       — 148 example READMEs, the root README and `_nros_bootstrap`'s refusal
       teach `NROS_REPO_DIR`, which RFC-0103 D6 retired as an input. The C/C++
       configure line FAILS at `find_package(nano_ros)`. One spelling
       (`nros build`, or `-Dnano_ros_ROOT`), and a check whose population
       includes documentation.
+      **Done (2026-10-26).** The README generator, the templates, the root and
+      examples READMEs and the refusal give `-Dnano_ros_ROOT` (C/C++) and
+      `source <root>/activate.sh` (Rust). `check-repo-dir-readers` now reads
+      fenced commands in tracked Markdown: 154 findings on main before the
+      sweep, 0 after.
 - [ ] [Issue 2045](../issues/2045-example-manifests-hand-set-the-ros-edition-feature.md)
       — 41 example manifests hand-set `ros-humble` on `nros`, so declaring
       `ros_edition = "jazzy"` is a compile error. Remove the lowered form;
@@ -381,6 +386,6 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#2044](../issues/2044-example-readmes-configure-with-a-retired-root-variable.md) | The copy-out instructions every example carries configure with a retired variable and fail. W7. |
+| [#2044](../issues/archived/2044-example-readmes-configure-with-a-retired-root-variable.md) | RESOLVED 2026-10-26. The copy-out instructions every example carries configured with a retired variable and failed. W7. |
 | [#2045](../issues/2045-example-manifests-hand-set-the-ros-edition-feature.md) | A copied-out example cannot take the edition its own `system.toml` declares. W7. |
 | [#2046](../issues/2046-px4-bridge-ffi-reaches-core-by-repo-path.md) | A copy-into-PX4 source only builds in place. W7. |

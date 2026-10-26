@@ -40,7 +40,7 @@ Demonstrates the **ROS-convention codegen** Phase 210 ships:
 ## Build — everything (`nros build`)
 
 ```sh
-export NROS_REPO_DIR=/path/to/nano-ros
+source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
 nros sync
 nros build
 ./build/consumer/cmake/pkg/consumer/consumer   # publishes on /greetings via zenoh
@@ -51,7 +51,7 @@ nros build
 ```sh
 # 1) Pre-cargo step: codegen workspace msg pkgs + write
 #    [patch.crates-io] block into src/rust_consumer/Cargo.toml.
-NROS_REPO_DIR=/path/to/nano-ros nros sync
+nros sync
 
 # 2) Plain cargo build — no wrapper, no build.rs hack.
 cd src/rust_consumer

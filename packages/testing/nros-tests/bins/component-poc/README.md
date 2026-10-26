@@ -12,12 +12,12 @@ Standalone: nothing above this directory is required ([RFC-0026](https://github.
 
 ```bash
 cp -r packages/testing/nros-tests/bins/component-poc ~/my-component-poc && cd ~/my-component-poc
-cmake -S . -B build -DNROS_REPO_DIR=/path/to/nano-ros   # or: export NROS_REPO_DIR=…
+cmake -S . -B build -Dnano_ros_ROOT=/path/to/nano-ros   # or: nros build
 cmake --build build
 ```
 
 No `nros sync` here: a C/C++ leaf's message bindings are a CMake-time
-output. `-DNROS_REPO_DIR` only says where the checkout is — the board, the
+output. `-Dnano_ros_ROOT` only says where the checkout is — the board, the
 RMW and the domain come from `system.toml` (below), never from a `-D` flag.
 
 ## Run
