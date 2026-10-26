@@ -2134,6 +2134,35 @@ inline bool NodeParametersInterface::get_parameter(const ::std::string& name,
 inline Parameter NodeParametersInterface::get_parameter(const ::std::string& name) const {
     return node_ == nullptr ? Parameter(name) : node_->get_parameter(name);
 }
+inline const ::std::map<::std::string, ParameterValue>&
+NodeParametersInterface::get_parameter_overrides() const {
+    using Map = ::std::map<::std::string, ParameterValue>;
+    // One copy per node, keyed by its FFI handle, so every call (and every
+    // view of the node) returns the same map. The executor dispatches on one
+    // task, which is what makes a plain static safe here.
+    static ::std::map<const void*, Map> copies;
+    static Map none;
+    if (node_ == nullptr || node_->ffi_handle() == nullptr) {
+        return none;
+    }
+    struct Sink {
+        static bool add(const ParameterWrite* write, void* context) {
+            if (write != nullptr && write->name != nullptr) {
+                (*static_cast<Map*>(context))[write->name] =
+                    Parameter::from_write(*write).get_parameter_value();
+            }
+            return true;
+        }
+    };
+    Map now;
+    (void)::rclcpp::detail::node_param_list_overrides(node_->ffi_handle(), &Sink::add, &now,
+                                                      nullptr);
+    Map& kept = copies[node_->ffi_handle()];
+    if (kept != now) {
+        kept = static_cast<Map&&>(now);
+    }
+    return kept;
+}
 } // namespace node_interfaces
 
 } // namespace rclcpp

@@ -6489,6 +6489,29 @@ nros_cpp_ret_t nros_cpp_node_list_params(const struct nros_cpp_node_t *node,
                                          size_t *out_count);
 
 /**
+ * Enumerate the `-p` / `--params-file` overrides that apply to this node —
+ * rclcpp's `NodeParametersInterface::get_parameter_overrides()` (issue 2057).
+ *
+ * `callback` runs once per overridden name, synchronously, with the name and
+ * the typed value as an on-set hook sees a write: the last override of a
+ * name wins, and each text is typed as a declaration with no default types
+ * it (`Executor::argv_param_overrides_on`). The pointers are valid for the
+ * call only. The callback's return value is ignored. `*out_count` receives
+ * the number listed.
+ *
+ * An image built without `alloc` has no argv overrides to list (issue 1812),
+ * so it lists none and returns OK.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`]; `callback` must be a valid
+ * function pointer or NULL (count only), and `context` is passed through.
+ */
+nros_cpp_ret_t nros_cpp_node_list_param_overrides(const struct nros_cpp_node_t *node,
+                                                  nros_cpp_param_callback_t callback,
+                                                  void *context,
+                                                  size_t *out_count);
+
+/**
  * Register an accept/reject hook for writes to this node — rclcpp's
  * `add_on_set_parameters_callback`.
  *

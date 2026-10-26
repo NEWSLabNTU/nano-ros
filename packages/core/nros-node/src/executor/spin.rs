@@ -14475,6 +14475,42 @@ impl<'s> Executor<'s> {
         Ok(n)
     }
 
+    /// The `-p` / `--params-file` overrides that apply to `node`, one per
+    /// name — issue 2057, for rclcpp's
+    /// `NodeParametersInterface::get_parameter_overrides()`.
+    ///
+    /// The selection is the one a declaration makes
+    /// (`apply_argv_param_override`): the LAST override of a name that applies
+    /// wins, and a `node:` override applies only to the node of that name.
+    /// Each text is typed as a declaration with no default types it (bool,
+    /// integer, double, then string), because a listing has no declared type
+    /// to follow. An override no type accepts (a string past the store's
+    /// bound) is left out. Yields in argv order of the winning override.
+    #[cfg(all(feature = "param-store", feature = "alloc"))]
+    pub fn argv_param_overrides_on(
+        &self,
+        node: super::node_record::NodeId,
+    ) -> impl Iterator<Item = (&str, nros_params::ParameterValue)> + '_ {
+        let node_name = self.node(node).map(|r| r.name.as_str()).unwrap_or("");
+        let list: &[crate::param_store::ArgvParamOverride] = self
+            .params
+            .as_deref()
+            .map(|s| s.argv_overrides.as_slice())
+            .unwrap_or(&[]);
+        let applies = move |o: &crate::param_store::ArgvParamOverride| {
+            o.node.as_deref().is_none_or(|n| n == node_name)
+        };
+        list.iter()
+            .enumerate()
+            .filter(move |(i, o)| {
+                applies(o) && !list[i + 1..].iter().any(|l| l.name == o.name && applies(l))
+            })
+            .filter_map(|(_, o)| {
+                typed_param_override(&o.value, &nros_params::ParameterValue::NotSet)
+                    .map(|v| (o.name.as_str(), v))
+            })
+    }
+
     /// The value a declaration of `name` on `node` should take — the last
     /// matching argv override, typed by `declared`, or `declared` itself — and
     /// whether an override was applied.

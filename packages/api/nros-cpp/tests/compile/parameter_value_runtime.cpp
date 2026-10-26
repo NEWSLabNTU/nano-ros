@@ -372,6 +372,36 @@ int main() {
               "get_parameter(name, Parameter&) through the interface");
     }
 
+    // --- get_parameter_overrides (issue 2057) ---------------------------------
+    // Nav2's `declare_or_get_parameter` asks whether a name has an override
+    // before it declares it, so the listing must not need a declaration.
+    {
+        const char* argv[] = {"prog", "--ros-args", "-p", "a:=1", "-p", "other_node:b:=x"};
+        check(rclcpp::detail::apply_ros_args(exec.handle(), 6, argv) == 0,
+              "install `-p a:=1 -p other_node:b:=x`");
+        rclcpp::Node other;
+        check(exec.create_node(other, "other_node").ok(), "create a second node");
+
+        const auto& mine = node.get_node_parameters_interface()->get_parameter_overrides();
+        check(mine.size() == 1 && mine.count("a") == 1, "pv_node lists `a` alone");
+        check(mine.count("a") == 1 && mine.at("a").get_type() == rclcpp::PARAMETER_INTEGER &&
+                  mine.at("a").get<int64_t>() == 1,
+              "the override is typed from its text: integer 1");
+        check(mine.find("b") == mine.end(), "an `other_node:` override is not pv_node's");
+        // Nav2's spelling: `find` on one call, `end` from another, each through
+        // a fresh view. Both must be the same map.
+        check(&node.get_node_parameters_interface()->get_parameter_overrides() == &mine,
+              "every call and every view returns the node's one copy");
+        check(node.get_node_parameters_interface()->get_parameter_overrides().find("a") !=
+                  node.get_node_parameters_interface()->get_parameter_overrides().end(),
+              "find() and end() from two calls compare within one map");
+
+        const auto theirs = other.get_node_parameters_interface()->get_parameter_overrides();
+        check(theirs.size() == 2 && theirs.count("b") == 1 &&
+                  theirs.at("b").get<std::string>() == "x",
+              "other_node lists the global `a` and its own `b`");
+    }
+
     spin(exec);
     if (g_failures) {
         std::fprintf(stderr, "parameter_value_runtime: %d failure(s)\n", g_failures);

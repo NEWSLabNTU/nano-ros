@@ -6,7 +6,7 @@ type: limitation
 area: [api, cpp]
 severity: medium
 found: 2026-10-25
-related: [phase-488, 2037, 1996]
+related: [phase-488, 2037, 1996, phase-518]
 ---
 
 ## What

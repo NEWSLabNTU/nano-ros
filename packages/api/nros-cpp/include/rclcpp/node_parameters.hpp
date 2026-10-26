@@ -814,6 +814,14 @@ inline Result node_param_remove_on_set_callback(const nros_cpp_node_t* node,
     return Result(nros_cpp_node_remove_on_set_params_callback(node, handle));
 }
 
+/// Issue 2057 — each `-p` / `--params-file` override that applies to `node`,
+/// handed to `callback` as a write; `out_count` may be NULL.
+inline Result node_param_list_overrides(const nros_cpp_node_t* node,
+                                        ::rclcpp::OnSetParametersCallbackType callback,
+                                        void* context, ::size_t* out_count) {
+    return Result(nros_cpp_node_list_param_overrides(node, callback, context, out_count));
+}
+
 inline Result node_params_set_atomically(const nros_cpp_node_t* node,
                                          const ::rclcpp::ParameterWrite* writes, ::size_t count) {
     return Result(nros_cpp_node_set_params_atomically(node, writes, count));

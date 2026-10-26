@@ -6,7 +6,7 @@ type: bug
 area: [cmake, cpp, sizing]
 severity: high
 found: 2026-10-25
-related: [1556, 1407, phase-463, phase-488]
+related: [1556, 1407, phase-463, phase-488, phase-518]
 ---
 
 ## What
