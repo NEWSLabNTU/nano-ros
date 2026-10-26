@@ -613,16 +613,19 @@ pub fn contract_inventory(
         for n in notes {
             eprintln!("{who}: {n}");
         }
-        return inv;
+        // Issue 2076 -- a bridge's runtime-created rows, expanded HERE so every
+        // consumer of this composition (knobs, descriptor rows, fragments)
+        // reads them, not only the derivation.
+        return inv.map(|i| i.with_bridge_rows());
     };
     let Some(ws) = workspace else {
-        return Some(contract);
+        return Some(contract.with_bridge_rows());
     };
     let (floored, _read, notes) = floor_by_recorded(ws, model, &contract);
     for n in notes {
         eprintln!("{who}: {n}");
     }
-    Some(floored)
+    Some(floored.with_bridge_rows())
 }
 
 /// phase-517 W5 (RFC-0100 amendment of 2026-10-25, accepted 2026-10-26) --

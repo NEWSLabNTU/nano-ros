@@ -30,7 +30,7 @@ use std::{
 pub const OVERLAY_FILE: &str = "nros.toml";
 
 /// Overlay schema version. A reader refuses a newer one.
-pub const OVERLAY_VERSION: u32 = 1;
+pub const OVERLAY_VERSION: u32 = 2;
 
 /// The resolved nano-ros facts for one bringup.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -52,6 +52,23 @@ pub struct Overlay {
     /// worker frame (`NROS_LEVEL_STACK_BYTES(member)`). Only components that
     /// state one appear.
     pub component_stacks: BTreeMap<String, u32>,
+    /// Issue 2076 (version 2) -- `[[bridge]]`: what the RUNTIME creates for a
+    /// cross-RMW gateway on the bringup's behalf. No component constructor
+    /// creates these entities, so no probe sidecar and no contract row describes
+    /// them; the entity inventory sizes them from here. Declaration order.
+    pub bridges: Vec<OverlayBridge>,
+}
+
+/// Issue 2076 -- one `[[bridge]]`, reduced to what sizes the image: its name,
+/// the topics it forwards (empty = every declared pub/sub topic, the planner's
+/// rule), and whether it relays both ways. The session endpoints are not kept:
+/// the inventory charges each bridge two nodes, the upper bound of the sessions
+/// it can open, so dedup across bridges only ever over-counts.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OverlayBridge {
+    pub name: String,
+    pub topics: Vec<String>,
+    pub bidirectional: bool,
 }
 
 impl Overlay {
@@ -61,6 +78,7 @@ impl Overlay {
             && self.lifecycle_autostart.is_none()
             && self.images.is_empty()
             && self.component_stacks.is_empty()
+            && self.bridges.is_empty()
     }
 
     /// The switches image `id` builds with: the system list plus whatever the
@@ -195,11 +213,19 @@ impl Overlay {
                 component_stacks.insert(name.to_string(), bytes as u32);
             }
         }
+        // Issue 2076 -- `[[bridge]]`, the runtime's own gateway entities.
+        let mut bridges = Vec::new();
+        if let Some(rows) = doc.get("bridge").and_then(|b| b.as_array()) {
+            for (i, row) in rows.iter().enumerate() {
+                bridges.push(bridge_from_table(row, i, origin)?);
+            }
+        }
         Ok(Self {
             features,
             lifecycle_autostart,
             images,
             component_stacks,
+            bridges,
         })
     }
 
@@ -235,6 +261,15 @@ impl Overlay {
         for (name, bytes) in &self.component_stacks {
             out.push_str(&format!("\n[component.{name:?}]\nstack_bytes = {bytes}\n"));
         }
+        for b in &self.bridges {
+            let topics: Vec<String> = b.topics.iter().map(|t| format!("{t:?}")).collect();
+            out.push_str(&format!(
+                "\n[[bridge]]\nname = {:?}\ntopics = [{}]\nbidirectional = {}\n",
+                b.name,
+                topics.join(", "),
+                b.bidirectional
+            ));
+        }
         out
     }
 
@@ -246,7 +281,7 @@ impl Overlay {
         for k in doc.keys() {
             if !matches!(
                 k.as_str(),
-                "meta" | "system" | "lifecycle" | "image" | "component"
+                "meta" | "system" | "lifecycle" | "image" | "component" | "bridge"
             ) {
                 return Err(format!(
                     "{}: unknown overlay table `[{k}]`",
@@ -312,13 +347,61 @@ impl Overlay {
                 component_stacks.insert(name.clone(), bytes);
             }
         }
+        let mut bridges = Vec::new();
+        if let Some(rows) = doc.get("bridge").and_then(|b| b.as_array()) {
+            for (i, row) in rows.iter().enumerate() {
+                bridges.push(bridge_from_table(row, i, origin)?);
+            }
+        }
         Ok(Self {
             features,
             lifecycle_autostart,
             images,
             component_stacks,
+            bridges,
         })
     }
+}
+
+/// Issue 2076 -- read one `[[bridge]]` table, from `system.toml` or from a
+/// written overlay (the same three keys; `system.toml`'s `from`/`to` are not
+/// read here).
+fn bridge_from_table(row: &toml::Value, i: usize, origin: &Path) -> Result<OverlayBridge, String> {
+    let name = row
+        .get("name")
+        .and_then(|n| n.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("bridge{i}"));
+    let topics = match row.get("topics") {
+        None => Vec::new(),
+        Some(v) => v
+            .as_array()
+            .ok_or_else(|| {
+                format!(
+                    "{}: `[[bridge]] {name}` `topics` must be an array of strings",
+                    origin.display()
+                )
+            })?
+            .iter()
+            .map(|t| {
+                t.as_str().map(str::to_string).ok_or_else(|| {
+                    format!(
+                        "{}: every `[[bridge]] {name}` topic must be a string",
+                        origin.display()
+                    )
+                })
+            })
+            .collect::<Result<_, _>>()?,
+    };
+    let bidirectional = row
+        .get("bidirectional")
+        .and_then(|b| b.as_bool())
+        .unwrap_or(false);
+    Ok(OverlayBridge {
+        name,
+        topics,
+        bidirectional,
+    })
 }
 
 /// Where the overlay for `model_path` lives: beside it.
@@ -598,6 +681,35 @@ mod tests {
     fn render_then_parse_round_trips() {
         let ov = o(
             "[system]\nfeatures = [\"lifecycle\", \"param_services\"]\n[lifecycle]\nautostart = \"configure\"\n",
+        );
+        let back = Overlay::parse(&ov.render(), Path::new("nros.toml")).unwrap();
+        assert_eq!(back, ov);
+    }
+
+    /// Issue 2076 -- a `[[bridge]]` reaches the overlay (name, forwarded topics,
+    /// direction) and survives a round trip; a bridge-only bringup is not empty.
+    #[test]
+    fn a_bridge_reaches_the_overlay() {
+        let ov = o(
+            "[[bridge]]\nname = \"gw\"\nfrom = \"zenoh:zen\"\nto = \"xrce:agent\"\n\
+                    [[bridge]]\nname = \"two\"\nfrom = \"a\"\nto = \"b\"\n\
+                    topics = [\"/x\"]\nbidirectional = true\n",
+        );
+        assert!(!ov.is_empty());
+        assert_eq!(
+            ov.bridges,
+            vec![
+                OverlayBridge {
+                    name: "gw".into(),
+                    topics: vec![],
+                    bidirectional: false
+                },
+                OverlayBridge {
+                    name: "two".into(),
+                    topics: vec!["/x".into()],
+                    bidirectional: true
+                },
+            ]
         );
         let back = Overlay::parse(&ov.render(), Path::new("nros.toml")).unwrap();
         assert_eq!(back, ov);
