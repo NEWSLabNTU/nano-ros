@@ -42,8 +42,9 @@ pub use generated::*;
 
 use nros_rmw::{
     ClientTrait, GraphEndpointInfo, GraphEntityKind, MessageInfo, Publisher, QoSDurabilityPolicy,
-    QoSHistoryPolicy, QoSLivelinessPolicy, QoSProfile, QoSReliabilityPolicy, ServiceInfo,
-    ServiceRequest, ServiceTrait, Session, TopicInfo, TransportError,
+    QoSHistoryPolicy, QoSLivelinessPolicy, QoSProfile, QoSReliabilityPolicy,
+    REQUEST_WRITER_GUID_SIZE, RequestId, ServiceInfo, ServiceRequest, ServiceRequestInfo,
+    ServiceTrait, Session, TopicInfo, TransportError,
 };
 
 // Phase 115.L.0 — generic Rust→C-vtable adapter. Lives behind the
@@ -992,6 +993,11 @@ const MESSAGE_INFO_SLOTS: usize = crate::parse_env_usize(
 struct MessageInfoSlot {
     key: portable_atomic::AtomicUsize,
     valid: portable_atomic::AtomicBool,
+    /// Issue 1942 — for a SERVICE key, which [`ServiceRequestInfo`] fields
+    /// `info` carries (`SERVICE_INFO_HAS_*`). Zero for a subscription. Sits in
+    /// the padding `valid` already leaves before `info`, so the slot — whose
+    /// width is issue 0271's footprint concern — does not grow.
+    service_presence: portable_atomic::AtomicU8,
     info: UnsafeCell<MessageInfo>,
     #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
     validate_requested: portable_atomic::AtomicBool,
@@ -1006,6 +1012,7 @@ impl MessageInfoSlot {
         Self {
             key: portable_atomic::AtomicUsize::new(0),
             valid: portable_atomic::AtomicBool::new(false),
+            service_presence: portable_atomic::AtomicU8::new(0),
             info: UnsafeCell::new(MessageInfo::new()),
             #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
             validate_requested: portable_atomic::AtomicBool::new(false),
@@ -1097,6 +1104,90 @@ fn take_cffi_message_info(key: usize) -> Option<MessageInfo> {
     // SAFETY: `valid.swap(false)` gives this reader exclusive consumption of the
     // last stored `MessageInfo` for this key.
     Some(unsafe { *slot.info.get() })
+}
+
+// Issue 1942 — the SERVICE half of the side channel.
+//
+// The C `take_request` slot carries only the reply-correlation token, so a
+// Rust backend's per-request [`ServiceRequestInfo`] crosses the adapter the way
+// its subscription `MessageInfo` does: stored by the adapter, keyed by the
+// service's backend handle, right before the take returns, and taken by
+// `CffiService` right after. It reuses the subscription table rather than
+// adding a second pool (and a second knob): the keys are handle pointers, so a
+// service and a subscription never share one, and
+// `NROS_RMW_MESSAGE_INFO_SLOTS` now bounds both — a slot found full costs
+// metadata (`NOT_REPORTED`), never correctness, as before.
+//
+// Encoding, lossless: the timestamps go in their `MessageInfo` namesakes, the
+// client sequence number in `publication_sequence_number`, the 16-byte writer
+// GUID in the first 16 bytes of `publisher_gid`, and which fields are PRESENT
+// in `service_presence`, so an absent field reads back `None` and never as a
+// zero.
+
+const SERVICE_INFO_HAS_SOURCE: u8 = 1 << 0;
+const SERVICE_INFO_HAS_RECEIVED: u8 = 1 << 1;
+const SERVICE_INFO_HAS_REQUEST_ID: u8 = 1 << 2;
+
+#[cfg(feature = "alloc")]
+pub(crate) fn store_cffi_service_info(key: usize, info: ServiceRequestInfo) {
+    if !info.is_reported() {
+        // Nothing to say: invalidate what an earlier request left, and do not
+        // claim a slot for a backend that never reports.
+        if let Some(slot) = lookup_message_info_slot(key) {
+            slot.valid.store(false, Ordering::Release);
+        }
+        return;
+    }
+    let Some(slot) = get_or_insert_message_info_slot(key) else {
+        return;
+    };
+    let mut packed = MessageInfo::new();
+    let mut presence = 0u8;
+    if let Some(ts) = info.source_timestamp {
+        packed.set_source_timestamp(ts);
+        presence |= SERVICE_INFO_HAS_SOURCE;
+    }
+    if let Some(ts) = info.received_timestamp {
+        packed.set_received_timestamp(ts);
+        presence |= SERVICE_INFO_HAS_RECEIVED;
+    }
+    if let Some(id) = info.request_id {
+        packed.set_publication_sequence_number(id.sequence_number);
+        packed.set_publisher_gid(nros_rmw::pad_publisher_gid(&id.writer_guid));
+        presence |= SERVICE_INFO_HAS_REQUEST_ID;
+    }
+    // SAFETY: keyed to one service backend handle, which the executor owns
+    // mutably while taking — the same serialisation `store_cffi_message_info`
+    // relies on.
+    unsafe {
+        *slot.info.get() = packed;
+    }
+    slot.service_presence.store(presence, Ordering::Relaxed);
+    slot.valid.store(true, Ordering::Release);
+}
+
+fn take_cffi_service_info(key: usize) -> ServiceRequestInfo {
+    let Some(slot) = lookup_message_info_slot(key) else {
+        return ServiceRequestInfo::NOT_REPORTED;
+    };
+    if !slot.valid.swap(false, Ordering::AcqRel) {
+        return ServiceRequestInfo::NOT_REPORTED;
+    }
+    let presence = slot.service_presence.load(Ordering::Relaxed);
+    // SAFETY: `valid.swap(false)` gives this reader exclusive consumption.
+    let packed = unsafe { *slot.info.get() };
+    let mut writer_guid = [0u8; REQUEST_WRITER_GUID_SIZE];
+    writer_guid.copy_from_slice(&packed.publisher_gid()[..REQUEST_WRITER_GUID_SIZE]);
+    ServiceRequestInfo {
+        source_timestamp: (presence & SERVICE_INFO_HAS_SOURCE != 0)
+            .then(|| packed.source_timestamp()),
+        received_timestamp: (presence & SERVICE_INFO_HAS_RECEIVED != 0)
+            .then(|| packed.received_timestamp()),
+        request_id: (presence & SERVICE_INFO_HAS_REQUEST_ID != 0).then(|| RequestId {
+            writer_guid,
+            sequence_number: packed.publication_sequence_number(),
+        }),
+    }
 }
 
 #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
@@ -3039,6 +3130,7 @@ impl Session for CffiSession {
             response_qos: qos_unknown_c(),
             refused_len: None,
             entity_waker: WakerSlot::new(),
+            request_info: ServiceRequestInfo::NOT_REPORTED,
         };
         let svc_ptr = to_c_str(service.name, &mut srv_state.service_name_buf);
         let type_ptr = to_c_str(service.type_name, &mut srv_state.type_name_buf);
@@ -5173,6 +5265,9 @@ pub struct CffiService {
     refused_len: Option<usize>,
     /// Issue 1940 — see [`CffiSubscription`]'s field of the same name.
     entity_waker: WakerSlot,
+    /// Issue 1942 — the metadata of the request the last successful
+    /// `take_request` returned, as [`ServiceTrait::request_info`] reports it.
+    request_info: ServiceRequestInfo,
 }
 
 impl CffiService {
@@ -5262,6 +5357,10 @@ impl ServiceTrait for CffiService {
         if !taken {
             return Ok(None);
         }
+        // Issue 1942 — a Rust backend's per-request metadata, stored by the
+        // adapter for exactly this take. A pure C backend never writes it, so
+        // this reads `NOT_REPORTED` (the C slot carries no info, issue 2081).
+        self.request_info = take_cffi_service_info(self.backend_data as usize);
         let out_len = request_span.len;
         let len = checked_take_len(out_len, buf.len())
             .inspect_err(|_| self.refused_len = Some(out_len))?;
@@ -5273,6 +5372,10 @@ impl ServiceTrait for CffiService {
 
     fn refused_request_len(&self) -> Option<usize> {
         self.refused_len
+    }
+
+    fn request_info(&self) -> ServiceRequestInfo {
+        self.request_info
     }
 
     fn send_response(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), TransportError> {
@@ -5313,6 +5416,9 @@ impl ServiceTrait for CffiService {
 impl Drop for CffiService {
     fn drop(&mut self) {
         if !self.backend_data.is_null() {
+            // Issue 1942 — release the side-table slot the adapter may hold for
+            // this service, as `CffiSubscription` does for its key.
+            clear_cffi_message_info(self.backend_data as usize);
             let mut view = self.make_view();
             let ret = unsafe {
                 (self
@@ -6317,6 +6423,41 @@ mod tests {
         );
     }
 
+    /// Issue 1942 — the service half of the side channel round-trips each
+    /// field's PRESENCE, not just its value: a field the backend left `None`
+    /// reads back `None`, never as the zero it is packed over.
+    #[cfg(feature = "alloc")]
+    #[test]
+    fn service_info_side_channel_keeps_absent_fields_absent() {
+        let key = 0x1942_usize;
+        let only_id = ServiceRequestInfo {
+            request_id: Some(RequestId {
+                writer_guid: [9; REQUEST_WRITER_GUID_SIZE],
+                sequence_number: -3,
+            }),
+            ..ServiceRequestInfo::NOT_REPORTED
+        };
+        store_cffi_service_info(key, only_id);
+        assert_eq!(take_cffi_service_info(key), only_id);
+        // Consumed: a second read without a store reports nothing.
+        assert_eq!(
+            take_cffi_service_info(key),
+            ServiceRequestInfo::NOT_REPORTED
+        );
+        clear_cffi_message_info(key);
+    }
+
+    /// Issue 1942 — the presence byte lives in padding the slot already had,
+    /// so the table (issue 0271's footprint concern) does not grow.
+    #[cfg(not(all(feature = "alloc", feature = "safety-e2e")))]
+    #[test]
+    fn service_presence_does_not_widen_the_message_info_slot() {
+        assert_eq!(
+            core::mem::size_of::<MessageInfoSlot>(),
+            core::mem::size_of::<MessageInfo>() + 2 * core::mem::size_of::<usize>()
+        );
+    }
+
     #[test]
     fn service_server_no_data_maps_to_none() {
         use nros_rmw::ServiceTrait as _;
@@ -6330,6 +6471,7 @@ mod tests {
             response_qos: qos_unknown_c(),
             refused_len: None,
             entity_waker: WakerSlot::new(),
+            request_info: ServiceRequestInfo::NOT_REPORTED,
         };
         let mut buf = [0u8; 16];
 

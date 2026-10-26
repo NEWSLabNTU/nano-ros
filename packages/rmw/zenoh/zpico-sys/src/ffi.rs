@@ -798,6 +798,23 @@ mod cbindgen_stubs {
         -1
     }
 
+    /// Issue 1942 — copy the attachment of the request held in reply slot
+    /// `reply_seq` into `out` (at most `out_cap` bytes), for the server's
+    /// per-request `ServiceInfo`. Readable any time between the take and the
+    /// reply. Returns the attachment's full length (0 when the query carried
+    /// none) or `ZPICO_ERR_INVALID`. Stub returns `ZPICO_ERR_INVALID` (no
+    /// query held) in the pure-Rust no-op build.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_queryable_request_attachment(
+        _session: *mut zpico_session_t,
+        _queryable_handle: i32,
+        _reply_seq: i64,
+        _out: *mut u8,
+        _out_cap: usize,
+    ) -> i32 {
+        ZPICO_ERR_INVALID
+    }
+
     /// issue 0902 / phase-455 W1 — how many reply slots this queryable holds,
     /// and how many allocations it has refused because the table was full.
     /// `out_capacity` reports `ZPICO_MAX_PENDING_REPLIES` as the C TU sees it.

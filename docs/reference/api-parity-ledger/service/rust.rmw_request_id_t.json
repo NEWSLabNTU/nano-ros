@@ -1,5 +1,5 @@
 {
   "key": "rust:rmw_request_id_t",
   "verdict": "divergence",
-  "why": "see `rust:RequestId`."
+  "why": "rclrs re-exports the rcl binding struct under its C name. We have no rcl and put no `rmw_*` binding types on the Rust surface (no_std; the seam is our own C ABI, RFC-0054); the same two fields are `nros::RequestId` (issue 1942), carried in `ServiceInfo::request_id`."
 }

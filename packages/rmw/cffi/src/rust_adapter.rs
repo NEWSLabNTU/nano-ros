@@ -1309,6 +1309,11 @@ unsafe extern "C" fn take_request_trampoline<R: RustBackend>(
             unsafe {
                 *seq_out = req.sequence_number;
             }
+            // Issue 1942 — the C slot has nowhere for the per-request
+            // metadata, so it rides the subscription `MessageInfo` side
+            // channel (`store_cffi_service_info`).
+            let key = unsafe { (*server).backend_data as usize };
+            crate::store_cffi_service_info(key, ServiceTrait::request_info(s));
             // Move the payload to the start of the buffer so the C
             // caller sees a `(buf, len)` pair starting at offset 0,
             // matching the cyclonedds backend's contract.

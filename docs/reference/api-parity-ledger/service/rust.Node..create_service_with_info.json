@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_service_with_info",
+  "verdict": "divergence",
+  "why": "issue 1942 — rclrs's `create_service` takes a callback of EITHER shape, `Fn(Request) -> Response` or `Fn(Request, ServiceInfo) -> Response`, normalised through `IntoNodeServiceCallback`. Ours binds one callback shape per method (that trait is `declined`, see `rust:IntoNodeServiceCallback`), so the `(request, ServiceInfo)` shape is its own method, the way the subscription side spells `MessageInfo` with `.message_info()`. The builder form is `node.service(name).service_info().build::<Svc, _>(cb)`. The request is borrowed (`&Request`, `&ServiceInfo`), not moved: the request lives in the entity's static buffer, no allocator."
+}

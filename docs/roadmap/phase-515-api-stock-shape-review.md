@@ -50,7 +50,7 @@ the rows below.
 The browsable view is the three pages `scripts/gen-api-comparison.py` renders
 (one per language, every row with its reason); regenerate after each item.
 
-## Four open API issues get a home here
+## Open API issues homed here
 
 Each was left without a phase when its finding phase closed.
 
@@ -58,7 +58,9 @@ Each was left without a phase when its finding phase closed.
 | --- | --- | --- |
 | [2030](../issues/archived/2030-c-callback-tier-cancel-reply-slot.md) — the C callback tier never takes a cancel reply (resolved 2026-10-24) | medium | C7 |
 | [2024](../issues/archived/2024-parameter-event-handler.md) — no `ParameterEventHandler` (**resolved 2026-10-25**, hosted C++) | low | P6 |
-| [1942](../issues/1942-rclrs-service-info-no-counterpart.md) — no `ServiceInfo` for a service callback | low | R7 |
+| [1942](../issues/archived/1942-rclrs-service-info-no-counterpart.md) — no `ServiceInfo` for a service callback (**resolved 2026-10-26**) | low | R7 |
+| [2080](../issues/2080-cpp-parameter-event-from-event-helpers.md) — `ParameterEventHandler::get_parameter(s)_from_event` (P6's residue, filed 2026-10-26) | low | P6 |
+| [2081](../issues/2081-c-abi-service-request-info.md) — C-ABI backends report no `ServiceInfo` (R7's residue, filed 2026-10-26) | low | R7 |
 | [2029](../issues/archived/2029-action-server-cancel-all-before.md) — cancel-all / cancel-before answer `UNKNOWN_GOAL_ID` (resolved 2026-10-24) | low | X1 |
 
 ## Decisions
@@ -267,7 +269,7 @@ table over a typed `rcl_interfaces/msg/ParameterEvent` subscription.
 **Resolved 2026-10-25 (hosted C++):** `rclcpp::ParameterEventHandler` and a
 hosted `rclcpp::Parameter`; the two static `get_parameter(s)_from_event`
 helpers stay `gap`, and freestanding refuses the handler (issue 2024's Still
-open).
+open). The two helpers are re-homed as issue 2080.
 
 **P7 — two polling subscription types.** `PollSubscription` (20 members) and
 `PollingSubscription` (7) both ship. Confirm each has a distinct contract, or
@@ -306,7 +308,15 @@ difference is `&M` against rclrs's owned-or-borrowed message
 Low priority; add only if a shutdown state exists for it to report.
 
 **R7 — `ServiceInfo`, issue 1942.** rclrs hands a service callback the request
-id and timestamps; ours passes the request alone.
+id and timestamps; ours passes the request alone. **Resolved 2026-10-26:**
+`nros::ServiceInfo` / `nros::RequestId` (rclrs's field names, every field an
+`Option`, `nros::Time` timestamps), reached through
+`Node::create_service_with_info` and `node.service(name).service_info()`; seam
+`ServiceTrait::request_info`, re-exported there as `ServiceRequestInfo` so it
+never shares a name with the seam's service descriptor again. zenoh reports
+`request_id` + `source_timestamp` from the query attachment; Cyclone and the
+other C-ABI backends report nothing until the C `take_request` slot carries it
+(issue 2081). `rust:ServiceInfo` is `divergence` / `adopt-bounded`.
 
 **R8 — open renames (33).** `UndeclaredParameters` → `Parameters`,
 `GoalId` → `GoalUuid`, `CancelReturnCode`, `QoSProfile::{deadline,lifespan,
@@ -342,5 +352,5 @@ disposition, and REFUSE-LOUD is preferred over absent where a user will reach
 for the name.
 
 The phase is done when W0's review is complete, every item is landed or
-re-verdicted with a reason that names a constraint, and the four issues above
+re-verdicted with a reason that names a constraint, and the issues above
 are closed or re-homed.

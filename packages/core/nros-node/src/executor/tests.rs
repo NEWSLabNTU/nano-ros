@@ -8248,6 +8248,97 @@ fn test_service_dispatch_respects_sched_context() {
     assert_eq!(*order, alloc::vec![20, 10]);
 }
 
+/// Issue 1942 — the `(request, ServiceInfo)` callback gets the metadata the
+/// backend reported for THAT request, and the reply still reaches the
+/// requester. rclrs's `ServiceInfo`.
+#[test]
+fn service_with_info_callback_receives_the_requests_metadata() {
+    use nros_core::{RequestId, ServiceInfo, Time};
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let seen = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::new()));
+    let seen_cb = seen.clone();
+
+    let nid = executor.node_builder("svc_info").build().unwrap();
+    executor
+        .node_mut(nid)
+        .create_service_with_info::<TestService, _>(
+            "/svc_info",
+            move |req: &TestServiceRequest, info: &ServiceInfo| {
+                seen_cb.lock().unwrap().push((req.a, *info));
+                TestServiceReply { sum: req.a + 1 }
+            },
+        )
+        .unwrap();
+
+    let reported = ServiceInfo {
+        source_timestamp: Some(Time::new(12, 345)),
+        received_timestamp: None,
+        request_id: Some(RequestId {
+            writer_guid: [0xA5; nros_core::REQUEST_WRITER_GUID_SIZE],
+            sequence_number: 41,
+        }),
+    };
+    let (data, len) = encode_test_msg(7);
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let server = unsafe { &*(arena_ptr.add(off) as *const MockServiceServer) };
+    server.load_with_info(data, len, reported);
+
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    assert_eq!(*seen.lock().unwrap(), alloc::vec![(7, reported)]);
+    assert_eq!(server.sent.borrow().len(), 1, "the reply was sent");
+}
+
+/// Issue 1942 — a backend that reports no per-request metadata hands the
+/// callback `NOT_REPORTED`: every field `None`, never a zeroed id or a
+/// timestamp of 0 standing in for "unknown". And metadata does not leak from
+/// one request into the next.
+#[test]
+fn service_with_info_reports_nothing_a_backend_did_not_say() {
+    use nros_core::{RequestId, ServiceInfo};
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let seen = alloc::sync::Arc::new(std::sync::Mutex::new(alloc::vec::Vec::new()));
+    let seen_cb = seen.clone();
+
+    let nid = executor.node_builder("svc_info_none").build().unwrap();
+    executor
+        .node_mut(nid)
+        .service("/svc_info_none")
+        .service_info()
+        .build::<TestService, _>(move |req: &TestServiceRequest, info: &ServiceInfo| {
+            seen_cb.lock().unwrap().push((req.a, *info));
+            TestServiceReply { sum: req.a }
+        })
+        .unwrap();
+
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let server = unsafe { &*(arena_ptr.add(off) as *const MockServiceServer) };
+
+    let reported = ServiceInfo {
+        request_id: Some(RequestId {
+            writer_guid: [1; nros_core::REQUEST_WRITER_GUID_SIZE],
+            sequence_number: 5,
+        }),
+        ..ServiceInfo::NOT_REPORTED
+    };
+    let (d1, n1) = encode_test_msg(1);
+    server.load_with_info(d1, n1, reported);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let (d2, n2) = encode_test_msg(2);
+    server.load(d2, n2);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 2);
+    assert_eq!(seen[0], (1, reported));
+    assert_eq!(seen[1], (2, ServiceInfo::NOT_REPORTED));
+    assert!(!seen[1].1.is_reported());
+}
+
 // ====================================================================
 // Promise tests
 // ====================================================================

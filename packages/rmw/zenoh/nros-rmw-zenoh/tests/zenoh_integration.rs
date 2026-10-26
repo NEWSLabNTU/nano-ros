@@ -1878,3 +1878,120 @@ fn declares_keep_running_across_a_reconnect() {
     );
     drop(restarted);
 }
+
+// ============================================================================
+// Issue 1942 — a service request reports its client's identity
+// ============================================================================
+
+/// The probe service for the request-info cell; its own key.
+const REQUEST_INFO_SERVICE: ServiceInfo<'static> = ServiceInfo::new(
+    "/nros_request_info_probe",
+    "example_interfaces/srv/AddTwoInts",
+    "TypeHashNotSupported",
+)
+.with_node_name("request_info_probe");
+
+/// Issue 1942 — the REAL shim server reads the query attachment the REAL shim
+/// client wrote, through the router, and reports rclrs's `ServiceInfo`: the
+/// client's gid (what that client's `get_gid` returns), the sequence number
+/// the client assigned (what its `send_request_raw` returned), and a source
+/// timestamp on the platform's wall clock in NANOSECONDS.
+///
+/// The timestamp bound is the negative control for the client side: the
+/// client wrote MILLISECONDS until this issue, which reads here as a time
+/// ~1e6 too early and fails the lower bound.
+#[test]
+fn a_service_request_reports_its_clients_identity() {
+    use nros_rmw::{ClientTrait, ServiceTrait as _};
+    unsafe extern "C" {
+        fn nros_platform_time_now_ns() -> u64;
+    }
+
+    let router = router();
+    let locator = router.locator();
+    let config = TransportConfig {
+        locator: Some(locator.as_str()),
+        mode: SessionMode::Client,
+        properties: &[],
+        node_name: "",
+        namespace: "",
+        domain_id: 0,
+    };
+    let mut session = ZenohTransport::open(&config)
+        .unwrap_or_else(|e| panic!("could not open a client session on {locator}: {e:?}"));
+    let mut server = session
+        .create_service(&REQUEST_INFO_SERVICE, QoSProfile::services_default())
+        .expect("create_service");
+    let mut client = session
+        .create_client(&REQUEST_INFO_SERVICE, QoSProfile::services_default())
+        .expect("create_client");
+    let client_gid = ClientTrait::get_gid(&client).expect("the zenoh client reports its gid");
+    assert_ne!(
+        &client_gid[..16],
+        &[0u8; 16],
+        "a client on a named node has a gid"
+    );
+    assert_eq!(
+        server.request_info(),
+        nros_rmw::ServiceRequestInfo::NOT_REPORTED,
+        "nothing taken yet, nothing to report"
+    );
+
+    // Give the queryable declaration time to reach the router.
+    thread::sleep(Duration::from_millis(300));
+
+    let before_ns = unsafe { nros_platform_time_now_ns() } as i64;
+    // CDR header + one int32; the server never decodes it.
+    let client_seq = client
+        .send_request_raw(&[0x00, 0x01, 0x00, 0x00, 7, 0, 0, 0])
+        .expect("send_request_raw");
+    let after_ns = unsafe { nros_platform_time_now_ns() } as i64;
+
+    let mut buf = [0u8; 64];
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let reply_seq = loop {
+        let _ = session.spin_once(10);
+        if let Some(req) = server.take_request(&mut buf).expect("take_request") {
+            break req.sequence_number;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the request never reached the server through the router at {locator}"
+        );
+    };
+
+    let info = server.request_info();
+    let id = info
+        .request_id
+        .expect("a request from a nano-ros client carries its identity");
+    assert_eq!(
+        id.sequence_number, client_seq,
+        "the CLIENT's sequence number, not the server's reply-slot token ({reply_seq})"
+    );
+    assert_eq!(
+        &id.writer_guid[..],
+        &client_gid[..16],
+        "the requester's gid is the gid the client reports"
+    );
+    let source = info
+        .source_timestamp
+        .expect("the client's attachment carries a source timestamp");
+    let source_ns = i64::from(source.sec) * 1_000_000_000 + i64::from(source.nanosec);
+    assert!(
+        before_ns <= source_ns && source_ns <= after_ns,
+        "source timestamp {source_ns} ns is outside the send window \
+         [{before_ns}, {after_ns}] — a client stamping milliseconds reads ~1e6 too early"
+    );
+    assert_eq!(
+        info.received_timestamp, None,
+        "zenoh carries no receive time; it is not invented"
+    );
+
+    // Answer it, so the reply slot is released.
+    server
+        .send_response(reply_seq, &[0x00, 0x01, 0x00, 0x00, 8, 0, 0, 0])
+        .expect("send_response");
+    drop(client);
+    drop(server);
+    session.close().expect("Failed to close session");
+}

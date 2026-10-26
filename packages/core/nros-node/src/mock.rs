@@ -263,6 +263,12 @@ pub struct MockServiceServer {
     /// Issue 1352 — an error the next `take_request` returns instead of a
     /// request (a backend that dropped one, e.g. an inbox overflow).
     pending_error: core::cell::RefCell<Option<TransportError>>,
+    /// Issue 1942 — the metadata the pending request carries
+    /// ([`load_with_info`](Self::load_with_info)); `NOT_REPORTED` by default,
+    /// which is what a backend with no per-request metadata reports.
+    pending_info: Cell<nros_core::ServiceInfo>,
+    /// Issue 1942 — the metadata of the request the last take returned.
+    taken_info: Cell<nros_core::ServiceInfo>,
 }
 
 impl MockServiceServer {
@@ -279,6 +285,8 @@ impl MockServiceServer {
             sent: core::cell::RefCell::new(heapless::Vec::new()),
             service_name: MockName::new(service_name),
             pending_error: core::cell::RefCell::new(None),
+            pending_info: Cell::new(nros_core::ServiceInfo::NOT_REPORTED),
+            taken_info: Cell::new(nros_core::ServiceInfo::NOT_REPORTED),
         }
     }
 
@@ -294,6 +302,14 @@ impl MockServiceServer {
 
     pub fn load(&self, data: [u8; 256], len: usize) {
         self.pending.set(Some((data, len)));
+        self.pending_info.set(nros_core::ServiceInfo::NOT_REPORTED);
+    }
+
+    /// Issue 1942 — [`load`](Self::load) a request that carries `info`, the
+    /// way a backend that reports per-request metadata delivers one.
+    pub fn load_with_info(&self, data: [u8; 256], len: usize, info: nros_core::ServiceInfo) {
+        self.pending.set(Some((data, len)));
+        self.pending_info.set(info);
     }
 }
 
@@ -315,6 +331,7 @@ impl ServiceTrait for MockServiceServer {
             Some((data, len)) => {
                 buf[..len].copy_from_slice(&data[..len]);
                 self.pending.set(None);
+                self.taken_info.set(self.pending_info.get());
                 let seq = self.next_seq.get();
                 self.next_seq.set(seq + 1);
                 Ok(Some(ServiceRequest {
@@ -324,6 +341,10 @@ impl ServiceTrait for MockServiceServer {
             }
             None => Ok(None),
         }
+    }
+
+    fn request_info(&self) -> nros_core::ServiceInfo {
+        self.taken_info.get()
     }
 
     fn send_response(&mut self, seq: i64, data: &[u8]) -> Result<(), TransportError> {
