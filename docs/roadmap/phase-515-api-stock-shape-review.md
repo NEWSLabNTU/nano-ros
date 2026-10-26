@@ -350,8 +350,9 @@ vtable's appended `take_request_with_info` slot carries an
 (stock `rmw_cyclonedds_cpp`'s layout), XRCE-DDS reports `request_id` (the
 Agent's `SampleIdentity`). The C and C++ callbacks get the id too:
 `rclc_executor_add_service_raw_with_request_id` and rclcpp's three-argument
-handler's request header. Residue: XRCE's slot is not yet measured against an
-Agent (issue 2088), and the generated typed C service path has no request-id
+handler's request header. Residue: XRCE's slot was measured against a live
+Agent and a stock `rmw_fastrtps_cpp` client on 2026-10-27 ([issue
+2088](../issues/archived/2088-xrce-service-request-id-unmeasured.md)), and the generated typed C service path has no request-id
 flavour (issue 2089).
 
 **R8 — open renames (33).** `UndeclaredParameters` → `Parameters`,

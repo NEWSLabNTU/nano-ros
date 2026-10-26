@@ -305,12 +305,13 @@ evidence = "1 case(s) produced a result in interop_e2e.xml"
 
 [[verdict]]
 cell = "native-service-rust-xrce-r2n"
-date = "2026-09-07"
+date = "2026-10-27"
 verdict = "pass"
-tests = ["test_ros2_service_xrce_client", "test_xrce_service_ros2_client"]
+tests = ["test_ros2_service_xrce_client", "test_xrce_service_reports_the_stock_clients_request_id", "test_xrce_service_ros2_client"]
 run = "cargo nextest run -p nros-tests --test xrce_ros2_interop"
-where = "ros2 distrobox, Humble, tree with #684 + #692"
-evidence = "2 case(s) produced a result in xrce_ros2_interop.xml"
+where = "ros2 distrobox, Humble, MicroXRCEAgent 2.4.3, tree with issue 2088's service-info-server"
+evidence = "3 case(s) produced a result in junit.xml"
+issue = "2088"
 
 [[verdict]]
 cell = "native-service-rust-zenoh-r2n"

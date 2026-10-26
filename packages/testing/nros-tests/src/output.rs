@@ -141,6 +141,13 @@ pub const WORKSPACE_C_TALKER_LOG_PREFIX: &str = "[talker_pkg] sent:";
 /// now the one producer, and this is the one spelling of what it produces.
 pub const MESSAGE_INFO_LOG_PREFIX: &str = "seq=";
 
+/// issue 2088 — the per-request `ServiceInfo` line emitted by the
+/// `service-info-server` bin
+/// (`REQUEST_ID guid=<32 hex> seq=<client sequence number> a=<a> b=<b>`).
+/// The bin is the one producer; it prints `REQUEST_ID ABSENT …` instead when
+/// the backend reported no request id, which this prefix does not match.
+pub const SERVICE_INFO_LOG_PREFIX: &str = "REQUEST_ID guid=";
+
 /// issues 0459 / 0460 — tell "produced output that LACKS marker X" apart from
 /// "produced nothing at all", and say which.
 ///

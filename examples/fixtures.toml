@@ -2028,6 +2028,18 @@ rmw = "xrce"
 dir = "examples/linux/rust/service-client"
 image = "linux_xrce"
 
+# issue 2088 — the XRCE half of issue 2081's `take_request_with_info`, measured
+# against a live Agent and a stock ROS 2 client
+# (`xrce_ros2_interop::test_xrce_service_reports_the_stock_clients_request_id`).
+# A bin, not the service-server example: `CallbackCtx` exposes no ServiceInfo.
+[[fixture]]
+id = "service-info-server-xrce"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "packages/testing/nros-tests/bins/service-info-server"
+image = "linux_xrce"
+
 # issue 0466 — native rust CycloneDDS talker/listener. These two are consumed by
 # `test_native_cyclonedds_rust_talker_to_listener` /
 # `..._talker_to_rust_listener` (tests/linux_api.rs, via
