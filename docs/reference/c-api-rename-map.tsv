@@ -329,6 +329,7 @@ NROS_TIER_TASK_MEMORY_NUTTX_H	NROS_TIER_TASK_MEMORY_NUTTX_H	hook	defined by the 
 NROS_TIER_TASK_MEMORY_ZEPHYR_H	NROS_TIER_TASK_MEMORY_ZEPHYR_H	hook	defined by the application or entry, called by startup code
 NROS_TIER_TASK_STACK_BYTES_	NROS_TIER_TASK_STACK_BYTES_	hook	defined by the application or entry, called by startup code
 NROS_TIER_TASK_STACK_DEFAULT_	NROS_TIER_TASK_STACK_DEFAULT_	hook	defined by the application or entry, called by startup code
+NROS_TIER_TASK_STACK_DEFINE_	NROS_TIER_TASK_STACK_DEFINE_	hook	defined by the application or entry, called by startup code
 NROS_TIER_TASK_STACK_WORDS_	NROS_TIER_TASK_STACK_WORDS_	hook	defined by the application or entry, called by startup code
 NROS_TIMER_H	NROS_TIMER_H	build	build or configuration fact
 NROS_TIMER_STATE_CANCELED	RCLC_TIMER_STATE_CANCELED	ours	API constant with no upstream spelling
