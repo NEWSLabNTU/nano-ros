@@ -11762,11 +11762,13 @@ fn two_nodes_on_one_executor_emit_under_their_own_names() {
     // Names unique to this test: the sink is process-global and sibling tests
     // in this binary emit through the catch-all logger while it is installed.
     // The marker filter below makes their EXTRA records harmless. A marker
-    // emitted while a sibling test thread is inside a sink is held and
-    // delivered by that thread when it finishes (issue 2000), so it may land
-    // after `log_info!` returns: wait for it rather than read once.
+    // raised while a sibling thread is inside a sink is HELD and delivered by
+    // that thread (issue 2000), so it can land after `log_info!` returns — or
+    // be LOST, which `emit_until_delivered` handles.
     const TALKER: &str = "w5_two_names_talker";
     const LISTENER: &str = "w5_two_names_listener";
+    const TALKER_MARKER: &str = "w5 marker: talker is up";
+    const LISTENER_MARKER: &str = "w5 marker: listener is up";
 
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
@@ -11791,56 +11793,51 @@ fn two_nodes_on_one_executor_emit_under_their_own_names() {
     assert_eq!(talker_logger.name(), TALKER);
     assert_eq!(listener_logger.name(), LISTENER);
 
-    nros_log::log_info!(talker_logger, "w5 marker: talker is up");
-    nros_log::log_info!(listener_logger, "w5 marker: listener is up");
-
-    let markers = || -> Vec<(String, String)> {
+    // The loggers whose records carried `marker`, one entry per record.
+    let names_for = |marker: &str| -> Vec<String> {
         CAPTURED
             .lock()
             .unwrap()
             .iter()
-            .filter(|(_, message)| message.starts_with("w5 marker:"))
-            .cloned()
+            .filter(|(_, message)| message == marker)
+            .map(|(name, _)| name.clone())
             .collect()
     };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-    let mut records = markers();
-    while records.len() < 2 && std::time::Instant::now() < deadline {
-        std::thread::yield_now();
-        nros_log::flush();
-        records = markers();
-    }
+    let lost_before = nros_log::early::overflowed();
+    let talker_seen = emit_until_delivered(
+        || nros_log::log_info!(talker_logger, "{}", TALKER_MARKER),
+        || !names_for(TALKER_MARKER).is_empty(),
+    );
+    let listener_seen = emit_until_delivered(
+        || nros_log::log_info!(listener_logger, "{}", LISTENER_MARKER),
+        || !names_for(LISTENER_MARKER).is_empty(),
+    );
+    let talker_names = names_for(TALKER_MARKER);
+    let listener_names = names_for(LISTENER_MARKER);
+    assert!(
+        talker_seen && listener_seen,
+        "a marker never reached the sink: talker {talker_names:?}, listener \
+         {listener_names:?}; nros_log counted {} lost record(s) meanwhile",
+        nros_log::early::overflowed() - lost_before
+    );
 
-    assert_eq!(
-        records.len(),
-        2,
-        "expected exactly the two marker records this test emitted, got {records:?}"
+    // Attribution, per record: a re-raised marker is the same node's record
+    // again, so every copy must carry that node's name.
+    assert!(
+        talker_names.iter().all(|n| n == TALKER),
+        "the first node's record must be attributed to the first node: {talker_names:?}"
     );
-    assert_eq!(
-        records[0],
-        (
-            String::from(TALKER),
-            String::from("w5 marker: talker is up")
-        ),
-        "the first node's record must be attributed to the first node; all \
-         captured records: {records:?}"
-    );
-    assert_eq!(
-        records[1],
-        (
-            String::from(LISTENER),
-            String::from("w5 marker: listener is up")
-        ),
-        "the second node's record must be attributed to the second node; all \
-         captured records: {records:?}"
+    assert!(
+        listener_names.iter().all(|n| n == LISTENER),
+        "the second node's record must be attributed to the second node: {listener_names:?}"
     );
     assert_ne!(
-        records[0].0, records[1].0,
+        talker_names[0], listener_names[0],
         "the acceptance criterion itself: two nodes in one image must emit \
          under DISTINCT logger names"
     );
     assert_ne!(
-        records[0].0,
+        talker_names[0],
         nros_log::DEFAULT_LOGGER.name(),
         "a record emitted under the catch-all logger names no node"
     );
@@ -14034,6 +14031,38 @@ fn a_stored_violation_emits_its_trace_markers() {
 fn log_sinks_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Raise a record with `emit` until `delivered()` sees it, for up to 5 s.
+///
+/// A record that finds another thread delivering is HELD in `nros_log`'s
+/// bounded queue (`NROS_LOG_EARLY_RECORDS`, builtin 4) and one that does not
+/// fit is dropped and COUNTED (`early::overflowed`, issue 2000). Every test in
+/// this binary may log from its own thread, so under load a record can be
+/// lost outright, and no amount of waiting or `flush` delivers it. Measured: 8
+/// copies of this binary at `--test-threads=64` failed 1 run in 48, with
+/// nros_log counting 16 lost records, both of the caller's markers among them.
+///
+/// So a counted loss re-raises the record; otherwise this waits. The loss may
+/// have been a sibling's record while the caller's was still held, so the
+/// caller can see a record TWICE and must assert on every copy.
+fn emit_until_delivered(emit: impl Fn(), delivered: impl Fn() -> bool) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    'raise: while std::time::Instant::now() < deadline {
+        let lost = nros_log::early::overflowed();
+        emit();
+        while std::time::Instant::now() < deadline {
+            nros_log::flush();
+            if delivered() {
+                return true;
+            }
+            if nros_log::early::overflowed() != lost {
+                continue 'raise;
+            }
+            std::thread::yield_now();
+        }
+    }
+    delivered()
 }
 
 /// phase-474 I2 -- tests that put an executor in "armed on call" mode, which
