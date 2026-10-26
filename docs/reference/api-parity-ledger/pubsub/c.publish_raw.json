@@ -1,5 +1,9 @@
 {
   "key": "c:publish_raw",
-  "verdict": "extension",
-  "why": "the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+  "rename": {
+    "to": "rclc_publish_serialized",
+    "status": "landed"
+  },
+  "verdict": "rename",
+  "why": "LANDED 2026-10-27 (phase-515 C8): renamed to `rclc_publish_serialized`, the transmit word matching the receive side's `take_serialized` (`c:publish_serialized_message`). The old name is kept one release as a deprecated forwarder. PRIOR ROW (extension): the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
 }

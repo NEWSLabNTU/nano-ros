@@ -95,13 +95,13 @@ class PortedTalker {
         if (publisher_) (void)publisher_->publish(message);
     }
 
-    /// The rest of the publisher surface the corpus reaches: `publish_raw`
+    /// The rest of the publisher surface the corpus reaches: `publish_serialized`
     /// (2 sites), `is_valid` (1) and `assert_liveliness` (1). `loan` is the
     /// fourth and is exercised through the same `operator->`.
     void other_verbs() {
         if (!publisher_) return;
         const uint8_t cdr[4] = {0, 1, 0, 0};
-        (void)publisher_->publish_raw(cdr, sizeof(cdr));
+        (void)publisher_->publish_serialized(cdr, sizeof(cdr));
         (void)publisher_->is_valid();
         (void)publisher_->assert_liveliness();
         (void)publisher_->get_topic_name();

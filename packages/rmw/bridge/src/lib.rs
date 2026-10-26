@@ -467,7 +467,7 @@ impl<const RX_BUF: usize, const TX_BUF: usize, const CONV_BUF: usize>
             let mut att_out = [0u8; 64];
             let att_out_len = encode_bridge_origin(origin_bytes, &mut att_out);
             self.pubr
-                .publish_raw_with_attachment(out, &att_out[..att_out_len])?;
+                .publish_serialized_with_attachment(out, &att_out[..att_out_len])?;
             if !origin.is_empty() {
                 self.dedup.record(hash);
             }

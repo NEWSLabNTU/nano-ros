@@ -49,7 +49,7 @@ extern "C" fn main() -> ! {
         let mut buf = [0u8; PAYLOAD_LEN];
         for seq in 0..PER_PATH {
             fill(&mut buf, MARK_RAW, seq);
-            let (r, n) = count_payload_copies(|| publisher.publish_raw(&buf));
+            let (r, n) = count_payload_copies(|| publisher.publish_serialized(&buf));
             if r.is_err() {
                 println!("LOAN-COPY-ERROR publish_raw seq={}", seq);
             }

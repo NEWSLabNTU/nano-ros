@@ -7600,7 +7600,14 @@ rcl_ret_t rclc_publisher_init_with_options(struct rcl_publisher_t *publisher,
                                            const struct rcl_publisher_options_t *options);
 
 /**
- * Publish raw CDR-serialized data.
+ * Publish CDR-serialized data — rcl's `rcl_publish_serialized_message`.
+ *
+ * Renamed from `rclc_publish_raw` (phase-515 C8) so the transmit verb reads
+ * as the receive side's `rclc_polling_subscription_take_serialized` does. The
+ * old name survives one release as a deprecated `static inline` forwarder in
+ * `<rclc/publisher.h>`. ADOPT-BOUNDED against rcl: the payload is a
+ * `(data, len)` pair, not an `rcl_serialized_message_t` — that type is a
+ * growable buffer carrying an allocator, and this API has neither.
  *
  * # Parameters
  * * `publisher` - Pointer to an initialized publisher
@@ -7618,9 +7625,9 @@ rcl_ret_t rclc_publisher_init_with_options(struct rcl_publisher_t *publisher,
  * * `data` must be a valid pointer to `len` bytes
  */
 NROS_PUBLIC
-rcl_ret_t rclc_publish_raw(const struct rcl_publisher_t *publisher,
-                           const uint8_t *data,
-                           size_t len);
+rcl_ret_t rclc_publish_serialized(const struct rcl_publisher_t *publisher,
+                                  const uint8_t *data,
+                                  size_t len);
 
 /**
  * Publish a message — rcl's `rcl_publish`, serialising through the
@@ -7659,7 +7666,7 @@ rcl_ret_t rclc_publish_raw(const struct rcl_publisher_t *publisher,
  *   non-NULL `allocation`
  * * `RCL_RET_NOT_INIT` — the publisher is not initialised
  * * `RCL_RET_UNSUPPORTED` — the publisher's descriptor carries no serialiser
- *   (one built from type names alone); use `rclc_publish_raw`
+ *   (one built from type names alone); use `rclc_publish_serialized`
  * * `RCL_RET_ERROR` — the message did not serialise (a field past its `.msg`
  *   bound, a NULL `data` with nonzero `size`, or larger than the image's
  *   message buffer)

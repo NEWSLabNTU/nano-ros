@@ -71,7 +71,7 @@ fn main() {
         // Flush any pending output before each test
         executor.spin_once(core::time::Duration::from_millis(50));
 
-        match publisher.publish_raw(&payload) {
+        match publisher.publish_serialized(&payload) {
             Ok(()) => {
                 println!("PASS: publish_raw size={} succeeded", size);
                 passed += 1;

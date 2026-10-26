@@ -454,7 +454,14 @@ pub unsafe extern "C" fn rclc_publisher_init_with_options(
     rclc_publisher_init_with_qos(publisher, node, type_info, topic_name, qos)
 }
 
-/// Publish raw CDR-serialized data.
+/// Publish CDR-serialized data — rcl's `rcl_publish_serialized_message`.
+///
+/// Renamed from `rclc_publish_raw` (phase-515 C8) so the transmit verb reads
+/// as the receive side's `rclc_polling_subscription_take_serialized` does. The
+/// old name survives one release as a deprecated `static inline` forwarder in
+/// `<rclc/publisher.h>`. ADOPT-BOUNDED against rcl: the payload is a
+/// `(data, len)` pair, not an `rcl_serialized_message_t` — that type is a
+/// growable buffer carrying an allocator, and this API has neither.
 ///
 /// # Parameters
 /// * `publisher` - Pointer to an initialized publisher
@@ -471,7 +478,7 @@ pub unsafe extern "C" fn rclc_publisher_init_with_options(
 /// * `publisher` must be a valid pointer to an initialized publisher
 /// * `data` must be a valid pointer to `len` bytes
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_publish_raw(
+pub unsafe extern "C" fn rclc_publish_serialized(
     publisher: *const rcl_publisher_t,
     data: *const u8,
     len: usize,
@@ -543,7 +550,7 @@ pub unsafe extern "C" fn rclc_publish_raw(
 ///   non-NULL `allocation`
 /// * `RCL_RET_NOT_INIT` — the publisher is not initialised
 /// * `RCL_RET_UNSUPPORTED` — the publisher's descriptor carries no serialiser
-///   (one built from type names alone); use `rclc_publish_raw`
+///   (one built from type names alone); use `rclc_publish_serialized`
 /// * `RCL_RET_ERROR` — the message did not serialise (a field past its `.msg`
 ///   bound, a NULL `data` with nonzero `size`, or larger than the image's
 ///   message buffer)
@@ -603,7 +610,7 @@ unsafe fn publish_staged<const N: usize>(
         return None;
     }
     // SAFETY: `publisher` was validated by the caller; `buf[..len]` is live.
-    Some(unsafe { rclc_publish_raw(publisher, buf.as_ptr(), len) })
+    Some(unsafe { rclc_publish_serialized(publisher, buf.as_ptr(), len) })
 }
 
 /// Phase 124.E.1 — streamed publish.

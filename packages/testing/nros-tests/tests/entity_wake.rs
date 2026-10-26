@@ -88,7 +88,7 @@ fn publish_until_marked(
             start.elapsed() < ARRIVAL_BUDGET,
             "no entity wake within {ARRIVAL_BUDGET:?} of publishing"
         );
-        publisher.publish_raw(PAYLOAD).expect("publish");
+        publisher.publish_serialized(PAYLOAD).expect("publish");
         std::thread::sleep(Duration::from_millis(50));
         bits |= exec.take_entity_ready_bits();
     }
@@ -190,7 +190,7 @@ fn a_shared_session_member_is_not_woken_by_another_members_arrivals(zenohd_uniqu
     let publisher_thread = std::thread::spawn(move || {
         let publisher = publisher;
         while !stop_t.load(std::sync::atomic::Ordering::SeqCst) {
-            publisher.0.publish_raw(PAYLOAD).expect("publish");
+            publisher.0.publish_serialized(PAYLOAD).expect("publish");
             std::thread::sleep(Duration::from_millis(50));
         }
     });
@@ -280,7 +280,7 @@ fn a_pushed_spin_dispatches_without_probing_readiness(zenohd_unique: ZenohRouter
             "the subscription dispatched nothing within {ARRIVAL_BUDGET:?} of publishing"
         );
         if !published || start.elapsed() > Duration::from_secs(1) {
-            publisher.publish_raw(PAYLOAD).expect("publish");
+            publisher.publish_serialized(PAYLOAD).expect("publish");
             published = true;
         }
         let probes_before = exec.readiness_probe_count();
@@ -317,7 +317,7 @@ fn spin_until(
     done: impl Fn() -> bool,
 ) -> bool {
     if let Some(p) = publisher {
-        p.publish_raw(PAYLOAD).expect("publish");
+        p.publish_serialized(PAYLOAD).expect("publish");
     }
     let start = Instant::now();
     while start.elapsed() < budget {
@@ -485,7 +485,7 @@ fn an_arrival_racing_a_drain_is_never_left_undispatched(
             payload[4..8].copy_from_slice(&seq.to_le_bytes());
             publisher
                 .0
-                .publish_raw(&payload)
+                .publish_serialized(&payload)
                 .map_err(|e| format!("sample {seq}: publish failed: {e:?} (issue 2001)"))
         };
         while let Ok(first) = rounds.recv() {
@@ -634,7 +634,7 @@ fn a_burst_into_a_slow_subscription_ends_on_its_newest_sample(
         let mut payload = [0u8, 1, 0, 0, 0, 0, 0, 0];
         payload[4..8].copy_from_slice(&seq.to_le_bytes());
         publisher
-            .publish_raw(&payload)
+            .publish_serialized(&payload)
             .unwrap_or_else(|e| panic!("{shape:?}: sample {seq}: publish failed: {e:?}"));
     };
 
@@ -757,7 +757,7 @@ fn an_idle_member_parks_through_kilohertz_arrivals_for_another(zenohd_unique: Ze
     let publisher_thread = std::thread::spawn(move || {
         let publisher = publisher;
         while !stop_t.load(SeqCst) {
-            publisher.0.publish_raw(PAYLOAD).expect("publish");
+            publisher.0.publish_serialized(PAYLOAD).expect("publish");
             published_t.fetch_add(1, SeqCst);
             std::thread::sleep(Duration::from_millis(1));
         }
@@ -870,7 +870,7 @@ fn an_attributed_arrival_reaches_its_callback_without_waiting_out_the_park(
             start.elapsed() < ARRIVAL_BUDGET,
             "the warm-up sample never arrived"
         );
-        publisher.publish_raw(&payload(0)).expect("publish");
+        publisher.publish_serialized(&payload(0)).expect("publish");
         exec.spin_once(Duration::from_millis(50));
     }
 
@@ -880,7 +880,10 @@ fn an_attributed_arrival_reaches_its_callback_without_waiting_out_the_park(
         let publisher = publisher;
         for seq in 1..=SAMPLES as u32 {
             sent_t.lock().unwrap()[seq as usize] = Some(Instant::now());
-            publisher.0.publish_raw(&payload(seq)).expect("publish");
+            publisher
+                .0
+                .publish_serialized(&payload(seq))
+                .expect("publish");
             std::thread::sleep(GAP);
         }
     });

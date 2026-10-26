@@ -129,7 +129,7 @@ fn main() -> ! {
 
         for (seq, &size) in test_sizes.iter().enumerate() {
             build_payload(&mut buf, seq as u32, size);
-            match publisher.publish_raw(&buf[..size]) {
+            match publisher.publish_serialized(&buf[..size]) {
                 Ok(()) => {
                     println!("[PASS] publish size={}", size);
                     passed += 1;

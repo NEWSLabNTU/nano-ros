@@ -68,7 +68,7 @@ Both layers share the same session; mix per entity.
   `node.create_subscription::<M>(topic)` (poll with `take()`)
 - L2 — `executor.register_timer(period, || publisher.publish(...))`,
   `executor.register_subscription::<M, _>(topic, |msg| { ... })`
-- `publisher.publish(&msg)` / `publish_raw(&bytes)` — publish messages
+- `publisher.publish(&msg)` / `publish_serialized(&bytes)` — publish messages
 
 **Services:**
 - L1 — `node.create_service::<S>(name)` (poll with

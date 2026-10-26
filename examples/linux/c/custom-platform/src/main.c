@@ -112,7 +112,7 @@ static void timer_callback(struct rcl_timer_t* timer, int64_t last_call_time) {
     int32_t len =
         std_msgs_Int32_serialize(&app.message, g_serialize_buffer, sizeof(g_serialize_buffer));
     if (len > 0) {
-        rcl_ret_t ret = rclc_publish_raw(&app.publisher, g_serialize_buffer, (size_t)len);
+        rcl_ret_t ret = rclc_publish_serialized(&app.publisher, g_serialize_buffer, (size_t)len);
         if (ret == RCL_RET_OK) {
             RCLC_LOG_INFO(g_logger, "Published: %d", app.message.data);
         }

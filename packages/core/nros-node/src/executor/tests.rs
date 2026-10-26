@@ -13654,17 +13654,17 @@ fn a_raw_publisher_on_a_contracted_topic_bumps_its_cell() {
 
     let before = CELL.count.load(Ordering::Relaxed);
     contracted
-        .publish_raw(&[0, 1, 0, 0, 7, 0, 0, 0])
+        .publish_serialized(&[0, 1, 0, 0, 7, 0, 0, 0])
         .expect("publish");
     contracted
-        .publish_raw_with_attachment(&[0, 1, 0, 0, 7, 0, 0, 0], &[])
+        .publish_serialized_with_attachment(&[0, 1, 0, 0, 7, 0, 0, 0], &[])
         .expect("publish with attachment");
     assert_eq!(
         CELL.count.load(Ordering::Relaxed) - before,
         2,
         "every publish route bumps the contracted cell"
     );
-    free.publish_raw(&[0, 1, 0, 0, 7, 0, 0, 0])
+    free.publish_serialized(&[0, 1, 0, 0, 7, 0, 0, 0])
         .expect("publish");
     assert_eq!(
         CELL.count.load(Ordering::Relaxed) - before,
@@ -14399,7 +14399,7 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
             if busy > 0 {
                 work_ms(busy as u64);
             }
-            let _ = status.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
+            let _ = status.publish_serialized(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
             if tick == RUN_AT_TICK {
                 // INIT -> RUN: every input established. The island's handler
                 // writes INIT_DONE here.
@@ -14602,7 +14602,7 @@ fn t4_a_timer_overrun_beside_an_idle_subscription_is_judged() {
     executor
         .register_timer(TimerDuration::from_millis(100), move || {
             let tick = TICKS.fetch_add(1, Ordering::SeqCst) + 1;
-            let _ = state.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
+            let _ = state.publish_serialized(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
             // The island's debug overrun busy-waits AFTER its publishes.
             let busy = BUSY_MS.swap(0, Ordering::SeqCst);
             if busy > 0 {
@@ -15018,8 +15018,8 @@ fn i7_a_slow_report_breeds_no_overrun_or_jitter_verdict() {
     executor
         .register_timer(TimerDuration::from_millis(80), move || {
             let tick = HANDLER_TICKS.fetch_add(1, Ordering::SeqCst) + 1;
-            let _ = state.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
-            let _ = tor.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
+            let _ = state.publish_serialized(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
+            let _ = tor.publish_serialized(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
             let busy = BUSY_MS.swap(0, Ordering::SeqCst);
             if busy > 0 {
                 busy_ms(busy as u64);
@@ -15668,7 +15668,7 @@ fn b3_a_late_tick_exceeds_the_route_while_every_callback_passes() {
     executor
         .register_timer(TimerDuration::from_millis(100), move || {
             let tick = TICKS.fetch_add(1, Ordering::SeqCst) + 1;
-            let _ = state.publish_raw(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
+            let _ = state.publish_serialized(&[0, 1, 0, 0, tick as u8, 0, 0, 0]);
         })
         .expect("timer");
 
@@ -16417,7 +16417,7 @@ fn a_requested_mode_judges_by_its_variant_table() {
         .expect("contracted publisher");
     executor
         .register_timer(TimerDuration::from_millis(100), move || {
-            let _ = status.publish_raw(&[0, 1, 0, 0, 1, 0, 0, 0]);
+            let _ = status.publish_serialized(&[0, 1, 0, 0, 1, 0, 0, 0]);
             mode_switch_clock::set_us(mode_switch_clock::now_us() + 20_000);
         })
         .expect("timer");
@@ -16530,7 +16530,7 @@ fn a_mode_aliasing_the_base_is_entered_and_a_differing_one_still_applies() {
         .expect("contracted publisher");
     executor
         .register_timer(TimerDuration::from_millis(100), move || {
-            let _ = status.publish_raw(&[0, 1, 0, 0, 1, 0, 0, 0]);
+            let _ = status.publish_serialized(&[0, 1, 0, 0, 1, 0, 0, 0]);
             mode_alias_clock::set_us(mode_alias_clock::now_us() + 20_000);
         })
         .expect("timer");

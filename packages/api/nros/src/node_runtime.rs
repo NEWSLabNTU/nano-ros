@@ -826,7 +826,9 @@ impl PublisherResolver for CellResolver<'_> {
         // return `Runtime`, which is why a console full of "publish FAILED"
         // could not distinguish a wiring bug from a congested link.
         match self.cell.publisher(entity_id) {
-            Some(p) => p.publish_raw(data).map_err(|_| NodeDeclError::Runtime),
+            Some(p) => p
+                .publish_serialized(data)
+                .map_err(|_| NodeDeclError::Runtime),
             None => Err(NodeDeclError::UnknownPublisher),
         }
     }

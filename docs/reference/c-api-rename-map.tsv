@@ -223,6 +223,7 @@ NROS_NODE_STATE_INITIALIZED	RCLC_NODE_STATE_INITIALIZED	ours	API constant with n
 NROS_NODE_STATE_SHUTDOWN	RCLC_NODE_STATE_SHUTDOWN	ours	API constant with no upstream spelling
 NROS_NODE_STATE_UNINITIALIZED	RCLC_NODE_STATE_UNINITIALIZED	ours	API constant with no upstream spelling
 NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES	NROS_NO_DEPRECATED_EXECUTOR_REGISTER_ALIASES	build	build or configuration fact
+NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS	NROS_NO_DEPRECATED_PUBLISH_RAW_ALIAS	build	build or configuration fact
 NROS_NUTTX_EXTERNAL_APP	NROS_NUTTX_EXTERNAL_APP	hook	defined by the application or entry, called by startup code
 NROS_NUTTX_LEVEL_STACK_DEFAULT	NROS_NUTTX_LEVEL_STACK_DEFAULT	hook	defined by the application or entry, called by startup code
 NROS_NUTTX_LEVEL_WORKER_FRAME	NROS_NUTTX_LEVEL_WORKER_FRAME	hook	defined by the application or entry, called by startup code

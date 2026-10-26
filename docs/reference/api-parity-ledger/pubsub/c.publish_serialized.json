@@ -1,0 +1,10 @@
+{
+  "key": "c:publish_serialized",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc/detail/nros_generated.h",
+    "text": "ADOPT-BOUNDED against rcl: the payload is a"
+  },
+  "verdict": "divergence",
+  "why": "LANDED 2026-10-27 (phase-515 C8): `rclc_publish_serialized(publisher, data, len)` is rcl's `rcl_publish_serialized_message` in this tree's word for it, the transmit twin of `rclc_polling_subscription_take_serialized`. `_message` and the module prefix stay dropped per `c:take_serialized_message`'s precedent, so the key does not meet upstream's and this row carries the decision (`c:publish_serialized_message` records the settled target it executes). ENVELOPE (stated on the declaration): the payload is a `(data, len)` pair, not an `rcl_serialized_message_t` -- a growable buffer carrying an allocator, which this API has neither of (`serde/c.serialized_message_t` is absent for that reason). Replaces `rclc_publish_raw`, which survives one release as a deprecated `static inline` forwarder in `<rclc/publisher.h>`."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Publisher::publish_serialized",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/publisher.hpp",
+    "text": "ADOPT-BOUNDED: the payload"
+  },
+  "verdict": "divergence",
+  "why": "LANDED 2026-10-27 (phase-515 C8): rclcpp's `Publisher::publish(const SerializedMessage &)`, named for what it takes because a `(data, len)` overload of `publish` beside `publish(const M &)` would be ambiguous to read. ENVELOPE (stated on the member): the payload is a `(data, len)` pair, not an `rclcpp::SerializedMessage`, which owns a growable buffer through an allocator (`cpp:SerializedMessage` is a divergence for that reason). The receive side's word is already `take_serialized`. Replaces `publish_raw`, kept one release behind `NROS_CPP_DEPRECATED_MSG`."
+}

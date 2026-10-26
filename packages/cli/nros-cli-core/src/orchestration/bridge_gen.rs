@@ -302,7 +302,7 @@ fn render_register_bridges_fn(out: &mut String, plan: &NrosPlan) {
                         "        let n = nros::bridge::encode_bridge_origin(origin_b{bi}, &mut att);\n"
                     ));
                     out.push_str(&format!(
-                        "        let _ = {pub_var}.publish_raw_with_attachment(payload, &att[..n]);\n"
+                        "        let _ = {pub_var}.publish_serialized_with_attachment(payload, &att[..n]);\n"
                     ));
                     out.push_str("    })?;\n");
                 }
@@ -842,7 +842,7 @@ mod tests {
             "{tables}"
         );
         assert!(
-            tables.contains("publish_raw_with_attachment(payload"),
+            tables.contains("publish_serialized_with_attachment(payload"),
             "{tables}"
         );
     }

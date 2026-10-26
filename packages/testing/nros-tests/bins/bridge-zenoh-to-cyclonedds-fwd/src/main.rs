@@ -94,7 +94,7 @@ fn main() {
         .rx_buffer::<1024>()
         .build(move |bytes: &[u8]| {
             let p = pub_for_cb.borrow();
-            match p.publish_raw(bytes) {
+            match p.publish_serialized(bytes) {
                 Ok(()) => info!("forwarded {} bytes zenoh→cyclonedds", bytes.len()),
                 Err(e) => warn!("forward publish failed: {e:?}"),
             }

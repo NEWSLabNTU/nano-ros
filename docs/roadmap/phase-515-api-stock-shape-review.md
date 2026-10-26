@@ -233,6 +233,15 @@ The C++ half (taking replies in the spin) is issue 2034, **resolved 2026-10-25**
 `action_server_get_active_goal_count`. Land each, or re-verdict it with a
 reason.
 
+**C8 `rcl_publish_serialized_message` LANDED 2026-10-27** as the ledger's settled
+word swap, not upstream's type: C `rclc_publish_serialized`, C++
+`Publisher::publish_serialized`, Rust `EmbeddedPublisher::publish_serialized`
+and `EmbeddedRawPublisher::publish_serialized[_with_attachment]`, matching the
+receive side's `take_serialized`. Every old name stays one release as a
+deprecated forwarder (C: a `static inline` with the deprecated attribute). Not
+renamed: the RMW trait's `publish_raw` and the `nros_cpp_publish_raw` FFI
+symbol — seams no user writes, and the generated C++ exports name the symbol.
+
 ### P — rclcpp
 
 **P1 — `Executor::spin_until_future_complete(future, timeout)`.** The free

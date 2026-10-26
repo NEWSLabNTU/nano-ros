@@ -3996,7 +3996,7 @@ mod builder_tests {
             .generic("std_msgs/msg/Int32", "hash")
             .message_info()
             .build(move |payload: &[u8], _info: &nros_core::RawMessageInfo| {
-                let _ = dest_pub.publish_raw(payload);
+                let _ = dest_pub.publish_serialized(payload);
             })
             .expect("bridge-shape source subscription builds");
     }
