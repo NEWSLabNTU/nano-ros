@@ -91,6 +91,34 @@ storage probes answer `sizeof(void *)` / `_Alignof(void *)`;
 `condvar_signal_from_isr` signals the handle's `k_condvar`; `task_attr_init`
 fills the same defaults as the POSIX arm.
 
+## Second route (2026-10-27): `nros_posix_apply_current_deadline`
+
+The fix above (`295c20dc3b`, 2026-10-24 17:52) defined the eight functions.
+Four minutes later, `dfbe7dc1f3` (issue 2018, "Linux levels run under
+SCHED_DEADLINE") made nros-cpp's native level runner call
+`nros_posix_apply_current_deadline`. It sits under the runner's gate,
+`rmw-cffi` + `env` + `unix`. That name is the POSIX port's own and is not in
+`<nros/platform.h>`, so no Zephyr arm can define it. The linker fetched the
+POSIX `platform.o` again, and every scheduled `run-matrix` and tier-2 nightly
+from 10-25 failed with the same collisions. `check-platform-port-arms`
+compares `nros_platform_*` across arms, so the name was outside its view.
+
+Fixed by routing the call through one gated helper,
+`nros_platform::sched::apply_current_deadline`. It sits beside
+`termination`, under `feature = "platform-posix"`, and returns "not taken"
+anywhere else. A new gate, `check-posix-port-private-symbols`, refuses a
+Rust `extern "C"` block that declares a `nros_posix_*` function without
+that gate, and refuses any C/C++ reference outside the port. Against
+origin/main's nros-cpp it names the runner's block. Measured on
+`build-cpp-talker-xrce` through the CI road: the `nros_platform_*`
+collisions are gone.
+
+That image still does not link. Its last error is `__popcountdi2`, defined
+twice by two Rust staticlibs. That is a separate regression and also hits
+the zenoh C++ leaves:
+[issue 2095](2095-zephyr-native-sim-two-rust-archives-duplicate-popcountdi2.md).
+The closing condition below therefore waits on 2095 as well.
+
 ## What would close it
 
 A tier-2 nightly in which the six `build-cpp-*-xrce` Zephyr leaves link, and a

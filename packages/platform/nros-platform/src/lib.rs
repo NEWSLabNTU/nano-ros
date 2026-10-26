@@ -174,6 +174,68 @@ pub mod termination {
     }
 }
 
+/// The kernel's deadline reservation on the calling thread (issue 2018).
+///
+/// The reservation is C, in the POSIX port
+/// (`nros_posix_apply_current_deadline` in `nros-platform-posix`), for the
+/// reason [`termination`] gives. It is reached only on a build that selected
+/// that port. A `cfg(unix)` gate is not enough: Zephyr `native_sim`, and the
+/// host tiers of ThreadX and FreeRTOS, target a Linux triple without the POSIX
+/// port. Their port defines no `nros_posix_*` symbol, so a reference made the
+/// linker take the POSIX `platform.o` from whichever archive carried one, and
+/// every other symbol in it then collided with the image's own port
+/// (issue 2032; issue 1776 had the same shape).
+pub mod sched {
+    use core::ffi::c_char;
+
+    #[cfg(feature = "platform-posix")]
+    unsafe extern "C" {
+        fn nros_posix_apply_current_deadline(
+            name: *const c_char,
+            tier_class: *const c_char,
+            budget_us: u64,
+            period_us: u64,
+            deadline_us: u64,
+        ) -> i32;
+    }
+
+    /// Ask the kernel to reserve `budget_us` every `period_us` for the calling
+    /// thread. Returns `true` when the kernel took it, and `false` otherwise.
+    /// That covers a tier class that asks for no reservation, a refusal (no
+    /// `CAP_SYS_NICE`), and a build whose port has no such kernel facility.
+    /// On `false` the caller enforces the budget itself.
+    ///
+    /// # Safety
+    ///
+    /// `name` and `tier_class` are NUL-terminated strings or null.
+    pub unsafe fn apply_current_deadline(
+        name: *const c_char,
+        tier_class: *const c_char,
+        budget_us: u64,
+        period_us: u64,
+        deadline_us: u64,
+    ) -> bool {
+        #[cfg(feature = "platform-posix")]
+        {
+            // SAFETY: the caller's contract on the two strings.
+            unsafe {
+                nros_posix_apply_current_deadline(
+                    name,
+                    tier_class,
+                    budget_us,
+                    period_us,
+                    deadline_us,
+                ) == 1
+            }
+        }
+        #[cfg(not(feature = "platform-posix"))]
+        {
+            let _ = (name, tier_class, budget_us, period_us, deadline_us);
+            false
+        }
+    }
+}
+
 // ============================================================================
 // Phase 248 C7 — Zephyr platform helper (relocated from `nros::platform::zephyr`)
 // ============================================================================
