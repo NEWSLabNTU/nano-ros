@@ -4,7 +4,9 @@
 phase was written (issue 1567, see D5). D1, D2, I1 and I2 landed on branch
 `feat/violation-ring-and-arming` (issues 1714, 1715); T4 landed as a host
 executor test and a native_sim fixture; its QEMU run is open, and its board run
-moved to [phase-512](phase-512-on-hardware-measurements.md) H6 on 2026-10-24. Every other item is
+moved to [phase-512](phase-512-on-hardware-measurements.md) H6 on 2026-10-24. **2026-10-26:** the
+board halves of T4, I6, I8 and I9 are met by the island's board rounds on nano-ros
+8b95e90dd6 and 5feeb32a7b (section "The board halves, 2026-10-26" below). Every other item is
 open. Records the open work the Autoware safety island's RTSS@Work 2026 demo
 (simple-autoware-safety-island, phase 8) found in nano-ros while running its
 three acts on an NXP S32K344 (MR-CANHUBK344) behind a 921,600-baud UART and an
@@ -1056,6 +1058,41 @@ needs the linker backport. The island takes I14 (RXWATER 1) with TCM.
 and the late-spin rates; `_z_zephyr_serial_stats` overruns, bad frames and
 ring overflows 0; the island's gate act still PASS.
 
+## The board halves, 2026-10-26
+
+Quoted from simple-autoware-safety-island main `f208a38`
+(`docs/design/carla-island-demo.md`, the sections for nano-ros 8b95e90dd6 and
+5feeb32a7b). Nine board acts on the MR-CANHUBK344, on two images: runs
+`i2041-{e1,a1,b1,e2,ov1}` (nano-ros 8b95e90dd6 and its pre-merge parent) and
+`i2065-{e1,a1,b1,ov1}` (nano-ros 5feeb32a7b). Every act PASS. The executor's
+violation record (`NROS_VIOLATION_RECORD`, capacity 8) was read over SWD after
+each act; every record reads `dropped=0 suppressed_before_arm=3 armed=1`.
+
+- **T4 and I6, board half.** The two overrun acts (`RB_OVERRUN=300` on the
+  handler's 10 Hz timer tick) each stored three `max-latency-runtime`
+  verdicts, one per monitored publisher of the tick, as section "I6, on the
+  board" predicts. From `i2065-ov1`:
+
+  ```
+  #8: max-latency-runtime /mrm_handler/takeover_request_state measured=301 declared=149 (one dispatch, ms)
+  #7: max-latency-runtime /mrm_handler/mrm_state measured=301 declared=149 (one dispatch, ms)
+  #6: max-latency-runtime /mrm_handler/hazard_lights_cmd measured=301 declared=100 (one dispatch, ms)
+  ```
+
+  A timer-fired callback's overrun reaches D1's channel as a
+  `max-latency-runtime` verdict.
+- **I8 and I9, board half.** No rate verdict in any of the nine records,
+  including the first window after arming. The operators' statuses are
+  monitored at `min_rate_hz: 9` against 10 Hz and 30 Hz producers. The
+  records hold only the act's own hazard entries (`hazard-detected` x2 and
+  `hazard-recovered` x2), the expected `silence-runtime` on
+  `operation_mode_availability`, and in the overrun acts the three latency
+  verdicts.
+
+Not covered: T4's QEMU leg (still open here), and I9's exact-rate case. The
+island's rate floor is 9 Hz under 10 Hz producers, so a stream at exactly its
+declared rate was not on the board; I9's host test covers that.
+
 ## Cross-repo
 
 - **play_launch** has a parallel phase on the same findings: F1 (charge
@@ -1151,38 +1188,43 @@ I13's DTCM rings); I14 is the no-DMA alternative and is independent.
       1534 open: main priority checked by a configure warning, RX ring
       documented, a measured default still needs a serial-join lane.)
 - [ ] T4: a deliberate overrun on the S32K344 is reported through D1's
-      channel. (Host executor e2e landed; the board run of 2026-10-06 shows
+      channel. (**Board leg met 2026-10-26**: three `max-latency-runtime`
+      verdicts in the SWD record, see "The board halves, 2026-10-26";
+      phase-512 H6 closed. Only the QEMU leg is open. Host executor e2e landed; the board run of 2026-10-06 shows
       the overrun as timer-overrun and jitter verdicts and markers, not as
       `max-latency-runtime`: I6. native_sim fixture landed:
       `violation_channel_e2e`, one latency verdict after arming; QEMU
       open here. The board run moved 2026-10-24 to
       [phase-512](phase-512-on-hardware-measurements.md) H6.)
-- [ ] I6: a timer-fired callback that overruns its `max_latency` produces a
+- [x] I6: a timer-fired callback that overruns its `max_latency` produces a
       `max-latency-runtime` verdict, on the host test and on the S32K344.
       (Host half landed in #1750: the trigger-miss sweep times each timer
       dispatch and charges it through `attribute_latency`, test
       `t4_a_timer_overrun_beside_an_idle_subscription_is_judged`, issue
-      1724; the board rerun is the island's W4.)
+      1724. Board half met 2026-10-26: "The board halves, 2026-10-26".)
 - [x] I7: the reporter neither overflows the main stack nor costs the spin
       thread a tick per verdict; the island's 24 KiB workaround can go.
       (Host: frame ~1 KB (issue 1726); reports queued, coalesced and sent off
       the judged tick, cost not charged as jitter (issue 1727). The 16 KiB
       re-try on the board is the island's.)
-- [ ] I8: no rate verdict in the first window after arming on a stream
+- [x] I8: no rate verdict in the first window after arming on a stream
       publishing at its declared rate. (Host half landed in #1750: the first
       window re-anchors on the first new sample, test
       `a_stream_at_its_rate_armed_mid_period_is_not_judged_slow`, issue
-      1725. The board rerun of 2026-10-09 still read 9999 of 10000: I9.)
+      1725. The board rerun of 2026-10-09 still read 9999 of 10000: I9.
+      Board half met 2026-10-26: no rate verdict in nine armed records.)
 - [ ] 446-W7: the island's 21 declared parameters build and boot with
       parameter services on native, native_sim and MR-CANHUBK344; the demo
       reads VERDICT PASS on both islands, and the board's heap use with the
       services is recorded under "Cross-repo" above.
-- [ ] I9: a stream at exactly its declared rate is not judged slow in any
+- [x] I9: a stream at exactly its declared rate is not judged slow in any
       window, however late the closing tick runs. (Host half here: the count
       is judged against floor(min_rate * window), test
       `a_stream_at_its_rate_checked_late_is_not_judged_slow`; the board
       rerun is the island's W4. The operator's 29773 of 30000 was two ticks
-      dropped under the log-floor stall, measured on the board; not open.)
+      dropped under the log-floor stall, measured on the board; not open.
+      Board rerun 2026-10-26: no rate verdict in nine records; the exact-rate
+      case is the host test's, see "The board halves, 2026-10-26".)
 
 ## Open issues that name this phase
 

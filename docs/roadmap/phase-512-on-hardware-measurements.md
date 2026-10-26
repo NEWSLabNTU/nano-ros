@@ -1,11 +1,14 @@
 # Phase 512 — Work that needs a real board
 
-**Status (2026-10-23). Not started — blocked on hardware.** No board is on this
-bench, and no CI lane provides one. Each item below is a measurement whose code
-has landed and whose host or emulator evidence is recorded in the phase it came
-from. Only the silicon number is missing. Each item moved here so that the
-phase it came from lists only work someone can do today. Unblock an item when
-its board is attached; each one is independent of the others.
+**Status (2026-10-26). In progress: the MR-CANHUBK344 batch is running.** One
+S32K344 board (MR-CANHUBK344) is now on a bench. H6 is met by board runs that
+already exist. H7, H8 and H9 run as one batch on that board ("Batches", below).
+H1-H5 still wait on hardware this bench does not have.
+
+Each item is a measurement whose code has landed and whose host or emulator
+evidence is recorded in the phase it came from. Only the silicon number is
+missing. The items are grouped by the board that runs them, so that one bench
+session closes every item that board can close.
 
 **Prior:** [phase-436](archived/phase-436-poll-wake-revision-deadline-driven-executor.md)
 (the deadline-driven executor, RFC-0106).
@@ -21,6 +24,24 @@ leg are "the island's W4") stay in phase-474: they are blocked on a downstream
 project as much as on a board.
 
 ---
+
+## Batches
+
+Each item needs one board. Grouped by board, the list is five bench sessions,
+not eight separate runs:
+
+| Batch | Board | Items | State |
+| --- | --- | --- | --- |
+| A | MR-CANHUBK344 (S32K344), SWD probe, serial link to a router | H6, H7, H8, H9 | H6 met 2026-10-26; H7, H8, H9 running 2026-10-26 |
+| B | S32Z270 silicon | H1 | no board |
+| C | a bare-metal Cortex-M board: MPS2-AN385 or STM32F4-Discovery | H2, H4 | no board; H2 also needs a board crate that registers smoltcp's deadline source |
+| D | a host with root, tap-fed QEMU | H3 | no runner with root |
+| E | Jetson AGX Orin devkit | H5 | no devkit |
+
+Batch A runs in this order, one flash per image: H7's two console-less talker
+images (fatal, then the non-fatal control), then H8's action images over
+serial (N runs, `zpico_reply_slot_declines` read throughout), then H9's Rust
+level image. H6 needed no new run.
 
 ## Why a separate phase
 
@@ -142,6 +163,15 @@ fix.
 **Done when** a deliberate overrun on the MR-CANHUBK344 appears in the
 violation ring read over SWD as a `max-latency-runtime` verdict.
 
+**Met 2026-10-26.** The island's overrun acts (`RB_OVERRUN=300`; runs
+`i2041-ov1` on nano-ros 8b95e90dd6, `i2065-ov1` on 5feeb32a7b) each stored
+three `max-latency-runtime` verdicts in the SWD record, one per monitored
+publisher of the overrunning timer tick, for example
+`max-latency-runtime /mrm_handler/mrm_state measured=301 declared=149 (one dispatch, ms)`.
+Evidence and the other board halves (phase-474 I6, I8, I9) are recorded in
+[phase-474](phase-474-safety-island-board-findings.md), "The board halves,
+2026-10-26".
+
 ### H7 — the boot report's arena-exhaustion record, dumped from silicon
 
 [Issue 1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md),
@@ -169,6 +199,20 @@ completion rate recorded over enough runs to separate it from the 20–90 %
 spread, with `zpico_reply_slot_declines` read during the run. Non-zero puts
 the failure back on the reply-slot path; zero with goals still failing rules
 that path out.
+
+### H9 -- the Rust runner's Zephyr level worker frame on silicon
+
+From [issue 2065](../issues/archived/2065-zephyr-level-worker-frame-is-an-estimate.md)
+(resolved by PR #2682). On the S32K344 the C runner's frame was measured at
+13,312 B, and that is now `CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`'s default.
+The Rust runner's 51,200 B (`level_worker_frame_bytes`, Zephyr, Rust) comes from
+QEMU mps2-an385 only: the `realtime-rust` `derived_bringup` fixture's setup
+peak, 50,968 B in a debug build and 47,456 B in release, with a steady peak of
+about 5.9 KB.
+
+**Done when** the same fixture, built for `mr_canhubk3/s32k344`, has its
+setup and steady peaks read on the board, and the Rust frame is confirmed or
+corrected from them.
 
 ## Issues homed here
 
