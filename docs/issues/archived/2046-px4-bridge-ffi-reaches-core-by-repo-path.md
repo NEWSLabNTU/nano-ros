@@ -1,11 +1,12 @@
 ---
 id: 2046
 title: "`examples/px4/cpp/bridge/ffi` reaches `nros-serdes` by a fixed repo-relative path, so the bridge only builds in place"
-status: open
+status: resolved
 type: tech-debt
 area: [examples, px4, build]
 severity: low
 found: 2026-10-25
+resolved: 2026-10-26
 related: [issue-1516, issue-0362, rfc-0026, phase-452]
 ---
 
@@ -44,3 +45,30 @@ and have the module's CMake pass the root it already resolves to cargo as a
 use. Acceptance: the bridge builds from a copy outside the checkout with only
 the root passed, and `git grep -nE 'path *= *"(\.\./){4,}packages/' -- 'examples/**/Cargo.toml'`
 is empty.
+
+## Resolution (2026-10-26)
+
+`nros-serdes = { version = "*", default-features = false }`. Both places that
+run cargo on the crate pass the central patch table, the same
+`[patch.crates-io]` every leaf resolves through: `just px4
+build-bridge-example` and the `px4_bridge_ffi` compile check each call
+`nros_ensure_central_patch` and add `--config <root>/nros-patch.toml`. The
+module's FATAL_ERROR, which is what a user building the module by hand meets,
+now prints that command with absolute paths, and the `--target-dir` its own
+default archive path expects (it used to omit it, so following it built an
+archive the check then still could not find).
+
+**Verified:** the crate copied to a scratch dir outside the checkout, headers
+generated with `nros generate-px4-msgs --topics debug_key_value`, then
+`cargo build --release --config <root>/nros-patch.toml` builds
+`libnros_px4_bridge_ffi.a` with `nros-serdes` from the checkout. Negative
+control: the same copy with origin/main's manifest fails with
+`failed to read /tmp/.../packages/core/nros-serdes/Cargo.toml`.
+
+**The acceptance grep above is not empty, and that is not this crate.**
+`git grep -nE 'path *= *"(\.\./){4,}packages/' -- 'examples/**/Cargo.toml'`
+lists 24 node packages under `examples/workspaces/*/src/`, each path-depping
+`nros` by five `..`. RFC-0085 §"copy-out" (line 765) rules an in-tree
+workspace "not portable by construction" and a user's workspace names `nros`
+by version; that ruling is the open question, raised to the maintainer, not
+something this issue changes.

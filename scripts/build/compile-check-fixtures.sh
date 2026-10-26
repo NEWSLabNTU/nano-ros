@@ -1756,8 +1756,12 @@ if _cc_px4_selected; then
             # anyone reads, so it has no reason to write there.
             bridge_tdir_flag="$(nros_fixture_target_dir_flag linux)"
             # shellcheck disable=SC2086
+            # issue 2046 — `nros-serdes` is a NAMED dependency; its in-tree
+            # path comes from the central patch table, as for every leaf.
+            nros_ensure_central_patch
             if ( cd "$px4_bridge_dir/ffi" \
-                 && NROS_PX4_BRIDGE_GEN="$bridge_gen" cargo check $bridge_tdir_flag ); then
+                 && NROS_PX4_BRIDGE_GEN="$bridge_gen" cargo check $bridge_tdir_flag \
+                        --config "$repo_root/nros-patch.toml" ); then
                 nros_write_compile_ok "$out_root/$id"
                 echo "   stamped $out_root/$id/.compile-ok"
                 px4_n=$((px4_n + 1))
