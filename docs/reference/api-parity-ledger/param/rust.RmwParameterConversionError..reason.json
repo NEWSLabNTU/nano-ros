@@ -1,0 +1,6 @@
+{
+  "key": "rust:RmwParameterConversionError::reason",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the sentence the `~/set_parameters` handler puts into the `SetParametersResult` for this error, so a local caller and a remote one read the same words. rclrs's enum carries no such accessor; filed when the type took rclrs's name (phase-515 R8, 2026-10-27), which made its members correlate."
+}

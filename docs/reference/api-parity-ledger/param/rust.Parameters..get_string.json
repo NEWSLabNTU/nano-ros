@@ -1,0 +1,6 @@
+{
+  "key": "rust:Parameters::get_string",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the typed reader for a `string` parameter, predating the generic `get::<T>` rclrs ships (added 2026-10-27, phase-515 R8); kept because it needs no turbofish and `get_string` borrows the stored `&str` where `get::<String>` would need an allocator. Rows filed when `UndeclaredParameters` took rclrs's name `Parameters`, which made its members correlate."
+}

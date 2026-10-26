@@ -235,22 +235,22 @@ const CDR_DESCRIPTOR_BASE: usize = 64;
 /// The one reason a failed `SetParametersAtomically` carries.
 pub(crate) const ATOMIC_FAILURE_REASON: &str = "One or more parameters could not be set";
 
-/// The wire text of `ValueConversionError::CapacityExceeded`.
+/// The wire text of `RmwParameterConversionError::CapacityExceeded`.
 ///
 /// Issue 1468 -- the two conversion reasons are STRINGS here and the enum that
 /// returns them stays in `parameter_services`, where the conversions live.
 /// The bound has to price them and the enum is part of the parameter
 /// SERVICES' surface (`to_rcl_value` and its callers), so the string is what
-/// crosses, not the type. `ValueConversionError::reason` returns these two and
+/// crosses, not the type. `RmwParameterConversionError::reason` returns these two and
 /// nothing else, which the reason table below is the other half of.
 pub(crate) const CAPACITY_EXCEEDED_REASON: &str = "Value exceeds this node's parameter capacity";
 
-/// The wire text of `ValueConversionError::UnknownType`. See
+/// The wire text of `RmwParameterConversionError::UnknownType`. See
 /// [`CAPACITY_EXCEEDED_REASON`].
 pub(crate) const UNKNOWN_TYPE_REASON: &str = "Unknown parameter type";
 
 /// The longest reason a `SetParametersResult` can carry: every
-/// [`set_result_reason`] arm and every `ValueConversionError::reason`.
+/// [`set_result_reason`] arm and every `RmwParameterConversionError::reason`.
 /// Listed by variant: `set_result_reason`'s match is exhaustive, so a new
 /// variant stops the build there first -- add it here beside it.
 pub(crate) const LONGEST_SET_REASON: usize = {

@@ -1466,12 +1466,14 @@ pub use nros_bridge::run_from_config;
 // list stopped at ten names, so a user of the facade could build a range
 // through the builder's scalar arguments and never NAME the type it produced.
 // An unexported type is a capability a user cannot write down.
+#[allow(deprecated)]
+pub use nros_params::UndeclaredParameters;
 pub use nros_params::{
     DeclarationError, FloatingPointRange, IntegerRange, MAX_ON_SET_CALLBACKS, MandatoryParameter,
     NodeKey, OnSetContext, OnSetParameterFn, OnSetParameterHandle, OptionalParameter, Parameter,
     ParameterBuilder, ParameterDescriptor, ParameterError, ParameterRange, ParameterServer,
-    ParameterStorage, ParameterTable, ParameterType, ParameterValue, ParameterVariant,
-    ReadOnlyParameter, SetParameterResult, UndeclaredParameters,
+    ParameterStorage, ParameterTable, ParameterType, ParameterValue, ParameterVariant, Parameters,
+    ReadOnlyParameter, SetParameterResult,
 };
 // The wire-side half: why an `rcl_interfaces` parameter value could not be
 // turned into a native one. The `~/set_parameters` handler already puts
@@ -1485,6 +1487,9 @@ pub use nros_params::{
 // so it exists only once an RMW backend is linked — the same pairing the
 // `sched_context` re-export above uses.
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+pub use nros_node::parameter_services::RmwParameterConversionError;
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
+#[allow(deprecated)]
 pub use nros_node::parameter_services::ValueConversionError;
 /// Prelude module for convenient imports
 ///

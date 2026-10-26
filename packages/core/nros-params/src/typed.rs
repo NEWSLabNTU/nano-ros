@@ -417,19 +417,50 @@ impl<'a, 's, T: ParameterVariant> ReadOnlyParameter<'a, 's, T> {
 /// This struct is returned by `Node::use_undeclared_parameters()` and allows
 /// for dynamic retrieval of parameter values by name without explicit declaration.
 ///
-/// rclrs calls this type `Parameters`; the capability is the same (read AND write,
-/// by name), only the name differs. A ported file rarely names the type — it binds
-/// what `use_undeclared_parameters()` returns — so the edit is a `use` line.
-pub struct UndeclaredParameters<'a, 's> {
+/// rclrs's `Parameters` (phase-515 R8): read AND write, by name. It was
+/// `UndeclaredParameters`, which survives one release as a deprecated alias.
+pub struct Parameters<'a, 's> {
     server: &'a mut ParameterServer<'s>,
     /// phase-426 W1 — whose undeclared parameters. Without this the accessor
     /// reads whatever node happened to declare the name first.
     node: NodeKey,
 }
 
-impl<'a, 's> UndeclaredParameters<'a, 's> {
+/// The pre-phase-515 name of [`Parameters`].
+#[deprecated(
+    since = "0.6.0",
+    note = "renamed to `Parameters`, rclrs's name (phase-515 R8)"
+)]
+pub type UndeclaredParameters<'a, 's> = Parameters<'a, 's>;
+
+impl<'a, 's> Parameters<'a, 's> {
     pub fn new(server: &'a mut ParameterServer<'s>, node: NodeKey) -> Self {
         Self { server, node }
+    }
+
+    /// rclrs's `Parameters::get::<T>(name)` (phase-515 R8): the value of
+    /// `name` as `T`, or `None` when it is unset or holds another type.
+    pub fn get<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
+        self.server
+            .get(self.node, name)
+            .and_then(|value| T::from_parameter_value(value))
+    }
+
+    /// rclrs's `Parameters::set(name, value)` (phase-515 R8), declaring
+    /// `name` if absent. ADOPT-BOUNDED: it takes `&mut self` where rclrs's
+    /// takes `&self` (this store has no interior mutability; the handle
+    /// borrows the server mutably), and a value past this node's compile-time
+    /// capacity is `ParameterError::StringConversion` rather than rclrs's
+    /// `ParameterValueError`.
+    pub fn set<T: crate::ParameterVariant>(
+        &mut self,
+        name: &str,
+        value: T,
+    ) -> Result<(), ParameterError> {
+        let value = value
+            .try_to_parameter_value()
+            .map_err(|_| ParameterError::StringConversion)?;
+        self.set_value(name, value)
     }
 
     /// Try to get the value of an undeclared boolean parameter
@@ -745,11 +776,31 @@ mod tests {
         server.set_or_declare(NODE, "count", ParameterValue::Integer(42));
         server.set_or_declare(NODE, "ratio", ParameterValue::Double(0.5));
 
-        let undeclared = UndeclaredParameters::new(&mut server, NODE);
+        let undeclared = Parameters::new(&mut server, NODE);
 
         assert_eq!(undeclared.get_bool("flag"), Some(true));
         assert_eq!(undeclared.get_integer("count"), Some(42));
         assert_eq!(undeclared.get_double("ratio"), Some(0.5));
         assert_eq!(undeclared.get_string("nonexistent"), None);
+    }
+
+    /// phase-515 R8 -- rclrs's generic `Parameters::get::<T>` / `set`.
+    #[test]
+    fn parameters_generic_get_and_set() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        let mut params = Parameters::new(&mut server, NODE);
+
+        params
+            .set("rate", 10i64)
+            .expect("set declares an absent name");
+        params.set("enabled", true).expect("set a bool");
+        assert_eq!(params.get::<i64>("rate"), Some(10));
+        assert_eq!(params.get::<bool>("enabled"), Some(true));
+        // Another type than the one stored reads as absent, as in rclrs.
+        assert_eq!(params.get::<bool>("rate"), None);
+        assert_eq!(params.get::<i64>("missing"), None);
+        params.set("rate", 20i64).expect("overwrite");
+        assert_eq!(params.get::<i64>("rate"), Some(20));
     }
 }

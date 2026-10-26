@@ -15710,20 +15710,20 @@ impl<'s> Executor<'s> {
     pub fn use_undeclared_parameters_on(
         &mut self,
         node: super::node_record::NodeId,
-    ) -> Result<nros_params::UndeclaredParameters<'_, 's>, NodeError> {
+    ) -> Result<nros_params::Parameters<'_, 's>, NodeError> {
         let server = self
             .params
             .as_mut()
             .map(|p| &mut p.server)
             .ok_or(NodeError::NotInitialized)?;
-        Ok(nros_params::UndeclaredParameters::new(server, node.into()))
+        Ok(nros_params::Parameters::new(server, node.into()))
     }
 
     /// [`use_undeclared_parameters_on`](Self::use_undeclared_parameters_on) for
     /// the primary node.
     pub fn use_undeclared_parameters(
         &mut self,
-    ) -> Result<nros_params::UndeclaredParameters<'_, 's>, NodeError> {
+    ) -> Result<nros_params::Parameters<'_, 's>, NodeError> {
         self.use_undeclared_parameters_on(super::node_record::NodeId::PRIMARY)
     }
 }

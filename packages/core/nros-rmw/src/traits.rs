@@ -1408,6 +1408,20 @@ qos_profiles! {
 // say "I cannot report this policy" instead of echoing the request back as a
 // grant.
 
+/// phase-515 R8 helper -- a QoS duration as the record's whole milliseconds:
+/// saturating at `u32::MAX`, and a non-zero duration under 1 ms rounded UP to
+/// 1, because `0` is "infinite" in the record.
+const fn qos_duration_ms(d: core::time::Duration) -> u32 {
+    let ms = d.as_millis();
+    if ms == 0 && !d.is_zero() {
+        1
+    } else if ms > u32::MAX as u128 {
+        u32::MAX
+    } else {
+        ms as u32
+    }
+}
+
 impl QoSProfile {
     /// Create new QoS settings with defaults (matches `QOS_PROFILE_DEFAULT`:
     /// Reliable, Volatile, KeepLast(10)).
@@ -1556,6 +1570,32 @@ impl QoSProfile {
     /// Set history depth explicitly
     pub const fn depth(mut self, depth: u32) -> Self {
         self.depth = depth;
+        self
+    }
+
+    /// rclrs's `QoSProfile::deadline_duration(deadline)` (phase-515 R8).
+    ///
+    /// ADOPT-BOUNDED: stored as whole MILLISECONDS in [`Self::deadline_ms`]
+    /// (the repr(C) QoS record the C and C++ surfaces share), saturating at
+    /// `u32::MAX`; a non-zero duration under 1 ms rounds UP to 1 ms, because
+    /// `0` here means "infinite" and must not be reached by accident.
+    pub const fn deadline_duration(mut self, deadline: core::time::Duration) -> Self {
+        self.deadline_ms = qos_duration_ms(deadline);
+        self
+    }
+
+    /// rclrs's `QoSProfile::lifespan_duration(lifespan)` (phase-515 R8),
+    /// stored in [`Self::lifespan_ms`] as `deadline_duration` stores its value.
+    pub const fn lifespan_duration(mut self, lifespan: core::time::Duration) -> Self {
+        self.lifespan_ms = qos_duration_ms(lifespan);
+        self
+    }
+
+    /// rclrs's `QoSProfile::liveliness_lease_duration(lease_duration)`
+    /// (phase-515 R8), stored in [`Self::liveliness_lease_ms`] as
+    /// `deadline_duration` stores its value.
+    pub const fn liveliness_lease_duration(mut self, lease_duration: core::time::Duration) -> Self {
+        self.liveliness_lease_ms = qos_duration_ms(lease_duration);
         self
     }
 
@@ -4538,6 +4578,39 @@ pub trait Rmw {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-515 R8 -- rclrs's `*_duration` QoS builders, in the record's ms.
+    #[test]
+    fn qos_duration_builders_store_whole_milliseconds() {
+        use core::time::Duration;
+        let q = QoSProfile::new()
+            .deadline_duration(Duration::from_millis(250))
+            .lifespan_duration(Duration::from_secs(2))
+            .liveliness_lease_duration(Duration::from_micros(1500));
+        assert_eq!(q.deadline_ms, 250);
+        assert_eq!(q.lifespan_ms, 2000);
+        assert_eq!(q.liveliness_lease_ms, 1, "1.5 ms truncates to whole ms");
+        // Sub-millisecond is never "infinite" (0) by accident.
+        assert_eq!(
+            QoSProfile::new()
+                .deadline_duration(Duration::from_nanos(1))
+                .deadline_ms,
+            1
+        );
+        assert_eq!(
+            QoSProfile::new()
+                .deadline_duration(Duration::ZERO)
+                .deadline_ms,
+            0
+        );
+        assert_eq!(
+            QoSProfile::new()
+                .lifespan_duration(Duration::from_secs(u64::MAX))
+                .lifespan_ms,
+            u32::MAX,
+            "saturates"
+        );
+    }
 
     /// issue 0783 -- the variants with a payload render it; the rest render
     /// their fixed line. `heapless`, so the check runs without `alloc`.

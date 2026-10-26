@@ -1,0 +1,6 @@
+{
+  "key": "rust:Parameters::set_bool",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the typed writer for a `bool` parameter, beside the generic `set(name, value)` rclrs ships (added 2026-10-27, phase-515 R8); kept for the same reason as `rust:Parameters::get_bool`."
+}

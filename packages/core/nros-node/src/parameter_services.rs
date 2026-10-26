@@ -69,6 +69,13 @@ pub const MAX_PARAMS_PER_REQUEST: usize = 64;
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Convert internal ParameterValue to rcl_interfaces ParameterValue
+/// The pre-phase-515 name of [`RmwParameterConversionError`].
+#[deprecated(
+    since = "0.6.0",
+    note = "renamed to `RmwParameterConversionError`, rclrs's name (phase-515 R8)"
+)]
+pub type ValueConversionError = RmwParameterConversionError;
+
 /// Why a parameter value could not be converted between the wire form and the
 /// node's internal form (issue 0323).
 ///
@@ -79,11 +86,11 @@ pub const MAX_PARAMS_PER_REQUEST: usize = 64;
 /// as issues 0223/0224 — a swallowed capacity error turning malformed input
 /// into a plausible business value.
 ///
-/// rclrs names this `RmwParameterConversionError`; the role is the same (why a
-/// wire value was rejected), the name is ours, after where the conversion
-/// happens. Re-exported as `nros::ValueConversionError`.
+/// rclrs's `RmwParameterConversionError` (phase-515 R8): why a wire value was
+/// rejected. It was `RmwParameterConversionError`, which survives one release as a
+/// deprecated alias. Re-exported as `nros::RmwParameterConversionError`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ValueConversionError {
+pub enum RmwParameterConversionError {
     /// The value exceeds this node's compile-time capacity
     /// (`NROS_MAX_STRING_VALUE_LEN`, `NROS_MAX_ARRAY_LEN`, …).
     CapacityExceeded,
@@ -91,7 +98,7 @@ pub enum ValueConversionError {
     UnknownType(u8),
 }
 
-impl ValueConversionError {
+impl RmwParameterConversionError {
     /// Human-readable reason for a `SetParametersResult`.
     ///
     /// `const` so the service-buffer bound can price the longest one
@@ -104,7 +111,7 @@ impl ValueConversionError {
     }
 }
 
-pub fn to_rcl_value(value: &InternalValue) -> Result<ParameterValue, ValueConversionError> {
+pub fn to_rcl_value(value: &InternalValue) -> Result<ParameterValue, RmwParameterConversionError> {
     let mut result = ParameterValue::default();
 
     match value {
@@ -128,7 +135,7 @@ pub fn to_rcl_value(value: &InternalValue) -> Result<ParameterValue, ValueConver
             result
                 .string_value
                 .push_str(v.as_str())
-                .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
         }
         InternalValue::ByteArray(v) => {
             result.type_ = 5; // PARAMETER_BYTE_ARRAY
@@ -136,7 +143,7 @@ pub fn to_rcl_value(value: &InternalValue) -> Result<ParameterValue, ValueConver
                 result
                     .byte_array_value
                     .push(b)
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             }
         }
         InternalValue::BoolArray(v) => {
@@ -145,7 +152,7 @@ pub fn to_rcl_value(value: &InternalValue) -> Result<ParameterValue, ValueConver
                 result
                     .bool_array_value
                     .push(b)
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             }
         }
         InternalValue::IntegerArray(v) => {
@@ -154,7 +161,7 @@ pub fn to_rcl_value(value: &InternalValue) -> Result<ParameterValue, ValueConver
                 result
                     .integer_array_value
                     .push(i)
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             }
         }
         InternalValue::DoubleArray(v) => {
@@ -163,7 +170,7 @@ pub fn to_rcl_value(value: &InternalValue) -> Result<ParameterValue, ValueConver
                 result
                     .double_array_value
                     .push(d)
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             }
         }
         InternalValue::StringArray(v) => {
@@ -171,11 +178,11 @@ pub fn to_rcl_value(value: &InternalValue) -> Result<ParameterValue, ValueConver
             for s in v.iter() {
                 let mut hs = heapless::String::new();
                 hs.push_str(s.as_str())
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
                 result
                     .string_array_value
                     .push(hs)
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             }
         }
     }
@@ -184,7 +191,9 @@ pub fn to_rcl_value(value: &InternalValue) -> Result<ParameterValue, ValueConver
 }
 
 /// Convert rcl_interfaces ParameterValue to internal ParameterValue
-pub fn from_rcl_value(value: &ParameterValue) -> Result<InternalValue, ValueConversionError> {
+pub fn from_rcl_value(
+    value: &ParameterValue,
+) -> Result<InternalValue, RmwParameterConversionError> {
     match value.type_ {
         0 => Ok(InternalValue::NotSet),
         1 => Ok(InternalValue::Bool(value.bool_value)),
@@ -193,14 +202,14 @@ pub fn from_rcl_value(value: &ParameterValue) -> Result<InternalValue, ValueConv
         4 => {
             let mut s = heapless::String::new();
             s.push_str(value.string_value.as_str())
-                .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             Ok(InternalValue::String(s))
         }
         5 => {
             let mut v = heapless::Vec::new();
             for &b in value.byte_array_value.iter() {
                 v.push(b)
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             }
             Ok(InternalValue::ByteArray(v))
         }
@@ -208,7 +217,7 @@ pub fn from_rcl_value(value: &ParameterValue) -> Result<InternalValue, ValueConv
             let mut v = heapless::Vec::new();
             for &b in value.bool_array_value.iter() {
                 v.push(b)
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             }
             Ok(InternalValue::BoolArray(v))
         }
@@ -216,7 +225,7 @@ pub fn from_rcl_value(value: &ParameterValue) -> Result<InternalValue, ValueConv
             let mut v = heapless::Vec::new();
             for &i in value.integer_array_value.iter() {
                 v.push(i)
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             }
             Ok(InternalValue::IntegerArray(v))
         }
@@ -224,7 +233,7 @@ pub fn from_rcl_value(value: &ParameterValue) -> Result<InternalValue, ValueConv
             let mut v = heapless::Vec::new();
             for &d in value.double_array_value.iter() {
                 v.push(d)
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             }
             Ok(InternalValue::DoubleArray(v))
         }
@@ -233,13 +242,13 @@ pub fn from_rcl_value(value: &ParameterValue) -> Result<InternalValue, ValueConv
             for s in value.string_array_value.iter() {
                 let mut hs = heapless::String::new();
                 hs.push_str(s.as_str())
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
                 v.push(hs)
-                    .map_err(|_| ValueConversionError::CapacityExceeded)?;
+                    .map_err(|_| RmwParameterConversionError::CapacityExceeded)?;
             }
             Ok(InternalValue::StringArray(v))
         }
-        other => Err(ValueConversionError::UnknownType(other)),
+        other => Err(RmwParameterConversionError::UnknownType(other)),
     }
 }
 
@@ -303,7 +312,7 @@ pub fn to_rcl_descriptor(desc: &InternalDescriptor) -> ParameterDescriptor {
 /// Convert SetParameterResult to rcl_interfaces SetParametersResult
 /// Build the `SetParametersResult` for a value that could not be converted
 /// (issue 0323) — `successful = false` with a reason naming the cause.
-pub fn conversion_failure_result(err: ValueConversionError) -> SetParametersResult {
+pub fn conversion_failure_result(err: RmwParameterConversionError) -> SetParametersResult {
     let mut reason_str = heapless::String::new();
     let _ = reason_str.push_str(err.reason());
     SetParametersResult {
@@ -395,11 +404,11 @@ fn read_wire_string<'r>(reader: &mut CdrReader<'r>) -> Result<&'r str, DeserErro
 #[inline]
 fn lenient_seq_len(
     reader: &mut CdrReader<'_>,
-    err: &mut Option<ValueConversionError>,
+    err: &mut Option<RmwParameterConversionError>,
 ) -> Result<usize, DeserError> {
     let len = reader.read_sequence_len()?;
     if len > WIRE_SEQ_CAP {
-        *err = err.or(Some(ValueConversionError::CapacityExceeded));
+        *err = err.or(Some(RmwParameterConversionError::CapacityExceeded));
     }
     Ok(len)
 }
@@ -556,7 +565,7 @@ pub(crate) fn write_parameter_value(
 fn read_parameter_value_into(
     reader: &mut CdrReader<'_>,
     staged: &mut InternalValue,
-) -> Result<Result<(), ValueConversionError>, DeserError> {
+) -> Result<Result<(), RmwParameterConversionError>, DeserError> {
     /// The empty string array, as a constant operand (see above).
     const EMPTY_STRING_ARRAY: heapless::Vec<
         heapless::String<MAX_STRING_VALUE_LEN>,
@@ -571,10 +580,10 @@ fn read_parameter_value_into(
     // request's: it is read whole (so the next parameter starts where it
     // should) and answered as `CapacityExceeded`. It used to be a decode
     // error, which dropped the whole request with no reply.
-    let mut err: Option<ValueConversionError> = None;
+    let mut err: Option<RmwParameterConversionError> = None;
     let string_value = reader.read_string()?;
     if string_value.len() > WIRE_STRING_CAP {
-        err = Some(ValueConversionError::CapacityExceeded);
+        err = Some(RmwParameterConversionError::CapacityExceeded);
     }
     match type_ {
         0 => *staged = InternalValue::NotSet,
@@ -586,7 +595,7 @@ fn read_parameter_value_into(
             if let InternalValue::String(s) = staged
                 && s.push_str(string_value).is_err()
             {
-                err = Some(ValueConversionError::CapacityExceeded);
+                err = Some(RmwParameterConversionError::CapacityExceeded);
             }
         }
         5 => *staged = InternalValue::ByteArray(heapless::Vec::new()),
@@ -595,7 +604,7 @@ fn read_parameter_value_into(
         8 => *staged = InternalValue::DoubleArray(heapless::Vec::new()),
         9 => *staged = InternalValue::StringArray(EMPTY_STRING_ARRAY),
         other => {
-            err = Some(ValueConversionError::UnknownType(other));
+            err = Some(RmwParameterConversionError::UnknownType(other));
             *staged = InternalValue::NotSet;
         }
     }
@@ -605,7 +614,7 @@ fn read_parameter_value_into(
         if let InternalValue::ByteArray(v) = &mut *staged
             && v.push(b).is_err()
         {
-            err = err.or(Some(ValueConversionError::CapacityExceeded));
+            err = err.or(Some(RmwParameterConversionError::CapacityExceeded));
         }
     }
     for _ in 0..lenient_seq_len(reader, &mut err)? {
@@ -613,7 +622,7 @@ fn read_parameter_value_into(
         if let InternalValue::BoolArray(v) = &mut *staged
             && v.push(b).is_err()
         {
-            err = err.or(Some(ValueConversionError::CapacityExceeded));
+            err = err.or(Some(RmwParameterConversionError::CapacityExceeded));
         }
     }
     for _ in 0..lenient_seq_len(reader, &mut err)? {
@@ -621,7 +630,7 @@ fn read_parameter_value_into(
         if let InternalValue::IntegerArray(v) = &mut *staged
             && v.push(i).is_err()
         {
-            err = err.or(Some(ValueConversionError::CapacityExceeded));
+            err = err.or(Some(RmwParameterConversionError::CapacityExceeded));
         }
     }
     for _ in 0..lenient_seq_len(reader, &mut err)? {
@@ -629,24 +638,24 @@ fn read_parameter_value_into(
         if let InternalValue::DoubleArray(v) = &mut *staged
             && v.push(d).is_err()
         {
-            err = err.or(Some(ValueConversionError::CapacityExceeded));
+            err = err.or(Some(RmwParameterConversionError::CapacityExceeded));
         }
     }
     for _ in 0..lenient_seq_len(reader, &mut err)? {
         let s = reader.read_string()?;
         if s.len() > WIRE_STRING_CAP {
-            err = err.or(Some(ValueConversionError::CapacityExceeded));
+            err = err.or(Some(RmwParameterConversionError::CapacityExceeded));
         }
         if let InternalValue::StringArray(v) = &mut *staged {
             // Push an empty string, then fill it where it lives: a
             // `String<MAX_STRING_VALUE_LEN>` built first and pushed after is
             // a second copy of every element.
             if v.push(heapless::String::new()).is_err() {
-                err = err.or(Some(ValueConversionError::CapacityExceeded));
+                err = err.or(Some(RmwParameterConversionError::CapacityExceeded));
             } else if let Some(hs) = v.last_mut()
                 && hs.push_str(s).is_err()
             {
-                err = err.or(Some(ValueConversionError::CapacityExceeded));
+                err = err.or(Some(RmwParameterConversionError::CapacityExceeded));
             }
         }
     }
@@ -743,7 +752,7 @@ pub(crate) fn stream_set_parameters(
         // RFC-0105 D10.2 — decoded into, and applied from, the staging slot.
         let value = read_parameter_value_into(reader, staged).map_err(deser_failed)?;
         let value = if name.len() > WIRE_STRING_CAP {
-            Err(ValueConversionError::CapacityExceeded)
+            Err(RmwParameterConversionError::CapacityExceeded)
         } else {
             value
         };
@@ -2219,7 +2228,7 @@ mod tests {
         assert!(
             matches!(
                 from_rcl_value(&wire),
-                Err(ValueConversionError::CapacityExceeded)
+                Err(RmwParameterConversionError::CapacityExceeded)
             ),
             "a 40-element array must not be accepted as a truncated 32-element one"
         );
@@ -2235,7 +2244,7 @@ mod tests {
         };
         assert!(matches!(
             from_rcl_value(&wire),
-            Err(ValueConversionError::UnknownType(99))
+            Err(RmwParameterConversionError::UnknownType(99))
         ));
     }
 
@@ -2243,7 +2252,7 @@ mod tests {
     /// which is the half a client actually observes.
     #[test]
     fn conversion_failure_replies_unsuccessful_with_a_reason() {
-        let r = conversion_failure_result(ValueConversionError::CapacityExceeded);
+        let r = conversion_failure_result(RmwParameterConversionError::CapacityExceeded);
         assert!(!r.successful);
         assert!(
             r.reason.as_str().contains("capacity"),

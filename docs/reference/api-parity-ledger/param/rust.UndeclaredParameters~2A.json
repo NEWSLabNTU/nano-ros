@@ -2,5 +2,9 @@
   "key": "rust:UndeclaredParameters*",
   "bucket": "ours-only",
   "verdict": "rename",
-  "why": "Our spelling of rclrs's `Parameters` — the handle that reads and writes parameters a node never declared. See `rust:Parameters` for the naming half; the capability, the facade export and the WRITE half all ship as of phase-417 W4.a. The setters go through `ParameterServer::set_or_declare` rather than `apply`, because `allow_undeclared_parameters` governs what a REMOTE set may create and a caller who reached for this type has opted in by naming it — which is rclrs's split too."
+  "why": "LANDED 2026-10-27 (phase-515 R8): renamed to `Parameters`, rclrs's name; the old name survives one release as a `#[deprecated]` type alias, and every in-tree caller moved. PRIOR ROW: Our spelling of rclrs's `Parameters` — the handle that reads and writes parameters a node never declared. See `rust:Parameters` for the naming half; the capability, the facade export and the WRITE half all ship as of phase-417 W4.a. The setters go through `ParameterServer::set_or_declare` rather than `apply`, because `allow_undeclared_parameters` governs what a REMOTE set may create and a caller who reached for this type has opted in by naming it — which is rclrs's split too.",
+  "rename": {
+    "to": "Parameters",
+    "status": "landed"
+  }
 }
