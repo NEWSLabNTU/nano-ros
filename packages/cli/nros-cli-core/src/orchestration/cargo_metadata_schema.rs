@@ -1447,6 +1447,12 @@ impl SystemToml {
         let Some((_, img)) = self.resolved_images().into_iter().find(|(i, _)| i == id) else {
             return Ok(None);
         };
+        // RFC-0109 D10 — the project-wide default endpoint is wiring too.
+        // (`resolve` refuses the image's own.)
+        if let Some(loc) = self.system.locator.as_deref() {
+            nros_zenoh_session_config::refuse_device_facts(loc)
+                .map_err(|e| format!("`[system]`: {e}"))?;
+        }
         let rmw = img.rmw.clone().unwrap_or_else(|| self.system.rmw.clone());
         // The image's own file, else the bringup's (`[system] rmw_config`),
         // else the backend's conventional one.

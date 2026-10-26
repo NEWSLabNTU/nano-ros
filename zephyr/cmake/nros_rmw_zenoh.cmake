@@ -17,7 +17,25 @@ function(nros_zephyr_configure_rmw_zenoh)
 # escape `\043` (at most three digits, so a following digit cannot extend it);
 # the string literal the compiler sees is the locator unchanged.
 if(DEFINED CONFIG_NROS_ZENOH_LOCATOR)
+    # RFC-0109 D10 (phase-514 W5) -- a CAN rate is the controller's (devicetree
+    # `bus-speed`), never wiring, and zenoh-pico no longer applies one. This is
+    # the Kconfig road's copy of `nros_zenoh_session_config::refuse_device_facts`
+    # (`DEVICE_FACT_KEYS`), which every CLI road asks; keep the two in step.
+    if(CONFIG_NROS_ZENOH_LOCATOR MATCHES "^(can|isotp)/[^#]*#(.*;)?(d?bitrate)=")
+        message(FATAL_ERROR
+            "CONFIG_NROS_ZENOH_LOCATOR=\"${CONFIG_NROS_ZENOH_LOCATOR}\" states "
+            "`${CMAKE_MATCH_3}`, a fact about the CAN controller rather than wiring "
+            "(RFC-0109 D10). Zephyr sets the rate from the controller's devicetree "
+            "`bus-speed`, and the board starts it before any session opens. Drop "
+            "`${CMAKE_MATCH_3}` from the locator.")
+    endif()
     string(REPLACE "#" "\\043" _nros_entry_locator "${CONFIG_NROS_ZENOH_LOCATOR}")
+    # And `;`, for the same reason one layer up: it is CMake's LIST separator,
+    # so `zephyr_compile_definitions` split `isotp/can#tx_id=..;rx_id=..` into
+    # two definitions and every TU failed on an unterminated string -- every
+    # ISO-TP and multi-option CAN locator, since the `#` fix above moved this
+    # mapping here. `\073` is `;` in the literal the compiler sees.
+    string(REPLACE ";" "\\073" _nros_entry_locator "${_nros_entry_locator}")
     zephyr_compile_definitions("NROS_ENTRY_LOCATOR=\"${_nros_entry_locator}\"")
 endif()
 

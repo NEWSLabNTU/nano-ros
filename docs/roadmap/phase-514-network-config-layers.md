@@ -1,7 +1,7 @@
 # Phase 514 — Network and middleware configuration in three layers
 
 **Status (2026-10-25). W1, W2, W4, W6 landed; W3a and W3b in review; W5
-not started.** W1: every board descriptor states `[board.net] stack` and
+in review, its cells passing.** W1: every board descriptor states `[board.net] stack` and
 `links`, from one link vocabulary (`LINK_KINDS`, a superset of the image
 `TRANSPORT_KINDS`). W2: an image's address lives in the board network file
 its `os_config` names; all 78 in-tree rows moved, each resolving
@@ -178,6 +178,38 @@ Zephyr board glue starts the controller; CAN locators refuse `bitrate` /
 `dbitrate` (RFC-0081/0083 amendments). Fork-branch workflow.
 
 **Done when** the ISO-TP cells pass with the start moved.
+
+Done; the cells pass (2026-10-26, `vcan0` + `can-isotp`). The fork's two Zephyr
+CAN links (multicast AND ISO-TP — the multicast one had to move too, because a
+board-started controller made its `can_start()` return `-EALREADY` and fail
+the open) assume a started controller, refuse a stopped one at open
+(`link/transport/can_zephyr.h`) and read CAN FD from the controller; Linux's
+multicast link reads FD from the interface MTU. nano-ros starts the
+`zephyr,canbus` controller from an APPLICATION `SYS_INIT`
+(`nros-platform-zephyr/src/can_start.c`). One rule refuses the rate keys,
+`nros_zenoh_session_config::refuse_device_facts`, asked by every CLI road;
+the Kconfig road carries a cross-referenced copy in `nros_rmw_zenoh.cmake`.
+Found on the way: that file passed `CONFIG_NROS_ZENOH_LOCATOR` through a CMake
+LIST, so the `;` of every ISO-TP locator split the definition and no Zephyr
+ISO-TP image could build; `;` is escaped as `\073` beside issue 1955's `#`.
+Measured without `vcan0`: the image boots, `nros_can_start` reports the
+controller not ready, and the session open fails — the expected negative.
+Measured with it: `isotp-zephyr-tier2.sh` PASS (59 `/chatter` messages,
+Zephyr native_sim talker -> ISO-TP -> zenoh-rs `z_sub`, `nros_can_start`
+logging the controller started); `isotp-pico-interop.sh` PASS (pub/sub 11, the
+query 1 reply); two pico peers over the multicast `can/vcan0` link on a CAN FD
+`vcan0` (MTU 72), 7 of 7. That last run is what caught the Linux link's MTU
+probe clobbering `ifr_ifindex` (one `ifreq` union) so `bind()` failed with
+`ENODEV` — the ISO-TP cells never reach that function. A pico library proves
+nothing about a link unless built with `-DZ_FEATURE_LINK_CAN=1
+-DZ_FEATURE_LINK_ISOTP=1` in `CMAKE_C_FLAGS`: `config.h.in` hard-codes both to
+0, so the cache options alone build a TCP-only library. Not run: the
+`isotp-ros-*` cells (they need a zenoh-c built by `scripts/can/build-zenohc-can.sh`;
+the code they exercise, Linux ISO-TP, did not change). Multicast CAN on a
+classic-MTU `vcan0` (16) fails to open on both sides, on the pre-W5 fork commit
+too: the 7-byte batch cannot hold a JOIN, which is not fragmentable —
+issue 2091, which also corrects RFC-0080's claim that classic CAN works at
+MTU 7.
 
 ### W6 — the runner's NIC
 

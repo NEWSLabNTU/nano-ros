@@ -101,6 +101,13 @@ pub fn resolve(
     domain_id: u32,
     at: &str,
 ) -> Result<Option<RmwFile>, String> {
+    // RFC-0109 D10 — whatever the backend, a locator is wiring: a CAN rate in
+    // one is a device fact with a second home. The file's own endpoints are
+    // refused by the same rule as they lower.
+    if let Some(loc) = image_locator {
+        nros_zenoh_session_config::refuse_device_facts(loc)
+            .map_err(|e| format!("`[{at}]`: {e}"))?;
+    }
     let Some(cfg) = declared(rmw) else {
         if let Some(f) = explicit {
             return Err(format!(
@@ -471,6 +478,57 @@ mod tests {
             e.contains("rmw/nope.json5") && e.contains("does not exist"),
             "{e}"
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// RFC-0109 D10 (phase-514 W5) — a CAN rate is the controller's, so a
+    /// locator stating one is refused wherever it is wiring: the image's own,
+    /// `[system]`'s default, and an endpoint in the RMW file. The wiring keys
+    /// beside it are not.
+    #[test]
+    fn a_can_rate_in_any_locator_is_refused_naming_where_it_was() {
+        let base = "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n";
+        for (body, file, at) in [
+            (
+                format!(
+                    "{base}[image.a]\nboard = \"linux\"\n\
+                     locator = \"isotp/vcan0#tx_id=0x200;rx_id=0x201;bitrate=500000\"\n"
+                ),
+                None,
+                "`[image.a]`",
+            ),
+            (
+                format!(
+                    "{base}locator = \"can/can0#dbitrate=2000000;id=0x100\"\n\
+                     [image.a]\nboard = \"linux\"\n"
+                ),
+                None,
+                "`[system]`",
+            ),
+            (
+                format!("{base}[image.a]\nboard = \"linux\"\n"),
+                Some("{ connect: { endpoints: ['can/can0#bitrate=500000'] } }"),
+                "connect.endpoints",
+            ),
+        ] {
+            let mut files = vec![("system.toml", body.as_str())];
+            if let Some(f) = file {
+                files.push((ZENOH_FILE, f));
+            }
+            let d = dir("can-rate", &files);
+            let e = sys(&d).rmw_file_for(&d, "a").unwrap_err();
+            assert!(e.contains(at) && e.contains("RFC-0109 D10"), "{at}\n-> {e}");
+            let _ = std::fs::remove_dir_all(&d);
+        }
+        let d = dir(
+            "can-wiring",
+            &[(
+                "system.toml",
+                "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\
+                 [image.a]\nboard = \"linux\"\nlocator = \"isotp/vcan0#tx_id=0x200;rx_id=0x201\"\n",
+            )],
+        );
+        assert_eq!(sys(&d).rmw_file_for(&d, "a").unwrap(), None);
         let _ = std::fs::remove_dir_all(&d);
     }
 
