@@ -3215,8 +3215,8 @@ where
     A: RosAction,
     A::Goal: Clone,
     A::Result: Clone + Default,
-    GoalF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse,
-    CancelF: FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse,
+    GoalF: FnMut(&nros_core::GoalUuid, &A::Goal) -> nros_core::GoalResponse,
+    CancelF: FnMut(&nros_core::GoalUuid, nros_core::GoalStatusCode) -> nros_core::CancelResponse,
 {
     let entry = unsafe {
         &mut *(ptr as *mut ActionServerArenaEntry<
@@ -3472,7 +3472,7 @@ pub(crate) unsafe fn action_client_raw_try_process<
     // 2. Poll feedback
     if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw() {
         if let Some(cb) = feedback_callback {
-            // Layout `[encap 4][GoalId.uuid 16][fields]` — see `action_frame`.
+            // Layout `[encap 4][GoalUuid.uuid 16][fields]` — see `action_frame`.
             // Issue 2014 — the offset (`action_frame::FEEDBACK_PAYLOAD_OFFSET`)
             // and the splice are spelled once, in `action_frame`.
             //
@@ -3546,8 +3546,8 @@ pub(crate) unsafe fn action_client_raw_try_process<
     {
         let reply = &core.result_buffer[..total_len];
         let code = crate::action_frame::cancel_return_code(reply)
-            .and_then(nros_core::CancelReturnCode::from_i8)
-            .unwrap_or(nros_core::CancelReturnCode::Rejected);
+            .and_then(nros_core::CancelResponseCode::from_i8)
+            .unwrap_or(nros_core::CancelResponseCode::Rejected);
         let n = crate::action_frame::cancel_goals_count(reply).unwrap_or(0);
         // Phase 8 — the fourth distinct callback on this entry, its own pair.
         trace_cb_start(desc_idx);
@@ -3750,7 +3750,7 @@ pub(crate) struct ActionClientCallbackEntry<
     pub(crate) _phantom: PhantomData<A>,
 }
 
-/// Decode one raw feedback slot (outer header + GoalId at [4..20] + inner-CDR
+/// Decode one raw feedback slot (outer header + GoalUuid at [4..20] + inner-CDR
 /// payload at `offset`) and invoke the typed feedback closure (Phase 239.5).
 ///
 /// `desc_idx` is threaded in purely so the Phase 8 callback-trace pair can
@@ -3765,7 +3765,7 @@ fn dispatch_feedback<A, F, const FEEDBACK_BUF: usize>(
     desc_idx: u8,
 ) where
     A: RosAction,
-    F: FnMut(&nros_core::GoalId, &A::Feedback),
+    F: FnMut(&nros_core::GoalUuid, &A::Feedback),
 {
     // Issue 2014 — offsets from `action_frame`.
     let (Some(goal_id), Some(fields)) = (
@@ -3809,9 +3809,9 @@ pub(crate) unsafe fn action_client_callback_try_process<
 ) -> Result<bool, TransportError>
 where
     A: RosAction,
-    GRespF: FnMut(&nros_core::GoalId, bool),
-    FbF: FnMut(&nros_core::GoalId, &A::Feedback),
-    ResF: FnMut(&nros_core::GoalId, nros_core::GoalStatus, &A::Result),
+    GRespF: FnMut(&nros_core::GoalUuid, bool),
+    FbF: FnMut(&nros_core::GoalUuid, &A::Feedback),
+    ResF: FnMut(&nros_core::GoalUuid, nros_core::GoalStatusCode, &A::Result),
 {
     let entry = unsafe {
         &mut *(ptr as *mut ActionClientCallbackEntry<
@@ -3850,7 +3850,7 @@ where
 
     // 2. Feedback — a stream: drain `feedback_subscriber` into the QoS-depth ring
     //    (Phase 239.5), then dispatch each slot. Each slot holds the raw feedback
-    //    message: outer CDR header (4) + GoalId (16) + inner-CDR payload; see the
+    //    message: outer CDR header (4) + GoalUuid (16) + inner-CDR payload; see the
     //    raw dispatcher for the layout rationale (233.6).
     {
         match feedback_buffer {
@@ -4167,7 +4167,7 @@ pub(crate) unsafe fn as_publish_feedback<
     const MG: usize,
 >(
     ptr: *mut u8,
-    goal_id: &nros_core::GoalId,
+    goal_id: &nros_core::GoalUuid,
     feedback: &A::Feedback,
 ) -> Result<(), NodeError>
 where
@@ -4192,8 +4192,8 @@ pub(crate) unsafe fn as_complete_goal<
     const MG: usize,
 >(
     ptr: *mut u8,
-    goal_id: &nros_core::GoalId,
-    status: nros_core::GoalStatus,
+    goal_id: &nros_core::GoalUuid,
+    status: nros_core::GoalStatusCode,
     result: A::Result,
 ) -> Result<(), NodeError>
 where
@@ -4218,8 +4218,8 @@ pub(crate) unsafe fn as_set_goal_status<
     const MG: usize,
 >(
     ptr: *mut u8,
-    goal_id: &nros_core::GoalId,
-    status: nros_core::GoalStatus,
+    goal_id: &nros_core::GoalUuid,
+    status: nros_core::GoalStatusCode,
 ) where
     A: RosAction,
 {
@@ -4288,7 +4288,7 @@ pub(crate) unsafe fn as_goal_exists<
     const MG: usize,
 >(
     ptr: *const u8,
-    goal_id: &nros_core::GoalId,
+    goal_id: &nros_core::GoalUuid,
 ) -> bool
 where
     A: RosAction,
@@ -4309,7 +4309,7 @@ pub(crate) unsafe fn as_raw_publish_feedback<
     const MG: usize,
 >(
     ptr: *mut u8,
-    goal_id: &nros_core::GoalId,
+    goal_id: &nros_core::GoalUuid,
     feedback_data: *const u8,
     feedback_len: usize,
 ) -> Result<(), NodeError> {
@@ -4329,8 +4329,8 @@ pub(crate) unsafe fn as_raw_complete_goal<
     const MG: usize,
 >(
     ptr: *mut u8,
-    goal_id: &nros_core::GoalId,
-    status: nros_core::GoalStatus,
+    goal_id: &nros_core::GoalUuid,
+    status: nros_core::GoalStatusCode,
     result_data: *const u8,
     result_len: usize,
 ) -> Result<(), NodeError> {
@@ -4350,8 +4350,8 @@ pub(crate) unsafe fn as_raw_set_goal_status<
     const MG: usize,
 >(
     ptr: *mut u8,
-    goal_id: &nros_core::GoalId,
-    status: nros_core::GoalStatus,
+    goal_id: &nros_core::GoalUuid,
+    status: nros_core::GoalStatusCode,
 ) {
     let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<GB, RB, FB, MG>) };
     entry.core.set_goal_status(goal_id, status);
@@ -4400,7 +4400,7 @@ pub(crate) unsafe fn as_raw_goal_exists<
     const MG: usize,
 >(
     ptr: *const u8,
-    goal_id: &nros_core::GoalId,
+    goal_id: &nros_core::GoalUuid,
 ) -> bool {
     let entry = unsafe { &*(ptr as *const ActionServerRawArenaEntry<GB, RB, FB, MG>) };
     entry.core.goal_exists(goal_id)

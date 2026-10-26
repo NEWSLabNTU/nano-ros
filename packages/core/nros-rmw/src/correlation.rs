@@ -57,7 +57,7 @@ pub enum SendRefusal {
 
 /// A fixed table of the requests a client has in flight, each keyed by the
 /// sequence id the backend assigned and carrying a caller-chosen `K` (`()`
-/// for a plain service client, the `GoalId` for an action sub-client).
+/// for a plain service client, the `GoalUuid` for an action sub-client).
 ///
 /// See the [module docs](self) for the rule it applies.
 #[derive(Clone, Copy, Debug)]

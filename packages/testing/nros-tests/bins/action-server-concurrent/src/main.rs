@@ -58,7 +58,7 @@ fn main() -> ! {
     info!("Waiting for action goals...");
 
     struct Tracked {
-        id: GoalId,
+        id: GoalUuid,
         order: i32,
         seq: heapless::Vec<i32, 64>,
     }
@@ -100,7 +100,7 @@ fn main() -> ! {
         }) && let Some(ag) = server.get_goal(&goal_id)
         {
             let order = ag.goal.order;
-            server.set_goal_status(&goal_id, GoalStatus::Executing);
+            server.set_goal_status(&goal_id, GoalStatusCode::Executing);
             let _ = tracked.push(Tracked {
                 id: goal_id,
                 order,
@@ -135,7 +135,7 @@ fn main() -> ! {
                 // Flushes any get_result held for this goal. Issue 0796 —
                 // this reports a result the server cannot retain; a silent
                 // failure here is exactly what hid the slab leak.
-                if let Err(e) = server.complete_goal(&id, GoalStatus::Succeeded, result) {
+                if let Err(e) = server.complete_goal(&id, GoalStatusCode::Succeeded, result) {
                     error!("complete_goal failed: {:?}", e);
                 }
                 let _ = tracked.swap_remove(i);

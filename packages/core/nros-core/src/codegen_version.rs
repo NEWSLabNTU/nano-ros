@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 19;
+pub const NROS_CODEGEN_VERSION: u32 = 20;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -251,6 +251,13 @@ pub const NROS_CODEGEN_VERSION: u32 = 19;
 /// `rclcpp::FixedSequence` gained `resize`. A version-18 tree still compiles
 /// against this runtime, since nothing it names moved; a version-19 tree
 /// includes a header an 18 runtime does not ship, which is what the bump says.
+///
+/// 20 (phase-515 R8), MIN unchanged: `GoalId`, `GoalStatus` and
+/// `CancelReturnCode` took rclrs's names (`GoalUuid`, `GoalStatusCode`,
+/// `CancelResponseCode`), so the `Serialize`/`Deserialize` impls generated code
+/// relies on are declared on the new names. The old names stay as
+/// `#[deprecated]` type aliases of the same types, so a version-19 tree still
+/// compiles and runs; a version-20 tree names types a 19 runtime does not have.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

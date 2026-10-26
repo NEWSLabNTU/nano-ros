@@ -272,11 +272,11 @@ pub type rclc_cancel_response_callback_t = Option<
 /// unreadable or out-of-range byte reads as REJECTED.
 pub(crate) fn cancel_return_code_c(raw: Option<i8>) -> crate::action::rclc_cancel_return_code_t {
     use crate::action::rclc_cancel_return_code_t as C;
-    match raw.and_then(nros_node::CancelReturnCode::from_i8) {
-        Some(nros_node::CancelReturnCode::Ok) => C::RCLC_CANCEL_RC_OK,
-        Some(nros_node::CancelReturnCode::UnknownGoal) => C::RCLC_CANCEL_RC_UNKNOWN_GOAL,
-        Some(nros_node::CancelReturnCode::GoalTerminated) => C::RCLC_CANCEL_RC_GOAL_TERMINATED,
-        Some(nros_node::CancelReturnCode::Rejected) | None => C::RCLC_CANCEL_RC_REJECTED,
+    match raw.and_then(nros_node::CancelResponseCode::from_i8) {
+        Some(nros_node::CancelResponseCode::Ok) => C::RCLC_CANCEL_RC_OK,
+        Some(nros_node::CancelResponseCode::UnknownGoal) => C::RCLC_CANCEL_RC_UNKNOWN_GOAL,
+        Some(nros_node::CancelResponseCode::GoalTerminated) => C::RCLC_CANCEL_RC_GOAL_TERMINATED,
+        Some(nros_node::CancelResponseCode::Rejected) | None => C::RCLC_CANCEL_RC_REJECTED,
     }
 }
 

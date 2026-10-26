@@ -681,7 +681,7 @@ fn test_action_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter) 
 /// Completes the action cross-language matrix. The C action client uses its
 /// feedback/result callbacks; this asserts the C++ server returns the full
 /// Fibonacci result for the C-framed goal (issue #43 — was a stale pre-233.6 C
-/// fixture writing a now-removed GoalId sequence prefix; resolved by a fresh
+/// fixture writing a now-removed GoalUuid sequence prefix; resolved by a fresh
 /// build).
 #[rstest]
 fn test_action_callback_interop_c_client_cpp_server(zenohd_unique: ZenohRouter) {

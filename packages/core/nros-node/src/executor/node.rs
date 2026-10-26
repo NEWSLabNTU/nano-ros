@@ -2087,9 +2087,9 @@ impl<'e, 's> Node<'e, 's> {
         A::Goal: MessageForRmw,
         A::Result: MessageForRmw,
         A::Feedback: MessageForRmw,
-        GRespF: FnMut(&nros_core::GoalId, bool) + 'static,
-        FbF: FnMut(&nros_core::GoalId, &A::Feedback) + 'static,
-        ResF: FnMut(&nros_core::GoalId, nros_core::GoalStatus, &A::Result) + 'static,
+        GRespF: FnMut(&nros_core::GoalUuid, bool) + 'static,
+        FbF: FnMut(&nros_core::GoalUuid, &A::Feedback) + 'static,
+        ResF: FnMut(&nros_core::GoalUuid, nros_core::GoalStatusCode, &A::Result) + 'static,
     {
         self.create_action_client_with_callbacks_sized::<
             A,
@@ -2124,9 +2124,9 @@ impl<'e, 's> Node<'e, 's> {
         A::Goal: MessageForRmw,
         A::Result: MessageForRmw,
         A::Feedback: MessageForRmw,
-        GRespF: FnMut(&nros_core::GoalId, bool) + 'static,
-        FbF: FnMut(&nros_core::GoalId, &A::Feedback) + 'static,
-        ResF: FnMut(&nros_core::GoalId, nros_core::GoalStatus, &A::Result) + 'static,
+        GRespF: FnMut(&nros_core::GoalUuid, bool) + 'static,
+        FbF: FnMut(&nros_core::GoalUuid, &A::Feedback) + 'static,
+        ResF: FnMut(&nros_core::GoalUuid, nros_core::GoalStatusCode, &A::Result) + 'static,
     {
         register_type::<A::Goal>()?;
         register_type::<A::Result>()?;

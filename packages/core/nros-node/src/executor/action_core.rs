@@ -1,14 +1,14 @@
 //! Type-agnostic action protocol core types.
 //!
 //! [`ActionServerCore`] and [`ActionClientCore`] handle the raw-bytes
-//! action protocol (GoalId framing, status publishing, result slab)
+//! action protocol (GoalUuid framing, status publishing, result slab)
 //! without requiring `RosAction` type parameters. The typed
 //! [`ActionServer`](super::handles::ActionServer) and
 //! [`ActionClient`](super::handles::ActionClient) wrap these cores
 //! and add serialization/deserialization at the boundary.
 
 use nros_core::{
-    CdrReader, CdrWriter, GoalId, GoalInfo, GoalStatus, GoalStatusStamped, Serialize, Time,
+    CdrReader, CdrWriter, GoalInfo, GoalStatusCode, GoalStatusStamped, GoalUuid, Serialize, Time,
 };
 use nros_rmw::{ClientTrait, Publisher, ServiceTrait, Subscription, TransportError};
 
@@ -16,7 +16,7 @@ use super::types::NodeError;
 use crate::session;
 
 /// Scratch buffer for a decoded CancelGoal request. Cancel payloads are
-/// tiny (a `GoalId` + a `builtin_interfaces/Time` stamp), so a fixed
+/// tiny (a `GoalUuid` + a `builtin_interfaces/Time` stamp), so a fixed
 /// 256-byte buffer covers them without a const-generic parameter like the
 /// goal/result/feedback slabs.
 pub(crate) const CANCEL_BUF: usize = 256;
@@ -119,13 +119,13 @@ pub(crate) const fn status_array_bytes(entries: usize) -> usize {
 // Supporting types
 // ============================================================================
 
-/// Goal tracked by the core — GoalId, status and acceptance stamp; no typed data.
+/// Goal tracked by the core — GoalUuid, status and acceptance stamp; no typed data.
 #[derive(Clone, Copy)]
 pub struct RawActiveGoal {
     /// Goal ID.
-    pub goal_id: GoalId,
+    pub goal_id: GoalUuid,
     /// Current status.
-    pub status: GoalStatus,
+    pub status: GoalStatusCode,
     /// Issue 2029 — when the server ACCEPTED the goal, on the ROS clock
     /// (`Clock::ros_time()`: `/clock` when a source drives it, the port's wall
     /// clock otherwise — rcl_action stamps with the server's clock the same
@@ -144,7 +144,7 @@ pub struct RawActiveGoal {
 #[derive(Clone, Copy)]
 pub struct PendingGetResult {
     /// Goal whose terminal result the requester is waiting for.
-    pub goal_id: GoalId,
+    pub goal_id: GoalUuid,
     /// Backend reply-correlation token for the deferred `send_response`.
     pub sequence_number: i64,
 }
@@ -160,9 +160,9 @@ pub struct PendingGetResult {
 #[derive(Clone, Copy)]
 pub struct CompletedResultEntry {
     /// Unique identifier for the completed goal.
-    pub goal_id: GoalId,
+    pub goal_id: GoalUuid,
     /// Terminal status of the goal.
-    pub status: GoalStatus,
+    pub status: GoalStatusCode,
     /// Byte offset into the result slab.
     pub offset: usize,
     /// Length of the serialised result in bytes.
@@ -183,19 +183,19 @@ pub struct CompletedResultEntry {
 /// [`ActionServerCore::try_recv_cancel_request`](crate::executor::ffi::ActionServerCoreFfi::try_recv_cancel_request).
 pub struct PendingCancelRequest {
     /// The goal_id named in the cancel request.
-    pub goal_id: GoalId,
+    pub goal_id: GoalUuid,
     /// Service sequence number — pass back to
     /// [`ActionServerCore::send_cancel_reply`](crate::executor::ffi::ActionServerCoreFfi::send_cancel_reply).
     pub sequence_number: i64,
     /// Snapshot of the goal's current status at peek time
-    /// (`GoalStatus::Unknown` if no matching active goal).
-    pub current_status: GoalStatus,
+    /// (`GoalStatusCode::Unknown` if no matching active goal).
+    pub current_status: GoalStatusCode,
 }
 
 /// Information about a received goal request.
 pub struct RawGoalRequest {
     /// The parsed goal ID.
-    pub goal_id: GoalId,
+    pub goal_id: GoalUuid,
     /// Sequence number for the service reply.
     pub sequence_number: i64,
     /// Offset into the goal buffer where the CDR payload begins.
@@ -207,10 +207,10 @@ pub struct RawGoalRequest {
 }
 
 // ============================================================================
-// GoalId CDR helpers
+// GoalUuid CDR helpers
 // ============================================================================
 
-/// Read a GoalId from a CDR reader as a fixed `uint8[16]` array.
+/// Read a GoalUuid from a CDR reader as a fixed `uint8[16]` array.
 ///
 /// ROS 2 actions carry the goal id as `unique_identifier_msgs/UUID`, whose
 /// single field is a **fixed-size** `uint8[16]` array — CDR fixed arrays have
@@ -218,8 +218,8 @@ pub struct RawGoalRequest {
 /// matching `unique_identifier_msgs::msg::UUID::deserialize`. (The pre-233.6
 /// framing wrote a `u32(16)` sequence prefix, which self-matched nano-ros peers
 /// but added 4 bytes a real `rcl_action` peer rejects.)
-fn read_goal_id(reader: &mut CdrReader<'_>) -> Result<GoalId, NodeError> {
-    let mut goal_id = GoalId::default();
+fn read_goal_id(reader: &mut CdrReader<'_>) -> Result<GoalUuid, NodeError> {
+    let mut goal_id = GoalUuid::default();
     for byte in &mut goal_id.uuid {
         *byte = reader
             .read_u8()
@@ -228,9 +228,9 @@ fn read_goal_id(reader: &mut CdrReader<'_>) -> Result<GoalId, NodeError> {
     Ok(goal_id)
 }
 
-/// Write a GoalId into a CDR writer as a fixed `uint8[16]` array (no length
+/// Write a GoalUuid into a CDR writer as a fixed `uint8[16]` array (no length
 /// prefix) — see [`read_goal_id`] for why the prefix must be absent.
-fn write_goal_id(writer: &mut CdrWriter<'_>, goal_id: &GoalId) -> Result<(), NodeError> {
+fn write_goal_id(writer: &mut CdrWriter<'_>, goal_id: &GoalUuid) -> Result<(), NodeError> {
     for b in &goal_id.uuid {
         writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
     }
@@ -243,7 +243,7 @@ fn write_goal_id(writer: &mut CdrWriter<'_>, goal_id: &GoalId) -> Result<(), Nod
 
 /// Type-agnostic action server core handling the raw-bytes protocol.
 ///
-/// Manages active goal tracking (GoalId + status), completed result storage
+/// Manages active goal tracking (GoalUuid + status), completed result storage
 /// in a fixed-size slab, and all CDR framing for the action protocol.
 ///
 /// The typed [`ActionServer`](super::handles::ActionServer) wraps this
@@ -322,8 +322,8 @@ impl<
 
     /// Try to receive a goal request from the send_goal service.
     ///
-    /// Returns the parsed GoalId, sequence number, and data length.
-    /// The full CDR data (including GoalId) remains in `goal_buffer`.
+    /// Returns the parsed GoalUuid, sequence number, and data length.
+    /// The full CDR data (including GoalUuid) remains in `goal_buffer`.
     pub(crate) fn try_recv_goal_request(&mut self) -> Result<Option<RawGoalRequest>, NodeError> {
         // Capture buf base ptr before borrowing through `take_request`
         // so we can recover the data offset after the borrow ends.
@@ -389,7 +389,7 @@ impl<
     ///
     /// A full table is now answered truthfully with `accepted=false` via
     /// [`Self::reject_goal`], which is a contract the client already handles.
-    pub(crate) fn accept_goal(&mut self, goal_id: GoalId, seq: i64) -> Result<(), NodeError> {
+    pub(crate) fn accept_goal(&mut self, goal_id: GoalUuid, seq: i64) -> Result<(), NodeError> {
         // Serialize first: a serialization failure here must leave no trace,
         // and nothing below depends on the table.
         // Issue 2029 — the acceptance stamp: written into the reply (upstream's
@@ -412,7 +412,7 @@ impl<
             .active_goals
             .push(RawActiveGoal {
                 goal_id,
-                status: GoalStatus::Accepted,
+                status: GoalStatusCode::Accepted,
                 stamp,
             })
             .is_err()
@@ -471,16 +471,16 @@ impl<
 
     /// Publish feedback with raw CDR bytes.
     ///
-    /// Writes GoalId framing + raw feedback bytes into the feedback buffer
+    /// Writes GoalUuid framing + raw feedback bytes into the feedback buffer
     /// and publishes.
     pub(crate) fn publish_feedback_raw(
         &mut self,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         feedback_cdr: &[u8],
     ) -> Result<(), NodeError> {
-        // CDR header + GoalId + feedback must fit in FEEDBACK_BUF. Issue 2014 —
+        // CDR header + GoalUuid + feedback must fit in FEEDBACK_BUF. Issue 2014 —
         // the framing from `action_frame`; this read `4 + 20`, the pre-233.6
-        // GoalId with a sequence-length prefix.
+        // GoalUuid with a sequence-length prefix.
         let needed = crate::action_frame::FEEDBACK_PAYLOAD_OFFSET + feedback_cdr.len();
         if needed > FEEDBACK_BUF {
             return Err(NodeError::BufferTooSmall);
@@ -491,7 +491,7 @@ impl<
 
         write_goal_id(&mut writer, goal_id)?;
 
-        // Copy raw feedback bytes directly after GoalId
+        // Copy raw feedback bytes directly after GoalUuid
         let pos = writer.position();
         if pos + feedback_cdr.len() > FEEDBACK_BUF {
             return Err(NodeError::BufferTooSmall);
@@ -505,7 +505,7 @@ impl<
     }
 
     /// Set a goal's status and publish the updated GoalStatusArray.
-    pub(crate) fn set_goal_status(&mut self, goal_id: &GoalId, status: GoalStatus) {
+    pub(crate) fn set_goal_status(&mut self, goal_id: &GoalUuid, status: GoalStatusCode) {
         for goal in &mut self.active_goals {
             if goal.goal_id.uuid == goal_id.uuid {
                 goal.status = status;
@@ -542,7 +542,7 @@ impl<
 
     /// Drop the retained result for `goal_id`, if any, and compact.
     /// Returns `true` when an entry was dropped.
-    fn drop_completed_result(&mut self, goal_id: &GoalId) -> bool {
+    fn drop_completed_result(&mut self, goal_id: &GoalUuid) -> bool {
         match self
             .completed_results
             .iter()
@@ -575,7 +575,7 @@ impl<
     /// that asks for nothing cannot wedge the server: its stale result is
     /// displaced by newer ones rather than blocking every later goal. A goal
     /// evicted under rule 2 whose client asks *later* is answered
-    /// `GoalStatus::Unknown` with the default result by
+    /// `GoalStatusCode::Unknown` with the default result by
     /// [`try_handle_get_result_raw`](Self::try_handle_get_result_raw) — degraded,
     /// but an answer, where the pre-0796 code left the requester hanging
     /// forever.
@@ -621,7 +621,7 @@ impl<
 
     /// Mark `goal_id`'s retained result as fetched, making it the first
     /// candidate for reclamation.
-    fn mark_result_delivered(&mut self, goal_id: &GoalId) {
+    fn mark_result_delivered(&mut self, goal_id: &GoalUuid) {
         for entry in self.completed_results.iter_mut() {
             if entry.goal_id.uuid == goal_id.uuid {
                 entry.delivered = true;
@@ -674,7 +674,7 @@ impl<
     /// and whose result is still sitting there to be fetched. "Not found" and
     /// "does not exist" therefore disagreed over exactly the window in which a
     /// client is expected to call `get_result`.
-    pub(crate) fn goal_exists(&self, goal_id: &GoalId) -> bool {
+    pub(crate) fn goal_exists(&self, goal_id: &GoalUuid) -> bool {
         self.active_goals
             .iter()
             .any(|g| g.goal_id.uuid == goal_id.uuid)
@@ -684,7 +684,7 @@ impl<
     /// `true` while `goal_id`'s completed result is still retained (i.e. a
     /// `get_result` for it would be answered from the slab rather than as
     /// `Unknown`).
-    pub(crate) fn has_completed_result(&self, goal_id: &GoalId) -> bool {
+    pub(crate) fn has_completed_result(&self, goal_id: &GoalUuid) -> bool {
         self.completed_results
             .iter()
             .any(|e| e.goal_id.uuid == goal_id.uuid)
@@ -713,7 +713,7 @@ impl<
     /// Any client already waiting on `~/_action/get_result` is still answered
     /// (straight from `result_cdr`), and a status array is still published —
     /// but it carries no entry for this goal (see above), and a *later*
-    /// `get_result` for it gets `GoalStatus::Unknown`. Raise the server's
+    /// `get_result` for it gets `GoalStatusCode::Unknown`. Raise the server's
     /// `RESULT_BUF`.
     ///
     /// Issue 0796: this returned `()`, so the pre-fix slab exhaustion — the
@@ -723,8 +723,8 @@ impl<
     /// (it is reclaimed), and the one remaining failure is reported.
     pub(crate) fn complete_goal_raw(
         &mut self,
-        goal_id: &GoalId,
-        status: GoalStatus,
+        goal_id: &GoalUuid,
+        status: GoalStatusCode,
         result_cdr: &[u8],
     ) -> Result<(), NodeError> {
         // Remove from active goals
@@ -831,7 +831,7 @@ impl<
     /// generating a reply. Returns the goal_id named in the request,
     /// the matching service sequence number (use it with
     /// [`send_cancel_reply`](Self::send_cancel_reply)), and the
-    /// goal's current status (`GoalStatus::Unknown` if no such
+    /// goal's current status (`GoalStatusCode::Unknown` if no such
     /// active goal). Returns `Ok(None)` when no cancel request is
     /// pending.
     ///
@@ -883,13 +883,13 @@ impl<
     /// cancel-goal request. `sequence_number` must match the value
     /// returned by [`try_recv_cancel_request`](Self::try_recv_cancel_request).
     ///
-    /// `return_code` is the overall RPC status (`CancelReturnCode::Ok`
+    /// `return_code` is the overall RPC status (`CancelResponseCode::Ok`
     /// = at least one cancel honoured; other variants = whole-request
     /// failure). `accepted` lists the goals that transition to
     /// `Canceling`; this function flips their stored status before
     /// publishing the status array.
     ///
-    /// Issue 0796 — the parameter is a [`nros_core::CancelReturnCode`], not
+    /// Issue 0796 — the parameter is a [`nros_core::CancelResponseCode`], not
     /// the per-goal [`nros_core::CancelResponse`] a cancel callback returns.
     /// The two were one type and their discriminants overlap with opposite
     /// meanings (`Reject`/`Ok` are both 0), so this signature is what stops a
@@ -897,11 +897,11 @@ impl<
     pub(crate) fn send_cancel_reply(
         &mut self,
         sequence_number: i64,
-        return_code: nros_core::CancelReturnCode,
-        accepted: &[GoalId],
+        return_code: nros_core::CancelResponseCode,
+        accepted: &[GoalUuid],
     ) -> Result<(), NodeError> {
         for id in accepted {
-            self.set_goal_status(id, GoalStatus::Canceling);
+            self.set_goal_status(id, GoalStatusCode::Canceling);
         }
 
         let mut writer =
@@ -974,8 +974,8 @@ impl<
     /// `Canceling`.
     pub(crate) fn try_handle_cancel(
         &mut self,
-        mut cancel_handler: impl FnMut(&GoalId, GoalStatus) -> nros_core::CancelResponse,
-    ) -> Result<Option<(GoalId, nros_core::CancelResponse)>, NodeError> {
+        mut cancel_handler: impl FnMut(&GoalUuid, GoalStatusCode) -> nros_core::CancelResponse,
+    ) -> Result<Option<(GoalUuid, nros_core::CancelResponse)>, NodeError> {
         // (issue 0796) the handler answers about ONE goal; the reply below
         // carries the RPC-level return code. They are different types with
         // overlapping discriminants, so the translation is explicit.
@@ -1028,14 +1028,14 @@ impl<
         }
         for (i, goal) in self.active_goals.iter_mut().enumerate() {
             if canceling[i] {
-                goal.status = GoalStatus::Canceling;
+                goal.status = GoalStatusCode::Canceling;
             }
         }
 
         let return_code = match early {
             Some(code) => code,
-            None if any => nros_core::CancelReturnCode::Ok,
-            None => nros_core::CancelReturnCode::Rejected,
+            None if any => nros_core::CancelResponseCode::Ok,
+            None => nros_core::CancelResponseCode::Rejected,
         };
 
         // Serialize response: return_code (i8) + goals_canceling (sequence of GoalInfo)
@@ -1083,14 +1083,18 @@ impl<
     /// [`try_handle_cancel`](Self::try_handle_cancel) for the table.
     fn select_cancel_goals(
         &self,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         request_stamp: Time,
-    ) -> ([bool; MAX_GOALS], Option<nros_core::CancelReturnCode>) {
+    ) -> ([bool; MAX_GOALS], Option<nros_core::CancelResponseCode>) {
         let mut selected = [false; MAX_GOALS];
         let zero_id = goal_id.uuid == [0u8; 16];
         let zero_stamp = request_stamp.sec == 0 && request_stamp.nanosec == 0;
-        let cancelable =
-            |g: &RawActiveGoal| matches!(g.status, GoalStatus::Accepted | GoalStatus::Executing);
+        let cancelable = |g: &RawActiveGoal| {
+            matches!(
+                g.status,
+                GoalStatusCode::Accepted | GoalStatusCode::Executing
+            )
+        };
         let before = |g: &RawActiveGoal| g.stamp.to_nanos() <= request_stamp.to_nanos();
 
         if !zero_id {
@@ -1110,9 +1114,9 @@ impl<
                         .iter()
                         .any(|c| c.goal_id.uuid == goal_id.uuid)
                     {
-                        nros_core::CancelReturnCode::GoalTerminated
+                        nros_core::CancelResponseCode::GoalTerminated
                     } else {
-                        nros_core::CancelReturnCode::UnknownGoal
+                        nros_core::CancelResponseCode::UnknownGoal
                     };
                     return (selected, Some(code));
                 }
@@ -1139,7 +1143,7 @@ impl<
     pub(crate) fn try_handle_get_result_raw(
         &mut self,
         default_result_cdr: &[u8],
-    ) -> Result<Option<GoalId>, NodeError> {
+    ) -> Result<Option<GoalUuid>, NodeError> {
         let buf_start = self.goal_buffer.as_ptr() as usize;
         // Phase 120: NoData == steady-state idle; map to Ok(None).
         let request = match self.get_result_server.take_request(&mut self.goal_buffer) {
@@ -1205,7 +1209,11 @@ impl<
             // Issue 0796: a goal whose result was reclaimed (evicted by a newer
             // completion) lands here too. That is deliberate — an honest
             // `Unknown` beats an unanswered query.
-            self.reply_get_result_bytes(sequence_number, GoalStatus::Unknown, default_result_cdr)?;
+            self.reply_get_result_bytes(
+                sequence_number,
+                GoalStatusCode::Unknown,
+                default_result_cdr,
+            )?;
         }
 
         Ok(Some(goal_id))
@@ -1216,7 +1224,7 @@ impl<
     ///
     /// The align-to-4 matters: the result CDR starts with a `u32` sequence
     /// length the reader will `align(4)` to.
-    fn write_get_result_header(&mut self, status: GoalStatus) -> Result<usize, NodeError> {
+    fn write_get_result_header(&mut self, status: GoalStatusCode) -> Result<usize, NodeError> {
         let mut writer =
             crate::tx_writer(&mut self.goal_buffer).map_err(|_| NodeError::BufferTooSmall)?;
         writer
@@ -1234,7 +1242,7 @@ impl<
     fn reply_get_result_from_slab(
         &mut self,
         sequence_number: i64,
-        status: GoalStatus,
+        status: GoalStatusCode,
         slab_offset: usize,
         slab_len: usize,
     ) -> Result<(), NodeError> {
@@ -1259,7 +1267,7 @@ impl<
     fn reply_get_result_bytes(
         &mut self,
         sequence_number: i64,
-        status: GoalStatus,
+        status: GoalStatusCode,
         bytes: &[u8],
     ) -> Result<(), NodeError> {
         let pos = self.write_get_result_header(status)?;
@@ -1284,7 +1292,7 @@ impl<
     }
 
     /// Issue 2029 — the acceptance stamp of an active goal, zero if unknown.
-    pub(crate) fn goal_stamp(&self, goal_id: &GoalId) -> Time {
+    pub(crate) fn goal_stamp(&self, goal_id: &GoalUuid) -> Time {
         self.active_goals
             .iter()
             .find(|g| g.goal_id.uuid == goal_id.uuid)
@@ -1293,12 +1301,12 @@ impl<
     }
 
     /// Find the status of a goal (active or unknown).
-    pub(crate) fn find_goal_status(&self, goal_id: &GoalId) -> GoalStatus {
+    pub(crate) fn find_goal_status(&self, goal_id: &GoalUuid) -> GoalStatusCode {
         self.active_goals
             .iter()
             .find(|g| g.goal_id.uuid == goal_id.uuid)
             .map(|g| g.status)
-            .unwrap_or(GoalStatus::Unknown)
+            .unwrap_or(GoalStatusCode::Unknown)
     }
 
     /// Compile-time bound on the status array (issue 1361).
@@ -1435,7 +1443,7 @@ pub struct ActionClientCore<
 /// its goal. A send past that is refused with
 /// [`NodeError::RequestInFlight`] before it reaches the wire.
 pub type ActionRequests =
-    nros_rmw::RequestCorrelator<GoalId, { crate::limits::MAX_CONCURRENT_GOALS }>;
+    nros_rmw::RequestCorrelator<GoalUuid, { crate::limits::MAX_CONCURRENT_GOALS }>;
 
 impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
@@ -1487,20 +1495,20 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
         }
     }
 
-    /// Send a goal with raw CDR bytes. Returns the generated GoalId.
+    /// Send a goal with raw CDR bytes. Returns the generated GoalUuid.
     ///
-    /// The `goal_cdr` bytes are the serialized goal data (without GoalId framing).
-    /// This writes GoalId + goal_cdr into the goal buffer and sends the request.
+    /// The `goal_cdr` bytes are the serialized goal data (without GoalUuid framing).
+    /// This writes GoalUuid + goal_cdr into the goal buffer and sends the request.
     ///
     /// After calling, use `send_goal_client` and `result_buffer` to construct
     /// a Promise for the acceptance reply.
-    pub(crate) fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalId, NodeError> {
+    pub(crate) fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalUuid, NodeError> {
         // Issue 2009 — refuse BEFORE the counter moves or the request is sent.
         self.pending_send_goal
             .can_send()
             .map_err(|_| NodeError::RequestInFlight)?;
         self.goal_counter += 1;
-        let mut goal_id = GoalId::default();
+        let mut goal_id = GoalUuid::default();
         let counter_bytes = self.goal_counter.to_le_bytes();
         goal_id.uuid[..8].copy_from_slice(&counter_bytes);
 
@@ -1509,7 +1517,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
         write_goal_id(&mut writer, &goal_id)?;
 
-        // Copy raw goal CDR bytes after GoalId
+        // Copy raw goal CDR bytes after GoalUuid
         let pos = writer.position();
         if pos + goal_cdr.len() > GOAL_BUF {
             return Err(NodeError::BufferTooSmall);
@@ -1528,9 +1536,9 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
     /// Try to receive feedback (non-blocking, raw bytes).
     ///
-    /// Returns the GoalId and total data length. The full CDR data
-    /// (including GoalId) is in `feedback_buffer`.
-    pub(crate) fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalId, usize)>, NodeError> {
+    /// Returns the GoalUuid and total data length. The full CDR data
+    /// (including GoalUuid) is in `feedback_buffer`.
+    pub(crate) fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalUuid, usize)>, NodeError> {
         let data = self
             .feedback_subscriber
             .take_serialized(&mut self.feedback_buffer)
@@ -1553,7 +1561,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ///
     /// After calling, use `cancel_goal_client` and `result_buffer` to construct
     /// a Promise for the cancel response.
-    pub(crate) fn send_cancel_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+    pub(crate) fn send_cancel_request(&mut self, goal_id: &GoalUuid) -> Result<(), NodeError> {
         self.send_cancel_request_stamped(goal_id, 0, 0)
             .map(|_seq| ())
     }
@@ -1570,7 +1578,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// ([`Self::try_recv_cancel_reply_seq`]).
     pub(crate) fn send_cancel_request_stamped(
         &mut self,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         stamp_sec: i32,
         stamp_nanosec: u32,
     ) -> Result<i64, NodeError> {
@@ -1602,7 +1610,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ///
     /// After calling, use `get_result_client` and `result_buffer` to construct
     /// a Promise for the result response.
-    pub(crate) fn send_get_result_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+    pub(crate) fn send_get_result_request(&mut self, goal_id: &GoalUuid) -> Result<(), NodeError> {
         self.pending_get_result
             .can_send()
             .map_err(|_| NodeError::RequestInFlight)?;
@@ -1659,7 +1667,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// pending request is dropped (it answers an abandoned request).
     pub(crate) fn try_recv_cancel_reply_for(
         &mut self,
-    ) -> Result<Option<(usize, GoalId)>, NodeError> {
+    ) -> Result<Option<(usize, GoalUuid)>, NodeError> {
         Ok(self
             .try_recv_cancel_reply_seq()?
             .map(|(len, _seq, goal)| (len, goal)))
@@ -1670,7 +1678,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// from a backend that assigns none — it then holds one cancel in flight).
     pub(crate) fn try_recv_cancel_reply_seq(
         &mut self,
-    ) -> Result<Option<(usize, i64, GoalId)>, NodeError> {
+    ) -> Result<Option<(usize, i64, GoalUuid)>, NodeError> {
         // Phase 120: NoData == steady-state polling; map to Ok(None).
         match nros_rmw::take_correlated(
             &mut self.cancel_goal_client,
@@ -1702,7 +1710,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// pending request is dropped (it answers an abandoned request).
     pub(crate) fn try_recv_get_result_reply_for(
         &mut self,
-    ) -> Result<Option<(usize, GoalId)>, NodeError> {
+    ) -> Result<Option<(usize, GoalUuid)>, NodeError> {
         // Phase 120: NoData == steady-state polling; map to Ok(None).
         match nros_rmw::take_correlated(
             &mut self.get_result_client,
@@ -1730,7 +1738,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// pending request is dropped (it answers an abandoned request).
     pub(crate) fn try_recv_send_goal_reply_for(
         &mut self,
-    ) -> Result<Option<(usize, GoalId)>, NodeError> {
+    ) -> Result<Option<(usize, GoalUuid)>, NodeError> {
         // Phase 120: NoData == steady-state polling; map to Ok(None).
         match nros_rmw::take_correlated(
             &mut self.send_goal_client,
@@ -1749,18 +1757,18 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// for the next goal, and its reply, if it still comes, is dropped. For a
     /// binding whose last owner of that request let go before the reply came
     /// (a dropped C++ future). `true` if one was pending.
-    pub(crate) fn forget_send_goal(&mut self, goal_id: &GoalId) -> bool {
+    pub(crate) fn forget_send_goal(&mut self, goal_id: &GoalUuid) -> bool {
         self.pending_send_goal.remove_key(goal_id)
     }
 
     /// Issue 2027 — [`Self::forget_send_goal`] for a `get_result` request.
-    pub(crate) fn forget_get_result(&mut self, goal_id: &GoalId) -> bool {
+    pub(crate) fn forget_get_result(&mut self, goal_id: &GoalUuid) -> bool {
         self.pending_get_result.remove_key(goal_id)
     }
 
     /// Issue 2027 — [`Self::forget_send_goal`] for a `cancel_goal` request
     /// (the zero id names a cancel-all / cancel-before request).
-    pub(crate) fn forget_cancel(&mut self, goal_id: &GoalId) -> bool {
+    pub(crate) fn forget_cancel(&mut self, goal_id: &GoalUuid) -> bool {
         self.pending_cancel.remove_key(goal_id)
     }
 

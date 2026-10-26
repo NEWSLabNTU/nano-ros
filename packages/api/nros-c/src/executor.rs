@@ -3997,7 +3997,7 @@ pub unsafe extern "C" fn rclc_executor_remove_client(
 /// # Safety
 /// `context` must point to a valid `rcl_action_client_t`.
 unsafe extern "C" fn goal_response_trampoline(
-    goal_id: *const nros_node::GoalId,
+    goal_id: *const nros_node::GoalUuid,
     accepted: bool,
     context: *mut core::ffi::c_void,
 ) {
@@ -4015,7 +4015,7 @@ unsafe extern "C" fn goal_response_trampoline(
 /// # Safety
 /// `context` must point to a valid `rcl_action_client_t`.
 unsafe extern "C" fn feedback_trampoline(
-    goal_id: *const nros_node::GoalId,
+    goal_id: *const nros_node::GoalUuid,
     feedback_data: *const u8,
     feedback_len: usize,
     context: *mut core::ffi::c_void,
@@ -4034,8 +4034,8 @@ unsafe extern "C" fn feedback_trampoline(
 /// # Safety
 /// `context` must point to a valid `rcl_action_client_t`.
 unsafe extern "C" fn result_trampoline(
-    goal_id: *const nros_node::GoalId,
-    status: nros_node::GoalStatus,
+    goal_id: *const nros_node::GoalUuid,
+    status: nros_node::GoalStatusCode,
     result_data: *const u8,
     result_len: usize,
     context: *mut core::ffi::c_void,
@@ -4046,9 +4046,9 @@ unsafe extern "C" fn result_trampoline(
             uuid: (*goal_id).uuid,
         };
         let c_status = match status {
-            nros_node::GoalStatus::Succeeded => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
-            nros_node::GoalStatus::Canceled => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
-            nros_node::GoalStatus::Aborted => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
+            nros_node::GoalStatusCode::Succeeded => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
+            nros_node::GoalStatusCode::Canceled => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
+            nros_node::GoalStatusCode::Aborted => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
             _ => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
         };
         cb(&uuid, c_status, result_data, result_len, client.context);
@@ -4060,9 +4060,9 @@ unsafe extern "C" fn result_trampoline(
 /// The C callback takes the code and the count; the request's `seq` and the
 /// whole frame (issue 2034, for C++) are not part of its signature.
 unsafe extern "C" fn cancel_response_trampoline(
-    goal_id: *const nros_node::GoalId,
+    goal_id: *const nros_node::GoalUuid,
     _seq: i64,
-    return_code: nros_node::CancelReturnCode,
+    return_code: nros_node::CancelResponseCode,
     goals_canceling: usize,
     _reply: *const u8,
     _reply_len: usize,

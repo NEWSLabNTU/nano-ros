@@ -1506,7 +1506,7 @@ pub type RawResponseCallback =
 ///
 /// Returns a `GoalResponse` value (0=Reject, 1=AcceptAndExecute, 2=AcceptAndDefer).
 pub type RawGoalCallback = unsafe extern "C" fn(
-    goal_id: *const nros_core::GoalId,
+    goal_id: *const nros_core::GoalUuid,
     goal_data: *const u8,
     goal_len: usize,
     context: *mut core::ffi::c_void,
@@ -1523,7 +1523,7 @@ pub type RawGoalCallback = unsafe extern "C" fn(
 /// # Safety
 /// - `goal_id` is valid for the duration of the call.
 pub type RawAcceptedCallback =
-    unsafe extern "C" fn(goal_id: *const nros_core::GoalId, context: *mut core::ffi::c_void);
+    unsafe extern "C" fn(goal_id: *const nros_core::GoalUuid, context: *mut core::ffi::c_void);
 
 /// Raw action cancel callback.
 ///
@@ -1533,12 +1533,12 @@ pub type RawAcceptedCallback =
 /// Returns the PER-GOAL decision `nros_core::CancelResponse` (0=Reject,
 /// 1=Accept) — the same two values C's `rclc_cancel_response_t` and C++'s
 /// `nros::CancelResponse` use. Issue 0796: this used to return the
-/// `action_msgs/srv/CancelGoal` RPC return code (now `CancelReturnCode`), so a
+/// `action_msgs/srv/CancelGoal` RPC return code (now `CancelResponseCode`), so a
 /// callback answering one goal spoke in whole-request status codes and the
 /// server wrote its answer straight into the reply's `return_code` field.
 pub type RawCancelCallback = unsafe extern "C" fn(
-    goal_id: *const nros_core::GoalId,
-    status: nros_core::GoalStatus,
+    goal_id: *const nros_core::GoalUuid,
+    status: nros_core::GoalStatusCode,
     context: *mut core::ffi::c_void,
 ) -> nros_core::CancelResponse;
 
@@ -1551,7 +1551,7 @@ pub type RawCancelCallback = unsafe extern "C" fn(
 ///
 /// `accepted` is `true` if the goal was accepted, `false` if rejected.
 pub type RawGoalResponseCallback = unsafe extern "C" fn(
-    goal_id: *const nros_core::GoalId,
+    goal_id: *const nros_core::GoalUuid,
     accepted: bool,
     context: *mut core::ffi::c_void,
 );
@@ -1564,8 +1564,8 @@ pub type RawGoalResponseCallback = unsafe extern "C" fn(
 /// - `goal_id` is valid for the duration of the call
 /// - `result_data` points to `result_len` valid bytes (CDR-encoded result)
 pub type RawResultCallback = unsafe extern "C" fn(
-    goal_id: *const nros_core::GoalId,
-    status: nros_core::GoalStatus,
+    goal_id: *const nros_core::GoalUuid,
+    status: nros_core::GoalStatusCode,
     result_data: *const u8,
     result_len: usize,
     context: *mut core::ffi::c_void,
@@ -1598,9 +1598,9 @@ pub type RawResultCallback = unsafe extern "C" fn(
 /// - `goal_id` is valid for the duration of the call
 /// - `reply` points to `reply_len` valid bytes for the duration of the call
 pub type RawCancelResponseCallback = unsafe extern "C" fn(
-    goal_id: *const nros_core::GoalId,
+    goal_id: *const nros_core::GoalUuid,
     seq: i64,
-    return_code: nros_core::CancelReturnCode,
+    return_code: nros_core::CancelResponseCode,
     goals_canceling: usize,
     reply: *const u8,
     reply_len: usize,
@@ -1615,7 +1615,7 @@ pub type RawCancelResponseCallback = unsafe extern "C" fn(
 /// - `goal_id` is valid for the duration of the call
 /// - `feedback_data` points to `feedback_len` valid bytes (CDR-encoded feedback)
 pub type RawFeedbackCallback = unsafe extern "C" fn(
-    goal_id: *const nros_core::GoalId,
+    goal_id: *const nros_core::GoalUuid,
     feedback_data: *const u8,
     feedback_len: usize,
     context: *mut core::ffi::c_void,

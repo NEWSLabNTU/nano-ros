@@ -374,7 +374,13 @@ caller moved. **Parameter family LANDED 2026-10-27:** `UndeclaredParameters` →
 (stored as the shared record's whole milliseconds, sub-millisecond rounding up
 so it never reads as infinite); and the five `rust:nros_{debug..fatal}` rows,
 whose `blocked-needs-decision` was stale -- phase-417 had already shipped
-rclrs's `log_*!` and removed the `nros_*!` forwarders. (`ActionClientCore::is_server_ready` closed
+rclrs's `log_*!` and removed the `nros_*!` forwarders. **Action-core names LANDED 2026-10-27:** `GoalId` →
+`GoalUuid`, `GoalStatus` → `GoalStatusCode`, `CancelReturnCode` →
+`CancelResponseCode` (rclrs 0.7.0's names), the old ones deprecated aliases
+re-exported from `nros_core`, `nros_node`, `nros` and its prelude; every
+in-tree Rust caller moved (C and C++ keep their own names). rclrs's `GoalStatus`
+is the `{code, goal_id, stamp}` record, ours `GoalStatusStamped`; the old
+`GoalStatus` alias names the enum until it is removed. (`ActionClientCore::is_server_ready` closed
 2026-10-27 by R9 stage 2: it left the Rust surface, so Rust ships the one
 spelling `ActionClient::action_server_is_ready` and its row was deleted.)
 

@@ -1,0 +1,6 @@
+{
+  "key": "rust:GoalUuid::is_zero",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "whether this is the all-zero id, which `action_msgs/srv/CancelGoal` reads as \"every goal\" (issue 2029's cancel-all form). Filed 2026-10-27 (phase-515 R8) when `GoalId` took rclrs's name `GoalUuid`, which made its members correlate."
+}

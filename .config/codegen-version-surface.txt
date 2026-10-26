@@ -12,7 +12,7 @@
 #
 # Regenerate after a DELIBERATE surface move (bump the constant first):
 #     python3 scripts/check-codegen-version-surface.py --write-baseline
-version 19
+version 20
 9a40c1a1fadbae06 cpp|fn|rclcpp/detail/component.hpp|bind_subscription_sized
 b6d43fd88d42eb91 cpp|struct|rclcpp/fixed_sequence.hpp|FixedSequence
 05b2ecfd67796b30 cpp|struct|rclcpp/fixed_string.hpp|FixedString
@@ -204,7 +204,7 @@ fed09a2950a65865 rust|method|nros_serdes::LeSliceView::len
 1610deb04f1f8e70 rust|mod|nros_core::heap
 d899ee2cab66f2f5 rust|mod|nros_serdes::schema
 a0e5a2d88fbf1d3d rust|mod|nros_serdes::size
-b8d6b91fcebdd992 rust|reexport|nros_core|action::
+57932ffaefe23645 rust|reexport|nros_core|action::
 64b5234e4523e037 rust|reexport|nros_core|alloc::
 04af8135f6c0f043 rust|reexport|nros_core|heapless
 8a02d9e49c131476 rust|reexport|nros_core|nros_serdes::
@@ -220,19 +220,19 @@ acedc58c8c253b6b rust|reexport|nros_core|time::
 807fd4a6e8049b7b rust|struct|nros_serdes::Field
 4e274a3f6e329231 rust|struct|nros_serdes::LeSliceView
 a12b08bbdd0d891b rust|struct|nros_serdes::NestedType
-13332569ab7cfc2d rust|traitimpl|nros_core|impl Deserialize for CancelReturnCode
+0f8892150cf7847e rust|traitimpl|nros_core|impl Deserialize for CancelResponseCode
 672f76a5f45c15b3 rust|traitimpl|nros_core|impl Deserialize for Duration
-007486750141bb0a rust|traitimpl|nros_core|impl Deserialize for GoalId
 a7192c3815bd9baf rust|traitimpl|nros_core|impl Deserialize for GoalInfo
-2de76259cd692346 rust|traitimpl|nros_core|impl Deserialize for GoalStatus
+d72f25fd2990550e rust|traitimpl|nros_core|impl Deserialize for GoalStatusCode
 a8a0b3548fc6b705 rust|traitimpl|nros_core|impl Deserialize for GoalStatusStamped
+51c2bf129a4218ce rust|traitimpl|nros_core|impl Deserialize for GoalUuid
 a103e966595d061a rust|traitimpl|nros_core|impl Deserialize for Time
-f5a3dcae90f7ea0a rust|traitimpl|nros_core|impl Serialize for CancelReturnCode
+ffa492e8e1b8c219 rust|traitimpl|nros_core|impl Serialize for CancelResponseCode
 71c66c5aad8c888c rust|traitimpl|nros_core|impl Serialize for Duration
-65bb5959a9164a74 rust|traitimpl|nros_core|impl Serialize for GoalId
 0cbf423fed2b3ba1 rust|traitimpl|nros_core|impl Serialize for GoalInfo
-67068bc81c7e547c rust|traitimpl|nros_core|impl Serialize for GoalStatus
+c0ff04d87c6c1e8d rust|traitimpl|nros_core|impl Serialize for GoalStatusCode
 189e6635fb733064 rust|traitimpl|nros_core|impl Serialize for GoalStatusStamped
+776df00292ef5801 rust|traitimpl|nros_core|impl Serialize for GoalUuid
 48f5f116dc9911d3 rust|traitimpl|nros_core|impl Serialize for Time
 af5698128df9289f rust|traitimpl|nros_serdes|impl Deserialize for String
 a7052b28c6e52c24 rust|traitimpl|nros_serdes|impl Deserialize for bool

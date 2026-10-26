@@ -18,7 +18,7 @@
 
 use core::mem::MaybeUninit;
 
-use nros_core::{GoalId, GoalStatus, Time};
+use nros_core::{GoalStatusCode, GoalUuid, Time};
 use nros_rmw::QoSProfile;
 
 use super::{
@@ -1284,7 +1284,7 @@ pub trait ActionServerCoreFfi: sealed::Sealed + Sized {
     fn goal_buffer(&self) -> &[u8];
 
     /// The FFI entry point; see `ActionServerCore::accept_goal` in `action_core.rs`.
-    fn accept_goal(&mut self, goal_id: GoalId, seq: i64) -> Result<(), NodeError>;
+    fn accept_goal(&mut self, goal_id: GoalUuid, seq: i64) -> Result<(), NodeError>;
 
     /// The FFI entry point; see `ActionServerCore::reject_goal` in `action_core.rs`.
     fn reject_goal(&mut self, seq: i64) -> Result<(), NodeError>;
@@ -1292,12 +1292,12 @@ pub trait ActionServerCoreFfi: sealed::Sealed + Sized {
     /// The FFI entry point; see `ActionServerCore::publish_feedback_raw` in `action_core.rs`.
     fn publish_feedback_raw(
         &mut self,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         feedback_cdr: &[u8],
     ) -> Result<(), NodeError>;
 
     /// The FFI entry point; see `ActionServerCore::set_goal_status` in `action_core.rs`.
-    fn set_goal_status(&mut self, goal_id: &GoalId, status: GoalStatus);
+    fn set_goal_status(&mut self, goal_id: &GoalUuid, status: GoalStatusCode);
 
     /// The FFI entry point; see `ActionServerCore::expire_completed_results` in `action_core.rs`.
     fn expire_completed_results(&mut self) -> usize;
@@ -1309,16 +1309,16 @@ pub trait ActionServerCoreFfi: sealed::Sealed + Sized {
     fn result_slab_used(&self) -> usize;
 
     /// The FFI entry point; see `ActionServerCore::goal_exists` in `action_core.rs`.
-    fn goal_exists(&self, goal_id: &GoalId) -> bool;
+    fn goal_exists(&self, goal_id: &GoalUuid) -> bool;
 
     /// The FFI entry point; see `ActionServerCore::has_completed_result` in `action_core.rs`.
-    fn has_completed_result(&self, goal_id: &GoalId) -> bool;
+    fn has_completed_result(&self, goal_id: &GoalUuid) -> bool;
 
     /// The FFI entry point; see `ActionServerCore::complete_goal_raw` in `action_core.rs`.
     fn complete_goal_raw(
         &mut self,
-        goal_id: &GoalId,
-        status: GoalStatus,
+        goal_id: &GoalUuid,
+        status: GoalStatusCode,
         result_cdr: &[u8],
     ) -> Result<(), NodeError>;
 
@@ -1338,21 +1338,21 @@ pub trait ActionServerCoreFfi: sealed::Sealed + Sized {
     fn send_cancel_reply(
         &mut self,
         sequence_number: i64,
-        return_code: nros_core::CancelReturnCode,
-        accepted: &[GoalId],
+        return_code: nros_core::CancelResponseCode,
+        accepted: &[GoalUuid],
     ) -> Result<(), NodeError>;
 
     /// The FFI entry point; see `ActionServerCore::try_handle_cancel` in `action_core.rs`.
     fn try_handle_cancel(
         &mut self,
-        cancel_handler: impl FnMut(&GoalId, GoalStatus) -> nros_core::CancelResponse,
-    ) -> Result<Option<(GoalId, nros_core::CancelResponse)>, NodeError>;
+        cancel_handler: impl FnMut(&GoalUuid, GoalStatusCode) -> nros_core::CancelResponse,
+    ) -> Result<Option<(GoalUuid, nros_core::CancelResponse)>, NodeError>;
 
     /// The FFI entry point; see `ActionServerCore::try_handle_get_result_raw` in `action_core.rs`.
     fn try_handle_get_result_raw(
         &mut self,
         default_result_cdr: &[u8],
-    ) -> Result<Option<GoalId>, NodeError>;
+    ) -> Result<Option<GoalUuid>, NodeError>;
 
     /// The FFI entry point; see `ActionServerCore::active_goal_count` in `action_core.rs`.
     fn active_goal_count(&self) -> usize;
@@ -1361,10 +1361,10 @@ pub trait ActionServerCoreFfi: sealed::Sealed + Sized {
     fn active_goals(&self) -> &[RawActiveGoal];
 
     /// The FFI entry point; see `ActionServerCore::goal_stamp` in `action_core.rs`.
-    fn goal_stamp(&self, goal_id: &GoalId) -> Time;
+    fn goal_stamp(&self, goal_id: &GoalUuid) -> Time;
 
     /// The FFI entry point; see `ActionServerCore::find_goal_status` in `action_core.rs`.
-    fn find_goal_status(&self, goal_id: &GoalId) -> GoalStatus;
+    fn find_goal_status(&self, goal_id: &GoalUuid) -> GoalStatusCode;
 
     /// The FFI entry point; see `ActionServerCore::publish_status_array` in `action_core.rs`.
     fn publish_status_array(&self) -> Result<(), NodeError>;
@@ -1405,7 +1405,7 @@ impl<
     }
 
     #[inline]
-    fn accept_goal(&mut self, goal_id: GoalId, seq: i64) -> Result<(), NodeError> {
+    fn accept_goal(&mut self, goal_id: GoalUuid, seq: i64) -> Result<(), NodeError> {
         Self::accept_goal(self, goal_id, seq)
     }
 
@@ -1417,14 +1417,14 @@ impl<
     #[inline]
     fn publish_feedback_raw(
         &mut self,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         feedback_cdr: &[u8],
     ) -> Result<(), NodeError> {
         Self::publish_feedback_raw(self, goal_id, feedback_cdr)
     }
 
     #[inline]
-    fn set_goal_status(&mut self, goal_id: &GoalId, status: GoalStatus) {
+    fn set_goal_status(&mut self, goal_id: &GoalUuid, status: GoalStatusCode) {
         Self::set_goal_status(self, goal_id, status)
     }
 
@@ -1444,20 +1444,20 @@ impl<
     }
 
     #[inline]
-    fn goal_exists(&self, goal_id: &GoalId) -> bool {
+    fn goal_exists(&self, goal_id: &GoalUuid) -> bool {
         Self::goal_exists(self, goal_id)
     }
 
     #[inline]
-    fn has_completed_result(&self, goal_id: &GoalId) -> bool {
+    fn has_completed_result(&self, goal_id: &GoalUuid) -> bool {
         Self::has_completed_result(self, goal_id)
     }
 
     #[inline]
     fn complete_goal_raw(
         &mut self,
-        goal_id: &GoalId,
-        status: GoalStatus,
+        goal_id: &GoalUuid,
+        status: GoalStatusCode,
         result_cdr: &[u8],
     ) -> Result<(), NodeError> {
         Self::complete_goal_raw(self, goal_id, status, result_cdr)
@@ -1487,8 +1487,8 @@ impl<
     fn send_cancel_reply(
         &mut self,
         sequence_number: i64,
-        return_code: nros_core::CancelReturnCode,
-        accepted: &[GoalId],
+        return_code: nros_core::CancelResponseCode,
+        accepted: &[GoalUuid],
     ) -> Result<(), NodeError> {
         Self::send_cancel_reply(self, sequence_number, return_code, accepted)
     }
@@ -1496,8 +1496,8 @@ impl<
     #[inline]
     fn try_handle_cancel(
         &mut self,
-        cancel_handler: impl FnMut(&GoalId, GoalStatus) -> nros_core::CancelResponse,
-    ) -> Result<Option<(GoalId, nros_core::CancelResponse)>, NodeError> {
+        cancel_handler: impl FnMut(&GoalUuid, GoalStatusCode) -> nros_core::CancelResponse,
+    ) -> Result<Option<(GoalUuid, nros_core::CancelResponse)>, NodeError> {
         Self::try_handle_cancel(self, cancel_handler)
     }
 
@@ -1505,7 +1505,7 @@ impl<
     fn try_handle_get_result_raw(
         &mut self,
         default_result_cdr: &[u8],
-    ) -> Result<Option<GoalId>, NodeError> {
+    ) -> Result<Option<GoalUuid>, NodeError> {
         Self::try_handle_get_result_raw(self, default_result_cdr)
     }
 
@@ -1520,12 +1520,12 @@ impl<
     }
 
     #[inline]
-    fn goal_stamp(&self, goal_id: &GoalId) -> Time {
+    fn goal_stamp(&self, goal_id: &GoalUuid) -> Time {
         Self::goal_stamp(self, goal_id)
     }
 
     #[inline]
-    fn find_goal_status(&self, goal_id: &GoalId) -> GoalStatus {
+    fn find_goal_status(&self, goal_id: &GoalUuid) -> GoalStatusCode {
         Self::find_goal_status(self, goal_id)
     }
 
@@ -1552,24 +1552,24 @@ pub trait ActionClientCoreFfi: sealed::Sealed + Sized {
     ) -> Self;
 
     /// The FFI entry point; see `ActionClientCore::send_goal_raw` in `action_core.rs`.
-    fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalId, NodeError>;
+    fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalUuid, NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::try_recv_feedback_raw` in `action_core.rs`.
-    fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalId, usize)>, NodeError>;
+    fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalUuid, usize)>, NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::send_cancel_request` in `action_core.rs`.
-    fn send_cancel_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError>;
+    fn send_cancel_request(&mut self, goal_id: &GoalUuid) -> Result<(), NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::send_cancel_request_stamped` in `action_core.rs`.
     fn send_cancel_request_stamped(
         &mut self,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         stamp_sec: i32,
         stamp_nanosec: u32,
     ) -> Result<i64, NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::send_get_result_request` in `action_core.rs`.
-    fn send_get_result_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError>;
+    fn send_get_result_request(&mut self, goal_id: &GoalUuid) -> Result<(), NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::register_goal_response_waker` in `action_core.rs`.
     fn register_goal_response_waker(&self, waker: &core::task::Waker) -> bool;
@@ -1587,31 +1587,31 @@ pub trait ActionClientCoreFfi: sealed::Sealed + Sized {
     fn try_recv_cancel_reply(&mut self) -> Result<Option<usize>, NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::try_recv_cancel_reply_for` in `action_core.rs`.
-    fn try_recv_cancel_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError>;
+    fn try_recv_cancel_reply_for(&mut self) -> Result<Option<(usize, GoalUuid)>, NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::try_recv_cancel_reply_seq` in `action_core.rs`.
-    fn try_recv_cancel_reply_seq(&mut self) -> Result<Option<(usize, i64, GoalId)>, NodeError>;
+    fn try_recv_cancel_reply_seq(&mut self) -> Result<Option<(usize, i64, GoalUuid)>, NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::try_recv_get_result_reply` in `action_core.rs`.
     fn try_recv_get_result_reply(&mut self) -> Result<Option<usize>, NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::try_recv_get_result_reply_for` in `action_core.rs`.
-    fn try_recv_get_result_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError>;
+    fn try_recv_get_result_reply_for(&mut self) -> Result<Option<(usize, GoalUuid)>, NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::try_recv_send_goal_reply` in `action_core.rs`.
     fn try_recv_send_goal_reply(&mut self) -> Result<Option<usize>, NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::try_recv_send_goal_reply_for` in `action_core.rs`.
-    fn try_recv_send_goal_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError>;
+    fn try_recv_send_goal_reply_for(&mut self) -> Result<Option<(usize, GoalUuid)>, NodeError>;
 
     /// The FFI entry point; see `ActionClientCore::forget_send_goal` in `action_core.rs`.
-    fn forget_send_goal(&mut self, goal_id: &GoalId) -> bool;
+    fn forget_send_goal(&mut self, goal_id: &GoalUuid) -> bool;
 
     /// The FFI entry point; see `ActionClientCore::forget_get_result` in `action_core.rs`.
-    fn forget_get_result(&mut self, goal_id: &GoalId) -> bool;
+    fn forget_get_result(&mut self, goal_id: &GoalUuid) -> bool;
 
     /// The FFI entry point; see `ActionClientCore::forget_cancel` in `action_core.rs`.
-    fn forget_cancel(&mut self, goal_id: &GoalId) -> bool;
+    fn forget_cancel(&mut self, goal_id: &GoalUuid) -> bool;
 
     /// The FFI entry point; see `ActionClientCore::result_buffer_ref` in `action_core.rs`.
     fn result_buffer_ref(&self) -> &[u8];
@@ -1652,24 +1652,24 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize> 
     }
 
     #[inline]
-    fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalId, NodeError> {
+    fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalUuid, NodeError> {
         Self::send_goal_raw(self, goal_cdr)
     }
 
     #[inline]
-    fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalId, usize)>, NodeError> {
+    fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalUuid, usize)>, NodeError> {
         Self::try_recv_feedback_raw(self)
     }
 
     #[inline]
-    fn send_cancel_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+    fn send_cancel_request(&mut self, goal_id: &GoalUuid) -> Result<(), NodeError> {
         Self::send_cancel_request(self, goal_id)
     }
 
     #[inline]
     fn send_cancel_request_stamped(
         &mut self,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         stamp_sec: i32,
         stamp_nanosec: u32,
     ) -> Result<i64, NodeError> {
@@ -1677,7 +1677,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize> 
     }
 
     #[inline]
-    fn send_get_result_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+    fn send_get_result_request(&mut self, goal_id: &GoalUuid) -> Result<(), NodeError> {
         Self::send_get_result_request(self, goal_id)
     }
 
@@ -1707,12 +1707,12 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize> 
     }
 
     #[inline]
-    fn try_recv_cancel_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+    fn try_recv_cancel_reply_for(&mut self) -> Result<Option<(usize, GoalUuid)>, NodeError> {
         Self::try_recv_cancel_reply_for(self)
     }
 
     #[inline]
-    fn try_recv_cancel_reply_seq(&mut self) -> Result<Option<(usize, i64, GoalId)>, NodeError> {
+    fn try_recv_cancel_reply_seq(&mut self) -> Result<Option<(usize, i64, GoalUuid)>, NodeError> {
         Self::try_recv_cancel_reply_seq(self)
     }
 
@@ -1722,7 +1722,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize> 
     }
 
     #[inline]
-    fn try_recv_get_result_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+    fn try_recv_get_result_reply_for(&mut self) -> Result<Option<(usize, GoalUuid)>, NodeError> {
         Self::try_recv_get_result_reply_for(self)
     }
 
@@ -1732,22 +1732,22 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize> 
     }
 
     #[inline]
-    fn try_recv_send_goal_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+    fn try_recv_send_goal_reply_for(&mut self) -> Result<Option<(usize, GoalUuid)>, NodeError> {
         Self::try_recv_send_goal_reply_for(self)
     }
 
     #[inline]
-    fn forget_send_goal(&mut self, goal_id: &GoalId) -> bool {
+    fn forget_send_goal(&mut self, goal_id: &GoalUuid) -> bool {
         Self::forget_send_goal(self, goal_id)
     }
 
     #[inline]
-    fn forget_get_result(&mut self, goal_id: &GoalId) -> bool {
+    fn forget_get_result(&mut self, goal_id: &GoalUuid) -> bool {
         Self::forget_get_result(self, goal_id)
     }
 
     #[inline]
-    fn forget_cancel(&mut self, goal_id: &GoalId) -> bool {
+    fn forget_cancel(&mut self, goal_id: &GoalUuid) -> bool {
         Self::forget_cancel(self, goal_id)
     }
 
@@ -1783,7 +1783,7 @@ pub trait ActionServerRawHandleFfi: sealed::Sealed + Sized {
     fn publish_feedback_raw(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
+        goal_id: &nros_core::GoalUuid,
         feedback_data: &[u8],
     ) -> Result<(), NodeError>;
 
@@ -1791,8 +1791,8 @@ pub trait ActionServerRawHandleFfi: sealed::Sealed + Sized {
     fn complete_goal_raw(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
-        status: nros_core::GoalStatus,
+        goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
         result_data: &[u8],
     ) -> Result<(), NodeError>;
 
@@ -1800,15 +1800,15 @@ pub trait ActionServerRawHandleFfi: sealed::Sealed + Sized {
     fn set_goal_status(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
-        status: nros_core::GoalStatus,
+        goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
     );
 
     /// The FFI entry point; see `ActionServerRawHandle::active_goal_count` in `action.rs`.
     fn active_goal_count(&self, executor: &Executor) -> usize;
 
     /// The FFI entry point; see `ActionServerRawHandle::goal_exists` in `action.rs`.
-    fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool;
+    fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalUuid) -> bool;
 
     /// The FFI entry point; see `ActionServerRawHandle::expire_goals` in `action.rs`.
     fn expire_goals(&self, executor: &mut Executor) -> usize;
@@ -1820,8 +1820,8 @@ pub trait ActionServerRawHandleFfi: sealed::Sealed + Sized {
     fn goal_status(
         &self,
         executor: &Executor,
-        goal_id: &nros_core::GoalId,
-    ) -> Option<nros_core::GoalStatus>;
+        goal_id: &nros_core::GoalUuid,
+    ) -> Option<nros_core::GoalStatusCode>;
 }
 
 impl ActionServerRawHandleFfi for ActionServerRawHandle {
@@ -1844,7 +1844,7 @@ impl ActionServerRawHandleFfi for ActionServerRawHandle {
     fn publish_feedback_raw(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
+        goal_id: &nros_core::GoalUuid,
         feedback_data: &[u8],
     ) -> Result<(), NodeError> {
         Self::publish_feedback_raw(self, executor, goal_id, feedback_data)
@@ -1854,8 +1854,8 @@ impl ActionServerRawHandleFfi for ActionServerRawHandle {
     fn complete_goal_raw(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
-        status: nros_core::GoalStatus,
+        goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
         result_data: &[u8],
     ) -> Result<(), NodeError> {
         Self::complete_goal_raw(self, executor, goal_id, status, result_data)
@@ -1865,8 +1865,8 @@ impl ActionServerRawHandleFfi for ActionServerRawHandle {
     fn set_goal_status(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
-        status: nros_core::GoalStatus,
+        goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
     ) {
         Self::set_goal_status(self, executor, goal_id, status)
     }
@@ -1877,7 +1877,7 @@ impl ActionServerRawHandleFfi for ActionServerRawHandle {
     }
 
     #[inline]
-    fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool {
+    fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalUuid) -> bool {
         Self::goal_exists(self, executor, goal_id)
     }
 
@@ -1895,8 +1895,8 @@ impl ActionServerRawHandleFfi for ActionServerRawHandle {
     fn goal_status(
         &self,
         executor: &Executor,
-        goal_id: &nros_core::GoalId,
-    ) -> Option<nros_core::GoalStatus> {
+        goal_id: &nros_core::GoalUuid,
+    ) -> Option<nros_core::GoalStatusCode> {
         Self::goal_status(self, executor, goal_id)
     }
 }

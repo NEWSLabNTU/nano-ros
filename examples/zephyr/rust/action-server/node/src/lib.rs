@@ -12,7 +12,7 @@
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
     Callback, CallbackCtx, CancelResponse, Component, DeclarativeNode, ExecutableNode,
-    GoalResponse, GoalStatus, NodeContext, NodeOptions, NodeResult, TickCtx,
+    GoalResponse, GoalStatusCode, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 /// issue 0450 — the largest order this demo will compute.
@@ -41,7 +41,7 @@ pub struct ServerState {
     /// surfaces the goal id and status but not the request payload, which is
     /// why the previous body hardcoded its output: it had nothing else to go
     /// on. One slot is enough for the demo (a single goal at a time); a server
-    /// handling concurrent goals would key this by `GoalId`.
+    /// handling concurrent goals would key this by `GoalUuid`.
     order: i32,
     /// Ticks since the last `reply-slot:` report — see
     /// [`REPLY_SLOT_REPORT_TICKS`].
@@ -137,8 +137,8 @@ impl ExecutableNode for FibonacciServer {
 
         // Collect goal ids first — typed feedback / result calls borrow
         // `ctx` mutably so they can't run inside `visit`.
-        let mut goals: nros::heapless::Vec<(nros::GoalId, i32), 4> = nros::heapless::Vec::new();
-        ctx.for_each_active_goal_for_name("/fibonacci", &mut |goal_id, _status: GoalStatus| {
+        let mut goals: nros::heapless::Vec<(nros::GoalUuid, i32), 4> = nros::heapless::Vec::new();
+        ctx.for_each_active_goal_for_name("/fibonacci", &mut |goal_id, _status: GoalStatusCode| {
             let _ = goals.push((*goal_id, 0));
         });
 
@@ -185,7 +185,7 @@ impl ExecutableNode for FibonacciServer {
             match ctx.complete_goal_for_name::<FibonacciResult, 256>(
                 "/fibonacci",
                 &goal_id,
-                GoalStatus::Succeeded,
+                GoalStatusCode::Succeeded,
                 &result,
             ) {
                 Ok(()) => log::info!("Goal succeeded"),

@@ -14,8 +14,8 @@
 //!
 //! * `SendGoal` reply: `[encap 4][accepted u8][stamp …]`
 //! * `GetResult` reply: `[encap 4][status i8][pad to 4 → byte 8][result fields]`
-//! * `FeedbackMessage`: `[encap 4][GoalId.uuid 16][feedback fields]`
-//! * `SendGoal` request (server side): `[encap 4][GoalId.uuid 16][goal fields]`
+//! * `FeedbackMessage`: `[encap 4][GoalUuid.uuid 16][feedback fields]`
+//! * `SendGoal` request (server side): `[encap 4][GoalUuid.uuid 16][goal fields]`
 //! * `CancelGoal` reply: `[encap 4][return_code i8][pad to 4 → byte 8][count u32]
 //!   [GoalInfo { uuid 16, stamp.sec i32, stamp.nanosec u32 } × count]`
 //!
@@ -27,7 +27,7 @@
 //! [`CdrWriter`]: nros_core::CdrWriter
 //! [`splice`]: crate::action_frame::splice
 
-use nros_core::{GoalId, GoalStatus};
+use nros_core::{GoalStatusCode, GoalUuid};
 
 /// Length of a CDR encapsulation header.
 pub const CDR_HEADER_LEN: usize = nros_serdes::CDR_HEADER_LEN;
@@ -40,13 +40,13 @@ pub const REPLY_STATUS_OFFSET: usize = CDR_HEADER_LEN;
 /// then CDR alignment to 4 (stream position 4 = byte 8).
 pub const RESULT_PAYLOAD_OFFSET: usize = (REPLY_STATUS_OFFSET + 1 + 3) & !3;
 
-/// First byte of the feedback fields in a `FeedbackMessage`: the GoalId UUID
+/// First byte of the feedback fields in a `FeedbackMessage`: the GoalUuid UUID
 /// (`uint8[16]`, no length prefix since 233.6) follows the header.
 pub const FEEDBACK_PAYLOAD_OFFSET: usize =
-    CDR_HEADER_LEN + GoalId::SEQ_PREFIX_LEN + GoalId::UUID_LEN;
+    CDR_HEADER_LEN + GoalUuid::SEQ_PREFIX_LEN + GoalUuid::UUID_LEN;
 
 /// First byte of the goal fields in a `SendGoal` request — the same framing
-/// as feedback: the GoalId follows the header.
+/// as feedback: the GoalUuid follows the header.
 pub const GOAL_REQUEST_PAYLOAD_OFFSET: usize = FEEDBACK_PAYLOAD_OFFSET;
 
 /// Byte holding the `goals_canceling` sequence length of a `CancelGoal`
@@ -59,7 +59,7 @@ pub const CANCEL_GOALS_OFFSET: usize = CANCEL_GOALS_COUNT_OFFSET + 4;
 /// One `action_msgs/msg/GoalInfo` on the wire: the UUID (`uint8[16]`), then
 /// `builtin_interfaces/Time` (`int32 sec`, `uint32 nanosec`, 4-aligned, which
 /// 16 bytes in already is).
-pub const GOAL_INFO_LEN: usize = GoalId::UUID_LEN + 4 + 4;
+pub const GOAL_INFO_LEN: usize = GoalUuid::UUID_LEN + 4 + 4;
 
 const _: () = assert!(RESULT_PAYLOAD_OFFSET == 8);
 const _: () = assert!(CANCEL_GOALS_OFFSET == 12);
@@ -71,25 +71,25 @@ pub fn goal_accepted(reply: &[u8]) -> bool {
 }
 
 /// The goal UUID a `FeedbackMessage` names (`None` for a short frame).
-pub fn feedback_goal_id(msg: &[u8]) -> Option<GoalId> {
+pub fn feedback_goal_id(msg: &[u8]) -> Option<GoalUuid> {
     let bytes = msg.get(CDR_HEADER_LEN..FEEDBACK_PAYLOAD_OFFSET)?;
-    let mut uuid = [0u8; GoalId::UUID_LEN];
+    let mut uuid = [0u8; GoalUuid::UUID_LEN];
     uuid.copy_from_slice(bytes);
-    Some(GoalId { uuid })
+    Some(GoalUuid { uuid })
 }
 
 /// The terminal status of a `GetResult` reply, or `None` when the frame is
 /// too short to hold a result (shorter than [`RESULT_PAYLOAD_OFFSET`]).
 /// Anything but Succeeded / Canceled / Aborted reads as `Unknown`.
-pub fn result_status(reply: &[u8]) -> Option<GoalStatus> {
+pub fn result_status(reply: &[u8]) -> Option<GoalStatusCode> {
     if reply.len() < RESULT_PAYLOAD_OFFSET {
         return None;
     }
     Some(match reply[REPLY_STATUS_OFFSET] {
-        4 => GoalStatus::Succeeded,
-        5 => GoalStatus::Canceled,
-        6 => GoalStatus::Aborted,
-        _ => GoalStatus::Unknown,
+        4 => GoalStatusCode::Succeeded,
+        5 => GoalStatusCode::Canceled,
+        6 => GoalStatusCode::Aborted,
+        _ => GoalStatusCode::Unknown,
     })
 }
 
@@ -138,18 +138,18 @@ pub fn cancel_goals_count(reply: &[u8]) -> Option<usize> {
 /// The `i`-th `GoalInfo` of a `CancelGoal` reply's `goals_canceling`: the
 /// goal and its acceptance stamp `(sec, nanosec)`. `None` past the count (or
 /// on a short frame).
-pub fn cancel_goal_info(reply: &[u8], i: usize) -> Option<(GoalId, i32, u32)> {
+pub fn cancel_goal_info(reply: &[u8], i: usize) -> Option<(GoalUuid, i32, u32)> {
     if i >= cancel_goals_count(reply)? {
         return None;
     }
     let at = CANCEL_GOALS_OFFSET + i * GOAL_INFO_LEN;
     let b = reply.get(at..at + GOAL_INFO_LEN)?;
-    let mut uuid = [0u8; GoalId::UUID_LEN];
-    uuid.copy_from_slice(&b[..GoalId::UUID_LEN]);
-    let s = GoalId::UUID_LEN;
+    let mut uuid = [0u8; GoalUuid::UUID_LEN];
+    uuid.copy_from_slice(&b[..GoalUuid::UUID_LEN]);
+    let s = GoalUuid::UUID_LEN;
     let sec = i32::from_le_bytes([b[s], b[s + 1], b[s + 2], b[s + 3]]);
     let nanosec = u32::from_le_bytes([b[s + 4], b[s + 5], b[s + 6], b[s + 7]]);
-    Some((GoalId { uuid }, sec, nanosec))
+    Some((GoalUuid { uuid }, sec, nanosec))
 }
 
 /// Write `frame`'s own encapsulation header followed by `fields` into `out`,
@@ -188,7 +188,7 @@ mod tests {
     fn result_payload_starts_after_the_alignment_pad() {
         // [encap][status=4][pad pad pad][fields 0xAA 0xBB]
         let reply = [0, 1, 0, 0, 4, 0xEE, 0xEE, 0xEE, 0xAA, 0xBB];
-        assert_eq!(result_status(&reply), Some(GoalStatus::Succeeded));
+        assert_eq!(result_status(&reply), Some(GoalStatusCode::Succeeded));
         assert_eq!(result_fields(&reply), Some(&[0xAA, 0xBB][..]));
         let mut out = [0u8; 16];
         let n = splice_result(&reply, &mut out).unwrap();

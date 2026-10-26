@@ -1,0 +1,5 @@
+{
+  "key": "rust:CancelResponseCode::from_i8",
+  "verdict": "extension",
+  "why": "MOVED 2026-10-27 (phase-515 R8): the type is `CancelResponseCode` now, rclrs's name (`CancelReturnCode` is a deprecated alias), so this row moved with it. decodes the wire byte into `CancelReturnCode`; see `rust:CancelReturnCode`. The split exposed a latent inversion here — `try_handle_cancel` was writing the per-goal answer straight into the RPC reply, which was correct only while the two shared a type."
+}

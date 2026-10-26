@@ -16,7 +16,7 @@ use core::marker::PhantomData;
 use nros_node::rmw_type_registry::MessageForRmw;
 
 use crate::{
-    ActionTag, CallbackId, CancelResponse, EntityId, GoalId, GoalResponse, GoalStatus,
+    ActionTag, CallbackId, CancelResponse, EntityId, GoalResponse, GoalStatusCode, GoalUuid,
     ParameterType, QoSProfile, RosAction, RosMessage, RosService, ServiceTag, SubscriptionTag,
     TimerClockSource, TimerDuration,
     heapless::Vec,
@@ -2147,7 +2147,7 @@ impl<'a> CallbackCtx<'a> {
     /// (`Reject` / `Accept`), the twin of [`GoalResponse`] and the same two
     /// values C's `rclc_cancel_response_t` and C++'s `nros::CancelResponse`
     /// carry. It used to be the `action_msgs/srv/CancelGoal` RPC return code
-    /// (now `nros_core::CancelReturnCode`), so answering "cancel this goal"
+    /// (now `nros_core::CancelResponseCode`), so answering "cancel this goal"
     /// was spelled `CancelResponse::Ok` — a whole-request status code used to
     /// decide one goal.
     pub fn set_cancel_response(&mut self, response: CancelResponse) -> NodeResult<()> {
@@ -2327,8 +2327,8 @@ pub trait ActionExecutor {
     fn complete_goal_raw(
         &mut self,
         action_entity: &str,
-        goal_id: &GoalId,
-        status: GoalStatus,
+        goal_id: &GoalUuid,
+        status: GoalStatusCode,
         result: &[u8],
     ) -> NodeResult<()>;
 
@@ -2336,7 +2336,7 @@ pub trait ActionExecutor {
     fn publish_feedback_raw(
         &mut self,
         action_entity: &str,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         feedback: &[u8],
     ) -> NodeResult<()>;
 
@@ -2344,7 +2344,11 @@ pub trait ActionExecutor {
     /// completed, with its id + current status. The execution seam: a `tick` body
     /// has no other way to learn an accepted goal's id (the goal-decision callback
     /// doesn't surface it), so it iterates here to drive feedback / completion.
-    fn for_each_active_goal(&self, action_entity: &str, visit: &mut dyn FnMut(&GoalId, GoalStatus));
+    fn for_each_active_goal(
+        &self,
+        action_entity: &str,
+        visit: &mut dyn FnMut(&GoalUuid, GoalStatusCode),
+    );
 }
 
 /// Executor-backed CLIENT operations a [`TickCtx`] drives (Phase 212.M-F.4).
@@ -2380,10 +2384,10 @@ pub trait ClientDispatch {
     ) -> NodeResult<usize>;
 
     /// Send an action-client goal request on `action_entity` carrying
-    /// CDR `goal_cdr`; return the assigned [`GoalId`] (server-stamped on
+    /// CDR `goal_cdr`; return the assigned [`GoalUuid`] (server-stamped on
     /// the goal-accept response). Result + feedback streams arrive via
     /// callback dispatch — not this method.
-    fn send_goal_raw(&mut self, action_entity: &str, goal_cdr: &[u8]) -> NodeResult<GoalId>;
+    fn send_goal_raw(&mut self, action_entity: &str, goal_cdr: &[u8]) -> NodeResult<GoalUuid>;
 
     /// Whether a server for the service client `service_entity` is CURRENTLY
     /// discoverable — `rclcpp::ClientBase::service_is_ready`, for a tick.
@@ -2544,8 +2548,8 @@ impl<'a> TickCtx<'a> {
     pub fn complete_goal<R: RosMessage, const N: usize>(
         &mut self,
         action: EntityId<'_>,
-        goal_id: &GoalId,
-        status: GoalStatus,
+        goal_id: &GoalUuid,
+        status: GoalStatusCode,
         result: &R,
     ) -> NodeResult<()> {
         // RFC-0069 / issue 0418 — NO inner encapsulation header. ROS 2's
@@ -2579,8 +2583,8 @@ impl<'a> TickCtx<'a> {
     pub fn complete_goal_for_name<R: RosMessage, const N: usize>(
         &mut self,
         name: &str,
-        goal_id: &GoalId,
-        status: GoalStatus,
+        goal_id: &GoalUuid,
+        status: GoalStatusCode,
         result: &R,
     ) -> NodeResult<()> {
         self.complete_goal::<R, N>(EntityId::new(name), goal_id, status, result)
@@ -2595,7 +2599,7 @@ impl<'a> TickCtx<'a> {
     pub fn for_each_active_goal(
         &self,
         action: EntityId<'_>,
-        visit: &mut dyn FnMut(&GoalId, GoalStatus),
+        visit: &mut dyn FnMut(&GoalUuid, GoalStatusCode),
     ) {
         self.actions.for_each_active_goal(action.as_str(), visit);
     }
@@ -2604,7 +2608,7 @@ impl<'a> TickCtx<'a> {
     pub fn for_each_active_goal_for_name(
         &self,
         name: &str,
-        visit: &mut dyn FnMut(&GoalId, GoalStatus),
+        visit: &mut dyn FnMut(&GoalUuid, GoalStatusCode),
     ) {
         self.for_each_active_goal(EntityId::new(name), visit);
     }
@@ -2614,7 +2618,7 @@ impl<'a> TickCtx<'a> {
     pub fn publish_feedback<F: RosMessage, const N: usize>(
         &mut self,
         action: EntityId<'_>,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         feedback: &F,
     ) -> NodeResult<()> {
         // RFC-0069 / issue 0418 — NO inner encapsulation header; see
@@ -2635,7 +2639,7 @@ impl<'a> TickCtx<'a> {
     pub fn publish_feedback_for_name<F: RosMessage, const N: usize>(
         &mut self,
         name: &str,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         feedback: &F,
     ) -> NodeResult<()> {
         self.publish_feedback::<F, N>(EntityId::new(name), goal_id, feedback)
@@ -2744,28 +2748,28 @@ impl<'a> TickCtx<'a> {
     }
 
     /// Send a raw-CDR action-client goal and return the assigned
-    /// [`GoalId`] (M-F.4 — tick-only). Result + feedback streams arrive
+    /// [`GoalUuid`] (M-F.4 — tick-only). Result + feedback streams arrive
     /// via callback dispatch; this method only kicks off the request.
     #[doc(hidden)]
-    pub fn send_goal_raw(&mut self, action: EntityId<'_>, goal_cdr: &[u8]) -> NodeResult<GoalId> {
+    pub fn send_goal_raw(&mut self, action: EntityId<'_>, goal_cdr: &[u8]) -> NodeResult<GoalUuid> {
         self.clients.send_goal_raw(action.as_str(), goal_cdr)
     }
 
     /// Send a raw-CDR action-client goal through the entity synthesized
     /// from `name`.
-    pub fn send_goal_raw_for_name(&mut self, name: &str, goal_cdr: &[u8]) -> NodeResult<GoalId> {
+    pub fn send_goal_raw_for_name(&mut self, name: &str, goal_cdr: &[u8]) -> NodeResult<GoalUuid> {
         self.send_goal_raw(EntityId::new(name), goal_cdr)
     }
 
     /// Send a typed action-client goal and return the assigned
-    /// [`GoalId`] (M-F.4 — tick-only). `N` stack-sizes the goal CDR
+    /// [`GoalUuid`] (M-F.4 — tick-only). `N` stack-sizes the goal CDR
     /// buffer.
     #[doc(hidden)]
     pub fn send_goal<G: RosMessage, const N: usize>(
         &mut self,
         action: EntityId<'_>,
         goal: &G,
-    ) -> NodeResult<GoalId> {
+    ) -> NodeResult<GoalUuid> {
         // RFC-0069 / issue 0418 — NO inner encapsulation header, same rule as
         // `publish_feedback` / `complete_goal`. ROS 2's `<Action>_SendGoal_Request`
         // is ONE CDR message: `[header][goal_id][goal fields]`. `send_goal_raw`
@@ -2797,7 +2801,7 @@ impl<'a> TickCtx<'a> {
         &mut self,
         name: &str,
         goal: &G,
-    ) -> NodeResult<GoalId> {
+    ) -> NodeResult<GoalUuid> {
         self.send_goal::<G, N>(EntityId::new(name), goal)
     }
 }
@@ -3231,8 +3235,8 @@ mod tests {
             fn complete_goal_raw(
                 &mut self,
                 _action_entity: &str,
-                _goal_id: &GoalId,
-                _status: GoalStatus,
+                _goal_id: &GoalUuid,
+                _status: GoalStatusCode,
                 _result: &[u8],
             ) -> NodeResult<()> {
                 self.completed = true;
@@ -3241,7 +3245,7 @@ mod tests {
             fn publish_feedback_raw(
                 &mut self,
                 _action_entity: &str,
-                _goal_id: &GoalId,
+                _goal_id: &GoalUuid,
                 _feedback: &[u8],
             ) -> NodeResult<()> {
                 self.fed = true;
@@ -3250,10 +3254,10 @@ mod tests {
             fn for_each_active_goal(
                 &self,
                 _action_entity: &str,
-                visit: &mut dyn FnMut(&GoalId, GoalStatus),
+                visit: &mut dyn FnMut(&GoalUuid, GoalStatusCode),
             ) {
                 // One pretend-active goal, so the tick body has something to drive.
-                visit(&GoalId::zero(), GoalStatus::Executing);
+                visit(&GoalUuid::zero(), GoalStatusCode::Executing);
             }
         }
 
@@ -3267,7 +3271,7 @@ mod tests {
             ) -> NodeResult<usize> {
                 Err(NodeDeclError::Runtime)
             }
-            fn send_goal_raw(&mut self, _action: &str, _goal: &[u8]) -> NodeResult<GoalId> {
+            fn send_goal_raw(&mut self, _action: &str, _goal: &[u8]) -> NodeResult<GoalUuid> {
                 Err(NodeDeclError::Runtime)
             }
         }
@@ -3281,7 +3285,7 @@ mod tests {
             visited: 0,
         };
         let mut clients = RecClients;
-        let goal = GoalId::zero();
+        let goal = GoalUuid::zero();
         let mut seen = 0usize;
         {
             let mut ctx = TickCtx::new(&pubs, &mut acts, &mut clients);
@@ -3294,7 +3298,7 @@ mod tests {
             ctx.complete_goal::<TestMsg, 64>(
                 EntityId::new("act"),
                 &goal,
-                GoalStatus::Succeeded,
+                GoalStatusCode::Succeeded,
                 &TestMsg,
             )
             .unwrap();

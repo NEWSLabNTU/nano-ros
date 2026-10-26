@@ -16,7 +16,7 @@
 //! ## Example
 //!
 //! ```text
-//! use nros_core::{RosAction, GoalStatus};
+//! use nros_core::{RosAction, GoalStatusCode};
 //!
 //! // Define an action type
 //! struct Fibonacci;
@@ -127,13 +127,16 @@ pub trait RosAction: Sized {
     }
 }
 
-/// Goal status states
+/// Goal status states -- rclrs's `GoalStatusCode` (phase-515 R8).
 ///
-/// These states match `action_msgs/msg/GoalStatus` from ROS 2.
+/// These states match `action_msgs/msg/GoalStatus` from ROS 2. It was
+/// `GoalStatus`, which is a deprecated alias for one release; rclrs gives that
+/// name to the `{code, goal_id, stamp}` record, which here is
+/// [`GoalStatusStamped`].
 /// A goal progresses through these states during its lifecycle.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 #[repr(i8)]
-pub enum GoalStatus {
+pub enum GoalStatusCode {
     /// Status has not been set
     #[default]
     Unknown = 0,
@@ -151,12 +154,12 @@ pub enum GoalStatus {
     Aborted = 6,
 }
 
-impl GoalStatus {
+impl GoalStatusCode {
     /// Check if the goal is in a terminal state (completed, canceled, or aborted)
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
-            GoalStatus::Succeeded | GoalStatus::Canceled | GoalStatus::Aborted
+            GoalStatusCode::Succeeded | GoalStatusCode::Canceled | GoalStatusCode::Aborted
         )
     }
 
@@ -164,62 +167,63 @@ impl GoalStatus {
     pub fn is_active(&self) -> bool {
         matches!(
             self,
-            GoalStatus::Accepted | GoalStatus::Executing | GoalStatus::Canceling
+            GoalStatusCode::Accepted | GoalStatusCode::Executing | GoalStatusCode::Canceling
         )
     }
 
     /// Convert from i8 value
     pub fn from_i8(value: i8) -> Option<Self> {
         match value {
-            0 => Some(GoalStatus::Unknown),
-            1 => Some(GoalStatus::Accepted),
-            2 => Some(GoalStatus::Executing),
-            3 => Some(GoalStatus::Canceling),
-            4 => Some(GoalStatus::Succeeded),
-            5 => Some(GoalStatus::Canceled),
-            6 => Some(GoalStatus::Aborted),
+            0 => Some(GoalStatusCode::Unknown),
+            1 => Some(GoalStatusCode::Accepted),
+            2 => Some(GoalStatusCode::Executing),
+            3 => Some(GoalStatusCode::Canceling),
+            4 => Some(GoalStatusCode::Succeeded),
+            5 => Some(GoalStatusCode::Canceled),
+            6 => Some(GoalStatusCode::Aborted),
             _ => None,
         }
     }
 }
 
-impl fmt::Display for GoalStatus {
+impl fmt::Display for GoalStatusCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GoalStatus::Unknown => write!(f, "UNKNOWN"),
-            GoalStatus::Accepted => write!(f, "ACCEPTED"),
-            GoalStatus::Executing => write!(f, "EXECUTING"),
-            GoalStatus::Canceling => write!(f, "CANCELING"),
-            GoalStatus::Succeeded => write!(f, "SUCCEEDED"),
-            GoalStatus::Canceled => write!(f, "CANCELED"),
-            GoalStatus::Aborted => write!(f, "ABORTED"),
+            GoalStatusCode::Unknown => write!(f, "UNKNOWN"),
+            GoalStatusCode::Accepted => write!(f, "ACCEPTED"),
+            GoalStatusCode::Executing => write!(f, "EXECUTING"),
+            GoalStatusCode::Canceling => write!(f, "CANCELING"),
+            GoalStatusCode::Succeeded => write!(f, "SUCCEEDED"),
+            GoalStatusCode::Canceled => write!(f, "CANCELED"),
+            GoalStatusCode::Aborted => write!(f, "ABORTED"),
         }
     }
 }
 
-impl Serialize for GoalStatus {
+impl Serialize for GoalStatusCode {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         writer.write_i8(*self as i8)
     }
 }
 
-impl Deserialize for GoalStatus {
+impl Deserialize for GoalStatusCode {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
         let value = reader.read_i8()?;
-        GoalStatus::from_i8(value).ok_or(DeserError::InvalidData)
+        GoalStatusCode::from_i8(value).ok_or(DeserError::InvalidData)
     }
 }
 
-/// Unique identifier for a goal
+/// Unique identifier for a goal -- rclrs's `GoalUuid` (phase-515 R8).
 ///
-/// This is a 128-bit UUID matching `unique_identifier_msgs/msg/UUID`.
+/// This is a 128-bit UUID matching `unique_identifier_msgs/msg/UUID`. It was
+/// `GoalId`, which is a deprecated alias for one release.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct GoalId {
+pub struct GoalUuid {
     /// UUID bytes in standard format
     pub uuid: [u8; 16],
 }
 
-impl GoalId {
+impl GoalUuid {
     /// Length of the goal UUID in bytes (ROS 2 `unique_identifier_msgs/UUID`).
     pub const UUID_LEN: usize = 16;
 
@@ -235,22 +239,22 @@ impl GoalId {
     /// correct after the migration.
     pub const SEQ_PREFIX_LEN: usize = 0;
 
-    /// Create a new GoalId from UUID bytes
+    /// Create a new GoalUuid from UUID bytes
     pub const fn new(uuid: [u8; 16]) -> Self {
         Self { uuid }
     }
 
-    /// Create a zero/null GoalId
+    /// Create a zero/null GoalUuid
     pub const fn zero() -> Self {
         Self { uuid: [0; 16] }
     }
 
-    /// Check if this is a zero/null GoalId
+    /// Check if this is a zero/null GoalUuid
     pub fn is_zero(&self) -> bool {
         self.uuid == [0; 16]
     }
 
-    /// Create a GoalId from a simple counter (for testing/embedded use)
+    /// Create a GoalUuid from a simple counter (for testing/embedded use)
     ///
     /// This creates a deterministic UUID-like identifier from a counter value.
     /// Not a true UUID, but useful for embedded systems without random number generators.
@@ -265,13 +269,13 @@ impl GoalId {
     }
 }
 
-impl Default for GoalId {
+impl Default for GoalUuid {
     fn default() -> Self {
         Self::zero()
     }
 }
 
-impl Serialize for GoalId {
+impl Serialize for GoalUuid {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         for byte in &self.uuid {
             writer.write_u8(*byte)?;
@@ -280,7 +284,7 @@ impl Serialize for GoalId {
     }
 }
 
-impl Deserialize for GoalId {
+impl Deserialize for GoalUuid {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
         let mut uuid = [0u8; 16];
         for byte in &mut uuid {
@@ -290,12 +294,12 @@ impl Deserialize for GoalId {
     }
 }
 
-impl fmt::Debug for GoalId {
+impl fmt::Debug for GoalUuid {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Format as UUID string: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
         write!(
             f,
-            "GoalId({:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x})",
+            "GoalUuid({:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x})",
             self.uuid[0],
             self.uuid[1],
             self.uuid[2],
@@ -316,7 +320,7 @@ impl fmt::Debug for GoalId {
     }
 }
 
-impl fmt::Display for GoalId {
+impl fmt::Display for GoalUuid {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -348,7 +352,7 @@ impl fmt::Display for GoalId {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct GoalInfo {
     /// Unique identifier for the goal
-    pub goal_id: GoalId,
+    pub goal_id: GoalUuid,
     /// Timestamp when the goal was accepted (nanoseconds since epoch)
     pub stamp_sec: i32,
     /// Nanosecond part of timestamp
@@ -357,7 +361,7 @@ pub struct GoalInfo {
 
 impl GoalInfo {
     /// Create a new GoalInfo with the given ID and timestamp
-    pub const fn new(goal_id: GoalId, stamp_sec: i32, stamp_nanosec: u32) -> Self {
+    pub const fn new(goal_id: GoalUuid, stamp_sec: i32, stamp_nanosec: u32) -> Self {
         Self {
             goal_id,
             stamp_sec,
@@ -366,7 +370,7 @@ impl GoalInfo {
     }
 
     /// Create a GoalInfo with zero timestamp
-    pub const fn with_id(goal_id: GoalId) -> Self {
+    pub const fn with_id(goal_id: GoalUuid) -> Self {
         Self {
             goal_id,
             stamp_sec: 0,
@@ -387,7 +391,7 @@ impl Serialize for GoalInfo {
 impl Deserialize for GoalInfo {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
         Ok(Self {
-            goal_id: GoalId::deserialize(reader)?,
+            goal_id: GoalUuid::deserialize(reader)?,
             stamp_sec: reader.read_i32()?,
             stamp_nanosec: reader.read_u32()?,
         })
@@ -402,12 +406,12 @@ pub struct GoalStatusStamped {
     /// Goal information (ID and timestamp)
     pub goal_info: GoalInfo,
     /// Current status of the goal
-    pub status: GoalStatus,
+    pub status: GoalStatusCode,
 }
 
 impl GoalStatusStamped {
     /// Create a new GoalStatusStamped
-    pub const fn new(goal_info: GoalInfo, status: GoalStatus) -> Self {
+    pub const fn new(goal_info: GoalInfo, status: GoalStatusCode) -> Self {
         Self { goal_info, status }
     }
 }
@@ -424,7 +428,7 @@ impl Deserialize for GoalStatusStamped {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
         let goal_info = GoalInfo::deserialize(reader)?;
         let status_val = reader.read_i8()?;
-        let status = GoalStatus::from_i8(status_val).unwrap_or(GoalStatus::Unknown);
+        let status = GoalStatusCode::from_i8(status_val).unwrap_or(GoalStatusCode::Unknown);
         Ok(Self { goal_info, status })
     }
 }
@@ -449,7 +453,7 @@ impl Deserialize for GoalStatusStamped {
 /// [`nros::CancelResponse`]: CancelResponse
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[repr(i8)]
-pub enum CancelReturnCode {
+pub enum CancelResponseCode {
     /// No error, goal(s) will be canceled
     #[default]
     Ok = 0,
@@ -461,29 +465,29 @@ pub enum CancelReturnCode {
     GoalTerminated = 3,
 }
 
-impl CancelReturnCode {
+impl CancelResponseCode {
     /// Convert from i8 value
     pub fn from_i8(value: i8) -> Option<Self> {
         match value {
-            0 => Some(CancelReturnCode::Ok),
-            1 => Some(CancelReturnCode::Rejected),
-            2 => Some(CancelReturnCode::UnknownGoal),
-            3 => Some(CancelReturnCode::GoalTerminated),
+            0 => Some(CancelResponseCode::Ok),
+            1 => Some(CancelResponseCode::Rejected),
+            2 => Some(CancelResponseCode::UnknownGoal),
+            3 => Some(CancelResponseCode::GoalTerminated),
             _ => None,
         }
     }
 }
 
-impl Serialize for CancelReturnCode {
+impl Serialize for CancelResponseCode {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         writer.write_i8(*self as i8)
     }
 }
 
-impl Deserialize for CancelReturnCode {
+impl Deserialize for CancelResponseCode {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
         let value = reader.read_i8()?;
-        CancelReturnCode::from_i8(value).ok_or(DeserError::InvalidData)
+        CancelResponseCode::from_i8(value).ok_or(DeserError::InvalidData)
     }
 }
 
@@ -491,7 +495,7 @@ impl Deserialize for CancelReturnCode {
 ///
 /// The twin of [`GoalResponse`] for the cancel path: the user is asked about
 /// ONE goal and answers accept or reject. It never travels on the wire — the
-/// server turns the answer into a [`CancelReturnCode`] plus a `goals_canceling`
+/// server turns the answer into a [`CancelResponseCode`] plus a `goals_canceling`
 /// entry when it writes the `CancelGoal` reply.
 ///
 /// Discriminants match C's `rclc_cancel_response_t` (`RCLC_CANCEL_REJECT` = 0,
@@ -504,7 +508,7 @@ pub enum CancelResponse {
     /// Do not cancel this goal.
     #[default]
     Reject = 0,
-    /// Cancel this goal — it transitions to [`GoalStatus::Canceling`].
+    /// Cancel this goal — it transitions to [`GoalStatusCode::Canceling`].
     Accept = 1,
 }
 
@@ -563,6 +567,27 @@ impl GoalResponse {
 // claim was false (issue 1022's class). PR #806's precedent: in-tree-only
 // reach, measured, so a hard delete rather than a deprecated forwarder.
 
+/// The pre-phase-515 name of [`GoalUuid`].
+#[deprecated(
+    since = "0.6.0",
+    note = "renamed to `GoalUuid`, rclrs's name (phase-515 R8)"
+)]
+pub type GoalId = GoalUuid;
+
+/// The pre-phase-515 name of [`GoalStatusCode`].
+#[deprecated(
+    since = "0.6.0",
+    note = "renamed to `GoalStatusCode`, rclrs's name (phase-515 R8)"
+)]
+pub type GoalStatus = GoalStatusCode;
+
+/// The pre-phase-515 name of [`CancelResponseCode`].
+#[deprecated(
+    since = "0.6.0",
+    note = "renamed to `CancelResponseCode`, rclrs's name (phase-515 R8)"
+)]
+pub type CancelReturnCode = CancelResponseCode;
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -572,63 +597,63 @@ mod tests {
 
     #[test]
     fn test_goal_status_is_terminal() {
-        assert!(!GoalStatus::Unknown.is_terminal());
-        assert!(!GoalStatus::Accepted.is_terminal());
-        assert!(!GoalStatus::Executing.is_terminal());
-        assert!(!GoalStatus::Canceling.is_terminal());
-        assert!(GoalStatus::Succeeded.is_terminal());
-        assert!(GoalStatus::Canceled.is_terminal());
-        assert!(GoalStatus::Aborted.is_terminal());
+        assert!(!GoalStatusCode::Unknown.is_terminal());
+        assert!(!GoalStatusCode::Accepted.is_terminal());
+        assert!(!GoalStatusCode::Executing.is_terminal());
+        assert!(!GoalStatusCode::Canceling.is_terminal());
+        assert!(GoalStatusCode::Succeeded.is_terminal());
+        assert!(GoalStatusCode::Canceled.is_terminal());
+        assert!(GoalStatusCode::Aborted.is_terminal());
     }
 
     #[test]
     fn test_goal_status_is_active() {
-        assert!(!GoalStatus::Unknown.is_active());
-        assert!(GoalStatus::Accepted.is_active());
-        assert!(GoalStatus::Executing.is_active());
-        assert!(GoalStatus::Canceling.is_active());
-        assert!(!GoalStatus::Succeeded.is_active());
-        assert!(!GoalStatus::Canceled.is_active());
-        assert!(!GoalStatus::Aborted.is_active());
+        assert!(!GoalStatusCode::Unknown.is_active());
+        assert!(GoalStatusCode::Accepted.is_active());
+        assert!(GoalStatusCode::Executing.is_active());
+        assert!(GoalStatusCode::Canceling.is_active());
+        assert!(!GoalStatusCode::Succeeded.is_active());
+        assert!(!GoalStatusCode::Canceled.is_active());
+        assert!(!GoalStatusCode::Aborted.is_active());
     }
 
     #[test]
     fn test_goal_status_from_i8() {
-        assert_eq!(GoalStatus::from_i8(0), Some(GoalStatus::Unknown));
-        assert_eq!(GoalStatus::from_i8(1), Some(GoalStatus::Accepted));
-        assert_eq!(GoalStatus::from_i8(2), Some(GoalStatus::Executing));
-        assert_eq!(GoalStatus::from_i8(3), Some(GoalStatus::Canceling));
-        assert_eq!(GoalStatus::from_i8(4), Some(GoalStatus::Succeeded));
-        assert_eq!(GoalStatus::from_i8(5), Some(GoalStatus::Canceled));
-        assert_eq!(GoalStatus::from_i8(6), Some(GoalStatus::Aborted));
-        assert_eq!(GoalStatus::from_i8(7), None);
-        assert_eq!(GoalStatus::from_i8(-1), None);
+        assert_eq!(GoalStatusCode::from_i8(0), Some(GoalStatusCode::Unknown));
+        assert_eq!(GoalStatusCode::from_i8(1), Some(GoalStatusCode::Accepted));
+        assert_eq!(GoalStatusCode::from_i8(2), Some(GoalStatusCode::Executing));
+        assert_eq!(GoalStatusCode::from_i8(3), Some(GoalStatusCode::Canceling));
+        assert_eq!(GoalStatusCode::from_i8(4), Some(GoalStatusCode::Succeeded));
+        assert_eq!(GoalStatusCode::from_i8(5), Some(GoalStatusCode::Canceled));
+        assert_eq!(GoalStatusCode::from_i8(6), Some(GoalStatusCode::Aborted));
+        assert_eq!(GoalStatusCode::from_i8(7), None);
+        assert_eq!(GoalStatusCode::from_i8(-1), None);
     }
 
     #[test]
     fn test_goal_id_zero() {
-        let id = GoalId::zero();
+        let id = GoalUuid::zero();
         assert!(id.is_zero());
         assert_eq!(id.uuid, [0; 16]);
     }
 
     #[test]
     fn test_goal_id_from_counter() {
-        let id1 = GoalId::from_counter(1);
-        let id2 = GoalId::from_counter(2);
+        let id1 = GoalUuid::from_counter(1);
+        let id2 = GoalUuid::from_counter(2);
 
         assert!(!id1.is_zero());
         assert!(!id2.is_zero());
         assert_ne!(id1, id2);
 
         // Same counter should produce same ID
-        let id1_again = GoalId::from_counter(1);
+        let id1_again = GoalUuid::from_counter(1);
         assert_eq!(id1, id1_again);
     }
 
     #[test]
     fn test_goal_id_display() {
-        let id = GoalId::new([
+        let id = GoalUuid::new([
             0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
             0x77, 0x88,
         ]);
@@ -638,20 +663,20 @@ mod tests {
 
     #[test]
     fn test_cancel_return_code_from_i8() {
-        assert_eq!(CancelReturnCode::from_i8(0), Some(CancelReturnCode::Ok));
+        assert_eq!(CancelResponseCode::from_i8(0), Some(CancelResponseCode::Ok));
         assert_eq!(
-            CancelReturnCode::from_i8(1),
-            Some(CancelReturnCode::Rejected)
+            CancelResponseCode::from_i8(1),
+            Some(CancelResponseCode::Rejected)
         );
         assert_eq!(
-            CancelReturnCode::from_i8(2),
-            Some(CancelReturnCode::UnknownGoal)
+            CancelResponseCode::from_i8(2),
+            Some(CancelResponseCode::UnknownGoal)
         );
         assert_eq!(
-            CancelReturnCode::from_i8(3),
-            Some(CancelReturnCode::GoalTerminated)
+            CancelResponseCode::from_i8(3),
+            Some(CancelResponseCode::GoalTerminated)
         );
-        assert_eq!(CancelReturnCode::from_i8(4), None);
+        assert_eq!(CancelResponseCode::from_i8(4), None);
     }
 
     /// Issue 0796 — the per-goal decision and the RPC return code are two
@@ -667,10 +692,10 @@ mod tests {
         assert_eq!(CancelResponse::default(), CancelResponse::Reject);
 
         // Same byte, opposite verdicts.
-        assert_eq!(CancelResponse::Reject as i8, CancelReturnCode::Ok as i8);
+        assert_eq!(CancelResponse::Reject as i8, CancelResponseCode::Ok as i8);
         assert_eq!(
             CancelResponse::Accept as i8,
-            CancelReturnCode::Rejected as i8
+            CancelResponseCode::Rejected as i8
         );
     }
 
@@ -683,7 +708,7 @@ mod tests {
 
     #[test]
     fn test_goal_info_new() {
-        let goal_id = GoalId::from_counter(42);
+        let goal_id = GoalUuid::from_counter(42);
         let info = GoalInfo::new(goal_id, 123, 456);
         assert_eq!(info.goal_id, goal_id);
         assert_eq!(info.stamp_sec, 123);
@@ -692,7 +717,7 @@ mod tests {
 
     #[test]
     fn test_goal_info_with_id() {
-        let goal_id = GoalId::from_counter(42);
+        let goal_id = GoalUuid::from_counter(42);
         let info = GoalInfo::with_id(goal_id);
         assert_eq!(info.goal_id, goal_id);
         assert_eq!(info.stamp_sec, 0);
@@ -701,18 +726,18 @@ mod tests {
 
     #[test]
     fn test_goal_status_stamped() {
-        let goal_id = GoalId::from_counter(1);
+        let goal_id = GoalUuid::from_counter(1);
         let info = GoalInfo::with_id(goal_id);
-        let stamped = GoalStatusStamped::new(info, GoalStatus::Executing);
+        let stamped = GoalStatusStamped::new(info, GoalStatusCode::Executing);
         assert_eq!(stamped.goal_info.goal_id, goal_id);
-        assert_eq!(stamped.status, GoalStatus::Executing);
+        assert_eq!(stamped.status, GoalStatusCode::Executing);
     }
 
     #[test]
     fn test_goal_id_serialization() {
         use nros_serdes::{CdrReader, CdrWriter};
 
-        let original = GoalId::new([
+        let original = GoalUuid::new([
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
             0x0f, 0x10,
         ]);
@@ -726,7 +751,7 @@ mod tests {
 
         // Deserialize
         let mut reader = CdrReader::new(&buf[..len]);
-        let deserialized = GoalId::deserialize(&mut reader).unwrap();
+        let deserialized = GoalUuid::deserialize(&mut reader).unwrap();
 
         assert_eq!(original, deserialized);
     }
@@ -736,13 +761,13 @@ mod tests {
         use nros_serdes::{CdrReader, CdrWriter};
 
         for status in [
-            GoalStatus::Unknown,
-            GoalStatus::Accepted,
-            GoalStatus::Executing,
-            GoalStatus::Canceling,
-            GoalStatus::Succeeded,
-            GoalStatus::Canceled,
-            GoalStatus::Aborted,
+            GoalStatusCode::Unknown,
+            GoalStatusCode::Accepted,
+            GoalStatusCode::Executing,
+            GoalStatusCode::Canceling,
+            GoalStatusCode::Succeeded,
+            GoalStatusCode::Canceled,
+            GoalStatusCode::Aborted,
         ] {
             let mut buf = [0u8; 8];
             let len = {
@@ -752,7 +777,7 @@ mod tests {
             };
 
             let mut reader = CdrReader::new(&buf[..len]);
-            let deserialized = GoalStatus::deserialize(&mut reader).unwrap();
+            let deserialized = GoalStatusCode::deserialize(&mut reader).unwrap();
 
             assert_eq!(status, deserialized);
         }
@@ -762,7 +787,7 @@ mod tests {
     fn test_goal_info_serialization() {
         use nros_serdes::{CdrReader, CdrWriter};
 
-        let goal_id = GoalId::from_counter(42);
+        let goal_id = GoalUuid::from_counter(42);
         let original = GoalInfo::new(goal_id, 1234567890, 123456789);
 
         // Serialize
@@ -786,9 +811,9 @@ mod tests {
     fn test_goal_status_stamped_serialization() {
         use nros_serdes::{CdrReader, CdrWriter};
 
-        let goal_id = GoalId::from_counter(99);
+        let goal_id = GoalUuid::from_counter(99);
         let goal_info = GoalInfo::new(goal_id, 987654321, 111222333);
-        let original = GoalStatusStamped::new(goal_info, GoalStatus::Succeeded);
+        let original = GoalStatusStamped::new(goal_info, GoalStatusCode::Succeeded);
 
         // Serialize
         let mut buf = [0u8; 64];
@@ -823,12 +848,12 @@ mod tests {
 mod verification {
     use super::*;
 
-    // ---- GoalStatus ----
+    // ---- GoalStatusCode ----
 
     #[kani::proof]
     fn goal_status_from_i8_valid_range() {
         let val: i8 = kani::any();
-        let status = GoalStatus::from_i8(val);
+        let status = GoalStatusCode::from_i8(val);
         if (0..=6).contains(&val) {
             assert!(status.is_some());
         } else {
@@ -840,7 +865,7 @@ mod verification {
     fn goal_status_terminal_active_exclusive() {
         let val: i8 = kani::any();
         kani::assume((0..=6).contains(&val));
-        let status = GoalStatus::from_i8(val).unwrap();
+        let status = GoalStatusCode::from_i8(val).unwrap();
         // Terminal and active must be mutually exclusive
         assert!(!(status.is_terminal() && status.is_active()));
         // Unknown(0) is neither terminal nor active
@@ -865,7 +890,7 @@ mod verification {
     fn goal_status_serialize_roundtrip() {
         let val: i8 = kani::any();
         kani::assume((0..=6).contains(&val));
-        let status = GoalStatus::from_i8(val).unwrap();
+        let status = GoalStatusCode::from_i8(val).unwrap();
 
         let mut buf = [0u8; 8];
         let len = {
@@ -875,7 +900,7 @@ mod verification {
         };
 
         let mut reader = CdrReader::new(&buf[..len]);
-        let deserialized = GoalStatus::deserialize(&mut reader).unwrap();
+        let deserialized = GoalStatusCode::deserialize(&mut reader).unwrap();
         assert_eq!(status, deserialized);
     }
 
@@ -901,12 +926,12 @@ mod verification {
         assert_eq!(resp.is_accepted(), val >= 1);
     }
 
-    // ---- CancelReturnCode ----
+    // ---- CancelResponseCode ----
 
     #[kani::proof]
     fn cancel_return_code_from_i8_valid_range() {
         let val: i8 = kani::any();
-        let resp = CancelReturnCode::from_i8(val);
+        let resp = CancelResponseCode::from_i8(val);
         if (0..=3).contains(&val) {
             assert!(resp.is_some());
         } else {
@@ -927,11 +952,11 @@ mod verification {
         }
     }
 
-    // ---- GoalId ----
+    // ---- GoalUuid ----
 
     #[kani::proof]
     fn goal_id_zero_is_zero() {
-        let id = GoalId::zero();
+        let id = GoalUuid::zero();
         assert!(id.is_zero());
     }
 
@@ -940,8 +965,8 @@ mod verification {
         let counter: u64 = kani::any();
         // Constrain for CBMC tractability (exercises same byte/bit logic)
         kani::assume(counter <= 1_000_000);
-        let id1 = GoalId::from_counter(counter);
-        let id2 = GoalId::from_counter(counter);
+        let id1 = GoalUuid::from_counter(counter);
+        let id2 = GoalUuid::from_counter(counter);
         assert_eq!(id1, id2);
     }
 
@@ -949,7 +974,7 @@ mod verification {
     fn goal_id_from_counter_not_zero() {
         let counter: u64 = kani::any();
         kani::assume(counter > 0 && counter <= 1_000_000);
-        let id = GoalId::from_counter(counter);
+        let id = GoalUuid::from_counter(counter);
         assert!(!id.is_zero());
     }
 
@@ -961,7 +986,7 @@ mod verification {
         uuid[0] = kani::any();
         uuid[7] = kani::any();
         uuid[15] = kani::any();
-        let id = GoalId::new(uuid);
+        let id = GoalUuid::new(uuid);
 
         let mut buf = [0u8; 32];
         let len = {
@@ -971,7 +996,7 @@ mod verification {
         };
 
         let mut reader = CdrReader::new(&buf[..len]);
-        let deserialized = GoalId::deserialize(&mut reader).unwrap();
+        let deserialized = GoalUuid::deserialize(&mut reader).unwrap();
         assert_eq!(id, deserialized);
     }
 }

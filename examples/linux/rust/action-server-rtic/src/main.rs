@@ -54,7 +54,7 @@ fn main() {
                 if let Some(active_goal) = server.get_goal(&goal_id) {
                     let order = active_goal.goal.order;
 
-                    server.set_goal_status(&goal_id, GoalStatus::Executing);
+                    server.set_goal_status(&goal_id, GoalStatusCode::Executing);
                     log_info!(&LOGGER, "Executing goal");
 
                     // Compute Fibonacci with feedback
@@ -91,7 +91,9 @@ fn main() {
                     log_info!(&LOGGER, "Goal succeeded");
                     // Issue 0796 — `complete_goal` reports a result the
                     // server could not retain for a later `get_result`.
-                    if let Err(e) = server.complete_goal(&goal_id, GoalStatus::Succeeded, result) {
+                    if let Err(e) =
+                        server.complete_goal(&goal_id, GoalStatusCode::Succeeded, result)
+                    {
                         log_error!(&LOGGER, "complete_goal failed: {:?}", e);
                     }
                 }

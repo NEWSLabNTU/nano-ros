@@ -210,7 +210,7 @@ impl Default for ActionServerInternal {
 /// user callbacks a `*const rclc_goal_handle_t` that's valid for the
 /// duration of the callback. Users copy the handle by value if they need
 /// the UUID beyond the callback's lifetime.
-unsafe fn handle_from_goal_id(goal_id: *const nros_node::GoalId) -> rclc_goal_handle_t {
+unsafe fn handle_from_goal_id(goal_id: *const nros_node::GoalUuid) -> rclc_goal_handle_t {
     rclc_goal_handle_t {
         uuid: rclc_goal_uuid_t {
             uuid: (*goal_id).uuid,
@@ -225,7 +225,7 @@ unsafe fn handle_from_goal_id(goal_id: *const nros_node::GoalId) -> rclc_goal_ha
 /// request, len, ctx)`. `context` is the `rcl_action_server_t` itself. The handle lives on this stack frame; users that
 /// need to reference the goal later copy it by value.
 pub(crate) unsafe extern "C" fn goal_callback_trampoline(
-    goal_id: *const nros_node::GoalId,
+    goal_id: *const nros_node::GoalUuid,
     goal_data: *const u8,
     goal_len: usize,
     context: *mut c_void,
@@ -267,7 +267,7 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
 /// the accept reply to the client. Forwards to the user's
 /// `accepted_callback` with a stack-local handle.
 pub(crate) unsafe extern "C" fn accepted_callback_trampoline(
-    goal_id: *const nros_node::GoalId,
+    goal_id: *const nros_node::GoalUuid,
     context: *mut c_void,
 ) {
     let server = context as *mut rcl_action_server_t;
@@ -283,8 +283,8 @@ pub(crate) unsafe extern "C" fn accepted_callback_trampoline(
 /// Status transitions (CANCELING, etc.) are performed by the arena in
 /// `ActionServerCore`; this trampoline only translates the ABI.
 pub(crate) unsafe extern "C" fn cancel_callback_trampoline(
-    goal_id: *const nros_node::GoalId,
-    _status: nros_node::GoalStatus,
+    goal_id: *const nros_node::GoalUuid,
+    _status: nros_node::GoalStatusCode,
     context: *mut c_void,
 ) -> nros_node::CancelResponse {
     let server = context as *mut rcl_action_server_t;
@@ -515,13 +515,13 @@ pub unsafe extern "C" fn rclc_action_publish_feedback_raw(
     let handle = internal.handle;
 
     let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_node::GoalId {
+    let goal_id = nros_node::GoalUuid {
         uuid: (*goal).uuid.uuid,
     };
     let data = core::slice::from_raw_parts(feedback, feedback_len);
 
     // C serialize produces [CDR_HEADER][fields], but publish_feedback_raw
-    // expects raw fields only (it adds its own CDR header + GoalId framing).
+    // expects raw fields only (it adds its own CDR header + GoalUuid framing).
     let fields = strip_cdr_header(data);
 
     match handle.publish_feedback_raw(&mut executor, &goal_id, fields) {
@@ -550,7 +550,7 @@ pub unsafe extern "C" fn rclc_action_succeed(
     let handle = internal.handle;
 
     let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_node::GoalId {
+    let goal_id = nros_node::GoalUuid {
         uuid: (*goal).uuid.uuid,
     };
     let result_data = if !result.is_null() {
@@ -569,7 +569,7 @@ pub unsafe extern "C" fn rclc_action_succeed(
     match handle.complete_goal_raw(
         &mut executor,
         &goal_id,
-        nros_node::GoalStatus::Succeeded,
+        nros_node::GoalStatusCode::Succeeded,
         result_fields,
     ) {
         Ok(()) => RCL_RET_OK,
@@ -596,7 +596,7 @@ pub unsafe extern "C" fn rclc_action_abort(
     let handle = internal.handle;
 
     let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_node::GoalId {
+    let goal_id = nros_node::GoalUuid {
         uuid: (*goal).uuid.uuid,
     };
     let result_data = if !result.is_null() {
@@ -613,7 +613,7 @@ pub unsafe extern "C" fn rclc_action_abort(
     match handle.complete_goal_raw(
         &mut executor,
         &goal_id,
-        nros_node::GoalStatus::Aborted,
+        nros_node::GoalStatusCode::Aborted,
         result_fields,
     ) {
         Ok(()) => RCL_RET_OK,
@@ -640,7 +640,7 @@ pub unsafe extern "C" fn rclc_action_canceled(
     let handle = internal.handle;
 
     let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_node::GoalId {
+    let goal_id = nros_node::GoalUuid {
         uuid: (*goal).uuid.uuid,
     };
     let result_data = if !result.is_null() {
@@ -657,7 +657,7 @@ pub unsafe extern "C" fn rclc_action_canceled(
     match handle.complete_goal_raw(
         &mut executor,
         &goal_id,
-        nros_node::GoalStatus::Canceled,
+        nros_node::GoalStatusCode::Canceled,
         result_fields,
     ) {
         Ok(()) => RCL_RET_OK,
@@ -685,10 +685,14 @@ pub unsafe extern "C" fn rclc_action_execute(
     let handle = internal.handle;
 
     let mut executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_node::GoalId {
+    let goal_id = nros_node::GoalUuid {
         uuid: (*goal).uuid.uuid,
     };
-    handle.set_goal_status(&mut executor, &goal_id, nros_node::GoalStatus::Executing);
+    handle.set_goal_status(
+        &mut executor,
+        &goal_id,
+        nros_node::GoalStatusCode::Executing,
+    );
     RCL_RET_OK
 }
 
@@ -811,7 +815,7 @@ pub unsafe extern "C" fn rclc_action_server_goal_exists(
     if server.is_null() || goal.is_null() {
         return false;
     }
-    let goal_id = nros_node::GoalId {
+    let goal_id = nros_node::GoalUuid {
         uuid: (*goal).uuid.uuid,
     };
     match (*server).state {
@@ -910,7 +914,7 @@ pub unsafe extern "C" fn rclc_action_get_goal_status(
     }
     let handle = internal.handle;
     let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    let goal_id = nros_node::GoalId {
+    let goal_id = nros_node::GoalUuid {
         uuid: (*goal).uuid.uuid,
     };
     match handle.goal_status(&executor, &goal_id) {
@@ -922,31 +926,31 @@ pub unsafe extern "C" fn rclc_action_get_goal_status(
     }
 }
 
-/// Map a `nros_node::GoalStatus` to its `rclc_goal_status_t` equivalent.
-fn goal_status_from_core(status: nros_node::GoalStatus) -> rclc_goal_status_t {
-    use nros_node::GoalStatus;
+/// Map a `nros_node::GoalStatusCode` to its `rclc_goal_status_t` equivalent.
+fn goal_status_from_core(status: nros_node::GoalStatusCode) -> rclc_goal_status_t {
+    use nros_node::GoalStatusCode;
     match status {
-        GoalStatus::Unknown => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
-        GoalStatus::Accepted => rclc_goal_status_t::RCLC_GOAL_STATUS_ACCEPTED,
-        GoalStatus::Executing => rclc_goal_status_t::RCLC_GOAL_STATUS_EXECUTING,
-        GoalStatus::Canceling => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELING,
-        GoalStatus::Succeeded => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
-        GoalStatus::Canceled => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
-        GoalStatus::Aborted => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
+        GoalStatusCode::Unknown => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
+        GoalStatusCode::Accepted => rclc_goal_status_t::RCLC_GOAL_STATUS_ACCEPTED,
+        GoalStatusCode::Executing => rclc_goal_status_t::RCLC_GOAL_STATUS_EXECUTING,
+        GoalStatusCode::Canceling => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELING,
+        GoalStatusCode::Succeeded => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
+        GoalStatusCode::Canceled => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
+        GoalStatusCode::Aborted => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
     }
 }
 
 /// Phase 122.3.c.6.b — reverse of `goal_status_from_core`.
-fn c_status_to_rust(status: rclc_goal_status_t) -> nros_node::GoalStatus {
-    use nros_node::GoalStatus;
+fn c_status_to_rust(status: rclc_goal_status_t) -> nros_node::GoalStatusCode {
+    use nros_node::GoalStatusCode;
     match status {
-        rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN => GoalStatus::Unknown,
-        rclc_goal_status_t::RCLC_GOAL_STATUS_ACCEPTED => GoalStatus::Accepted,
-        rclc_goal_status_t::RCLC_GOAL_STATUS_EXECUTING => GoalStatus::Executing,
-        rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELING => GoalStatus::Canceling,
-        rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED => GoalStatus::Succeeded,
-        rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED => GoalStatus::Canceled,
-        rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED => GoalStatus::Aborted,
+        rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN => GoalStatusCode::Unknown,
+        rclc_goal_status_t::RCLC_GOAL_STATUS_ACCEPTED => GoalStatusCode::Accepted,
+        rclc_goal_status_t::RCLC_GOAL_STATUS_EXECUTING => GoalStatusCode::Executing,
+        rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELING => GoalStatusCode::Canceling,
+        rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED => GoalStatusCode::Succeeded,
+        rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED => GoalStatusCode::Canceled,
+        rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED => GoalStatusCode::Aborted,
     }
 }
 
@@ -1288,7 +1292,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_goal_exists(
     }
     #[cfg(feature = "rmw-cffi")]
     {
-        let goal_id = nros_node::GoalId {
+        let goal_id = nros_node::GoalUuid {
             uuid: (*goal).uuid.uuid,
         };
         match polling_server_core(server) {
@@ -1407,7 +1411,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_accept_goal_raw(
             Some(c) => c,
             None => return RCL_RET_INVALID_ARGUMENT,
         };
-        let id = nros::GoalId { uuid: *goal_id };
+        let id = nros::GoalUuid { uuid: *goal_id };
         core.accept_goal(id, sequence_number)
             .map(|_| RCL_RET_OK)
             .unwrap_or(RCL_RET_ERROR)
@@ -1466,7 +1470,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_publish_feedback_raw(
             Some(c) => c,
             None => return RCL_RET_INVALID_ARGUMENT,
         };
-        let id = nros::GoalId { uuid: *goal_id };
+        let id = nros::GoalUuid { uuid: *goal_id };
         let slice = core::slice::from_raw_parts(feedback_cdr, feedback_len);
         core.publish_feedback_raw(&id, slice)
             .map(|_| RCL_RET_OK)
@@ -1501,7 +1505,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_complete_goal_raw(
             Some(c) => c,
             None => return RCL_RET_INVALID_ARGUMENT,
         };
-        let id = nros::GoalId { uuid: *goal_id };
+        let id = nros::GoalUuid { uuid: *goal_id };
         let rust_status = c_status_to_rust(status);
         let slice = core::slice::from_raw_parts(result_cdr, result_len);
         // issue 0796 — see `rclc_action_succeed`.
@@ -1569,7 +1573,7 @@ pub unsafe extern "C" fn rclc_polling_action_server_try_recv_cancel_request_raw(
 /// Phase 122.3.c.6.d — overall cancel-RPC return code. Distinct from
 /// the per-goal `rclc_cancel_response_t` (ACCEPT/REJECT) used by the
 /// L2 callback path. These four discriminants mirror
-/// `nros_core::CancelReturnCode` and the `action_msgs/srv/CancelGoal`
+/// `nros_core::CancelResponseCode` and the `action_msgs/srv/CancelGoal`
 /// wire-CDR `return_code` field. (Issue 0796 — the Rust type was called
 /// `CancelResponse` until it was split; this pair of C names is what the
 /// Rust names now follow.)
@@ -1607,28 +1611,28 @@ pub unsafe extern "C" fn rclc_polling_action_server_send_cancel_reply_raw(
             None => return RCL_RET_INVALID_ARGUMENT,
         };
         let cancel_resp = match return_code {
-            rclc_cancel_return_code_t::RCLC_CANCEL_RC_OK => nros_node::CancelReturnCode::Ok,
+            rclc_cancel_return_code_t::RCLC_CANCEL_RC_OK => nros_node::CancelResponseCode::Ok,
             rclc_cancel_return_code_t::RCLC_CANCEL_RC_REJECTED => {
-                nros_node::CancelReturnCode::Rejected
+                nros_node::CancelResponseCode::Rejected
             }
             rclc_cancel_return_code_t::RCLC_CANCEL_RC_UNKNOWN_GOAL => {
-                nros_node::CancelReturnCode::UnknownGoal
+                nros_node::CancelResponseCode::UnknownGoal
             }
             rclc_cancel_return_code_t::RCLC_CANCEL_RC_GOAL_TERMINATED => {
-                nros_node::CancelReturnCode::GoalTerminated
+                nros_node::CancelResponseCode::GoalTerminated
             }
         };
         // Build a stack-resident slice of GoalIds from the caller's
         // contiguous byte array. Cap at 8 — the wire format allows
         // more but no current backend handles more than a few
         // simultaneous cancels.
-        let mut ids: nros_core::heapless::Vec<nros::GoalId, 8> = nros_core::heapless::Vec::new();
+        let mut ids: nros_core::heapless::Vec<nros::GoalUuid, 8> = nros_core::heapless::Vec::new();
         for i in 0..accepted_count {
             if i >= 8 {
                 return RCLC_RET_BAD_SEQUENCE;
             }
             let uuid = *accepted.add(i);
-            if ids.push(nros::GoalId { uuid }).is_err() {
+            if ids.push(nros::GoalUuid { uuid }).is_err() {
                 return RCL_RET_ERROR;
             }
         }
