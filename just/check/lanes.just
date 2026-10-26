@@ -562,6 +562,23 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/subscription_status_poll
     ./tmp/subscription_status_poll
+    # phase-515 C8 -- rcl's rcl_service_server_is_available, every return
+    # path, against the stub's availability knob.
+    echo "  - phase-515 C8: rcl_service_server_is_available (runtime)"
+    test -f packages/api/nros-c/tests/run/service_server_is_available.c || { \
+        echo "ERROR: service_server_is_available.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/service_server_is_available.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/service_server_is_available
+    ./tmp/service_server_is_available
     echo "  - issue 2081: rclc_executor_add_service_raw_with_request_id hands the"
     echo "    callback the request's id from the backend's take_request_with_info slot"
     test -f packages/api/nros-c/tests/run/service_request_id.c || { \

@@ -326,7 +326,8 @@ static rmw_ret_t take_inbound_any(const void* token, rmw_mut_byte_span_t* out, i
         }
     }
     if (taken != NULL) *taken = true;
-    memmove(&s_inbound[at], &s_inbound[at + 1], (s_inbound_count - at - 1) * sizeof(stub_inbound_t));
+    memmove(&s_inbound[at], &s_inbound[at + 1],
+            (s_inbound_count - at - 1) * sizeof(stub_inbound_t));
     --s_inbound_count;
     return NROS_RMW_RET_OK;
 }
@@ -346,9 +347,8 @@ bool nros_stub_rmw_stage_request(const char* service_suffix, int64_t seq, const 
     return stage_inbound(service_suffix, seq, data, len);
 }
 
-bool nros_stub_rmw_stage_request_info(const char* service_suffix, int64_t seq,
-                                      const uint8_t* data, size_t len,
-                                      const nros_stub_service_info_t* info) {
+bool nros_stub_rmw_stage_request_info(const char* service_suffix, int64_t seq, const uint8_t* data,
+                                      size_t len, const nros_stub_service_info_t* info) {
     if (!stage_inbound(service_suffix, seq, data, len)) return false;
     if (info != NULL) {
         s_inbound[s_inbound_count - 1].has_service_info = true;
@@ -447,7 +447,8 @@ static rmw_ret_t stub_has_data(rmw_subscription_t* subscription, bool* out_has_d
     s_sub_has_data_calls++;
     stub_poll_status_from_has_data();
     if (out_has_data != NULL) {
-        *out_has_data = subscription != NULL && inbound_for(subscription->backend_data) != s_inbound_count;
+        *out_has_data =
+            subscription != NULL && inbound_for(subscription->backend_data) != s_inbound_count;
     }
     return NROS_RMW_RET_OK;
 }
@@ -648,6 +649,22 @@ bool nros_stub_rmw_stage_reply_for(int64_t seq, const uint8_t* data, size_t len)
     r->seq = seq;
     ++s_reply_count;
     return true;
+}
+
+/* phase-515 C8 — the server-availability answer. -1 = the backend cannot
+ * tell (NROS_RMW_RET_UNSUPPORTED), the same answer a NULL slot gives, so
+ * every probe that never sets it sees what it saw before the slot existed. */
+static int s_server_available = -1;
+
+void nros_stub_rmw_set_server_available(int available) {
+    s_server_available = available;
+}
+
+static rmw_ret_t stub_service_server_is_available(const rmw_client_t* client, bool* out_available) {
+    (void)client;
+    if (s_server_available < 0) return NROS_RMW_RET_UNSUPPORTED;
+    *out_available = s_server_available != 0;
+    return NROS_RMW_RET_OK;
 }
 
 bool nros_stub_rmw_stage_reply(const uint8_t* data, size_t len) {
@@ -891,6 +908,7 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .destroy_client = stub_destroy_client,
     .send_request = stub_send_request,
     .take_response = stub_take_response,
+    .service_server_is_available = stub_service_server_is_available,
     .set_wake_callback = stub_set_wake_callback,
     .supported_qos_policies = stub_supported_qos_policies,
     .publisher_get_actual_qos = stub_publisher_get_actual_qos,

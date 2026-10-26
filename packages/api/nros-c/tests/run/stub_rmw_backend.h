@@ -110,6 +110,10 @@ uint32_t nros_stub_rmw_publish_count(void);
  *  next stage. `false` if it does not fit the stub's 256-byte slot. */
 bool nros_stub_rmw_stage_reply(const uint8_t* data, size_t len);
 
+/** phase-515 C8 — what `service_server_is_available` answers: `1` a server is
+ *  visible, `0` none is, `-1` (the default) the backend cannot tell. */
+void nros_stub_rmw_set_server_available(int available);
+
 /** Issue 1996 — client requests the stub has accepted since process start. */
 uint32_t nros_stub_rmw_requests_sent(void);
 
@@ -184,9 +188,8 @@ typedef struct nros_stub_service_info_t {
 
 /** Issue 2081 — `nros_stub_rmw_stage_request` plus the metadata the backend's
  *  `take_request_with_info` slot reports with it. */
-bool nros_stub_rmw_stage_request_info(const char* service_suffix, int64_t seq,
-                                      const uint8_t* data, size_t len,
-                                      const nros_stub_service_info_t* info);
+bool nros_stub_rmw_stage_request_info(const char* service_suffix, int64_t seq, const uint8_t* data,
+                                      size_t len, const nros_stub_service_info_t* info);
 
 /** Issue 2015 — the newest response a service server whose name ends with
  *  @p service_suffix sent: its bytes (NULL if none), id and length. */

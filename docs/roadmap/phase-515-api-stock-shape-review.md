@@ -240,7 +240,13 @@ The C++ half (taking replies in the spin) is issue 2034, **resolved 2026-10-25**
 `rclc_publish_raw`), `rcl_service_server_is_available`,
 `client_server_available`, `executor_handle_invocation_t`,
 `action_server_get_active_goal_count`. Land each, or re-verdict it with a
-reason.
+reason. **`rcl_service_server_is_available` LANDED 2026-10-27:** rcl's
+name and three arguments (`RCL_RET_UNSUPPORTED` when the backend cannot tell);
+`rclc_client_server_available` and `rclc_client_service_is_ready` keep their
+shapes one release. That supersedes the 2026-09-03 target of reshaping
+`rclc_client_service_is_ready` in place, an ABI break C cannot alias. The
+other two, `executor_handle_invocation_t` and `action_server_get_active_goal_count`,
+are already `landed` records. Open: `rcl_publish_serialized_message`.
 
 ### P — rclcpp
 

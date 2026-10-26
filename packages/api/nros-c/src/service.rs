@@ -1882,6 +1882,10 @@ pub unsafe extern "C" fn rclc_client_set_timeout(
 /// hard yes/no should treat `-1` as "unknown — assume yes" or use
 /// [`rclc_client_wait_for_service`] instead.
 ///
+/// Superseded by [`rcl_service_server_is_available`] (phase-515 C8), rcl's
+/// name and shape, whose `RCL_RET_UNSUPPORTED` is this function's `-1`; kept
+/// one release.
+///
 /// # Returns
 /// * `RCL_RET_OK` — `*out` was written (`0`, `1`, or `-1`).
 /// * `RCL_RET_INVALID_ARGUMENT` — `client` or `out` is null.
@@ -2024,9 +2028,73 @@ pub unsafe extern "C" fn rclc_client_wait_for_service(
     }
 }
 
+/// rcl's `rcl_service_server_is_available(node, client, is_available)`,
+/// argument for argument (phase-515 C8).
+///
+/// Writes whether at least one matching service server is visible on the RMW
+/// graph, without spinning. ADOPT-BOUNDED: a backend that cannot answer
+/// (XRCE without participant enumeration) returns `RCL_RET_UNSUPPORTED` and
+/// leaves `*is_available` untouched, where rcl always answers. `node` is
+/// checked and otherwise unused: the client reaches its session directly
+/// (`rmw_vtable.h`'s declared deviation for this slot).
+///
+/// This is the name to use. `rclc_client_server_available` (a tri-state
+/// `int32_t`) and the bare-`bool` `rclc_client_service_is_ready` predate it and
+/// stay one release.
+///
+/// # Returns
+/// * `RCL_RET_OK` -- `*is_available` was written.
+/// * `RCL_RET_INVALID_ARGUMENT` -- `node`, `client` or `is_available` is NULL.
+/// * `RCL_RET_NOT_INIT` -- the client is not registered with an executor.
+/// * `RCL_RET_UNSUPPORTED` -- the backend cannot tell.
+///
+/// # Safety
+/// `node` and `client` must be valid objects; `is_available` writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_service_server_is_available(
+    node: *const crate::node::rcl_node_t,
+    client: *const rcl_client_t,
+    is_available: *mut bool,
+) -> rcl_ret_t {
+    if node.is_null() || client.is_null() || is_available.is_null() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        use nros_node::ClientTrait;
+        let client_ref = unsafe { &*client };
+        if client_ref.state != rclc_client_state_t::RCLC_CLIENT_STATE_REGISTERED {
+            return RCL_RET_NOT_INIT;
+        }
+        let internal = &client_ref._internal;
+        if internal.executor_ptr.is_null() || internal.arena_entry_index < 0 {
+            return RCL_RET_NOT_INIT;
+        }
+        let exec_t = unsafe { &mut *(internal.executor_ptr as *mut rclc_executor_t) };
+        let mut exec = crate::executor::get_executor(exec_t);
+        let Some(entry) = exec.service_client_entry_mut(internal.arena_entry_index as usize) else {
+            return RCL_RET_NOT_INIT;
+        };
+        match entry.handle.service_is_ready() {
+            Ok(ready) => {
+                unsafe { *is_available = ready };
+                RCL_RET_OK
+            }
+            Err(_) => RCL_RET_UNSUPPORTED,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        RCL_RET_UNSUPPORTED
+    }
+}
+
 /// Non-blocking snapshot of whether a matching service server is
 /// currently visible. Mirrors `rclcpp::ClientBase::service_is_ready`
-/// and rcl's `rcl_service_server_is_available`. Returns `false` when
+/// and rcl's `rcl_service_server_is_available`.
+///
+/// Superseded by [`rcl_service_server_is_available`] (phase-515 C8), rcl's
+/// name and shape; kept one release. Returns `false` when
 /// the client isn't registered with an executor or the backend lacks
 /// liveliness discovery (in which case use `rclc_client_wait_for_service`
 /// instead, which handles those cases conservatively).
