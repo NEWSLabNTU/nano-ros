@@ -3230,7 +3230,7 @@ impl<
     /// Try to handle a cancel_goal request. `cancel_handler` is asked once
     /// per goal the request selects — a cancel-all or cancel-before request
     /// selects several (issue 2029; see
-    /// [`ActionServerCore::try_handle_cancel`](super::action_core::ActionServerCore::try_handle_cancel)).
+    /// [`ActionServerCore::try_handle_cancel`](crate::executor::ffi::ActionServerCoreFfi::try_handle_cancel)).
     pub fn try_handle_cancel(
         &mut self,
         cancel_handler: impl FnMut(
@@ -3327,7 +3327,7 @@ impl<
     /// Is `goal_id` a goal this server still knows about? — phase-417 W4.b.
     ///
     /// See
-    /// [`ActionServerCore::goal_exists`](super::action_core::ActionServerCore::goal_exists)
+    /// [`ActionServerCore::goal_exists`](crate::executor::ffi::ActionServerCoreFfi::goal_exists)
     /// for why the completed-result slab counts as well as the active set.
     pub fn goal_exists(&self, goal_id: &nros_core::GoalId) -> bool {
         self.core.goal_exists(goal_id)
@@ -3341,7 +3341,7 @@ impl<
     /// spelling stays `expire_completed_results` because down there the
     /// completed-result slab is the only thing that can be reclaimed, and no
     /// clock is in sight — see
-    /// [`ActionServerCore::expire_completed_results`](super::action_core::ActionServerCore::expire_completed_results)
+    /// [`ActionServerCore::expire_completed_results`](crate::executor::ffi::ActionServerCoreFfi::expire_completed_results)
     /// for the envelope rcl's timeout leaves behind.
     pub fn expire_goals(&mut self) -> usize {
         self.core.expire_completed_results()

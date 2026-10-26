@@ -82,7 +82,7 @@ pub fn action_channel_type<const N: usize>(
 
 /// Scratch buffer for serializing a `GoalStatusArray` before publishing it
 /// on the status topic. It is a local in
-/// [`publish_status_array`](ActionServerCore::publish_status_array), so it is
+/// [`publish_status_array`](crate::executor::ffi::ActionServerCoreFfi::publish_status_array), so it is
 /// stack, not static — which is why it is not simply made large enough for any
 /// `MAX_GOALS` anyone might pick. What it must hold is stated exactly by
 /// [`status_array_bytes`] and checked at COMPILE time per instantiation; see
@@ -169,8 +169,8 @@ pub struct CompletedResultEntry {
     pub len: usize,
     /// `true` once a `get_result` reply carrying this result has been sent —
     /// either the deferred flush in
-    /// [`ActionServerCore::complete_goal_raw`] or the immediate reply in
-    /// [`ActionServerCore::try_handle_get_result_raw`].
+    /// [`ActionServerCore::complete_goal_raw`](crate::executor::ffi::ActionServerCoreFfi::complete_goal_raw) or the immediate reply in
+    /// [`ActionServerCore::try_handle_get_result_raw`](crate::executor::ffi::ActionServerCoreFfi::try_handle_get_result_raw).
     ///
     /// Issue 0796: this is the reclamation priority. A delivered result has
     /// served its purpose (rcl would let its `result_timeout` retire it), so it
@@ -180,12 +180,12 @@ pub struct CompletedResultEntry {
 
 /// Phase 122.3.c.6.d — information about a peeked cancel-goal
 /// request. Returned by
-/// [`ActionServerCore::try_recv_cancel_request`].
+/// [`ActionServerCore::try_recv_cancel_request`](crate::executor::ffi::ActionServerCoreFfi::try_recv_cancel_request).
 pub struct PendingCancelRequest {
     /// The goal_id named in the cancel request.
     pub goal_id: GoalId,
     /// Service sequence number — pass back to
-    /// [`ActionServerCore::send_cancel_reply`].
+    /// [`ActionServerCore::send_cancel_reply`](crate::executor::ffi::ActionServerCoreFfi::send_cancel_reply).
     pub sequence_number: i64,
     /// Snapshot of the goal's current status at peek time
     /// (`GoalStatus::Unknown` if no matching active goal).
@@ -296,7 +296,7 @@ impl<
     /// 5 already-built transport channels. Caller (typically the C
     /// API's `rclc_polling_action_server_init`) owns wiring the
     /// channels via the session's `create_*` methods.
-    pub fn from_channels(
+    pub(crate) fn from_channels(
         send_goal_server: session::RmwServiceServer,
         cancel_goal_server: session::RmwServiceServer,
         get_result_server: session::RmwServiceServer,
@@ -324,7 +324,7 @@ impl<
     ///
     /// Returns the parsed GoalId, sequence number, and data length.
     /// The full CDR data (including GoalId) remains in `goal_buffer`.
-    pub fn try_recv_goal_request(&mut self) -> Result<Option<RawGoalRequest>, NodeError> {
+    pub(crate) fn try_recv_goal_request(&mut self) -> Result<Option<RawGoalRequest>, NodeError> {
         // Capture buf base ptr before borrowing through `take_request`
         // so we can recover the data offset after the borrow ends.
         // DDS-style backends place a sequence-number prefix before the
@@ -371,7 +371,7 @@ impl<
     }
 
     /// Get a reference to the goal buffer (valid after `try_recv_goal_request`).
-    pub fn goal_buffer(&self) -> &[u8] {
+    pub(crate) fn goal_buffer(&self) -> &[u8] {
         &self.goal_buffer
     }
 
@@ -389,7 +389,7 @@ impl<
     ///
     /// A full table is now answered truthfully with `accepted=false` via
     /// [`Self::reject_goal`], which is a contract the client already handles.
-    pub fn accept_goal(&mut self, goal_id: GoalId, seq: i64) -> Result<(), NodeError> {
+    pub(crate) fn accept_goal(&mut self, goal_id: GoalId, seq: i64) -> Result<(), NodeError> {
         // Serialize first: a serialization failure here must leave no trace,
         // and nothing below depends on the table.
         // Issue 2029 — the acceptance stamp: written into the reply (upstream's
@@ -455,7 +455,7 @@ impl<
     }
 
     /// Reject a goal: sends the rejection reply.
-    pub fn reject_goal(&mut self, seq: i64) -> Result<(), NodeError> {
+    pub(crate) fn reject_goal(&mut self, seq: i64) -> Result<(), NodeError> {
         // Serialize response: accepted=false + stamp
         let mut writer =
             crate::tx_writer(&mut self.cancel_buffer).map_err(|_| NodeError::BufferTooSmall)?;
@@ -473,7 +473,7 @@ impl<
     ///
     /// Writes GoalId framing + raw feedback bytes into the feedback buffer
     /// and publishes.
-    pub fn publish_feedback_raw(
+    pub(crate) fn publish_feedback_raw(
         &mut self,
         goal_id: &GoalId,
         feedback_cdr: &[u8],
@@ -505,7 +505,7 @@ impl<
     }
 
     /// Set a goal's status and publish the updated GoalStatusArray.
-    pub fn set_goal_status(&mut self, goal_id: &GoalId, status: GoalStatus) {
+    pub(crate) fn set_goal_status(&mut self, goal_id: &GoalId, status: GoalStatus) {
         for goal in &mut self.active_goals {
             if goal.goal_id.uuid == goal_id.uuid {
                 goal.status = status;
@@ -638,7 +638,7 @@ impl<
     /// reclaims on demand, so a server that never calls it still runs forever.
     /// It exists for a server that would rather return the memory eagerly (e.g.
     /// before a long idle period) than at the next completion.
-    pub fn expire_completed_results(&mut self) -> usize {
+    pub(crate) fn expire_completed_results(&mut self) -> usize {
         let before = self.completed_results.len();
         self.completed_results.retain(|e| !e.delivered);
         let removed = before - self.completed_results.len();
@@ -649,12 +649,12 @@ impl<
     }
 
     /// Number of completed results currently retained.
-    pub fn completed_result_count(&self) -> usize {
+    pub(crate) fn completed_result_count(&self) -> usize {
         self.completed_results.len()
     }
 
     /// Bytes of the result slab currently held by retained results.
-    pub fn result_slab_used(&self) -> usize {
+    pub(crate) fn result_slab_used(&self) -> usize {
         self.result_slab_used
     }
 
@@ -674,7 +674,7 @@ impl<
     /// and whose result is still sitting there to be fetched. "Not found" and
     /// "does not exist" therefore disagreed over exactly the window in which a
     /// client is expected to call `get_result`.
-    pub fn goal_exists(&self, goal_id: &GoalId) -> bool {
+    pub(crate) fn goal_exists(&self, goal_id: &GoalId) -> bool {
         self.active_goals
             .iter()
             .any(|g| g.goal_id.uuid == goal_id.uuid)
@@ -684,7 +684,7 @@ impl<
     /// `true` while `goal_id`'s completed result is still retained (i.e. a
     /// `get_result` for it would be answered from the slab rather than as
     /// `Unknown`).
-    pub fn has_completed_result(&self, goal_id: &GoalId) -> bool {
+    pub(crate) fn has_completed_result(&self, goal_id: &GoalId) -> bool {
         self.completed_results
             .iter()
             .any(|e| e.goal_id.uuid == goal_id.uuid)
@@ -721,7 +721,7 @@ impl<
     /// `RESULT_BUF`, and silently stranding every waiting requester with it —
     /// was invisible to the caller. A full slab is no longer a failure at all
     /// (it is reclaimed), and the one remaining failure is reported.
-    pub fn complete_goal_raw(
+    pub(crate) fn complete_goal_raw(
         &mut self,
         goal_id: &GoalId,
         status: GoalStatus,
@@ -808,21 +808,21 @@ impl<
     /// send_goal request arrives. Event-driven action servers
     /// register here in place of polling `try_recv_goal_request` on
     /// a timer.
-    pub fn register_goal_waker(&self, waker: &core::task::Waker) -> bool {
+    pub(crate) fn register_goal_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ServiceTrait;
         self.send_goal_server.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` that fires when a
     /// cancel-goal request arrives.
-    pub fn register_cancel_waker(&self, waker: &core::task::Waker) -> bool {
+    pub(crate) fn register_cancel_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ServiceTrait;
         self.cancel_goal_server.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` that fires when a
     /// get_result query arrives.
-    pub fn register_get_result_waker(&self, waker: &core::task::Waker) -> bool {
+    pub(crate) fn register_get_result_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ServiceTrait;
         self.get_result_server.register_waker(waker)
     }
@@ -842,7 +842,9 @@ impl<
     /// side. The high-level closure-based
     /// [`try_handle_cancel`](Self::try_handle_cancel) keeps working
     /// and now delegates to this pair.
-    pub fn try_recv_cancel_request(&mut self) -> Result<Option<PendingCancelRequest>, NodeError> {
+    pub(crate) fn try_recv_cancel_request(
+        &mut self,
+    ) -> Result<Option<PendingCancelRequest>, NodeError> {
         let buf_start = self.cancel_buffer.as_ptr() as usize;
         let request = match self
             .cancel_goal_server
@@ -892,7 +894,7 @@ impl<
     /// The two were one type and their discriminants overlap with opposite
     /// meanings (`Reject`/`Ok` are both 0), so this signature is what stops a
     /// per-goal answer being written into the RPC field.
-    pub fn send_cancel_reply(
+    pub(crate) fn send_cancel_reply(
         &mut self,
         sequence_number: i64,
         return_code: nros_core::CancelReturnCode,
@@ -970,7 +972,7 @@ impl<
     /// Returns the goal id the request NAMED (zero for the two zero-id forms)
     /// and [`nros_core::CancelResponse::Accept`] if at least one goal moved to
     /// `Canceling`.
-    pub fn try_handle_cancel(
+    pub(crate) fn try_handle_cancel(
         &mut self,
         mut cancel_handler: impl FnMut(&GoalId, GoalStatus) -> nros_core::CancelResponse,
     ) -> Result<Option<(GoalId, nros_core::CancelResponse)>, NodeError> {
@@ -1134,7 +1136,7 @@ impl<
     ///
     /// `default_result_cdr` should contain serialized result data (without CDR
     /// header or status byte) — typically `A::Result::default()` serialized.
-    pub fn try_handle_get_result_raw(
+    pub(crate) fn try_handle_get_result_raw(
         &mut self,
         default_result_cdr: &[u8],
     ) -> Result<Option<GoalId>, NodeError> {
@@ -1272,17 +1274,17 @@ impl<
     }
 
     /// Get the number of active goals.
-    pub fn active_goal_count(&self) -> usize {
+    pub(crate) fn active_goal_count(&self) -> usize {
         self.active_goals.len()
     }
 
     /// Get a reference to all active goals.
-    pub fn active_goals(&self) -> &[RawActiveGoal] {
+    pub(crate) fn active_goals(&self) -> &[RawActiveGoal] {
         &self.active_goals
     }
 
     /// Issue 2029 — the acceptance stamp of an active goal, zero if unknown.
-    pub fn goal_stamp(&self, goal_id: &GoalId) -> Time {
+    pub(crate) fn goal_stamp(&self, goal_id: &GoalId) -> Time {
         self.active_goals
             .iter()
             .find(|g| g.goal_id.uuid == goal_id.uuid)
@@ -1291,7 +1293,7 @@ impl<
     }
 
     /// Find the status of a goal (active or unknown).
-    pub fn find_goal_status(&self, goal_id: &GoalId) -> GoalStatus {
+    pub(crate) fn find_goal_status(&self, goal_id: &GoalId) -> GoalStatus {
         self.active_goals
             .iter()
             .find(|g| g.goal_id.uuid == goal_id.uuid)
@@ -1353,7 +1355,7 @@ impl<
     /// subscriber, no status subscriber). Callers wanting the active count have
     /// [`active_goal_count`](Self::active_goal_count), which still reads
     /// `active_goals` alone.
-    pub fn publish_status_array(&self) -> Result<(), NodeError> {
+    pub(crate) fn publish_status_array(&self) -> Result<(), NodeError> {
         // Force the bound above to be evaluated for this instantiation.
         let () = Self::STATUS_ARRAY_FITS;
 
@@ -1448,20 +1450,20 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// image whose backend has no discovery claimed the server was up.
     /// Answering `false` makes a caller wait; answering `true` makes it send
     /// into the void.
-    pub fn is_server_ready(&self) -> bool {
+    pub(crate) fn is_server_ready(&self) -> bool {
         matches!(self.server_readiness(), Ok(true))
     }
 
     /// The raw three-answer probe behind [`Self::is_server_ready`] — what a
     /// WAIT loop reads, through `ServerVisibility::of`, so that "the backend
     /// cannot know" ends the wait instead of being waited out (issue 1686).
-    pub fn server_readiness(&self) -> Result<bool, nros_rmw::TransportError> {
+    pub(crate) fn server_readiness(&self) -> Result<bool, nros_rmw::TransportError> {
         use nros_rmw::ClientTrait;
         self.send_goal_client.service_is_ready()
     }
 
     /// Create a new action client core from the raw transport handles.
-    pub fn new(
+    pub(crate) fn new(
         send_goal_client: session::RmwServiceClient,
         cancel_goal_client: session::RmwServiceClient,
         get_result_client: session::RmwServiceClient,
@@ -1492,7 +1494,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ///
     /// After calling, use `send_goal_client` and `result_buffer` to construct
     /// a Promise for the acceptance reply.
-    pub fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalId, NodeError> {
+    pub(crate) fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalId, NodeError> {
         // Issue 2009 — refuse BEFORE the counter moves or the request is sent.
         self.pending_send_goal
             .can_send()
@@ -1528,7 +1530,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ///
     /// Returns the GoalId and total data length. The full CDR data
     /// (including GoalId) is in `feedback_buffer`.
-    pub fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalId, usize)>, NodeError> {
+    pub(crate) fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalId, usize)>, NodeError> {
         let data = self
             .feedback_subscriber
             .take_serialized(&mut self.feedback_buffer)
@@ -1551,7 +1553,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ///
     /// After calling, use `cancel_goal_client` and `result_buffer` to construct
     /// a Promise for the cancel response.
-    pub fn send_cancel_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+    pub(crate) fn send_cancel_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
         self.send_cancel_request_stamped(goal_id, 0, 0)
             .map(|_seq| ())
     }
@@ -1566,7 +1568,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// request's sequence id, which is what tells two pending requests about
     /// the SAME goal (or two broadcasts) apart when their replies come back
     /// ([`Self::try_recv_cancel_reply_seq`]).
-    pub fn send_cancel_request_stamped(
+    pub(crate) fn send_cancel_request_stamped(
         &mut self,
         goal_id: &GoalId,
         stamp_sec: i32,
@@ -1600,7 +1602,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ///
     /// After calling, use `get_result_client` and `result_buffer` to construct
     /// a Promise for the result response.
-    pub fn send_get_result_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+    pub(crate) fn send_get_result_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
         self.pending_get_result
             .can_send()
             .map_err(|_| NodeError::RequestInFlight)?;
@@ -1621,25 +1623,25 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
     /// Phase 122.3.c.6.e — register a `Waker` that fires when the
     /// send_goal RPC reply lands.
-    pub fn register_goal_response_waker(&self, waker: &core::task::Waker) -> bool {
+    pub(crate) fn register_goal_response_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ClientTrait;
         self.send_goal_client.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` for cancel-RPC replies.
-    pub fn register_cancel_response_waker(&self, waker: &core::task::Waker) -> bool {
+    pub(crate) fn register_cancel_response_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ClientTrait;
         self.cancel_goal_client.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` for get_result replies.
-    pub fn register_result_waker(&self, waker: &core::task::Waker) -> bool {
+    pub(crate) fn register_result_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::ClientTrait;
         self.get_result_client.register_waker(waker)
     }
 
     /// Phase 122.3.c.6.e — register a `Waker` for feedback messages.
-    pub fn register_feedback_waker(&self, waker: &core::task::Waker) -> bool {
+    pub(crate) fn register_feedback_waker(&self, waker: &core::task::Waker) -> bool {
         use nros_rmw::Subscription;
         self.feedback_subscriber.register_waker(waker)
     }
@@ -1648,14 +1650,16 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// raw bytes). Returns `Ok(Some(len))` when a reply landed; the
     /// CDR payload is in `result_buffer_ref()[..len]`. Reply layout
     /// is action_msgs/srv/CancelGoal_Response wire CDR.
-    pub fn try_recv_cancel_reply(&mut self) -> Result<Option<usize>, NodeError> {
+    pub(crate) fn try_recv_cancel_reply(&mut self) -> Result<Option<usize>, NodeError> {
         Ok(self.try_recv_cancel_reply_for()?.map(|(len, _goal)| len))
     }
 
     /// Issue 2009 — [`Self::try_recv_cancel_reply`] with the goal the reply is ABOUT: the
     /// goal of the request whose sequence id it names. A reply naming no
     /// pending request is dropped (it answers an abandoned request).
-    pub fn try_recv_cancel_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+    pub(crate) fn try_recv_cancel_reply_for(
+        &mut self,
+    ) -> Result<Option<(usize, GoalId)>, NodeError> {
         Ok(self
             .try_recv_cancel_reply_seq()?
             .map(|(len, _seq, goal)| (len, goal)))
@@ -1664,7 +1668,9 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// Issue 2027 — [`Self::try_recv_cancel_reply_for`] with the sequence id
     /// of the request the reply answers too ([`nros_rmw::SEQUENCE_ID_UNKNOWN`]
     /// from a backend that assigns none — it then holds one cancel in flight).
-    pub fn try_recv_cancel_reply_seq(&mut self) -> Result<Option<(usize, i64, GoalId)>, NodeError> {
+    pub(crate) fn try_recv_cancel_reply_seq(
+        &mut self,
+    ) -> Result<Option<(usize, i64, GoalId)>, NodeError> {
         // Phase 120: NoData == steady-state polling; map to Ok(None).
         match nros_rmw::take_correlated(
             &mut self.cancel_goal_client,
@@ -1685,7 +1691,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// After receiving, use [`result_buffer_ref()`](Self::result_buffer_ref)
     /// to access the raw CDR data. The layout is: CDR header (4) + status
     /// byte (1) + result data.
-    pub fn try_recv_get_result_reply(&mut self) -> Result<Option<usize>, NodeError> {
+    pub(crate) fn try_recv_get_result_reply(&mut self) -> Result<Option<usize>, NodeError> {
         Ok(self
             .try_recv_get_result_reply_for()?
             .map(|(len, _goal)| len))
@@ -1694,7 +1700,9 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// Issue 2009 — [`Self::try_recv_get_result_reply`] with the goal the reply is ABOUT: the
     /// goal of the request whose sequence id it names. A reply naming no
     /// pending request is dropped (it answers an abandoned request).
-    pub fn try_recv_get_result_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+    pub(crate) fn try_recv_get_result_reply_for(
+        &mut self,
+    ) -> Result<Option<(usize, GoalId)>, NodeError> {
         // Phase 120: NoData == steady-state polling; map to Ok(None).
         match nros_rmw::take_correlated(
             &mut self.get_result_client,
@@ -1713,14 +1721,16 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// `Ok(None)` if no reply yet.
     ///
     /// The reply CDR contains: header (4) + accepted (u8) + stamp (i32 + u32).
-    pub fn try_recv_send_goal_reply(&mut self) -> Result<Option<usize>, NodeError> {
+    pub(crate) fn try_recv_send_goal_reply(&mut self) -> Result<Option<usize>, NodeError> {
         Ok(self.try_recv_send_goal_reply_for()?.map(|(len, _goal)| len))
     }
 
     /// Issue 2009 — [`Self::try_recv_send_goal_reply`] with the goal the reply is ABOUT: the
     /// goal of the request whose sequence id it names. A reply naming no
     /// pending request is dropped (it answers an abandoned request).
-    pub fn try_recv_send_goal_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+    pub(crate) fn try_recv_send_goal_reply_for(
+        &mut self,
+    ) -> Result<Option<(usize, GoalId)>, NodeError> {
         // Phase 120: NoData == steady-state polling; map to Ok(None).
         match nros_rmw::take_correlated(
             &mut self.send_goal_client,
@@ -1739,33 +1749,33 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     /// for the next goal, and its reply, if it still comes, is dropped. For a
     /// binding whose last owner of that request let go before the reply came
     /// (a dropped C++ future). `true` if one was pending.
-    pub fn forget_send_goal(&mut self, goal_id: &GoalId) -> bool {
+    pub(crate) fn forget_send_goal(&mut self, goal_id: &GoalId) -> bool {
         self.pending_send_goal.remove_key(goal_id)
     }
 
     /// Issue 2027 — [`Self::forget_send_goal`] for a `get_result` request.
-    pub fn forget_get_result(&mut self, goal_id: &GoalId) -> bool {
+    pub(crate) fn forget_get_result(&mut self, goal_id: &GoalId) -> bool {
         self.pending_get_result.remove_key(goal_id)
     }
 
     /// Issue 2027 — [`Self::forget_send_goal`] for a `cancel_goal` request
     /// (the zero id names a cancel-all / cancel-before request).
-    pub fn forget_cancel(&mut self, goal_id: &GoalId) -> bool {
+    pub(crate) fn forget_cancel(&mut self, goal_id: &GoalId) -> bool {
         self.pending_cancel.remove_key(goal_id)
     }
 
     /// Read-only access to the result buffer (after polling a reply).
-    pub fn result_buffer_ref(&self) -> &[u8] {
+    pub(crate) fn result_buffer_ref(&self) -> &[u8] {
         &self.result_buffer
     }
 
     /// Read-only access to the feedback buffer (after receiving feedback).
-    pub fn feedback_buffer_ref(&self) -> &[u8] {
+    pub(crate) fn feedback_buffer_ref(&self) -> &[u8] {
         &self.feedback_buffer
     }
 
     /// Get the current goal counter (used to reconstruct the last goal ID).
-    pub fn goal_counter(&self) -> u64 {
+    pub(crate) fn goal_counter(&self) -> u64 {
         self.goal_counter
     }
 }

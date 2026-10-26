@@ -1,6 +1,6 @@
 # Phase 515 — Re-audit the recorded API differences against stock ROS 2 shape
 
-**Status (2026-10-26). Open; W0.a landed (#2627), D1–D4 decided, C1 landed, R9 stage 1 (`Executor`) landed.** Opened from a review of the
+**Status (2026-10-27). Open; W0.a landed (#2627), D1–D4 decided, C1 landed, R9 landed (stage 1 `Executor`, stage 2 the action cores).** Opened from a review of the
 `api-parity` report on main `1a30bcbb22`. The work items below are candidates:
 each starts by confirming its reason against the code, because W0 found that
 the ledger's prose has drifted. The four decisions (D1–D4) are taken;
@@ -324,7 +324,9 @@ other C-ABI backends report nothing until the C `take_request` slot carries it
 `GoalId` → `GoalUuid`, `CancelReturnCode`, `QoSProfile::{deadline,lifespan,
 liveliness_lease}_duration`, `ValueConversionError`, `SetParameterResult`,
 `ActionClientCore::is_server_ready`, and their members. Land each, or
-re-verdict it with a reason.
+re-verdict it with a reason. (`ActionClientCore::is_server_ready` closed
+2026-10-27 by R9 stage 2: it left the Rust surface, so Rust ships the one
+spelling `ActionClient::action_server_is_ready` and its row was deleted.)
 
 **R9 — internals in the public facade. *D4: sealed FFI trait.*** `Executor` has 276 public
 members; at least 66 are entry points the C/C++ layers call
@@ -370,8 +372,28 @@ trait impl as the trait's surface, not the type's.
 (`age_table`, `monitor_table`, launch-remap setters). Rust features with a
 Rust-shaped signature. R4 and R10 re-home those.
 
-**Stage 2 — OPEN:** `ActionServerCore`, `ActionClientCore` and the raw handles
-(about 75 members), the same way.
+**Stage 2 (action cores) — LANDED 2026-10-27.** `ActionServerCore`,
+`ActionClientCore`, `ActionServerRawHandle` and `ActionClientRawHandle` carry
+62 `pub fn`s (25 + 25 + 11 + 1; "about 75" was an estimate). None is C-shaped by
+stage 1's signature test, so that test would move nothing. The cut line here is
+the TYPE: all four are the untyped machinery the shims drive (phase-506 W1
+already moved them to `nros::internals`, RFC-0071 D12). By caller, 42 are called
+only from nros-c/nros-cpp, 10 by nothing outside nros-node, and the rest also
+from the `nros` runtime; no crate outside those three calls any of them (the
+hits in `examples/` and `nros-tests` are the typed `ActionServer` handle's
+same-named methods). So every `pub fn` on the four types moved, constructors
+included. `ActionServerRawHandle::invalid` / `is_invalid` stay `const fn`
+inherently; their trait forwarders cannot be `const`, and no caller outside
+nros-node needs a const context.
+
+Same mechanism as stage 1: each method is `pub(crate)`, and one sealed trait
+per type in `nros_node::executor::ffi` forwards to it (`ActionServerCoreFfi`,
+`ActionClientCoreFfi`, `ActionServerRawHandleFfi`, `ActionClientRawHandleFfi`).
+nros-c, nros-cpp and `nros`'s `node_runtime` import the ones they use. The
+types stay public and nameable, because the sizes probe and the shims' storage
+structs name them. The ledger extracts one member row for these types,
+`rust:ActionClientCore::is_server_ready`; it was deleted, which also closes
+that R8 rename.
 
 **R10 — three parameter receivers.** `ParameterServer` (55 rows), `Executor`
 (~29) and `Node` each carry parameter verbs; rclrs keeps them on the node.

@@ -8,14 +8,23 @@
 //! call them through `nros`. Each one is a crate-private inherent method of
 //! [`Executor`]; this trait forwards to it, and nothing else implements it.
 //!
+//! Stage 2 does the same for the untyped action machinery: every method of
+//! [`ActionServerCore`], [`ActionClientCore`], [`ActionServerRawHandle`] and
+//! [`ActionClientRawHandle`] sits behind its own sealed `*Ffi` trait below. The
+//! types stay public, because the sizes probe and the shims' storage name them.
+//!
 //! Not `#[doc(hidden)]`: that leaves a method callable and semver-visible.
 #![allow(clippy::too_many_arguments, clippy::missing_safety_doc)]
 
 use core::mem::MaybeUninit;
 
+use nros_core::{GoalId, GoalStatus, Time};
 use nros_rmw::QoSProfile;
 
-use super::*;
+use super::{
+    action_core::{PendingCancelRequest, RawGoalRequest},
+    *,
+};
 use crate::{session, timer::TimerDuration};
 
 mod sealed {
@@ -1237,5 +1246,670 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
     #[inline]
     unsafe fn release_guard_condition(&mut self, handle: HandleId) -> bool {
         unsafe { Executor::release_guard_condition(self, handle) }
+    }
+}
+
+// ── phase-515 R9 stage 2: the action cores and raw handles ─────────────
+
+impl<
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+    const MAX_GOALS: usize,
+> sealed::Sealed for ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
+{
+}
+impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize> sealed::Sealed
+    for ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+{
+}
+impl sealed::Sealed for ActionServerRawHandle {}
+impl sealed::Sealed for ActionClientRawHandle {}
+
+/// [`ActionServerCore`]'s methods, for `nros-c`, `nros-cpp` and the `nros` runtime. Sealed.
+pub trait ActionServerCoreFfi: sealed::Sealed + Sized {
+    /// The FFI entry point; see `ActionServerCore::from_channels` in `action_core.rs`.
+    fn from_channels(
+        send_goal_server: session::RmwServiceServer,
+        cancel_goal_server: session::RmwServiceServer,
+        get_result_server: session::RmwServiceServer,
+        feedback_publisher: session::RmwPublisher,
+        status_publisher: session::RmwPublisher,
+    ) -> Self;
+
+    /// The FFI entry point; see `ActionServerCore::try_recv_goal_request` in `action_core.rs`.
+    fn try_recv_goal_request(&mut self) -> Result<Option<RawGoalRequest>, NodeError>;
+
+    /// The FFI entry point; see `ActionServerCore::goal_buffer` in `action_core.rs`.
+    fn goal_buffer(&self) -> &[u8];
+
+    /// The FFI entry point; see `ActionServerCore::accept_goal` in `action_core.rs`.
+    fn accept_goal(&mut self, goal_id: GoalId, seq: i64) -> Result<(), NodeError>;
+
+    /// The FFI entry point; see `ActionServerCore::reject_goal` in `action_core.rs`.
+    fn reject_goal(&mut self, seq: i64) -> Result<(), NodeError>;
+
+    /// The FFI entry point; see `ActionServerCore::publish_feedback_raw` in `action_core.rs`.
+    fn publish_feedback_raw(
+        &mut self,
+        goal_id: &GoalId,
+        feedback_cdr: &[u8],
+    ) -> Result<(), NodeError>;
+
+    /// The FFI entry point; see `ActionServerCore::set_goal_status` in `action_core.rs`.
+    fn set_goal_status(&mut self, goal_id: &GoalId, status: GoalStatus);
+
+    /// The FFI entry point; see `ActionServerCore::expire_completed_results` in `action_core.rs`.
+    fn expire_completed_results(&mut self) -> usize;
+
+    /// The FFI entry point; see `ActionServerCore::completed_result_count` in `action_core.rs`.
+    fn completed_result_count(&self) -> usize;
+
+    /// The FFI entry point; see `ActionServerCore::result_slab_used` in `action_core.rs`.
+    fn result_slab_used(&self) -> usize;
+
+    /// The FFI entry point; see `ActionServerCore::goal_exists` in `action_core.rs`.
+    fn goal_exists(&self, goal_id: &GoalId) -> bool;
+
+    /// The FFI entry point; see `ActionServerCore::has_completed_result` in `action_core.rs`.
+    fn has_completed_result(&self, goal_id: &GoalId) -> bool;
+
+    /// The FFI entry point; see `ActionServerCore::complete_goal_raw` in `action_core.rs`.
+    fn complete_goal_raw(
+        &mut self,
+        goal_id: &GoalId,
+        status: GoalStatus,
+        result_cdr: &[u8],
+    ) -> Result<(), NodeError>;
+
+    /// The FFI entry point; see `ActionServerCore::register_goal_waker` in `action_core.rs`.
+    fn register_goal_waker(&self, waker: &core::task::Waker) -> bool;
+
+    /// The FFI entry point; see `ActionServerCore::register_cancel_waker` in `action_core.rs`.
+    fn register_cancel_waker(&self, waker: &core::task::Waker) -> bool;
+
+    /// The FFI entry point; see `ActionServerCore::register_get_result_waker` in `action_core.rs`.
+    fn register_get_result_waker(&self, waker: &core::task::Waker) -> bool;
+
+    /// The FFI entry point; see `ActionServerCore::try_recv_cancel_request` in `action_core.rs`.
+    fn try_recv_cancel_request(&mut self) -> Result<Option<PendingCancelRequest>, NodeError>;
+
+    /// The FFI entry point; see `ActionServerCore::send_cancel_reply` in `action_core.rs`.
+    fn send_cancel_reply(
+        &mut self,
+        sequence_number: i64,
+        return_code: nros_core::CancelReturnCode,
+        accepted: &[GoalId],
+    ) -> Result<(), NodeError>;
+
+    /// The FFI entry point; see `ActionServerCore::try_handle_cancel` in `action_core.rs`.
+    fn try_handle_cancel(
+        &mut self,
+        cancel_handler: impl FnMut(&GoalId, GoalStatus) -> nros_core::CancelResponse,
+    ) -> Result<Option<(GoalId, nros_core::CancelResponse)>, NodeError>;
+
+    /// The FFI entry point; see `ActionServerCore::try_handle_get_result_raw` in `action_core.rs`.
+    fn try_handle_get_result_raw(
+        &mut self,
+        default_result_cdr: &[u8],
+    ) -> Result<Option<GoalId>, NodeError>;
+
+    /// The FFI entry point; see `ActionServerCore::active_goal_count` in `action_core.rs`.
+    fn active_goal_count(&self) -> usize;
+
+    /// The FFI entry point; see `ActionServerCore::active_goals` in `action_core.rs`.
+    fn active_goals(&self) -> &[RawActiveGoal];
+
+    /// The FFI entry point; see `ActionServerCore::goal_stamp` in `action_core.rs`.
+    fn goal_stamp(&self, goal_id: &GoalId) -> Time;
+
+    /// The FFI entry point; see `ActionServerCore::find_goal_status` in `action_core.rs`.
+    fn find_goal_status(&self, goal_id: &GoalId) -> GoalStatus;
+
+    /// The FFI entry point; see `ActionServerCore::publish_status_array` in `action_core.rs`.
+    fn publish_status_array(&self) -> Result<(), NodeError>;
+}
+
+impl<
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+    const MAX_GOALS: usize,
+> ActionServerCoreFfi for ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
+{
+    #[inline]
+    fn from_channels(
+        send_goal_server: session::RmwServiceServer,
+        cancel_goal_server: session::RmwServiceServer,
+        get_result_server: session::RmwServiceServer,
+        feedback_publisher: session::RmwPublisher,
+        status_publisher: session::RmwPublisher,
+    ) -> Self {
+        Self::from_channels(
+            send_goal_server,
+            cancel_goal_server,
+            get_result_server,
+            feedback_publisher,
+            status_publisher,
+        )
+    }
+
+    #[inline]
+    fn try_recv_goal_request(&mut self) -> Result<Option<RawGoalRequest>, NodeError> {
+        Self::try_recv_goal_request(self)
+    }
+
+    #[inline]
+    fn goal_buffer(&self) -> &[u8] {
+        Self::goal_buffer(self)
+    }
+
+    #[inline]
+    fn accept_goal(&mut self, goal_id: GoalId, seq: i64) -> Result<(), NodeError> {
+        Self::accept_goal(self, goal_id, seq)
+    }
+
+    #[inline]
+    fn reject_goal(&mut self, seq: i64) -> Result<(), NodeError> {
+        Self::reject_goal(self, seq)
+    }
+
+    #[inline]
+    fn publish_feedback_raw(
+        &mut self,
+        goal_id: &GoalId,
+        feedback_cdr: &[u8],
+    ) -> Result<(), NodeError> {
+        Self::publish_feedback_raw(self, goal_id, feedback_cdr)
+    }
+
+    #[inline]
+    fn set_goal_status(&mut self, goal_id: &GoalId, status: GoalStatus) {
+        Self::set_goal_status(self, goal_id, status)
+    }
+
+    #[inline]
+    fn expire_completed_results(&mut self) -> usize {
+        Self::expire_completed_results(self)
+    }
+
+    #[inline]
+    fn completed_result_count(&self) -> usize {
+        Self::completed_result_count(self)
+    }
+
+    #[inline]
+    fn result_slab_used(&self) -> usize {
+        Self::result_slab_used(self)
+    }
+
+    #[inline]
+    fn goal_exists(&self, goal_id: &GoalId) -> bool {
+        Self::goal_exists(self, goal_id)
+    }
+
+    #[inline]
+    fn has_completed_result(&self, goal_id: &GoalId) -> bool {
+        Self::has_completed_result(self, goal_id)
+    }
+
+    #[inline]
+    fn complete_goal_raw(
+        &mut self,
+        goal_id: &GoalId,
+        status: GoalStatus,
+        result_cdr: &[u8],
+    ) -> Result<(), NodeError> {
+        Self::complete_goal_raw(self, goal_id, status, result_cdr)
+    }
+
+    #[inline]
+    fn register_goal_waker(&self, waker: &core::task::Waker) -> bool {
+        Self::register_goal_waker(self, waker)
+    }
+
+    #[inline]
+    fn register_cancel_waker(&self, waker: &core::task::Waker) -> bool {
+        Self::register_cancel_waker(self, waker)
+    }
+
+    #[inline]
+    fn register_get_result_waker(&self, waker: &core::task::Waker) -> bool {
+        Self::register_get_result_waker(self, waker)
+    }
+
+    #[inline]
+    fn try_recv_cancel_request(&mut self) -> Result<Option<PendingCancelRequest>, NodeError> {
+        Self::try_recv_cancel_request(self)
+    }
+
+    #[inline]
+    fn send_cancel_reply(
+        &mut self,
+        sequence_number: i64,
+        return_code: nros_core::CancelReturnCode,
+        accepted: &[GoalId],
+    ) -> Result<(), NodeError> {
+        Self::send_cancel_reply(self, sequence_number, return_code, accepted)
+    }
+
+    #[inline]
+    fn try_handle_cancel(
+        &mut self,
+        cancel_handler: impl FnMut(&GoalId, GoalStatus) -> nros_core::CancelResponse,
+    ) -> Result<Option<(GoalId, nros_core::CancelResponse)>, NodeError> {
+        Self::try_handle_cancel(self, cancel_handler)
+    }
+
+    #[inline]
+    fn try_handle_get_result_raw(
+        &mut self,
+        default_result_cdr: &[u8],
+    ) -> Result<Option<GoalId>, NodeError> {
+        Self::try_handle_get_result_raw(self, default_result_cdr)
+    }
+
+    #[inline]
+    fn active_goal_count(&self) -> usize {
+        Self::active_goal_count(self)
+    }
+
+    #[inline]
+    fn active_goals(&self) -> &[RawActiveGoal] {
+        Self::active_goals(self)
+    }
+
+    #[inline]
+    fn goal_stamp(&self, goal_id: &GoalId) -> Time {
+        Self::goal_stamp(self, goal_id)
+    }
+
+    #[inline]
+    fn find_goal_status(&self, goal_id: &GoalId) -> GoalStatus {
+        Self::find_goal_status(self, goal_id)
+    }
+
+    #[inline]
+    fn publish_status_array(&self) -> Result<(), NodeError> {
+        Self::publish_status_array(self)
+    }
+}
+
+/// [`ActionClientCore`]'s methods, for `nros-c`, `nros-cpp` and the `nros` runtime. Sealed.
+pub trait ActionClientCoreFfi: sealed::Sealed + Sized {
+    /// The FFI entry point; see `ActionClientCore::is_server_ready` in `action_core.rs`.
+    fn is_server_ready(&self) -> bool;
+
+    /// The FFI entry point; see `ActionClientCore::server_readiness` in `action_core.rs`.
+    fn server_readiness(&self) -> Result<bool, nros_rmw::TransportError>;
+
+    /// The FFI entry point; see `ActionClientCore::new` in `action_core.rs`.
+    fn new(
+        send_goal_client: session::RmwServiceClient,
+        cancel_goal_client: session::RmwServiceClient,
+        get_result_client: session::RmwServiceClient,
+        feedback_subscriber: session::RmwSubscriber,
+    ) -> Self;
+
+    /// The FFI entry point; see `ActionClientCore::send_goal_raw` in `action_core.rs`.
+    fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalId, NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::try_recv_feedback_raw` in `action_core.rs`.
+    fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalId, usize)>, NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::send_cancel_request` in `action_core.rs`.
+    fn send_cancel_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::send_cancel_request_stamped` in `action_core.rs`.
+    fn send_cancel_request_stamped(
+        &mut self,
+        goal_id: &GoalId,
+        stamp_sec: i32,
+        stamp_nanosec: u32,
+    ) -> Result<i64, NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::send_get_result_request` in `action_core.rs`.
+    fn send_get_result_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::register_goal_response_waker` in `action_core.rs`.
+    fn register_goal_response_waker(&self, waker: &core::task::Waker) -> bool;
+
+    /// The FFI entry point; see `ActionClientCore::register_cancel_response_waker` in `action_core.rs`.
+    fn register_cancel_response_waker(&self, waker: &core::task::Waker) -> bool;
+
+    /// The FFI entry point; see `ActionClientCore::register_result_waker` in `action_core.rs`.
+    fn register_result_waker(&self, waker: &core::task::Waker) -> bool;
+
+    /// The FFI entry point; see `ActionClientCore::register_feedback_waker` in `action_core.rs`.
+    fn register_feedback_waker(&self, waker: &core::task::Waker) -> bool;
+
+    /// The FFI entry point; see `ActionClientCore::try_recv_cancel_reply` in `action_core.rs`.
+    fn try_recv_cancel_reply(&mut self) -> Result<Option<usize>, NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::try_recv_cancel_reply_for` in `action_core.rs`.
+    fn try_recv_cancel_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::try_recv_cancel_reply_seq` in `action_core.rs`.
+    fn try_recv_cancel_reply_seq(&mut self) -> Result<Option<(usize, i64, GoalId)>, NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::try_recv_get_result_reply` in `action_core.rs`.
+    fn try_recv_get_result_reply(&mut self) -> Result<Option<usize>, NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::try_recv_get_result_reply_for` in `action_core.rs`.
+    fn try_recv_get_result_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::try_recv_send_goal_reply` in `action_core.rs`.
+    fn try_recv_send_goal_reply(&mut self) -> Result<Option<usize>, NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::try_recv_send_goal_reply_for` in `action_core.rs`.
+    fn try_recv_send_goal_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError>;
+
+    /// The FFI entry point; see `ActionClientCore::forget_send_goal` in `action_core.rs`.
+    fn forget_send_goal(&mut self, goal_id: &GoalId) -> bool;
+
+    /// The FFI entry point; see `ActionClientCore::forget_get_result` in `action_core.rs`.
+    fn forget_get_result(&mut self, goal_id: &GoalId) -> bool;
+
+    /// The FFI entry point; see `ActionClientCore::forget_cancel` in `action_core.rs`.
+    fn forget_cancel(&mut self, goal_id: &GoalId) -> bool;
+
+    /// The FFI entry point; see `ActionClientCore::result_buffer_ref` in `action_core.rs`.
+    fn result_buffer_ref(&self) -> &[u8];
+
+    /// The FFI entry point; see `ActionClientCore::feedback_buffer_ref` in `action_core.rs`.
+    fn feedback_buffer_ref(&self) -> &[u8];
+
+    /// The FFI entry point; see `ActionClientCore::goal_counter` in `action_core.rs`.
+    fn goal_counter(&self) -> u64;
+}
+
+impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize> ActionClientCoreFfi
+    for ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+{
+    #[inline]
+    fn is_server_ready(&self) -> bool {
+        Self::is_server_ready(self)
+    }
+
+    #[inline]
+    fn server_readiness(&self) -> Result<bool, nros_rmw::TransportError> {
+        Self::server_readiness(self)
+    }
+
+    #[inline]
+    fn new(
+        send_goal_client: session::RmwServiceClient,
+        cancel_goal_client: session::RmwServiceClient,
+        get_result_client: session::RmwServiceClient,
+        feedback_subscriber: session::RmwSubscriber,
+    ) -> Self {
+        Self::new(
+            send_goal_client,
+            cancel_goal_client,
+            get_result_client,
+            feedback_subscriber,
+        )
+    }
+
+    #[inline]
+    fn send_goal_raw(&mut self, goal_cdr: &[u8]) -> Result<GoalId, NodeError> {
+        Self::send_goal_raw(self, goal_cdr)
+    }
+
+    #[inline]
+    fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalId, usize)>, NodeError> {
+        Self::try_recv_feedback_raw(self)
+    }
+
+    #[inline]
+    fn send_cancel_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+        Self::send_cancel_request(self, goal_id)
+    }
+
+    #[inline]
+    fn send_cancel_request_stamped(
+        &mut self,
+        goal_id: &GoalId,
+        stamp_sec: i32,
+        stamp_nanosec: u32,
+    ) -> Result<i64, NodeError> {
+        Self::send_cancel_request_stamped(self, goal_id, stamp_sec, stamp_nanosec)
+    }
+
+    #[inline]
+    fn send_get_result_request(&mut self, goal_id: &GoalId) -> Result<(), NodeError> {
+        Self::send_get_result_request(self, goal_id)
+    }
+
+    #[inline]
+    fn register_goal_response_waker(&self, waker: &core::task::Waker) -> bool {
+        Self::register_goal_response_waker(self, waker)
+    }
+
+    #[inline]
+    fn register_cancel_response_waker(&self, waker: &core::task::Waker) -> bool {
+        Self::register_cancel_response_waker(self, waker)
+    }
+
+    #[inline]
+    fn register_result_waker(&self, waker: &core::task::Waker) -> bool {
+        Self::register_result_waker(self, waker)
+    }
+
+    #[inline]
+    fn register_feedback_waker(&self, waker: &core::task::Waker) -> bool {
+        Self::register_feedback_waker(self, waker)
+    }
+
+    #[inline]
+    fn try_recv_cancel_reply(&mut self) -> Result<Option<usize>, NodeError> {
+        Self::try_recv_cancel_reply(self)
+    }
+
+    #[inline]
+    fn try_recv_cancel_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+        Self::try_recv_cancel_reply_for(self)
+    }
+
+    #[inline]
+    fn try_recv_cancel_reply_seq(&mut self) -> Result<Option<(usize, i64, GoalId)>, NodeError> {
+        Self::try_recv_cancel_reply_seq(self)
+    }
+
+    #[inline]
+    fn try_recv_get_result_reply(&mut self) -> Result<Option<usize>, NodeError> {
+        Self::try_recv_get_result_reply(self)
+    }
+
+    #[inline]
+    fn try_recv_get_result_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+        Self::try_recv_get_result_reply_for(self)
+    }
+
+    #[inline]
+    fn try_recv_send_goal_reply(&mut self) -> Result<Option<usize>, NodeError> {
+        Self::try_recv_send_goal_reply(self)
+    }
+
+    #[inline]
+    fn try_recv_send_goal_reply_for(&mut self) -> Result<Option<(usize, GoalId)>, NodeError> {
+        Self::try_recv_send_goal_reply_for(self)
+    }
+
+    #[inline]
+    fn forget_send_goal(&mut self, goal_id: &GoalId) -> bool {
+        Self::forget_send_goal(self, goal_id)
+    }
+
+    #[inline]
+    fn forget_get_result(&mut self, goal_id: &GoalId) -> bool {
+        Self::forget_get_result(self, goal_id)
+    }
+
+    #[inline]
+    fn forget_cancel(&mut self, goal_id: &GoalId) -> bool {
+        Self::forget_cancel(self, goal_id)
+    }
+
+    #[inline]
+    fn result_buffer_ref(&self) -> &[u8] {
+        Self::result_buffer_ref(self)
+    }
+
+    #[inline]
+    fn feedback_buffer_ref(&self) -> &[u8] {
+        Self::feedback_buffer_ref(self)
+    }
+
+    #[inline]
+    fn goal_counter(&self) -> u64 {
+        Self::goal_counter(self)
+    }
+}
+
+/// [`ActionServerRawHandle`]'s methods, for `nros-c`, `nros-cpp` and the `nros` runtime. Sealed.
+pub trait ActionServerRawHandleFfi: sealed::Sealed + Sized {
+    /// The FFI entry point; see `ActionServerRawHandle::invalid` in `action.rs`
+    /// (a `const fn` there; a trait method cannot be one).
+    fn invalid() -> Self;
+
+    /// The FFI entry point; see `ActionServerRawHandle::is_invalid` in `action.rs`.
+    fn is_invalid(&self) -> bool;
+
+    /// The FFI entry point; see `ActionServerRawHandle::handle_id` in `action.rs`.
+    fn handle_id(&self) -> HandleId;
+
+    /// The FFI entry point; see `ActionServerRawHandle::publish_feedback_raw` in `action.rs`.
+    fn publish_feedback_raw(
+        &self,
+        executor: &mut Executor,
+        goal_id: &nros_core::GoalId,
+        feedback_data: &[u8],
+    ) -> Result<(), NodeError>;
+
+    /// The FFI entry point; see `ActionServerRawHandle::complete_goal_raw` in `action.rs`.
+    fn complete_goal_raw(
+        &self,
+        executor: &mut Executor,
+        goal_id: &nros_core::GoalId,
+        status: nros_core::GoalStatus,
+        result_data: &[u8],
+    ) -> Result<(), NodeError>;
+
+    /// The FFI entry point; see `ActionServerRawHandle::set_goal_status` in `action.rs`.
+    fn set_goal_status(
+        &self,
+        executor: &mut Executor,
+        goal_id: &nros_core::GoalId,
+        status: nros_core::GoalStatus,
+    );
+
+    /// The FFI entry point; see `ActionServerRawHandle::active_goal_count` in `action.rs`.
+    fn active_goal_count(&self, executor: &Executor) -> usize;
+
+    /// The FFI entry point; see `ActionServerRawHandle::goal_exists` in `action.rs`.
+    fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool;
+
+    /// The FFI entry point; see `ActionServerRawHandle::expire_goals` in `action.rs`.
+    fn expire_goals(&self, executor: &mut Executor) -> usize;
+
+    /// The FFI entry point; see `ActionServerRawHandle::for_each_active_goal` in `action.rs`.
+    fn for_each_active_goal(&self, executor: &Executor, f: impl FnMut(&RawActiveGoal));
+
+    /// The FFI entry point; see `ActionServerRawHandle::goal_status` in `action.rs`.
+    fn goal_status(
+        &self,
+        executor: &Executor,
+        goal_id: &nros_core::GoalId,
+    ) -> Option<nros_core::GoalStatus>;
+}
+
+impl ActionServerRawHandleFfi for ActionServerRawHandle {
+    #[inline]
+    fn invalid() -> Self {
+        Self::invalid()
+    }
+
+    #[inline]
+    fn is_invalid(&self) -> bool {
+        Self::is_invalid(self)
+    }
+
+    #[inline]
+    fn handle_id(&self) -> HandleId {
+        Self::handle_id(self)
+    }
+
+    #[inline]
+    fn publish_feedback_raw(
+        &self,
+        executor: &mut Executor,
+        goal_id: &nros_core::GoalId,
+        feedback_data: &[u8],
+    ) -> Result<(), NodeError> {
+        Self::publish_feedback_raw(self, executor, goal_id, feedback_data)
+    }
+
+    #[inline]
+    fn complete_goal_raw(
+        &self,
+        executor: &mut Executor,
+        goal_id: &nros_core::GoalId,
+        status: nros_core::GoalStatus,
+        result_data: &[u8],
+    ) -> Result<(), NodeError> {
+        Self::complete_goal_raw(self, executor, goal_id, status, result_data)
+    }
+
+    #[inline]
+    fn set_goal_status(
+        &self,
+        executor: &mut Executor,
+        goal_id: &nros_core::GoalId,
+        status: nros_core::GoalStatus,
+    ) {
+        Self::set_goal_status(self, executor, goal_id, status)
+    }
+
+    #[inline]
+    fn active_goal_count(&self, executor: &Executor) -> usize {
+        Self::active_goal_count(self, executor)
+    }
+
+    #[inline]
+    fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool {
+        Self::goal_exists(self, executor, goal_id)
+    }
+
+    #[inline]
+    fn expire_goals(&self, executor: &mut Executor) -> usize {
+        Self::expire_goals(self, executor)
+    }
+
+    #[inline]
+    fn for_each_active_goal(&self, executor: &Executor, f: impl FnMut(&RawActiveGoal)) {
+        Self::for_each_active_goal(self, executor, f)
+    }
+
+    #[inline]
+    fn goal_status(
+        &self,
+        executor: &Executor,
+        goal_id: &nros_core::GoalId,
+    ) -> Option<nros_core::GoalStatus> {
+        Self::goal_status(self, executor, goal_id)
+    }
+}
+
+/// [`ActionClientRawHandle`]'s methods, for `nros-c`, `nros-cpp` and the `nros` runtime. Sealed.
+pub trait ActionClientRawHandleFfi: sealed::Sealed + Sized {
+    /// The FFI entry point; see `ActionClientRawHandle::entry_index` in `action.rs`.
+    fn entry_index(&self) -> usize;
+}
+
+impl ActionClientRawHandleFfi for ActionClientRawHandle {
+    #[inline]
+    fn entry_index(&self) -> usize {
+        Self::entry_index(self)
     }
 }
