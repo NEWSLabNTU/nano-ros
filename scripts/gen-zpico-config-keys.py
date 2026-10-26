@@ -32,6 +32,12 @@ Four property names predate that rule and are still accepted, as ALIASES listed
 explicitly below. They are the only authored rows in the file; everything else
 falls out of config.h.
 
+A key config.h defines only under a preprocessor condition (zenoh-pico 1.10's
+connect/listen timeout keys sit under `#ifdef Z_FEATURE_UNSTABLE_API`) is
+emitted under the SAME condition. Emitting it unconditionally names a macro a
+build without that condition never defines, which is a compile error in every
+such build (phase-508).
+
 Usage:
     python3 scripts/gen-zpico-config-keys.py            # write the header
     python3 scripts/gen-zpico-config-keys.py --check    # exit 1 if it is stale
@@ -52,6 +58,9 @@ CONFIG_H = located_or_dest("zenoh-pico") / "include/zenoh-pico/config.h"
 OUT_H = REPO / "packages/rmw/zenoh/zpico-sys/c/zpico/zpico_config_keys.h"
 
 KEY_RE = re.compile(r"^#define\s+(Z_CONFIG_([A-Z0-9_]+)_KEY)\s+(0x[0-9A-Fa-f]+|\d+)\s*$")
+COND_RE = re.compile(r"^#\s*(ifdef|ifndef|if|elif|else|endif)\b\s*(.*?)\s*(?:/[/*].*)?$")
+# The header's own include guard encloses every key and is not a condition on it.
+INCLUDE_GUARD = "INCLUDE_ZENOH_PICO_CONFIG_H"
 
 # Property names that predate the mechanical rule. Kept working so an existing
 # `properties = [("root_ca_certificate", …)]` caller does not break; the
@@ -68,24 +77,53 @@ ALIASES = {
 
 def parse_keys(text: str) -> list[tuple[str, str]]:
     """Return [(macro, derived property name)] in config.h order."""
-    out: list[tuple[str, str]] = []
-    for line in text.splitlines():
+    return [(macro, name) for macro, name, _ in parse_keys_guarded(text)]
+
+
+def parse_keys_guarded(text: str) -> list[tuple[str, str, str | None]]:
+    """Return [(macro, derived property name, condition or None)].
+
+    The condition is the conjunction of every preprocessor branch enclosing
+    the define, as a C `#if` expression, or None when only the include guard
+    encloses it. `#elif` is refused rather than modelled: config.h has none,
+    and a guess at one would emit a key under the wrong condition."""
+    out: list[tuple[str, str, str | None]] = []
+    stack: list[str | None] = []  # one entry per open #if; None = the include guard
+    for n, line in enumerate(text.splitlines(), 1):
+        c = COND_RE.match(line.strip())
+        if c:
+            kind, arg = c.group(1), c.group(2)
+            if kind == "ifdef":
+                stack.append(f"defined({arg})")
+            elif kind == "ifndef":
+                stack.append(None if arg == INCLUDE_GUARD else f"!defined({arg})")
+            elif kind == "if":
+                stack.append(f"({arg})")
+            elif kind == "else":
+                top = stack[-1]
+                stack[-1] = None if top is None else f"!{top}" if not top.startswith("!") else top[1:]
+            elif kind == "endif":
+                stack.pop()
+            else:
+                raise SystemExit(f"ERROR: config.h:{n}: `#elif` is not modelled by {Path(__file__).name}")
+            continue
         m = KEY_RE.match(line)
         if m:
-            out.append((m.group(1), m.group(2).lower()))
+            conds = [x for x in stack if x is not None]
+            out.append((m.group(1), m.group(2).lower(), " && ".join(conds) if conds else None))
     return out
 
 
-def render(keys: list[tuple[str, str]], with_aliases: bool = True) -> str:
+def render(keys: list[tuple[str, str, str | None]], with_aliases: bool = True) -> str:
     """Emit the header. `with_aliases=False` is for the self-test, whose sample
     holds none of the alias targets — a self-test that could not reach the
     emission path would be the negative control the gate-selftest rule exists
     to prevent."""
-    rows: list[tuple[str, str, bool]] = []
-    for macro, name in keys:
-        rows.append((name, macro, name.startswith("tls_")))
+    rows: list[tuple[str, str, bool, str | None]] = []
+    for macro, name, cond in keys:
+        rows.append((name, macro, name.startswith("tls_"), cond))
     if with_aliases:
-        known = {m for m, _ in keys}
+        known = {m for m, _, _ in keys}
         missing = sorted(m for m in ALIASES.values() if m not in known)
         if missing:
             raise SystemExit(
@@ -93,12 +131,13 @@ def render(keys: list[tuple[str, str]], with_aliases: bool = True) -> str:
                 f"ALIASES names. Fix ALIASES in {Path(__file__).name}."
             )
         for alias, macro in sorted(ALIASES.items()):
-            derived = next(n for m, n in keys if m == macro)
-            rows.append((alias, macro, derived.startswith("tls_")))
+            derived, cond = next((n, c) for m, n, c in keys if m == macro)
+            rows.append((alias, macro, derived.startswith("tls_"), cond))
 
     lines = []
-    for name, macro, tls in rows:
-        lines.append(f'    {{"{name}", {macro}, {str(tls).lower()}}},')
+    for name, macro, tls, cond in rows:
+        row = f'    {{"{name}", {macro}, {str(tls).lower()}}},'
+        lines.append(row if cond is None else f"#if {cond}\n{row}\n#endif")
     table = "\n".join(lines)
 
     n_derived = len(keys)
@@ -117,6 +156,10 @@ def render(keys: list[tuple[str, str]], with_aliases: bool = True) -> str:
  * `zp_config_insert()` takes. {n_derived} keys are derived mechanically
  * (`Z_CONFIG_<X>_KEY` -> `lowercase(<X>)`); {n_alias} legacy aliases are
  * authored in the generator.
+ *
+ * A key config.h defines only under a condition is listed under that same
+ * condition, so a build without it neither names an undefined macro nor
+ * accepts a key it cannot honour.
  *
  * `needs_tls` marks the keys that only mean anything when zenoh-pico is built
  * with `Z_FEATURE_LINK_TLS`. They stay in the table on every build so that
@@ -169,6 +212,27 @@ def self_test() -> bool:
             "#define Z_FEATURE_PUBLICATION 1",
         ]
     )
+    guarded_sample = "\n".join(
+        [
+            "#ifndef INCLUDE_ZENOH_PICO_CONFIG_H",
+            "#define Z_CONFIG_MODE_KEY 0x40",
+            "#ifdef Z_FEATURE_UNSTABLE_API",
+            "#define Z_CONFIG_CONNECT_TIMEOUT_KEY 0x57",
+            "#endif",
+            "#endif",
+        ]
+    )
+    guarded = parse_keys_guarded(guarded_sample)
+    want_guarded = [
+        ("Z_CONFIG_MODE_KEY", "mode", None),
+        ("Z_CONFIG_CONNECT_TIMEOUT_KEY", "connect_timeout", "defined(Z_FEATURE_UNSTABLE_API)"),
+    ]
+    if guarded != want_guarded:
+        print(f"self-test FAILED: parse_keys_guarded -> {guarded}, want {want_guarded}", file=sys.stderr)
+        return False
+    if "#if defined(Z_FEATURE_UNSTABLE_API)\n    {\"connect_timeout\"" not in render(guarded, with_aliases=False):
+        print("self-test FAILED: a guarded key was not emitted under its guard", file=sys.stderr)
+        return False
     got = parse_keys(sample)
     want = [
         ("Z_CONFIG_MODE_KEY", "mode"),
@@ -185,7 +249,7 @@ def self_test() -> bool:
     # An emitted table must name every key it parsed, and a `tls_` key must be
     # marked as needing TLS while a non-TLS one is not — that flag is what makes
     # a TLS key on a non-TLS build an error rather than a silent no-op.
-    rendered = render(got, with_aliases=False)
+    rendered = render([(m, n, None) for m, n in got], with_aliases=False)
     for _, name in got:
         if f'{{"{name}", ' not in rendered:
             print(f"self-test FAILED: '{name}' missing from the emitted table", file=sys.stderr)
@@ -196,7 +260,7 @@ def self_test() -> bool:
     if '{"mode", Z_CONFIG_MODE_KEY, false}' not in rendered:
         print("self-test FAILED: a non-TLS key was marked needs_tls", file=sys.stderr)
         return False
-    print("gen-zpico-config-keys self-test: OK (3 key shapes + 3 near-misses + emission)")
+    print("gen-zpico-config-keys self-test: OK (3 key shapes + 3 near-misses + a guarded key + emission)")
     return True
 
 
@@ -217,7 +281,7 @@ def main() -> int:
         )
         return 2
 
-    keys = parse_keys(CONFIG_H.read_text())
+    keys = parse_keys_guarded(CONFIG_H.read_text())
     if not keys:
         print(f"ERROR: no Z_CONFIG_*_KEY defines found in {CONFIG_H}", file=sys.stderr)
         return 2

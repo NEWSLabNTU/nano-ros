@@ -455,3 +455,45 @@ branch `feat/508-zenoh-1.10-knobs`. That branch also stops emitting the 1.8
 lease chunk, the periodic scheduler's knobs and `Z_FEATURE_SCOUTING_UDP`,
 and teaches `check-zenoh-config-template` to fail on the next such gap. It
 does not build against the 1.8.0 pin, so it lands with the bump.
+
+## Port 2026-10-26 — `zpico.c` on the executor, the link shims on the 1.10 ABI
+
+Branch `feat/508-zenoh-1.10`, against fork commit `06ac6bf8` (the RFC-0110 D4
+patch: `zp_spin_once` drives a multi-thread executor from the caller). Every
+platform builds and passes its zenoh e2e cells on 1.10.1:
+
+| platform | mode (RFC-0110) | result |
+| --- | --- | --- |
+| Linux | THREAD | every zenoh cell (Rust, C, C++ pub/sub, service, action, safety) |
+| ThreadX-Linux | CALLER, multi-thread | 9 of 9 `rtos_e2e` |
+| ThreadX riscv64 (NetX Duo) | CALLER, multi-thread | 11 of 11 |
+| FreeRTOS (mps2-an385) | THREAD | 9 of 9 `rtos_e2e` |
+| NuttX (qemu-armv7a) | THREAD | 9 of 9 `rtos_e2e` |
+| bare metal (smoltcp, serial, RTIC) | CALLER, single-thread | 20 of 20 emulator cells |
+| Zephyr (native_sim) | THREAD | 12 of 12 Rust and C; C++ blocked by issue 2032 |
+
+What the port needed beyond the RFC's own list, each found by a build:
+
+- 1.9 added a clock trio (`zp_clock_elapsed_{us,ms,s}_since`) and a
+  task-identity trio (`_z_task_get_id`, `_z_task_current_id`,
+  `_z_task_id_equal`) to the system ABI. The alias TU, Zephyr's system TU,
+  ThreadX's `task.c` and a new `c/zpico/nuttx_task_id.c` provide them.
+- The background executor copies a `_z_task_t` by value, which the generic
+  opaque header's byte ARRAY could not be; it is a struct around the same
+  bytes now.
+- NuttX compiles the alias TU without its own headers, so its task-identity
+  trio cannot live there, and it cannot live in `nuttx_clock.c` either: that
+  object was never linked (nothing referenced it — the alias TU's clock
+  wins), and one new referenced symbol pulled it in and duplicated every
+  clock symbol. That `nuttx_clock.c`'s clock is dead code on NuttX is a
+  separate, older finding.
+- The serial handshake is upstream's (`_z_connect_serial`) and the Rust one
+  in `zpico-serial` is gone; the bare-metal serial cell passes on it.
+
+Tier 2 (`just ci matrix`, every module's fixtures built except Zephyr's,
+which issue 2032 stops) ran 3283 tests: 8 real failures, none from the port.
+Five are Zephyr fixtures that were never built (the XRCE C cells and
+`zephyr_self_pkg`), not runtime results. `contract_monitor_compliant_pair_stays_silent`
+passed when re-run alone. `an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`
+fails alone too — it delivers, but no `nros: heap peak` line arrives within
+120 s — and its image links no zenoh-pico symbol, so it is outside this move.

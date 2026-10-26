@@ -28,6 +28,9 @@
 #include <tx_api.h>
 
 #include <stddef.h>
+#if defined(__linux__)
+#include <sys/select.h>
+#endif
 
 typedef struct {
     struct nx_bsd_addrinfo *iptcp;
@@ -192,17 +195,60 @@ void nros_platform_tcp_close(void *sock_raw) {
     }
 }
 
+/* Whether `fd` has data to read right now (zero-timeout select).
+ *
+ * RFC-0110 D4. zenoh-pico 1.9 runs its read path as an executor future, and on
+ * ThreadX that executor runs inside `zpico_spin_once`, on a tier thread, under
+ * the executor's lock. A receive that BLOCKS there holds that tier for the
+ * socket's receive timeout and every other tier out of the executor — and on
+ * the Linux host port it is a host syscall, which the ThreadX scheduler still
+ * counts as the thread running, so lower tiers starve outright (phase-297 W5).
+ * So the read the future makes asks first, the same zero-timeout check
+ * `zpico_spin_once` made before 1.9 in front of `zp_read`. The Linux host port's
+ * BSD fds are host fds, which that check used host `select` on; NetX Duo on a
+ * target answers `nx_bsd_select`. A failed select reads as "nothing ready": the
+ * recv it gates would report the same error on the next round. */
+static int nros_threadx_tcp_readable(INT fd) {
+#if defined(__linux__)
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(fd, &read_fds);
+    struct timeval tv = {0, 0};
+    return select(fd + 1, &read_fds, NULL, NULL, &tv) > 0;
+#else
+    nx_bsd_fd_set read_fds;
+    NX_BSD_FD_ZERO(&read_fds);
+    NX_BSD_FD_SET(fd, &read_fds);
+    struct nx_bsd_timeval tv = {0, 0};
+    return nx_bsd_select(fd + 1, &read_fds, NULL, NULL, &tv) > 0;
+#endif
+}
+
+/* The executor's read (RFC-0110 D4): returns 0 — zenoh-pico's read future
+ * treats an empty receive as idle — when nothing is buffered, instead of
+ * waiting. The socket itself stays blocking, so `read_exact` (the open
+ * handshake) and every send keep their behaviour. */
 size_t nros_platform_tcp_read(const void *sock_raw, uint8_t *buf, size_t len) {
     if (sock_raw == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
+    const nros_threadx_socket_t *sock = (const nros_threadx_socket_t *) sock_raw;
+    if (!nros_threadx_tcp_readable(sock->fd)) return 0;
+    INT r = nx_bsd_recv(sock->fd, buf, (INT) len, 0);
+    return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
+}
+
+/* One blocking receive, for `read_exact`: the open handshake waits for bytes
+ * that are on their way, and a 0 there would read as a closed peer. */
+static size_t nros_threadx_tcp_recv_blocking(const void *sock_raw, uint8_t *buf, size_t len) {
     const nros_threadx_socket_t *sock = (const nros_threadx_socket_t *) sock_raw;
     INT r = nx_bsd_recv(sock->fd, buf, (INT) len, 0);
     return r < 0 ? NROS_PLATFORM_NET_SOCKET_ERROR : (size_t) r;
 }
 
 size_t nros_platform_tcp_read_exact(const void *sock_raw, uint8_t *buf, size_t len) {
+    if (sock_raw == NULL) return NROS_PLATFORM_NET_SOCKET_ERROR;
     size_t n = 0;
     while (n < len) {
-        size_t r = nros_platform_tcp_read(sock_raw, buf + n, len - n);
+        size_t r = nros_threadx_tcp_recv_blocking(sock_raw, buf + n, len - n);
         if (r == NROS_PLATFORM_NET_SOCKET_ERROR) return r;
         if (r == 0) return 0;
         n += r;

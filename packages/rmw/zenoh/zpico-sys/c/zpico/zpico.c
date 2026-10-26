@@ -13,11 +13,8 @@
 #include <zenoh-pico/session/query.h>
 #include <zenoh-pico/api/olv_macros.h>
 #include "zpico_config_keys.h"
-/* Phase 154 — `nros_platform_socket_get_fd` accessor for the
- * `get_session_fd` helper (used by ThreadX-Linux's
- * `select`-driven read-task wakeup path). Replaces the
- * `peer->_socket._fd` field access that no longer compiles
- * once `NROS_PLATFORM_ALIASES` is defined on the vendor build. */
+/* The platform ABI: `nros_platform_task_attr_t` for the executor task's
+ * attributes, and the multicast / UDP glue in `platform_net.h`. */
 #include <nros/platform.h>
 #include <nros/platform_net.h>
 #include <stdio.h>
@@ -112,23 +109,44 @@ static void _threadx_printk(const char* fmt, ...) {
 #define printk(...) // No-op on other platforms
 #endif
 
-// Internal zenoh-pico headers for socket FD access (select()-based timeout).
-// Needed for single-threaded builds and for ThreadX/NSOS, where we deliberately
-// drive read + keepalive from zpico_spin_once instead of background tasks.
+// ============================================================================
+// How this build drives zenoh-pico's executor — RFC-0110 D1, chosen ONCE here
+// ============================================================================
+//
+// zenoh-pico 1.9 replaced the read and lease tasks with one asynchronous
+// executor: read, lease, keep-alive, query timeout and reconnect are futures
+// in one run queue. Something has to run that queue, and there are two ways:
+//
+//   ZPICO_DRIVE_THREAD  the executor runs on its own thread (`zp_start_read_task`
+//                       starts it). For a platform where a blocked receive is a
+//                       wait the scheduler can see: POSIX, NuttX, Zephyr and
+//                       FreeRTOS.
+//   ZPICO_DRIVE_CALLER  the executor runs inside `zpico_spin_once`, in the
+//                       caller's thread, a bounded number of steps per call.
+//                       For a build with no second thread (bare-metal smoltcp
+//                       and serial, any single-thread build) and for ThreadX,
+//                       whose Linux host port blocks a pthread in a host `recv`
+//                       the ThreadX scheduler still counts as running
+//                       (phase-297 W5).
+//
+// Every condition that used to spell this choice inline reads the macro, so
+// the table in RFC-0110 D1 has exactly one implementation.
+#if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZENOH_THREADX) && !defined(ZPICO_SMOLTCP) &&           \
+    !defined(ZPICO_SERIAL)
+#define ZPICO_DRIVE_THREAD 1
+#else
+#define ZPICO_DRIVE_CALLER 1
+#endif
+
+// Internal zenoh-pico headers. `_zp_send_keep_alive` (RFC-0110 D5) is the one
+// keep-alive call every build has: the public `zp_send_keep_alive` is compiled
+// out of multi-thread builds.
 #if defined(ZENOH_THREADX)
 #include "nxd_bsd.h"
 #endif
-#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) &&          \
-    !defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD != 1
 #include "zenoh-pico/net/session.h"
 #include "zenoh-pico/transport/transport.h"
 #include "zenoh-pico/api/olv_macros.h"
-#include <sys/select.h>
-#elif defined(ZENOH_THREADX)
-#include "zenoh-pico/net/session.h"
-#include "zenoh-pico/transport/transport.h"
-#include "zenoh-pico/api/olv_macros.h"
-#endif
 
 // ============================================================================
 // Platform-Specific Declarations
@@ -332,7 +350,7 @@ typedef struct {
     /* Phase 127.D — atomic+volatile so fat-LTO doesn't hoist the
      * read in `zpico_get_check` over the write inside
      * `get_reply_handler` (callback fired by zenoh-pico's RX path
-     * during `zp_read`, which sits between two polls of the same
+     * during an executor read step, which sits between two polls of the same
      * struct field). Plain volatile alone was not enough under
      * `lto = "fat"` + `opt-level = "s"` on cortex-m3. Use the GCC
      * `__atomic_*` builtins so the access is a real load/store
@@ -677,13 +695,6 @@ struct zpico_session {
 #else
     // POSIX/Zephyr: mutex + condvar
     _z_mutex_t spin_mutex;
-#if defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD == 1
-    // issue #247 — multi-tier serialization of the spin-driven read path (see
-    // _zpico_threadx_locked_read). TRY-lock: the losing spinner skips this
-    // round's read (data is drained by the winner).
-    _z_mutex_t threadx_read_mutex;
-    bool threadx_read_mutex_initialized;
-#endif
     _z_condvar_t spin_cv;
     bool spin_cv_initialized;
 #endif
@@ -705,21 +716,27 @@ struct zpico_session {
 #endif
 
 #if Z_FEATURE_MULTI_THREAD == 1
-    // Read/lease task attributes (copied from the process-wide defaults at
+    // Executor task attributes (copied from the process-wide defaults at
     // zpico_open). When non-configured, NULL is passed (platform default).
+    // RFC-0110 D2 — zenoh-pico 1.9 runs read, lease and keep-alive on ONE
+    // executor thread, so the old read task's attributes are the executor's
+    // and there is no lease task left to configure.
     bool read_task_configured;
-    bool lease_task_configured;
     zp_task_read_options_t read_task_opts;
-    zp_task_lease_options_t lease_task_opts;
     z_task_attr_t read_task_attr;
-    z_task_attr_t lease_task_attr;
     /* issue 0803 — the per-session copy the ALIAS task path reads. See the note
      * on `g_default_read_nros_attr`: `task_attributes` must point at an
      * `nros_platform_task_attr_t`, and `zpico_open` re-points it per session,
      * so the session needs storage of that type too. Fixing only the global
      * left this re-point handing the platform layer the pthread copy again. */
     nros_platform_task_attr_t read_nros_attr;
-    nros_platform_task_attr_t lease_nros_attr;
+#endif
+
+#if defined(ZPICO_DRIVE_CALLER)
+    // RFC-0110 D3 — set by `_zpico_notify_spin` when a callback delivered
+    // application data during this caller's executor steps, so a timed
+    // `zpico_spin_once` returns as soon as there is something to dispatch.
+    volatile bool spin_delivered;
 #endif
 };
 
@@ -786,7 +803,7 @@ static inline int _zpico_unpack_slot(void* ctx) {
 
 #if defined(ZENOH_FREERTOS_LWIP)
 // FreeRTOS: binary semaphore — lightweight, no mutex needed.
-static inline void _zpico_notify_spin(struct zpico_session* s) {
+static inline void _zpico_wake_spinner(struct zpico_session* s) {
     if (s->spin_sem != NULL) {
         xSemaphoreGive(s->spin_sem);
     }
@@ -797,7 +814,7 @@ static inline void _zpico_notify_spin(struct zpico_session* s) {
 // hangs indefinitely inside the kernel's watchdog-backed semaphore
 // wait (Phase 55.12 follow-up). POSIX `sem_timedwait` does not share
 // that code path and is safe.
-static inline void _zpico_notify_spin(struct zpico_session* s) {
+static inline void _zpico_wake_spinner(struct zpico_session* s) {
     if (s->spin_sem_initialized) {
         // sem_post is async-signal-safe; binary-ish semantics are fine
         // because we only care that spin_once wakes at least once per
@@ -808,36 +825,7 @@ static inline void _zpico_notify_spin(struct zpico_session* s) {
 #else
 // POSIX/Zephyr: mutex + condvar
 
-#if defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD == 1
-/* issue #247 — multi-tier serialization of the spin-driven read path. The
- * ThreadX arm predates multi-tier (RFC-0015 Model 1): TWO tier threads each
- * call zp_read on the SAME TCP stream, splitting message reassembly across
- * two callers — control replies (the write-filter's DeclareSubscriber /
- * DeclareFinal) get consumed-but-dropped, so a spawned tier's publisher
- * filter never opens and its puts are silently discarded (router traces
- * confirmed the reply was sent; the guest never processed it). TRY-lock:
- * the losing spinner skips this round's read (data is drained by the
- * winner) instead of blocking its 1 ms tier cadence. */
-static int _zpico_threadx_locked_read(struct zpico_session* s) {
-    if (s->threadx_read_mutex_initialized) {
-        if (_z_mutex_try_lock(&s->threadx_read_mutex) != 0) {
-            /* Another tier is mid-read — it drains the data. This is a
-             * benign "no work this round" outcome, NOT a transport failure:
-             * return 0 (Ok) so the executor's `consecutive_io_failures`
-             * counter is not incremented. Returning a negative here made
-             * the nros-c `spin_period` bail after SPIN_ERROR_TOLERANCE idle
-             * rounds (issue 0387 / the issue-0355 "idle never counts" rule). */
-            return 0;
-        }
-        int r = zp_read(z_session_loan_mut(&s->session), NULL);
-        _z_mutex_unlock(&s->threadx_read_mutex);
-        return r;
-    }
-    return zp_read(z_session_loan_mut(&s->session), NULL);
-}
-#endif
-
-static inline void _zpico_notify_spin(struct zpico_session* s) {
+static inline void _zpico_wake_spinner(struct zpico_session* s) {
     if (s->spin_cv_initialized) {
         _z_mutex_lock(&s->spin_mutex);
         _z_condvar_signal(&s->spin_cv);
@@ -847,10 +835,20 @@ static inline void _zpico_notify_spin(struct zpico_session* s) {
 #endif // ZENOH_FREERTOS_LWIP / ZENOH_NUTTX
 
 #else
-static inline void _zpico_notify_spin(struct zpico_session* s) {
+static inline void _zpico_wake_spinner(struct zpico_session* s) {
     (void)s;
 }
 #endif
+
+// Every callback that hands application data to the executor calls this. In a
+// CALLER build it also marks the delivery, which is how a timed spin knows its
+// executor steps produced work (RFC-0110 D3).
+static inline void _zpico_notify_spin(struct zpico_session* s) {
+#if defined(ZPICO_DRIVE_CALLER)
+    s->spin_delivered = true;
+#endif
+    _zpico_wake_spinner(s);
+}
 
 // ============================================================================
 // phase-279 (#145) — dedicated tx-flush thread. Flushing from the executor/
@@ -884,13 +882,12 @@ static void* _zpico_tx_flush_task_fn(void* arg) {
 // ============================================================================
 
 #if Z_FEATURE_MULTI_THREAD == 1
-// Optional default task attributes for read/lease tasks. When configured they
-// are copied into the session at zpico_open and passed to zp_start_read_task()
-// / zp_start_lease_task() instead of NULL (platform default).
+// Optional default attributes for the executor task (RFC-0110 D2: the old read
+// task's slot). When configured they are copied into the session at
+// zpico_open and passed to zp_start_read_task() instead of NULL (platform
+// default).
 static bool g_default_read_task_configured = false;
-static bool g_default_lease_task_configured = false;
 static zp_task_read_options_t g_default_read_task_opts;
-static zp_task_lease_options_t g_default_lease_task_opts;
 /* issue 0803 — the attribute the ALIAS task path reads.
  *
  * On a build whose `_z_task_init` comes from `platform_aliases.c` (everything
@@ -911,10 +908,8 @@ static zp_task_lease_options_t g_default_lease_task_opts;
  * width is unchanged, so `zp_task_read_options_t`'s layout is untouched; what
  * changes is that the pointee is the struct the reader expects. */
 static nros_platform_task_attr_t g_default_read_nros_attr;
-static nros_platform_task_attr_t g_default_lease_nros_attr;
 
 static z_task_attr_t g_default_read_task_attr;
-static z_task_attr_t g_default_lease_task_attr;
 #endif
 
 #if ZPICO_TX_BATCH_THREAD == 1
@@ -1963,8 +1958,18 @@ static void zpico_posix_fifo_set_priority(pthread_attr_t* attr, uint32_t raw) {
 void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
                            uint32_t lease_priority, uint32_t lease_stack_bytes) {
 #if Z_FEATURE_MULTI_THREAD == 1
+    /* RFC-0110 D2 — zenoh-pico 1.9 runs the read path, the lease and keep-alive
+     * sends, the reconnect and every user callback on ONE executor thread, so
+     * the read task's attributes become the executor's and the lease task is
+     * gone. Its STACK is not dropped with it: until the executor's high-water
+     * mark is measured per platform, the executor gets the larger of the two
+     * stacks a board stated. The lease PRIORITY has nothing left to apply to;
+     * the knobs that carry it are retired in RFC-0110 step 6. */
+    if (lease_stack_bytes > read_stack_bytes) {
+        read_stack_bytes = lease_stack_bytes;
+    }
+    (void)lease_priority;
     memset(&g_default_read_task_attr, 0, sizeof(g_default_read_task_attr));
-    memset(&g_default_lease_task_attr, 0, sizeof(g_default_lease_task_attr));
 
     // Platform-specific field assignment.
     // z_task_attr_t varies by platform — only FreeRTOS and POSIX-like
@@ -1974,13 +1979,8 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     g_default_read_task_attr.name = "zpico_read";
     g_default_read_task_attr.priority = (UBaseType_t)read_priority;
     g_default_read_task_attr.stack_depth = read_stack_bytes / sizeof(StackType_t);
-    g_default_lease_task_attr.name = "zpico_lease";
-    g_default_lease_task_attr.priority = (UBaseType_t)lease_priority;
-    g_default_lease_task_attr.stack_depth = lease_stack_bytes / sizeof(StackType_t);
     g_default_read_task_opts.task_attributes = &g_default_read_task_attr;
-    g_default_lease_task_opts.task_attributes = &g_default_lease_task_attr;
     g_default_read_task_configured = true;
-    g_default_lease_task_configured = true;
 /* issue 0775 — `ZENOH_NUTTX`, not `__NuttX__`.
  *
  * `__NuttX__` is a NuttX HEADER macro and this TU never pulls the header, so
@@ -1998,10 +1998,6 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     pthread_attr_init(&g_default_read_task_attr);
     if (read_stack_bytes != 0u) {
         pthread_attr_setstacksize(&g_default_read_task_attr, (size_t)read_stack_bytes);
-    }
-    pthread_attr_init(&g_default_lease_task_attr);
-    if (lease_stack_bytes != 0u) {
-        pthread_attr_setstacksize(&g_default_lease_task_attr, (size_t)lease_stack_bytes);
     }
 #if defined(ZENOH_ZEPHYR)
     // Issue 0626 — priority IS settable here, and used not to be set.
@@ -2045,20 +2041,12 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
      * against 0-31 maps to 0 through the 255-wide one, i.e. the bottom slot
      * again. */
     nros_platform_task_attr_init(&g_default_read_nros_attr);
-    nros_platform_task_attr_init(&g_default_lease_nros_attr);
     if (read_priority != 0u) {
         g_default_read_nros_attr.priority = (int32_t)read_priority;
     }
-    if (lease_priority != 0u) {
-        g_default_lease_nros_attr.priority = (int32_t)lease_priority;
-    }
-    g_default_read_nros_attr.name = "zpico_read";
-    g_default_lease_nros_attr.name = "zpico_lease";
+    g_default_read_nros_attr.name = "zpico_exec";
     if (read_stack_bytes != 0u) {
         g_default_read_nros_attr.stack_bytes = read_stack_bytes;
-    }
-    if (lease_stack_bytes != 0u) {
-        g_default_lease_nros_attr.stack_bytes = lease_stack_bytes;
     }
 #else
     // issue 0765 / 0775 — Linux, macOS AND NuttX place the transport here.
@@ -2091,24 +2079,15 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
      * normalised cross-RTOS band — the same vocabulary issue 0623 settled on
      * after a normalised scale silently inverted a tier against the transport. */
     nros_platform_task_attr_init(&g_default_read_nros_attr);
-    nros_platform_task_attr_init(&g_default_lease_nros_attr);
     if (read_priority != 0u) {
         g_default_read_nros_attr.priority = NROS_PLATFORM_PRIORITY_RAW(read_priority);
-    }
-    if (lease_priority != 0u) {
-        g_default_lease_nros_attr.priority = NROS_PLATFORM_PRIORITY_RAW(lease_priority);
     }
     if (read_stack_bytes != 0u) {
         g_default_read_nros_attr.stack_bytes = read_stack_bytes;
     }
-    if (lease_stack_bytes != 0u) {
-        g_default_lease_nros_attr.stack_bytes = lease_stack_bytes;
-    }
 #endif
     g_default_read_task_opts.task_attributes = (z_task_attr_t*)&g_default_read_nros_attr;
-    g_default_lease_task_opts.task_attributes = (z_task_attr_t*)&g_default_lease_nros_attr;
     g_default_read_task_configured = true;
-    g_default_lease_task_configured = true;
 #elif defined(ZENOH_THREADX)
     // Issue 0626 — ThreadX carries the platform ABI's attributes now.
     //
@@ -2129,23 +2108,15 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     nros_platform_task_attr_init(&g_default_read_task_attr);
     g_default_read_task_attr.name = "zpico_read";
     g_default_read_task_attr.priority = (int32_t)read_priority;
-    nros_platform_task_attr_init(&g_default_lease_task_attr);
-    g_default_lease_task_attr.name = "zpico_lease";
-    g_default_lease_task_attr.priority = (int32_t)lease_priority;
     g_default_read_task_opts.task_attributes = &g_default_read_task_attr;
-    g_default_lease_task_opts.task_attributes = &g_default_lease_task_attr;
     g_default_read_task_configured = true;
-    g_default_lease_task_configured = true;
     (void)read_stack_bytes;
-    (void)lease_stack_bytes;
 #else
     // Bare-metal and other single-threaded platforms: `z_task_attr_t` is still
     // `void *` there (see `c/platform/bare-metal/platform.h`) and no task is
     // ever created, so there is nothing to configure.
     (void)read_priority;
     (void)read_stack_bytes;
-    (void)lease_priority;
-    (void)lease_stack_bytes;
 #endif
 #else
     (void)read_priority;
@@ -2258,11 +2229,8 @@ int32_t zpico_open(zpico_session_t* session) {
 #endif
 #endif
     s->read_task_configured = g_default_read_task_configured;
-    s->lease_task_configured = g_default_lease_task_configured;
     s->read_task_attr = g_default_read_task_attr;
-    s->lease_task_attr = g_default_lease_task_attr;
     s->read_task_opts = g_default_read_task_opts;
-    s->lease_task_opts = g_default_lease_task_opts;
 #if defined(ZENOH_NUTTX) || defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(ZENOH_ZEPHYR)
     /* issue 0852 — ZENOH_ZEPHYR joins this list. It was the platform the cast
      * below was guaranteed to break on, and it was the one left out. */
@@ -2274,19 +2242,12 @@ int32_t zpico_open(zpico_session_t* session) {
      * transport landed at SCHED_FIFO 1 below every tier and 90/40/5 all
      * produced identical kernel tables. */
     s->read_nros_attr = g_default_read_nros_attr;
-    s->lease_nros_attr = g_default_lease_nros_attr;
     if (s->read_task_configured) {
         s->read_task_opts.task_attributes = (z_task_attr_t*)&s->read_nros_attr;
-    }
-    if (s->lease_task_configured) {
-        s->lease_task_opts.task_attributes = (z_task_attr_t*)&s->lease_nros_attr;
     }
 #else
     if (s->read_task_configured) {
         s->read_task_opts.task_attributes = &s->read_task_attr;
-    }
-    if (s->lease_task_configured) {
-        s->lease_task_opts.task_attributes = &s->lease_task_attr;
     }
 #endif
 #endif
@@ -2301,8 +2262,9 @@ int32_t zpico_open(zpico_session_t* session) {
     z_open_options_t open_opts;
     z_open_options_default(&open_opts);
 #if Z_FEATURE_MULTI_THREAD == 1
+    /* The executor thread is started below, once the spin-wake primitive its
+     * callbacks signal exists (THREAD), or never (CALLER — RFC-0110 D4). */
     open_opts.auto_start_read_task = false;
-    open_opts.auto_start_lease_task = false;
 #endif
     int open_ret = z_open(&s->session, z_config_move(&s->config), &open_opts);
     if (open_ret < 0) {
@@ -2320,11 +2282,10 @@ int32_t zpico_open(zpico_session_t* session) {
         (void)zid;
     }
 
-    // Start background tasks only in multi-threaded mode. ThreadX/NSOS is an
-    // exception: its blocking BSD recv path can keep the read task runnable
-    // long enough to starve the lease task, so zpico_spin_once() drives reads
-    // and keepalives explicitly for that platform.
-#if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZENOH_THREADX)
+    // RFC-0110 D2 — THREAD mode starts zenoh-pico's executor thread, which runs
+    // read, lease, keep-alive, query timeout and reconnect. CALLER mode
+    // (ThreadX, bare metal) starts nothing: zpico_spin_once() runs the executor.
+#if defined(ZPICO_DRIVE_THREAD)
 #if defined(ZENOH_FREERTOS_LWIP)
     s->spin_sem = xSemaphoreCreateBinary();
 #elif defined(ZENOH_NUTTX)
@@ -2338,16 +2299,8 @@ int32_t zpico_open(zpico_session_t* session) {
 #endif
 
     const zp_task_read_options_t* read_opts = s->read_task_configured ? &s->read_task_opts : NULL;
-    const zp_task_lease_options_t* lease_opts =
-        s->lease_task_configured ? &s->lease_task_opts : NULL;
 
     if (zp_start_read_task(z_session_loan_mut(&s->session), read_opts) < 0) {
-        z_close(z_session_loan_mut(&s->session), NULL);
-        return ZPICO_ERR_TASK;
-    }
-
-    if (zp_start_lease_task(z_session_loan_mut(&s->session), lease_opts) < 0) {
-        zp_stop_read_task(z_session_loan_mut(&s->session));
         z_close(z_session_loan_mut(&s->session), NULL);
         return ZPICO_ERR_TASK;
     }
@@ -2378,12 +2331,6 @@ int32_t zpico_open(zpico_session_t* session) {
         printk("zpico: tx-flush task init FAILED — batched puts flush on keepalives only\n");
     }
 #endif
-#endif
-
-#if defined(ZENOH_THREADX) && Z_FEATURE_MULTI_THREAD == 1
-    if (!s->threadx_read_mutex_initialized && _z_mutex_init(&s->threadx_read_mutex) == 0) {
-        s->threadx_read_mutex_initialized = true;
-    }
 #endif
 
 #if Z_FEATURE_MULTI_THREAD == 1
@@ -2497,7 +2444,7 @@ int32_t zpico_publish_streamed(zpico_session_t* session, int32_t handle, size_t 
 /**
  * Phase 124.F.2 — wire-level "is the agent still reachable?" probe.
  *
- * Issues one `zp_send_keep_alive` against the open session. On
+ * Issues one `_zp_send_keep_alive` against the open session. On
  * zenoh-pico that's the closest match to a true ping primitive:
  * the function returns success when the keep-alive frame fired
  * down the transport layer, and a negative `z_result_t` when the
@@ -2515,9 +2462,10 @@ int32_t zpico_send_keep_alive(zpico_session_t* session) {
     if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
-    zp_send_keep_alive_options_t options;
-    zp_send_keep_alive_options_default(&options);
-    z_result_t ret = zp_send_keep_alive(z_session_loan(&s->session), &options);
+    /* RFC-0110 D5 — the public `zp_send_keep_alive` is compiled out of
+     * multi-thread builds since zenoh-pico 1.9; the internal call every build
+     * has sends one keep-alive through the transport's TX path. */
+    z_result_t ret = _zp_send_keep_alive(_Z_RC_IN_VAL(z_session_loan(&s->session)));
     if (ret < 0) {
         return ZPICO_ERR_TIMEOUT;
     }
@@ -2576,10 +2524,9 @@ void zpico_close(zpico_session_t* session) {
         /* phase-279 (#145) — stop batching; zp_batch_stop flushes the remainder. */
         zp_batch_stop(z_session_loan(&s->session));
 #endif
-#if Z_FEATURE_MULTI_THREAD == 1
-        // Stop background tasks (only in multi-threaded mode)
+#if defined(ZPICO_DRIVE_THREAD)
+        // Stop the executor thread (RFC-0110 D2; `z_close` would stop it too).
         zp_stop_read_task(z_session_loan_mut(&s->session));
-        zp_stop_lease_task(z_session_loan_mut(&s->session));
 
 #if defined(ZENOH_FREERTOS_LWIP)
         if (s->spin_sem != NULL) {
@@ -3278,41 +3225,32 @@ int32_t zpico_undeclare_subscriber(zpico_session_t* session, int32_t handle) {
 }
 
 // ============================================================================
-// Socket FD Helper (for select()-based timeout)
+// CALLER-mode executor driving — RFC-0110 D3/D4
 // ============================================================================
 
-// get_session_fd() is only needed for select()-based paths. Most
-// multi-threaded builds use background tasks, but ThreadX/NSOS uses the same
-// select + read + keepalive path as single-threaded hosts.
-#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) &&          \
-    (Z_FEATURE_MULTI_THREAD != 1 || defined(ZENOH_THREADX))
-/**
- * Extract the socket file descriptor from the zenoh session.
- *
- * Path: s->session → _z_session_t._tp._transport._unicast._peers → first peer → _socket
- *
- * Returns -1 if the session is not unicast or has no connected peers.
- */
-static int get_session_fd(struct zpico_session* s) {
-    _z_session_t* session = _Z_RC_IN_VAL(z_session_loan(&s->session));
-    if (session->_tp._type != _Z_TRANSPORT_UNICAST_TYPE) {
-        return -1;
+#if defined(ZPICO_DRIVE_CALLER)
+// The most executor steps one `zpico_spin_once` runs. One step runs one ready
+// future (a read, a lease check, a keep-alive, a query timeout), so a flood of
+// inbound frames cannot hold the caller for longer than this many of them; the
+// rest wait for the next spin. The caller-side twin of the read future's own
+// frame budget (fork commit `00f8e2f0`).
+#ifndef ZPICO_SPIN_BUDGET
+#define ZPICO_SPIN_BUDGET 64
+#endif
+
+// Run ready executor futures until none is ready or the budget is spent.
+// `zp_spin_once` returns false when the executor has nothing ready (an idle
+// read reports itself sleeping because `Z_RUNTIME_IDLE_READ_TASK_SLEEP` is 1 in
+// a CALLER build), so a quiet link costs one step. On ThreadX (RFC-0110 D4) the
+// fork's multi-thread `zp_spin_once` takes the executor's lock with a TRY-lock:
+// a tier that loses the race returns at once, because the winner is draining —
+// the single-reader rule of issue #247, now enforced by zenoh-pico's own lock.
+static void _zpico_run_executor(struct zpico_session* s) {
+    for (uint32_t steps = 0; steps < ZPICO_SPIN_BUDGET; steps++) {
+        if (!zp_spin_once(z_session_loan(&s->session))) {
+            break;
+        }
     }
-    _z_transport_peer_unicast_t* peer =
-        _z_transport_peer_unicast_slist_value(session->_tp._transport._unicast._peers);
-    if (peer == NULL) {
-        return -1;
-    }
-    // Phase 154 — read the BSD fd via the platform accessor
-    // instead of reaching into the per-RTOS `_z_sys_net_socket_t`
-    // struct fields. With `NROS_PLATFORM_ALIASES` now defined for
-    // the vendor build (so the socket ABI matches the alias TU's
-    // 32-byte opaque layout), the `._fd` / `._socket` field names
-    // no longer exist at compile time in this TU. Every backend
-    // stores `int fd` at offset 0 of its socket struct, so
-    // `nros_platform_socket_get_fd` works uniformly across
-    // FreeRTOS+lwIP, POSIX, ThreadX, and bare-metal.
-    return nros_platform_socket_get_fd(&peer->_socket);
 }
 #endif
 
@@ -3351,168 +3289,69 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
     }
 #endif
 
-#ifdef ZPICO_SMOLTCP
-    // smoltcp: poll network and read available data.
+#if defined(ZPICO_DRIVE_CALLER)
+    // RFC-0110 D3/D4 — run zenoh-pico's executor here, in the caller's thread.
+    // Read, lease, keep-alive, query timeout and reconnect are all futures in
+    // its queue, so this one loop replaces the polled `zp_read`, the hand-run
+    // `_z_pending_query_process_timeout` and the per-spin keep-alive the old
+    // arms made. Mixing the polled read with the executor is not an option: it
+    // resets the buffer the read future compacts (issue #247's frame loss).
     //
-    // Issue 1797 — single_read=FALSE. The single_read=true path
-    // (`_z_unicast_recv_t_msg`) reads a batch's length prefix and then decodes
-    // ONE transport message from the WHOLE rx zbuf, not from a view bounded to
-    // that batch. A FRAME's payload runs to the end of the buffer it is given,
-    // so when one TCP read delivers two batches — what a router does with a
-    // burst, e.g. an action server's feedback + status + result + goal reply —
-    // the frame decode runs into the next batch's length prefix and the stream
-    // is desynchronised for good: the reply was never decoded, and every later
-    // read waited on a garbage size. Bare-metal C/C++ action pairs lost their
-    // goal reply (C++) or result reply (C) about one run in two.
-    //
-    // single_read=false is the bounded path (`_z_unicast_process_messages`
-    // decodes over `_z_zbuf_view(…, to_read)`), drains EVERY complete batch
-    // already buffered, and since nano-ros #567 compacts rather than resets,
-    // so a partial trailing batch survives to the next call — the property
-    // single_read=true was originally chosen for.
-    //
-    // Drain behaviour (timeout_ms == 0): loop until no data remains, so a
-    // reply still in staging is read before `_z_pending_query_process_timeout`
-    // below can retire its pending query.
-    // Polling behaviour (timeout_ms > 0): stop after the first read that
-    // processed data, and retry until data arrives or the timeout elapses.
-    //
-    // issue 2022 — between retries the loop idles to its deadline instead of
-    // spinning on it, when the board can be woken by a frame (mps2-an385's
-    // LAN9118 RX interrupt). `nros_smoltcp_idle_until_ms` narrows the sleep by
-    // smoltcp's own timers and is a no-op on a board with no wake source, so
-    // those keep the busy-poll. It runs only after a read that found nothing:
-    // anything the poll inside `zp_read` delivered has been consumed by then.
-    int ret;
-    uint64_t start = smoltcp_clock_now_ms();
-    do {
-        ret = zp_read(z_session_loan_mut(&s->session), NULL);
-        if (ret == 0 && timeout_ms != 0) break; // Processed data (timeout mode)
-        if (ret != 0 && timeout_ms == 0) break; // No data (drain mode)
-        if (ret != 0) {
-            nros_smoltcp_idle_until_ms(start + timeout_ms);
-        }
-    } while (ret == 0 || smoltcp_clock_now_ms() - start < timeout_ms);
-    // issue 1512 / issue 0387's class — a QUIET tick is 0, not an error.
-    // "Nothing complete buffered" is `_Z_NO_DATA_PROCESSED` on this path
-    // (`_Z_ERR_TRANSPORT_NOT_ENOUGH_BYTES` on the single-read one). Returned
-    // raw it reaches Rust as an error, and `nros_executor_spin_period` gives
-    // up after SPIN_ERROR_TOLERANCE quiet rounds — every bare-metal C/C++
-    // image stopped ~1.6 s after boot. A real failure keeps its own code.
-    if (ret == _Z_NO_DATA_PROCESSED || ret == _Z_ERR_TRANSPORT_NOT_ENOUGH_BYTES) {
-        ret = 0;
-    }
-    // Process query timeouts — in multi-threaded mode the lease task handles
-    // this, but on single-threaded bare-metal (smoltcp) there is no lease task.
-    // Without this call, timed-out queries are never cleaned up and their
-    // dropper callbacks never fire, breaking service/action request flows.
-    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&s->session)));
-    zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
-    return ret;
-
-#elif defined(ZPICO_SERIAL)
-    // Serial-only bare-metal: poll UART and read available data.
-    // Uses single_read=false because the single_read=true path calls
-    // _z_unicast_recv_t_msg which returns _Z_ERR_TRANSPORT_RX_FAILED (-99)
-    // on no data for datagram links. The single_read=false path uses
-    // _z_unicast_client_read which returns _Z_NO_DATA_PROCESSED gracefully.
-    // For serial (datagram), each COBS frame is atomic so there's no
-    // partial data to preserve across calls (unlike TCP stream).
-    z_clock_t start = z_clock_now();
-    int ret;
-    do {
-        ret = zp_read(z_session_loan_mut(&s->session), NULL);
-        if (ret == 0) break; // Data processed
-        if (timeout_ms == 0) break;
-    } while (z_clock_elapsed_ms(&start) < timeout_ms);
-    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&s->session)));
-    zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
-    return ret;
-
-#elif defined(ZENOH_THREADX)
-    // ThreadX/NSOS: avoid zenoh-pico background read/lease tasks. The read
-    // task can block in the host-backed BSD recv path and prevent the lease
-    // task from running before the 10s router lease expires. Poll here instead
-    // so every executor spin also refreshes the transport keepalive.
-    //
+    // issue 1512 / issue 0387's class — a QUIET tick returns 0, never an error:
+    // `nros_executor_spin_period` gives up after SPIN_ERROR_TOLERANCE failed
+    // rounds, and an idle spin is not a failure. Only a session zenoh-pico has
+    // closed is reported.
+    s->spin_delivered = false;
+#if defined(ZENOH_THREADX)
     // phase-297 W5 — the timed wait MUST be `z_sleep_ms` (tx_thread_sleep),
-    // never a host select(): a host syscall blocks the pthread while the
-    // ThreadX scheduler still counts this thread as running, so under strict
-    // priority scheduling every other tier thread starves (the multi-tier
-    // e2e saw the higher-priority tier's select() wait pin the whole image
-    // to one tier — zero publishes from the other). Sleep first (a REAL
-    // ThreadX yield — lower-priority tiers run inside it), then poll the fd
-    // with a zero timeout and drain only what is already there. Same shape
-    // as the other multi-threaded platforms (see the pitfall in
-    // platform-implementation-notes.md).
-    // phase-297 W5 / issue #247 — single-reader rule: the polled `zp_read`
-    // path (`_zp_unicast_read`, single_read=false) does NOT take the
-    // transport's `_mutex_rx` (only the background read task does), so two
-    // tier threads polling concurrently race on the shared rx zbuf
-    // (`_z_zbuf_reset` mid parse) and silently LOSE inbound frames — both
-    // debugging tracks saw the spawned tier's interest replies vanish,
-    // leaving its write filter closed forever (zero publishes).
-    // Serialization is `s->threadx_read_mutex` (TRY-lock; a losing spinner
-    // skips the round — the winner drains) via `_zpico_threadx_locked_read`
-    // below; the frame-loss half of the bug is fixed in zenoh-pico itself
-    // (`87f7a84d` — the polled read drains every buffered frame).
-    int fd = get_session_fd(s);
-    // issue 0387 — start at 0 (Ok "no work this round"), NOT a negative
-    // timeout code. An idle select (`ready == 0`, no inbound frame) is the
-    // steady state on a live-but-quiet session; every other multi-threaded
-    // backend (FreeRTOS/Zephyr/POSIX/NuttX, below) returns 0 there. Returning
-    // ZPICO_ERR_TIMEOUT made each idle spin increment the executor's
-    // `consecutive_io_failures`, so nros-c's `nros_executor_spin_period` bailed
-    // after SPIN_ERROR_TOLERANCE (16) quiet rounds and killed the session
-    // (issue-0355's "idle spins must NEVER accumulate session_io_failures").
-    // Only a genuine select error (`ready < 0`) or a real `zp_read` failure
-    // still returns a negative code below.
-    int ret = 0;
+    // never a host select(): a host syscall blocks the pthread while the ThreadX
+    // scheduler still counts this thread as running, so under strict priority
+    // scheduling every other tier thread starves. Sleep first (a REAL ThreadX
+    // yield — lower-priority tiers run inside it), then drain what is already
+    // there; the socket shim's reads do not block (RFC-0110 D4).
     if (timeout_ms > 0) {
         z_sleep_ms(timeout_ms);
     }
-    if (fd >= 0) {
-#if defined(__linux__)
-        fd_set read_fds;
-        FD_ZERO(&read_fds);
-        FD_SET(fd, &read_fds);
-        struct timeval tv;
-        tv.tv_sec = 0;
-        tv.tv_usec = 0;
-        int ready = select(fd + 1, &read_fds, NULL, NULL, &tv);
+    _zpico_run_executor(s);
 #else
-        nx_bsd_fd_set read_fds;
-        NX_BSD_FD_ZERO(&read_fds);
-        NX_BSD_FD_SET(fd, &read_fds);
-        struct nx_bsd_timeval tv;
-        tv.tv_sec = 0;
-        tv.tv_usec = 0;
-        int ready = nx_bsd_select(fd + 1, &read_fds, NULL, NULL, &tv);
-#endif
-        if (ready > 0) {
-#if Z_FEATURE_MULTI_THREAD == 1
-            /* issue #247 — one reader at a time (s->threadx_read_mutex). */
-            ret = _zpico_threadx_locked_read(s);
+    // Bare metal (smoltcp, serial) and any other single-thread build. With
+    // `timeout_ms == 0`, drain once. Otherwise keep driving until a callback
+    // delivered application data or the deadline passes, idling between rounds.
+    //
+    // issue 2022 — on smoltcp the idle is `nros_smoltcp_idle_until_ms`, which
+    // sleeps to the deadline (narrowed by smoltcp's own timers) on a board that
+    // a frame can wake, and is a no-op on one with no wake source.
+#ifdef ZPICO_SMOLTCP
+    uint64_t start = smoltcp_clock_now_ms();
 #else
-            ret = zp_read(z_session_loan_mut(&s->session), NULL);
+    z_clock_t start = z_clock_now();
 #endif
-        } else if (ready < 0) {
-            ret = ready;
+    for (;;) {
+        _zpico_run_executor(s);
+        if (s->spin_delivered || timeout_ms == 0) {
+            break;
         }
-    } else {
-#if Z_FEATURE_MULTI_THREAD == 1
-        ret = _zpico_threadx_locked_read(s);
+#ifdef ZPICO_SMOLTCP
+        if (smoltcp_clock_now_ms() - start >= timeout_ms) {
+            break;
+        }
+        nros_smoltcp_idle_until_ms(start + timeout_ms);
 #else
-        ret = zp_read(z_session_loan_mut(&s->session), NULL);
+        if (z_clock_elapsed_ms(&start) >= timeout_ms) {
+            break;
+        }
+        z_sleep_ms(1);
 #endif
     }
-    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&s->session)));
-    zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
-    return ret;
+#endif
+    if (z_session_is_closed(z_session_loan(&s->session))) {
+        return ZPICO_ERR_SESSION;
+    }
+    return 0;
 
 #elif defined(ZENOH_FREERTOS_LWIP)
-    // FreeRTOS+lwIP: background read and lease tasks handle data and
-    // keep-alives. Wait on a binary semaphore that _zpico_notify_spin()
+    // FreeRTOS+lwIP: the executor thread handles data and keep-alives
+    // (RFC-0110 D2). Wait on a binary semaphore that _zpico_notify_spin()
     // signals when application data arrives (subscriptions, query replies).
     // This gives near-zero latency wake-up without busy-looping.
     if (timeout_ms > 0 && s->spin_sem != NULL) {
@@ -3520,9 +3359,9 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
     }
     return 0;
 
-#elif Z_FEATURE_MULTI_THREAD == 1
-    // Multi-threaded (Zephyr/POSIX/NuttX): background read and lease tasks
-    // handle data and keep-alives. Wait on a wake primitive that our
+#else
+    // THREAD mode (Zephyr/POSIX/NuttX): the executor thread handles data and
+    // keep-alives (RFC-0110 D2). Wait on a wake primitive that our
     // callbacks signal when application data arrives (subscriptions, query
     // replies, service requests). This gives near-zero latency wake-up
     // without busy-looping on select().
@@ -3564,25 +3403,6 @@ int32_t zpico_spin_once(zpico_session_t* session, uint32_t timeout_ms) {
     }
     return 0;
 
-#else
-    // Single-threaded (not smoltcp): use select() then zp_read()
-    int fd = get_session_fd(s);
-    if (fd >= 0 && timeout_ms > 0) {
-        fd_set read_fds;
-        FD_ZERO(&read_fds);
-        FD_SET(fd, &read_fds);
-        struct timeval tv;
-        tv.tv_sec = timeout_ms / 1000;
-        tv.tv_usec = (timeout_ms % 1000) * 1000;
-        int result = select(fd + 1, &read_fds, NULL, NULL, &tv);
-        if (result <= 0) {
-            zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
-            return (result == 0) ? ZPICO_ERR_TIMEOUT : result;
-        }
-    }
-    int ret = zp_read(z_session_loan_mut(&s->session), NULL);
-    zp_send_keep_alive(z_session_loan_mut(&s->session), NULL);
-    return ret;
 #endif
 }
 

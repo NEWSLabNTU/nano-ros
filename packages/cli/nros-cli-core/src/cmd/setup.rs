@@ -1274,6 +1274,29 @@ fn source_present(
         .unwrap_or(false)
 }
 
+/// A build-stage source is present when the build will FIND it — asked of the
+/// one location ladder every build reads (`nros locate`), not only of the place
+/// `nros setup --source` would provision it. The two differ for a
+/// `location = "store"` row checked out in the repo: a contributor editing that
+/// checkout (the local-edit rung, which outranks the store) has a tree every
+/// build uses, while the store copy for the ref may not exist at all — for an
+/// unpublished commit it cannot. Asking only the store reported that tree
+/// MISSING and refused `build-test-fixtures` on the workflow the index row
+/// itself documents (phase-508).
+fn build_source_present(
+    index: &SdkIndex,
+    name: &str,
+    src: &crate::orchestration::sdk_index::SourcePackage,
+    workspace: &Path,
+) -> bool {
+    source_present(name, src, workspace)
+        || super::locate::locate_answer(index, workspace, name, None)
+            .ok()
+            .and_then(|a| std::fs::read_dir(&a.path).ok())
+            .map(|mut d| d.next().is_some())
+            .unwrap_or(false)
+}
+
 /// RFC-0097 D12 — what a TARGET BUILD will need that no board provisions.
 ///
 /// `nros setup <board>` resolves a board's `[tool.*]`/`[source.*]` slice and
@@ -1304,7 +1327,7 @@ fn build_stage_report(index: &SdkIndex, workspace: &Path) -> Vec<(String, ProbeR
         .iter()
         .filter(|(_, src)| src.build_stage)
         .map(|(name, src)| {
-            let present = source_present(name, src, workspace)
+            let present = build_source_present(index, name, src, workspace)
                 || run_probe(src.check.as_ref()) == ProbeResult::Present;
             let state = if present {
                 ProbeResult::Present
@@ -1349,7 +1372,9 @@ fn run_build_sources(
         let missing: Vec<&str> = index
             .build_sources
             .iter()
-            .filter(|n| !source_present(n.as_str(), &index.source[n.as_str()], &workspace))
+            .filter(|n| {
+                !build_source_present(index, n.as_str(), &index.source[n.as_str()], &workspace)
+            })
             .map(String::as_str)
             .collect();
         if missing.is_empty() {
@@ -4269,6 +4294,36 @@ mod tests {
             !ws.join("third-party/ros/rosidl").exists(),
             "nothing is vendored — the probe must be what answers"
         );
+        assert_eq!(build_stage_report(&index, &ws)[0].1, ProbeResult::Present);
+    }
+
+    /// phase-508 — a `location = "store"` row checked out in THIS repo is
+    /// present when the checkout holds it, even with no store copy for the ref.
+    /// That is the local-edit workflow the zenoh-pico row documents: the
+    /// checkout outranks the store, every build reads it, and for an
+    /// unpublished commit no store copy can exist. Asking only the store said
+    /// MISSING and refused `build-test-fixtures`; the empty checkout below is
+    /// the negative control, so the store path alone is not what answers.
+    #[test]
+    fn a_store_row_checked_out_in_the_repo_is_present_without_a_store_copy() {
+        let ws = crate::test_support::scratch_dir("d12_store_row_checkout");
+        let marker = ws.join(nros_build_paths::CHECKOUT_MARKER);
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, "").unwrap();
+        let dest = "third-party/zp";
+        std::fs::create_dir_all(ws.join(dest)).unwrap();
+        let index = SdkIndex::parse(&format!(
+            "[source.zp]\nversion = \"0.0.0-test-never-stored\"\nlocation = \"store\"\n\
+             git = \"https://example/zp\"\nref = \"0123456789abcdef0123456789abcdef01234567\"\n\
+             dest = \"{dest}\"\nsubmodule = \"{dest}\"\nbuild_stage = true\n"
+        ))
+        .unwrap();
+        assert_eq!(
+            build_stage_report(&index, &ws)[0].1,
+            ProbeResult::Missing,
+            "an empty checkout is not a tree"
+        );
+        std::fs::write(ws.join(dest).join("version.txt"), "0.0.0").unwrap();
         assert_eq!(build_stage_report(&index, &ws)[0].1, ProbeResult::Present);
     }
 

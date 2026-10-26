@@ -87,6 +87,12 @@ typedef struct {
  * type confusion across that seam — issue 0135's shape. */
 typedef nros_platform_task_attr_t z_task_attr_t;
 
+/* RFC-0110 — the identity zenoh-pico 1.9's executor compares to decide
+ * whether the calling thread is the one running it. A ThreadX task is named by
+ * its `TX_THREAD *` (what `tx_thread_identify` returns). MUST match the typedef
+ * in `zpico/nros_zenoh_generic_platform.h` — the same two-header seam as `z_task_attr_t`. */
+typedef void *_z_task_id_t;
+
 typedef TX_MUTEX _z_mutex_rec_t;
 typedef TX_MUTEX _z_mutex_t;
 

@@ -69,21 +69,6 @@ const Z_SERIAL_MAX_COBS_BUF_SIZE: usize = 1516;
 /// Maximum frame size (MTU + header + length + CRC32).
 const Z_SERIAL_MFS_SIZE: usize = 1510;
 
-/// z-serial Init flag (Header byte).
-const Z_FLAG_SERIAL_INIT: u8 = 0x01;
-/// z-serial Ack flag (Header byte).
-const Z_FLAG_SERIAL_ACK: u8 = 0x02;
-/// z-serial Reset flag (Header byte).
-const _Z_FLAG_SERIAL_RESET: u8 = 0x04;
-
-/// Delay between connect retries (ms).
-/// Must be long enough that zenohd's z-serial accept loop can consume
-/// the Init frame before the next one is sent — otherwise duplicate Init
-/// frames in the PTY buffer cause "Unexpected Init flag in message".
-const SERIAL_CONNECT_THROTTLE_MS: u32 = 2000;
-/// Maximum number of connect attempts before giving up.
-const SERIAL_CONNECT_MAX_ATTEMPTS: u32 = 10; // 10 * 2s = 20s
-
 /// Poll interval when waiting for the first byte in `_z_read_serial_internal` (ms).
 const SERIAL_READ_POLL_INTERVAL_MS: u32 = 10;
 /// Maximum number of polls before `_z_read_serial_internal` times out.
@@ -120,169 +105,17 @@ unsafe extern "C" {
 }
 
 // ============================================================================
-// z-serial connect handshake (Rust implementation)
+// z-serial connect handshake
 // ============================================================================
-
-/// Perform the z-serial link-level Init handshake.
-///
-/// Sends an empty frame with `_Z_FLAG_SERIAL_INIT` (0x01) and waits for
-/// a response with `INIT + ACK` flags (0x03). This handshake is required
-/// by zenohd's z-serial crate before any transport messages can flow.
-///
-/// Uses stack-allocated buffers for the Init handshake to avoid exhausting
-/// the bump allocator (which has no deallocation support).
-///
-/// IMPORTANT: Only one Init frame is sent per attempt. Sending duplicate
-/// Init frames before the first is consumed causes z-serial to reset the
-/// connection ("Unexpected Init flag in message") after the handshake.
-fn connect_serial(sock: ZSysNetSocket) -> ZResult {
-    let index = sock._handle as usize;
-    // Drain any stale data in the RX buffer before starting
-    drain_rx(sock);
-
-    // Pre-serialize the Init frame once (stack-allocated).
-    // The Init frame is tiny: header=0x01, empty payload → ~9 bytes COBS-encoded.
-    let mut init_frame = [0u8; 32];
-    let mut init_tmp = [0u8; 32];
-    let empty_payload: u8 = 0;
-    let init_frame_len = unsafe {
-        _z_serial_msg_serialize(
-            init_frame.as_mut_ptr(),
-            init_frame.len(),
-            &empty_payload as *const u8,
-            0,
-            Z_FLAG_SERIAL_INIT,
-            init_tmp.as_mut_ptr(),
-            init_tmp.len(),
-        )
-    };
-    if init_frame_len == usize::MAX || init_frame_len > init_frame.len() {
-        return Z_ERR_GENERIC;
-    }
-
-    for _ in 0..SERIAL_CONNECT_MAX_ATTEMPTS {
-        // Send the pre-serialized Init frame directly via port.write()
-        let port = match unsafe { get_port(index) } {
-            Some(p) => p,
-            None => return Z_ERR_GENERIC,
-        };
-        let written = port.write(&init_frame[..init_frame_len]);
-        if written != init_frame_len {
-            return Z_ERR_GENERIC;
-        }
-
-        // Wait up to ~2s for a response (200 polls × 10ms).
-        // Only poll reads — do NOT send another Init until this one times out.
-        let mut got_response = false;
-        for _ in 0..200 {
-            // Read one COBS frame from UART using stack buffers
-            match read_handshake_frame(index) {
-                HandshakeResult::NoData => {
-                    // No data yet — wait and retry
-                    unsafe { z_sleep_ms(10) };
-                    continue;
-                }
-                HandshakeResult::InitAck => {
-                    return Z_RES_OK;
-                }
-                HandshakeResult::Reset => {
-                    got_response = true;
-                    break; // re-send Init
-                }
-                HandshakeResult::Other => {
-                    got_response = true;
-                    continue; // ignore stale data
-                }
-            }
-        }
-
-        if !got_response {
-            // No response at all — zenohd may not be ready yet
-            unsafe { z_sleep_ms(SERIAL_CONNECT_THROTTLE_MS) };
-        }
-    }
-
-    // Timed out
-    Z_ERR_GENERIC
-}
-
-/// Result of reading a handshake frame.
-enum HandshakeResult {
-    /// No data available (non-blocking).
-    NoData,
-    /// Received Init + Ack (handshake success).
-    InitAck,
-    /// Received Reset flag (need to re-send Init).
-    Reset,
-    /// Received some other frame (ignore).
-    Other,
-}
-
-/// Read and decode a single COBS-framed handshake response.
-///
-/// Uses stack-allocated buffers (no heap allocation). Only suitable for
-/// small handshake frames (Init/Ack/Reset).
-fn read_handshake_frame(port_index: usize) -> HandshakeResult {
-    let port = match unsafe { get_port(port_index) } {
-        Some(p) => p,
-        None => return HandshakeResult::NoData,
-    };
-
-    // Read raw COBS bytes until 0x00 delimiter (stack buffer)
-    let mut raw = [0u8; 32]; // Init/Ack frames are ~9 bytes
-    let mut rb: usize = 0;
-
-    loop {
-        if rb >= raw.len() {
-            break;
-        }
-
-        port.rx_fill();
-        let mut byte = [0u8; 1];
-        if port.rx_drain(&mut byte) == 0 {
-            if rb == 0 {
-                return HandshakeResult::NoData;
-            }
-            // Mid-frame: keep waiting for 0x00 delimiter
-            continue;
-        }
-
-        raw[rb] = byte[0];
-        rb += 1;
-
-        if byte[0] == 0x00 {
-            break;
-        }
-    }
-
-    // Decode COBS frame using stack buffers
-    let mut header: u8 = 0;
-    let mut payload = [0u8; 16];
-    let mut tmp = [0u8; 32];
-    let ret = unsafe {
-        _z_serial_msg_deserialize(
-            raw.as_ptr(),
-            rb,
-            payload.as_mut_ptr(),
-            payload.len(),
-            &mut header as *mut u8,
-            tmp.as_mut_ptr(),
-            tmp.len(),
-        )
-    };
-
-    if ret == usize::MAX {
-        return HandshakeResult::Other;
-    }
-
-    if (header & Z_FLAG_SERIAL_ACK) != 0 && (header & Z_FLAG_SERIAL_INIT) != 0 {
-        HandshakeResult::InitAck
-    } else if (header & _Z_FLAG_SERIAL_RESET) != 0 {
-        HandshakeResult::Reset
-    } else {
-        HandshakeResult::Other
-    }
-}
+//
+// phase-508 — zenoh-pico 1.9's serial protocol layer runs the link-level
+// Init handshake itself (`_z_connect_serial`, `link/transport/upper/
+// serial_protocol.c`), right after the platform open below and through the
+// framed read/send this file provides. It used to be done here, in the open,
+// because 1.8 left it to each platform. Doing it in both places would send a
+// second INIT to a peer that has just answered the first, which z-serial
+// answers with RESET. The open now only drains what is already in the RX
+// buffer, so the protocol layer's handshake starts on a clean line.
 
 /// Drain any stale data from the UART RX buffer.
 fn drain_rx(sock: ZSysNetSocket) {
@@ -305,7 +138,7 @@ fn drain_rx(sock: ZSysNetSocket) {
 /// Parses the trailing digit as a port index. The board crate must have
 /// already registered a [`SerialPort`] at that index via [`register_port`].
 #[unsafe(no_mangle)]
-pub extern "C" fn _z_open_serial_from_dev(
+pub extern "C" fn _z_serial_open_from_dev(
     sock: *mut ZSysNetSocket,
     dev: *const u8,
     _baudrate: u32,
@@ -329,11 +162,10 @@ pub extern "C" fn _z_open_serial_from_dev(
         (*sock)._connected = true;
     }
 
-    // Perform the z-serial link-level Init handshake (I flag / I+A flag exchange).
-    // This must happen before zenoh transport messages (InitSyn/InitAck) flow.
-    // All other platforms (Zephyr, RPi Pico, ESP-IDF, ThreadX) do this in their
-    // _z_open_serial_from_dev — see zenoh-pico/src/system/*/network.c.
-    connect_serial(unsafe { *sock })
+    // The link-level Init handshake follows in zenoh-pico's protocol layer;
+    // start it on a clean line (see "z-serial connect handshake" above).
+    drain_rx(unsafe { *sock });
+    Z_RES_OK
 }
 
 /// Open a serial port by TX/RX pin numbers.
@@ -342,7 +174,7 @@ pub extern "C" fn _z_open_serial_from_dev(
 /// mapping: port index = txpin (ignoring rxpin). Board crates should
 /// register ports at index 0 and 1.
 #[unsafe(no_mangle)]
-pub extern "C" fn _z_open_serial_from_pins(
+pub extern "C" fn _z_serial_open_from_pins(
     sock: *mut ZSysNetSocket,
     txpin: u32,
     _rxpin: u32,
@@ -363,8 +195,8 @@ pub extern "C" fn _z_open_serial_from_pins(
         (*sock)._connected = true;
     }
 
-    // Perform z-serial link-level Init handshake
-    connect_serial(unsafe { *sock })
+    drain_rx(unsafe { *sock });
+    Z_RES_OK
 }
 
 /// Listen on a serial port by device name (server mode).
@@ -372,28 +204,28 @@ pub extern "C" fn _z_open_serial_from_pins(
 /// For client-mode operation (which is the typical embedded use case),
 /// this is equivalent to open.
 #[unsafe(no_mangle)]
-pub extern "C" fn _z_listen_serial_from_dev(
+pub extern "C" fn _z_serial_listen_from_dev(
     sock: *mut ZSysNetSocket,
     dev: *const u8,
     baudrate: u32,
 ) -> ZResult {
-    _z_open_serial_from_dev(sock, dev, baudrate)
+    _z_serial_open_from_dev(sock, dev, baudrate)
 }
 
 /// Listen on a serial port by pin numbers (server mode).
 #[unsafe(no_mangle)]
-pub extern "C" fn _z_listen_serial_from_pins(
+pub extern "C" fn _z_serial_listen_from_pins(
     sock: *mut ZSysNetSocket,
     txpin: u32,
     rxpin: u32,
     baudrate: u32,
 ) -> ZResult {
-    _z_open_serial_from_pins(sock, txpin, rxpin, baudrate)
+    _z_serial_open_from_pins(sock, txpin, rxpin, baudrate)
 }
 
 /// Close a serial port.
 #[unsafe(no_mangle)]
-pub extern "C" fn _z_close_serial(sock: *mut ZSysNetSocket) {
+pub extern "C" fn _z_serial_close(sock: *mut ZSysNetSocket) {
     if !sock.is_null() {
         unsafe {
             (*sock)._connected = false;

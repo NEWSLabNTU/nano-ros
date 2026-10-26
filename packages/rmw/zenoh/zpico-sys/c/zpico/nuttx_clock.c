@@ -35,6 +35,20 @@ static unsigned long _elapsed_ns(const z_clock_t *instant, const z_clock_t *now)
     return (unsigned long)sec * 1000000000UL + (unsigned long)nsec;
 }
 
+/* phase-508 — zenoh-pico 1.9's executor measures every wake-up from its own
+ * epoch: elapsed from `epoch` to `instant`, 0 when `instant` is earlier. */
+unsigned long zp_clock_elapsed_us_since(z_clock_t *instant, z_clock_t *epoch) {
+    return _elapsed_ns(epoch, instant) / 1000UL;
+}
+
+unsigned long zp_clock_elapsed_ms_since(z_clock_t *instant, z_clock_t *epoch) {
+    return _elapsed_ns(epoch, instant) / 1000000UL;
+}
+
+unsigned long zp_clock_elapsed_s_since(z_clock_t *instant, z_clock_t *epoch) {
+    return _elapsed_ns(epoch, instant) / 1000000000UL;
+}
+
 unsigned long z_clock_elapsed_us(z_clock_t *instant) {
     z_clock_t now;
     clock_gettime(CLOCK_MONOTONIC, &now);

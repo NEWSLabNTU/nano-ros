@@ -121,9 +121,11 @@ fn zpico_posix_archive_carries_link_feature_symbols() {
     // 134's symbol-parity gate covers the wrapper/impl matching
     // case so this test stays narrow.
     for sym in [
-        "_z_open_tcp",
-        "_z_open_udp_unicast",
-        "_z_open_udp_multicast",
+        // zenoh-pico 1.9 spells the link ABI `_z_<transport>_<op>`
+        // (phase-508).
+        "_z_tcp_open",
+        "_z_udp_unicast_open",
+        "_z_udp_multicast_open",
     ] {
         assert!(
             nm_out.contains(sym),

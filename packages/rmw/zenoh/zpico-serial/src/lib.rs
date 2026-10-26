@@ -1,6 +1,6 @@
 //! Serial (UART) link layer for nros bare-metal systems
 //!
-//! Provides the zenoh-pico serial platform symbols (`_z_open_serial_from_dev`,
+//! Provides the zenoh-pico serial platform symbols (`_z_serial_open_from_dev`,
 //! `_z_read_serial_internal`, `_z_send_serial_internal`, etc.) for bare-metal
 //! targets where zenoh-pico has no built-in serial backend.
 //!

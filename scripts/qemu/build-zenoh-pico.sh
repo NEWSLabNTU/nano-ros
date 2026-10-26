@@ -238,10 +238,9 @@ zenoh_condition() {
     case "$1" in
         # The core. Every lane, every platform.
         always) return 0 ;;
-        # This is a bare-metal Cortex-M3 build: not Zephyr, so neither Zephyr's
-        # vendored `system/zephyr/network.c` nor its ISO-TP binding.
+        # This is a bare-metal Cortex-M3 build: not Zephyr, so not Zephyr's
+        # vendored `system/zephyr/network.c`.
         zephyr) return 1 ;;
-        zephyr_isotp) return 1 ;;
         *)
             echo "Error: $ZENOH_SOURCE_MANIFEST uses condition token \`$1\`, which this" >&2
             echo "       lane does not answer. Add a case arm here AND an arm in" >&2
@@ -328,10 +327,13 @@ fi
 # deliberately not in the manifest: the cargo lane reaches it through each
 # platform's `extra_sources` and the cmake lane names it directly.
 SOURCES="$SOURCES $C_DIR/zpico/zpico.c"
+# phase-508 — the socket half of zenoh-pico 1.9's link ABI, as the cargo lane's
+# `[port.bare-metal]` row compiles it (upstream ships none for smoltcp).
+SOURCES="$SOURCES $C_DIR/zpico/platform_socket.c"
 
 # Note: No system.c/network.c — bare-metal platform symbols are provided by
 # Rust FFI (zpico-platform-mps2-an385). This library only contains zenoh-pico
-# core + zpico shim.
+# core + the zpico shim and its socket half.
 
 # Compiler flags
 CFLAGS="-mcpu=cortex-m3 -mthumb"
@@ -355,7 +357,7 @@ INCLUDES="$INCLUDES -I$REPO_ROOT/packages/platform/nros-platform-api/include"
 
 # Platform defines.
 #
-# Issue 1096 — these three, and ONLY these three. This list used to restate ten
+# Issue 1096 — these four, and ONLY these four. This list used to restate ten
 # `Z_FEATURE_*` values that the generated config header above already states,
 # inside the same file, a few lines apart: `ZENOH_GENERIC` makes
 # `zenoh-pico/config.h` include that header and nothing else, so every one of
@@ -366,6 +368,8 @@ INCLUDES="$INCLUDES -I$REPO_ROOT/packages/platform/nros-platform-api/include"
 DEFINES="-DZENOH_GENERIC"
 DEFINES="$DEFINES -DZPICO_SMOLTCP"
 DEFINES="$DEFINES -DZENOH_DEBUG=0"
+# phase-508 — the `[port.bare-metal]` row's serial-framing hook (zpico-serial).
+DEFINES="$DEFINES -DZP_PLATFORM_SERIAL_FRAMING"
 
 # Shim slot counts — a MIRROR of `ShimConfig`'s defaults, with a detector.
 #

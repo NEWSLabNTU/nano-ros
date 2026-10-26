@@ -50,7 +50,7 @@
 # that one").
 #
 # zenoh-pico is the opposite shape. The selection is "the whole core", stated
-# as nine subtrees, and the only per-file decisions live under
+# as ten subtrees, and the only per-file decisions live under
 # `src/system/<platform>/`, which is not core at all. Expanding the rule into
 # ~130 file paths would:
 #
@@ -78,7 +78,6 @@
 #                 TUs are compiled from the tree rather than being replaced by
 #                 the alias TU. See the group comment below — this is a real
 #                 per-platform divergence, not drift.
-#   zephyr_isotp  Zephyr **and** the ISO-TP link is wanted (RFC-0083).
 #
 # Tokens use `_` rather than `+` or `-` because CMake interpolates them into a
 # variable name (`_zenoh_cond_${cond}`).
@@ -131,13 +130,11 @@
 #                                     Written as the platform test rather than a
 #                                     literal `false` so it stays true of the
 #                                     code rather than of today's routing.
-#                      zephyr_isotp → the same, AND `link.isotp`.
 #
 #   nros_rmw_zenoh.cmake
 #                      always       → TRUE
 #                      zephyr       → TRUE. This lane IS the Zephyr lane; it is
 #                                     reached only from a west build.
-#                      zephyr_isotp → `CONFIG_NROS_ZENOH_LINK_ISOTP`.
 #
 # WHAT IS DELIBERATELY NOT HERE
 #
@@ -172,12 +169,12 @@
 
 group core           always
 group zephyr_system  zephyr
-group zephyr_isotp   zephyr_isotp
 
 # ---- the zenoh-pico core ---------------------------------------------------
 #
 # Everything under `src/` except `src/system/<platform>/`, which is the
-# per-platform axis. `system/common` is core: it is the platform-independent
+# per-platform axis. `runtime` is the asynchronous executor zenoh-pico 1.9
+# added (RFC-0110): read, lease, keep-alive and reconnect are futures it runs. `system/common` is core: it is the platform-independent
 # half (`platform.c`, `serial.c`).
 
 dir core  zenoh_pico  api
@@ -185,6 +182,7 @@ dir core  zenoh_pico  collections
 dir core  zenoh_pico  link
 dir core  zenoh_pico  net
 dir core  zenoh_pico  protocol
+dir core  zenoh_pico  runtime
 dir core  zenoh_pico  session
 dir core  zenoh_pico  transport
 dir core  zenoh_pico  utils
@@ -212,8 +210,9 @@ dir core  zenoh_pico  system/common
 # is why it is a named condition here rather than a line in one lane's file.
 src zephyr_system  zenoh_pico  system/zephyr/network.c
 
-# RFC-0083 — the ISO-TP platform binding. A separate TU from network.c, and
-# named individually for the same reason: the `dir` records above pick up the
-# link itself (`src/link/…`), but nothing under `src/system/zephyr/` is covered
-# by them.
-src zephyr_isotp   zenoh_pico  system/zephyr/isotp.c
+# RFC-0083's ISO-TP platform binding used to be a third Zephyr TU here
+# (`system/zephyr/isotp.c`, behind a `zephyr_isotp` condition). zenoh-pico 1.9
+# moved every link's platform binding under `src/link/transport/`, so it is now
+# `link/transport/isotp/isotp_zephyr.c`: covered by the core `link` record and
+# gated inside the file on `ZENOH_ZEPHYR && Z_FEATURE_LINK_ISOTP`, the same
+# condition the group stated (phase-508).

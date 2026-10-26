@@ -102,10 +102,28 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       in issue 0910's 2026-10-25 section. Builds upstream-style on Linux in
       five feature sets, with upstream's unit tests passing. Checked off when
       the branch is pushed.
-- [ ] Re-port nano-ros's platform link shims to 1.10.1's renamed link ABI:
-      the alias TU, ThreadX `network.c`, `zpico-serial`'s FFI, the
-      `extra_sources` rows in `nros-rmw.toml`, and our CAN, ISO-TP, IVC and
-      custom links.
+- [x] Re-port nano-ros's platform link shims to 1.10.1's renamed link ABI:
+      the alias TU, `zpico-serial`'s FFI, the `extra_sources` rows in
+      `nros-rmw.toml`, and our CAN, ISO-TP, IVC and custom links. DONE
+      2026-10-26 on `feat/508-zenoh-1.10`. ThreadX's sockets turned out to
+      come from the platform net ABI (`nros-platform-threadx/src/net.c`), not
+      `c/platform/threadx/network.c`, which nothing has compiled since
+      phase-80; the socket half 1.9 split out of each link is
+      `c/zpico/platform_socket.c` for ThreadX and bare metal. The serial
+      handshake is upstream's now (`_z_connect_serial`), so `zpico-serial`
+      only opens the port. Verified by a build and an e2e run on every
+      platform: Linux, ThreadX-Linux, ThreadX riscv64, FreeRTOS, NuttX, bare
+      metal (smoltcp and serial) and Zephyr (Rust and C; Zephyr C++ is
+      blocked by a pre-existing link failure — issue 0910's 2026-10-26
+      table).
+- [x] Re-port `zpico.c` to the executor (RFC-0110 D1–D5). DONE 2026-10-26
+      on the same branch. THREAD mode on POSIX, Zephyr, NuttX and FreeRTOS:
+      one `zp_start_read_task`, no lease task. CALLER mode on bare metal and
+      ThreadX: a bounded `zp_spin_once` loop. The keep-alive ping uses
+      `_zp_send_keep_alive`. The lease knobs still parse; the executor stack
+      is the larger of the read and lease stacks, and retiring them is the
+      next item.
+- [ ] Retire and refuse the lease-task knobs (RFC-0110 D2, step 6).
 - [ ] Generate `config.h` the way upstream does, and close the gap between the
       knobs upstream defines and the ones our generator emits. Stop emitting
       `Z_FEATURE_PERIODIC_TASKS`, which 1.10.1 removed. DONE ON A LOCAL BRANCH

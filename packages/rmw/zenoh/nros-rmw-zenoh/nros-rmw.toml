@@ -130,8 +130,7 @@ defines_conditional = [
 # FreeRTOS (router is TCP-only on this slirp path), so the
 # feature loss is harmless and the typo stops mattering.
 defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_FEATURE_LINK_UDP_MULTICAST = "0" }
-# Phase 154 — pull vendor's FreeRTOS+lwIP `system/freertos/lwip`
-# subtree + the top-level `system/freertos/system.c` so vendor's
+# Phase 154 — pull the vendor's FreeRTOS+lwIP socket half + the top-level `system/freertos/system.c` so vendor's
 # native `_z_send_tcp` / `_z_read_tcp` / `_z_task_*` / `_z_mutex_*`
 # impls are compiled. Vendor's `system/common/platform.h`
 # dispatch picks `platform/freertos/lwip.h` on an lwIP board
@@ -139,17 +138,21 @@ defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_FEATURE_LINK_U
 # system impls in the same TU set keeps caller / callee ABI
 # coherent without needing the alias TU's opaque socket
 # (alias TU is gated off for FreeRTOS in build.rs).
-include = ["system/common", "system/freertos/lwip"]
+#
+# phase-508 — zenoh-pico 1.9 moved the per-platform link code out of
+# `system/<platform>/network.c` into `src/link/transport/{tcp,udp}/*_lwip.c`,
+# which the core `link` group compiles and `ZP_PLATFORM_SOCKET_LWIP` gates
+# (set by `system/common/platform.h` from `ZENOH_FREERTOS_LWIP`). What stays
+# per platform is the socket-wait / close / blocking half, `system/socket/lwip.c`.
+include = ["system/common"]
 extra_sources = [
-  # Phase 154 — vendor `system/freertos/system.c` +
-  # `system/freertos/lwip/network.c` provide the matching
-  # `_z_sys_net_socket_t = { int _socket; }` ABI that the vendor
-  # `src/link/unicast/tcp.c` caller expects. The alias TU's 32-byte
-  # opaque socket would mismatch; vendor impls are the working
-  # path. build.rs skips the alias TU entirely on FreeRTOS via
-  # `if !use_freertos { ... alias_build.compile(...) }`.
+  # Phase 154 — vendor `system/freertos/system.c` + the lwIP socket half provide
+  # the matching `_z_sys_net_socket_t = { int _socket; }` ABI that the vendor
+  # link callers expect. The alias TU's 32-byte opaque socket would mismatch;
+  # vendor impls are the working path. build.rs skips the alias TU entirely on
+  # FreeRTOS via `if !use_freertos { ... alias_build.compile(...) }`.
   { path = "{src}/system/freertos/system.c" },
-  { path = "{src}/system/freertos/lwip/network.c", when = { capability = { ip_stack = true } } },
+  { path = "{src}/system/socket/lwip.c", when = { capability = { ip_stack = true } } },
   { path = "{nros}/c/zpico/zpico.c" },
 ]
 include_paths = [
@@ -184,15 +187,15 @@ defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_CONFIG_SOCKET_
 include = ["system/common"]
 # Phase 156 Sub-bug B (NuttX) — `system/common/platform.h` routes
 # `ZENOH_NUTTX` to `system/platform/unix.h` (BY-VALUE 4-byte socket
-# struct). Pull `system/unix/network.c` so the upstream
-# `_z_open_tcp` / `_z_send_tcp` / `_z_read_tcp` impls (matching
-# unix.h's shape) compile in. Paired with the
+# struct). Since zenoh-pico 1.9 the matching TCP/UDP links are
+# `src/link/transport/*/*_posix.c` (core `link` group, gated by
+# `ZP_PLATFORM_SOCKET_POSIX`, which `ZENOH_NUTTX` sets); pull
+# `system/unix/network.c` for the socket wait / close half. Paired with the
 # `NROS_ZENOH_PLATFORM_USES_UNIX` macro set in `build.rs` which
 # `#ifndef`-elides the alias TU's wrong-shape network section.
-# `unix/tls.c` is `#if Z_FEATURE_LINK_TLS == 1`-gated, so it
-# compiles to an empty TU on NuttX (no TLS feature flag set).
 extra_sources = [
   { path = "{nros}/c/zpico/nuttx_clock.c" },
+  { path = "{nros}/c/zpico/nuttx_task_id.c" },
   { path = "{nros}/c/zpico/zpico.c" },
   { path = "{src}/system/unix/network.c" },
 ]
@@ -235,18 +238,15 @@ defines_conditional = [
 defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1" }
 include = ["system/common"]
 extra_sources = [
-  # Phase 156 option B — compile zenoh-pico's upstream
-  # `system/unix/network.c` so the by-value socket TCP/UDP
-  # impls (using `unix.h`'s `_z_sys_net_socket_t = { int _fd; }`
-  # 4-byte struct) match the call-site ABI in `tx.c` /
-  # `link.c`. The alias TU's 32-byte opaque network
-  # functions are skipped on POSIX via the
-  # `NROS_ZENOH_PLATFORM_USES_UNIX` macro defined from
-  # `build.rs`. `unix/tls.c` already in extra_sources +
-  # calls `_z_open_tcp` etc. — now resolves against the
-  # native unix impls instead of the wrong-shape aliases.
+  # Phase 156 option B — compile zenoh-pico's upstream socket half so the
+  # by-value socket impls (using `unix.h`'s `_z_sys_net_socket_t = { int _fd; }`
+  # 4-byte struct) match the call-site ABI in `tx.c` / `link.c`. The alias
+  # TU's 32-byte opaque network functions are skipped on POSIX via the
+  # `NROS_ZENOH_PLATFORM_USES_UNIX` macro defined from `build.rs`.
+  # phase-508 — since zenoh-pico 1.9 this file holds only socket wait / close /
+  # blocking; the TCP, UDP and TLS links are `src/link/transport/*/*_posix.c`
+  # and `upper/tls_stream.c`, compiled by the core `link` group.
   { path = "{src}/system/unix/network.c" },
-  { path = "{src}/system/unix/tls.c" },
 ]
 # No link libraries here: `pthread` is emitted by nros-zpico-build itself, and
 # `rt` (timer_*) is a glibc split, a Linux fact, linked where the target is
@@ -307,6 +307,10 @@ extra_sources = [
   { path = "{nros}/c/platform/threadx/task.c" },
   { path = "{nros}/c/platform/threadx/log_uart.c", if_env = "NROS_ZPICO_LOG_TO_UART", with_define = ["ZENOH_LOG_PRINT", "zpico_log_print"] },
   { path = "{nros}/c/zpico/zpico.c" },
+  # phase-508 — the socket half of zenoh-pico 1.9's link ABI (close, blocking
+  # mode, readiness wait). Upstream ships none for NetX Duo; the links
+  # themselves are the alias TU's.
+  { path = "{nros}/c/zpico/platform_socket.c" },
 ]
 include_paths = [
   "{nros}/c/platform",
@@ -400,11 +404,19 @@ include = ["system/common", "system/zephyr"]
 # (mps2-an385-baremetal serial-talker/-listener predate the migration),
 # and the smoltcp spin branch's clock is frozen without a smoltcp iface
 # — timers never fire on such firmware.
-defines = ["ZENOH_GENERIC", "ZPICO_SMOLTCP"]
+#
+# phase-508 — `ZP_PLATFORM_SERIAL_FRAMING`: `zpico-serial` frames whole COBS
+# frames itself (`_z_read_serial_internal` / `_z_send_serial_internal`), so the
+# fork's hook in zenoh-pico 1.9's serial protocol layer uses those instead of
+# its byte-at-a-time framing over `_z_serial_read`. Same wire format.
+defines = ["ZENOH_GENERIC", "ZPICO_SMOLTCP", "ZP_PLATFORM_SERIAL_FRAMING"]
 defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "0" }
 include = ["system/common"]
 extra_sources = [
   { path = "{nros}/c/zpico/zpico.c" },
+  # phase-508 — the socket half of zenoh-pico 1.9's link ABI; upstream ships
+  # none for smoltcp. The links themselves are the alias TU's.
+  { path = "{nros}/c/zpico/platform_socket.c" },
 ]
 include_paths = [
   "{nros}/c/platform",
