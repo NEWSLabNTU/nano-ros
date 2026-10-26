@@ -470,18 +470,30 @@ mod tests {
             default_dds_heap_bytes(C_CARRIER_APP_STACK_BYTES),
             "FreeRTOSConfig.h's non-zenoh heap default is not the derivation"
         );
+        // The carrier template takes `.app_stack_bytes` from the configure
+        // (`NROS_FREERTOS_APP_STACK_KB`, phase-518 W4); its default is the
+        // first `set(_kb N)` in `_nros_freertos_entry_app_stack`.
         let template = include_str!("../../../../cmake/templates/freertos_app_config.c.in");
-        let carrier = template
-            .lines()
-            .find_map(|l| {
-                l.trim()
-                    .strip_prefix(".app_stack_bytes")
-                    .and_then(|r| r.trim().strip_prefix('='))
-                    .map(|v| v.trim().trim_end_matches(',').trim_end_matches('u'))
+        assert!(
+            template.contains(".app_stack_bytes         = @NROS_ENTRY_APP_STACK_BYTES@u"),
+            "the carrier template no longer takes .app_stack_bytes from the configure"
+        );
+        let board_net = include_str!("../../../../cmake/NanoRosBoardNet.cmake");
+        let default_kb: u32 = board_net
+            .split("function(_nros_freertos_entry_app_stack")
+            .nth(1)
+            .and_then(|body| {
+                body.lines().find_map(|l| {
+                    l.trim()
+                        .strip_prefix("set(_kb ")
+                        .and_then(|r| r.strip_suffix(')'))
+                })
             })
-            .expect("the carrier template states .app_stack_bytes");
+            .expect("_nros_freertos_entry_app_stack states its default KiB")
+            .parse()
+            .expect("a decimal KiB count");
         assert_eq!(
-            carrier.parse::<u32>().expect("a decimal byte count"),
+            default_kb * 1024,
             C_CARRIER_APP_STACK_BYTES,
             "the C/C++ carrier's app stack moved; the DDS heap default must follow it"
         );
