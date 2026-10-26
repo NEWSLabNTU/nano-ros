@@ -538,6 +538,19 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
             .collect::<Vec<_>>()
             .join(";")
     );
+    // Issue 2073 -- the parameter files `NROS_CPP_BAKED_ROS_ARGS` carries the
+    // text of, one row each, so a configure re-runs when one is edited.
+    let origin_dir = leaf
+        .origin_path()
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
+    for name in &leaf.params_files {
+        println!(
+            "NROS_LEAF_ROS_ARGS_INPUT={}",
+            origin_dir.join(name).display()
+        );
+    }
     if let Some(written) = kconfig {
         println!(
             "NROS_LEAF_KCONFIG={}",

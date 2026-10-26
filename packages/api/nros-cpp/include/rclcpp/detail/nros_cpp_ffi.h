@@ -2865,6 +2865,13 @@ nros_cpp_ret_t nros_cpp_set_session_properties(const struct nros_cpp_session_pro
                                                size_t len);
 
 /**
+ * Issue 2073 -- whether this image baked arguments of its own, so
+ * `rclcpp::init` reaches [`nros_cpp_install_argv_remaps`] even when the
+ * command line holds no `--ros-args` (a board's is empty).
+ */
+bool nros_cpp_baked_ros_args_present(void);
+
+/**
  * Honour `--ros-args` from a C++ `argc`/`argv`: parse it with rcl's grammar
  * and install the `-r`/`--remap` rules as the executor's FALLBACK remap tier,
  * beneath the launch rules `nros_cpp_declare_remap` records.

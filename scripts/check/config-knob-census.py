@@ -213,6 +213,10 @@ KNOB_CLASS = {
     # the const-binding arm. None of them is a size.
     "NROS_CC_STRICT_DECLS": ("infra", "debug flag: disables the strict C declaration flags"),
     "NROS_CENSUS_OUT": ("infra", "path the entity census writes"),
+    "NROS_CPP_BAKED_ROS_ARGS": (
+        "infra",
+        "an image's own command line from system.toml, baked into nros-cpp (issue 2073)",
+    ),
     "NROS_ENTRY_DOMAIN_ID": (
         "infra",
         "the image's DECLARED domain id, carried as an `[env]` row; a value the "

@@ -6559,6 +6559,23 @@ pub unsafe extern "C" fn nros_cpp_set_session_properties(
     }
 }
 
+/// Issue 2073 -- the image's `[image.<id>] ros_args` / `params_files`, baked
+/// by `build.rs` from `NROS_CPP_BAKED_ROS_ARGS`. Empty unless the leaf states
+/// them.
+#[cfg(feature = "rmw-cffi")]
+mod baked_ros_args {
+    include!(concat!(env!("OUT_DIR"), "/baked_ros_args.rs"));
+}
+
+/// Issue 2073 -- whether this image baked arguments of its own, so
+/// `rclcpp::init` reaches [`nros_cpp_install_argv_remaps`] even when the
+/// command line holds no `--ros-args` (a board's is empty).
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_baked_ros_args_present() -> bool {
+    !baked_ros_args::BAKED_ARGV.is_empty()
+}
+
 /// Honour `--ros-args` from a C++ `argc`/`argv`: parse it with rcl's grammar
 /// and install the `-r`/`--remap` rules as the executor's FALLBACK remap tier,
 /// beneath the launch rules `nros_cpp_declare_remap` records.
@@ -6618,14 +6635,21 @@ pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
     if argc < 0 || (argc > 0 && argv.is_null()) {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let args = (0..argc as usize).map(|i| {
+    let arg = |i: usize| {
         let p = unsafe { *argv.add(i) };
         if p.is_null() {
             "<null argument>"
         } else {
             unsafe { cstr_to_str(p) }.unwrap_or("<non-UTF-8 argument>")
         }
-    });
+    };
+    // Issue 2073 -- the image's baked arguments go right after the program
+    // name, so the real command line (a host's) follows them and still wins.
+    let args = (0..argc as usize)
+        .take(1)
+        .map(arg)
+        .chain(baked_ros_args::BAKED_ARGV.iter().copied())
+        .chain((1..argc as usize).map(arg));
     // NULL handle: VALIDATE only. Resolved once, for both builds.
     let mut ctx_ref = if handle.is_null() {
         None
@@ -6644,6 +6668,14 @@ pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
     {
         use nros_node::ros_args::{ApplyParamsError, apply_ros_args_with_params};
         let read_file = |path: &str| -> Result<alloc::string::String, alloc::string::String> {
+            // Issue 2073 -- a file the image baked is read from the image,
+            // on every target: on a board it is the only copy there is.
+            if let Some((_, text)) = baked_ros_args::BAKED_PARAMS_FILES
+                .iter()
+                .find(|(name, _)| *name == path)
+            {
+                return Ok(alloc::string::String::from(*text));
+            }
             // phase-359 W10 stage C — through the C library, so every image
             // inside a host process reads it (it was `std`-only).
             #[cfg(target_os = "linux")]

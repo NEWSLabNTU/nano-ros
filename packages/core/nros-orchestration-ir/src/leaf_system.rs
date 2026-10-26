@@ -334,6 +334,18 @@ pub struct LeafSystem {
     /// `[image_defaults]`'s — every layer-1 file the image names (RFC-0109
     /// D6), for the check that each suits its board's network owner.
     pub os_config: Vec<String>,
+    /// Issue 2073 — `[image.<id>] ros_args`, the argument vector a ported
+    /// program's `main` receives after its name (`["--ros-args", "-p",
+    /// "rate:=10.0"]`), `[image_defaults]`'s first. A board has no command
+    /// line, so this is how such an image states one; on a host the real
+    /// arguments follow it, so the command line still wins.
+    pub ros_args: Vec<String>,
+    /// Issue 2073 — `[image.<id>] params_files`, ROS 2 parameter files
+    /// relative to the directory holding `system.toml`, `[image_defaults]`'s
+    /// first. Each reaches the program as `--ros-args --params-file <name>`
+    /// ahead of [`Self::ros_args`]; the build bakes the file's text into the
+    /// image, which is where a board reads it from.
+    pub params_files: Vec<String>,
 }
 
 impl LeafSystem {
@@ -827,6 +839,10 @@ fn image_system(
         .filter(|f| !f.ends_with(".toml"))
         .cloned()
         .collect();
+    let mut ros_args = string_list(defaults, path, "image_defaults", "ros_args")?;
+    ros_args.extend(string_list(image, path, &at, "ros_args")?);
+    let mut params_files = string_list(defaults, path, "image_defaults", "params_files")?;
+    params_files.extend(string_list(image, path, &at, "params_files")?);
 
     Ok(LeafSystem {
         origin,
@@ -840,7 +856,37 @@ fn image_system(
         features: features_key(system, path)?,
         conf,
         os_config,
+        ros_args,
+        params_files,
     })
+}
+
+/// `<key> = ["…", …]` of one table — an array of strings, or absent.
+fn string_list(
+    block: Option<&toml::Table>,
+    path: &Path,
+    table: &str,
+    key: &str,
+) -> Result<Vec<String>, String> {
+    let Some(v) = block.and_then(|b| b.get(key)) else {
+        return Ok(Vec::new());
+    };
+    let arr = v.as_array().ok_or_else(|| {
+        format!(
+            "{}: `[{table}] {key}` must be an ARRAY of strings",
+            path.display()
+        )
+    })?;
+    arr.iter()
+        .map(|item| {
+            item.as_str().map(str::to_string).ok_or_else(|| {
+                format!(
+                    "{}: every `[{table}] {key}` element must be a string; found {item}",
+                    path.display()
+                )
+            })
+        })
+        .collect()
 }
 
 /// `os_config = ["<file>", …]` of one table, with the `conf` it generalised
@@ -1543,6 +1589,35 @@ domain_id = 4
             Some(crate::system_net::Attach::Bridge {
                 bridge: "qemu-br".into()
             })
+        );
+    }
+
+    /// Issue 2073 — `ros_args` and `params_files` fold `[image_defaults]`
+    /// first, then the image's own, and a non-array is refused by name.
+    #[test]
+    fn ros_args_and_params_files_fold_defaults_first() {
+        let d = tempdir::Dir::new();
+        std::fs::write(d.path().join("CMakeLists.txt"), "project(x CXX)\n").unwrap();
+        std::fs::write(
+            d.path().join("system.toml"),
+            "[image_defaults]\nros_args = [\"--ros-args\", \"-p\", \"a:=1\"]\n\
+             params_files = [\"base.yaml\"]\n\
+             [image.a]\nboard = \"x\"\nros_args = [\"-p\", \"a:=2\"]\n\
+             params_files = [\"a.yaml\"]\n",
+        )
+        .unwrap();
+        let l = read(d.path()).unwrap().unwrap();
+        assert_eq!(l.ros_args, ["--ros-args", "-p", "a:=1", "-p", "a:=2"]);
+        assert_eq!(l.params_files, ["base.yaml", "a.yaml"]);
+        std::fs::write(
+            d.path().join("system.toml"),
+            "[image.a]\nboard = \"x\"\nros_args = \"-p a:=1\"\n",
+        )
+        .unwrap();
+        let e = read(d.path()).unwrap_err();
+        assert!(
+            e.contains("[image.a] ros_args") && e.contains("ARRAY"),
+            "{e}"
         );
     }
 

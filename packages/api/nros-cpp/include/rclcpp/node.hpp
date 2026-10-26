@@ -3421,7 +3421,9 @@ inline int32_t apply_ros_args(void* executor, int argc, char const* const* argv)
         }
         scoped = a != nullptr && *a == '\0' && *want == '\0';
     }
-    if (!scoped) {
+    // Issue 2073 -- an image that baked arguments of its own has them to
+    // apply whatever the command line holds (a board's is empty).
+    if (!scoped && !nros_cpp_baked_ros_args_present()) {
         return 0;
     }
     char why[256] = {0};

@@ -1,0 +1,1 @@
+A ported C++ program on a board gets its parameters: `[image.<id>] params_files` and `ros_args` in `system.toml` are baked into the C++ runtime, and `rclcpp::init` applies them ahead of the real command line, reading a baked `--params-file` from the image (issue 2073).

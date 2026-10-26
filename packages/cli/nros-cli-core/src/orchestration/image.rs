@@ -327,6 +327,19 @@ pub struct ImageBlock {
     /// knob is the deprecated spelling of one of these.
     #[serde(default, skip_serializing_if = "ImageKnobs::is_empty")]
     pub knobs: ImageKnobs,
+
+    /// Issue 2073 — the arguments a ported program's `main` receives after
+    /// its name: `ros_args = ["--ros-args", "-p", "rate:=10.0"]`. A board has
+    /// no command line; on a host the real arguments follow these. The one
+    /// reader is `nros_orchestration_ir::leaf_system`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ros_args: Vec<String>,
+
+    /// Issue 2073 — ROS 2 parameter files for a ported program, relative to
+    /// this `system.toml`, passed as `--ros-args --params-file <name>` ahead
+    /// of [`Self::ros_args`]. The build bakes each file's text into the image.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub params_files: Vec<String>,
 }
 
 /// `[image.<id>.knobs]`, flattened to `<group>.<name>` → value by the one
@@ -548,6 +561,20 @@ impl ImageBlock {
                 merged.extend(self.knobs.0.clone());
                 ImageKnobs(merged)
             },
+            // Ordered lists, base first, as the IR reader folds them: a later
+            // `-p` of the same name wins, as on a command line.
+            ros_args: base
+                .ros_args
+                .iter()
+                .chain(self.ros_args.iter())
+                .cloned()
+                .collect(),
+            params_files: base
+                .params_files
+                .iter()
+                .chain(self.params_files.iter())
+                .cloned()
+                .collect(),
         }
     }
 }

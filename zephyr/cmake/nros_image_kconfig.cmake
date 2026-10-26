@@ -295,6 +295,9 @@ function(nros_image_kconfig_hook)
             set(_envcfg "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_CONF=(.*)$")
             set(_image_conf "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^NROS_LEAF_ROS_ARGS_INPUT=(.*)$")
+            # Issue 2073 -- a parameter file whose text the image env bakes.
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
         elseif(_l MATCHES "^NROS_LEAF_IMAGE_ENV_ROW=([A-Za-z0-9_]+)=(.*)$")
             list(APPEND _keys "${CMAKE_MATCH_1}")
             set(NROS_IMAGE_ENV_ROW_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}" CACHE INTERNAL
