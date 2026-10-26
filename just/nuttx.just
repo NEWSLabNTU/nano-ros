@@ -731,11 +731,11 @@ action-client: (_run-qemu "action-client" "nuttx-rs-action-client")
 
 # Start zenohd router for NuttX QEMU examples (allocator rust-pubsub port 8200)
 # Must listen on 0.0.0.0 for virtio-net-device + slirp gateway (10.0.2.2)
-zenohd:
+zenohd model="":
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    nros_router_exec tcp/0.0.0.0:8200
+    nros_router_exec tcp/0.0.0.0:8200 "{{model}}"
 
 # Phase 127.B.5 — one-time host setup for NuttX DDS cross-QEMU mcast.
 #

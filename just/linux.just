@@ -1224,12 +1224,14 @@ action-server:
 action-client:
     cd examples/linux/rust/action-client && cargo run
 
-# Start zenohd router for native examples (override bind via $NROS_LOCATOR)
-zenohd:
+# Start zenohd router for native examples (override bind via $NROS_LOCATOR).
+# `just zenohd <model>` also runs the downsampling rule `nros sync` wrote
+# beside that resolved model (phase-516 W1b).
+zenohd model="":
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    nros_router_exec "${NROS_LOCATOR:-tcp/127.0.0.1:7447}"
+    nros_router_exec "${NROS_LOCATOR:-tcp/127.0.0.1:7447}" "{{model}}"
 
 # ── phase-433 W5 — the live-peer REGRESSION lane ────────────────────────────
 #

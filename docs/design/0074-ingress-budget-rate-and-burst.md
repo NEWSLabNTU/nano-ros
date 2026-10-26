@@ -3,8 +3,8 @@ rfc: 0074
 title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Draft
 since: 2026-08
-last-reviewed: 2026-10-18
-implements-tracked-by: [phase-462]
+last-reviewed: 2026-10-26
+implements-tracked-by: [phase-462, phase-516]
 supersedes: []
 superseded-by: null
 ---
@@ -156,6 +156,66 @@ Two consequences worth stating plainly:
   cap applied to both; it worked only because the chain needs 10 Hz out
   of the capped 50-2000. Per-publisher separation needs either publisher
   identity in the rule or per-criticality topics.
+
+### As lowered (amendment 2026-10-26, phase-516 W1)
+
+Read against the router we actually run — ROS's `rmw_zenohd`, linking zenoh
+1.10.1 — the sketch above needs four corrections. Each is a property of
+zenoh's `downsampling` interceptor (`zenoh/src/net/routing/interceptor/
+downsampling.rs`), not a choice.
+
+1. **The router lowers the declaration at burst 1.** The interceptor keeps one
+   timestamp per rule and per transport and drops a message that arrives less
+   than `1/freq` after the last one it passed: a minimum interval, which is a
+   token bucket whose depth is fixed at one. There is no burst field. So
+   `ingress: { rate_hz, burst }` lowers to `freq = rate_hz` and the burst is
+   NOT carried. That sheds messages inside a burst the device declared it
+   could absorb — safe for the device, lossy for the sender. This does not
+   contradict "a pure rate cap, no burst term" under Rejected alternatives:
+   that rejects the cap as the DECLARATION. The declaration keeps its burst,
+   and enforcement point 2 (the device budget) still compiles it in full; only
+   the router's half is narrower, and the probe that motivates it measured
+   exactly this mode. A token-bucket mode is an upstream zenoh request; until
+   it lands, burst 1 is the router's whole vocabulary.
+2. **The keyexpr names the type segment and wildcards only the hash.** The
+   rule is `<domain>/<topic>/<pkg::msg::dds_::Name_>/*` — the subscriber
+   wildcard `TopicKeyExpr::to_key_wildcard` already builds. `<keyexpr>/**`
+   would also match a deeper topic (`/a/b` under `/a`), and the hash segment
+   differs by edition (`TypeHashNotSupported` on Humble, `RIHS01_…` on Jazzy),
+   so `*` there makes one rule serve both. A bringup whose images resolve to
+   several domains gets one rule per domain.
+3. **A rule cannot name one device's link.** Its only selectors are
+   `interfaces` (host NIC names) and `link_protocols` (`tcp`, `serial`, …);
+   there is no peer (zid) selector. A rule with neither applies to the
+   router's egress toward EVERY peer — every peer separately, since state is
+   per transport, but a ROS node subscribed on the same router is capped too.
+   So the producer emits an untargeted rule by default and says so, and the
+   deployment answer is an EDGE router per device (or per device class).
+   Measured (phase-516 W1b): the rule only sees traffic the router FORWARDS.
+   Two `rmw_zenoh_cpp` nodes in their default peer mode linked directly and
+   a 50 Hz rule left a 500 Hz stream at 500 Hz; in client mode the same pair
+   read 47 Hz. A zenoh-pico device is a client, so its traffic is always
+   routed — the reach that matters — while a host peer-to-peer pair is not
+   capped by a rule it never crosses. Two
+   selectors are emitted when a fact supports them: `link_protocols` when the
+   image's own locator scheme is distinctive (a serial link is), and an
+   `interfaces` list an image states as a deployment fact. Nothing infers a
+   host NIC name.
+4. **Several subscribers on one topic get the LOWEST rate.** The router sends
+   one stream per topic per transport, so the rule must be the tightest
+   declaration among them; the producer keeps the per-endpoint provenance in
+   a comment so the winner is visible.
+
+The artifact is per resolved model, beside it:
+`build/nros/models/<bringup>/<model-stem>.router.json5`, written by `nros sync`
+only when some subscriber declares an ingress (no fact, no file; a stale one is
+deleted). `rmw_zenohd` takes no config path on its command line, so the
+deployable form is also printed as a `ZENOH_CONFIG_OVERRIDE` string by
+`nros ws router-config`, which `just <platform>::zenohd <model>` runs.
+A dropped message is visible at the router as its own info line, `Some
+message(s) have been dropped by the downsampling interceptor` — that is the
+"drop counter" open question 4 asks for, at the granularity zenoh offers: it
+says THAT a rule shed, not how much.
 
 ## Enforcement point 2 — a budget on the read TASK (measured, unblocked)
 
@@ -477,6 +537,12 @@ that, and a design that assumes one `c` per board should say so.
    imply.
 
 ## Changelog
+
+- 2026-10-26 — phase-516 W1: "As lowered" added under enforcement point 1 —
+  the router lowers the declaration at burst 1 (zenoh's interceptor has no
+  burst term), the rule's keyexpr wildcards only the hash segment, a rule
+  cannot select one peer so the default is untargeted plus an edge-router
+  deployment, and co-subscribers take the lowest rate.
 
 - 2026-10-18 — phase-462 W6a: the flood cell rerun on the shipped knob,
   6/6 budgeted runs stall-free (worst 11.5 ms) and 1.9x the unbudgeted

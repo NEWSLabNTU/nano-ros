@@ -98,6 +98,16 @@ pub enum Sub {
     #[command(name = "model-dims", hide = true)]
     ModelDims(ModelDimsArgs),
 
+    /// Print the router `downsampling` rule `nros sync` wrote beside a model
+    /// (phase-516 W1b, RFC-0074 enforcement point 1), ready to deploy:
+    /// `ZENOH_CONFIG_OVERRIDE="$(nros ws router-config --model <model>)"`.
+    ///
+    /// Reads the artifact rather than re-lowering, so the router runs exactly
+    /// the rule sync wrote. Fails when there is none: no subscriber declares
+    /// an ingress, no image links zenoh, or the model was never synced.
+    #[command(name = "router-config")]
+    RouterConfig(RouterConfigArgs),
+
     // phase-341's `check-board-projections` verb lived here. RETIRED by
     // phase-445 W6 with the per-leaf `.cargo/nros-board.toml` projection it
     // checked: the board's `cargo_config` now reaches a leaf through the
@@ -405,6 +415,24 @@ pub struct ProvidersArgs {
     /// than silently dropped.
     #[arg(long, value_name = "KIND:NAME")]
     pub resolve: Option<String>,
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct RouterConfigArgs {
+    /// The resolved SystemModel (`build/nros/models/<bringup>/<stem>.yaml`);
+    /// the rule is the `<stem>.router.json5` beside it.
+    #[arg(long, value_name = "PATH")]
+    pub model: PathBuf,
+    /// `override` (default): the `ZENOH_CONFIG_OVERRIDE` entry
+    /// `rmw_zenohd` reads. `json5`: the artifact itself, for a config file.
+    #[arg(long, value_enum, default_value_t = RouterConfigFormat::Override)]
+    pub format: RouterConfigFormat,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum RouterConfigFormat {
+    Override,
+    Json5,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -773,6 +801,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::Clean(a) => run_clean(a),
         Sub::Doctor(a) => run_doctor(a),
         Sub::ModelDims(a) => run_model_dims(a),
+        Sub::RouterConfig(a) => run_router_config(a),
         Sub::CentralPatch(a) => run_central_patch(a),
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
         Sub::SeedLock(a) => run_seed_lock(a),
@@ -2495,8 +2524,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                 // function of `system.toml` alone, written only if changed), so
                 // a tree synced before W1 gains one without a re-resolve.
                 if model.exists() && system_toml.is_file() {
-                    nros_orchestration_ir::overlay::write_beside(&model, &system_toml)
-                        .map_err(|e| eyre::eyre!("sync: overlay for `{}`: {e}", pkg.name))?;
+                    write_beside_model(&model, &system_toml, &pkg.name)?;
                 }
                 continue;
             }
@@ -2635,8 +2663,7 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
                 .wrap_err_with(|| format!("sync: commit resolved model {}", model.display()))?;
             // phase-486 W1 — the nano-ros facts the model no longer owns.
             if system_toml.is_file() {
-                nros_orchestration_ir::overlay::write_beside(&model, &system_toml)
-                    .map_err(|e| eyre::eyre!("sync: overlay for `{}`: {e}", pkg.name))?;
+                write_beside_model(&model, &system_toml, &pkg.name)?;
             }
             // phase-460 W1 -- only a SUCCESSFUL resolve clears the refusal marker.
             crate::model_gate::clear(&model)
@@ -3103,6 +3130,37 @@ fn retire_generated_workspace_root(ws_root: &Path) -> Result<Option<PathBuf>> {
         return Ok(None);
     }
     retire(ws_root).map_err(|e| eyre!("sync: {e}"))
+}
+
+/// The artifacts `nros sync` writes beside every resolved model, each a
+/// function of the model and its bringup's `system.toml`: the nano-ros overlay
+/// (phase-486 W1) and the router `downsampling` rule a declared ingress lowers
+/// to (phase-516 W1a, RFC-0074 enforcement point 1).
+///
+/// The router rule is NOT fatal: it is deployed with a router, never built
+/// into an image, so failing to lower it must not become a new way for sync
+/// to stop. A failure says so and deletes any stale rule, because a reader
+/// acts on whatever file sits at the path.
+fn write_beside_model(model: &Path, system_toml: &Path, pkg_name: &str) -> Result<()> {
+    nros_orchestration_ir::overlay::write_beside(model, system_toml)
+        .map_err(|e| eyre::eyre!("sync: overlay for `{pkg_name}`: {e}"))?;
+    let bringup_dir = system_toml.parent().unwrap_or_else(|| Path::new("."));
+    // Which images cross a zenoh router: those linking the zenoh backend, the
+    // default when nothing states an RMW (`SystemToml::resolved_rmw`).
+    let routed = |rmw: Option<&str>| rmw.is_none_or(|r| r.is_empty() || r == "zenoh");
+    match nros_orchestration_ir::router_rule::write_beside(model, bringup_dir, &routed) {
+        Ok(Some(path)) => println!("sync: router rule → {}", path.display()),
+        Ok(None) => {}
+        Err(e) => {
+            let stale = nros_orchestration_ir::router_rule::router_rule_path_for_model(model);
+            let _ = std::fs::remove_file(&stale);
+            eprintln!(
+                "sync: warning: no router rule for `{pkg_name}` ({e}); a declared ingress \
+                 is then enforced on the device alone"
+            );
+        }
+    }
+    Ok(())
 }
 
 pub fn run_sync(args: SyncArgs) -> Result<()> {
@@ -4977,6 +5035,29 @@ fn execution_tier_dims(yaml: &str) -> BTreeSet<String> {
         }
     }
     out
+}
+
+/// `nros ws router-config --model <model.yaml>` — phase-516 W1b's deploy door.
+fn run_router_config(args: RouterConfigArgs) -> Result<()> {
+    let path = nros_orchestration_ir::router_rule::router_rule_path_for_model(&args.model);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => bail!(
+            "router-config: no router rule at {} — no subscriber of this model declares an \
+             `ingress`, no image links zenoh, or `nros sync` has not run since it did",
+            path.display()
+        ),
+        Err(e) => bail!("router-config: read {}: {e}", path.display()),
+    };
+    match args.format {
+        RouterConfigFormat::Json5 => print!("{text}"),
+        RouterConfigFormat::Override => println!(
+            "{}",
+            nros_orchestration_ir::router_rule::config_override_from_artifact(&text)
+                .map_err(|e| eyre::eyre!("router-config: {}: {e}", path.display()))?
+        ),
+    }
+    Ok(())
 }
 
 /// `nros ws model-dims <model.yaml>` — issue 0380's read-only door onto

@@ -577,11 +577,11 @@ action-server: (_run-qemu "action-server" "rv-virt-threadx-action-server" "0")
 action-client: (_run-qemu "action-client" "rv-virt-threadx-action-client" "1")
 
 # Start zenohd router for ThreadX RISC-V examples (allocator rust-pubsub port 9400)
-zenohd:
+zenohd model="":
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    nros_router_exec tcp/127.0.0.1:9400
+    nros_router_exec tcp/127.0.0.1:9400 "{{model}}"
 
 # Clean ThreadX RISC-V build artifacts
 [group("main")]

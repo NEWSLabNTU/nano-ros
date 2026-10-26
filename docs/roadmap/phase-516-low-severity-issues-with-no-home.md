@@ -33,6 +33,39 @@ lowering.
 **Done when** the resolver emits the rule for a declared ingress, and a cell
 shows a router running it drop the excess before it reaches the device.
 
+Design: RFC-0074 "As lowered" (amendment 2026-10-26). The router can carry the
+rate and not the burst, a rule cannot select one peer, and co-subscribers on a
+topic take the lowest rate. Split:
+
+- [x] **W1a — the producer.** `nros sync` writes
+      `<model-stem>.router.json5` beside each resolved model whose subscribers
+      declare an ingress: one `downsampling` item, one rule per
+      (topic, domain), keyexpr `<domain>/<topic>/<dds type>/*`,
+      `freq = rate_hz` (lowest across co-subscribers). No declaration, no
+      file; a stale one is deleted. Untargeted unless an image's transport is
+      serial (`link_protocols: ["serial"]`). Only zenoh images contribute.
+- [x] **W1b — the deploy door.** `nros ws router-config --model <path>` prints
+      the rule as a `ZENOH_CONFIG_OVERRIDE` string (or the json5), and every
+      `just <platform>::zenohd <model>` runs it (`nros_router_exec`'s second
+      argument). Measured on `rmw_zenohd` (Humble, zenoh 1.10.1): a 500 Hz
+      `ros2 topic pub` through the router to a `ros2 topic hz` declared at
+      50 Hz read 47.1-47.5 Hz with the rule and 500.0 Hz without, and the
+      router logged its drop line. Both host nodes had to be in CLIENT mode:
+      in rmw_zenoh's default peer mode they linked directly and the rule saw
+      nothing (500 Hz with it).
+- [ ] **W1c — the cell.** Native Linux, a nano-ros subscriber: a host
+      publisher floods a topic far above the subscriber's declared `rate_hz`;
+      with the generated override the subscriber's received rate is at most
+      the declared rate and the router logs the downsampling drop line;
+      without it (negative control) the excess arrives. Needs a public
+      extra-override entry on the `ZenohRouter` fixture.
+- [ ] **W1d — a stated interface.** An `[image.<id>]` deployment fact that
+      lowers to the rule's `interfaces`, for a router that is not an edge
+      router. Never inferred.
+- [ ] **W1e — upstream.** A zenoh feature request for a token-bucket
+      (burst) mode on `downsampling`, filed by a maintainer; until it lands the
+      router half stays at burst 1.
+
 ### W2 — the api-parity ledger stops conflicting ([issue 1091](../issues/archived/1091-ledger-shards-conflict-on-sorted-key-insert.md))
 
 Two branches that add adjacent keys to a sorted ledger shard always conflict.

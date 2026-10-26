@@ -383,8 +383,8 @@ listener: build-qemu
         -nic user,model=open_eth
 
 # Start zenohd router for ESP32 QEMU examples (allocator rust-pubsub port 9800)
-zenohd:
+zenohd model="":
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    nros_router_exec tcp/127.0.0.1:9800
+    nros_router_exec tcp/127.0.0.1:9800 "{{model}}"

@@ -652,8 +652,8 @@ async-service-client:
     ./build-async-service-client/zephyr/zephyr.exe
 
 # Start zenohd router for Zephyr examples (allocator rust-pubsub port 7400, all interfaces)
-zenohd:
+zenohd model="":
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    nros_router_exec tcp/0.0.0.0:7400
+    nros_router_exec tcp/0.0.0.0:7400 "{{model}}"
