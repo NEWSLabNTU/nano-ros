@@ -627,6 +627,12 @@ function(nros_threadx_rv64_rust_app target)
             "feature set here. Add one beside `zenoh`/`cyclonedds` — a leaf's "
             "features are its own, so this cannot be inferred.")
     endif()
+    # Issue 2045/2087 — and the ROS edition, from the leaf's declaration
+    # (`nros_apply_leaf_identity` set `NROS_ROS_EDITION`). The leaf defines
+    # `ros-<edition>` as forwards to `nros` and its backend; naming one in its
+    # dependencies instead pinned humble whatever `system.toml` said.
+    _nros_resolve_ros_edition("" _rv64_edition)
+    list(APPEND _rv64_crate_features "ros-${_rv64_edition}")
     string(REPLACE "-" "_" _crate_target "${_A_CRATE}")
 
     # phase-336 — explicit profile + its definition (Corrosion would otherwise

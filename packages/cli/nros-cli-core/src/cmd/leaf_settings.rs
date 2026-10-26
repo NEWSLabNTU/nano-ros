@@ -677,6 +677,9 @@ pub fn write_selection(
     let Some(img) = resolve_image(leaf, nano_ros_root, image)? else {
         return Ok(None);
     };
+    // Issue 2045 — refused at `nros sync` too, which reaches this before its
+    // first cargo invocation: the user meets the declaration, not rustc.
+    check_lowered_edition_features(&img)?;
     if !depends_on_selection(&img.leaf, &img.package) {
         return Ok(None);
     }
@@ -812,6 +815,81 @@ fn named_board_crates(doc: &toml::Table) -> Vec<String> {
     out
 }
 
+/// Every dependency table of a leaf manifest: `[dependencies]` and
+/// `[build-dependencies]`, top-level and target-scoped. Target-scoped tables
+/// count: an image-only board crate lives under
+/// `[target.'cfg(target_os = "none")'.dependencies]` so the node still builds
+/// for the host probe (issue 1265).
+fn dependency_tables(doc: &toml::Table) -> Vec<&toml::Table> {
+    let mut tables = Vec::new();
+    for scope in std::iter::once(doc).chain(
+        doc.get("target")
+            .and_then(|t| t.as_table())
+            .into_iter()
+            .flat_map(|t| t.values().filter_map(|v| v.as_table())),
+    ) {
+        for key in ["dependencies", "build-dependencies"] {
+            if let Some(deps) = scope.get(key).and_then(|d| d.as_table()) {
+                tables.push(deps);
+            }
+        }
+    }
+    tables
+}
+
+/// Issue 2045 (RFC-0056, RFC-0031) — refuse a leaf manifest that ENABLES a
+/// `ros-<edition>` feature on a dependency.
+///
+/// The edition is declared once, in `system.toml` (`[image.<id>]` >
+/// `[image_defaults]` > `[system] ros_edition`), and the toolchain lowers it:
+/// the selection package names it on the cargo road, the CMake road passes
+/// `ros-<edition>` to the crate. A hand-written `features = ["ros-humble"]`
+/// is that lowering done by hand, once per manifest: cargo unifies it with the
+/// declared one, so declaring any other edition stops the build at `nros`'s
+/// "mutually exclusive" `compile_error!` (41 example leaves did this). A
+/// leaf's OWN `[features]` table may define `ros-<edition>` as forwards — that
+/// is a lowering TARGET for the CMake road to select, not a choice.
+fn check_lowered_edition_features(img: &LeafImage) -> Result<()> {
+    let manifest = img.leaf.join("Cargo.toml");
+    let Ok(doc) = std::fs::read_to_string(&manifest)
+        .map_err(|e| e.to_string())
+        .and_then(|t| t.parse::<toml::Table>().map_err(|e| e.to_string()))
+    else {
+        return Ok(());
+    };
+    let mut pinned: Vec<String> = Vec::new();
+    for deps in dependency_tables(&doc) {
+        for (k, v) in deps {
+            let Some(features) = v.get("features").and_then(|f| f.as_array()) else {
+                continue;
+            };
+            for f in features.iter().filter_map(|f| f.as_str()) {
+                if f.strip_prefix("ros-")
+                    .and_then(rosidl_codegen::RosEdition::parse)
+                    .is_some()
+                {
+                    pinned.push(format!("`{k}` enables `{f}`"));
+                }
+            }
+        }
+    }
+    if pinned.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "{}: {}.\n  The ROS edition is declared in {} (`ros_edition` under \
+         `[image.{}]`, `[image_defaults]` or `[system]`) and lowered by the toolchain; \
+         a dependency feature pins it here instead, so any other declared edition \
+         fails to compile (`ros-{{humble,iron,jazzy}}` are mutually exclusive). \
+         Delete the `ros-<edition>` entries from {} (issue 2045).",
+        manifest.display(),
+        pinned.join(", "),
+        img.decl.origin_path().display(),
+        img.image_id,
+        manifest.display(),
+    )
+}
+
 /// Issue 1305 — a single-package Rust leaf's image-only dependencies must
 /// agree with its image's board.
 ///
@@ -852,24 +930,8 @@ fn check_board_crate_dependency(img: &LeafImage) -> Result<()> {
         return Ok(());
     };
     // A dependency's crate is its `package = "…"` when renamed, else its key.
-    // Target-scoped tables count too: an image-only board crate lives under
-    // `[target.'cfg(target_os = "none")'.dependencies]` so the node still
-    // builds for the host probe (issue 1265).
-    let mut tables: Vec<&toml::Table> = Vec::new();
-    for scope in std::iter::once(&doc).chain(
-        doc.get("target")
-            .and_then(|t| t.as_table())
-            .into_iter()
-            .flat_map(|t| t.values().filter_map(|v| v.as_table())),
-    ) {
-        for key in ["dependencies", "build-dependencies"] {
-            if let Some(deps) = scope.get(key).and_then(|d| d.as_table()) {
-                tables.push(deps);
-            }
-        }
-    }
     let mut named: Vec<String> = Vec::new();
-    for deps in tables {
+    for deps in dependency_tables(&doc) {
         for (k, v) in deps {
             let krate = v
                 .get("package")
@@ -974,6 +1036,7 @@ pub fn write_shared(
     };
     let leaf = img.leaf.as_path();
     check_board_crate_dependency(&img)?;
+    check_lowered_edition_features(&img)?;
     // Issue 1305 — a migrated leaf's selection package, for THIS image's
     // board. Sync wrote it already (before its probe); `nros build` writes it
     // here, so a board switch followed by a build alone also lands.
@@ -1289,6 +1352,7 @@ mod tests {
             image: Some("linux".into()),
             board: Some("linux".into()),
             rmw: None,
+            ros_edition: None,
             network: leaf_system::Network {
                 transport: transport.map(str::to_string),
                 ..Default::default()
@@ -2031,6 +2095,75 @@ mod board_crate_tests {
         assert!(
             e.contains("my_talker_nros_selection") && e.contains("`nros-board-mps2-an385`"),
             "{e}"
+        );
+    }
+
+    /// Issue 2045 — a dependency enabling `ros-<edition>` pins what the
+    /// declaration owns, and is refused naming the dependency and the file
+    /// that should state it.
+    #[test]
+    fn a_dependency_enabling_an_edition_feature_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
+        let m = read(&leaf.join("Cargo.toml"))
+            + "nros = { version = \"*\", features = [\"alloc\", \"ros-humble\"] }\n";
+        std::fs::write(leaf.join("Cargo.toml"), m).unwrap();
+        let img = resolve(&leaf, &repo()).unwrap().unwrap();
+        let e = check_lowered_edition_features(&img)
+            .expect_err("a hand-pinned edition")
+            .to_string();
+        assert!(e.contains("`nros` enables `ros-humble`"), "{e}");
+        assert!(e.contains("system.toml") && e.contains("issue 2045"), "{e}");
+        // ...and `nros sync` meets it before any cargo invocation.
+        assert!(write_selection(&leaf, &repo(), None).is_err());
+    }
+
+    /// Issue 2045 — a leaf's own `[features]` may DEFINE `ros-<edition>` as a
+    /// lowering target (the CMake road selects it), and a capability feature
+    /// whose name merely starts with `ros-` is no edition.
+    #[test]
+    fn an_edition_feature_defined_as_a_forward_is_accepted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
+        let m = read(&leaf.join("Cargo.toml"))
+            + "nros = { version = \"*\", features = [\"alloc\", \"ros-rolling-ish\"] }\n\n\
+               [features]\nros-jazzy = [\"nros/ros-jazzy\"]\n";
+        std::fs::write(leaf.join("Cargo.toml"), m).unwrap();
+        let img = resolve(&leaf, &repo()).unwrap().unwrap();
+        check_lowered_edition_features(&img).expect("a forward is not a pin");
+    }
+
+    /// Issue 2045 — no tracked leaf pins an edition its `system.toml` owns,
+    /// so the refusal above can never meet the tree's own examples.
+    #[test]
+    fn no_tracked_leaf_pins_the_declared_edition() {
+        let out = crate::source_stamp::nros_git_command("git")
+            .args(["ls-files", "-z", "--", "*system.toml"])
+            .current_dir(repo())
+            .output()
+            .expect("git ls-files");
+        let mut checked = 0;
+        let mut pinned = Vec::new();
+        for rel in String::from_utf8_lossy(&out.stdout)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+        {
+            let leaf = repo().join(rel).parent().unwrap().to_path_buf();
+            if !leaf.join("Cargo.toml").is_file() {
+                continue;
+            }
+            let Some(img) = resolve(&leaf, &repo()).unwrap_or_else(|e| panic!("{rel}: {e}")) else {
+                continue;
+            };
+            checked += 1;
+            if let Err(e) = check_lowered_edition_features(&img) {
+                pinned.push(e.to_string());
+            }
+        }
+        assert!(pinned.is_empty(), "{}", pinned.join("\n"));
+        assert!(
+            checked >= 40,
+            "the walk reached only {checked} cargo leaves"
         );
     }
 

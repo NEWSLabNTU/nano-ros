@@ -24,6 +24,13 @@ rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-threadx-qemu-riscv64/rmw-zenoh"]
 rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys"]
 # Opt in to the heap. Required by `rmw-cyclonedds`; the zenoh path does not need it.
 alloc            = ["nros/alloc"]
+# Issue 2045/2087 — the ROS edition is DECLARED in `system.toml`; these are
+# its cargo lowering, which the CMake road selects
+# (`nros_threadx_rv64_rust_app` passes `ros-<edition>`). Never enable one in a
+# dependency above: that pins the edition the declaration owns.
+ros-humble = ["nros/ros-humble", "nros-rmw-zenoh?/ros-humble", "nros-rmw-cyclonedds-sys?/ros-humble"]
+ros-iron   = ["nros/ros-iron", "nros-rmw-zenoh?/ros-iron", "nros-rmw-cyclonedds-sys?/ros-iron"]
+ros-jazzy  = ["nros/ros-jazzy", "nros-rmw-zenoh?/ros-jazzy", "nros-rmw-cyclonedds-sys?/ros-jazzy"]
 
 # The board, network identity and node declaration live in `system.toml` beside
 # this manifest (RFC-0098 D3/D5).
@@ -32,7 +39,7 @@ alloc            = ["nros/alloc"]
 # (issue 1305).
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["rmw-cffi", "ros-humble", "macros"] }
+nros = { version = "*", default-features = false, features = ["rmw-cffi", "macros"] }
 example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 # Demo-parity log lines route through the `log` facade; the platform entry
 # runtime owns the sink.
@@ -54,7 +61,7 @@ heapless = "0.8"
 [target.'cfg(target_os = "none")'.dependencies]
 nros-board-threadx-qemu-riscv64 = { version = "*" }
 nros-platform = { version = "*", default-features = false, features = ["platform-threadx", "global-allocator", "critical-section"] }
-nros-rmw-zenoh = { version = "*", features = ["platform-threadx", "ros-humble"], optional = true }
+nros-rmw-zenoh = { version = "*", features = ["platform-threadx"], optional = true }
 nros-rmw-cyclonedds-sys = { version = "*", default-features = false, optional = true }
 
 [workspace]

@@ -24,7 +24,7 @@ crate-type = ["rlib"]
 # needs.
 
 [dependencies]
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board BoardEntry boot scaffold — this crate only registers its Logger handle.
 # phase-338 W7 — the node body logs through the `log` facade like every

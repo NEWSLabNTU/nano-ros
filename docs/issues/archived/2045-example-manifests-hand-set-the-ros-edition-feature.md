@@ -1,17 +1,18 @@
 ---
 id: 2045
 title: "41 example manifests hand-set the lowered `ros-humble` feature, so a declared `ros_edition` other than humble cannot build"
-status: open
+status: resolved
 type: bug
 area: [examples, build]
 severity: medium
 found: 2026-10-25
-related: [rfc-0056, rfc-0031, rfc-0004, phase-452, issue-1305]
+resolved: 2026-10-26
+related: [rfc-0056, rfc-0031, rfc-0004, phase-452, issue-1305, issue-2087]
 ---
 
 # Example manifests hand-set the ROS edition as a cargo feature
 
-**Home:** [phase-452](../roadmap/phase-452-copy-out-front-door.md) W7.
+**Home:** [phase-452](../../roadmap/phase-452-copy-out-front-door.md) W7.
 
 ## Problem
 
@@ -66,3 +67,45 @@ rather than per declared image.
   fix; the sweep alone re-grows.
 - Acceptance: the copied-out talker above builds with `ros_edition = "jazzy"`,
   and a leaf hand-setting `ros-humble` is refused at `nros sync`.
+
+## Resolution (2026-10-26)
+
+**The pins are gone.** No tracked leaf with a `system.toml` enables a
+`ros-<edition>` feature on a dependency any more:
+
+- 30 migrated example leaves (linux 5, mps2-an385-baremetal 25 — Rust, C and
+  C++) and 8 migrated `packages/testing` leaves: the edition tokens were
+  deleted; their selection package states it, on `nros` and on a direct
+  backend dependency.
+- The 6 `rv-virt-threadx/rust` leaves are not on the selection road (lib-only
+  staticlibs a CMake image links). They now DEFINE `ros-<edition>` in their own
+  `[features]` as forwards to `nros` and to whichever backend is enabled
+  (Cyclone's sys crate included, which never received an edition before), and
+  `nros_threadx_rv64_rust_app` selects `ros-<declared edition>`. That needed the
+  CMake road to know the edition at all, which it did not:
+  [#2087](2087-standalone-cmake-leaf-ignores-declared-ros-edition.md).
+- The 2 dormant esp32 leaves (scaffold tier, issue 1525): deleted. With no
+  edition feature `nros-node` behaves as humble, and zenoh's `ros-humble` is
+  empty, so the image is unchanged.
+- The 3 px4 companions keep theirs: they have no `system.toml`, so there is no
+  declaration for the manifest to disagree with.
+
+**The class is refused.** `check_lowered_edition_features`
+(`cmd/leaf_settings.rs`) runs in `write_selection`, which `nros sync` reaches
+before its first cargo invocation, and in `nros build`. It refuses a
+dependency that enables `ros-<edition>`, naming the dependency and the
+`system.toml` that should state it; a `[features]` forward is accepted.
+`no_tracked_leaf_pins_the_declared_edition` walks every tracked leaf
+(negative control: re-pinning `mps2-an385-baremetal/rust/talker` turns it red).
+
+**Verified** on copies outside the checkout, each built with `nros sync && nros
+build`, at the default and with `ros_edition = "jazzy"` under `[system]`:
+
+| leaf | default | jazzy |
+| --- | --- | --- |
+| `mps2-an385-baremetal/rust/talker` | builds; nros-node + zenoh `ros-humble` | builds; `ros-jazzy` on both |
+| `mps2-an385-baremetal/c/talker` | builds; `ros-humble` on both | builds; `ros-jazzy` on both |
+| `mps2-an385-baremetal/cpp/talker` | builds; `ros-humble` on both | builds; `ros-jazzy` on both |
+| `linux/rust/serial-talker` (xrce) | builds; nros-node `ros-humble` | builds; `ros-jazzy` |
+
+The jazzy mps2 talker is the one this issue failed on.

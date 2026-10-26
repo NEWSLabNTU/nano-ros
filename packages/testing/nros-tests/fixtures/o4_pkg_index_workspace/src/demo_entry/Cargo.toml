@@ -16,8 +16,7 @@ path = "src/main.rs"
 # DELIBERATELY single-dep on `nros` (matches `nros::main!` design lock).
 nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = [
     "alloc",
-    "rmw-cffi",
-    "ros-humble", "macros"] }
+    "rmw-cffi", "macros"] }
 # Board crate — supplies the `LinuxBoard` ZST referenced by the
 # macro-emitted `<Board as BoardEntry>::run(...)` call.
 # The image's board crate (and its RMW backend, platform and runtime) —

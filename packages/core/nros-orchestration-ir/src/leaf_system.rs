@@ -272,6 +272,10 @@ pub struct LeafSystem {
     pub board: Option<String>,
     /// RMW: `[image] rmw` > `[image_defaults] rmw` > `[system] rmw`.
     pub rmw: Option<String>,
+    /// ROS edition, the same overlay as [`Self::rmw`] (RFC-0056): `[image]
+    /// ros_edition` > `[image_defaults]` > `[system]`. `None` when no table
+    /// states one, so the consumer's own default applies (issue 2087).
+    pub ros_edition: Option<String>,
     pub network: Network,
     pub components: Vec<LeafComponent>,
     /// `[image.<id>] env` — the RFC-0049 APP rung, stated per image
@@ -736,6 +740,7 @@ fn image_system(
         )
     })?;
     let rmw = pick("rmw").or_else(|| str_key(system, "rmw"));
+    let ros_edition = pick("ros_edition").or_else(|| str_key(system, "ros_edition"));
     let domain_id = match u32_key(image, "domain_id", path)? {
         Some(d) => Some(d),
         None => match u32_key(defaults, "domain_id", path)? {
@@ -849,6 +854,7 @@ fn image_system(
         image: Some(id.to_string()),
         board: Some(board),
         rmw,
+        ros_edition,
         network,
         components,
         env,

@@ -28,7 +28,6 @@ bench = false
 nros-c = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
     "platform-mps2-an385",
     "panic-platform",
 ] }
@@ -36,9 +35,10 @@ nros-c = { version = "*", default-features = false, features = [
 # not an `nros-c` feature: the API crate names no backend. A DIRECT dependency
 # because `nros_cc_flags::backends` reads the backend's self-announcement
 # (`DEP_NROS_RMW_ZENOH_NROS_RMW_BACKEND`), which cargo hands a direct dependent
-# only. Its platform and edition are what `nros-c`'s `platform-mps2-an385` /
-# `ros-humble` used to forward to it.
-nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-bare-metal", "ros-humble"] }
+# only. Its platform is what `nros-c`'s `platform-mps2-an385` used to forward
+# to it. Its EDITION is not stated here: the selection package below names it
+# from `system.toml` (issue 2045), so a declared `ros_edition` is the only knob.
+nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-bare-metal"] }
 # The image's board crate (reset vector, CMSDK Timer0 clock, LAN9118 + smoltcp
 # bring-up, semihosting console and the `nros_log` sink — none of it reachable
 # from C, which is why this leaf is rooted in Rust), its RMW backend and its

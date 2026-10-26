@@ -31,7 +31,7 @@ crate-type = ["rlib"]
 log = { version = "0.4", default-features = false }
 std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 # nros Executor API — ffi-sync enables critical_section guards around FFI calls.
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "ffi-sync", "macros"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ffi-sync", "macros"] }
 
 # Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
 # builds for the host as well and `nros sync` can PROBE what it creates

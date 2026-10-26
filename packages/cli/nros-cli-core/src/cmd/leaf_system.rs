@@ -268,6 +268,9 @@ pub fn rows(
         ("NROS_LEAF_BOARD", s(&leaf.board)),
         ("NROS_LEAF_DEPLOY", deploy.to_string()),
         ("NROS_LEAF_RMW", s(&leaf.rmw)),
+        // Issue 2087 — the image's declared edition, empty when nothing states
+        // one; the cmake reader applies it as `NROS_ROS_EDITION`.
+        ("NROS_LEAF_ROS_EDITION", s(&leaf.ros_edition)),
         (
             "NROS_LEAF_DOMAIN_ID",
             net.domain_id.map(|d| d.to_string()).unwrap_or_default(),
@@ -605,6 +608,26 @@ mod tests {
         // Absent keys are printed empty, never omitted.
         assert_eq!(rows["NROS_LEAF_IMAGE_NET"], "");
         assert_eq!(rows["NROS_LEAF_IMAGE_ENV"], "", "nothing asked for");
+        assert_eq!(rows["NROS_LEAF_ROS_EDITION"], "", "no edition stated");
+    }
+
+    /// Issue 2087 -- the declared ROS edition reaches the cmake road, with the
+    /// image's own row over `[system]`, like the RMW.
+    #[test]
+    fn the_declared_ros_edition_is_printed_per_image() {
+        let td = leaf_dir(
+            "[system]\nname = \"c_talker\"\nrmw = \"zenoh\"\nros_edition = \"jazzy\"\n\
+             default_images = [\"a\"]\n\n\
+             [image.a]\nboard = \"mps2-an385-freertos\"\n\n\
+             [image.b]\nboard = \"mps2-an385-freertos\"\nros_edition = \"humble\"\n",
+        );
+        for (image, want) in [("a", "jazzy"), ("b", "humble")] {
+            let leaf = leaf_system::read_image(td.path(), image).unwrap().unwrap();
+            let rows: std::collections::BTreeMap<_, _> = rows(&leaf, "freertos", None, None, None)
+                .into_iter()
+                .collect();
+            assert_eq!(rows["NROS_LEAF_ROS_EDITION"], want, "image {image}");
+        }
     }
 
     /// Issue 1712 -- a C leaf's `[image.<id>] env` becomes a cargo config the

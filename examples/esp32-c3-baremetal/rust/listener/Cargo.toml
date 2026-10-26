@@ -25,7 +25,7 @@ bench = false
 
 [dependencies]
 # nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Executor API.
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 
 # Generated message types (from package.xml via nros generate-rust)
 std_msgs = { path = "generated/std_msgs", default-features = false }
