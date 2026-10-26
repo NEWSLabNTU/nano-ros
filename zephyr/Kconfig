@@ -423,14 +423,19 @@ config NROS_ZEPHYR_STACKS_IN_DTCM
     bool "Place nano-ros task stacks in DTCM"
     default n
     help
-      Put the nano-ros task stack array in the SoC's data tightly-coupled
-      memory instead of SRAM, using the linker region the devicetree's
-      `zephyr,memory-region = "DTCM"` generates.
+      Put the nano-ros task stack array (`nros_thread_stacks`, the transport's
+      tasks) in the SoC's data tightly-coupled memory instead of SRAM, using
+      the linker region the devicetree's `zephyr,memory-region = "DTCM"`
+      generates. The tier/level stacks follow by default through
+      NROS_ZEPHYR_TIER_STACKS_IN_DTCM.
 
       Off by default because a DTCM is a property of the part, not of Zephyr:
       a SoC without one, or one whose DTCM another component already claims,
-      must keep the default placement. Enabling it on a board with no DTCM
-      region is a link error, which is the right failure.
+      must keep the default placement. Enabling it on a board whose
+      devicetree has no okay `zephyr,memory-region = "DTCM"` node is a
+      compile error (a BUILD_ASSERT in the shim, issue 2084): without the
+      region the section would be an orphan the linker places anywhere.
+      Not supported with CONFIG_USERSPACE.
 
       Stacks are the ideal tenant. They are CPU-private, never the target of a
       DMA transfer, and TCM access does not contend with the system bus — so
@@ -441,6 +446,31 @@ config NROS_ZEPHYR_STACKS_IN_DTCM
       Do NOT extend this to buffers a DMA engine touches without checking
       whether this part's TCM is reachable from the relevant bus master. On
       Cortex-M7 the TCMs hang off the CPU's private bus and typically are not.
+
+config NROS_ZEPHYR_TIER_STACKS_IN_DTCM
+    bool "Place nano-ros tier (level) stacks in DTCM"
+    default NROS_ZEPHYR_STACKS_IN_DTCM
+    help
+      Put the tier/level thread stacks in DTCM, beside the task stacks: the
+      shim's pool (`nros_tier_stacks`, NROS_ZEPHYR_MAX_TIERS slots of
+      NROS_ZEPHYR_TIER_STACK_SIZE, used by a level whose entry declares no
+      stack, as every Rust `nros::main!` derived level does) and a generated
+      C/C++ entry's per-level `K_THREAD_STACK_DEFINE` statics
+      (<rclc/detail/tier_task_memory_zephyr.h>).
+
+      Defaults to NROS_ZEPHYR_STACKS_IN_DTCM, so "stacks in DTCM" means all of
+      nano-ros's stacks (issue 2084: with only the task stacks moved, the
+      MR-CANHUBK344 serial Rust level image with a 64 KiB level slot
+      overflowed RAM by 30,028 B while DTCM had 40 KiB free). Turn it off to
+      keep level stacks in SRAM when DTCM is already claimed (a trace buffer,
+      relocated .bss) and the level slots would not fit there.
+
+      A Rust entry's own `TierTaskMemory` statics (a level that declares
+      `stack_bytes` on the Rust road) are not placed by this knob; they stay
+      in the default section.
+
+      Same requirements as NROS_ZEPHYR_STACKS_IN_DTCM: a devicetree DTCM
+      region (checked at compile time) and no CONFIG_USERSPACE.
 
 config NROS_ZEPHYR_TASK_SLOTS
     int "nano-ros Zephyr task stack slots"

@@ -5461,6 +5461,25 @@ pub fn build_zephyr_cortex_m_rust_serial_talker() -> TestResult<PathBuf> {
     )
 }
 
+/// Issue 2084 -- the `build-cortex-m-c-tier-stacks-dtcm-zenoh` row: one level
+/// on the shim's tier pool, `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` on, for an
+/// `mps2_an385` given a "DTCM" region by the fixture's `app.overlay`. A link
+/// witness: the test reads its ELF.
+pub fn build_zephyr_cortex_m_tier_stacks_dtcm() -> TestResult<PathBuf> {
+    let leaf = "packages/testing/nros-tests/bins/tier-stacks-dtcm-zephyr-mps2";
+    let binary_path =
+        zephyr_build_root().join("build-cortex-m-c-tier-stacks-dtcm-zenoh/zephyr/zephyr.elf");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource {
+            dir: leaf,
+            lang: Some("c"),
+            rmw: Some(Rmw::Zenoh.cmake_value()),
+            conf_files: Some("prj.conf"),
+        },
+    )
+}
+
 /// Phase 168.4 — collapsed-shape Zephyr C / C++ example resolver.
 /// `lang` is `"c"` or `"cpp"`. Mirrors the Rust resolver.
 pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {

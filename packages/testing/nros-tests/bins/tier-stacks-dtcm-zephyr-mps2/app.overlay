@@ -1,0 +1,15 @@
+/* Issue 2084 -- give mps2_an385 a "DTCM" linker region. The board has none;
+ * its 4 MiB SRAM is split so the top 512 KiB becomes a zephyr,memory-region
+ * named "DTCM", the same shape the S32K344's dtcm node has. QEMU backs the
+ * whole 4 MiB, so the image also boots. */
+&sram0 {
+	reg = <0x20000000 0x380000>;
+};
+
+/ {
+	dtcm: memory@20380000 {
+		compatible = "zephyr,memory-region";
+		reg = <0x20380000 0x80000>;
+		zephyr,memory-region = "DTCM";
+	};
+};
