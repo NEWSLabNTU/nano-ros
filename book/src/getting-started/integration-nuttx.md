@@ -166,11 +166,10 @@ it:
 nros setup qemu-armv7a-nuttx --rmw zenoh
 ```
 
-The NuttX kernel build needs two host tools `nros setup` does not install
-(it installs no system packages): Python's venv module — with no
-`kconfig-frontends` on the host, the build provisions `kconfiglib` into a venv
-of its own for NuttX's `kconfig` step — and `unzip`, for the `dtc` and
-`libmetal` archives NuttX's own build downloads. On Debian/Ubuntu:
+If this host lacks a system package the NuttX kernel build needs, `nros
+setup` names it before fetching anything and prints the command that installs
+it — it never runs `sudo` for you. On a fresh Debian/Ubuntu host that command
+is:
 
 ```bash probe=35
 sudo apt-get install -y python3-venv unzip

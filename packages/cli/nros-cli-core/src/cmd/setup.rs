@@ -639,9 +639,9 @@ fn provision_boards(
         &plan.system,
         &ledger,
         &format!(
-            "nros setup: {board}'s tools need system package(s) this host is missing — \
-             asked once, before any download (not fatal here: the tools still install, and \
-             one that cannot load a library fails its smoke check):"
+            "nros setup: {board}'s tools and sources need system package(s) this host is \
+             missing — asked once, before any download (not fatal here: the tools still \
+             install, and one that cannot load a library fails its smoke check):"
         ),
     );
     let unavailable = plan.unavailable();
@@ -4609,6 +4609,60 @@ mod tests {
         // An index without the tool installs nothing it cannot name.
         let no_tool = SdkIndex::parse("[board.linux]\nplatform=\"posix\"\npackages=[]\n").unwrap();
         assert!(road_build_tool(&no_tool, "linux").is_none());
+    }
+
+    /// Issue 2068, against the REAL index: on a host with neither, `nros setup`
+    /// for each NuttX board asks for the venv module and `unzip` — the two host
+    /// tools the kernel build needs, which nothing tied to a NuttX board before
+    /// `[source.*]` could carry a `system` list. Same plan, same state probe
+    /// shape the board path builds; only the host's answers are injected.
+    #[test]
+    fn shipped_index_nuttx_setup_asks_for_the_kernel_builds_host_tools() {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../nros-sdk-index.toml");
+        let idx = SdkIndex::load(&path).unwrap();
+        let root = crate::test_support::scratch_dir("nuttx-host-tools");
+        let host = host_key();
+        for board in ["qemu-armv7a-nuttx", "rv-virt-nuttx"] {
+            let pkgs = resolve_packages_with_rmw(&idx, board, None).unwrap();
+            let lacking = ["python3-venv", "unzip"];
+            let plan = SessionPlan::resolve(
+                &idx,
+                &pkgs,
+                &PlanInputs {
+                    root: &root,
+                    host: &host,
+                    prefix_override: None,
+                    mode: Mode::Board,
+                },
+                &mut |k| {
+                    if lacking.contains(&k) {
+                        PrereqState::Missing
+                    } else {
+                        PrereqState::Present
+                    }
+                },
+                &Default::default(),
+            )
+            .unwrap();
+            for key in lacking {
+                assert!(
+                    plan.system.os.contains_key(key),
+                    "{board}: `{key}` not asked; asked = {:?}",
+                    plan.system.os.keys().collect::<Vec<_>>()
+                );
+            }
+            let text = plan.system.render(
+                &idx.prereqs(),
+                Some("apt"),
+                &crate::orchestration::sdk_index::PrereqContext::from_env(),
+                "ask:",
+            );
+            assert!(
+                text.contains("python3-venv") && text.contains("unzip"),
+                "{board}: the apt command names both:\n{text}"
+            );
+        }
     }
 
     #[test]

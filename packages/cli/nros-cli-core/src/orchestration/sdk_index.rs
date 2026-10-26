@@ -1615,6 +1615,18 @@ pub struct SourcePackage {
     /// answer to the key ([`SdkIndex::python_layer`]).
     #[serde(default)]
     pub python: BTreeMap<String, SourcePythonDep>,
+    /// Issue 2068 — `[prereq.*]` keys the BUILD that reads this tree needs on
+    /// the host, the same list a `[tool.*]` carries as `system = [..]` and read
+    /// by the same plan code ([`crate::cmd::setup`]'s `SessionPlan`), so
+    /// `nros setup <board>` names them before anything is fetched.
+    ///
+    /// `nuttx-kernel` is the motivating one: NuttX's own build unzips the
+    /// `dtc`/`libmetal` archives it downloads, and with no `kconfig-frontends`
+    /// on the host `scripts/nuttx/build-nuttx.sh` provisions `kconfiglib` into
+    /// a venv. Neither is a fetch dependency, so they live on the source rather
+    /// than on any tool the board provisions.
+    #[serde(default)]
+    pub system: Vec<String>,
 }
 
 /// One python dependency a `[source.*]` tree's own code declares — issue 1483.
@@ -1668,6 +1680,7 @@ impl Default for SourcePackage {
             builds_in_place: false,
             check: None,
             python: BTreeMap::new(),
+            system: Vec::new(),
         }
     }
 }
@@ -1993,6 +2006,16 @@ impl SdkIndex {
                              `default` for every other release"
                         );
                     }
+                }
+            }
+        }
+        for (name, src) in &self.source {
+            for key in &src.system {
+                if !prereq_keys.contains_key(key) {
+                    bail!(
+                        "source '{name}' declares build system dep '{key}' \
+                         with no [prereq.{key}] entry"
+                    );
                 }
             }
         }

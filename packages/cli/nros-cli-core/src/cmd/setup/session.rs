@@ -516,6 +516,18 @@ impl<'i> SessionPlan<'i> {
                         .map(move |k| (k.as_str(), s.name))
                         .collect::<Vec<_>>(),
                 ),
+                // Issue 2068 — a `[source.*]` contributes whether or not this
+                // run fetches it: its `system` keys are what the BUILD that
+                // reads the tree needs (NuttX's kernel build wants `unzip` and
+                // a venv), not what the fetch needs, so a tree already on disk
+                // does not make them present. A key that IS present asks
+                // nothing, so a repeat stays quiet all the same.
+                StepKind::Source(src) => Some(
+                    src.system
+                        .iter()
+                        .map(move |k| (k.as_str(), s.name))
+                        .collect::<Vec<_>>(),
+                ),
                 _ => None,
             })
             .flatten()
@@ -1384,6 +1396,53 @@ mod tests {
             // Twice per command: install, then the retry behind `apt-get update`.
             assert_eq!(commands[0].matches(p).count(), 2, "{p} in:\n{text}");
         }
+    }
+
+    /// Issue 2068 — a `[source.*]` carries the same `system` list a tool does,
+    /// read by the same plan, and its keys are asked whether or not the run
+    /// fetches the tree: they are the BUILD's needs, which a populated
+    /// checkout does not satisfy.
+    #[test]
+    fn a_source_asks_for_the_system_keys_its_build_needs() {
+        let idx = index(
+            "[prereq.unzip]\napt = [\"unzip\"]\n[prereq.venv]\napt = [\"python3-venv\"]\n\
+             [source.kernel]\nversion = \"1\"\nsystem = [\"venv\", \"unzip\"]\n\
+             [source.plain]\nversion = \"1\"\n",
+        );
+        let root = crate::test_support::scratch_dir("e2_source_system");
+        let host = host_key();
+        let plan = SessionPlan::resolve(
+            &idx,
+            &["kernel", "plain"],
+            &inputs(&root, &host, Mode::Board),
+            &mut |_| PrereqState::Missing,
+            &no_asks(),
+        )
+        .unwrap();
+        assert_eq!(plan.system.os.keys().collect::<Vec<_>>(), ["unzip", "venv"]);
+        assert_eq!(plan.system.os["venv"], ["kernel"], "named by the source");
+
+        // A present key asks nothing — a repeat run stays quiet.
+        let quiet = SessionPlan::resolve(
+            &idx,
+            &["kernel"],
+            &inputs(&root, &host, Mode::Board),
+            &mut |_| PrereqState::Present,
+            &no_asks(),
+        )
+        .unwrap();
+        assert!(quiet.system.is_empty());
+    }
+
+    /// An undeclared key on a source is refused at load, like a tool's.
+    #[test]
+    fn a_source_system_key_must_name_a_prereq() {
+        let err = SdkIndex::parse("[source.kernel]\nversion = \"1\"\nsystem = [\"nope\"]\n")
+            .unwrap()
+            .validate()
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("[prereq.nope]"), "{err}");
     }
 
     /// The first of the three lines issue 1274 measured asked apt for
