@@ -69,6 +69,10 @@ pub struct OverlayBridge {
     pub name: String,
     pub topics: Vec<String>,
     pub bidirectional: bool,
+    /// The backends its two endpoints bind (`"zenoh:zen"` names `zenoh`; a
+    /// bare domain name takes that `[[domain]]`'s `rmw`), in order, deduped.
+    /// The image links each of them, beside its own RMW.
+    pub rmws: Vec<String>,
 }
 
 impl Overlay {
@@ -217,7 +221,32 @@ impl Overlay {
         let mut bridges = Vec::new();
         if let Some(rows) = doc.get("bridge").and_then(|b| b.as_array()) {
             for (i, row) in rows.iter().enumerate() {
-                bridges.push(bridge_from_table(row, i, origin)?);
+                let mut b = bridge_from_table(row, i, origin)?;
+                // `from`/`to` name the backend directly (`zenoh:zen`) or a
+                // `[[domain]]`, whose `rmw` it is -- the planner's rule
+                // (`resolve_bridge_endpoint`).
+                let domain_rmw = |name: &str| -> Option<String> {
+                    doc.get("domain")?.as_array()?.iter().find_map(|d| {
+                        (d.get("name")?.as_str()? == name)
+                            .then(|| d.get("rmw")?.as_str().map(str::to_string))
+                            .flatten()
+                    })
+                };
+                for key in ["from", "to"] {
+                    let Some(ep) = row.get(key).and_then(|e| e.as_str()) else {
+                        continue;
+                    };
+                    let rmw = match ep.split_once(':') {
+                        Some((rmw, _)) => Some(rmw.to_string()),
+                        None => domain_rmw(ep),
+                    };
+                    if let Some(rmw) = rmw.filter(|r| !r.is_empty())
+                        && !b.rmws.contains(&rmw)
+                    {
+                        b.rmws.push(rmw);
+                    }
+                }
+                bridges.push(b);
             }
         }
         Ok(Self {
@@ -262,12 +291,18 @@ impl Overlay {
             out.push_str(&format!("\n[component.{name:?}]\nstack_bytes = {bytes}\n"));
         }
         for b in &self.bridges {
-            let topics: Vec<String> = b.topics.iter().map(|t| format!("{t:?}")).collect();
+            let list = |v: &[String]| -> String {
+                v.iter()
+                    .map(|t| format!("{t:?}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
             out.push_str(&format!(
-                "\n[[bridge]]\nname = {:?}\ntopics = [{}]\nbidirectional = {}\n",
+                "\n[[bridge]]\nname = {:?}\ntopics = [{}]\nbidirectional = {}\nrmws = [{}]\n",
                 b.name,
-                topics.join(", "),
-                b.bidirectional
+                list(&b.topics),
+                b.bidirectional,
+                list(&b.rmws)
             ));
         }
         out
@@ -350,7 +385,17 @@ impl Overlay {
         let mut bridges = Vec::new();
         if let Some(rows) = doc.get("bridge").and_then(|b| b.as_array()) {
             for (i, row) in rows.iter().enumerate() {
-                bridges.push(bridge_from_table(row, i, origin)?);
+                let mut b = bridge_from_table(row, i, origin)?;
+                b.rmws = row
+                    .get("rmws")
+                    .and_then(|r| r.as_array())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|x| x.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                bridges.push(b);
             }
         }
         Ok(Self {
@@ -401,6 +446,7 @@ fn bridge_from_table(row: &toml::Value, i: usize, origin: &Path) -> Result<Overl
         name,
         topics,
         bidirectional,
+        rmws: Vec::new(),
     })
 }
 
@@ -690,11 +736,10 @@ mod tests {
     /// direction) and survives a round trip; a bridge-only bringup is not empty.
     #[test]
     fn a_bridge_reaches_the_overlay() {
-        let ov = o(
-            "[[bridge]]\nname = \"gw\"\nfrom = \"zenoh:zen\"\nto = \"xrce:agent\"\n\
-                    [[bridge]]\nname = \"two\"\nfrom = \"a\"\nto = \"b\"\n\
-                    topics = [\"/x\"]\nbidirectional = true\n",
-        );
+        let ov = o("[[domain]]\nname = \"a\"\nrmw = \"cyclonedds\"\nid = 0\n\
+                    [[bridge]]\nname = \"gw\"\nfrom = \"zenoh:zen\"\nto = \"xrce:agent\"\n\
+                    [[bridge]]\nname = \"two\"\nfrom = \"a\"\nto = \"zenoh:z\"\n\
+                    topics = [\"/x\"]\nbidirectional = true\n");
         assert!(!ov.is_empty());
         assert_eq!(
             ov.bridges,
@@ -702,12 +747,14 @@ mod tests {
                 OverlayBridge {
                     name: "gw".into(),
                     topics: vec![],
-                    bidirectional: false
+                    bidirectional: false,
+                    rmws: vec!["zenoh".into(), "xrce".into()],
                 },
                 OverlayBridge {
                     name: "two".into(),
                     topics: vec!["/x".into()],
-                    bidirectional: true
+                    bidirectional: true,
+                    rmws: vec!["cyclonedds".into(), "zenoh".into()],
                 },
             ]
         );

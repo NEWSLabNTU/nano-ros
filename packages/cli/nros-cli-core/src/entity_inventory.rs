@@ -858,6 +858,10 @@ pub struct EntityInventory {
     /// created, so they are not rows; [`Self::derive`] adds them as synthetic
     /// rows ([`Self::with_bridge_rows`]) for every road at once.
     bridges: Vec<nros_orchestration_ir::overlay::OverlayBridge>,
+    /// Issue 2076 -- the backends this image's bridges bind, kept when the
+    /// bridges are expanded into rows: the image LINKS each of them, which is
+    /// what its descriptor's `backend_count` must say.
+    bridge_backends: std::collections::BTreeSet<String>,
 }
 
 /// phase-517 W5 -- who stated an inventory's rows (RFC-0100 amendment of
@@ -3171,6 +3175,7 @@ impl EntityInventory {
             image_views: Vec::new(),
             stated_by: StatedBy::Unstated,
             bridges: Vec::new(),
+            bridge_backends: std::collections::BTreeSet::new(),
         }
     }
 
@@ -4068,6 +4073,16 @@ impl EntityInventory {
         &self.bridges
     }
 
+    /// Issue 2076 -- every backend a bridge of this image binds, whether or
+    /// not the bridges have been expanded into rows yet.
+    pub fn bridge_backends(&self) -> std::collections::BTreeSet<String> {
+        let mut out = self.bridge_backends.clone();
+        for b in &self.bridges {
+            out.extend(b.rmws.iter().cloned());
+        }
+        out
+    }
+
     /// Issue 2076 -- this inventory with each `[[bridge]]` expanded into the
     /// rows of what the RUNTIME creates for it (`nros-bridge`'s
     /// `run_from_config_source`): a node on each side, and per forwarded topic
@@ -4085,6 +4100,7 @@ impl EntityInventory {
     #[must_use]
     pub fn with_bridge_rows(&self) -> EntityInventory {
         let mut out = self.clone();
+        out.bridge_backends = self.bridge_backends();
         out.bridges.clear();
         // Every pub/sub topic the image's rows name, with its type.
         let mut declared: Vec<(String, Option<String>)> = Vec::new();
@@ -4239,6 +4255,11 @@ impl EntityInventory {
         out.stated_by = self.stated_by.max(model.stated_by);
         // Issue 2076 -- a bridge either side declared, once by name.
         out.bridges = union_bridges(&self.bridges, &model.bridges);
+        out.bridge_backends = self
+            .bridge_backends
+            .union(&model.bridge_backends)
+            .cloned()
+            .collect();
         let mut seen: Vec<&str> = Vec::new();
 
         for decl_row in &self.components {
@@ -12550,6 +12571,7 @@ structure:
                     name: "gw".into(),
                     topics: vec![],
                     bidirectional: false,
+                    rmws: vec!["zenoh".into(), "cyclonedds".into()],
                 }],
                 ..Default::default()
             },

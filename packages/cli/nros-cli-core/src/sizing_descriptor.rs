@@ -1324,8 +1324,21 @@ fn image_facts(inputs: &DescriptorInputs<'_>) -> nros_sizing_descriptor::Image {
         // it. A bridge binds several -- and a bridge leaf carries no
         // `system.toml`, so no descriptor is written for one and this arm is
         // never the answer for a multi-backend image.
-        Some(_) => {
-            img = nros_sizing_descriptor::Image::new(None, Some(1), None);
+        // Issue 2076 -- plus each OTHER backend a `[[bridge]]` of this image
+        // binds: the image links it, and a count of 1 caps the executor's
+        // extra sessions at zero, which `Executor::open_multi` reports as
+        // `NodeTableFull` before the bridge opens.
+        Some(rmw) => {
+            let bridged = inputs
+                .inventory
+                .map(|inv| {
+                    inv.bridge_backends()
+                        .into_iter()
+                        .filter(|b| b != rmw)
+                        .count()
+                })
+                .unwrap_or(0);
+            img = nros_sizing_descriptor::Image::new(None, Some(1 + bridged), None);
         }
         None => {
             img.refuse(
@@ -4655,6 +4668,82 @@ mod tests {
         assert_eq!(d.meta.status, contract.meta.status);
         assert_eq!(d.endpoints, contract.endpoints);
         assert_eq!(d.image, contract.image);
+    }
+
+    /// Issue 2076 -- a `[[bridge]]` binding a second backend raises the
+    /// image's `backend_count` past its own RMW. At 1 the executor carves no
+    /// extra session and `open_multi` failed `NodeTableFull` at boot
+    /// (`examples/workspaces/bridge-cyclonedds`, probe-derived).
+    #[test]
+    fn a_bridge_counts_the_backends_it_binds() {
+        let model = nros_orchestration_ir::overlay::LoadedModel {
+            model: serde_yaml_ng::from_str(
+                "meta: { version: 1 }\nstructure:\n  nodes:\n    /talker:\n      \
+                 { scope: system.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }\n",
+            )
+            .unwrap(),
+            overlay: nros_orchestration_ir::overlay::Overlay {
+                bridges: vec![nros_orchestration_ir::overlay::OverlayBridge {
+                    name: "gw".into(),
+                    topics: vec![],
+                    bidirectional: false,
+                    rmws: vec!["zenoh".into(), "cyclonedds".into()],
+                }],
+                ..Default::default()
+            },
+        };
+        let row = crate::orchestration::metadata_refresh::ProbeRow {
+            executable: Some("talker".into()),
+            entities: crate::entity_inventory::ComponentEntities {
+                pkg: "talker_pkg".into(),
+                component: "talker".into(),
+                class: "talker".into(),
+                declaration: crate::entity_inventory::Declaration::Stated(vec![EntityDecl {
+                    source_topic: Some("/chatter".into()),
+                    ..EntityDecl::bare(
+                        EntityKind::Publisher,
+                        Some("std_msgs/msg/Int32".into()),
+                        Some("/chatter".into()),
+                    )
+                }]),
+            },
+        };
+        let inv = EntityInventory::from_probe("probe", &model, &[row])
+            .expect("described")
+            .with_bridge_rows();
+        let d = build(&model_only(&inv));
+        assert_eq!(
+            d.image.backend_count().stated(),
+            Some(&2),
+            "zenoh + cyclonedds"
+        );
+        assert_eq!(
+            d.image.node_count().stated(),
+            Some(&3),
+            "talker + the bridge's two"
+        );
+
+        // The control: no bridge, one backend.
+        let mut plain = model.clone();
+        plain.overlay.bridges.clear();
+        let inv = EntityInventory::from_probe(
+            "probe",
+            &plain,
+            &[crate::orchestration::metadata_refresh::ProbeRow {
+                executable: Some("talker".into()),
+                entities: crate::entity_inventory::ComponentEntities {
+                    pkg: "talker_pkg".into(),
+                    component: "talker".into(),
+                    class: "talker".into(),
+                    declaration: crate::entity_inventory::Declaration::Stated(vec![]),
+                },
+            }],
+        )
+        .expect("described");
+        assert_eq!(
+            build(&model_only(&inv)).image.backend_count().stated(),
+            Some(&1)
+        );
     }
 
     #[test]
