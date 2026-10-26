@@ -834,10 +834,14 @@ config NROS_ZENOH_LINK_CAN
       fragments anything larger, so no segmentation layer is involved.
 
       Endpoint syntax:
-        can/<device>#bitrate=500000;dbitrate=2000000;tx_id=0x100;rx_id=0x101
+        can/<device>#id=0x100;match=0;mask=0
 
-      Requires a CAN controller (CONFIG_CAN) on the board.
-      Maps to Z_FEATURE_LINK_CAN.
+      Requires a CAN controller (CONFIG_CAN) on the board. The
+      controller is the board's, not the link's (RFC-0109 D10): its
+      rates come from devicetree (`bus-speed`), CAN FD from its mode,
+      and nano-ros starts the `zephyr,canbus` controller before any
+      session opens. A locator stating `bitrate` or `dbitrate` is
+      refused. Maps to Z_FEATURE_LINK_CAN.
 
 config NROS_ZENOH_LINK_ISOTP
     bool "CAN unicast over ISO-TP"
@@ -864,7 +868,9 @@ config NROS_ZENOH_LINK_ISOTP
       Endpoint syntax:
         isotp/<device>#tx_id=0x7E0;rx_id=0x7E8
 
-      Requires a CAN controller (CONFIG_CAN) on the board. Zephyr marks
+      Requires a CAN controller (CONFIG_CAN) on the board, started by
+      the board before the session opens (RFC-0109 D10; nano-ros starts
+      the `zephyr,canbus` controller). Zephyr marks
       CONFIG_ISOTP [EXPERIMENTAL]; its own conformance and
       implementation suites pass on native_sim, with the STmin cases
       skipped -- see docs/roadmap/archived/phase-394-can-unicast-for-zenoh-pico.md.

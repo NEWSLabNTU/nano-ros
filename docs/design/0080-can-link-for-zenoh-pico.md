@@ -122,7 +122,10 @@ Options:
 | **(c)** pad and let the upper layer ignore | 64 | zenoh datagram semantics say a read returns *the* datagram; padding breaks that |
 
 **Proposed: (a).** One byte, no layering violation, receiver is a memcpy.
-Classic CAN (8-byte) falls out of the same scheme at MTU 7.
+Classic CAN (8-byte) falls out of the same scheme at MTU 7 — for the FRAMING
+only: a multicast session cannot open at MTU 7, because its JOIN (~31 bytes) is
+a transport message zenoh never fragments. Measured 2026-10-27; issue 2091. On
+classic-only hardware the working link is ISO-TP (RFC-0083).
 
 ### 4.2 Addressing
 

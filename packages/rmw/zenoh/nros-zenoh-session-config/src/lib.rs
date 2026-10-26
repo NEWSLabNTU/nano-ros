@@ -65,6 +65,58 @@ pub fn lower_file(path: &std::path::Path) -> Result<Vec<Property>, String> {
     lower(&text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// The locator keys that state a DEVICE fact rather than wiring, per scheme
+/// (RFC-0109 D10; the RFC-0081 / RFC-0083 amendments).
+///
+/// A CAN controller's rates are layer 1: the OS sets them (`ip link set …
+/// bitrate`, Zephyr devicetree `bus-speed`), or the board package where
+/// nano-ros is the OS, and whoever starts the controller chose them first. A
+/// locator restating one is a second home for the fact, and zenoh-pico applies
+/// neither (both ports read the started interface), so writing one changes
+/// nothing — which is the failure the refusal exists for. `id` / `match` /
+/// `mask` and `tx_id` / `rx_id` stay: they are wiring, and differ per image on
+/// one bus.
+///
+/// The Zephyr Kconfig road (`CONFIG_NROS_ZENOH_LOCATOR`) never reaches this
+/// crate, so `zephyr/cmake/nros_rmw_zenoh.cmake` carries the same pattern;
+/// change both together.
+pub const DEVICE_FACT_KEYS: &[(&str, &[&str])] = &[
+    ("can", &["bitrate", "dbitrate"]),
+    ("isotp", &["bitrate", "dbitrate"]),
+];
+
+/// Refuse a locator that states a device fact ([`DEVICE_FACT_KEYS`]), naming
+/// the key and where the fact belongs. Every road that reads a nano-ros
+/// locator asks this: an RMW file's endpoints ([`lower`]) and an image's
+/// `locator`.
+///
+/// # Errors
+///
+/// `locator`'s scheme is in [`DEVICE_FACT_KEYS`] and one of its `#` options
+/// is a key listed there.
+pub fn refuse_device_facts(locator: &str) -> Result<(), String> {
+    let scheme = locator.split('/').next().unwrap_or_default();
+    let Some((_, keys)) = DEVICE_FACT_KEYS.iter().find(|(s, _)| *s == scheme) else {
+        return Ok(());
+    };
+    let Some((_, options)) = locator.split_once('#') else {
+        return Ok(());
+    };
+    for opt in options.split(';') {
+        let key = opt.split('=').next().unwrap_or_default().trim();
+        if keys.contains(&key) {
+            return Err(format!(
+                "`{locator}` states `{key}`, a fact about the CAN controller rather than \
+                 wiring (RFC-0109 D10). The controller's rates are set where it is brought \
+                 up: `ip link set <dev> type can bitrate …` on Linux, devicetree \
+                 `bus-speed` on Zephyr, or the board package's own file. Drop `{key}` from \
+                 the locator"
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// How one leaf path lowers.
 enum Leaf {
     /// A string, under this property name.
@@ -205,6 +257,7 @@ fn lower_leaf(path: &str, leaf: &Leaf, v: &Value, out: &mut Vec<Property>) -> Re
         }
         Leaf::StrList(name) => {
             for s in strings()? {
+                refuse_device_facts(&s).map_err(|e| format!("`{path}`: {e}"))?;
                 out.push(((*name).to_string(), s));
             }
         }
@@ -217,6 +270,7 @@ fn lower_leaf(path: &str, leaf: &Leaf, v: &Value, out: &mut Vec<Property>) -> Re
                 ));
             }
             for s in list {
+                refuse_device_facts(&s).map_err(|e| format!("`{path}`: {e}"))?;
                 out.push(((*name).to_string(), s));
             }
         }
@@ -304,6 +358,39 @@ mod tests {
         ] {
             let e = lower(src).unwrap_err();
             assert!(e.contains(want), "{src}\n-> {e}");
+        }
+    }
+
+    /// RFC-0109 D10 — a CAN locator's rates are the controller's, so an
+    /// endpoint that restates one is refused, in either list, naming the key;
+    /// its wiring keys and every other scheme's options pass.
+    #[test]
+    fn a_can_locator_stating_a_rate_is_refused_and_its_wiring_is_not() {
+        for (src, key) in [
+            (
+                "{ connect: { endpoints: [\"can/can0#bitrate=500000;id=0x100\"] } }",
+                "`bitrate`",
+            ),
+            (
+                "{ listen: { endpoints: [\"isotp/vcan0#tx_id=0x200;rx_id=0x201;dbitrate=2000000\"] } }",
+                "`dbitrate`",
+            ),
+        ] {
+            let e = lower(src).unwrap_err();
+            assert!(
+                e.contains(key) && e.contains("RFC-0109 D10") && e.contains("endpoints"),
+                "{src}\n-> {e}"
+            );
+        }
+        for ok in [
+            "can/can0#id=0x100;match=0;mask=0",
+            "isotp/vcan0#tx_id=0x200;rx_id=0x201",
+            "can/can0",
+            // Not a CAN scheme: its options are its own.
+            "serial/UART_0#baudrate=115200",
+            "tcp/10.0.2.2:7447",
+        ] {
+            assert_eq!(refuse_device_facts(ok), Ok(()), "{ok}");
         }
     }
 
