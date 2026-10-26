@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TimerOps::time_until_trigger",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`TimerBase::time_until_trigger()` reached through `timer_->`. Returns `nros::Duration` rather than `std::chrono::nanoseconds`, with microsecond resolution, for the reasons on `nros::Timer::time_until_trigger`. `Duration()` for an empty, released or stale handle."
+}

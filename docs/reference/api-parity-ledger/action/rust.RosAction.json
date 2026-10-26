@@ -1,0 +1,5 @@
+{
+  "key": "rust:RosAction",
+  "verdict": "extension",
+  "why": "the trait a generated action type implements: the three user types, the five wire envelopes, the action and per-service RIHS hashes, and `register_protocol_types`. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts, and they are shared with our C and C++ surfaces (`rclc_goal_status_t`, `nros::GoalStatus`). The convergence point is whenever rclrs grows actions; until then there is nothing to be a divergence FROM. The envelope split is RFC-0069's -- the generated code owns the wire shape so the core writes exactly one CDR header. Compare the service stage's `rust:RosService`."
+}

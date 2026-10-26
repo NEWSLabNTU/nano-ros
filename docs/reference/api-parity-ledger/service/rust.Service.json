@@ -1,0 +1,9 @@
+{
+  "key": "rust:Service",
+  "provides": [
+    "nros_core::ServiceServer",
+    "nros_rmw::ServiceTrait"
+  ],
+  "verdict": "divergence",
+  "why": "see `rust:Client`; ours are `ServiceServer` and `ServiceTrait`."
+}

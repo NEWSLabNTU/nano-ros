@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_publisher_with_qos",
+  "verdict": "extension",
+  "why": "a publisher-constructor variant with no rclrs counterpart: an explicit QoS profile (rclrs takes it through `IntoPrimitiveOptions` on the topic) or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2)."
+}

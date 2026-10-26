@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TimerOps",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-476 W2 — what `timer_->...` reaches on a `TimerHandle`. A separate type because ported code says both `timer_->reset()` (restart the timer) and `timer_.reset()` (drop it) and upstream gives them different meanings. Behind one class, an `operator->` returning `this` would make the two spellings the same call. Upstream reaches `TimerBase`'s methods through the `shared_ptr`; these are the same methods on the operations half of our handle."
+}

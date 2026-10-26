@@ -1,0 +1,5 @@
+{
+  "key": "rust:ParameterTable",
+  "verdict": "divergence",
+  "why": "the borrowed view of a `ParameterStorage` that a `ParameterServer` holds -- `&'s mut [Option<ParameterEntry>]` behind a newtype. rclrs has no counterpart for the same reason as `rust:ParameterStorage`: it allocates, so nothing there has to name the storage separately from the store. Constraint: no allocator plus a private slot layout. The newtype exists so a consumer that must NAME the storage (`nros-node`, which will carve it out of the executor backing in phase-382 W3') can do so without `ParameterEntry` becoming public API. Its length is the server's capacity."
+}

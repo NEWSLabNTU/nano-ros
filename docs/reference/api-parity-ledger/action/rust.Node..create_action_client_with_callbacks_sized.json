@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_action_client_with_callbacks_sized",
+  "verdict": "divergence",
+  "why": "`rust:Node::create_action_client_with_callbacks` with the goal, result and feedback buffer bounds supplied as const generics instead of defaulted. Same `_sized` convention and same reason as `rust:NodeHandle::create_action_client_sized`: the storage is static, so the bound is part of the type.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+}

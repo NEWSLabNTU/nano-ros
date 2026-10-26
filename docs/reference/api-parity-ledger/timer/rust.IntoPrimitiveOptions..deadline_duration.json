@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoPrimitiveOptions::deadline_duration",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's builder shorthand for applying a QoS duration to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`."
+}

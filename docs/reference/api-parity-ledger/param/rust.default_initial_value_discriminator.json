@@ -1,0 +1,6 @@
+{
+  "key": "rust:default_initial_value_discriminator",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the default choice function over `rust:AvailableValues`. rclrs's parameter OVERRIDE machinery: a value supplied outside the code (`--ros-args -p`, a params file, a prior declaration) that the declaration then has to reconcile with. Overrides are resolved BEFORE the image runs here -- the launch resolver bakes them into the SystemModel and the generated entry seeds them into the executor store before any component constructor runs (RFC-0045, issue 0745) -- so by declare time there is no second value to reconcile against. Constraint: no runtime env, no argv."
+}

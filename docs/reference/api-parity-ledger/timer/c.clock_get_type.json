@@ -1,0 +1,5 @@
+{
+  "key": "c:clock_get_type",
+  "verdict": "extension",
+  "why": "reads back which kind of clock this is; rcl exposes the field directly on `rcl_clock_t`, ours is opaque."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:result_callback_t",
+  "verdict": "divergence",
+  "why": "see `c:goal_response_callback_t`."
+}

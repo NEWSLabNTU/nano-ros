@@ -1,0 +1,8 @@
+{
+  "key": "cpp:Serialization",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "divergence",
+  "why": "typed (de)serialization to bytes is generated per message by codegen (nros-serdes), with no type-erased `SerializationBase` over rosidl typesupport handles and a heap `SerializedMessage`; see `cpp:SerializedMessage`."
+}

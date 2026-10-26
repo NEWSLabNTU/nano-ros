@@ -1,0 +1,9 @@
+{
+  "key": "c:timer_call_with_info",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "issue 1974 — rcl's DISPATCH entry point: the caller's own wait-set loop calls it to run the timer callback and receive the call info, exactly as `c:timer_call` (declined) runs it without. Here the executor dispatches and a user never calls a timer, so the CAPABILITY is delivered on the callback instead: `rclc_timer_init_with_info` registers an `rclc_timer_callback_with_info_t` that receives the same `rcl_timer_call_info_t`. A ported file calling `rcl_timer_call_with_info` gets `undeclared identifier`."
+}

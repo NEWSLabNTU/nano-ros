@@ -1,0 +1,5 @@
+{
+  "key": "c:action_type_t",
+  "verdict": "divergence",
+  "why": "the typesupport handle an action entity is created with. rosidl's `rosidl_action_type_support_t` carries function pointers into generated code plus an identifier used to pick a middleware implementation at RUNTIME; ours names the one linked backend's descriptor plus the serialized-size bounds the static buffers are sized from. See the pubsub stage's `c:message_type_t`."
+}

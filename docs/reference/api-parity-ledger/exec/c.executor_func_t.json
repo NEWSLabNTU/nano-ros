@@ -1,0 +1,9 @@
+{
+  "key": "c:executor_func_t",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "the spin-function pointer `c:executor_type_t` selects; declined with it."
+}

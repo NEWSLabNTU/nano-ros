@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_client_send_request_raw_seq",
+  "verdict": "extension",
+  "why": "issue 2009 -- `c:polling_client_send_request_raw` that also reports the request's SEQUENCE NUMBER through an out-parameter, the shape of upstream's `rcl_send_request(client, request, &sequence_number)` on the raw-bytes polled client. A polled client keeps no pending table, so a caller with more than one request outstanding matches each reply's number (`c:polling_client_take_response_raw_seq`) against these; on a backend that cannot assign ids the number is `NROS_RMW_SEQUENCE_ID_UNKNOWN`. A new symbol rather than a new parameter, so the existing spelling keeps its ABI. Held by `packages/api/nros-c/tests/run/client_seq_correlation.c`."
+}

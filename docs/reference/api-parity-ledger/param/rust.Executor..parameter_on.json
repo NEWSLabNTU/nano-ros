@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::parameter_on",
+  "verdict": "divergence",
+  "why": "the node-naming half of `rust:Executor::parameter`. phase-426 W1 -- the parameter STORE is one fixed table owned by the EXECUTOR, not a container per node: there is no allocator to make a second, so a node cannot own its own. Upstream's parameter methods are on the node object itself (`rclcpp::Node::declare_parameter`, rclrs's `Node::declare`), which is how upstream keys them; ours are on the executor and the node is an ARGUMENT, because an image composes several nodes onto one executor (RFC-0047) and the shared table has to be told whose parameter it is. The `_on(NodeId, ...)` spelling is the same disambiguation the entity builders already use (`node_mut(id)` / `_on(...)`, phase 104.C). What a user loses: a ported node writes `executor.declare_parameter_on(node_id, name, value)` where rclcpp writes `node->declare_parameter(name, value)`."
+}

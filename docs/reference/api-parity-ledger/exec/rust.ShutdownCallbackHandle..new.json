@@ -1,0 +1,5 @@
+{
+  "key": "rust:ShutdownCallbackHandle::new",
+  "verdict": "extension",
+  "why": "Packs a `(phase, slot)` pair into a handle; `None` when the index does not fit the 16-bit field. Part of `rust:ShutdownCallbackHandle`. Issue 0790."
+}

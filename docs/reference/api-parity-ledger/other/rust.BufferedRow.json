@@ -1,0 +1,5 @@
+{
+  "key": "rust:BufferedRow",
+  "verdict": "extension",
+  "why": "which BUFFERED registration row a recorded `subscribers[]` row claimed -- a bound its call site stated (`typed_bound`) or the closure buffer `RX_BUF` (`unbounded`), observed at `Executor::open_subscription` (issue 1648, sidecar schema v4). rclrs has no recorder; here the sizing descriptor prices a subscription's receive slot by this row and used to infer it from the component's language. See `rust:TimerKind`."
+}

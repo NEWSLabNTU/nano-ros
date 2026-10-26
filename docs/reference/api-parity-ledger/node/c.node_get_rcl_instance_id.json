@@ -1,0 +1,6 @@
+{
+  "key": "c:node_get_rcl_instance_id",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "identifies which `rcl_init` epoch a node belongs to, so a stale handle from a previous init is detectable. There is one init per image."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::required_policies",
+  "verdict": "extension",
+  "why": "backend-compatibility validation. Backends differ in which QoS policies they can honour at all -- zenoh-pico enforces no DEADLINE or LIFESPAN, XRCE none of the extended set -- so an entity requesting one the active backend cannot keep fails SYNCHRONOUSLY at create time with `TransportError::IncompatibleQos`, never a silent downgrade. ROS 2 answers the same question at runtime instead, through RxO matching and a QOS_INCOMPATIBLE event on the entity; both halves of that need dynamic discovery and the QoS event surface, and we have neither (see the qos stage's `c:get_zero_initialized_event`). `required_policies` reports what a profile asks for, `validate_against` checks it against what the session advertises."
+}

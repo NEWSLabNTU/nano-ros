@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_get_level",
+  "verdict": "extension",
+  "why": "phase-509 P7 (RFC-0108 D8) -- the level an executor runs, 0 the most urgent: what a supervisor that owns a supervised route per level asks of the handle it spins (D8.1). rclc has one executor per thread and no preemption levels."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Priority",
+  "verdict": "extension",
+  "why": "the three dispatch buckets -- Critical / Normal / BestEffort -- drained in order within one `spin_once`. Non-preemptive: a running BestEffort callback still blocks Critical work that becomes ready mid-cycle, which is what one task per executor costs. See `rust:SchedClass`."
+}

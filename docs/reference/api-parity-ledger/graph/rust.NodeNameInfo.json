@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeNameInfo",
+  "verdict": "divergence",
+  "why": "see `c:names_and_types_t`. The Rust form of the same constraint is sharper: the core crates are `no_std` and terminal-state `core`/`core+alloc` (ARCHITECTURE §2), so a struct of owned `String`s is not a carrier this API can hand back at all. The visitor's borrowed `&str` is."
+}

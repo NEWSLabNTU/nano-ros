@@ -1,0 +1,5 @@
+{
+  "key": "rust:BootConfig",
+  "verdict": "extension",
+  "why": "The plain-field, all-`Option` middle rung RFC-0045 resolves through (`node_name`, `locator`, `domain_id`, `namespace`), sitting between the sources (baked blob, env, board overlay) and `ExecutorConfig`. It is a plain struct rather than the `DeployOverlay` it usually comes from precisely so `nros-node` and `nros-platform` need not depend on each other -- they meet only through `nros-platform-api`. rclrs's equivalent state lives inside `Context`/`InitOptions`, both of which the init stage already records as divergences (`rust:Context`, `rust:InitOptions`); this is the type that replaces them, and the ladder it feeds -- explicit argument, then hosted environment, then baked default -- is the one written down at `c:get_default_domain_id`. `None` on a field means `this rung did not speak`, which is the same distinction `rust:BOOT_SET_*` encodes as a bit once the value reaches a struct that cannot hold an `Option`."
+}

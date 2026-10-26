@@ -1,0 +1,5 @@
+{
+  "key": "c:support_init_named",
+  "verdict": "extension",
+  "why": "`rclc_support_init` plus a node name. RFC-0046 makes launch the authority on node identity, and an image that was told its name at boot should not have to re-derive it; rclc has no equivalent because a desktop node gets its name from argv."
+}

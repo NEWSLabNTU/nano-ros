@@ -1,0 +1,5 @@
+{
+  "key": "cpp:IntegrityStatus",
+  "verdict": "extension",
+  "why": "phase-499 W4 (RFC-0089 amendment 2026-10-13) -- the E2E message-integrity status (gap, duplicate, crc_valid) a safety subscription delivers (issue 0073). ROS 2 has no end-to-end integrity check, so there is no counterpart. A typedef of the FFI struct nros_cpp_integrity_status_t rather than a mirror, so the two cannot drift; it gives the user an rclcpp:: spelling."
+}

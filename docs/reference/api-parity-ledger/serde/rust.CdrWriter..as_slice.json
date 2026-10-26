@@ -1,0 +1,5 @@
+{
+  "key": "rust:CdrWriter::as_slice",
+  "verdict": "extension",
+  "why": "Returns the bytes written so far, which is how a caller with no allocator gets the encoded message out: the buffer is the caller's, the writer only held a cursor into it. rclcpp's counterpart hands back an owned `SerializedMessage` -- see `cpp:SerializedMessage` for that constraint. NOTE the pair is not symmetric: `CdrReader` has no `as_slice`, it has `is_empty` and `remaining`, and `CdrWriter` has `remaining` but no `is_empty`. Nothing forces that; it is just what each side happened to need."
+}

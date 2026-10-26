@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Node::create_client",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/logging.hpp",
+    "text": "void(const S::Request&, S::Response&) for a service, or void(const S::Response&) for a"
+  },
+  "verdict": "divergence",
+  "why": "phase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-9. Two of the seven discarding call sites are here — `packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:884` (future form) and `:896` (callback form). See `cpp:Node::create_publisher` for upstream's contract, the full call-site list and the disposition, and `cpp:Node::create_service` for the sibling.\n\nphase-428 Q1 (2026-09-06) -- adopt -> adopt-bounded; the discarded-Result finding is CLOSED by `detail::require_created` (`packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:382`, see `cpp:Node::create_service`). THE ENVELOPE: the response handler is `void(const S::Response&)` by reference. THE REFUSAL SITE: `packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:988-992`, the overload that catches upstream's `shared_ptr<Response>` callback with `static_assert(detail::refuse<F>::value, NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK)` at `:990`. Same probe, same reasoning as the service side."
+}

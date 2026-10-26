@@ -1,0 +1,5 @@
+{
+  "key": "c:node_visit_fn",
+  "verdict": "divergence",
+  "why": "phase-381 W4. The ours-half of the `names_and_types_t` / `topic_endpoint_info_array_t` divergence already recorded in this file: upstream returns `rcutils_string_array_t` / `rmw_names_and_types_t`, which allocate two levels deep. There is no allocator at this seam, and a caller-provided buffer needs a bound the CALLER cannot know -- the graph has no such bound. So enumeration is a VISITOR: peak extra memory is one entry, the backend streams from state it already holds, every string is borrowed for the call, and a caller with its own limit stops early by returning false."
+}

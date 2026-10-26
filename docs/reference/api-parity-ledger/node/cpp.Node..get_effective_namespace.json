@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Node::get_effective_namespace",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Node::create_sub_node` -- with no sub-nodes, the effective namespace IS `get_namespace()`."
+}

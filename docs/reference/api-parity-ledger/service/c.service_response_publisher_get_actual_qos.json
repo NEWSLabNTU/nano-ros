@@ -1,0 +1,6 @@
+{
+  "key": "c:service_response_publisher_get_actual_qos",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "see `c:service_request_subscription_get_actual_qos` — same call, the other endpoint. LANDED phase-444 (issue 1437)."
+}

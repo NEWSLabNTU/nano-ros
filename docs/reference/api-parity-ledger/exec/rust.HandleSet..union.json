@@ -1,0 +1,5 @@
+{
+  "key": "rust:HandleSet::union",
+  "verdict": "extension",
+  "why": "see `rust:HandleSet`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:lifecycle_transition_map_t",
+  "verdict": "divergence",
+  "why": "rcl's runtime map of states to their valid transitions, built by `rcl_lifecycle_init_default_state_machine`. Ours is the compile-time `nros_core::lifecycle::can_transition` table. Constraint: no allocator; see `c:lifecycle_init_default_state_machine`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_active_groups",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "restricts dispatch to a named set of callback groups. RFC-0047 maps a group to a tier and an orchestrated image runs ONE executor per tier task, so each task's executor has to dispatch only its own tier's callbacks out of a shared registration set. rclcpp achieves the same by adding different groups to different executors, which needs an executor object per tier and a heap to hold them."
+}

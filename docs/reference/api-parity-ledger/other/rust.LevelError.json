@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelError",
+  "verdict": "extension",
+  "why": "phase-509 P10 -- why a level could not be set up (a level out of range, no lock). rclrs has no levels."
+}

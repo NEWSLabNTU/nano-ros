@@ -1,0 +1,5 @@
+{
+  "key": "rust:take_every_level_alive",
+  "verdict": "extension",
+  "why": "phase-509 P7 (RFC-0108 D8) -- the hardware-watchdog feed: true only when every level has spun since the last true (D8.2). rclrs has no levels."
+}

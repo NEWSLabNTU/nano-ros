@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Node::get_parameters",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/parameter_value.hpp",
+    "text": "value. There are no exceptions here (RFC-0018), so a wrong-type read answers"
+  },
+  "verdict": "divergence",
+  "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. Hosted: `get_parameters(names)` returns one `Parameter` per name, each read from the store; an undeclared name answers `PARAMETER_NOT_SET` rather than throwing. Freestanding keeps the singular typed reads. Previous text: RE-VERDICTED phase-417 W4.a. was `gap`. the read half: upstream returns `std::vector<rclcpp::Parameter>` for a vector of names. Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:RclrsError",
+  "verdict": "divergence",
+  "why": "rclrs's error is source-chained, carries an owned `RclErrorMsg` copied out of rcl's thread-local error state, and implements std::error::Error. `no_std` has neither the per-thread formatted-message buffer nor the allocation for a chain, so ours is a flat `nros::NodeError` enum whose most common variant is `NodeError::Transport(TransportError)` -- both exported unconditionally, and now from ONE block in the facade (issue 0783). We do implement `core::error::Error` (phase-359), so that half is not a divergence any more. RETRACTED, and this row carried the wrong version for a while: issue 0783 originally said `TransportError` was not exported, so a caller could hold the error and not match its contents. It IS exported, at packages/api/nros/src/lib.rs, and was throughout; the real finding was that the two halves of the vocabulary sat in unrelated re-export blocks. See the same correction in other/'s `rust:TransportError`."
+}

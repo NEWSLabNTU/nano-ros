@@ -1,0 +1,8 @@
+{
+  "key": "cpp:SubscriptionMatchedCallbackType",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "divergence",
+  "why": "issue 1972 — HUMBLE ONLY, as `cpp:PublisherMatchedCallbackType` (same shape, one typedef)."
+}

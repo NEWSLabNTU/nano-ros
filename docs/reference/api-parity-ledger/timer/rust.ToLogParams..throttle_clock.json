@@ -1,0 +1,6 @@
+{
+  "key": "rust:ToLogParams::throttle_clock",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:LogParams::get_throttle_clock`."
+}

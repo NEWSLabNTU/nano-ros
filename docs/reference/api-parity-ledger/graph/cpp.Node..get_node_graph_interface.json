@@ -1,0 +1,11 @@
+{
+  "key": "cpp:Node::get_node_graph_interface",
+  "bucket": "theirs-only",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+    "text": "Of upstream's interface members the handle has only"
+  },
+  "verdict": "divergence",
+  "why": "issue 2015 (2026-10-24) -- see the node stage's `cpp:Node::get_node_base_interface`: a non-owning handle naming the node, for `rclcpp_action::create_server` / `create_client`; no graph interface behind it -- see `c:get_node_names`."
+}

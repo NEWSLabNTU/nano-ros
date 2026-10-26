@@ -1,0 +1,5 @@
+{
+  "key": "rust:CancelReturnCode::from_i8",
+  "verdict": "extension",
+  "why": "decodes the wire byte into `CancelReturnCode`; see `rust:CancelReturnCode`. The split exposed a latent inversion here — `try_handle_cancel` was writing the per-goal answer straight into the RPC reply, which was correct only while the two shared a type."
+}

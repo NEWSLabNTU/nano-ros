@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::retarget_action_client_raw",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 1496 -- re-points a raw action client entry's callback `context` after the C++ client that registered it was MOVED. rclcpp has no counterpart because its entities are heap objects that never move under the executor; ours registers the C++ object's own storage address with the arena entry, so a move has to tell the entry where the storage went or a moved-from temporary leaves it naming dead bytes. Called by `nros_cpp_action_client_relocate`."
+}

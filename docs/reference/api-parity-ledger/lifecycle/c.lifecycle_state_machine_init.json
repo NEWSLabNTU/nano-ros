@@ -1,0 +1,6 @@
+{
+  "key": "c:lifecycle_state_machine_init",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's lower-layer constructor: `(state_machine, node, six typesupports, options)`. `rclc_lifecycle_init(sm)` is this function -- the typesupports come from the compile-time type registry rather than the caller, and `rclc_lifecycle_init(sm)` takes no options parameter at all -- see `c:lifecycle_state_machine_options_t` for rcl's two fields and where each went (CORRECTED 2026-09-04, phase-417: this deferred to the `compile-time-options` rule, whose \"no runtime options struct\" is false of the seven entity options structs the C surface ships; the state machine's absence is its own, narrower fact). rcl's `node` argument has no counterpart on ours: rcl's state machine owns the REP-2002 communication interface and so needs the node to build it, while ours is a pure state machine and the services live on the executor (`c:executor_register_lifecycle_services`). Issue 0792 removed the vestigial `node` parameter, and with it the rclc-shaped `nros_make_node_a_lifecycle_node` alias -- see that row."
+}

@@ -1,0 +1,25 @@
+{
+  "key": "c:action_goal_state_t",
+  "provides": [
+    "rclc_goal_status_t"
+  ],
+  "rename": {
+    "category": "C",
+    "resolution": "Not a rename. Theirs-only, and theirs is the outlier — ours already agrees with rclcpp_action and with `action_msgs/msg/GoalStatus`. Re-verdicted to `declined`. SUPERSEDED 2026-09-05 (phase-425): `declined` was the nearest of the five verdicts that existed, and it was still false of the capability. The row is now `their-rename`, the verdict written for exactly this sentence; see `why`.",
+    "status": "resolved"
+  },
+  "their_rename": {
+    "majority": [
+      "`action_msgs/msg/GoalStatus` -- the wire type both sides serialize",
+      "rclcpp_action: `GoalStatus` (recorded surface)",
+      "rclrs: `GoalStatus` / `GoalStatusCode` (recorded surface)",
+      "rcl's OWN neighbours say STATUS: `rcl_action_goal_status_t`, `rcl_action_goal_status_array_t`, `rcl_action_get_goal_status_array`",
+      "our C++ `nros::GoalStatus` and our Rust `GoalStatus`"
+    ],
+    "ours": "`rclc_goal_status_t`",
+    "outlier": "`rcl_action_goal_state_t` -- rcl alone calls the enum a STATE, while the message it mirrors and the status types beside it in the same header say STATUS",
+    "pair": "c:goal_status_t"
+  },
+  "verdict": "their-rename",
+  "why": "RE-VERDICTED declined -> their-rename 2026-09-05 (phase-425). The W5 re-verdict got the ARGUMENT right and had no verdict to put it under. `declined` reads \"ROS 2 has it, we deliberately do not\", and we DO have it -- `rclc_goal_status_t`, in all three languages. What we decline is rcl's WORD, which is a different sentence and is what `their-rename` is for. The evidence the W5 text assembled is unchanged and is now in `their_rename`. Pair: `c:goal_status_t`. No code change; no target name invented.\n\nORIGINAL ROW: RE-VERDICTED rename -> declined 2026-08-27 (phase-379 W5). The row's own evidence settles it: rcl is the odd speller. `action_msgs/msg/GoalStatus` is the wire type, and rclcpp_action, our C (`rclc_goal_status_t`), our C++ (`nros::GoalStatus`) and our Rust (`GoalStatus`) all say STATUS; `rcl_action_goal_state_t` says STATE alone. `rename` means OURS is the one that should change, which is false here, so the verdict was wrong even though the prose was right. Declined: rcl has this spelling, we deliberately do not, and the reason is that ours follows the message. No code change; no target name invented. ORIGINAL ROW (verdict was `rename`): rcl's name for what we call `rclc_goal_status_t`, and both mirror `action_msgs/msg/GoalStatus`. rclcpp_action and our C++ and Rust all say STATUS (`GoalStatus`), rcl alone says STATE; ours agrees with the majority and with the message. Recorded as a rename so the pair is visible, but this is one where THEIRS is the odd spelling -- see `c:goal_status_t` for our half."
+}

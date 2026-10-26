@@ -1,0 +1,6 @@
+{
+  "key": "cpp:ClientGoalHandle::ClientGoalHandle<A>",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "issue 2015 (2026-10-24) -- the handle's constructor, from the goal id. Upstream's is private (only `Client` makes one, behind `make_shared`); ours is public because the handle is a plain token any code can build over an id, and it is the client (`async_send_goal`) that builds the ones a callback sees. No allocator is implied by the constructor itself -- the `std::shared_ptr` around it is hosted-only."
+}

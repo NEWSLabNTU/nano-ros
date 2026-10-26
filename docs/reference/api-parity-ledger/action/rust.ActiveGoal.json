@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActiveGoal",
+  "verdict": "extension",
+  "why": "a goal the arena is still tracking, as the typed goal plus its status. rclcpp_action hands out a refcounted `ServerGoalHandle` instead; ours is a copy the visitor sees, because there is no allocator for a shared handle. See `cpp:ServerGoalHandle`."
+}

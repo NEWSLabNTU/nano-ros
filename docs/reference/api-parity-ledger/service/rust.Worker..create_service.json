@@ -1,0 +1,6 @@
+{
+  "key": "rust:Worker::create_service",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see the node stage's `rust:Node::create_worker`."
+}

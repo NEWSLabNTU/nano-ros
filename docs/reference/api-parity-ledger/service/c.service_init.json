@@ -1,0 +1,6 @@
+{
+  "key": "c:service_init",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-428 Q1 (2026-09-06) -- `rcl_service_init(service, node, type_support, service_name, options)`. No symbol answers to this key. The six-argument `nros_service_init` (callback and context in positions 5 and 6) was retired at phase-417 stage 6 step B (`packages/api/nros-c/src/service.rs:303-322`): the callback moved to registration, where rclc puts it (`rclc_executor_add_service_raw` <-> `rclc_executor_add_service`). What remains is `rclc_service_init_default` at rclc's arity (`c:service_init_default`, adopt-bounded on the typesupport type) and `rclc_service_init_with_qos` / `_with_options` / `_polling` (`packages/api/nros-c/include/rclc/detail/nros_generated.h:6194`, `:6246`, `:6293`) for the options-shaped and RFC-0022 polling forms.\n\nABSENT, not adopt-bounded: see `c:node_init` for why the label is the rcl-layer name's, not the rclc-layer name's."
+}

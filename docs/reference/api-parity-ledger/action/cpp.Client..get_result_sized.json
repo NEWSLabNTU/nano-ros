@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Client::get_result_sized",
+  "verdict": "extension",
+  "why": "`get_result` with the deserialisation buffer's capacity supplied as a template parameter instead of taken from `A::Result::SERIALIZED_SIZE_MAX`. Ours-only because it exists to bound a stack array: rclcpp_action allocates. The same `_sized` suffix appears across the C++ surface wherever a caller must be able to say how much stack it is willing to spend.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
+}

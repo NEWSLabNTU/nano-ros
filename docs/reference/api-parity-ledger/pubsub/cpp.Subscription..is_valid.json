@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Subscription::is_valid",
+  "verdict": "extension",
+  "why": "see `cpp:Publisher::is_valid`."
+}

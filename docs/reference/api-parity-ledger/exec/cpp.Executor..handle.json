@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::handle",
+  "verdict": "divergence",
+  "why": "hands back the raw inline storage pointer so the generated C entry points and the C-shaped FFI (`nros_cpp_*`) can reach the same executor a C++ user holds. It exists because the storage IS the object -- there is no pimpl and no allocator to hide one in. rclcpp needs no equivalent because a `SharedPtr` is already the shared identity. See `cpp:Node::executor_handle`."
+}

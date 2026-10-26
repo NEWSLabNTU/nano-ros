@@ -1,0 +1,6 @@
+{
+  "key": "c:action_transition_goal_state",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl exposes the goal state machine as a pure function over (state, event) so a caller can predict a transition. Ours is not a caller-visible machine: the arena owns it and `rclc_goal_status_t` is what a user reads back. A user loses the ability to reason about a transition without performing it."
+}

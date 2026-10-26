@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::*age_table",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the same for `now - header.stamp` age monitors (RFC-0052 W3b.2) -- 'this pose is stale' is a different question from 'this publisher missed its deadline'. See `rust:Executor::*monitor_table`."
+}

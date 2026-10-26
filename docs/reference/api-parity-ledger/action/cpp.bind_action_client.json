@@ -1,0 +1,5 @@
+{
+  "key": "cpp:bind_action_client",
+  "verdict": "extension",
+  "why": "RFC-0043's component seam for an action client, and the one member of the family that also creates a TIMER. It binds `on_goal_response(bool, const uint8_t[16])`, `on_feedback(const uint8_t[16], const uint8_t*, size_t)` and `on_result(const uint8_t[16], int32_t, const uint8_t*, size_t)` by identity, then registers a component-owned poll timer -- because an action client's replies arrive as GET-query replies that `spin_once` does NOT drain (issue-0047), so something has to call `nros_cpp_action_client_poll` every `poll_ms`. rclcpp_action needs no equivalent: its callbacks go in a `SendGoalOptions` bundle per goal (`cpp:ActionClient::set_callbacks` records that difference) and its waitable is driven by the executor. USER-FACING -- exercised by the Zephyr `action-client` example and `rtos_e2e`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:CallbackCtx",
+  "verdict": "divergence",
+  "why": "what a callback is handed: the message, and the verbs it may use (publish, reply, decide on a goal). rclrs passes the message to a closure that captured whatever it needs; with static storage and no allocator the callback cannot capture, so the capabilities arrive as a parameter. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/linux/rust/talker/src/lib.rs` is the shape."
+}

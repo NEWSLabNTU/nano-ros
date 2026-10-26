@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_get_arena_used",
+  "verdict": "extension",
+  "why": "the arena's high-water mark. Since issue 1496 the arena reuses released regions before it moves its bump pointer, so a create/remove loop whose value stays at the first cycle's is REUSING its bytes and one that climbs is leaking them -- the measurement `action_remove_cycles.c` pins from C. Issue 1609."
+}

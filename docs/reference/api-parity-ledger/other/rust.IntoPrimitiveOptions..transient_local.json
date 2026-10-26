@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoPrimitiveOptions::transient_local",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:IntoPrimitiveOptions`."
+}

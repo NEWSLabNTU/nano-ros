@@ -1,0 +1,5 @@
+{
+  "key": "c:levels_max",
+  "verdict": "extension",
+  "why": "phase-509 P7 (RFC-0108 D8) -- the most levels an image can have (the check-in word's width). ROS 2 has no levels."
+}

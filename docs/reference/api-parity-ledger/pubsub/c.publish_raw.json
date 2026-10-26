@@ -1,0 +1,5 @@
+{
+  "key": "c:publish_raw",
+  "verdict": "extension",
+  "why": "the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+}

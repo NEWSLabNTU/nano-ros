@@ -1,0 +1,6 @@
+{
+  "key": "rust:BoardTransportConfig",
+  "retired": "removed by issue 1064; its seven setter rows went with it",
+  "verdict": "extension",
+  "why": "the trait a BOARD crate implements so the orchestration generator can write the `[[transport]]` values of a root `nros.toml` (a file phase-486 W8 retired) -- static IPv4, MAC, gateway, baud rate, WiFi SSID/password, NIC list -- into the board's own `Config` (RFC-0049). Every method has a default empty body because a board ignores what it has not got: a wired board ignores `set_ssid`, a board with a fused MAC ignores `set_mac`. rclrs has nothing equivalent because a hosted node inherits an already-configured network stack. Named `BoardTransportConfig` to avoid colliding with the transport-layer `rust:TransportConfig`. Its sibling `BoardConfig` is in the boot stage; the taxonomy split them because only one of the two contains the string `BoardConfig`."
+}

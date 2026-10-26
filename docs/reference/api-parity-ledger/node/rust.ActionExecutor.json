@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionExecutor",
+  "verdict": "extension",
+  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Moved to the doc-hidden `nros::__macro` by phase-506 W1 (RFC-0071 D12): it is what `nros::node!` / `nros::main!` and the board entry glue expand into, so generated code keeps its path and a node author no longer meets it beside the user API."
+}

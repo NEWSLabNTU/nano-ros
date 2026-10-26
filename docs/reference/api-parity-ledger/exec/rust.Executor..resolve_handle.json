@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::resolve_handle",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-476 W0 / issue 1667 -- a `HandleId` carries the generation of the slot it was issued for, and this answers the slot only while that registration is still its occupant. ROS 2 has no counterpart: rclcpp holds an entity by `shared_ptr`, so a stale reference keeps the entity alive instead of naming a slot that was reused. Ours registers into a fixed slot table whose released slots go to the next registration, so a stale copy has to be detected rather than prevented."
+}

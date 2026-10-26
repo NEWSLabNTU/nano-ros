@@ -1,0 +1,5 @@
+{
+  "key": "cpp:state_label",
+  "verdict": "extension",
+  "why": "the `lifecycle_msgs/msg/State.label` for a `LifecycleState`. Reads the one table in `nros_core` (see `c:lifecycle_state_label`), so it cannot drift from the wire.\n\nCORRECTED phase-417 G6. This row argued 'the only thing that object adds to the enum is this string, so a whole type to carry it would be a wrapper over one accessor. A free function rather than a member for the same reason.' The argument did not survive its own sibling: `Transition` carries `label()` as a METHOD, so a ported `transition.label()` compiled and a ported `state.label()` did not — the pattern was half applied, not deliberately asymmetric. `nros::State` exists now (`cpp:State`) and calls this function; the free form stays as its body and as the spelling a caller holding a bare enum uses, and there is still exactly one table."
+}

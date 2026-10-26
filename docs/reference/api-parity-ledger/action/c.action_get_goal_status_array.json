@@ -1,0 +1,6 @@
+{
+  "key": "c:action_get_goal_status_array",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the read half of `c:action_publish_status`. The per-goal query ours offers is `rclc_action_get_goal_status(server, goal, status*)` and the sweep is C++'s `ActionServer::for_each_active_goal`; neither materialises an array, because there is no allocator to materialise it into. A user loses the ability to read every goal's status as one message."
+}

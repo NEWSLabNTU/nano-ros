@@ -1,0 +1,5 @@
+{
+  "key": "cpp:rx_buffer_capacity",
+  "verdict": "extension",
+  "why": "phase-408 / issue 0964. The capacity a RECEIVE buffer is sized to: the derived RX bound where the type has one, today's estimate where it does not. Distinct from `rx_size_bound`, which POISONS an unbounded type — this one falls back, because a receive buffer must still compile for the 81 of 120 stock Humble types that state no bound. Two questions, two spellings, deliberately."
+}

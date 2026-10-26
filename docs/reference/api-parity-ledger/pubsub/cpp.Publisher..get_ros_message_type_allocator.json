@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Publisher::get_ros_message_type_allocator",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "allocator plumbing. One global allocator (`nros_platform_alloc`); see the `no-allocator` rule in signature_rules.py."
+}

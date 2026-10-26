@@ -1,0 +1,5 @@
+{
+  "key": "cpp:LifecyclePublisher::get_subscription_count",
+  "verdict": "extension",
+  "why": "phase-488. Upstream's is inherited from `rclcpp::Publisher`; ours forwards to the wrapped publisher with its signature (executor + out-parameter; see `cpp:Publisher::get_subscription_count`)."
+}

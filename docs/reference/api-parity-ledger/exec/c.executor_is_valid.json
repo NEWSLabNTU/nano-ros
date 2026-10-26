@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_is_valid",
+  "verdict": "extension",
+  "why": "mirrors `rcl_context_is_valid` on the object that actually holds the session here; see `c:support_is_valid`. rclc ships no `rclc_executor_is_valid`."
+}

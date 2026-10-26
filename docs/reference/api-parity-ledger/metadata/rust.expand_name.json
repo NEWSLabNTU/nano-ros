@@ -1,0 +1,5 @@
+{
+  "key": "rust:expand_name",
+  "verdict": "extension",
+  "why": "the expansion half without remapping. See `rust:resolve_name`."
+}

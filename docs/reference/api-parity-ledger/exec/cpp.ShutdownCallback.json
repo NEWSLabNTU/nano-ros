@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ShutdownCallback",
+  "verdict": "divergence",
+  "why": "The shutdown-hook signature, `void (*)(void* context)`. rclcpp's is `std::function<void()>`; the constraint is no allocator AND no STL (this header is freestanding C++14, no exceptions, no RTTI), so a capture goes in a caller-owned struct whose address is the `context`. Issue 0790."
+}

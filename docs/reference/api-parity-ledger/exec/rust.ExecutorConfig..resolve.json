@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorConfig::resolve",
+  "verdict": "extension",
+  "why": "RFC-0045 precedence model A, as a function: env rung > baked `BootConfig` > compiled default, resolved per FIELD so a baked node name and an env locator can both apply. rclrs's equivalent is `Context::from_env`, which is one rung and requires a process environment. Issue 0687 moved the environment READ out to the hosted edge (`nros::env::resolve_hosted`) so this stays no_std; an embedded caller fills the same rung from a settings partition or a Kconfig blob."
+}

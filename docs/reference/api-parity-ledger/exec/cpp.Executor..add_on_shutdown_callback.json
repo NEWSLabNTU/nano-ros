@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::add_on_shutdown_callback",
+  "verdict": "divergence",
+  "why": "rclcpp's `Context::add_on_shutdown_callback` on our executor. See `cpp:Executor::add_pre_shutdown_callback` for the owner and the allocator constraint. The free-function spelling `nros::on_shutdown` mirrors `rclcpp::on_shutdown` and is recorded in init/. Issue 0790."
+}

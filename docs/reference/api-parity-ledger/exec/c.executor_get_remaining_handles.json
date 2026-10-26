@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_get_remaining_handles",
+  "verdict": "extension",
+  "why": "the other half of `c:executor_get_handle_count`: remaining arena capacity, asked BEFORE registering. An image that registers entities conditionally at boot (a sensor that may or may not be present) needs to know whether the optional set still fits, rather than discovering it from a `RCLC_RET_FULL` halfway through bring-up."
+}

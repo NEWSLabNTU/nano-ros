@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Publisher::Publisher<M>",
+  "verdict": "divergence",
+  "why": "ours is constructed into caller-owned storage by `Node::create_publisher`; rclcpp's takes `(NodeBaseInterface*, topic, options)` and is reached through `make_shared`. The `out-param-first` and `no-shared-ptr` rules, at construction."
+}

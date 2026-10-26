@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::autostart",
+  "retired": "a method of the `nros::LifecycleNode` mixin, now `nros::detail::LifecycleEngine` (phase-482 W4). `rclcpp_lifecycle::LifecycleNode` binds, registers its services and manages its publishers itself",
+  "verdict": "extension",
+  "why": "registers the services and then drives the node to `Inactive` or `Active` at boot, so an unattended device comes up active with no external `ros2 lifecycle set`. rclcpp assumes an operator or a launch action performs the transitions. OUR LANGUAGES DISAGREE: Rust reaches the same behaviour DECLARATIVELY through `system.toml`'s `[lifecycle]` autostart, expanded by `nros::main!`, and spells the programmatic form `LifecyclePollingNode::bring_up`; C has no autostart entry point at all (`nros_cpp_lifecycle_autostart` is the C++ shim, not the C API). Three languages, three answers, one feature."
+}

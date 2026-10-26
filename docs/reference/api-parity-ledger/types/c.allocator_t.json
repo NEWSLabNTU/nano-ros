@@ -1,0 +1,6 @@
+{
+  "key": "c:allocator_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl passes an `rcl_allocator_t` by value through most of its API so a caller can supply its own. nano-ros has ONE allocator, `nros_platform_alloc`, enforced by check-no-direct-kernel-alloc, so the type would only ever hold the same value. This is the `no-allocator` signature rule (signature_rules.py) one level up: the rule removes the parameter, this removes the type it would carry."
+}

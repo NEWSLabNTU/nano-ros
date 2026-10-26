@@ -1,0 +1,6 @@
+{
+  "key": "rust:WaitSetRunConditions",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:WaitSetRunner`."
+}

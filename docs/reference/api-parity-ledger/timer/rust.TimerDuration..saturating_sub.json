@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimerDuration::saturating_sub",
+  "verdict": "extension",
+  "why": "saturating rather than wrapping or panicking, because a period computation that underflows on a device must not panic and must not become enormous. rclrs's `Duration` arithmetic can panic on overflow."
+}

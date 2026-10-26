@@ -1,0 +1,6 @@
+{
+  "key": "cpp:State::id",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "RE-VERDICTED phase-417 G6 — it said 'the value IS the enum in ours, so there is nothing for an accessor to unwrap', which stopped being true when `nros::State` gained the id it stores. `constexpr uint8_t id() const`, upstream's shape exactly, so a ported call compiles and returns the same number. The row survives its own closure only to carry the pointer to `cpp:State`, where the difference that remains is recorded."
+}

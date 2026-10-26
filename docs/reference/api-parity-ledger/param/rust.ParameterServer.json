@@ -1,0 +1,5 @@
+{
+  "key": "rust:ParameterServer",
+  "verdict": "divergence",
+  "why": "the parameter store as a STANDALONE object. rclrs has no such type because in rclrs the `Arc<Node>` is the store: declaring goes through the node handle and the values live behind its mutex. Ours is a fixed table of slots the six `rcl_interfaces/srv/*` handlers read directly. Constraints: no allocator (capacity is a slot count fixed before the first declare, defaulting to the compile-time Kconfig-derived `MAX_PARAMETERS`), and static entity storage under the component model (RFC-0043/0044) -- there is no `Arc<Node>` to hang parameters off. Phase 382 W2' made the slots CALLER-OWNED: the server borrows a `ParameterTable` instead of owning the array, so it is 24 bytes and `new()` became `new_in(table)`. This row covers every `ParameterServer::*` member; `remove`/`unset` are worth naming because they are capabilities neither C nor C++ has (see `c:delete_parameter`)."
+}

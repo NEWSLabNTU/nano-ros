@@ -1,0 +1,11 @@
+{
+  "key": "rust:nros_fatal",
+  "rename": {
+    "from": "rclrs::log_fatal",
+    "status": "blocked-needs-decision",
+    "to": "nros::nros_fatal"
+  },
+  "unextracted": "a macro; the extractor records declarations, not macros",
+  "verdict": "rename",
+  "why": "phase-417 W4.d — rclrs spells this `rclrs::log_fatal`; we spell it `nros_fatal`. Same capability, different name, so this is a RENAME and not the `extension` it was first filed as. rclrs's logging macros were overlooked because the correlator pairs on NAME and `log_info` never matched `nros_info`.\n\nNot yet executed. RFC-0089's end state is that we carry ROS 2's names, and the rename lands LAST -- after the shapes match -- because renaming first relabels a gap without closing one. The decision it is blocked on: rclrs says `log_info!`, rclcpp says `RCLCPP_INFO`, and C already ships `RCLC_LOG_INFO`. Following each language's own upstream is defensible; one spelling for all three is not obviously right."
+}

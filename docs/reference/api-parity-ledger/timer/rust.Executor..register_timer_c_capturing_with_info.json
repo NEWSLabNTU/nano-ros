@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_timer_c_capturing_with_info",
+  "verdict": "extension",
+  "why": "issue 1974 — rclrs has no timer call info and no autostart flag, so this is ours alone. `register_timer_c_capturing` (the C++ lambda road, capture held in the arena) with the call info, a callback group and `autostart`. Generic over the FFI's own `#[repr(C)]` info mirror (`From<TimerCallInfo>`), because `nros_cpp_ffi.h` is generated without includes and cannot name the executor's type; the mirror is a copy of two words per activation, never a second computation."
+}

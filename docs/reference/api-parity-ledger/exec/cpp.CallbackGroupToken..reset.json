@@ -1,0 +1,5 @@
+{
+  "key": "cpp:CallbackGroupToken::reset",
+  "verdict": "extension",
+  "why": "phase-488 W3 -- `group_.reset()`, the `shared_ptr` spelling ported code uses to drop its group; afterwards `if (group_)` is false. See `cpp:CallbackGroupToken`."
+}

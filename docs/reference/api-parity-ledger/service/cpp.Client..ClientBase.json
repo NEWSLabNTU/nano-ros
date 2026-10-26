@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Client::ClientBase",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's type-erased base constructor; see the pubsub stage's `cpp:Publisher::PublisherBase`."
+}

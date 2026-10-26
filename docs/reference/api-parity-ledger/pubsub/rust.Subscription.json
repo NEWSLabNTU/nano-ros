@@ -1,0 +1,10 @@
+{
+  "key": "rust:Subscription",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-node/src/executor/handles.rs",
+    "text": "POLL-style and has no callback; a callback subscription takes its closure at"
+  },
+  "verdict": "divergence",
+  "why": "see `rust:PublisherState`.\n\nphase-428 W6 (2026-09-06) — disposition, required because this row's SHAPE CORRESPONDS: the name exists on the ported surface and the correlator files it `same`, so nothing in a build says the contract differs. That is the class RFC-0089 exists for.\n\nThe subscription half of `rust:Publisher`, and the same kind of key: `rclrs::Subscription` is an ALIAS with zero recorded members, so this row is a TYPE-NAME correspondence and no signature was compared.\n\nUPSTREAM'S CONTRACT for the name: a subscription handle whose callback is set on the state behind it, after construction — `set_callback`, `set_async_callback`, `set_worker_callback`, plus `topic_name` and `qos`.\n\nOURS: one type, no `Arc`, and the callback is bound at DECLARATION rather than set afterwards — with no allocator the entity set has to be known when `register` runs (RFC-0043/0044), so there is no post-construction setter to call.\n\nHOW A USER FINDS OUT: COMPILE ERROR — `set_callback` is `no method named`, and the fix is to move the closure into the declaration. ADOPT-BOUNDED for the name; the members are their own rows.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the handle's rustdoc (`nros_node::Subscription`, re-exported as `nros::Subscription`) now states that it is poll-style with no callback, that a callback subscription takes its closure at declaration, and that there is no setter afterwards."
+}

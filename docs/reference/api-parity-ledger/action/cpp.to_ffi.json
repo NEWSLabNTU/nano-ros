@@ -1,0 +1,5 @@
+{
+  "key": "cpp:to_ffi",
+  "verdict": "extension",
+  "why": "issue 1637 -- `nros::to_ffi(GoalResponse)` / `nros::to_ffi(CancelResponse)`, the ONE conversion from the C++ per-goal decisions to the integer the action-server FFI reads. The C++ enums now carry rclcpp_action's values (`REJECT = 1, ACCEPT_AND_EXECUTE = 2, ACCEPT_AND_DEFER = 3`; `REJECT = 1, ACCEPT = 2`) while the FFI shared with C (`NROS_C_GOAL_*` / `NROS_C_CANCEL_*` in `component.h`, and the Rust `#[repr(i8)]` trampolines behind it) stays 0-based, because a zero-initialised decision slot must mean reject. rclcpp_action has no FFI to map onto, so it has no counterpart. The typed callback tier and `bind_action_server_raw` call it for the user; a raw component callback handed to `create_action_server_raw` returns its result, and a `static_cast<int32_t>` of the C++ enum in its place would read REJECT (1) as accept-and-execute -- which is why the binder no longer accepts members returning `int32_t`."
+}

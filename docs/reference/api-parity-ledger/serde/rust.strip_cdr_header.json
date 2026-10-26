@@ -1,0 +1,5 @@
+{
+  "key": "rust:strip_cdr_header",
+  "verdict": "extension",
+  "why": "the read direction: returns the payload slice, and returns the input unchanged when it is shorter than the header so the parser downstream fails with a clearer error than an out-of-bounds slice. See `rust:CDR_LE_HEADER`."
+}

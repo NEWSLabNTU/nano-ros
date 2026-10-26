@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Subscription::Subscription<MessageT, AllocatorT, SubscribedT, ROSMessageT, MessageMemoryStrategyT>",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "five template parameters: the message, the allocator, the type-adapted type, the ROS type and the memory strategy. Four of them exist to make allocation and type adaptation configurable; ours has one message parameter. See the `no-allocator` rule and `cpp:PublisherOptionsWithAllocator`."
+}

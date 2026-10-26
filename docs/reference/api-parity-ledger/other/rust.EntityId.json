@@ -1,0 +1,5 @@
+{
+  "key": "rust:EntityId",
+  "verdict": "extension",
+  "why": "the stable source-level identifier a component-mode entity declaration must carry, so the sidecar, the launch model and the image all name the same entity across rebuilds (RFC-0046). rclrs creates entities anonymously at runtime and has nothing to key. Note it is already `#[doc(hidden)]` in the facade, alongside `NodeId` -- which the node stage recorded as an extension for the same reason. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Kept at the crate root by phase-506 W1 (RFC-0071 D12): component-mode or typed-API code writes this name, so it is user API, not machinery."
+}

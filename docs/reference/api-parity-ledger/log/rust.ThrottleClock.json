@@ -1,0 +1,5 @@
+{
+  "key": "rust:ThrottleClock",
+  "verdict": "divergence",
+  "why": "rclrs picks which clock a throttle measures against (`SteadyTime` / `SystemTime` / a ROS `Clock`). Ours takes no clock: `*_throttle(&mut last_log_ms, current_time_ms, interval_ms, msg)` has the CALLER supply the reading. The constraint is that the logging path has no clock to depend on -- `nros_log::__timestamp_ns()` returns 0 unless the `platform-clock` feature is on, precisely so that logging imposes no link-time requirement on `nros_platform_clock_ns`, and a logger that silently needs a clock would put that requirement on every binary. The timer stage already declined `rust:LogParams::get_throttle_clock` by pointing here."
+}

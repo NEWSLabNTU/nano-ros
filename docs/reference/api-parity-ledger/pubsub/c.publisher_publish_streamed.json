@@ -1,0 +1,5 @@
+{
+  "key": "c:publisher_publish_streamed",
+  "verdict": "extension",
+  "why": "publishes a message larger than the transport MTU by streaming it in fragments (phase-40). rcl assumes the middleware fragments; zenoh-pico and XRCE on a constrained link do not, so the API has to."
+}

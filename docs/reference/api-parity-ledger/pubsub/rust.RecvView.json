@@ -1,0 +1,5 @@
+{
+  "key": "rust:RecvView",
+  "verdict": "divergence",
+  "why": "the read side: a `!Send + !Sync` borrow of a subscription's receive buffer, so a callback reads the bytes without a copy and the drop releases the backend's lock. Same two backings as `rust:PublishLoan`. `!Send` is load-bearing rather than conservative -- the view aliases storage the next message will overwrite, and there is no allocator to move it into."
+}

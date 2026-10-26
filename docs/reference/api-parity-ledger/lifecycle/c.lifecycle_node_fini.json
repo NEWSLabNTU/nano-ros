@@ -1,0 +1,6 @@
+{
+  "key": "c:lifecycle_node_fini",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclc's teardown for the wrapper struct, taking an allocator. We have one handle and one teardown, `rclc_lifecycle_fini`; see `c:lifecycle_state_machine_fini`."
+}

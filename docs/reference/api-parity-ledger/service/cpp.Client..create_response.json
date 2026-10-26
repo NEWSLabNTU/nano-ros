@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Client::create_response",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "allocates the response the executor takes into; ours takes into caller storage. See `cpp:Subscription::create_message`."
+}

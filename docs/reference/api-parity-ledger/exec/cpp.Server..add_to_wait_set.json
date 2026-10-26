@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Server::add_to_wait_set",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`. (`Server` here is the rclcpp_action server the correlator folds in; see the action stage.)"
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:BufferedRow::as_str",
+  "verdict": "extension",
+  "why": "see `rust:BufferedRow` -- the schema spelling, which is also the sizing descriptor's."
+}

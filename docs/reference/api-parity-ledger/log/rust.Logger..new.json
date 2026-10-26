@@ -1,0 +1,5 @@
+{
+  "key": "rust:Logger::new",
+  "verdict": "divergence",
+  "why": "see `rust:LoggerName`. The arities overlap and nothing else does: ours is `const fn new(&str) -> Self`, theirs is `new(impl Borrow<str>) -> Result<Logger, RclrsError>`."
+}

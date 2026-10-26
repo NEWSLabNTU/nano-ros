@@ -1,0 +1,6 @@
+{
+  "key": "rust:Client::call_then_async",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport."
+}

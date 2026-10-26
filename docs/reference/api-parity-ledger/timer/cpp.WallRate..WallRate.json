@@ -1,0 +1,8 @@
+{
+  "key": "cpp:WallRate::WallRate",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "divergence",
+  "why": "`WallRate` is `using WallRate = Rate` here (rclcpp.hpp), so its constructor is `cpp:Rate::Rate`; Jazzy gave upstream's WallRate a constructor of its own."
+}

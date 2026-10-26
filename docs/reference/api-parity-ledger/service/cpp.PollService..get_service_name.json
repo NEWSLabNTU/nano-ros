@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollService::get_service_name",
+  "verdict": "extension",
+  "why": "phase-456 W5 — an UPSTREAM name on an ours-only type, which is why it needs a row of its own rather than inheriting `cpp:PollService`'s. `rclcpp::ServiceBase::get_service_name` keeps its comparison on the dispatch half, `rclcpp::Service<S>::get_service_name`, where our class IS `rclcpp::Service` and the two are the same (which is why phase-444 deleted that row when the capability shipped). This is the second copy of it, on the half the split gave the caller.\n\nBOTH HALVES ANSWER, and each keeps its OWN `service_name_`. That is not duplication that could be factored out: the copy is made at create from the argument the caller passed, the runtime takes the name and drops it, and there is no FFI that reads a name back out of either an `RmwServiceServer` or an arena entry. A shared copy would have to live somewhere neither half owns. Same shape as `cpp:PollSubscription::get_publisher_count` after W2b, which reads the `topic_name_` each subscription half keeps."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollService::send_response",
+  "verdict": "extension",
+  "why": "phase-456 W5 — the reply verb moved here with the storage it writes through. Substantive verdict at `cpp:Service::send_response`, including the correlation-token divergence (`int64_t` sequence number vs `rmw_request_id_t`); this row records the move. See `cpp:PollService`."
+}

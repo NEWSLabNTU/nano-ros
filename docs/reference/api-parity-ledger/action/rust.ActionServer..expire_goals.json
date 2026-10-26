@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionServer::expire_goals",
+  "verdict": "extension",
+  "why": "the L1 Rust server's eager reclaim, and the Rust half of what phase-417 W4.b shipped for `c:action_expire_goals`. rclrs 0.7.0 has no counterpart -- its typestate chain moves a terminated goal into the application's hands, so there is no server-side slab for anyone to reclaim; that is the same constraint `rust:ActionServer::active_goal_count` records. Named `expire_goals` rather than after the core's `expire_completed_results` so C (`rclc_action_expire_goals`), the two arena handles and this one share ONE vocabulary. See `c:action_expire_goals` for the two halves of rcl's contract this does not carry (no `result_timeout`, no expired-goal report) and why neither survives a `no_std` core with no time source."
+}

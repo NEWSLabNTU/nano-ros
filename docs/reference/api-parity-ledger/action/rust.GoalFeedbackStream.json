@@ -1,0 +1,5 @@
+{
+  "key": "rust:GoalFeedbackStream",
+  "verdict": "extension",
+  "why": "`rust:FeedbackStream` filtered to one goal id, for a client with several goals in flight."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:ThreadSafeWaitSet",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the mutex-guarded wait-set policy, for adding entities from another thread while one spins. rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`. RFC-0002 also fixes membership at registration, so there is no concurrent mutation to guard."
+}

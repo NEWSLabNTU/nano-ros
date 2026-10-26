@@ -1,0 +1,5 @@
+{
+  "key": "cpp:LifecyclePublisher::LifecyclePublisher<M>",
+  "verdict": "extension",
+  "why": "phase-482 W4 (2026-10-07): the default and move constructors. A `LifecyclePublisher<M>` is what `rclcpp_lifecycle::LifecycleNode::create_publisher<M>` returns inside a move-only `nros::Owned<T>`, so it must move, and its managed-entity link survives the move (`cpp:ManagedEntityInterface::ManagedEntityInterface`). Upstream constructs one from shared_ptr node interfaces; see `cpp:LifecyclePublisher::LifecyclePublisher<MessageT, Alloc>`."
+}

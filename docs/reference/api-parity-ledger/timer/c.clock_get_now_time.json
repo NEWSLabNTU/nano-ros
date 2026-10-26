@@ -1,0 +1,5 @@
+{
+  "key": "c:clock_get_now_time",
+  "verdict": "extension",
+  "why": "the current time as an `rclc_time_t` (seconds + nanoseconds), beside rcl's `rcl_clock_get_now` (a nanosecond count, which we now have under rcl's name and signature). A device logging or stamping messages wants the split form without a division per call. Was spelled `rcl_clock_get_now` until phase-492 W1.b, which is rcl's name for the nanosecond contract."
+}

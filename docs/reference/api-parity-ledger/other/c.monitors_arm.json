@@ -1,0 +1,5 @@
+{
+  "key": "c:monitors_arm",
+  "verdict": "extension",
+  "why": "phase-474 I2 -- `rclc_monitors_arm()`, the C spelling of `rust:request_monitor_arming`: a C application's INIT/RUN state machine calls it on entering RUN. rclc has no on-target contract monitor."
+}

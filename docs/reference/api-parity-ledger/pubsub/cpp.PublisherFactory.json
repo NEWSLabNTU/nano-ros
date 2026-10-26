@@ -1,0 +1,6 @@
+{
+  "key": "cpp:PublisherFactory",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's indirection for constructing a publisher through a type-erased factory, needed because `create_publisher` is a template that must reach a non-template `NodeTopicsInterface`. Our create is not routed through an interface slice (see the node stage), so there is nothing to erase."
+}

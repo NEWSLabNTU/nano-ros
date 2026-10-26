@@ -1,0 +1,5 @@
+{
+  "key": "rust:ComponentSlotStorage::new",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- const constructor so the storage can live in a `static`."
+}

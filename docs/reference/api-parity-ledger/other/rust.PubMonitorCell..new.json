@@ -1,0 +1,5 @@
+{
+  "key": "rust:PubMonitorCell::new",
+  "verdict": "extension",
+  "why": "see `rust:PubMonitorCell`."
+}

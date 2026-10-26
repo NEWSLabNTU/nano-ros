@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Rate::get_type",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "reports which clock the rate measures; ours has one (`cpp:Rate::is_steady`, declined, and the `Rate`/`WallRate` envelope in rclcpp.hpp)."
+}

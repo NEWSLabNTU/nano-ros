@@ -1,0 +1,6 @@
+{
+  "key": "c:get_zero_initialized_init_options",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "no init-options type; see `c:init_options_*`."
+}

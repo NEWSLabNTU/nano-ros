@@ -1,0 +1,6 @@
+{
+  "key": "c:node_get_logger_name",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl derives a logger name from the node so rcutils logging can be filtered per node. `nros_log` takes an explicit logger name at the call site (`nros_log::get_logger(\"<crate>\")`), so there is no derived name to fetch.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. CORRECTION, not a new finding: `c:node_get_logger` used to argue this row should be re-read as a GAP because `nros_log::Logger::name()` on the handle it returns IS the derived name. Measured false — `nros_log::get_logger` is lookup-only, so that handle is `DEFAULT_LOGGER` and its name is the catch-all `\"nros\"` for every node. The decline stands on the reason written above it; the gap argument is withdrawn. See `c:node_get_logger` for the measurement and its own disposition."
+}

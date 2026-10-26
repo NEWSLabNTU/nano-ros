@@ -1,0 +1,5 @@
+{
+  "key": "c:topic_endpoint_info_array_t",
+  "verdict": "divergence",
+  "why": "the ARRAY of the above, which is the half that cannot survive: it is the allocated, caller-`fini`ed sequence the visitor exists to avoid. See `c:names_and_types_t`."
+}

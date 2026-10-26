@@ -1,0 +1,6 @@
+{
+  "key": "c:get_default_domain_id",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl reads ROS_DOMAIN_ID from the environment at runtime. An embedded backend has no environment (RFC-0036, Domain ID), so the domain arrives through `rclc_support_init`'s parameter over a documented ladder -- explicit argument, then hosted env, then the baked default -- with `NROS_DOMAIN_ID_INHERIT`/`NROS_DOMAIN_ID_EXPLICIT_ZERO` sentinels because plain 0 has to stay the UNSET marker (issues 0206/0227)."
+}

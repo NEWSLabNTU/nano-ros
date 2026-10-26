@@ -1,0 +1,5 @@
+{
+  "key": "rust:CancelResponse::from_i8",
+  "verdict": "extension",
+  "why": "decodes the per-goal decision, `None` for anything but 0/1. See `rust:CancelResponse`; the RPC return code has its own `CancelReturnCode::from_i8` for the wire value."
+}

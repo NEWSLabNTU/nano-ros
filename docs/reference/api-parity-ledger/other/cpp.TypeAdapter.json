@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TypeAdapter",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's type adaptation: publish a user's own struct on a topic whose wire type is a generated message, with a `TypeAdapter` specialisation converting between them. A user loses that and converts into the generated type by hand before publishing. Two things stop it being merely undone: the conversion needs somewhere to put the converted message and there is no allocator, and the machinery is template metaprogramming over `std::string`/`std::vector` members that the freestanding, `-fno-exceptions` C++ profile (RFC-0018) does not compile. Neither our C nor our Rust has an equivalent either."
+}

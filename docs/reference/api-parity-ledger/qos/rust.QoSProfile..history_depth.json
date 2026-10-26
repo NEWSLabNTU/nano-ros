@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::history_depth",
+  "verdict": "extension",
+  "why": "`depth` narrowed to the `uint8_t` the C ABI and the backend handle tables carry, saturating at 255. rclrs keeps one `u32` because rcl takes a `size_t`; ours needs the narrowed read because the value crosses a `repr(C)` boundary into a fixed-width field. The doc comment says \"for backwards compatibility\", which is not a reason -- worth a look in W5."
+}

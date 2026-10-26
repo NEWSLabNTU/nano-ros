@@ -1,0 +1,5 @@
+{
+  "key": "rust:install_port_park",
+  "verdict": "extension",
+  "why": "phase-436 W7 -- a board's Rust arm installs the platform's park primitive (the spin loop's wait-for-work seam) once at boot. A porting seam for the RTOS boards, not a client-library call; rclrs runs on a hosted OS and has nothing to install. Reached through the module re-export `pub use nros_node::executor::port_park;`, which the extraction walks reliably since issue 1986."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::create_action_server",
+  "verdict": "rename",
+  "why": "RE-VERDICTED 2026-09-04 (phase-417), declined -> rename. This item is OURS-ONLY, so `declined` -- ROS 2 has it, we deliberately do not -- could not have been true of it in either direction. rclcpp_action ships FREE functions (`rclcpp_action::create_server(node, ...)`) because it is a separate package that cannot add members to `rclcpp::Node`; ours is one library, so the factory is a node method like every other entity's. A user porting `rclcpp_action::create_server(node, name, goal_cb, cancel_cb, accepted_cb)` rewrites it as `node.create_action_server(out, name)` followed by `set_goal_callback` / `set_cancel_callback`. The decision about which spelling survives is on the theirs-only half, `cpp:create_server`."
+}

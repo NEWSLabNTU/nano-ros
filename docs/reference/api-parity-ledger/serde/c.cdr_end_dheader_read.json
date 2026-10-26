@@ -1,0 +1,5 @@
+{
+  "key": "c:cdr_end_dheader_read",
+  "verdict": "extension",
+  "why": "The read-side close; see `c:cdr_begin_dheader_read`."
+}

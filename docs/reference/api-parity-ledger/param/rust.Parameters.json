@@ -1,0 +1,14 @@
+{
+  "key": "rust:Parameters",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-params/src/typed.rs",
+    "text": "rclrs calls this type `Parameters`; the capability is the same (read AND write,"
+  },
+  "provides": [
+    "nros::UndeclaredParameters",
+    "nros::Executor::use_undeclared_parameters"
+  ],
+  "verdict": "rename",
+  "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and two of its three complaints are closed: the type IS exported from the `nros` facade now, and it reads AND WRITES (`set_bool` / `set_integer` / `set_double` / `set_string`, through `ParameterServer::set_or_declare` — not `apply`, because `allow_undeclared_parameters` governs what a REMOTE set may create and a caller who reached for this type has opted in by naming it, which is rclrs's split too). What remains is the NAME: rclrs calls it `Parameters`, ours is `UndeclaredParameters`. `rename` and not `divergence` because no platform constraint picks either spelling. The envelope: a ported rclrs file rarely NAMES the type — it binds what `use_undeclared_parameters()` returns — so the drop-in cost is a `use` line. Renaming it inside `nros::`, where `Parameter` is already the store's value type, is a stage-6 decision rather than this item's.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the rename was stated only in plain `//` facade comments in `packages/api/nros/src/lib.rs`, which rustdoc does not render. `UndeclaredParameters`'s own rustdoc (`nros-params`, re-exported as `nros::UndeclaredParameters`) now names rclrs's spelling and the `use`-line cost."
+}

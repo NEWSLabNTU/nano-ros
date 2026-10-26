@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::group_active",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the predicate behind `rust:Executor::set_active_groups`, public so generated tier entry points can skip declaring an entity that this tier will never dispatch."
+}

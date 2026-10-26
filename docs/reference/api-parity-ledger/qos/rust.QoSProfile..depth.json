@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::depth",
+  "verdict": "extension",
+  "why": "enum-taking chainable setters. rclrs's `QoSProfile` offers only the policy-specific shorthands (`reliable()`, `best_effort()`, `keep_last(n)`, ...) and rclcpp's `QoS` has the enum-taking form; ours has BOTH, which is why these four are unmatched while the shorthands beside them are renames. They exist because codegen bakes a profile from a plan and needs to set one policy from a value rather than from a method name -- our own `QoSProfile::apply_override_value` is the caller. Note our C++ `nros::QoS` does NOT have them, so this is Rust-only among our three languages. All four are `const fn`, so the profile is still buildable in a `static`."
+}

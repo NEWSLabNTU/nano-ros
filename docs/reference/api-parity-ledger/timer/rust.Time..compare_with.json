@@ -1,0 +1,5 @@
+{
+  "key": "rust:Time::compare_with",
+  "verdict": "divergence",
+  "why": "rclrs compares two times only if their clock kinds match, returning an error otherwise. Ours are ordered directly -- the kind is a property of the clock, not of the value; see `c:time_point_t`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Slot::fits",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- 'does this Layout fit here' as a checked question; the fail-loud arm is an assert in `carve`, this is the queryable form."
+}

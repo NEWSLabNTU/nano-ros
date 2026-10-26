@@ -1,0 +1,8 @@
+{
+  "key": "cpp:IncompatibleTypeCallbackType",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "divergence",
+  "why": "issue 1972 — HUMBLE ONLY, as `cpp:PublisherMatchedCallbackType`: one fn-pointer typedef for both sides, as upstream's is one `std::function` type."
+}

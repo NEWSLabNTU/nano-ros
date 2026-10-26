@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_on_shutdown_callback",
+  "verdict": "extension",
+  "why": "The post-teardown half of `c:executor_add_pre_shutdown_callback`; rclc has neither. Runs after the session is closed, for what survives the middleware (release a GPIO, stop a peripheral clock). Issue 0790."
+}

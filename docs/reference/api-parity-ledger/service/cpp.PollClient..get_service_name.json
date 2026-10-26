@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollClient::get_service_name",
+  "verdict": "extension",
+  "why": "phase-456 W9 — an UPSTREAM name on an ours-only type, which is why it needs a row of its own rather than inheriting `cpp:PollClient`'s. `rclcpp::ClientBase::get_service_name` keeps its comparison on the dispatch half, `rclcpp::Client<S>::get_service_name`, where our class IS `rclcpp::Client` and the two are the same (which is why phase-444 carries no row for it). This is the second copy of it, on the half the split gave the caller.\n\nBOTH HALVES ANSWER, and each keeps its OWN `service_name_`. That is not duplication that could be factored out: the copy is made at create from the argument the caller passed, the runtime takes the name and drops it, and there is no FFI that reads a name back out of either an `RmwServiceClient` or an arena entry. Identical to `cpp:PollService::get_service_name` one entity over."
+}

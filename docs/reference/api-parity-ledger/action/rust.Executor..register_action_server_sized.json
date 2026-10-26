@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_action_server_sized",
+  "verdict": "divergence",
+  "why": "registering an action entity on the executor. rclrs has no actions at all, and rclcpp_action registers through `NodeWaitablesInterface`. Ours names the entity's static storage at registration because the executor's entity table is a compile-time-sized array (RFC-0002); the `_sized` variants let a caller override the buffer const generics, and the `_raw` variants take CDR bytes for the C and C++ shims. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. See the service stage's `rust:ServiceTrait`. Kept at the crate root by phase-506 W1 (RFC-0071 D12): component-mode or typed-API code writes this name, so it is user API, not machinery."
+}

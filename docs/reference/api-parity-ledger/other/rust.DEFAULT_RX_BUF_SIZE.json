@@ -1,0 +1,5 @@
+{
+  "key": "rust:DEFAULT_RX_BUF_SIZE",
+  "verdict": "extension",
+  "why": "phase-392 W3 -- the subscription receive-buffer size for the paths that have no `M` to ask (`create_subscription_raw`, the RFC-0043 type-name-string subscriptions, the service/action/TX defaults, the arena derivation); named so the guess is one auditable const instead of scattered literals. Since phase-403 W0 it is NOT a fallback for a missing bound: `rx_buffer_for!` refuses to compile for an unbounded type rather than expanding to this."
+}

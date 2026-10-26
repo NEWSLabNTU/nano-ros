@@ -1,0 +1,5 @@
+{
+  "key": "rust:ReactionHookFn",
+  "verdict": "extension",
+  "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): the reaction hook's type. See `rust:ReactionEvent`."
+}

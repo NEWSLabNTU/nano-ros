@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelCore::spin_level_once",
+  "verdict": "extension",
+  "why": "phase-509 P10 -- one band pass of a spawned level's worker. rclrs has no levels."
+}

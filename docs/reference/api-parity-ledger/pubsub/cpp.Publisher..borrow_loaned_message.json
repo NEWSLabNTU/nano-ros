@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Publisher::borrow_loaned_message",
+  "rename": {
+    "resolution": "Re-verdicted 2026-09-04; the premise was wrong. Note the symbol is not even linkable in a default build — `nros_cpp_publisher_loan` is `#[cfg(feature = \"lending\")]` while cbindgen emits it unconditionally (issue 0814).",
+    "status": "not-a-rename"
+  },
+  "verdict": "divergence",
+  "why": "RE-VERDICTED 2026-09-04 from `rename`. The row argued that \"in C++ both sides return a typed RAII handle … so unlike the C API there is no shape difference here to justify the different verb\". The word TYPED is false, and it was the whole argument.\n\nrclcpp's `borrow_loaned_message()` takes NO arguments and returns `LoanedMessage<T>` whose `get()` yields `MessageT&`. Ours is `Expected<Loan> loan(size_t requested_len)` (`publisher.hpp:171`) over a byte span: `uint8_t* data()` (`:121`), `Result commit(size_t actual_len)` (`:128`). A byte token sized by an explicit caller-supplied length is precisely the shape this row said applies only to C — and `cpp:LoanedMessage` in this same file already says so (\"Ours is `Publisher::Loan`\"), as do all four C and Rust loan rows, which carry `divergence`. Two rows described one object and disagreed about whether it was typed.\n\nThe constraint is RFC-0010 D7 and issue 0814: the lent slot is `len` BYTES because CDR length is not known before encoding, and upstream's loan carries a `rosidl_message_type_support_t*` that this ABI declines. Giving a byte token rclcpp's typed name would be a worse divergence than the verb is."
+}

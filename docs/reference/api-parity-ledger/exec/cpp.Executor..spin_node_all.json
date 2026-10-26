@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Executor::spin_node_all",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "see `cpp:Executor::spin_all`."
+}

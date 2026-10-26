@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Subscription::return_serialized_message",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the free half of `create_serialized_message`."
+}

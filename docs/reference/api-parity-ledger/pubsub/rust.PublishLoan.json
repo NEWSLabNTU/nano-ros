@@ -1,0 +1,5 @@
+{
+  "key": "rust:PublishLoan",
+  "verdict": "divergence",
+  "why": "the publish-side loan: reserve the outgoing buffer, fill it in place, then `commit` (or `discard`). rclcpp's `borrow_loaned_message` is the same idea and rclrs has no equivalent at all. Ours differs in what backs the slot, which is the platform part: with no allocator the default backing is the publisher's own inline `[u8; TX_BUF]` and commit memcpys into the backend's outbound buffer, while `rmw-lending` swaps it for storage the backend owns (zenoh-pico's `z_bytes_from_static_buf`, XRCE's `ucdrBuffer` reservation) for a true zero-copy publish. `#[must_use]` because dropping without committing silently rolls the message back -- there is no destructor that can publish for you. See the pubsub stage's loan rows."
+}

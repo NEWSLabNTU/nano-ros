@@ -1,0 +1,5 @@
+{
+  "key": "rust:PublishLoan::discard",
+  "verdict": "divergence",
+  "why": "see `rust:PublishLoan`."
+}

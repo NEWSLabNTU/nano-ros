@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::declared_params",
+  "verdict": "extension",
+  "why": "the table `rust:Executor::set_declared_params` recorded (empty, so nothing is checked, until an entry sets one)."
+}

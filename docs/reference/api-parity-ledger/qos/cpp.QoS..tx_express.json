@@ -1,0 +1,5 @@
+{
+  "key": "cpp:QoS::tx_express",
+  "verdict": "extension",
+  "why": "phase 282 (issue #145) -- a transport hint, not a DDS policy: this publisher's samples bypass transport tx batching and go out immediately even when the batching knob is on (zenoh's wire EXPRESS flag). The RTOS scenario is a low-bandwidth radio or serial link where batching is what makes the link affordable, and one control-tier topic must not wait for the next flush. No RxO matching and no backend-compat validation, because there is no remote to negotiate it with; ignored on subscriptions and by backends with no batching concept. rclcpp has nothing to compare it with -- DDS has no such knob. Present in all three languages: `rclc_qos_t.tx_express`, `QoS::tx_express()`, `QoSProfile::tx_express`."
+}

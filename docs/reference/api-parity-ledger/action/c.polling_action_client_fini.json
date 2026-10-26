@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_action_client_fini",
+  "verdict": "extension",
+  "why": "finalises a `rclc_polling_action_client_t`: drops the inline core and its channels, refusing with `RCLC_RET_STALE_NODE` when the node went first (issue 1386). The polled half of what `rcl_action_client_fini` did for both roads before phase-487 W4. RFC-0022's polling tier for actions, as its own type since phase-487 W4 (RFC-0096 D9, the C half). Nothing dispatches it, so it has no arena slot and keeps its core inline. The C++ twin is `nros::PollingActionClient<A>`."
+}

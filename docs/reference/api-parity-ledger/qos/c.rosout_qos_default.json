@@ -1,0 +1,6 @@
+{
+  "key": "c:rosout_qos_default",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "returns upstream's `rcl_qos_profile_rosout_default` (KEEP_LAST(1000), RELIABLE, TRANSIENT_LOCAL, 10 s lifespan) as an `rclc_qos_t`, for a target that has budgeted the transient-local slot. rcl exposes the profile as a global struct; a function returning it by value keeps the C surface free of exported mutable data, the same choice the rest of `nros_qos_*` made. Part of the `/rosout` bridge from C (issue 1589, `<rclc/rosout.h>`); the Rust twin is `nros::rosout`. Links in every image and returns `RCLC_QOS_DEFAULT` without the `rosout` capability."
+}

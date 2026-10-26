@@ -1,0 +1,6 @@
+{
+  "key": "c:logging_fini",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl tears the logging system down at shutdown. `nros_log` has no teardown by construction: `init` publishes the sink list into an `AtomicPtr` read lock-free on every dispatch and deliberately LEAKS the previous pointer, because a lock-free reader means nothing can prove when the old list stopped being read (`packages/core/nros-log/src/lib.rs`). What a user loses: no way to uninstall sinks. `nros_log::flush()` is the only lifecycle verb, and it is Rust-only -- `<rclc/log.h>` declares no `nros_log_flush`, which is a small C gap of its own even though rcl has no `rcl_logging_flush` to name it here."
+}

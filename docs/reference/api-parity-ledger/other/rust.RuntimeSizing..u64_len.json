@@ -1,0 +1,5 @@
+{
+  "key": "rust:RuntimeSizing::u64_len",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- the `[u64]` word count a caller's static must have to back this sizing; the same contract as `arena_size_for` for the executor arena."
+}

@@ -1,0 +1,8 @@
+{
+  "key": "rust:QoSProfile::best_available",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "extension",
+  "why": "issue 1973. Matches upstream's Iron+ surface, so under Jazzy it is a `same` row and carries no entry; Humble predates best-available QoS, so against Humble's headers it reads ours-only. rclrs's `QoSProfile::best_available()`, returning `QOS_PROFILE_BEST_AVAILABLE` (the `qos_profiles!` table row bound to `rmw_qos_profile_best_available` by `check-qos-profile-ssot`); each policy enum gained the matching `BestAvailable` variant."
+}

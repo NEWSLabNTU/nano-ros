@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::route_next_due_us",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): microseconds to the earliest pending supervised route deadline, the value the executor parks on and a port's independent timer re-arms from. No rclrs counterpart. See `rust:Executor::set_reaction_hook`."
+}

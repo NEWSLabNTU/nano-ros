@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoTimerOptions",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "an rclrs conversion trait, so `create_*` can accept a bare name, a QoS, or a full options struct and normalise them. Ours take one concrete options type; the blanket impls buy nothing with a single caller shape. Same decision as the service stage's `rust:IntoPrimitiveOptions::services_qos`."
+}

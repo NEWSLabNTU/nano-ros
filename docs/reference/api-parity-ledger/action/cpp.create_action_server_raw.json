@@ -1,0 +1,5 @@
+{
+  "key": "cpp:create_action_server_raw",
+  "verdict": "extension",
+  "why": "the three FFI steps a raw action server needs, in one call against caller-owned storage: create, register on the executor, then set the goal and cancel callbacks. The goal callback returns a `GoalResponse` discriminant (`0` reject / `1` accept-and-execute / `2` accept-defer) and the cancel callback a `CancelResponse`; a goal is completed afterwards with `nros_cpp_action_server_complete_goal`. rclcpp_action's `create_server` takes goal, cancel AND accepted callbacks and returns a `SharedPtr`; ours has no accepted callback because there is no owning goal handle to hand back (see `cpp:ActionServer`) and no allocator to return from. Public and documented, but in practice reached through `cpp:bind_action_server_raw`, which supplies the trampolines."
+}

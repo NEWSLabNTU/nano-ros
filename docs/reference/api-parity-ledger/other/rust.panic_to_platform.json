@@ -1,0 +1,5 @@
+{
+  "key": "rust:panic_to_platform",
+  "verdict": "extension",
+  "why": "emits the image's `#[panic_handler]`, formatting the panic into a 192-byte STACK buffer (never the heap -- the allocator may be exactly what failed) and handing it to `nros_platform_panic`. A `no_std` binary must supply that lang item or it does not link, and rclrs is `std`-only so libstd supplies it there. Normally reached as `nros::main!(panic = \"platform\")`; the macro is the escape hatch for images whose entry cannot carry the item -- a hand-rolled `no_std` binary, or the lib side of a `staticlib` crate. Deliberately NOT emitted invisibly: `#[panic_handler]` is a singleton of the final artifact and images that already declare their own (`esp_backtrace`, `panic-semihosting` with `features = [\"exit\"]` so QEMU exits instead of hanging a test) are right."
+}

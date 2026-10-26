@@ -1,0 +1,9 @@
+{
+  "key": "cpp:CallbackGroup::size",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "counts the entities rclcpp's executor collected into the group. Our groups carry no entity list (`cpp:CallbackGroup::collect_all_ptrs`, declined), so there is nothing to count."
+}

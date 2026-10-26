@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GenericSubscription",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+}

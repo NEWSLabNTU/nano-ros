@@ -1,0 +1,5 @@
+{
+  "key": "rust:MonitorArming::armed_at_first_spin",
+  "verdict": "extension",
+  "why": "phase-474 I2 -- whether a policy arms at the first spin (no call awaited, no grace period), which is the default. See `rust:MonitorArming`."
+}

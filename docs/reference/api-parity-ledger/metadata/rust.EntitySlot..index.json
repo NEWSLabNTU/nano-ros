@@ -1,0 +1,5 @@
+{
+  "key": "rust:EntitySlot::index",
+  "verdict": "extension",
+  "why": "see `rust:EntitySlot`."
+}

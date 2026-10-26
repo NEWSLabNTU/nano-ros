@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::params*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the executor-owned parameter store. Parameters live on the EXECUTOR here rather than on a node, because the six `rcl_interfaces/srv/*` servers are registered once per image against `ZPICO_MAX_QUERYABLES` = 8 (issue 0460), not once per node. See the param stage and `c:executor_has_param`."
+}

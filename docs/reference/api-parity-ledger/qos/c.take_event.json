@@ -1,0 +1,5 @@
+{
+  "key": "c:take_event",
+  "verdict": "divergence",
+  "why": "rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+}

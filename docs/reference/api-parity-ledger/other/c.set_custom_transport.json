@@ -1,0 +1,5 @@
+{
+  "key": "c:set_custom_transport",
+  "verdict": "extension",
+  "why": "runtime-pluggable transport vtable (`nros_transport_ops_t`: abi_version + open/close/write/read + `user_data`). An RTOS image often reaches the network over a link ROS 2 never sees -- USB-CDC, BLE, RS-485, a semihosting bridge -- and which one is a board fact decided after the library is built, so the hook has to be a runtime call rather than a link-time backend choice. rcl has no transport concept at all (rmw is selected at link time); the nearest thing anywhere is micro-ROS's `rmw_uros_set_custom_transport`, which this deliberately mirrors. Fn pointers rather than a trait object because a `Box<dyn>` would force `alloc` on every no_std port (`nros-rmw/src/custom_transport.rs`)."
+}

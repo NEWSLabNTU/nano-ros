@@ -1,0 +1,6 @@
+{
+  "key": "cpp:add_will_overflow",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's saturating-arithmetic predicates, whose reason to exist is guarding `Time`/`Duration` nanosecond arithmetic against overflow. Our C++ has no clock, time or duration type at all (the timer stage records that; C and Rust both do have one), so there is nothing here for them to guard -- a user loses the guards along with the arithmetic they guard. Not a platform constraint: the check compiles to `__builtin_add_overflow` anywhere."
+}

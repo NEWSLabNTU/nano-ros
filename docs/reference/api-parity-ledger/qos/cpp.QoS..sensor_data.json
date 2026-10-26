@@ -1,0 +1,5 @@
+{
+  "key": "cpp:QoS::sensor_data",
+  "verdict": "divergence",
+  "why": "the ours-only half of `cpp:SensorDataQoS`: the sensor-data preset as a member on `QoS` rather than a type of its own. rclcpp gives each QoS preset its own TYPE so a preset can be passed where a `QoS` is expected and still be named; ours are named constructors on one `QoS`. See the service stage's `cpp:ServicesQoS::ServicesQoS`."
+}

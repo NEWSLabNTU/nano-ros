@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Context::get_domain_id",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). The domain is a boot fact of the executor (`NROS_DOMAIN_ID`), not of a context."
+}

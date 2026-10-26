@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Transition::valid",
+  "verdict": "extension",
+  "why": "whether an id is a transition nano-ros implements. Upstream needs no such question: its `Transition` is built from an `rcl_lifecycle` map entry, so an invalid one cannot be constructed. Ours is constructible from any `uint8_t` -- which is the point, because `trigger_transition(uint8_t)` accepts any `uint8_t` too -- so the question has to be askable. `0` (CREATE) and `8` (DESTROY) are the ids that answer `false`."
+}

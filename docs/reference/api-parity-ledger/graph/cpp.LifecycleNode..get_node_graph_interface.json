@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::get_node_graph_interface",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-482 W4 (2026-10-07): `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::get_node_graph_interface`, inherited, with `cpp:Node::get_node_graph_interface`'s contract. The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves.\n\nBefore phase-482 W4: see the node stage's `cpp:Node::get_node_base_interface` -- rclcpp's ~10 `Node*Interface` slices exist so a component can be handed the part it needs, and our components are declared rather than constructed with an injected node (RFC-0044). The graph slice would additionally be a slice of nothing: see `c:get_node_names`."
+}

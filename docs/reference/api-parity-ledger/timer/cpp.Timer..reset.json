@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Timer::reset",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "The `reset` half of `cpp:Timer::cancel`: reachable through `rclcpp::TimerBase` now that it aliases `::nros::Timer`, widened `void` -> `Result` (`[[nodiscard]]`, loud). Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
+}

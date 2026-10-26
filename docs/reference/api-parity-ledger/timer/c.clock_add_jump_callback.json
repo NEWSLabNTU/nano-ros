@@ -1,0 +1,6 @@
+{
+  "key": "c:clock_add_jump_callback",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "time-jump notification -- rcl calls back when the clock steps (simulation reset, NTP correction), with a threshold selecting which jumps qualify. Ours has no notification at all; on a device a monotonic clock does not step, and the simulation case now has ROS time in every language (issue 0789) without anyone asking to be TOLD that the clock stepped -- a simulator writes the time, the nodes read it."
+}

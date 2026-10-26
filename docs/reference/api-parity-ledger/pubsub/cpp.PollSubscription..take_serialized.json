@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollSubscription::take_serialized",
+  "verdict": "divergence",
+  "why": "phase-456 W2b — see `cpp:Subscription::take_serialized` for the trade and `cpp:PollSubscription::take` for the same one on the typed form. Upstream's is `SubscriptionBase::take_serialized(SerializedMessage&, MessageInfo&)`; ours writes into a caller-supplied `(uint8_t*, size_t, size_t&)` because there is no allocator to grow a `SerializedMessage` with."
+}

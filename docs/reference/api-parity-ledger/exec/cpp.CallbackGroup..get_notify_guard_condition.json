@@ -1,0 +1,6 @@
+{
+  "key": "cpp:CallbackGroup::get_notify_guard_condition",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp wakes a blocked `rcl_wait` when a group's membership changes, so the wait set can be rebuilt. rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`. Membership is also fixed at registration here (static entity storage: the executor's entity table is an arena sized at compile time (`NROS_EXECUTOR_MAX_HANDLES`) with no allocator behind it, and a `HandleId` is an index into it. Registration is one-way -- no slot is ever reclaimed and no handle is ever invalidated.), so there is no change to notify anyone of."
+}

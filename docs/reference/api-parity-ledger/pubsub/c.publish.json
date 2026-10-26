@@ -1,0 +1,19 @@
+{
+  "key": "c:publish",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc/detail/nros_generated.h",
+    "text": "* * `allocation` — MUST be NULL. `rmw_publisher_allocation_t` is declared"
+  },
+  "provides": [
+    "rcl_publish",
+    "rclc_publish_raw"
+  ],
+  "rename": {
+    "category": "B",
+    "resolution": "Not a rename. The word and the free-function shape already match; the row's premise (nros_publisher_publish) was a symbol that does not exist. Re-verdicted to divergence, naming the two real differences and their constraints: no `rmw_publisher_allocation_t` (no allocator) and per-type codegen instead of a `const void *` (no runtime typesupport dispatch). No code change; no target name invented.",
+    "status": "resolved"
+  },
+  "verdict": "divergence",
+  "why": "phase-492 W8 (RFC-0089, `ROSIDL_GET_*_TYPE_SUPPORT` adopted as a pass-through): `rcl_publish(&pub, &msg, NULL)` exists with rcl's signature. It serialises through the descriptor the publisher was created with (which now carries `serialize` / `deserialize`), into a transmit buffer bounded at build time -- a 256-byte class when the type's own bound fits, else the image's message buffer -- and never allocates (RFC-0105 D10). The divergence is the envelope: `allocation` must be NULL (`rmw_publisher_allocation_t` is declared incomplete, so a pre-allocation object cannot even be declared), a sample past the image's message buffer is refused with `RCL_RET_ERROR` rather than allocated for, and a descriptor built from names alone (no codec) answers `RCL_RET_UNSUPPORTED`. The byte form `rclc_publish_raw(publisher, data, len)` stays beside it. The per-message `<Msg>_publish` helpers retired with this (one way to do one thing).\n\nHistory: CORRECTED 2026-08-26 (phase-379 W5), re-verdicted rename -> divergence. The previous text argued from `nros_publisher_publish`, a symbol that has never existed: the only occurrence of that spelling anywhere in the tree is a comment in `examples/linux/c/custom-transport-loopback/src/main.c` recording that phase 212 replaced the never-defined name. Our C publish entry points are `rclc_publish_raw(publisher, data, len)` for the byte form and the codegen'd per-message `<pkg>_<msg>_publish(publisher, msg)` for the typed form (`packs/c/message.h.jinja`, e.g. `std_msgs_msg_int32_publish`). BOTH already have rcl's shape -- a free function taking the publisher first -- so there is no free-function-vs-method rename here. The cited precedent does not apply either, twice over: `c:get_zero_initialized_publisher` is verdict DECLINED, i.e. it argues for KEEPING our spelling, and it declines because ours there IS method-style, which ours here is not.\nWhat actually differs is the SHAPE, and a platform constraint is why. `rcl_publish(publisher, ros_message, allocation)` is ONE type-erased function over a `const void *` ROS message plus an `rmw_publisher_allocation_t *`. We have no runtime typesupport dispatch and no allocator, so the typed publish is generated per message type (concrete struct pointer, no typesupport lookup, serializes into a `NROS_PUB_BUFFER_SIZE` stack buffer) and the type-erased publish is byte-oriented. The generated typed helper lives in a message header, which the report drops as message plumbing -- that, not an absence, is why this row reads theirs-only.\nThe `_raw` suffix on the byte form is a separate and still-open question, tracked by the SERIALIZED -> RAW pair (`c:take_serialized_message`, `c:publish_serialized_message`). It is not this row's."
+}

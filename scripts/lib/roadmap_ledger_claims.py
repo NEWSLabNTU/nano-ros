@@ -7,7 +7,7 @@ against an artifact the document does not contain. A phase states "18 rows
 (C 6, Rust 12)" as open work; another phase does that work and has no reason to
 edit the first; the first keeps presenting finished work in the voice of a
 plan. phase-417's build list did that for 36 rows across G1-G5 while
-`docs/reference/api-parity-ledger/*.json` -- every row carries a `verdict` --
+`docs/reference/api-parity-ledger/<topic>/*.json` -- every row carries a `verdict` --
 already said they had landed.
 
 THE BINDING IS DERIVED, NEVER AUTHORED
@@ -76,7 +76,6 @@ from __future__ import annotations
 
 import fnmatch
 import importlib.util
-import json
 import os
 import re
 import tempfile
@@ -108,18 +107,22 @@ TICKED = re.compile(r"^\s*[-*]\s*\[[xX]\]")
 ROW_CLAIM = re.compile(r"\b(\d+)\s+rows?\b", re.I)
 
 
-def load_ledger(ledger_dir=None):
-    """The ledger, merged by `api-parity.py`'s own loader.
-
-    ONE merge, not a second one: that loader refuses a duplicate key (JSON
-    keeps the last occurrence silently) and skips `_doc`. A second spelling
-    here would agree until the day it did not.
-    """
+def _api_parity():
     path = os.path.join(ROOT, "scripts", "api-parity.py")
     spec = importlib.util.spec_from_file_location("_nros_api_parity", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.load_ledger(ledger_dir)
+    return mod
+
+
+def load_ledger(ledger_dir=None):
+    """The ledger, merged by `api-parity.py`'s own loader.
+
+    ONE merge, not a second one: that loader refuses a duplicate key (two row
+    files claiming one) and skips `_doc`. A second spelling here would agree
+    until the day it did not.
+    """
+    return _api_parity().load_ledger(ledger_dir)
 
 
 def classify_key(ledger, key):
@@ -289,7 +292,6 @@ def self_test(quiet=True):
     merges can turn it red.
     """
     shard = {
-        "_doc": ["self-test shard"],
         "c:wait_for_publishers": {"verdict": "divergence", "why": "landed"},
         "rust:Node::get_node_names": {"verdict": "divergence", "why": "landed"},
         "c:still_open": {"verdict": "gap", "why": "nobody did it"},
@@ -326,8 +328,9 @@ def self_test(quiet=True):
     ]
     failures = 0
     with tempfile.TemporaryDirectory() as tmp:
-        with open(os.path.join(tmp, "selftest.json"), "w", encoding="utf-8") as fh:
-            json.dump(shard, fh)
+        # Through the ledger's own writer (issue 1091: one file per row), so
+        # the planted ledger has the layout the real one does.
+        _api_parity().ledger_files.write_rows(tmp, "other", shard, doc=["self-test"])
         ledger = load_ledger(tmp)
         for name, doc, want in cases:
             got = check_doc(doc, ledger)[0]

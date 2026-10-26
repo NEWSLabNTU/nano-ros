@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::monitors_armed",
+  "verdict": "extension",
+  "why": "phase-474 I2 -- whether this executor's contract monitors are armed. See `rust:Executor::arm_monitors`."
+}

@@ -1,0 +1,7 @@
+{
+  "key": "rust:Logger::*_throttle",
+  "bucket": "ours-only",
+  "retired": "the `log`-crate `Logger`'s methods; `nros::Logger` is `nros_log::Logger` since the rebinding, and its type alias was deleted by phase-482 W6",
+  "verdict": "divergence",
+  "why": "OUR LANGUAGES DISAGREE: our RUST throttle really throttles -- `Logger::{trace,debug,info,warn,error}_throttle(&mut last_log_ms, now_ms, interval_ms, msg)` gates on `should_log_throttled`, which is unit-tested (`packages/core/nros-core/src/logger.rs`). Our C++ does not: `RCLCPP_INFO_THROTTLE` / `_WARN_THROTTLE` / `_ERROR_THROTTLE` in `packages/api/nros-cpp/include/rclcpp/logging.hpp` expand to the un-throttled macro and DISCARD the `clock` and `period_ms` arguments, so a ported node that rate-limited a hot path at 1 Hz now logs it every iteration with no diagnostic. C has no throttle spelling at all. The shape difference from rclrs is real and constrained -- see `rust:ThrottleClock` -- but the C++ hole is not a divergence, it is unfinished work the header itself calls \"a follow-up\" (and RFC-0036's `_THROTTLE` note, which this stage was asked to verify, is accurate ONLY for C++). Phase 379 W3."
+}

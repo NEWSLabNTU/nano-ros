@@ -1,0 +1,6 @@
+{
+  "key": "rust:install_contract_modes",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). The Rust entry's install of the mode variants, after `install_contract_monitors` on the same executor handle. See `rust:install_contract_monitors`."
+}

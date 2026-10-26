@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorConfig::try_resolve",
+  "verdict": "extension",
+  "why": "the fallible form of `rust:ExecutorConfig::resolve`. It has to exist because RFC-0045 / issue 0206 make malformed identity input an ERROR, never a silent fallback -- a typo'd `ROS_DOMAIN_ID` must not invisibly move a node to domain 0 on a device nobody is watching."
+}

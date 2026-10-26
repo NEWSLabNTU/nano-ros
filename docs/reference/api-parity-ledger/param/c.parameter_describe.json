@@ -1,0 +1,6 @@
+{
+  "key": "c:parameter_describe",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-491 / RFC-0105: the C parameter API is rclc's `rclc_parameter_server_t` family under rclc's own names, over the executor's store (the one the six `rcl_interfaces` services read). Descriptor readback (rclcpp's `describe_parameter`) into caller buffers. rclc has no local describe."
+}

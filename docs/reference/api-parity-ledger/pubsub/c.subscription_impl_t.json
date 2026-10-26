@@ -1,0 +1,6 @@
+{
+  "key": "c:subscription_impl_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's pimpl. Our handles carry their state inline because there is no allocator to put it behind a pointer; see the init stage's `c:context_*`."
+}

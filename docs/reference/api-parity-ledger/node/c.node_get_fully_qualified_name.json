@@ -1,0 +1,5 @@
+{
+  "key": "c:node_get_fully_qualified_name",
+  "verdict": "divergence",
+  "why": "SHIPPED (PR #567) as `rclc_node_get_fully_qualified_name(node, char *buf, size_t buf_len, size_t *out_len)` (`packages/api/nros-c/src/node.rs:683`). rcl returns a `const char *`, which it can only do by STORING the joined string; with no allocator that is a per-node `MAX_NAME_LEN + MAX_NAMESPACE_LEN` cache holding what two fields already hold, so the caller supplies the buffer. A ported call is a COMPILE ERROR, which is what the rule asks for. Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
+}

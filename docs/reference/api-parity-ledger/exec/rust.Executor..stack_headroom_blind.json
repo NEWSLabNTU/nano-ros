@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::stack_headroom_blind",
+  "verdict": "extension",
+  "why": "phase-436 E3. Whether `stack-headroom-runtime` is armed on a port that cannot measure: a minimum is set, but the port's `stack_unused_bytes` answers 0, which the rule reads as \"not instrumented\" and skips every tick. `true` means the rule's silence is not evidence of headroom.\n\nExists because the two cases were indistinguishable. On ASI's default Zephyr FVP build (no `CONFIG_INIT_STACKS`) the rule was armed by the entry and reported zero violations, which read as a healthy stack and was in fact no measurement at all. Recorded when the bound is set, on the thread it describes, with one warning naming the fix.\n\nNo upstream counterpart: rclcpp/rclc/rclrs have no stack-headroom rule, so nothing to be blind about (same basis as `rust:Executor::set_min_stack_headroom_bytes` beside it)."
+}

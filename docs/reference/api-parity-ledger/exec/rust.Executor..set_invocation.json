@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_invocation",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "switches one registered callback between ON_NEW_DATA and ALWAYS at runtime -- rclc's invocation mode, which rclrs has no counterpart for. See `c:executor_handle_invocation_t`."
+}

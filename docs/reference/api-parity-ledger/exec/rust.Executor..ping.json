@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::ping",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "see `c:executor_ping`."
+}

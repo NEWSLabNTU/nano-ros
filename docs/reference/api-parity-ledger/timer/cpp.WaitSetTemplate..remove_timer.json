@@ -1,0 +1,6 @@
+{
+  "key": "cpp:WaitSetTemplate::remove_timer",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's `Waitable` protocol; see the pubsub stage's identical rows."
+}

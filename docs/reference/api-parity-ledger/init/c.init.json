@@ -1,0 +1,6 @@
+{
+  "key": "c:init",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "`rcl_init(argc, argv, options, context)` is the layer BELOW rclc, and rclc's own examples do not call it -- they call `rclc_support_init`, which is what `rclc_support_init` mirrors. Declining the lower layer is what makes the C API rclc-shaped rather than rcl-shaped."
+}

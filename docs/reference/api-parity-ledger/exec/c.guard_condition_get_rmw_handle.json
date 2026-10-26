@@ -1,0 +1,6 @@
+{
+  "key": "c:guard_condition_get_rmw_handle",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "our RMW seam is the vtable (RFC-0035), not an entity accessor. See `c:node_get_rmw_handle`."
+}

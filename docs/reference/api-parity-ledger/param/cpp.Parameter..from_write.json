@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Parameter::from_write",
+  "verdict": "extension",
+  "why": "issue 2056: builds the `Parameter` an on-set callback sees from the store's proposed write (`rclcpp::ParameterWrite`), arrays included. Public because a user who registers the freestanding function-pointer hook can lift its write into upstream's shape with it."
+}

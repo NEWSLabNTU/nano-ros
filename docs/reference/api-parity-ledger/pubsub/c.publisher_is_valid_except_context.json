@@ -1,0 +1,6 @@
+{
+  "key": "c:publisher_is_valid_except_context",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "checks a publisher whose context has already been finalised -- a teardown-ordering hazard from rcl's separately-owned context. Not reachable here; see `c:node_is_valid_except_context`."
+}

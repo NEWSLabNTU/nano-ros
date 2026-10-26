@@ -1,0 +1,5 @@
+{
+  "key": "c:cancel_response_t",
+  "verdict": "divergence",
+  "why": "the cancel callback's per-goal ACCEPT/REJECT decision, matching rclcpp_action::CancelResponse (with the same off-by-one in the discriminants as `c:goal_response_t`, and the same reasons for keeping it -- see `cpp:CancelResponse`). `rclc_cancel_return_code_t` is the RPC-level sibling; issue 0796 made Rust and C++ adopt this pair of names too, so the collision `c:cancel_return_code_t` used to describe is gone."
+}

@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Executor::set_memory_strategy",
+  "disposition": "absent",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "declined",
+  "why": "rclcpp's `MemoryStrategy` swaps the allocator used for wait-set handles and for messages taken during a spin -- the seam that exists because rclcpp allocates on the dispatch path. There is no dispatch-path allocation to strategise: the arena is sized at compile time and messages are taken into caller storage. no allocator -- one global `nros_platform_alloc` and inline caller-owned storage. See `cpp:Node::make_shared` and the `no-shared-ptr` rule in signature_rules.py. rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:install_node_typed_with_launch_in",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- the `_with_launch` twin of `install_node_typed_in`; launch-model wiring plus caller storage."
+}

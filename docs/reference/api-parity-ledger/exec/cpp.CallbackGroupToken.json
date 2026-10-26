@@ -1,0 +1,5 @@
+{
+  "key": "cpp:CallbackGroupToken",
+  "verdict": "extension",
+  "why": "phase-488 W3 (2026-10-25) -- what `cpp:Node::create_callback_group(CallbackGroupType)` returns and `CallbackGroup::SharedPtr` names: upstream's ANONYMOUS group as a token. It converts to the null `const CallbackGroup*` every group-taking verb reads as the node default, so a ported node's groups compile as written and dispatch on the node's default context; it cannot hold a NAMED (tier-mapped) group, so one cannot be lost through it. Ours-only because upstream's group is a `std::shared_ptr<CallbackGroup>` object with scheduling meaning this executor does not have (see `cpp:CallbackGroupType`)."
+}

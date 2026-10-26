@@ -1,0 +1,10 @@
+{
+  "key": "c:parameter_callback_t",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc_parameter/rclc_parameter.h",
+    "text": "but is not a rosidl ABI type; there are no"
+  },
+  "verdict": "divergence",
+  "why": "phase-491 / RFC-0105: the C parameter API is rclc's `rclc_parameter_server_t` family under rclc's own names, over the executor's store (the one the six `rcl_interfaces` services read). rclc's `(old, new, context)` signature, fired where rclc fires it (local typed sets, remote sets, remote NOT_SET deletes, remote creations; not add or local delete), with `RCLC_PARAMETER_DISABLED_ON_CALLBACK` re-entrancy. NO ALLOCATOR: `Parameter` keeps rosidl's member paths but is a view into the store, valid for the call only, with no rosidl `__init/__fini`."
+}

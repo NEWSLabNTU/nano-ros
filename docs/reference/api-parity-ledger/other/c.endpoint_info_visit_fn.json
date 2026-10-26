@@ -1,0 +1,5 @@
+{
+  "key": "c:endpoint_info_visit_fn",
+  "verdict": "divergence",
+  "why": "phase-381 W3. The ours-half of the `topic_endpoint_info_array_t` divergence this file already records: upstream returns an allocating array, there is no allocator at this seam, and the endpoint count has no bound the CALLER can know. So it streams through a visitor, one entry of peak memory, every string borrowed for the call. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
+}

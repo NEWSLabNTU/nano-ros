@@ -1,0 +1,6 @@
+{
+  "key": "c:interfaces__msg__ParameterValue",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "The value half of `c:interfaces__msg__Parameter`; same reason."
+}

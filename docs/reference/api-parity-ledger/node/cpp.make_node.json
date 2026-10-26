@@ -1,0 +1,5 @@
+{
+  "key": "cpp:make_node",
+  "verdict": "extension",
+  "why": "the value-returning spelling of `create_node`, kept for entry points that can take the move."
+}

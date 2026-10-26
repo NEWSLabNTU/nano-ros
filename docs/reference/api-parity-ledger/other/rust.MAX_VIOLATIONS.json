@@ -1,0 +1,5 @@
+{
+  "key": "rust:MAX_VIOLATIONS",
+  "verdict": "extension",
+  "why": "phase-474 I1 -- the violation ring's depth per executor and the SWD record's slot count (`NROS_EXECUTOR_MAX_VIOLATIONS`, default 8). The ring keeps the LATEST entries. See `rust:Executor::*violation*`."
+}

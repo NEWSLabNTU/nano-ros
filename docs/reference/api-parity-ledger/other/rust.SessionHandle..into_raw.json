@@ -1,0 +1,5 @@
+{
+  "key": "rust:SessionHandle::into_raw",
+  "verdict": "extension",
+  "why": "see `rust:SessionHandle`."
+}

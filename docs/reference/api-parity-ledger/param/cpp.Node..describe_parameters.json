@@ -1,0 +1,12 @@
+{
+  "key": "cpp:Node::describe_parameters",
+  "disposition": "absent",
+  "provides": [
+    "nros::Node::get_parameter",
+    "nros::Node::set_parameter",
+    "nros::Node::describe_parameter",
+    "nros::Node::set_parameters_atomically"
+  ],
+  "verdict": "declined",
+  "why": "RE-VERDICTED phase-417 W4.a. was `gap`. the vector form of `describe_parameter`, which ships one name at a time into caller storage (phase-417 W4.a). Every one of these is a vector of `rclcpp::Parameter` — a generated ROS message value object ledgered `declined` at `cpp:Parameter` — and a `std::vector` needs an allocator the freestanding lane does not have. The singular forms ship and reach the same store; the plural forms are declined because their ARGUMENT TYPE is, not because the capability is missing."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:get_zero_initialized_log_levels",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's zero-init idiom for a type we do not have; see `c:log_levels_*`. Same shape as `c:get_zero_initialized_init_options` in the init stage."
+}

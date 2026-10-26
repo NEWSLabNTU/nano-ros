@@ -1,0 +1,8 @@
+{
+  "key": "c:count_services",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "divergence",
+  "why": "IMPLEMENTED (issue 1978), under our receiver: see `c:executor_count_services`. As `c:count_clients`."
+}

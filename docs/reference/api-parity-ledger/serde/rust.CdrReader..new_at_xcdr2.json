@@ -1,0 +1,5 @@
+{
+  "key": "rust:CdrReader::new_at_xcdr2",
+  "verdict": "extension",
+  "why": "The read half of `rust:CdrWriter::new_at_xcdr2`."
+}

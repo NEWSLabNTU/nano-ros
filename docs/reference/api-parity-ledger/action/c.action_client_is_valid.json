@@ -1,0 +1,5 @@
+{
+  "key": "c:action_client_is_valid",
+  "verdict": "divergence",
+  "why": "CORRECTED 2026-09-04 (phase-417 W-M2): verdicted `extension`, which means \"we add it and ROS 2 has none\". The row is THEIRS-ONLY -- `rcl_action_client_is_valid` is rcl's, and the row's own text describes it as \"rcl's validity predicate\" -- so the verdict asserted the opposite of the bucket. It is a `divergence`: rcl asks a BOOLEAN, we answer with a three-state lifecycle on the handle, which is a reshaped answer to the same question rather than a capability we invented.\n\nrcl's validity predicate. Ours is `rclc_action_client_state_t` on the handle -- a three-state lifecycle (uninitialised / callback-mode / polling-mode) rather than a boolean, so double-init and use-after-fini return a code instead of being undefined. See the pubsub stage's `c:publisher_state_t`. Recorded as the theirs half; ours is `c:action_client_state_t`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:OnSetParameterFn",
+  "verdict": "divergence",
+  "why": "An accept/reject hook. rclrs takes a closure; this crate is `no_std` with no allocator so there is nothing to box a `FnMut` into, and this is a `fn` pointer plus an `OnSetContext`. `false` REFUSES the write, which is rclcpp's contract and the one C's legacy `nros_parameter_server_set_callback` already had on the wrong store. phase-417 W4.a."
+}

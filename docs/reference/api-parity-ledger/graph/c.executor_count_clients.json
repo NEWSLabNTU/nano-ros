@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_count_clients",
+  "verdict": "divergence",
+  "why": "issue 1978. Same verb as ROS 2 (Jazzy `rcl_count_clients` / `rclcpp::Node::count_clients`); the RECEIVER differs, for the reason every graph verb here gives (`c:executor_count_publishers`): a nano-ros image opens ONE session and the Executor owns it, so the graph is asked of the Executor. Reports what has been DISCOVERED and never blocks; a backend with no graph (XRCE, uORB) answers UNSUPPORTED, never 0. Backed by the rmw `count_clients` slot (zenoh: `SC` tokens in the graph cache; Cyclone: writers on `rq/<name>Request`)."
+}

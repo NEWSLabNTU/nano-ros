@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoWorkerServiceCallback",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows. See the node stage's `rust:Node::create_worker`."
+}

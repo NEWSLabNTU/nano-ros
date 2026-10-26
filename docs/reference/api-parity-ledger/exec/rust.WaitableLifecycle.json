@@ -1,0 +1,6 @@
+{
+  "key": "rust:WaitableLifecycle",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the RAII token that removes a waitable from its wait set on drop. rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`. static entity storage: the executor's entity table is an arena sized at compile time (`NROS_EXECUTOR_MAX_HANDLES`) with no allocator behind it, and a `HandleId` is an index into it. Registration is one-way -- no slot is ever reclaimed and no handle is ever invalidated."
+}

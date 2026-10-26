@@ -1,0 +1,6 @@
+{
+  "key": "rust:PrimitiveOptions::apply_to",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "folds the built options into a `QoSProfile`. The equivalent fold exists here and is BAKED rather than per-call: `QoSProfile::apply_overrides`. See `rust:IntoPrimitiveOptions`."
+}

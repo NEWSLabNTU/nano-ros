@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimerHandle::index",
+  "verdict": "divergence",
+  "why": "see `rust:TimerHandle`."
+}

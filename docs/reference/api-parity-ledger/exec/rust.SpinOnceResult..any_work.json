@@ -1,0 +1,5 @@
+{
+  "key": "rust:SpinOnceResult::any_work",
+  "verdict": "extension",
+  "why": "see `rust:SpinOnceResult`."
+}

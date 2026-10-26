@@ -1,0 +1,5 @@
+{
+  "key": "c:action_client_wait_for_action_server",
+  "verdict": "extension",
+  "why": "blocks until the action's send_goal queryable is discoverable, driving the executor. RFC-0021: a blocking helper takes the executor and drives it, which is what makes the timeout reliable on a single-threaded transport. rclcpp_action's `Client::wait_for_action_server` folds onto ours by the *Base rule; rclc has no counterpart. See the service stage's `c:client_wait_for_service`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GoalInfo",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp_action's alias for `action_msgs::msg::GoalInfo` (goal id + acceptance stamp). See `c:action_goal_info_t`: the stamp is the arena's, not the caller's. A C++ user loses the acceptance timestamp."
+}

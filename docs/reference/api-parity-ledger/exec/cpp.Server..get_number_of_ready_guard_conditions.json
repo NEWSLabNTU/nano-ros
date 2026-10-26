@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Server::get_number_of_ready_guard_conditions",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Server::add_to_wait_set`."
+}

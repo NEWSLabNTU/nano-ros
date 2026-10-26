@@ -1,0 +1,6 @@
+{
+  "key": "c:subscription_set_content_filter",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+}

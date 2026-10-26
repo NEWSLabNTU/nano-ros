@@ -1,0 +1,5 @@
+{
+  "key": "rust:Serialize::serialize",
+  "verdict": "extension",
+  "why": "The encode half of `rust:Deserialize`. It needs its own row only because the topic router files the TRAIT `Serialize` under `other` while filing `Deserialize` (and this method) under serde -- an artefact of the `serialize` pattern matching inside `deserialize` but not inside `Serialize`. Reported against topics.py; the verdict is `rust:Deserialize`'s."
+}

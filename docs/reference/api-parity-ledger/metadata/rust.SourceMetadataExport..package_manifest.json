@@ -1,0 +1,5 @@
+{
+  "key": "rust:SourceMetadataExport::package_manifest",
+  "verdict": "extension",
+  "why": "see `rust:SourceMetadataExport`."
+}

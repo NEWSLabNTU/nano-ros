@@ -33,7 +33,7 @@ lowering.
 **Done when** the resolver emits the rule for a declared ingress, and a cell
 shows a router running it drop the excess before it reaches the device.
 
-### W2 — the api-parity ledger stops conflicting ([issue 1091](../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md))
+### W2 — the api-parity ledger stops conflicting ([issue 1091](../issues/archived/1091-ledger-shards-conflict-on-sorted-key-insert.md))
 
 Two branches that add adjacent keys to a sorted ledger shard always conflict.
 The issue names the layout that does not. Land the open ledger PRs first, then
@@ -42,6 +42,18 @@ migrate in one commit against a quiet tree.
 **Done when** the issue's acceptance holds: two such branches merge with no
 conflict, `just check api-parity` is green, and its `--self-test` still rejects
 a row in the wrong stage.
+
+**Done (2026-10-26).** The ledger is one file per row,
+`docs/reference/api-parity-ledger/<topic>/<row file>.json`, read and written
+only through `scripts/api_parity/ledger_files.py`. The directory is the topic,
+so the shard identity survives. The file name is derived from the row's own
+`key`, so a duplicate key collides in git instead of surviving. The migration
+moved 3169 rows and was lossless against origin/main's loader. It also found
+`cpp:spin_once` filed in two shards, which the old loader had merged
+silently. Two branches adding adjacent keys now rebase and merge clean, where
+the old `pubsub.json` conflicted. `just check api-parity` is green. The
+self-test now plants a row under the wrong topic directory and requires the
+misfiling, mutation-tested. Measurements are in the issue's Resolution.
 
 ### W3 — `check-doc-commit-citations` reads history, not the object store ([issue 1205](../issues/archived/1205-doc-commit-citations-local-fetch-state.md))
 
@@ -109,7 +121,7 @@ quantization warning. Issue 2050 resolved.
 | Issue | Item | Severity |
 | --- | --- | --- |
 | [0506](../issues/0506-transport-band-unbounded-preemption.md) | W1 | unrated |
-| [1091](../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md) | W2 | unrated |
+| [1091](../issues/archived/1091-ledger-shards-conflict-on-sorted-key-insert.md) | W2 | unrated |
 | [1205](../issues/archived/1205-doc-commit-citations-local-fetch-state.md) | W3 | unrated |
 | [1808](../issues/1808-sizing-knobs-with-no-static-derivation.md) | W4 | low |
 | [1823](../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | W5 | low |

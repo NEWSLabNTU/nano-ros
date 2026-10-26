@@ -1,0 +1,5 @@
+{
+  "key": "rust:Subscription::supports_event",
+  "verdict": "extension",
+  "why": "see `rust:Publisher::supports_event`."
+}

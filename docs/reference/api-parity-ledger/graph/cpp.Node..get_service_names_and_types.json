@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::get_service_names_and_types",
+  "verdict": "divergence",
+  "why": "LANDED 2026-09-04 (phase-417 stage 2b): `nros::Node` and `nros::LifecycleNode` now forward this to the executor that owns them (`node.hpp`, `rclcpp_lifecycle/lifecycle_node.hpp`), over FFI that already shipped on `nros::Executor` (`executor.hpp:205-301`). It was verdicted `gap` -- not implemented -- when the capability was present one type over and only the forwarder was missing.\n\nIt stays a divergence on SHAPE. rclcpp returns owned heap containers (`std::vector<std::string>`, `std::map<std::string, std::vector<std::string>>`); the graph has no bound a caller can know, so a caller-sized buffer is an unanswerable question and an owned container needs an allocator. Ours streams through a visitor, which costs one entry of peak RAM.\n\nADOPT-BOUNDED envelope (RFC-0089), stated in the header: the call reports what has been DISCOVERED and never blocks, so an empty result means \"nobody seen yet\", not \"nobody exists\"; a backend with no graph returns `Unsupported`, which is a different answer from empty and must not be collapsed into zero."
+}

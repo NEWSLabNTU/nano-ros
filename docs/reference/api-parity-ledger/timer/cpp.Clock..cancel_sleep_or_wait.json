@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Clock::cancel_sleep_or_wait",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "cancels a blocking `sleep_until`/`ClockWaiter` wait; the blocking waits themselves are declined (`cpp:Clock::sleep_until`, RFC-0021)."
+}

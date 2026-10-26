@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Executor::remove_node",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Executor::add_node`."
+}

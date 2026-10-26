@@ -1,0 +1,5 @@
+{
+  "key": "cpp:create_action_client_raw",
+  "verdict": "extension",
+  "why": "creates a raw, poll-style action client into caller-owned `cpp:ActionClientStorage`; the caller drives it with `nros_cpp_action_client_send_goal` / `..._try_recv_goal_response` / `..._get_result`. USER-FACING: `examples/workspaces/cpp/src/action_client_pkg/src/FibClient.cpp` calls it directly. The poll tier is the opt-in; `cpp:bind_action_client` is the callback tier built on it (RFC-0041). rclcpp_action has no poll tier -- `async_send_goal` returns a `shared_future`."
+}

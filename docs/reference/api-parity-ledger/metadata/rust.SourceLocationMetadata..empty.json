@@ -1,0 +1,5 @@
+{
+  "key": "rust:SourceLocationMetadata::empty",
+  "verdict": "extension",
+  "why": "the no-location value, for adapters that have none to give (the C/C++ metadata path). See `rust:SourceLocationMetadata`."
+}

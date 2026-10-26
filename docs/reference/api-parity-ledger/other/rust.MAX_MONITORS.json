@@ -1,0 +1,5 @@
+{
+  "key": "rust:MAX_MONITORS",
+  "verdict": "extension",
+  "why": "phase-496 W1 -- how many rate/latency contract rows one executor watches; the generated `NROS_EXECUTOR_MAX_MONITORS`, derived from the contract. See `rust:MonitorSpec`."
+}

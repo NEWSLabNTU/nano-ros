@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierSetupGuard",
+  "verdict": "extension",
+  "why": "See `rust:TierSetupGate`: proof of holding the gate, which a runner can hand to the function that releases it once the tier's setup has returned."
+}

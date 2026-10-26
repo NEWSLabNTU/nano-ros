@@ -1,0 +1,5 @@
+{
+  "key": "rust:OnSetContext",
+  "verdict": "extension",
+  "why": "Two machine words of caller context, carried verbatim to an `OnSetParameterFn`. TWO because a C or C++ registration is a FUNCTION POINTER plus a user `void*`: one word would force each wrapper to keep a static side table mapping an index back to the pair, which is a second registry with its own bound. `usize` rather than `*mut c_void` because a raw pointer in that struct strips `ParameterServer`'s auto traits and the store lives inside the executor. Upstream has no correspondent — a closure captures. phase-417 W4.a."
+}

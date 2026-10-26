@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Context::add_pre_shutdown_callback",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/rclcpp.hpp",
+    "text": "the executor's fixed table (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2): a"
+  },
+  "verdict": "divergence",
+  "why": "phase-488. Upstream's `std::function<void()>` form, on the std surface, returning the handle; plus a freestanding C-callback form with a context pointer and an out-handle (the extra arity). Both share the executor's fixed shutdown-callback table (see `cpp:Context`)."
+}

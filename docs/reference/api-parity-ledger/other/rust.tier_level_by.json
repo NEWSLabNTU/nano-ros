@@ -1,0 +1,5 @@
+{
+  "key": "rust:tier_level_by",
+  "verdict": "extension",
+  "why": "phase-509 P7 (RFC-0108 D8) -- `tier_level` over a runner's own tier array (a priority accessor), so a board need not copy its priorities out. rclrs has no levels."
+}

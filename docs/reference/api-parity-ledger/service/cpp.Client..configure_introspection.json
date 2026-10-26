@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Client::configure_introspection",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "see `c:client_configure_service_introspection`."
+}

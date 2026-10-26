@@ -1,0 +1,5 @@
+{
+  "key": "c:subscription_set_on_new_message_callback",
+  "verdict": "divergence",
+  "why": "rcl lets a caller install a notify-on-arrival hook AFTER creation, so an executor can attach itself to an existing subscription. Ours is bound at creation and cannot be swapped; the notify half is `nros_subscription_set_wake_callback`."
+}

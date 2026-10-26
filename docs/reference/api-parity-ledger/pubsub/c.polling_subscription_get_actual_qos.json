@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_subscription_get_actual_qos",
+  "verdict": "extension",
+  "why": "the polled half of `c:subscription_get_actual_qos`, which carries the contract: the QoS the backend reports it is running, read straight from the inline subscriber. Split out by phase-487 W1 with the type."
+}

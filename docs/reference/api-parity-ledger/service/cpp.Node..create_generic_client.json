@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Node::create_generic_client",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "see `cpp:GenericClient`."
+}

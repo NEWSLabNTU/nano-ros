@@ -476,7 +476,7 @@ Four reasons, in the order they decided it:
 
 1. **`_in` already reads as "in place" everywhere else in this tree.**
    `Executor::open_in` takes caller-provided backing storage (recorded in
-   `api-parity-ledger/exec.json`: *"the `*_in` suffix takes CALLER-provided
+   `api-parity-ledger/exec/`: *"the `*_in` suffix takes CALLER-provided
    backing storage — an image places the arena in a static, not on a heap"*).
    The ours-only family is that same word: the caller's storage, the caller's
    error channel, no allocator. Keeping `_in` for it costs nothing and keeps
@@ -4261,7 +4261,7 @@ RFC-0043/0044 survives as the per-type hook a component needs for static
 sizing, the C-ABI install symbols, name-keyed RTIC/Embassy dispatch and the
 metadata probe, but it no longer hands the component a different node-shaped
 type. That supersedes the split recorded as a `divergence` in the API-parity
-ledger's `node.json`, and the "Rust parity → defer (242.6)" note in RFC-0044.
+ledger's `node/` topic, and the "Rust parity → defer (242.6)" note in RFC-0044.
 
 Gates: `check-rust-one-node-type` refuses a `pub trait Node` in the `nros`
 facade and any re-export of the node-shaped names phase-483 retired

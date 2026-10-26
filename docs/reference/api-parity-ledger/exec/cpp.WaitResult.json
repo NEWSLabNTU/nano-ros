@@ -1,0 +1,6 @@
+{
+  "key": "cpp:WaitResult",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "what `WaitSetTemplate::wait` hands back -- ready / timeout / empty plus the ready entities. rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:cdr_end_dheader",
+  "verdict": "extension",
+  "why": "Backpatches the mark reserved by `c:cdr_begin_dheader` with the member-block size. Same RFC-0055 story; see that row."
+}

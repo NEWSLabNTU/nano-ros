@@ -1,0 +1,7 @@
+{
+  "key": "cpp:SubscriptionContentFilterOptions",
+  "disposition": "absent",
+  "unextracted": "an upstream type absent from the recorded rclcpp surface; the row records the decline for whoever meets it in a newer distro",
+  "verdict": "declined",
+  "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+}

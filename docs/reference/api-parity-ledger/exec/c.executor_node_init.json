@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_node_init",
+  "verdict": "divergence",
+  "why": "static entity storage plus one session: a node is created ON the executor (`rclc_executor_node_init(executor, node, name, options)`) and lands in the executor's node table (`NROS_EXECUTOR_MAX_NODES`), so it cannot exist before one or be moved between two. rcl builds a node from an `rcl_context_t` and rclc adds it nowhere; see `cpp:Executor::add_node` for the same divergence in C++ and `cpp:Context` for why there is no separate context."
+}

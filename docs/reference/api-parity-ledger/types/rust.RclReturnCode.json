@@ -1,0 +1,6 @@
+{
+  "key": "rust:RclReturnCode",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the `rcl_ret_t` numeric mirror rclrs's error carries. Was a `gap` here, on the reading that we had the type (in nros-core's `error` module) and merely failed to export it. Issue 0783 settled it the other way and DELETED it, because exporting it would have shipped a type a user can name and never receive: nothing in the tree produced an `RclReturnCode`, its only appearance was as the `code` field of `NanoRosError` (see `rust:RclrsError`), and its numeric space is not ours -- our codes are `NROS_RET_*`, 0 and -1..-16, an independent negative space defined in nros-c/src/error.rs and reached only across the C/C++ ABI. The Rust user API matches a flat enum and carries no numeric code at any layer, which is the divergence `rust:RclrsError` records. Constraint: `no_std` (a code table is not the cost -- the absent thread-local error state it indexes into is)."
+}

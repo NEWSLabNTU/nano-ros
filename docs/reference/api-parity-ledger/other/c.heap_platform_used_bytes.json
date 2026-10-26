@@ -1,0 +1,5 @@
+{
+  "key": "c:heap_platform_used_bytes",
+  "verdict": "extension",
+  "why": "the port's UNIFIED heap, spanning the Rust global allocator AND the C side (zenoh-pico's `z_malloc`), which is one kernel arena on every port. `rclc_heap_used_bytes` sees only the Rust half and says so in its own doc comment, which is why both exist. See `c:heap_used_bytes`."
+}

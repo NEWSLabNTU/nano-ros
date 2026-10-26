@@ -1,0 +1,5 @@
+{
+  "key": "rust:ServiceInfo",
+  "verdict": "gap",
+  "why": "rclrs's per-request metadata handed to a service callback: the request id (client GID + sequence number) and the source/received timestamps. Our service callback receives the request alone; the subscription side has `MessageInfo`, the service side has no counterpart. Issue 1942. It read as matched until phase-506 W1, because the facade re-exported the RMW seam's `ServiceInfo` -- a service descriptor -- under the same name."
+}

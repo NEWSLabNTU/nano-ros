@@ -1,0 +1,5 @@
+{
+  "key": "c:lifecycle_register_on_cleanup",
+  "verdict": "divergence",
+  "why": "see `c:lifecycle_register_on_configure` -- same handle, same `rclc_lifecycle_callback_t` shape, same fixed declaration (issue 0792)."
+}

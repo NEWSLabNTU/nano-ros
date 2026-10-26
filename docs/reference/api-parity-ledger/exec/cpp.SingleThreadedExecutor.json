@@ -1,0 +1,11 @@
+{
+  "key": "cpp:SingleThreadedExecutor",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/rclcpp.hpp",
+    "text": "with `add_node` CHECKING the attachment that construction already made"
+  },
+  "unextracted": "the recorded rclcpp surface does not include `rclcpp/executors/single_threaded_executor.hpp`, and the ours extractor does not record the nested `executors` namespace",
+  "verdict": "divergence",
+  "why": "phase-488 (2026-10-21). ADOPT-BOUNDED. A facade over the PROCESS executor, which is where every `rclcpp::Node` already lives (one session per image, issue 0465; a node's entities are created in that executor's arena when it is constructed, RFC-0002), so `SingleThreadedExecutor executor; executor.add_node(node); executor.spin();` keeps its meaning. THE BOUND: there is no second executor to build, so two instances are the same executor; `add_node` checks rather than attaches and aborts naming the node when it failed to create or lives on an explicit `rclcpp::Executor` (`NROS_RCLCPP_REFUSE_FOREIGN_EXECUTOR_NODE`) -- spinning this would never reach it; there is no `remove_node`, because arena registration is one-way (`cpp:Executor::add_node`). `spin()` is `rclcpp::spin_in()`, `spin_some(max_ms)` is the process executor's `nros_cpp_spin_some` (milliseconds, see `cpp:Executor::spin_some`)."
+}

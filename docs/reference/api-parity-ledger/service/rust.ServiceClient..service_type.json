@@ -1,0 +1,5 @@
+{
+  "key": "rust:ServiceClient::service_type",
+  "verdict": "extension",
+  "why": "the ROS service type name a declared entity carries, so codegen and the launch resolver can check both ends agree without running the image (RFC-0043). rclrs knows the type statically and never needs it as data."
+}

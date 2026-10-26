@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollSubscription::get_topic_name",
+  "verdict": "extension",
+  "why": "the topic this subscriber was created for, kept C++-side since phase 87.6 (the runtime handle does not store it). Upstream's `SubscriptionBase::get_topic_name` is the same accessor on the entity `cpp:Subscription::get_topic_name` corresponds to; this is the ours-only poll type's copy of it."
+}

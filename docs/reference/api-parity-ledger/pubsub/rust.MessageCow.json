@@ -1,0 +1,6 @@
+{
+  "key": "rust:MessageCow",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's borrow-or-own wrapper so `publish` accepts either a reference or an owned message. Ours takes `&M` and serialises immediately -- there is no deferred path for an owned message to be worth keeping."
+}

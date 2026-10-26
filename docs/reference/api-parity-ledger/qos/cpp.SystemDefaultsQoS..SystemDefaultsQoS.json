@@ -1,0 +1,6 @@
+{
+  "key": "cpp:SystemDefaultsQoS::SystemDefaultsQoS",
+  "disposition": "refuse-loud",
+  "verdict": "declined",
+  "why": "see `cpp:SystemDefaultsQoS`. CORRECTED 2026-09-04 (phase-417): verdicted `gap` -- \"ROS 2 has it, we should too, nobody has done it\" -- about the CONSTRUCTOR of a class that REFUSES LOUDLY (`packages/api/nros-cpp/include/rclcpp/qos.hpp:767` (in `rclcpp_compat.hpp` until phase-417 stage 6 step A deleted it), a dependent `static_assert` carrying `NROS_RCLCPP_REFUSE_SYSTEM_DEFAULTS_QOS`). It correlates `same` because the name and the shape exist on purpose; instantiating it is a compile error. A pointer row that does not carry its target's verdict reads as a work item, which is the one thing this ledger exists to prevent.\n\nphase-428 Q1 (2026-09-06): SITE `packages/api/nros-cpp/include/rclcpp/qos.hpp:766-767`, the refused constructor itself; see `cpp:SystemDefaultsQoS`."
+}

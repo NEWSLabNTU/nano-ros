@@ -1,0 +1,5 @@
+{
+  "key": "rust:SubscriptionOptions::qos",
+  "verdict": "extension",
+  "why": "The builder-style QoS setter on the standalone node's `SubscriptionOptions`. rclrs carries QoS in `SubscriptionOptions` too but reaches it through `IntoPrimitiveOptions`/`.qos(..)` on the topic string rather than a method on the options struct, so the member does not correlate. Surfaced 2026-08-26 by the `subscriber`->`subscription` rename: the type's old name meant this member was filed under a key that no longer exists.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. RANKED-10, subscription half. Same measurement as `rust:PublisherOptions::qos`: the builder writes the field, `Node::create_subscription` (`packages/core/nros-node/src/node.rs:298`) copies it into `SubscriberInfo`, and `SubscriberInfo::qos` is read by nothing — `subscription_topic_info` carries no QoS and `StandaloneNode` has no transport. SILENTLY WRONG: the setter compiles, chains and does not configure. See that row for the two corrections to the finding's wording.\n\nThe disposition for this finding is recorded on `rust:PublisherOptions::qos`, which carries the full statement."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "cpp:PollClient::async_send_request",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/polling_client.hpp",
+    "text": "Absent on a freestanding build, where there is no `<memory>`: send the"
+  },
+  "verdict": "extension",
+  "why": "issue 1996 -- an UPSTREAM name on an ours-only type, the shape `cpp:PollClient::wait_for_service` set: the comparison against `rclcpp::Client::async_send_request` stays on `cpp:Client::async_send_request`; this row records that the poll client (what `create_client<S>(name)` with no handler returns) now answers upstream's pointer-taking spelling. HOSTED ONLY (`NROS_CPP_HAS_SHARED_PTR`): it sends `*request` exactly as `send_request(const Request&)` does and returns the same `rclcpp::Future`; a null request returns an empty future and sends nothing. THE BOUND is `send_request`'s, not a new one: since issue 2009 the future is keyed by sequence id, so several may be in flight on one client up to the transport's own outstanding-request limit (a send past it returns an empty future). Freestanding has no `<memory>`, so the name is absent and `send_request(req)` is the spelling. Held by `client_future_shape_runtime.cpp`. issue 2037 -- it returns `FutureAndRequestId` (`.future`, `.request_id`, `share()`), not a bare `rclcpp::Future`; see `cpp:Client::async_send_request`."
+}

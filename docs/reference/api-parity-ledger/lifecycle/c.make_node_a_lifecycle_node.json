@@ -1,0 +1,10 @@
+{
+  "key": "c:make_node_a_lifecycle_node",
+  "disposition": "absent",
+  "provides": [
+    "rclc_lifecycle_init",
+    "rclc_executor_register_lifecycle_services"
+  ],
+  "verdict": "declined",
+  "why": "theirs `(lifecycle_node_t*, node_t*, lifecycle_state_machine_t*, allocator_t*, bool)`. We shipped a two-argument `nros_make_node_a_lifecycle_node(sm, node)` until issue 0792 REMOVED it. It forwarded to `rclc_lifecycle_init`, which only NULL-CHECKED the node and never stored it -- a function named \"make node a lifecycle node\" that did not make a node a lifecycle node. It was removed rather than repaired because storing the node would not have repaired it: rclc's version can bind a node because its state machine OWNS the communication interface, whereas ours is reached the other way round. `Executor::register_lifecycle_services` builds the five REP-2002 servers on the EXECUTOR's session, keeps them in the executor's `LifecycleRuntimeState`, and depends on the executor's spin loop to poll them -- none of which a caller-held `rcl_lifecycle_state_machine_t` can obtain from an `rcl_node_t *`. So the capability rclc folds into construction (its `bool enable_communication_interface`) is `rclc_executor_register_lifecycle_services` here: one explicit call registering all five servers, explicit because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. The `allocator_t*` is covered by the `no-allocator` rule, and the separate `lifecycle_state_machine_t*` by `c:lifecycle_node_t` (rclc keeps the wrapper and the rcl state machine as two objects; our one handle IS the state machine)."
+}

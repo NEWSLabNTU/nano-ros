@@ -1,0 +1,5 @@
+{
+  "key": "rust:write_file",
+  "verdict": "extension",
+  "why": "phase-359 W10 stage C — part of the hosted PROCESS edge in `nros::env` (`packages/api/nros/src/env.rs`), the one place nano-ros calls the C library for a process facility, so `nros-c` / `nros-cpp` write their census, metadata and profile files and read `--params-file` without libstd (their image roots are `#![no_std]`). Linux targets only. rclrs has no counterpart: it is a `std` crate and uses `std::env` / `std::fs` / `std::process` directly; this is that surface for a `no_std` image inside a process. `write_file(path, bytes) -> Result<(), &'static str>`: `std::fs::write` through `fopen`/`fwrite`/`fclose`, a full disk reported from `fclose` (`alloc`)."
+}

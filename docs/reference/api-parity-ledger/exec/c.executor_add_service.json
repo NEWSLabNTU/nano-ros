@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_service",
+  "verdict": "divergence",
+  "why": "rclc's `rclc_executor_add_service(exec, service, request_msg, response_msg, callback)`, which hands its callback DESERIALIZED payloads in caller storage. Ours is `rclc_executor_add_service_raw(exec, service, callback, context)` (CDR bytes; see `c:executor_add_service_raw` for why the name keeps `nros_` and `_raw`), and a generated `<Srv>_executor_add_service(exec, service, &handler)` gives the typed path with both payload structs inside the handler. The two-argument `nros_executor_add_service(exec, service)` that used this name until phase-487 W2 dispatched a callback the init call had stored in the struct, and went when the struct stopped storing one."
+}

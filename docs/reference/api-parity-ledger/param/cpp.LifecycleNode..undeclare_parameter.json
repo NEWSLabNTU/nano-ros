@@ -1,0 +1,10 @@
+{
+  "key": "cpp:LifecycleNode::undeclare_parameter",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+    "text": "throws; ours reports (RFC-0089's error-channel rule"
+  },
+  "verdict": "divergence",
+  "why": "phase-482 W4 (2026-10-07): `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::undeclare_parameter`, inherited, with `cpp:Node::undeclare_parameter`'s contract. The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves.\n\nBefore phase-482 W4: phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::undeclare_parameter` (both return a `Result` where upstream returns `void`). UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the forwarder's doc comment (previously the bare \"`undeclare_parameter(name)`.\") states the `Result` return and the UNBOUND `InvalidArgument` answer."
+}

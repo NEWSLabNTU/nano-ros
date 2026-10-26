@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::*parameter*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "The parameter surface C and C++ forward to, and the Rust half of stage 4. OURS-ONLY BY RECEIVER: rclrs puts these on `Node`, and our store belongs to the EXECUTOR because an image composes several nodes onto one executor and there is no allocator to give each node a table (phase-426 W1). So each verb carries an `_on` spelling naming the node and a bare one meaning the primary — the pair every other parameter verb on the executor already had. Every member forwards to `nros_params::ParameterServer` and holds no state; the wrappers forward HERE, which is what keeps all three languages on one store. phase-417 W4.a."
+}

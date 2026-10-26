@@ -1,0 +1,5 @@
+{
+  "key": "rust:BootConfig::from_baked",
+  "verdict": "extension",
+  "why": "Turns a `&'static BakedBootConfig` into the `Option`-per-field `BootConfig` the resolver consumes: validates magic + version, then yields `Some` for each field whose `set_flags` bit is set, taking strings up to the first NUL and treating invalid UTF-8 in a set field as unset. This is the READ half of the asymmetry recorded at `c:boot_config_node_name` -- it reads all four fields where C reads one."
+}

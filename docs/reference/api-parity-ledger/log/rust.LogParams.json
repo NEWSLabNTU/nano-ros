@@ -1,0 +1,5 @@
+{
+  "key": "rust:LogParams",
+  "verdict": "divergence",
+  "why": "rclrs carries severity, occurrence, throttle interval, logger name and a user filter as RUNTIME FIELDS of a builder its `log!` macro consumes. Ours encode severity in the MACRO NAME (`nros_trace!` .. `nros_fatal!`) so that `severity_enabled_at_compile_time` -- a `const fn` over the `NROS_LOG_MAX_LEVEL` knob (issue 1037; formerly the `max-level-*` Cargo features) -- can gate the whole call site before it is built, and rustc eliminates the format string with it. The constraint is the compile-time options rule (RFC-0036/0045) applied to logging, and the reason it matters here is flash: a runtime `severity` field defeats the elimination that keeps format strings out of a 16 KB image. `LogParams::get_throttle_clock` is already ledgered in the timer stage. Our nearest equivalent of `get_user_filter` / `only_if` is an `if` around the call, which costs nothing; `get_logger_name` is `nros_log::Logger::name()`."
+}

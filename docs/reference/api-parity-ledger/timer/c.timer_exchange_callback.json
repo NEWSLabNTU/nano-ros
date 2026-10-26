@@ -1,0 +1,6 @@
+{
+  "key": "c:timer_exchange_callback",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "swaps a timer's callback at runtime. The callback is bound to the ENTITY at creation (RFC-0041) so the executor's static dispatch table cannot be rewritten while it is being walked."
+}

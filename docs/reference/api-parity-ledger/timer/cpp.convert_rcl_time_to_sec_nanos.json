@@ -1,0 +1,9 @@
+{
+  "key": "cpp:convert_rcl_time_to_sec_nanos",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "converts an `rcl_time_point_value_t` into a `builtin_interfaces/Time` message; rcl time points are not part of our C++ surface (our `Time` carries nanoseconds directly)."
+}

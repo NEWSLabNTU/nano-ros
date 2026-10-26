@@ -1,0 +1,5 @@
+{
+  "key": "rust:IntegrityStatus::is_valid",
+  "verdict": "extension",
+  "why": "the one-call collapse of those three. See `rust:IntegrityStatus`."
+}

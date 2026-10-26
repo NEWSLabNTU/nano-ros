@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Context::init",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). `rclcpp::init` initialises the one executor; a context is not initialised separately."
+}

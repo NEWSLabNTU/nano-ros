@@ -1,0 +1,5 @@
+{
+  "key": "c:guard_condition_callback_t",
+  "verdict": "divergence",
+  "why": "the callback type belongs to the guard condition rather than to the executor's `add` call, because it is bound to the entity (RFC-0041). rcl's counterpart is the `rclc_gc_callback_t` passed to `rclc_executor_add_guard_condition` -- the `executor-owns-no-entity-storage` rule, seen as a type. See `c:subscription_callback_t`. Since phase-417 W4.e it is a parameter of `rclc_node_create_guard_condition`, which is where the binding now happens; nothing installs it after the fact."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ServiceHandle::reset",
+  "verdict": "extension",
+  "why": "`shared_ptr::reset`'s shape, and the spelling ported code uses to get rid of a service: it RELEASES the service (the handler stops, the server leaves the graph, its arena entry is freed) and empties the handle. Upstream's drops one reference and destroys the service only with the last; ours has no count, so it releases for every copy at once (issue 1667, the same contract as `cpp:TimerHandle::reset`). A copy that outlives the release is stale and safe: the handle carries its slot's generation (phase-476 W0), so it reaches nothing, not even a registration of a different kind that took the slot. From inside the handler the release takes effect when it returns. Dropping or overwriting the handle does NOT release; destroying the node does."
+}

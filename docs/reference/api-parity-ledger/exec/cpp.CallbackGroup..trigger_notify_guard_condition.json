@@ -1,0 +1,6 @@
+{
+  "key": "cpp:CallbackGroup::trigger_notify_guard_condition",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:CallbackGroup::get_notify_guard_condition`."
+}

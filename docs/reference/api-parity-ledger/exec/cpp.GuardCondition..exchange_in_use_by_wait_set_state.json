@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GuardCondition::exchange_in_use_by_wait_set_state",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`."
+}

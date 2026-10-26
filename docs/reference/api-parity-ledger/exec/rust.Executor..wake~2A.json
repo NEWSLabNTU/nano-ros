@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::wake*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "release a `spin_once` blocked in the backend's `drive_io` before its poll timeout expires, from another task or an ISR, and hand out the handle that does it. This is what a guard condition is FOR in rclcpp, reached there through the wait set; with no wait set (rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`.) the wake is a primitive on the executor. Phase 104.C.6."
+}

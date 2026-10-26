@@ -1,0 +1,5 @@
+{
+  "key": "c:action_goal_info_t",
+  "verdict": "divergence",
+  "why": "rcl's goal id + acceptance timestamp. Ours carries the id alone (`rclc_goal_uuid_t`) at the C boundary: the stamp is filled by the arena when it publishes status, and an image with no clock source (RFC-0036: time is a board capability) cannot be asked to supply one at accept time. `nros_core::GoalInfo` keeps both fields for the wire. Issue 2029 (2026-10-24): the server core now KEEPS each goal's acceptance stamp (`RawActiveGoal::stamp`, read from `Clock::ros_time()` at accept; zero on a board with no wall clock) and writes it into the SendGoal reply, the status array and every `goals_canceling` entry, which is what cancel-before needs; the C boundary still hands a callback the id alone."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelCore::new",
+  "verdict": "extension",
+  "why": "phase-509 P10 -- make a runtime the core's level runtime: the port's recursive priority-inheriting lock and thread identity installed, the level count stated, the boot level current. rclrs has no levels."
+}

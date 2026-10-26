@@ -1,0 +1,6 @@
+{
+  "key": "c:action_server_is_valid_except_context",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's variant that ignores whether the CONTEXT is still valid, for teardown ordering. There is one context per image and it outlives every entity (see the init stage's `c:context_*`), so the distinction has no second case."
+}

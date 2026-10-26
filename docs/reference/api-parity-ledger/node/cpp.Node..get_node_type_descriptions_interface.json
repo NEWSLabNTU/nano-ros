@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Node::get_node_type_descriptions_interface",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "two declines meet: rclcpp's `Node*Interface` slices (`cpp:Node::get_node_base_interface`) and the type description service. REP-2016's `~/get_type_description` service. Serving it embeds every type's full TypeDescription in flash and costs a service server per node — a zenoh queryable slot from a budget the parameter and lifecycle services already exceed embedded (`ZPICO_MAX_QUERYABLES` = 8). Type IDENTITY is not declined: codegen emits the RIHS01 hash and the zenoh keyexpr carries it under `ros-jazzy`. DECLINED; see rmw-api-map.toml `RMW_MIDDLEWARE_SUPPORTS_TYPE_DISCOVERY`."
+}

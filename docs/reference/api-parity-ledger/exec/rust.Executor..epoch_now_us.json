@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::epoch_now_us",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "wall-clock microseconds since the UNIX epoch, or `None` when the target has no epoch source. RFC-0052: `header.stamp` is ROS (wall) time while the executor's own accounting is monotonic, so age monitoring needs both clocks and has to be able to say that one is absent -- a baked `max_age_ms` with no epoch source is a BAKE-time error, never a silently dead monitor. rclcpp assumes an OS clock."
+}

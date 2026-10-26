@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Node::declare_parameters",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+    "text": "Returns `Result`, NOT upstream's `std::vector<T>` of the values in effect."
+  },
+  "verdict": "divergence",
+  "why": "SHIPPED phase-417 W4.a. The map-taking bulk form, hosted only, because upstream's argument IS a `std::map<std::string, T>`. `prefix` is joined with `.` exactly as upstream does. The envelope: upstream returns `std::vector<T>`, the values IN EFFECT after each declaration, and ours returns `nros::Result`. They differ only where a launch seed already declared a name — the case rclcpp's return exists for — and a caller who needs it reads back with `get_parameter<T>`. A ported file that ignores the return compiles and behaves identically; one that binds it does not compile, which is the loud half. The row previously said `ComponentNode` 'would not have it either'; that type is gone (phase-427 W4) and the reason it gave (the map needs an allocator) is what the `NROS_CPP_STD` gate is for, not a reason to decline.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the method's doc comment states the `Result`-vs-`std::vector<T>` bound and the `get_parameter<T>` read-back. `book/src/concepts/ros2-comparison.md` listed `declare_parameters` as \"not exposed\", contradicting this shipped API; it now names the C++ hosted bulk form and its bound."
+}

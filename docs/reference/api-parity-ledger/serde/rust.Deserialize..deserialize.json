@@ -1,0 +1,5 @@
+{
+  "key": "rust:Deserialize::deserialize",
+  "verdict": "extension",
+  "why": "The trait's one method; see `rust:Deserialize`."
+}

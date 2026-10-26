@@ -1,0 +1,5 @@
+{
+  "key": "rust:MECHANISM_EXECUTOR",
+  "verdict": "extension",
+  "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): a monitor row's `mechanism`: checked in the spin loop. See `rust:ReactionEvent`."
+}

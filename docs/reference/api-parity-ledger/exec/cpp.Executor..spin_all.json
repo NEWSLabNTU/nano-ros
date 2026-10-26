@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Executor::spin_all",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's 'keep collecting and executing until the ready set is empty or `max_duration` expires'. Same answer as `cpp:Executor::spin_some`: `spin_once` already drains the ready set, and `spin_for` is the duration-bounded loop -- differing from `spin_all` in that it keeps waiting for new work rather than returning when work runs out."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TimerHandle::handle_id",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the packed executor handle (slot plus generation, phase-476 W0) this refers to. Ours-only: rclcpp has no arena and no slot. For introspection and tests."
+}

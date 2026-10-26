@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorNodeRuntime",
+  "verdict": "extension",
+  "why": "the adapter that lets a declarative component (RFC-0043/0044) run against a real `Executor`: it registers the component's declared entities, owns the spin loop, and routes each callback back into `ExecutableNode::on_callback`. rclrs has no counterpart because a user there constructs entities and closures directly. Covers its members (`register_node`, `spin`, `spin_once`, `spin_once_counted`, `dispatch_callback`, `apply_tier_sched_policy`, `component_count`, `halt`, `executor`, `executor_mut`, `from_executor`). Moved to the doc-hidden `nros::__macro` by phase-506 W1 (RFC-0071 D12): it is what `nros::node!` / `nros::main!` and the board entry glue expand into, so generated code keeps its path and a node author no longer meets it beside the user API."
+}

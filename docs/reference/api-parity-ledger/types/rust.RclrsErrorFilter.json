@@ -1,0 +1,6 @@
+{
+  "key": "rust:RclrsErrorFilter",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "an iterator adapter over `Result` that swallows take-failed and timeout as non-errors. It exists because rclrs's take path reports an empty queue as an error; ours reports emptiness as `Ok(false)` (issue 0757's audit), so there is nothing to filter."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:get_node_logger",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's free function taking a raw `rcl_node_t*`, for code holding the handle but not the `rclcpp::Node`. Our member form `Node::get_logger()` matches rclcpp's and correlates as `same`; we expose no raw node handle to build a free form on top of (`Node::ffi_handle` is the C seam, not user API -- see the node stage)."
+}

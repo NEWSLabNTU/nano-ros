@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimerCallbackFn",
+  "verdict": "divergence",
+  "why": "a fn-pointer, not a boxed closure; see `cpp:TimerCallbackType`."
+}

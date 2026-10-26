@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimerCallInfo::lateness_ns",
+  "verdict": "extension",
+  "why": "issue 2038 — `actual_call_time - expected_call_time`, how late the activation ran (never negative). See `rust:TimerCallInfo`."
+}

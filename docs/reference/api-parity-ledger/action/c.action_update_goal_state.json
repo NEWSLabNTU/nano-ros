@@ -1,0 +1,11 @@
+{
+  "key": "c:action_update_goal_state",
+  "provides": [
+    "rclc_action_execute",
+    "rclc_action_succeed",
+    "rclc_action_abort",
+    "rclc_action_canceled"
+  ],
+  "verdict": "divergence",
+  "why": "rcl drives the transition through the goal handle and an EVENT enum. Ours names the transitions directly -- `rclc_action_execute`, `rclc_action_succeed`, `rclc_action_abort`, `rclc_action_canceled` -- because there is no handle object to carry a state machine. our goal handle is a 16-byte UUID TOKEN, not an owning object: `rclc_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `rclc_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+}

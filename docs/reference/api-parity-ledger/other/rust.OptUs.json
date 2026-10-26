@@ -1,0 +1,5 @@
+{
+  "key": "rust:OptUs",
+  "verdict": "extension",
+  "why": "an optional microsecond field with `0` as the absent sentinel, `#[repr(transparent)]` over `u32`. Not `Option<NonZeroU32>`: the niche optimisation is lost the moment a `#[repr(C)]` struct embeds it, and these fields cross the C ABI where cbindgen must emit a plain `uint32_t`. `0` is physically meaningful for every field it covers -- zero period is infinite frequency, zero budget is unbounded, zero deadline is no deadline. See `rust:SchedClass`."
+}

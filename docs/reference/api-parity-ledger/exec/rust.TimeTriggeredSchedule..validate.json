@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimeTriggeredSchedule::validate",
+  "verdict": "extension",
+  "why": "rejects overlapping or out-of-frame windows at DECLARATION time -- a schedule that cannot be met should fail where it is written, not by missing deadlines on target. See `rust:TimeTriggeredSchedule`."
+}

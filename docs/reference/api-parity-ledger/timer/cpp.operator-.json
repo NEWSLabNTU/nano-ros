@@ -1,0 +1,6 @@
+{
+  "key": "cpp:operator-",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-488 (Nav2's velocity smoother writes `stamp + delta`). OVERRIDDEN, declined/absent -> divergence/adopt. `builtin_interfaces::msg::Time - rclcpp::Duration` (and `+`), upstream's free operators, as templates over any `{sec, nanosec}` message, because the message is generated in the user's build; found by argument-dependent lookup through `Duration`. Same result as upstream's. Humble's extractor surface has no upstream row for it, so it correlates as ours-only there. Previous text: `builtin_interfaces::msg::Time - rclcpp::Duration`, an operator on a GENERATED message struct. Our time arithmetic lives on `rclcpp::Time`/`Duration`; codegen emits plain message PODs with no operators."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Timer::is_steady",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "see `cpp:GenericTimer::is_steady`."
+}

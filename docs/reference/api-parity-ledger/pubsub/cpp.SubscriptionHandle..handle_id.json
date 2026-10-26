@@ -1,0 +1,5 @@
+{
+  "key": "cpp:SubscriptionHandle::handle_id",
+  "verdict": "extension",
+  "why": "the executor arena slot this registration occupies. Ours-only: rclcpp has no arena and no slot. Present for introspection and for tests that assert a registration happened; there is no operation to perform with it through this API today, which is why it is an accessor and not a verb."
+}

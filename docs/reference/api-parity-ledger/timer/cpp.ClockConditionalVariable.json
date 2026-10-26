@@ -1,0 +1,9 @@
+{
+  "key": "cpp:ClockConditionalVariable",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "a condition variable that waits until a ROS-time deadline. A blocking helper that does not drive the executor is what RFC-0021 forbids; see `cpp:Clock::sleep_until`."
+}

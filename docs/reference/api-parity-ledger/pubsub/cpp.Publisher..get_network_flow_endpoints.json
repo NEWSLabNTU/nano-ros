@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Publisher::get_network_flow_endpoints",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "endpoint discovery: which publishers/subscriptions exist on a topic and with what QoS. Needs dynamic discovery, which we do not have -- peers are static via the board's `config.toml`/Kconfig. See the graph stage for the rest of this family."
+}

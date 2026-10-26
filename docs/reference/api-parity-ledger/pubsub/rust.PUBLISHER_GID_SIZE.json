@@ -1,0 +1,5 @@
+{
+  "key": "rust:PUBLISHER_GID_SIZE",
+  "verdict": "divergence",
+  "why": "see `rust:PublisherGid`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:CountStatus",
+  "verdict": "divergence",
+  "why": "the Tier-1 status payloads `rclcpp/event.hpp` declares (`LivelinessChangedStatus`, `CountStatus` and its `DeadlineMissedStatus` / `MessageLostStatus` aliases). rclcpp names them `QOSLivelinessChangedInfo`, `QOSDeadlineRequestedInfo`, `QOSMessageLostInfo` and so on, each a typedef of its rmw status. They print now because issue 1972 made `publisher.hpp` / `polling_subscription.hpp` include `event.hpp` for `MatchedInfo`; the header had been included by nothing, so the correlator never saw these. Fixed widths (`uint32_t`, `uint16_t`/`int16_t`) for the by-value FFI payload, as `c:count_status_t`."
+}

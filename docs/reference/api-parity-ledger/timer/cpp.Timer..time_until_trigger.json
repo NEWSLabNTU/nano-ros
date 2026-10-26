@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Timer::time_until_trigger",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/timer.hpp",
+    "text": "the arena's timer accounting is MICROSECOND-based (issue #505), so"
+  },
+  "verdict": "divergence",
+  "why": "RE-VERDICTED gap -> divergence, phase-417 G6 — WE HAVE IT NOW, and only the RETURN TYPE differs. `nros::Timer::time_until_trigger()` (`packages/api/nros-cpp/include/rclcpp/timer.hpp`) forwards to `Executor::timer_time_until_next_call_ns`, the same arena read `rcl_timer_get_time_until_next_call` makes.\n\nTHE RETURN TYPE is `nros::Duration`, where rclcpp's is `std::chrono::nanoseconds`. `<chrono>` is not reachable from every target this header serves — Zephyr's minimal libcpp ships three headers and `<chrono>` is not one of them (issue 0112), and this surface's floor is a freestanding build — so a `std::chrono` return would remove the accessor from exactly the images the timer exists for. The UNIT is upstream's: `d.nanoseconds()` is the count `std::chrono::nanoseconds::count()` would have given.\n\nTWO ENVELOPE FACTS, both inherited from the C side and both in the doc comment. The arena's timer accounting is MICROSECOND-based (issue #505), so the nanosecond value is a microsecond quantity scaled by 1000 — the unit is rclcpp's, the resolution is ours. And a wall timer answers on the platform steady clock while a `create_timer(clock, …)` timer answers on its own.\n\nONE THING THE C SURFACE HAS THAT THIS DOES NOT: a way to say 'cannot answer'. `rcl_timer_get_time_until_next_call` spends a return code on it (`RCL_RET_NOT_INIT` for an uninitialised, finalised or unregistered timer); a `Duration`-returning accessor has no room for one, so an unknown timer reads `Duration()` — which collides with 'fires exactly now'. `is_valid()` is the question to ask first. rclcpp has the same collision and does not document it."
+}

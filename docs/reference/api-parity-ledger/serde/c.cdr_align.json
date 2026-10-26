@@ -1,0 +1,6 @@
+{
+  "key": "c:cdr_align",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`CdrReader::align` behind the C ABI (issue 1148). Advances the cursor to the next `alignment`-byte boundary of the CDR STREAM, measured from `origin` rather than from the buffer pointer, consuming the padding the writer emitted; carries the Rust reader's edition rule (XCDR2 caps 8-byte primitives at 4), so the header-only borrow readers in `rclc/detail/view.h` agree with the Rust reader byte for byte instead of re-deriving the arithmetic. ROS 2 has no counterpart: rosidl_typesupport_fastrtps aligns inside `eprosima::fastcdr::Cdr` and never exposes it, because its readers copy into owned containers and the caller never holds a cursor. Ours does, because RFC-0033 `borrowed` mode hands the callback a view INTO the receive buffer."
+}

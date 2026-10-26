@@ -1,0 +1,5 @@
+{
+  "key": "rust:CdrReader::version",
+  "verdict": "extension",
+  "why": "See `rust:CdrWriter::version` -- on the reader it reports the version DETECTED from the encapsulation header."
+}

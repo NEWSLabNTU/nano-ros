@@ -1,0 +1,6 @@
+{
+  "key": "c:node_impl_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's pimpl. `rcl_node_t` carries its state inline because there is no allocator to put it behind a pointer; same shape as `rclc_support_t` in the init stage."
+}

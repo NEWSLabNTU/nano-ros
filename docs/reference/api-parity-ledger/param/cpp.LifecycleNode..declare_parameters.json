@@ -1,0 +1,10 @@
+{
+  "key": "cpp:LifecycleNode::declare_parameters",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+    "text": "Returns `Result`, NOT upstream's `std::vector<T>` of the values in effect."
+  },
+  "verdict": "divergence",
+  "why": "phase-482 W4 (2026-10-07): `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::declare_parameters`, inherited, with `cpp:Node::declare_parameters`'s contract. The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves.\n\nBefore phase-482 W4: phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::declare_parameters` (both return a `Result` where upstream returns `void`). UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the forwarder's doc comment states the `Result` return and the UNBOUND `InvalidArgument` answer."
+}

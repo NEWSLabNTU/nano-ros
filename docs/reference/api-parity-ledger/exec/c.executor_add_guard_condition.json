@@ -1,0 +1,6 @@
+{
+  "key": "c:executor_add_guard_condition",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclc's `rclc_executor_add_guard_condition(executor, gc, callback)`. RETIRED on our side by phase-417 W4.e (2026-09-18), with no forwarder, because creation IS registration now: `rclc_node_create_guard_condition` reaches the arena through the node's executor and there is no second step to make. Keeping it would have kept the state the retirement removes -- a guard condition that exists and is registered with nothing. rclc needs the verb because its `init` takes a `context` and its executor takes the callback; ours binds the callback to the ENTITY (RFC-0041) at the one call. See `c:guard_condition_set_callback` for the measurement and the blast radius."
+}

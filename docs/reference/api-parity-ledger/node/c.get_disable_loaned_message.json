@@ -1,0 +1,6 @@
+{
+  "key": "c:get_disable_loaned_message",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "reads the `ROS_DISABLE_LOANED_MESSAGES` environment variable. No runtime environment on a device, and loaned messages are a zero-copy path selected at build time here (RFC-0010/0038)."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ActionServerOptions",
+  "verdict": "extension",
+  "why": "what a device varies per action server (scheduling context) where rclcpp_action would use `rcl_action_server_options_t`. See the service stage's `cpp:ClientOptions`."
+}

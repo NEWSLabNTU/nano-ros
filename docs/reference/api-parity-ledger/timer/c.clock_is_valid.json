@@ -1,0 +1,15 @@
+{
+  "key": "c:clock_is_valid",
+  "their_rename": {
+    "majority": [
+      "rcl itself, 14 times: `docs/reference/api-surface/rclc.json` records `rcl_context_is_valid`, `rcl_node_is_valid`(+`_except_context`), `rcl_publisher_is_valid`(+`_except_context`), `rcl_subscription_is_valid`, `rcl_client_is_valid`, `rcl_service_is_valid`, `rcl_event_is_valid`, `rcl_wait_set_is_valid`, `rcl_action_client_is_valid`, `rcl_action_server_is_valid`(+`_except_context`), `rcl_action_goal_handle_is_valid`",
+      "rclcpp: `is_valid` (recorded surface)",
+      "our own C++ and Rust use the same `is_*` predicate shape"
+    ],
+    "ours": "`rclc_clock_is_valid(const rcl_clock_t *)`",
+    "outlier": "`rcl_clock_valid` -- the ONLY validity predicate in the recorded rclc surface that drops the `is_`, 1 against 14",
+    "pair": "c:clock_valid"
+  },
+  "verdict": "their-rename",
+  "why": "RE-VERDICTED extension -> their-rename 2026-09-05 (phase-425). `extension` means \"ROS 2 has none\", and ROS 2 has this: `rcl_clock_valid`. The row reports ours-only because the two projects spell one predicate differently, not because the capability is ours alone. This is the ours-only half of `c:clock_valid`; both halves now make the same statement from their own side. No code change.\n\nORIGINAL ROW: the ours-only half of `c:clock_valid`."
+}

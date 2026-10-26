@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Clock::is_valid",
+  "verdict": "extension",
+  "why": "rclcpp constructs a clock or throws; with `-fno-exceptions` (RFC-0018) a constructor cannot report a bad clock type, so a predicate is the report. Same shape as `cpp:Timer::is_valid` and `nros::Node::is_valid`, and the C++ half of `c:clock_is_valid`. It is also what keeps `Clock::now()` infallible -- see `c:clock_get_now_ns`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:RequestId",
+  "verdict": "divergence",
+  "why": "rclrs wraps `rmw_request_id_t` -- a writer GUID plus a sequence number -- so a reply can be correlated across a restart. Ours is a bare `i64` sequence number scoped to the entity, because the entity table is static and a request cannot outlive its client. Cheaper, and it cannot express a reply to a client that has been recreated."
+}

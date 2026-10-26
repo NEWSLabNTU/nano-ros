@@ -1,0 +1,5 @@
+{
+  "key": "cpp:LivelinessChangedStatus",
+  "verdict": "divergence",
+  "why": "see `cpp:CountStatus`."
+}

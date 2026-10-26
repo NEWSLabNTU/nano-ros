@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Clock::wait_until_started",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp blocks the calling thread until the first `/clock` message arrives. RFC-0021 forbids a blocking helper that does not drive the executor -- a wait that spins nothing stops the transport for as long as the simulator takes to publish, and on a single-threaded executor that is forever. The predicate it waits on IS available (`Clock::started`, issue 0789): a node polls it from a timer, or simply publishes once time is non-zero."
+}

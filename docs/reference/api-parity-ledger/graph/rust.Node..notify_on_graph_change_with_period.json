@@ -1,0 +1,6 @@
+{
+  "key": "rust:Node::notify_on_graph_change_with_period",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:Node::notify_on_graph_change`; the period only sets how often the condition is re-checked."
+}

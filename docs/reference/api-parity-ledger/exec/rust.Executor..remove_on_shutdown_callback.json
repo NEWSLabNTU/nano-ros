@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::remove_on_shutdown_callback",
+  "verdict": "extension",
+  "why": "See `rust:Executor::remove_pre_shutdown_callback`. Issue 0790."
+}

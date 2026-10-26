@@ -1,0 +1,10 @@
+{
+  "key": "c:parameter_server_init_with_option",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc_parameter/rclc_parameter.h",
+    "text": "`rclc_parameter_server_init_*`; otherwise `RCL_RET_NOT_INIT`."
+  },
+  "verdict": "divergence",
+  "why": "The options form of `c:parameter_server_init_default`; same envelope. A `max_params` past the store's build-time capacity is refused with `RCLC_RET_FULL`."
+}

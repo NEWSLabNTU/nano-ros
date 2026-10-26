@@ -1,0 +1,5 @@
+{
+  "key": "c:message_serialize_fn_t",
+  "verdict": "extension",
+  "why": "phase-492 W8 — the serialiser slot of the type descriptor (`rclc_message_type_t::serialize` and the service/action part slots): `(const void *msg, uint8_t *buf, size_t cap, size_t *out_len) -> int32_t`, the codec `rcl_publish` serialises through into its bounded transmit buffer. Generated per type as `<Msg>__nros_serialize_erased`, a real function with the erased signature. Ours: rosidl's type support reaches its serialiser through the `func` dispatcher RFC-0089 declines to claim."
+}

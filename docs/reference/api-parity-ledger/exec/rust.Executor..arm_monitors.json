@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::arm_monitors",
+  "verdict": "extension",
+  "why": "phase-474 I2 -- the application says its start-up is over, so this executor's contract monitors start judging. Before arming a verdict is counted (`violations_suppressed_before_arm`) but not stored: registration, the first join and inputs that have not started yet look like overruns, jitter and silence on a board, and judging them as steady state filled the safety island's violation ring before any act ran. rclrs has no on-target contract monitor. See `rust:Executor::*violation*`."
+}

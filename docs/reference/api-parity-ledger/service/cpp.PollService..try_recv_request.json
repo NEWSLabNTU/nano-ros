@@ -1,0 +1,6 @@
+{
+  "key": "cpp:PollService::try_recv_request",
+  "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename",
+  "verdict": "extension",
+  "why": "the deprecated `try_recv_request` spelling of `cpp:PollService::take_request`, carried across the W5 split with its `[[deprecated]]` attribute intact. Substantive verdict at `cpp:Service::take_request`; the retirement is the tree's deprecated-items batch.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename."
+}

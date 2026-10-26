@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelCore",
+  "verdict": "extension",
+  "why": "phase-509 P10 (RFC-0108) -- the Rust tier runners' level core: one executor per core shared by a worker per level, the twin of the `nros_cpp_level_*` FFI the C runners use. rclrs has no levels."
+}

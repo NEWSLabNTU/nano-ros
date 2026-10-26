@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierBackingShort",
+  "verdict": "divergence",
+  "why": "issue 1571 -- the refusal value of `check_tier_executor_backing`: the tier backing a board was handed has fewer slots than it has spawned tiers. Carries both counts so the refusal names them. Exists only because the backing is caller-placed (no allocator); rclrs has nothing to refuse."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::create_generic_publisher",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-482 W4 (2026-10-07): `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::create_generic_publisher`, inherited, with `cpp:Node::create_generic_publisher`'s contract. The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves.\n\nBefore phase-482 W4: generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+}

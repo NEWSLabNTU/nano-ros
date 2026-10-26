@@ -1,0 +1,6 @@
+{
+  "key": "c:action_client_impl_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's pimpl; our handles carry their state inline because there is no allocator to put it behind a pointer. See the pubsub stage's `c:publisher_impl_t`."
+}

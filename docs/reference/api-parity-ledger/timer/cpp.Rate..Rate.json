@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Rate::Rate",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/rclcpp.hpp",
+    "text": "`Rate` and `WallRate` are the SAME clock."
+  },
+  "verdict": "divergence",
+  "why": "phase-417 W2.d — `rclcpp::Rate`/`WallRate` as a FORWARDER onto `nros::spin(remaining_ms, poll_ms)`, which DRIVES the executor. The obvious C++ class with its own sleep loop is RFC-0020 violation class 2 and what RFC-0021 forbids; same capability, only one admissible shape. ADOPT-BOUNDED: your callbacks RUN during the sleep, which they do not under a single-threaded rclcpp executor.\n\nphase-442 W5 — the CONSTRUCTOR gained an overload rather than losing one, so nothing a ported file writes stops binding. Upstream's two forms both still compile: `Rate(double)` at `packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:1129` and `Rate(std::chrono::duration<Rep, Period>)` at `:1148`. The chrono one is behind `NROS_CPP_HAS_STD_CHRONO` — a gate on a METHOD, which the capability-layout rule permits since `sizeof(Rate)` is `int64_t` + `uint64_t` in every configuration — and where `<chrono>` is absent the added `explicit Rate(::nros::Duration)` (`:1136`) is the same operation on every target. phase-442 W8 owns retiring the macro.\n\nThe RETURN type of `period()` is a SEPARATE divergence and it is recorded where it happened, on `cpp:Rate::period` (issue 1331).\n\nJAZZY (2026-10-19, `--edition jazzy`): Jazzy's rclcpp made `Rate` a concrete class with `Rate(double, Clock::SharedPtr = <system clock>)` and `Rate(const Duration &, Clock::SharedPtr = <system clock>)`, and our constructors correspond to it in shape, so a ported Jazzy file that takes the default clock compiles here with nothing said. Disposition `adopt-bounded`: same construction contract (a rate or a period), but the clock is not selectable and is monotonic where Jazzy's default measures SYSTEM time — the envelope stated at the definition. A call passing a `Clock::SharedPtr` does not compile, which is loud."
+}

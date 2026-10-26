@@ -1,0 +1,5 @@
+{
+  "key": "rust:SessionHandle::from_raw",
+  "verdict": "extension",
+  "why": "the other end, on the spawned task. Raw because an RTOS task entry point takes a `*mut c_void` and nothing richer. See `rust:SessionHandle`."
+}

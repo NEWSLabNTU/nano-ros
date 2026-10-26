@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Stream",
+  "verdict": "divergence",
+  "why": "multi-shot receiver for polling subscriptions and action feedback: `try_next` polls, `wait_next` drives the executor until a value arrives or a wall-clock budget expires. rclcpp has no stream type because it delivers multi-shot data through a subscription callback and single-shot through `std::shared_future`; `<future>` needs threads, an allocator and exceptions, and none of the three is here. Same constraint and same shape as `cpp:Future` in the types stage -- RFC-0021: no futures, no async runtime, every blocking helper takes the executor."
+}

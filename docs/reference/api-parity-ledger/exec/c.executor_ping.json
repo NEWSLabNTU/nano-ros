@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_ping",
+  "verdict": "extension",
+  "why": "wire-level round trip -- is the XRCE agent / zenoh router still reachable, within `timeout_ms`. Mirrors micro-ROS's `rmw_uros_ping_agent`, which rclc has no counterpart for. The scenario is reconnect-on-link-loss: a device on a flaky radio has to distinguish 'nobody is publishing' from 'the session is dead' and re-open, and neither returns an error from `spin_some`."
+}

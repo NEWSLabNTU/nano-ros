@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GenericTimer::is_steady",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "asks whether the timer's clock is monotonic, because rclcpp timers can be built on ROS time. Ours run on the platform clock, which is monotonic by the RFC-0073 contract."
+}

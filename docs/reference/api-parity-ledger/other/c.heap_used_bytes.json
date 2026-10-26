@@ -1,0 +1,5 @@
+{
+  "key": "c:heap_used_bytes",
+  "verdict": "extension",
+  "why": "bytes currently outstanding through the Rust global allocator. an RTOS image has one fixed heap arena, no swap and no OOM killer, so the size of that arena is a build-time decision someone has to make from a measurement rather than a guess. rcl has nothing equivalent because a hosted process has none of those limits. RFC-0034 D7; gated on the `alloc-stats` feature."
+}

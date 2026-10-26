@@ -1,0 +1,6 @@
+{
+  "key": "rust:Waitable",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's wrapper pairing an rcl primitive with its executor-side dispatch. rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`."
+}

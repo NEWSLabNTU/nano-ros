@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Future::get",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/future.hpp",
+    "text": "THE BOUND: upstream BLOCKS until the reply arrives; this never waits."
+  },
+  "verdict": "divergence",
+  "why": "issue 1996 -- upstream's `FutureAndRequestId::get()` returns the reply as an owning `std::shared_ptr<Response>` and BLOCKS until it arrives. HOSTED (`NROS_CPP_HAS_SHARED_PTR`): ours returns the same owning pointer -- one heap copy, deserialized into `std::make_shared<T>()`, which the caller may keep -- and consumes the future. THE BOUND: it never waits, because a wait that does not drive the executor is what RFC-0021 forbids and a future has no executor of its own to drive; it is meant for where the stock examples call it, after `spin_until_future_complete` returned SUCCESS (or `wait_for` returned ready). Before the reply, or on a consumed future, it says `NROS_RCLCPP_REFUSE_FUTURE_GET_NOT_READY_RUNTIME` and returns nullptr. FREESTANDING: no `<memory>` and no allocator, so the name is a `static_assert` carrying `NROS_RCLCPP_REFUSE_FUTURE_GET`, which names `try_take` and `wait(executor, timeout_ms, out)`. Held by `client_future_shape_runtime.cpp` (hosted) and `client_future_get_freestanding_probe.cpp` (the expected-failure half), both in `just check cpp`."
+}

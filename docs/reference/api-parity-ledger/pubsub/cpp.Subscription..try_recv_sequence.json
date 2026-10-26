@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Subscription::try_recv_sequence",
+  "retired": "a deprecated alias, deleted after its one release; the row records the rename",
+  "verdict": "extension",
+  "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `Subscription::take_sequence`. Kept one release as a `[[deprecated]]` header-only forwarder naming its replacement in the diagnostic, so it is on the surface and therefore still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
+}

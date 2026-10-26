@@ -1,0 +1,5 @@
+{
+  "key": "rust:SessionMode",
+  "verdict": "extension",
+  "why": "Client (connect to a router) or Peer (direct). A zenoh concept with no rcl counterpart: ROS 2 nodes are always peers of a DDS domain, while an embedded image usually cannot afford peer-mode discovery and connects to `rmw_zenohd` instead (RFC-0075). the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. See `rust:Session::create_publisher` in the pubsub stage. Kept at the crate root by phase-506 W1 (RFC-0071 D12): it is user configuration or what a user matches on, even though it is defined beside the RMW seam."
+}

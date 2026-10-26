@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Client::send_goal",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_action/client.hpp",
+    "text": "This one blocks and reports through `Result` plus an out-param goal id: no"
+  },
+  "verdict": "divergence",
+  "why": "sends a goal and hands back its 16-byte id. rclcpp_action's is `async_send_goal`, which returns a `std::shared_future` of a goal handle; RFC-0021 has no `std::future` and no allocator, so ours reports through a `Result` and an out-param goal id, with a `GoalUUID` overload beside the raw `uint8_t[16]` one (phase-417 W4.b). The future-shaped spelling we DO offer is `Client::send_goal_future`, over our own `nros::Future`. Upstream's `async_send_goal` is ledgered `absent` on its own row.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it. The send_goal doc block sat ABOVE `wait_for_action_server`, so Doxygen attached it to the wrong method and `send_goal` had none; it is moved onto `send_goal` and now states the `Result` + out-param shape against `async_send_goal`'s `shared_future`."
+}

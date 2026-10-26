@@ -1,0 +1,5 @@
+{
+  "key": "rust:force_link_backend",
+  "verdict": "extension",
+  "why": "a DCE anchor, not a registration (issue 0330). On a pure-Rust staticlib image the Zephyr module emits a WEAK `nros_rmw_<name>_register` and calls it only if it resolves; the strong definition is the backend crate's `#[no_mangle]` export, and rustc's staticlib DCE drops it unless something in the crate being compiled REFERENCES that crate. The symbol is then present in the rlib and absent from the `.a`, the weak call sees NULL, and the image boots with no backend (issues 0155/0163). The app crate invokes it because the app crate is what selects an RMW; nano-ros's own RMW-agnostic layers must not name a backend. rclrs has no equivalent because rcl loads its rmw as a shared object at runtime."
+}

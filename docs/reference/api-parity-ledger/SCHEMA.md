@@ -5,7 +5,45 @@ fields. It used to be copied into the `_doc` array of all 17 shards, so a
 schema change touched 17 files and two concurrent PRs conflicted in up to 17
 paths without disagreeing about anything (issue 1095).
 
-Each shard's `_doc` points here and carries only notes specific to that shard.
+Each topic's `_doc.json` points here and carries only notes specific to that
+topic.
+
+## Where a row lives — one file per row (issue 1091)
+
+    docs/reference/api-parity-ledger/<topic>/<file>.json
+
+    {
+      "key": "cpp:Node::create_action_client",
+      "disposition": "adopt",
+      "verdict": "rename",
+      "why": "..."
+    }
+
+* `<topic>` is the STAGE the row belongs to, one of `topics.NAMES` in
+  `scripts/api_parity/topics.py` (`--topic <name>` shows one). The directory is
+  the row's shard: `--check` refuses a row filed under the wrong one, naming
+  where it belongs.
+* The row says its own `key`. The file name is DERIVED from it —
+  `ledger_files.row_filename` in `scripts/api_parity/ledger_files.py`: `:`
+  becomes `.`, any other character outside `[A-Za-z0-9_-]` becomes `~XX`
+  (`cpp:Node::create_action_client` → `cpp.Node..create_action_client.json`,
+  `c:action_cancel_response_*` → `c.action_cancel_response_~2A.json`). You do
+  not have to work it out: `--check` prints the file name beside every
+  unledgered item, and the loader refuses a file whose name is not its key's,
+  saying what it should be. The writer puts `key` first and sorts the rest.
+* Every other field is the row, as below. Fields beginning with `_` are the
+  loader's and are refused in a row file.
+* `<topic>/_doc.json` (`{"_doc": [...]}`) holds the topic's notes. Files
+  beginning with `_` are documentation and are never rows.
+
+WHY a file per row: the ledger used to be 17 topic shards written
+`sort_keys=True`, so two branches adding rows for adjacent keys — the normal
+case, since a feature's items sort together — inserted at the same base line
+and conflicted with certainty. A new row in its own new file has nothing to
+collide with. The name being a function of the key is what keeps a DUPLICATE
+loud: two rows for one key land on one path, where git reports an add/add
+conflict, instead of in two files of which a merge would keep both and the
+loader one. One key in two topic directories is refused outright.
 
 Phase 379. One row per item where the nano-ros user API does NOT correspond
 to the ROS 2 client library it mirrors. Written by hand; read by
@@ -201,12 +239,9 @@ the rest. `--check` is deliberately not wired into `just check` until then --
 a gate that fails on ~2000 rows from the day it lands is one somebody
 switches off. Keys beginning with '_' are documentation and are skipped.
 
-the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every
-shard in this directory. One agent per lane can write without a rebase
-conflict against the others.
-
-SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE
+SHARDED BY TOPIC: a topic directory holds one stage's rows in ALL THREE
 languages, because the campaign closes a feature at a time across every
-language. `scripts/api-parity.py` merges every shard here, and
-`--self-test` rejects a row whose item belongs to a different stage.
+language. `scripts/api-parity.py` merges every row file here, `--check`
+rejects a row whose item belongs to a different stage, and `--self-test`
+proves that rejection on a planted ledger written through the same layout.
 

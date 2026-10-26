@@ -1,0 +1,9 @@
+{
+  "key": "cpp:copy_all_parameter_values",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "copies every parameter between two nodes through their parameter interfaces; the `Parameter` value object it moves is declined (`cpp:Parameter`)."
+}

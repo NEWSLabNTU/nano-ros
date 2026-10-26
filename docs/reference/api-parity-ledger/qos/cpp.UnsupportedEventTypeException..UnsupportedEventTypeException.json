@@ -1,0 +1,5 @@
+{
+  "key": "cpp:UnsupportedEventTypeException::UnsupportedEventTypeException",
+  "verdict": "divergence",
+  "why": "see `cpp:UnsupportedEventTypeException`."
+}

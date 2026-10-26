@@ -1,0 +1,5 @@
+{
+  "key": "rust:ParameterBuilder::integer_range",
+  "verdict": "extension",
+  "why": "min/max/step as three scalars. rclrs's `range()` takes a `T::Range` VALUE, and we have that method too (it matched) -- but a facade user cannot construct the value to pass it, because `ParameterRange`/`IntegerRange`/`FloatingPointRange` are not re-exported (see `rust:ParameterRange`). So the scalar form is currently the only reachable one. If the facade gap is closed this stops earning its place."
+}

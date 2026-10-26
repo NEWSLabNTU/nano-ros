@@ -1,0 +1,5 @@
+{
+  "key": "c:publisher_init_with_qos",
+  "verdict": "extension",
+  "why": "the QoS-taking form that replaces rclc's per-preset entry points; see `c:publisher_init_best_effort`."
+}

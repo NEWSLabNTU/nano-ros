@@ -1,0 +1,5 @@
+{
+  "key": "cpp:spin_in",
+  "verdict": "extension",
+  "why": "phase-483 W1 — the `Result`-returning global spin that was `nros::spin()` / `nros::spin(duration_ms, poll_ms)`: drive the one global executor until `rclcpp::ok()` goes false, or for a wall-clock budget. Upstream's `rclcpp::spin(node)` takes the node to spin and returns `void`; ours takes none (a node is not a unit of dispatch, see `cpp:spin_once`), so it takes the `_in` suffix rather than sitting under upstream's name with a different contract."
+}

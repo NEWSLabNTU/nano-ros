@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Client::handle_response",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's internal dispatch after a take; see the pubsub stage's `cpp:Subscription::handle_message`."
+}

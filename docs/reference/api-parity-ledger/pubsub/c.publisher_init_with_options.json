@@ -1,0 +1,5 @@
+{
+  "key": "c:publisher_init_with_options",
+  "verdict": "extension",
+  "why": "our own options-taking entry point, carrying what a device varies per publisher (RMW selection, scheduling context) where rcl would use `rcl_publisher_options_t`. Named parameters on an explicit entry point rather than a struct nobody can allocate; see `c:node_init_ex`."
+}

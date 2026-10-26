@@ -1,0 +1,6 @@
+{
+  "key": "rust:InnerGuardConditionHandle",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's owned/borrowed split inside its guard condition, so one can be built from a foreign `rcl_guard_condition_t`. our RMW seam is the vtable (RFC-0035), not an entity accessor. See `c:node_get_rmw_handle`. Ours is always executor-owned: `Executor::register_guard_condition(closure)` allocates the flag in the arena and hands back the handle."
+}

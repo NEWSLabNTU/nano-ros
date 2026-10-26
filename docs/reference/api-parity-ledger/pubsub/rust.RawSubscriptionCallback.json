@@ -1,0 +1,5 @@
+{
+  "key": "rust:RawSubscriptionCallback",
+  "verdict": "divergence",
+  "why": "the raw-bytes callback type. See `c:subscription_callback_t` -- bound at declaration, not handed to an executor."
+}

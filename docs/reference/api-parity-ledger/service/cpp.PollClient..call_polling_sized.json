@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollClient::call_polling_sized",
+  "verdict": "extension",
+  "why": "issue 0964's caller-sized reply buffer on `cpp:PollClient::call_polling`.\n\nCarried over from the `cpp:Client::call_polling_sized` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nphase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
+}

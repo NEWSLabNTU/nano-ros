@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Event",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "`rclcpp::Event` is not a QoS event: it is `rclcpp/event.hpp`'s set/check flag, handed out by `Node::get_graph_event()` and waited on with `wait_for_graph_change()` -- a graph-change notification. It lands in this stage only because `topics.py` maps the `event` header stem to qos, which is right for `rcl/event.h` and wrong for this file. Declined for the graph stage's reason: static peers, no dynamic discovery, so there is no graph change to be notified of."
+}

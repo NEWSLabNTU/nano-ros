@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::validate_against",
+  "verdict": "extension",
+  "why": "see `rust:QoSProfile::required_policies`."
+}

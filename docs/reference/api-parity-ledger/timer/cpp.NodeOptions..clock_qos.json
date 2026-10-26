@@ -1,0 +1,6 @@
+{
+  "key": "cpp:NodeOptions::clock_qos",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "a node option; see the node stage's `cpp:NodeOptions`."
+}

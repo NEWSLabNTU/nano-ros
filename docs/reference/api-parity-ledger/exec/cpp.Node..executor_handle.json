@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::executor_handle",
+  "verdict": "divergence",
+  "why": "the same raw-storage escape hatch one level down: a `Node` here carries the pointer to the executor that created it, because entity creation goes through the executor's arena. See `cpp:Executor::handle` and `cpp:Executor::create_node`."
+}

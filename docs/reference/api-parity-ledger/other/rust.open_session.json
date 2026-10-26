@@ -1,0 +1,5 @@
+{
+  "key": "rust:open_session",
+  "verdict": "extension",
+  "why": "opens a backend session behind one signature, honouring the `$NROS_RMW` selector so a C bridge built with two linked backends pins its primary deterministically instead of taking whichever `.init_array` constructor fired first. Used by `nros-c`; Rust callers use `Executor::open`. See `rust:RmwSession`."
+}

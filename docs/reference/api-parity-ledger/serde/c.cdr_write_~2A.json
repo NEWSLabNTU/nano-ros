@@ -1,0 +1,6 @@
+{
+  "key": "c:cdr_write_*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "The write half of `c:cdr_read_*`; same reason, same audience. `cdr_write_string`, `cdr_write_string_n` and `cdr_write_encaps_header` have their own rows."
+}

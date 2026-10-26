@@ -1,0 +1,6 @@
+{
+  "key": "rust:Service::set_async_callback",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's conversion traits normalise a plain, async or worker closure. Ours binds a NAMED callback at declaration (RFC-0043) -- one shape, nothing to convert. See the pubsub stage's identical rows. needs a future and a runtime to await it; RFC-0021 makes every blocking helper take the executor and drive it."
+}

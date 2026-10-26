@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Timer::set_on_reset_callback",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "the hook Jazzy's EventsExecutor uses to learn that a timer was reset so it can re-arm its timer queue. Our executor computes the next due time from the timers themselves (`route_next_due_us`), so there is nothing to notify. DECLINED."
+}

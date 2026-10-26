@@ -1,0 +1,5 @@
+{
+  "key": "rust:Timer::clock",
+  "verdict": "divergence",
+  "why": "an rclrs 0.7.0 timer accessor. See `rust:Node::create_timer_oneshot` for the model convergence; the timer stage's gap rows (`is_ready`, `time_until_next_call`, period change) record what we lack on either shape."
+}

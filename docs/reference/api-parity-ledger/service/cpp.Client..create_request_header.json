@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Client::create_request_header",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "allocates the `rmw_request_id_t` that correlates a reply with its request. Ours is an `int64_t` sequence number returned by `send_request` and passed back to `send_response` -- see `rust:RequestId`."
+}

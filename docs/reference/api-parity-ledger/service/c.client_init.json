@@ -1,0 +1,6 @@
+{
+  "key": "c:client_init",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-428 Q1 (2026-09-06) -- `rcl_client_init(client, node, type_support, service_name, options)`. No symbol answers to this key; the rclc spelling `rclc_client_init_default` does (`c:client_init_default`, `packages/api/nros-c/src/service.rs:1164`), and the options-shaped forms are `rclc_client_init_with_qos` / `_with_options` / `_polling` (`packages/api/nros-c/include/rclc/detail/nros_generated.h:6448`, `:6470`, `:6519`). Same reasoning as `c:service_init`, one entity over."
+}

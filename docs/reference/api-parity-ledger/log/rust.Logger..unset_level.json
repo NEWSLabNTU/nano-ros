@@ -1,0 +1,10 @@
+{
+  "key": "rust:Logger::unset_level",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-log/src/lib.rs",
+    "text": "rclrs spells this `logger.set_level(LogSeverity::Unset)`. Here it is a verb,"
+  },
+  "verdict": "divergence",
+  "why": "phase-467 — take a logger's OWN level away, so it filters on `Logger::default_level()` again. rclrs HAS this capability and spells it `logger.set_level(LogSeverity::Unset)`; the C surface here spells it upstream's way too (`rclc_logger_set_level(logger, RCLC_LOG_SEVERITY_UNSET)`, row `c:log_severity_t`). Rust cannot, and the reason is the platform ABI.\n\n`nros_log::Severity` is `#[repr(u8)]` and its discriminants ARE the `nros_platform_log_write` ABI — the number a board's sink receives and renders. Every value it can hold must therefore be a level something can EMIT AT, and `Unset` is not: it is a statement about a stored threshold. Adding the variant would put a value no sink can render into every `match` on a record's severity, into `severity_from_u8`, and into `is_enabled(Severity::Unset)`, where it means nothing. So the state gets a VERB instead of a value, and the one place a caller can mean it — writing a level — is the one place the verb exists.\n\nThe C mirror keeps upstream's spelling for the opposite reason, and the contrast is the point: `rcl_log_severity_t` is a transparent newtype over `c_int` precisely because C's `enum` is unfixed and any `int` may arrive, so it is TOTAL and `0` costs it nothing. A Rust `enum` is not total, which is what makes the same value a liability on one side and free on the other.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the method's rustdoc names rclrs's `set_level(LogSeverity::Unset)` spelling and why the state is a verb here; `Severity`'s rustdoc and the logging book page now say there is no `Unset` variant."
+}

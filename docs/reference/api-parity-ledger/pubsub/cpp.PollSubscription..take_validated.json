@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollSubscription::take_validated",
+  "verdict": "extension",
+  "why": "receive WITH the end-to-end integrity verdict attached (`nros_cpp_integrity_status_t`). RFC-0028; the C++ half of `c:subscription_take_validated`. Renamed from `try_recv_validated` by phase-379 W6 decision 1 (2026-09-03).\n\nphase-456 W2b — this row moved from `cpp:Subscription::take_validated`. The method did not change; the class it lives on did. `Subscription<M>` served both the dispatch and the poll owner behind a `callback_mode_` flag, and every method here dereferences `storage_`, which only the poll owner has."
+}

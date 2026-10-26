@@ -1,0 +1,6 @@
+{
+  "key": "cpp:init_and_remove_ros_arguments",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see remove_ros_arguments."
+}

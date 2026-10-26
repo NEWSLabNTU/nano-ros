@@ -1,0 +1,5 @@
+{
+  "key": "c:support_is_valid",
+  "verdict": "extension",
+  "why": "mirrors `rcl_context_is_valid` on the type we actually have. Counted as an extension rather than a rename because rclc -- the C reference -- ships no `rclc_support_is_valid`; we are adding to rclc, not renaming rcl."
+}

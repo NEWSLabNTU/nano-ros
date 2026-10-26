@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Client::feedback_stream",
+  "verdict": "extension",
+  "why": "a `Stream<FeedbackType>` over the client's feedback channel, so a caller can `try_next` or `wait_next(executor, timeout)` instead of installing a callback. RFC-0021's shape: the blocking form takes the executor and drives it. rclcpp_action delivers feedback only through `SendGoalOptions::feedback_callback`.\n\nphase-428 (RFC-0089): re-keyed from `cpp:ActionClient::feedback_stream` by the namespace flip -- same row, same reasoning, the key follows the type name."
+}

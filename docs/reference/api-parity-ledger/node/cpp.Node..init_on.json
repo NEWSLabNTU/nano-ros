@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::init_on",
+  "verdict": "extension",
+  "why": "construction against an EXPLICIT executor handle rather than the global one -- what a generated multi-tier entry writes, where each tier's setup runs on the tier's borrowed executor (phase-274 W2). It is `nros::create_node_on` as a member, and it is the constructor `nros::ComponentNode`'s `NodeHandle` ctor was (RFC-0089 §\"What this means for the merge\": construction is not identity). rclcpp's nearest equivalent is passing `NodeOptions` and letting the caller do `executor.add_node(...)`, which needs a second object we do not have."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "c:parameter_server_init_default",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc_parameter/rclc_parameter.h",
+    "text": "`rclc_parameter_server_init_*`; otherwise `RCL_RET_NOT_INIT`."
+  },
+  "verdict": "divergence",
+  "why": "phase-491 / RFC-0105: the C parameter API is rclc's `rclc_parameter_server_t` family under rclc's own names, over the executor's store (the one the six `rcl_interfaces` services read). Same name, arity and order as rclc. Bounded twice, both by NO ALLOCATOR: the server is a handle over the EXECUTOR's build-time store rather than a table it allocates, so the node must already be bound to an executor (`RCL_RET_NOT_INIT` otherwise, RFC-0105 D3), and nothing is allocated (D5/D10)."
+}

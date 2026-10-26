@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::get_available_states",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp returns `std::vector<State>` / `std::vector<Transition>` -- a heap container of heap-labelled objects, which is `no-shared-ptr` and no-allocator twice over. The information is not lost: we serve it on `~/get_available_states`, `~/get_available_transitions` and `~/get_transition_graph`, which is what `ros2 lifecycle list` reads. What a user loses is the IN-PROCESS enumeration -- a node cannot ask itself what it may do next without a round trip. Consistent across all three of our languages: neither Rust's `LifecyclePollingNode` nor the C API has an accessor either."
+}

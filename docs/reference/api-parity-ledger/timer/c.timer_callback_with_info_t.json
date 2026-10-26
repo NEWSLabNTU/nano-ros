@@ -1,0 +1,5 @@
+{
+  "key": "c:timer_callback_with_info_t",
+  "verdict": "divergence",
+  "why": "issue 1974 — `void (*)(rcl_timer_t *, const rcl_timer_call_info_t *)`: the timer callback that receives Jazzy's call info. rcl hands the info out of `rcl_timer_call_with_info`, a dispatch call the user's own loop makes (`c:timer_call_with_info`, declined); here the executor dispatches, so the info rides on the callback. The info pointer is valid for the duration of the call. One producer: the executor's timer dispatcher (`arena::timer_call_info`, `nros_node::TimerCallInfo`) computes expected = actual - (elapsed - period) at the moment it decides the activation is due; C, C++ and Rust copy those two numbers, none computes its own. CORRECTED 2026-10-25 (phase-515 C1): the trailing `void *context` went with D2."
+}

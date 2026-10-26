@@ -1,0 +1,5 @@
+{
+  "key": "rust:RosMessage",
+  "verdict": "extension",
+  "why": "the trait a generated message type implements: `TYPE_NAME`, `TYPE_HASH`, and `STAMP_OFFSET` -- the codegen-const byte offset of `header.stamp.sec` in the serialised payload, so an on-target `max_age` monitor can peek the timestamp out of the raw receive buffer BEFORE deserialising (RFC-0052). rclrs's equivalent is `rosidl_runtime_rs::Message`, which lives in the message crates rather than the client library. Same reasoning and same wording as `rust:RosService` in the service stage."
+}

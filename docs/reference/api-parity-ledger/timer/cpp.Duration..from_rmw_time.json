@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Duration::from_rmw_time",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "converts from `rmw_time_t`. Our RMW seam does not surface DDS time types to the user API; see `c:node_get_rmw_handle`."
+}

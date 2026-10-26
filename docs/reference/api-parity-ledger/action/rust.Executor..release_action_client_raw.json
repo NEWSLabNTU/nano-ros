@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::release_action_client_raw",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 1496 resolution 2 -- in ROS 2 the DESTRUCTOR is the counterpart: `~rclcpp_action::Server<A>()` / `~Client<A>()` free the entity. Ours registers the action's RMW entities, goal table and result slab as an entry in the executor's statically sized arena, so freeing them is an executor call: the entry is dropped in place (its RMW handles' Drops destroy the backend entities, so the action leaves the graph), its callback slot is freed and its bytes go on the executor's released-region list for the next registration that fits. The C++ destructors call it; the `_sized` variant takes the const generics the registration used, and the `_raw` spelling is the CDR-bytes entry the C and C++ shims register through."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:DispatchStrategy::from_u8",
+  "verdict": "extension",
+  "why": "its inverse, `None` for an unknown value so `nros check` can reject it with a diagnostic. See `rust:DispatchStrategy`."
+}

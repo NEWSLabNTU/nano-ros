@@ -1,0 +1,5 @@
+{
+  "key": "cpp:TopicEndpointInfo::endpoint_gid",
+  "verdict": "divergence",
+  "why": "rclcpp returns `std::array<uint8_t, RMW_GID_STORAGE_SIZE>&`; ours is a `const uint8_t*` plus the constant `endpoint_gid_size()`, the freestanding spelling of the same thing. Deliberately NOT an `nros::Span`: `span.hpp` is reached by nothing else in these headers, so taking it here would newly expose `Span`/`StringView`/`LeSpan` on the public C++ surface as a side effect of a graph forwarder. Member of `cpp:TopicEndpointInfo`; the verdict and the two constraints are on that row."
+}

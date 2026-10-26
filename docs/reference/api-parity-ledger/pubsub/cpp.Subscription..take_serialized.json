@@ -1,0 +1,8 @@
+{
+  "key": "cpp:Subscription::take_serialized",
+  "provides": [
+    "nros::PollSubscription::take_serialized"
+  ],
+  "verdict": "divergence",
+  "why": "phase-456 W2b — this row is NEW because the split made the name theirs-only. `SubscriptionBase::take_serialized(SerializedMessage&, MessageInfo&)` is upstream's, and it is reached on an entity the node owns, after a `WaitSet` reports it ready. Ours is `nros::PollSubscription<M>::take_serialized`, on the entity the CALLER owns, because we have no wait set and the dispatch entity has no receive buffer to take from — the arena does.\n\nStated plainly because it is a cost: until W2b the name sat on `Subscription<M>` and correlated, so no row was needed. It correlated on a class where half the objects could not perform it, which is the defect W2b removed; the parity report is now accurate about a difference that already existed."
+}

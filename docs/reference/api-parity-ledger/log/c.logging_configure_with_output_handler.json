@@ -1,0 +1,6 @@
+{
+  "key": "c:logging_configure_with_output_handler",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's one-call form: configure the logging system from `rcl_arguments_t *` + an allocator AND install an output handler at the same time. Declined for the same reason as `c:logging_configure` — no argv and no allocator (RFC-0045) — so there is no arguments-taking configure for a handler-taking variant to extend.\n\nCORRECTION (2026-09-13). This row was a `gap` whose whole stated reason was \"see `c:logging_output_handler_t` -- a C caller cannot install a sink at all, so there is no handler-taking variant to have.\" A C caller CAN install a sink since phase-417 W4.d. What remains is only that we split the two calls rcl fuses: `rclc_log_init()` then `rclc_log_add_sink(sink, user_data)`, and the sink list is otherwise `'static` and board-chosen."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:executor_add_service_with_request_id",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `c:executor_add_client_with_request_id`; the deferred-reply path is `nros_service_take_request_raw` + `nros_service_send_response_raw(sequence_number, ...)`. (CORRECTED 2026-08-27, phase-379 W5: this named two symbols that do not work. `nros_service_send_response` was renamed from `nros_service_send_reply_raw` and is now a deprecated forwarder -- see `c:service_send_response_raw` in service/. `nros_service_take_request` was, and still is, a permanent `RCL_RET_NOT_INIT` stub; its working twin was `nros_service_try_recv_request_raw`, renamed to `nros_service_take_request_raw` by phase-379 W6 decision 1; which of `take_request` / `take_request_raw` survives is `c:service_take_request`.) CORRECTED 2026-09-04 (phase-417): the sentence above described the CURRENT deferred-reply path using the retired `try_recv` spelling."
+}

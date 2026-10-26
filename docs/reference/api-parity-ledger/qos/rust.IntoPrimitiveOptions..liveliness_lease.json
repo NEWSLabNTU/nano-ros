@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoPrimitiveOptions::liveliness_lease",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:IntoPrimitiveOptions`."
+}

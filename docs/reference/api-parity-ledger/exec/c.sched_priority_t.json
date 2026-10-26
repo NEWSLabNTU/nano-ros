@@ -1,0 +1,5 @@
+{
+  "key": "c:sched_priority_t",
+  "verdict": "extension",
+  "why": "RFC-0002 section 4.2 / RFC-0047 / RFC-0079 -- the SchedContext surface, which ROS 2 has no counterpart for at all. A mixed-criticality image runs a 20 ms control loop and best-effort telemetry on ONE executor on ONE RTOS task, so the criticality ordering has to live in user space: N callbacks must not cost N kernel priority slots (RFC-0002 non-goal 3), and RFC-0079 exists because the raw kernel number is unwritable by hand -- each RTOS has its own range and its own DIRECTION. rclcpp's nearest answer is one `MultiThreadedExecutor` thread per priority, which an MCU cannot pay for. The criticality BUCKET (Critical / Normal / BestEffort), deliberately three values and not a kernel number: RFC-0079 exists because a raw priority is unwritable by hand across Zephyr (counts down), FreeRTOS and NuttX (count up)."
+}

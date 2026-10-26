@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::count_services",
+  "verdict": "divergence",
+  "why": "issue 1978. Same verb as ROS 2 (Jazzy `rcl_count_services` / `rclcpp::Node::count_services`); the RECEIVER differs, for the reason every graph verb here gives (`c:executor_count_publishers`): a nano-ros image opens ONE session and the Executor owns it, so the graph is asked of the Executor. Reports what has been DISCOVERED and never blocks; a backend with no graph (XRCE, uORB) answers UNSUPPORTED, never 0. Backed by the rmw `count_services` slot (zenoh: `SS` tokens in the graph cache; Cyclone: readers on `rq/<name>Request`)."
+}

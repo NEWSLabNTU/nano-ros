@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Node::get_parameter_types",
+  "disposition": "refuse-loud",
+  "verdict": "divergence",
+  "why": "upstream takes a `std::vector<std::string>` and returns a `std::vector<rclcpp::ParameterType>`; both need an allocator, and the freestanding lane has neither. Ours is `get_parameter_types(names, count, out)` over caller storage, plus the singular `get_parameter_type(name)`. An undeclared name answers `PARAMETER_NOT_SET`, as upstream's service does. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:request_monitor_arming",
+  "verdict": "extension",
+  "why": "phase-474 I2 -- the image-wide arm request an application makes on entering its running state; callable from any thread or callback because it only bumps an atomic, and each waiting executor arms at its next spin. See `rust:Executor::arm_monitors`."
+}

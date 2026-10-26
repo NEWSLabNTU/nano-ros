@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Client::poll",
+  "verdict": "extension",
+  "why": "drains whatever the client has pending without blocking, so a caller that is not inside `Executor::spin` can still make progress. Ours-only because rclcpp_action's client is a `Waitable` the executor's wait set drives; RFC-0002's executor drives entities directly through the RMW vtable and there is no wait set to add it to. Same role as `cpp:PollingActionClient`'s drain, offered on the callback tier so a mixed loop needs only one entity.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
+}

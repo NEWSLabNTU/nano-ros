@@ -1,0 +1,5 @@
+{
+  "key": "c:heap_total_bytes",
+  "verdict": "extension",
+  "why": "total managed heap (used + free) as the platform reports it, `0` where the port does not instrument its heap -- the denominator the other three are read against. See `c:heap_used_bytes`."
+}

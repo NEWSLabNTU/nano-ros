@@ -1,0 +1,6 @@
+{
+  "key": "c:lifecycle_state_machine_options_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's options carry an allocator and `enable_com_interface`. The allocator is the `no-allocator` rule; the com-interface switch is a separate explicit call here -- `rclc_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`."
+}

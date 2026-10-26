@@ -1,0 +1,8 @@
+{
+  "key": "cpp:TimerInfo",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "extension",
+  "why": "issue 1974 — HUMBLE ONLY, because Humble's rclcpp has no such type: Jazzy added `rclcpp::TimerInfo {expected_call_time, actual_call_time}`, and under Jazzy ours correlates `same` (same name, same two `rclcpp::Time` members, on the timer's clock type), so the row is scoped out there. A callback invocable as `void(const TimerInfo&)` passed to `create_wall_timer` / `rclcpp::create_timer` receives it (`packages/api/nros-cpp/include/rclcpp/rclcpp.hpp`, `detail::TimerAdapter`). One producer: the executor's timer dispatcher (`arena::timer_call_info`, `nros_node::TimerCallInfo`) computes expected = actual - (elapsed - period) at the moment it decides the activation is due; C, C++ and Rust copy those two numbers, none computes its own."
+}

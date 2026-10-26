@@ -1,0 +1,6 @@
+{
+  "key": "cpp:FixedString::size",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`length()` under `std::string`'s name, so ported code compiles. See `cpp:FixedString`."
+}

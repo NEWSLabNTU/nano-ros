@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_hazard_table",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): installs the baked hazard table, whose guards index the rate and age tables `set_monitor_table` / `set_age_table` install; the observer reports `hazard-detected`, `hazard-reaction` and `hazard-recovered` on the violation drain. No rclrs counterpart -- ROS 2 has no contract monitors. See `rust:HazardSpec`."
+}

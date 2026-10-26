@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::create",
+  "verdict": "divergence",
+  "why": "no allocator: `Executor` is constructed into CALLER storage -- `nros::Executor exec; Executor::create(exec, locator, domain_id)` -- with the session held in an `alignas(8) uint8_t storage_[NROS_CPP_EXECUTOR_STORAGE_SIZE]` inline array sized by the build. rclcpp's executors are constructed normally and shared by `SharedPtr`. Same shape as the pubsub stage's `cpp:Publisher::Publisher<M>`. the executor IS the session and the context here. `Executor::create` opens the middleware connection, nodes are created ON it, and every entity lands in its arena; there is no `rclcpp::Context` to hold, register with, or shut down separately. See `cpp:Context`."
+}

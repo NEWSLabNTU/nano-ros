@@ -1,0 +1,5 @@
+{
+  "key": "c:time_compare",
+  "verdict": "extension",
+  "why": "rcl compares time points by reading the struct fields; ours are opaque, so the comparison is an entry point."
+}

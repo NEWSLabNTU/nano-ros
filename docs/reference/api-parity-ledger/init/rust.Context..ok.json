@@ -1,0 +1,6 @@
+{
+  "key": "rust:Context::ok",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-428 Q1 follow-through (2026-09-06) — `rclrs::Context::ok(&self) -> bool`: whether the rcl context is still valid, i.e. `shutdown` has not been called on it. Our `Context` is a resolved VALUE (`packages/api/nros/src/init.rs:85`) with no shutdown state to report; the thing that can stop being live is the session, and that is the executor's (`Executor::open` / its spin verbs return the failure, `rust:Executor::spin`). A method that always answered `true` would be the silent-disagreement RFC-0089 forbids, so there is none. Absent: `no method named ok`."
+}

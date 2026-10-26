@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Client::Client<ActionT>",
+  "verdict": "divergence",
+  "why": "rclcpp_action's templated constructor, taking node interfaces and reached through `create_client`. Ours is `ActionClient<A>` default-constructed into caller storage and filled by `Node::create_action_client` -- the `out-param-first` and `no-shared-ptr` rules. See the service stage's `cpp:Client::Client<ServiceT>`."
+}

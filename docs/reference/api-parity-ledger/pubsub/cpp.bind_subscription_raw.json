@@ -1,0 +1,5 @@
+{
+  "key": "cpp:bind_subscription_raw",
+  "verdict": "extension",
+  "why": "the zero-copy tier of `cpp:bind_subscription`: the bound member takes the WIRE BYTES (`const uint8_t*`, `size_t`) with no deserialize and no typed header, for a component that parses or forwards its own payload. rclcpp's nearest is `cpp:GenericSubscription`, which hands back an allocated `SerializedMessage`. User-facing -- `NROS_BIND_SUB_RAW` exists for it and `cpp_multi_node_entry` exercises it -- but the example workspaces use the typed form."
+}

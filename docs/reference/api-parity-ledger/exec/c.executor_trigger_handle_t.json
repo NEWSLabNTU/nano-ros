@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_trigger_handle_t",
+  "verdict": "extension",
+  "why": "phase-417 stage 3. The array element a trigger predicate walks: `{ void *entity; bool data_available; }`. rclc has `rclc_executor_handle_t` and this is NOT it -- that type carries the entity union, the callback, the invocation mode, the wait-set index and the initialisation flag, all of which a trigger has no business reading. Taking the upstream name for a two-field narrowing would be exactly the compile-and-differ RFC-0089 forbids, so the name is ours and a ported custom trigger reaching for `handles[i].subscription` fails to COMPILE. It exists because `rclc_executor_trigger_one` compares `obj` against a handle's ENTITY POINTER, and our previous trigger ABI (`const bool *ready, size_t count, void *context`) carried no entity identity at all -- see the closed `c:executor_trigger_one` row in this pass's commit."
+}

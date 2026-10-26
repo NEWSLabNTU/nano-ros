@@ -1,0 +1,5 @@
+{
+  "key": "c:message_type_t",
+  "verdict": "divergence",
+  "why": "the typesupport handle a publisher or subscription is created with. rosidl's `rosidl_message_type_support_t` carries function pointers into generated code plus an identifier used to pick a middleware-specific implementation at RUNTIME; ours names the one linked backend's descriptor, because an image has exactly one."
+}

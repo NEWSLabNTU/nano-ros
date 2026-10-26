@@ -1,0 +1,5 @@
+{
+  "key": "rust:SourceLocationMetadata::caller",
+  "verdict": "extension",
+  "why": "captures it from `core::panic::Location`. See `rust:SourceLocationMetadata`."
+}

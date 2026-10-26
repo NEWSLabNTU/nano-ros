@@ -1,0 +1,5 @@
+{
+  "key": "c:action_endpoint_hashes_t",
+  "verdict": "extension",
+  "why": "issue 1913 -- the REP-2011 hash each of an action's five endpoints is keyed on, a trailing member of `rclc_action_type_t` filled by the generated `ROSIDL_GET_ACTION_TYPE_SUPPORT` descriptor. rcl has no counterpart because its action type support reaches each endpoint's own type support (and hence its hash) through `rosidl_action_type_support_t`; ours is one flat descriptor, so the five hashes ride on it. NULL members fall back to `type_hash`."
+}

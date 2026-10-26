@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeKey::raw",
+  "verdict": "extension",
+  "why": "the raw byte of a `rust:NodeKey`, for the FFI that already persists the same index (`rcl_node_t.node_id`, `nros_cpp_node_t.node_id`); see that row."
+}

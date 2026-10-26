@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_client",
+  "verdict": "divergence",
+  "why": "rclc's `rclc_executor_add_client(executor, client, response_msg, callback)` takes the response storage and callback at registration. Ours takes them from the client (RFC-0041: the callback belongs to the entity; the response arrives as CDR into the client's own storage, no allocator), so ours is `rclc_executor_attach_client(executor, client)`. phase-492 W1.b moved ours off this name."
+}

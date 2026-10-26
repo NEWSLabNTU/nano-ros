@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Node::create_sub_node",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "a lightweight node sharing its parent's context with an extra namespace prefix, used to group entities under one node. It needs a second node object per sub-namespace and an allocator for it; a namespace is set once at declaration here."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:system_clock_init",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl builds a clock per kind through a named init pair (`rcl_steady_clock_init`, `rcl_system_clock_init`, `rcl_ros_clock_init`) as well as a generic `rcl_clock_init` taking a `rcl_clock_type_t`. Ours is the generic form only -- `rcl_clock_init(type, &clock, &allocator)`, rcl's own argument order -- because a per-kind entry point buys nothing when the kinds are an enum. The allocator is accepted for the signature and must be NULL or the default one; nothing allocates. CORRECTED 2026-10-25 (phase-515 W0): this row quoted `(clock, type)` and said the allocator argument did not exist."
+}

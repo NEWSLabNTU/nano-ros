@@ -1,0 +1,5 @@
+{
+  "key": "c:goal_uuid_generate",
+  "verdict": "extension",
+  "why": "rclcpp_action generates the goal id inside `Client::async_send_goal` and never exposes the generator. Ours must: on the L1 polling tier the caller drives the protocol itself, and an image whose entropy source is a board capability (RFC-0036) needs one sanctioned generator rather than each app inventing one. See the manual-repro seeding note in CLAUDE.md for what a bad one costs."
+}

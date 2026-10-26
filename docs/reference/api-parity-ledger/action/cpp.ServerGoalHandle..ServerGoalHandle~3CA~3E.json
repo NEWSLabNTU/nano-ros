@@ -1,0 +1,6 @@
+{
+  "key": "cpp:ServerGoalHandle::ServerGoalHandle<A>",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "issue 2015 (2026-10-24) -- the handle's constructor, from `(server, goal id)`. Upstream's is private and takes rcl handles; ours is a public token constructor because the goal's state lives in the server's arena and the handle only names it (see `cpp:ServerGoalHandle`)."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Node::get_node_services_interface",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see the node stage's `cpp:Node::get_node_base_interface`."
+}

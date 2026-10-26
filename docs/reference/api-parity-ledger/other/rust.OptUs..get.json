@@ -1,0 +1,5 @@
+{
+  "key": "rust:OptUs::get",
+  "verdict": "extension",
+  "why": "see `rust:OptUs`."
+}

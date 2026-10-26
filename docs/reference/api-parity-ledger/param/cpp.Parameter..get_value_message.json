@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Parameter::get_value_message",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "returns the value as a generated `rcl_interfaces::msg::ParameterValue`; same reason as `cpp:Parameter::from_parameter_msg`."
+}

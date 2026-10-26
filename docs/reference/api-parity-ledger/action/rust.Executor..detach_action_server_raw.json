@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::detach_action_server_raw",
+  "verdict": "extension",
+  "why": "issue 1496 resolution 1 -- cuts a raw action entry's edge to the storage that registered it (context-free goal/cancel stubs, post-accept hook cleared, context null) WITHOUT ending the entry. rclcpp has no counterpart: its destructor frees the entity. Since resolution 2 the C++ destructors call `release_action_*_raw` instead, which ends the entry outright; this stays for a caller that must keep the entry advertised but can no longer service it."
+}

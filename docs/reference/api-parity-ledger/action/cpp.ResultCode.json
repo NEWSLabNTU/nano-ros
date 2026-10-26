@@ -1,0 +1,14 @@
+{
+  "key": "cpp:ResultCode",
+  "disposition": "absent",
+  "provides": [
+    "nros::GoalStatus"
+  ],
+  "rename": {
+    "category": "C",
+    "resolution": "Not a rename. Theirs-only, and ours is one enum where theirs is two — a shape difference, not a spelling. Re-verdicted to `declined`.",
+    "status": "resolved"
+  },
+  "verdict": "declined",
+  "why": "RE-VERDICTED rename -> declined 2026-08-27 (phase-379 W5). The row's last sentence already said it: rclcpp_action is the one that splits the enum in two, and it is recorded 'so the pair is visible rather than because ours should move'. That is `declined`, not `rename` — rclcpp_action has a separate client-side terminal code, we deliberately do not, because one `GoalStatus` covering the active and the terminal states is what `action_msgs/msg/GoalStatus` defines and what all three of our languages already ship. No code change; no target name invented. ORIGINAL ROW (verdict was `rename`): rclcpp_action's client-side terminal code (SUCCEEDED / CANCELED / ABORTED / UNKNOWN). Ours is `nros::GoalStatus` in C++, `rclc_goal_status_t` in C and `GoalStatus` in Rust -- one enum covering both the active and the terminal states, as `action_msgs/msg/GoalStatus` does. rclcpp_action is the one that splits the enum in two; recorded so the pair is visible rather than because ours should move."
+}

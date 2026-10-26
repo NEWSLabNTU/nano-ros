@@ -1,0 +1,5 @@
+{
+  "key": "rust:CompletedGoal",
+  "verdict": "extension",
+  "why": "a retired goal's status and typed result, held until the client's get_result request is answered or the entry is reclaimed under slab pressure (issue 0796 -- the typed mirror is pruned with the core entry it mirrors, and used to be push-only). rclcpp_action keeps the same state inside the goal handle it allocated. See `c:action_expire_goals` for the timeout half we still do not have."
+}

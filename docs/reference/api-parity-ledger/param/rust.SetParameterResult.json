@@ -1,0 +1,11 @@
+{
+  "key": "rust:SetParameterResult",
+  "rename": {
+    "actual_change": "REMOVAL — collapses to Result<(), _>, takes is_success() and a From impl with it. Public Rust API break",
+    "category": "C",
+    "status": "not-a-rename",
+    "to": null
+  },
+  "verdict": "rename",
+  "why": "OUR LANGUAGES DISAGREE, inside one language: this enum and `ParameterError` name the same five failures (`ReadOnly`, `TypeMismatch`, `OutOfRange`, `NotFound`, `StorageFull`), differing only in that this one also has a `Success` variant instead of being a `Result`. There is a `From<SetParameterResult> for ParameterError` that `panic!`s on the two cases it does not cover. `ParameterServer`'s inherent setters return this one; the typed `MandatoryParameter`/`OptionalParameter` wrappers return the other. rclrs has one spelling, `Result<(), ParameterValueError>`. Ours should collapse to `Result<(), ParameterError>`. Covers `SetParameterResult::is_success`, which exists only because this is not a `Result`. Phase 379 W3."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:liveliness_changed_status_t",
+  "verdict": "divergence",
+  "why": "the counted-event payload. rmw declares one status struct per event (`rmw_requested_deadline_missed_status_t`, `rmw_offered_deadline_missed_status_t`, `rmw_message_lost_status_t`) that are field-identical, and rclcpp typedefs each one to its own `QOS*Info` name. Ours is a single `rclc_count_status_t` (`total_count`, `total_count_change`) shared by all three, plus `rclc_liveliness_changed_status_t` for the one that differs. The widths are fixed (`uint32_t`, and `uint16_t`/`int16_t` for the liveliness counters) rather than `size_t`/`int32_t`: the payload crosses the C ABI BY VALUE into a callback, so it must have one layout on a 64-bit host and a 32-bit target -- the same hand-mirrored-FFI-struct hazard issue 0160 gated. These print as ours-only because the ROS 2 originals live in `rmw`, which is outside the rclc+rcl surface this report compares."
+}

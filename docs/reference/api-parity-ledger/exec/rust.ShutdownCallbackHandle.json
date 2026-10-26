@@ -1,0 +1,5 @@
+{
+  "key": "rust:ShutdownCallbackHandle",
+  "verdict": "extension",
+  "why": "The handle a registered shutdown hook is removed by -- rclcpp's `ShutdownCallbackHandle`, which rclrs has no counterpart for. A `u32` packing the phase tag and the SLOT INDEX of a fixed-capacity static table, because there is no allocator to hold the callback behind a shared pointer, and because a bare index would let a handle from one phase remove the other phase's hook. Issue 0790."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:DeadlinePolicy",
+  "verdict": "extension",
+  "why": "RFC-0052's deadline-miss reaction (what the tier does when a callback overruns), not a QoS deadline policy. See `c:deadline_policy_t`."
+}

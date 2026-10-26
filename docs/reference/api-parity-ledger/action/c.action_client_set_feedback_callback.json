@@ -1,0 +1,5 @@
+{
+  "key": "c:action_client_set_feedback_callback",
+  "verdict": "extension",
+  "why": "the ours-only setter for `c:feedback_callback_t`. rcl's nearest is `rcl_action_client_set_feedback_subscription_callback`, which notifies a wait set; see `c:action_client_set_*`."
+}

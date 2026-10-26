@@ -1,0 +1,5 @@
+{
+  "key": "rust:write_cdr_le_header",
+  "verdict": "extension",
+  "why": "writes that header into a caller-owned buffer and returns the payload slice. The buffer is the caller's because there is no allocator -- serialisation targets storage the entity already owns. See `rust:CDR_LE_HEADER`."
+}

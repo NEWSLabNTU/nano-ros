@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Parameter::get_value",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "`get_value<T>()`, a template that throws `ParameterTypeException` on a mismatch. No exceptions here (RFC-0018); the typed `as_*` readers, which return the type's zero value on a mismatch, are the read (issue 2024)."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:DiagSink::create",
+  "verdict": "extension",
+  "why": "See `rust:DiagSink`."
+}

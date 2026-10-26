@@ -1,0 +1,8 @@
+{
+  "key": "cpp:IncompatibleTypeInfo",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "divergence",
+  "why": "issue 1972 — HUMBLE ONLY, as `cpp:MatchedInfo`: aliases `nros_cpp_incompatible_type_status_t` (`total_count`, `total_count_change`), `uint32_t` where upstream's `rmw_incompatible_type_status_t` has `int32_t`."
+}

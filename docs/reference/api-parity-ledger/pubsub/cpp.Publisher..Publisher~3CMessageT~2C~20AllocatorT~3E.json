@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Publisher::Publisher<MessageT, AllocatorT>",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's publisher is templated on its ALLOCATOR as well as its message. One global allocator here, so the parameter has nothing to vary and the constructor signature it produces has no counterpart. See the `no-allocator` rule."
+}

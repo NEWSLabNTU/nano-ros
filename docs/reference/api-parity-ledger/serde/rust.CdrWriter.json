@@ -1,0 +1,5 @@
+{
+  "key": "rust:CdrWriter",
+  "verdict": "extension",
+  "why": "The encode half of `rust:CdrReader`; same reason, same audience, and it anchors `CdrWriter::*`."
+}

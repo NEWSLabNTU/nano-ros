@@ -1,0 +1,5 @@
+{
+  "key": "rust:RegisteredNode",
+  "verdict": "divergence",
+  "why": "The witness `ExecutorNodeRuntime::register_node` returns for a registered component: a slot index typed by the component (`RegisteredNode<C>`), so a caller who keeps it can tell which component it names. rclrs has no component runtime, so there is nothing to correlate it with; it is the component model's (RFC-0043/0044) bookkeeping, not a node. Until 2026-10-11 this row carried a pasted copy of `rust:NodeHandle`'s text (\"Four node-shaped things\", issue 0784), which described the facade's node types, not this name. phase-483 W2–W4 settled that: `nros::Node` is the one node type, the component trait is `nros::Component`, and `NodeHandle` / `StandaloneNode` left `nros::`."
+}

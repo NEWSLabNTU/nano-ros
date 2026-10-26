@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Stream::wait_next",
+  "verdict": "divergence",
+  "why": "see `cpp:Stream`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:RULE_IDS",
+  "verdict": "extension",
+  "why": "phase-474 I1 -- the contract-monitor rule ids in WIRE ORDER: a rule's numeric code (what a trace marker and the SWD violation record carry, since neither can hold a string) is its index plus one. Append only. rclrs has no on-target contract monitor."
+}

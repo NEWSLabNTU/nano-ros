@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Executor::add_node",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "an rclcpp node is standalone and is ATTACHED to an executor, which is what makes it movable between executors and spinnable by more than one. static entity storage: the executor's entity table is an arena sized at compile time (`NROS_EXECUTOR_MAX_HANDLES`) with no allocator behind it, and a `HandleId` is an index into it. Registration is one-way -- no slot is ever reclaimed and no handle is ever invalidated. A node's entities are allocated in the arena of the executor that created it (`cpp:Executor::create_node`), so attachment is not a separate step and cannot be undone. What a user loses: handing an already-built node to a different executor."
+}

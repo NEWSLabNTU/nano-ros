@@ -1,0 +1,6 @@
+{
+  "key": "rust:ParameterValue::*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "typed accessors (`as_bool`, `as_string`, `as_double_array`, ...) and constructors (`from_bool`, `from_string`, ...) on the value enum. rclrs converts through `From`/`TryFrom` impls that hand back owned `String`/`Vec`; ours cannot, because the value is stored in a `heapless::String<MAX_STRING_VALUE_LEN>` / `heapless::Vec<_, MAX_ARRAY_LEN>` inside the server's fixed slot and there is no allocator to copy it out of. So the readers return BORROWS (`Option<&str>`, `Option<&[u8]>`) and the writers are fallible on capacity (`from_string` returns `Option<Self>`). Constraint: no allocator, compile-time capacity. Same reason `rust:ParameterVariant::*` exists."
+}

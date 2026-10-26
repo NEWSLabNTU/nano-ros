@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Node::get_node_topics_interface",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Node::get_node_base_interface`."
+}

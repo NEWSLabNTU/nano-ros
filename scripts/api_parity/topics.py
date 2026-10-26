@@ -3,7 +3,7 @@
 
 Phase 379. The campaign closes the API a FEATURE at a time, across all three
 languages together: node in C, C++ and Rust, then pubsub in all three, and so
-on. A topic is therefore the thing an agent owns, a ledger shard is named after
+on. A topic is therefore the thing an agent owns, a ledger directory is named after
 one, and "complete" is a statement about a topic rather than about a language.
 
 Splitting by language instead would let C++ pubsub land while C pubsub sits

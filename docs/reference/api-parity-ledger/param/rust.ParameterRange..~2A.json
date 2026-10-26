@@ -1,0 +1,6 @@
+{
+  "key": "rust:ParameterRange::*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`is_valid` and `contains` — the predicates `ParameterServer` runs on every declare and every set. rclrs's `ParameterRange` carries the bounds and leaves the checking to the node; ours is where min, max AND step are enforced (step included since issue 1150), so the range means the same thing to a local set and to a remote `ros2 param set`. phase-417 W4.a. (the type itself correlates and needs no row; these two methods are ours)."
+}

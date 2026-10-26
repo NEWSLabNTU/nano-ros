@@ -1,0 +1,17 @@
+{
+  "key": "c:goal_status_t",
+  "their_rename": {
+    "majority": [
+      "`action_msgs/msg/GoalStatus` -- the wire type both sides serialize",
+      "rclcpp_action: `GoalStatus` (recorded surface)",
+      "rclrs: `GoalStatus` / `GoalStatusCode` (recorded surface)",
+      "rcl's OWN neighbours say STATUS: `rcl_action_goal_status_t`, `rcl_action_goal_status_array_t`, `rcl_action_get_goal_status_array`",
+      "our C++ `nros::GoalStatus` and our Rust `GoalStatus`"
+    ],
+    "ours": "`rclc_goal_status_t`",
+    "outlier": "`rcl_action_goal_state_t` -- rcl alone calls the enum a STATE, while the message it mirrors and the status types beside it in the same header say STATUS",
+    "pair": "c:action_goal_state_t"
+  },
+  "verdict": "their-rename",
+  "why": "RE-VERDICTED divergence -> their-rename 2026-09-05 (phase-425). `divergence` is reserved for a difference a PLATFORM CONSTRAINT explains, and this row named none -- there is no `no_std`, allocator or exception story here, the enum is a `uint8_t` on both sides with the same enumerators. The difference is one word, and the majority is on our side. Pair: `c:action_goal_state_t`. No code change.\n\nORIGINAL ROW: our name for rcl's `rcl_action_goal_state_t`, and the one rclcpp_action, our C++ and our Rust all use. See `c:action_goal_state_t` for the pair."
+}

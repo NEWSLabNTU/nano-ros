@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::create_subscription_in_group",
+  "verdict": "extension",
+  "why": "the subscription forms whose first parameter is a `CallbackGroup` (RFC-0047): the out-ref callback-style `create_subscription_in_group(group, Subscription<M>&, topic, cb, qos, options)` and the storage-free member-pointer `create_subscription_in_group<M, C, &C::method>(group, topic, qos)`. Both bind the entity to the group's `SchedContext` via `group_sched_table`, so its callback runs on the tier the group maps to (RFC-0002); rclcpp passes the group through `SubscriptionOptions::callback_group` instead. The second one is why the suffix had to split: it is BOTH storage-free AND in a group, so the shorter name could not say which family it joined.\n\nphase-427 (the `_in_group` split) -- this was `cpp:Node::create_subscription_in` until then. See RFC-0089, \"The `_in` rule, amended\", and the ours-only row `cpp:Node::create_subscription_in`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:ModeTablesMismatch",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). The refusal `rust:Executor::set_mode_tables` returns for a variant of another length."
+}

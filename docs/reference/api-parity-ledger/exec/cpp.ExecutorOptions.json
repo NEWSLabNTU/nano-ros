@@ -1,0 +1,6 @@
+{
+  "key": "cpp:ExecutorOptions",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's executor options -- memory strategy, context, max entities, notify-waitable. Every field is either declined on its own (`set_memory_strategy`, `cpp:Context`) or compile-time here (arena size). The EXECUTOR has no options type at all -- unlike the seven ENTITY options structs the C surface ships.CORRECTED 2026-09-04 (phase-417): this row said there is no runtime options struct. Seven ship and the correlator buckets all fourteen items `same` -- `nros_{node,publisher,subscription,service,client,action_client,action_server}_options_t` (`packages/api/nros-c/include/rclc/detail/nros_generated.h:1461,1729,2011,2474,2537,2556,2592`) plus a `*_get_default_options` for each, and `rcl_node_options_t::domain_id_override` is a RUNTIME per-node domain. What is genuinely absent is the LIFECYCLE around one: no `*_options_copy`, no `*_options_fini`, and no `*_get_options` readback anywhere in the C surface. Ours are the arguments to `Executor::create(out, locator, domain_id, session_name)`."
+}

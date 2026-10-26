@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::*dispatch*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the generated-entry-point dispatch table: reserve a slot, count them, and invoke one by index. A static table indexed by slot is how a callback reaches its component body with no trait object and no allocation. `#[doc(hidden)]` on `Executor` since phase-506 W1 (RFC-0071 D12): a method cannot move module, and the C/C++ shims and generated dispatch still call it."
+}

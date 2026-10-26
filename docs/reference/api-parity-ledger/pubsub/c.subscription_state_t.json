@@ -1,0 +1,5 @@
+{
+  "key": "c:subscription_state_t",
+  "verdict": "extension",
+  "why": "see `c:publisher_state_t`."
+}

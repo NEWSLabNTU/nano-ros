@@ -1,0 +1,8 @@
+{
+  "key": "cpp:MatchedInfo",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "divergence",
+  "why": "issue 1972 — HUMBLE ONLY: Jazzy's rclcpp declares `MatchedInfo` and under Jazzy it correlates `same`, so the row is scoped out there. Upstream's is `rmw_matched_status_t`; ours aliases `nros_cpp_matched_status_t` (`rclcpp/event.hpp`), the same four fields in the same order, `uint32_t` where upstream has `size_t` so the by-value callback payload has one layout on a 64-bit host and a 32-bit target."
+}

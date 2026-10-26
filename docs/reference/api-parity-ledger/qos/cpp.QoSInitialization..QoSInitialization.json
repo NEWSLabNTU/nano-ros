@@ -1,0 +1,10 @@
+{
+  "key": "cpp:QoSInitialization::QoSInitialization",
+  "disposition": "adopt",
+  "provides": [
+    "nros::QoS::keep_last",
+    "nros::QoS::keep_all"
+  ],
+  "verdict": "declined",
+  "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
+}

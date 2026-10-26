@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_get_publishers_info_by_topic",
+  "verdict": "divergence",
+  "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
+}

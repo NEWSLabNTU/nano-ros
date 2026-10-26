@@ -1,0 +1,5 @@
+{
+  "key": "c:cancel_callback_t",
+  "verdict": "divergence",
+  "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`."
+}

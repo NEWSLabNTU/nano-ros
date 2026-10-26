@@ -1,0 +1,6 @@
+{
+  "key": "c:get_zero_initialized_subscription",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "see `c:get_zero_initialized_publisher`."
+}

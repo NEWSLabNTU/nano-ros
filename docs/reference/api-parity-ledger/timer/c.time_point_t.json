@@ -1,0 +1,5 @@
+{
+  "key": "c:time_point_t",
+  "verdict": "divergence",
+  "why": "rcl carries a time point as a struct pairing the value with its clock kind, so a mismatched comparison is detectable. Ours is `rclc_time_t` plus the clock the caller read it from -- the kind is a property of the clock, not of every value, which halves the size of a timestamp on the wire and in a message."
+}

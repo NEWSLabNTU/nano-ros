@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::check_declared_qos",
+  "verdict": "extension",
+  "why": "issue 1256 -- the BOOT-TIME check of every column a subscription's contract can declare: the depth (it calls `check_declared_depth`), then the RELIABILITY and the DURABILITY. No upstream counterpart, for the reason `check_declared_depth` has none: upstream has no contract sidecar to disagree with. The two policies are not a sizing fact but an INTEROP one -- an incompatible-QoS match never delivers -- and until this they were declared, delivered to the build and never compared with the code. `create_subscription_in` and `create_subscription_in_group` call it; a disagreement prints the node, the topic and both values, goes through `set_error` (`DECLARED_QOS_MISMATCH`, -403) so the entry halts boot, and the subscription is NOT created. An undeclared column checks nothing."
+}

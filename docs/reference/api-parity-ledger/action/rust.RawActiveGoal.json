@@ -1,0 +1,5 @@
+{
+  "key": "rust:RawActiveGoal",
+  "verdict": "extension",
+  "why": "the untyped `rust:ActiveGoal` -- goal id and status only, which is all the arena stores. The goal payload is deliberately not retained; see `cpp:ServerGoalHandle` on the absent `get_goal`."
+}

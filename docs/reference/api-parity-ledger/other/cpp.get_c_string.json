@@ -1,0 +1,5 @@
+{
+  "key": "cpp:get_c_string",
+  "verdict": "divergence",
+  "why": "rclcpp's `std::string` -> `const char*` adapter, which exists because rclcpp's API takes `std::string` and rcl takes `const char*`. Our C++ has no such boundary: `nros-cpp` is freestanding with `-fno-exceptions` (RFC-0018) and gates every `<string>` include on `NROS_CPP_STD` (issue 0112), so the API takes `const char*` throughout and there is nothing to adapt."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:ShutdownPhase",
+  "verdict": "extension",
+  "why": "Which of the two ordered shutdown phases a hook belongs to -- `Pre` (before the session closes, while every entity still works) or `Post` (after). rclrs has neither phase. The ordering is the feature: a device releases a bus or parks an actuator from `Pre`, because after teardown it cannot. Issue 0790."
+}

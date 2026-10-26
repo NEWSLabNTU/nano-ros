@@ -1,0 +1,6 @@
+{
+  "key": "cpp:InitOptions",
+  "bucket": "theirs-only",
+  "verdict": "divergence",
+  "why": "the C++ face of `rcl_init_options_t`; see `c:init_options_*`. `auto_initialize_logging` and `use_default_domain_id` are runtime toggles for decisions taken at build time here (RFC-0045)."
+}

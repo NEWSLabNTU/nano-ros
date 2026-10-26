@@ -1,0 +1,5 @@
+{
+  "key": "c:timer_get_period",
+  "verdict": "divergence",
+  "why": "rcl writes the period through an `int64_t*` and returns a status; ours returns it. Same inversion as `c:clock_get_now_ns`, and the same reason: reading a valid timer's own period cannot fail. This is one of the eight C rows the first report could not explain, and it is explained by the same decision as the clock read rather than by anything specific to timers."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "rust:LogOccurrence",
+  "provides": [
+    "nros_core::Logger::info_once",
+    "nros_core::Logger::warn_skip_first",
+    "nros_core::OnceFlag"
+  ],
+  "verdict": "divergence",
+  "why": "rclrs's `All` / `Once` / `SkipFirst` is a runtime field of `LogParams`, and its `log!` macro mints the hidden per-call-site state that makes `Once` work. Ours are separate methods (`info_once`, `warn_skip_first`) taking a CALLER-SUPPLIED `&OnceFlag`. Constraints, both real: a method has no call-site identity to hang a hidden static off, and `OnceFlag` is a single `AtomicBool` using load+store rather than `compare_exchange` because riscv32imc has no CAS -- the source says so. Two consequences worth writing down: the occurrence state is the caller's `static`, and `OnceFlag` is exported by `nros-core` but NOT re-exported by the `nros` facade, so `nros::Logger::info_once` takes a type an `nros` user cannot name without adding a second dependency. Phase 379 W3."
+}

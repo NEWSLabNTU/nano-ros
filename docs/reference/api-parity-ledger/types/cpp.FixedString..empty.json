@@ -1,0 +1,6 @@
+{
+  "key": "cpp:FixedString::empty",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`std::string::empty`'s spelling, so ported code reading a message string field compiles. See `cpp:FixedString`."
+}

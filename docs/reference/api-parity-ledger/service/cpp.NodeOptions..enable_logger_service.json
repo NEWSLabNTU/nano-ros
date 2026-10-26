@@ -1,0 +1,6 @@
+{
+  "key": "cpp:NodeOptions::enable_logger_service",
+  "disposition": "refuse-loud",
+  "verdict": "declined",
+  "why": "`rclcpp::NodeOptions::enable_logger_service` -- REFUSE-LOUD, per-CONCEPT with the option family (`cpp:NodeOptions`). Correlates `ours-only` because the recorded upstream surface is Humble, where this setter does not exist yet (it arrives in Iron); it is declared here so a file ported from a newer rclcpp gets the diagnostic rather than `no member named`.\n\nSITE: `packages/api/nros-cpp/include/rclcpp/options.hpp:315` (setter) and `:319` (getter), the same dependent `static_assert` carrying `NROS_RCLCPP_REFUSE_NODE_OPTIONS` as every sibling. HOW A USER FINDS OUT: COMPILE ERROR at the call. The alternative for this member: there is no logger-level service; levels are set at build time (`nros_log::severity_enabled_at_compile_time`).\n\nphase-428 Q1 (2026-09-06): the previous text was the phase-417 stage-0 template, which said the member is a `= delete` overload. It is a `static_assert`, and the row now cites it."
+}

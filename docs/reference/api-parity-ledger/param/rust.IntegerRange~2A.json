@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntegerRange*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "The two halves of `ParameterRange`, exported from the `nros` facade since phase-417 W4.a. rclrs's `ParameterRange<T>` is ONE generic type over `i64` and `f64`; ours is an enum over two concrete structs, because `nros-params` is `no_std` and a monomorphised range inside a `#[repr]`-stable descriptor slot would multiply the slot by the number of instantiations. `new` / `is_valid` / `contains` are the predicates the store runs on every declare and every set (min, max AND step -- step since issue 1150), so a range means the same thing to a local set and to a remote `ros2 param set`. The aggregate rclrs builds out of them is `rust:ParameterRanges`."
+}

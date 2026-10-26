@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Executor::spin_some",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/executor.hpp",
+    "text": "The bound is MILLISECONDS in a `uint32_t`, not a"
+  },
+  "verdict": "divergence",
+  "why": "phase-488 (2026-10-21), measured on the stock ros2/examples ports in `packages/api/nros-cpp/tests/compile/rclcpp-examples/` (edit counts in its `edits.json`). LANDED, rename -> divergence/adopt-bounded: the C++ wave this row's blocker described. `Executor::spin_some(uint32_t max_ms = 0)` (`executor.hpp`) forwards to `nros_cpp_spin_some`, which forwards to Rust's `nros_node::Executor::spin_some` -- ONE drain for both languages: zero-timeout passes until a pass does no work, `max_ms` checked between passes, `0` = rclcpp's no-limit default, a non-zero bound on a clockless executor refused as `Unsupported` (issue 0709). `spin_once` is unchanged beside it, per RFC-0089 section 2. THE BOUND is the platform one `cpp:Executor::spin_once` records: the budget is milliseconds in a `uint32_t`, not `std::chrono::nanoseconds`, because this surface cannot require `<chrono>`. Previous text: RE-VERDICTED 2026-09-04 (phase-417), declined -> rename. `declined` means ROS 2 has it and we deliberately do not; we DO have it, under another word, which is what this row's own text said. rclcpp's `spin_some(max_duration = 0ns)` collects work once and executes everything already ready, without waiting -- and RFC-0002 section 3 makes one `spin_once` do exactly that: it computes the ready bitmap over every arena entry and dispatches EVERY ready one. So `spin_once(0)` IS `spin_some`. Worth stating plainly because the correlator scores `spin_once` as `same` while the two libraries mean different things by it: rclcpp's `spin_once` executes the NEXT available work item (one), ours executes all of them. The names line up and the semantics do not, which is worse for a porting reader than a name that simply differs. See `cpp:Executor::spin_for` for the bounded verb and `cpp:spin_once` for the free function."
+}

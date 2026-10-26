@@ -1,0 +1,5 @@
+{
+  "key": "c:time_to_nanoseconds",
+  "verdict": "extension",
+  "why": "see `c:time_from_nanoseconds`."
+}

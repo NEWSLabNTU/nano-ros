@@ -1,0 +1,8 @@
+{
+  "key": "c:timer_init_default2",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "extension",
+  "why": "issue 1974 / phase-515 C1 -- Jazzy's `rclc_timer_init_default2(timer, support, timeout_ns, callback, autostart)`, shipped under Jazzy's name and signature on every edition. Against Humble it is ours-only, hence this row; against Jazzy it correlates `same`. Before phase-515 it was spelled `rclc_timer_init_with_context2` because the callback contract differed. `autostart == false` creates the timer cancelled; `rclc_executor_add_timer` registers it cancelled and `rcl_timer_reset` starts it, its first period counting from the reset."
+}

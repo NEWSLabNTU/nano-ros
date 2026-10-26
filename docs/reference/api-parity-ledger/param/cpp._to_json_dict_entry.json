@@ -1,0 +1,6 @@
+{
+  "key": "cpp:_to_json_dict_entry",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's JSON formatter for a parameter value, used by `Parameter::value_to_string`. It builds a `std::string` per entry; with no allocator there is nothing to build it in, and an image has no consumer for JSON. See `cpp:Parameter`."
+}

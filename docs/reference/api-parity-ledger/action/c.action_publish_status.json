@@ -1,0 +1,6 @@
+{
+  "key": "c:action_publish_status",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the `<action>/status` topic is published by the arena on every goal transition (`ActionServerCore::publish_status_array`), not by the user. Exposing the verb would let an image publish a status array that disagrees with the arena, which is the state the arena exists to be the only copy of. A user loses the ability to publish status on their own cadence."
+}

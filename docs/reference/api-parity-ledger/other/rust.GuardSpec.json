@@ -1,0 +1,6 @@
+{
+  "key": "rust:GuardSpec",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): one fault a hazard covers: a topic, or a redundant set (`all_of`) that faults only when every member has. See `rust:HazardSpec`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::remove_pre_shutdown_callback",
+  "verdict": "extension",
+  "why": "Removal half of `rust:Executor::add_pre_shutdown_callback`. `bool`, mirroring rclcpp's `remove_pre_shutdown_callback`: \"it was not there\" is an ordinary answer. rclrs has no counterpart. Issue 0790."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:lifecycle_register_callback",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclc's generic form, keyed on a goal STATE id into the 100-slot map. We ship the six named entry points instead (`nros_lifecycle_register_on_*`), which is also what rclcpp does; a generic slot-index form would only re-open the unbounded map (`c:lifecycle_callback_map_t`)."
+}

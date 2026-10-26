@@ -1,0 +1,5 @@
+{
+  "key": "c:cdr_write_string_n",
+  "verdict": "extension",
+  "why": "The `(ptr, len)` form. C ships BOTH spellings where Rust ships one (`CdrWriter::write_string(&str)` is already ptr+len), and that is NOT a defect: C has no string type, so a fixed-size `char[N]` message field with no guaranteed NUL and a `const char*` argument are genuinely different inputs. Recorded so the asymmetry is not mistaken for the `send_response`/`send_reply_raw` class of duplicate verb. Note the read side has no `_n` counterpart -- `rclc_cdr_read_string` always takes a max_len."
+}

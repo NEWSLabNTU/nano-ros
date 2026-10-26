@@ -1,0 +1,6 @@
+{
+  "key": "c:cdr_seq_byte_len",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "The ONE place a wire-supplied element count meets `sizeof` (issue 1149). Returns -1 when `count * elem_size` would exceed `limit`, which every call site passes as `SIZE_MAX`: on every 32-bit target this project ships for, a bare `(size_t)count * sizeof(T)` wraps for a count as small as `0x40000000` and the wrapped length passes any bounds check. The limit is a parameter so the native lane, whose `size_t` is 64 bits, can exercise the 32-bit wrap (`tests/run/cdr_borrow_le_slice.c`). Used by `rclc_cdr_borrow_le_slice_*` and by the generated heap-sequence `_deserialize` before its `nros_platform_malloc`. ROS 2 has no counterpart: rosidl's C sequences resize through `rosidl_runtime_c__*__Sequence__init`, which takes a `size_t` the caller already trusted."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:qos_policy_name_from_kind",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "returns the policy's name as a `std::string`. No allocator, and no `<string>` in the freestanding build (see `nros-cpp` headers gating std includes on `NROS_CPP_STD`). The `const char *` sibling is the one worth having -- see `cpp:qos_policy_kind_to_cstr`."
+}

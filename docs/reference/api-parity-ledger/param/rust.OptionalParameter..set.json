@@ -1,0 +1,5 @@
+{
+  "key": "rust:OptionalParameter::set",
+  "verdict": "divergence",
+  "why": "same as `rust:MandatoryParameter::set`, with `Option<T>` because `None` is how a value is cleared here -- see `rust:OptionalParameter::unset`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:arena_size_for",
+  "verdict": "extension",
+  "why": "per-entry executor arena sizing (phase-271, issue 0110): scales the build-time `ARENA_SIZE` linearly by a caller-chosen callback count, floored at the full default. It replaced a workspace-global `NROS_EXECUTOR_ARENA_SIZE` -- one number every entry in the workspace had to share, so a fat entry and a lean one were sized by whichever was declared louder. The arena exists at all because callback closures are stored INLINE with no allocator; over-provisioning is safe, under-provisioning fails entity creation."
+}

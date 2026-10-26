@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Subscription::get_shared_dynamic_message_type",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "dynamic typesupport (Jazzy, REP-2011): messages whose type is learned at RUNTIME, held in `rosidl_dynamic_typesupport` dynamic data. Every type in an image is generated at build time into fixed storage (RFC-0023); dynamic data needs an allocator and a type-description parser at runtime. Same decision as `cpp:GenericPublisher`; see rmw `rmw_take_dynamic_message` (declined)."
+}

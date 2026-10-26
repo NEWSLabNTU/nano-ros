@@ -1,0 +1,5 @@
+{
+  "key": "rust:CallbackEffectKind",
+  "verdict": "extension",
+  "why": "that relation: Reads / Publishes / Writes. See `rust:CallbackEffectMetadata`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:LifecyclePollingNode::state",
+  "verdict": "extension",
+  "why": "see `rust:LifecyclePollingNode`. Naming: Rust convention drops `get_` (RFC-430), so `state()` is right for Rust -- but see `cpp:LifecycleNode::get_current_state`, where the same reading is spelled two other ways across our own languages."
+}

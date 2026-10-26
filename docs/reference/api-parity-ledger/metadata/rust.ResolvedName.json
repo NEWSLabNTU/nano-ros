@@ -1,0 +1,5 @@
+{
+  "key": "rust:ResolvedName",
+  "verdict": "extension",
+  "why": "owned storage for a resolved name -- `heapless::String<MAX_RESOLVED_NAME_LEN>`, because there is no allocator and the result must be returnable by value from a `no_std` callee. See `rust:resolve_name`."
+}

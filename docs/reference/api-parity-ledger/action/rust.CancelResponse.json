@@ -1,0 +1,5 @@
+{
+  "key": "rust:CancelResponse",
+  "verdict": "divergence",
+  "why": "the cancel callback's PER-GOAL accept/reject decision (`Reject` / `Accept`), the twin of `GoalResponse`. Issue 0796 gave this name back to the per-goal concept: it used to be the `action_msgs/srv/CancelGoal` RPC return code, which is now `CancelReturnCode`. rclrs 0.7.0 ships actions (issue 1042: this row was written against 0.5.1, which had none), and its `CancelResponse` is a TYPE beside the RPC code `CancelResponseCode` -- a different thing under our per-goal decision's name, hence `divergence`. Measured against rclcpp_action, whose `CancelResponse` is the same per-goal concept under 1-based discriminants (see `cpp:CancelResponse` for why ours stay 0-based). NOTE `nros::CancelReturnCode` is not re-exported from the `nros` facade yet -- `nros_node::CancelReturnCode` is the reachable path -- so `ActionClient::cancel_goal`'s promise type cannot be NAMED from `nros::` alone; a one-line re-export is owed."
+}

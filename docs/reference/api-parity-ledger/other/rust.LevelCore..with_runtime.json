@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelCore::with_runtime",
+  "verdict": "extension",
+  "why": "phase-509 P10 -- run a level's setup on the shared runtime under the executor's lock. rclrs has no levels."
+}

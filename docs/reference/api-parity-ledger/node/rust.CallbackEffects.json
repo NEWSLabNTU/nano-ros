@@ -1,0 +1,5 @@
+{
+  "key": "rust:CallbackEffects",
+  "verdict": "extension",
+  "why": "declares what a callback reads and writes so the executor can check the declaration against what actually happened (RFC-0043). rclrs has no equivalent because a closure's effects are whatever it captured."
+}

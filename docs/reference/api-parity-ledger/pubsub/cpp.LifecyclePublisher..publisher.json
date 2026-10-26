@@ -1,0 +1,5 @@
+{
+  "key": "cpp:LifecyclePublisher::publisher",
+  "verdict": "extension",
+  "why": "the wrapped `rclcpp::Publisher<M>`, to hand to `rclcpp::Node::create_publisher`. Upstream needs no accessor because its `LifecycleNode::create_publisher` builds the wrapper and registers it in one call; ours cannot, for the reason `cpp:LifecycleNode::add_managed_entity` gives, so creating and gating are two lines and this is the seam between them. FILED HERE, not in `lifecycle/`, because the topic classifier keys on the NAME: this is a lifecycle row and the shard is the taxonomy's answer, not a claim about the subject (same observation as `cpp:LifecycleNode::get_transition_graph`)."
+}

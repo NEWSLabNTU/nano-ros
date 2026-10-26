@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ErrorCode",
+  "verdict": "divergence",
+  "why": "the code inside `nros::Result`. Same constraint as Result -- rclcpp's equivalent information lives in the exception TYPE, which -fno-exceptions removes."
+}

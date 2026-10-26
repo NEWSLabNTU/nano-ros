@@ -1,0 +1,5 @@
+{
+  "key": "c:subscription_init_with_qos",
+  "verdict": "extension",
+  "why": "see `c:publisher_init_with_qos`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:goal_status_to_string",
+  "verdict": "extension",
+  "why": "the status enum as a `const char*` into rodata, for a device whose only diagnostic is a log line. rcl has no counterpart; rclcpp's users format the enum themselves with the STL we do not link."
+}

@@ -58,7 +58,6 @@ well-spelled key for a symbol nobody has ever shipped passes here and is issue
 here means only that every row is ADDRESSABLE by the report.
 """
 
-import json
 import os
 import pathlib
 import sys
@@ -68,6 +67,7 @@ LEDGER = ROOT / "docs/reference/api-parity-ledger"
 
 sys.path.insert(0, str(ROOT / "scripts" / "api_parity"))
 import correlate  # noqa: E402
+import ledger_files  # noqa: E402  one row per file (issue 1091); the one reader
 
 # The report's own lane names, as `scripts/api-parity.py` spells them, mapped
 # onto the language token `correlate.normalize` takes. DERIVED from the ledger
@@ -105,13 +105,10 @@ def offenders(rows):
     return bad
 
 
-def scan(files):
-    out = []
-    for f in files:
-        doc = json.loads(f.read_text())
-        for key, printed in offenders(doc):
-            out.append((f.name, key, printed))
-    return out
+def scan(ledger):
+    """[(row file, key, printed)] over a merged ledger (`ledger_files.load`)."""
+    printed_by_key = dict(offenders(ledger))
+    return [(ledger[k]["_file"], k, printed_by_key[k]) for k in sorted(printed_by_key)]
 
 
 def self_test():
@@ -160,12 +157,13 @@ def self_test():
 def main():
     self_test()
 
-    files = sorted(LEDGER.glob("*.json"))
-    if not files:
-        print("check-ledger-key-spelling: no ledger shards found at %s" % LEDGER, file=sys.stderr)
+    ledger = ledger_files.load(str(LEDGER))
+    if not ledger:
+        print("check-ledger-key-spelling: no ledger rows found at %s" % LEDGER, file=sys.stderr)
         return 1
-    rows = sum(len(json.loads(f.read_text())) for f in files)
-    bad = scan(files)
+    rows = len(ledger)
+    shards = len({v["_shard"] for v in ledger.values()})
+    bad = scan(ledger)
     if bad:
         print(
             "FAIL: %d ledger row(s) carry a key the report can never print.\n"
@@ -189,8 +187,8 @@ def main():
             )
         return 1
     print(
-        "check-ledger-key-spelling: OK — %d row(s) across %d shard(s), every key is one "
-        "the report can print" % (rows, len(files))
+        "check-ledger-key-spelling: OK — %d row(s) across %d topic(s), every key is one "
+        "the report can print" % (rows, shards)
     )
     return 0
 

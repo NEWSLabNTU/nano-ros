@@ -1,0 +1,5 @@
+{
+  "key": "rust:PARAMETERS",
+  "verdict": "extension",
+  "why": "see `rust:DEFAULT`."
+}

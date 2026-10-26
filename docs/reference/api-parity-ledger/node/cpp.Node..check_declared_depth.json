@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::check_declared_depth",
+  "verdict": "extension",
+  "why": "phase-403 step 2 — the BOOT-TIME half of the declared-depth check, with no upstream counterpart because upstream has no contract sidecar to disagree with. A subscription's arena buffer is sized from its own type before the user's TU exists, so depth is a multiplier the image must agree on: `contracts.sub_endpoints.<ep>.qos.depth` states it, and a call site passing a different number is the image contradicting its own manifest. The compile-time half (`NROS_SUBSCRIBE`'s `static_assert`) covers every literal-topic call site; this covers the two shapes it cannot see — a topic built at runtime, and a caller reaching the member directly. A disagreement goes through `set_error`, so it halts boot rather than silently creating a mis-sized entity. Moved off `ComponentNode` by phase-427 W4."
+}

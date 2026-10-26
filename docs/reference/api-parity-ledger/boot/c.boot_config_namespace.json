@@ -1,0 +1,5 @@
+{
+  "key": "c:boot_config_namespace",
+  "verdict": "extension",
+  "why": "reads a field of the `.nros_boot_config` blob — RFC-0045's baked rung. ROS 2 has no counterpart because a desktop node gets its identity from argv and the environment, neither of which a device has. issue 0794: the blob has always defined four fields and C exposed ONE accessor, so even a correctly-baked value could not be read from C. The namespace is now also PRODUCED — the entry emitter set only the node-name bit until 0794, so a launch-declared namespace reached no rung of the ladder."
+}

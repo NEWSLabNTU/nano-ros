@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GenericTimer::make_unique",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "no allocator, so no refcounted factory; see the `no-shared-ptr` rule."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::session*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "accessors onto the session the executor owns (`session`, `session_mut`, `session_handle`, `session_ptr`) plus its I/O health (`session_io_healthy`, `session_io_failures`). The pointer forms exist because the C/C++ surfaces are built on this type and need the raw handle across the FFI boundary; see `cpp:Executor::handle`. The health counters are the RTOS half: a device on a flaky link has to distinguish 'no traffic' from 'transport is failing' without an exception to catch (RFC-0018). rclrs exposes no session at all."
+}

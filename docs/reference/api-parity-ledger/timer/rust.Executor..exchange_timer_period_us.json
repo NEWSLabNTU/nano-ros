@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::exchange_timer_period_us",
+  "verdict": "divergence",
+  "why": "phase-417 W5.c — the WRITE half of the same family as `rust:Executor::timer_elapsed_us` and `rust:Executor::timer_is_ready`, and it sits on the executor for the same reason: RFC-0002's arena owns timer state, so there is no owning `Timer` object to hang it on where rclrs would. Returns `Option<u64>` (the period it replaced) rather than `()`, because \"not a timer handle\" must be a different answer from \"exchanged a period of 0\" — issue 1008's shape, and the same choice the two read siblings make.\n\nIt exists so `rcl_timer_exchange_period` (C) can forward rather than recompute: the live period is `TimerHeader::period_us`, the number `arena::timer_try_process` compares `elapsed_us` against, and a second writable copy of it is exactly the drift RFC-0019 puts the answer in Rust to avoid. `elapsed_us` is deliberately not rewound, which is rcl's own behaviour; held by `executor::tests::exchanging_a_timers_period_changes_the_cadence_without_rewinding_it`, which fails if it is (measured)."
+}

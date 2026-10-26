@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Executor::spin_until_future_complete",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "drives the executor until a `std::shared_future` resolves. RFC-0021: no futures and no async runtime. Every blocking helper takes the executor and drives it (`promise.wait(&mut executor, timeout)`), because on a single-threaded executor awaiting a result that only that executor can produce is a deadlock. See `cpp:Future`. Ours inverts it: the blocking helper is a method on the thing being waited FOR and it takes the executor (`promise.wait(&mut executor, timeout)`, `Client::call`), which is the same capability with the deadlock made unrepresentable. See `cpp:Future::wait` and the service stage's `cpp:Client::async_send_request`."
+}

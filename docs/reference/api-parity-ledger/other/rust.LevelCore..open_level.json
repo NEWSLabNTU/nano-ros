@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelCore::open_level",
+  "verdict": "extension",
+  "why": "phase-509 P10 -- seat a spawned level's band worker on the shared executor and make it the registering level. rclrs has no levels."
+}

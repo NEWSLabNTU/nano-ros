@@ -1,0 +1,6 @@
+{
+  "key": "rust:PrimitiveOptions",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the value `IntoPrimitiveOptions` produces -- a name plus an optional `QoSProfile`. See `rust:IntoPrimitiveOptions`."
+}

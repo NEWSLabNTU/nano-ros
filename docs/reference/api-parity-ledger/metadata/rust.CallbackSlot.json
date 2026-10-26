@@ -1,0 +1,5 @@
+{
+  "key": "rust:CallbackSlot",
+  "verdict": "extension",
+  "why": "the declaration-order index a callback occupies in the static table -- the sibling of `rust:NodeSlot`, which the node stage already recorded, defined in the same 40-line block. The count these carry is the whole reason the sidecar exists (issue 0257): the entry codegen const-asserts the model's entity count against the executor capacity that actually compiles in. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Consumers outside `packages/api/nros`: none. Kept at the crate root by phase-506 W1 (RFC-0071 D12): component-mode or typed-API code writes this name, so it is user API, not machinery."
+}

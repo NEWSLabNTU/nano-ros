@@ -1,0 +1,5 @@
+{
+  "key": "rust:ClientCallback",
+  "verdict": "divergence",
+  "why": "see `c:client_set_response_callback`."
+}

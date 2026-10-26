@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Context::executor_handle",
+  "verdict": "extension",
+  "why": "phase-488. The executor this context VIEW names (see `cpp:Context`); null for an empty one."
+}

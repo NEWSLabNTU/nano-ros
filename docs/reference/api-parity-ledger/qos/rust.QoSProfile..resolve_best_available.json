@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::resolve_best_available",
+  "verdict": "extension",
+  "why": "issue 1973. Replaces each BEST_AVAILABLE field with a concrete value, by upstream's rule (`rmw_dds_common`'s `qos_profile_get_best_available_for_{subscription,publisher}` and `qos_profile_update_best_available_for_services`, transcribed), folded over the peers the backend discovered, then clamped to the backend's `supported_qos_policies` mask so the choice is never one the next line refuses. rclrs has no counterpart for the reason `resolve_system_default` has none: upstream's resolution is private C++ inside each loaded `librmw_*_cpp.so`, while ours is shared by every backend through `nros_rmw::resolve_best_available_on` at the one create seam (`nros-rmw-cffi`'s `CffiSession`), so it must be a public item on the shared `QoSProfile`. One rule, not one per backend. No allocation (the peers are a fold), no `std`."
+}

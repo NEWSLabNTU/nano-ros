@@ -1,0 +1,5 @@
+{
+  "key": "rust:Timer::period",
+  "verdict": "extension",
+  "why": "the Rust half of `c:timer_get_period`."
+}

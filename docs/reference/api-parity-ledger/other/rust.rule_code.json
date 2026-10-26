@@ -1,0 +1,5 @@
+{
+  "key": "rust:rule_code",
+  "verdict": "extension",
+  "why": "phase-474 I1 -- a rule id's wire code. See `rust:RULE_IDS`."
+}

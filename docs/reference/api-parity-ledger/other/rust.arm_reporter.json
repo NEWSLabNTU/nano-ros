@@ -1,0 +1,5 @@
+{
+  "key": "rust:arm_reporter",
+  "verdict": "extension",
+  "why": "issue 1693 -- THE arming step of one executor's `/diagnostics` reporter, shared by `install_contract_monitors` (Rust) and nros-cpp's `nros_cpp_install_monitors` (C and C++): idempotent, arms nothing in a census run (`census_hooks::recording_run`), and never fatal when the publisher cannot be created. No rclrs counterpart -- ROS 2 has no contract monitors. See `rust:install_contract_monitors`."
+}

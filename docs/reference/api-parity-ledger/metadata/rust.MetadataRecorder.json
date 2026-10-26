@@ -1,0 +1,5 @@
+{
+  "key": "rust:MetadataRecorder",
+  "verdict": "extension",
+  "why": "the in-memory sink host discovery records a declaration into; it never opens transport. the SOURCE-METADATA surface: a component's declaration is recorded without opening middleware, so `nros sync` and the launch resolver can read the entity set off the host without running the image (RFC-0046; phase-126B/307/308). rclrs has no counterpart because rclrs has no codegen step. Same subsystem as `rust:NodeMetadata` / `rust:NodeSlot` in the node stage. Capacities are const generics because the recorder must work on a `no_std` target with no allocator."
+}

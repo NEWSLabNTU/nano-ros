@@ -1,0 +1,10 @@
+{
+  "key": "cpp:MessageInfo",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/message_info.hpp",
+    "text": "/// zero is \"not reported\", never \"published at time zero\"."
+  },
+  "verdict": "divergence",
+  "why": "both sides carry per-message metadata. SHIPPED 2026-10-25 (issue 2036): `rclcpp::MessageInfo` (`packages/api/nros-cpp/include/rclcpp/message_info.hpp`) exists and is what a hosted `(msg, const rclcpp::MessageInfo&)` subscription callback receives, in all four message forms. `get_rmw_message_info()` is upstream's accessor, both constnesses.\n\nTHE DIVERGENCE, and its constraint: upstream's accessor returns `rmw_message_info_t`; ours returns `rclcpp::RmwMessageInfo`, the same members under the same names (`source_timestamp`, `received_timestamp`, `publication_sequence_number`, `reception_sequence_number`, `publisher_gid.data[24]`, `from_intra_process`), because the C++ surface does not include the RMW ABI headers that define the C type. Member access reads the same; a declaration spelled `rmw_message_info_t` is a COMPILE ERROR. `publisher_gid.implementation_identifier` is null (one RMW per session) and `from_intra_process` is always false.\n\nPOPULATION is a backend property: the values come from the backend's `take_with_info` (Rust `nros::MessageInfo`, see `rust:MessageInfo`); a backend that reports none (XRCE, uORB) leaves every field zero, so zero means \"not reported\". A freestanding build refuses the callback shape at compile time (`NROS_RCLCPP_REFUSE_MESSAGE_INFO_CALLBACK`): the metadata path keeps the callable on the heap.\n\nTest: `packages/api/nros-cpp/tests/compile/subscription_message_info_runtime.cpp` (stub backend, all four shapes, `just check cpp`)."
+}

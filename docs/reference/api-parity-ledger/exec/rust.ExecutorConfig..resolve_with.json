@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorConfig::resolve_with",
+  "verdict": "extension",
+  "why": "see `rust:ExecutorConfig::resolve`."
+}

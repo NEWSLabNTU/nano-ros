@@ -1,0 +1,5 @@
+{
+  "key": "c:action_get_result_async",
+  "verdict": "divergence",
+  "why": "see `c:action_send_goal_async`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:FixedString::to_string",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "copy out as a `std::string`, present only where `<string>` is (`NROS_CPP_HAS_STD_STRING`). See `cpp:FixedString`."
+}

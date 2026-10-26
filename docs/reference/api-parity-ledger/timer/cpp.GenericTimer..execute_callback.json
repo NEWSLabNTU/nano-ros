@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GenericTimer::execute_callback",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's internal dispatch entry point; a user writes neither side. See the pubsub stage."
+}

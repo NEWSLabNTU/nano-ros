@@ -1,0 +1,5 @@
+{
+  "key": "rust:rmw_request_id_t",
+  "verdict": "divergence",
+  "why": "see `rust:RequestId`."
+}

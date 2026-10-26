@@ -1,0 +1,6 @@
+{
+  "key": "cpp:FixedString::capacity",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`N - 1`, the most characters it holds -- a compile-time constant, unlike `std::string::capacity`. See `cpp:FixedString`."
+}

@@ -1,0 +1,15 @@
+{
+  "key": "rust:ParameterType",
+  "their_rename": {
+    "majority": [
+      "`rcl_interfaces/msg/ParameterType` -- the wire definition of the nine type constants, which both sides mirror",
+      "rclcpp: `ParameterType` (recorded surface; also `ParameterTypeException`, `get_parameter_types`)",
+      "our own C `nros_parameter_type_t`"
+    ],
+    "ours": "`nros::ParameterType` (`packages/core/nros-params/src/types.rs`), re-exported from `nros` and from `nros::prelude`",
+    "outlier": "rclrs's `ParameterKind` -- the only recorded ROS 2 client library that renames the discriminant away from the message's own word",
+    "pair": "rust:ParameterKind"
+  },
+  "verdict": "their-rename",
+  "why": "RE-VERDICTED rename -> their-rename 2026-09-05 (phase-425). The row said in prose what its verdict denied: \"a rename rclrs should make, not us\". `rename` means OURS is the one that should change, so the row was self-contradictory, and it is the one item in this class whose misfiling had a MECHANICAL consequence -- `scripts/check-prelude-tiers.py` keys prelude membership on `extension`, so an earlier attempt to move this row into that bucket would have evicted `ParameterType` from `nros::prelude`, a name every ported parameter node needs (`packages/api/nros/src/lib.rs`). `their-rename` says the correspondent EXISTS, which is exactly the fact the prelude rule asks for, so the name stays exported and the gate now says so on purpose rather than by omission. Pair: `rust:ParameterKind`, which stays `declined` -- rclrs's enum also carries a tenth `Dynamic` variant that we replace with `ParameterDescriptor::with_dynamic_typing`, and that is a SHAPE claim this verdict does not cover. No code change.\n\nORIGINAL ROW: the ours-only half of `rust:ParameterKind`. Ours is the better name of the two -- it is what `rcl_interfaces/msg/ParameterType`, rclcpp and our own C all call it -- so this pair is a rename rclrs should make, not us; recorded here because the campaign records both halves."
+}

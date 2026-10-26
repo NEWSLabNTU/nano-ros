@@ -1,0 +1,5 @@
+{
+  "key": "cpp:EndpointType",
+  "verdict": "divergence",
+  "why": "which end of a topic a discovered endpoint is. `nros::EndpointType` (`packages/api/nros-cpp/include/rclcpp/graph.hpp:39`) is rclcpp's `rclcpp::EndpointType` with upstream's `rmw_endpoint_type_t` discriminants, so a value crossing either seam means the same thing. It prints ours-only because the ROS 2 original is a `rmw`/`rclcpp` graph header item outside the public rclcpp surface this report compares -- the same reason `c:count_status_t` gives. What differs is the WIDTH: ours is an `enum class : uint8_t` because the value is copied out of a `#[repr(C)]` FFI struct that has to have one layout on a 64-bit host and a 32-bit target (the hand-mirrored-FFI-struct hazard issue 0160 gated), where upstream's is a plain unfixed enum. Adds an `Invalid = 0` arm that upstream spells `RMW_ENDPOINT_INVALID`, which is what a default-constructed `cpp:TopicEndpointInfo` reports."
+}

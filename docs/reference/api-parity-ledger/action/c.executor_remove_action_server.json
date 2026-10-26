@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_remove_action_server",
+  "verdict": "extension",
+  "why": "The server half of `c:executor_remove_action_client`, in rclc's `(executor, entity)` shape. Issue 1609."
+}

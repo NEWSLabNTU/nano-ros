@@ -1,0 +1,5 @@
+{
+  "key": "cpp:create_node",
+  "verdict": "extension",
+  "why": "the free function that creates a node on the global executor, so a component's `register` does not have to name the executor. rclcpp's equivalent is the `Node` constructor, which we decline."
+}

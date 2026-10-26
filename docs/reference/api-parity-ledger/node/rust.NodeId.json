@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeId",
+  "verdict": "extension",
+  "why": "a stable identity for a declared node, so the launch resolver and the image agree on which node a model entry refers to (RFC-0046). rclrs has no counterpart because rclrs has no codegen step. Kept at the crate root by phase-506 W1 (RFC-0071 D12): component-mode or typed-API code writes this name, so it is user API, not machinery."
+}

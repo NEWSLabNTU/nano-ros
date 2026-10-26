@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ParameterWrite",
+  "verdict": "divergence",
+  "why": "The proposed write an on-set-parameters callback sees, and the element type of `set_parameters_atomically`. Upstream passes a `std::vector<rclcpp::Parameter>`; `rclcpp::Parameter` is a generated message value object ledgered `declined` (`cpp:Parameter`) and the vector needs an allocator, so ours is one element of that vector flattened into scalars a freestanding TU can read. `#[repr(C)]` in `params_shim.rs` and emitted by cbindgen, so it is GENERATED rather than hand-mirrored — `check-ffi-struct-mirrors`' class cannot arise from it. phase-417 W4.a."
+}

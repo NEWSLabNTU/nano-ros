@@ -1,0 +1,5 @@
+{
+  "key": "c:support_state_t",
+  "verdict": "extension",
+  "why": "an explicit lifecycle for the support object (uninitialised / initialised / finalised) so a double-init or a use-after-fini is a returned code rather than undefined behaviour. rcl relies on a zero-initialized struct plus `rcl_context_is_valid`; a device that cannot report a crash needs the state to be inspectable."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::open*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "the executor OWNS the session here, so construction is `Executor::open(&ExecutorConfig)` rather than rclrs's `Context::create_executor` (see `rust:Context::create_executor` and `cpp:Context`). The variants are all constraint-shaped, not taste: `open_sized` takes an explicit `ExecutorSizing` because the arena is compile-time sized; the `*_in` suffix takes CALLER-provided backing storage (no allocator -- an image places the arena in a static, not on a heap); `open_multi` opens several RMW sessions on one executor because a gateway image bridges two transports from one RTOS task (RFC-0002); `open_with_rmw` pins the backend by registry name when more than one is linked in (issue 0687); `open_threaded` spawns the spin loop as a platform task and returns a `ThreadHandle`."
+}

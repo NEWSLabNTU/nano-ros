@@ -1,0 +1,5 @@
+{
+  "key": "c:action_server_init",
+  "verdict": "divergence",
+  "why": "rcl's `rcl_action_server_init(server, node, clock, type_support, name, options)` takes no callbacks; rclc binds them at `rclc_executor_add_action_server`. Ours binds them at init (RFC-0041: the callback belongs to the entity), so ours is `rclc_action_server_init_with_callbacks`. Constraint: the server's arena entry is created at registration with its callbacks, no allocator for a later rebinding. phase-492 W1.b moved ours off this name."
+}

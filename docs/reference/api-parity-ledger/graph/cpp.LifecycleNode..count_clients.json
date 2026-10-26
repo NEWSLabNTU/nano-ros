@@ -1,0 +1,8 @@
+{
+  "key": "cpp:LifecycleNode::count_clients",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "divergence",
+  "why": "issue 1978: `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::count_clients`, inherited, with `cpp:Node::count_clients`'s contract; ours forwards it the same way (`rclcpp_lifecycle/lifecycle_node.hpp`). The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves (as `cpp:LifecycleNode::count_publishers`)."
+}

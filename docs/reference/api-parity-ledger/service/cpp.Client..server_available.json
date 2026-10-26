@@ -1,0 +1,11 @@
+{
+  "key": "cpp:Client::server_available",
+  "rename": {
+    "from": "server_available",
+    "status": "landed",
+    "to": "service_is_ready"
+  },
+  "retired": "a deprecated alias, deleted after its one release; the row records the rename",
+  "verdict": "extension",
+  "why": "DEPRECATED ALIAS, phase-379 W6 decision 2 (2026-09-03). The live spelling is `Client::service_is_ready()`, returning `Expected<bool>`; this survives as a `[[deprecated]]` forwarder preserving the old `int` tri-state exactly (1 ready / 0 not yet / -1 cannot answer) so an out-of-tree caller keeps compiling with a diagnostic naming its replacement. It is replaced rather than kept because that `int` cannot separate a FAILED CALL from an UNSUPPORTED BACKEND -- both were `-1` -- which is the distinction rcl carries in its return code and `Expected<bool>` restores. Retired with the rest of the deprecated set in W7 step 4.\n\n2026-09-28 — NOT resurrected on the dispatch class, stated because the sibling verbs were. `service_is_ready` and `wait_for_service` came back to `rclcpp::Client<S>` when their FFI gained an arena arm; this deprecated `int` forwarder did not, and the asymmetry is the point. A `[[deprecated]]` alias exists so an out-of-tree caller who wrote the OLD spelling keeps compiling with a diagnostic; nobody ever wrote it on the post-split dispatch class, so adding it there would be inventing a new deprecated API rather than preserving one. The live alias is `cpp:PollClient::server_available`."
+}

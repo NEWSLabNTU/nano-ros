@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollSubscription::PollSubscription<M>",
+  "verdict": "extension",
+  "why": "the constructor set of an ours-only type: a default constructor plus move operations, with copies deleted. See `cpp:PollSubscription`. Unlike `cpp:Subscription::Subscription<M>` the MOVE is sound here and phase-456 W2b is why: this half owns its subscriber and relocates it through `nros_cpp_subscription_relocate`, and no arena entry holds its address. The hazard that row records belongs to the dispatch half, which is where it stayed."
+}

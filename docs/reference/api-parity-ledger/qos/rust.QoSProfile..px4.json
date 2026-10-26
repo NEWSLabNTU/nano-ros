@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::px4",
+  "verdict": "extension",
+  "why": "the QoS PX4's `uxrce_dds_client` uses on `/fmu/out/*` and `/fmu/in/*` -- BEST_EFFORT + VOLATILE + KEEP_LAST(1). A companion-computer node talking to the same `MicroXRCEAgent` must match it exactly or nothing is delivered (verified against PX4 SITL: a TRANSIENT_LOCAL reader silently fails to match `/fmu/out/*`). RFC-0039 Track B. rclrs has no vendor profiles because a desktop node discovers and negotiates instead."
+}

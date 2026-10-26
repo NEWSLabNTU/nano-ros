@@ -1,0 +1,6 @@
+{
+  "key": "c:publisher_wait_for_all_acked",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "blocks until every matched reliable subscription has acknowledged everything sent. Needs per-sample ack tracking the backends do not expose uniformly, and a blocking call that cannot bound its wait is the shape RFC-0021 exists to prevent."
+}

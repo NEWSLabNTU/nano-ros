@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::get_current_state",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-482 W4 (2026-10-07): on `rclcpp_lifecycle::LifecycleNode` this returns `const State&` (`get_current_state`: `State`), as upstream's does, so a ported call site's use of the result compiles unchanged.\n\nBefore phase-482 W4: phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. `rclcpp_lifecycle::LifecycleNode::get_current_state()` returns `const rclcpp_lifecycle::State &` — a class carrying the id AND the label as a `std::string`. Ours (`rclcpp_lifecycle/lifecycle_node.hpp:155`) returns `nros::LifecycleState`, a `uint8_t`-backed `enum class` over the REP-2002 primary states. Clause 1: the label is an owned string, which the terminal `core`/`core+alloc` target cannot have, and a reference return needs a `State` to live somewhere that outlives the call. The loss is the LABEL, not the id. LOUD: `node->get_current_state().label()` is a compile error on an enum, and `.id()` is too."
+}

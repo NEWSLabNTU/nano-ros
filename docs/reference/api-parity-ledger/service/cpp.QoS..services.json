@@ -1,0 +1,5 @@
+{
+  "key": "cpp:QoS::services",
+  "verdict": "extension",
+  "why": "the services QoS preset as a member on `QoS`; rclcpp's is a separate type, `ServicesQoS`. See `cpp:ServicesQoS::ServicesQoS`."
+}

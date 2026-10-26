@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_client_init",
+  "verdict": "extension",
+  "why": "RFC-0022's polling tier. See the pubsub stage's `cpp:PollingSubscription`. Renamed from `nros_client_init_polling` by phase-487 W2, when the polled client became its own type, `rclc_polling_client_t`: a dispatched client's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched client carried storage only the polled road fills."
+}

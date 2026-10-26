@@ -1,0 +1,20 @@
+{
+  "key": "c:action_server_is_available",
+  "rename": {
+    "category": "C",
+    "resolution": "Not a rename. Theirs-only and theirs is the outlier; our half (`c:action_client_action_server_is_ready`) is already verdicted `extension` and already carries rclcpp_action's word. Re-verdicted to `declined`. SUPERSEDED 2026-09-05 (phase-425): `declined` was the nearest of the five verdicts that existed, and it was still false of the capability. The row is now `their-rename`, the verdict written for exactly this sentence; see `why`.",
+    "status": "resolved"
+  },
+  "their_rename": {
+    "majority": [
+      "rclcpp_action: `Client::action_server_is_ready` (recorded surface)",
+      "the READY word for a client-side readiness probe is rclcpp's and rclrs's elsewhere too -- both recorded surfaces carry `service_is_ready`",
+      "our own Rust `ActionClient::action_server_is_ready`"
+    ],
+    "ours": "`rclc_action_client_action_server_is_ready(client, bool *)`",
+    "outlier": "`rcl_action_server_is_available` -- rcl alone says AVAILABLE, and names a CLIENT-side probe after the server; the recorded rclc surface has `is_available` only in rcl's two readiness functions",
+    "pair": "c:action_client_action_server_is_ready"
+  },
+  "verdict": "their-rename",
+  "why": "RE-VERDICTED declined -> their-rename 2026-09-05 (phase-425), for the reason given on `c:action_goal_state_t`: we ship this probe (`rclc_action_client_action_server_is_ready`), so \"ROS 2 has it, we deliberately do not\" is false of the capability and true only of rcl's spelling. Drop-in cost, recorded not cancelled: a ported rcl node rewrites `rcl_action_server_is_available(node, client, &ok)` as `rclc_action_client_action_server_is_ready(client, &ok)` -- one dropped parameter (no node object to pass) and one word. Pair: `c:action_client_action_server_is_ready`. No code change.\n\nORIGINAL ROW: RE-VERDICTED rename -> declined 2026-08-27 (phase-379 W5). Same shape as `c:action_goal_state_t`: the row already concluded that rcl's free-function spelling is the odd one, which makes `rename` (ours should change) the wrong verdict. Ours is `rclc_action_client_action_server_is_ready`, agreeing with rclcpp_action's `Client::action_server_is_ready` and with our own `rclc_client_service_is_ready`; rcl's `rcl_action_server_is_available` is a client-side probe whose name says server. Declined: rcl has this spelling, we deliberately do not. No code change; no target name invented. ORIGINAL ROW (verdict was `rename`): rcl's client-side probe -- despite the name it takes `(node, action_client, bool*)` and asks whether a SERVER has been discovered. rclcpp_action says `Client::action_server_is_ready`; ours says `rclc_action_client_action_server_is_ready`, which agrees with rclcpp and with our own `rclc_client_service_is_ready`. rcl's free-function spelling is the odd one; recorded so the pair is visible. Our half is `c:action_client_action_server_is_ready`, which also records that this probe exists in C ALONE."
+}

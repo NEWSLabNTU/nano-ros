@@ -1,0 +1,5 @@
+{
+  "key": "c:platform_heap_used_bytes",
+  "verdict": "extension",
+  "why": "NOT user API: this is the PLATFORM ABI (`nros/platform.h`, RFC-0034) that `nros-c` IMPORTS, and it reaches `nros_generated.h` only because cbindgen echoes the `unsafe extern \"C\"` block that declares it. The header already distinguishes them -- unlike every entry point beside them, the four `nros_platform_*` declarations carry no `NROS_PUBLIC` and no doc comment. A user calls `rclc_heap_platform_used_bytes`; a PORT implements this. Same layering complaint one language over as `rust:Session::create_publisher`."
+}

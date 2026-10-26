@@ -1,0 +1,5 @@
+{
+  "key": "cpp:GoalUUID::is_zero",
+  "verdict": "extension",
+  "why": "phase-417 stage 0 — visible only because the rclcpp adapter (then `rclcpp_compat.hpp`; deleted at stage 6 step A, each declaration moved to the header owning its concept) became a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not."
+}

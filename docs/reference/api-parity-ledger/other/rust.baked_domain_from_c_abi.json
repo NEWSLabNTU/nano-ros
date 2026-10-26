@@ -1,0 +1,5 @@
+{
+  "key": "rust:baked_domain_from_c_abi",
+  "verdict": "extension",
+  "why": "maps that `u8` onto the resolver's baked rung: `0` -> None, 255 -> Some(0), else Some(n), with 233..=254 passed through so the resolver rejects them loudly rather than this edge inventing its own validation. See `rust:DOMAIN_ID_EXPLICIT_ZERO_C_ABI`."
+}

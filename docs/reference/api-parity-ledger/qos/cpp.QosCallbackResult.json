@@ -1,0 +1,5 @@
+{
+  "key": "cpp:QosCallbackResult",
+  "verdict": "divergence",
+  "why": "the signature and result type of `QosOverridingOptions`'s validation callback; see `cpp:QosOverridingOptions::get_validation_callback`."
+}

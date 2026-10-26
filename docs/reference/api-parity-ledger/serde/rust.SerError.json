@@ -1,0 +1,5 @@
+{
+  "key": "rust:SerError",
+  "verdict": "extension",
+  "why": "The write-side error: `BufferTooSmall`, `StringTooLong`, `SequenceTooLong` -- a `Copy` fieldless enum with a `Display` impl and no payload. rclrs has no counterpart because it has no serialization surface (`rust:CdrReader`); the ROS 2 equivalents are a FastCDR exception or an `rmw_ret_t` plus the thread-local error string that `rust:RclErrorMsg` in the types stage already declines. Same constraint here: no allocator for a message, no per-thread formatted buffer, and the freestanding C++ side is -fno-exceptions (RFC-0018). Routed to this stage by an authored override in topics.py."
+}

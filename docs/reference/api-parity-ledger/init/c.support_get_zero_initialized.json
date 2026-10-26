@@ -1,0 +1,5 @@
+{
+  "key": "c:support_get_zero_initialized",
+  "verdict": "extension",
+  "why": "as `support_is_valid`: rcl's zero-init idiom applied to `rclc_support_t`, which rclc does not provide for `rclc_support_t`."
+}

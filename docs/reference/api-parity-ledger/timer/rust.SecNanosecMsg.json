@@ -1,0 +1,5 @@
+{
+  "key": "rust:SecNanosecMsg",
+  "verdict": "divergence",
+  "why": "the trait half of `rust:Time::to_ros_msg`, and it exists only because Rust has no structural typing. `nros-core` may not name a message type -- every generated message crate depends on it, and message types are generated per USER package (RFC-0023 / RFC-0067) -- so the conversion has to be implemented on the GENERATED side. C++ crosses the same edge with `template <typename TimeMsgT> Time::to_msg(TimeMsgT&)` and needs no named trait for it; rclrs needs neither, because upstream `builtin_interfaces` is one crate every rclrs node can name. `rosidl-codegen` emits `impl nros_core::SecNanosecMsg for <Msg>` for every generated message whose field set is exactly `{ int32 sec, uint32 nanosec }` -- the same binding set the C++ template has, including `builtin_interfaces/msg/Duration`. Phase-467 Q3."
+}

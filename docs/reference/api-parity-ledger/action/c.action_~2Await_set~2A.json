@@ -1,0 +1,7 @@
+{
+  "key": "c:action_*wait_set*",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's wait-set protocol -- the caller asks each entity how many wait-set slots it needs and then reads back which of them are ready. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub and service stages' identical rows."
+}

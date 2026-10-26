@@ -1,0 +1,5 @@
+{
+  "key": "c:client_service_is_ready",
+  "verdict": "extension",
+  "why": "the correctly-named half of `c:client_server_available`, present only in C. Keeping both is the defect; see that row."
+}

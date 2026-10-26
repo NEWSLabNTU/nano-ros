@@ -1,0 +1,5 @@
+{
+  "key": "rust:ServiceServer::new",
+  "verdict": "divergence",
+  "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`."
+}

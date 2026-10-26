@@ -1,0 +1,5 @@
+{
+  "key": "rust:HandleId",
+  "verdict": "extension",
+  "why": "the opaque slot index registration returns, and what `Trigger::One` and `HandleSet` are written in terms of. See `rust:Trigger`."
+}

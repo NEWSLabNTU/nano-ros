@@ -1,0 +1,5 @@
+{
+  "key": "rust:ParameterDefault",
+  "verdict": "extension",
+  "why": "the parameter default a COMPONENT records at declaration, so `nros sync` and the launch resolver can read a package's parameters out of source without running the image (RFC-0043). Values are `MetadataString` because the record has to be `const`-constructible in a static table -- `Double` is a string for the same reason. Public because the macro resolves it through `::nros::`, not because a user writes it. rclrs has no counterpart because rclrs has no codegen step. Covers `ParameterDefault::for_type` and `::parameter_type`. Kept at the crate root by phase-506 W1 (RFC-0071 D12): component-mode or typed-API code writes this name, so it is user API, not machinery."
+}

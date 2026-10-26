@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::enforces_budget",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 2018 -- whether the executor enforces a sched context's budget (a cooperative Sporadic context not handed to the kernel). See `rust:Executor::defer_budget_to_kernel`."
+}

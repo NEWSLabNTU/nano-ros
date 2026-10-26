@@ -1,0 +1,5 @@
+{
+  "key": "rust:CdrWriter::new_at_xcdr2",
+  "verdict": "extension",
+  "why": "An XCDR2 writer positioned at `pos` with `origin = 0`, built for the nros-c FFI bridge, which manages the encapsulation header and the cursor itself and hands us an `(origin, cursor, end)` triple. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with."
+}

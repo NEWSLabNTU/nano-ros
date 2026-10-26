@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Service::create_request_header",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Client::create_request_header`."
+}

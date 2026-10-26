@@ -1,0 +1,5 @@
+{
+  "key": "rust:SpinPeriodResult",
+  "verdict": "extension",
+  "why": "the measured sibling of `rust:SpinPeriodPollingResult`: work done, whether processing OVERRAN the target period, and the elapsed time. The overrun bit is the point -- a periodic RTOS task that silently takes longer than its period is the failure a control loop cannot see from inside itself. rclrs's `spin` has no period concept. See `rust:SpinOnceResult`."
+}

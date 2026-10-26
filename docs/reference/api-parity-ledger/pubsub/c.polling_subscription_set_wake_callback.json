@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_subscription_set_wake_callback",
+  "verdict": "extension",
+  "why": "the platform wake primitive fired when data arrives, so a task blocked on the platform's own primitive is released without the executor polling. rcl's nearest is `rcl_subscription_set_on_new_message_callback`, which notifies a wait set we do not have. Renamed from `nros_subscription_set_wake_callback` by phase-487 W1, when the polled subscription became its own type, `rclc_polling_subscription_t`: a subscription the executor dispatches keeps its subscriber in the executor arena, a polled one keeps it in the struct, and one type holding both meant every dispatched subscription carried storage only the polled road fills."
+}

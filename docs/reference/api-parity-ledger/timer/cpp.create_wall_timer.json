@@ -1,0 +1,10 @@
+{
+  "key": "cpp:create_wall_timer",
+  "rename": {
+    "category": "B",
+    "resolution": "Executed 2026-09-05 with `cpp:Node::create_wall_timer` — the fourth name in that row's sweep, as its `owner` field said it would be. Both rows took the same commit.",
+    "status": "resolved"
+  },
+  "verdict": "divergence",
+  "why": "the free-function form, renamed with the base on 2026-09-05 (phase-425 W1): `nros::create_timer` -> `nros::create_wall_timer` (`std_compat.hpp:61`, since DELETED), matching rclcpp's free `create_wall_timer` in `rclcpp/create_timer.hpp`. It is reachable only under `NROS_CPP_STD` — it takes a `std::function` and a `std::chrono::milliseconds`, neither of which a freestanding build has.\n\nThe residue after the rename is shape, and it is the same constraint the base row names: ours `(Node&, Timer&, chrono::milliseconds, function<void()>)` against theirs `(duration, CallbackT, CallbackGroup::SharedPtr, NodeBaseInterface*, NodeTimersInterface*)` — caller-owned `Timer&` storage instead of a returned `shared_ptr` (no allocator), and a `Node&` instead of the pair of node interfaces (RFC-0002: one executor per task owns the seam, there is no interface-fragment layer to pass).\n\nphase-442 W2 (2026-09-11) — `std_compat.hpp` is DELETED, so any sentence above naming that header describes a spelling that no longer exists. It was a third orphaned vocabulary: free functions shadowing the `Node` methods a ported file calls, dead in every shipping configuration, and RFC-0096 removed the layer it belonged to. The always-available spelling is the method."
+}

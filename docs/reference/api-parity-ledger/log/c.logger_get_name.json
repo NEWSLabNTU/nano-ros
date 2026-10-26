@@ -1,0 +1,5 @@
+{
+  "key": "c:logger_get_name",
+  "verdict": "extension",
+  "why": "phase-417 W4.d — the C logging surface, a thin FFI wrapper over `nros-log` (RFC-0019). rcl's counterpart is `rcutils_logging_*`, which the recorded rclc surface does not carry, so there is no upstream row to correlate against; the SHAPE follows rclcpp's `Logger` (named lookup, per-logger threshold, throttle) because that is the spelling a porting user writes. `rclc_log_get_logger` is TOTAL: an exhausted arena answers the catch-all and logs a WARN saying so, rather than silently aliasing a name onto the default logger and moving the wrong threshold."
+}

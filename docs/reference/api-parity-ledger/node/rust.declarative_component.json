@@ -1,0 +1,5 @@
+{
+  "key": "rust:declarative_component",
+  "verdict": "extension",
+  "why": "the one-line macro a component package writes (`nros::declarative_component!(Talker);`) to declare its node type to the runtime and the metadata probe. rclrs has no counterpart because rclrs has no codegen step. Kept at the crate root by phase-506 W1 (RFC-0071 D12): component-mode or typed-API code writes this name, so it is user API, not machinery."
+}

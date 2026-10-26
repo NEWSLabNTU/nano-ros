@@ -1,0 +1,9 @@
+{
+  "key": "cpp:LifecycleNode::get_node_type_descriptions_interface",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "see `cpp:Node::get_node_type_descriptions_interface`."
+}

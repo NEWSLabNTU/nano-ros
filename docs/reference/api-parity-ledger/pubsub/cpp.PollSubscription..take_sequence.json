@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollSubscription::take_sequence",
+  "verdict": "extension",
+  "why": "burst take -- drain up to `max_msgs` queued samples in one backend call, instead of N vtable hops, for a sensor loop polled slower than it publishes. rclcpp has no counterpart; rcl's `rcl_take_sequence` is the C one this mirrors (`c:take_sequence`). Renamed from `try_recv_sequence` by phase-379 W6 decision 1 (2026-09-03).\n\nphase-456 W2b — this row moved from `cpp:Subscription::take_sequence`. The method did not change; the class it lives on did. `Subscription<M>` served both the dispatch and the poll owner behind a `callback_mode_` flag, and every method here dereferences `storage_`, which only the poll owner has."
+}

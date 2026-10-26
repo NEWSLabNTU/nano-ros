@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Executor::get_automatically_added_callback_groups_from_nodes",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Executor::get_all_callback_groups`; the automatic/manual distinction is the `automatically_add_to_executor_with_node` flag, declined at `cpp:CallbackGroup::automatically_add_to_executor_with_node`."
+}

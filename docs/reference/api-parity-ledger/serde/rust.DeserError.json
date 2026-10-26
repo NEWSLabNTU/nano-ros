@@ -1,0 +1,5 @@
+{
+  "key": "rust:DeserError",
+  "verdict": "extension",
+  "why": "The read-side error; see `rust:SerError` for the constraint. Worth reading the variants as a list of what an embedded decoder must survive: `UnexpectedEof`, `InvalidData`, `InvalidUtf8`, `CapacityExceeded` (the decoded length exceeded the fixed `heapless` capacity -- the no-allocator failure mode ROS 2 does not have), `InvalidHeader`, and `DHeaderOverrun` (RFC-0055)."
+}

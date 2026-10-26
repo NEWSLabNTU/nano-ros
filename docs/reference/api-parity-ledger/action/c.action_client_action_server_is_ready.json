@@ -1,0 +1,15 @@
+{
+  "key": "c:action_client_action_server_is_ready",
+  "their_rename": {
+    "majority": [
+      "rclcpp_action: `Client::action_server_is_ready` (recorded surface)",
+      "the READY word for a client-side readiness probe is rclcpp's and rclrs's elsewhere too -- both recorded surfaces carry `service_is_ready`",
+      "our own Rust `ActionClient::action_server_is_ready`"
+    ],
+    "ours": "`rclc_action_client_action_server_is_ready(client, bool *)`",
+    "outlier": "`rcl_action_server_is_available` -- rcl alone says AVAILABLE, and names a CLIENT-side probe after the server; the recorded rclc surface has `is_available` only in rcl's two readiness functions",
+    "pair": "c:action_server_is_available"
+  },
+  "verdict": "their-rename",
+  "why": "RE-VERDICTED extension -> their-rename 2026-09-05 (phase-425). `extension` means \"ROS 2 has none\"; rcl has `rcl_action_server_is_available` and rclcpp_action has `Client::action_server_is_ready`, so the capability is not ours-only and only the C spelling is. The row's SECOND finding is untouched and is not this verdict's: we ship the probe in C and Rust and NOT in C++, which is a real gap in `nros::ActionClient<A>` / `nros::PollingActionClient<A>`. Pair: `c:action_server_is_available`. No code change.\n\nORIGINAL ROW: OUR LANGUAGES DISAGREE: the non-blocking server-visibility probe. rcl's is the misnamed `rcl_action_server_is_available`; rclcpp_action's is `Client::action_server_is_ready`. We have it in C and in Rust (`ActionClient::action_server_is_ready`) and NOT in C++ -- neither `nros::ActionClient<A>` nor `nros::PollingActionClient<A>` has a readiness predicate, so a C++ caller can only block in `wait_for_action_server`. Rust also ships it twice: `ActionClient::action_server_is_ready` beside `ActionClientCore::is_server_ready`, exactly the three-spelling mess the service stage recorded at `rust:ClientTrait::is_server_ready`. See `c:action_server_is_available` for the rcl naming half. Phase 379 W3/W5."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:SubMonitorCell",
+  "verdict": "extension",
+  "why": "one contracted subscriber's take-age accumulator. The take path peeks `header.stamp` straight out of the raw CDR buffer at `RosMessage::STAMP_OFFSET` and `fetch_max`es the age, so the check costs no deserialization. See `rust:MonitorSpec` and `rust:RosMessage`."
+}

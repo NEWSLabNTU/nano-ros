@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Subscription::clear_on_new_message_callback",
+  "verdict": "divergence",
+  "why": "see `c:subscription_set_on_new_message_callback`."
+}

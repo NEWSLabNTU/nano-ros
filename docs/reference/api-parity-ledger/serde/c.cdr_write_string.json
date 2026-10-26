@@ -1,0 +1,5 @@
+{
+  "key": "c:cdr_write_string",
+  "verdict": "extension",
+  "why": "The NUL-terminated form, for a generated field held as `char[N]`. See `c:cdr_write_*`; note it walks the string to find its length, which `cdr_write_string_n` exists to avoid."
+}

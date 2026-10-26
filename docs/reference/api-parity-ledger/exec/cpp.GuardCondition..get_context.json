@@ -1,0 +1,9 @@
+{
+  "key": "cpp:GuardCondition::get_context",
+  "disposition": "absent",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "declined",
+  "why": "an rclcpp guard condition holds the `Context` it was built from. See `cpp:Context`; nothing carries a context pointer here."
+}

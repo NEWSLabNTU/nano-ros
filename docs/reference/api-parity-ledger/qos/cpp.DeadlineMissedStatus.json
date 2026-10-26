@@ -1,0 +1,5 @@
+{
+  "key": "cpp:DeadlineMissedStatus",
+  "verdict": "divergence",
+  "why": "see `cpp:CountStatus`."
+}

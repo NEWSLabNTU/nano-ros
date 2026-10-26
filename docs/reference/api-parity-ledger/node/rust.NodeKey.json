@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeKey",
+  "verdict": "extension",
+  "why": "phase-426 W1 -- the parameter store's node key. ROS 2 has no correspondent because it needs none: a node OWNS its parameter table there, so 'which node' is the receiver. Ours is one fixed table shared by every node on the executor (no allocator, so no container per node), and this one-byte index is what keeps `/talker`'s `rate` and `/listener`'s `rate` apart inside it. It is `nros_node::executor::NodeId` seen from below: `nros-params` sits under `nros-node` in the layer graph and cannot name that type, so it defines the same index and `nros-node` carries the one `From` between them. Deliberately an index and not a name -- a name would cost `MAX_PARAM_NAME_LEN` bytes in every one of the ~8.5 KiB slots and would be a second answer to 'which node is this' that could disagree with the executor's table."
+}

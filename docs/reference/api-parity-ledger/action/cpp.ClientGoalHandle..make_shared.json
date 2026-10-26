@@ -1,0 +1,7 @@
+{
+  "key": "cpp:ClientGoalHandle::make_shared",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "issue 2015 (2026-10-24) -- upstream's `RCLCPP_SMART_PTR_DEFINITIONS` static factory. Ours has none: a handle is built by the client from a goal id, and on a hosted build `std::make_shared<ClientGoalHandle<A>>(id)` is the spelling; a freestanding build has no allocator to make one with."
+}

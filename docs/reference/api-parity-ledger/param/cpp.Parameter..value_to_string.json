@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Parameter::value_to_string",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "formats the value into an owned `std::string` for logging. Not provided: a `Parameter` is read field by field (`get_type()` + `as_*`), and `RCLCPP_*` formats those (issue 2024)."
+}

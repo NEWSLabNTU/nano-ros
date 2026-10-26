@@ -1,0 +1,6 @@
+{
+  "key": "c:action_client_set_*",
+  "bucket": "theirs-only",
+  "verdict": "divergence",
+  "why": "rcl lets a caller install a notify-on-arrival hook per action channel AFTER creation, so a wait set can attach itself to an existing entity. Ours is bound at creation and the notify half is the `_wake_callback` family, which fires the platform's own wake primitive rather than a wait set we do not have. See the pubsub stage's `c:subscription_set_on_new_message_callback`."
+}

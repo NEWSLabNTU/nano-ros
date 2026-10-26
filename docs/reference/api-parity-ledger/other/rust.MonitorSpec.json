@@ -1,0 +1,5 @@
+{
+  "key": "rust:MonitorSpec",
+  "verdict": "extension",
+  "why": "RFC-0052 / phase-296 W3b -- ON-TARGET contract monitors. Codegen emits a `&'static [MonitorSpec]` table plus one `static` counter cell per contracted endpoint from the SystemModel's contract layer; the entry installs it before entity creation, the publish path bumps an atomic (no clock, no lock on the hot path), and the executor checks rate / take-age / node-path latency / deadline-miss on spin ticks and pushes violations into a small ring. An uncontracted image bakes an empty table and every path dead-code-eliminates. ROS 2's answer to the same question is rclcpp's topic statistics plus an external monitor node subscribing to `/statistics` -- a second publisher per subscription and a process that has to be running, neither of which an image has. See `cpp:TopicStatisticsState`."
+}

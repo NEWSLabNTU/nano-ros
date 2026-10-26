@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_action_server_get_active_goal_count",
+  "verdict": "extension",
+  "why": "the polled half of `c:action_server_get_active_goal_count`, which carries the contract, read from the inline `ActionServerCore`. Split out by phase-487 W4 with the type; until then both tiers shared one entry point and were told apart by state."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_remove_pre_shutdown_callback",
+  "verdict": "extension",
+  "why": "Removal half of `c:executor_add_pre_shutdown_callback` -- rclcpp's `Context::remove_pre_shutdown_callback`, which the ROS 2 C API has no counterpart for. `RCLC_RET_NOT_FOUND` rather than an error for an already-removed handle, and for a handle issued by the other phase. Issue 0790."
+}

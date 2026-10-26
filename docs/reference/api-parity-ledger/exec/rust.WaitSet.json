@@ -1,0 +1,6 @@
+{
+  "key": "rust:WaitSet",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`."
+}

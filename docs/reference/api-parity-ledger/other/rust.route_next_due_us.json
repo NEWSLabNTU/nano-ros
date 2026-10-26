@@ -1,0 +1,5 @@
+{
+  "key": "rust:route_next_due_us",
+  "verdict": "extension",
+  "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): the table-level spelling of `rust:Executor::route_next_due_us`."
+}

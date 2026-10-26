@@ -1,0 +1,5 @@
+{
+  "key": "c:action_publish_feedback_raw",
+  "verdict": "divergence",
+  "why": "`(server, goal, cdr_bytes, len)`: feedback as CDR bytes against our goal handle, where rclc's `rclc_action_publish_feedback(goal_handle, ros_feedback)` takes a typed message through rclc's goal handle. See `c:action_publish_feedback` for the constraint. Was `rclc_action_publish_feedback` (rclc's name, a different contract) until phase-492 W1.b."
+}

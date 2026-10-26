@@ -1,0 +1,9 @@
+{
+  "key": "cpp:parameters_from_map",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "builds `Parameter` vectors from rcl_yaml_param_parser's runtime YAML map; parameters are authored in `system.toml`/launch and resolved at build time, and `cpp:Parameter` is declined."
+}

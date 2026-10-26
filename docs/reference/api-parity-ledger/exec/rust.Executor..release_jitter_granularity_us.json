@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::release_jitter_granularity_us",
+  "verdict": "extension",
+  "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436. What the release-jitter number is WORTH, reported rather than applied — silently coarsening a bound could mask real lateness. A declared cadence (`set_spin_nominal_us`) is paced by the caller, as nros-cpp's tiers are with `platform_sleep_us` between spins, and that sleep is finer than the wait, so the measurement really is good to a microsecond and coarsening it would understate it."
+}

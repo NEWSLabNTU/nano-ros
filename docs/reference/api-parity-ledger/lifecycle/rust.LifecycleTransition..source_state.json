@@ -1,0 +1,5 @@
+{
+  "key": "rust:LifecycleTransition::source_state",
+  "verdict": "extension",
+  "why": "see `rust:LifecycleTransition`. Naming note: rclcpp calls the same field `start_state` (`cpp:Transition::start_state`); if the C++ type is ever added, both should use rclcpp's word."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:event_get_rmw_handle",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "hands out the underlying `rmw_event_t` so a caller can bypass rcl. There is no event object here to hold one -- see `c:event_t` -- and the seam is closed anyway; see `c:node_get_rmw_handle`."
+}

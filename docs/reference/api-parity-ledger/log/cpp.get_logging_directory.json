@@ -1,0 +1,6 @@
+{
+  "key": "cpp:get_logging_directory",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "reports where rcl's file sink writes, resolved from `ROS_LOG_DIR` / `ROS_HOME` / `HOME` at runtime. Two constraints, both already decided elsewhere: no runtime environment on an embedded target (the same one that moved the domain ID to `rclc_support_init`'s parameter, RFC-0036), and no file sink to have a directory -- delivery is `PlatformSink` -> `nros_platform_log_write`, which each `nros-platform-<rtos>` implements as that RTOS's console. What a user loses: on-target log files and the env vars that place them."
+}

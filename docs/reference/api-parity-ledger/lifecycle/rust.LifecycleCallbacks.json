@@ -1,0 +1,5 @@
+{
+  "key": "rust:LifecycleCallbacks",
+  "verdict": "extension",
+  "why": "the SAFE callback surface (issue 0335 / phase-317): implement the transitions you need, register with `Executor::register_lifecycle_node`, no `unsafe` in user code. Monomorphized `extern \"C\"` trampolines replace a boxed closure, which is what makes it `no_std`. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages. OUR LANGUAGES DISAGREE on the name for one concept: this trait is the exact counterpart of C++'s `nros::LifecycleNode` (same six hooks, same defaults, `on_error` -> `Failure`), and the two names share no word. rclcpp calls it `LifecycleNodeInterface`."
+}

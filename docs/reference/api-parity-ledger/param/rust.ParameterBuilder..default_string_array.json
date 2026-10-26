@@ -1,0 +1,10 @@
+{
+  "key": "rust:ParameterBuilder::default_string_array",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-params/src/typed.rs",
+    "text": "and `default_string_array(&[&str])`; neither exists here, so pass the array"
+  },
+  "verdict": "declined",
+  "why": "the `&[&str]` convenience for the same thing; see `rust:ParameterBuilder::default_from_iter`. A string array here is `Vec<String<MAX_STRING_VALUE_LEN>, MAX_ARRAY_LEN>` -- two compile-time bounds, not a borrowed slice of unbounded strs.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: rclrs's convenience setter has no counterpart to hang a comment on, so the envelope is on the one setter there is, `ParameterBuilder::default`, whose rustdoc now names both absent setters, the `heapless` bounds, and the refusal (not truncation) of an over-capacity value."
+}

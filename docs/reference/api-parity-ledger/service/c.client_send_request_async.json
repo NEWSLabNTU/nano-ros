@@ -1,0 +1,5 @@
+{
+  "key": "c:client_send_request_async",
+  "verdict": "divergence",
+  "why": "see `cpp:Client::async_send_request`."
+}

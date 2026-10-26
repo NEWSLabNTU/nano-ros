@@ -1,0 +1,5 @@
+{
+  "key": "cpp:arm_monitors",
+  "verdict": "extension",
+  "why": "phase-474 I2 -- `nros::arm_monitors()`, the C++ spelling of `rust:request_monitor_arming`. rclcpp has no on-target contract monitor."
+}

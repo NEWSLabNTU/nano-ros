@@ -1,0 +1,5 @@
+{
+  "key": "rust:CPP_CONTEXT_TAG",
+  "verdict": "extension",
+  "why": "issue 1535/1787 -- the word nros-cpp stamps at offset 0 of its executor context. It is public only so nros-cpp and nros share one definition: the Rust component-install seam reads it to refuse a C/C++ handle that was not unwrapped with `nros_cpp_executor_inner`. ROS 2 has no equivalent because rclcpp never passes a C++ executor to a Rust callee."
+}

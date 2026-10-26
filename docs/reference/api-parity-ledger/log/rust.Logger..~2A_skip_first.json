@@ -1,0 +1,7 @@
+{
+  "key": "rust:Logger::*_skip_first",
+  "bucket": "ours-only",
+  "retired": "the `log`-crate `Logger`'s methods; `nros::Logger` is `nros_log::Logger` since the rebinding, and its type alias was deleted by phase-482 W6",
+  "verdict": "divergence",
+  "why": "our spelling of `ToLogParams::skip_first` / `LogOccurrence::SkipFirst`; see `rust:LogOccurrence`."
+}

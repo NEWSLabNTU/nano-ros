@@ -1,0 +1,6 @@
+{
+  "key": "cpp:AnyExecutable",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "An rclcpp internal, not user API -- it is the wait-set result type its executors pass between themselves. A user writes neither the type nor its fields. RFC-0002's executor is not built from it."
+}

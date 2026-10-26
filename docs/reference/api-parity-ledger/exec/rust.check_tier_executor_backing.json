@@ -1,0 +1,5 @@
+{
+  "key": "rust:check_tier_executor_backing",
+  "verdict": "divergence",
+  "why": "issue 1571 -- the ONE refusal every board's `run_tiers` makes before it opens anything: `n_tiers - 1` spawned tiers must each find a slot. The Rust twin of the C library's `nros_cpp_executor_storage_check` (issue 1568). Caller-placed storage (the no-allocator constraint) is what makes a short block possible, so it is what needs refusing."
+}

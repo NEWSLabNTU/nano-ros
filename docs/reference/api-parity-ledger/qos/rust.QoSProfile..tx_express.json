@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::tx_express",
+  "verdict": "extension",
+  "why": "publisher-side batching-bypass hint (phase-279, issue 0145): this publisher's samples set zenoh's wire EXPRESS flag, so a batching zenoh-pico session sends them immediately instead of queueing them for the next flush. A TRANSPORT hint, not a DDS policy -- no RxO matching, no backend-compat validation, ignored by subscriptions and by backends with no batching concept. It exists because a control-tier topic on a slow serial link pays the batch window in latency, which is not a problem a desktop RMW has. Our C++ `nros::QoS` has the same setter."
+}

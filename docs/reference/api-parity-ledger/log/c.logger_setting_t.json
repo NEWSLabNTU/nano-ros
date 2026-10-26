@@ -1,0 +1,5 @@
+{
+  "key": "c:logger_setting_t",
+  "verdict": "divergence",
+  "why": "the (name, severity) pair `rcl_log_levels_t` holds an array of. Ours is the `Logger` object itself -- name plus `AtomicU8` threshold, `const`-constructible as a `static`. See `c:log_levels_*`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:PublishLoan::commit",
+  "verdict": "divergence",
+  "why": "see `rust:PublishLoan`."
+}

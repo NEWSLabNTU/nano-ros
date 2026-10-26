@@ -1,0 +1,6 @@
+{
+  "key": "c:lifecycle_init_default_state_machine",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's 'build the standard REP-2002 transition map at runtime' constructor. Our transition map is the compile-time `nros_core::lifecycle` table (`can_transition`/`apply_transition`), the same table for every image, so there is nothing to build. Constraint: no allocator; rcl's version mallocs the state and transition arrays."
+}

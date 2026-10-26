@@ -1,0 +1,5 @@
+{
+  "key": "rust:SessionSpec::domain_id",
+  "verdict": "extension",
+  "why": "see `rust:SessionSpec`."
+}

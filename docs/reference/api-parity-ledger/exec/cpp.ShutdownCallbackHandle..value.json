@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ShutdownCallbackHandle::value",
+  "verdict": "divergence",
+  "why": "The raw `uint32_t` behind the handle, for callers going through the C FFI directly. rclcpp's handle has no such accessor because there is no integer inside it. See `cpp:ShutdownCallbackHandle::ShutdownCallbackHandle`. Issue 0790."
+}

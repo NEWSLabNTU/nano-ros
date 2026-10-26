@@ -1,0 +1,5 @@
+{
+  "key": "rust:RawMessageInfo",
+  "verdict": "extension",
+  "why": "message metadata plus the transport ATTACHMENT (zenoh carries source timestamp and publisher GID there rather than in the payload). rclrs has `MessageInfo` and no attachment because DDS has no such field."
+}

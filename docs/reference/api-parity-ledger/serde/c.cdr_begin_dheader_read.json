@@ -1,0 +1,5 @@
+{
+  "key": "c:cdr_begin_dheader_read",
+  "verdict": "extension",
+  "why": "The read-side scope: consumes the DHEADER and returns the delimited struct's end offset so `_deserialize_inline` can detect an overrun (`DeserError::DHeaderOverrun`). Same RFC-0055 story; see `c:cdr_begin_dheader`. The `_read` suffix is how C spells what Rust gets from the receiver type (`CdrReader::begin_dheader` vs `CdrWriter::begin_dheader`) -- a flat namespace has no other option, so it is not a rename."
+}

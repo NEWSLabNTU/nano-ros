@@ -1,0 +1,5 @@
+{
+  "key": "rust:DOMAIN_ID_MAX",
+  "verdict": "extension",
+  "why": "232 -- the RTPS port-arithmetic cap on a usable ROS 2 domain. A value above it is a configuration error in EVERY language front-end here, never a silent clamp and never a silent 0 (RFC-0045, issue 0206). rclrs passes the domain to rcl and lets rcl judge; an image bakes it at build time, so the judgement has to be reachable from the resolver. Mirrored into the generated C header -- keep the mirror in sync."
+}

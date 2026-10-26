@@ -1,0 +1,5 @@
+{
+  "key": "c:action_client_set_cancel_response_callback",
+  "verdict": "extension",
+  "why": "issue 2030 (2026-10-24) -- the ours-only setter for `c:cancel_response_callback_t`, beside `c:action_client_set_result_callback`. Upstream rclc takes a cancel callback in `rclc_executor_add_action_client`; ours keeps the setter family. Setting one is optional: the executor TAKES every cancel reply whether or not a callback is set, because each cancel holds one of the client's four request slots until its reply is taken. Held by `packages/api/nros-c/tests/run/action_cancel_replies.c` (six cancels, through `rclc_executor_spin_some` and `rclc_action_client_poll`)."
+}

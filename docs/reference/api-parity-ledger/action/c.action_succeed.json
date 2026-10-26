@@ -1,0 +1,5 @@
+{
+  "key": "c:action_succeed",
+  "verdict": "divergence",
+  "why": "rclcpp_action's `ServerGoalHandle::succeed(result)`, moved off the handle onto `(server, goal, result_cdr, len)`. our goal handle is a 16-byte UUID TOKEN, not an owning object: `rclc_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `rclc_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`. and the payload is CDR bytes (`const uint8_t*, size_t`) rather than rcl's `void* ros_message`, because the C ABI has no runtime typesupport -- the only publish in the whole C surface is `rclc_publish_raw`. See the pubsub stage's `c:publish_raw` and `c:message_type_t`."
+}

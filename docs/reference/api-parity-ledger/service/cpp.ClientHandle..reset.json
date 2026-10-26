@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ClientHandle::reset",
+  "verdict": "extension",
+  "why": "`shared_ptr::reset`'s shape, and the spelling ported code uses to get rid of a client: it RELEASES the client (it leaves the graph, a pending reply is abandoned, its arena entry is freed) and empties the handle; afterwards `async_send_request` answers `NotInitialized` on this handle and `Error` on any other copy. Upstream's drops one reference and destroys the client only with the last; ours has no count, so it releases for every copy at once (issue 1667, the same contract as `cpp:TimerHandle::reset`). A copy that outlives the release is stale and safe: the handle carries its slot's generation (phase-476 W0), so it reaches nothing, not even a registration of a different kind that took the slot. From inside the response handler the release takes effect when it returns. Dropping or overwriting the handle does NOT release; destroying the node does."
+}

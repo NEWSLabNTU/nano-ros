@@ -1,0 +1,7 @@
+{
+  "key": "cpp:LifecycleNode::*parameter*",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "RE-VERDICTED phase-417 W4.f. was `gap` over the WHOLE parameter surface; `nros::LifecycleNode` now carries it, forwarding every call to the `rclcpp::Node` that `bind(Node&)` supplied, so the store, the per-node keying and the declared-parameter contract are reached through one implementation and a lifecycle node's parameters are visible to `ros2 param get` exactly as a plain node's are. A table on the wrapper would have been the second store phase-426 spent six work items removing, in a smaller spelling. What the glob covers NOW is the four rows whose `cpp:Node::` twins are also `declined` -- `get_parameters`, `set_parameters`, `describe_parameters` and `get_node_parameters_interface`, all of which take or return a `std::vector` of a generated message type or an interface handle we do not have. Every other row has its own entry, because the reasons now differ; see the `cpp:Node::*` twin of each."
+}

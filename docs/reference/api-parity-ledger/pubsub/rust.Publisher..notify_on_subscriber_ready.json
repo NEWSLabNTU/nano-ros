@@ -1,0 +1,6 @@
+{
+  "key": "rust:Publisher::notify_on_subscriber_ready",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's async wait for the first matched subscription. Needs a future and a runtime to await it; the event form is `register_event_callback` (see the QoS-event rows)."
+}

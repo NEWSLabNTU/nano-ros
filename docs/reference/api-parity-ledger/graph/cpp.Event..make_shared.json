@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Event::make_shared",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Event::Event`; a `shared_ptr` factory needs an allocator."
+}

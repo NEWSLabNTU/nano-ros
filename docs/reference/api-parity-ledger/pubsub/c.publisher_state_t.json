@@ -1,0 +1,5 @@
+{
+  "key": "c:publisher_state_t",
+  "verdict": "extension",
+  "why": "explicit entity lifecycle so double-init and use-after-fini return a code instead of being undefined; see `c:node_state_t`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:CallbackGroup::automatically_add_to_executor_with_node",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the flag that decides whether an executor picks this group up when its node is added. Nodes are created BY the executor here and are never added to one; see `cpp:Executor::add_node`."
+}

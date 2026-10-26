@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Subscription::get_delivered_message_kind",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "see `cpp:DeliveredMessageKind`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:wake_state_get_zero_initialized",
+  "verdict": "extension",
+  "why": "rcl's zero-init idiom under our naming, applied to the caller-owned `rclc_wake_state_t` slot a polling entity's wake callback is registered with. Naming: see `c:get_zero_initialized_publisher` in the pubsub stage (ours is method-style `nros_<thing>_get_zero_initialized` at all 15 sites, rcl's is `rcl_get_zero_initialized_<thing>`); the slot itself: see `c:service_set_wake_callback`."
+}

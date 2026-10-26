@@ -1,0 +1,5 @@
+{
+  "key": "rust:TopicNamesAndTypes",
+  "verdict": "divergence",
+  "why": "rclrs's alias for `HashMap<String, Vec<String>>` -- two allocations deep, and `HashMap` is not in `core` at all. See `rust:NodeNameInfo`."
+}

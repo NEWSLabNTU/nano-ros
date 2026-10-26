@@ -1,0 +1,6 @@
+{
+  "key": "cpp:QOSOfferedIncompatibleQoSInfo",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the incompatible-QoS event fires when DISCOVERY finds a remote endpoint whose offered profile does not match the requested one. We have static peers and no dynamic discovery, so there is no remote profile to compare against at runtime. The analogous failure is reported synchronously instead: a profile the LINKED backend cannot honour makes the create call return `INCOMPATIBLE_QOS` (RFC-0036, no silent downgrade). Our `nros_rmw::EventKind` has exactly five variants -- liveliness changed/lost, requested/offered deadline missed, message lost -- and these two are the ones deliberately absent. A user loses the runtime notification that a peer showed up with an unmatchable profile; they get a build-time-fixed profile and a create-time error."
+}

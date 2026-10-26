@@ -1,0 +1,5 @@
+{
+  "key": "cpp:declared_param_node",
+  "verdict": "extension",
+  "why": "phase-446 W6. The declaring node for a namespace + name in the generated `declared_params` table (`rclcpp/detail/declared_params.hpp`), or `nullptr` when the node's launch contract has no `params:`. rclcpp has no counterpart: its parameters are declared nowhere outside the code, so there is nothing to check a declaration against. Ours are declared in the launch contract because the parameter store is a fixed table sized from that contract at build time (no allocator to grow it, phase-446 W4), and `ComponentNode::declare_parameter` uses this lookup to refuse, at boot, a declaration the contract does not make. `constexpr`, so `declared_params.cpp` asserts its answers against a rendered fixture."
+}

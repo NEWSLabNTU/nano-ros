@@ -1,0 +1,5 @@
+{
+  "key": "cpp:OnSetParametersCallbackType",
+  "verdict": "divergence",
+  "why": "Upstream's is a `std::function<SetParametersResult(const std::vector<Parameter>&)>`. Ours is a plain function pointer plus a `void*` context over one `rclcpp::ParameterWrite`, answering `bool` — upstream's `successful`. The allocator is the constraint for the closure and the vector, and `<functional>` is absent from the freestanding lane entirely. phase-417 W4.a."
+}

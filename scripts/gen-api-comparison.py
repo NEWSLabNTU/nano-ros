@@ -8,8 +8,8 @@ MECHANICAL. Two code inputs, one authored input, nothing inferred:
                        C/C++, rustdoc JSON for Rust. Never a hand list.
   * ROS 2's surface    `docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`,
                        recorded from an installed ROS 2 by `--refresh`.
-  * WHY, and WHAT      `docs/reference/api-parity-ledger/*.json`. This is the
-    ANSWERS IT         only file a human writes. `why` carries the reason a
+  * WHY, and WHAT      `docs/reference/api-parity-ledger/<topic>/*.json`. The
+    ANSWERS IT         only files a human writes. `why` carries the reason a
                        row diverges; `provides` names our items that answer an
                        upstream one when the mapping is not 1:1.
 

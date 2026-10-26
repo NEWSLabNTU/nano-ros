@@ -1,0 +1,5 @@
+{
+  "key": "rust:DIAG_TOPIC",
+  "verdict": "extension",
+  "why": "The topic ROS 2's diagnostics tooling reads. See `rust:DiagSink`."
+}

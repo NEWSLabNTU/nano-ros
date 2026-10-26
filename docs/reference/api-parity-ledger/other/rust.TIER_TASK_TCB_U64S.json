@@ -1,0 +1,5 @@
+{
+  "key": "rust:TIER_TASK_TCB_U64S",
+  "verdict": "divergence",
+  "why": "issue 1598 -- the control-block region a `TierTaskMemory` carries, in 8-byte words: a STATED upper bound (512 B) because a Rust entry cannot name `sizeof(StaticTask_t)`; the FreeRTOS glue checks it against the real size and refuses a kernel whose TCB outgrew it. See `rust:TierTaskMemory`."
+}

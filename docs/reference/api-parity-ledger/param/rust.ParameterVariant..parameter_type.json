@@ -1,0 +1,9 @@
+{
+  "key": "rust:ParameterVariant::parameter_type",
+  "rename": {
+    "resolution": "re-verdicted `extension` -- follows its theirs-half rust:ParameterVariant::kind, now declined",
+    "status": "resolved"
+  },
+  "verdict": "extension",
+  "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. The ours-only half of `rust:ParameterVariant::kind`, now `declined`: the accessor is named for the type it returns, and that type (`ParameterType`, see `rust:ParameterKind`) is the one we keep. Recorded so the pair is visible from both sides; it carries no decision of its own."
+}

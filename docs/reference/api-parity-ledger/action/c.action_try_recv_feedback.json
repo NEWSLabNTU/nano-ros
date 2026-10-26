@@ -1,0 +1,5 @@
+{
+  "key": "c:action_try_recv_feedback",
+  "verdict": "extension",
+  "why": "drains one pending feedback message into the bound feedback callback without blocking. See `c:action_client_poll`."
+}

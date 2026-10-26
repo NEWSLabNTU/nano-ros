@@ -1,0 +1,5 @@
+{
+  "key": "rust:Clock::set_steady_time",
+  "verdict": "extension",
+  "why": "drives the steady clock from a test or a board that has no tick source of its own. rclcpp has no counterpart -- a steady clock there is always the OS's."
+}

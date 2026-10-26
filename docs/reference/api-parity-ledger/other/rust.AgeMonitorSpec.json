@@ -1,0 +1,5 @@
+{
+  "key": "rust:AgeMonitorSpec",
+  "verdict": "extension",
+  "why": "the subscriber-side table: take-age contracts key different endpoints and need no publish counter. See `rust:MonitorSpec`."
+}

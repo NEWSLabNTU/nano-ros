@@ -1,0 +1,6 @@
+{
+  "key": "rust:ToLogParams",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the blanket-impl trait letting rclrs write `log!(node, ...)`, `log!(\"name\", ...)` or `log!(&logger, ...)` and chain `.once()` / `.throttle(d)` / `.only_if(b)` / `.severity(s)` on any of them. Same call as `rust:IntoNodeOptions` in the node stage: an ergonomic overload trait over what is one concrete caller shape here -- our macros and methods take a `&Logger`. What a user loses: the fluent modifier chain, and passing a node or a bare `&str` where a logger is expected. The modifiers themselves survive as method names -- see `rust:Logger::*_once`, `rust:Logger::*_skip_first`, `rust:Logger::*_throttle` -- and `only_if` survives as an `if`."
+}

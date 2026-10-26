@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Parameter::from_parameter_msg",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "builds a `Parameter` from a generated `rcl_interfaces::msg::Parameter`. There is no runtime typesupport here, so the C++ surface names no `rcl_interfaces` message; a `ParameterEventHandler` decodes the wire frame into `rclcpp::Parameter` itself (issue 2024)."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:UnsupportedEventTypeException",
+  "verdict": "divergence",
+  "why": "thrown when the middleware cannot deliver a requested QoS event. `-fno-exceptions` (RFC-0018), so ours answers the same question by return value and answers it BEFORE registration: `Publisher::supports_event` / `Subscription::supports_event` and `unsupported_event_error`, recorded as extensions in the pubsub stage. That ordering matters more here than in rclcpp because our backends genuinely differ -- zenoh-pico raises no deadline events, Cyclone does -- where rclcpp assumes DDS and claims support unconditionally."
+}

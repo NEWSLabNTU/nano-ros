@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::*domain_id",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "read and set the ROS domain after open. rclrs takes it from the environment through the context (`Context::default_from_env`); an image has no environment, so the domain arrives over RFC-0045's baked ladder and stays settable for the boot path that resolves it. See `c:get_default_domain_id`."
+}

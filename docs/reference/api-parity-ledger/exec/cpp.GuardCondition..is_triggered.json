@@ -1,0 +1,5 @@
+{
+  "key": "cpp:GuardCondition::is_triggered",
+  "verdict": "extension",
+  "why": "phase-417 W4.e -- the polling half, added so the RFC-0022 polling tier reads the same in all three languages. The reason, the bound and what forced it are at `c:guard_condition_is_triggered`; in one line: the executor consumes the flag on dispatch, so this answers \"set and not yet dispatched\", and rcl/rclcpp/rclrs have no reader because a wait set is their only way to observe a guard condition."
+}

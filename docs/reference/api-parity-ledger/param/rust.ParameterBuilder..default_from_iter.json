@@ -1,0 +1,10 @@
+{
+  "key": "rust:ParameterBuilder::default_from_iter",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-params/src/typed.rs",
+    "text": "and `default_string_array(&[&str])`; neither exists here, so pass the array"
+  },
+  "verdict": "declined",
+  "why": "builds an array default from any `IntoIterator<Item = T>`. Ours takes the value directly, and an array value is a `heapless::Vec` bounded by `MAX_ARRAY_LEN`; collecting an unbounded iterator into a fixed capacity has to fail somewhere, which is what `ParameterVariant::try_to_parameter_value` reports (issue 0323). No allocator.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: rclrs's convenience setter has no counterpart to hang a comment on, so the envelope is on the one setter there is, `ParameterBuilder::default`, whose rustdoc now names both absent setters, the `heapless` bounds, and the refusal (not truncation) of an over-capacity value."
+}

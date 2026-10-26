@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Node::list_parameters",
+  "disposition": "refuse-loud",
+  "verdict": "divergence",
+  "why": "upstream returns an `rcl_interfaces::msg::ListParametersResult` and takes a vector of prefixes plus a `depth`. Ours writes into a caller-owned RECTANGLE (`max_names` rows of `name_stride` bytes) and always reports the TOTAL that matched, so `max_names = 0` counts — the only way a list of strings crosses this boundary with no allocator. ONE prefix and no `depth`: our names carry no separator semantics to recurse on. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
+}

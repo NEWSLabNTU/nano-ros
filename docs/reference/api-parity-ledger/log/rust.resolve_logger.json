@@ -1,0 +1,5 @@
+{
+  "key": "rust:resolve_logger",
+  "verdict": "extension",
+  "why": "phase-427 W5 — the TOTAL resolver behind every node's `get_logger()`. `get_logger` is a LOOKUP (it answers `DEFAULT_LOGGER` for an unregistered name) and `get_or_create_logger` returns an `Option`; this is the create-or-fall-back-loudly composition of the two. It exists because FOUR accessors — `Node::logger`, `rclc_node_get_logger`, `nros_cpp_node_get_logger`, `rclc_log_get_logger` — have the same job and three of them spelled it as the bare lookup, so every node in an image emitted under the catch-all name `\"nros\"` and no record could say which node wrote it.\n\nOurs-only for the same reason the arena and sink types are (see `rust:register_logger`): upstream's `rclcpp::get_logger` / `rcutils_get_logger` CREATE unconditionally because rcutils owns heap storage, so there is no fallback to name and nothing to resolve. Here the storage is a bounded static arena, so exhaustion is a real outcome the API has to state — it returns the catch-all and reports at WARN, once per process, because a C++ `NROS_LOG_*` call site asks `node.get_logger()` on every line."
+}

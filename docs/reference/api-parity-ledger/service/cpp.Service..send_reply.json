@@ -1,0 +1,16 @@
+{
+  "key": "cpp:Service::send_reply",
+  "provides": [
+    "nros::PollService::send_reply"
+  ],
+  "rename": {
+    "category": "A",
+    "from": "Service::send_reply",
+    "residue": "NONE since phase-482 W6, which deleted the `[[deprecated]]` forwarder with every other deprecated item.",
+    "status": "landed",
+    "to": "PollService::send_response"
+  },
+  "retired": "a deprecated alias, deleted after its one release; the row records the rename",
+  "verdict": "rename",
+  "why": "the deprecated `send_reply` spelling of `cpp:Service::send_response`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). `Service::send_response()` is the live name; this one survives as a `[[deprecated]]` forwarder in `rclcpp/service.hpp` whose message names the replacement, the shape `nros::QoS`'s `*_raw()` / `*_ms()` established. Header-only and inline, so there is no ABI cost and no second definition. Removal is deferred on purpose with the rest of the tree's deprecated items (see `rust:BoardConfig::zenoh_locator` in boot/). Substantive verdict on the row it forwards to.\n\nAMENDED 2026-09-21 (phase-456 W5): the deprecated forwarder moved to `nros::PollService<S>` with the verb it forwards to. It is still in the retire-later batch. CORRECTED 2026-10-18: the forwarder is GONE (phase-482 W6 deleted every deprecated item as one batch), and the live verb is `PollService::send_response` -- phase-456 W5 moved it there with the storage it writes through, so `Service::send_response` is upstream's spelling only."
+}

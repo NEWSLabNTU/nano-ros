@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Context::on_shutdown",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-488: `rclcpp::Context` here is a view of one executor's shutdown hooks, not upstream's owner of rcl init state (see `cpp:Context`). Upstream deprecated it for `add_on_shutdown_callback`, which exists."
+}

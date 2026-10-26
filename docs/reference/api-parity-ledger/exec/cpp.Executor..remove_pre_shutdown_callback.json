@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::remove_pre_shutdown_callback",
+  "verdict": "divergence",
+  "why": "rclcpp's `Context::remove_pre_shutdown_callback` on our executor. Returns `bool` exactly as rclcpp does -- \"it was not there\" is an ordinary answer, since the callback may already have run. See `cpp:Executor::add_pre_shutdown_callback`. Issue 0790."
+}

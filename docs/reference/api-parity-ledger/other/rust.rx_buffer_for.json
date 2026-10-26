@@ -1,0 +1,5 @@
+{
+  "key": "rust:rx_buffer_for",
+  "verdict": "extension",
+  "why": "phase-392 W3 — a subscription receive-buffer size computed from the message schema at compile time (`nros::rx_buffer_for!(Msg)`), so the buffer is sized by the type instead of the NROS_SUBSCRIPTION_BUFFER_SIZE guess. No upstream analogue: rcl sizes nothing statically. Landed unledgered; entry added when check-api-parity caught it one gate into a tier-2 run. phase-403 W0: an UNBOUNDED type is now a build error rather than an expansion to `DEFAULT_RX_BUF_SIZE` -- every message type is required to carry a derived upper bound, and a buffer sized from a fallback is what phase 380 forbade."
+}

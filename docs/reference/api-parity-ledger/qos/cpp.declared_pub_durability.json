@@ -1,0 +1,5 @@
+{
+  "key": "cpp:declared_pub_durability",
+  "verdict": "extension",
+  "why": "issue 1608 -- `cpp:declared_durability` for a PUBLISHER; see `cpp:declared_pub_depth`. A transient-local publisher is a zenoh cache queryable the build counts, so a disagreement here is a sizing error as well as an interop one."
+}

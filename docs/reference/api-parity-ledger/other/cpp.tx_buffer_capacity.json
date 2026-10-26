@@ -1,0 +1,5 @@
+{
+  "key": "cpp:tx_buffer_capacity",
+  "verdict": "extension",
+  "why": "as cpp:rx_buffer_capacity, for the transmit direction. Not yet consumed — the 17 transmit sites still use the estimate, where an over-estimate only wastes stack; kept beside its sibling so the pair is one mechanism rather than two."
+}

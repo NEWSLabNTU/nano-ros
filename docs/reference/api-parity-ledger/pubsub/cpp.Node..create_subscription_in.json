@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::create_subscription_in",
+  "verdict": "extension",
+  "why": "see `cpp:Node::create_publisher_in`.\n\nphase-427 W4 -- this name carries the ours-only member-pointer shape `create_subscription_in<M, C, &C::method>(topic, qos)`, moved off `ComponentNode` under an `_in` name for the same reason. The executor arena owns the subscriber, so there is no `Subscription<M>` storage to supply. DECLARED on `Node` in `node.hpp` and DEFINED in `component.hpp`, because the body calls `nros::bind_subscription` and `component.hpp` includes `node.hpp` -- defining it at the declaration would close an include cycle.\n\nphase-427 (the `_in_group` split) -- `_in` here means ours-only/storage-free and nothing else; the callback-group forms are `cpp:Node::create_subscription_in_group`."
+}

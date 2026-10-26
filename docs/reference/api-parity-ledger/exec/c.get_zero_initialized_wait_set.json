@@ -1,0 +1,6 @@
+{
+  "key": "c:get_zero_initialized_wait_set",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "there is no wait-set type to zero-initialize. rcl's wait set; the reason is stated in full at `cpp:WaitSet`."
+}

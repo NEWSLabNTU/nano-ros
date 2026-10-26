@@ -1,0 +1,6 @@
+{
+  "key": "cpp:ContextAlreadyInitialized",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "an exception type, and the freestanding builds are -fno-exceptions (RFC-0018). Re-initialising returns `ErrorCode::AlreadyExists` through `nros::Result`."
+}

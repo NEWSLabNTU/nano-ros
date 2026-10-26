@@ -1,0 +1,5 @@
+{
+  "key": "c:c_support_init_baked",
+  "verdict": "extension",
+  "why": "not an application entry point: the seam `<rclc/detail/baked_rmw.h>`'s `rclc_support_init` macro forwards to when the build bakes an RMW selector (`NROS_ENTRY_RMW`, issue 1531). It is `rclc_support_init` plus that selector, and exists because a header macro cannot add an argument to rclc's signature. phase-492 W1.b."
+}

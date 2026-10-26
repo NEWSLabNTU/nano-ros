@@ -1,0 +1,5 @@
+{
+  "key": "cpp:declared_pub_depth",
+  "verdict": "extension",
+  "why": "issue 1608 -- `cpp:declared_depth` for a PUBLISHER: the declared depth of the publisher on `(type, topic)`, read from the generated header's publisher rows (`NROS_DECLARED_PUB_QOS_ROWS`, a list of their own because a publisher and a subscription on one pair are two endpoints with one key). `constexpr`, behind `NROS_ASSERT_DECLARED_PUB_DEPTH` / `NROS_ASSERT_DECLARED_PUB_QOS`, which a call site writes beside `create_publisher`. rclcpp has no counterpart: there is no contract to cross-check."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:create_default_subscription_options",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:create_default_publisher_options`."
+}

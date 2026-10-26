@@ -1,0 +1,10 @@
+{
+  "key": "c:add_parameter",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc_parameter/rclc_parameter.h",
+    "text": "with this type is kept."
+  },
+  "verdict": "divergence",
+  "why": "phase-491 / RFC-0105: the C parameter API is rclc's `rclc_parameter_server_t` family under rclc's own names, over the executor's store (the one the six `rcl_interfaces` services read). Declares the type's zero value, as rclc. One weaker case: a name already declared WITH THE SAME TYPE answers OK and keeps its value (rclc: `RCL_RET_ERROR`), because launch values are BAKED into the image at build time (no runtime env, no parameter file) and are already in the store when the application declares."
+}

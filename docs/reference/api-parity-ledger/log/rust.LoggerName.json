@@ -1,0 +1,5 @@
+{
+  "key": "rust:LoggerName",
+  "verdict": "divergence",
+  "why": "rclrs validates a logger name against the rcutils rules and tracks whether that happened (`Validated` / `Unvalidated`), which is why its `Logger::new` returns `Result<Logger, RclrsError>`. Ours is `const fn Logger::new(&str) -> Self`, infallible, because a `Logger` must be constructible as a `static` in a `no_std` image -- `static LOGGER: nros_log::Logger = Logger::new(\"demo\")` is the shape every embedded call site uses -- and a fallible constructor cannot initialise a `static`. What a user loses: an invalid logger name is accepted silently."
+}

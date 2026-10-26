@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_subscription_raw_with_info",
+  "verdict": "extension",
+  "why": "the raw + message-info form; see `c:publish_raw` and `rust:RawMessageInfo`.\n\nIssue 1668 — this direct-arg form takes no `rcl_subscription_t` and hands back nothing, so its entry cannot be removed before `rclc_executor_fini`. It is kept for ABI (RFC-0054 is additive); `c:executor_add_subscription_with_info` registers the same entry removably, and `check-c-executor-remove-coverage` records this verb as SUPERSEDED by it."
+}

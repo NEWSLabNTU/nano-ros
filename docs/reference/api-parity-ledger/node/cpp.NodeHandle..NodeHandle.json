@@ -1,0 +1,5 @@
+{
+  "key": "cpp:NodeHandle::NodeHandle",
+  "verdict": "divergence",
+  "why": "`constexpr NodeHandle()` (null) and `explicit constexpr NodeHandle(void*)`. No allocation, no ownership; rclcpp has no counterpart because it has no such argument. See `cpp:NodeHandle`."
+}

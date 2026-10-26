@@ -230,4 +230,4 @@ evidence, the item is *close it*.
 | issue | why it belongs here |
 | --- | --- |
 | [#1072](../../issues/archived/1072-every-pr-conflicts-on-five-shared-append-targets.md) | 22 of 51 open pull requests conflicted and none of them on code. A shared append target that every PR touches IS queue throughput; the `check.just` half is fixed and four surfaces remain — **RESOLVED 2026-10-12** (`6c52892cc0`) |
-| [#1091](../../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md) | the api-parity ledger is the largest remaining cluster of #1072's measurement — 17 sorted shards. Same fix family, and it is the one still serialising merges — **re-homed to [phase-395](phase-395-dev-workflow-migration.md) 2026-10-12** |
+| [#1091](../../issues/archived/1091-ledger-shards-conflict-on-sorted-key-insert.md) | the api-parity ledger is the largest remaining cluster of #1072's measurement — 17 sorted shards. Same fix family, and it is the one still serialising merges — **re-homed to [phase-395](phase-395-dev-workflow-migration.md) 2026-10-12** |

@@ -1,0 +1,9 @@
+{
+  "key": "cpp:GenericClient",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "a service client that loads typesupport by NAME at runtime; same decision and reason as `cpp:GenericPublisher`."
+}

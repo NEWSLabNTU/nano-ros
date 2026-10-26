@@ -1,0 +1,5 @@
+{
+  "key": "rust:CdrWriter::end_dheader",
+  "verdict": "extension",
+  "why": "Backpatches a `rust:CdrWriter::begin_dheader` mark; see that row."
+}

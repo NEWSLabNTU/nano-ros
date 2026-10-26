@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Handle::reset",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`shared_ptr::reset`'s shape with a narrower contract: it drops this handle's reference and destroys nothing, because a `Handle` owns nothing. The entity handles that DO release on `reset()` (`SubscriptionHandle`, `TimerHandle`, ...) are their own types."
+}

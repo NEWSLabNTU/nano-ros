@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::register_services",
+  "retired": "a method of the `nros::LifecycleNode` mixin, now `nros::detail::LifecycleEngine` (phase-482 W4). `rclcpp_lifecycle::LifecycleNode` binds, registers its services and manages its publishers itself",
+  "verdict": "extension",
+  "why": "see `c:executor_register_lifecycle_services`."
+}

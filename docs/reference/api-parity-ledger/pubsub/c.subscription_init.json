@@ -1,0 +1,6 @@
+{
+  "key": "c:subscription_init",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-428 Q1 (2026-09-06) -- `rcl_subscription_init(subscription, node, type_support, topic_name, options)`. No symbol answers to this key. rclc code reaches it through `rclc_subscription_init_default(sub, node, type_support, topic)`, which exists at rclc's arity (`c:subscription_init_default`, `packages/api/nros-c/src/subscription.rs:225`); the options-bearing forms are `rclc_subscription_init_with_qos` / `_with_options` (`packages/api/nros-c/include/rclc/detail/nros_generated.h:6791`, `:6834`). `rcl_subscription_options_t` is built, copied and finalised upstream; ours is a `const rclc_qos_t*` or an inline options struct, the same lifecycle collapse `c:node_options_*` records. Argument 3 keeps our `rclc_message_type_t` -- RFC-0089 (2026-09-04): a rosidl typesupport's members, including its `func` dispatcher, are its contract, and we do not have them.\n\nABSENT, not adopt-bounded: the rcl-layer name does not exist; the rclc-layer name does and carries the bounded adoption."
+}

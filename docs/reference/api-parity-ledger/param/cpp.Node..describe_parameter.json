@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Node::describe_parameter",
+  "disposition": "refuse-loud",
+  "verdict": "divergence",
+  "why": "upstream returns an `rcl_interfaces::msg::ParameterDescriptor` BY VALUE, whose strings own their storage. Ours fills a caller-owned `rclcpp::ParameterDescriptor` whose two `const char*` point into a caller-owned text buffer the call splits in half: `describe_parameter(name, out, text, text_len)`. There is no other shape without an allocator, and across the FFI there is no descriptor struct at all — text in as a borrowed `const char*`, out into a `char*` of stated capacity, scalars as NULLable out-params. A struct with an inline buffer would put `NROS_MAX_PARAM_DESCRIPTION_LEN` into the ABI and make a build knob a layout, which `check-cpp-capability-layout` forbids. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
+}

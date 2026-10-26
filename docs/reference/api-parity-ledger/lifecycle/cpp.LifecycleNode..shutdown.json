@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::shutdown",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-482 W4 (2026-10-07): on `rclcpp_lifecycle::LifecycleNode` this returns `const State&` (`get_current_state`: `State`), as upstream's does, so a ported call site's use of the result compiles unchanged.\n\nBefore phase-482 W4: `Result` where `rclcpp_lifecycle::LifecycleNode::shutdown()` returns `const State &` — the shared widening argued at `cpp:LifecycleNode::configure`, loud because a ported `auto & s = node->shutdown();` does not compile. The SECOND defect this row used to carry is FIXED: `shutdown()` no longer sends transition id 5 unconditionally, it picks the legal shutdown transition for the current state (`packages/api/nros-cpp/include/rclcpp_lifecycle/lifecycle_node.hpp`, the helper documented at :92-100). Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
+}

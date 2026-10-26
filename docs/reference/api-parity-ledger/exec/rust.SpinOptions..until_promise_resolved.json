@@ -1,0 +1,6 @@
+{
+  "key": "rust:SpinOptions::until_promise_resolved",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs spins until a promise resolves, hiding the executor inside the wait. RFC-0021: no futures and no async runtime. Every blocking helper takes the executor and drives it (`promise.wait(&mut executor, timeout)`), because on a single-threaded executor awaiting a result that only that executor can produce is a deadlock. See `cpp:Future`. Ours inverts the call: `promise.wait(&mut executor, timeout)`, which cannot deadlock because the caller must hand over the executor to be driven. See the service stage's `cpp:Client::async_send_request`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::shutdown_callback_count",
+  "verdict": "extension",
+  "why": "How many hooks are registered for a phase. The tables are FIXED-capacity (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2), so \"did my registration land, and how much room is left\" is a question only a bounded table raises; rclcpp's nearest thing, `Context::get_pre_shutdown_callbacks`, hands back the heap-allocated callbacks themselves. Issue 0790."
+}

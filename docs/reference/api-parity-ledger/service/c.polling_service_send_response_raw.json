@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_service_send_response_raw",
+  "verdict": "extension",
+  "why": "the ours-only half of `c:send_response`; recorded so the pair is visible from both sides. LANDED 2026-08-27 (phase-379 W5): this is the renamed `nros_service_send_reply_raw`, and it is now the ONE exported symbol of the reply verb in C. `_raw` is the family convention for the byte-buffer entry points (`rclc_publish_raw`, `nros_client_send_request_raw`, the `nros_action_*_raw` family) -- not a marker that a typed non-raw twin exists, because in C there is none. Reached on a server created with `nros_service_init_polling`; `sequence_number` is the value the matching `nros_service_try_recv_request_raw` returned (see `rust:RequestId` for why that token is a bare integer). Renamed from `nros_service_send_response_raw` by phase-487 W2, when the polled service became its own type, `rclc_polling_service_t`: a dispatched service's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched service carried storage only the polled road fills."
+}

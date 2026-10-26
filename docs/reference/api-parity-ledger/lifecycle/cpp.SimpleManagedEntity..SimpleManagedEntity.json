@@ -1,0 +1,5 @@
+{
+  "key": "cpp:SimpleManagedEntity::SimpleManagedEntity",
+  "verdict": "extension",
+  "why": "phase-482 W4 (2026-10-07): the defaulted default and move constructors, declared so the base's link-maintaining move is reachable from the flag-carrying entity. See `cpp:ManagedEntityInterface::ManagedEntityInterface`."
+}

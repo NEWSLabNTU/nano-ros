@@ -1,0 +1,6 @@
+{
+  "key": "rust:Logger::parent",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-479 (RFC-0102 D2) -- the nearest existing dotted ancestor an unset level resolves through, or `None`. rclrs exposes no hierarchy accessor (rcutils resolves by name internally); this one exists because the hierarchy here is a stored link, and a test or a sink (the `/rosout` scope, D4) needs to read it."
+}

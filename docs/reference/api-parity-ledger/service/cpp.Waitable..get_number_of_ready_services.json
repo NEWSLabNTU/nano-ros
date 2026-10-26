@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Waitable::get_number_of_ready_services",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub stage's identical rows."
+}

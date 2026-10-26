@@ -1,0 +1,5 @@
+{
+  "key": "rust:CDR_LE_HEADER",
+  "verdict": "extension",
+  "why": "the 4-byte CDR encapsulation header, exported for FFI layers that handle raw CDR bytes (`nros-c` / `nros-cpp`'s action and service paths hand a payload across the boundary already framed, so both sides need the same constant). rclrs never sees CDR: rcl serialises inside `rcl_publish` and `rosidl_runtime_rs` owns the encoding, so there is nothing for it to export. Note the facade exports three of the four headers `nros-serdes` defines -- `CDR2_DELIMITED_LE_HEADER`, the XCDR2 form iron/jazzy need (RFC-0055), is not in the `nros::cdr` list."
+}

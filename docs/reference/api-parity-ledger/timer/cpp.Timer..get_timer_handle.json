@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Timer::get_timer_handle",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "our RMW/platform seam is not reachable from an entity; see `c:node_get_rmw_handle`."
+}

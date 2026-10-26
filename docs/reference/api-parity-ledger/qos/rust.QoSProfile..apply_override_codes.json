@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::apply_override_codes",
+  "verdict": "extension",
+  "why": "the same fold over the primitive wire form a baked table travels in (issue 0303), which is what the C and C++ ABIs carry. See `rust:QoSOverride`."
+}

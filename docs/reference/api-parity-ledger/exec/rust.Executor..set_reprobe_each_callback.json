@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_reprobe_each_callback",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-509 P3 / RFC-0108 D2 -- after every callback the executor picks again from the ready set as it is now; a slot whose backend cannot attribute an arrival (XRCE, uORB) is probed once per pass by default, and this opts in to probing it after every callback too (measured cost in RFC-0108 D2). rclcpp's executors rebuild their wait set per spin and have no such knob."
+}

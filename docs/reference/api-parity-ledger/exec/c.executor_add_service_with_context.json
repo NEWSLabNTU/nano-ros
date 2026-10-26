@@ -1,0 +1,6 @@
+{
+  "key": "c:executor_add_service_with_context",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "every nano-ros callback typedef already ends in `void *context`, and the pair is bound to the ENTITY at creation (RFC-0041/0043) rather than handed to the executor. So `nros_executor_add_service` IS rclc's with-context form -- rclc needs the variant only because its base callback has no context parameter. See `c:subscription_callback_t`."
+}

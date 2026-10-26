@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Server::succeed",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_action/server.hpp",
+    "text": "the server, keyed by goal id, result by const reference: there is no goal"
+  },
+  "verdict": "divergence",
+  "why": "terminates a goal as succeeded with its result -- rclcpp_action's `ServerGoalHandle::succeed(shared_ptr<Result>)`. Same capability, two shape differences: it is a method on the SERVER keyed by goal id rather than on an owning handle (see `cpp:Server::publish_feedback` for why), and it takes the result by const reference rather than by `shared_ptr`. A thin forwarder over `cpp:Server::complete_goal`.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the method's own doc comment states the goal-id key and the const-reference result against upstream's `ServerGoalHandle::succeed(std::shared_ptr<Result>)`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:MonitorArming",
+  "verdict": "extension",
+  "why": "phase-474 I2 -- when contract monitors arm: on the application's call and/or a grace deadline after the first spin; the build default comes from Kconfig (`NROS_MONITOR_ARM_ON_CALL`, `NROS_MONITOR_ARM_GRACE_MS`), never from the contract. See `rust:Executor::arm_monitors`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:ParameterStorage",
+  "verdict": "divergence",
+  "why": "backing storage for a `ParameterServer`, which rclrs has no counterpart to because rclrs allocates -- its parameters live behind the `Arc<Node>`'s mutex and grow on demand. Constraint: no allocator, so the slots must be memory the CALLER placed (a `static`, a struct field, or the executor backing once phase-382 W3' carves it) and lent for the server's life. `N` defaults to `MAX_PARAMETERS`, the Kconfig-derived constant, and is not a cap. This row covers every `ParameterStorage::*` member; `init_in_place` is worth naming because the type is enormous and scales with `N` (285,184 bytes at 32 slots, 2,281,472 at 256 -- `ParameterValue` is sized by its `StringArray` variant), so `Box::new(ParameterStorage::new())` builds the whole value on the stack first and overruns an RTOS thread stack (issue 0756). It moved here from `ParameterServer` in phase-382 W2', with the bulk it guards."
+}

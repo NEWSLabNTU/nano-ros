@@ -1,0 +1,5 @@
+{
+  "key": "c:topic_endpoint_info_t",
+  "verdict": "divergence",
+  "why": "see `c:names_and_types_t` for the carrier argument. We DO have this record -- `rmw_topic_endpoint_info_t` in `rmw_entity.h`, field-for-field upstream's (node name, namespace, type, endpoint kind, gid, granted QoS) -- but with every string borrowed for the visit rather than allocated, and at the RMW seam rather than in the user header."
+}

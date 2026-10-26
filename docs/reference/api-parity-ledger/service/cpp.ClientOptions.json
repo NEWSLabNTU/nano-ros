@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ClientOptions",
+  "verdict": "extension",
+  "why": "what a device varies per client (QoS, scheduling context); see `c:publisher_init_with_options`."
+}

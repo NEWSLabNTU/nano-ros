@@ -1,0 +1,7 @@
+{
+  "key": "rust:DeclarationError::*",
+  "bucket": "ours-only",
+  "unextracted": "methods the derive provides; the extractor records the type only",
+  "verdict": "extension",
+  "why": "Whatever the derive gives the enum. The type itself is `rust:DeclarationError`. phase-417 W4.a."
+}

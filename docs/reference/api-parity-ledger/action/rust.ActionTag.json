@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionTag",
+  "verdict": "extension",
+  "why": "names a declared action server so a component's single `on_callback` can tell which one fired (RFC-0043). See the service stage's `rust:ServiceTag` and the pubsub stage's `rust:SubscriptionTag`."
+}

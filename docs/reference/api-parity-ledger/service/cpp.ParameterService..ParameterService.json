@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ParameterService::ParameterService",
+  "verdict": "divergence",
+  "why": "rclcpp wraps the parameter SERVERS in an object a node owns; ours is a registration call on the executor. See `c:executor_register_parameter_services`."
+}

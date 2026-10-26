@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_lifecycle_change_state",
+  "verdict": "extension",
+  "why": "the executor-scoped half of the lifecycle API. RFC-0002 gives one executor per RTOS task and the executor owns the node's entities, so the state machine that the five REP-2002 services drive lives THERE, not on a caller-held handle. rclc has no counterpart because its state machine hangs off `rclc_lifecycle_node_t`. This is the family a C app actually uses: the standalone `nros_lifecycle_*` family cannot register services (see `c:make_node_a_lifecycle_node`)."
+}

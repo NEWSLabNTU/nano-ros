@@ -1,0 +1,6 @@
+{
+  "key": "c:subscription_options_fini",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `c:publisher_get_options`."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "rust:DeclarationError",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-params/src/server.rs",
+    "text": "Ours is a subset of rclrs's, and the"
+  },
+  "verdict": "divergence",
+  "why": "SHIPPED phase-417 W4.a. `nros_params::DeclarationError`, returned by `ParameterServer::try_declare` / `try_declare_with_descriptor` and exported from the `nros` facade. `declare` returned a bare `bool` for 'the name was taken', 'the table was full' and 'the default is outside its range' alike; the `bool` spellings now forward to these, so there is one declare path. The envelope: OUR VARIANT SET IS A SUBSET of rclrs's, and the difference is structural rather than an omission. Ours are `AlreadyDeclared`, `InvalidRange`, `InitialValueOutOfRange` (all three rclrs's), plus `StorageFull` and `NameTooLong`, which rclrs has no correspondent for because its store grows and ours is the storage the caller placed. rclrs's `NoValueAvailable`, `OverrideValueTypeMismatch` and `PriorValueTypeMismatch` are about a launch OVERRIDE arriving before the declaration and disagreeing with it; nano-ros seeds overrides through the same `ParameterServer::apply` a remote set uses, so a disagreeing override is a `SetParameterResult` on the write that carried it and cannot reach a declaration."
+}

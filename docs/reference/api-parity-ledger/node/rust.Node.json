@@ -1,0 +1,13 @@
+{
+  "key": "rust:Node",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-node/src/executor/node.rs",
+    "text": "ADOPT-BOUNDED: a node is a short-lived `&mut Executor` borrow, not rclrs's `Arc<Node>`."
+  },
+  "provides": [
+    "nros::Node"
+  ],
+  "verdict": "divergence",
+  "why": "phase-483 W2 — `nros::Node` is rclrs's node HANDLE, and the ONE node type: `Executor::create_node` returns it, and so does `Executor::node_mut`. It was `NodeCtx` until then, beside a session-borrowing `NodeHandle` with a different method set and a component TRAIT that held the `Node` name (now `nros::Component`). What still differs from rclrs is ownership: rclrs hands out `Arc<Node>`, ours is a short-lived `&mut Executor` borrow (no allocator, RFC-0022), so one node handle is live at a time and entity handles outlive it. The methods carry rclrs's names; constructors with no rclrs counterpart are ledgered as `extension` rows on `rust:Node::*`. ADOPT-BOUNDED: the name and the method set are rclrs's; the envelope is the borrow — a ported line that clones or stores the node (`Arc<Node>`) does not compile, so the difference is loud."
+}

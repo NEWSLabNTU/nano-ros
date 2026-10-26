@@ -1,0 +1,5 @@
+{
+  "key": "rust:Trigger",
+  "verdict": "extension",
+  "why": "the executor-level condition deciding WHETHER to dispatch at all in a given `spin_once` -- Any / All / One(handle) / AllOf(set) / AnyOf(set) / Always / a predicate over a readiness snapshot / a C-ABI predicate. rclrs dispatches whatever the wait set reports ready. This exists for sensor-fusion shapes: a callback that must not run until IMU and GPS have both arrived is expressed as `AllOf(imu | gps)` instead of as buffering inside the callback, which on a `no_std` target means static buffers the app has to size. RFC-0002 gives one executor per RTOS task that drives entities directly through the RMW vtable, with no wait set and no thread pool. rclrs's `SpinOptions` is the only part of this vocabulary it shares; the rest describes a spin loop rclrs does not expose."
+}

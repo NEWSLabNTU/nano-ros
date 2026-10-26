@@ -1,0 +1,5 @@
+{
+  "key": "rust:HandleSet",
+  "verdict": "extension",
+  "why": "a 64-bit bitset of `HandleId`s, built with `|`. 64 because the executor's entry table is statically sized and a bitset is the readiness representation the spin loop already keeps. See `rust:Trigger`. Consumers outside `nros-node`: none."
+}

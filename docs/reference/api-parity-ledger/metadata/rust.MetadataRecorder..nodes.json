@@ -1,0 +1,5 @@
+{
+  "key": "rust:MetadataRecorder::nodes",
+  "verdict": "extension",
+  "why": "see `rust:MetadataRecorder`."
+}

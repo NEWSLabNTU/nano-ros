@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimeTriggeredScheduleError",
+  "verdict": "extension",
+  "why": "what `validate` returns. See `rust:TimeTriggeredSchedule`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSPolicyMask",
+  "verdict": "extension",
+  "why": "the bitset those two exchange -- one bit per policy a backend either can or cannot honour. See `rust:QoSProfile::required_policies`."
+}

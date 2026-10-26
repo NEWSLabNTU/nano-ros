@@ -1,0 +1,5 @@
+{
+  "key": "cpp:rx_size_bound",
+  "verdict": "extension",
+  "why": "phase-408 / issue 0964. `nros::rx_size_bound<M>::value` is the RECEIVE bound a message type derives for itself — max(XCDR1, XCDR2) from `nros_serdes::size::max_serialized_size`, the same function the Rust runtime const uses. rclcpp has no counterpart because it has an allocator: a subscription there grows its buffer, so no caller ever needs to name a capacity. Here the buffer is static and the number decides whether a sample fits or is dropped at the transport. A type with NO bound gets a poisoned template whose static_assert names the member costing it, rather than a plausible estimate."
+}

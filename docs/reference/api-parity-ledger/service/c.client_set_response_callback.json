@@ -1,0 +1,5 @@
+{
+  "key": "c:client_set_response_callback",
+  "verdict": "divergence",
+  "why": "the reply arrives at a callback rather than resolving a future. CORRECTED by phase-487 W2: this row said the callback is bound to the CLIENT at creation; it is written into the client's executor-ARENA entry, which owns it, so the client must be added (`rclc_executor_add_client`) before the setter is called, and `RCL_RET_NOT_INIT` answers one that is not. Before W2 the arena dispatched through a trampoline that read the callback out of the `rcl_client_t`, a back-reference RFC-0096 D9 removes. rclc's counterpart passes the callback to `rclc_executor_add_client`; ours keeps a setter because `rclc_client_call` swaps a one-shot capture into the same slot. Earlier text: the reply arrives at a callback bound to the CLIENT at creation, rather than resolving a future. `executor-owns-no-entity-storage` and RFC-0041, on the client side."
+}

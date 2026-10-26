@@ -1,0 +1,6 @@
+{
+  "key": "c:context_*",
+  "bucket": "theirs-only",
+  "verdict": "divergence",
+  "why": "rcl splits initialization in two -- an `rcl_context_t` built from a separately-constructed `rcl_init_options_t` -- and threads the context through every entity's init. nano-ros collapses both into `rclc_support_t`, which is rclc's `rclc_support_t` name and carries the RMW session INLINE (`_opaque[SESSION_OPAQUE_U64S]`, nros_generated.h:949). The constraint is no allocator: rcl's context hands out a heap `rcl_context_impl_t` and its accessors exist to reach into it, and there is nothing here for them to reach. The useful half lives on `nros_support_*`."
+}

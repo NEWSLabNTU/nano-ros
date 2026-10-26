@@ -1,0 +1,10 @@
+{
+  "key": "cpp:PollClient::remove_pending_request",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/polling_client.hpp",
+    "text": "THE BOUND, for a backend that cannot assign ids only"
+  },
+  "verdict": "extension",
+  "why": "issue 1996 -- an UPSTREAM name on an ours-only type; the substantive verdict is on `cpp:Client::remove_pending_request`. Both builds: it cancels the future and answers true only for a pending request of THIS client. issue 2009 -- keyed by sequence number: a reply arriving after removal is dropped. The remaining bound (an id-less backend only) is on the declaration."
+}

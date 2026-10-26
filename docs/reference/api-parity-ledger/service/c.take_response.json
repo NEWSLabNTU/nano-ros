@@ -1,0 +1,11 @@
+{
+  "key": "c:take_response",
+  "disposition": "absent",
+  "provides": [
+    "rclc_client_take_response",
+    "rclc_polling_client_take_response_raw",
+    "rclc_polling_client_take_response_raw_seq"
+  ],
+  "verdict": "declined",
+  "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> declined -- the client side of `c:take_request`. Ours is `rclc_client_take_response` (executor-registered client) and `nros_client_take_response_raw` (L1 polling client), renamed from `nros_client_try_recv_response` / `nros_client_try_recv_reply_raw`; `reply` -> `response` moved with the verb because rcl, rclcpp and rclrs all say RESPONSE. Only the module prefix remains. issue 2009 -- the polled road's `rclc_polling_client_take_response_raw_seq` also reports the sequence number of the request a reply answers, upstream's request-header half; `rclc_client_take_response` (one call in flight) drops any reply that does not name its call."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:time_add",
+  "verdict": "extension",
+  "why": "`rclc_time_add(rclc_time_t, rcl_duration_t) -> rclc_time_t`. rcl has no time addition at all. CORRECTED 2026-08-26 (phase-379 W5, group B): the old text offered `only rcl_difference_times` as the neighbouring operation, which reads as though the two were a pair; they are not -- `rcl_difference_times` is Time - Time -> Duration and has no additive form. Ours pairs with `rclc_time_sub` (Time +/- Duration -> Time), matching C++ (time.hpp:78/81) and Rust (time.rs:100/109). See `c:difference_times`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_time_triggered_dispatcher",
+  "verdict": "extension",
+  "why": "registers a time-triggered dispatcher -- the fixed-schedule execution shape RFC-0078/0079 need for a WCET-declared tier. rclc's executor has a `rclc_executor_set_trigger` hook but no schedule; ROS 2 has no counterpart at all."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:install_node_typed_in",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- `install_node_typed` with caller-supplied storage (`&'static ComponentSlotStorage`), the `open_in` pattern: same behaviour, no allocator. The alloc-backed spelling stays for hosted targets; the macro emits this one so component images stop needing `alloc`."
+}

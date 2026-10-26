@@ -1,0 +1,5 @@
+{
+  "key": "rust:NROS_BOOT_CONFIG_VERSION",
+  "verdict": "extension",
+  "why": "The blob's layout version, checked alongside the magic. The scenario is the one that makes an in-place patch tool safe to ship: the tool and the firmware are built at different times and flashed from different machines, so a v2 tool writing v1 offsets into a fielded image has to be rejected by the image, not caught by discipline. See `rust:NROS_BOOT_CONFIG_MAGIC`. Currently 1."
+}

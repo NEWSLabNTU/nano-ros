@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::get_fully_qualified_name",
+  "verdict": "divergence",
+  "why": "SHIPPED as `Result get_fully_qualified_name(char* buf, size_t buf_len, size_t* out_len = nullptr) const` (`packages/api/nros-cpp/include/rclcpp/node.hpp:680`). Same constraint as `c:node_get_fully_qualified_name`: upstream returns a `const char *` into storage it owns, and a caller buffer is the no-allocator form. A ported call is a COMPILE ERROR. Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
+}

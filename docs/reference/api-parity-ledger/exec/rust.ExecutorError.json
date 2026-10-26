@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorError",
+  "verdict": "divergence",
+  "why": "the executor's error enum. RFC-0018: the freestanding builds are `-fno-exceptions` and the Rust core is `no_std`, so every fallible operation returns a code -- there is no panic path a device could report from. rclrs returns `RclrsError`, which boxes a source and carries a `String`; neither is affordable here."
+}

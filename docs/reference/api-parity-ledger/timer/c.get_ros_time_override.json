@@ -1,0 +1,5 @@
+{
+  "key": "c:get_ros_time_override",
+  "verdict": "extension",
+  "why": "reads the installed ROS time back. rcl has no such entry point -- a caller there reads the clock -- but our Rust `Clock` has `get_ros_time_override`, and issue 0789 is about the two languages having the same switches. Returns `RCLC_RET_NOT_FOUND` when no override is in effect, which is the `Option` the Rust one returns."
+}

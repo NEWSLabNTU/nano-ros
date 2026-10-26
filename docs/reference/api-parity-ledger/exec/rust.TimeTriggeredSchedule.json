@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimeTriggeredSchedule",
+  "verdict": "extension",
+  "why": "a fixed-size cyclic schedule: `N` windows of `[offset_us, offset_us + duration_us)` within one major frame, with dispatch suppressed outside a callback's window. Const generic rather than a `Vec` because there is no allocator. rclrs has nothing comparable; the nearest ROS 2 thing is an external executor plugin. See `rust:SchedClass`."
+}

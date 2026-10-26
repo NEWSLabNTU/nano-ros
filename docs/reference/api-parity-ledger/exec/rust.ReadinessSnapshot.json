@@ -1,0 +1,5 @@
+{
+  "key": "rust:ReadinessSnapshot",
+  "verdict": "extension",
+  "why": "the readiness bits at the start of a spin iteration, handed to `Trigger::Predicate` so a custom condition is a `fn` over a value rather than a closure the executor would have to store (no allocator, static entry table). See `rust:Trigger`. Consumers outside `nros-node`: none."
+}

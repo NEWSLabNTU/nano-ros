@@ -1,0 +1,11 @@
+{
+  "key": "cpp:Context",
+  "bucket": "theirs-only",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/rclcpp.hpp",
+    "text": "the executor's fixed table (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2): a"
+  },
+  "verdict": "divergence",
+  "why": "phase-488 (2026-10-25), measured on Nav2's `nav2_util::LifecycleNode`, which registers its pre-shutdown hook through `get_node_base_interface()->get_context()`. OVERRIDDEN, absent -> adopt-bounded. `rclcpp::Context` is now a VIEW of one executor's lifetime: `SharedPtr` is the view itself and `->` reaches it; `add_pre_shutdown_callback` / `add_on_shutdown_callback` (C callbacks everywhere, `std::function` on the std surface, held on the heap until removed), their `remove_*`, `is_valid()`, and `rclcpp::contexts::get_global_default_context()`. One layout (an executor pointer) in every arm. THE BOUND: one context per executor, no `get_rcl_context` / init options, and the hooks share the executor's fixed table, so a full one answers an INVALID handle where upstream would allocate. Previous text: rclcpp lets several contexts coexist so one process can host independent ROS graphs, and every entity holds a `Context::SharedPtr`. An image is ONE graph and has no allocator for a context registry, so `nros::init()` initialises the single global one and nothing carries a context pointer. The accessors (`get_rcl_context`, `get_sub_context`, `get_init_options`) exist to reach into that per-context state."
+}

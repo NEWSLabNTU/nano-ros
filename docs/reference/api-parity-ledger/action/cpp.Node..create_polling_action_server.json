@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::create_polling_action_server",
+  "verdict": "extension",
+  "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
+}

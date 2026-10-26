@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Logger::is_enabled",
+  "verdict": "extension",
+  "why": "phase-417 W4.d — the third of the trio, and the one whose NAME was a choice. rcutils spells the nearest thing `rcutils_logging_logger_is_enabled_for(name, severity)`; C spells ours `rclc_logger_is_enabled` and Rust `nros_log::Logger::is_enabled`. This follows OUR two rather than rcutils's one, for the same reason the trio exists: it is here so our three languages stop disagreeing, and a third spelling would be the disagreement in a new place. A forwarder; null handle answers false, from the C entry point. See `cpp:Logger::set_level`."
+}

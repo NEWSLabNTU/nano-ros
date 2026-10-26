@@ -1,0 +1,5 @@
+{
+  "key": "rust:Clock::ros_time",
+  "verdict": "divergence",
+  "why": "ROS time. rclrs models it as a `ClockSource` a `Clock` is built `with_source`, so the override is driven by whoever owns the source. Ours are methods on `Clock` itself, because with no allocator the source cannot be a separately-owned object shared between clocks -- an image has one clock and one owner of it."
+}

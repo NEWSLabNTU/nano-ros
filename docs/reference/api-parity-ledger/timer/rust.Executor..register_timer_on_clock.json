@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_timer_on_clock",
+  "verdict": "divergence",
+  "why": "phase-425 W4, and the sibling of `rust:Executor::register_timer` — same receiver argument, same verdict. rclrs expresses the clock choice as a per-site OPTION (`IntoTimerOptions::{steady_time, system_time, node_time, clock}`, all `declined` above) on `Node::create_timer_repeating`; ours is a second registrar on the EXECUTOR, because RFC-0002 puts one executor per RTOS task and it owns the entity arena the timer lives in.\n\nTwo entry points rather than one defaulted parameter, deliberately: `register_timer` consumes the spin delta the executor already measured and costs nothing, while this one READS a clock on every poll of the timer. On a target where that is a platform call, the difference is worth being visible at the call site rather than hidden behind a default.\n\n`TimerClockSource::{Steady, Ros, System}` is the argument; a `Ros` timer follows `/clock` when a source is active and reads system time when none is, the same fallback `rclcpp::Clock` has."
+}

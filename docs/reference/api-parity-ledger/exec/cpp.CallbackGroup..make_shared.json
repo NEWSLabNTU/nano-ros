@@ -1,0 +1,6 @@
+{
+  "key": "cpp:CallbackGroup::make_shared",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "no allocator -- one global `nros_platform_alloc` and inline caller-owned storage. See `cpp:Node::make_shared` and the `no-shared-ptr` rule in signature_rules.py. Ours is a value-typed token holding a `const char*`; there is nothing to share."
+}

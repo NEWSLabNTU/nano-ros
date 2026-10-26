@@ -1,0 +1,5 @@
+{
+  "key": "rust:SafetyValidator::validate",
+  "verdict": "extension",
+  "why": "see `rust:SafetyValidator`."
+}

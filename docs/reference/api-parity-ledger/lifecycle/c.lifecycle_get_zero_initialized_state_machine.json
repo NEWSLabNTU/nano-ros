@@ -1,0 +1,6 @@
+{
+  "key": "c:lifecycle_get_zero_initialized_state_machine",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl ships a zero-initializer per heap-built lifecycle object. We have one such object and one zero-initializer, `rclc_lifecycle_get_zero_initialized`; see `c:lifecycle_state_t` for why the other two do not exist as types."
+}

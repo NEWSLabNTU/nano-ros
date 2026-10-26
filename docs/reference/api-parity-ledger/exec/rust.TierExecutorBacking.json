@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierExecutorBacking",
+  "verdict": "divergence",
+  "why": "issue 1571 -- the SPAWNED tiers' executor backing, as ONE named `.bss` static the ENTRY owns: `nros::main!` emits a `TierExecutorBacking<N>` (N = tiers - 1; the boot tier takes the `EXECUTOR_BACKING` road) and hands `take()` to the board's `run_tiers`, which gives each spawned tier one `TierExecutorBackingSlot`. It exists because of the NO-ALLOCATOR constraint that makes `ExecutorSizing` a value: on an RTOS the allocator arena is itself a fixed static, so a per-tier `Box::leak` reserved the same bytes invisibly (no symbol, so `mem-report` could not price it and the link did not). The Rust twin of the C/C++ pack's `__nros_tier_executor_storage` (issue 1568). rclrs allocates its executors and has no tier model. Covers `TierExecutorBacking::new` and `TierExecutorBacking::take` (a once-only latch: the slots go out as `&'static mut`, so a second take is EMPTY and refused rather than aliased)."
+}

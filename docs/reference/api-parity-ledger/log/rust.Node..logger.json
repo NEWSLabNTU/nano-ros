@@ -1,0 +1,6 @@
+{
+  "key": "rust:Node::logger",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-483 W2 — `nros::Node` is now the node HANDLE (it was the component trait, renamed `nros::Component`), and it has rclrs's `logger()`: the logger named for this node, resolved through `nros_log::resolve_node_logger`. The one difference is the type: it returns `&'static nros_log::Logger`, not `rclrs::Logger` — a bounded, interned logger, because there is no allocator to hold a per-node one. A ported `node.logger()` call compiles and logs under the node's name, which is upstream's contract."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:lifecycle_transition_t",
+  "verdict": "divergence",
+  "why": "rcl models a state and a transition as heap objects carrying a malloc'd label string, built and torn down through init/fini pairs. Ours are `uint8_t` constants over the closed REP-2002 set (`NROS_LIFECYCLE_STATE_*` / `NROS_LIFECYCLE_TRANSITION_*`) with static labels, so there is nothing to construct or free. Constraint: no allocator -- `nros_platform_alloc` is the tree's only allocation route, and a label per state would put the state machine on the heap for no information gain. Ours is `NROS_LIFECYCLE_TRANSITION_*`."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Server::complete_goal",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_action/server.hpp",
+    "text": "status is an argument and the goal is named by its id, because there is no"
+  },
+  "verdict": "divergence",
+  "why": "RESOLVED (issue 0796): `complete_goal(goal_id, status, result)` now takes the terminal status, in the same parameter order as `PollingActionServer::complete_goal` and the C API's `nros_action_server_complete_goal_raw`; a two-argument overload forwards `Succeeded` so existing calls keep compiling. It used to take no status and the shim passed `GoalStatus::Succeeded` unconditionally, so the C++ CALLBACK tier could not abort or cancel a goal at all -- it reported an aborted goal to the client as succeeded -- while C had `rclc_action_abort`. rclcpp_action has no single `complete_goal`: it has `ServerGoalHandle::succeed` / `abort` / `canceled`, which we also ship (`cpp:Server::succeed` and friends) as thin forwarders over this one.\n\nphase-428 (RFC-0089): re-keyed from `cpp:ActionServer::complete_goal` by the namespace flip -- same row, same reasoning, the key follows the type name.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the doc comment now says rclcpp_action has no `complete_goal` and why the status is an argument and the goal an id (no goal handle). It previously described only the issue-0796 history."
+}

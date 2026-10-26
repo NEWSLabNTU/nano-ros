@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Executor::spin_node_some",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Executor::spin_node_once`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Promise::wait",
+  "verdict": "divergence",
+  "why": "RFC-0021 in one method: `promise.wait(&mut executor, timeout)` -- the blocking helper takes the executor and DRIVES it, because on a single-threaded executor awaiting a result only that executor can produce is a deadlock. rclrs's counterpart is `.await` on an async runtime, or `Executor::spin` with `SpinOptions::until_promise_resolved`, both declined here. See `cpp:Future::wait` and `rust:SpinOptions::until_promise_resolved`."
+}

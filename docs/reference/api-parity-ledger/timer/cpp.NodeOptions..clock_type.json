@@ -1,0 +1,8 @@
+{
+  "key": "cpp:NodeOptions::clock_type",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "extension",
+  "why": "issue 1975 — HUMBLE ONLY, because Humble's rclcpp has no such member: Jazzy added `NodeOptions::clock_type()` (getter + builder setter), and under Jazzy this correlates `same`, so the row is scoped out there. A real field the `Node(name, options)` constructors read to build the node clock (`packages/api/nros-cpp/include/rclcpp/options.hpp`), default `RCL_ROS_TIME` as upstream; `Node::get_node_options()` now hands back the options the node was given rather than a constant. A type that is not a clock latches `ok() == false` where upstream's constructor throws (RFC-0018). The one LIVE option on a type whose other options are REFUSE-LOUD. HELD BY `packages/api/nros-cpp/tests/compile/jazzy_small_accessors_runtime.cpp`."
+}

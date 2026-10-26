@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_service_raw_capturing",
+  "verdict": "extension",
+  "why": "phase-488 W3 (2026-10-25) -- the raw service registration with the handler's CAPTURE copied into the entry's own arena region, as `add_arena_subscription_c_callback_with_capture` and `register_timer_c_capturing` already do for subscriptions and timers. The dispatch context is the arena's copy and `capture_drop` destroys it exactly once with the entry. It exists for the C++ surface (`nros_cpp_service_server_register_capturing`): a stateful C++ handler (`std::bind(&X::f, this, _1, _2)`, a capturing lambda) is more than the one context word the other `register_service_raw*` take. No rclrs counterpart: a Rust closure service is the typed `NodeHandle` path."
+}

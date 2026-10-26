@@ -1,0 +1,6 @@
+{
+  "key": "cpp:CallbackGroup::get_associated_with_executor_atomic",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the 'already claimed by an executor' atomic, which exists because an rclcpp group can be added to at most one executor at a time. Ours binds at registration into one executor's arena and never moves. RFC-0047: a callback group here is a NAME, not an object the executor holds. The group structure is declared in code (`Node::create_callback_group(\"ctrl\")`) and the group -> tier POLICY is declared in the workspace `system.toml`; the executor carries a config-seeded `group -> sched_context` table and binds each callback to its group's context at REGISTRATION, once, into a fixed arena. There is no group object to add to or remove from an executor, and no membership that can change after registration."
+}

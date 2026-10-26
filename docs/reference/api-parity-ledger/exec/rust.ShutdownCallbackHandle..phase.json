@@ -1,0 +1,5 @@
+{
+  "key": "rust:ShutdownCallbackHandle::phase",
+  "verdict": "extension",
+  "why": "The phase a handle was issued for -- what makes a cross-phase removal fail instead of removing the wrong hook. Part of `rust:ShutdownCallbackHandle`. Issue 0790."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:level_last_spin_us",
+  "verdict": "extension",
+  "why": "phase-509 P7 (RFC-0108 D8) -- per-level liveness: when a level last spun, for a supervisor's spin-gap statistic (D8.2). ROS 2 has no executor liveness surface."
+}

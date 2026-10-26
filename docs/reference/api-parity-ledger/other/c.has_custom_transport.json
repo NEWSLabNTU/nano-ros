@@ -1,0 +1,5 @@
+{
+  "key": "c:has_custom_transport",
+  "verdict": "extension",
+  "why": "see `c:set_custom_transport`. Reports whether a vtable is currently installed -- ours and not micro-ROS's, because the slot is process-global and a second `set` silently replaces the first."
+}

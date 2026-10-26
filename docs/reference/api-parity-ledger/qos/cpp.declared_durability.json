@@ -1,0 +1,5 @@
+{
+  "key": "cpp:declared_durability",
+  "verdict": "extension",
+  "why": "issue 1256 -- the declared DURABILITY for `(type, topic)` as a `nros::DurabilityPolicy` ordinal, or `DECLARED_POLICY_UNDECLARED` (-1). `constexpr`, the sibling of `cpp:declared_reliability` and `cpp:declared_depth`: `NROS_ASSERT_DECLARED_DURABILITY` (and `NROS_ASSERT_DECLARED_QOS`, which `NROS_SUBSCRIBE`'s four-argument form asserts) uses it at compile time, `Node::check_declared_qos` at boot. rclcpp has no counterpart: a `transient_local` it is handed is simply obeyed, and there is no contract to cross-check."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:HazardCell::new",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): a cleared cell, for a `static`. See `rust:HazardCell`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::node_builder",
+  "verdict": "extension",
+  "why": "the chainable form of `cpp:Executor::create_node` -- `.rmw(...).locator(...).domain_id(...).namespace(...).sched(...)`. The `sched(...)` leaf is the point: RFC-0047 phase-272 resolves a node's tier through the executor's `node_name -> sched_context` table at exactly this one site, so every node funnels through a place where the `system.toml` policy can be applied. rclcpp has `NodeOptions` and no tier concept."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:action_channel_type",
+  "verdict": "extension",
+  "why": "derives the per-channel DDS type name (`…::dds_::Fibonacci_SendGoal_`) from the action type name, in a `heapless::String` with no allocation. rclcpp_action gets these from generated typesupport structs; we need the derivation at runtime because the raw registration path has only the action's type name. See `c:action_type_t`."
+}

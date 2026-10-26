@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_worker_band",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-509 P9b item 2 / RFC-0108 \"As built in P9b\" -- the band of dispatch levels the executor's own worker runs (every level by default). With band workers over the same executor (`Executor::spin_band_once`) the bands partition the levels, so each callback has exactly one worker. rclcpp's multi-threaded executor shares one wait set among its threads and has no notion of a level band; rclrs has one executor thread."
+}

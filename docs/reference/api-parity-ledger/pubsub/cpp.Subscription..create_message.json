@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Subscription::create_message",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "allocates the message the executor will take into. Ours takes into caller storage or a loan; there is nothing to allocate."
+}

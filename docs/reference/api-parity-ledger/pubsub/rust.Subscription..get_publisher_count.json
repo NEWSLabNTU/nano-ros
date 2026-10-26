@@ -1,0 +1,5 @@
+{
+  "key": "rust:Subscription::get_publisher_count",
+  "verdict": "extension",
+  "why": "how many publishers are on this subscription's topic — phase-444, the subscription half of `rust:Publisher::get_subscription_count`. Recorded here because the RUST side has no rclrs counterpart: rclrs exposes no publisher count on a subscription at all, while rcl (`rcl_subscription_get_publisher_count`) and rclcpp (`SubscriptionBase::get_publisher_count`) both do and both have their own rows in this shard. Same shape as `rust:Publisher::assert_liveliness`: ROS 2 has the capability, the Rust client library is the one that omits it, and shipping it in all three of OUR languages is what keeps the three from disagreeing with each other as well as with upstream.\n\nThe weakening it inherits is stated on the publisher half and repeated in its doc comment: this is a TOPIC-WIDE count over the graph, not the set MATCHED to this entity, and a backend that cannot read the graph answers `Unsupported` rather than `0`."
+}

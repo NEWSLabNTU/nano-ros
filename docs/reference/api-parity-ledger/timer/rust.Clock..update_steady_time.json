@@ -1,0 +1,5 @@
+{
+  "key": "rust:Clock::update_steady_time",
+  "verdict": "extension",
+  "why": "see `rust:Clock::set_steady_time`."
+}

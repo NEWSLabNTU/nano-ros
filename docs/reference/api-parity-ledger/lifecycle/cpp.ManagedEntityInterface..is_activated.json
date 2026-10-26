@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ManagedEntityInterface::is_activated",
+  "verdict": "divergence",
+  "why": "upstream declares `is_activated()` on `SimpleManagedEntity` and leaves `ManagedEntityInterface` a PURE-virtual pair (`on_activate`, `on_deactivate`). Ours lifts it to the interface, and both halves of that are platform-forced: a pure virtual needs `__cxa_pure_virtual`, which a freestanding image does not link, so our interface's methods are non-pure with defaults; and with no RTTI a node holding `ManagedEntityInterface*` cannot downcast to ask, so the question has to be on the interface. The default is `false` -- an entity that never activates never sends, which is the safe answer for a node that has not reached Active."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:check_table_capacity",
+  "verdict": "extension",
+  "why": "phase-496 W1 -- the one capacity check every monitor installer makes (the Rust `try_set_monitor_tables` and the C ABI's `nros_cpp_install_monitors`). See `rust:MonitorTableFull`."
+}

@@ -1,0 +1,8 @@
+{
+  "key": "cpp:Subscription::bind_event_callbacks",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "divergence",
+  "why": "see `cpp:Publisher::bind_event_callbacks`."
+}

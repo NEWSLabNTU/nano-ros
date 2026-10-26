@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_get_arena_capacity",
+  "verdict": "extension",
+  "why": "the arena's total size (`NROS_EXECUTOR_ARENA_SIZE` as carved from the executor's inline backing). Paired with `c:executor_get_arena_used` it is the headroom, which rclc has no notion of because rclc allocates. Issue 1609."
+}

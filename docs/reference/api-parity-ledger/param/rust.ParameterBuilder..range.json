@@ -1,0 +1,6 @@
+{
+  "key": "rust:ParameterBuilder::range",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. NOT the error-name rename its three siblings are. rclrs's `ParameterBuilder::range` returns `Self` — an infallible builder step — while ours (`packages/core/nros-params/src/typed.rs:157`) returns `Result<Self, ParameterError>`, because a range is validated against the declared parameter TYPE at the point it is set rather than at `mandatory()`. That is a real behavioural difference and it is LOUD in the right direction: a ported `.range(a..=b).mandatory()` fails to compile (no `mandatory` on a `Result`), and `Result` is `#[must_use]`, so the value cannot be dropped silently either. ADOPT is recorded as the direction — validating at the terminal would restore upstream's chain — but nothing is silently wrong today, so this is a record, not a work item."
+}

@@ -1,0 +1,8 @@
+{
+  "key": "rust:Publisher::publish",
+  "retired_quotes": [
+    "publish(&self, msg: &M, buf: &mut [u8])"
+  ],
+  "verdict": "divergence",
+  "why": "ours is `EmbeddedPublisher::publish(&self, msg: &M)`; rclrs's takes the message by value (`impl MessageCow`) and serialises into a buffer it allocates. Ours serialises into a STACK buffer of `DEFAULT_TX_BUF` bytes (`packages/core/nros-node/src/executor/handles.rs`), and `publish_with_buffer::<N>(msg)` picks another size at compile time, because there is no allocator to size it at run time. It is `&M` rather than `M` because a no_std caller usually wants to keep the message. CORRECTED 2026-10-25 (phase-515 W0): this row used to say the caller passes the buffer (`publish(&self, msg: &M, buf: &mut [u8])`); that argument is gone, and only `&M` against by-value still differs at the call site. This is the `no-allocator` constraint at the hottest call in the API."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:RawServiceCallback",
+  "verdict": "divergence",
+  "why": "the raw-bytes callback type; see the pubsub stage's `rust:RawSubscriptionCallback`."
+}

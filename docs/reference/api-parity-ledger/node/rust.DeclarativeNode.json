@@ -1,0 +1,5 @@
+{
+  "key": "rust:DeclarativeNode",
+  "verdict": "extension",
+  "why": "the extension trait a component imports to call the declarative constructors on `nros::Node`. rclrs has no counterpart because rclrs has no codegen step. phase-483 W3 — re-keyed from `DeclaredNode`: the declarative constructors are now the `nros::DeclarativeNode` extension trait on `nros::Node`, so a component's node and a program's node are one type. Kept at the crate root by phase-506 W1 (RFC-0071 D12): component-mode or typed-API code writes this name, so it is user API, not machinery."
+}

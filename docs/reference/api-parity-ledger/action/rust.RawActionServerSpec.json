@@ -1,0 +1,5 @@
+{
+  "key": "rust:RawActionServerSpec",
+  "verdict": "divergence",
+  "why": "the registration record for a raw action server (name, type names, hashes, QoS, callbacks) -- the values rclcpp_action passes to `create_server` as separate arguments, gathered into one struct because the entity is registered from generated code rather than written by hand. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. See the service stage's `rust:ServiceTrait`. Moved to `nros::internals` by phase-506 W1 (RFC-0071 D12): the untyped action machinery the C and C++ shims drive, off the top-level user API."
+}

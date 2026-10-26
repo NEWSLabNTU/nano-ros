@@ -37,7 +37,6 @@ earlier attempt on `rust:ParameterType` did, for want of a better bucket — wou
 have evicted a name every ported parameter node has to write. That is the gate
 working as designed on a mis-verdicted row, not a reason to weaken it.
 """
-import json
 import os
 import re
 import sys
@@ -155,18 +154,15 @@ def prelude_names(text):
 
 
 def load_ledger(ledger_dir):
-    """Every shard merged into one {key: row}, documentation dropped."""
-    rows = {}
-    for fn in sorted(os.listdir(ledger_dir)):
-        if not fn.endswith(".json"):
-            continue
-        with open(os.path.join(ledger_dir, fn)) as fh:
-            data = json.load(fh)
-        for key, row in data.items():
-            if key.startswith("_") or not isinstance(row, dict):
-                continue
-            rows[key] = row
-    return rows
+    """Every row merged into one {key: row}, documentation dropped.
+
+    Through the layout module `api-parity.py` reads with (issue 1091), never a
+    second spelling of where a row lives.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "scripts", "api_parity"))
+    import ledger_files
+
+    return ledger_files.load(ledger_dir)
 
 
 def rust_extensions(rows):

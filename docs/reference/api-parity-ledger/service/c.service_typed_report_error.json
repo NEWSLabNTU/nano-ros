@@ -1,0 +1,5 @@
+{
+  "key": "c:service_typed_report_error",
+  "verdict": "extension",
+  "why": "phase-417 W5.e — the loud half of typed service delivery. A handler returning `false` makes the executor send nothing (`arena.rs:2559`), which the peer cannot distinguish from a reply that has not arrived -- it just times out. So the refusal has to say so, and the diagnostic lives in Rust because the logger is Rust's: a second formatter in a generated header would be a second implementation (RFC-0019). rclc has no counterpart because its service callback returns void and cannot refuse at all."
+}

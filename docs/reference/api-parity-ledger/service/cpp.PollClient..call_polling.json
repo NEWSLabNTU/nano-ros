@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollClient::call_polling",
+  "verdict": "extension",
+  "why": "phase-456 W9 — RFC-0022's polling tier, moved here with the storage it sends through. Substantive verdict below, carried over from the deleted `cpp:Client::call_polling` row.\n\nCarried over from the `cpp:Client::call_polling` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nRFC-0022's polling tier: an entity a task drains itself instead of receiving a callback. See the pubsub stage's `cpp:PollingSubscription`."
+}

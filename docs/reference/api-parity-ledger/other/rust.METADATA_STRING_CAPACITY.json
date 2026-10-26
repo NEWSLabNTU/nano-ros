@@ -1,0 +1,5 @@
+{
+  "key": "rust:METADATA_STRING_CAPACITY",
+  "verdict": "extension",
+  "why": "that capacity (128 bytes), and the bound `nros_node::names::MAX_RESOLVED_NAME_LEN` is matched to. See `rust:MetadataString`."
+}

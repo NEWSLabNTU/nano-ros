@@ -1,0 +1,6 @@
+{
+  "key": "rust:ValueConversionError*",
+  "bucket": "ours-only",
+  "verdict": "rename",
+  "why": "Our spelling of rclrs's `RmwParameterConversionError`, exported from the `nros` facade since phase-417 W4.a. -- see `rust:RmwParameterConversionError` for the naming half. `reason()` is the sentence the `~/set_parameters` handler puts into the `SetParametersResult`, so a local caller and a remote one read the same words."
+}

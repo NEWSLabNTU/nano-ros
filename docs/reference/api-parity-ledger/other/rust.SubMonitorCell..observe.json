@@ -1,0 +1,5 @@
+{
+  "key": "rust:SubMonitorCell::observe",
+  "verdict": "extension",
+  "why": "see `rust:SubMonitorCell`."
+}

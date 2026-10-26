@@ -1,0 +1,5 @@
+{
+  "key": "rust:CallbackId::new",
+  "verdict": "extension",
+  "why": "see `rust:CallbackId`."
+}

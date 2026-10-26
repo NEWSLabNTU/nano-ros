@@ -1,0 +1,5 @@
+{
+  "key": "rust:CdrReader::end_dheader",
+  "verdict": "extension",
+  "why": "Closes a `rust:CdrReader::begin_dheader` scope and reports `DHeaderOverrun`; see that row."
+}

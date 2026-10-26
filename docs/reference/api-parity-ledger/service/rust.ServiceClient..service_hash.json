@@ -1,0 +1,5 @@
+{
+  "key": "rust:ServiceClient::service_hash",
+  "verdict": "extension",
+  "why": "the type hash used to detect a client and server built against different .srv definitions. ROS 2 Iron+ computes one; Humble does not (RFC-0036 records `TYPE_HASH = TypeHashNotSupported`), so this is ours for now and a convergence point when the baseline moves."
+}

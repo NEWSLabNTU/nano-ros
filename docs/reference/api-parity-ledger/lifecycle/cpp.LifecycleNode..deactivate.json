@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::deactivate",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-482 W4 (2026-10-07): on `rclcpp_lifecycle::LifecycleNode` this returns `const State&` (`get_current_state`: `State`), as upstream's does, so a ported call site's use of the result compiles unchanged.\n\nBefore phase-482 W4: phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. see `cpp:LifecycleNode::configure` — `Result` where upstream returns `const State &`. (`rclcpp_lifecycle/lifecycle_node.hpp:162`.)"
+}
