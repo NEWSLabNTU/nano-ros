@@ -461,6 +461,16 @@ baremetal-platform-arms:
 platform-port-arms:
     @python3 scripts/check/check-platform-port-arms.py
 
+# Issue 2032's second route — a `nros_posix_*` name (the POSIX port's own, not
+# `<nros/platform.h>`) reached from code gated only on `cfg(unix)`. Zephyr
+# native_sim and the RTOS host tiers are `unix` without that port, so the
+# linker fetched the POSIX `platform.o` again, four minutes after the first fix.
+# Rust extern blocks must carry `feature = "platform-posix"`. Buildless; it
+# self-tests on every run.
+[private]
+posix-port-private-symbols:
+    @python3 scripts/check/check-posix-port-private-symbols.py
+
 # issue 1122 — the OTHER road a derived number takes into cargo. `NROS_DERIVED_*`
 # is the Zephyr one (`nros_resolve_knobs()` -> `NROS_RESOLVED_*`, gated by
 # `check-knob-delivery`); `NROS_DECLARED_*` is the lane-independent one, carried

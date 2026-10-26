@@ -8947,25 +8947,16 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
     // level's own context, which defers to the kernel when it took the budget.
     // SAFETY: `spec` is a row of the entry's static table.
     if let Some(t) = unsafe { (ctx.spec as *const NativeTierSpecC).as_ref() } {
-        unsafe extern "C" {
-            fn nros_posix_apply_current_deadline(
-                name: *const c_char,
-                tier_class: *const c_char,
-                budget_us: u64,
-                period_us: u64,
-                deadline_us: u64,
-            ) -> i32;
-        }
         // SAFETY: the strings are the row's, NUL-terminated or null.
         let kernel = unsafe {
-            nros_posix_apply_current_deadline(
+            nros_platform::sched::apply_current_deadline(
                 ctx.name.as_ptr(),
                 t.tier_class,
                 t.budget_us,
                 t.period_us,
                 t.deadline_us,
             )
-        } == 1;
+        };
         unsafe { native_level_sched_policy(sched, t, kernel) };
     }
     if let Some(setup) = ctx.setup {
