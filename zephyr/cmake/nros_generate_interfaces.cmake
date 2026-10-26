@@ -59,6 +59,8 @@ Prerequisites:
 # from the repo's `cmake/` dir (this file lives at `zephyr/cmake/`). include_guard'd
 # in the core, so a build that also pulls the canonical generator is fine.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCodegenCore.cmake")
+# issue 2092 — the image's message-FFI staticlib is a SECOND Rust staticlib.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosSecondStaticlib.cmake")
 
 # =========================================================================
 # Locate nros-codegen (once per configure)
@@ -807,9 +809,17 @@ targets = [\"${NROS_RUST_TARGET}\"]
   # the graph cargo already computes.
   # Issue 1304 — see cmake/NanoRosRustTool.cmake (via NanoRosCodegenCore).
   nros_rust_tool(_ffi_cargo cargo)
+  # Issue 2092 — this archive is whole-archived BESIDE the runtime's
+  # `libnros_cpp.a`, and both carry compiler_builtins' 34 C-compiled
+  # intrinsics as strong globals. Keep the FFI surface strong and weaken the
+  # rest, or the first intrinsic the image's C calls (Zephyr's `bitarray.c`
+  # calls `__popcountdi2`) is defined twice. See NanoRosSecondStaticlib.cmake.
+  nros_second_staticlib_weaken_command(_ffi_weaken
+    ARCHIVE "${_ffi_lib}" KEEP "nros_cpp_*")
   add_custom_command(
     OUTPUT "${_ffi_lib}"
     COMMAND ${_ffi_env} "${_ffi_cargo}" ${_cargo_ffi_args}
+    COMMAND ${_ffi_weaken}
     DEPENDS "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
     DEPFILE "${_ffi_dep_file}"
     WORKING_DIRECTORY "${_ffi_crate_dir}"
