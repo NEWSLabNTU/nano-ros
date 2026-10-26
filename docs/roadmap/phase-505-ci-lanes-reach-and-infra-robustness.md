@@ -6,8 +6,8 @@ when it was homed here, without citing it.**
 **Status (2026-10-26). Three issues with no active phase were homed here on
 2026-10-26: #2066 and #2067 under W1, and #2052 under W2. W2 also has #2069,
 filed the same day: the out-of-lane gate, a merge-group step, reports a
-host-only test's timeout as a scope violation. Everything else below is
-unchanged.**
+host-only test's timeout as a scope violation, and #2082: a `ci gate` unit
+test races a global counter under load. Everything else below is unchanged.**
 
 **Status (2026-10-21). Every work item is done: W1 by PRs #2394, #2429 and
 #2430, W2 by #2426 and #2428 plus the ruleset edit that closed #1629, and W3 by
@@ -103,6 +103,10 @@ phase's. Build speed is phase-489's.
       own CLI, or reports NOT VERIFIED, and never reaches a stale
       `~/.nros/bin/nros`. Resolved by `8b95e90dd6`, which predates the
       homing.
+- [ ] [#2082](../issues/2082-dropped-take-log-test-races-the-global-counter.md):
+      `dropped_take_log_tests` reset the process-global `DROPPED_TAKES` that
+      other tests in the binary advance, so `node-std-tests` goes red under
+      parallel load.
 
 ### W3 — a stopped or failed lane says so, with the cause
 
@@ -149,3 +153,4 @@ ejection from a cause listed here.
 | [#2052](../issues/archived/2052-pristine-ament-surface-stale-home-cli.md) | Resolved 2026-10-26 by `8b95e90dd6`, which landed before it was homed. `ci gate`'s pristine-checkout step reaches a stale `~/.nros/bin/nros` through `cmake-ament-surface`, so the gate's verdict depends on the host rather than the code. |
 | [#2066](../issues/2066-linux-sched-deadline-throttle-unverified.md) | Homed 2026-10-26 from archived phase-509. The `SCHED_DEADLINE` throttle needs `CAP_SYS_NICE`, which no lane has, so that half of the level budget is run by nothing. |
 | [#2067](../issues/archived/2067-freertos-level-kernel-slicing-off-not-booted.md) | Homed 2026-10-26 from archived phase-509. No lane boots a FreeRTOS level image and reads its time-slicing line, so the kernel setting is built and never checked. Resolved 2026-10-27: `realtime_tiers_e2e` asserts the line OFF on the C, C++ and Rust level rows, archived. |
+| [#2082](../issues/2082-dropped-take-log-test-races-the-global-counter.md) | Filed 2026-10-26. A `ci gate` unit test asserts on a global counter other tests share, so the queue can eject a batch for load, not code. |
