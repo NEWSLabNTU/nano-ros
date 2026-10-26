@@ -793,7 +793,18 @@ cmake-ament-surface:
         nros_check_skip cmake-ament-surface "missing host tool(s): cmake"
         exit 0
     fi
-    ./tests/cmake-ament-surface-tests.sh
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    # issue 1850 — this checkout's CLI (or an explicit $NROS_CLI), never PATH:
+    # the message resolver asks `nros profile`, and a host-installed `nros`
+    # older than that subcommand fails every configure.
+    if ! _cli="$(nros_cli_bin --checkout-only)"; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cmake-ament-surface "no in-tree CLI -- run \`just setup-cli\`"
+        exit 0
+    fi
+    NROS_CLI="$_cli" ./tests/cmake-ament-surface-tests.sh
 
 # issue 1990 — a build dir's `cargo` link whose target the runner sweep removed
 # is re-created at BUILD time, before any cargo edge, so a swept cache costs a

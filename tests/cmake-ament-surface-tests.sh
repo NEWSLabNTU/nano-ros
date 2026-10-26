@@ -54,6 +54,19 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 fail=0
 
+# issue 1850 — this checkout's CLI, or the explicit $NROS_CLI the gate passes.
+# The message resolver asks `nros profile`, and without this the cmake modules
+# fall through to whatever `nros` the host has installed, which may predate it.
+# shellcheck source=scripts/build/cargo.sh
+source "$ROOT/scripts/build/cargo.sh"
+NROS_BIN="$(nros_cli_bin --checkout-only)" || NROS_BIN=""
+if [ -z "$NROS_BIN" ]; then
+    echo "  FAIL  in-tree CLI not built -- run \`just setup-cli\`"
+    exit 1
+fi
+export NROS_CLI="$NROS_BIN"
+export PATH="$(dirname "$NROS_BIN"):$PATH"
+
 expect() {
     if [[ "$3" == *"$2"* ]]; then echo "  ok    $1"; else
         echo "  FAIL  $1 -- wanted '$2' in:"; sed 's/^/        /' <<<"$3"; fail=1; fi
