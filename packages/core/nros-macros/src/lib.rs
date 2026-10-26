@@ -367,6 +367,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
             { <#node_ty as ::nros::Component>::ENTITY_BOUNDS.action_clients },
             { <#node_ty as ::nros::Component>::ENTITY_BOUNDS.action_servers },
             { <#node_ty as ::nros::Component>::ENTITY_BOUNDS.service_servers },
+            { <#node_ty as ::nros::Component>::ENTITY_BOUNDS.timers },
         > = ::nros::ComponentSlotStorage::new();
 
         #[allow(clippy::not_unsafe_ptr_arg_deref)]

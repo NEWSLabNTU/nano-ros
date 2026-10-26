@@ -90,6 +90,7 @@ parity work around them:
 | [2039](../../issues/archived/2039-c-api-matched-status-events-interop.md) | (2026-10-25) | interop cell: C matched + liveliness callbacks vs stock ROS 2 |
 | [2060](../../issues/archived/2060-subscription-events-unpolled-without-arrivals.md) | (2026-10-26) | a subscription with a status callback is polled every spin: its matched count falls when the last publisher leaves |
 | [2074](../../issues/archived/2074-cpp-poll-take-message-info.md) | (2026-10-26) | `PollSubscription::take(msg, MessageInfo&)`, hosted + freestanding; `MessageInfo::is_reported()` |
+| [2075](../../issues/archived/2075-declarative-timer-reset-cancel.md) | (2026-10-26) | a component starts a timer it declared stopped: `CallbackCtx`/`TickCtx::reset_timer` / `cancel_timer` |
 
 #2612 (in the merge queue on this date) closes the two action-cancel issues,
 #2029 (cancel-all / cancel-before on the server) and #2030 (the C tier takes

@@ -87,5 +87,6 @@ The ledger rows `rust:DeclarativeNode::create_timer_for_callback_name` and
   needs a per-cell timer table (a new cell capacity, emitted by `nros::node!`)
   plus a `TickCtx::reset_timer(EntityId)`. Until then `autostart = false` is
   useful only to an image that resets the timer through the executor itself.
+  Resolved 2026-10-26 by issue 2075.
 - `timer_autostart` is not in the metadata JSON sidecar, which `timer_clock` is
   not in either. A model consumer outside the runtime cannot see it.

@@ -1,0 +1,5 @@
+{
+  "key": "rust:CallbackCtx::cancel_timer",
+  "verdict": "extension",
+  "why": "issue 2075 (2026-10-26): rclcpp's `TimerBase::cancel()` / rclrs `Timer::cancel`, by entity id; see `rust:CallbackCtx::reset_timer` for why and when it applies."
+}

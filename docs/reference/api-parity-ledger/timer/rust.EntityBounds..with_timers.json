@@ -1,0 +1,5 @@
+{
+  "key": "rust:EntityBounds::with_timers",
+  "verdict": "extension",
+  "why": "issue 2075 (2026-10-26): the bound on controllable declared timers, a 16-byte-a-row id-to-handle table. `exact` sets it to 0 and `knob_caps` to `NROS_RUNTIME_MAX_CELL_ENTITIES`. A timer past the bound still registers and fires; resetting or cancelling it answers `NodeDeclError::UnknownTimer`, whose message names this bound."
+}
