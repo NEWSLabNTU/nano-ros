@@ -11,7 +11,10 @@ use crate::{
     node::{rcl_node_t, rclc_node_state_t},
 };
 
-use nros_node::action_frame;
+use nros_node::{
+    action_frame,
+    executor::ffi::{ActionServerCoreFfi as _, ActionServerRawHandleFfi as _},
+};
 
 // ============================================================================
 // Action Server

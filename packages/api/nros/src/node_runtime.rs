@@ -62,6 +62,9 @@ use core::{
     marker::PhantomData,
     mem::MaybeUninit,
 };
+use nros_node::executor::ffi::{
+    ActionClientCoreFfi as _, ActionClientRawHandleFfi as _, ActionServerRawHandleFfi as _,
+};
 
 // Via nros-core's re-export rather than a new direct dependency — every graph
 // containing `nros` would otherwise move (16 leaf lockfiles, measured on W5.1).

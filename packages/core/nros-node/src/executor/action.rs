@@ -638,7 +638,7 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// row `c:action_server_goal_exists`. TRUE while the goal is active AND
     /// while its completed result is still retained, which is a strictly wider
     /// window than `goal_status` reports — see
-    /// [`ActionServerCore::goal_exists`](super::action_core::ActionServerCore::goal_exists).
+    /// [`ActionServerCore::goal_exists`](crate::executor::ffi::ActionServerCoreFfi::goal_exists).
     ///
     /// Returns `false` if the handle slot has been removed from the executor,
     /// which is the same answer a caller wants there: nothing on this server
@@ -1349,7 +1349,7 @@ impl ActionServerRawHandle {
     /// All function pointers are unreachable stubs; only valid use is
     /// to populate `#[repr(C)]` storage that is later overwritten by a
     /// real handle (or queried via `is_invalid()` to skip operations).
-    pub const fn invalid() -> Self {
+    pub(crate) const fn invalid() -> Self {
         unsafe fn unreachable_publish_feedback(
             _: *mut u8,
             _: &nros_core::GoalId,
@@ -1402,7 +1402,7 @@ impl ActionServerRawHandle {
     }
 
     /// `true` if this handle is the sentinel returned by `Self::invalid()`.
-    pub const fn is_invalid(&self) -> bool {
+    pub(crate) const fn is_invalid(&self) -> bool {
         self.entry_index == INVALID_ENTRY_INDEX
     }
 }
@@ -1415,14 +1415,14 @@ impl Default for ActionServerRawHandle {
 
 impl ActionServerRawHandle {
     /// Get the [`HandleId`] for this action server.
-    pub fn handle_id(&self) -> HandleId {
+    pub(crate) fn handle_id(&self) -> HandleId {
         HandleId::for_owned_slot(self.entry_index)
     }
 
     /// Publish feedback with raw CDR bytes (untyped variant).
     ///
     /// Used by the C API when feedback is already serialised.
-    pub fn publish_feedback_raw(
+    pub(crate) fn publish_feedback_raw(
         &self,
         executor: &mut Executor,
         goal_id: &nros_core::GoalId,
@@ -1453,7 +1453,7 @@ impl ActionServerRawHandle {
     /// the executor, or when `result_data` exceeds the server's `RESULT_BUF`
     /// and so cannot be retained for a later `get_result` (issue 0796 — this
     /// used to return `()` and swallow both).
-    pub fn complete_goal_raw(
+    pub(crate) fn complete_goal_raw(
         &self,
         executor: &mut Executor,
         goal_id: &nros_core::GoalId,
@@ -1480,7 +1480,7 @@ impl ActionServerRawHandle {
     ///
     /// Use this to transition a goal to `Executing` or `Canceling`
     /// while it is still active. To finish a goal, use [`complete_goal_raw`](Self::complete_goal_raw).
-    pub fn set_goal_status(
+    pub(crate) fn set_goal_status(
         &self,
         executor: &mut Executor,
         goal_id: &nros_core::GoalId,
@@ -1498,7 +1498,7 @@ impl ActionServerRawHandle {
     /// Get the number of currently active goals.
     ///
     /// Returns 0 if the action server handle has been removed from the executor.
-    pub fn active_goal_count(&self, executor: &Executor) -> usize {
+    pub(crate) fn active_goal_count(&self, executor: &Executor) -> usize {
         match executor.entries[self.entry_index].as_ref() {
             Some(meta) => {
                 let arena_ptr = executor.arena.as_ptr() as *const u8;
@@ -1517,7 +1517,7 @@ impl ActionServerRawHandle {
     /// surface's `rclc_action_server_goal_exists` and the C++
     /// `Server<A>::goal_exists` both resolve to. Active OR completed-with-a-
     /// retained-result; `false` once the slot is gone from the executor.
-    pub fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool {
+    pub(crate) fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool {
         match executor.entries[self.entry_index].as_ref() {
             Some(meta) => {
                 let arena_ptr = executor.arena.as_ptr() as *const u8;
@@ -1533,7 +1533,7 @@ impl ActionServerRawHandle {
     /// Eagerly reclaim delivered results — the raw twin of
     /// [`ActionServerHandle::expire_goals`], and what C's
     /// `rclc_action_expire_goals` resolves to. phase-417 W4.b.
-    pub fn expire_goals(&self, executor: &mut Executor) -> usize {
+    pub(crate) fn expire_goals(&self, executor: &mut Executor) -> usize {
         match executor.entries[self.entry_index].as_ref() {
             Some(meta) => {
                 let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
@@ -1549,7 +1549,11 @@ impl ActionServerRawHandle {
     /// Iterate over all currently active goals (raw/untyped variant).
     ///
     /// Calls `f` for each goal that has been accepted but not yet completed.
-    pub fn for_each_active_goal(&self, executor: &Executor, mut f: impl FnMut(&RawActiveGoal)) {
+    pub(crate) fn for_each_active_goal(
+        &self,
+        executor: &Executor,
+        mut f: impl FnMut(&RawActiveGoal),
+    ) {
         if let Some(meta) = executor.entries[self.entry_index].as_ref() {
             let arena_ptr = executor.arena.as_ptr() as *const u8;
             unsafe {
@@ -1568,7 +1572,7 @@ impl ActionServerRawHandle {
     /// This is the authoritative source of goal status — the C/C++ FFI
     /// layers call this from `rclc_action_get_goal_status` rather than
     /// reading a cached field on their own handle structs.
-    pub fn goal_status(
+    pub(crate) fn goal_status(
         &self,
         executor: &Executor,
         goal_id: &nros_core::GoalId,
@@ -2082,7 +2086,7 @@ pub struct ActionClientRawHandle {
 
 impl ActionClientRawHandle {
     /// Get the entry index for this action client.
-    pub fn entry_index(&self) -> usize {
+    pub(crate) fn entry_index(&self) -> usize {
         self.entry_index
     }
 }

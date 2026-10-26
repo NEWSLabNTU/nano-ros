@@ -13,7 +13,14 @@ use nros::{
     GoalId,
     cdr::{CDR_HEADER_LEN, strip_cdr_header},
 };
-use nros_node::{action_frame, config::DEFAULT_RX_BUF_SIZE, executor::ffi::ExecutorFfi as _};
+use nros_node::{
+    action_frame,
+    config::DEFAULT_RX_BUF_SIZE,
+    executor::ffi::{
+        ActionClientCoreFfi as _, ActionClientRawHandleFfi as _, ActionServerCoreFfi as _,
+        ActionServerRawHandleFfi as _, ExecutorFfi as _,
+    },
+};
 
 /// Issue 2014 — byte of a get_result reply where the result fields start
 /// (`[encap 4][status i8][pad → 8][fields]`). The C++ `PollingActionClient`
