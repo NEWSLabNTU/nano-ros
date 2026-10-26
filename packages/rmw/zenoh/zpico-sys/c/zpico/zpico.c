@@ -226,6 +226,11 @@ typedef struct {
 typedef struct {
     z_owned_liveliness_token_t token;
     bool active;
+    /* Issue 2083 -- the token's keyexpr, heap-held while the token lives, so
+     * the session's own graph cache can hold it (zenoh-pico never delivers a
+     * session's own tokens to its own liveliness subscriber). NULL when graph
+     * discovery is compiled out. */
+    char* key;
 } liveliness_entry_t;
 
 // Queryable entry for service servers
@@ -741,6 +746,11 @@ struct zpico_session {
 };
 
 static struct zpico_session g_sessions[ZPICO_MAX_SESSIONS];
+
+#if ZPICO_GRAPH_DISCOVERY
+/* Issue 2083 -- defined with the graph cache, used by the token paths too. */
+static void graph_cache_apply(struct zpico_session* s, const char* key, size_t klen, bool remove);
+#endif
 
 /* Issue 1749 -- defined beside the slot lock; see there. */
 static inline void zpico_declare_lock(struct zpico_session* s);
@@ -2499,6 +2509,11 @@ void zpico_close(zpico_session_t* session) {
             z_liveliness_undeclare_token(z_liveliness_token_move(&s->liveliness[i].token));
             s->liveliness[i].active = false;
         }
+        /* Issue 2083 -- the key a live token kept for the session's own graph. */
+        if (s->liveliness[i].key != NULL) {
+            z_free(s->liveliness[i].key);
+            s->liveliness[i].key = NULL;
+        }
     }
 
     // Clean up queryables
@@ -3478,6 +3493,21 @@ int32_t zpico_declare_liveliness(zpico_session_t* session, const char* keyexpr) 
 
     /* Claimed by zpico_claim_slot (issue 1711); set again for the reader. */
     s->liveliness[idx].active = true;
+#if ZPICO_GRAPH_DISCOVERY
+    /* Issue 2083 -- zenoh-pico delivers this token to the router and to every
+     * OTHER session, never to this session's own liveliness subscriber, so
+     * without this an image's own servers are missing from its own graph: a
+     * client in the same process waits forever for a server it hosts. The key
+     * is kept so the cache can be seeded when it starts later than the token,
+     * and emptied when the token goes. A failed copy only costs this image its
+     * view of itself, which is what it had before. */
+    size_t klen = strlen(keyexpr);
+    s->liveliness[idx].key = (char*)z_malloc(klen + 1);
+    if (s->liveliness[idx].key != NULL) {
+        memcpy(s->liveliness[idx].key, keyexpr, klen + 1);
+        graph_cache_apply(s, s->liveliness[idx].key, klen, false);
+    }
+#endif
     return idx;
 }
 
@@ -3490,6 +3520,14 @@ int32_t zpico_undeclare_liveliness(zpico_session_t* session, int32_t handle) {
     zpico_declare_lock(s);
     z_liveliness_undeclare_token(z_liveliness_token_move(&s->liveliness[handle].token));
     zpico_declare_unlock(s);
+#if ZPICO_GRAPH_DISCOVERY
+    /* Issue 2083 -- and leave this session's own graph with it. */
+    if (s->liveliness[handle].key != NULL) {
+        graph_cache_apply(s, s->liveliness[handle].key, strlen(s->liveliness[handle].key), true);
+        z_free(s->liveliness[handle].key);
+        s->liveliness[handle].key = NULL;
+    }
+#endif
     zpico_release_slot(s, liveliness, handle);
     return ZPICO_OK;
 }
@@ -4242,6 +4280,34 @@ int32_t zpico_graph_set_apply(uint8_t* buf, size_t cap, size_t* len, uint32_t* c
                               uint32_t* dropped, const char* key, size_t klen, bool remove);
 
 #if ZPICO_GRAPH_DISCOVERY
+/* Apply one token change to the session's graph cache and fire the change
+ * edge when the set moved. The ONE apply: the liveliness subscriber's samples
+ * and this session's own tokens (issue 2083) both come through here. */
+static void graph_cache_apply(struct zpico_session* s, const char* key, size_t klen, bool remove) {
+    if (s == NULL || !s->graph_cache.active || key == NULL || klen == 0) {
+        return;
+    }
+    graph_cache_t* c = &s->graph_cache;
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_lock(&c->mutex);
+#endif
+    /* phase-467 Row 8 — the return value is the CHANGE EDGE. `zpico_graph_set_apply`
+     * returns 1 exactly when the token set is now different: a PUT that
+     * inserted, or a DELETE that removed. A duplicate PUT, a DELETE of
+     * something absent and a PUT that did not fit all return 0, so a no-op
+     * never reaches the guard condition. */
+    int32_t changed = zpico_graph_set_apply(c->buf, sizeof(c->buf), &c->len, &c->entry_count,
+                                            &c->dropped, key, klen, remove);
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_unlock(&c->mutex);
+#endif
+    /* OUTSIDE the lock: the handler this wakes reads the graph, and reading
+     * the graph takes this same mutex. */
+    if (changed == 1 && s->graph_change_cb != NULL) {
+        s->graph_change_cb((int32_t)(s - g_sessions));
+    }
+}
+
 /* Sample handler for the liveliness subscriber.
  *
  * A liveliness sample carries its meaning in the KEYEXPR and its KIND: PUT is
@@ -4256,30 +4322,7 @@ static void graph_cache_sample_handler(z_loaned_sample_t* sample, void* arg) {
     z_keyexpr_as_view_string(z_sample_keyexpr(sample), &ks);
     const char* key = z_string_data(z_view_string_loan(&ks));
     size_t klen = z_string_len(z_view_string_loan(&ks));
-    if (key == NULL || klen == 0) {
-        return;
-    }
-    graph_cache_t* c = &s->graph_cache;
-#if Z_FEATURE_MULTI_THREAD == 1
-    _z_mutex_lock(&c->mutex);
-#endif
-    /* phase-467 Row 8 — the return value is the CHANGE EDGE, and it was
-     * discarded with a `(void)` for as long as this handler has existed.
-     * `zpico_graph_set_apply` returns 1 exactly when the token set is now
-     * different: a PUT that inserted, or a DELETE that removed. A duplicate
-     * PUT, a DELETE of something absent and a PUT that did not fit all return
-     * 0, so a no-op never reaches the guard condition. */
-    int32_t changed =
-        zpico_graph_set_apply(c->buf, sizeof(c->buf), &c->len, &c->entry_count, &c->dropped, key,
-                              klen, z_sample_kind(sample) == Z_SAMPLE_KIND_DELETE);
-#if Z_FEATURE_MULTI_THREAD == 1
-    _z_mutex_unlock(&c->mutex);
-#endif
-    /* OUTSIDE the lock: the handler this wakes reads the graph, and reading
-     * the graph takes this same mutex. */
-    if (changed == 1 && s->graph_change_cb != NULL) {
-        s->graph_change_cb((int32_t)(s - g_sessions));
-    }
+    graph_cache_apply(s, key, klen, z_sample_kind(sample) == Z_SAMPLE_KIND_DELETE);
 }
 
 #endif /* ZPICO_GRAPH_DISCOVERY */
@@ -4398,6 +4441,16 @@ int32_t zpico_graph_cache_start(zpico_session_t* session, const char* keyexpr) {
         _z_mutex_drop(&c->mutex);
 #endif
         return ZPICO_ERR_INVALID;
+    }
+    /* Issue 2083 -- `history` replays the tokens zenoh-pico knows as REMOTE;
+     * this session's own were declared before the cache existed and are never
+     * replayed, so seed them here. Matching `keyexpr` is not re-checked: every
+     * token this shim declares is a ROS 2 liveliness token under the same
+     * `@ros2_lv/**` root the cache subscribes to. */
+    for (int i = 0; i < ZPICO_MAX_LIVELINESS; i++) {
+        if (s->liveliness[i].active && s->liveliness[i].key != NULL) {
+            graph_cache_apply(s, s->liveliness[i].key, strlen(s->liveliness[i].key), false);
+        }
     }
     return 0;
 }

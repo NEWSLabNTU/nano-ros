@@ -1,0 +1,1 @@
+A client sees a service server its own process hosts: the zenoh shim now records a session's own liveliness tokens in its own graph cache, which zenoh-pico never delivers to the session itself, so `service_is_ready` and `wait_for_service` no longer wait forever for an in-process server (issue 2083).
