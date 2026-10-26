@@ -2554,8 +2554,9 @@ pub enum ShutdownPhase {
 }
 
 /// Handle to a registered shutdown hook, returned by
-/// [`Executor::add_pre_shutdown_callback`] /
-/// [`Executor::add_on_shutdown_callback`] and consumed by the matching
+/// `ExecutorFfi::add_pre_shutdown_callback` /
+/// `ExecutorFfi::add_on_shutdown_callback` (the FFI trait in
+/// `executor::ffi`) and consumed by the matching
 /// `remove_*`. rclcpp's `PreShutdownCallbackHandle` / `OnShutdownCallbackHandle`.
 ///
 /// # Why an index and not a pointer
@@ -2569,9 +2570,6 @@ pub enum ShutdownPhase {
 /// handle from one list cannot silently remove a callback from the other. A
 /// slot index is only meaningful next to the table it indexes, and there are
 /// two tables.
-///
-/// [`ExecutorFfi::add_pre_shutdown_callback`](crate::executor::ffi::ExecutorFfi::add_pre_shutdown_callback): crate::executor::Executor::add_pre_shutdown_callback
-/// [`ExecutorFfi::add_on_shutdown_callback`](crate::executor::ffi::ExecutorFfi::add_on_shutdown_callback): crate::executor::Executor::add_on_shutdown_callback
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShutdownCallbackHandle(pub u32);

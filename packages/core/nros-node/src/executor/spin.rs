@@ -420,7 +420,7 @@ impl Executor<'static> {
     /// `$NROS_RMW` env is ignored: bridge mode wants explicit names.
     ///
     /// Default-sized `alloc` convenience over
-    /// [`open_multi_in`](Self::open_multi_in) (leaks a default backing).
+    /// [`open_multi_in`](crate::executor::ffi::ExecutorFfi::open_multi_in) (leaks a default backing).
     #[cfg(feature = "rmw-cffi")]
     pub fn open_multi(specs: &[SessionSpec<'_>]) -> Result<Self, NodeError> {
         let sizing = super::storage::ExecutorSizing::DEFAULT;
@@ -462,7 +462,7 @@ impl<'s> Executor<'s> {
     /// the executor's tables instead of leaking a default one.
     ///
     /// # Safety
-    /// `backing`/`sizing` as in [`from_session_in`](Self::from_session_in).
+    /// `backing`/`sizing` as in [`from_session_in`](crate::executor::ffi::ExecutorFfi::from_session_in).
     pub(crate) unsafe fn open_multi_in(
         specs: &[SessionSpec<'_>],
         backing: &'s mut [MaybeUninit<u64>],
@@ -2699,13 +2699,13 @@ impl<'s> Executor<'s> {
     }
 
     /// Create a borrowing executor over caller-supplied `backing`, sized by
-    /// `sizing`. Counterpart to [`from_session_in`](Self::from_session_in) for
+    /// `sizing`. Counterpart to [`from_session_in`](crate::executor::ffi::ExecutorFfi::from_session_in) for
     /// the per-tier / C model (the session is borrowed, not owned).
     ///
     /// # Safety
     /// - `session_ptr` must point to a valid session that outlives the executor
     ///   and is not moved/dropped while it exists.
-    /// - `backing` obligations as in [`from_session_in`](Self::from_session_in).
+    /// - `backing` obligations as in [`from_session_in`](crate::executor::ffi::ExecutorFfi::from_session_in).
     pub(crate) unsafe fn from_session_ptr_in(
         session_ptr: *mut session::ConcreteSession,
         backing: &'s mut [MaybeUninit<u64>],
@@ -2721,7 +2721,7 @@ impl Executor<'static> {
     /// default sizing (`MAX_CBS`/`MAX_SC`/`ARENA_SIZE`). Convenience for
     /// std/alloc callers that don't size per-entry: it leaks a default-sized
     /// backing (executor-lifetime, one-time) and calls
-    /// [`from_session_in`](Self::from_session_in). Per-entry sizing goes through
+    /// [`from_session_in`](crate::executor::ffi::ExecutorFfi::from_session_in). Per-entry sizing goes through
     /// the macro / `open_in` instead.
     #[cfg(feature = "alloc")]
     pub fn from_session(session: session::ConcreteSession) -> Self {
@@ -2903,7 +2903,7 @@ impl<'s> Executor<'s> {
     /// spawns one RTOS task per priority tier; each task calls this to get an
     /// [`Executor`] over the *same* session (the `Borrowed` session store — this
     /// executor neither owns nor closes it), registers its tier's callback
-    /// groups, and spins. Thin alias over [`Executor::from_session_ptr`].
+    /// groups, and spins. Thin alias over [`ExecutorFfi::from_session_ptr`](crate::executor::ffi::ExecutorFfi::from_session_ptr).
     ///
     /// # Safety
     /// `session` must outlive every executor/task built from it (the
