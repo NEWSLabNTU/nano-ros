@@ -609,8 +609,8 @@ rtic-action-server: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-action-server")
 rtic-action-client: (_run-qemu-mps2 (FIXTURE_TARGET / "qemu-rtic-action-client"))
 
 # Start zenohd router for bare-metal QEMU examples (allocator RTIC pubsub port 10200)
-zenohd:
+zenohd model="":
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    nros_router_exec tcp/127.0.0.1:10200
+    nros_router_exec tcp/127.0.0.1:10200 "{{model}}"

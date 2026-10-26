@@ -331,11 +331,11 @@ action-server: (_run "action-server")
 action-client: (_run "action-client")
 
 # Start zenohd router for ThreadX Linux examples (allocator rust-pubsub port 9000, bridge-networked)
-zenohd:
+zenohd model="":
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    nros_router_exec tcp/0.0.0.0:9000
+    nros_router_exec tcp/0.0.0.0:9000 "{{model}}"
 
 # Clean ThreadX Linux build artifacts
 [group("main")]

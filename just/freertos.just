@@ -668,8 +668,8 @@ action-server: (_run-qemu "action-server" "action-server")
 action-client: (_run-qemu "action-client" "action-client")
 
 # Start zenohd router for FreeRTOS QEMU examples (allocator rust-pubsub port 7800)
-zenohd:
+zenohd model="":
     #!/usr/bin/env bash
     set -e
     source scripts/dev/zenohd.sh
-    nros_router_exec tcp/127.0.0.1:7800
+    nros_router_exec tcp/127.0.0.1:7800 "{{model}}"

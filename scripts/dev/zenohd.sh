@@ -220,12 +220,25 @@ nros_router_check_locator() {
     fi
 }
 
+# phase-516 W1b (RFC-0074 enforcement point 1) -- an optional second argument
+# names a resolved SystemModel; the router then also runs the `downsampling`
+# rule `nros sync` wrote beside it (`nros ws router-config`), so a declared
+# ingress is enforced before the device decodes anything. Empty: no rule.
 nros_router_exec() {
     local locator="${1:?nros_router_exec: a locator is required}"
+    local model="${2:-}"
     nros_router_check_locator "$locator" || return 2
     local bin
     bin="$(nros_zenohd_bin)" || return 1
     nros_zenohd_warn_if_unpaired "$bin"
-    ZENOH_CONFIG_OVERRIDE="listen/endpoints=[\"${locator}\"];scouting/multicast/enabled=false" \
-        nros_router_env_exec "$bin"
+    local override="listen/endpoints=[\"${locator}\"];scouting/multicast/enabled=false"
+    if [ -n "$model" ]; then
+        local rule
+        if ! rule="$(nros ws router-config --model "$model")"; then
+            return 1
+        fi
+        override="${override};${rule}"
+        echo "router: running the downsampling rule for $model" >&2
+    fi
+    ZENOH_CONFIG_OVERRIDE="$override" nros_router_env_exec "$bin"
 }
