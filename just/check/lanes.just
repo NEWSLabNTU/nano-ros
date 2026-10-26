@@ -1737,6 +1737,32 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/subscription_message_info_runtime
+    # issue 2074 -- the POLLING take with metadata, `PollSubscription<M>::take(M&,
+    # MessageInfo&)`: plain data, so built hosted AND freestanding, and each run
+    # twice -- with the stub's `take_with_info` slot and without it, where
+    # `is_reported()` is what tells "nothing reported" from "zeros reported".
+    test -f packages/api/nros-cpp/tests/compile/poll_take_message_info_runtime.cpp || { \
+        echo "ERROR: poll_take_message_info_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - PollSubscription::take(M&, MessageInfo&), hosted + freestanding, with and without a metadata channel (runtime, issue 2074)"
+    for _ptmi in hosted freestanding; do \
+        if [ "$_ptmi" = hosted ]; then _ptmi_flags="-std=c++17 -DNROS_CPP_STD=1"; else _ptmi_flags="-std=c++14"; fi; \
+        c++ $_ptmi_flags -fno-exceptions -fno-rtti \
+            -I"$cppgen" \
+            -I"$cgen" \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/core/nros-rmw-abi/include \
+            -Ipackages/platform/nros-platform-api/include \
+            -Ipackages/api/nros-c/tests/run \
+            -o "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi" \
+            packages/api/nros-cpp/tests/compile/poll_take_message_info_runtime.cpp \
+            "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+            "$nros_cpp_lib" -lpthread -ldl -lm; \
+        "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi"; \
+        "$gen/nros-cpp-tests/poll_take_message_info_runtime_$_ptmi" no-info; \
+    done
     # ...and WITHOUT the hosted surface the MessageInfo shapes are refused,
     # naming MessageInfo (the metadata path keeps the callable on the heap).
     _smi=packages/api/nros-cpp/tests/compile/subscription_message_info_freestanding_probe.cpp

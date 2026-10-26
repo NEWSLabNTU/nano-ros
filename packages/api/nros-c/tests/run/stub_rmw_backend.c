@@ -867,6 +867,16 @@ int32_t nros_stub_rmw_register_as(const char* name) {
     return (int32_t)nros_rmw_cffi_register_named(name, &STUB_VTABLE);
 }
 
+/* Issue 2074 — the same stub with NO `take_with_info` slot: the runtime then
+ * has no per-sample metadata channel for it, as for XRCE or uORB. */
+static nros_rmw_vtable_t s_no_info_vtable;
+
+int32_t nros_stub_rmw_register_without_message_info(const char* name) {
+    s_no_info_vtable = STUB_VTABLE;
+    s_no_info_vtable.take_with_info = NULL;
+    return (int32_t)nros_rmw_cffi_register_named(name, &s_no_info_vtable);
+}
+
 uint32_t nros_stub_rmw_drive_io_calls(void) {
     return s_drive_io_calls;
 }

@@ -4396,6 +4396,28 @@ nros_cpp_ret_t nros_cpp_subscription_take_serialized_with_attachment(void *stora
                                                                      size_t *out_att_len);
 
 /**
+ * Issue 2074 — the POLL-side take with metadata: upstream's
+ * `rclcpp::Subscription::take(msg, message_info)`. Writes the CDR bytes into
+ * `out_data` and the sample's metadata into `*out_info`, both from ONE
+ * `take_serialized_with_info`, the take the callback-side MessageInfo path
+ * (issue 2036) uses. `*out_len` is `0` and `*out_info` is zeroed (with
+ * `has_info = false`) when nothing was waiting.
+ *
+ * `out_info->has_info` tells "the backend reported metadata for this sample"
+ * apart from "it reported none" (XRCE, uORB), which an all-zero record
+ * cannot.
+ *
+ * # Safety
+ * `storage` must be a valid subscription storage. `out_data` must point to
+ * `out_capacity` writable bytes. `out_len` and `out_info` must be valid.
+ */
+nros_cpp_ret_t nros_cpp_subscription_take_with_info(void *storage,
+                                                    uint8_t *out_data,
+                                                    size_t out_capacity,
+                                                    size_t *out_len,
+                                                    struct nros_cpp_message_info_t *out_info);
+
+/**
  * Phase 124.A.7 — borrow the next message in place.
  *
  * **Availability:** `lending`-only, and no shipped build enables it —
