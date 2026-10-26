@@ -27,7 +27,7 @@ nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", feature
 # this manifest names no board, RMW or edition. `main.rs` reaches the board
 # through it.
 int32_source_nros_selection = { path = "build/nros/selection" }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 log = "0.4"
 env_logger = "0.11"
 

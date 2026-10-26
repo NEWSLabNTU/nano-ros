@@ -49,7 +49,7 @@ threadx_linux_rs_service_server_nros_selection = { path = "build/nros/selection"
 #
 # Acceptance is the issue's own: this leaf builds with `nros`'s `std` OFF.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
-example_interfaces = { path = "generated/example_interfaces", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 # Demo-parity log lines route through the `log` facade; the platform entry
 # runtime owns the sink.
 log = "0.4"

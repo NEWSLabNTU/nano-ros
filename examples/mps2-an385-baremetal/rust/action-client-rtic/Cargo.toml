@@ -26,7 +26,7 @@ crate-type = ["rlib"]
 
 [dependencies]
 # Node deps folded in from the former action_client_rtic_pkg (issue 0100).
-example_interfaces = { path = "generated/example_interfaces", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 heapless = "0.8"
 # nros Executor API + bare-metal platform glue.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }

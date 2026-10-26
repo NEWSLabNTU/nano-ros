@@ -19,6 +19,6 @@ name = "telem_node"
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
-std_msgs = { path = "../../generated/std_msgs", default-features = false }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
 # issue 0572 — a fixture that proves DELIVERY must say when a publish fails.
 log = { version = "0.4", default-features = false }

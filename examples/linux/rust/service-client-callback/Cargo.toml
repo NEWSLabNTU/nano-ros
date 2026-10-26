@@ -22,7 +22,7 @@ nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 # so this manifest names no board, RMW or edition. `main.rs` reaches the board
 # through it.
 native_rs_service_client_callback_nros_selection = { path = "build/nros/selection" }
-example_interfaces = { path = "generated/example_interfaces", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 log = "0.4"
 env_logger = "0.11"
 

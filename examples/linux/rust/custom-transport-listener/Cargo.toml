@@ -39,7 +39,7 @@ nros-rmw-zenoh = { version = "*", default-features = false, features = ["link-cu
 nros-log = { version = "*" }
 # Phase 244 D4/E2 — reusable TCP-bridge custom-transport factory.
 nros-transport-callbacks = { version = "*" }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

@@ -113,15 +113,20 @@ nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
 log = { version = "0.4", default-features = false }
-std_msgs = { path = "../../generated/std_msgs", default-features = false }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
 ```
 
 `nros` is named like a registry crate but is never fetched from one:
 `nros sync` writes a `[patch.crates-io]` row that points it at the SDK
 root, into the generated `build/<image>/nros-cargo.toml` rather than into
-your package, and `std_msgs` is the crate `nros sync` generates under
-`generated/`. No path in the manifest names where nano-ros lives, so the
-package copies anywhere.
+your package. You do not write the `std_msgs` row at all: `package.xml`
+says `<depend>std_msgs</depend>`, and `nros sync` (or `nros build`) turns
+every `<depend>` on a message package into a row tagged `# nros-managed`,
+pointing at the crate it generates under `generated/`. Adding a message
+package is one edit — the `<depend>` — and removing the `<depend>` removes
+the row. A row without the tag is yours and sync never touches it, so to
+override one (a feature, a different path), delete its tag. No path in the
+manifest names where nano-ros lives, so the package copies anywhere.
 
 A Node pkg names **no** platform and **no** RMW. `alloc` is the universal
 baseline and `rmw-cffi` is the vtable seam; the concrete backend and the

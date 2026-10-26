@@ -415,6 +415,7 @@ nros ws status          # freshness check (non-fatal): n up-to-date / n stale / 
 nros ws list            # list discovered msg + Rust-consumer pkgs
 nros ws clean           # remove generated/ + auto-managed patch entries
 nros ws doctor          # lint workspace pkgs (package.xml markers, stale patches, …)
+nros ws managed-deps    # write the `# nros-managed` message rows from package.xml
 ```
 
 | Subcommand | Description |
@@ -423,6 +424,7 @@ nros ws doctor          # lint workspace pkgs (package.xml markers, stale patche
 | `status` | Non-fatal freshness check — sibling of `nros sync --check` |
 | `list` | List discovered msg + Rust-consumer pkgs (kind, name, dir per row) |
 | `clean` | Remove `generated/` + auto-managed `[patch.crates-io]` entries from each `.cargo/config.toml`; leaves user-written keys + sections alone |
+| `managed-deps [--check]` | The one step `nros sync` and `nros build` both run: write each Rust package's `# nros-managed` `[dependencies]` rows — one per `<depend>` on a message package — without codegen. `--check` writes nothing and exits non-zero if a manifest would change |
 | `doctor` | Lint: warn on missing `<member_of_group> rosidl_interface_packages</member_of_group>`, malformed `package.xml`, missing nros-managed `[patch.crates-io]` entries in the authority `.cargo/config.toml` |
 
 ### `nros codegen-system [--bringup <pkg>] [--target <id> | --for-entry <pkg>] [--out <dir>] [--launch <file>] [--ahead-of-vendor <pio|px4>]`

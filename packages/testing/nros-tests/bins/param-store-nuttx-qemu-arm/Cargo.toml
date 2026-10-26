@@ -43,7 +43,7 @@ nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi
 # `alloc-stats`: the Rust global allocator's peak, which is where the store
 # lands on the heap road — the number the before/after compares.
 nros-platform = { version = "*", default-features = false, features = ["alloc-stats"] }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 log = "0.4"
 
 [package.metadata.ament]

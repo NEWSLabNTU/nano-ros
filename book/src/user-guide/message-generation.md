@@ -80,19 +80,30 @@ This will:
 primitive underneath it — steps 1–4 and nothing else — and is useful when
 you want bindings without a build.
 
-**Step 3: Add dependencies to Cargo.toml**
+**Step 3: there is no step 3 — `package.xml` is the dependency list**
 
-A generated message crate is a **path dependency** on its own directory:
+A generated message crate is a **path dependency** on its own directory, and
+`nros sync` (and `nros build`, before it plans) writes that row for you: one
+per `<depend>` / `<build_depend>` / `<exec_depend>` that names a message
+package, tagged `# nros-managed`:
 
 ```toml
 [dependencies]
-std_msgs = { path = "generated/std_msgs", default-features = false }
-example_interfaces = { path = "generated/example_interfaces", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
+example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 ```
 
-Never name one by registry version (`std_msgs = "*"`): those crates are
-generated per host from *your* ament install, they are not published, and a
-bare name resolves against the public crates.io instead (RFC-0067).
+So adding a message package is one edit — the `<depend>` — exactly as on the
+C/C++ road, and deleting the `<depend>` deletes the row on the next sync. A
+row without the tag is yours: sync never edits or removes it, so deleting the
+tag is how you take a row over. `nros ws managed-deps [--check]` runs this one
+step alone (for a script that drives `cargo` itself). The `nros` row is not
+managed — it carries a feature choice that is yours to make.
+
+Never name a message crate by registry version (`std_msgs = "*"`): those
+crates are generated per host from *your* ament install, they are not
+published, and a bare name resolves against the public crates.io instead
+(RFC-0067).
 
 The nano-ros runtime crates are the other case — `nros`,
 `nros-board-<board>`, the backends — and they *are* registry-named with
@@ -107,7 +118,7 @@ the plain pair:
 
 ```toml
 [dependencies]
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 nros     = { version = "*", features = ["rmw-cyclonedds"] }
 ```
 

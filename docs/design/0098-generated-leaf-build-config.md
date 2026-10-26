@@ -1,6 +1,6 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Stable (2026-10-14). Phase-445, its home phase, is complete and archived. Every decision D1-D12 is implemented, and D1's path defers to RFC-0103 D7. History: Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package.)
+**Status:** Stable (2026-10-14; amended 2026-10-26 — a message `<depend>` is one edit for Rust, phase-517 W8). Phase-445, its home phase, is complete and archived. Every decision D1-D12 is implemented, and D1's path defers to RFC-0103 D7. History: Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4; 2026-09-11 — the app rung gets its spelling and the leaf `.cargo/` is deleted, phase-445 W6; 2026-10-07 — image configuration has ONE source on every road: D10–D12, phase-481; 2026-10-07 — D11's locator revision from phase-481 W0 DECIDED: the module's `module_ext_root` hook appends the fragment; 2026-10-11 — D10–D12 IMPLEMENTED by phase-481 W1–W5: every Zephyr example states its nano-ros config in `system.toml` and no leaf conf file holds a nano-ros knob. 2026-10-11 — D1's path defers to RFC-0103 D7, and D6 covers every image-only dependency of a single-package leaf through a generated selection package.)
 
 Home phase: [phase-445](../roadmap/archived/phase-445-board-choice-generates-leaf-config.md).
 
@@ -537,10 +537,12 @@ D5's "`ip`, `gateway`, `netmask`, `locator` … live in `system.toml`" is
 superseded for those four keys: addresses belong to layer 1 and the locator to
 layer 2. `domain_id` and `rmw` stay here.
 
-## Proposed amendment — a `<depend>` is one edit for Rust too (2026-10-25, phase-517 W8)
+## Amendment — a `<depend>` is one edit for Rust too (2026-10-25, ACCEPTED 2026-10-26, phase-517 W8)
 
-**State: PROPOSED, awaiting maintainer acceptance. Nothing below is
-implemented; phase-517 W8 writes no code until it is accepted.**
+**State: ACCEPTED (2026-10-26) and implemented by phase-517 W8.** Proposed
+2026-10-25; the maintainer accepted the design on 2026-10-26 together with the
+recommended answers to its two open questions (recorded under "Resolutions"
+at the end of this section — the maintainer may still override either).
 
 A Rust node package still hand-writes three kinds of dependency that the tree
 already knows:
@@ -602,3 +604,38 @@ the generated crates first, RFC-0104 D5).
 stays authored (it carries a feature choice a user might reasonably make), and
 whether sync writes the block or only checks it and prints the edit (the
 `cargo add` vs `cargo check` choice).
+
+**Resolutions (2026-10-26, recommended and accepted with the design):**
+
+1. **The `nros` row stays AUTHORED.** It carries a feature choice (`alloc`,
+   `macros`, an edition, a capability) that a user can reasonably make, so
+   sync owns only the message-package rows. The second bullet of the proposal
+   above is therefore NOT implemented.
+2. **`nros sync` WRITES the rows** (the `cargo add` shape), and so does
+   `nros build`, before planning. `nros ws managed-deps [<dir>] [--check]` runs
+   the same step alone; `--check` is the report-only form.
+
+**As implemented** (`packages/cli/nros-cli-core/src/cmd/managed_deps.rs`, the
+scan in `cmd/ws.rs`):
+
+- A dependency is a message package when generation would produce a crate for
+  it: a workspace interface package, a crate already under `generated/`, or
+  the interface index (ament environment over the bundled set).
+- The rows go to every Rust package the scan reads, including a package a
+  single-package leaf reaches through a path dependency (the Zephyr leaves'
+  `node/`), with the path relative from that package. A package whose `src/`
+  holds C or C++ translation units is skipped: it is a C/C++ application with
+  a Rust link root (the bare-metal C leaves, issue 1512), and its messages
+  reach it as C bindings from the same `<depend>`s.
+- A tagged row whose `<depend>` is still declared but did not resolve on this
+  host is KEPT, not removed: resolution depends on the host's ament install,
+  and removing a row one host cannot see would churn a tracked file. A user
+  row for the crate in any dependency table (including a `package =` rename
+  or a target-scoped table) suppresses the managed one.
+- Nothing is written when nothing changes, so a second sync leaves every
+  manifest's mtime alone.
+- Gate: `just check managed-msg-deps` refuses an untagged path row into a
+  `generated/` tree in a tracked manifest. Exempt: rows another generator owns
+  (`px4_msgs`, from `nros generate-px4-msgs`), listed with their reason, and
+  leaves whose board the registry holds at `tier = "scaffold"` (derived; ESP32
+  is dormant, issue 1525).

@@ -55,5 +55,5 @@ nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi
 # issue 1305), so this manifest names no board and a board switch is one line
 # there. `nros::main!` reaches the board through it.
 pkg_rust_publisher_nros_selection = { path = "build/nros/selection" }
-std_msgs = { path = "../../generated/std_msgs" }
-builtin_interfaces = { path = "../../generated/builtin_interfaces" }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
+builtin_interfaces = { path = "../../generated/builtin_interfaces", default-features = false }  # nros-managed

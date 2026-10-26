@@ -31,7 +31,7 @@ crate-type = ["rlib"]
 # through it.
 freertos_rs_service_server_nros_selection = { path = "build/nros/selection" }
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
-example_interfaces = { path = "generated/example_interfaces", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 # Demo-parity log lines route through the `log` facade; the platform
 # entry runtime owns the sink.
 log = "0.4"

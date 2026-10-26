@@ -35,6 +35,7 @@ pub mod leaf_kconfig;
 pub mod leaf_settings;
 pub mod leaf_system;
 pub mod locate;
+pub mod managed_deps;
 pub mod materialize;
 pub mod message_bound_knobs;
 pub mod metadata;

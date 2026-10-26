@@ -31,7 +31,7 @@ nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi
 # other platform's copy; the board bridges it to semihosting.
 log = { version = "0.4", default-features = false }
 # Generated message types (from package.xml via `nros generate-rust`).
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 
 # Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
 # builds for the host as well (issue 1265). That is what lets `nros sync`

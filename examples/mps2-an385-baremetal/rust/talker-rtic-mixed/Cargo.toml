@@ -29,7 +29,7 @@ crate-type = ["rlib"]
 # phase-338 W7 — one facade in user source: the body logs through `log`,
 # and the board bridges it to semihosting on BOTH boot paths.
 log = { version = "0.4", default-features = false }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 # nros Executor API + bare-metal platform glue.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
 

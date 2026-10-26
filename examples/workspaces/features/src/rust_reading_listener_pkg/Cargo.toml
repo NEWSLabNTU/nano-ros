@@ -16,5 +16,5 @@ name = "reading_listener"
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
-custom_msgs = { path = "../../generated/custom_msgs", default-features = false }
-std_msgs = { path = "../../generated/std_msgs", default-features = false }
+custom_msgs = { path = "../../generated/custom_msgs", default-features = false }  # nros-managed
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed

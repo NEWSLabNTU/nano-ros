@@ -125,6 +125,14 @@ pub enum Sub {
     #[command(name = "seed-lock")]
     SeedLock(SeedLockArgs),
 
+    /// phase-517 W8 — write (or, with `--check`, only report) the
+    /// `# nros-managed` message rows of every Rust package in a workspace or
+    /// single-package leaf: the step `nros sync` and `nros build` both run,
+    /// without codegen. For a script that drives cargo itself after editing a
+    /// `package.xml`, and for checking a tree is already in that state.
+    #[command(name = "managed-deps")]
+    ManagedDeps(ManagedDepsArgs),
+
     /// issue 1937 — hold the locks a plain `cargo` resolved to the pin set,
     /// AFTER the build: the check `nros build` makes on its own roots.
     ///
@@ -547,6 +555,34 @@ pub struct CleanArgs {
 }
 
 #[derive(Debug, ClapArgs)]
+pub struct ManagedDepsArgs {
+    /// Workspace root or single-package leaf (default: the current directory).
+    pub workspace: Option<PathBuf>,
+    #[arg(long, default_value = "generated")]
+    pub build_dir: PathBuf,
+    /// Write nothing; exit non-zero if any manifest would change.
+    #[arg(long)]
+    pub check: bool,
+}
+
+fn run_managed_deps(a: ManagedDepsArgs) -> Result<()> {
+    let (_, scan, build_root) = scan_for_query(a.workspace.as_deref(), &a.build_dir)?;
+    let changed = write_managed_msg_deps(&scan, &build_root, a.check)?;
+    for m in &changed {
+        let verb = if a.check { "would change" } else { "wrote" };
+        println!("managed-deps: {verb} {}", m.display());
+    }
+    if a.check && !changed.is_empty() {
+        bail!(
+            "{} manifest(s) do not carry the message rows their package.xml implies; \
+             run `nros sync` (or `nros ws managed-deps`)",
+            changed.len()
+        );
+    }
+    Ok(())
+}
+
+#[derive(Debug, ClapArgs)]
 pub struct SeedLockArgs {
     /// The cargo root (the directory holding its `Cargo.toml`).
     pub dir: PathBuf,
@@ -740,6 +776,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::CentralPatch(a) => run_central_patch(a),
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
         Sub::SeedLock(a) => run_seed_lock(a),
+        Sub::ManagedDeps(a) => run_managed_deps(a),
         Sub::CheckLock(a) => run_check_lock(a),
         Sub::LeafSystem(a) => crate::cmd::leaf_system::run(a),
         Sub::RmwConfig(a) => run_rmw_config(a),
@@ -3310,6 +3347,15 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 
     write_generated_edition(&build_root, edition)?;
 
+    // phase-517 W8 (RFC-0098 amendment, accepted 2026-10-26) — a message
+    // `<depend>` reaches the package's `[dependencies]` as a `# nros-managed`
+    // row. AFTER codegen, so the crates the rows name exist; BEFORE anything
+    // below runs cargo on a consumer's manifest (the metadata probe), which
+    // must already see them.
+    for m in write_managed_msg_deps(&scan, &build_root, false)? {
+        println!("sync: message dependencies → {}", m.display());
+    }
+
     // phase-267 W1c/C3e — for each bringup declaring a `[[bridge]]`, plan it
     // (topic names→types resolve from the node pkgs' synthetic `publishes`
     // metadata, no build) and write `<bringup>/nros-bridge.toml` — the file the
@@ -4340,14 +4386,22 @@ pub(crate) fn autodetect_nano_ros_path(ws_root: &Path) -> Option<PathBuf> {
 }
 
 fn extract_pkg_deps(body: &str) -> Vec<String> {
+    extract_pkg_deps_tagged(
+        body,
+        &[
+            "<depend>",
+            "<build_depend>",
+            "<exec_depend>",
+            "<run_depend>",
+            "<build_export_depend>",
+        ],
+    )
+}
+
+/// [`extract_pkg_deps`] over a chosen set of `<*depend>` tags.
+fn extract_pkg_deps_tagged(body: &str, tags: &[&str]) -> Vec<String> {
     let mut deps = Vec::new();
-    for tag in &[
-        "<depend>",
-        "<build_depend>",
-        "<exec_depend>",
-        "<run_depend>",
-        "<build_export_depend>",
-    ] {
+    for tag in tags {
         let close = tag.replace("<", "</");
         let mut cursor = 0;
         while let Some(rel) = body[cursor..].find(tag) {
@@ -4366,6 +4420,184 @@ fn extract_pkg_deps(body: &str) -> Vec<String> {
     deps.sort();
     deps.dedup();
     deps
+}
+
+/// phase-517 W8 (RFC-0098 amendment 2026-10-25, accepted 2026-10-26) — does
+/// `name` resolve to a MESSAGE package, i.e. one sync generates a crate for?
+/// The same three sources generation reads, in its order: a workspace
+/// interface package, a crate already generated under `build_root`, then the
+/// interface index (ament env merged over the bundled set).
+fn resolves_to_message_package(name: &str, scan: &[WsPkg], build_root: &Path) -> bool {
+    scan.iter().any(|p| p.is_msg_pkg && p.name == name)
+        || is_generated_msg_crate(&build_root.join(name))
+        || interface_index().is_some_and(|i| i.find_package(name).is_some())
+}
+
+/// Does `src` hold a C or C++ translation unit (by the ONE extension table,
+/// [`nros_lang::Language::of_source`])? Unknown extensions decide nothing.
+fn compiles_c_family_sources(src: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(src) else {
+        return false;
+    };
+    entries.flatten().any(|e| {
+        let path = e.path();
+        if path.is_dir() {
+            return compiles_c_family_sources(&path);
+        }
+        matches!(
+            nros_lang::Language::of_source(&path.to_string_lossy()),
+            Ok(nros_lang::SourceVerdict::Decides(
+                nros_lang::Language::C | nros_lang::Language::Cpp
+            ))
+        )
+    })
+}
+
+/// phase-517 W8 — write the `# nros-managed` message rows of every Rust package
+/// in `scan` ([`crate::cmd::managed_deps`]): one per `<depend>` /
+/// `<build_depend>` / `<exec_depend>` that resolves to a message package, as a
+/// path relative from the package to `build_root/<pkg>`. Includes the packages
+/// a single-package scan imported through path dependencies (a Zephyr leaf's
+/// `node/`), since those are compiled against the same tree. Returns the
+/// manifests whose bytes changed (would change, under `dry_run`).
+fn write_managed_msg_deps(
+    scan: &[WsPkg],
+    build_root: &Path,
+    dry_run: bool,
+) -> Result<Vec<PathBuf>> {
+    let build_root = std::fs::canonicalize(build_root).unwrap_or_else(|_| build_root.to_path_buf());
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    let mut changed = Vec::new();
+    for p in scan.iter().filter(|p| p.is_rust_pkg) {
+        let Ok(dir) = std::fs::canonicalize(&p.dir) else {
+            continue;
+        };
+        // A generated crate is the OUTPUT of this tree, never a consumer of it.
+        if dir.starts_with(&build_root) || !seen.insert(dir.clone()) {
+            continue;
+        }
+        // A C/C++ application with a Rust link root (the bare-metal C leaves,
+        // issue 1512) reaches its messages through C bindings `nros generate c`
+        // writes from the same `<depend>`s — a Rust message crate there is a
+        // second, unused copy of every type.
+        if compiles_c_family_sources(&dir.join("src")) {
+            continue;
+        }
+        let body = std::fs::read_to_string(&p.manifest)
+            .wrap_err_with(|| format!("sync: read {}", p.manifest.display()))?;
+        let declared: std::collections::BTreeSet<String> =
+            extract_pkg_deps_tagged(&body, &crate::cmd::managed_deps::MANAGED_DEPEND_TAGS)
+                .into_iter()
+                .filter(|d| d != &p.name)
+                .collect();
+        let desired: std::collections::BTreeMap<String, String> = declared
+            .iter()
+            .filter(|d| resolves_to_message_package(d, scan, &build_root))
+            .map(|d| {
+                let target = build_root.join(d);
+                let rel = pathdiff::diff_paths(&target, &dir).unwrap_or(target);
+                let rel = rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                (d.clone(), rel)
+            })
+            .collect();
+        let manifest = dir.join("Cargo.toml");
+        if crate::cmd::managed_deps::write(&manifest, &declared, &desired, dry_run)? {
+            changed.push(manifest);
+        }
+    }
+    Ok(changed)
+}
+
+/// phase-517 W8 — `nros build`'s half: the same managed-row step sync runs,
+/// BEFORE planning, so a `<depend>` added since the last sync reaches the
+/// manifest cargo is about to read. A root sync cannot scan has no packages to
+/// manage and is left alone, as [`refresh_generated`] leaves it.
+pub(crate) fn refresh_managed_msg_deps(ws_root: &Path, dry_run: bool) -> Result<Vec<PathBuf>> {
+    let Ok((ws_root, scan, build_root)) = scan_for_query(Some(ws_root), Path::new("generated"))
+    else {
+        return Ok(Vec::new());
+    };
+    // A `<depend>` added since the last sync names a crate nothing generated
+    // yet, and the row about to be written would point cargo at a directory
+    // that does not exist. Generate it here, through the same per-package
+    // codegen sync uses, so the `<depend>` really is the whole edit. Only in a
+    // workspace sync has already populated: a never-synced one is refused at
+    // preflight, naming `nros sync`, which also writes what this skips.
+    if build_root.is_dir() {
+        generate_missing_message_crates(&ws_root, &scan, &build_root, dry_run)?;
+    }
+    write_managed_msg_deps(&scan, &build_root, dry_run)
+}
+
+/// phase-517 W8 — generate the message crates the Rust packages' managed
+/// `<depend>`s name and `build_root` does not hold yet (with their dependency
+/// closure), in the edition the tree was generated for.
+fn generate_missing_message_crates(
+    ws_root: &Path,
+    scan: &[WsPkg],
+    build_root: &Path,
+    dry_run: bool,
+) -> Result<()> {
+    let mut missing: Vec<String> = scan
+        .iter()
+        .filter(|p| p.is_rust_pkg)
+        .filter_map(|p| std::fs::read_to_string(&p.manifest).ok())
+        .flat_map(|b| extract_pkg_deps_tagged(&b, &crate::cmd::managed_deps::MANAGED_DEPEND_TAGS))
+        .filter(|d| !is_generated_msg_crate(&build_root.join(d)))
+        .filter(|d| resolves_to_message_package(d, scan, build_root))
+        .collect();
+    missing.sort();
+    missing.dedup();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    if dry_run {
+        eprintln!(
+            "nros build: --dry-run: would generate {} for a new <depend>",
+            missing.join(", ")
+        );
+        return Ok(());
+    }
+    let edition = match generated_edition(build_root) {
+        Some(e) => e,
+        None => resolve_sync_edition(None, ws_root, None)?,
+    };
+    let mut emitted: HashSet<String> = std::fs::read_dir(build_root)
+        .map(|it| {
+            it.flatten()
+                .filter(|e| is_generated_msg_crate(&e.path()))
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default();
+    // Workspace interface packages first (generated from their own
+    // directory), each with its ament closure; then the ament ones.
+    let mut queue = missing.clone();
+    while let Some(name) = queue.pop() {
+        if emitted.contains(&name) {
+            continue;
+        }
+        if let Some(pkg) = scan.iter().find(|p| p.is_msg_pkg && p.name == name) {
+            codegen_workspace_pkg(pkg, scan, build_root, edition, false)?;
+            emitted.insert(name);
+            for d in &pkg.deps {
+                if scan.iter().any(|p| p.is_msg_pkg && &p.name == d) {
+                    queue.push(d.clone());
+                }
+            }
+            codegen_ament_deps_for(&pkg.deps, scan, build_root, edition, &mut emitted, false)?;
+        }
+    }
+    codegen_ament_deps_for(&missing, scan, build_root, edition, &mut emitted, false)?;
+    eprintln!(
+        "nros build: generated {} for a new <depend> (phase-517 W8)",
+        missing.join(", ")
+    );
+    Ok(())
 }
 
 fn is_ros_meta_pkg(name: &str) -> bool {
@@ -5475,10 +5707,10 @@ fn render_managed_entries(
 /// Phase 265 (issue 0094) — decor suffix tagging a sync-owned `[patch.crates-io]`
 /// entry in a `.cargo/config.toml`. Distinguishes managed entries from user keys
 /// (a hand `libc` patch, etc.) so re-sync evicts only its own.
-const NROS_MANAGED_TAG: &str = "nros-managed";
+pub(crate) const NROS_MANAGED_TAG: &str = "nros-managed";
 
 /// True if a `[patch.crates-io]` value carries the `# nros-managed` decor marker.
-fn item_is_nros_managed(item: &toml_edit::Item) -> bool {
+pub(crate) fn item_is_nros_managed(item: &toml_edit::Item) -> bool {
     item.as_value()
         .and_then(|v| v.decor().suffix())
         .and_then(|s| s.as_str())
@@ -8329,4 +8561,157 @@ fn run_rmw_config(a: RmwConfigArgs) -> Result<()> {
         println!("NROS_RMW_CONFIG_FORMAT={}", f.format);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod managed_msg_deps_tests {
+    //! phase-517 W8 — the sync step end to end over a real directory tree:
+    //! scan, resolve, relative path, write, and the no-op second run.
+    use super::*;
+    use std::fs;
+
+    fn pkg_xml(name: &str, deps: &[&str], extra: &str) -> String {
+        let deps: String = deps
+            .iter()
+            .map(|d| format!("  <depend>{d}</depend>\n"))
+            .collect();
+        format!(
+            "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  <name>{name}</name>\n{deps}{extra}</package>\n"
+        )
+    }
+
+    fn msg_pkg(dir: &Path, name: &str) {
+        fs::create_dir_all(dir.join("msg")).unwrap();
+        fs::write(dir.join("msg/Foo.msg"), "int32 x\n").unwrap();
+        fs::write(
+            dir.join("package.xml"),
+            pkg_xml(
+                name,
+                &[],
+                "  <member_of_group>rosidl_interface_packages</member_of_group>\n",
+            ),
+        )
+        .unwrap();
+    }
+
+    const NODE_TOML: &str = "[package]\nname = \"node\"\n\n[dependencies]\nheapless = \"0.8\"\n";
+
+    fn colcon_ws(root: &Path, node_deps: &[&str]) -> PathBuf {
+        msg_pkg(&root.join("src/zz_w8_msgs"), "zz_w8_msgs");
+        let node = root.join("src/node");
+        fs::create_dir_all(&node).unwrap();
+        fs::write(node.join("package.xml"), pkg_xml("node", node_deps, "")).unwrap();
+        if !node.join("Cargo.toml").is_file() {
+            fs::write(node.join("Cargo.toml"), NODE_TOML).unwrap();
+        }
+        node.join("Cargo.toml")
+    }
+
+    fn sync_rows(root: &Path) -> Vec<PathBuf> {
+        let (_, scan, build_root) = scan_for_query(Some(root), Path::new("generated")).unwrap();
+        write_managed_msg_deps(&scan, &build_root, false).unwrap()
+    }
+
+    #[test]
+    fn adding_a_depend_adds_the_row_and_a_second_sync_writes_nothing() {
+        let t = tempfile::tempdir().unwrap();
+        let manifest = colcon_ws(t.path(), &["zz_w8_msgs", "zz_w8_not_an_interface"]);
+        assert_eq!(sync_rows(t.path()).len(), 1);
+        let body = fs::read_to_string(&manifest).unwrap();
+        assert_eq!(
+            body,
+            format!(
+                "{NODE_TOML}zz_w8_msgs = {{ path = \"../../generated/zz_w8_msgs\", default-features = false }}  # nros-managed\n"
+            )
+        );
+        // Idempotent: no write at all, so the mtime fixtures key on is kept.
+        let before = fs::metadata(&manifest).unwrap().modified().unwrap();
+        assert!(sync_rows(t.path()).is_empty());
+        assert_eq!(fs::metadata(&manifest).unwrap().modified().unwrap(), before);
+    }
+
+    #[test]
+    fn removing_the_depend_removes_the_row() {
+        let t = tempfile::tempdir().unwrap();
+        let manifest = colcon_ws(t.path(), &["zz_w8_msgs"]);
+        sync_rows(t.path());
+        colcon_ws(t.path(), &[]);
+        assert_eq!(sync_rows(t.path()).len(), 1);
+        assert_eq!(fs::read_to_string(&manifest).unwrap(), NODE_TOML);
+    }
+
+    #[test]
+    fn a_c_application_with_a_rust_link_root_gets_no_rust_message_crate() {
+        let t = tempfile::tempdir().unwrap();
+        let manifest = colcon_ws(t.path(), &["zz_w8_msgs"]);
+        let src = manifest.parent().unwrap().join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("main.rs"), "").unwrap();
+        fs::write(src.join("talker.c"), "").unwrap();
+        assert!(sync_rows(t.path()).is_empty());
+        assert_eq!(fs::read_to_string(&manifest).unwrap(), NODE_TOML);
+        // Negative control: the same package with Rust sources only is managed.
+        fs::remove_file(src.join("talker.c")).unwrap();
+        assert_eq!(sync_rows(t.path()).len(), 1);
+    }
+
+    #[test]
+    fn an_untagged_row_is_left_alone() {
+        let t = tempfile::tempdir().unwrap();
+        let manifest = colcon_ws(t.path(), &["zz_w8_msgs"]);
+        let user = format!("{NODE_TOML}zz_w8_msgs = {{ path = \"../../generated/zz_w8_msgs\" }}\n");
+        fs::write(&manifest, &user).unwrap();
+        assert!(sync_rows(t.path()).is_empty());
+        assert_eq!(fs::read_to_string(&manifest).unwrap(), user);
+    }
+
+    #[test]
+    fn a_nested_package_gets_a_path_relative_to_itself() {
+        // The Zephyr leaf shape: a single-package leaf whose `node/` crate is
+        // reached through a path dependency and compiles against the LEAF's
+        // `generated/` tree.
+        let t = tempfile::tempdir().unwrap();
+        let leaf = t.path();
+        fs::write(leaf.join("package.xml"), pkg_xml("leaf", &[], "")).unwrap();
+        fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"leaf\"\n\n[dependencies]\nnode = { path = \"node\" }\n",
+        )
+        .unwrap();
+        let node = leaf.join("node");
+        fs::create_dir_all(&node).unwrap();
+        fs::write(
+            node.join("package.xml"),
+            pkg_xml("node", &["zz_w8_msgs"], ""),
+        )
+        .unwrap();
+        fs::write(node.join("Cargo.toml"), NODE_TOML).unwrap();
+        // Already generated (by an earlier sync): that alone resolves it.
+        let generated = leaf.join("generated/zz_w8_msgs");
+        fs::create_dir_all(&generated).unwrap();
+        fs::write(
+            generated.join("Cargo.toml"),
+            "[package]\nname = \"zz_w8_msgs\"\n[package.metadata.nros]\nament_version = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let written = sync_rows(leaf);
+        assert_eq!(written.len(), 1, "{written:?}");
+        assert!(
+            fs::read_to_string(node.join("Cargo.toml"))
+                .unwrap()
+                .contains("zz_w8_msgs = { path = \"../generated/zz_w8_msgs\", default-features = false }  # nros-managed")
+        );
+        // The leaf itself declares nothing, and the generated crate is output,
+        // never a consumer — neither is edited.
+        assert!(
+            !fs::read_to_string(leaf.join("Cargo.toml"))
+                .unwrap()
+                .contains("nros-managed")
+        );
+        assert!(
+            !fs::read_to_string(generated.join("Cargo.toml"))
+                .unwrap()
+                .contains("nros-managed")
+        );
+    }
 }

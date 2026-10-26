@@ -36,4 +36,4 @@ nros = { path = "../../../../packages/api/nros", default-features = false, featu
 nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh" }
 
 # Generated message types
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed

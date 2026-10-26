@@ -146,6 +146,12 @@ cargo-config-tracked:
 example-cargo-dirs:
     @python3 scripts/check-example-cargo-dirs.py
 
+# phase-517 W8 (RFC-0098 amendment, accepted 2026-10-26) — a message `<depend>`
+# is one edit for Rust too: `nros sync` writes the `# nros-managed` path row, so
+# no tracked manifest hand-writes an untagged path row into `generated/`.
+managed-msg-deps:
+    @python3 scripts/check-managed-msg-deps.py
+
 # phase-445 W6 (RFC-0098 D9) — a workspace is a directory of packages with no
 # root `Cargo.toml` / `CMakeLists.txt`. A single-package example under
 # `examples/templates/` is exempt by SHAPE (a `package.xml` at its root).

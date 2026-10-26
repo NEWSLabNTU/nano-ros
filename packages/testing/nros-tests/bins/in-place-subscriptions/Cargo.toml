@@ -38,7 +38,7 @@ nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 # `producers = false`, so the selection leaves out the host board's census and
 # profile producers: this image's memory IS issue 1340's measurement.
 in_place_subscriptions_nros_selection = { path = "build/nros/selection" }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 log = "0.4"
 env_logger = "0.11"
 

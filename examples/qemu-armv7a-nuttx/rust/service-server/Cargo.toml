@@ -31,7 +31,7 @@ crate-type = ["rlib"]
 nuttx_rs_service_server_nros_selection = { path = "build/nros/selection" }
 # phase-359 W7 — was `["std", "rmw-cffi"]`; this family is no_std now.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
-example_interfaces = { path = "generated/example_interfaces", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 # Demo-parity log lines route through the `log` facade; the platform
 # entry runtime owns the sink.
 log = "0.4"

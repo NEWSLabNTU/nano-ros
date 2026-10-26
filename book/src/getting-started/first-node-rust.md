@@ -77,6 +77,12 @@ and nothing about it is hand-edited (RFC-0098 D1). The scaffold's RMW
 is a Cargo feature (`default = ["rmw-zenoh"]`), chosen by the
 `--rmw` you passed to `nros new`.
 
+Message packages are not listed there by hand: `package.xml`'s
+`<depend>std_msgs</depend>` is the one statement, and `nros sync` (or
+`nros build`) writes the matching `std_msgs = { path = "generated/std_msgs",
+… }  # nros-managed` row. To use another message package, add its
+`<depend>` and sync again — that is the whole change.
+
 The directory names no path into the SDK, so you can move or copy it
 anywhere and re-run `nros sync`; `--nano-ros-path <dir>` names a
 different SDK root on the command line, never in a file.

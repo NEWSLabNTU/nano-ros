@@ -28,7 +28,7 @@ nros = { version = "*", default-features = false, features = ["log", "alloc", "e
 # `nros sync` / `nros build` from `system.toml` (RFC-0098 D6, issue 1305).
 # `nros::main!` reaches the board through it.
 native_rs_service_server_nros_selection = { path = "build/nros/selection" }
-example_interfaces = { path = "generated/example_interfaces", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 log = "0.4"
 env_logger = "0.11"
 

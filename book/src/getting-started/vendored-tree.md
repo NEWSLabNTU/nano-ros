@@ -98,10 +98,10 @@ editing its one `board =` line and syncing again.
 A build that runs before sync fails at the first preflight with a line
 naming `nros sync`, rather than deep inside cargo.
 
-Message dependencies stay path deps pinned `0.0.0`
-(`std_msgs = { path = "generated/std_msgs" }` after sync); never
-registry-name a message crate — a bare `std_msgs = "*"` can resolve
-against the public crates.io.
+Message dependencies are path deps that `nros sync` writes for you from
+`package.xml`'s `<depend>`s (`std_msgs = { path = "generated/std_msgs",
+default-features = false }  # nros-managed`); never registry-name a message
+crate — a bare `std_msgs = "*"` can resolve against the public crates.io.
 
 ## The CMake side
 

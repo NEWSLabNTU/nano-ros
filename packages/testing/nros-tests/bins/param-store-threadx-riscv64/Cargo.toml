@@ -36,7 +36,7 @@ path = "src/lib.rs"
 [dependencies]
 # `param-services`: a declared parameter is what builds the store.
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros", "param-services"] }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 log = "0.4"
 
 # Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
