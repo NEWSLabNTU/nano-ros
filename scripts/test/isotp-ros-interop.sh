@@ -170,6 +170,12 @@ say "ROS peer endpoint: $(grep -o "isotp/[^\"]*" "$OUT/session.json5")  (no rout
 export LD_LIBRARY_PATH="$LIB:${LD_LIBRARY_PATH:-}"
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 export ZENOH_SESSION_CONFIG_URI="$OUT/session.json5"
+# That file is rmw_zenoh's (zenoh-rs) session config, for the ROS 2 side ONLY.
+# A nano-ros node reads ZENOH_SESSION_CONFIG_URI too, and since RFC-0109 D8 it
+# refuses a key zenoh-pico cannot honour (`adminspace.enabled`, ...) rather
+# than dropping it -- so inheriting this file stops the node's session from
+# opening at all. The node's whole transport is NROS_LOCATOR; strip the file.
+NANO_ENV=(env -u ZENOH_SESSION_CONFIG_URI)
 # A stray daemon inherits this environment and keeps a session on the bus long
 # after the test -- that has corrupted a peer count once already. Humble's
 # `ros2 service call` has no `--no-daemon` flag, so stopping it is how you get
@@ -198,7 +204,7 @@ if [ "$ROLE" = both ] || [ "$ROLE" = all ] || [ "$ROLE" = service-server ]; then
         example_interfaces/srv/AddTwoInts "{a: 20, b: 22}" >"$OUT/call.log" 2>&1
     CALL_PID=${PIDS[-1]}
     sleep 3
-    NROS_LOCATOR="$NODE_EP" run_bg "$SERVER" >"$OUT/server.log" 2>&1
+    NROS_LOCATOR="$NODE_EP" run_bg "${NANO_ENV[@]}" "$SERVER" >"$OUT/server.log" 2>&1
     wait "$CALL_PID" 2>/dev/null
     kill_all
     nros_grep_count _hits 'sum=42' "$OUT/call.log"
@@ -228,7 +234,7 @@ if [ "$ROLE" = both ] || [ "$ROLE" = all ] || [ "$ROLE" = service-client ]; then
     [ -x "$ROS_SERVER_BIN" ] || die "$ROS_SERVER_BIN is not executable"
     run_bg "$ROS_SERVER_BIN" >"$OUT/ros-server.log" 2>&1
     sleep 6
-    NROS_LOCATOR="$NODE_EP" run_bg "${NROS_DEADLINE[@]}" 45 "$CLIENT" >"$OUT/client.log" 2>&1
+    NROS_LOCATOR="$NODE_EP" run_bg "${NANO_ENV[@]}" "${NROS_DEADLINE[@]}" 45 "$CLIENT" >"$OUT/client.log" 2>&1
     CLIENT_PID=${PIDS[-1]}
     wait "$CLIENT_PID" 2>/dev/null
     kill_all
@@ -262,7 +268,7 @@ if [ "$ROLE" = all ] || [ "$ROLE" = action-server ]; then
         example_interfaces/action/Fibonacci "{order: 5}" >"$OUT/asend.log" 2>&1
     ASEND_PID=${PIDS[-1]}
     sleep 3
-    NROS_LOCATOR="$NODE_EP" run_bg "$ASERVER" >"$OUT/aserver.log" 2>&1
+    NROS_LOCATOR="$NODE_EP" run_bg "${NANO_ENV[@]}" "$ASERVER" >"$OUT/aserver.log" 2>&1
     wait "$ASEND_PID" 2>/dev/null
     kill_all
     # Match the terminal status on the ROS side AND the server's own completion:
@@ -273,8 +279,10 @@ if [ "$ROLE" = all ] || [ "$ROLE" = action-server ]; then
     # as a YAML BLOCK LIST ("sequence:" then "- 0", "- 1", ...), not
     # `sequence=[0, 1, ...]`; asserting the latter failed a run that had in fact
     # completed correctly, which is worse than no assertion at all.
-    if [ "$(count_in "$OUT/asend.log" 'Goal finished with status: SUCCEEDED')" -gt 0 ] \
-       && [ "$(count_in "$OUT/aserver.log" 'Goal succeeded')" -gt 0 ]; then
+    nros_grep_count _done 'Goal finished with status: SUCCEEDED' "$OUT/asend.log"
+    nros_grep_count _ok 'Goal succeeded' "$OUT/aserver.log"
+    # shellcheck disable=SC2154  # set by nros_grep_count via printf -v
+    if [ "$_done" -gt 0 ] && [ "$_ok" -gt 0 ]; then
         say "  PASS: ros2 -> CAN -> nano-ros action server -> CAN -> ros2, [0,1,1,2,3,5]"
         report_bus "$OUT/dump-aserver.log"
     else
@@ -295,7 +303,7 @@ if [ "$ROLE" = all ] || [ "$ROLE" = action-client ]; then
     [ -x "$AROS_BIN" ] || die "$AROS_BIN is not executable"
     run_bg "$AROS_BIN" >"$OUT/aros-server.log" 2>&1
     sleep 6
-    NROS_LOCATOR="$NODE_EP" run_bg "${NROS_DEADLINE[@]}" 90 "$ACLIENT" >"$OUT/aclient.log" 2>&1
+    NROS_LOCATOR="$NODE_EP" run_bg "${NANO_ENV[@]}" "${NROS_DEADLINE[@]}" 90 "$ACLIENT" >"$OUT/aclient.log" 2>&1
     ACLIENT_PID=${PIDS[-1]}
     wait "$ACLIENT_PID" 2>/dev/null
     kill_all
@@ -307,10 +315,13 @@ if [ "$ROLE" = all ] || [ "$ROLE" = action-client ]; then
     #
     # Assert the RESULT, never feedback alone: feedback without a result is a
     # goal that started and never finished, which is the failure worth catching.
-    if [ "$(count_in "$OUT/aclient.log" 'Result received: \[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55\]')" -gt 0 ]; then
+    nros_grep_count _result 'Result received: \[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55\]' "$OUT/aclient.log"
+    nros_grep_count _feedback 'Next number in sequence received' "$OUT/aclient.log"
+    # shellcheck disable=SC2154  # set by nros_grep_count via printf -v
+    if [ "$_result" -gt 0 ]; then
         say "  PASS: nano-ros action client -> CAN -> ros2 action server -> CAN -> nano-ros"
         printf '    %s\n' "$(grep -o 'Result received: .*' "$OUT/aclient.log" | tail -1)"
-        printf '    feedback samples: %s\n' "$(count_in "$OUT/aclient.log" 'Next number in sequence received')"
+        printf '    feedback samples: %s\n' "$_feedback"
         report_bus "$OUT/dump-aclient.log"
     else
         FAILED=1; say "  FAIL"
@@ -340,14 +351,16 @@ if [ "$ROLE" = all ] || [ "$ROLE" = action-cancel ]; then
     run_bg "${NROS_DEADLINE[@]}" 60 "$CANCEL_BIN" >"$OUT/cancel-cli.log" 2>&1
     CANCEL_PID=${PIDS[-1]}
     sleep 3
-    NROS_LOCATOR="$NODE_EP" run_bg "$PSERVER" >"$OUT/cancel-srv.log" 2>&1
+    NROS_LOCATOR="$NODE_EP" run_bg "${NANO_ENV[@]}" "$PSERVER" >"$OUT/cancel-srv.log" 2>&1
     wait "$CANCEL_PID" 2>/dev/null
     kill_all
     # BOTH ends, deliberately. The client alone would report "Goal was canceled"
     # on a request that timed out client-side; the server's own line is what says
     # the cancel actually crossed the bus and was honoured.
-    if [ "$(count_in "$OUT/cancel-cli.log" 'Goal was canceled')" -gt 0 ] \
-       && [ "$(count_in "$OUT/cancel-srv.log" 'Goal canceled')" -gt 0 ]; then
+    nros_grep_count _cli 'Goal was canceled' "$OUT/cancel-cli.log"
+    nros_grep_count _srv 'Goal canceled' "$OUT/cancel-srv.log"
+    # shellcheck disable=SC2154  # set by nros_grep_count via printf -v
+    if [ "$_cli" -gt 0 ] && [ "$_srv" -gt 0 ]; then
         say "  PASS: ros2 cancels -> CAN -> nano-ros honours it, both ends agree"
         report_bus "$OUT/dump-cancel.log"
     else

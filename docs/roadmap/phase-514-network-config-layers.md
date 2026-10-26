@@ -211,6 +211,18 @@ too: the 7-byte batch cannot hold a JOIN, which is not fragmentable —
 issue 2091, which also corrects RFC-0080's claim that classic CAN works at
 MTU 7.
 
+Follow-up (2026-10-27). The `isotp-ros-*` cells now ran, against a zenoh-c
+1.8.0 built with the ISO-TP link: service server and client, action server,
+client and cancel, and parameters through `rmw_zenohd` — all six PASS. Two
+things stood in the way. `isotp-ros-interop.sh` handed the ROS side's
+`ZENOH_SESSION_CONFIG_URI` to the nano-ros nodes as well, which since RFC-0109
+D8 refuse the zenoh-rs keys in it, so no node session opened; and its
+`count_in` helper had been deleted with four call sites left. Both are fixed.
+The cells still have no supported BUILD: nothing derives `zpico-sys`'s
+`link-isotp` feature from an image's locator or its board's `links`, so the
+nodes were built with the feature added by hand to the generated manifests —
+issue 2096.
+
 ### W6 — the runner's NIC
 
 `[image.<id>.run] nic` read by the QEMU launcher and the test harness,
