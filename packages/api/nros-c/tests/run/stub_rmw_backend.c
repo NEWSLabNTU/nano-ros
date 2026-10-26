@@ -398,7 +398,21 @@ static rmw_ret_t stub_take_with_info(const rmw_subscription_t* subscription,
                              taken, message_info);
 }
 
+/* Issue 2060 — `has_data` is where a real backend polls a subscription's
+ * status events (zenoh's deadline / liveliness / matched walk, Cyclone's
+ * `take_event` drain). The stub counts the calls and, when a probe staged
+ * one, fires a count event from inside the call, exactly as those backends
+ * do. Defined below with the other status-event state. */
+static void stub_poll_status_from_has_data(void);
+static uint32_t s_sub_has_data_calls = 0;
+
+uint32_t nros_stub_rmw_subscription_has_data_calls(void) {
+    return s_sub_has_data_calls;
+}
+
 static rmw_ret_t stub_has_data(rmw_subscription_t* subscription, bool* out_has_data) {
+    s_sub_has_data_calls++;
+    stub_poll_status_from_has_data();
     if (out_has_data != NULL) {
         *out_has_data = subscription != NULL && inbound_for(subscription->backend_data) != s_inbound_count;
     }
@@ -790,6 +804,27 @@ bool nros_stub_rmw_fire_liveliness_changed(uint16_t alive_count, uint16_t not_al
     payload.liveliness_changed.not_alive_count_change = not_alive_count_change;
     s_event_cb[kind]((rmw_event_type_t)kind, &payload, s_event_ctx[kind]);
     return true;
+}
+
+/* Issue 2060 — a count event staged to fire from the next subscription
+ * `has_data`, the poll point a real backend uses for "nothing arrived"
+ * events. -1 = none staged. */
+static int s_polled_kind = -1;
+static uint32_t s_polled_total = 0;
+static uint32_t s_polled_change = 0;
+
+void nros_stub_rmw_stage_polled_count_event(int kind, uint32_t total_count,
+                                            uint32_t total_count_change) {
+    s_polled_kind = kind;
+    s_polled_total = total_count;
+    s_polled_change = total_count_change;
+}
+
+static void stub_poll_status_from_has_data(void) {
+    if (s_polled_kind < 0) return;
+    const int kind = s_polled_kind;
+    s_polled_kind = -1;
+    (void)nros_stub_rmw_fire_count_event(kind, s_polled_total, s_polled_change);
 }
 
 static const nros_rmw_vtable_t STUB_VTABLE = {

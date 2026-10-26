@@ -88,11 +88,12 @@ case then fails at phase 1.
 
 ## Still open
 
-- **[issue 2060](../2060-subscription-events-unpolled-without-arrivals.md).**
+- **[issue 2060](2060-subscription-events-unpolled-without-arrivals.md).**
   The SUBSCRIPTION's matched count never falls when the stock publisher leaves.
   The zenoh shim polls subscription statuses inside `has_data`, and the
   executor skips `has_data` for a wake-attributed slot with no arrival. The case
   prints whether that fall arrived instead of asserting it. Until 2060 is fixed,
   the subscription half of "rising and falling" is only "rising".
+  Resolved 2026-10-26: the cell now asserts the fall.
 - **Cyclone.** It still delivers no status event to an application (issue
   1164, the carved cell), so this cell is zenoh only.

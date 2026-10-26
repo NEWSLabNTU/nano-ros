@@ -1497,6 +1497,25 @@ impl ZenohSubscriber {
     /// `deadline_ms`. Called from `has_data` / `take_serialized` so deadline
     /// is checked on every spin cycle that touches this subscriber.
     /// Rate-limited: at most one fire per deadline period.
+    /// Issue 2060 — every status event this subscription POLLS, in one
+    /// place, so each poll point (`has_data`, `take_serialized`) drives the
+    /// same set. Each check is inert (an early return) without a registered
+    /// callback and rate-limits itself, so calling this on every pass is a
+    /// few clock reads.
+    ///
+    /// - DEADLINE (phase 108.C.zenoh.2): one clock read and a compare.
+    /// - LIVELINESS (phase 108.C.zenoh.4): its own time-gated query loop.
+    /// - MATCHED / INCOMPATIBLE TYPE (issue 1972): a graph walk at most every
+    ///   `MATCH_POLL_INTERVAL_MS`.
+    ///
+    /// `MessageLost` is not here on purpose: it is a property of a sample
+    /// (a sequence gap), so it fires from the take that copies one.
+    fn poll_status_events(&self) {
+        self.check_deadline_and_fire();
+        self.check_liveliness_and_fire();
+        self.matched.poll(now_ms());
+    }
+
     fn check_deadline_and_fire(&self) {
         if self.deadline_ms == 0 {
             return;
@@ -1714,7 +1733,10 @@ impl Subscription for ZenohSubscriber {
 
         // Phase 108.C.zenoh.2 — check deadline expiry on every poll
         // (whether or not data is ready). Rate-limited internally.
-        self.check_deadline_and_fire();
+        // Issue 2060 — and every other status event this subscription polls:
+        // a caller that only takes (a poll-road subscription) is owed its
+        // matched and liveliness changes as much as its deadline.
+        self.poll_status_events();
 
         let Some(slot) = buffer.peek_head_slot() else {
             return Ok(None);
@@ -1765,19 +1787,12 @@ impl Subscription for ZenohSubscriber {
     }
 
     fn has_data(&self) -> bool {
-        // Phase 108.C.zenoh.2 — opportunistically check deadline on
-        // every has_data poll. Cheap (one clock read + compare). The
-        // executor calls has_data each spin to scan the readiness
-        // bitmap, so this gives deadline checks the same cadence as
-        // message dispatch.
-        self.check_deadline_and_fire();
-        // Phase 108.C.zenoh.4 — drive the LIVELINESS poll loop on the
-        // same cadence. The loop has its own internal time-gated
-        // start, so calling on every has_data is cheap (one clock
-        // read + cell-load + cell-store when idle).
-        self.check_liveliness_and_fire();
-        // Issue 1972 — matched / incompatible-type, rate-limited graph walk.
-        self.matched.poll(now_ms());
+        // The executor's readiness scan is this backend's status-event poll
+        // point. Issue 2060 — for an attributed subscription it asks only
+        // after an arrival UNLESS a status callback is registered, in which
+        // case it asks every pass (`Executor::entity_status_polled`); that is
+        // what lets an event about nothing arriving be observed at all.
+        self.poll_status_events();
         self.buf.get().has_data()
     }
 

@@ -545,6 +545,22 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/status_event_setters
     ./tmp/status_event_setters
+    echo "  - issue 2060: a pushed subscription with a status callback is asked every"
+    echo "    pass, so an event about nothing arriving is delivered; one without is not"
+    test -f packages/api/nros-c/tests/run/subscription_status_poll.c || { \
+        echo "ERROR: subscription_status_poll.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/subscription_status_poll.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/subscription_status_poll
+    ./tmp/subscription_status_poll
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in

@@ -210,4 +210,16 @@ bool nros_stub_rmw_fire_liveliness_changed(uint16_t alive_count, uint16_t not_al
                                            int16_t alive_count_change,
                                            int16_t not_alive_count_change);
 
+/** Issue 2060 — subscription `has_data` calls since process start. The
+ *  executor's readiness scan is the only caller in a probe, so this is how a
+ *  probe sees whether a pass ASKED a subscription or read its pushed bit. */
+uint32_t nros_stub_rmw_subscription_has_data_calls(void);
+
+/** Issue 2060 — fire the count-shaped @p kind registration from inside the
+ *  NEXT subscription `has_data` call, once — where zenoh and Cyclone poll the
+ *  events about nothing arriving (a deadline passed, the last publisher left).
+ *  Nothing fires until a `has_data` actually runs. */
+void nros_stub_rmw_stage_polled_count_event(int kind, uint32_t total_count,
+                                            uint32_t total_count_change);
+
 #endif /* NROS_TESTS_STUB_RMW_BACKEND_H */

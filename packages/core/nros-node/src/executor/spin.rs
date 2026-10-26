@@ -2123,6 +2123,25 @@ pub struct Executor<'s> {
     /// `has_data`). A slot drops out the first spin its `has_data` is false.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) entity_recheck: u64,
+    /// Issue 2060 — attributed SUBSCRIPTION slots whose `has_data` the scan
+    /// asks EVERY pass, arrival or not, because a status event is polled
+    /// there. Every backend that carries subscription status events polls
+    /// them from `has_data` (zenoh's deadline / liveliness / matched walk,
+    /// Cyclone's `subscription_take_event` drain through the cffi adapter),
+    /// and those are the events about NOTHING ARRIVING — the last publisher
+    /// left, a deadline passed. A pushed slot is otherwise asked only after
+    /// an arrival, so once the last sample was taken nothing asked again and
+    /// the matched count never fell.
+    ///
+    /// Set by [`Executor::subscription_handle_mut`], the one road by which a
+    /// status-event callback reaches an arena subscription's backend handle;
+    /// cleared with the entry. A slot with no status callback is never in it,
+    /// so an idle image that registered none still makes no probe at all —
+    /// the phase-397 W3 property `readiness_probe_count` pins. No wake is
+    /// added either: the cadence is the spin's own (one park per pass), and
+    /// each backend rate-limits its own walk inside `has_data`.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub(crate) entity_status_polled: u64,
     /// phase-397 W3 — `has_data` calls the readiness scan has made, for the
     /// test that proves a pushed spin makes none. Wrapping; read only through
     /// [`Executor::readiness_probe_count`].
@@ -2563,6 +2582,8 @@ impl<'s> Executor<'s> {
             entity_attributed: 0,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             entity_recheck: 0,
+            #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+            entity_status_polled: 0,
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
             readiness_probes: 0,
             // Phase 141.A.3 — alloc-mode wake state init. Constructed
@@ -7245,6 +7266,10 @@ impl<'s> Executor<'s> {
     /// status-event callback (`Subscription::register_event_callback`) takes
     /// `&mut`, and the C API's subscription is arena-owned.
     ///
+    /// Issue 2060 — taking it also makes the readiness scan probe this
+    /// subscription's `has_data` on every pass, where its backend polls the
+    /// status events (see `entity_status_polled`).
+    ///
     /// # Safety
     /// See [`Executor::subscription_handle`]; in addition no other borrow of
     /// the same entry may be live.
@@ -7253,11 +7278,22 @@ impl<'s> Executor<'s> {
         &mut self,
         entry_index: usize,
     ) -> Option<&mut session::RmwSubscriber> {
-        let meta = self.entries.get(self.slot_of_raw(entry_index)?)?.as_ref()?;
+        let slot = self.slot_of_raw(entry_index)?;
+        let meta = self.entries.get(slot)?.as_ref()?;
         if !matches!(meta.kind, EntryKind::Subscription) {
             return None;
         }
         let offset = meta.offset;
+        // Issue 2060 — `&mut` to an arena subscriber's handle exists to
+        // register a status-event callback, and those events are polled from
+        // `has_data`: from now on the scan asks it every pass, not only after
+        // an arrival. Marked before the registration is known to succeed; a
+        // refused one costs one cheap probe per pass, a missed mark costs the
+        // event.
+        #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+        if slot < super::entity_wake::SLOTS {
+            self.entity_status_polled |= 1u64 << slot;
+        }
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
         // SAFETY: as `subscription_handle`; `&mut self` makes the borrow unique.
         Some(unsafe { &mut *(arena_ptr.add(offset) as *mut session::RmwSubscriber) })
@@ -7709,6 +7745,7 @@ impl<'s> Executor<'s> {
         if index < super::entity_wake::SLOTS {
             self.entity_attributed &= !(1u64 << index);
             self.entity_recheck &= !(1u64 << index);
+            self.entity_status_polled &= !(1u64 << index);
         }
         let Some(meta) = self.entries[index].take() else {
             return false;
@@ -11712,10 +11749,12 @@ impl<'s> Executor<'s> {
 
         // phase-397 W3 (RFC-0084) — an ATTRIBUTED slot's readiness is pushed,
         // not probed. Its arrivals set its bit in the ready word (W2), so the
-        // bit is read and `has_data` is not called. Two cases still ask:
+        // bit is read and `has_data` is not called. Three cases still ask:
         //
         // - a slot in `entity_recheck`, which may hold data no arrival will
         //   announce again (see the field);
+        // - a subscription with a status-event callback (issue 2060,
+        //   `entity_status_polled`), whose backend polls those events there;
         // - a slot whose backend cannot attribute (XRCE, uORB, a timer, a
         //   guard condition), exactly as before.
         //
@@ -11741,6 +11780,11 @@ impl<'s> Executor<'s> {
                 .map_or(0, |ctx| take_band_bits(&ctx.ready, band_mask));
             let recheck = s.entity_recheck & band_mask;
             s.entity_recheck &= !band_mask;
+            // Issue 2060 — a slot whose status events are polled from
+            // `has_data` is asked every pass, like a recheck that never
+            // drains. It is folded in AFTER the clear, so it never leaks into
+            // `entity_recheck` and leaves the moment its entry is released.
+            let recheck = recheck | (s.entity_status_polled & band_mask);
             (attributed, arrived & attributed, recheck & attributed)
         };
         #[cfg(not(all(feature = "alloc", feature = "rmw-cffi")))]
