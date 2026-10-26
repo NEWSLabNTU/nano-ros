@@ -1,11 +1,18 @@
 # phase-460 - every consumer of the contract chain verifies what it consumes
 
+**Status (2026-10-27). Archived: every wave landed, and the last homed issue
+is closed.** Issue 0259 was closed `wontfix` by maintainer decision. Its inputs
+(a core count for the realizer, WCET reaching it, a board peripheral registry,
+an interference model) have no source, and its one actionable piece, the dead
+preempt dim, was already deleted in `1f467a9204`. Reopen 0259 when core-aware
+placement is wanted.
+
 **Status (2026-10-25). Every wave LANDED; the one homed issue left, 0259, is DEFERRED by the maintainer.** W1 (PR
 #1165), W2 and W4 (PR #1166), W5 (PR #1229), W6 (PR #1228), W7 (the heap
 exhaustion is fatal under `CONFIG_NROS_HEAP_EXHAUSTION_IS_FATAL`, and
 `samples_dropped_too_small` is in the boot report; issue 1425 archived) and
 W3's second half (issue 1422) are on `main`. So is W3's first half,
-[issue 1368](../issues/archived/1368-frag-max-size-not-checked-against-derived-bound.md),
+[issue 1368](../../issues/archived/1368-frag-max-size-not-checked-against-derived-bound.md),
 resolved 2026-10-23, though not in the shape the W3 row below plans. It is a
 CHECK on every road, not a `-1` derive sentinel, which the issue declined with
 reasons. The Zephyr configure (`_nros_rx_ceiling`, since `4b6025539b`) and
@@ -23,9 +30,9 @@ same day, and what it still lacks is inputs. On 2026-10-25 the maintainer
 deferred it: it stays open and homed here, and nothing in this phase waits on
 it. Two other homed issues
 closed that day.
-[Issue 1140](../issues/archived/1140-describes-wiring-misses-timer-only-contract.md)
+[Issue 1140](../../issues/archived/1140-describes-wiring-misses-timer-only-contract.md)
 was resolved because phase-486 W9b had deleted its second predicate.
-[Issue 1376](../issues/archived/1376-c-example-listeners-register-with-null-options.md)
+[Issue 1376](../../issues/archived/1376-c-example-listeners-register-with-null-options.md)
 was fixed: every rclc entry point that takes a subscription now forwards the
 type's receive bound. The "starts now?" column in
 the plan below is as of 2026-09-21.
@@ -86,15 +93,15 @@ is 460 W1 (`load_for_build_script`) then 461 W6 (the :1397 assert).
 Phases 457 and 462 share no file with this phase.
 
 Owns these issues, one per wave:
-[1420](../issues/archived/1420-refused-resolve-leaves-the-previous-model-for-every-consumer.md),
-[1421](../issues/archived/1421-partial-params-declaration-falls-to-crate-defaults-silently.md),
-[1422](../issues/archived/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md),
-[1423](../issues/archived/1423-system-toml-domain-id-and-kconfig-domain-id-are-never-compared.md),
-[1424](../issues/archived/1424-zephyr-heap-size-is-a-guess-with-a-peak-reporter-nothing-reads.md),
-[1425](../issues/archived/1425-heap-exhaustion-and-buffer-too-small-reach-no-fault-hook-on-a-consoleless-board.md).
-Takes [issue 1368](../issues/archived/1368-frag-max-size-not-checked-against-derived-bound.md)
-as W3's first half. Cites [issue 1036](../issues/archived/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md)
-(the sink problem) and [issue 1121](../issues/archived/1121-contract-sidecar-has-no-model-freshness-edge.md)
+[1420](../../issues/archived/1420-refused-resolve-leaves-the-previous-model-for-every-consumer.md),
+[1421](../../issues/archived/1421-partial-params-declaration-falls-to-crate-defaults-silently.md),
+[1422](../../issues/archived/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md),
+[1423](../../issues/archived/1423-system-toml-domain-id-and-kconfig-domain-id-are-never-compared.md),
+[1424](../../issues/archived/1424-zephyr-heap-size-is-a-guess-with-a-peak-reporter-nothing-reads.md),
+[1425](../../issues/archived/1425-heap-exhaustion-and-buffer-too-small-reach-no-fault-hook-on-a-consoleless-board.md).
+Takes [issue 1368](../../issues/archived/1368-frag-max-size-not-checked-against-derived-bound.md)
+as W3's first half. Cites [issue 1036](../../issues/archived/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md)
+(the sink problem) and [issue 1121](../../issues/archived/1121-contract-sidecar-has-no-model-freshness-edge.md)
 (a different freshness edge on the same model) without owning them.
 
 ## Why
@@ -208,7 +215,7 @@ member is not listed.
 
 **Second half LANDED 2026-09-27, and the consumer chosen above was the wrong
 one.** Full record in
-[issue 1422](../issues/archived/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md);
+[issue 1422](../../issues/archived/1422-plain-blit-eligibility-is-computed-and-read-by-nothing.md);
 three things this plan had wrong, each measured:
 
 * **The borrowed-view dispatch is not a candidate.** It exists FOR types with
@@ -399,6 +406,6 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0259](../issues/0259-realizer-placement-nonpreempt-not-derived.md) | **Deferred by the maintainer 2026-10-25.** WCET, blocking and feasibility as declared data is phase-357 W2's remainder. It is a check over the contract chain. Re-scoped 2026-10-24: `non_preempt` is RFC-0108's. The levels are partitioned per core since 2026-10-24. What is left is an input for the core count and for C to the realizer, plus hardware locality and chain colocation. |
-| [#1140](../issues/archived/1140-describes-wiring-misses-timer-only-contract.md) | Resolved 2026-10-24. Phase-486 W9b deleted `describes_wiring` with `nros ws entity-facts`, so `from_model` is the one predicate. |
-| [#1376](../issues/archived/1376-c-example-listeners-register-with-null-options.md) | Homed 2026-10-23 from phase-394, which was archived that day. Seven C listeners passed `options = NULL`, yet the sizing descriptor credits their image with a supplied hint. A consumer trusts a fact nothing checks, which is this phase's class. Re-scoped 2026-10-24: phase-492 moved the listeners onto rclc's typed path, which carries the bound. Resolved the same day: four of the five entry points that take a subscription passed 0, and one API helper now forwards the bound, with a gate and an arena measurement. |
+| [#0259](../../issues/archived/0259-realizer-placement-nonpreempt-not-derived.md) | **Closed `wontfix` 2026-10-27** (deferred 2026-10-25). **Deferred by the maintainer 2026-10-25.** WCET, blocking and feasibility as declared data is phase-357 W2's remainder. It is a check over the contract chain. Re-scoped 2026-10-24: `non_preempt` is RFC-0108's. The levels are partitioned per core since 2026-10-24. What is left is an input for the core count and for C to the realizer, plus hardware locality and chain colocation. |
+| [#1140](../../issues/archived/1140-describes-wiring-misses-timer-only-contract.md) | Resolved 2026-10-24. Phase-486 W9b deleted `describes_wiring` with `nros ws entity-facts`, so `from_model` is the one predicate. |
+| [#1376](../../issues/archived/1376-c-example-listeners-register-with-null-options.md) | Homed 2026-10-23 from phase-394, which was archived that day. Seven C listeners passed `options = NULL`, yet the sizing descriptor credits their image with a supplied hint. A consumer trusts a fact nothing checks, which is this phase's class. Re-scoped 2026-10-24: phase-492 moved the listeners onto rclc's typed path, which carries the bound. Resolved the same day: four of the five entry points that take a subscription passed 0, and one API helper now forwards the bound, with a gate and an arena measurement. |

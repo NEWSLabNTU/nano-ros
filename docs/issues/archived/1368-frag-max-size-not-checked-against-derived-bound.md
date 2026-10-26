@@ -11,7 +11,7 @@ found: 2026-09-18
 related: [issue-0940, issue-0963, issue-1181, phase-40, phase-403, phase-460, phase-478]
 ---
 
-**Home: [phase-460](../../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
+**Home: [phase-460](../../roadmap/archived/phase-460-formal-checks-on-the-contract-chain.md)** — homed 2026-10-17; the phase doc already tracks it in its body.
 
 ## What the two numbers are
 

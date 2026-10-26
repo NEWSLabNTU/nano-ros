@@ -1,7 +1,7 @@
 # Phase 357 — WCET as declared data: making derived scheduling mean something
 
 **Status (2026-10-14). Archived; W1 and W3 done, W2's remainder handed to
-[issue 0259](../../issues/0259-realizer-placement-nonpreempt-not-derived.md).**
+[issue 0259](../../issues/archived/0259-realizer-placement-nonpreempt-not-derived.md).**
 W1: RFC-0078 is in `docs/design/` and `WcetProfile` plus its validator are in
 `packages/core/nros-orchestration-ir/src/wcet.rs`. W3: issue 0519 is resolved
 and archived. W2 met its own acceptance ("at least one of `budget`,
@@ -85,7 +85,7 @@ Three orchestration issues that are one dependency chain, not three tasks.
   correct; what was missing was a test pinning it, now added and proven by
   sabotage. The issue's SchedContext half is unowned and folded into W1 below.
 
-**Owns:** [issue 0259](../../issues/0259-realizer-placement-nonpreempt-not-derived.md),
+**Owns:** [issue 0259](../../issues/archived/0259-realizer-placement-nonpreempt-not-derived.md),
 [issue 0404](../../issues/archived/0404-wcet-declaration-schema.md),
 [issue 0519](../../issues/archived/0519-plan-timer-period-truncates-sub-millisecond.md)
 (**RESOLVED** — see the issue for what closed it).

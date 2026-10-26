@@ -971,7 +971,7 @@ pin".
 - **Core assignment / load partitioning**, including who splits an end-to-end
   deadline across images. A later phase; this one keeps the derivation keyed
   by (core, rank) with `core` unset. Setting `core` is
-  [issue 0259](../../issues/0259-realizer-placement-nonpreempt-not-derived.md)'s
+  [issue 0259](../../issues/archived/0259-realizer-placement-nonpreempt-not-derived.md)'s
   work: its realizer packs measured nodes onto cores, and P5's single
   `derive_levels` call dropped that packing. Fixed there 2026-10-24
   ("Current design" section 2): the derivation partitions first and calls
