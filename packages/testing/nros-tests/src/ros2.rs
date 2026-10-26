@@ -1900,6 +1900,34 @@ impl Ros2DdsProcess {
         Self::spawn_bash(&cmd, format!("ros2-dds service call {service_name}"))
     }
 
+    /// A ROS 2 DDS service call REPEATED at `rate` Hz for up to `secs` seconds
+    /// (`ros2 service call -r`).
+    ///
+    /// `ros2 service call` builds ONE client and loops `call_async` on it, so
+    /// every request comes from the same request writer and carries the next
+    /// client sequence number: 1, 2, 3, … on `rmw_fastrtps_cpp` (measured
+    /// against a stock rclpy server reading the request header, issue 2088).
+    /// That makes it a stock client whose request ids a server can be checked
+    /// against. `PYTHONUNBUFFERED` because the deadline kills the CLI, and a
+    /// block-buffered stdout loses every line it had not flushed.
+    pub fn service_call_repeated_with_domain(
+        service_name: &str,
+        service_type: &str,
+        request: &str,
+        rate: u32,
+        secs: u64,
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
+        let deadline = crate::process::deadline(secs);
+        let cmd = format!(
+            "{env_setup} && PYTHONUNBUFFERED=1 {deadline} ros2 service call -r {rate} \
+             {service_name} {service_type} \"{request}\""
+        );
+        Self::spawn_bash(&cmd, format!("ros2-dds service call -r {service_name}"))
+    }
+
     // --- CycloneDDS variants (Phase 183.5) — same `ros2` CLI, but with
     // RMW_IMPLEMENTATION=rmw_cyclonedds_cpp so the ROS 2 node speaks Cyclone
     // RTPS to nano-ros's CycloneDDS backend on a shared ROS_DOMAIN_ID. ---

@@ -7083,6 +7083,36 @@ pub fn xrce_service_client_binary() -> PathBuf {
         .to_path_buf()
 }
 
+/// issue 2088 — the `service-info-server` bin built for XRCE: an AddTwoInts
+/// server registered through `create_service_with_info`, printing each
+/// request's `ServiceInfo::request_id`
+/// ([`crate::output::SERVICE_INFO_LOG_PREFIX`]). A bin rather than the
+/// service-server example because `CallbackCtx` exposes no `ServiceInfo`.
+pub fn build_xrce_service_info_server() -> TestResult<&'static Path> {
+    static XRCE_BIN: OnceCell<PathBuf> = OnceCell::new();
+    XRCE_BIN
+        .get_or_try_init(|| {
+            let row = crate::fixtures::groups::select_rmw_row(
+                "packages/testing/nros-tests/bins/service-info-server",
+                Rmw::Xrce,
+            )?;
+            let rel = PathBuf::from(format!(
+                "{}/service-info-server",
+                cargo_target_profile_dir()
+            ));
+            require_prebuilt_row_binary_fresh(row, &rel)
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the XRCE service-info-server binary path.
+#[rstest::fixture]
+pub fn xrce_service_info_server_binary() -> PathBuf {
+    build_xrce_service_info_server()
+        .require("xrce service-info-server")
+        .to_path_buf()
+}
+
 /// Build the xrce-action-server example binary (cached).
 pub fn build_xrce_action_server() -> TestResult<&'static Path> {
     XRCE_ACTION_SERVER_BINARY

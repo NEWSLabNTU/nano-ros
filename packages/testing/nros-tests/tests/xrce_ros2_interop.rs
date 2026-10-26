@@ -32,7 +32,7 @@ use nros_tests::{
         DEFAULT_ROS_DISTRO, ManagedProcess, Ros2DdsProcess, XrceAgent, require_ros2_dds,
         require_xrce_agent, xrce_action_client_binary, xrce_action_server_binary,
         xrce_action_server_concurrent_binary, xrce_listener_binary, xrce_service_client_binary,
-        xrce_service_server_binary, xrce_talker_binary,
+        xrce_service_info_server_binary, xrce_service_server_binary, xrce_talker_binary,
     },
     unique_ros_domain_id,
 };
@@ -400,6 +400,187 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
         env = nros_tests::ros2::interop_environment_fingerprint()
     );
     eprintln!("[PASS] XRCE service server ↔ ROS 2 DDS client: sum=8 verified");
+}
+
+/// One `REQUEST_ID guid=<hex> seq=<n> …` line of the `service-info-server`
+/// bin, parsed: `(guid bytes, client sequence number)`.
+fn parse_request_id_line(line: &str) -> Option<([u8; 16], i64)> {
+    let rest = &line[line.find(nros_tests::output::SERVICE_INFO_LOG_PREFIX)?
+        + nros_tests::output::SERVICE_INFO_LOG_PREFIX.len()..];
+    let mut fields = rest.split_whitespace();
+    let hex = fields.next()?;
+    let seq = fields.next()?.strip_prefix("seq=")?.parse().ok()?;
+    if hex.len() != 32 {
+        return None;
+    }
+    let mut guid = [0u8; 16];
+    for (i, b) in guid.iter_mut().enumerate() {
+        *b = u8::from_str_radix(hex.get(2 * i..2 * i + 2)?, 16).ok()?;
+    }
+    Some((guid, seq))
+}
+
+/// Issue 2088 — the XRCE backend's `take_request_with_info` (issue 2081)
+/// against a live Agent and a STOCK client.
+///
+/// ```text
+/// ros2 service call -r (rmw_fastrtps_cpp) → DDS → XRCE Agent → service-info-server (UDP)
+/// ```
+///
+/// The server reports each request's `ServiceInfo::request_id`, which the
+/// backend fills from the Agent's `SampleIdentity`. Asserted:
+///
+/// * **the sequence numbers are the client's** — `ros2 service call -r` sends
+///   from ONE client, numbered 1, 2, 3, … by `rmw_fastrtps_cpp` (measured
+///   against a stock rclpy server reading the request header), so the server
+///   must see exactly `1..=n` in order for the `n` requests the client had
+///   answered;
+/// * **the GUID is the client's request writer, in wire order** — non-zero,
+///   identical across requests, its prefix starting with eProsima's RTPS vendor
+///   id `01 0f` and its last byte the entity kind of a keyless user writer
+///   (`0x03`). Those two bytes sit at opposite ends of the 16, so a reversed or
+///   mis-split copy of the 12-byte prefix / 3-byte key / 1-byte kind fails here,
+///   which "non-zero" alone would not catch.
+///
+/// No timestamps: none reach an XRCE client library (`xrce_fill_service_info`).
+#[rstest]
+fn test_xrce_service_reports_the_stock_clients_request_id(
+    xrce_service_info_server_binary: PathBuf,
+) {
+    use std::process::Command;
+
+    require_xrce_agent();
+    require_ros2_dds();
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
+
+    // issue 0741 — a second `/add_two_ints` server on the domain would answer
+    // some of the client's requests, and THEIR ids would be missing from this
+    // server's sequence. Same precondition, same reasoning, as
+    // `test_xrce_service_ros2_client`.
+    if nros_tests::ros2::service_present_on_domain(DEFAULT_ROS_DISTRO, domain_id, "/add_two_ints")
+        == Some(true)
+    {
+        drop(agent);
+        nros_tests::unmet!(
+            "issue 0741 — `/add_two_ints` is ALREADY served on ROS domain {domain_id} by a peer \
+             this test did not start, so not every request reaches the server under test. Kill \
+             the orphan (`pgrep -a add_two_ints_server`) and re-run."
+        );
+    }
+
+    let mut server_cmd = Command::new(&xrce_service_info_server_binary);
+    server_cmd
+        .env("NROS_LOCATOR", &addr)
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string())
+        .env("XRCE_TIMEOUT", "30")
+        .env("RUST_LOG", "info");
+    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-service-info-server")
+        .expect("Failed to start service-info-server");
+    let server_startup = server
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| format!("<server never reported ready: {e}>"));
+
+    std::thread::sleep(Duration::from_secs(1));
+
+    // Three answered requests is the least that shows a SEQUENCE (and a GUID
+    // that stays put); 2 Hz keeps the run short.
+    const WANT: usize = 3;
+    let mut client = match Ros2DdsProcess::service_call_repeated_with_domain(
+        "/add_two_ints",
+        "example_interfaces/srv/AddTwoInts",
+        "{a: 5, b: 3}",
+        2,
+        20,
+        DEFAULT_ROS_DISTRO,
+        domain_id,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            server.kill();
+            nros_tests::unmet!("ROS 2 DDS service call could not start: {e}");
+        }
+    };
+    let (client_output, client_why) =
+        match client.wait_for_output_count("sum=8", WANT, Duration::from_secs(18)) {
+            Ok(out) => (out, String::new()),
+            Err(e) => (String::new(), format!("{e}")),
+        };
+    drop(client);
+    let answered = count_pattern(&client_output, "sum=8");
+
+    let (server_output, server_why) = server.collect_until_count(
+        nros_tests::output::SERVICE_INFO_LOG_PREFIX,
+        answered.max(WANT),
+        Duration::from_secs(5),
+    );
+    server.kill();
+    drop(agent);
+
+    let context = format!(
+        "--- server startup ---\n{server_startup}\n--- server ---\n{server_output}{}\n\
+         --- ros2 client ---\n{client_output}{client_why}\n{env}",
+        server_why.unwrap_or_default(),
+        env = nros_tests::ros2::interop_environment_fingerprint()
+    );
+    assert!(
+        answered >= WANT,
+        "the stock client got {answered} of {WANT} replies — no request-id evidence without \
+         a working service path (see test_xrce_service_ros2_client)\n{context}"
+    );
+    let ids: Vec<([u8; 16], i64)> = server_output
+        .lines()
+        .filter_map(parse_request_id_line)
+        .collect();
+    assert!(
+        !server_output.contains("REQUEST_ID ABSENT"),
+        "the XRCE backend reported NO request id for a request (issue 2081's \
+         take_request_with_info slot)\n{context}"
+    );
+    assert!(
+        ids.len() >= answered,
+        "the server printed {} request ids for {answered} answered requests\n{context}",
+        ids.len()
+    );
+    let seqs: Vec<i64> = ids.iter().map(|(_, s)| *s).collect();
+    let expected: Vec<i64> = (1..=ids.len() as i64).collect();
+    assert_eq!(
+        seqs, expected,
+        "the reported sequence numbers are not the stock client's (1, 2, 3, … from one \
+         `ros2 service call -r` client)\n{context}"
+    );
+    let guid = ids[0].0;
+    assert!(
+        ids.iter().all(|(g, _)| *g == guid),
+        "the reported writer GUID changed between requests from ONE client\n{context}"
+    );
+    assert!(
+        guid.iter().any(|b| *b != 0),
+        "all-zero writer GUID\n{context}"
+    );
+    assert_eq!(
+        guid[..2],
+        [0x01, 0x0f],
+        "the GUID prefix does not start with eProsima's RTPS vendor id 01 0f — the client is \
+         rmw_fastrtps_cpp, so the 12-byte prefix was copied out of order\n{context}"
+    );
+    assert_eq!(
+        guid[15], 0x03,
+        "the GUID's last byte is not a keyless user writer's entity kind (0x03) — the \
+         3-byte key / 1-byte kind split of the entity id is wrong\n{context}"
+    );
+    eprintln!(
+        "[PASS] XRCE ServiceInfo: {} requests, seq 1..={}, writer guid {}",
+        ids.len(),
+        ids.len(),
+        guid.iter().map(|b| format!("{b:02x}")).collect::<String>()
+    );
 }
 
 // =============================================================================
