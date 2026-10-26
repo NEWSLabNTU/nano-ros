@@ -4821,20 +4821,40 @@ mod dropped_take_log_tests {
             assert!(nros_log::add_sink(sink), "no sink slot left");
             sink
         });
-        // The FIRST drop is always reported; a cell that inherited another
-        // cell's count would be asserting about drop number N instead.
-        DROPPED_TAKES.store(0, portable_atomic::Ordering::Relaxed);
+        let lines = || {
+            sink.lines
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clone()
+        };
         sink.lines
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clear();
-        report_dropped_take(&err, cap, recorded);
-        let mut lines = sink
-            .lines
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        assert_eq!(lines.len(), 1, "the first drop must be reported: {lines:?}");
-        lines.remove(0)
+        // The FIRST drop is always reported; a cell that inherited another
+        // cell's count would be asserting about drop number N instead. Reset
+        // inside the emit, because a record nros_log lost is raised again and
+        // must again be drop number one.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let seen = nros_log::early::emit_until_delivered(
+            || {
+                DROPPED_TAKES.store(0, portable_atomic::Ordering::Relaxed);
+                report_dropped_take(&err, cap, recorded);
+            },
+            || !lines().is_empty(),
+            || {
+                std::thread::yield_now();
+                std::time::Instant::now() < deadline
+            },
+        );
+        let lines = lines();
+        assert!(seen, "the first drop must be reported: {lines:?}");
+        // A re-raise can deliver the line twice; every copy is the same drop.
+        assert!(
+            lines.iter().all(|l| *l == lines[0]),
+            "the copies disagree: {lines:?}"
+        );
+        lines[0].clone()
     }
 
     #[test]

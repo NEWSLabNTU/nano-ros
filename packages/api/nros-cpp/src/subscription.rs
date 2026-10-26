@@ -1757,13 +1757,59 @@ mod tests {
         core::mem::take(&mut *guard)
     }
 
+    /// Raise drop number `nth` (1-based) until its line reaches the sink.
+    ///
+    /// `nros_log` holds a record raised while another thread is delivering and
+    /// DROPS one that does not fit (issue 2000), and other tests in this
+    /// binary log from their own threads, so a line asserted on can be lost
+    /// outright. `nros_log::early::emit_until_delivered` re-raises it; the
+    /// counter is set inside the emit so every raise is drop number `nth`
+    /// again. A re-raise can deliver the line twice, so callers use
+    /// [`distinct`].
+    fn raise_drop_until_logged(nth: u32, raise: impl Fn()) -> bool {
+        let sink = CAPTURE.get().expect("`fresh()` installs the sink");
+        let total = std::format!("{nth} dropped so far");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        nros_log::early::emit_until_delivered(
+            || {
+                SAMPLES_DROPPED_TOO_SMALL.store(nth - 1, Ordering::Relaxed);
+                raise();
+            },
+            || {
+                sink.lines
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .iter()
+                    .any(|l| l.contains(&total))
+            },
+            || {
+                std::thread::yield_now();
+                std::time::Instant::now() < deadline
+            },
+        )
+    }
+
+    /// The distinct lines, in first-seen order: a re-raised record is the same
+    /// drop again, never a second one.
+    fn distinct(lines: std::vec::Vec<std::string::String>) -> std::vec::Vec<std::string::String> {
+        let mut out: std::vec::Vec<std::string::String> = std::vec::Vec::new();
+        for l in lines {
+            if !out.contains(&l) {
+                out.push(l);
+            }
+        }
+        out
+    }
+
     /// THE GATE. A 16-byte buffer, a sample that did not fit: counted once, and
     /// the line names the buffer, the knob and which drop it was.
     #[test]
     fn a_too_small_take_is_counted_once_and_named_in_the_log() {
         let _serial = fresh();
 
-        note_sample_dropped_too_small(&TransportError::BufferTooSmall, 16, Some(1000));
+        let seen = raise_drop_until_logged(1, || {
+            note_sample_dropped_too_small(&TransportError::BufferTooSmall, 16, Some(1000))
+        });
 
         assert_eq!(
             SAMPLES_DROPPED_TOO_SMALL.load(Ordering::Relaxed),
@@ -1773,10 +1819,9 @@ mod tests {
              like"
         );
 
-        let lines = logged();
-        assert_eq!(
-            lines.len(),
-            1,
+        let lines = distinct(logged());
+        assert!(
+            seen && lines.len() == 1,
             "the FIRST drop must always be reported; got {lines:?}"
         );
         let line = &lines[0];
@@ -1813,9 +1858,11 @@ mod tests {
     #[test]
     fn an_unknown_sample_size_is_printed_as_unknown() {
         let _serial = fresh();
-        note_sample_dropped_too_small(&TransportError::BufferTooSmall, 64, None);
-        let lines = logged();
-        assert_eq!(lines.len(), 1, "got {lines:?}");
+        let seen = raise_drop_until_logged(1, || {
+            note_sample_dropped_too_small(&TransportError::BufferTooSmall, 64, None)
+        });
+        let lines = distinct(logged());
+        assert!(seen && lines.len() == 1, "got {lines:?}");
         assert!(
             lines[0].contains("?-byte sample") && lines[0].contains("64-byte buffer"),
             "an unknown size must read as unknown beside the known buffer: {}",
@@ -1829,10 +1876,16 @@ mod tests {
     #[test]
     fn the_drop_log_is_throttled_but_never_silent() {
         let _serial = fresh();
-        for _ in 0..65 {
-            note_sample_dropped_too_small(&TransportError::MessageTooLarge, 32, None);
+        let drop = || note_sample_dropped_too_small(&TransportError::MessageTooLarge, 32, None);
+        // The two that log are raised until seen; the 63 between them are
+        // the throttle's to silence.
+        let first = raise_drop_until_logged(1, drop);
+        for _ in 1..64 {
+            drop();
         }
-        let lines = logged();
+        let last = raise_drop_until_logged(65, drop);
+        let lines = distinct(logged());
+        assert!(first && last, "a logged drop never arrived: {lines:?}");
         assert_eq!(
             lines.len(),
             2,
@@ -1856,14 +1909,17 @@ mod tests {
     #[test]
     fn the_tally_counts_every_drop_not_only_the_logged_ones() {
         let _serial = fresh();
-        for _ in 0..10 {
-            note_sample_dropped_too_small(&TransportError::BufferTooSmall, 8, Some(9));
+        let drop = || note_sample_dropped_too_small(&TransportError::BufferTooSmall, 8, Some(9));
+        let seen = raise_drop_until_logged(1, drop);
+        for _ in 1..10 {
+            drop();
         }
         assert_eq!(
             SAMPLES_DROPPED_TOO_SMALL.load(Ordering::Relaxed),
             10,
             "the tally followed the throttle"
         );
-        assert_eq!(logged().len(), 1, "and the log did not");
+        let lines = distinct(logged());
+        assert!(seen && lines.len() == 1, "and the log did not: {lines:?}");
     }
 }

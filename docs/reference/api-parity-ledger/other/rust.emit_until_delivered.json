@@ -1,0 +1,5 @@
+{
+  "key": "rust:emit_until_delivered",
+  "verdict": "extension",
+  "why": "issue 2000 follow-up — `nros_log::early::emit_until_delivered`, for a caller that must OBSERVE a record it raised (a test asserting on what reached its sink). `nros-log` delivers one record at a time; a record raised while another thread is delivering is held in a bounded queue (`NROS_LOG_EARLY_RECORDS`), and one that does not fit is dropped and counted (`early::overflowed`). So in a multi-threaded test binary a record can be lost outright, and no amount of waiting or `flush` delivers it: this re-raises on a counted loss. rclrs has no correspondent because rcutils logging has no bounded hold queue to lose a record from — it allocates, or writes straight through. The budget is a caller closure because `nros-log` is `no_std` and has no clock."
+}

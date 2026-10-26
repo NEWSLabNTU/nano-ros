@@ -200,6 +200,52 @@ pub fn overflowed() -> usize {
     LOST.load(Ordering::Relaxed)
 }
 
+/// Raise a record with `emit` until `delivered()` sees it, re-raising it
+/// whenever [`overflowed`] counts a loss, for as long as `keep_waiting()`
+/// says to. Returns whether `delivered()` saw it.
+///
+/// For a caller that must OBSERVE a record it raised — a test asserting on
+/// what reached its sink. A record raised while another thread is delivering
+/// is held, and one that does not fit is dropped and counted, so in a
+/// multi-threaded test binary a record can be lost outright and no amount of
+/// waiting or [`crate::flush`] delivers it. Measured on `nros-node`'s lib
+/// tests: 8 copies at `--test-threads=64` failed 1 run in 48, with 16 records
+/// counted lost, the asserted ones among them.
+///
+/// A counted loss may have been a sibling's record while the caller's was
+/// still held, so a re-raise can deliver the record TWICE: assert on every
+/// copy, never on a count. `emit` must therefore be safe to repeat — a
+/// one-shot report (a latch it trips) has to reset its latch inside `emit`.
+///
+/// `keep_waiting` is the caller's budget and back-off, since this crate has
+/// no clock: a hosted test passes a deadline that yields,
+/// `|| { std::thread::yield_now(); Instant::now() < deadline }`.
+pub fn emit_until_delivered(
+    emit: impl Fn(),
+    delivered: impl Fn() -> bool,
+    mut keep_waiting: impl FnMut() -> bool,
+) -> bool {
+    loop {
+        let lost = overflowed();
+        emit();
+        loop {
+            crate::flush();
+            if delivered() {
+                return true;
+            }
+            if overflowed() != lost {
+                break;
+            }
+            if !keep_waiting() {
+                return delivered();
+            }
+        }
+        if !keep_waiting() {
+            return delivered();
+        }
+    }
+}
+
 /// Hold `record` until a dispatcher delivers it.
 ///
 /// Returns `false` when it did not fit — the caller has nothing further to do,
