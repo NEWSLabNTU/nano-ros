@@ -12,6 +12,12 @@
 // the client's reply poll loop. Cyclone services discovery happens
 // in its background thread so the writer/reader pair will rendezvous
 // after a short delay.
+//
+// Issue 2081 — the server takes through `take_request_with_info`, and the
+// request's `rmw_service_info_t` must name the client: a non-zero writer GUID,
+// the sequence number `send_request` gave the client (not the server's reply
+// token), and the DDS source timestamp; no received timestamp (Cyclone 0.10
+// has none, and stock `rmw_cyclonedds_cpp` writes 0 too).
 
 #include <chrono>
 #include <cstdio>
@@ -25,6 +31,7 @@
 
 namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
+int64_t g_client_seq = -1;
 
 void put_le64(uint8_t *out, int64_t v) {
     for (int i = 0; i < 8; ++i) {
@@ -50,7 +57,7 @@ rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, u
                         size_t rep_cap, size_t *out_len) {
     if (out_len == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     *out_len = 0;
-    rmw_ret_t sr = g_vt->send_request(cli, rmw_byte_span_t{req, req_len}, nullptr);
+    rmw_ret_t sr = g_vt->send_request(cli, rmw_byte_span_t{req, req_len}, &g_client_seq);
     if (sr != NROS_RMW_RET_OK) {
         return sr;
     }
@@ -139,6 +146,9 @@ int main() {
 
     // The client's call_blocking poll loop runs until the reply
     // arrives; service the request from a worker thread.
+    rmw_service_info_t info;
+    std::memset(&info, 0, sizeof(info));
+    int64_t token = -1;
     std::thread server([&]() {
         for (int i = 0; i < 200; ++i) {
             bool has_r = false;
@@ -148,10 +158,13 @@ int main() {
                 int64_t seq = -1;
                 size_t r = 0;
                 bool rtook = false;
-                /* Phase 376 W3.b/W3.d step A. */
-                if (nros_test_take_request(g_vt, &srv, rbuf, sizeof(rbuf), &seq, &r, &rtook) ==
-                        NROS_RMW_RET_OK &&
-                    rtook && r > 0) {
+                /* Issue 2081 — through the info slot. */
+                rmw_mut_byte_span_t span{rbuf, sizeof(rbuf), 0};
+                const rmw_ret_t trc =
+                    g_vt->take_request_with_info(&srv, &span, &seq, &rtook, &info);
+                r = span.len;
+                if (trc == NROS_RMW_RET_OK && rtook && r > 0) {
+                    token = seq;
                     int64_t a = get_le64(rbuf + 4);
                     int64_t b = get_le64(rbuf + 12);
                     uint8_t reply[12] = {0x00, 0x01, 0x00, 0x00};
@@ -182,6 +195,27 @@ int main() {
         std::fprintf(stderr, "expected sum=18, got %lld\n", static_cast<long long>(sum));
         return 6;
     }
+
+    // Issue 2081 — who sent it.
+    bool guid_set = false;
+    for (int i = 0; i < 16; ++i) guid_set = guid_set || info.request_id.writer_guid[i] != 0;
+    if (!guid_set) {
+        std::fprintf(stderr, "take_request_with_info reported an all-zero writer GUID\n");
+        return 7;
+    }
+    if (g_client_seq == -1 || info.request_id.sequence_number != g_client_seq) {
+        std::fprintf(stderr, "request_id.sequence_number %lld != the client's %lld\n",
+                     static_cast<long long>(info.request_id.sequence_number),
+                     static_cast<long long>(g_client_seq));
+        return 8;
+    }
+    if (info.source_timestamp <= 0 || info.received_timestamp != 0) {
+        std::fprintf(stderr, "timestamps: source %lld (want > 0), received %lld (want 0)\n",
+                     static_cast<long long>(info.source_timestamp),
+                     static_cast<long long>(info.received_timestamp));
+        return 9;
+    }
+    (void)token;
 
     g_vt->destroy_client(&cli);
     g_vt->destroy_service(&srv);

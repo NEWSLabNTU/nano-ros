@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_service_raw_with_request_id",
+  "verdict": "extension",
+  "why": "issue 2081 (2026-10-26) -- `rclc_executor_add_service_raw` whose callback also receives the request's `rmw_request_id_t` (writer GUID + client sequence number), as reported by the backend's `take_request_with_info` slot (zenoh, Cyclone DDS, XRCE-DDS; all zero when a backend reports none). It is the CDR-byte counterpart of rclc's `rclc_executor_add_service_with_request_id`, and that row (`c:executor_add_service_with_request_id`) explains why rclc's name stays declined: the registration's data contract differs, exactly as for `rclc_executor_add_service`. Same arena entry, removal path (`rclc_executor_remove_service`) and return codes as `rclc_executor_add_service_raw`. Held by `service_request_id.c` in `just check c`."
+}

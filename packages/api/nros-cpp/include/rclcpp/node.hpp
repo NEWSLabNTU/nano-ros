@@ -137,6 +137,11 @@
 // established that live with the predicate, at the one detection site.
 #include "rclcpp/detail/std_detect.hpp"
 
+// Issue 2081 — named by `Node::register_service_`'s request-id overload;
+// DEFINED in `rclcpp/service.hpp` (under the guard the RMW ABI and
+// `<rclc/detail/request_id.h>` share).
+struct rmw_request_id_t;
+
 // phase-476 W3 — the hosted-node macro (`NROS_CPP_` + `NODE_HOSTED`) IS GONE. It was the
 // conjunction of all four capability probes, wrapped around every hosted-shape member at once. Each
 // member now names the ONE capability its signature actually uses: the `std::string`-keyed
@@ -2923,6 +2928,24 @@ class Node {
                              void* context, const ::rclcpp::QoS& qos,
                              const ::rclcpp::ServiceOptions& options, const void* capture = nullptr,
                              size_t capture_len = 0, void (*capture_drop)(void*) = nullptr);
+
+    /// Issue 2081 — `register_service_` for a trampoline that also receives
+    /// the request's id (`nros_cpp_service_request_id_callback_t`): the hosted
+    /// `shared_ptr` handlers, whose three-argument form hands it on as the
+    /// request header.
+    template <typename S>
+    Result register_service_(::rclcpp::Service<S>& out, const char* service_name,
+                             bool (*trampoline)(const uint8_t*, size_t, ::rmw_request_id_t*,
+                                                uint8_t*, size_t, size_t*, void*),
+                             void* context, const ::rclcpp::QoS& qos,
+                             const ::rclcpp::ServiceOptions& options, const void* capture = nullptr,
+                             size_t capture_len = 0, void (*capture_drop)(void*) = nullptr);
+
+    /// The bookkeeping both `register_service_` forms share once the runtime
+    /// answered.
+    template <typename S>
+    Result finish_register_service_(::rclcpp::Service<S>& out, const char* service_name,
+                                    nros_cpp_ret_t ret, size_t handle);
 
     /// phase-488 — the hosted non-reference service handler, split by what holds
     /// it: `tag 0` a handler that converts to a function pointer (the context IS

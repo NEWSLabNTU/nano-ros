@@ -20,6 +20,9 @@ header = """/**
 
 #include "rclc/visibility_control.h"
 #include "rclc/detail/nros_config_generated.h"
+/* issue 2081 — `rmw_request_id_t`, hand-written under the guard the RMW ABI
+ * and rclcpp share; excluded from export below. */
+#include "rclc/detail/request_id.h"
 
 /* Forward declarations for callback typedefs that reference these
  * structs before they appear in source-order output. Without these,
@@ -136,6 +139,11 @@ exclude = [
     "nros_platform_sleep_ns",
     "nros_platform_atomic_store_bool",
     "nros_platform_atomic_load_bool",
+    # issue 2081 — `rmw_request_id_t` is declared by `<rclc/detail/request_id.h>`
+    # under the guard `<nros/rmw_entity.h>` and rclcpp's `service.hpp` share, so
+    # a TU that includes two of them sees one definition. The Rust side names
+    # it as an alias of `nros_node::RawRequestId`, same layout.
+    "rmw_request_id_t",
 ]
 
 [export.rename]

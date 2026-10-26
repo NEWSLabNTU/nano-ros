@@ -353,8 +353,25 @@ static rmw_ret_t xrce_service_destroy_locked(rmw_service_t* server) {
  * only reason it did not crash too.
  *
  * Status is returned, length goes to an out-parameter. */
+/* Issue 2081 — a taken request's `rmw_service_info_t`, filled the way stock
+ * `rmw_microxrcedds` fills it: the Agent hands each request its DDS
+ * `SampleIdentity`, whose `writer_guid` (12-byte prefix + 4-byte entity id) is
+ * the requesting client's 16-byte request-writer GUID and whose sequence number
+ * is that client's. No timestamp reaches the client library, so both stay 0
+ * ("not reported"). */
+static void xrce_fill_service_info(const SampleIdentity* id, rmw_service_info_t* out) {
+    memset(out, 0, sizeof(*out));
+    memcpy(out->request_id.writer_guid, id->writer_guid.guidPrefix.data, 12);
+    memcpy(out->request_id.writer_guid + 12, id->writer_guid.entityId.entityKey, 3);
+    out->request_id.writer_guid[15] = (int8_t)id->writer_guid.entityId.entityKind;
+    out->request_id.sequence_number =
+        (int64_t)(((uint64_t)(uint32_t)id->sequence_number.high << 32) |
+                  (uint64_t)id->sequence_number.low);
+}
+
 static rmw_ret_t xrce_service_take_request_len(const rmw_service_t* server, uint8_t* buf,
-                                               size_t buf_len, int64_t* seq_out, size_t* out_len) {
+                                               size_t buf_len, int64_t* seq_out, size_t* out_len,
+                                               rmw_service_info_t* info_out) {
     if (out_len == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     *out_len = 0;
     if (server == NULL || server->backend_data == NULL) {
@@ -408,6 +425,9 @@ static rmw_ret_t xrce_service_take_request_len(const rmw_service_t* server, uint
     }
     slot->reply_tokens[reply_idx].sample_id = e->sample_id;
     slot->reply_tokens[reply_idx].in_use = true;
+    if (info_out != NULL) {
+        xrce_fill_service_info(&e->sample_id, info_out);
+    }
     if (seq_out != NULL) {
         *seq_out = (int64_t)reply_idx;
     }
@@ -425,7 +445,7 @@ static rmw_ret_t xrce_service_take_request_len(const rmw_service_t* server, uint
  * `taken = false` with OK. */
 static rmw_ret_t xrce_service_take_request_locked(const rmw_service_t* server,
                                                   rmw_mut_byte_span_t* request, int64_t* seq_out,
-                                                  bool* taken) {
+                                                  bool* taken, rmw_service_info_t* info_out) {
     /* phase-406 W2 — one span in, the old three names out, so the body below
        is unchanged. `len` lives IN the span now, which is what removes the
        "who writes the count" question the flat triple kept raising. */
@@ -441,7 +461,7 @@ static rmw_ret_t xrce_service_take_request_locked(const rmw_service_t* server,
     *out_len = 0;
     *taken = false;
     size_t n = 0;
-    rmw_ret_t rc = xrce_service_take_request_len(server, buf, buf_len, seq_out, &n);
+    rmw_ret_t rc = xrce_service_take_request_len(server, buf, buf_len, seq_out, &n, info_out);
     if (rc == NROS_RMW_RET_NO_DATA) {
         return NROS_RMW_RET_OK;
     }
@@ -845,7 +865,20 @@ rmw_ret_t xrce_service_take_request(const rmw_service_t* server, rmw_mut_byte_sp
                                     int64_t* seq_out, bool* taken) {
     xrce_session_state_t* st = XRCE_ST_OF(xrce_service_server_state, server);
     xrce_session_lock(st);
-    rmw_ret_t ret = xrce_service_take_request_locked(server, request, seq_out, taken);
+    rmw_ret_t ret = xrce_service_take_request_locked(server, request, seq_out, taken, NULL);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+/* Issue 2081 — `take_request` plus the request's `SampleIdentity` as an
+ * `rmw_service_info_t` (`xrce_fill_service_info`). */
+rmw_ret_t xrce_service_take_request_with_info(const rmw_service_t* server,
+                                              rmw_mut_byte_span_t* request, int64_t* seq_out,
+                                              bool* taken, rmw_service_info_t* service_info) {
+    if (service_info == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    xrce_session_state_t* st = XRCE_ST_OF(xrce_service_server_state, server);
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_service_take_request_locked(server, request, seq_out, taken, service_info);
     xrce_session_unlock(st);
     return ret;
 }

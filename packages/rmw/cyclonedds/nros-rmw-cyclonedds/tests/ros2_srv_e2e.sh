@@ -140,8 +140,15 @@ elif ! grep -q '^REPLIED ' "$SERVER_OUT"; then
     echo "  FAIL: server did not log REPLIED"
     sed 's/^/    /' "$SERVER_OUT"
     failed=$((failed + 1))
+# Issue 2081 — the stock client's identity reached the server: a non-zero
+# writer GUID, a client sequence number >= 1 and a source timestamp; no
+# received timestamp (Cyclone 0.10 has none; stock rmw_cyclonedds_cpp writes 0).
+elif ! grep -Eq '^REQUEST_ID guid=[0-9a-f]*[1-9a-f][0-9a-f]* seq=[1-9][0-9]* source_ts=[1-9][0-9]* received_ts=0$' "$SERVER_OUT"; then
+    echo "  FAIL: server did not report the stock client's request id (issue 2081)"
+    sed 's/^/    /' "$SERVER_OUT"
+    failed=$((failed + 1))
 else
-    echo "  PASS: ros2 service call /add_two_ints → sum=42"
+    echo "  PASS: ros2 service call /add_two_ints → sum=42, $(grep '^REQUEST_ID ' "$SERVER_OUT")"
 fi
 
 # ---------------------------------------------------------------

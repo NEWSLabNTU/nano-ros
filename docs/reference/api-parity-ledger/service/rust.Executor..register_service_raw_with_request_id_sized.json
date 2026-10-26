@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_service_raw_with_request_id_sized",
+  "verdict": "extension",
+  "why": "issue 2081 (2026-10-26) -- the raw service registration whose `RawServiceRequestIdCallback` also receives the request's `RawRequestId` (upstream's `rmw_request_id_t` layout), built from the server's `ServiceTrait::request_info()` for the request being dispatched. One entry point for all registration shapes (`node_id: Option`, and `capture` or `context`). It serves the C surface (`rclc_executor_add_service_raw_with_request_id`) and the C++ one (`nros_cpp_service_server_register_with_request_id`, behind rclcpp's three-argument handler's request header). No rclrs counterpart: a Rust service that wants the id takes `ServiceInfo` through the typed `create_service_with_info`."
+}

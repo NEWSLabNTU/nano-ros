@@ -256,6 +256,10 @@ typedef struct {
     /* Issue 2036 — the metadata `take_with_info` reports for this sample. */
     bool has_info;
     nros_stub_message_info_t info;
+    /* Issue 2081 — the metadata `take_request_with_info` reports for this
+     * request. */
+    bool has_service_info;
+    nros_stub_service_info_t service_info;
 } stub_inbound_t;
 static stub_inbound_t s_inbound[STUB_STAGED_INBOUND];
 static size_t s_inbound_count = 0;
@@ -271,6 +275,8 @@ static bool stage_inbound(const char* suffix, int64_t seq, const uint8_t* data, 
     r->len = len;
     r->has_info = false;
     memset(&r->info, 0, sizeof(r->info));
+    r->has_service_info = false;
+    memset(&r->service_info, 0, sizeof(r->service_info));
     ++s_inbound_count;
     return true;
 }
@@ -283,8 +289,9 @@ static size_t inbound_for(const void* token) {
     return s_inbound_count;
 }
 
-static rmw_ret_t take_inbound_info(const void* token, rmw_mut_byte_span_t* out, int64_t* seq_out,
-                                   bool* taken, rmw_message_info_t* info_out) {
+static rmw_ret_t take_inbound_any(const void* token, rmw_mut_byte_span_t* out, int64_t* seq_out,
+                                  bool* taken, rmw_message_info_t* info_out,
+                                  rmw_service_info_t* service_info_out) {
     if (taken != NULL) *taken = false;
     size_t at = inbound_for(token);
     if (at == s_inbound_count) return NROS_RMW_RET_OK;
@@ -308,20 +315,46 @@ static rmw_ret_t take_inbound_info(const void* token, rmw_mut_byte_span_t* out, 
                    sizeof(r->info.publisher_gid));
         }
     }
+    if (service_info_out != NULL) {
+        memset(service_info_out, 0, sizeof(*service_info_out));
+        if (r->has_service_info) {
+            service_info_out->source_timestamp = r->service_info.source_timestamp;
+            service_info_out->received_timestamp = r->service_info.received_timestamp;
+            memcpy(service_info_out->request_id.writer_guid, r->service_info.writer_guid,
+                   sizeof(r->service_info.writer_guid));
+            service_info_out->request_id.sequence_number = r->service_info.sequence_number;
+        }
+    }
     if (taken != NULL) *taken = true;
     memmove(&s_inbound[at], &s_inbound[at + 1], (s_inbound_count - at - 1) * sizeof(stub_inbound_t));
     --s_inbound_count;
     return NROS_RMW_RET_OK;
 }
 
+static rmw_ret_t take_inbound_info(const void* token, rmw_mut_byte_span_t* out, int64_t* seq_out,
+                                   bool* taken, rmw_message_info_t* info_out) {
+    return take_inbound_any(token, out, seq_out, taken, info_out, NULL);
+}
+
 static rmw_ret_t take_inbound(const void* token, rmw_mut_byte_span_t* out, int64_t* seq_out,
                               bool* taken) {
-    return take_inbound_info(token, out, seq_out, taken, NULL);
+    return take_inbound_any(token, out, seq_out, taken, NULL, NULL);
 }
 
 bool nros_stub_rmw_stage_request(const char* service_suffix, int64_t seq, const uint8_t* data,
                                  size_t len) {
     return stage_inbound(service_suffix, seq, data, len);
+}
+
+bool nros_stub_rmw_stage_request_info(const char* service_suffix, int64_t seq,
+                                      const uint8_t* data, size_t len,
+                                      const nros_stub_service_info_t* info) {
+    if (!stage_inbound(service_suffix, seq, data, len)) return false;
+    if (info != NULL) {
+        s_inbound[s_inbound_count - 1].has_service_info = true;
+        s_inbound[s_inbound_count - 1].service_info = *info;
+    }
+    return true;
 }
 
 bool nros_stub_rmw_stage_sample(const char* topic_suffix, const uint8_t* data, size_t len) {
@@ -442,6 +475,16 @@ static rmw_ret_t stub_take_request(const rmw_service_t* server, rmw_mut_byte_spa
                                    int64_t* seq_out, bool* taken) {
     /* Issue 2015 — a request staged for this server's service-name tail. */
     return take_inbound(server != NULL ? server->backend_data : NULL, request, seq_out, taken);
+}
+
+/* Issue 2081 — `take_request` plus the metadata staged with the request (all
+ * zero, "not reported", when it was staged without any). */
+static rmw_ret_t stub_take_request_with_info(const rmw_service_t* server,
+                                             rmw_mut_byte_span_t* request, int64_t* seq_out,
+                                             bool* taken, rmw_service_info_t* service_info) {
+    if (service_info == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    return take_inbound_any(server != NULL ? server->backend_data : NULL, request, seq_out, taken,
+                            NULL, service_info);
 }
 
 static rmw_ret_t stub_has_request(rmw_service_t* server, bool* out_has_request) {
@@ -857,6 +900,7 @@ static const nros_rmw_vtable_t STUB_VTABLE = {
     .subscription_event_init = stub_subscription_event_init,
     .publisher_event_init = stub_publisher_event_init,
     .event_type_is_supported = stub_event_type_is_supported,
+    .take_request_with_info = stub_take_request_with_info,
 };
 
 int32_t nros_stub_rmw_register(void) {
@@ -868,12 +912,15 @@ int32_t nros_stub_rmw_register_as(const char* name) {
 }
 
 /* Issue 2074 — the same stub with NO `take_with_info` slot: the runtime then
- * has no per-sample metadata channel for it, as for XRCE or uORB. */
+ * has no per-sample metadata channel for it, as for XRCE or uORB. Issue 2081 —
+ * and no `take_request_with_info` slot either: a request carries no metadata
+ * channel, as for a C backend written before that slot. */
 static nros_rmw_vtable_t s_no_info_vtable;
 
 int32_t nros_stub_rmw_register_without_message_info(const char* name) {
     s_no_info_vtable = STUB_VTABLE;
     s_no_info_vtable.take_with_info = NULL;
+    s_no_info_vtable.take_request_with_info = NULL;
     return (int32_t)nros_rmw_cffi_register_named(name, &s_no_info_vtable);
 }
 

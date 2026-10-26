@@ -329,6 +329,7 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     count_services: None,
     get_gid_for_client: None,
     event_type_is_supported: None,
+    take_request_with_info: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
@@ -4632,6 +4633,31 @@ pub(crate) fn message_info_from_raw(raw: &generated::rmw_message_info_t) -> Mess
     info
 }
 
+/// Issue 2081 — `rmw_service_info_t` → [`ServiceRequestInfo`].
+///
+/// The ABI spells "not reported" as ZERO (`rmw_service_info_t`'s doc), and the
+/// Rust type as `None`: a timestamp of 0 and an all-zero writer GUID become
+/// `None`, never `Some(0)`. A request id is reported when its GUID is — the
+/// client sequence number alone identifies nothing.
+pub(crate) fn service_info_from_raw(raw: &generated::rmw_service_info_t) -> ServiceRequestInfo {
+    let ts = |ns: i64| (ns != 0).then(|| nros_rmw::Time::from_nanos(ns));
+    let mut writer_guid = [0u8; REQUEST_WRITER_GUID_SIZE];
+    for (dst, src) in writer_guid
+        .iter_mut()
+        .zip(raw.request_id.writer_guid.iter())
+    {
+        *dst = *src as u8;
+    }
+    ServiceRequestInfo {
+        source_timestamp: ts(raw.source_timestamp),
+        received_timestamp: ts(raw.received_timestamp),
+        request_id: writer_guid.iter().any(|b| *b != 0).then_some(RequestId {
+            writer_guid,
+            sequence_number: raw.request_id.sequence_number,
+        }),
+    }
+}
+
 impl CffiSubscription {
     fn make_view(&mut self) -> NrosRmwSubscription {
         NrosRmwSubscription {
@@ -5340,13 +5366,30 @@ impl ServiceTrait for CffiService {
             len: generated::NROS_RMW_TAKE_LEN_UNKNOWN as usize,
         };
         let mut taken = false;
+        // Issue 2081 — a backend that fills `take_request_with_info` reports
+        // the request's metadata in this caller-owned struct; one that does not
+        // is taken through `take_request`, and only a Rust backend's side table
+        // can then say anything.
+        // SAFETY: an all-zero `rmw_service_info_t` is valid and means "nothing
+        // reported"; the backend overwrites it on a take.
+        let mut raw_info: generated::rmw_service_info_t = unsafe { core::mem::zeroed() };
+        let with_info = self.vtable.take_request_with_info;
         let rc = unsafe {
-            (self.vtable.take_request.expect("rmw vtable: take_request"))(
-                &mut view,
-                &mut request_span,
-                &mut seq,
-                &mut taken,
-            )
+            match with_info {
+                Some(take_with_info) => take_with_info(
+                    &view,
+                    &mut request_span,
+                    &mut seq,
+                    &mut taken,
+                    &mut raw_info,
+                ),
+                None => (self.vtable.take_request.expect("rmw vtable: take_request"))(
+                    &mut view,
+                    &mut request_span,
+                    &mut seq,
+                    &mut taken,
+                ),
+            }
         };
         if rc != NROS_RMW_RET_OK {
             if rc == NROS_RMW_RET_BUFFER_TOO_SMALL {
@@ -5357,10 +5400,15 @@ impl ServiceTrait for CffiService {
         if !taken {
             return Ok(None);
         }
-        // Issue 1942 — a Rust backend's per-request metadata, stored by the
-        // adapter for exactly this take. A pure C backend never writes it, so
-        // this reads `NOT_REPORTED` (the C slot carries no info, issue 2081).
-        self.request_info = take_cffi_service_info(self.backend_data as usize);
+        // Issue 2081 — the slot's struct when the backend fills the slot;
+        // otherwise issue 1942's side table, which a Rust backend's adapter
+        // writes for exactly this take and a pure C backend never does (so it
+        // reads `NOT_REPORTED`).
+        self.request_info = if with_info.is_some() {
+            service_info_from_raw(&raw_info)
+        } else {
+            take_cffi_service_info(self.backend_data as usize)
+        };
         let out_len = request_span.len;
         let len = checked_take_len(out_len, buf.len())
             .inspect_err(|_| self.refused_len = Some(out_len))?;
@@ -6476,6 +6524,121 @@ mod tests {
         let mut buf = [0u8; 16];
 
         assert!(server.take_request(&mut buf).unwrap().is_none());
+    }
+
+    // Issue 2081 — a C backend that fills `take_request_with_info` is HEARD.
+
+    const INFO_GUID: [i8; 16] = [1, -2, 3, -4, 5, -6, 7, -8, 9, 10, 11, 12, 13, 14, 15, 16];
+
+    unsafe extern "C" fn info_take_request(
+        _: *const NrosRmwService,
+        _: *mut crate::generated::rmw_mut_byte_span_t,
+        _: *mut i64,
+        _: *mut bool,
+    ) -> NrosRmwRet {
+        // Never reached: a backend with the info slot is taken through it.
+        NROS_RMW_RET_ERROR
+    }
+
+    unsafe extern "C" fn info_take_request_with_info(
+        _: *const NrosRmwService,
+        request: *mut crate::generated::rmw_mut_byte_span_t,
+        seq_out: *mut i64,
+        taken: *mut bool,
+        info: *mut crate::generated::rmw_service_info_t,
+    ) -> NrosRmwRet {
+        unsafe {
+            (*request).len = 4;
+            *(*request).data = 0x00;
+            *(*request).data.add(1) = 0x01;
+            *seq_out = 7; // the backend's reply token, not the client's sequence
+            *taken = true;
+            (*info).source_timestamp = 1_700_000_000_000_000_001;
+            (*info).received_timestamp = 0; // not stamped
+            (*info).request_id.writer_guid = INFO_GUID;
+            (*info).request_id.sequence_number = 42;
+        }
+        NROS_RMW_RET_OK
+    }
+
+    unsafe extern "C" fn zero_take_request_with_info(
+        _: *const NrosRmwService,
+        request: *mut crate::generated::rmw_mut_byte_span_t,
+        seq_out: *mut i64,
+        taken: *mut bool,
+        _: *mut crate::generated::rmw_service_info_t,
+    ) -> NrosRmwRet {
+        unsafe {
+            (*request).len = 4;
+            *seq_out = 1;
+            *taken = true;
+        }
+        NROS_RMW_RET_OK
+    }
+
+    static INFO_VTABLE: NrosRmwVtable = NrosRmwVtable {
+        take_request: Some(info_take_request),
+        take_request_with_info: Some(info_take_request_with_info),
+        ..STUB_VTABLE
+    };
+    static ZERO_INFO_VTABLE: NrosRmwVtable = NrosRmwVtable {
+        take_request_with_info: Some(zero_take_request_with_info),
+        ..STUB_VTABLE
+    };
+
+    fn info_server(vtable: &'static NrosRmwVtable) -> CffiService {
+        CffiService {
+            vtable,
+            service_name_buf: [0u8; NAME_BUF_LEN],
+            type_name_buf: [0u8; NAME_BUF_LEN],
+            backend_data: 0x2081_0001usize as *mut c_void,
+            request_qos: qos_unknown_c(),
+            response_qos: qos_unknown_c(),
+            refused_len: None,
+            entity_waker: WakerSlot::new(),
+            request_info: ServiceRequestInfo::NOT_REPORTED,
+        }
+    }
+
+    /// Issue 2081 — the slot is dispatched in place of `take_request`, its
+    /// struct becomes `request_info()`, and the reply token stays the
+    /// backend's (`seq_out`), separate from the client's sequence number.
+    #[test]
+    fn take_request_with_info_reports_the_requests_identity() {
+        use nros_rmw::ServiceTrait as _;
+        let mut server = info_server(&INFO_VTABLE);
+        let mut buf = [0u8; 16];
+        let req = server
+            .take_request(&mut buf)
+            .expect("the slot answers OK")
+            .expect("a request was taken");
+        assert_eq!(req.sequence_number, 7, "the reply token is the backend's");
+        let info = server.request_info();
+        let id = info.request_id.expect("a non-zero GUID is a reported id");
+        let mut want = [0u8; REQUEST_WRITER_GUID_SIZE];
+        for (d, s) in want.iter_mut().zip(INFO_GUID.iter()) {
+            *d = *s as u8;
+        }
+        assert_eq!(id.writer_guid, want);
+        assert_eq!(id.sequence_number, 42, "the CLIENT's sequence number");
+        assert_eq!(
+            info.source_timestamp,
+            Some(nros_rmw::Time::from_nanos(1_700_000_000_000_000_001))
+        );
+        assert_eq!(
+            info.received_timestamp, None,
+            "0 is not stamped, never Some(0)"
+        );
+    }
+
+    /// Issue 2081 — an all-zero struct is "nothing reported", not a zero id.
+    #[test]
+    fn take_request_with_info_zero_struct_is_not_reported() {
+        use nros_rmw::ServiceTrait as _;
+        let mut server = info_server(&ZERO_INFO_VTABLE);
+        let mut buf = [0u8; 16];
+        assert!(server.take_request(&mut buf).unwrap().is_some());
+        assert_eq!(server.request_info(), ServiceRequestInfo::NOT_REPORTED);
     }
 
     #[test]

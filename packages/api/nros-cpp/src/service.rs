@@ -251,6 +251,71 @@ pub unsafe extern "C" fn nros_cpp_service_server_register_capturing(
     }
 }
 
+/// Issue 2081 — [`nros_cpp_service_server_register`] /
+/// [`nros_cpp_service_server_register_capturing`] for a trampoline that also
+/// receives the request's `rmw_request_id_t` (client writer GUID + client
+/// sequence number), which fills the request header of rclcpp's three-argument
+/// handler. A non-NULL `capture` (with `capture_len > 0`) is copied into the
+/// arena as for the capturing form and `context` is ignored; otherwise
+/// `context` is handed back verbatim.
+///
+/// # Safety
+/// As [`nros_cpp_service_server_register_capturing`].
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn nros_cpp_service_server_register_with_request_id(
+    node: *const nros_cpp_node_t,
+    service_name: *const c_char,
+    type_name: *const c_char,
+    type_hash: *const c_char,
+    qos: nros_cpp_qos_t,
+    callback: nros_node::RawServiceRequestIdCallback,
+    context: *mut c_void,
+    capture: *const u8,
+    capture_len: usize,
+    capture_drop: Option<unsafe extern "C" fn(*mut c_void)>,
+    sched_context: u8,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
+    let bytes = if capture.is_null() || capture_len == 0 {
+        None
+    } else {
+        Some(unsafe { core::slice::from_raw_parts(capture, capture_len) })
+    };
+    unsafe {
+        service_server_register_impl(
+            node,
+            service_name,
+            type_name,
+            type_hash,
+            qos,
+            ServiceCallback::WithRequestId(callback),
+            if bytes.is_some() {
+                core::ptr::null_mut()
+            } else {
+                context
+            },
+            bytes,
+            capture_drop,
+            sched_context,
+            out_handle_id,
+        )
+    }
+}
+
+/// Issue 2081 — the two trampoline shapes one registration body serves.
+#[derive(Clone, Copy)]
+enum ServiceCallback {
+    Plain(nros_node::RawServiceCallback),
+    WithRequestId(nros_node::RawServiceRequestIdCallback),
+}
+
+impl From<nros_node::RawServiceCallback> for ServiceCallback {
+    fn from(cb: nros_node::RawServiceCallback) -> Self {
+        Self::Plain(cb)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 unsafe fn service_server_register_impl(
     node: *const nros_cpp_node_t,
@@ -258,7 +323,7 @@ unsafe fn service_server_register_impl(
     type_name: *const c_char,
     type_hash: *const c_char,
     qos: nros_cpp_qos_t,
-    callback: nros_node::RawServiceCallback,
+    callback: impl Into<ServiceCallback>,
     context: *mut c_void,
     capture: Option<&[u8]>,
     capture_drop: Option<unsafe extern "C" fn(*mut c_void)>,
@@ -308,6 +373,27 @@ unsafe fn service_server_register_impl(
     let svc_str = resolved_svc.as_str();
 
     use nros_node::config::DEFAULT_RX_BUF_SIZE as BUF;
+    let callback = match callback.into() {
+        ServiceCallback::Plain(cb) => cb,
+        ServiceCallback::WithRequestId(cb) => {
+            let result = ctx
+                .executor
+                .register_service_raw_with_request_id_sized::<BUF, BUF>(
+                    crate::node_id_opt(node_ref),
+                    svc_str,
+                    type_str,
+                    hash_str,
+                    qos.to_qos_settings(),
+                    cb,
+                    context,
+                    capture,
+                    capture_drop,
+                );
+            return unsafe {
+                finish_service_server_register(ctx, node_ref, result, sched_context, out_handle_id)
+            };
+        }
+    };
     let result = if capture.is_some() {
         ctx.executor.register_service_raw_capturing::<BUF, BUF>(
             crate::node_id_opt(node_ref),
@@ -340,6 +426,18 @@ unsafe fn service_server_register_impl(
         )
     };
 
+    unsafe { finish_service_server_register(ctx, node_ref, result, sched_context, out_handle_id) }
+}
+
+/// The tail every service registration shares: bind the sched context and
+/// issue the owned handle.
+unsafe fn finish_service_server_register(
+    ctx: &mut crate::CppContext,
+    node_ref: &nros_cpp_node_t,
+    result: Result<nros_node::HandleId, nros_node::NodeError>,
+    sched_context: u8,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
     match result {
         Ok(handle_id) => {
             // Phase 189.M3.3.e — bind the (now-real) arena handle to the

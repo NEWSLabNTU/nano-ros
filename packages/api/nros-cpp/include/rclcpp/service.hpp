@@ -62,6 +62,40 @@ nros_cpp_ret_t nros_cpp_service_server_register_capturing(
     size_t* out_handle_id);
 } // extern "C"
 
+#ifndef NROS_RMW_REQUEST_ID_T_DEFINED
+#define NROS_RMW_REQUEST_ID_T_DEFINED
+/// `rmw_request_id_t` — upstream's request header (`<rmw/types.h>`): who sent a
+/// service request (the client's writer GUID) and the sequence number it
+/// assigned. Upstream's three-argument service handler receives it. Issue 2081
+/// fills it from the backend's report; a backend that reports no id leaves it
+/// all zero. The same struct, under the same guard, as `<nros/rmw_entity.h>`
+/// and `<rclc/detail/request_id.h>`.
+extern "C" {
+typedef struct rmw_request_id_t {
+    int8_t writer_guid[16];
+    int64_t sequence_number;
+} rmw_request_id_t;
+} // extern "C"
+#endif
+static_assert(sizeof(rmw_request_id_t) == 24, "rmw_request_id_t: upstream's 16 + 8 bytes");
+
+extern "C" {
+/// Issue 2081 — a service trampoline that also receives the request's id.
+typedef bool (*nros_cpp_service_request_id_callback_t)(const uint8_t* req, size_t req_len,
+                                                       rmw_request_id_t* request_id, uint8_t* resp,
+                                                       size_t resp_cap, size_t* resp_len,
+                                                       void* ctx);
+
+// Issue 2081 — the request-id registration, excluded from cbindgen for the same
+// reason. A non-NULL `capture` is copied into the arena (as the capturing
+// form); otherwise `context` is handed back.
+nros_cpp_ret_t nros_cpp_service_server_register_with_request_id(
+    const nros_cpp_node_t* node, const char* service_name, const char* type_name,
+    const char* type_hash, nros_cpp_qos_t qos, nros_cpp_service_request_id_callback_t callback,
+    void* context, const uint8_t* capture, size_t capture_len, void (*capture_drop)(void*),
+    uint8_t sched_context, size_t* out_handle_id);
+} // extern "C"
+
 /// `rclcpp::Node` is named by the friend declaration below and by the
 /// out-of-line `Node::create_*` bodies further down. `rclcpp/node.hpp` (included
 /// below, after the class, so a consumer pays only for the entities it uses)
@@ -375,6 +409,35 @@ Result Node::register_service_(Service<S>& out, const char* service_name,
             : nros_cpp_service_server_register(&handle_, service_name, S::TYPE_NAME,
                                                S::Request::TYPE_HASH, ffi_qos, trampoline, context,
                                                sched, &handle);
+    return this->template finish_register_service_<S>(out, service_name, ret, handle);
+}
+
+// Issue 2081 — the same registration for a trampoline that also receives the
+// request's id (the hosted `shared_ptr` handlers, whose three-argument form
+// hands it to the user as the request header).
+template <typename S>
+Result Node::register_service_(Service<S>& out, const char* service_name,
+                               nros_cpp_service_request_id_callback_t trampoline, void* context,
+                               const ::rclcpp::QoS& qos, const ::rclcpp::ServiceOptions& options,
+                               const void* capture, size_t capture_len,
+                               void (*capture_drop)(void*)) {
+    if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+    nros_cpp_qos_t ffi_qos = ::rclcpp::detail::qos_to_ffi(qos);
+    uint8_t sched = (options.sched_context == ::rclcpp::SCHED_CONTEXT_UNSET)
+                        ? 0u
+                        : static_cast<uint8_t>(options.sched_context);
+    size_t handle = static_cast<size_t>(-1);
+    const bool captured = capture != nullptr && capture_len != 0;
+    nros_cpp_ret_t ret = nros_cpp_service_server_register_with_request_id(
+        &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, trampoline,
+        captured ? nullptr : context, captured ? static_cast<const uint8_t*>(capture) : nullptr,
+        captured ? capture_len : 0, captured ? capture_drop : nullptr, sched, &handle);
+    return this->template finish_register_service_<S>(out, service_name, ret, handle);
+}
+
+template <typename S>
+Result Node::finish_register_service_(Service<S>& out, const char* service_name, nros_cpp_ret_t ret,
+                                      size_t handle) {
     if (ret == 0) {
         out.handle_id_ = handle;
         // phase-444 — remember the name for `get_service_name()`; the runtime
@@ -393,17 +456,6 @@ Result Node::register_service_(Service<S>& out, const char* service_name,
 #include "rclcpp/inplace_fn.hpp" // phase-488 — a stateful handler's arena capture
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
-/// `rmw_request_id_t` — phase-488. The request header upstream's three-argument
-/// service handler receives. Declared so that handler's signature compiles;
-/// the dispatch path carries no writer GUID or sequence number to a server
-/// handler, so both fields are ZERO. A handler that ignores the header — the
-/// stock examples `(void)` it — loses nothing. Upstream's is a C typedef in
-/// `<rmw/types.h>`, which nano-ros does not ship.
-struct rmw_request_id_t {
-    int8_t writer_guid[16];
-    int64_t sequence_number;
-};
-
 namespace rclcpp {
 namespace detail {
 
@@ -492,12 +544,15 @@ template <typename S, typename F> struct service_ptr_shape {
 /// pointer handler and the stateful one below; they differ only in what holds
 /// the callable.
 template <typename S, typename Invoke>
-inline bool serve_lent(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
-                       size_t* resp_len, const Invoke& invoke) {
+inline bool serve_lent(const uint8_t* req, size_t req_len, const ::rmw_request_id_t* id,
+                       uint8_t* resp, size_t resp_cap, size_t* resp_len, const Invoke& invoke) {
     typename S::Request request;
     if (S::Request::ffi_deserialize(req, req_len, &request) != 0) return false;
     typename S::Response response;
+    // Issue 2081 — the id the backend reported for this request (all zero
+    // when it reported none).
     ::rmw_request_id_t header = {};
+    if (id != nullptr) header = *id;
     {
         FrameBlock request_block;
         FrameBlock response_block;
@@ -521,10 +576,10 @@ inline bool serve_lent(const uint8_t* req, size_t req_len, uint8_t* resp, size_t
 }
 
 template <typename S, int Shape> struct shared_ptr_service_trampoline {
-    static bool call(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
-                     size_t* resp_len, void* ctx) {
+    static bool call(const uint8_t* req, size_t req_len, ::rmw_request_id_t* id, uint8_t* resp,
+                     size_t resp_cap, size_t* resp_len, void* ctx) {
         using Fn = shared_ptr_service_fn<S>;
-        return serve_lent<S>(req, req_len, resp, resp_cap, resp_len,
+        return serve_lent<S>(req, req_len, id, resp, resp_cap, resp_len,
                              [ctx](::std::shared_ptr<::rmw_request_id_t>& h,
                                    ::std::shared_ptr<typename S::Request>& rq,
                                    ::std::shared_ptr<typename S::Response>& rs) {
@@ -621,10 +676,10 @@ template <typename S> struct stateful_service_adapter<S, 1> {
 
 /// The trampoline over the ARENA's copy of the stateful callable.
 template <typename S> struct stateful_service_trampoline {
-    static bool call(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap,
-                     size_t* resp_len, void* ctx) {
+    static bool call(const uint8_t* req, size_t req_len, ::rmw_request_id_t* id, uint8_t* resp,
+                     size_t resp_cap, size_t* resp_len, void* ctx) {
         const StatefulServiceFn<S>* fn = static_cast<const StatefulServiceFn<S>*>(ctx);
-        return serve_lent<S>(req, req_len, resp, resp_cap, resp_len, *fn);
+        return serve_lent<S>(req, req_len, id, resp, resp_cap, resp_len, *fn);
     }
     static void destroy(void* ctx) { static_cast<StatefulServiceFn<S>*>(ctx)->clear(); }
 };

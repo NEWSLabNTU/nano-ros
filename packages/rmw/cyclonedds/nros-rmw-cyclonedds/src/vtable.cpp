@@ -549,6 +549,10 @@ const nros_rmw_vtable_t kVtable = {
     /*count_services*/ graph_count_services,
     /*get_gid_for_client*/ cyclone_get_gid_for_client,
     /*event_type_is_supported*/ cyclone_event_type_is_supported,
+    /* Issue 2081 — the request's writer GUID, client sequence number and
+     * source timestamp, as stock `rmw_cyclonedds_cpp` reports them; body in
+     * `service.cpp`. */
+    /*take_request_with_info*/ service_take_request_with_info,
 };
 
 } // namespace

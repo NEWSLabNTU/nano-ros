@@ -43,9 +43,10 @@ use super::{
     triple_buffer::TripleBuffer,
     types::{
         ExecutorSemantics, GuardCondition, HandleId, InvocationMode, NodeError,
-        RawMessageDeserializeFn, RawResponseCallback, RawServiceCallback, RawSubscriptionCallback,
-        RawSubscriptionInfoCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
-        SpinPeriodPollingResult, Trigger, TypedSubscriptionCallback,
+        RawMessageDeserializeFn, RawResponseCallback, RawServiceCallback,
+        RawServiceRequestIdCallback, RawSubscriptionCallback, RawSubscriptionInfoCallback,
+        ReadinessSnapshot, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger,
+        TypedSubscriptionCallback,
     },
 };
 
@@ -10684,7 +10685,7 @@ impl<'s> Executor<'s> {
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
-        self.register_service_raw_sized_inner::<REQ_BUF, REPLY_BUF>(
+        self.register_service_raw_sized_inner::<REQ_BUF, REPLY_BUF, RawServiceCallback>(
             None,
             service_name,
             service_type,
@@ -10710,7 +10711,7 @@ impl<'s> Executor<'s> {
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
-        self.register_service_raw_sized_inner::<REQ_BUF, REPLY_BUF>(
+        self.register_service_raw_sized_inner::<REQ_BUF, REPLY_BUF, RawServiceCallback>(
             Some(node_id),
             service_name,
             service_type,
@@ -10743,7 +10744,7 @@ impl<'s> Executor<'s> {
         capture: Option<&[u8]>,
         capture_drop: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
     ) -> Result<HandleId, NodeError> {
-        self.register_service_raw_sized_inner::<REQ_BUF, REPLY_BUF>(
+        self.register_service_raw_sized_inner::<REQ_BUF, REPLY_BUF, RawServiceCallback>(
             node_id,
             service_name,
             service_type,
@@ -10756,15 +10757,59 @@ impl<'s> Executor<'s> {
         )
     }
 
+    /// Issue 2081 — a raw service whose callback also receives the request's
+    /// id (client writer GUID + client sequence number), rclc's
+    /// `rclc_service_callback_with_request_id_t` shape in CDR bytes. The id is
+    /// the one the backend reported for the request being dispatched
+    /// ([`ServiceTrait::request_info`](nros_rmw::ServiceTrait::request_info)),
+    /// all zeros when it reported none.
+    ///
+    /// One entry point for every registration shape: `node_id` as
+    /// [`Self::register_service_raw_sized_on`] (or `None`), and `capture` as
+    /// [`Self::register_service_raw_capturing`] (or `None`, with `context`
+    /// passed through instead).
     #[allow(clippy::too_many_arguments)]
-    fn register_service_raw_sized_inner<const REQ_BUF: usize, const REPLY_BUF: usize>(
+    pub fn register_service_raw_with_request_id_sized<
+        const REQ_BUF: usize,
+        const REPLY_BUF: usize,
+    >(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         service_name: &str,
         service_type: &str,
         service_hash: &str,
         qos: QoSProfile,
-        callback: RawServiceCallback,
+        callback: RawServiceRequestIdCallback,
+        context: *mut core::ffi::c_void,
+        capture: Option<&[u8]>,
+        capture_drop: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
+    ) -> Result<HandleId, NodeError> {
+        self.register_service_raw_sized_inner::<REQ_BUF, REPLY_BUF, RawServiceRequestIdCallback>(
+            node_id,
+            service_name,
+            service_type,
+            service_hash,
+            qos,
+            callback,
+            context,
+            capture,
+            capture_drop,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn register_service_raw_sized_inner<
+        const REQ_BUF: usize,
+        const REPLY_BUF: usize,
+        C: super::arena::RawServiceDispatch,
+    >(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        qos: QoSProfile,
+        callback: C,
         context: *mut core::ffi::c_void,
         capture: Option<&[u8]>,
         capture_drop: Option<unsafe extern "C" fn(*mut core::ffi::c_void)>,
@@ -10809,18 +10854,18 @@ impl<'s> Executor<'s> {
         let capture_len = Self::capture_trailing_len(capture);
         let (offset, context) = if capture_len == 0 {
             (
-                self.arena_alloc::<SrvRawEntry<REQ_BUF, REPLY_BUF>>()?,
+                self.arena_alloc::<SrvRawEntry<REQ_BUF, REPLY_BUF, C>>()?,
                 context,
             )
         } else {
             let (offset, capture_at) =
-                self.arena_alloc_with_trailing::<SrvRawEntry<REQ_BUF, REPLY_BUF>>(capture_len)?;
+                self.arena_alloc_with_trailing::<SrvRawEntry<REQ_BUF, REPLY_BUF, C>>(capture_len)?;
             (offset, self.place_capture(capture_at, capture, context))
         };
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut SrvRawEntry<REQ_BUF, REPLY_BUF>;
+            let entry_ptr = arena_ptr.add(offset) as *mut SrvRawEntry<REQ_BUF, REPLY_BUF, C>;
             core::ptr::write(
                 entry_ptr,
                 SrvRawEntry {
@@ -10841,17 +10886,17 @@ impl<'s> Executor<'s> {
             offset,
             kind: EntryKind::Service,
             arena_len: super::arena::ArenaLen::UNRECORDED,
-            try_process: srv_raw_try_process::<REQ_BUF, REPLY_BUF>,
-            has_data: srv_raw_has_data::<REQ_BUF, REPLY_BUF>,
+            try_process: srv_raw_try_process::<REQ_BUF, REPLY_BUF, C>,
+            has_data: srv_raw_has_data::<REQ_BUF, REPLY_BUF, C>,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<SrvRawEntry<REQ_BUF, REPLY_BUF>>,
+            drop_fn: drop_entry::<SrvRawEntry<REQ_BUF, REPLY_BUF, C>>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(service_name));
         // phase-397 W2 — this entry's arrivals mark its slot and wake this executor.
-        // SAFETY: a `SrvRawEntry<REQ_BUF, REPLY_BUF>` was written at `offset` just above.
+        // SAFETY: a `SrvRawEntry<REQ_BUF, REPLY_BUF, C>` was written at `offset` just above.
         unsafe {
-            self.arm_entry_wake::<SrvRawEntry<REQ_BUF, REPLY_BUF>>(slot, offset, |e, w| {
+            self.arm_entry_wake::<SrvRawEntry<REQ_BUF, REPLY_BUF, C>>(slot, offset, |e, w| {
                 nros_rmw::ServiceTrait::register_waker(&e.handle, w)
             })
         };

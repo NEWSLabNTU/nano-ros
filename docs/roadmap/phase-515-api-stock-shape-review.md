@@ -60,7 +60,7 @@ Each was left without a phase when its finding phase closed.
 | [2024](../issues/archived/2024-parameter-event-handler.md) — no `ParameterEventHandler` (**resolved 2026-10-25**, hosted C++) | low | P6 |
 | [1942](../issues/archived/1942-rclrs-service-info-no-counterpart.md) — no `ServiceInfo` for a service callback (**resolved 2026-10-26**) | low | R7 |
 | [2080](../issues/archived/2080-cpp-parameter-event-from-event-helpers.md) — `ParameterEventHandler::get_parameter(s)_from_event` (P6's residue; **resolved 2026-10-26**) | low | P6 |
-| [2081](../issues/2081-c-abi-service-request-info.md) — C-ABI backends report no `ServiceInfo` (R7's residue, filed 2026-10-26) | low | R7 |
+| [2081](../issues/archived/2081-c-abi-service-request-info.md) — C-ABI backends report no `ServiceInfo` (R7's residue; **resolved 2026-10-26**) | low | R7 |
 | [2029](../issues/archived/2029-action-server-cancel-all-before.md) — cancel-all / cancel-before answer `UNKNOWN_GOAL_ID` (resolved 2026-10-24) | low | X1 |
 
 ## Decisions
@@ -341,9 +341,18 @@ id and timestamps; ours passes the request alone. **Resolved 2026-10-26:**
 `Node::create_service_with_info` and `node.service(name).service_info()`; seam
 `ServiceTrait::request_info`, re-exported there as `ServiceRequestInfo` so it
 never shares a name with the seam's service descriptor again. zenoh reports
-`request_id` + `source_timestamp` from the query attachment; Cyclone and the
-other C-ABI backends report nothing until the C `take_request` slot carries it
-(issue 2081). `rust:ServiceInfo` is `divergence` / `adopt-bounded`.
+`request_id` + `source_timestamp` from the query attachment.
+`rust:ServiceInfo` is `divergence` / `adopt-bounded`. **Residue resolved
+2026-10-26
+([issue 2081](../issues/archived/2081-c-abi-service-request-info.md)):** the
+vtable's appended `take_request_with_info` slot carries an
+`rmw_service_info_t`; Cyclone DDS reports `request_id` + `source_timestamp`
+(stock `rmw_cyclonedds_cpp`'s layout), XRCE-DDS reports `request_id` (the
+Agent's `SampleIdentity`). The C and C++ callbacks get the id too:
+`rclc_executor_add_service_raw_with_request_id` and rclcpp's three-argument
+handler's request header. Residue: XRCE's slot is not yet measured against an
+Agent (issue 2088), and the generated typed C service path has no request-id
+flavour (issue 2089).
 
 **R8 — open renames (33).** `UndeclaredParameters` → `Parameters`,
 `GoalId` → `GoalUuid`, `CancelReturnCode`, `QoSProfile::{deadline,lifespan,

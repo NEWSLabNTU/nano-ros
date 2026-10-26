@@ -306,6 +306,47 @@ typedef struct rmw_message_info_t {
     bool from_intra_process;
 } rmw_message_info_t;
 
+/** Width of `rmw_request_id_t::writer_guid`, in bytes — upstream's `int8_t[16]`.
+ *
+ *  Issue 2081. NOT `RMW_GID_STORAGE_SIZE` (24): upstream keeps the request id's
+ *  GUID and the publisher gid at different widths, and so does this ABI. */
+#define RMW_REQUEST_ID_WRITER_GUID_SIZE 16u
+
+/* Issue 2081 — the API headers (`<rclc/detail/request_id.h>`, rclcpp's
+ * `service.hpp`) declare the SAME struct for a service callback, under the same
+ * guard, so a translation unit that reaches two of them sees one definition. */
+#ifndef NROS_RMW_REQUEST_ID_T_DEFINED
+#define NROS_RMW_REQUEST_ID_T_DEFINED
+/** Identity of one service request — upstream `rmw_request_id_t`, field for
+ *  field.
+ *
+ *  `sequence_number` is the number the CLIENT assigned to the request, which
+ *  together with `writer_guid` makes the pair unique across clients. It is not
+ *  the backend's reply-correlation token (`take_request_with_info`'s
+ *  `seq_out`), and the two need not agree. */
+typedef struct rmw_request_id_t {
+    /** The requesting client's identity. All zero = not reported. */
+    int8_t writer_guid[16];
+    /** The client-assigned sequence number of this request. */
+    int64_t sequence_number;
+} rmw_request_id_t;
+#endif
+
+/** Per-request metadata — upstream `rmw_service_info_t`, field for field.
+ *
+ *  Issue 2081. Filled by `take_request_with_info`. As in `rmw_message_info_t`,
+ *  a field the backend cannot report is ZERO: a timestamp of 0 means "not
+ *  stamped", and an all-zero `request_id.writer_guid` means the request id is
+ *  not reported. The runtime turns each into `None`, never into a value. */
+typedef struct rmw_service_info_t {
+    /** Client's clock when the request was sent, ns. 0 = not reported. */
+    rmw_time_point_value_t source_timestamp;
+    /** Server's clock when the request was received, ns. 0 = not reported. */
+    rmw_time_point_value_t received_timestamp;
+    /** Who sent the request. */
+    rmw_request_id_t request_id;
+} rmw_service_info_t;
+
 /** Liveliness kind values for `rmw_qos_profile_t::liveliness_kind`.
  *
  *  Upstream's numbering (W5/B2). `MANUAL_BY_NODE` and `MANUAL_BY_TOPIC` were

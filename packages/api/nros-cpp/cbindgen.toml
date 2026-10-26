@@ -95,6 +95,9 @@ exclude = [
     # phase-488 — the capturing variant, same reason (`RawServiceCallback`).
     # Declared locally in service.hpp.
     "nros_cpp_service_server_register_capturing",
+    # issue 2081 — the request-id variant, same reason
+    # (`RawServiceRequestIdCallback`). Declared locally in service.hpp.
+    "nros_cpp_service_server_register_with_request_id",
     # Phase 189.M3.3.f — same reason (`RawResponseCallback` alias); declared
     # locally in client.hpp. (`nros_cpp_service_client_send_on_handle` takes no
     # callback, so it stays in the cbindgen output.)

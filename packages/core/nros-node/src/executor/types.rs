@@ -1434,6 +1434,58 @@ pub type RawServiceCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 ) -> bool;
 
+/// Issue 2081 — upstream `rmw_request_id_t`, as a C or C++ request-id service
+/// callback receives it (`RawServiceRequestIdCallback`).
+///
+/// Field for field the ABI's `rmw_request_id_t` (`nros/rmw_entity.h`), which
+/// the API headers re-declare under one guard. A request whose backend did not
+/// report an id carries all zeros, the ABI's spelling of "not reported".
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RawRequestId {
+    /// The requesting client's identity; all zero = not reported.
+    pub writer_guid: [i8; 16],
+    /// The client-assigned sequence number of the request.
+    pub sequence_number: i64,
+}
+
+impl RawRequestId {
+    /// The id of `info`'s request, or all zeros when the backend reported none.
+    pub fn from_service_info(info: &nros_core::ServiceInfo) -> Self {
+        match info.request_id {
+            Some(id) => {
+                let mut writer_guid = [0i8; 16];
+                for (dst, src) in writer_guid.iter_mut().zip(id.writer_guid.iter()) {
+                    *dst = *src as i8;
+                }
+                Self {
+                    writer_guid,
+                    sequence_number: id.sequence_number,
+                }
+            }
+            None => Self::default(),
+        }
+    }
+}
+
+const _: () = assert!(core::mem::size_of::<RawRequestId>() == 24);
+
+/// Issue 2081 — [`RawServiceCallback`] that also receives the request's
+/// [`RawRequestId`] — rclc's `rclc_service_callback_with_request_id_t`
+/// argument order (request, request id, response), in CDR bytes.
+///
+/// # Safety
+/// As [`RawServiceCallback`]; `request_id` is valid for the call only.
+pub type RawServiceRequestIdCallback = unsafe extern "C" fn(
+    req: *const u8,
+    req_len: usize,
+    request_id: *mut RawRequestId,
+    resp: *mut u8,
+    resp_cap: usize,
+    resp_len: *mut usize,
+    context: *mut core::ffi::c_void,
+) -> bool;
+
 /// Raw service-client response callback.
 ///
 /// Invoked by the executor's arena dispatch when a previously-sent
