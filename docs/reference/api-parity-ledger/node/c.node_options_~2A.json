@@ -1,0 +1,6 @@
+{
+  "key": "c:node_options_*",
+  "bucket": "theirs-only",
+  "verdict": "divergence",
+  "why": "`rcl_node_options_t` is built, COPIED and FINALISED before `rcl_node_init` consumes it; that lifecycle is what collapses here. Ours (`rcl_node_options_t`, `nros_generated.h:1972-2011`) is plain inline storage with no pointer fields, so it is stack-allocatable and memcpy-able and there is nothing to copy or free -- the same collapse `c:init_options_*` records one stage over. CORRECTED 2026-09-04 (phase-417): this row said domain, arguments and the rosout toggle are build-time decisions and that there is no options object at all. `rcl_node_options_t` ships, correlates `same`, and carries a RUNTIME `domain_id_override` alongside per-node `rmw_name`, `locator`, `namespace_` and `sched_context_id`. What rcl has and we do not is the copy/fini lifecycle, not the type."
+}

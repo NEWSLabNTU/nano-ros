@@ -1,0 +1,10 @@
+{
+  "key": "cpp:ServerGoalHandle",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_action/server.hpp",
+    "text": "Envelope: the handle names its server by address"
+  },
+  "verdict": "divergence",
+  "why": "issue 2015 (2026-10-24) -- LANDED as a HOSTED drop-in. `rclcpp_action::ServerGoalHandle<A>` (`packages/api/nros-cpp/include/rclcpp_action/server.hpp`) answers `get_goal_id`, `is_active`, `is_executing`, `is_canceling` on every build and, hosted, `get_goal` (the `std::shared_ptr<const Goal>` the goal callback was handed), `publish_feedback`, `succeed`, `abort`, `canceled` taking upstream's `std::shared_ptr`s; `SharedPtr` is `std::shared_ptr`. It is what `rclcpp_action::create_server`'s cancel and accepted callbacks receive. THE BOUND: the handle is a heap token over `(server, goal id)`; every call forwards to `Server<A>` keyed by the id and the goal's lifecycle stays in the server's static arena (RFC-0019), so the status answers come from that arena (`for_each_active_goal`), and a terminal goal reads `Unknown`/inactive. It names its server by address: the server must not move while a handle is in use (a `SharedPtr` does not move it). Used from the executor's task only -- a handle driven from a thread the application started races the executor (RFC-0002, no lock on a one-level image), which is why the stock `std::thread{...}.detach()` in `handle_accepted` stays a documented edit. Freestanding: no allocator, so `SharedPtr` is refused (`NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`) and `Server<A>::succeed(goal_id, result)` etc. are the form. `execute()` (issue 2027) moves an ACCEPTED goal to EXECUTING through `Server<A>::execute(goal_id)` and publishes the status array, on every build; upstream raises on a goal that is not ACCEPTED, this changes nothing then. `create_server` executes an `ACCEPT_AND_EXECUTE` goal before `handle_accepted`, as upstream's server does.\n\nEARLIER ROW (superseded, phase-417): the C++ answer was `complete_goal` / `for_each_active_goal` on the server; `get_goal` had no counterpart."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ServiceClientStorage",
+  "verdict": "extension",
+  "why": "the caller-owned byte buffer a component must declare for a raw, poll-style service client -- `alignas(8) uint8_t bytes[NROS_SERVICE_CLIENT_SIZE]`, app lifetime. It exists because there is no allocator: the client has to live somewhere the component owns, where rclcpp's `Node::create_client` returns a heap `SharedPtr`. USER-FACING -- `examples/workspaces/{cpp,mixed}/src/*_client_pkg` declare one and pass `client_.bytes`. Same shape as `cpp:ActionServerStorage` and `cpp:ActionClientStorage`, and one layer up as the `alignas(8)` inline arrays `cpp:Executor::create` records."
+}

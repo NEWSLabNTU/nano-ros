@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::set_error",
+  "verdict": "divergence",
+  "why": "the writer half of the `ok()` latch (RFC-0044 Q2), moved onto `nros::Node` by phase-427 W4. rclcpp has no counterpart because rclcpp THROWS: a failed entity or parameter creation inside a node constructor raises, and the caller either catches it or the process dies. We compile `-fno-exceptions`, so the constructor records the first failure here and the generated entry checks `ok()` post-construct and halts boot NAMING the failing node. It is PUBLIC where `ComponentNode::set_error` was protected: the out-ref `create_*` family reports through `Result`, so a derived node that wires its entities with it has no other way to join the same latch the entry reads. Idempotent on the FIRST failure, so the original diagnostic is not clobbered by whatever failed next. Issue #230 governs the memory ordering."
+}

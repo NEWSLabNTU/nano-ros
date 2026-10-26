@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Client::async_cancel_all_goals",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "an rclcpp_action client method the correlator folds onto `Client`; see the action stage."
+}

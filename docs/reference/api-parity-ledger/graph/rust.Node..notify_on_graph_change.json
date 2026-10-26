@@ -1,0 +1,6 @@
+{
+  "key": "rust:Node::notify_on_graph_change",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "resolves a `Promise` when a caller-supplied condition over the graph becomes true. Two independent reasons, and the first is already recorded: service/ declines `rust:Client::notify_on_service_ready` because it needs a future and a runtime to await it, where RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`) -- that is what makes a timeout reliable on a single-threaded transport. The second is that the graph-change edge it subscribes to does not fire: see `cpp:Event::Event`."
+}

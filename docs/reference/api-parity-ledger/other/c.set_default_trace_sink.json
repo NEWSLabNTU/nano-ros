@@ -1,0 +1,5 @@
+{
+  "key": "c:set_default_trace_sink",
+  "verdict": "extension",
+  "why": "the install-if-empty form of `c:set_trace_sink`, for an entry path's DEFAULT sink: the Zephyr tier runner installs its platform trace shim this way, so a sink the application installed earlier (from a `SYS_INIT`, before `main()`) is kept rather than replaced. Returns 1 when it installed the sink, 0 when one was already there or the tracing feature is off. rclc has no callback-level trace hook; see `c:set_trace_sink`."
+}

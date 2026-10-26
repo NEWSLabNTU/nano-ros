@@ -1,0 +1,9 @@
+{
+  "key": "rust:ParameterError",
+  "rename": {
+    "resolution": "re-verdicted `extension` -- follows its theirs-half rust:ParameterValueError, now declined; the rust:SetParameterResult 'contradiction' was shorthand for 'the surviving error type', not a naming claim",
+    "status": "resolved"
+  },
+  "verdict": "extension",
+  "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. The ours-only half of `rust:ParameterValueError`, now `declined`: one error type (`packages/core/nros-params/src/typed.rs:18`) spanning what rclrs splits into `ParameterValueError` and `DeclarationError`, plus `StorageFull` and `StringConversion` -- the two failures a fixed-capacity `heapless` store has and an allocating one does not. The blocker recorded here, that this contradicted `rust:SetParameterResult`, was NOT a real contradiction: that row writes its destination as `Result<(), ParameterError>` meaning 'the surviving error type, spelled as it is today', and its change is the REMOVAL of `SetParameterResult` (and of `is_success` and the panicking `From` impl), which says nothing about what the survivor is called. The two rows compose -- collapse first, and there is then one error type, this one."
+}

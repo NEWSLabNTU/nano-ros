@@ -1,0 +1,5 @@
+{
+  "key": "rust:EntityBounds::knob_caps",
+  "verdict": "extension",
+  "why": "phase-391 W5-endgame step 2c -- the knob-capped default, the always-works arm."
+}

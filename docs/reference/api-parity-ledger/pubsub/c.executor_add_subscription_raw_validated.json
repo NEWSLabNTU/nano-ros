@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_subscription_raw_validated",
+  "verdict": "extension",
+  "why": "phase-492 W4: the C API's road to RFC-0005's E2E integrity check (`safety-e2e`), which rclc has no counterpart for. It registers a byte subscription whose callback also receives the integrity verdict (sequence gap, duplicate flag, CRC result), the C twin of Rust's `create_subscription_for_callback_name_with_safety`. Before W4 a C component reached this only through the C++ FFI (`nros_cpp_subscription_register_validated`); W4 moved every C component onto the C API, so the C API needed its own entry rather than a component calling the C++ binding."
+}

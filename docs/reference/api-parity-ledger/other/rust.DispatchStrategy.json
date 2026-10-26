@@ -1,0 +1,5 @@
+{
+  "key": "rust:DispatchStrategy",
+  "verdict": "extension",
+  "why": "where a component's callbacks RUN: Inline (the executor's spin loop, the default), Deferred (a framework-owned task -- an RTIC dispatcher or an Embassy task dequeues and drives them), FromIsr (a reserved discriminant, not implemented). A component whose callbacks take RTIC locks must not run them from the spin task, and that is a property of the component, so it is declared with it. rclrs's answer to the same question is a callback group on a multi-threaded executor, which needs threads and a scheduler we do not have (RFC-0002)."
+}

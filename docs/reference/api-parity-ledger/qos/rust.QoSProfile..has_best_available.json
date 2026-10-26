@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::has_best_available",
+  "verdict": "extension",
+  "why": "issue 1973. Predicate for `does any field still ask to be resolved best-available` -- the three policy variants or the `DURATION_BEST_AVAILABLE_MS` window sentinel. The early-out that keeps `resolve_best_available_on` free on every create that did not ask (no graph walk), and the guard a test uses to assert the resolution happened before a backend saw the profile. rclrs exposes nothing equivalent for the reason `has_unresolved_system_default` gives: upstream resolves inside the loaded RMW, so there is no client-library state to ask about. A `const fn` over five comparisons."
+}

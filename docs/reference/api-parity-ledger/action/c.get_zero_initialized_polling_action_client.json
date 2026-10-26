@@ -1,0 +1,5 @@
+{
+  "key": "c:get_zero_initialized_polling_action_client",
+  "verdict": "extension",
+  "why": "the zero-initialiser of `rclc_polling_action_client_t`, in rcl's `rcl_action_get_zero_initialized_*` role. RFC-0022's polling tier for actions, as its own type since phase-487 W4 (RFC-0096 D9, the C half). Nothing dispatches it, so it has no arena slot and keeps its core inline. The C++ twin is `nros::PollingActionClient<A>`."
+}

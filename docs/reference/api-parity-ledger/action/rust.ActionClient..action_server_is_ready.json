@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionClient::action_server_is_ready",
+  "verdict": "extension",
+  "why": "RE-VERDICTED rename -> extension 2026-08-27 (phase-379 W5). This is the SURVIVING spelling of the pair, so `rename` — ours is the one that should change — is wrong for this item: `action_server_is_ready` is rclcpp_action's word (`Client::action_server_is_ready`) and our C's (`rclc_action_client_action_server_is_ready`, itself verdicted `extension`). The defect the pair records lives on the other half, `rust:ActionClientCore::is_server_ready`, which keeps `rename`. Extension for the reason every Rust action row gives: rclrs 0.5.1 ships no action API at all, so this is ours-only by construction. No code change. ORIGINAL ROW (verdict was `rename`): one of TWO spellings of this predicate in our Rust alone -- see `rust:ActionClientCore::is_server_ready` and `c:action_client_action_server_is_ready`."
+}

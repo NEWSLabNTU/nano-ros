@@ -1,0 +1,5 @@
+{
+  "key": "rust:LifecyclePollingNodeCtx",
+  "verdict": "extension",
+  "why": "the same state machine with `(void* ctx)` callbacks; this is the object the C API's opaque `rcl_lifecycle_state_machine_t` storage actually holds, and the one `Executor::register_lifecycle_node` drives. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+}

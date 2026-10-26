@@ -1,0 +1,5 @@
+{
+  "key": "c:action_goal_status_t",
+  "verdict": "divergence",
+  "why": "rcl's `action_msgs/msg/GoalStatus` C struct (goal_info + status byte). Ours splits the two: `rclc_goal_status_t` is the status ENUM and the stamped pair exists only inside the arena (`nros_core::GoalStatusStamped`), because a C caller never receives one -- the arena publishes the status topic itself. See `c:action_publish_status`."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "c:add_parameter_constraint_double",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc_parameter/rclc_parameter.h",
+    "text": "Advertised by `describe` and enforced on REMOTE writes."
+  },
+  "verdict": "divergence",
+  "why": "The double form of `c:add_parameter_constraint_integer`; same envelope."
+}

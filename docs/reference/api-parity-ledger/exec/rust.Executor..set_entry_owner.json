@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_entry_owner",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-476 W0 -- records which node registered an executor entry, so `release_node` can find it. rclcpp ties an entity's lifetime to its node through the `shared_ptr` ownership graph; ours registers into the executor's arena, so the node-to-entry relation is a recorded tag rather than an ownership edge."
+}

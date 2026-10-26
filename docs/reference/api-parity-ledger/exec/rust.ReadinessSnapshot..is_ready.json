@@ -1,0 +1,5 @@
+{
+  "key": "rust:ReadinessSnapshot::is_ready",
+  "verdict": "extension",
+  "why": "see `rust:ReadinessSnapshot`."
+}

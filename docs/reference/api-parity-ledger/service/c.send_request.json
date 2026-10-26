@@ -1,0 +1,15 @@
+{
+  "key": "c:send_request",
+  "provides": [
+    "rclc_client_send_request_async",
+    "rclc_polling_client_send_request_raw",
+    "rclc_polling_client_send_request_raw_seq"
+  ],
+  "rename": {
+    "category": "B",
+    "resolution": "Not a rename. The word `send_request` already matches and so does the free-function shape; the row's remaining argument rested on a symbol spelling that does not exist and on a precedent that is itself `declined`. Re-verdicted to divergence naming the real differences (bytes not `const void *`; no out sequence number, one call in flight). No code change; no target name invented.",
+    "status": "resolved"
+  },
+  "verdict": "divergence",
+  "why": "CORRECTED 2026-08-26 (phase-379 W5), re-verdicted rename -> divergence, with two factual errors fixed.\n(1) There is no bare `nros_client_send_request` -- the brace spelling `nros_client_send_request{,_async,_raw}` claimed one. Verified word-boundary, repo-wide: the C API ships exactly `rclc_client_send_request_async(client, request_data, request_len)` (executor-registered client) and `nros_client_send_request_raw(client, data, len)` (L1 polling-mode client). The `_async` / `_raw` split is two client MODES, not two spellings of one call.\n(2) 'only the free-function shape differs' is wrong the same way `c:publish` was: both of ours ARE free functions taking the client first, exactly rcl's shape. `nros_client_` is a module prefix -- rcl uses the identical construction for `rcl_client_fini` / `rcl_client_request_publisher_get_actual_qos`. And the chain of precedent argues the other way in any case: `c:get_zero_initialized_client` defers to `c:get_zero_initialized_publisher`, which is verdict DECLINED, i.e. it argues for KEEPING our spelling.\nWhat actually differs, and the constraint for each: `rcl_send_request(client, ros_request, sequence_number)` takes a typed `const void *` plus an OUT sequence number. Ours take bytes (`const uint8_t *`, `size_t`) because there is no runtime typesupport dispatch and no allocator to serialize into -- the same reason `c:publish` splits. And neither returns a sequence number because a nano-ros client keeps ONE call in flight (the `in_flight` flag and `reset_in_flight()` on the handle, `nros-node/src/executor/handles.rs`) rather than a correlation table; the backend does hand one back since issue 0778 and the raw handle drops it explicitly rather than by omission. Correlating replies across a client restart is the `rust:RequestId` divergence, one layer down.\n\nissue 2009 (2026-10-23) -- the out sequence number now exists on the polled road: `rclc_polling_client_send_request_raw_seq(client, data, len, &sequence_number)` (`c:polling_client_send_request_raw_seq`), so a C caller can keep several requests in flight and match replies the way `rcl_send_request` callers do. The executor-registered client (`rclc_client_send_request_async`) still keeps ONE call in flight, and since issue 2009 it accepts only the reply naming that call's id: a timed-out call's late reply is dropped rather than answering the next call."
+}

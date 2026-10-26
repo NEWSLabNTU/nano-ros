@@ -1,0 +1,6 @@
+{
+  "key": "cpp:PollService::send_reply",
+  "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename",
+  "verdict": "extension",
+  "why": "the deprecated `send_reply` spelling of `cpp:PollService::send_response`, carried across the W5 split with its `[[deprecated]]` attribute intact. Substantive verdict at `cpp:Service::send_response`.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename."
+}

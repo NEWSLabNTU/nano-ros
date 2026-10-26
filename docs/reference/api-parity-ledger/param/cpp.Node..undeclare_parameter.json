@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Node::undeclare_parameter",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+    "text": "throws; ours reports (RFC-0089's error-channel rule"
+  },
+  "verdict": "divergence",
+  "why": "SHIPPED phase-417 W4.a. `rclcpp::Node::undeclare_parameter(name)` forwards to `ParameterServer::remove` through `nros_cpp_node_undeclare_param`, on the one store, so the slot is freed for a later declaration and a sibling node's identical name is untouched. The envelope: upstream returns `void` and THROWS `ParameterNotDeclaredException`; ours returns `nros::Result` and answers `NOT_FOUND`, which is RFC-0089's error-channel rule (there are no exceptions here), not a choice made for this verb. A ported call site compiles either way; one that relies on the throw to skip the rest of a block does not."
+}

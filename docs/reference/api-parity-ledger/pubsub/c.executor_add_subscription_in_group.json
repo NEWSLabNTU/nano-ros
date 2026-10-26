@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_subscription_in_group",
+  "verdict": "extension",
+  "why": "adds a subscription to a named callback group, which rclc has no concept of (rclcpp does -- see `cpp:Node::create_callback_group` in the exec stage). Needed because RFC-0002 maps groups onto RTOS priority tiers. Since phase-487 W1 it takes `callback` and `context` as `rclc_executor_add_subscription_raw` does: the subscription struct no longer stores them, because the arena entry owns both."
+}

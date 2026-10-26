@@ -1,0 +1,5 @@
+{
+  "key": "rust:ACTION_SERVER_INTERNAL_SIZE",
+  "verdict": "extension",
+  "why": "see `rust:EXECUTOR_SIZE`."
+}

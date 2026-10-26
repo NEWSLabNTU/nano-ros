@@ -1,0 +1,6 @@
+{
+  "key": "rust:WaitableCount",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "how many slots of each kind a waitable needs -- the Rust face of `get_number_of_ready_*`. rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`."
+}

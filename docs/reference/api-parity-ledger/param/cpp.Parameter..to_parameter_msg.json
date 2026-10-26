@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Parameter::to_parameter_msg",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the inverse of `cpp:Parameter::from_parameter_msg`; same reason: the C++ surface names no generated `rcl_interfaces` message (no runtime typesupport)."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Server::goal_exists",
+  "verdict": "extension",
+  "why": "asks whether the server still knows a goal id. `rclcpp_action::Server` has no such member -- upstream's C++ tier hands the application an owning `ServerGoalHandle` per goal, so the question does not arise there; rcl's `rcl_action_server_goal_exists` is where it does, and C now answers it as `rcl_action_server_goal_exists`. Ours-only against rclcpp, shipped so the three languages agree on a capability rcl has. TRUE while the goal is active AND while its completed result is still retained, which is rcl's own window -- see `c:action_server_goal_exists`'s closure note in phase-417 W4.b for why that is wider than a status lookup."
+}

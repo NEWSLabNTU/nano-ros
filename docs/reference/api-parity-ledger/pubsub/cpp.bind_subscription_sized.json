@@ -1,0 +1,5 @@
+{
+  "key": "cpp:bind_subscription_sized",
+  "verdict": "extension",
+  "why": "phase-408. The escape hatch beside `bind_subscription`, for a type whose bound is unbounded or deliberately capped: the caller states the receive capacity instead of the type deriving it. rclcpp has no counterpart for the same reason as cpp:rx_size_bound — with an allocator there is no capacity for a caller to state."
+}

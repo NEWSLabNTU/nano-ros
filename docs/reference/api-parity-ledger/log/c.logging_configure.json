@@ -1,0 +1,5 @@
+{
+  "key": "c:logging_configure",
+  "verdict": "divergence",
+  "why": "rcl builds the logging system from `rcl_arguments_t*` (parsed argv) plus an `rcl_allocator_t`. Both constraints bite: an embedded image has no argv -- `rcl/arguments.h` is already excluded as plumbing for exactly that reason, and RFC-0045 bakes boot config instead -- and there is no allocator. Ours is `rclc_log_init()` (C) / `nros_log::init(&'static [&'static dyn LogSink])` (Rust): a `'static` sink list, no arguments, no allocation. Records raised before it runs are not lost -- `nros_log::early` holds them in a fixed ring and `init` drains them into whatever sinks the board chose."
+}

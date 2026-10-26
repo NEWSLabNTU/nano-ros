@@ -1,0 +1,5 @@
+{
+  "key": "c:names_and_types_t",
+  "verdict": "divergence",
+  "why": "the result CARRIER, and its shape is decided against upstream's already. Every rcl graph call takes an `rcl_allocator_t *` and fills a two-level allocating array; there is no allocator at this seam (one global `nros_platform_alloc`) and the graph has no bound a CALLER can know, so a 128 KiB image would have to reserve permanently for the worst graph it might ever meet. `rmw_vtable.h` enumerates through VISITORS instead -- `rmw_node_visit_fn`, `rmw_names_and_types_visit_fn`, `rmw_topic_endpoint_info_visit_fn`, every string BORROWED for the call, peak extra RAM one entry, and a bounded caller stops early by returning `false` (a normal outcome, not a truncation error). Constraint: no allocator. So there is no array type to `init`/`fini` and there will not be one; what is missing is the QUERIES that would drive the visitor -- see `c:get_node_names`."
+}

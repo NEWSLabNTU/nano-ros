@@ -1,0 +1,10 @@
+{
+  "key": "c:add_parameter_constraint_integer",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc_parameter/rclc_parameter.h",
+    "text": "Advertised by `describe` and enforced on REMOTE writes."
+  },
+  "verdict": "divergence",
+  "why": "phase-491 / RFC-0105: the C parameter API is rclc's `rclc_parameter_server_t` family under rclc's own names, over the executor's store (the one the six `rcl_interfaces` services read). rclc stores and advertises the range and never checks it. Ours is ONE store shared with rclcpp-shaped nodes, whose six services enforce the advertised range on every remote write, so a C node's range is enforced remotely too (RFC-0105 D7). The owner's local sets are not checked, as in rclc. Weaker in the documented, non-inverting direction: a remote write rclc would accept can be refused."
+}

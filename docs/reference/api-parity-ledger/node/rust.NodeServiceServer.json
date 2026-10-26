@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeServiceServer",
+  "verdict": "divergence",
+  "why": "a service server declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/linux/rust/talker/src/lib.rs` is the shape."
+}

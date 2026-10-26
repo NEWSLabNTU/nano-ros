@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::get_publisher_names_and_types_by_node",
+  "verdict": "divergence",
+  "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+}

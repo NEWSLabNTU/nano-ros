@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Publisher::make_shared",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "no allocator; see the `no-shared-ptr` rule. AMENDED 2026-09-21 (phase-456 W5): still declined, and now it is structural rather than a policy — `Publisher<M>::SharedPtr` is `nros::Owned<Publisher<M>>`, a value, so there is no refcounted type for a factory to make. `make_unique` likewise: `Owned<T>` IS unique ownership and `Publisher<M>::UniquePtr` is the same type as `SharedPtr`."
+}

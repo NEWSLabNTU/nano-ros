@@ -1,0 +1,5 @@
+{
+  "key": "cpp:has_derived_size_bound",
+  "verdict": "extension",
+  "why": "phase-408 / issue 0964. Asks whether a message type carries a DERIVED serialized-size bound, as opposed to the estimate `SERIALIZED_SIZE_MAX` states for every type including unbounded ones. It is the predicate the receive buffers branch on: derived -> use it, not derived -> keep today's behaviour. rclcpp has nothing to compare because with an allocator the question does not arise."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:PubMonitorCell",
+  "verdict": "extension",
+  "why": "one contracted publisher's counters, baked as a `static` so the hot path is an atomic bump. See `rust:MonitorSpec`."
+}

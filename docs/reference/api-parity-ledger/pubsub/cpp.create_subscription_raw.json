@@ -1,0 +1,5 @@
+{
+  "key": "cpp:create_subscription_raw",
+  "verdict": "extension",
+  "why": "the non-template function `cpp:bind_subscription_raw` is built on: register a raw `void(*)(const uint8_t*, size_t, void*)` on the executor that owns `node`, the executor owning the subscription so no caller-side storage object is needed. Public and documented, but PLUMBING in practice -- no in-tree caller writes it directly; every one goes through `bind_subscription_raw` or `bind_subscription`, which is what supplies the trampoline. rclcpp has no counterpart because its subscription owns a `std::function` and there is no raw-callback tier to expose."
+}

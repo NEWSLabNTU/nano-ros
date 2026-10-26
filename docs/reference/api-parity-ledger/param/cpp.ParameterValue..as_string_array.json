@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ParameterValue::as_string_array",
+  "verdict": "extension",
+  "why": "issue 2056: a nano-ros convenience on the value object, not in upstream's `ParameterValue` (which reads through `get<T>()` only; upstream's `as_*` are on `Parameter`). `rclcpp::Parameter`'s `as_*` forward to these, and a freestanding build has the scalar ones. A wrong-type read answers the zero value (see `cpp:ParameterValue`)."
+}

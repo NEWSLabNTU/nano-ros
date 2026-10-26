@@ -1,0 +1,5 @@
+{
+  "key": "rust:ServiceServer::service_hash",
+  "verdict": "extension",
+  "why": "see `rust:ServiceClient::service_hash`."
+}

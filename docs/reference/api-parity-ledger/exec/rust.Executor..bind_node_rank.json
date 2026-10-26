@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::bind_node_rank",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-509 P2 / RFC-0108 D2 -- seed a node's contract rank (0 = most urgent) before it is built, so its callbacks dispatch in rank order inside one executor instead of registration order. rclcpp's default executor orders by entity type and rclrs by registration; neither has a rank. The entry codegen emits it (FFI `nros_cpp_bind_node_rank`) from the derivation's normalised ranks; the sibling of `bind_node_name_sched` in the same node-name table."
+}

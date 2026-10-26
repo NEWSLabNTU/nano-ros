@@ -1,0 +1,5 @@
+{
+  "key": "c:action_client_poll",
+  "verdict": "extension",
+  "why": "drains the client's four reply channels once and dispatches the bound callbacks, without the executor. rclcpp_action has no counterpart because its executor always owns dispatch. See the pubsub stage's `cpp:PollingSubscription`."
+}

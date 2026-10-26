@@ -1,0 +1,5 @@
+{
+  "key": "rust:DEFAULT_MAX_METADATA_ENTITIES",
+  "verdict": "extension",
+  "why": "default capacity for entities in `MetadataRecorder`. Static because there is no allocator; public because a component with more than the default overrides it. See `rust:MetadataRecorder`."
+}

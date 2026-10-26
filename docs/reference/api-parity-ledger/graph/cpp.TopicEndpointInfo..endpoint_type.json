@@ -1,0 +1,5 @@
+{
+  "key": "cpp:TopicEndpointInfo::endpoint_type",
+  "verdict": "divergence",
+  "why": "returns `cpp:EndpointType`; `Invalid` on a default-constructed value. Member of `cpp:TopicEndpointInfo`; the verdict and the two constraints are on that row."
+}

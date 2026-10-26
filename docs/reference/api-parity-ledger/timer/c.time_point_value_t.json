@@ -1,0 +1,5 @@
+{
+  "key": "c:time_point_value_t",
+  "verdict": "divergence",
+  "why": "see `c:time_point_t`."
+}

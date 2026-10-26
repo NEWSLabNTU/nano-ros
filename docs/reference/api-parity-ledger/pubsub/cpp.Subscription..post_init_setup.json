@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Subscription::post_init_setup",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Publisher::post_init_setup`."
+}

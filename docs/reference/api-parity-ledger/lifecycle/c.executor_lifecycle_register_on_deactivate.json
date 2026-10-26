@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_lifecycle_register_on_deactivate",
+  "verdict": "extension",
+  "why": "see `c:executor_lifecycle_change_state`. The `Option_LifecycleCallbackFnCtx` defect that this row used to carry is FIXED (issue 0792): the `cb` parameter is now the named, nullable `rclc_lifecycle_callback_t` typedef."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_trigger_index",
+  "verdict": "extension",
+  "why": "phase-417 stage 3. Fire when the handle at the index stored in `obj` has data -- ROS 2 has no counterpart, because upstream's four built-in triggers are any / all / always / one-by-entity-pointer. This IS the behaviour `rclc_executor_trigger_one` had here before stage 3, moved to a name that does not claim upstream's contract (the ledger row for that gap said: 'if the index form is wanted as well, give it a DIFFERENT name'). Kept rather than deleted because our own doc comment recommended the index spelling, so an out-of-tree image may be using it; an image that knows its registration order pays no pointer comparison for the trigger. Naming the entity is the portable spelling and what a ported node writes."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:parameter_get_type",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-491 / RFC-0105: the C parameter API is rclc's `rclc_parameter_server_t` family under rclc's own names, over the executor's store (the one the six `rcl_interfaces` services read). The declared type, `RCLC_PARAMETER_NOT_SET` when undeclared; the local form of `~/get_parameter_types`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::defer_budget_to_kernel",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 2018 / RFC-0108 As-built -- hand a level's sched-context budget to the kernel that enforces it on the level's thread (NuttX SCHED_SPORADIC, Linux SCHED_DEADLINE), so the executor does not throttle the level a second time: one enforcer per level. No rclcpp/rclrs counterpart (no executor-side budgets). See `rust:Executor::set_level_sched_context`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeKey::new",
+  "verdict": "extension",
+  "why": "constructs a `rust:NodeKey` from a node-table index; see that row."
+}

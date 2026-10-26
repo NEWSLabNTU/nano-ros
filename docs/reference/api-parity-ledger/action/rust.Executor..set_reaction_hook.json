@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_reaction_hook",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): installs the hook (a C `fn(event, ctx)` plus its context) the executor calls when a supervised route passes its deadline, with the row's reaction id, index and mechanism; it also stands in for `set_fault_handler` on a `fault` deadline action when none is set. No rclrs counterpart -- ROS 2 has no contract monitors. See `rust:Executor::set_fault_handler`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::error_code",
+  "verdict": "divergence",
+  "why": "the raw error CODE of the first failure, or `0` when `ok()`. The other half of `cpp:ComponentNode::error_what`; see `cpp:ComponentNode::ok`. phase-427 W4: `nros::ComponentNode` is DELETED and this row moved onto the merged `nros::Node`. ComponentNode WRAPPED a node (RFC-0044 Q1 chose wrap over derive), so a component was not a `Node` and every verb had to be forwarded; the merged type IS one."
+}

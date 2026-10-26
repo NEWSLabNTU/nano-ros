@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSDuration",
+  "verdict": "divergence",
+  "why": "rclrs models every QoS duration as a tri-state enum -- `SystemDefault` (let the middleware pick), `Infinite`, `Custom(Duration)`. Ours is a plain `u32` of milliseconds with `0` as the infinite sentinel (`deadline_ms`, `lifespan_ms`, `liveliness_lease_ms`, identically in `rclc_qos_t` and `nros::QoS`). `SystemDefault` is the arm that cannot exist: RFC-0036 fixes the profile at COMPILE time against a backend linked at build time, so there is nothing to defer the choice to and nothing that could tell you afterwards what it chose. The `Infinite`/`Custom` split collapses into the sentinel, which costs the ability to express a genuinely zero window -- for deadline, lifespan and lease alike, zero and infinite both mean \"do not enforce\", so nothing is actually lost. The millisecond UNIT is the timer stage's rename (`rust:QoSProfile::deadline_duration`); this row is about the shape."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "cpp:ClientGoalHandle",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_action/client.hpp",
+    "text": "the handle is a heap token over the goal id"
+  },
+  "verdict": "divergence",
+  "why": "issue 2015 (2026-10-24) -- LANDED as a HOSTED drop-in. `rclcpp_action::ClientGoalHandle<A>` exists (`packages/api/nros-cpp/include/rclcpp_action/client.hpp`) with `get_goal_id`, `get_status`, `is_feedback_aware`, `is_result_aware`, and on a hosted build (`NROS_CPP_STD`) `SharedPtr` = `std::shared_ptr` plus the nested `WrappedResult` {goal_id, code, result}; it is what `async_send_goal`'s `SendGoalOptions` callbacks receive. THE BOUND, and the platform constraint behind it: the handle is a heap TOKEN over the goal id, not the owner of the goal's futures and feedback subscription -- the client keeps those (RFC-0021: no blocking futures; the per-goal state stays in the arena). A freestanding build has no allocator for the handle, so `SharedPtr` / `WrappedResult` are `detail::Refused<...>` there and any use is a compile error carrying `NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`, which names the goal-id-keyed form (`set_callbacks` + `send_goal_async`). `get_goal_stamp` is absent (see `cpp:ClientGoalHandle::get_goal_stamp`).\n\nEARLIER ROW (superseded): ours was a bare `uint8_t goal_id[16]`; no allocator for the shared handle, no futures."
+}

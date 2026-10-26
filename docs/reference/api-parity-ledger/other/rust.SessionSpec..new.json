@@ -1,0 +1,5 @@
+{
+  "key": "rust:SessionSpec::new",
+  "verdict": "extension",
+  "why": "see `rust:SessionSpec`."
+}

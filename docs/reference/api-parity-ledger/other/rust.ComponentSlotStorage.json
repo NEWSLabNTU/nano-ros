@@ -1,0 +1,5 @@
+{
+  "key": "rust:ComponentSlotStorage",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- the static a component class places to back its instances: `MAX_CLASS_INSTANCES` slots of `COMPONENT_SLOT_BYTES` each. Macro-emitted per class (`__NROS_COMPONENT_<pkg>_SLOT_STORE`); public so hand-rolled callers can place one too. Non-generic across the C ABI -- C components get theirs from the same macro shape (RFC-0018 component entry)."
+}

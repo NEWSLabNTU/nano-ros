@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Duration::from_nanoseconds",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "the name, the arity and the meaning all match; only the SPELLING of the parameter type differs. It read `arity-only` until phase-428 W6 normalised `rcl_{time_point,duration}_value_t` to `int64_t` -- a spelling is not a divergence -- after which it correlates `same`, which is what brings it under W6's other half (`same_shaped_divergences`) and is why it now carries a disposition. rclcpp takes rcl's `rcl_duration_value_t`, ours takes a plain `int64_t` -- the same 64-bit signed nanosecond count. This is the C++ half of the decision already recorded on `c:duration_value_t`: no_std gives the two languages no shared typedef to hang on, and the unit is named in the parameter (`nanoseconds`) rather than in a type, which is why the QoS accessors read `deadline_ms` rather than `deadline`. Introducing a `nros::duration_value_t` alias purely to make the correlator match would contradict that row."
+}

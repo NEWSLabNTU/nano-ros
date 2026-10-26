@@ -1,0 +1,5 @@
+{
+  "key": "cpp:State::valid",
+  "verdict": "extension",
+  "why": "phase-417 G6 — whether an id is a state nano-ros implements. Upstream needs no such question: its `State` is built from an `rcl_lifecycle` map entry, so an invalid one cannot be constructed. Ours is constructible from any `uint8_t` (the wire carries one), so the predicate is what stands between a bad id and a `nullptr` `label()`. Same shape and same reason as `cpp:Transition::valid`."
+}

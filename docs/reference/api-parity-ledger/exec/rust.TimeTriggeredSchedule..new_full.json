@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimeTriggeredSchedule::new_full",
+  "verdict": "extension",
+  "why": "see `rust:TimeTriggeredSchedule`."
+}

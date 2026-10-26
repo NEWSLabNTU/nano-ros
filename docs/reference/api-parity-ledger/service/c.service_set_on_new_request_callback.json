@@ -1,0 +1,5 @@
+{
+  "key": "c:service_set_on_new_request_callback",
+  "verdict": "divergence",
+  "why": "see the pubsub stage's `c:subscription_set_on_new_message_callback`."
+}

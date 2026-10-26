@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Client::Client<S>",
+  "verdict": "divergence",
+  "why": "constructed into caller-owned storage by `Node::create_client`; see the pubsub stage's `cpp:Publisher::Publisher<M>`."
+}

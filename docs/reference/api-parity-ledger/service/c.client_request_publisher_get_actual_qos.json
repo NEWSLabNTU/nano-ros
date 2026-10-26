@@ -1,0 +1,6 @@
+{
+  "key": "c:client_request_publisher_get_actual_qos",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "see `c:service_request_subscription_get_actual_qos` — the client side of the same pair. LANDED phase-444 (issue 1437) — `rclc_client_request_publisher_get_actual_qos`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:BakedBootConfig::new",
+  "verdict": "extension",
+  "why": "The packer, `const fn` so `nros::main!` can use it in a `static` initializer -- there is no runtime to build the blob in; it has to exist at link time. Takes four `Option`s and derives `set_flags` from which are `Some`, which is how the `rust:BOOT_SET_*` presence bits get set without the caller naming them. A string longer than its fixed buffer is a const `panic!`, i.e. a COMPILE error, never a silent truncation -- a node name truncated at 64 bytes would be a device that is on the graph under a name nobody searches for. See `rust:BakedBootConfig`."
+}

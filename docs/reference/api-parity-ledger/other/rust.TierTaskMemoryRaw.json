@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierTaskMemoryRaw",
+  "verdict": "divergence",
+  "why": "issue 1598 -- one tier task's memory as a board receives it (raw pointers + sizes, `Copy`); exclusive because `TierTaskMemorySet::take` hands the rows out once. `NONE` means \"the port's default\". See `rust:TierTaskMemory`."
+}

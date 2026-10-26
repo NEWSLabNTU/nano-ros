@@ -1,0 +1,6 @@
+{
+  "key": "cpp:FixedString::FixedString<N>",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "default constructor: an empty string. Assignment from `const char*` (and, where `<string>` exists, `std::string`) copies and truncates at `N - 1`. See `cpp:FixedString`."
+}

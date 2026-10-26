@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::apply_override_value",
+  "verdict": "extension",
+  "why": "the ONE place a policy maps to the field it sets, so a new policy cannot reach some paths only. See `rust:QoSOverride`."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "rust:Context::from_env",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros/src/init.rs",
+    "text": "Bounded: [`InitOptions`] carries rclrs's one option, `domain_id`, and no"
+  },
+  "verdict": "divergence",
+  "why": "phase-427 W9 (2026-09-07) — LANDED. `Context::from_env(options: InitOptions) -> Result<Context, InitError>` (`packages/api/nros/src/init.rs`, by name): `default_from_env()` with the `InitOptions` applied on top — a `Some` domain replaces the resolved one, `None` keeps it, and a value above `DOMAIN_ID_MAX` is `InitError::DomainIdOutOfRange` rather than a backend failure later (the #206 rule).\n\nADOPT-BOUNDED, and the envelope is `rust:InitOptions`'s: the options object carries the one field rclrs's does (`domain_id`), so the call a tutorial writes ports unchanged, while any option rclrs grows later is absent here and the compiler says so. Same platform constraint as `rust:Context::default_from_env` — freestanding, the base it overrides is the BAKED context, stated on the type. Tests: `from_env_honours_the_domain_override`, `from_env_with_no_override_keeps_the_env_value`, `from_env_rejects_an_out_of_range_override` (hosted, `--features env,std`); `freestanding_default_from_env_is_the_bake` (`--features alloc`).\n\nHistory: `declined` + `absent` (phase-428 Q1: the domain arrived through the boot-config ladder, not an options object); surveyed and kept by the phase-428 closure; decided 2026-09-07 (RFC-0089 \"Context and `init`, settled\") and landed.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the method's rustdoc stated only the override rule; it now states the one-option `InitOptions`, the `DomainIdOutOfRange` refusal and the freestanding BAKED base."
+}

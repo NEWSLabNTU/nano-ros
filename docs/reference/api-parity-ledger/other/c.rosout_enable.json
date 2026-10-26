@@ -1,0 +1,6 @@
+{
+  "key": "c:rosout_enable",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "starts queueing log records for `/rosout`, scoped by the image's ROS release (RFC-0102 D4); `RCL_RET_ERROR` if the queueing sink could not be registered. Upstream's equivalent runs inside `rcl_init`. Part of the `/rosout` bridge from C (issue 1589, `<rclc/rosout.h>`); the Rust twin is `nros::rosout`. Links in every image and answers `RCL_RET_UNSUPPORTED` without the `rosout` capability."
+}

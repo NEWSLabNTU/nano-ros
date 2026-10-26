@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimerHandle",
+  "verdict": "divergence",
+  "why": "an index into the executor's static entity table; see the pubsub stage's `rust:PublisherHandle`."
+}

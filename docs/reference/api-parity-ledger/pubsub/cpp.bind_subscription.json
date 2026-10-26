@@ -1,0 +1,5 @@
+{
+  "key": "cpp:bind_subscription",
+  "verdict": "extension",
+  "why": "RFC-0043's component seam, and USER-FACING: every C++ example workspace writes it by hand in a component's `configure(Node&)` -- `::nros::bind_subscription<Int32, Listener, &Listener::on_msg>(node, \"/chatter\", this)` -- and `nros new` scaffolds it. It binds a component MEMBER function as the subscription callback BY IDENTITY, with the component pointer carried as the executor `ctx` and a compile-time-generated trampoline; no callback name appears anywhere. rclcpp needs no equivalent because `create_subscription(topic, qos, std::bind(&Listener::on_msg, this, _1))` allocates a `std::function`, and there is no allocator here. RFC-0044's `cpp:ComponentNode::create_subscription` wraps this; both tiers are supported and the `bind_*` one is the fallible `Result`-returning option."
+}

@@ -1,0 +1,12 @@
+{
+  "key": "c:event_set_callback",
+  "provides": [
+    "rclc_subscription_set_liveliness_changed_callback",
+    "rclc_subscription_set_requested_deadline_missed_callback",
+    "rclc_subscription_set_message_lost_callback",
+    "rclc_publisher_set_liveliness_lost_callback",
+    "rclc_publisher_set_offered_deadline_missed_callback"
+  ],
+  "verdict": "divergence",
+  "why": "rcl's listener form: one untyped `rmw_event_callback_t` per event OBJECT, invoked with an unread COUNT so the caller then goes and takes the payload. Ours delivers the payload straight to a typed per-event callback on the entity (`rclc_event_liveliness_changed_cb_t`, `rclc_event_subscriber_count_cb_t`), so there is no count-then-take round trip and no event object to attach a listener to. rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
+}

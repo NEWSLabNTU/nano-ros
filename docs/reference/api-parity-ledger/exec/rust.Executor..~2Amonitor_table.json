@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::*monitor_table",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "installs and reads the RFC-0052 contract-monitor table -- per-entity rate and deadline expectations, baked by codegen into a `&'static [MonitorSpec]`. It is a table rather than a registration call because it must be a compile-time constant in flash on a target with no allocator. rclcpp's nearest is per-entity QoS deadline events; this is the whole system's contract in one place, which is what an on-target safety monitor needs."
+}

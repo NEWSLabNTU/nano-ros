@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Server::for_each_active_goal",
+  "verdict": "extension",
+  "why": "visits every goal live in the arena with its status, taking a stateless function pointer (no `std::function`, no allocator). It exists because our goal callback cannot hand back an owning handle the way rclcpp_action's accepted callback does, so this is how a C++ or Rust user learns which goals are outstanding. rclcpp's nearest is `rcl_action_server_get_goal_handles`; see `c:action_server_get_goal_handles`.\n\nphase-428 (RFC-0089): re-keyed from `cpp:ActionServer::for_each_active_goal` by the namespace flip -- same row, same reasoning, the key follows the type name."
+}

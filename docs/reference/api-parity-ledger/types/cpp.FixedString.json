@@ -1,0 +1,6 @@
+{
+  "key": "cpp:FixedString",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`nros::FixedString<N>` (`<rclcpp/fixed_string.hpp>`): a fixed-capacity NUL-terminated string, layout-identical to `char[N]`. Codegen emits a message's bounded/unbounded string field as one where rosidl emits `std::string`, because the field crosses the C ABI by value and a freestanding target has no `std::string` (RFC-0022, RFC-0096). rclcpp has no counterpart type -- it IS `std::string` there -- so this is ours. On the extracted surface since issue 1682, when `rclcpp::Logger` began owning its name in one (`<rclcpp/logging.hpp>` now includes this header)."
+}

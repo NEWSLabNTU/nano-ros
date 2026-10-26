@@ -1,0 +1,5 @@
+{
+  "key": "c:duration_value_t",
+  "verdict": "divergence",
+  "why": "rcl's duration is a distinct signed nanosecond type. Ours are `uint64_t` milliseconds at the C API's timer entry points and a `TimerDuration` in Rust -- the unit is named in the parameter rather than in a typedef. This is why the QoS accessors read `deadline_ms` rather than `deadline`; see the qos stage."
+}

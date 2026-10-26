@@ -1,0 +1,5 @@
+{
+  "key": "c:accepted_callback_t",
+  "verdict": "divergence",
+  "why": "the callback is bound to the ENTITY at creation (RFC-0041), so its type belongs to the action server/client rather than to the executor's add call. rclc's counterparts are passed to `rclc_executor_add_action_server` / `_client` -- the `executor-owns-no-entity-storage` rule, seen as a type. See the pubsub stage's `c:subscription_callback_t`. RESOLVED (issue 0796): our three languages agree again. C takes this third callback at `rcl_action_server_init`, Rust takes it at `DeclaredNode::create_action_server_with_callbacks(goal, cancel, accepted)`, and `nros::ActionServer<A>` now has `set_accepted_callback` / `set_accepted_callback_with_ctx` -- matching its existing per-callback setter shape rather than C's all-at-once init. Until then a C++ user who returned ACCEPT_AND_DEFER was never told the goal had been accepted, which is the point at which a deferred goal is supposed to start executing. The hook fires after the accept reply has reached the client, for ACCEPT_AND_EXECUTE and ACCEPT_AND_DEFER alike. Phase 379 W3."
+}

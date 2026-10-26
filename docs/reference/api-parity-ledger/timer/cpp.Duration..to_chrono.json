@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Duration::to_chrono",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "converts to a `std::chrono::duration`. `<chrono>` is not available in the freestanding builds; `TimerDuration` in Rust and `uint64_t` milliseconds in C are the units the API uses."
+}

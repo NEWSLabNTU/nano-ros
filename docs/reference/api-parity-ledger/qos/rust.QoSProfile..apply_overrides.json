@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::apply_overrides",
+  "verdict": "extension",
+  "why": "the fold itself, at `create_publisher`/`create_subscription` time. See `rust:QoSOverride`."
+}

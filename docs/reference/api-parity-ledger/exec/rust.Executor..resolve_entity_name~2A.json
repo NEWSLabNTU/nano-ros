@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::resolve_entity_name*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "resolves a source name for a node: ROS 2 expansion (`~`/relative to FQN) plus the node's remap rules, handing back the resolved topic/service. It is public because generated entry points and the C surface both resolve names through this one path rather than each concatenating strings. See `rust:Executor::declare_remap`.\n\nphase-467 Row 11 follow-through (2026-10-03) -- CORRECTED. This row said it applies \"the remap table\", one lookup. Since #1591 the table holds TWO tiers and this reads them through `nros_node::names::resolve_name_layered`: the launch rules `declare_remap` recorded for this node first, and only on no match the `--ros-args -r` rules (`RemapTier::Argv`, every node or the nodes of one name). Every road shares the split (`executor::spin::tier_rules`): this method for C and C++, `nros_node::ros_args::argv_fallback` for `nros::node!` components, and `NodeHandle`, which consulted no remap at all before that PR."
+}

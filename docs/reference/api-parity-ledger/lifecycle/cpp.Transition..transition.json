@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Transition::transition",
+  "verdict": "extension",
+  "why": "the id as `enum class LifecycleTransition` (issue 1099), for a caller who wants to `switch` on it. Upstream has no enum to convert to -- its ids are `lifecycle_msgs` integer constants -- so there is nothing for this to mirror. See `cpp:LifecycleTransition`."
+}

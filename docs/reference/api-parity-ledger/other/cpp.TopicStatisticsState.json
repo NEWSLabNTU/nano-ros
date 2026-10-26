@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TopicStatisticsState",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the on/off knob for rclcpp's per-subscription topic statistics, which measure message age and inter-arrival period and PUBLISH them as `statistics_msgs/MetricsMessage`. A user loses built-in latency/period telemetry. The project's answer is RFC-0052's on-target contract monitor instead (`nros::monitor`: a bounded table of specs checked in the executor, violations drained by the app) -- an image cannot afford a second publisher per subscription nor a rolling sample window per topic."
+}

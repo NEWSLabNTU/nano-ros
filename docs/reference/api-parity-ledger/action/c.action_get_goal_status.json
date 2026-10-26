@@ -1,0 +1,5 @@
+{
+  "key": "c:action_get_goal_status",
+  "verdict": "extension",
+  "why": "the authoritative per-goal status query, answered from the arena rather than from a field on the handle -- `RCLC_RET_NOT_FOUND` once the arena has retired the goal. rcl's counterpart is `rcl_action_goal_handle_get_status` on the handle object; our goal handle is a 16-byte UUID TOKEN, not an owning object: `rclc_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `rclc_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+}

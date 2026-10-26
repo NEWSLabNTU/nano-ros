@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorSemantics",
+  "verdict": "extension",
+  "why": "the rclc data-communication semantics choice -- interleaved (`RclcppExecutor`) versus Logical Execution Time, where every ready subscription is sampled once at spin start and the callbacks run off that snapshot. rclrs has no counterpart; rclc does (`rclc_executor_semantics_t`), and our C mirrors it, so this is the Rust face of a capability the C API already had. The scenario is determinism: LET makes a chain's output independent of how long an earlier callback in the same cycle took. OUR LANGUAGES DISAGREE: C has `rclc_executor_semantics_t` + `nros_executor_set_semantics` and Rust has `ExecutorSemantics`; C++ exposes neither -- `nros::Executor` has no semantics setter at all, so a C++ user cannot select LET."
+}

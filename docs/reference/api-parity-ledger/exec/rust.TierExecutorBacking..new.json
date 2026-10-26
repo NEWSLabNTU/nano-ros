@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierExecutorBacking::new",
+  "verdict": "divergence",
+  "why": "See `rust:TierExecutorBacking`. `const` so it can initialise the entry's `static`; uninitialised, so the static is `.bss` and costs no flash."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ClientHandle::ClientHandle<S>",
+  "verdict": "extension",
+  "why": "the handle's constructors: default, `nullptr`, and `{executor, handle_id}`. Ours-only for the reason at `cpp:ClientHandle`. The `nullptr` form exists because ported code writes `Client<S>::SharedPtr cli_ = nullptr;`. Same shape as `cpp:ServiceHandle::ServiceHandle<S>`."
+}

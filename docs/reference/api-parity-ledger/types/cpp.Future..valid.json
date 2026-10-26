@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Future::valid",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "issue 1996 -- `std::future::valid()`: true until the result is taken or the future is cancelled, both builds. The negation of the older ours-only `is_consumed`. Listed as `divergence` because the owning type is (`cpp:Future`); the method's contract is upstream's."
+}

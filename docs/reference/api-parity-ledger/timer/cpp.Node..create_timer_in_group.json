@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::create_timer_in_group",
+  "verdict": "extension",
+  "why": "the callback-group form of `create_wall_timer` (RFC-0047): the first parameter is a `CallbackGroup`, and the timer's callback runs on the tier that group maps to (RFC-0002). rclcpp passes the group as a trailing `CallbackGroup::SharedPtr` argument instead. See the pubsub stage's `cpp:Node::create_publisher_in_group`.\n\nphase-427 (the `_in_group` split) -- this row was `cpp:Node::create_timer_in` until the `_in` suffix carried two meanings on one class. `_in` is now the ours-only, storage-free shape only (`cpp:NodeWithTimers::create_wall_timer_in`); a first parameter of `CallbackGroup` takes the longer suffix. RFC-0089, \"The `_in` rule, amended\"."
+}

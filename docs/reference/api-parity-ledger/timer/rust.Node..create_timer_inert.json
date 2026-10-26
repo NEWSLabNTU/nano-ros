@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_timer_inert",
+  "verdict": "divergence",
+  "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
+}

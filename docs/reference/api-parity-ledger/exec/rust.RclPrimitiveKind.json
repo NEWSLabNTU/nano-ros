@@ -1,0 +1,6 @@
+{
+  "key": "rust:RclPrimitiveKind",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's discriminant for the above; ours is `nros_entry_kind_e` / `EntryKind` in the arena entry (RFC-0002 section 4.1). See `rust:RclPrimitive`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:guard_condition_clear",
+  "verdict": "extension",
+  "why": "clear the triggered flag WITHOUT dispatching -- the other half of `c:guard_condition_is_triggered`, and it reads that row's bound. C++ and Rust gained it in phase-417 W4.e; the sentence here used to say they lacked it \"for the same reason recorded there\", and the reason recorded there was the disagreement, not a decision."
+}

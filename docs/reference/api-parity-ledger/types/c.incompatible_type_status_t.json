@@ -1,0 +1,5 @@
+{
+  "key": "c:incompatible_type_status_t",
+  "verdict": "divergence",
+  "why": "issue 1972 — the incompatible-type payload, upstream `rmw_incompatible_type_status_t`; `uint32_t` where upstream has `int32_t`. See `c:matched_status_t`."
+}

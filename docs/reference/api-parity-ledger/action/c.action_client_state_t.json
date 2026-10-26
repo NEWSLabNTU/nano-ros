@@ -1,0 +1,5 @@
+{
+  "key": "c:action_client_state_t",
+  "verdict": "extension",
+  "why": "explicit entity lifecycle so double-init and use-after-fini return a code instead of being undefined, and so the L1 and L2 tiers are distinguishable at runtime. See the pubsub stage's `c:publisher_state_t`."
+}

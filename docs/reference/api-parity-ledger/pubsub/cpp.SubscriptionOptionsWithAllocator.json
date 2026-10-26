@@ -1,0 +1,6 @@
+{
+  "key": "cpp:SubscriptionOptionsWithAllocator",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "allocator plumbing. One global allocator (`nros_platform_alloc`); see the `no-allocator` rule in signature_rules.py."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ShutdownCallbackHandle::ShutdownCallbackHandle",
+  "verdict": "divergence",
+  "why": "Constructors of `nros::ShutdownCallbackHandle`. The TYPE corresponds to rclcpp's and reports as `same`; its members do not, because rclcpp's holds a `std::weak_ptr` to the callback and ours holds a `uint32_t` slot index. The platform constraint is no allocator: rclcpp's registration takes a `std::function<void()>` (a heap allocation per callback) and hands back a handle owning a `std::shared_ptr` to it. Ours is a fixed-capacity static table of `(extern \"C\" fn, void* context)` sized by `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` (default 2, small on issue 0460's precedent that a per-entity static slot is a cost every image pays), and the handle is the SLOT INDEX with its phase packed in so it cannot remove the other phase's callback. Issue 0790."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "cpp:ParameterEventCallbackHandle",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/parameter_event_handler.hpp",
+    "text": "The callback is TYPE-ERASED over the frame — upstream's member is typed to"
+  },
+  "verdict": "divergence",
+  "why": "issue 2024 (2026-10-25) -- LANDED on a HOSTED build: the owning handle `ParameterEventHandler::add_parameter_event_callback` returns, `ParameterEventCallbackHandle::SharedPtr` = `std::shared_ptr<ParameterEventCallbackHandle>`; dropping every copy unregisters, as upstream's does. THE BOUND: it has no public `callback` member. The callback is a heap `std::function<void(const uint8_t*, size_t)>` over the CDR frame behind a private pointer -- type-erased because without runtime typesupport this header cannot name `rcl_interfaces::msg::ParameterEvent` (the handler wraps the user's typed callback in it), and behind a pointer so the type has one layout on every build (`check-cpp-capability-layout`). Hosted only, with the handler (no allocator on a freestanding build). See `cpp:ParameterEventHandler`.\n\nEARLIER ROW (superseded): gap, absent."
+}

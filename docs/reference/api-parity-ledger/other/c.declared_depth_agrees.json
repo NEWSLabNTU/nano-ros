@@ -1,0 +1,5 @@
+{
+  "key": "c:declared_depth_agrees",
+  "verdict": "extension",
+  "why": "phase-454 W10 -- the RUNTIME verdict over `c:declared_depth`, for a C call site whose topic or depth is not a constant expression. That is every `nros_cpp_qos_t` built in a helper function, which is what every C component in this tree writes: `RCLC_QOS_DEFAULT` is an `extern const` object resolved at link time and `rclc_c_qos_default()` is a function, so neither `.depth` can reach a `_Static_assert`. Non-zero when the subscription may proceed, which includes the UNDECLARED case, because absence is not a disagreement. It answers and does not print -- the registration seam `nros_cpp_subscription_register` is where the refusal and the diagnostic live. rcl has no counterpart for the reason `c:declared_depth` gives."
+}

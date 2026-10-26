@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecyclePublisher::make_shared",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the `shared_ptr` factories. No allocator and no `std::shared_ptr` on a freestanding target; every `make_shared` / `make_unique` in this API is declined for the same reason (see `cpp:LifecycleNode::make_shared`). A `LifecyclePublisher` is a member of the class that owns it or a file-scope static, which is also what the intrusive managed-entity list requires. FILED HERE, not in `lifecycle/`, because the topic classifier keys on the NAME: this is a lifecycle row and the shard is the taxonomy's answer, not a claim about the subject (same observation as `cpp:LifecycleNode::get_transition_graph`)."
+}

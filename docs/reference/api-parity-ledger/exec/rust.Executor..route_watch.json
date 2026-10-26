@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::route_watch",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-503 W7 -- a `RouteWatch` over the executor's supervised routes, which a port's timer or reaction thread reads from outside the spin thread, so a route the running spin already answered reads as answered at the timer's expiry. No rclrs counterpart. See `rust:Executor::route_next_due_us`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:EntityKind",
+  "verdict": "extension",
+  "why": "the entity role recorded for source metadata (Publisher, Subscription, Timer, ServiceServer, ServiceClient, ActionServer, ActionClient, Parameter). See `rust:EntityMetadata`."
+}

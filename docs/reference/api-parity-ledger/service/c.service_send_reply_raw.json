@@ -1,0 +1,13 @@
+{
+  "key": "c:service_send_reply_raw",
+  "rename": {
+    "category": "A",
+    "from": "nros_service_send_reply_raw",
+    "residue": "NONE since phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05). The forwarder was retained ON PURPOSE for one release and went in that batch.",
+    "status": "landed",
+    "to": "rclc_polling_service_send_response_raw"
+  },
+  "retired": "a deprecated alias, deleted after its one release; the row records the rename",
+  "verdict": "rename",
+  "why": "the deprecated `send_reply` spelling of `c:service_send_response_raw`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_service_send_response_raw`; this one survived one release as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `rclc/service.h`, so an out-of-tree C node that still named it kept compiling and got a diagnostic naming its replacement -- the same shape, and the same reasoning, as `c:param_declare_*`. That was source compatibility only: the forwarder had no external linkage, so `nros_service_send_response_raw` was the sole exported symbol throughout. RETIRED by phase-417 W-B5 (stage 6 step B, commit 4dc5caee9, 2026-09-05), together with `nros_service_send_response` (the pre-polling `RCL_RET_NOT_INIT` stub, forwarded so the un-suffixed name could not read like a second working entry point): `rclc/service.h` declares `nros_service_send_response_raw` alone, and the old spelling is an undeclared-identifier error. `service_deprecation_probe.c` was deleted with the forwarder, because an expected-failure compile whose identifier is gone passes while asserting nothing; `packages/api/nros-c/tests/compile/service_reply_entry_point.c` now pins the live signature alone, on the `just check c` lane. Retirement was deferred on purpose until then: the tree's deprecated items retire together on a version boundary, not as parity work (see `rust:BoardConfig::zenoh_locator` in boot/), and W-B5 was that boundary. Substantive verdict moved to `c:service_send_response_raw`. CORRECTED 2026-10-18: the live name is `rclc_polling_service_send_response_raw` -- phase-487 W2 renamed `nros_service_send_response_raw` when the polled service became its own type, `rclc_polling_service_t` -- so the substantive verdict is at `c:polling_service_send_response_raw`."
+}

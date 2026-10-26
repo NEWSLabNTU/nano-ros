@@ -1,0 +1,5 @@
+{
+  "key": "c:lifecycle_get_current_state",
+  "verdict": "extension",
+  "why": "Renamed 2026-08-26 (phase-379 W5) to `rclc_lifecycle_get_current_state`, with the C++ and executor-scoped spellings — see `cpp:LifecycleNode::get_current_state`. rclc reads the state straight out of the struct (`node->state_machine->current_state->id`). `rcl_lifecycle_state_machine_t` keeps the real state machine in an opaque `u64[]` so the C-visible layout stays fixed across a Rust-side change, so an accessor is required rather than optional. Same reason as the executor-scoped `c:executor_lifecycle_get_current_state`."
+}

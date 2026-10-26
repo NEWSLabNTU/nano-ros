@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Publisher::lowest_available_ipm_capacity",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "a query on rclcpp's intra-process manager; there is no intra-process manager here (`cpp:Publisher::get_intra_process_subscription_count`, declined)."
+}

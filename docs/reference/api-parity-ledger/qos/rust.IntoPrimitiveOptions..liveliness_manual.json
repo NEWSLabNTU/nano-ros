@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoPrimitiveOptions::liveliness_manual",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:IntoPrimitiveOptions`."
+}

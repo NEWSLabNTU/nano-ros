@@ -1,0 +1,6 @@
+{
+  "key": "c:interfaces__msg__Parameter",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`rcl_interfaces__msg__Parameter`, declared by `<rclc_parameter/rclc_parameter.h>` under rosidl's include guard with rosidl's member layout, so an rclc callback body reads `p->name.data` unchanged. Upstream's is generated message code, which the recorded surface excludes; that is why it reads ours-only."
+}

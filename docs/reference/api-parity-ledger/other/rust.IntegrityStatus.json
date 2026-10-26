@@ -1,0 +1,5 @@
+{
+  "key": "rust:IntegrityStatus",
+  "verdict": "extension",
+  "why": "the per-message verdict `validate` returns: sequence gap, duplicate flag, and CRC state as `Option<bool>` so \"no CRC present\" is distinguishable from \"CRC wrong\". See `rust:SafetyValidator`."
+}

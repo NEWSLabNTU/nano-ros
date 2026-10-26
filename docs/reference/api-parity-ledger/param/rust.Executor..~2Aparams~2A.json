@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::*params*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "See `rust:Executor::*parameter*` — the same family, for the members whose name is plural. phase-417 W4.a."
+}

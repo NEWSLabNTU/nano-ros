@@ -1,0 +1,6 @@
+{
+  "key": "c:lifecycle_init_get_available_states_server",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclc makes the user init each lifecycle server separately and hand it a context struct. `rclc_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. We also register five servers where rclc offers three, adding `~/get_available_transitions` and `~/get_transition_graph` so `ros2 lifecycle list` works against an embedded node."
+}

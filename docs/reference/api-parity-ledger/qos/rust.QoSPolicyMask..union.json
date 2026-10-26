@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSPolicyMask::union",
+  "verdict": "extension",
+  "why": "see `rust:QoSPolicyMask`."
+}

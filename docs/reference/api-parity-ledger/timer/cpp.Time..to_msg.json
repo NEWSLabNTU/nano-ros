@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Time::to_msg",
+  "verdict": "divergence",
+  "why": "converting a timestamp into a `builtin_interfaces/Time` for a message header is the single most common thing a publisher does; rclcpp spells it as an implicit `operator builtin_interfaces::msg::Time()`. We cannot: nros-cpp is a header-only library with no allocator and no dependency on any generated message crate, and message types here are generated per USER package (RFC-0023 / RFC-0067), so the client library cannot name the type it would convert to. A template that binds to the generated `sec`/`nanosec` struct is the same conversion without the dependency. `rust:Time::to_ros_msg` is the same call one language over, and it SHIPPED in phase-467 Q3: Rust has no structural bound, so the template becomes an authored trait codegen implements for the same `{ sec, nanosec }` shape (`rust:SecNanosecMsg`)."
+}

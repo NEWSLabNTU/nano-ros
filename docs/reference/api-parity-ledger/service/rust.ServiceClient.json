@@ -1,0 +1,5 @@
+{
+  "key": "rust:ServiceClient",
+  "verdict": "divergence",
+  "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. W4 F14, client half: rclrs spells it `rclrs::Client` (= `Arc<ClientState<T>>`). The `Arc`/live-node SHAPE is an allocator constraint; the NAME is a preference. See `rust:ServiceServer` for the full split. HOW A USER FINDS OUT: COMPILE ERROR — a ported rclrs file names upstream's identifier and it does not resolve. That is the good failure mode, which is why this is a finding about the RECORD rather than about the user's experience: the row must not claim a constraint it does not have. No disposition is written; which spelling survives is the phase-417 stage-6 rename decision, and a disposition entered here would pre-empt it. RFC-0036 forbids recording a PREFERENCE as a divergence, so this row says which it is rather than leaving the reader to infer it."
+}

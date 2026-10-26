@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Parameter",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/parameter_value.hpp",
+    "text": "value. There are no exceptions here (RFC-0018), so a wrong-type read answers"
+  },
+  "verdict": "divergence",
+  "why": "issue 2056 (2026-10-25), measured on Nav2's `nav2_velocity_smoother` @jazzy (phase-488 node 2) and over Autoware 0.45.1 (183 files name `std::vector<rclcpp::Parameter>`). Merged with issue 2024's hosted `Parameter` (#2648, the value a `ParameterEventHandler` callback receives), which now IS this type: one `rclcpp::Parameter` for the event handler, the node and the on-set callback. OVERRIDDEN, declined -> divergence/adopt-bounded. The recorded reason, \"no allocator\", is true of a freestanding build and false of the hosted (`NROS_CPP_STD`) build ported code uses. `rclcpp::Parameter` is a name plus an `rclcpp::ParameterValue`, a VALUE object over the executor's one store: `Node::get_parameter(name)` builds one from the store, and the on-set callback's is built from the proposed write. It exists in every arm with one layout (a heap pointer for the name); the name and the string/vector accessors are hosted methods. THE BOUND: a wrong-type `as_*` answers the zero value, not `ParameterTypeException` (no exceptions, RFC-0018). Previous text: rclcpp's parameter VALUE OBJECT: a name plus a type-tagged value, copied around by value and the currency of `set_parameters`, `get_parameters` and the on-set callback. Every accessor on it (`as_string`, `as_double_array`, `value_to_string`, `to_parameter_msg`) returns an owned `std::string` or `std::vector`, so the type cannot exist without an allocator. Our C++ passes values through the typed template methods instead (`ParameterServer::get_parameter<T>(name, out&)`), which is the out-param form of the same read. What a user loses: a heterogeneous parameter list. Note C and Rust both DO have the record type (`nros_parameter_t`, `nros_params::Parameter`) -- theirs holds the value inline rather than owning it."
+}

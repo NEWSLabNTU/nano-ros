@@ -1,0 +1,5 @@
+{
+  "key": "c:event_callback_t",
+  "verdict": "divergence",
+  "why": "an alias for `rmw_event_callback_t`, the untyped notify-with-a-count listener; see `c:event_set_callback`."
+}

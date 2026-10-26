@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Service::Service<S>",
+  "verdict": "divergence",
+  "why": "see `cpp:Client::Client<S>`."
+}

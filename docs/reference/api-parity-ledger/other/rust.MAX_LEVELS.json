@@ -1,0 +1,5 @@
+{
+  "key": "rust:MAX_LEVELS",
+  "verdict": "extension",
+  "why": "phase-509 P7 (RFC-0108 D8) -- the most levels an image can have. rclrs has no levels."
+}

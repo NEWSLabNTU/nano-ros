@@ -1,0 +1,6 @@
+{
+  "key": "rust:Node::commands",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's handle for spawning work onto the executor from inside a callback (`ExecutorCommands`). It exists to support async tasks and workers, which need a runtime and an allocator; RFC-0002 gives one executor per RTOS task and no way to spawn into it."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:get_current_signal_handler_options",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see install_signal_handlers."
+}

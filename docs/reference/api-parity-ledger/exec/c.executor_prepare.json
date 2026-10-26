@@ -1,0 +1,6 @@
+{
+  "key": "c:executor_prepare",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "rclc pre-allocates its `rcl_wait_set` from the handles registered so far, so a later `spin` does not allocate. There is no wait set (rcl's wait set; the reason is stated in full at `cpp:WaitSet`.) and the arena is sized at compile time, so there is nothing to pre-allocate: static entity storage: the executor's entity table is an arena sized at compile time (`NROS_EXECUTOR_MAX_HANDLES`) with no allocator behind it, and a `HandleId` is an index into it. Registration is one-way -- no slot is ever reclaimed and no handle is ever invalidated."
+}

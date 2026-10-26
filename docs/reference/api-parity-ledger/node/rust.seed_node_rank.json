@@ -1,0 +1,5 @@
+{
+  "key": "rust:seed_node_rank",
+  "verdict": "extension",
+  "why": "phase-509 P5 (RFC-0108 D2) -- seeds a ranked node's contract rank on the runtime's executor before its `register` creates the node, the Rust twin of `nros_cpp_bind_node_rank`. `nros::main!` emits it from the derivation's normalised ranks. rclrs has no contract rank and no rank-ordered dispatch to correlate it with. Doc-hidden in `nros::__macro`, with the other generated-entry seams."
+}

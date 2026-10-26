@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Node::create_timer",
+  "rename": {
+    "category": "B",
+    "resolution": "Not a rename: this is the name rclcpp uses for exactly this meaning. The name became available when W1 moved our wall timer off it.",
+    "status": "not-a-rename"
+  },
+  "verdict": "divergence",
+  "why": "phase-425 W4. The clock-taking timer as a NODE MEMBER: `Result create_timer(Timer& out, const Clock& clock, uint64_t period_ms, nros_cpp_timer_callback_t, void* ctx)` (`node.hpp:557`). Same verb as ROS 2 and the same meaning — bare `create_timer` is the form that takes a clock — but rclcpp humble offers it only as the FREE `rclcpp::create_timer`, whose two overloads take either a `NodeT` or a `shared_ptr<NodeBaseInterface> + shared_ptr<NodeTimersInterface>` pair. We have neither: RFC-0002 puts one executor per RTOS task and there is no interface-fragment layer, so the node IS the receiver. The free form existed too (`cpp:create_timer`, in the since-DELETED `std_compat.hpp`, `NROS_CPP_STD` only — it takes a `std::function` and a `std::chrono::duration`).\n\nNOT a `rename`: the name follows the receiver, and the receiver is the difference — the same reading the graph stage's `Executor::get_node_names` family records. NOT an `extension` either: ROS 2 has this capability, we did not invent it.\n\n`uint64_t period_ms` rather than a `std::chrono::duration` for the reason the whole family gives: a freestanding build has no `<chrono>`. Later ROS 2 distributions add `rclcpp::Node::create_timer` proper; when the recorded surface moves off humble, re-read this row — the receiver argument may stop being needed.\n\nphase-442 W2 (2026-09-11) — `std_compat.hpp` is DELETED, so any sentence above naming that header describes a spelling that no longer exists. It was a third orphaned vocabulary: free functions shadowing the `Node` methods a ported file calls, dead in every shipping configuration, and RFC-0096 removed the layer it belonged to. The always-available spelling is the method."
+}

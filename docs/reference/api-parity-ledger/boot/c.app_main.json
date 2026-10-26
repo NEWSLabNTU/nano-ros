@@ -1,0 +1,5 @@
+{
+  "key": "c:app_main",
+  "verdict": "extension",
+  "why": "`int nros_app_main(int argc, char** argv)` -- the entry symbol every nros C example defines, plus the `NROS_APP_MAIN_REGISTER()` macro that emits the right platform shim around it. rclc needs none of this because a desktop program writes `int main` and libc's startup calls it. The scenario is that the entry symbol is not portable across the RTOSes we target: Zephyr's kernel calls `int main(void)`, ESP-IDF/FreeRTOS/ThreadX/bare-metal startup chains call `void app_main(void)` after board init (network, executor arena, hardware), NuttX compiles with `-Dmain=<PROGNAME>_main` so nshlib can register the built-in, and a native build wants full `int main(int argc, char** argv)` pass-through. One user source builds on all of them and only the one-line registration knows which shim the linker expects. Note argc/argv are passed as `0, NULL` on every non-POSIX arm -- the signature is the portable shape, not a promise that arguments arrive."
+}

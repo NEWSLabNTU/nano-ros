@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoPrimitiveOptions::avoid_ros_namespace_conventions",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:IntoPrimitiveOptions`."
+}

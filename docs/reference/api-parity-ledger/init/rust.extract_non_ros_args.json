@@ -1,0 +1,6 @@
+{
+  "key": "rust:extract_non_ros_args",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "argv filtering; see `cpp:remove_ros_arguments`."
+}

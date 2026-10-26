@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::node*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "the executor's node TABLE -- `nodes`, `node`, `node_mut`, `node_id_by_name`, `node_session_mut`, `node_builder`. static entity storage: the executor's entity table is an arena sized at compile time (`NROS_EXECUTOR_MAX_HANDLES`) with no allocator behind it, and a `HandleId` is an index into it. Registration is one-way -- no slot is ever reclaimed and no handle is ever invalidated. A node is a record in a fixed table addressed by `NodeId`, not an `Arc<Node>` a caller keeps, so reaching one means asking the executor. RFC-0043/0044: the Rust API is a declarative component model. See `rust:Executor::create_node` and `cpp:Executor::node_builder`."
+}

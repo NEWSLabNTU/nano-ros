@@ -1,0 +1,5 @@
+{
+  "key": "c:lifecycle_callback_t",
+  "verdict": "extension",
+  "why": "`uint8_t (*rclc_lifecycle_callback_t)(void *context)` -- the named typedef for a lifecycle transition callback, added by issue 0792. rclc has no counterpart because it spells its callback inline as `int (*)(void)` at each of its four `rclc_lifecycle_register_on_*` declarations and never names the type. We name it for two reasons: it is the shape ALL TWELVE of our entry points share (the six standalone and the six executor-scoped), and naming it is what makes it expressible in C at all -- the unnamed cross-crate `Option<LifecycleCallbackFnCtx>` it replaced reached the header as an opaque struct passed by value. Same convention as `rcl_timer_callback_t` and `rclc_guard_condition_callback_t`. The `void *context` parameter itself is the `callback-bound-at-creation` divergence recorded on `c:lifecycle_register_on_configure`."
+}

@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Node::add_pre_set_parameters_callback",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "Jazzy's pre-set hook takes `std::vector<rclcpp::Parameter> &` and returns an owning handle — the shape `cpp:Node::add_on_set_parameters_callback` refuses, for the same reasons (no allocator, `cpp:Parameter` declined)."
+}

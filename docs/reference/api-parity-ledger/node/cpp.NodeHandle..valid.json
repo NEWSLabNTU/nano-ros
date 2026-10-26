@@ -1,0 +1,5 @@
+{
+  "key": "cpp:NodeHandle::valid",
+  "verdict": "divergence",
+  "why": "`executor != nullptr`. `ComponentNode`'s ctor checks it and sets `ok()=false` rather than throwing (`cpp:ComponentNode::ok`); rclcpp's nearest is `Context::is_valid`, which asks a different question of a different object. See `cpp:NodeHandle`."
+}

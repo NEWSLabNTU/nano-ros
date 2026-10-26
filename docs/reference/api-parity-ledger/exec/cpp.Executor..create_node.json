@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::create_node",
+  "verdict": "divergence",
+  "why": "static entity storage plus one session: a node is created BY the executor and its entities live in that executor's arena, so it cannot exist before one. rclcpp constructs a `Node` from a `Context` and later hands it to an executor with `add_node`. See `cpp:Executor::add_node` for the declined half and `c:executor_node_init` for the same divergence in C."
+}

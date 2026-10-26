@@ -1,0 +1,5 @@
+{
+  "key": "rust:ServiceTag",
+  "verdict": "extension",
+  "why": "names a declared service so a component's single `on_callback` can tell which one fired (RFC-0043). See the pubsub stage's `rust:SubscriptionTag`."
+}

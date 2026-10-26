@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Publisher::post_init_setup",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's two-phase construction: the base constructor cannot finish because the derived type's allocator is not known yet. Ours is created into caller storage in one call."
+}

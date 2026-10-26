@@ -1,0 +1,10 @@
+{
+  "key": "rust:Clock::new",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-core/src/clock.rs",
+    "text": "alone. Simulated time is ONE process-wide override, set with the associated"
+  },
+  "verdict": "divergence",
+  "why": "phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. rclrs's `Clock::new(ClockType) -> (Self, Option<ClockSource>)` hands back the clock AND, for a ROS_TIME clock, the `ClockSource` that DRIVES it — so the only way to obtain a simulatable clock upstream is to receive its source handle in the same expression. Ours (`packages/core/nros-core/src/clock.rs`, by name) is `pub const fn new(ClockType) -> Self`; time overriding is an ASSOCIATED function on the type instead (`Clock::set_ros_time_override`), i.e. one process-wide override rather than a per-clock handle.\n\nClause 1: a per-clock source is a shared owner (`Arc` upstream), and the terminal `core`/`core+alloc` targets have neither `Arc` nor a place to keep one per clock; `const fn new` is also what lets a `Clock` be a `static`. The bound is that sim-time is global here, not per-clock. LOUD: `let (clock, source) = Clock::new(ClockType::RosTime);` does not destructure a `Clock`. Sim-time semantics belong to phase-425; this row records only the shape.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: `Clock::new`'s rustdoc said only \"Create a new clock of the specified type\"; it now states the clock-only return, the process-wide override and why."
+}

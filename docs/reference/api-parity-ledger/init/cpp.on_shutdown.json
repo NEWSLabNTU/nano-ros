@@ -1,0 +1,5 @@
+{
+  "key": "cpp:on_shutdown",
+  "verdict": "divergence",
+  "why": "CLOSED as a gap by issue 0790: `nros::on_shutdown(cb, ctx)` now exists, so the names correspond and the row is arity-only rather than theirs-only. What still differs is the SIGNATURE, and the platform constraint is no allocator: rclcpp takes `std::function<void()>`, a heap allocation per callback, while a freestanding no-STL header takes a function pointer plus an opaque `context` and stores the pair in a fixed-capacity static table (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2). The `out` handle parameter is the third argument for the same reason rclcpp returns one -- so a callback can be removed -- but it is an out-param because this API does not throw and registration can fail with `Full`. The PRE-shutdown phase, which is the half a device actually needs, is `cpp:pre_shutdown` here and `cpp:Executor::add_pre_shutdown_callback` in exec/."
+}

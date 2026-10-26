@@ -1,0 +1,6 @@
+{
+  "key": "c:get_zero_initialized_context",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "there is no context type to zero-initialize. `rclc_support_get_zero_initialized` is the same idiom on the type we do have."
+}

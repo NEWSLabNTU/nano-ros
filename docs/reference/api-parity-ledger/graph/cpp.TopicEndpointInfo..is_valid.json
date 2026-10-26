@@ -1,0 +1,5 @@
+{
+  "key": "cpp:TopicEndpointInfo::is_valid",
+  "verdict": "divergence",
+  "why": "ours-only with no upstream counterpart: rclcpp has no default-constructed endpoint to distinguish, because it only ever hands one out of a vector it filled. Here the type is a value a caller may hold, so it has to be able to say it came from a visit. Member of `cpp:TopicEndpointInfo`; the verdict and the two constraints are on that row."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Client::prune_pending_requests",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/polling_client.hpp",
+    "text": "THE BOUND, for a backend that cannot assign ids only"
+  },
+  "verdict": "divergence",
+  "why": "issue 2009 (2026-10-23) -- RE-OPENED AS THIS ROW SAID IT WOULD BE (\"RE-OPEN ALL THREE if a correlation table is ever added\") and ADOPTED: declined/absent -> divergence/adopt-bounded. The poll client now keeps its requests in flight, keyed by sequence id, in `rclcpp::detail::PendingList`, so the verb has a subject. `rclcpp::PollClient<S>::prune_pending_requests()` forgets every pending request exactly as `remove_pending_request` forgets one -- each waiting future becomes invalid and its late reply is dropped -- and returns how many were pending, upstream's `size_t`. A future whose reply already arrived is not pending and keeps it. Divergence because it lives on the poll client (see `cpp:Client::remove_pending_request`); the bound is that verb's (an id-less backend only), written on its declaration. Held by `packages/api/nros-cpp/tests/compile/client_seq_correlation_runtime.cpp`.\n\nPrevious text (2026-09-23): THERE IS NO PENDING-REQUEST TABLE ... no map, no heap and no entry — which is a platform decision (no allocator, no correlation table), written down, and therefore `declined` rather than `gap`. Still true of the heap: the table is the futures themselves."
+}

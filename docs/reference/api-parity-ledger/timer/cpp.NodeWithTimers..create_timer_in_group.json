@@ -1,0 +1,5 @@
+{
+  "key": "cpp:NodeWithTimers::create_timer_in_group",
+  "verdict": "extension",
+  "why": "the callback-group form of `cpp:ComponentNode::create_timer` (RFC-0047); see `cpp:Node::create_timer_in_group` and, for the shape rclcpp passes through options instead, the pubsub stage's `cpp:Node::create_publisher_in_group`. phase-427 W4: `nros::ComponentNode` is DELETED and this row moved onto the merged `nros::Node`. ComponentNode WRAPPED a node (RFC-0044 Q1 chose wrap over derive), so a component was not a `Node` and every verb had to be forwarded; the merged type IS one.\n\nphase-427 (the `_in_group` split) -- was `cpp:NodeWithTimers::create_timer_in`. This is the overload that made the split necessary on this type: it is pool-parked (storage-free, which `_in` had come to mean) AND takes a group, so one name could not say which family a call had joined. Its sibling `create_wall_timer_in` keeps the short suffix and takes no group. RFC-0089, \"The `_in` rule, amended\"."
+}

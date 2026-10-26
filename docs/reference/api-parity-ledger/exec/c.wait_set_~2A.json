@@ -1,0 +1,7 @@
+{
+  "key": "c:wait_set_*",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's wait set; the reason is stated in full at `cpp:WaitSet`."
+}

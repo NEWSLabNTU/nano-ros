@@ -1,0 +1,5 @@
+{
+  "key": "rust:CDR_HEADER_LEN",
+  "verdict": "extension",
+  "why": "see `rust:CDR_LE_HEADER`."
+}

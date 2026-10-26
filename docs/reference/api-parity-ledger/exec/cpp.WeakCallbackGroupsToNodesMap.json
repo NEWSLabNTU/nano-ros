@@ -1,0 +1,9 @@
+{
+  "key": "cpp:WeakCallbackGroupsToNodesMap",
+  "disposition": "absent",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "declined",
+  "why": "an `std::map` of weak group pointers to the nodes they came from, so an rclcpp executor can drop a group when its node dies. no allocator -- one global `nros_platform_alloc` and inline caller-owned storage. See `cpp:Node::make_shared` and the `no-shared-ptr` rule in signature_rules.py. RFC-0047: a callback group here is a NAME, not an object the executor holds. The group structure is declared in code (`Node::create_callback_group(\"ctrl\")`) and the group -> tier POLICY is declared in the workspace `system.toml`; the executor carries a config-seeded `group -> sched_context` table and binds each callback to its group's context at REGISTRATION, once, into a fixed arena. There is no group object to add to or remove from an executor, and no membership that can change after registration."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_subscription_take",
+  "verdict": "extension",
+  "why": "phase-492 W8 — the TYPED take on a subscription the caller drains: one sample, deserialised through the descriptor the polling subscription was created with into `msg` (its strings and sequences wired by `<Msg>__init_in`); `RCLC_RET_TRY_AGAIN` when nothing is waiting, `RCL_RET_ERROR` for a sample that does not fit, `allocation` must be NULL. It is the `rcl_take` analog; see `c:take` for why `rcl_take` itself is not declared. No allocation."
+}

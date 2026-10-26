@@ -1,0 +1,5 @@
+{
+  "key": "cpp:create_service_raw",
+  "verdict": "extension",
+  "why": "the non-template function `cpp:bind_service_raw` and `cpp:bind_service` are both built on -- register a raw request/response callback on the executor that owns `node`, the executor owning the server. Public and documented, but PLUMBING in practice: no in-tree caller writes it directly. Same relationship as `cpp:create_subscription_raw` to `cpp:bind_subscription_raw`."
+}

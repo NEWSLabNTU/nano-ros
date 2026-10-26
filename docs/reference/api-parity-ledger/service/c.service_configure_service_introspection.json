@@ -1,0 +1,9 @@
+{
+  "key": "c:service_configure_service_introspection",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "Iron/Jazzy service introspection publishes each request and response (optionally with contents) as a `service_msgs` `_Event` message on `<service>/_service_event`. Every service and client would need one more publisher, an `_Event` type per service that our codegen does not emit, and a copy of each request/response per call: RAM, a publisher slot per service and wire bandwidth on the targets this API serves, for a host-side debugging view. DECLINED."
+}

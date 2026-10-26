@@ -1,0 +1,5 @@
+{
+  "key": "rust:ServiceOptions::new",
+  "verdict": "divergence",
+  "why": "see `rust:ClientOptions`."
+}

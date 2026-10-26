@@ -1,0 +1,5 @@
+{
+  "key": "rust:EntityBounds",
+  "verdict": "extension",
+  "why": "phase-391 W5-endgame step 2c (issue 0857) -- a component class's declared per-kind entity bounds, sizing its STATIC cell registries at compile time (one publisher slot costs ~1.35 KiB, so capacity is a real price). Default = the NROS_RUNTIME_MAX_CELL_ENTITIES knob per kind; exact bounds stop a class paying for capacity `register()` never fills. Public and non-generic (the `ExecutorSizing` rule); the const generics it feeds stay behind the `nros::node!` emission. No upstream analogue: rcl sizes nothing statically."
+}

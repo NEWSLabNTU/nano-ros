@@ -1,0 +1,8 @@
+{
+  "key": "cpp:Publisher::is_durability_transient_local",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "extension",
+  "why": "issue 1975 — HUMBLE ONLY, because Humble's rclcpp has no such member: Jazzy added `PublisherBase::is_durability_transient_local()`, and under Jazzy this correlates `same`, so the row is scoped out there. Read off `get_actual_qos()` (`packages/api/nros-cpp/include/rclcpp/publisher.hpp`) as upstream reads `rcl_publisher_get_actual_qos`: the GRANTED durability. Envelope inherited from that accessor: a backend that cannot report durability (XRCE) answers `DurabilityPolicy::Unknown`, which is not TRANSIENT_LOCAL, so it reads `false` there. HELD BY `packages/api/nros-cpp/tests/compile/jazzy_small_accessors_runtime.cpp`, against the stub backend whose `publisher_get_actual_qos` now echoes the create profile."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::for_each_callback_group",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-482 W4 (2026-10-07): `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::for_each_callback_group`, inherited, with `cpp:Node::for_each_callback_group`'s contract. The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves.\n\nBefore phase-482 W4: see `cpp:LifecycleNode::create_callback_group`; the enumeration form is on the node stage's `cpp:Node::for_each_callback_group`, not on the lifecycle mixin."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TimerOps::is_canceled",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`TimerBase::is_canceled()` reached through `timer_->`. An empty, released or stale handle answers `true`: nothing will fire it."
+}

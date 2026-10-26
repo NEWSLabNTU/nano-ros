@@ -1,0 +1,5 @@
+{
+  "key": "cpp:CallbackGroupToken::CallbackGroupToken",
+  "verdict": "extension",
+  "why": "phase-488 W3 -- from a `CallbackGroupType` (what `create_callback_group(type)` builds), or empty / `nullptr` (no group). See `cpp:CallbackGroupToken`."
+}

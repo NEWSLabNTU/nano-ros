@@ -1,0 +1,5 @@
+{
+  "key": "cpp:LifecycleNode::shared_from_this",
+  "verdict": "extension",
+  "why": "phase-488. Upstream's comes from `std::enable_shared_from_this<LifecycleNode>`, which the extractor does not see as a declared member. Ours returns `LifecycleNode::SharedPtr` (a non-owning handle, like `cpp:Node::shared_from_this`). It was `Node::shared_from_this`, inherited, so the handle named a plain `Node`."
+}

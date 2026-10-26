@@ -1,0 +1,9 @@
+{
+  "key": "cpp:KeepAll",
+  "disposition": "adopt",
+  "provides": [
+    "nros::QoS::keep_all"
+  ],
+  "verdict": "declined",
+  "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all. COLLAPSE CHECK 2026-09-04 (phase-417): this decline described the pre-shim state. phase-417 W3.f ships `rclcpp::KeepAll()` (and `KeepLast(depth)`) (`packages/api/nros-cpp/include/rclcpp/qos.hpp:786` / `:781` (in `rclcpp_compat.hpp` until phase-417 stage 6 step A deleted it)), so `rclcpp::QoS(rclcpp::KeepAll())` ports unedited and this correlates `same` on the PORTED surface. ADOPT-BOUNDED, not ADOPT: ours returns a whole `QoS` where upstream returns a `QoSInitialization`, so using it to seed another preset (`SensorDataQoS(KeepAll())`) has no equivalent -- write `nros::QoS().best_effort().keep_all()`. The row survives because `--check` gates the NATIVE bucket, where this is still `theirs-only`."
+}

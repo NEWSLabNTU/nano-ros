@@ -1,0 +1,10 @@
+{
+  "key": "rust:Node::use_undeclared_parameters",
+  "disposition": "absent",
+  "provides": [
+    "nros::Executor::use_undeclared_parameters",
+    "nros::Executor::use_undeclared_parameters_on"
+  ],
+  "verdict": "divergence",
+  "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and the capability SHIPS: `Executor::use_undeclared_parameters[_on]` hands out the handle, which now writes as well as reads. The RECEIVER is what diverges and it is structural — the store belongs to the EXECUTOR, because an image composes several nodes onto one executor and there is no allocator to give each node a table (phase-426 W1). rclrs's `Node` owns its own. So the `_on` spelling names the node and the bare one means the primary, which is the same pair every other parameter verb on the executor carries. `absent`, because the name does not exist on a node type."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ServiceHandle",
+  "verdict": "extension",
+  "why": "phase-456 W5 — what `rclcpp::Service<S>::SharedPtr` names. Upstream's is a `std::shared_ptr<Service<S>>`; ours is a two-word `{executor, handle_id}` value, and the difference is not an optimisation. A service created with a HANDLER is owned by the Rust executor arena, which holds the `RmwServiceServer` and — since phase-456 W3 — the handler itself as its trampoline context. Nothing of the caller's is referenced after registration, so there is no C++ object for a pointer to point at and none is made.\n\nMEASURED (phase-456 W3), across `examples/`, `tests/`, `book/` and `packages/`: a DISPATCH service has NOTHING invoked on it, at any site, out-ref or `::SharedPtr`. It is stored and dropped. That is a keep-alive, and a keep-alive is two words.\n\nThe taking API a caller might have reached for is `nros::PollService<S>`'s, on the half that owns a server. Exactly the shape `cpp:SubscriptionHandle` carries one entity over."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:TimerCallbackType",
+  "verdict": "divergence",
+  "why": "rclcpp's callback is a `std::function` taking the timer; ours is a fn-pointer plus `void*`. See `cpp:GenericTimer`."
+}

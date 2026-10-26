@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Client::take_response",
+  "provides": [
+    "nros::Client::send_request",
+    "nros::Future::is_ready",
+    "nros::Future::try_take"
+  ],
+  "verdict": "divergence",
+  "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence. The verb question is settled (`c:take`), but the C++ client never had a `take_response` to rename: a call returns a `Future<Response>` and the reply is polled with `Future::try_take()` / `is_ready()`. That is the no-exceptions, no-allocator shape of rclcpp's `async_send_request` future -- see `cpp:Future::try_take`. The C surface is where the take spelling lives (`c:client_take_response{,_raw}`)."
+}

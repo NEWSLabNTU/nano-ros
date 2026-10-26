@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GenericRate::period",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's `Rate` blocks the calling thread in a sleep loop to hold a fixed frequency. RFC-0021 forbids a blocking helper that does not drive the executor -- a `Rate::sleep` on a single-threaded executor stops the transport for the whole period. The periodic work shape here is a timer, which the executor drives."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:node_create_guard_condition",
+  "verdict": "extension",
+  "why": "phase-417 W4.e -- the C half of the one creation shape, and the C counterpart of `cpp:Node::create_guard_condition`. rcl/rclc have no node-level entity-creation verb for a guard condition at all: rcl builds one from a `context` and rclc registers it with an executor, which is two owners for one object. Ours takes the owner a caller actually has -- `(node, out, callback, context)`, caller-owned storage, callback bound at creation, registered in that node's executor arena with that node's `SchedContext`. A node reaching no executor (the legacy `rclc_node_init_default` path) gets `RCL_RET_NOT_INIT` rather than a half-made object. Behavioural proof: `packages/api/nros-c/tests/run/node_guard_condition.c` on `just check c`."
+}

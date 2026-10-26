@@ -1,0 +1,5 @@
+{
+  "key": "rust:DOMAIN_ID_EXPLICIT_ZERO_C_ABI",
+  "verdict": "extension",
+  "why": "255, the C/C++-ABI escape for an EXPLICIT domain 0 (issue 0227). The C init surface carries `domain_id` as a `u8` where `0` means UNSET (defer to env, then the baked macro, then the default), which makes a literal domain 0 unreachable once an image bakes a nonzero default. Since valid domains cap at `DOMAIN_ID_MAX`, 255 is free. rclrs needs no such sentinel: `ROS_DOMAIN_ID` is read from the environment at runtime, and there is no runtime env on an RTOS. See `rust:DOMAIN_ID_MAX`."
+}

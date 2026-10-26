@@ -1,0 +1,5 @@
+{
+  "key": "c:log_init",
+  "verdict": "extension",
+  "why": "the C logging surface, reachable from the umbrella header since issue 0795 was fixed (`rclcpp/rclcpp.hpp` always included its C++ twin). ROS 2's counterpart is rcutils logging, which we decline as a whole -- see the log stage -- because it carries per-logger level maps, an installable output handler and a formatted-message buffer per thread. Ours emits through the platform sink the board installed. This is the entry point a C author must find FIRST: reaching for `printf` instead is fatal on Zephyr native_sim (issue 0589), which is why the umbrella omitting it was a hazard and not just a discoverability nit."
+}

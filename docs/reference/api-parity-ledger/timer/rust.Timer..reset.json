@@ -1,0 +1,5 @@
+{
+  "key": "rust:Timer::reset",
+  "verdict": "extension",
+  "why": "see `rust:Timer::cancel`."
+}

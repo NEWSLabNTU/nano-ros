@@ -1,0 +1,6 @@
+{
+  "key": "c:lifecycle_com_interface_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's bundle of the three lifecycle services PLUS the `~/transition_event` publisher, held inside the state machine. Ours is not a type: the services are registered on the executor (`rclc_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`.) and the `~/transition_event` publisher is created by the same call (issue 1587) rather than held in a com-interface type -- it lives on `LifecycleRuntimeState` beside the five servers. That half was a gap recorded on `c:lifecycle_change_state` until 2026-10-01; what stays `declined` here is the TYPE, not the capability."
+}

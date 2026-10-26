@@ -1,0 +1,5 @@
+{
+  "key": "rust:CdrWriter::version",
+  "verdict": "extension",
+  "why": "Reports which `EncodingVersion` this cursor was built for; part of the RFC-0055 surface, see `rust:CdrWriter::new_with_header_xcdr2`. `EncodingVersion` itself is not re-exported by the `nros` facade, so a user can call this and cannot name what it returns."
+}

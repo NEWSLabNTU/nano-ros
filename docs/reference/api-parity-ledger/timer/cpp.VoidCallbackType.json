@@ -1,0 +1,5 @@
+{
+  "key": "cpp:VoidCallbackType",
+  "verdict": "divergence",
+  "why": "see `cpp:TimerCallbackType`."
+}

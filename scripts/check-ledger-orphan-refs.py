@@ -48,7 +48,6 @@ still true, or whether the row's subject still exists as a symbol. Those need
 the extractor, not a filesystem stat — stated so a green here is not read as
 more than it is.
 """
-import json
 import pathlib
 import re
 import subprocess
@@ -56,6 +55,8 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 LEDGER = ROOT / "docs/reference/api-parity-ledger"
+sys.path.insert(0, str(ROOT / "scripts" / "api_parity"))
+import ledger_files  # noqa: E402  one row per file (issue 1091); the one reader
 EXTS = ("hpp", "h", "rs", "py", "cpp", "c", "toml", "just", "md", "json", "jinja", "sh")
 REPO_ROOTS = ("packages/", "scripts/", "docs/", "just/", "cmake/", "examples/", "book/")
 
@@ -177,16 +178,17 @@ def orphans_in(text, basenames, crates):
             yield ("bare", name)
 
 
-def scan(files, basenames, crates):
+def scan(ledger, basenames, crates):
+    """[(row file, key, kind, cite)] over a merged ledger (`ledger_files.load`).
+
+    The loader's own `_shard` / `_file` are not the author's text, and `_file`
+    is a `.json` path a citation regex would read.
+    """
     bad = []
-    for f in files:
-        rows = json.loads(f.read_text())
-        for key, val in rows.items():
-            if not isinstance(val, dict):
-                continue
-            blob = " ".join(strings_of(val))
-            for kind, cite in orphans_in(blob, basenames, crates):
-                bad.append((f.name, key, kind, cite))
+    for key, val in sorted(ledger.items()):
+        blob = " ".join(strings_of({k: v for k, v in val.items() if not k.startswith("_")}))
+        for kind, cite in orphans_in(blob, basenames, crates):
+            bad.append((val.get("_file", "?"), key, kind, cite))
     return bad
 
 
@@ -210,31 +212,30 @@ def self_test(basenames, crates):
     assert "nros-gone-crate" not in crates, "self-test: the planted dead crate exists"
 
     d = pathlib.Path(tempfile.mkdtemp())
-    (d / "planted.json").write_text(
-        json.dumps(
-            {
-                "cpp:real": {"why": "see packages/api/nros-cpp/include/rclcpp/qos.hpp for the table"},
-                "cpp:orphan": {"why": "see packages/api/nros-cpp/include/nros/%s:428" % dead},
-                "cpp:upstream": {"why": "upstream rclcpp/qos.hpp says otherwise"},
-                "cpp:bare-orphan": {"why": "`%s:117` ships `ParametersQoS()` at `QoS(10)`." % dead},
-                "cpp:bare-range": {"why": "the setters at `%s:120-131` store and never read." % dead},
-                "cpp:bare-gone": {"why": "then `%s`, which was deleted at stage 6 step A." % dead},
-                "cpp:bare-live": {"why": "`qos.hpp:40` mirrors `init.rs:126-140` exactly."},
-                "cpp:label": {"why": "phase-417 W4.c added it; Q1.b measured it."},
-                "cpp:nested": {"why": "x", "rename": {"resolution": "was in `%s`." % dead}},
-                # Issue 1545: crate-relative, keyed by PACKAGE name, not directory.
-                "cpp:crate-live": {"why": "regenerates nros-rmw-cffi/src/generated.rs."},
-                "cpp:crate-orphan": {"why": "we had it in nros-core/src/error.rs then."},
-                "cpp:crate-gone-crate": {"why": "see nros-gone-crate/src/lib.rs for it."},
-                "cpp:prefixed-orphan": {"why": "see `src/rerun_missing_x.rs` -- it holds it."},
-                "cpp:prefixed-upstream": {"why": "upstream rclrs/src/never_here.rs does it."},
-                "cpp:other-sentence": {
-                    "why": "`%s` still holds the profile. The shim was deleted." % dead
-                },
-            }
-        )
+    ledger_files.write_rows(
+        str(d), "other",
+        {
+            "cpp:real": {"why": "see packages/api/nros-cpp/include/rclcpp/qos.hpp for the table"},
+            "cpp:orphan": {"why": "see packages/api/nros-cpp/include/nros/%s:428" % dead},
+            "cpp:upstream": {"why": "upstream rclcpp/qos.hpp says otherwise"},
+            "cpp:bare-orphan": {"why": "`%s:117` ships `ParametersQoS()` at `QoS(10)`." % dead},
+            "cpp:bare-range": {"why": "the setters at `%s:120-131` store and never read." % dead},
+            "cpp:bare-gone": {"why": "then `%s`, which was deleted at stage 6 step A." % dead},
+            "cpp:bare-live": {"why": "`qos.hpp:40` mirrors `init.rs:126-140` exactly."},
+            "cpp:label": {"why": "phase-417 W4.c added it; Q1.b measured it."},
+            "cpp:nested": {"why": "x", "rename": {"resolution": "was in `%s`." % dead}},
+            # Issue 1545: crate-relative, keyed by PACKAGE name, not directory.
+            "cpp:crate-live": {"why": "regenerates nros-rmw-cffi/src/generated.rs."},
+            "cpp:crate-orphan": {"why": "we had it in nros-core/src/error.rs then."},
+            "cpp:crate-gone-crate": {"why": "see nros-gone-crate/src/lib.rs for it."},
+            "cpp:prefixed-orphan": {"why": "see `src/rerun_missing_x.rs` -- it holds it."},
+            "cpp:prefixed-upstream": {"why": "upstream rclrs/src/never_here.rs does it."},
+            "cpp:other-sentence": {
+                "why": "`%s` still holds the profile. The shim was deleted." % dead
+            },
+        },
     )
-    hits = scan([d / "planted.json"], basenames, crates)
+    hits = scan(ledger_files.load(str(d)), basenames, crates)
     caught = {k for _, k, _, _ in hits}
     want = {
         "cpp:orphan", "cpp:bare-orphan", "cpp:bare-range", "cpp:nested", "cpp:other-sentence",
@@ -257,11 +258,11 @@ def main():
     crates = crate_dirs()
     self_test(basenames, crates)
 
-    files = sorted(LEDGER.glob("*.json"))
-    if not files:
-        print("check-ledger-orphan-refs: no ledger shards found at %s" % LEDGER, file=sys.stderr)
+    ledger = ledger_files.load(str(LEDGER))
+    if not ledger:
+        print("check-ledger-orphan-refs: no ledger rows found at %s" % LEDGER, file=sys.stderr)
         return 1
-    bad = scan(files, basenames, crates)
+    bad = scan(ledger, basenames, crates)
     if bad:
         print(
             "FAIL: %d ledger row(s) cite a file that does not exist.\n"
@@ -275,13 +276,13 @@ def main():
             file=sys.stderr,
         )
         for shard, key, kind, cite in bad[:40]:
-            print("  %-16s %-44s %-4s -> %s" % (shard, key, kind, cite), file=sys.stderr)
+            print("  %-44s %-4s -> %s\n      in %s" % (key, kind, cite, shard), file=sys.stderr)
         if len(bad) > 40:
             print("  … and %d more" % (len(bad) - 40), file=sys.stderr)
         return 1
     print(
-        "check-ledger-orphan-refs: OK — %d shard(s), every cited repo path and bare "
-        "filename resolves" % len(files)
+        "check-ledger-orphan-refs: OK — %d row(s), every cited repo path and bare "
+        "filename resolves" % len(ledger)
     )
     return 0
 

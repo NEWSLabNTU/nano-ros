@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionServerRawHandle",
+  "verdict": "divergence",
+  "why": "the CDR-bytes form of `rust:ActionServerHandle` -- what the C and C++ shims call. an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. See the service stage's `rust:ServiceTrait`. Moved to `nros::internals` by phase-506 W1 (RFC-0071 D12): the untyped action machinery the C and C++ shims drive, off the top-level user API."
+}

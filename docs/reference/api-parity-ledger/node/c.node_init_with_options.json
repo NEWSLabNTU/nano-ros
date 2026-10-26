@@ -1,0 +1,6 @@
+{
+  "key": "c:node_init_with_options",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "rcl's second node constructor. The CAPABILITY is present under another name: `rclc_node_init_ex(node, support, name, const struct rcl_node_options_t *)` (`nros_generated.h:5297`) is exactly this function -- see `c:node_init_ex`. Note node is the odd one out in our own C surface, where the other four entities do spell it `*_init_with_options` (`rclc_publisher_init_with_options`, `rclc_subscription_init_with_options`, `rclc_service_init_with_options`, `rclc_client_init_with_options`). CORRECTED 2026-09-04 (phase-417): this row said \"there is no options struct to pass\", which is false -- `rcl_node_options_t` ships and correlates `same`. The verdict is left at `declined` pending a decision on whether `rclc_node_init_ex` should move to the family spelling; on the evidence it looks like a `rename`."
+}

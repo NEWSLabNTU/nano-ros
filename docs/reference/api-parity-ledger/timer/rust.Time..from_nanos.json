@@ -1,0 +1,5 @@
+{
+  "key": "rust:Time::from_nanos",
+  "verdict": "divergence",
+  "why": "our C++ ships no clock/time/duration surface; see `cpp:Clock::now`. These are the RUST members of types C++ lacks entirely, so they have no rclrs counterpart only because the two libraries carve the same information differently."
+}

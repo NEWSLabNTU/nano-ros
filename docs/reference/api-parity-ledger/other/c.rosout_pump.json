@@ -1,0 +1,6 @@
+{
+  "key": "c:rosout_pump",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "drains the record queue onto the `/rosout` publisher from the application's spin loop, through the one encoder all three languages share (`nros_node::rosout::pump_raw`); never blocks on the queue, never allocates. Upstream publishes inside the logging call; here the SINK only copies into a `.bss` slot, so no logging call ever enters the RMW stack (issue 0589's re-entry hazard). Part of the `/rosout` bridge from C (issue 1589, `<rclc/rosout.h>`); the Rust twin is `nros::rosout`. Links in every image and answers `RCL_RET_UNSUPPORTED` without the `rosout` capability."
+}

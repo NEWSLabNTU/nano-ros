@@ -1,0 +1,12 @@
+{
+  "key": "cpp:PollClient::server_available",
+  "rename": {
+    "from": "server_available",
+    "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing).",
+    "status": "landed",
+    "to": "service_is_ready"
+  },
+  "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename",
+  "verdict": "extension",
+  "why": "the deprecated `server_available` spelling of `cpp:PollClient::service_is_ready`, carried across the W9 split with its `[[deprecated]]` attribute intact. Substantive verdict at `cpp:Client::server_available`.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename."
+}

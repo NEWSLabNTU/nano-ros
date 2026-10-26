@@ -1,0 +1,5 @@
+{
+  "key": "rust:panic_halt",
+  "verdict": "extension",
+  "why": "the `panic = \"halt\"` body: mask interrupts through the platform critical section, then spin forever. For an image that must not print -- no formatting, no allocation, no call out to the platform. Masking first is deliberate, so the parked core cannot be woken back into a half-dead system by a timer or a driver ISR still armed from before the panic. A body rather than a re-export of the `panic-halt` crate so choosing it costs the entry no new dependency. See `rust:panic_to_platform`."
+}

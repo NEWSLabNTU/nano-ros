@@ -1,0 +1,5 @@
+{
+  "key": "rust:ShutdownCallbackHandle::index",
+  "verdict": "extension",
+  "why": "The slot index within the handle's phase table. Part of `rust:ShutdownCallbackHandle`. Issue 0790."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Service::set_on_new_request_callback",
+  "verdict": "divergence",
+  "why": "see `c:service_set_on_new_request_callback`."
+}

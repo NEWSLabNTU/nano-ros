@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Subscription::has_sched_handle",
+  "verdict": "extension",
+  "why": "whether this subscription is bound to a scheduling context (RFC-0047), so its callback runs at a declared priority. rclcpp's callback groups carry no priority."
+}

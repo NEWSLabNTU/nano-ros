@@ -1,0 +1,5 @@
+{
+  "key": "rust:RmwSession",
+  "verdict": "extension",
+  "why": "`nros::internals` -- backend-agnostic aliases resolving to the ACTIVE backend's concrete types, and the entry points the C API drives them through. rclrs needs no equivalent because rcl is its only backend and it is resolved at runtime, not by a type alias. Kept where it is by phase-506 W1 (RFC-0071 D12): it already sits behind `nros::internals` / `nros::embedded` or is a C seam, outside the top-level Rust user API D12 is about."
+}

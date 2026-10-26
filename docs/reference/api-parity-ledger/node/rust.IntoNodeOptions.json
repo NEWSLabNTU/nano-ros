@@ -1,0 +1,7 @@
+{
+  "key": "rust:IntoNodeOptions",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the trait letting rclrs accept `&str` or a full options struct wherever a node is created. Our `NodeOptions` is one concrete type taken by value; the ergonomic overload needs a blanket impl that buys nothing when there is one caller shape."
+}

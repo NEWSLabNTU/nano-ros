@@ -1,0 +1,5 @@
+{
+  "key": "rust:RegisteredNode::slot",
+  "verdict": "divergence",
+  "why": "The slot index inside the component runtime that `rust:RegisteredNode` witnesses. Same reasoning as that row. Until 2026-10-11 this row carried a pasted copy of `rust:NodeHandle`'s text (\"Four node-shaped things\", issue 0784), which described the facade's node types, not this name. phase-483 W2–W4 settled that: `nros::Node` is the one node type, the component trait is `nros::Component`, and `NodeHandle` / `StandaloneNode` left `nros::`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:support_init_with_locator",
+  "verdict": "extension",
+  "why": "`(support, locator, domain_id)`: an explicit middleware locator and ROS domain. A device has no environment to read `NROS_LOCATOR` / `ROS_DOMAIN_ID` from and no argv, so the image states them. `rclc_support_init` takes rclc's `(support, argc, argv, allocator)` since phase-492 W1.b and resolves both from the build (and the environment on a hosted target)."
+}

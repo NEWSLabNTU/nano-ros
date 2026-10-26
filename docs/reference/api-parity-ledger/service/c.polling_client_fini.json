@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_client_fini",
+  "verdict": "extension",
+  "why": "finalises a `rclc_polling_client_t`: drops the inline entity, refusing with `RCLC_RET_STALE_NODE` when the node went first (issue 1386). The polled half of what `rcl_client_fini` did for both roads before phase-487 W2. RFC-0022's polling tier, as its own type since phase-487 W2 (RFC-0096 D9, the C half). Nothing dispatches a polled client, so it has no arena slot and keeps its entity inline. The C++ twin is `nros::PollClient<S>`."
+}

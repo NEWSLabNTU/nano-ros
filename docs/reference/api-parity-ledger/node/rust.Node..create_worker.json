@@ -1,0 +1,6 @@
+{
+  "key": "rust:Node::create_worker",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's worker owns a payload and serialises callbacks that touch it, so several entities can share mutable state without a mutex. Our equivalent of the sharing problem is the component's `State`, which `on_callback` already receives by `&mut` -- one owner, one task, decided at declaration rather than spawned. See `rust:Node::commands`."
+}

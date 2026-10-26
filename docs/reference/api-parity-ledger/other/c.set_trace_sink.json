@@ -1,0 +1,5 @@
+{
+  "key": "c:set_trace_sink",
+  "verdict": "extension",
+  "why": "rclc has no callback-level trace hook — it leaves tracing to LTTng userspace tracepoints, which need a tracer, a session daemon and a filesystem none of the RTOS targets have. `rclc_set_trace_sink` is the embedded substitute: one function pointer, no allocation, no I/O, deliberately ungated so the symbol exists whether or not the tracing feature is on."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:HazardSpec",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): one contracted hazard lowered by the bake: its key, `ftti_ms`, the reacting path's `settle_ms`, its guards and the rate row of its `safe_state` publisher. rclrs has no on-target contract monitor."
+}

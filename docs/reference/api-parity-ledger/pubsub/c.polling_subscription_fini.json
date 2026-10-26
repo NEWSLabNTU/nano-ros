@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_subscription_fini",
+  "verdict": "extension",
+  "why": "finalises a `rclc_polling_subscription_t`: drops the inline subscriber, refusing with `RCLC_RET_STALE_NODE` when the node went first (issue 1386). The polled half of what `rcl_subscription_fini` did for both roads before phase-487 W1. RFC-0022's polling tier, as its own type since phase-487 W1 (RFC-0096 D9, the C amendment). Nothing dispatches a polled subscription, so it has no arena slot and keeps its subscriber inline. rclcpp has no counterpart because its executor always owns dispatch; the C++ twin is `nros::PollSubscription<M>`, the Rust one `create_polling_subscription`."
+}

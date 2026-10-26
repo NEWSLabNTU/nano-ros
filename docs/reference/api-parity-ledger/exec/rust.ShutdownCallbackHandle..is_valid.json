@@ -1,0 +1,5 @@
+{
+  "key": "rust:ShutdownCallbackHandle::is_valid",
+  "verdict": "extension",
+  "why": "True for anything a registration could have produced -- the sentinel test that replaces rclcpp's \"is the weak_ptr expired\". Part of `rust:ShutdownCallbackHandle`. Issue 0790."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::ok",
+  "verdict": "divergence",
+  "why": "rclcpp's counterpart is the free `rclcpp::ok(context)`; ours is a method because the executor IS the session and the context here. `Executor::create` opens the middleware connection, nodes are created ON it, and every entity lands in its arena; there is no `rclcpp::Context` to hold, register with, or shut down separately. See `cpp:Context`. Note it answers 'is this executor initialised?', NOT 'is it spinning?' -- that is the second question, and `Executor::is_spinning` has answered it since phase-417 W4.c."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:ClientOptions",
+  "verdict": "divergence",
+  "why": "rclrs's client options carry QoS and a callback group; ours carry QoS. See `compile-time-options`."
+}

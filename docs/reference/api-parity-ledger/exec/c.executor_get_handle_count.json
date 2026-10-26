@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_get_handle_count",
+  "verdict": "extension",
+  "why": "how many arena slots are in use. The arena is a compile-time-sized table (`NROS_EXECUTOR_MAX_HANDLES`), so 'did my registrations fit?' is a real question with a cheap answer; rclc answers it only by failing the next `add_*`. See `c:executor_get_remaining_handles`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_client_request_publisher_get_actual_qos",
+  "verdict": "extension",
+  "why": "the polled half of `c:client_request_publisher_get_actual_qos`, which carries the contract: the QoS the backend reports for that endpoint, read straight from the inline entity. Split out by phase-487 W2 with the type."
+}

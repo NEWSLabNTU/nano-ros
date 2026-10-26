@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GuardCondition::get_rcl_guard_condition",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "our RMW seam is the vtable (RFC-0035), not an entity accessor. See `c:node_get_rmw_handle`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:GoalStatus",
+  "verdict": "rename",
+  "why": "`action_msgs/msg/GoalStatus` as an enum, plus `is_active` / `is_terminal` / `from_i8`. rclrs 0.7.0 ships actions (issue 1042: this row was written against 0.5.1, which had none) and records TWO names here: `GoalStatus`, a type, and `GoalStatusCode`, the status enum. Ours is the enum, i.e. their `GoalStatusCode` under the name rclrs gives the struct `{code, goal_id, stamp}`: a rename. A ported file that builds their struct fails to compile against our enum, so the collision is loud, not silent. Ours are shared with our C and C++ surfaces (`rclc_goal_status_t`, `nros::GoalStatus`)."
+}

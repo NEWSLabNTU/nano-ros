@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Publisher::is_valid",
+  "verdict": "extension",
+  "why": "rclcpp has no validity predicate because construction throws on failure; with -fno-exceptions the object exists either way. See `cpp:Node::is_valid`."
+}

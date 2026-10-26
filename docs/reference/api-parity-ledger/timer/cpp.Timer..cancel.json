@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Timer::cancel",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "`rclcpp::TimerBase` is now an ALIAS of `::nros::Timer` (`packages/api/nros-cpp/include/rclcpp/timer.hpp:294`; phase-430 W7 deleted the empty base class this row was filed against), so a ported `timer_->cancel()` compiles and reaches the real method. What remains is the widening: `Result` where upstream returns `void`. RFC-0018 forces an error channel and `Result` is `[[nodiscard]]`, so a discarded call warns — loud. Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
+}

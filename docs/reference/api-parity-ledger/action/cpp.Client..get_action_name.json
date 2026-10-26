@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Client::get_action_name",
+  "verdict": "extension",
+  "why": "reads back the action name the client was created on. `rclcpp_action::Client` has no such accessor (measured against `docs/reference/api-surface/rclcpp.json`: its members are `make_shared`, the constructor, `async_send_goal`, `async_get_result`, `async_cancel_goal`, `async_cancel_all_goals`, `async_cancel_goals_before`), so this is ours-only against rclcpp and is NOT a port of anything. It exists because rcl HAS `rcl_action_client_get_action_name` and our own surfaces disagreed about it -- ledger row `c:action_client_get_action_name`, \"four surfaces, one accessor\": C had none, C++ had it on the POLLING tier only, and Rust's was on a dead marker struct. phase-417 W4.b gave C the rcl name and this tier the C++ one, so the four agree. Storage is a truncating 256-byte copy sized by `nros::ACTION_NAME_MAX`, the same shape `Subscription::get_topic_name` uses; a borrowed `const char*` was rejected because a hosted caller may pass one from a temporary. Returns `\"\"`, never NULL, on an uninitialised client."
+}

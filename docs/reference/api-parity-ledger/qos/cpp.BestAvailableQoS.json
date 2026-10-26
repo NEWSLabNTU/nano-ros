@@ -1,0 +1,8 @@
+{
+  "key": "cpp:BestAvailableQoS",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "extension",
+  "why": "issue 1973. Matches upstream's Iron+ surface, so under Jazzy it is a `same` row and carries no entry; Humble predates best-available QoS, so against Humble's headers it reads ours-only. `rclcpp::BestAvailableQoS` names `rmw_qos_profile_best_available` (`rclcpp::detail::qos_table::best_available()`); its policies resolve when the entity is created, against the endpoints the backend has discovered (`nros_rmw::QoSProfile::resolve_best_available`)."
+}

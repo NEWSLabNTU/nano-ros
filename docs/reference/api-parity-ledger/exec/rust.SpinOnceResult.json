@@ -1,0 +1,5 @@
+{
+  "key": "rust:SpinOnceResult",
+  "verdict": "extension",
+  "why": "what ONE spin iteration did: callbacks invoked per entity class, plus the transport errors that would otherwise be dropped silently. rclrs's `spin_once` returns `Result<(), RclrsError>` and its executor logs the rest. An image with no log sink and no operator watching needs the counts as a value it can act on -- a `no_std` target cannot print its way out of a stalled subscription. RFC-0002 gives one executor per RTOS task that drives entities directly through the RMW vtable, with no wait set and no thread pool. rclrs's `SpinOptions` is the only part of this vocabulary it shares; the rest describes a spin loop rclrs does not expose."
+}

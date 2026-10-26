@@ -1,0 +1,5 @@
+{
+  "key": "c:app_exit_code",
+  "verdict": "extension",
+  "why": "issue 1752 -- `static inline int nros_app_exit_code(int status)` in `<rclc/detail/app_main.h>`: folds `nros_app_main`'s status into a process exit code (0 iff the status is 0, else its low byte, a zero low byte folded to 1 so `exit(256)` cannot read as success). rclc has no counterpart because a desktop program's `main` returns its own status to libc; ours is reached through the `void app_main(void)` shim, which has no return value, so the normalisation happens once in the shim rather than in every board that ends a host process."
+}

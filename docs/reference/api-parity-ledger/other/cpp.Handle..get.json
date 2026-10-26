@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Handle::get",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the raw pointer, as `shared_ptr::get` returns it."
+}

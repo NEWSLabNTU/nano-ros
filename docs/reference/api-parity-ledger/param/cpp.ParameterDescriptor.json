@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ParameterDescriptor",
+  "verdict": "divergence",
+  "why": "Upstream's is `rcl_interfaces::msg::ParameterDescriptor`, a generated ROS message whose strings OWN their storage. Ours BORROWS its text: the `const char*` are read during the call that consumes the descriptor — the store copies into its own slot — and never retained, so a descriptor is a string-literal aggregate on the stack with no allocator anywhere. Reading one back is the mirror of that and takes a caller-owned text buffer (`Node::describe_parameter`). The platform constraint is the allocator; there is no shape in which a returned descriptor owns its strings without one. phase-417 W4.a."
+}

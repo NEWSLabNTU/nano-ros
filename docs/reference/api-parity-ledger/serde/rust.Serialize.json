@@ -1,0 +1,5 @@
+{
+  "key": "rust:Serialize",
+  "verdict": "extension",
+  "why": "the trait a generated message implements to write itself into a `CdrWriter`. rclrs's equivalent is `rosidl_runtime_rs::Message` plus the C typesupport, which lives outside the client library; ours is in `nros-core` because codegen and the RMW layer both need it. The paired `Deserialize` and the method `Serialize::serialize` are BOTH in the serde stage -- only this one landed here, because the topic regex `serialize` matches `Deserialize` and not `Serialize`. Same reasoning as `rust:RosService` in the service stage."
+}

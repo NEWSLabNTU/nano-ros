@@ -1,0 +1,5 @@
+{
+  "key": "c:node_state_t",
+  "verdict": "extension",
+  "why": "an explicit node lifecycle (uninitialised / initialised / finalised) so double-init and use-after-fini return a code instead of being undefined. See `c:support_state_t`."
+}

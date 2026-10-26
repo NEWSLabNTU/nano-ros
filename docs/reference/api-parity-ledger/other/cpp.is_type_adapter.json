@@ -1,0 +1,6 @@
+{
+  "key": "cpp:is_type_adapter",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:TypeAdapter`."
+}

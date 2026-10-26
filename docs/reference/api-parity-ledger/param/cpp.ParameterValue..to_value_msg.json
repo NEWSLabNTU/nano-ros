@@ -1,0 +1,6 @@
+{
+  "key": "cpp:ParameterValue::to_value_msg",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the value as an `rcl_interfaces::msg::ParameterValue`. The `rcl_interfaces` message types are generated in the USER's build, not shipped by nano-ros, so the runtime headers cannot name them in a signature; the declare overload that takes a descriptor message is a template over its shape for the same reason. The value and its name are reachable through the accessors. issue 2056."
+}

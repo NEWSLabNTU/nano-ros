@@ -1,0 +1,5 @@
+{
+  "key": "rust:Context::with_locator_override",
+  "verdict": "extension",
+  "why": "phase-427 W9 (2026-09-07) — `Context::with_locator_override(self, Option<&str>) -> Self` (`packages/api/nros/src/init.rs:364`): replace the locator with one handed in at RUN time when there is one; `None` or an empty string keeps the baked value. It exists for #166 / phase-286 W1 — native_sim test parallelism: the harness launches an image with `-testargs --nros-locator=<loc>` and a per-test router on that ephemeral port, and `nros_runtime_locator_override()` (`nros-platform-zephyr`, argv-backed) hands it back. The hook is an `extern \"C\"` only a Zephyr image defines, so it is resolved in the entry macros (`nros::zephyr_component_main!`, `nros::main!`'s Zephyr arm) and the result is handed to the context here, after `Context::default_from_env()`; on real hardware the hook returns NULL and the bake stands. No upstream counterpart: rclrs reads a process environment the launcher already set, which is what this override stands in for on a target that has none. See `rust:Context::baked`."
+}

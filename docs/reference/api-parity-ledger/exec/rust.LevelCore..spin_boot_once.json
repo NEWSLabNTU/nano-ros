@@ -1,0 +1,5 @@
+{
+  "key": "rust:LevelCore::spin_boot_once",
+  "verdict": "extension",
+  "why": "phase-509 P10 -- one pass of the boot level (the executor's own worker and the component ticks) on a shared runtime. rclrs has no levels."
+}

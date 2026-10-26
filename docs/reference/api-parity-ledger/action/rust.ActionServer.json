@@ -1,0 +1,10 @@
+{
+  "key": "rust:ActionServer",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-node/src/executor/handles.rs",
+    "text": "The name is rclrs's and the contract is bounded: rclrs's `ActionServer<A>`"
+  },
+  "verdict": "divergence",
+  "why": "the typed action server a Rust image holds, driven by `poll(on_goal, on_cancel)` plus the `try_*` verbs. rclrs 0.7.0 ships actions (issue 1042: this row was written against 0.5.1, which had none). Its `ActionServer<A>` is `Arc<ActionServerState<A>>` with async goal handling; ours is a fixed-size object driven by `poll(...)` from the executor (RFC-0021). Same name and concept, different contract. Ours also mirror rclcpp_action's and are shared with our C and C++ surfaces. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal. NOTE this name is taken twice in our own tree: `nros_core::ActionServer<A>` is the DECLARATIVE handle (name / action_type / action_hash), the exact twin of `nros_core::ServiceServer` -- and because `nros` re-exports this one, the declarative pair is not exported at all, while `ServiceServer` and `ServiceClient` are. So our Rust action API has no `name()` where the service API has one; see `c:action_client_get_action_name`."
+}

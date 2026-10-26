@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_trigger",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "installs the trigger predicate that decides whether a cycle's ready set is dispatched at all -- rclc's `rclc_executor_set_trigger` (`ANY` / `ALL` / `ONE` / a user function), which rclrs has no counterpart for. A time-triggered image dispatches only when EVERY input of a frame has arrived, which is the difference between a deterministic control cycle and a partially-updated one."
+}

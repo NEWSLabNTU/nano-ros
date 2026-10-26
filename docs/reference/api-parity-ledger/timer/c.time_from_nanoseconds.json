@@ -1,0 +1,5 @@
+{
+  "key": "c:time_from_nanoseconds",
+  "verdict": "extension",
+  "why": "construct/convert for the opaque `rclc_time_t`; rcl's value type needs no constructor."
+}

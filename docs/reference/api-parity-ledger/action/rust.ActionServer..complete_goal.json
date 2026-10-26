@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionServer::complete_goal",
+  "verdict": "extension",
+  "why": "takes `(goal_id, status, result)` -- as C's `rclc_action_succeed`/`_abort`/`_canceled` do, as C++'s POLLING tier does, and as `nros::ActionServer<A>::complete_goal` does since issue 0796; see `cpp:ActionServer::complete_goal`. All four surfaces now agree on the parameter and its order."
+}

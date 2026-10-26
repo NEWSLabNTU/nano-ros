@@ -1,0 +1,8 @@
+{
+  "key": "cpp:EventHandler",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "divergence",
+  "why": "Jazzy's name for `QOSEventHandler`, widened to carry the matched events too; same capability and same divergence as `cpp:QOSEventHandler` (QoS events are named per kind, not routed through one executor waitable)."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:EXECUTOR_SIZE",
+  "verdict": "extension",
+  "why": "`nros::sizes` -- the SINGLE SOURCE OF TRUTH for FFI opaque-storage sizes. Each entry is `size_of::<T>()` for a Rust type a C or C++ caller declares inline storage for, and each also emits a `__NROS_SIZE_<NAME>` static whose symbol size the `nros-c` / `nros-cpp` build scripts read back to generate the header's storage macros. It exists because our C and C++ APIs put entities in CALLER-OWNED storage -- no allocator, no pimpl -- so the header has to state a byte count, and a hand-written one is the drift class issues 0088/0114/0122/0123/0245/0268 all belong to. rcl has no counterpart: every `rcl_*_t` hides an `impl` pointer it heap-allocates. Visible from Rust only because the module is `pub` for in-crate `const _: () = assert!(...)` checks."
+}

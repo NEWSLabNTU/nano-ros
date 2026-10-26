@@ -1,0 +1,5 @@
+{
+  "key": "rust:ParameterOptions",
+  "verdict": "divergence",
+  "why": "rclrs's per-parameter options bundle (description, constraints, ranges, override handling), built and passed at declare time. Ours is `ParameterDescriptor`, stored INLINE beside the parameter in the server's fixed array rather than passed as an owned bundle -- no allocator, so the description is a `heapless::String` and the range an inline enum. See `rust:ParameterDescriptor`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:get_zero_initialized_service",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "see `c:get_zero_initialized_client`.\n\nphase-428 Q1 (2026-09-06) — refuse-loud -> adopt, a VERDICT BUG. `rcl_get_zero_initialized_service` is exported under rcl's own name (`packages/api/nros-c/src/service.rs:220`), returns a default `rcl_service_t`, and the correlator files it `same`. Nothing refuses. See `c:get_zero_initialized_client`."
+}

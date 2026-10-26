@@ -1,0 +1,6 @@
+{
+  "key": "c:polling_action_client_try_recv_*_raw",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`. Renamed from `nros_action_client_try_recv_*_raw` by phase-487 W4, when the polled action client became its own type, `rclc_polling_action_client_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
+}

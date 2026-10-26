@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TimerHandle",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-476 W2 — what `rclcpp::Timer::SharedPtr` (and `TimerBase::SharedPtr`, `ConstSharedPtr`, `UniquePtr`) names. Upstream's is a `std::shared_ptr<TimerBase>`; ours is a two-word `{executor, handle}` value. The timer's callable is copied into the executor arena, which destroys it on release, so there is no C++ object for a smart pointer to own; that is what lets the alias exist on a freestanding target. Two differences a ported file cannot see: the handle does not OWN the timer (dropping or overwriting it leaves the timer firing; the node owns its timers and releases them when destroyed, which matches what this API did before W2), and an explicit `std::shared_ptr<rclcpp::TimerBase>` member no longer binds. No template in the tree spells that; the edit is to `rclcpp::TimerBase::SharedPtr`, the same one phase-456 W2 recorded for `Subscription<M>::SharedPtr`."
+}

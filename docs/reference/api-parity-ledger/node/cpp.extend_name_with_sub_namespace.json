@@ -1,0 +1,6 @@
+{
+  "key": "cpp:extend_name_with_sub_namespace",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the free function behind `create_sub_node`."
+}

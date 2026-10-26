@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::register_guard_condition_on",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-417 W4.e -- the node-bound form of `rust:Executor::register_guard_condition`, and the one place the binding is done, so `NodeCtx::create_guard_condition` is a forwarder rather than a second implementation. `node_id == None` is exactly the old behaviour, which is why the nodeless spelling survives as a call to this one. rclrs has neither: its guard condition comes from a `Context` and goes into a wait set (`cpp:WaitSet`). The `_on` suffix is this tree's existing spelling for \"the same registrar, bound to a node\" -- `register_timer_on`, `create_publisher_raw_on`, `declare_parameter_on`."
+}

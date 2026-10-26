@@ -1,0 +1,5 @@
+{
+  "key": "rust:HandleSet::contains",
+  "verdict": "extension",
+  "why": "see `rust:HandleSet`."
+}

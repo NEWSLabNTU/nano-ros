@@ -1,0 +1,5 @@
+{
+  "key": "rust:DispatchStrategy::to_u8",
+  "verdict": "extension",
+  "why": "the FFI discriminant the `nros::node!` trampoline `__nros_node_<pkg>_dispatch_strategy` returns. See `rust:DispatchStrategy`."
+}

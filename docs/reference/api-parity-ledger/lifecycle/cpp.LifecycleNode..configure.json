@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::configure",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-482 W4 (2026-10-07): on `rclcpp_lifecycle::LifecycleNode` this returns `const State&` (`get_current_state`: `State`), as upstream's does, so a ported call site's use of the result compiles unchanged.\n\nBefore phase-482 W4: phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. The five named transition helpers (`packages/api/nros-cpp/include/rclcpp_lifecycle/lifecycle_node.hpp:160-164`) return `Result`; `rclcpp_lifecycle::LifecycleNode::configure()` returns `const rclcpp_lifecycle::State &` — the state it ARRIVED IN. Two differences in one type: the error channel (RFC-0018, so `Result` is forced) and the loss of the resulting state, which upstream returns and we do not. The second half is recoverable at the call site through `get_current_state()`, so no information is unreachable — but a ported `auto & s = node->configure();` is a COMPILE ERROR, which is the outcome the rule asks for. Applies verbatim to `activate`, `deactivate`, `cleanup` and `shutdown`, each of which carries its own row pointing here. The ID-SPACE defect behind these five is a separate and much sharper finding: see `cpp:LifecycleNode::trigger_transition` and issue 1099."
+}

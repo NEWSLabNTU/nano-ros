@@ -1,0 +1,5 @@
+{
+  "key": "rust:fqn_hash",
+  "verdict": "extension",
+  "why": "phase-474 I1 -- 32-bit FNV-1a of a violating endpoint ref, the identity a trace marker and the SWD record carry for a string they cannot hold. See `rust:RULE_IDS`."
+}

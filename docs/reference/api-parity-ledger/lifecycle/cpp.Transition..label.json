@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Transition::label",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_lifecycle/lifecycle_node.hpp",
+    "text": "`label()` returns a BORROWED `const char*` with static lifetime rather"
+  },
+  "verdict": "divergence",
+  "why": "upstream returns `const std::string&` into the `rcl_lifecycle_transition_t` its `Transition` owns; ours returns a BORROWED `const char*` with static lifetime, pointing at the one label table in `nros_core::lifecycle` (see `c:lifecycle_transition_label`). No allocator, nothing owned, nothing freed -- and no copy of `lifecycle_msgs`, which is the reason our `Transition` stores an id and asks rather than carrying the text. `nullptr` for an id we do not implement; upstream cannot be asked, because its `Transition` is built from a map entry that exists."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::ping",
+  "verdict": "extension",
+  "why": "see `c:executor_ping` -- the reconnect-on-link-loss probe, mirroring micro-ROS's `rmw_uros_ping_agent`. rclcpp has no counterpart because a desktop node's DDS discovery never has a single agent to lose."
+}

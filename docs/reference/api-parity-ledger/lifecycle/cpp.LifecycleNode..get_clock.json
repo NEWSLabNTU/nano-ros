@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::get_clock",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-482 W4 (2026-10-07): `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::get_clock`, inherited — the node's ROS-time clock, the same object upstream's lifecycle node carries. `rclcpp::Node::get_clock` correlates `same` and needs no row; this key correlates as upstream-only only because the extractor records the members a class declares, not the ones it inherits."
+}

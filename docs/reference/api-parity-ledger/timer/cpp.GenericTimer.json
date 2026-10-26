@@ -1,0 +1,5 @@
+{
+  "key": "cpp:GenericTimer",
+  "verdict": "divergence",
+  "why": "rclcpp templates its timer on the CALLABLE so a lambda can be stored inline. Ours takes a fn-pointer plus a `void*` context (RFC-0018: no `std::function`, no allocator), so there is nothing to template on."
+}

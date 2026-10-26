@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Service::handle_id",
+  "verdict": "extension",
+  "why": "see `cpp:Client::handle_id`."
+}

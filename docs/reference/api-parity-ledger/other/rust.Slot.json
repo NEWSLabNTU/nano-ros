@@ -1,0 +1,5 @@
+{
+  "key": "rust:Slot",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- one aligned region carved out of a caller-supplied `[u64]` backing store; the unit `carve` hands back. `u64` element type gives 8-byte alignment without `repr(align)` generics."
+}

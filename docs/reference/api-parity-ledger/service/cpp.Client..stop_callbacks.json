@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Client::stop_callbacks",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "Jazzy's teardown hook clearing a client's ready callbacks before destruction, so the destructor cannot race an executor thread. Our client's wake callbacks are executor-owned and deregistered by destruction; see `cpp:Client::clear_on_ready_callback` (declined)."
+}

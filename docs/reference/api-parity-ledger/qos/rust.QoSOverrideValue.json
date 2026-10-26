@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSOverrideValue",
+  "verdict": "extension",
+  "why": "one typed policy+value an override sets. A typed enum rather than a string so codegen catches an unknown policy at BAKE time instead of silently no-op-ing on target. See `rust:QoSOverride`."
+}

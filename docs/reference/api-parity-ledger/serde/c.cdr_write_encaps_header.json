@@ -1,0 +1,5 @@
+{
+  "key": "c:cdr_write_encaps_header",
+  "verdict": "extension",
+  "why": "Writes the 4-byte CDR encapsulation header (`00 01 00 00` XCDR1 / `00 09 00 00` XCDR2) and advances the cursor, replacing the hardcoded header the generated C `_serialize` used to emit. ROS 2's equivalent is inside the middleware's serializer for the reason `c:cdr_read_*` gives. Which header it writes is decided by `const XCDR2: bool` in nros-c, not by a parameter -- see the DHEADER rows and RFC-0055's correction. NOTE the Rust side reaches the same 4 bytes through THREE different doors: `CDR_LE_HEADER` as a constant, `CdrWriter::new_with_header` as a constructor, and `nros::cdr::write_cdr_le_header` as a free function -- the last of which the topic router files under `other`, not here (see the report on topics.py)."
+}

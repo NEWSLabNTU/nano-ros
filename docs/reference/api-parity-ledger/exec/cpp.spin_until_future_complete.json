@@ -1,0 +1,10 @@
+{
+  "key": "cpp:spin_until_future_complete",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/rclcpp.hpp",
+    "text": "ADOPT-BOUNDED: the timeout is `int32_t` MILLISECONDS (`-1` = unbounded, the"
+  },
+  "verdict": "declined",
+  "why": "the free form of `cpp:Executor::spin_until_future_complete`; see that row and RFC-0021: no futures and no async runtime. Every blocking helper takes the executor and drives it (`promise.wait(&mut executor, timeout)`), because on a single-threaded executor awaiting a result that only that executor can produce is a deadlock. See `cpp:Future`.\n\nphase-428 Q1 (2026-09-06) — refuse-loud -> adopt-bounded. The free function EXISTS and works: `packages/api/nros-cpp/include/rclcpp/rclcpp.hpp` (by name; the `:1088` this row cited has drifted), `spin_until_future_complete(const Node::SharedPtr&, const Future&, int32_t timeout_ms = -1)` returning `FutureReturnCode` (SUCCESS / TIMEOUT / INTERRUPTED, upstream's enum). The old row's \"no futures\" was about the `Executor::` member, which is absent; the free form is what a ported tutorial calls, and it is implemented.\n\nWHAT THE COMPILER POINTS AT: the third argument. Upstream takes `std::chrono::duration<Rep, Period>` and a ported file passes `std::chrono::seconds(1)` or `1s`; ours takes `int32_t` milliseconds, and there is no conversion from a `duration` to an integer, so that call is `no matching function` with the candidate listed. The two-argument form (no timeout) ports unchanged: `Node::SharedPtr` binds to the first parameter and our `Future<T>` (`future.hpp:49`) is what `Client::async_send_request` returns here.\n\nTHE ENVELOPE: it spins the PROCESS executor (`nros::spin_once(10 ms)` slices, so the deadline is quantised to 10 ms) rather than an executor argument — there is one executor per task (RFC-0002) and no second one to pass. `-1` means unbounded, as upstream's default does.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the 10 ms quantum was an in-body comment and the millisecond timeout only a signature; both are now on the function's `///` doc comment."
+}

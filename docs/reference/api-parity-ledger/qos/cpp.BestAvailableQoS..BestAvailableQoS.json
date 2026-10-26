@@ -1,0 +1,8 @@
+{
+  "key": "cpp:BestAvailableQoS::BestAvailableQoS",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "extension",
+  "why": "issue 1973. Matches upstream's Iron+ surface, so under Jazzy it is a `same` row and carries no entry; Humble predates best-available QoS, so against Humble's headers it reads ours-only. The default constructor of `cpp:BestAvailableQoS`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ResultOf",
+  "verdict": "divergence",
+  "why": "phase-427 W8, RFC-0089 'The error channel, settled'. The value-carrying half of the error channel -- what a fallible call returns when it also produces a value -- and since 2026-09-07 the ONE template both halves are: `Result` is `ResultOf<void>`. Same no-exceptions constraint as `cpp:Result`; rclcpp returns the value and throws, and -fno-exceptions (RFC-0018) removes that channel. Was `cpp:Expected`, which remains for one release as a deprecated spelling. The RFC asked for the template to be called `Result`, with `Result` also naming the void case; C++ cannot do that -- an identifier is a class, a class template or an alias, never two -- and all three routes were measured ill-formed on gcc 12.3 and clang 14 (see the comment on the template in `rclcpp/result.hpp`). `Result` kept the bare spelling because it is the one 1100+ call sites and the whole public API already write. Carries `NROS_NODISCARD`."
+}

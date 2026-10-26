@@ -1,0 +1,5 @@
+{
+  "key": "c:declared_qos_streq",
+  "verdict": "extension",
+  "why": "phase-454 W10 -- `strcmp(a, b) == 0`, spelled out in `rclc/detail/declared_qos.h` so that header needs no hosted C string header. A FREESTANDING C implementation is required to provide only float / iso646 / limits / stdarg / stdbool / stddef / stdint, and this header is included by every C component on every RTOS target, so reaching for a hosted header to compare two strings would put a portability condition on the check itself. Ours-only by construction: it is an implementation detail of `c:declared_depth` that C cannot hide the way C++ hides its own `declared_qos_streq` in `nros::detail`, because C has no namespaces. rcl has no counterpart because it has no such table to search."
+}

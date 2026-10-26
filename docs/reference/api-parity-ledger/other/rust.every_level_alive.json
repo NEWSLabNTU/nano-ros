@@ -1,0 +1,5 @@
+{
+  "key": "rust:every_level_alive",
+  "verdict": "extension",
+  "why": "phase-509 P7 (RFC-0108 D8) -- whether every level has spun since the last watchdog feed (D8.2). rclrs has no levels."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:ParameterBuilder::read_only",
+  "disposition": "adopt",
+  "verdict": "rename",
+  "why": "phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. see `rust:ParameterBuilder::mandatory` — `ParameterError` where rclrs names `DeclarationError`. (`typed.rs:169`.)"
+}

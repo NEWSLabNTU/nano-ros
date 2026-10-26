@@ -1,0 +1,5 @@
+{
+  "key": "rust:set_level_count",
+  "verdict": "extension",
+  "why": "phase-509 P7 (RFC-0108 D8) -- a board's tier runner states the image's level count before its levels spin. rclrs has no levels."
+}

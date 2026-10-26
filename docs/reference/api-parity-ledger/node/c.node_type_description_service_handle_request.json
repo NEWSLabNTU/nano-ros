@@ -1,0 +1,9 @@
+{
+  "key": "c:node_type_description_service_handle_request",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "see `c:node_type_description_service_init`."
+}

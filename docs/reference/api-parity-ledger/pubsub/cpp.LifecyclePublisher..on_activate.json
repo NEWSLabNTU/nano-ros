@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecyclePublisher::on_activate",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "declined as a RE-DECLARATION, not as a capability: ours inherits it from `nros::SimpleManagedEntity`, which correlates with upstream's, and a `LifecyclePublisher` activated by its node stops dropping sends exactly as upstream's does. Upstream overrides it to log the activation through `rclcpp`'s logger; ours has nothing to add, and an override that only called the base would be a member whose presence says something it does not do. Same for `on_deactivate`, which upstream does not re-declare either. FILED HERE, not in `lifecycle/`, because the topic classifier keys on the NAME: this is a lifecycle row and the shard is the taxonomy's answer, not a claim about the subject (same observation as `cpp:LifecycleNode::get_transition_graph`)."
+}

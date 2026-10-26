@@ -1,0 +1,5 @@
+{
+  "key": "rust:metadata_string",
+  "verdict": "extension",
+  "why": "copies a `&str` into a `MetadataString`, surfacing the capacity error. Public for metadata-mode adapters in the other languages (phase-308). See `rust:MetadataString`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:GuardCondition::attach_closure_block",
+  "verdict": "extension",
+  "why": "INTERNAL, not user API -- 'Not intended for user code', in the header's own words. The guard-condition twin of `cpp:Timer::attach_closure_block`, and that row carries the reasoning: our runtime callback is a raw C function pointer, so the heap-allocated `std::function<void()>` it points into needs an owner with the right lifetime on this side, and the owning member is unconditional (phase-442 W1, issue 1225) so that `sizeof` cannot follow a capability probe."
+}

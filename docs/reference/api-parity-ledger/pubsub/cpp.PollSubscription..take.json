@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollSubscription::take",
+  "verdict": "divergence",
+  "why": "phase-456 W2b — the same operation `cpp:Subscription::take` records, on the class that can perform it. Read that row for the trade; the short form is that upstream's `take` is called on an executor-owned entity after a `WaitSet` reports it ready, and we have no wait set, so the caller-owned subscriber is the thing that can answer. The second parameter still differs: rclcpp's is `take(ROSMessageType&, MessageInfo&)` and ours takes the message only, because most backends carry no per-sample message info and the one that does exposes it as `take_serialized_with_attachment`."
+}

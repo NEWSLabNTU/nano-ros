@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::service",
+  "verdict": "divergence",
+  "why": "the service-server BUILDER (`node.service(name).qos(..).build::<Svc, _>(cb)`) -- RFC-0022's `clone` tier, beside the `fork`-tier `create_service`; see `rust:Node::publisher` for the verdict and why a builder rather than rclrs's options struct. Defaults to the services profile (RELIABLE + VOLATILE + KEEP_LAST(10)), which is rclcpp's `ServicesQoS`.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+}

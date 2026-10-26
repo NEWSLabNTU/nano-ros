@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::reliability",
+  "verdict": "extension",
+  "why": "see `rust:QoSProfile::depth`."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "c:timer_callback_t",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/src/timer.rs",
+    "text": "carries that function's envelope"
+  },
+  "verdict": "divergence",
+  "why": "phase-515 C1 (decision D2) -- ADOPTED: `void (*)(rcl_timer_t *, int64_t last_call_time)` is the one C timer callback contract, and the context-carrying one is gone. The second argument is the executor's elapsed count at dispatch, the value `rcl_timer_get_time_since_last_call` reports: ADOPT-BOUNDED because the executor's timer accounting is microsecond-based (issue #505) and it is measured from the previous DUE POINT rather than the previous callback start -- the same number for a timer running on time. Pinned by `packages/api/nros-c/tests/run/timer_clock_source.c` (10 ms after a reset reads exactly 10 ms)."
+}

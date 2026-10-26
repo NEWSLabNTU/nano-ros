@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Transition::goal_state",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "not an action item: this is `rclcpp_lifecycle::Transition::goal_state()`, the TARGET state of a lifecycle transition. It is routed here because the taxonomy decides a MEMBER by its name and `goal_` belongs to action. The real reason we lack it belongs to the lifecycle stage -- our `LifecycleTransition` is the enum itself, not an object carrying start and goal states. Flagged for a `topics.py` fix; see this stage's report."
+}

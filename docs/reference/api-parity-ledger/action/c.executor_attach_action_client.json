@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_attach_action_client",
+  "verdict": "divergence",
+  "why": "see `c:executor_add_action_client`. phase-492 W1.b."
+}

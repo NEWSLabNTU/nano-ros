@@ -1,0 +1,6 @@
+{
+  "key": "c:timer_get_allocator",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "one global allocator; see the `no-allocator` rule."
+}

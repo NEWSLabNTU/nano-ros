@@ -1,0 +1,5 @@
+{
+  "key": "c:count_subscribers",
+  "verdict": "divergence",
+  "why": "IMPLEMENTED as of phase-381 W4, under our receiver: see `c:executor_count_subscribers`. The previous text here said the whole family was absent -- \"every one of those slots is NULL in every backend, nothing above them wraps a slot, and no C/C++/Rust entry point exists\" -- which was true when written (phase-379 W3) and is not now. The zenoh backend fills the slot, the runtime wraps it and all three languages expose it."
+}

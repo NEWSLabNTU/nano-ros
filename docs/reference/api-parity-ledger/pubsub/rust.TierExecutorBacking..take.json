@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierExecutorBacking::take",
+  "verdict": "divergence",
+  "why": "See `rust:TierExecutorBacking`. The once-only handout that makes the `&'static mut` sound; a second call returns an empty slice, which `check_tier_executor_backing` refuses by name."
+}

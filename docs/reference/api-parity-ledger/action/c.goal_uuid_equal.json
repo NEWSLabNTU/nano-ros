@@ -1,0 +1,5 @@
+{
+  "key": "c:goal_uuid_equal",
+  "verdict": "extension",
+  "why": "comparison for a type C cannot compare with `==`. rclcpp_action gets this from `std::array::operator==`, which needs the STL we do not link (RFC-0018)."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:action_send_goal_async",
+  "verdict": "divergence",
+  "why": "rclcpp_action returns a `std::shared_future<GoalHandle::SharedPtr>`; ours writes the generated goal uuid into caller storage and delivers the accept/reject to `rclc_goal_response_callback_t`. No futures and no async runtime (RFC-0021); no allocator for the shared goal handle. See the service stage's `cpp:Client::async_send_request`."
+}

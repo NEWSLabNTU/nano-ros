@@ -1,0 +1,5 @@
+{
+  "key": "rust:RawActionClientSpec",
+  "verdict": "divergence",
+  "why": "see `rust:RawActionServerSpec`."
+}

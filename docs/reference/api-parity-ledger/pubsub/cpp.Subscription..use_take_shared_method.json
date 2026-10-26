@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Subscription::use_take_shared_method",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "tells the intra-process machinery whether the callback wants a shared or unique pointer. See the intra-process rows."
+}

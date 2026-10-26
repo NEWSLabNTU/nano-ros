@@ -1,0 +1,5 @@
+{
+  "key": "c:matched_status_t",
+  "verdict": "divergence",
+  "why": "issue 1972 — the matched-event payload, upstream `rmw_matched_status_t` (`rmw`, outside the rclc+rcl surface, hence ours-only). Same four fields in upstream's order; `uint32_t` where upstream has `size_t`, because it crosses the C ABI BY VALUE into a callback (as `c:count_status_t`)."
+}

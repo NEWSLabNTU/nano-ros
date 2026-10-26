@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimeTriggeredWindow",
+  "verdict": "extension",
+  "why": "one slot in that schedule. See `rust:TimeTriggeredSchedule`."
+}

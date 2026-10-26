@@ -1,0 +1,5 @@
+{
+  "key": "c:lifecycle_node_t",
+  "verdict": "divergence",
+  "why": "rclc's `rclc_lifecycle_node_t` bundles a node pointer, a separately-inited `rcl_lifecycle_state_machine_t`, a 100-slot callback map and SIX request/response message buffers. `rcl_lifecycle_state_machine_t` is one handle: an `initialized` flag plus opaque storage for the state and six callback slots. Constraint: static entity storage -- the service request/response buffers belong to the service entities the executor already owns, so embedding a second copy in the lifecycle handle would spend RAM to duplicate them."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:bind_action_server_raw",
+  "verdict": "extension",
+  "why": "RFC-0043's component seam for an action server: binds the members `int32_t C::on_goal(const uint8_t goal_id[16], const uint8_t* data, size_t len)` and `int32_t C::on_cancel(const uint8_t goal_id[16])` by identity onto `cpp:create_action_server_raw`, with no-alloc trampolines and the component as `ctx`. USER-FACING -- `examples/workspaces/cpp/src/action_server_pkg/src/FibServer.cpp` writes it. rclcpp_action passes `std::function`s to `create_server`; there is no allocator here. See `cpp:bind_subscription` for the family. The goal is identified by a 16-byte UUID rather than an owning handle -- `c:action_execute` records why."
+}

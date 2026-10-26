@@ -1,0 +1,6 @@
+{
+  "key": "rust:RclPrimitive",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's dispatch trait -- `execute`, `handle`, `kind` -- implemented by each entity so the wait set can drive it generically. RFC-0002's executor drives entities through the RMW vtable and an `EntryKind` tag in the arena, which is the same job done by a C ABI rather than by a Rust trait object (which would need an allocation per entity). rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`."
+}

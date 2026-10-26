@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::init",
+  "verdict": "extension",
+  "why": "the EXPLICIT-CODE construction channel a `-fno-exceptions` target needs in place of upstream's throwing constructor (RFC-0089 §\"Construction\"; phase-427 W2). `Node n; n.init(\"talker\")` and `Node n(\"talker\")` reach the same place; the difference is only whether the failure arrives as a `Result` you must read or as an `ok()` you must ask. rclcpp needs no equivalent because it can throw. Both spellings ship because the arena needs a node in caller-owned storage, so the two-phase form cannot be the odd one out."
+}

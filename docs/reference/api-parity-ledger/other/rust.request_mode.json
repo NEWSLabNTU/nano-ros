@@ -1,0 +1,6 @@
+{
+  "key": "rust:request_mode",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). Asks every executor to judge by a mode's tables from its next spin (an atomic state, like `rust:request_monitor_arming`). The C spelling is `nros_cpp_request_mode`."
+}

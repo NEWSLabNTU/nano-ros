@@ -1,0 +1,6 @@
+{
+  "key": "rust:FloatingPointRange*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "The floating-point half; see `rust:IntegerRange*`. phase-417 W4.a."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:executor_get_zero_initialized_executor",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "rclc's stuttering spelling -- the type name appears twice. Ours is `nros_executor_get_zero_initialized`, the method-style name on the type. See `c:get_zero_initialized_publisher`."
+}

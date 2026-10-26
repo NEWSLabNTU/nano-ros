@@ -1,0 +1,5 @@
+{
+  "key": "rust:SchedContextId",
+  "verdict": "extension",
+  "why": "RFC-0047's scheduling context: which RTOS priority tier a callback runs on, and the deadline policy applied when it overruns. ROS 2 has no counterpart -- rclcpp's callback groups carry concurrency rules and no priority."
+}

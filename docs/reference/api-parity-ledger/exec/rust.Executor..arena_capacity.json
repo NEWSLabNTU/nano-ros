@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::arena_capacity",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "how many arena bytes an executor was GIVEN and how many its registered entities actually claimed. No upstream analogue because upstream has no arena: rclcpp allocates each entity on the heap, so \"how much of the pre-sized block is in use\" is not a question it can ask. Here `ARENA_SIZE` is derived by budgeting EVERY slot at the ActionClient worst case, and the arena is a BUMP allocator held INLINE in the `Executor` value -- on the task stack, where `mem-report` cannot see it. So the allocator has always known the exact claimed total and had no way to say it: a timer-only executor claims 32 bytes of 74,240. These two accessors are how an image, a test, or the boot advisory finds the number to put in `NROS_EXECUTOR_ARENA_SIZE`. Issue 0900."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:parameter_set_*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "The write half of `c:parameter_get_*` (string and bounded arrays), with rclc's local-set semantics: type, callback, write."
+}

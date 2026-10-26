@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::remove_on_shutdown_callback",
+  "verdict": "divergence",
+  "why": "rclcpp's `Context::remove_on_shutdown_callback` on our executor. See `cpp:Executor::remove_pre_shutdown_callback`. Issue 0790."
+}

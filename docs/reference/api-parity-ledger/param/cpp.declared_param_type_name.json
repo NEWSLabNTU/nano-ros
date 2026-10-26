@@ -1,0 +1,5 @@
+{
+  "key": "cpp:declared_param_type_name",
+  "verdict": "extension",
+  "why": "the contract's spelling of a type code, for the boot diagnostic that names the declared and the passed type. See `cpp:declared_param_node`."
+}

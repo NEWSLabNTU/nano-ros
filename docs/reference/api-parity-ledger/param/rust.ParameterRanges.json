@@ -1,0 +1,11 @@
+{
+  "key": "rust:ParameterRanges",
+  "disposition": "absent",
+  "provides": [
+    "nros::ParameterRange",
+    "nros::IntegerRange",
+    "nros::FloatingPointRange"
+  ],
+  "verdict": "declined",
+  "why": "RE-VERDICTED phase-417 W4.a. was `gap`. rclrs's aggregate of every range on one parameter. Ours is a single `Option<ParameterRange>` on the descriptor, and for a parameter that is not a shortfall: `ParameterRange` is an enum over `IntegerRange` / `FloatingPointRange`, a parameter has ONE type, and `rcl_interfaces/msg/ParameterDescriptor` carries the two range sequences precisely so that at most one is non-empty — which is exactly what `to_rcl_descriptor` writes. The aggregate would name a state the wire format cannot carry. All three types are exported from the `nros` facade since W4.a, which is the half of the old row that WAS a defect."
+}

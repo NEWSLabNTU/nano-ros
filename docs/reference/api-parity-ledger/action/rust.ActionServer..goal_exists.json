@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionServer::goal_exists",
+  "verdict": "extension",
+  "why": "the L1 Rust server's answer to the same question, and the Rust half of what phase-417 W4.b shipped for `c:action_server_goal_exists`. rclrs 0.7.0 has no counterpart because its typestate chain (`RequestedGoal` -> `AcceptedGoal` -> `ExecutingGoal` -> `TerminatedGoal`) makes a goal a value the application holds, so 'does the server know it' is not a question you can ask -- the same constraint `rust:ActionServer::active_goal_count` records. Delegates to `ActionServerCore::goal_exists`, which the C and C++ surfaces reach through `ActionServerRawHandle::goal_exists`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_subscription_with_info",
+  "verdict": "extension",
+  "why": "issue 1668 — the removable form of `c:executor_add_subscription_raw_with_info`: the same raw + message-info entry, registered into a `rcl_subscription_t` the caller keeps, in the shape of `c:executor_add_subscription_raw` (executor, subscription, callback, context, invocation). `rclc_executor_remove_subscription` takes it back out. No rclc counterpart — rclc has no byte-plus-attachment subscription; see `c:publish_raw` and `rust:RawMessageInfo`."
+}

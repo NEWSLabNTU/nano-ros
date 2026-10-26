@@ -1,0 +1,5 @@
+{
+  "key": "c:shutdown_callback_t",
+  "verdict": "extension",
+  "why": "`void (*)(void* context)` -- the shutdown-hook signature. A LOCAL typedef in nros-c rather than a re-export of `nros_node::ShutdownCallbackFn`, because cbindgen runs with `parse_deps = false` and a foreign type in an `extern \"C\"` signature degrades to an opaque struct C cannot call through. rclc has no shutdown hook, so no counterpart. Issue 0790."
+}

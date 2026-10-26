@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Clock::get_clock_mutex",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp exposes the clock's mutex so a caller can hold it across a read and a jump callback. Ours has no jump callbacks and the platform clock read is atomic; handing out a lock is how a priority inversion enters an RTOS image."
+}

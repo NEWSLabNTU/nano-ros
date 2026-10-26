@@ -1,0 +1,10 @@
+{
+  "key": "cpp:TimerInfoCallbackType",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/timer.hpp",
+    "text": "An `InplaceFn` is MOVE-only: pass a named variable as"
+  },
+  "verdict": "divergence",
+  "why": "issue 1974 — upstream's is `std::function<void(const TimerInfo&)>`; ours is `rclcpp::InplaceFn<void(const TimerInfo&)>`, the inline-storage callable every freestanding callback here uses (no allocator, no `<functional>` — RFC-0096 D2). A lambda converts to either and either is a timer callback. What a porting user loses: an `InplaceFn` is MOVE-only, so a named variable is passed with `std::move(cb)` (a copy is a compile error, never a silent difference), and an over-large capture is a `static_assert` naming `NROS_CPP_CALLBACK_CAPACITY`. Under Humble the name is ours-only (Humble has no `TimerInfo`)."
+}

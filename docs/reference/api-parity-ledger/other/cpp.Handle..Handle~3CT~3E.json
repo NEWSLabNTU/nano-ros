@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Handle::Handle<T>",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "constructors: default, `nullptr`, from a raw `T*`, from any `Handle<U>` whose `U*` converts to `T*` (a derived node's handle to `Handle<rclcpp::Node>`, as `shared_ptr<Derived>` converts upstream), and on hosted targets from an lvalue `std::shared_ptr<U>`. The rvalue `shared_ptr` form is `= delete` (phase-482 W2): `rclcpp::Node::SharedPtr n = std::make_shared<...>(...)` would leave `n` dangling, so it is a compile error naming the fix (`auto n = ...`), listed in RFC-0096 D5."
+}

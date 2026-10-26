@@ -1,0 +1,7 @@
+{
+  "key": "cpp:install_signal_handlers",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "no POSIX signal delivery on Zephyr, FreeRTOS or bare-metal. rclcpp installs a SIGINT handler so Ctrl-C shuts the context down; an image is stopped by its RTOS, a watchdog or a power rail."
+}

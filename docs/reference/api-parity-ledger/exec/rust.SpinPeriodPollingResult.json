@@ -1,0 +1,5 @@
+{
+  "key": "rust:SpinPeriodPollingResult",
+  "verdict": "extension",
+  "why": "the `no_std` period result: the work done plus the milliseconds the CALLER should sleep, because a bare-metal or RTOS caller owns the delay primitive and the executor must not assume one. rclrs's executor owns its own sleeping. See `rust:SpinOnceResult`. Consumers outside `nros-node`: none -- it is re-exported and unused."
+}

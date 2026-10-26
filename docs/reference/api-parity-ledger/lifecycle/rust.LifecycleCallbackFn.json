@@ -1,0 +1,5 @@
+{
+  "key": "rust:LifecycleCallbackFn",
+  "verdict": "extension",
+  "why": "`fn() -> TransitionResult` -- the plain function-pointer callback slot for `LifecyclePollingNode`. A function POINTER rather than a `Box<dyn FnMut>` is the `no_std` / no-allocator constraint, the same one behind the pubsub stage's callback rows. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages."
+}

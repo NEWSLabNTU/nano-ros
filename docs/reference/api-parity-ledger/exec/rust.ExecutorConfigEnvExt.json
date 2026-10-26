@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorConfigEnvExt",
+  "verdict": "extension",
+  "why": "phase-428 Q1 follow-through (2026-09-06) — the trait that carries `ExecutorConfig::from_env()` on hosted builds (`packages/api/nros/src/env.rs:237`). It exists because issue 0687 / phase-359 W10 moved every environment read out of `nros-node` (which stays `no_std` and takes VALUES through `ExecutorConfig::resolve_with`) into `nros::env`, the one place that reads the process environment; an inherent method would have put `std::env` back in the core. Bring the trait into scope (the prelude has it) and the call site spelling is unchanged. rclrs's nearest is `Context::from_env`, which is a constructor of the context, not of a config — see `rust:Context`. Visible since `env` joined the measured feature set."
+}

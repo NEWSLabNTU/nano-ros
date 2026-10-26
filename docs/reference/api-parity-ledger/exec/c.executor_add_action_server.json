@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_action_server",
+  "verdict": "divergence",
+  "why": "rclc's `rclc_executor_add_action_server(executor, server, handles, goal_request, size, goal_cb, cancel_cb, context)` binds the callbacks at registration; ours binds them at `rclc_action_server_init_with_callbacks`, so ours is `rclc_executor_attach_action_server(executor, server)`. Constraint as `c:executor_add_client`. phase-492 W1.b."
+}

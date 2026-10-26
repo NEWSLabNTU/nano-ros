@@ -1,0 +1,10 @@
+{
+  "key": "cpp:RosoutQoS::RosoutQoS",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/qos.hpp",
+    "text": "four policies are transcribed exactly, but nano-ros publishes no"
+  },
+  "verdict": "divergence",
+  "why": "see `cpp:RosoutQoS`. COLLAPSE CHECK 2026-09-04 (phase-417): the preset now ships as a type on the ported surface (phase-417 W3.f); the `/rosout` decline is unchanged. See `cpp:RosoutQoS`. FAMILY SETTLED (phase-467 Q4, 2026-09-25) -- follows `cpp:RosoutQoS`, which now reads `divergence`+`adopt-bounded`: the preset TYPE ships, and the `/rosout` TOPIC is an open gap tracked at `c:logging_rosout_enabled` rather than a decline that stands. See that row for the reasoning."
+}

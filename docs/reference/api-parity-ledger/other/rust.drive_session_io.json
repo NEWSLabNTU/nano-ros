@@ -1,0 +1,5 @@
+{
+  "key": "rust:drive_session_io",
+  "verdict": "extension",
+  "why": "the C API executor's pre-poll hook, delegating to `Session::drive_io`. See `rust:RmwSession` and `rust:Session::drive_io`."
+}

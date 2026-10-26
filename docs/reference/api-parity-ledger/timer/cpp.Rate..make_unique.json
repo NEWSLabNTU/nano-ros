@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Rate::make_unique",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "see `cpp:Rate::make_shared`."
+}

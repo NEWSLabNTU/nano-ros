@@ -1,0 +1,6 @@
+{
+  "key": "c:timer_get_callback",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "reads back the callback pointer. Ours is bound at creation and not swappable; see `c:timer_exchange_callback`."
+}

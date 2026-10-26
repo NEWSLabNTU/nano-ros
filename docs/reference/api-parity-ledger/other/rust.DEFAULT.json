@@ -1,0 +1,5 @@
+{
+  "key": "rust:DEFAULT",
+  "verdict": "extension",
+  "why": "the `nros::qos` module's five profile constants, mirroring rmw's `rmw_qos_profile_*` C constants. Const form because a baked entity declaration needs a value usable in a `static` (RFC-0036/0045); rclrs offers only the function form (`QoSProfile::topics_default()`).\nWORTH ACTING ON: our Rust ships the same five profiles TWICE, as these constants and as `QoSProfile::*_default()`, and the two copies DISAGREE on two of them. `nros::qos::SYSTEM_DEFAULT` is `DEFAULT` (KEEP_LAST depth 10) while `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` is depth 1; `nros::qos::PARAMETERS` is VOLATILE depth 1000 while `QoSProfile::QOS_PROFILE_PARAMETERS` is TRANSIENT_LOCAL depth 1000. Both claim to match upstream and both cannot; upstream `rmw_qos_profile_parameters` is RELIABLE + VOLATILE + KEEP_LAST(1000), so the constant is right and the associated const is wrong. Phase 379 W5."
+}

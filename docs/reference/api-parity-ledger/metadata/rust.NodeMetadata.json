@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeMetadata",
+  "verdict": "extension",
+  "why": "what a component's declaration is recorded as, so codegen and the launch resolver can read the entity set without running the image (RFC-0043). rclrs has no codegen step and nothing to record."
+}

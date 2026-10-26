@@ -1,0 +1,5 @@
+{
+  "key": "rust:ShutdownCallbackFn",
+  "verdict": "extension",
+  "why": "`unsafe extern \"C\" fn(*mut c_void)` -- the shutdown-hook signature. rclrs has no shutdown hook, so no counterpart. `extern \"C\"` and not a boxed closure because there is no allocator, and because ONE table then serves the Rust, C and C++ surfaces instead of three registries. Issue 0790."
+}

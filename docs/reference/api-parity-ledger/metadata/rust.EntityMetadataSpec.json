@@ -1,0 +1,5 @@
+{
+  "key": "rust:EntityMetadataSpec",
+  "verdict": "extension",
+  "why": "the named-field input `entity_metadata` takes, collapsing seven positional arguments of which three were adjacent `&str`. Public so metadata-mode adapters for the OTHER languages build entities through one constructor and the recorded shape cannot diverge per language (phase-308). See `rust:EntityMetadata`."
+}

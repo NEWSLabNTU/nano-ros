@@ -1,0 +1,5 @@
+{
+  "key": "cpp:QosPolicyKind",
+  "verdict": "divergence",
+  "why": "rclcpp's typed policy-kind enum, used to name the `qos_overrides.*` parameters and to say which policy was incompatible. Ours is the `policy` byte of `rclc_qos_override_t` (0 = reliability .. 7 = liveliness_lease_duration) and the bits of `QoSPolicyMask`. Constraint: the override row crosses the cbindgen C ABI, and a `#[repr(C)]` enum there is a short-enum ABI mirror somebody has to keep in sync -- the hazard issue 0160 gated after it bit us three times. Rust keeps the typed `QoSOverrideValue` on its own side of the seam, so the bake step still rejects an unknown policy. See `cpp:QosOverridingOptions` for the family and `cpp:qos_policy_kind_to_cstr` for what the untyped byte costs in diagnostics."
+}

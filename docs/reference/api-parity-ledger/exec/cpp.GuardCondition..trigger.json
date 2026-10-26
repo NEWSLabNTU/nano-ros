@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GuardCondition::trigger",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. `rclcpp::GuardCondition::trigger()` returns `void` (it throws `rclcpp::exceptions::RCLError` on failure); ours (`packages/api/nros-cpp/include/rclcpp/guard_condition.hpp:50`) returns `Result`. This is the canonical RFC-0018 shape — the error channel had to move from the exception to the return value, so upstream's `void` could not be kept. `[[nodiscard]]` makes the discard loud."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::attach_band_worker",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-509 P9b item 3 / RFC-0108 D7 -- link a band worker's wake object into the executor's arrival routing, so an arrival attributed to a slot of its band wakes that worker alone (an unattributed one wakes every worker). rclcpp's multi-threaded executor wakes its shared wait set; rclrs has one executor thread; neither routes an arrival to a priority band."
+}

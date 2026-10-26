@@ -1,0 +1,5 @@
+{
+  "key": "cpp:tx_size_bound",
+  "verdict": "extension",
+  "why": "as cpp:rx_size_bound, for the transmit direction (XCDR1 alone — this stack writes XCDR1). Same reason rclcpp has nothing to compare: it serializes into an allocating buffer."
+}

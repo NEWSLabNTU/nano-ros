@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Service::handle_request",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Client::handle_response`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:logger_get_child",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-479 (RFC-0102 D1) -- the C half of `rclcpp::Logger::get_child`, a thin FFI over `nros_log::Logger::create_child` (RFC-0019). rclc carries no logger-hierarchy entry point, so there is no upstream row to correlate against. Returns the child (`<parent>.<suffix>`, or `suffix` under the catch-all), whose unset level resolves through its nearest ancestor; or NULL, warned once, when the name is over 48 bytes, empty, or the arena is full -- NULL rather than the parent, so `rclc_logger_set_level(child, ..)` can never move the parent's threshold (RFC-0102 D3)."
+}

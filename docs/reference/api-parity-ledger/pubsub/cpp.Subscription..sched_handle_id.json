@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Subscription::sched_handle_id",
+  "verdict": "extension",
+  "why": "see `cpp:Subscription::has_sched_handle`."
+}

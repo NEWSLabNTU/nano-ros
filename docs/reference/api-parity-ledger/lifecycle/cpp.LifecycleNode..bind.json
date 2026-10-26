@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::bind",
+  "retired": "a method of the `nros::LifecycleNode` mixin, now `nros::detail::LifecycleEngine` (phase-482 W4). `rclcpp_lifecycle::LifecycleNode` binds, registers its services and manages its publishers itself",
+  "verdict": "extension",
+  "why": "two-phase construction for the component model: a nano-ros component is constructed before the executor handle exists (RFC-0043/0044 -- components are declared and installed, not constructed with their dependencies), so a component that inherits `LifecycleNode` default-constructs and binds the handle from its install hook. rclcpp has no equivalent because its node is constructed with everything it needs."
+}

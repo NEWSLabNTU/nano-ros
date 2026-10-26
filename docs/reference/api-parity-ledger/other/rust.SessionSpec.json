@@ -1,0 +1,5 @@
+{
+  "key": "rust:SessionSpec",
+  "verdict": "extension",
+  "why": "one backend's declaration for `Executor::open_multi`: which registered RMW to open, at which locator, on which domain. An image may link several backends -- a bridge speaks XRCE to a serial agent and zenoh to a router in the same process -- and each needs its own session. rclrs has one rmw per process, chosen by an environment variable."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorConfigEnvExt::from_env",
+  "verdict": "extension",
+  "why": "see `rust:ExecutorConfigEnvExt`. `from_env() -> ExecutorConfig<'static>` (`packages/api/nros/src/env.rs:263`): the env rung over an empty `BootConfig`, panicking on a malformed variable like `resolve_hosted` (RFC-0045 / issue 0206: malformed identity input is an error, never a silent fallback)."
+}

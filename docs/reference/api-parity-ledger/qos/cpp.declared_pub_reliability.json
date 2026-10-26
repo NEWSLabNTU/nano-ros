@@ -1,0 +1,5 @@
+{
+  "key": "cpp:declared_pub_reliability",
+  "verdict": "extension",
+  "why": "issue 1608 -- `cpp:declared_reliability` for a PUBLISHER; see `cpp:declared_pub_depth`."
+}

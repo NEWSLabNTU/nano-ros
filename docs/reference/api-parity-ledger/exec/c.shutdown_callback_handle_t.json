@@ -1,0 +1,5 @@
+{
+  "key": "c:shutdown_callback_handle_t",
+  "verdict": "extension",
+  "why": "`uint32_t` handle a registered shutdown hook is removed by -- the C spelling of rclcpp's `ShutdownCallbackHandle`, which rclc has no counterpart for. The platform constraint is no allocator: rclcpp's registration takes a `std::function<void()>` (a heap allocation per callback) and hands back a handle owning a `std::shared_ptr` to it. Ours is a fixed-capacity static table of `(extern \"C\" fn, void* context)` sized by `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` (default 2, small on issue 0460's precedent that a per-entity static slot is a cost every image pays), and the handle is the SLOT INDEX with its phase packed in so it cannot remove the other phase's callback. Issue 0790."
+}

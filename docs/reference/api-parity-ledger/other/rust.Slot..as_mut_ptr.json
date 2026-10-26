@@ -1,0 +1,5 @@
+{
+  "key": "rust:Slot::as_mut_ptr",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- the region's base pointer, for placement writes."
+}

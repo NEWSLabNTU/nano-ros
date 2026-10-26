@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorSizing",
+  "verdict": "divergence",
+  "why": "the compile-time size of the executor's arena and entry table, as a value. It exists because the executor's backing store is a `[u64; N]` a caller places in a static and hands over -- no allocator, so 'how big' is a build-time decision the type has to carry (phase-271 / issue 0110 size it from the system's callback count via `nros::arena_size_for(CALLBACK_COUNT)`). rclrs allocates as entities are created. Covers `ExecutorSizing::u64_len`."
+}

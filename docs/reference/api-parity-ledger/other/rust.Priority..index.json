@@ -1,0 +1,5 @@
+{
+  "key": "rust:Priority::index",
+  "verdict": "extension",
+  "why": "see `rust:Priority`."
+}

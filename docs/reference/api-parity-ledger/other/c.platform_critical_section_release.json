@@ -1,0 +1,5 @@
+{
+  "key": "c:platform_critical_section_release",
+  "verdict": "extension",
+  "why": "see `c:platform_critical_section_acquire`; takes back the restore token `acquire` returned."
+}

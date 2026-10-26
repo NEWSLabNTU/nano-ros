@@ -1,0 +1,6 @@
+{
+  "key": "c:action_notify_goal_done",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl makes the caller tell the server a goal reached a terminal state, because the goal handle and the server are separate objects that must be kept in step. Ours cannot drift: `rclc_action_succeed` / `_abort` / `_canceled` retire the goal in the arena as part of the same call. A user loses nothing; there is no second place for the fact to live."
+}

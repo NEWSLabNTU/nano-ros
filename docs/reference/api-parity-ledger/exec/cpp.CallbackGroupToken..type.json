@@ -1,0 +1,5 @@
+{
+  "key": "cpp:CallbackGroupToken::type",
+  "verdict": "extension",
+  "why": "phase-488 W3 -- `group_->type()`, the kind it was created with; it changes no dispatch (`cpp:CallbackGroupType`). See `cpp:CallbackGroupToken`."
+}

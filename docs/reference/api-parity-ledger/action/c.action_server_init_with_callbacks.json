@@ -1,0 +1,5 @@
+{
+  "key": "c:action_server_init_with_callbacks",
+  "verdict": "divergence",
+  "why": "see `c:action_server_init`: our action-server init, which takes the goal / cancel / accepted callbacks and their context. Was `rcl_action_server_init` until phase-492 W1.b."
+}

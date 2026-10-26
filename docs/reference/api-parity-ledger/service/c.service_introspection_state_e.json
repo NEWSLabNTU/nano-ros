@@ -1,0 +1,9 @@
+{
+  "key": "c:service_introspection_state_e",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "the state enum of `c:service_configure_service_introspection`; declined with it."
+}

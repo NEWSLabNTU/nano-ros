@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Subscription::handle_serialized_message",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's internal dispatch entry point -- the executor calls it after taking a message. Ours is `drive_io` calling the entity's registered callback directly; a user writes neither side."
+}

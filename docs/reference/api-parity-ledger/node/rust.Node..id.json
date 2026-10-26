@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::id",
+  "verdict": "extension",
+  "why": "the node's id in the executor's node table, for the APIs that address a node by id (`Executor::node_mut`, the per-node QoS override table). rclrs has no node table to index (phase-483 W2)."
+}

@@ -1,0 +1,7 @@
+{
+  "key": "c:executor_remove_*",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclc can drop a subscription, client, service, timer or guard condition from a spinning executor. Four of the five now have our counterpart in rclc's own `(executor, entity)` shape -- `nros_executor_remove_{subscription,timer,service,client}` (issue 1631), beside the two action removers rclc lacks (issue 1609); each drops the arena entry so the entity leaves the graph and its callback slot and arena bytes are reused, and undoes `handle_count` and the trigger table. What stays absent is `rclc_executor_remove_guard_condition`: our guard condition is created on the NODE (`rclc_node_create_guard_condition`, phase-417 W4.e) rather than added to an executor, so there is no `*_executor_add_*` for it to undo and `check-c-executor-remove-coverage` does not see it. Its slot leak is the shape `check-cpp-destroy-shape`'s guard-condition row describes."
+}

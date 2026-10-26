@@ -1,0 +1,5 @@
+{
+  "key": "rust:SESSION_SIZE",
+  "verdict": "extension",
+  "why": "see `rust:EXECUTOR_SIZE`."
+}

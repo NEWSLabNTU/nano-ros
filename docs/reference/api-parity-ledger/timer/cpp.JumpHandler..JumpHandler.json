@@ -1,0 +1,6 @@
+{
+  "key": "cpp:JumpHandler::JumpHandler",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case now has ROS time in every language (issue 0789) with no notification asked for: a simulator writes the time and the nodes read it."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ActionClientStorage",
+  "verdict": "extension",
+  "why": "the action-client twin of `cpp:ActionServerStorage`: `alignas(8) uint8_t bytes[NROS_CPP_ACTION_CLIENT_STORAGE_SIZE]`, declared by the component, passed to `cpp:create_action_client_raw` or `cpp:bind_action_client`. USER-FACING -- `examples/workspaces/cpp/src/action_client_pkg` declares one."
+}

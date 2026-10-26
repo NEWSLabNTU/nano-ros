@@ -1,0 +1,12 @@
+{
+  "key": "c:publish_serialized_message",
+  "rename": {
+    "category": "B",
+    "from": "rclc_publish_raw / Publisher::publish_raw / publish_raw",
+    "resolution": "Target settled 2026-09-03 alongside the RECEIVE half, which did land: `nros_subscription_take_serialized` (`nros_generated.h:6459`) with `try_recv_raw` surviving as a `NROS_DEPRECATED_MSG` forwarder. This is the transmit half, unexecuted.\n\nThe `nros_`/`rcl_` prefix is NOT the difference — `normalize()` strips both symmetrically, so the keys reduce to `publish_raw` vs `publish_serialized_message`; `_message` and the module prefix stay dropped per `c:take_serialized_message`'s declined precedent.\n\nScope is wider than this C row implies: three ours-only halves are already rowed (`c:publish_raw`, `cpp:Publisher::publish_raw`, `rust:Publisher::publish_raw`), plus the `nros_cpp_publish_raw` FFI symbol and the C message template, which emits `return rclc_publish_raw(...)` in generated code. Confirm the exact target symbol before executing — the row names the word `serialized` but never the symbol.",
+    "status": "settled-pending-owner",
+    "to": "nros_publish_serialized / Publisher::publish_serialized / publish_serialized"
+  },
+  "verdict": "rename",
+  "why": "ROS 2 says SERIALIZED for the pre-CDR byte form; ours is `rclc_publish_raw`. This row became the SOLE owner of that decision on 2026-09-03: the receive half (`c:take_serialized_message`) landed with phase-379 W6 decision 1, which renamed `try_recv_raw` -> `take_serialized`, so publish is the only side still saying RAW. One word, used consistently on both sides, and ours is the one that has to move. (Symbol spelling corrected 2026-08-26 (phase-379 W5): this row said `nros_cpp_publisher_publish_raw`; the C++ FFI symbol is `nros_cpp_publish_raw`.)"
+}

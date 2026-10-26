@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Client::cancel_goal",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_action/client.hpp",
+    "text": "returns a future, which RFC-0021 has no runtime to await."
+  },
+  "verdict": "divergence",
+  "why": "sends a CancelGoal request for one goal id. rclcpp_action's is `async_cancel_goal(goal_handle)`, returning a future of the cancel response; ours sends and then reports through `Client::try_recv_cancel_response` or the cancel callback -- the fire-then-read shape our C API uses too (`c:action_client_cancel_goal`). Added by issue 0796, which found the C++ callback tier had no client-side cancel at all. The theirs-only half is `cpp:Client::async_cancel_goal`.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
+}

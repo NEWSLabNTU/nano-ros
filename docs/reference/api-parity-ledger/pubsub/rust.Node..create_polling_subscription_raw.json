@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_polling_subscription_raw",
+  "verdict": "extension",
+  "why": "the POLLED subscription constructor: the caller `take`s from the returned `Subscription`. rclrs's `create_subscription` takes a callback, which `Node::create_subscription` also does, so the polled form takes a different NAME rather than sitting under rclrs's with a different contract (phase-483 W2, the `_in` rule's reasoning applied to Rust). An RTOS extension: an RTIC or bare-metal loop polls instead of dispatching."
+}

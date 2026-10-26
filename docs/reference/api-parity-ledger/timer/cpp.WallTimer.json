@@ -1,0 +1,5 @@
+{
+  "key": "cpp:WallTimer",
+  "verdict": "divergence",
+  "why": "our `Timer` is an entity in the executor's static table with a MODE (`inert`, `oneshot`, `repeating`) that can be changed in place, because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused. rclcpp's `WallTimer` is created per use and cancelled when done, which needs an allocation each time."
+}

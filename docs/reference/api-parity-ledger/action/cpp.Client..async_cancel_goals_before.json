@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Client::async_cancel_goals_before",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "book/src/getting-started/porting-a-cpp-node.md",
+    "text": "A nano-ros server acts on the zero-id cancel-all / cancel-before forms"
+  },
+  "verdict": "divergence",
+  "why": "issue 2027 (2026-10-24) -- LANDED on a HOSTED build beside `async_cancel_all_goals`: both send upstream's wire form -- the zero goal id with `stamp` (an `rclcpp::Time`, split into `sec` / `nanosec`), or with the zero stamp for cancel-all (`ActionClientCore::send_cancel_request_stamped`) -- and return the same driven `std::shared_future<CancelResponse::SharedPtr>` as `cpp:Client::async_cancel_goal`, with its bound. THE SERVER HALF LANDED with issue 2029 (2026-10-24): `ActionServerCore::try_handle_cancel` reads the request's GoalInfo as upstream's pair (zero id + zero stamp = every cancelable goal, zero id + stamp = those accepted at or before it, an id + stamp = that goal plus those), asks the cancel callback once per selected goal, and stamps each goal at acceptance on the ROS clock, so against a nano-ros server the call now does what it does against rclcpp. The bound left is the clock: a board with no wall clock stamps every goal zero, so a stamped cancel there selects them all.\n\nEARLIER ROW (superseded): declined as absent, for the stamp the server does not keep -- which is a property of the server, not of the client's request."
+}

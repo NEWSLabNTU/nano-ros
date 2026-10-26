@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::is_valid",
+  "verdict": "extension",
+  "why": "rclcpp has no node validity predicate because a `Node` that exists was constructed successfully or threw. With -fno-exceptions the object exists either way, so it has to be askable."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:HandleSet::len",
+  "verdict": "extension",
+  "why": "see `rust:HandleSet`."
+}

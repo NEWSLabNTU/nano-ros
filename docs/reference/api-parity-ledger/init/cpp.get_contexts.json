@@ -1,0 +1,6 @@
+{
+  "key": "cpp:get_contexts",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "enumerates the process's contexts; there is exactly one and it is not a value you can hold. See `cpp:Context`."
+}

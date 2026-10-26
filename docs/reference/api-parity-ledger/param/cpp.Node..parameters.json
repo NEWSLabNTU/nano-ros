@@ -1,0 +1,7 @@
+{
+  "key": "cpp:Node::parameters",
+  "disposition": "absent",
+  "retired": "removed by phase-426 W4",
+  "verdict": "extension",
+  "why": "REMOVED, phase-426 W4 (2026-09-07). It was an ours-only accessor on the compat shim's `rclcpp::Node` handing back a reference to the node's own `nros::ParameterServer`, documented as \"the escape hatch to the node-owned store\" for \"the C-API helpers that take an `nros_parameter_server_t*`\" -- and no such helper exists: `nros_executor_register_parameter_services` takes the EXECUTOR, which `cpp:ParameterServer` had already recorded. With the node-local store deleted there is nothing to return and nothing that took it, so the name is gone rather than returning a reference to a store the services do not read. A node's parameters are reached through `declare_parameter` / `get_parameter` / `set_parameter`, which now name the one store. rclcpp declares no `parameters()` either, so removing it moves the ported surface TOWARD upstream. The row is kept, not deleted, so the removal is legible: a reader who finds `parameters()` in a pre-W4 port learns where it went."
+}

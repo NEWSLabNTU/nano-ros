@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoPrimitiveOptions::no_deadline",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:IntoPrimitiveOptions`."
+}

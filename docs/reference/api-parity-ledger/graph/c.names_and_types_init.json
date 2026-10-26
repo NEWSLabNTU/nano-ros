@@ -1,0 +1,5 @@
+{
+  "key": "c:names_and_types_init",
+  "verdict": "divergence",
+  "why": "see `c:names_and_types_t`."
+}

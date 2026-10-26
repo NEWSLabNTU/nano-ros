@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TimerHandle::reset",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`shared_ptr::reset`'s shape, and the spelling ported code uses to get rid of a timer: it RELEASES the timer (it stops for good, its arena entry and captured callable are freed) and empties the handle. Upstream's drops one reference and destroys the timer only with the last; ours has no count, so it releases for every copy at once. A copy that outlives the release is stale and safe: the handle carries its slot's generation (phase-476 W0), so its operations fail instead of reaching whatever registration took the slot. Distinct from `timer_->reset()`, which restarts: see `cpp:TimerOps`."
+}

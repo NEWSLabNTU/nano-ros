@@ -1,0 +1,10 @@
+{
+  "key": "cpp:create_publisher",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/publisher.hpp",
+    "text": "Returns `ResultOf<Publisher<M>>`, not upstream's `std::shared_ptr<Publisher<M>>`:"
+  },
+  "verdict": "divergence",
+  "why": "the free value-returning publisher factory, `nros::create_publisher<M>(node, topic, qos)`. Same name and same arity as `rclcpp::create_publisher`, and the RETURN TYPE differs: ours is `ResultOf<Publisher<M>>`, upstream's is `std::shared_ptr<Publisher<MessageT>>`. Both halves of that are forced. We do not return a `shared_ptr` because a freestanding target has none (RFC-0018, RFC-0096), and we do not signal failure by throwing because the API does not throw -- so the value has to carry the error, which is what `ResultOf` is. A ported file that discards the result compiles either way and silently loses the failure report, which is exactly why a return-only difference is `same:ret` and needs a disposition rather than passing as a match.\n\nThe row is AUTHORED HERE rather than earlier because until phase-442 W2 the name carried TWO overloads -- this one and the now-DELETED `std_compat.hpp`'s `Result create_publisher(Node&, Publisher<M>&, const std::string&, QoS)` -- whose differing arities put the key outside the `same` bucket and so outside `--require-disposition`'s reach. Deleting the dead std vocabulary did not create the divergence; it stopped masking it. Two rows already pointed here -- `cpp:create_subscription` and `cpp:create_publisher_factory` both say 'see `cpp:create_publisher`' -- against a key that did not exist.\n\nThe always-available spelling with no return-shape question is the method `Node::create_publisher(out, topic, qos)` (`cpp:Node::create_publisher`), which is what the factory wraps.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: `nros::create_publisher`'s doc comment states the `ResultOf` vs `shared_ptr` return and that a discarded result loses the failure."
+}

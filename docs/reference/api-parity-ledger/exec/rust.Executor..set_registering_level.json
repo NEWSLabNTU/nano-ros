@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_registering_level",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-509 P9b item 4 / RFC-0108 \"As built in P9b\" -- the callbacks registered from now on belong to preemption level `level`: a level runner sets each level up in turn on the core's ONE executor, and each level's worker then runs exactly what its setup registered (authored tiers carry no ranks, so a band of dispatch levels cannot separate them). rclcpp assigns callbacks to executors by callback group; rclrs has one executor thread."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:GuardCondition::is_valid",
+  "verdict": "extension",
+  "why": "'is this guard condition initialized?'; see `c:guard_condition_is_valid`. C++ no longer stops here: phase-417 W4.e added `is_triggered()` and `clear()`, so the polling accessors exist in all three languages -- see `c:guard_condition_is_triggered`."
+}

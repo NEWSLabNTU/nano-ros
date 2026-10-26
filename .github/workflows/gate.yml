@@ -2612,7 +2612,7 @@ jobs:
       # `just check fast` already prints `[FAIL] api-parity` with the row key.
       #
       # WHAT THE PR LANE COULD NOT DO, and now can: the gate's only authored
-      # inputs are `docs/reference/api-parity-ledger/` (2158 rows) and
+      # inputs are `docs/reference/api-parity-ledger/` (one file per row) and
       # `docs/reference/api-surface/`, both under `docs/`, which the `code`
       # probe above classified as documentation. So a pull request whose ENTIRE
       # SUBJECT was the ledger skipped this job and got no parity verdict until

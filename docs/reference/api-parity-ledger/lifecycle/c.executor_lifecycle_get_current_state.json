@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_lifecycle_get_current_state",
+  "verdict": "extension",
+  "why": "Renamed 2026-08-26 (phase-379 W5) to `rclc_executor_lifecycle_get_current_state` — see `cpp:LifecycleNode::get_current_state`. see `c:executor_lifecycle_change_state`."
+}

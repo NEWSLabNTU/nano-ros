@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Client::set_callbacks",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_action/client.hpp",
+    "text": "Binds the callbacks to the CLIENT, not to one goal: rclcpp passes a"
+  },
+  "verdict": "divergence",
+  "why": "our spelling of rclcpp_action's `SendGoalOptions`. rclcpp attaches the goal-response / feedback / result callbacks to a SINGLE send_goal call; ours binds them to the CLIENT (RFC-0041, callbacks bind to the entity at declaration), so a client that sends many goals installs them once. The nested `SendGoalOptions` struct keeps rclcpp's name for the three-callback bundle.\n\nphase-428 (RFC-0089): re-keyed from `cpp:ActionClient::set_callbacks` by the namespace flip -- same row, same reasoning, the key follows the type name.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it. The two user-facing statements disagreed — `docs/guides/cpp-api.md` said before-or-after `send_goal_async`, the `SendGoalOptions` doc said before. Measured: `nros_cpp_action_client_set_callbacks` (`packages/api/nros-cpp/src/action.rs`) only stores the pointers and `nros_cpp_action_client_poll` reads them at dispatch, so the guide was right. The header now says so on `set_callbacks` (client-bound, read at dispatch) and on `SendGoalOptions`."
+}

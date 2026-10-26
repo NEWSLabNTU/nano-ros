@@ -1,0 +1,5 @@
+{
+  "key": "c:action_server_init_with_qos",
+  "verdict": "extension",
+  "why": "the QoS-taking form; the profile applies to the three underlying service servers while feedback and status keep their ROS-mandated profiles. See the pubsub stage's `c:publisher_init_with_qos`."
+}

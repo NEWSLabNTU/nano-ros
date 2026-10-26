@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Publisher::PublisherBase",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's type-erased base, which the correlator normally folds onto `Publisher`. This row is the CONSTRUCTOR, which has no counterpart because ours is not constructed by a subclass."
+}

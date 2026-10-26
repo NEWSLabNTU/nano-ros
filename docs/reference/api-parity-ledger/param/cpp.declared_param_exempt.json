@@ -1,0 +1,5 @@
+{
+  "key": "cpp:declared_param_exempt",
+  "verdict": "extension",
+  "why": "the names no contract has to declare -- `use_sim_time`, `start_type_description_service` and `qos_overrides.*` -- which are exactly the names play_launch exempts when it holds a launch file to the same contract. See `cpp:declared_param_node`."
+}

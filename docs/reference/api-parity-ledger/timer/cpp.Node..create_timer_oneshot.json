@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::create_timer_oneshot",
+  "verdict": "extension",
+  "why": "a timer that fires once. rclcpp expresses this by cancelling from inside the callback, which needs the timer to be capturable. Still an extension against rclcpp -- but NOT an invention: rclrs 0.7.0 added `create_timer_oneshot` under exactly this name, so ROS 2 has since agreed. See `rust:Node::create_timer_oneshot`."
+}

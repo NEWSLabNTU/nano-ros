@@ -1,0 +1,5 @@
+{
+  "key": "c:service_type_t",
+  "verdict": "divergence",
+  "why": "the service typesupport handle; see the pubsub stage's `c:message_type_t`."
+}

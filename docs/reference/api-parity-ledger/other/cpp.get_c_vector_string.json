@@ -1,0 +1,5 @@
+{
+  "key": "cpp:get_c_vector_string",
+  "verdict": "divergence",
+  "why": "the same adapter for `std::vector<std::string>` -> `std::vector<const char *>`; neither header is available in the freestanding profile, and the return value allocates. See `cpp:get_c_string`."
+}

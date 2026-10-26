@@ -1,0 +1,5 @@
+{
+  "key": "cpp:linked_format",
+  "verdict": "extension",
+  "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. `linked_format()` answers which format the LINKED BACKEND speaks, the other half of the comparison `format_of<M>` participates in."
+}

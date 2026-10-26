@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimerDuration::as_millis",
+  "verdict": "divergence",
+  "why": "`TimerDuration` is the unit a timer period is expressed in and `Duration` is the ROS message duration; rclrs has one `Duration` (a re-export of `std::time::Duration` shape) for both. Two types because a timer period is `u64` microseconds bounded by the platform tick, while a ROS duration is a signed nanosecond pair that has to round-trip a `builtin_interfaces/Duration` on the wire."
+}

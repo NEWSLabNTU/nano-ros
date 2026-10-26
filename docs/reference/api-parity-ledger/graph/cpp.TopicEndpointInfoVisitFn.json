@@ -1,0 +1,5 @@
+{
+  "key": "cpp:TopicEndpointInfoVisitFn",
+  "verdict": "divergence",
+  "why": "the visitor `get_publishers_info_by_topic` / `get_subscriptions_info_by_topic` call once per discovered endpoint, returning `false` to stop (`graph.hpp:139`). rclcpp has no counterpart because it returns a filled `std::vector` instead -- the no-allocator constraint recorded at `c:topic_endpoint_info_array_t` and `cpp:TopicEndpointInfo`, which makes streaming the only shape available. A plain function pointer plus an opaque `ctx`, NOT a `std::function`: these headers compile `-nostdinc++` against Zephyr's minimal libcpp where `<functional>` does not exist (issue 0112), and a `std::function` is a heap allocation per registration."
+}

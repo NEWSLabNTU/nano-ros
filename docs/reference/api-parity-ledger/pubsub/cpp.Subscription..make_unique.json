@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Subscription::make_unique",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Publisher::make_shared`."
+}

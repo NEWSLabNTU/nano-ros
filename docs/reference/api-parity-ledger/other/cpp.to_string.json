@@ -1,0 +1,5 @@
+{
+  "key": "cpp:to_string",
+  "verdict": "divergence",
+  "why": "four overloads across rclcpp (`FutureReturnCode`, `ParameterType`, `ParameterValue`) and rclcpp_action (`GoalUUID`), each returning `std::string`. A returned `std::string` allocates, and the freestanding C++ profile has neither the allocator nor `<string>` (RFC-0018, issue 0112). Where a name is genuinely needed our surfaces return a `const char *` or let the caller format into its own buffer."
+}

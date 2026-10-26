@@ -1,0 +1,13 @@
+{
+  "key": "rust:ParameterValueError",
+  "disposition": "absent",
+  "provides": [
+    "nros::ParameterError"
+  ],
+  "rename": {
+    "resolution": "re-verdicted `declined` -- ours is not a renamed ParameterValueError but a union of rclrs's ParameterValueError and DeclarationError plus two heapless-capacity variants; the missing split is the rust:DeclarationError gap",
+    "status": "resolved"
+  },
+  "verdict": "declined",
+  "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`, and the old reason was wrong on two counts. rclrs's set-time failure enum is exactly `OutOfRange`, `TypeMismatch`, `ReadOnly` (recorded surface: rclrs 0.7.0, `rclrs/src/parameter.rs`). It is one of rclrs's TWO parameter error enums -- the other is `DeclarationError` (`AlreadyDeclared`, `NoValueAvailable`, `OverrideValueTypeMismatch`, `PriorValueTypeMismatch`, `InitialValueOutOfRange`, `InvalidRange`). Ours is ONE `ParameterError` (`packages/core/nros-params/src/typed.rs:18`) whose seven variants span both: those three, plus `InvalidRange` -- which is rclrs's DECLARATION error, and ours is raised by `ParameterBuilder::integer_range`/`float_range` -- plus `NotFound`, plus `StorageFull` and `StringConversion`, the two failures a fixed-capacity `heapless` store has and an allocating one does not. So (a) it is NOT 'the same concept under a different name': our declare path already returns it (`ParameterBuilder::mandatory`/`optional`/`read_only` -> `Result<_, ParameterError>`), and a type called `ParameterValueError` would report a full store and a malformed range as 'value' errors. And (b) it is not 'no platform reason': two of the four extra variants are the capacity constraint made visible, the same one `rust:ParameterValue::*` and `rust:ParameterVariant::*` record. Taking rclrs's narrow name would also fight `rust:DeclarationError`, the open gap for the other half of rclrs's split. What a user loses: that split -- a type-level distinction between a declare-time and a set-time failure -- which is recorded as the `rust:DeclarationError` gap, not here. Ours half: `rust:ParameterError`."
+}

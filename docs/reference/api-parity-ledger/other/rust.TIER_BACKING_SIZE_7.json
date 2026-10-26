@@ -1,0 +1,5 @@
+{
+  "key": "rust:TIER_BACKING_SIZE_7",
+  "verdict": "extension",
+  "why": "Issue 1970 -- an `export_bytes!` probe in `nros::sizes` (the `EXECUTOR_SIZE` mechanism, see `rust:EXECUTOR_SIZE`): the backing bytes the executor of tier 7 carves on an image whose executors are sized per tier (`nros_node::tier_backing_bytes`, zero past the last tier). `nros-build-helpers` (`cpp.rs`, `tier_backing_defines`) bakes it as `NROS_CPP_TIER_BACKING_SIZE_<i>`, which sizes the generated entry's per-tier backing static. rclrs has no counterpart: it never hands an executor's storage across an FFI boundary into caller-owned memory."
+}

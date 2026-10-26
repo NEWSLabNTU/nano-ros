@@ -1,0 +1,6 @@
+{
+  "key": "c:node_is_valid_except_context",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's variant for checking a node whose context has already been finalised. CORRECTED phase-417 stage 3 (2026-09-11): this row used to say \"our node reaches its support object through the handle it was created with, so the split state is not reachable\", and the split state IS reachable — `rclc_support_fini` drops the inline session, zeroes `_opaque` and marks the SUPPORT shut down while touching no node, so the node still reads `INITIALIZED` over a dead session. That is exactly what the `c:node_is_valid` measurement found, and `rcl_node_is_valid` consults `rclc_support_is_valid` now, which is what makes the two names MEAN different things here as they do upstream. The variant stays declined on its own merit: `_except_context` exists for a caller that wants the context check SKIPPED — rcl's own teardown paths — and we expose no such caller. A ported program that names it is asking to bypass the one check that catches a use-after-free, so `absent` is the right answer and an alias onto `rcl_node_is_valid` would be a compile-and-differ."
+}

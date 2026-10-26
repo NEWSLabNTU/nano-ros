@@ -1,0 +1,5 @@
+{
+  "key": "rust:MAX_ON_SET_CALLBACKS",
+  "verdict": "divergence",
+  "why": "How many on-set-parameters hooks ONE store holds, across every node. rclcpp's registry is unbounded because it allocates; ours is a fixed array, so the bound is stated: 4, a slot being at most four machine words, which is 128 bytes on a 64-bit host beside a 285,184-byte default table, and one hook per node of a four-node composed image. Registering a fifth REFUSES rather than evicting. Deliberately not a build knob: every other parameter capacity sizes a table of the USER's data, this one sizes a table of the image's own code, which is known by reading the source. phase-417 W4.a."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:WaitSetTemplate",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the policy-parameterised template `WaitSet` / `StaticWaitSet` / `ThreadSafeWaitSet` are aliases of. rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`."
+}

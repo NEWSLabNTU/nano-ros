@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Server::canceled",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_action/server.hpp",
+    "text": "Upstream's is `goal_handle->canceled(std::shared_ptr<Result>)`; this is on the"
+  },
+  "verdict": "divergence",
+  "why": "terminates a goal as canceled -- rclcpp_action's `ServerGoalHandle::canceled`. Same shape differences as `cpp:Server::succeed`, and a thin forwarder over `cpp:Server::complete_goal`.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own.\n\nissue 1637 (2026-10-05) — ENVELOPE WRITTEN where a porting user reads it: the method's own doc comment states the goal-id key and the const-reference result against upstream's `ServerGoalHandle::canceled(std::shared_ptr<Result>)`."
+}

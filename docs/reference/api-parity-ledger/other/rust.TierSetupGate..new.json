@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierSetupGate::new",
+  "verdict": "extension",
+  "why": "See `rust:TierSetupGate`. `const`, so a runner can keep it in its never-returning frame or a `static`."
+}

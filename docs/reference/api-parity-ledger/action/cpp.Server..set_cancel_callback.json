@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Server::set_cancel_callback",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_action/server.hpp",
+    "text": "F must be a stateless callable convertible to TypedCancelFn."
+  },
+  "verdict": "divergence",
+  "why": "installs the accept/reject decision for a cancel request, returning `nros::CancelResponse`. rclcpp_action takes it as `create_server`'s `handle_cancel` argument; ours is a setter for the reason `cpp:Server::set_goal_callback` gives, and stateless for the same reason.\n\nphase-428 (RFC-0089): re-keyed by the namespace flip. `nros::ActionClient<A>` / `nros::ActionServer<A>` are now aliases of `rclcpp_action::Client<A>` / `rclcpp_action::Server<A>`, which the extractor keys as `Client::*` / `Server::*`. The type is `same` now and the member is `ours-only`, so it no longer inherits its type's verdict and carries its own."
+}

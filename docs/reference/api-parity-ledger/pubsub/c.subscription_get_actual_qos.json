@@ -1,0 +1,6 @@
+{
+  "key": "c:subscription_get_actual_qos",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "see `c:publisher_get_actual_qos`, which carries the contract and the shape argument for this family.\n\nLANDED phase-444 (issue 1437) — `rclc_subscription_get_actual_qos(const rcl_subscription_t *, rclc_qos_t *out)`.\n\nONE THING IS THIS ROW's ALONE: the subscriber is in the executor arena and the handle keeps only an index. (Until phase-487 W1 this struct also had a polled road with the subscriber inline; that is `rclc_polling_subscription_t` now, answered by `c:polling_subscription_get_actual_qos`.) `rcl_subscription_t` recorded that index and NOT the arena it indexes — the one L2 entity that did, where `ServiceServerInternal` and `ServiceClientInternal` already carried both — so the executor pointer is appended beside `handle_id` (`_executor`) and `set_arena_entry` writes the pair as one. An L2 handle not yet added to an executor answers `RCL_RET_NOT_INIT`: there is no entity to ask, which is a different statement from `UNKNOWN` (\"there is an entity and it cannot say\")."
+}

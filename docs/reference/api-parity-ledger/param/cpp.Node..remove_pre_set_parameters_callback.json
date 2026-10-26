@@ -1,0 +1,9 @@
+{
+  "key": "cpp:Node::remove_pre_set_parameters_callback",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "see `cpp:Node::add_pre_set_parameters_callback`."
+}

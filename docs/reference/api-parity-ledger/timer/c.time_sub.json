@@ -1,0 +1,5 @@
+{
+  "key": "c:time_sub",
+  "verdict": "extension",
+  "why": "`rclc_time_sub(rclc_time_t, rcl_duration_t) -> rclc_time_t` -- subtract a DURATION from a TIME. CORRECTED 2026-08-26 (phase-379 W5, group B): this is NOT `the ours-only half of c:difference_times`. rcl's function is Time - Time -> Duration; this one is Time - Duration -> Time, and rcl has no Time - Duration operation under any spelling. Ours is the extension because C++ (`Time::operator-(const Duration&)`, time.hpp:81) and Rust (`impl Sub<Duration> for Time`, time.rs:109) both ship it and C agrees with them."
+}

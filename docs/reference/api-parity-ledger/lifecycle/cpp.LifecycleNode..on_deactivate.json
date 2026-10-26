@@ -1,0 +1,6 @@
+{
+  "key": "cpp:LifecycleNode::on_deactivate",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-482 W4 (2026-10-07): declared on `node_interfaces::LifecycleNodeInterface` with upstream's signature (`CallbackReturn on_X(const rclcpp_lifecycle::State&)`, `CallbackReturn::SUCCESS/FAILURE/ERROR` = 97/98/99) and default (SUCCESS; `on_error` FAILURE), and inherited by `rclcpp_lifecycle::LifecycleNode`. `rclcpp_lifecycle_ported_node.cpp` overrides them verbatim.\n\nBefore phase-482 W4: ours takes `LifecycleState` by value, theirs `const rclcpp_lifecycle::State&`. `State` is a class wrapping `rcl_lifecycle_state_t` with a `std::string` label; ours is a `uint8_t`-backed `enum class`. Constraint: no allocator and no STL on the freestanding targets (RFC-0018) -- the `cstr-not-string` rule, applied to a state object instead of a name. Both mean the same thing: the state being left."
+}

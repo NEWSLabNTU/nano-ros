@@ -1,0 +1,5 @@
+{
+  "key": "rust:RawCancelCallback",
+  "verdict": "extension",
+  "why": "the C-ABI cancel handler an action server registered from C or C++ is driven through: `extern \"C\" fn(&GoalId, GoalStatus) -> CancelResponse`. A raw fn pointer plus a context pointer rather than a boxed closure, because there is no allocator and the executor's callback arena is statically sized. rclrs 0.5.1 has NO action API at all -- not a client, not a server, not a goal type -- so every action item here is unmatched against the Rust reference and is measured against rclcpp_action instead."
+}

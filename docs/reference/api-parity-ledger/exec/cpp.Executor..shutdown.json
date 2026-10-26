@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::shutdown",
+  "verdict": "divergence",
+  "why": "the executor IS the session and the context here. `Executor::create` opens the middleware connection, nodes are created ON it, and every entity lands in its arena; there is no `rclcpp::Context` to hold, register with, or shut down separately. See `cpp:Context`. rclcpp's teardown is context-scoped (`rclcpp::shutdown()`), and its executors have `cancel` for the stop-spinning half; ours folds both into the executor because it owns the session. The stop-spinning half now exists here too -- `Executor::cancel`, phase-417 W4.c -- and leaves the session intact: after it the executor is still `ok()`, still owns its entities, and can be spun again with no rediscovery. `shutdown()` remains the one that tears the session down."
+}

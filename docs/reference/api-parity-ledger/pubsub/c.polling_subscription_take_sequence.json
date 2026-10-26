@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_subscription_take_sequence",
+  "verdict": "extension",
+  "why": "the ours-only half of `c:take_sequence`. Renamed from `nros_subscription_try_recv_sequence` by phase-379 W6 decision 1 (2026-09-03). Renamed from `nros_subscription_take_sequence` by phase-487 W1, when the polled subscription became its own type, `rclc_polling_subscription_t`: a subscription the executor dispatches keeps its subscriber in the executor arena, a polled one keeps it in the struct, and one type holding both meant every dispatched subscription carried storage only the polled road fills."
+}

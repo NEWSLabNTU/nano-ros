@@ -1,0 +1,10 @@
+{
+  "key": "rust:ParameterKind",
+  "disposition": "absent",
+  "provides": [
+    "nros::ParameterType",
+    "nros::ParameterDescriptor::with_dynamic_typing"
+  ],
+  "verdict": "declined",
+  "why": "rclrs's type discriminant, which is `rcl_interfaces`'s nine types PLUS a tenth, `Dynamic`, for a parameter allowed to change type. Ours is `ParameterType` (see `rust:ParameterType`), which mirrors `rcl_interfaces/msg/ParameterType` exactly and carries the dynamic-typing intent as a descriptor FLAG (`ParameterDescriptor::with_dynamic_typing`) rather than a tenth variant, so the enum stays byte-identical to what goes on the wire. What a user loses: a type-level distinction between a fixed and a dynamic parameter. AMENDED 2026-09-05 (phase-425): the NAME half of this pair is now `their-rename` on `rust:ParameterType` -- `rcl_interfaces/msg/ParameterType`, rclcpp and our own C all use our word, so rclrs is the outlier on the spelling. This row stays `declined` because it is not only a spelling: rclrs's enum carries a tenth variant, `Dynamic`, that we genuinely do not have, and a `their-rename` may not absorb a shape difference."
+}

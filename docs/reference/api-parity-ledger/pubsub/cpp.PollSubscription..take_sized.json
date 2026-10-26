@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollSubscription::take_sized",
+  "verdict": "extension",
+  "why": "caller-sized receive: the escape hatch for a type with no derived rx bound, and the way to override a bounded type's own number (issue 0964). rclcpp has no counterpart -- its subscription buffer is allocator-backed and grows, so there is nothing for a caller to size. Ours is a stack buffer whose capacity is a compile-time constant, which is the whole reason the knob exists: no allocator. Arrived on main between phase-379 W6's decision and its execution, so it carries the W6 verb (`take_*`, not `try_recv_*`) and a deprecated forwarder retired with the rest in W7 step 4.\n\nphase-456 W2b — this row moved from `cpp:Subscription::take_sized`. The method did not change; the class it lives on did. `Subscription<M>` served both the dispatch and the poll owner behind a `callback_mode_` flag, and every method here dereferences `storage_`, which only the poll owner has."
+}

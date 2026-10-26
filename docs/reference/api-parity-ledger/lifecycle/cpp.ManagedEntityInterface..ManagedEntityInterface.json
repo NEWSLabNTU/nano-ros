@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ManagedEntityInterface::ManagedEntityInterface",
+  "verdict": "extension",
+  "why": "phase-482 W4 (2026-10-07): the default and MOVE constructors of the managed-entity base. Upstream holds managed entities as `std::weak_ptr` in a vector, so its entities never move under the node; ours are linked into an intrusive list (no allocator), and `rclcpp_lifecycle::LifecycleNode::create_publisher` returns its publisher in a move-only `nros::Owned<T>`. The move constructor re-points the node's link at the new object; the destructor unlinks. Copy stays deleted."
+}

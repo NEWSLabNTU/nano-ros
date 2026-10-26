@@ -1,0 +1,5 @@
+{
+  "key": "rust:Subscription::has_data",
+  "verdict": "extension",
+  "why": "non-destructive readiness check, so a caller can decide whether to take without taking. rclrs's executor answers this through the wait set; a polling caller has no wait set. See `cpp:PollingSubscription`."
+}

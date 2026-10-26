@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_action_client_raw",
+  "verdict": "extension",
+  "why": "an action-constructor variant with no rclrs counterpart: compile-time buffer sizes (`_sized`) or a type-erased (`_raw`) form. Moved onto `nros::Node` from the retired `NodeHandle` (phase-483 W2). Bounded buffers are the RTOS reason."
+}

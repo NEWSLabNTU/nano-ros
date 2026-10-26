@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollClient::call",
+  "verdict": "extension",
+  "why": "phase-456 W9 — the blocking convenience moved here with the storage it sends through. Substantive verdict below, carried over from the deleted `cpp:Client::call` row: rclcpp's equivalent is `async_send_request(...).get()`, which deadlocks on a single-threaded executor, which is why RFC-0021 makes the executor an explicit parameter.\n\nCarried over from the `cpp:Client::call` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nthe blocking convenience: send and drive the executor until the reply or the timeout. rclcpp's equivalent is `async_send_request(...).get()`, which deadlocks on a single-threaded executor -- the reason RFC-0021 makes the executor an explicit parameter."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:ChildError",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-479 (RFC-0102 D1) -- why `Logger::create_child` made no child: `NameTooLong { len, max }`, `EmptyName`, `ArenaFull`. rclrs reports the same failures as `RclrsError`; ours names the cause, because each has a different remedy (a shorter name; a non-empty one; a larger `NROS_LOG_DYNAMIC_LOGGERS`)."
+}

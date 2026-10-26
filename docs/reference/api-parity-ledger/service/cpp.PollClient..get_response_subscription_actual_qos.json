@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollClient::get_response_subscription_actual_qos",
+  "verdict": "extension",
+  "why": "phase-456 W9 — an UPSTREAM name on an ours-only type; see `cpp:PollClient::get_request_publisher_actual_qos`, which carries the whole statement. This one is the RESPONSE endpoint — the subscription that receives replies (`rmw_client_response_subscription_get_actual_qos`)."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::count_clients",
+  "verdict": "extension",
+  "why": "issue 1978. rclrs has no `count_clients` (neither edition); rclcpp (Jazzy) does, as `Node::count_clients`, and this is that verb on the Rust node, forwarding to `rust:Executor::count_clients` like `rust:Node::count_publishers`. The graph's count, not this node's; discovered, never blocking; `Err(Unsupported)` from a backend with no graph, never `Ok(0)`."
+}

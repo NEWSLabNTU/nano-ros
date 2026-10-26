@@ -1,0 +1,5 @@
+{
+  "key": "c:action_cancel_goal",
+  "verdict": "divergence",
+  "why": "OUR LANGUAGES DISAGREE ON SHAPE, no longer on presence: rclcpp_action returns a future from `Client::async_cancel_goal`; ours sends the CancelGoal request and reports the outcome through the client's cancel channel (RFC-0021, no futures) -- Rust's `ActionClient::cancel_goal` returns a `Promise` the caller drives with the executor. That part is a divergence with a reason. The part that was NOT: C++ had no client-side cancel in its callback tier at all. Fixed by issue 0796 -- `nros::ActionClient<A>` now has `cancel_goal(goal_id)` plus `try_recv_cancel_response(CancelReturnCode&)`, the same fire-then-read shape as this C entry point, so all three languages can cancel a goal they started. `nros::PollingActionClient<A>::send_cancel_request` remains the L1 tier's spelling. Phase 379 W3."
+}

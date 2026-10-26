@@ -1,0 +1,5 @@
+{
+  "key": "rust:CdrReader::read_string",
+  "verdict": "extension",
+  "why": "See `c:cdr_read_string` -- this is the borrowing half of that disagreement, and the spelling worth keeping."
+}

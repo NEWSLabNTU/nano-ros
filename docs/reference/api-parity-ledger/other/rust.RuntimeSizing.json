@@ -1,0 +1,5 @@
+{
+  "key": "rust:RuntimeSizing",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- `ExecutorSizing`'s sibling one layer up: the compile-time size of the node-runtime's slot storage (component slots, registries), as a value, for the same reason -- the backing store is caller-placed `[u64; N]` statics, so 'how big' is a build-time decision the type carries. Knob-driven (`NROS_MAX_COMPONENTS`, `NROS_COMPONENT_SLOT_BYTES`). Public and non-generic so the C ABI can consume it; const generics stay behind the macro (the `ExecutorSizing` rule)."
+}

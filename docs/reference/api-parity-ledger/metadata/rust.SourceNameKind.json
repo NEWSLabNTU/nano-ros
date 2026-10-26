@@ -1,0 +1,5 @@
+{
+  "key": "rust:SourceNameKind",
+  "verdict": "extension",
+  "why": "classifies a source-level ROS name as Absolute / Private / Relative WITHOUT resolving it, which is what the recorder needs: the sidecar records what the component wrote, and launch decides what it resolves to (RFC-0046). See `rust:resolve_name` for the resolution half."
+}

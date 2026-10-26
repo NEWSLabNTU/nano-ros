@@ -1,0 +1,5 @@
+{
+  "key": "cpp:SubscriptionHandle::SubscriptionHandle<M>",
+  "verdict": "extension",
+  "why": "the handle's constructors: default, `nullptr`, and `{executor, handle_id}`. Ours-only for the reason at `cpp:SubscriptionHandle`. The `nullptr` form exists because ported code writes `Subscription<M>::SharedPtr sub_ = nullptr;`."
+}

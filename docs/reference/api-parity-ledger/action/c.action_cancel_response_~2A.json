@@ -1,0 +1,9 @@
+{
+  "key": "c:action_cancel_response_*",
+  "bucket": "theirs-only",
+  "provides": [
+    "rclc_polling_action_server_send_cancel_reply_raw"
+  ],
+  "verdict": "divergence",
+  "why": "rcl builds the `action_msgs/srv/CancelGoal` response as a heap array of `goal_info` sized by `rcl_action_process_cancel_request`, so it needs an init/fini pair and an allocator. Ours is `nros_action_server_send_cancel_reply_raw(server, sequence_number, return_code, accepted[16][], count)`: the caller names the goals it accepted out of its own storage and the arena writes the reply. No allocator, so the response cannot be a constructed object. Our `rclc_cancel_response_t` is a different thing -- the per-goal ACCEPT/REJECT decision; see `c:cancel_return_code_t`."
+}

@@ -1,0 +1,9 @@
+{
+  "key": "rust:Client::service_is_ready",
+  "rename": {
+    "status": "landed",
+    "to": "EmbeddedServiceClient::service_is_ready"
+  },
+  "verdict": "rename",
+  "why": "LANDED 2026-09-03 (phase-379 W6 decision 2). The name is rclcpp's; the SHAPE is rcl's -- `rcl_service_server_is_available` returns OK \"regardless of the service readiness\" and carries the answer in an out-param, so the return code says whether the CHECK worked. rclcpp collapses that to `bool` and throws; RFC-0018 forbids exceptions, so C++ returns `Expected<bool>`, Rust `Result<bool, E>`, C keeps rcl's out-param (RFC-0036). see `cpp:Client::service_is_ready`. CORRECTED 2026-09-04 (phase-417): this said \"ours is `ClientTrait::is_server_ready`\" in the present tense. That method was DELETED by W6 decision 2 / issue 1008 -- its trait default was `true`, so every cffi-backed image answered \"ready\" without asking (see `rust:ClientTrait::is_server_ready`). The live trait method is `ClientTrait::service_is_ready` (`packages/core/nros-rmw/src/traits.rs:2816`), returning `Result<bool, Self::Error>`. CORRECTED 2026-10-18: `rename.to` named the bare method, which on `Client` is upstream's key only; ours is `EmbeddedServiceClient::service_is_ready` (and `ClientDispatch::service_is_ready` on the raw handle, `packages/core/nros-node/src/executor/handles.rs`)."
+}

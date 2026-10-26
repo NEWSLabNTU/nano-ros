@@ -1,0 +1,5 @@
+{
+  "key": "rust:TopicEndpointInfo",
+  "verdict": "divergence",
+  "why": "see `rust:NodeNameInfo` and `c:topic_endpoint_info_t`."
+}

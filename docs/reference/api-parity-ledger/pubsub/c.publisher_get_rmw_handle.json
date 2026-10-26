@@ -1,0 +1,6 @@
+{
+  "key": "c:publisher_get_rmw_handle",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "hands out the underlying rmw/rcl handle so a caller can bypass the API. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is deliberately not reachable from an entity; see `c:node_get_rmw_handle`."
+}

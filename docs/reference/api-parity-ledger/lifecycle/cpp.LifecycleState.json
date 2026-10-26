@@ -1,0 +1,5 @@
+{
+  "key": "cpp:LifecycleState",
+  "verdict": "extension",
+  "why": "the ours-only half of `rclcpp_lifecycle::State`'s STORAGE: a `uint8_t`-backed `enum class` over the five REP-2002 primary states plus an `Unknown = 0` sentinel for a null executor handle. Upstream's ids are `lifecycle_msgs` integer constants, so there is no enum upstream to rename toward.\n\nCORRECTED phase-417 G6: this said 'see `cpp:LifecycleNode::on_activate` for why it is an enum and not a class', which now reads as a refusal of the class. It is not one — `nros::State` wraps this enum (`cpp:State`, `adopt-bounded`), exactly as `Transition` wraps a transition id. What the enum is, and what that cross-reference is actually about, is the STORAGE: one byte, no allocator, no owned label."
+}

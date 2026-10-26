@@ -1,0 +1,5 @@
+{
+  "key": "rust:LifecyclePollingNode::bring_up",
+  "verdict": "extension",
+  "why": "OUR LANGUAGES DISAGREE: this is configure-then-activate in one call, which our C++ spells `LifecycleNode::autostart(LifecycleState)` and our C does not have at all; Rust ALSO reaches it declaratively through `system.toml`'s `[lifecycle]` autostart, expanded by `nros::main!`. One feature, three answers. rclrs has no lifecycle surface to compare against. See `cpp:LifecycleNode::autostart`."
+}

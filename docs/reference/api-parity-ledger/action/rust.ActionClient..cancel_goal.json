@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionClient::cancel_goal",
+  "verdict": "extension",
+  "why": "the client-side cancel, present in all three languages since issue 0796 (C++ was the one that lacked it). Returns a `Promise<CancelReturnCode>` -- the `action_msgs/srv/CancelGoal` RPC status, NOT the per-goal `CancelResponse` a server's cancel callback returns. See `c:action_cancel_goal`."
+}

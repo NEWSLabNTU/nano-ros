@@ -1,0 +1,6 @@
+{
+  "key": "c:get_zero_initialized_guard_condition",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "rcl's free-function zero-init spelling; ours is `nros_guard_condition_get_zero_initialized`. See `c:get_zero_initialized_publisher`."
+}

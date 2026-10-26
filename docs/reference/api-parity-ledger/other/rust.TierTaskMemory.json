@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierTaskMemory",
+  "verdict": "divergence",
+  "why": "issues 1598 + 1232 -- one SPAWNED tier's task memory (control block + stack) as a named `.bss` static the ENTRY owns, sized from the tier's declared `stack_bytes`. `nros::main!` emits one per spawned tier for a board whose tier runner creates the task over it (FreeRTOS `xTaskCreateStatic`; Zephyr `k_thread_create` over the stack, TCB region 0). Same no-allocator constraint as `rust:TierExecutorBacking`: on an RTOS the task stack came out of a fixed allocator arena nothing priced at link. rclrs runs on host threads and has no tier model. Covers `TierTaskMemory::new` (const, `.bss`) and `TierTaskMemory::raw` (the row a board receives)."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:lifecycle_init",
+  "verdict": "extension",
+  "why": "`rclc_lifecycle_init(sm)` -- initialise a STANDALONE REP-2002 state machine: the transition table plus the six callback slots, bound to no node and registering no services. The ours-only half of `c:lifecycle_state_machine_init`; see that row. Issue 0792 removed its second parameter (`const rcl_node_t *node`), which was only NULL-checked and never stored -- see `c:make_node_a_lifecycle_node` for why storing it would not have helped. A node that must answer `ros2 lifecycle set|get|list` uses the executor-scoped family instead (`c:executor_lifecycle_change_state`)."
+}

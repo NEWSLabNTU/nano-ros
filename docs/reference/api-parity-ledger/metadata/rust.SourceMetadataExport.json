@@ -1,0 +1,5 @@
+{
+  "key": "rust:SourceMetadataExport",
+  "verdict": "extension",
+  "why": "the settings the source-metadata JSON emitter takes -- package, component, executable, exported symbol, manifest path, source artifacts, and the source LANGUAGE. the SOURCE-METADATA surface: a component's declaration is recorded without opening middleware, so `nros sync` and the launch resolver can read the entity set off the host without running the image (RFC-0046; phase-126B/307/308). rclrs has no counterpart because rclrs has no codegen step. Same subsystem as `rust:NodeMetadata` / `rust:NodeSlot` in the node stage. The `language` field is worth one note: it was a hardcoded `\"rust\"` literal in the serializer while Rust was the only producer, and phase-308's C/C++ producer reaches the SAME serializer, so the value has to come from the caller."
+}

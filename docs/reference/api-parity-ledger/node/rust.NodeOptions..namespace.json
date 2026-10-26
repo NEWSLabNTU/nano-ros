@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeOptions::namespace",
+  "verdict": "divergence",
+  "why": "rclrs takes the namespace through `IntoNodeOptions`, which also carries arguments and the rosout toggle. Ours carries the namespace alone; the rest are build-time (RFC-0045)."
+}

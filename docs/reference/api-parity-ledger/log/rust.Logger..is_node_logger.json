@@ -1,0 +1,6 @@
+{
+  "key": "rust:Logger::is_node_logger",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-479 (RFC-0102 D4) -- whether a node's accessor resolved this logger. rcl's equivalent is implicit (a rosout publisher correlated with the logger name exists only for a node's logger); the `/rosout` sink filters by it so that a free logger is published by no ROS release."
+}

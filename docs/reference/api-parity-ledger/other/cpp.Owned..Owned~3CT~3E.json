@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Owned::Owned<T>",
+  "verdict": "extension",
+  "why": "the holder's constructors: default, `nullptr`, and an EXPLICIT `Owned(T&&)`, plus move operations with copies deleted. Ours-only for the reason at `cpp:Owned`. The `nullptr` form exists because ported code writes `Publisher<M>::SharedPtr pub_ = nullptr;`; the take-ownership form is explicit so an entity does not silently become a holder at a call site that meant to keep the value."
+}

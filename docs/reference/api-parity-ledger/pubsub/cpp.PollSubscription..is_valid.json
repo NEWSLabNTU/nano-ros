@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollSubscription::is_valid",
+  "verdict": "extension",
+  "why": "see `cpp:Publisher::is_valid`. phase-456 W2b split the subscription in two and both halves answer it: here it means the caller's `RmwSubscriber` was created, on `cpp:Subscription::is_valid` it means the arena registration succeeded."
+}

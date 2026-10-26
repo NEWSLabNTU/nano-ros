@@ -1,0 +1,5 @@
+{
+  "key": "rust:Clock::get_steady_time_nanos",
+  "verdict": "extension",
+  "why": "reads the monotonic clock regardless of any ROS-time override, so a latency measurement is not distorted by simulated time. rclcpp's equivalent is constructing a second `Clock(RCL_STEADY_TIME)`, which needs an allocation."
+}

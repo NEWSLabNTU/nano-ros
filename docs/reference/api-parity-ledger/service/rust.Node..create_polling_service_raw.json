@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_polling_service_raw",
+  "verdict": "extension",
+  "why": "the POLLED service-server constructor: the caller drains requests from the returned server. rclrs's `create_service` takes a callback, as `Node::create_service` does, so the polled form takes a different NAME (phase-483 W2). An RTOS extension for polling loops."
+}

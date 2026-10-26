@@ -1,0 +1,5 @@
+{
+  "key": "c:guard_condition_is_valid",
+  "verdict": "extension",
+  "why": "'is this guard condition initialized?'; see `c:support_is_valid`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:RawGoalCallback",
+  "verdict": "divergence",
+  "why": "the raw-bytes goal callback type. Bound at declaration, not handed to an executor; see the pubsub stage's `rust:RawSubscriptionCallback`."
+}

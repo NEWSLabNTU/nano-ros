@@ -1,0 +1,5 @@
+{
+  "key": "rust:try_resolve_hosted",
+  "verdict": "extension",
+  "why": "the fallible form of `rust:resolve_hosted` (`packages/api/nros/src/env.rs:222`): `Result<ExecutorConfig, BootConfigError>`, so a typo'd `ROS_DOMAIN_ID` is an error the caller sees rather than a node that silently moves to domain 0. `nros::init()` reads through this one (issue 0687 — the module used to carry its own copy of the same four-variable parse, and the copies had drifted)."
+}

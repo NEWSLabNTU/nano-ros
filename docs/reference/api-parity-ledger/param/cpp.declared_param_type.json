@@ -1,0 +1,5 @@
+{
+  "key": "cpp:declared_param_type",
+  "verdict": "extension",
+  "why": "the declared type (the `rcl_interfaces/msg/ParameterType` code) of one parameter on a declaring node, or `DECLARED_PARAM_UNDECLARED`. See `cpp:declared_param_node`."
+}

@@ -1,0 +1,10 @@
+{
+  "key": "cpp:NodeOptions::start_parameter_event_publisher",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/options.hpp",
+    "text": "publishes the topic for no node, so there the option changes nothing."
+  },
+  "verdict": "divergence",
+  "why": "issue 2035 (2026-10-25) -- HONOURED, no longer refused. `NodeOptions::start_parameter_event_publisher(bool)` and its getter are a real field (default `true`, upstream's), and the `Node(name[, ns], options)` constructors -- and so `make_shared<Node>(name, options)` and `LifecycleNode` -- read it: `false` calls `nros_cpp_node_disable_parameter_events`, the C++ binding of `Executor::disable_parameter_events_on` (what C's `notify_changed_over_dds = false` reaches), so serving the node's parameters later publishes nothing for it while other nodes on the executor keep publishing. THE BOUND: a node built without options (`Executor::create_node`, the generated entry's handle constructor) has no place to state it, and a build without parameter services publishes `/parameter_events` for no node, so there the option changes nothing. Held by `node_options_param_events_runtime.cpp` in `just check cpp`.\n\nEARLIER ROW (superseded): divergence, refuse-loud, per-concept with the rest of the option family."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:MonitorTableFull",
+  "verdict": "extension",
+  "why": "phase-496 W1 -- the refusal of a monitor table past `MAX_MONITORS` / `MAX_AGE_MONITORS`; its Display names the knob to raise. See `rust:MAX_MONITORS`."
+}

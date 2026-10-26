@@ -1,0 +1,5 @@
+{
+  "key": "c:client_wait_for_service",
+  "verdict": "extension",
+  "why": "blocks until the server appears or the deadline passes, driving the executor. rclcpp's `Client::wait_for_service` folds onto ours by the *Base rule; C's rclc has no counterpart."
+}

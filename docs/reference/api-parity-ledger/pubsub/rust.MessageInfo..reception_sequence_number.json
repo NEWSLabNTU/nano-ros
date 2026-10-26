@@ -1,0 +1,5 @@
+{
+  "key": "rust:MessageInfo::reception_sequence_number",
+  "verdict": "extension",
+  "why": "`nros::MessageInfo`'s accessors. The type itself is `cpp:MessageInfo`/`rust:MessageInfo` (divergence: a flat struct of the fields the backends actually populate, not a wrapper over the DDS-shaped `rmw_message_info_t`). rclrs exposes the same information through its own `MessageInfo` but the members do not line up field for field, so each ours-only accessor is recorded rather than inherited."
+}

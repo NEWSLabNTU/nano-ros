@@ -1,0 +1,5 @@
+{
+  "key": "cpp:NodeBuilder",
+  "verdict": "extension",
+  "why": "what replaces `NodeOptions`: a builder that names the four things a device varies -- domain, locator, namespace, RMW selection -- plus the scheduling context (RFC-0047). rclcpp's options object is mutable, copied and passed; a builder consumed at construction needs no storage to outlive the call."
+}

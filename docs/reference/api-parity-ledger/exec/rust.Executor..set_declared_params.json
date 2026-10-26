@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::set_declared_params",
+  "verdict": "extension",
+  "why": "phase-446 W6. Hands the executor the parameters each node's launch contract declares, baked by `nros::main!` from the SystemModel before any node registers, so the node runtime refuses a declaration the contract does not make. rclrs has no counterpart for the reason given at `cpp:declared_param_node`: upstream's parameters are declared only in code, while ours size a fixed store at build time."
+}

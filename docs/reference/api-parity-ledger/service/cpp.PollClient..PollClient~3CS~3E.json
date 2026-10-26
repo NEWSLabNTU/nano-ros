@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollClient::PollClient<S>",
+  "verdict": "extension",
+  "why": "the constructor set of an ours-only type: a default constructor plus move operations, with copies deleted. See `cpp:PollClient`. The MOVE is sound here — this half owns its client and relocates it through `nros_cpp_service_client_relocate`, and no arena entry holds its address. Same shape as `cpp:PollService::PollService<S>`."
+}

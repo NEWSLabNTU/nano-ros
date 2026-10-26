@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::set_launch_remaps",
+  "verdict": "extension",
+  "why": "issue 1971 / RFC-0107 step 1 -- give one executor its own launch remap table (a `&'static [LaunchRemap]` borrow of `.rodata`) instead of the image's, which the generated entry installs with `nros_node::set_launch_remaps` / `nros_cpp_set_launch_remaps` before any tier is set up. Launch rules are the AUTHORITATIVE tier, argv rules the fallback, as with `rust:Executor::declare_remap`. rclrs has no launch remap table: its remaps arrive only as `--ros-args -r` in `Context::new`."
+}

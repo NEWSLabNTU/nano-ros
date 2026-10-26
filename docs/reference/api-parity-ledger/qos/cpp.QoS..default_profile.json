@@ -1,0 +1,9 @@
+{
+  "key": "cpp:QoS::default_profile",
+  "rename": {
+    "resolution": "re-verdicted `extension` -- rclcpp has no `default_profile` (and no default QoS constructor), so there is no rename target; the three-language naming spread is recorded in the why as an internal-consistency note",
+    "status": "resolved"
+  },
+  "verdict": "extension",
+  "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. THE FACT THAT DECIDES IT: `rclcpp::QoS` has no `default_profile`. The only `default_profile` anywhere in `/opt/ros/humble/include` is a local member of `rviz_common`'s `QosProfileProperty`. There is no upstream name to align to, so this cannot be a rename; it is an ours-only spelling. The old reason was also wrong about rclcpp: it does NOT 'need no name for it because its default CONSTRUCTOR is the profile' -- `rclcpp::QoS` has no default constructor at all (`qos.hpp:128` takes a `QoSInitialization`, `qos.hpp:141` a depth), so the nearest rclcpp spelling of the plain default is `rclcpp::QoS(10)`. Ours is `static constexpr QoS default_profile() { return QoS(); }` (`packages/api/nros-cpp/include/rclcpp/qos.hpp:175`), the named-preset sibling of `sensor_data()` and `services()` -- which mirror rclcpp's `SensorDataQoS`/`ServicesQoS`, and those are SUBCLASSES upstream. Being constexpr factories rather than subclasses is what lets the preset be a default ARGUMENT in ~20 header signatures (`const QoS& qos = QoS::default_profile()`) with no allocation and no vtable, which is the RTOS-side reason the family exists at all. What still stands from the old row, as a NOTE and not a parity item: OUR LANGUAGES DISAGREE about this preset's name -- `RCLC_QOS_DEFAULT` in C, `QoS::default_profile()` in C++, `QoSProfile::topics_default()` in Rust, and only the Rust one matches its upstream (rclrs's `topics_default`). That is an internal-consistency question with no upstream answer, so it is not this campaign's to settle and not a reason to hold the row open."
+}

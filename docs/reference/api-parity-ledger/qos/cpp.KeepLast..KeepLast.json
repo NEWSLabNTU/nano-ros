@@ -1,0 +1,9 @@
+{
+  "key": "cpp:KeepLast::KeepLast",
+  "disposition": "adopt",
+  "provides": [
+    "nros::QoS::keep_last"
+  ],
+  "verdict": "declined",
+  "why": "rclcpp's `KeepLast` is a STRUCT (a `QoSInitialization` subclass) and this key is its constructor. Ours is a FUNCTION, `constexpr QoS KeepLast(size_t depth)` (`packages/api/nros-cpp/include/rclcpp/qos.hpp`), with `KeepAll()` beside it, so the spellings a port writes, `rclcpp::QoS(rclcpp::KeepLast(10))` and `rclcpp::KeepLast(10)` passed where a QoS is expected, compile unchanged. What is gone is the TYPE: a variable declared `rclcpp::KeepLast k(10);` or code naming `QoSInitialization` does not compile, which is loud. Declined as a type because one constructor plus two helpers resolve the overload set with no types at all. CORRECTED 2026-10-25 (phase-515 W0): this row used to say the construction spelling had to be ported to `nros::QoS(10)`; the helper landed and the port is now mechanical only for the type name."
+}

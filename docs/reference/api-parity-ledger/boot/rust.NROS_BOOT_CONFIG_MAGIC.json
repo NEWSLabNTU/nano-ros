@@ -1,0 +1,5 @@
+{
+  "key": "rust:NROS_BOOT_CONFIG_MAGIC",
+  "verdict": "extension",
+  "why": "`0x4E524243` = ASCII `NRBC`, the first word of the blob. It is what makes the post-link scenario possible at all: a tool handed an `.elf` or a raw `.bin` has no symbol table it can rely on (a stripped image, a padded flash dump), so it finds the config by scanning for this word. Also the corruption guard -- `BootConfig::from_baked` returns all-`None` (falling through to the compiled defaults) rather than trusting a section that was zero-initialised or overwritten. ROS 2 has no counterpart because nothing patches a desktop binary's identity; that is what `--ros-args` is for. Defined identically as a C macro in `rclc/detail/boot_config.h`, which the C extractor cannot see."
+}

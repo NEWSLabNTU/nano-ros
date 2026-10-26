@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::has_unresolved_system_default",
+  "verdict": "extension",
+  "why": "issue 0829. Predicate for `is any policy field still the sentinel`, the guard a backend or test uses to assert resolution happened before anything is derived from the profile -- load-bearing on the zenoh path, where the QoS is serialised into a liveliness-token keyexpr that a ROS `rmw_zenoh_cpp` peer parses, and an unresolved `0:0:0,0` would advertise a policy nobody chose. rclrs exposes nothing equivalent for the same reason as `resolve_system_default`: upstream's resolution is invisible C++ inside the loaded RMW, so there is no client-library state to ask about."
+}

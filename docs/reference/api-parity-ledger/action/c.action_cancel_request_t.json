@@ -1,0 +1,8 @@
+{
+  "key": "c:action_cancel_request_t",
+  "provides": [
+    "rclc_polling_action_server_try_recv_cancel_request_raw"
+  ],
+  "verdict": "divergence",
+  "why": "rcl's `action_msgs/srv/CancelGoal` request struct. Ours never surfaces the request as a type: `nros_action_server_try_recv_cancel_request_raw` writes the named goal id, the service sequence number and the goal's current status into caller storage. and the payload is CDR bytes (`const uint8_t*, size_t`) rather than rcl's `void* ros_message`, because the C ABI has no runtime typesupport -- the only publish in the whole C surface is `rclc_publish_raw`. See the pubsub stage's `c:publish_raw` and `c:message_type_t`."
+}

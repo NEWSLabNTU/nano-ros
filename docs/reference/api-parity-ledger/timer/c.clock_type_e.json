@@ -1,0 +1,6 @@
+{
+  "key": "c:clock_type_e",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's enum-tag spelling alongside `rcl_clock_type_t`; C tags are not part of the API a caller writes and ours emits only the typedef."
+}

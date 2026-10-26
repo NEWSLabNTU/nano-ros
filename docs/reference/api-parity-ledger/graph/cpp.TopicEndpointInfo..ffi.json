@@ -1,0 +1,5 @@
+{
+  "key": "cpp:TopicEndpointInfo::ffi",
+  "verdict": "divergence",
+  "why": "the raw `nros_cpp_endpoint_info_t`, for a caller already speaking the C seam. rclcpp's equivalent escape hatch is `rclcpp::TopicEndpointInfo`'s conversion to `rmw_topic_endpoint_info_t`. Member of `cpp:TopicEndpointInfo`; the verdict and the two constraints are on that row."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:bind_service_raw",
+  "verdict": "extension",
+  "why": "the wire-bytes tier of `cpp:bind_service`: the bound member is `bool C::on_request(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap, size_t* resp_len)`, with no serialisation on either side and a `false` return dropping the reply. Same relationship as `cpp:bind_subscription_raw` to `cpp:bind_subscription`, and the same no-allocator reason."
+}

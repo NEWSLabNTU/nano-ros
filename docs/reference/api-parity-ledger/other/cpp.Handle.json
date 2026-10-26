@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Handle",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "RFC-0096 D2 -- what `X::SharedPtr` is on every target: a copyable, NON-owning reference. Upstream's `std::shared_ptr` shares ownership; measured over this tree and the porting corpus (phase-442 W0) nothing shares: no `weak_ptr`, `.lock()`, `use_count()` or custom deleter outside our headers. Since phase-482 W2 it is also `rclcpp::Node::SharedPtr`. Hosted interop: an lvalue `std::shared_ptr<U>` the caller owns converts to it; a TEMPORARY one is a deleted conversion, because the handle would dangle."
+}

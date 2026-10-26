@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Client::Client<ServiceT>",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's templated constructor taking a `NodeBaseInterface*`; see `cpp:Client::Client<S>` for the shape and the node stage for why there is no interface slice."
+}

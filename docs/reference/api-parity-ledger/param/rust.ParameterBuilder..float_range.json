@@ -1,0 +1,5 @@
+{
+  "key": "rust:ParameterBuilder::float_range",
+  "verdict": "extension",
+  "why": "the floating-point form; see `rust:ParameterBuilder::integer_range`."
+}

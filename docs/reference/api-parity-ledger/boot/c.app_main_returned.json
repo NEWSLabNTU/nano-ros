@@ -1,0 +1,5 @@
+{
+  "key": "c:app_main_returned",
+  "verdict": "extension",
+  "why": "issue 1752 -- `void nros_app_main_returned(int exit_code)`, the board hook the `NROS_APP_MAIN_REGISTER_VOID()` shim calls with `nros_app_exit_code(nros_app_main(...))` just before `app_main` returns. The shim emits a weak no-op (an MCU ignores the status); a board that is a host process (threadx-linux, freertos-posix) defines it strongly beside its call to `app_main` and exits with the value. rclc has no counterpart for the same reason as `app_main`: a desktop `main` returns its status straight to libc."
+}

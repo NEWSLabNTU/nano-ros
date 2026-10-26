@@ -1,0 +1,6 @@
+{
+  "key": "cpp:ParameterTypeException",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "thrown when a `Parameter` is read as the wrong type. nros-cpp is built `-fno-exceptions` (RFC-0018); every failure here is an `nros::Result` carrying an `rcl_ret_t`, and a type mismatch is `RCL_RET_INVALID_ARGUMENT`."
+}

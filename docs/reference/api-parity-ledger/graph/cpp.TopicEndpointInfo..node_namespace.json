@@ -1,0 +1,5 @@
+{
+  "key": "cpp:TopicEndpointInfo::node_namespace",
+  "verdict": "divergence",
+  "why": "borrowed for the visit; `\"\"` when unset, never null, where rclcpp returns a `std::string` by value. Member of `cpp:TopicEndpointInfo`; the verdict and the two constraints are on that row."
+}

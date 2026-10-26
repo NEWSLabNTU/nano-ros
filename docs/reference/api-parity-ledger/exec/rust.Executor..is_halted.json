@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::is_halted",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "reads the flag `rust:Executor::halt*` sets -- phrased inversely to rclcpp's `is_spinning`, which C++ grew in phase-417 W4.c; C exports `rclc_executor_is_spinning` (phase-417 W4.c), so every language can be asked; this stays the INVERSE question -- `is_halted` reads \"a cancel has been REQUESTED\", `is_spinning` reads \"a loop is RUNNING\", and all four combinations are reachable."
+}

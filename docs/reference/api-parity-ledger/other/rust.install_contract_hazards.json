@@ -1,0 +1,6 @@
+{
+  "key": "rust:install_contract_hazards",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): the Rust entry's install of the hazard table, after `install_contract_monitors` on the same executor handle. No rclrs counterpart. See `rust:install_contract_monitors`."
+}

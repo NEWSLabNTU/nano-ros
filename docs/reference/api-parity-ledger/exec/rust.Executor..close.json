@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::close",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "release the session and the arena without dropping the value, so a caller holding an executor in a `static` can tear the middleware down and report the result. `Drop` cannot return an error, and an embedded slot is never deallocated."
+}

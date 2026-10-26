@@ -1,0 +1,6 @@
+{
+  "key": "rust:ActivityListenerCallback",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "part of rclrs 0.5's async executor machine: an `ExecutorRuntime` behind the `Executor`, an `ExecutorChannel` carrying work to it, `Worker`s with their own payloads, `ActivityListener`s, and `Waitable`s wrapping each rcl primitive. Three constraints refuse the whole layer at once. RFC-0021: no futures and no async runtime -- rclrs drives `spin_async` on async-std/tokio, and a no_std image has neither. RFC-0002: one executor per RTOS task, dispatching FIFO from a fixed arena, so there is no work to send anywhere and no second thread to send it from. no allocator -- the channels, the `Vec<Waitable>` and the boxed tasks all allocate per item on the dispatch path."
+}

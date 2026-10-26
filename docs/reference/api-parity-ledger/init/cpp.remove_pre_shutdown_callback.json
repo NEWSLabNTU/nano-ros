@@ -1,0 +1,5 @@
+{
+  "key": "cpp:remove_pre_shutdown_callback",
+  "verdict": "extension",
+  "why": "Removal counterpart of `cpp:pre_shutdown` over the global executor. rclcpp's removals live on `Context`, which we do not have; see `cpp:Context`. Issue 0790."
+}

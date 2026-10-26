@@ -1,0 +1,6 @@
+{
+  "key": "rust:TakeFailedAsNone::take_failed_as_none",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the trait's only method; see `rust:TakeFailedAsNone`. Ours reports an empty take as `Ok(false)` / `None` directly, so there is no take-failed error to convert."
+}

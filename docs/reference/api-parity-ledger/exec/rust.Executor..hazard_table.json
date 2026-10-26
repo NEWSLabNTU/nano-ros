@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::hazard_table",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): the installed hazard table. See `rust:Executor::set_hazard_table`."
+}

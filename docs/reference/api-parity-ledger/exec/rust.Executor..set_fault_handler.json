@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_fault_handler",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "one process-wide `fn(&Violation)` called when a contract monitor fires -- the hook an image parks an actuator or trips a watchdog from. It is a bare `fn` pointer, not a closure, because there is no allocator to box one. See `rust:Executor::*violation*` and `cpp:on_shutdown` for the shutdown-side gap."
+}

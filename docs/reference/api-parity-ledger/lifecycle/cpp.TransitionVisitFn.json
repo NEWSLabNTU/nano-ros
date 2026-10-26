@@ -1,0 +1,5 @@
+{
+  "key": "cpp:TransitionVisitFn",
+  "verdict": "extension",
+  "why": "the visitor `get_transition_graph` takes. Upstream needs no such type because it returns a `std::vector`; see `cpp:LifecycleNode::get_transition_graph` for why ours cannot. Same shape as `graph.hpp`'s visitors, deliberately -- one spelling for \"enumerate N things with no allocator\" across this class."
+}

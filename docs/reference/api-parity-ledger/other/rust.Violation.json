@@ -1,0 +1,5 @@
+{
+  "key": "rust:Violation",
+  "verdict": "extension",
+  "why": "what the executor pushes into the ring the entry glue drains into the diagnostics reporter. See `rust:MonitorSpec`."
+}

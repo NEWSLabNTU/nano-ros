@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_exec_lock",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-509 P9b item 1 / RFC-0108 \"As built in P9b\" -- install the port's recursive priority-inheriting mutex as the executor's lock, so worker threads of several preemption levels and every C / C++ FFI entry serialise on one executor. Set once by the level runner before a second thread can reach the executor (FFI `nros_cpp_executor_set_lock`). rclcpp's executors are each single-threaded or own their internal mutexes; neither rclcpp nor rclrs exposes the executor's lock."
+}

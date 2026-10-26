@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::arena_holes",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 1667 -- how many separate holes the arena's free list holds, beside `arena_released` (their total size). Upstream has no arena. The free list is intrusive and unbounded since 1667 (1496's fixed 8-region table lost bytes under a churning workload), so the count is a diagnostic for fragmentation rather than a capacity: a churn test asserts it returns to 0 once nothing is live."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:support_init_with_options",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclc's options-taking variant. Same constraint as `compile-time-options`: there is no `rcl_init_options_t` to pass."
+}

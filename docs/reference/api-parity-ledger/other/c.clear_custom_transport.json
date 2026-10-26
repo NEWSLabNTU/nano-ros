@@ -1,0 +1,5 @@
+{
+  "key": "c:clear_custom_transport",
+  "verdict": "extension",
+  "why": "see `c:set_custom_transport`; this is `rclc_set_custom_transport(NULL)` spelled as a verb."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:NodeHandle",
+  "verdict": "divergence",
+  "why": "the ctor argument that stands in for rclcpp's implicit default `Context`: a `void* executor` the generated entry reads from `nros::global_handle()` and hands to every component ctor (`nros::NodeHandle __h(::nros::global_handle());`). rclcpp's `Node` ctor takes no context in the common case -- it picks up the global default -- and the node is attached to an executor afterwards with `add_node`. Ours cannot: the executor IS the session and owns the static entity arena every entity lands in, so a node is created ON one and there is nothing to add later (`cpp:Executor::create_node`, `cpp:Context`). It is a two-word `constexpr` struct with no allocation and no ownership -- see `cpp:NodeHandle::valid` and `cpp:NodeHandle::NodeHandle`."
+}

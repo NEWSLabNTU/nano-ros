@@ -1,0 +1,5 @@
+{
+  "key": "rust:SafetyValidator",
+  "verdict": "extension",
+  "why": "end-to-end message-integrity checking on the SUBSCRIPTION side: a sequence number and a CRC-32/ISO-HDLC travel in the sample's attachment, and the validator reports gap, duplicate and CRC state per message. This is the AUTOSAR E2E / EN 50159 profile, which is what a safety-relevant embedded bus asks for and what a desktop ROS 2 stack does not: rcl trusts the transport, and DDS reliability answers a different question (did the sample arrive) than E2E does (is this the sample the publisher sent, once). Gated on the `safety-e2e` feature; interoperates with non-safety publishers by treating an absent CRC as not-invalid."
+}

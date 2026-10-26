@@ -1,0 +1,8 @@
+{
+  "key": "c:get_node_names_with_enclaves",
+  "provides": [
+    "rclc_executor_get_node_names"
+  ],
+  "verdict": "divergence",
+  "why": "IMPLEMENTED as of phase-381 W4, under our receiver: see `c:executor_get_node_names`. The previous text here said the whole family was absent -- \"every one of those slots is NULL in every backend, nothing above them wraps a slot, and no C/C++/Rust entry point exists\" -- which was true when written (phase-379 W3) and is not now. The zenoh backend fills the slot, the runtime wraps it and all three languages expose it. The `_with_enclaves` form is answered by the SAME call: the visitor takes an `enclave` argument that is NULL where the backend tracks none, which is what lets one slot answer both upstream names."
+}

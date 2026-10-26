@@ -1,0 +1,6 @@
+{
+  "key": "rust:requested_mode",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W4a -- a contract mode lowered to a variant of the monitor tables (`contracts.modes`, `nros_orchestration_ir::mode_variants`). The mode last asked for with `rust:request_mode`."
+}

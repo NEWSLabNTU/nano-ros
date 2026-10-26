@@ -146,6 +146,7 @@ import extract_cxx  # noqa: E402
 import extract_rust  # noqa: E402
 import public_surface  # noqa: E402
 import signature_rules  # noqa: E402
+import ledger_files  # noqa: E402
 import topics  # noqa: E402
 
 SURFACE_DIR = os.path.join(ROOT, "docs", "reference", "api-surface")
@@ -739,83 +740,43 @@ def refresh(langs, prefix, rclc_root, rclrs_root):
 
 
 def load_ledger(ledger_dir=None):
-    """Every ledger shard, merged, minus their documentation.
+    """Every ledger row, merged, minus their documentation.
 
     `ledger_dir` defaults to the real ledger; the self-test passes a temporary
     directory so a planted row goes through the same loader a real one does.
 
-    One file per language. The split is for CONCURRENCY, not taste: classifying
-    ~1300 rows is work for several people at once, and a single file makes every
-    one of them rebase against the others. A shard is only ever touched by
-    whoever owns that lane.
+    ONE FILE PER ROW, under a directory per TOPIC (issue 1091; the layout, and
+    every refusal it makes, is `ledger_files`). The split is for CONCURRENCY,
+    not taste: in sorted shards, two branches adding adjacent keys conflicted
+    with certainty, and a new row in its own new file has no neighbour to
+    collide with.
 
-    JSON has no comments, so each shard explains itself in `_doc`. Keys
-    beginning with `_` are documentation and are never entries.
+    A topic directory -- `node/`, `pubsub/` -- holds that topic's rows in ALL
+    THREE languages. The campaign closes a feature at a time across every
+    language, so the topic is what an agent owns and what "complete" is
+    asserted about. Sharding by language instead would let C++ pubsub land
+    while C pubsub sits unexamined, and the drop-in claim is made per language:
+    a feature that works in one is not a feature.
 
-    A shard is named after a TOPIC -- `node.json`, `pubsub.json` -- and holds
-    that topic's rows in ALL THREE languages. The campaign closes a feature at a
-    time across every language, so the topic is what an agent owns and what
-    "complete" is asserted about. Sharding by language instead would let C++
-    pubsub land while C pubsub sits unexamined, and the drop-in claim is made
-    per language: a feature that works in one is not a feature.
-
-    A row filed in the wrong shard is a real error, not a harmless one -- the
-    shard is the topic's inventory, and a `qos` row hiding in `node.json` makes
-    both stages' counts wrong. `--self-test` rejects it, using the same
+    A row filed in the wrong topic is a real error, not a harmless one -- the
+    directory is the topic's inventory, and a `qos` row hiding in `node/` makes
+    both stages' counts wrong. Each row carries the directory it was read from
+    as `_shard`; `--check` rejects a mismatch (`misfiled_shard`), using the same
     `topics.topic_of` the report groups by, so a shard cannot disagree with the
     taxonomy.
     """
-    ledger_dir = ledger_dir or LEDGER_DIR
-    merged = {}
-    if not os.path.isdir(ledger_dir):
-        return merged
-    for name in sorted(os.listdir(ledger_dir)):
-        if not name.endswith(".json"):
-            continue
-        shard_topic = name[: -len(".json")]
-        with open(os.path.join(ledger_dir, name)) as fh:
-            text = fh.read()
-        # A DUPLICATE KEY is silently survivable and therefore dangerous: JSON
-        # parsers keep the last occurrence, so a second row for the same symbol
-        # discards the first author's verdict and reasoning with no error
-        # anywhere. It happens because two sessions classify the same symbol
-        # independently and git merges both -- they land in different regions of
-        # the file, so there is no textual conflict to notice. `other.json`
-        # carried `cpp:declared_depth` twice on 2026-09-04 for exactly that
-        # reason; both said `extension`, which is luck, not a guarantee.
-        #
-        # The hook runs on EVERY object, nested ones included, and returns a
-        # real dict -- an earlier version returned the pair list itself, which
-        # detected the duplicates but left every nested object (`rename`,
-        # `their_rename`) as a list of tuples for the rest of the tool. Nothing
-        # read below the top level at the time, so the trap only sprang when a
-        # validator finally did.
-        def no_duplicate_keys(pairs, _name=name):
-            seen = set()
-            for key, _ in pairs:
-                if key in seen:
-                    raise SystemExit(
-                        f"api-parity: {_name} defines {key!r} more than once. JSON keeps "
-                        f"the LAST, so the other row's verdict is being discarded "
-                        f"silently. Merge them into one row -- do not delete either "
-                        f"reason."
-                    )
-                seen.add(key)
-            return dict(pairs)
+    return ledger_files.load(ledger_dir or LEDGER_DIR)
 
-        raw = json.loads(text, object_pairs_hook=no_duplicate_keys)
-        for key, value in raw.items():
-            if key.startswith("_"):
-                continue
-            value = dict(value)
-            value["_shard"] = shard_topic
-            # The lane is what correctness turns on; the FILENAME is what the
-            # person fixing it has to open. A message naming `cpp.json` when the
-            # row sits in `cpp-node.json` sends them to a file that need not
-            # exist.
-            value["_file"] = name
-            merged[key] = value
-    return merged
+
+def misfiled_shard(entry, want):
+    """The topic a ledger row was FILED under, when that is not `want`; else None.
+
+    `want` is the report row's own topic (`row_topic`). A row with no `_shard`
+    did not come from a topic directory -- a hand-built ledger -- and is not
+    judged.
+    """
+    shard = (entry or {}).get("_shard")
+    return shard if shard not in (None, want) else None
 
 
 def ledger_key(lang, key):
@@ -2088,9 +2049,9 @@ def _report_one(langs, show, check, suggest, include_internal, grep=None, topic=
                     (entry or {}).get("editions"))
                 if entry is not None and not inherited and judge_shard:
                     want = row_topic(r)
-                    if entry.get("_shard") not in (None, want):
-                        misfiled.append((ledger_key(lang, r["key"]),
-                                         entry["_shard"], want))
+                    was = misfiled_shard(entry, want)
+                    if was:
+                        misfiled.append((ledger_key(lang, r["key"]), was, want))
                 verdict = (entry["verdict"] + "*") if (entry and inherited) else (
                     entry["verdict"] if entry else ""
                 )
@@ -2145,7 +2106,8 @@ def _report_one(langs, show, check, suggest, include_internal, grep=None, topic=
 
     def _list(rows_):
         for lang_, bucket_, key_ in rows_[:40]:
-            print("  %s:%s  (%s)" % (lang_, key_, bucket_), file=sys.stderr)
+            print("  %s:%s  (%s)  %s" % (lang_, key_, bucket_, ledger_files.row_filename(
+                ledger_key(lang_, key_))), file=sys.stderr)
         if len(rows_) > 40:
             print("  ... and %d more" % (len(rows_) - 40), file=sys.stderr)
 
@@ -2168,12 +2130,13 @@ def _report_one(langs, show, check, suggest, include_internal, grep=None, topic=
     if check:
         if misfiled:
             print(
-                "\n%d ledger row(s) sit in the wrong topic shard "
-                "(all listed; the move is mechanical):" % len(misfiled),
+                "\n%d ledger row(s) sit in the wrong topic directory "
+                "(all listed; the move is a file rename):" % len(misfiled),
                 file=sys.stderr,
             )
             for key, was, want in misfiled:
-                print("  %s  is in %s.json, belongs in %s.json" % (key, was, want),
+                fn = ledger_files.row_filename(key)
+                print("  %s  is in %s/%s, belongs in %s/%s" % (key, was, fn, want, fn),
                       file=sys.stderr)
             return 1
         if contradictions:
@@ -2312,8 +2275,9 @@ def _report_one(langs, show, check, suggest, include_internal, grep=None, topic=
         failing = list(unledgered) + (ported_unledgered if check_ported else [])
         if failing:
             print(
-                "\n%d item(s) differ with no ledger entry. Add a row to "
-                "%s/<lang>.json\nwith one of: %s"
+                "\n%d item(s) differ with no ledger entry. Add each row as its own file,\n"
+                "%s/<topic>/<file shown>, carrying its \"key\" (`--topic <name>`\n"
+                "shows the stage), with one of: %s"
                 % (len(failing), os.path.relpath(LEDGER_DIR, ROOT), ", ".join(VERDICTS)),
                 file=sys.stderr,
             )
@@ -2699,7 +2663,7 @@ def self_test():
         "cpp:A": {"verdict": "typo", "why": "x", "_shard": "cpp"},
         "cpp:B": {"verdict": "gap", "why": "  ", "_shard": "cpp"},
         "cpp:E": {"verdict": "gap", "why": "x", "_shard": "nonsense",
-                  "_file": "nonsense.json"},
+                  "_file": "nonsense/cpp.E.json"},
         "go:D": {"verdict": "gap", "why": "x", "_shard": "go"},
     }
     caught = validate_ledger(bad)
@@ -2707,6 +2671,76 @@ def self_test():
                    "unknown language"):
         if not any(needle in c for c in caught):
             failures.append("validate_ledger missed %r" % needle)
+
+    # issue 1091 -- one file per row. The shard identity `--check` uses to
+    # refuse a row in the wrong stage is now the DIRECTORY the row file sits
+    # in, so it is proved end to end: a `qos` row planted under `node/` goes
+    # through the real writer and loader and must come back misfiled, while the
+    # same row under `qos/` must not. And every way the layout can lose a row
+    # silently -- a file the loader skips, a name two keys share, one key in two
+    # files -- has to be a refusal, or the per-row split only moved the
+    # duplicate-key hazard from one file into many.
+    tricky = ["cpp:rclcpp::Node::now", "cpp:a.b", "cpp:a:b", "c:action_*",
+              "cpp:GenericTimer::GenericTimer<FunctorT, >", "cpp:a~2A", "cpp:a*",
+              "rust:Node::create_timer_on_clock"]
+    names_ = [ledger_files.row_filename(k) for k in tricky]
+    check("row_filename is injective", len(set(names_)), len(tricky))
+    check("row_filename is filesystem-safe",
+          [n for n in names_ if not re.fullmatch(r"[A-Za-z0-9_.~-]+\.json", n)], [])
+    qos_row = {"key": "QoS::keep_last", "theirs": {"header": "rclcpp/qos.hpp"}}
+    check("the planted row's own topic", row_topic(qos_row), "qos")
+    with tempfile.TemporaryDirectory() as plant:
+        ledger_files.write_row(plant, "node", "cpp:QoS::keep_last",
+                               {"verdict": "gap", "why": "x"})
+        ledger_files.write_row(plant, "qos", "cpp:QoS::history",
+                               {"verdict": "gap", "why": "x"})
+        planted = load_ledger(plant)
+        check("a row under the wrong topic directory is misfiled",
+              misfiled_shard(planted.get("cpp:QoS::keep_last"), row_topic(qos_row)), "node")
+        check("a row under its own topic directory is not",
+              misfiled_shard(planted.get("cpp:QoS::history"), row_topic(qos_row)), None)
+        check("a row file names its file", planted["cpp:QoS::keep_last"]["_file"],
+              "node/" + ledger_files.row_filename("cpp:QoS::keep_last"))
+
+    def refused(build):
+        with tempfile.TemporaryDirectory() as plant:
+            build(plant)
+            try:
+                load_ledger(plant)
+            except ledger_files.LedgerError as exc:
+                return str(exc)
+        return None
+
+    def write(plant, rel, text):
+        os.makedirs(os.path.dirname(os.path.join(plant, rel)), exist_ok=True)
+        with open(os.path.join(plant, rel), "w") as fh:
+            fh.write(text)
+
+    for what, build, needle in [
+        ("a retired top-level shard", lambda d: write(
+            d, "node.json", '{"cpp:X": {"verdict": "gap", "why": "x"}}'), "retired"),
+        ("a row file with no key", lambda d: write(
+            d, "node/cpp.X.json", '{"verdict": "gap", "why": "x"}'), "no \"key\""),
+        ("a row file named for another key", lambda d: write(
+            d, "node/cpp.Y.json", '{"key": "cpp:X", "verdict": "gap", "why": "x"}'),
+         "rename the file"),
+        ("one key in two topics", lambda d: (
+            ledger_files.write_row(d, "node", "cpp:X", {"verdict": "gap", "why": "x"}),
+            ledger_files.write_row(d, "qos", "cpp:X", {"verdict": "gap", "why": "y"})),
+         "is in both"),
+        ("a field twice in one row file", lambda d: write(
+            d, "node/cpp.X.json", '{"key": "cpp:X", "why": "a", "why": "b"}'),
+         "more than once"),
+        ("a loader field in a row file", lambda d: write(
+            d, "node/cpp.X.json", '{"key": "cpp:X", "why": "a", "_shard": "qos"}'),
+         "`_`-prefixed"),
+    ]:
+        got = refused(build)
+        if got is None or needle not in got:
+            failures.append("ledger layout: %s was not refused (got %r)" % (what, got))
+    check("a well-formed planted ledger is not refused", refused(lambda d: (
+        ledger_files.write_rows(d, "node", {"cpp:X": {"verdict": "gap", "why": "x"}},
+                                doc=["planted"]))), None)
 
     # `their-rename` says the defect is UPSTREAM's, so it is the one verdict a
     # row could claim to excuse itself. Each way of claiming it without the
@@ -3142,23 +3176,21 @@ def self_test():
         def owed(file, text):
             return {"what": "the parse", "witness": {"file": file, "text": text}}
 
-        with open(os.path.join(shard_dir, "init.json"), "w") as fh:
-            json.dump({
-                "_doc": "planted by api-parity --self-test (issue 1463)",
-                "c:S": {"verdict": "gap", "why": "LANDED. FIXED. still owed: x",
-                        "disposition": "adopt-bounded"},
-                "c:O": {"verdict": "gap", "why": "x", "disposition": "adopt-bounded"},
-                "c:Y": {"verdict": "gap", "why": "x"},
-                "c:C": {"verdict": "gap", "why": "x", "disposition": "adopt-bounded",
-                        "owed": owed("src/w.rs", "a refusal the fix deleted")},
-                "c:F": {"verdict": "gap", "why": "x", "disposition": "adopt",
-                        "owed": owed("src/gone.rs", "anything")},
-                "c:W": {"verdict": "gap", "why": "x", "disposition": "adopt-bounded",
-                        "owed": owed("src/w.rs", "nothing parses --ros-args yet")},
-                "c:T": {"verdict": "gap", "why": "x"},
-                "c:N": {"verdict": "gap", "why": "x"},
-                "c:D": {"verdict": "divergence", "why": "x"},
-            }, fh)
+        ledger_files.write_rows(shard_dir, "init", {
+            "c:S": {"verdict": "gap", "why": "LANDED. FIXED. still owed: x",
+                    "disposition": "adopt-bounded"},
+            "c:O": {"verdict": "gap", "why": "x", "disposition": "adopt-bounded"},
+            "c:Y": {"verdict": "gap", "why": "x"},
+            "c:C": {"verdict": "gap", "why": "x", "disposition": "adopt-bounded",
+                    "owed": owed("src/w.rs", "a refusal the fix deleted")},
+            "c:F": {"verdict": "gap", "why": "x", "disposition": "adopt",
+                    "owed": owed("src/gone.rs", "anything")},
+            "c:W": {"verdict": "gap", "why": "x", "disposition": "adopt-bounded",
+                    "owed": owed("src/w.rs", "nothing parses --ros-args yet")},
+            "c:T": {"verdict": "gap", "why": "x"},
+            "c:N": {"verdict": "gap", "why": "x"},
+            "c:D": {"verdict": "divergence", "why": "x"},
+        }, doc=["planted by api-parity --self-test (issue 1463)"])
         planted_ledger = load_ledger(shard_dir)
         check("the planted gap shard is structurally valid",
               validate_ledger(planted_ledger), [])
@@ -3225,26 +3257,24 @@ def self_test():
             return {"file": file, "text": text}
 
         stated = env("include/q.h", "capped at 16 samples")
-        with open(os.path.join(shard_dir, "qos.json"), "w") as fh:
-            json.dump({
-                "_doc": "planted by api-parity --self-test (issue 1637)",
-                "cpp:N": {"verdict": "divergence", "why": "x",
-                          "disposition": "adopt-bounded"},
-                "cpp:B": {"verdict": "divergence", "why": "x",
-                          "disposition": "adopt-bounded"},
-                "cpp:G": {"verdict": "divergence", "why": "x",
-                          "disposition": "adopt-bounded", "envelope": stated},
-                "cpp:X": {"verdict": "divergence", "why": "stated on to_facade",
-                          "disposition": "adopt-bounded",
-                          "envelope": env("include/q.h", "stated on to_facade")},
-                "cpp:F": {"verdict": "declined", "why": "x",
-                          "disposition": "adopt-bounded",
-                          "envelope": env("include/gone.h", "anything")},
-                "cpp:S": {"verdict": "divergence", "why": "x",
-                          "disposition": "adopt-bounded", "envelope": stated},
-                "cpp:M": {"verdict": "divergence", "why": "x", "disposition": "adopt"},
-                "cpp:A": {"verdict": "divergence", "why": "x", "disposition": "adopt"},
-            }, fh)
+        ledger_files.write_rows(shard_dir, "qos", {
+            "cpp:N": {"verdict": "divergence", "why": "x",
+                      "disposition": "adopt-bounded"},
+            "cpp:B": {"verdict": "divergence", "why": "x",
+                      "disposition": "adopt-bounded"},
+            "cpp:G": {"verdict": "divergence", "why": "x",
+                      "disposition": "adopt-bounded", "envelope": stated},
+            "cpp:X": {"verdict": "divergence", "why": "stated on to_facade",
+                      "disposition": "adopt-bounded",
+                      "envelope": env("include/q.h", "stated on to_facade")},
+            "cpp:F": {"verdict": "declined", "why": "x",
+                      "disposition": "adopt-bounded",
+                      "envelope": env("include/gone.h", "anything")},
+            "cpp:S": {"verdict": "divergence", "why": "x",
+                      "disposition": "adopt-bounded", "envelope": stated},
+            "cpp:M": {"verdict": "divergence", "why": "x", "disposition": "adopt"},
+            "cpp:A": {"verdict": "divergence", "why": "x", "disposition": "adopt"},
+        }, doc=["planted by api-parity --self-test (issue 1637)"])
         planted_ledger = load_ledger(shard_dir)
         check("the planted envelope shard is structurally valid",
               validate_ledger(planted_ledger), [])

@@ -1,0 +1,7 @@
+{
+  "key": "cpp:MultiThreadedExecutor",
+  "disposition": "refuse-loud",
+  "unextracted": "the recorded rclcpp surface does not include `rclcpp/executors/multi_threaded_executor.hpp`, and ours is a refusal alias the extractor does not record; the row exists because the stock `multithreaded_executor` example names it",
+  "verdict": "declined",
+  "why": "phase-488 (2026-10-21). rclcpp's thread-pool executor. DECLINED for RFC-0002's reason: an executor dispatches on ONE RTOS task with run-to-completion callbacks, and nano-ros starts no thread behind the caller's back, so a pool of workers sharing an arena is not a shape it has -- and every callback group is mutually exclusive by construction (`cpp:Node::create_callback_group`). Parallelism here is per TIER: one executor per task, declared in the system description. REFUSE-LOUD rather than absent: `rclcpp::executors::MultiThreadedExecutor` exists so that DECLARING one is a compile error carrying `NROS_RCLCPP_REFUSE_MULTI_THREADED_EXECUTOR`, which names `SingleThreadedExecutor` and tiers, instead of \"'executors' has not been declared\". Held by `ros2_refuse_multi_threaded_executor_probe.cpp`. Measured on the stock `multithreaded_executor` example: the rename to `SingleThreadedExecutor` is 1 of its 26 remaining edited lines; the rest are callback groups and pointer-shaped callbacks."
+}

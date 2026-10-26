@@ -1,0 +1,6 @@
+{
+  "key": "c:executor_add_subscription_with_context",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "see `c:executor_add_service_with_context`."
+}

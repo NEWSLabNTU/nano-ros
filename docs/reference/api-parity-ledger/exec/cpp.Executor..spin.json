@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Executor::spin",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. `rclcpp::Executor::spin()` returns `void`; ours (`executor.hpp:336`) returns `Result`. Same RFC-0018 widening as `cpp:Executor::cancel`, same `[[nodiscard]]` loudness, and the ARITY half of this row is already argued elsewhere (issue 0338 made `exec.spin()` compile with a defaulted `poll_ms`; the deprecated two-argument overload at `executor.hpp:409` is a separate matter). Nothing here is silent, which is why the disposition is adopt and not a work item."
+}

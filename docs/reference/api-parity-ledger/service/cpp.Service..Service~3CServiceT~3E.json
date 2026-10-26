@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Service::Service<ServiceT>",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Client::Client<ServiceT>`."
+}

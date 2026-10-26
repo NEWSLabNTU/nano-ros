@@ -1,0 +1,8 @@
+{
+  "key": "cpp:Publisher::bind_event_callbacks",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "divergence",
+  "why": "the post-construction step that wires `PublisherEventCallbacks` to event handlers, public since Jazzy. Ours binds a QoS-event callback when it is registered (`cpp:PublisherEventCallbacks`, `cpp:QOSEventHandler`), so there is no separate bind step to call."
+}

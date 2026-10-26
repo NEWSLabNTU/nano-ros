@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::create_node_on*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "create a node bound to a NAMED RMW backend (and optionally its own domain) on an executor that opened several. The scenario is the bridge image RFC-0002's shared executor makes possible: one RTOS task, one arena, two transports, a node on each. rclrs has one middleware per context."
+}

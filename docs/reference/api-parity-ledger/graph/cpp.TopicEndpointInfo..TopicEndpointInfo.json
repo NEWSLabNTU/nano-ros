@@ -1,0 +1,5 @@
+{
+  "key": "cpp:TopicEndpointInfo::TopicEndpointInfo",
+  "verdict": "divergence",
+  "why": "the two constructors: default (no strings, zero GID, `EndpointType::Invalid`) and the explicit wrap of one `nros_cpp_endpoint_info_t` handed over by the FFI visitor. Member of `cpp:TopicEndpointInfo`; the verdict and the two constraints are on that row."
+}

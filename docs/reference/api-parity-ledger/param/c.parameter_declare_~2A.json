@@ -1,0 +1,6 @@
+{
+  "key": "c:parameter_declare_*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-491 / RFC-0105: the C parameter API is rclc's `rclc_parameter_server_t` family under rclc's own names, over the executor's store (the one the six `rcl_interfaces` services read). Declare-with-default that KEEPS a baked launch value of the same type (rclcpp's `declare_parameter`). rclc's `add` + `set` overwrites one, which is what upstream rclc does and is kept. Also covers the bounded array declares."
+}

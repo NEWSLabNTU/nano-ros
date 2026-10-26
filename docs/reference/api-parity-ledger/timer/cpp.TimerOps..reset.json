@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TimerOps::reset",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`TimerBase::reset()` reached through `timer_->`: restart from zero elapsed time, un-cancelling a cancelled timer. Returns `Result`, where upstream returns `void`. Not `TimerHandle::reset`, which releases: see `cpp:TimerOps`."
+}

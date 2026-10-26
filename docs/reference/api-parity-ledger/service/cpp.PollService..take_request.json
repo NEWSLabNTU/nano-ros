@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollService::take_request",
+  "verdict": "extension",
+  "why": "phase-456 W5 — the taking verb moved here from `Service<S>`, so the NAME that used to sit beside upstream's now belongs to an ours-only type. The substantive verdict on the name and on the correlation token stays at `cpp:Service::take_request`, which is where the comparison against `rclcpp::Service::take_request` lives; this row records where our half went and why (`cpp:PollService`). Same shape as `cpp:PollSubscription::take` after W2b."
+}

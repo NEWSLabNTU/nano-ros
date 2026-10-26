@@ -1,0 +1,6 @@
+{
+  "key": "c:action_goal_event_e",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the event alphabet of `c:action_transition_goal_state`; we name transitions with verbs instead. See that row."
+}

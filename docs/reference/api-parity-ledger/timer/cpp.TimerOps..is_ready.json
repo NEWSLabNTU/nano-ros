@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TimerOps::is_ready",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`TimerBase::is_ready()` reached through `timer_->`; the executor's answer, as for `nros::Timer::is_ready`. An empty, released or stale handle answers `false`."
+}

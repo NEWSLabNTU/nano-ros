@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoNodeTimerOneshotCallback::into_node_timer_oneshot_callback",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "an rclrs callback-conversion trait -- it normalises a plain, worker or oneshot/repeating closure. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert. See the pubsub stage's `rust:IntoNodeSubscriptionCallback`."
+}

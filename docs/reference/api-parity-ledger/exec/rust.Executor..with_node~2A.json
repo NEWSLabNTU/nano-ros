@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::with_node*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "run a closure with one node's context borrowed out of the table. It is the borrow-checker shape of `rust:Executor::node*`: the node lives IN the executor, so a caller cannot hold it and the executor at once. rclrs hands out an `Arc<Node>` and has no such problem."
+}

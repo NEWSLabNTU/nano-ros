@@ -1,0 +1,5 @@
+{
+  "key": "rust:PublishLoan::as_mut",
+  "verdict": "divergence",
+  "why": "see `rust:PublishLoan`."
+}

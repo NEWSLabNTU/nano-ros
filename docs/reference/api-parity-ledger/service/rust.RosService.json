@@ -1,0 +1,5 @@
+{
+  "key": "rust:RosService",
+  "verdict": "divergence",
+  "why": "the trait a generated service type implements (request/response types, type name, hash). rclrs's equivalent is `rosidl_runtime_rs::Service`, which lives in the message crates rather than the client library -- ours is in `nros-core` because codegen and the RMW layer both need it."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:publisher_get_context",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "reaches the context a publisher was created on. There is no separate context object -- see the init stage's `c:context_*`."
+}

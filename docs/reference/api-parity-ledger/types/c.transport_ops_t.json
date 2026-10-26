@@ -1,0 +1,5 @@
+{
+  "key": "c:transport_ops_t",
+  "verdict": "extension",
+  "why": "a bring-your-own transport vtable (`open`/`close`/`write`/`read` + `abi_version` + `user_data`) so a board can supply its own link. rcl reaches the network through rmw and an installed middleware implementation, neither of which an MCU has; the vtable is how a board with a UART, a CAN controller or a vendor TCP stack participates at all."
+}

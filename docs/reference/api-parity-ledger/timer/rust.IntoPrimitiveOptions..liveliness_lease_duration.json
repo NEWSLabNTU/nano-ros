@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoPrimitiveOptions::liveliness_lease_duration",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:IntoPrimitiveOptions::deadline_duration`."
+}

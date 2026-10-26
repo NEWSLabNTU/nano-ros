@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeSubscriptionCallback",
+  "verdict": "divergence",
+  "why": "rclrs's conversion traits let `create_subscription` accept a plain closure, an async closure or a worker closure and normalise them. Ours binds a NAMED callback at declaration (RFC-0043), so there is one shape and nothing to convert."
+}

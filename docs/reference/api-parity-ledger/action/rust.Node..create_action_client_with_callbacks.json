@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_action_client_with_callbacks",
+  "verdict": "divergence",
+  "why": "RFC-0041 / phase 239.2 -- an action client that takes THREE callbacks at creation (goal response, feedback, result) and hands back a send handle, rather than returning futures to await. Same constraint as `rust:Node::create_client_with_callback` one entity over, and the same one `rust:Node::create_action_client` records against rclrs's typestate chain: with no async runtime there is nothing to await on, and with no allocator the goal state cannot follow an owning handle out of the executor's arena. The `Promise`-based `create_action_client` is unchanged and both remain public.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+}

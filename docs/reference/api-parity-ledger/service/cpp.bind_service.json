@@ -1,0 +1,5 @@
+{
+  "key": "cpp:bind_service",
+  "verdict": "extension",
+  "why": "RFC-0043's component seam for a TYPED service handler: it binds `Svc::Response C::on_request(const Svc::Request&)` by identity, and the generated trampoline `ffi_deserialize`s the request into a STACK `Svc::Request`, calls the member, and `ffi_serialize`s the response back into the reply buffer -- no hand-rolled CDR in the component, no heap, no `std::function`. The service type name comes from `Svc::TYPE_NAME`, so unlike `cpp:bind_service_raw` no `type_name` argument is needed. USER-FACING: `examples/workspaces/cpp/src/service_server_pkg` writes it and `nros-cpp/tests/compile/bind_service.cpp` is its compile regression (issue 0089 gap 4). rclcpp's equivalent is `create_service(name, std::bind(&C::on_request, this, _1, _2))`, which allocates. See `cpp:bind_subscription` for the family."
+}

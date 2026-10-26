@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::wait_for_publishers",
+  "verdict": "divergence",
+  "why": "phase-444. OUR spelling of upstream's `rcl_wait_for_publishers` — see `c:wait_for_publishers` for the decision, the RFC-0021 argument for why the one blocking member of the graph family is allowed to block, and why `Unsupported` returns at once instead of waiting out the budget.\n\nSame verb as ROS 2; the RECEIVER differs, as it does for every other graph verb here. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE transport session for the whole image — a session per node is RAM a 128 KiB target does not have — and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+}

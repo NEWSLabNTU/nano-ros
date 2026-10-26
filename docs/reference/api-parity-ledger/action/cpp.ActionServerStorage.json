@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ActionServerStorage",
+  "verdict": "extension",
+  "why": "the caller-owned byte buffer a component must declare per raw action server -- `alignas(8) uint8_t bytes[NROS_CPP_ACTION_SERVER_STORAGE_SIZE]`, app lifetime, held by the executor arena. No allocator, so the server object has to live somewhere the component owns; rclcpp_action's `create_server` returns a heap `SharedPtr`. USER-FACING -- `examples/workspaces/cpp/src/action_server_pkg` declares one and passes `.bytes`. See `cpp:ServiceClientStorage` for the same shape one entity over."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_generic_subscription_with_integrity",
+  "verdict": "extension",
+  "why": "phase 250 W2 / RFC-0033 -- a type-erased subscription that hands the callback the bytes AND an `IntegrityStatus` (E2E CRC plus sequence gap/dup), because the validator lives in the `RmwSubscriber` and there is no typed `M` to hang it off. rclrs has no integrity concept at all (measured: zero `Integrity` identifiers in the recorded surface) and no generic subscription to carry one -- see `rust:Node::create_generic_subscription`. Behind the `safety-e2e` feature.\n\nOn `nros::Node`, the executor-borrowing node handle (`exec.node_mut(id)`); it was `NodeCtx` until phase-483 W2, which the correlator folded onto `Node` (`TYPE_SYNONYMS`). MEASURABLE ONLY SINCE 2026-09-12: `nros_node::executor`'s `mod node` kept the type private while `Executor::node_mut` returned it, so every method on it was callable and none of them had ever produced a row -- issue 1351."
+}

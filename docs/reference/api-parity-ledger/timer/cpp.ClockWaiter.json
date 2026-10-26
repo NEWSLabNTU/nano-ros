@@ -1,0 +1,9 @@
+{
+  "key": "cpp:ClockWaiter",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "see `cpp:ClockConditionalVariable`."
+}

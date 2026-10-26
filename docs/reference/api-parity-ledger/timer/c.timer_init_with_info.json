@@ -1,0 +1,5 @@
+{
+  "key": "c:timer_init_with_info",
+  "verdict": "divergence",
+  "why": "issue 1974 — `rclc_timer_init_with_info(timer, clock /*NULL = wall*/, period_ns, callback_with_info, autostart)` registers a `c:timer_callback_with_info_t`. Upstream reaches call info through `rcl_timer_call_with_info` (a dispatch call, `c:timer_call_with_info`); ours is an init verb because the executor dispatches. Times are on the timer's clock (the platform steady clock for a NULL clock); `autostart` as `c:timer_init2`. CORRECTED 2026-10-25 (phase-515 C1): the trailing `context` went with D2; the callback reaches its state through the timer, as an `rcl_timer_callback_t` does."
+}

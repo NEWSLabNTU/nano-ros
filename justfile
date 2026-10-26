@@ -686,8 +686,8 @@ issues *ARGS:
 #                        rustdoc for Rust) by the same extractors the parity
 #                        gate uses -- never a hand-maintained list
 #   * ROS 2's surface    docs/reference/api-surface/{rclc,rclcpp,rclrs}.json
-#   * why, and what      docs/reference/api-parity-ledger/*.json -- the ONLY
-#     answers it         file a human writes. `why` is the reason a row
+#   * why, and what      docs/reference/api-parity-ledger/<topic>/*.json -- the ONLY
+#     answers it         files a human writes. `why` is the reason a row
 #                        diverges, `provides` names our items that answer an
 #                        upstream one when the mapping is not 1:1.
 #

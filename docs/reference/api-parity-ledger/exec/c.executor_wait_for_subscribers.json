@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_wait_for_subscribers",
+  "verdict": "divergence",
+  "why": "phase-444. OUR spelling of upstream's `rcl_wait_for_subscribers` — see `c:wait_for_subscribers` for the decision, the RFC-0021 argument for why the one blocking member of the graph family is allowed to block, and why `Unsupported` returns at once instead of waiting out the budget.\n\nSame verb as ROS 2; the RECEIVER differs, as it does for every other graph verb here. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE transport session for the whole image — a session per node is RAM a 128 KiB target does not have — and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`rclc_executor_ping`, `nros_executor_spin`)."
+}

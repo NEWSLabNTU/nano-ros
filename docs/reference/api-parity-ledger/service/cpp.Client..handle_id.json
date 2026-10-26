@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Client::handle_id",
+  "verdict": "extension",
+  "why": "the executor-table index this entity occupies, used by generated entry points to bind a callback to it. rclcpp identifies entities by pointer; a static table identifies them by slot."
+}

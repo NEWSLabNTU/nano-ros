@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierSetupGate::enter",
+  "verdict": "extension",
+  "why": "See `rust:TierSetupGate`. Blocks until the caller holds the gate; the returned guard opens it on drop, on every exit path."
+}

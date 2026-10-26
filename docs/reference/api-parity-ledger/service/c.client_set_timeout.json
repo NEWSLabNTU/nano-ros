@@ -1,0 +1,5 @@
+{
+  "key": "c:client_set_timeout",
+  "verdict": "extension",
+  "why": "a per-client default deadline for a pending request, so a device that must not wait forever states the bound once rather than at every call. rclcpp has no client-level timeout -- the caller passes one to `spin_until_future_complete` each time."
+}

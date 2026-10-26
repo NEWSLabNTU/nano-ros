@@ -1,0 +1,5 @@
+{
+  "key": "cpp:spin_once",
+  "verdict": "divergence",
+  "why": "rclcpp's free spin functions take the node to spin (`rclcpp::spin(node)`); ours take no node, because a node is not a unit of dispatch (see `cpp:Executor::spin_node_once`) and the global session is singular (see `cpp:Context`). `nros::spin_once(timeout_ms)` drives the one global executor `nros::init()` created. rclcpp has no free `spin_once` at all -- and note this one has `spin_some` semantics, not rclcpp's `spin_once` semantics; see `cpp:Executor::spin_some`. OUR LANGUAGES DISAGREE: the one-cycle verb is `spin_once` in C++ and Rust and `nros_executor_spin_some` in C (matching rclc), so a reader moving between our own surfaces meets the same operation under rclcpp's name for a different operation."
+}

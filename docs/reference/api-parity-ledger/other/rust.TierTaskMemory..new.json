@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierTaskMemory::new",
+  "verdict": "divergence",
+  "why": "See `rust:TierTaskMemory`."
+}

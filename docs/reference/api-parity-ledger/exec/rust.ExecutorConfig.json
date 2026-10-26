@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorConfig",
+  "verdict": "extension",
+  "why": "the session-identity builder an embedded image opens its executor with: locator, session mode, domain id, node name, namespace, monotonic clock, epoch clock, RMW selection. rclrs has no counterpart because its `Context` reads argv and the environment (`Context::from_env`, `default_from_env`) -- neither exists on a device (RFC-0045). The builder is `const fn` throughout so an image can bake the whole thing into a static. Covers the chaining setters (`new`, `default_const`, `domain_id`, `node_name`, `namespace`, `mode`, `rmw`, `epoch_us`) and the resolvers below.\n\nphase-467 Row 11 follow-through (2026-10-03) -- CORRECTED. \"neither exists on a device\" still holds, but on a hosted build `nros::Context::new` reads argv as rclrs's does (#1591) and the `--ros-args -r` rules it parses ride the `Context`, not this builder. An `ExecutorConfig` has no field for them, so `Context::config()` REFUSES a context that carries any and names `create_executor` / `create_executor_in`, which install them (see `rust:Context::config`). An executor opened from this builder alone has launch remaps only."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:platform_heap_total_bytes",
+  "verdict": "extension",
+  "why": "see `c:platform_heap_used_bytes`."
+}

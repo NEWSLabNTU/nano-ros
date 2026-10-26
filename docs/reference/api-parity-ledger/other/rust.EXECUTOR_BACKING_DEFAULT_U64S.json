@@ -1,0 +1,5 @@
+{
+  "key": "rust:EXECUTOR_BACKING_DEFAULT_U64S",
+  "verdict": "divergence",
+  "why": "issue 1571 -- the words ONE default-sized executor carves (`ExecutorSizing::DEFAULT.u64_len()`), as the one spelling both the boot reservation and each `TierExecutorBackingSlot` are sized by, so a tier slot and the boot backing cannot disagree about 'one executor's worth'. Same no-allocator constraint as `rust:ExecutorSizing`."
+}

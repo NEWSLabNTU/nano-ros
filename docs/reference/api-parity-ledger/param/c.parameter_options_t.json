@@ -1,0 +1,10 @@
+{
+  "key": "c:parameter_options_t",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc_parameter/rclc_parameter.h",
+    "text": "`max_params` is a per-node quota inside it."
+  },
+  "verdict": "divergence",
+  "why": "phase-491 / RFC-0105: the C parameter API is rclc's `rclc_parameter_server_t` family under rclc's own names, over the executor's store (the one the six `rcl_interfaces` services read). Field for field rclc's. NO ALLOCATOR: `max_params` is a per-node QUOTA inside the build-time store (`NROS_MAX_PARAMETERS`), not an allocation size; `low_mem_mode` is accepted and changes nothing because the services always stream; `notify_changed_over_dds` is recorded for phase-491 W3."
+}

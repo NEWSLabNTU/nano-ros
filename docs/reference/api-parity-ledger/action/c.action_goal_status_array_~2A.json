@@ -1,0 +1,6 @@
+{
+  "key": "c:action_goal_status_array_*",
+  "bucket": "theirs-only",
+  "verdict": "divergence",
+  "why": "rcl hands the caller a heap `GoalStatusArray` to fill and publish (`rcl_action_get_goal_status_array` + `rcl_action_publish_status`). Ours is not a user-facing object at all: the arena keeps the status of every live goal and publishes the array itself on every transition (`ActionServerCore::publish_status_array`). No allocator to build the array with, and nothing for a caller to do with it. See `c:action_publish_status`."
+}

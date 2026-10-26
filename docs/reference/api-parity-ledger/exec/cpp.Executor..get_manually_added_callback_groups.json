@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Executor::get_manually_added_callback_groups",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Executor::get_all_callback_groups`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:client_call",
+  "verdict": "extension",
+  "why": "see `cpp:PollClient::call`."
+}

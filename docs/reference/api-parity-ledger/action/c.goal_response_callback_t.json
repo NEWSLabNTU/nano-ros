@@ -1,0 +1,5 @@
+{
+  "key": "c:goal_response_callback_t",
+  "verdict": "divergence",
+  "why": "the accept/reject reply arrives at a callback bound to the CLIENT at creation, rather than resolving a future. See the service stage's `c:client_set_response_callback` and RFC-0021."
+}

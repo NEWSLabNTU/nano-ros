@@ -1,0 +1,7 @@
+{
+  "key": "cpp:LifecycleNode::on_configure",
+  "disposition": "adopt",
+  "unextracted": "declared on `rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface`, which `rclcpp_lifecycle::LifecycleNode` inherits (phase-482 W4); the extractor reads top-level namespaces only",
+  "verdict": "divergence",
+  "why": "phase-482 W4 (2026-10-07): declared on `node_interfaces::LifecycleNodeInterface` with upstream's signature (`CallbackReturn on_X(const rclcpp_lifecycle::State&)`, `CallbackReturn::SUCCESS/FAILURE/ERROR` = 97/98/99) and default (SUCCESS; `on_error` FAILURE), and inherited by `rclcpp_lifecycle::LifecycleNode`. `rclcpp_lifecycle_ported_node.cpp` overrides them verbatim.\n\nBefore phase-482 W4: rclcpp declares all six hooks on the separate abstract base `node_interfaces::LifecycleNodeInterface` and re-declares only `on_activate` / `on_deactivate` on `LifecycleNode` itself (to propagate to managed entities), so these four read as ours-only. We flatten the interface into the class: RFC-0018 freestanding C++ means non-pure virtuals with defaults, so there is no `__cxa_pure_virtual` and no abstract base to inherit. Same names, same signature shape, same defaults (`on_error` returns `Failure`)."
+}

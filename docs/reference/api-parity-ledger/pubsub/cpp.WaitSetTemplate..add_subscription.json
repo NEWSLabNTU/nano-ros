@@ -1,0 +1,6 @@
+{
+  "key": "cpp:WaitSetTemplate::add_subscription",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's `Waitable` protocol: the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable's has_data/drive_io, so there is no wait-set for an entity to describe itself to. Executor plumbing, not pub/sub API."
+}

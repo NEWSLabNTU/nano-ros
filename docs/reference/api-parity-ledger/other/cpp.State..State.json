@@ -1,0 +1,10 @@
+{
+  "key": "cpp:State::State",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_lifecycle/lifecycle_node.hpp",
+    "text": "**It stores an id and nothing else**, exactly like [`Transition`]"
+  },
+  "verdict": "divergence",
+  "why": "RE-VERDICTED phase-417 G6 — it said 'no constructor, because ours is an enum rather than a class', and there is a class now. Two constructors: `State(uint8_t)` and `State(LifecycleState)`, both `constexpr` and both `explicit`. Upstream's take `(uint8_t id, const std::string& label, rcutils_allocator_t)` and `(const rcl_lifecycle_state_t*, rcutils_allocator_t)` — the arity differs because the LABEL and the ALLOCATOR are not ours to be given: the label is looked up from the id against `nros_core`'s one table, so a caller cannot supply a second spelling of it, and there is no allocator (RFC-0022). See `cpp:State`."
+}

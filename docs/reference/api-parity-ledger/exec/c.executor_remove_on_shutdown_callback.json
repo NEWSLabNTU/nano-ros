@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_remove_on_shutdown_callback",
+  "verdict": "extension",
+  "why": "See `c:executor_remove_pre_shutdown_callback`. Issue 0790."
+}

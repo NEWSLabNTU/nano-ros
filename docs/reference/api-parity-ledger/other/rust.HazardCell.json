@@ -1,0 +1,6 @@
+{
+  "key": "rust:HazardCell",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): one hazard's observer state, baked as a `static` beside its spec so the observer adds nothing per hazard to the `Executor` value (issue 0961). See `rust:HazardSpec`."
+}

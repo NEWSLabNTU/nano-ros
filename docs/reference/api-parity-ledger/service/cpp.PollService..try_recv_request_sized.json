@@ -1,0 +1,5 @@
+{
+  "key": "cpp:PollService::try_recv_request_sized",
+  "verdict": "extension",
+  "why": "the caller-sized receive, the escape hatch for a request type with no derived bound and the way to override a bounded type's own number (issue 0964). Ours-only because the buffer is OURS: rclcpp deserializes into an allocated message, so there is no capacity for a caller to name. Kept under the `try_recv_` prefix rather than renamed with its sibling, because it is the `_sized` form of a deprecated name and retires with it."
+}

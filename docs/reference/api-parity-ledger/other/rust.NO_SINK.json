@@ -1,0 +1,6 @@
+{
+  "key": "rust:NO_SINK",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-462 W3b -- the on-target hazard observer (`contracts.hazards`): a hazard's sink when its reaction states no `safe_state` publisher this image monitors (detection and recovery only). See `rust:HazardSpec`."
+}

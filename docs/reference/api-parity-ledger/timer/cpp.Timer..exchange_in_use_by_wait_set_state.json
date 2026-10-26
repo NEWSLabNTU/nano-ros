@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Timer::exchange_in_use_by_wait_set_state",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's `Waitable` protocol; see the pubsub stage's identical rows."
+}

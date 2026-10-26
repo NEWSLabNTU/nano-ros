@@ -1,0 +1,5 @@
+{
+  "key": "rust:Publisher::borrow_loaned_message",
+  "verdict": "divergence",
+  "why": "see the loan rows -- `c:borrow_loaned_message`."
+}

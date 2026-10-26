@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::error_what",
+  "verdict": "divergence",
+  "why": "the failure SITE (`\"create_publisher\"`, `\"node create\"`, ...) of the first error, or `nullptr` when `ok()`. Half of what a thrown rclcpp ctor exception would have carried; see `cpp:ComponentNode::ok` for why it is a flag and not a throw. phase-427 W4: `nros::ComponentNode` is DELETED and this row moved onto the merged `nros::Node`. ComponentNode WRAPPED a node (RFC-0044 Q1 chose wrap over derive), so a component was not a `Node` and every verb had to be forwarded; the merged type IS one."
+}

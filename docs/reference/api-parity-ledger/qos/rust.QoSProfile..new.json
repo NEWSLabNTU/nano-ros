@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSProfile::new",
+  "verdict": "extension",
+  "why": "a `const fn` returning `QOS_PROFILE_DEFAULT`, so a profile can be built in a `static` / `const` initialiser. That is what compile-time QoS (RFC-0036/0045) needs: the entity's profile is baked, not assembled at runtime. rclrs builds a `QoSProfile` through the `*_default()` constructors or `Default`."
+}

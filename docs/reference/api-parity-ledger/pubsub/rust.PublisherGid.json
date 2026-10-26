@@ -1,0 +1,5 @@
+{
+  "key": "rust:PublisherGid",
+  "verdict": "divergence",
+  "why": "rclrs wraps the GID in a type; ours is a fixed array plus `PUBLISHER_GID_SIZE`, because a wrapper with no allocator buys only the name."
+}

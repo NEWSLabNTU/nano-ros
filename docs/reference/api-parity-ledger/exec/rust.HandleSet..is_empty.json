@@ -1,0 +1,5 @@
+{
+  "key": "rust:HandleSet::is_empty",
+  "verdict": "extension",
+  "why": "see `rust:HandleSet`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:SignalHandlerOptions",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's selector for WHICH signal handlers `rclcpp::init` installs. We install none: see `cpp:install_signal_handlers` in the init stage -- there is no POSIX signal delivery on Zephyr, FreeRTOS or bare-metal, and an image is stopped by its RTOS, a watchdog or a power rail."
+}

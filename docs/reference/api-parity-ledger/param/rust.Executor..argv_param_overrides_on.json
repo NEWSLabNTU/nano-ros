@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::argv_param_overrides_on",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "issue 2057 -- the store-side reader behind rclcpp's `NodeParametersInterface::get_parameter_overrides()`, which the C++ shim forwards to. Upstream keeps a node's `-p` / `--params-file` overrides in the node's own `NodeParameters` and returns them from there; ours keeps them in the executor's one parameter store (see `rust:Executor::allow_undeclared_parameters_on`), so the reader is on the executor and the node is an ARGUMENT. It selects as a declaration does: the last override of a name wins and a `node:` override applies only to that node. A listing has no declared type, so each text is typed bool, integer, double, then string, and an override no type accepts is left out."
+}

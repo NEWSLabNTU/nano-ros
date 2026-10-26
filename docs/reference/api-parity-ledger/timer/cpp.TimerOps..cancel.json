@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TimerOps::cancel",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "`TimerBase::cancel()` reached through `timer_->`. Same semantics as `nros::Timer::cancel`: the timer stops firing and stays registered. Returns `Result`, where upstream returns `void` and throws; a stale handle answers an error."
+}

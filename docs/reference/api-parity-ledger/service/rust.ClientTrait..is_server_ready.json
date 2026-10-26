@@ -1,0 +1,7 @@
+{
+  "key": "rust:ClientTrait::is_server_ready",
+  "disposition": "absent",
+  "retired": "deleted by phase-379 W6 decision 2; the row records why",
+  "verdict": "declined",
+  "why": "DELETED 2026-09-03 (phase-379 W6 decision 2) -- this was the collapse WITHOUT the exception channel that makes it safe upstream. Its trait default was `true` and only zenoh overrode it, so every cffi-backed image (cyclonedds, XRCE, uORB) answered \"ready\" without asking: `wait_for_service` returned `Ok(true)` immediately, never waiting. Issue 1008. the ours-only half of `rust:Client::service_is_ready`."
+}

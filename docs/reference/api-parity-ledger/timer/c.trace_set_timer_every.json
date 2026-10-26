@@ -1,0 +1,5 @@
+{
+  "key": "c:trace_set_timer_every",
+  "verdict": "extension",
+  "why": "phase-474 I3 -- keep one tick in N of a timer's callback-trace start/end pair (1 = every tick, 0 = none), so a RAM trace window can hold the timer whose jitter is the measurement whole. rclc has no callback-level trace hook; see `c:set_trace_sink`. A no-op without the tracing feature."
+}

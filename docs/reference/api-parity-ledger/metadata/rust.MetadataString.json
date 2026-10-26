@@ -1,0 +1,5 @@
+{
+  "key": "rust:MetadataString",
+  "verdict": "extension",
+  "why": "the fixed-capacity string every recorded name and id is stored in -- `heapless::String<METADATA_STRING_CAPACITY>`, because there is no allocator. See `rust:MetadataRecorder`."
+}

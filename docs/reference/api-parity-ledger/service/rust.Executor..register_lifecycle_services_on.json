@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_lifecycle_services_on",
+  "verdict": "extension",
+  "why": "phase-488. `register_lifecycle_services`, named after a node CREATED on the executor rather than the executor's own identity, which a hosted C++ `rclcpp_lifecycle::LifecycleNode` needs: through the executor it served `/node/change_state` beside a phantom `/node`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:SourceMetadataExport::new",
+  "verdict": "extension",
+  "why": "see `rust:SourceMetadataExport`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "c:declared_durability",
+  "verdict": "extension",
+  "why": "issue 1256 -- the declared DURABILITY for `(type, topic)`, the sibling of `c:declared_reliability` and `c:declared_depth` and ours-only for the same reason: a contract sidecar states what each subscription is, and the build holds the code to it. `NROS_DECLARED_DURABILITY(type, topic)` is the integer-constant-expression form (an `rclc_qos_durability_t` value) behind `NROS_ASSERT_DECLARED_DURABILITY`; `rclc_declared_durability(type, topic)` is the `static inline` for a topic that is not a constant expression. Absence is `NROS_DECLARED_POLICY_UNDECLARED` (-1). rcl has no counterpart: it has no contract to disagree with."
+}

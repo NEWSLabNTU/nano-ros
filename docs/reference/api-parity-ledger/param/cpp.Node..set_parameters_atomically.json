@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Node::set_parameters_atomically",
+  "disposition": "refuse-loud",
+  "verdict": "divergence",
+  "why": "we SERVED `~/set_parameters_atomically` and offered it in no language, so the only way to reach our own atomic set was over the wire. Now `set_parameters_atomically(writes, count)` over `rclcpp::ParameterWrite` — a name plus a tagged value, which is one element of upstream's `std::vector<rclcpp::Parameter>` flattened into scalars, because `rclcpp::Parameter` is a generated message we do not have (`cpp:Parameter`) and the vector needs an allocator. Check-all-then-apply-all lives in the store (`ParameterServer::apply_atomically`), which is the same call the service handler makes, so the wire and the local call cannot disagree about what 'atomic' means. RE-VERDICTED phase-417 W4.a. was `gap`, and the capability now SHIPS on `rclcpp::Node`, forwarding to the executor's one `nros_params::ParameterServer` and holding no state of its own. `refuse-loud` rather than `adopt`: the NAME exists, so a ported file reaches it, and the SIGNATURE is what refuses — the compiler names the mismatch at the call site and there is no shape in which this compiles and silently differs."
+}

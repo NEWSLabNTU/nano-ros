@@ -1,0 +1,5 @@
+{
+  "key": "rust:TimerCallInfo",
+  "verdict": "extension",
+  "why": "issue 2038 (2026-10-25) — re-exported from `nros` (`nros_node::timer::TimerCallInfo`), because a declared timer's callback reads it through `CallbackCtx::timer_info` and an application deps `nros`, not `nros-node`. This is issue 1974's call info. rclrs has no timer call info, so the type is ours alone; its Jazzy counterparts are `rcl_timer_call_info_t` and `rclcpp::TimerInfo` (see `c:timer_call_info_t`). It has one producer, the executor's timer dispatcher, so C, C++ and Rust all copy the same numbers."
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The api-parity ledger's schema description lives in ONE file.
 
-Issue 1095. `docs/reference/api-parity-ledger/` is 17 JSON shards, and every one
+Issue 1095. `docs/reference/api-parity-ledger/` was 17 JSON shards, and every one
 used to carry its own copy of the same `_doc` schema block — what a verdict
 means, how a key is spelled, which fields are required. So the schema had 17
 homes: changing it edited 17 files, and two concurrent PRs that both touched it
@@ -19,28 +19,32 @@ the only conflicting path and the merge queue serialises on it. There the file
 was generated, so the fix was to stop tracking it. Here it is hand-written and
 mechanically duplicated, so the fix is one home plus a pointer.
 
+Since issue 1091 a row is its own file under a directory per topic, and a
+topic's notes moved with it, to `<topic>/_doc.json` — which `api-parity.py`'s
+loader skips (`_`-prefixed), exactly as it skipped the `_doc` key before.
+
 WHAT THIS CHECKS
 
-  * every shard's `_doc` names SCHEMA.md, so a reader of the raw JSON is not
-    stranded;
-  * no shard's `_doc` restates the schema vocabulary — the failure mode is
+  * every topic directory has a `_doc.json` naming SCHEMA.md, so a reader who
+    opens the directory is not stranded;
+  * no topic's `_doc` restates the schema vocabulary — the failure mode is
     someone helpfully pasting the block back in, which reads as an improvement
     and silently restores the 17-way conflict surface.
 
-A shard MAY carry its own notes (qos.json documents its enum decisions). Those
-are shard-specific and are exactly what a per-shard `_doc` is for.
+A topic MAY carry its own notes (qos/ documents its enum decisions). Those are
+topic-specific and are exactly what a per-topic `_doc` is for.
 
 Run:  python3 scripts/check-ledger-doc-single-home.py [--self-test]
 """
 
-import glob
-import json
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LEDGER = os.path.join(ROOT, "docs", "reference", "api-parity-ledger")
 SCHEMA = os.path.join(LEDGER, "SCHEMA.md")
+sys.path.insert(0, os.path.join(ROOT, "scripts", "api_parity"))
+import ledger_files  # noqa: E402  the ledger's one layout (issue 1091)
 
 # Phrases that belong to the SCHEMA, not to a shard note. Chosen from the block's
 # own vocabulary: a shard restating any of these has copied the schema back.
@@ -79,24 +83,29 @@ def main():
         )
         return 1
 
-    shards = sorted(glob.glob(os.path.join(LEDGER, "*.json")))
+    shards = ledger_files.topic_dirs(LEDGER)
     if not shards:
         sys.stderr.write(
-            "error: no ledger shards found under %s — this gate would pass\n"
-            "vacuously.\n" % os.path.relpath(LEDGER, ROOT)
+            "error: no ledger topic directories found under %s — this gate would\n"
+            "pass vacuously.\n" % os.path.relpath(LEDGER, ROOT)
         )
         return 1
 
     problems = []
-    for path in shards:
-        name = os.path.basename(path)
+    for topic, _path in shards:
+        name = "%s/%s" % (topic, ledger_files.DOC_FILE)
         try:
-            doc = json.load(open(path, encoding="utf8")).get("_doc", [])
+            doc = ledger_files.doc_lines(LEDGER, topic)
         except (OSError, ValueError) as exc:
             problems.append("%s: cannot read (%s)" % (name, exc))
             continue
-        if not isinstance(doc, list):
-            doc = [str(doc)]
+        if doc is None:
+            problems.append(
+                "%s is missing.\n"
+                "      Every topic directory carries one, pointing at SCHEMA.md, so\n"
+                "      someone who opens the directory is told where the schema lives." % name
+            )
+            continue
         found = offenders(doc)
         if found:
             problems.append(
@@ -104,7 +113,7 @@ def main():
                 "      The schema has ONE home: SCHEMA.md. A copy here reads as a\n"
                 "      helpful addition and silently restores the 17-way conflict\n"
                 "      surface issue 1095 removed. Keep only notes specific to this\n"
-                "      shard." % (name, ", ".join(repr(f) for f in found))
+                "      topic." % (name, ", ".join(repr(f) for f in found))
             )
         elif "SCHEMA.md" not in "\n".join(doc):
             problems.append(
@@ -120,7 +129,7 @@ def main():
         return 1
 
     sys.stdout.write(
-        "check-ledger-doc-single-home: OK — %d shard(s) point at one SCHEMA.md.\n" % len(shards)
+        "check-ledger-doc-single-home: OK — %d topic(s) point at one SCHEMA.md.\n" % len(shards)
     )
     return 0
 

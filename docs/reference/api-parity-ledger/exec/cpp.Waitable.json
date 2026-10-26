@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Waitable",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the interface a third-party object implements to join an rclcpp wait set. rclcpp's wait-set protocol; the reason is stated in full at `cpp:WaitSet`."
+}

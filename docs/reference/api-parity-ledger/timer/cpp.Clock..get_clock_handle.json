@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Clock::get_clock_handle",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "our RMW/platform seam is not reachable from a handle; see `c:node_get_rmw_handle`."
+}

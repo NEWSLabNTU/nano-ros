@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::set_spin_nominal_wait_paced_us",
+  "verdict": "extension",
+  "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 A2b. Declares the cadence of a loop that the `spin_once` WAIT paces, as opposed to `set_spin_nominal_us`, which also claims the caller paces the loop with its own, finer sleep. The declared cadence becomes the period of the release grid in place of the timeout, the timeout still bounds each wait, and the jitter is reported at the park granularity rather than at 1 us."
+}

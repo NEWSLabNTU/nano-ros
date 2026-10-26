@@ -1,0 +1,9 @@
+{
+  "key": "c:service_introspection_state_t",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "see `c:service_introspection_state_e`."
+}

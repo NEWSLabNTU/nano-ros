@@ -1,0 +1,5 @@
+{
+  "key": "c:trace_set_take",
+  "verdict": "extension",
+  "why": "phase-474 I3 -- opt one subscription (by the slot index its trace register event carries) in or out of per-sample TAKE events (marker 25, with the sample's source stamp as 26/27 when its offset is named). rclc has no callback-level trace hook; see `c:set_trace_sink`. A no-op without the tracing feature, so the symbol always links."
+}

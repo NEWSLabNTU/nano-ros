@@ -1,0 +1,6 @@
+{
+  "key": "rust:resolve_node_logger",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "phase-479 (RFC-0102 D4) -- `resolve_logger` for a NODE's own logger, marking it as one; the single spelling `Node::logger`, `rclc_node_get_logger` and the C++ node's accessor use. The catch-all is never marked, so a node whose name fell back to it cannot publish every unnamed logger to `/rosout`."
+}

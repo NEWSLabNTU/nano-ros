@@ -1,0 +1,5 @@
+{
+  "key": "c:declared_reliability",
+  "verdict": "extension",
+  "why": "issue 1256 -- the declared RELIABILITY for `(type, topic)`, as an `rclc_qos_reliability_t` value, or `NROS_DECLARED_POLICY_UNDECLARED` (-1). Two evaluation times under two names, as `c:declared_depth`: `NROS_DECLARED_RELIABILITY` folds to an integer constant expression for `NROS_ASSERT_DECLARED_RELIABILITY`'s `_Static_assert`, `rclc_declared_reliability` answers at run time. Unlike the depth this is not a sizing fact but an INTEROP one -- a RELIABLE subscription never matches a BEST_EFFORT publisher -- so a call site contradicting its contract is a link that silently carries nothing, and the build is the cheapest place to say so. rcl has no counterpart because it has no contract sidecar."
+}

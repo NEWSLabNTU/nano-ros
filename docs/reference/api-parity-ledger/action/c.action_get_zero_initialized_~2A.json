@@ -1,0 +1,11 @@
+{
+  "key": "c:action_get_zero_initialized_*",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "provides": [
+    "nros_action_client_get_zero_initialized",
+    "nros_action_server_get_zero_initialized"
+  ],
+  "verdict": "declined",
+  "why": "rcl's free-function zero-init spelling; ours is the method-style `nros_action_client_get_zero_initialized` / `nros_action_server_get_zero_initialized`. See the pubsub stage's `c:get_zero_initialized_publisher`. The goal-handle, goal-info, cancel-request/response and status-array forms have no counterpart at all because we ship none of those types; see `c:action_goal_handle_*` and `c:action_cancel_response_*`."
+}

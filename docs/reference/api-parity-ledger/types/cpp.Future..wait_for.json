@@ -1,0 +1,10 @@
+{
+  "key": "cpp:Future::wait_for",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/future.hpp",
+    "text": "a zero or negative duration is one non-waiting check, as for"
+  },
+  "verdict": "divergence",
+  "why": "issue 1996 -- upstream's `FutureAndRequestId::wait_for(duration)` blocks on a promise a second thread fulfils and returns `std::future_status`. Ours returns the same `std::future_status` (`ready` / `timeout`, never `deferred`) and DRIVES the executor the client was created on for the budget, in `spin_once` slices of at most 10 ms -- the only kind of wait RFC-0021 allows, and the reason the reply can land on a single-threaded transport. THE BOUND: the budget is rounded up to milliseconds and clamped to `UINT32_MAX`; zero or negative is one non-waiting check (std's own meaning, so no refusal is owed, unlike `wait_for_service`, where negative means forever); a consumed future answers `timeout` at once (upstream: undefined); a future with no executor checks once. HOSTED ONLY (`NROS_CPP_HAS_STD_FUTURE`, which is where `std::future_status` comes from). Held by `client_future_shape_runtime.cpp`, which asserts the LOWER bound -- a `wait_for(30ms)` with no reply waited at least 30 ms."
+}

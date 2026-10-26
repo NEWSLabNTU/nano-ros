@@ -1,0 +1,5 @@
+{
+  "key": "c:integrity_status_t",
+  "verdict": "extension",
+  "why": "end-to-end safety telemetry per received sample -- sequence gap, duplicate flag, and a CRC verdict that distinguishes `no CRC on the wire` from `CRC mismatch`. RFC-0028. ROS 2 has no equivalent because a desktop DDS link is not treated as a safety channel; on a vehicle bus it is, and a receiver that cannot tell corruption from absence cannot implement a fail-silent reaction."
+}

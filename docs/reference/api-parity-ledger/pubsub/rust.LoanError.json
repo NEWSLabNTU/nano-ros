@@ -1,0 +1,5 @@
+{
+  "key": "rust:LoanError",
+  "verdict": "divergence",
+  "why": "why a loan could not be taken (slot busy, message too large for `TX_BUF`). rclcpp signals the same failures by exception or by falling back to a copy; with `-fno-exceptions` and a fixed slot there is no fallback to fall back to. See `rust:PublishLoan`."
+}

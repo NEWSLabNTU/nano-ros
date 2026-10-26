@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Duration::to_msg",
+  "verdict": "divergence",
+  "why": "the `builtin_interfaces/Duration` half of `cpp:Time::to_msg`, for the same reason and with the same shape."
+}

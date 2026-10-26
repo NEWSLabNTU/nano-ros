@@ -1,0 +1,5 @@
+{
+  "key": "c:polling_client_take_response_raw_seq",
+  "verdict": "extension",
+  "why": "issue 2009 -- `c:polling_client_take_response_raw` that also reports the SEQUENCE NUMBER of the request the reply answers: the number `c:polling_client_send_request_raw_seq` returned for it. Upstream's `rcl_take_response(client, &request_header, response)` carries the same number in its header; ours is a bare `int64_t` (see `rust:RequestId`). Held by `packages/api/nros-c/tests/run/client_seq_correlation.c`, which stages two replies out of order and reads each one's number back."
+}

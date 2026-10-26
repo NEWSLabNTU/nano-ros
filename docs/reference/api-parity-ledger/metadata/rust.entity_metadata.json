@@ -1,0 +1,5 @@
+{
+  "key": "rust:entity_metadata",
+  "verdict": "extension",
+  "why": "that one constructor. See `rust:EntityMetadataSpec`."
+}

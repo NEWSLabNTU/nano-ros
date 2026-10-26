@@ -1,0 +1,5 @@
+{
+  "key": "rust:Timer::cancel",
+  "verdict": "extension",
+  "why": "rclrs has no timer cancel; rclcpp does (`TimerBase::cancel`), which the correlator folds onto ours in the C++ lane."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_semantics",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "selects interleaved versus Logical Execution Time dispatch; see `rust:ExecutorSemantics`, including the note that C++ cannot do this."
+}

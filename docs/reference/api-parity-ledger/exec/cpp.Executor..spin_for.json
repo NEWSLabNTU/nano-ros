@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Executor::spin_for",
+  "verdict": "extension",
+  "why": "the bounded blocking loop: call `spin_once(poll_ms)` until `duration_ms` of wall clock has elapsed, WAITING for new work the whole time. rclcpp has no verb with that meaning -- `spin_some(max_duration)` and `spin_all(max_duration)` both return as soon as the ready set drains. Issue 0338 considered naming this `spin_some(max_duration)` and deliberately chose `spin_for`, because the semantics are not rclcpp's; the same issue moved `spin()` TO rclcpp's meaning (blocks until this executor is shut down) and left the old bounded two-argument `spin` as a one-release `[[deprecated]]` alias. Guarded by `tests/compile/spin_verbs.cpp`. Do not read this row as drift -- read `cpp:Executor::spin_some` for the verb that IS still missing."
+}

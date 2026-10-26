@@ -1,0 +1,5 @@
+{
+  "key": "c:action_server_state_t",
+  "verdict": "extension",
+  "why": "see `c:action_client_state_t`."
+}

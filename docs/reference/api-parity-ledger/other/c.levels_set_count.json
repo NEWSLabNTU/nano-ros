@@ -1,0 +1,5 @@
+{
+  "key": "c:levels_set_count",
+  "verdict": "extension",
+  "why": "phase-509 P7 (RFC-0108 D8) -- a runner states the image's level count before its levels spin, which the alive aggregate counts over. ROS 2 has no levels."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:TopicEndpointInfo::endpoint_gid_size",
+  "verdict": "divergence",
+  "why": "the constant half of `endpoint_gid`'s pointer-plus-length pair -- always `kEndpointGidSize` (24), `static_assert`ed against the FFI struct's own field width so a copy cannot read past it. rclcpp needs no counterpart: its `std::array` carries its own size. Member of `cpp:TopicEndpointInfo`; the verdict and the two constraints are on that row."
+}

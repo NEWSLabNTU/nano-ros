@@ -1,0 +1,5 @@
+{
+  "key": "cpp:parameter_descriptor",
+  "verdict": "extension",
+  "why": "A `ParameterDescriptor` with nothing set. C++14 has no designated initialisers, so `auto d = rclcpp::parameter_descriptor(); d.read_only = true;` is how a caller builds one field at a time — and this header must parse at C++14 (PX4 modules build `-std=gnu++14 -Werror`). Upstream has no correspondent because its descriptor is a generated message with a default constructor. phase-417 W4.a."
+}

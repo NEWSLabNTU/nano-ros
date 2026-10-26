@@ -1,0 +1,5 @@
+{
+  "key": "rust:SpinOnceResult::total_errors",
+  "verdict": "extension",
+  "why": "see `rust:SpinOnceResult`."
+}

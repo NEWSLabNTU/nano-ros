@@ -1,0 +1,5 @@
+{
+  "key": "rust:MandatoryParameter::set",
+  "verdict": "divergence",
+  "why": "ours is `set(&mut self, T)`, rclrs's is `set(&self, U)`. rclrs can take `&self` because the value lives behind the node's `Arc<Mutex<...>>`, so a handle is a shared reference into shared state; ours holds `&'a mut ParameterServer` directly. Constraint: no allocator and no `Arc` -- with one executor per RTOS task (RFC-0002) the store is owned, not shared, so mutation is an exclusive borrow the compiler checks rather than a lock taken at runtime. The value-type difference is the same distinction: ours takes `T` exactly, rclrs takes any `U: Into<T>`."
+}

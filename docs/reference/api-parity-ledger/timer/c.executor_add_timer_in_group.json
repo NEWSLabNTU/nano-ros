@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_add_timer_in_group",
+  "verdict": "extension",
+  "why": "see the pubsub stage's `c:executor_add_subscription_in_group`."
+}

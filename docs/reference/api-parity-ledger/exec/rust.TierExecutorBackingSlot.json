@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierExecutorBackingSlot",
+  "verdict": "divergence",
+  "why": "issue 1571 -- one spawned tier's executor backing: `[MaybeUninit<u64>; EXECUTOR_BACKING_DEFAULT_U64S]`, exactly what an executor opened with `ExecutorSizing::DEFAULT` carves, so the size is exact BY TYPE. Named so a board crate that wraps another's `run_tiers` can spell its parameter. Same no-allocator constraint as `rust:TierExecutorBacking`."
+}

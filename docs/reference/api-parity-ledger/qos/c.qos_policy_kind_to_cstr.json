@@ -1,0 +1,5 @@
+{
+  "key": "c:qos_policy_kind_to_cstr",
+  "verdict": "extension",
+  "why": "phase-417 G7 — `rclc_qos_policy_kind_to_cstr(uint32_t)`, the C entry point the C++ half forwards to. `extension` against THIS lane's upstream and not against ROS 2 as a whole: rclcpp has `qos_policy_kind_to_cstr` (see the `cpp:` row) and rcl/rclc have no counterpart — `rmw_qos_policy_kind_t` exists in `rmw`, and nothing in rcl turns one into a string. So the name is not ours to take from this lane's upstream and not ours to decline either: the C surface needs it because C is where an `RCLC_RET_REJECTED` arrives with no policy attached.\n\nNo table of its own — it returns `QoSPolicyMask::NAMED`'s own bytes, which is why the row is cheap. See `cpp:qos_policy_kind_to_cstr` for the two differences from rclcpp's shape; they are this function's too."
+}

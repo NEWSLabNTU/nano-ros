@@ -1,0 +1,5 @@
+{
+  "key": "rust:LifecycleTransition",
+  "verdict": "extension",
+  "why": "the REP-2002 transition set as a closed enum, with `from_u8`, `from_shorthand` (so the generic `\"shutdown\"` label a `ChangeState` request may carry resolves against the current state) and `source_state`. **rclrs 0.5.1 has no lifecycle support whatsoever** -- the whole stage reports zero theirs-only rows in the Rust lane -- so every item here is an extension by definition. The RTOS scenario is REP-2002 itself: a device that owns hardware needs a supervisor-driven `configure`/`activate`/`deactivate` protocol so an actuator can be brought up and parked without restarting the image, and `ros2 lifecycle set` is how the rest of the graph asks for it. We implement the state machine once in `nros_core::lifecycle` and surface it in all three languages. See `cpp:Transition`: since issue 1099 C++ has a counterpart ENUM with the same discriminants, but not rclcpp's `Transition` object, so that row stays a gap."
+}

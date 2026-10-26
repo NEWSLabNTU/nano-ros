@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeOptions::domain_id",
+  "verdict": "divergence",
+  "why": "rclrs sets the domain on the CONTEXT (`InitOptions::set_domain_id`) and a node inherits it; ours is per-node because an image may run nodes on different domains without a context to hang the value on. See `rust:NodeOptions`."
+}

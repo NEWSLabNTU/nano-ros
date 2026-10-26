@@ -1,0 +1,5 @@
+{
+  "key": "c:executor_state_t",
+  "verdict": "extension",
+  "why": "an explicit executor lifecycle (uninitialised / initialised / spinning / shutdown) so a double-init or a use-after-fini is a returned code rather than undefined behaviour on a device that cannot report a crash. See `c:support_state_t`. The SPINNING state models `rclcpp::Executor::is_spinning`, and all three languages can now be asked: `rclc_executor_is_spinning` in C, `Executor::is_spinning` in C++ and Rust (phase-417 W4.c). phase-417 W4.c CORRECTION (2026-09-13) — this row said C exports no `is_spinning` reader and that the three languages carry the capability under three spellings. Both went stale the moment W4.c landed and nothing re-read them: `rclc_executor_cancel` and `rclc_executor_is_spinning` are exported C entry points (`packages/api/nros-c/src/executor.rs`, declared in `nros_generated.h`), and `nros_executor_stop` survives only as a deprecated `static inline` forwarder onto the new name. So the three languages now agree on ONE spelling — rclcpp's — rather than on three."
+}

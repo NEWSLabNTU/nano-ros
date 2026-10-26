@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Duration::to_rmw_time",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `cpp:Duration::from_rmw_time`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:MetadataRecorder::callback_effects",
+  "verdict": "extension",
+  "why": "see `rust:MetadataRecorder`."
+}

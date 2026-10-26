@@ -1,0 +1,5 @@
+{
+  "key": "rust:COMPONENT_SLOT_BYTES",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- knob-driven const (`NROS_COMPONENT_SLOT_BYTES`, default 512): byte size of one component slot; a class whose state is bigger fails the placement assert loudly at install, not by overflow."
+}

@@ -1,0 +1,8 @@
+{
+  "key": "c:timer_call_info_t",
+  "editions": [
+    "humble"
+  ],
+  "verdict": "extension",
+  "why": "issue 1974 — HUMBLE ONLY, because Humble's rcl has no such struct: Jazzy added `rcl_timer_call_info_t {expected_call_time, actual_call_time}`, and under Jazzy ours correlates `same` (same name, same two `int64_t` nanosecond fields), so the row is scoped out there. Handed to an `rclc_timer_callback_with_info_t` (`c:timer_callback_with_info_t`). One producer: the executor's timer dispatcher (`arena::timer_call_info`, `nros_node::TimerCallInfo`) computes expected = actual - (elapsed - period) at the moment it decides the activation is due; C, C++ and Rust copy those two numbers, none computes its own."
+}

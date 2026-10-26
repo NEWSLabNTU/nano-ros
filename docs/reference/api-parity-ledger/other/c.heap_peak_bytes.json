@@ -1,0 +1,5 @@
+{
+  "key": "c:heap_peak_bytes",
+  "verdict": "extension",
+  "why": "peak outstanding bytes since boot -- the figure that actually sizes an arena. See `c:heap_used_bytes`."
+}

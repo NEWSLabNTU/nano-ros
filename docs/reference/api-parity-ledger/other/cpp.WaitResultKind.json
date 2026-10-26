@@ -1,0 +1,6 @@
+{
+  "key": "cpp:WaitResultKind",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the `{Ready, Timeout, Empty}` outcome of `WaitSet::wait()`. rclcpp's `Waitable` protocol; see the pubsub stage's `cpp:Waitable::take_data`. RFC-0002's executor drives entities through the RMW vtable, so there is no wait set and no wait result."
+}

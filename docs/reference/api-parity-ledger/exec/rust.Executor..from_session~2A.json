@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::from_session*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "builds an executor around a session someone else opened -- the C API's entry point (`rclc_support_init` opens the session, then `rclc_executor_init` wraps it) and the board/BSP paths. It exists because the C and C++ surfaces are implemented ON this type, and their lifecycle splits session creation from executor creation the way rcl does. rclrs has no counterpart: an rclrs executor never adopts a foreign handle. See `rust:Executor::open*`."
+}

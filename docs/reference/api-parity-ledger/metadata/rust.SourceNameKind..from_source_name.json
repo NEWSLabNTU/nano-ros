@@ -1,0 +1,5 @@
+{
+  "key": "rust:SourceNameKind::from_source_name",
+  "verdict": "extension",
+  "why": "see `rust:SourceNameKind`."
+}

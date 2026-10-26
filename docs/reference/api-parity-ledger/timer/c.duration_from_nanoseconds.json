@@ -1,0 +1,5 @@
+{
+  "key": "c:duration_from_nanoseconds",
+  "verdict": "extension",
+  "why": "the duration half of `c:time_from_nanoseconds` -- the same `{sec, nanosec}` split, on `rcl_duration_t`. rcl's duration is a bare signed nanosecond count (`c:duration_value_t`) so it needs no constructor; ours is the wire struct, and a SIGNED span has to floor rather than truncate (issue 0799). Its absence is what made the C++ `Duration::to_msg` open-code the split."
+}

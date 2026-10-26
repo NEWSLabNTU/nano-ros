@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionServerHandle",
+  "verdict": "divergence",
+  "why": "an index into the executor's static entity table rather than an owning handle, because the entity outlives the borrow that created it. See the pubsub stage's `rust:PublisherHandle`. The typed action-server handle a registered entity is reached through. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. See the service stage's `rust:ServiceTrait`. Kept at the crate root by phase-506 W1 (RFC-0071 D12): component-mode or typed-API code writes this name, so it is user API, not machinery."
+}

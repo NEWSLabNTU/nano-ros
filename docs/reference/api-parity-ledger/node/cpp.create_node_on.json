@@ -1,0 +1,5 @@
+{
+  "key": "cpp:create_node_on",
+  "verdict": "extension",
+  "why": "as `create_node`, but naming the executor explicitly -- required when an image runs several executors, one per RTOS priority tier (RFC-0002). rclcpp's node is not bound to an executor at construction, so it has no counterpart."
+}

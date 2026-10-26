@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::clear_release_jitter_stats",
+  "verdict": "extension",
+  "why": "MERGED 2026-09-04 during the phase-417 rebase onto main, from two independent rows that both landed -- this branch's W-M2 note and main's own filing. JSON keeps the LAST, so one author's reasoning was being discarded silently. Both said `extension`; the prose is combined here and neither is lost.\n\nSibling of `Executor::release_jitter`, same commit, same reason there is no upstream name. Resets the window (`executor/spin.rs:2163`) so monitoring code can log-and-clear per period; without it a single early outlier pins the maximum for the life of the process, which is the failure mode that makes a max-only statistic useless on a long-running image.\n\nphase-417 W-M2 note: see `rust:Executor::release_jitter`. The reset half -- a measurement window is only meaningful if a caller can start one, and without this the counters are since-boot forever. rclcpp has no counterpart for the same reason it has none for the reading."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:QoS::get_rmw_qos_profile",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "hands out the underlying DDS-shaped `rmw_qos_profile_t` so a caller can bypass the API. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is deliberately not reachable from a user type; see `c:node_get_rmw_handle`. `rclc_qos_t` matches the field set, so the information is not hidden -- the rmw type is."
+}

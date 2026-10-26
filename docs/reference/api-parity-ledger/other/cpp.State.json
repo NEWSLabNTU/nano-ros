@@ -1,0 +1,10 @@
+{
+  "key": "cpp:State",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_lifecycle/lifecycle_node.hpp",
+    "text": "There is no allocator here (RFC-0022), so there is nothing to own: this"
+  },
+  "verdict": "divergence",
+  "why": "RE-VERDICTED phase-417 G6 — the TYPE now exists. It said 'ours is `cpp:LifecycleState`, a `uint8_t`-backed `enum class`', and that was true of the tree that had no receiver for `State::label`. `nros::State` (`packages/api/nros-cpp/include/rclcpp_lifecycle/lifecycle_node.hpp`) is a value type over the same id, mirroring the `Transition` fifty lines above it, so `state.id()` and `state.label()` compile as written. The enum stays and keeps its own row (`cpp:LifecycleState`); `State` wraps it.\n\n`adopt-bounded`, and the bound is what the object OWNS. `rclcpp_lifecycle::State` wraps an `rcl_lifecycle_state_t` — an id, a HEAP-ALLOCATED `label` string, and the `rcl_allocator_t` that owns it — and is copy-constructible, assignable and destructible accordingly. Ours is one `uint8_t` with no allocator (RFC-0022), so there is nothing to own: `label()` borrows a `'static` pointer into the one table in `nros_core` and returns `nullptr` for an id we do not implement, where upstream returns a `std::string`. A ported file compiles and gets a borrowed pointer instead of an owned string, which is exactly the class RFC-0089 asks a disposition to record."
+}

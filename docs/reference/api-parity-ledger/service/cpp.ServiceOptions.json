@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ServiceOptions",
+  "verdict": "extension",
+  "why": "see `cpp:ClientOptions`."
+}

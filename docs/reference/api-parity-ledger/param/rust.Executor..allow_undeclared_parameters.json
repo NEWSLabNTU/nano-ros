@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::allow_undeclared_parameters",
+  "verdict": "divergence",
+  "why": "upstream's `allow_undeclared_parameters` (rclcpp `NodeOptions`, rclrs `allow_undeclared`) is a NODE OPTION set at construction. We have no `NodeOptions` object to carry it -- a node here is a row in the executor's fixed table, not a constructed object with an options struct -- so it is a call on the executor instead. The SEMANTICS are upstream's, per node and off by default (issue 1151): with it on, a remote set may declare a name the node never declared; with it off the set is refused with rclrs's reason. This spelling means the executor's primary node; `allow_undeclared_parameters_on` names another. What a user loses: it cannot be given at node-construction time, so it must be set before the six services start answering."
+}

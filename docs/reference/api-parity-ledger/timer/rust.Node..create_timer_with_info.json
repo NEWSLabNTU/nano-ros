@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::create_timer_with_info",
+  "verdict": "extension",
+  "why": "issue 1974 — rclrs has no timer call info and no autostart flag, so this is ours alone. The node-level spelling of `Executor::register_timer_with_info` on the imperative node handle (`exec.node_mut(id)`), bound to the node's default sched context."
+}

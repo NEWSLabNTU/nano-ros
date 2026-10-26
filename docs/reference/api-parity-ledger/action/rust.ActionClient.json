@@ -1,0 +1,10 @@
+{
+  "key": "rust:ActionClient",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-node/src/executor/handles.rs",
+    "text": "The name is rclrs's and the contract is bounded: rclrs's `ActionClient<A>`"
+  },
+  "verdict": "divergence",
+  "why": "the typed action client a Rust image holds: `send_goal` / `cancel_goal` / `get_result` each return a `Promise` the caller drives with the executor (RFC-0021 -- no futures and no runtime to await one), plus `try_recv_feedback` and `feedback_stream`. rclrs 0.7.0 ships actions (issue 1042: this row was written against 0.5.1, which had none). Its `ActionClient<A>` is `Arc<ActionClientState<A>>`, driven by async futures; ours is a fixed-size object whose verbs return a `Promise` the caller drives with the executor, because RFC-0021 has no runtime to await a future on. Same name and concept, different contract. Ours also mirror rclcpp_action's and are shared with our C and C++ surfaces. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal. The `reset_*_in_flight` members are the escape hatch for a dropped promise: one request per channel may be outstanding because the reply buffer is a single static slot."
+}

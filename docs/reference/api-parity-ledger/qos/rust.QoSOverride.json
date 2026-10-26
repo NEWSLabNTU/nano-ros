@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSOverride",
+  "verdict": "extension",
+  "why": "ROS 2 implements `qos_overrides.<topic>.<role>.<policy>` launch parameters through the PARAMETER system at runtime: rclcpp's `QosOverridingOptions` declares them on the node and rebuilds the entity's profile from the declared values. Nothing here can do that -- entity QoS is compile-time (RFC-0036/0045) and there is no runtime parameter callback to rebuild an entity from. So the planner lowers the same launch parameter into a baked `&'static [QoSOverride]` table and the entity folds the matching rows in at create time: one linear scan, no alloc, before the backend-compat check, so an override the active RMW cannot honour still errors loudly. rclrs has no QoS-override support at all."
+}

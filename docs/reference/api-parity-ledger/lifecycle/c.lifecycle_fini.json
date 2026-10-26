@@ -1,0 +1,5 @@
+{
+  "key": "c:lifecycle_fini",
+  "verdict": "extension",
+  "why": "the ours-only half of `c:lifecycle_state_machine_fini`; see that row."
+}

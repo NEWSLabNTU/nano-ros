@@ -1,0 +1,6 @@
+{
+  "key": "c:error_string_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the 1024-byte formatted buffer rcl_get_error_string() returns BY VALUE. Same decision as error_state_t; listed separately because it is the half a caller actually touches."
+}

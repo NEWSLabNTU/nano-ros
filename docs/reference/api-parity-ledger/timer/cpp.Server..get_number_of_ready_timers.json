@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Server::get_number_of_ready_timers",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp's `Waitable` protocol; see the pubsub stage's identical rows."
+}

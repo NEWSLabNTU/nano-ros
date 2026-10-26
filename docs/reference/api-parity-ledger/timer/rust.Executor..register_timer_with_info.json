@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_timer_with_info",
+  "verdict": "extension",
+  "why": "issue 1974 — rclrs has no timer call info and no autostart flag, so this is ours alone. Registers a repeating timer whose callback receives `&TimerCallInfo` (expected vs actual call time, on the timer's clock), with an `autostart` flag (`false` = created cancelled, `reset_timer` starts it): the Rust counterpart of Jazzy's `rclcpp::TimerInfoCallbackType` and `rcl_timer_init2(..., autostart)`. On the executor for the reason every timer verb is: RFC-0002's arena owns timer state. One producer: the executor's timer dispatcher (`arena::timer_call_info`, `nros_node::TimerCallInfo`) computes expected = actual - (elapsed - period) at the moment it decides the activation is due; C, C++ and Rust copy those two numbers, none computes its own."
+}

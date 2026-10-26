@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::*sched*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "RFC-0002 section 4.2 / RFC-0047 / RFC-0079 -- the SchedContext surface, which ROS 2 has no counterpart for at all. A mixed-criticality image runs a 20 ms control loop and best-effort telemetry on ONE executor on ONE RTOS task, so the criticality ordering has to live in user space: N callbacks must not cost N kernel priority slots (RFC-0002 non-goal 3), and RFC-0079 exists because the raw kernel number is unwritable by hand -- each RTOS has its own range and its own DIRECTION. rclcpp's nearest answer is one `MultiThreadedExecutor` thread per priority, which an MCU cannot pay for. The Rust face of the same surface the C API exposes: `create_sched_context`, `default_sched_context_id`, `sched_context`, `set_default_sched_context`, and the three binding forms -- `bind_handle_to_sched_context` (one callback), `bind_group_sched` (RFC-0047's group name) and `bind_node_name_sched` (phase-272's degenerate per-node case)."
+}

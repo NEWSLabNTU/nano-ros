@@ -1,0 +1,6 @@
+{
+  "key": "c:action_goal_event_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `c:action_goal_event_e`."
+}

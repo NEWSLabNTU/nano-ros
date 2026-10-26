@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Future",
+  "verdict": "divergence",
+  "why": "rclcpp hands back a `std::shared_future` and drives it with `spin_until_future_complete`. `<future>` needs threads, an allocator and exceptions -- all three absent here -- so `nros::Future<T>` is a single-shot slot the caller polls (`is_ready`/`try_take`) or waits on by driving the executor, which is RFC-0021's rule that every blocking helper takes the executor."
+}

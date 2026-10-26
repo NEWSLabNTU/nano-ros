@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionServerCore",
+  "verdict": "divergence",
+  "why": "the arena side of the action protocol over CDR bytes: the goal table, the status topic (`publish_status_array`), the cancel matcher, the result slab. One layer below the user API: `nros::node!` / the C and C++ shims call it, a component does not. See the service stage's `rust:ServiceTrait`. It also owns result reclamation (`expire_completed_results` / `completed_result_count` / `result_slab_used` / `has_completed_result`, issue 0796) -- rcl puts that behind `rcl_action_expire_goals`; see `c:action_expire_goals`. Moved to `nros::internals` by phase-506 W1 (RFC-0071 D12): the untyped action machinery the C and C++ shims drive, off the top-level user API."
+}

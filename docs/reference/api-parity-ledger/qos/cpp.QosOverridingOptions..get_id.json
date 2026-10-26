@@ -1,0 +1,5 @@
+{
+  "key": "cpp:QosOverridingOptions::get_id",
+  "verdict": "divergence",
+  "why": "QoS overrides. rclcpp's `QosOverridingOptions` is handed to each entity's options at creation; it DECLARES `qos_overrides.<topic>.<role>.<policy>` parameters on the node, reads them back at runtime and runs a user validation callback over the result. Ours keeps the same launch-parameter spelling but resolves it at BUILD time: the deploy plan lowers each override into a `&'static [QoSOverride]` table, the entry installs it once with `set_qos_overrides` before any entity exists, and the node folds the matching `(topic, role)` rows into the profile inside `create_publisher`/`create_subscription` -- setup-time, before the backend-compat check, so there is still no silent downgrade. Constraints: no allocator for a per-entity options object, and QoS is a compile-time selection (RFC-0036/0045) so there is no runtime parameter machinery in the create path to read a value out of. A user loses re-tuning QoS by editing a YAML on the device; they re-run the plan instead."
+}

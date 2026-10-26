@@ -1,0 +1,6 @@
+{
+  "key": "c:error_state_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl keeps a thread-local error state with a formatted message, file and line, read back with rcl_get_error_string(). nano-ros returns `rcl_ret_t` and nothing else -- there is no nros_error_string() and no per-thread error slot. What a C user loses is real and should be said plainly: a code, never a message. The constraint is thread-local storage plus a formatted-string buffer per thread, on targets where a task stack is measured in kilobytes."
+}

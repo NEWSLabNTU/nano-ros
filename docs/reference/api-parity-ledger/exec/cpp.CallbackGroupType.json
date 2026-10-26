@@ -1,0 +1,10 @@
+{
+  "key": "cpp:CallbackGroupType",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/callback_group.hpp",
+    "text": "Both are accepted and neither changes dispatch"
+  },
+  "verdict": "divergence",
+  "why": "rclcpp's `CallbackGroupType` is a CONCURRENCY policy -- `MutuallyExclusive` or `Reentrant` -- and it only means anything to a multi-threaded executor deciding whether two callbacks from one group may run at once. RFC-0002 puts one executor on one RTOS task with non-preemptive run-to-completion dispatch, so every group is mutually exclusive by construction and `Reentrant` is unrepresentable: there is no second thread to be reentrant from. The axis our group carries instead is a NAME that `system.toml` maps to a scheduling tier (RFC-0047, RFC-0079) -- the thing a mixed-criticality image actually needs from grouping. `automatically_add_to_executor_with_node` (rclcpp's second constructor argument) is meaningless for the same reason as `cpp:Executor::add_node`.\n\nphase-488 W3 (2026-10-25) -- ADOPTED as a spelling, BOUNDED in meaning. Ported code names the enum (Autoware's `autoware_external_cmd_selector`: `create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive)` for every subscription), so `rclcpp::CallbackGroupType { MutuallyExclusive, Reentrant }` exists and both values are accepted. Neither changes dispatch: the group is the anonymous `CallbackGroupToken`, which every group-taking verb reads as the node default, and a `Reentrant` group's callbacks still run one at a time. The bound is stated where it is created (`callback_group.hpp`); parallelism stays a tier (RFC-0047)."
+}

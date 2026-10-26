@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::create",
+  "verdict": "extension",
+  "why": "the static factory that replaces `std::make_shared<Node>(...)`: it writes into caller-owned storage and returns a status. rclcpp needs no equivalent because its constructor can throw and its factory can allocate."
+}

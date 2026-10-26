@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::late_wakes_beyond_granularity",
+  "verdict": "extension",
+  "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 A2c. Of the late wakes `release_jitter` counts, those late by more than `release_jitter_granularity_us`. A loop paced by a tick-granular park is late by a fraction of a tick on most wakes by design, so `late_wakes` approaches `total_wakes` on a loop that keeps its period; this count is the lateness the measurement can resolve."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:polling_action_client_try_recv_*_raw_for",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 2011 -- the polling tier's `try_recv_{goal_response,result,cancel_response}_raw` that also write the goal a reply is ABOUT: the goal of the request whose sequence id it names (issue 2009's `ActionRequests`). With several goals in flight the bytes alone cannot say which goal a reply answers. rcl's `rcl_action_take_*_response` report a `rmw_request_id_t` and leave the goal mapping to the caller; ours keeps that table, so it hands out the goal instead. See `c:polling_action_client_try_recv_*_raw`; the C++ twin is the `goal_id_out` overload on `PollingActionClient`."
+}

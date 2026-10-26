@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Server::get_action_name",
+  "verdict": "extension",
+  "why": "the server twin of `cpp:Client::get_action_name`; `rclcpp_action::Server` has no such accessor either. Same storage and the same reason. Worth recording once: an earlier phase-417 W4.b wave DELETED this class's `char action_name_[256]` as dead state and left a note saying an accessor, if wanted, belongs on an FFI getter over the name the runtime already owns. That note does not apply -- the runtime does NOT own it for this tier: `CppActionServer` keeps a raw arena handle, `nros_cpp_action_server_create` takes `_action_name` and drops it, and `CallbackMeta` carries no name. So there is nothing FFI-side to hand back, and the copy is back with a reader on it."
+}

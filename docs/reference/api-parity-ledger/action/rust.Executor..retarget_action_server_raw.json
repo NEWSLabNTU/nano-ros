@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::retarget_action_server_raw",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 2015 -- the server half of `rust:Executor::retarget_action_client_raw`: re-points a raw action SERVER entry's callback `context` after the C++ `rclcpp_action::Server<A>` that registered it was MOVED. The client got this in issue 1496 and the server did not, so a server moved into an `rclcpp::Owned` (what `rclcpp_action::create_server` returns) dispatched its first goal through the moved-from storage and rejected every later one. rclcpp has no counterpart because its entities are heap objects that never move under the executor. Called by `nros_cpp_action_server_retarget`."
+}

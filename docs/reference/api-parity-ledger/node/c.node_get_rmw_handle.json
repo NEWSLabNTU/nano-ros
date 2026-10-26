@@ -1,0 +1,6 @@
+{
+  "key": "c:node_get_rmw_handle",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "hands out the underlying `rmw_node_t` so a caller can bypass rcl. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is not reachable through a node handle; reaching past the API is how an image ends up depending on which backend it linked."
+}

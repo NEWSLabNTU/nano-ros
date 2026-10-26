@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoPrimitiveOptions::volatile",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:IntoPrimitiveOptions`."
+}

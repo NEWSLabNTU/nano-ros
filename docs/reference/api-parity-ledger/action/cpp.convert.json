@@ -1,0 +1,6 @@
+{
+  "key": "cpp:convert",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "converts between `rclcpp_action::GoalUUID` and `rcl_action_goal_info_t`. Both sides of that conversion are rcl types; our RMW seam is the vtable (RFC-0035), not rcl. See the pubsub stage's rows on rcl handle accessors."
+}

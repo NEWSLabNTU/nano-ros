@@ -1,0 +1,5 @@
+{
+  "key": "rust:RmwSubscriber",
+  "verdict": "extension",
+  "why": "see `rust:RmwSession`. Note the alias says SUBSCRIBER while the trait it aliases is `Subscription` and the concrete type is `CffiSubscription` -- the same word the node stage flagged in `rust:Node::create_subscriber`. Its siblings `RmwPublisher` / `RmwServiceServer` / `RmwServiceClient` landed in the pubsub and service stages."
+}

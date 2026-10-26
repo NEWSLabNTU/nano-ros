@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Publisher::loan",
+  "verdict": "extension",
+  "why": "the ours-only half of the `cpp:Publisher::borrow_loaned_message` rename pair; recorded so the pair is visible from both sides."
+}

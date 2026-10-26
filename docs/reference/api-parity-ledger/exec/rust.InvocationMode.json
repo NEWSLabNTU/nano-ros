@@ -1,0 +1,5 @@
+{
+  "key": "rust:InvocationMode",
+  "verdict": "extension",
+  "why": "per-callback: fire only when new data arrived (default) or on every iteration that passes the trigger. The second is how a control loop keeps its period when its input is late -- it must still run and act on the last value. rclrs has no equivalent because a wait set only ever reports entities that have data. See `rust:Trigger`."
+}

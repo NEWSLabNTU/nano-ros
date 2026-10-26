@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::registering_level",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "issue 2020 -- the level that owns what is registered now (`None` until a level runner first calls `set_registering_level`): the `nros` runtime records it per `register_node` component so the component ticks on its own level. See `rust:Executor::set_registering_level`."
+}

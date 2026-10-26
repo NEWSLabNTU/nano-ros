@@ -1,0 +1,10 @@
+{
+  "key": "c:timer_init",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/src/timer.rs",
+    "text": "`context` may be NULL and is never read"
+  },
+  "verdict": "divergence",
+  "why": "phase-515 C1 -- ADOPTED with rcl's signature, `rcl_timer_init(timer, clock, context, period, callback, allocator)`. phase-430 W1 had taken rcl's argument ORDER as `rclc_timer_init_on_clock` while the callback contract still differed; D2 took rcl's contract, so the name followed and the old verb is gone. ADOPT-BOUNDED, the envelope at the definition: `context` may be NULL (never read), and `allocator` must be the default -- a caller-supplied one is REFUSED with RCL_RET_INVALID_ARGUMENT rather than silently unused, as every init here that takes one. An uninitialised clock is refused (RCL_RET_NOT_INIT) rather than defaulted to a wall timer."
+}

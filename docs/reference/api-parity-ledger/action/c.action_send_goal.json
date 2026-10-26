@@ -1,0 +1,5 @@
+{
+  "key": "c:action_send_goal",
+  "verdict": "extension",
+  "why": "the blocking convenience: send the goal and drive the executor until the server accepts or rejects. rclcpp_action's equivalent is `async_send_goal(...).get()`, which deadlocks on a single-threaded executor -- the reason RFC-0021 makes the executor an explicit parameter. See the service stage's `cpp:PollClient::call`."
+}

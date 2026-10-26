@@ -1,0 +1,6 @@
+{
+  "key": "rust:ClientOutput::create_channel",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `rust:ClientOutput`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Subscription::get_intra_process_waitable",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "intra-process transport: rclcpp can hand a `unique_ptr` between a publisher and a subscription in the same process, skipping serialisation. RFC-0002 puts one executor per RTOS task and RFC-0010's zero-copy path is the loan API instead; there is no second process to be intra to."
+}

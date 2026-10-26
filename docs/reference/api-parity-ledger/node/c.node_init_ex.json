@@ -1,0 +1,5 @@
+{
+  "key": "c:node_init_ex",
+  "verdict": "extension",
+  "why": "`nros_node_init` plus the fields a device actually varies per node -- the RMW selection and the scheduling context (RFC-0047). rcl would express these through `rcl_node_options_t`; ours is `rcl_node_options_t`, passed by pointer to THIS entry point (`nros_generated.h:5297`), so the shape is rcl's -- an options struct on a second constructor. CORRECTED 2026-09-04 (phase-417): the row used to say \"with no options struct\", which its own signature refutes. What differs from rcl is the options LIFECYCLE, not the type: ours is plain inline storage with no pointer fields, returned BY VALUE from `nros_node_get_default_options()` and owned by the caller, so there is no `copy`/`fini` pair."
+}

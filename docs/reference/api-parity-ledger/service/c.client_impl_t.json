@@ -1,0 +1,6 @@
+{
+  "key": "c:client_impl_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's pimpl; our handles carry their state inline. See `c:publisher_impl_t`."
+}

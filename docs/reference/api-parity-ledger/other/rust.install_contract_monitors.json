@@ -1,0 +1,5 @@
+{
+  "key": "rust:install_contract_monitors",
+  "verdict": "extension",
+  "why": "Install one executor's monitor tables (refusing, never truncating) and arm its `/diagnostics` reporter, before the first node. issue 1676 -- `nros::contract`, the on-target half of RFC-0052's contract monitors that a Rust entry reaches: `nros::main!` installs the baked tables through it, and nros-cpp's `nros_cpp_install_monitors` arms the same reporter. No rclrs counterpart -- ROS 2 has no contract monitors; the observer reads the reports on `/diagnostics` in play_launch's RFC-0050 rule vocabulary. See `rust:MonitorSpec`."
+}

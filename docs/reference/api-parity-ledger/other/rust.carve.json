@@ -1,0 +1,5 @@
+{
+  "key": "rust:carve",
+  "verdict": "extension",
+  "why": "phase-391 W5 -- split a caller's `[u64]` static into `Slot`s per a `RuntimeSizing`; asserts (fail-loud) rather than truncating when the store is too small. No upstream analogue: rcl allocates."
+}

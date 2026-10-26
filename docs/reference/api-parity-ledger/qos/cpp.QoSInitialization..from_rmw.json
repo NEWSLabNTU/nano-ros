@@ -1,0 +1,6 @@
+{
+  "key": "cpp:QoSInitialization::from_rmw",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "builds the initialization tag from an `rmw_qos_profile_t`. Both halves are declined: the tag (see `cpp:QoSInitialization`) and the rmw type (see `cpp:QoS::get_rmw_qos_profile`)."
+}

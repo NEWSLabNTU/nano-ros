@@ -1,0 +1,5 @@
+{
+  "key": "cpp:State::state",
+  "verdict": "extension",
+  "why": "phase-417 G6 — the id as `enum class LifecycleState`, for a caller who wants to `switch` on it. Upstream has no enum to convert to: its state ids are `lifecycle_msgs` integer constants, so there is no counterpart to rename toward. The exact shape and the exact justification `cpp:Transition::transition` already carries one type over — `State` and `Transition` are the same pattern applied to both halves of the pair, which is what G6 was."
+}

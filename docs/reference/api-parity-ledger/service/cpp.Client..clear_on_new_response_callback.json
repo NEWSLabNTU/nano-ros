@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Client::clear_on_new_response_callback",
+  "verdict": "divergence",
+  "why": "see `c:client_set_on_new_response_callback`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:ShutdownCallbackHandle::valid",
+  "verdict": "divergence",
+  "why": "\"Did this handle come from a successful registration?\" rclcpp has no equivalent because its handle's emptiness is its `weak_ptr`'s; ours is a sentinel index (`NROS_CPP_SHUTDOWN_CALLBACK_HANDLE_INVALID`) because there is no allocator and so no pointer to be null. Issue 0790."
+}

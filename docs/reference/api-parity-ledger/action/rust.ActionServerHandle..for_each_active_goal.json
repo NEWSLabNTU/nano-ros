@@ -1,0 +1,5 @@
+{
+  "key": "rust:ActionServerHandle::for_each_active_goal",
+  "verdict": "divergence",
+  "why": "phase-379 W5. rclrs hands back an iterator over goals; we take a visitor (`for_each_active_goal(&self, executor, f)`). An iterator would borrow the arena for its whole walk while the executor needs `&mut` to drive the state machine underneath it — a borrow-checker consequence of the arena owning goal storage, not a style preference. Same constraint as the identity row."
+}

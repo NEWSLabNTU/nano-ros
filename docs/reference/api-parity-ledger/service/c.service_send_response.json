@@ -1,0 +1,13 @@
+{
+  "key": "c:service_send_response",
+  "rename": {
+    "category": "A",
+    "from": "nros_service_send_response (permanent RCL_RET_NOT_INIT stub)",
+    "residue": "NONE. `nros_service_take_request`, the stub's twin, which this said was still an exported `RCL_RET_NOT_INIT` symbol, is gone too: nros-c exports no such name (CORRECTED 2026-10-18).",
+    "status": "landed",
+    "to": "rclc_polling_service_send_response_raw"
+  },
+  "retired": "a deprecated alias, deleted after its one release; the row records the rename",
+  "verdict": "rename",
+  "why": "DEPRECATED ALIAS, phase-379 W5 (2026-08-27) -- and the odd member of the pair, because it was never an alias. It was a permanent `RCL_RET_NOT_INIT` stub (\"service servers are callback-only through the executor\"), left over from before `nros_service_init_polling` and the `_raw` polling pair existed, so no caller can ever have had it succeed. That made it worse than dead once the rename landed: it would have sat on the MORE OBVIOUS name beside the working `nros_service_send_response_raw`, and a consumer migrating off `send_reply` to the name that looks right would have got a runtime NOT_INIT instead of a compile error. So the `#[no_mangle]` export was DELETED and the spelling kept as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `rclc/service.h` beside `c:service_send_reply_raw` -- which also makes the call WORK, strictly better than what it did. An object file that referenced the old export must be recompiled; it cannot have been relying on the return value. Its unimplemented twin `nros_service_take_request` was deliberately left alone: which of `take_request` / `try_recv_request_raw` survives is `c:take_request`, still open, and settling half of it here would have pre-empted that row. Substantive verdict moved to `c:service_send_response_raw`. CORRECTED 2026-10-18: the live name is `rclc_polling_service_send_response_raw` -- phase-487 W2 renamed `nros_service_send_response_raw` when the polled service became its own type, `rclc_polling_service_t` -- so the substantive verdict is at `c:polling_service_send_response_raw`."
+}

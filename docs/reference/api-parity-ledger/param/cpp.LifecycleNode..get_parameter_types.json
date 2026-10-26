@@ -1,0 +1,5 @@
+{
+  "key": "cpp:LifecycleNode::get_parameter_types",
+  "verdict": "divergence",
+  "why": "phase-482 W4 (2026-10-07): `rclcpp_lifecycle::LifecycleNode` IS an `rclcpp::Node`, so this is `rclcpp::Node::get_parameter_types`, inherited, with `cpp:Node::get_parameter_types`'s contract. The extractor records only the members a class declares, so this key correlates as upstream-only even though the name resolves. `cpp:Node::get_parameter_types` is `refuse-loud`; that disposition is not copied here, because a refusal must be DECLARED on the key's own class and this one is inherited.\n\nBefore phase-482 W4: phase-417 W4.f -- the lifecycle node's copy, a forwarder onto the `rclcpp::Node` bound by `LifecycleNode::bind(Node&)` with no storage of its own. The verdict and the reason are its twin's: see `cpp:Node::get_parameter_types`. UNBOUND it answers `InvalidArgument` rather than writing into some other node's parameters."
+}

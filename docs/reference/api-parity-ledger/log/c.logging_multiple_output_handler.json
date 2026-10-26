@@ -1,0 +1,6 @@
+{
+  "key": "c:logging_multiple_output_handler",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl's built-in handler that fans one record out to console + file + `/rosout`. Fan-out is our DEFAULT shape rather than a special handler -- `nros_log::init` takes a SLICE and `dispatch_to_sinks` walks all of it -- so there is no `multiple` variant to have. What a user loses is the destinations, not the fan-out: we ship no file sink (see `cpp:get_logging_directory`) and no `/rosout` sink (see `c:logging_rosout_enabled`), so the shipped list is one `PlatformSink` plus the optional `LogCrateSink`."
+}

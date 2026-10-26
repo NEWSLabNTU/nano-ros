@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::ros_time_source_installed",
+  "verdict": "extension",
+  "why": "phase-425 W3b -- whether a `/clock` subscription is currently installed on this executor. The predicate form of `rust:Executor::ros_time_source_handle`; see that row for why rclrs has no counterpart and why the handle form exists beside it. Behind the `sim-time` feature, which is why this row did not exist until 2026-09-12: `sim-time` was not in the parity extractor's `NROS_FEATURES`, so the subject was on no measured surface and the row could not be written at all. phase-430 W7 called these rows \"still owed, deliberately\" for exactly that reason -- issue 1351."
+}

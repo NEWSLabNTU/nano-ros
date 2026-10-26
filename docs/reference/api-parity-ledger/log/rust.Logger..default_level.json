@@ -1,0 +1,5 @@
+{
+  "key": "rust:Logger::default_level",
+  "verdict": "extension",
+  "why": "phase-467 — read the process-wide default that `Logger::set_default_level` writes. rclrs has no counterpart: `rcutils_logging_get_default_logger_level` exists, but rclrs binds only the setter, so there is nothing in the recorded surface to correlate against — the same position `rust:Logger::level` is in one level down.\n\nIt is here because C needs it (`rclc_log_get_default_level` forwards to it, and RFC-0019 keeps the store on the Rust side) and because a setter with no getter is the shape phase-417 W4.d spent a wave removing: `Logger::get_level` was added to C++ for exactly this reason, \"the one language missing it was the thing to fix\"."
+}

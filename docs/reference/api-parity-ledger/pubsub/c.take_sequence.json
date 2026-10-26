@@ -1,0 +1,6 @@
+{
+  "key": "c:take_sequence",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> declined. The VERB landed: ours is `rclc_polling_subscription_take_sequence` (spelled `nros_subscription_take_sequence` until phase-487 W1 gave the polled subscription its own type, `rclc_polling_subscription_t`; CORRECTED 2026-10-18), so the only difference left is rcl's free-function spelling against our entity-prefixed `<prefix>_<entity>_<verb>`. That is `c:get_zero_initialized_publisher`'s precedent, which argues for KEEPING ours, and `c:send_request` records that `nros_<entity>_` is the same construction rcl uses in `rcl_client_fini`. See `c:take`."
+}

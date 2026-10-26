@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_timer_with_info_on",
+  "verdict": "extension",
+  "why": "issue 1974 — rclrs has no timer call info and no autostart flag, so this is ours alone. `register_timer_with_info` bound to a node and an optional callback group — the executor primitive the C init verbs and `Node::create_timer_with_info` lower to, as `register_timer_on` is for the plain flavour."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:TierTaskMemorySet",
+  "verdict": "divergence",
+  "why": "issue 1598 -- the spawned tiers' task-memory rows behind a once-only latch, the twin of `rust:TierExecutorBacking`'s: a second take is EMPTY and refused rather than giving two tasks one stack. Covers `new` and `take`."
+}

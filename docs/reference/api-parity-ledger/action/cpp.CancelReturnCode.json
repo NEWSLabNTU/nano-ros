@@ -1,0 +1,5 @@
+{
+  "key": "cpp:CancelReturnCode",
+  "verdict": "extension",
+  "why": "the `action_msgs/srv/CancelGoal` RPC-level return code (Ok / Rejected / UnknownGoal / GoalTerminated) as a C++ enum. rclcpp_action has no such type: the return code reaches an rclcpp user as an `int8_t` FIELD on the generated `CancelGoal::Response` message, with the four values as generated constants, because rclcpp has runtime typesupport and hands the user the message. We have no runtime typesupport on this seam -- `PollingActionServer::send_cancel_reply` and `ActionClient::try_recv_cancel_response` move the raw byte -- so the enum is how the four legal values get named at all. Added by issue 0796 alongside the client-side cancel that produces one; before it, the byte travelled as a bare `int8_t` whose doc comment pointed at `nros::CancelResponse`, which is the PER-GOAL decision and has only two values. Mirrors C's `rclc_cancel_return_code_t` and Rust's `nros_core::CancelReturnCode`."
+}

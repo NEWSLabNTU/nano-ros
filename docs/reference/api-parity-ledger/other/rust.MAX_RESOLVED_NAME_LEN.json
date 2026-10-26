@@ -1,0 +1,5 @@
+{
+  "key": "rust:MAX_RESOLVED_NAME_LEN",
+  "verdict": "extension",
+  "why": "that bound (128 bytes), matched to `METADATA_STRING_CAPACITY` so a name that entered the seam can always leave it. See `rust:ResolvedName`."
+}

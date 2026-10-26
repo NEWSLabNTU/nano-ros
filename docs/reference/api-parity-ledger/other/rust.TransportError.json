@@ -1,0 +1,5 @@
+{
+  "key": "rust:TransportError",
+  "verdict": "extension",
+  "why": "the error every backend operation returns, and the payload of `NodeError::Transport` -- which is what a Rust user actually matches on. Its variants name transport preconditions rcl has no vocabulary for (`IncompatibleQos`, `IncompatibleAbi`, `Disconnected`). the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. See `rust:Session::create_publisher` in the pubsub stage. CORRECTION to issue 0783: that issue says the facade \"exports no way to inspect\" `NodeError` because `TransportError` is not exported. It IS -- `packages/api/nros/src/lib.rs:682` re-exports it unconditionally from `nros_rmw`. What 0783 actually found is that it is missing from the \"Re-export core types\" BLOCK at line 206 and lives in the transport block instead. `RclReturnCode` is genuinely unreachable (types stage, `rust:RclReturnCode`). Kept at the crate root by phase-506 W1 (RFC-0071 D12): it is user configuration or what a user matches on, even though it is defined beside the RMW seam."
+}

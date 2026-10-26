@@ -1,0 +1,5 @@
+{
+  "key": "rust:SchedClass",
+  "verdict": "extension",
+  "why": "the class picking the runtime queue and selection policy: Fifo, Edf, Sporadic, BestEffort (and a deprecated TimeTriggered variant kept for one release). RFC-0047's scheduling-context vocabulary. A callback binds to a SchedContext carrying a class, a priority bucket, and period/budget/deadline in microseconds; the executor picks its ready-set and dispatch order from those. That whole idea is ours: rclrs has callback groups and a multi-threaded executor, which delegate scheduling to OS threads. RFC-0002 gives one executor per RTOS task, so the ordering decision has to be made INSIDE the spin loop, and a real-time image needs it stated rather than emergent."
+}

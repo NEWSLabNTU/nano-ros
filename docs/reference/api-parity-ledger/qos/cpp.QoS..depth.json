@@ -1,0 +1,6 @@
+{
+  "key": "cpp:QoS::depth",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. `rclcpp::QoS::depth()` returns `size_t`; ours (`packages/api/nros-cpp/include/rclcpp/qos.hpp:370`) returns `int`, because the field it reads (`qos.hpp:74`, `int depth`) is `int` in the FFI struct the C header defines (RFC-0054). Narrowing, not widening: every legal depth on an embedded target fits, and the arena's history bound is far below `INT_MAX`, so no reachable value is lost.\n\nHow a ported file finds out: MOSTLY loud, and the exception is worth naming. `size_t d = qos.depth();` compiles with a sign-conversion warning at most, so an assignment into an unsigned variable is the one shape that goes quiet — which is the whole reason this row exists rather than the correlator's old unconditional `same`. The constructor side is already reconciled: `rclcpp::QoS(size_t depth)` (`qos.hpp:602`) takes upstream's type and narrows internally, so `rclcpp::QoS(10)` ports unchanged."
+}

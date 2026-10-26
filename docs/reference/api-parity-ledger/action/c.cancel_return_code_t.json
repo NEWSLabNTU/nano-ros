@@ -1,0 +1,5 @@
+{
+  "key": "c:cancel_return_code_t",
+  "verdict": "divergence",
+  "why": "the `action_msgs/srv/CancelGoal` RPC-level return code (OK / REJECTED / UNKNOWN_GOAL / GOAL_TERMINATED), distinct from the per-goal `rclc_cancel_response_t` above -- the C header says so itself. rclc has no counterpart: rcl_action hands the caller the generated `CancelGoal_Response` and the value is a field on it. RESOLVED (issue 0796): our Rust used to spell this same RPC-level enum `CancelResponse`, the name C and C++ use for the PER-GOAL decision, and `CallbackCtx::set_cancel_response` then took the RPC-level enum to express a per-goal accept/reject. Two concepts, three languages, one name. C was the only one that named them apart, and it is the one that needed a doc comment to explain the split -- so the other two followed it: `nros_core::CancelReturnCode` / `nros::CancelReturnCode` for the RPC status, `CancelResponse` for the per-goal decision everywhere. `set_cancel_response` now takes the per-goal one. Phase 379 W5."
+}

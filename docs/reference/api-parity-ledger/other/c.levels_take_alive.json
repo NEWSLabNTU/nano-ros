@@ -1,0 +1,5 @@
+{
+  "key": "c:levels_take_alive",
+  "verdict": "extension",
+  "why": "phase-509 P7 (RFC-0108 D8) -- the hardware-watchdog feed: true only when every level has spun since the last true, so a level stuck in a callback starves the watchdog while another spins on (D8.2). ROS 2 has no levels."
+}

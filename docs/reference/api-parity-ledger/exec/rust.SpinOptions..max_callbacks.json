@@ -1,0 +1,5 @@
+{
+  "key": "rust:SpinOptions::max_callbacks",
+  "verdict": "extension",
+  "why": "stop after N callbacks in one blocking spin. rclrs bounds a spin by time or by a promise resolving; a bounded-WCET RTOS task needs a bound on WORK, because the time bound only tells it when to give up, not how much it may have already done. See `rust:SpinOptions::timeout_ms`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:params_t",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the whole parsed parameter tree: node names plus per-node parameter lists. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
+}

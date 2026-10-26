@@ -1,0 +1,5 @@
+{
+  "key": "rust:ClientDispatch::service_is_ready",
+  "verdict": "extension",
+  "why": "the dispatch-path form of `rust:Client::service_is_ready` for a tick (phase-428 W13): the same three answers, reached through the entity name because a tick holds no client handle. Moved to the doc-hidden `nros::__macro` by phase-506 W1 (RFC-0071 D12): it is what `nros::node!` / `nros::main!` and the board entry glue expand into, so generated code keeps its path and a node author no longer meets it beside the user API."
+}

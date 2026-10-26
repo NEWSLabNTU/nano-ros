@@ -1,0 +1,5 @@
+{
+  "key": "c:action_get_result",
+  "verdict": "extension",
+  "why": "the blocking get_result: send the request and drive the executor until the result or the timeout. See `c:action_send_goal`."
+}

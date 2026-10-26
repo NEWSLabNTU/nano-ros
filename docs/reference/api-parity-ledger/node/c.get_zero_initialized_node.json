@@ -1,0 +1,6 @@
+{
+  "key": "c:get_zero_initialized_node",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "rcl's free-function spelling of the above; ours is `nros_node_get_zero_initialized`, a method-style name on the type. The idiom is kept, the spelling follows our own convention.\n\nCarried over from the `c:node_get_zero_initialized` row, deleted by phase-482 W7 because that name no longer exists (issue 1323):\nrcl's `rcl_get_zero_initialized_node()` idiom on our type. Counted as an extension for the same reason as `c:support_get_zero_initialized`: rclc, the C reference, ships no equivalent for its own handles."
+}

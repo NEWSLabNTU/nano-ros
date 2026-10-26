@@ -1,0 +1,5 @@
+{
+  "key": "rust:crc32",
+  "verdict": "extension",
+  "why": "CRC-32/ISO-HDLC over a byte slice -- the same polynomial AUTOSAR E2E and EN 50159 name, with a `const`-built table so a `no_std` image pays no init. Public because a user who bakes their own attachment has to compute the same value. See `rust:SafetyValidator`."
+}

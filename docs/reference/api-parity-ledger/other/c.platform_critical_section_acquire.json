@@ -1,0 +1,5 @@
+{
+  "key": "c:platform_critical_section_acquire",
+  "verdict": "extension",
+  "why": "the platform ABI's IRQ-mask primitive. `nros-c` imports it to register a `critical_section::Impl` for its Rust dependencies (embedded Cyclone, portable-atomic) and to mask interrupts in `nros::panic_halt!`. rcl has no equivalent because a hosted process has no interrupts to mask. Not user API -- see `c:platform_heap_used_bytes` for why it is visible in the generated header at all."
+}

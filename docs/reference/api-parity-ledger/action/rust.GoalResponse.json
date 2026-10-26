@@ -1,0 +1,5 @@
+{
+  "key": "rust:GoalResponse",
+  "verdict": "extension",
+  "why": "the goal callback's accept/reject/defer decision. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts, and they are shared with our C and C++ surfaces (`rclc_goal_status_t`, `nros::GoalStatus`). The convergence point is whenever rclrs grows actions; until then there is nothing to be a divergence FROM. See `c:goal_response_t` for the discriminant mismatch with rclcpp_action."
+}

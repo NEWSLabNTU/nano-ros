@@ -1,0 +1,9 @@
+{
+  "key": "cpp:spin_all",
+  "disposition": "absent",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "declined",
+  "why": "the free form of `cpp:Executor::spin_all`; declined with it."
+}

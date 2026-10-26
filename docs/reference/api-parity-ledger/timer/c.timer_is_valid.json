@@ -1,0 +1,5 @@
+{
+  "key": "c:timer_is_valid",
+  "verdict": "extension",
+  "why": "see the pubsub stage's `cpp:Publisher::is_valid`."
+}

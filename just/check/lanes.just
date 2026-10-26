@@ -16,8 +16,8 @@
 # 300 commits.
 
 # Phase 379 W2 (landed 2026-08-25) — every item where the nano-ros user API does
-# not correspond to rclc/rclcpp/rclrs carries a written verdict. 2158 rows across
-# 17 topic shards under docs/reference/api-parity-ledger/.
+# not correspond to rclc/rclcpp/rclrs carries a written verdict: one file per row
+# (issue 1091), in 17 topic directories under docs/reference/api-parity-ledger/.
 #
 # It re-extracts OUR surface every run (clang for C/C++, nightly rustdoc for
 # Rust) so an edit that moves us away from ROS 2 fails the gate instead of
@@ -40,7 +40,8 @@
 # RESOLVES an artifact its lane did not produce, and this produces its own.
 #
 # A new divergence fails this with the row's key and the bucket it landed in.
-# Add a row to the matching topic shard; `--topic <name>` shows the stage.
+# Add the row as its own file in the matching topic directory (the failure
+# prints each file name); `--topic <name>` shows the stage.
 #
 # Verify the user API still corresponds to rclc / rclcpp / rclrs.
 [group("check")]

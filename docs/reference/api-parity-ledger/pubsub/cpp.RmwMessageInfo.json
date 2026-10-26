@@ -1,0 +1,5 @@
+{
+  "key": "cpp:RmwMessageInfo",
+  "verdict": "extension",
+  "why": "issue 2036 (2026-10-25): what `rclcpp::MessageInfo::get_rmw_message_info()` returns. It has upstream `rmw_message_info_t`'s members under the same names, but the type has our name, because the C++ surface does not include the RMW ABI headers that define the C type. Member access reads the same as upstream; a declaration spelled `rmw_message_info_t` does not compile. See `cpp:MessageInfo` for population and why it diverges."
+}

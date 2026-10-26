@@ -1,0 +1,5 @@
+{
+  "key": "c:wake_state_t",
+  "verdict": "extension",
+  "why": "caller-declared storage for one wake callback's `(fn, ctx)` pair, passed into `nros_*_set_wake_callback` and kept alive at the same address while the entity is polling. It exists because there is no allocator to put a closure in: the caller declares the slot next to the entity. See the pubsub stage's `c:subscription_set_wake_callback` for the capability itself."
+}

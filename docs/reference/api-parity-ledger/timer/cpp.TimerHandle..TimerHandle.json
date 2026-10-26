@@ -1,0 +1,6 @@
+{
+  "key": "cpp:TimerHandle::TimerHandle",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the handle's constructors: default, `nullptr` (so `Timer::SharedPtr timer_ = nullptr;` compiles), and `{executor, handle}`. Ours-only for the reason at `cpp:TimerHandle`."
+}

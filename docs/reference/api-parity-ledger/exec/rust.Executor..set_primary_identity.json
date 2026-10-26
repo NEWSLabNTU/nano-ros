@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_primary_identity",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "the same for the RMW name and locator; see `rust:Executor::set_node_identity`."
+}

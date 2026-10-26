@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Logger::get_level",
+  "verdict": "extension",
+  "why": "phase-417 W4.d — rclcpp has no getter for a logger's threshold; C (`rclc_logger_get_level`) and Rust (`nros_log::Logger::level`) both do, and W4.d is about our own three languages agreeing rather than about upstream's surface, so the one language missing it was the thing to fix. A forwarder, like every other member of this trio (RFC-0019). A null handle answers `Fatal` — the quiet end, so a dropped handle cannot read as \"trace everything\" — and that rule is the C entry point's, reached rather than restated. See `cpp:Logger::set_level` for what the trio is for and what holds it."
+}

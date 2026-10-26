@@ -1,0 +1,5 @@
+{
+  "key": "c:action_abort",
+  "verdict": "divergence",
+  "why": "see `c:action_succeed`."
+}

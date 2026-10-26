@@ -1,0 +1,14 @@
+{
+  "key": "cpp:Node::Node",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/node.hpp",
+    "text": "ADOPT-BOUNDED: upstream throws where this leaves"
+  },
+  "provides": [
+    "nros::Executor::create_node",
+    "nros::Node::create"
+  ],
+  "verdict": "divergence",
+  "why": "rclcpp constructs a node from `(name[, namespace][, NodeOptions])` and expects `std::make_shared`. Ours has a default constructor and a move constructor, and the node is produced by `Executor::create_node` / `nros::Node::create` into caller-owned storage -- the `out-param-first` and `no-shared-ptr` rules, applied to construction itself. Constraint: no allocator, and RFC-0022's rule that two live node handles are a borrow error rather than a second shared_ptr.\n\nphase-428 W6 (2026-09-06) — disposition, required because this row's SHAPE CORRESPONDS: the name exists on the ported surface and the correlator files it `same`, so nothing in a build says the contract differs. That is the class RFC-0089 exists for.\n\nUPSTREAM'S CONTRACT: `rclcpp::Node(name)`, `(name, options)`, `(name, ns, options)`, held through `std::make_shared`, throwing when the context is not initialised.\n\nOURS: `packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:569` — `class Node : public std::enable_shared_from_this<Node>` with those three constructors and a `SharedPtr` alias, so `std::make_shared<rclcpp::Node>(\"talker\")` compiles and works. The `nros::Node` construction shape described above is the NATIVE surface and is unchanged; this is the ported one. Two weakenings: the node does not own an executor — it opens on the process-global one `rclcpp::init()` created (issue 0465) and cannot move between executors (RFC-0002) — and RFC-0018 forbids exceptions, so constructing before `init()` yields an object whose `initialized()` is false rather than a throw.\n\nHOW A USER FINDS OUT: the construction itself is mechanical, because the shape is upstream's. The un-initialised case is NOT loud AT THIS CALL: the object exists and the failure surfaces later. Where it surfaces is the first `create_*`: since phase-428 Q1 (2026-09-06) every adapter factory passes its `Result` to `detail::require_created` (`packages/api/nros-cpp/include/rclcpp/rclcpp.hpp:384`), which aborts naming the verb and the entity (`abort_failed_create`, `:376`, `NROS_RCLCPP_ABORT_FAILED_CREATE`) — so the deferred failure is loud one call later, which is what makes the deferral honest. That is the sharper form of this envelope and `cpp:Node::create_publisher` (RANKED-9) carries it. History, one sentence: until Q1 those factories discarded the `Result` with an explicit `(void)` and handed back a non-null pointer to a dead entity."
+}

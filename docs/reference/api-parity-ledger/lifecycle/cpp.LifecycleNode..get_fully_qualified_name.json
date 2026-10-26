@@ -1,0 +1,8 @@
+{
+  "key": "cpp:LifecycleNode::get_fully_qualified_name",
+  "editions": [
+    "jazzy"
+  ],
+  "verdict": "divergence",
+  "why": "inherited `rclcpp::Node::get_fully_qualified_name`; see `cpp:Node::get_fully_qualified_name` and `cpp:LifecycleNode::create_timer`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:remove_on_shutdown_callback",
+  "verdict": "extension",
+  "why": "Removal counterpart of `cpp:on_shutdown` over the global executor. rclcpp spells it `Context::remove_on_shutdown_callback`; we have no `Context`, so it sits beside the free `on_shutdown` it undoes. Issue 0790."
+}

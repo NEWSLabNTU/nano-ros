@@ -1,0 +1,6 @@
+{
+  "key": "c:print_state_machine",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rcl_lifecycle's debug dump of the transition map to stdout. A freestanding image has no stdout to dump to (and Rust `println!` is fatal on Zephyr native_sim, issue 0589), and the table is the same compile-time table in every image. The same information is reachable over `~/get_transition_graph`, which we do serve."
+}

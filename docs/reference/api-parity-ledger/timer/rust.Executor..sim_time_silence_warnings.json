@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::sim_time_silence_warnings",
+  "verdict": "extension",
+  "why": "phase-430 W1 -- how many times this executor has reported that `use_sim_time` is on and no `/clock` sample has arrived. A COUNT behind an accessor rather than a log line to grep, because the diagnostic's contract is \"exactly once\" and an assertion has to be able to tell one from two on a target that has no log sink. Neither rclrs nor rclcpp has a counterpart: ROS 2's answer to a silent `/clock` is that time simply stops, which on a host is visible in `ros2 topic hz` and on a console-less RTOS image is indistinguishable from a hang. Behind the `sim-time` feature, which is why this row did not exist until 2026-09-12: `sim-time` was not in the parity extractor's `NROS_FEATURES`, so the subject was on no measured surface and the row could not be written at all. phase-430 W7 called these rows \"still owed, deliberately\" for exactly that reason -- issue 1351."
+}

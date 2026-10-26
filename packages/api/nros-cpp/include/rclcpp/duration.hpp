@@ -12,7 +12,7 @@
  * or stamps a header compiles here.
  *
  * Two members of upstream's `rclcpp::Duration` are deliberately absent, both already
- * recorded in `docs/reference/api-parity-ledger/timer.json`:
+ * recorded under `docs/reference/api-parity-ledger/timer/`:
  *   * `to_chrono` — `<chrono>` is not available on the freestanding targets.
  *   * `from_rmw_time` / `to_rmw_time` — the RMW seam is not a user-facing type
  *     here (RFC-0054); a user writes nanoseconds or milliseconds.

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::create_polling_subscription",
+  "verdict": "extension",
+  "why": "RFC-0022's polling tier: an entity a task drains itself instead of receiving a callback, for code that owns its own loop and cannot accept an inversion of control. rclcpp has no counterpart because its executor always owns dispatch."
+}

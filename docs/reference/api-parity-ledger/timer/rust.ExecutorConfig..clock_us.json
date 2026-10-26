@@ -1,0 +1,5 @@
+{
+  "key": "rust:ExecutorConfig::clock_us",
+  "verdict": "extension",
+  "why": "the executor's clock tick in microseconds -- the resolution at which timer deadlines are evaluated (RFC-0073). rclcpp reads the OS clock at whatever resolution it offers."
+}

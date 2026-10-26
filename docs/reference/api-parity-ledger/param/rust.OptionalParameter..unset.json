@@ -1,0 +1,6 @@
+{
+  "key": "rust:OptionalParameter::unset",
+  "disposition": "adopt",
+  "verdict": "declined",
+  "why": "rclrs spells clearing an optional parameter `unset()`; ours is `set(None)`, which stores `ParameterValue::NotSet` -- the same operation, one word shorter to implement and one call longer to read. What a user loses is only the spelling."
+}

@@ -1,0 +1,11 @@
+{
+  "key": "c:logging_rosout_enabled",
+  "disposition": "adopt",
+  "provides": [
+    "nros_node::rosout::pump",
+    "nros_log::rosout::enable",
+    "nros_log::rosout::enabled"
+  ],
+  "verdict": "divergence",
+  "why": "issue 1589 -- PRESENT since then, same name and signature (`bool rcl_logging_rosout_enabled(void)`, `<rclc/rosout.h>`), and it answers upstream's build-time question: true iff the image was built with the `rosout` capability. ADOPT for the function itself -- its contract is upstream's exactly. What still differs, and why the row stays a divergence: upstream republishes from every rcl node with no user action, while here the application creates the `/rosout` publisher (`rclc_rosout_publisher_init`), turns the queue on (`rclc_rosout_enable`) and pumps it from its spin loop (`rclc_rosout_pump`). The constraint is static entity storage: a publisher is an ENTITY that reaches `EntityInventory::derive`, the zenoh pools and the sizing descriptor, so one the runtime conjured below the declaration is issue 1341's shape. Which records reach the topic follows the ROS release (RFC-0102 D4). Measured against a stock `ros2 topic echo /rosout` by interop cells `native-logging-{rust,c,cpp}-zenoh-n2r` (`packages/testing/nros-tests/tests/rosout_interop.rs`). History: until issue 1589 this row was `divergence`+`absent` -- the topic existed only in Rust."
+}

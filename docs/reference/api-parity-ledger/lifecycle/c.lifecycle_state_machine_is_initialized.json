@@ -1,0 +1,6 @@
+{
+  "key": "c:lifecycle_state_machine_is_initialized",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "`rcl_lifecycle_state_machine_t` carries a public `initialized` flag, and every entry point returns `RCL_RET_NOT_INIT` / `RCLC_RET_BAD_SEQUENCE` rather than relying on the caller to ask first. A user loses the free-function spelling, not the information."
+}

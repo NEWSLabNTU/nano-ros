@@ -1,0 +1,5 @@
+{
+  "key": "rust:StatusClient::watch",
+  "verdict": "divergence",
+  "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+}

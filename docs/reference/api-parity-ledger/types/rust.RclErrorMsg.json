@@ -1,0 +1,6 @@
+{
+  "key": "rust:RclErrorMsg",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the owned String rclrs copies out of rcl's thread-local error state. Same decision as the C `error_string_t`, and the same constraint: no per-thread formatted-message buffer. A `no_std` build has no String either."
+}

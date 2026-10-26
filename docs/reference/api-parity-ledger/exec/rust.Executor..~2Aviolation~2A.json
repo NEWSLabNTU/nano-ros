@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::*violation*",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "drain the contract violations the monitors recorded (`drain_violations`), count the ones dropped when the fixed buffer overflowed (`violations_dropped`), and gate reporting (`set_report_violations`). The bounded buffer plus an explicit dropped count is the no-allocator shape: a device cannot grow a violation log, and silently losing entries would make the monitor lie. rclcpp raises QoS events through callbacks instead."
+}

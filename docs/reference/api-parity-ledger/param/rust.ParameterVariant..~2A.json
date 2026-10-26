@@ -1,0 +1,6 @@
+{
+  "key": "rust:ParameterVariant::*",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "`to_parameter_value` / `from_parameter_value` / `try_to_parameter_value` -- the conversion trait between a Rust type and a stored `ParameterValue`. rclrs's `ParameterVariant` declares only `kind()` and does its conversions through `From`. The third method is the constraint made visible: `to_parameter_value` cannot report that a `String` exceeded `MAX_STRING_VALUE_LEN` or a `Vec` exceeded `MAX_ARRAY_LEN`, and the hosted impls used to `unwrap_or_default()` -- turning an over-long string into `NotSet` (a TYPE change) and an oversized vec into an EMPTY array, both indistinguishable from a caller who meant it (issue 0323). Fixed capacity forces a fallible conversion; an allocator would not. See `rust:ParameterValue::*`."
+}

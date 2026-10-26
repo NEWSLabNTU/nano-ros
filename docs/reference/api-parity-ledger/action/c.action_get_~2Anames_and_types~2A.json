@@ -1,0 +1,7 @@
+{
+  "key": "c:action_get_*names_and_types*",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "no dynamic discovery: peers are static (RFC-0036), so there is no graph to enumerate action names and types out of. See the graph stage."
+}

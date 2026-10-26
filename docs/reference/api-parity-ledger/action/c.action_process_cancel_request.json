@@ -1,0 +1,9 @@
+{
+  "key": "c:action_process_cancel_request",
+  "provides": [
+    "rclc_cancel_callback_t",
+    "rclc_polling_action_server_send_cancel_reply_raw"
+  ],
+  "verdict": "divergence",
+  "why": "rcl matches a `CancelGoal` request against its goal handles and builds the response array for the caller. Ours splits the same work: the arena matches, the user's `rclc_cancel_callback_t` decides per goal, and `nros_action_server_send_cancel_reply_raw` writes the reply on the L1 tier. The matching cannot be a caller-visible step because the goal set lives in the arena, not in caller storage. our goal handle is a 16-byte UUID TOKEN, not an owning object: `rclc_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `rclc_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+}

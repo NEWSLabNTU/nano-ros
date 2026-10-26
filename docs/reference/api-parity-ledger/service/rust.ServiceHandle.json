@@ -1,0 +1,5 @@
+{
+  "key": "rust:ServiceHandle",
+  "verdict": "divergence",
+  "why": "rclrs's rcl handle wrapper; ours is an index into the executor's static entity table. See the pubsub stage's `rust:PublisherHandle`."
+}

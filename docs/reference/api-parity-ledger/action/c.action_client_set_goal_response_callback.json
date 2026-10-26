@@ -1,0 +1,5 @@
+{
+  "key": "c:action_client_set_goal_response_callback",
+  "verdict": "extension",
+  "why": "see `c:action_client_set_feedback_callback`."
+}

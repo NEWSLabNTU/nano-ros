@@ -1,0 +1,6 @@
+{
+  "key": "c:polling_action_server_set_*_wake_callback",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the server side of `c:polling_action_client_set_*_wake_callback`, one per service channel (goal / cancel / get_result). Renamed from `nros_action_server_set_*_wake_callback` by phase-487 W4, when the polled action server became its own type, `rclc_polling_action_server_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "c:lifecycle_get_transition_by_label",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see `c:lifecycle_get_transition_by_id` and `c:lifecycle_trigger_transition_by_label`."
+}

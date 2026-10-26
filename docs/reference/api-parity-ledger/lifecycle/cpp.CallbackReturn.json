@@ -1,0 +1,5 @@
+{
+  "key": "cpp:CallbackReturn",
+  "verdict": "extension",
+  "why": "rclcpp has this enum too, but as a nested `node_interfaces::LifecycleNodeInterface::CallbackReturn`, so a flat `nros::CallbackReturn` reads as ours-only. Same three values in the same order (`Success`/`Failure`/`Error`). The flattening is the same one as `cpp:LifecycleNode::on_configure` -- no abstract interface base to nest it in."
+}

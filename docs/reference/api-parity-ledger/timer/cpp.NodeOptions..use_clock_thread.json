@@ -1,0 +1,6 @@
+{
+  "key": "cpp:NodeOptions::use_clock_thread",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclcpp spawns a dedicated thread to service the `/clock` subscription so simulated time advances even while callbacks run. RFC-0002 gives one executor per RTOS task and does not spawn; ROS time would advance on the executor that subscribes to it."
+}

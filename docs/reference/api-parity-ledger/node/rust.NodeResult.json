@@ -1,0 +1,5 @@
+{
+  "key": "rust:NodeResult",
+  "verdict": "divergence",
+  "why": "the component API's `Result` alias. See the types stage: no `std::error::Error`, no owned context strings."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "rust:LogParams::get_throttle_clock",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "rclrs's throttled logging reads a clock to decide whether enough time has passed. See the log stage -- our throttle macros degrade to plain logs (RFC-0036)."
+}

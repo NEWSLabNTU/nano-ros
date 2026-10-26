@@ -1,0 +1,6 @@
+{
+  "key": "rust:IntoWorkerTimerRepeatingCallback::into_worker_timer_repeating_callback",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "see the node stage's `rust:Node::create_worker` -- a worker needs a runtime and an allocator."
+}

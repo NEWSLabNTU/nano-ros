@@ -1,0 +1,5 @@
+{
+  "key": "c:clock_get_zero_initialized",
+  "verdict": "extension",
+  "why": "see `c:get_zero_initialized_publisher`."
+}

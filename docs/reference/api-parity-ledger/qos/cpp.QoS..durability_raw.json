@@ -1,0 +1,12 @@
+{
+  "key": "cpp:QoS::durability_raw",
+  "rename": {
+    "residue": "NONE since phase-482 W6 (2026-10-07): the deprecated forwarder is deleted, and so is the expected-failure probe that proved it warned (it would have gone on passing while asserting nothing).",
+    "resolution": "`QoS::durability()` returning `nros::DurabilityPolicy` shipped 2026-08-27 and MATCHES rclcpp; `QoS::durability_raw()` remains as a [[deprecated]] forwarder pending removal",
+    "status": "landed",
+    "to": "QoS::durability()"
+  },
+  "retired": "deleted by phase-482 W6 with every other deprecated item; the row records the rename",
+  "verdict": "rename",
+  "why": "LANDED 2026-08-27 (phase-379 W5). The four policy enums are now PUBLIC and at NAMESPACE scope under rclcpp's names (`nros::ReliabilityPolicy`, `nros::DurabilityPolicy`, `nros::HistoryPolicy`, `nros::LivelinessPolicy`, `packages/api/nros-cpp/include/rclcpp/qos.hpp`), the getters return them (`reliability()` / `durability()` / `history()` / `liveliness()`), and the three time windows take and return `nros::Duration` (`deadline()` / `lifespan()` / `liveliness_lease_duration()`). Their theirs-only rows are gone because those items MATCH now. This row is now the DEPRECATED ALIAS: `QoS::durability_raw()` returns `int` because the enum it should have named was a PRIVATE member of `QoS` and a public getter cannot name a private type. That reason is gone -- `nros::DurabilityPolicy` is public and at namespace scope -- so the live spelling is `QoS::durability()`, which returns it. It survives as a `[[deprecated]]` inline member, so a stale caller still compiles and is told what to write instead -- verified under `-Werror=deprecated-declarations` by `qos_deprecation_probe.cpp`, which `just check cpp` required to FAIL until phase-482 W6 deleted it with the member. Header-inline templates, so this costs no ABI: no exported symbol changed. Removal is the follow-up the maintainer asked for (\"we'll retire deprecated items later\"), and this row is where the deprecation is recorded, on the `c:param_declare_*` precedent from the C half of the same week.\n\nRETIRED by phase-482 W6 (2026-10-07): the deprecated item is DELETED, with every other deprecated item in the tree as one batch (changelog.d/+phase-482-w6.breaking.md). Code that still names it gets an undeclared-identifier error naming nothing; the changelog entry carries the replacement. The row is kept as the record of the rename."
+}

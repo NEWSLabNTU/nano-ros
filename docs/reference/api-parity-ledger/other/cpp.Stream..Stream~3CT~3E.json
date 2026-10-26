@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Stream::Stream<T>",
+  "verdict": "divergence",
+  "why": "see `cpp:Stream`."
+}

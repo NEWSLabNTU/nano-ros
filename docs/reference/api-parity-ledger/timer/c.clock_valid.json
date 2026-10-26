@@ -1,0 +1,15 @@
+{
+  "key": "c:clock_valid",
+  "their_rename": {
+    "majority": [
+      "rcl itself, 14 times: `docs/reference/api-surface/rclc.json` records `rcl_context_is_valid`, `rcl_node_is_valid`(+`_except_context`), `rcl_publisher_is_valid`(+`_except_context`), `rcl_subscription_is_valid`, `rcl_client_is_valid`, `rcl_service_is_valid`, `rcl_event_is_valid`, `rcl_wait_set_is_valid`, `rcl_action_client_is_valid`, `rcl_action_server_is_valid`(+`_except_context`), `rcl_action_goal_handle_is_valid`",
+      "rclcpp: `is_valid` (recorded surface)",
+      "our own C++ and Rust use the same `is_*` predicate shape"
+    ],
+    "ours": "`rclc_clock_is_valid(const rcl_clock_t *)`",
+    "outlier": "`rcl_clock_valid` -- the ONLY validity predicate in the recorded rclc surface that drops the `is_`, 1 against 14",
+    "pair": "c:clock_is_valid"
+  },
+  "verdict": "their-rename",
+  "why": "RE-VERDICTED rename -> their-rename 2026-09-05 (phase-425). The row already contained its own refutation: it recorded that rcl is the inconsistent one and then filed the work under `rename`, which by `_doc` means OURS is the name that should change. Nothing on our side should move -- `rclc_clock_is_valid` is the shape rcl uses fourteen other times. The trailing clause \"the drop-in claim is about matching, not about being right\" is the DROP-IN COST, which `their-rename` records rather than cancels: a ported rcl node still rewrites `rcl_clock_valid(&c)` as `rclc_clock_is_valid(&c)`. What it stops doing is sitting on the campaign's work list, where it would have inverted our predicate naming to chase rcl's one exception. Pair: `c:clock_is_valid`. No code change.\n\nORIGINAL ROW: rcl's free-function spelling; ours is `rclc_clock_is_valid`. Note ours also matches the `is_*` convention rcl uses elsewhere (`rcl_context_is_valid`), so rcl is the inconsistent one here -- but the drop-in claim is about matching, not about being right."
+}

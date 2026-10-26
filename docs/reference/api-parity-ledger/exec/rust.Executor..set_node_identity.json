@@ -1,0 +1,6 @@
+{
+  "key": "rust:Executor::set_node_identity",
+  "bucket": "ours-only",
+  "verdict": "divergence",
+  "why": "sets node name and namespace after open, because RFC-0046 makes LAUNCH the authority on node identity and an image is told its name at boot. rclrs fixes identity at `create_node`. See `c:support_init_named`.\n\nphase-467 Row 11 follow-through (2026-10-03) -- CORRECTED. The reason read \"rather than parsing argv (there is none)\". A hosted build does parse argv now (#1591), and the identity remaps rcl reads from it -- `__node` / `__name` / `__ns` -- are REFUSED by that parse, loudly and by name (`nros_node::ros_args`), because RFC-0046 has not ruled on an argv identity rung. So launch stays the one source on every target, and this setter is where it lands. The verdict does not move."
+}

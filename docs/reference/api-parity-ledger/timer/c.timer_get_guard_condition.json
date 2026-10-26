@@ -1,0 +1,6 @@
+{
+  "key": "c:timer_get_guard_condition",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "the guard condition rcl fires to wake a wait set when a timer is reset. RFC-0002's executor recomputes its next deadline directly (`next_deadline_ms`); there is no wait set to interrupt."
+}

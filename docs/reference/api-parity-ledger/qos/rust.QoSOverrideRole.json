@@ -1,0 +1,5 @@
+{
+  "key": "rust:QoSOverrideRole",
+  "verdict": "extension",
+  "why": "which side of the topic an override targets -- the `<role>` segment of `qos_overrides.<topic>.<role>.<policy>`. See `rust:QoSOverride`."
+}

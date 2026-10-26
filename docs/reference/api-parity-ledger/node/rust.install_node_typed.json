@@ -1,0 +1,5 @@
+{
+  "key": "rust:install_node_typed",
+  "verdict": "divergence",
+  "why": "The C-ABI typed component install (phase-257 W0-B): it backs the `__nros_component_<pkg>_install(node, executor, self)` symbol `nros::node!()` emits, recovering the shared `Executor` from a foreign entry's opaque handle and registering the component on it. `unsafe` because it takes that raw handle. rclrs has no component runtime to correlate it with. Until 2026-10-11 this row carried a pasted copy of `rust:NodeHandle`'s text (\"Four node-shaped things\", issue 0784), which described the facade's node types, not this name. phase-483 W2–W4 settled that: `nros::Node` is the one node type, the component trait is `nros::Component`, and `NodeHandle` / `StandaloneNode` left `nros::`. Moved to the doc-hidden `nros::__macro` by phase-506 W1 (RFC-0071 D12): it is what `nros::node!` / `nros::main!` and the board entry glue expand into, so generated code keeps its path and a node author no longer meets it beside the user API."
+}

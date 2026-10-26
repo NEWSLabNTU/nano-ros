@@ -1,0 +1,5 @@
+{
+  "key": "rust:MECHANISM_TIMER",
+  "verdict": "extension",
+  "why": "phase-503 -- the supervised route deadline (`route-deadline-runtime`): a monitor row's `mechanism`: also supervised by the port's own timer. See `rust:ReactionEvent`."
+}

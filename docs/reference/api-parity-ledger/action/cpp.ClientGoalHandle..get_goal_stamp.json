@@ -1,0 +1,7 @@
+{
+  "key": "cpp:ClientGoalHandle::get_goal_stamp",
+  "bucket": "theirs-only",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "issue 2015 (2026-10-24) -- the acceptance stamp of the goal. The arena does not keep one -- see `c:action_goal_info_t`: time is a board capability (RFC-0036) and the accept path has no clock to read. A user loses the acceptance timestamp; calling it is a compile error (`no member named get_goal_stamp`)."
+}

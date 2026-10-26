@@ -1,0 +1,6 @@
+{
+  "key": "cpp:Executor::cancel",
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. `rclcpp::Executor::cancel()` returns `void`; ours (`packages/api/nros-cpp/include/rclcpp/executor.hpp:360`) returns `Result` wrapping `nros_cpp_executor_cancel`. RFC-0018 forbids exceptions, so a call that can fail has to say so in its return type — that is clause 1 over clause 2 and the widening is correct. It is also LOUD rather than silent: `Result` carries `[[nodiscard]]` (`result.hpp`, phase-428 W6), so a ported `exec.cancel();` written as a statement warns. Recorded, not actioned: the ONLY reason this row exists is that the correlator used to assign `same` here without looking at the return type at all."
+}
