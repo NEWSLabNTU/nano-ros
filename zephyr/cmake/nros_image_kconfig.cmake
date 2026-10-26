@@ -83,6 +83,8 @@
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosCli.cmake")
 # phase-484 W5b -- the Kconfig knob ids and symbols (`NROS_KNOB_KCONFIG_*`).
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobRegistry.cmake")
+# Issue 2086 -- `nros_leaf_census_take`.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosLeafCensus.cmake")
 
 # The module root, captured at FILE scope (inside a function
 # `CMAKE_CURRENT_LIST_DIR` names the caller's file).
@@ -264,6 +266,14 @@ function(nros_image_kconfig_hook)
         string(REPLACE ";" ", " _ov "${_overrides}")
         message(STATUS "nano-ros: image `${_image}` knob override(s) from the command line: "
             "${_ov} (transient; RFC-0103 D2)")
+    endif()
+
+    # Issue 2086 -- a leaf that takes its entities from its census takes it
+    # HERE, before Kconfig: the rendering below states the parameter store's
+    # axis from it (and so the nros heap's default), and the module's
+    # `west-leaf-sizing` reads the same census for the pools after Kconfig.
+    if(_dir STREQUAL APPLICATION_SOURCE_DIR)
+        nros_leaf_census_take("${_nros}" "${_dir}")
     endif()
 
     set(_frag "${_nros_dir}/${_image}.conf")

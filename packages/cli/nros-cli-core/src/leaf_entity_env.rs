@@ -336,6 +336,62 @@ pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
 /// whether that is a refusal (`entities = "census"`) or no evidence (a
 /// declaration with nothing to check it against).
 fn census_entities(leaf: &Path) -> Result<std::result::Result<Vec<EntityDecl>, String>> {
+    let recorded = match census_document(leaf)? {
+        Ok(doc) => doc,
+        Err(why) => return Ok(Err(why)),
+    };
+    let (_, _, declaration) = declaration_from_probe(&recorded.to_string())?;
+    Ok(Ok(fold_action_constituents(declaration.entities())))
+}
+
+/// `(node id, its entities)`, one per node a census recorded.
+pub type CensusNodes = Vec<(String, Vec<EntityDecl>)>;
+
+/// Issue 2086 -- the entities a standalone leaf's census recorded, PER NODE:
+/// `(node id, its entities)` in the order the program created them.
+///
+/// The inventory counts one node per component row, and a ported program is
+/// often several nodes in one executable (ros2/demos `manual_composition`
+/// creates four). Folded into one row, it sized `NROS_EXECUTOR_MAX_NODES` to
+/// 1 and the second node's first entity failed `NOT_INIT` at boot. Same
+/// freshness rule and the same parser as [`census_entities`]; the flattened
+/// rows are identical.
+pub fn census_node_entities(leaf: &Path) -> Result<std::result::Result<CensusNodes, String>> {
+    let recorded = match census_document(leaf)? {
+        Ok(doc) => doc,
+        Err(why) => return Ok(Err(why)),
+    };
+    let nodes = recorded
+        .get("nodes")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let mut out = Vec::with_capacity(nodes.len());
+    for (i, node) in nodes.into_iter().enumerate() {
+        let id = node
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .map_or_else(|| format!("node{i}"), str::to_string);
+        let mut one = recorded.clone();
+        one["nodes"] = serde_json::Value::Array(vec![node]);
+        let (_, _, declaration) = declaration_from_probe(&one.to_string())?;
+        out.push((id, fold_action_constituents(declaration.entities())));
+    }
+    Ok(Ok(out))
+}
+
+/// Issue 2086 -- how many parameters a standalone leaf's census recorded, or
+/// `None` when it has no current, complete census. The Zephyr road states the
+/// parameter store's Kconfig axis from it (`leaf_kconfig::render`), because a
+/// store nothing declared gets no heap there.
+pub fn census_parameter_count(leaf: &Path) -> Option<usize> {
+    let doc = census_document(leaf).ok()?.ok()?;
+    doc.get("parameters")?.as_array().map(Vec::len)
+}
+
+/// The `census` document of a leaf's current, complete census, or why there is
+/// none. ONE reader for every fact read off it.
+fn census_document(leaf: &Path) -> Result<std::result::Result<serde_json::Value, String>> {
     use crate::cmd::entity_census::{
         Freshness, census_freshness, incomplete_reason, leaf_census_path,
     };
@@ -358,8 +414,7 @@ fn census_entities(leaf: &Path) -> Result<std::result::Result<Vec<EntityDecl>, S
             path.display()
         )));
     };
-    let (_, _, declaration) = declaration_from_probe(&recorded.to_string())?;
-    Ok(Ok(fold_action_constituents(declaration.entities())))
+    Ok(Ok(recorded.clone()))
 }
 
 /// Issue 1556 item 5 -- a census records an action as the RMW entities it is
