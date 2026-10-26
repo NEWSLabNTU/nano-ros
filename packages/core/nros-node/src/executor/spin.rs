@@ -10797,6 +10797,63 @@ impl<'s> Executor<'s> {
         )
     }
 
+    /// Issue 2089 — rclc's typed `rclc_executor_add_service_with_request_id`:
+    /// the request is deserialised into the caller-owned `request_msg`, the
+    /// context-less [`TypedServiceRequestIdCallback`] gets
+    /// `(request_msg, &request_id, response_msg)`, and `response_msg` is
+    /// serialised as the reply. The codecs are the service type descriptor's.
+    ///
+    /// A request that does not decode is refused before the callback runs, and
+    /// a reply that does not encode is not sent; both are logged (rate-limited).
+    /// The id is the one the backend reported for the request being dispatched
+    /// ([`Self::register_service_raw_with_request_id_sized`]'s), all zeros when
+    /// it reported none.
+    ///
+    /// # Safety
+    /// `request_msg` and `response_msg` must point to writable, initialised
+    /// values of the types the codecs were generated for, and stay valid for
+    /// as long as the service is registered. Nothing here allocates, copies or
+    /// frees them.
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn register_service_c_typed_with_request_id_sized<
+        const REQ_BUF: usize,
+        const REPLY_BUF: usize,
+    >(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        qos: QoSProfile,
+        request_msg: core::ptr::NonNull<core::ffi::c_void>,
+        response_msg: core::ptr::NonNull<core::ffi::c_void>,
+        deserialize: RawMessageDeserializeFn,
+        serialize: super::types::RawMessageSerializeFn,
+        callback: super::types::TypedServiceRequestIdCallback,
+    ) -> Result<HandleId, NodeError> {
+        self.register_service_raw_sized_inner::<
+            REQ_BUF,
+            REPLY_BUF,
+            super::arena::TypedServiceRequestIdDispatch,
+        >(
+            node_id,
+            service_name,
+            service_type,
+            service_hash,
+            qos,
+            super::arena::TypedServiceRequestIdDispatch {
+                callback,
+                request_msg,
+                response_msg,
+                deserialize,
+                serialize,
+            },
+            core::ptr::null_mut(),
+            None,
+            None,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn register_service_raw_sized_inner<
         const REQ_BUF: usize,

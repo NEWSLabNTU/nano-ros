@@ -392,6 +392,12 @@ handler's request header. Residue: XRCE's slot was measured against a live
 Agent and a stock `rmw_fastrtps_cpp` client on 2026-10-27 ([issue
 2088](../issues/archived/2088-xrce-service-request-id-unmeasured.md)), and the generated typed C service path has no request-id
 flavour (issue 2089).
+**Issue 2089 resolved 2026-10-27
+([archived](../issues/archived/2089-c-typed-service-request-id.md)):** rclc's
+own `rclc_executor_add_service_with_request_id(executor, service, &req, &res,
+cb)`, with rclc's callback type, so a ported rclc program compiles unchanged.
+The typed dispatch it adds is the one C3's plain and `_with_context`
+forms would use.
 
 **R8 — open renames (33).** `UndeclaredParameters` → `Parameters`,
 `GoalId` → `GoalUuid`, `CancelReturnCode`, `QoSProfile::{deadline,lifespan,

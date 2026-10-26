@@ -2,9 +2,10 @@
  *
  * rclc's `rclc_executor_add_service_with_request_id` hands the callback an
  * `rmw_request_id_t` (the client's writer GUID and the sequence number that
- * client assigned) between the request and the response. Ours is
- * `rclc_executor_add_service_raw_with_request_id`, the CDR-byte form, and its
- * id comes from the RMW backend's `take_request_with_info` slot.
+ * client assigned) between the request and the response. This probe holds
+ * `rclc_executor_add_service_raw_with_request_id`, the CDR-byte form (rclc's
+ * own typed form is `service_request_id_typed.c`, issue 2089), and its id
+ * comes from the RMW backend's `take_request_with_info` slot.
  *
  * The stub backend fills that slot from what a request was staged with. This
  * probe checks:

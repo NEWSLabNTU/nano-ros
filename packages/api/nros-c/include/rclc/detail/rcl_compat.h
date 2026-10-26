@@ -543,6 +543,27 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  *
  * Deliberately not aliased onto anything today. Two arenas for one concept is
  * the drift RFC-0019 exists to prevent.
+ *
+ * ── `rclc_executor_add_service_with_request_id`: ADOPTED (issue 2089) ───
+ *
+ *   rclc: rcl_ret_t rclc_executor_add_service_with_request_id(
+ *             rclc_executor_t *, rcl_service_t *, void *request_msg,
+ *             void *response_msg, rclc_service_callback_with_request_id_t)
+ *         typedef void (*rclc_service_callback_with_request_id_t)(
+ *             const void *request, rmw_request_id_t *request_id, void *response);
+ *
+ * Ours is the same five arguments and the same callback type. Both objections
+ * above are answered the way phase-492 W8 answered them for the subscription,
+ * and neither by a wrapper: the two payload structs, the user's callback and
+ * the descriptor's codecs ride in the ARENA ENTRY (one entry, the raw
+ * service's, with a typed dispatch), not in a context word; and the `void`
+ * return is covered by the executor refusing for the callback — a request
+ * that does not decode never reaches it, a response that does not encode is
+ * not sent, and both are logged. The codecs come from the descriptor
+ * `rcl_service_t` now keeps (`type_support`), as a subscription keeps its own.
+ *
+ * The same typed dispatch would carry the two forms refused above; adopting
+ * them is phase-515 C3.
  */
 
 #endif /* collision guard */

@@ -1,0 +1,5 @@
+{
+  "key": "c:service_callback_with_request_id_t",
+  "verdict": "extension",
+  "why": "issue 2089 (2026-10-27) -- rclc's own `rclc_service_callback_with_request_id_t` (`void (*)(const void *request, rmw_request_id_t *request_id, void *response)`, `rclc/executor_handle.h`), adopted as the DEFINITION for `rclc_executor_add_service_with_request_id`, which now matches rclc's. The extractor records rclc's executor_handle callback aliases on neither side as a pair (as for `c:subscription_callback_with_context_t`), so the report sees only ours; the contract is identical. Held by `service_request_id_typed.c` in `just check c`."
+}

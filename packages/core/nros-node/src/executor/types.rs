@@ -1486,6 +1486,38 @@ pub type RawServiceRequestIdCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 ) -> bool;
 
+/// Issue 2089 — the type-erased CDR serialiser a C message descriptor carries
+/// (`rclc_message_serialize_fn_t`): writes `msg` into `buffer[..capacity]`
+/// with its encapsulation header, stores the byte count in `*out_len`, returns
+/// `0`; nonzero on any failure (the buffer is too small, a field past its
+/// bound). The mirror of [`RawMessageDeserializeFn`]. Never allocates.
+///
+/// # Safety
+/// `msg` points to an initialised value of the type this serialiser was
+/// generated for; `buffer` is writable for `capacity` bytes during the call.
+pub type RawMessageSerializeFn = unsafe extern "C" fn(
+    msg: *const core::ffi::c_void,
+    buffer: *mut u8,
+    capacity: usize,
+    out_len: *mut usize,
+) -> i32;
+
+/// Issue 2089 — rclc's `rclc_service_callback_with_request_id_t`, exactly:
+/// `void (*)(const void *request, rmw_request_id_t *request_id, void *response)`.
+///
+/// `request` and `response` are the caller-owned message structs handed to
+/// `rclc_executor_add_service_with_request_id`; the executor deserialises the
+/// request into the first and serialises the second as the reply after the
+/// callback returns. `request_id` is valid for the call only.
+///
+/// # Safety
+/// The pointers are valid for the duration of the call only.
+pub type TypedServiceRequestIdCallback = unsafe extern "C" fn(
+    request: *const core::ffi::c_void,
+    request_id: *mut RawRequestId,
+    response: *mut core::ffi::c_void,
+);
+
 /// Raw service-client response callback.
 ///
 /// Invoked by the executor's arena dispatch when a previously-sent

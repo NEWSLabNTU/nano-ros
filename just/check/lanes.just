@@ -613,6 +613,22 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/context_less_subscription
     ./tmp/context_less_subscription
+    echo "  - issue 2089: rclc_executor_add_service_with_request_id, rclc's typed"
+    echo "    form, deserialises into the caller's request and sends its response"
+    test -f packages/api/nros-c/tests/run/service_request_id_typed.c || { \
+        echo "ERROR: service_request_id_typed.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/service_request_id_typed.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/service_request_id_typed
+    ./tmp/service_request_id_typed
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in

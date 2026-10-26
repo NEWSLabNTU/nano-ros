@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 20;
+pub const NROS_CODEGEN_VERSION: u32 = 21;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -258,6 +258,14 @@ pub const NROS_CODEGEN_VERSION: u32 = 20;
 /// relies on are declared on the new names. The old names stay as
 /// `#[deprecated]` type aliases of the same types, so a version-19 tree still
 /// compiles and runs; a version-20 tree names types a 19 runtime does not have.
+///
+/// 21 (issue 2089), MIN unchanged: `rcl_service_t` gained a trailing
+/// `type_support` (the descriptor `rclc_service_init_*` was given), which
+/// `rclc_executor_add_service_with_request_id` reads its codecs from. ADDITIVE:
+/// generated C code names `rcl_service_t` only through a pointer and never
+/// initialises one, so a version-20 tree still compiles and runs here. The
+/// surface gate hashes the struct's text and cannot know that, which is why
+/// the version moves.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

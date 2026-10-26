@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_service_c_typed_with_request_id_sized",
+  "verdict": "extension",
+  "why": "issue 2089 (2026-10-27) -- the arena registration behind the C API's `rclc_executor_add_service_with_request_id`: caller-owned request/response storage, the descriptor's two codecs and rclc's context-less `(request, request_id, response)` callback ride in one raw service entry. rclrs has no C-typed registration (a Rust service is registered typed, with `create_service_with_info` for the request id); this exists for the C binding, like `register_service_raw_with_request_id_sized`."
+}

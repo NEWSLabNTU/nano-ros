@@ -156,6 +156,27 @@ pub type rclc_service_raw_callback_with_request_id_t = Option<
     ) -> bool,
 >;
 
+/// Issue 2089 — rclc's `rclc_service_callback_with_request_id_t`, exactly:
+///
+/// ```c
+/// typedef void (*rclc_service_callback_with_request_id_t)(
+///     const void *request, rmw_request_id_t *request_id, void *response);
+/// ```
+///
+/// Registered with `rclc_executor_add_service_with_request_id`, which hands it
+/// the caller-owned request and response structs. `request` is fully
+/// deserialised; fill `response`, which is serialised as the reply after the
+/// callback returns. `request_id` (who sent the request: client writer GUID +
+/// client sequence number) is valid for the call only, and all zero when the
+/// backend reported none.
+pub type rclc_service_callback_with_request_id_t = Option<
+    unsafe extern "C" fn(
+        request: *const c_void,
+        request_id: *mut rmw_request_id_t,
+        response: *mut c_void,
+    ),
+>;
+
 /// Service server state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -205,6 +226,14 @@ pub struct rcl_service_t {
     /// `rclc_executor_add_service_raw` binds the freshly-created handle to
     /// this SC after registration.
     pub sched_context_id: crate::executor::rclc_sched_context_id_t,
+    /// Issue 2089 — the type descriptor this service was created with
+    /// (`ROSIDL_GET_SRV_TYPE_SUPPORT(...)`), kept so the typed registration
+    /// `rclc_executor_add_service_with_request_id` can read its request
+    /// deserialiser and response serialiser, exactly as a subscription keeps
+    /// its descriptor for `rclc_executor_add_subscription_with_context`
+    /// (phase-492 W8). NULL until init. The descriptor must outlive the
+    /// service; a generated `__nros_type` is a static.
+    pub type_support: *const rclc_service_type_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ServiceServerInternal,
@@ -223,6 +252,7 @@ impl Default for rcl_service_t {
             node: crate::node::rclc_node_ref_t::none(),
             qos: crate::qos::rclc_qos_t::default(),
             sched_context_id: 0,
+            type_support: core::ptr::null(),
             _internal: ServiceServerInternal::new(),
         }
     }
@@ -361,6 +391,9 @@ pub unsafe extern "C" fn rclc_service_init_with_qos(
         *qos
     };
 
+    // Issue 2089 — the descriptor's codecs, for the typed registration.
+    service.type_support = type_info;
+
     // Service server creation is deferred to `rclc_executor_add_service_raw`,
     // which creates it inside the executor arena.
     // Initialise the internal state (executor_ptr null until registration).
@@ -481,6 +514,7 @@ pub unsafe extern "C" fn rcl_service_fini(
 
     service._internal = ServiceServerInternal::new();
     service.node = crate::node::rclc_node_ref_t::none();
+    service.type_support = core::ptr::null();
     service.state = rclc_service_state_t::RCLC_SERVICE_STATE_SHUTDOWN;
 
     RCL_RET_OK

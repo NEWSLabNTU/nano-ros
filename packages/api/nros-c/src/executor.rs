@@ -3079,12 +3079,99 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw_with_request_id(
     unsafe { add_service_raw(executor, service, callback, context) }
 }
 
-/// Issue 2081 — the two raw service callback shapes one registration body
-/// serves.
+/// Issue 2089 — rclc's `rclc_executor_add_service_with_request_id`, in rclc's
+/// arity and with rclc's callback type:
+///
+/// ```c
+/// static void on_request(const void *req, rmw_request_id_t *request_id, void *res) {
+///     const example_interfaces__srv__AddTwoInts_Request *in = req;
+///     example_interfaces__srv__AddTwoInts_Response *out = res;
+///     out->sum = in->a + in->b;
+/// }
+/// rclc_executor_add_service_with_request_id(&exec, &service, &req, &res, on_request);
+/// ```
+///
+/// so rclc code using it compiles unchanged. The caller owns `request_msg` and
+/// `response_msg` (their strings and sequences wired by `<Msg>__init_in`, as for
+/// `rclc_executor_add_subscription_with_context`). Each request is deserialised
+/// into `request_msg`, the callback runs, and `response_msg` is serialised as
+/// the reply. The codecs come from the descriptor the service was created with
+/// (`rclc_service_init_*` keeps it), which is why this takes no more arguments
+/// than rclc's.
+///
+/// `request_id` is the request's identity as the RMW backend reported it —
+/// client writer GUID and the client's sequence number (zenoh, Cyclone DDS,
+/// XRCE-DDS) — and all zero when it reported none; the same id
+/// [`rclc_executor_add_service_raw_with_request_id`] hands its callback.
+///
+/// rclc's callback returns `void`, so it cannot say "send nothing". The
+/// executor refuses for it instead: a request that does not decode never
+/// reaches the callback, and a response that does not encode (a string or
+/// sequence past its bound) is not sent; both are logged, rate-limited. That
+/// is the loudness the generated typed path keeps (RFC-0089).
+///
+/// # Returns
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL `executor` / `service` /
+///   `request_msg` / `response_msg` / `callback`
+/// * `RCL_RET_UNSUPPORTED` — the service's descriptor carries no request
+///   deserialiser or response serialiser (one built from type names alone);
+///   register it with `rclc_executor_add_service_raw_with_request_id` instead
+/// * otherwise as [`rclc_executor_add_service_raw`]
+///
+/// # Safety
+/// * `executor` and `service` must be valid, initialised objects.
+/// * `request_msg` / `response_msg` must point to writable storage of the
+///   service's request / response type and stay valid for as long as the
+///   service is registered. Nothing here allocates, copies or frees them.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_service_with_request_id(
+    executor: *mut rclc_executor_t,
+    service: *mut rcl_service_t,
+    request_msg: *mut core::ffi::c_void,
+    response_msg: *mut core::ffi::c_void,
+    callback: crate::service::rclc_service_callback_with_request_id_t,
+) -> rcl_ret_t {
+    validate_not_null!(executor, service);
+    let (Some(callback), Some(request_msg), Some(response_msg)) = (
+        callback,
+        core::ptr::NonNull::new(request_msg),
+        core::ptr::NonNull::new(response_msg),
+    ) else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    let Some(type_info) = (*service).type_support.as_ref() else {
+        return RCL_RET_UNSUPPORTED;
+    };
+    let (Some(deserialize), Some(serialize)) =
+        (type_info.request_deserialize, type_info.response_serialize)
+    else {
+        return RCL_RET_UNSUPPORTED;
+    };
+    let callback = ServiceRawCallback::TypedWithRequestId {
+        callback,
+        request_msg,
+        response_msg,
+        deserialize,
+        serialize,
+    };
+    unsafe { add_service_raw(executor, service, callback, core::ptr::null_mut()) }
+}
+
+/// Issue 2081 — the raw service callback shapes one registration body serves;
+/// issue 2089 added rclc's typed request-id registration, whose payload
+/// structs and codecs ride in the arena entry beside its callback.
 #[derive(Clone, Copy)]
 enum ServiceRawCallback {
     Plain(nros_node::RawServiceCallback),
     WithRequestId(nros_node::RawServiceRequestIdCallback),
+    TypedWithRequestId {
+        callback: nros_node::TypedServiceRequestIdCallback,
+        request_msg: core::ptr::NonNull<core::ffi::c_void>,
+        response_msg: core::ptr::NonNull<core::ffi::c_void>,
+        deserialize: nros_node::executor::RawMessageDeserializeFn,
+        serialize: nros_node::RawMessageSerializeFn,
+    },
 }
 
 unsafe fn add_service_raw(
@@ -3179,6 +3266,32 @@ unsafe fn add_service_raw(
                     None,
                     None,
                 ),
+            (
+                ServiceRawCallback::TypedWithRequestId {
+                    callback,
+                    request_msg,
+                    response_msg,
+                    deserialize,
+                    serialize,
+                },
+                node_id,
+            ) => unsafe {
+                rust_exec.register_service_c_typed_with_request_id_sized::<
+                    MESSAGE_BUFFER_SIZE,
+                    MESSAGE_BUFFER_SIZE,
+                >(
+                    node_id,
+                    service_name,
+                    type_str,
+                    type_hash_str,
+                    svc_qos,
+                    request_msg,
+                    response_msg,
+                    deserialize,
+                    serialize,
+                    callback,
+                )
+            },
         };
 
         match result {

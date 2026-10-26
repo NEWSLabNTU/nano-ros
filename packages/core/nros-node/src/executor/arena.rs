@@ -16,9 +16,10 @@ use super::{
     types::{
         InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback,
         RawCancelResponseCallback, RawFeedbackCallback, RawGoalCallback, RawGoalResponseCallback,
-        RawMessageDeserializeFn, RawRequestId, RawResponseCallback, RawResultCallback,
-        RawServiceCallback, RawServiceRequestIdCallback, RawSubscriptionCallback,
-        RawSubscriptionInfoCallback, TypedSubscriptionCallback,
+        RawMessageDeserializeFn, RawMessageSerializeFn, RawRequestId, RawResponseCallback,
+        RawResultCallback, RawServiceCallback, RawServiceRequestIdCallback,
+        RawSubscriptionCallback, RawSubscriptionInfoCallback, TypedServiceRequestIdCallback,
+        TypedSubscriptionCallback,
     },
 };
 use crate::session;
@@ -3976,6 +3977,88 @@ impl RawServiceDispatch for RawServiceRequestIdCallback {
         // The take that just succeeded is the one `request_info` describes.
         let mut id = RawRequestId::from_service_info(&nros_rmw::ServiceTrait::request_info(handle));
         unsafe { self(req, req_len, &mut id, resp, resp_cap, resp_len, context) }
+    }
+}
+
+/// Issue 2089 — rclc's TYPED request-id service registration
+/// (`rclc_executor_add_service_with_request_id`), as a raw entry's dispatch.
+///
+/// Everything rclc's registration takes travels in the entry: the caller-owned
+/// request and response structs and the user's context-less callback, plus the
+/// two codecs from the service's type descriptor. Nothing is held by a
+/// wrapper — the same shape as the typed C subscription entry
+/// ([`SubBufferedTypedCEntry`]), which is why a callback with no `void*
+/// context` needs no trampoline state.
+#[derive(Clone, Copy)]
+pub(crate) struct TypedServiceRequestIdDispatch {
+    pub(crate) callback: TypedServiceRequestIdCallback,
+    pub(crate) request_msg: core::ptr::NonNull<core::ffi::c_void>,
+    pub(crate) response_msg: core::ptr::NonNull<core::ffi::c_void>,
+    pub(crate) deserialize: RawMessageDeserializeFn,
+    pub(crate) serialize: RawMessageSerializeFn,
+}
+
+/// Times a typed C service refused a request it could not decode, or a reply
+/// it could not encode. A static for the reason [`TYPED_DESERIALIZE_FAILURES`]
+/// is one.
+static TYPED_SERVICE_FAILURES: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
+
+/// Report a refused typed service request or reply: first, then every 64th
+/// (rate-limited as [`report_typed_deserialize_failure`]). `nros_log`, never
+/// stdio (issue 0589).
+#[cold]
+fn report_typed_service_failure(what: &str, rc: i32, len: usize) {
+    let n = TYPED_SERVICE_FAILURES.fetch_add(1, portable_atomic::Ordering::Relaxed);
+    if n != 0 && !n.is_multiple_of(64) {
+        return;
+    }
+    nros_log::log_error!(
+        nros_log::get_logger("nros"),
+        "typed service sent NO reply: {what} returned {rc} ({len} bytes). The \
+         callback is not invoked on a request that does not decode, and a reply \
+         that does not encode is not truncated onto the wire. Usual cause: a \
+         string/sequence longer than the struct's declared bound. Refused {} so \
+         far (issue 2089)",
+        n + 1
+    );
+}
+
+impl RawServiceDispatch for TypedServiceRequestIdDispatch {
+    unsafe fn invoke(
+        self,
+        handle: &session::RmwServiceServer,
+        req: *const u8,
+        req_len: usize,
+        resp: *mut u8,
+        resp_cap: usize,
+        resp_len: *mut usize,
+        _context: *mut core::ffi::c_void,
+    ) -> bool {
+        unsafe { *resp_len = 0 };
+        // A half-decoded request is not a request: refuse before the callback
+        // sees it, and send nothing (`false`), as the generated typed path does.
+        let rc = unsafe { (self.deserialize)(req, req_len, self.request_msg.as_ptr()) };
+        if rc != 0 {
+            report_typed_service_failure("request deserialize", rc, req_len);
+            return false;
+        }
+        let mut id = RawRequestId::from_service_info(&nros_rmw::ServiceTrait::request_info(handle));
+        unsafe {
+            (self.callback)(
+                self.request_msg.as_ptr(),
+                &mut id,
+                self.response_msg.as_ptr(),
+            )
+        };
+        let mut written = 0usize;
+        let rc =
+            unsafe { (self.serialize)(self.response_msg.as_ptr(), resp, resp_cap, &mut written) };
+        if rc != 0 {
+            report_typed_service_failure("response serialize", rc, resp_cap);
+            return false;
+        }
+        unsafe { *resp_len = written };
+        true
     }
 }
 
