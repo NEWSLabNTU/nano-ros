@@ -30,6 +30,20 @@
 # once encoded the convention itself, which is exactly the second reader a
 # declared key would have silently bypassed.
 
+# Add PATH to this directory's configure dependencies, CANONICAL and once.
+# A bringup is often named as `${CMAKE_CURRENT_SOURCE_DIR}/../<bringup>`, and
+# the entry already registers the same file by its real path
+# (NanoRosEntry.cmake). Ninja normalizes both spellings into one output of the
+# generated missing-inputs phony rule, and the pinned ninja 1.13 refuses that:
+# "system.toml is defined as an output multiple times".
+function(_nros_rmw_config_depend _path)
+    file(REAL_PATH "${_path}" _real)
+    get_property(_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
+    if(NOT "${_real}" IN_LIST _deps)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_real}")
+    endif()
+endfunction()
+
 # The bringup's default-session RMW file for BACKEND, and how it is carried:
 # `<out>` gets the path ("" when there is none), `<out>_FORMAT` the
 # descriptor's `[rmw.config] format` (`session-json5`, `verbatim-xml`). IMAGE
@@ -65,7 +79,7 @@ function(nros_rmw_user_config_file _out)
     if(COMMAND nros_codegen_tool_reconfigure)
         nros_codegen_tool_reconfigure("${_nros}")
     endif()
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_NRF_BRINGUP}/system.toml")
+    _nros_rmw_config_depend("${_NRF_BRINGUP}/system.toml")
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR "nano-ros: ${_NRF_BRINGUP}/system.toml: ${_e}")
     endif()
@@ -82,7 +96,7 @@ function(nros_rmw_user_config_file _out)
     if(_file)
         # CONFIGURE_DEPENDS is not available for `file(READ)`, so editing the
         # file must re-configure explicitly — the museum-binary class (0196).
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_file}")
+        _nros_rmw_config_depend("${_file}")
     endif()
     set(${_out} "${_file}" PARENT_SCOPE)
     set(${_out}_FORMAT "${_fmt}" PARENT_SCOPE)
