@@ -337,7 +337,7 @@ the way a user makes it, not argued from a grep.
       — 41 example manifests hand-set `ros-humble` on `nros`, so declaring
       `ros_edition = "jazzy"` is a compile error. Remove the lowered form;
       `nros sync` refuses a leaf manifest that names a lowered axis feature.
-- [ ] [Issue 2046](../issues/2046-px4-bridge-ffi-reaches-core-by-repo-path.md)
+- [x] [Issue 2046](../issues/archived/2046-px4-bridge-ffi-reaches-core-by-repo-path.md)
       — the px4 bridge's FFI crate reaches `nros-serdes` by five `..`; name
       it, and pass the root through the generated patch.
 
@@ -388,4 +388,4 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | --- | --- |
 | [#2044](../issues/archived/2044-example-readmes-configure-with-a-retired-root-variable.md) | RESOLVED 2026-10-26. The copy-out instructions every example carries configured with a retired variable and failed. W7. |
 | [#2045](../issues/2045-example-manifests-hand-set-the-ros-edition-feature.md) | A copied-out example cannot take the edition its own `system.toml` declares. W7. |
-| [#2046](../issues/2046-px4-bridge-ffi-reaches-core-by-repo-path.md) | A copy-into-PX4 source only builds in place. W7. |
+| [#2046](../issues/archived/2046-px4-bridge-ffi-reaches-core-by-repo-path.md) | A copy-into-PX4 source only builds in place. W7. |

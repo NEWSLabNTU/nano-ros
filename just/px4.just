@@ -259,12 +259,20 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # marker cannot be appended inline either. Writing the paragraph above
     # BETWEEN the marker and the command pushed it out of range and turned the
     # lane red. Explanations go above the marker, never between it and the call.
+    # issue 2046 — the FFI crate names `nros-serdes` by NAME, like every other
+    # leaf, so the in-tree path comes from the central `[patch.crates-io]` the
+    # toolchain writes, passed with `--config`. A copied-out bridge has no
+    # `../../../../../packages` to walk to.
+    # shellcheck source=scripts/build/cargo.sh
+    source scripts/build/cargo.sh
+    nros_ensure_central_patch
     # profile-literal-ok: symbol fixture: the archive PATH is handed to PX4's
     # make via NROS_PX4_BRIDGE_FFI_ARCHIVE, and PX4 knows nothing about nano-ros
     # profiles — build and path must name the same dir, so both stay pinned.
     NROS_PX4_BRIDGE_GEN="$GEN" cargo build --release \
         --manifest-path "$EXT_DIR/ffi/Cargo.toml" \
-        --target-dir "$EXT_DIR/ffi/target-bridge-ffi"
+        --target-dir "$EXT_DIR/ffi/target-bridge-ffi" \
+        --config "$ROOT/nros-patch.toml"
 
     echo "[3/4] building the nano-ros archives (outward backend $RMW baked in here)"
     # `bridge` is what puts rclc_init_multi / nros_pubsub_bridge_* (the ABI

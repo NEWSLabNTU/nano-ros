@@ -21,7 +21,7 @@ name = "nros_px4_bridge_ffi"
 crate-type = ["staticlib"]
 
 [dependencies]
-nros-serdes = { path = "../../../../../packages/core/nros-serdes", default-features = false }
+nros-serdes = { version = "*", default-features = false }
 
 # This crate is its own workspace root (it lives inside an example tree), so the
 # profile it is built with must be defined here. `panic = "abort"` is required —
