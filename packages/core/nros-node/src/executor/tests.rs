@@ -14662,6 +14662,50 @@ fn argv_p_with_the_wrong_type_keeps_the_default() {
     );
 }
 
+/// Issue 2057 — the overrides a node would receive are listable before any
+/// declaration: one per name, the last one winning, typed with no declared
+/// type to follow, and a `node:` override listed only for that node.
+#[cfg(feature = "param-store")]
+#[test]
+fn argv_overrides_are_listed_per_node_last_winning() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let talker = executor.node_builder("talker").build().unwrap();
+    let listener = executor.node_builder("listener").build().unwrap();
+    install_overrides(
+        &mut executor,
+        &[
+            "prog",
+            "--ros-args",
+            "-p",
+            "a:=1",
+            "-p",
+            "listener:b:=x",
+            "-p",
+            "a:=2",
+            "-p",
+            "listener:a:=2.5",
+        ],
+        "",
+    );
+    // `ParameterValue` has no `PartialEq`; its `Debug` names the variant and
+    // the value, which is what is being asserted.
+    let list = |e: &Executor, n| {
+        e.argv_param_overrides_on(n)
+            .map(|(k, v)| alloc::format!("{k}={v:?}"))
+            .collect::<alloc::vec::Vec<_>>()
+    };
+    assert_eq!(
+        list(&executor, talker),
+        ["a=Integer(2)"],
+        "the last global `a` wins; `listener:` overrides are not the talker's"
+    );
+    assert_eq!(
+        list(&executor, listener),
+        ["b=String(\"x\")", "a=Double(2.5)"],
+        "the listener's own `a` comes last, so it wins over both global ones"
+    );
+}
+
 /// `--params-file`: `/**` reaches every node, a node key only that node, and
 /// nested keys become dotted names; strings, doubles and quoted values type by
 /// the declaration.

@@ -1,0 +1,1 @@
+C++ `NodeParametersInterface::get_parameter_overrides()` lists the `-p` and `--params-file` overrides that apply to a node, typed from their text, so Nav2's `declare_or_get_parameter` ports unchanged (issue 2057).

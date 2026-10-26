@@ -1990,6 +1990,58 @@ pub unsafe extern "C" fn nros_cpp_node_list_params(
     }
 }
 
+/// Enumerate the `-p` / `--params-file` overrides that apply to this node —
+/// rclcpp's `NodeParametersInterface::get_parameter_overrides()` (issue 2057).
+///
+/// `callback` runs once per overridden name, synchronously, with the name and
+/// the typed value as an on-set hook sees a write: the last override of a
+/// name wins, and each text is typed as a declaration with no default types
+/// it (`Executor::argv_param_overrides_on`). The pointers are valid for the
+/// call only. The callback's return value is ignored. `*out_count` receives
+/// the number listed.
+///
+/// An image built without `alloc` has no argv overrides to list (issue 1812),
+/// so it lists none and returns OK.
+///
+/// # Safety
+/// As [`nros_cpp_node_declare_param_bool`]; `callback` must be a valid
+/// function pointer or NULL (count only), and `context` is passed through.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_list_param_overrides(
+    node: *const crate::nros_cpp_node_t,
+    callback: nros_cpp_param_callback_t,
+    context: *mut c_void,
+    out_count: *mut usize,
+) -> nros_cpp_ret_t {
+    #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
+    {
+        let Some((ctx_ref, id)) = (unsafe { node_param_target(node) }) else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        let ctx: &crate::CppContext = &ctx_ref;
+        let mut total = 0usize;
+        #[cfg(feature = "alloc")]
+        for (name, value) in ctx.executor.argv_param_overrides_on(id) {
+            if let Some(cb) = callback {
+                // SAFETY: the caller promised a valid function pointer.
+                let _ = with_param_write(name, &value, |w| unsafe { cb(w, context) });
+            }
+            total += 1;
+        }
+        #[cfg(not(feature = "alloc"))]
+        let _ = (ctx, id, callback, context);
+        if !out_count.is_null() {
+            unsafe { *out_count = total };
+        }
+        NROS_CPP_RET_OK
+    }
+    #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
+    {
+        let _ = (node, callback, context, out_count);
+        NROS_CPP_RET_UNSUPPORTED
+    }
+}
+
 /// The Rust-side hook the store calls, which unpacks `OnSetContext` back into
 /// the C++ function pointer and the user's `void*` and builds the
 /// [`nros_cpp_param_write_t`] on the STACK for the synchronous call.
@@ -2015,6 +2067,24 @@ fn cpp_on_set_trampoline(
     // in. Nothing else writes this slot.
     let cb: RawCb = unsafe { core::mem::transmute::<usize, RawCb>(ctx.b) };
 
+    // SAFETY: the caller promised a valid function pointer and a context that
+    // outlives the registration.
+    with_param_write(name, value, |write| unsafe {
+        cb(write, ctx.a as *mut c_void)
+    })
+}
+
+/// `name` and `value` as the [`nros_cpp_param_write_t`] a C++ callback
+/// reads, built on the STACK and handed to `f` for the duration of the call.
+///
+/// Shared by the on-set hook and the override listing (issue 2057), so the two
+/// cannot disagree about how a value crosses the boundary.
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
+fn with_param_write<R>(
+    name: &str,
+    value: &nros_node::ParameterValue,
+    f: impl FnOnce(&nros_cpp_param_write_t) -> R,
+) -> R {
     // The name and any string value must be NUL-terminated for C++; the store
     // holds `&str`. Both buffers are LOCALS, which is what makes this
     // allocation-free — the callback is synchronous and the doc says the
@@ -2060,9 +2130,7 @@ fn cpp_on_set_trampoline(
             .or_else(|| value.as_double_array().map(<[f64]>::len))
             .unwrap_or(0),
     };
-    // SAFETY: the caller promised a valid function pointer and a context that
-    // outlives the registration.
-    unsafe { cb(&raw const write, ctx.a as *mut c_void) }
+    f(&write)
 }
 
 /// The stack buffer the trampoline NUL-terminates a name or a string value

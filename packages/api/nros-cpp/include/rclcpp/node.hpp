@@ -268,8 +268,13 @@ using NodeWaitablesInterface = NodeInterfaceHandle<4>;
 /// `NodeParametersInterface::SharedPtr p = node->get_node_parameters_interface();
 /// p->has_parameter(name)` compiles as written.
 ///
-/// `get_parameter_overrides()` is absent (issue 2057): the executor applies `-p` and
-/// `--params-file` overrides at declaration and offers no listing of them.
+/// `get_parameter_overrides()` lists the `-p` / `--params-file` overrides
+/// that apply to this node (issue 2057), each typed as a declaration with no
+/// default types its text. Like upstream's it returns a reference to the
+/// node's copy, so two calls return the same map and Nav2's
+/// `get_parameter_overrides().find(n) == get_parameter_overrides().end()`
+/// compares iterators of one map. The copy is re-read at each call and kept
+/// when nothing changed, so a reference stays valid until the overrides do.
 class NodeParametersInterface {
   public:
     using SharedPtr = NodeParametersInterface;
@@ -289,6 +294,7 @@ class NodeParametersInterface {
                                             const D& descriptor);
     inline bool get_parameter(const ::std::string& name, Parameter& out) const;
     inline Parameter get_parameter(const ::std::string& name) const;
+    inline const ::std::map<::std::string, ParameterValue>& get_parameter_overrides() const;
 
   private:
     Node* node_;
