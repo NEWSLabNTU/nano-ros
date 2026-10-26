@@ -71,7 +71,7 @@ phase's. Build speed is phase-489's.
       Linux `SCHED_DEADLINE` throttle half runs where it can (a job with
       `CAP_SYS_NICE`, or a recorded manual run), or RFC-0108 states it is
       unverified.
-- [ ] [#2067](../issues/2067-freertos-level-kernel-slicing-off-not-booted.md): a
+- [x] [#2067](../issues/archived/2067-freertos-level-kernel-slicing-off-not-booted.md): a
       FreeRTOS QEMU level row, C and Rust, asserts `nros: kernel time slicing
       OFF`; a non-level row asserts it absent or ON.
 
@@ -144,4 +144,4 @@ ejection from a cause listed here.
 | [#2069](../issues/2069-out-of-lane-gate-reports-a-timeout-as-a-scope-violation.md) | Filed 2026-10-26. A merge-group gate step turns a load timeout into a scope-order verdict, so a batch is ejected for a cause that is not in the code and the ejection names the wrong fix. |
 | [#2052](../issues/2052-pristine-ament-surface-stale-home-cli.md) | Homed 2026-10-26; it had no active phase. `ci gate`'s pristine-checkout step reaches a stale `~/.nros/bin/nros` through `cmake-ament-surface`, so the gate's verdict depends on the host rather than the code. |
 | [#2066](../issues/2066-linux-sched-deadline-throttle-unverified.md) | Homed 2026-10-26 from archived phase-509. The `SCHED_DEADLINE` throttle needs `CAP_SYS_NICE`, which no lane has, so that half of the level budget is run by nothing. |
-| [#2067](../issues/2067-freertos-level-kernel-slicing-off-not-booted.md) | Homed 2026-10-26 from archived phase-509. No lane boots a FreeRTOS level image and reads its time-slicing line, so the kernel setting is built and never checked. |
+| [#2067](../issues/archived/2067-freertos-level-kernel-slicing-off-not-booted.md) | Homed 2026-10-26 from archived phase-509. No lane boots a FreeRTOS level image and reads its time-slicing line, so the kernel setting is built and never checked. Resolved 2026-10-27: `realtime_tiers_e2e` asserts the line OFF on the C, C++ and Rust level rows, archived. |

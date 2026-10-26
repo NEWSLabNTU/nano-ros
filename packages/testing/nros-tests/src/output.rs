@@ -288,6 +288,18 @@ pub fn tier_dispatch_marker(tier: impl std::fmt::Display) -> String {
     format!("(tier `{tier}` is dispatching)")
 }
 
+/// Issue 2067 -- the FreeRTOS level runners (C `freertos_run_tiers.c`, Rust
+/// `nros-board-freertos` `entry.rs`) print the kernel's
+/// `configUSE_TIME_SLICING` once their levels are spawned:
+/// [`KERNEL_TIME_SLICING_OFF`] for a level image (RFC-0108 D6, issue 2017),
+/// [`KERNEL_TIME_SLICING_ON`] for a kernel that still slices. A single-executor
+/// runner prints neither.
+pub const KERNEL_TIME_SLICING_PREFIX: &str = "nros: kernel time slicing ";
+/// See [`KERNEL_TIME_SLICING_PREFIX`].
+pub const KERNEL_TIME_SLICING_OFF: &str = "nros: kernel time slicing OFF";
+/// See [`KERNEL_TIME_SLICING_PREFIX`]; the runners append "(issue 2017)".
+pub const KERNEL_TIME_SLICING_ON: &str = "nros: kernel time slicing ON";
+
 /// The exact talker log line for sequence value `n`
 /// (`"Publishing: 'Hello World: N'"`).
 pub fn talker_line(n: impl std::fmt::Display) -> String {
