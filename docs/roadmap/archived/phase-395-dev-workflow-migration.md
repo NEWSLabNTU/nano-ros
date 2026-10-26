@@ -941,7 +941,7 @@ about the dev and CI workflow this phase owns.
 | --- | --- | --- |
 | [#0872](../../issues/archived/0872-pr-arm-example-check-needs-nros-sync.md) | phase-396 | the PR/nightly example-check arm still fails on missing generated message bindings, so the lane cannot finish |
 | [#1091](../../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md) | phase-396 | the api-parity ledger is still sorted shards that conflict on insert, the last of #1072's shared-append class |
-| [#1205](../../issues/1205-doc-commit-citations-local-fetch-state.md) | phase-419 | `check-doc-commit-citations` answers "in my object store", not "in this history" |
+| [#1205](../../issues/archived/1205-doc-commit-citations-local-fetch-state.md) | phase-419 | `check-doc-commit-citations` answers "in my object store", not "in this history" |
 | [#0996](../../issues/archived/0996-ci-workflow-audit-tier-promises.md) | phase-413 | the CI workflow audit's findings that remain after phase-413's waves landed |
 | [#1155](../../issues/archived/1155-arch-flags-tests-in-no-lane.md) | phase-413 | `nros-board-common`'s `arch_flags` tests run in no lane |
 

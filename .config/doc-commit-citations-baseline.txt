@@ -2,8 +2,10 @@
 #
 # A RATCHET, not an allowlist: this file may only SHRINK. The gate
 # (`scripts/check-doc-commit-citations.py`) fails when a new dangling citation
-# appears AND when a line here stops offending — so the debt cannot grow and
-# cannot go stale.
+# appears, and reports a line here that stops offending, so the debt cannot
+# grow. A citation resolves only when its commit is in the DEFAULT BRANCH's
+# history (issue 1205): a commit reachable only from a fetched work branch is
+# not landed, and does not retire a line.
 #
 # NOT every entry is a defect, and this is the part to read before "fixing"
 # one. Two classes live here and only the second is debt:
@@ -24,19 +26,8 @@
 # 178 of the 186 dangling occurrences in the tree are there, and an archived
 # record's citations were true when it was written.
 
-# ---- FOREIGN ----------------------------------------------------------------
 
-# phase-474 I14-I16 (`docs/roadmap/phase-474-safety-island-board-findings.md`),
-# added by cdbb9a85b7. The four commits were written in the safety-island
-# repository's nano-ros SUBMODULE checkout, not on any branch of this one:
-# GitHub resolves them only through the fork network (no branch or pull request
-# here contains them, measured 2026-10-12). They become ordinary citations
-# when that work is upstreamed — and if it is rebased on the way, the lines
-# here start offending and the gate says so.
-ef3ae60df
-6ad29e721
-6bb0c6305
-2f001fe0e
+# ---- FOREIGN ----------------------------------------------------------------
 
 # zenoh core, cited by RFC-0082 (`docs/design/0082-a-demonstrable-can-stack.md`).
 # The document says so itself — "That commit is not on ..." — and pins the
@@ -44,66 +35,8 @@ ef3ae60df
 2687c5135
 e5db0ce8a
 
-# phase-311, the rmw-edition matrix. `db91f2bad` is a divergent `heads/main`
-# written by a parallel agent inside a submodule; `0612574f4` is the pointer the
-# superproject records for it. Both are submodule history — forward-only pins
-# are a human decision (CLAUDE.md), and the paragraph exists to describe the
-# divergence, so neither hash can or should be rewritten here.
-db91f2bad
-0612574f4
-
 # ---- DEAD -------------------------------------------------------------------
 
-# `docs/roadmap/archived/phase-359-drop-std-campaign.md`, the four-row table of std
-# symbols and the commit that removed each. The symbol names and issue numbers
-# in the same rows survive; the hashes did not.
-bc6c8dfc6
-10d142a80
-826c4ca91
-adb4c592e
-
-# `docs/issues/1127-live-peer-cells-skip-forever.md` — commits in ANOTHER
-# CHECKOUT. The issue is about a live-peer lane that runs inside the distrobox
-# against a mirror tree at `/mnt/wd/data/projects/nano-ros-box`, and it records
-# where that mirror and its accidental `nano-ros-box-box` sit. Those hashes
-# name commits in those trees, so this repository is correct not to have them —
-# which is the case this file's header calls "another checkout" and the exact
-# thing it exists to hold. `e63d3e11b` shrank the ratchet past them and left
-# `main` red; a ratchet may only shrink where the citation RESOLVES, and these
-# never will. `9c0702322` restored the pair PARTIALLY — `ea9fbfae9` came back
-# and `d1d88f660`, the mirror's own HEAD named in the same sentence, did not,
-# so `main` stayed red for the half that was still missing. Both belong here:
-# the comment above says "those hashes", plural, and always meant both.
-#
-# DO NOT delete `d1d88f660` because a local run reported it stale. It is the
-# mirror tree's HEAD, and that tree is a nano-ros checkout, so the hash also
-# names a commit on `origin/work/1055-box-sync-tracked-source` — an unmerged
-# branch. A clone that has fetched that branch resolves it and asks for this
-# line; a fresh clone and CI do not, and deleting it makes the citation in
-# issue 1127 go NEW-dangling there. That asymmetry is issue 1205, still open:
-# the gate resolves against `rev-list --all`, which includes fetched remote
-# branches, rather than against ancestry of the default branch. Before
-# retiring any line here, check that the commit is an ancestor of
-# `origin/main`; for this one it is NOT.
-d1d88f660
-ea9fbfae9
-
-# `docs/roadmap/phase-453-codegen-followups-handoff.md`, the "one rescue" row.
-# `a270ceb3e` is the only fix on file for issue 1039 and it lives on
-# `wip/zenoh-linux-test`, a branch that was never merged — the doc's own
-# sentence says so, and says the work was re-derived onto main on
-# `fix/1039-nuttx-conforming-bool`. So the commit is GENUINELY ELSEWHERE, which
-# is the case this baseline exists for, and the citation is load-bearing: it is
-# how the next person finds the original if the re-derivation is ever doubted.
-#
-# Not added by the branch that carries this line — the gate is red on `main`
-# itself (measured on a clean `origin/main` worktree), and `pre-push` runs it,
-# so every branch inherits the refusal. Same asymmetry as `d1d88f660` above:
-# a clone that has fetched that branch resolves the hash and needs no entry.
-# Remove this when `wip/zenoh-linux-test` is deleted or merged.
-a270ceb3e
-
-# FOREIGN. issue 1802 names the zenoh-pico SUBMODULE pin it was measured at;
-# the commit is in jerry73204/zenoh-pico, never here. 10 characters, so it
-# surfaced when the citation width widened to 9-10 (2026-10-12).
-199e611fd5
+# None. Pruned 2026-10-26 (issue 1205): thirteen entries whose citing lines had
+# left the live documents (their phases and issues were archived), and
+# `d1d88f660`, whose one live citation was issue 1205 itself.

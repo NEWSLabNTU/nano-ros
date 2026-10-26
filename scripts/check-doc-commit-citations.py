@@ -113,32 +113,53 @@ def citations(files):
     return found
 
 
-def resolve(hashes):
-    """The subset of `hashes` naming a commit REACHABLE from a ref here.
+def default_branch_ref():
+    """The ref whose history a citation must be in: the default branch.
 
-    Reachable, not merely present. `git cat-file` answers for any object the
-    object store holds, INCLUDING unreachable ones -- a commit left behind by a
-    rebase, or one written by another checkout that shares this store. On a host
-    where a `ros2` distrobox is a second nano-ros checkout on the same store,
-    three hashes declared FOREIGN in the baseline (`ros2` tree states cited by
-    issues 1127 and 1137) answered "commit" and the gate demanded their baseline
-    entries be deleted. Deleting them is exactly wrong: on a fresh clone and in
-    CI those objects do not exist, so the citations go unresolvable and the
-    baseline is what keeps the gate green. The gate was asking for a change that
-    would break the thing it guards, and it asked only on that host.
+    Issue 1205. `origin/HEAD` names it when the clone recorded one, else
+    `origin/main`; a checkout with neither (no remote at all) falls back to
+    `HEAD`, which is the only history it has.
+    """
+    for ref in ("refs/remotes/origin/HEAD", "refs/remotes/origin/main"):
+        r = subprocess.run(["git", "-C", ROOT, "rev-parse", "--verify", "--quiet",
+                            ref + "^{commit}"], capture_output=True, text=True)
+        if r.returncode == 0:
+            return ref
+    return "HEAD"
 
-    Reachability is also the property the gate's own prose claims to check --
-    "a short hash is invalidated by any rebase of the branch it names". An
-    unreachable commit IS the post-rebase state.
 
-    One `rev-list --all` for the whole set rather than a process per hash: 1 446
-    of them is 1 446 forks otherwise, and this gate is on the fast line.
-    Citations are a fixed 9 hex digits (see CITATION), so a prefix set is an
-    exact test rather than an abbreviation guess.
+def resolve(hashes, ref=None):
+    """The subset of `hashes` naming a commit in the DEFAULT BRANCH's history.
+
+    Reachable from the default branch, not merely present and not reachable
+    from any ref. Two wrong answers came before this one:
+
+    * `git cat-file` answers for any object the store holds, INCLUDING
+      unreachable ones -- a commit left behind by a rebase, or one written by
+      another checkout sharing this store (a `ros2` distrobox here). The gate
+      demanded FOREIGN baseline entries be deleted, only on that host.
+    * `git rev-list --all` fixed that and kept the other half (issue 1205): it
+      walks every ref, so a fetched PR branch or another agent's work branch
+      makes its commits resolve. The gate then reported baseline entries stale
+      because this clone had fetched an unmerged branch, and a citation of a
+      PR's OWN commits read green on the PR, then dangled the moment the
+      merge queue rebased them server-side.
+
+    The default branch is the question the gate means to ask. A commit once on
+    `main` stays reachable (the `main-rules` ruleset forbids force-push and
+    deletion), and a commit only on a work branch is not landed. Measured at
+    the switch: of the live citations, the only ones that change verdict are
+    already baselined (`d1d88f660`, `a270ceb3e`), each reachable here only
+    through a fetched work branch.
+
+    One `rev-list` for the whole set rather than a process per hash: this gate
+    is on the fast line. Citations are a fixed 9 or 10 hex digits (see
+    CITATION), so a prefix set is an exact test rather than an abbreviation
+    guess.
     """
     if not hashes:
         return set()
-    r = subprocess.run(["git", "-C", ROOT, "rev-list", "--all"],
+    r = subprocess.run(["git", "-C", ROOT, "rev-list", ref or default_branch_ref()],
                        capture_output=True, text=True)
     revs = r.stdout.split()
     reachable = {line[:9] for line in revs} | {line[:10] for line in revs}
@@ -251,9 +272,12 @@ def self_test():
     """Prove the gate can fail, on synthetic input rather than on the tree."""
     import tempfile
 
-    real = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=9", "HEAD"],
-                          capture_output=True, text=True).stdout.strip()
-    real10 = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=10", "HEAD"],
+    # The default branch's tip, not HEAD: on a work branch or a PR's merge
+    # commit HEAD is not landed, and issue 1205's rule says it must not resolve.
+    base = default_branch_ref()
+    real = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=9", base],
+                          capture_output=True, text=True).stdout.strip()[:9]
+    real10 = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=10", base],
                             capture_output=True, text=True).stdout.strip()[:10]
     dead = "0123456789"[:9]          # not a commit, and never will be
     # An object this store HOLDS and no ref REACHES -- what a rebase leaves
@@ -280,6 +304,13 @@ def self_test():
         ("bare hex outside backticks is ignored",
          f"see {dead} for it\n", False),
     ]
+    # Issue 1205 -- a commit that is in the repository but not in the base
+    # branch's history (what a fetched PR branch carries). The base tip is not
+    # in its parent's history, so judged against the parent it must fail. Only
+    # when the tip has a parent here.
+    parent = subprocess.run(["git", "-C", ROOT, "rev-parse", "--verify", "--quiet",
+                             base + "~1^{commit}"], capture_output=True, text=True)
+    off_base = parent.stdout.strip() if parent.returncode == 0 else None
     if unreachable:
         # Only when `commit-tree` actually produced one -- a read-only object
         # store cannot, and a gate must not fail because it could not build its
@@ -303,6 +334,17 @@ def self_test():
                 print(f"  self-test FAIL: {name} -> fails={got_fail}, "
                       f"want {want_fail}")
                 bad += 1
+
+    if off_base:
+        got = resolve([real], ref=off_base)
+        if got:
+            print("  self-test FAIL: a commit outside the base branch's history "
+                  "resolved (issue 1205: a fetched branch must not land it)")
+            bad += 1
+        if resolve([real], ref=base) != {real}:
+            print("  self-test FAIL: the base tip does not resolve against its own "
+                  "history")
+            bad += 1
 
     # The ratchet's own control: a stale entry must be reported, or the
     # baseline silently becomes an allowlist.

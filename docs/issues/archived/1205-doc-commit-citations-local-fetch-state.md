@@ -3,13 +3,14 @@ id: 1205
 title: "`check-doc-commit-citations` resolves hashes against whatever the local
   clone has FETCHED, so a fetched PR branch makes it demand the removal of
   baseline entries every other clone still needs"
-status: open
+status: resolved
+resolved: 2026-10-26
 type: bug
 area: [ci, docs]
 related: [1178, 0359, phase-419, phase-395, phase-516]
 ---
 
-**Home: [phase-516](../roadmap/phase-516-low-severity-issues-with-no-home.md) W3** since 2026-10-25. Before that, it stood on its own from 2026-10-24, when [phase-395](../roadmap/archived/phase-395-dev-workflow-migration.md) was archived with every remaining wave either landed or deliberately not shipped. Before that, re-homed 2026-10-12 from phase-419, which is archived.
+**Home: [phase-516](../../roadmap/phase-516-low-severity-issues-with-no-home.md) W3** since 2026-10-25. Before that, it stood on its own from 2026-10-24, when [phase-395](../../roadmap/archived/phase-395-dev-workflow-migration.md) was archived with every remaining wave either landed or deliberately not shipped. Before that, re-homed 2026-10-12 from phase-419, which is archived.
 
 ## What
 
@@ -149,3 +150,26 @@ Closing the class therefore needs both halves:
 
 Half 2 without half 1 still misses this defect (on a PR the citation resolves);
 half 1 without half 2 never runs. Neither is large.
+
+## Resolution
+
+Both halves are in.
+
+1. **Ancestry of the default branch.** `resolve()` walks `git rev-list` of
+   `origin/HEAD`, else `origin/main`, else `HEAD` for a checkout with no
+   remote, instead of `rev-list --all`. A commit reachable only from a fetched
+   work branch is not landed, so it no longer retires a baseline line, and a
+   doc citing its PR's own commits is red on the PR rather than after the
+   queue rebases them. The self-test gained the case: `HEAD` judged against
+   `HEAD~1`'s history must not resolve. Measured on the switch: one verdict
+   changed, `d1d88f660`, from "resolves" to "dangling, baselined".
+2. **A verdict in CI.** Already landed before this fix: `gate.yml`'s "Fetch
+   commit history for the citation gates" step unshallows the base branch with
+   `--filter=tree:0` (commits only, about 2 s), so the gate answers in CI
+   instead of reporting NOT VERIFIED.
+
+The baseline went from 16 entries to 2 (RFC-0082's two zenoh core commits).
+Thirteen had no live citation left, because the documents citing them were
+archived, so they were stale on `main` itself. `d1d88f660`'s only live
+citation was this issue, which is now archived. The second finding (the
+mis-classified `FOREIGN` row) went with it: the row is gone.

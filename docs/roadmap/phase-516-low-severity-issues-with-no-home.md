@@ -1,6 +1,6 @@
 # Phase 516 — Open issues whose phases were archived
 
-**Status (2026-10-25). Open; W6 and W7 done.** Each item below is one open
+**Status (2026-10-26). Open; W3, W6 and W7 done.** Each item below is one open
 issue whose phase was archived while it stayed open. None is a red in a gating
 or nightly lane. W5 is parked until ESP32 is revived.
 
@@ -43,7 +43,7 @@ migrate in one commit against a quiet tree.
 conflict, `just check api-parity` is green, and its `--self-test` still rejects
 a row in the wrong stage.
 
-### W3 — `check-doc-commit-citations` reads history, not the object store ([issue 1205](../issues/1205-doc-commit-citations-local-fetch-state.md))
+### W3 — `check-doc-commit-citations` reads history, not the object store ([issue 1205](../issues/archived/1205-doc-commit-citations-local-fetch-state.md))
 
 The gate resolves a hash against whatever the clone has fetched. A fetched PR
 branch therefore makes it demand removal of baseline entries that every other
@@ -52,6 +52,11 @@ branch, keep the shallow-clone skip, and give the gate a verdict in CI.
 
 **Done when** a run with a fetched PR branch and a run without one agree, and
 the issue's second measurement has a lane that runs the gate.
+
+**Done (2026-10-26).** The gate resolves against the default branch's history,
+so a fetched branch changes no verdict. CI already unshallows the base branch
+for it (`gate.yml`, commits only). The baseline shrank from 16 entries to 2.
+Issue 1205 resolved.
 
 ### W4 — the seven hand-set sizing knobs ([issue 1808](../issues/1808-sizing-knobs-with-no-static-derivation.md))
 
@@ -105,7 +110,7 @@ quantization warning. Issue 2050 resolved.
 | --- | --- | --- |
 | [0506](../issues/0506-transport-band-unbounded-preemption.md) | W1 | unrated |
 | [1091](../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md) | W2 | unrated |
-| [1205](../issues/1205-doc-commit-citations-local-fetch-state.md) | W3 | unrated |
+| [1205](../issues/archived/1205-doc-commit-citations-local-fetch-state.md) | W3 | unrated |
 | [1808](../issues/1808-sizing-knobs-with-no-static-derivation.md) | W4 | low |
 | [1823](../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | W5 | low |
 | [2049](../issues/archived/2049-cpp-levels-runner-info-lines-logged-as-errors.md) | W6 | low |
