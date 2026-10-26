@@ -291,13 +291,15 @@ What a workspace image still has to state:
   publishes gets the default bound, which can make one message megabytes.
   Bound it in `nros-codegen.toml`, for example
   `[packages."diagnostic_msgs"] sequence = 4` and `string = 64`.
-- **Parameter capacities and the app stack.** At the default capacities one
-  parameter declare needs ~70 KiB of stack
-  ([issue 2070](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2070-param-declare-stack-cost.md)).
-  State `[knobs.params]` (`max_string_value_len`, `max_array_len`,
-  `max_byte_array_len`) for what the node declares, and on FreeRTOS raise the
-  app stack with `set(NROS_FREERTOS_APP_STACK_KB <KiB>)` in the root. The boot
-  line `app task stack peak <used> of <total>` says what it needed.
+- **Parameter capacities and the app stack.** The default capacities fit:
+  both phase-518 nodes boot on FreeRTOS's default 64 KiB app stack, at peaks of
+  12.5 and 16.8 KiB
+  ([issue 2070](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2070-param-declare-stack-cost.md)).
+  `[knobs.params]` (`max_string_value_len`, `max_array_len`,
+  `max_byte_array_len`) still shrinks the parameter store's RAM. If a node
+  needs more stack, raise it with `set(NROS_FREERTOS_APP_STACK_KB <KiB>)` in
+  the root. The boot line `app task stack peak <used> of <total>` says what it
+  needed.
 - **The heap.** On FreeRTOS, `NROS_FREERTOS_HEAP_KB` on `freertos_config`; on
   Zephyr, `[image.<id>.knobs.zephyr] heap_size`. A Zephyr heap that runs out
   while a subscription is created reports `ConnectionFailed`, not an

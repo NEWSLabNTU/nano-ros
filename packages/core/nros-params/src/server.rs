@@ -762,6 +762,14 @@ impl<'s> ParameterServer<'s> {
         self.declare_with_descriptor(node, name, value, None)
     }
 
+    /// [`declare`](Self::declare), borrowing the value (issue 2070): the
+    /// spelling a large value should take, since it is copied into its slot
+    /// once instead of through every frame.
+    #[must_use]
+    pub fn declare_ref(&mut self, node: NodeKey, name: &str, value: &ParameterValue) -> bool {
+        self.try_declare_ref(node, name, value, None).is_ok()
+    }
+
     /// Declare a new parameter with value and descriptor on `node`
     ///
     /// The descriptor provides metadata like description, constraints, and read-only flag.
@@ -806,6 +814,28 @@ impl<'s> ParameterServer<'s> {
         value: ParameterValue,
         descriptor: Option<ParameterDescriptor>,
     ) -> Result<(), DeclarationError> {
+        self.try_declare_ref(node, name, &value, descriptor)
+    }
+
+    /// [`try_declare_with_descriptor`](Self::try_declare_with_descriptor),
+    /// borrowing the value — issue 2070. THE declare path; the by-value
+    /// spellings forward here.
+    ///
+    /// A [`ParameterValue`] is as large as its largest variant (`StringArray`:
+    /// `MAX_ARRAY_LEN` x `MAX_STRING_VALUE_LEN`, ~8 KiB at the defaults), and
+    /// the by-value path moved it through every frame and built it again in
+    /// [`Parameter::new`] and in the slot's `Some(..)`: ~57 KiB of stack for
+    /// one `declare_parameter<double>` on aarch64, ~67 KiB on Cortex-M3,
+    /// which overflowed a 64 KiB RTOS app stack into the kernel's globals.
+    /// Here the slot is filled with an empty value and the caller's is copied
+    /// into it once, in place ([`ParameterValue::assign_from`]).
+    pub fn try_declare_ref(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: &ParameterValue,
+        descriptor: Option<ParameterDescriptor>,
+    ) -> Result<(), DeclarationError> {
         // Check if already exists
         if self.find_index(node, name).is_some() {
             return Err(DeclarationError::AlreadyDeclared);
@@ -813,7 +843,7 @@ impl<'s> ParameterServer<'s> {
 
         // Issue 1150 — an ill-formed range, or a default the range rejects,
         // is refused at declaration, as upstream. Same predicate as every set.
-        Self::declaration_consistency(descriptor.as_ref(), &value)?;
+        Self::declaration_consistency(descriptor.as_ref(), value)?;
 
         // Find an empty slot
         let slot = match self.find_empty_slot() {
@@ -821,18 +851,29 @@ impl<'s> ParameterServer<'s> {
             None => return Err(DeclarationError::StorageFull),
         };
 
-        // Create the parameter
-        let param = match Parameter::new(name, value) {
-            Some(p) => p,
-            None => return Err(DeclarationError::NameTooLong),
-        };
+        // The name is checked before the slot is touched, so a refusal
+        // leaves the table as it was.
+        let mut stored_name = String::new();
+        if stored_name.push_str(name).is_err() {
+            return Err(DeclarationError::NameTooLong);
+        }
 
         self.note_descriptor(descriptor.as_ref());
-        self.table.entries[slot] = Some(ParameterEntry {
+        // Issue 2070 -- the slot is written in place and the value copied in
+        // once: an entry built on the stack and moved in is a second ~8 KiB
+        // `ParameterValue` in this frame.
+        let cell = &mut self.table.entries[slot];
+        *cell = Some(ParameterEntry {
             node,
-            param,
+            param: Parameter {
+                name: stored_name,
+                value: ParameterValue::NotSet,
+            },
             descriptor,
         });
+        if let Some(entry) = cell {
+            entry.param.value.assign_from(value);
+        }
         self.count += 1;
         self.note_event(node, ParameterEventKind::New, name);
         Ok(())
@@ -1687,6 +1728,74 @@ mod tests {
     /// phase-426 W1 — the node these single-node tests are about.
     const NODE: NodeKey = NodeKey::PRIMARY;
     use crate::types::{ParameterDescriptor, ParameterType};
+
+    // ── issue 2070: a borrowed declaration stores exactly what it was lent ──
+
+    fn every_variant() -> std::vec::Vec<ParameterValue> {
+        let mut strings = ParameterValue::StringArray(Default::default());
+        if let ParameterValue::StringArray(v) = &mut strings {
+            for e in ["a", "", "frame_id"] {
+                let mut s = heapless::String::new();
+                s.push_str(e).unwrap();
+                v.push(s).unwrap();
+            }
+        }
+        std::vec![
+            ParameterValue::Bool(true),
+            ParameterValue::Integer(-7),
+            ParameterValue::Double(2.5),
+            ParameterValue::from_string("base_link").unwrap(),
+            ParameterValue::from_byte_array(&[1, 2, 3]).unwrap(),
+            ParameterValue::from_bool_array(&[true, false]).unwrap(),
+            ParameterValue::from_integer_array(&[4, 5, 6]).unwrap(),
+            ParameterValue::from_double_array(&[0.5, -1.0]).unwrap(),
+            strings,
+        ]
+    }
+
+    /// `declare_ref` copies the value into its slot once, and what the slot
+    /// then holds is the value it was lent, for every variant.
+    #[test]
+    fn a_borrowed_declaration_stores_the_value_it_was_lent() {
+        let values = every_variant();
+        let mut storage = ParameterStorage::<16>::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        for (i, v) in values.iter().enumerate() {
+            let name = std::format!("p{i}");
+            assert!(server.declare_ref(NODE, &name, v));
+            assert_eq!(
+                std::format!("{:?}", server.get(NODE, &name).unwrap()),
+                std::format!("{v:?}")
+            );
+        }
+        assert_eq!(server.len(NODE), values.len());
+        // A second declaration of a name is refused and leaves the first.
+        assert!(!server.declare_ref(NODE, "p0", &ParameterValue::Integer(1)));
+        assert!(matches!(
+            server.get(NODE, "p0"),
+            Some(ParameterValue::Bool(true))
+        ));
+    }
+
+    /// `assign_from` replaces whatever the destination held, including a
+    /// different variant and a longer value of the same one.
+    #[test]
+    fn assign_from_replaces_any_previous_value() {
+        let values = every_variant();
+        for dst_init in &values {
+            for src in &values {
+                let mut dst = dst_init.clone();
+                dst.assign_from(src);
+                assert_eq!(std::format!("{dst:?}"), std::format!("{src:?}"));
+            }
+        }
+        let mut long = ParameterValue::from_integer_array(&[1, 2, 3, 4]).unwrap();
+        long.assign_from(&ParameterValue::from_integer_array(&[9]).unwrap());
+        assert_eq!(
+            std::format!("{long:?}"),
+            std::format!("{:?}", ParameterValue::from_integer_array(&[9]).unwrap())
+        );
+    }
 
     // ── phase-446 F2: a truncated description is reported once ──
 

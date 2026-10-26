@@ -163,6 +163,56 @@ pub enum ParameterValue {
 }
 
 impl ParameterValue {
+    /// Issue 2070 — copy `src` into `self` in place.
+    ///
+    /// `*self = src.clone()` builds the clone on the stack first, and a
+    /// `ParameterValue` is as large as its largest variant (~8 KiB at the
+    /// default capacities). This switches `self` to `src`'s variant with an
+    /// empty payload and copies the payload element by element, so no
+    /// full-size temporary exists. Both values share the capacities, so every
+    /// copy fits.
+    pub fn assign_from(&mut self, src: &ParameterValue) {
+        macro_rules! fill {
+            ($variant:ident, $dst:ident, $body:expr) => {{
+                if !matches!(self, Self::$variant(_)) {
+                    *self = Self::$variant(Default::default());
+                }
+                if let Self::$variant($dst) = self {
+                    $dst.clear();
+                    $body;
+                }
+            }};
+        }
+        match src {
+            Self::NotSet => *self = Self::NotSet,
+            Self::Bool(v) => *self = Self::Bool(*v),
+            Self::Integer(v) => *self = Self::Integer(*v),
+            Self::Double(v) => *self = Self::Double(*v),
+            Self::String(v) => fill!(String, d, {
+                let _ = d.push_str(v);
+            }),
+            Self::ByteArray(v) => fill!(ByteArray, d, {
+                let _ = d.extend_from_slice(v);
+            }),
+            Self::BoolArray(v) => fill!(BoolArray, d, {
+                let _ = d.extend_from_slice(v);
+            }),
+            Self::IntegerArray(v) => fill!(IntegerArray, d, {
+                let _ = d.extend_from_slice(v);
+            }),
+            Self::DoubleArray(v) => fill!(DoubleArray, d, {
+                let _ = d.extend_from_slice(v);
+            }),
+            Self::StringArray(v) => fill!(StringArray, d, {
+                for e in v {
+                    let mut s = String::new();
+                    let _ = s.push_str(e);
+                    let _ = d.push(s);
+                }
+            }),
+        }
+    }
+
     /// Get the parameter type for this value
     pub fn param_type(&self) -> ParameterType {
         match self {

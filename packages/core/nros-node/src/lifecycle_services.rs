@@ -718,19 +718,48 @@ pub struct LifecycleServiceServers {
 }
 
 impl LifecycleServiceServers {
-    pub(crate) fn new(
-        change_state: LcSrv<ChangeState>,
-        get_state: LcSrv<GetState>,
-        get_available_states: LcSrv<GetAvailableStates>,
-        get_available_transitions: LcSrv<GetAvailableTransitions>,
-        get_transition_graph: LcSrv<GetAvailableTransitions>,
-    ) -> Self {
-        Self {
-            change_state,
-            get_state,
-            get_available_states,
-            get_available_transitions,
-            get_transition_graph,
+    /// The five servers, built IN their allocation, from `handles` in this
+    /// order: `change_state`, `get_state`, `get_available_states`,
+    /// `get_available_transitions`, `get_transition_graph`.
+    ///
+    /// Issue 2070 -- building them by value and then boxing them put all ten
+    /// buffers on the caller's stack: `register_lifecycle_services_named` had
+    /// a 92,160-byte frame on Cortex-M3 (Nav2's `velocity_smoother`, buffers
+    /// sized 9,216 by its parameters), so a lifecycle node needed a 128 KiB
+    /// app stack on FreeRTOS before it declared anything. Here the largest
+    /// stack temporary is a handle.
+    ///
+    /// `None` when the allocation fails -- the caller has a refusal to return
+    /// (issue 1551's rule for entity-creation allocations).
+    pub(crate) fn try_new_boxed(
+        handles: [crate::session::RmwServiceServer; 5],
+    ) -> Option<Box<Self>> {
+        /// Safety: `p` is valid for writes and every field of `*p` is written
+        /// exactly once here.
+        unsafe fn init<Svc: nros_core::RosService>(
+            p: *mut LcSrv<Svc>,
+            handle: crate::session::RmwServiceServer,
+        ) {
+            unsafe {
+                core::ptr::addr_of_mut!((*p).handle).write(handle);
+                core::ptr::addr_of_mut!((*p).req_buffer).write_bytes(0, 1);
+                core::ptr::addr_of_mut!((*p).reply_buffer).write_bytes(0, 1);
+                core::ptr::addr_of_mut!((*p)._phantom).write(core::marker::PhantomData);
+            }
+        }
+        let mut uninit = nros_rmw::fallible::try_box_uninit::<Self>()?;
+        let p = uninit.as_mut_ptr();
+        let [cs, gs, gas, gat, gtg] = handles;
+        // Safety: `try_box_uninit` gives a correctly-sized, correctly-aligned
+        // allocation for exactly this type, and the five `init` calls write
+        // every field of every server once before `assume_init` observes it.
+        unsafe {
+            init(core::ptr::addr_of_mut!((*p).change_state), cs);
+            init(core::ptr::addr_of_mut!((*p).get_state), gs);
+            init(core::ptr::addr_of_mut!((*p).get_available_states), gas);
+            init(core::ptr::addr_of_mut!((*p).get_available_transitions), gat);
+            init(core::ptr::addr_of_mut!((*p).get_transition_graph), gtg);
+            Some(uninit.assume_init())
         }
     }
 
