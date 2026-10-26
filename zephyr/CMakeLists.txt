@@ -60,6 +60,11 @@ if(CONFIG_NROS)
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_cargo_build.cmake)
 
+# Issue 2077 -- RFC-0045's `.nros_boot_config` blob is placed in rodata here,
+# not left an orphan section: as one it landed in the S32K344's 0x100-byte
+# IVT_HEADER region. See nros_boot_config.ld.
+zephyr_linker_sources(RODATA ${CMAKE_CURRENT_LIST_DIR}/nros_boot_config.ld)
+
 # RFC-0071 D9 (phase-506 W4b) — the backend reaches `nros-c` / `nros-cpp`'s
 # staticlib through a generated IMAGE crate (cmake/NanoRosImageCrate.cmake),
 # exactly as on the cmake road: the API crate is built without its backend
@@ -258,6 +263,14 @@ if(CONFIG_NET_SOCKETS)
         # Phase 200.1 — RMW-independent network-wait (compiled for every RMW; was
         # mis-filed as zpico_zephyr_wait_network in the zenoh-only zpico_zephyr.c).
         ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net_wait.c
+    )
+else()
+    # Issue 2078 -- `nros_platform_zephyr_wait_network` is still DEFINED without
+    # a stack: the Rust entry (`nros::main!`) calls it unconditionally, and a
+    # serial-only Rust image did not link. With no IP stack there is nothing to
+    # wait for, so this one returns 0 at once.
+    zephyr_library_sources(
+        ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/net_wait_none.c
     )
 endif()
 

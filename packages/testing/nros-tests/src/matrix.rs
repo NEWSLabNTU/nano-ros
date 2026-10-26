@@ -1857,6 +1857,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ("zenoh_archive_symbols", NonCell::CompileCheck),
     ("zenoh_header_parity", NonCell::CompileCheck),
     ("zephyr_leaf_staleness", NonCell::Static),
+    ("zephyr_link_layout", NonCell::CompileCheck),
     ("zephyr_prjconf_requirements", NonCell::Static),
     ("zephyr_self_pkg", NonCell::CompileCheck),
     (

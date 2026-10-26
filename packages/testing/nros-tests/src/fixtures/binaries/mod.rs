@@ -5438,6 +5438,29 @@ pub fn build_zephyr_cortex_m_c_boot_report() -> TestResult<PathBuf> {
     )
 }
 
+/// Issue 2078 -- the `build-cortex-m-rust-talker-serial-zenoh` row's conf list,
+/// relative to the talker as the row states it: the board tail is listed by the
+/// row so the serial delta can merge after it.
+pub const ZEPHYR_CORTEX_M_SERIAL_CONF: &str = "prj.conf;prj-zenoh.conf;\
+     ../../../../cmake/zephyr/mps2-an385.conf;../../../../cmake/zephyr/mps2-an385-serial.conf";
+
+/// Issue 2078 -- the `examples/zephyr/rust/talker` image for `mps2_an385` with
+/// NO IP stack (zenoh over a UART). A link witness: the test reads its ELF.
+pub fn build_zephyr_cortex_m_rust_serial_talker() -> TestResult<PathBuf> {
+    let leaf = "examples/zephyr/rust/talker";
+    let binary_path =
+        zephyr_build_root().join("build-cortex-m-rust-talker-serial-zenoh/zephyr/zephyr.elf");
+    require_prebuilt_binary_fresh_zephyr(
+        &binary_path,
+        ZephyrLeafSource {
+            dir: leaf,
+            lang: Some("rust"),
+            rmw: Some(Rmw::Zenoh.cmake_value()),
+            conf_files: Some(ZEPHYR_CORTEX_M_SERIAL_CONF),
+        },
+    )
+}
+
 /// Phase 168.4 — collapsed-shape Zephyr C / C++ example resolver.
 /// `lang` is `"c"` or `"cpp"`. Mirrors the Rust resolver.
 pub fn build_zephyr_cmake_example_rmw(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {

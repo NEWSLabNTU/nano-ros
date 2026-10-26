@@ -452,7 +452,13 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
             native_sim*) conf_tail="$native_sim_nsos_conf" ;;
             *) conf_tail="" ;;
         esac
-        if [ -n "$conf_tail" ]; then
+        # Issue 2078 -- a row that LISTS the board tail places it itself, so a
+        # delta that must merge after it (`mps2-an385-serial.conf`, which turns
+        # the tail's networking off) can follow it. Appending it again would
+        # merge it last and switch the stack back on.
+        if [ -n "$conf_tail" ] && [[ ";$row_conf_files;" == *"/${conf_tail#"$nros_root"/};"* ]]; then
+            conf_files="$row_conf_files"
+        elif [ -n "$conf_tail" ]; then
             conf_files="$row_conf_files;$conf_tail"
         else
             conf_files="$row_conf_files"
