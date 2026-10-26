@@ -330,6 +330,30 @@ pub fn render(
         }
     }
 
+    // Issue 2086 -- a leaf that takes its entities from its census states its
+    // parameters there too. The census is a declaration like `features`, so a
+    // parameter it recorded sets the store's axis, and with it the heap's
+    // default: phase-518's node 1 halted at boot with `HEAP EXHAUSTED` on the
+    // 64 KiB default before this row existed. A `features` row already
+    // stating the axis wins, and says so once.
+    if leaf.entities_from_census()
+        && !out
+            .lines
+            .iter()
+            .any(|l| l.symbol == "CONFIG_NROS_PARAM_STORE")
+        && syms.get("NROS_PARAM_STORE").is_some()
+        && let Some(dir) = leaf.origin_path().parent()
+        && let Some(n) = crate::leaf_entity_env::census_parameter_count(dir)
+        && n > 0
+    {
+        push(
+            &mut out,
+            "NROS_PARAM_STORE",
+            "y".to_string(),
+            format!("its census records {n} parameter(s)"),
+        )?;
+    }
+
     // The ROS domain. `leaf_system` already resolved image > `[defaults]` >
     // `[system]`; without this row a stated domain reached no Zephyr image
     // and every one built on the Kconfig default — the D10 promise broken for

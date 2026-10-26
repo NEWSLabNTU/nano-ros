@@ -42,6 +42,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosKnobEnv.cmake")
 # entry (writer) and `_nros_load_west_sizing_descriptor` (reader) name. FILE
 # scope, same reason as the three above.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosSizingDescriptor.cmake")
+
 # Issues 1015 + 1033 / RFC-0100 D7 -- `_nros_c_array_pool_floor`, the ONE CMake
 # spelling of "raise a derived demand to what a fixed C array can be sized to".
 # It lives in `cmake/` rather than here because phase-454 W6.d gave it a second
@@ -436,18 +437,23 @@ endfunction()
 function(_nros_west_leaf_sizing)
     set(NROS_WEST_LEAF_DESCRIPTOR "" CACHE INTERNAL
         "issue 1662: a standalone Zephyr Rust leaf's sizing descriptor")
-    if(NOT EXISTS "${APPLICATION_SOURCE_DIR}/system.toml"
-       OR NOT EXISTS "${APPLICATION_SOURCE_DIR}/Cargo.toml")
+    # Issue 2086 -- a C/C++ application with a `system.toml` is a leaf too:
+    # the verb sizes it from its `[[component]] entities` (or its census) and
+    # prints nothing for one that declares none.
+    if(NOT EXISTS "${APPLICATION_SOURCE_DIR}/system.toml")
         return()
     endif()
     nros_resolve_cli(_nros OPTIONAL CONTEXT "_nros_west_leaf_sizing")
     if(NOT _nros OR NOT EXISTS "${_nros}")
         message(STATUS
-            "nros: standalone Rust leaf sizes NOT derived -- no nros CLI "
+            "nros: standalone leaf sizes NOT derived -- no nros CLI "
             "(build it with `./scripts/bootstrap.sh`; contributors: `just setup-cli`); "
-            "pools stay at Kconfig / crate defaults (issue 1662)")
+            "pools stay at Kconfig / crate defaults (issues 1662, 2086)")
         return()
     endif()
+    # Issue 2086 -- a leaf that sizes from its census had it taken by the
+    # module's pre-Kconfig hook (`nros_image_kconfig.cmake`), which needs it
+    # first: the census also decides the parameter store's Kconfig axis.
     nros_detect_rust_target()
     nros_entity_inventory_knobs_file(_knobs)
     set(_args ws west-leaf-sizing
@@ -484,13 +490,17 @@ function(_nros_west_leaf_sizing)
             set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
         elseif(_line MATCHES "^NROS_SIZING_DESCRIPTOR=(.+)$")
             set(NROS_WEST_LEAF_DESCRIPTOR "${CMAKE_MATCH_1}" CACHE INTERNAL
-                "issue 1662: a standalone Zephyr Rust leaf's sizing descriptor")
+                "issue 1662: a standalone Zephyr leaf's sizing descriptor")
+        elseif(_line MATCHES "^basis (.+)$")
+            set(_basis "${CMAKE_MATCH_1}")
         endif()
     endforeach()
-    if(EXISTS "${_knobs}")
+    # The verb names what it read: a Rust leaf's probe sidecars, or a C/C++
+    # leaf's `[[component]] entities` / census (issue 2086).
+    if(_basis)
         message(STATUS
-            "nros: standalone Rust leaf -- entity inventory from its probe "
-            "sidecars (issue 1662)")
+            "nros: standalone leaf -- entity inventory from its ${_basis} "
+            "(issues 1662, 2086)")
     endif()
 endfunction()
 
@@ -543,11 +553,11 @@ function(_nros_load_west_sizing_descriptor)
         endif()
     elseif(NOT NROS_WEST_LEAF_DESCRIPTOR STREQUAL ""
            AND EXISTS "${NROS_WEST_LEAF_DESCRIPTOR}")
-        # Issue 1662 -- no entry named one, and this is a standalone Rust leaf
+        # Issue 1662 -- no entry named one, and this is a standalone leaf
         # whose descriptor `_nros_west_leaf_sizing()` just wrote.
         message(STATUS
             "nros: sizing descriptor named to cargo -- ${NROS_WEST_LEAF_DESCRIPTOR} "
-            "(standalone Rust leaf, issue 1662)")
+            "(standalone leaf, issues 1662, 2086)")
         _nros_resolve_knob(NROS_SIZING_DESCRIPTOR "${NROS_WEST_LEAF_DESCRIPTOR}" derived)
     endif()
 endfunction()

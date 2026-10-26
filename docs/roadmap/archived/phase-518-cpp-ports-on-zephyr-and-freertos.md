@@ -102,8 +102,8 @@ fix section). The census run gets the node's launch parameters from
   It runs in the merge group.
 - RTOS, built: a cross-built image takes its census from a host build of
   the same packages. The FreeRTOS template image built `MAX_CBS = 1` from it,
-  and its e2e test passes. Zephyr is not read yet, so a Zephyr image is
-  still sized by hand ([issue 2086](../../issues/2086-zephyr-ported-image-not-census-sized.md)).
+  and its e2e test passes. Zephyr was not read then; it is since
+  [issue 2086](../../issues/archived/2086-zephyr-ported-image-not-census-sized.md).
 
 ### W4 — build the three nodes on FreeRTOS and Zephyr
 

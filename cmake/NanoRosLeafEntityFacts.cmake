@@ -37,6 +37,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityFacts.cmake")
 # member's `configure_file`), and the sibling include one line up is the pattern
 # that works. Both modules are `include_guard(GLOBAL)`, so this costs nothing.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSizingDescriptor.cmake")
+# Issue 2086 -- `nros_leaf_census_take`, shared with the Zephyr module.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLeafCensus.cmake")
 
 # Issue 2043 — the program a HOST census build of a leaf runs, written as
 # `<build>/nros/census-program.txt` at generate time:
@@ -155,27 +157,8 @@ function(nros_record_leaf_entity_facts _dir)
     file(STRINGS "${_dir}/system.toml" _nros_leaf_census_optin
         REGEX "^[ \t]*entities[ \t]*=[ \t]*\"census\"")
 
-    if(_nros_leaf_census_optin AND "$ENV{NROS_LEAF_CENSUS_HOST}" STREQUAL "")
-        # Issue 2043 — the census is TAKEN here when it is missing or stale, so
-        # a leaf that states `entities = "census"` is sized from its program by
-        # a plain configure, with no step a user has to know about. The verb
-        # builds the same sources for the host into `<leaf>/build/census-host`
-        # and runs them in census mode; a current census returns at once.
-        # `NROS_LEAF_CENSUS_TAKE=OFF` leaves taking it to the caller (a fixture
-        # prepass that has already taken it, or a build with no host compiler).
-        if(NOT DEFINED NROS_LEAF_CENSUS_TAKE OR NROS_LEAF_CENSUS_TAKE)
-            message(STATUS "nano-ros: ${_dir} -- taking its census")
-            execute_process(
-                COMMAND "${_nros}" ws entity-census take --leaf "${_dir}"
-                OUTPUT_VARIABLE _nros_take_out
-                ERROR_VARIABLE _nros_take_out
-                RESULT_VARIABLE _nros_take_rc)
-            if(NOT _nros_take_rc EQUAL 0)
-                message(FATAL_ERROR
-                    "nano-ros: ${_dir}/system.toml states `entities = \"census\"`, and "
-                    "taking the census failed:\n${_nros_take_out}")
-            endif()
-        endif()
+    if(_nros_leaf_census_optin)
+        nros_leaf_census_take("${_nros}" "${_dir}")
     endif()
     if(_nros_leaf_census_optin)
         _nros_census_program_arm()

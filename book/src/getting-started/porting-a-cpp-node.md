@@ -281,12 +281,19 @@ What a workspace image still has to state:
   liveliness and executor-callback pools from what it created. Nothing has to
   be built twice by hand, and a current census is reused. This works on the
   `add_subdirectory` and `find_package` roads, for a host image and a FreeRTOS
-  one ([issue 2043](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2043-ament-port-pool-sizing-census.md)).
+  one ([issue 2043](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2043-ament-port-pool-sizing-census.md)),
+  and for a Zephyr application
+  ([issue 2086](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2086-zephyr-ported-image-not-census-sized.md)).
+  On Zephyr the census also decides whether an in-image client reaches an
+  in-image server (`local_queryable`) and, when it records a parameter, the
+  parameter store and the nros heap's default. A program that creates several
+  nodes is counted node by node.
   The census run constructs the node, so it needs the node's parameters: state
-  them with `params_files` (above). Zephyr does not read the census yet
-  ([issue 2086](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2086-zephyr-ported-image-not-census-sized.md)):
-  there, state the pools in `[image.<id>.knobs]`, and a client and a server
-  in one image meet only with `[image.<id>.knobs.rmw] local_queryable = 1`.
+  them with `params_files` (above).
+  One Zephyr pool stays yours to state, because Zephyr sizes it in Kconfig:
+  zenoh-pico takes a POSIX condition variable per subscriber and queryable,
+  and the configure refuses a `CONFIG_MAX_PTHREAD_COND_COUNT` below what the
+  census needs, naming the number to set in your `prj-zenoh.conf`.
 - **Message bounds.** An unbounded sequence or string in a message the node
   publishes gets the default bound, which can make one message megabytes.
   Bound it in `nros-codegen.toml`, for example

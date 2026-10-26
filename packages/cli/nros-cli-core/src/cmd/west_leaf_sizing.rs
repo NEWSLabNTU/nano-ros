@@ -22,11 +22,20 @@
 //!   configure to put on both cargo commands.
 //!
 //! Every probe sidecar read is printed as an `input <path>` line, so the
-//! configure registers it and a probe that changes re-runs the configure.
+//! configure registers it and a probe that changes re-runs the configure. A
+//! `basis <what>` line names what the inventory was read from, for the
+//! configure's status line.
 //!
-//! A directory that is not a standalone Zephyr Rust leaf prints nothing and
-//! exits 0: the module calls this for every application, and an entry image or
-//! a C leaf is a normal answer, not an error.
+//! Issue 2086 — a C/C++ Zephyr application with a `system.toml` (a ported
+//! ament workspace, typically) has no probe sidecars; what it creates is what
+//! its `[[component]] entities` declare, or its census (`entities =
+//! "census"`). The SAME composer the `find_package(nano_ros)` road sizes from
+//! ([`crate::cmd::sizing_descriptor::leaf_declaration`]) answers, and the two
+//! renderings are the ones above.
+//!
+//! A directory that is neither prints nothing and exits 0: the module calls
+//! this for every application, and an entry image or a leaf that declares
+//! nothing is a normal answer, not an error.
 
 use std::{collections::BTreeMap, path::PathBuf};
 
@@ -74,7 +83,7 @@ pub fn run(args: WestLeafSizingArgs) -> Result<()> {
     let Some(mut img) =
         crate::cmd::leaf_settings::resolve_west_image(&args.leaf, &root, args.image.as_deref())?
     else {
-        return Ok(());
+        return run_declared_leaf(&args);
     };
     // The configure, not the board catalog, knows the triple of a Zephyr build
     // (west picks it from `-b`), and an absent one must not read as "host".
@@ -133,6 +142,8 @@ pub fn run(args: WestLeafSizingArgs) -> Result<()> {
         );
     }
 
+    println!("basis probe sidecars");
+
     // ---- what the configure must watch ------------------------------------
     for dir in std::iter::once(leaf.join("metadata")).chain(
         crate::orchestration::workspace::root_path_dep_packages(&leaf)
@@ -151,6 +162,104 @@ pub fn run(args: WestLeafSizingArgs) -> Result<()> {
         for f in files {
             println!("input {}", f.display());
         }
+    }
+    println!(
+        "input {}",
+        leaf.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+            .display()
+    );
+    Ok(())
+}
+
+/// Issue 2086 — the C/C++ branch: a Zephyr application with no cargo package
+/// whose `system.toml` declares its entities (or takes them from its census).
+///
+/// A leaf that declares nothing gets nothing written, which is exactly what it
+/// got before this branch existed: no fragment, no descriptor, Kconfig
+/// defaults.
+fn run_declared_leaf(args: &WestLeafSizingArgs) -> Result<()> {
+    let leaf = &args.leaf;
+    if !leaf
+        .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+        .is_file()
+        || crate::cmd::sizing_descriptor::is_cargo_leaf(leaf)
+    {
+        return Ok(());
+    }
+    let crate::cmd::sizing_descriptor::LeafDeclaration {
+        system,
+        inventory,
+        census_backed,
+    } = crate::cmd::sizing_descriptor::leaf_declaration(leaf)?;
+    let Some(inv) = inventory else {
+        return Ok(());
+    };
+    let who = "west-leaf-sizing";
+    crate::sizing_descriptor::report_rx_ingress(&inv, who)?;
+
+    // ---- the C lane: the fragment rung 3 reads ---------------------------
+    if let Some(dir) = args.output_cmake.parent() {
+        std::fs::create_dir_all(dir).wrap_err_with(|| format!("create `{}`", dir.display()))?;
+    }
+    crate::atomic_file::atomic_write(&args.output_cmake, &inv.to_cmake())
+        .map_err(|e| eyre!("write `{}`: {e}", args.output_cmake.display()))?;
+
+    // ---- the Rust lane: the descriptor ------------------------------------
+    // The image this configure builds decides the backend, as on the Rust
+    // branch: `-DNROS_IMAGE` when stated, else the leaf's own rule.
+    let image = match args.image.as_deref() {
+        Some(id) => nros_orchestration_ir::leaf_system::read_image(leaf, id)
+            .map_err(|e| eyre!(e))?
+            .unwrap_or(system),
+        None => system,
+    };
+    let entry = image.image.clone().unwrap_or_else(|| "app".to_string());
+    let road = "a Zephyr C/C++ leaf";
+    let written =
+        crate::sizing_descriptor::write_for_model(&crate::sizing_descriptor::ModelImage {
+            build_dir: &args.build_dir,
+            entry: &entry,
+            wiring: crate::sizing_descriptor::Wiring::Composed(&inv),
+            target_triple: args.target_triple.clone(),
+            host_build: false,
+            heap_budget_bytes: None,
+            rmw: image.rmw.clone(),
+            bound_inventories: &[],
+            horizon: if census_backed {
+                crate::sizing_descriptor::ModelHorizon::for_leaf_census(road)
+            } else {
+                crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(road)
+            },
+        })?
+        .ok_or_else(|| {
+            eyre!(
+                "{}: a composed inventory wrote no descriptor",
+                leaf.display()
+            )
+        })?;
+    println!(
+        "{}={}",
+        nros_sizing_descriptor::DESCRIPTOR_ENV,
+        written.path.display()
+    );
+
+    println!(
+        "basis {}",
+        if census_backed {
+            "census"
+        } else {
+            "system.toml declaration"
+        }
+    );
+
+    // ---- what the configure must watch ------------------------------------
+    // The census is an input: re-taking it (after a `src/` edit) must
+    // re-run this configure, which is what read it.
+    if census_backed {
+        println!(
+            "input {}",
+            crate::cmd::entity_census::leaf_census_path(leaf).display()
+        );
     }
     println!(
         "input {}",

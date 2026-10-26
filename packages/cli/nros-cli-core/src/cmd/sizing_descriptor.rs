@@ -671,8 +671,6 @@ fn write_runtime_from_models(args: &SizingDescriptorArgs) -> Result<()> {
 /// — overwriting the richer file with a poorer one is an UNDER-statement, the one
 /// direction RFC-0100 D6 exists to keep out of this artifact.
 fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Result<()> {
-    use crate::entity_inventory::{ComponentEntities, Declaration, EntityDecl, EntityInventory};
-
     let (Some(build_dir), Some(entry)) = (&args.build_dir, &args.entry) else {
         eyre::bail!("`--from-leaf` needs `--build-dir` and `--entry`");
     };
@@ -694,7 +692,96 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         return Ok(());
     }
 
-    let system = nros_orchestration_ir::leaf_system::read(&dir)
+    let LeafDeclaration {
+        system,
+        inventory,
+        census_backed,
+    } = leaf_declaration(&dir)?;
+    let origin = system.origin_path().display().to_string();
+    let image = |wiring| crate::sizing_descriptor::ModelImage {
+        build_dir,
+        entry,
+        wiring,
+        target_triple: args.target_triple.clone(),
+        host_build: args.host_build,
+        heap_budget_bytes: args.heap_budget_bytes,
+        // The leaf states its own backend; `--rmw` still wins, for a caller
+        // that resolved it more specifically (a cmake `-D`).
+        rmw: args.rmw.clone().or_else(|| system.rmw.clone()),
+        bound_inventories: &args.bound_inventory,
+        // Issue 2043 -- a leaf whose entities are its CENSUS states every
+        // image-wide count: they were observed by running the program, not
+        // written by hand and checked for queryables alone.
+        horizon: if census_backed {
+            crate::sizing_descriptor::ModelHorizon::for_leaf_census(
+                args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
+            )
+        } else {
+            crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(
+                args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
+            )
+        },
+    };
+    let Some(inventory) = inventory else {
+        // Issue 1706 -- `[system] features` can still imply a parameter store.
+        let written = crate::sizing_descriptor::write_for_model(&image(
+            crate::sizing_descriptor::Wiring::Unwired {
+                params: &crate::entity_inventory::ParamDeclarations::Absent,
+                infra: crate::entity_inventory::InfraServices::from_features(
+                    &system.features,
+                    system.components.len(),
+                ),
+                // The declaration is the opt-in: an undescribed leaf states no
+                // node count, as `entity-facts --leaf` carried none.
+                model_nodes: None,
+                roots: &[dir.as_path()],
+            },
+        ))?;
+        if let Some(written) = written {
+            eprintln!(
+                "nros ws sizing-descriptor: {origin} declares no entities; the descriptor states \
+                 only what its `[system]` table does (issue 1706)"
+            );
+            println!("{}", written.path.display());
+            return Ok(());
+        }
+        eprintln!(
+            "nros ws sizing-descriptor: {origin} declares no entities, so no sizing descriptor \
+             is written and every consumer keeps its own defaults. Add `entities = [...]` to its \
+             `[[component]]` (RFC-0098 D8); the runtime's own service families are \
+             `[system] features`."
+        );
+        return Ok(());
+    };
+
+    let written = crate::sizing_descriptor::write_for_model(&image(
+        crate::sizing_descriptor::Wiring::Composed(&inventory),
+    ))?
+    .expect("a composed inventory always states its wiring");
+    println!("{}", written.path.display());
+    Ok(())
+}
+
+/// What a standalone C/C++ leaf's `system.toml` DECLARES about its entities,
+/// as one image's inventory: `entities = [...]` parsed, or `entities =
+/// "census"` read from the leaf's census (issue 1556).
+pub(crate) struct LeafDeclaration {
+    pub system: nros_orchestration_ir::leaf_system::LeafSystem,
+    /// `None` when no component declares anything: such a leaf gets no
+    /// descriptor and no derived counts (phase-454 W12's control).
+    pub inventory: Option<crate::entity_inventory::EntityInventory>,
+    /// Some component's entities came from the census.
+    pub census_backed: bool,
+}
+
+/// Compose [`LeafDeclaration`] for `dir`. ONE composer for the two roads that
+/// size a C/C++ leaf from its declaration: `sizing-descriptor --from-leaf`
+/// (the `find_package(nano_ros)` and `add_subdirectory` roads) and
+/// `west-leaf-sizing` (a Zephyr application, issue 2086).
+pub(crate) fn leaf_declaration(dir: &std::path::Path) -> Result<LeafDeclaration> {
+    use crate::entity_inventory::{ComponentEntities, Declaration, EntityDecl, EntityInventory};
+
+    let system = nros_orchestration_ir::leaf_system::read(dir)
         .map_err(|e| eyre::eyre!(e))?
         .ok_or_else(|| {
             eyre::eyre!(
@@ -720,15 +807,29 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
             // descriptor and the `NROS_DECLARED_*` carriers cannot read two
             // different things (a missing or stale census refuses there).
             None if c.entities_from_census => {
-                match crate::leaf_entity_env::declared_entities(&dir)? {
-                    Some(decls) => {
+                match crate::leaf_entity_env::declared_entities(dir)? {
+                    Some(_) => {
                         any_declared = true;
                         census_backed = true;
-                        if decls.is_empty() {
-                            Declaration::None
-                        } else {
-                            Declaration::Stated(decls)
+                        // Issue 2086 -- one row per NODE the program created,
+                        // because the inventory counts a node per row. The
+                        // reader above already refused a missing, stale or
+                        // incomplete census, so this one answers.
+                        let nodes = crate::leaf_entity_env::census_node_entities(dir)?
+                            .map_err(|why| eyre::eyre!("{origin}: {why}"))?;
+                        for (node, decls) in nodes {
+                            rows.push(ComponentEntities {
+                                pkg: c.pkg.clone().unwrap_or_default(),
+                                component: node.clone(),
+                                class: c.class.clone().unwrap_or(node),
+                                declaration: if decls.is_empty() {
+                                    Declaration::None
+                                } else {
+                                    Declaration::Stated(decls)
+                                },
+                            });
                         }
+                        continue;
                     }
                     // The host census build reads no census (it IS the
                     // producer): no descriptor, exactly as a leaf nobody
@@ -765,62 +866,13 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
             declaration,
         });
     }
-    let image = |wiring| crate::sizing_descriptor::ModelImage {
-        build_dir,
-        entry,
-        wiring,
-        target_triple: args.target_triple.clone(),
-        host_build: args.host_build,
-        heap_budget_bytes: args.heap_budget_bytes,
-        // The leaf states its own backend; `--rmw` still wins, for a caller
-        // that resolved it more specifically (a cmake `-D`).
-        rmw: args.rmw.clone().or_else(|| system.rmw.clone()),
-        bound_inventories: &args.bound_inventory,
-        // Issue 2043 -- a leaf whose entities are its CENSUS states every
-        // image-wide count: they were observed by running the program, not
-        // written by hand and checked for queryables alone.
-        horizon: if census_backed {
-            crate::sizing_descriptor::ModelHorizon::for_leaf_census(
-                args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
-            )
-        } else {
-            crate::sizing_descriptor::ModelHorizon::for_leaf_declaration(
-                args.road.as_deref().unwrap_or(DEFAULT_LEAF_ROAD),
-            )
-        },
-    };
     if !any_declared {
-        // Issue 1706 -- `[system] features` can still imply a parameter store.
-        let written = crate::sizing_descriptor::write_for_model(&image(
-            crate::sizing_descriptor::Wiring::Unwired {
-                params: &crate::entity_inventory::ParamDeclarations::Absent,
-                infra: crate::entity_inventory::InfraServices::from_features(
-                    &system.features,
-                    system.components.len(),
-                ),
-                // The declaration is the opt-in: an undescribed leaf states no
-                // node count, as `entity-facts --leaf` carried none.
-                model_nodes: None,
-                roots: &[dir.as_path()],
-            },
-        ))?;
-        if let Some(written) = written {
-            eprintln!(
-                "nros ws sizing-descriptor: {origin} declares no entities; the descriptor states \
-                 only what its `[system]` table does (issue 1706)"
-            );
-            println!("{}", written.path.display());
-            return Ok(());
-        }
-        eprintln!(
-            "nros ws sizing-descriptor: {origin} declares no entities, so no sizing descriptor \
-             is written and every consumer keeps its own defaults. Add `entities = [...]` to its \
-             `[[component]]` (RFC-0098 D8); the runtime's own service families are \
-             `[system] features`."
-        );
-        return Ok(());
+        return Ok(LeafDeclaration {
+            system,
+            inventory: None,
+            census_backed,
+        });
     }
-
     let mut inventory = EntityInventory::new(origin);
     for row in rows {
         inventory.insert(row);
@@ -833,13 +885,11 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
         &system.features,
         system.components.len(),
     ));
-
-    let written = crate::sizing_descriptor::write_for_model(&image(
-        crate::sizing_descriptor::Wiring::Composed(&inventory),
-    ))?
-    .expect("a composed inventory always states its wiring");
-    println!("{}", written.path.display());
-    Ok(())
+    Ok(LeafDeclaration {
+        system,
+        inventory: Some(inventory),
+        census_backed,
+    })
 }
 
 /// Does this leaf have a `[package]` cargo manifest?
@@ -847,7 +897,7 @@ fn write_from_leaf(args: &SizingDescriptorArgs, leaf: &std::path::Path) -> Resul
 /// The discriminator for "`nros sync` writes this leaf's descriptor". A
 /// `Cargo.toml` with only `[workspace]` is not a leaf's own package, so the
 /// section is what is read rather than the file's existence.
-fn is_cargo_leaf(dir: &std::path::Path) -> bool {
+pub(crate) fn is_cargo_leaf(dir: &std::path::Path) -> bool {
     let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
         return false;
     };
