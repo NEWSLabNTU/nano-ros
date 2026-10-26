@@ -347,6 +347,15 @@ config NROS_ZEPHYR_TASK_STACK_SIZE
       0 keeps upstream behaviour. Set it to size the zenoh tasks for their own
       deepest call chain, which is the expiry teardown, independently of main.
 
+      PERMANENTLY OPERATOR-STATED (issue 1808), as is CONFIG_MAIN_STACK_SIZE,
+      Zephyr's own knob, for the same reason: a stack's depth is a property
+      of the deepest call chain, which needs frame analysis of the built
+      image (phase-409's `objdump` method, summing every `sub sp` on one
+      chain), not an inventory of what the image declares. Measure instead:
+      CONFIG_THREAD_ANALYZER prints each thread's peak use, and a guard
+      region (CONFIG_HW_STACK_PROTECTION) names the thread that overflows.
+      Size each from its measured peak plus headroom.
+
 config NROS_FAULT_LOG
     bool "Record a post-mortem fault record that survives reset"
     default n
@@ -435,17 +444,28 @@ config NROS_ZEPHYR_STACKS_IN_DTCM
 
 config NROS_ZEPHYR_TASK_SLOTS
     int "nano-ros Zephyr task stack slots"
+    default 3 if NROS_RMW_ZENOH && NROS_ZENOH_TX_BATCH
+    default 2 if NROS_RMW_ZENOH
     default 4
     help
       NROS_ZEPHYR_MAX_THREADS — how many task stacks are reserved, i.e. how
       many nano-ros tasks can be ALIVE at once. A slot is released when its
       task is joined (`nros_zephyr_task_slot_release`, issue 0839), so a
       reconnect reuses the slots of the tasks it tore down rather than
-      consuming new ones. On a zenoh image the session's tasks are the read,
-      lease and tx-flush tasks. `nros_zephyr_task_create` prints
+      consuming new ones. `nros_zephyr_task_create` prints
       "OUT OF THREAD SLOTS" and returns -1 when none is free, and the usual
       loser is the read task (no rx, then session expiry). Total cost is
       NROS_ZEPHYR_TASK_SLOTS x NROS_ZEPHYR_TASK_STACK_SIZE.
+
+      DERIVED on a zenoh image (issue 1808) from the transport's own tasks:
+      a zenoh session runs a read and a lease task, plus a tx-flush task when
+      NROS_ZENOH_TX_BATCH is on, and the Zephyr road compiles zenoh-pico with
+      one session (`ZPICO_MAX_SESSIONS` 1). So 3 with batching and 2 without.
+      Tier tasks do not count: they have their own pool
+      (NROS_ZEPHYR_MAX_TIERS). What does count and is not derived: one slot
+      per `Executor::open_threaded` the application calls. State the knob to
+      cover those. Other backends keep 4: no measurement says what they
+      spawn through this pool.
 
 config NROS_ZEPHYR_MAX_TIERS
     int "nano-ros Zephyr RT-tier thread slots"
@@ -1869,6 +1889,14 @@ config NROS_ZEPHYR_HEAP_SIZE
       (peak + floor - 512); take the dump after the host graph has joined,
       not at boot.
 
+      PERMANENTLY OPERATOR-STATED beyond those defaults (issue 1808). The
+      arena's peak is a RUNTIME property: it moves with what the peers send
+      (discovery, the graph, samples in flight), which nothing in the image
+      declares, so no build can derive it. The defaults above are floors per
+      declared capability; the measured peak, read off the boot record by
+      `read-boot-report.py --heap-headroom`, is how an image is sized past
+      them, and it names the value to state.
+
 
 if NROS_RMW_XRCE
 
@@ -1966,8 +1994,12 @@ config NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE
       Size of one service-client reply inbox (bytes).
       Maps to XRCE_SERVICE_REPLY_BUFFER_SIZE.
 
-      Settable, and not derived, for the same reason as
-      NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE. Falls back to NROS_XRCE_BUFFER_SIZE.
+      -1 DERIVES it (issue 1808): the largest reply any declared client
+      receives (the sizing descriptor's `reply_bound_bytes`, over an action
+      client's three responses) plus the 4-byte CDR header. A reply above
+      NROS_XRCE_BUFFER_SIZE now RAISES the slot rather than being dropped on
+      arrival. One unpriced reply keeps NROS_XRCE_BUFFER_SIZE, and the build
+      says which. Stating a number wins.
 
 
 # prompt: Service-server request ring entry size
@@ -1978,17 +2010,21 @@ config NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE
       Size of one service-server request inbox entry (bytes).
       Maps to XRCE_SERVICE_REQUEST_BUFFER_SIZE.
 
-      Settable. Not derived from the declared service rows: the parameter
-      (6 per node) and lifecycle (5) families open service servers that no
-      `[[endpoint]]` row in the sizing descriptor itemises, and an action
-      server opens three more, so a size from those rows alone would be
-      short in the UNDER direction. Falls back to NROS_XRCE_BUFFER_SIZE,
-      RAISED to the parameter family's largest request when that is known
-      (NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's
-      declared `params:` — issue 1722). A stated value below that request,
-      or one too large for the reliable stream's reassembly window
-      (NROS_XRCE_STREAM_HISTORY fragments of the transport MTU), fails the
-      build.
+      -1 DERIVES it (issue 1808), from the APPLICATION's declared servers:
+      their largest request (`wire_bound_bytes`, over an action server's
+      three) plus the 4-byte CDR header. That is sound because the
+      parameter (6 per node) and lifecycle (5) services, which no
+      `[[endpoint]]` row itemises, have slots of their own: the cargo lane
+      derives NROS_XRCE_BUILTIN_SERVICE_SERVERS beside the server total, and
+      those slots take NROS_XRCE_BUFFER_SIZE raised to the parameter
+      family's largest request (NROS_PARAM_SERVICE_INBOX_BYTES, or derived
+      from the contract's `params:`, issue 1722). The derivation abstains,
+      and says so, when a server row is unpriced or the rows do not account
+      for every application server, and when NROS_XRCE_MAX_SERVICE_SERVERS
+      is stated (the split is then not derived and every server shares one
+      buffer, raised and refused as before). A value too large for the
+      reliable stream's reassembly window (NROS_XRCE_STREAM_HISTORY
+      fragments of the transport MTU) fails the build.
 
 
 # prompt: Reliable stream history depth

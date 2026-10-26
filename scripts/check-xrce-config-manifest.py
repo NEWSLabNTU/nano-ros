@@ -102,7 +102,18 @@ DERIVED_TOKENS = {
 # the knob ("this one cannot be a Kconfig option because ..."), never a
 # statement about what happens to be wired today — that is the form that goes
 # stale silently.
-NO_KCONFIG_OPTION: dict[str, str] = {}
+NO_KCONFIG_OPTION: dict[str, str] = {
+    # Issue 1808 -- the builtin split is DERIVED by the cargo lane from the
+    # sizing descriptor beside the server total, on every road (the Zephyr west
+    # entry names its descriptor too), so a Kconfig option would be a second
+    # source for a number the build already knows. Env-statable for the rare
+    # image that wants to pin it.
+    "NROS_XRCE_BUILTIN_SERVICE_SERVERS": "derived beside the server total (issue 1808)",
+    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE": (
+        "defaults to XRCE_BUFFER_SIZE raised to XRCE_PARAM_REQUEST_BYTES, both of "
+        "which already have their rungs (issue 1808)"
+    ),
+}
 
 # A `UCLIENT_*` or `XRCE_*` literal a lane may legitimately name, with why.
 LANE_VALUE_ALLOWLIST = {

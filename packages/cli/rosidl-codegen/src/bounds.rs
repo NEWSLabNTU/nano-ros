@@ -564,6 +564,20 @@ pub fn action_received_types(action_type: &str) -> [String; 3] {
     ]
 }
 
+/// Issue 1808 -- the three REPLY types an action CLIENT receives, the mirror of
+/// [`action_received_types`]: `send_goal`'s, `cancel_goal`'s and
+/// `get_result`'s responses. A client's reply slot holds the largest of them.
+/// `cancel_goal`'s belongs to [`ACTION_CANCEL_SERVICE`], priced in
+/// `action_msgs`' inventory, so a consumer must refuse rather than skip when it
+/// cannot reach one.
+pub fn action_replied_types(action_type: &str) -> [String; 3] {
+    [
+        format!("{action_type}{SUFFIX_SEND_GOAL_RESPONSE}"),
+        service_reply_type(ACTION_CANCEL_SERVICE),
+        format!("{action_type}{SUFFIX_GET_RESULT_RESPONSE}"),
+    ]
+}
+
 /// The `unique_identifier_msgs/UUID goal_id` every action envelope opens with.
 fn goal_id_field() -> rosidl_parser::Field {
     rosidl_parser::Field {

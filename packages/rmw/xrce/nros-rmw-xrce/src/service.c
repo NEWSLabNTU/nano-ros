@@ -22,6 +22,66 @@
 #include <uxr/client/client.h>
 #include <uxr/client/core/session/object_id.h>
 
+/* Issue 1808 — one ring entry's bytes, in the family pool the slot is bound to. */
+static uint8_t* xrce_request_entry_bytes(xrce_service_server_slot* slot, uint16_t idx) {
+    return slot->ring_bytes + (size_t)idx * slot->entry_cap;
+}
+
+/* Issue 1808 — is `name` one of the builtin families' endpoints: the six ROS
+ * parameter services or the five REP-2002 lifecycle services, as the final
+ * `/`-segment of a node-qualified name. The rule and the list are zenoh's
+ * (`nros-rmw-zenoh/src/shim/service.rs`, `is_builtin_service`, phase-461
+ * W2b): these spellings are the WIRE's, which ROS 2 fixes, so a backend may
+ * know them. A user service merely CALLED `set_parameters` with no node in
+ * front of it, or `set_parameters_v2`, is not builtin. */
+bool xrce_is_builtin_service(const char* name) {
+    static const char* const BUILTIN[] = {
+        "get_parameters",       "get_parameter_types",
+        "set_parameters",       "set_parameters_atomically",
+        "describe_parameters",  "list_parameters",
+        "change_state",         "get_state",
+        "get_available_states", "get_available_transitions",
+        "get_transition_graph",
+    };
+    const char* slash = strrchr(name, '/');
+    if (slash == NULL) return false;
+    /* A non-empty node in front: something other than '/' before the last one. */
+    bool node = false;
+    for (const char* c = name; c < slash; ++c) {
+        if (*c != '/') {
+            node = true;
+            break;
+        }
+    }
+    if (!node) return false;
+    for (size_t i = 0; i < sizeof(BUILTIN) / sizeof(BUILTIN[0]); ++i) {
+        if (strcmp(slash + 1, BUILTIN[i]) == 0) return true;
+    }
+    return false;
+}
+
+/* Issue 1808 — claim a free slot in [from, to) and bind it to its family's
+ * bytes. Slots below XRCE_USER_SERVICE_SERVERS are the application's. */
+xrce_service_server_slot* xrce_claim_server_slot(xrce_session_state_t* st, size_t from, size_t to) {
+    for (size_t i = from; i < to; ++i) {
+        xrce_service_server_slot* slot = &st->service_server_slots[i];
+        if (slot->active) continue;
+        if (i < XRCE_USER_SERVICE_SERVERS) {
+            slot->ring_bytes = &st->service_request_bytes[i][0][0];
+            slot->entry_cap = XRCE_SERVICE_REQUEST_BUFFER_SIZE;
+        } else {
+#if XRCE_BUILTIN_SERVICE_SERVERS > 0
+            slot->ring_bytes = &st->builtin_request_bytes[i - XRCE_USER_SERVICE_SERVERS][0][0];
+            slot->entry_cap = XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE;
+#else
+            continue;
+#endif
+        }
+        return slot;
+    }
+    return NULL;
+}
+
 /* Single-session callbacks — registered once at session_open via
  * `uxr_set_request_callback` / `uxr_set_reply_callback`. Dispatch
  * by object_id to the matching slot in the per-session pool. */
@@ -54,8 +114,8 @@ void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t 
         xrce_service_request_entry* e = &slot->req_ring[slot->req_write_idx];
         /* Issue 0819 — one staging path for every inbound payload, fragments
          * included; see `xrce_stage_inbound`. */
-        e->overflow =
-            !xrce_stage_inbound(e->data, XRCE_SERVICE_REQUEST_BUFFER_SIZE, ub, len, &e->len);
+        e->overflow = !xrce_stage_inbound(xrce_request_entry_bytes(slot, slot->req_write_idx),
+                                          slot->entry_cap, ub, len, &e->len);
         e->sample_id = *sample_id;
         slot->req_write_idx =
             (uint16_t)((slot->req_write_idx + 1) % XRCE_SERVICE_REQUEST_RING_DEPTH);
@@ -123,12 +183,23 @@ static rmw_ret_t xrce_service_create_locked(const rmw_node_t* node,
         return NROS_RMW_RET_ERROR;
     }
 
-    /* Find a free slot. */
+    /* Find a free slot — issue 1808: in its own family's range first. The
+     * other family's range is a fallback only where its buffer is at least as
+     * large, so a request is never staged into a buffer sized for smaller
+     * ones. With no split (XRCE_BUILTIN_SERVICE_SERVERS == 0) every slot is in
+     * the application's range, as before. */
     xrce_service_server_slot* slot = NULL;
-    for (size_t i = 0; i < XRCE_MAX_SERVICE_SERVERS; ++i) {
-        if (!st->service_server_slots[i].active) {
-            slot = &st->service_server_slots[i];
-            break;
+    if (xrce_is_builtin_service(service_name)) {
+        slot = xrce_claim_server_slot(st, XRCE_USER_SERVICE_SERVERS, XRCE_MAX_SERVICE_SERVERS);
+        if (slot == NULL &&
+            XRCE_SERVICE_REQUEST_BUFFER_SIZE >= XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE) {
+            slot = xrce_claim_server_slot(st, 0, XRCE_USER_SERVICE_SERVERS);
+        }
+    } else {
+        slot = xrce_claim_server_slot(st, 0, XRCE_USER_SERVICE_SERVERS);
+        if (slot == NULL &&
+            XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE >= XRCE_SERVICE_REQUEST_BUFFER_SIZE) {
+            slot = xrce_claim_server_slot(st, XRCE_USER_SERVICE_SERVERS, XRCE_MAX_SERVICE_SERVERS);
         }
     }
     if (slot == NULL) {
@@ -333,7 +404,7 @@ static rmw_ret_t xrce_service_take_request_len(const rmw_service_t* server, uint
         return NROS_RMW_RET_WOULD_BLOCK;
     }
     if (buf != NULL && len > 0) {
-        memcpy(buf, e->data, len);
+        memcpy(buf, xrce_request_entry_bytes(slot, slot->req_read_idx), len);
     }
     slot->reply_tokens[reply_idx].sample_id = e->sample_id;
     slot->reply_tokens[reply_idx].in_use = true;

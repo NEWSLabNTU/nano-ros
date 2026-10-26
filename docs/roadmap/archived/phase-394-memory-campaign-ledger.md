@@ -6,7 +6,7 @@ issues its ledger table still called open are resolved. The rest went to live
 homes or stand alone:
 [issue 1376](../../issues/archived/1376-c-example-listeners-register-with-null-options.md)
 to [phase-460](../phase-460-formal-checks-on-the-contract-chain.md),
-[issue 1808](../../issues/1808-sizing-knobs-with-no-static-derivation.md) to
+[issue 1808](../../issues/archived/1808-sizing-knobs-with-no-static-derivation.md) to
 [phase-400](../phase-400-unified-configuration.md),
 [issue 0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) stays with
 [phase-474](../phase-474-safety-island-board-findings.md), and
@@ -278,5 +278,5 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | --- | --- |
 | [#1376](../../issues/archived/1376-c-example-listeners-register-with-null-options.md) | Seven C listeners pass `options = NULL`, so the sizing descriptor credits a hint the image does not supply. That is a sizing-accuracy item on the ledger. |
 | [#1630](../../issues/archived/1630-freertos-entry-bss-overflows-ram-after-arena-pricing.md) | `freertos_entry`'s `.bss` overflowed `RAM` by 151,016 bytes. The cause was not the arena pricing: issue 1598 moved the tier stacks into `.bss` while `ucHeap` still reserved them. Fixed by `fba1b024a9`; 389,144 B headroom now. |
-| [#1808](../../issues/1808-sizing-knobs-with-no-static-derivation.md) | Five sizing knobs are still set by hand because nothing in the image can derive them. This is phase-412's remainder. |
+| [#1808](../../issues/archived/1808-sizing-knobs-with-no-static-derivation.md) | Five sizing knobs are still set by hand because nothing in the image can derive them. This is phase-412's remainder. |
 | [#1823](../../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | `nros-platform-esp32-qemu` reports 0 for `heap_{used,total}_bytes`. This is phase-230's heap-ABI remainder (ESP32 is dormant, issue 1525). |

@@ -161,8 +161,10 @@ and reports no error.
 | `NROS_XRCE_CUSTOM_TRANSPORT_MTU`   | Custom transport MTU; stream buffers are `MTU x STREAM_HISTORY`             | `4096`  | 128 | nros-rmw-xrce |
 | `NROS_XRCE_TRANSPORT_MTU`          | UDP/TCP transport MTU, and the Zephyr default of `CUSTOM_TRANSPORT_MTU`     | `4096` (Zephyr `512`) | 128 | nros-rmw-xrce |
 | `NROS_XRCE_SUBSCRIBER_BUFFER_SIZE` | Subscriber ring entry size; derived from the declared subscriptions when unstated (Zephyr: `-1`) | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
-| `NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE` | Service-server request entry size                                      | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
-| `NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE`   | Service-client reply slot size                                         | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
+| `NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE` | Application service-server request entry size. DERIVED from the declared servers' requests beside the builtin split | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
+| `NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE`   | Service-client reply slot size. DERIVED from the declared clients' replies | `BUFFER_SIZE` | 1 | nros-rmw-xrce |
+| `NROS_XRCE_BUILTIN_SERVICE_SERVERS`     | How many service-server slots are the parameter / lifecycle services'. DERIVED beside the total | `0` (no split) | 0 | nros-rmw-xrce |
+| `NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE` | Request entry size of a builtin-family slot | `BUFFER_SIZE`, raised to the parameter request | 1 | nros-rmw-xrce |
 
 Dropping `MAX_SUBSCRIBERS`, `MAX_SERVICE_*` and `SUBSCRIBER_RING_DEPTH` to 1,
 `BUFFER_SIZE` to 256, `STREAM_HISTORY` to 4 and `CUSTOM_TRANSPORT_MTU` to 512

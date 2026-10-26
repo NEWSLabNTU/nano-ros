@@ -49,6 +49,13 @@ target_link_libraries(nros_rmw_xrce_service_refused_len PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_service_refused_len COMMAND nros_rmw_xrce_service_refused_len)
 
+# Issue 1808 — the service-server families: which names are builtin, and that
+# a claimed slot is bound to its family's request bytes. No agent.
+add_executable(nros_rmw_xrce_service_families service_families.c)
+target_link_libraries(nros_rmw_xrce_service_families PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_service_families COMMAND nros_rmw_xrce_service_families)
+
 # Issue 2026 — a reply reports the id its request was SENT with (`on_reply`'s
 # `reply_id`), not the id of the read that delivered it. No agent: the callback
 # is called directly with the two ids different.

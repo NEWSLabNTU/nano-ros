@@ -90,6 +90,28 @@ static inline void nros_xrce_free(void* ptr) {
 #ifndef XRCE_MAX_SERVICE_CLIENTS
 #define XRCE_MAX_SERVICE_CLIENTS 4
 #endif
+/* Issue 1808 — how many of the XRCE_MAX_SERVICE_SERVERS slots belong to the
+ * BUILTIN family: the six ROS parameter services of every node and the five
+ * REP-2002 lifecycle services, which the runtime opens and no `[[endpoint]]`
+ * row itemises. The cargo lane derives it beside the total (the same
+ * `infra_service_servers` count), and the remaining slots are the
+ * application's.
+ *
+ * The split is what lets the application's request buffer be derived DOWN:
+ * those slots hold only the declared servers' requests, while the builtin
+ * slots keep a buffer sized for `set_parameters` and lifecycle's `ChangeState`
+ * (an unbounded `label`). zenoh made the same split by name in phase-461 W2b.
+ *
+ * 0 (the default, and every image with no descriptor) is no split: every
+ * server shares one buffer size, as before. */
+#ifndef XRCE_BUILTIN_SERVICE_SERVERS
+#define XRCE_BUILTIN_SERVICE_SERVERS 0
+#endif
+#if XRCE_BUILTIN_SERVICE_SERVERS > XRCE_MAX_SERVICE_SERVERS
+#error                                                                                             \
+    "XRCE_BUILTIN_SERVICE_SERVERS is more than XRCE_MAX_SERVICE_SERVERS, the total it is a share of (issue 1808)."
+#endif
+#define XRCE_USER_SERVICE_SERVERS (XRCE_MAX_SERVICE_SERVERS - XRCE_BUILTIN_SERVICE_SERVERS)
 /* Phase 237 — outstanding deferred replies per service server. A reply may be
  * sent long after `take_request` returned (e.g. an action `get_result` held
  * until the goal terminates), so the request's `SampleIdentity` can't live in
@@ -129,9 +151,9 @@ static inline void nros_xrce_free(void* ptr) {
  * receive buffer at once (`large_msg.rs` is built on exactly that, and the
  * backend's own MESSAGE_TOO_LARGE diagnostic names it).
  *
- * Only the SUBSCRIBER family is derived from declarations today
- * (`nros-rmw-xrce-cffi/build.rs`). The two service families are settable and
- * not derived, and the reason is stated there rather than guessed here. */
+ * All three are derived from declarations by `nros-rmw-xrce-cffi/build.rs`:
+ * the subscriber family since phase-454 W6.b, the two service families since
+ * issue 1808 (the request buffer only beside the builtin split below). */
 #ifndef XRCE_SUBSCRIBER_BUFFER_SIZE
 #define XRCE_SUBSCRIBER_BUFFER_SIZE XRCE_BUFFER_SIZE
 #endif
@@ -152,6 +174,27 @@ static inline void nros_xrce_free(void* ptr) {
 #ifndef XRCE_PARAM_REQUEST_BYTES
 #define XRCE_PARAM_REQUEST_BYTES 0
 #endif
+#if XRCE_BUILTIN_SERVICE_SERVERS > 0
+/* Issue 1808 — split: the builtin slots take the raise and the refusal, and
+ * the application's slots default to the plain XRCE_BUFFER_SIZE (the cargo
+ * lane derives them from the declared servers' requests). The builtin buffer
+ * keeps XRCE_BUFFER_SIZE as its floor because lifecycle's `ChangeState` has
+ * no static bound. */
+#ifndef XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE
+#if XRCE_PARAM_REQUEST_BYTES <= XRCE_BUFFER_SIZE
+#define XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE XRCE_BUFFER_SIZE
+#else
+#define XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE XRCE_PARAM_REQUEST_BYTES
+#endif
+#endif
+#if XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE < XRCE_PARAM_REQUEST_BYTES
+#error                                                                                             \
+    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow. That request would be dropped on arrival. Raise it, or leave it unset to derive (issues 1722, 1808)."
+#endif
+#ifndef XRCE_SERVICE_REQUEST_BUFFER_SIZE
+#define XRCE_SERVICE_REQUEST_BUFFER_SIZE XRCE_BUFFER_SIZE
+#endif
+#else
 #ifndef XRCE_SERVICE_REQUEST_BUFFER_SIZE
 #if XRCE_PARAM_REQUEST_BYTES <= XRCE_BUFFER_SIZE
 #define XRCE_SERVICE_REQUEST_BUFFER_SIZE XRCE_BUFFER_SIZE
@@ -162,6 +205,10 @@ static inline void nros_xrce_free(void* ptr) {
 #if XRCE_SERVICE_REQUEST_BUFFER_SIZE < XRCE_PARAM_REQUEST_BYTES
 #error                                                                                             \
     "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE is below XRCE_PARAM_REQUEST_BYTES, the largest set_parameters this image's declared parameters allow (NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's params:). That request would be dropped on arrival. Raise it, or leave it unset to derive (issue 1722)."
+#endif
+/* No split: no builtin slot exists, so this names nothing; it keeps the
+ * fragment-window check below one spelling for both shapes. */
+#define XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE XRCE_SERVICE_REQUEST_BUFFER_SIZE
 #endif
 #ifndef XRCE_SERVICE_REPLY_BUFFER_SIZE
 #define XRCE_SERVICE_REPLY_BUFFER_SIZE XRCE_BUFFER_SIZE
@@ -251,6 +298,10 @@ static inline void nros_xrce_free(void* ptr) {
 #if XRCE_INBOUND_FRAGMENTS(XRCE_SERVICE_REQUEST_BUFFER_SIZE) > XRCE_STREAM_HISTORY
 #error                                                                                             \
     "XRCE_SERVICE_REQUEST_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a request that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the request buffer / declared parameters (issue 1722)."
+#endif
+#if XRCE_INBOUND_FRAGMENTS(XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE) > XRCE_STREAM_HISTORY
+#error                                                                                             \
+    "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE needs more MTU-sized fragments than the reliable stream's window (XRCE_STREAM_HISTORY) can reassemble: a parameter request that large would stall the session. Raise NROS_XRCE_STREAM_HISTORY or NROS_XRCE_CUSTOM_TRANSPORT_MTU, or lower the declared parameters (issues 1722, 1808)."
 #endif
 #if XRCE_INBOUND_FRAGMENTS(XRCE_SUBSCRIBER_BUFFER_SIZE) > XRCE_STREAM_HISTORY
 #error                                                                                             \
@@ -379,6 +430,9 @@ static inline void nros_xrce_free(void* ptr) {
 #if XRCE_SERVICE_REQUEST_BUFFER_SIZE < 1
 #error "XRCE_SERVICE_REQUEST_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
 #endif
+#if XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE < 1
+#error "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
+#endif
 #if XRCE_SERVICE_REPLY_BUFFER_SIZE < 1
 #error "XRCE_SERVICE_REPLY_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
 #endif
@@ -418,9 +472,10 @@ typedef struct xrce_reply_token {
     bool in_use;
 } xrce_reply_token;
 
-/* One buffered request in the service-server inbox ring. */
+/* One buffered request in the service-server inbox ring. Its bytes are the
+ * slot's (`xrce_service_request_data`): issue 1808 gave the two families
+ * buffers of different sizes, so an entry cannot carry an array of its own. */
 typedef struct xrce_service_request_entry {
-    uint8_t data[XRCE_SERVICE_REQUEST_BUFFER_SIZE];
     size_t len;
     bool overflow;
     SampleIdentity sample_id;
@@ -438,6 +493,11 @@ typedef struct xrce_service_server_slot {
     uint16_t req_count;
     uint16_t replier_id;
     bool active;
+    /* Issue 1808 — the ring's bytes, `XRCE_SERVICE_REQUEST_RING_DEPTH` entries
+     * of `entry_cap` each, in the family pool the slot belongs to. Bound when
+     * the slot is claimed (`xrce_service_create_locked`). */
+    uint8_t* ring_bytes;
+    size_t entry_cap;
     /* Phase 237 — outstanding replies keyed by index (the runtime `seq`). */
     xrce_reply_token reply_tokens[XRCE_MAX_PENDING_REPLIES];
 } xrce_service_server_slot;
@@ -567,6 +627,15 @@ struct xrce_session_state {
     xrce_subscriber_slot subscriber_slots[XRCE_MAX_SUBSCRIBERS];
     xrce_service_server_slot service_server_slots[XRCE_MAX_SERVICE_SERVERS];
     xrce_service_client_slot service_client_slots[XRCE_MAX_SERVICE_CLIENTS];
+    /* Issue 1808 — the two families' request bytes. Slots
+     * [0, XRCE_USER_SERVICE_SERVERS) are the application's, the rest the
+     * builtin family's. */
+    uint8_t service_request_bytes[XRCE_USER_SERVICE_SERVERS][XRCE_SERVICE_REQUEST_RING_DEPTH]
+                                 [XRCE_SERVICE_REQUEST_BUFFER_SIZE];
+#if XRCE_BUILTIN_SERVICE_SERVERS > 0
+    uint8_t builtin_request_bytes[XRCE_BUILTIN_SERVICE_SERVERS][XRCE_SERVICE_REQUEST_RING_DEPTH]
+                                 [XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE];
+#endif
 
     /* Issue 0847 — how many entity handles still point HERE, and whether
      * `xrce_session_destroy` has already run.
@@ -761,6 +830,13 @@ rmw_ret_t xrce_confirm_entities(xrce_session_state_t* st, const uint16_t* reques
  * `NROS_RMW_RET_MESSAGE_TOO_LARGE`, which is loud. `*out_len` is 0 then. */
 bool xrce_stage_inbound(uint8_t* dst, size_t dst_cap, struct ucdrBuffer* ub, size_t len,
                         size_t* out_len);
+
+/* Issue 1808 — the service-server families (service.c). Whether `name` is a
+ * builtin (parameter / lifecycle) endpoint, and claiming a free slot in
+ * [from, to) bound to its family's request bytes. Exposed for the CTest
+ * harness (`tests/service_families.c`). */
+bool xrce_is_builtin_service(const char* name);
+xrce_service_server_slot* xrce_claim_server_slot(xrce_session_state_t* st, size_t from, size_t to);
 
 /* DDS topic-name conversion. Strips a leading '/' and prepends "rt/"
  * unless `avoid_ros_prefix` is non-zero. Writes a NUL-terminated
