@@ -175,6 +175,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
 
 # What a schema refusal must be able to cite (issue 1389).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSchemaReader.cmake")
+# Issue 2093 -- the backend this image is, for the zenoh-only report line below.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageRmw.cmake")
 
 # Both constants below are `CACHE INTERNAL` and not plain variables, for the
 # `_NROS_ENTRY_DIR` reason (AGENTS.md, CMake Pitfalls) sharpened by
@@ -634,8 +636,16 @@ function(nros_derive_message_bound_knobs)
     if(_tl_retain)
         _nros_bounds_publish(NROS_DERIVED_TL_RETAIN_BYTES "${_tl_retain}")
     elseif(_tl_retain_why AND NOT _B_QUIET)
-        message(STATUS
-            "nros: ZPICO_TL_RETAIN_BYTES not derived -- ${_tl_retain_why}")
+        # Issue 2093 -- the retention slot is a zenoh-pico pool, so the refusal
+        # is reported only to an image that IS zenoh (or has not said which
+        # backend it is). It printed for a Cyclone first project, naming a knob
+        # nothing in that image reads. The derivation above still runs for
+        # every image: one inventory feeds every backend.
+        nros_image_reports_backend_knob(zenoh _tl_reports)
+        if(_tl_reports)
+            message(STATUS
+                "nros: NROS_ZENOH_TL_RETAIN_BYTES not derived -- ${_tl_retain_why}")
+        endif()
     endif()
 
     if(_open)
