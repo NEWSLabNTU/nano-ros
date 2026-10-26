@@ -384,6 +384,9 @@ fn main() {
         infra_families.as_deref(),
         model_nodes.as_deref(),
     );
+    if knobs.stated(ENV_SERVICE_SERVERS, 0, &config_path).is_some() {
+        demand.keep_stated_server_total();
+    }
     demand.report();
     for row in &config.defines {
         let value = knobs
@@ -1017,6 +1020,12 @@ const ENV_PARAM_REQUEST: &str = "NROS_PARAM_SERVICE_INBOX_BYTES";
 const ENV_SERVICE_SERVERS: &str = "NROS_XRCE_MAX_SERVICE_SERVERS";
 // phase-400 W6 — the service-client slot count, the last of issue 1033's three.
 const ENV_SERVICE_CLIENTS: &str = "NROS_XRCE_MAX_SERVICE_CLIENTS";
+// Issue 1808 — the bytes one service-client reply slot holds.
+const ENV_SERVICE_REPLY: &str = "NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE";
+// Issue 1808 — the builtin family's share of the service-server slots, and the
+// bytes one application-family request slot holds once the two are split.
+const ENV_BUILTIN_SERVERS: &str = "NROS_XRCE_BUILTIN_SERVICE_SERVERS";
+const ENV_SERVICE_REQUEST: &str = "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE";
 
 /// Rung 3.5 of the ladder in `packages/rmw/xrce/xrce-config.txt`.
 ///
@@ -1070,6 +1079,9 @@ impl XrceDemand {
         // gates below: what the image opens does not depend on what its
         // endpoints say about delivery.
         d.derive_service_clients(desc);
+        // Issue 1808 — the reply slot's size is a property of the declared
+        // clients' TYPES, so it sits beside their count, outside the QoS gates.
+        d.derive_service_reply(desc);
 
         // A `closure` basis describes every type the link closure can reach,
         // not the set this image creates. D6 forbids silently widening it, and
@@ -1200,6 +1212,12 @@ impl XrceDemand {
         match desc.and_then(|d| d.image.service_server_queryables().stated().copied()) {
             Some(app) => {
                 self.values.insert(ENV_SERVICE_SERVERS, app + runtime);
+                // Issue 1808 — and which of them are the runtime's, so the
+                // application's slots can be sized from its own requests.
+                self.values.insert(ENV_BUILTIN_SERVERS, runtime);
+                if let Some(desc) = desc {
+                    self.derive_service_request(desc, app);
+                }
             }
             // The runtime half is known and the application half is not, so no
             // number here describes the image. Keep the header's default, and
@@ -1229,6 +1247,126 @@ impl XrceDemand {
         if let Some(n) = nros_sizing_descriptor::infra::service_client_slots(&desc.image) {
             self.values.insert(ENV_SERVICE_CLIENTS, n);
         }
+    }
+
+    /// Issue 1808 — the bytes one APPLICATION service-server request slot
+    /// holds, once the builtin family has slots of its own: the largest
+    /// request a declared server or action server receives (`wire_bound_bytes`,
+    /// over an action's three requests), plus the CDR header.
+    ///
+    /// Only beside a derived split ([`Self::derive_service_servers`] is the one
+    /// caller): without it the parameter and lifecycle services share these
+    /// slots, and their requests appear in no `[[endpoint]]` row. One unpriced
+    /// server row refuses, loudly. `app == 0` derives nothing: no slot exists.
+    fn derive_service_request(&mut self, desc: &SizingDescriptor, app: usize) {
+        if app == 0 {
+            return;
+        }
+        let rows: Vec<&Endpoint> = desc
+            .endpoints
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e.kind,
+                    EndpointKind::ServiceServer | EndpointKind::ActionServer
+                )
+            })
+            .collect();
+        // The rows must account for EVERY application server: a component
+        // whose declarations are not stated counts in `service_server_queryables`
+        // and writes no row, and a maximum over the rows that exist is then an
+        // under-size for the one that does not. Three slots per action server,
+        // the producer's expansion.
+        let covered: usize = rows
+            .iter()
+            .map(|e| {
+                if e.kind == EndpointKind::ActionServer {
+                    3
+                } else {
+                    1
+                }
+            })
+            .sum();
+        if covered != app {
+            self.note(format!(
+                "the sizing descriptor's server rows account for {covered} of the                  {app} application service-server slot(s), so {ENV_SERVICE_REQUEST} keeps                  its header default: a request size over the rows that exist bounds                  nothing about the ones that do not"
+            ));
+            return;
+        }
+        let mut bound = 0usize;
+        for e in rows {
+            let Some(b) = e.wire_bound_bytes().get() else {
+                self.note(format!(
+                    "{} `{}` states no `wire_bound_bytes` ({}), so {ENV_SERVICE_REQUEST} keeps                      its header default: every application server slot shares the size",
+                    e.kind.tag(),
+                    e.topic,
+                    e.wire_bound_bytes().refusal().unwrap_or("nothing derived it")
+                ));
+                return;
+            };
+            bound = bound.max(b);
+        }
+        self.values
+            .insert(ENV_SERVICE_REQUEST, bound + CDR_HEADER_LEN);
+    }
+
+    /// Issue 1808 — a STATED server total leaves the split underived: the
+    /// derived builtin share is a part of the DERIVED total, and against a
+    /// smaller stated one it would be refused (`internal.h`), failing an image
+    /// that built before. With the split goes the request size sized for it.
+    fn keep_stated_server_total(&mut self) {
+        if self.values.remove(ENV_BUILTIN_SERVERS).is_some() {
+            self.values.remove(ENV_SERVICE_REQUEST);
+            self.note(format!(
+                "{ENV_SERVICE_SERVERS} is stated, so the parameter / lifecycle services share                  the application's service-server slots and {ENV_SERVICE_REQUEST} is not                  derived down (issue 1808). Leave it unset to derive both"
+            ));
+        }
+    }
+
+    /// Issue 1808 — the bytes one service-client reply slot holds: the largest
+    /// reply any declared client receives (`[[endpoint]] reply_bound_bytes`,
+    /// over an action client's three responses), plus the CDR encapsulation
+    /// header the slot stores with the payload, as the subscriber ring's entry.
+    ///
+    /// Every client slot shares the size, so ONE unpriced reply refuses the
+    /// derivation and the header's default stands, loudly. No client derives
+    /// nothing: the slot COUNT is then 0 and the size prices no array.
+    ///
+    /// Not floored at the header's 1,024 either way. A small reply shrinks
+    /// the slot, and a reply above the default RAISES it, where it used to be
+    /// dropped as an overflow on arrival; the fragment-window `#error` in
+    /// `internal.h` still refuses one the reliable stream cannot reassemble.
+    fn derive_service_reply(&mut self, desc: &SizingDescriptor) {
+        let clients: Vec<&Endpoint> = desc
+            .endpoints
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e.kind,
+                    EndpointKind::ServiceClient | EndpointKind::ActionClient
+                )
+            })
+            .collect();
+        if clients.is_empty() {
+            return;
+        }
+        let mut bound = 0usize;
+        for e in &clients {
+            let Some(b) = e.reply_bound_bytes().get() else {
+                self.note(format!(
+                    "{} `{}` states no `reply_bound_bytes` ({}), so {ENV_SERVICE_REPLY} keeps                      its header default: every client slot shares the size",
+                    e.kind.tag(),
+                    e.topic,
+                    e.reply_bound_bytes()
+                        .refusal()
+                        .unwrap_or("a descriptor written before issue 1808 has none; run `nros sync`")
+                ));
+                return;
+            };
+            bound = bound.max(b);
+        }
+        self.values
+            .insert(ENV_SERVICE_REPLY, bound + CDR_HEADER_LEN);
     }
 
     /// Reliability gates the two reliable stream buffers.
@@ -1657,6 +1795,64 @@ fn xrce_demand_selftest() {
     assert_eq!(v, None);
     assert_eq!(notes, 1, "the runtime's 5 servers must not pass silently");
 
+    // 13b. Issue 1808 — the split: the builtin share is the runtime's servers,
+    //      and the application's request slot is its own declared servers'
+    //      largest request, only when the rows account for every one of them.
+    let split = |eps: Vec<Endpoint>, app: usize| {
+        let mut d = image(eps);
+        d.image.set_service_server_queryables(Some(app));
+        let mut x = XrceDemand::derive(Some(&d));
+        x.derive_service_servers(Some(&d), Some("param+lifecycle"), Some("1"));
+        x
+    };
+    let server = |kind: EndpointKind, topic: &str, bound: Option<usize>| {
+        let mut e = Endpoint::new(kind, "p/srv/S", topic);
+        e.set_wire_bound_bytes(bound);
+        e
+    };
+    let x = split(
+        vec![
+            server(EndpointKind::ServiceServer, "/s", Some(24)),
+            server(EndpointKind::ActionServer, "/a", Some(44)),
+        ],
+        4,
+    );
+    assert_eq!(x.for_knob(ENV_SERVICE_SERVERS), Some(15));
+    assert_eq!(x.for_knob(ENV_BUILTIN_SERVERS), Some(11));
+    assert_eq!(
+        x.for_knob(ENV_SERVICE_REQUEST),
+        Some(44 + CDR_HEADER_LEN),
+        "the application's slot is its own largest request, not the parameter family's"
+    );
+    let x = split(vec![server(EndpointKind::ServiceServer, "/s", Some(24))], 2);
+    assert_eq!(
+        x.for_knob(ENV_SERVICE_REQUEST),
+        None,
+        "a server with no row would be under-sized by a maximum over the rows that exist"
+    );
+    assert_eq!(x.notes.len(), 1);
+    let x = split(vec![server(EndpointKind::ServiceServer, "/s", None)], 1);
+    assert_eq!(
+        x.for_knob(ENV_SERVICE_REQUEST),
+        None,
+        "an unpriced row refuses"
+    );
+    assert_eq!(
+        x.for_knob(ENV_BUILTIN_SERVERS),
+        Some(11),
+        "the split still stands"
+    );
+    let mut x = split(vec![server(EndpointKind::ServiceServer, "/s", Some(24))], 1);
+    x.keep_stated_server_total();
+    assert_eq!(
+        (
+            x.for_knob(ENV_BUILTIN_SERVERS),
+            x.for_knob(ENV_SERVICE_REQUEST)
+        ),
+        (None, None),
+        "a stated total leaves the split underived"
+    );
+
     // 14. phase-400 W6 — the service-client slots: an action client is three.
     let clients = |svc: Option<usize>, act: Option<usize>| {
         let mut d = image(vec![]);
@@ -1668,4 +1864,36 @@ fn xrce_demand_selftest() {
     assert_eq!(clients(Some(1), Some(2)), Some(7));
     assert_eq!(clients(Some(0), Some(0)), Some(0), "unfloored");
     assert_eq!(clients(Some(1), None), None, "half a count is no count");
+
+    // 15. Issue 1808 — the reply slot is the largest declared reply plus the
+    //     CDR header, an action client's included; one unpriced reply keeps
+    //     the default and says so; no client derives nothing.
+    let client = |kind: EndpointKind, topic: &str, reply: Option<usize>| {
+        let mut e = Endpoint::new(kind, "p/srv/S", topic);
+        e.set_reply_bound_bytes(reply);
+        e
+    };
+    let reply = |eps: Vec<Endpoint>| {
+        let d = XrceDemand::derive(Some(&image(eps)));
+        (d.for_knob(ENV_SERVICE_REPLY), d.notes.len())
+    };
+    assert_eq!(
+        reply(vec![
+            client(EndpointKind::ServiceClient, "/s", Some(300)),
+            client(EndpointKind::ActionClient, "/a", Some(2000)),
+        ]),
+        (Some(2000 + CDR_HEADER_LEN), 0),
+        "above the 1,024 default is a RAISE, not a drop"
+    );
+    let (v, notes) = reply(vec![
+        client(EndpointKind::ServiceClient, "/s", Some(300)),
+        client(EndpointKind::ServiceClient, "/t", None),
+    ]);
+    assert_eq!(v, None, "one unpriced reply refuses the shared size");
+    assert_eq!(notes, 1, "and says so");
+    assert_eq!(
+        reply(vec![client(EndpointKind::ServiceServer, "/s", None)]),
+        (None, 0),
+        "a server receives no reply"
+    );
 }

@@ -29,8 +29,8 @@ pub mod utils;
 pub use bounds::{
     ACTION_CANCEL_SERVICE, ACTION_STATUS_TYPE, BoundInventory, BoundState, INVENTORY_CMAKE_NAME,
     INVENTORY_JSON_NAME, INVENTORY_SCHEMA_VERSION, TypeBoundEntry, action_member_types,
-    action_received_types, action_request_type, service_member_types, service_reply_type,
-    service_request_type,
+    action_received_types, action_replied_types, action_request_type, service_member_types,
+    service_reply_type, service_request_type,
 };
 pub use config::{
     CODEGEN_CONFIG_FILENAME, CapacityResolver, ConfigError, FieldKind, FieldStorage, StorageMode,

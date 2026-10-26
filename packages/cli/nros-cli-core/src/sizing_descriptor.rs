@@ -816,32 +816,49 @@ fn set_wire_bound(
     // `declared_service_request_bytes` refuses a whole family: the slot is
     // shared, so a maximum over the members that answered is not a bound on the
     // ones that did not.
+    let bound = bound_over(ep, "wire_bound_bytes", &received_types_of(kind, ty), inputs);
+    ep.set_wire_bound_bytes(bound);
+    // Issue 1808 -- a client also RECEIVES, and what it receives is the reply:
+    // the same join over the other half's types, under its own field.
+    let replied = replied_types_of(kind, ty);
+    if !replied.is_empty() {
+        let reply = bound_over(ep, "reply_bound_bytes", &replied, inputs);
+        ep.set_reply_bound_bytes(reply);
+    }
+    bound
+}
+
+/// The largest bound over `members`, or `None` with `field` refused on `ep`.
+///
+/// ONE unpriced member refuses the whole field: the slot it sizes is shared,
+/// so a maximum over the members that answered is not a bound on the ones that
+/// did not.
+fn bound_over(
+    ep: &mut Endpoint,
+    field: &str,
+    members: &[String],
+    inputs: &DescriptorInputs<'_>,
+) -> Option<usize> {
     let mut bound: Option<usize> = None;
-    for member in received_types_of(kind, ty) {
+    for member in members {
         let member = member.as_str();
         match lookup_bound(&inputs.bounds, member) {
             Some(BoundState::Bounded { rx, .. }) => {
                 bound = Some(bound.unwrap_or(0).max(*rx));
             }
             Some(BoundState::Unbounded { reason }) => {
-                ep.refuse(
-                    "wire_bound_bytes",
-                    format!("`{member}` has no static bound: {reason}"),
-                );
+                ep.refuse(field, format!("`{member}` has no static bound: {reason}"));
                 bound = None;
                 break;
             }
             Some(BoundState::Unresolved { reason }) => {
-                ep.refuse(
-                    "wire_bound_bytes",
-                    format!("`{member}` was not priced: {reason}"),
-                );
+                ep.refuse(field, format!("`{member}` was not priced: {reason}"));
                 bound = None;
                 break;
             }
             None => {
                 ep.refuse(
-                    "wire_bound_bytes",
+                    field,
                     match &inputs.bounds_error {
                         Some(e) => format!("no bound inventory for this entry: {e}"),
                         None => format!(
@@ -855,7 +872,6 @@ fn set_wire_bound(
             }
         }
     }
-    ep.set_wire_bound_bytes(bound);
     bound
 }
 
@@ -1007,6 +1023,16 @@ fn buffered_region(depth: usize, slot: usize, pointer_bytes: usize) -> usize {
 /// `examples/linux/rust/action-server`, `CancelGoal_Request` is 44 bytes rx
 /// against SendGoal's 36, because `GoalInfo` is bigger than a small goal
 /// struct. `rosidl_codegen::action_received_types` names the three.
+/// Issue 1808 -- the types a CLIENT row receives back: the other half of
+/// [`received_types_of`]'s join. Empty for every kind that receives no reply.
+fn replied_types_of(kind: EndpointKind, ty: &str) -> Vec<String> {
+    match kind {
+        EndpointKind::ServiceClient => vec![rosidl_codegen::service_reply_type(ty)],
+        EndpointKind::ActionClient => rosidl_codegen::action_replied_types(ty).to_vec(),
+        _ => Vec::new(),
+    }
+}
+
 fn received_types_of(kind: EndpointKind, ty: &str) -> Vec<String> {
     match kind {
         EndpointKind::ServiceServer | EndpointKind::ServiceClient => {
@@ -3369,6 +3395,73 @@ mod tests {
         assert!(
             reason.contains("action_msgs/srv/CancelGoal_Request"),
             "{reason}"
+        );
+    }
+
+    /// Issue 1808 -- a CLIENT row also states the reply it receives, over the
+    /// response types, and a server row states none (it receives no reply).
+    /// An action client's is the largest of its three responses; one unpriced
+    /// response refuses it, naming that response.
+    #[test]
+    fn a_client_row_states_its_reply_bound() {
+        use nros_sizing_descriptor::Fact;
+        let inv = inventory(vec![
+            EntityDecl::bare(
+                EntityKind::ServiceClient,
+                Some("p/srv/S".into()),
+                Some("/s".into()),
+            ),
+            EntityDecl::bare(
+                EntityKind::ServiceServer,
+                Some("p/srv/S".into()),
+                Some("/t".into()),
+            ),
+            EntityDecl::bare(
+                EntityKind::ActionClient,
+                Some("p/action/A".into()),
+                Some("/a".into()),
+            ),
+            EntityDecl::bare(
+                EntityKind::ActionClient,
+                Some("p/action/B".into()),
+                Some("/b".into()),
+            ),
+        ]);
+        let mut inputs = base(&inv);
+        inputs.bounds = vec![
+            bounded("p/srv/S_Request", 24),
+            bounded("p/srv/S_Response", 300),
+            bounded("p/action/A_SendGoal_Request", 36),
+            bounded("p/action/A_SendGoal_Response", 28),
+            bounded("p/action/A_GetResult_Request", 28),
+            bounded("p/action/A_GetResult_Response", 512),
+            bounded("action_msgs/srv/CancelGoal_Request", 44),
+            bounded("action_msgs/srv/CancelGoal_Response", 96),
+            bounded("p/action/B_SendGoal_Request", 36),
+            bounded("p/action/B_SendGoal_Response", 28),
+            bounded("p/action/B_GetResult_Request", 28),
+            // `p/action/B_GetResult_Response` deliberately absent.
+        ];
+        let desc = build(&inputs);
+        let row = |topic: &str| {
+            desc.endpoints
+                .iter()
+                .find(|e| e.topic == topic)
+                .unwrap_or_else(|| panic!("no row for {topic}"))
+        };
+        assert_eq!(row("/s").reply_bound_bytes(), Fact::Stated(300));
+        assert_eq!(row("/s").wire_bound_bytes(), Fact::Stated(24));
+        assert_eq!(row("/t").reply_bound_bytes(), Fact::Absent);
+        assert_eq!(row("/a").reply_bound_bytes(), Fact::Stated(512));
+        let reason = row("/b")
+            .reply_bound_bytes()
+            .refusal()
+            .expect("an unpriced response refuses the reply bound")
+            .to_string();
+        assert!(reason.contains("p/action/B_GetResult_Response"), "{reason}");
+        assert!(
+            row("/b").wire_bound_bytes().get().is_some(),
+            "a refused reply does not refuse the request beside it"
         );
     }
 

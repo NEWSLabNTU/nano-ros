@@ -324,6 +324,7 @@ pub struct Endpoint {
     registration_path: Option<RegistrationPath>,
     storage_bytes: Option<usize>,
     wire_bound_bytes: Option<usize>,
+    reply_bound_bytes: Option<usize>,
     #[serde(default)]
     refused: BTreeMap<String, String>,
 }
@@ -337,6 +338,7 @@ impl Endpoint {
         "registration_path",
         "storage_bytes",
         "wire_bound_bytes",
+        "reply_bound_bytes",
     ];
 
     /// A row that states nothing but its identity.
@@ -352,6 +354,7 @@ impl Endpoint {
             registration_path: None,
             storage_bytes: None,
             wire_bound_bytes: None,
+            reply_bound_bytes: None,
             refused: BTreeMap::new(),
         }
     }
@@ -493,6 +496,23 @@ impl Endpoint {
         fact(&self.wire_bound_bytes, "wire_bound_bytes", &self.refused)
     }
 
+    /// Issue 1808 -- the largest REPLY a client row receives, framed like
+    /// [`wire_bound_bytes`](Self::wire_bound_bytes).
+    ///
+    /// A client's `wire_bound_bytes` prices what it SENDS (its `_Request`, the
+    /// join a server row shares), so it bounds nothing a client's reply slot
+    /// holds. This is the other half: `pkg/srv/Name_Response` for a service
+    /// client, and the largest of the three responses (SendGoal, CancelGoal,
+    /// GetResult) for an action client. `Fact::Absent` on every other kind,
+    /// which receives no reply.
+    ///
+    /// ADDITIVE, like `[params]` (issue 1408): a file written before it has no
+    /// such key and reads `Absent`, which is the true answer, so the schema
+    /// version did not move.
+    pub fn reply_bound_bytes(&self) -> Fact<usize> {
+        fact(&self.reply_bound_bytes, "reply_bound_bytes", &self.refused)
+    }
+
     /// Builder setters. Each takes `Option` so a caller that has no answer
     /// leaves the field absent by writing what it actually knows.
     pub fn set_history(&mut self, v: Option<History>) -> &mut Self {
@@ -523,6 +543,10 @@ impl Endpoint {
         self.wire_bound_bytes = v;
         self
     }
+    pub fn set_reply_bound_bytes(&mut self, v: Option<usize>) -> &mut Self {
+        self.reply_bound_bytes = v;
+        self
+    }
 
     /// Record that `field` could not be derived, and why.
     pub fn refuse(&mut self, field: &str, reason: impl Into<String>) -> &mut Self {
@@ -547,6 +571,7 @@ impl Endpoint {
             "registration_path" => format!("\"{}\"", self.registration_path?.tag()),
             "storage_bytes" => self.storage_bytes?.to_string(),
             "wire_bound_bytes" => self.wire_bound_bytes?.to_string(),
+            "reply_bound_bytes" => self.reply_bound_bytes?.to_string(),
             _ => return None,
         })
     }
@@ -565,6 +590,7 @@ impl Endpoint {
                 ("registration_path", self.registration_path.is_some()),
                 ("storage_bytes", self.storage_bytes.is_some()),
                 ("wire_bound_bytes", self.wire_bound_bytes.is_some()),
+                ("reply_bound_bytes", self.reply_bound_bytes.is_some()),
             ],
         )
     }

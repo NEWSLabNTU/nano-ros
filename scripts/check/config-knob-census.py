@@ -160,8 +160,10 @@ KNOB_CLASS = {
     "NROS_XRCE_SUBSCRIBER_RING_DEPTH": ("sizing", "samples per subscriber slot; a burst policy, not derivable"),
     "NROS_XRCE_BUFFER_SIZE": ("sizing", "the default of the three per-family receive sizes"),
     "NROS_XRCE_SUBSCRIBER_BUFFER_SIZE": ("derived", "subscriber ring entry; the largest declared subscription wire bound (phase-403 W8)"),
-    "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE": ("sizing", "service request entry, shared with the param and lifecycle servers; lifecycle's ChangeState label is unbounded, so deriving it from the declared servers needs zenoh's family split first (issue 1808)"),
-    "NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE": ("sizing", "service-client reply slot; the sizing descriptor states no _Response bound, so it cannot be derived (issue 1808)"),
+    "NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE": ("derived", "application service-server request entry; the declared servers' largest request, beside the builtin split (issue 1808)"),
+    "NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE": ("derived", "service-client reply slot; the declared clients' largest `reply_bound_bytes` (issue 1808)"),
+    "NROS_XRCE_BUILTIN_SERVICE_SERVERS": ("derived", "the parameter / lifecycle share of the service-server slots; the runtime's servers, beside the total (issue 1808)"),
+    "NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE": ("derived", "builtin-family request entry; XRCE_BUFFER_SIZE raised to the parameter family's priced request, so lifecycle's unbounded ChangeState keeps the floor (issue 1808)"),
     "NROS_ZENOH_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
     "NROS_ZENOH_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # phase-461 W1 / issue 1352 -- the service inbox per FAMILY. The two slot
@@ -800,6 +802,9 @@ NON_READ_CALLEES = {
     "define",          # emits a C preprocessor macro
     "set_var", "remove_var", "with_env",  # WRITES an environment
     "push", "insert",  # builds a list / a fact map
+    # issue 1808 -- drops a DERIVED value from the fact map (`XrceDemand`'s
+    # `keep_stated_server_total`). It writes the map, never the environment.
+    "remove",
     # phase-454 W6.c. `WrittenDescriptor::cyclonedds_env`'s local closure: it
     # inserts a STATED fact into the `[env]` table the image's cargo config
     # gets, so the name is written for a consumer to read, never read here.

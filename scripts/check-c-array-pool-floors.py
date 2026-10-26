@@ -116,6 +116,13 @@ ZERO_LEGAL = {
         "issue 1033 — 1,040 bytes a slot; build.rs lowered the minimum to 0 with "
         "the other two."
     ),
+    "XRCE_BUILTIN_SERVICE_SERVERS": (
+        "issue 1808 — 0 is the DEFAULT and means \"no split\": the builtin array "
+        "is declared only under `#if XRCE_BUILTIN_SERVICE_SERVERS > 0`, and every "
+        "server then takes an application slot, as before the split. "
+        "`just check rmw-xrce` builds and passes the CTest harness at 0, and the "
+        "features params_xrce image (derived 11) passes its e2e."
+    ),
 }
 
 # Arrays sized by a build knob that nobody has ruled on. NOT a pass: an honest

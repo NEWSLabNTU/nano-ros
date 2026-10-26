@@ -30,9 +30,12 @@ static int failures = 0;
         }                                                                                          \
     } while (0)
 
+/* Issue 1808 — an entry's bytes are the slot's ring, bound at claim. */
+static uint8_t ring[XRCE_SERVICE_REQUEST_RING_DEPTH][XRCE_SERVICE_REQUEST_BUFFER_SIZE];
+
 static void stage_request(xrce_service_server_slot* slot, size_t len) {
     xrce_service_request_entry* e = &slot->req_ring[slot->req_write_idx];
-    memset(e->data, 0xcd, len);
+    memset(slot->ring_bytes + (size_t)slot->req_write_idx * slot->entry_cap, 0xcd, len);
     e->len = len;
     e->overflow = false;
     slot->req_write_idx = (uint16_t)((slot->req_write_idx + 1) % XRCE_SERVICE_REQUEST_RING_DEPTH);
@@ -52,6 +55,8 @@ static void request_half(void) {
         return;
     }
     slot->active = true;
+    slot->ring_bytes = &ring[0][0];
+    slot->entry_cap = XRCE_SERVICE_REQUEST_BUFFER_SIZE;
     xrce_service_server_state state;
     memset(&state, 0, sizeof(state));
     state.slot = slot;

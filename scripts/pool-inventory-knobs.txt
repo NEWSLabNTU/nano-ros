@@ -110,7 +110,9 @@ NROS_XRCE_MAX_SERVICE_SERVERS | heap | | service-server slots inside `xrce_sessi
 NROS_XRCE_MAX_SERVICE_CLIENTS | heap | | service-client slots inside `xrce_session_state_t`
 NROS_XRCE_SUBSCRIBER_RING_DEPTH | heap | | ring depth of each XRCE subscriber slot inside `xrce_session_state_t`
 NROS_XRCE_SUBSCRIBER_BUFFER_SIZE | heap | | bytes per XRCE subscriber ring entry inside `xrce_session_state_t`
-NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE | heap | | per-server request buffer inside `xrce_session_state_t`
+NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE | heap | | per-APPLICATION-server request buffer inside `xrce_session_state_t`
+NROS_XRCE_BUILTIN_SERVICE_SERVERS | heap | | issue 1808: how many service-server slots inside `xrce_session_state_t` are the parameter / lifecycle family's, each with its own request ring
+NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE | heap | | issue 1808: request buffer of each builtin-family server slot inside `xrce_session_state_t`
 NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE | heap | | per-client reply buffer inside `xrce_session_state_t`
 NROS_XRCE_BUFFER_SIZE | heap | | the default the three XRCE buffer sizes above alias to
 NROS_XRCE_TRANSPORT_MTU | heap | | Micro-XRCE-DDS-Client transport MTU (UDP/TCP): sizes the transport's buffer inside its transport struct

@@ -1619,6 +1619,35 @@ basis = \"contract\"
         assert!(err.to_string().contains("pointer_wdith"), "{err}");
     }
 
+    /// Issue 1808 -- a client row's reply bound round-trips, stated and
+    /// refused, and a file written without the key reads it `Absent`.
+    #[test]
+    fn a_client_reply_bound_round_trips_and_is_additive() {
+        let mut d = island();
+        let mut stated = Endpoint::new(EndpointKind::ServiceClient, "p/srv/S", "/s");
+        stated.set_reply_bound_bytes(Some(300));
+        let mut refused = Endpoint::new(EndpointKind::ActionClient, "p/action/A", "/a");
+        refused.refuse(
+            "reply_bound_bytes",
+            "`p/action/A_GetResult_Response` was not priced",
+        );
+        d.endpoints.push(stated);
+        d.endpoints.push(refused);
+        let text = render(&d);
+        assert!(text.contains("reply_bound_bytes = 300"), "{text}");
+        let back = parse(&text, Path::new("t.toml")).unwrap();
+        let row = |t: &str| back.endpoints.iter().find(|e| e.topic == t).unwrap();
+        assert_eq!(row("/s").reply_bound_bytes(), Fact::Stated(300));
+        assert!(row("/a").reply_bound_bytes().refusal().is_some());
+        let without = parse(&render(&island()), Path::new("t.toml")).unwrap();
+        assert!(
+            without
+                .endpoints
+                .iter()
+                .all(|e| e.reply_bound_bytes() == Fact::Absent)
+        );
+    }
+
     #[test]
     fn a_schema_version_this_reader_does_not_know_refuses() {
         let text = render(&island()).replace(

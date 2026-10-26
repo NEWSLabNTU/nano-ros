@@ -1082,6 +1082,16 @@ moves every receive buffer at once; state a family option instead
 when only one of them needs the room.
 '''
 
+# Issue 1808 -- the builtin (parameter + lifecycle) share of the XRCE
+# service-server slots and its request size. Derived by the cargo lane from the
+# sizing descriptor on every road, so neither has a Kconfig symbol; the image's
+# `[image.<id>.knobs.xrce]` rung states one where a person must.
+[[knob]]
+id = "XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE"
+
+[[knob]]
+id = "XRCE_BUILTIN_SERVICE_SERVERS"
+
 [[knob]]
 id = "XRCE_CUSTOM_TRANSPORT_MTU"
 toml = "xrce.custom_transport_mtu"
@@ -1182,8 +1192,12 @@ help = '''
 Size of one service-client reply inbox (bytes).
 Maps to XRCE_SERVICE_REPLY_BUFFER_SIZE.
 
-Settable, and not derived, for the same reason as
-NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE. Falls back to NROS_XRCE_BUFFER_SIZE.
+-1 DERIVES it (issue 1808): the largest reply any declared client
+receives (the sizing descriptor's `reply_bound_bytes`, over an action
+client's three responses) plus the 4-byte CDR header. A reply above
+NROS_XRCE_BUFFER_SIZE now RAISES the slot rather than being dropped on
+arrival. One unpriced reply keeps NROS_XRCE_BUFFER_SIZE, and the build
+says which. Stating a number wins.
 '''
 
 [[knob]]
@@ -1198,17 +1212,21 @@ help = '''
 Size of one service-server request inbox entry (bytes).
 Maps to XRCE_SERVICE_REQUEST_BUFFER_SIZE.
 
-Settable. Not derived from the declared service rows: the parameter
-(6 per node) and lifecycle (5) families open service servers that no
-`[[endpoint]]` row in the sizing descriptor itemises, and an action
-server opens three more, so a size from those rows alone would be
-short in the UNDER direction. Falls back to NROS_XRCE_BUFFER_SIZE,
-RAISED to the parameter family's largest request when that is known
-(NROS_PARAM_SERVICE_INBOX_BYTES, or derived from the contract's
-declared `params:` — issue 1722). A stated value below that request,
-or one too large for the reliable stream's reassembly window
-(NROS_XRCE_STREAM_HISTORY fragments of the transport MTU), fails the
-build.
+-1 DERIVES it (issue 1808), from the APPLICATION's declared servers:
+their largest request (`wire_bound_bytes`, over an action server's
+three) plus the 4-byte CDR header. That is sound because the
+parameter (6 per node) and lifecycle (5) services, which no
+`[[endpoint]]` row itemises, have slots of their own: the cargo lane
+derives NROS_XRCE_BUILTIN_SERVICE_SERVERS beside the server total, and
+those slots take NROS_XRCE_BUFFER_SIZE raised to the parameter
+family's largest request (NROS_PARAM_SERVICE_INBOX_BYTES, or derived
+from the contract's `params:`, issue 1722). The derivation abstains,
+and says so, when a server row is unpriced or the rows do not account
+for every application server, and when NROS_XRCE_MAX_SERVICE_SERVERS
+is stated (the split is then not derived and every server shares one
+buffer, raised and refused as before). A value too large for the
+reliable stream's reassembly window (NROS_XRCE_STREAM_HISTORY
+fragments of the transport MTU) fails the build.
 '''
 
 [[knob]]
@@ -2025,4 +2043,12 @@ configured 102400 reads 102912. Size from a dump with
 (as of the dump) against a 24,576-byte floor and names the knob
 (peak + floor - 512); take the dump after the host graph has joined,
 not at boot.
+
+PERMANENTLY OPERATOR-STATED beyond those defaults (issue 1808). The
+arena's peak is a RUNTIME property: it moves with what the peers send
+(discovery, the graph, samples in flight), which nothing in the image
+declares, so no build can derive it. The defaults above are floors per
+declared capability; the measured peak, read off the boot record by
+`read-boot-report.py --heap-headroom`, is how an image is sized past
+them, and it names the value to state.
 '''

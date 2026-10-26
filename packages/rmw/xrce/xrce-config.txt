@@ -257,6 +257,13 @@ define  XRCE_BUFFER_SIZE           NROS_XRCE_BUFFER_SIZE           64
 define  XRCE_SUBSCRIBER_BUFFER_SIZE      NROS_XRCE_SUBSCRIBER_BUFFER_SIZE      1
 define  XRCE_SERVICE_REQUEST_BUFFER_SIZE NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE 1
 define  XRCE_SERVICE_REPLY_BUFFER_SIZE   NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE   1
+# Issue 1808 — the builtin family (parameter + lifecycle services) gets slots of
+# its own, so the application's request buffer above can be derived from its
+# own declared servers. The cargo lane derives the count beside the server
+# total (0 = no split, every server shares one buffer as before), and the
+# builtin buffer defaults to XRCE_BUFFER_SIZE raised to XRCE_PARAM_REQUEST_BYTES.
+define  XRCE_BUILTIN_SERVICE_SERVERS   NROS_XRCE_BUILTIN_SERVICE_SERVERS   0
+define  XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE NROS_XRCE_BUILTIN_SERVICE_REQUEST_BUFFER_SIZE 1
 # Phase 130.6 — reliable-stream history. `internal.h` documents why 16 is the
 # default; 4 is the floor (reliable retransmission needs at least 2 unACK'd
 # messages outstanding plus headroom).

@@ -1,6 +1,6 @@
 # Phase 516 — Open issues whose phases were archived
 
-**Status (2026-10-26). Open; W3, W6 and W7 done.** Each item below is one open
+**Status (2026-10-26). Open; W2, W3, W4, W6 and W7 done.** Each item below is one open
 issue whose phase was archived while it stayed open. None is a red in a gating
 or nightly lane. W5 is parked until ESP32 is revived.
 
@@ -70,7 +70,7 @@ so a fetched branch changes no verdict. CI already unshallows the base branch
 for it (`gate.yml`, commits only). The baseline shrank from 16 entries to 2.
 Issue 1205 resolved.
 
-### W4 — the seven hand-set sizing knobs ([issue 1808](../issues/1808-sizing-knobs-with-no-static-derivation.md))
+### W4 — the seven hand-set sizing knobs ([issue 1808](../issues/archived/1808-sizing-knobs-with-no-static-derivation.md))
 
 phase-412 derived every pool the entity inventory can answer. Seven knobs on
 the safety island are still set by hand, each with its own blocker.
@@ -78,6 +78,12 @@ the safety island are still set by hand, each with its own blocker.
 **Done when** each knob is either derived from what the image declares, or
 recorded as permanently operator-stated with its reason in the knob's help
 text.
+
+**Done (2026-10-26).** Three derived (the Zephyr task slots, and both XRCE
+service buffers, after XRCE gave the parameter and lifecycle services slots of
+their own), three ruled permanently operator-stated with the measurement named
+in their help (the Zephyr heap, the task stack, `CONFIG_MAIN_STACK_SIZE`), and
+the graph cache was already closed. Issue 1808 resolved.
 
 ### W5 — esp32-qemu heap accounting ([issue 1823](../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md)) — PARKED
 
@@ -123,7 +129,7 @@ quantization warning. Issue 2050 resolved.
 | [0506](../issues/0506-transport-band-unbounded-preemption.md) | W1 | unrated |
 | [1091](../issues/archived/1091-ledger-shards-conflict-on-sorted-key-insert.md) | W2 | unrated |
 | [1205](../issues/archived/1205-doc-commit-citations-local-fetch-state.md) | W3 | unrated |
-| [1808](../issues/1808-sizing-knobs-with-no-static-derivation.md) | W4 | low |
+| [1808](../issues/archived/1808-sizing-knobs-with-no-static-derivation.md) | W4 | low |
 | [1823](../issues/1823-esp32-qemu-heap-used-bytes-reports-zero.md) | W5 | low |
 | [2049](../issues/archived/2049-cpp-levels-runner-info-lines-logged-as-errors.md) | W6 | low |
 | [2050](../issues/archived/2050-spin-quantization-warning-names-a-spawned-level-timer.md) | W7 | low |
