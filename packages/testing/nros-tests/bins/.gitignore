@@ -7,6 +7,10 @@
 # They used to be committed, which made a fresh clone look like it had them
 # while the contents belonged to whoever last regenerated.
 /*/generated/
+# A ported ament WORKSPACE bin (`ament-census-port`, issue 2043) holds its
+# packages under `src/`, and each package's codegen writes its own
+# `generated/` beside its `package.xml`, one level further down.
+/*/src/*/generated/
 
 # Every bin's `Cargo.lock` is SEEDED, never committed (phase-485 W2, RFC-0104
 # D3). A lock is tracked only where its directory is in the index's
