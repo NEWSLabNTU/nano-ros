@@ -1,8 +1,9 @@
 # Phase 518 — the phase-488 C++ ports on Zephyr and FreeRTOS, and their three open issues
 
-**Status (2026-10-26). Open; W1 done.** W1–W3 take the three issues
-phase-488 left open. W4 and W5 attempt the three ported nodes on Zephyr and
-FreeRTOS, which phase-488 did not try.
+**Status (2026-10-26). Open; W1 done; W4/W5 done for node 3 on both boards
+and node 1 on FreeRTOS.** W1–W3 take the three issues phase-488 left open.
+W4 and W5 attempt the three ported nodes on Zephyr and FreeRTOS, which
+phase-488 did not try.
 
 **Opened 2026-10-26.** Follows
 [phase-488](archived/phase-488-larger-cpp-port-fixture.md), which ported three
@@ -81,11 +82,81 @@ in-tree test, a D5 statement, or an issue.
 **Done when** each node either builds for both boards or has an issue naming
 what stops it.
 
+**Progress (2026-10-26).**
+
+| node | FreeRTOS `mps2-an385-freertos` | Zephyr `mps2_an385` |
+| --- | --- | --- |
+| 1 `autoware_external_cmd_selector` | builds | not yet attempted |
+| 2 `nav2_velocity_smoother` | not yet attempted | not yet attempted |
+| 3 `composition` | builds | builds |
+
+What the road needed, all landed:
+
+- **A stock ament workspace builds for a board.** It takes the same
+  `add_subdirectory(<nano-ros>)` road the host uses. On a board,
+  `add_executable` becomes an image (`ROS2_MAIN`). Ported C++ is built hosted
+  (`nros_ported_cxx_hosted`), and message packages that `find_package` only
+  validated are generated when a C++ target asks for them. App links go
+  through `nros_link_app_dependency`, so a stock plain-signature
+  `target_link_libraries(exe lib)` does not trip cmake's signature check.
+  Road B reads the leaf's board, locator and domain.
+- **Zephyr.** A source's directory properties follow it into `app`, and a
+  generated message target carries its include directories.
+- **A component executable links on a board.** The generated `main` from
+  `rclcpp_components_register_node(... EXECUTABLE ...)` had C linkage.
+- `service_is_ready()` passes `int32_t*`, and three board C files lost their
+  `-Werror` warnings (Autoware builds `-Werror`).
+- `nros build` configures a board image `Release` (issue 2072). It used to
+  compile the image unoptimised.
+
+The in-tree regression is the new template
+[`examples/templates/ament-workspace-port`](../../examples/templates/ament-workspace-port/):
+a library plus an executable linked to it in a stock package, built for posix,
+FreeRTOS and Zephyr. Matrix workload `PortWorkspace`, three cells; e2e
+`port_templates_e2e::cpp_port_ament_workspace_publishes{,_on_freertos,_on_zephyr}`.
+
+Node 1 on FreeRTOS needed porter edits that are not committed (the port is the
+user's work): parameter defaults (N1-F3, below), a `throw` replaced under
+`-fno-exceptions` (N1-F1), an `nros-codegen.toml` capping `diagnostic_msgs` to
+4-element sequences and 64-byte strings (N1-F4), the heap at 2048 KiB (N1-F2),
+and four sizing knobs that are issue 2043's (recorded there).
+
+Zephyr needs the QEMU fragment `cmake/zephyr/mps2-an385.conf`, which only the
+fixture script appends today (issue 1782).
+
 ### W5 — run them under QEMU against stock ROS 2
 
 **Done when** each node that W4 built is driven from a stock ROS 2 Humble peer
 under QEMU, by the same checks phase-488 ran on Linux, or has an issue naming
 what stops it.
+
+**Progress (2026-10-26).** Driven from ROS 2 Humble (`rmw_zenoh_cpp`) under
+QEMU mps2-an385:
+
+- **Node 3 on FreeRTOS and Zephyr:** the talker reaches `ros2 topic echo`,
+  `ros2 service call /add_two_ints` is answered, and the listener hears a
+  `ros2 topic pub`. On Zephyr the in-image client reached the in-image server
+  only after `local_queryable = 1` was stated by hand (issue 2043).
+- **Node 1 on FreeRTOS:** `ros2 node info` lists all 12 subscriptions, 8
+  publishers and the service. `current_selector_mode` is echoed, and
+  `ros2 service call .../select_external_command` answers `success=True` and
+  moves the mode from 1 to 2. Boot report: `app task stack peak 13768 of
+  65536 bytes`, `heap peak 179976 of 2097152 bytes`.
+
+Node 1 found two runtime bugs before that:
+
+- [Issue 2071](../issues/archived/2071-ros-time-frozen-without-rtc.md), fixed:
+  with no RTC, ROS time never advanced, so the node's
+  `rclcpp::create_timer(this, get_clock(), ...)` never fired.
+- [Issue 2070](../issues/2070-param-declare-stack-cost.md), open: declaring one
+  parameter at the default capacities costs ~70 KiB of stack, and the C++
+  FreeRTOS app stack is 64 KiB. The overflow corrupted the kernel's globals
+  without any stack-overflow report.
+
+A ported executable on a board has no way to receive `--ros-args -p` or
+`--params-file`: `argv` is null
+([issue 2073](../issues/2073-ported-board-exe-no-params-source.md), N1-F3). Node 1's two
+`declare_parameter<T>(name)` calls with no default got porter-written defaults.
 
 ## Acceptance
 
