@@ -1,0 +1,1 @@
+C: rclc's context-less `rclc_executor_add_subscription(executor, subscription, msg, callback, invocation)`, with its `rclc_subscription_callback_t` (`void (*)(const void *msgin)`) callback, so an rclc program registers a typed subscription unchanged. The callback is held in the executor's arena entry, not in the wrapper. (phase-515 C2)

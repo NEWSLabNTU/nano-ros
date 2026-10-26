@@ -2418,6 +2418,12 @@ typedef void (*rclc_subscription_validated_callback_t)(const uint8_t *data,
 typedef void (*rclc_subscription_callback_with_context_t)(const void *msg, void *context);
 
 /**
+ * rclc's context-LESS subscription callback, `void (*)(const void *msgin)`
+ * (phase-515 C2).
+ */
+typedef void (*rclc_subscription_callback_t)(const void *msgin);
+
+/**
  * Subscription callback function type.
  *
  * # Parameters
@@ -5775,10 +5781,9 @@ rcl_ret_t rclc_executor_add_subscription_raw_validated(struct rclc_executor_t *e
  * typed registration carried a seventh argument and a generated per-type
  * macro collapsed it away; both are gone.
  *
- * The CONTEXT-LESS `rclc_executor_add_subscription` (a `void (*)(const void*)`
- * callback) stays refused: adapting it needs a trampoline that remembers the
- * original function pointer, and state in the wrapper is RFC-0019/0020's
- * violation rather than an ergonomic. `<rcl/types.h>` records the refusal.
+ * The CONTEXT-LESS form is [`rclc_executor_add_subscription`] (phase-515 C2):
+ * this registration with a fixed trampoline, the user's callback held in the
+ * arena entry's `context` slot -- executor state, not wrapper state.
  *
  * **No allocator is involved, and none is needed.** The caller owning `msg`
  * (its strings and sequences wired by `<Msg>__init_in`) IS the mechanism — the
@@ -5813,6 +5818,36 @@ rcl_ret_t rclc_executor_add_subscription_with_context(struct rclc_executor_t *ex
                                                       rclc_subscription_callback_with_context_t callback,
                                                       void *context,
                                                       enum rclc_executor_handle_invocation_t invocation);
+
+/**
+ * rclc's context-LESS `rclc_executor_add_subscription`, argument for
+ * argument (phase-515 C2):
+ *
+ * ```c
+ * rcl_ret_t rclc_executor_add_subscription(rclc_executor_t *executor,
+ *     rcl_subscription_t *subscription, void *msg,
+ *     rclc_subscription_callback_t callback,
+ *     rclc_executor_handle_invocation_t invocation);
+ * ```
+ *
+ * [`rclc_executor_add_subscription_with_context`] with a fixed trampoline as
+ * the callback and the user's `callback` in the arena entry's `context` slot.
+ * That slot is the executor's state, not the wrapper's, which is why this is
+ * RFC-0019/0020-compliant where a wrapper-side table would not be.
+ *
+ * # Returns
+ * As [`rclc_executor_add_subscription_with_context`]; `RCL_RET_INVALID_ARGUMENT`
+ * for a NULL `callback`.
+ *
+ * # Safety
+ * As [`rclc_executor_add_subscription_with_context`].
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_subscription(struct rclc_executor_t *executor,
+                                         struct rcl_subscription_t *subscription,
+                                         void *msg,
+                                         rclc_subscription_callback_t callback,
+                                         enum rclc_executor_handle_invocation_t invocation);
 
 /**
  * phase-417 stage 6 — register a BYTE-oriented subscription, supplying its

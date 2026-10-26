@@ -1236,6 +1236,10 @@ that use behaves identically here.
   working, they would be a second way to do one thing.
 * **Unchanged:** the context-less `rclc_executor_add_subscription` stays
   refused, for its own reason (a trampoline holding the user's function pointer).
+  *Amended 2026-10-27 (phase-515 C2): adopted. The pointer lives in the
+  executor's arena entry, in the `context` slot a context-carrying registration
+  already fills, so the trampoline holds nothing and only translates the ABI —
+  RFC-0019/0020 forbid state in the wrapper, not in the entry.*
 
 Upstream's macro is a function call; ours is an address constant, so it also
 works in a static initialiser. That is a superset no upstream file can depend

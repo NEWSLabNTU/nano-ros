@@ -467,12 +467,21 @@ NROS_RCL_COMPAT_ASSERT(sizeof(rcl_ret_t) == 4, "rcl_ret_t must be 32-bit, as ups
  */
 
 /*
- * The context-LESS `rclc_subscription_callback_t` is still not offered, and its
- * refusal is a different one from the two below: adapting a
- * `void (*)(const void *)` to a `void (*)(const void *, void *)` needs a
- * trampoline that REMEMBERS the original pointer, and state in the wrapper is
- * RFC-0019/0020's violation rather than an ergonomic. `rclc_service_callback_t`
- * and `rclc_client_callback_t` are refused on the same argument.
+ * ── The context-LESS `rclc_executor_add_subscription`: ADOPTED (phase-515 C2) ─
+ *
+ *   rclc: rcl_ret_t rclc_executor_add_subscription(rclc_executor_t *,
+ *             rcl_subscription_t *, void *msg,
+ *             rclc_subscription_callback_t callback,
+ *             rclc_executor_handle_invocation_t invocation)
+ *         typedef void (*rclc_subscription_callback_t)(const void *msgin);
+ *
+ * It was refused on the argument that adapting a `void (*)(const void *)` to
+ * the context-carrying dispatch needs a trampoline that REMEMBERS the original
+ * pointer, i.e. state in the wrapper (RFC-0019/0020). The pointer does not need
+ * the wrapper: the executor's arena entry already owns a `context` slot, and
+ * the context-less form registers a fixed trampoline with the user's callback
+ * IN that slot. The trampoline only translates the ABI, which is what
+ * RFC-0020's checklist asks of one.
  *
  * ── `rclc_executor_add_subscription_with_context`: ADOPTED (phase-492 W8) ─
  *
