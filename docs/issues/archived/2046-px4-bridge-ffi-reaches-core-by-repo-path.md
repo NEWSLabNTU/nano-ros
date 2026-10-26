@@ -12,7 +12,7 @@ related: [issue-1516, issue-0362, rfc-0026, phase-452]
 
 # The px4 bridge's FFI crate reaches core by repository layout
 
-**Home:** [phase-452](../roadmap/phase-452-copy-out-front-door.md) W7.
+**Home:** [phase-452](../../roadmap/phase-452-copy-out-front-door.md) W7.
 
 ## Problem
 

@@ -22,7 +22,6 @@ bench = false
 nros-cpp = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi",
-    "ros-humble",
     "platform-mps2-an385",
     "panic-platform",
 ] }
@@ -35,7 +34,7 @@ nros-c = { version = "*", default-features = false }
 # not an `nros-cpp` feature: the API crate names no backend. Its platform and
 # edition are what `nros-cpp`'s `platform-mps2-an385` / `ros-humble` used to
 # forward to it.
-nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-bare-metal", "ros-humble"] }
+nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-bare-metal"] }
 # The image's board crate (reset vector, CMSDK Timer0 clock, LAN9118 + smoltcp
 # bring-up, semihosting console and the `nros_log` sink — none of it reachable
 # from C, which is why this leaf is rooted in Rust), its RMW backend and its

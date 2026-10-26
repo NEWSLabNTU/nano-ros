@@ -451,6 +451,22 @@ function(nano_ros_read_leaf_system)
                 "<build-dir>` clears a cached one) — issue 1946.")
         endif()
         set_property(GLOBAL PROPERTY NROS_TOP_LEAF_DOMAIN_ID "${_NROS_LEAF_DOMAIN_ID}")
+        # Issue 2087 — the edition, by the same rule. A standalone leaf's
+        # `ros_edition` used to reach nothing on this road: codegen and the
+        # runtime crate resolved `NROS_ROS_EDITION`, which only a workspace set,
+        # so a leaf declaring jazzy baked humble type hashes with no error.
+        if(NOT "${_NROS_LEAF_ROS_EDITION}" STREQUAL ""
+           AND DEFINED NROS_ROS_EDITION AND NOT NROS_ROS_EDITION STREQUAL ""
+           AND NOT NROS_ROS_EDITION STREQUAL _NROS_LEAF_ROS_EDITION)
+            message(FATAL_ERROR
+                "nano-ros: ${_NRL_DIR}/system.toml states ROS edition "
+                "`${_NROS_LEAF_ROS_EDITION}` for image `${_NROS_LEAF_IMAGE}` but "
+                "-DNROS_ROS_EDITION=${NROS_ROS_EDITION} names another. State the "
+                "edition in the image this build is (`[image.<id>] ros_edition`, "
+                "selected with -DNROS_IMAGE=<id>) and drop the -D (`cmake -U "
+                "NROS_ROS_EDITION <build-dir>` clears a cached one) — issue 2087.")
+        endif()
+        set(NROS_LEAF_ROS_EDITION "${_NROS_LEAF_ROS_EDITION}" PARENT_SCOPE)
     endif()
 
     # A board that IS its platform (`linux`, `zephyr`) names no separate
@@ -527,6 +543,12 @@ macro(nros_apply_leaf_identity)
     endif()
     if(NOT NROS_LEAF_DOMAIN_ID STREQUAL "")
         set(NROS_DOMAIN_ID "${NROS_LEAF_DOMAIN_ID}")
+    endif()
+    # Issue 2087 — the declared edition becomes the one every generator and
+    # the runtime crate resolve (`_nros_resolve_ros_edition`). A disagreeing
+    # -D was refused by the read.
+    if(DEFINED NROS_LEAF_ROS_EDITION AND NOT NROS_LEAF_ROS_EDITION STREQUAL "")
+        set(NROS_ROS_EDITION "${NROS_LEAF_ROS_EDITION}")
     endif()
 endmacro()
 

@@ -333,10 +333,15 @@ the way a user makes it, not argued from a grep.
       `source <root>/activate.sh` (Rust). `check-repo-dir-readers` now reads
       fenced commands in tracked Markdown: 154 findings on main before the
       sweep, 0 after.
-- [ ] [Issue 2045](../issues/2045-example-manifests-hand-set-the-ros-edition-feature.md)
+- [x] [Issue 2045](../issues/archived/2045-example-manifests-hand-set-the-ros-edition-feature.md)
       — 41 example manifests hand-set `ros-humble` on `nros`, so declaring
       `ros_edition = "jazzy"` is a compile error. Remove the lowered form;
       `nros sync` refuses a leaf manifest that names a lowered axis feature.
+- [x] [Issue 2087](../issues/archived/2087-standalone-cmake-leaf-ignores-declared-ros-edition.md)
+      — found fixing 2045: a standalone CMake leaf's `ros_edition` reached
+      nothing, so a declared jazzy built humble silently (codegen AND runtime).
+      `nros ws leaf-system` prints it, the reader applies it on both roads and
+      refuses a disagreeing `-D`.
 - [x] [Issue 2046](../issues/archived/2046-px4-bridge-ffi-reaches-core-by-repo-path.md)
       — the px4 bridge's FFI crate reaches `nros-serdes` by five `..`; name
       it, and pass the root through the generated patch.
@@ -387,5 +392,6 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | issue | why it belongs here |
 | --- | --- |
 | [#2044](../issues/archived/2044-example-readmes-configure-with-a-retired-root-variable.md) | RESOLVED 2026-10-26. The copy-out instructions every example carries configured with a retired variable and failed. W7. |
-| [#2045](../issues/2045-example-manifests-hand-set-the-ros-edition-feature.md) | A copied-out example cannot take the edition its own `system.toml` declares. W7. |
+| [#2045](../issues/archived/2045-example-manifests-hand-set-the-ros-edition-feature.md) | A copied-out example cannot take the edition its own `system.toml` declares. W7. |
+| [#2087](../issues/archived/2087-standalone-cmake-leaf-ignores-declared-ros-edition.md) | A standalone CMake leaf built humble whatever it declared. Found fixing 2045. W7. |
 | [#2046](../issues/archived/2046-px4-bridge-ffi-reaches-core-by-repo-path.md) | A copy-into-PX4 source only builds in place. W7. |

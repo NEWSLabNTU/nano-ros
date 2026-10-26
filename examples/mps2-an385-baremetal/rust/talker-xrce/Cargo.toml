@@ -27,7 +27,7 @@ crate-type = ["rlib"]
 [dependencies]
 # nros + the XRCE RMW (rmw-xrce makes `__register_linked_rmw()` register the
 # XRCE backend on `target_os = "none"`; it pulls nros-rmw-xrce-cffi + linkme-register).
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board BoardEntry boot scaffold — this crate only registers its Logger handle.
 # phase-338 W7 — one facade in user source: the body logs through `log`,

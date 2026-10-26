@@ -29,7 +29,7 @@ crate-type = ["rlib"]
 example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 heapless = "0.8"
 # nros Executor API + bare-metal platform glue.
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 # User diagnostics route through `nros-log`; the dispatcher is installed by the
 # board boot scaffold.
 # phase-338 W7 — one facade in user source: the body logs through `log`,

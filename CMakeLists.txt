@@ -51,8 +51,13 @@ set_property(CACHE NROS_PLATFORM PROPERTY STRINGS
 # is allowed to spell an edition, so adding an edition is one edit.
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRosEdition.cmake")
 string(REPLACE ";" ", " _nros_known_editions "${NROS_KNOWN_ROS_EDITIONS}")
-set(NROS_ROS_EDITION "${NROS_DEFAULT_ROS_EDITION}" CACHE STRING
-    "ROS 2 edition: ${_nros_known_editions}")
+# Issue 2087 — EMPTY by default, not `${NROS_DEFAULT_ROS_EDITION}`: an empty
+# value means "the leaf's `system.toml`, else the default"
+# (`_nros_resolve_ros_edition`). A cached default was indistinguishable from a
+# user's -D, so it either outranked the declaration or tripped the agreement
+# check `nano_ros_read_leaf_system` applies to a real one.
+set(NROS_ROS_EDITION "" CACHE STRING
+    "ROS 2 edition: ${_nros_known_editions} (empty: the leaf's system.toml, else ${NROS_DEFAULT_ROS_EDITION})")
 set_property(CACHE NROS_ROS_EDITION PROPERTY STRINGS ${NROS_KNOWN_ROS_EDITIONS})
 
 # phase-261 W5 — declared capability axes, the C/C++ projection of `system.toml`
@@ -124,27 +129,10 @@ nros_resolve_corrosion()
 # 192.3: the nano-ros root dir (this file's dir), so subdirs needn't walk up
 # `../../..` to reach it (e.g. nros-cpp's deferred NanoRos::NanoRos link).
 set(NROS_REPO_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-if(NOT NROS_PLATFORM MATCHES "^nuttx")
-    # Phase 241.D3-rev — single-runtime model: the umbrella FFI staticlib
-    # (`libnros_c.a` for C, `libnros_cpp.a` for C++) bundles the selected RMW backend
-    # as an rlib dep, so each binary links exactly ONE Rust staticlib (one `std`).
-    # No provider archive, no `external-registry` feature — the cffi `REGISTRY` + C
-    # entry points are defined once in the single archive.
-    add_subdirectory(packages/rmw/cffi)
-    add_subdirectory(packages/api/nros-c)
-    add_subdirectory(packages/api/nros-cpp)
-endif()
-
-# ---------------------------------------------------------------------------
-# Platform shim (canonical `nros_platform_*` ABI). Phase 138 dispatches
-# via per-platform modules under `cmake/platform/`. Each module:
-#   - Builds / surfaces the platform staticlib(s) for its target
-#   - Exposes `NanoRos::Platform` ALIAS (linked into the umbrella below)
-#   - Defines `nros_platform_link_app(target)` (per-app fixups —
-#     link script, startup files, ISR vectors, RTOS-specific tweaks)
-#   - Sets `NROS_PLATFORM_LINK_FEATURES` (default link feature set)
-# Validation: the configured value must match a module on disk.
-# ---------------------------------------------------------------------------
+# Issue 2087 — read BEFORE the core libraries below: `nros-c` / `nros-cpp`
+# generate their image crates at configure time with the edition they resolve
+# then, so a leaf read after them left a declared `ros_edition` on the app
+# crate alone and built the runtime for the default.
 # phase-484 W4f — a standalone leaf that pulls nano-ros in with
 # `add_subdirectory()` (the Rust-staticlib leaves) states its board ONCE, in
 # its `system.toml`; the board MODULE comes from that board's descriptor
@@ -189,6 +177,9 @@ if(NOT NROS_BOARD AND NOT DEFINED NROS_LEAF_SYSTEM
     if(DEFINED NROS_DOMAIN_ID)
         set(NROS_DOMAIN_ID "${NROS_DOMAIN_ID}" PARENT_SCOPE)
     endif()
+    if(DEFINED NROS_ROS_EDITION)
+        set(NROS_ROS_EDITION "${NROS_ROS_EDITION}" PARENT_SCOPE)
+    endif()
     # Issue 2043 — and what it creates, through the leaf's sizing descriptor,
     # as the find_package road records it (nano_rosConfig.cmake). A ported
     # ament workspace states `entities = "census"` and is sized from its own
@@ -198,6 +189,27 @@ if(NOT NROS_BOARD AND NOT DEFINED NROS_LEAF_SYSTEM
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosLeafEntityFacts.cmake")
     nros_record_leaf_entity_facts("${CMAKE_SOURCE_DIR}")
 endif()
+if(NOT NROS_PLATFORM MATCHES "^nuttx")
+    # Phase 241.D3-rev — single-runtime model: the umbrella FFI staticlib
+    # (`libnros_c.a` for C, `libnros_cpp.a` for C++) bundles the selected RMW backend
+    # as an rlib dep, so each binary links exactly ONE Rust staticlib (one `std`).
+    # No provider archive, no `external-registry` feature — the cffi `REGISTRY` + C
+    # entry points are defined once in the single archive.
+    add_subdirectory(packages/rmw/cffi)
+    add_subdirectory(packages/api/nros-c)
+    add_subdirectory(packages/api/nros-cpp)
+endif()
+
+# ---------------------------------------------------------------------------
+# Platform shim (canonical `nros_platform_*` ABI). Phase 138 dispatches
+# via per-platform modules under `cmake/platform/`. Each module:
+#   - Builds / surfaces the platform staticlib(s) for its target
+#   - Exposes `NanoRos::Platform` ALIAS (linked into the umbrella below)
+#   - Defines `nros_platform_link_app(target)` (per-app fixups —
+#     link script, startup files, ISR vectors, RTOS-specific tweaks)
+#   - Sets `NROS_PLATFORM_LINK_FEATURES` (default link feature set)
+# Validation: the configured value must match a module on disk.
+# ---------------------------------------------------------------------------
 
 # Map legacy / variant NROS_PLATFORM values to their canonical
 # per-platform module names. The legacy cache strings (e.g.

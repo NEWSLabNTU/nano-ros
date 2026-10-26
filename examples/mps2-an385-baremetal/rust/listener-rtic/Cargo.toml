@@ -31,7 +31,7 @@ crate-type = ["rlib"]
 log = { version = "0.4", default-features = false }
 std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 # nros declarative-node + main! API.
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 
 # Everything only the IMAGE needs is TARGET-scoped, so the node in `lib.rs`
 # builds for the host as well and `nros sync` can PROBE what it creates

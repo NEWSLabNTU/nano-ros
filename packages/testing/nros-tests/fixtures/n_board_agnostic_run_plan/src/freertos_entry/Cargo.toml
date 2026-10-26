@@ -31,7 +31,7 @@ nros-platform = { path = "@NROS_REPO_DIR@/packages/platform/nros-platform", defa
 # typed `&mut ::nros::Executor`, so the Entry pkg depends on `nros`
 # directly — same platform features the Component pkg forwards (no
 # `std` on `thumbv7m-none-eabi`).
-nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble"] }
+nros = { path = "@NROS_REPO_DIR@/packages/api/nros", default-features = false, features = ["alloc", "rmw-cffi"] }
 # Component pkg under test — enable the `freertos` feature gate so
 # its `nros` dep links the FreeRTOS platform backend.
 shared_node_pkg = { path = "../shared_node_pkg", features = ["freertos"] }
