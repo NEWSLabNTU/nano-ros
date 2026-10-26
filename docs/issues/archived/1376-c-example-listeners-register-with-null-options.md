@@ -11,7 +11,7 @@ resolved: 2026-10-24
 related: [1319, 0896, 0964, phase-456, phase-454, phase-394, phase-460, phase-492]
 ---
 
-**Home: [phase-460](../../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — re-homed 2026-10-23 from phase-394, archived that day. The descriptor credits a hint the image does not supply, which is a trusted fact nobody checks: that phase's class.
+**Home: [phase-460](../../roadmap/archived/phase-460-formal-checks-on-the-contract-chain.md)** — re-homed 2026-10-23 from phase-394, archived that day. The descriptor credits a hint the image does not supply, which is a trusted fact nobody checks: that phase's class.
 
 ## Resolved 2026-10-24
 

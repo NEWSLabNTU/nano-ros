@@ -9,7 +9,7 @@ resolved: 2026-10-24
 related: [0973, 0900, 1120, 1121, 1649, RFC-0060, phase-412, phase-460, phase-486]
 ---
 
-**Home: [phase-460](../../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
+**Home: [phase-460](../../roadmap/archived/phase-460-formal-checks-on-the-contract-chain.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)".
 
 # `describes_wiring` reads `structure` only; `from_model` also reads `contracts.node_paths`
 

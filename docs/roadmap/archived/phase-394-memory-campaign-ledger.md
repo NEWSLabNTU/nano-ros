@@ -5,7 +5,7 @@ ledger tracked (390, 391, 392, 412, 433, 448) is archived, and 19 of the 22
 issues its ledger table still called open are resolved. The rest went to live
 homes or stand alone:
 [issue 1376](../../issues/archived/1376-c-example-listeners-register-with-null-options.md)
-to [phase-460](../phase-460-formal-checks-on-the-contract-chain.md),
+to [phase-460](phase-460-formal-checks-on-the-contract-chain.md),
 [issue 1808](../../issues/archived/1808-sizing-knobs-with-no-static-derivation.md) to
 [phase-400](../phase-400-unified-configuration.md),
 [issue 0880](../../issues/0880-tcm-unused-while-sram-exhausted.md) stays with

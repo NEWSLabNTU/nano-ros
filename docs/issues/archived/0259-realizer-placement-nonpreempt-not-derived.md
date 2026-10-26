@@ -1,14 +1,15 @@
 ---
 id: 259
 title: "Core assignment is derived by the realizer but no entry point gives it a core count or a budget; hardware locality and chain colocation have no inputs"
-status: open
+status: wontfix
+resolved: 2026-10-27
 type: limitation
 area: orchestration
 related: [phase-296, rfc-0052, 0403, 0404, phase-357, phase-460, rfc-0108, phase-509]
 ---
 
-**Home: [phase-460](../roadmap/phase-460-formal-checks-on-the-contract-chain.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". From 2026-10-14 to then, this issue was its own home. It owns what is left of
-[phase-357](../roadmap/archived/phase-357-wcet-as-declared-data.md) W2. That
+**Closed `wontfix` 2026-10-27** — see the last section. **Home: [phase-460](../../roadmap/archived/phase-460-formal-checks-on-the-contract-chain.md)** — homed 2026-10-17; listed in that phase's "Issues homed here (2026-10-17)". From 2026-10-14 to then, this issue was its own home. It owns what is left of
+[phase-357](../../roadmap/archived/phase-357-wcet-as-declared-data.md) W2. That
 phase is archived with W1 (RFC-0078, `wcet.rs`) and W3 (issue 0519) done. Of
 W2, `budget`/`B_i`, feasibility, utilisation and the performance half of
 `placement` were derived (sections below). What is still open, and what has
@@ -683,3 +684,30 @@ cannot quietly stop exercising the partition case. 100 lib tests green,
   will stay silent until something declares a WCET — which is the honest state,
   not a defect, but it means this derivation has never run on measured numbers.
 * **Hardware locality** and **chain colocation**, as above.
+
+## Resolution (2026-10-27) — wontfix until its inputs exist
+
+Closed by maintainer decision, with
+[phase-460](../../roadmap/archived/phase-460-formal-checks-on-the-contract-chain.md)
+archived. Nothing here can be built until someone decides where four inputs
+come from: a core count for the realizer, WCET reaching it
+(`derive_tiers_with_wcet` drops the profile), a board peripheral registry, and
+an interference model. None has a source today.
+
+The one actionable piece was section 1's remedy, deleting the realizer's dead
+preempt dim. That was split off and found already done: `1f467a9204`
+(2026-10-24, "delete the realizer's dead preempt dim and the plan's _ms
+fields") removed `preempt_real` and the per-node derived threshold. Re-read on
+origin/main 2026-10-27, what is left is live, not dead:
+
+- `SchedCaps.preempt_threshold`, documented as a board fact for the
+  scheduling matrix (`scripts/gen-sched-matrix.py`);
+- the authored ThreadX `[tiers.*.threadx] preempt_threshold`, which the
+  realizer passes through and refuses off ThreadX.
+
+So no new issue was filed.
+
+Reopen this issue when core-aware placement is wanted. The "Current design"
+section is the starting point. Section 1 is done, and section 2's core
+disagreement was fixed 2026-10-24.
+
