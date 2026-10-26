@@ -101,8 +101,12 @@ ALLOWED_LITERALS = {
 # NROS_ENTRY_LOCATOR` — the same standing as an explicit `-D`, which wins over
 # the resolver's per-platform defaults. It carries no literal and invents no
 # default; it is the user's value arriving by another door.
+#
+# Phase 518 moved the write into `nros_apply_leaf_identity()`, so the
+# `find_package(nano_ros)` road and the `add_subdirectory(<nano-ros>)` road
+# apply the leaf's identity through one macro rather than two copies.
 INPUT_WRITES = {
-    ("nano_rosConfig.cmake", "NROS_LEAF_LOCATOR"):
+    ("cmake/NanoRosPackageXml.cmake", "NROS_LEAF_LOCATOR"):
         "the leaf's system.toml declares it (RFC-0098 D5); an input like -D, not a default",
     # RFC-0071 D10 (phase-506 W3) — on Zephyr the producer has always been
     # Kconfig (`nano_ros_entry()` skips Zephyr; the leaf renderer and fixtures
@@ -220,14 +224,14 @@ def selftest():
     # phase-472 W5 — the population is every CMake file, and the one input
     # exemption covers exactly its variable.
     names = set(cmake_files())
-    if not {"nano_rosConfig.cmake", "zephyr/CMakeLists.txt"} <= names:
+    if not {"cmake/NanoRosPackageXml.cmake", "zephyr/CMakeLists.txt"} <= names:
         print("FAIL: check-entry-locator-ssot selftest: the CMake population does not reach "
-              "nano_rosConfig.cmake / zephyr/", file=sys.stderr)
+              "cmake/NanoRosPackageXml.cmake / zephyr/", file=sys.stderr)
         sys.exit(1)
     expect("the leaf's declared locator is an input",
-           {"nano_rosConfig.cmake": 'set(NROS_ENTRY_LOCATOR "${NROS_LEAF_LOCATOR}")\n'}, False)
+           {"cmake/NanoRosPackageXml.cmake": 'set(NROS_ENTRY_LOCATOR "${NROS_LEAF_LOCATOR}")\n'}, False)
     expect("another variable in the same file is still a second producer",
-           {"nano_rosConfig.cmake": 'set(NROS_ENTRY_LOCATOR "${MY_DEFAULT}")\n'}, True,
+           {"cmake/NanoRosPackageXml.cmake": 'set(NROS_ENTRY_LOCATOR "${MY_DEFAULT}")\n'}, True,
            "second producer")
     expect("a literal in zephyr/ is a second producer",
            {"zephyr/CMakeLists.txt": 'set(NROS_ENTRY_LOCATOR "tcp/10.0.2.2:7447")\n'}, True,

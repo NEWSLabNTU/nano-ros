@@ -101,6 +101,12 @@ RULED_PRIVATE = {
 # non-greedy no-paren body is an exact match for the call.
 TLL = re.compile(r"target_link_libraries\s*\(([^()]*)\)", re.DOTALL)
 
+# phase-518 -- `nros_link_app_dependency(<target> <lib>...)`
+# (cmake/NanoRosLinkAppDependency.cmake) appends to `LINK_LIBRARIES` and never
+# to `INTERFACE_LINK_LIBRARIES`, so it is a PRIVATE link by construction. It
+# exists so a link into a target the user also links claims no signature.
+APP_LINK = re.compile(r"\bnros_link_app_dependency\s*\(([^()]*)\)", re.DOTALL)
+
 # A write of the propagated link list by property name.
 PROP_WRITE = re.compile(
     r"(?:set_property|set_target_properties)\s*\(([^()]*)\)", re.DOTALL
@@ -163,6 +169,11 @@ def scan_text(rel: str, raw: str) -> tuple[list[str], int]:
         else:
             private += 1
 
+    for m in APP_LINK.finditer(text):
+        body = m.group(1)
+        if _names_an_umbrella(body) or any("${" + v + "}" in body for v in bound):
+            private += 1
+
     for m in PROP_WRITE.finditer(text):
         body = m.group(1)
         if "INTERFACE_LINK_LIBRARIES" not in body:
@@ -218,6 +229,12 @@ SELF_TEST_CASES: list[tuple[str, str, int, int]] = [
     (
         "PRIVATE link — allowed, counted, not a violation",
         'target_link_libraries(${_NRA_NAME} PRIVATE NanoRos::NanoRosCpp)\n',
+        0,
+        1,
+    ),
+    (
+        "the signature-free app link is PRIVATE by construction",
+        "nros_link_app_dependency(${_NRA_NAME} NanoRos::NanoRosCpp)\n",
         0,
         1,
     ),
