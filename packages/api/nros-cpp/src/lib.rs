@@ -8866,6 +8866,13 @@ struct NativeLevelCtx {
     /// Issue 2018 -- the level's row (`*const NativeTierSpecC`, the entry's
     /// static table), for its policy.
     spec: usize,
+    /// Issue 2066 -- set once the spawner's `spawn_with` returned. The
+    /// platform spawn re-applies the row's SCHED_FIFO priority to the new
+    /// thread after `pthread_create`; a SCHED_DEADLINE reservation the level
+    /// set before that is overwritten, and the level then runs with no budget
+    /// at all (the executor deferred to the kernel). The level waits for this
+    /// before it asks the kernel for its reservation.
+    spawned: alloc::sync::Arc<core::sync::atomic::AtomicBool>,
 }
 
 /// Issue 2018 (RFC-0108 As-built) -- the level's own sched context from its
@@ -8947,6 +8954,12 @@ unsafe extern "C" fn native_level_trampoline(arg: *mut c_void) -> *mut c_void {
     // level's own context, which defers to the kernel when it took the budget.
     // SAFETY: `spec` is a row of the entry's static table.
     if let Some(t) = unsafe { (ctx.spec as *const NativeTierSpecC).as_ref() } {
+        // Issue 2066 -- not before the spawner's priority write: it would
+        // replace the reservation with SCHED_FIFO. A sleep, not a spin: under
+        // SCHED_FIFO on one CPU a spinning level starves its spawner.
+        while !ctx.spawned.load(Ordering::Acquire) {
+            platform_sleep_us(100);
+        }
         // SAFETY: the strings are the row's, NUL-terminated or null.
         let kernel = unsafe {
             nros_platform::sched::apply_current_deadline(
@@ -9190,6 +9203,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
         }
         let state = Arc::new(AtomicU8::new(0));
         let setup_rc = Arc::new(AtomicI32::new(0));
+        let born = Arc::new(core::sync::atomic::AtomicBool::new(false));
         let name = tier_name(t);
         let ctx = alloc::boxed::Box::into_raw(alloc::boxed::Box::new(NativeLevelCtx {
             shutdown: Arc::clone(&shutdown),
@@ -9204,6 +9218,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             groups: t.groups as usize,
             setup: t.setup,
             spec: t as *const NativeTierSpecC as usize,
+            spawned: Arc::clone(&born),
         }));
         let task_name = alloc::ffi::CString::new(alloc::format!("nros-level-{name}"))
             .unwrap_or_else(|_| c"nros-level".into());
@@ -9227,6 +9242,7 @@ pub unsafe extern "C" fn nros_board_native_run_levels_in(
             stop(workers);
             return fini(NROS_CPP_RET_ERROR);
         };
+        born.store(true, Ordering::Release);
         workers.push(task);
         while state.load(Ordering::SeqCst) == 0 {
             platform_sleep_us(1_000);

@@ -1503,11 +1503,17 @@ mod tests {
             if !accepted {
                 return (false, policy, 0u128);
             }
-            // 20 ms of CPU against 2 ms per 10 ms: at least nine throttled
-            // periods, so the wall time is far past the CPU time.
+            // 100 ms of CPU against 2 ms per 10 ms: about 100 ms of wall time
+            // unthrottled. Issue 2066 -- the kernel enforces the budget at the
+            // scheduler tick unless HRTICK_DL is on (it is off by default), so
+            // a slot can overrun to the next tick. With CAP_SYS_NICE on a
+            // HZ=250 host this burn took 380-390 ms (a 26% share, not 20%),
+            // and a 20 ms burn took 70 ms, under the 80 ms this test once
+            // required. The long burn keeps the overruns small next to the
+            // bound.
             let start = std::time::Instant::now();
             let cpu0 = cpu_ns();
-            while cpu_ns() - cpu0 < 20_000_000 {
+            while cpu_ns() - cpu0 < 100_000_000 {
                 core::hint::spin_loop();
             }
             (true, policy, start.elapsed().as_millis())
@@ -1526,8 +1532,8 @@ mod tests {
         }
         assert_eq!(policy, 6, "the level thread runs under SCHED_DEADLINE");
         assert!(
-            wall_ms >= 80,
-            "20 ms of CPU at 2 ms per 10 ms took only {wall_ms} ms of wall time: \
+            wall_ms >= 300,
+            "100 ms of CPU at 2 ms per 10 ms took only {wall_ms} ms of wall time: \
              the kernel did not throttle the level"
         );
     }
