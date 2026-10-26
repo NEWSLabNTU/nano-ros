@@ -1,19 +1,20 @@
 ---
 id: 1823
 title: "`nros-platform-esp32-qemu` does not implement `heap_used_bytes` / `heap_total_bytes`, so the platform ABI reports 0 there"
-status: open
+status: wontfix
 type: tech-debt
 area: [platform, memory]
 severity: low
 found: 2026-10-12
+resolved: 2026-10-26
 related: [phase-230, rfc-0034, 1525, phase-394, phase-516]
 ---
 
-**Home: [phase-516](../roadmap/phase-516-low-severity-issues-with-no-home.md) W5** since 2026-10-25. Parked while ESP32 is dormant ([issue 1525](archived/1525-esp32-c-cpp-has-no-build-road.md)). Re-homed 2026-10-23 from phase-394, archived that day. Do not work it until ESP32 is revived.
+**Closed `wontfix` 2026-10-26** — see the last section. **Home: [phase-516](../../roadmap/archived/phase-516-low-severity-issues-with-no-home.md) W5** since 2026-10-25. Parked while ESP32 is dormant ([issue 1525](1525-esp32-c-cpp-has-no-build-road.md)). Re-homed 2026-10-23 from phase-394, archived that day. Do not work it until ESP32 is revived.
 
 ## What is left
 
-[phase-230](../roadmap/archived/phase-230-platform-layer-split.md) added
+[phase-230](../../roadmap/archived/phase-230-platform-layer-split.md) added
 `nros_platform_heap_{used,total}_bytes` to the platform ABI with per-port
 implementations. Its archive note (2026-10-11) says the gap left over is "the
 bare-metal `FreeListHeap::used` still returns 0". Re-measured 2026-10-12, that
@@ -36,3 +37,11 @@ is a missing measurement, not a wrong one.
 Implement both methods on esp32-qemu from its heap, the way mps2-an385 does.
 ESP32 is dormant (issue 1525), so this is low priority. Do it when that platform
 comes back, or close this as wontfix if it is retired.
+
+## Resolution (2026-10-26) — wontfix while ESP32 is dormant
+
+Closed by maintainer decision with
+[phase-516](../../roadmap/archived/phase-516-low-severity-issues-with-no-home.md)
+W5. ESP32 is dormant ([issue 1525](1525-esp32-c-cpp-has-no-build-road.md)),
+not retired, so the gap above is still true. If ESP32 is revived, reopen this
+issue: the fix is the one under "What closes it".

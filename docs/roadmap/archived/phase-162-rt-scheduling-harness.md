@@ -9,7 +9,7 @@ in a throwaway `docker run --cap-add SYS_NICE --ulimit rtprio=99`, which needs
 only `docker` group membership, and host-tests' `rt-sched` job grants the same
 to its job container. All three pass both ways (numbers under W1 and W2). The
 two issues the build found are homed in
-[phase-516](../phase-516-low-severity-issues-with-no-home.md) W6 and W7.
+[phase-516](phase-516-low-severity-issues-with-no-home.md) W6 and W7.
 
 **Implements:** [RFC-0002](../../design/0002-rt-execution-model.md) scenarios S1
 and S3, on [RFC-0108](../../design/0108-executor-preemption-levels.md) levels.
@@ -154,7 +154,7 @@ the test that measured it, or says it is unmeasured. Done on 2026-10-25.
 
 Both came out of the first runs of the new images and are outside this
 phase's scope. They were homed here while the phase was open, and moved to
-[phase-516](../phase-516-low-severity-issues-with-no-home.md) (W6, W7) when it
+[phase-516](phase-516-low-severity-issues-with-no-home.md) (W6, W7) when it
 was archived.
 
 - [Issue 2049](../../issues/archived/2049-cpp-levels-runner-info-lines-logged-as-errors.md):

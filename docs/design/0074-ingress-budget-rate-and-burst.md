@@ -4,7 +4,7 @@ title: "Ingress budget: the contract bounds what a device is made to receive"
 status: Draft
 since: 2026-08
 last-reviewed: 2026-10-26
-implements-tracked-by: [phase-462, phase-516]
+implements-tracked-by: [phase-462, phase-516, phase-519]
 supersedes: []
 superseded-by: null
 ---
@@ -199,8 +199,8 @@ downsampling.rs`), not a choice.
    capped by a rule it never crosses. Two
    selectors are emitted when a fact supports them: `link_protocols` when the
    image's own locator scheme is distinctive (a serial link is), and an
-   `interfaces` list an image states as a deployment fact. Nothing infers a
-   host NIC name.
+   `interfaces` list an image states as a deployment fact (not yet built:
+   phase-519 W1). Nothing infers a host NIC name.
 4. **Several subscribers on one topic get the LOWEST rate.** The router sends
    one stream per topic per transport, so the rule must be the tightest
    declaration among them; the producer keeps the per-endpoint provenance in
@@ -216,6 +216,11 @@ A dropped message is visible at the router as its own info line, `Some
 message(s) have been dropped by the downsampling interceptor` — that is the
 "drop counter" open question 4 asks for, at the granularity zenoh offers: it
 says THAT a rule shed, not how much.
+
+This enforcement point exists only for zenoh. Whether the XRCE agent can
+carry it is phase-519 W3. The pinned agent (v2.4.3) ignores
+`min_pace_period` and enforces `max_bytes_per_second` as a token bucket, so
+the candidate is a byte rate, not a message rate.
 
 ## Enforcement point 2 — a budget on the read TASK (measured, unblocked)
 
@@ -537,6 +542,10 @@ that, and a design that assumes one `c` per board should say so.
    imply.
 
 ## Changelog
+
+- 2026-10-26 — phase-516 archived: the stated `interfaces` fact and the
+  upstream burst request moved to phase-519 (W1, W2), and the XRCE agent's
+  half of enforcement point 1 opened there as W3.
 
 - 2026-10-26 — phase-516 W1: "As lowered" added under enforcement point 1 —
   the router lowers the declaration at burst 1 (zenoh's interceptor has no

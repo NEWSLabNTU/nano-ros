@@ -10,7 +10,7 @@ resolved: 2026-10-26
 related: [1036, 1120, 1140, 1010, 1702, 1722, 1728, 2007, phase-394, phase-400, phase-516]
 ---
 
-**Home: [phase-516](../../roadmap/phase-516-low-severity-issues-with-no-home.md) W4** since 2026-10-25. Before that, no home. Re-homed 2026-10-23 from phase-394 to [phase-400](../../roadmap/archived/phase-400-unified-configuration.md), which was archived the same day. [Issue 2007](2007-sizing-knob-ladder-rungs-backlog.md), which carried phase-400 W6's remainder, closed on the same day. Its two XRCE service buffers, the only rows that wait on a derivation, moved into the table below.
+**Home: [phase-516](../../roadmap/archived/phase-516-low-severity-issues-with-no-home.md) W4** since 2026-10-25. Before that, no home. Re-homed 2026-10-23 from phase-394 to [phase-400](../../roadmap/archived/phase-400-unified-configuration.md), which was archived the same day. [Issue 2007](2007-sizing-knob-ladder-rungs-backlog.md), which carried phase-400 W6's remainder, closed on the same day. Its two XRCE service buffers, the only rows that wait on a derivation, moved into the table below.
 
 ## Measured
 
