@@ -1,0 +1,1 @@
+A router started through `nros_router_exec` / `nros_router_env_exec` (`just zenohd`, the per-platform router recipes) now dies when the process that started it does, through `setpriv --pdeathsig KILL`. A script that backgrounded one and was then killed used to leave it listening on its port.
