@@ -50,6 +50,13 @@ For the promoted Node + Bringup + Entry workflow examples, use
   exercising multi-subscription + per-topic diagnostic patterns a
   real port would hit (no vendored upstream source yet).
 
+- `ament-workspace-port/` — phase-518: a stock ament_cmake package
+  (a `SHARED` component library with its own include path and compile
+  definition, and a plain `add_executable` that links it) built
+  unchanged on posix, FreeRTOS and Zephyr. The other port templates hand
+  one source to `nano_ros_add_executable`; this one tests the package's
+  own `CMakeLists.txt` on a board.
+
 - `local-msg-package/` — Phase 210.A.4 fixture demonstrating
   ROS-convention codegen: verbatim ROS 2 msg packages (workspace +
   cross-workspace deps) consumed alongside AMENT-installed messages

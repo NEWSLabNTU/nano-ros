@@ -405,6 +405,9 @@ function(_nros_find_ros_msg_package pkg)
     # no CPP FFI build, no CXX target-features pulled into a C leaf's scope. The
     # rclcpp-compat workspace path never sets this flag, so it still generates.
     if(NROS_FIND_PACKAGE_VALIDATE_ONLY)
+        # phase-518 — recorded, so `ament_target_dependencies(<t> ${pkg})` on a
+        # C++ target can generate it then (NanoRosAmentTargetDeps.cmake).
+        set_property(GLOBAL APPEND PROPERTY NROS_VALIDATED_MSG_PACKAGES ${pkg})
         set(${pkg}_FOUND TRUE PARENT_SCOPE)
         return()
     endif()

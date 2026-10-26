@@ -59,6 +59,7 @@ extern void nros_board_freertos_run_init_array(void);
 extern int nros_freertos_init_network(const uint8_t mac[6], const uint8_t ip[4],
                                       const uint8_t netmask[4], const uint8_t gw[4]);
 extern void nros_freertos_poll_network(void);
+extern void nros_freertos_net_register_drain_task(void);
 extern void nros_freertos_start_scheduler(void);
 extern int nros_freertos_create_task(void (*entry)(void*), const char* name, uint32_t stack_words,
                                      void* arg, uint32_t priority);

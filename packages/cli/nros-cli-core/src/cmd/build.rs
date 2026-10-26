@@ -1433,6 +1433,7 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 if let Some(nr) = &nano_ros_root {
                     a.push(crate::builder::nano_ros_root_arg(nr));
                 }
+                a.extend(board_build_type_arg(&platform));
                 a.extend(args.native_args.iter().cloned());
                 cmake_configure = Some(Handoff::new("cmake", a).in_dir(&root));
                 // A generated entry is a top-level target of the generated
@@ -2212,6 +2213,7 @@ fn plan_single_package_cmake(
     ));
     a.extend(board_rx_configure_args(descriptor));
     a.push(crate::builder::nano_ros_root_arg(&nros_root));
+    a.extend(board_build_type_arg(&platform));
     a.extend(args.native_args.iter().cloned());
     Ok(Some(vec![ResolvedBuild {
         qualified: qual,
@@ -4147,6 +4149,24 @@ fn board_heap_budget(
         .knobs
         .memory
         .heap_bytes
+}
+
+/// Phase 518 (issue 2072) -- the build type for a cmake configure of a BOARD
+/// image, which `nros build` used to leave unset.
+///
+/// An empty `CMAKE_BUILD_TYPE` compiles C and C++ with no optimisation, and
+/// the profile table maps it to cargo's `dev` profile for the Rust half. On a
+/// host that is a debugging default; on an MCU it is a different program.
+/// Measured on mps2-an385 FreeRTOS: a ported Autoware node's
+/// `diagnostic_updater::Updater::publish_now` reserved 2.2 MB of stack for one
+/// call. The fixture road always passed `Release`, so no test ran what
+/// `nros build` produced.
+///
+/// `Release` for every platform but `posix`, whose images are host processes.
+/// Pushed before the caller's `native_args`, so `-DCMAKE_BUILD_TYPE=Debug`
+/// still wins: cmake takes the last definition on the line.
+fn board_build_type_arg(platform: &str) -> Option<String> {
+    (platform != "posix").then(|| "-DCMAKE_BUILD_TYPE=Release".to_string())
 }
 
 /// Issue 1653 — the BOARD heap as a configure argument, for the two drivers

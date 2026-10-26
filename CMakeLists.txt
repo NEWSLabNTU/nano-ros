@@ -165,6 +165,30 @@ if(NOT NROS_BOARD AND NOT DEFINED NROS_LEAF_SYSTEM
     # rather than asking the CLI a second time.
     set_property(GLOBAL PROPERTY NROS_TOP_LEAF_READ "${CMAKE_SOURCE_DIR}")
     set_property(GLOBAL PROPERTY NROS_TOP_LEAF_LOCATOR "${NROS_LEAF_LOCATOR}")
+    # phase-518 — and the project that pulled nano-ros in builds the images:
+    # a ported ament workspace on a board routes each executable through
+    # `nano_ros_add_executable`, which takes its DEPLOY and BOARD from these,
+    # exactly as the `find_package(nano_ros)` road leaves them in the leaf's
+    # scope. A value the project set itself wins.
+    if(NOT DEFINED NROS_DEPLOY)
+        set(NROS_DEPLOY "${NROS_EXPORT_DEPLOY}" PARENT_SCOPE)
+    endif()
+    if(NOT DEFINED NROS_LEAF_IMAGE_ID)
+        set(NROS_LEAF_IMAGE_ID "${NROS_EXPORT_IMAGE}" PARENT_SCOPE)
+    endif()
+    if(NROS_EXPORT_CMAKE_BOARD)
+        set(NROS_BOARD "${NROS_EXPORT_CMAKE_BOARD}" PARENT_SCOPE)
+    endif()
+    # The leaf's locator and domain, as the find_package road applies them. The
+    # project's own `-D` is visible here too (a cache value), so the macro's
+    # guard sees it.
+    nros_apply_leaf_identity()
+    if(DEFINED NROS_ENTRY_LOCATOR)
+        set(NROS_ENTRY_LOCATOR "${NROS_ENTRY_LOCATOR}" PARENT_SCOPE)
+    endif()
+    if(DEFINED NROS_DOMAIN_ID)
+        set(NROS_DOMAIN_ID "${NROS_DOMAIN_ID}" PARENT_SCOPE)
+    endif()
 endif()
 
 # Map legacy / variant NROS_PLATFORM values to their canonical

@@ -544,6 +544,9 @@ endfunction()
 # request against what it built rather than being asked to build it.
 # ---------------------------------------------------------------------------
 function(_nros_node_register_carrier_image _target _pkg_sym _panic)
+    # phase-518 — a generated carrier, never a stock executable the ament
+    # surface's `add_executable` wrapper should route.
+    set(_NROS_IN_IMAGE_ADD_EXECUTABLE TRUE)
     add_executable(${_target} ${ARGN})
     nros_apply_panic_policy("${_panic}"
         "nano_ros_node_register(${_target}) carrier [${NROS_PLATFORM}]")

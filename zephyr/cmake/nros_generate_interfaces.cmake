@@ -432,6 +432,18 @@ function(nros_generate_interfaces target)
       "${_output_dir}"
       "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_cpp"
     )
+    # phase-518 — and for every other target of the image. A ported package's
+    # own libraries (ros2/demos composition's `talker_component`) are compiled
+    # outside `app` and include `<std_msgs/msg/string.hpp>` too; they reach the
+    # headers by linking `<pkg>::<pkg>`, which the find module aliases onto
+    # this target. The sources stay in `app`: this carries include paths only.
+    if(NOT TARGET ${target}__nano_ros_cpp)
+      add_library(${target}__nano_ros_cpp INTERFACE)
+      target_include_directories(${target}__nano_ros_cpp INTERFACE
+        "${_output_dir}"
+        "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_cpp"
+      )
+    endif()
 
     # Build Rust FFI glue for generated message types
     if(_generated_rs_files)

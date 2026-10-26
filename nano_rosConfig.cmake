@@ -72,6 +72,14 @@ if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
     # `nano_ros_entry` (both modules are re-include guarded).
     include("${NROS_REPO_DIR}/cmake/NanoRosEntry.cmake")
     include("${NROS_REPO_DIR}/cmake/NanoRosVerbs.cmake")
+    # phase-518 — and a C++ image gets the whole ament surface, so a stock ROS 2
+    # package (`rclcpp_components_register_nodes`, `add_library(... SHARED)`,
+    # a plain `add_executable`) configures here as it does on FreeRTOS. The
+    # module aliases `NanoRos::NanoRosCpp` onto the `nros` library itself; a
+    # C-only image has no C++ API and keeps the slice above.
+    if(CONFIG_NROS_CPP_API)
+        include("${NROS_REPO_DIR}/cmake/NanoRosAmentSurface.cmake")
+    endif()
     set(nano_ros_FOUND TRUE)
     return()
 endif()
@@ -127,19 +135,9 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
 endif()
 nano_ros_read_leaf_system()
 if(NROS_LEAF_SYSTEM)
-    # Deployment identity (RFC-0098 D5). Directory scope, never the cache, and
-    # only where no `-D` spoke: an explicit override (every RTOS fixture row
-    # passes `-DNROS_ENTRY_LOCATOR`) still wins, exactly as it wins over the
-    # per-platform defaults in NanoRosEntryLocator.cmake.
-    if(NOT NROS_LEAF_LOCATOR STREQUAL "" AND NOT DEFINED NROS_ENTRY_LOCATOR)
-        set(NROS_ENTRY_LOCATOR "${NROS_LEAF_LOCATOR}")
-    endif()
-    # Issue 1946 — the leaf's domain is what the session opens on. A
-    # disagreeing `-DNROS_DOMAIN_ID` was refused by the read above, so this is
-    # never a choice between two values.
-    if(NOT NROS_LEAF_DOMAIN_ID STREQUAL "")
-        set(NROS_DOMAIN_ID "${NROS_LEAF_DOMAIN_ID}")
-    endif()
+    # Deployment identity (RFC-0098 D5): the leaf's locator and domain, in
+    # directory scope, where no `-D` spoke (NanoRosPackageXml.cmake).
+    nros_apply_leaf_identity()
     # Issue 1142 — and what the leaf DECLARES it creates (RFC-0098 D8). This is
     # the third thing its `system.toml` answers, after the board and the
     # deployment identity: a standalone leaf has no bringup and no SystemModel,

@@ -51,6 +51,7 @@ set(_NROS_ENTRY_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL "nano_ros_entry m
 # so re-including is a no-op when callers already loaded it.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosHostBoard.cmake")  # phase-500 W1
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLinkAppDependency.cmake")  # phase-518
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryAgreement.cmake")  # issue 1894
 # Shared helpers (nros_resolve_cli — issue #219). include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
@@ -712,6 +713,24 @@ function(nano_ros_entry)
         # `zephyr_include_directories` — and `app`'s `nros_cpp_cargo_build` ordering, for
         # free. (A separate static lib does NOT get whole-archived → `main` silently dropped.)
         target_sources(app PRIVATE ${_sources_for_exe})
+        # phase-518 — `app` belongs to the application's root directory, so
+        # sources added from a package's own directory (a ported workspace's
+        # `src/<pkg>/CMakeLists.txt`) lose that directory's
+        # `include_directories()` / `add_compile_definitions()` /
+        # `add_compile_options()`: ros2/demos `manual_composition.cpp` could not
+        # find its package's `composition/client_component.hpp`. They go onto
+        # the sources themselves, in `app`'s directory. The root directory's
+        # own settings already apply there, so nothing is copied for it.
+        get_target_property(_nra_app_dir app SOURCE_DIR)
+        if(NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL _nra_app_dir)
+            foreach(_nra_prop INCLUDE_DIRECTORIES COMPILE_DEFINITIONS COMPILE_OPTIONS)
+                get_property(_nra_vals DIRECTORY PROPERTY ${_nra_prop})
+                if(_nra_vals)
+                    set_property(SOURCE ${_sources_for_exe} TARGET_DIRECTORY app
+                        APPEND PROPERTY ${_nra_prop} ${_nra_vals})
+                endif()
+            endforeach()
+        endif()
         # The node component libs are linked by the sidecar (below) to ${_NRA_NAME}; carry
         # them in a placeholder static lib (Zephyr needs a real target for the sidecar's
         # `target_link_libraries`) and link it into `app`, so the component archives reach
@@ -731,6 +750,10 @@ function(nano_ros_entry)
         # `diagnostic_updater` never reaches those sources' include path.
         set_property(TARGET ${_NRA_NAME} PROPERTY NROS_SOURCES_IN_TARGET app)
     elseif(NOT TARGET ${_NRA_NAME})
+        # phase-518 — the image itself: past the ament surface's
+        # `add_executable` wrapper, which routes a stock CMakeLists' executable
+        # HERE (NanoRosAmentSurface.cmake).
+        set(_NROS_IN_IMAGE_ADD_EXECUTABLE TRUE)
         add_executable(${_NRA_NAME} ${_sources_for_exe})
         # Phase 257 (W0-A) — a TYPED C entry drives the `nros_cpp_*` runtime
         # (`nros_board_native_run_components`, `nros_cpp_node_create`), which lives
@@ -742,9 +765,9 @@ function(nano_ros_entry)
         # rule above. A pure-C workspace has no `NanoRosCpp` target and keeps
         # `NanoRos` unchanged.
         if(TARGET NanoRos::NanoRosCpp)
-            target_link_libraries(${_NRA_NAME} PRIVATE NanoRos::NanoRosCpp)
+            nros_link_app_dependency(${_NRA_NAME} NanoRos::NanoRosCpp)
         elseif(TARGET NanoRos::NanoRos)
-            target_link_libraries(${_NRA_NAME} PRIVATE NanoRos::NanoRos)
+            nros_link_app_dependency(${_NRA_NAME} NanoRos::NanoRos)
         endif()
     else()
         # Target may have been declared by a sibling call (e.g. the

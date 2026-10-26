@@ -1,0 +1,1 @@
+Zephyr C++ images no longer put the nonexistent `nros-c/include/nros/zephyr` directory on every include path, and they create the per-build generated-header directories at configure time. An IMPORTED target that propagates them, such as `rclcpp::rclcpp`, no longer fails the configure.

@@ -320,7 +320,7 @@ function(nros_platform_link_app target)
         target_include_directories(${target} PRIVATE ${FREERTOS_STARTUP_INCLUDES})
     endif()
     if(TARGET freertos_platform)
-        target_link_libraries(${target} PRIVATE freertos_platform)
+        nros_link_app_dependency(${target} freertos_platform)
     endif()
 
     # Phase 249 P2b — generated STRONG `nros_app_register_backends` for every

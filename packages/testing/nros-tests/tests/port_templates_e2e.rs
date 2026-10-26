@@ -39,6 +39,7 @@ use nros_tests::{
     },
     matrix::{Lang, PlatformId, Workload},
     output::{
+        AMENT_WORKSPACE_PORT_TOPIC, AMENT_WORKSPACE_PORT_UP_MARKER,
         CONTRACT_MONITOR_DIAGSINK_READY_MARKER, CPP_PORT_MONITOR_HARDWARE_ID,
         CPP_PORT_MONITOR_TOPICS, CPP_PORT_MONITOR_UP_MARKER, CPP_PORT_PUBLISH_MARKER,
         CPP_PORT_SMOKE_DIAG_TASK, CPP_PORT_SMOKE_HARDWARE_ID, CPP_PORT_SMOKE_TOPIC,
@@ -198,6 +199,7 @@ fn cpp_port_minimal_publisher_publishes_on_zephyr() {
 
 const SMOKE: &str = "examples/templates/rclcpp-compat-smoke";
 const MONITOR: &str = "examples/templates/topic-state-monitor-port";
+const WORKSPACE: &str = "examples/templates/ament-workspace-port";
 
 /// Boot + session + several 100 ms ticks + one 1 s diagnostics period, on a
 /// QEMU guest or a host process.
@@ -560,6 +562,80 @@ fn cpp_port_rclcpp_compat_smoke_publishes_on_zephyr() {
     run_port_smoke(PortPlatform::Zephyr);
 }
 
+/// phase-518 W4 — `ament-workspace-port`, a stock ament_cmake workspace, on
+/// `platform`: its Int32 topic reaches a host `int32-sink`.
+///
+/// What it proves is the BUILD: the package's own `CMakeLists.txt` (a `SHARED`
+/// library with `include_directories` and a definition of its own, a plain
+/// `add_executable` linking it plain) made an image on a board. Each of those
+/// shapes failed the FreeRTOS or the Zephyr build until phase-518 W4.
+fn run_port_workspace(platform: PortPlatform) {
+    platform.require_in_lane("the ament workspace port");
+    let bin = match platform {
+        // The posix root is its own directory, not the template root.
+        PortPlatform::Linux => nros_tests::fixtures::require_cmake_fixture(
+            "cpp_port_ament_workspace",
+            "workspace_port_nodes/workspace_port",
+        )
+        .unwrap_or_else(|e| panic!("posix build of {WORKSPACE} did not resolve: {e:?}")),
+        _ => platform.binary(
+            WORKSPACE,
+            "cpp_port_ament_workspace",
+            "build-cortex-m-cpp-port-ament-workspace-zenoh",
+            "workspace_port_nodes/workspace_port",
+        ),
+    };
+    let sink_bin = build_int32_sink().require("int32-sink");
+    platform.require_host();
+
+    let router = platform.router(Workload::PortWorkspace);
+    let locator = router.locator();
+    let mut sink = spawn_peer(
+        sink_bin,
+        "port-workspace-int32-sink",
+        &locator,
+        &[("NROS_SUB_TOPIC", AMENT_WORKSPACE_PORT_TOPIC)],
+    );
+    let mut guest = platform.launch(&bin, &locator, "ament-workspace-port");
+    let boot = guest.collect_until(AMENT_WORKSPACE_PORT_UP_MARKER, PORT_TRAFFIC_BUDGET);
+    assert!(
+        boot.contains(AMENT_WORKSPACE_PORT_UP_MARKER),
+        "the ament workspace port never reached its node constructor on {} \
+         (expected `{AMENT_WORKSPACE_PORT_UP_MARKER}`).\n--- guest output ---\n{boot}",
+        platform.label()
+    );
+    let (received, why) =
+        sink.collect_until_count(INT32_LISTENER_LOG_PREFIX, 3, PORT_TRAFFIC_BUDGET);
+    guest.kill();
+    sink.kill();
+    assert!(
+        received.matches(INT32_LISTENER_LOG_PREFIX).count() >= 3,
+        "a host int32-sink on {AMENT_WORKSPACE_PORT_TOPIC} did not receive 3 samples from \
+         the ament workspace port on {}. The node started, so the timer or the wire is \
+         what failed.\n--- sink ---\n{received}{}\n--- guest ---\n{boot}",
+        platform.label(),
+        why.unwrap_or_default()
+    );
+}
+
+/// phase-518 W4 — `ament-workspace-port` on posix.
+#[test]
+fn cpp_port_ament_workspace_publishes() {
+    run_port_workspace(PortPlatform::Linux);
+}
+
+/// phase-518 W4 — `ament-workspace-port` on FreeRTOS (mps2-an385).
+#[test]
+fn cpp_port_ament_workspace_publishes_on_freertos() {
+    run_port_workspace(PortPlatform::Freertos);
+}
+
+/// phase-518 W4 — `ament-workspace-port` on Zephyr (mps2/an385).
+#[test]
+fn cpp_port_ament_workspace_publishes_on_zephyr() {
+    run_port_workspace(PortPlatform::Zephyr);
+}
+
 /// phase-482 W3 — `topic-state-monitor-port`, unmodified, on posix.
 #[test]
 fn cpp_port_topic_state_monitor_reports_liveness() {
@@ -599,9 +675,17 @@ fn cases_bound_to_matrix_cells() {
                 K::Example,
             ),
             (P::FreertosMps2, L::Cpp, R::Zenoh, W::PortSmoke, K::Example),
+            (
+                P::FreertosMps2,
+                L::Cpp,
+                R::Zenoh,
+                W::PortWorkspace,
+                K::Example,
+            ),
             (P::Linux, L::Cpp, R::Zenoh, W::Port, K::Example),
             (P::Linux, L::Cpp, R::Zenoh, W::PortMonitor, K::Example),
             (P::Linux, L::Cpp, R::Zenoh, W::PortSmoke, K::Example),
+            (P::Linux, L::Cpp, R::Zenoh, W::PortWorkspace, K::Example),
             (P::ZephyrQemuCortexM, L::Cpp, R::Zenoh, W::Port, K::Example),
             (
                 P::ZephyrQemuCortexM,
@@ -615,6 +699,13 @@ fn cases_bound_to_matrix_cells() {
                 L::Cpp,
                 R::Zenoh,
                 W::PortSmoke,
+                K::Example,
+            ),
+            (
+                P::ZephyrQemuCortexM,
+                L::Cpp,
+                R::Zenoh,
+                W::PortWorkspace,
                 K::Example,
             ),
         ],

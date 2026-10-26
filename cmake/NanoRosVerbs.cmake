@@ -43,6 +43,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRuntimeUmbrella.cmake")
 # issue 1523 — `_nros_set_component_lang()`: the ONE place that writes
 # `NROS_COMPONENT_LANG`, and the one that refuses a non-canonical spelling.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosComponentLang.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPortedCxx.cmake")  # phase-518 — nros_ported_cxx_hosted
 
 # ---------------------------------------------------------------------------
 # _nros_infer_lang(<out_var> <sources…>)                    (phase-469 S3)
@@ -293,16 +294,11 @@ function(nano_ros_add_executable name)
         else()
             target_compile_definitions(${name} PRIVATE NROS_CPP_STD=1)
         endif()
-        # A ported program uses the C++ standard library (`std::string`,
-        # `std::to_string`, `<chrono>` literals), so it needs the toolchain's
-        # HOSTED libstdc++. A toolchain that compiles C++ `-ffreestanding`
-        # (FreeRTOS, ThreadX) makes `<string>` a hard `#error` (issue 1240), and
-        # no C++ flag undoes it (`-fhosted` is C-only), so the flag leaves the
-        # CALLER's directory: the ported package's C++ is hosted, which is the
-        # porting user's choice for that image and nobody else's. The nano-ros
-        # API itself stays freestanding (RFC-0096 D1).
-        string(REPLACE "-ffreestanding" "" _nre_cxx "${CMAKE_CXX_FLAGS}")
-        set(CMAKE_CXX_FLAGS "${_nre_cxx}" PARENT_SCOPE)
+        # A ported program's C++ is hosted: the caller's directory loses
+        # `-ffreestanding` (NanoRosPortedCxx.cmake says why, and which other
+        # road reaches the same macro).
+        nros_ported_cxx_hosted()
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" PARENT_SCOPE)
     endif()
 endfunction()
 
@@ -362,8 +358,13 @@ function(_nros_apply_app_main target)
     # linked whole-archive: a `nros_app_main` placed there is silently dropped,
     # and with it the registered `main`. So the glue goes where the sources went.
     _nros_is_zephyr(_nram_zephyr)
+    set(_nram_where "")
     if(_nram_zephyr)
         set(target app)
+        # phase-518 — and the rename is a SOURCE property, which is per
+        # directory: set from a package's own directory it never reaches
+        # `app`, defined in the application's root (a ported workspace).
+        set(_nram_where TARGET_DIRECTORY app)
     endif()
     # The rename is per SOURCE (board startup linked into the same target keeps
     # its own `main`). C and C++ both: a C `main` of any form links (C has no
@@ -373,7 +374,7 @@ function(_nros_apply_app_main target)
     set(_nram_cxx FALSE)
     foreach(_src IN LISTS ARGN)
         if(_src MATCHES "\\.(c|cc|cpp|cxx|C)$")
-            set_property(SOURCE "${_src}" APPEND PROPERTY COMPILE_DEFINITIONS
+            set_property(SOURCE "${_src}" ${_nram_where} APPEND PROPERTY COMPILE_DEFINITIONS
                 "main=nros_ported_main")
         endif()
         if(_src MATCHES "\\.(cc|cpp|cxx|C)$")

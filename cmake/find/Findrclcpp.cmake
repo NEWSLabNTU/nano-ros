@@ -12,6 +12,10 @@
 # carrier, so the guard is expected to stay open here; it is applied anyway
 # because a per-site exemption is how the rule grows a tenth spelling.
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosRuntimeUmbrella.cmake")
+# phase-518 — this directory is a ported package: its C++ is hosted. Outside
+# the guard below, because each package directory that finds rclcpp needs it.
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosPortedCxx.cmake")
+nros_ported_cxx_hosted()
 if(NOT TARGET rclcpp::rclcpp)
     add_library(rclcpp::rclcpp INTERFACE IMPORTED)
     nros_link_runtime_umbrella(rclcpp::rclcpp INTERFACE

@@ -35,6 +35,9 @@
 # cargo-nano-ros `resolve_rmw()` (W13/R1), drift-guarded.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 
+# ``nros_link_app_dependency`` — NanoRosLinkAppDependency.cmake (phase-518).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosLinkAppDependency.cmake")
+
 function(_nano_ros_resolve_choice OUT_VAR KIND REQUESTED FALLBACK_LIST)
     if(REQUESTED)
         set(${OUT_VAR} "${REQUESTED}" PARENT_SCOPE)
@@ -126,7 +129,7 @@ function(nano_ros_link_rmw TARGET)
     if(_nros_rust_carrier AND TARGET NanoRosRmwBackend)
         get_target_property(_nros_backend_rmw NanoRosRmwBackend NROS_RMW)
         if(_nros_backend_rmw STREQUAL _chosen)
-            target_link_libraries(${TARGET} PRIVATE NanoRosRmwBackend)
+            nros_link_app_dependency(${TARGET} NanoRosRmwBackend)
         endif()
     endif()
 

@@ -340,7 +340,7 @@ function(nros_platform_link_app target)
         target_compile_definitions(${target} PRIVATE ${THREADX_GLUE_DEFINES})
     endif()
     if(TARGET threadx_platform)
-        target_link_libraries(${target} PRIVATE threadx_platform)
+        nros_link_app_dependency(${target} threadx_platform)
     endif()
 
     # Phase 249 P2b — every C/C++ app target gets the generated STRONG

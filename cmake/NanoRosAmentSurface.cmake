@@ -134,6 +134,54 @@ if(NOT _nros_add_library_wrapped)
     endfunction()
 endif()
 
+# --- add_executable: on a board, an executable IS an image -------------------
+#
+# phase-518. A stock CMakeLists builds its program with a plain
+# `add_executable` (ros2/demos `manual_composition`), and the ament verbs and
+# `rclcpp_components_register_node(... EXECUTABLE ...)` create theirs the same
+# way. On posix that is the whole story. On a board it is not: an image needs
+# the board's entry, which defines `main` and calls the program's renamed
+# `main`, plus the per-image app config, locator, domain and network seed that
+# `nano_ros_entry` generates. Built bare, a FreeRTOS executable collided with
+# the board's `main` and then failed to link `NROS_APP_CONFIG`. So on a board
+# every executable created after this file is included is built by
+# `nano_ros_add_executable(<name> <sources> ROS2_MAIN)`, the verb the port
+# templates name by hand: one road to an image, whichever CMake verb asked.
+#
+# On Zephyr the verb compiles the sources into the kernel's `app` and leaves
+# `<name>` a placeholder linked into it, so what the CMakeLists then links into
+# `<name>` reaches the image too.
+#
+# Left alone: an IMPORTED or ALIAS executable, and every executable nano-ros
+# creates itself. Those sites set `_NROS_IN_IMAGE_ADD_EXECUTABLE` first: the
+# image `nano_ros_entry` builds, a generated carrier, a board's own image. An
+# in-tree example that calls `nano_ros_add_executable` directly reaches the
+# builtin that way, not a second image. posix is not wrapped: there the
+# program keeps its own `main`.
+get_property(_nros_add_executable_wrapped GLOBAL PROPERTY NROS_AMENT_ADD_EXECUTABLE_WRAPPED)
+if(NOT _nros_add_executable_wrapped AND NROS_PLATFORM AND NOT NROS_PLATFORM STREQUAL "posix")
+    set_property(GLOBAL PROPERTY NROS_AMENT_ADD_EXECUTABLE_WRAPPED TRUE)
+    # The verb and `nano_ros_entry` under it, included here at FILE scope:
+    # an `include()` inside the wrapper would run in a function frame and drop
+    # the files' directory variables when it returns (CLAUDE.md, cmake pitfall).
+    include("${CMAKE_CURRENT_LIST_DIR}/NanoRosNodeRegister.cmake")
+    function(add_executable name)
+        if(_NROS_IN_IMAGE_ADD_EXECUTABLE OR "IMPORTED" IN_LIST ARGN OR "ALIAS" IN_LIST ARGN)
+            _add_executable(${name} ${ARGN})
+            return()
+        endif()
+        set(_nae_srcs ${ARGN})
+        list(REMOVE_ITEM _nae_srcs WIN32 MACOSX_BUNDLE EXCLUDE_FROM_ALL)
+        message(STATUS "nano-ros: add_executable(${name}) is a ${NROS_PLATFORM} image: "
+                       "built as nano_ros_add_executable(${name} ... ROS2_MAIN) (phase-518)")
+        set(_NROS_IN_IMAGE_ADD_EXECUTABLE TRUE)
+        nano_ros_add_executable(${name} ${_nae_srcs} ROS2_MAIN)
+        # `ROS2_MAIN` made the C++ of the calling directory hosted; this
+        # function is between that directory and the verb.
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" PARENT_SCOPE)
+    endfunction()
+endif()
+
 # --- An installed ROS 2 package nano-ros does not model ----------------------
 #
 # phase-488. `find_package(<pkg>)` for a package with no module here falls to
@@ -257,6 +305,9 @@ function(ament_auto_find_build_dependencies)
         endforeach()
     endif()
     set(${PROJECT_NAME}_FOUND_BUILD_DEPENDS "${_found}" PARENT_SCOPE)
+    # phase-518 — `find_package(rclcpp)` above made THIS function's C++ hosted
+    # (NanoRosPortedCxx.cmake); the package's directory is the caller.
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" PARENT_SCOPE)
 endfunction()
 
 # What `ament_auto_add_*` gives a target beyond the runtime, as upstream does:

@@ -486,6 +486,18 @@ pub enum Workload {
     /// keeps that honest: a clock stuck at zero reports every topic live
     /// whether or not anything arrived.
     PortMonitor,
+    /// phase-518 W4 — `examples/templates/ament-workspace-port`: a stock
+    /// ament_cmake package (a `SHARED` component library with its own
+    /// `include_directories` and compile definition, and a plain
+    /// `add_executable` that links it with the plain signature) built through
+    /// the ament road on posix, FreeRTOS and Zephyr. A host `int32-sink` must
+    /// receive its Int32 topic.
+    ///
+    /// Its own value because its subject is the BUILD shape, which the other
+    /// port templates do not reach: each of them is one source handed to
+    /// `nano_ros_add_executable` by hand, so none tested the CMake verbs a
+    /// ported workspace's own `CMakeLists.txt` writes on a board.
+    PortWorkspace,
     /// issue 1036 — a console-less image exhausts its executor arena on
     /// purpose, and the boot report it leaves in RAM names the shortfall and
     /// the knob. The record is dumped from the halted guest and decoded with
@@ -543,6 +555,9 @@ impl Workload {
             // is zenoh.
             Workload::PortSmoke => 88,
             Workload::PortMonitor => 89,
+            // phase-518 W4. 84..=86 are free in every band; same reasoning as
+            // the two above.
+            Workload::PortWorkspace => 86,
             // A router port of its own: the image opens its session before
             // it registers the entity that exhausts the arena (issue 1036).
             Workload::BootReport => 87,
@@ -779,6 +794,7 @@ pub const CELLS: &[Cell] = &[
     // all three platforms, run by `port_templates_e2e`.
     cell(Linux, Cpp,  Zenoh,      PortSmoke,   Example, Runtime),
     cell(Linux, Cpp,  Zenoh,      PortMonitor, Example, Runtime),
+    cell(Linux, Cpp,  Zenoh,      PortWorkspace, Example, Runtime),
     cell(Linux, Rust, Cyclonedds, Pubsub,  Example, Runtime),
     cell(Linux, C,    Cyclonedds, Pubsub,  Example, Runtime),
     cell(Linux, Cpp,  Cyclonedds, Pubsub,  Example, Runtime),
@@ -828,6 +844,7 @@ pub const CELLS: &[Cell] = &[
     cell(ZephyrQemuCortexM, Cpp, Zenoh, Port,    Example, Runtime),
     cell(ZephyrQemuCortexM, Cpp, Zenoh, PortSmoke,   Example, Runtime),
     cell(ZephyrQemuCortexM, Cpp, Zenoh, PortMonitor, Example, Runtime),
+    cell(ZephyrQemuCortexM, Cpp, Zenoh, PortWorkspace, Example, Runtime),
     // phase-346 W3 — Rust on a REAL Zephyr board, unblocked by patching issue
     // 0432's two upstream defects. Until then the `zephyr` crate could not
     // compile for any board whose devicetree has gpio nodes, which is every
@@ -892,6 +909,7 @@ pub const CELLS: &[Cell] = &[
     cell(FreertosMps2, Cpp,  Zenoh, Port,    Example, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, PortSmoke,   Example, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, PortMonitor, Example, Runtime),
+    cell(FreertosMps2, Cpp,  Zenoh, PortWorkspace, Example, Runtime),
     cell(FreertosMps2, Rust, Zenoh, Service, Example, Runtime),
     cell(FreertosMps2, C,    Zenoh, Service, Example, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, Service, Example, Runtime),
@@ -1928,7 +1946,9 @@ pub fn consumer_of(cell: &Cell) -> Option<Consumer> {
         (P::Linux, _, _, W::Pubsub, K::Example) => Some(LinuxExamplePubsub),
         (P::Linux, _, _, W::Service | W::Action, K::Example) => Some(LinuxExampleReqresp),
         (P::Linux, _, _, W::ExecutorBoundNode, K::Example) => Some(LinuxExampleExecutorBoundNode),
-        (_, _, _, W::Port | W::PortSmoke | W::PortMonitor, K::Example) => Some(PortTemplates),
+        (_, _, _, W::Port | W::PortSmoke | W::PortMonitor | W::PortWorkspace, K::Example) => {
+            Some(PortTemplates)
+        }
         (P::ZephyrQemuCortexM, _, _, W::Pubsub | W::BootReport, K::Example) => Some(ZephyrCortexM),
         (P::ZephyrNativeSim, _, _, W::Pubsub | W::Service | W::Action, K::Example) => Some(Zephyr),
         (P::ZephyrNativeSim, L::Rust, R::Zenoh, W::EntryPubsub, K::Workspace) => Some(Zephyr),

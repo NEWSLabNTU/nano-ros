@@ -1,0 +1,15 @@
+# What this workspace image deploys to (RFC-0098 D3/D5).
+[system]
+name = "ament_workspace_port"
+rmw = "zenoh"
+domain_id = 0
+# The FreeRTOS entry default; a `-DNROS_ENTRY_LOCATOR=…` (the fixture row
+# passes one) still wins.
+locator = "tcp/10.0.2.2:7447"
+
+[image.mps2-an385-freertos]
+board = "mps2-an385-freertos"
+os_config = ["board-net.toml"]
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"

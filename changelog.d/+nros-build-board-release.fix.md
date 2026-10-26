@@ -1,0 +1,1 @@
+`nros build` now configures a cmake board image with `CMAKE_BUILD_TYPE=Release`, the build the test fixtures always used; it left the build type empty, which compiled the image unoptimised. Pass `-- -DCMAKE_BUILD_TYPE=<type>` to choose another (issue 2072).

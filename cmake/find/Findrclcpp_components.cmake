@@ -8,6 +8,9 @@
 # that constructs the registered class + `rclcpp::spin`s it).
 # issue 1467 — one home for the umbrella choice; see the note in Findrclcpp.cmake.
 include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosRuntimeUmbrella.cmake")
+# phase-518 — a component package is a ported package (see Findrclcpp.cmake).
+include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosPortedCxx.cmake")
+nros_ported_cxx_hosted()
 if(NOT TARGET rclcpp_components::component)
     add_library(rclcpp_components::component INTERFACE IMPORTED)
     nros_link_runtime_umbrella(rclcpp_components::component INTERFACE

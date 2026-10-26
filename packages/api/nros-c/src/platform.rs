@@ -94,7 +94,15 @@ pub fn get_system_time_ns() -> i64 {
     // symbol at link time, which is how it was found.
     //
     // SAFETY: a bare wall-clock read, no pointer arguments.
-    unsafe { nros_platform_time_now_ns() as i64 }
+    let wall = unsafe { nros_platform_time_now_ns() };
+    // phase-518 (issue 2071) -- a port with no RTC answers 0. Fall back to
+    // boot-relative time, as `nros_core::clock::Clock::wall_now` does, so
+    // `RCL_ROS_TIME` / `RCL_SYSTEM_TIME` advance and agree with the Rust clock.
+    if wall == 0 {
+        // SAFETY: a bare counter read, no pointer arguments.
+        return unsafe { nros_platform_clock_ns() as i64 };
+    }
+    wall as i64
 }
 
 // ============================================================================

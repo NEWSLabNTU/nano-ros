@@ -1,0 +1,1 @@
+On FreeRTOS and ThreadX, which have no wall clock, ROS time and system time now advance from boot instead of staying at 0, so a timer made with `rclcpp::create_timer(node, node->get_clock(), ...)` fires (issue 2071).
