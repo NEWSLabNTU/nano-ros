@@ -386,7 +386,12 @@ function(nano_ros_read_leaf_system)
 
     string(REPLACE "\n" ";" _lines "${_out}")
     foreach(_l IN LISTS _lines)
-        if(_l MATCHES "^(NROS_LEAF_[A-Z_]+)=(.*)$")
+        if(_l MATCHES "^NROS_LEAF_ROS_ARGS_INPUT=(.*)$")
+            # Issue 2073 -- a parameter file the image bakes (its text rides
+            # the image env as `NROS_CPP_BAKED_ROS_ARGS`): re-configure when it
+            # changes. One row per file, since a path list would split here.
+            set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_MATCH_1}")
+        elseif(_l MATCHES "^(NROS_LEAF_[A-Z_]+)=(.*)$")
             set(_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
         endif()
     endforeach()

@@ -417,7 +417,57 @@ pub fn image_layers(decl: &LeafSystem) -> Result<BTreeMap<String, String>> {
     let mut env = BTreeMap::new();
     transport_implications(decl, &mut env);
     env.extend(leaf_app_rung(decl)?);
+    if let Some(v) = baked_ros_args(decl)? {
+        env.insert(BAKED_ROS_ARGS_ENV.to_string(), v);
+    }
     Ok(env)
+}
+
+/// Issue 2073 -- the env row that carries an image's `ros_args` and
+/// `params_files` into the C++ runtime (`nros-cpp/build.rs`), which bakes them.
+pub const BAKED_ROS_ARGS_ENV: &str = "NROS_CPP_BAKED_ROS_ARGS";
+
+/// Issue 2073 -- [`BAKED_ROS_ARGS_ENV`]'s value for `decl`, or `None` when the
+/// image states neither key.
+///
+/// Space-separated tokens, each a tag and hex-encoded UTF-8: `a:<arg>` for one
+/// argument, `f:<name>:<text>` for one parameter file. The arguments are each
+/// file as `--ros-args --params-file <name>`, then `ros_args`, so an explicit
+/// `-p` wins over a file, as a later argument does on a command line. Hex,
+/// because the value crosses a TOML file, a cmake variable and a cargo env
+/// row, and no byte of it can mean anything to any of them.
+///
+/// A `params_files` name that is not a readable file beside `system.toml` is
+/// an error naming the row: a board has no file system to find it in later.
+pub fn baked_ros_args(decl: &LeafSystem) -> Result<Option<String>> {
+    if decl.ros_args.is_empty() && decl.params_files.is_empty() {
+        return Ok(None);
+    }
+    fn hex(s: &str) -> String {
+        s.bytes().map(|b| format!("{b:02x}")).collect()
+    }
+    let dir = decl
+        .origin_path()
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    let mut tokens = Vec::new();
+    for name in &decl.params_files {
+        let path = dir.join(name);
+        let text = std::fs::read_to_string(&path).map_err(|e| {
+            eyre!(
+                "{}: `[image.{}] params_files` names `{name}`, which cannot be read ({}): {e}",
+                decl.origin_path().display(),
+                decl.image.as_deref().unwrap_or("<id>"),
+                path.display()
+            )
+        })?;
+        tokens.push(format!("f:{}:{}", hex(name), hex(&text)));
+        for a in ["--ros-args", "--params-file", name.as_str()] {
+            tokens.push(format!("a:{}", hex(a)));
+        }
+    }
+    tokens.extend(decl.ros_args.iter().map(|a| format!("a:{}", hex(a))));
+    Ok(Some(tokens.join(" ")))
 }
 
 /// The APP rung of a leaf's image alone — its `[image.<id>.knobs]` rendered,
@@ -1255,7 +1305,57 @@ mod tests {
             features: Vec::new(),
             conf: Vec::new(),
             os_config: Vec::new(),
+            ros_args: Vec::new(),
+            params_files: Vec::new(),
         }
+    }
+
+    /// Issue 2073 -- `params_files` become `--params-file` arguments ahead of
+    /// `ros_args`, each file's text rides beside them, every token is hex, and
+    /// an image stating neither key carries no row.
+    #[test]
+    fn baked_ros_args_carry_files_then_arguments_as_hex() {
+        let td = tempfile::tempdir().unwrap();
+        std::fs::write(
+            td.path().join("p.yaml"),
+            "/**:\n  ros__parameters:\n    r: 2\n",
+        )
+        .unwrap();
+        let mut decl = decl(None, &[]);
+        decl.origin = leaf_system::Origin::SystemToml(td.path().join("system.toml"));
+        assert_eq!(baked_ros_args(&decl).unwrap(), None);
+        assert!(
+            !image_layers(&decl)
+                .unwrap()
+                .contains_key(BAKED_ROS_ARGS_ENV)
+        );
+
+        decl.params_files = vec!["p.yaml".into()];
+        decl.ros_args = vec!["-p".into(), "s:=a b;c".into()];
+        let row = baked_ros_args(&decl).unwrap().unwrap();
+        let hex = |s: &str| s.bytes().map(|b| format!("{b:02x}")).collect::<String>();
+        let want = [
+            format!(
+                "f:{}:{}",
+                hex("p.yaml"),
+                hex("/**:\n  ros__parameters:\n    r: 2\n")
+            ),
+            format!("a:{}", hex("--ros-args")),
+            format!("a:{}", hex("--params-file")),
+            format!("a:{}", hex("p.yaml")),
+            format!("a:{}", hex("-p")),
+            format!("a:{}", hex("s:=a b;c")),
+        ]
+        .join(" ");
+        assert_eq!(row, want);
+        assert_eq!(image_layers(&decl).unwrap()[BAKED_ROS_ARGS_ENV], want);
+
+        decl.params_files = vec!["missing.yaml".into()];
+        let e = baked_ros_args(&decl).unwrap_err().to_string();
+        assert!(
+            e.contains("[image.linux] params_files") && e.contains("missing.yaml"),
+            "{e}"
+        );
     }
 
     #[test]

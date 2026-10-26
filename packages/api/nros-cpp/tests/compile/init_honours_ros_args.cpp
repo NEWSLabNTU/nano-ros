@@ -41,6 +41,7 @@ Ev g_events[16];
 int g_n = 0;
 bool g_live = false;
 bool g_install_full = false;
+bool g_baked = false;
 
 void record(Ev e) {
     if (g_n < 16) {
@@ -52,6 +53,7 @@ void reset() {
     g_n = 0;
     g_live = false;
     g_install_full = false;
+    g_baked = false;
 }
 
 int failures = 0;
@@ -95,6 +97,10 @@ nros_cpp_ret_t nros_cpp_fini(void*) {
     record(Ev::Fini);
     g_live = false;
     return 0;
+}
+// Issue 2073 -- whether the image baked `ros_args` / `params_files`.
+bool nros_cpp_baked_ros_args_present(void) {
+    return g_baked;
 }
 // Refuses `-p` like the real parser, so the headers' handling of a refusal is
 // what is under test, not a stub's opinion of the grammar.
@@ -143,6 +149,19 @@ int main() {
     reset();
     res = rclcpp::init_in(0, nullptr);
     check(res.ok() && events_are({Ev::Init}), "(0, NULL) — what RTOS boards pass — is a no-op");
+
+    // Issue 2073 -- an image that baked arguments reaches the FFI with an
+    // empty command line, which is where the baked vector is applied.
+    reset();
+    g_baked = true;
+    res = rclcpp::init_in(0, nullptr);
+    check(res.ok() && events_are({Ev::Validate, Ev::Init, Ev::Install}),
+          "baked arguments: (0, NULL) is validated and installed");
+    reset();
+    g_baked = true;
+    rclcpp::init(1, plain_argv);
+    check(events_are({Ev::Validate, Ev::Init, Ev::Install}),
+          "baked arguments: rclcpp::init with no `--ros-args` installs them");
 
     reset();
     g_install_full = true;

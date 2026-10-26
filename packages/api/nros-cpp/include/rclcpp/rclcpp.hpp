@@ -498,16 +498,17 @@ inline void require_created(::rclcpp::Result r, const char* verb, const char* na
 /// same arguments and RETURNS the refusal as a `Result`, for a caller that
 /// wants to handle it.
 inline void init(int argc, char const* const* argv) {
-    if (detail::argv_has_ros_args(argc, argv) &&
-        ::rclcpp::detail::apply_ros_args(nullptr, argc, argv) != 0) {
+    // Issue 2073 -- the image's baked `ros_args` / `params_files` apply too,
+    // with or without a `--ros-args` on the command line.
+    const bool any = detail::argv_has_ros_args(argc, argv) || ::nros_cpp_baked_ros_args_present();
+    if (any && ::rclcpp::detail::apply_ros_args(nullptr, argc, argv) != 0) {
         ::std::abort();
     }
     (void)::rclcpp::init_in();
     // An init that failed leaves no executor to install into; nothing here is
     // dropped that the failed init did not already drop with the session.
     void* const executor = ::rclcpp::global_handle();
-    if (detail::argv_has_ros_args(argc, argv) && executor != nullptr &&
-        ::rclcpp::detail::apply_ros_args(executor, argc, argv) != 0) {
+    if (any && executor != nullptr && ::rclcpp::detail::apply_ros_args(executor, argc, argv) != 0) {
         ::std::abort();
     }
 }

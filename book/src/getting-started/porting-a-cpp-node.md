@@ -249,10 +249,19 @@ What the phase-518 ports needed edited in the source, on both boards:
 - **Per-request client callbacks.** No `std::promise`, so no
   `Client<S>::SharedFuture`: read the future on a later tick (the client row
   in the table below).
-- **Parameters with no default.** A board has no command line, so
-  `declare_parameter<T>(name)` with no default reads the type's zero value
-  ([issue 2073](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2073-ported-board-exe-no-params-source.md)).
-  Give it a default.
+- **Parameters with no default.** A board has no command line. State the
+  launch file's parameters in the image instead, and leave the source alone:
+
+  ```toml
+  [image.<id>]
+  params_files = ["config/x.param.yaml"]
+  ros_args = ["--ros-args", "-p", "update_rate:=10.0"]
+  ```
+
+  The build bakes both into the image, and `rclcpp::init` applies them ahead
+  of whatever command line there is, so a host's real arguments still win
+  ([issue 2073](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2073-ported-board-exe-no-params-source.md)).
+  A C (`rclc`) program does not read them.
 
 What a workspace image still has to state:
 

@@ -218,10 +218,12 @@ Node 1 found two runtime bugs before that:
   FreeRTOS app stack is 64 KiB. The overflow corrupted the kernel's globals
   without any stack-overflow report.
 
-A ported executable on a board has no way to receive `--ros-args -p` or
+A ported executable on a board had no way to receive `--ros-args -p` or
 `--params-file`: `argv` is null
-([issue 2073](../issues/2073-ported-board-exe-no-params-source.md), N1-F3). Node 1's two
+([issue 2073](../issues/archived/2073-ported-board-exe-no-params-source.md), N1-F3). Node 1's two
 `declare_parameter<T>(name)` calls with no default got porter-written defaults.
+Resolved: the image states `[image.<id>] params_files` / `ros_args` in
+`system.toml`, which the C++ runtime bakes and `rclcpp::init` applies.
 
 ## Acceptance
 
