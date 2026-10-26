@@ -58,6 +58,13 @@ workspace-all
 workspace-features
 
 # --- need the in-tree CLI built, or build it ---
+# ament-census-sizing (issue 2043) configures and builds a ported ament
+# workspace TWICE, the census host build and the image (~2 min warm), with the
+# in-tree CLI on PATH. Pristine worktree, no `nros`: FAIL — "this checkout has
+# no built nros CLI". The lane itself is not unrun: gate.yml calls
+# `just check ament-census-sizing` on merge_group beside template-copy-out;
+# this file credits whole lanes, never one gate's own step.
+ament-census-sizing
 cli-tests
 launch-resolve-builds
 required-features-tests

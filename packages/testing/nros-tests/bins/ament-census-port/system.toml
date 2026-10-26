@@ -1,0 +1,15 @@
+# Issue 2043 — the fixture states what it IS (a Linux image) and that its
+# entities are what its program creates. Nothing here is a size.
+[system]
+name = "ament_census_port"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "census_port_fanout"
+class = "census_port_fanout::Fanout"
+name = "census_port_fanout"
+entities = "census"
+
+[image.linux]
+board = "linux"

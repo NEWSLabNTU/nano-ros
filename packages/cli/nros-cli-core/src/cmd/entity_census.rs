@@ -675,6 +675,63 @@ fn leaf_executable_name(leaf: &Path) -> Result<String> {
     Ok(name)
 }
 
+/// Issue 2043 -- where the host census build of a leaf states its program
+/// (`_nros_census_program_write`, NanoRosLeafEntityFacts.cmake).
+fn census_program_path(build: &Path) -> PathBuf {
+    build.join("nros").join("census-program.txt")
+}
+
+/// A census program manifest: its `executable=` rows as `(name, binary)`
+/// pairs, and its `source=` directories.
+type CensusProgram = (Vec<(String, PathBuf)>, Vec<PathBuf>);
+
+/// Issue 2043 -- read a census program manifest.
+fn read_census_program(build: &Path) -> Result<CensusProgram> {
+    let path = census_program_path(build);
+    let raw = std::fs::read_to_string(&path)
+        .wrap_err_with(|| format!("the host census build wrote no `{}`", path.display()))?;
+    let mut exes = Vec::new();
+    let mut sources = Vec::new();
+    for line in raw.lines() {
+        if let Some(rest) = line.strip_prefix("executable=") {
+            if let Some((name, bin)) = rest.split_once('=') {
+                exes.push((name.to_string(), PathBuf::from(bin)));
+            }
+        } else if let Some(dir) = line.strip_prefix("source=") {
+            sources.push(PathBuf::from(dir));
+        }
+    }
+    Ok((exes, sources))
+}
+
+/// Issue 2043 -- the binary a leaf's census runs, from the host build's
+/// program manifest: its one executable, or the one a `[[component]] name`
+/// names when it builds several.
+fn census_program_binary(leaf: &Path, build: &Path) -> Result<PathBuf> {
+    let (exes, _) = read_census_program(build)?;
+    if let [(_, bin)] = exes.as_slice() {
+        return Ok(bin.clone());
+    }
+    let names: Vec<String> = nros_orchestration_ir::leaf_system::read(leaf)
+        .map_err(|e| eyre::eyre!(e))?
+        .map(|s| s.components.into_iter().filter_map(|c| c.name).collect())
+        .unwrap_or_default();
+    let picked: Vec<&(String, PathBuf)> = exes.iter().filter(|(n, _)| names.contains(n)).collect();
+    match picked.as_slice() {
+        [(_, bin)] => Ok(bin.clone()),
+        _ => bail!(
+            "the host census build of {} has {} executables ({}); a census records ONE \
+             program, so name it as the `[[component]] name` in system.toml",
+            leaf.display(),
+            exes.len(),
+            exes.iter()
+                .map(|(n, _)| n.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
+}
+
 /// Issue 1556 item 4 -- `take --leaf`: the census of a standalone C/C++ leaf.
 ///
 /// The SAME `src/` the cross image compiles, configured for the HOST board
@@ -696,7 +753,9 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
             leaf.display()
         );
     }
-    let exe = leaf_executable_name(&leaf)?;
+    // Issue 2043 -- a ported ament workspace names no executable in its own
+    // `CMakeLists.txt`; the host build's program manifest does, after it.
+    let named = leaf_executable_name(&leaf);
     let out = leaf_census_path(&leaf);
     if let Freshness::Fresh = census_freshness(&out, &leaf) {
         let complete = std::fs::read_to_string(&out)
@@ -727,6 +786,9 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
             .arg("-G")
             .arg("Ninja")
             .arg(format!("-Dnano_ros_DIR={}", root.display()))
+            // The add_subdirectory road (a ported ament workspace's root,
+            // issue 2043) names the SDK root this way instead.
+            .arg(format!("-DNROS_REPO_DIR={}", root.display()))
             .arg("-DNROS_LEAF_BOARD=linux")
             .env(LEAF_CENSUS_HOST_ENV, "1")
             .status()
@@ -746,7 +808,12 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
         if !status.success() {
             bail!("host census build of {} exited {status}", leaf.display());
         }
-        let bin = build.join(&exe);
+        let bin = match &named {
+            Ok(exe) => build.join(exe),
+            Err(why) => {
+                census_program_binary(&leaf, &build).map_err(|e| eyre::eyre!("{why}\n  and {e}"))?
+            }
+        };
         if !bin.is_file() {
             bail!(
                 "the host census build of {} left no `{}`",
@@ -768,6 +835,14 @@ fn take_leaf_census(leaf: &Path, timeout_secs: u64) -> Result<()> {
         }
         previous = Some(digest);
     }
+    let exe = match named {
+        Ok(exe) => exe,
+        Err(_) => binary
+            .as_deref()
+            .and_then(Path::file_name)
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+    };
     run_census(RunArgs {
         entry: exe,
         workspace: Some(leaf.clone()),
@@ -1566,6 +1641,25 @@ fn collect_inputs(ws: &Path, binary: &Path, model: Option<&Path>) -> Result<Vec<
                 path: rel(&cml),
                 digest: file_digest(&cml)?,
             });
+            // Issue 2043 -- a ported ament workspace's packages sit OUTSIDE the
+            // leaf (`../src/<pkg>`), so the host build's program manifest names
+            // them; each is a source tree the census is stale against. A
+            // directory inside the leaf is already covered above.
+            let build = ws.join("build").join("census-host");
+            if census_program_path(&build).is_file() {
+                let (_, sources) = read_census_program(&build)?;
+                let mut seen = std::collections::BTreeSet::new();
+                for dir in sources {
+                    if dir.starts_with(ws) || !dir.is_dir() || !seen.insert(dir.clone()) {
+                        continue;
+                    }
+                    inputs.push(Input {
+                        role: "source_tree",
+                        path: rel(&dir),
+                        digest: crate::orchestration::metadata_refresh::source_digest(&dir)?,
+                    });
+                }
+            }
         }
         return Ok(inputs);
     };
@@ -1712,6 +1806,46 @@ mod tests {
         assert_eq!(
             locate_entry_binary(dir.path(), "linux_entry").expect("found"),
             bin
+        );
+    }
+
+    /// Issue 2043 -- a ported ament workspace names its program in the host
+    /// build's manifest: one executable is the census's program; with several,
+    /// the `[[component]] name` picks one, and nothing picking one refuses.
+    #[test]
+    fn the_census_program_manifest_names_the_binary() {
+        let td = tempfile::tempdir().unwrap();
+        let leaf = td.path();
+        std::fs::write(leaf.join("CMakeLists.txt"), "project(ws CXX)\n").unwrap();
+        std::fs::write(
+            leaf.join("system.toml"),
+            "[system]\nname = \"ws\"\n\n[[component]]\npkg = \"p\"\nname = \"two\"\n\
+             entities = \"census\"\n\n[image.linux]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        let build = leaf.join("build").join("census-host");
+        std::fs::create_dir_all(build.join("nros")).unwrap();
+        let manifest = census_program_path(&build);
+
+        std::fs::write(&manifest, "executable=one=/b/one\nsource=/w/src/p\n").unwrap();
+        assert_eq!(
+            census_program_binary(leaf, &build).unwrap(),
+            PathBuf::from("/b/one")
+        );
+        let (_, sources) = read_census_program(&build).unwrap();
+        assert_eq!(sources, [PathBuf::from("/w/src/p")]);
+
+        std::fs::write(&manifest, "executable=one=/b/one\nexecutable=two=/b/two\n").unwrap();
+        assert_eq!(
+            census_program_binary(leaf, &build).unwrap(),
+            PathBuf::from("/b/two")
+        );
+
+        std::fs::write(&manifest, "executable=one=/b/one\nexecutable=three=/b/3\n").unwrap();
+        let e = census_program_binary(leaf, &build).unwrap_err().to_string();
+        assert!(
+            e.contains("one, three") && e.contains("[[component]] name"),
+            "{e}"
         );
     }
 

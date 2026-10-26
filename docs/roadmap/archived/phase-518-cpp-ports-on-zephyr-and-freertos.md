@@ -1,15 +1,15 @@
 # Phase 518 — the phase-488 C++ ports on Zephyr and FreeRTOS, and their three open issues
 
-**Status (2026-10-26). Open; W1, W2, W4 and W5 done; W3 open.** Every node
-builds and runs on both boards. W1–W3 take the three issues phase-488 left open.
+**Status (2026-10-26). Done; W1–W5 done.** Every node builds and runs on
+both boards, and a ported workspace is sized from its own program. W1–W3 take the three issues phase-488 left open.
 W4 and W5 attempt the three ported nodes on Zephyr and FreeRTOS, which
 phase-488 did not try.
 
 **Opened 2026-10-26.** Follows
-[phase-488](archived/phase-488-larger-cpp-port-fixture.md), which ported three
+[phase-488](phase-488-larger-cpp-port-fixture.md), which ported three
 real-world ROS 2 C++ nodes to nano-ros on Linux and archived with three issues
 open and the RTOS targets unattempted. Implements no new RFC decision. It
-measures [RFC-0096](../design/0096-cpp-freestanding-core-and-porting-layer.md)
+measures [RFC-0096](../../design/0096-cpp-freestanding-core-and-porting-layer.md)
 D5 (the edits a port is allowed) on the two RTOS boards a ported program
 already reaches through `ROS2_MAIN` (phase-482 W3, phase-499 W5).
 
@@ -36,7 +36,7 @@ nros-cpp, codegen and build fixes, issues, and porting-guide changes.
 
 ## Work items
 
-### W1 — `get_parameter_overrides()` ([issue 2057](../issues/archived/2057-cpp-parameter-overrides-listing.md))
+### W1 — `get_parameter_overrides()` ([issue 2057](../../issues/archived/2057-cpp-parameter-overrides-listing.md))
 
 A per-node FFI listing over the executor's argv overrides, typed on the hosted
 C++ side into a `std::map<std::string, rclcpp::ParameterValue>`.
@@ -52,7 +52,7 @@ to one copy per node, as upstream's does (Nav2 compares iterators from two
 calls).
 Tested in nros-node and in `parameter_value_runtime.cpp`. Issue 2057 resolved.
 
-### W2 — a per-request client callback ([issue 2055](../issues/archived/2055-cpp-client-per-request-callback.md))
+### W2 — a per-request client callback ([issue 2055](../../issues/archived/2055-cpp-client-per-request-callback.md))
 
 `Client<S>::SharedPtr` holds what `create_client<S>(name)` returns, and
 `async_send_request(request, callback)` runs the callback from the executor.
@@ -71,9 +71,9 @@ ROS 2 server. The pump found a timer bug (a `Skip` timer reset by its own
 callback underflowed). Test: `client_per_request_callback_runtime.cpp`. Issue
 2055 resolved. On an RTOS toolchain there is no `std::promise`, so the port
 keeps the edit (porting guide). The composition's in-process client never sees
-its in-process server on posix ([issue 2083](../issues/2083-posix-in-process-server-not-in-graph.md)).
+its in-process server on posix ([issue 2083](../../issues/2083-posix-in-process-server-not-in-graph.md)).
 
-### W3 — pool sizes derived on the ament road ([issue 2043](../issues/2043-ament-port-pool-sizing-census.md))
+### W3 — pool sizes derived on the ament road ([issue 2043](../../issues/archived/2043-ament-port-pool-sizing-census.md))
 
 The maintainer ruled (2026-10-24) that the sizes come from the program, as
 issue 1556's census does for a standalone leaf. On Linux the image can census
@@ -84,6 +84,26 @@ the obvious candidate).
 **Done when** porting node 1 takes no sizing knob on Linux, a `just check` lane
 fails if an in-tree ament package's pool is left at its default, and the RTOS
 answer is either built or written down in W4's findings.
+
+**Done (2026-10-26).** A workspace states `[[component]] entities = "census"`
+in its `system.toml`, and the configure takes the census itself: it builds the
+same sources for the host, runs them once, and sizes every pool from what was
+created ([issue 2043](../../issues/archived/2043-ament-port-pool-sizing-census.md),
+fix section). The census run gets the node's launch parameters from
+`params_files` ([issue 2073](../../issues/archived/2073-ported-board-exe-no-params-source.md)).
+
+- Linux: node 1 takes no sizing knob. Its pools come from the census
+  (`MAX_CBS = 21`, 12 subscribers, 9 publishers, 28 liveliness tokens), and it
+  runs against a stock Humble peer: topics, the service, parameters and
+  diagnostics.
+- The lane: `just check ament-census-sizing` builds
+  `bins/ament-census-port` (six subscriptions, six publishers, two timers, no
+  size stated). It fails if a pool the census answers is left at its default.
+  It runs in the merge group.
+- RTOS, built: a cross-built image takes its census from a host build of
+  the same packages. The FreeRTOS template image built `MAX_CBS = 1` from it,
+  and its e2e test passes. Zephyr is not read yet, so a Zephyr image is
+  still sized by hand ([issue 2086](../../issues/2086-zephyr-ported-image-not-census-sized.md)).
 
 ### W4 — build the three nodes on FreeRTOS and Zephyr
 
@@ -123,7 +143,7 @@ What the road needed, all landed:
   compile the image unoptimised.
 
 The in-tree regression is the new template
-[`examples/templates/ament-workspace-port`](../../examples/templates/ament-workspace-port/):
+[`examples/templates/ament-workspace-port`](../../../examples/templates/ament-workspace-port/):
 a library plus an executable linked to it in a stock package, built for posix,
 FreeRTOS and Zephyr. Matrix workload `PortWorkspace`, three cells; e2e
 `port_templates_e2e::cpp_port_ament_workspace_publishes{,_on_freertos,_on_zephyr}`.
@@ -210,26 +230,26 @@ QEMU mps2-an385:
 
 Node 1 found two runtime bugs before that:
 
-- [Issue 2071](../issues/archived/2071-ros-time-frozen-without-rtc.md), fixed:
+- [Issue 2071](../../issues/archived/2071-ros-time-frozen-without-rtc.md), fixed:
   with no RTC, ROS time never advanced, so the node's
   `rclcpp::create_timer(this, get_clock(), ...)` never fired.
-- [Issue 2070](../issues/2070-param-declare-stack-cost.md), open: declaring one
+- [Issue 2070](../../issues/2070-param-declare-stack-cost.md), open: declaring one
   parameter at the default capacities costs ~70 KiB of stack, and the C++
   FreeRTOS app stack is 64 KiB. The overflow corrupted the kernel's globals
   without any stack-overflow report.
 
 A ported executable on a board had no way to receive `--ros-args -p` or
 `--params-file`: `argv` is null
-([issue 2073](../issues/archived/2073-ported-board-exe-no-params-source.md), N1-F3). Node 1's two
+([issue 2073](../../issues/archived/2073-ported-board-exe-no-params-source.md), N1-F3). Node 1's two
 `declare_parameter<T>(name)` calls with no default got porter-written defaults.
 Resolved: the image states `[image.<id>] params_files` / `ros_args` in
 `system.toml`, which the C++ runtime bakes and `rclcpp::init` applies.
 
 ## Acceptance
 
-- [ ] Issues 2043, 2055 and 2057 are resolved, or closed `wontfix` with the
-      porting guide stating the edit instead. (2055 and 2057 resolved; 2043
-      open.)
+- [x] Issues 2043, 2055 and 2057 are resolved, or closed `wontfix` with the
+      porting guide stating the edit instead. (All three resolved; 2043's
+      Zephyr half continues as issue 2086.)
 - [x] Each node has an RTOS build verdict per board, with every finding fixed or
       filed.
 - [x] The porting guide states what the RTOS attempt learned.

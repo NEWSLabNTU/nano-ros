@@ -189,6 +189,14 @@ if(NOT NROS_BOARD AND NOT DEFINED NROS_LEAF_SYSTEM
     if(DEFINED NROS_DOMAIN_ID)
         set(NROS_DOMAIN_ID "${NROS_DOMAIN_ID}" PARENT_SCOPE)
     endif()
+    # Issue 2043 — and what it creates, through the leaf's sizing descriptor,
+    # as the find_package road records it (nano_rosConfig.cmake). A ported
+    # ament workspace states `entities = "census"` and is sized from its own
+    # program. The delivery is deferred to the end of the top-level scope
+    # (`nros_entity_facts_env_deferred` on `nros_cpp-static` / `nros_c-static`),
+    # so recording it before those subdirectories is enough.
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosLeafEntityFacts.cmake")
+    nros_record_leaf_entity_facts("${CMAKE_SOURCE_DIR}")
 endif()
 
 # Map legacy / variant NROS_PLATFORM values to their canonical
