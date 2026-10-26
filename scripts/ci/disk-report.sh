@@ -114,6 +114,26 @@ if [ -d "$ex" ]; then
     du -sh "$ex"/* 2>/dev/null | sort -rh | head -12 || true
 fi
 
+# ...and of `build/`, the largest entry after the tier-1 gates: host-tests run
+# 40263677513 (2026-10-26) reclaimed to 75 G free, then `just ci tier1 gates`
+# grew `build/` from 29 G to 61 G and the runner hit ENOSPC, on 4 of the 7
+# nights to that date. The top-level line could not say which gate's fixtures
+# held the 32 G, and that is the question a fix has to answer first.
+bld="${GITHUB_WORKSPACE:-$PWD}/build"
+if [ -d "$bld" ]; then
+    echo "--- biggest children of build/ ---"
+    du -sh "$bld"/* 2>/dev/null | sort -rh | head -15 || true
+fi
+
+# ...and the scratch root, which is outside the checkout: `template-copy-out`
+# builds each copied template under `${TMPDIR:-/tmp}`, and its first ENOSPC
+# was a write there (`/tmp/nros-template-copy-out.*`).
+scratch="${TMPDIR:-/tmp}"
+if [ -d "$scratch" ]; then
+    echo "--- biggest children of $scratch ---"
+    du -sh "$scratch"/* 2>/dev/null | sort -rh | head -8 || true
+fi
+
 echo "::endgroup::"
 
 # `tee` rather than a redirect: the report keeps going to the job log, which is
