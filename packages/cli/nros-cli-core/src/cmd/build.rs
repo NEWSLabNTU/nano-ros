@@ -7171,6 +7171,20 @@ mod board_heap_tests {
             "-DNROS_BOARD_RX_FLOOR_US=11000"
         );
     }
+
+    /// Issue 2072 -- a board image is configured `Release`, as every fixture
+    /// is; a posix image is a host process and keeps cmake's default.
+    #[test]
+    fn a_board_image_configures_release_and_a_host_one_does_not() {
+        for platform in ["freertos", "zephyr", "threadx", "nuttx"] {
+            assert_eq!(
+                board_build_type_arg(platform).as_deref(),
+                Some("-DCMAKE_BUILD_TYPE=Release"),
+                "{platform}"
+            );
+        }
+        assert_eq!(board_build_type_arg("posix"), None);
+    }
 }
 
 #[cfg(test)]

@@ -173,7 +173,11 @@ if(NOT _nros_add_executable_wrapped AND NROS_PLATFORM AND NOT NROS_PLATFORM STRE
         set(_nae_srcs ${ARGN})
         list(REMOVE_ITEM _nae_srcs WIN32 MACOSX_BUNDLE EXCLUDE_FROM_ALL)
         message(STATUS "nano-ros: add_executable(${name}) is a ${NROS_PLATFORM} image: "
-                       "built as nano_ros_add_executable(${name} ... ROS2_MAIN) (phase-518)")
+                       "built as nano_ros_add_executable(${name} ... ROS2_MAIN)")
+        nros_message_detail(
+            "nano-ros: a board image is one binary, so a stock package's "
+            "executable becomes the image and its `main` the app entry "
+            "(phase-518 W4).")
         set(_NROS_IN_IMAGE_ADD_EXECUTABLE TRUE)
         nano_ros_add_executable(${name} ${_nae_srcs} ROS2_MAIN)
         # `ROS2_MAIN` made the C++ of the calling directory hosted; this

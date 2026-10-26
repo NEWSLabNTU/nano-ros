@@ -33,10 +33,11 @@ Each directory beside `src/` is a root that configures the same package.
 | `mps2-an385-freertos/` | `find_package(nano_ros)`; the board comes from `system.toml` | `nros build` in the directory |
 | `zephyr/` | `find_package(Zephyr)` then `find_package(nano_ros)`; the board comes from `system.toml` | `nros sync && nros build` in the directory |
 
-On Zephyr the board is `mps2-an385-zephyr`, run under QEMU. `native_sim`
-cannot run a ported node. The board's QEMU network Kconfig is
-`<nano-ros>/cmake/zephyr/mps2-an385.conf`. The fixture build adds it, and a
-copy of this template must name it in `os_config` (issue 1782).
+On Zephyr the fixture builds for `mps2/an385` under QEMU; `native_sim` cannot
+run a ported node. `system.toml` says `board = "zephyr"`, as the other port
+templates do, and the fixture passes the concrete board. A copy of this
+template sets `board = "mps2-an385-zephyr"` and names the QEMU network Kconfig,
+`<nano-ros>/cmake/zephyr/mps2-an385.conf`, in `os_config` (issue 1782).
 
 ## Run
 
