@@ -105,7 +105,7 @@ inside it:
 
 ## Why this phase exists
 
-[Issue 0902](../../issues/0902-action-goal-completion-is-variable.md) measured action
+[Issue 0902](../../issues/archived/0902-action-goal-completion-is-variable.md) measured action
 goals completing between 20 % and 90 % on one build, with no session expiry, no
 crash and no discovery failure. The mechanism was found: zenoh-pico stores a
 cloned query in one of `ZPICO_MAX_PENDING_REPLIES` (4) slots BEFORE the user

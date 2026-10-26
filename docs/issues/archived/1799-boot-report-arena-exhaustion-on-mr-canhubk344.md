@@ -1,12 +1,14 @@
 ---
 id: 1799
 title: "The boot report's arena-exhaustion record has never been dumped from silicon -- run it on the MR-CANHUBK344"
-status: open
+status: resolved
 type: test-gap
 area: core, boards, testing
 severity: medium
 found: 2026-10-11
 related: [issue-1036, issue-1640, phase-412, phase-474, phase-512]
+resolved: 2026-10-26
+resolved_in: "phase-512 batch A, 2026-10-26"
 ---
 
 **Home: [phase-512](../roadmap/phase-512-on-hardware-measurements.md)** — H7, moved 2026-10-24 from phase-474, where it had been homed since 2026-10-17.
@@ -77,3 +79,34 @@ If the transport fails before registration, the record says so instead
 (`stage 2, Transport ConnectionFailed` on QEMU, with the router not yet bound):
 that is the record naming a different failure correctly, so re-run with the
 peer up.
+
+## Resolution (2026-10-26, phase-512 H7)
+
+Run on the MR-CANHUBK344 in phase-512 batch A, on nano-ros 9f2d7b4bb3 (plus the
+local `.nros_boot_config` placement that issue 2077 tracks). The image was
+`examples/zephyr/c/talker` (zenoh, serial to a router) with the conf above. The
+arena was set with `-DNROS_OVERRIDE_EXECUTOR_ARENA_SIZE=32`, because a conf
+line does not reach that knob. The record (132 B at 0x2041b208) was dumped
+20 s after reset with the router up.
+
+Fatal (`CONFIG_NROS_ARENA_EXHAUSTION_IS_FATAL=y`); the core halted in
+`arch_system_halt`, reason 4, per a gdb backtrace:
+
+```
+stage      4  RegisteringEntities -- an entity claimed arena; registration in flight
+error-level log records      1   (the first raised at packages/core/nros-node/src/executor/arena.rs:883)
+ARENA EXHAUSTED: an allocation of 48 bytes did not fit,
+short by 16 bytes.
+  set NROS_EXECUTOR_ARENA_SIZE >= 48
+```
+
+Arena capacity 32, used 0; heap peak 10,992 of 49,664 B.
+
+Negative control (`=n`): the same decode (stage 4, the same line, 48 B, short
+by 16, `>= 48`). The core was not halted: it was in the idle thread, the
+talker's main had returned (thread state `_THREAD_DEAD`), and the router
+showed the session.
+
+Both decodes match the QEMU lane's verdict. A first attempt stayed at stage 2:
+without the UART RX ring, the polled serial reader (priority 4) starved main
+(priority 5) with `k_yield`. The interrupt-driven 4 KiB rings fixed it.

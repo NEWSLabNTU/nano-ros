@@ -459,7 +459,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0902](../../issues/0902-action-goal-completion-is-variable.md) | action goals complete between 20 % and 90 % of the time on the same build — a load-dependent success rate, which is this phase's subject — **re-homed to [phase-433](phase-433-rmw-live-verification.md) 2026-10-12** |
+| [#0902](../../issues/archived/0902-action-goal-completion-is-variable.md) | action goals complete between 20 % and 90 % of the time on the same build — a load-dependent success rate, which is this phase's subject — **re-homed to [phase-433](phase-433-rmw-live-verification.md) 2026-10-12** |
 | [#0913](../../issues/0913-the-debugger-is-not-a-passive-instrument.md) | attaching pyocd RTT kills the zenoh session: the debugger perturbs the thing being measured — **re-homed to [phase-478](../phase-478-island-developer-experience-findings.md) 2026-10-12** |
 | [#0917](../../issues/0917-an536-fragmented-sample-never-syncs.md) | the emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst — an overrun with a known cause — **re-homed to [phase-441](phase-441-rmw-on-target-verification.md) 2026-10-12** |
 

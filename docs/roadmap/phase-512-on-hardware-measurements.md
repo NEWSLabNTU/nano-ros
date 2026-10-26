@@ -1,9 +1,10 @@
 # Phase 512 — Work that needs a real board
 
-**Status (2026-10-26). In progress: the MR-CANHUBK344 batch is running.** One
-S32K344 board (MR-CANHUBK344) is now on a bench. H6 is met by board runs that
-already exist. H7, H8 and H9 run as one batch on that board ("Batches", below).
-H1-H5 still wait on hardware this bench does not have.
+**Status (2026-10-26). Batch A done; H1-H5 blocked on hardware.** One S32K344
+board (MR-CANHUBK344) is on a bench. Batch A ("Batches", below) closed H6-H9 on
+it: H6 from existing board runs, and H7, H8 and H9 in one bench session on
+2026-10-26. Issues 1799 and 0902 are archived. The session filed 2077 and
+2078. H1-H5 still wait on hardware this bench does not have.
 
 Each item is a measurement whose code has landed and whose host or emulator
 evidence is recorded in the phase it came from. Only the silicon number is
@@ -16,8 +17,8 @@ session closes every item that board can close.
 **Gathered 2026-10-24:** [phase-162](archived/phase-162-rt-scheduling-harness.md) 162.C
 (H4), [phase-418](phase-418-orin-safety-island-and-spe.md) 418.5 and 418.7
 (H5), the board leg of [phase-474](phase-474-safety-island-board-findings.md)
-T4 (H6), [issue 1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md)
-(H7), and [issue 0902](../issues/0902-action-goal-completion-is-variable.md)
+T4 (H6), [issue 1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md)
+(H7), and [issue 0902](../issues/archived/0902-action-goal-completion-is-variable.md)
 (H8, moved 2026-10-24). Each source phase keeps a pointer where the item was. Board reruns that
 belong to the safety island's own phase (474 I6, I8, I9 and 446-W7's board
 leg are "the island's W4") stay in phase-474: they are blocked on a downstream
@@ -32,7 +33,7 @@ not eight separate runs:
 
 | Batch | Board | Items | State |
 | --- | --- | --- | --- |
-| A | MR-CANHUBK344 (S32K344), SWD probe, serial link to a router | H6, H7, H8, H9 | H6 met 2026-10-26; H7, H8, H9 running 2026-10-26 |
+| A | MR-CANHUBK344 (S32K344), SWD probe, serial link to a router | H6, H7, H8, H9 | done 2026-10-26 |
 | B | S32Z270 silicon | H1 | no board |
 | C | a bare-metal Cortex-M board: MPS2-AN385 or STM32F4-Discovery | H2, H4 | no board; H2 also needs a board crate that registers smoltcp's deadline source |
 | D | a host with root, tap-fed QEMU | H3 | no runner with root |
@@ -42,6 +43,14 @@ Batch A runs in this order, one flash per image: H7's two console-less talker
 images (fatal, then the non-fatal control), then H8's action images over
 serial (N runs, `zpico_reply_slot_declines` read throughout), then H9's Rust
 level image. H6 needed no new run.
+
+Batch A's session (2026-10-26, nano-ros 9f2d7b4bb3): the board ran behind a
+stock `rmw_zenohd` listening on the board's serial link (921,600 baud) and on
+TCP for host peers. The board's transport was lpuart2; its console is on the
+unwired lpuart0. Every image needed one local, uncommitted link fix, the
+`.nros_boot_config` placement (issue 2077). The H9 image also needed a
+wait-network stub (issue 2078). Logs, dumps, configs and the local diffs are
+kept with the island's run archive for 2026-10-26 (`board-batch/`).
 
 ## Why a separate phase
 
@@ -174,7 +183,7 @@ Evidence and the other board halves (phase-474 I6, I8, I9) are recorded in
 
 ### H7 — the boot report's arena-exhaustion record, dumped from silicon
 
-[Issue 1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md),
+[Issue 1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md),
 homed here from phase-474. Every other step of the path runs in a lane: the
 host decode tests, and the QEMU `mps2/an385` boot-report fixture that dumps
 the record with `pmemsave`. Only the MR-CANHUBK344 dump is missing.
@@ -182,9 +191,15 @@ the record with `pmemsave`. Only the MR-CANHUBK344 dump is missing.
 **Done when** the issue's board run decodes to the same verdict as the QEMU
 lane, and the issue is archived.
 
+**Done 2026-10-26.** The fatal image halted in `arch_system_halt` and decoded
+to `stage 4 RegisteringEntities`, `ARENA EXHAUSTED: an allocation of 48 bytes
+did not fit, short by 16 bytes`, `set NROS_EXECUTOR_ARENA_SIZE >= 48`. The
+non-fatal control decoded the same way and ran on. Both decodes are in the
+archived issue.
+
 ### H8 — action goal completion rate on the MR-CANHUBK344, over serial
 
-[Issue 0902](../issues/0902-action-goal-completion-is-variable.md), moved
+[Issue 0902](../issues/archived/0902-action-goal-completion-is-variable.md), moved
 here from phase-474 on 2026-10-24. On a bare-metal serial board inside a real
 ROS 2 graph, goals were accepted and then completed in 20 % to 90 % of runs on
 one build. The native lane now gates the completion path end to end
@@ -200,6 +215,13 @@ spread, with `zpico_reply_slot_declines` read during the run. Non-zero puts
 the failure back on the reply-slot path; zero with goals still failing rules
 that path out.
 
+**Done 2026-10-26: not reproduced.** 50 of 50 goals SUCCEEDED over five fresh
+boots: 5 goals, a 100 s idle soak, then 5 goals per boot, with live
+`rmw_zenoh_cpp` peers. `zpico_reply_slot_declines` read 1 per boot, on the
+TRANSIENT_LOCAL status queryable only; the action queryables declined 0. Issue
+0902 is archived as not reproduced. The image needed a 32 KiB main stack; at
+16 KiB main faulted before registration (the 0852 signature).
+
 ### H9 -- the Rust runner's Zephyr level worker frame on silicon
 
 From [issue 2065](../issues/archived/2065-zephyr-level-worker-frame-is-an-estimate.md)
@@ -214,12 +236,26 @@ about 5.9 KB.
 setup and steady peaks read on the board, and the Rust frame is confirmed or
 corrected from them.
 
+**Done 2026-10-26: 51,200 B confirmed.** On the board, read over SWD:
+
+| profile | setup peak | steady peak (300 / 3,000 / 10,000 passes) | QEMU setup |
+| --- | ---: | ---: | ---: |
+| release | 46,868 B | 5,832 B | 47,456 B |
+| debug (`CONFIG_DEBUG=y`) | 50,376 B | 5,968 B | 50,968 B |
+
+Both are under the 51,200 B frame. The image needed its level stack in DTCM
+(`MAX_TIERS=1`, 64 KiB) to fit. In the debug build, the boot tier's main
+overflowed 32 KiB; at 56 KiB its high-water read 55,992 B. The release main
+was not read.
+
 ## Issues homed here
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) | H7: its only open step runs on the MR-CANHUBK344. |
-| [#0902](../issues/0902-action-goal-completion-is-variable.md) | H8: its open measurement is a hand run on the MR-CANHUBK344. |
+| [#1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) | H7: resolved 2026-10-26, archived. |
+| [#0902](../issues/archived/0902-action-goal-completion-is-variable.md) | H8: not reproduced 2026-10-26, archived. |
+| [#2077](../issues/2077-nros-boot-config-orphan-lands-in-s32k344-ivt-header.md) | found by batch A: typed entries do not link on the S32K344 without a local section placement. |
+| [#2078](../issues/2078-zephyr-rust-serial-image-needs-wait-network.md) | found by batch A (H9): a serial-only Zephyr Rust image does not link. |
 
 ## Not in this phase
 
