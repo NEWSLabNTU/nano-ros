@@ -26,6 +26,10 @@ extern "C" {
  * `NET_EVENT_L4_CONNECTED` sem for boards with a managed PHY). Under NSOS
  * (native_sim offloaded sockets) returns immediately — host kernel networking.
  *
+ * Defined in every Zephyr image. Without `CONFIG_NET_SOCKETS` (a serial-only
+ * image, no IP stack) it returns 0 at once: there is no interface to wait for
+ * (issue 2078).
+ *
  * @param timeout_ms Max wait in ms (negative = wait forever).
  * @return 0 when the interface is ready, -1 on timeout.
  */

@@ -5511,6 +5511,32 @@ west_zenoh_locator = "tcp/10.0.2.2:10600"
 conf_files = ["prj.conf"]
 west_image = "zephyr_zenoh"
 
+# Issue 2078 -- the same Rust talker with NO IP stack: zenoh over a UART. The
+# entry `nros::main!` emits calls `nros_platform_zephyr_wait_network` whatever
+# the transport, and the symbol was compiled only with CONFIG_NET_SOCKETS, so a
+# serial-only Rust image did not link. A LINK witness: the tests in
+# `tests/zephyr_link_layout.rs` read the ELF, nothing boots it. The locator
+# names uart1, the board's free UART (uart0 is the console).
+#
+# `cmake/zephyr/mps2-an385-serial.conf` is a delta that must merge AFTER the
+# board tail (it turns the tail's networking off), so the row lists the whole
+# order itself, tail included, and the leaves script does not append the tail
+# again. For the same reason it names no `west_image`: the image's
+# `prj-zenoh.conf` would be appended after the delta and turn TCP back on. The
+# leaf's default image is `zephyr_zenoh` (issue 1757), and the module skips the
+# `prj-zenoh.conf` the row already names.
+[[fixture]]
+platform = "zephyr-cortex-m"
+lang = "rust"
+rmw = "zenoh"
+builder = "west"
+dir = "examples/zephyr/rust/talker"
+board = "mps2_an385"
+west_role = "talker-serial"
+west_build_name = "build-cortex-m-rust-talker-serial-zenoh"
+west_zenoh_locator = "serial/uart@40005000#baudrate=115200"
+conf_files = ["prj.conf", "prj-zenoh.conf", "../../../../cmake/zephyr/mps2-an385.conf", "../../../../cmake/zephyr/mps2-an385-serial.conf"]
+
 [[fixture]]
 platform = "zephyr"
 lang = "rust"

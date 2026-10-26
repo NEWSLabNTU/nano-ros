@@ -696,6 +696,11 @@ int main(void)
 }
 ```
 
+`nros_platform_zephyr_wait_network` (`<nros/platform_zephyr.h>`) is defined
+in every Zephyr image. On an image with no IP stack (`CONFIG_NET_SOCKETS` off,
+for example a serial-only zenoh image) it returns 0 at once, so the call needs
+no guard (issue 2078).
+
 ## Examples
 
 | Directory | Description |

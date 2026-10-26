@@ -254,8 +254,8 @@ was not read.
 | --- | --- |
 | [#1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) | H7: resolved 2026-10-26, archived. |
 | [#0902](../issues/archived/0902-action-goal-completion-is-variable.md) | H8: not reproduced 2026-10-26, archived. |
-| [#2077](../issues/2077-nros-boot-config-orphan-lands-in-s32k344-ivt-header.md) | found by batch A: typed entries do not link on the S32K344 without a local section placement. |
-| [#2078](../issues/2078-zephyr-rust-serial-image-needs-wait-network.md) | found by batch A (H9): a serial-only Zephyr Rust image does not link. |
+| [#2077](../issues/archived/2077-nros-boot-config-orphan-lands-in-s32k344-ivt-header.md) | found by batch A: typed entries did not link on the S32K344 without a local section placement. Resolved 2026-10-26 (the module places the section in rodata), archived. |
+| [#2078](../issues/archived/2078-zephyr-rust-serial-image-needs-wait-network.md) | found by batch A (H9): a serial-only Zephyr Rust image did not link. Resolved 2026-10-26 (the wait is defined without sockets), archived. |
 
 ## Not in this phase
 
