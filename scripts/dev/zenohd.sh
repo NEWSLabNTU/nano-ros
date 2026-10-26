@@ -179,6 +179,15 @@ nros_zenohd_warn_if_unpaired() {
 # left alone, as is a router that does not have the ROS layout (the
 # NROS_RMW_ZENOHD escape hatch, which `nros_zenohd_warn_if_unpaired` reports).
 # The test harness does the same (`nros_tests::fixtures::zenohd_router`).
+#
+# And the router dies with whoever started it. A script that backgrounds this
+# (`( nros_router_env_exec "$bin" ) &`) and is then killed — a timeout, a
+# closed pipe, Ctrl-C — used to leave the router listening, holding its port,
+# with no trace of who started it; a QEMU bring-up session leaked twelve that
+# way. `setpriv --pdeathsig KILL` (util-linux) gives it the parent-death
+# signal the Rust harness sets with `prctl(PR_SET_PDEATHSIG)`
+# (`nros_tests::process::set_new_process_group`). Without `setpriv` (a host
+# that is not Linux, or a util-linux older than 2.33) it starts as before.
 nros_router_env_exec() {
     local bin="${1:?nros_router_env_exec: a router path is required}" dir prefix
     dir="$(dirname "$bin")"
@@ -189,6 +198,10 @@ nros_router_env_exec() {
         set +u
         # shellcheck disable=SC1091
         . "$prefix/setup.bash"
+    fi
+    if command -v setpriv >/dev/null 2>&1 \
+       && setpriv --help 2>&1 | grep -q -- '--pdeathsig'; then
+        exec setpriv --pdeathsig KILL -- "$bin"
     fi
     exec "$bin"
 }
