@@ -9,9 +9,10 @@ than asserted"), so the numbers have to come from a tool that anyone can re-run
 against any image, not from a paste that ages.
 
 This is that tool. It reads an ELF's symbol table, attributes every byte of RAM
-to an OWNER — a storage role (`[executor storage]`, `[component storage]`), else
-the Rust crate, `C++ <namespace>` or the path-less C bucket, decided from the
-MANGLING (issue 1147) — and, where a pool declares its arithmetic or the
+to an OWNER — a nano-ros storage role (`[executor storage]`, `[component storage]`,
+`[level task memory]`, `[level scheduler]`, `[monitor storage]`, `[platform task
+stacks]`), else the Rust crate, `C++ <namespace>` or the path-less C bucket,
+decided from the MANGLING (issue 1147) — and, where a pool declares its arithmetic or the
 inventory names the knobs that size it, to a named pool; and it reports the
 total against the RAM sections so nothing hides in the gap. The C/C++ executor
 storage is priced against the build's own sizes header (`N x
@@ -240,6 +241,87 @@ STORAGE_ROLES = [
         "packages/core/nros-macros/src/lib.rs",
         '"__NROS_COMPONENT_{}_SLOT_STORE"',
     ),
+    # Issue 2040 -- a level image's statics (phase-509). The core's one
+    # executor is carved from `__nros_levels_backing` (P9b); before P9b each
+    # level carried its own `__nros_tier_backing_<i>`.
+    (
+        "executor storage",
+        r"__nros_levels_backing",
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/c/boot_wrapper.jinja",
+        "static uint64_t __nros_levels_backing[",
+    ),
+    (
+        "executor storage",
+        r"__nros_levels_backing",
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/boot_wrapper.jinja",
+        "static uint64_t __nros_levels_backing[",
+    ),
+    (
+        "executor storage",
+        r"__nros_tier_backing_\d+",
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/c/boot_wrapper.jinja",
+        "static uint64_t __nros_tier_backing_",
+    ),
+    (
+        "executor storage",
+        r"__nros_tier_backing_\d+",
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/boot_wrapper.jinja",
+        "static uint64_t __nros_tier_backing_",
+    ),
+    (
+        "level scheduler",
+        r"__nros_scheduler_\d+",
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/c/boot_wrapper.jinja",
+        "static uint64_t __nros_scheduler_0[",
+    ),
+    (
+        "level scheduler",
+        r"__nros_scheduler_\d+",
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/boot_wrapper.jinja",
+        "static uint64_t __nros_scheduler_0[",
+    ),
+    # A spawned level's worker: its stack and its thread / task control block,
+    # from `NROS_TIER_TASK_MEMORY_DEFINE` in the per-RTOS header.
+    (
+        "level task memory",
+        r"__nros_tier_(?:stack|thread)_\d+",
+        "packages/api/nros-c/include/rclc/detail/tier_task_memory_zephyr.h",
+        "static K_THREAD_STACK_DEFINE(__nros_tier_stack_##i,",
+    ),
+    (
+        "level task memory",
+        r"__nros_tier_(?:stack|tcb)_\d+",
+        "packages/api/nros-c/include/rclc/detail/tier_task_memory_freertos.h",
+        "static StackType_t __nros_tier_stack_##i[",
+    ),
+    (
+        "level task memory",
+        r"__nros_tier_stack_\d+",
+        "packages/api/nros-c/include/rclc/detail/tier_task_memory_nuttx.h",
+        "static uint8_t __nros_tier_stack_##i[",
+    ),
+    # The generated entry's contract-monitor tables (rows, ages, hazards, modes).
+    (
+        "monitor storage",
+        r"__nros_(?:mon|age|hz|mode)_storage|__nros_mon_rows",
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/c/entry.c.jinja",
+        "static uint64_t __nros_mon_storage[",
+    ),
+    (
+        "monitor storage",
+        r"__nros_(?:mon|age|hz|mode)_storage|__nros_mon_rows",
+        "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/entry.cpp.jinja",
+        "alignas(8) static unsigned char __nros_mon_storage[",
+    ),
+    # The Zephyr platform's task-stack pool (zenoh-pico's read, lease and
+    # tx-flush tasks): CONFIG_NROS_ZEPHYR_TASK_SLOTS stacks of
+    # CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE, priced from the image's .config.
+    (
+        "platform task stacks",
+        r"nros_thread_stacks",
+        "zephyr/nros_platform_zephyr_shims.c",
+        "K_THREAD_STACK_ARRAY_DEFINE(nros_thread_stacks,",
+    ),
 ]
 
 # What a DEFINITION of executor or component storage looks like in source, for
@@ -250,8 +332,20 @@ _STORAGE_DEF = re.compile(
     r"\bstatic\b.*(?:executor_storage|EXECUTOR_BACKING\b|_SLOT_STORE|__nros_comp_buf_)"
     r"|GlobalStorageHolder<N>::storage\["
     r'|format_ident!\(\s*"[^"]*_SLOT_STORE"'
+    # issue 2040 -- the level image's statics and the platform task stacks.
+    r"|\bstatic\b.*\b__nros_(?:levels_backing|tier_backing_|scheduler_|tier_stack_|tier_thread_"
+    r"|tier_tcb_|mon_storage|age_storage|hz_storage|mode_storage|mon_rows)"
+    r"|STACK_ARRAY_DEFINE(?:_IN)?\(\s*nros_thread_stacks\b"
 )
-_ROLE_RES = [(role, re.compile(rf"^{rx}$")) for role, rx, _src, _lit in STORAGE_ROLES]
+# The same set, as a POSIX ERE `git grep` can parse (it has no `(?:`).
+_STORAGE_GREP = (
+    "executor_storage|EXECUTOR_BACKING|_SLOT_STORE|__nros_comp_buf_|GlobalStorageHolder"
+    "|__nros_levels_backing|__nros_tier_backing_|__nros_scheduler_|__nros_tier_stack_"
+    "|__nros_tier_thread_|__nros_tier_tcb_|__nros_mon_storage|__nros_age_storage"
+    "|__nros_hz_storage|__nros_mode_storage|__nros_mon_rows|nros_thread_stacks"
+)
+# Grouped before anchoring: a row's regex may be an alternation.
+_ROLE_RES = [(role, re.compile(rf"^(?:{rx})$")) for role, rx, _src, _lit in STORAGE_ROLES]
 
 
 def role_of(key):
@@ -637,8 +731,85 @@ _EXEC_SLOT_ROUNDING = [
 ]
 
 
+# Issue 2040 -- the level statics the generated entry sizes from ONE per-build
+# macro each, as `uint64_t [MACRO / 8u]`: a whole number of words, rounded down.
+_SIZED_BY_MACRO = [
+    (re.compile(r"^__nros_levels_backing$"), "NROS_CPP_LEVELS_BACKING_SIZE"),
+    (re.compile(r"^__nros_tier_backing_(\d+)$"), "NROS_CPP_TIER_BACKING_SIZE_{}"),
+    (re.compile(r"^__nros_scheduler_(\d+)$"), "NROS_CPP_SCHEDULER_BACKING_SIZE_{}"),
+]
+
+
+def price_by_macro(key, measured, sizes):
+    """What a macro-sized level static was priced at, or None if `key` is not one."""
+    for rx, pattern in _SIZED_BY_MACRO:
+        m = rx.match(key)
+        if not m:
+            continue
+        macro = pattern.format(*m.groups())
+        if macro not in sizes:
+            return f"measured; no per-build sizes header states {macro}"
+        want = sizes[macro] // 8 * 8
+        if measured == want:
+            return f"{macro} = {sizes[macro]:,}"
+        return (
+            f"MISMATCH: {measured:,} bytes, but {macro} = {sizes[macro]:,} reserves "
+            f"{want:,} -- the header and the image come from different builds"
+        )
+    return None
+
+
+# Issue 2040 -- the Zephyr platform's task-stack pool. The shim defines
+# `nros_thread_stacks` as NROS_ZEPHYR_MAX_THREADS (CONFIG_NROS_ZEPHYR_TASK_SLOTS)
+# stacks of NROS_ZEPHYR_STACK_SIZE (CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE, 0 =
+# CONFIG_MAIN_STACK_SIZE); `K_THREAD_STACK_ARRAY_DEFINE` pads each to the
+# architecture's stack alignment and guard, so a slot is never LESS than asked.
+TASK_STACK_KCONFIG = (
+    "CONFIG_NROS_ZEPHYR_TASK_SLOTS",
+    "CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE",
+    "CONFIG_MAIN_STACK_SIZE",
+)
+
+
+def read_task_kconfig(elf):
+    """The image's task-stack Kconfig integers, from the `.config` beside it, or None."""
+    path = os.path.join(os.path.dirname(os.path.abspath(elf)), ".config")
+    try:
+        with open(path, encoding="utf8") as fh:
+            found = dict((k, int(v)) for k, v in _KCONFIG_INT.findall(fh.read()))
+    except OSError:
+        return None
+    return {k: found[k] for k in TASK_STACK_KCONFIG if k in found}
+
+
+def price_task_stacks(measured, kconfig):
+    """'N x S' for `nros_thread_stacks` against the image's Kconfig, or why not."""
+    slots_k, size_k, main_k = TASK_STACK_KCONFIG
+    if kconfig is None:
+        return f"measured; no .config beside the image states {slots_k}"
+    slots = kconfig.get(slots_k)
+    if not slots:
+        return f"measured; the image's .config does not state {slots_k}"
+    size, src = kconfig.get(size_k, 0), size_k
+    if not size:
+        size, src = kconfig.get(main_k), main_k
+    if measured % slots:
+        return f"MISMATCH: {measured:,} is not a whole number of {slots_k} = {slots} stacks"
+    stride = measured // slots
+    if size is not None and stride < size:
+        return (
+            f"MISMATCH: {slots} x {stride:,} is less than the {src} = {size:,} each "
+            "slot is asked for -- the .config and the image come from different builds"
+        )
+    asked = f", {src} = {size:,} plus guard and alignment" if size is not None else ""
+    return f"{slots} x {stride:,} ({slots_k} = {slots}{asked})"
+
+
 def price_executor_storage(key, measured, sizes):
     """'N x S' for a C/C++ executor storage symbol, or why it cannot be said."""
+    by_macro = price_by_macro(key, measured, sizes)
+    if by_macro is not None:
+        return None, by_macro
     per = sizes.get("NROS_CPP_EXECUTOR_STORAGE_SIZE")
     for rx, word in _EXEC_SLOT_ROUNDING:
         if rx.match(key):
@@ -719,7 +890,8 @@ def runtime_logger_arena(agg):
     return out
 
 
-def analyse_symbols(elf, syms, sections, pools_by_name, measured_pools=None, sizes=None):
+def analyse_symbols(elf, syms, sections, pools_by_name, measured_pools=None, sizes=None,
+                    task_kconfig=None):
     """Everything `analyse` reports, over an already-read symbol table.
 
     Split from the ELF reading so the self-test can drive it with synthetic
@@ -781,11 +953,15 @@ def analyse_symbols(elf, syms, sections, pools_by_name, measured_pools=None, siz
         if not role:
             continue
         executors, priced = (None, None)
-        if role == "executor storage":
+        if role in ("executor storage", "level scheduler"):
             if sizes_problem:
                 priced = f"not priced: {sizes_problem}"
-            else:
+            elif role == "executor storage":
                 executors, priced = price_executor_storage(key, a["bytes"], sizes_defs)
+            else:
+                priced = price_by_macro(key, a["bytes"], sizes_defs)
+        elif role == "platform task stacks":
+            priced = price_task_stacks(a["bytes"], task_kconfig)
         storage.append(
             {
                 "role": role,
@@ -845,7 +1021,8 @@ def analyse(elf, pools_by_name, measured_pools=None, sizes_header=None):
         elf_mtime = None
     headers = [sizes_header] if sizes_header else find_sizes_headers(elf)
     sizes = read_sizes(headers, None if sizes_header else elf_mtime)
-    return analyse_symbols(elf, syms, sections, pools_by_name, measured_pools, sizes)
+    return analyse_symbols(elf, syms, sections, pools_by_name, measured_pools, sizes,
+                           read_task_kconfig(elf))
 
 
 def fmt(n):
@@ -963,8 +1140,8 @@ def report(res, top, baseline=None):
 
     add("## RAM by owner")
     add("")
-    add("  Storage roles first (`[executor storage]`, `[component storage]`), then")
-    add("  the Rust crate, `C++ <namespace>`, or the path-less C bucket.")
+    add("  nano-ros storage roles first (`[executor storage]`, `[component storage]`,")
+    add("  ...), then the Rust crate, `C++ <namespace>`, or the path-less C bucket.")
     add("")
     for owner, size in sorted(res["by_owner"].items(), key=lambda kv: -kv[1])[:24]:
         share = 100.0 * size / ram_sec if ram_sec else 0.0
@@ -975,15 +1152,15 @@ def report(res, top, baseline=None):
         add(f"  {fmt(size):>12}  {share:5.1f}%  {owner}{d}")
     add("")
 
-    add("## executor and component storage")
+    add("## nano-ros storage roles")
     add("")
     if not res["storage"]:
-        add("  (no executor or component storage symbol in this image)")
+        add("  (no nano-ros storage-role symbol in this image)")
     for s in res["storage"]:
         many = f" (x{s['count']} symbols)" if s["count"] > 1 else ""
-        add(f"  {fmt(s['bytes']):>12}  {s['role']:<17}  {s['symbol']}{many}")
+        add(f"  {fmt(s['bytes']):>12}  {s['role']:<20}  {s['symbol']}{many}")
         if s["priced"]:
-            add(f"  {'':>12}  {'':<17}  = {s['priced']}")
+            add(f"  {'':>12}  {'':<20}  = {s['priced']}")
     if res.get("sizes_headers"):
         for h in res["sizes_headers"]:
             add(f"  sizes header: {h}")
@@ -1256,6 +1433,7 @@ def selftest():
     )
     selftest_keys()
     selftest_attribution()
+    selftest_level_image()
     selftest_runtime_loggers()
     selftest_baseline()
     selftest_sections()
@@ -1323,6 +1501,77 @@ def selftest_attribution():
     for raw, name, want in cases:
         got = owner_of(symbol_key(name), lang_of(raw))
         assert got == want, f"{name!r} ({raw}) attributed to {got!r}, want {want!r}"
+
+
+def selftest_level_image():
+    """issue 2040 -- a level image's statics report under nano-ros roles, priced.
+
+    The symbols and sizes are the simple-autoware-safety-island board image's
+    (Zephyr, S32K344, three levels on one executor): a C++ entry, so its file
+    statics are `_ZL`-mangled and used to land in `C++ (global namespace)`,
+    and the shim's task-stack pool in `(C / asm / no path)`.
+    """
+    rows = [
+        # (raw, demangled, bytes, owner)
+        ("_ZL21__nros_levels_backing", "__nros_levels_backing", 40640, "[executor storage]"),
+        ("_ZL28__nros_tier_executor_storage", "__nros_tier_executor_storage", 2792,
+         "[executor storage]"),
+        ("_ZL20__nros_tier_backing_1", "__nros_tier_backing_1", 4096, "[executor storage]"),
+        ("_ZL18__nros_tier_stack_1", "__nros_tier_stack_1", 16384, "[level task memory]"),
+        ("_ZL18__nros_tier_stack_2", "__nros_tier_stack_2", 16384, "[level task memory]"),
+        ("_ZL19__nros_tier_thread_1", "__nros_tier_thread_1", 272, "[level task memory]"),
+        ("_ZL19__nros_tier_thread_2", "__nros_tier_thread_2", 272, "[level task memory]"),
+        ("__nros_tier_tcb_1", "__nros_tier_tcb_1", 100, "[level task memory]"),
+        ("_ZL18__nros_scheduler_0", "__nros_scheduler_0", 232, "[level scheduler]"),
+        ("_ZL18__nros_mon_storage", "__nros_mon_storage", 400, "[monitor storage]"),
+        ("_ZL19__nros_mode_storage", "__nros_mode_storage", 288, "[monitor storage]"),
+        ("_ZL17__nros_hz_storage", "__nros_hz_storage", 120, "[monitor storage]"),
+        ("_ZL18__nros_age_storage", "__nros_age_storage", 80, "[monitor storage]"),
+        ("_ZL15__nros_mon_rows", "__nros_mon_rows", 48, "[monitor storage]"),
+        ("nros_thread_stacks", "nros_thread_stacks", 4 * 5120, "[platform task stacks]"),
+        ("__nros_comp_buf_0", "__nros_comp_buf_0", 3368, "[component storage]"),
+        # Near misses stay with their language: the anchors hold.
+        ("_ZL12__nros_tiers", "__nros_tiers", 96, "C++ (global namespace)"),
+        ("my_nros_thread_stacks", "my_nros_thread_stacks", 64, "(C / asm / no path)"),
+        ("__nros_mon_rows_x", "__nros_mon_rows_x", 8, "(C / asm / no path)"),
+    ]
+    for raw, name, _b, want in rows:
+        got = owner_of(symbol_key(name), lang_of(raw))
+        assert got == want, f"{name!r} ({raw}) attributed to {got!r}, want {want!r}"
+
+    syms = [make_symbol(b, "b", raw, name) for raw, name, b, _o in rows]
+    sizes = {"NROS_CPP_LEVELS_BACKING_SIZE": 40644, "NROS_CPP_SCHEDULER_BACKING_SIZE_0": 232,
+             "NROS_CPP_EXECUTOR_STORAGE_SIZE": 2788}
+    kconfig = {"CONFIG_NROS_ZEPHYR_TASK_SLOTS": 4, "CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE": 0,
+               "CONFIG_MAIN_STACK_SIZE": 5120}
+    res = analyse_symbols("synthetic", syms, {}, {}, sizes=(sizes, ["h"], None),
+                          task_kconfig=kconfig)
+    by = res["by_owner"]
+    assert by["[level task memory]"] == 2 * 16384 + 2 * 272 + 100, by
+    assert by["[executor storage]"] == 40640 + 2792 + 4096, by
+    assert by["[platform task stacks]"] == 20480 and by["[level scheduler]"] == 232, by
+    assert "C++ (global namespace)" in by and by["C++ (global namespace)"] == 96, (
+        f"only the non-role static may stay in the C++ bucket: {by}"
+    )
+    priced = {s["symbol"]: s["priced"] for s in res["storage"]}
+    assert priced["__nros_levels_backing"] == "NROS_CPP_LEVELS_BACKING_SIZE = 40,644", priced
+    assert priced["__nros_scheduler_0"] == "NROS_CPP_SCHEDULER_BACKING_SIZE_0 = 232", priced
+    assert "no per-build sizes header states NROS_CPP_TIER_BACKING_SIZE_1" in (
+        priced["__nros_tier_backing_1"]), priced
+    assert priced["nros_thread_stacks"].startswith(
+        "4 x 5,120 (CONFIG_NROS_ZEPHYR_TASK_SLOTS = 4, CONFIG_MAIN_STACK_SIZE = 5,120"), priced
+    assert priced["__nros_tier_stack_1"] is None, "a level stack is priced by --levels"
+
+    # The pricing must be able to FAIL.
+    assert price_by_macro("__nros_levels_backing", 40640,
+                          {"NROS_CPP_LEVELS_BACKING_SIZE": 13112}).startswith("MISMATCH")
+    assert price_by_macro("__nros_tiers", 96, sizes) is None
+    assert price_task_stacks(20481, kconfig).startswith("MISMATCH"), "not whole slots"
+    assert price_task_stacks(4 * 4096, kconfig).startswith("MISMATCH"), "slot below the ask"
+    assert price_task_stacks(4 * 8192, dict(kconfig, CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE=8192)
+                             ).startswith("4 x 8,192 (CONFIG_NROS_ZEPHYR_TASK_SLOTS = 4, "
+                                          "CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE = 8,192")
+    assert price_task_stacks(20480, None).startswith("measured; no .config")
 
 
 def _res(rows, owners=None, complete=True):
@@ -1414,8 +1663,7 @@ def check_storage_roles():
     # Python: a regex git cannot parse makes `git grep` print nothing, and an
     # empty scan would pass this check vacuously.
     out = git_grep.run(
-        ["-n", "-E",
-         "executor_storage|EXECUTOR_BACKING|_SLOT_STORE|__nros_comp_buf_|GlobalStorageHolder",
+        ["-n", "-E", _STORAGE_GREP,
          "--", "*.rs", "*.c", "*.h", "*.hpp", "*.cpp", "*.jinja",
          ":!*.golden", ":!third-party", ":!scripts/nros-mem-report.py"],
         ROOT,
