@@ -1,7 +1,7 @@
 ---
 rfc: 0074
 title: "Ingress budget: the contract bounds what a device is made to receive"
-status: Draft
+status: Stable
 since: 2026-08
 last-reviewed: 2026-10-26
 implements-tracked-by: [phase-462, phase-516, phase-519]
@@ -20,7 +20,7 @@ that omission is a hole: a peer publishing faster than the device can
 drain preempts every real-time tier on it, and no local scheduling
 configuration can prevent that.
 
-This RFC proposes an **ingress declaration** on subscriptions, expressed
+This RFC defines an **ingress declaration** on subscriptions, expressed
 as a **token bucket (rate + burst)** rather than a rate cap, compiling to
 two enforcement points: a **router-side pacing rule** (which is what
 actually saves the device CPU) and a **device-side budget on the rx read
@@ -543,6 +543,13 @@ that, and a design that assumes one `c` per board should say so.
 
 ## Changelog
 
+- 2026-10-26 — Stable, by maintainer decision. The declaration is settled
+  upstream (issue 0760). Both enforcement points are built and measured: the
+  read-task budget (phase-462) and the zenoh router rule (phase-516 W1, issue
+  0506). Every open question is answered. What remains is phase-519, deferred:
+  the stated `interfaces` fact, the upstream burst term, and whether the XRCE
+  agent can carry enforcement point 1. Each would amend this RFC, not reopen
+  it.
 - 2026-10-26 — phase-516 archived: the stated `interfaces` fact and the
   upstream burst request moved to phase-519 (W1, W2), and the XRCE agent's
   half of enforcement point 1 opened there as W3.
