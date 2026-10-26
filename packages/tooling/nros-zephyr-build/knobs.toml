@@ -1500,18 +1500,10 @@ compiles an IP link keeps the old default.
 [[knob]]
 id = "ZENOH_LEASE_PRIORITY"
 legacy = ["ZPICO_LEASE_TASK_PRIORITY"]
-type = "int"
-prompt = "zenoh-pico lease task priority (normalised band, 0-255)"
-kconfig_if = "NROS_RMW_ZENOH"
-kconfig_attrs = [
-    "default 200",
-]
-help = '''
-As NROS_ZENOH_READ_PRIORITY, for the lease (keep-alive) task. The lease
-task is light but latency-sensitive: if it cannot run, the session's
-keep-alives stop and the router drops the peer, which presents as an
-unexplained disconnect rather than as a scheduling problem.
-'''
+# RFC-0110 D2: zenoh-pico 1.10 runs the lease and keep-alive as futures on the
+# executor thread, so the lease task this knob prioritised does not exist. The
+# row stays as the error table; no Kconfig symbol is defined for it any more.
+retired = "zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, so there is no lease task to prioritise (RFC-0110 D2) -- remove it, and set NROS_ZENOH_READ_PRIORITY, which now prioritises that thread"
 
 [[knob]]
 id = "ZENOH_MAX_LARGE_SUBSCRIBERS"

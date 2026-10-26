@@ -84,11 +84,11 @@ pub struct ShimConfig {
     /// NORMALISED 0–31 and mapped down onto the platform's own range, not a
     /// raw RTOS priority; CLAUDE.md records the collision that follows from
     /// confusing the two units (issue 0623).
+    ///
+    /// The read task is zenoh-pico 1.10's executor thread: it also runs the
+    /// lease and keep-alive, so there is no lease-task priority beside it
+    /// (RFC-0110 D2; `ZPICO_LEASE_TASK_PRIORITY` is an `#error` in the shim).
     pub read_task_priority: usize,
-    /// issue 0626 / 0460 — priority of zenoh-pico's lease task
-    /// (`ZPICO_LEASE_TASK_PRIORITY`, default 16, from
-    /// `CONFIG_NROS_ZENOH_LEASE_PRIORITY`). See [`ShimConfig::read_task_priority`].
-    pub lease_task_priority: usize,
 }
 
 /// Whether the generated zenoh-pico config compiles in the multicast transport
@@ -222,16 +222,12 @@ impl ShimConfig {
             ));
         }
         // Unconditional, matching the C lane in `nros_rmw_zenoh.cmake`: the
-        // shim `#define`s its own 16/16 fallback, so omitting these is not "no
+        // shim `#define`s its own 16 fallback, so omitting this is not "no
         // opinion" — it is the C default silently winning over Kconfig, on the
         // Rust lane only. Issue 0460's shape (issue 0626's knobs).
         out.push((
             "ZPICO_READ_TASK_PRIORITY",
             self.read_task_priority.to_string(),
-        ));
-        out.push((
-            "ZPICO_LEASE_TASK_PRIORITY",
-            self.lease_task_priority.to_string(),
         ));
         // nros-c-macro-names: end
         out
@@ -1307,7 +1303,6 @@ int32_t zpico_init(void);\n";
             tx_batch: false,
             tx_batch_flush_ms: 50,
             read_task_priority: 11,
-            lease_task_priority: 12,
         };
 
         let body = cfg.rust_consts();
@@ -1339,7 +1334,6 @@ int32_t zpico_init(void);\n";
             tx_batch: false,
             tx_batch_flush_ms: 50,
             read_task_priority: 11,
-            lease_task_priority: 12,
         };
         for (on, want) in [(true, "1"), (false, "0")] {
             cfg.graph_discovery = on;
@@ -1405,7 +1399,6 @@ int32_t zpico_init(void);\n";
                 tx_batch,
                 tx_batch_flush_ms: 50,
                 read_task_priority: 11,
-                lease_task_priority: 12,
             };
             let defines = cfg.defines();
             let get = |name: &str| {
@@ -1418,7 +1411,13 @@ int32_t zpico_init(void);\n";
             };
             // nros-c-macro-names: begin -- `defines()` holds C macro names.
             assert_eq!(get("ZPICO_READ_TASK_PRIORITY"), "11");
-            assert_eq!(get("ZPICO_LEASE_TASK_PRIORITY"), "12");
+            // RFC-0110 D2 — no lease task, so no lease define: the shim
+            // `#error`s on one.
+            assert!(
+                !defines
+                    .iter()
+                    .any(|(k, _)| *k == "ZPICO_LEASE_TASK_PRIORITY")
+            );
             // The knobs that were already correct stay correct in both states —
             // the point of the loop is that `tx_batch` gates only its own pair.
             assert_eq!(get("ZPICO_MAX_QUERYABLES"), "3");

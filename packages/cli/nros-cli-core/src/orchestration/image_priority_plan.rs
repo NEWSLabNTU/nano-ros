@@ -48,7 +48,7 @@ use nros_orchestration_ir::priority_plan::{PriorityPlan, ZEPHYR_TRANSPORT_BAND_D
 /// The transport bands an image's `.config` states, in
 /// [`ZEPHYR_TRANSPORT_BAND_SYMBOLS`] order; an absent symbol is the Kconfig
 /// default, which is what the image runs with.
-pub fn transport_bands(dotconfig: &str) -> [i64; 2] {
+pub fn transport_bands(dotconfig: &str) -> [i64; 1] {
     nros_entry_lower::zephyr_image::transport_bands(dotconfig, ZEPHYR_TRANSPORT_BAND_DEFAULT)
 }
 
@@ -128,10 +128,9 @@ mod tests {
         assert_eq!(np32.app, Band::new(8, 31));
 
         let read100 = resolved(&format!(
-            "CONFIG_NUM_PREEMPT_PRIORITIES=15\n{GATES}CONFIG_NROS_ZENOH_READ_PRIORITY=100\n\
-             CONFIG_NROS_ZENOH_LEASE_PRIORITY=200\n"
+            "CONFIG_NUM_PREEMPT_PRIORITIES=15\n{GATES}CONFIG_NROS_ZENOH_READ_PRIORITY=100\n"
         ));
-        assert_eq!(read100.reserved["transport"], Band::new(4, 9));
+        assert_eq!(read100.reserved["transport"], Band::new(9, 9));
         assert_eq!(read100.app, Band::new(10, 14));
 
         // Absent band symbols are the Kconfig default: the projection's image.

@@ -277,9 +277,10 @@ def _dotconfig_ints(path):
 KCONFIG = ROOT / "zephyr" / "Kconfig"
 
 # The band inputs nano-ros authors a default for. `CONFIG_NUM_PREEMPT_PRIORITIES`
-# and the two scheduling gates belong to Zephyr and the board, not to us.
-BAND_DEFAULTED = ("CONFIG_NROS_ZENOH_READ_PRIORITY",
-                  "CONFIG_NROS_ZENOH_LEASE_PRIORITY")
+# and the two scheduling gates belong to Zephyr and the board, not to us. One
+# since RFC-0110 D2: zenoh-pico 1.10 runs the lease on its executor (read) task,
+# so `CONFIG_NROS_ZENOH_LEASE_PRIORITY` is gone.
+BAND_DEFAULTED = ("CONFIG_NROS_ZENOH_READ_PRIORITY",)
 
 _KCONFIG_ENTRY = re.compile(
     r"^(config|menuconfig|choice|endchoice|menu|endmenu|if|endif|"
@@ -480,8 +481,7 @@ def resolve_zephyr_plan(dotconfig):
         }
 
     bands = {}
-    for name, key in (("read", "CONFIG_NROS_ZENOH_READ_PRIORITY"),
-                      ("lease", "CONFIG_NROS_ZENOH_LEASE_PRIORITY")):
+    for name, key in (("read", "CONFIG_NROS_ZENOH_READ_PRIORITY"),):
         # Absent from the .config means the default applies. Read it from the
         # one place it is written: this was a literal `200` restating
         # zephyr/Kconfig, updated BY HAND from 16 when issue 0852 moved the

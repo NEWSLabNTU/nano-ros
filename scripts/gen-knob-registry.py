@@ -43,6 +43,14 @@ in `zephyr/Kconfig`.
 not `CONFIG_<spelling>` — the shape `kconfig_key_for` and its harvesting gate
 (`check-kconfig-knob-forwarding`) already read. A retired spelling has no pair:
 nothing reads one any more (phase-484 W8).
+
+A row with `retired = "<reason>"` is a knob that no longer EXISTS, not one that
+was renamed (RFC-0110 D2 retired the zenoh lease-task priority when zenoh-pico
+1.10 folded the lease task into its executor). Every spelling of it -- the
+canonical one included -- stops the build with `RETIRED_KNOB`'s sentence, in a
+build script, a configure and the CLI alike. It carries no Kconfig definition,
+so a prj.conf that still assigns the symbol fails Zephyr's own undefined-symbol
+check. The row stays for good as the error table, like `legacy`.
 """
 import re
 import sys
@@ -82,6 +90,10 @@ RETIRED = (
 # `[image.<id>.knobs.<group>] <name>`. Release 0.6.0 warned with these words
 # minus the refusal; this is what that warning promised. `{image}`, `{env}`,
 # `{group}` and `{name}` are replaced by the CLI.
+# The error any spelling of a RETIRED knob earns (a row with `retired`): the
+# knob is gone, so there is no replacement spelling to name -- the row's reason
+# says what to do instead. `{spelling}` and `{reason}` are replaced.
+RETIRED_KNOB = "{spelling} is a retired knob: {reason}"
 IMAGE_ENV_RETIRED = (
     "[image.{image}] env {env} names the knob [image.{image}.knobs.{group}] {name} "
     "(RFC-0103 D6; refused in phase-484 W8, after release 0.6.0 deprecated it) -- "
@@ -91,7 +103,7 @@ IMAGE_ENV_RETIRED = (
 ID = re.compile(r"^[A-Z][A-Z0-9_]*$")
 ENV = re.compile(r"^(NROS|ZPICO)_[A-Z0-9_]+$")
 TOML_KEY = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
-FIELDS = {"id", "legacy", "kconfig", "toml", "names",
+FIELDS = {"id", "legacy", "kconfig", "toml", "names", "retired",
           "type", "prompt", "kconfig_if", "kconfig_attrs", "help"}
 # The Kconfig definition is all-or-nothing: `type` says the module defines the
 # symbol, and the rest only mean something beside it.
@@ -137,6 +149,16 @@ def load_from_text(text):
             for a in r.get("kconfig_attrs", []):
                 if not a.strip() or a.strip() in ("help", "---help---"):
                     errors.append(f"{where}: `kconfig_attrs` holds attribute lines, not `{a}`")
+        why = r.get("retired")
+        if why is not None:
+            if not isinstance(why, str) or not why.strip():
+                errors.append(f"{where}: `retired` is the reason, a non-empty string")
+            elif re.search(r'["\\$;]', why):
+                errors.append(f"{where}: a `retired` reason cannot hold `\"`, `\\`, `$` or `;` "
+                              "(it is emitted verbatim into Rust and cmake strings)")
+            if ty is not None:
+                errors.append(f"{where}: a `retired` knob has no Kconfig definition (drop `type`), "
+                              "so a conf that still assigns it fails as an undefined symbol")
         t = r.get("toml")
         if t is not None:
             if not TOML_KEY.match(t):
@@ -212,8 +234,10 @@ def render(rows):
         rng = int_range(r)
         out.append(f"        range: {'Some((' + str(rng[0]) + ', ' + str(rng[1]) + '))' if rng else 'None'},")
         out.append("        names: &[" + ", ".join(q(x) for x in r.get("names", [])) + "],")
+        why = r.get("retired")
+        out.append(f"        retired: {'Some(' + q(why) + ')' if why else 'None'},")
         out.append("    },")
-        if kconfig != "CONFIG_" + env:
+        if kconfig != "CONFIG_" + env and not r.get("retired"):
             pairs.append((env, kconfig))
     out.append("];")
     out.append("")
@@ -244,6 +268,10 @@ def render(rows):
     out.append("/// Substitute `{legacy}` and `{env}`; the cmake twin refuses in the same words.")
     out.append(f"pub const RETIRED_TEMPLATE: &str = {q(RETIRED)};")
     out.append("")
+    out.append("/// The refusal any spelling of a RETIRED knob earns (a row with `retired`).")
+    out.append("/// Substitute `{spelling}` and `{reason}`; the cmake twin refuses in the same words.")
+    out.append(f"pub const RETIRED_KNOB_TEMPLATE: &str = {q(RETIRED_KNOB)};")
+    out.append("")
     out.append("/// The refusal an `[image.<id>] env` row earns when it names a registry knob")
     out.append("/// (phase-484 W8). Substitute `{image}`, `{env}`, `{group}` and `{name}`.")
     out.append(f"pub const IMAGE_ENV_RETIRED_TEMPLATE: &str = {q(IMAGE_ENV_RETIRED)};")
@@ -264,6 +292,7 @@ def render_cmake(rows):
         "# each belongs to.",
         "",
         f'set(NROS_KNOB_RETIRED_TEMPLATE "{RETIRED}")',
+        f'set(NROS_KNOB_RETIRED_KNOB_TEMPLATE "{RETIRED_KNOB}")',
         "",
     ]
     typed = [r for r in rows if r.get("type")]
@@ -278,9 +307,18 @@ def render_cmake(rows):
         out.append(f"set(NROS_KNOB_IMAGE_TABLE_{r['id']} {table})")
         out.append(f"set(NROS_KNOB_IMAGE_NAME_{r['id']} {name})")
     out.append("")
+    retired = [r for r in rows if r.get("retired")]
+    out.append("# RETIRED knobs: every spelling below stops a configure, with its row's reason")
+    out.append("# substituted into NROS_KNOB_RETIRED_KNOB_TEMPLATE.")
+    spelled = [s for r in retired for s in ["NROS_" + r["id"]] + r.get("legacy", [])]
+    out.append('set(NROS_KNOB_RETIRED_SPELLINGS "' + ";".join(spelled) + '")')
+    for r in retired:
+        for s in ["NROS_" + r["id"]] + r.get("legacy", []):
+            out.append(f'set(NROS_KNOB_RETIRED_REASON_{s} "{r["retired"]}")')
+    out.append("")
     for r in rows:
         legacy = r.get("legacy", [])
-        if not legacy:
+        if not legacy or r.get("retired"):
             continue
         env = "NROS_" + r["id"]
         out.append(f'set(NROS_KNOB_LEGACY_{env} "{";".join(legacy)}")')
@@ -505,6 +543,20 @@ def self_test():
     assert "set(NROS_KNOB_IMAGE_TABLE_ZENOH_X zenoh)" in cm, cm
     assert "set(NROS_KNOB_IMAGE_NAME_ZENOH_X x)" in cm, cm
     assert "NROS_Y" not in cm, "selftest: an untyped row with no legacy spelling reached the cmake table"
+    # A RETIRED knob: every spelling refuses, none maps to a canonical name, no
+    # Kconfig definition, and a typed retired row is itself refused.
+    ret = [{"id": "ZENOH_GONE", "legacy": ["ZPICO_GONE"], "retired": "no task left"}]
+    cm = render_cmake(ret)
+    assert 'set(NROS_KNOB_RETIRED_SPELLINGS "NROS_ZENOH_GONE;ZPICO_GONE")' in cm, cm
+    assert 'set(NROS_KNOB_RETIRED_REASON_ZPICO_GONE "no task left")' in cm, cm
+    assert "NROS_KNOB_CANONICAL_ZPICO_GONE" not in cm, "selftest: a retired knob's old name maps to it"
+    rs = render(ret)
+    assert 'retired: Some("no task left"),' in rs, rs
+    assert "ZENOH_GONE" not in render_kconfig_section(ret), "selftest: a retired knob got a symbol"
+    _, errs = load_from_text('[[knob]]\nid = "ZENOH_GONE"\nretired = "x"\ntype = "int"\n')
+    assert any("has no Kconfig definition" in e for e in errs), errs
+    _, errs = load_from_text('[[knob]]\nid = "ZENOH_GONE"\nretired = "say \\"x\\""\n')
+    assert any("cannot hold" in e for e in errs), errs
 
 
 def main():

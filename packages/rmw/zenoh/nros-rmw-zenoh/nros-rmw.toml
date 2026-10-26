@@ -284,7 +284,7 @@ defines = [
   "TX_INCLUDE_USER_DEFINE_FILE", "NX_INCLUDE_USER_DEFINE_FILE",
 ]
 defines_kv = { Z_FEATURE_MULTI_THREAD = "1" }
-# Issue 0626 — the zenoh read/lease task priority, on the NORMALISED 0-31 band
+# Issue 0626 — the zenoh read task priority, on the NORMALISED 0-31 band
 # (0 = least urgent, larger = more urgent; phase-364 W5). `task.c` INVERTS it for
 # ThreadX, which counts 0 as the highest priority.
 #
@@ -301,7 +301,11 @@ defines_kv = { Z_FEATURE_MULTI_THREAD = "1" }
 # later as a timing flake nobody connects to this commit.
 #
 # Retuning it is now a one-line edit here, which is the point of the issue.
-defines_env = { ZENOH_DEBUG = { env = "NROS_ZENOH_DEBUG", default = "0" }, ZPICO_READ_TASK_PRIORITY = { env = "NROS_ZENOH_READ_PRIORITY", default = "17" }, ZPICO_LEASE_TASK_PRIORITY = { env = "NROS_ZENOH_LEASE_PRIORITY", default = "17" } }
+#
+# The read task is zenoh-pico 1.10's executor thread, which also runs the lease
+# and keep-alive: there is no lease-task priority to set (RFC-0110 D2), and
+# `NROS_ZENOH_LEASE_PRIORITY` is refused by the registry.
+defines_env = { ZENOH_DEBUG = { env = "NROS_ZENOH_DEBUG", default = "0" }, ZPICO_READ_TASK_PRIORITY = { env = "NROS_ZENOH_READ_PRIORITY", default = "17" } }
 include = ["system/common"]
 extra_sources = [
   { path = "{nros}/c/platform/threadx/task.c" },
@@ -351,7 +355,7 @@ rerun_if_env_changed = [
   # directory. Without these, changing the priority in the environment would
   # not rebuild the shim and the old value would silently persist — the same
   # "declared value never took effect" failure the issue is about.
-  "NROS_ZENOH_READ_PRIORITY", "NROS_ZENOH_LEASE_PRIORITY",
+  "NROS_ZENOH_READ_PRIORITY",
 ]
 [[port.threadx.include_paths_conditional]]
 path = "{source:threadx}/ports/linux/gnu/inc"

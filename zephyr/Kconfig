@@ -474,8 +474,8 @@ config NROS_ZEPHYR_TIER_STACKS_IN_DTCM
 
 config NROS_ZEPHYR_TASK_SLOTS
     int "nano-ros Zephyr task stack slots"
-    default 3 if NROS_RMW_ZENOH && NROS_ZENOH_TX_BATCH
-    default 2 if NROS_RMW_ZENOH
+    default 2 if NROS_RMW_ZENOH && NROS_ZENOH_TX_BATCH
+    default 1 if NROS_RMW_ZENOH
     default 4
     help
       NROS_ZEPHYR_MAX_THREADS — how many task stacks are reserved, i.e. how
@@ -488,9 +488,11 @@ config NROS_ZEPHYR_TASK_SLOTS
       NROS_ZEPHYR_TASK_SLOTS x NROS_ZEPHYR_TASK_STACK_SIZE.
 
       DERIVED on a zenoh image (issue 1808) from the transport's own tasks:
-      a zenoh session runs a read and a lease task, plus a tx-flush task when
+      a zenoh session runs ONE executor thread (RFC-0110 D2: the read path,
+      the lease, the keep-alive and a reconnect are futures on it, so a
+      reconnect creates no thread), plus a tx-flush task when
       NROS_ZENOH_TX_BATCH is on, and the Zephyr road compiles zenoh-pico with
-      one session (`ZPICO_MAX_SESSIONS` 1). So 3 with batching and 2 without.
+      one session (`ZPICO_MAX_SESSIONS` 1). So 2 with batching and 1 without.
       Tier tasks do not count: they have their own pool
       (NROS_ZEPHYR_MAX_TIERS). What does count and is not derived: one slot
       per `Executor::open_threaded` the application calls. State the knob to
@@ -2457,17 +2459,6 @@ config NROS_ZENOH_GRAPH_DISCOVERY
       serial or CAN link the cache costs the link and buys nothing an image
       that makes no graph query of its own can use. An image that also
       compiles an IP link keeps the old default.
-
-
-# prompt: zenoh-pico lease task priority (normalised band, 0-255)
-config NROS_ZENOH_LEASE_PRIORITY
-    int
-    default 200
-    help
-      As NROS_ZENOH_READ_PRIORITY, for the lease (keep-alive) task. The lease
-      task is light but latency-sensitive: if it cannot run, the session's
-      keep-alives stop and the router drops the peer, which presents as an
-      unexplained disconnect rather than as a scheduling problem.
 
 
 # prompt: Subscribers served from the large payload class (-1 = derive)

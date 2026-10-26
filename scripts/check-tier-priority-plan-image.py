@@ -528,14 +528,20 @@ def selftest():
             "    help\n"
             "      default 999 is help text, not an attribute.\n"
             "\n"
-            "config NROS_ZENOH_LEASE_PRIORITY\n"
-            "    int \"lease\"\n"
+            "config NROS_ZENOH_OTHER_PRIORITY\n"
+            "    int \"other\"\n"
             "    default 100 if SOMETHING\n"
             "    default 200\n")
         expect("a plain default",
                kconfig_default("CONFIG_NROS_ZENOH_READ_PRIORITY", kc), 200)
         expect("a conditional default is not one fact",
-               kconfig_default("CONFIG_NROS_ZENOH_LEASE_PRIORITY", kc), None)
+               kconfig_default("CONFIG_NROS_ZENOH_OTHER_PRIORITY", kc), None)
+        kc_cond = d / "Kconfig.cond"
+        kc_cond.write_text(
+            "config NROS_ZENOH_READ_PRIORITY\n"
+            "    int \"read\"\n"
+            "    default 100 if SOMETHING\n"
+            "    default 200\n")
 
         def image(name, dotconfig, confs, cache=True):
             b = d / name
@@ -579,8 +585,7 @@ def selftest():
                len(stale_band_reasons(stated(image("toml-old", READ16,
                                                    {"prj.conf": ""}), 100), kc)), 1)
         expect("no single default means no comparison",
-               stale_band_reasons(image("cond", "CONFIG_NROS_ZENOH_LEASE_PRIORITY=16\n",
-                                        {"prj.conf": ""}), kc), [])
+               stale_band_reasons(image("cond", READ16, {"prj.conf": ""}), kc_cond), [])
 
         # phase-459 W4 (issue 1427) - the BAND ITSELF, not just the staleness
         # rule around it. `realize_rtos` now allocates a derived tier out of
@@ -588,39 +593,39 @@ def selftest():
         # (`packages/core/nros-orchestration-ir/src/priority_plan.rs`) is a
         # second implementation of `resolve_zephyr_plan`. This file is the
         # CHECKER of it, so the two must agree on the measured case: the
-        # island's image, 15 preemptive priorities with the two zenoh bands at
-        # their nano-ros defaults, puts the transport at k_thread 4 and leaves
-        # the application [5, 14]. The Rust test
+        # island's image, 15 preemptive priorities with the zenoh band at its
+        # nano-ros default, puts the transport at k_thread 4 and leaves the
+        # application [5, 14] (one band since RFC-0110 D2: zenoh-pico 1.10 has
+        # no lease task). The Rust test
         # `priority_plan_resolves_the_island_band_from_a_dotconfig` asserts the
         # same triple.
         ISLAND = ("CONFIG_NUM_PREEMPT_PRIORITIES=15\n"
                   "CONFIG_NUM_COOP_PRIORITIES=16\n"
                   "CONFIG_POSIX_PRIORITY_SCHEDULING=y\n"
                   "CONFIG_PREEMPT_ENABLED=y\n"
-                  "CONFIG_NROS_ZENOH_READ_PRIORITY=200\n"
-                  "CONFIG_NROS_ZENOH_LEASE_PRIORITY=255\n")
+                  "CONFIG_NROS_ZENOH_READ_PRIORITY=200\n")
         island = resolve_zephyr_plan(image("island", ISLAND, {"prj.conf": ""}))
         expect("the island's transport band",
-               island["reserved"]["transport"], (0, 4))
+               island["reserved"]["transport"], (4, 4))
         expect("the island's application pool", island["pool"]["app"], (5, 14))
         expect("the island's usable range", island["range"], (-16, 14))
 
         # The negative control, and the reason the pool is checked at all: the
         # pre-0852 band (16 on the 0-255 scale) resolves k_thread 14 - the
-        # least urgent preemptive priority - so the transport owns [0, 14] and
+        # least urgent preemptive priority - so the transport owns [14, 14] and
         # `pool.app` is EMPTY. A derived tier has nowhere to go, which is what
         # the realizer reports instead of allocating outside the plan.
         stale_cfg = ISLAND.replace("READ_PRIORITY=200", "READ_PRIORITY=16")
         stale = resolve_zephyr_plan(image("stale-band", stale_cfg, {"prj.conf": ""}))
         expect("the pre-0852 transport band",
-               stale["reserved"]["transport"], (0, 14))
+               stale["reserved"]["transport"], (14, 14))
         expect("the pre-0852 pool is empty", stale["pool"]["app"], (15, 14))
 
         # RFC-0079 section 5 - `--derived-plan`: a record of one allocated
         # tier at 5 on an image whose transport is [4, 4] holds; the same
         # record against the stale band, a tier on the band, a projection,
         # and a generated entry that runs another number do not.
-        CUR = ISLAND.replace("LEASE_PRIORITY=255", "LEASE_PRIORITY=200")
+        CUR = ISLAND
         cur = resolve_zephyr_plan(image("island-cur", CUR, {"prj.conf": ""}))
         rec = {"plan": {"reserved": {"transport": [4, 4]}, "app": [5, 14],
                         "from_image": True},

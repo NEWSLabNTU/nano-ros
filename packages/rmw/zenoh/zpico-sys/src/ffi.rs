@@ -308,20 +308,18 @@ mod cbindgen_stubs {
     #[unsafe(no_mangle)]
     pub extern "C" fn zpico_close(_session: *mut zpico_session_t) {}
 
-    /// Configure scheduling attributes for zenoh-pico read and lease background tasks.
+    /// Configure scheduling attributes for zenoh-pico's executor thread (its read task).
+    ///
+    /// zenoh-pico 1.10 runs the read path, lease, keep-alive, reconnect and every
+    /// callback on that one thread, so there is no lease task to configure any
+    /// more (RFC-0110 D2).
     ///
     /// Must be called between `zpico_init()` and `zpico_open()`.  If not called,
     /// `zpico_open()` passes NULL to zenoh-pico (platform defaults).
     ///
     /// Priority and stack values are platform-specific (already mapped by the caller).
     #[unsafe(no_mangle)]
-    pub extern "C" fn zpico_set_task_config(
-        _read_priority: u32,
-        _read_stack_bytes: u32,
-        _lease_priority: u32,
-        _lease_stack_bytes: u32,
-    ) {
-    }
+    pub extern "C" fn zpico_set_task_config(_read_priority: u32, _read_stack_bytes: u32) {}
 
     /// Declare a publisher for the given key expression.
     ///

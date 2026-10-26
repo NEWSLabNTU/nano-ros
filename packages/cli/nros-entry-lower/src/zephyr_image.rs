@@ -17,14 +17,12 @@
 //! `nros-cli-core`'s `the_band_symbols_are_the_descriptors_inputs`.
 
 /// The Kconfig symbols carrying the normalised band (0..255) each transport
-/// task is created at. An image that sets none of them runs the Kconfig
+/// task is created at. One since RFC-0110 D2: zenoh-pico 1.10 runs the lease
+/// on its executor (read) task, so `CONFIG_NROS_ZENOH_LEASE_PRIORITY` is gone. An image that sets none of them runs the Kconfig
 /// default (`nros_orchestration_ir::priority_plan::ZEPHYR_TRANSPORT_BAND_DEFAULT`,
 /// checked against `zephyr/Kconfig` by `check-tier-priority-plan-image.py
 /// --selftest`).
-pub const ZEPHYR_TRANSPORT_BAND_SYMBOLS: [&str; 2] = [
-    "CONFIG_NROS_ZENOH_READ_PRIORITY",
-    "CONFIG_NROS_ZENOH_LEASE_PRIORITY",
-];
+pub const ZEPHYR_TRANSPORT_BAND_SYMBOLS: [&str; 1] = ["CONFIG_NROS_ZENOH_READ_PRIORITY"];
 
 /// The kernel half of the plan's inputs: Zephyr's own symbols, read by
 /// `PriorityPlan::from_zephyr_dotconfig` itself.
@@ -41,7 +39,7 @@ pub const ZEPHYR_KERNEL_PLAN_SYMBOLS: [&str; 4] = [
 /// because the number is the core crate's, and this crate does not depend on
 /// it.)
 #[must_use]
-pub fn transport_bands(dotconfig: &str, default: i64) -> [i64; 2] {
+pub fn transport_bands(dotconfig: &str, default: i64) -> [i64; 1] {
     ZEPHYR_TRANSPORT_BAND_SYMBOLS.map(|sym| {
         dotconfig
             .lines()
@@ -58,15 +56,18 @@ mod tests {
 
     #[test]
     fn an_absent_band_is_the_default_and_the_last_assignment_wins() {
-        assert_eq!(transport_bands("", 200), [200, 200]);
+        assert_eq!(transport_bands("", 200), [200]);
         let text = "CONFIG_NROS_ZENOH_READ_PRIORITY=90\n\
-                    CONFIG_NROS_ZENOH_READ_PRIORITY=100\n\
-                    # CONFIG_NROS_ZENOH_LEASE_PRIORITY is not set\n";
-        assert_eq!(transport_bands(text, 200), [100, 200]);
+                    CONFIG_NROS_ZENOH_READ_PRIORITY=100\n";
+        assert_eq!(transport_bands(text, 200), [100]);
+        assert_eq!(
+            transport_bands("# CONFIG_NROS_ZENOH_READ_PRIORITY is not set\n", 200),
+            [200]
+        );
         // A symbol whose name merely STARTS with a band symbol is not it.
         assert_eq!(
             transport_bands("CONFIG_NROS_ZENOH_READ_PRIORITY_X=5\n", 200),
-            [200, 200]
+            [200]
         );
     }
 }

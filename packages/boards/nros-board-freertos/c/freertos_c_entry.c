@@ -224,16 +224,12 @@ static void board_log_writer(uint8_t severity, const uint8_t* name_ptr, uintptr_
     }
 }
 
-/* zenoh-pico's read/lease task tuning. Weak so a DDS-only image links without
- * the zenoh backend; the real definition comes from `zpico.c`. */
+/* zenoh-pico's executor (read) task tuning. Weak so a DDS-only image links
+ * without the zenoh backend; the real definition comes from `zpico.c`. */
 __attribute__((weak, used)) void zpico_set_task_config(uint32_t read_priority,
-                                                       uint32_t read_stack_bytes,
-                                                       uint32_t lease_priority,
-                                                       uint32_t lease_stack_bytes) {
+                                                       uint32_t read_stack_bytes) {
     (void)read_priority;
     (void)read_stack_bytes;
-    (void)lease_priority;
-    (void)lease_stack_bytes;
 }
 
 /* NROS_APP_CONFIG's scheduling priorities are RAW FreeRTOS values as of issue
@@ -521,14 +517,13 @@ static void app_task_entry(void* arg) {
 
     nros_platform_register_log_writer(board_log_writer, NULL);
 
-    /* Configure zenoh-pico read+lease task priorities BEFORE app_main (which
-     * calls zpico_init -> zp_start_read_task). Without this, the read task
-     * spawns at priority 0 (idle) and never delivers subscription messages on
-     * a system with higher-priority tasks. */
+    /* Configure zenoh-pico's executor (read) task BEFORE app_main (which
+     * calls zpico_init -> zp_start_read_task). Without this, the task spawns at
+     * priority 0 (idle) and never delivers subscription messages on a system
+     * with higher-priority tasks. It also runs the lease and keep-alive
+     * (RFC-0110 D2), so there is no second task to configure. */
     zpico_set_task_config(clamp_prio(NROS_APP_CONFIG.scheduling.rx_priority),
-                          NROS_APP_CONFIG.scheduling.rx_stack_bytes,
-                          clamp_prio(NROS_APP_CONFIG.scheduling.keepalive_priority),
-                          NROS_APP_CONFIG.scheduling.keepalive_stack_bytes);
+                          NROS_APP_CONFIG.scheduling.rx_stack_bytes);
 
     /* Run user application */
     app_main();

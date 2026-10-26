@@ -975,16 +975,16 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   number is available to take, and has not been taken.
 - **Tier and transport priorities land in ONE scheduler — they now share ONE vocabulary,
   RAW FreeRTOS (issue 0623, FIXED).** `FreertosScheduling`'s `zenoh_read_priority` /
-  `zenoh_lease_priority` / `poll_priority` are raw `0..configMAX_PRIORITIES-1`, the same
+  `poll_priority` are raw `0..configMAX_PRIORITIES-1`, the same
   units `[tiers.*.freertos] priority` is written in. Shipped defaults: app **3**,
-  transport band **4/4/4** — transport above the app, no collision. The normalised 0–31
+  transport band **4/4** — transport above the app, no collision. The normalised 0–31
   scale WAS the defect (a tier written as 5 against a transport reading "16" was above it,
   not below); `to_freertos_priority` survives as THE single conversion for anyone still
   supplying normalised values, and nothing in the default path calls it. Do NOT "just
   lower the read task below the tiers": that is the config that starved the RX drain and
   froze `rt-eval`'s island 1–3 s on lwIP retransmission. Both orderings are legitimate;
   choosing by accident is not. Boot prints `report_tiers_above_transport` when a tier meets
-  the band floor (`min(read, lease, poll)`). Same defect phase-364 W5 fixed one layer down
+  the band floor (`min(read, poll)`; no lease task since zenoh-pico 1.10, RFC-0110 D2). Same defect phase-364 W5 fixed one layer down
   in the platform ABI.
 - **AUTHORED-vs-DERIVED precedence is per FACT, never per TABLE, and it has ONE
   predicate** — `nros_orchestration_ir::derive::placement_is_unauthored`, asked by

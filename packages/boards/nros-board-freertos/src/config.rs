@@ -36,14 +36,12 @@ pub struct Config {
     /// Application task stack size in bytes (default 131072 — MEASURED, issue
     /// 1146; see `nros_board_common::freertos_config::app_stack_bytes`).
     pub app_stack_bytes: u32,
-    /// Zenoh-pico read task priority (raw FreeRTOS, default 4).
+    /// Zenoh-pico read task priority (raw FreeRTOS, default 4). The read task
+    /// is zenoh-pico 1.10's executor thread, which also runs the lease and
+    /// keep-alive (RFC-0110 D2).
     pub zenoh_read_priority: u8,
-    /// Zenoh-pico read task stack size in bytes (default 5120).
+    /// Zenoh-pico read (executor) task stack size in bytes (default 5120).
     pub zenoh_read_stack_bytes: u32,
-    /// Zenoh-pico lease task priority (raw FreeRTOS, default 4).
-    pub zenoh_lease_priority: u8,
-    /// Zenoh-pico lease task stack size in bytes (default 5120).
-    pub zenoh_lease_stack_bytes: u32,
     /// Network poll task priority (raw FreeRTOS, default 4).
     pub poll_priority: u8,
     /// Network poll interval in milliseconds (default 5).
@@ -80,8 +78,6 @@ impl Default for Config {
             app_stack_bytes: sched.app_stack_bytes,
             zenoh_read_priority: sched.zenoh_read_priority,
             zenoh_read_stack_bytes: sched.zenoh_read_stack_bytes,
-            zenoh_lease_priority: sched.zenoh_lease_priority,
-            zenoh_lease_stack_bytes: sched.zenoh_lease_stack_bytes,
             poll_priority: sched.poll_priority,
             poll_interval_ms: sched.poll_interval_ms,
         }
@@ -312,27 +308,21 @@ impl Config {
                             config.zenoh_read_stack_bytes = v;
                         }
                     }
-                    // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
-                    // spelling and is converted on read, so configs written
-                    // before the units were unified keep their schedule.
-                    ("node.rt", "zenoh_lease_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.zenoh_lease_priority =
-                                Self::to_freertos_priority(v.min(31) as u8) as u8;
-                        }
-                    }
-                    // ...and `[node.rt.freertos]` is RAW, mirroring
-                    // `[tiers.<name>.freertos] priority`. One vocabulary for
-                    // the two numbers that meet in one scheduler.
-                    ("node.rt.freertos", "zenoh_lease_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.zenoh_lease_priority = v as u8;
-                        }
-                    }
-                    ("node.rt", "zenoh_lease_stack_bytes") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.zenoh_lease_stack_bytes = v;
-                        }
+                    // RFC-0110 D2 — zenoh-pico 1.10 has no lease task: the
+                    // lease and keep-alive run on the read task (its executor
+                    // thread). A config that still states one is REFUSED, never
+                    // ignored — a knob that keeps its name and loses its effect
+                    // is a silent wrong answer.
+                    (
+                        "node.rt" | "node.rt.freertos",
+                        "zenoh_lease_priority" | "zenoh_lease_stack_bytes",
+                    ) => {
+                        panic!(
+                            "nros-board-freertos: `[{section}] {key}` is retired — zenoh-pico 1.10 \
+                             runs the lease on its executor (read) task, so there is no lease task \
+                             (RFC-0110 D2). Remove it; `zenoh_read_priority` / \
+                             `zenoh_read_stack_bytes` configure that task."
+                        );
                     }
                     // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
                     // spelling and is converted on read, so configs written

@@ -252,6 +252,9 @@ UNRESOLVED_EXEMPTIONS = Exemptions(
             "sizes, intervals and flags",
         ("packages/tooling/nros-zephyr-build/src/lib.rs", "env_spelled", "s"):
             "every env spelling of a registry knob (`knobs.toml`) — an integer or a flag",
+        ("packages/tooling/nros-zephyr-build/src/lib.rs", "refuse_retired_knobs", "s"):
+            "every spelling of a RETIRED registry knob (`knobs.toml` rows with `retired`) "
+            "— watched only so setting one refuses; never read as a value or a path",
     },
     what="unresolvable watch",
 )

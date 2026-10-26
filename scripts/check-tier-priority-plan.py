@@ -42,7 +42,7 @@ def cross_reference(plans, errors):
     cfg = (ROOT / "packages/boards/nros-board-common/src/freertos_config.rs")
     text = cfg.read_text(encoding="utf-8")
     vals = {}
-    for key in ("zenoh_read_priority", "zenoh_lease_priority", "poll_priority"):
+    for key in ("zenoh_read_priority", "poll_priority"):
         m = re.search(rf"{key}:\s*(\d+)", text)
         if m:
             vals[key] = int(m.group(1))

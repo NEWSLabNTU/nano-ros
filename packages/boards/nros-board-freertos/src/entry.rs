@@ -473,23 +473,14 @@ where
 
     #[cfg(feature = "rmw-zenoh")]
     {
+        // RFC-0110 D2 — the read task is zenoh-pico 1.10's executor thread,
+        // which also runs the lease and keep-alive; there is no lease task.
         let read_pri = config.zenoh_read_priority as u32; // issue 0623 — already raw
-        let lease_pri = config.zenoh_lease_priority as u32; // issue 0623 — already raw
         unsafe extern "C" {
-            fn zpico_set_task_config(
-                read_priority: u32,
-                read_stack_bytes: u32,
-                lease_priority: u32,
-                lease_stack_bytes: u32,
-            );
+            fn zpico_set_task_config(read_priority: u32, read_stack_bytes: u32);
         }
         unsafe {
-            zpico_set_task_config(
-                read_pri,
-                config.zenoh_read_stack_bytes,
-                lease_pri,
-                config.zenoh_lease_stack_bytes,
-            );
+            zpico_set_task_config(read_pri, config.zenoh_read_stack_bytes);
         }
 
         // Phase 248 C5a (#60 T4) — the board owns RMW selection. Register the
@@ -1245,10 +1236,11 @@ fn report_tiers_above_transport<B: BoardPrint>(
 ) {
     // The band's FLOOR: the lowest-priority transport task is the first to be
     // starved, so it decides whether transport makes progress at all.
+    // RFC-0110 D2 — the band is `{executor, poll}`: zenoh-pico 1.10's read
+    // task is its executor thread, and the lease runs on it.
     let read = config.zenoh_read_priority as u32;
-    let lease = config.zenoh_lease_priority as u32;
     let poll = config.poll_priority as u32;
-    let floor = read.min(lease).min(poll);
+    let floor = read.min(poll);
 
     let mut offenders = 0usize;
     for tier in tiers {
@@ -1259,7 +1251,7 @@ fn report_tiers_above_transport<B: BoardPrint>(
                     "nros: tier priority meets the transport band (FreeRTOS units):"
                 ));
                 B::println(format_args!(
-                    "  transport: zenoh_read {read}, zenoh_lease {lease}, net_poll {poll} (floor {floor})"
+                    "  transport: zenoh_read {read}, net_poll {poll} (floor {floor})"
                 ));
             }
             offenders += 1;

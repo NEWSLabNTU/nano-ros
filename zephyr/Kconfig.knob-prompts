@@ -181,9 +181,6 @@ config NROS_GRAPH_CACHE_SIZE
 config NROS_ZENOH_GRAPH_DISCOVERY
     bool "Keep a graph cache (liveliness subscriber on the whole domain)"
 
-config NROS_ZENOH_LEASE_PRIORITY
-    int "zenoh-pico lease task priority (normalised band, 0-255)"
-
 config NROS_MAX_LARGE_SUBSCRIBERS
     int "Subscribers served from the large payload class (-1 = derive)"
 

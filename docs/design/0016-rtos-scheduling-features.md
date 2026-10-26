@@ -7,7 +7,7 @@ last-reviewed: 2026-06
 implements-tracked-by: [phase-227, phase-228]
 supersedes: []
 superseded-by: null
-superseded-in-part-by: [rfc-0079]
+superseded-in-part-by: [rfc-0079, rfc-0110]
 ---
 
 # RTOS Scheduling Features for nano-ros
@@ -211,6 +211,14 @@ incoming messages. Created automatically when a session opens.
 - Stack size
 
 ### 4. Zenoh-pico Lease Task
+
+> **Amended by RFC-0110 D2 (2026-10-26).** zenoh-pico 1.10 has no lease task:
+> the lease and keep-alive are futures on its executor thread, which is the
+> read task. The lease task's knobs (`zenoh_lease_priority`,
+> `zenoh_lease_stack_bytes`, `NROS_ZENOH_LEASE_PRIORITY` /
+> `CONFIG_NROS_ZENOH_LEASE_PRIORITY`, the lease half of
+> `zpico_set_task_config`) are retired and refused. Read the lease-task text
+> below as history.
 
 Internal zenoh-pico task that monitors session keep-alive. Less
 latency-sensitive than the read task.

@@ -59,7 +59,6 @@ any more, so rename it where you set it.
 | `ZPICO_GET_REPLY_BUF_SIZE` | `NROS_ZENOH_GET_REPLY_BUF_SIZE` |
 | `ZPICO_GRAPH_CACHE_SIZE` | `NROS_ZENOH_GRAPH_CACHE_SIZE` |
 | `ZPICO_GRAPH_DISCOVERY` | `NROS_ZENOH_GRAPH_DISCOVERY` |
-| `ZPICO_LEASE_TASK_PRIORITY` | `NROS_ZENOH_LEASE_PRIORITY` |
 | `ZPICO_MAX_LARGE_SUBSCRIBERS` | `NROS_ZENOH_MAX_LARGE_SUBSCRIBERS` |
 | `ZPICO_MAX_LIVELINESS` | `NROS_ZENOH_MAX_LIVELINESS` |
 | `ZPICO_MAX_PENDING_GETS` | `NROS_ZENOH_MAX_PENDING_GETS` |
@@ -88,6 +87,27 @@ any more, so rename it where you set it.
 The same `ZPICO_*` words remain the zenoh-pico shim's own C macro names (a
 `-DZPICO_MAX_QUERYABLES=…` the build passes to the C compiler). Those are
 generated from the knob, never set by hand, and are not on this list.
+
+## Retired knobs
+
+Some knobs are gone, not renamed: what they configured no longer exists. Every
+spelling of one is refused with an error that says why and what to set instead.
+
+zenoh-pico 1.10 runs the lease and keep-alive on its executor thread, which is
+the read task, so the separate lease task and its settings are retired
+(RFC-0110 D2):
+
+| Retired | Where it was set | What to do |
+|---|---|---|
+| `NROS_ZENOH_LEASE_PRIORITY`, `ZPICO_LEASE_TASK_PRIORITY` | environment, cargo `[env]`, `[image.<id>] env` | remove it; `NROS_ZENOH_READ_PRIORITY` prioritises the thread that now runs the lease |
+| `[image.<id>.knobs.zenoh] lease_priority` | `system.toml` | remove it; use `read_priority` |
+| `CONFIG_NROS_ZENOH_LEASE_PRIORITY` | `prj.conf` / Kconfig fragments | remove it; Kconfig reports it as an undefined symbol. Use `CONFIG_NROS_ZENOH_READ_PRIORITY` |
+| `zenoh_lease_priority`, `zenoh_lease_stack_bytes` | `[node.rt]` / `[node.rt.freertos]` | remove them; `zenoh_read_priority` / `zenoh_read_stack_bytes` configure that task |
+| `.keepalive_priority`, `.keepalive_stack_bytes` | `nros_app_config_t.scheduling` | remove them; the C compiler rejects an initializer that names either |
+| `ZPICO_LEASE_TASK_PRIORITY` (C define) | `-D` to the zenoh shim | remove it; the shim `#error`s on it |
+
+`zpico_set_task_config` takes two arguments now, the executor task's priority
+and stack size.
 
 A board descriptor's knobs are a top-level `[knobs.<group>]` table. The
 per-board `[board.knobs.<group>]` spelling is retired the same way: a

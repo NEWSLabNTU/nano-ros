@@ -125,6 +125,11 @@ pub struct KnobRow {
     /// Names an `int` knob also accepts in TOML, the index being the value
     /// (`log.max_level = "warn"`). Empty for every other row.
     pub names: &'static [&'static str],
+    /// `Some(reason)` for a knob that no longer EXISTS (RFC-0110 D2 retired the
+    /// zenoh lease-task priority). Every spelling of it, the canonical one
+    /// included, is refused with [`RETIRED_KNOB_TEMPLATE`]; the row stays as the
+    /// error table, the way [`Self::legacy`] does for a rename.
+    pub retired: Option<&'static str>,
 }
 
 /// A knob the nano-ros Zephyr module DEFINES as a Kconfig symbol — a registry
@@ -154,7 +159,8 @@ pub struct KconfigKnob {
 #[rustfmt::skip]
 mod knob_registry;
 pub use knob_registry::{
-    IMAGE_ENV_RETIRED_TEMPLATE, KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS, RETIRED_TEMPLATE,
+    IMAGE_ENV_RETIRED_TEMPLATE, KCONFIG_KNOBS, KCONFIG_PAIRS, KNOBS, RETIRED_KNOB_TEMPLATE,
+    RETIRED_TEMPLATE,
 };
 
 /// The Kconfig knob whose symbol is `symbol` (with or without `CONFIG_`).
@@ -251,14 +257,59 @@ fn env_spelled(name: &str, watch: bool) -> Option<(String, String)> {
 /// The words are the registry's (`RETIRED_TEMPLATE`, generated with the cmake
 /// twin's from one string in `scripts/gen-knob-registry.py`), so a configure,
 /// a build script and the CLI refuse the same name the same way.
+///
+/// For a RETIRED knob (a row with [`KnobRow::retired`]) every spelling is
+/// refused, the canonical one included, with the row's reason.
 #[must_use]
 pub fn retired_spelling_refusal(spelled: &str) -> Option<String> {
     let row = knob_row(spelled)?;
+    if let Some(reason) = row.retired {
+        return Some(
+            RETIRED_KNOB_TEMPLATE
+                .replace("{spelling}", spelled)
+                .replace("{reason}", reason),
+        );
+    }
     (row.env != spelled).then(|| {
         RETIRED_TEMPLATE
             .replace("{legacy}", spelled)
             .replace("{env}", row.env)
     })
+}
+
+/// Every RETIRED knob that is set, as its refusal sentence, read through `env`.
+///
+/// A retired knob has no reader left to refuse it the way a renamed one is
+/// refused (on the read of its canonical spelling), so a build script that owns
+/// the subsystem asks this instead — once, whatever it goes on to read — and
+/// stops on a non-empty answer. RFC-0110 D2: a knob that keeps its name and
+/// loses its effect is a silent wrong answer.
+#[must_use]
+pub fn retired_knobs_set(env: &dyn Fn(&str) -> Option<String>) -> Vec<String> {
+    KNOBS
+        .iter()
+        .filter(|r| r.retired.is_some())
+        .flat_map(|r| std::iter::once(r.env).chain(r.legacy.iter().copied()))
+        .filter(|s| env(s).is_some_and(|v| !v.trim().is_empty()))
+        .filter_map(retired_spelling_refusal)
+        .collect()
+}
+
+/// [`retired_knobs_set`] against the process environment, for a build script:
+/// watches every retired spelling (`cargo:rerun-if-env-changed`) and panics
+/// naming each one that is set.
+///
+/// # Panics
+///
+/// When any retired knob is set.
+pub fn refuse_retired_knobs() {
+    for r in KNOBS.iter().filter(|r| r.retired.is_some()) {
+        for s in std::iter::once(r.env).chain(r.legacy.iter().copied()) {
+            println!("cargo:rerun-if-env-changed={s}");
+        }
+    }
+    let set = retired_knobs_set(&|k| env::var(k).ok());
+    assert!(set.is_empty(), "nros-zephyr-build: {}", set.join("\n  "));
 }
 
 /// [`read_spelled_from`]'s value alone, for a reader that injects its env
@@ -283,7 +334,9 @@ pub fn read_spelled_from(
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Option<(String, String)> {
     let all = spellings(name);
-    for s in &all[1..] {
+    // A renamed knob refuses its old spellings; a RETIRED one refuses them all.
+    let first_refused = usize::from(knob_row(name).is_none_or(|r| r.retired.is_none()));
+    for s in &all[first_refused..] {
         if env(s).is_some_and(|v| !v.trim().is_empty()) {
             let refusal = retired_spelling_refusal(s).expect("a non-canonical spelling");
             panic!("nros-zephyr-build: {refusal}");
@@ -807,6 +860,37 @@ mod tests {
         assert!(refused.is_err(), "a set retired spelling must refuse");
         let empty = |k: &str| (k == "ZPICO_FRAG_MAX_SIZE").then(String::new); // retired, but empty
         assert_eq!(read_spelled("NROS_ZENOH_FRAG_MAX_SIZE", &empty), None);
+    }
+
+    /// RFC-0110 D2 — a RETIRED knob refuses EVERY spelling, the canonical one
+    /// included, with its row's reason; nothing maps it to a replacement, and
+    /// the build-script sweep names each one that is set and nothing else.
+    #[test]
+    fn a_retired_knob_refuses_every_spelling() {
+        const GONE: &str = "NROS_ZENOH_LEASE_PRIORITY"; // the retired knob under test
+        const RETIRED: [&str; 2] = ["NROS_ZENOH_LEASE_PRIORITY", "ZPICO_LEASE_TASK_PRIORITY"];
+        for s in RETIRED {
+            let n = retired_spelling_refusal(s).expect("a retired knob");
+            assert!(n.starts_with(&format!("{s} is a retired knob: ")), "{n}");
+            assert!(n.contains("RFC-0110 D2") && !n.contains('{'), "{n}");
+        }
+        let set = |k: &str| (k == GONE).then(|| "16".to_string());
+        let refused = std::panic::catch_unwind(|| read_spelled(GONE, &set));
+        assert!(
+            refused.is_err(),
+            "the canonical spelling of a retired knob must refuse"
+        );
+        let swept = retired_knobs_set(&set);
+        assert_eq!(swept.len(), 1, "{swept:?}");
+        assert!(swept[0].starts_with(&format!("{GONE} is a retired knob")));
+        assert!(retired_knobs_set(&|_| None).is_empty());
+        assert!(
+            retired_knobs_set(&|k| (k == GONE).then(String::new)).is_empty(),
+            "an empty value counts as unset"
+        );
+        let row = knob_row(GONE).expect("the error table keeps the row");
+        assert!(row.ty.is_none(), "a retired knob defines no Kconfig symbol");
+        assert!(kconfig_knob(row.kconfig).is_none());
     }
 
     #[test]

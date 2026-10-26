@@ -568,8 +568,8 @@ mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
 
-    /// The island's image, from its Kconfig: 15 preemptive priorities, the two
-    /// transport bands at the platform default.
+    /// The island's image, from its Kconfig: 15 preemptive priorities, the
+    /// transport band at the platform default.
     fn island_dotconfig() -> String {
         "CONFIG_NUM_PREEMPT_PRIORITIES=15\n\
          CONFIG_NUM_COOP_PRIORITIES=16\n\
@@ -578,12 +578,14 @@ mod tests {
             .to_string()
     }
 
-    /// The bands the island's image creates its two transport tasks at, as a
-    /// caller reads them from the symbols the board descriptor names: the
-    /// platform default for one, 255 for the other.
-    const ISLAND_TRANSPORT_BANDS: [i64; 2] = [ZEPHYR_TRANSPORT_BAND_DEFAULT, 255];
+    /// The band the island's image creates its transport task at, as a caller
+    /// reads it from the symbol the board descriptor names: the platform
+    /// default. One task since RFC-0110 D2 — zenoh-pico 1.10 runs the lease on
+    /// its executor (read) task; the lease band at 255 that also reserved
+    /// k_thread 0 went with the lease task.
+    const ISLAND_TRANSPORT_BANDS: [i64; 1] = [ZEPHYR_TRANSPORT_BAND_DEFAULT];
 
-    /// The measured projection phase-459 records: transport at k_thread 4, the
+    /// The projection phase-459 records: transport at k_thread 4, the
     /// application pool `[5, 14]`. The same triple is asserted by
     /// `scripts/check-tier-priority-plan-image.py --selftest`.
     #[test]
@@ -593,7 +595,7 @@ mod tests {
                 .expect("resolves");
         assert_eq!(plan.direction, Direction::SmallerIsUrgent);
         assert_eq!(plan.range, Band::new(-16, 14));
-        assert_eq!(plan.reserved["transport"], Band::new(0, 4));
+        assert_eq!(plan.reserved["transport"], Band::new(4, 4));
         assert_eq!(plan.app, Band::new(5, 14));
         // Rank 0 is the most urgent priority the APPLICATION owns, which is
         // one step below the transport - not Zephyr's 0 (issue 1427).
@@ -603,11 +605,8 @@ mod tests {
         assert_eq!(plan.nth_app_priority(10), None, "the pool holds ten");
     }
 
-    /// The defaults projection and the island's image differ in ONE input -
-    /// the island raises the lease band from Kconfig's 200 to 255 - and that
-    /// widens the reserved band without moving the pool. So a bake with no
-    /// `.config` in hand allocates the same priorities; it just knows less
-    /// about what else is reserved.
+    /// The defaults projection and the island's image agree: a bake with no
+    /// `.config` in hand allocates the same priorities the image resolves.
     #[test]
     fn priority_plan_for_zephyr_matches_the_defaults_image() {
         let from_cfg =
@@ -616,10 +615,11 @@ mod tests {
         let for_target = PriorityPlan::for_target("zephyr");
         assert_eq!(for_target.app, from_cfg.app, "the pool is the same");
         assert_eq!(for_target.range, from_cfg.range);
+        assert_eq!(for_target.reserved, from_cfg.reserved);
         assert_eq!(
             for_target.reserved["transport"],
             Band::new(4, 4),
-            "both bands at Kconfig's 200 resolve to one k_thread priority"
+            "Kconfig's 200 resolves to one k_thread priority"
         );
         assert_eq!(for_target.nth_app_priority(0), Some(5));
     }
@@ -631,8 +631,8 @@ mod tests {
     #[test]
     fn priority_plan_reports_the_stale_band_as_an_empty_pool() {
         let plan =
-            PriorityPlan::from_zephyr_dotconfig(&island_dotconfig(), &[16, 255]).expect("resolves");
-        assert_eq!(plan.reserved["transport"], Band::new(0, 14));
+            PriorityPlan::from_zephyr_dotconfig(&island_dotconfig(), &[16]).expect("resolves");
+        assert_eq!(plan.reserved["transport"], Band::new(14, 14));
         assert_eq!(
             plan.app.width(),
             0,
@@ -709,7 +709,7 @@ mod tests {
     ///
     /// `report_tiers_above_transport` (`nros-board-freertos/src/entry.rs`,
     /// issue 0623) prints a warning for every tier whose priority meets the
-    /// transport floor `min(read, lease, poll)`, in RAW FreeRTOS units - the
+    /// transport floor `min(read, poll)`, in RAW FreeRTOS units - the
     /// same units a derived priority is allocated in here. So "a derived tier
     /// never preempts its own transport" is checkable against the shipped
     /// defaults rather than asserted: every priority `pool.app` can hand out
@@ -741,9 +741,9 @@ mod tests {
                     )
                 })
         };
-        let floor = field("zenoh_read_priority")
-            .min(field("zenoh_lease_priority"))
-            .min(field("poll_priority"));
+        // RFC-0110 D2 - the band is `{executor, poll}`; zenoh-pico 1.10 has
+        // no lease task.
+        let floor = field("zenoh_read_priority").min(field("poll_priority"));
         let plan = PriorityPlan::for_target("freertos");
         assert_eq!(plan.direction, Direction::BiggerIsUrgent);
         for k in 0..plan.app.width() {

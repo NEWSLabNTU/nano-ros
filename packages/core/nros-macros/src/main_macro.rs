@@ -4317,7 +4317,9 @@ mod image_plan_tests {
                     "CONFIG_NUM_PREEMPT_PRIORITIES=15\n{GATES}\
                      CONFIG_NROS_ZENOH_READ_PRIORITY=100\n"
                 ),
-                Band::new(4, 9),
+                // RFC-0110 D2 - the read priority is the whole band now; the
+                // lease task (default 4) that widened it is gone.
+                Band::new(9, 9),
                 Band::new(10, 14),
             ),
         ] {

@@ -263,11 +263,9 @@ const nros_app_config_t NROS_APP_CONFIG = {{
     .scheduling = {{
         .app_priority            = {app_priority},
         .rx_priority     = {zenoh_read_priority},
-        .keepalive_priority    = {zenoh_lease_priority},
         .poll_priority           = {poll_priority},
         .app_stack_bytes         = {app_stack_bytes}u,
         .rx_stack_bytes  = {zenoh_read_stack_bytes}u,
-        .keepalive_stack_bytes = {zenoh_lease_stack_bytes}u,
         .poll_interval_ms        = {poll_interval_ms}u,
     }},
 }};
@@ -306,11 +304,9 @@ const nros_app_config_t NROS_APP_CONFIG = {{
         // 16 -> 4, flattening app/transport/poll into one priority).
         app_priority = sched.app_priority,
         zenoh_read_priority = sched.zenoh_read_priority,
-        zenoh_lease_priority = sched.zenoh_lease_priority,
         poll_priority = sched.poll_priority,
         app_stack_bytes = sched.app_stack_bytes,
         zenoh_read_stack_bytes = sched.zenoh_read_stack_bytes,
-        zenoh_lease_stack_bytes = sched.zenoh_lease_stack_bytes,
         poll_interval_ms = sched.poll_interval_ms,
     );
     File::create(&out_path)

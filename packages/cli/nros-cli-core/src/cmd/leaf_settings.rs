@@ -561,6 +561,13 @@ fn knob_env_row(
              (packages/tooling/nros-zephyr-build/knobs.toml){hint}"
         ));
     };
+    // RFC-0110 D2 — a RETIRED knob is refused under this spelling too, with
+    // its row's reason: the registry keeps the row so this has words to say.
+    if let Some(reason) = row.retired {
+        return Err(format!(
+            "`[image.{id}.knobs.{group}] {name}` is a retired knob: {reason}"
+        ));
+    }
     let bad = |want: &str| {
         format!(
             "`[image.{id}.knobs.{group}] {name} = {value}`: {} is {want}",
@@ -1519,6 +1526,32 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(e.contains("NROS_ZENOH_MAX_QUERYABLES"), "{e}");
+    }
+
+    /// RFC-0110 D2 — a RETIRED knob is refused under every spelling a project
+    /// can write: its `[image.<id>.knobs]` key and its env row, canonical or
+    /// old, each with the row's reason.
+    #[test]
+    fn a_retired_knob_is_refused_however_a_project_spells_it() {
+        let e = app_rung(
+            Some("t"),
+            &knobs(&[("zenoh.lease_priority", leaf_system::KnobValue::Int(16))]),
+            &BTreeMap::new(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            e.contains("[image.t.knobs.zenoh] lease_priority` is a retired knob"),
+            "{e}"
+        );
+        assert!(e.contains("RFC-0110 D2"), "{e}");
+        const RETIRED: [&str; 2] = ["NROS_ZENOH_LEASE_PRIORITY", "ZPICO_LEASE_TASK_PRIORITY"];
+        for key in RETIRED {
+            let e = app_rung(Some("t"), &BTreeMap::new(), &env_rows(&[(key, "16")]))
+                .unwrap_err()
+                .to_string();
+            assert!(e.contains(&format!("{key} is a retired knob")), "{e}");
+        }
     }
 
     /// The GATE (phase-484 W8): no tracked `system.toml` states a REGISTRY knob
