@@ -1,6 +1,10 @@
 {
   "key": "cpp:ParameterEventHandler::get_parameters_from_event",
-  "disposition": "absent",
-  "verdict": "gap",
-  "why": "issue 2080 (filed 2026-10-26, the residue of issue 2024, which is resolved): the static helpers read upstream's `rcl_interfaces::msg::ParameterEvent` fields, and the C++ surface cannot name that generated type (no runtime typesupport). A per-parameter callback (`add_parameter_callback`) already receives the decoded `rclcpp::Parameter`; a helper templated over the caller's generated event type is plain work nobody has done."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/parameter_event_handler.hpp",
+    "text": "`ParameterEventT` is the caller's GENERATED"
+  },
+  "verdict": "divergence",
+  "why": "issue 2080 -- a static TEMPLATE over the event type rather than upstream's `const rcl_interfaces::msg::ParameterEvent &`: there is no runtime typesupport, so the C++ surface cannot name the generated message, and the type is deduced from the argument. Upstream's call (`ParameterEventHandler::get_parameters_from_event(event)`) compiles unchanged once the caller's generated `rcl_interfaces` header is included, and returns what upstream returns: every new then changed parameter, as `rclcpp::Parameter`, deletions excluded. Hosted only. See `cpp:ParameterEventHandler::get_parameter_from_event`.\n\nEARLIER ROW (superseded): gap, absent -- issue 2024 left the helpers open."
 }

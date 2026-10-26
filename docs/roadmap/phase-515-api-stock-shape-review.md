@@ -59,7 +59,7 @@ Each was left without a phase when its finding phase closed.
 | [2030](../issues/archived/2030-c-callback-tier-cancel-reply-slot.md) — the C callback tier never takes a cancel reply (resolved 2026-10-24) | medium | C7 |
 | [2024](../issues/archived/2024-parameter-event-handler.md) — no `ParameterEventHandler` (**resolved 2026-10-25**, hosted C++) | low | P6 |
 | [1942](../issues/archived/1942-rclrs-service-info-no-counterpart.md) — no `ServiceInfo` for a service callback (**resolved 2026-10-26**) | low | R7 |
-| [2080](../issues/2080-cpp-parameter-event-from-event-helpers.md) — `ParameterEventHandler::get_parameter(s)_from_event` (P6's residue, filed 2026-10-26) | low | P6 |
+| [2080](../issues/archived/2080-cpp-parameter-event-from-event-helpers.md) — `ParameterEventHandler::get_parameter(s)_from_event` (P6's residue; **resolved 2026-10-26**) | low | P6 |
 | [2081](../issues/2081-c-abi-service-request-info.md) — C-ABI backends report no `ServiceInfo` (R7's residue, filed 2026-10-26) | low | R7 |
 | [2029](../issues/archived/2029-action-server-cancel-all-before.md) — cancel-all / cancel-before answer `UNKNOWN_GOAL_ID` (resolved 2026-10-24) | low | X1 |
 
@@ -267,9 +267,11 @@ if no hash source exists, make it REFUSE-LOUD (RFC-0089 already uses
 `/parameter_events`; nothing subscribes to another node's. A bounded handler
 table over a typed `rcl_interfaces/msg/ParameterEvent` subscription.
 **Resolved 2026-10-25 (hosted C++):** `rclcpp::ParameterEventHandler` and a
-hosted `rclcpp::Parameter`; the two static `get_parameter(s)_from_event`
-helpers stay `gap`, and freestanding refuses the handler (issue 2024's Still
-open). The two helpers are re-homed as issue 2080.
+hosted `rclcpp::Parameter`; freestanding refuses the handler (issue 2024's
+Still open). The two static `get_parameter(s)_from_event` helpers followed in
+[issue 2080](../issues/archived/2080-cpp-parameter-event-from-event-helpers.md)
+(2026-10-26): templates over the caller's generated event, hosted like the
+handler.
 
 **P7 — two polling subscription types.** `PollSubscription` (20 members) and
 `PollingSubscription` (7) both ship. Confirm each has a distinct contract, or

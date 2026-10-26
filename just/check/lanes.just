@@ -2329,6 +2329,27 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/parameter_event_handler_runtime
+    # issue 2080 -- the static get_parameter(s)_from_event helpers, templates
+    # over the caller's generated rcl_interfaces::msg::ParameterEvent (here a
+    # codegen-shaped declaration, inline and heap string fields). Negative
+    # control, measured: the node-name test in get_parameter_from_event
+    # removed -> failures.
+    test -f packages/api/nros-cpp/tests/compile/parameter_event_from_event_runtime.cpp || { \
+        echo "ERROR: parameter_event_from_event_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - rclcpp::ParameterEventHandler::get_parameter(s)_from_event over a generated event (runtime, issue 2080)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -o "$gen/nros-cpp-tests"/parameter_event_from_event_runtime \
+        packages/api/nros-cpp/tests/compile/parameter_event_from_event_runtime.cpp \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/parameter_event_from_event_runtime
     # ...and refused without the hosted surface, naming what works there.
     # shellcheck source=scripts/lib/grep-q.sh
     source scripts/lib/grep-q.sh

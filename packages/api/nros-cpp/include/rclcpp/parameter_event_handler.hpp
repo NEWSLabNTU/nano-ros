@@ -277,6 +277,73 @@ template <typename R, typename A> struct param_event_arg<R (*)(A)> {
 
 using ParameterEventFn = ::std::function<void(const uint8_t*, size_t)>;
 
+/// Issue 2080 — a generated string field (`rclcpp::FixedString<N>`,
+/// `rclcpp::HeapString` or `std::string`) as a `std::string`.
+template <typename S>::std::string param_msg_string(const S& s) {
+    return ::std::string(s.c_str(), s.length());
+}
+
+/// Issue 2080 — upstream's `rclcpp::Parameter::from_parameter_msg` over the
+/// caller's GENERATED `rcl_interfaces::msg::Parameter` (any type with that
+/// message's fields): the same conversion `ParameterEventDecoder::parameter`
+/// applies to the wire frame.
+template <typename ParameterMsgT>::rclcpp::Parameter parameter_from_msg(const ParameterMsgT& msg) {
+    const auto& value = msg.value;
+    ::rclcpp::ParameterValue v;
+    switch (static_cast<uint8_t>(value.type)) {
+    case PARAMETER_BOOL:
+        v = ::rclcpp::ParameterValue(static_cast<bool>(value.bool_value));
+        break;
+    case PARAMETER_INTEGER:
+        v = ::rclcpp::ParameterValue(static_cast<long long>(value.integer_value));
+        break;
+    case PARAMETER_DOUBLE:
+        v = ::rclcpp::ParameterValue(static_cast<double>(value.double_value));
+        break;
+    case PARAMETER_STRING:
+        v = ::rclcpp::ParameterValue(param_msg_string(value.string_value));
+        break;
+    case PARAMETER_BYTE_ARRAY: {
+        ::std::vector<uint8_t> out;
+        for (const auto& x : value.byte_array_value)
+            out.push_back(static_cast<uint8_t>(x));
+        v = ::rclcpp::ParameterValue(out);
+        break;
+    }
+    case PARAMETER_BOOL_ARRAY: {
+        ::std::vector<bool> out;
+        for (const auto& x : value.bool_array_value)
+            out.push_back(static_cast<bool>(x));
+        v = ::rclcpp::ParameterValue(out);
+        break;
+    }
+    case PARAMETER_INTEGER_ARRAY: {
+        ::std::vector<int64_t> out;
+        for (const auto& x : value.integer_array_value)
+            out.push_back(static_cast<int64_t>(x));
+        v = ::rclcpp::ParameterValue(out);
+        break;
+    }
+    case PARAMETER_DOUBLE_ARRAY: {
+        ::std::vector<double> out;
+        for (const auto& x : value.double_array_value)
+            out.push_back(static_cast<double>(x));
+        v = ::rclcpp::ParameterValue(out);
+        break;
+    }
+    case PARAMETER_STRING_ARRAY: {
+        ::std::vector<::std::string> out;
+        for (const auto& x : value.string_array_value)
+            out.push_back(param_msg_string(x));
+        v = ::rclcpp::ParameterValue(out);
+        break;
+    }
+    default:
+        break; // NOT_SET: a deleted parameter, or a type this side does not know
+    }
+    return ::rclcpp::Parameter(param_msg_string(msg.name), v);
+}
+
 /// What reaches a `ParameterEventCallbackHandle`'s private storage.
 struct ParameterEventHandlerAccess {
     static void set(ParameterEventCallbackHandle& h, ParameterEventFn fn) {
@@ -307,7 +374,10 @@ struct ParameterEventHandlerAccess {
 ///   - an event callback takes the caller's GENERATED
 ///     `rcl_interfaces::msg::ParameterEvent` (deduced from the callback), so
 ///     that message must be generated for the image;
-///   - the static `get_parameter(s)_from_event` helpers are absent;
+///   - the static `get_parameter(s)_from_event` helpers are templates over
+///     the caller's generated `ParameterEvent` (deduced, so upstream call
+///     sites compile), and the single-parameter overload returns a `NOT_SET`
+///     parameter where upstream throws on a node-name mismatch;
 ///   - a freestanding build refuses the constructor (no allocator for the
 ///     callbacks, handles and decoded values).
 class ParameterEventHandler {
@@ -394,6 +464,67 @@ class ParameterEventHandler {
         });
         state().event_callbacks.push_front(h);
         return h;
+    }
+
+    /// `get_parameter_from_event(event, parameter, parameter_name, node_name = "")`
+    /// (issue 2080): when `event.node == node_name` and `parameter_name` is
+    /// among the event's new or changed parameters, writes it to `parameter`
+    /// and returns true; false otherwise. As upstream, `node_name` is compared
+    /// verbatim (no namespace resolution) — pass the fully qualified name.
+    ///
+    /// `ParameterEventT` is the caller's GENERATED
+    /// `rcl_interfaces::msg::ParameterEvent` (deduced), so an upstream call
+    /// site compiles unchanged once that header is included; this header never
+    /// names `rcl_interfaces`.
+    template <typename ParameterEventT>
+    static bool get_parameter_from_event(const ParameterEventT& event,
+                                         ::rclcpp::Parameter& parameter,
+                                         const ::std::string& parameter_name,
+                                         const ::std::string& node_name = "") {
+        if (detail::param_msg_string(event.node) != node_name) return false;
+        for (const auto& p : event.new_parameters) {
+            if (detail::param_msg_string(p.name) == parameter_name) {
+                parameter = detail::parameter_from_msg(p);
+                return true;
+            }
+        }
+        for (const auto& p : event.changed_parameters) {
+            if (detail::param_msg_string(p.name) == parameter_name) {
+                parameter = detail::parameter_from_msg(p);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// `get_parameter_from_event(event, parameter_name, node_name = "")`
+    /// (issue 2080): the parameter, or `Parameter(parameter_name)` (type
+    /// `PARAMETER_NOT_SET`) when the event does not carry it. Upstream THROWS
+    /// `std::runtime_error` when `node_name` is not the event's node; nothing
+    /// here throws, so that case also returns the `NOT_SET` parameter — call
+    /// the `bool` overload to tell the two apart.
+    template <typename ParameterEventT>
+    static ::rclcpp::Parameter get_parameter_from_event(const ParameterEventT& event,
+                                                        const ::std::string& parameter_name,
+                                                        const ::std::string& node_name = "") {
+        ::rclcpp::Parameter p;
+        if (!get_parameter_from_event(event, p, parameter_name, node_name))
+            return ::rclcpp::Parameter(parameter_name);
+        return p;
+    }
+
+    /// `get_parameters_from_event(event)` (issue 2080): every new and changed
+    /// parameter of `event`, in that order (deleted ones are not included, as
+    /// upstream). `ParameterEventT` as for `get_parameter_from_event`.
+    template <typename ParameterEventT>
+    static ::std::vector<::rclcpp::Parameter>
+    get_parameters_from_event(const ParameterEventT& event) {
+        ::std::vector<::rclcpp::Parameter> out;
+        for (const auto& p : event.new_parameters)
+            out.push_back(detail::parameter_from_msg(p));
+        for (const auto& p : event.changed_parameters)
+            out.push_back(detail::parameter_from_msg(p));
+        return out;
     }
 
     /// `remove_parameter_event_callback(handle)`.
