@@ -1,0 +1,1 @@
+A FreeRTOS Cortex-M image with position-independent code in it (a package that adds `-fPIC`) no longer boots with every global at address 0: the shared linker script keeps the GOT in flash. Editing that shared script, or the scripts the baremetal and ThreadX RISC-V boards pass with `-T`, now relinks the image.

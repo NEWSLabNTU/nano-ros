@@ -1,3 +1,7 @@
+// A system header to the compiler: `#include_next` is a GCC extension, and a
+// ported package built `-Wpedantic -Werror` (Autoware's default) refused
+// every TU that reached this shim (phase-518 W4).
+#pragma GCC system_header
 // Phase 11W.3 — minimal `<atomic>` shim for Zephyr targets that
 // don't ship libstdc++. Forwards to C11 `<stdatomic.h>` primitives
 // via thin C++ wrappers, exposing the subset of `std::atomic<T>`

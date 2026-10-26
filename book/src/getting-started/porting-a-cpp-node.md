@@ -222,6 +222,37 @@ On a board, nano-ros reads the stock CMake verbs this way:
   message package if nothing has yet.
 - A plain `target_link_libraries(<exe> <lib>)` keeps working beside nano-ros's
   own links.
+- A package that calls `find_package(ament_cmake)` is a ported package: its C++
+  is hosted even if it never finds `rclcpp`, and a message package it finds is
+  generated in C++, so `target_link_libraries(<lib> PUBLIC ${std_msgs_TARGETS})`
+  reaches the headers.
+- `find_package(<sibling>)` reaches a library package of the same workspace
+  when the root sets `NROS_INTERFACE_SEARCH_PATH` and calls
+  `nros_workspace_interfaces()` before adding the packages. Zephyr has the
+  same call.
+- `-Wpedantic -Werror` and `-fPIC` on a package's directory are fine. On Zephyr
+  the image's kernel link is never position-independent, whatever the package
+  adds.
+- `std::mutex` and `std::recursive_mutex` exist although the RTOS toolchains'
+  libstdc++ has no threads: nano-ros defines them over the platform's mutex
+  for the ported package. `std::condition_variable`, `std::thread` and
+  `std::promise` are still absent there.
+
+What the phase-518 ports needed edited in the source, on both boards:
+
+- **Exceptions.** An RTOS image is built `-fno-exceptions`, so a `throw` does
+  not compile. Guard it with `#if defined(__cpp_exceptions)` and abort in the
+  other arm. A `try` / `catch` around a call needs the same guard.
+- **Linux scheduling.** Nav2's `setSoftRealTimePriority()` calls
+  `sched_setscheduler`. On an RTOS a thread's priority is its tier's
+  (`system.toml` `[tiers.*]`), so make the call a no-op there.
+- **Per-request client callbacks.** No `std::promise`, so no
+  `Client<S>::SharedFuture`: read the future on a later tick (the client row
+  in the table below).
+- **Parameters with no default.** A board has no command line, so
+  `declare_parameter<T>(name)` with no default reads the type's zero value
+  ([issue 2073](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2073-ported-board-exe-no-params-source.md)).
+  Give it a default.
 
 What a workspace image still has to state:
 
@@ -230,6 +261,21 @@ What a workspace image still has to state:
   a client and a server in one image meet only with
   `[image.<id>.knobs.rmw] local_queryable = 1`. Both are
   [issue 2043](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2043-ament-port-pool-sizing-census.md).
+- **Message bounds.** An unbounded sequence or string in a message the node
+  publishes gets the default bound, which can make one message megabytes.
+  Bound it in `nros-codegen.toml`, for example
+  `[packages."diagnostic_msgs"] sequence = 4` and `string = 64`.
+- **Parameter capacities and the app stack.** At the default capacities one
+  parameter declare needs ~70 KiB of stack
+  ([issue 2070](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2070-param-declare-stack-cost.md)).
+  State `[knobs.params]` (`max_string_value_len`, `max_array_len`,
+  `max_byte_array_len`) for what the node declares, and on FreeRTOS raise the
+  app stack with `set(NROS_FREERTOS_APP_STACK_KB <KiB>)` in the root. The boot
+  line `app task stack peak <used> of <total>` says what it needed.
+- **The heap.** On FreeRTOS, `NROS_FREERTOS_HEAP_KB` on `freertos_config`; on
+  Zephyr, `[image.<id>.knobs.zephyr] heap_size`. A Zephyr heap that runs out
+  while a subscription is created reports `ConnectionFailed`, not an
+  out-of-memory.
 - **The Zephyr board's QEMU network fragment,** which a copy names in
   `os_config` ([issue 1782](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1782-port-template-zephyr-leaf-board-not-in-data.md)).
 
@@ -280,17 +326,17 @@ nano-ros covers the patterns a typical ROS 2 C++ node uses:
 | `descriptor.floating_point_range.resize(1)` | a bounded sequence resizes within its bound | Past the bound it is refused and returns `false`, where rosidl throws. |
 | `rclcpp::spin(node->get_node_base_interface())` | spins the node | |
 | `get_node_base_interface()->get_context()->add_pre_shutdown_callback(f)` | `rclcpp::Context` views the executor's shutdown hooks; `f` runs on `rclcpp::shutdown()` | The hooks share the executor's table (`NROS_EXECUTOR_MAX_SHUTDOWN_CBS`, default 2). A full table returns an invalid handle. |
-| a package that depends on `rclcpp_lifecycle` | its runtime carries `lifecycle` with `param_services`, and `ros2 lifecycle get /<node>` finds it | |
+| a package that depends on `rclcpp_lifecycle` | its runtime carries `lifecycle` (with `param_services` on a host), and `ros2 lifecycle get /<node>` finds it | On a board the cmake road gives it `lifecycle` alone. A Zephyr application states it in `system.toml`: `[system] features = ["lifecycle"]`. |
 | `std::static_pointer_cast<Derived>(shared_from_this())` (Nav2's `nav2_util::LifecycleNode`) | **does not compile** | The handle owns nothing, so there is no `std::shared_ptr` to cast. Drop the override; `rclcpp_lifecycle::LifecycleNode::shared_from_this()` returns its own type. |
 | `pub_->get_subscription_count()` | takes the executor and an out-parameter | See `Publisher::get_subscription_count`. Nav2 calls it only in its tests. |
 | `declare_parameter(name, rclcpp::ParameterValue(...)[, descriptor])`, `get_parameter(name)` as an `rclcpp::Parameter`, `set_parameter(rclcpp::Parameter(...))` | the same store the typed `declare_parameter<T>` uses; the descriptor may be an `rcl_interfaces::msg::ParameterDescriptor` | Hosted builds. A byte or string array can be built but not declared. A wrong-type `as_double()` answers `0.0`, not an exception. |
 | `add_on_set_parameters_callback(std::bind(&C::cb, this, _1))` with `cb(std::vector<rclcpp::Parameter>)` returning `SetParametersResult` | runs on every write, local or `ros2 param set`; `successful = false` refuses it; the returned handle unregisters on destruction | One parameter per call, because writes are validated one at a time. The `reason` does not reach the remote caller. Keep the handle as a member of your node class, so it goes before the node does. |
-| `node->get_node_parameters_interface()` | `has_parameter`, `declare_parameter`, `get_parameter` through `->` | `get_parameter_overrides()` is absent (issue 2057). |
+| `node->get_node_parameters_interface()` | `has_parameter`, `declare_parameter`, `get_parameter` and `get_parameter_overrides()` through `->` | `get_parameter_overrides()` lists this node's `-p` / `--params-file` values as a `std::map<std::string, rclcpp::ParameterValue>`, one copy per node, so Nav2's `declare_or_get_parameter` compiles (issue 2057). |
 | `pub_->publish(std::move(msg))` with a `std::unique_ptr<M>` | publishes `*msg`; the message is freed when the call returns | Hosted builds. Every publish serializes, so there is no intra-process hand-over to save a copy. A null pointer is refused and logged. |
-| `rclcpp::Client<S>::SharedPtr client_ = create_client<S>(name);` + `client_->async_send_request(req, callback)` | **not supported** (issue 2055) | `create_client<S>(name)` returns the poll client by value: store it as `rclcpp::Owned<rclcpp::PollClient<S>>` and keep the `FutureAndRequestId` that `async_send_request(req)` returns as a member. Read it on a later callback with `future.is_ready()` and `get()`. Inside a callback, ask `service_is_ready()` instead of calling `wait_for_service`, which drives the executor. |
+| `rclcpp::Client<S>::SharedPtr client_ = create_client<S>(name);` + `client_->async_send_request(req, callback)` with a `void(Client<S>::SharedFuture)` callback | the handle holds the poll client; the callback runs from the executor when the reply arrives, with a `SharedFuture` whose `get()` returns it (issue 2055) | Hosted builds with `std::promise`. The client registers one 1 ms timer for its callbacks, cancelled while none is waiting. A removed request's callback never runs. `wait_for_service(1s)` inside a callback waits without spinning, so on a polled backend it runs out its budget. On an RTOS toolchain (no `std::promise`) store the client as `rclcpp::Owned<rclcpp::PollClient<S>>`, keep the `FutureAndRequestId` that `async_send_request(req)` returns, and read it on a later callback with `future.is_ready()` and `get()`. |
 | `diagnostic_updater::Updater updater_{this};` | publishes `/diagnostics` on its own timer, every `period` (`setPeriod`), as upstream's does | `update()` still works and is no longer required. |
 | `DiagnosticTask`, `FrequencyStatus`, `TimeStampStatus`, `Heartbeat`, `HeaderlessTopicDiagnostic`, `TopicDiagnostic` | upstream's classes, levels and messages; `updater.add(task)` | A clock argument is a `const rclcpp::Clock*`, so `node->get_clock()` still passes. The tasks take no lock, so a node that calls `tick()` from its own thread must keep that call from overlapping an update. `DiagnosedPublisher` is absent, because a nano-ros publisher handle can be moved but not copied. Keep the publisher and a `TopicDiagnostic`, and call `tick(stamp)` next to each `publish`. |
-| the six parameter services (`ros2 param get/set/list`) | on for an ament package built on a host: every node serves them, as upstream's does | Comes from the package's `package.xml` naming `ament_cmake`; set `NROS_FEATURES` to declare the capabilities yourself. Values come from `--ros-args --params-file <yaml>` or `-p`. |
+| the six parameter services (`ros2 param get/set/list`) | on for an ament package built on a host: every node serves them, as upstream's does | Comes from the package's `package.xml` naming `ament_cmake`; set `NROS_FEATURES` to declare the capabilities yourself. Values come from `--ros-args --params-file <yaml>` or `-p`. On a board they are off unless declared (`param_services` in `NROS_FEATURES`, or `[system] features` on Zephyr): they cost six queryables and their RAM. |
 
 ## Measured: the stock rclcpp examples
 

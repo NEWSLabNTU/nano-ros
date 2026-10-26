@@ -127,3 +127,22 @@ function(_nros_freertos_entry_network out_var board_hint)
     nros_board_net_c("${_board}" _net)
     set(${out_var} "${_net}" PARENT_SCOPE)
 endfunction()
+
+# The FreeRTOS carrier's `@NROS_ENTRY_APP_STACK_BYTES@`, for the same two
+# callers. 64 KiB unless the configure sets `NROS_FREERTOS_APP_STACK_KB`, the
+# cmake spelling of the cargo road's knob of the same name (issue 2070: this
+# was a literal, so an image that needed more had no way to say so, and a
+# ported node declaring parameters overflowed it into the kernel's globals).
+function(_nros_freertos_entry_app_stack out_var)
+    set(_kb 64)
+    if(DEFINED NROS_FREERTOS_APP_STACK_KB AND NOT "${NROS_FREERTOS_APP_STACK_KB}" STREQUAL "")
+        if(NOT NROS_FREERTOS_APP_STACK_KB MATCHES "^[0-9]+$" OR NROS_FREERTOS_APP_STACK_KB EQUAL 0)
+            message(FATAL_ERROR
+                "nano-ros: NROS_FREERTOS_APP_STACK_KB='${NROS_FREERTOS_APP_STACK_KB}' "
+                "is not a positive whole number of KiB.")
+        endif()
+        set(_kb "${NROS_FREERTOS_APP_STACK_KB}")
+    endif()
+    math(EXPR _bytes "${_kb} * 1024")
+    set(${out_var} "${_bytes}" PARENT_SCOPE)
+endfunction()

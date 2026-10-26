@@ -3012,6 +3012,21 @@ pub(crate) fn timer_advance_without_dispatch(header: &mut TimerHeader, spin_delt
     }
 }
 
+/// A `Skip` timer's overrun after it fired: the periods it missed beyond the
+/// one that fired, and what stays of `elapsed_us` on the phase grid.
+///
+/// Saturating, because `elapsed_us` can be BELOW one period here: a callback
+/// that reset its own timer (`timer->reset()`, which upstream allows inside
+/// the callback) zeroed it while the timer was firing. `0 / period - 1`
+/// panicked a debug build (phase-518 W2: issue 2055's callback pump re-arms
+/// its timer from a callback that sends again).
+pub(crate) fn skip_overrun(elapsed_us: u64, period_us: u64) -> (u64, u64) {
+    (
+        (elapsed_us / period_us).saturating_sub(1),
+        elapsed_us % period_us,
+    )
+}
+
 /// The call info for an activation that is due NOW — issue 1974.
 ///
 /// `actual` is now on the timer's clock ([`TimerClockSource::dispatch_now_ns`]);
@@ -3112,13 +3127,13 @@ where
                     entry.elapsed_us = entry.elapsed_us.saturating_sub(entry.period_us);
                 }
                 TimerOverrunPolicy::Skip => {
-                    let missed = entry.elapsed_us / entry.period_us - 1;
+                    let (missed, remainder) = skip_overrun(entry.elapsed_us, entry.period_us);
                     if missed > 0 {
                         entry.overruns = entry
                             .overruns
                             .saturating_add(u32::try_from(missed).unwrap_or(u32::MAX));
                     }
-                    entry.elapsed_us %= entry.period_us;
+                    entry.elapsed_us = remainder;
                 }
             }
         }

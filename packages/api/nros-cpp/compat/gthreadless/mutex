@@ -1,0 +1,122 @@
+// <mutex> for a ported package whose libstdc++ was built without thread
+// support (phase-518 W4).
+//
+// The cross toolchains nano-ros builds RTOS images with (arm-none-eabi for
+// FreeRTOS and ThreadX, the Zephyr SDK's arm-zephyr-eabi) ship a libstdc++
+// configured with no gthreads, so `<mutex>` declares `std::lock_guard` and
+// `std::unique_lock` but no `std::mutex`. Real ROS 2 code locks one
+// everywhere: Nav2's `nav2_util::OdomSmoother` holds a `std::mutex` member, and
+// a port failed with "'mutex' in namespace 'std' does not name a type".
+//
+// This header is on the include path only of a ported package's hosted C++
+// (`nros_ported_cxx_hosted()`, and the Zephyr module's C++ include set). It
+// forwards to the toolchain's `<mutex>` and, only where that has no
+// `std::mutex`, defines `std::mutex` and `std::recursive_mutex` over the
+// platform's own mutex (`nros/platform.h`), which inherits priority on every
+// port. Where the toolchain has threads (posix, libc++) it adds nothing.
+//
+// The constructor is constexpr, as the standard's is, so a `static std::mutex`
+// is constant-initialised. The platform object is therefore created on first
+// use; a second thread that meets it half-made yields until it is ready.
+// `std::condition_variable` and the timed mutexes are not provided.
+#pragma GCC system_header
+
+#include_next <mutex>
+
+#if defined(__GLIBCXX__) && !defined(_GLIBCXX_HAS_GTHREADS) && \
+    !defined(NROS_CPP_GTHREADLESS_MUTEX)
+#define NROS_CPP_GTHREADLESS_MUTEX 1
+
+#include <atomic>
+#include <cstdlib>
+
+#include <nros/platform.h>
+
+namespace nros_cpp_gthreadless {
+
+template <bool Recursive> class platform_mutex {
+  public:
+    constexpr platform_mutex() noexcept = default;
+    platform_mutex(const platform_mutex &) = delete;
+    platform_mutex &operator=(const platform_mutex &) = delete;
+
+    ~platform_mutex() {
+        if (state_.load(std::memory_order_acquire) == kReady) {
+            Recursive ? nros_platform_mutex_rec_drop(storage_)
+                      : nros_platform_mutex_drop(storage_);
+        }
+    }
+
+    void lock() {
+        ready();
+        int8_t rc = Recursive ? nros_platform_mutex_rec_lock(storage_)
+                              : nros_platform_mutex_lock(storage_);
+        if (rc != 0) {
+            std::abort();
+        }
+    }
+
+    bool try_lock() {
+        ready();
+        return (Recursive ? nros_platform_mutex_rec_try_lock(storage_)
+                          : nros_platform_mutex_try_lock(storage_)) == 0;
+    }
+
+    void unlock() {
+        Recursive ? nros_platform_mutex_rec_unlock(storage_)
+                  : nros_platform_mutex_unlock(storage_);
+    }
+
+    using native_handle_type = void *;
+    native_handle_type native_handle() {
+        ready();
+        return storage_;
+    }
+
+  private:
+    static constexpr int kUnmade = 0;
+    static constexpr int kMaking = 1;
+    static constexpr int kReady = 2;
+
+    void ready() {
+        if (state_.load(std::memory_order_acquire) == kReady) {
+            return;
+        }
+        int expected = kUnmade;
+        if (state_.compare_exchange_strong(expected, kMaking, std::memory_order_acq_rel)) {
+            int8_t rc = Recursive ? nros_platform_mutex_rec_init(storage_)
+                                  : nros_platform_mutex_init(storage_);
+            if (rc != 0) {
+                std::abort();
+            }
+            state_.store(kReady, std::memory_order_release);
+            return;
+        }
+        while (state_.load(std::memory_order_acquire) != kReady) {
+            nros_platform_yield_now();
+        }
+    }
+
+    alignas(NROS_PLATFORM_STORAGE_ALIGN) unsigned char
+        storage_[Recursive ? NROS_PLATFORM_MUTEX_REC_STORAGE_SIZE
+                           : NROS_PLATFORM_MUTEX_STORAGE_SIZE] = {};
+    std::atomic<int> state_{kUnmade};
+};
+
+} // namespace nros_cpp_gthreadless
+
+namespace std {
+
+class mutex : public nros_cpp_gthreadless::platform_mutex<false> {
+  public:
+    constexpr mutex() noexcept = default;
+};
+
+class recursive_mutex : public nros_cpp_gthreadless::platform_mutex<true> {
+  public:
+    constexpr recursive_mutex() noexcept = default;
+};
+
+} // namespace std
+
+#endif

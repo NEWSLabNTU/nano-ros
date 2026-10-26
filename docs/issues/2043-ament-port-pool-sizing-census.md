@@ -61,6 +61,21 @@ by hand before it ran. The census already knows each one:
   spin` against `NROS_EXECUTOR_MAX_CBS=40`. That is 98 % of 724 KiB unused, and
   it is the storage that pushed the heap out.
 
+Node 1 on Zephyr (`mps2_an385`) needed the same four, plus one more the
+FreeRTOS road had not shown. Its nros heap (`CONFIG_NROS_ZEPHYR_HEAP_SIZE`)
+defaults to 196 608 only when the image declares a parameter capability, and a
+ported image declares none, so it got 65 536. The same node peaked at 179 976
+bytes of heap on FreeRTOS. The image aborted at its fourth subscription with
+`zpico Generic -> ConnectionFailed`, an out-of-memory reported as a transport
+error. `[image.zephyr.knobs.zephyr] heap_size = 262144` fixed it.
+
+Node 2 (Nav2 `nav2_velocity_smoother`) needed its pools stated on both boards
+(executor 16 callbacks, zenoh tables 16, liveliness 128, the parameter
+capacities), its heap (2048 KiB on FreeRTOS, 256 KiB on Zephyr) and a
+192 KiB app stack on FreeRTOS (issue 2070). Its executor arena was 290 816
+bytes on FreeRTOS and 1 157 120 on Zephyr, and the boot report said none of it
+was claimed at first spin.
+
 So the census answer must also feed the derived SWITCHES the inventory decides,
 not only the pool sizes. On an RTOS it must come from somewhere other than the
 image, which cannot be run on the host. A host build of the same packages is

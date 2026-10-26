@@ -443,6 +443,25 @@ function(nros_generate_interfaces target)
         "${_output_dir}"
         "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_cpp"
       )
+      # A package's headers include its dependencies' (`std_msgs/msg/header.hpp`
+      # includes `builtin_interfaces.hpp`), so the dependencies' include paths
+      # travel with it. A dependency is generated before its dependents, so its
+      # target exists here (phase-518 W4, node 1 on Zephyr).
+      foreach(_dep IN LISTS _ARG_DEPENDENCIES)
+        if(TARGET ${_dep}__nano_ros_cpp)
+          target_link_libraries(${target}__nano_ros_cpp INTERFACE ${_dep}__nano_ros_cpp)
+        endif()
+      endforeach()
+      # And the C++ runtime's headers, which every generated header includes
+      # (`rclcpp/fixed_string.hpp`): a library that links only the messages
+      # (`target_link_libraries(<lib> PUBLIC ${std_msgs_TARGETS})`) and not
+      # rclcpp had none of them. The umbrella helper picks the target, as
+      # `rclcpp::rclcpp` does (issue 1467).
+      if(TARGET NanoRos::NanoRosCpp)
+        include("${NROS_REPO_DIR}/cmake/NanoRosRuntimeUmbrella.cmake")
+        nros_link_runtime_umbrella(${target}__nano_ros_cpp INTERFACE
+          CANDIDATES NanoRos::NanoRosCpp)
+      endif()
     endif()
 
     # Build Rust FFI glue for generated message types

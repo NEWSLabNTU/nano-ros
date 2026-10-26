@@ -17,10 +17,20 @@ include_guard(GLOBAL)
 # once per target (`nros_platform_link_app_deferred`, phase-287 W6), because
 # `ament_target_dependencies` adds links after the target exists and NuttX's
 # pass reads the finished link closure.
+#
+# Both arms need the platform overlay's own `nros_platform_link_app`. Zephyr
+# has none (the kernel's `app` is linked by Zephyr), but it does load
+# NanoRosEntry.cmake, which defines the deferred wrapper. Asking only for the
+# wrapper scheduled a call to a command that does not exist, and the configure
+# failed at the end of the directory with `Unknown CMake command
+# "nros_platform_link_app"` (phase-518 W4, node 1 on Zephyr).
 function(_nros_ament_link_app target)
+    if(NOT COMMAND nros_platform_link_app)
+        return()
+    endif()
     if(COMMAND nros_platform_link_app_deferred)
         nros_platform_link_app_deferred(${target})
-    elseif(COMMAND nros_platform_link_app)
+    else()
         get_property(_nal_done TARGET ${target} PROPERTY _NROS_PLATFORM_LINK_DONE)
         if(NOT _nal_done)
             set_property(TARGET ${target} PROPERTY _NROS_PLATFORM_LINK_DONE TRUE)
@@ -105,13 +115,8 @@ function(ament_target_dependencies target)
     endif()
     foreach(_dep IN LISTS _atd_deps)
         if(NOT TARGET ${_dep}::${_dep} AND _atd_cxx AND NROS_FIND_PACKAGE_VALIDATE_ONLY
-           AND COMMAND _nros_find_ros_msg_package)
-            get_property(_atd_validated GLOBAL PROPERTY NROS_VALIDATED_MSG_PACKAGES)
-            if(_dep IN_LIST _atd_validated)
-                set(NROS_FIND_PACKAGE_VALIDATE_ONLY FALSE)
-                _nros_find_ros_msg_package(${_dep})
-                set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
-            endif()
+           AND COMMAND _nros_require_cpp_msg_package)
+            _nros_require_cpp_msg_package(${_dep})
         endif()
         if(NOT TARGET ${_dep}::${_dep})
             continue()

@@ -725,6 +725,16 @@ function(nano_ros_entry)
         if(NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL _nra_app_dir)
             foreach(_nra_prop INCLUDE_DIRECTORIES COMPILE_DEFINITIONS COMPILE_OPTIONS)
                 get_property(_nra_vals DIRECTORY PROPERTY ${_nra_prop})
+                # phase-518 W4 — but never position-independent code. A source
+                # property comes AFTER Zephyr's own `-fno-pic` on the command
+                # line, so a package's `-fPIC` (Nav2's `nav2_package()` adds it
+                # to the whole directory) won there, and Zephyr's linker script
+                # discards the `.got` that code reads every global through:
+                # "`_GLOBAL_OFFSET_TABLE_` ... defined in discarded section".
+                # The kernel image is one static link; nothing in it is PIC.
+                if(_nra_prop STREQUAL "COMPILE_OPTIONS")
+                    list(FILTER _nra_vals EXCLUDE REGEX "^-f(PIC|pic|PIE|pie)$")
+                endif()
                 if(_nra_vals)
                     set_property(SOURCE ${_sources_for_exe} TARGET_DIRECTORY app
                         APPEND PROPERTY ${_nra_prop} ${_nra_vals})
@@ -736,11 +746,12 @@ function(nano_ros_entry)
         # `target_link_libraries`) and link it into `app`, so the component archives reach
         # `app`'s final link and resolve the `__nros_c_component_*` seams the TU references.
         set(_nra_app_stub "${CMAKE_CURRENT_BINARY_DIR}/${_NRA_NAME}_zephyr_components_stub.c")
-        if(NOT EXISTS "${_nra_app_stub}")
-            file(WRITE "${_nra_app_stub}"
-                "/* phase-263 C2d — placeholder so the auto-link sidecar has a real target;\n"
-                "   the node component libs link PRIVATE here and propagate to `app`. */\n")
-        endif()
+        # The typedef keeps the TU non-empty: ISO C forbids an empty one, and a
+        # ported package built `-Wpedantic -Werror` refused it (phase-518 W4).
+        # CONFIGURE writes only on a content change, so an old stub is replaced
+        # without re-staling an unchanged one.
+        file(CONFIGURE OUTPUT "${_nra_app_stub}" CONTENT
+            "/* phase-263 C2d — placeholder so the auto-link sidecar has a real target;\n   the node component libs link PRIVATE here and propagate to `app`. */\ntypedef int nros_zephyr_components_stub_t;\n")
         add_library(${_NRA_NAME} STATIC "${_nra_app_stub}")
         target_link_libraries(app PRIVATE ${_NRA_NAME})
         # phase-482 W3 — say so on the placeholder, so a dependency the user
@@ -1164,6 +1175,7 @@ function(nano_ros_entry)
                 # (identical IP+MAC seeds → identical ZIDs → the router sees
                 # one peer and delivery silently dies).
                 _nros_freertos_entry_network(NROS_ENTRY_NETWORK_C "${_NRA_BOARD}")
+                _nros_freertos_entry_app_stack(NROS_ENTRY_APP_STACK_BYTES)
                 set(_nra_appcfg "${CMAKE_CURRENT_BINARY_DIR}/${_NRA_NAME}_nros_app_config_def.c")
                 configure_file(
                     "${_NROS_ENTRY_DIR}/templates/freertos_app_config.c.in"

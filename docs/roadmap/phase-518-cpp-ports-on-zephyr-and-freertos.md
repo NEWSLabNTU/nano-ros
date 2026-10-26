@@ -1,7 +1,7 @@
 # Phase 518 — the phase-488 C++ ports on Zephyr and FreeRTOS, and their three open issues
 
-**Status (2026-10-26). Open; W1 done; W4/W5 done for node 3 on both boards
-and node 1 on FreeRTOS.** W1–W3 take the three issues phase-488 left open.
+**Status (2026-10-26). Open; W1, W2, W4 and W5 done; W3 open.** Every node
+builds and runs on both boards. W1–W3 take the three issues phase-488 left open.
 W4 and W5 attempt the three ported nodes on Zephyr and FreeRTOS, which
 phase-488 did not try.
 
@@ -52,13 +52,26 @@ to one copy per node, as upstream's does (Nav2 compares iterators from two
 calls).
 Tested in nros-node and in `parameter_value_runtime.cpp`. Issue 2057 resolved.
 
-### W2 — a per-request client callback ([issue 2055](../issues/2055-cpp-client-per-request-callback.md))
+### W2 — a per-request client callback ([issue 2055](../issues/archived/2055-cpp-client-per-request-callback.md))
 
 `Client<S>::SharedPtr` holds what `create_client<S>(name)` returns, and
 `async_send_request(request, callback)` runs the callback from the executor.
 
 **Done when** the composition client compiles unchanged on a hosted build, and
 a stub-backend runtime test stages a reply and asserts the callback ran with it.
+
+**Done (2026-10-26).** On a hosted build `ClientHandle<S>` (what
+`Client<S>::SharedPtr` names) can hold the future-style client, still in two
+words, and `client_->verb(...)` works on it. `async_send_request(request,
+callback)` runs `callback(Client<S>::SharedFuture)` from the executor, on a
+1 ms timer the client registers and cancels while no callback waits. Inside a
+callback, `wait_for_service` no longer starts a second dispatch pass. Upstream's
+`client_component.cpp`, unmodified, prints `Got result: [5]` against a stock
+ROS 2 server. The pump found a timer bug (a `Skip` timer reset by its own
+callback underflowed). Test: `client_per_request_callback_runtime.cpp`. Issue
+2055 resolved. On an RTOS toolchain there is no `std::promise`, so the port
+keeps the edit (porting guide). The composition's in-process client never sees
+its in-process server on posix ([issue 2083](../issues/2083-posix-in-process-server-not-in-graph.md)).
 
 ### W3 — pool sizes derived on the ament road ([issue 2043](../issues/2043-ament-port-pool-sizing-census.md))
 
@@ -86,8 +99,8 @@ what stops it.
 
 | node | FreeRTOS `mps2-an385-freertos` | Zephyr `mps2_an385` |
 | --- | --- | --- |
-| 1 `autoware_external_cmd_selector` | builds | not yet attempted |
-| 2 `nav2_velocity_smoother` | not yet attempted | not yet attempted |
+| 1 `autoware_external_cmd_selector` | builds | builds |
+| 2 `nav2_velocity_smoother` | builds | builds |
 | 3 `composition` | builds | builds |
 
 What the road needed, all landed:
@@ -124,6 +137,50 @@ and four sizing knobs that are issue 2043's (recorded there).
 Zephyr needs the QEMU fragment `cmake/zephyr/mps2-an385.conf`, which only the
 fixture script appends today (issue 1782).
 
+Nodes 1 on Zephyr and 2 on both boards found these, all fixed:
+
+- `ament_target_dependencies` and `rclcpp_components_register_node` scheduled
+  the platform link pass on Zephyr, which has none: `Unknown CMake command
+  "nros_platform_link_app"` at the end of the directory.
+- Autoware's `-Wpedantic -Werror` refused Zephyr's C++ compat headers
+  (`#include_next` is a GCC extension) and the empty placeholder TU. The
+  headers are `#pragma GCC system_header` now.
+- `diagnostic_updater`'s `diagnostic_msgs` were only validated on Zephyr; a
+  message package's headers missed their dependencies' include paths and the
+  C++ runtime's (`rclcpp/fixed_string.hpp`); `${<msg>_TARGETS}` was empty.
+  A Zephyr C++ image and any ported ament package now generate what they find.
+- The RTOS toolchains' libstdc++ has no `std::mutex`. nros-cpp supplies
+  `std::mutex` / `std::recursive_mutex` over the platform mutex for the
+  ported package (`packages/api/nros-cpp/compat/gthreadless/mutex`).
+- `nav2_package()` adds `-fPIC` to its directory. On FreeRTOS the GOT fell
+  outside the `.data` copy, so every global read as address 0 and the image
+  died at "Network init failed"; the shared linker script keeps the GOT in
+  flash. On Zephyr, whose linker script discards the GOT, PIC flags no longer
+  follow sources into `app`. An edit to the shared linker script did not
+  relink anything (issue 0475's class): the `INCLUDE`d script and the
+  baremetal and ThreadX `-T` scripts are link dependencies now.
+- A package depending on `rclcpp_lifecycle` got no lifecycle runtime on a
+  board, so it did not link. The cmake road gives it `lifecycle`; a Zephyr
+  application's `[system] features` now reach Kconfig and the runtime.
+- On Zephyr a library package of the workspace resolved to the installed
+  upstream copy (`nros_workspace_interfaces()` was undefined there, and the
+  Find stubs were emitted only when the search path was set early enough).
+- The C++ FreeRTOS app stack was a literal 64 KiB. It is
+  `NROS_FREERTOS_APP_STACK_KB` now (issue 2070).
+- A library package that finds only message packages kept `-ffreestanding`.
+  `find_package(ament_cmake)` makes the directory hosted.
+
+The template now has these shapes too: a second, library package found by its
+sibling, `-Wpedantic -Werror -fPIC`, a `std::mutex` member, a
+`std_msgs/Header` field and a `${std_msgs_TARGETS}` link. Its e2e tests pass on
+all three platforms.
+
+Porter edits node 2 needed on both boards: `throw` and `try`/`catch` guarded
+with `__cpp_exceptions` (N2-F2), `setSoftRealTimePriority()` a no-op off Linux
+(N2-F1), and a 192 KiB app stack on FreeRTOS (N2-F3, issue 2070). Node 1 on
+Zephyr needed the same capacities as on FreeRTOS plus a 256 KiB nros heap
+(issue 2043).
+
 ### W5 — run them under QEMU against stock ROS 2
 
 **Done when** each node that W4 built is driven from a stock ROS 2 Humble peer
@@ -142,6 +199,14 @@ QEMU mps2-an385:
   `ros2 service call .../select_external_command` answers `success=True` and
   moves the mode from 1 to 2. Boot report: `app task stack peak 13768 of
   65536 bytes`, `heap peak 179976 of 2097152 bytes`.
+- **Node 1 on Zephyr:** the same checks pass: the mode is echoed as 1, the
+  service answers `success=True`, and the mode reads 2 afterwards.
+- **Node 2 on FreeRTOS and Zephyr:** `ros2 lifecycle get` answers
+  `unconfigured`, `configure` and `activate` succeed and it reads `active`,
+  and a `ros2 topic pub /cmd_vel` comes back on `/cmd_vel_smoothed`
+  (`linear.x: 0.125`). FreeRTOS boot report: `app task stack peak 100416 of
+  196608 bytes`, `heap peak 311008 of 2097152 bytes`. The parameter services
+  are off on a board unless declared, so `ros2 param` was not driven.
 
 Node 1 found two runtime bugs before that:
 
@@ -161,7 +226,8 @@ A ported executable on a board has no way to receive `--ros-args -p` or
 ## Acceptance
 
 - [ ] Issues 2043, 2055 and 2057 are resolved, or closed `wontfix` with the
-      porting guide stating the edit instead.
-- [ ] Each node has an RTOS build verdict per board, with every finding fixed or
+      porting guide stating the edit instead. (2055 and 2057 resolved; 2043
+      open.)
+- [x] Each node has an RTOS build verdict per board, with every finding fixed or
       filed.
-- [ ] The porting guide states what the RTOS attempt learned.
+- [x] The porting guide states what the RTOS attempt learned.

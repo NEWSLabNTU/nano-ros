@@ -7,6 +7,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int32.hpp"
+#include "workspace_port_core/sequence.hpp"
 
 namespace workspace_port_nodes {
 
@@ -21,7 +22,7 @@ class Counter : public rclcpp::Node {
     std::string topic_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr pub_;
     rclcpp::TimerBase::SharedPtr timer_;
-    int32_t count_ = 0;
+    workspace_port_core::Sequence sequence_;
 };
 
 } // namespace workspace_port_nodes

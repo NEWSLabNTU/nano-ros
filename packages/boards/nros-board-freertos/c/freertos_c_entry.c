@@ -377,10 +377,12 @@ static void report_app_stack_peak(void) {
     s_stack_peak_reported = true;
     /* One `printf` of a prebuilt line: the console is shared with the app task
      * and the log writer, and a single `_write` cannot interleave. */
-    char line[160];
+    /* NROS_FREERTOS_APP_STACK_KB is the knob on both roads (the cmake one
+     * since issue 2070), as the Rust lane's message says. */
+    char line[192];
     snprintf(line, sizeof(line),
              "nros: app task stack peak %lu of %lu bytes (%lu free) "
-             "- raise with `[node.rt] app_stack_bytes`\n",
+             "- raise with NROS_FREERTOS_APP_STACK_KB / `[node.rt] app_stack_bytes`\n",
              (unsigned long)(total - unused), (unsigned long)total, (unsigned long)unused);
     printf("%s", line);
 }

@@ -21,7 +21,7 @@ Counter::Counter() : rclcpp::Node("workspace_port"), topic_("workspace_port_topi
 
 void Counter::on_timer() {
     std_msgs::msg::Int32 msg;
-    msg.data = count_++;
+    msg.data = sequence_.next();
     pub_->publish(msg);
 }
 

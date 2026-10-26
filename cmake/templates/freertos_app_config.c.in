@@ -18,7 +18,7 @@
  * last IP octet / MAC byte. The carrier still varies `.locator` / `.domain_id`
  * per image; the scheduling block below is the remaining hand-kept copy.
  *
- * `.app_stack_bytes` is 64 KiB, and it is MEASURED ON BOTH HALVES (issue 1146
+ * `.app_stack_bytes` is 64 KiB by default, and it is MEASURED ON BOTH HALVES (issue 1146
  * part 2). It sat at 512 KiB while the Rust default moved to 128 KiB, because
  * ONE number serves the C and the C++ typed carriers and the C++ half could not
  * be BUILT at all — every embedded C++ FreeRTOS target died in `<string>` ->
@@ -46,6 +46,10 @@
  * 65 536 is 3.4x the worse of the two, the same margin the Rust default carries
  * over its own worst (131 072 / 36 936 = 3.5x). The MARGIN is the shared
  * decision; the numbers differ because the measurements do.
+ *
+ * An image that needs more states `NROS_FREERTOS_APP_STACK_KB` to cmake
+ * (issue 2070: a ported node declaring parameters at the default capacities
+ * needs ~70 KiB for one declare, and this was a literal).
  *
  * Read it off an image's own boot line rather than re-deriving it:
  * `report_app_stack_peak` in `nros-board-freertos/c/freertos_c_entry.c` prints
@@ -87,7 +91,7 @@ const nros_app_config_t NROS_APP_CONFIG = {
         .rx_priority     = 4,
         .keepalive_priority    = 4,
         .poll_priority           = 4,
-        .app_stack_bytes         = 65536u,
+        .app_stack_bytes         = @NROS_ENTRY_APP_STACK_BYTES@u,
         .rx_stack_bytes  = 5120u,
         .keepalive_stack_bytes = 5120u,
         .poll_interval_ms        = 5u,

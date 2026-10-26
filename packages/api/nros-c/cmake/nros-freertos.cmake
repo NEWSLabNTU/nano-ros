@@ -529,11 +529,39 @@ function(nros_freertos_compose_platform)
         # invisible on first rebuild). Register every -T argument (and its
         # shared INCLUDE, which lives next to it or on a -L path) as a link
         # dependency of the composed platform.
+        #
+        # phase-518 W4 — the INCLUDE half was promised above and not done: only
+        # the `-T` script was registered, so an edit to the shared
+        # `nros-freertos-cortex-m.ld` it INCLUDEs relinked nothing. Each
+        # `INCLUDE <file>` line is resolved the way ld does, against the
+        # script's own directory and then each `-L` path.
+        set(_nfcp_search "")
+        set(_nfcp_scripts "")
         foreach(_opt IN LISTS _NFCP_LINK_OPTIONS)
             if(_opt MATCHES "^-T(.+)$")
-                set_property(TARGET freertos_platform APPEND PROPERTY
-                    INTERFACE_LINK_DEPENDS "${CMAKE_MATCH_1}")
+                list(APPEND _nfcp_scripts "${CMAKE_MATCH_1}")
+            elseif(_opt MATCHES "^-L(.+)$")
+                list(APPEND _nfcp_search "${CMAKE_MATCH_1}")
             endif()
+        endforeach()
+        foreach(_script IN LISTS _nfcp_scripts)
+            set_property(TARGET freertos_platform APPEND PROPERTY
+                INTERFACE_LINK_DEPENDS "${_script}")
+            if(NOT EXISTS "${_script}")
+                continue()
+            endif()
+            get_filename_component(_script_dir "${_script}" DIRECTORY)
+            file(STRINGS "${_script}" _includes REGEX "^[ \t]*INCLUDE[ \t]+")
+            foreach(_line IN LISTS _includes)
+                string(REGEX REPLACE "^[ \t]*INCLUDE[ \t]+([^ \t;]+).*$" "\\1" _inc "${_line}")
+                foreach(_dir IN ITEMS "${_script_dir}" ${_nfcp_search})
+                    if(EXISTS "${_dir}/${_inc}")
+                        set_property(TARGET freertos_platform APPEND PROPERTY
+                            INTERFACE_LINK_DEPENDS "${_dir}/${_inc}")
+                        break()
+                    endif()
+                endforeach()
+            endforeach()
         endforeach()
     endif()
 endfunction()

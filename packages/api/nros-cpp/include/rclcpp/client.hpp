@@ -28,6 +28,7 @@
 #include "rclcpp/size_bound.hpp" // rclcpp::detail::buffer_bounds<M>::tx — the request scratch bound
 
 #include "rclcpp/detail/nros_cpp_ffi.h"
+#include "rclcpp/detail/driven_future.hpp" // issue 2055 — `Client<S>::SharedFuture`
 
 // issue 1437 — `get_actual_qos()` returns a `rclcpp::QoS` BY VALUE from an
 // inline body, so the complete type must be here, not only by the time
@@ -149,6 +150,16 @@ template <typename S> class Client {
 
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
+
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+    /// Issue 2055 — upstream's `Client<S>::SharedRequest` / `SharedResponse` /
+    /// `SharedFuture`, the names a ported per-request callback is spelled in
+    /// (`[](rclcpp::Client<S>::SharedFuture f) { f.get()->sum; }`). The same
+    /// types as `PollClient<S>`'s, which is the client that sends such a request.
+    using SharedRequest = ::std::shared_ptr<RequestType>;
+    using SharedResponse = ::std::shared_ptr<ResponseType>;
+    using SharedFuture = ::rclcpp::detail::DrivenSharedFuture<SharedResponse>;
+#endif
 
     /// Phase 189.M3.3.f — typed response-handler signature for the
     /// *callback-style* client (rclcpp async dispatch). The handler runs during
