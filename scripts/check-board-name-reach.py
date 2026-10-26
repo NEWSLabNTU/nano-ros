@@ -221,15 +221,51 @@ def scan(root, board, overlay_path):
     return bool(why), why[:4], vendor
 
 
-def descriptor_aliases(root, found):
-    """[(alias, overlay board)] — every `names = [...]` entry of every board
-    descriptor (`file_kinds` board-descriptor), attributed to the overlay one of
-    its names owns. Issue 1614 (W5): the population was the overlay FILE NAMES
-    and the index, so an alias added to a descriptor (`riscv-qemu`) — which a
-    user types exactly like a board name — was never asked.
+def setup_key(board, index_keys):
+    """The index `[board.*]` key a descriptor provisions through — the same
+    derivation as `BoardDescriptor::setup_key` (board_descriptor.rs): its
+    `cmake_module` when that is an index key, else one of its `names` that is,
+    else the index key spelled like its platform. `None` when none applies."""
+    module = board.get("cmake_module")
+    if isinstance(module, str) and module in index_keys:
+        return module
+    for n in board.get("names", []) or []:
+        if isinstance(n, str) and n in index_keys:
+            return n
+    platform = board.get("platform")
+    if isinstance(platform, str) and platform in index_keys:
+        return platform
+    return None
 
-    A descriptor with no overlay among its names is out of scope here, as the
-    index entries without an arch are: there is no build to read the reach from.
+
+def descriptor_owner(board, found, index_keys):
+    """The overlay a descriptor's build is read from, or `None`.
+
+    Issue 2063: by NAME EQUALITY alone (an overlay among its `names`), a
+    descriptor whose overlay is spelled only by its `cmake_module` / index key
+    — `nros-board-mps2-an385`: names `baremetal`, `bare-metal`,
+    `qemu-mps2-an385`, `rtic-mps2-an385`; overlay `mps2-an385-baremetal` — was
+    out of scope, so `qemu-mps2-an385` was never asked. Attribution now goes
+    through the index key it provisions through first, and name equality
+    remains the fallback for a descriptor that reaches no index key.
+    """
+    key = setup_key(board, index_keys)
+    if key in found:
+        return key
+    names = [n for n in board.get("names", []) or [] if isinstance(n, str)]
+    return next((n for n in names if n in found), None)
+
+
+def descriptor_aliases(root, found, index_keys=()):
+    """[(alias, overlay board)] — every `names = [...]` entry of every board
+    descriptor (`file_kinds` board-descriptor), attributed to the overlay that
+    owns its build (`descriptor_owner`). Issue 1614 (W5): the population was
+    the overlay FILE NAMES and the index, so an alias added to a descriptor
+    (`riscv-qemu`) — which a user types exactly like a board name — was never
+    asked.
+
+    A descriptor with no overlay at all is out of scope here, as the index
+    entries without an arch are: there is no build to read the reach from.
     """
     try:
         import tomllib
@@ -249,7 +285,7 @@ def descriptor_aliases(root, found):
             continue
         for b in doc.get("board", []) or []:
             names = [n for n in b.get("names", []) or [] if isinstance(n, str)]
-            owner = next((n for n in names if n in found), None)
+            owner = descriptor_owner(b, found, index_keys)
             if owner:
                 out.extend((n, owner) for n in names if n != owner)
     return out
@@ -340,6 +376,15 @@ def self_test():
     # naming the emulator fails even when a part is present
     ok, msg = verdict("qemu-arm-freertos", True, set())
     assert not ok, msg
+    # issue 2063 — a descriptor whose overlay is named only by its
+    # `cmake_module` (its index key) is attributed through that key, so its
+    # aliases are asked; name equality alone left it out of scope.
+    d = {"names": ["baremetal", "qemu-mps2-an385"], "cmake_module": "mps2-an385-baremetal"}
+    found = {"mps2-an385-baremetal": "x"}
+    assert descriptor_owner(d, found, {"mps2-an385-baremetal"}) == "mps2-an385-baremetal"
+    # …and with no index key to go through, name equality still applies
+    assert descriptor_owner({"names": ["a", "o"]}, {"o": "x"}, set()) == "o"
+    assert descriptor_owner(d, found, set()) is None
     sys.stdout.write("check-board-name-reach self-test: OK\n")
 
 
@@ -367,8 +412,15 @@ def main():
         if not ok:
             violations[board] = (msg, why)
 
+    # The INDEX namespace — read first, because a descriptor is attributed to
+    # its overlay through the index key it provisions through (issue 2063).
+    idx = index_boards(INDEX)
+    if not idx:
+        sys.stderr.write("error: no [board.*] entries read from the SDK index.\n")
+        return 1
+
     # Every descriptor ALIAS too (issue 1614), judged by its overlay's reach.
-    for alias, owner in descriptor_aliases(ROOT, found):
+    for alias, owner in descriptor_aliases(ROOT, found, set(idx)):
         if is_platform_selector(alias):
             continue
         pinned, why, vendor = scan(ROOT, owner, found[owner])
@@ -380,10 +432,6 @@ def main():
     # target — the index has no linker script to read, but it does say what it
     # builds for, and `arch = "x86_64"` is the host. `zephyr` declares no arch
     # (Zephyr supplies its own boards), so it is a meta entry and out of scope.
-    idx = index_boards(INDEX)
-    if not idx:
-        sys.stderr.write("error: no [board.*] entries read from the SDK index.\n")
-        return 1
     for board, (arch, _platform) in sorted(idx.items()):
         if board in found or not arch or arch == "-":
             continue
