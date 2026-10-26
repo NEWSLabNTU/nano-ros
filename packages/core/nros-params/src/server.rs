@@ -103,7 +103,7 @@ pub enum DeclarationError {
 }
 
 /// phase-515 R8 -- the typed builder's terminals return [`DeclarationError`]
-/// now, as rclrs's do. This keeps `?` into a [`ParameterError`]-returning
+/// now, as rclrs's do. This keeps `?` into a [`ParameterError`](crate::ParameterError)-returning
 /// caller compiling, and maps each case to the `ParameterError` such a caller
 /// saw before the change.
 impl From<DeclarationError> for crate::ParameterError {
