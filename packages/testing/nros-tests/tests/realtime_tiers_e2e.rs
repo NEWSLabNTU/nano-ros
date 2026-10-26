@@ -171,7 +171,7 @@ const LEVELS_CPP_PARAMS: &[(&str, i64)] = &[("urgent", 100), ("middle", 101), ("
 
 /// phase-509 P9 -- the stack a `levels-cpp` level derives with the Kconfig
 /// defaults: no member states one, so `NROS_LEVEL_STACK_BYTES(0)` is the
-/// per-callback default (16384 - 4096) plus the worker frame (4096).
+/// per-callback default (16384 - 13312) plus the worker frame (13312).
 const LEVELS_CPP_DERIVED_STACK: u32 = 16_384;
 
 /// The per-cell EXECUTION data for one realtime-tiers matrix cell. The

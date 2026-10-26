@@ -624,9 +624,9 @@ differ from the step above:
   (`NROS_CPP_TIER_BACKING_SIZE_<i>`).
 - **Member stacks.** A spawned level that declares no `stack_bytes` gets
   `NROS_LEVEL_STACK_BYTES(member)`: the largest member's stack plus the
-  worker frame (`CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`, 4,096 B, an
-  estimate; issue 2019 measured FreeRTOS and NuttX, below). No contract or
-  `system.toml` key stated a member's stack in P9, so every member took
+  worker frame (`CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`, 13,312 B,
+  measured by issue 2065; issue 2019 measured FreeRTOS and NuttX, below).
+  No contract or `system.toml` key stated a member's stack in P9, so every member took
   the per-callback default (`CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE` minus the
   frame) and the cost report named it; a level's stack was then exactly the knob, as before.
   Issue 2019 added the key (`[[component]] stack_bytes`, below "As built
@@ -940,19 +940,34 @@ executor's lock and the thread identity:
   | FreeRTOS (mps2-an385) | Rust | 46,840 B | 48,128 B |
   | NuttX (virt, cortex-a7) | C | 10,384 B | 11,264 B |
   | NuttX (virt, cortex-a7) | Rust | 32,384 B | 32,768 B |
+  | Zephyr (S32K344 island) | C | 12,464 B | 13,312 B |
+  | Zephyr (mps2/an385) | Rust | 50,968 B | 51,200 B |
 
   The C frames are the headers' defaults (`NROS_FREERTOS_LEVEL_WORKER_FRAME`,
-  `NROS_NUTTX_LEVEL_WORKER_FRAME`; a `-D` still overrides), and the per-level
-  default stays the same total (256 KiB, 16 KiB), so a level whose members
-  state nothing is unchanged and only the per-callback default shrinks. The
-  Rust frames are `level_worker_frame_bytes(rtos, LevelRunner::Rust)`, which
+  `NROS_NUTTX_LEVEL_WORKER_FRAME`; a `-D` still overrides) and Zephyr's
+  Kconfig default (`CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`, issue 2065).
+  The per-level default stays the same total (256 KiB, 16 KiB, 16 KiB), so
+  a level whose members state nothing is unchanged and only the
+  per-callback default shrinks. The Rust frames are
+  `level_worker_frame_bytes(rtos, LevelRunner::Rust)`, which
   `derive_level_stacks` adds. Each peak includes the fixture's own
-  callbacks, so it bounds the frame from above for that fixture. Zephyr
-  keeps the 4,096 B estimate (`CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`); a
-  board measures its own with `CONFIG_THREAD_ANALYZER` and sets the knob.
-  ThreadX keeps it too: the Linux port runs its threads on host pthreads
-  with no stack checking (`TX_ENABLE_STACK_CHECKING` is off), so there is
-  nothing to measure there.
+  registration and callbacks, so it bounds the frame from above for that
+  fixture.
+
+  Zephyr (issue 2065). The C runner was measured on hardware: the island's
+  two spawned levels (C++ nodes, Cortex-M7, `-Os`), the lock probe reading
+  the thread analyzer's high-water at each level's first pass (the setup
+  peak, 12,328-12,464 B), then repainting the stack below that frame and
+  reading it again over 3,463-4,777 passes (the steady peak, 5,584-6,920 B,
+  spin_once and the member callbacks), on a normal and a 300 ms overrun
+  act. The Rust runner was measured on `realtime-rust`'s `derived_bringup`
+  rebuilt for mps2/an385 (Cortex-M3, QEMU, slirp) the same way: setup
+  50,968 B with `CONFIG_DEBUG` (the fixtures' profile), 47,456 B release;
+  steady 5,952 B and 5,816 B after 300, 3,000 and 10,000 passes. The Rust
+  frame is the larger profile's. No pass went deeper than setup on either.
+  ThreadX keeps the 4,096 B estimate: the Linux port runs its threads on
+  host pthreads with no stack checking (`TX_ENABLE_STACK_CHECKING` is off),
+  so there is nothing to measure there.
 - **Lock cost.** The Zephyr runner's lock is a bare `k_mutex` through the
   module's shims, not `nros_platform_mutex_rec_*`: on a `CONFIG_POSIX_API`
   image that wrapper is a POSIX recursive mutex. On the island (S32K344,

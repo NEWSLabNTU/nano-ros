@@ -977,10 +977,13 @@ pub enum LevelRunner {
 /// `realtime-rust` workspaces' spawned `high` level, the stack high-water
 /// mark after setup and again after 300 and 3,000 passes, rounded up to the
 /// next KiB): FreeRTOS C 9,448 B, Rust 46,840 B; NuttX C 10,384 B, Rust
-/// 32,384 B. No pass went deeper than setup. Zephyr and ThreadX keep a
-/// 4,096 B estimate: Zephyr is measured per board through
-/// `CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME`, and the ThreadX Linux port runs
-/// its threads on host pthreads with no stack checking.
+/// 32,384 B. No pass went deeper than setup. Zephyr is measured too (issue
+/// 2065): the C runner on the S32K344 island's two spawned levels (setup
+/// 12,464 B, steady 6,920 B), the Rust runner on `realtime-rust`'s
+/// `derived_bringup` on mps2/an385 under QEMU (setup 50,968 B debug,
+/// 47,456 B release; steady 5,952 B), the frame the larger profile's.
+/// ThreadX keeps a 4,096 B estimate: its Linux port runs its threads on
+/// host pthreads with no stack checking.
 ///
 /// The C values are the headers' defaults
 /// (`<rclc/detail/tier_task_memory_<rtos>.h>`), which `mem-report --levels`
@@ -991,7 +994,9 @@ pub fn level_worker_frame_bytes(rtos: &str, runner: LevelRunner) -> Option<u32> 
         ("freertos", LevelRunner::Rust) => Some(47 * 1024),
         ("nuttx", LevelRunner::C) => Some(11 * 1024),
         ("nuttx", LevelRunner::Rust) => Some(32 * 1024),
-        ("zephyr" | "threadx", _) => Some(4096),
+        ("zephyr", LevelRunner::C) => Some(13 * 1024),
+        ("zephyr", LevelRunner::Rust) => Some(50 * 1024),
+        ("threadx", _) => Some(4096),
         _ => None,
     }
 }
@@ -1880,7 +1885,7 @@ mod applicability_tests {
             tiers: vec![urgent.clone(), lazy.clone(), authored.clone()],
         };
         assert_eq!(derive_level_stacks(&mut t, &stacks, "zephyr"), 1);
-        assert_eq!(t.tiers[0].stack_bytes, Some(6144 + 4096));
+        assert_eq!(t.tiers[0].stack_bytes, Some(6144 + 51_200));
         assert_eq!(t.tiers[1].stack_bytes, None, "no member states one");
         assert_eq!(
             t.tiers[2].stack_bytes,
@@ -1902,7 +1907,12 @@ mod applicability_tests {
         urgent.name = "urgent".into();
         urgent.members = vec![("a".into(), "g".into())];
         let stacks: BTreeMap<String, u32> = [("a".to_string(), 2048)].into();
-        for (rtos, frame) in [("freertos", 48_128), ("nuttx", 32_768), ("threadx", 4096)] {
+        for (rtos, frame) in [
+            ("freertos", 48_128),
+            ("nuttx", 32_768),
+            ("zephyr", 51_200),
+            ("threadx", 4096),
+        ] {
             let mut t = table(urgent.clone());
             assert_eq!(derive_level_stacks(&mut t, &stacks, rtos), 1);
             assert_eq!(t.tiers[0].stack_bytes, Some(2048 + frame), "{rtos}");
@@ -1942,5 +1952,24 @@ mod applicability_tests {
                 "{rtos}: the header's {macro_name}"
             );
         }
+        // Issue 2065 -- on Zephyr the header's fallback stands in for the
+        // Kconfig default, which is what an image actually gets.
+        let kconfig =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../zephyr/Kconfig");
+        let text = std::fs::read_to_string(&kconfig)
+            .unwrap_or_else(|e| panic!("{}: {e}", kconfig.display()));
+        let default: u32 = text
+            .lines()
+            .skip_while(|l| l.trim() != "config NROS_ZEPHYR_LEVEL_WORKER_FRAME")
+            .find_map(|l| l.trim().strip_prefix("default "))
+            .expect("NROS_ZEPHYR_LEVEL_WORKER_FRAME states a default")
+            .trim()
+            .parse()
+            .expect("a number");
+        assert_eq!(
+            level_worker_frame_bytes("zephyr", LevelRunner::C),
+            Some(default),
+            "zephyr: CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME's default"
+        );
     }
 }
