@@ -23,7 +23,7 @@ SystemModel there (SystemModels are build artifacts — never committed).
 ## Build
 
 ```sh
-export NROS_REPO_DIR=/path/to/nano-ros
+source /path/to/nano-ros/activate.sh   # puts that checkout's nros on PATH
 nros sync
 nros build linux
 ```

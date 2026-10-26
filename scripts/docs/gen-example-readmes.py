@@ -201,7 +201,7 @@ def render(leaf: pathlib.Path) -> str:
     # turns that one choice into the generated settings the build reads.
     if zephyr and is_rust:
         lines += [
-            "export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros checkout",
+            "source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH",
             "nros sync                                # generated/ message crates",
             "```",
             "",
@@ -222,7 +222,7 @@ def render(leaf: pathlib.Path) -> str:
         ]
     elif is_rust and image:
         lines += [
-            "export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros checkout",
+            "source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH",
             "nros sync     # generated/ message crates + build/<image>/nros-cargo.toml",
             f"nros build    # or: nros build {image}",
             "```",
@@ -231,7 +231,7 @@ def render(leaf: pathlib.Path) -> str:
         # Not migrated to `system.toml` yet (RFC-0098 D3), so there is no
         # `[image.*]` for `nros build` to resolve — cargo still drives it.
         lines += [
-            "export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros checkout",
+            "source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH",
             "nros sync                                # generated/ message crates",
             "cargo build",
             "```",
@@ -241,13 +241,14 @@ def render(leaf: pathlib.Path) -> str:
         ]
     elif is_cmake:
         lines += [
-            "cmake -S . -B build -DNROS_REPO_DIR=/path/to/nano-ros   # or: export NROS_REPO_DIR=…",
+            "cmake -S . -B build -Dnano_ros_ROOT=/path/to/nano-ros   # or: nros build",
             "cmake --build build",
             "```",
             "",
             "No `nros sync` here: a C/C++ leaf's message bindings are a CMake-time",
-            "output. `-DNROS_REPO_DIR` only says where the checkout is — the board, the",
-            "RMW and the domain come from `system.toml` (below), never from a `-D` flag.",
+            "output. `-Dnano_ros_ROOT` is `find_package(nano_ros)`'s hint: it says where",
+            "the checkout is, and nothing else. The board, the RMW and the domain come",
+            "from `system.toml` (below), never from a `-D` flag.",
         ]
     else:  # pragma: no cover — every leaf is one or the other today
         lines += ["```"]

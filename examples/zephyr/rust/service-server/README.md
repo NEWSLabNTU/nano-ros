@@ -7,7 +7,7 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ```bash
 cp -r examples/zephyr/rust/service-server ~/my-service-server && cd ~/my-service-server
-export NROS_REPO_DIR=/path/to/nano-ros   # your nano-ros checkout
+source /path/to/nano-ros/activate.sh     # puts that checkout's nros on PATH
 nros sync                                # generated/ message crates
 ```
 

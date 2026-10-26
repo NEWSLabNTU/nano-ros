@@ -1,17 +1,18 @@
 ---
 id: 2044
 title: "Copy-out instructions configure with `NROS_REPO_DIR`, which `find_package(nano_ros)` never reads — the documented first build fails"
-status: open
+status: resolved
 type: bug
 area: [examples, docs, cmake]
 severity: high
 found: 2026-10-25
+resolved: 2026-10-26
 related: [rfc-0103, rfc-0026, phase-452, issue-1641]
 ---
 
 # Copy-out instructions configure with a retired root variable
 
-**Home:** [phase-452](../roadmap/phase-452-copy-out-front-door.md) W7.
+**Resolved 2026-10-26** — see the last section. **Home:** [phase-452](../../roadmap/phase-452-copy-out-front-door.md) W7.
 
 ## Problem
 
@@ -71,3 +72,42 @@ not example READMEs.
   `check-repo-dir-readers` to Markdown command lines, or make the copy-out
   probe run a README's own configure line (checklist G2: "DOCS are not gated,
   so read them").
+
+## Resolution (2026-10-26)
+
+One spelling everywhere a user is told what to type:
+
+- **C/C++:** `cmake -S . -B build -Dnano_ros_ROOT=<root>`, or `nros build`.
+  This is the hint `find_package(nano_ros)` reads. The fix is in
+  `scripts/docs/gen-example-readmes.py`, and its 141 generated pages were
+  re-rendered. Two of them, the `typed-carrier` pages, carry hand-written
+  sections that `--force` would have dropped, so those two were patched in
+  place. The same fix went into the examples index, the root `README.md` and
+  the three `bins/*-poc` READMEs.
+- **Rust:** `source <root>/activate.sh`, which puts that checkout's `nros` on
+  PATH. The exported `NROS_REPO_DIR` reached no reader. This changed in the
+  generator, the five templates, the examples index and RFC-0040's user flow.
+- **The refusal:** `_nros_bootstrap`'s `FATAL_ERROR` names `nros build` and
+  `-Dnano_ros_ROOT`.
+
+**Gate.** `check-repo-dir-readers` now also reads fenced commands in tracked
+Markdown. It refuses three forms: `export NROS_REPO_DIR=…`,
+`NROS_REPO_DIR=… cmd` and `-DNROS_REPO_DIR=…`. Records (`docs/issues/`,
+`docs/roadmap/`, changelogs) are exempt. Against origin/main's docs it reports
+154 findings in 152 files; after the sweep it reports 0. Self-tests cover each
+form, prose, and lines outside a fence.
+
+**Measured on copies**, made with `env -i HOME=$HOME PATH=/usr/bin:/bin`:
+
+- `examples/linux/c/action-client` with `-Dnano_ros_ROOT=<root>`:
+  `-- Configuring done`.
+- `examples/linux/rust/talker`, after `source <root>/activate.sh`: `nros sync`
+  writes `build/linux/nros-cargo.toml`.
+
+**Left as is**, because each describes rather than instructs:
+
+- the leaf-block CMake variable in the PX4 README;
+- `docs/reference/environment-variables.md`, which documents the variable that
+  `just` recipes still export;
+- RFC-0099 and `canonical-build-path.md`, which describe the resolution ladder.
+

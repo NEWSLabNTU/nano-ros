@@ -88,7 +88,7 @@ nros = { version = "*", default-features = false, features = ["<rmw>", "platform
 The user runs, once, before the first build:
 
 ```sh
-export NROS_REPO_DIR=/path/to/nano-ros      # their source checkout
+source /path/to/nano-ros/activate.sh        # their checkout's nros on PATH
 eval "$(nros ws env)"                        # ROS / interface search path
 nros sync                                 # codegen msgs + write [patch] block
 cargo build                                  # plain cargo

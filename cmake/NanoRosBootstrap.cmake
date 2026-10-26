@@ -28,9 +28,10 @@ macro(_nros_bootstrap)
     endif()
     if(NOT DEFINED NROS_REPO_DIR OR NROS_REPO_DIR STREQUAL "")
         message(FATAL_ERROR
-            "_nros_bootstrap: NROS_REPO_DIR is not set. Pass "
-            "-DNROS_REPO_DIR=<nano-ros checkout>, export NROS_REPO_DIR "
-            "(source activate.sh), or call _nros_bootstrap(ROOT <path>).")
+            "_nros_bootstrap: no nano-ros root. Build the leaf with `nros build`, "
+            "or configure it with -Dnano_ros_ROOT=<nano-ros checkout> so "
+            "find_package(nano_ros) finds it (RFC-0103 D6), or call "
+            "_nros_bootstrap(ROOT <path>).")
     endif()
 
     # The workspace helper carries the canonical root/RMW resolution + the

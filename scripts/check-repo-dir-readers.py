@@ -30,6 +30,15 @@ carries the ONE leaf block (explicit `-DNROS_REPO_DIR`/`-Dnano_ros_ROOT`, else
 copies are compared with each other, so the spelling lives in the leaves, not
 restated here.
 
+Documentation is held to it too (issue 2044): a command in a fenced block of a
+tracked Markdown file must not hand the root over as `NROS_REPO_DIR` — no
+`export NROS_REPO_DIR=…`, no `NROS_REPO_DIR=… cmd`, no `-DNROS_REPO_DIR=…`.
+A copied-out leaf finds nano-ros through `find_package(nano_ros)`, which reads
+`-Dnano_ros_ROOT`, so a `-DNROS_REPO_DIR` configure fails at `find_package`,
+and an exported variable reaches no reader at all. 148 example READMEs taught
+it until the sweep. Records of what happened (`docs/issues/`, `docs/roadmap/`,
+changelogs) are out of scope: they quote old commands on purpose.
+
 Scope (Rust): tracked `*.rs` outside test code (a `tests/` directory, or a `*_tests.rs`
 file). A test that reads the variable to decide whether to skip is not acting on
 a checkout. `#[cfg(test)]` modules inside a source file are NOT exempt — a
@@ -48,6 +57,11 @@ ROOT = Path(__file__).resolve().parent.parent
 READ_RE = re.compile(r'\benv::var(?:_os)?\s*\(\s*"NROS_REPO_DIR"\s*\)|\benv!\s*\(\s*"NROS_REPO_DIR"')
 CMAKE_READ_RE = re.compile(r"ENV\{(?:NROS_REPO_DIR|nano_ros_ROOT)\}")
 CMAKE_GLOBS = ["*CMakeLists.txt", "*.cmake", "*.cmake.in"]
+DOC_INPUT_RE = re.compile(
+    r"\bexport\s+NROS_REPO_DIR=|(?:^|[\s;&|(])NROS_REPO_DIR=\S+\s+\S|-DNROS_REPO_DIR="
+)
+# Records of what happened: they quote retired commands on purpose.
+DOC_EXEMPT_PREFIXES = ("docs/issues/", "docs/roadmap/", ".superpowers/")
 # The first line of the shared leaf block; the block ends at its first
 # column-0 `endif()`.
 BLOCK_HEAD = "# Resolve the nano-ros SDK root — RFC-0103 D6 (amended 2026-10-12). This"
@@ -95,6 +109,31 @@ def cmake_findings(rel: str, text: str) -> list[str]:
     return out
 
 
+def doc_exempt(rel: str) -> bool:
+    return rel.startswith(DOC_EXEMPT_PREFIXES) or Path(rel).name.upper().startswith("CHANGELOG")
+
+
+def doc_findings(rel: str, text: str) -> list[str]:
+    """One message per fenced-block command that hands the root over as NROS_REPO_DIR."""
+    out, fence = [], None
+    for i, line in enumerate(text.splitlines()):
+        s = line.strip()
+        if s.startswith(("```", "~~~")):
+            mark = s[:3]
+            fence = None if fence == mark else (fence or mark)
+            continue
+        if fence and DOC_INPUT_RE.search(line):
+            out.append(
+                f"{rel}:{i + 1}: a documented command passes the root as NROS_REPO_DIR.\n"
+                f"      {s}\n"
+                f"      RFC-0103 D6 (amended 2026-10-12), issue 2044: `find_package(nano_ros)` "
+                f"reads -Dnano_ros_ROOT=<root>, and nothing reads an exported NROS_REPO_DIR. "
+                f"Write `nros build`, `cmake ... -Dnano_ros_ROOT=<root>`, or "
+                f"`source <root>/activate.sh` to put that checkout's nros on PATH."
+            )
+    return out
+
+
 def leaf_block(text: str) -> str | None:
     """The shared leaf block in `text`, or None when the file carries none."""
     lines = text.splitlines()
@@ -130,6 +169,16 @@ def self_test() -> None:
     block = BLOCK_HEAD + "\nif(NOT NROS_REPO_DIR)\nendif()"
     assert leaf_block("x\n" + block + "\nafter") == block
     assert leaf_block("no block here") is None
+    # Docs: each input spelling fires inside a fence; prose and outside-fence lines do not.
+    fenced = lambda body: "text\n```bash\n" + body + "\n```\n"
+    assert len(doc_findings("a.md", fenced("export NROS_REPO_DIR=/p"))) == 1
+    assert len(doc_findings("a.md", fenced("NROS_REPO_DIR=/p nros sync"))) == 1
+    assert len(doc_findings("a.md", fenced("cmake -S . -B b -DNROS_REPO_DIR=/p"))) == 1
+    assert doc_findings("a.md", fenced("cmake -S . -B b -Dnano_ros_ROOT=/p")) == []
+    assert doc_findings("a.md", "Pass `-DNROS_REPO_DIR=/p` once.\n") == []
+    assert doc_findings("a.md", fenced("echo $NROS_REPO_DIR")) == []
+    assert doc_exempt("docs/issues/" + "any.md") and doc_exempt("CHANGELOG.md")
+    assert not doc_exempt("examples/linux/c/talker/README.md")
 
 
 def main() -> int:
@@ -188,10 +237,33 @@ def main() -> int:
         for e in errors:
             print(f"  - {e}", file=sys.stderr)
         return 1
+    r = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--", "*.md"],
+        capture_output=True, text=True, check=False,
+    )
+    if r.returncode != 0:
+        sys.exit(f"check-repo-dir-readers: `git ls-files` failed:\n  {r.stderr.strip()}")
+    doc_scanned = 0
+    for rel in (x.strip() for x in r.stdout.splitlines()):
+        path = ROOT / rel
+        if not rel or doc_exempt(rel) or not path.is_file():
+            continue
+        doc_scanned += 1
+        text = path.read_text(errors="replace")
+        if "NROS_REPO_DIR" in text:
+            errors += doc_findings(rel, text)
+    if doc_scanned == 0:
+        sys.exit("check-repo-dir-readers: scanned NO Markdown files — an empty scan passes vacuously.")
+    if errors:
+        print("check-repo-dir-readers: FAIL", file=sys.stderr)
+        for e in errors:
+            print(f"  - {e}", file=sys.stderr)
+        return 1
     copies = sum(len(v) for v in blocks.values())
     print(
         f"check-repo-dir-readers: OK — {scanned} Rust and {cmake_scanned} CMake file(s), "
-        f"none reads the root from the environment; {copies} identical leaf block(s)."
+        f"none reads the root from the environment; {copies} identical leaf block(s); "
+        f"{doc_scanned} Markdown file(s), no documented command passes it as NROS_REPO_DIR."
     )
     return 0
 

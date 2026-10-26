@@ -7,13 +7,14 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 
 ```bash
 cp -r examples/qemu-armv7a-nuttx/c/listener ~/my-listener && cd ~/my-listener
-cmake -S . -B build -DNROS_REPO_DIR=/path/to/nano-ros   # or: export NROS_REPO_DIR=…
+cmake -S . -B build -Dnano_ros_ROOT=/path/to/nano-ros   # or: nros build
 cmake --build build
 ```
 
 No `nros sync` here: a C/C++ leaf's message bindings are a CMake-time
-output. `-DNROS_REPO_DIR` only says where the checkout is — the board, the
-RMW and the domain come from `system.toml` (below), never from a `-D` flag.
+output. `-Dnano_ros_ROOT` is `find_package(nano_ros)`'s hint: it says where
+the checkout is, and nothing else. The board, the RMW and the domain come
+from `system.toml` (below), never from a `-D` flag.
 
 ## Run
 
