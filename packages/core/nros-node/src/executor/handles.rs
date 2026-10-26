@@ -117,7 +117,7 @@ impl WaitBudget {
     }
 }
 
-/// UUID byte count in a ROS 2 GoalId.
+/// UUID byte count in a ROS 2 GoalUuid.
 ///
 /// CDR encoding: a fixed `uint8[16]` array — ROS 2 `unique_identifier_msgs/UUID`
 /// — with **no** length prefix (fixed arrays are unprefixed in CDR).
@@ -2570,9 +2570,9 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         }
     }
 
-    /// Send a typed goal. Returns its `GoalId`; acceptance arrives via the
+    /// Send a typed goal. Returns its `GoalUuid`; acceptance arrives via the
     /// registered goal-response callback.
-    pub fn send_goal(&mut self, goal: &A::Goal) -> Result<nros_core::GoalId, NodeError> {
+    pub fn send_goal(&mut self, goal: &A::Goal) -> Result<nros_core::GoalUuid, NodeError> {
         let core = unsafe { &mut *self.core };
         let mut buf = [0u8; GOAL_BUF];
         let mut writer = crate::tx_writer(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
@@ -2584,7 +2584,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
 
     /// Request the result for `goal_id`; the result arrives via the registered
     /// result callback.
-    pub fn get_result(&mut self, goal_id: &nros_core::GoalId) -> Result<(), NodeError> {
+    pub fn get_result(&mut self, goal_id: &nros_core::GoalUuid) -> Result<(), NodeError> {
         let core = unsafe { &mut *self.core };
         core.send_get_result_request(goal_id)
     }
@@ -3038,9 +3038,9 @@ fn cdr_deserialize_reply<Svc: RosService>(data: &[u8]) -> Result<Svc::Reply, Nod
 #[derive(Clone)]
 pub struct ActiveGoal<A: RosAction> {
     /// Goal ID.
-    pub goal_id: nros_core::GoalId,
+    pub goal_id: nros_core::GoalUuid,
     /// Current status.
-    pub status: nros_core::GoalStatus,
+    pub status: nros_core::GoalStatusCode,
     /// The goal data.
     pub goal: A::Goal,
 }
@@ -3048,9 +3048,9 @@ pub struct ActiveGoal<A: RosAction> {
 /// Completed goal with result.
 pub struct CompletedGoal<A: RosAction> {
     /// Goal ID.
-    pub goal_id: nros_core::GoalId,
+    pub goal_id: nros_core::GoalUuid,
     /// Final status.
-    pub status: nros_core::GoalStatus,
+    pub status: nros_core::GoalStatusCode,
     /// The result data.
     pub result: A::Result,
 }
@@ -3098,8 +3098,8 @@ impl<
     /// handler to decide acceptance. Returns the goal ID if accepted.
     pub fn try_accept_goal(
         &mut self,
-        goal_handler: impl FnOnce(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse,
-    ) -> Result<Option<nros_core::GoalId>, NodeError>
+        goal_handler: impl FnOnce(&nros_core::GoalUuid, &A::Goal) -> nros_core::GoalResponse,
+    ) -> Result<Option<nros_core::GoalUuid>, NodeError>
     where
         A::Goal: Clone,
     {
@@ -3116,7 +3116,7 @@ impl<
         let end = start + raw_req.data_len;
         let mut reader = CdrReader::new_with_header(&buf[start..end])
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-        // Skip past the GoalId — a fixed `uint8[16]` UUID, no length prefix
+        // Skip past the GoalUuid — a fixed `uint8[16]` UUID, no length prefix
         // (ROS 2 `unique_identifier_msgs/UUID`; see action_core::read_goal_id).
         for _ in 0..GOAL_UUID_SIZE {
             let _ = reader.read_u8();
@@ -3141,10 +3141,10 @@ impl<
     /// Publish feedback for a goal.
     pub fn publish_feedback(
         &mut self,
-        goal_id: &nros_core::GoalId,
+        goal_id: &nros_core::GoalUuid,
         feedback: &A::Feedback,
     ) -> Result<(), NodeError> {
-        // Serialize feedback into a temp buffer (without CDR header or GoalId)
+        // Serialize feedback into a temp buffer (without CDR header or GoalUuid)
         let mut tmp = [0u8; FEEDBACK_BUF];
         let mut writer = CdrWriter::new(&mut tmp);
         feedback
@@ -3159,7 +3159,11 @@ impl<
     /// Set a goal's status.
     ///
     /// Also publishes the updated `GoalStatusArray` on the status topic.
-    pub fn set_goal_status(&mut self, goal_id: &nros_core::GoalId, status: nros_core::GoalStatus) {
+    pub fn set_goal_status(
+        &mut self,
+        goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
+    ) {
         self.core.set_goal_status(goal_id, status);
     }
 
@@ -3176,8 +3180,8 @@ impl<
     /// the second one used to strand every client waiting on the result.
     pub fn complete_goal(
         &mut self,
-        goal_id: &nros_core::GoalId,
-        status: nros_core::GoalStatus,
+        goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
         result: A::Result,
     ) -> Result<(), NodeError> {
         // Serialize result for the core slab. Issue 0796: a serialization
@@ -3234,15 +3238,15 @@ impl<
     pub fn try_handle_cancel(
         &mut self,
         cancel_handler: impl FnMut(
-            &nros_core::GoalId,
-            nros_core::GoalStatus,
+            &nros_core::GoalUuid,
+            nros_core::GoalStatusCode,
         ) -> nros_core::CancelResponse,
-    ) -> Result<Option<(nros_core::GoalId, nros_core::CancelResponse)>, NodeError> {
+    ) -> Result<Option<(nros_core::GoalUuid, nros_core::CancelResponse)>, NodeError> {
         self.core.try_handle_cancel(cancel_handler)
     }
 
     /// Try to handle a get_result request.
-    pub fn try_handle_get_result(&mut self) -> Result<Option<nros_core::GoalId>, NodeError>
+    pub fn try_handle_get_result(&mut self) -> Result<Option<nros_core::GoalUuid>, NodeError>
     where
         A::Result: Clone + Default,
     {
@@ -3291,8 +3295,8 @@ impl<
     /// ```
     pub fn poll<GF, CF>(&mut self, mut on_goal: GF, mut on_cancel: CF) -> Result<(), NodeError>
     where
-        GF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse,
-        CF: FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse,
+        GF: FnMut(&nros_core::GoalUuid, &A::Goal) -> nros_core::GoalResponse,
+        CF: FnMut(&nros_core::GoalUuid, nros_core::GoalStatusCode) -> nros_core::CancelResponse,
         A::Goal: Clone,
         A::Result: Clone + Default,
     {
@@ -3303,7 +3307,7 @@ impl<
     }
 
     /// Get a reference to an active goal.
-    pub fn get_goal(&self, goal_id: &nros_core::GoalId) -> Option<ActiveGoal<A>>
+    pub fn get_goal(&self, goal_id: &nros_core::GoalUuid) -> Option<ActiveGoal<A>>
     where
         A::Goal: Clone,
     {
@@ -3329,7 +3333,7 @@ impl<
     /// See
     /// [`ActionServerCore::goal_exists`](crate::executor::ffi::ActionServerCoreFfi::goal_exists)
     /// for why the completed-result slab counts as well as the active set.
-    pub fn goal_exists(&self, goal_id: &nros_core::GoalId) -> bool {
+    pub fn goal_exists(&self, goal_id: &nros_core::GoalUuid) -> bool {
         self.core.goal_exists(goal_id)
     }
 
@@ -3381,12 +3385,12 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     pub fn send_goal(
         &mut self,
         goal: &A::Goal,
-    ) -> Result<(nros_core::GoalId, Promise<'_, bool>), NodeError> {
+    ) -> Result<(nros_core::GoalUuid, Promise<'_, bool>), NodeError> {
         if self.core.in_flight_send_goal {
             return Err(NodeError::RequestInFlight);
         }
 
-        // Serialize goal into a temp buffer (without CDR header or GoalId)
+        // Serialize goal into a temp buffer (without CDR header or GoalUuid)
         let mut tmp = [0u8; GOAL_BUF];
         let mut writer = CdrWriter::new(&mut tmp);
         goal.serialize(&mut writer)
@@ -3411,16 +3415,16 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     /// Try to receive feedback (non-blocking).
     pub fn try_recv_feedback(
         &mut self,
-    ) -> Result<Option<(nros_core::GoalId, A::Feedback)>, NodeError> {
+    ) -> Result<Option<(nros_core::GoalUuid, A::Feedback)>, NodeError> {
         let (goal_id, len) = match self.core.try_recv_feedback_raw()? {
             Some(v) => v,
             None => return Ok(None),
         };
 
-        // Deserialize feedback from the core's feedback buffer (after GoalId)
+        // Deserialize feedback from the core's feedback buffer (after GoalUuid)
         let mut reader = CdrReader::new_with_header(&self.core.feedback_buffer[..len])
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-        // Skip GoalId — a fixed `uint8[16]` UUID, no length prefix
+        // Skip GoalUuid — a fixed `uint8[16]` UUID, no length prefix
         // (ROS 2 `unique_identifier_msgs/UUID`; see action_core::read_goal_id).
         for _ in 0..GOAL_UUID_SIZE {
             let _ = reader.read_u8();
@@ -3436,14 +3440,14 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     /// `action_msgs/srv/CancelGoal` return code.
     ///
     /// Issue 0796 — the promise resolves to a
-    /// [`nros_core::CancelReturnCode`], the RPC-level outcome. The per-goal
+    /// [`nros_core::CancelResponseCode`], the RPC-level outcome. The per-goal
     /// accept/reject decision a SERVER's cancel callback returns is the
     /// separate [`nros_core::CancelResponse`]; both were spelled
     /// `CancelResponse` until the two were split.
     pub fn cancel_goal(
         &mut self,
-        goal_id: &nros_core::GoalId,
-    ) -> Result<Promise<'_, nros_core::CancelReturnCode>, NodeError> {
+        goal_id: &nros_core::GoalUuid,
+    ) -> Result<Promise<'_, nros_core::CancelResponseCode>, NodeError> {
         if self.core.in_flight_cancel {
             return Err(NodeError::RequestInFlight);
         }
@@ -3462,8 +3466,8 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     /// Get the result of a completed goal (non-blocking). Returns a [`Promise`].
     pub fn get_result(
         &mut self,
-        goal_id: &nros_core::GoalId,
-    ) -> Result<Promise<'_, (nros_core::GoalStatus, A::Result)>, NodeError> {
+        goal_id: &nros_core::GoalUuid,
+    ) -> Result<Promise<'_, (nros_core::GoalStatusCode, A::Result)>, NodeError> {
         if self.core.in_flight_get_result {
             return Err(NodeError::RequestInFlight);
         }
@@ -3548,10 +3552,10 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     /// Create a goal-filtered feedback stream.
     ///
     /// Only yields feedback for the given `goal_id`, returning `A::Feedback`
-    /// directly (without the `GoalId` wrapper).
+    /// directly (without the `GoalUuid` wrapper).
     pub fn feedback_stream_for(
         &mut self,
-        goal_id: nros_core::GoalId,
+        goal_id: nros_core::GoalUuid,
     ) -> GoalFeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF> {
         GoalFeedbackStream {
             client: self,
@@ -3607,7 +3611,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     ///     // process feedback...
     /// }
     /// ```
-    pub async fn recv(&mut self) -> Option<Result<(nros_core::GoalId, A::Feedback), NodeError>> {
+    pub async fn recv(&mut self) -> Option<Result<(nros_core::GoalUuid, A::Feedback), NodeError>> {
         core::future::poll_fn(|cx| {
             // Register-then-check (closes the AtomicWaker race).
             self.client
@@ -3632,7 +3636,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         &mut self,
         executor: &mut super::Executor,
         timeout: core::time::Duration,
-    ) -> Result<Option<(nros_core::GoalId, A::Feedback)>, NodeError> {
+    ) -> Result<Option<(nros_core::GoalUuid, A::Feedback)>, NodeError> {
         let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
         let timeout_ms = timeout.as_millis().min(u64::MAX as u128) as u64;
         let max_spins = (timeout_ms / DEFAULT_SPIN_INTERVAL_MS).max(1);
@@ -3653,7 +3657,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
 impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     futures_core::Stream for FeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
-    type Item = Result<(nros_core::GoalId, A::Feedback), NodeError>;
+    type Item = Result<(nros_core::GoalUuid, A::Feedback), NodeError>;
 
     fn poll_next(
         self: core::pin::Pin<&mut Self>,
@@ -3689,7 +3693,7 @@ pub struct GoalFeedbackStream<
     const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
     client: &'a mut ActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
-    goal_id: nros_core::GoalId,
+    goal_id: nros_core::GoalUuid,
 }
 
 impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
@@ -3790,26 +3794,26 @@ fn parse_goal_accepted(data: &[u8]) -> Result<bool, NodeError> {
 /// Parse a cancel response (issue #223 — read errors propagate; an
 /// out-of-range enum value is still mapped through `from_i8`'s default,
 /// which is a PROTOCOL value question, not a truncation).
-fn parse_cancel_response(data: &[u8]) -> Result<nros_core::CancelReturnCode, NodeError> {
+fn parse_cancel_response(data: &[u8]) -> Result<nros_core::CancelResponseCode, NodeError> {
     let mut reader =
         CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
     let return_code = reader
         .read_i8()
         .map_err(|_| NodeError::ServiceRequestFailed)?;
-    Ok(nros_core::CancelReturnCode::from_i8(return_code).unwrap_or_default())
+    Ok(nros_core::CancelResponseCode::from_i8(return_code).unwrap_or_default())
 }
 
 /// Parse an action result response (status + result; issue #223 — read
 /// errors propagate).
 fn parse_result_response<A: RosAction>(
     data: &[u8],
-) -> Result<(nros_core::GoalStatus, A::Result), NodeError> {
+) -> Result<(nros_core::GoalStatusCode, A::Result), NodeError> {
     let mut reader =
         CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
     let status_code = reader
         .read_i8()
         .map_err(|_| NodeError::ServiceRequestFailed)?;
-    let status = nros_core::GoalStatus::from_i8(status_code).unwrap_or_default();
+    let status = nros_core::GoalStatusCode::from_i8(status_code).unwrap_or_default();
     let result =
         A::Result::deserialize(&mut reader).map_err(|_| NodeError::ServiceRequestFailed)?;
     Ok((status, result))
@@ -3818,7 +3822,7 @@ fn parse_result_response<A: RosAction>(
 #[cfg(test)]
 mod parse_response_tests {
     // Issue #223 — truncated action-response frames must ERROR, not collapse
-    // to plausible defaults ("goal rejected" / CancelReturnCode::default()).
+    // to plausible defaults ("goal rejected" / CancelResponseCode::default()).
     use super::{parse_cancel_response, parse_goal_accepted};
 
     /// A valid 4-byte CDR encapsulation header with NO payload — the

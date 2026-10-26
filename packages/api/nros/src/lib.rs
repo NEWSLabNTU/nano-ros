@@ -1423,14 +1423,17 @@ pub use nros_core::{ServiceClient, ServiceServer};
 // Re-export action types.
 //
 // issue 0796 — `CancelResponse` (the per-goal Reject/Accept decision) and
-// `CancelReturnCode` (the `action_msgs/srv/CancelGoal` RPC status) are two
+// `CancelResponseCode` (the `action_msgs/srv/CancelGoal` RPC status) are two
 // concepts that shared one name until the split. Both are exported: without
-// `CancelReturnCode` here, `ActionClient::cancel_goal`'s `Promise<CancelReturnCode>`
+// `CancelResponseCode` here, `ActionClient::cancel_goal`'s `Promise<CancelResponseCode>`
 // could not be NAMED from `nros::` alone.
 pub use nros_core::{
-    CancelResponse, CancelReturnCode, GoalId, GoalInfo, GoalResponse, GoalStatus,
-    GoalStatusStamped, RosAction,
+    CancelResponse, CancelResponseCode, GoalInfo, GoalResponse, GoalStatusCode, GoalStatusStamped,
+    GoalUuid, RosAction,
 };
+// phase-515 R8 -- the pre-rename names, deprecated for one release.
+#[allow(deprecated)]
+pub use nros_core::{CancelReturnCode, GoalId, GoalStatus};
 
 // Re-export lifecycle types (always available, no_std compatible)
 pub use nros_core::{LifecycleState, LifecycleTransition, TransitionResult};
@@ -1637,7 +1640,11 @@ pub mod prelude {
     };
 
     // Re-export action types
-    pub use crate::{GoalId, GoalInfo, GoalResponse, GoalStatus, GoalStatusStamped, RosAction};
+    #[allow(deprecated)]
+    pub use crate::{GoalId, GoalStatus};
+    pub use crate::{
+        GoalInfo, GoalResponse, GoalStatusCode, GoalStatusStamped, GoalUuid, RosAction,
+    };
 
     // Re-export Time, Duration, Clock from core
     pub use nros_core::{Clock, ClockType, Duration, Time};

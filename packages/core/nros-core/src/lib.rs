@@ -106,9 +106,11 @@ pub mod types;
 // dead marker structs behind them; the live types under those names are
 // `nros_node`'s, which is what `nros` re-exports.
 pub use action::{
-    CancelResponse, CancelReturnCode, GoalId, GoalInfo, GoalResponse, GoalStatus,
-    GoalStatusStamped, RosAction,
+    CancelResponse, CancelResponseCode, GoalInfo, GoalResponse, GoalStatusCode, GoalStatusStamped,
+    GoalUuid, RosAction,
 };
+#[allow(deprecated)]
+pub use action::{CancelReturnCode, GoalId, GoalStatus};
 pub use clock::{Clock, ClockType};
 // RFC-0090 — generated code names these directly, so they are re-exported at
 // the root: an emitted `const` assertion should not have to spell a module path

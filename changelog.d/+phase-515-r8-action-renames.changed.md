@@ -1,0 +1,1 @@
+Rust action types take rclrs's names: `GoalId` is now `GoalUuid`, `GoalStatus` is now `GoalStatusCode`, and `CancelReturnCode` is now `CancelResponseCode`. The old names remain one release as deprecated aliases (from `nros`, its prelude, `nros_node` and `nros_core`). C and C++ names are unchanged. (phase-515 R8)

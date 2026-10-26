@@ -6,7 +6,7 @@
 //! - [`TickCtx::call_raw`] / [`TickCtx::call`]      — drive a service-client
 //!   request from a tick body, where the executor is free.
 //! - [`TickCtx::send_goal_raw`] / [`TickCtx::send_goal`] — kick an
-//!   action-client goal from a tick body; the assigned [`GoalId`] is
+//!   action-client goal from a tick body; the assigned [`GoalUuid`] is
 //!   stamped by the server-side accept.
 //!
 //! Both seams route through the [`nros::__macro::ClientDispatch`] trait so the
@@ -100,7 +100,7 @@ pub unsafe extern "C" fn nros_cpp_tick_ctx_call_raw(
 /// Kick an action-client goal from a tick body (Phase 212.M-F.4.c).
 ///
 /// Mirrors `nros::TickCtx::send_goal_raw` (Rust). The server-side
-/// accept stamps the assigned [`GoalId`]; this call returns that id in
+/// accept stamps the assigned [`GoalUuid`]; this call returns that id in
 /// `goal_id_out` (16 bytes). Result + feedback streams arrive via
 /// callback dispatch — not this method.
 ///

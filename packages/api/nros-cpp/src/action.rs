@@ -10,7 +10,7 @@
 use core::ffi::{c_char, c_void};
 
 use nros::{
-    GoalId,
+    GoalUuid,
     cdr::{CDR_HEADER_LEN, strip_cdr_header},
 };
 use nros_node::{
@@ -29,7 +29,7 @@ use nros_node::{
 /// because cbindgen emits only literals — the assert below binds the two).
 pub const NROS_CPP_ACTION_RESULT_PAYLOAD_OFFSET: usize = 8;
 /// Issue 2014 — byte of a feedback message where the feedback fields start
-/// (`[encap 4][GoalId.uuid 16][fields]`); mirror of
+/// (`[encap 4][GoalUuid.uuid 16][fields]`); mirror of
 /// `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
 pub const NROS_CPP_ACTION_FEEDBACK_PAYLOAD_OFFSET: usize = 20;
 /// Issue 2014 — length of the CDR encapsulation header a raw action frame
@@ -154,7 +154,7 @@ const _: () = assert!(
 /// # Safety
 /// `context` must point to a valid `CppActionServer`.
 unsafe extern "C" fn goal_callback_trampoline(
-    goal_id: *const nros::GoalId,
+    goal_id: *const nros::GoalUuid,
     goal_data: *const u8,
     goal_len: usize,
     context: *mut c_void,
@@ -189,8 +189,8 @@ unsafe extern "C" fn goal_callback_trampoline(
 /// # Safety
 /// `context` must point to a valid `CppActionServer`.
 unsafe extern "C" fn cancel_callback_trampoline(
-    goal_id: *const nros::GoalId,
-    _status: nros::GoalStatus,
+    goal_id: *const nros::GoalUuid,
+    _status: nros::GoalStatusCode,
     context: *mut c_void,
 ) -> nros::CancelResponse {
     let server = unsafe { &*(context as *const CppActionServer) };
@@ -219,7 +219,7 @@ unsafe extern "C" fn cancel_callback_trampoline(
 /// # Safety
 /// `context` must point to a valid `CppActionServer`.
 unsafe extern "C" fn accepted_callback_trampoline(
-    goal_id: *const nros::GoalId,
+    goal_id: *const nros::GoalUuid,
     context: *mut c_void,
 ) {
     let server = unsafe { &*(context as *const CppActionServer) };
@@ -525,7 +525,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback(
     let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let id = nros::GoalId {
+    let id = nros::GoalUuid {
         uuid: unsafe { *goal_id },
     };
     let data = unsafe { core::slice::from_raw_parts(feedback_buf, feedback_len) };
@@ -577,7 +577,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     let Some(mut ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let id = nros::GoalId {
+    let id = nros::GoalUuid {
         uuid: unsafe { *goal_id },
     };
     let data = unsafe { core::slice::from_raw_parts(result_buf, result_len) };
@@ -593,7 +593,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     // callback-tier server that aborted a goal reported it to the client as
     // succeeded. Every other surface (C, the C++ polling tier, both Rust
     // servers) takes a status; this one now does too.
-    let Some(status) = nros::GoalStatus::from_i8(status as i8) else {
+    let Some(status) = nros::GoalStatusCode::from_i8(status as i8) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
     // issue 0796 — a result the server cannot retain (larger than the action
@@ -633,7 +633,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_execute(
     let Some(h) = server.handle else {
         return NROS_CPP_RET_NOT_INIT;
     };
-    let id = nros::GoalId {
+    let id = nros::GoalUuid {
         uuid: unsafe { *goal_id },
     };
     let mut status = None;
@@ -644,8 +644,8 @@ pub unsafe extern "C" fn nros_cpp_action_server_execute(
     });
     match status {
         None => NROS_CPP_RET_NOT_FOUND,
-        Some(nros::GoalStatus::Accepted) => {
-            h.set_goal_status(ctx.executor, &id, nros::GoalStatus::Executing);
+        Some(nros::GoalStatusCode::Accepted) => {
+            h.set_goal_status(ctx.executor, &id, nros::GoalStatusCode::Executing);
             NROS_CPP_RET_OK
         }
         Some(_) => NROS_CPP_RET_NOT_ALLOWED,
@@ -656,7 +656,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_execute(
 ///
 /// Calls `visitor(uuid, status, ctx)` for each entry in the
 /// arena's `active_goals`. Status is the raw i8 discriminant of
-/// `nros_core::GoalStatus` (0 = Unknown, 1 = Accepted, 2 = Executing,
+/// `nros_core::GoalStatusCode` (0 = Unknown, 1 = Accepted, 2 = Executing,
 /// 3 = Canceling, 4 = Succeeded, 5 = Canceled, 6 = Aborted). The arena
 /// never stores the original goal CDR payload, so only identity + status
 /// are forwarded; users needing the goal bytes should stash them in
@@ -726,7 +726,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_goal_exists(
         Some(h) => *h,
         None => return false,
     };
-    let goal = nros_node::GoalId {
+    let goal = nros_node::GoalUuid {
         uuid: unsafe { *goal_id },
     };
     arena_handle.goal_exists(executor_ctx.executor, &goal)
@@ -996,7 +996,7 @@ const _: () = assert!(
 // C++ action client callback trampolines for the arena entry.
 // `context` is the CppActionClient storage pointer.
 unsafe extern "C" fn cpp_goal_response_trampoline(
-    goal_id: *const nros::GoalId,
+    goal_id: *const nros::GoalUuid,
     accepted: bool,
     context: *mut c_void,
 ) {
@@ -1011,9 +1011,9 @@ unsafe extern "C" fn cpp_goal_response_trampoline(
 /// A client with none installed yet drops it (the C++ `Client<A>` installs one
 /// at creation, before anything can be sent).
 unsafe extern "C" fn cpp_cancel_response_trampoline(
-    goal_id: *const nros::GoalId,
+    goal_id: *const nros::GoalUuid,
     seq: i64,
-    _return_code: nros::CancelReturnCode,
+    _return_code: nros::CancelResponseCode,
     _goals_canceling: usize,
     reply: *const u8,
     reply_len: usize,
@@ -1068,7 +1068,7 @@ fn frame_for_callback(data: &[u8], framed: &mut [u8; DEFAULT_RX_BUF_SIZE]) -> us
 // acceptance and result to the future waiting on THAT goal (keyed by goal id,
 // `rclcpp::detail::PendingList`) before forwarding to the user's.
 unsafe extern "C" fn cpp_feedback_trampoline(
-    goal_id: *const nros::GoalId,
+    goal_id: *const nros::GoalUuid,
     feedback_data: *const u8,
     feedback_len: usize,
     context: *mut c_void,
@@ -1091,8 +1091,8 @@ unsafe extern "C" fn cpp_feedback_trampoline(
 }
 
 unsafe extern "C" fn cpp_result_trampoline(
-    goal_id: *const nros::GoalId,
-    status: nros::GoalStatus,
+    goal_id: *const nros::GoalUuid,
+    status: nros::GoalStatusCode,
     result_data: *const u8,
     result_len: usize,
     context: *mut c_void,
@@ -1108,9 +1108,9 @@ unsafe extern "C" fn cpp_result_trampoline(
     let mut framed = [0u8; DEFAULT_RX_BUF_SIZE];
     let framed_len = frame_for_callback(data, &mut framed);
     let s = match status {
-        nros::GoalStatus::Succeeded => 4i32,
-        nros::GoalStatus::Canceled => 5,
-        nros::GoalStatus::Aborted => 6,
+        nros::GoalStatusCode::Succeeded => 4i32,
+        nros::GoalStatusCode::Canceled => 5,
+        nros::GoalStatusCode::Aborted => 6,
         _ => 0,
     };
     unsafe {
@@ -1512,7 +1512,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     let goal_data = unsafe { core::slice::from_raw_parts(goal_buf, goal_len) };
 
     // C++ ffi_serialize produces [CDR_HEADER][fields], but send_goal_blocking
-    // expects raw fields only (it adds its own CDR header + GoalId).
+    // expects raw fields only (it adds its own CDR header + GoalUuid).
     let goal_fields = strip_cdr_header(goal_data);
 
     // Send goal via arena core (non-blocking)
@@ -1634,7 +1634,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     let Some(_ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     };
-    let id = nros::GoalId {
+    let id = nros::GoalUuid {
         uuid: unsafe { *goal_id },
     };
 
@@ -2079,7 +2079,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
     }
 
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
-    let id = nros::GoalId {
+    let id = nros::GoalUuid {
         uuid: unsafe { *goal_id },
     };
 
@@ -2118,7 +2118,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_cancel_goal(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
-    let id = nros::GoalId {
+    let id = nros::GoalUuid {
         uuid: unsafe { *goal_id },
     };
     let mut core =
@@ -2135,7 +2135,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_cancel_goal(
 /// Drain the reply to a `nros_cpp_action_client_cancel_goal` (non-blocking).
 ///
 /// Writes the `action_msgs/srv/CancelGoal` RETURN CODE (0 = Ok, 1 = Rejected,
-/// 2 = UnknownGoal, 3 = GoalTerminated — `rclcpp_action::CancelReturnCode`, not the
+/// 2 = UnknownGoal, 3 = GoalTerminated — `rclcpp_action::CancelResponseCode`, not the
 /// per-goal `rclcpp_action::CancelResponse`; issue 0796) to `out_return_code`.
 ///
 /// Returns `NROS_CPP_RET_OK` when a reply was consumed,
@@ -2209,7 +2209,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_forget(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
-    let id = nros::GoalId {
+    let id = nros::GoalUuid {
         uuid: unsafe { *goal_id },
     };
     let mut core =
@@ -2249,7 +2249,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_cancel_goals(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
-    let id = nros::GoalId {
+    let id = nros::GoalUuid {
         uuid: unsafe { *goal_id },
     };
     let mut core =
@@ -3004,7 +3004,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_accept_goal_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
-    let id = GoalId {
+    let id = GoalUuid {
         uuid: unsafe { *goal_id },
     };
     match core.accept_goal(id, sequence_number) {
@@ -3041,7 +3041,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
-    let id = GoalId {
+    let id = GoalUuid {
         uuid: unsafe { *goal_id },
     };
     let slice = unsafe { core::slice::from_raw_parts(feedback_cdr, feedback_len) };
@@ -3053,7 +3053,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_publish_feedback_raw(
 
 /// Phase 122.3.d — L1 polling: mark a goal terminal.
 /// `status_code`: 4 = Succeeded, 5 = Canceled, 6 = Aborted (matches
-/// the `nros_core::GoalStatus` discriminants).
+/// the `nros_core::GoalStatusCode` discriminants).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_complete_goal_raw(
     storage: *mut c_void,
@@ -3066,14 +3066,14 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
-    let id = GoalId {
+    let id = GoalUuid {
         uuid: unsafe { *goal_id },
     };
     let slice = unsafe { core::slice::from_raw_parts(result_cdr, result_len) };
     let status = match status_code {
-        4 => nros::GoalStatus::Succeeded,
-        5 => nros::GoalStatus::Canceled,
-        6 => nros::GoalStatus::Aborted,
+        4 => nros::GoalStatusCode::Succeeded,
+        5 => nros::GoalStatusCode::Canceled,
+        6 => nros::GoalStatusCode::Aborted,
         _ => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
     // issue 0796 — see `nros_cpp_action_server_complete_goal`.
@@ -3117,7 +3117,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_try_recv_cancel_request_raw(
 }
 
 /// Phase 122.3.c.6.d / .d — L1 polling: reply to a cancel-goal
-/// request. `return_code` matches `nros_core::CancelReturnCode`
+/// request. `return_code` matches `nros_core::CancelResponseCode`
 /// (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated) — the
 /// `action_msgs/srv/CancelGoal` RPC status, NOT the per-goal
 /// `rclcpp_action::CancelResponse` accept/reject a cancel callback returns (issue
@@ -3137,19 +3137,19 @@ pub unsafe extern "C" fn nros_cpp_action_server_send_cancel_reply_raw(
     }
     let core = unsafe { &mut *(storage as *mut PollingActionServerCore) };
     let resp = match return_code {
-        0 => nros_node::CancelReturnCode::Ok,
-        1 => nros_node::CancelReturnCode::Rejected,
-        2 => nros_node::CancelReturnCode::UnknownGoal,
-        3 => nros_node::CancelReturnCode::GoalTerminated,
+        0 => nros_node::CancelResponseCode::Ok,
+        1 => nros_node::CancelResponseCode::Rejected,
+        2 => nros_node::CancelResponseCode::UnknownGoal,
+        3 => nros_node::CancelResponseCode::GoalTerminated,
         _ => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
-    let mut ids: nros::heapless::Vec<nros::GoalId, 8> = nros::heapless::Vec::new();
+    let mut ids: nros::heapless::Vec<nros::GoalUuid, 8> = nros::heapless::Vec::new();
     for i in 0..accepted_count {
         if i >= 8 {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         }
         let uuid = unsafe { *accepted.add(i) };
-        if ids.push(nros::GoalId { uuid }).is_err() {
+        if ids.push(nros::GoalUuid { uuid }).is_err() {
             return NROS_CPP_RET_ERROR;
         }
     }
@@ -3369,7 +3369,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal_raw(
     //
     // The parameter is `goal_cdr`: a C caller supplies CDR, which begins
     // with the 4-byte encapsulation header. `PollingActionClientCore::
-    // send_goal_raw` wants goal FIELDS — its own doc says "without GoalId
+    // send_goal_raw` wants goal FIELDS — its own doc says "without GoalUuid
     // framing", and it appends the bytes after a header `tx_writer`
     // (`CdrWriter::new_with_header`) has already written. Passing CDR
     // through unstripped therefore put TWO headers on the wire, which is
@@ -3444,7 +3444,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_get_result_request_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
-    let id = GoalId {
+    let id = GoalUuid {
         uuid: unsafe { *goal_id },
     };
     match core.send_get_result_request(&id) {
@@ -3505,7 +3505,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_cancel_request_raw(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let core = unsafe { &mut *(storage as *mut PollingActionClientCore) };
-    let id = GoalId {
+    let id = GoalUuid {
         uuid: unsafe { *goal_id },
     };
     match core.send_cancel_request(&id) {

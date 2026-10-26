@@ -5821,7 +5821,7 @@ fn test_add_action_server_registers() {
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
-            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+            |_id: &nros_core::GoalUuid, _status: nros_core::GoalStatusCode| {
                 nros_core::CancelResponse::Accept
             },
         )
@@ -5841,7 +5841,7 @@ fn test_action_server_spin_once_no_requests() {
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
-            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+            |_id: &nros_core::GoalUuid, _status: nros_core::GoalStatusCode| {
                 nros_core::CancelResponse::Accept
             },
         )
@@ -5862,7 +5862,7 @@ fn test_action_server_registers_and_spins() {
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
-            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+            |_id: &nros_core::GoalUuid, _status: nros_core::GoalStatusCode| {
                 nros_core::CancelResponse::Accept
             },
         )
@@ -5900,7 +5900,7 @@ fn test_drop_with_mixed_entries() {
         .register_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/act",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
-            |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+            |_id: &nros_core::GoalUuid, _status: nros_core::GoalStatusCode| {
                 nros_core::CancelResponse::Accept
             },
         )
@@ -8036,15 +8036,15 @@ fn test_action_client_callbacks_fire_at_spin() {
         .node_mut(nid)
         .create_action_client_with_callbacks::<TestAction, _, _, _>(
             "/act",
-            move |id: &nros_core::GoalId, accepted: bool| {
+            move |id: &nros_core::GoalUuid, accepted: bool| {
                 let mut c = [0u8; 8];
                 c.copy_from_slice(&id.uuid[..8]);
                 *gr2.lock().unwrap() = Some((u64::from_le_bytes(c), accepted));
             },
-            move |_id: &nros_core::GoalId, fb: &TestFeedback| {
+            move |_id: &nros_core::GoalUuid, fb: &TestFeedback| {
                 *fb2.lock().unwrap() = Some(fb.progress);
             },
-            move |_id: &nros_core::GoalId, st: nros_core::GoalStatus, r: &TestResult| {
+            move |_id: &nros_core::GoalUuid, st: nros_core::GoalStatusCode, r: &TestResult| {
                 *rs2.lock().unwrap() = Some((st, r.value));
             },
         )
@@ -8076,10 +8076,10 @@ fn test_action_client_callbacks_fire_at_spin() {
         "goal-response"
     );
 
-    // 2. Feedback: outer header(4) + GoalId(16) + inner CDR(header + i32).
+    // 2. Feedback: outer header(4) + GoalUuid(16) + inner CDR(header + i32).
     let mut fb = [0u8; 256];
     fb[0..4].copy_from_slice(&[0, 1, 0, 0]);
-    fb[4..12].copy_from_slice(&1u64.to_le_bytes()); // GoalId uuid[..8] = counter 1
+    fb[4..12].copy_from_slice(&1u64.to_le_bytes()); // GoalUuid uuid[..8] = counter 1
     let (inner, il) = encode_i32_cdr(7);
     fb[20..20 + il].copy_from_slice(&inner[..il]);
     core.feedback_subscriber.load(fb, 20 + il);
@@ -8090,14 +8090,14 @@ fn test_action_client_callbacks_fire_at_spin() {
     client.get_result(&goal_id).unwrap();
     let mut rs = [0u8; 256];
     rs[0..4].copy_from_slice(&[0, 1, 0, 0]);
-    rs[4] = 4; // GoalStatus::Succeeded
+    rs[4] = 4; // GoalStatusCode::Succeeded
     let (inner_r, irl) = encode_i32_cdr(99);
     rs[8..8 + irl].copy_from_slice(&inner_r[..irl]);
     core.get_result_client.load_reply(rs, 8 + irl);
     executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(
         *result.lock().unwrap(),
-        Some((nros_core::GoalStatus::Succeeded, 99)),
+        Some((nros_core::GoalStatusCode::Succeeded, 99)),
         "result deserialized"
     );
 }
@@ -8134,11 +8134,11 @@ fn test_action_client_feedback_burst_buffered() {
         .node_mut(nid)
         .create_action_client_with_callbacks::<TestAction, _, _, _>(
             "/act",
-            |_: &nros_core::GoalId, _: bool| {},
-            move |_: &nros_core::GoalId, fb: &TestFeedback| {
+            |_: &nros_core::GoalUuid, _: bool| {},
+            move |_: &nros_core::GoalUuid, fb: &TestFeedback| {
                 fb2.lock().unwrap().push(fb.progress);
             },
-            |_: &nros_core::GoalId, _: nros_core::GoalStatus, _: &TestResult| {},
+            |_: &nros_core::GoalUuid, _: nros_core::GoalStatusCode, _: &TestResult| {},
         )
         .unwrap();
 
@@ -8473,13 +8473,13 @@ fn action_client_attributes_replies_by_request_id() {
         .node_mut(nid)
         .create_action_client_with_callbacks::<TestAction, _, _, _>(
             "/act",
-            move |id: &nros_core::GoalId, ok: bool| {
+            move |id: &nros_core::GoalUuid, ok: bool| {
                 let mut c = [0u8; 8];
                 c.copy_from_slice(&id.uuid[..8]);
                 acc2.lock().unwrap().push((u64::from_le_bytes(c), ok));
             },
-            |_id: &nros_core::GoalId, _fb: &TestFeedback| {},
-            |_id: &nros_core::GoalId, _st: nros_core::GoalStatus, _r: &TestResult| {},
+            |_id: &nros_core::GoalUuid, _fb: &TestFeedback| {},
+            |_id: &nros_core::GoalUuid, _st: nros_core::GoalStatusCode, _r: &TestResult| {},
         )
         .unwrap();
     let off = executor.entries[0].as_ref().unwrap().offset;
@@ -8663,7 +8663,7 @@ fn node_builder_session_idx_binds_explicit_slot_and_validates() {
 fn test_get_result_deferred_per_goal_concurrent() {
     use super::action_core::{ActionServerCore, RawActiveGoal};
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     let mut core: ActionServerCore = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -8673,21 +8673,21 @@ fn test_get_result_deferred_per_goal_concurrent() {
         MockPublisher::new(),
     );
 
-    let g1 = GoalId { uuid: [1u8; 16] };
-    let g2 = GoalId { uuid: [2u8; 16] };
+    let g1 = GoalUuid { uuid: [1u8; 16] };
+    let g2 = GoalUuid { uuid: [2u8; 16] };
     let _ = core.active_goals.push(RawActiveGoal {
         goal_id: g1,
-        status: GoalStatus::Executing,
+        status: GoalStatusCode::Executing,
         stamp: nros_core::Time::default(),
     });
     let _ = core.active_goals.push(RawActiveGoal {
         goal_id: g2,
-        status: GoalStatus::Executing,
+        status: GoalStatusCode::Executing,
         stamp: nros_core::Time::default(),
     });
 
     // A get_result request is [CDR-LE header][fixed uint8[16] goal_id].
-    let mk_req = |g: &GoalId| -> ([u8; 256], usize) {
+    let mk_req = |g: &GoalUuid| -> ([u8; 256], usize) {
         let mut b = [0u8; 256];
         b[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
         b[4..20].copy_from_slice(&g.uuid);
@@ -8714,20 +8714,20 @@ fn test_get_result_deferred_per_goal_concurrent() {
     // Complete g2 FIRST (out of arrival order) → flush only g2's held request,
     // with g2's token (seq 1) — not g1's.
     let res2 = [0xBBu8; 8];
-    core.complete_goal_raw(&g2, GoalStatus::Succeeded, &res2)
+    core.complete_goal_raw(&g2, GoalStatusCode::Succeeded, &res2)
         .unwrap();
     {
         let sent = core.get_result_server.sent.borrow();
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0].0, 1, "g2 reply must use g2's correlation token");
-        assert_eq!(sent[0].1[4], GoalStatus::Succeeded as u8 as i8 as u8);
+        assert_eq!(sent[0].1[4], GoalStatusCode::Succeeded as u8 as i8 as u8);
         assert_eq!(&sent[0].1[RESULT_OFF..RESULT_OFF + res2.len()], &res2);
     }
     assert_eq!(core.pending_get_results.len(), 1);
 
     // Complete g1 → flush g1's held request with g1's token (seq 0).
     let res1 = [0xAAu8; 8];
-    core.complete_goal_raw(&g1, GoalStatus::Succeeded, &res1)
+    core.complete_goal_raw(&g1, GoalStatusCode::Succeeded, &res1)
         .unwrap();
     {
         let sent = core.get_result_server.sent.borrow();
@@ -8745,7 +8745,7 @@ fn test_get_result_deferred_per_goal_concurrent() {
 fn test_get_result_after_completion_replies_immediately() {
     use super::action_core::ActionServerCore;
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     let mut core: ActionServerCore = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -8755,10 +8755,10 @@ fn test_get_result_after_completion_replies_immediately() {
         MockPublisher::new(),
     );
 
-    let g = GoalId { uuid: [7u8; 16] };
+    let g = GoalUuid { uuid: [7u8; 16] };
     // Goal completes before any get_result arrives.
     let res = [0xCCu8; 8];
-    core.complete_goal_raw(&g, GoalStatus::Succeeded, &res)
+    core.complete_goal_raw(&g, GoalStatusCode::Succeeded, &res)
         .unwrap();
     assert_eq!(core.pending_get_results.len(), 0);
     assert_eq!(core.get_result_server.sent.borrow().len(), 0);
@@ -8782,7 +8782,7 @@ fn test_get_result_after_completion_replies_immediately() {
 
 /// A `get_result` request wire frame: `[CDR-LE header][fixed uint8[16] goal_id]`.
 #[cfg(test)]
-fn mk_get_result_req(goal_id: &nros_core::GoalId) -> ([u8; 256], usize) {
+fn mk_get_result_req(goal_id: &nros_core::GoalUuid) -> ([u8; 256], usize) {
     let mut b = [0u8; 256];
     b[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
     b[4..20].copy_from_slice(&goal_id.uuid);
@@ -8803,7 +8803,7 @@ const REPLY_RESULT_OFF: usize = 8;
 #[cfg(test)]
 fn fetch_result<const G: usize, const R: usize, const F: usize, const M: usize>(
     core: &mut super::action_core::ActionServerCore<G, R, F, M>,
-    goal_id: &nros_core::GoalId,
+    goal_id: &nros_core::GoalUuid,
     default_result: &[u8],
     want_len: usize,
 ) -> (u8, heapless::Vec<u8, 256>) {
@@ -8836,7 +8836,7 @@ fn fetch_result<const G: usize, const R: usize, const F: usize, const M: usize>(
 fn action_results_keep_being_delivered_past_the_slab_capacity() {
     use super::action_core::ActionServerCore;
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     // GOAL_BUF 256, RESULT_BUF 128, FEEDBACK_BUF 128, MAX_GOALS 4.
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
@@ -8853,16 +8853,16 @@ fn action_results_keep_being_delivered_past_the_slab_capacity() {
     let default_result = [0u8; 4];
 
     for i in 1..=GOALS {
-        let g = GoalId { uuid: [i; 16] };
+        let g = GoalUuid { uuid: [i; 16] };
         let res = [0xA0u8.wrapping_add(i); RESULT_LEN];
 
-        core.complete_goal_raw(&g, GoalStatus::Succeeded, &res)
+        core.complete_goal_raw(&g, GoalStatusCode::Succeeded, &res)
             .unwrap_or_else(|e| panic!("goal {i} could not be stored: {e:?}"));
 
         let (status, bytes) = fetch_result(&mut core, &g, &default_result, RESULT_LEN);
         assert_eq!(
             status,
-            GoalStatus::Succeeded as u8 as i8 as u8,
+            GoalStatusCode::Succeeded as u8 as i8 as u8,
             "goal {i} was answered with a non-terminal status - the slab dropped it"
         );
         assert_eq!(
@@ -8889,7 +8889,7 @@ fn action_results_keep_being_delivered_past_the_slab_capacity() {
 fn deferred_get_result_is_answered_past_the_slab_capacity() {
     use super::action_core::{ActionServerCore, RawActiveGoal};
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -8903,13 +8903,13 @@ fn deferred_get_result_is_answered_past_the_slab_capacity() {
     let default_result = [0u8; 4];
 
     for i in 1..=10u8 {
-        let g = GoalId { uuid: [i; 16] };
+        let g = GoalUuid { uuid: [i; 16] };
         let res = [0x50u8.wrapping_add(i); RESULT_LEN];
 
         core.active_goals
             .push(RawActiveGoal {
                 goal_id: g,
-                status: GoalStatus::Executing,
+                status: GoalStatusCode::Executing,
                 stamp: nros_core::Time::default(),
             })
             .ok()
@@ -8922,7 +8922,7 @@ fn deferred_get_result_is_answered_past_the_slab_capacity() {
         assert_eq!(core.pending_get_results.len(), 1, "goal {i} not deferred");
         assert_eq!(core.get_result_server.sent.borrow().len(), 0);
 
-        core.complete_goal_raw(&g, GoalStatus::Succeeded, &res)
+        core.complete_goal_raw(&g, GoalStatusCode::Succeeded, &res)
             .unwrap_or_else(|e| panic!("goal {i} could not be stored: {e:?}"));
 
         assert_eq!(
@@ -8952,7 +8952,7 @@ fn deferred_get_result_is_answered_past_the_slab_capacity() {
 fn completed_result_survives_until_pressure_then_evicts_the_fetched_one_first() {
     use super::action_core::ActionServerCore;
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     // 128-byte slab: exactly three 40-byte results fit.
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
@@ -8965,11 +8965,11 @@ fn completed_result_survives_until_pressure_then_evicts_the_fetched_one_first() 
 
     const RESULT_LEN: usize = 40;
     let default_result = [0u8; 4];
-    let g = |i: u8| GoalId { uuid: [i; 16] };
+    let g = |i: u8| GoalUuid { uuid: [i; 16] };
     let payload = |i: u8| [i; RESULT_LEN];
 
     for i in 1..=3u8 {
-        core.complete_goal_raw(&g(i), GoalStatus::Succeeded, &payload(i))
+        core.complete_goal_raw(&g(i), GoalStatusCode::Succeeded, &payload(i))
             .unwrap();
     }
     assert_eq!(core.completed_result_count(), 3);
@@ -8978,12 +8978,12 @@ fn completed_result_survives_until_pressure_then_evicts_the_fetched_one_first() 
     // Nothing has been evicted yet: a client that asks AFTER completion still
     // gets its result, including the oldest one.
     let (status, bytes) = fetch_result(&mut core, &g(2), &default_result, RESULT_LEN);
-    assert_eq!(status, GoalStatus::Succeeded as u8 as i8 as u8);
+    assert_eq!(status, GoalStatusCode::Succeeded as u8 as i8 as u8);
     assert_eq!(&bytes[..], &payload(2)[..]);
 
     // A fourth completion needs 40 bytes and only 8 are free -> reclaim. g2 was
     // fetched, so g2 is what goes, NOT the older-but-unfetched g1.
-    core.complete_goal_raw(&g(4), GoalStatus::Succeeded, &payload(4))
+    core.complete_goal_raw(&g(4), GoalStatusCode::Succeeded, &payload(4))
         .unwrap();
 
     assert!(core.has_completed_result(&g(1)), "unfetched g1 was evicted");
@@ -8998,14 +8998,14 @@ fn completed_result_survives_until_pressure_then_evicts_the_fetched_one_first() 
     // as its own payload.
     for i in [1u8, 3, 4] {
         let (status, bytes) = fetch_result(&mut core, &g(i), &default_result, RESULT_LEN);
-        assert_eq!(status, GoalStatus::Succeeded as u8 as i8 as u8, "g{i}");
+        assert_eq!(status, GoalStatusCode::Succeeded as u8 as i8 as u8, "g{i}");
         assert_eq!(&bytes[..], &payload(i)[..], "g{i} read back corrupted");
     }
 
     // The evicted goal is answered honestly (UNKNOWN + default), never left
     // hanging.
     let (status, _) = fetch_result(&mut core, &g(2), &default_result, default_result.len());
-    assert_eq!(status, GoalStatus::Unknown as u8 as i8 as u8);
+    assert_eq!(status, GoalStatusCode::Unknown as u8 as i8 as u8);
 }
 
 /// A result larger than `RESULT_BUF` can never be retained — that is the one
@@ -9019,7 +9019,7 @@ fn an_unretainable_result_is_reported_and_the_waiter_is_still_answered() {
         types::NodeError,
     };
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -9029,12 +9029,12 @@ fn an_unretainable_result_is_reported_and_the_waiter_is_still_answered() {
         MockPublisher::new(),
     );
 
-    let g = GoalId { uuid: [9u8; 16] };
+    let g = GoalUuid { uuid: [9u8; 16] };
     let res = [0x77u8; 200]; // > RESULT_BUF (128)
     core.active_goals
         .push(RawActiveGoal {
             goal_id: g,
-            status: GoalStatus::Executing,
+            status: GoalStatusCode::Executing,
             stamp: nros_core::Time::default(),
         })
         .ok()
@@ -9046,7 +9046,7 @@ fn an_unretainable_result_is_reported_and_the_waiter_is_still_answered() {
     assert_eq!(core.pending_get_results.len(), 1);
 
     let err = core
-        .complete_goal_raw(&g, GoalStatus::Succeeded, &res)
+        .complete_goal_raw(&g, GoalStatusCode::Succeeded, &res)
         .expect_err("a result larger than RESULT_BUF must not report success");
     assert!(matches!(err, NodeError::BufferTooSmall));
 
@@ -9067,7 +9067,7 @@ fn an_unretainable_result_is_reported_and_the_waiter_is_still_answered() {
 fn expire_completed_results_reclaims_only_delivered_results() {
     use super::action_core::ActionServerCore;
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -9078,10 +9078,10 @@ fn expire_completed_results_reclaims_only_delivered_results() {
     );
 
     const RESULT_LEN: usize = 40;
-    let g = |i: u8| GoalId { uuid: [i; 16] };
+    let g = |i: u8| GoalUuid { uuid: [i; 16] };
     let payload = |i: u8| [i; RESULT_LEN];
     for i in 1..=3u8 {
-        core.complete_goal_raw(&g(i), GoalStatus::Succeeded, &payload(i))
+        core.complete_goal_raw(&g(i), GoalStatusCode::Succeeded, &payload(i))
             .unwrap();
     }
 
@@ -9123,7 +9123,7 @@ fn expire_completed_results_reclaims_only_delivered_results() {
 fn goal_exists_covers_active_and_retained_results_not_just_active() {
     use super::action_core::ActionServerCore;
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -9134,9 +9134,9 @@ fn goal_exists_covers_active_and_retained_results_not_just_active() {
     );
 
     const RESULT_LEN: usize = 40;
-    let live = GoalId { uuid: [1u8; 16] };
-    let done = GoalId { uuid: [2u8; 16] };
-    let never = GoalId { uuid: [9u8; 16] };
+    let live = GoalUuid { uuid: [1u8; 16] };
+    let done = GoalUuid { uuid: [2u8; 16] };
+    let never = GoalUuid { uuid: [9u8; 16] };
 
     // A goal nobody ever sent is unknown in every state below.
     assert!(!core.goal_exists(&never));
@@ -9150,7 +9150,7 @@ fn goal_exists_covers_active_and_retained_results_not_just_active() {
     // the goal from the active set, so an active-set lookup reports NOT FOUND
     // while the result is still sitting there to be fetched.
     core.accept_goal(done, 2).unwrap();
-    core.complete_goal_raw(&done, GoalStatus::Succeeded, &[7u8; RESULT_LEN])
+    core.complete_goal_raw(&done, GoalStatusCode::Succeeded, &[7u8; RESULT_LEN])
         .unwrap();
     assert!(
         !core
@@ -9188,7 +9188,7 @@ fn goal_exists_covers_active_and_retained_results_not_just_active() {
 /// Decode a published `GoalStatusArray` into `(goal_id, status)` pairs.
 fn parse_status_array(
     bytes: &[u8],
-) -> heapless::Vec<(nros_core::GoalId, nros_core::GoalStatus), 32> {
+) -> heapless::Vec<(nros_core::GoalUuid, nros_core::GoalStatusCode), 32> {
     use nros_core::{CdrReader, Deserialize, GoalStatusStamped};
 
     let mut reader = CdrReader::new_with_header(bytes).expect("status array has a CDR header");
@@ -9223,7 +9223,7 @@ fn parse_status_array(
 fn completed_goal_appears_in_the_published_status_array() {
     use super::action_core::{ActionServerCore, RawActiveGoal};
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -9233,10 +9233,10 @@ fn completed_goal_appears_in_the_published_status_array() {
         MockPublisher::new(),
     );
 
-    let g = GoalId { uuid: [9u8; 16] };
+    let g = GoalUuid { uuid: [9u8; 16] };
     let _ = core.active_goals.push(RawActiveGoal {
         goal_id: g,
-        status: GoalStatus::Executing,
+        status: GoalStatusCode::Executing,
         stamp: nros_core::Time::default(),
     });
     core.publish_status_array().unwrap();
@@ -9245,9 +9245,9 @@ fn completed_goal_appears_in_the_published_status_array() {
     let (bytes, len) = core.status_publisher.last_published().unwrap();
     let entries = parse_status_array(&bytes[..len]);
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0], (g, GoalStatus::Executing));
+    assert_eq!(entries[0], (g, GoalStatusCode::Executing));
 
-    core.complete_goal_raw(&g, GoalStatus::Succeeded, &[0xAAu8; 8])
+    core.complete_goal_raw(&g, GoalStatusCode::Succeeded, &[0xAAu8; 8])
         .unwrap();
 
     // The goal has left `active_goals` — that part never was the bug.
@@ -9261,7 +9261,7 @@ fn completed_goal_appears_in_the_published_status_array() {
         1,
         "the terminal publish must carry the goal, not an empty array"
     );
-    assert_eq!(entries[0], (g, GoalStatus::Succeeded));
+    assert_eq!(entries[0], (g, GoalStatusCode::Succeeded));
 }
 
 /// A terminated goal is visible alongside goals that are still running, and an
@@ -9271,7 +9271,7 @@ fn completed_goal_appears_in_the_published_status_array() {
 fn status_array_mixes_active_and_terminated_goals() {
     use super::action_core::{ActionServerCore, RawActiveGoal};
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -9281,23 +9281,23 @@ fn status_array_mixes_active_and_terminated_goals() {
         MockPublisher::new(),
     );
 
-    let running = GoalId { uuid: [1u8; 16] };
-    let aborted = GoalId { uuid: [2u8; 16] };
+    let running = GoalUuid { uuid: [1u8; 16] };
+    let aborted = GoalUuid { uuid: [2u8; 16] };
     for id in [running, aborted] {
         let _ = core.active_goals.push(RawActiveGoal {
             goal_id: id,
-            status: GoalStatus::Executing,
+            status: GoalStatusCode::Executing,
             stamp: nros_core::Time::default(),
         });
     }
-    core.complete_goal_raw(&aborted, GoalStatus::Aborted, &[0u8; 4])
+    core.complete_goal_raw(&aborted, GoalStatusCode::Aborted, &[0u8; 4])
         .unwrap();
 
     let (bytes, len) = core.status_publisher.last_published().unwrap();
     let entries = parse_status_array(&bytes[..len]);
     assert_eq!(entries.len(), 2);
-    assert!(entries.contains(&(running, GoalStatus::Executing)));
-    assert!(entries.contains(&(aborted, GoalStatus::Aborted)));
+    assert!(entries.contains(&(running, GoalStatusCode::Executing)));
+    assert!(entries.contains(&(aborted, GoalStatusCode::Aborted)));
 
     // The entry count is NOT the active-goal count any more; `active_goal_count`
     // still is.
@@ -9312,7 +9312,7 @@ fn status_array_mixes_active_and_terminated_goals() {
 fn terminal_status_is_visible_until_its_result_is_reclaimed() {
     use super::action_core::ActionServerCore;
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -9323,8 +9323,8 @@ fn terminal_status_is_visible_until_its_result_is_reclaimed() {
     );
 
     const RESULT_LEN: usize = 8;
-    let g = GoalId { uuid: [5u8; 16] };
-    core.complete_goal_raw(&g, GoalStatus::Succeeded, &[0u8; RESULT_LEN])
+    let g = GoalUuid { uuid: [5u8; 16] };
+    core.complete_goal_raw(&g, GoalStatusCode::Succeeded, &[0u8; RESULT_LEN])
         .unwrap();
 
     let (bytes, len) = core.status_publisher.last_published().unwrap();
@@ -9337,7 +9337,7 @@ fn terminal_status_is_visible_until_its_result_is_reclaimed() {
     let (bytes, len) = core.status_publisher.last_published().unwrap();
     assert_eq!(
         parse_status_array(&bytes[..len])[0],
-        (g, GoalStatus::Succeeded)
+        (g, GoalStatusCode::Succeeded)
     );
 
     // Once the result is reclaimed the goal leaves the array on the NEXT
@@ -9360,7 +9360,7 @@ fn status_array_entry_layout_is_measured() {
         STATUS_ENTRY_STRIDE, STATUS_ENTRY_TAIL, status_array_bytes,
     };
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -9378,14 +9378,14 @@ fn status_array_entry_layout_is_measured() {
     // 0, 1 and 2 entries pin preamble, tail and stride against the real writer.
     let empty = published_len(&core);
     let _ = core.active_goals.push(RawActiveGoal {
-        goal_id: GoalId { uuid: [1u8; 16] },
-        status: GoalStatus::Executing,
+        goal_id: GoalUuid { uuid: [1u8; 16] },
+        status: GoalStatusCode::Executing,
         stamp: nros_core::Time::default(),
     });
     let one = published_len(&core);
     let _ = core.active_goals.push(RawActiveGoal {
-        goal_id: GoalId { uuid: [2u8; 16] },
-        status: GoalStatus::Executing,
+        goal_id: GoalUuid { uuid: [2u8; 16] },
+        status: GoalStatusCode::Executing,
         stamp: nros_core::Time::default(),
     });
     let two = published_len(&core);
@@ -9401,17 +9401,17 @@ fn status_array_entry_layout_is_measured() {
     const MAX_GOALS: usize = 4;
     for i in 3..=MAX_GOALS as u8 {
         let _ = core.active_goals.push(RawActiveGoal {
-            goal_id: GoalId { uuid: [i; 16] },
-            status: GoalStatus::Executing,
+            goal_id: GoalUuid { uuid: [i; 16] },
+            status: GoalStatusCode::Executing,
             stamp: nros_core::Time::default(),
         });
     }
     for i in 0..MAX_GOALS as u8 {
         core.complete_goal_raw(
-            &GoalId {
+            &GoalUuid {
                 uuid: [100 + i; 16],
             },
-            GoalStatus::Succeeded,
+            GoalStatusCode::Succeeded,
             &[0u8; 4],
         )
         .unwrap();
@@ -9439,7 +9439,7 @@ fn status_array_fits_at_the_largest_admitted_max_goals() {
         ActionServerCore, RawActiveGoal, STATUS_ARRAY_BUF, status_array_bytes,
     };
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus};
+    use nros_core::{GoalStatusCode, GoalUuid};
 
     const MAX_GOALS: usize = 9;
     let mut core: ActionServerCore<256, 128, 128, MAX_GOALS> = ActionServerCore::from_channels(
@@ -9452,15 +9452,15 @@ fn status_array_fits_at_the_largest_admitted_max_goals() {
 
     for i in 0..MAX_GOALS as u8 {
         let _ = core.active_goals.push(RawActiveGoal {
-            goal_id: GoalId { uuid: [i; 16] },
-            status: GoalStatus::Executing,
+            goal_id: GoalUuid { uuid: [i; 16] },
+            status: GoalStatusCode::Executing,
             stamp: nros_core::Time::default(),
         });
         core.complete_goal_raw(
-            &GoalId {
+            &GoalUuid {
                 uuid: [100 + i; 16],
             },
-            GoalStatus::Succeeded,
+            GoalStatusCode::Succeeded,
             &[0u8; 4],
         )
         .unwrap();
@@ -10791,7 +10791,7 @@ static ACCEPTED_UUID_FIRST_BYTE: core::sync::atomic::AtomicU8 =
     core::sync::atomic::AtomicU8::new(0);
 
 unsafe extern "C" fn defer_every_goal(
-    _goal_id: *const nros_core::GoalId,
+    _goal_id: *const nros_core::GoalUuid,
     _data: *const u8,
     _len: usize,
     _ctx: *mut core::ffi::c_void,
@@ -10800,7 +10800,7 @@ unsafe extern "C" fn defer_every_goal(
 }
 
 unsafe extern "C" fn reject_every_goal(
-    _goal_id: *const nros_core::GoalId,
+    _goal_id: *const nros_core::GoalUuid,
     _data: *const u8,
     _len: usize,
     _ctx: *mut core::ffi::c_void,
@@ -10809,15 +10809,15 @@ unsafe extern "C" fn reject_every_goal(
 }
 
 unsafe extern "C" fn refuse_every_cancel(
-    _goal_id: *const nros_core::GoalId,
-    _status: nros_core::GoalStatus,
+    _goal_id: *const nros_core::GoalUuid,
+    _status: nros_core::GoalStatusCode,
     _ctx: *mut core::ffi::c_void,
 ) -> nros_core::CancelResponse {
     nros_core::CancelResponse::Reject
 }
 
 unsafe extern "C" fn count_accepted(
-    goal_id: *const nros_core::GoalId,
+    goal_id: *const nros_core::GoalUuid,
     _ctx: *mut core::ffi::c_void,
 ) {
     use core::sync::atomic::Ordering::SeqCst;
@@ -10828,7 +10828,7 @@ unsafe extern "C" fn count_accepted(
 /// A `send_goal` wire frame: `[CDR-LE header][fixed uint8[16] goal_id]`.
 /// The goal FIELDS would follow; this action's callbacks ignore them.
 #[cfg(test)]
-fn mk_send_goal_req(goal_id: &nros_core::GoalId) -> ([u8; 256], usize) {
+fn mk_send_goal_req(goal_id: &nros_core::GoalUuid) -> ([u8; 256], usize) {
     let mut b = [0u8; 256];
     b[..4].copy_from_slice(&[0x00, 0x01, 0x00, 0x00]);
     b[4..20].copy_from_slice(&goal_id.uuid);
@@ -10855,7 +10855,7 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
     };
     use crate::mock::MockPublisher;
     use core::sync::atomic::Ordering::SeqCst;
-    use nros_core::GoalId;
+    use nros_core::GoalUuid;
 
     const GB: usize = 128;
     const RB: usize = 128;
@@ -10886,7 +10886,7 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
     assert!(!did_work, "an idle server must report no work");
     assert_eq!(ACCEPTED_CALLS.load(SeqCst), 0);
 
-    let g = GoalId { uuid: [0xA5u8; 16] };
+    let g = GoalUuid { uuid: [0xA5u8; 16] };
     let (req, len) = mk_send_goal_req(&g);
     entry.core.send_goal_server.load(req, len);
 
@@ -10923,7 +10923,7 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
 
     // A REJECTED goal must not reach it.
     entry.goal_callback = reject_every_goal;
-    let g2 = GoalId { uuid: [0x5Au8; 16] };
+    let g2 = GoalUuid { uuid: [0x5Au8; 16] };
     let (req2, len2) = mk_send_goal_req(&g2);
     entry.core.send_goal_server.load(req2, len2);
     let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0, 0) }.unwrap();
@@ -10950,7 +10950,7 @@ static LAST_GOAL_CONTEXT: core::sync::atomic::AtomicUsize = core::sync::atomic::
 /// Stands in for `goal_callback_trampoline` in the C++ tier: it READS the
 /// registered context, which after the owner is destroyed is freed storage.
 unsafe extern "C" fn accept_and_record_context(
-    _goal_id: *const nros_core::GoalId,
+    _goal_id: *const nros_core::GoalUuid,
     _data: *const u8,
     _len: usize,
     ctx: *mut core::ffi::c_void,
@@ -10982,7 +10982,7 @@ fn detaching_a_raw_action_server_rejects_a_late_goal_and_never_reads_its_context
         arena::{ActionServerRawArenaEntry, action_server_raw_try_process},
     };
     use core::sync::atomic::Ordering::SeqCst;
-    use nros_core::GoalId;
+    use nros_core::GoalUuid;
 
     const B: usize = crate::config::DEFAULT_RX_BUF_SIZE;
     const MG: usize = 4;
@@ -11022,7 +11022,7 @@ fn detaching_a_raw_action_server_rejects_a_late_goal_and_never_reads_its_context
     let entry = || unsafe { &mut *(entry_ptr as *mut ActionServerRawArenaEntry<B, B, B, MG>) };
 
     // BEFORE: a goal is dispatched, through the owner's context.
-    let g = GoalId { uuid: [0x11u8; 16] };
+    let g = GoalUuid { uuid: [0x11u8; 16] };
     let (req, len) = mk_send_goal_req(&g);
     entry().core.send_goal_server.load(req, len);
     let did_work =
@@ -11058,7 +11058,7 @@ fn detaching_a_raw_action_server_rejects_a_late_goal_and_never_reads_its_context
 
     // AFTER: the same frame, the same entry. The user callback must not run,
     // and the client must get a well-formed rejection rather than silence.
-    let g2 = GoalId { uuid: [0x22u8; 16] };
+    let g2 = GoalUuid { uuid: [0x22u8; 16] };
     let (req2, len2) = mk_send_goal_req(&g2);
     entry().core.send_goal_server.load(req2, len2);
     let did_work =
@@ -11144,7 +11144,7 @@ fn detaching_a_raw_action_client_clears_the_callbacks_that_read_its_context() {
 }
 
 unsafe extern "C" fn no_op_goal_response(
-    _goal_id: *const nros_core::GoalId,
+    _goal_id: *const nros_core::GoalUuid,
     _accepted: bool,
     _ctx: *mut core::ffi::c_void,
 ) {
@@ -17351,7 +17351,7 @@ mod p9b_windows {
             server.for_each_active_goal(exec, |g| goals.push(g.goal_id));
             for g in goals {
                 server
-                    .complete_goal_raw(exec, &g, nros_core::GoalStatus::Succeeded, &[0u8; 4])
+                    .complete_goal_raw(exec, &g, nros_core::GoalStatusCode::Succeeded, &[0u8; 4])
                     .unwrap();
                 t.log.lock().unwrap().push(("completed", me));
             }
@@ -17509,7 +17509,7 @@ mod p9b_windows {
             .offset;
         let entry_ptr = unsafe { (executor.arena.as_mut_ptr() as *mut u8).add(offset) };
         let entry = unsafe { &mut *(entry_ptr as *mut ActionServerRawArenaEntry<B, B, B, MG>) };
-        let g = nros_core::GoalId { uuid: [0x20u8; 16] };
+        let g = nros_core::GoalUuid { uuid: [0x20u8; 16] };
         let (req, len) = mk_send_goal_req(&g);
         entry.core.send_goal_server.load(req, len);
 
@@ -17761,7 +17761,7 @@ mod p9b_windows {
 fn cancel_fixture() -> super::action_core::ActionServerCore<256, 128, 128, 4> {
     use super::action_core::{ActionServerCore, RawActiveGoal};
     use crate::mock::MockPublisher;
-    use nros_core::{GoalId, GoalStatus, Time};
+    use nros_core::{GoalStatusCode, GoalUuid, Time};
 
     let mut core: ActionServerCore<256, 128, 128, 4> = ActionServerCore::from_channels(
         MockServiceServer::new(),
@@ -17771,13 +17771,13 @@ fn cancel_fixture() -> super::action_core::ActionServerCore<256, 128, 128, 4> {
         MockPublisher::new(),
     );
     for (b, sec, status) in [
-        (1u8, 10, GoalStatus::Executing),
-        (2, 20, GoalStatus::Executing),
-        (3, 30, GoalStatus::Executing),
-        (4, 5, GoalStatus::Canceling),
+        (1u8, 10, GoalStatusCode::Executing),
+        (2, 20, GoalStatusCode::Executing),
+        (3, 30, GoalStatusCode::Executing),
+        (4, 5, GoalStatusCode::Canceling),
     ] {
         let _ = core.active_goals.push(RawActiveGoal {
-            goal_id: GoalId { uuid: [b; 16] },
+            goal_id: GoalUuid { uuid: [b; 16] },
             status,
             stamp: Time::new(sec, 0),
         });
@@ -17824,13 +17824,13 @@ fn cancel_reply(
 fn status_of(
     core: &super::action_core::ActionServerCore<256, 128, 128, 4>,
     b: u8,
-) -> nros_core::GoalStatus {
-    core.find_goal_status(&nros_core::GoalId { uuid: [b; 16] })
+) -> nros_core::GoalStatusCode {
+    core.find_goal_status(&nros_core::GoalUuid { uuid: [b; 16] })
 }
 
 #[test]
 fn a_zero_id_zero_stamp_cancel_cancels_every_cancelable_goal() {
-    use nros_core::{CancelResponse, GoalStatus};
+    use nros_core::{CancelResponse, GoalStatusCode};
     let mut core = cancel_fixture();
     load_cancel(&core, 0, 0, 0);
     let mut asked = Vec::new();
@@ -17847,9 +17847,9 @@ fn a_zero_id_zero_stamp_cancel_cancels_every_cancelable_goal() {
     assert_eq!(
         asked,
         std::vec![
-            (1, GoalStatus::Executing),
-            (2, GoalStatus::Executing),
-            (3, GoalStatus::Executing)
+            (1, GoalStatusCode::Executing),
+            (2, GoalStatusCode::Executing),
+            (3, GoalStatusCode::Executing)
         ],
         "the callback is asked once per cancelable goal, never about the CANCELING one"
     );
@@ -17859,13 +17859,13 @@ fn a_zero_id_zero_stamp_cancel_cancels_every_cancelable_goal() {
         "ERROR_NONE, every goal listed with its acceptance stamp"
     );
     for b in 1..=3 {
-        assert_eq!(status_of(&core, b), GoalStatus::Canceling);
+        assert_eq!(status_of(&core, b), GoalStatusCode::Canceling);
     }
 }
 
 #[test]
 fn a_zero_id_stamped_cancel_cancels_the_goals_accepted_at_or_before_it() {
-    use nros_core::{CancelResponse, GoalStatus};
+    use nros_core::{CancelResponse, GoalStatusCode};
     let mut core = cancel_fixture();
     load_cancel(&core, 0, 20, 0);
     core.try_handle_cancel(|_, _| CancelResponse::Accept)
@@ -17873,7 +17873,7 @@ fn a_zero_id_stamped_cancel_cancels_the_goals_accepted_at_or_before_it() {
     assert_eq!(cancel_reply(&core), (0, std::vec![(1, 10), (2, 20)]));
     assert_eq!(
         status_of(&core, 3),
-        GoalStatus::Executing,
+        GoalStatusCode::Executing,
         "30 s is after the stamp"
     );
 }
@@ -17905,7 +17905,7 @@ fn a_named_unstamped_cancel_cancels_that_goal_alone() {
 
 #[test]
 fn the_cancel_callback_decides_per_goal() {
-    use nros_core::{CancelResponse, GoalStatus};
+    use nros_core::{CancelResponse, GoalStatusCode};
     let mut core = cancel_fixture();
     load_cancel(&core, 0, 0, 0);
     core.try_handle_cancel(|id, _| {
@@ -17919,7 +17919,7 @@ fn the_cancel_callback_decides_per_goal() {
     assert_eq!(cancel_reply(&core), (0, std::vec![(1, 10), (3, 30)]));
     assert_eq!(
         status_of(&core, 2),
-        GoalStatus::Executing,
+        GoalStatusCode::Executing,
         "the refused goal runs on"
     );
 
@@ -17935,7 +17935,7 @@ fn the_cancel_callback_decides_per_goal() {
 
 #[test]
 fn an_unknown_or_finished_goal_is_answered_without_asking_the_callback() {
-    use nros_core::{CancelResponse, GoalId, GoalStatus};
+    use nros_core::{CancelResponse, GoalStatusCode, GoalUuid};
     let mut core = cancel_fixture();
     load_cancel(&core, 9, 0, 0);
     let mut calls = 0;
@@ -17951,8 +17951,12 @@ fn an_unknown_or_finished_goal_is_answered_without_asking_the_callback() {
         "ERROR_UNKNOWN_GOAL_ID"
     );
 
-    core.complete_goal_raw(&GoalId { uuid: [1; 16] }, GoalStatus::Succeeded, &[0u8; 4])
-        .unwrap();
+    core.complete_goal_raw(
+        &GoalUuid { uuid: [1; 16] },
+        GoalStatusCode::Succeeded,
+        &[0u8; 4],
+    )
+    .unwrap();
     load_cancel(&core, 1, 0, 0);
     core.try_handle_cancel(|_, _| {
         calls += 1;

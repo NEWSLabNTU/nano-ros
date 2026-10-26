@@ -127,7 +127,7 @@ async fn main() {
             match client.get_result(&goal_id) {
                 Ok(promise) => match promise.await {
                     Ok((status, result)) => {
-                        if status != GoalStatus::Succeeded {
+                        if status != GoalStatusCode::Succeeded {
                             log_warn!(&LOGGER, "Goal finished with status {:?}", status);
                         }
                         log_info!(&LOGGER, "Result received: {:?}", result.sequence);

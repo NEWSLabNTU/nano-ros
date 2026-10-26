@@ -138,7 +138,7 @@ fn main() -> ! {
     // accepted, executed, and then no result, for ever.
     let mut completed = 0usize;
     let mut result_missing = 0usize;
-    let mut accepted_ids: Vec<GoalId> = Vec::new();
+    let mut accepted_ids: Vec<GoalUuid> = Vec::new();
 
     for i in 0..goals {
         // One retry: on rmw_zenoh the server's liveliness token can gossip

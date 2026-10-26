@@ -130,7 +130,7 @@ struct rclc_goal_uuid_t;
 
 /**
  * Issue 2014 — byte of a feedback message where the feedback fields start
- * (`[encap 4][GoalId.uuid 16][fields]`), for a caller of
+ * (`[encap 4][GoalUuid.uuid 16][fields]`), for a caller of
  * `rclc_polling_action_client_try_recv_feedback_raw`; mirror of
  * `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
  */
@@ -388,7 +388,7 @@ typedef enum rclc_goal_status_t {
  * Phase 122.3.c.6.d — overall cancel-RPC return code. Distinct from
  * the per-goal `rclc_cancel_response_t` (ACCEPT/REJECT) used by the
  * L2 callback path. These four discriminants mirror
- * `nros_core::CancelReturnCode` and the `action_msgs/srv/CancelGoal`
+ * `nros_core::CancelResponseCode` and the `action_msgs/srv/CancelGoal`
  * wire-CDR `return_code` field. (Issue 0796 — the Rust type was called
  * `CancelResponse` until it was split; this pair of C names is what the
  * Rust names now follow.)

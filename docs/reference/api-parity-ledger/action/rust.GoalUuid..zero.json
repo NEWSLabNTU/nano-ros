@@ -1,0 +1,6 @@
+{
+  "key": "rust:GoalUuid::zero",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "the all-zero id, the cancel-all / cancel-before-time form's goal id (issue 2029). Filed 2026-10-27 (phase-515 R8) when `GoalId` took rclrs's name `GoalUuid`, which made its members correlate."
+}

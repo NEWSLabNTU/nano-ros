@@ -195,7 +195,7 @@
 
 /**
  * Issue 2014 — byte of a feedback message where the feedback fields start
- * (`[encap 4][GoalId.uuid 16][fields]`); mirror of
+ * (`[encap 4][GoalUuid.uuid 16][fields]`); mirror of
  * `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
  */
 #define NROS_CPP_ACTION_FEEDBACK_PAYLOAD_OFFSET 20
@@ -4993,7 +4993,7 @@ nros_cpp_ret_t nros_cpp_action_server_execute(void *handle,
  *
  * Calls `visitor(uuid, status, ctx)` for each entry in the
  * arena's `active_goals`. Status is the raw i8 discriminant of
- * `nros_core::GoalStatus` (0 = Unknown, 1 = Accepted, 2 = Executing,
+ * `nros_core::GoalStatusCode` (0 = Unknown, 1 = Accepted, 2 = Executing,
  * 3 = Canceling, 4 = Succeeded, 5 = Canceled, 6 = Aborted). The arena
  * never stores the original goal CDR payload, so only identity + status
  * are forwarded; users needing the goal bytes should stash them in
@@ -5402,7 +5402,7 @@ nros_cpp_ret_t nros_cpp_action_client_cancel_goal(void *handle, const uint8_t (*
  * Drain the reply to a `nros_cpp_action_client_cancel_goal` (non-blocking).
  *
  * Writes the `action_msgs/srv/CancelGoal` RETURN CODE (0 = Ok, 1 = Rejected,
- * 2 = UnknownGoal, 3 = GoalTerminated — `rclcpp_action::CancelReturnCode`, not the
+ * 2 = UnknownGoal, 3 = GoalTerminated — `rclcpp_action::CancelResponseCode`, not the
  * per-goal `rclcpp_action::CancelResponse`; issue 0796) to `out_return_code`.
  *
  * Returns `NROS_CPP_RET_OK` when a reply was consumed,
@@ -5637,7 +5637,7 @@ nros_cpp_ret_t nros_cpp_action_server_publish_feedback_raw(void *storage,
 /**
  * Phase 122.3.d — L1 polling: mark a goal terminal.
  * `status_code`: 4 = Succeeded, 5 = Canceled, 6 = Aborted (matches
- * the `nros_core::GoalStatus` discriminants).
+ * the `nros_core::GoalStatusCode` discriminants).
  */
 nros_cpp_ret_t nros_cpp_action_server_complete_goal_raw(void *storage,
                                                         const uint8_t (*goal_id)[16],
@@ -5658,7 +5658,7 @@ int32_t nros_cpp_action_server_try_recv_cancel_request_raw(void *storage,
 
 /**
  * Phase 122.3.c.6.d / .d — L1 polling: reply to a cancel-goal
- * request. `return_code` matches `nros_core::CancelReturnCode`
+ * request. `return_code` matches `nros_core::CancelResponseCode`
  * (0 = Ok, 1 = Rejected, 2 = UnknownGoal, 3 = GoalTerminated) — the
  * `action_msgs/srv/CancelGoal` RPC status, NOT the per-goal
  * `rclcpp_action::CancelResponse` accept/reject a cancel callback returns (issue
@@ -6688,7 +6688,7 @@ nros_cpp_ret_t nros_cpp_tick_ctx_call_raw(void *tick_ctx,
  * Kick an action-client goal from a tick body (Phase 212.M-F.4.c).
  *
  * Mirrors `nros::TickCtx::send_goal_raw` (Rust). The server-side
- * accept stamps the assigned [`GoalId`]; this call returns that id in
+ * accept stamps the assigned [`GoalUuid`]; this call returns that id in
  * `goal_id_out` (16 bytes). Result + feedback streams arrive via
  * callback dispatch — not this method.
  *

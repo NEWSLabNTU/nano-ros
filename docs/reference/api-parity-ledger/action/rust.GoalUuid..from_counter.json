@@ -1,0 +1,6 @@
+{
+  "key": "rust:GoalUuid::from_counter",
+  "bucket": "ours-only",
+  "verdict": "extension",
+  "why": "a goal id from a monotonic counter -- the RTOS half: a board with no entropy source still needs distinct goal ids (see `rust:GoalId`). Filed 2026-10-27 (phase-515 R8) when `GoalId` took rclrs's name `GoalUuid`, which made its members correlate."
+}

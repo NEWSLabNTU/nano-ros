@@ -122,7 +122,7 @@ fn id_str(s: &str) -> Result<IdStr, NodeDeclError> {
 }
 
 use crate::{
-    EmbeddedRawPublisher, Executor, GoalId, GoalStatus,
+    EmbeddedRawPublisher, Executor, GoalStatusCode, GoalUuid,
     node::{
         ActionExecutor, Callback, CallbackCtx, ClientDispatch, ExecutableNode, NodeContext,
         NodeDeclError, NodeOptions, NodeResult, PublisherResolver, TickCtx, TimerOp,
@@ -2399,8 +2399,8 @@ struct ActionClientCtx {
 /// completion and hands the terminal result CDR here; route it into the
 /// component's `on_callback` (read with `CallbackCtx::message`).
 unsafe extern "C" fn action_result_trampoline(
-    _goal_id: *const GoalId,
-    _status: GoalStatus,
+    _goal_id: *const GoalUuid,
+    _status: GoalStatusCode,
     result_data: *const u8,
     result_len: usize,
     ctx: *mut core::ffi::c_void,
@@ -2413,7 +2413,7 @@ unsafe extern "C" fn action_result_trampoline(
 /// Action-client feedback callback: route each feedback CDR into the
 /// component's `on_callback` under the bound feedback callback id.
 unsafe extern "C" fn action_feedback_trampoline(
-    _goal_id: *const GoalId,
+    _goal_id: *const GoalUuid,
     feedback_data: *const u8,
     feedback_len: usize,
     ctx: *mut core::ffi::c_void,
@@ -2454,7 +2454,7 @@ unsafe extern "C" fn service_server_trampoline(
 
 /// Action-server goal callback → component `on_callback` with a goal decision.
 unsafe extern "C" fn action_goal_trampoline(
-    _goal_id: *const GoalId,
+    _goal_id: *const GoalUuid,
     goal_data: *const u8,
     goal_len: usize,
     ctx: *mut core::ffi::c_void,
@@ -2475,8 +2475,8 @@ unsafe extern "C" fn action_goal_trampoline(
 /// Action-server cancel callback → component `on_callback` with a cancel
 /// decision. The cancel callback has no goal payload.
 unsafe extern "C" fn action_cancel_trampoline(
-    _goal_id: *const GoalId,
-    _status: GoalStatus,
+    _goal_id: *const GoalUuid,
+    _status: GoalStatusCode,
     ctx: *mut core::ffi::c_void,
 ) -> crate::CancelResponse {
     let actx = unsafe { &*(ctx as *const ActionServerCtx) };
@@ -2494,7 +2494,7 @@ unsafe extern "C" fn action_cancel_trampoline(
 /// Action-server accepted hook → component `on_callback` (no decision, no
 /// payload). No-op when the component didn't declare an accepted callback.
 unsafe extern "C" fn action_accepted_trampoline(
-    _goal_id: *const GoalId,
+    _goal_id: *const GoalUuid,
     ctx: *mut core::ffi::c_void,
 ) {
     let actx = unsafe { &*(ctx as *const ActionServerCtx) };
@@ -2606,7 +2606,7 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
         core.server_readiness().map_err(|_| NodeDeclError::Runtime)
     }
 
-    fn send_goal_raw(&mut self, action_entity: &str, goal_cdr: &[u8]) -> NodeResult<GoalId> {
+    fn send_goal_raw(&mut self, action_entity: &str, goal_cdr: &[u8]) -> NodeResult<GoalUuid> {
         let entry_index = self.action_entry(action_entity)?;
         let executor = unsafe { &mut *self.executor };
         let core = unsafe { executor.action_client_core_mut(entry_index) }
@@ -2644,8 +2644,8 @@ impl ActionExecutor for RuntimeActions<'_> {
     fn complete_goal_raw(
         &mut self,
         action_entity: &str,
-        goal_id: &GoalId,
-        status: GoalStatus,
+        goal_id: &GoalUuid,
+        status: GoalStatusCode,
         result: &[u8],
     ) -> NodeResult<()> {
         let handle = self.handle(action_entity)?;
@@ -2660,7 +2660,7 @@ impl ActionExecutor for RuntimeActions<'_> {
     fn publish_feedback_raw(
         &mut self,
         action_entity: &str,
-        goal_id: &GoalId,
+        goal_id: &GoalUuid,
         feedback: &[u8],
     ) -> NodeResult<()> {
         let handle = self.handle(action_entity)?;
@@ -2673,7 +2673,7 @@ impl ActionExecutor for RuntimeActions<'_> {
     fn for_each_active_goal(
         &self,
         action_entity: &str,
-        visit: &mut dyn FnMut(&GoalId, GoalStatus),
+        visit: &mut dyn FnMut(&GoalUuid, GoalStatusCode),
     ) {
         if let Ok(handle) = self.handle(action_entity) {
             let executor = unsafe { &*self.executor };

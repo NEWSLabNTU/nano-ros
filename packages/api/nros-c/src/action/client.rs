@@ -23,7 +23,7 @@ use nros_node::{
 /// cbindgen emits only literals — the assert below binds the two).
 pub const RCLC_ACTION_RESULT_PAYLOAD_OFFSET: usize = 8;
 /// Issue 2014 — byte of a feedback message where the feedback fields start
-/// (`[encap 4][GoalId.uuid 16][fields]`), for a caller of
+/// (`[encap 4][GoalUuid.uuid 16][fields]`), for a caller of
 /// `rclc_polling_action_client_try_recv_feedback_raw`; mirror of
 /// `nros_node::action_frame::FEEDBACK_PAYLOAD_OFFSET`.
 pub const RCLC_ACTION_FEEDBACK_PAYLOAD_OFFSET: usize = 20;
@@ -627,7 +627,7 @@ pub unsafe extern "C" fn rclc_action_cancel_goal(
 
     let internal = &mut client._internal;
     let uuid = &*goal_uuid;
-    let goal_id = nros_node::GoalId { uuid: uuid.uuid };
+    let goal_id = nros_node::GoalUuid { uuid: uuid.uuid };
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
@@ -898,7 +898,7 @@ pub unsafe extern "C" fn rclc_action_get_result_async(
 
     let internal = &mut client._internal;
     let uuid = &*goal_uuid;
-    let goal_id = nros_node::GoalId { uuid: uuid.uuid };
+    let goal_id = nros_node::GoalUuid { uuid: uuid.uuid };
 
     let core = match unsafe { internal.arena_core_mut() } {
         Some(c) => c,
@@ -1007,9 +1007,13 @@ pub unsafe extern "C" fn rclc_action_client_poll(client: *mut rcl_action_client_
             action_frame::splice_result(reply, &mut spliced),
         ) {
             let c_status = match status {
-                nros_node::GoalStatus::Succeeded => rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED,
-                nros_node::GoalStatus::Canceled => rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED,
-                nros_node::GoalStatus::Aborted => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
+                nros_node::GoalStatusCode::Succeeded => {
+                    rclc_goal_status_t::RCLC_GOAL_STATUS_SUCCEEDED
+                }
+                nros_node::GoalStatusCode::Canceled => {
+                    rclc_goal_status_t::RCLC_GOAL_STATUS_CANCELED
+                }
+                nros_node::GoalStatusCode::Aborted => rclc_goal_status_t::RCLC_GOAL_STATUS_ABORTED,
                 _ => rclc_goal_status_t::RCLC_GOAL_STATUS_UNKNOWN,
             };
             let uuid = rclc_goal_uuid_t { uuid: goal_id.uuid };
@@ -1328,7 +1332,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_send_goal_raw(
         //
         // The parameter is `goal_cdr`: a C caller supplies CDR, which begins
         // with the 4-byte encapsulation header. `PollingActionClientCore::
-        // send_goal_raw` wants goal FIELDS — its own doc says "without GoalId
+        // send_goal_raw` wants goal FIELDS — its own doc says "without GoalUuid
         // framing", and it appends the bytes after a header `tx_writer`
         // (`CdrWriter::new_with_header`) has already written. Passing CDR
         // through unstripped therefore put TWO headers on the wire, which is
@@ -1430,7 +1434,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_send_get_result_request_raw(
             Some(c) => c,
             None => return RCL_RET_INVALID_ARGUMENT,
         };
-        let id = nros::GoalId { uuid: *goal_id };
+        let id = nros::GoalUuid { uuid: *goal_id };
         match core.send_get_result_request(&id) {
             Ok(_) => RCL_RET_OK,
             Err(_) => RCL_RET_ERROR,
@@ -1514,7 +1518,7 @@ pub unsafe extern "C" fn rclc_polling_action_client_send_cancel_request_raw(
             Some(c) => c,
             None => return RCL_RET_INVALID_ARGUMENT,
         };
-        let id = nros::GoalId { uuid: *goal_id };
+        let id = nros::GoalUuid { uuid: *goal_id };
         match core.send_cancel_request(&id) {
             Ok(_) => RCL_RET_OK,
             Err(_) => RCL_RET_ERROR,

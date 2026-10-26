@@ -12,7 +12,7 @@
 //! in `system.toml`'s `[image.rv-virt-threadx]` — never here.
 //!
 //! phase-394 / issue 0856 — `tick()` also serves the CANCEL path: a goal in
-//! `GoalStatus::Canceling` completes as `Canceled` carrying whatever was
+//! `GoalStatusCode::Canceling` completes as `Canceled` carrying whatever was
 //! computed before the cancel arrived, rather than reporting success it did
 //! not achieve. `NROS_FIB_STEP_TICKS` paces the loop at one term per N ticks
 //! so a cancel has a window to land in at all — unpaced, order 10 finishes in
@@ -25,7 +25,7 @@ mod app_main;
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
     Callback, CallbackCtx, CancelResponse, Component, DeclarativeNode, ExecutableNode,
-    GoalResponse, GoalStatus, NodeContext, NodeOptions, NodeResult, TickCtx,
+    GoalResponse, GoalStatusCode, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 /// issue 0450 — the largest order this demo will compute.
@@ -42,7 +42,7 @@ const MAX_ORDER: i32 = 50;
 /// surfaces the goal id and status but not the request payload, which is why an
 /// earlier body hardcoded its output: it had nothing else to go on. One slot is
 /// enough for the demo (a single goal at a time); a server handling concurrent
-/// goals would key this by `GoalId`.
+/// goals would key this by `GoalUuid`.
 pub struct ServerState {
     /// Order of the goal most recently accepted.
     order: i32,
@@ -148,9 +148,9 @@ impl ExecutableNode for FibonacciServer {
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
         // Collect goal ids AND statuses first — typed feedback / result calls
         // borrow `ctx` mutably so they cannot run inside `visit`.
-        let mut goals: nros::heapless::Vec<(nros::GoalId, GoalStatus), 4> =
+        let mut goals: nros::heapless::Vec<(nros::GoalUuid, GoalStatusCode), 4> =
             nros::heapless::Vec::new();
-        ctx.for_each_active_goal_for_name("/fibonacci", &mut |goal_id, status: GoalStatus| {
+        ctx.for_each_active_goal_for_name("/fibonacci", &mut |goal_id, status: GoalStatusCode| {
             let _ = goals.push((*goal_id, status));
         });
 
@@ -160,7 +160,7 @@ impl ExecutableNode for FibonacciServer {
             // whatever was computed before it arrived. Accepting a cancel and
             // then reporting `Succeeded` anyway is a lie the client cannot
             // detect, and it is what this server did before.
-            if status == GoalStatus::Canceling {
+            if status == GoalStatusCode::Canceling {
                 log::info!("Goal canceled");
                 let result = FibonacciResult {
                     sequence: state.sequence.clone(),
@@ -168,7 +168,7 @@ impl ExecutableNode for FibonacciServer {
                 let _ = ctx.complete_goal_for_name::<FibonacciResult, 256>(
                     "/fibonacci",
                     &goal_id,
-                    GoalStatus::Canceled,
+                    GoalStatusCode::Canceled,
                     &result,
                 );
                 state.sequence.clear();
@@ -229,7 +229,7 @@ impl ExecutableNode for FibonacciServer {
             let _ = ctx.complete_goal_for_name::<FibonacciResult, 256>(
                 "/fibonacci",
                 &goal_id,
-                GoalStatus::Succeeded,
+                GoalStatusCode::Succeeded,
                 &result,
             );
             state.sequence.clear();

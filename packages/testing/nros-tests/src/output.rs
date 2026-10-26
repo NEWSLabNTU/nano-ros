@@ -687,7 +687,7 @@ pub const RAW_GOAL_PROBE_ORDER: i32 = 7;
 ///
 /// The obvious arithmetic — "the header bytes `00 01 00 00` land in `order`, so
 /// a little-endian peer reads 0x00010000 = 65536" — is wrong, because the
-/// request the server parses is `[encap][GoalId(16)][order]`: the extra four
+/// request the server parses is `[encap][GoalUuid(16)][order]`: the extra four
 /// bytes shift the whole tail, so what lands in `order` is a straddle reading
 /// 0x00000100. Issue 0461 recorded the same 256 from the other direction.
 ///

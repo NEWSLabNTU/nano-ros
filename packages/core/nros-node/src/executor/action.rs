@@ -171,9 +171,9 @@ impl<'s> Executor<'s> {
         A::GetResultRequest: MessageForRmw,
         A::GetResultResponse: MessageForRmw,
         A::FeedbackMessage: MessageForRmw,
-        GoalF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse + 'static,
-        CancelF:
-            FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse + 'static,
+        GoalF: FnMut(&nros_core::GoalUuid, &A::Goal) -> nros_core::GoalResponse + 'static,
+        CancelF: FnMut(&nros_core::GoalUuid, nros_core::GoalStatusCode) -> nros_core::CancelResponse
+            + 'static,
     {
         self.register_action_server_sized::<A, GoalF, CancelF, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
             action_name,
@@ -207,9 +207,9 @@ impl<'s> Executor<'s> {
         A::GetResultRequest: MessageForRmw,
         A::GetResultResponse: MessageForRmw,
         A::FeedbackMessage: MessageForRmw,
-        GoalF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse + 'static,
-        CancelF:
-            FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse + 'static,
+        GoalF: FnMut(&nros_core::GoalUuid, &A::Goal) -> nros_core::GoalResponse + 'static,
+        CancelF: FnMut(&nros_core::GoalUuid, nros_core::GoalStatusCode) -> nros_core::CancelResponse
+            + 'static,
     {
         // Phase 212.K.7.6.b + K.7.7.c — under `rmw-cyclonedds`, register
         // the user-facing message types AND the five action-protocol
@@ -464,16 +464,16 @@ impl<'s> Executor<'s> {
 pub struct ActionServerHandle<A: RosAction> {
     pub(crate) entry_index: usize,
     publish_feedback_fn:
-        unsafe fn(*mut u8, &nros_core::GoalId, &A::Feedback) -> Result<(), NodeError>,
+        unsafe fn(*mut u8, &nros_core::GoalUuid, &A::Feedback) -> Result<(), NodeError>,
     complete_goal_fn: unsafe fn(
         *mut u8,
-        &nros_core::GoalId,
-        nros_core::GoalStatus,
+        &nros_core::GoalUuid,
+        nros_core::GoalStatusCode,
         A::Result,
     ) -> Result<(), NodeError>,
-    set_goal_status_fn: unsafe fn(*mut u8, &nros_core::GoalId, nros_core::GoalStatus),
+    set_goal_status_fn: unsafe fn(*mut u8, &nros_core::GoalUuid, nros_core::GoalStatusCode),
     active_goal_count_fn: unsafe fn(*const u8) -> usize,
-    goal_exists_fn: unsafe fn(*const u8, &nros_core::GoalId) -> bool,
+    goal_exists_fn: unsafe fn(*const u8, &nros_core::GoalUuid) -> bool,
     expire_goals_fn: unsafe fn(*mut u8) -> usize,
     for_each_active_goal_fn: unsafe fn(*const u8, &mut dyn FnMut(&ActiveGoal<A>)),
     _phantom: PhantomData<A>,
@@ -503,7 +503,7 @@ impl<A: RosAction> ActionServerHandle<A> {
     pub fn publish_feedback(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
+        goal_id: &nros_core::GoalUuid,
         feedback: &A::Feedback,
     ) -> Result<(), NodeError> {
         let meta = executor.entries[self.entry_index]
@@ -545,20 +545,30 @@ impl<A: RosAction> ActionServerHandle<A> {
     pub fn succeed(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
+        goal_id: &nros_core::GoalUuid,
         result: A::Result,
     ) -> Result<(), NodeError> {
-        self.complete_goal(executor, goal_id, nros_core::GoalStatus::Succeeded, result)
+        self.complete_goal(
+            executor,
+            goal_id,
+            nros_core::GoalStatusCode::Succeeded,
+            result,
+        )
     }
 
     /// Terminate `goal_id` as ABORTED. See [`Self::succeed`].
     pub fn abort(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
+        goal_id: &nros_core::GoalUuid,
         result: A::Result,
     ) -> Result<(), NodeError> {
-        self.complete_goal(executor, goal_id, nros_core::GoalStatus::Aborted, result)
+        self.complete_goal(
+            executor,
+            goal_id,
+            nros_core::GoalStatusCode::Aborted,
+            result,
+        )
     }
 
     /// Terminate `goal_id` as CANCELED. See [`Self::succeed`].
@@ -574,17 +584,22 @@ impl<A: RosAction> ActionServerHandle<A> {
     pub fn canceled(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
+        goal_id: &nros_core::GoalUuid,
         result: A::Result,
     ) -> Result<(), NodeError> {
-        self.complete_goal(executor, goal_id, nros_core::GoalStatus::Canceled, result)
+        self.complete_goal(
+            executor,
+            goal_id,
+            nros_core::GoalStatusCode::Canceled,
+            result,
+        )
     }
 
     pub fn complete_goal(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
-        status: nros_core::GoalStatus,
+        goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
         result: A::Result,
     ) -> Result<(), NodeError> {
         let meta = executor.entries[self.entry_index]
@@ -604,8 +619,8 @@ impl<A: RosAction> ActionServerHandle<A> {
     pub fn set_goal_status(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
-        status: nros_core::GoalStatus,
+        goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
     ) {
         if let Some(meta) = executor.entries[self.entry_index].as_ref() {
             let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
@@ -643,7 +658,7 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// Returns `false` if the handle slot has been removed from the executor,
     /// which is the same answer a caller wants there: nothing on this server
     /// knows the goal any more.
-    pub fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool {
+    pub fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalUuid) -> bool {
         match executor.entries[self.entry_index].as_ref() {
             Some(meta) => {
                 let arena_ptr = executor.arena.as_ptr() as *const u8;
@@ -973,7 +988,7 @@ impl<'s> Executor<'s> {
 /// gets a well-formed REJECT reply instead of a dispatch into whatever now
 /// occupies the owner's storage.
 unsafe extern "C" fn detached_goal_callback(
-    _goal_id: *const nros_core::GoalId,
+    _goal_id: *const nros_core::GoalUuid,
     _goal_data: *const u8,
     _goal_len: usize,
     _context: *mut core::ffi::c_void,
@@ -992,8 +1007,8 @@ unsafe extern "C" fn detached_goal_callback(
 /// cannot answer. This is also what the C++ tier already does for a server
 /// with no cancel callback installed (`cancel_callback_trampoline`).
 unsafe extern "C" fn detached_cancel_callback(
-    _goal_id: *const nros_core::GoalId,
-    _status: nros_core::GoalStatus,
+    _goal_id: *const nros_core::GoalUuid,
+    _status: nros_core::GoalStatusCode,
     _context: *mut core::ffi::c_void,
 ) -> nros_core::CancelResponse {
     nros_core::CancelResponse::Accept
@@ -1311,17 +1326,17 @@ impl<'s> Executor<'s> {
 pub struct ActionServerRawHandle {
     pub(crate) entry_index: usize,
     publish_feedback_fn:
-        unsafe fn(*mut u8, &nros_core::GoalId, *const u8, usize) -> Result<(), NodeError>,
+        unsafe fn(*mut u8, &nros_core::GoalUuid, *const u8, usize) -> Result<(), NodeError>,
     complete_goal_fn: unsafe fn(
         *mut u8,
-        &nros_core::GoalId,
-        nros_core::GoalStatus,
+        &nros_core::GoalUuid,
+        nros_core::GoalStatusCode,
         *const u8,
         usize,
     ) -> Result<(), NodeError>,
-    set_goal_status_fn: unsafe fn(*mut u8, &nros_core::GoalId, nros_core::GoalStatus),
+    set_goal_status_fn: unsafe fn(*mut u8, &nros_core::GoalUuid, nros_core::GoalStatusCode),
     active_goal_count_fn: unsafe fn(*const u8) -> usize,
-    goal_exists_fn: unsafe fn(*const u8, &nros_core::GoalId) -> bool,
+    goal_exists_fn: unsafe fn(*const u8, &nros_core::GoalUuid) -> bool,
     expire_goals_fn: unsafe fn(*mut u8) -> usize,
     for_each_active_goal_fn: unsafe fn(*const u8, &mut dyn FnMut(&RawActiveGoal)),
 }
@@ -1352,7 +1367,7 @@ impl ActionServerRawHandle {
     pub(crate) const fn invalid() -> Self {
         unsafe fn unreachable_publish_feedback(
             _: *mut u8,
-            _: &nros_core::GoalId,
+            _: &nros_core::GoalUuid,
             _: *const u8,
             _: usize,
         ) -> Result<(), NodeError> {
@@ -1360,8 +1375,8 @@ impl ActionServerRawHandle {
         }
         unsafe fn unreachable_complete_goal(
             _: *mut u8,
-            _: &nros_core::GoalId,
-            _: nros_core::GoalStatus,
+            _: &nros_core::GoalUuid,
+            _: nros_core::GoalStatusCode,
             _: *const u8,
             _: usize,
         ) -> Result<(), NodeError> {
@@ -1369,15 +1384,15 @@ impl ActionServerRawHandle {
         }
         unsafe fn unreachable_set_goal_status(
             _: *mut u8,
-            _: &nros_core::GoalId,
-            _: nros_core::GoalStatus,
+            _: &nros_core::GoalUuid,
+            _: nros_core::GoalStatusCode,
         ) {
             unreachable!("ActionServerRawHandle::set_goal_status called on invalid handle")
         }
         unsafe fn unreachable_active_goal_count(_: *const u8) -> usize {
             unreachable!("ActionServerRawHandle::active_goal_count called on invalid handle")
         }
-        unsafe fn unreachable_goal_exists(_: *const u8, _: &nros_core::GoalId) -> bool {
+        unsafe fn unreachable_goal_exists(_: *const u8, _: &nros_core::GoalUuid) -> bool {
             unreachable!("ActionServerRawHandle::goal_exists called on invalid handle")
         }
         unsafe fn unreachable_expire_goals(_: *mut u8) -> usize {
@@ -1425,7 +1440,7 @@ impl ActionServerRawHandle {
     pub(crate) fn publish_feedback_raw(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
+        goal_id: &nros_core::GoalUuid,
         feedback_data: &[u8],
     ) -> Result<(), NodeError> {
         let meta = executor.entries[self.entry_index]
@@ -1456,8 +1471,8 @@ impl ActionServerRawHandle {
     pub(crate) fn complete_goal_raw(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
-        status: nros_core::GoalStatus,
+        goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
         result_data: &[u8],
     ) -> Result<(), NodeError> {
         let meta = executor.entries[self.entry_index]
@@ -1483,8 +1498,8 @@ impl ActionServerRawHandle {
     pub(crate) fn set_goal_status(
         &self,
         executor: &mut Executor,
-        goal_id: &nros_core::GoalId,
-        status: nros_core::GoalStatus,
+        goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
     ) {
         if let Some(meta) = executor.entries[self.entry_index].as_ref() {
             let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
@@ -1517,7 +1532,7 @@ impl ActionServerRawHandle {
     /// surface's `rclc_action_server_goal_exists` and the C++
     /// `Server<A>::goal_exists` both resolve to. Active OR completed-with-a-
     /// retained-result; `false` once the slot is gone from the executor.
-    pub(crate) fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalId) -> bool {
+    pub(crate) fn goal_exists(&self, executor: &Executor, goal_id: &nros_core::GoalUuid) -> bool {
         match executor.entries[self.entry_index].as_ref() {
             Some(meta) => {
                 let arena_ptr = executor.arena.as_ptr() as *const u8;
@@ -1575,8 +1590,8 @@ impl ActionServerRawHandle {
     pub(crate) fn goal_status(
         &self,
         executor: &Executor,
-        goal_id: &nros_core::GoalId,
-    ) -> Option<nros_core::GoalStatus> {
+        goal_id: &nros_core::GoalUuid,
+    ) -> Option<nros_core::GoalStatusCode> {
         let mut found = None;
         self.for_each_active_goal(executor, |g| {
             if g.goal_id.uuid == goal_id.uuid && found.is_none() {
@@ -1849,9 +1864,9 @@ impl<'s> Executor<'s> {
     >
     where
         A: nros_core::RosAction + 'static,
-        GRespF: FnMut(&nros_core::GoalId, bool) + 'static,
-        FbF: FnMut(&nros_core::GoalId, &A::Feedback) + 'static,
-        ResF: FnMut(&nros_core::GoalId, nros_core::GoalStatus, &A::Result) + 'static,
+        GRespF: FnMut(&nros_core::GoalUuid, bool) + 'static,
+        FbF: FnMut(&nros_core::GoalUuid, &A::Feedback) + 'static,
+        ResF: FnMut(&nros_core::GoalUuid, nros_core::GoalStatusCode, &A::Result) + 'static,
     {
         type Entry<A, G, Fb, R, const GB: usize, const RB: usize, const FB: usize> =
             ActionClientCallbackEntry<A, G, Fb, R, GB, RB, FB>;
@@ -2146,8 +2161,8 @@ mod terminal_verb_tests {
 
     unsafe fn record_status(
         _data: *mut u8,
-        _goal_id: &nros_core::GoalId,
-        status: nros_core::GoalStatus,
+        _goal_id: &nros_core::GoalUuid,
+        status: nros_core::GoalStatusCode,
         _result: Unit,
     ) -> Result<(), NodeError> {
         LAST_STATUS.store(status as i8, Ordering::SeqCst);
@@ -2156,7 +2171,7 @@ mod terminal_verb_tests {
 
     unsafe fn unused_feedback(
         _data: *mut u8,
-        _goal_id: &nros_core::GoalId,
+        _goal_id: &nros_core::GoalUuid,
         _fb: &Unit,
     ) -> Result<(), NodeError> {
         unreachable!("the terminal-verb test never publishes feedback")
@@ -2164,8 +2179,8 @@ mod terminal_verb_tests {
 
     unsafe fn unused_set_status(
         _data: *mut u8,
-        _goal_id: &nros_core::GoalId,
-        _status: nros_core::GoalStatus,
+        _goal_id: &nros_core::GoalUuid,
+        _status: nros_core::GoalStatusCode,
     ) {
         unreachable!("the terminal-verb test never sets a non-terminal status")
     }
@@ -2178,7 +2193,7 @@ mod terminal_verb_tests {
         unreachable!("the terminal-verb test never iterates active goals")
     }
 
-    unsafe fn unused_goal_exists(_data: *const u8, _goal_id: &nros_core::GoalId) -> bool {
+    unsafe fn unused_goal_exists(_data: *const u8, _goal_id: &nros_core::GoalUuid) -> bool {
         unreachable!("the terminal-verb test never asks whether a goal exists")
     }
 
@@ -2237,13 +2252,13 @@ mod terminal_verb_tests {
         executor.entries[0] = Some(meta());
 
         let h = handle();
-        let goal = nros_core::GoalId::zero();
+        let goal = nros_core::GoalUuid::zero();
 
         LAST_STATUS.store(-1, Ordering::SeqCst);
         h.succeed(&mut executor, &goal, Unit).unwrap();
         assert_eq!(
             LAST_STATUS.load(Ordering::SeqCst),
-            nros_core::GoalStatus::Succeeded as i8,
+            nros_core::GoalStatusCode::Succeeded as i8,
             "succeed() must terminate the goal as SUCCEEDED"
         );
 
@@ -2251,7 +2266,7 @@ mod terminal_verb_tests {
         h.abort(&mut executor, &goal, Unit).unwrap();
         assert_eq!(
             LAST_STATUS.load(Ordering::SeqCst),
-            nros_core::GoalStatus::Aborted as i8,
+            nros_core::GoalStatusCode::Aborted as i8,
             "abort() must terminate the goal as ABORTED"
         );
 
@@ -2262,7 +2277,7 @@ mod terminal_verb_tests {
         h.canceled(&mut executor, &goal, Unit).unwrap();
         assert_eq!(
             LAST_STATUS.load(Ordering::SeqCst),
-            nros_core::GoalStatus::Canceled as i8,
+            nros_core::GoalStatusCode::Canceled as i8,
             "canceled() must terminate the goal as CANCELED"
         );
 

@@ -128,7 +128,7 @@ pub mod talker {
 pub mod fib_server {
     use nros::{
         Callback, CallbackCtx, CdrReader, CdrWriter, DeclarativeNode, DeserError, Deserialize,
-        ExecutableNode, GoalResponse, GoalStatus, NodeContext, NodeOptions, NodeResult, RosAction,
+        ExecutableNode, GoalResponse, GoalStatusCode, NodeContext, NodeOptions, NodeResult, RosAction,
         RosMessage, SerError, Serialize, TickCtx,
     };
 
@@ -169,7 +169,7 @@ pub mod fib_server {
         }
 
         fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
-            let mut goal: Option<nros::GoalId> = None;
+            let mut goal: Option<nros::GoalUuid> = None;
             ctx.for_each_active_goal_for_name("fibonacci", &mut |g, _status| {
                 if goal.is_none() {
                     goal = Some(*g);
@@ -201,7 +201,7 @@ pub mod fib_server {
                 let _ = ctx.complete_goal_for_name::<FibonacciResult, 512>(
                     "fibonacci",
                     &goal_id,
-                    GoalStatus::Succeeded,
+                    GoalStatusCode::Succeeded,
                     &result,
                 );
                 *state = 0;

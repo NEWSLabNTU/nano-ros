@@ -13,8 +13,8 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
-    Callback, CallbackCtx, CancelResponse, Component, DeclarativeNode, ExecutableNode, GoalId,
-    GoalResponse, GoalStatus, NodeContext, NodeOptions, NodeResult, TickCtx,
+    Callback, CallbackCtx, CancelResponse, Component, DeclarativeNode, ExecutableNode,
+    GoalResponse, GoalStatusCode, GoalUuid, NodeContext, NodeOptions, NodeResult, TickCtx,
 };
 
 // Diagnostics route through `nros-log`.
@@ -78,9 +78,9 @@ impl ExecutableNode for FibonacciServer {
     fn tick(state: &mut Self::State, ctx: &mut TickCtx<'_>) {
         // Snapshot active goals into a fixed-cap stack list so the borrow-checker
         // lets us issue mutable executor ops after the visit returns.
-        let mut pending: heapless::Vec<GoalId, 4> = heapless::Vec::new();
+        let mut pending: heapless::Vec<GoalUuid, 4> = heapless::Vec::new();
         ctx.for_each_active_goal_for_name("/fibonacci", &mut |goal_id, status| {
-            if matches!(status, GoalStatus::Accepted | GoalStatus::Executing) {
+            if matches!(status, GoalStatusCode::Accepted | GoalStatusCode::Executing) {
                 let _ = pending.push(*goal_id);
             }
         });
@@ -122,7 +122,7 @@ impl ExecutableNode for FibonacciServer {
                 .complete_goal_for_name::<FibonacciResult, 256>(
                     "/fibonacci",
                     &goal_id,
-                    GoalStatus::Succeeded,
+                    GoalStatusCode::Succeeded,
                     &result,
                 )
                 .is_ok()
