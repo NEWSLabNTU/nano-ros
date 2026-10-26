@@ -68,7 +68,7 @@ nros-platform-mps2-an385 = { path = "../../../../packages/platform/nros-platform
 # `nros_rmw_zenoh::register()`, called by both bins. The selection package
 # links the backend with the image's platform and edition.
 nros-rmw-zenoh = { path = "../../../../packages/rmw/zenoh/nros-rmw-zenoh" }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 # Phase 230 (#0317) — was pulled transitively via `nros-node/platform-freertos`;
 # now a direct dep for the semihosting `debug::exit` at scenario end.
 cortex-m-semihosting = "0.5"

@@ -25,7 +25,7 @@ nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 native_rs_async_action_client_nros_selection = { path = "build/nros/selection" }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { version = "*" }
-example_interfaces = { path = "generated/example_interfaces", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 futures = { version = "0.3", default-features = false, features = ["std"] }
 tokio = { version = "1", features = ["rt", "macros", "time"] }
 

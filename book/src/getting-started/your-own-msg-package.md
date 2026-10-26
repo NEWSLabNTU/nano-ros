@@ -207,13 +207,12 @@ cmake --build build -j
 ## The Rust side
 
 The same msg package feeds a Rust node with no CMake involved: declare
-it in your node package's `package.xml` (`<depend>my_msgs</depend>`)
-and manifest (`my_msgs = { path = "../../generated/my_msgs", version =
-"0.0.0", default-features = false }` — workspace-level `generated/`,
-constant `0.0.0` version), then run `nros sync` from the workspace
-root — the package index finds `src/my_msgs/` by its `package.xml`,
-generates the `generated/my_msgs` crate, and wires the cargo patch
-table. The shipped precedent is
+it in your node package's `package.xml` (`<depend>my_msgs</depend>`) and
+run `nros sync` (or `nros build`) from the workspace root — that is the
+whole change. The package index finds `src/my_msgs/` by its
+`package.xml`, generates the `generated/my_msgs` crate, and writes the
+manifest row itself (`my_msgs = { path = "../../generated/my_msgs",
+default-features = false }  # nros-managed`). The shipped precedent is
 [`examples/workspaces/features/src/custom_msgs`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/features/src/custom_msgs) with its
 `rust_reading_listener_pkg` consumer. Full
 detail: [Message Generation](../user-guide/message-generation.md).

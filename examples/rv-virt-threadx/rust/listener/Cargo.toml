@@ -33,7 +33,7 @@ alloc            = ["nros/alloc"]
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["rmw-cffi", "ros-humble", "macros"] }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 # phase-277 W4 — chatter log lines (`Publishing:` / `I heard:`) route through
 # the `log` facade; the platform entry runtime owns the sink.
 log = "0.4"

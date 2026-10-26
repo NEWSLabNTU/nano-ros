@@ -22,4 +22,4 @@ type = "std_msgs/msg/Int32"
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
-std_msgs = { path = "../../generated/std_msgs", default-features = false }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed

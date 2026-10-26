@@ -16,5 +16,5 @@ name = "add_client"
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
-example_interfaces = { path = "../../generated/example_interfaces", default-features = false }
-std_msgs = { path = "../../generated/std_msgs", default-features = false }
+example_interfaces = { path = "../../generated/example_interfaces", default-features = false }  # nros-managed
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed

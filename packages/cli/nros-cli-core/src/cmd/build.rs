@@ -2308,6 +2308,12 @@ pub fn run(args: Args) -> Result<()> {
         if !args.dry_run {
             observe_system(&args, &regenerated);
         }
+        // phase-517 W8 — the managed message rows, the same step sync runs:
+        // a `<depend>` is one edit, whichever of the two verbs comes next.
+        for m in crate::cmd::ws::refresh_managed_msg_deps(&root, args.dry_run)? {
+            let verb = if args.dry_run { "would write" } else { "wrote" };
+            eprintln!("nros build: {verb} message dependencies → {}", m.display());
+        }
     }
 
     let mut plans = plan_builds(&args)?;

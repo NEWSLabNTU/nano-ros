@@ -38,4 +38,4 @@ nros = { path = "../../../../../packages/api/nros", default-features = false, fe
     # store is SERVED is the bringup's axis, and a node naming it would serve it in
     # every image that links the node.
     "param-store", "macros"] }
-std_msgs = { path = "../../generated/std_msgs", default-features = false }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed

@@ -53,6 +53,7 @@ nros-rmw-xrce-cffi = { version = "*", optional = true, default-features = false 
 # Issue 1603 -- the component lives in its own host-buildable package beside
 # this one; this crate is the Zephyr image half (staticlib + boot glue).
 zephyr_action_server_node = { path = "node" }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 
 [build-dependencies]
 zephyr-build = "0.1.0"

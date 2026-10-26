@@ -21,7 +21,7 @@ publish = false
 [dependencies]
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 log = "0.4"
-std_msgs = { path = "../generated/std_msgs", default-features = false }
+std_msgs = { path = "../generated/std_msgs", default-features = false }  # nros-managed
 
 [package.metadata.ament]
 build_depend = ["std_msgs"]

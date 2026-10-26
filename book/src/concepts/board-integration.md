@@ -41,7 +41,8 @@ families:
 nros-board-freertos = { version = "*", default-features = false }
 nros = { version = "*", default-features = false, features = ["rmw-cffi", "platform-freertos", "ros-humble"] }
 nros-rmw-zenoh = { version = "*", default-features = false, features = ["platform-freertos"] }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+# written by `nros sync` from package.xml's <depend>std_msgs</depend>:
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 ```
 
 ```rust

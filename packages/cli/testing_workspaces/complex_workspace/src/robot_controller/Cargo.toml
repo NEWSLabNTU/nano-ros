@@ -12,14 +12,14 @@ path = "src/main.rs"
 
 [dependencies]
 # Standard ROS message packages - cargo-ros2 will generate bindings
-builtin_interfaces = { path = "../../generated/builtin_interfaces" }
-std_msgs = { path = "../../generated/std_msgs" }
-geometry_msgs = { path = "../../generated/geometry_msgs" }
-sensor_msgs = { path = "../../generated/sensor_msgs" }
-nav_msgs = { path = "../../generated/nav_msgs" }
-trajectory_msgs = { path = "../../generated/trajectory_msgs" }
-action_msgs = { path = "../../generated/action_msgs" }
-diagnostic_msgs = { path = "../../generated/diagnostic_msgs" }
+builtin_interfaces = { path = "../../generated/builtin_interfaces", default-features = false }  # nros-managed
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
+geometry_msgs = { path = "../../generated/geometry_msgs", default-features = false }  # nros-managed
+sensor_msgs = { path = "../../generated/sensor_msgs", default-features = false }  # nros-managed
+nav_msgs = { path = "../../generated/nav_msgs", default-features = false }  # nros-managed
+trajectory_msgs = { path = "../../generated/trajectory_msgs", default-features = false }  # nros-managed
+action_msgs = { path = "../../generated/action_msgs", default-features = false }  # nros-managed
+diagnostic_msgs = { path = "../../generated/diagnostic_msgs", default-features = false }  # nros-managed
 
 # Navigation and control packages
 nav2_msgs = "*"

@@ -8,6 +8,7 @@
 
 
   <depend>nros</depend>
+  <depend>builtin_interfaces</depend>
   <depend>std_msgs</depend>
 
   <export>

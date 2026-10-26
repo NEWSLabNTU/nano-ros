@@ -241,10 +241,11 @@ crate-type = ["rlib", "staticlib"]
 
 [dependencies]
 nros     = { version = "*", default-features = false }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 ```
 
-Dependencies and nothing else. The class name, the node name and the
+Dependencies and nothing else — and the `std_msgs` row is not even yours:
+`nros sync` writes it from `<depend>std_msgs</depend>` in `package.xml`. The class name, the node name and the
 dispatch strategy are the `[[component]]` row in `system.toml`, and there
 is no root manifest to inherit `workspace = true` from.
 

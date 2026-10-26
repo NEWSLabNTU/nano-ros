@@ -22,7 +22,7 @@ publish = false
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "macros"] }
 log = "0.4"
 heapless = "0.8"
-example_interfaces = { path = "../generated/example_interfaces", default-features = false }
+example_interfaces = { path = "../generated/example_interfaces", default-features = false }  # nros-managed
 
 [package.metadata.ament]
 build_depend = ["example_interfaces"]

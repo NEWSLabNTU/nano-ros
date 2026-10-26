@@ -31,7 +31,7 @@ nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 # this manifest names no board, RMW or edition. `main.rs` reaches the board
 # through it.
 ros_edition_pose_pub_nros_selection = { path = "build/nros/selection" }
-geometry_msgs = { path = "generated/geometry_msgs", default-features = false }
+geometry_msgs = { path = "generated/geometry_msgs", default-features = false }  # nros-managed
 log = "0.4"
 env_logger = "0.11"
 

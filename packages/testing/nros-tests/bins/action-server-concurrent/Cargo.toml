@@ -37,7 +37,7 @@ nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", feature
 action_server_concurrent_nros_selection = { path = "build/nros/selection" }
 # Only for the feature above; the selection package links the backend.
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, optional = true }
-example_interfaces = { path = "generated/example_interfaces", default-features = false }
+example_interfaces = { path = "generated/example_interfaces", default-features = false }  # nros-managed
 log = "0.4"
 env_logger = "0.11"
 heapless = "0.8"

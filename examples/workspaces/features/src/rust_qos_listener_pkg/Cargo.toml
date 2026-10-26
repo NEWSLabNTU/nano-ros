@@ -16,7 +16,7 @@ name = "qos_listener"
 nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
-std_msgs = { path = "../../generated/std_msgs", default-features = false }
+std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
 # Re-uses the talker's `qos_profile()` so the two endpoints declare an identical
 # QoS contract (lib-only dep — no entities pulled in).
 rust_qos_talker_pkg = { path = "../rust_qos_talker_pkg", default-features = false }

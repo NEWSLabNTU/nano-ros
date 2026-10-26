@@ -38,7 +38,7 @@ nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", feature
 message_info_observer_nros_selection = { path = "build/nros/selection" }
 # Only for the feature above; the selection package links the backend.
 nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, optional = true }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 log = "0.4"
 env_logger = "0.11"
 

@@ -33,7 +33,7 @@ nros-platform-cffi = { version = "*", features = ["posix-c-port"] }
 native_rs_xrce_serial_talker_nros_selection = { path = "build/nros/selection" }
 # Phase 88.16.B — diagnostics route through `nros-log`.
 nros-log = { version = "*" }
-std_msgs = { path = "generated/std_msgs", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }  # nros-managed
 
 # Phase 208.F1 — empty `[workspace]` table makes this example a standalone
 # workspace root. Without it, cargo walks up + adopts the example into the

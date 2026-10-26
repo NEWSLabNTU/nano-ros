@@ -558,7 +558,9 @@ nros = {{ version = "*", default-features = false, features = [
     "rmw-cffi",
     "macros",
 ] }}
-std_msgs = {{ version = "*", default-features = false }}
+# Message crates come from package.xml: each <depend> on a message package
+# becomes a `# nros-managed` path row below when you run `nros sync` (or
+# `nros build`). Edit package.xml, not this table (RFC-0098, phase-517 W8).
 # A node logs through the `log` facade; the board registers the sink at boot.
 log = {{ version = "0.4", default-features = false }}
 "#,
@@ -1108,7 +1110,9 @@ nros-board-linux = {{ version = "*", default-features = false }}
 nros-rmw-zenoh = {{ version = "*", default-features = false, features = ["std", "platform-posix", "{edition_feature}"], optional = true }}
 nros-rmw-xrce-cffi = {{ version = "*", default-features = false, features = ["std"], optional = true }}
 nros-rmw-cyclonedds-sys = {{ version = "*", features = ["platform-posix"], optional = true }}
-std_msgs = {{ version = "*", default-features = false }}
+# Message crates come from package.xml: each <depend> on a message package
+# becomes a `# nros-managed` path row below when you run `nros sync` (or
+# `nros build`). Edit package.xml, not this table (RFC-0098, phase-517 W8).
 log = "0.4"
 env_logger = "0.11"
 {CARGO_PROFILES}"#
@@ -1254,7 +1258,9 @@ crate-type = ["rlib"]
 # never builds it.
 nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "{edition_feature}", "macros"] }}
 nros-log = {{ version = "*", default-features = false }}
-std_msgs = {{ version = "*", default-features = false }}
+# Message crates come from package.xml: each <depend> on a message package
+# becomes a `# nros-managed` path row below when you run `nros sync` (or
+# `nros build`). Edit package.xml, not this table (RFC-0098, phase-517 W8).
 
 # What the board needs to link + boot, and nothing the node in `lib.rs` uses.
 # TARGET-scoped so that `lib.rs` also builds for the host: `nros sync` probes
@@ -2035,12 +2041,19 @@ mod tests {
                     .is_some(),
                 "{platform}: the board must be target-scoped:\n{toml}"
             );
-            for host_dep in ["nros", "nros-log", "std_msgs"] {
+            for host_dep in ["nros", "nros-log"] {
                 assert!(
                     doc["dependencies"].get(host_dep).is_some(),
                     "{platform}: `{host_dep}` is what lib.rs uses and must stay host-visible:\n{toml}"
                 );
             }
+            // phase-517 W8 — the message crate is NOT written by the scaffold:
+            // `<depend>std_msgs</depend>` is the one statement, and `nros sync`
+            // turns it into a host-visible `# nros-managed` row.
+            assert!(
+                doc["dependencies"].get("std_msgs").is_none(),
+                "{platform}: the message dep is package.xml's alone:\n{toml}"
+            );
             // phase-445 W3b — the board lives in system.toml, never the manifest.
             assert!(
                 !toml.contains("[package.metadata.nros.entry]")
