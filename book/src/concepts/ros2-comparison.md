@@ -62,8 +62,11 @@ registered via `executor.node_mut(nid).create_subscription::<M, _>("/topic", cal
 runs the callback during `spin_once`. Pick whichever fits the control loop.
 
 A C++ callback may also take upstream's `const rclcpp::MessageInfo&` as its
-second argument (hosted builds; issue 2036). The fields are what the backend
-reports per sample, so on XRCE and uORB they are all zero.
+second argument (hosted builds; issue 2036). A C++ poll subscription has
+upstream's polling form, `sub.take(msg, info)`, on hosted and freestanding
+builds (issue 2074). The fields are what the backend reports per sample, so on
+XRCE and uORB they are all zero. `info.is_reported()` (a nano-ros extension)
+says whether the backend reported metadata for that sample at all.
 
 **Why.** Embedded apps often want the predictability of an explicit
 poll inside a real-time loop. Callback dispatch is great for

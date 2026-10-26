@@ -128,6 +128,38 @@ template <typename M> class PollSubscription {
         return Result::success();
     }
 
+    /// Issue 2074 — upstream's `rclcpp::Subscription::take(msg, message_info)`:
+    /// @ref take plus the sample's metadata, filled from the same backend take
+    /// (`take_serialized_with_info`) the `(const M&, const MessageInfo&)`
+    /// callback path uses (issue 2036). Plain data, so it is offered on
+    /// freestanding builds too.
+    ///
+    /// @param msg   Output message struct (filled on success).
+    /// @param info  Receives the metadata on success. A backend that reports
+    ///              none (XRCE, uORB) leaves every field zero and
+    ///              `info.is_reported()` false. Untouched unless a sample was
+    ///              taken.
+    /// @return As @ref take.
+    Result take(M& msg, ::rclcpp::MessageInfo& info) {
+        return take_sized<::rclcpp::rx_buffer_capacity<M>::value>(msg, info);
+    }
+
+    /// @ref take(M&, MessageInfo&) with the receive buffer sized by the
+    /// CALLER. See @ref take_sized (issue 0964).
+    template <size_t Cap> Result take_sized(M& msg, ::rclcpp::MessageInfo& info) {
+        if (!initialized_) return Result(::rclcpp::ErrorCode::NotInitialized);
+        uint8_t buf[Cap];
+        size_t len = 0;
+        nros_cpp_message_info_t raw;
+        nros_cpp_ret_t ret =
+            nros_cpp_subscription_take_with_info(storage_, buf, sizeof(buf), &len, &raw);
+        if (ret != 0) return Result(ret);
+        if (len == 0) return Result(::rclcpp::ErrorCode::TryAgain);
+        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(::rclcpp::ErrorCode::Error);
+        info = ::rclcpp::detail::message_info_from_ffi(raw);
+        return Result::success();
+    }
+
     /// Issue 0073 — take that ALSO returns the E2E message-integrity status
     /// (CRC + sequence gap/dup) of the received sample. The safety-e2e analog of
     /// @ref take: the backend recomputes + compares the CRC the publisher

@@ -36,6 +36,11 @@ int32_t nros_stub_rmw_register(void);
  *  backend), which is how a probe gets two sessions without a second backend. */
 int32_t nros_stub_rmw_register_as(const char* name);
 
+/** Issue 2074 — register the stub under @p name WITHOUT its `take_with_info`
+ *  slot, so a sample carries no metadata channel at all (the XRCE / uORB
+ *  case). Lets a probe tell "nothing reported" apart from "zeros reported". */
+int32_t nros_stub_rmw_register_without_message_info(const char* name);
+
 /** Issue 1405 — sessions this stub has opened since process start. Session N
  *  (0-based, in open order) is the one `nros_stub_rmw_last_entity_session`
  *  reports as N. */

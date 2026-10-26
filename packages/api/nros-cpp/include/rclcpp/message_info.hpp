@@ -57,15 +57,28 @@ struct RmwMessageInfo {
 /// both timestamps, both sequence numbers, the publisher GID).
 class MessageInfo {
   public:
+    /// Nothing reported: every field zero, `is_reported()` false.
     MessageInfo() = default;
-    explicit MessageInfo(const RmwMessageInfo& info) : info_(info) {}
+    /// From a caller-supplied record, which counts as reported.
+    explicit MessageInfo(const RmwMessageInfo& info) : info_(info), reported_(true) {}
+    /// Issue 2074 — from the runtime, which says whether the backend reported
+    /// metadata for this sample at all.
+    MessageInfo(const RmwMessageInfo& info, bool reported) : info_(info), reported_(reported) {}
 
     /// Upstream's accessor, both constnesses.
     const RmwMessageInfo& get_rmw_message_info() const { return info_; }
     RmwMessageInfo& get_rmw_message_info() { return info_; }
 
+    /// Issue 2074 — nano-ros extension, with no upstream counterpart: `true`
+    /// when the backend reported metadata for this sample, `false` when it
+    /// reported none (XRCE, uORB). The fields are all zero either way in the
+    /// second case, so this is what tells "not reported" apart from a
+    /// backend that reported zeros.
+    bool is_reported() const { return reported_; }
+
   private:
     RmwMessageInfo info_;
+    bool reported_ = false;
 };
 
 } // namespace rclcpp

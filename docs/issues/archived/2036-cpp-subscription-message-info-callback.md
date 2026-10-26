@@ -91,8 +91,10 @@ Fixed 2026-10-25.
 - A backend that reports no metadata cannot be told apart from one that
   reported zeros: `nros_cpp_message_info_t::has_info` reaches the trampoline,
   but `rclcpp::MessageInfo` has no field for it, since upstream has none.
+  Resolved 2026-10-26 by issue 2074: `MessageInfo::is_reported()`.
 - The polling path, `PollSubscription<M>::take(M&, MessageInfo&)` (upstream's
   `Subscription::take` with info), is not offered. See `cpp:Subscription::take`.
+  Resolved 2026-10-26 by issue 2074.
 - Stock ROS 2 was not tested live: the test proves the C++ plumbing on the stub.
   The backends' `take_with_info` population is covered by their own tests
   (issue 1495).

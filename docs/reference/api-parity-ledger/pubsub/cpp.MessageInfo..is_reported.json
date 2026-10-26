@@ -1,0 +1,5 @@
+{
+  "key": "cpp:MessageInfo::is_reported",
+  "verdict": "extension",
+  "why": "issue 2074 (2026-10-26): upstream `rclcpp::MessageInfo` has no such member. It is true when the backend reported metadata for the sample through a per-sample channel (a filled `take_with_info` slot, or the Rust adapter's side table), false when it has none (XRCE, uORB), where every field is zero. An all-zero `rmw_message_info_t` cannot tell those apart, which is the ambiguity issue 2036 left open. It describes the CHANNEL, not each field: a backend that fills the record on every take reads as reported even where a field is zero."
+}

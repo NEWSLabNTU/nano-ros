@@ -1125,6 +1125,63 @@ pub unsafe extern "C" fn nros_cpp_subscription_take_serialized_with_attachment(
     }
 }
 
+/// Issue 2074 — the POLL-side take with metadata: upstream's
+/// `rclcpp::Subscription::take(msg, message_info)`. Writes the CDR bytes into
+/// `out_data` and the sample's metadata into `*out_info`, both from ONE
+/// `take_serialized_with_info`, the take the callback-side MessageInfo path
+/// (issue 2036) uses. `*out_len` is `0` and `*out_info` is zeroed (with
+/// `has_info = false`) when nothing was waiting.
+///
+/// `out_info->has_info` tells "the backend reported metadata for this sample"
+/// apart from "it reported none" (XRCE, uORB), which an all-zero record
+/// cannot.
+///
+/// # Safety
+/// `storage` must be a valid subscription storage. `out_data` must point to
+/// `out_capacity` writable bytes. `out_len` and `out_info` must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_subscription_take_with_info(
+    storage: *mut c_void,
+    out_data: *mut u8,
+    out_capacity: usize,
+    out_len: *mut usize,
+    out_info: *mut nros_cpp_message_info_t,
+) -> nros_cpp_ret_t {
+    if storage.is_null() || out_data.is_null() || out_len.is_null() || out_info.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let sub = unsafe { &mut *(storage as *mut nros::internals::RmwSubscriber) };
+    let out_slice = unsafe { core::slice::from_raw_parts_mut(out_data, out_capacity) };
+
+    match sub.take_serialized_with_info(out_slice) {
+        Ok(Some((len, info))) => {
+            unsafe {
+                *out_len = len;
+                *out_info = nros_cpp_message_info_t::from_info(info.as_ref());
+            }
+            NROS_CPP_RET_OK
+        }
+        Ok(None) => {
+            unsafe {
+                *out_len = 0;
+                *out_info = nros_cpp_message_info_t::from_info(None);
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(e @ (TransportError::BufferTooSmall | TransportError::MessageTooLarge)) => {
+            // Issue 1425 -- counted like the other take flavours.
+            note_sample_dropped_too_small(&e, out_capacity, refused_len_for(sub, &e));
+            unsafe {
+                *out_len = 0;
+                *out_info = nros_cpp_message_info_t::from_info(None);
+            }
+            NROS_CPP_RET_FULL
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
 // ============================================================================
 // Phase 124.A.7 — zero-copy subscription borrow / release
 // ============================================================================

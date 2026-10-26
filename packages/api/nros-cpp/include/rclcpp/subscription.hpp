@@ -859,7 +859,8 @@ inline ::rclcpp::MessageInfo message_info_from_ffi(const nros_cpp_message_info_t
     r.reception_sequence_number = c.reception_sequence_number;
     for (int i = 0; i < 24; ++i)
         r.publisher_gid.data[i] = c.publisher_gid[i];
-    return ::rclcpp::MessageInfo(r);
+    // Issue 2074 — carry "the backend reported nothing" through.
+    return ::rclcpp::MessageInfo(r, c.has_info);
 }
 
 #if defined(NROS_CPP_HAS_SHARED_PTR) // hosted-family: shared-ptr-interop
