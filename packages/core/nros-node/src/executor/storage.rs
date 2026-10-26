@@ -760,6 +760,13 @@ pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
         };
         i += 1;
     }
+    // Issue 2041 -- each tier's arena carries the per-EXECUTOR base overhead
+    // once (`arena_model::BASE_OVERHEAD`), because issue 1970 sized a tier as
+    // its own executor. The levels share ONE executor, so the base is paid
+    // once: summing it per level handed the island's executor 29,820 B where
+    // the image's own model (`NROS_EXECUTOR_ARENA_SIZE`) is 25,724 -- exactly
+    // the two extra bases. See [`levels_arena_bytes`].
+    let arena = levels_arena_bytes(arena, tiers.len());
     // One executor dispatches at most one ready word of slots; a level image
     // past it is refused at registration, loudly, as any executor is.
     let max_cbs = super::spin::MAX_CALLBACK_SLOTS;
@@ -771,6 +778,16 @@ pub const fn levels_executor_sizing() -> Option<ExecutorSizing> {
         params: if params < store { params } else { store },
         remaps: MAX_REMAPS,
     })
+}
+
+/// Issue 2041 -- the ONE level executor's arena from the sum of its `levels`
+/// tiers' arenas: every tier's model includes the per-executor base overhead,
+/// and one executor pays it once, so `levels - 1` of them come off. With the
+/// tiers partitioning the image's entities this is the image's own model, the
+/// number `NROS_EXECUTOR_ARENA_SIZE` derives to.
+pub(crate) const fn levels_arena_bytes(tier_arena_sum: usize, levels: usize) -> usize {
+    let extra = crate::config::arena_model::BASE_OVERHEAD * levels.saturating_sub(1);
+    tier_arena_sum.saturating_sub(extra)
 }
 
 /// phase-509 P9b item 4 -- the backing bytes [`levels_executor_sizing`]
@@ -972,6 +989,24 @@ unsafe fn region_slice<'s, T>(p: *mut T, n: usize) -> &'s mut [T] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2041 -- the level executor pays the per-executor base once. Three
+    /// tiers priced as the reference island's (each with its own base) sum to
+    /// the image's model plus two bases; the levels arena is the image's.
+    #[test]
+    fn the_levels_arena_pays_the_executor_base_once() {
+        let base = crate::config::arena_model::BASE_OVERHEAD;
+        let (a, b, c) = (4_080, 5_104, 11_120);
+        let image_model = a + b + c + base;
+        let tier_sum = (a + base) + (b + base) + (c + base);
+        assert_eq!(levels_arena_bytes(tier_sum, 3), image_model);
+        assert_eq!(
+            levels_arena_bytes(a + base, 1),
+            a + base,
+            "one level, one base"
+        );
+        assert_eq!(levels_arena_bytes(0, 0), 0, "no level, nothing to subtract");
+    }
 
     /// issue 1197 — the arithmetic must actually READ `units`, not quietly keep
     /// calling `size_of::<T>()` behind a parameter it ignores.

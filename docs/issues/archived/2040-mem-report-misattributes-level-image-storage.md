@@ -7,7 +7,7 @@ area: [tooling, memory, executor]
 severity: low
 found: 2026-10-25
 resolved: 2026-10-26
-resolved_in: "8c82c15651 (scripts/nros-mem-report.py)"
+resolved_in: "c9709e6124 (scripts/nros-mem-report.py)"
 related: [phase-509, rfc-0108, 2019, 1147]
 ---
 

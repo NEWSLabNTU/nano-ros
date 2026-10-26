@@ -18,11 +18,33 @@ const SIZE_MARKER_FEATURE: &str = "ffi-size-markers";
 /// The `nros` rlib the probe measured — ONE call shape for both readers, so the
 /// stamp and the sizes always name the same probe directory.
 fn probe_rlib() -> Result<PathBuf, nros_sizes_build::Error> {
-    nros_sizes_build::find_dep_rlib_with_probe_features(
-        "nros",
-        "__NROS_SIZE_",
-        &[SIZE_MARKER_FEATURE],
-    )
+    let mut features = vec![SIZE_MARKER_FEATURE];
+    features.extend(rmw_dispatch_features(|k| env::var(k).ok()));
+    nros_sizes_build::find_dep_rlib_with_probe_features("nros", "__NROS_SIZE_", &features)
+}
+
+/// Issue 2041 -- the `nros-rmw` dispatch features the OUTER graph resolved,
+/// for the probe's nested build of `nros`.
+///
+/// They are turned on by the linked backend (`nros-rmw-zenoh` and
+/// `nros-rmw-xrce-cffi` enable `nros-rmw/in-place-dispatch`), which the probe
+/// does not build, so the probe's `nros-node` used to price a sizing
+/// descriptor's `in_place` subscription rows at a full receive region while
+/// the linked `nros-node` priced them at the entry struct alone. The sizes it
+/// measures (`NROS_CPP_LEVELS_BACKING_SIZE`, the tier backings) then disagreed
+/// with the executor the image links, and the larger one was the static
+/// paid for. The callers (`nros-c`, `nros-cpp`) depend on `nros-rmw`
+/// directly, so cargo hands their build scripts its `links` metadata.
+fn rmw_dispatch_features(var: impl Fn(&str) -> Option<String>) -> Vec<&'static str> {
+    let on = |k: &str| var(k).as_deref() == Some("1");
+    let mut out = Vec::new();
+    if on("DEP_NROS_RMW_IN_PLACE_DISPATCH") {
+        out.push("nros-rmw/in-place-dispatch");
+    }
+    if on("DEP_NROS_RMW_BUFFERED_DISPATCH") {
+        out.push("nros-rmw/buffered-dispatch");
+    }
+    out
 }
 
 pub fn probe_nros_sizes(crate_label: &str) -> SizeMap {
@@ -825,6 +847,36 @@ pub fn variant_suffix_from_sizes(sizes: &[(&str, usize)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 2041 -- the probe asks for exactly the dispatch features the outer
+    /// graph's `nros-rmw` reported, so its `nros-node` prices `in_place` rows
+    /// as the linked one does.
+    #[test]
+    fn the_probe_inherits_the_outer_rmw_dispatch_features() {
+        let env = |pairs: &'static [(&'static str, &'static str)]| {
+            move |k: &str| {
+                pairs
+                    .iter()
+                    .find(|(n, _)| *n == k)
+                    .map(|(_, v)| v.to_string())
+            }
+        };
+        assert_eq!(
+            rmw_dispatch_features(env(&[
+                ("DEP_NROS_RMW_IN_PLACE_DISPATCH", "1"),
+                ("DEP_NROS_RMW_BUFFERED_DISPATCH", "0"),
+            ])),
+            vec!["nros-rmw/in-place-dispatch"]
+        );
+        assert_eq!(
+            rmw_dispatch_features(env(&[
+                ("DEP_NROS_RMW_IN_PLACE_DISPATCH", "1"),
+                ("DEP_NROS_RMW_BUFFERED_DISPATCH", "1"),
+            ])),
+            vec!["nros-rmw/in-place-dispatch", "nros-rmw/buffered-dispatch"]
+        );
+        assert!(rmw_dispatch_features(env(&[])).is_empty());
+    }
 
     /// Issue 1824 — nros-cpp's check reads nros-c's OWN `$OUT_DIR` header
     /// (the `links` include root), passes on agreeing VALUES whatever the

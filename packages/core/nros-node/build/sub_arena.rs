@@ -63,10 +63,18 @@ pub(crate) struct SubEndpoint {
 ///   * **basis** — `closure` rows describe the whole link graph, not this
 ///     image's endpoints. *"Never silently widens the basis … that publishes
 ///     the wrong row while every status still reads 'derived'."*
-///   * **`undeclared_endpoints`** — a non-zero count means some endpoint that
-///     could carry a per-endpoint fact carried none, so a sum over this table
-///     is a sum over PART of the image. Absence is not zero, so a refused or
-///     absent count refuses too.
+///   * **`undeclared_endpoints`** — the count must be KNOWN: absence is not
+///     zero, so a refused or absent count refuses, because an inventory that
+///     could not compose cannot say which endpoints stayed silent. A known
+///     non-zero count does NOT refuse (issue 2041). These rows price
+///     SUBSCRIPTIONS only, and a subscription that declared nothing has no
+///     depth, which [`subs_arena_from_descriptor`] already refuses row by row;
+///     an undeclared publisher or service is not in this sum at all. Refusing
+///     on the image-wide count kept the reference island (four service
+///     endpoints with no QoS fact, every subscription declared) on the env
+///     road, which prices an `in_place` subscription at a receive region it
+///     never claims. The env road's own guard was scoped to subscriptions for
+///     the same reason (`NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION`).
 ///
 /// Everything below a passed guard is per-FIELD: a row may still refuse its
 /// depth (`keep_all`) or its path, and the caller decides what that costs.
@@ -84,7 +92,7 @@ pub(crate) fn descriptor_subscriptions(
     if desc.meta.basis != Basis::Contract {
         return None;
     }
-    if desc.meta.undeclared_endpoints().get() != Some(0) {
+    if desc.meta.undeclared_endpoints().get().is_none() {
         return None;
     }
     let rows: Vec<SubEndpoint> = desc
