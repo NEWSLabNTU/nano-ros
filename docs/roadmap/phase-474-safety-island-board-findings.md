@@ -1232,12 +1232,12 @@ Open issues whose `related:` names this phase (listed 2026-10-12, so the
 link runs both ways). Listing one here records the link, not a claim that
 this phase will fix it.
 
-- [issue 0902](../issues/0902-action-goal-completion-is-variable.md) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to exp … (homed here 2026-10-13, from the archived phase-433; moved to [phase-512](phase-512-on-hardware-measurements.md) H8 on 2026-10-24, because its open step is a board run)
+- [issue 0902](../issues/archived/0902-action-goal-completion-is-variable.md) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to exp … (homed here 2026-10-13, from the archived phase-433; moved to [phase-512](phase-512-on-hardware-measurements.md) H8 on 2026-10-24, because its open step is a board run)
 - [issue 0880](../issues/0880-tcm-unused-while-sram-exhausted.md) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM
 
 ## Issues homed here (2026-10-17)
 
-[issue 1799](../issues/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) moved to [phase-512](phase-512-on-hardware-measurements.md) H7
+[issue 1799](../issues/archived/1799-boot-report-arena-exhaustion-on-mr-canhubk344.md) moved to [phase-512](phase-512-on-hardware-measurements.md) H7
 on 2026-10-24.
 
 Homed when every open issue was given a phase. Each issue has a `**Home:**` line pointing here.

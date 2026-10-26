@@ -2,11 +2,44 @@
 id: 902
 title: "action goals complete between 20 % and 90 % of the time on the same build,
   with no session expiry and no fault to explain the difference"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0912, issue-0882, issue-0879, issue-0852, issue-1332, issue-1341, phase-444, phase-455, phase-433, phase-467, phase-474, phase-512]
+resolved: 2026-10-26
+resolved_in: "phase-512 batch A, 2026-10-26"
 ---
+
+## Resolution (2026-10-26, phase-512 H8): not reproduced on current main
+
+Board run in phase-512 batch A on the MR-CANHUBK344, nano-ros 9f2d7b4bb3, with
+the setup the 2026-10-11 note asks for:
+
+- `examples/zephyr/c/action-server` on the board, over its direct serial link
+  (lpuart2, 921,600 baud), to a stock `rmw_zenohd`;
+- live ROS 2 Humble `rmw_zenoh_cpp` peers on the router throughout
+  (demo_nodes_cpp talker and listener);
+- goals from `ros2 action send_goal /fibonacci example_interfaces/action/Fibonacci "{order: 6}"`,
+  30 s timeout each.
+
+Each run was a fresh router and a fresh boot: 5 goals, a 100 s idle soak, then
+5 goals. Five runs, 10 of 10 goals completed in each: **50 of 50 accepted and
+SUCCEEDED**, 0.34-5.54 s per goal, against the 20-90 % spread above.
+
+`zpico_reply_slot_declines` was read over SWD without halting the core at
+four points per run. It read 1 per boot in every run, on queryable index 3
+(`nros_rmw_zenoh::shim::publisher::transient_local::query_callback`, the
+TRANSIENT_LOCAL status publisher's late-joiner queryable), during the first 5
+goals, and never grew after. The action's own queryables (0-2) declined 0;
+refusals were 0; no stored query was held. The reply-slot path is not losing
+action replies on this population.
+
+The image needed `CONFIG_MAIN_STACK_SIZE=32768`. At 16 KiB, main faulted
+before registration with PC=0xffffffec, an EXC_RETURN loaded into the PC (the
+0852 signature). Not confirmed: that this is the same physical board as issue
+0879's table.
+
+Reopen if a board run with this setup reads below 50/50 again.
 
 **Home: [phase-512](../roadmap/phase-512-on-hardware-measurements.md)** — H8, moved 2026-10-24 from phase-474 because its open step is a hand run on the MR-CANHUBK344. Before that: re-homed 2026-10-13 from phase-433, archived that day, because this is a board run over a direct serial link, which is 474's subject. phase-433 had re-homed it on 2026-10-12 from phase-358, also archived.
 
