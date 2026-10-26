@@ -1,6 +1,10 @@
 {
   "key": "cpp:ParameterEventHandler::get_parameter_from_event",
-  "disposition": "absent",
-  "verdict": "gap",
-  "why": "issue 2080 (filed 2026-10-26, the residue of issue 2024, which is resolved): the static helpers read upstream's `rcl_interfaces::msg::ParameterEvent` fields, and the C++ surface cannot name that generated type (no runtime typesupport). A per-parameter callback (`add_parameter_callback`) already receives the decoded `rclcpp::Parameter`; a helper templated over the caller's generated event type is plain work nobody has done."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/parameter_event_handler.hpp",
+    "text": "here throws, so that case also returns the `NOT_SET` parameter"
+  },
+  "verdict": "divergence",
+  "why": "issue 2080 -- both upstream overloads, as static members of `ParameterEventHandler`, each a TEMPLATE over the event type: there is no runtime typesupport, so the C++ surface cannot name `rcl_interfaces::msg::ParameterEvent`, and the type is DEDUCED from the argument -- the caller's generated message (inline `FixedString`/`FixedSequence` or heap `HeapString` fields, or `std::string`). An upstream call site (`ParameterEventHandler::get_parameter_from_event(event, p, name, node)`) compiles unchanged once that header is included. Same lookup as upstream: `event.node` compared verbatim to `node_name` (default \"\"), then new, then changed parameters; deletions are not reported. The bound, from no exceptions: where upstream THROWS `std::runtime_error` on a node-name mismatch, the value overload returns `Parameter(name)` (`PARAMETER_NOT_SET`), the same as a missing name -- the `bool` overload tells the two apart. Hosted only, like the handler. Held by `parameter_event_from_event_runtime.cpp` in `just check cpp`.\n\nEARLIER ROW (superseded): gap, absent -- issue 2024 left the helpers open."
 }
