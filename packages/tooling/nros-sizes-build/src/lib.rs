@@ -419,6 +419,17 @@ fn find_dep_rlib_isolated(
     for flag in nros_cargo_profile::build_args_for_dir(&profile) {
         cmd.arg(flag);
     }
+    // Issue 2064 — the probe reads `size_of` results, which no LTO setting
+    // changes, so its own build turns LTO OFF. Under a fat-LTO profile
+    // (`nros-minsizerel`: every NuttX image and the C++ FFI glue) rustc emits
+    // the rlib's members as LLVM bitcode, which the `object` path cannot read;
+    // the only reader left is rustc's `llvm-nm` from the `llvm-tools`
+    // component. A contributor host usually has it, an installed SDK user does
+    // not, so the same image probed fine from a checkout and returned NO sizes
+    // from an installed SDK. The outer image keeps its LTO; only this isolated
+    // build changes, and a `--config` outranks the `CARGO_PROFILE_*` env that
+    // defines the preset.
+    cmd.arg("--config").arg(probe_lto_off_config(&profile));
 
     // NuttX build-std targets (`*-nuttx-*`) have NO precompiled `std`/`core`
     // shipped with the toolchain, so — unlike host or the tier-2 embedded
@@ -1536,6 +1547,16 @@ fn forwarded_features() -> Vec<String> {
 ///
 /// Calling `extract_sizes(&rlib, "__NROS_SIZE_")` returns `{ "PUBLISHER" → N, ... }`.
 pub fn extract_sizes(rlib: &Path, prefix: &str) -> Result<HashMap<String, u64>, Error> {
+    extract_sizes_with(rlib, prefix, extract_sizes_via_llvm_nm)
+}
+
+/// [`extract_sizes`] with the bitcode reader passed in, so a test can supply
+/// one that fails without touching the process environment.
+fn extract_sizes_with(
+    rlib: &Path,
+    prefix: &str,
+    read_bitcode: impl FnOnce(&Path) -> Result<HashMap<String, u64>, Error>,
+) -> Result<HashMap<String, u64>, Error> {
     let data = std::fs::read(rlib)?;
     let archive = ArchiveFile::parse(&*data)?;
     let mut out: HashMap<String, u64> = HashMap::new();
@@ -1598,11 +1619,19 @@ pub fn extract_sizes(rlib: &Path, prefix: &str) -> Result<HashMap<String, u64>, 
     // their v0-mangled symbol names contain both the NAME and the
     // const-generic value N (the `size_of::<T>()` result). A single
     // regex captures `NAME` and `N` from the demangled output.
-    if out.is_empty()
-        && saw_bitcode
-        && let Ok(from_bitcode) = extract_sizes_via_llvm_nm(rlib)
-    {
-        return Ok(from_bitcode);
+    if out.is_empty() && saw_bitcode {
+        // Issue 2064 — an unreadable bitcode rlib is an ERROR, never an empty
+        // map: callers read a missing size as 0, emit one-word opaque buffers,
+        // and the real cause (no `llvm-nm`) surfaced only as six E0080s about
+        // the header being too small.
+        return read_bitcode(rlib).map_err(|e| {
+            Error::CargoMetadata(format!(
+                "{} holds LLVM bitcode (a fat-LTO build) and its sizes could not \
+                 be read without rustc's `llvm-nm` (`rustup component add \
+                 llvm-tools`): {e}",
+                rlib.display()
+            ))
+        });
     }
 
     Ok(out)
@@ -1614,8 +1643,8 @@ pub fn extract_sizes(rlib: &Path, prefix: &str) -> Result<HashMap<String, u64>, 
 /// --demangle` against the rlib, then regex-matches lines like
 /// `nros::sizes::rmw_sizes::__nros_size_PUBLISHER_SIZE::<48>` — the
 /// capture groups are the NAME and the const-generic SIZE value.
-/// Returns an empty map on any failure (probe consumers treat that
-/// the same as a probe miss — 77.24's stopgap covers it).
+/// Fails when `llvm-nm` is absent or errors; `extract_sizes` turns that into
+/// an error naming the component (issue 2064), never an empty map.
 fn extract_sizes_via_llvm_nm(rlib: &Path) -> Result<HashMap<String, u64>, Error> {
     let sysroot = rustc_sysroot()?;
     let triple = rustc_host_triple()?;
@@ -1733,6 +1762,18 @@ fn profile_dir_name() -> Option<String> {
     None
 }
 
+/// The `--config` value that turns LTO off for the probe's own build of the
+/// profile whose artifacts land in `profile_dir` (issue 2064).
+///
+/// A target dir is named after its profile except `dev`, whose dir is `debug`.
+fn probe_lto_off_config(profile_dir: &str) -> String {
+    let profile = match profile_dir {
+        "debug" => "dev",
+        other => other,
+    };
+    format!("profile.{profile}.lto=\"off\"")
+}
+
 /// The cargo target dir an `OUT_DIR` lives in, or `None` if it has no
 /// `<profile>/build/` ancestor.
 ///
@@ -1833,6 +1874,48 @@ mod tests {
     fn env_lock() -> std::sync::MutexGuard<'static, ()> {
         static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// issue 2064 — the probe's own build turns LTO off for the profile it
+    /// builds, and a `debug` dir is the `dev` profile.
+    #[test]
+    fn probe_build_turns_lto_off_for_its_profile() {
+        assert_eq!(probe_lto_off_config("debug"), "profile.dev.lto=\"off\"");
+        assert_eq!(
+            probe_lto_off_config("nros-minsizerel"),
+            "profile.nros-minsizerel.lto=\"off\""
+        );
+    }
+
+    /// issue 2064 — a bitcode rlib whose sizes cannot be read is an ERROR that
+    /// names `llvm-tools`, not an empty map a caller reads as size 0.
+    #[test]
+    fn unreadable_bitcode_rlib_is_an_error_not_an_empty_map() {
+        let dir = std::env::temp_dir().join(format!("nros-sizes-2064-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let rlib = dir.join("libfake.rlib");
+        let member: &[u8] = b"BC\xC0\xDE\x00\x00\x00\x00";
+        let mut ar = b"!<arch>\n".to_vec();
+        ar.extend_from_slice(
+            format!(
+                "{:<16}{:<12}{:<6}{:<6}{:<8}{:<10}`\n",
+                "x.o/",
+                0,
+                0,
+                0,
+                644,
+                member.len()
+            )
+            .as_bytes(),
+        );
+        ar.extend_from_slice(member);
+        std::fs::write(&rlib, &ar).unwrap();
+        let got = extract_sizes_with(&rlib, "__NROS_SIZE_", |_| {
+            Err(Error::CargoMetadata("llvm-nm not found".into()))
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        let err = got.expect_err("an unreadable bitcode rlib must not read as no sizes");
+        assert!(err.to_string().contains("llvm-tools"), "{err}");
     }
 
     /// issue 1765 — a probe-only feature reaches the nested build and its key,
