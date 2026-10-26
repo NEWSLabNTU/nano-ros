@@ -1086,8 +1086,18 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
             // type carries no bound, and the reverse cannot happen.
             let payload = crate::leaf_payload_classes::payload_classes_for_leaf(leaf, &inv);
             if let crate::leaf_payload_classes::PayloadClasses::Refused { reason } = &payload {
+                // Issue 2093 -- `LARGE_PAYLOADS` is nros-rmw-zenoh's pool, so
+                // naming it to a leaf none of whose images is zenoh points at a
+                // knob nothing in that image reads. The refusal itself still
+                // applies: the small class is also the executor's receive
+                // region (`NROS_SUBSCRIBER_BUFFER_SIZE`), on every backend.
+                let kept = if leaf_reports_zenoh_knob(leaf) {
+                    "`LARGE_PAYLOADS`"
+                } else {
+                    "`NROS_SUBSCRIBER_BUFFER_SIZE`"
+                };
                 eprintln!(
-                    "{who}: {}: payload classes not derived, so `LARGE_PAYLOADS` keeps the \
+                    "{who}: {}: payload classes not derived, so {kept} keeps the \
                      crate default (issue 1125): {reason}",
                     leaf.display()
                 );
@@ -1184,10 +1194,93 @@ pub fn env_rows(body: &str) -> BTreeMap<String, String> {
         .unwrap_or_default()
 }
 
+/// Issue 2093 -- whether a knob that belongs to the ZENOH backend is this
+/// leaf's to report on: some image of the leaf resolves to zenoh, or the leaf
+/// states nothing readable (an unknown backend keeps the report, because hiding
+/// it from the image it DOES apply to is the worse error).
+///
+/// The cargo-leaf twin of cmake's `nros_image_reports_backend_knob`. Resolved
+/// per image through `SystemToml::resolved_rmw`, the same ladder `nros build`
+/// uses, so `[image_defaults]` and the `[system] rmw` fallback (itself
+/// defaulting to zenoh) answer here exactly as they do for the build.
+fn leaf_reports_zenoh_knob(leaf: &Path) -> bool {
+    let Ok(raw) =
+        std::fs::read_to_string(leaf.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML))
+    else {
+        return true;
+    };
+    match toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw) {
+        Ok(sys) => system_reports_backend_knob(&sys, "zenoh"),
+        Err(_) => true,
+    }
+}
+
+/// The rule behind [`leaf_reports_zenoh_knob`], over a parsed `system.toml`.
+fn system_reports_backend_knob(
+    sys: &crate::orchestration::cargo_metadata_schema::SystemToml,
+    backend: &str,
+) -> bool {
+    if sys.image.is_empty() {
+        return sys.resolved_rmw(None, None) == backend;
+    }
+    sys.image
+        .keys()
+        .any(|id| sys.resolved_rmw(Some(id), None) == backend)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::entity_inventory::Derivation;
+
+    /// Issue 2093 -- a zenoh-only knob is reported to a leaf only when one of
+    /// its images IS zenoh. Each row is (system.toml, expected).
+    #[test]
+    fn a_zenoh_knob_is_reported_only_to_a_zenoh_leaf() {
+        let rows: &[(&str, bool)] = &[
+            // `[system] rmw` only, no images.
+            (
+                "[system]\nname = \"p\"\ndomain_id = 0\nrmw = \"cyclonedds\"\n",
+                false,
+            ),
+            (
+                "[system]\nname = \"p\"\ndomain_id = 0\nrmw = \"xrce\"\n",
+                false,
+            ),
+            (
+                "[system]\nname = \"p\"\ndomain_id = 0\nrmw = \"zenoh\"\n",
+                true,
+            ),
+            // An image overrides `[system] rmw`, in both directions.
+            (
+                "[system]\nname = \"p\"\ndomain_id = 0\nrmw = \"zenoh\"\n\n[image.a]\nrmw = \"cyclonedds\"\n",
+                false,
+            ),
+            (
+                "[system]\nname = \"p\"\ndomain_id = 0\nrmw = \"cyclonedds\"\n\n[image.a]\nrmw = \"zenoh\"\n",
+                true,
+            ),
+            // `[image_defaults]` is folded in, as the build folds it.
+            (
+                "[system]\nname = \"p\"\ndomain_id = 0\nrmw = \"zenoh\"\n\n[image_defaults]\nrmw = \"cyclonedds\"\n\n[image.a]\n",
+                false,
+            ),
+            // One zenoh image among several is enough.
+            (
+                "[system]\nname = \"p\"\ndomain_id = 0\nrmw = \"cyclonedds\"\n\n[image.a]\nrmw = \"cyclonedds\"\n\n[image.b]\nrmw = \"zenoh\"\n",
+                true,
+            ),
+        ];
+        for (body, want) in rows {
+            let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+                toml::from_str(body).unwrap_or_else(|e| panic!("{body}: {e}"));
+            assert_eq!(
+                system_reports_backend_knob(&sys, "zenoh"),
+                *want,
+                "system.toml:\n{body}"
+            );
+        }
+    }
 
     /// The take buffer these tests are not about. A REFUSAL rather than a
     /// derived number: it leaves the rendered `[env]` with no

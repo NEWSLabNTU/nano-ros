@@ -75,6 +75,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwUserConfig.cmake")  # phase-206 W2
 # Issue 1550 -- the domain agreement on this road (Kconfig vs the entry's
 # system.toml vs the snippet). Functions only, include_guard'd.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDomainAgreement.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosImageRmw.cmake")  # issue 2093
 
 # --------------------------------------------------------------------------
 # Platform-link wrappers (phase-287 W6). Defined HERE (not NanoRosBootstrap):
@@ -112,43 +113,10 @@ function(nros_platform_link_app_deferred target)
         "cmake_language(DEFER CALL nros_platform_link_app_once [[${target}]])")
 endfunction()
 
-# _nros_entry_resolve_rmw(<out_var>)
-#
-# WHICH BACKEND this image is, as far as an entry can tell. Empty when nothing
-# in this configure has chosen one yet, which is a legitimate state — so this
-# never FATALs, unlike `nano_ros_link_rmw`.
-#
-# Same resolution ORDER as `nano_ros_link_rmw`'s fallback list
-# ("NROS_DEFAULT_RMW;NROS_RMW"), then KCONFIG.
-#
-# THE KCONFIG ARM IS NOT DECORATION. A west Zephyr image selects its backend
-# with `CONFIG_NROS_RMW_<X>=y` and sets NEITHER cmake variable: measured on
-# `build-ws-cpp-entry-cyclonedds`, whose CMakeCache has no `NROS_RMW` at all
-# while its `.config` carries `CONFIG_NROS_RMW_CYCLONEDDS=y`. Without it the
-# user-config bake was skipped and the image linked Cyclone (`ddsi_` x14283)
-# carrying none of the user's bytes — configure clean, compile clean, silently
-# unconfigured.
-#
-# ONE FUNCTION, because there are now two askers in this file (the user-config
-# bake and phase-454 W14's sizing descriptor) and the mapping is already
-# mirrored by `nros_system_generate`. A second copy is how two wirings come to
-# disagree about which backend an image is, which is the class CLAUDE.md's
-# "fix the CLASS, not the reported site" names.
-function(_nros_entry_resolve_rmw _out_var)
-    set(_rmw "")
-    if(DEFINED NROS_DEFAULT_RMW AND NOT "${NROS_DEFAULT_RMW}" STREQUAL "")
-        set(_rmw "${NROS_DEFAULT_RMW}")
-    elseif(DEFINED NROS_RMW AND NOT "${NROS_RMW}" STREQUAL "")
-        set(_rmw "${NROS_RMW}")
-    elseif(CONFIG_NROS_RMW_CYCLONEDDS)
-        set(_rmw "cyclonedds")
-    elseif(CONFIG_NROS_RMW_XRCE)
-        set(_rmw "xrce")
-    elseif(CONFIG_NROS_RMW_ZENOH)
-        set(_rmw "zenoh")
-    endif()
-    set(${_out_var} "${_rmw}" PARENT_SCOPE)
-endfunction()
+# `nros_resolve_image_rmw` -- WHICH BACKEND this image is. It lived here as
+# `_nros_entry_resolve_rmw` until issue 2093 gave it an asker outside this file
+# (the message-bound derivation's backend-specific report lines), so it moved to
+# a module both can include. include_guard'd, functions only.
 
 # phase-463 W4 (issue 1419) -- the RTOS image's configure requires a census
 # that still describes the code.
@@ -918,7 +886,7 @@ function(nano_ros_entry)
     # gets a warning rather than silence -- a config that does not apply must not
     # look like one that did.
     if(_NRA_BRINGUP)
-        _nros_entry_resolve_rmw(_nra_rmw)
+        nros_resolve_image_rmw(_nra_rmw)
 
         if(_nra_rmw)
             set(_nra_cfg_dir "${CMAKE_BINARY_DIR}/nros-rmw-user-config")
@@ -1410,7 +1378,7 @@ function(_nros_entry_invoke_codegen)
     # or the bringup's `rmw_config`, else the backend's conventional file —
     # RFC-0109 D6, phase-514 W3b); only a `session-json5` one is lowered here.
     if(_NRX_BRINGUP)
-        _nros_entry_resolve_rmw(_nrx_rmw)
+        nros_resolve_image_rmw(_nrx_rmw)
         nros_rmw_user_config_file(_nrx_rmw_cfg
             BRINGUP "${_NRX_BRINGUP}" BACKEND "${_nrx_rmw}" IMAGE "${_NRX_IMAGE}")
         if(_nrx_rmw_cfg AND _nrx_rmw_cfg_FORMAT STREQUAL "session-json5")
@@ -1566,7 +1534,7 @@ function(_nros_entry_invoke_codegen)
     # names every component `nano_ros_node_register()` compiled in, and the node
     # table has to hold the second.
     include("${_NROS_ENTRY_DIR}/NanoRosSizingDescriptor.cmake")
-    _nros_entry_resolve_rmw(_nrx_rmw)
+    nros_resolve_image_rmw(_nrx_rmw)
     nros_entity_inventory_metadata_file(_nrx_metadata)
     nros_sizing_descriptor_from_model(_nrx_sizing_descriptor
         CLI       "${_nros_bin}"

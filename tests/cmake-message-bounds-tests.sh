@@ -1189,6 +1189,59 @@ check
 # priced from the same bound tables.
 
 # ---------------------------------------------------------------------------
+# Issue 2093 -- the transient-local retention slot is a ZENOH knob
+# (`NROS_ZENOH_TL_RETAIN_BYTES`), so its "not derived" line is reported only to
+# an image that IS zenoh, or that has not said which backend it is. It printed
+# for a Cyclone first project. Run with `cmake -P` directly rather than derive():
+# this asserts a STATUS line, and the output file -- what the parity twin
+# compares -- is identical either way.
+log_header "R -- a zenoh-only knob's refusal is not reported to a non-zenoh image"
+printf '%s\n' "std_msgs/msg/Int32|bounded|8|8|" | frag "$T/r-std.cmake" std_msgs
+{
+    echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 6)"
+    echo "set(NROS_ENTITY_INVENTORY_STATUS \"resolved\")"
+    echo "set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 1)"
+    echo "set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS \"resolved\")"
+    echo "set(NROS_ENTITY_SUBSCRIBED_TYPES \"\")"
+    echo "set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS \"\")"
+    # One transient-local publisher and an action server: the slot refuses
+    # (the server's `/status` type is in no durability table), so a reason
+    # exists to report.
+    echo "set(NROS_DERIVED_TL_PUBLISHERS 1)"
+    echo "set(NROS_ENTITY_COUNT_ACTION_SERVER 1)"
+} > "$T/r-entity.cmake"
+r_run() {
+    cmake -DNROS_BOUNDS_FRAGMENTS="$T/r-std.cmake" \
+        -DNROS_BOUNDS_ENTITY_INVENTORY="$T/r-entity.cmake" "$@" -P "$MODULE" 2>&1
+}
+# Each row: <label>|<-D arg or empty>|<expect: shown|hidden>
+while IFS='|' read -r r_label r_def r_expect; do
+    [ -n "$r_label" ] || continue
+    if [ -n "$r_def" ]; then OUT="$(r_run "$r_def")"; else OUT="$(r_run)"; fi
+    check
+    if nros_grep_q -q 'TL_RETAIN_BYTES not derived' <<<"$OUT"; then r_got=shown; else r_got=hidden; fi
+    if [ "$r_got" != "$r_expect" ]; then
+        fail "R ($r_label): the zenoh retention-slot refusal was $r_got, expected $r_expect:"
+        echo "$OUT"
+    fi
+done <<'R_ROWS'
+NROS_RMW=cyclonedds|-DNROS_RMW=cyclonedds|hidden
+NROS_RMW=xrce|-DNROS_RMW=xrce|hidden
+NROS_DEFAULT_RMW=cyclonedds|-DNROS_DEFAULT_RMW=cyclonedds|hidden
+CONFIG_NROS_RMW_CYCLONEDDS (west, no cmake var)|-DCONFIG_NROS_RMW_CYCLONEDDS=y|hidden
+NROS_RMW=zenoh|-DNROS_RMW=zenoh|shown
+backend not stated|-DNROS_UNRELATED=1|shown
+R_ROWS
+# The line names the knob by its CANONICAL spelling (phase-484 W8 retired the
+# ZPICO_* env names), so a reader can grep the registry for it.
+OUT="$(r_run -DNROS_RMW=zenoh)"
+check
+if ! nros_grep_q -q 'NROS_ZENOH_TL_RETAIN_BYTES not derived' <<<"$OUT"; then
+    fail "R: the zenoh refusal does not name NROS_ZENOH_TL_RETAIN_BYTES:"
+    echo "$OUT"
+fi
+
+# ---------------------------------------------------------------------------
 # phase-439 W6 -- every derive() above was also a parity case (see derive()).
 log_header "P -- the Rust twin writes the cmake composer's bytes on every case"
 if [ -n "$NROS_TEST_CLI" ]; then
