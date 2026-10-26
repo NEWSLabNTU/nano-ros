@@ -854,6 +854,10 @@ pub struct EntityInventory {
     /// Carried to the descriptor's `[meta] basis`, so a consumer that wants
     /// contract-only facts can tell the two apart.
     stated_by: StatedBy,
+    /// Issue 2076 -- the bringup's `[[bridge]]`s. Their entities are runtime-
+    /// created, so they are not rows; [`Self::derive`] adds them as synthetic
+    /// rows ([`Self::with_bridge_rows`]) for every road at once.
+    bridges: Vec<nros_orchestration_ir::overlay::OverlayBridge>,
 }
 
 /// phase-517 W5 -- who stated an inventory's rows (RFC-0100 amendment of
@@ -871,6 +875,20 @@ pub enum StatedBy {
     Probe,
     /// A contract described the image's wiring ([`EntityInventory::from_model`]).
     Contract,
+}
+
+/// Issue 2076 -- the bridges of two compositions, once by name, in order.
+fn union_bridges(
+    a: &[nros_orchestration_ir::overlay::OverlayBridge],
+    b: &[nros_orchestration_ir::overlay::OverlayBridge],
+) -> Vec<nros_orchestration_ir::overlay::OverlayBridge> {
+    let mut out = a.to_vec();
+    for x in b {
+        if !out.iter().any(|y| y.name == x.name) {
+            out.push(x.clone());
+        }
+    }
+    out
 }
 
 /// Issue 1701 -- what an image's MODEL says about the image, apart from the
@@ -892,6 +910,9 @@ pub struct ImageFrame {
     rx_ingress: Vec<DeclaredIngress>,
     tightest_tier: Option<TierSlack>,
     launched: std::collections::BTreeSet<String>,
+    /// Issue 2076 -- the bringup's `[[bridge]]`s (overlay), whose nodes and
+    /// endpoints the runtime creates and no component describes.
+    bridges: Vec<nros_orchestration_ir::overlay::OverlayBridge>,
 }
 
 /// phase-462 W6b (RFC-0074) -- a frame budget on zenoh-pico's unicast read
@@ -1370,6 +1391,9 @@ impl ImageFrame {
                         .chain(n.exec.clone())
                 })
                 .collect(),
+            // Issue 2076 -- a bridge is a bringup fact (`system.toml`), carried
+            // in the overlay beside the model.
+            bridges: model.overlay.bridges.clone(),
         }
     }
 }
@@ -3146,6 +3170,7 @@ impl EntityInventory {
             launched: None,
             image_views: Vec::new(),
             stated_by: StatedBy::Unstated,
+            bridges: Vec::new(),
         }
     }
 
@@ -3945,6 +3970,7 @@ impl EntityInventory {
                     inv.reopen_launched_by(&f.launched);
                     inv.infra = inv.infra.union(f.infra);
                     inv.tiers = inv.tiers.max(f.tiers);
+                    inv.bridges = union_bridges(&inv.bridges, &f.bridges);
                     // phase-462 W6c -- its tiers share the runtime's one read
                     // task, so the tighter slack binds.
                     inv.tightest_tier =
@@ -3991,6 +4017,7 @@ impl EntityInventory {
         self.rx_ingress = f.rx_ingress.clone();
         self.tightest_tier = f.tightest_tier.clone();
         self.launched = Some(f.launched.clone());
+        self.bridges = f.bridges.clone();
     }
 
     /// Issue 1402's reclassification for a view built without a fold: an
@@ -4034,6 +4061,92 @@ impl EntityInventory {
             }
         }
         self
+    }
+
+    /// Issue 2076 -- the bringup's `[[bridge]]`s this inventory carries.
+    pub fn bridges(&self) -> &[nros_orchestration_ir::overlay::OverlayBridge] {
+        &self.bridges
+    }
+
+    /// Issue 2076 -- this inventory with each `[[bridge]]` expanded into the
+    /// rows of what the RUNTIME creates for it (`nros-bridge`'s
+    /// `run_from_config_source`): a node on each side, and per forwarded topic
+    /// a raw subscription on the source node and a raw publisher on the
+    /// destination node (both ways when `bidirectional`).
+    ///
+    /// Upper bounds by construction, the safe direction: two nodes per bridge
+    /// although the runtime shares a session two bridges name alike, and each
+    /// subscription takes an executor callback slot although the bridge polls
+    /// it. A bridge with no `topics` forwards every declared pub/sub topic (the
+    /// planner's rule, `bridge_plan_entries`), read here off the image's own
+    /// rows. A topic's type comes from the row that names it, when one does.
+    ///
+    /// The result carries no bridges, so deriving it does not expand twice.
+    #[must_use]
+    pub fn with_bridge_rows(&self) -> EntityInventory {
+        let mut out = self.clone();
+        out.bridges.clear();
+        // Every pub/sub topic the image's rows name, with its type.
+        let mut declared: Vec<(String, Option<String>)> = Vec::new();
+        for c in &self.components {
+            if matches!(c.declaration, Declaration::NotLaunched) {
+                continue;
+            }
+            for e in c.declaration.entities() {
+                if !matches!(e.kind, EntityKind::Publisher | EntityKind::Subscription) {
+                    continue;
+                }
+                let Some(topic) = e.source_topic.clone().or_else(|| e.name.clone()) else {
+                    continue;
+                };
+                if !declared.iter().any(|(t, _)| *t == topic) {
+                    declared.push((topic, e.type_name.clone()));
+                }
+            }
+        }
+        let type_of = |topic: &str| {
+            declared
+                .iter()
+                .find(|(t, _)| t == topic)
+                .and_then(|(_, ty)| ty.clone())
+        };
+        for b in &self.bridges {
+            let topics: Vec<String> = if b.topics.is_empty() {
+                declared.iter().map(|(t, _)| t.clone()).collect()
+            } else {
+                b.topics.clone()
+            };
+            let side = |kind_fwd: EntityKind, kind_back: EntityKind| -> Vec<EntityDecl> {
+                let mut v = Vec::new();
+                for t in &topics {
+                    v.push(EntityDecl::bare(kind_fwd, type_of(t), Some(t.clone())));
+                    if b.bidirectional {
+                        v.push(EntityDecl::bare(kind_back, type_of(t), Some(t.clone())));
+                    }
+                }
+                v
+            };
+            for (end, ents) in [
+                (
+                    "from",
+                    side(EntityKind::Subscription, EntityKind::Publisher),
+                ),
+                ("to", side(EntityKind::Publisher, EntityKind::Subscription)),
+            ] {
+                let id = format!("bridge:{}:{end}", b.name);
+                out.insert(ComponentEntities {
+                    pkg: id.clone(),
+                    component: id,
+                    class: "nros_bridge".into(),
+                    declaration: if ents.is_empty() {
+                        Declaration::None
+                    } else {
+                        Declaration::Stated(ents)
+                    },
+                });
+            }
+        }
+        out
     }
 
     /// Issue 1701 -- the per-image views of a shared runtime's inventory,
@@ -4124,6 +4237,8 @@ impl EntityInventory {
         // phase-517 W5 -- a contract on either side makes the composition a
         // contract's; otherwise a probe-stated side carries through.
         out.stated_by = self.stated_by.max(model.stated_by);
+        // Issue 2076 -- a bridge either side declared, once by name.
+        out.bridges = union_bridges(&self.bridges, &model.bridges);
         let mut seen: Vec<&str> = Vec::new();
 
         for decl_row in &self.components {
@@ -4322,6 +4437,12 @@ impl EntityInventory {
     /// Compose ONE image's declarations into the knobs, or REFUSE -- the
     /// derivation [`Self::derive`] runs per image of a shared runtime.
     fn derive_single(&self) -> Derivation {
+        // Issue 2076 -- a bridge's runtime-created nodes and endpoints, as
+        // synthetic rows, so every pool below counts them by the same rule as
+        // a component's. Once: the expansion clears `bridges`.
+        if !self.bridges.is_empty() {
+            return self.with_bridge_rows().derive_single();
+        }
         if self.components.is_empty() {
             return Derivation::Refused {
                 reason: "no components were registered in this image, so there is nothing to \
@@ -12405,6 +12526,69 @@ structure:
             metadata.merged_per_kind_max(&contract_side).derive(),
             Derivation::Refused { .. }
         ));
+    }
+
+    /// Issue 2076 -- `examples/workspaces/bridge-cyclonedds`'s shape: one
+    /// talker launched, and a `[[bridge]]` that forwards every declared topic.
+    /// The bridge's two runtime nodes and its sub/pub per topic are counted in
+    /// the derived pools; without them the image booted `NodeTableFull`.
+    #[test]
+    fn a_bridge_images_derived_pools_include_the_bridge() {
+        let model = nros_orchestration_ir::overlay::LoadedModel {
+            model: serde_yaml_ng::from_str(
+                r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: system.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+"#,
+            )
+            .expect("parses"),
+            overlay: nros_orchestration_ir::overlay::Overlay {
+                bridges: vec![nros_orchestration_ir::overlay::OverlayBridge {
+                    name: "gw".into(),
+                    topics: vec![],
+                    bidirectional: false,
+                }],
+                ..Default::default()
+            },
+        };
+        let talker: Vec<ProbeRow> = stock_sidecars()
+            .into_iter()
+            .filter(|r| r.entities.pkg == "talker_pkg")
+            .collect();
+        let inv = EntityInventory::from_probe("probe", &model, &talker).expect("described");
+        assert_eq!(inv.bridges().len(), 1, "the frame carries the bridge");
+
+        let k = inv.derive().knobs().expect("derives").clone();
+        // talker + the bridge's two nodes.
+        assert!(k.max_nodes >= 3, "the bridge's nodes: {k:?}");
+        // the talker's timer + the bridge's /chatter subscription.
+        assert!(k.max_cbs >= 2, "the bridge's subscription: {k:?}");
+        assert!(
+            k.max_subscribers >= 1,
+            "the bridge's raw subscription: {k:?}"
+        );
+        assert!(
+            k.max_publishers >= 2,
+            "talker's + the bridge's publisher: {k:?}"
+        );
+
+        // Expanded once at the composition point, every consumer of the rows
+        // sees them, and deriving the expansion counts them exactly once.
+        let expanded = inv.with_bridge_rows();
+        assert!(expanded.bridges().is_empty());
+        assert_eq!(expanded.derive().knobs().expect("derives"), &k);
+
+        // The control: the same image without the bridge sizes for the talker.
+        let mut bare = inv.clone();
+        bare.bridges.clear();
+        let b = bare.derive().knobs().expect("derives").clone();
+        assert!(
+            b.max_nodes < k.max_nodes && b.max_subscribers < k.max_subscribers,
+            "{b:?} vs {k:?}"
+        );
     }
 
     /// A contract anywhere in a composition makes it a contract's: the probe
