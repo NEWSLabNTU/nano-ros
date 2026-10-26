@@ -163,6 +163,29 @@ cmake-support-library:
     fi
     ./tests/cmake-support-library-tests.sh
 
+# Issue 2092 -- a SECOND Rust staticlib in one image (the Zephyr C++ message-FFI
+# archive, whole-archived beside `libnros_cpp.a`) must keep its own surface strong
+# and weaken every other global, or the compiler-rt intrinsics both archives
+# carry are defined twice and every Zephyr C++ image fails to link. Synthetic
+# archives against the HOST compiler plus a source scan for the class -- no
+# nano-ros build, ~1 s -- so it belongs on the fast line beside
+# `cmake-support-library`. Loud skip when the host lacks a tool.
+cmake-second-staticlib:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake ar nm objcopy "${CC:-cc}"; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip cmake-second-staticlib \
+            "missing host tool(s):$_missing"
+        exit 0
+    fi
+    ./tests/cmake-second-staticlib-tests.sh
+
 # Check C++ formatting only (clang-format) — BUILDLESS, source-free → push lane.
 [private]
 cpp-fmt:
