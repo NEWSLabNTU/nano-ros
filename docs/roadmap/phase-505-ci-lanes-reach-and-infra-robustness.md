@@ -1,8 +1,10 @@
 # Phase 505 — every gate runs somewhere, and a red names the code
 
-**Status (2026-10-26). W2 has one open item, #2069, filed 2026-10-26: the
-out-of-lane gate, a merge-group step, reports a host-only test's timeout as a
-scope violation. Everything else below is unchanged.**
+**Status (2026-10-26). Three issues with no active phase were homed here on
+2026-10-26: #2066 and #2067 under W1, and #2052 under W2. W2 also has #2069,
+filed the same day: the out-of-lane gate, a merge-group step, reports a
+host-only test's timeout as a scope violation. Everything else below is
+unchanged.**
 
 **Status (2026-10-21). Every work item is done: W1 by PRs #2394, #2429 and
 #2430, W2 by #2426 and #2428 plus the ruleset edit that closed #1629, and W3 by
@@ -65,6 +67,13 @@ phase's. Build speed is phase-489's.
 - [x] [#1960](../issues/archived/1960-standalone-cargo-roots-linted-by-no-lane.md): the
       28 excluded roots that are built but linted by nothing each get a
       `STANDALONE` sweep run, or a reason.
+- [ ] [#2066](../issues/2066-linux-sched-deadline-throttle-unverified.md): the
+      Linux `SCHED_DEADLINE` throttle half runs where it can (a job with
+      `CAP_SYS_NICE`, or a recorded manual run), or RFC-0108 states it is
+      unverified.
+- [ ] [#2067](../issues/2067-freertos-level-kernel-slicing-off-not-booted.md): a
+      FreeRTOS QEMU level row, C and Rust, asserts `nros: kernel time slicing
+      OFF`; a non-level row asserts it absent or ON.
 
 ### W2 — the merge gate fails only for the code
 
@@ -86,6 +95,10 @@ phase's. Build speed is phase-489's.
 - [ ] [#2069](../issues/2069-out-of-lane-gate-reports-a-timeout-as-a-scope-violation.md):
       `check-out-of-lane-deselected` reports a host-only test that timed out
       under load as a scope-order violation, and names the scope remedy.
+- [ ] [#2052](../issues/2052-pristine-ament-surface-stale-home-cli.md):
+      `check::pristine-checkout`'s `cmake-ament-surface` uses the checkout's
+      own CLI, or reports NOT VERIFIED, and never reaches a stale
+      `~/.nros/bin/nros`.
 
 ### W3 — a stopped or failed lane says so, with the cause
 
@@ -129,3 +142,6 @@ ejection from a cause listed here.
 | [#1984](../issues/archived/1984-run-matrix-coordinate-truth-nm-sweep-timeout.md) | The `nm` audit of every workspace row timed out on a slow runner with no row named. Each pass and the sweep are now bounded and timed. |
 | [#1985](../issues/archived/1985-identity-budget-counts-retired-cargo-root.md) | `artifact-identity-budget` counted a cargo root the image no longer builds, so the persistent fixture tree failed it after phase-506 W4a. |
 | [#2069](../issues/2069-out-of-lane-gate-reports-a-timeout-as-a-scope-violation.md) | Filed 2026-10-26. A merge-group gate step turns a load timeout into a scope-order verdict, so a batch is ejected for a cause that is not in the code and the ejection names the wrong fix. |
+| [#2052](../issues/2052-pristine-ament-surface-stale-home-cli.md) | Homed 2026-10-26; it had no active phase. `ci gate`'s pristine-checkout step reaches a stale `~/.nros/bin/nros` through `cmake-ament-surface`, so the gate's verdict depends on the host rather than the code. |
+| [#2066](../issues/2066-linux-sched-deadline-throttle-unverified.md) | Homed 2026-10-26 from archived phase-509. The `SCHED_DEADLINE` throttle needs `CAP_SYS_NICE`, which no lane has, so that half of the level budget is run by nothing. |
+| [#2067](../issues/2067-freertos-level-kernel-slicing-off-not-booted.md) | Homed 2026-10-26 from archived phase-509. No lane boots a FreeRTOS level image and reads its time-slicing line, so the kernel setting is built and never checked. |
