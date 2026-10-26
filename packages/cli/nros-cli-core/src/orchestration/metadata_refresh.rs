@@ -593,16 +593,28 @@ pub fn floor_by_recorded(
 /// [`crate::entity_inventory::EntityInventory::from_model`] makes of `model`,
 /// floored by [`floor_by_recorded`] when the road knows its workspace.
 ///
-/// `None` exactly when `from_model` is `None` (no contract authored), so the
-/// "no contract, no change" control every caller guards on is untouched.
-/// `who` prefixes the notes this prints.
+/// With no contract authored (`from_model` is `None`), the image's FRESH probe
+/// sidecars stand as its declaration when they describe every launched node
+/// ([`probe_inventory`], phase-517 W5); otherwise `None`, so the "no contract,
+/// no change" control every caller guards on holds for every image the probe
+/// does not fully describe. `who` prefixes the notes this prints.
 pub fn contract_inventory(
     source: impl Into<String>,
     model: &nros_orchestration_ir::overlay::LoadedModel,
     workspace: Option<&Path>,
     who: &str,
 ) -> Option<crate::entity_inventory::EntityInventory> {
-    let contract = crate::entity_inventory::EntityInventory::from_model(source, model)?;
+    let source = source.into();
+    let Some(contract) =
+        crate::entity_inventory::EntityInventory::from_model(source.clone(), model)
+    else {
+        let ws = workspace?;
+        let (inv, _read, notes) = probe_inventory(source, ws, model);
+        for n in notes {
+            eprintln!("{who}: {n}");
+        }
+        return inv;
+    };
     let Some(ws) = workspace else {
         return Some(contract);
     };
@@ -611,6 +623,94 @@ pub fn contract_inventory(
         eprintln!("{who}: {n}");
     }
     Some(floored)
+}
+
+/// phase-517 W5 (RFC-0100 amendment of 2026-10-25, accepted 2026-10-26) --
+/// the declaration of a model-road image that authored NO contract, read from
+/// what the probe recorded its launched nodes' code creating.
+///
+/// The probe RUNS each component's constructor against the recording backend
+/// and counts what it registers -- the statement [`floor_by_recorded`] already
+/// floors a contract with (issue 1694). With no contract it is the only
+/// statement there is, so it stands, as [`Declaration::Stated`] rows whose
+/// provenance is [`StatedBy::Probe`] (descriptor `basis = "probe"`).
+///
+/// ALL OR NOTHING. `Some` only when every node the launch tree starts has
+/// exactly one FRESH sidecar (the [`fresh_probe_rows`] rule
+/// [`refresh_stale_sidecars`] and issue 1594's join trust). A stale, missing
+/// or unreadable sidecar for any one of them answers `None` -- the image then
+/// refuses exactly as it did before this existed, and keeps its configured
+/// pool knobs. A partial answer would turn "no contract, no change" into a
+/// descriptor whose rows describe some of the image.
+///
+/// What the probe cannot see is an entity created AFTER construction (a
+/// publisher opened in a callback); such a component needs a contract row,
+/// which then wins through [`contract_inventory`]'s other arm.
+///
+/// [`Declaration::Stated`]: crate::entity_inventory::Declaration::Stated
+/// [`StatedBy::Probe`]: crate::entity_inventory::StatedBy::Probe
+pub fn probe_inventory(
+    source: impl Into<String>,
+    ws_root: &Path,
+    model: &nros_orchestration_ir::overlay::LoadedModel,
+) -> (
+    Option<crate::entity_inventory::EntityInventory>,
+    Vec<PathBuf>,
+    Vec<String>,
+) {
+    let nano_ros = crate::orchestration::nano_ros_root::resolve(None, ws_root);
+    probe_inventory_with(source, ws_root, nano_ros.as_deref(), model)
+}
+
+/// [`probe_inventory`] against a named nano-ros root (the probe key's
+/// closure), so a test can stand one up.
+fn probe_inventory_with(
+    source: impl Into<String>,
+    ws_root: &Path,
+    nano_ros: Option<&Path>,
+    model: &nros_orchestration_ir::overlay::LoadedModel,
+) -> (
+    Option<crate::entity_inventory::EntityInventory>,
+    Vec<PathBuf>,
+    Vec<String>,
+) {
+    if model.structure.nodes.is_empty() {
+        return (None, Vec::new(), Vec::new());
+    }
+    let (rows, read, mut notes) = match fresh_probe_rows(ws_root, nano_ros) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                None,
+                Vec::new(),
+                vec![format!(
+                    "no probe sidecar read ({e}); with no contract, the image keeps its \
+                     configured pool knobs"
+                )],
+            );
+        }
+    };
+    let launched = model.structure.nodes.len();
+    let inv = match crate::entity_inventory::EntityInventory::from_probe(source, model, &rows) {
+        Ok(inv) => Some(inv),
+        Err(unrecorded) => {
+            // Said only when the probe answered for SOME node: an image no
+            // probe reached at all is the ordinary contract-less state, and the
+            // derivation's own refusal already names it.
+            if !unrecorded.is_empty() && unrecorded.len() < launched {
+                notes.push(format!(
+                    "no contract, and {} of {launched} launched node(s) have no fresh probe \
+                     sidecar ({}), so the probe does not describe this image and it keeps its \
+                     configured pool knobs",
+                    unrecorded.len(),
+                    unrecorded.join(", ")
+                ));
+            }
+            None
+        }
+    };
+    notes.dedup();
+    (inv, read, notes)
 }
 
 /// One FRESH probe sidecar, as [`fresh_probe_rows`] read it.
@@ -1813,6 +1913,91 @@ mod tests {
         assert!(
             stale[2].current.contains("unknown digest algorithm"),
             "{stale:?}"
+        );
+    }
+
+    /// phase-517 W5 (RFC-0100 Amendment 3) -- end to end over a real
+    /// workspace: a contract-less model whose launched node has a FRESH
+    /// sidecar is stated by it (`StatedBy::Probe`); the same sidecar gone
+    /// stale against its sources leaves the image unstated, as before.
+    #[test]
+    fn a_fresh_sidecar_states_a_contract_less_image_and_a_stale_one_does_not() {
+        use crate::entity_inventory::StatedBy;
+        let root = fake_nano_ros("probe-inventory-root");
+        let ws = tmp("probe-inventory-ws");
+        let pkg = ws.join("src/talker_pkg");
+        std::fs::create_dir_all(pkg.join("src")).unwrap();
+        std::fs::create_dir_all(pkg.join("metadata")).unwrap();
+        std::fs::write(
+            pkg.join("package.xml"),
+            "<package format=\"3\"><name>talker_pkg</name><version>0.1.0</version>\
+             <description>t</description><maintainer email=\"x@x\">x</maintainer>\
+             <license>Apache-2.0</license></package>",
+        )
+        .unwrap();
+        std::fs::write(
+            pkg.join("nros.toml"),
+            "[component]\nversion = 1\npackage = \"talker_pkg\"\ncomponent = \"talker\"\n\
+             language = \"rust\"\n[component.metadata]\nsource_metadata = \"metadata/talker.json\"\n",
+        )
+        .unwrap();
+        std::fs::write(pkg.join("src/lib.rs"), "// the component\n").unwrap();
+        let sidecar = pkg.join("metadata/talker.json");
+        std::fs::write(
+            &sidecar,
+            r#"{"version": 4, "package": "talker_pkg", "component": "talker",
+                "language": "rust", "executable": "talker", "exported_symbol": null,
+                "nodes": [{"id": "talker", "declaration_slot": 0,
+                    "source_default_name": "talker",
+                    "unresolved_name": {"value": "talker", "kind": "relative"},
+                    "namespace": null,
+                    "publishers": [{"id": "/chatter", "declaration_slot": 0,
+                        "unresolved_topic": {"value": "/chatter", "kind": "absolute"},
+                        "interface": {"package": "std_msgs", "name": "msg/Int32",
+                                      "kind": "message"},
+                        "qos": {"reliability": "reliable", "durability": "volatile",
+                                "history": "keep_last", "depth": 10,
+                                "deadline_ms": null, "lifespan_ms": null,
+                                "liveliness": "system_default",
+                                "liveliness_lease_duration_ms": null,
+                                "extensions": {}}}],
+                    "subscribers": [],
+                    "timers": [{"id": "on_tick", "declaration_slot": 1,
+                                "period_ms": 1000, "period_us": 1000000, "kind": "wall",
+                                "callback": "on_tick", "callback_slot": 0}],
+                    "services": [], "actions": []}],
+                "callbacks": [], "parameters": [],
+                "trace": {"generator": "t", "package_manifest": "package.xml",
+                          "source_artifacts": []}}"#,
+        )
+        .unwrap();
+        let key = probe_inputs_key(&pkg, Some(&root)).expect("keyed");
+        stamp_provenance(&sidecar, &key).unwrap();
+
+        let model = nros_orchestration_ir::overlay::LoadedModel::bare(
+            serde_yaml_ng::from_str(
+                "meta: { version: 1 }\nstructure:\n  nodes:\n    /talker:\n      \
+                 { scope: system.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }\n",
+            )
+            .unwrap(),
+        );
+
+        let (inv, read, notes) = probe_inventory_with("m", &ws, Some(&root), &model);
+        let inv = inv.unwrap_or_else(|| panic!("a fresh sidecar states the image: {notes:?}"));
+        assert_eq!(inv.stated_by(), StatedBy::Probe);
+        assert_eq!(read, vec![sidecar.clone()]);
+        let d = inv.derive();
+        let k = d.knobs().expect("derives");
+        assert_eq!((k.max_cbs, k.max_publishers), (1, 1), "{k:?}");
+
+        // The component's source moves; the sidecar is now stale and the image
+        // is unstated -- the refusal it had before this existed.
+        std::fs::write(pkg.join("src/lib.rs"), "// the component, edited\n").unwrap();
+        let (inv, _, notes) = probe_inventory_with("m", &ws, Some(&root), &model);
+        assert!(inv.is_none(), "a stale sidecar states nothing");
+        assert!(
+            notes.iter().any(|n| n.contains("stale")),
+            "the skip is said: {notes:?}"
         );
     }
 

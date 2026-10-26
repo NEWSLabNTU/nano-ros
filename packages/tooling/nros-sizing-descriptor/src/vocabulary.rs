@@ -111,6 +111,22 @@ vocabulary! {
         /// The rows describe the whole link closure — every type reachable,
         /// not the subscribed set. The worst case, and honest about it.
         Closure => "closure",
+        /// The rows describe THIS IMAGE's own endpoint set, as the metadata
+        /// probe recorded its launched nodes' code creating them, on the model
+        /// road of an image that authored NO contract (RFC-0100 amendment of
+        /// 2026-10-25, phase-517 W5). Like [`Basis::Contract`] it is not the
+        /// closure; unlike it, nobody authored the rows, so a consumer that
+        /// wants authored facts only can tell them apart.
+        Probe => "probe",
+    }
+}
+
+impl Basis {
+    /// Do the rows describe THIS IMAGE's endpoint set (as opposed to the link
+    /// closure)? True for [`Basis::Contract`] and [`Basis::Probe`]: the D6
+    /// question every pool consumer asks before sizing from the rows.
+    pub fn describes_image(self) -> bool {
+        matches!(self, Basis::Contract | Basis::Probe)
     }
 }
 
