@@ -286,7 +286,7 @@ STORAGE_ROLES = [
         "level task memory",
         r"__nros_tier_(?:stack|thread)_\d+",
         "packages/api/nros-c/include/rclc/detail/tier_task_memory_zephyr.h",
-        "static K_THREAD_STACK_DEFINE(__nros_tier_stack_##i,",
+        "static NROS_TIER_TASK_STACK_DEFINE_(__nros_tier_stack_##i,",
     ),
     (
         "level task memory",
