@@ -1,6 +1,6 @@
 # Phase 517 — The user's flow: one setup, one build, the platform's own run
 
-**Status (2026-10-26). Open; W5 in review (PR #2644); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
+**Status (2026-10-26). Open; W5 landed (PR #2644, then the probe-sized pools of RFC-0100 Amendment 3); W7 and W9 landed (docs, plus the `check-book-board-run-sections` gate); W10's harness, recipes, weekly lane and gate landed, all eight tracks green since issue 2064 was fixed — each work item records what landed.** Opened from a gap audit of the
 user-facing book against the CLI source, plus a run of both book probes
 (`just probe checkout` and `just probe installed`, both PASS at `9bfed390c0`).
 W1 is docs-only and can start now. W2 is decided (maintainer, 2026-10-25): cut
@@ -450,7 +450,7 @@ workspace stand as a component's declaration when no contract names it, and
 with what freshness rule? Then the template either relies on that or ships a
 contract.
 
-**Decision and evidence (2026-10-26) — BLOCKED, issue 2076.** The maintainer
+**Decision and evidence (2026-10-26) — first run BLOCKED, issue 2076.** The maintainer
 accepted RFC-0100 Amendment 3 with its evidence plan as a precondition. The
 amendment lets fresh probe sidecars stand as a contract-less image's
 declaration, with `basis = "probe"`. It was implemented on a branch,
@@ -502,10 +502,33 @@ configure while the resolve phase derived. The branch covers this.
 
 *Not run.* No embedded platform ran. The linux blocker stopped the plan first.
 
-**Next:** issue 2076. Count a bridge's nodes and endpoints in the model's frame,
-or refuse the probe arm for an image that declares a bridge. Then re-run this
-evidence, embedded lanes included, before anything lands. Until then the first
-project keeps its configured pool knobs.
+**Landed (2026-10-26), after issue 2076.** The maintainer chose to count a
+bridge's nodes and endpoints in the image's inventory. The rows come from the
+bringup's generated `nros-bridge.toml`, the file the runtime reads, and the
+bridged backends reach the descriptor's `backend_count`; the details are in
+issue 2076. The evidence was then re-run against `origin/main` 9f2d7b4bb3. For
+each lane, both trees built the scope's fixtures and ran the whole suite
+narrowed to its coordinates, and every test's result was compared:
+
+| lane | images moved to derived | default (pass / fail) | derived (pass / fail) | status diffs |
+| --- | --- | --- | --- | --- |
+| linux | 66 (+ 11 cmake configures), both bridges included | 3107 / 0 real | 3108 / 0 real | none |
+| FreeRTOS | 12 | 2837 / 26 | 2840 / 24 | 2 base reds passed derived; none the other way |
+| ThreadX linux | 4 | 2829 / 23 | 2830 / 23 | none |
+| ThreadX riscv64 | 1 | 2822 / 23 | 2823 / 23 | none |
+| Zephyr native_sim | 5 C/C++ west entries | 2840 / 60 | 2841 / 60 | none |
+| NuttX | 8 | 2819 / 30 | 2820 / 30 | none |
+
+The remaining reds are red in both trees, for host preconditions (Docker;
+`qemu-br`, which needs `sudo`) or for Zephyr C++ images that already fail to
+link at the base (a duplicate `__popcountdi2`). Not run: FVP, s32z270 and ESP32
+(dormant). The derived bridge-cyclonedds image states `max_nodes 3`,
+`max_cbs 3` and `backend_count 2`, and its bridge tests pass.
+
+*First project, final:* DERIVED from 2 components: 3 entities, `max_cbs 2`,
+`node_count 2`, `basis = "probe"`. The executor arena is 14,488 B against
+74,240 B by default, and the run prints 12 `Received:` in 6 s. W5's last open
+item is closed: the template relies on the probe and ships no contract.
 
 ### W6 — build by board, and print the platform's next command (M)
 
