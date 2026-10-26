@@ -133,6 +133,11 @@ pub mod wake_probe;
 #[cfg(any(has_rmw, test))]
 pub mod action;
 
+/// phase-515 R9 (decision D4) -- the sealed trait the C/C++ shims import for the
+/// executor's FFI entry points. `nros` does not re-export it.
+#[cfg(any(has_rmw, test))]
+pub mod ffi;
+
 // MockSession-based tests. Disabled when any rmw-* feature is active because
 // feature unification under `cargo test --workspace` flips `ConcreteSession`
 // to a real backend handle (e.g. UorbSession when rmw-uorb is on transitively

@@ -11,6 +11,7 @@ use crate::{
     NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, cpp_ctx_checked,
     nros_cpp_ret_t,
 };
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 // Phase 87.6: no compile-time assertion needed — the C++ side sizes
 // `storage_` to `NROS_GUARD_CONDITION_SIZE`, which is literally

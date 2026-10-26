@@ -1,6 +1,0 @@
-{
-  "key": "rust:Executor::release_node",
-  "bucket": "ours-only",
-  "verdict": "extension",
-  "why": "phase-476 W0 -- releases every entry a node registered, which is what destroying a C++ node does (`nros_cpp_node_destroy`). In rclcpp, destroying the node drops the last owners of its entities. Ours has to release them explicitly: a C++ callback's capture is copied into the arena and usually holds the node's `this`, so an entry that outlived its node would dispatch into freed memory."
-}

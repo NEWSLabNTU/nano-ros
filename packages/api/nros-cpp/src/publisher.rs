@@ -23,6 +23,7 @@ use crate::{
     NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, cstr_to_str,
     nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 /// What the caller's `NROS_PUBLISHER_SIZE + sizeof(void*)` bytes hold: the
 /// RMW handle and the contracted endpoint's counter cell (null when the topic

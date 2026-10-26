@@ -219,7 +219,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// `backing` must be ≥ `sizing.u64_len()` words, live for `'s`, and be
     /// otherwise untouched while the executor lives (see
-    /// [`from_session_in`](Self::from_session_in)).
+    /// [`from_session_in`](crate::executor::ffi::ExecutorFfi::from_session_in)).
     pub unsafe fn open_in(
         config: &ExecutorConfig<'_>,
         backing: &'s mut [MaybeUninit<u64>],
@@ -463,7 +463,7 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// `backing`/`sizing` as in [`from_session_in`](Self::from_session_in).
-    pub unsafe fn open_multi_in(
+    pub(crate) unsafe fn open_multi_in(
         specs: &[SessionSpec<'_>],
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
@@ -517,7 +517,7 @@ impl<'s> Executor<'s> {
     /// for the executor's tables instead of leaking a default one.
     ///
     /// # Safety
-    /// `backing`/`sizing` as in [`from_session_in`](Self::from_session_in).
+    /// `backing`/`sizing` as in [`from_session_in`](crate::executor::ffi::ExecutorFfi::from_session_in).
     pub unsafe fn open_with_rmw_in(
         rmw_name: &str,
         config: &ExecutorConfig<'_>,
@@ -2689,7 +2689,7 @@ impl<'s> Executor<'s> {
     /// `backing` must be ≥ `sizing.u64_len()` words, stay alive for `'s`, and
     /// not be otherwise accessed while the executor lives (it aliases it).
     /// `sizing.cbs` must be ≤ 64 (the `u64` ready-set bitmask ceiling).
-    pub unsafe fn from_session_in(
+    pub(crate) unsafe fn from_session_in(
         session: session::ConcreteSession,
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
@@ -2706,7 +2706,7 @@ impl<'s> Executor<'s> {
     /// - `session_ptr` must point to a valid session that outlives the executor
     ///   and is not moved/dropped while it exists.
     /// - `backing` obligations as in [`from_session_in`](Self::from_session_in).
-    pub unsafe fn from_session_ptr_in(
+    pub(crate) unsafe fn from_session_ptr_in(
         session_ptr: *mut session::ConcreteSession,
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
@@ -2773,7 +2773,7 @@ impl Executor<'static> {
     ///   least as long as this executor.
     /// - The caller must not move or drop the session while the executor exists.
     #[cfg(feature = "alloc")]
-    pub unsafe fn from_session_ptr(session_ptr: *mut session::ConcreteSession) -> Self {
+    pub(crate) unsafe fn from_session_ptr(session_ptr: *mut session::ConcreteSession) -> Self {
         let sizing = super::storage::ExecutorSizing::DEFAULT;
         // SAFETY: the backing as in `from_session`; session_ptr contract
         // forwarded to `from_session_ptr_in`.
@@ -2928,7 +2928,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// `session` obligations as in [`open_with_session`](Self::open_with_session);
     /// `backing`/`sizing` as in [`from_session_ptr_in`](Self::from_session_ptr_in).
-    pub unsafe fn open_with_session_in(
+    pub(crate) unsafe fn open_with_session_in(
         session: *mut session::ConcreteSession,
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
@@ -2997,7 +2997,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// As [`open_with_session_handle`](Self::open_with_session_handle) +
     /// [`from_session_ptr_in`](Self::from_session_ptr_in).
-    pub unsafe fn open_with_session_handle_in(
+    pub(crate) unsafe fn open_with_session_handle_in(
         handle: SessionHandle,
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
@@ -3018,7 +3018,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// `session` obligations as in [`open_with_session`](Self::open_with_session).
     #[cfg(feature = "alloc")]
-    pub unsafe fn open_with_session_slot(
+    pub(crate) unsafe fn open_with_session_slot(
         session: *mut session::ConcreteSession,
         slot: &'s mut super::TierExecutorBackingSlot,
     ) -> Self {
@@ -3037,7 +3037,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// As [`open_with_session_handle`](Self::open_with_session_handle).
     #[cfg(feature = "alloc")]
-    pub unsafe fn open_with_session_handle_slot(
+    pub(crate) unsafe fn open_with_session_handle_slot(
         handle: SessionHandle,
         slot: &'s mut super::TierExecutorBackingSlot,
     ) -> Self {
@@ -3125,7 +3125,7 @@ impl<'s> Executor<'s> {
     /// which doesn't know the open metadata. Empty strings = "no
     /// primary identity tracked"; the cache check degrades to
     /// always-miss.
-    pub fn set_primary_identity(&mut self, rmw_name: &str, locator: &str) {
+    pub(crate) fn set_primary_identity(&mut self, rmw_name: &str, locator: &str) {
         self.primary_rmw_name.clear();
         let _ = self.primary_rmw_name.push_str(rmw_name);
         self.primary_locator.clear();
@@ -3939,7 +3939,7 @@ impl<'s> Executor<'s> {
     }
 
     /// phase-509 P9b -- the installed lock, if any.
-    pub fn exec_lock(&self) -> Option<super::exec_lock::ExecLock> {
+    pub(crate) fn exec_lock(&self) -> Option<super::exec_lock::ExecLock> {
         self.exec_lock
     }
 
@@ -4377,7 +4377,7 @@ impl<'s> Executor<'s> {
     /// express. The port states it because only the port knows: the ABI
     /// signature is not the limit — an RTOS tick is a second, coarser one, and
     /// a timespec primitive is a finer one.
-    pub fn set_park_primitive(
+    pub(crate) fn set_park_primitive(
         &mut self,
         park: ParkUntilFn,
         ctx: *mut core::ffi::c_void,
@@ -4396,7 +4396,7 @@ impl<'s> Executor<'s> {
     /// non-blocking, so an unbreakable park sleeps out its full deadline with
     /// data already waiting. Waiting on THIS object keeps the async break.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    pub fn wake_raw_ptr(&self) -> *mut core::ffi::c_void {
+    pub(crate) fn wake_raw_ptr(&self) -> *mut core::ffi::c_void {
         match self.node_wake.as_ref() {
             Some(w) => w.raw_ptr(),
             None => core::ptr::null_mut(),
@@ -5684,7 +5684,7 @@ impl<'s> Executor<'s> {
     /// service that bypass the `register_*_on` arena dispatch).
     /// Returns `None` when `node_id` is out of range or the Node's
     /// `session_idx` lands outside the executor's session table.
-    pub fn node_session_mut(
+    pub(crate) fn node_session_mut(
         &mut self,
         node_id: super::node_record::NodeId,
     ) -> Option<&mut session::ConcreteSession> {
@@ -5843,7 +5843,7 @@ impl<'s> Executor<'s> {
     /// member table is full it joins nothing and reads as having no async
     /// wake, so it never parks on a wake nobody will signal.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
-    pub fn install_wake_signal_on_primary(&mut self) {
+    pub(crate) fn install_wake_signal_on_primary(&mut self) {
         use nros_rmw::Session as _;
         if self.wake_membership.is_some() {
             return;
@@ -6504,7 +6504,7 @@ impl<'s> Executor<'s> {
     /// `context` must stay valid until the hook runs or is removed. The hook
     /// runs on whichever task calls [`Self::close`] (or drops the executor),
     /// which is not necessarily the task that registered it.
-    pub unsafe fn add_pre_shutdown_callback(
+    pub(crate) unsafe fn add_pre_shutdown_callback(
         &mut self,
         callback: super::types::ShutdownCallbackFn,
         context: *mut core::ffi::c_void,
@@ -6525,7 +6525,7 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// Same contract as [`Self::add_pre_shutdown_callback`].
-    pub unsafe fn add_on_shutdown_callback(
+    pub(crate) unsafe fn add_on_shutdown_callback(
         &mut self,
         callback: super::types::ShutdownCallbackFn,
         context: *mut core::ffi::c_void,
@@ -6547,7 +6547,7 @@ impl<'s> Executor<'s> {
     /// [`ShutdownCallbackHandle`] buys.
     ///
     /// [`ShutdownCallbackHandle`]: super::types::ShutdownCallbackHandle
-    pub fn remove_pre_shutdown_callback(
+    pub(crate) fn remove_pre_shutdown_callback(
         &mut self,
         handle: super::types::ShutdownCallbackHandle,
     ) -> bool {
@@ -6559,7 +6559,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Remove an on-shutdown hook. See [`Self::remove_pre_shutdown_callback`].
-    pub fn remove_on_shutdown_callback(
+    pub(crate) fn remove_on_shutdown_callback(
         &mut self,
         handle: super::types::ShutdownCallbackHandle,
     ) -> bool {
@@ -7169,7 +7169,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// The caller must ensure that `entry_index` refers to an `ActionClientRawArenaEntry`.
     #[doc(hidden)]
-    pub unsafe fn action_client_core_mut(
+    pub(crate) unsafe fn action_client_core_mut(
         &mut self,
         entry_index: usize,
     ) -> Option<&mut super::action_core::ActionClientCore> {
@@ -7198,7 +7198,7 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// `entry_index` must refer to a `ServiceClientRawArenaEntry`.
-    pub unsafe fn service_client_entry_mut(
+    pub(crate) unsafe fn service_client_entry_mut(
         &mut self,
         entry_index: usize,
     ) -> Option<&mut super::arena::ServiceClientRawArenaEntry<{ crate::config::DEFAULT_RX_BUF_SIZE }>>
@@ -7248,7 +7248,7 @@ impl<'s> Executor<'s> {
     /// `entry_index` must be an index this executor handed out. The borrow is
     /// valid only while the arena is not re-entered.
     #[doc(hidden)]
-    pub unsafe fn subscription_handle(
+    pub(crate) unsafe fn subscription_handle(
         &self,
         entry_index: usize,
     ) -> Option<&session::RmwSubscriber> {
@@ -7274,7 +7274,7 @@ impl<'s> Executor<'s> {
     /// See [`Executor::subscription_handle`]; in addition no other borrow of
     /// the same entry may be live.
     #[doc(hidden)]
-    pub unsafe fn subscription_handle_mut(
+    pub(crate) unsafe fn subscription_handle_mut(
         &mut self,
         entry_index: usize,
     ) -> Option<&mut session::RmwSubscriber> {
@@ -7304,7 +7304,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// See [`Executor::subscription_handle`].
     #[doc(hidden)]
-    pub unsafe fn service_server_handle(
+    pub(crate) unsafe fn service_server_handle(
         &self,
         entry_index: usize,
     ) -> Option<&session::RmwServiceServer> {
@@ -7323,7 +7323,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// See [`Executor::subscription_handle`].
     #[doc(hidden)]
-    pub unsafe fn service_client_handle(
+    pub(crate) unsafe fn service_client_handle(
         &self,
         entry_index: usize,
     ) -> Option<&session::RmwServiceClient> {
@@ -7999,7 +7999,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// No copy of `handle` may be used afterwards — the slot is handed to the
     /// next registration, which may be of any kind.
-    pub unsafe fn release_subscription(&mut self, handle: HandleId) -> bool {
+    pub(crate) unsafe fn release_subscription(&mut self, handle: HandleId) -> bool {
         match self.resolve_handle(handle) {
             Some(slot) => unsafe { self.release_entry(slot, EntryKind::Subscription) },
             None => false,
@@ -8012,7 +8012,7 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// As [`release_subscription`](Self::release_subscription).
-    pub unsafe fn release_timer(&mut self, handle: HandleId) -> bool {
+    pub(crate) unsafe fn release_timer(&mut self, handle: HandleId) -> bool {
         match self.resolve_handle(handle) {
             Some(slot) => unsafe { self.release_entry(slot, EntryKind::Timer) },
             None => false,
@@ -8024,7 +8024,7 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// As [`release_subscription`](Self::release_subscription).
-    pub unsafe fn release_service(&mut self, handle: HandleId) -> bool {
+    pub(crate) unsafe fn release_service(&mut self, handle: HandleId) -> bool {
         match self.resolve_handle(handle) {
             Some(slot) => unsafe { self.release_entry(slot, EntryKind::Service) },
             None => false,
@@ -8037,7 +8037,7 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// As [`release_subscription`](Self::release_subscription).
-    pub unsafe fn release_service_client(&mut self, handle: HandleId) -> bool {
+    pub(crate) unsafe fn release_service_client(&mut self, handle: HandleId) -> bool {
         match self.resolve_handle(handle) {
             Some(slot) => unsafe { self.release_entry(slot, EntryKind::ServiceClient) },
             None => false,
@@ -8058,7 +8058,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// No [`GuardCondition`] trigger handle for this entry — the one
     /// registration returned, or any clone of it — may be used afterwards.
-    pub unsafe fn release_guard_condition(&mut self, handle: HandleId) -> bool {
+    pub(crate) unsafe fn release_guard_condition(&mut self, handle: HandleId) -> bool {
         match self.resolve_handle(handle) {
             Some(slot) => unsafe { self.release_entry(slot, EntryKind::GuardCondition) },
             None => false,
@@ -8317,7 +8317,7 @@ impl<'s> Executor<'s> {
     /// phase-476 W0 — record that `node` registered the entry `id` names, so
     /// [`release_node`](Self::release_node) can find it. `false` when `id` is
     /// stale.
-    pub fn set_entry_owner(&mut self, id: HandleId, node: crate::executor::NodeId) -> bool {
+    pub(crate) fn set_entry_owner(&mut self, id: HandleId, node: crate::executor::NodeId) -> bool {
         let Some(slot) = self.resolve_handle(id) else {
             return false;
         };
@@ -8339,7 +8339,7 @@ impl<'s> Executor<'s> {
     /// No handle to any of those entries may be used afterwards except through
     /// a lookup that checks the generation ([`resolve_handle`](Self::resolve_handle)),
     /// which every public lookup on this type does.
-    pub unsafe fn release_node(&mut self, node: crate::executor::NodeId) -> usize {
+    pub(crate) unsafe fn release_node(&mut self, node: crate::executor::NodeId) -> usize {
         let Ok(biased) = u8::try_from(node.index() + 1) else {
             return 0;
         };
@@ -9748,7 +9748,7 @@ impl<'s> Executor<'s> {
     /// go back to the arena. A C++ capture is a callable that may own something
     /// (a `std::shared_ptr`, a `std::string`), and its bytes were MOVED here by
     /// copy, so this is the only place its destructor can run.
-    pub fn register_timer_c_capturing(
+    pub(crate) fn register_timer_c_capturing(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         period: TimerDuration,
@@ -9793,7 +9793,7 @@ impl<'s> Executor<'s> {
     /// `autostart == false` registers the timer cancelled; `reset_timer`
     /// starts it. `group` binds it as `register_timer_on` does.
     #[allow(clippy::too_many_arguments)]
-    pub fn register_timer_c_capturing_with_info<I>(
+    pub(crate) fn register_timer_c_capturing_with_info<I>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         period: TimerDuration,
@@ -9936,7 +9936,7 @@ impl<'s> Executor<'s> {
     /// primitive the `nros-c` thin wrapper lowers to. `node_id == None`
     /// is the legacy single-node path.
     #[allow(clippy::too_many_arguments)]
-    pub fn add_arena_subscription_c_callback<const RX_BUF: usize>(
+    pub(crate) fn add_arena_subscription_c_callback<const RX_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,
@@ -9983,7 +9983,7 @@ impl<'s> Executor<'s> {
     /// slot IS the argument, and a C or C++ subscription on zenoh or XRCE
     /// claims no receive region at all.
     #[allow(clippy::too_many_arguments)]
-    pub fn add_arena_subscription_c_callback_with_capture<const RX_BUF: usize>(
+    pub(crate) fn add_arena_subscription_c_callback_with_capture<const RX_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,
@@ -10184,7 +10184,7 @@ impl<'s> Executor<'s> {
     /// `msg` must point to storage of the type `deserialize` writes, valid for
     /// as long as the subscription is registered. Nothing here drops it.
     #[allow(clippy::too_many_arguments)]
-    pub unsafe fn add_arena_subscription_c_typed_callback<const RX_BUF: usize>(
+    pub(crate) unsafe fn add_arena_subscription_c_typed_callback<const RX_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,
@@ -10293,7 +10293,7 @@ impl<'s> Executor<'s> {
     /// (`nros_cpp_subscription_register_message_info`).
     ///
     /// `rx_buffer_hint` sizes both the backend's payload class and the arena
-    /// slot, as on [`add_arena_subscription_c_info_callback`](Self::add_arena_subscription_c_info_callback);
+    /// slot, as on [`add_arena_subscription_c_info_callback`](crate::executor::ffi::ExecutorFfi::add_arena_subscription_c_info_callback);
     /// 0 falls back to `DEFAULT_RX_BUF_SIZE`.
     #[allow(clippy::too_many_arguments)]
     pub fn add_arena_subscription_msg_info_closure<F>(
@@ -10377,7 +10377,7 @@ impl<'s> Executor<'s> {
     /// payload + attachment buffers (cap `RAW_INFO_ATT_CAP`);
     /// one sample per `spin_once`.
     #[allow(clippy::too_many_arguments)]
-    pub fn add_arena_subscription_c_info_callback<const RX_BUF: usize>(
+    pub(crate) fn add_arena_subscription_c_info_callback<const RX_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,
@@ -10474,7 +10474,7 @@ impl<'s> Executor<'s> {
     /// Requires the `safety-e2e` feature. Backed by `SubBufferedRawSafetyCEntry`.
     #[cfg(feature = "safety-e2e")]
     #[allow(clippy::too_many_arguments)]
-    pub fn add_arena_subscription_c_validated_callback<const RX_BUF: usize>(
+    pub(crate) fn add_arena_subscription_c_validated_callback<const RX_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,
@@ -10564,7 +10564,7 @@ impl<'s> Executor<'s> {
     ///
     /// The callback receives and produces CDR bytes without typed
     /// deserialization/serialization. Used by the C API wrapper.
-    pub fn register_service_raw(
+    pub(crate) fn register_service_raw(
         &mut self,
         service_name: &str,
         service_type: &str,
@@ -10589,7 +10589,7 @@ impl<'s> Executor<'s> {
     /// with large payloads (e.g., parameter services). `qos` applies to both
     /// the request + reply endpoints (Phase 193.2c).
     #[allow(clippy::too_many_arguments)]
-    pub fn register_service_raw_sized<const REQ_BUF: usize, const REPLY_BUF: usize>(
+    pub(crate) fn register_service_raw_sized<const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
         service_type: &str,
@@ -10614,7 +10614,7 @@ impl<'s> Executor<'s> {
     /// Phase 104.C.3.3.a — Node-aware variant of
     /// [`Self::register_service_raw_sized`]. C-FFI path.
     #[allow(clippy::too_many_arguments)]
-    pub fn register_service_raw_sized_on<const REQ_BUF: usize, const REPLY_BUF: usize>(
+    pub(crate) fn register_service_raw_sized_on<const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
         service_name: &str,
@@ -10646,7 +10646,7 @@ impl<'s> Executor<'s> {
     /// a capturing lambda): a context word holds a `[this]` and not a
     /// pointer-to-member plus its object.
     #[allow(clippy::too_many_arguments)]
-    pub fn register_service_raw_capturing<const REQ_BUF: usize, const REPLY_BUF: usize>(
+    pub(crate) fn register_service_raw_capturing<const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         service_name: &str,
@@ -10784,7 +10784,7 @@ impl<'s> Executor<'s> {
     /// dispatch polls the in-flight reply slot via `take_response_raw`
     /// and fires the registered callback when the response arrives.
     /// Used by the C API thin wrapper — see Phase 82.
-    pub fn register_service_client_raw(
+    pub(crate) fn register_service_client_raw(
         &mut self,
         service_name: &str,
         service_type: &str,
@@ -10808,7 +10808,7 @@ impl<'s> Executor<'s> {
     /// defaults to [`QoSProfile::services_default`] via the convenience
     /// wrapper.
     #[allow(clippy::too_many_arguments)]
-    pub fn register_service_client_raw_sized<const REPLY_BUF: usize>(
+    pub(crate) fn register_service_client_raw_sized<const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
         service_type: &str,
@@ -10832,7 +10832,7 @@ impl<'s> Executor<'s> {
     /// [`Self::register_service_client_raw_sized`]. Routes the client
     /// creation through the named Node's session.
     #[allow(clippy::too_many_arguments)]
-    pub fn register_service_client_raw_sized_on<const REPLY_BUF: usize>(
+    pub(crate) fn register_service_client_raw_sized_on<const REPLY_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
         service_name: &str,
@@ -11430,7 +11430,11 @@ impl<'s> Executor<'s> {
     /// timer row the C ledger filed as `gap`. The answer lives here and only
     /// the spelling lives in the wrapper, the same split
     /// [`timer_elapsed_us`](Self::timer_elapsed_us) made.
-    pub fn exchange_timer_period_us(&mut self, id: HandleId, new_period_us: u64) -> Option<u64> {
+    pub(crate) fn exchange_timer_period_us(
+        &mut self,
+        id: HandleId,
+        new_period_us: u64,
+    ) -> Option<u64> {
         let offset = self
             .entries
             .get(self.live_slot(id))
@@ -11504,7 +11508,7 @@ impl<'s> Executor<'s> {
     /// (`rcl_timer_get_time_since_last_call`, `nros_timer_is_ready`) read
     /// this; RFC-0019 puts the answer in Rust and only the spelling in the
     /// wrapper.
-    pub fn timer_elapsed_us(&self, id: HandleId) -> Option<u64> {
+    pub(crate) fn timer_elapsed_us(&self, id: HandleId) -> Option<u64> {
         let meta = self
             .entries
             .get(self.live_slot(id))
@@ -11524,7 +11528,7 @@ impl<'s> Executor<'s> {
     /// is never ready again, and otherwise readiness is `elapsed >= period`.
     /// Keeping the two in one shape is the point — a readiness answer that
     /// disagrees with the dispatcher is worse than no answer at all.
-    pub fn timer_is_ready(&self, id: HandleId) -> Option<bool> {
+    pub(crate) fn timer_is_ready(&self, id: HandleId) -> Option<bool> {
         let meta = self
             .entries
             .get(self.live_slot(id))
@@ -11605,13 +11609,13 @@ impl<'s> Executor<'s> {
     /// a threshold (say, "more than a few consecutive spins") is the useful
     /// signal. Extra (bridge / multi-domain) sessions are best-effort and are
     /// deliberately NOT counted here.
-    pub fn session_io_failures(&self) -> u32 {
+    pub(crate) fn session_io_failures(&self) -> u32 {
         self.consecutive_io_failures
     }
 
     /// Whether the primary session drove I/O successfully on the last spin.
     ///
-    /// Convenience over [`Self::session_io_failures`] for the common
+    /// Convenience over [`ExecutorFfi::session_io_failures`](crate::executor::ffi::ExecutorFfi::session_io_failures) for the common
     /// "is my transport alive?" check.
     pub fn session_io_healthy(&self) -> bool {
         self.consecutive_io_failures == 0
@@ -15677,7 +15681,7 @@ impl<'s> Executor<'s> {
     /// A bare `spin_once` does NOT set it: one poll is not a spin, and a caller
     /// running its own `while` around `spin_once` is the one who knows it is
     /// looping. Such a caller can say so with
-    /// [`enter_spin_loop`](Self::enter_spin_loop).
+    /// [`enter_spin_loop`](crate::executor::ffi::ExecutorFfi::enter_spin_loop).
     ///
     /// See [`is_halted()`](Self::is_halted) for why this is a different question
     /// from "was cancel requested".
@@ -15700,7 +15704,7 @@ impl<'s> Executor<'s> {
     /// loop, and every caller needs `&mut` inside the body to poll.
     ///
     /// Takes `&self` (the flags are atomics), so the borrow ends at the call.
-    pub fn enter_spin_loop(&self) {
+    pub(crate) fn enter_spin_loop(&self) {
         self.halt_flag
             .store(false, core::sync::atomic::Ordering::SeqCst);
         self.spinning
@@ -15712,7 +15716,7 @@ impl<'s> Executor<'s> {
     /// Idempotent. Leaves the cancel flag alone: "someone asked me to stop" is
     /// the caller's answer to keep or clear, and clearing it here would lose the
     /// reason the loop exited.
-    pub fn exit_spin_loop(&self) {
+    pub(crate) fn exit_spin_loop(&self) {
         self.spinning
             .store(false, core::sync::atomic::Ordering::SeqCst);
     }

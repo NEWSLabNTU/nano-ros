@@ -11,7 +11,7 @@ use crate::{
     node::{rcl_node_t, rclc_node_state_t},
 };
 
-use nros_node::action_frame;
+use nros_node::{action_frame, executor::ffi::ExecutorFfi as _};
 
 /// Issue 2014 — byte of a get_result reply where the result fields start
 /// (`[encap 4][status i8][pad → 8][fields]`), for a C caller decoding what

@@ -11,6 +11,7 @@
 use core::ffi::c_void;
 
 use crate::{error::*, publisher::rcl_publisher_t, subscription::rcl_subscription_t};
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 /// Tier-1 status-event kinds. Stable u8 values matching
 /// `rmw_event_type_t` in `<nros/rmw_event.h>`.

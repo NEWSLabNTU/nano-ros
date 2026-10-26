@@ -22,6 +22,7 @@ use crate::{
     support::{rclc_support_state_t, rclc_support_t},
     timer::{rcl_timer_t, rclc_timer_state_t},
 };
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 pub use crate::config::*;
 use crate::constants::NROS_MAX_CONCURRENT_GOALS;
