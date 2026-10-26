@@ -92,9 +92,14 @@ rather than per declared image.
 
 **The class is refused.** `check_lowered_edition_features`
 (`cmd/leaf_settings.rs`) runs in `write_selection`, which `nros sync` reaches
-before its first cargo invocation, and in `nros build`. It refuses a
-dependency that enables `ros-<edition>`, naming the dependency and the
-`system.toml` that should state it; a `[features]` forward is accepted.
+before its first cargo invocation, and in `nros build`. For a leaf that depends
+on its selection package it refuses a dependency that enables `ros-<edition>`,
+naming the dependency and the `system.toml` that should state it; a
+`[features]` forward is accepted. An unmigrated leaf is exempt: nothing lowers
+its edition on the cargo road, so the pin is the only carrier it has. The
+first `just ci gate` showed why the exemption is needed: `nros new` still
+emits such a leaf
+([#2079](../2079-scaffold-emits-unmigrated-rust-leaf-pinning-the-edition.md)).
 `no_tracked_leaf_pins_the_declared_edition` walks every tracked leaf
 (negative control: re-pinning `mps2-an385-baremetal/rust/talker` turns it red).
 

@@ -1,5 +1,13 @@
 # Phase 452 — what a new user copies, and what builds it
 
+**Status (2026-10-26). W1–W4, W6 and W7 landed; W5 waits on a logo decision; W8
+opened (#2085 waits on an RFC-0085 ruling, #2079 is ready).**
+W7's three issues are resolved, plus #2087, found fixing #2045: a standalone
+CMake leaf's declared `ros_edition` reached nothing. A copied-out C leaf now
+configures by its README's own line, the copied-out mps2 talker builds with
+`ros_edition = "jazzy"`, and the px4 bridge's FFI crate builds from outside the
+checkout.
+
 **Status (2026-10-25). W1–W4 and W6 landed; W5 waits on a logo decision; W7
 opened.** W7 homes three copy-out defects the audit's new G2/C8 items found
 (issues 2044–2046): the documented copy-out configure fails, example manifests
@@ -350,6 +358,21 @@ Acceptance: a copied-out C leaf configures by its README's own line; the
 copied-out mps2 talker builds with `ros_edition = "jazzy"`; the px4 bridge
 builds from outside the checkout.
 
+### W8 — the remaining copy-out shapes (opened 2026-10-26)
+
+Found closing W7. The first item needs a maintainer ruling before any edit.
+
+- [ ] [Issue 2085](../issues/2085-workspace-packages-path-dep-nros-by-repo-layout.md)
+      — all 24 example workspace packages that depend on `nros` reach it by
+      `../../../../../packages/api/nros`, so a copied workspace fails at
+      `nros sync`. RFC-0085 ruled in-tree workspaces "not portable by
+      construction"; reversing that is the ruling. Then name it by version
+      and gate the path.
+- [ ] [Issue 2079](../issues/2079-scaffold-emits-unmigrated-rust-leaf-pinning-the-edition.md)
+      — `nros new` emits an unmigrated Rust leaf (board crate by hand, edition
+      pinned in the manifest, none in `system.toml`). Emit the selection-road
+      shape the examples have.
+
 ## Acceptance for the phase
 
 * Every copy-out template and every scaffold variant is built by a lane, from a
@@ -394,4 +417,6 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 | [#2044](../issues/archived/2044-example-readmes-configure-with-a-retired-root-variable.md) | RESOLVED 2026-10-26. The copy-out instructions every example carries configured with a retired variable and failed. W7. |
 | [#2045](../issues/archived/2045-example-manifests-hand-set-the-ros-edition-feature.md) | A copied-out example cannot take the edition its own `system.toml` declares. W7. |
 | [#2087](../issues/archived/2087-standalone-cmake-leaf-ignores-declared-ros-edition.md) | A standalone CMake leaf built humble whatever it declared. Found fixing 2045. W7. |
+| [#2085](../issues/2085-workspace-packages-path-dep-nros-by-repo-layout.md) | Workspace packages reach `nros` by repository layout. W8, needs a ruling on RFC-0085. |
+| [#2079](../issues/2079-scaffold-emits-unmigrated-rust-leaf-pinning-the-edition.md) | The Rust scaffold pins the edition its `system.toml` should own. W8. |
 | [#2046](../issues/archived/2046-px4-bridge-ffi-reaches-core-by-repo-path.md) | A copy-into-PX4 source only builds in place. W7. |
