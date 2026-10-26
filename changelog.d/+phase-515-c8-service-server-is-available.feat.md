@@ -1,0 +1,1 @@
+C: rcl's `rcl_service_server_is_available(node, client, &is_available)` from `<rcl/graph.h>`, the name to use for "is a server up?". It returns `RCL_RET_UNSUPPORTED` when the backend cannot tell. `rclc_client_server_available` and `rclc_client_service_is_ready` stay one release. (phase-515 C8)

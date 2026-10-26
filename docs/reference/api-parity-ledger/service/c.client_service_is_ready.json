@@ -1,5 +1,5 @@
 {
   "key": "c:client_service_is_ready",
   "verdict": "extension",
-  "why": "the correctly-named half of `c:client_server_available`, present only in C. Keeping both is the defect; see that row."
+  "why": "UPDATED 2026-10-27 (phase-515 C8): superseded by rcl's `rcl_service_server_is_available`, which also says when the backend cannot tell (this bool answers `false`); kept one release. PRIOR ROW: the correctly-named half of `c:client_server_available`, present only in C. Keeping both is the defect; see that row."
 }

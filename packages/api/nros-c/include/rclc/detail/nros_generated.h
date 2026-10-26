@@ -8639,6 +8639,10 @@ NROS_PUBLIC rcl_ret_t rclc_client_set_timeout(struct rcl_client_t *client, uint3
  * hard yes/no should treat `-1` as "unknown — assume yes" or use
  * [`rclc_client_wait_for_service`] instead.
  *
+ * Superseded by [`rcl_service_server_is_available`] (phase-515 C8), rcl's
+ * name and shape, whose `RCL_RET_UNSUPPORTED` is this function's `-1`; kept
+ * one release.
+ *
  * # Returns
  * * `RCL_RET_OK` — `*out` was written (`0`, `1`, or `-1`).
  * * `RCL_RET_INVALID_ARGUMENT` — `client` or `out` is null.
@@ -8674,9 +8678,41 @@ rcl_ret_t rclc_client_wait_for_service(struct rcl_client_t *client,
                                        uint32_t timeout_ms);
 
 /**
+ * rcl's `rcl_service_server_is_available(node, client, is_available)`,
+ * argument for argument (phase-515 C8).
+ *
+ * Writes whether at least one matching service server is visible on the RMW
+ * graph, without spinning. ADOPT-BOUNDED: a backend that cannot answer
+ * (XRCE without participant enumeration) returns `RCL_RET_UNSUPPORTED` and
+ * leaves `*is_available` untouched, where rcl always answers. `node` is
+ * checked and otherwise unused: the client reaches its session directly
+ * (`rmw_vtable.h`'s declared deviation for this slot).
+ *
+ * This is the name to use. `rclc_client_server_available` (a tri-state
+ * `int32_t`) and the bare-`bool` `rclc_client_service_is_ready` predate it and
+ * stay one release.
+ *
+ * # Returns
+ * * `RCL_RET_OK` -- `*is_available` was written.
+ * * `RCL_RET_INVALID_ARGUMENT` -- `node`, `client` or `is_available` is NULL.
+ * * `RCL_RET_NOT_INIT` -- the client is not registered with an executor.
+ * * `RCL_RET_UNSUPPORTED` -- the backend cannot tell.
+ *
+ * # Safety
+ * `node` and `client` must be valid objects; `is_available` writable.
+ */
+NROS_PUBLIC
+rcl_ret_t rcl_service_server_is_available(const struct rcl_node_t *node,
+                                          const struct rcl_client_t *client,
+                                          bool *is_available);
+
+/**
  * Non-blocking snapshot of whether a matching service server is
  * currently visible. Mirrors `rclcpp::ClientBase::service_is_ready`
- * and rcl's `rcl_service_server_is_available`. Returns `false` when
+ * and rcl's `rcl_service_server_is_available`.
+ *
+ * Superseded by [`rcl_service_server_is_available`] (phase-515 C8), rcl's
+ * name and shape; kept one release. Returns `false` when
  * the client isn't registered with an executor or the backend lacks
  * liveliness discovery (in which case use `rclc_client_wait_for_service`
  * instead, which handles those cases conservatively).
