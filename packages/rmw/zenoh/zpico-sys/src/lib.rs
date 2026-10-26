@@ -367,6 +367,18 @@ unsafe extern "C" {
         queryable_handle: i32,
     ) -> i64;
 
+    /// Issue 1942 — copy the attachment of the request held in reply slot
+    /// `reply_seq` into `out` (at most `out_cap` bytes). Returns the
+    /// attachment's full length (0 when the query carried none) or
+    /// `ZPICO_ERR_INVALID` (bad handle, or no query held in that slot).
+    pub fn zpico_queryable_request_attachment(
+        session: *mut zpico_session_t,
+        queryable_handle: i32,
+        reply_seq: i64,
+        out: *mut u8,
+        out_cap: usize,
+    ) -> i32;
+
     /// issue 0902 / phase-455 W1 — read one queryable's reply-slot table.
     ///
     /// Returns the number of slots currently HELD (cloned queries awaiting a

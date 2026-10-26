@@ -3940,12 +3940,45 @@ pub trait ServiceTrait {
     /// the reply for transport-level transmission.
     fn send_response(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), Self::Error>;
 
+    /// Issue 1942 — the per-request metadata of the request the most recent
+    /// successful [`take_request`](Self::take_request) returned: client GID +
+    /// client sequence number, and the timestamps the backend can supply.
+    ///
+    /// rclrs's `ServiceInfo`. Read it after a take and before the next one.
+    /// **A field the backend cannot report is `None`**, and the default — for
+    /// a backend with no per-request metadata at all — is
+    /// [`ServiceInfo::NOT_REPORTED`](nros_core::ServiceInfo::NOT_REPORTED),
+    /// never a zeroed or invented value (the `MessageInfo` precedent).
+    ///
+    /// Not [`ServiceRequest::sequence_number`]: that is the token this backend
+    /// replies against, which on zenoh is a local reply-slot index, while
+    /// `request_id.sequence_number` is the number the CLIENT assigned.
+    fn request_info(&self) -> nros_core::ServiceInfo {
+        nros_core::ServiceInfo::NOT_REPORTED
+    }
+
     /// Handle a service request with typed messages
     fn handle_request<S: RosService>(
         &mut self,
         req_buf: &mut [u8],
         reply_buf: &mut [u8],
         handler: impl FnOnce(&S::Request) -> S::Reply,
+    ) -> Result<bool, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        self.handle_request_with_info::<S>(req_buf, reply_buf, |req, _info| handler(req))
+    }
+
+    /// Issue 1942 — [`handle_request`](Self::handle_request), with the
+    /// request's [`ServiceInfo`](nros_core::ServiceInfo) (read through
+    /// [`request_info`](Self::request_info) right after the take) handed to
+    /// the handler beside it. rclrs's `(request, ServiceInfo)` callback.
+    fn handle_request_with_info<S: RosService>(
+        &mut self,
+        req_buf: &mut [u8],
+        reply_buf: &mut [u8],
+        handler: impl FnOnce(&S::Request, &nros_core::ServiceInfo) -> S::Reply,
     ) -> Result<bool, Self::Error>
     where
         Self::Error: From<TransportError>,
@@ -3970,6 +4003,9 @@ pub trait ServiceTrait {
             None => return Ok(false),
         };
 
+        // Issue 1942 — the take that just succeeded is the one this describes.
+        let info = self.request_info();
+
         // Deserialize request from the captured offset.
         let mut reader = CdrReader::new_with_header(&req_buf[data_offset..data_offset + data_len])
             .map_err(|_| TransportError::DeserializationError)?;
@@ -3977,7 +4013,7 @@ pub trait ServiceTrait {
             .map_err(|_| TransportError::DeserializationError)?;
 
         // Call handler
-        let reply = handler(&req);
+        let reply = handler(&req, &info);
 
         // Serialize reply
         let mut writer =

@@ -312,6 +312,12 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * deferred-reply seq); call from inside the synchronous query callback.
  */
 /**
+ * Issue 1942 — copy the attachment of the request held in reply slot
+ * `reply_seq` into `out` (at most `out_cap` bytes). Returns the
+ * attachment's full length (0 when the query carried none) or
+ * `ZPICO_ERR_INVALID` (bad handle, or no query held in that slot).
+ */
+/**
  * issue 0902 / phase-455 W1 — read one queryable's reply-slot table.
  *
  * Returns the number of slots currently HELD (cloned queries awaiting a
@@ -930,6 +936,20 @@ int32_t zpico_query_reply_keep(struct zpico_session_t *_session,
  * Stub returns -1 (no slot) in the pure-Rust no-op build.
  */
 int64_t zpico_queryable_take_reply_seq(struct zpico_session_t *_session, int32_t _queryable_handle);
+
+/**
+ * Issue 1942 — copy the attachment of the request held in reply slot
+ * `reply_seq` into `out` (at most `out_cap` bytes), for the server's
+ * per-request `ServiceInfo`. Readable any time between the take and the
+ * reply. Returns the attachment's full length (0 when the query carried
+ * none) or `ZPICO_ERR_INVALID`. Stub returns `ZPICO_ERR_INVALID` (no
+ * query held) in the pure-Rust no-op build.
+ */
+int32_t zpico_queryable_request_attachment(struct zpico_session_t *_session,
+                                           int32_t _queryable_handle,
+                                           int64_t _reply_seq,
+                                           uint8_t *_out,
+                                           size_t _out_cap);
 
 /**
  * issue 0902 / phase-455 W1 — how many reply slots this queryable holds,

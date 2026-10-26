@@ -1000,8 +1000,35 @@ pub struct ZenohServiceServer {
     /// phase-461 W4 -- the knobs that size this server's inbox, (depth, slot
     /// bytes), for the drop log line: they differ per family.
     inbox_knobs: (&'static str, &'static str),
+    /// Issue 1942 — the metadata of the request the last `take_request`
+    /// returned, for [`ServiceTrait::request_info`].
+    request_info: nros_rmw::ServiceRequestInfo,
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
+}
+
+/// Issue 1942 — a request's [`ServiceRequestInfo`](nros_rmw::ServiceRequestInfo)
+/// from its query attachment.
+///
+/// The attachment is `rmw_zenoh_cpp`'s request layout, which our client writes
+/// too (issue 0153): the CLIENT's sequence number, its source timestamp in
+/// nanoseconds, and its 16-byte gid. All three are reported when it parses and
+/// none when it does not (no attachment, a short one, a foreign gid length) —
+/// never a zero standing in for an unknown. `received_timestamp` is not
+/// reported: the zenoh query carries no receive time, and the queryable
+/// callback does not stamp one.
+pub(crate) fn request_info_from_attachment(attachment: &[u8]) -> nros_rmw::ServiceRequestInfo {
+    match super::RmwAttachment::deserialize(attachment) {
+        Some(att) => nros_rmw::ServiceRequestInfo {
+            source_timestamp: Some(nros_rmw::Time::from_nanos(att.timestamp)),
+            received_timestamp: None,
+            request_id: Some(nros_rmw::RequestId {
+                writer_guid: att.rmw_gid,
+                sequence_number: att.sequence_number,
+            }),
+        },
+        None => nros_rmw::ServiceRequestInfo::NOT_REPORTED,
+    }
 }
 
 impl ZenohServiceServer {
@@ -1215,6 +1242,7 @@ impl ZenohServiceServer {
             refused_len: None,
             announcer: DropAnnouncer::default(),
             inbox_knobs,
+            request_info: nros_rmw::ServiceRequestInfo::NOT_REPORTED,
         })
     }
 
@@ -1307,6 +1335,10 @@ impl ServiceTrait for ZenohServiceServer {
         self.refused_len
     }
 
+    fn request_info(&self) -> nros_rmw::ServiceRequestInfo {
+        self.request_info
+    }
+
     fn take_request<'a>(
         &mut self,
         buf: &'a mut [u8],
@@ -1381,6 +1413,20 @@ impl ServiceTrait for ZenohServiceServer {
         #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
         let seq: i64 = slot.seq.load(Ordering::Acquire).into();
         pop();
+
+        // Issue 1942 — `seq` names the reply slot holding this request's
+        // cloned query, so its attachment is readable until the reply.
+        let mut attachment = [0u8; RMW_ATTACHMENT_SIZE];
+        // SAFETY: `context` outlives every server created on it.
+        let context = unsafe { &*self.context };
+        self.request_info = match context.queryable_request_attachment(
+            self._queryable.handle(),
+            seq,
+            &mut attachment,
+        ) {
+            Some(len) => request_info_from_attachment(&attachment[..len.min(attachment.len())]),
+            None => nros_rmw::ServiceRequestInfo::NOT_REPORTED,
+        };
 
         Ok(Some(ServiceRequest {
             data: &buf[..len],
@@ -1620,17 +1666,24 @@ pub struct ZenohServiceClient {
     _phantom: PhantomData<()>,
 }
 
-/// Issue 0153 — platform clock in ms → attachment source_timestamp.
-/// Mirrors `publisher.rs`'s `now_ms` (canonical `nros_platform_*` C symbol);
-/// falls back to the sequence number when no real clock exists, preserving
-/// monotonicity like the publisher path.
-fn current_timestamp_ms(fallback_seq: i64) -> i64 {
+/// Issue 0153 — platform clock → attachment source_timestamp, in
+/// NANOSECONDS: `rmw_zenoh_cpp`'s attachment field is nanoseconds, and so is
+/// what `publisher.rs` writes. Falls back to the sequence number when no real
+/// clock exists, preserving monotonicity like the publisher path.
+///
+/// Issue 1942 — this wrote MILLISECONDS until a server started reporting the
+/// field as `ServiceInfo::source_timestamp`, where a nano-ros client's request
+/// read as sent a million times too early. Nothing read it before.
+fn current_timestamp_ns(fallback_seq: i64) -> i64 {
     unsafe extern "C" {
         fn nros_platform_time_now_ns() -> u64;
     }
-    // Issue 0532 item 5 — the ABI is nanoseconds now; this caller wants ms.
-    let ms = unsafe { nros_platform_time_now_ns() / 1_000_000 };
-    if ms == 0 { fallback_seq } else { ms as i64 }
+    let ns = unsafe { nros_platform_time_now_ns() };
+    if ns == 0 {
+        fallback_seq
+    } else {
+        ns.min(i64::MAX as u64) as i64
+    }
 }
 
 impl ZenohServiceClient {
@@ -1772,7 +1825,7 @@ impl ClientTrait for ZenohServiceClient {
         // one sequence number.
         #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
         let seq: i64 = (self.request_seq.fetch_add(1, Ordering::Relaxed) + 1).into();
-        let ts = current_timestamp_ms(seq);
+        let ts = current_timestamp_ns(seq);
         let mut attachment = [0u8; RMW_ATTACHMENT_SIZE];
         attachment[0..8].copy_from_slice(&seq.to_le_bytes());
         attachment[8..16].copy_from_slice(&ts.to_le_bytes());
@@ -2074,6 +2127,53 @@ impl ClientTrait for ZenohServiceClient {
 pub(super) mod tests {
     use super::*;
     use nros_rmw::TransportError;
+
+    /// Issue 1942 — a request attachment in `rmw_zenoh_cpp`'s layout (the
+    /// one our client writes, and a stock client too) reports the CLIENT's
+    /// sequence number, its gid and its source timestamp; the receive time is
+    /// not on the wire and stays unreported.
+    #[test]
+    fn request_info_reads_the_clients_attachment() {
+        let gid = [0x3Cu8; RMW_GID_SIZE];
+        let mut att = [0u8; RMW_ATTACHMENT_SIZE];
+        super::super::RmwAttachment {
+            sequence_number: 9,
+            timestamp: 1_500_000_123,
+            rmw_gid: gid,
+        }
+        .serialize(&mut att);
+
+        let info = request_info_from_attachment(&att);
+        assert_eq!(
+            info.request_id,
+            Some(nros_rmw::RequestId {
+                writer_guid: gid,
+                sequence_number: 9,
+            })
+        );
+        assert_eq!(
+            info.source_timestamp,
+            Some(nros_rmw::Time::from_nanos(1_500_000_123))
+        );
+        assert_eq!(info.received_timestamp, None);
+    }
+
+    /// Issue 1942 — no attachment, a short one, or a foreign gid length
+    /// reports NOTHING: no zeroed id, no timestamp of 0.
+    #[test]
+    fn an_unparseable_attachment_reports_nothing() {
+        assert_eq!(
+            request_info_from_attachment(&[]),
+            nros_rmw::ServiceRequestInfo::NOT_REPORTED
+        );
+        assert_eq!(
+            request_info_from_attachment(&[0u8; RMW_ATTACHMENT_SIZE - 1]),
+            nros_rmw::ServiceRequestInfo::NOT_REPORTED
+        );
+        let mut foreign = [0u8; RMW_ATTACHMENT_SIZE];
+        foreign[16] = 24; // a gid length rmw_zenoh_cpp never writes
+        assert!(!request_info_from_attachment(&foreign).is_reported());
+    }
 
     /// Issue 1195 / phase-436 D1 — a reply arriving on the read task must wake
     /// the executor's runtime wake, not only the async `REPLY_WAKERS`. Without

@@ -105,6 +105,13 @@ pub use nros_core::MessageInfo;
 // `MessageInfo` from a C backend's `rmw_message_info_t` (nros-rmw-cffi's
 // `take_with_info` dispatch) can name it without a direct nros-core dep.
 pub use nros_core::Time;
+// Issue 1942 — and the per-request metadata [`ServiceTrait::request_info`]
+// returns, for the same reason. Re-exported as `ServiceRequestInfo`, NOT under
+// its own name: this crate's `ServiceInfo` is the service DESCRIPTOR a
+// `create_service` call takes, and two unrelated types under one name is how
+// issue 1942 stayed hidden (the facade re-exported the descriptor as rclrs's
+// `ServiceInfo` until phase-506 W1).
+pub use nros_core::{REQUEST_WRITER_GUID_SIZE, RequestId, ServiceInfo as ServiceRequestInfo};
 
 // Same reason, one method over: [`Publisher::get_gid`]'s return type is
 // `[u8; PUBLISHER_GID_SIZE]`, so a backend implementing it — or a caller

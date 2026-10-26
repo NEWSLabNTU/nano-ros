@@ -167,5 +167,5 @@ ledger has no row whose decision is not yet applied.
 | [#1300](../../issues/archived/1300-closed-backend-lists-outside-core-api.md) | Closed backend lists outside core/api (the CLI scaffold, colcon's `RMW_BACKENDS`, `board.knobs.zenoh`) are beyond the gate's reach. |
 | [#1405](../../issues/archived/1405-c-executor-node-id-zero-reads-as-no-node.md) | `node_raw_id != 0` decodes the primary node slot as "no node" at nine nros-c registration sites, the same conflation issue 1384 fixed one layer up. |
 | [#1789](../../issues/archived/1789-nros-facade-exports-runtime-machinery.md) | `nros::` still exports runtime machinery beside the user API: 64 ledger rows say a name should be hidden or moved. |
-| [#1942](../../issues/1942-rclrs-service-info-no-counterpart.md) | Found by W1: the seam's `ServiceInfo` had masked, by name, that rclrs's per-request service metadata has no counterpart here. |
+| [#1942](../../issues/archived/1942-rclrs-service-info-no-counterpart.md) | Found by W1: the seam's `ServiceInfo` had masked, by name, that rclrs's per-request service metadata has no counterpart here. |
 | [#1957](../../issues/1957-s32ds-image-crate-unverified-in-ide.md) | s32ds moved onto the generated image crate with the cmake road in W4a and has not been built in its IDE since. |

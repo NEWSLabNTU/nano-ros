@@ -258,8 +258,8 @@ pub mod cdr {
 // Re-export core types
 pub use nros_core::{
     CdrReader, CdrWriter, Clock, ClockType, DeserError, Deserialize, Duration, MessageInfo,
-    PUBLISHER_GID_SIZE, RawMessageInfo, RosMessage, RosService, SecNanosecMsg, SerError, Serialize,
-    Time,
+    PUBLISHER_GID_SIZE, REQUEST_WRITER_GUID_SIZE, RawMessageInfo, RequestId, RosMessage,
+    RosService, SecNanosecMsg, SerError, Serialize, ServiceInfo, Time,
 };
 
 // -----------------------------------------------------------------------------
@@ -1546,7 +1546,7 @@ pub mod prelude {
 
     pub use crate::{
         Deserialize, Logger, MessageInfo, QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
-        QoSReliabilityPolicy, RosMessage, RosService, Serialize,
+        QoSReliabilityPolicy, RosMessage, RosService, Serialize, ServiceInfo,
     };
 
     // phase-417 / issue 0589 — logging, in the glob a node author already

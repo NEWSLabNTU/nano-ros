@@ -1,0 +1,5 @@
+{
+  "key": "rust:REQUEST_WRITER_GUID_SIZE",
+  "verdict": "extension",
+  "why": "issue 1942 — the width of `RequestId::writer_guid` (16, upstream's `rmw_request_id_t::writer_guid`), named so a caller sizing a buffer for it need not write the literal. rclrs spells the type `[u8; 16]` and names no constant. Deliberately distinct from `PUBLISHER_GID_SIZE` (24, `RMW_GID_STORAGE_SIZE`): upstream keeps the two widths apart."
+}

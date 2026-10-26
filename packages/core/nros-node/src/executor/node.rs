@@ -2289,6 +2289,28 @@ impl<'e, 's> Node<'e, 's> {
         >(self.node_id, name, QoSProfile::services_default(), callback)
     }
 
+    /// [`create_service`](Self::create_service) whose callback also receives
+    /// the request's [`ServiceInfo`](nros_core::ServiceInfo) — rclrs's
+    /// `(request, ServiceInfo)` service callback (issue 1942).
+    ///
+    /// The info says who sent the request (client GID + the client's sequence
+    /// number) and when. Which fields arrive depends on the backend; one it
+    /// cannot report is `None`, never a zero — see
+    /// [`ServiceInfo`](nros_core::ServiceInfo).
+    pub fn create_service_with_info<Svc, F>(
+        &mut self,
+        name: &str,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        Svc: RosService + 'static,
+        Svc::Request: crate::rmw_type_registry::MessageForRmw,
+        Svc::Reply: crate::rmw_type_registry::MessageForRmw,
+        F: FnMut(&Svc::Request, &nros_core::ServiceInfo) -> Svc::Reply + 'static,
+    {
+        self.service(name).service_info().build::<Svc, F>(callback)
+    }
+
     // ====================================================================
     // Graph introspection — RFC-0036, phase-444.
     //
@@ -2974,6 +2996,17 @@ impl<'c, 'e, 't, 's> CtxServiceBuilder<'c, 'e, 't, 's> {
         self
     }
 
+    /// Surface the request's [`ServiceInfo`](nros_core::ServiceInfo) to the
+    /// callback — `FnMut(&Request, &ServiceInfo) -> Reply` (issue 1942). The
+    /// service-side twin of the subscription builder's `.message_info()`.
+    pub fn service_info(self) -> CtxServiceInfoBuilder<'c, 'e, 't, 's> {
+        CtxServiceInfoBuilder {
+            ctx: self.ctx,
+            name: self.name,
+            qos: self.qos,
+        }
+    }
+
     pub fn build<Svc, F>(self, callback: F) -> Result<super::types::HandleId, NodeError>
     where
         Svc: RosService + 'static,
@@ -2982,6 +3015,39 @@ impl<'c, 'e, 't, 's> CtxServiceBuilder<'c, 'e, 't, 's> {
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
         self.ctx.executor.register_service_sized_on::<
+            Svc,
+            F,
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(self.ctx.node_id, self.name, self.qos, callback)
+    }
+}
+
+/// Service-server builder with [`ServiceInfo`](nros_core::ServiceInfo)
+/// surfaced (`node.service(name).service_info()`). Callback is
+/// `FnMut(&Svc::Request, &ServiceInfo) -> Svc::Reply`.
+pub struct CtxServiceInfoBuilder<'c, 'e, 't, 's> {
+    ctx: &'c mut Node<'e, 's>,
+    name: &'t str,
+    qos: QoSProfile,
+}
+
+impl<'c, 'e, 't, 's> CtxServiceInfoBuilder<'c, 'e, 't, 's> {
+    /// Service QoS (applies to both the request + reply endpoints). Defaults to
+    /// `QoSProfile::services_default()`.
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    pub fn build<Svc, F>(self, callback: F) -> Result<super::types::HandleId, NodeError>
+    where
+        Svc: RosService + 'static,
+        Svc::Request: crate::rmw_type_registry::MessageForRmw,
+        Svc::Reply: crate::rmw_type_registry::MessageForRmw,
+        F: FnMut(&Svc::Request, &nros_core::ServiceInfo) -> Svc::Reply + 'static,
+    {
+        self.ctx.executor.register_service_with_info_sized_on::<
             Svc,
             F,
             { crate::config::DEFAULT_RX_BUF_SIZE },

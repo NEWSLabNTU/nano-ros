@@ -5052,6 +5052,40 @@ int64_t zpico_queryable_take_reply_seq(zpico_session_t* session, int32_t queryab
     return seq;
 }
 
+/* Issue 1942 — copy the attachment of the request held in reply slot
+ * `reply_seq` into `out`, for the server's per-request `ServiceInfo`.
+ *
+ * The slot is the query `query_handler` cloned for the deferred reply, so it is
+ * readable from the consumer side, any time between the take and the reply —
+ * no state is added to the session. A stock `rmw_zenoh_cpp` client and ours
+ * both attach `int64 seq | int64 source_timestamp | u8 len | gid[16]`.
+ *
+ * Returns the attachment's FULL length (0 when the query carried none), of
+ * which `min(len, out_cap)` bytes were copied, or `ZPICO_ERR_INVALID` for a
+ * bad handle or a slot holding no query. */
+int32_t zpico_queryable_request_attachment(zpico_session_t* session, int32_t queryable_handle,
+                                           int64_t reply_seq, uint8_t* out, size_t out_cap) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (reply_seq < 0 || reply_seq >= ZPICO_MAX_PENDING_REPLIES ||
+        !s->stored_query_valid[queryable_handle][reply_seq]) {
+        return ZPICO_ERR_INVALID;
+    }
+    const z_loaned_query_t* query = z_query_loan(&s->stored_queries[queryable_handle][reply_seq]);
+    const z_loaned_bytes_t* attachment = z_query_attachment(query);
+    if (attachment == NULL) {
+        return 0;
+    }
+    size_t len = z_bytes_len(attachment);
+    if (out != NULL && out_cap > 0 && len > 0) {
+        z_bytes_reader_t r = z_bytes_get_reader(attachment);
+        (void)z_bytes_reader_read(&r, out, len < out_cap ? len : out_cap);
+    }
+    return len > (size_t)INT32_MAX ? INT32_MAX : (int32_t)len;
+}
+
 // ============================================================================
 // Clock helpers (for FFI reentrancy guard timeout decomposition)
 // ============================================================================

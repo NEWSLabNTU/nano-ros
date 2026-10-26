@@ -1487,3 +1487,156 @@ fn an_undeclared_namespace_arrives_empty_and_is_not_defaulted() {
     assert_eq!(stored, "");
     assert_ne!(seen, "/", "the seam must not invent a root");
 }
+
+// ----------------------------------------------------------------------------
+// Issue 1942 — a Rust backend's per-request `ServiceInfo` crosses the seam.
+//
+// The C `take_request` slot carries only the reply-correlation token, so the
+// metadata rides the adapter's side channel. This drives the production chain
+// (`CffiRmw::open_with_rmw` -> `Session::create_service` -> `CffiService`) and
+// asserts the consumer reads back exactly what the backend reported — and
+// `NOT_REPORTED`, never a stale value, for a request that reported nothing.
+// ----------------------------------------------------------------------------
+
+#[derive(Default)]
+struct InfoRmw;
+struct InfoSession;
+struct InfoServer {
+    taken: u32,
+    info: nros_rmw::ServiceRequestInfo,
+}
+
+/// What `InfoServer` reports for its FIRST request; the second reports nothing.
+const SEAM_REQUEST_INFO: nros_rmw::ServiceRequestInfo = nros_rmw::ServiceRequestInfo {
+    source_timestamp: Some(nros_rmw::Time::new(77, 5)),
+    received_timestamp: Some(nros_rmw::Time::new(78, 6)),
+    request_id: Some(nros_rmw::RequestId {
+        writer_guid: [0x5A; nros_rmw::REQUEST_WRITER_GUID_SIZE],
+        sequence_number: 1234,
+    }),
+};
+
+impl Rmw for InfoRmw {
+    type Session = InfoSession;
+    type Error = TransportError;
+    fn open(self, _config: &RmwConfig) -> Result<Self::Session, Self::Error> {
+        Ok(InfoSession)
+    }
+}
+
+impl Session for InfoSession {
+    type Error = TransportError;
+    type PublisherHandle = NoopPublisher;
+    type SubscriptionHandle = NoopSubscriber;
+    type ServiceHandle = InfoServer;
+    type ClientHandle = NoopClient;
+
+    fn create_publisher(
+        &mut self,
+        _topic: &TopicInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::PublisherHandle, Self::Error> {
+        Ok(NoopPublisher)
+    }
+    fn create_subscription(
+        &mut self,
+        _topic: &TopicInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::SubscriptionHandle, Self::Error> {
+        Ok(NoopSubscriber)
+    }
+    fn create_service(
+        &mut self,
+        _service: &ServiceInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::ServiceHandle, Self::Error> {
+        Ok(InfoServer {
+            taken: 0,
+            info: nros_rmw::ServiceRequestInfo::NOT_REPORTED,
+        })
+    }
+    fn create_client(
+        &mut self,
+        _service: &ServiceInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::ClientHandle, Self::Error> {
+        Ok(NoopClient)
+    }
+    fn close(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl ServiceTrait for InfoServer {
+    type Error = TransportError;
+    fn has_request(&self) -> bool {
+        true
+    }
+    fn take_request<'a>(
+        &mut self,
+        buf: &'a mut [u8],
+    ) -> Result<Option<ServiceRequest<'a>>, Self::Error> {
+        self.taken += 1;
+        self.info = if self.taken == 1 {
+            SEAM_REQUEST_INFO
+        } else {
+            nros_rmw::ServiceRequestInfo::NOT_REPORTED
+        };
+        buf[0] = 0xAB;
+        Ok(Some(ServiceRequest {
+            data: &buf[..1],
+            sequence_number: i64::from(self.taken),
+        }))
+    }
+    fn request_info(&self) -> nros_rmw::ServiceRequestInfo {
+        self.info
+    }
+    fn send_response(&mut self, _sequence_number: i64, _data: &[u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_rust_backends_request_info_crosses_the_seam() {
+    // SAFETY: NUL-terminated literal; registration is idempotent.
+    let rc = unsafe { RustBackendAdapter::<InfoRmw>::register_named(c"svc-info-seam".as_ptr()) };
+    assert_eq!(rc, NROS_RMW_RET_OK, "register_named");
+    let config = RmwConfig {
+        locator: "tcp/127.0.0.1:7447",
+        mode: nros_rmw::SessionMode::Client,
+        domain_id: 0,
+        node_name: "probe",
+        namespace: "",
+        properties: &[],
+    };
+    let mut session = CffiRmw::open_with_rmw("svc-info-seam", &config).expect("open_with_rmw");
+    let descriptor = ServiceInfo::new("/svc_info", "T", "H");
+    let mut server = session
+        .create_service(&descriptor, QoSProfile::services_default())
+        .expect("create_service");
+
+    // Before any take there is nothing to report.
+    assert_eq!(
+        server.request_info(),
+        nros_rmw::ServiceRequestInfo::NOT_REPORTED
+    );
+
+    let mut buf = [0u8; 16];
+    let req = server.take_request(&mut buf).unwrap().expect("a request");
+    assert_eq!(req.data, &[0xAB]);
+    assert_eq!(server.request_info(), SEAM_REQUEST_INFO);
+
+    // The second request reported nothing: it must read NOT_REPORTED, not the
+    // first request's metadata left in the side table.
+    let _ = server.take_request(&mut buf).unwrap().expect("a request");
+    assert_eq!(
+        server.request_info(),
+        nros_rmw::ServiceRequestInfo::NOT_REPORTED
+    );
+
+    drop(server);
+    let _ = Session::close(&mut session);
+}

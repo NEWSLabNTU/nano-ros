@@ -1,0 +1,5 @@
+{
+  "key": "rust:ServiceInfo::is_reported",
+  "verdict": "extension",
+  "why": "issue 1942 — rclrs's `ServiceInfo` has no such method because its fields are not optional. Ours are (see `rust:ServiceInfo`), and this answers \"did the backend report ANYTHING for this request\" in one call: false on a backend with no per-request metadata (every C-ABI backend today, issue 2081), which a reader must not confuse with any particular field value. The Rust spelling of `cpp:MessageInfo::is_reported`."
+}

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Executor::register_service_with_info_sized_on",
+  "verdict": "divergence",
+  "why": "issue 1942 — the executor-level registration behind `Node::create_service_with_info`: `register_service_sized_on` for a callback that also receives the request's `ServiceInfo`. See `rust:Executor::register_service_sized_on` for why the imperative executor API exists under this spelling (static entity table, const-generic buffer sizes, no allocator) and `rust:Node::create_service_with_info` for the callback shape."
+}

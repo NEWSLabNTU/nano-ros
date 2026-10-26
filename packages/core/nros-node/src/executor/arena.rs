@@ -2940,6 +2940,45 @@ where
         .map_err(|_| TransportError::ServiceReplyFailed)
 }
 
+/// Issue 1942 — [`srv_try_process`] for a callback that also takes the
+/// request's [`ServiceInfo`](nros_core::ServiceInfo) (rclrs's shape). Same
+/// [`SrvEntry`] layout; only the callback's signature differs.
+///
+/// # Safety
+/// `ptr` must point to a valid `SrvEntry<Svc, F, REQ_BUF, REPLY_BUF>`.
+pub(crate) unsafe fn srv_try_process_with_info<
+    Svc,
+    F,
+    const REQ_BUF: usize,
+    const REPLY_BUF: usize,
+>(
+    ptr: *mut u8,
+    _delta_us: u64,
+    desc_idx: u8,
+) -> Result<bool, TransportError>
+where
+    Svc: RosService,
+    F: FnMut(&Svc::Request, &nros_core::ServiceInfo) -> Svc::Reply,
+{
+    let entry = unsafe { &mut *(ptr as *mut SrvEntry<Svc, F, REQ_BUF, REPLY_BUF>) };
+    let SrvEntry {
+        handle,
+        req_buffer,
+        reply_buffer,
+        callback,
+        ..
+    } = entry;
+    handle
+        // Traced inside the closure, as in `srv_try_process`.
+        .handle_request_with_info::<Svc>(req_buffer, reply_buffer, |req, info| {
+            trace_cb_start(desc_idx);
+            let reply = (callback)(req, info);
+            trace_cb_end(desc_idx);
+            reply
+        })
+        .map_err(|_| TransportError::ServiceReplyFailed)
+}
+
 /// Monomorphized drop function for arena entries.
 ///
 /// # Safety

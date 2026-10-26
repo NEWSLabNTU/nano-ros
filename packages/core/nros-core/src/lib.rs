@@ -98,6 +98,7 @@ pub mod lifecycle;
 pub mod logger;
 pub mod message_info;
 pub mod service;
+pub mod service_info;
 pub mod time;
 pub mod types;
 
@@ -117,6 +118,7 @@ pub use lifecycle::{LifecycleState, LifecycleTransition, TransitionResult};
 pub use logger::{Logger, OnceFlag};
 pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE, RawMessageInfo, pad_publisher_gid};
 pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceServer};
+pub use service_info::{REQUEST_WRITER_GUID_SIZE, RequestId, ServiceInfo};
 pub use time::{Duration, SecNanosecMsg, Time};
 pub use types::{RosMessage, RosService, ViewableMessage};
 

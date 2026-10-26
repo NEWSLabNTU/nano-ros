@@ -28,8 +28,8 @@ use super::{
         TimerHeader, TimerOverrunPolicy, TraceName, always_ready, buffered_region_size, drop_entry,
         guard_has_data, guard_try_process, no_pre_sample, service_client_callback_try_process,
         service_client_raw_try_process, srv_has_data, srv_raw_has_data, srv_raw_try_process,
-        srv_try_process, sub_buffered_has_data, sub_buffered_raw_c_has_data,
-        sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
+        srv_try_process, srv_try_process_with_info, sub_buffered_has_data,
+        sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
         sub_buffered_raw_info_c_has_data, sub_buffered_raw_info_c_try_process,
         sub_buffered_raw_info_has_data, sub_buffered_raw_info_try_process,
         sub_buffered_raw_msg_info_has_data, sub_buffered_raw_msg_info_try_process,
@@ -9434,6 +9434,62 @@ impl<'s> Executor<'s> {
         Svc::Reply: crate::rmw_type_registry::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
+        self.register_service_sized_on_inner::<Svc, F, REQ_BUF, REPLY_BUF>(
+            node_id,
+            service_name,
+            qos,
+            callback,
+            srv_try_process::<Svc, F, REQ_BUF, REPLY_BUF>,
+        )
+    }
+
+    /// Issue 1942 — [`register_service_sized_on`](Self::register_service_sized_on)
+    /// for a callback that also receives the request's
+    /// [`ServiceInfo`](nros_core::ServiceInfo) — rclrs's `(request, ServiceInfo)`
+    /// service callback. A field the backend cannot report arrives as `None`.
+    pub fn register_service_with_info_sized_on<
+        Svc,
+        F,
+        const REQ_BUF: usize,
+        const REPLY_BUF: usize,
+    >(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        service_name: &str,
+        qos: QoSProfile,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        Svc: RosService + 'static,
+        Svc::Request: crate::rmw_type_registry::MessageForRmw,
+        Svc::Reply: crate::rmw_type_registry::MessageForRmw,
+        F: FnMut(&Svc::Request, &nros_core::ServiceInfo) -> Svc::Reply + 'static,
+    {
+        self.register_service_sized_on_inner::<Svc, F, REQ_BUF, REPLY_BUF>(
+            node_id,
+            service_name,
+            qos,
+            callback,
+            srv_try_process_with_info::<Svc, F, REQ_BUF, REPLY_BUF>,
+        )
+    }
+
+    /// The one body behind both callback shapes: they share [`SrvEntry`] and
+    /// differ only in the dispatch function.
+    fn register_service_sized_on_inner<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        service_name: &str,
+        qos: QoSProfile,
+        callback: F,
+        try_process: unsafe fn(*mut u8, u64, u8) -> Result<bool, TransportError>,
+    ) -> Result<HandleId, NodeError>
+    where
+        Svc: RosService + 'static,
+        Svc::Request: crate::rmw_type_registry::MessageForRmw,
+        Svc::Reply: crate::rmw_type_registry::MessageForRmw,
+        F: 'static,
+    {
         type Entry<Svc, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, F, RQ, RP>;
 
         // Phase 212.K.7.7.b — see `register_service_sized`.
@@ -9491,7 +9547,7 @@ impl<'s> Executor<'s> {
             offset,
             kind: EntryKind::Service,
             arena_len: super::arena::ArenaLen::UNRECORDED,
-            try_process: srv_try_process::<Svc, F, REQ_BUF, REPLY_BUF>,
+            try_process,
             has_data: srv_has_data::<Svc, F, REQ_BUF, REPLY_BUF>,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,

@@ -45,11 +45,12 @@ use zpico_sys::{
     zpico_declare_subscriber, zpico_declare_subscriber_direct_write, zpico_declare_subscriber_ring,
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
-    zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_queryable_take_reply_seq,
-    zpico_reply_slot_declines, zpico_reply_slot_refusals_total, zpico_reply_slot_stats,
-    zpico_reply_slot_take_announcement, zpico_session_acquire, zpico_session_release,
-    zpico_session_t, zpico_spin_once, zpico_undeclare_liveliness, zpico_undeclare_publisher,
-    zpico_undeclare_queryable, zpico_undeclare_subscriber, zpico_uses_polling,
+    zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_queryable_request_attachment,
+    zpico_queryable_take_reply_seq, zpico_reply_slot_declines, zpico_reply_slot_refusals_total,
+    zpico_reply_slot_stats, zpico_reply_slot_take_announcement, zpico_session_acquire,
+    zpico_session_release, zpico_session_t, zpico_spin_once, zpico_undeclare_liveliness,
+    zpico_undeclare_publisher, zpico_undeclare_queryable, zpico_undeclare_subscriber,
+    zpico_uses_polling,
 };
 
 // ============================================================================
@@ -929,6 +930,28 @@ impl Context {
     /// synchronous query callback; -1 if the reply table was full.
     pub fn queryable_take_reply_seq(&self, queryable_handle: i32) -> i64 {
         unsafe { zpico_queryable_take_reply_seq(self.handle, queryable_handle) }
+    }
+
+    /// Issue 1942 — copy the attachment of the request held in reply slot
+    /// `reply_seq` into `out`. `Some(len)` is the attachment's FULL length
+    /// (`0` when the query carried none; more than `out.len()` means it was
+    /// truncated), `None` when no query is held there.
+    pub fn queryable_request_attachment(
+        &self,
+        queryable_handle: i32,
+        reply_seq: i64,
+        out: &mut [u8],
+    ) -> Option<usize> {
+        let ret = ffi_guard(|| unsafe {
+            zpico_queryable_request_attachment(
+                self.handle,
+                queryable_handle,
+                reply_seq,
+                out.as_mut_ptr(),
+                out.len(),
+            )
+        });
+        (ret >= 0).then_some(ret as usize)
     }
 
     /// issue 0902 / phase-455 W1 — one queryable's reply-slot table:
