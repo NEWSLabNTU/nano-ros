@@ -393,7 +393,7 @@ pub use node_runtime::{ExecutorError, RegisteredNode};
 pub mod __macro {
     #[cfg(feature = "rmw-cffi")]
     pub use crate::node::{__record_with_context, record_node_metadata, register_node};
-    pub use crate::node::{ActionExecutor, ClientDispatch, PublisherResolver};
+    pub use crate::node::{ActionExecutor, ClientDispatch, PublisherResolver, TimerOp};
     // Phase 212.M.5.a.4 — consumed by `nros::node!()` for the BSP dispatch path.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub use crate::node::__private_node_state_into_raw;

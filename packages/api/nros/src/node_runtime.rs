@@ -119,10 +119,11 @@ use crate::{
     EmbeddedRawPublisher, Executor, GoalId, GoalStatus,
     node::{
         ActionExecutor, Callback, CallbackCtx, ClientDispatch, ExecutableNode, NodeContext,
-        NodeDeclError, NodeOptions, NodeResult, PublisherResolver, TickCtx,
+        NodeDeclError, NodeOptions, NodeResult, PublisherResolver, TickCtx, TimerOp,
     },
     node_metadata::{
         CallbackEffectKind, CallbackId, EntityId, EntityKind, EntityMetadata, NodeId as MetaNodeId,
+        NodeMetadataError,
     },
 };
 
@@ -224,6 +225,7 @@ pub struct ComponentSlotStorage<
     const ACTC: usize = { crate::config::MAX_CELL_ENTITIES },
     const ACTS: usize = { crate::config::MAX_CELL_ENTITIES },
     const SSRV: usize = { crate::config::MAX_CELL_ENTITIES },
+    const TIMS: usize = { crate::config::MAX_CELL_ENTITIES },
 > {
     slots: [UnsafeCell<MaybeUninit<TypedSlot<C>>>; N],
     /// W5-endgame step 2b (issue 0857) — the per-instance CELL lives here too,
@@ -231,7 +233,7 @@ pub struct ComponentSlotStorage<
     /// out pairwise with its slot by `take`; the cell's `slot` field then
     /// borrows the sibling region, which is sound because the two arrays are
     /// distinct `UnsafeCell`s claimed by the same monotonic index.
-    cells: [UnsafeCell<MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>>>; N],
+    cells: [UnsafeCell<MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>>>; N],
     next: AtomicUsize,
 }
 
@@ -245,7 +247,8 @@ unsafe impl<
     const ACTC: usize,
     const ACTS: usize,
     const SSRV: usize,
-> Sync for ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>
+    const TIMS: usize,
+> Sync for ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>
 {
 }
 
@@ -257,7 +260,8 @@ impl<
     const ACTC: usize,
     const ACTS: usize,
     const SSRV: usize,
-> ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>
+    const TIMS: usize,
+> ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>
 {
     /// Const constructor — the macro emits `static STORE: ... = ...::new();`.
     #[allow(clippy::new_without_default)]
@@ -282,7 +286,7 @@ impl<
         &'static self,
     ) -> Option<(
         &'static mut MaybeUninit<TypedSlot<C>>,
-        &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>>,
+        &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>>,
     )> {
         let i = self.next.fetch_add(1, Ordering::Relaxed);
         if i >= N {
@@ -311,6 +315,28 @@ where
         state: C::init(),
         _phantom: PhantomData,
     })
+}
+
+/// Issue 2075 — one controllable declared timer in a component cell.
+#[derive(Clone, Copy)]
+struct TimerSlot {
+    /// FNV-1a 64 of the timer's entity id. A hash, not an [`IdStr`]: an id
+    /// string is `MAX_RESOLVED_NAME_LEN` bytes, a row here is 16 + 1.
+    key: u64,
+    handle: crate::HandleId,
+    /// The op a context requested since the last tick, applied by
+    /// [`apply_timer_ops`]. The last request wins.
+    pending: Option<TimerOp>,
+}
+
+/// Issue 2075 — the key a timer's entity id is filed under (FNV-1a 64).
+fn timer_key(entity_id: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in entity_id.as_bytes() {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    h
 }
 
 /// phase-391 W5-endgame step 2b (issue 0857) — the NON-GENERIC head of every
@@ -346,15 +372,15 @@ struct CellPrefix {
 
 const _: () = {
     assert!(
-        core::mem::offset_of!(ComponentCell<0, 0, 0, 0, 0>, header)
+        core::mem::offset_of!(ComponentCell<0, 0, 0, 0, 0, 0>, header)
             == core::mem::offset_of!(CellPrefix, header)
     );
     assert!(
-        core::mem::offset_of!(ComponentCell<0, 0, 0, 0, 0>, slot)
+        core::mem::offset_of!(ComponentCell<0, 0, 0, 0, 0, 0>, slot)
             == core::mem::offset_of!(CellPrefix, slot)
     );
     assert!(
-        core::mem::offset_of!(ComponentCell<1, 1, 1, 1, 1>, slot)
+        core::mem::offset_of!(ComponentCell<1, 1, 1, 1, 1, 1>, slot)
             == core::mem::offset_of!(CellPrefix, slot)
     );
 };
@@ -376,6 +402,7 @@ struct ComponentCell<
     const ACTC: usize = { crate::config::MAX_CELL_ENTITIES },
     const ACTS: usize = { crate::config::MAX_CELL_ENTITIES },
     const SSRV: usize = { crate::config::MAX_CELL_ENTITIES },
+    const TIMS: usize = { crate::config::MAX_CELL_ENTITIES },
 > {
     /// W5-endgame step 2b — MUST stay first; see [`CellHeader`].
     header: CellHeader,
@@ -394,6 +421,11 @@ struct ComponentCell<
     service_clients: RefCell<heapless::Vec<(IdStr, crate::HandleId), SVCS>>,
     action_clients: RefCell<heapless::Vec<(IdStr, usize), ACTC>>,
     action_servers: RefCell<heapless::Vec<(IdStr, crate::internals::ActionServerRawHandle), ACTS>>,
+    /// Issue 2075 — the component's controllable declared timers, keyed by
+    /// the FNV-1a hash of the entity id, with the op a context requested.
+    /// Bounded by the class's `ENTITY_BOUNDS.timers`; a timer past the bound
+    /// registers and fires but is not in here.
+    timers: RefCell<heapless::Vec<TimerSlot, TIMS>>,
     // W5-endgame ctx slabs (issue 0857) — the leaked trampoline contexts the
     // sink used to `Box::into_raw` live INSIDE the cell, sized by the class's
     // declared bounds, so the macro path allocates nothing. Monotonic
@@ -430,8 +462,14 @@ struct ComponentCell<
     param_node: core::cell::Cell<u8>,
 }
 
-impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize, const SSRV: usize>
-    Drop for ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>
+impl<
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+    const SSRV: usize,
+    const TIMS: usize,
+> Drop for ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>
 {
     fn drop(&mut self) {
         // phase-391 W5.3b — the slot is BORROWED from one-shot storage, so the
@@ -466,8 +504,14 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize,
     }
 }
 
-impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize, const SSRV: usize>
-    ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>
+impl<
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+    const SSRV: usize,
+    const TIMS: usize,
+> ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>
 {
     /// Phase 264 W4c — the executor's parameter store, or `None` until
     /// `apply_param_services` threads it in. The deref is sound: single-threaded
@@ -547,10 +591,27 @@ trait CellView {
     fn place_service_ctx(&self, ctx: ServiceServerCtx) -> Result<*mut core::ffi::c_void, ()>;
     fn place_action_server_ctx(&self, ctx: ActionServerCtx) -> Result<*mut core::ffi::c_void, ()>;
     fn place_action_client_ctx(&self, ctx: ActionClientCtx) -> Result<*mut core::ffi::c_void, ()>;
+    /// Issue 2075 — file a declared timer's handle under its id's key.
+    /// `Ok(true)` = filed; `Ok(false)` = the table is full, so the timer runs
+    /// but cannot be controlled by id; `Err(())` = another timer of this
+    /// component already has that key (an FNV-1a collision between two
+    /// distinct ids — the metadata already refuses a duplicate id).
+    fn push_timer(&self, key: u64, handle: crate::HandleId) -> Result<bool, ()>;
+    /// Issue 2075 — record `op` for the timer filed under `key`; `false` when
+    /// none is.
+    fn request_timer_op(&self, key: u64, op: TimerOp) -> bool;
+    /// Issue 2075 — hand every pending op to `f` and clear it.
+    fn drain_timer_ops(&self, f: &mut dyn FnMut(crate::HandleId, TimerOp));
 }
 
-impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize, const SSRV: usize>
-    CellView for ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>
+impl<
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+    const SSRV: usize,
+    const TIMS: usize,
+> CellView for ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>
 {
     fn note_dispatch(&self, message: bool) {
         self.header
@@ -645,6 +706,45 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize,
         )
     }
 
+    fn push_timer(&self, key: u64, handle: crate::HandleId) -> Result<bool, ()> {
+        let mut timers = self.timers.borrow_mut();
+        if timers.iter().any(|t| t.key == key) {
+            return Err(());
+        }
+        Ok(timers
+            .push(TimerSlot {
+                key,
+                handle,
+                pending: None,
+            })
+            .is_ok())
+    }
+
+    fn request_timer_op(&self, key: u64, op: TimerOp) -> bool {
+        // `try_borrow_mut`: a request made while the table is being drained
+        // (a timer op reaching back into the component) is refused rather
+        // than panicking; nothing on the drain path calls back in today.
+        let Ok(mut timers) = self.timers.try_borrow_mut() else {
+            return false;
+        };
+        match timers.iter_mut().find(|t| t.key == key) {
+            Some(t) => {
+                t.pending = Some(op);
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn drain_timer_ops(&self, f: &mut dyn FnMut(crate::HandleId, TimerOp)) {
+        let mut timers = self.timers.borrow_mut();
+        for t in timers.iter_mut() {
+            if let Some(op) = t.pending.take() {
+                f(t.handle, op);
+            }
+        }
+    }
+
     fn publisher(&self, entity_id: &str) -> Option<Ref<'_, EmbeddedRawPublisher>> {
         Ref::filter_map(self.publishers.borrow(), |pubs| {
             pubs.iter().find(|(id, _)| id == entity_id).map(|(_, p)| p)
@@ -724,6 +824,33 @@ impl PublisherResolver for CellResolver<'_> {
             None => Err(NodeDeclError::UnknownPublisher),
         }
     }
+
+    fn request_timer(&self, entity_id: &str, op: TimerOp) -> NodeResult<()> {
+        if self.cell.request_timer_op(timer_key(entity_id), op) {
+            Ok(())
+        } else {
+            Err(NodeDeclError::UnknownTimer)
+        }
+    }
+}
+
+/// Issue 2075 — apply the timer ops this cell's contexts requested, against
+/// the executor. Runs on both sides of the component's tick: before it for
+/// the ops callbacks requested during the pass's dispatch, after it for those
+/// the tick itself requested. The executor's own `reset_timer` /
+/// `cancel_timer` are the ops (a reset re-seeds a clock timer's reading, so
+/// a timer declared stopped starts a FRESH period). A timer already released
+/// answers an error, which is dropped: there is nothing left to control.
+fn apply_timer_ops(cell: &dyn CellView, exec_ptr: *mut Executor<'static>) {
+    cell.drain_timer_ops(&mut |handle, op| {
+        // SAFETY: as `tick_one_cell`'s other executor uses: no callback is
+        // running and nothing else holds the executor between dispatches.
+        let executor = unsafe { &mut *exec_ptr };
+        let _ = match op {
+            TimerOp::Reset => executor.reset_timer(handle),
+            TimerOp::Cancel => executor.cancel_timer(handle),
+        };
+    });
 }
 
 // Phase 212.M-F.23 — the `UnsupportedActions` / `UnsupportedClients` tick-side
@@ -1045,6 +1172,7 @@ impl ExecutorNodeRuntime {
             service_clients: RefCell::new(heapless::Vec::new()),
             action_clients: RefCell::new(heapless::Vec::new()),
             action_servers: RefCell::new(heapless::Vec::new()),
+            timers: RefCell::new(heapless::Vec::new()),
             svc_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
             svc_ctxs_used: core::cell::Cell::new(0),
             act_srv_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
@@ -1292,7 +1420,11 @@ fn tick_one_cell(cell: &dyn CellView, exec_ptr: *mut Executor<'static>) {
     // `&mut Executor<'static>` the action/client tick calls reborrow through `exec_ptr`).
     #[cfg(feature = "param-store")]
     ctx.set_param_server(cell.view_param_server(), cell.view_param_node());
+    // Issue 2075 — ops the pass's callbacks requested, then the tick, then
+    // the ops the tick requested.
+    apply_timer_ops(cell, exec_ptr);
     cell.try_with_slot_mut(&mut |slot| slot.tick(&mut ctx));
+    apply_timer_ops(cell, exec_ptr);
 }
 
 /// Phase 258 (Track 2, 2a) — executor `ComponentSlot.tick` trampoline. Casts
@@ -1313,6 +1445,7 @@ unsafe extern "C" fn component_tick_trampoline<
     const ACTC: usize,
     const ACTS: usize,
     const SSRV: usize,
+    const TIMS: usize,
 >(
     state: *mut core::ffi::c_void,
     exec_ctx: *mut core::ffi::c_void,
@@ -1320,7 +1453,7 @@ unsafe extern "C" fn component_tick_trampoline<
     // SAFETY: `state` is a live placed `ComponentCell` (kept in place until
     // the drop trampoline); this monomorphization was enrolled alongside it,
     // so the cast target is the cell's true type.
-    let cell = unsafe { &*(state as *const ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>) };
+    let cell = unsafe { &*(state as *const ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>) };
     tick_one_cell(cell, exec_ctx as *mut Executor<'static>);
 }
 
@@ -1341,12 +1474,15 @@ unsafe extern "C" fn component_drop_trampoline<
     const ACTC: usize,
     const ACTS: usize,
     const SSRV: usize,
+    const TIMS: usize,
 >(
     state: *mut core::ffi::c_void,
 ) {
     // SAFETY: enroll's contract above; dropped exactly once by the executor,
     // through the monomorphization enrolled with the cell.
-    unsafe { core::ptr::drop_in_place(state as *mut ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>) };
+    unsafe {
+        core::ptr::drop_in_place(state as *mut ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>)
+    };
 }
 
 // =============================================================================
@@ -1833,7 +1969,7 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                 // `Node::create_timer_with_info` makes. The info reaches the
                 // component as `CallbackCtx::timer_info`.
                 let autostart = metadata.timer_autostart;
-                executor
+                let handle = executor
                     .register_timer_with_info(
                         period,
                         metadata.timer_clock,
@@ -1843,6 +1979,14 @@ impl crate::node::FrameSink for ExecutorSink<'_> {
                         },
                     )
                     .map_err(decl_err_from_node)?;
+                // Issue 2075 — file the handle so a context can reset or
+                // cancel it by id. A full table leaves the timer running and
+                // uncontrollable (`UnknownTimer` names the bound when it is
+                // asked for); a key collision is a loud registration error.
+                self.cell
+                    .view()
+                    .push_timer(timer_key(metadata.id.as_str()), handle)
+                    .map_err(|()| NodeDeclError::Metadata(NodeMetadataError::DuplicateId))?;
                 // Issue 1419 — a Rust timer never reaches the RMW, so this hook
                 // is how it enters the census. Recorded AFTER the tier gate
                 // above, so a tiered entry's census holds each timer once, on
@@ -2595,6 +2739,7 @@ fn register_node_borrowed<
     const ACTC: usize,
     const ACTS: usize,
     const SSRV: usize,
+    const TIMS: usize,
 >(
     executor: &mut Executor<'static>,
     params: &'p [(&'p str, &'p str)],
@@ -2602,8 +2747,8 @@ fn register_node_borrowed<
     remaps: &'p [(&'p str, &'p str)],
     qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
     slot_mu: &'static mut MaybeUninit<TypedSlot<C>>,
-    cell_mu: &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>>,
-) -> NodeResult<&'static ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>>
+    cell_mu: &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>>,
+) -> NodeResult<&'static ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>>
 where
     C::State: 'static,
 {
@@ -2613,29 +2758,31 @@ where
     // at ~17.5 KiB of heap per component. Closures and leaked ctxs hold a
     // `CellHandle::Static` copy; the executor's drop trampoline runs the
     // cell's destructor in place.
-    let cell: &'static ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV> = cell_mu.write(ComponentCell {
-        slot: RefCell::new(place_slot::<C>(slot_mu)),
-        publishers: RefCell::new(heapless::Vec::new()),
-        service_clients: RefCell::new(heapless::Vec::new()),
-        action_clients: RefCell::new(heapless::Vec::new()),
-        action_servers: RefCell::new(heapless::Vec::new()),
-        svc_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
-        svc_ctxs_used: core::cell::Cell::new(0),
-        act_srv_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
-        act_srv_ctxs_used: core::cell::Cell::new(0),
-        act_cli_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
-        act_cli_ctxs_used: core::cell::Cell::new(0),
-        header: CellHeader {
-            callback_dispatches: AtomicUsize::new(0),
-            message_dispatches: AtomicUsize::new(0),
-        },
-        // W4c — set by `apply_param_services` once the store exists (it runs after this).
-        #[cfg(feature = "param-store")]
-        param_server: core::cell::Cell::new(core::ptr::null()),
-        // phase-426 W3 — overwritten below with the node `register()` created.
-        #[cfg(feature = "param-store")]
-        param_node: core::cell::Cell::new(0),
-    });
+    let cell: &'static ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS> =
+        cell_mu.write(ComponentCell {
+            slot: RefCell::new(place_slot::<C>(slot_mu)),
+            publishers: RefCell::new(heapless::Vec::new()),
+            service_clients: RefCell::new(heapless::Vec::new()),
+            action_clients: RefCell::new(heapless::Vec::new()),
+            action_servers: RefCell::new(heapless::Vec::new()),
+            timers: RefCell::new(heapless::Vec::new()),
+            svc_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
+            svc_ctxs_used: core::cell::Cell::new(0),
+            act_srv_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
+            act_srv_ctxs_used: core::cell::Cell::new(0),
+            act_cli_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
+            act_cli_ctxs_used: core::cell::Cell::new(0),
+            header: CellHeader {
+                callback_dispatches: AtomicUsize::new(0),
+                message_dispatches: AtomicUsize::new(0),
+            },
+            // W4c — set by `apply_param_services` once the store exists (it runs after this).
+            #[cfg(feature = "param-store")]
+            param_server: core::cell::Cell::new(core::ptr::null()),
+            // phase-426 W3 — overwritten below with the node `register()` created.
+            #[cfg(feature = "param-store")]
+            param_node: core::cell::Cell::new(0),
+        });
     let mut sink = ExecutorSink {
         cell: CellHandle::Static(cell),
         nodes: heapless::Vec::new(),
@@ -2673,15 +2820,16 @@ where
     // (`MAX_NODES`) proceeds without a tick slot; the placed cell then simply
     // lives (and leaks its component state's destructor) with its storage,
     // which a monotonic `take` never re-hands out.
-    let raw = cell as *const ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV> as *mut core::ffi::c_void;
+    let raw =
+        cell as *const ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS> as *mut core::ffi::c_void;
     // SAFETY: `raw` is the freshly placed cell; the enrolled trampoline
     // monomorphizations match its exact type (borrow on tick, drop_in_place
     // on executor drop).
     let _ = unsafe {
         executor.enroll_component(
             raw,
-            component_tick_trampoline::<PUBS, SVCS, ACTC, ACTS, SSRV>,
-            component_drop_trampoline::<PUBS, SVCS, ACTC, ACTS, SSRV>,
+            component_tick_trampoline::<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
+            component_drop_trampoline::<PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
         )
     };
 
@@ -2810,7 +2958,7 @@ where
     // runs (executor drop trampoline, in place), only the bytes stay.
     let cell_mu: &'static mut MaybeUninit<ComponentCell> =
         Box::leak(Box::new(MaybeUninit::uninit()));
-    match register_node_borrowed::<C, _, _, _, _, _>(
+    match register_node_borrowed::<C, _, _, _, _, _, _>(
         exec,
         params,
         node_identity,
@@ -2850,9 +2998,10 @@ pub unsafe fn install_node_typed_with_launch_in<
     const ACTC: usize,
     const ACTS: usize,
     const SSRV: usize,
+    const TIMS: usize,
 >(
     executor: *mut core::ffi::c_void,
-    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>,
+    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
     params: &[(&str, &str)],
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &[(&str, &str)],
@@ -2872,7 +3021,7 @@ where
     let Some((slot_mu, cell_mu)) = store.take() else {
         return -3;
     };
-    match register_node_borrowed::<C, _, _, _, _, _>(
+    match register_node_borrowed::<C, _, _, _, _, _, _>(
         exec,
         params,
         node_identity,
@@ -2900,9 +3049,10 @@ pub unsafe fn install_node_typed_in<
     const ACTC: usize,
     const ACTS: usize,
     const SSRV: usize,
+    const TIMS: usize,
 >(
     executor: *mut core::ffi::c_void,
-    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>,
+    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV, TIMS>,
 ) -> i32
 where
     C::State: 'static,
@@ -3120,9 +3270,18 @@ mod tests {
     fn a_declared_cell_pays_for_what_it_declares() {
         use core::mem::size_of;
         const N: usize = crate::config::MAX_CLASS_INSTANCES;
-        type Zero = ComponentSlotStorage<DummyComp, N, 0, 0, 0, 0, 0>;
-        type OnePub = ComponentSlotStorage<DummyComp, N, 1, 0, 0, 0, 0>;
+        type Zero = ComponentSlotStorage<DummyComp, N, 0, 0, 0, 0, 0, 0>;
+        type OnePub = ComponentSlotStorage<DummyComp, N, 1, 0, 0, 0, 0, 0>;
         type Capped = ComponentSlotStorage<DummyComp>;
+        // Issue 2075 -- a controllable-timer row is a hash and a handle, not
+        // a name: at most 32 B an instance (16 B of payload plus the op and
+        // padding), so the table the knob default carries is small.
+        type OneTimer = ComponentSlotStorage<DummyComp, N, 0, 0, 0, 0, 0, 1>;
+        assert!(
+            size_of::<OneTimer>() - size_of::<Zero>() <= 32 * N,
+            "a timer row costs {} B for {N} instances; it should be a hash + a handle",
+            size_of::<OneTimer>() - size_of::<Zero>()
+        );
 
         let zero = size_of::<Zero>();
         let one_pub = size_of::<OnePub>();

@@ -207,8 +207,12 @@ Key points:
   ran: `ctx.timer_info()` is `Some(&TimerCallInfo)` in a timer callback
   (`expected_call_time`, `actual_call_time`, `lateness_ns()`, on the timer's
   clock) and `None` elsewhere. `create_timer_for_callback_name_with_autostart(name,
-  period, clock, false)` declares a timer STOPPED; a component cannot start it
-  yet (issue 2038).
+  period, clock, false)` declares a timer STOPPED (issue 2038). Any callback
+  starts it with `ctx.reset_timer(nros::EntityId::new("on_tick"))` (the id is
+  the callback name for the `..._for_callback_name` verbs) and stops one with
+  `ctx.cancel_timer(..)`; `tick` has the same two (issue 2075). A callback
+  does not hold the executor, so the request takes effect at the component's
+  next tick, later in the same spin.
 - There is **no `fn main()`** in a Node pkg.
 - `ENTITY_BOUNDS` is **static RAM you either pay or do not** (issue 0857).
   `nros::node!` emits a `static` sized from it, and a publisher slot carries a
@@ -218,7 +222,11 @@ Key points:
   five kinds in your own `register()`; a timer or a subscription needs no slot
   here (they claim an executor callback slot instead). Declaring FEWER than
   `register()` creates is a registration error at boot, never a silent drop,
-  so the number is safe to make exact.
+  so the number is safe to make exact. A sixth bound, `timers`, sizes the
+  table `reset_timer` / `cancel_timer` look ids up in (16 bytes a row).
+  `EntityBounds::exact(..)` sets it to 0, which costs nothing and leaves the
+  timers running but not controllable by id. Add `.with_timers(n)` to control
+  them.
 
 ---
 

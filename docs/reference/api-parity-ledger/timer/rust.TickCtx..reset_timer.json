@@ -1,0 +1,5 @@
+{
+  "key": "rust:TickCtx::reset_timer",
+  "verdict": "extension",
+  "why": "issue 2075 (2026-10-26): `rust:CallbackCtx::reset_timer` from `tick`; applied as soon as `tick` returns."
+}

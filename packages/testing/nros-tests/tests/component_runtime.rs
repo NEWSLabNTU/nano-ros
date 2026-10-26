@@ -188,6 +188,79 @@ static TIMER_INFO_FIRES: AtomicU32 = AtomicU32::new(0);
 static TIMER_INFO_GOOD: AtomicU32 = AtomicU32::new(0);
 static TIMER_STOPPED_FIRES: AtomicU32 = AtomicU32::new(0);
 
+/// Issue 2075 — a component that STARTS a timer it declared stopped, from
+/// another callback, and stops timers through both contexts:
+///
+/// * `on_kick` (armed, 10 ms) resets `on_late` on its 3rd activation;
+/// * `on_late` (declared with `autostart = false`) cancels itself on its 3rd;
+/// * `tick` cancels `on_kick` once it has fired 6 times;
+/// * an id the component never declared answers `UnknownTimer`.
+struct TimerStartComp;
+impl Component for TimerStartComp {
+    const NAME: &'static str = "timer_start";
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+        let mut node = ctx.create_node(NodeOptions::new("timer_start"))?;
+        let _kick = node.create_timer_for_callback_name_with_autostart(
+            "on_kick",
+            nros::TimerDuration::from_millis(10),
+            nros::TimerClockSource::Steady,
+            true,
+        )?;
+        let _late = node.create_timer_for_callback_name_with_autostart(
+            "on_late",
+            nros::TimerDuration::from_millis(10),
+            nros::TimerClockSource::Steady,
+            false,
+        )?;
+        Ok(())
+    }
+}
+impl ExecutableNode for TimerStartComp {
+    type State = ();
+    fn init() -> Self::State {}
+    fn on_callback(_s: &mut (), callback: Callback<'_>, ctx: &mut CallbackCtx<'_>) {
+        match callback.as_str() {
+            "on_kick" => {
+                let n = START_KICKS.fetch_add(1, Ordering::SeqCst) + 1;
+                if n == 3 {
+                    START_LATE_AT_RESET.store(START_LATE.load(Ordering::SeqCst), Ordering::SeqCst);
+                    if ctx.reset_timer(nros::EntityId::new("on_late")).is_ok() {
+                        START_RESET_OK.store(1, Ordering::SeqCst);
+                    }
+                    if ctx.reset_timer(nros::EntityId::new("no_such_timer"))
+                        == Err(NodeDeclError::UnknownTimer)
+                    {
+                        START_UNKNOWN_REFUSED.store(1, Ordering::SeqCst);
+                    }
+                }
+            }
+            "on_late" => {
+                let n = START_LATE.fetch_add(1, Ordering::SeqCst) + 1;
+                if n == 3 {
+                    let _ = ctx.cancel_timer(nros::EntityId::new("on_late"));
+                }
+            }
+            _ => {}
+        }
+    }
+    fn tick(_s: &mut (), ctx: &mut nros::TickCtx<'_>) {
+        if START_KICKS.load(Ordering::SeqCst) >= 6
+            && START_TICK_CANCELLED.swap(1, Ordering::SeqCst) == 0
+        {
+            let _ = ctx.cancel_timer(nros::EntityId::new("on_kick"));
+            START_KICKS_AT_CANCEL.store(START_KICKS.load(Ordering::SeqCst), Ordering::SeqCst);
+        }
+    }
+}
+
+static START_KICKS: AtomicU32 = AtomicU32::new(0);
+static START_LATE: AtomicU32 = AtomicU32::new(0);
+static START_LATE_AT_RESET: AtomicU32 = AtomicU32::new(u32::MAX);
+static START_RESET_OK: AtomicU32 = AtomicU32::new(0);
+static START_UNKNOWN_REFUSED: AtomicU32 = AtomicU32::new(0);
+static START_TICK_CANCELLED: AtomicU32 = AtomicU32::new(0);
+static START_KICKS_AT_CANCEL: AtomicU32 = AtomicU32::new(0);
+
 /// Node whose declarative `register` always errors — used to
 /// verify the runtime rolls back on init failure.
 struct FailingComp;
@@ -279,6 +352,63 @@ fn declared_timer_reports_call_info_and_honours_autostart(zenohd_unique: ZenohRo
     assert_eq!(
         stopped, 0,
         "a timer declared with autostart = false fired {stopped} times — it must stay stopped"
+    );
+}
+
+/// Issue 2075 — `autostart = false` is useful: a component starts the
+/// stopped timer from another callback (`CallbackCtx::reset_timer`), and it
+/// then fires; a timer cancels itself (`CallbackCtx::cancel_timer`) and stops;
+/// `tick` cancels the other (`TickCtx::cancel_timer`) and it stops; an
+/// undeclared id answers `UnknownTimer`.
+#[rstest]
+fn a_declared_stopped_timer_is_started_from_another_callback(zenohd_unique: ZenohRouter) {
+    require_zenohd();
+    let locator = zenohd_unique.locator();
+    let config = ExecutorConfig::new(&locator)
+        .node_name("i2075_timer_start")
+        .domain_id(176);
+    let executor = Executor::open(&config).expect("Executor::open failed");
+    let mut runtime = ExecutorNodeRuntime::from_executor(executor);
+    runtime
+        .register_node::<TimerStartComp>()
+        .expect("register_node");
+
+    for _ in 0..40 {
+        std::thread::sleep(Duration::from_millis(10));
+        runtime
+            .spin_once(Duration::from_millis(0))
+            .expect("spin_once");
+    }
+
+    let kicks = START_KICKS.load(Ordering::SeqCst);
+    let late = START_LATE.load(Ordering::SeqCst);
+    let late_at_reset = START_LATE_AT_RESET.load(Ordering::SeqCst);
+    assert_eq!(
+        START_RESET_OK.load(Ordering::SeqCst),
+        1,
+        "reset_timer on the declared timer must be accepted"
+    );
+    assert_eq!(
+        late_at_reset, 0,
+        "the autostart = false timer fired {late_at_reset} times BEFORE it was reset"
+    );
+    assert_eq!(
+        late, 3,
+        "the started timer must fire, then stop at 3 when it cancels itself: fired {late}"
+    );
+    assert_eq!(
+        START_UNKNOWN_REFUSED.load(Ordering::SeqCst),
+        1,
+        "an undeclared timer id must answer UnknownTimer"
+    );
+    let at_cancel = START_KICKS_AT_CANCEL.load(Ordering::SeqCst);
+    assert!(
+        START_TICK_CANCELLED.load(Ordering::SeqCst) == 1 && at_cancel >= 6,
+        "tick must have cancelled on_kick after 6 activations (at {at_cancel})"
+    );
+    assert_eq!(
+        kicks, at_cancel,
+        "on_kick fired {kicks} times; a cancel from tick must stop it at {at_cancel}"
     );
 }
 

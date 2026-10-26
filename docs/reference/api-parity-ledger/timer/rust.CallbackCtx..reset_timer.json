@@ -1,0 +1,5 @@
+{
+  "key": "rust:CallbackCtx::reset_timer",
+  "verdict": "extension",
+  "why": "issue 2075 (2026-10-26): rclcpp's `TimerBase::reset()` / rclrs `Timer::reset`, addressed by the declared timer's ENTITY ID, since a component holds no timer object (a declared timer is an `EntityId`, RFC-0043/0044). Starts a timer declared with `autostart = false`. A callback does not hold the executor, so the request is recorded in the component cell and applied at the component's next tick in the same spin. Answers `NodeDeclError::UnknownTimer` for an id the component has no controllable timer for (see `rust:EntityBounds::with_timers`)."
+}

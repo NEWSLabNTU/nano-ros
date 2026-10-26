@@ -135,6 +135,12 @@ pub enum NodeDeclError {
     /// declaration" named nothing. The capacity is the class's `ENTITY_BOUNDS`
     /// when it states one, else `NROS_RUNTIME_MAX_CELL_ENTITIES`.
     CellRegistryFull,
+    /// Issue 2075 — a `reset_timer` / `cancel_timer` named an entity this
+    /// component has no CONTROLLABLE timer for: it declared no such timer,
+    /// or its class's [`EntityBounds::timers`] holds fewer timers than it
+    /// declares (the timers past the bound still run; they just cannot be
+    /// reset or cancelled by id).
+    UnknownTimer,
 }
 
 impl NodeDeclError {
@@ -155,6 +161,11 @@ impl NodeDeclError {
             Self::MissingExport => "package has no exported nros component",
             Self::Runtime => "component runtime rejected declaration",
             Self::UnknownPublisher => "no publisher declared for that entity",
+            Self::UnknownTimer => {
+                "no controllable timer for that entity — it was not declared, or \
+                 the class's ENTITY_BOUNDS.timers (EntityBounds::with_timers) holds \
+                 fewer timers than it declares"
+            }
             Self::ParameterRejected => {
                 "the parameter store refused the declaration (the store is full, or it rejected the value)"
             }
@@ -190,6 +201,24 @@ mod cell_registry_full_tests {
         assert!(m.contains("NROS_RUNTIME_MAX_CELL_ENTITIES"), "{m}");
         assert!(m.contains("ENTITY_BOUNDS"), "{m}");
         assert_ne!(m, NodeDeclError::Runtime.message());
+    }
+
+    /// Issue 2075 -- `exact` asks for no timer table (a class that states its
+    /// bounds pays for none), `with_timers` adds one, the knob default has
+    /// one, and running out names the bound.
+    #[test]
+    fn timer_bounds_default_to_none_under_exact_and_name_the_bound() {
+        use super::EntityBounds;
+        let exact = EntityBounds::exact(1, 0, 0, 0, 0);
+        assert_eq!(exact.timers, 0);
+        assert_eq!(exact.with_timers(2).timers, 2);
+        assert_eq!(exact.with_timers(2).publishers, 1);
+        assert_eq!(
+            EntityBounds::knob_caps().timers,
+            crate::config::MAX_CELL_ENTITIES
+        );
+        let m = NodeDeclError::UnknownTimer.message();
+        assert!(m.contains("ENTITY_BOUNDS.timers"), "{m}");
     }
 }
 
@@ -250,6 +279,12 @@ pub struct EntityBounds {
     pub action_clients: usize,
     /// Action servers.
     pub action_servers: usize,
+    /// Issue 2075 — timers the component can START, RESET or CANCEL by id
+    /// ([`CallbackCtx::reset_timer`] / [`TickCtx::cancel_timer`]). Sizes a
+    /// small id-to-handle table (16 B a row), not the timers themselves: a
+    /// timer past this bound still registers and fires, it just cannot be
+    /// controlled, and naming it answers [`NodeDeclError::UnknownTimer`].
+    pub timers: usize,
 }
 
 impl EntityBounds {
@@ -261,11 +296,17 @@ impl EntityBounds {
             service_clients: crate::config::MAX_CELL_ENTITIES,
             action_clients: crate::config::MAX_CELL_ENTITIES,
             action_servers: crate::config::MAX_CELL_ENTITIES,
+            timers: crate::config::MAX_CELL_ENTITIES,
         }
     }
 
     /// Exact bounds, spelled positionally:
     /// `(publishers, service_servers, service_clients, action_clients, action_servers)`.
+    ///
+    /// Controllable timers default to 0 here (issue 2075), so a class that
+    /// states exact bounds pays nothing for the timer table it did not ask
+    /// for. Its timers still run; add [`with_timers`](Self::with_timers) to
+    /// reset or cancel them by id.
     pub const fn exact(
         publishers: usize,
         service_servers: usize,
@@ -279,7 +320,19 @@ impl EntityBounds {
             service_clients,
             action_clients,
             action_servers,
+            timers: 0,
         }
+    }
+
+    /// Issue 2075 — these bounds with `timers` controllable timers: how many
+    /// declared timers the component can start, reset or cancel by id.
+    ///
+    /// ```ignore
+    /// const ENTITY_BOUNDS: nros::EntityBounds =
+    ///     nros::EntityBounds::exact(1, 0, 0, 0, 0).with_timers(2);
+    /// ```
+    pub const fn with_timers(self, timers: usize) -> Self {
+        Self { timers, ..self }
     }
 }
 
@@ -1852,6 +1905,30 @@ pub trait PublisherResolver {
     /// `Err(NodeDeclError::Runtime)` if no such publisher is registered or the
     /// transport rejects the write.
     fn publish_raw(&self, entity_id: &str, data: &[u8]) -> NodeResult<()>;
+
+    /// Issue 2075 — request that the declared timer `entity_id` be reset
+    /// (started, or restarted on a fresh period) or cancelled. The component
+    /// runtime records it and applies it at the component's next tick, where
+    /// the executor is free. The default answers
+    /// [`NodeDeclError::UnknownTimer`]: a resolver with no timer table controls
+    /// nothing.
+    #[doc(hidden)]
+    fn request_timer(&self, entity_id: &str, op: TimerOp) -> NodeResult<()> {
+        let _ = (entity_id, op);
+        Err(NodeDeclError::UnknownTimer)
+    }
+}
+
+/// Issue 2075 — what [`CallbackCtx::reset_timer`] / [`CallbackCtx::cancel_timer`]
+/// (and their [`TickCtx`] twins) ask of a declared timer.
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimerOp {
+    /// rcl's `rcl_timer_reset`: clear the cancelled state and start a fresh
+    /// period. Starts a timer declared with `autostart = false`.
+    Reset,
+    /// rcl's `rcl_timer_cancel`: the timer stops firing until reset.
+    Cancel,
 }
 
 /// Where a service / action-result callback body writes its reply (W.5.3): the
@@ -2162,6 +2239,34 @@ impl<'a> CallbackCtx<'a> {
         self.timer_info = Some(info);
     }
 
+    /// Issue 2075 — reset the declared timer `timer`: rclcpp's
+    /// `TimerBase::reset()`. Starts a timer declared with `autostart = false`
+    /// ([`DeclarativeNode::create_timer_for_callback_name_with_autostart`]),
+    /// and restarts a running one on a fresh period.
+    ///
+    /// The request is applied at this component's next tick, in the same
+    /// spin, once the callbacks of the pass have run: a callback does not hold
+    /// the executor. `timer` is the timer's entity id, which for the
+    /// `..._for_callback_name` verbs is the callback name. Answers
+    /// [`NodeDeclError::UnknownTimer`] when this component has no controllable
+    /// timer by that id (see [`EntityBounds::timers`]).
+    ///
+    /// ```ignore
+    /// ctx.reset_timer(nros::EntityId::new("on_tick"))?;
+    /// ```
+    pub fn reset_timer(&self, timer: EntityId<'_>) -> NodeResult<()> {
+        self.publishers
+            .request_timer(timer.as_str(), TimerOp::Reset)
+    }
+
+    /// Issue 2075 — cancel the declared timer `timer`: rclcpp's
+    /// `TimerBase::cancel()`. It stops firing until [`reset_timer`](Self::reset_timer).
+    /// Applied at the next tick, like `reset_timer`.
+    pub fn cancel_timer(&self, timer: EntityId<'_>) -> NodeResult<()> {
+        self.publishers
+            .request_timer(timer.as_str(), TimerOp::Cancel)
+    }
+
     /// Phase 250 (Wave 2) — E2E message-integrity status (CRC + sequence gap/dup)
     /// for this dispatch. `Some` only when the firing subscription opted in via
     /// `.safety()`; `None` for timers, services, and non-safety subscriptions.
@@ -2414,6 +2519,21 @@ impl<'a> TickCtx<'a> {
             // sibling's values.
             .and_then(|server| server.get(self.param_node, name))
             .and_then(T::from_parameter_value)
+    }
+
+    /// Issue 2075 — reset the declared timer `timer` from `tick`: rclcpp's
+    /// `TimerBase::reset()`. See [`CallbackCtx::reset_timer`]; from a tick the
+    /// request is applied as soon as `tick` returns.
+    pub fn reset_timer(&self, timer: EntityId<'_>) -> NodeResult<()> {
+        self.publishers
+            .request_timer(timer.as_str(), TimerOp::Reset)
+    }
+
+    /// Issue 2075 — cancel the declared timer `timer` from `tick`: rclcpp's
+    /// `TimerBase::cancel()`. See [`CallbackCtx::cancel_timer`].
+    pub fn cancel_timer(&self, timer: EntityId<'_>) -> NodeResult<()> {
+        self.publishers
+            .request_timer(timer.as_str(), TimerOp::Cancel)
     }
 
     /// Publish raw CDR bytes through the named publisher entity (immediate).
