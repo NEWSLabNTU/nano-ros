@@ -119,6 +119,10 @@ the zenoh C++ leaves:
 [issue 2095](2095-zephyr-native-sim-two-rust-archives-duplicate-popcountdi2.md).
 The closing condition below therefore waits on 2095 as well.
 
+With 2095's fix (2026-10-27), every Zephyr native_sim XRCE leaf links
+through the CI road on an x86_64 host: `build-cpp-{talker,listener,service-server,action-client}-xrce`
+and `build-c-talker-xrce`. What is left is the scheduled run that shows it.
+
 ## What would close it
 
 A tier-2 nightly in which the six `build-cpp-*-xrce` Zephyr leaves link, and a

@@ -488,4 +488,35 @@ out="$(cmake -S "$d" -B "$d/b" 2>&1)" || true
 expect "12. the app stack defaults to 64 KiB and follows NROS_FREERTOS_APP_STACK_KB" \
     "stack default=[65536] set=[196608]" "$out"
 
+# 13. issue 2095 -- `nros_link_app_dependency` on a STATIC library (Zephyr's
+#     `app`) does what `target_link_libraries(<t> PRIVATE <lib>)` does: the
+#     link item, and `$<LINK_ONLY:<lib>>` in INTERFACE_LINK_LIBRARIES. Without
+#     the interface half the runtime dropped off `app`'s own link items, the
+#     final line put it ahead of the whole-archived message FFI staticlib, and
+#     every native_sim C++ image defined `__popcountdi2` twice. An executable
+#     takes no interface half, and the user's signature stays free either way.
+d="$WORK/link-app-dep"; mkdir -p "$d"; : > "$d/a.cpp"
+cat > "$d/CMakeLists.txt" <<CML
+cmake_minimum_required(VERSION 3.22)
+project(lad CXX)
+include("$ROOT/cmake/NanoRosLinkAppDependency.cmake")
+add_library(rt INTERFACE)
+add_library(app STATIC a.cpp)
+target_link_libraries(app user_lib_plain)
+nros_link_app_dependency(app rt)
+add_executable(img a.cpp)
+nros_link_app_dependency(img rt)
+get_target_property(_al app LINK_LIBRARIES)
+get_target_property(_ai app INTERFACE_LINK_LIBRARIES)
+get_target_property(_il img LINK_LIBRARIES)
+get_target_property(_ii img INTERFACE_LINK_LIBRARIES)
+message(STATUS "static LINK=[\${_al}] IFACE=[\${_ai}]")
+message(STATUS "exe LINK=[\${_il}] IFACE=[\${_ii}]")
+CML
+out="$(cmake -S "$d" -B "$d/b" 2>&1)" || true
+expect "13. a static app keeps the user's plain signature and configures" "Generating done" "$out"
+expect "13. ...links the runtime" "static LINK=[user_lib_plain;rt]" "$out"
+expect "13. ...and carries it to the final link as LINK_ONLY" 'IFACE=[user_lib_plain;$<LINK_ONLY:rt>]' "$out"
+expect "13. an executable takes the link item and no interface half" "exe LINK=[rt] IFACE=[_ii-NOTFOUND]" "$out"
+
 [ "$fail" -eq 0 ] && echo "cmake-ament-surface: OK" || { echo "cmake-ament-surface: FAILED"; exit 1; }
