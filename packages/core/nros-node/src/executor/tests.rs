@@ -18165,3 +18165,14 @@ fn a_capturing_raw_service_destroys_and_releases_its_capture() {
     }
     assert_eq!(CAPTURED_SRV_DROPS.load(SeqCst), before + 201);
 }
+
+/// phase-518 W2 — a `Skip` timer whose callback reset it (elapsed below one
+/// period when the callback returns) misses nothing and keeps no remainder,
+/// where `elapsed / period - 1` underflowed.
+#[test]
+fn skip_overrun_of_a_timer_reset_by_its_own_callback_is_zero() {
+    use super::arena::skip_overrun;
+    assert_eq!(skip_overrun(0, 1_000), (0, 0), "reset inside the callback");
+    assert_eq!(skip_overrun(1_000, 1_000), (0, 0), "fired on time");
+    assert_eq!(skip_overrun(3_250, 1_000), (2, 250), "two periods missed");
+}

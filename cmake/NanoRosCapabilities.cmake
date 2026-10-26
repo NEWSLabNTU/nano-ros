@@ -54,11 +54,21 @@ endfunction()
 # asked here before the runtime is configured, never of the build tree.
 # A declaration still wins: any `NROS_FEATURES` the consumer sets, `-D`s or
 # caches, including the empty one, is taken as written.
+#
+# An embedded board on the same road (phase-518) gets `lifecycle` and nothing
+# else. The parameter services cost six queryables and their RAM, which an
+# embedded image opts into. `lifecycle` is not that kind of choice: a package
+# built against `rclcpp_lifecycle` calls the runtime's lifecycle entry points,
+# and without them the image does not link (Nav2's `nav2_util` on FreeRTOS:
+# `undefined reference to nros_cpp_lifecycle_change_state`).
 function(nros_ament_port_default_features out_var)
     set(${out_var} "" PARENT_SCOPE)
-    if(DEFINED NROS_FEATURES OR NOT NROS_PLATFORM STREQUAL "posix"
-       OR CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    if(DEFINED NROS_FEATURES OR CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         return()
+    endif()
+    set(_host FALSE)
+    if(NROS_PLATFORM STREQUAL "posix")
+        set(_host TRUE)
     endif()
     # The package itself, or a colcon-layout umbrella over `src/<pkg>/`.
     file(GLOB _pxs "${CMAKE_SOURCE_DIR}/package.xml" "${CMAKE_SOURCE_DIR}/src/*/package.xml")
@@ -81,14 +91,28 @@ function(nros_ament_port_default_features out_var)
     if(_px STREQUAL "")
         return()
     endif()
-    set(_features "param_services")
+    set(_features "")
+    if(_host)
+        list(APPEND _features "param_services")
+    endif()
     if(NOT _lifecycle STREQUAL "")
         list(APPEND _features "lifecycle")
     endif()
-    message(STATUS
-        "nano-ros: ${_px} is an ament package on a host, so its runtime carries "
-        "`${_features}` as upstream rclcpp's does. Set NROS_FEATURES to declare "
-        "the capabilities yourself (phase-488).")
+    if(_features STREQUAL "")
+        return()
+    endif()
+    if(_host)
+        message(STATUS
+            "nano-ros: ${_px} is an ament package on a host, so its runtime carries "
+            "`${_features}` as upstream rclcpp's does. Set NROS_FEATURES to declare "
+            "the capabilities yourself (phase-488).")
+    else()
+        message(STATUS
+            "nano-ros: ${_px} depends on rclcpp_lifecycle, so this ${NROS_PLATFORM} "
+            "image's runtime carries `lifecycle`. The parameter services are not "
+            "on by default on a board: add `param_services` to NROS_FEATURES to "
+            "serve them.")
+    endif()
     set(${out_var} "${_features}" PARENT_SCOPE)
 endfunction()
 

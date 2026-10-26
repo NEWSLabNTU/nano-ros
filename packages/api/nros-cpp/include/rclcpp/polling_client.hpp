@@ -306,6 +306,46 @@ template <typename S> class PollClient {
     }
 #endif // NROS_CPP_HAS_SHARED_PTR
 
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+    /// `rclcpp::Client::async_send_request(request, callback)` — issue 2055.
+    /// ADOPT-BOUNDED.
+    ///
+    /// Sends `*request` as the one-argument form does and returns the request
+    /// shared (`FutureAndRequestId::share()`), as upstream's callback form does.
+    /// When the reply arrives, `callback(future)` runs from the executor,
+    /// during a spin, with a `SharedFuture` whose `get()` returns it.
+    ///
+    /// What runs it: a 1 ms timer this client registers on its executor the
+    /// first time a callback is given, and cancels whenever no callback is
+    /// waiting, so an idle client costs one callback slot and no wake-ups.
+    /// Upstream's executor dispatches the reply to the client and looks the
+    /// callback up by sequence number; here the client polls its own requests
+    /// on that timer, so a callback runs up to one timer period after the
+    /// reply is taken. A request removed with `remove_pending_request` (or
+    /// whose client is destroyed) never runs its callback, as upstream's does
+    /// not. A send the transport refuses returns an invalid future and the
+    /// callback is dropped.
+    ///
+    /// THE BOUND: the callback type is `void(SharedFuture)`. Upstream's
+    /// `void(SharedFutureWithRequest)` overload is not provided.
+    template <typename CallbackT>
+    SharedFutureAndRequestId async_send_request(const ::std::shared_ptr<RequestType>& request,
+                                                CallbackT&& callback) {
+        SharedFutureAndRequestId shared = async_send_request(request).share();
+        if (!shared.valid() || executor_ == nullptr) return shared;
+        if (callback_pump_ == nullptr) {
+            CallbackPump* p = new CallbackPump();
+            p->executor = executor_;
+            callback_pump_ = p;
+        }
+        CallbackPump* pump = static_cast<CallbackPump*>(callback_pump_);
+        pump->pending.emplace_back(
+            shared, ::std::function<void(SharedFuture)>(static_cast<CallbackT&&>(callback)));
+        pump->arm();
+        return shared;
+    }
+#endif
+
     /// `rclcpp::Client::remove_pending_request(future)` — issue 1996.
     /// ADOPT-BOUNDED.
     ///
@@ -571,6 +611,9 @@ template <typename S> class PollClient {
     /// Issue 2009 — a future still waiting on this client becomes invalid
     /// (`valid()` false) rather than pointing at freed storage.
     ~PollClient() {
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+        drop_callback_pump();         // issue 2055 — its timer stops before the requests go
+#endif
         pending_.orphan_all();
         if (initialized_) {
             nros_cpp_service_client_destroy(storage_);
@@ -589,11 +632,18 @@ template <typename S> class PollClient {
             nros_cpp_service_client_relocate(other.storage_, storage_);
         }
         other.pending_.move_to(pending_, static_cast<void*>(storage_));
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+#endif
+        callback_pump_ = other.callback_pump_;
+        other.callback_pump_ = nullptr;
         other.initialized_ = false;
     }
 
     PollClient& operator=(PollClient&& other) {
         if (this != &other) {
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+            drop_callback_pump();
+#endif
             pending_.orphan_all();
             if (initialized_) {
                 nros_cpp_service_client_destroy(storage_);
@@ -605,6 +655,10 @@ template <typename S> class PollClient {
                 nros_cpp_service_client_relocate(other.storage_, storage_);
             }
             other.pending_.move_to(pending_, static_cast<void*>(storage_));
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+#endif
+            callback_pump_ = other.callback_pump_;
+            other.callback_pump_ = nullptr;
             other.initialized_ = false;
         }
         return *this;
@@ -647,6 +701,71 @@ template <typename S> class PollClient {
         }
     };
 
+    /// Issue 2055 — the requests that were given a callback, and the timer
+    /// that runs them. On the heap, so the timer's context survives the
+    /// client being moved; the client's destructor releases the timer.
+    struct CallbackPump {
+        void* executor = nullptr;
+        size_t timer_id = 0;
+        bool timer_live = false;
+        bool armed = false;
+        ::std::vector<::std::pair<SharedFutureAndRequestId, ::std::function<void(SharedFuture)>>>
+            pending;
+
+        CallbackPump() {}
+        CallbackPump(const CallbackPump&) = delete;
+        CallbackPump& operator=(const CallbackPump&) = delete;
+        ~CallbackPump() {
+            if (timer_live) (void)nros_cpp_timer_release(executor, timer_id);
+        }
+
+        /// Make the timer fire: create it on the first callback, restart it
+        /// after it was cancelled for want of one.
+        void arm() {
+            if (armed) return;
+            if (!timer_live) {
+                if (nros_cpp_timer_create(executor, 1, &CallbackPump::on_tick, this, &timer_id) !=
+                    0) {
+                    return;
+                }
+                timer_live = true;
+            } else if (nros_cpp_timer_reset(executor, timer_id) != 0) {
+                return;
+            }
+            armed = true;
+        }
+
+        /// One tick: run the callback of every request that has settled. The
+        /// ready ones are taken out first, so a callback may send again.
+        static void on_tick(void* ctx) {
+            CallbackPump* p = static_cast<CallbackPump*>(ctx);
+            ::std::vector<
+                ::std::pair<SharedFutureAndRequestId, ::std::function<void(SharedFuture)>>>
+                ready;
+            for (size_t i = 0; i < p->pending.size();) {
+                if (p->pending[i].first.is_ready()) {
+                    ready.push_back(static_cast<decltype(ready[0])&&>(p->pending[i]));
+                    p->pending.erase(p->pending.begin() + static_cast<long>(i));
+                } else {
+                    ++i;
+                }
+            }
+            if (p->pending.empty() && p->armed) {
+                (void)nros_cpp_timer_cancel(p->executor, p->timer_id);
+                p->armed = false;
+            }
+            for (auto& r : ready) {
+                // A removed request settles to a null response: no callback.
+                if (r.first.get()) r.second(r.first.future);
+            }
+        }
+    };
+
+    void drop_callback_pump() {
+        delete static_cast<CallbackPump*>(callback_pump_);
+        callback_pump_ = nullptr;
+    }
+
     static SharedFutureAndRequestId share_request(FutureAndRequestId&& f) {
         SharedFutureAndRequestId out;
         out.request_id = f.request_id;
@@ -688,6 +807,11 @@ template <typename S> class PollClient {
     /// Issue 2009 — the futures this client has requests in flight for, keyed
     /// by sequence id. Two words; the entries are the futures themselves.
     ::rclcpp::detail::PendingList pending_;
+    /// Issue 2055 — the `CallbackPump`, once a request is sent with a
+    /// callback; null otherwise. A pointer in EVERY configuration, so the
+    /// hosted and freestanding layouts agree (phase-438 W4); only a hosted
+    /// build ever sets it.
+    void* callback_pump_ = nullptr;
     /// phase-444 — the service name, kept C++-side for `get_service_name()`.
     /// See `rclcpp::Client`'s field of the same name.
     char service_name_[::rclcpp::SERVICE_NAME_MAX];

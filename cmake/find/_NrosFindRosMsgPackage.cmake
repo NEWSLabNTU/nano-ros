@@ -346,6 +346,32 @@ function(_nros_parse_pkg_deps pxml out_var)
     set(${out_var} "${_deps}" PARENT_SCOPE)
 endfunction()
 
+# `_nros_require_cpp_msg_package(<pkg>)` — generate <pkg> in C++ now, for a
+# consumer known to be C++, even under validate-only mode. Validate-only
+# leaves generation to `nano_ros_add_*`, which a stock package's own targets
+# never reach, so a C++ consumer that needs the headers asks here. Two such
+# consumers: `ament_target_dependencies` on a C++ target, and a header-only
+# C++ library whose headers include the messages (`diagnostic_updater`,
+# phase-518 W4 — on Zephyr its `diagnostic_msgs` were validated and never
+# generated, so `<diagnostic_msgs/msg/diagnostic_array.hpp>` was missing).
+# A package nothing validated is left alone: it is not a message package
+# this configure resolved.
+function(_nros_require_cpp_msg_package pkg)
+    if(TARGET ${pkg}__nano_ros_cpp)
+        return()
+    endif()
+    if(NOT NROS_FIND_PACKAGE_VALIDATE_ONLY)
+        _nros_find_ros_msg_package(${pkg})
+        return()
+    endif()
+    get_property(_rcmp_validated GLOBAL PROPERTY NROS_VALIDATED_MSG_PACKAGES)
+    if(NOT pkg IN_LIST _rcmp_validated)
+        return()
+    endif()
+    set(NROS_FIND_PACKAGE_VALIDATE_ONLY FALSE)
+    _nros_find_ros_msg_package(${pkg})
+endfunction()
+
 # --- main entry --------------------------------------------------------------
 
 # `_nros_find_ros_msg_package(<pkg>)` — the per-package Find<pkg>.cmake stub
@@ -404,7 +430,22 @@ function(_nros_find_ros_msg_package pkg)
     # confirm the pkg exists, then stop before generating — no CPP interface lib,
     # no CPP FFI build, no CXX target-features pulled into a C leaf's scope. The
     # rclcpp-compat workspace path never sets this flag, so it still generates.
-    if(NROS_FIND_PACKAGE_VALIDATE_ONLY)
+    #
+    # phase-518 W4 — except in a Zephyr C++ image (CONFIG_NROS_CPP_API), where
+    # the ament surface is loaded and the packages that find a message package
+    # are C++ ones. There a stock `target_link_libraries(<lib> PUBLIC
+    # ${rcl_interfaces_TARGETS})` (Nav2's `nav2_util`) names the package
+    # through a variable that validating left empty, so no consumer got its
+    # headers and no `ament_target_dependencies` was there to generate them.
+    #
+    # The same holds in any ported ament package directory
+    # (`NROS_PORTED_AMENT_PACKAGE`, set by `find_package(ament_cmake)`) on a
+    # project that compiles C++: the FreeRTOS road validates too.
+    set(_nfrm_cxx_consumer FALSE)
+    if(CONFIG_NROS_CPP_API OR (NROS_PORTED_AMENT_PACKAGE AND CMAKE_CXX_COMPILER_LOADED))
+        set(_nfrm_cxx_consumer TRUE)
+    endif()
+    if(NROS_FIND_PACKAGE_VALIDATE_ONLY AND NOT _nfrm_cxx_consumer)
         # phase-518 — recorded, so `ament_target_dependencies(<t> ${pkg})` on a
         # C++ target can generate it then (NanoRosAmentTargetDeps.cmake).
         set_property(GLOBAL APPEND PROPERTY NROS_VALIDATED_MSG_PACKAGES ${pkg})

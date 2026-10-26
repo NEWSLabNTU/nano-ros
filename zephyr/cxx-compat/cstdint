@@ -1,3 +1,7 @@
+// A system header to the compiler: `#include_next` is a GCC extension, and a
+// ported package built `-Wpedantic -Werror` (Autoware's default) refused
+// every TU that reached this shim (phase-518 W4).
+#pragma GCC system_header
 // C++ compat for Zephyr picolibc targets without full libc++ headers.
 // Defer to the toolchain's real <cstdint> when reachable; else the shim.
 #if defined(__has_include_next) && __has_include_next(<cstdint>)

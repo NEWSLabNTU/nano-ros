@@ -1,3 +1,7 @@
+// A system header to the compiler: `#include_next` is a GCC extension, and a
+// ported package built `-Wpedantic -Werror` (Autoware's default) refused
+// every TU that reached this shim (phase-518 W4).
+#pragma GCC system_header
 // Defer to the toolchain's real <utility> when reachable; else the minimal shim.
 #if defined(__has_include_next) && __has_include_next(<utility>)
 #  include_next <utility>

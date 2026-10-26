@@ -55,6 +55,9 @@ function(nros_board_link_app target)
             "${_NROS_BOARD_MPS2_AN385_LINKER}. Did the board crate "
             "submodule check out cleanly?")
     endif()
+    # phase-518 W4 (issue 0475's class) — a script reached through a raw `-T`
+    # flag gets no rebuild edge, so an edited layout relinked nothing.
+    set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS "${_NROS_BOARD_MPS2_AN385_LINKER}")
     target_link_options(${target} PRIVATE
         "-T${_NROS_BOARD_MPS2_AN385_LINKER}"
         "-Wl,--gc-sections"

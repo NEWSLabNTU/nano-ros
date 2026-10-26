@@ -1,0 +1,1 @@
+The C/C++ FreeRTOS image's app task stack can now be raised: set `NROS_FREERTOS_APP_STACK_KB` in the configure (default 64). It was a fixed 64 KiB, which a ported node declaring parameters overflows (issue 2070).

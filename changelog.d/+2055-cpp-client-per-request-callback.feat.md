@@ -1,0 +1,1 @@
+A ported C++ client written the way most rclcpp components are now compiles on a hosted build: `rclcpp::Client<S>::SharedPtr client_ = create_client<S>(name);` holds the future-style client, and `client_->async_send_request(request, callback)` runs `callback(Client<S>::SharedFuture)` from the executor when the reply arrives (issue 2055).

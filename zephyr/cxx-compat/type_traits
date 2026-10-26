@@ -1,3 +1,7 @@
+// A system header to the compiler: `#include_next` is a GCC extension, and a
+// ported package built `-Wpedantic -Werror` (Autoware's default) refused
+// every TU that reached this shim (phase-518 W4).
+#pragma GCC system_header
 // Freestanding `<type_traits>` shim for the nano-ros Zephyr module.
 //
 // Zephyr builds C++ `-ffreestanding` against picolibc, which ships no C++

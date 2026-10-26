@@ -309,6 +309,27 @@ pub fn render(
         )?;
     }
 
+    // The declared capability axes (`[system] features`), the same symbols a
+    // generated workspace application sets (issue 1702,
+    // `west_app::CAPABILITY_KCONFIG`). A hand-written Zephyr application had
+    // no way to state one: phase-518's Nav2 port declared `lifecycle` and
+    // linked with `undefined reference to nros_cpp_lifecycle_change_state`.
+    // Only a declared axis is stated; an undeclared one keeps its default.
+    for (axis, sym) in crate::builder::west_app::CAPABILITY_KCONFIG {
+        let on = leaf.features.iter().any(|f| {
+            f == axis || (*axis == crate::builder::west_app::PARAM_STORE_AXIS && f == "params")
+        });
+        let sym = sym.strip_prefix("CONFIG_").unwrap_or(sym);
+        if on && syms.get(sym).is_some() {
+            push(
+                &mut out,
+                sym,
+                "y".to_string(),
+                format!("features = [\"{axis}\"]"),
+            )?;
+        }
+    }
+
     // The ROS domain. `leaf_system` already resolved image > `[defaults]` >
     // `[system]`; without this row a stated domain reached no Zephyr image
     // and every one built on the Kconfig default — the D10 promise broken for
@@ -593,6 +614,10 @@ config NROS_XRCE_AGENT_PORT
 endif
 config NROS_SOME_HEX
     hex \"h\"
+config NROS_CAPABILITY_LIFECYCLE
+    bool \"lc\"
+config NROS_CAPABILITY_PARAM_SERVICES
+    bool \"ps\"
 endif # NROS
 ";
 
@@ -677,6 +702,26 @@ endif # NROS
             s.get("NROS_EXECUTOR_MAX_CBS").unwrap().ty,
             SymType::Int,
             "a derived-identical knob resolves without a KCONFIG_PAIRS row"
+        );
+    }
+
+    /// phase-518 — a hand-written Zephyr application's `[system] features`
+    /// reach the capability symbols a generated one sets, and an undeclared
+    /// axis is not stated at all.
+    #[test]
+    fn declared_features_set_the_capability_symbols() {
+        let syms = KconfigSymbols::parse(KCONFIG);
+        let (_d, l) = leaf(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\nfeatures = [\"lifecycle\"]\n\n\
+             [image.zephyr]\nboard = \"zephyr\"\n",
+            &[],
+        );
+        let r = render(&l, Some(Language::Cpp), &syms, &BTreeMap::new()).unwrap();
+        let m = rows(&r);
+        assert_eq!(m["CONFIG_NROS_CAPABILITY_LIFECYCLE"], "y");
+        assert!(
+            !m.contains_key("CONFIG_NROS_CAPABILITY_PARAM_SERVICES"),
+            "an undeclared axis keeps its default: {m:?}"
         );
     }
 

@@ -1,3 +1,7 @@
+// A system header to the compiler: `#include_next` is a GCC extension, and a
+// ported package built `-Wpedantic -Werror` (Autoware's default) refused
+// every TU that reached this shim (phase-518 W4).
+#pragma GCC system_header
 // Phase 11W.3 — minimal `<random>` shim for Zephyr targets.
 // Provides the subset Cyclone DDS uses (random_device + a
 // generator with seed + uniform distribution). Backed by

@@ -1712,6 +1712,29 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/client_future_and_request_id_runtime
+    # issue 2055 -- the client most rclcpp components write: a member
+    # Client<S>::SharedPtr holding create_client<S>(name), and
+    # async_send_request(request, callback) whose callback runs from the
+    # executor with its own reply, may send again, and stays silent once its
+    # request is removed; wait_for_service inside a callback does not re-enter.
+    test -f packages/api/nros-cpp/tests/compile/client_per_request_callback_runtime.cpp || { \
+        echo "ERROR: client_per_request_callback_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - client per-request callback: Client<S>::SharedPtr + async_send_request(req, cb) (runtime, issue 2055)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/client_per_request_callback_runtime \
+        packages/api/nros-cpp/tests/compile/client_per_request_callback_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/client_per_request_callback_runtime
     # issue 2036 -- rclcpp::MessageInfo: the four upstream two-argument
     # subscription shapes ((const M&|shared_ptr<const M>|shared_ptr<M>|
     # unique_ptr<M>, const MessageInfo&)) each get the message AND what the

@@ -1,3 +1,7 @@
+// A system header to the compiler: `#include_next` is a GCC extension, and a
+// ported package built `-Wpedantic -Werror` (Autoware's default) refused
+// every TU that reached this shim (phase-518 W4).
+#pragma GCC system_header
 // Freestanding <initializer_list> for the Zephyr cxx-compat set
 // (-nostdinc++ + Zephyr minimal libcpp / picolibc; no libstdc++).
 // `std::initializer_list` is compiler-magic: the layout MUST be

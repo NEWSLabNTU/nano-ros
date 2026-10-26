@@ -1,7 +1,7 @@
 # The posix build of the workspace: the ament road, every package configured
 # in one CMake run (phase-488). The only nano-ros lines are the platform and
 # RMW, the SDK-root block, `add_subdirectory(<nano-ros>)` and the ament surface
-# include; the package under `../src` is unchanged.
+# include; the packages under `../src` are unchanged.
 cmake_minimum_required(VERSION 3.22)
 project(ament_workspace_port LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
@@ -50,4 +50,8 @@ endif()
 add_subdirectory("${NROS_REPO_DIR}" nano_ros)
 
 include("${NROS_REPO_DIR}/cmake/NanoRosAmentSurface.cmake")
+# The workspace's packages, which a sibling's `find_package` resolves to.
+set(NROS_INTERFACE_SEARCH_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+nros_workspace_interfaces()
+add_subdirectory(../src/workspace_port_core workspace_port_core)
 add_subdirectory(../src/workspace_port_nodes workspace_port_nodes)

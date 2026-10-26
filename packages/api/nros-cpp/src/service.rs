@@ -1071,6 +1071,19 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     // — `ServerVisibility` is the one classification.
     use nros_node::executor::ServerVisibility;
     const SPIN_MS: u64 = 10;
+    // Issue 2055 — called from inside a callback (ros2/demos' client calls it
+    // from its timer), this must not start a second dispatch pass: that is
+    // the re-entry `nros_cpp_spin_once` refuses (issue 0290), and this loop
+    // called `Executor::spin_once` directly, past that guard. There it
+    // sleep-polls instead, as `call_polling` does: a multi-threaded backend
+    // (zenoh, Cyclone) keeps the graph current from its own read task, so the
+    // server still shows up; a polled one cannot, and the wait runs out its
+    // budget and answers `Timeout`.
+    let in_callback = ctx.c.in_dispatch;
+    unsafe extern "C" {
+        // Portable platform sleep (nros-platform-api platform.h).
+        fn nros_platform_sleep_ms(ms: usize);
+    }
     let deadline_ns = crate::nros_cpp_time_ns() + (timeout_ms as u64) * 1_000_000;
     loop {
         let visibility = {
@@ -1092,9 +1105,14 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
         if crate::nros_cpp_time_ns() >= deadline_ns {
             return NROS_CPP_RET_TIMEOUT;
         }
-        let _ = ctx
-            .executor
-            .spin_once(core::time::Duration::from_millis(SPIN_MS));
+        if in_callback {
+            // SAFETY: a plain platform sleep; it touches no nano-ros state.
+            unsafe { nros_platform_sleep_ms(SPIN_MS as usize) };
+        } else {
+            let _ = ctx
+                .executor
+                .spin_once(core::time::Duration::from_millis(SPIN_MS));
+        }
     }
 }
 

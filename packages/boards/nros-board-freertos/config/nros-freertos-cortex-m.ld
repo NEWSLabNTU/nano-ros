@@ -143,6 +143,24 @@ SECTIONS
         . = ALIGN(4);
     } > FLASH
 
+    /* Global offset table — phase-518 W4. A ported ROS 2 package may compile
+     * position-independent (Nav2's `nav2_package()` adds `-fPIC` to its whole
+     * directory, which includes the board entry this executable compiles), and
+     * such code reaches every global through the GOT. In this static link the
+     * linker fills each GOT entry with the final absolute address, so the table
+     * is constant and lives in FLASH. Left unplaced it fell after .data, outside
+     * the `_sdata`..`_edata` copy, so it read as zeros in RAM: every global's
+     * address was 0, `Reset_Handler` itself (compiled `-fPIC` too) copied
+     * nothing, and the image died at "Network init failed". */
+    .got :
+    {
+        *(.got.plt)
+        *(.igot.plt)
+        *(.got)
+        *(.igot)
+        . = ALIGN(4);
+    } > FLASH
+
     .eh_frame :
     {
         *(.eh_frame)

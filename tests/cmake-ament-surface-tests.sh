@@ -25,8 +25,9 @@
 #      header includes (a template that linked the messages by hand hid this);
 #   7. an ament package on a host that declares no `NROS_FEATURES` gets
 #      `param_services` (upstream runs the parameter services in every node);
-#      a declaration, even an empty one, wins, and a non-ament project or an
-#      embedded platform gets nothing;
+#      a declaration, even an empty one, wins, and a non-ament project gets
+#      nothing; an embedded platform gets `lifecycle` alone, and only for a
+#      package that depends on `rclcpp_lifecycle`;
 #   8. with `param_services` in `NROS_FEATURES`, an ament target (and
 #      `rclcpp::rclcpp`) is compiled with NROS_AMENT_START_PARAMETER_SERVICES,
 #      so its node constructor serves the parameters; without it, it is not.
@@ -48,6 +49,10 @@
 #      command; `rclcpp_lifecycle`, `rclcpp_action`, `ament_cmake_python` and
 #      `rcutils` resolve; and a message package's `<pkg>_TARGETS` is set
 #      (`rcl_interfaces` included, which was a no-op module).
+#  11. on a road with no platform link command (Zephyr), the link pass the
+#      ament verbs ask for is a no-op, not a deferred call to a missing one;
+#  12. the C/C++ FreeRTOS carrier's app stack is 64 KiB unless the configure
+#      sets `NROS_FREERTOS_APP_STACK_KB` (issue 2070).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
@@ -247,6 +252,8 @@ expect "7. an embedded platform gets nothing" "default=[]" \
 lc_xml='<package><buildtool_depend>ament_cmake</buildtool_depend><depend>rclcpp_lifecycle</depend></package>'
 expect "7. a package depending on rclcpp_lifecycle also gets lifecycle" \
     "default=[param_services;lifecycle]" "$(mk_caps lifecycle "$lc_xml" 'set(NROS_PLATFORM posix)')"
+expect "7. an embedded package depending on rclcpp_lifecycle gets lifecycle alone" \
+    "default=[lifecycle]" "$(mk_caps rtoslc "$lc_xml" 'set(NROS_PLATFORM freertos)')"
 expect "7. ...not one that does not" "default=[param_services]" \
     "$(mk_caps nolc '<package><buildtool_depend>ament_cmake</buildtool_depend><depend>rclcpp</depend></package>' 'set(NROS_PLATFORM posix)')"
 expect "7. a project that is not an ament package gets nothing" "default=[]" \
@@ -443,5 +450,42 @@ expect "10. an installed package with no module is refused naming it" \
 refute "10. ...not as an unknown ament command" 'Unknown CMake command "normalize_path"' "$out"
 
 fi  # have_cli (case 10)
+
+# 11. phase-518 -- the link pass on a road with no platform link command
+#     (Zephyr: NanoRosEntry defines the deferred wrapper, nothing defines
+#     `nros_platform_link_app`). It used to schedule a call to the missing
+#     command, and the configure died at the end of the directory.
+d="$WORK/link-no-platform"; mkdir -p "$d"; : > "$d/a.cpp"
+cat > "$d/CMakeLists.txt" <<CML
+cmake_minimum_required(VERSION 3.22)
+project(lnp CXX)
+function(nros_platform_link_app_deferred target)
+    cmake_language(EVAL CODE
+        "cmake_language(DEFER CALL nros_platform_link_app_once [[\${target}]])")
+endfunction()
+include("$ROOT/cmake/NanoRosAmentTargetDeps.cmake")
+add_executable(img a.cpp)
+_nros_ament_link_app(img)
+message(STATUS "link pass asked")
+CML
+out="$(cmake -S "$d" -B "$d/b" 2>&1)" || true
+expect "11. with no platform link command the link pass is a no-op" "Generating done" "$out"
+refute "11. ...and schedules no call to a missing command" "Unknown CMake command" "$out"
+
+# 12. phase-518 -- the C/C++ FreeRTOS carrier's app stack, from
+#     NROS_FREERTOS_APP_STACK_KB (issue 2070), 64 KiB unset.
+d="$WORK/app-stack"; mkdir -p "$d"
+cat > "$d/CMakeLists.txt" <<CML
+cmake_minimum_required(VERSION 3.22)
+project(appstack NONE)
+include("$ROOT/cmake/NanoRosBoardNet.cmake")
+_nros_freertos_entry_app_stack(_def)
+set(NROS_FREERTOS_APP_STACK_KB 192)
+_nros_freertos_entry_app_stack(_set)
+message(STATUS "stack default=[\${_def}] set=[\${_set}]")
+CML
+out="$(cmake -S "$d" -B "$d/b" 2>&1)" || true
+expect "12. the app stack defaults to 64 KiB and follows NROS_FREERTOS_APP_STACK_KB" \
+    "stack default=[65536] set=[196608]" "$out"
 
 [ "$fail" -eq 0 ] && echo "cmake-ament-surface: OK" || { echo "cmake-ament-surface: FAILED"; exit 1; }

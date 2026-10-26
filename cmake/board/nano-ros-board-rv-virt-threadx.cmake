@@ -513,6 +513,9 @@ function(nros_board_link_app target)
         message(FATAL_ERROR
             "nros_board_link_app: '${target}' is not a CMake target.")
     endif()
+    # phase-518 W4 (issue 0475's class) — a script reached through a raw `-T`
+    # flag gets no rebuild edge, so an edited layout relinked nothing.
+    set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS "${THREADX_LINKER_SCRIPT}")
     target_link_options(${target} PRIVATE
         "-T${THREADX_LINKER_SCRIPT}"
         "--nmagic"

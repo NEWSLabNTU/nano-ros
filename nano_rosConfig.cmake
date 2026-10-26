@@ -80,6 +80,20 @@ if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
     if(CONFIG_NROS_CPP_API)
         include("${NROS_REPO_DIR}/cmake/NanoRosAmentSurface.cmake")
     endif()
+    # phase-518 W4 — `nros_workspace_interfaces()`, so a ported workspace's
+    # glue is the same on Zephyr as on FreeRTOS. The FreeRTOS road's version
+    # (NanoRosGenerateInterfaces.cmake) add_subdirectory()s each message
+    # package; here `find_package(<msg>)` already generates one from
+    # NROS_INTERFACE_SEARCH_PATH, so what is left is the other half: a Find stub
+    # for each LIBRARY package of the workspace (Nav2's `nav2_util`), emitted
+    # against the search path the caller has set by now. Without it
+    # `find_package(nav2_util)` loaded the installed upstream copy.
+    if(NOT COMMAND nros_workspace_interfaces)
+        function(nros_workspace_interfaces)
+            _nros_emit_workspace_find_stubs()
+            set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" PARENT_SCOPE)
+        endfunction()
+    endif()
     set(nano_ros_FOUND TRUE)
     return()
 endif()

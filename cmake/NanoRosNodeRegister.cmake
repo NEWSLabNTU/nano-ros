@@ -1217,6 +1217,7 @@ function(nano_ros_node_register)
         # image's own network over it (a test pair's members state distinct
         # `host`s — identical IP+MAC seeds give identical zenoh ZIDs).
         _nros_freertos_entry_network(NROS_ENTRY_NETWORK_C "")
+        _nros_freertos_entry_app_stack(NROS_ENTRY_APP_STACK_BYTES)
         set(_appcfg_src "${_entry_dir}/nros_app_config_def.c")
         configure_file(
             "${_NROS_NODE_REGISTER_DIR}/templates/freertos_app_config.c.in"

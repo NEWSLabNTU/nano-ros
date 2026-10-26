@@ -60,8 +60,8 @@ scheduler was not suspended. `uxSchedulerSuspended` held the ASCII bytes
 and the block was 64 KiB.
 
 The board's `report_app_stack_peak` never prints, because the image dies first.
-Its hint to raise `[node.rt] app_stack_bytes` also does not apply on this road:
-the carrier's value is a literal.
+Its hint to raise `[node.rt] app_stack_bytes` also did not apply on this road:
+the carrier's value was a literal (see direction 3).
 
 ## Workaround
 
@@ -71,6 +71,15 @@ scalars and strings:
 ```
 NROS_MAX_STRING_VALUE_LEN=64 NROS_MAX_ARRAY_LEN=4 NROS_MAX_BYTE_ARRAY_LEN=64
 ```
+
+## Node 2 (phase-518 W5)
+
+Nav2's `nav2_velocity_smoother` declares 13 parameters, some of them double
+arrays. Built with the same reduced capacities as node 1 (`64 / 4 / 64`), its
+FreeRTOS boot report reads `app task stack peak 100416 of 196608 bytes`: a
+64 KiB stack is not enough even after the capacities are cut. At 64 KiB the
+image printed `*** STACK OVERFLOW: app ***` right after creating its lifecycle
+services.
 
 ## Fix directions
 
@@ -85,3 +94,11 @@ NROS_MAX_STRING_VALUE_LEN=64 NROS_MAX_ARRAY_LEN=4 NROS_MAX_BYTE_ARRAY_LEN=64
 3. **Make the C++ FreeRTOS app stack a stated knob,** not a literal, and print
    the peak the moment it crosses a fraction of the budget, so an overflow
    says so before it corrupts the kernel.
+
+   **The knob half landed (phase-518).** The C/C++ carrier's
+   `.app_stack_bytes` now comes from `NROS_FREERTOS_APP_STACK_KB` set in the
+   configure (default 64), the cmake spelling of the cargo road's knob of the
+   same name, and the boot hint names it. The early warning has not landed,
+   and neither has directions 1 or 2, so this stays open: at the default
+   capacities a ported node that declares a parameter still needs more stack
+   than the default gives it.

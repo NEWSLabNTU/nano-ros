@@ -31,6 +31,12 @@ if(TARGET nros-diagnostic-updater)
         if(NOT TARGET diagnostic_msgs__nano_ros_cpp)
             find_package(diagnostic_msgs MODULE REQUIRED)
         endif()
+        # phase-518 W4 — under validate-only (the RTOS roads) the line above
+        # only validated, and the headers below include the messages, so they
+        # are generated here: every consumer of this library is C++.
+        if(NOT TARGET diagnostic_msgs__nano_ros_cpp AND COMMAND _nros_require_cpp_msg_package)
+            _nros_require_cpp_msg_package(diagnostic_msgs)
+        endif()
         target_link_libraries(nros-diagnostic-updater INTERFACE diagnostic_msgs__nano_ros_cpp)
         set_target_properties(nros-diagnostic-updater PROPERTIES NROS_LINKS_DIAGNOSTIC_MSGS TRUE)
     endif()

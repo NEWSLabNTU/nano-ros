@@ -1150,6 +1150,21 @@ function(nros_workspace_interfaces)
     return()
   endif()
 
+  # phase-518 W4 — the Find stubs for the workspace's LIBRARY packages
+  # (phase-488), against the search path as it stands now. They were emitted
+  # only when `_NrosFindRosMsgPackage.cmake` was first included, so a root
+  # that set the path after pulling the ament surface in got none, and a
+  # sibling's `find_package(<library package>)` failed for want of a
+  # `<pkg>Config.cmake` (or, with ROS sourced, loaded the installed upstream
+  # copy). The Zephyr arm's `nros_workspace_interfaces` makes the same call.
+  if(COMMAND _nros_emit_workspace_find_stubs)
+    set(NROS_INTERFACE_SEARCH_PATH "${_roots}")
+    _nros_emit_workspace_find_stubs()
+    # The stub directory joined this function's CMAKE_MODULE_PATH; the
+    # caller's directory, whose subdirectories do the finding, needs it.
+    set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" PARENT_SCOPE)
+  endif()
+
   # 1) Scan: collect (pkg_name, pkg_dir, deps).
   set(_pkg_names "")
   set(_seen "")

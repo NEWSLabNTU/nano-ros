@@ -3,13 +3,14 @@
 <package format="3">
   <name>workspace_port_nodes</name>
   <version>0.1.0</version>
-  <description>A stock ament_cmake package: a component library and a program that links it (phase-518)</description>
+  <description>A stock ament_cmake package: a component library and a program that links it, over a sibling library package (phase-518)</description>
   <maintainer email="example@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
+  <depend>workspace_port_core</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

@@ -16,6 +16,7 @@
 #include <cstddef>
 
 #include "rclcpp/logging.hpp" // phase-417 stage 3 — NROS_RCLCPP_REFUSE_* + rclcpp::detail::refuse
+#include "rclcpp/detail/std_detect.hpp" // issue 2055 — NROS_CPP_HAS_STD_PROMISE
 #include "rclcpp/result.hpp"
 #include "rclcpp/size_bound.hpp" // rclcpp::detail::buffer_bounds<M>::tx — the request scratch bound
 
@@ -27,7 +28,11 @@
 /// satisfied by an incomplete type.
 namespace rclcpp {
 template <typename S> class Client;
-}
+// Issue 2055 — the future-style client a hosted handle may hold, and the
+// by-value wrapper `create_client<S>(name)` returns it in.
+template <typename S> class PollClient;
+template <typename T> class Owned;
+} // namespace rclcpp
 
 namespace rclcpp {
 
@@ -125,6 +130,98 @@ template <typename S> class ClientHandle {
     constexpr ClientHandle(void* executor, size_t handle_id)
         : executor_(executor), handle_id_(handle_id) {}
 
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+    /// Issue 2055 — HOLD the future-style client `create_client<S>(name)`
+    /// returns, so the line most rclcpp components write compiles unchanged:
+    ///
+    /// ```cpp
+    /// rclcpp::Client<S>::SharedPtr client_;
+    /// client_ = create_client<S>("add_two_ints");
+    /// client_->async_send_request(request, [](rclcpp::Client<S>::SharedFuture f) {...});
+    /// ```
+    ///
+    /// The client moves to the heap and the handle shares it, as upstream's
+    /// `shared_ptr` does; copies of the handle are the same client. On a
+    /// freestanding build (no `std::promise`) this constructor does not exist
+    /// and the future-style client is held as `Owned<PollClient<S>>`.
+    ClientHandle(::rclcpp::Owned<::rclcpp::PollClient<S>>&& owned)
+        : executor_(new PollRef(::std::make_shared<::rclcpp::PollClient<S>>(
+              static_cast<::rclcpp::PollClient<S>&&>(*owned)))),
+          handle_id_(kPollArm) {}
+
+    // The poll arm owns a heap `shared_ptr`, so copies share the client and
+    // the last one destroys it; a dispatch handle copies its two words.
+    ClientHandle(const ClientHandle& o)
+        : executor_(o.poll_ref() ? new PollRef(*o.poll_ref()) : o.executor_),
+          handle_id_(o.handle_id_) {}
+    ClientHandle(ClientHandle&& o) : executor_(o.executor_), handle_id_(o.handle_id_) {
+        o.executor_ = nullptr;
+        o.handle_id_ = 0;
+    }
+    ClientHandle& operator=(const ClientHandle& o) {
+        if (this != &o) {
+            ClientHandle copy(o);
+            swap(copy);
+        }
+        return *this;
+    }
+    ClientHandle& operator=(ClientHandle&& o) {
+        if (this != &o) {
+            drop_poll_ref();
+            executor_ = o.executor_;
+            handle_id_ = o.handle_id_;
+            o.executor_ = nullptr;
+            o.handle_id_ = 0;
+        }
+        return *this;
+    }
+    ~ClientHandle() { drop_poll_ref(); }
+
+    /// Issue 2055 — `client_->verb(...)`, the spelling of a handle held as a
+    /// `shared_ptr`. The verbs are this handle's own, and each one answers on
+    /// whichever client the handle holds.
+    const ClientHandle* operator->() const { return this; }
+
+    /// Issue 2055 — `async_send_request(request)` on a held future-style
+    /// client: its `FutureAndRequestId`. On a dispatch client the request is
+    /// sent and the reply goes to the registered handler, so the future
+    /// returned is empty (`valid()` false), as upstream has no such client.
+    template <typename R = S>
+    typename ::rclcpp::PollClient<R>::FutureAndRequestId
+    async_send_request(const ::std::shared_ptr<RequestType>& request) const {
+        if (auto* p = poll()) return p->async_send_request(request);
+        if (request) (void)async_send_request(*request);
+        return typename ::rclcpp::PollClient<R>::FutureAndRequestId();
+    }
+
+    /// Issue 2055 — `async_send_request(request, callback)`: see
+    /// `PollClient::async_send_request(request, callback)` for when the
+    /// callback runs. Only a held future-style client takes a per-request
+    /// callback; on a dispatch client (whose one handler was given at
+    /// registration) this sends nothing and returns an empty future.
+    template <typename CallbackT, typename R = S>
+    typename ::rclcpp::PollClient<R>::SharedFutureAndRequestId
+    async_send_request(const ::std::shared_ptr<RequestType>& request, CallbackT&& callback) const {
+        if (auto* p = poll())
+            return p->async_send_request(request, static_cast<CallbackT&&>(callback));
+        return typename ::rclcpp::PollClient<R>::SharedFutureAndRequestId();
+    }
+
+    /// Issue 2055 — `remove_pending_request(request_id)` on a held
+    /// future-style client; false on a dispatch client.
+    bool remove_pending_request(int64_t request_id) const {
+        auto* p = poll();
+        return p ? p->remove_pending_request(request_id) : false;
+    }
+
+    /// Issue 2055 — `prune_pending_requests()` on a held future-style client;
+    /// 0 on a dispatch client.
+    size_t prune_pending_requests() const {
+        auto* p = poll();
+        return p ? p->prune_pending_requests() : 0;
+    }
+#endif
+
     /// `if (cli_)` / `if (!cli_)`. A default-constructed handle is empty; one
     /// from a successful `create_client` never is.
     explicit constexpr operator bool() const { return executor_ != nullptr; }
@@ -140,6 +237,11 @@ template <typename S> class ClientHandle {
     /// Returns `NotInitialized` on an empty handle, `Error` if the request does
     /// not serialize, and the transport's code otherwise.
     Result async_send_request(const RequestType& req) const {
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+        // Issue 2055 — a held future-style client sends with its future; a
+        // reply to a request sent this way has nowhere to go.
+        if (poll()) return Result(::rclcpp::ErrorCode::Unsupported);
+#endif
         if (executor_ == nullptr) return Result(::rclcpp::ErrorCode::NotInitialized);
         uint8_t req_buf[::rclcpp::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
@@ -158,6 +260,9 @@ template <typename S> class ClientHandle {
     ///
     /// `NotInitialized` on an empty handle.
     ::rclcpp::ResultOf<bool> service_is_ready() const {
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+        if (auto* p = poll()) return p->service_is_ready();
+#endif
         if (executor_ == nullptr) {
             return ::rclcpp::ResultOf<bool>::error(::rclcpp::ErrorCode::NotInitialized);
         }
@@ -175,6 +280,9 @@ template <typename S> class ClientHandle {
     ///
     /// The budget is REQUIRED, and the no-argument form below says why.
     Result wait_for_service(uint32_t timeout_ms) const {
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+        if (auto* p = poll()) return p->wait_for_service(timeout_ms);
+#endif
         if (executor_ == nullptr) return Result(::rclcpp::ErrorCode::NotInitialized);
         return Result(
             nros_cpp_service_client_wait_for_service(nullptr, executor_, handle_id_, timeout_ms));
@@ -216,6 +324,13 @@ template <typename S> class ClientHandle {
     /// @ref async_send_request answers `NotInitialized` on this handle and
     /// `Error` on any other copy. A no-op on an empty handle.
     void reset() {
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+        if (poll_ref()) {             // issue 2055 — the last holder destroys the client
+            drop_poll_ref();
+            handle_id_ = 0;
+            return;
+        }
+#endif
         if (executor_ != nullptr) {
             (void)nros_cpp_service_client_release(executor_, handle_id_);
         }
@@ -223,13 +338,51 @@ template <typename S> class ClientHandle {
         handle_id_ = 0;
     }
 
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+    /// Issue 2055 — the held future-style client, or null.
+    const ::rclcpp::PollClient<S>* poll_client() const { return poll(); }
+#endif
+
   private:
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+    /// Issue 2055 — the poll arm keeps the handle TWO WORDS: `executor_`
+    /// points at a heap `shared_ptr` to the client and `handle_id_` is
+    /// `kPollArm`, an id no arena registration has (an unregistered
+    /// `Client<S>` holds the same value, and it never reaches a handle).
+    using PollRef = ::std::shared_ptr<::rclcpp::PollClient<S>>;
+    static constexpr size_t kPollArm = static_cast<size_t>(-1);
+    PollRef* poll_ref() const {
+        return (executor_ != nullptr && handle_id_ == kPollArm) ? static_cast<PollRef*>(executor_)
+                                                                : nullptr;
+    }
+    ::rclcpp::PollClient<S>* poll() const {
+        PollRef* r = poll_ref();
+        return r ? r->get() : nullptr;
+    }
+    void drop_poll_ref() {
+        if (PollRef* r = poll_ref()) {
+            delete r;
+            executor_ = nullptr;
+        }
+    }
+    void swap(ClientHandle& o) {
+        void* e = executor_;
+        size_t h = handle_id_;
+        executor_ = o.executor_;
+        handle_id_ = o.handle_id_;
+        o.executor_ = e;
+        o.handle_id_ = h;
+    }
+#endif
     void* executor_;
     size_t handle_id_;
 };
 
 template <typename S>
 constexpr bool operator==(const ClientHandle<S>& a, const ClientHandle<S>& b) {
+#if defined(NROS_CPP_HAS_STD_PROMISE) // hosted-family: shared-future-interop
+    if (a.poll_client() != b.poll_client()) return false;
+#endif
     return a.handle_id() == b.handle_id() && static_cast<bool>(a) == static_cast<bool>(b);
 }
 template <typename S>

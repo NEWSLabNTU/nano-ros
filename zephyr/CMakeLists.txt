@@ -480,6 +480,27 @@ endif()
 include("${NROS_REPO_DIR}/cmake/NanoRosCodegenCore.cmake")
 include("${NROS_REPO_DIR}/cmake/NanoRosImageAgreement.cmake")
 nros_resolve_image_features()
+# phase-518 W4 — a single-package application (a hand-written Zephyr app over
+# a ported workspace) is in no workspace image, so the query above leaves
+# NROS_FEATURES unset. Its `[system] features` still reached Kconfig, as the
+# capability symbols the leaf renderer states (`nros ws leaf-system
+# --kconfig-out`), so those are the axes. Without this the Nav2 port declared
+# `lifecycle`, Kconfig said y, and nros-cpp was built without
+# `lifecycle-services`: `undefined reference to nros_cpp_lifecycle_change_state`.
+if(NOT DEFINED NROS_FEATURES)
+    set(_nros_kconfig_axes "")
+    if(CONFIG_NROS_CAPABILITY_PARAM_SERVICES)
+        list(APPEND _nros_kconfig_axes param_services)
+    endif()
+    if(CONFIG_NROS_CAPABILITY_LIFECYCLE)
+        list(APPEND _nros_kconfig_axes lifecycle)
+    endif()
+    if(_nros_kconfig_axes)
+        set(NROS_FEATURES "${_nros_kconfig_axes}")
+        string(REPLACE ";" ", " _nros_kconfig_axes_shown "${_nros_kconfig_axes}")
+        message(STATUS "nano-ros: capability axes from Kconfig: ${_nros_kconfig_axes_shown}")
+    endif()
+endif()
 
 set(_nros_cpp_param_suffix "")
 set(_nros_c_param_suffix "")
@@ -716,6 +737,10 @@ if(CONFIG_NROS_CPP_API)
     # `using ::fprintf;` re-export pattern is benign on top of a real
     # `<cstdio>`.
     zephyr_include_directories(${NROS_REPO_DIR}/zephyr/cxx-compat)
+    # phase-518 W4 — the SDK's libstdc++ has no thread support, so `<mutex>`
+    # has no `std::mutex`; this directory's `<mutex>` adds one over the
+    # platform mutex, and only where the toolchain lacks it.
+    zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-cpp/compat/gthreadless)
     # Force-included libc gap shim. Zephyr's MINIMAL libc has no `setvbuf` and
     # no `_IO*BF`, and every C and C++ example calls
     # `setvbuf(stdout, NULL, _IONBF, 0)` so its prints appear promptly -- so on
