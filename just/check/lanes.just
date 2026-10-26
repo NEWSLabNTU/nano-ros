@@ -578,6 +578,24 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/service_request_id
     ./tmp/service_request_id
+    # phase-515 C2 -- rclc's context-less rclc_executor_add_subscription: a
+    # staged sample reaches its own callback once, deserialised into the
+    # caller's msg, through the arena entry's context slot.
+    echo "  - phase-515 C2: rclc_executor_add_subscription (context-less) delivers"
+    test -f packages/api/nros-c/tests/run/context_less_subscription.c || { \
+        echo "ERROR: context_less_subscription.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/context_less_subscription.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/context_less_subscription
+    ./tmp/context_less_subscription
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in

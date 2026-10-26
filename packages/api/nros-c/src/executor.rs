@@ -2288,10 +2288,9 @@ pub type rclc_subscription_callback_with_context_t =
 /// typed registration carried a seventh argument and a generated per-type
 /// macro collapsed it away; both are gone.
 ///
-/// The CONTEXT-LESS `rclc_executor_add_subscription` (a `void (*)(const void*)`
-/// callback) stays refused: adapting it needs a trampoline that remembers the
-/// original function pointer, and state in the wrapper is RFC-0019/0020's
-/// violation rather than an ergonomic. `<rcl/types.h>` records the refusal.
+/// The CONTEXT-LESS form is [`rclc_executor_add_subscription`] (phase-515 C2):
+/// this registration with a fixed trampoline, the user's callback held in the
+/// arena entry's `context` slot -- executor state, not wrapper state.
 ///
 /// **No allocator is involved, and none is needed.** The caller owning `msg`
 /// (its strings and sequences wired by `<Msg>__init_in`) IS the mechanism — the
@@ -2368,6 +2367,74 @@ pub unsafe extern "C" fn rclc_executor_add_subscription_with_context(
                 .map_err(|_| RCL_RET_ERROR)
         },
     )
+}
+
+/// rclc's context-LESS subscription callback, `void (*)(const void *msgin)`
+/// (phase-515 C2).
+pub type rclc_subscription_callback_t =
+    Option<unsafe extern "C" fn(msgin: *const core::ffi::c_void)>;
+
+/// The dispatch half of [`rclc_executor_add_subscription`]: the arena entry's
+/// `context` slot holds the user's context-less callback, and this calls it.
+///
+/// No state lives in the wrapper (RFC-0019/0020): the pointer is in the
+/// executor's own arena entry, the slot that holds a context-carrying
+/// registration's `context`, and this function only translates the ABI.
+unsafe extern "C" fn context_less_subscription_trampoline(
+    msg: *const core::ffi::c_void,
+    context: *mut core::ffi::c_void,
+) {
+    // SAFETY: `rclc_executor_add_subscription` stored a non-null
+    // `unsafe extern "C" fn(*const c_void)` in this slot, and a function
+    // pointer and a data pointer have the same size and representation on
+    // every target nano-ros builds for.
+    let callback: unsafe extern "C" fn(*const core::ffi::c_void) =
+        unsafe { core::mem::transmute(context) };
+    unsafe { callback(msg) };
+}
+
+/// rclc's context-LESS `rclc_executor_add_subscription`, argument for
+/// argument (phase-515 C2):
+///
+/// ```c
+/// rcl_ret_t rclc_executor_add_subscription(rclc_executor_t *executor,
+///     rcl_subscription_t *subscription, void *msg,
+///     rclc_subscription_callback_t callback,
+///     rclc_executor_handle_invocation_t invocation);
+/// ```
+///
+/// [`rclc_executor_add_subscription_with_context`] with a fixed trampoline as
+/// the callback and the user's `callback` in the arena entry's `context` slot.
+/// That slot is the executor's state, not the wrapper's, which is why this is
+/// RFC-0019/0020-compliant where a wrapper-side table would not be.
+///
+/// # Returns
+/// As [`rclc_executor_add_subscription_with_context`]; `RCL_RET_INVALID_ARGUMENT`
+/// for a NULL `callback`.
+///
+/// # Safety
+/// As [`rclc_executor_add_subscription_with_context`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_subscription(
+    executor: *mut rclc_executor_t,
+    subscription: *mut rcl_subscription_t,
+    msg: *mut core::ffi::c_void,
+    callback: rclc_subscription_callback_t,
+    invocation: rclc_executor_handle_invocation_t,
+) -> rcl_ret_t {
+    let Some(callback) = callback else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    unsafe {
+        rclc_executor_add_subscription_with_context(
+            executor,
+            subscription,
+            msg,
+            Some(context_less_subscription_trampoline),
+            callback as *mut core::ffi::c_void,
+            invocation,
+        )
+    }
 }
 
 /// phase-417 stage 6 — register a BYTE-oriented subscription, supplying its

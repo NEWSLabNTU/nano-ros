@@ -1,0 +1,5 @@
+{
+  "key": "c:subscription_callback_t",
+  "verdict": "extension",
+  "why": "rclc's own `rclc_subscription_callback_t` (`void (*)(const void *msgin)`, `rclc/executor_handle.h`), the callback of the context-less `rclc_executor_add_subscription`, adopted 2026-10-27 (phase-515 C2). As for `c:subscription_callback_with_context_t`, the extractor records rclc's executor_handle aliases on neither side as a pair, so the report sees only ours; the contract is identical."
+}

@@ -200,6 +200,15 @@ remembers the original pointer, which RFC-0019/0020 call "state in the
 wrapper". The pointer would live in the executor's own arena entry, as C1's
 contract tag would, not in a wrapper. Confirm that reading of RFC-0019/0020;
 if it holds, adopt at rclc's arity.
+**LANDED 2026-10-27.** The reading holds: RFC-0020's checklist asks that a
+callback be a trampoline that translates the ABI and calls through, and forbids
+state in the wrapper; the arena entry has owned `callback` and `context` since
+phase-487 W1. `rclc_executor_add_subscription(executor, sub, msg, cb,
+invocation)` is `_with_context` with a fixed trampoline as the callback and the
+user's `rclc_subscription_callback_t` in the entry's `context` slot. RFC-0089's
+"stays refused" carries a dated amendment. Test:
+`tests/run/context_less_subscription.c`. C3's typed service and client use
+context-less callbacks too, so the same reading applies there.
 
 **C3 — typed `rclc_executor_add_service` / `rclc_executor_add_client`.**
 Only `rclc_executor_add_service_raw` (CDR bytes) exists. Since phase-492 the
