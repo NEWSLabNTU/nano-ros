@@ -7,7 +7,7 @@ area: [zephyr, memory, boards]
 severity: medium
 found: 2026-10-26
 resolved: 2026-10-27
-resolved_in: "PR (2026-10-27)"
+resolved_in: "PR #2708 (2026-10-27)"
 related: [phase-512, 2065, 2078, 1232]
 ---
 
