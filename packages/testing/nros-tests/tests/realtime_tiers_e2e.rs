@@ -739,6 +739,46 @@ fn realtime_tiers() {
     }
 }
 
+/// Issue 2067 -- a FreeRTOS level image's kernel does not time-slice
+/// (`configUSE_TIME_SLICING 0`, RFC-0108 D6). Both level runners print the
+/// kernel's setting once the levels are spawned; read it from the console
+/// (`seen` plus whatever is still unread) and require OFF. Waits for either
+/// spelling, so an ON kernel fails here naming the line rather than timing out.
+fn require_kernel_slicing_off(
+    qemu: &mut QemuProcess,
+    seen: &mut String,
+    platform: &str,
+    lang: &str,
+    note: &str,
+) {
+    use nros_tests::output::{KERNEL_TIME_SLICING_OFF as OFF, KERNEL_TIME_SLICING_ON as ON};
+    if !seen.contains(OFF) && !seen.contains(ON) {
+        let out = qemu
+            .wait_for_output_each(
+                &[vec![OFF.to_string(), ON.to_string()]],
+                Duration::from_secs(90),
+            )
+            .unwrap_or_else(|e| {
+                qemu.kill();
+                panic!(
+                    "[{platform} {lang}] the level runner never printed the kernel's time \
+                     slicing (`{OFF}` / `{ON}` absent) -- {note}.\nerr: {e:?}\n\
+                     --- guest console so far ---\n{seen}"
+                )
+            });
+        seen.push_str(&out);
+    }
+    if !seen.contains(OFF) || seen.contains(ON) {
+        qemu.kill();
+        panic!(
+            "[{platform} {lang}] a FreeRTOS level image's kernel must not time-slice: \
+             expected `{OFF}` (NROS_FREERTOS_LEVEL_IMAGE -> configUSE_TIME_SLICING 0; \
+             the Rust road through nros-board-freertos's `level-image` feature, issue 2017) \
+             -- {note}.\n--- guest console ---\n{seen}"
+        );
+    }
+}
+
 /// Boot the workspace entry, observe both tiers, assert the 10 ms high tier
 /// outruns the 100 ms low tier per the row's [`Proof`]. Panics with
 /// `[SKIPPED] …` on an unmet precondition; the caller classifies.
@@ -784,6 +824,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
         // seen; the assertion is "every tier dispatched", which says nothing
         // about the order they got there in.
         let mut seen = String::new();
+        require_kernel_slicing_off(&mut qemu, &mut seen, platform, lang, cell.note);
         let mut timeout = Duration::from_secs(90);
         for tier in tiers {
             let marker = nros_tests::output::tier_dispatch_marker(tier);
@@ -834,6 +875,7 @@ fn run_one(pcell: &MCell, cell: &Exec) {
             platform,
             lang
         );
+        require_kernel_slicing_off(&mut qemu, &mut seen, platform, lang, cell.note);
         // The boot tier connects + publishes first (its tick proves the
         // run_tiers boot session reached the host zenohd), so it gets the
         // cold-boot budget; each subsequent tier only needs its own period.

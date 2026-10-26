@@ -1202,6 +1202,25 @@ fn test_rtos_pubsub_e2e(
     // TALKER_PAYLOAD_PREFIX, not TALKER_LOG_PREFIX: only the opening payload
     // quote separates a real publish line from setup prose containing the word
     // "Publishing" (phase-295 W2).
+    // Issue 2067 -- the negative control for `realtime_tiers_e2e`'s OFF check:
+    // these single-executor FreeRTOS images are not level images, so their
+    // kernel keeps time slicing. Their runner prints no slicing line; one that
+    // does must read ON, never OFF.
+    if matches!(platform, Platform::Freertos) {
+        for (role, out) in [("talker", &talker_out), ("listener", &full_listener)] {
+            if let Some(line) = out
+                .lines()
+                .find(|l| l.contains(nros_tests::output::KERNEL_TIME_SLICING_PREFIX))
+            {
+                assert!(
+                    line.contains(nros_tests::output::KERNEL_TIME_SLICING_ON),
+                    "[{platform} {lang}] the {role} is not a level image, yet its kernel \
+                     reports `{line}` -- NROS_FREERTOS_LEVEL_IMAGE reached a non-level \
+                     build (issue 2017/2067)"
+                );
+            }
+        }
+    }
     let published = count_pattern(&talker_out, nros_tests::output::TALKER_PAYLOAD_PREFIX);
     let received = count_pattern(&full_listener, nros_tests::output::LISTENER_LOG_PREFIX);
     // Published vs heard is the shape issue 0906 was measured in ("77
