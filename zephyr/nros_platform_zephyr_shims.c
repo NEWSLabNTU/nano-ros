@@ -17,6 +17,8 @@
 #include <stdint.h>
 
 #include <zephyr/kernel.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/random/random.h>
 #include <zephyr/sys/printk.h>
 
@@ -565,6 +567,32 @@ int nros_zephyr_report_tier_vs_transport(const char* tier, size_t tier_len, int3
  * generates the linker region.
  *
  * DTCM is NOLOAD, which is correct for stacks -- they are uninitialised. */
+/* Issue 2084 -- whether the devicetree really generates a "DTCM" region.
+ * Without one, `section("DTCM")` names an input section no output section
+ * collects: the linker places it as an ORPHAN wherever it likes, and the link
+ * succeeds with at most a warning. So a knob that asks for DTCM on such a
+ * board is refused here, at compile time, by name. One `+ 1` per okay node
+ * whose `zephyr,memory-region` is exactly "DTCM" (the token is pasted onto a
+ * prefix only that spelling defines). */
+#define NROS_ZEPHYR_DT_REGION_IS_DTCM_DTCM 1
+#define NROS_ZEPHYR_DT_COUNT_DTCM_(node)                                                           \
+    +IS_ENABLED(UTIL_CAT(NROS_ZEPHYR_DT_REGION_IS_DTCM_, DT_STRING_TOKEN(node, zephyr_memory_region)))
+#define NROS_ZEPHYR_DT_HAS_DTCM_REGION                                                             \
+    ((0 DT_FOREACH_STATUS_OKAY(zephyr_memory_region, NROS_ZEPHYR_DT_COUNT_DTCM_)) > 0)
+
+#if (defined(NROS_ZEPHYR_STACKS_IN_DTCM) && NROS_ZEPHYR_STACKS_IN_DTCM) ||                         \
+    (defined(NROS_ZEPHYR_TIER_STACKS_IN_DTCM) && NROS_ZEPHYR_TIER_STACKS_IN_DTCM)
+BUILD_ASSERT(NROS_ZEPHYR_DT_HAS_DTCM_REGION,
+             "CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM / CONFIG_NROS_ZEPHYR_TIER_STACKS_IN_DTCM: the "
+             "devicetree has no okay node with zephyr,memory-region = \"DTCM\", so the stacks "
+             "would be an orphan section the linker places anywhere (issue 2084)");
+/* A user-mode-capable stack must live where the kernel's object tracking finds
+ * it (`__stackmem`); the kernel-stack form below is only identical to a thread
+ * stack without CONFIG_USERSPACE. */
+BUILD_ASSERT(!IS_ENABLED(CONFIG_USERSPACE),
+             "nano-ros stacks in DTCM are kernel stacks; not supported with CONFIG_USERSPACE");
+#endif
+
 #if defined(NROS_ZEPHYR_STACKS_IN_DTCM) && NROS_ZEPHYR_STACKS_IN_DTCM
 Z_KERNEL_STACK_ARRAY_DEFINE_IN(nros_thread_stacks, NROS_ZEPHYR_MAX_THREADS,
                                NROS_ZEPHYR_STACK_SIZE,
@@ -850,7 +878,21 @@ void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
 #define NROS_ZEPHYR_TIER_STACK_SIZE 16384
 #endif
 
+/* Issue 2084 -- the tier pool follows its own knob,
+ * CONFIG_NROS_ZEPHYR_TIER_STACKS_IN_DTCM, which defaults to
+ * CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM. Before, only `nros_thread_stacks` moved:
+ * a Rust level image on the MR-CANHUBK344 with one 64 KiB level slot kept the
+ * slot in SRAM and overflowed RAM by 30,028 B, while 40 KiB of DTCM sat free
+ * beside it. A level stack is the same tenant as a task stack (CPU-private,
+ * never a DMA target), so it moves with the task stacks unless an image whose
+ * DTCM is already claimed turns the tier knob off. Same section, same
+ * NOLOAD placement, same devicetree check (above). */
+#if defined(NROS_ZEPHYR_TIER_STACKS_IN_DTCM) && NROS_ZEPHYR_TIER_STACKS_IN_DTCM
+Z_KERNEL_STACK_ARRAY_DEFINE_IN(nros_tier_stacks, NROS_ZEPHYR_MAX_TIERS, NROS_ZEPHYR_TIER_STACK_SIZE,
+                               __attribute__((section("DTCM"))));
+#else
 K_THREAD_STACK_ARRAY_DEFINE(nros_tier_stacks, NROS_ZEPHYR_MAX_TIERS, NROS_ZEPHYR_TIER_STACK_SIZE);
+#endif
 
 /* The stack a spawned tier thread ACTUALLY gets.
  *

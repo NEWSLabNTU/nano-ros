@@ -5537,6 +5537,25 @@ west_build_name = "build-cortex-m-rust-talker-serial-zenoh"
 west_zenoh_locator = "serial/uart@40005000#baudrate=115200"
 conf_files = ["prj.conf", "prj-zenoh.conf", "../../../../cmake/zephyr/mps2-an385.conf", "../../../../cmake/zephyr/mps2-an385-serial.conf"]
 
+# Issue 2084 -- CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM must move the tier stack pool
+# (`nros_tier_stacks`) as well as the task stacks. The image spawns one level
+# on the pool (that is what keeps the pool in the link) on an mps2_an385 whose
+# devicetree gains a "DTCM" region from the fixture's app.overlay. A LINK
+# witness: `tests/zephyr_link_layout.rs` reads the ELF and requires both stack
+# arrays in the DTCM output section. Nothing boots it, so the locator is only
+# a placeholder the leaf needs.
+[[fixture]]
+platform = "zephyr-cortex-m"
+lang = "c"
+rmw = "zenoh"
+builder = "west"
+dir = "packages/testing/nros-tests/bins/tier-stacks-dtcm-zephyr-mps2"
+board = "mps2_an385"
+west_role = "tier-stacks-dtcm"
+west_build_name = "build-cortex-m-c-tier-stacks-dtcm-zenoh"
+west_zenoh_locator = "tcp/10.0.2.2:10700"
+conf_files = ["prj.conf"]
+
 [[fixture]]
 platform = "zephyr"
 lang = "rust"

@@ -64,10 +64,23 @@ BUILD_ASSERT(NROS_LEVEL_WORKER_FRAME_ < NROS_TIER_TASK_STACK_DEFAULT_,
              "CONFIG_NROS_ZEPHYR_LEVEL_WORKER_FRAME must stay below "
              "CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE: their difference is the per-callback default");
 
+/* Issue 2084 -- a declared level stack follows the same placement rule as the
+ * shim's pool (`nros_tier_stacks`): CONFIG_NROS_ZEPHYR_TIER_STACKS_IN_DTCM
+ * puts both in the devicetree's "DTCM" region (the shim refuses a devicetree
+ * without one, and CONFIG_USERSPACE). Without the knob it is the stock
+ * `K_THREAD_STACK_DEFINE`. */
+#ifdef CONFIG_NROS_ZEPHYR_TIER_STACKS_IN_DTCM
+#define NROS_TIER_TASK_STACK_DEFINE_(sym, size)                                                    \
+    Z_KERNEL_STACK_DEFINE_IN(sym, size, __attribute__((section("DTCM"))))
+#else
+#define NROS_TIER_TASK_STACK_DEFINE_(sym, size) K_THREAD_STACK_DEFINE(sym, size)
+#endif
+
 /* Tier `i`'s stack and thread object, as file-scope statics named for
  * `mem-report`. */
 #define NROS_TIER_TASK_MEMORY_DEFINE(i, bytes)                                                     \
-    static K_THREAD_STACK_DEFINE(__nros_tier_stack_##i, NROS_TIER_TASK_STACK_BYTES_(bytes));       \
+    static NROS_TIER_TASK_STACK_DEFINE_(__nros_tier_stack_##i,                                     \
+                                        NROS_TIER_TASK_STACK_BYTES_(bytes));                       \
     static struct k_thread __nros_tier_thread_##i
 
 /* Tier `i`'s row of the `nros_tier_task_memory_t` array. */

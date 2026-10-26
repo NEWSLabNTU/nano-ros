@@ -241,6 +241,11 @@ endif()
 if(CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM)
     zephyr_compile_definitions(NROS_ZEPHYR_STACKS_IN_DTCM=1)
 endif()
+# Issue 2084 -- the tier/level stacks (the shim's `nros_tier_stacks` pool and a
+# generated C entry's per-level `K_THREAD_STACK_DEFINE`), on their own knob.
+if(CONFIG_NROS_ZEPHYR_TIER_STACKS_IN_DTCM)
+    zephyr_compile_definitions(NROS_ZEPHYR_TIER_STACKS_IN_DTCM=1)
+endif()
 if(CONFIG_NROS_FAULT_LOG)
     zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_fault_log.c)
 endif()

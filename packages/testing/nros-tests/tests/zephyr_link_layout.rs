@@ -21,6 +21,12 @@
 //!   `build-cortex-m-rust-talker-serial-zenoh` row is that image (zenoh over a
 //!   UART, `cmake/zephyr/mps2-an385-serial.conf`); the build linking is the
 //!   regression, and the test pins that the image really has no stack.
+//! * Issue 2084 -- `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` moved only the task
+//!   stacks (`nros_thread_stacks`); the tier pool (`nros_tier_stacks`) stayed
+//!   in SRAM, and a Rust level image with a 64 KiB slot overflowed the
+//!   S32K344's RAM by 30,028 B. The `build-cortex-m-c-tier-stacks-dtcm-zenoh`
+//!   row spawns one level on the pool for an mps2_an385 given a "DTCM" region,
+//!   and the test requires both arrays inside the DTCM output section.
 //!
 //! Prerequisite: `just zephyr build-fixtures` (the `build-cortex-m-*` leaves).
 //!
@@ -28,6 +34,7 @@
 
 use nros_tests::fixtures::{
     RequireFixture, Rmw, build_zephyr_cortex_m_example, build_zephyr_cortex_m_rust_serial_talker,
+    build_zephyr_cortex_m_tier_stacks_dtcm,
 };
 use std::path::Path;
 
@@ -208,6 +215,52 @@ fn serial_only_rust_image_links_without_ip_stack() {
              witnesses a serial-only link (check the row's conf order: \
              mps2-an385-serial.conf must merge after mps2-an385.conf)",
             elf_path.display()
+        );
+    }
+}
+
+/// Issue 2084 -- with `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM`, the tier pool and an
+/// entry-declared level stack sit in the DTCM output section beside the task
+/// stacks.
+#[test]
+fn tier_stack_pool_follows_stacks_in_dtcm() {
+    let elf_path = build_zephyr_cortex_m_tier_stacks_dtcm().require(
+        "zephyr cortex-m tier-stacks-in-DTCM image (build-cortex-m-c-tier-stacks-dtcm-zenoh)",
+    );
+    let elf = read_elf(&elf_path);
+    let dtcm = elf
+        .sections
+        .iter()
+        .find(|s| s.name == "DTCM")
+        .unwrap_or_else(|| {
+            panic!(
+                "{}: no `DTCM` output section -- the fixture's app.overlay no longer gives \
+                 mps2_an385 a \"DTCM\" region, so this image tests nothing",
+                elf_path.display()
+            )
+        });
+    // The shim's tier pool, a level stack declared the way a generated C/C++
+    // entry declares one (`NROS_TIER_TASK_MEMORY_DEFINE`), and the task stacks.
+    for array in ["nros_tier_stacks", "__nros_tier_stack_1", "nros_thread_stacks"] {
+        let sym = elf.defined(array).unwrap_or_else(|| {
+            panic!(
+                "{}: `{array}` is not in the image -- the fixture no longer spawns both levels \
+                 (an unused stack is dropped by --gc-sections) or no longer opens a \
+                 transport task",
+                elf_path.display()
+            )
+        });
+        let sec = &elf.sections[sym.shndx as usize];
+        assert!(
+            sec.name == "DTCM" && (dtcm.addr..dtcm.addr + dtcm.size).contains(&sym.value),
+            "{}: `{array}` at {:#x} is in `{}`, not in DTCM [{:#x}, {:#x}) -- \
+             CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM (and the tier knob that follows it) must place \
+             it there (issue 2084)",
+            elf_path.display(),
+            sym.value,
+            sec.name,
+            dtcm.addr,
+            dtcm.addr + dtcm.size
         );
     }
 }
