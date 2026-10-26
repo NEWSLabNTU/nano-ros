@@ -10,8 +10,8 @@ unified build path, and
 [Amendment 2](#amendment-2-2026-10-13--d13-a-shared-target-dir-keys-its-build-on-the-descriptors-content),
 which adds D13 for images sharing one cargo target dir, and
 [Amendment 3](#amendment-3-2026-10-26--the-probe-census-sizes-a-contract-less-image-proposed-2026-10-25-phase-517-w5),
-which lets probe sidecars size a contract-less image: accepted 2026-10-26, and
-blocked by its own evidence, issue 2076)
+which lets probe sidecars size a contract-less image: accepted 2026-10-26,
+landed after its evidence and the issue-2076 fix)
 
 Builds on RFC-0049 (the four-rung knob ladder supplies the precedence this model
 needs and is not re-litigated), RFC-0033 (storage modes decide whether a cap
@@ -1322,13 +1322,13 @@ because the 1623 exemption rests on it.
 
 ### Amendment 3 (2026-10-26) — the probe census sizes a contract-less image (proposed 2026-10-25, phase-517 W5)
 
-**State: ACCEPTED (2026-10-26), conditional on the evidence plan below, and
-BLOCKED by that evidence (issue 2076).** The maintainer accepted the
-proposal with the evidence plan as a precondition. The behaviour change lands
-only when every in-tree contract-less model image has run with the configured
-default and with the probe-derived counts, and none fails derived that passes
-default. Two images do: the `[[bridge]]` workspaces. See "Evidence" at the end
-of this section. Nothing that changes behaviour has landed.
+**State: LANDED (2026-10-26).** The maintainer accepted the proposal
+on 2026-10-26, with the evidence plan as a precondition. The first evidence
+run BLOCKED it: the two `[[bridge]]` workspaces failed derived and passed
+default (issue 2076). The maintainer chose to count what a bridge creates in
+the image's inventory. With that fix the evidence was re-run on every lane this
+host can run, and no image fails derived that passes default. See "Evidence"
+and "Evidence, second run" at the end of this section.
 
 The book's first project — two C++ components, one launch file, no
 `<bringup>/launch/*.contract.yaml` — builds with its executor pool at the
@@ -1411,3 +1411,33 @@ The full record, with the table, is in phase-517 W5.
 - **Not run.** No embedded platform ran (FreeRTOS, ThreadX, Zephyr, NuttX, FVP,
   mps3-an536). The linux blocker stopped the plan before them, so no embedded
   result exists either way.
+
+**Evidence, second run (2026-10-26, with the issue-2076 fix).** Base:
+`origin/main` 9f2d7b4bb3. For each lane, the scope's fixtures were built in both
+trees and then the whole suite was run, narrowed to that scope's coordinates.
+The table compares the result of every test.
+
+| lane | images moved to derived | default (pass / fail) | derived (pass / fail) | status diffs |
+| --- | --- | --- | --- | --- |
+| linux | 66 (resolve) + 11 cmake configures, both bridges included | 3107 / 0 real | 3108 / 0 real | none (+1 new unit test) |
+| FreeRTOS (mps2-an385, freertos-posix, mps3-an536 slirp) | 12 | 2837 / 26 | 2840 / 24 | 2 base reds passed derived (run under load); none the other way |
+| ThreadX linux | 4 | 2829 / 23 | 2830 / 23 | none |
+| ThreadX riscv64 | 1 | 2822 / 23 | 2823 / 23 | none |
+| Zephyr native_sim | 5 C/C++ west entries now `basis = "probe"`; the Rust west entries write no descriptor either way | 2840 / 60 | 2841 / 60 | none |
+| NuttX (armv7a, rv-virt) | 8 | 2819 / 30 | 2820 / 30 | none |
+
+Every red that remains is red in both trees, for a precondition this host
+lacks or a build that already fails at the base: Docker for the edition tests;
+`qemu-br` for the bridge-network pair, which needs `sudo`; and Zephyr C++ images
+that fail to link at the base with a duplicate `__popcountdi2`. Not run: FVP
+(no Arm FVP here), s32z270 (hardware), and ESP32, which is dormant. Bare metal
+has no workspace rows, so no model-road image exists there.
+
+The class the fix closed: of the entities the runtime creates from config
+rather than from a component constructor, only `[[bridge]]` was missing from
+a probe-stated inventory. The parameter services and store, lifecycle (with
+`~/transition_event`), `/parameter_events`, tier scheduling contexts, action
+expansions and a contracted image's monitors and reporter already rode
+`ImageFrame` or the derivation. A bridge's rows now come from the runtime's own
+`nros-bridge.toml`, and its backends reach `backend_count`. Details are in
+[issue 2076](../issues/archived/2076-probe-sizing-misses-bridge-nodes.md).
