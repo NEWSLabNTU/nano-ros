@@ -1,6 +1,6 @@
 {
   "key": "rust:ParameterBuilder::read_only",
   "disposition": "adopt",
-  "verdict": "rename",
-  "why": "phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. see `rust:ParameterBuilder::mandatory` — `ParameterError` where rclrs names `DeclarationError`. (`typed.rs:169`.)"
+  "verdict": "divergence",
+  "why": "LANDED 2026-10-27 (phase-515 R8): `ParameterBuilder::read_only` returns `Result<_, DeclarationError>` now, rclrs's error type, so a ported `match` on its error compiles. The declaration path is unchanged (`ParameterServer::declare_parameter`); its `SetParameterResult` is mapped to name each case it conflated -- `TypeMismatch` there meant AlreadyDeclared, `InvalidRange` meant either InvalidRange or InitialValueOutOfRange. `read_only` with no default is rclrs's `NoValueAvailable` (new variant). What still differs is the variant SET (`server.rs`'s `DeclarationError` doc): ours adds StorageFull / NameTooLong (caller-owned storage) and has no override-mismatch variants, because overrides arrive through the set path. `From<DeclarationError> for ParameterError` keeps `?` into an old caller compiling. Test: `builder_terminals_report_declaration_errors`. PRIOR ROW: phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. see `rust:ParameterBuilder::mandatory` — `ParameterError` where rclrs names `DeclarationError`. (`typed.rs:169`.)"
 }

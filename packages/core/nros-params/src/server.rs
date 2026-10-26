@@ -96,6 +96,28 @@ pub enum DeclarationError {
     /// The name is longer than `NROS_MAX_PARAM_NAME_LEN`. No rclrs
     /// correspondent, same reason.
     NameTooLong,
+    /// A read-only parameter was declared with no default (rclrs
+    /// `NoValueAvailable`; phase-515 R8). A read-only value can never be set
+    /// later, so it must arrive with the declaration.
+    NoValueAvailable,
+}
+
+/// phase-515 R8 -- the typed builder's terminals return [`DeclarationError`]
+/// now, as rclrs's do. This keeps `?` into a [`ParameterError`]-returning
+/// caller compiling, and maps each case to the `ParameterError` such a caller
+/// saw before the change.
+impl From<DeclarationError> for crate::ParameterError {
+    fn from(e: DeclarationError) -> Self {
+        match e {
+            DeclarationError::AlreadyDeclared => crate::ParameterError::TypeMismatch,
+            DeclarationError::InvalidRange => crate::ParameterError::InvalidRange,
+            DeclarationError::InitialValueOutOfRange => crate::ParameterError::OutOfRange,
+            DeclarationError::StorageFull | DeclarationError::NameTooLong => {
+                crate::ParameterError::StorageFull
+            }
+            DeclarationError::NoValueAvailable => crate::ParameterError::NotFound,
+        }
+    }
 }
 
 /// An on-set-parameters callback — phase-417 W4.a.
@@ -847,7 +869,7 @@ impl<'s> ParameterServer<'s> {
     /// range, `InitialValueOutOfRange` means fix the default. The `bool`
     /// spelling below is kept for the caller that only has a
     /// [`SetParameterResult`] channel, so there is still one predicate.
-    fn declaration_consistency(
+    pub(crate) fn declaration_consistency(
         descriptor: Option<&ParameterDescriptor>,
         value: &ParameterValue,
     ) -> Result<(), DeclarationError> {

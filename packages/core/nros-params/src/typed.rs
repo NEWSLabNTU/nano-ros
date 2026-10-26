@@ -6,7 +6,7 @@
 #[cfg(test)]
 use crate::ParameterStorage;
 use crate::{
-    NodeKey, ParameterDescriptor, ParameterRange, ParameterServer, ParameterType,
+    DeclarationError, NodeKey, ParameterDescriptor, ParameterRange, ParameterServer, ParameterType,
     SetParameterResult,
 };
 use heapless::String;
@@ -225,9 +225,9 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     /// capacity to 0 for a scalar-only image, and this used to fail every
     /// `.description(..)` there with `StringConversion`. The same holds for
     /// the constraints text, whose capacity DEFAULTS to 0.
-    fn build_descriptor(&self) -> Result<ParameterDescriptor, ParameterError> {
+    fn build_descriptor(&self) -> Result<ParameterDescriptor, DeclarationError> {
         let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
-            .ok_or(ParameterError::StorageFull)?;
+            .ok_or(DeclarationError::NameTooLong)?;
         if let Some(desc) = self.description {
             descriptor.set_description(desc);
         }
@@ -242,12 +242,12 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     ///
     /// Read-only parameters cannot be changed after declaration.
     /// A default value must be provided.
-    pub fn read_only(self) -> Result<ReadOnlyParameter<'a, 's, T>, ParameterError> {
+    pub fn read_only(self) -> Result<ReadOnlyParameter<'a, 's, T>, DeclarationError> {
         // Must have a default value for read-only parameters
         let default_value = self
             .default
             .as_ref()
-            .ok_or(ParameterError::NotFound)?
+            .ok_or(DeclarationError::NoValueAvailable)?
             .clone();
 
         let mut descriptor = self.build_descriptor()?;
@@ -255,8 +255,7 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
 
         let param_value = default_value.to_parameter_value();
 
-        self.server
-            .declare_parameter(self.node, descriptor, Some(&param_value))?;
+        declare(self.server, self.node, descriptor, Some(&param_value))?;
 
         Ok(ReadOnlyParameter::new(self.server, self.node, self.name))
     }
@@ -264,30 +263,57 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     /// Declare a mandatory parameter
     ///
     /// If no default value is provided, it must be set externally before use.
-    pub fn mandatory(self) -> Result<MandatoryParameter<'a, 's, T>, ParameterError> {
+    pub fn mandatory(self) -> Result<MandatoryParameter<'a, 's, T>, DeclarationError> {
         let mut descriptor = self.build_descriptor()?;
         descriptor.read_only = self.read_only;
 
         let default_value = self.default.map(|v| v.to_parameter_value());
 
-        self.server
-            .declare_parameter(self.node, descriptor, default_value.as_ref())?;
+        declare(self.server, self.node, descriptor, default_value.as_ref())?;
 
         Ok(MandatoryParameter::new(self.server, self.node, self.name))
     }
 
     /// Declare an optional parameter
-    pub fn optional(self) -> Result<OptionalParameter<'a, 's, T>, ParameterError> {
+    pub fn optional(self) -> Result<OptionalParameter<'a, 's, T>, DeclarationError> {
         let mut descriptor = self.build_descriptor()?;
         descriptor.read_only = self.read_only;
 
         let default_value = self.default.map(|v| v.to_parameter_value());
 
-        self.server
-            .declare_parameter(self.node, descriptor, default_value.as_ref())?;
+        declare(self.server, self.node, descriptor, default_value.as_ref())?;
 
         Ok(OptionalParameter::new(self.server, self.node, self.name))
     }
+}
+
+/// The typed terminals' declaration, reporting rclrs's [`DeclarationError`].
+///
+/// `ParameterServer::declare_parameter` answers in `SetParameterResult`, where
+/// `TypeMismatch` means "already declared" and `InvalidRange` covers both an
+/// ill-formed range and a default outside it; this names each case. It keeps
+/// that call (rather than `try_declare_with_descriptor`) because the typed
+/// path emits no parameter event on declaration, and changing that is not
+/// part of a rename (phase-515 R8).
+fn declare(
+    server: &mut ParameterServer<'_>,
+    node: NodeKey,
+    descriptor: ParameterDescriptor,
+    value: Option<&crate::ParameterValue>,
+) -> Result<(), DeclarationError> {
+    let consistency = ParameterServer::declaration_consistency(
+        Some(&descriptor),
+        &value.cloned().unwrap_or_default(),
+    );
+    server
+        .declare_parameter(node, descriptor, value)
+        .map_err(|result| match result {
+            SetParameterResult::TypeMismatch => DeclarationError::AlreadyDeclared,
+            SetParameterResult::InvalidRange => {
+                consistency.err().unwrap_or(DeclarationError::InvalidRange)
+            }
+            _ => DeclarationError::StorageFull,
+        })
 }
 
 /// A parameter that must always have a value
@@ -583,7 +609,37 @@ mod tests {
         let mut server = ParameterServer::new_in(storage.as_table());
         let result = ParameterBuilder::<i64>::new(&mut server, NODE, "readonly_param").read_only();
 
-        assert_eq!(result.err(), Some(ParameterError::NotFound));
+        assert_eq!(result.err(), Some(DeclarationError::NoValueAvailable));
+    }
+
+    /// phase-515 R8 -- the terminals report rclrs's `DeclarationError`, and
+    /// each case the old `ParameterError` conflated is named.
+    #[test]
+    fn builder_terminals_report_declaration_errors() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        ParameterBuilder::<i64>::new(&mut server, NODE, "dup")
+            .default(1)
+            .mandatory()
+            .expect("first declaration");
+        let again = ParameterBuilder::<i64>::new(&mut server, NODE, "dup")
+            .default(1)
+            .mandatory();
+        assert_eq!(again.err(), Some(DeclarationError::AlreadyDeclared));
+
+        let outside = ParameterBuilder::<i64>::new(&mut server, NODE, "ranged")
+            .default(500)
+            .integer_range(0, 100, 1)
+            .expect("well-formed range")
+            .optional();
+        assert_eq!(
+            outside.err(),
+            Some(DeclarationError::InitialValueOutOfRange)
+        );
+
+        // `?` into a `ParameterError` caller still compiles, and reads as before.
+        let as_param_error: ParameterError = DeclarationError::AlreadyDeclared.into();
+        assert_eq!(as_param_error, ParameterError::TypeMismatch);
     }
 
     #[test]

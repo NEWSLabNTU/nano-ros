@@ -358,7 +358,13 @@ flavour (issue 2089).
 `GoalId` → `GoalUuid`, `CancelReturnCode`, `QoSProfile::{deadline,lifespan,
 liveliness_lease}_duration`, `ValueConversionError`, `SetParameterResult`,
 `ActionClientCore::is_server_ready`, and their members. Land each, or
-re-verdict it with a reason. (`ActionClientCore::is_server_ready` closed
+re-verdict it with a reason. **`ParameterBuilder` terminals LANDED 2026-10-27:**
+`mandatory` / `optional` / `read_only` return rclrs's `DeclarationError`
+(new variant `NoValueAvailable`; `From<DeclarationError> for ParameterError`
+keeps `?` callers compiling). **Still open:** `SetParameterResult` collapsing
+into `Result<(), ParameterError>` (rclrs has one spelling) -- not a rename but a
+change to the store's wire-facing verdict type, 204 uses in 12 files
+(measured 2026-10-27), so it is its own item. (`ActionClientCore::is_server_ready` closed
 2026-10-27 by R9 stage 2: it left the Rust surface, so Rust ships the one
 spelling `ActionClient::action_server_is_ready` and its row was deleted.)
 
