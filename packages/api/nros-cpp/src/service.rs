@@ -24,6 +24,7 @@ use core::{
     sync::atomic::AtomicBool,
     task::{RawWaker, RawWakerVTable, Waker},
 };
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 /// Build a `Waker` that sets `flag` to `true` when woken — the transport
 /// signals reply-arrival into the arena entry's `reply_ready` slot. Mirrors

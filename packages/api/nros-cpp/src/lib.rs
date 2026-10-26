@@ -56,6 +56,8 @@ extern crate std;
 // on the command and the archive still was not. So the reference has to be
 // explicit. Deliberately not a weak/no-op sink: issue 0420 was exactly that, a
 // log facade that silently did nothing on threadx/nuttx.
+#[cfg(feature = "rmw-cffi")]
+use nros_node::executor::ffi::ExecutorFfi as _;
 #[cfg(test)]
 use nros_platform_cffi as _;
 

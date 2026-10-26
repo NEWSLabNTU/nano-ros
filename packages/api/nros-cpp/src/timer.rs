@@ -11,6 +11,7 @@ use crate::{
     CppExecutor, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
     NROS_CPP_RET_OK, cpp_ctx_checked, cstr_to_str, nros_cpp_node_t, nros_cpp_ret_t,
 };
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 /// C callback type for timers: `void callback(void* context)`.
 pub type nros_cpp_timer_callback_t = Option<unsafe extern "C" fn(context: *mut c_void)>;

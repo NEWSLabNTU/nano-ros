@@ -1,6 +1,0 @@
-{
-  "key": "rust:Executor::exec_lock",
-  "bucket": "ours-only",
-  "verdict": "extension",
-  "why": "phase-509 P9b item 1 -- the lock `set_exec_lock` installed, if any; read by the FFI guards before any reference to the executor exists. No upstream counterpart (see `rust:Executor::set_exec_lock`)."
-}

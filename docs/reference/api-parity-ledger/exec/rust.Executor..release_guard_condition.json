@@ -1,6 +1,0 @@
-{
-  "key": "rust:Executor::release_guard_condition",
-  "bucket": "ours-only",
-  "verdict": "extension",
-  "why": "issue 1667 -- in ROS 2 the guard condition's destructor (rclcpp) or `rcl_guard_condition_fini` is the counterpart. Ours frees the guard's executor entry: its callback is dropped, `spin_once` stops polling it, and the slot and arena bytes go to the next registration. `unsafe`, unlike `release_timer` and its siblings, because a generation cannot discharge the contract: the `GuardCondition` trigger handle points at the flag INSIDE the entry and is `Clone` + `Send`, so a clone on another thread would write into whatever reuses those bytes. The caller promises no trigger handle is used afterwards. The C++ `nros::GuardCondition` is non-copyable and the one holder of its handle, so its destructor keeps that promise and calls this (through `nros_cpp_guard_condition_release`)."
-}

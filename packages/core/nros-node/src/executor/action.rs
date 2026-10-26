@@ -708,7 +708,7 @@ impl<'s> Executor<'s> {
     /// construction and liveliness tokens.
     #[doc(hidden)]
     #[allow(clippy::too_many_arguments)]
-    pub fn register_action_server_raw(
+    pub(crate) fn register_action_server_raw(
         &mut self,
         spec: RawActionServerSpec<'_>,
     ) -> Result<ActionServerRawHandle, NodeError> {
@@ -1031,7 +1031,7 @@ impl<'s> Executor<'s> {
     /// check below catches a wrong KIND, never wrong sizes — the same contract
     /// [`action_client_core_mut`](Executor::action_client_core_mut) and
     /// [`service_client_entry_mut`](Executor::service_client_entry_mut) carry.
-    pub unsafe fn detach_action_server_raw_sized<
+    pub(crate) unsafe fn detach_action_server_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
         const FEEDBACK_BUF: usize,
@@ -1072,7 +1072,10 @@ impl<'s> Executor<'s> {
     /// DEFAULT-sized entry point. A handle from
     /// `register_action_server_raw_sized::<…>` with other const parameters must
     /// be detached through the sized call with the same ones.
-    pub unsafe fn detach_action_server_raw(&mut self, handle: &ActionServerRawHandle) -> bool {
+    pub(crate) unsafe fn detach_action_server_raw(
+        &mut self,
+        handle: &ActionServerRawHandle,
+    ) -> bool {
         unsafe {
             self.detach_action_server_raw_sized::<
                 { crate::config::DEFAULT_RX_BUF_SIZE },
@@ -1097,7 +1100,7 @@ impl<'s> Executor<'s> {
     /// As [`detach_action_server_raw`](Executor::detach_action_server_raw):
     /// `handle` must come from the DEFAULT-sized `register_action_server_raw`.
     /// `context` must be valid for as long as the entry may dispatch.
-    pub unsafe fn retarget_action_server_raw(
+    pub(crate) unsafe fn retarget_action_server_raw(
         &mut self,
         handle: &ActionServerRawHandle,
         context: *mut core::ffi::c_void,
@@ -1144,7 +1147,7 @@ impl<'s> Executor<'s> {
     /// use and the same assumption
     /// [`action_client_core_mut`](Executor::action_client_core_mut) makes on
     /// every poll.
-    pub unsafe fn detach_action_client_raw(&mut self, entry_index: usize) -> bool {
+    pub(crate) unsafe fn detach_action_client_raw(&mut self, entry_index: usize) -> bool {
         let Some(meta) = self.entries.get(entry_index).and_then(|e| e.as_ref()) else {
             return false;
         };
@@ -1179,7 +1182,7 @@ impl<'s> Executor<'s> {
     /// The entry must have been registered through the default-sized
     /// [`register_action_client_raw`](Executor::register_action_client_raw),
     /// and `context` must be valid for as long as the entry may dispatch.
-    pub unsafe fn retarget_action_client_raw(
+    pub(crate) unsafe fn retarget_action_client_raw(
         &mut self,
         entry_index: usize,
         context: *mut core::ffi::c_void,
@@ -1225,7 +1228,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// No [`ActionServerRawHandle`] naming the entry may be used afterwards —
     /// the slot is handed to the next registration.
-    pub unsafe fn release_action_server_raw_sized<
+    pub(crate) unsafe fn release_action_server_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
         const FEEDBACK_BUF: usize,
@@ -1243,7 +1246,10 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// As the sized form; `handle` must not be used afterwards.
-    pub unsafe fn release_action_server_raw(&mut self, handle: &ActionServerRawHandle) -> bool {
+    pub(crate) unsafe fn release_action_server_raw(
+        &mut self,
+        handle: &ActionServerRawHandle,
+    ) -> bool {
         unsafe {
             self.release_action_server_raw_sized::<
                 { crate::config::DEFAULT_RX_BUF_SIZE },
@@ -1263,7 +1269,7 @@ impl<'s> Executor<'s> {
     /// # Safety
     /// As [`release_action_server_raw_sized`](Self::release_action_server_raw_sized),
     /// for the default-sized client entry.
-    pub unsafe fn release_action_client_raw(&mut self, entry_index: usize) -> bool {
+    pub(crate) unsafe fn release_action_client_raw(&mut self, entry_index: usize) -> bool {
         unsafe {
             self.release_action_client_raw_sized::<
                 { crate::config::DEFAULT_RX_BUF_SIZE },
@@ -1280,7 +1286,7 @@ impl<'s> Executor<'s> {
     ///
     /// # Safety
     /// No copy of `entry_index` may be used afterwards.
-    pub unsafe fn release_action_client_raw_sized<
+    pub(crate) unsafe fn release_action_client_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
         const FEEDBACK_BUF: usize,
@@ -1298,7 +1304,7 @@ impl<'s> Executor<'s> {
 
 /// Handle to a raw (untyped) action server registered in the executor's arena.
 ///
-/// Returned by [`Executor::register_action_server_raw()`]. Provides methods
+/// Returned by [`ExecutorFfi::register_action_server_raw()`](crate::executor::ffi::ExecutorFfi::register_action_server_raw). Provides methods
 /// to interact with the server using raw CDR bytes.
 #[repr(C)]
 #[allow(clippy::type_complexity)]
@@ -1598,7 +1604,7 @@ impl<'s> Executor<'s> {
     /// * `context` — opaque pointer passed to all callbacks
     #[doc(hidden)]
     #[allow(clippy::too_many_arguments)]
-    pub fn register_action_client_raw(
+    pub(crate) fn register_action_client_raw(
         &mut self,
         spec: RawActionClientSpec<'_>,
     ) -> Result<ActionClientRawHandle, NodeError> {
@@ -2015,7 +2021,7 @@ impl<'s> Executor<'s> {
     /// this takes ownership of an existing core. Use this when the core was
     /// already created by the C/C++ action client init.
     #[doc(hidden)]
-    pub fn register_action_client_core<
+    pub(crate) fn register_action_client_core<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
         const FEEDBACK_BUF: usize,
@@ -2066,7 +2072,7 @@ impl<'s> Executor<'s> {
     }
 }
 
-/// Handle returned by [`Executor::register_action_client_raw()`].
+/// Handle returned by [`ExecutorFfi::register_action_client_raw()`](crate::executor::ffi::ExecutorFfi::register_action_client_raw).
 ///
 /// Provides methods to send goals, request results, and cancel goals
 /// via the executor's non-blocking path.

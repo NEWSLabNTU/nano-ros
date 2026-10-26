@@ -1,5 +1,0 @@
-{
-  "key": "rust:Executor::add_arena_subscription_c_typed_callback",
-  "verdict": "extension",
-  "why": "phase-417 W5.a — the Rust entry point the C typed path forwards to. It is the RAW arena subscription with one step inserted between the ring and the callback, reusing the same buffering (`arena_alloc_with_trailing` + `BufferStrategy`); the arena entry is the raw one plus two words (`msg`, `deserialize`), and `msg` is never dropped because it is the caller's. rclrs has no counterpart: it has an allocator and hands the callback an owned message."
-}

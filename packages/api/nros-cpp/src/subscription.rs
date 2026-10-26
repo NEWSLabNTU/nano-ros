@@ -13,6 +13,7 @@ use crate::{
     CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
     NROS_CPP_RET_OK, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 /// Issue 1425 -- how many takes THIS path has thrown away for being too big.
 ///
