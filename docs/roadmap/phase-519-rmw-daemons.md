@@ -1,6 +1,8 @@
 # Phase 519 — The RMW daemons: the zenoh router and the XRCE agent
 
-**Status (2026-10-26). Open; nothing started. W1 and W2 are deferred.** This
+**Status (2026-10-26). Deferred by the maintainer; nothing started.** Every
+item waits for a reason to start: W1 for a shared router, W2 for a maintainer
+to file it, W3 and W4 for XRCE work to be prioritised. This
 phase owns the work that lands on the host-side process a device talks
 through, rather than on the device: `rmw_zenohd` for zenoh and
 `MicroXRCEAgent` for XRCE. Neither is shipped by nano-ros. The router is ROS's
