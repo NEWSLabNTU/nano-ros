@@ -849,7 +849,17 @@ fn dependency_tables(doc: &toml::Table) -> Vec<&toml::Table> {
 /// "mutually exclusive" `compile_error!` (41 example leaves did this). A
 /// leaf's OWN `[features]` table may define `ros-<edition>` as forwards — that
 /// is a lowering TARGET for the CMake road to select, not a choice.
+///
+/// Asked only of a MIGRATED leaf (one that depends on its selection package),
+/// because that is where the toolchain lowers the edition and a pin collides
+/// with it. An unmigrated leaf has no lowering on the cargo road, so its
+/// manifest is the edition's only carrier; refusing it would leave no way to
+/// build one. That leaf ignoring a declared `ros_edition` is its own defect
+/// (issue 2079: `nros new` still emits one).
 fn check_lowered_edition_features(img: &LeafImage) -> Result<()> {
+    if !depends_on_selection(&img.leaf, &img.package) {
+        return Ok(());
+    }
     let manifest = img.leaf.join("Cargo.toml");
     let Ok(doc) = std::fs::read_to_string(&manifest)
         .map_err(|e| e.to_string())
@@ -2131,6 +2141,29 @@ mod board_crate_tests {
         std::fs::write(leaf.join("Cargo.toml"), m).unwrap();
         let img = resolve(&leaf, &repo()).unwrap().unwrap();
         check_lowered_edition_features(&img).expect("a forward is not a pin");
+    }
+
+    /// Issue 2045 — an UNMIGRATED leaf's pin is its edition's only carrier, so
+    /// it is not refused (the scaffold emits one: issue 2079).
+    #[test]
+    fn an_unmigrated_leaf_keeps_its_edition_pin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = tmp.path().join("talker");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"t\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n\
+             [dependencies]\nnros-board-linux = { version = \"*\" }\n\
+             nros = { version = \"*\", features = [\"ros-humble\"] }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            leaf.join("system.toml"),
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n[image.linux]\nboard = \"linux\"\n",
+        )
+        .unwrap();
+        let img = resolve(&leaf, &repo()).unwrap().expect("a cargo leaf");
+        check_lowered_edition_features(&img).expect("no lowering to collide with");
     }
 
     /// Issue 2045 — no tracked leaf pins an edition its `system.toml` owns,
