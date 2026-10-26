@@ -138,6 +138,10 @@ PER_PLATFORM_TREES = {
     "freertos": "[port.freertos] extra_sources (zenoh nros-rmw.toml)",
     "mbed": "no nano-ros platform selects it",
     "rpi_pico": "no nano-ros platform selects it",
+    # phase-508 — zenoh-pico 1.9 split a network stack's socket wait / close /
+    # blocking half out of the link code, one file per STACK rather than per
+    # RTOS (`lwip.c`, `esp32.c`).
+    "socket": "[port.freertos] extra_sources, lwip.c (zenoh nros-rmw.toml); esp32.c: no nano-ros platform selects it",
     "threadx": "[port.threadx] in the zenoh nros-rmw.toml (alias TU + task.c)",
     "unix": "[port.posix] / [port.nuttx] extra_sources (zenoh nros-rmw.toml)",
     "windows": "no nano-ros platform selects it",

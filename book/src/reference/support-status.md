@@ -47,7 +47,7 @@ reason, tested together (see
 
 | Backend | Client side (pinned) | Host side | Pairing rule |
 |---|---|---|---|
-| **Zenoh** | zenoh-pico `1.8.0` (vendored submodule) | Router = the one **ROS ships**: `ros2 run rmw_zenoh_cpp rmw_zenohd` — nano-ros deliberately vendors no router (RFC-0075) | zenoh-pico's wire protocol is stable across zenoh 1.x, so the pinned client interops with a newer ROS-shipped router (issue 0291) |
+| **Zenoh** | zenoh-pico `1.10.1` (vendored submodule) | Router = the one **ROS ships**: `ros2 run rmw_zenoh_cpp rmw_zenohd` — nano-ros deliberately vendors no router (RFC-0075) | zenoh-pico's wire protocol is stable across zenoh 1.x, so the pinned client interops with a newer ROS-shipped router (issue 0291) |
 | **XRCE-DDS** | Micro-XRCE-DDS client `3.0.1` + Micro-CDR `2.0.2` | Agent `2.4.3-nros1` (installed by `nros setup … --rmw xrce`) | Client and agent are pinned independently and are NOT the same upstream release; they meet at the DDS-XRCE wire protocol |
 | **Cyclone DDS** | fork `0.10.5-nros1` — upstream 0.10.5 + carried patches ([fork delta](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/cyclonedds-fork-delta.md)) | Talks RTPS directly to `rmw_cyclonedds_cpp` | Pinned to the Cyclone **ROS ships** (`ros-humble-cyclonedds` 0.10.5) — upstream 11.x is deliberately NOT a rebase target until a distro migration (issue 0507) |
 

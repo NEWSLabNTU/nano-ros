@@ -111,6 +111,21 @@ void _z_task_exit(void) {
     pthread_exit(NULL);
 }
 
+/* RFC-0110 — zenoh-pico 1.9's executor asks "is the calling thread the
+ * executor thread?" before it takes its own lock. `zephyr.h` makes both
+ * `_z_task_t` and `_z_task_id_t` a `pthread_t`, and every task above is one. */
+_z_task_id_t _z_task_get_id(const _z_task_t *task) {
+    return *task;
+}
+
+_z_task_id_t _z_task_current_id(void) {
+    return pthread_self();
+}
+
+bool _z_task_id_equal(const _z_task_id_t *l, const _z_task_id_t *r) {
+    return pthread_equal(*l, *r) != 0;
+}
+
 /* issue 0882 — FREE WITH THE ALLOCATOR THAT ALLOCATED, and never free the
  * storage this task is RUNNING ON.
  *
@@ -343,6 +358,20 @@ static uint64_t elapsed_ns(const z_clock_t *start, const z_clock_t *now) {
     }
     if (sec < 0) return 0;
     return (uint64_t)sec * 1000000000ULL + (uint64_t)nsec;
+}
+
+/* phase-508 — zenoh-pico 1.9's executor measures every wake-up from its own
+ * epoch: elapsed from `epoch` to `instant`, 0 when `instant` is earlier. */
+unsigned long zp_clock_elapsed_us_since(z_clock_t *instant, z_clock_t *epoch) {
+    return (unsigned long)(elapsed_ns(epoch, instant) / 1000ULL);
+}
+
+unsigned long zp_clock_elapsed_ms_since(z_clock_t *instant, z_clock_t *epoch) {
+    return (unsigned long)(elapsed_ns(epoch, instant) / 1000000ULL);
+}
+
+unsigned long zp_clock_elapsed_s_since(z_clock_t *instant, z_clock_t *epoch) {
+    return (unsigned long)(elapsed_ns(epoch, instant) / 1000000000ULL);
 }
 
 unsigned long z_clock_elapsed_us(z_clock_t *instant) {

@@ -9,9 +9,13 @@
  * zenoh-pico's run-time options ARE its configuration surface — there is no
  * config-file format for the pico client. This table maps the nano-ros
  * property name a caller writes onto the `Z_CONFIG_*_KEY` constant
- * `zp_config_insert()` takes. 23 keys are derived mechanically
+ * `zp_config_insert()` takes. 27 keys are derived mechanically
  * (`Z_CONFIG_<X>_KEY` -> `lowercase(<X>)`); 4 legacy aliases are
  * authored in the generator.
+ *
+ * A key config.h defines only under a condition is listed under that same
+ * condition, so a build without it neither names an undefined macro nor
+ * accepts a key it cannot honour.
  *
  * `needs_tls` marks the keys that only mean anything when zenoh-pico is built
  * with `Z_FEATURE_LINK_TLS`. They stay in the table on every build so that
@@ -59,6 +63,18 @@ static const zpico_config_key_entry ZPICO_CONFIG_KEYS[] = {
     {"tls_connect_certificate", Z_CONFIG_TLS_CONNECT_CERTIFICATE_KEY, true},
     {"tls_connect_certificate_base64", Z_CONFIG_TLS_CONNECT_CERTIFICATE_BASE64_KEY, true},
     {"tls_verify_name_on_connect", Z_CONFIG_TLS_VERIFY_NAME_ON_CONNECT_KEY, true},
+#if defined(Z_FEATURE_UNSTABLE_API)
+    {"connect_timeout", Z_CONFIG_CONNECT_TIMEOUT_KEY, false},
+#endif
+#if defined(Z_FEATURE_UNSTABLE_API)
+    {"connect_exit_on_failure", Z_CONFIG_CONNECT_EXIT_ON_FAILURE_KEY, false},
+#endif
+#if defined(Z_FEATURE_UNSTABLE_API)
+    {"listen_timeout", Z_CONFIG_LISTEN_TIMEOUT_KEY, false},
+#endif
+#if defined(Z_FEATURE_UNSTABLE_API)
+    {"listen_exit_on_failure", Z_CONFIG_LISTEN_EXIT_ON_FAILURE_KEY, false},
+#endif
     {"root_ca_certificate", Z_CONFIG_TLS_ROOT_CA_CERTIFICATE_KEY, true},
     {"root_ca_certificate_base64", Z_CONFIG_TLS_ROOT_CA_CERTIFICATE_BASE64_KEY, true},
     {"scouting_timeout_ms", Z_CONFIG_SCOUTING_TIMEOUT_KEY, false},

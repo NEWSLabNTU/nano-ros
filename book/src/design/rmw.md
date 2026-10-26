@@ -292,7 +292,7 @@ cannot pin it, and the interesting number is not the ROS package version anyway.
 | side | component | observed |
 | --- | --- | --- |
 | host | `rmw_zenoh_cpp` router + RMW | zenoh-c **1.6.2** (ROS 2 Humble, measured 2026-08-16) |
-| firmware | `zenoh-pico` | **1.8.0** (the pin's `version.txt`) |
+| firmware | `zenoh-pico` | **1.10.1** (the pin's `version.txt`) |
 
 Read the zenoh version from the header, never from the package manager:
 

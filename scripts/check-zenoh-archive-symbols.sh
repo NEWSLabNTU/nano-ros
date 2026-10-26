@@ -83,19 +83,25 @@ for t in "${TRANSPORTS[@]}"; do
         # Each wrapper may map to one or more candidate impls; the
         # parity check passes if ANY candidate is defined as `T`.
         impls=()
+        # zenoh-pico 1.9 renamed the link ABI to `_z_<transport>_<op>`
+        # (`_z_tcp_open`, `_z_udp_unicast_write`, …) and routed serial
+        # through a protocol layer (`_z_serial_protocol_*`) over
+        # `_z_{read,read_exact,send}_serial` (phase-508). Our own links (IVC)
+        # keep the pre-1.9 `_z_<op>_<transport>` spelling, so that stays a
+        # candidate for every non-serial transport.
         if [[ "$t" == "serial" ]]; then
             case "$op" in
-                open|listen)
-                    impls=("_z_${op}_serial_from_dev" "_z_${op}_serial_from_pins")
+                open|listen|close)
+                    impls=("_z_serial_protocol_${op}")
                     ;;
-                read_socket)
-                    impls=("_z_read_serial_internal")
+                read|read_socket)
+                    impls=("_z_read_serial")
                     ;;
-                close)
-                    impls=("_z_close_serial")
+                read_exact)
+                    impls=("_z_read_exact_serial")
                     ;;
                 write)
-                    impls=("_z_send_serial_internal")
+                    impls=("_z_send_serial")
                     ;;
                 *)
                     impls=("_z_${op}_${t}")
@@ -104,10 +110,10 @@ for t in "${TRANSPORTS[@]}"; do
         else
             case "$op" in
                 write)
-                    impls=("_z_send_${t}")
+                    impls=("_z_${t}_write" "_z_send_${t}")
                     ;;
                 *)
-                    impls=("_z_${op}_${t}")
+                    impls=("_z_${t}_${op}" "_z_${op}_${t}")
                     ;;
             esac
         fi

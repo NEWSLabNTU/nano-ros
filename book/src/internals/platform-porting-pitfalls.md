@@ -270,7 +270,7 @@ tests are `#[ignore]`d pending a fully non-blocking TCP read path.
 The zenoh router is ROS 2's own (`ros2 run rmw_zenoh_cpp rmw_zenohd`,
 RFC-0075) — nano-ros no longer vendors one, so the router version always
 matches the `rmw_zenoh_cpp` your ROS nodes use. zenoh-pico is pinned at
-`zpico-sys/zenoh-pico/` (1.8.0 — read its `version.txt`); its wire protocol is stable across
+`zpico-sys/zenoh-pico/` (1.10.1 — read its `version.txt`); its wire protocol is stable across
 zenoh 1.x, so it interoperates with a newer ROS-shipped router
 (issue 0291). A transport-level failure (`-100`,
 `_Z_ERR_TRANSPORT_TX_FAILED`) that looks like a network issue can still

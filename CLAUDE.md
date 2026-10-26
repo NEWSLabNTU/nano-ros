@@ -628,7 +628,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   — gated by `check-zenohd-flag-invocations` (issues 0653/0654). Resolution order is
   `NROS_RMW_ZENOHD` → `AMENT_PREFIX_PATH` → `$ROS_DISTRO` under `/opt/ros`; PATH and a
   `/opt/ros/*` glob are deliberately NOT searched, because both return a router nobody chose.
-  zenoh-pico is pinned at 1.8.0 (read `version.txt` in the submodule, not this line) at
+  zenoh-pico is pinned at 1.10.1 (read `version.txt` in the submodule, not this line) at
   `packages/rmw/zenoh/zpico-sys/zenoh-pico/` — its wire is proto-stable across 1.x, so it
   interops with a newer ROS zenoh (issue 0291). Its Zephyr feature set compiles host-side in
   `check-zenoh-feature-off-compile` (issue 1021).

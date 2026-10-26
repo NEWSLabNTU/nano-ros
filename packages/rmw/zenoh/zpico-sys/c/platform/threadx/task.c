@@ -148,6 +148,21 @@ void _z_task_exit(void) {
     /* ThreadX threads terminate when they return from their entry function. */
 }
 
+/* RFC-0110 — task identity for zenoh-pico 1.9's executor. In CALLER mode the
+ * executor runs inside `zpico_spin_once` on a tier thread, and recognises that
+ * thread through `_z_task_current_id` while it spins (RFC-0110 D4). */
+_z_task_id_t _z_task_get_id(const _z_task_t *task) {
+    return (void *)&task->threadx_thread;
+}
+
+_z_task_id_t _z_task_current_id(void) {
+    return (void *)tx_thread_identify();
+}
+
+bool _z_task_id_equal(const _z_task_id_t *l, const _z_task_id_t *r) {
+    return *l == *r;
+}
+
 void _z_task_free(_z_task_t **task) {
     if (*task) {
         /* Phase 77.21: release the event-flags group allocated in `_z_task_init`. */

@@ -2351,6 +2351,16 @@ pub fn run() {
         if use_threadx {
             alias_build.define("NROS_PLATFORM_ALIASES_SKIP_TASK", None);
         }
+        // RFC-0110 — zenoh-pico 1.9's executor needs the task-identity trio.
+        // On POSIX the vendor header is `unix.h` (`_z_task_id_t` is
+        // `pthread_t`) and the alias TU's tasks are pthreads, so the alias TU
+        // spells the trio with pthread itself. NuttX has the same types but
+        // compiles this TU without NuttX's headers (no `pthread_self` in
+        // scope), so its trio lives in `nuttx_task_id.c`, which sees them. Every
+        // other multi-thread port provides it beside its own `_z_task_init`.
+        if use_posix {
+            alias_build.define("NROS_ZP_ALIAS_PTHREAD_TASK_ID", None);
+        }
         // issue 1636 — Zephyr compiles its OWN zenoh-pico system ABI in C
         // (`zephyr/nros_zenoh_zephyr_system.c`, POSIX-shaped types). The
         // generic time/clock/task/mutex/condvar wrappers here were a second
@@ -3123,7 +3133,6 @@ fn build_zenoh_pico_unified(
         zenoh_pico_src,
         &interp.nros.join("zenoh-sources.txt"),
         &plat.name,
-        link,
     );
     for extra in &plat.extra_sources {
         // issue 1143 — the `when` gate, composed with `if_env` (both must

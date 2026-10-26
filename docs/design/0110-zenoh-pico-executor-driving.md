@@ -159,15 +159,25 @@ pieces make that work:
      The executor's own mutex is now the single-reader rule from issue #247.
    - Calling it while the thread IS started returns `false` and does
      nothing, so the two modes cannot run at once.
-2. **A receive that does not block.** The ThreadX socket shim is ours
-   (`zpico-sys/c/platform/threadx/network.c`). Its TCP and UDP read
-   functions put a zero-timeout readiness check in front of `recv` and
-   return "no data" when nothing is there. Today `zpico_spin_once` makes
-   that same check (`select` / `nx_bsd_select`) before calling `zp_read`.
+2. **A receive that does not block.** ThreadX's links reach the socket
+   through the nano-ros platform net ABI: `zpico-sys/c/zpico/platform_aliases.c`
+   forwards each `_z_tcp_*` / `_z_udp_*` link call to `nros_platform_*`,
+   which `nros-platform-threadx/src/net.c` implements over NetX Duo BSD (or
+   the host sockets, on the Linux port). `zpico-sys/c/platform/threadx/network.c`
+   is NOT on that path; nothing has compiled it since phase-80, and an
+   earlier draft of this RFC named it by mistake. `nros_platform_tcp_read`
+   puts a zero-timeout readiness check in front of `recv` (`select` on the
+   Linux port, `nx_bsd_select` on NetX Duo) and returns "no data" when
+   nothing is there; `read_exact` keeps a blocking receive, because it is
+   reached only mid-frame. Today `zpico_spin_once` makes that same check
+   before calling `zp_read`.
    - The socket itself stays blocking, so sends keep their current
      write-all behaviour.
    - Upstream's read future treats a failed or empty receive as idle
      (`read.c:82-115`).
+   - The UDP read is NOT changed: no in-tree ThreadX image names a `udp/`
+     locator. A UDP unicast session on ThreadX would still block the
+     caller in its receive, and needs the same check before it is used.
 
 `zpico_spin_once` then sleeps first (`z_sleep_ms(timeout_ms)`, a real ThreadX
 yield; phase-297 W5) and runs the bounded loop from D3.
@@ -249,3 +259,5 @@ Tracked by phase-508:
 ## Changelog
 
 - 2026-10-24: first draft, from issue 0910's second-pass survey.
+- 2026-10-26: D4 corrected — ThreadX's sockets come from the platform net ABI
+  (`nros-platform-threadx/src/net.c`), not the dead `c/platform/threadx/network.c`.

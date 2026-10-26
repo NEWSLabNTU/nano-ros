@@ -236,6 +236,39 @@ void _z_task_free(void **task) {
 
 #endif  /* NROS_PLATFORM_ALIASES_SKIP_TASK */
 
+/* -------------------------------------------------------------------------
+ *  Threading: task identity — zenoh-pico 1.9's executor (RFC-0110).
+ *
+ *  The background executor asks "is the calling thread the executor
+ *  thread?" before it takes its own lock, so the system ABI gained
+ *  `_z_task_get_id` / `_z_task_current_id` / `_z_task_id_equal`. Their
+ *  TYPE is fixed by the vendor platform header the build selects, not by
+ *  this TU: on POSIX (and NuttX) that is `unix.h`, where `_z_task_t` and
+ *  `_z_task_id_t` are both `pthread_t` — and `nros_platform_task_init`
+ *  on those ports stores exactly a `pthread_t` in the task storage. So the
+ *  identity is pthread's own, spelled here under a define the build sets
+ *  for POSIX only (`NROS_ZP_ALIAS_PTHREAD_TASK_ID`) — NuttX compiles this TU
+ *  without its own headers, so its trio is in `nuttx_task_id.c`. A port
+ *  with its own `_z_task_t` layout (ThreadX `task.c`, Zephyr's system TU,
+ *  FreeRTOS's vendor `system.c`) defines these beside its `_z_task_init`.
+ * ----------------------------------------------------------------------- */
+
+#if defined(NROS_ZP_ALIAS_PTHREAD_TASK_ID)
+#include <pthread.h>
+
+pthread_t _z_task_get_id(const pthread_t *task) {
+    return *task;
+}
+
+pthread_t _z_task_current_id(void) {
+    return pthread_self();
+}
+
+bool _z_task_id_equal(const pthread_t *l, const pthread_t *r) {
+    return pthread_equal(*l, *r) != 0;
+}
+#endif /* NROS_ZP_ALIAS_PTHREAD_TASK_ID */
+
 #ifndef NROS_PLATFORM_ALIASES_SKIP_SYSTEM
 
 /* -------------------------------------------------------------------------
@@ -428,6 +461,25 @@ unsigned long z_clock_elapsed_s(const uint64_t *clock) {
     return (unsigned long) ((now - *clock) / 1000ULL);
 }
 
+/* phase-508 — zenoh-pico 1.9's executor keeps every wake-up as an instant
+ * relative to its own epoch, so the clock ABI gained "elapsed from `epoch` to
+ * `instant`" beside "elapsed until now". Saturating at 0 for an instant before
+ * the epoch, as upstream's own ports do. */
+unsigned long zp_clock_elapsed_us_since(const uint64_t *instant, const uint64_t *epoch) {
+    if (instant == NULL || epoch == NULL || *instant <= *epoch) return 0;
+    return (unsigned long) ((*instant - *epoch) * 1000ULL);
+}
+
+unsigned long zp_clock_elapsed_ms_since(const uint64_t *instant, const uint64_t *epoch) {
+    if (instant == NULL || epoch == NULL || *instant <= *epoch) return 0;
+    return (unsigned long) (*instant - *epoch);
+}
+
+unsigned long zp_clock_elapsed_s_since(const uint64_t *instant, const uint64_t *epoch) {
+    if (instant == NULL || epoch == NULL || *instant <= *epoch) return 0;
+    return (unsigned long) ((*instant - *epoch) / 1000ULL);
+}
+
 void z_clock_advance_us(uint64_t *clock, unsigned long duration) {
     if (clock == NULL) return;
     *clock += (uint64_t) duration / 1000ULL;
@@ -445,8 +497,8 @@ void z_clock_advance_s(uint64_t *clock, unsigned long duration) {
 #endif /* !NROS_PLATFORM_ALIASES_SKIP_SYSTEM */
 
 /* -------------------------------------------------------------------------
- *  Networking. Wraps zenoh-pico's `_z_open_tcp` / `_z_open_udp_*` /
- *  socket helpers on top of `nros_platform_{tcp,udp,udp_mcast,
+ *  Networking. Wraps zenoh-pico's `_z_tcp_*` / `_z_udp_unicast_*` /
+ *  `_z_udp_multicast_*` link ABI on top of `nros_platform_{tcp,udp,udp_mcast,
  *  socket}_*`. The opaque storage typedefs come from the generic
  *  platform header; the platform impl knows the real layout.
  *
@@ -537,79 +589,96 @@ _Static_assert(sizeof(nros_zp_alias_endpoint_t)
  * struct sizes. */
 #if defined(NROS_ZP_ALIAS_BARE_METAL_NET) || defined(NROS_ZP_ALIAS_OPAQUE_NET)
 
+/* phase-508 — zenoh-pico 1.9 renamed the link ABI (`zenoh-pico/link/transport/
+ * {tcp,udp_unicast,udp_multicast}.h`): `_z_open_tcp` became `_z_tcp_open`,
+ * `_z_send_*` became `_z_*_write`, endpoints are made from C strings, and UDP
+ * unicast open takes an interface name. The socket half (`_z_socket_close`,
+ * `_z_socket_set_blocking`, `_z_socket_wait_readable`) needs zenoh-pico's own
+ * iterator type, which this TU cannot include, so it lives in
+ * `c/zpico/platform_socket.c` (compiled beside this TU on the same platforms). */
+
 /* TCP. */
-int8_t _z_create_endpoint_tcp(void *ep, const uint8_t *address, const uint8_t *port) {
-    return nros_platform_tcp_create_endpoint(ep, address, port);
+int8_t _z_tcp_endpoint_init(void *ep, const char *address, const char *port) {
+    return nros_platform_tcp_create_endpoint(ep, (const uint8_t *)address, (const uint8_t *)port);
 }
-void _z_free_endpoint_tcp(void *ep) {
+void _z_tcp_endpoint_clear(void *ep) {
     nros_platform_tcp_free_endpoint(ep);
 }
-int8_t _z_open_tcp(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout) {
+int8_t _z_tcp_open(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout) {
     return nros_platform_tcp_open(sock, &rep, tout);
 }
-int8_t _z_listen_tcp(void *sock, nros_zp_alias_endpoint_t rep) {
+int8_t _z_tcp_listen(void *sock, nros_zp_alias_endpoint_t rep) {
     return nros_platform_tcp_listen(sock, &rep);
 }
-void _z_close_tcp(void *sock) {
+int8_t _z_tcp_accept(const void *sock_in, void *sock_out) {
+    return nros_platform_socket_accept(sock_in, sock_out);
+}
+void _z_tcp_close(void *sock) {
     nros_platform_tcp_close(sock);
 }
-size_t _z_read_tcp(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
+size_t _z_tcp_read(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
     return nros_platform_tcp_read(&sock, buf, len);
 }
-size_t _z_read_exact_tcp(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
+size_t _z_tcp_read_exact(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
     return nros_platform_tcp_read_exact(&sock, buf, len);
 }
-size_t _z_send_tcp(nros_zp_alias_socket_t sock, const uint8_t *buf, size_t len) {
+size_t _z_tcp_write(nros_zp_alias_socket_t sock, const uint8_t *buf, size_t len) {
     return nros_platform_tcp_send(&sock, buf, len);
 }
 
-/* UDP unicast. */
-int8_t _z_create_endpoint_udp(void *ep, const uint8_t *address, const uint8_t *port) {
-    return nros_platform_udp_create_endpoint(ep, address, port);
+/* UDP unicast. `iface` (bind to a named interface) has no counterpart in the
+ * platform ABI; these platforms have one interface, so a NULL name is the only
+ * one that can be honoured and any other is refused rather than ignored. */
+int8_t _z_udp_unicast_endpoint_init(void *ep, const char *address, const char *port) {
+    return nros_platform_udp_create_endpoint(ep, (const uint8_t *)address, (const uint8_t *)port);
 }
-void _z_free_endpoint_udp(void *ep) {
+void _z_udp_unicast_endpoint_clear(void *ep) {
     nros_platform_udp_free_endpoint(ep);
 }
-int8_t _z_open_udp_unicast(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout) {
+int8_t _z_udp_unicast_open(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout, const char *iface) {
+    if (iface != NULL) {
+        return -1;
+    }
     return nros_platform_udp_open(sock, &rep, tout);
 }
-int8_t _z_listen_udp_unicast(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout) {
+int8_t _z_udp_unicast_listen(void *sock, nros_zp_alias_endpoint_t rep, uint32_t tout) {
     return nros_platform_udp_listen(sock, &rep, tout);
 }
-void _z_close_udp_unicast(void *sock) {
+void _z_udp_unicast_close(void *sock) {
     nros_platform_udp_close(sock);
 }
-size_t _z_read_udp_unicast(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
+size_t _z_udp_unicast_read(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
     return nros_platform_udp_read(&sock, buf, len);
 }
-size_t _z_read_exact_udp_unicast(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
+size_t _z_udp_unicast_read_exact(nros_zp_alias_socket_t sock, uint8_t *buf, size_t len) {
     return nros_platform_udp_read_exact(&sock, buf, len);
 }
-size_t _z_send_udp_unicast(nros_zp_alias_socket_t sock, const uint8_t *buf, size_t len,
-                           nros_zp_alias_endpoint_t rep) {
+size_t _z_udp_unicast_write(nros_zp_alias_socket_t sock, const uint8_t *buf, size_t len,
+                            nros_zp_alias_endpoint_t rep) {
     return nros_platform_udp_send(&sock, buf, len, &rep);
 }
 
 /* UDP multicast (Phase 134.7).
  *
- * Bridges the `_z_*_udp_multicast` symbols (called from upstream
- * zenoh-pico's `link/multicast/udp.c`) to the canonical
- * `nros_platform_udp_mcast_*` ABI declared in <nros/platform_net.h>.
- * Same opaque-storage idiom as the unicast aliases above. `addr` is
- * declared `void *` because `_z_slice_t` is a zenoh-pico-internal
- * type the alias TU cannot pull in without a circular include — the
- * canonical platform fn signature also takes `void *` for this
+ * Bridges the `_z_udp_multicast_*` symbols (called from upstream zenoh-pico's
+ * `link/multicast/udp.c`) to the canonical `nros_platform_udp_mcast_*` ABI
+ * declared in <nros/platform_net.h>. Same opaque-storage idiom as the unicast
+ * aliases above. `addr` is declared `void *` because `_z_slice_t` is a
+ * zenoh-pico-internal type the alias TU cannot pull in without a circular
+ * include — the canonical platform fn signature also takes `void *` for this
  * parameter, so the cast is byte-for-byte.
  *
- * Pre-134 the CMake POSIX path deleted `src/system/unix/network.c`
- * from the build copy and relied on `nros-platform-cffi` providing
- * the impls via these aliases. The multicast bridge was never wired
- * — `libnros_rmw_zenoh.a` shipped the `_z_f_link_*_udp_multicast`
- * wrappers compiled against the canonical header's
- * `Z_FEATURE_LINK_UDP_MULTICAST=1` but the `_z_*_udp_multicast`
- * impls were undefined, breaking every C / C++ native link.
- */
-int8_t _z_open_udp_multicast(void *sock,
+ * The endpoint is built the way upstream's own multicast links build it, from
+ * the unicast parser (`udp_multicast.h`'s default); `address` is a
+ * `const _z_string_t *`, passed through untouched. */
+int8_t _z_udp_unicast_endpoint_init_from_address(void *ep, const void *address);
+int8_t _z_udp_multicast_endpoint_init_from_address(void *ep, const void *address) {
+    return _z_udp_unicast_endpoint_init_from_address(ep, address);
+}
+void _z_udp_multicast_endpoint_clear(void *ep) {
+    nros_platform_udp_free_endpoint(ep);
+}
+int8_t _z_udp_multicast_open(void *sock,
                              nros_zp_alias_endpoint_t rep,
                              void *lep,
                              uint32_t tout,
@@ -617,7 +686,7 @@ int8_t _z_open_udp_multicast(void *sock,
     return nros_platform_udp_mcast_open(sock, &rep, lep, tout,
                                         (const uint8_t *)iface);
 }
-int8_t _z_listen_udp_multicast(void *sock,
+int8_t _z_udp_multicast_listen(void *sock,
                                nros_zp_alias_endpoint_t rep,
                                uint32_t tout,
                                const char *iface,
@@ -626,120 +695,139 @@ int8_t _z_listen_udp_multicast(void *sock,
                                           (const uint8_t *)iface,
                                           (const uint8_t *)join);
 }
-void _z_close_udp_multicast(void *sockrecv,
+void _z_udp_multicast_close(void *sockrecv,
                             void *socksend,
                             nros_zp_alias_endpoint_t rep,
                             nros_zp_alias_endpoint_t lep) {
     nros_platform_udp_mcast_close(sockrecv, socksend, &rep, &lep);
 }
-size_t _z_read_udp_multicast(nros_zp_alias_socket_t sock,
+size_t _z_udp_multicast_read(nros_zp_alias_socket_t sock,
                              uint8_t *ptr, size_t len,
                              nros_zp_alias_endpoint_t lep,
                              void *addr) {
     return nros_platform_udp_mcast_read(&sock, ptr, len, &lep, addr);
 }
-size_t _z_read_exact_udp_multicast(nros_zp_alias_socket_t sock,
+size_t _z_udp_multicast_read_exact(nros_zp_alias_socket_t sock,
                                    uint8_t *ptr, size_t len,
                                    nros_zp_alias_endpoint_t lep,
                                    void *addr) {
     return nros_platform_udp_mcast_read_exact(&sock, ptr, len, &lep, addr);
 }
-size_t _z_send_udp_multicast(nros_zp_alias_socket_t sock,
-                             const uint8_t *ptr, size_t len,
-                             nros_zp_alias_endpoint_t rep) {
+size_t _z_udp_multicast_write(nros_zp_alias_socket_t sock,
+                              const uint8_t *ptr, size_t len,
+                              nros_zp_alias_endpoint_t rep) {
     return nros_platform_udp_mcast_send(&sock, ptr, len, &rep);
-}
-
-/* Socket helpers. */
-int8_t _z_socket_set_non_blocking(const void *sock) {
-    return nros_platform_socket_set_non_blocking(sock);
-}
-int8_t _z_socket_accept(const void *in_sock, void *out_sock) {
-    return nros_platform_socket_accept(in_sock, out_sock);
-}
-void _z_socket_close(void *sock) {
-    nros_platform_socket_close(sock);
-}
-int8_t _z_socket_wait_event(void *peers, void *mutex) {
-    return nros_platform_socket_wait_event(peers, mutex);
 }
 
 #endif /* NROS_ZP_ALIAS_BARE_METAL_NET || NROS_ZP_ALIAS_OPAQUE_NET — Phase 160 */
 
 /* Serial transport.
  *
- * Phase 152 — minimum stubs so `libnros_rmw_zenoh_staticlib.a` (which
- * keeps `Z_FEATURE_LINK_SERIAL=1` to satisfy zenoh-pico's link-wrapper
- * layer in `src/link/unicast/serial.c` + `src/system/common/serial.c`)
- * links cleanly against platform_aliases.c. Stubs return `-1` / `0`
- * so the serial transport is reachable but non-functional at runtime;
- * POSIX consumers use TCP / UDP scouting which is rmw_zenoh's default.
+ * Phase 152 — minimum stubs so `libnros_rmw_zenoh_staticlib.a` (which keeps
+ * `Z_FEATURE_LINK_SERIAL=1` to satisfy zenoh-pico's link-wrapper layer in
+ * `src/link/unicast/serial.c` + `src/link/transport/upper/serial_protocol.c`)
+ * links cleanly against platform_aliases.c. Open/listen return `-1`, so the
+ * serial transport is reachable but refuses to open on a platform with no
+ * serial backend.
  *
- * Functional POSIX serial via termios is straightforward (~150 LOC)
- * but no consumer has requested it. RTOS / bare-metal targets that
- * actually use serial supply their own impls via per-board shims
- * (e.g. `nros-platform-{freertos,nuttx,threadx}` board crates).
- *
- * Mirrors Phase 134's UDP-multicast stub pattern. */
-__attribute__((weak)) int8_t _z_open_serial_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
-                                uint32_t baudrate) {
+ * A platform that HAS one overrides these: POSIX and NuttX with upstream's
+ * `tty_posix.c`, Zephyr with its own backend, bare metal with `zpico-serial`.
+ * phase-508 — zenoh-pico 1.9 names the ABI `_z_serial_{open,listen}_from_*`,
+ * `_z_serial_close` and the byte-level `_z_serial_read` / `_z_serial_write`;
+ * a platform defining `ZP_PLATFORM_SERIAL_FRAMING` (Zephyr, bare metal)
+ * replaces the byte level with whole frames, `_z_read_serial_internal` /
+ * `_z_send_serial_internal`, and the protocol layer runs the link handshake
+ * itself after the open. All six are stubbed: the protocol layer references
+ * the pair its framing mode uses, and a stub nobody references costs nothing
+ * under `--gc-sections`. */
+__attribute__((weak)) int8_t _z_serial_open_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
+                                                      uint32_t baudrate) {
     (void)sock;
     (void)txpin;
     (void)rxpin;
     (void)baudrate;
     return -1;
 }
-__attribute__((weak)) int8_t _z_open_serial_from_dev(void *sock, char *dev, uint32_t baudrate) {
+__attribute__((weak)) int8_t _z_serial_open_from_dev(void *sock, const char *dev, uint32_t baudrate) {
     (void)sock;
     (void)dev;
     (void)baudrate;
     return -1;
 }
-__attribute__((weak)) int8_t _z_listen_serial_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
-                                  uint32_t baudrate) {
+__attribute__((weak)) int8_t _z_serial_listen_from_pins(void *sock, uint32_t txpin, uint32_t rxpin,
+                                                        uint32_t baudrate) {
     (void)sock;
     (void)txpin;
     (void)rxpin;
     (void)baudrate;
     return -1;
 }
-__attribute__((weak)) int8_t _z_listen_serial_from_dev(void *sock, char *dev, uint32_t baudrate) {
+__attribute__((weak)) int8_t _z_serial_listen_from_dev(void *sock, const char *dev, uint32_t baudrate) {
     (void)sock;
     (void)dev;
     (void)baudrate;
     return -1;
 }
-__attribute__((weak)) void _z_close_serial(void *sock) {
+__attribute__((weak)) void _z_serial_close(void *sock) {
     (void)sock;
 }
 /* phase-386 W2 — SIZE_MAX, not 0.
  *
- * These two returned 0, and 0 is not an error in this API: zenoh-pico's own
- * callers test `ret == SIZE_MAX` (`src/system/common/serial.c`, both
- * `_z_connect_serial` and the read loop), so 0 reads as "succeeded, moved zero
- * bytes" — a normal state. A send that silently discarded every byte and a read
- * that reported "nothing yet" forever both looked healthy.
+ * These returned 0, and 0 is not an error in this API: zenoh-pico's own
+ * callers test `ret == SIZE_MAX` (`serial_protocol.c`, both `_z_connect_serial`
+ * and the read loop), so 0 reads as "succeeded, moved zero bytes" — a normal
+ * state. A send that silently discarded every byte and a read that reported
+ * "nothing yet" forever both looked healthy.
  *
  * Unreachable while the open/listen stubs above return -1, so this is not a
  * live bug. It becomes one under a PARTIAL override: a board shim that supplies
- * `_z_open_serial_*` and forgets send/read links cleanly, opens the port, and
- * then loses all traffic with no diagnostic. That is precisely the shape this
- * pair should refuse to have.
+ * the open and forgets send/read links cleanly, opens the port, and then loses
+ * all traffic with no diagnostic. That is precisely the shape this set should
+ * refuse to have.
  *
  * Printing is available here — unlike the ThreadX libc stubs, these are not on
  * the console path, so a diagnostic cannot recurse. It is still not used: the
  * sentinel already reaches the caller, which has real error handling
  * (`_Z_ERR_TRANSPORT_RX_FAILED`), and an unconditional print inside a transport
  * poll loop would be its own hazard.
- */
-__attribute__((weak)) size_t _z_send_serial_internal(void *sock, const uint8_t *buf, size_t len) {
+ *
+ * The socket is passed BY VALUE in this ABI, and this TU cannot see the vendor
+ * header's layout for it. On ThreadX and bare metal it is the network
+ * section's opaque storage; elsewhere a stub is only ever the losing weak
+ * definition beside the platform's real backend, and none of these stubs reads
+ * any argument, so the parameter's shape cannot matter. */
+#if defined(NROS_ZP_ALIAS_BARE_METAL_NET) || defined(NROS_ZP_ALIAS_OPAQUE_NET)
+typedef nros_zp_alias_socket_t nros_zp_alias_serial_socket_t;
+#else
+typedef struct {
+    uint8_t _opaque[NROS_ZP_NET_SOCKET_STORAGE_BYTES];
+} nros_zp_alias_serial_socket_t;
+#endif
+__attribute__((weak)) size_t _z_serial_read(nros_zp_alias_serial_socket_t sock, uint8_t *buf, size_t len) {
     (void)sock;
     (void)buf;
     (void)len;
     return SIZE_MAX;
 }
-__attribute__((weak)) size_t _z_read_serial_internal(void *sock, uint8_t *buf, size_t len) {
+__attribute__((weak)) size_t _z_serial_write(nros_zp_alias_serial_socket_t sock, const uint8_t *buf,
+                                             size_t len) {
     (void)sock;
+    (void)buf;
+    (void)len;
+    return SIZE_MAX;
+}
+__attribute__((weak)) size_t _z_send_serial_internal(nros_zp_alias_serial_socket_t sock, uint8_t header,
+                                                     const uint8_t *buf, size_t len) {
+    (void)sock;
+    (void)header;
+    (void)buf;
+    (void)len;
+    return SIZE_MAX;
+}
+__attribute__((weak)) size_t _z_read_serial_internal(nros_zp_alias_serial_socket_t sock, uint8_t *header,
+                                                     uint8_t *buf, size_t len) {
+    (void)sock;
+    (void)header;
     (void)buf;
     (void)len;
     return SIZE_MAX;

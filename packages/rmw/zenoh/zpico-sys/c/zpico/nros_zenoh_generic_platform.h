@@ -66,7 +66,14 @@ extern "C" {
 #define NROS_ZP_MUTEX_STORAGE_BYTES   NROS_PLATFORM_MUTEX_STORAGE_SIZE
 #define NROS_ZP_CONDVAR_STORAGE_BYTES NROS_PLATFORM_CONDVAR_STORAGE_SIZE
 
-typedef uint8_t _z_task_t[NROS_ZP_TASK_STORAGE_BYTES];
+/* phase-508 — a task is a STRUCT around its storage, not a bare array:
+ * zenoh-pico 1.9's background executor copies one by value
+ * (`_z_task_t task_to_join = be->_task;` in `runtime/background_executor.c`),
+ * and C cannot initialise an array from an array. The wrapper has the same
+ * size and alignment as the array it replaces. */
+typedef struct {
+    uint8_t _storage[NROS_ZP_TASK_STORAGE_BYTES];
+} _z_task_t;
 typedef uint8_t _z_mutex_t[NROS_ZP_MUTEX_STORAGE_BYTES];
 typedef uint8_t _z_mutex_rec_t[NROS_ZP_MUTEX_STORAGE_BYTES];
 typedef uint8_t _z_condvar_t[NROS_ZP_CONDVAR_STORAGE_BYTES];
@@ -87,6 +94,12 @@ typedef uint8_t _z_condvar_t[NROS_ZP_CONDVAR_STORAGE_BYTES];
  * `#undef NROS_PLATFORM_ALIASES` — moves in the same commit. Two headers
  * disagreeing about this type is issue 0135's shape. */
 typedef nros_platform_task_attr_t z_task_attr_t;
+
+/* RFC-0110 — the identity zenoh-pico 1.9's executor compares to decide
+ * whether the calling thread is the one running it. A ThreadX task is named by
+ * its `TX_THREAD *` (what `tx_thread_identify` returns). MUST match the typedef
+ * in `platform/threadx/platform.h` — the same two-header seam as `z_task_attr_t`. */
+typedef void *_z_task_id_t;
 
 /* -------------------------------------------------------------------------
  *  Clock + wall-clock time — both are millisecond `uint64_t`.

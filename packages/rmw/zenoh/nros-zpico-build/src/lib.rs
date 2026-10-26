@@ -885,14 +885,15 @@ pub fn parse_zenoh_sources(
 /// they agreed — the class issue 1068 fixed for micro-XRCE next door. Gate:
 /// `just check zenoh-source-manifest`.
 ///
-/// `platform` is the resolved `nros-platform.toml` platform name and `link` its
-/// link features; between them they answer the manifest's condition tokens.
+/// `platform` is the resolved `nros-platform.toml` platform name; it answers
+/// the manifest's condition tokens. (A link feature used to answer one too,
+/// `zephyr_isotp`; zenoh-pico 1.9 moved that binding under `src/link/`, where
+/// the file gates itself — phase-508.)
 pub fn add_zenoh_pico_core_sources(
     build: &mut cc::Build,
     zenoh_pico_src: &Path,
     manifest_path: &Path,
     platform: &str,
-    link: &LinkFeatures,
 ) {
     // A manifest edit must rebuild the C. Nothing else here watches this file.
     println!("cargo:rerun-if-changed={}", manifest_path.display());
@@ -923,8 +924,6 @@ pub fn add_zenoh_pico_core_sources(
             // did, it died on `version.h: No such file or directory`, a header
             // only the Zephyr build generates). The cmake lane answers TRUE.
             "zephyr" => is_zephyr,
-            // RFC-0083 — Zephyr AND the ISO-TP link is wanted.
-            "zephyr_isotp" => is_zephyr && link.isotp,
             other => panic!(
                 "nros-zpico-build: {} uses condition token `{other}`, which this lane does \
                  not answer. Add an arm here AND a `set(_zenoh_cond_{other} …)` in \

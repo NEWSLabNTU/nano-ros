@@ -87,5 +87,5 @@ wake-latency-cortex-m3               0   0     0       1      0
 zpico-alloc                         14   1     1       0      0
 zpico-link-ivc                       7   0     0       8      0
 zpico-platform-custom                1   0     0       5      0
-zpico-serial                        37   2     0       1      0
+zpico-serial                        31   2     0       1      0
 zpico-sys                           33   0     0      13      0
