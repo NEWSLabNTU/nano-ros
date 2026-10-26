@@ -1088,7 +1088,7 @@ impl XrceDemand {
         // it cuts both ways here: sizing a POOL from the closure over-states,
         // while sizing a QoS-gated buffer from it can UNDER-state, because a
         // closure row carries no endpoint's QoS.
-        if desc.meta.basis != Basis::Contract {
+        if !desc.meta.basis.describes_image() {
             d.note(format!(
                 "the sizing descriptor states `basis = {}`, which describes the link closure \
                  rather than what this image creates, so no pool is derived from it \

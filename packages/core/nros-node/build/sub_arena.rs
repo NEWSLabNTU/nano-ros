@@ -88,8 +88,8 @@ pub(crate) fn descriptor_subscriptions(
     rx_recv_size: usize,
     in_place_trusted: bool,
 ) -> Option<Vec<SubEndpoint>> {
-    use nros_sizing_descriptor::{Basis, EndpointKind};
-    if desc.meta.basis != Basis::Contract {
+    use nros_sizing_descriptor::EndpointKind;
+    if !desc.meta.basis.describes_image() {
         return None;
     }
     // Known, whatever its value (see the guard list above).

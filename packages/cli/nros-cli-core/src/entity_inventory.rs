@@ -849,6 +849,28 @@ pub struct EntityInventory {
     /// Everything that is not a count -- the type lists, the declared-QoS
     /// tables, the parameter declarations -- is still read off the union rows.
     image_views: Vec<(String, EntityInventory)>,
+    /// phase-517 W5 (RFC-0100 amendment of 2026-10-25) -- who STATED the rows:
+    /// a contract, or only the probe sidecars of an image that has none.
+    /// Carried to the descriptor's `[meta] basis`, so a consumer that wants
+    /// contract-only facts can tell the two apart.
+    stated_by: StatedBy,
+}
+
+/// phase-517 W5 -- who stated an inventory's rows (RFC-0100 amendment of
+/// 2026-10-25). Ordered: a fold keeps the larger, so one contract anywhere in
+/// the composition makes the whole of it a contract's.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum StatedBy {
+    /// Neither: a metadata or probe inventory before it was composed with a
+    /// model, or one no model reached.
+    #[default]
+    Unstated,
+    /// The image authored no contract, and every component its launch tree
+    /// starts has a FRESH probe sidecar, so the rows are what the code was
+    /// recorded to create ([`crate::orchestration::metadata_refresh::probe_inventory`]).
+    Probe,
+    /// A contract described the image's wiring ([`EntityInventory::from_model`]).
+    Contract,
 }
 
 /// Issue 1701 -- what an image's MODEL says about the image, apart from the
@@ -3123,7 +3145,18 @@ impl EntityInventory {
             rx_cost: None,
             launched: None,
             image_views: Vec::new(),
+            stated_by: StatedBy::Unstated,
         }
+    }
+
+    /// phase-517 W5 -- who stated this inventory's rows. See [`StatedBy`].
+    pub fn stated_by(&self) -> StatedBy {
+        self.stated_by
+    }
+
+    /// phase-517 W5 -- record who stated the rows.
+    pub fn set_stated_by(&mut self, by: StatedBy) {
+        self.stated_by = by;
     }
 
     /// Issue 1270 -- the runtime's own service families this inventory
@@ -3736,6 +3769,7 @@ impl EntityInventory {
         // Issue 1701 -- the model's facts apart from the rows, ONE spelling for
         // this and for a shared runtime's unwired images.
         inv.apply_frame(&ImageFrame::from_model(model));
+        inv.stated_by = StatedBy::Contract;
         for (node_fqn, entities) in per_node {
             let component = node_fqn.rsplit('/').next().unwrap_or(&node_fqn).to_string();
             inv.insert(ComponentEntities {
@@ -3796,6 +3830,41 @@ impl EntityInventory {
             });
         }
         inv
+    }
+
+    /// phase-517 W5 (RFC-0100 amendment of 2026-10-25) -- the declaration of an
+    /// image whose model authored NO contract, from the FRESH probe rows of
+    /// the nodes its launch tree starts: [`Self::recorded_for_launch`]'s rows
+    /// with the model's [`ImageFrame`], stated by [`StatedBy::Probe`].
+    ///
+    /// All or nothing: `Err` names (by node FQN) every launched node no single
+    /// fresh row describes, and the caller then keeps the refusal it had
+    /// before. A model that launches nothing is `Err(vec![])`.
+    pub fn from_probe(
+        source: impl Into<String>,
+        model: &nros_orchestration_ir::overlay::LoadedModel,
+        probe: &[crate::orchestration::metadata_refresh::ProbeRow],
+    ) -> Result<Self, Vec<String>> {
+        if model.structure.nodes.is_empty() {
+            return Err(Vec::new());
+        }
+        let recorded = Self::recorded_for_launch(model, probe);
+        let unrecorded: Vec<String> = recorded
+            .components
+            .iter()
+            .filter(|c| matches!(c.declaration, Declaration::Absent))
+            .map(|c| c.pkg.clone())
+            .collect();
+        if !unrecorded.is_empty() {
+            return Err(unrecorded);
+        }
+        let mut inv = Self::new(source);
+        inv.apply_frame(&ImageFrame::from_model(model));
+        for c in recorded.components {
+            inv.insert(c);
+        }
+        inv.stated_by = StatedBy::Probe;
+        Ok(inv)
     }
 
     /// Issue 1600 -- the inventory ONE runtime must satisfy when several images
@@ -4052,6 +4121,9 @@ impl EntityInventory {
                 (one, other) => one.clone().or_else(|| other.clone()),
             };
         out.launched = launched.clone();
+        // phase-517 W5 -- a contract on either side makes the composition a
+        // contract's; otherwise a probe-stated side carries through.
+        out.stated_by = self.stated_by.max(model.stated_by);
         let mut seen: Vec<&str> = Vec::new();
 
         for decl_row in &self.components {
@@ -12192,5 +12264,95 @@ contracts:
             compose(&m, &[]).derive(),
             Derivation::Refused { .. }
         ));
+    }
+
+    /// The stock launch with NO contract at all: two nodes, no topics, no
+    /// paths -- the shape of the book's first project after `nros sync`.
+    fn contract_less_model() -> nros_orchestration_ir::overlay::LoadedModel {
+        let y = r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: system.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+    /listener:
+      { scope: system.launch.xml, pkg: listener_pkg, exec: listener, node_name: listener }
+"#;
+        nros_orchestration_ir::overlay::LoadedModel::bare(
+            serde_yaml_ng::from_str(y).expect("model fixture parses"),
+        )
+    }
+
+    /// phase-517 W5 (RFC-0100 Amendment 3) -- a contract-less image whose every
+    /// launched node has a fresh probe row is STATED by the probe, and derives.
+    #[test]
+    fn a_contract_less_image_is_stated_by_its_probe_rows() {
+        let m = contract_less_model();
+        assert!(
+            EntityInventory::from_model("contract", &m).is_none(),
+            "the control: no contract is authored"
+        );
+        let inv = EntityInventory::from_probe("probe", &m, &stock_sidecars())
+            .expect("every launched node has a row");
+        assert_eq!(inv.stated_by(), StatedBy::Probe);
+        let d = inv.derive();
+        let k = d.knobs().expect("the probe-stated image derives");
+        assert_eq!(
+            (k.max_cbs, k.max_subscribers, k.max_publishers),
+            (2, 1, 1),
+            "the talker's timer + the listener's subscription; one publisher: {k:?}"
+        );
+        assert!(k.max_nodes >= 2, "both nodes: {k:?}");
+    }
+
+    /// A launched node with no fresh row (a stale sidecar is dropped before
+    /// it reaches here) keeps the whole image unstated: all or nothing.
+    #[test]
+    fn a_contract_less_image_missing_one_probe_row_stays_unstated() {
+        let m = contract_less_model();
+        let talker_only: Vec<ProbeRow> = stock_sidecars()
+            .into_iter()
+            .filter(|r| r.entities.pkg == "talker_pkg")
+            .collect();
+        assert_eq!(
+            EntityInventory::from_probe("probe", &m, &talker_only).unwrap_err(),
+            vec!["/listener".to_string()]
+        );
+        // A model that launches nothing is not described either.
+        let empty = nros_orchestration_ir::overlay::LoadedModel::bare(
+            serde_yaml_ng::from_str("meta: { version: 1 }\nstructure: { nodes: {} }\n")
+                .expect("parses"),
+        );
+        assert_eq!(
+            EntityInventory::from_probe("probe", &empty, &stock_sidecars()).unwrap_err(),
+            Vec::<String>::new()
+        );
+    }
+
+    /// A contract anywhere in a composition makes it a contract's: the probe
+    /// provenance never survives a fold with one, and the contract arm keeps
+    /// flooring exactly as issue 1694 left it.
+    #[test]
+    fn a_contract_still_wins_over_probe_provenance() {
+        let composed = compose(&partial_model(""), &stock_sidecars());
+        assert_eq!(composed.stated_by(), StatedBy::Contract);
+        let probe = EntityInventory::from_probe("probe", &contract_less_model(), &stock_sidecars())
+            .expect("rows");
+        let contract = EntityInventory::from_model(
+            "contract",
+            &nros_orchestration_ir::overlay::LoadedModel::bare(partial_model("")),
+        )
+        .expect("a contract");
+        assert_eq!(
+            probe.merged_per_kind_max(&contract).stated_by(),
+            StatedBy::Contract
+        );
+        assert_eq!(
+            EntityInventory::new("metadata")
+                .merged_per_kind_max(&probe)
+                .stated_by(),
+            StatedBy::Probe,
+            "a metadata inventory folding in a probe-stated one stays the probe's"
+        );
     }
 }
