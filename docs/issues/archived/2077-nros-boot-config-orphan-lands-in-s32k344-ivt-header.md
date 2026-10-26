@@ -8,7 +8,7 @@ severity: medium
 found: 2026-10-26
 related: [rfc-0045, phase-512, 1799, 0902]
 resolved: 2026-10-26
-resolved_in: "PR i2077-2078 (2026-10-26)"
+resolved_in: "PR #2692 (2026-10-26)"
 ---
 
 ## Measured
