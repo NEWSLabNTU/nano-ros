@@ -94,6 +94,14 @@ pub fn resolve(
     let Some(net) = file.board_net(board)? else {
         return Ok(fallback);
     };
+    // Issue 2064 — an `"os"` board's address is its kernel's: read the
+    // configuration it names, the same file its build script reads.
+    if let Some(rel) = net.kernel_config.as_deref() {
+        let path = descriptor.parent().unwrap_or(Path::new(".")).join(rel);
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("[board.net] kernel_config {}: {e}", path.display()))?;
+        return from_kconfig(&text, fallback).map_err(|e| format!("{}: {e}", path.display()));
+    }
     // RFC-0103 D10 — a board on the QEMU network starts from that network's
     // plan. Nothing else here is the board's: an address is the IMAGE's
     // (`NROS_IMAGE_NET`, phase-497 W2), and the board-level `ip` / `mac` keys
@@ -300,6 +308,28 @@ mod tests {
                 (q.ip, q.gateway, q.netmask),
                 "{arch}"
             );
+        }
+    }
+
+    /// Issue 2064 — each NuttX board's descriptor names the kernel config its
+    /// crate's build script reads, so `resolve` (what `nros board net` and the
+    /// cmake entry locator ask) answers the same network as the crate's
+    /// `BOARD_NET_*` constants: QEMU's SLIRP plan, never the platform default.
+    #[test]
+    fn a_nuttx_board_resolves_the_network_its_kernel_config_states() {
+        let crate_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../nros-board-nuttx-qemu");
+        let desc = crate_dir.join("nros-board.toml");
+        // (board, the defconfig `nros-board-nuttx-qemu/build.rs` picks for its target)
+        for (board, arch) in [("qemu-armv7a-nuttx", "arm"), ("rv-virt-nuttx", "riscv")] {
+            let got = resolve(&desc, Some(board), ResolvedNet::platform_default()).unwrap();
+            let text = std::fs::read_to_string(
+                crate_dir.join("nuttx-config").join(arch).join("defconfig"),
+            )
+            .unwrap();
+            let crate_side = from_kconfig(&text, ResolvedNet::platform_default()).unwrap();
+            assert_eq!(got, crate_side, "{board}");
+            assert_eq!(got.gateway, [10, 0, 2, 2], "{board}");
         }
     }
 

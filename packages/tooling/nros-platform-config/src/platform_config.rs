@@ -3117,6 +3117,15 @@ pub struct BoardNet {
     /// [`LINK_KINDS`]. Read through [`BoardNet::links`].
     #[serde(default)]
     pub links: Vec<String>,
+    /// Issue 2064 — for a `stack = "os"` board, the kernel configuration that
+    /// states its address (`CONFIG_NETINIT_*`), relative to the descriptor.
+    /// The board crate's build script and `nros board net` (hence the cmake
+    /// entry locator) both read THIS file, so the two cannot answer different
+    /// networks. Without it an `"os"` board fell back to the platform default
+    /// on the cmake side while its crate read the kernel's, and a NuttX C
+    /// image dialled `192.0.3.1` on a network that is `10.0.2.0/24`.
+    #[serde(default)]
+    pub kernel_config: Option<String>,
     /// RFC-0103 D10g (phase-497 W2) — the board-level single-interface
     /// identity, RETIRED: an address is the image's, a gateway and netmask the
     /// network's, and a MAC the image's (or derived per image from the
