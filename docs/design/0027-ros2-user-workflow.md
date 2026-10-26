@@ -1380,10 +1380,11 @@ os_priority = 0
 
 [transport.zenoh.freertos]
 read_task_priority = 6
-lease_task_priority = 6
 read_stack_bytes = 5120
-lease_stack_bytes = 5120
 ```
+
+(No lease-task row: zenoh-pico 1.10 runs the lease on its executor (read) task,
+RFC-0110 D2.)
 
 For MVP, transport configuration should stay close to the existing nano-ros
 model: compile-time options and environment variables select the backend and

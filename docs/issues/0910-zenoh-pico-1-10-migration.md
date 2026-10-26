@@ -497,3 +497,11 @@ Five are Zephyr fixtures that were never built (the XRCE C cells and
 passed when re-run alone. `an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`
 fails alone too — it delivers, but no `nros: heap peak` line arrives within
 120 s — and its image links no zenoh-pico symbol, so it is outside this move.
+
+## RFC-0110 measurements, 2026-10-27
+
+Taken on branch `feat/508-lease-knobs` after #2697 merged. The full results
+are in RFC-0110 "Results". In short: four of the five questions are
+answered. The NuttX quiet-link keep-alive is a defect of its own, and it is
+filed as issue 2094. A NuttX listener with no traffic loses its session at
+the 60 s lease, and FreeRTOS and Zephyr native_sim do not.

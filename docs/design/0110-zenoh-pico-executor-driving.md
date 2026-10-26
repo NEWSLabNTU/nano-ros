@@ -5,7 +5,7 @@ status: Draft
 since: 2026-10
 last-reviewed: 2026-10
 implements-tracked-by: [phase-508]
-amends: []
+amends: [rfc-0016]
 supersedes: []
 superseded-by: null
 ---
@@ -200,8 +200,11 @@ which sends one keep-alive through the transport's TX path.
   lease, keep-alive, query timeout and reconnect, which is five. Upstream's
   default of 64 sizes three static containers that each embedded image
   would carry (`include/zenoh-pico/runtime/executor.h:156-185`).
-  - A failed spawn is already loud: the session open fails with
-    `_Z_ERR_FAILED_TO_SPAWN_TASK`.
+  - A failed spawn is loud only at OPEN, which fails with
+    `_Z_ERR_FAILED_TO_SPAWN_TASK`. A reconnect that cannot spawn is
+    SILENT: measured at `Z_RUNTIME_MAX_TASKS = 4`, the session never
+    resumed and nothing reported why. (This said "already loud" until
+    2026-10-27.)
   - The number is a floor to measure, not a guess to keep. It belongs in
     the sizing descriptor (RFC-0100) once peer mode or advanced pub/sub
     adds tasks.
@@ -223,6 +226,54 @@ which sends one keep-alive through the transport's TX path.
 | `Z_RUNTIME_MAX_TASKS` floor | the default of 8 is an estimate | count live tasks at open, reconnect and close in a test image |
 | ThreadX multi-tier contention | the try-lock replaces `threadx_read_mutex`; a spawned tier's interest reply must still arrive (issue #247) | the multi-tier ThreadX e2e that caught #247 |
 | app-thread latency on spawn and cancel | spawning from an app thread waits for the current executor poll (D2, fact 1) | only advanced pub/sub and session open spawn from app threads; confirm nano-ros reaches neither in steady state |
+
+### Results (2026-10-27)
+
+Four of the five are answered. The keep-alive row found a defect
+(issue 2094), so this RFC stays Draft.
+
+- **Executor stack high-water mark.** `zpico_open` spawns a one-shot
+  sampler future on the executor. It samples once a second from +4 s and
+  prints `nros: zenoh executor stack peak <used> of <size> bytes` when the
+  value has held for 10 samples (or after 45 samples). It is compiled only
+  where the platform can answer.
+
+  | platform (image) | peak | stack |
+  | --- | --- | --- |
+  | FreeRTOS mps2-an385, Rust and C talker | 984 B | 5120 B |
+  | FreeRTOS mps2-an385, Rust and C listener | 728 B | 5120 B |
+  | NuttX virt, Rust listener | 2296 B | 65256 B |
+  | Zephyr mps2_an385, C talker (`CONFIG_INIT_STACKS` overlay) | 992 B, one sample at +4 s | 131072 B |
+  | POSIX host | not measurable (8 MiB host thread) | — |
+
+  So no THREAD platform comes near its stack. NuttX and Zephyr carry 28x
+  and 130x their peak. Lowering those defaults is a sizing change of its
+  own, not made here. The Zephyr figure is a single early sample, because
+  the sampler never woke again on that image (issue 2094).
+- **Keep-alive under a blocked receive: FAILED on NuttX** (issue 2094). A
+  NuttX listener alone against `rmw_zenohd` lost its session at the 60 s
+  lease in 3 of 3 runs, then reconnected repeatedly. The client sent at
+  most two keep-alives in the first minute, where it owed one every 20 s.
+  Lowering `Z_CONFIG_SOCKET_TIMEOUT` to 100 ms, as the row above proposed,
+  made it worse: 99 sessions in 150 s. The same soak on FreeRTOS and on
+  Zephyr native_sim kept one session. (The row's "10 s lease" is stale:
+  the negotiated lease is 60 s since issue 0906.)
+- **`Z_RUNTIME_MAX_TASKS` floor: 5.** Measured on the POSIX integration
+  suite (`nros-rmw-zenoh --features platform-posix --test
+  zenoh_integration`): at 4, 21 of 22 pass, and
+  `declares_keep_running_across_a_reconnect` fails because the reconnect
+  cannot spawn its transport futures. At 5 and at 8, 22 of 22 pass. The
+  default stays 8. That leaves headroom of 3, and the stack sampler holds
+  one slot for its first minute.
+- **ThreadX multi-tier contention: passes.** The `realtime_tiers` row
+  `threadx-linux/rust` (the cell that caught #247) passed in 3 of 3 runs,
+  on fixtures rebuilt from this tree.
+- **App-thread spawn latency: not reached in steady state.** The futures
+  that spawn from an app thread are advanced pub/sub
+  (`Z_FEATURE_ADVANCED_* 0`) and peer mode (`Z_FEATURE_UNICAST_PEER 0`),
+  and both are compiled out. That leaves session open, plus the stack
+  sampler's one spawn right after it. A reconnect spawns from the executor
+  thread itself.
 
 ## Alternatives considered
 
@@ -252,12 +303,24 @@ Tracked by phase-508:
    FreeRTOS.
 4. D3: CALLER single-thread on bare-metal smoltcp and serial.
 5. D4 and D5: ThreadX and the ping.
-6. Retire and refuse the lease knobs (D2).
+6. Retire and refuse the lease knobs (D2). Done 2026-10-26: the registry row
+   carries `retired`, so every env and `system.toml` spelling is refused with
+   the reason, the Kconfig symbol is gone, `[node.rt]` lease keys panic at
+   parse, `nros_app_config_t` lost its `keepalive_*` fields,
+   `zpico_set_task_config` takes two arguments, and the transport band is
+   `{executor, poll}` (Zephyr's band symbols are the read priority alone).
 7. Take each measurement in the table above; this RFC goes to Stable when
    all of them are taken.
 
 ## Changelog
 
 - 2026-10-24: first draft, from issue 0910's second-pass survey.
+- 2026-10-26: step 6 done — the lease knobs retired and refused.
+- 2026-10-27: step 7 measurements taken (see "Results"). The
+  `MAX_TASKS` floor is 5, ThreadX tiers pass, and app-thread spawns are
+  not reached in steady state. The stack peaks are under 2.3 KiB
+  everywhere. The keep-alive soak FAILS on NuttX (issue 2094), so the RFC
+  stays Draft. D6's "a failed spawn is already loud" is corrected: it holds
+  at open only.
 - 2026-10-26: D4 corrected — ThreadX's sockets come from the platform net ABI
   (`nros-platform-threadx/src/net.c`), not the dead `c/platform/threadx/network.c`.

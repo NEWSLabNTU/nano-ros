@@ -105,12 +105,22 @@ SHELL_NAMES = {"justfile", ".envrc", ".env.example", "Dockerfile"}
 
 
 def retired_names(registry_text: str | None = None) -> dict[str, str]:
-    """retired spelling -> canonical spelling, from the registry's error table."""
+    """retired spelling -> what to use instead, from the registry's error table.
+
+    A renamed knob's `legacy` names map to its canonical spelling. A RETIRED
+    knob (a row with `retired`, RFC-0110 D2) has no replacement spelling, so
+    every one of its names -- the canonical one too -- maps to a pointer at the
+    row's reason."""
     text = registry_text if registry_text is not None else REGISTRY.read_text()
     out = {}
     for row in tomllib.loads(text).get("knob", []):
+        canonical = "NROS_" + row["id"]
+        if row.get("retired"):
+            for s in [canonical] + row.get("legacy", []):
+                out[s] = f"nothing (the knob itself is retired; knobs.toml {row['id']} says why)"
+            continue
         for old in row.get("legacy", []):
-            out[old] = "NROS_" + row["id"]
+            out[old] = canonical
     return out
 
 
@@ -434,6 +444,10 @@ def self_test() -> int:
     if table != {"ZPICO_X": "NROS_ZENOH_X"}:
         bad += 1
         print(f"  self-test: registry parse gave {table!r}")
+    table = retired_names('[[knob]]\nid = "ZENOH_G"\nlegacy = ["ZPICO_G"]\nretired = "x"\n')
+    if set(table) != {"NROS_ZENOH_G", "ZPICO_G"} or "NROS_ZENOH_G" in table.values():
+        bad += 1
+        print(f"  self-test: a retired knob's spellings gave {table!r}")
     return bad
 
 

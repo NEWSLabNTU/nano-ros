@@ -239,7 +239,7 @@ const nros_app_config_t NROS_APP_CONFIG = {{
         }},
     .network =
         {network},
-    .scheduling = {{0, 0, 0, 0, 0, 0, 0, 0}},
+    .scheduling = {{0, 0, 0, 0, 0, 0}},
 }};
 "#,
         network = net.c_network_initializer(),

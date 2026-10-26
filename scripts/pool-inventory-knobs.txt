@@ -129,7 +129,6 @@ NROS_ZENOH_RX_TASK_BUDGET_REST_US | not-a-size | | microseconds
 NROS_ZENOH_TX_BATCH | not-a-size | | a switch: whether zenoh-pico batches outgoing messages (phase-282)
 NROS_ZENOH_TX_SPLIT_LOCK | not-a-size | | a switch: whether the TX path takes its own lock instead of the session's (phase-282)
 NROS_ZENOH_TX_BATCH_FLUSH_MS | not-a-size | | a time: the longest a batched message waits before it is flushed (phase-282)
-NROS_ZENOH_LEASE_PRIORITY | not-a-size | | a task priority
 NROS_ZENOH_READ_PRIORITY | not-a-size | | a task priority
 NROS_MULTIGOAL_GOALS | test-only | | `action-client-multigoal` test binary
 NROS_MULTIGOAL_SOAK_MS | test-only | | `action-client-multigoal` test binary

@@ -313,8 +313,8 @@ STORAGE_ROLES = [
         "packages/cli/nros-cli-core/src/codegen/entry/packs/entry/cpp/entry.cpp.jinja",
         "alignas(8) static unsigned char __nros_mon_storage[",
     ),
-    # The Zephyr platform's task-stack pool (zenoh-pico's read, lease and
-    # tx-flush tasks): CONFIG_NROS_ZEPHYR_TASK_SLOTS stacks of
+    # The Zephyr platform's task-stack pool (zenoh-pico's executor thread and
+    # tx-flush task, RFC-0110 D2): CONFIG_NROS_ZEPHYR_TASK_SLOTS stacks of
     # CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE, priced from the image's .config.
     (
         "platform task stacks",

@@ -91,7 +91,12 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       replaces the read and lease tasks; CALLER mode (bare metal, ThreadX)
       runs a bounded `zp_spin_once` loop, and ThreadX gets a fork patch to
       run the multi-thread executor from the caller. Done when RFC-0110's
-      measurements are taken and it leaves Draft.
+      measurements are taken and it leaves Draft. MEASURED 2026-10-27: four
+      of five hold (the `MAX_TASKS` floor is 5, ThreadX tiers pass, stack
+      peaks are under 2.3 KiB, and app threads do not spawn in steady
+      state). The NuttX quiet-link keep-alive FAILS, and that is
+      [issue 2094](../issues/2094-nuttx-quiet-link-keepalive-starves-under-executor.md),
+      so RFC-0110 stays Draft and this item stays open until it is fixed.
 - [ ] Rebase the fork's `nano-ros` patch line onto upstream 1.10.1, keeping the
       patches as individual commits (CLAUDE.md, vendored-fork workflow). Drop
       each patch that upstream now carries, and record each drop. Redesign
@@ -123,7 +128,16 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       `_zp_send_keep_alive`. The lease knobs still parse; the executor stack
       is the larger of the read and lease stacks, and retiring them is the
       next item.
-- [ ] Retire and refuse the lease-task knobs (RFC-0110 D2, step 6).
+- [x] Retire and refuse the lease-task knobs (RFC-0110 D2, step 6). DONE
+      2026-10-26. The knob registry gained a `retired` field: the row stays
+      as the error table, every spelling (env, `[image.<id>] env`,
+      `[image.<id>.knobs]`) is refused with the reason in the Rust ladder,
+      the cmake twin and the CLI, and no Kconfig symbol is generated, so a
+      conf that assigns it fails as an undefined symbol. `[node.rt]` lease
+      keys, `nros_app_config_t`'s `keepalive_*` fields, the shim's
+      `ZPICO_LEASE_TASK_PRIORITY` and the lease half of
+      `zpico_set_task_config` are gone; the transport band is
+      `{executor, poll}`.
 - [ ] Generate `config.h` the way upstream does, and close the gap between the
       knobs upstream defines and the ones our generator emits. Stop emitting
       `Z_FEATURE_PERIODIC_TASKS`, which 1.10.1 removed. DONE ON A LOCAL BRANCH

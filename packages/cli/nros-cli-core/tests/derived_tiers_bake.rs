@@ -220,7 +220,10 @@ const ISLAND_DOTCONFIG: &str = "CONFIG_NUM_PREEMPT_PRIORITIES=15\n\
      CONFIG_NUM_COOP_PRIORITIES=16\n\
      CONFIG_POSIX_PRIORITY_SCHEDULING=y\n\
      CONFIG_PREEMPT_ENABLED=y\n";
-const ISLAND_TRANSPORT_BANDS: [i64; 2] = [200, 255];
+// One band since RFC-0110 D2: zenoh-pico 1.10 runs the lease on its executor
+// (read) task, so the second (lease) band at 255 that widened the reservation to
+// k_thread 0 is gone. The pool it leaves is the same.
+const ISLAND_TRANSPORT_BANDS: [i64; 1] = [200];
 
 /// issue 1427, end to end: the numbers a bake of the W0 fixture produces sit
 /// INSIDE the application pool the island's image resolves, and therefore below
@@ -247,7 +250,7 @@ fn the_derived_table_lands_below_the_transport_band() {
     let plan = PriorityPlan::from_zephyr_dotconfig(ISLAND_DOTCONFIG, &ISLAND_TRANSPORT_BANDS)
         .expect("the island's .config resolves a plan");
     let transport = plan.reserved["transport"];
-    assert_eq!(transport, Band::new(0, 4), "the measured island band");
+    assert_eq!(transport, Band::new(4, 4), "the island's band");
     assert_eq!(plan.app, Band::new(5, 14), "the measured island pool");
 
     for (node, p) in &prio {

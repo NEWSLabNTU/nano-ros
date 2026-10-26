@@ -269,8 +269,10 @@ typedef struct {
 #ifndef ZPICO_READ_TASK_PRIORITY
 #define ZPICO_READ_TASK_PRIORITY 16
 #endif
-#ifndef ZPICO_LEASE_TASK_PRIORITY
-#define ZPICO_LEASE_TASK_PRIORITY 16
+/* RFC-0110 D2 — zenoh-pico 1.10 has no lease task, so its priority knob is
+ * retired, and refused rather than ignored. */
+#ifdef ZPICO_LEASE_TASK_PRIORITY
+#error "ZPICO_LEASE_TASK_PRIORITY is retired: zenoh-pico 1.10 runs the lease on its executor thread (RFC-0110 D2). Set ZPICO_READ_TASK_PRIORITY instead."
 #endif
 #ifndef ZPICO_GRAPH_CACHE_SIZE
 /* Bytes of NUL-separated liveliness keyexprs the graph cache holds.
@@ -1965,20 +1967,12 @@ static void zpico_posix_fifo_set_priority(pthread_attr_t* attr, uint32_t raw) {
 }
 #endif
 
-void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
-                           uint32_t lease_priority, uint32_t lease_stack_bytes) {
+void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes) {
 #if Z_FEATURE_MULTI_THREAD == 1
     /* RFC-0110 D2 — zenoh-pico 1.9 runs the read path, the lease and keep-alive
      * sends, the reconnect and every user callback on ONE executor thread, so
-     * the read task's attributes become the executor's and the lease task is
-     * gone. Its STACK is not dropped with it: until the executor's high-water
-     * mark is measured per platform, the executor gets the larger of the two
-     * stacks a board stated. The lease PRIORITY has nothing left to apply to;
-     * the knobs that carry it are retired in RFC-0110 step 6. */
-    if (lease_stack_bytes > read_stack_bytes) {
-        read_stack_bytes = lease_stack_bytes;
-    }
-    (void)lease_priority;
+     * the read task's attributes are the executor's. The lease task and the two
+     * arguments that configured it are gone (RFC-0110 step 6). */
     memset(&g_default_read_task_attr, 0, sizeof(g_default_read_task_attr));
 
     // Platform-specific field assignment.
@@ -2131,8 +2125,6 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
 #else
     (void)read_priority;
     (void)read_stack_bytes;
-    (void)lease_priority;
-    (void)lease_stack_bytes;
 #endif
 }
 
@@ -2198,6 +2190,123 @@ void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
 #endif
 }
 
+// ============================================================================
+// Executor stack peak — RFC-0110 D2's "measured, not summed"
+// ============================================================================
+//
+// In THREAD mode one thread runs zenoh-pico's whole session: the read path,
+// the lease and keep-alive sends, the reconnect (a blocking connect, handshake
+// and declaration replay) and every user callback. Its stack used to be two
+// stacks (read + lease) sized separately; RFC-0110 D2 says the one that
+// replaces them is sized from a MEASURED high-water mark, the way issue 1146
+// sized `app_stack_bytes`, and that every image prints its own peak so the
+// next person reads the number instead of copying it.
+//
+// The measurement runs ON the executor thread, as one more future: it samples
+// its own thread's high-water mark, and once the value has held still for a
+// while it prints one line and finishes. No board needs a handle to the
+// thread, so no board needs plumbing. It costs one `Z_RUNTIME_MAX_TASKS` slot
+// for at most ZPICO_EXEC_STACK_MAX_SAMPLES seconds after the first open; the
+// measured floor is 5 (open + a reconnect), so 8 still has room for it.
+//
+// Where the platform cannot answer (POSIX hosts, Zephyr without
+// CONFIG_INIT_STACKS + CONFIG_THREAD_STACK_INFO, NuttX without stack
+// coloration) nothing is spawned and nothing is printed.
+#if defined(ZPICO_DRIVE_THREAD) &&                                                                  \
+    (defined(ZENOH_FREERTOS_LWIP) ||                                                               \
+     (defined(ZENOH_ZEPHYR) && defined(CONFIG_INIT_STACKS) && defined(CONFIG_THREAD_STACK_INFO)) || \
+     (defined(ZENOH_NUTTX) && defined(CONFIG_STACK_COLORATION)))
+#define ZPICO_EXEC_STACK_REPORT 1
+#if defined(ZENOH_FREERTOS_LWIP)
+#include <task.h>
+#elif defined(ZENOH_NUTTX)
+#include <nuttx/arch.h>
+#include <nuttx/sched.h>
+#endif
+
+#define ZPICO_EXEC_STACK_FIRST_MS 4000u
+#define ZPICO_EXEC_STACK_PERIOD_MS 1000u
+#define ZPICO_EXEC_STACK_STABLE_SAMPLES 10u
+#define ZPICO_EXEC_STACK_MAX_SAMPLES 45u
+
+static struct {
+    bool spawned;
+    uint32_t samples;
+    uint32_t stable;
+    size_t prev_used;
+} g_exec_stack;
+
+/* (used, size) of the CALLING thread's stack; size 0 when it is not known. */
+static void _zpico_exec_stack_sample(size_t* used, size_t* size) {
+#if defined(ZENOH_FREERTOS_LWIP)
+    *size = g_default_read_task_configured
+                ? (size_t)g_default_read_task_attr.stack_depth * sizeof(StackType_t)
+                : 0u;
+    size_t unused = (size_t)uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t);
+    *used = (*size > unused) ? *size - unused : 0u;
+    if (*size == 0u) {
+        *used = unused; /* reported as headroom below */
+    }
+#elif defined(ZENOH_ZEPHYR)
+    size_t unused = 0;
+    *size = k_current_get()->stack_info.size;
+    *used = (k_thread_stack_space_get(k_current_get(), &unused) == 0 && *size > unused)
+                ? *size - unused
+                : 0u;
+#elif defined(ZENOH_NUTTX)
+    struct tcb_s* tcb = nxsched_self();
+    *size = tcb->adj_stack_size;
+    *used = up_check_tcbstack(tcb, tcb->adj_stack_size);
+#endif
+}
+
+static _z_fut_fn_result_t _zpico_exec_stack_fn(void* arg, _z_executor_t* executor) {
+    (void)arg;
+    (void)executor;
+    if (g_exec_stack.samples++ == 0u) {
+        return _z_fut_fn_result_wake_up_after(ZPICO_EXEC_STACK_FIRST_MS);
+    }
+    size_t used = 0;
+    size_t size = 0;
+    _zpico_exec_stack_sample(&used, &size);
+    /* The high-water mark only grows, so a value that has held for a while is
+     * the answer; a fixed delay would be a guess a slow router under-reports. */
+    if (used == g_exec_stack.prev_used) {
+        g_exec_stack.stable++;
+    } else {
+        g_exec_stack.stable = 0;
+        g_exec_stack.prev_used = used;
+    }
+    if (g_exec_stack.stable < ZPICO_EXEC_STACK_STABLE_SAMPLES &&
+        g_exec_stack.samples < ZPICO_EXEC_STACK_MAX_SAMPLES) {
+        return _z_fut_fn_result_wake_up_after(ZPICO_EXEC_STACK_PERIOD_MS);
+    }
+    if (size != 0u) {
+        printk("nros: zenoh executor stack peak %lu of %lu bytes (%lu free) (RFC-0110 D2)\n",
+               (unsigned long)used, (unsigned long)size, (unsigned long)(size - used));
+    } else {
+        printk("nros: zenoh executor stack peak: %lu bytes never touched, size not stated "
+               "(RFC-0110 D2)\n",
+               (unsigned long)used);
+    }
+    return _z_fut_fn_result_ready();
+}
+
+/* Once per process: the first session's executor carries the measurement. */
+static void _zpico_exec_stack_spawn(struct zpico_session* s) {
+    if (g_exec_stack.spawned) {
+        return;
+    }
+    _z_fut_t f = _z_fut_null();
+    f._fut_fn = _zpico_exec_stack_fn;
+    f._fut_arg = NULL;
+    if (!_z_fut_handle_is_null(
+            _z_runtime_spawn(&_Z_RC_IN_VAL(z_session_loan(&s->session))->_runtime, &f))) {
+        g_exec_stack.spawned = true;
+    }
+}
+#endif
+
 int32_t zpico_open(zpico_session_t* session) {
     struct zpico_session* s = (struct zpico_session*)session;
     if (!s->initialized) {
@@ -2220,7 +2329,7 @@ int32_t zpico_open(zpico_session_t* session) {
      * Zephyr reads 0 as "leave the port default alone", and ThreadX ignores the
      * field outright (its stack is embedded in `_z_task_t`). */
     if (!g_default_read_task_configured) {
-        zpico_set_task_config(ZPICO_READ_TASK_PRIORITY, 0u, ZPICO_LEASE_TASK_PRIORITY, 0u);
+        zpico_set_task_config(ZPICO_READ_TASK_PRIORITY, 0u);
     }
 #if defined(ZENOH_ZEPHYR) && ZPICO_TX_BATCH_THREAD == 1
     /* Issue 1534 -- the tx-flush task is the third transport task and had no
@@ -2314,6 +2423,9 @@ int32_t zpico_open(zpico_session_t* session) {
         z_close(z_session_loan_mut(&s->session), NULL);
         return ZPICO_ERR_TASK;
     }
+#if defined(ZPICO_EXEC_STACK_REPORT)
+    _zpico_exec_stack_spawn(s);
+#endif
 #endif
 
 #if defined(ZPICO_TX_BATCH) && ZPICO_TX_BATCH == 1

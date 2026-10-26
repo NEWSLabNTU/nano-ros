@@ -427,7 +427,7 @@ ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
  * FreeRTOS compares against its CONFIG values. Here the transport side is
  * READ BACK from the kernel instead: every task the platform creates at an
  * explicit priority goes through `nros_zephyr_task_create_prio` below (the
- * zenoh read and lease tasks — the band RFC-0079 calls `reserved.transport`),
+ * zenoh executor thread — the band RFC-0079 calls `reserved.transport`),
  * which records the priority the thread ACTUALLY got via
  * `pthread_getschedparam`. So a refused policy, a clamp, or a mapping this
  * file and `priority_plan.rs` both got wrong is reported as what the image

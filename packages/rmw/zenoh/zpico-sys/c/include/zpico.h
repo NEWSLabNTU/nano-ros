@@ -542,17 +542,18 @@ int32_t zpico_publish_streamed(struct zpico_session_t *_session,
 void zpico_close(struct zpico_session_t *_session);
 
 /**
- * Configure scheduling attributes for zenoh-pico read and lease background tasks.
+ * Configure scheduling attributes for zenoh-pico's executor thread (its read task).
+ *
+ * zenoh-pico 1.10 runs the read path, lease, keep-alive, reconnect and every
+ * callback on that one thread, so there is no lease task to configure any
+ * more (RFC-0110 D2).
  *
  * Must be called between `zpico_init()` and `zpico_open()`.  If not called,
  * `zpico_open()` passes NULL to zenoh-pico (platform defaults).
  *
  * Priority and stack values are platform-specific (already mapped by the caller).
  */
-void zpico_set_task_config(uint32_t _read_priority,
-                           uint32_t _read_stack_bytes,
-                           uint32_t _lease_priority,
-                           uint32_t _lease_stack_bytes);
+void zpico_set_task_config(uint32_t _read_priority, uint32_t _read_stack_bytes);
 
 /**
  * Declare a publisher for the given key expression.

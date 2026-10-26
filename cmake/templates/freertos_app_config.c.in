@@ -89,11 +89,9 @@ const nros_app_config_t NROS_APP_CONFIG = {
          * `[tiers.*.freertos] priority`. */
         .app_priority            = 3,
         .rx_priority     = 4,
-        .keepalive_priority    = 4,
         .poll_priority           = 4,
         .app_stack_bytes         = @NROS_ENTRY_APP_STACK_BYTES@u,
         .rx_stack_bytes  = 5120u,
-        .keepalive_stack_bytes = 5120u,
         .poll_interval_ms        = 5u,
     },
 };

@@ -298,9 +298,12 @@ The intended node-level block (it replaced `config.toml [scheduling]`):
 [node.rt]
 app_priority = 12;  app_stack_bytes = 262144
 zenoh_read_priority = 16;  zenoh_read_stack_bytes = 5120
-zenoh_lease_priority = 16; zenoh_lease_stack_bytes = 5120
 poll_priority = 16; poll_interval_ms = 5
 ```
+
+(`zenoh_lease_priority` / `zenoh_lease_stack_bytes` were here until RFC-0110
+D2: zenoh-pico 1.10 runs the lease on its executor (read) task, and a config
+that states either is refused.)
 
 In planned mode this maps to the `PlanSchedContext` the planner carries
 (RFC-0015/0016). **Multi-node RT home (decided 2026-06):** the *node* declares its

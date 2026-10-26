@@ -184,12 +184,7 @@ unsafe extern "C" {
 
     // Task scheduling configuration (process-wide default; call before
     // zpico_open — see the zpico_session_t exception note above).
-    pub fn zpico_set_task_config(
-        read_priority: u32,
-        read_stack_bytes: u32,
-        lease_priority: u32,
-        lease_stack_bytes: u32,
-    );
+    pub fn zpico_set_task_config(read_priority: u32, read_stack_bytes: u32);
 
     // ZenohId
     pub fn zpico_get_zid(session: *mut zpico_session_t, zid_out: *mut u8) -> i32;

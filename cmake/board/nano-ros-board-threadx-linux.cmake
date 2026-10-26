@@ -203,7 +203,7 @@ file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
 "        .domain_id = 0,\n"
 "    },\n"
 "    .network = ${_nros_board_net_c},\n"
-"    .scheduling = {0, 0, 0, 0, 0, 0, 0, 0},\n"
+"    .scheduling = {0, 0, 0, 0, 0, 0},\n"
 "};\n")
 
 set(THREADX_STARTUP_SOURCE

@@ -64,14 +64,12 @@ pub struct FreertosScheduling {
     pub app_priority: u8,
     /// Application task stack size in bytes.
     pub app_stack_bytes: u32,
-    /// zenoh-pico read task priority (RAW FreeRTOS).
+    /// zenoh-pico read task priority (RAW FreeRTOS). The read task is
+    /// zenoh-pico 1.10's executor thread: it also runs the lease and the
+    /// keep-alive, so there is no lease task and no lease field (RFC-0110 D2).
     pub zenoh_read_priority: u8,
-    /// zenoh-pico read task stack size in bytes.
+    /// zenoh-pico read (executor) task stack size in bytes.
     pub zenoh_read_stack_bytes: u32,
-    /// zenoh-pico lease task priority (RAW FreeRTOS).
-    pub zenoh_lease_priority: u8,
-    /// zenoh-pico lease task stack size in bytes.
-    pub zenoh_lease_stack_bytes: u32,
     /// Network poll task priority (RAW FreeRTOS).
     pub poll_priority: u8,
     /// Network poll interval in milliseconds.
@@ -99,8 +97,6 @@ impl Default for FreertosScheduling {
             app_stack_bytes: DEFAULT_APP_STACK_BYTES,
             zenoh_read_priority: 4,
             zenoh_read_stack_bytes: 5120,
-            zenoh_lease_priority: 4,
-            zenoh_lease_stack_bytes: 5120,
             poll_priority: 4,
             poll_interval_ms: 5,
         }
@@ -231,7 +227,8 @@ pub const DEFAULT_HEAP_APP_TASK_SLOTS: usize = 3;
 pub const DEFAULT_HEAP_SPARE_EXECUTOR_BYTES: usize = 131_072;
 
 /// Everything in the heap that is neither an app-sized task stack nor a spare
-/// executor: the zenoh-pico read + lease task stacks (5,120 each), the network
+/// executor: the zenoh-pico read + lease task stacks (5,120 each; zenoh-pico
+/// 1.10 has the read task only, so this now over-counts by one), the network
 /// poll task (1 KiB), the heap-peak reporter (2 KiB), lwIP's tcpip thread and
 /// per-socket allocations, and the RMW's per-entity working set.
 ///

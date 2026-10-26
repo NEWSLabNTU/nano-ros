@@ -1182,7 +1182,6 @@ fn shim_config_from_env() -> ShimConfig {
         // `zpico-sys/c/zpico/zpico.c` (16 / 16). A different number here would
         // not be a tuning choice, it would be the two lanes disagreeing.
         read_task_priority: env_usize("NROS_ZENOH_READ_PRIORITY", 16),
-        lease_task_priority: env_usize("NROS_ZENOH_LEASE_PRIORITY", 16),
     }
 }
 
@@ -1452,6 +1451,11 @@ fn generate_config_header(
 }
 
 pub fn run() {
+    // RFC-0110 D2 — a RETIRED knob (the zenoh lease-task priority) has no
+    // reader left to refuse it on, so every zenoh build asks the registry once:
+    // set, it stops the build naming why, instead of being silently ignored.
+    nros_zephyr_build::refuse_retired_knobs();
+
     // Issue 1005 — THIS crate's sources are an input to every build that calls
     // `run()`, and until now nothing said so. Cargo tracks the dependency
     // correctly through its own unit graph, so an edit here does rebuild the

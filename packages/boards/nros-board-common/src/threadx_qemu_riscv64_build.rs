@@ -538,11 +538,9 @@ const nros_app_config_t NROS_APP_CONFIG = {
     .scheduling = {
         .app_priority            = 0,
         .rx_priority     = 0,
-        .keepalive_priority    = 0,
         .poll_priority           = 0,
         .app_stack_bytes         = 0,
         .rx_stack_bytes  = 0,
-        .keepalive_stack_bytes = 0,
         .poll_interval_ms        = 0,
     },
 };

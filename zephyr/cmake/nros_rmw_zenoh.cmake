@@ -472,24 +472,24 @@ if(DEFINED NROS_RESOLVED_NROS_ZENOH_RX_TASK_BUDGET_FRAMES AND
         Z_RX_TASK_BUDGET_REST_US=${_nros_rx_rest_us})
 endif()
 
-# Issue 0626 — the read/lease task priority, normalized 0-31.
+# Issue 0626 — the read task priority, normalized 0-31. The read task is
+# zenoh-pico 1.10's executor thread and also runs the lease, so the old
+# CONFIG_NROS_ZENOH_LEASE_PRIORITY is gone (RFC-0110 D2): a conf that still
+# assigns it fails Kconfig as an undefined symbol.
 #
 # Read from CONFIG_* directly, NOT through `_nros_resolve_knob`, and that is
 # deliberate. The resolver exists for knobs with TWO consumers — a `build.rs`
 # env var and a C define — that must agree or a struct's size splits between
 # the Rust and C halves (issues 0135 / 0316). `check-kconfig-knob-forwarding`
 # enforces exactly that pairing, and correctly rejected these two when they
-# were routed through the resolver: no Rust build script reads them, because
-# they gate no layout. One consumer, one path.
+# was routed through the resolver: no Rust build script reads it, because
+# it gates no layout. One consumer, one path.
 #
 # `DEFINED`, not truthiness: 0 is a legal priority on this band (the least
 # urgent), and a bare `if(CONFIG_...)` would silently drop it — the same
 # "declared value discarded" failure this issue exists to fix.
 if(DEFINED CONFIG_NROS_ZENOH_READ_PRIORITY)
     zephyr_compile_definitions(ZPICO_READ_TASK_PRIORITY=${CONFIG_NROS_ZENOH_READ_PRIORITY})
-endif()
-if(DEFINED CONFIG_NROS_ZENOH_LEASE_PRIORITY)
-    zephyr_compile_definitions(ZPICO_LEASE_TASK_PRIORITY=${CONFIG_NROS_ZENOH_LEASE_PRIORITY})
 endif()
 
 # Issue 1534 / phase-474 T3 -- on a SERIAL link the main thread must register

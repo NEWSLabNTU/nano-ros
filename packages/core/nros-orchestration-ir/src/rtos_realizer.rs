@@ -1176,7 +1176,7 @@ mod tests {
     /// the band below it.
     ///
     /// The pre-0852 transport band (`READ_PRIORITY=16` on the 0..255 scale)
-    /// resolves `transport = [0, 14]` on the island's image, which leaves
+    /// resolves `transport = [14, 14]` on the island's image, which leaves
     /// `app = [15, 14]` - no priority at all. The clamp used to hand both
     /// nodes k_thread **14**, measured: a derived tier at the transport's own
     /// priority, with a stderr warning as the only trace. There is no legal
@@ -1187,7 +1187,7 @@ mod tests {
         let input = input_two();
         let ranked = chain_aware_rank(&input);
         let caps = sched_caps_for("zephyr");
-        let plan = PriorityPlan::from_zephyr_dotconfig(island_dotconfig(), &[16, 255])
+        let plan = PriorityPlan::from_zephyr_dotconfig(island_dotconfig(), &[16])
             .expect("the stale-band .config still resolves");
         assert_eq!(plan.app.width(), 0, "the premise: {:?}", plan.app);
 
@@ -1237,10 +1237,9 @@ mod tests {
             PriorityPlan::from_zephyr_dotconfig(island_dotconfig(), bands).expect("resolves")
         };
         let cases: Vec<(&str, PriorityPlan)> = vec![
-            ("island 200/255", from_cfg(&[200, 255])),
-            ("Kconfig defaults 200/200", from_cfg(&[200, 200])),
-            ("a lowered read band 100/200", from_cfg(&[100, 200])),
-            ("the pre-0852 stale band 16/255", from_cfg(&[16, 255])),
+            ("island / Kconfig default 200", from_cfg(&[200])),
+            ("a lowered read band 100", from_cfg(&[100])),
+            ("the pre-0852 stale band 16", from_cfg(&[16])),
             (
                 "the defaults projection",
                 PriorityPlan::for_target("zephyr"),

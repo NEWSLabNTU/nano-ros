@@ -30,6 +30,33 @@ function(_nros_knob_canonical name out_var)
     endif()
 endfunction()
 
+# _nros_refuse_retired_knobs()
+#
+# A FATAL_ERROR naming every RETIRED knob that is set in the environment (a
+# registry row with `retired`; RFC-0110 D2 retired the zenoh lease-task
+# priority). A retired knob has no reader left to refuse it on, so every knob
+# resolution below sweeps for them -- the twin of the Rust
+# `nros_zephyr_build::refuse_retired_knobs`, in the same words.
+function(_nros_refuse_retired_knobs)
+    set(_refusals "")
+    foreach(_s IN LISTS NROS_KNOB_RETIRED_SPELLINGS)
+        if(NOT DEFINED ENV{${_s}})
+            continue()
+        endif()
+        string(STRIP "$ENV{${_s}}" _v)
+        if(_v STREQUAL "")
+            continue()
+        endif()
+        set(_msg "${NROS_KNOB_RETIRED_KNOB_TEMPLATE}")
+        string(REPLACE "{spelling}" "${_s}" _msg "${_msg}")
+        string(REPLACE "{reason}" "${NROS_KNOB_RETIRED_REASON_${_s}}" _msg "${_msg}")
+        string(APPEND _refusals "\n  ${_msg}")
+    endforeach()
+    if(NOT _refusals STREQUAL "")
+        message(FATAL_ERROR "nros: a retired knob is set:${_refusals}")
+    endif()
+endfunction()
+
 # _nros_knob_env(<name> <out_value> [<out_spelling>])
 #
 # Rung 1 of `name`'s row: the value set under its CANONICAL spelling, or ""
@@ -38,6 +65,7 @@ endfunction()
 # alone, agreeing or not -- is a FATAL_ERROR naming the canonical spelling.
 # `<out_spelling>` is the canonical name when a value was found, else "".
 function(_nros_knob_env name out_value)
+    _nros_refuse_retired_knobs()
     _nros_knob_canonical("${name}" _canon)
     set(_refusals "")
     if(DEFINED NROS_KNOB_LEGACY_${_canon})

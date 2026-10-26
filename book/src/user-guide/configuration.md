@@ -373,7 +373,6 @@ locator = "tcp/10.0.2.2:7447"
 app_priority         = 12
 app_stack_bytes      = 65536
 zenoh_read_priority  = 16
-zenoh_lease_priority = 16
 poll_priority        = 16
 poll_interval_ms     = 5
 ```

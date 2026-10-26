@@ -707,13 +707,13 @@ impl LinuxBoard {
         }
 
         // RFC-0079 / issue 0765 — place the transport ABOVE every tier, BEFORE
-        // the session opens. The read/lease tasks are created during open and
+        // the session opens. The executor (read) task is created during open and
         // `zpico_set_task_config` is a process-wide default consulted at that
         // moment; after open it changes nothing.
         //
         // Necessary here in a way it is not on the RTOSes. Once tier priorities
-        // became real (issue 0765) the tiers run SCHED_FIFO while the read and
-        // lease tasks stay on SCHED_OTHER, and a SCHED_FIFO thread outranks
+        // became real (issue 0765) the tiers run SCHED_FIFO while the transport
+        // task stays on SCHED_OTHER, and a SCHED_FIFO thread outranks
         // every SCHED_OTHER thread unconditionally — so the app preempted the
         // link it publishes over, always, with no arrangement in which it did
         // not. That is not one of the two legitimate orderings issue 0623
@@ -753,16 +753,11 @@ impl LinuxBoard {
             if max_tier > 0 {
                 let transport = TRANSPORT_BAND_FLOOR;
                 unsafe extern "C" {
-                    fn zpico_set_task_config(
-                        read_priority: u32,
-                        read_stack_bytes: u32,
-                        lease_priority: u32,
-                        lease_stack_bytes: u32,
-                    );
+                    fn zpico_set_task_config(read_priority: u32, read_stack_bytes: u32);
                 }
                 // 0 stack bytes = "leave the port's default alone" — this
                 // states a PRIORITY, not a stack size.
-                unsafe { zpico_set_task_config(transport, 0, transport, 0) };
+                unsafe { zpico_set_task_config(transport, 0) };
                 <Self as BoardPrint>::println(format_args!(
                     "nros: transport tasks at SCHED_FIFO {} (reserved band floor; most \
                      urgent tier is {})",

@@ -53,12 +53,15 @@ typedef struct {
     } network;
     struct {
         uint32_t app_priority;
+        /* The transport's receive task -- zenoh-pico 1.10's executor thread,
+         * which also runs the lease and keep-alive. The `keepalive_priority` /
+         * `keepalive_stack_bytes` fields that sized a separate lease task are
+         * gone with that task (RFC-0110 D2); an initializer naming one fails to
+         * compile, which is the refusal. */
         uint32_t rx_priority;
-        uint32_t keepalive_priority;
         uint32_t poll_priority;
         uint32_t app_stack_bytes;
         uint32_t rx_stack_bytes;
-        uint32_t keepalive_stack_bytes;
         uint32_t poll_interval_ms;
     } scheduling;
 } nros_app_config_t;
@@ -90,7 +93,7 @@ static const nros_app_config_t NROS_APP_CONFIG = {
      * but the values default to zero — examples that need static IP
      * read from device-tree / Kconfig directly. */
     .network = {{0}, {0}, {0}, {0}, 0},
-    .scheduling = {0, 0, 0, 0, 0, 0, 0, 0},
+    .scheduling = {0, 0, 0, 0, 0, 0},
 };
 
 #else  /* !__ZEPHYR__ */
