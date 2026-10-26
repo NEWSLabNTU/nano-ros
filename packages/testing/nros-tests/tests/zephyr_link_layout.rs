@@ -241,7 +241,11 @@ fn tier_stack_pool_follows_stacks_in_dtcm() {
         });
     // The shim's tier pool, a level stack declared the way a generated C/C++
     // entry declares one (`NROS_TIER_TASK_MEMORY_DEFINE`), and the task stacks.
-    for array in ["nros_tier_stacks", "__nros_tier_stack_1", "nros_thread_stacks"] {
+    for array in [
+        "nros_tier_stacks",
+        "__nros_tier_stack_1",
+        "nros_thread_stacks",
+    ] {
         let sym = elf.defined(array).unwrap_or_else(|| {
             panic!(
                 "{}: `{array}` is not in the image -- the fixture no longer spawns both levels \

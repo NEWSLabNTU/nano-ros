@@ -17,8 +17,6 @@
 #include <stdint.h>
 
 #include <zephyr/kernel.h>
-#include <zephyr/devicetree.h>
-#include <zephyr/sys/util.h>
 #include <zephyr/random/random.h>
 #include <zephyr/sys/printk.h>
 
@@ -582,6 +580,8 @@ int nros_zephyr_report_tier_vs_transport(const char* tier, size_t tier_len, int3
 
 #if (defined(NROS_ZEPHYR_STACKS_IN_DTCM) && NROS_ZEPHYR_STACKS_IN_DTCM) ||                         \
     (defined(NROS_ZEPHYR_TIER_STACKS_IN_DTCM) && NROS_ZEPHYR_TIER_STACKS_IN_DTCM)
+#include <zephyr/devicetree.h>
+#include <zephyr/sys/util.h>
 BUILD_ASSERT(NROS_ZEPHYR_DT_HAS_DTCM_REGION,
              "CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM / CONFIG_NROS_ZEPHYR_TIER_STACKS_IN_DTCM: the "
              "devicetree has no okay node with zephyr,memory-region = \"DTCM\", so the stacks "
