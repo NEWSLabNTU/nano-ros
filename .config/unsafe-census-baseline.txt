@@ -40,14 +40,14 @@ nros-board-zephyr                   28   0     1      11      0
 nros-bridge                         34   1     0       8      0
 nros-build                           1   0     0       0      0
 nros-build-helpers                   2   0     0       2      0
-nros-c                             462  85     5     465      0
+nros-c                             464  86     5     467      0
 nros-cli-core                       22   0     0       0      0
 nros-condvar-contract               10   0     1       2      0
 nros-core                            2   0     2       2      0
-nros-cpp                          1094  42     0     424      0
+nros-cpp                          1098  43     0     426      0
 nros-log                            23   0     7       1      0
 nros-macros                         16   0     1       2      0
-nros-node                          718  254    37     164      0
+nros-node                          720  257    37     166      0
 nros-nuttx-ffi                       1   0     0       1      0
 nros-nuttx-riscv-ffi                 1   0     0       1      0
 nros-orchestration-ir                4   0     0       0      0
@@ -61,7 +61,7 @@ nros-platform-mps2-an385            19   6     3       7      0
 nros-platform-stm32f4               15   6     3       2      0
 nros-port-metric-bench               3   0     0       3      0
 nros-rmw                            21   7    11      13      0
-nros-rmw-cffi                      397  43     8     214      0
+nros-rmw-cffi                      400  43     8     218      0
 nros-rmw-cyclonedds                  8   0     7       1      0
 nros-rmw-cyclonedds-sys              2   0     0       1      0
 nros-rmw-metadata                    1   0     0       0      0

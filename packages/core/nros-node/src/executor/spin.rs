@@ -10765,8 +10765,8 @@ impl<'s> Executor<'s> {
     /// all zeros when it reported none.
     ///
     /// One entry point for every registration shape: `node_id` as
-    /// [`Self::register_service_raw_sized_on`] (or `None`), and `capture` as
-    /// [`Self::register_service_raw_capturing`] (or `None`, with `context`
+    /// `register_service_raw_sized_on` (or `None`), and `capture` as
+    /// `register_service_raw_capturing` (or `None`, with `context`
     /// passed through instead).
     #[allow(clippy::too_many_arguments)]
     pub fn register_service_raw_with_request_id_sized<
