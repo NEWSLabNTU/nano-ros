@@ -1,0 +1,1 @@
+`ParameterBuilder::mandatory`, `optional` and `read_only` return rclrs's `DeclarationError` instead of `ParameterError`, naming the case (`AlreadyDeclared`, `InitialValueOutOfRange`, the new `NoValueAvailable`, …) that the old error conflated. `?` into a function returning `ParameterError` still compiles through a new `From<DeclarationError> for ParameterError`. (phase-515 R8)
