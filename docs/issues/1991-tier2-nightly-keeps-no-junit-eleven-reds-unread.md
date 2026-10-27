@@ -179,3 +179,25 @@ distinct cause gets filed or attributed then. `295c20dc3b` (phase-513 R1/R2),
 which landed after that night's run, names the two Zephyr link breaks that
 stop this fixture build as what it fixes. The next night will show whether it
 was all of them.
+
+## The first readable red night (2026-10-27)
+
+- Run: nightly 40466371508 (07:13 UTC, main at `5e863e1ee`).
+- Job: 122062645403, `tier 2 nightly (pairwise cover)`.
+
+This run reached `just ci matrix-nightly` and uploaded `tier2-nightly-junit`. Its `junit-real.xml` names three failures (`Real failures: 3 / 3 total failures`):
+
+| test | cause |
+| --- | --- |
+| `emulator test_qemu_wcet_benchmark` | row 13, now readable. Its text is `[UNMET PRECONDITION] the WCET bench refused to measure: the DWT cycle counter is not counting — QEMU has no DWT cycle counter ... (issue 0403)`. |
+| `freertos_qemu an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default` | issue 2111 |
+| `sched_dims_applied_e2e sched_dims_applied` | issue 2113 (the Zephyr a53 SMP cell, no `qemu-system-aarch64`) |
+
+Rows 1–12 and 14 did not fail on this night.
+
+Row 13 is red BY CONSTRUCTION on this lane. On QEMU the guest refuses to measure (issue 0403), and the test turns that refusal into `nros_tests::unmet!`, which `junit-real.xml` counts as a real failure. Its own comment calls the outcome a skip. Two remedies are defensible, and the choice is a decision, not a mechanical fix:
+
+- deselect the test from QEMU lanes as hardware-only;
+- or give the dead-counter verdict a lane-scoped spelling.
+
+Item 2 is therefore answered for every row except 13, which needs that decision.

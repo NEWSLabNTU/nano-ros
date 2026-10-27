@@ -94,3 +94,10 @@ announcement, since our Cyclone listener would refuse the same malformed
 PRESENTATION as the ROS 2 peer did. It is unconfirmed until the bisect. This was
 the first tier-2 run in days to reach its cells (issue 2025 stopped the earlier
 ones), so it says nothing about when this began.
+
+## Third sighting: tier 2 nightly (2026-10-27)
+
+- Run: nightly 40466371508 (07:13 UTC, main at `5e863e1ee`).
+- Job: 122062645403, `tier 2 nightly (pairwise cover)`.
+
+The failing test was the same one as the second sighting, `freertos_qemu an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`. It panicked at `freertos_qemu.rs:157` on all three tries (TRY 3 at 120.3 s). It was one of the job's three real failures.
