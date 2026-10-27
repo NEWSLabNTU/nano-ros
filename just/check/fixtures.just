@@ -368,7 +368,11 @@ lane-scope-consumers:
 # probe (issue 1758). Runs every platform-token `nros-tests` test under the
 # `linux` scope with the emulators and RTOS trees hidden, and fails any that
 # read the host first (`[UNMET PRECONDITION]`, a hand-written `[SKIPPED]`).
-# Needs no fixture: an out-of-lane test stops at its first statement, and the
+# A test that RAN and failed with no marker — an assertion, or a nextest
+# TIMEOUT — is its own class with its own remedy (issue 2069): a failure
+# fails; a timeout fails only if `test-lane-contracts` does not also run that
+# test (`.config/lane-admission/gate.txt`), otherwise it is printed as a
+# warning. Needs no fixture: an out-of-lane test stops at its first statement, and the
 # two the scope admits that need a fixture are listed, not failed. ~30 s of
 # run on top of the `nros-tests` test-binary build. Step of `just ci gate`.
 [group("ci")]
