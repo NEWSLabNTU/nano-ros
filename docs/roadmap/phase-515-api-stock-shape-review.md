@@ -268,6 +268,14 @@ through `rclc_action_send_result(goal_handle, status, &get_result_response)` and
   (`just check c`).
 - **C4c — migration.** The C action examples move to rclc's shape; the
   init-bound `rclc_action_server_init_with_callbacks` stays one release.
+  **LANDED 2026-10-27**: the six `c/action-server` mains (linux, the four RTOS
+  copies, bare-metal mps2) register with `rclc_executor_add_action_server` and
+  run accepted goals between `rclc_executor_spin_some` calls; the three C
+  COMPONENTS (zephyr, `workspaces/c`, `workspaces/mixed`) have no main loop, so
+  a 20 ms timer runs the accepted goal. A component has no `rclc_support_t`, so
+  `rclc_action_server_init_default` now accepts a NULL `support`, exactly as
+  `rclc_timer_init_default` does. Remaining `rclc_action_server_init_with_callbacks`
+  users are tests and the C++ wrapper, which keep the init-bound path.
 
 **C5 — `rcl_get_error_string` / `rcl_error_state_t`.** Declined because there
 is no per-thread error slot. A bounded last-error record (one per executor, or

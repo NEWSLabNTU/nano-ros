@@ -2,16 +2,16 @@
 /// @brief pure-C workspace — A4 actions: the Fibonacci action SERVER, typed component
 /// (RFC-0043 / phase-263). The C projection of the Rust `action_server_pkg`.
 ///
-/// `fib_server_configure` creates an action server on `/fibonacci` with the C API
-/// (`rclc_action_server_init_with_callbacks` + `rclc_executor_attach_action_server`). The goal
-/// callback parses the Fibonacci goal `{int32 order}` with the generated
-/// `example_interfaces/action/Fibonacci` C bindings and ACCEPTS it; the accepted callback
-/// computes the sequence and completes the goal (`rclc_action_execute` + `rclc_action_succeed`),
-/// as `examples/linux/c/action-server` does.
+/// `fib_server_configure` creates an action server on `/fibonacci` in rclc's shape
+/// (`rclc_action_server_init_default` + `rclc_executor_add_action_server`). The goal callback
+/// reads the order out of the deserialised `Fibonacci_SendGoal_Request` and ACCEPTS it; a
+/// component has no main loop, so a timer computes the sequence and completes the goal with
+/// `rclc_action_send_result`, as `examples/linux/c/action-server` does between spins.
 ///
 /// Cross-process only (issue 0096): an in-process (same-executor) server+client can't talk, so
 /// the server runs as its OWN entry (`linux_action_server_entry`) and the client as another.
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -24,78 +24,74 @@
 #include "example_interfaces.h"
 
 typedef struct {
-    rcl_action_server_t server;
-    int32_t order; /* the accepted goal's Fibonacci order */
+    rclc_action_server_t server;
+    rcl_timer_t timer;
+    /* One goal handle: its request lands here. */
+    example_interfaces__action__Fibonacci_SendGoal_Request goal_request;
+    /* The accepted goal the timer has not run yet. */
+    rclc_action_goal_handle_t* pending;
     int goal_count;
 } fib_server_t;
 
-/// Goal callback — the goal's CDR bytes. Parses the order and decides.
-static rclc_goal_response_t fib_server_on_goal(rcl_action_server_t* server,
-                                               const rclc_goal_handle_t* goal, const uint8_t* data,
-                                               size_t len, void* ctx) {
-    (void)server;
-    (void)goal;
+/// Goal callback — the request is already deserialised into `goal_request`.
+static rcl_ret_t fib_server_on_goal(rclc_action_goal_handle_t* goal_handle, void* ctx) {
     fib_server_t* self = (fib_server_t*)ctx;
-
-    example_interfaces__action__Fibonacci_Goal req;
-    if (example_interfaces__action__Fibonacci_Goal__deserialize(&req, data, len) != 0) {
-        /* issue 0737 — say why. A silent reject is indistinguishable from
-         * a request that never arrived. */
-        fprintf(stderr, "[c_fib_server_pkg] goal REJECTED — deserialize failed, %zu byte(s)\n",
-                len);
-        return RCLC_GOAL_REJECT;
+    const example_interfaces__action__Fibonacci_SendGoal_Request* req =
+        (const example_interfaces__action__Fibonacci_SendGoal_Request*)
+            goal_handle->ros_goal_request;
+    if (req->goal.order < 0 || req->goal.order >= 64) {
+        printf("[c_fib_server_pkg] goal order=%d REJECTED (out of range)\n", req->goal.order);
+        return RCL_RET_ACTION_GOAL_REJECTED;
     }
-    if (req.order < 0 || req.order >= 64) {
-        printf("[c_fib_server_pkg] goal order=%d REJECTED (out of range)\n", req.order);
-        return RCLC_GOAL_REJECT;
-    }
-    self->order = req.order;
-    printf("[c_fib_server_pkg] goal order=%d\n", req.order);
-    return RCLC_GOAL_ACCEPT_AND_EXECUTE;
+    printf("[c_fib_server_pkg] goal order=%d\n", req->goal.order);
+    self->pending = goal_handle;
+    return RCL_RET_ACTION_GOAL_ACCEPTED;
 }
 
-static rclc_cancel_response_t fib_server_on_cancel(rcl_action_server_t* server,
-                                                   const rclc_goal_handle_t* goal, void* ctx) {
-    (void)server;
-    (void)goal;
+static bool fib_server_on_cancel(rclc_action_goal_handle_t* goal_handle, void* ctx) {
+    (void)goal_handle;
     (void)ctx;
-    return RCLC_CANCEL_ACCEPT;
+    return true;
 }
 
-/// Accepted — compute the sequence the client asked for and complete the goal.
-static void fib_server_on_accepted(rcl_action_server_t* server, const rclc_goal_handle_t* goal,
-                                   void* ctx) {
-    fib_server_t* self = (fib_server_t*)ctx;
-    if (rclc_action_execute(server, goal) != RCL_RET_OK) {
+/// Timer — compute the sequence the client asked for and complete the goal.
+static void fib_server_on_tick(rcl_timer_t* timer, int64_t last_call_time) {
+    (void)last_call_time;
+    fib_server_t* self = RCLC_CONTAINER_OF(timer, fib_server_t, timer);
+    rclc_action_goal_handle_t* goal_handle = self->pending;
+    if (goal_handle == NULL) {
         return;
     }
+    self->pending = NULL;
 
-    example_interfaces__action__Fibonacci_Result result;
+    example_interfaces__action__Fibonacci_GetResult_Response response;
     example_interfaces__action__Fibonacci_Result__Storage result_storage;
-    example_interfaces__action__Fibonacci_Result__init_in(&result, &result_storage);
-    for (int32_t i = 0; i <= self->order; i++) {
+    example_interfaces__action__Fibonacci_Result__init_in(&response.result, &result_storage);
+    example_interfaces__action__Fibonacci_Result* result = &response.result;
+    for (int32_t i = 0; i <= self->goal_request.goal.order; i++) {
         int32_t val;
         if (i == 0) {
             val = 0;
         } else if (i == 1) {
             val = 1;
         } else {
-            val = result.sequence.data[i - 1] + result.sequence.data[i - 2];
+            val = result->sequence.data[i - 1] + result->sequence.data[i - 2];
         }
-        result.sequence.data[i] = val;
-        result.sequence.size = (uint32_t)(i + 1);
+        result->sequence.data[i] = val;
+        result->sequence.size = (uint32_t)(i + 1);
     }
 
-    uint8_t buf[512];
-    size_t n = 0;
-    if (example_interfaces__action__Fibonacci_Result__serialize(&result, buf, sizeof(buf), &n) !=
-        0) {
-        return;
-    }
-    if (rclc_action_succeed(server, goal, buf, n) == RCL_RET_OK) {
+    rcl_action_goal_state_t status =
+        goal_handle->goal_cancelled ? GOAL_STATE_CANCELED : GOAL_STATE_SUCCEEDED;
+    rcl_ret_t rc = rclc_action_send_result(goal_handle, status, &response);
+    if (rc != RCL_RET_OK) {
+        /* issue 0737 — say why. A silent failure is indistinguishable from
+         * a goal that never arrived. */
+        fprintf(stderr, "[c_fib_server_pkg] send_result failed: %d\n", (int)rc);
+    } else if (status == GOAL_STATE_SUCCEEDED) {
         self->goal_count++;
         printf("[c_fib_server_pkg] completed last=%d\n",
-               result.sequence.data[result.sequence.size - 1]);
+               result->sequence.data[result->sequence.size - 1]);
     }
 }
 
@@ -104,15 +100,27 @@ static rcl_ret_t fib_server_configure(rcl_node_t* node, rclc_executor_t* executo
     /* Line-buffer stdout so each line flushes when piped to the test harness. */
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->goal_count = 0;
+    self->pending = NULL;
     self->server = rcl_action_get_zero_initialized_server();
-    rcl_ret_t rc = rclc_action_server_init_with_callbacks(
-        &self->server, node, "/fibonacci",
-        ROSIDL_GET_ACTION_TYPE_SUPPORT(example_interfaces, action, Fibonacci), fib_server_on_goal,
-        fib_server_on_cancel, fib_server_on_accepted, self);
+    /* A component has no support to pass; NULL is accepted, as for timers. */
+    rcl_ret_t rc = rclc_action_server_init_default(
+        &self->server, node, NULL,
+        ROSIDL_GET_ACTION_TYPE_SUPPORT(example_interfaces, action, Fibonacci), "/fibonacci");
     if (rc != RCL_RET_OK) {
         return rc;
     }
-    rc = rclc_executor_attach_action_server(executor, &self->server);
+    rc = rclc_executor_add_action_server(executor, &self->server, 1, &self->goal_request,
+                                         sizeof(self->goal_request), fib_server_on_goal,
+                                         fib_server_on_cancel, self);
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    self->timer = rcl_get_zero_initialized_timer();
+    rc = rclc_timer_init_default(&self->timer, NULL, 20ULL * 1000000ULL, fib_server_on_tick);
+    if (rc != RCL_RET_OK) {
+        return rc;
+    }
+    rc = rclc_executor_add_timer(executor, &self->timer);
     if (rc == RCL_RET_OK) {
         printf("[c_fib_server_pkg] fibonacci action server ready\n");
     }

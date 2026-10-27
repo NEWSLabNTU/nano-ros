@@ -5092,10 +5092,16 @@ rcl_ret_t rcl_action_server_fini(struct rcl_action_server_t *server,
  * rclc passes its clock to `rcl_action_server_init`; here the executor's
  * clock times the server, and no entity exists until registration.
  *
+ * **`support` may be NULL**, which rclc refuses — as for
+ * `rclc_timer_init_default`: a C component the generated entry hosts has no
+ * support to pass (`<rclc/detail/rcl_compat.h>` §4). Accepting NULL widens
+ * rclc's domain without changing any call rclc accepts.
+ *
  * # Returns
  * * `RCL_RET_OK` on success
- * * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or an empty name
- * * `RCL_RET_NOT_INIT` — `support` or `node` is not initialised
+ * * `RCL_RET_INVALID_ARGUMENT` — a NULL argument (other than `support`) or an
+ *   empty name
+ * * `RCL_RET_NOT_INIT` — a non-NULL `support`, or `node`, is not initialised
  * * `RCLC_RET_BAD_SEQUENCE` — `action_server` is already initialised
  *
  * # Safety

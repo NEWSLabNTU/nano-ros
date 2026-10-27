@@ -205,6 +205,10 @@ int main(void) {
         rclc_action_server_t s = rcl_action_get_zero_initialized_server();
         CHECK(init(&s, &node, &cold, &COUNT, "cold") == RCL_RET_NOT_INIT,
               "an uninitialised support is refused");
+        rclc_action_server_t comp = rcl_action_get_zero_initialized_server();
+        CHECK(init(&comp, &node, NULL, &COUNT, "component") == RCL_RET_OK,
+              "a NULL support is accepted, as rclc_timer_init_default accepts it");
+        CHECK(rclc_action_server_fini(&comp, &node) == RCL_RET_OK, "component fini");
         rclc_action_server_t old = rcl_action_get_zero_initialized_server();
         CHECK(init(&old, &node, &support, &COUNT_NO_LAYOUT, "old") == RCL_RET_OK, "old init");
         CHECK(add(&executor, &old, HANDLES, reqs, sizeof reqs[0], on_goal, on_cancel, &app) ==
