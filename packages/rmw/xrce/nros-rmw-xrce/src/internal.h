@@ -446,6 +446,22 @@ static inline void nros_xrce_free(void* ptr) {
 #error "XRCE_MAX_PENDING_REPLIES must be >= 1: it sizes a C array (issue 1015)"
 #endif
 
+/* Issue 2108 — one client-side DEADLINE tracker (requested on a subscription,
+ * offered on a publisher). Both deadlines are LOCAL facts: time since the last
+ * takeable arrival / the last publish. Nothing about them crosses the Agent
+ * (`uxrQoS_t` has no deadline field), so the Agent's DDS entity keeps an
+ * infinite deadline and only this client counts misses. `period_ms == 0` is
+ * disarmed. */
+typedef struct xrce_deadline {
+    uint32_t period_ms;
+    /* Monotonic ms at which the current period ends without an arrival. */
+    uint64_t next_expiry_ms;
+    uint32_t total;
+    uint32_t change;
+    rmw_status_event_callback_t cb;
+    void* cb_ctx;
+} xrce_deadline;
+
 typedef struct xrce_subscriber_ring_entry {
     uint8_t data[XRCE_SUBSCRIBER_BUFFER_SIZE];
     size_t len;
@@ -467,6 +483,9 @@ typedef struct xrce_subscriber_slot {
      * takeable. NULL = none. */
     rmw_event_callback_t on_new;
     const void* on_new_user;
+    /* Issue 2108 — REQUESTED_DEADLINE_MISSED, reset by `xrce_topic_callback`.
+     * In the slot because the arrival path reaches the slot, not the state. */
+    xrce_deadline deadline;
 } xrce_subscriber_slot;
 
 /* Phase 237 — seq-keyed reply token. Holds the `SampleIdentity` of a received
@@ -710,6 +729,11 @@ struct xrce_session_state {
 
     /* Issue 1292 — the nodes and endpoint GIDs `ros_discovery_info` reports. */
     xrce_graph graph;
+
+    /* Issue 2108 — publishers with an armed OFFERED deadline, intrusive via
+     * `xrce_publisher_state::deadline_next`. Publishers have no slot table, so
+     * `drive_io` needs this list to find them. */
+    struct xrce_publisher_state* deadline_publishers;
 };
 
 typedef struct xrce_session_state xrce_session_state_t;
@@ -717,6 +741,13 @@ typedef struct xrce_session_state xrce_session_state_t;
 /* Per-publisher state. */
 typedef struct xrce_publisher_state {
     xrce_session_state_t* session_state;
+    /* Issue 2108 — OFFERED_DEADLINE_MISSED (reset by every publish), the
+     * profile's deadline used when a registration names none, and the link in
+     * `deadline_publishers` while armed. */
+    xrce_deadline deadline;
+    uint32_t qos_deadline_ms;
+    struct xrce_publisher_state* deadline_next;
+    bool deadline_listed;
     uxrObjectId datawriter_oid;
     xrce_graph_endpoint graph_writer;
     /* Issue 2107 — what the BIN create SENT (`xrce_map_qos`) and the topic-name
@@ -729,6 +760,8 @@ typedef struct xrce_publisher_state {
 /* Per-subscriber state — the slot lives inside the session state. */
 typedef struct xrce_subscriber_state {
     xrce_session_state_t* session_state;
+    /* Issue 2108 — the profile's deadline, used when a registration names none. */
+    uint32_t qos_deadline_ms;
     xrce_subscriber_slot* slot;
     uxrObjectId datareader_oid;
     xrce_graph_endpoint graph_reader;
@@ -904,6 +937,37 @@ rmw_ret_t xrce_supported_qos_policies(const rmw_session_t* session, uint32_t* ou
  * `out` as the caller pre-loaded it (`NROS_RMW_QOS_PROFILE_UNKNOWN`). */
 void xrce_actual_qos_topic(const uxrQoS_t* sent, bool avoid_ros, rmw_qos_profile_t* out);
 void xrce_actual_qos_service(bool writer, bool avoid_ros, rmw_qos_profile_t* out);
+
+/* ---- Issue 2108: client-side DEADLINE emulation (session.c) ----------------
+ *
+ * Every function takes `now_ms` (monotonic) rather than reading the clock, so
+ * a test can drive time; the entry points pass `xrce_now_ms()`. */
+uint64_t xrce_now_ms(void);
+/* The period a registration asks for: `requested`, else the profile's, else
+ * none. 0 and NROS_RMW_DURATION_INFINITE_MS both mean "no deadline". */
+uint32_t xrce_deadline_period(uint32_t requested, uint32_t qos_deadline_ms);
+void xrce_deadline_arm(xrce_deadline* d, uint32_t period_ms, rmw_status_event_callback_t cb,
+                       void* ctx, uint64_t now_ms);
+/* An arrival (subscription) or a publish: the current period starts over. */
+void xrce_deadline_touch(xrce_deadline* d, uint64_t now_ms);
+/* Count every period that ended since the last check and, if any did, fire the
+ * callback once with the accumulated `total_count_change`. */
+void xrce_deadline_check_one(xrce_deadline* d, rmw_event_type_t kind, uint64_t now_ms);
+/* `check_one` over every armed subscription slot and listed publisher. */
+void xrce_deadline_check(xrce_session_state_t* st, uint64_t now_ms);
+/* The earliest armed expiry, as ms from `now_ms` (0 when already due). */
+bool xrce_deadline_next(const xrce_session_state_t* st, uint64_t now_ms, uint32_t* out_ms);
+void xrce_deadline_unlist_publisher(xrce_session_state_t* st, struct xrce_publisher_state* ps);
+
+rmw_ret_t xrce_subscription_event_init(const rmw_subscription_t* subscription,
+                                       rmw_event_type_t kind, uint32_t deadline_ms,
+                                       rmw_status_event_callback_t cb, void* user_context);
+rmw_ret_t xrce_publisher_event_init(const rmw_publisher_t* publisher, rmw_event_type_t kind,
+                                    uint32_t deadline_ms, rmw_status_event_callback_t cb,
+                                    void* user_context);
+rmw_ret_t xrce_next_deadline_ms(const rmw_session_t* session, uint32_t* out_ms,
+                                bool* has_deadline);
+bool xrce_event_type_is_supported(rmw_event_type_t event_type);
 
 /* ---- Capacity diagnostics (issue 1033) ------------------------------- */
 

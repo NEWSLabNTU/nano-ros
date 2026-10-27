@@ -371,7 +371,7 @@ runner = "test-all"
 via = "platform"
 crate = "nros-tests"
 features = ["xrce-wake-test"]
-targets = ["xrce_guard_wake", "xrce_concurrent_entities", "xrce_entity_wake"]
+targets = ["xrce_guard_wake", "xrce_concurrent_entities", "xrce_entity_wake", "xrce_deadline"]
 
 # Issue 1940 — zenoh through the C vtable (`CffiSession`), incl. a waker woken by
 # real arrivals. `cfg(feature = "platform-posix")`, which `--workspace` never

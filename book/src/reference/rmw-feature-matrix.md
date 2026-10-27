@@ -29,11 +29,11 @@ automatically as backends land implementations.
 | Services (server side) | wired | wired | wired | — |
 | Service clients | wired | wired | wired | — |
 | Server-availability probe | wired | — | wired | — |
-| Status events (deadline / liveliness / lost) | wired | — | wired | — |
+| Status events (deadline / liveliness / lost) | wired | wired | wired | — |
 | Matched / incompatible-type events (Iron+) | wired | — | wired | — |
 | Manual liveliness assert | — | — | wired | — |
 | Event-driven wake (`set_wake_callback`) | wired | — | wired | — |
-| Deadline hint (`next_deadline_ms`) | wired | — | — | — |
+| Deadline hint (`next_deadline_ms`) | wired | wired | — | — |
 | Zero-copy loan API | wired | — | — | — |
 | Batch receive (`take_sequence`) | wired | — | wired | — |
 | Streamed publish | wired | wired | — | — |
@@ -48,7 +48,7 @@ automatically as backends land implementations.
 | Graph introspection (names/types/counts) | wired | — | wired | — |
 | Service-graph counts (`count_clients` / `count_services`) | wired | — | wired | — |
 | Client GID | wired | wired | wired | — |
-| Event-kind probe (`event_type_is_supported`) | wired | — | wired | — |
+| Event-kind probe (`event_type_is_supported`) | wired | wired | wired | — |
 
 ## Node-layer features
 
@@ -82,7 +82,7 @@ Per-policy semantics: [RMW vs upstream §7](../design/rmw-vs-upstream.md).
 | `DURABILITY_TRANSIENT_LOCAL` | ✓ | ✓ | ✓ | — |
 | `HISTORY` | ✓ | ✓ | ✓ | ✓ |
 | `DEPTH` | ✓ | ✓ | ✓ | ✓ |
-| `DEADLINE` | ✓ | — | ✓ | — |
+| `DEADLINE` | ✓ | ✓ | ✓ | — |
 | `LIFESPAN` | ✓ | — | ✓ | — |
 | `LIVELINESS_AUTOMATIC` | ✓ | — | ✓ | — |
 | `LIVELINESS_MANUAL_BY_TOPIC` | ✓ | — | ✓ | — |

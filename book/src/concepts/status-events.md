@@ -216,7 +216,7 @@ Not every backend can generate every event. Apps must handle
 | Backend | `LivelinessChanged` / `Lost` | `DeadlineMissed` | `MessageLost` |
 |---------|------------------------------|------------------|---------------|
 | Cyclone DDS | ✅ Polled `dds_get_liveliness_changed_status` / `_liveliness_lost_status` | ✅ Polled `dds_get_{requested,offered}_deadline_missed_status` (deadline comes from the QoS profile, not the `on_*` argument) | ✅ Polled `dds_get_sample_lost_status` |
-| XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✗ No deadline tracking: the C backend fills neither `*_event_init` nor `*_take_event`, and refuses a `DEADLINE` QoS at create (`uxrQoS_t` has no field for it) | ✗ Not exposed |
+| XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✅ Client-side clock check against the last takeable arrival / last publish, fired from `drive_io` (issue 2108). The Agent's DDS entity keeps an infinite deadline — `uxrQoS_t` has no field for one — so a peer matching on deadline still sees infinite | ✗ Not exposed |
 | zenoh-pico | ✅ Poll-based via zenoh tokens (alive_count ∈ {0,1}) | ✅ Shim-side clock check (`<P as PlatformClock>::clock_ms`) | ✅ Seq-gap detection from RMW attachment |
 | uORB | ✗ No wire-level liveliness | ✗ No rate concept | ✗ Not wired: the C++ backend (`nros-rmw-uorb`) fills no event slot. The publish-counter `MessageLost` of the retired Rust uORB backend (phase-108) did not carry over |
 
