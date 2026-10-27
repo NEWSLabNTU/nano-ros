@@ -42,7 +42,9 @@ re-entrant by construction.
   beside (RFC-0089, settled 2026-09-04).
 - `nros_trace!` — kept under OUR prefix: rclrs stops at `debug`, so TRACE has
   no upstream twin and must not borrow a name that implies one.
-- All take `(logger, fmt, args…)`.
+- All take `(logger, fmt, args…)`, where `logger` is anything implementing
+  `ToLogParams` — a `&Logger`, or one with rclrs's modifiers chained on it
+  (below).
 - Below-ceiling macros (`NROS_LOG_MAX_LEVEL`) expand to a constant-false
   branch (the format call is dead-code-eliminated).
 
@@ -70,9 +72,19 @@ re-entrant by construction.
   admits once and then never (issue 1152 — the old `0`-sentinel-plus-skew made
   a clock pinned at 0 admit every record after the first).
 
-There is no `*_once` / `*_skip_first` family here. `nros_core::logger::Logger`
-has one, on the logger that forwards to the `log` crate rather than to
-`nros_platform_log_write`; porting it is not part of W4.d.
+### rclrs's modifiers (phase-515 R3)
+
+`log_info!(logger.once(), …)`, `.skip_first()`, `.only_if(cond)` and, with the
+platform clock, `.throttle(Duration)` — rclrs's `ToLogParams` / `LogParams` /
+`LogOccurrence` / `ThrottleClock`, chained in any order. As in rclrs, the
+`once` flag and the throttle window are statics the level macro declares at the
+call site; a plain `log_info!(logger, …)` uses neither and the optimiser drops
+them. Bounds (`nros_log::log_params`): implemented for `&Logger` and
+`LogParams` (not a node or a name — use `node.logger()` / `get_logger(name)`);
+`ThrottleClock::SteadyTime` only; `.throttle` / `.throttle_clock` exist only
+under the platform clock, so a clockless image refuses them at compile time and
+keeps `nros_*_throttle_at!`. A record the level or `only_if` drops consumes
+neither `once` nor the window.
 
 ## Named loggers and per-logger levels
 

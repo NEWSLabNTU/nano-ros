@@ -1,6 +1,10 @@
 {
   "key": "rust:ToLogParams::throttle_clock",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "see `rust:LogParams::get_throttle_clock`."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-log/src/log_params.rs",
+    "text": "Present only with the platform clock — see the module note."
+  },
+  "verdict": "divergence",
+  "why": "phase-515 R3, was `declined`/`absent` with the whole log-modifier family. Sets the `ThrottleClock`, of which ours has one variant (`rust:ThrottleClock`), and like `rust:ToLogParams::throttle` exists only with the platform clock, which is why the clockless report lists it theirs-only."
 }

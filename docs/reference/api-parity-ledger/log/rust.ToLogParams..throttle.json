@@ -1,0 +1,10 @@
+{
+  "key": "rust:ToLogParams::throttle",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-log/src/log_params.rs",
+    "text": "Present only with the platform clock — see the module note."
+  },
+  "verdict": "divergence",
+  "why": "phase-515 R3. rclrs's `throttle(Duration)`: at most one record of the call site per window, measured from the last record emitted, on the platform's monotonic clock, with the window state a static the level macro declares. Constraint: the method exists only under `cfg(nros_log_clock)` (the platform's `clock` capability or `nros-log/platform-clock`, issue 1037) -- without a clock the window would be measured against a constant and emit once and then never (issue 1152), so a clockless build refuses `.throttle(d)` at compile time and keeps `nros_*_throttle_at!` as its throttle. The report lists it theirs-only because it is generated from a clockless build. Test: `log_params_throttle.rs` (`just check required-features-tests`)."
+}

@@ -55,6 +55,18 @@ let mut node = executor.create_node("my_node")?;
 log_info!(node.logger(), "subscribed to {}", topic);
 ```
 
+rclrs's modifiers chain off the logger, and each applies per call site:
+
+```rust
+use nros_log::ToLogParams;
+
+log_info!(node.logger().once(), "link up");
+log_warn!(node.logger().skip_first(), "late sample {}", seq);
+log_debug!(node.logger().only_if(verbose), "state {:?}", state);
+// needs the platform clock; a clockless image refuses it at compile time
+log_warn!(node.logger().throttle(Duration::from_millis(500)), "lag {} ms", lag);
+```
+
 ### C
 
 ```c

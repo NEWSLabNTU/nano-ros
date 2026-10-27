@@ -58,6 +58,7 @@ use portable_atomic::{AtomicBool, AtomicPtr, AtomicU8, AtomicUsize, Ordering};
 pub mod early;
 #[cfg(feature = "log-compat")]
 pub mod log_compat;
+pub mod log_params;
 pub mod macros;
 pub mod pool;
 #[cfg(feature = "rosout")]
@@ -79,6 +80,7 @@ mod config {
 }
 
 pub use buffer::{FormatBuffer, format_buffer_capacity};
+pub use log_params::{LogOccurrence, LogParams, ThrottleClock, ToLogParams};
 pub use pool::{
     MAX_LOGGER_NAME_LEN, dynamic_logger_capacity, dynamic_logger_name_arena, dynamic_loggers_in_use,
 };

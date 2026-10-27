@@ -462,6 +462,17 @@ Test: `create_node_takes_rclrs_into_node_options`.
 `.only_if(b)` (14 rows).** Declined as an overload trait. The modifiers need no
 allocation. `nros-log/src/macros.rs` names three ledger rows this would
 reverse; reverse them. Adopt.
+**LANDED 2026-10-27.** `nros_log::{ToLogParams, LogParams, LogOccurrence,
+ThrottleClock}` with rclrs's members; the five level macros, `log!` and
+`nros_trace!` take a `ToLogParams` first argument (a `&Logger` still works).
+The three rows' objections each had an answer: the `once` / throttle state is
+a static the level macro declares per call site (rclrs's arrangement, and
+constant-folded away for a plain call); `ThrottleClock` is `SteadyTime` only;
+`throttle` / `throttle_clock` exist only under `cfg(nros_log_clock)`, so a
+clockless `.throttle(d)` is still a compile error. Bounded to `&Logger` and
+`LogParams` (no node or name impls). Tests: `tests/log_params.rs`,
+`tests/log_params_throttle.rs` (`platform-clock`, in
+`required-features-tests`).
 
 **R4 — `create_timer_repeating` / `_oneshot` / `_inert`.** The ledger row
 records that rclrs 0.7.0 converged on our three timer modes; ours are
