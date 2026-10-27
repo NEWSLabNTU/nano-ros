@@ -29,10 +29,6 @@ fn main() {
     executor
         .register_parameter_services()
         .expect("Failed to register parameter services");
-    assert!(
-        executor.declare_parameter("start_value", ParameterValue::Integer(0)),
-        "start_value declaration refused"
-    );
     info!("Parameter services registered for /talker");
 
     let publisher = {
@@ -40,6 +36,12 @@ fn main() {
             .create_node("talker")
             .expect("Failed to create node");
         info!("Node created: talker");
+        // phase-515 R10 -- declared on the node, as rclrs does.
+        node.declare_parameter::<i64>("start_value")
+            .expect("parameter store registered")
+            .default(0)
+            .mandatory()
+            .expect("start_value declaration refused");
         let pub_ = node
             .create_publisher::<Int32>("/chatter")
             .expect("Failed to create publisher");

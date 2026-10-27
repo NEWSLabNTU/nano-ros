@@ -1638,9 +1638,13 @@ pub trait DeclarativeNode {
     }
 
     /// Declare a parameter. Stable parameter ID is required.
+    ///
+    /// phase-515 R10: spelled `declare_parameter` until `Node` gained rclrs's
+    /// inherent `declare_parameter::<T>(name)`, which an inherent method wins
+    /// over a trait one with.
     #[track_caller]
     #[doc(hidden)]
-    fn declare_parameter<'entity>(
+    fn declare_parameter_with_id<'entity>(
         &mut self,
         id: EntityId<'entity>,
         name: &str,
@@ -1681,7 +1685,7 @@ pub trait DeclarativeNode {
         name: &'entity str,
         parameter_type: ParameterType,
     ) -> NodeResult<NodeParameter<'entity>> {
-        self.declare_parameter(EntityId::new(name), name, parameter_type)
+        self.declare_parameter_with_id(EntityId::new(name), name, parameter_type)
     }
 
     /// Declare a parameter with a concrete source default, using `name` as
@@ -2966,8 +2970,11 @@ mod tests {
                 CallbackId::new("on_tick"),
                 TimerDuration::from_millis(10),
             )?;
-            let _parameter =
-                node.declare_parameter(EntityId::new("param_gain"), "gain", ParameterType::Double)?;
+            let _parameter = node.declare_parameter_with_id(
+                EntityId::new("param_gain"),
+                "gain",
+                ParameterType::Double,
+            )?;
             node.callback(CallbackId::new("on_tick"))
                 .publishes(EntityId::new("pub_chatter"))?
                 .writes(EntityId::new("param_gain"))?;

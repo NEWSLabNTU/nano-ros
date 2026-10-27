@@ -265,7 +265,7 @@ pub unsafe extern "C" fn nros_cpp_get_param_integer(
     };
     match ctx
         .executor
-        .get_parameter(name_str)
+        .get_parameter_on(nros_node::executor::NodeId::PRIMARY, name_str)
         .and_then(|v| v.as_integer())
     {
         Some(v) => {
@@ -301,7 +301,7 @@ pub unsafe extern "C" fn nros_cpp_get_param_double(
     };
     match ctx
         .executor
-        .get_parameter(name_str)
+        .get_parameter_on(nros_node::executor::NodeId::PRIMARY, name_str)
         .and_then(|v| v.as_double())
     {
         Some(v) => {
@@ -344,7 +344,7 @@ pub unsafe extern "C" fn nros_cpp_get_param_bool(
     };
     match ctx
         .executor
-        .get_parameter(name_str)
+        .get_parameter_on(nros_node::executor::NodeId::PRIMARY, name_str)
         .and_then(|v| v.as_bool())
     {
         Some(v) => {
@@ -385,7 +385,7 @@ pub unsafe extern "C" fn nros_cpp_get_param_string(
     };
     let val = match ctx
         .executor
-        .get_parameter(name_str)
+        .get_parameter_on(nros_node::executor::NodeId::PRIMARY, name_str)
         .and_then(|v| v.as_string())
     {
         Some(s) => s,

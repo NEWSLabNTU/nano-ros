@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::set_parameter",
+  "verdict": "extension",
+  "why": "phase-515 R10 (maintainer decision 2026-10-27: the node is the parameter receiver, as rclrs's is). `Node::set_parameter` forwards to `Executor::set_parameter_on(node_id, ...)` with this node's id; the store is still the executor's one table (phase-426 W1), and the executor's bare primary-node form is deprecated. rclrs's `Node` has no `set_parameter` -- the counterpart is rclcpp's `Node::set_parameter` -- so this extends the rclrs surface with a verb the ROS 2 parameter model has. Test: `packages/core/nros-node/src/executor/tests.rs` (`the_node_is_the_parameter_receiver`)."
+}

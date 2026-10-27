@@ -1581,6 +1581,168 @@ pub struct Node<'e, 's> {
     node_id: super::node_record::NodeId,
 }
 
+// ============================================================================
+// Parameters -- the node is the receiver (phase-515 R10)
+// ============================================================================
+//
+// rclrs keeps parameter verbs on the node; ours were on the `Executor`, as a
+// `_on(NodeId, ...)` form plus a bare form meaning the primary node, because
+// the store is one table the executor owns (phase-426 W1). The store did not
+// move -- these forward to the `_on` forms with this node's id -- but the
+// RECEIVER a user writes is the node, as upstream's is, and the executor's
+// bare forms are deprecated. Executor-wide verbs (`register_parameter_services`,
+// `params`, `install_argv_params`, `flush_parameter_events`) stay there.
+#[cfg(feature = "param-store")]
+impl<'e, 's> Node<'e, 's> {
+    /// rclrs's `Node::declare_parameter::<T>(name)`: a [`ParameterBuilder`]
+    /// whose terminal (`mandatory` / `optional` / `read_only`) declares it.
+    ///
+    /// ADOPT-BOUNDED: returns `Result`, where rclrs's builder cannot fail. The
+    /// store is created on first use; `Err(NodeError::NotInitialized)` means the
+    /// platform heap refused it (issue 1706), which has to be reported.
+    ///
+    /// [`ParameterBuilder`]: nros_params::ParameterBuilder
+    pub fn declare_parameter<'a, T: nros_params::ParameterVariant>(
+        &'a mut self,
+        name: &'a str,
+    ) -> Result<nros_params::ParameterBuilder<'a, 's, T>, NodeError> {
+        self.executor.parameter_on(self.node_id, name)
+    }
+
+    /// rclrs's `Node::use_undeclared_parameters()`: read and write any name,
+    /// declared or not.
+    pub fn use_undeclared_parameters(
+        &mut self,
+    ) -> Result<nros_params::Parameters<'_, 's>, NodeError> {
+        self.executor.use_undeclared_parameters_on(self.node_id)
+    }
+
+    /// Declare `name` with `value` and a descriptor -- rclcpp's
+    /// `declare_parameter(name, value, descriptor)`. `false` if it exists, the
+    /// table is full, or the value is outside the descriptor's range.
+    pub fn declare_parameter_with_descriptor(
+        &mut self,
+        name: &str,
+        value: nros_params::ParameterValue,
+        descriptor: nros_params::ParameterDescriptor,
+    ) -> bool {
+        self.executor
+            .declare_parameter_with_descriptor_on(self.node_id, name, value, descriptor)
+    }
+
+    /// The current value of `name`, if declared.
+    pub fn get_parameter(&self, name: &str) -> Option<&nros_params::ParameterValue> {
+        self.executor.get_parameter_on(self.node_id, name)
+    }
+
+    /// Set `name`, through the same rules a remote set obeys.
+    pub fn set_parameter(
+        &mut self,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> Result<(), nros_params::ParameterError> {
+        self.executor.set_parameter_on(self.node_id, name, value)
+    }
+
+    /// Set several parameters all-or-nothing -- rclcpp's
+    /// `set_parameters_atomically`.
+    pub fn set_parameters_atomically<'x, I>(
+        &mut self,
+        items: I,
+    ) -> Result<(), nros_params::ParameterError>
+    where
+        I: Iterator<Item = Option<(&'x str, nros_params::ParameterValue)>> + Clone,
+    {
+        self.executor
+            .set_parameters_atomically_on(self.node_id, items)
+    }
+
+    /// Remove a declared parameter -- rclcpp's `undeclare_parameter`.
+    pub fn undeclare_parameter(&mut self, name: &str) -> bool {
+        self.executor.undeclare_parameter_on(self.node_id, name)
+    }
+
+    /// Whether a REMOTE set may create a name that was never declared.
+    pub fn allow_undeclared_parameters(&mut self, allow: bool) {
+        self.executor
+            .allow_undeclared_parameters_on(self.node_id, allow)
+    }
+
+    /// The descriptor of `name` -- rclcpp's `describe_parameter`.
+    pub fn describe_parameter(&self, name: &str) -> Option<&nros_params::ParameterDescriptor> {
+        self.executor.describe_parameter_on(self.node_id, name)
+    }
+
+    /// The type of `name` -- rclcpp's `get_parameter_type`.
+    pub fn get_parameter_type(&self, name: &str) -> Option<nros_params::ParameterType> {
+        self.executor.get_parameter_type_on(self.node_id, name)
+    }
+
+    /// The names of this node's parameters under `prefix` -- rclcpp's
+    /// `list_parameters`, as an iterator rather than an allocated list.
+    pub fn list_parameters<'p>(&'p self, prefix: &'p str) -> impl Iterator<Item = &'p str> {
+        self.executor.list_parameters_on(self.node_id, prefix)
+    }
+
+    /// Set the descriptor's description and constraint text.
+    pub fn set_parameter_description(
+        &mut self,
+        name: &str,
+        description: &str,
+        additional_constraints: &str,
+    ) -> bool {
+        self.executor.set_parameter_description_on(
+            self.node_id,
+            name,
+            description,
+            additional_constraints,
+        )
+    }
+
+    /// Make `name` read-only (or writable again).
+    pub fn set_parameter_read_only(&mut self, name: &str, read_only: bool) -> bool {
+        self.executor
+            .set_parameter_read_only_on(self.node_id, name, read_only)
+    }
+
+    /// Constrain an integer parameter to `[min, max]` in steps of `step`.
+    pub fn set_parameter_integer_range(
+        &mut self,
+        name: &str,
+        min: i64,
+        max: i64,
+        step: i64,
+    ) -> bool {
+        self.executor
+            .set_parameter_integer_range_on(self.node_id, name, min, max, step)
+    }
+
+    /// Constrain a floating-point parameter to `[min, max]` in steps of `step`.
+    pub fn set_parameter_float_range(&mut self, name: &str, min: f64, max: f64, step: f64) -> bool {
+        self.executor
+            .set_parameter_float_range_on(self.node_id, name, min, max, step)
+    }
+
+    /// rclcpp's `add_on_set_parameters_callback`: `callback` may refuse a write
+    /// to this node's parameters.
+    pub fn add_on_set_parameters_callback(
+        &mut self,
+        callback: nros_params::OnSetParameterFn,
+        ctx: nros_params::OnSetContext,
+    ) -> Option<nros_params::OnSetParameterHandle> {
+        self.executor
+            .add_on_set_parameters_callback_on(self.node_id, callback, ctx)
+    }
+
+    /// rclcpp's `remove_on_set_parameters_callback`.
+    pub fn remove_on_set_parameters_callback(
+        &mut self,
+        handle: nros_params::OnSetParameterHandle,
+    ) -> bool {
+        self.executor.remove_on_set_parameters_callback(handle)
+    }
+}
+
 impl<'e, 's> Node<'e, 's> {
     pub(crate) fn new(
         executor: &'e mut super::spin::Executor<'s>,

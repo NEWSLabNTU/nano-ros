@@ -593,6 +593,24 @@ that R8 rename.
 **R10 — three parameter receivers.** `ParameterServer` (55 rows), `Executor`
 (~29) and `Node` each carry parameter verbs; rclrs keeps them on the node.
 Pick one user-facing receiver and keep the others internal.
+**Decided 2026-10-27 (maintainer): the node, like rclrs.** **Stage 1 LANDED
+2026-10-27:** `Node` carries the per-node parameter surface -- rclrs's
+`declare_parameter::<T>(name)` (the `ParameterBuilder`) and
+`use_undeclared_parameters()`, plus the rclcpp-shaped verbs the executor's bare
+forms carried (`get_parameter`, `set_parameter`, `set_parameters_atomically`,
+`undeclare_parameter`, `allow_undeclared_parameters`, `describe_parameter`,
+`get_parameter_type`, `list_parameters`, `declare_parameter_with_descriptor`,
+the description / read-only / range setters, the on-set callback pair). Each
+forwards to the executor's `_on(node_id, ...)` form: the STORE stays the
+executor's one table (phase-426 W1), only the receiver moved. The 17 bare
+primary-node `Executor` forms are `#[deprecated]` for one release. The builder
+path now creates the store on first use, as `declare_parameter_on` always did.
+`DeclarativeNode`'s hidden `declare_parameter(id, name, type)` became
+`declare_parameter_with_id`, because an inherent method shadows a trait one.
+Executor-wide verbs (`register_parameter_services`, `params`,
+`install_argv_params`, `flush_parameter_events`) stay on the executor.
+**Still open:** the `_on` forms leave the user surface (behind `ExecutorFfi`,
+as R9 stage 1 did for C-shaped methods), and `ParameterServer`'s 55 rows.
 
 ### X — cross-language
 

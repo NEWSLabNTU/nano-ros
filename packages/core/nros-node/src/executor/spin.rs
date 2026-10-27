@@ -14854,6 +14854,10 @@ impl<'s> Executor<'s> {
     /// style. A declare that failed and was ignored is a parameter the program
     /// believes it has.
     #[must_use]
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.declare_parameter::<T>(name).default(value).mandatory()` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn declare_parameter(&mut self, name: &str, value: nros_params::ParameterValue) -> bool {
         self.declare_parameter_on(super::node_record::NodeId::PRIMARY, name, value)
     }
@@ -15091,6 +15095,10 @@ impl<'s> Executor<'s> {
     /// is the shape CLAUDE.md's "fix the CLASS, not the reported site" rule
     /// exists for.
     #[must_use]
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.declare_parameter_with_descriptor(..)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn declare_parameter_with_descriptor(
         &mut self,
         name: &str,
@@ -15208,6 +15216,10 @@ impl<'s> Executor<'s> {
     ///
     /// Returns `Err(ParameterError::NotFound)` when the store does not exist
     /// yet (no parameter has been declared and no services registered).
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.set_parameter(name, value)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn set_parameter(
         &mut self,
         name: &str,
@@ -15504,11 +15516,19 @@ impl<'s> Executor<'s> {
 
     /// [`allow_undeclared_parameters_on`](Self::allow_undeclared_parameters_on)
     /// for the primary node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.allow_undeclared_parameters(allow)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn allow_undeclared_parameters(&mut self, allow: bool) {
         self.allow_undeclared_parameters_on(super::node_record::NodeId::PRIMARY, allow);
     }
 
     /// Get a parameter value by name from the primary node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.get_parameter(name)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn get_parameter(&self, name: &str) -> Option<&nros_params::ParameterValue> {
         self.get_parameter_on(super::node_record::NodeId::PRIMARY, name)
     }
@@ -15561,6 +15581,10 @@ impl<'s> Executor<'s> {
     ///
     /// [`ParameterBuilder`]: nros_params::ParameterBuilder
     /// [`register_parameter_services`]: Self::register_parameter_services
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.declare_parameter::<T>(name)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn parameter<'a, T: nros_params::ParameterVariant>(
         &'a mut self,
         name: &'a str,
@@ -15574,6 +15598,11 @@ impl<'s> Executor<'s> {
         node: super::node_record::NodeId,
         name: &'a str,
     ) -> Result<nros_params::ParameterBuilder<'a, 's, T>, NodeError> {
+        // phase-515 R10 — the store comes into being on first use, as it
+        // does for `declare_parameter_on`: `Node::declare_parameter` is the
+        // user-facing declaration now, and it must not need a call the old
+        // one did not. `NotInitialized` remains for a heap that refused it.
+        self.ensure_parameter_store();
         // Issue 1203 — a reserved name the executor acts on. The builder
         // declares through its own borrow of the store, so the seeded
         // placeholder has to leave first (or the declaration is refused, the
@@ -15634,6 +15663,10 @@ impl<'s> Executor<'s> {
 
     /// [`set_parameter_description_on`](Self::set_parameter_description_on) for
     /// the primary node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.set_parameter_description(..)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn set_parameter_description(
         &mut self,
         name: &str,
@@ -15667,6 +15700,10 @@ impl<'s> Executor<'s> {
 
     /// [`set_parameter_read_only_on`](Self::set_parameter_read_only_on) for the
     /// primary node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.set_parameter_read_only(..)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn set_parameter_read_only(&mut self, name: &str, read_only: bool) -> bool {
         self.set_parameter_read_only_on(super::node_record::NodeId::PRIMARY, name, read_only)
     }
@@ -15694,6 +15731,10 @@ impl<'s> Executor<'s> {
 
     /// [`set_parameter_integer_range_on`](Self::set_parameter_integer_range_on)
     /// for the primary node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.set_parameter_integer_range(..)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn set_parameter_integer_range(
         &mut self,
         name: &str,
@@ -15732,6 +15773,10 @@ impl<'s> Executor<'s> {
 
     /// [`set_parameter_float_range_on`](Self::set_parameter_float_range_on) for
     /// the primary node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.set_parameter_float_range(..)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn set_parameter_float_range(&mut self, name: &str, min: f64, max: f64, step: f64) -> bool {
         self.set_parameter_float_range_on(super::node_record::NodeId::PRIMARY, name, min, max, step)
     }
@@ -15752,6 +15797,10 @@ impl<'s> Executor<'s> {
 
     /// [`describe_parameter_on`](Self::describe_parameter_on) for the primary
     /// node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.describe_parameter(name)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn describe_parameter(&self, name: &str) -> Option<&nros_params::ParameterDescriptor> {
         self.describe_parameter_on(super::node_record::NodeId::PRIMARY, name)
     }
@@ -15768,6 +15817,10 @@ impl<'s> Executor<'s> {
 
     /// [`get_parameter_type_on`](Self::get_parameter_type_on) for the primary
     /// node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.get_parameter_type(name)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn get_parameter_type(&self, name: &str) -> Option<nros_params::ParameterType> {
         self.get_parameter_type_on(super::node_record::NodeId::PRIMARY, name)
     }
@@ -15787,6 +15840,10 @@ impl<'s> Executor<'s> {
     }
 
     /// [`list_parameters_on`](Self::list_parameters_on) for the primary node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.list_parameters(prefix)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn list_parameters<'p>(&'p self, prefix: &'p str) -> impl Iterator<Item = &'p str> {
         self.list_parameters_on(super::node_record::NodeId::PRIMARY, prefix)
     }
@@ -15834,6 +15891,10 @@ impl<'s> Executor<'s> {
 
     /// [`set_parameters_atomically_on`](Self::set_parameters_atomically_on) for
     /// the primary node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.set_parameters_atomically(items)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn set_parameters_atomically<'x, I>(
         &mut self,
         items: I,
@@ -15855,6 +15916,10 @@ impl<'s> Executor<'s> {
 
     /// [`undeclare_parameter_on`](Self::undeclare_parameter_on) for the primary
     /// node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.undeclare_parameter(name)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn undeclare_parameter(&mut self, name: &str) -> bool {
         self.undeclare_parameter_on(super::node_record::NodeId::PRIMARY, name)
     }
@@ -15883,6 +15948,10 @@ impl<'s> Executor<'s> {
 
     /// [`add_on_set_parameters_callback_on`](Self::add_on_set_parameters_callback_on)
     /// for the primary node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.add_on_set_parameters_callback(..)` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn add_on_set_parameters_callback(
         &mut self,
         callback: nros_params::OnSetParameterFn,
@@ -15913,6 +15982,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node: super::node_record::NodeId,
     ) -> Result<nros_params::Parameters<'_, 's>, NodeError> {
+        self.ensure_parameter_store(); // phase-515 R10, as `parameter_on`
         let server = self
             .params
             .as_mut()
@@ -15923,6 +15993,10 @@ impl<'s> Executor<'s> {
 
     /// [`use_undeclared_parameters_on`](Self::use_undeclared_parameters_on) for
     /// the primary node.
+    #[deprecated(
+        since = "0.6.0",
+        note = "the node is the parameter receiver (phase-515 R10): `node.use_undeclared_parameters()` on the `Node` that `create_node` / `node_mut(id)` returns"
+    )]
     pub fn use_undeclared_parameters(
         &mut self,
     ) -> Result<nros_params::Parameters<'_, 's>, NodeError> {

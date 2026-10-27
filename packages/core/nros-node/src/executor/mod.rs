@@ -155,6 +155,9 @@ pub mod ffi;
 // wall clock. Gating them is not hiding coverage, it is declaring what they
 // already required. `cargo test -p nros-node --features alloc` runs them; the
 // test harness has `std` whatever the features say (phase-359 W10).
+// phase-515 R10 -- the deprecated `Executor` parameter forms keep their tests
+// for the release they remain.
+#[allow(deprecated)]
 #[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
 mod tests;
 

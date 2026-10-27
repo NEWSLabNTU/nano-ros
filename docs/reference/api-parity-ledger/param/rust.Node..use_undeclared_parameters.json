@@ -1,10 +1,14 @@
 {
   "key": "rust:Node::use_undeclared_parameters",
-  "disposition": "absent",
+  "disposition": "adopt-bounded",
   "provides": [
     "nros::Executor::use_undeclared_parameters",
     "nros::Executor::use_undeclared_parameters_on"
   ],
   "verdict": "divergence",
-  "why": "RE-VERDICTED phase-417 W4.a. was `gap`, and the capability SHIPS: `Executor::use_undeclared_parameters[_on]` hands out the handle, which now writes as well as reads. The RECEIVER is what diverges and it is structural — the store belongs to the EXECUTOR, because an image composes several nodes onto one executor and there is no allocator to give each node a table (phase-426 W1). rclrs's `Node` owns its own. So the `_on` spelling names the node and the bare one means the primary, which is the same pair every other parameter verb on the executor carries. `absent`, because the name does not exist on a node type."
+  "why": "ADOPTED 2026-10-27 (phase-515 R10): `Node::use_undeclared_parameters()` on the node, as rclrs's, returning `Result<Parameters, NodeError>` for the same reason as `rust:Node::declare_parameter`. The executor forms are the deprecated bare one and the `_on` one it forwards to. PRIOR ROW: RE-VERDICTED phase-417 W4.a. was `gap`, and the capability SHIPS: `Executor::use_undeclared_parameters[_on]` hands out the handle, which now writes as well as reads. The RECEIVER is what diverges and it is structural — the store belongs to the EXECUTOR, because an image composes several nodes onto one executor and there is no allocator to give each node a table (phase-426 W1). rclrs's `Node` owns its own. So the `_on` spelling names the node and the bare one means the primary, which is the same pair every other parameter verb on the executor carries. `absent`, because the name does not exist on a node type.",
+  "envelope": {
+    "file": "packages/core/nros-node/src/executor/node.rs",
+    "text": "ADOPT-BOUNDED: returns `Result`, where rclrs's builder cannot fail. The"
+  }
 }
