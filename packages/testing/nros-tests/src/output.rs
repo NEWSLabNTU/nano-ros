@@ -1920,6 +1920,27 @@ pub fn first_guest_failure(output: &str) -> Option<&str> {
     })
 }
 
+/// The zenoh router's per-SESSION DEBUG line, and the only evidence a test on
+/// this side of the link has that a peer re-dialled it.
+///
+/// Deliberately the transport line and not `"Accepted TCP connection"`: a
+/// healthy FreeRTOS pair produces THREE accepts and two sessions, because the
+/// first dial is abandoned before the handshake (measured: accept at t=0.0 with
+/// no transport, then one transport each at t=2.0 and t=22.0). Counting accepts
+/// would have to carry that boot artefact as slack, on every platform, forever.
+/// Sessions are the thing being asserted anyway.
+///
+/// It is third-party text (RFC-0075: the router is whatever ROS ships), so
+/// `rtos_e2e`'s `assert_no_session_churn` treats "not one of these in the whole log" as a
+/// FAILURE rather than as zero reconnects — a rename upstream must show up as a
+/// red naming this constant, never as a cell that silently stops checking.
+pub const ROUTER_SESSION_MARKER: &str = "New transport opened";
+
+/// Router log filter for [`ROUTER_SESSION_MARKER`]. Scoped to the crate that
+/// emits it — a whole-router `debug` writes ~46 KB per cell to say the same
+/// thing.
+pub const ROUTER_SESSION_LOG_FILTER: &str = "zenoh_transport=debug";
+
 #[cfg(test)]
 mod guest_failure_tests {
     use super::*;

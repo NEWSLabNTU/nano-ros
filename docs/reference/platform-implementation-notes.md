@@ -273,6 +273,15 @@ Consequences and rules:
   transport (boot-time declares crawl at one per recv window, then everything
   wedges). Fork patch in `zenoh-pico/include/zenoh-pico/config.h` (+ the
   `zenoh_generic_config.h` twin); NuttX intentionally keeps 5000.
+- **A zenoh image's socket receive MUST time out, and on Zephyr that takes
+  `CONFIG_NET_CONTEXT_RCVTIMEO`** (issue 2105). zenoh-pico 1.10's executor
+  thread runs the lease, keep-alive and query timeouts only between
+  receives. Zephyr ignores `SO_RCVTIMEO` without that option, and
+  `tcp_zephyr.c` only logs the refusal. On a native-IP image (any real
+  board) the receive then blocked until the router spoke: the keep-alive
+  went out once a minute and the session re-dialled. `NROS_RMW_ZENOH`
+  selects the option, and `zpico.c` `#error`s without it. native_sim cannot
+  show this, because its offloaded host sockets honour the timeout anyway.
 - **NuttX's zenoh-pico clock is `nuttx_clock.c`, never the alias TU's**
   (issue 2094). `ZENOH_NUTTX` makes zenoh-pico's TUs see `unix.h`, where
   `z_clock_t` is a `struct timespec` returned through a hidden pointer, while

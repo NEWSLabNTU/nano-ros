@@ -50,6 +50,7 @@ use nros_tests::{
         qemu_monitor_command,
     },
     matrix::{Lang, PlatformId, Workload},
+    output::{ROUTER_SESSION_LOG_FILTER, ROUTER_SESSION_MARKER},
 };
 use std::{
     process::Command,
@@ -231,6 +232,66 @@ const BOOT_REPORT_BUDGET: Duration = Duration::from_secs(40);
 /// It also asserts the image HALTED in the fatal path rather than running on
 /// with the entity missing — the `CONFIG_NROS_ARENA_EXHAUSTION_IS_FATAL`
 /// half, which is what keeps the record from being overwritten on a board.
+/// Past the negotiated lease (60 s, issue 0906) plus a margin for the router's
+/// 30 s keep-alive cadence.
+const PAST_THE_LEASE: Duration = Duration::from_secs(75);
+
+/// The talker holds ONE router session past the lease.
+///
+/// Issue 2105 -- zenoh-pico 1.10 runs the lease and keep-alive as timers on the
+/// executor thread, and that thread checks them only when its socket receive
+/// returns. Zephyr honours `SO_RCVTIMEO` only under
+/// `CONFIG_NET_CONTEXT_RCVTIMEO`, which this image did not have, so the receive
+/// blocked until the router spoke. Measured here: the keep-alive and lease ran
+/// at +4 s and +64 s and nothing between, and the router opened a second
+/// session. native_sim never showed it: its offloaded host sockets time out
+/// without the option. The pub/sub cell above stops at the first publish, long
+/// before any lease, so this is the cell that sees it.
+#[test]
+fn zephyr_cortex_m_talker_keeps_one_session_past_the_lease() {
+    require_cortex_m_in_lane("the Zephyr Cortex-M session-continuity cell");
+    if !is_qemu_available() {
+        nros_tests::unmet!("qemu-system-arm not found");
+    }
+    if !is_zenohd_available() {
+        nros_tests::unmet!("zenohd not found — run `just setup` / source ./activate.sh");
+    }
+    let binary = build_zephyr_cortex_m_example("c", "talker", Rmw::Zenoh)
+        .require("zephyr/c/talker for mps2_an385");
+    let port = port_of(PlatformId::ZephyrQemuCortexM, Lang::C, Workload::Pubsub);
+    let router = ZenohRouter::start_slirp_with_log_filter(port, Some(ROUTER_SESSION_LOG_FILTER))
+        .unwrap_or_else(|e| panic!("failed to start zenohd on {port} for the SLIRP guest: {e:?}"));
+    let mut qemu = QemuProcess::start_mps2_an385_networked(&binary)
+        .expect("spawn Zephyr Cortex-M zenoh talker");
+    let output = qemu.collect_until("\u{0}never printed\u{0}", PAST_THE_LEASE);
+    qemu.kill();
+
+    nros_tests::output::assert_talker(&output, 1);
+    let log_path = nros_tests::fixtures::fixture_log_path(&format!("zenohd-{port}"));
+    let log = std::fs::read_to_string(&log_path).unwrap_or_else(|e| {
+        panic!(
+            "cannot read the router log at {} ({e}); this cell asserts on it",
+            log_path.display()
+        )
+    });
+    let sessions = nros_tests::count_pattern(&log, ROUTER_SESSION_MARKER);
+    assert!(
+        sessions >= 1,
+        "the router log has no `{ROUTER_SESSION_MARKER}` line although the talker \
+         published, so this cell measured nothing. Log: {}",
+        log_path.display()
+    );
+    assert_eq!(
+        sessions,
+        1,
+        "the talker opened {sessions} router sessions in {PAST_THE_LEASE:?}. Past the \
+         first, each is a session that expired and re-dialled; issue 2105 was the \
+         executor's receive never timing out, so its lease and keep-alive ran only \
+         when the router spoke.\nRouter: {}\nOutput:\n{output}",
+        router.launch_line(),
+    );
+}
+
 #[test]
 fn zephyr_cortex_m_c_boot_report_names_arena_exhaustion() {
     require_cortex_m_in_lane("the Zephyr Cortex-M boot-report image");

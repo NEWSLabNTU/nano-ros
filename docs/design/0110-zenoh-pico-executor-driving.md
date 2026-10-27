@@ -1,7 +1,7 @@
 ---
 rfc: 0110
 title: "Driving zenoh-pico 1.10's executor: one thread where the platform can block, the caller's spin where it cannot"
-status: Draft
+status: Stable
 since: 2026-10
 last-reviewed: 2026-10
 implements-tracked-by: [phase-508]
@@ -117,6 +117,16 @@ and its variants, read the macro instead.
   (`ZPICO_TX_BATCH_THREAD`).
 - **`Z_RUNTIME_IDLE_READ_TASK_SLEEP = 0`.** The receive blocks, so an idle
   read waits in `recv` and needs no sleep.
+- **That receive MUST time out** (`Z_CONFIG_SOCKET_TIMEOUT`).
+  - The executor checks its timers (lease, keep-alive, query timeout) only
+    between receives, so a receive that blocks until data arrives starves
+    every timer. Under 1.8 a separate lease thread did not care.
+  - Zephyr honours `SO_RCVTIMEO` only with `CONFIG_NET_CONTEXT_RCVTIMEO`,
+    which `NROS_RMW_ZENOH` selects; `zpico.c` `#error`s without it (issue
+    2105).
+  - The timeout bounds how late a timer runs: up to two receives, because a
+    ready read runs before a due timer. Measured on NuttX's 5000 ms that
+    gives keep-alives every 25–30 s against a 60 s lease (issue 2094).
 
 ### D3 — CALLER, single-thread: a bounded `zp_spin_once` loop
 
@@ -229,10 +239,13 @@ which sends one keep-alive through the transport's TX path.
 
 ### Results (2026-10-27)
 
-All five are answered. The keep-alive row found a defect (issue 2094,
-fixed). The stack row's Zephyr figure is one sample, because of a timed
-future that never re-woke there (issue 2105). This RFC stays Draft until
-issue 2105 is explained.
+All five are answered, and the RFC is Stable. The keep-alive row found
+two defects, both fixed. Both were the same failure seen from two platforms:
+the executor's timers never ran, so the lease and keep-alive never ran.
+
+- On NuttX, the cause was a clock-ABI split (issue 2094).
+- On a Zephyr image with the native IP stack, the socket receive never timed
+  out (issue 2105).
 
 - **Executor stack high-water mark.** `zpico_open` spawns a one-shot
   sampler future on the executor. It samples once a second from +4 s and
@@ -245,13 +258,14 @@ issue 2105 is explained.
   | FreeRTOS mps2-an385, Rust and C talker | 984 B | 5120 B |
   | FreeRTOS mps2-an385, Rust and C listener | 728 B | 5120 B |
   | NuttX virt, Rust listener | 2296 B | 65256 B |
-  | Zephyr mps2_an385, C talker (`CONFIG_INIT_STACKS` overlay) | 992 B, one sample at +4 s | 131072 B |
+  | Zephyr mps2_an385, C talker (`CONFIG_INIT_STACKS` overlay) | 992 B (stable; one sample before issue 2105's fix) | 131072 B |
   | POSIX host | not measurable (8 MiB host thread) | — |
 
   So no THREAD platform comes near its stack. NuttX and Zephyr carry 28x
   and 130x their peak. Lowering those defaults is a sizing change of its
-  own, not made here. The Zephyr figure is a single early sample, because
-  the sampler never woke again on that image (issue 2094).
+  own, not made here. The Zephyr figure was a single early sample until
+  issue 2105 was fixed: the sampler is a timed future, and on that image
+  timed futures never ran.
 - **Keep-alive under a blocked receive: 25–30 s on NuttX, against a 60 s
   expiry.**
   - The first measurement FAILED. A quiet NuttX listener lost its session
@@ -336,6 +350,12 @@ Tracked by phase-508:
   everywhere. The keep-alive soak FAILS on NuttX (issue 2094), so the RFC
   stays Draft. D6's "a failed spawn is already loud" is corrected: it holds
   at open only.
+- 2026-10-27: Stable. The cause of issue 2105 was that Zephyr honours
+  `SO_RCVTIMEO` only under `CONFIG_NET_CONTEXT_RCVTIMEO`, so on a native-IP
+  image the executor's receive blocked until the router spoke, and the
+  lease and keep-alive ran only then. `NROS_RMW_ZENOH` now selects the
+  option, and `zpico.c` refuses a THREAD build that lacks it. D2 gains the
+  rule: a THREAD platform's receive must time out.
 - 2026-10-27: the keep-alive row answered. Issue 2094 was a clock ABI split
   on NuttX, now fixed: a quiet link holds one session, with keep-alives
   every 25–30 s. Draft remains for issue 2105, a timed future that never

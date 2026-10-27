@@ -541,6 +541,13 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 # `~zephyr` is a SUBSTRING match and would claim both of these binaries first.
 # Verify membership with `cargo nextest show-config test-groups`, never by
 # reading the filter.
+# Issue 2105 — this cell runs PAST the 60 s lease (75 s plus boot), which the
+# default 60 s budget would cut short. Its own override, because the group above
+# sets no timeout and the other cells there are cheap.
+[[profile.default.overrides]]
+filter = "binary(zephyr_cortex_m_qemu) and test(=zephyr_cortex_m_talker_keeps_one_session_past_the_lease)"
+slow-timeout = { period = "120s", terminate-after = 2 }
+
 [[profile.default.overrides]]
 filter = "binary(zephyr_cortex_m_qemu) or binary(pubsub_zephyr_cortex_m_ros2_interop_e2e)"
 test-group = "zephyr-cortex-m-baked-port"
