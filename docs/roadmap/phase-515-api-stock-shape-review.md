@@ -349,6 +349,15 @@ reverse; reverse them. Adopt.
 records that rclrs 0.7.0 converged on our three timer modes; ours are
 `create_timer_in_group` / `_on_clock` / `_with_info` plus a mode set on the
 entity. Match rclrs's verbs.
+**LANDED 2026-10-27.** `NodeHandle::create_timer_repeating` / `_oneshot` /
+`_inert(period, callback)`, `period` a `TimerDuration` or a
+`core::time::Duration` (new `From` impl). Each returns the timer's `HandleId`
+(the timer is in the executor's static table, so `cancel_timer` /
+`reset_timer` take the id), not an rclrs `Timer`; an inert timer is created
+unstarted and repeats once `reset_timer` starts it. The existing
+`create_timer_in_group` / `_on_clock` / `_with_info` stay: they carry a group,
+a clock or call info, which rclrs's three do not. The book's introduction uses
+`create_timer_repeating`. Test: `node_creates_rclrs_repeating_oneshot_and_inert_timers`.
 
 **R5 — `Publisher::publish` by value.** After W0's correction the only
 difference is `&M` against rclrs's owned-or-borrowed message

@@ -1,0 +1,1 @@
+Rust nodes take rclrs's timer verbs: `create_timer_repeating`, `create_timer_oneshot` and `create_timer_inert`, each accepting a `TimerDuration` or a `core::time::Duration` and returning the timer's handle id (phase-515 R4).

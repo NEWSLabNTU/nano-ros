@@ -1829,6 +1829,91 @@ impl<'e, 's> Node<'e, 's> {
             .register_timer_on(Some(self.node_id), period, callback, Some(group.name()))
     }
 
+    /// rclrs's `create_timer_repeating(period, callback)` — phase-515 R4.
+    ///
+    /// Fires `callback` every `period`, on this node's default `SchedContext`.
+    /// rclrs 0.7.0 settled on the same three timer modes ours carries
+    /// (repeating, one-shot, inert); these three verbs are its spelling of
+    /// them. `period` is a [`TimerDuration`](crate::timer::TimerDuration) or a
+    /// `core::time::Duration`.
+    ///
+    /// ADOPT-BOUNDED: returns the timer's [`HandleId`](super::types::HandleId),
+    /// not an rclrs `Timer` object — the timer lives in the executor's static
+    /// table, so `Executor::cancel_timer` / `reset_timer` / `timer_period_ms`
+    /// take that id. No `IntoTimerOptions` (a clock choice is
+    /// [`create_timer_on_clock`](Self::create_timer_on_clock)).
+    pub fn create_timer_repeating<F>(
+        &mut self,
+        period: impl Into<crate::timer::TimerDuration>,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.executor.register_timer_entry(
+            Some(self.node_id),
+            period.into(),
+            super::TimerClockSource::Steady,
+            false,
+            None,
+            callback,
+        )
+    }
+
+    /// rclrs's `create_timer_oneshot(period, callback)` — phase-515 R4.
+    ///
+    /// Fires `callback` once, `period` after creation, then goes inert;
+    /// `Executor::reset_timer` re-arms it for one more shot. Same envelope as
+    /// [`create_timer_repeating`](Self::create_timer_repeating).
+    pub fn create_timer_oneshot<F>(
+        &mut self,
+        period: impl Into<crate::timer::TimerDuration>,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.executor.register_timer_entry(
+            Some(self.node_id),
+            period.into(),
+            super::TimerClockSource::Steady,
+            true,
+            None,
+            callback,
+        )
+    }
+
+    /// rclrs's `create_timer_inert(period, callback)` — phase-515 R4.
+    ///
+    /// Creates the timer without starting it (rcl's `autostart = false`): it
+    /// never fires until `Executor::reset_timer` starts it, after which it
+    /// repeats every `period`. ADOPT-BOUNDED beyond
+    /// [`create_timer_repeating`](Self::create_timer_repeating)'s envelope:
+    /// rclrs can later switch an inert timer to one-shot; ours starts as a
+    /// repeating timer, and a one-shot is created with
+    /// [`create_timer_oneshot`](Self::create_timer_oneshot) instead.
+    pub fn create_timer_inert<F>(
+        &mut self,
+        period: impl Into<crate::timer::TimerDuration>,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        let mut callback = callback;
+        self.executor.register_timer_entry_with(
+            Some(self.node_id),
+            period.into(),
+            super::TimerClockSource::Steady,
+            false,
+            false,
+            None,
+            None,
+            core::ptr::null_mut(),
+            move |_| move |_: &crate::timer::TimerCallInfo| callback(),
+        )
+    }
+
     /// Create a guard condition on this node — phase-417 W4.e, the Rust half of
     /// the one creation shape.
     ///

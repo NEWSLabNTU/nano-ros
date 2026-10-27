@@ -36,14 +36,13 @@ fn main() {
     let publisher = node.create_publisher::<StringMsg>("/chatter").unwrap();
 
     let mut count = 0i32;
-    executor
-        .register_timer(nros::TimerDuration::from_millis(1000), move || {
-            count += 1;
-            let mut msg = StringMsg::default();
-            let _ = write!(msg.data, "Hello World: {count}");
-            publisher.publish(&msg).unwrap();
-        })
-        .unwrap();
+    node.create_timer_repeating(core::time::Duration::from_millis(1000), move || {
+        count += 1;
+        let mut msg = StringMsg::default();
+        let _ = write!(msg.data, "Hello World: {count}");
+        publisher.publish(&msg).unwrap();
+    })
+    .unwrap();
 
     executor.spin(SpinOptions::default()).unwrap();
     // This is the imperative Layer-2 API; the starters use the

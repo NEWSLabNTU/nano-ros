@@ -130,6 +130,17 @@ impl From<nros_core::Duration> for TimerDuration {
     }
 }
 
+/// phase-515 R4 — rclrs passes a `std::time::Duration` (which is
+/// `core::time::Duration`) to its timer verbs. Sub-microsecond precision is
+/// truncated, and a period past `u64::MAX` microseconds saturates.
+impl From<core::time::Duration> for TimerDuration {
+    fn from(d: core::time::Duration) -> Self {
+        Self {
+            micros: u64::try_from(d.as_micros()).unwrap_or(u64::MAX),
+        }
+    }
+}
+
 impl From<TimerDuration> for nros_core::Duration {
     fn from(d: TimerDuration) -> Self {
         let sec = (d.micros / 1_000_000) as i32;
