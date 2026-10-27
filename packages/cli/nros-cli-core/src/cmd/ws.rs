@@ -3014,7 +3014,9 @@ fn generate_bridge_configs(
                     .map(|a| !a.is_empty())
             })
             .unwrap_or(false);
-        let dest = pkg.dir.join("nros-bridge.toml");
+        let dest = pkg
+            .dir
+            .join(nros_orchestration_ir::session_properties::BRIDGE_CONFIG);
         if !has_bridge {
             continue;
         }
@@ -3050,48 +3052,112 @@ fn generate_bridge_configs(
                 pkg.dir.display()
             );
         };
-        let output = crate::orchestration::planner::plan_system(
-            crate::orchestration::planner::PlanOptions {
-                system_pkg: pkg.name.clone(),
-                workspace_root: ws_root.to_path_buf(),
-                launch_file: plan_launch_file,
-                record_file: plan_record_file,
-                out_root: build_root.join(&pkg.name).join("nros-bridge-plan"),
-                metadata_files: Vec::new(),
-                manifest_files: Vec::new(),
-                launch_args: Vec::new(),
-                rmw: None,
-                image: None,
-                // Issue 0951 — this bridge plan runs inside the user's
-                // workspace, not a nano-ros checkout, so the resolver's own
-                // ladder (an autodetect walk, then the binary's own root) is the right
-                // answer rather than a path invented here.
-                nano_ros_path: None,
-            },
-        )
-        .wrap_err_with(|| format!("sync: plan bridge bringup {}", pkg.name))?;
-
-        let plan_json = std::fs::read_to_string(&output.plan_path)?;
-        let plan: crate::orchestration::plan::NrosPlan = serde_json::from_str(&plan_json)
-            .wrap_err_with(|| format!("sync: parse plan for bridge bringup {}", pkg.name))?;
-
-        match crate::orchestration::bridge_gen::render_bridge_runtime_config(&plan, ws_root) {
-            Some(cfg) => {
-                // Issue 0498 — sync-owned and read by the runtime, so atomic.
-                atomic_write(&dest, &cfg)
-                    .wrap_err_with(|| format!("sync: write {}", dest.display()))?;
-                if verbose {
-                    println!("sync: wrote {}", dest.display());
+        // One plan per answer: the bringup's (every image without an
+        // override), and -- issue 2062 -- one per image whose `rmw_config`
+        // overrides a bridged domain's file, since that changes the session
+        // the bridge opens for that domain and nothing else.
+        let plan_for = |image: Option<&str>| -> Result<Option<String>> {
+            let out_dir = match image {
+                Some(id) => build_root
+                    .join(&pkg.name)
+                    .join(format!("nros-bridge-plan-{id}")),
+                None => build_root.join(&pkg.name).join("nros-bridge-plan"),
+            };
+            let output = crate::orchestration::planner::plan_system(
+                crate::orchestration::planner::PlanOptions {
+                    system_pkg: pkg.name.clone(),
+                    workspace_root: ws_root.to_path_buf(),
+                    launch_file: plan_launch_file.clone(),
+                    record_file: plan_record_file.clone(),
+                    out_root: out_dir,
+                    metadata_files: Vec::new(),
+                    manifest_files: Vec::new(),
+                    launch_args: Vec::new(),
+                    rmw: None,
+                    image: image.map(str::to_string),
+                    // Issue 0951 — this bridge plan runs inside the user's
+                    // workspace, not a nano-ros checkout, so the resolver's own
+                    // ladder (an autodetect walk, then the binary's own root) is the
+                    // right answer rather than a path invented here.
+                    nano_ros_path: None,
+                },
+            )
+            .wrap_err_with(|| format!("sync: plan bridge bringup {}", pkg.name))?;
+            let plan_json = std::fs::read_to_string(&output.plan_path)?;
+            let plan: crate::orchestration::plan::NrosPlan = serde_json::from_str(&plan_json)
+                .wrap_err_with(|| format!("sync: parse plan for bridge bringup {}", pkg.name))?;
+            Ok(crate::orchestration::bridge_gen::render_bridge_runtime_config(&plan, ws_root))
+        };
+        let write_or_drop = |dest: &std::path::Path, cfg: Option<String>| -> Result<()> {
+            match cfg {
+                Some(cfg) => {
+                    // Issue 0498 — sync-owned and read by the runtime, so atomic.
+                    atomic_write(dest, &cfg)
+                        .wrap_err_with(|| format!("sync: write {}", dest.display()))?;
+                    if verbose {
+                        println!("sync: wrote {}", dest.display());
+                    }
+                }
+                // A `[[bridge]]` whose plan carried no resolvable bridge — drop
+                // any stale file so the entry doesn't boot an outdated config.
+                None => {
+                    let _ = std::fs::remove_file(dest);
                 }
             }
-            // A `[[bridge]]` whose plan carried no resolvable bridge — drop any
-            // stale file so the entry doesn't boot an outdated config.
-            None => {
-                let _ = std::fs::remove_file(&dest);
-            }
+            Ok(())
+        };
+        write_or_drop(&dest, plan_for(None)?)?;
+
+        let overriding: Vec<String> =
+            toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+                .map(|sys| {
+                    sys.resolved_images()
+                        .into_iter()
+                        .filter(|(_, img)| {
+                            matches!(
+                                img.rmw_config,
+                                Some(crate::orchestration::image::RmwConfigSel::PerDomain(_))
+                            )
+                        })
+                        .map(|(id, _)| id)
+                        .collect()
+                })
+                .unwrap_or_default();
+        for id in &overriding {
+            let per_image = pkg
+                .dir
+                .join(nros_orchestration_ir::session_properties::bridge_config_for(id));
+            write_or_drop(&per_image, plan_for(Some(id))?)?;
         }
+        // An image that no longer overrides must fall back to the bringup's
+        // file, so its old per-image file goes.
+        remove_stale_per_image_bridge_configs(&pkg.dir, &overriding);
     }
     Ok(())
+}
+
+/// Issue 2062 — remove every `nros-bridge.<image>.toml` in `dir` whose image is
+/// not in `keep`. Only names of that exact shape are touched.
+fn remove_stale_per_image_bridge_configs(dir: &std::path::Path, keep: &[String]) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let name = e.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let Some(id) = name
+            .strip_prefix("nros-bridge.")
+            .and_then(|r| r.strip_suffix(".toml"))
+        else {
+            continue;
+        };
+        if !id.is_empty()
+            && nros_orchestration_ir::session_properties::bridge_config_for(id) == name
+            && !keep.iter().any(|k| k == id)
+        {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
 }
 
 /// Join `rel` onto `base`, folding `.` and `..` textually.
@@ -6729,6 +6795,43 @@ mod synth_ament_prefix_tests {
                 .to_string_lossy()
                 .starts_with(&*prefix.to_string_lossy()),
             "the synthesised prefix is searched first"
+        );
+    }
+}
+
+#[cfg(test)]
+mod per_image_bridge_config_tests {
+    use super::remove_stale_per_image_bridge_configs;
+
+    /// Issue 2062 — an image that stops overriding falls back to the bringup's
+    /// file, so its old `nros-bridge.<image>.toml` goes; a kept image's file,
+    /// the bringup's `nros-bridge.toml` and anything not of that shape stay.
+    #[test]
+    fn only_per_image_bridge_configs_no_image_keeps_are_removed() {
+        let d = tempfile::tempdir().unwrap();
+        for f in [
+            "nros-bridge.toml",
+            "nros-bridge.lab.toml",
+            "nros-bridge.old.toml",
+            "nros-bridge.lab.toml.bak",
+            "system.toml",
+        ] {
+            std::fs::write(d.path().join(f), "").unwrap();
+        }
+        remove_stale_per_image_bridge_configs(d.path(), &["lab".to_string()]);
+        let mut left: Vec<String> = std::fs::read_dir(d.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            [
+                "nros-bridge.lab.toml",
+                "nros-bridge.lab.toml.bak",
+                "nros-bridge.toml",
+                "system.toml"
+            ]
         );
     }
 }

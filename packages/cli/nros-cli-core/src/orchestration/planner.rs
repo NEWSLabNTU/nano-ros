@@ -762,6 +762,7 @@ fn schema_plan_json(
             json!(bridge_plan_entries(
                 s,
                 system_toml.and_then(Path::parent),
+                options.image.as_deref(),
                 &topics
             )?),
         );
@@ -905,7 +906,7 @@ fn schema_build_json(
         // The endpoints in `plan.bridges` (emitted by `schema_plan_json`) carry
         // the SAME (rmw, domain, locator) so `bridge_endpoint_session_idx`
         // resolves each to its slot.
-        let transports = bridge_transports(s, system_toml.and_then(Path::parent))?;
+        let transports = bridge_transports(s, system_toml.and_then(Path::parent), cli_image)?;
         if !transports.is_empty() {
             obj.insert("transports".to_string(), json!(transports));
         }
@@ -929,9 +930,14 @@ type BridgeSession = (String, u32, Option<String>, Vec<(String, String)>);
 /// endpoint on the system's own rmw — the bringup's default-session file
 /// (`[system] rmw_config`, or the backend's conventional one). With a file the
 /// session states no locator, as an image with one does not (D9-2).
+///
+/// Issue 2062 — `image` is the image the plan is for: its `rmw_config.<domain>`
+/// override replaces the domain's own `config` (RFC-0109 D6). `None` plans the
+/// bringup's answer, which every image without an override shares.
 fn resolve_bridge_endpoint(
     sys: &super::cargo_metadata_schema::SystemToml,
     dir: Option<&Path>,
+    image: Option<&str>,
     endpoint: &str,
 ) -> Result<BridgeSession> {
     let (rmw, domain_name) = match endpoint.split_once(':') {
@@ -952,7 +958,7 @@ fn resolve_bridge_endpoint(
         Some(dir) => {
             let own = match domain {
                 Some(d) => sys
-                    .domain_file(dir, &d.name, None)
+                    .domain_file(dir, &d.name, image)
                     .map_err(|e| eyre!("{e}"))?,
                 None => None,
             };
@@ -994,12 +1000,13 @@ fn resolve_bridge_endpoint(
 fn bridge_transports(
     sys: &super::cargo_metadata_schema::SystemToml,
     dir: Option<&Path>,
+    image: Option<&str>,
 ) -> Result<Vec<Value>> {
     let mut seen: Vec<BridgeSession> = Vec::new();
     let mut out: Vec<Value> = Vec::new();
     for bridge in &sys.bridges {
         for endpoint in [&bridge.from, &bridge.to] {
-            let key = resolve_bridge_endpoint(sys, dir, endpoint)?;
+            let key = resolve_bridge_endpoint(sys, dir, image, endpoint)?;
             if key.0.is_empty() || seen.contains(&key) {
                 continue;
             }
@@ -1028,10 +1035,11 @@ fn bridge_transports(
 fn bridge_plan_entries(
     sys: &super::cargo_metadata_schema::SystemToml,
     dir: Option<&Path>,
+    image: Option<&str>,
     topics: &[String],
 ) -> Result<Vec<Value>> {
     let endpoint = |e: &str| -> Result<Value> {
-        let (rmw, domain, locator, properties) = resolve_bridge_endpoint(sys, dir, e)?;
+        let (rmw, domain, locator, properties) = resolve_bridge_endpoint(sys, dir, image, e)?;
         let mut v = json!({ "rmw": rmw, "domain": domain, "locator": locator });
         if !properties.is_empty() {
             v["properties"] = json!(properties);
@@ -3880,11 +3888,81 @@ mod tests {
         let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
             toml::from_str(&std::fs::read_to_string(&st).unwrap()).unwrap();
         let bridges: Vec<crate::orchestration::plan::PlanBridge> = serde_json::from_value(json!(
-            bridge_plan_entries(&sys, Some(dir.path()), &["/chatter".to_string()]).unwrap()
+            bridge_plan_entries(&sys, Some(dir.path()), None, &["/chatter".to_string()]).unwrap()
         ))
         .unwrap();
         assert_eq!(bridges[0].connect[0].properties, zen.properties);
         assert_eq!(bridges[0].connect[1].properties, cyc.properties);
+    }
+
+    /// Issue 2062 (RFC-0109 U9/U11) — a plan FOR an image takes that image's
+    /// `rmw_config.<domain>` override on the bridged session; a plan for an
+    /// image without one, and the bringup's own plan, keep the domain's file.
+    #[test]
+    fn a_plan_for_an_image_takes_its_domain_override() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("rmw")).unwrap();
+        for (f, ep) in [
+            ("zenoh-can.json5", "tcp/10.0.2.2:7447"),
+            ("zenoh-lab.json5", "tcp/10.0.0.1:7447"),
+        ] {
+            std::fs::write(
+                dir.path().join("rmw").join(f),
+                format!("{{ mode: 'client', connect: {{ endpoints: ['{ep}'] }} }}"),
+            )
+            .unwrap();
+        }
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [[domain]]\nname=\"main\"\nrmw=\"zenoh\"\nconfig=\"rmw/zenoh-can.json5\"\n\
+             [[domain]]\nname=\"dds\"\nrmw=\"cyclonedds\"\nid=5\n\
+             [[bridge]]\nname=\"gw\"\nfrom=\"main\"\nto=\"dds\"\n\
+             [image.qemu]\nboard=\"linux\"\n\
+             [image.lab]\nboard=\"linux\"\n\
+             [image.lab.rmw_config]\nmain=\"rmw/zenoh-lab.json5\"\n",
+        )
+        .unwrap();
+        let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
+            toml::from_str(&std::fs::read_to_string(&st).unwrap()).unwrap();
+        let connect = |image: Option<&str>| -> String {
+            let bridges: Vec<crate::orchestration::plan::PlanBridge> =
+                serde_json::from_value(json!(
+                    bridge_plan_entries(&sys, Some(dir.path()), image, &["/chatter".to_string()])
+                        .unwrap()
+                ))
+                .unwrap();
+            bridges[0].connect[0]
+                .properties
+                .iter()
+                .find(|(k, _)| k == "connect")
+                .map(|(_, v)| v.clone())
+                .unwrap()
+        };
+        assert_eq!(
+            connect(Some("lab")),
+            "tcp/10.0.0.1:7447",
+            "the image's override"
+        );
+        assert_eq!(
+            connect(Some("qemu")),
+            "tcp/10.0.2.2:7447",
+            "no override: the domain's file"
+        );
+        assert_eq!(connect(None), "tcp/10.0.2.2:7447", "the bringup's answer");
+        // The session specs the entry opens agree with the bridge endpoints.
+        let build = schema_build_json(Some(&st), None, Some("lab"), None).expect("build json");
+        let opts: crate::orchestration::plan::PlanBuildOptions =
+            serde_json::from_value(build).unwrap();
+        assert!(
+            opts.transports[0]
+                .properties
+                .iter()
+                .any(|(k, v)| k == "connect" && v == "tcp/10.0.0.1:7447"),
+            "{:?}",
+            opts.transports[0].properties
+        );
     }
 
     /// Issue 0099 — `[[bridge]]` → `PlanBridge`: endpoints resolve to
@@ -3906,7 +3984,13 @@ mod tests {
 
         // forward-all fallback list is IGNORED when the bridge names topics.
         let bridges: Vec<crate::orchestration::plan::PlanBridge> = serde_json::from_value(json!(
-            bridge_plan_entries(&sys, None, &["/other".to_string(), "/extra".to_string()]).unwrap()
+            bridge_plan_entries(
+                &sys,
+                None,
+                None,
+                &["/other".to_string(), "/extra".to_string()]
+            )
+            .unwrap()
         ))
         .unwrap();
         assert_eq!(bridges[0].topics, vec!["/chatter".to_string()]);
@@ -3917,7 +4001,7 @@ mod tests {
         sys2.bridges[0].topics.clear();
         sys2.bridges[0].bidirectional = false;
         let b2: Vec<crate::orchestration::plan::PlanBridge> = serde_json::from_value(json!(
-            bridge_plan_entries(&sys2, None, &["/all".to_string()]).unwrap()
+            bridge_plan_entries(&sys2, None, None, &["/all".to_string()]).unwrap()
         ))
         .unwrap();
         assert_eq!(b2[0].topics, vec!["/all".to_string()]);
@@ -3935,9 +4019,10 @@ mod tests {
         )
         .unwrap();
         let topics = vec!["/chatter".to_string()];
-        let bridges: Vec<crate::orchestration::plan::PlanBridge> =
-            serde_json::from_value(json!(bridge_plan_entries(&sys, None, &topics).unwrap()))
-                .unwrap();
+        let bridges: Vec<crate::orchestration::plan::PlanBridge> = serde_json::from_value(json!(
+            bridge_plan_entries(&sys, None, None, &topics).unwrap()
+        ))
+        .unwrap();
         assert_eq!(bridges.len(), 1);
         assert_eq!(bridges[0].name, "gw");
         assert_eq!(bridges[0].connect.len(), 2);

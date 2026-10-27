@@ -879,6 +879,13 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                         .map_err(|e| eyre::eyre!("{e}"))?;
                     env.insert(nros_board_common::image_net::ENV.to_string(), n.text());
                 }
+                // Issue 2062 — the image this build is, as the single-package
+                // road states it (`leaf_settings`): `nros::main!` picks the
+                // image's own `nros-bridge.<image>.toml` by it.
+                env.insert(
+                    nros_orchestration_ir::leaf_system::IMAGE_ENV.to_string(),
+                    image_id.clone(),
+                );
                 // RFC-0109 D8 (phase-514 W3) — the session properties lowered
                 // from the bringup's RMW file, for `nros::main!` to bake.
                 if let Some(text) =

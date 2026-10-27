@@ -30,6 +30,22 @@ pub const WEST_FILE: &str = "session-properties.rs";
 /// build. A path, so the build watches the file's content, not the spelling.
 pub const WEST_FILE_ENV: &str = "NROS_SESSION_PROPERTIES_RS";
 
+/// The bridge runtime configuration `nros sync` writes beside a bridged
+/// bringup's `system.toml`: every bridged domain's session, the file
+/// `nros::main!` bakes into a bridge entry (phase-267, phase-514 W3b).
+pub const BRIDGE_CONFIG: &str = "nros-bridge.toml";
+
+/// Issue 2062 — the bridge configuration for image `image` when that image
+/// overrides a bridged domain's RMW file (`[image.<id>] rmw_config = {
+/// <domain> = "<file>" }`, RFC-0109 D6): `nros-bridge.<image>.toml`, beside
+/// [`BRIDGE_CONFIG`]. An image with no override reads [`BRIDGE_CONFIG`], which
+/// is the bringup's answer; the topics and types are the same in both, only
+/// the sessions differ.
+#[must_use]
+pub fn bridge_config_for(image: &str) -> String {
+    format!("nros-bridge.{image}.toml")
+}
+
 /// The property that carries a configuration file a backend parses itself
 /// (`[rmw.config] format = "verbatim-xml"`, Cyclone's XML) to a session that
 /// is not the image's default one — a `[[domain]]` a bridge opens (phase-514

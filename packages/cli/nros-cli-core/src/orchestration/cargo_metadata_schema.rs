@@ -1384,14 +1384,10 @@ impl SystemToml {
                     }
                     self.domain_file(dir, name, Some(&id))?;
                 }
-                // Checked, then refused: the bridge configuration that carries
-                // a domain's file is written once per bringup, so an image's
-                // override would be read by nothing.
-                return Err(format!(
-                    "`[image.{id}] rmw_config` overrides a `[[domain]]`'s file, which is not \
-                     delivered yet: one bridge configuration serves every image of a bringup \
-                     (issue 2062) — name the file on the `[[domain]]` itself (`config`)"
-                ));
+                // Delivered through the image's own bridge configuration,
+                // `nros-bridge.<id>.toml`, which `nros sync` plans with this
+                // image and `nros::main!` prefers over the bringup's (issue
+                // 2062).
             }
         }
         Ok(())

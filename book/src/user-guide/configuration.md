@@ -272,9 +272,10 @@ to = "cyclonedds:dds"
 
 A domain with a `config` states no `locator` (the file is its wiring), and a
 domain `config` that no `[[bridge]]` opens is refused, since nothing would
-read it. An image cannot yet override one domain's file
-(`rmw_config = { dds = "…" }` is refused, issue 2062): the bridge
-configuration is one per bringup. At run time
+read it. An image overrides one domain's file with a table,
+`rmw_config = { dds = "rmw/cyclonedds-lab.xml" }`: `nros sync` then writes that
+image its own bridge configuration (`nros-bridge.<image>.toml`) beside the
+bringup's, and the other images keep the shared one. At run time
 `ZENOH_SESSION_CONFIG_URI` and `CYCLONEDDS_URI` still replace a hosted
 bridge's files, and `NROS_BRIDGE_<SESSION>_LOCATOR` replaces that session's
 file whole.

@@ -1,5 +1,7 @@
 # nros sync regenerates these — do not commit.
 nros-bridge.toml
+# issue 2062 — an image that overrides a bridged domain's RMW file
+nros-bridge.*.toml
 Cargo.lock
 .cargo/
 generated/

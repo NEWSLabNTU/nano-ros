@@ -990,7 +990,21 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         // backend (issue 0106 anti-dead-strip). Endpoint syntax is
         // `<rmw>:<domain-name>` — the rmw prefix is what we need here.
         if !model.execution.bridges.is_empty() {
-            let cfg = bringup_dir.join("nros-bridge.toml");
+            // Issue 2062 — this image's own configuration when it overrides a
+            // bridged domain's RMW file (`nros-bridge.<image>.toml`), else the
+            // bringup's. Both are `nros sync`'s, keyed by the image the build
+            // names (`NROS_IMAGE`); a per-image file appears or goes only when
+            // `system.toml` changes, which is tracked.
+            let bringup_cfg =
+                bringup_dir.join(nros_orchestration_ir::session_properties::BRIDGE_CONFIG);
+            let cfg = entry_env(nros_orchestration_ir::leaf_system::IMAGE_ENV)
+                .and_then(|v| v.into_string().ok())
+                .map(|id| {
+                    bringup_dir
+                        .join(nros_orchestration_ir::session_properties::bridge_config_for(&id))
+                })
+                .filter(|p| p.exists())
+                .unwrap_or(bringup_cfg);
             if cfg.exists() {
                 tracked.push(cfg.clone());
                 bridge_config_path = Some(cfg);
