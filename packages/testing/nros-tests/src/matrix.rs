@@ -1853,6 +1853,7 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
         ),
     ),
     ("xrce_concurrent_entities", NonCell::FeatureLane),
+    ("xrce_entity_wake", NonCell::FeatureLane),
     ("xrce_guard_wake", NonCell::FeatureLane),
     ("zenoh_archive_symbols", NonCell::CompileCheck),
     ("zenoh_header_parity", NonCell::CompileCheck),
