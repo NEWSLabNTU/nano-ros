@@ -382,6 +382,19 @@ The open question is the type HASH: zenoh's key expression carries it
 (RIHS01), and nothing resolves a hash from a name at runtime. Investigate;
 if no hash source exists, make it REFUSE-LOUD (RFC-0089 already uses
 `create_generic_subscription` as its example) rather than absent.
+**LANDED 2026-10-27** (maintainer choice "Refuse-loud + hash overload").
+Investigated: each generated type states `M::TYPE_HASH`, but nothing maps a
+name to a hash at run time, so rclcpp's name-only spellings are REFUSE-LOUD
+(`NROS_RCLCPP_REFUSE_GENERIC_BY_NAME`, probe
+`ros2_refuse_generic_by_name_probe.cpp`). Beside them, the C++ twin of Rust's
+`create_generic_publisher(topic, type_name, type_hash)`:
+`Node::create_generic_publisher(topic, type, type_hash, qos)` returns a
+`rclcpp::GenericPublisher` (`publish_serialized(data, len)`), and
+`create_generic_subscription(topic, type, type_hash, qos, callback)` registers
+`callback(const uint8_t*, size_t)` in the arena and returns a
+`GenericSubscription::SharedPtr` handle (`rclcpp/generic.hpp`). Test:
+`generic_pubsub_runtime.cpp` (the stub backend now records each entity's type
+name and hash).
 
 **P5 — `Duration::to_chrono`, `Clock::sleep_for`, `Clock::sleep_until`.**
 *D1: `to_chrono` stays declined.* `sleep_for` / `sleep_until` take rclcpp's

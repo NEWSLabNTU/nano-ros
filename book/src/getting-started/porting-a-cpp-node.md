@@ -659,6 +659,16 @@ tracked as ROS-convention codegen work.
   The wire format does not change. The other levels (`[defaults]`,
   `[packages.*]`, `[types.*]`) and the storage modes are in
   [RFC-0033](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0033-message-field-capacity-config.md).
+- **`create_generic_publisher(topic, type, qos)` /
+  `create_generic_subscription(topic, type, qos, callback)` by type name** — a
+  compile error naming the alternative. rclcpp loads the type's typesupport at
+  run time; nano-ros links its types at build time, and the wire key needs the
+  type's RIHS01 hash, which nothing derives from a name. Pass the hash:
+  `create_generic_publisher(topic, type, type_hash, qos)` returns a
+  `GenericPublisher` with `publish_serialized(data, len)`, and
+  `create_generic_subscription(topic, type, type_hash, qos, callback)` calls
+  `callback(const uint8_t* data, size_t len)` with each message's CDR bytes. A
+  generated type states both as `M::TYPE_NAME` and `M::TYPE_HASH`.
 - **`class_loader`, `dlopen` composition, a component that is not an
   `rclcpp::Node`** (`get_node_base_interface()`) — nano-ros has no runtime
   loader and no node interfaces. Build the components into one image with a

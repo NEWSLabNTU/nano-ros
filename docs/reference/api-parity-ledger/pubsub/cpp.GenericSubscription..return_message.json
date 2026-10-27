@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GenericSubscription::return_message",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-515 P4. The executor's side of an rclcpp subscription (message allocation, delivery hooks, the dynamic-message family). Ours lives in the executor's arena and `rclcpp::GenericSubscription` is a TAG for its handle (`cpp:GenericSubscription`), so these have no object to belong to; a user writes the callback instead."
+}

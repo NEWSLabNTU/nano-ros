@@ -195,6 +195,9 @@ template <typename M> class Publisher;
 template <typename M> class Subscription;
 template <typename S> class Service;
 template <typename S> class Client;
+class GenericPublisher;    // phase-515 P4 — `rclcpp/generic.hpp`
+class GenericSubscription; // phase-515 P4
+template <typename M> class SubscriptionHandle;
 } // namespace rclcpp
 
 namespace rclcpp_action {
@@ -1324,6 +1327,50 @@ class Node {
     typename ::rclcpp::Subscription<M>::SharedPtr
     create_subscription(const char* topic, ::size_t depth, Cb cb,
                         const ::rclcpp::SubscriptionOptions& options);
+
+    // -- generic (type-erased) pub/sub — phase-515 P4 -------------------------
+    //
+    // Bodies in `rclcpp.hpp`, types in `rclcpp/generic.hpp`. rclcpp's name-only
+    // spellings are REFUSE-LOUD; the hash-taking ones are the nano-ros form.
+
+    /// `create_generic_publisher(topic, type, type_hash, qos)` — publishes CDR
+    /// bytes under `type` (`M::TYPE_NAME`'s spelling) and its RIHS01
+    /// `type_hash` (`M::TYPE_HASH`). Aborts on failure, as `create_publisher`
+    /// does.
+    ::rclcpp::Owned<::rclcpp::GenericPublisher>
+    create_generic_publisher(const char* topic, const char* type, const char* type_hash,
+                             const ::rclcpp::QoS& qos = ::rclcpp::QoS::default_profile());
+
+    /// `create_generic_subscription(topic, type, type_hash, qos, callback)` —
+    /// `callback(const uint8_t* data, size_t len)` receives each message's CDR
+    /// bytes during spin. The callback is copied into the arena.
+    template <typename Cb>
+    ::rclcpp::SubscriptionHandle<::rclcpp::GenericSubscription>
+    create_generic_subscription(const char* topic, const char* type, const char* type_hash,
+                                const ::rclcpp::QoS& qos, Cb callback);
+
+    /// **REFUSED** — rclcpp's `create_generic_publisher(topic, type, qos[, options])`.
+    /// A type NAME is not enough here; see `NROS_RCLCPP_REFUSE_GENERIC_BY_NAME`.
+    template <typename A, typename B, typename... R>
+    void create_generic_publisher(const A& topic, const B& type, const ::rclcpp::QoS& qos,
+                                  const R&...) {
+        (void)topic;
+        (void)type;
+        (void)qos;
+        static_assert(::rclcpp::detail::refuse<A>::value, NROS_RCLCPP_REFUSE_GENERIC_BY_NAME);
+    }
+
+    /// **REFUSED** — rclcpp's `create_generic_subscription(topic, type, qos,
+    /// callback[, options])`; see `NROS_RCLCPP_REFUSE_GENERIC_BY_NAME`.
+    template <typename A, typename B, typename Cb, typename... R>
+    void create_generic_subscription(const A& topic, const B& type, const ::rclcpp::QoS& qos,
+                                     Cb&& callback, const R&...) {
+        (void)topic;
+        (void)type;
+        (void)qos;
+        (void)callback;
+        static_assert(::rclcpp::detail::refuse<A>::value, NROS_RCLCPP_REFUSE_GENERIC_BY_NAME);
+    }
 
     /// Poll-style service server (`create_service<S>(name, qos)`). Not an
     /// upstream signature; see the `std::string` overload's note.

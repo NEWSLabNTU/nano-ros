@@ -1,6 +1,6 @@
 {
   "key": "cpp:Node::create_generic_publisher",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  "disposition": "refuse-loud",
+  "verdict": "divergence",
+  "why": "RE-DISPOSITIONED 2026-10-27 (phase-515 P4), `declined`/`absent` -> `refuse-loud`. rclcpp's name-only spelling is REFUSE-LOUD: a member template whose body is `static_assert(detail::refuse<A>::value, NROS_RCLCPP_REFUSE_GENERIC_BY_NAME)`, so a ported `create_generic_publisher(topic, type, qos)` is a compile error naming the alternative (probe `ros2_refuse_generic_by_name_probe.cpp` in `just check cpp`). rclcpp resolves the type NAME to a typesupport library at runtime; nano-ros links its types at build time and the wire key carries the type's RIHS01 HASH, which nothing derives from a name here (phase-515 P4 investigation: each generated type states `M::TYPE_HASH`, and no name->hash table exists at runtime). The nano-ros form beside it takes the hash: `create_generic_publisher(topic, type, type_hash, qos)` returns a `GenericPublisher::SharedPtr` (`cpp:GenericPublisher`), the C++ twin of `rust:Node::create_generic_publisher`. PRIOR ROW: generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
 }

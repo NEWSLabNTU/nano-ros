@@ -42,6 +42,7 @@
 #include "rclcpp/node.hpp"
 #include "rclcpp/publisher.hpp"
 #include "rclcpp/subscription.hpp"
+#include "rclcpp/generic.hpp" // phase-515 P4
 #include "rclcpp/service.hpp"
 #include "rclcpp/client.hpp"
 #include "rclcpp_action/server.hpp"
@@ -1375,6 +1376,31 @@ create_subscription_dispatch(::rclcpp::Node& node, const char* topic, const ::rc
 }
 
 } // namespace detail
+
+// phase-515 P4 — the hash-taking generic verbs.
+inline ::rclcpp::Owned<::rclcpp::GenericPublisher>
+Node::create_generic_publisher(const char* topic, const char* type, const char* type_hash,
+                               const ::rclcpp::QoS& qos) {
+    ::rclcpp::GenericPublisher p;
+    ::rclcpp::detail::require_created(::rclcpp::detail::create_generic_publisher(
+                                          this->ffi_handle(), p, topic, type, type_hash, qos),
+                                      "create_generic_publisher", topic);
+    return ::rclcpp::Owned<::rclcpp::GenericPublisher>(::rclcpp::tr::forward_rvalue(p));
+}
+
+template <typename Cb>
+inline ::rclcpp::SubscriptionHandle<::rclcpp::GenericSubscription>
+Node::create_generic_subscription(const char* topic, const char* type, const char* type_hash,
+                                  const ::rclcpp::QoS& qos, Cb callback) {
+    ::rclcpp::GenericSubscription::Callback fn(::rclcpp::tr::forward_rvalue(callback));
+    ::size_t handle_id = 0;
+    ::rclcpp::detail::require_created(
+        ::rclcpp::detail::register_generic_subscription(this->ffi_handle(), topic, type, type_hash,
+                                                        qos, fn, &handle_id),
+        "create_generic_subscription", topic);
+    return ::rclcpp::SubscriptionHandle<::rclcpp::GenericSubscription>(this->executor_handle(),
+                                                                       handle_id);
+}
 
 template <typename M, typename Cb>
 inline typename Subscription<M>::SharedPtr

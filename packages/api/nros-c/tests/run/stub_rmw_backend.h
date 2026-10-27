@@ -84,6 +84,10 @@ bool nros_stub_rmw_invoke_wake(void);
  *  a node computed rather than the source spelling it passed in (issue 1384). */
 const char* nros_stub_rmw_last_entity_name(void);
 
+/** phase-515 P4 — the type name the last publisher / subscription was created
+ *  with ("" if none), and through `type_hash` its hash. */
+const char* nros_stub_rmw_last_entity_type(const char** type_hash);
+
 /** Reset [`nros_stub_rmw_last_entity_name`] to "", so a later read cannot be
  *  satisfied by an earlier call's value. */
 void nros_stub_rmw_clear_last_entity_name(void);

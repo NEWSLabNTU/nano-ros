@@ -1,6 +1,10 @@
 {
   "key": "cpp:GenericPublisher",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/generic.hpp",
+    "text": "Bytes in, bytes out: the payload is CDR, never deserialised. That is what a"
+  },
+  "verdict": "divergence",
+  "why": "ADOPTED-BOUNDED 2026-10-27 (phase-515 P4), was `declined`/`absent`. `rclcpp::GenericPublisher` (`rclcpp/generic.hpp`) publishes CDR bytes on a topic whose type is given by NAME and RIHS01 HASH rather than by a linked message type -- what a relay or bridge needs. ENVELOPE: it is created only by the hash-taking `Node::create_generic_publisher(topic, type, type_hash, qos)` (rclcpp's name-only form is refused, `cpp:Node::create_generic_publisher`); `publish` takes no `rclcpp::SerializedMessage` -- the verb is `publish_serialized(data, len)`, as on `Publisher<M>` (`cpp:Publisher::publish_serialized`); and the payload is never deserialised. `SharedPtr` is `Owned<GenericPublisher>`, as `Publisher<M>::SharedPtr` is. PRIOR ROW: generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
 }

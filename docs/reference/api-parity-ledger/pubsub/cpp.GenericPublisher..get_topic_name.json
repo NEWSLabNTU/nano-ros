@@ -1,0 +1,5 @@
+{
+  "key": "cpp:GenericPublisher::get_topic_name",
+  "verdict": "extension",
+  "why": "phase-515 P4. Upstream's is `PublisherBase::get_topic_name`, inherited; ours is declared on the class and kept C++-side, as on `Publisher<M>`."
+}
