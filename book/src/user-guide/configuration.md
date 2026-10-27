@@ -27,7 +27,7 @@ standalone `config.toml` for hand-written `no_std` apps.
 | `CMakeLists.txt` | C/C++ toolchain facts only: targets and language deps, via `find_package(nano_ros)` + `nano_ros_add_executable` / `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057; `nano_ros_node_register` remains as the compat spelling) / `nano_ros_entry`. No platform, board or RMW `set()`. | C/C++ project |
 | `build/<image>/nros-cargo.toml` | **GENERATED, never edited** — every cargo setting the board choice implies: `[build] target`, `[target.*]` runner and rustflags, the cross compiler, the derived pool sizes as `[env]`, the nano-ros profiles, and the `[patch.crates-io]` rows that resolve nano-ros's registry-style names into your checkout. Written by `nros sync`, passed to cargo with `--config`. | image |
 | `package.xml` | ROS package identity + msg `<depend>`s (codegen input for `nros generate`) | all |
-| **`config.toml`** (standalone) | **Hand-written `no_std` direct-mode apps only** — `[node]` / `[[transport]]` / `[node.rt]`, compile-baked via `Config::from_toml(include_str!(…))`. Apps that use `nros::main!()` / codegen do **not** have one — they use `[image.<id>]` above. | embedded single-node app (no codegen) |
+| **`config.toml`** (standalone) | **Hand-written `no_std` direct-mode apps only** — `[node]` / `[eth0]` / `[network.<name>]` (RFC-0109 D4), compile-baked via `Config::from_toml(include_str!(…))`. Apps that use `nros::main!()` / codegen do **not** have one — they use `[image.<id>]` above. | embedded single-node app (no codegen) |
 
 > **Boundary rule.** If a knob changes *what is compiled/linked as a language
 > choice* — a C++ standard, an RMW feature the entry may select — it lives in
@@ -348,47 +348,43 @@ Timer periods are microseconds throughout, including across the C ABI.
 
 A hand-written single-node app that writes its own `main()` and bypasses
 `nros::main!()` keeps its net config **in a file, not hardcoded in Rust**: a
-sibling `config.toml` carrying `[node]` / `[[transport]]` / `[node.rt]`,
-compile-baked with `include_str!` and parsed by the board crate's
-`Config::from_toml`.
+sibling `config.toml`, compile-baked with `include_str!` and parsed by the
+board crate's `Config::from_toml`. It is the board package's network file
+(RFC-0109 D4) — the same `[<interface>]` / `[network.<name>]` shape an image's
+`os_config` file has — plus a `[node]` table that stands in for the session a
+`system.toml` would declare.
 
 ```toml
 # config.toml
 
 [node]
-domain_id = 0              # ROS 2 domain ID (0–232)
-# namespace = "/"
-# rmw = "zenoh"            # ACTIVE backend; must match a LINKED backend
-                           # (the build file picks what is linked)
+domain_id = 0                    # ROS 2 domain ID (0–232)
+locator = "tcp/10.0.2.2:7447"    # the router the firmware dials
 
-# One transport per session. A single ethernet/wifi/serial entry is the
-# common case. In-process topic forwarding is the separate [[bridge]] path.
-[[transport]]
-kind    = "ethernet"       # ethernet | wifi | serial | can
-ip      = "10.0.2.10/24"   # CIDR — the prefix rides the address
-mac     = "02:00:00:00:00:00"
-gateway = "10.0.2.2"
-locator = "tcp/10.0.2.2:7447"
+[eth0]
+network = "qemu"                 # built in: QEMU user-mode, 10.0.2.0/24, gateway 10.0.2.2
+host = 10                        # the address within that network → 10.0.2.10
+# address = "10.0.2.10"          # or the whole address
+mac = "02:00:00:00:00:00"
 
-[node.rt]                  # scheduling / real-time (RTOS); omit for defaults
-app_priority         = 12
-app_stack_bytes      = 65536
-zenoh_read_priority  = 16
-poll_priority        = 16
-poll_interval_ms     = 5
+# A network of your own: name it on the interface instead of `qemu`.
+# [network.lab]
+# subnet = "192.168.50.0/24"
+# gateway = "192.168.50.1"
+
+[node.rt.freertos]               # FreeRTOS boards: raw task priorities; omit for defaults
+app_priority = 3
+zenoh_read_priority = 4
 ```
 
-Per-kind transport fields:
+A board reads its own facts from the interface table: a serial link's
+`[uart0] baud`, ThreadX Linux's host veth as `[eth0] device`. One interface is
+brought up; a direct-mode board takes no DHCP lease, so state the address.
 
-| kind | fields |
-|------|--------|
-| `ethernet` | `ip` (CIDR), `mac`, `gateway`, `interface` |
-| `wifi` | `ssid`, `password`, optional static `ip`/`gateway` |
-| `serial` / `can` | `device`, `baudrate` |
-| all | `id`, `rmw`, `locator` |
-
-`ip` is CIDR (`10.0.2.10/24`) — the board derives the prefix or netmask from it.
-A serial locator carrying `#` (`serial/UART_0#baudrate=115200`) is fine — quote it.
+A file in the retired RFC-0004 shape (`[[transport]]` with `ip`, `gateway` and
+`locator`) **panics at boot** naming the new spelling, rather than booting on
+the board's defaults: `ip = "10.0.2.10/24"` + `gateway = "10.0.2.2"` is
+`[eth0] network = "qemu"` + `host = 10`, and the `locator` moves to `[node]`.
 
 Consumption (compile-baked; no filesystem on the target):
 
@@ -405,8 +401,7 @@ fn main() -> ! {
 ```
 
 Pick by whether the app uses codegen: `nros::main!()` app → `system.toml`
-`[image.<id>]` (above); hand-written `main()` → `config.toml`. Only the **old**
-`config.toml` schema (`[network]`/`[zenoh]`/`[scheduling]`) is retired.
+`[image.<id>]` (above); hand-written `main()` → `config.toml`.
 
 ## Retired files
 
@@ -417,10 +412,9 @@ Pick by whether the app uses codegen: `nros::main!()` app → `system.toml`
   `nros check` flags; the embedded-runtime role never shipped (no example
   ever declared one). If a doc tells you to write `nros.toml`, it predates
   the migration — the content belongs in `system.toml`.
-- **Old `config.toml` schema** (`[network]`/`[zenoh]`/`[scheduling]`) —
-  retired; superseded by `[image.<id>]` (net) + board
-  features / Kconfig (RT). The direct-mode `config.toml` above is the kept,
-  supported shape.
+- **Old `config.toml` schemas** — `[network]`/`[zenoh]`/`[scheduling]`, and
+  RFC-0004's `[[transport]]` (issue 2047) — retired; the direct-mode
+  `config.toml` above is the kept, supported shape.
 
 ## Build-time environment variables
 
@@ -633,7 +627,7 @@ On the `native` host build, `ExecutorConfig::from_env()` reads at process start
 | ESP32 WiFi | `[image.<id>]` (`ssid`/`password` via build env) | `…, platform-bare-metal, …` | `SSID`/`PASSWORD` build env |
 | Zephyr module | Kconfig overlay (`prj-<rmw>.conf`) | (Kconfig → features) | |
 | Hand-written `no_std` (no codegen) | standalone `config.toml` → `Config::from_toml` | per-board | net config in a file, not in code |
-| Minimal RAM (XRCE serial) | `config.toml [[transport]] kind="serial"` or `[image.<id>]` | `…` + xrce dep | `XRCE_*` buffer tuning |
+| Minimal RAM (XRCE serial) | `config.toml` `[uart0] baud` + `[node] locator` or `[image.<id>]` | `…` + xrce dep | `XRCE_*` buffer tuning |
 
 ## `.env`
 

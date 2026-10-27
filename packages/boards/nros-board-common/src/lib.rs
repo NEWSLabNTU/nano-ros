@@ -48,7 +48,10 @@ pub use threadx_config::ThreadxConfig;
 // twelve board `Config` structs re-declare. ADDITIVE: no board adopts it yet;
 // each board wave migrates its own `Config` as that wave's first step.
 pub mod base_config;
-pub use base_config::{BaseConfig, netmask_from_prefix, prefix_from_netmask};
+pub use base_config::{
+    BaseConfig, DirectConfig, is_interface_section, netmask_from_prefix, parse_direct_toml,
+    prefix_from_netmask,
+};
 
 // phase-497 W2 (RFC-0103 D10f) — an image's resolved network as the one text
 // every carrier reads (`NROS_IMAGE_NET`). The decoder is `no_std` and

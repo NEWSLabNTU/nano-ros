@@ -15,8 +15,7 @@
 //! would make every board carry a field it ignores.
 
 use nros_board_common::{
-    BaseConfig,
-    base_config::{for_each_toml_field, parse_u32},
+    BaseConfig, base_config::parse_u32, is_interface_section, parse_direct_toml,
 };
 
 /// Network and node configuration for ThreadX Linux simulation.
@@ -118,33 +117,35 @@ impl Config {
         self
     }
 
-    /// Parse configuration from a direct-mode `nros.toml` string.
+    /// Parse a direct-mode board file (RFC-0109 D4,
+    /// [`nros_board_common::parse_direct_toml`]).
     ///
     /// Missing fields keep this board's defaults. Designed for
-    /// `include_str!("../nros.toml")` compile-time embedding.
+    /// `include_str!("../config.toml")` compile-time embedding.
     ///
     /// ```toml
-    /// [[transport]]
-    /// ip = "192.0.3.10/24"
-    /// mac = "02:00:00:00:00:00"
-    /// gateway = "192.0.3.1"
-    /// interface = "veth-tx0"
-    /// locator = "tcp/192.0.3.1:7447"
-    ///
     /// [node]
     /// domain_id = 0
+    /// locator = "tcp/192.0.3.1:7447"
+    ///
+    /// [eth0]
+    /// address = "192.0.3.10"
+    /// mac = "02:00:00:00:00:00"
+    /// device = "veth-tx0"     # the host veth the NetX Linux driver binds
     /// ```
     pub fn from_toml(toml: &'static str) -> Self {
         let mut config = Self::default();
-        for_each_toml_field(toml, |section, key, value| {
-            if config.base.apply_toml_field(section, key, value) {
-                return;
-            }
+        let mut device = None;
+        let d = parse_direct_toml(toml, |section, key, value| {
             // The one field this board adds to the shared core.
-            if (section, key) == ("transport", "interface") {
-                config.interface = value;
+            if is_interface_section(section) && key == "device" {
+                device = Some(value);
             }
         });
+        config.base.apply_direct(&d);
+        if let Some(dev) = device {
+            config.interface = dev;
+        }
 
         // Phase 177.38 — build-time ROS-domain override for per-fixture
         // isolation. `NROS_DOMAIN_ID` set at build time bakes a distinct domain
@@ -163,6 +164,6 @@ impl Config {
     }
 }
 
-// Phase 173.5 — nros.toml `[[transport]]` IP into the board `Config`
+// Phase 173.5 — the direct-mode file's interface address into the board `Config`
 // (NanoRosOwned: this board owns the NetX Duo stack). No UART field ⇒
 // baudrate keeps the trait's no-op default.

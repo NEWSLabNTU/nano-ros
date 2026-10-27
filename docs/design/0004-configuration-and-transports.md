@@ -278,10 +278,12 @@ netmask = "255.255.255.0"
 - **Binding:** a node binds to exactly one session; with N > 1 each node names
   its domain. In-process multi-RMW is `[[bridge]]` (RFC-0009).
 
-The standalone direct-mode `config.toml` (§5) still has a `[[transport]]`
-block, with device fields. That file belongs to a hand-written `no_std` app
-that brings its own network up, so the app is its own board package and the
-file is its D4 file in RFC-0109's terms; it is out of `system.toml`'s scope.
+The standalone direct-mode `config.toml` (§5) belongs to a hand-written
+`no_std` app that brings its own network up, so the app is its own board
+package and the file is its D4 file in RFC-0109's terms. Since issue 2047 it
+has that file's shape too — `[eth0]` with `network`, `host` or `address`, and
+`mac`, plus `[network.<name>]` — with `[node] locator` / `domain_id` in place
+of a session; a `[[transport]]` there panics at boot naming the new spelling.
 
 ## 7. Scheduling / RT — `[node.rt]` *(nros.toml form unused)*
 
@@ -323,8 +325,8 @@ The **old** `config.toml` schema (`[network]`/`[zenoh]`/`[scheduling]`) is **ret
 (Phase 172.K.6) — superseded by the `deploy` class (net) + board features / Kconfig
 (RT). The `nros config show --config <path>` legacy reader for it is scrubbed.
 
-The **direct-mode** `config.toml` (`[node]`/`[[transport]]`/`[node.rt]`, parsed by
-`Config::from_toml`) is **NOT retired** — it is the supported standalone-file home for
+The **direct-mode** `config.toml` (`[node]`/`[eth0]`/`[node.rt]`, the RFC-0109 D4
+shape since issue 2047, parsed by `Config::from_toml`) is **NOT retired** — it is the supported standalone-file home for
 hand-written `no_std` apps that bypass the `nros::main!()` codegen (§5; issue 0081
 wontfix). 0 examples ship one, but the `logging-smoke-*` fixtures do, and the board
 crates keep `Config::from_toml`. The maintainer principle — net config belongs in a
