@@ -368,6 +368,11 @@ a clock or call info, which rclrs's three do not. The book's introduction uses
 **R5 — `Publisher::publish` by value.** After W0's correction the only
 difference is `&M` against rclrs's owned-or-borrowed message
 (`MessageCow`). Accept both through one trait if it costs nothing.
+**LANDED 2026-10-27.** `EmbeddedPublisher::publish(impl core::borrow::Borrow<M>)`:
+`publish(&msg)` and `publish(msg)` both compile and put the same bytes on the
+wire. It costs nothing — both serialise at once into the stack buffer — and no
+`MessageCow` type is added, since `Borrow` is the one trait. Test:
+`publish_takes_the_message_borrowed_or_owned`.
 
 **R6 — `Context::ok`.** Declined because our `Context` has no shutdown state.
 Low priority; add only if a shutdown state exists for it to report.
