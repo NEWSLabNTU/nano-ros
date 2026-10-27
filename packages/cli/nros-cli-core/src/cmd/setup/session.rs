@@ -292,6 +292,7 @@ impl SystemAsk {
         manager: Option<&str>,
         ctx: &PrereqContext,
         headline: &str,
+        sudo_rerun: Option<&str>,
     ) -> String {
         use std::fmt::Write as _;
         let mut out = String::new();
@@ -316,13 +317,19 @@ impl SystemAsk {
                 );
             }
         }
-        out.push_str(&self.remedy(prereqs, manager, ctx));
+        out.push_str(&self.remedy(prereqs, manager, ctx, sudo_rerun));
         out
     }
 
     /// Only the remedies — the sudo-less command, then the ONE OS command,
     /// then the note about keys asked earlier. `--system --check` lists its
     /// keys itself and wants just this part.
+    ///
+    /// `sudo_rerun` is the `nros setup … --sudo` line that runs the OS command
+    /// for the caller's own path — `None` where no such line exists. It is a
+    /// parameter, never a fixed "(or re-run with --sudo)": that text was
+    /// printed on `nros setup <board>`, which refused `--sudo`, and on
+    /// `--system --check`, which conflicts with it (issue 2099).
     ///
     /// The OS command is kept LAST of the commands. The caller that PINNED that
     /// order — `scripts/esp_idf/setup.sh`, which read the tail of this output to
@@ -336,6 +343,7 @@ impl SystemAsk {
         prereqs: &BTreeMap<String, PrereqDep>,
         manager: Option<&str>,
         ctx: &PrereqContext,
+        sudo_rerun: Option<&str>,
     ) -> String {
         use std::fmt::Write as _;
         let mut out = String::new();
@@ -365,7 +373,17 @@ impl SystemAsk {
                         );
                     }
                     if let Some(cmd) = self.os_command(prereqs, mgr, ctx) {
-                        let _ = writeln!(out, "Install with (or re-run with --sudo):\n  {cmd}");
+                        match sudo_rerun {
+                            Some(rerun) => {
+                                let _ = writeln!(
+                                    out,
+                                    "Install with (or run `{rerun}`, which runs it for you):\n  {cmd}"
+                                );
+                            }
+                            None => {
+                                let _ = writeln!(out, "Install with:\n  {cmd}");
+                            }
+                        }
                     }
                 }
                 None => {
@@ -1386,7 +1404,9 @@ mod tests {
 
         let prereqs = idx.prereqs();
         let ctx = PrereqContext::from_env();
-        let text = plan.system.render(&prereqs, Some("apt"), &ctx, "ask:");
+        let text = plan
+            .system
+            .render(&prereqs, Some("apt"), &ctx, "ask:", None);
         let commands: Vec<&str> = text
             .lines()
             .filter(|l| l.trim_start().starts_with("sudo apt-get install"))
@@ -1491,6 +1511,7 @@ mod tests {
             Some("apt"),
             &PrereqContext::from_env(),
             "ask:",
+            None,
         );
         assert!(!text.contains("ninja-build"), "{text}");
         assert!(text.contains("nros setup --tool make"), "{text}");
@@ -1538,6 +1559,7 @@ mod tests {
             Some("apt"),
             &PrereqContext::from_env(),
             "ask:",
+            None,
         );
         assert!(!text.contains("apt-get"), "{text}");
         assert!(text.contains("asked for earlier in this session"), "{text}");
