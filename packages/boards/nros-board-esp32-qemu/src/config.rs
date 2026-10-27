@@ -64,7 +64,9 @@ pub struct Config {
 // script and shared with `board_entry`.
 include!(concat!(env!("OUT_DIR"), "/nros_board_net.rs"));
 
-/// The board's router default: its gateway, on this board's port 7448.
+/// The board's router default: its gateway, on this board's port 7448. An
+/// ethernet fact: a serial image dials its UART.
+#[cfg(feature = "ethernet")]
 pub(crate) const DEFAULT_LOCATOR: &str = board_net_locator!("7448");
 
 #[cfg(feature = "ethernet")]

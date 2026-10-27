@@ -15,7 +15,7 @@ nros_smoltcp::define_network_state!(
         static CNT: S = S(UnsafeCell::new(0));
         let c = CNT.0.get();
         *c = c.read().wrapping_add(1);
-        if *c % 8 == 0 {
+        if (*c).is_multiple_of(8) {
             let moder_addr = 0x600C_D000usize as *mut u32;
             let cur = core::ptr::read_volatile(moder_addr);
             // Drop RXEN, then restore — triggers qemu_flush_queued_packets().

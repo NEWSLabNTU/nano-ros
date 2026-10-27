@@ -55,6 +55,12 @@ macro_rules! println {
 }
 
 mod config;
+// Issue 2117 — NuttX's init entry (`nsh_main` → the image's C `main`) exists
+// only on NuttX. Unconditional, its `extern "C" fn main` declaration collided
+// with the host test harness's own `main` ("entry symbol `main` declared
+// multiple times"), so this crate's unit tests could not link and no lane ran
+// them.
+#[cfg(target_os = "nuttx")]
 mod entry;
 // Phase 212.N.3 — new platform-level trait impls (`nros_platform::Board*`)
 // live in a sibling module so the legacy `nros_board_common::Board*` impls

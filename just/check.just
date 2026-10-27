@@ -267,6 +267,7 @@ build:
 [private]
 build-serial: \
     ament-census-sizing \
+    board-transport-variants \
     borrowed-e2e \
     c \
     census-hooks-complete \

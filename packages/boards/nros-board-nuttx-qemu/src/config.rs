@@ -175,11 +175,15 @@ impl Config {
 mod tests {
     use super::*;
 
+    /// The default is the kernel's own `eth0` plan, generated from the
+    /// `defconfig`'s `CONFIG_NETINIT_*` (phase-514 W4): QEMU's SLIRP network.
+    /// Issue 2117 — this asserted the pre-W4 `192.0.3.10` for as long as the
+    /// crate's tests could not link, so nothing noticed it had gone stale.
     #[test]
-    fn the_default_is_the_shared_base_config() {
+    fn the_default_is_the_kernels_eth0_plan() {
         let c = Config::default();
-        assert_eq!(c.ip(), [192, 0, 3, 10]);
-        assert_eq!(c.gateway(), [192, 0, 3, 1]);
+        assert_eq!(c.ip(), [10, 0, 2, 15]);
+        assert_eq!(c.gateway(), [10, 0, 2, 2]);
         assert_eq!(c.prefix(), 24);
         assert_eq!(c.domain_id(), 0);
     }
