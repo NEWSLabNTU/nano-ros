@@ -102,8 +102,11 @@ talker gets no locator and a router on a unique port, so the file's `connect`
 is its only route. The bake itself is pinned by
 `a_zenoh_rmw_file_bakes_its_session_properties_and_no_locator`.
 
-A Rust Zephyr west application has no carrier for the lowered text yet, so
-`nros build` refuses one whose bringup ships the file (issue 2051).
+A Rust Zephyr west application (`zephyr_component_main!`) gets the table
+`nros build` renders into its resolve directory: the module names its path to
+the Rust lane's cargo build, the `nros` crate's build copies it in, and the
+entry installs it and drops the baked Kconfig locator, as D9 does on the other
+roads (issue 2051, resolved).
 
 **W3b — naming the file; a domain's own (done, RFC-0109 D8 amendment W3b).**
 

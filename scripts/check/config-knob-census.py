@@ -232,6 +232,7 @@ KNOB_CLASS = {
     "NROS_PROFILE_OUT": ("infra", "build-profile output path"),
     "NROS_SETUP_JOBS": ("infra", "`nros setup` concurrency"),
     "NROS_SETUP_SESSION": ("infra", "path of the `nros setup` session ledger"),
+    "NROS_SESSION_PROPERTIES_RS": ("infra", "issue 2051: path of the session-property table a Zephyr Rust west entry bakes"),
     "NROS_SIZES_PROBE_BUILD": ("infra", "marks the sizes probe's own build"),
     "NROS_SIZING_DESCRIPTOR": ("infra", "the sizing descriptor's path; an input to derivation"),
     "NROS_SKIP_VERSION_CHECK": ("infra", "policy flag on the codegen ABI guard"),

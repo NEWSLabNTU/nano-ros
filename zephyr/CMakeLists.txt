@@ -337,6 +337,21 @@ set(_nros_rust_lane_env ${NROS_BOARD_FACTS_ENV})
 if(NOT NROS_WEST_LEAF_DESCRIPTOR STREQUAL "" AND EXISTS "${NROS_WEST_LEAF_DESCRIPTOR}")
     list(APPEND _nros_rust_lane_env "NROS_SIZING_DESCRIPTOR=${NROS_WEST_LEAF_DESCRIPTOR}")
 endif()
+# Issue 2051 -- and the session properties lowered from the bringup's RMW file
+# (RFC-0109 D8). The C lane gets the file through `nano_ros_entry()`; this lane
+# had no carrier, so a Rust image whose bringup ships the file was refused.
+# `nros build` renders the table into its resolve directory, always (empty for
+# none), and the `nros` crate's build copies it in for
+# `zephyr_component_main!`. Its PATH rides here, never its text: this command
+# is an unquoted shell line in a CMake list, which would strip the JSON's `"`
+# and split an ISO-TP endpoint's `;`. Names:
+# `nros_orchestration_ir::session_properties::{WEST_FILE, WEST_FILE_ENV}`.
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/NanoRosResolved.cmake)
+nros_resolved_dir(_nros_resolved_dir)
+if(NOT _nros_resolved_dir STREQUAL "" AND EXISTS "${_nros_resolved_dir}/session-properties.rs")
+    list(APPEND _nros_rust_lane_env
+        "NROS_SESSION_PROPERTIES_RS=${_nros_resolved_dir}/session-properties.rs")
+endif()
 # Issue 1796 -- and every DERIVED knob, which had no road to this lane at all:
 # its crates read `$DOTCONFIG`, where a derived knob is still the `-1` sentinel.
 nros_derived_knob_env(_nros_derived_env)

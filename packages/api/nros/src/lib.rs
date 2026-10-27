@@ -789,6 +789,21 @@ macro_rules! zephyr_component_main {
                 fn nros_app_register_backends();
             }
             unsafe { nros_app_register_backends() };
+            // Issue 2051 (RFC-0109 D8) — the session properties the bringup's
+            // RMW file lowers to, baked by this crate's build from the table
+            // the west lane names, installed before any session opens. The
+            // baked Kconfig locator yields to them below (RFC-0109 D9), so the
+            // file is the wiring here as on every road.
+            if !$crate::__macro_support::baked_session::SESSION_PROPERTIES.is_empty()
+                && $crate::__macro_support::set_session_properties(
+                    &$crate::__macro_support::baked_session::SESSION_PROPERTIES,
+                )
+                .is_err()
+            {
+                ::core::panic!(
+                    "the bringup's RMW file lowers to more session properties than the executor holds"
+                );
+            }
             // Issue 0163 — a pure-Rust image has no `libnros_c.a`, so the
             // backend must ride in THIS staticlib and be referenced from the
             // app crate, or rustc's staticlib DCE drops the whole backend
@@ -838,7 +853,11 @@ macro_rules! zephyr_component_main {
                 }
             };
             let ctx = match $crate::Context::default_from_env() {
-                ::core::result::Result::Ok(ctx) => ctx.with_locator_override(runtime_locator),
+                ::core::result::Result::Ok(ctx) => ctx
+                    .yield_locator_to_session_properties(
+                        &$crate::__macro_support::baked_session::SESSION_PROPERTIES,
+                    )
+                    .with_locator_override(runtime_locator),
                 ::core::result::Result::Err(e) => {
                     panic!("nros zephyr entry: baked Context is invalid: {e:?}")
                 }
@@ -1363,6 +1382,14 @@ pub use nros_platform::DispatchStrategy;
 pub mod __macro_support {
     /// RFC-0109 D8 — the baked `rmw/zenoh.json5` session-property table.
     pub use ::nros_node::{SessionProperty, set_session_properties};
+
+    /// Issue 2051 — the table `nros build` rendered for a Zephyr Rust west
+    /// application (`NROS_SESSION_PROPERTIES_RS`), for the entry macro that
+    /// cannot read the text at expansion ([`crate::zephyr_component_main!`]).
+    /// Empty when the build names none.
+    pub mod baked_session {
+        include!(concat!(env!("OUT_DIR"), "/baked_session_properties.rs"));
+    }
     pub use ::nros_platform;
 
     /// phase-314 — whether THIS `nros` build carries the parameter services.

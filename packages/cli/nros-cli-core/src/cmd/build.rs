@@ -1464,20 +1464,31 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
             }
             Driver::West => {
                 // RFC-0109 D8 (phase-514 W3a) — a C/C++ west application bakes
-                // the bringup's lowered RMW file through `nano_ros_entry()`; a
-                // Rust one has no carrier yet, and baking nothing would boot it
-                // on the board's default router instead (issue 2051).
-                if !image_has_non_rust(&image, &bringup_dir)
-                    && crate::orchestration::rmw_config::session_text(&bringup_dir, &image_id)
-                        .map_err(|e| eyre::eyre!("{e}"))?
-                        .is_some()
-                {
-                    eyre::bail!(
-                        "`{qual}`: a Rust Zephyr application cannot bake its bringup's RMW \
-                         file yet — the west lane does not carry the lowered session \
-                         properties to its cargo build (issue 2051). State the endpoint as \
-                         the image's `locator` instead, or build a C/C++ entry"
-                    );
+                // the bringup's lowered RMW file through `nano_ros_entry()`. A
+                // Rust one gets it through the resolve directory (issue 2051):
+                // the table it lowers to, which the module names to the Rust
+                // lane's cargo build and `zephyr_component_main!` installs.
+                // Without a resolve directory there is no carrier,
+                // and baking nothing would boot the image on the board's
+                // default router, so that one case still refuses.
+                if !image_has_non_rust(&image, &bringup_dir) {
+                    let text =
+                        crate::orchestration::rmw_config::session_text(&bringup_dir, &image_id)
+                            .map_err(|e| eyre::eyre!("{e}"))?;
+                    match &resolved_dir {
+                        Some(d) => crate::orchestration::rmw_config::write_west_session_file(
+                            d,
+                            text.as_deref(),
+                        )
+                        .map_err(|e| eyre::eyre!("{e}"))?,
+                        None if text.is_some() => eyre::bail!(
+                            "`{qual}`: this build ran no resolve phase, which is what carries \
+                             the bringup's lowered RMW file to a Rust Zephyr application's \
+                             cargo build (issue 2051). Build it with `nros build`, or state \
+                             the endpoint as the image's `locator`"
+                        ),
+                        None => {}
+                    }
                 }
                 // Issue 1419 — a RUST west application (`rust_cargo_application()`)
                 // calls no `nano_ros_entry()`, so the configure-time census check

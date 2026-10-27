@@ -523,6 +523,28 @@ impl Context {
         self
     }
 
+    /// Issue 2051 (RFC-0109 D9) — drop the baked locator when the image has
+    /// session properties.
+    ///
+    /// With an RMW file the file is the wiring, and every other road bakes no
+    /// locator beside it (`nros::main!`, the C/C++ boot blob). A Zephyr image
+    /// still bakes its Kconfig locator (`CONFIG_NROS_ZENOH_LOCATOR`, default
+    /// `tcp/127.0.0.1:7447`), and the zenoh shim dials a supplied locator
+    /// BEFORE the file's `connect` list: a router on that port would win, and
+    /// the file's would be a fallback. Called before
+    /// [`with_locator_override`](Self::with_locator_override), so a run-time
+    /// locator still wins. Public for the entry macro; not API.
+    #[doc(hidden)]
+    pub fn yield_locator_to_session_properties(
+        mut self,
+        properties: &[nros_node::SessionProperty],
+    ) -> Self {
+        if !properties.is_empty() {
+            self.locator.clear();
+        }
+        self
+    }
+
     /// phase-427 W10 — the config the executor's SESSION opens with: this
     /// context's locator, domain and mode, and no node name.
     ///
@@ -1354,6 +1376,33 @@ mod baked_tests {
         let ctx = baked().with_locator_override(Some("tcp/127.0.0.1:7456"));
         assert_eq!(ctx.domain_id, 1);
         assert_eq!(ctx.source, ContextSource::Baked);
+    }
+
+    #[test]
+    fn baked_session_properties_take_the_locators_place() {
+        let baked = || Context::from_baked(Some("tcp/10.0.2.2:7447"), Some("1")).unwrap();
+        // Issue 2051 — a run-time locator, applied after, still wins.
+        let connect = [nros_node::SessionProperty::new(
+            c"connect",
+            c"tcp/10.0.0.9:7499",
+        )];
+        assert_eq!(
+            baked()
+                .yield_locator_to_session_properties(&connect)
+                .locator,
+            ""
+        );
+        assert_eq!(
+            baked().yield_locator_to_session_properties(&[]).locator,
+            baked().locator
+        );
+        assert_eq!(
+            baked()
+                .yield_locator_to_session_properties(&connect)
+                .with_locator_override(Some("tcp/127.0.0.1:7456"))
+                .locator,
+            "tcp/127.0.0.1:7456"
+        );
     }
 
     /// phase-467 row `rust:Context::domain_id`. Two claims, and the second is

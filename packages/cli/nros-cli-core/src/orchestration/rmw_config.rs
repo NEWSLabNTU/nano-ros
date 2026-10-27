@@ -197,6 +197,30 @@ pub fn session_text(dir: &Path, image_id: &str) -> Result<Option<String>, String
         .map(|f| nros_orchestration_ir::session_properties::encode(&f.properties)))
 }
 
+/// Issue 2051 — hand a Zephyr RUST west application its session properties:
+/// write the table `text` (none: an empty one) lowers to, as
+/// `<resolved_dir>/`[`nros_orchestration_ir::session_properties::WEST_FILE`],
+/// whose path `zephyr/CMakeLists.txt` puts on the Rust lane's cargo command.
+/// Always written, so dropping the RMW file empties the table rather than
+/// leaving the old one; written only when it changes, so an unchanged bringup
+/// rebuilds nothing.
+///
+/// # Errors
+///
+/// `text` does not decode or holds a NUL; the file cannot be read or written.
+pub fn write_west_session_file(resolved_dir: &Path, text: Option<&str>) -> Result<(), String> {
+    use nros_orchestration_ir::session_properties as sp;
+    let path = resolved_dir.join(sp::WEST_FILE);
+    let body = sp::rust_table(&sp::decode(text.unwrap_or(""))?)?;
+    let body = body.as_str();
+    if std::fs::read_to_string(&path).is_ok_and(|old| old == body) {
+        return Ok(());
+    }
+    std::fs::create_dir_all(resolved_dir)
+        .map_err(|e| format!("{}: {e}", resolved_dir.display()))?;
+    std::fs::write(&path, body).map_err(|e| format!("{}: {e}", path.display()))
+}
+
 /// The default session's RMW file for backend `rmw` in the bringup at `dir`
 /// — the question a CMake road asks (`nros ws rmw-config`), which knows the
 /// backend it links but not always the image. With `image`, that image's file
