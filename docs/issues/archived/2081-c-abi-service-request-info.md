@@ -114,8 +114,8 @@ client. Both run in `just check rmw-cyclonedds`.
 
 **XRCE is compiled, not measured live.** `just check rmw-xrce` builds the
 slot. No run against an Agent has checked the reported `SampleIdentity` yet.
-That is issue 2088. The typed C service path's missing request-id flavour is
-issue 2089.
+That is issue 2088. The typed C service path's missing request-id flavour was
+[issue 2089](2089-c-typed-service-request-id.md), resolved by phase-515 C3.
 
 Ledger: `c:take_request_with_info` stays `declined`, with the reason narrowed:
 the ABI now has the pair, but the rcl polling family it belongs to is not
