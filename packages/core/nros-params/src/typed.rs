@@ -37,7 +37,7 @@ pub enum ParameterError {
     ///
     /// Distinct from [`NotFound`](Self::NotFound): that is what a DIRECT
     /// `ParameterServer::set` says about a missing name; this is what the
-    /// wire-facing [`ParameterServer::apply`](crate::ParameterServer::apply)
+    /// wire-facing [`ParameterServer::apply`](crate::ParameterServerOps::apply)
     /// says when the only remaining option — declaring it — is switched off.
     /// Moved here from the retired `SetParameterResult` (phase-515).
     Undeclared,
@@ -167,10 +167,10 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     /// Text longer than `NROS_MAX_PARAM_CONSTRAINTS_LEN` — whose default is
     /// **0**, so an image pays for this field only when it asks for it — is
     /// truncated at a character boundary and REPORTED once through
-    /// [`ParameterServer::take_truncated_descriptions`], never dropped in
+    /// [`ParameterServer::take_truncated_descriptions`](crate::ParameterServerOps::take_truncated_descriptions), never dropped in
     /// silence.
     ///
-    /// [`ParameterServer::take_truncated_descriptions`]: crate::ParameterServer::take_truncated_descriptions
+    /// [`ParameterServer::take_truncated_descriptions`]: crate::ParameterServerOps::take_truncated_descriptions
     pub fn constraints(mut self, text: &'a str) -> Self {
         self.constraints = Some(text);
         self

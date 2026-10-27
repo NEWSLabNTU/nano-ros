@@ -32,6 +32,7 @@
 extern crate alloc;
 #[cfg(test)]
 use alloc::boxed::Box;
+use nros_params::ParameterServerOps as _; // phase-515 R10 stage 2
 
 use nros_params::{
     NodeKey, ParameterDescriptor as InternalDescriptor, ParameterError, ParameterServer,

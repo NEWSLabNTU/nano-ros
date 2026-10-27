@@ -539,7 +539,7 @@ fn declare_on_node(
 /// collapsing them to `ERROR` is what lets a C++ caller tell "you cannot write
 /// that parameter" from "that parameter does not exist".
 ///
-/// [`ParameterServer::apply`]: nros_node::ParameterServer::apply
+/// [`ParameterServer::apply`]: nros_node::executor::ffi::ParameterServerOps::apply
 #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 fn set_result_to_ret(result: Result<(), nros_node::ParameterError>) -> nros_cpp_ret_t {
     use nros_node::ParameterError as E;

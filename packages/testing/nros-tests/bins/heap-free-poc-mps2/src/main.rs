@@ -37,6 +37,9 @@ use nros::{
     ParameterServer, ParameterStorage, ParameterValue,
     node::{Callback, CallbackCtx, Component, ExecutableNode, NodeContext, NodeResult, TickCtx},
 };
+// phase-515 R10 stage 2 -- a STANDALONE store is reached through the sealed
+// trait; a node's parameters are reached through its `Node`.
+use nros_params::ParameterServerOps as _;
 use panic_semihosting as _;
 
 // Force-link the per-platform export so `nros_platform_log_write` resolves

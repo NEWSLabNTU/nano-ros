@@ -29,7 +29,7 @@ pub enum ParameterEventKind {
     /// Issue 2023 — the node's start-up event when it holds no parameter at
     /// the moment events go on: the node's name and three EMPTY lists. A
     /// node that does hold parameters announces itself with one `New` per
-    /// parameter instead (see [`ParameterServer::pop_initial_parameter_event`]).
+    /// parameter instead (see [`ParameterServer::pop_initial_parameter_event`](crate::ParameterServerOps::pop_initial_parameter_event)).
     Announce,
 }
 
@@ -49,7 +49,7 @@ pub struct PendingParameterEvent {
 ///
 /// A flush runs after every C or C++ parameter call and on every spin, so this only
 /// has to cover the changes ONE spin's parameter services make; a burst past
-/// it is counted ([`ParameterServer::take_parameter_events_dropped`]) and
+/// it is counted ([`ParameterServer::take_parameter_events_dropped`](crate::ParameterServerOps::take_parameter_events_dropped)) and
 /// reported, never blocked on. A second change to a name already pending
 /// merges into its entry, since the event carries the value at publish time.
 pub const PARAMETER_EVENT_LOG_LEN: usize = 8;
@@ -80,7 +80,7 @@ pub(crate) struct ParameterEntry {
 /// `NoValueAvailable`, `OverrideValueTypeMismatch` and `PriorValueTypeMismatch`
 /// are about a launch OVERRIDE arriving before the declaration and disagreeing
 /// with it, and nano-ros seeds overrides through the same
-/// [`ParameterServer::apply`] path a remote set uses — so a disagreeing
+/// [`ParameterServer::apply`](crate::ParameterServerOps::apply) path a remote set uses — so a disagreeing
 /// override is a `ParameterError`, on the write that carried it, and
 /// cannot reach a declaration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -137,7 +137,7 @@ impl From<DeclarationError> for crate::ParameterError {
 /// rclc's `rclc_parameter_callback_t` contract: `old` is `None` when the write
 /// would CREATE the parameter (an undeclared remote set), `new` is `None` when
 /// it would DELETE it (a remote `NOT_SET` on a node that asked for
-/// [`set_delete_on_not_set`](ParameterServer::set_delete_on_not_set)).
+/// [`set_delete_on_not_set`](crate::ParameterServerOps::set_delete_on_not_set)).
 /// rclcpp's `add_on_set_parameters_callback` reads only `new`, so the C++ and
 /// Rust facades ignore `old`.
 pub type OnSetParameterFn = fn(
@@ -183,8 +183,8 @@ impl OnSetContext {
 }
 
 /// A registered [`OnSetParameterFn`], returned by
-/// [`ParameterServer::add_on_set_parameters_callback`] and consumed by
-/// [`ParameterServer::remove_on_set_parameters_callback`].
+/// [`ParameterServer::add_on_set_parameters_callback`](crate::ParameterServerOps::add_on_set_parameters_callback) and consumed by
+/// [`ParameterServer::remove_on_set_parameters_callback`](crate::ParameterServerOps::remove_on_set_parameters_callback).
 ///
 /// rclcpp hands back an owning `ParameterCallbackHandle` shared_ptr whose
 /// destruction unregisters. With no allocator there is nothing to own, so this
@@ -197,7 +197,7 @@ impl OnSetParameterHandle {
     ///
     /// An opaque `u16` rather than a pointer: it indexes the bounded registry
     /// and nothing else, so a wrong value is a `false` from
-    /// [`ParameterServer::remove_on_set_parameters_callback`] rather than a
+    /// [`ParameterServer::remove_on_set_parameters_callback`](crate::ParameterServerOps::remove_on_set_parameters_callback) rather than a
     /// wild write.
     pub const fn raw(self) -> u16 {
         self.0
@@ -246,7 +246,7 @@ pub const MAX_ON_SET_CALLBACKS: usize = 4;
 /// DEFAULT capacity (see [`ParameterStorage`]), not a bound the borrow
 /// re-imposes: a caller who hands over a longer or shorter table gets exactly
 /// that many slots, and every capacity question the server answers
-/// ([`is_full`](ParameterServer::is_full), the declare path) reads it from
+/// ([`is_full`](crate::ParameterServerOps::is_full), the declare path) reads it from
 /// here.
 pub struct ParameterTable<'s> {
     entries: &'s mut [Option<ParameterEntry>],
@@ -326,7 +326,9 @@ impl core::fmt::Debug for ParameterTable<'_> {
 /// `alloc`) one allocation made once at start-up:
 ///
 /// ```
-/// use nros_params::{NodeKey, ParameterServer, ParameterStorage, ParameterValue};
+/// use nros_params::{
+///     NodeKey, ParameterServer, ParameterServerOps as _, ParameterStorage, ParameterValue,
+/// };
 ///
 /// let mut storage: ParameterStorage<8> = ParameterStorage::new();
 /// let mut server = ParameterServer::new_in(storage.as_table());
@@ -442,7 +444,9 @@ impl<const N: usize> ParameterStorage<N> {
 /// # Example
 ///
 /// ```
-/// use nros_params::{NodeKey, ParameterServer, ParameterStorage, ParameterValue};
+/// use nros_params::{
+///     NodeKey, ParameterServer, ParameterServerOps as _, ParameterStorage, ParameterValue,
+/// };
 ///
 /// let mut storage = ParameterStorage::<8>::new();
 /// let mut server = ParameterServer::new_in(storage.as_table());
@@ -521,7 +525,10 @@ impl<'s> ParameterServer<'s> {
     /// ([`ParameterDescriptor::set_description`]), and a declaration can come
     /// through several builders; the store is where every one of them lands.
     /// Returns how many were reported.
-    pub fn take_truncated_descriptions(&mut self, mut report: impl FnMut(NodeKey, &str)) -> usize {
+    pub(crate) fn take_truncated_descriptions(
+        &mut self,
+        mut report: impl FnMut(NodeKey, &str),
+    ) -> usize {
         if !self.truncation_pending {
             return 0;
         }
@@ -557,7 +564,7 @@ impl<'s> ParameterServer<'s> {
     /// direction, `remove` underflowing in the other. Fresh
     /// [`ParameterStorage`] is all-`None`, so the usual path costs one scan
     /// and starts at zero.
-    pub fn new_in(table: ParameterTable<'s>) -> Self {
+    pub(crate) fn new_in(table: ParameterTable<'s>) -> Self {
         let count = table.occupied();
         Self {
             table,
@@ -584,12 +591,12 @@ impl<'s> ParameterServer<'s> {
     ///
     /// phase-426 W1 — scoped to `node`. Switching it on for `/talker` leaves
     /// `/listener` refusing undeclared names.
-    pub fn set_allow_undeclared(&mut self, node: NodeKey, allow: bool) {
+    pub(crate) fn set_allow_undeclared(&mut self, node: NodeKey, allow: bool) {
         self.allow_undeclared.set(node, allow);
     }
 
     /// Whether [`apply`](Self::apply) may declare an unknown name on `node`.
-    pub fn allows_undeclared(&self, node: NodeKey) -> bool {
+    pub(crate) fn allows_undeclared(&self, node: NodeKey) -> bool {
         self.allow_undeclared.get(node)
     }
 
@@ -603,7 +610,7 @@ impl<'s> ParameterServer<'s> {
     /// or one [`ParameterEventKind::Announce`] when it holds none, so a
     /// subscriber sees what rclcpp's would although our publisher comes up
     /// after the first declarations.
-    pub fn set_parameter_events(&mut self, node: NodeKey, on: bool) {
+    pub(crate) fn set_parameter_events(&mut self, node: NodeKey, on: bool) {
         if on && !self.events_enabled.get(node) {
             self.events_initial.set(node, true);
         }
@@ -617,7 +624,7 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Whether `node`'s changes are logged for `/parameter_events`.
-    pub fn parameter_events_enabled(&self, node: NodeKey) -> bool {
+    pub(crate) fn parameter_events_enabled(&self, node: NodeKey) -> bool {
         self.events_enabled.get(node)
     }
 
@@ -630,7 +637,7 @@ impl<'s> ParameterServer<'s> {
     ///
     /// Bounded and allocation-free: a cursor into the fixed table, no copy of
     /// the node's parameter list.
-    pub fn pop_initial_parameter_event(&mut self) -> Option<PendingParameterEvent> {
+    pub(crate) fn pop_initial_parameter_event(&mut self) -> Option<PendingParameterEvent> {
         loop {
             let node = self.events_initial.first()?;
             let k = self.initial_cursor;
@@ -660,13 +667,13 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// phase-491 W3 — the oldest change waiting for `/parameter_events`.
-    pub fn pop_parameter_event(&mut self) -> Option<PendingParameterEvent> {
+    pub(crate) fn pop_parameter_event(&mut self) -> Option<PendingParameterEvent> {
         self.event_log.pop_front()
     }
 
     /// phase-491 W3 — how many changes found the log full since the last
     /// call, and reset the count.
-    pub fn take_parameter_events_dropped(&mut self) -> u32 {
+    pub(crate) fn take_parameter_events_dropped(&mut self) -> u32 {
         core::mem::take(&mut self.events_dropped)
     }
 
@@ -710,24 +717,24 @@ impl<'s> ParameterServer<'s> {
     /// parameter, after the on-set hooks accept `(old, None)`. This is rclc's
     /// parameter server (`rclc_parameter_server_set_service_callback`); the
     /// default, off, keeps rclcpp's refusal.
-    pub fn set_delete_on_not_set(&mut self, node: NodeKey, on: bool) {
+    pub(crate) fn set_delete_on_not_set(&mut self, node: NodeKey, on: bool) {
         self.delete_on_not_set.set(node, on);
     }
 
     /// Get the number of parameters `node` has stored.
-    pub fn len(&self, node: NodeKey) -> usize {
+    pub(crate) fn len(&self, node: NodeKey) -> usize {
         self.entries_of(node).count()
     }
 
     /// Check if `node` has no parameters
-    pub fn is_empty(&self, node: NodeKey) -> bool {
+    pub(crate) fn is_empty(&self, node: NodeKey) -> bool {
         self.len(node) == 0
     }
 
     /// Parameters held across EVERY node — how much of the shared arena is in
     /// use. [`len`](Self::len) is the per-node question; this one is the
     /// capacity question's other half.
-    pub fn total_len(&self) -> usize {
+    pub(crate) fn total_len(&self) -> usize {
         self.count
     }
 
@@ -738,12 +745,12 @@ impl<'s> ParameterServer<'s> {
     ///
     /// phase-426 W1 — the arena is SHARED across nodes, so this is not a
     /// per-node budget: `MAX_PARAMETERS` bounds the image, not each node.
-    pub fn capacity(&self) -> usize {
+    pub(crate) fn capacity(&self) -> usize {
         self.table.capacity()
     }
 
     /// Check if the server is at capacity (across every node)
-    pub fn is_full(&self) -> bool {
+    pub(crate) fn is_full(&self) -> bool {
         self.count >= self.table.capacity()
     }
 
@@ -783,7 +790,7 @@ impl<'s> ParameterServer<'s> {
     /// delegates to, so marking only the wrapper would leave the class half
     /// fixed one crate down.
     #[must_use]
-    pub fn declare(&mut self, node: NodeKey, name: &str, value: ParameterValue) -> bool {
+    pub(crate) fn declare(&mut self, node: NodeKey, name: &str, value: ParameterValue) -> bool {
         self.declare_with_descriptor(node, name, value, None)
     }
 
@@ -791,7 +798,12 @@ impl<'s> ParameterServer<'s> {
     /// spelling a large value should take, since it is copied into its slot
     /// once instead of through every frame.
     #[must_use]
-    pub fn declare_ref(&mut self, node: NodeKey, name: &str, value: &ParameterValue) -> bool {
+    pub(crate) fn declare_ref(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: &ParameterValue,
+    ) -> bool {
         self.try_declare_ref(node, name, value, None).is_ok()
     }
 
@@ -802,7 +814,7 @@ impl<'s> ParameterServer<'s> {
     /// phase-428 W6 remainder: see [`Self::declare`]. Every `false` arm below
     /// is a REFUSAL (name taken, table full, value rejected), never a question.
     #[must_use]
-    pub fn declare_with_descriptor(
+    pub(crate) fn declare_with_descriptor(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -821,7 +833,7 @@ impl<'s> ParameterServer<'s> {
     /// default is outside the range" alike, so a caller could not tell a
     /// programming error from a capacity one. The `bool` spellings above
     /// forward to this, so there is exactly one declare path.
-    pub fn try_declare(
+    pub(crate) fn try_declare(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -832,7 +844,7 @@ impl<'s> ParameterServer<'s> {
 
     /// [`declare_with_descriptor`](Self::declare_with_descriptor), saying WHY
     /// it refused. See [`try_declare`](Self::try_declare).
-    pub fn try_declare_with_descriptor(
+    pub(crate) fn try_declare_with_descriptor(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -854,7 +866,7 @@ impl<'s> ParameterServer<'s> {
     /// which overflowed a 64 KiB RTOS app stack into the kernel's globals.
     /// Here the slot is filled with an empty value and the caller's is copied
     /// into it once, in place ([`ParameterValue::assign_from`]).
-    pub fn try_declare_ref(
+    pub(crate) fn try_declare_ref(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -956,7 +968,7 @@ impl<'s> ParameterServer<'s> {
     /// Dry-run of [`apply`](Self::apply): the verdict a wire-facing set would
     /// get, without changing anything. `SetParametersAtomically` runs this
     /// over the whole batch before applying any of it.
-    pub fn check_apply(
+    pub(crate) fn check_apply(
         &self,
         node: NodeKey,
         name: &str,
@@ -984,7 +996,7 @@ impl<'s> ParameterServer<'s> {
     /// service handler and every facade writer goes through here so the
     /// by-value oracle, the streaming path, the atomic pre-check and the C
     /// setters cannot disagree about what "undeclared" means.
-    pub fn apply(
+    pub(crate) fn apply(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -998,7 +1010,7 @@ impl<'s> ParameterServer<'s> {
     /// its slot (`ParameterValue::assign_from`); moved in, a ~8 KiB value is a
     /// copy in every frame it passes, which is what put a C++ array set at
     /// 16.6 KiB of Cortex-M3 stack.
-    pub fn apply_ref(
+    pub(crate) fn apply_ref(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1046,7 +1058,7 @@ impl<'s> ParameterServer<'s> {
     /// The one path that still builds an entry is the undeclared add
     /// (`allow_undeclared`), which places an EMPTY entry first and then swaps
     /// the value into it; see `declare_placeholder`.
-    pub fn apply_staged(
+    pub(crate) fn apply_staged(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1135,7 +1147,7 @@ impl<'s> ParameterServer<'s> {
     /// descriptor allows dynamic typing, because rclc refuses a typed set of
     /// the wrong type (`RCLC_PARAMETER_TYPE_MISMATCH`) whether or not a
     /// descriptor was ever attached.
-    pub fn set_local(
+    pub(crate) fn set_local(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1190,7 +1202,7 @@ impl<'s> ParameterServer<'s> {
     ///
     /// `None` when all [`MAX_ON_SET_CALLBACKS`] slots are taken — a refusal,
     /// never a silent eviction.
-    pub fn add_on_set_parameters_callback(
+    pub(crate) fn add_on_set_parameters_callback(
         &mut self,
         node: NodeKey,
         callback: OnSetParameterFn,
@@ -1207,7 +1219,10 @@ impl<'s> ParameterServer<'s> {
 
     /// Unregister a hook — rclcpp's `remove_on_set_parameters_callback`.
     /// `false` if the slot was already empty.
-    pub fn remove_on_set_parameters_callback(&mut self, handle: OnSetParameterHandle) -> bool {
+    pub(crate) fn remove_on_set_parameters_callback(
+        &mut self,
+        handle: OnSetParameterHandle,
+    ) -> bool {
         let idx = handle.0 as usize;
         if idx >= MAX_ON_SET_CALLBACKS || self.on_set[idx].is_none() {
             return false;
@@ -1218,7 +1233,7 @@ impl<'s> ParameterServer<'s> {
 
     /// How many hook slots are free. Lets a caller ask before registering
     /// rather than discovering the bound as a `None`.
-    pub fn on_set_callbacks_free(&self) -> usize {
+    pub(crate) fn on_set_callbacks_free(&self) -> usize {
         self.on_set.iter().filter(|s| s.is_none()).count()
     }
 
@@ -1253,7 +1268,7 @@ impl<'s> ParameterServer<'s> {
     /// Attach a description and free-text constraints to a declared parameter
     /// — rclc's `rclc_add_parameter_description`. Either text may be empty.
     /// `false` if the parameter is not declared on `node`.
-    pub fn set_parameter_description(
+    pub(crate) fn set_parameter_description(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1278,7 +1293,12 @@ impl<'s> ParameterServer<'s> {
     /// Mark a declared parameter read-only, so every later write is
     /// [`ParameterError::ReadOnly`] — rclc's
     /// `rclc_set_parameter_read_only`. `false` if not declared on `node`.
-    pub fn set_parameter_read_only(&mut self, node: NodeKey, name: &str, read_only: bool) -> bool {
+    pub(crate) fn set_parameter_read_only(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        read_only: bool,
+    ) -> bool {
         match self.descriptor_mut(node, name) {
             Some(desc) => {
                 desc.read_only = read_only;
@@ -1295,7 +1315,7 @@ impl<'s> ParameterServer<'s> {
     /// satisfy: attaching a constraint that the stored value already violates
     /// would leave the store in a state no `set` could have produced, and
     /// `ros2 param describe` would then advertise a bound the value breaks.
-    pub fn set_parameter_integer_range(
+    pub(crate) fn set_parameter_integer_range(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1313,7 +1333,7 @@ impl<'s> ParameterServer<'s> {
     /// Attach a floating-point range to a declared parameter — rclc's
     /// `rclc_add_parameter_constraint_double`. See
     /// [`set_parameter_integer_range`](Self::set_parameter_integer_range).
-    pub fn set_parameter_float_range(
+    pub(crate) fn set_parameter_float_range(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1379,7 +1399,11 @@ impl<'s> ParameterServer<'s> {
     /// fills what it can. Making the pre-check cumulative would need a
     /// speculative copy of the table, which is the allocation this store does
     /// not have.
-    pub fn apply_atomically<'x, I>(&mut self, node: NodeKey, items: I) -> Result<(), ParameterError>
+    pub(crate) fn apply_atomically<'x, I>(
+        &mut self,
+        node: NodeKey,
+        items: I,
+    ) -> Result<(), ParameterError>
     where
         I: Iterator<Item = Option<(&'x str, ParameterValue)>> + Clone,
     {
@@ -1410,7 +1434,7 @@ impl<'s> ParameterServer<'s> {
     /// `set_parameters_atomically` held one in its closure's frame and more in
     /// its own (25 KiB on Cortex-M3). Here the only value is `slot`, which a
     /// caller fills in place (`ParameterValue::assign_string`, …).
-    pub fn apply_atomically_with<'x>(
+    pub(crate) fn apply_atomically_with<'x>(
         &mut self,
         node: NodeKey,
         count: usize,
@@ -1444,21 +1468,21 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Get a parameter value by name
-    pub fn get(&self, node: NodeKey, name: &str) -> Option<&ParameterValue> {
+    pub(crate) fn get(&self, node: NodeKey, name: &str) -> Option<&ParameterValue> {
         self.find_index(node, name)
             .and_then(|idx| self.table.entries[idx].as_ref())
             .map(|entry| &entry.param.value)
     }
 
     /// Get a parameter by name
-    pub fn get_parameter(&self, node: NodeKey, name: &str) -> Option<&Parameter> {
+    pub(crate) fn get_parameter(&self, node: NodeKey, name: &str) -> Option<&Parameter> {
         self.find_index(node, name)
             .and_then(|idx| self.table.entries[idx].as_ref())
             .map(|entry| &entry.param)
     }
 
     /// Get a parameter descriptor by name
-    pub fn get_descriptor(&self, node: NodeKey, name: &str) -> Option<&ParameterDescriptor> {
+    pub(crate) fn get_descriptor(&self, node: NodeKey, name: &str) -> Option<&ParameterDescriptor> {
         self.find_index(node, name)
             .and_then(|idx| self.table.entries[idx].as_ref())
             .and_then(|entry| entry.descriptor.as_ref())
@@ -1467,7 +1491,7 @@ impl<'s> ParameterServer<'s> {
     /// Set a parameter value
     ///
     /// Returns the result of the set operation.
-    pub fn set(
+    pub(crate) fn set(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1478,7 +1502,7 @@ impl<'s> ParameterServer<'s> {
 
     /// [`set`](Self::set), borrowing the value (issue 2104): it is copied
     /// once, into the stored value.
-    pub fn set_ref(
+    pub(crate) fn set_ref(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1510,7 +1534,7 @@ impl<'s> ParameterServer<'s> {
     ///
     /// This bypasses the type check to allow optional parameters to be unset.
     /// Returns an error if the parameter is read-only.
-    pub fn unset(&mut self, node: NodeKey, name: &str) -> Result<(), ParameterError> {
+    pub(crate) fn unset(&mut self, node: NodeKey, name: &str) -> Result<(), ParameterError> {
         let idx = match self.find_index(node, name) {
             Some(idx) => idx,
             None => return Err(ParameterError::NotFound),
@@ -1541,7 +1565,7 @@ impl<'s> ParameterServer<'s> {
     /// set may do; a Rust caller naming this method has opted in by naming
     /// it. Nothing on the wire path — and, since phase-426 W2, nothing on the
     /// C or C++ facade path either — reaches here (issue 1151).
-    pub fn set_or_declare(
+    pub(crate) fn set_or_declare(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1557,14 +1581,14 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Check if a parameter exists
-    pub fn has(&self, node: NodeKey, name: &str) -> bool {
+    pub(crate) fn has(&self, node: NodeKey, name: &str) -> bool {
         self.find_index(node, name).is_some()
     }
 
     /// Remove a parameter
     ///
     /// Returns true if the parameter was removed.
-    pub fn remove(&mut self, node: NodeKey, name: &str) -> bool {
+    pub(crate) fn remove(&mut self, node: NodeKey, name: &str) -> bool {
         if let Some(idx) = self.find_index(node, name) {
             self.table.entries[idx] = None;
             self.count -= 1;
@@ -1576,22 +1600,22 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Get the type of a parameter
-    pub fn get_type(&self, node: NodeKey, name: &str) -> Option<ParameterType> {
+    pub(crate) fn get_type(&self, node: NodeKey, name: &str) -> Option<ParameterType> {
         self.get(node, name).map(|v| v.param_type())
     }
 
     /// Iterate over `node`'s parameters
-    pub fn iter(&self, node: NodeKey) -> impl Iterator<Item = &Parameter> {
+    pub(crate) fn iter(&self, node: NodeKey) -> impl Iterator<Item = &Parameter> {
         self.entries_of(node).map(|e| &e.param)
     }
 
     /// List `node`'s parameter names
-    pub fn list_names(&self, node: NodeKey) -> impl Iterator<Item = &str> {
+    pub(crate) fn list_names(&self, node: NodeKey) -> impl Iterator<Item = &str> {
         self.iter(node).map(|p| p.name.as_str())
     }
 
     /// List `node`'s parameter names with a given prefix
-    pub fn list_with_prefix<'a>(
+    pub(crate) fn list_with_prefix<'a>(
         &'a self,
         node: NodeKey,
         prefix: &'a str,
@@ -1601,27 +1625,27 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Get a bool parameter value
-    pub fn get_bool(&self, node: NodeKey, name: &str) -> Option<bool> {
+    pub(crate) fn get_bool(&self, node: NodeKey, name: &str) -> Option<bool> {
         self.get(node, name).and_then(|v| v.as_bool())
     }
 
     /// Get an integer parameter value
-    pub fn get_integer(&self, node: NodeKey, name: &str) -> Option<i64> {
+    pub(crate) fn get_integer(&self, node: NodeKey, name: &str) -> Option<i64> {
         self.get(node, name).and_then(|v| v.as_integer())
     }
 
     /// Get a double parameter value
-    pub fn get_double(&self, node: NodeKey, name: &str) -> Option<f64> {
+    pub(crate) fn get_double(&self, node: NodeKey, name: &str) -> Option<f64> {
         self.get(node, name).and_then(|v| v.as_double())
     }
 
     /// Get a string parameter value
-    pub fn get_string(&self, node: NodeKey, name: &str) -> Option<&str> {
+    pub(crate) fn get_string(&self, node: NodeKey, name: &str) -> Option<&str> {
         self.get(node, name).and_then(|v| v.as_string())
     }
 
     /// Set a bool parameter value
-    pub fn set_bool(
+    pub(crate) fn set_bool(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1631,7 +1655,7 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Set an integer parameter value
-    pub fn set_integer(
+    pub(crate) fn set_integer(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1641,7 +1665,7 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Set a double parameter value
-    pub fn set_double(
+    pub(crate) fn set_double(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1651,7 +1675,7 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Set a string parameter value
-    pub fn set_string(
+    pub(crate) fn set_string(
         &mut self,
         node: NodeKey,
         name: &str,
@@ -1672,7 +1696,7 @@ impl<'s> ParameterServer<'s> {
     /// - `descriptor`: The metadata for the parameter.
     /// - `initial_value`: An optional initial value for the parameter. If `None`,
     ///   the parameter will be initialized to `ParameterValue::NotSet`.
-    pub fn declare_parameter(
+    pub(crate) fn declare_parameter(
         &mut self,
         node: NodeKey,
         descriptor: ParameterDescriptor,
@@ -1714,7 +1738,7 @@ impl<'s> ParameterServer<'s> {
     ///
     /// Returns `Some(ParameterValue)` if the parameter exists, `None` otherwise.
     /// The `ParameterValue` is cloned to avoid lifetime issues with `&mut self`.
-    pub fn get_parameter_value(&self, node: NodeKey, name: &str) -> Option<ParameterValue> {
+    pub(crate) fn get_parameter_value(&self, node: NodeKey, name: &str) -> Option<ParameterValue> {
         self.get(node, name).cloned()
     }
 
@@ -1722,7 +1746,7 @@ impl<'s> ParameterServer<'s> {
     ///
     /// Returns `Ok(())` on success, or an error if the parameter
     /// is read-only, type mismatches, or is out of range.
-    pub fn set_parameter_value(
+    pub(crate) fn set_parameter_value(
         &mut self,
         node: NodeKey,
         name: &str,

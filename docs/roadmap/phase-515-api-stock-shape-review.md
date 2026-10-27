@@ -677,7 +677,15 @@ trait. The seven with no `Node` verb yet got one first
 `set_parameter_local`, `enable_parameter_events` / `disable_parameter_events`,
 `delete_parameters_on_not_set`, `set_parameters_atomically_with`), so no Rust
 capability left with them. Test: `the_node_carries_the_whole_parameter_surface`.
-**Still open:** `ParameterServer`'s 55 rows.
+**Stage 2 LANDED 2026-10-27** (maintainer choice "seal every method"): every
+`ParameterServer` method (59) is a crate-private inherent method behind the
+sealed `nros_params::ParameterServerOps` (`nros-params/src/ops.rs`), which
+`nros` never re-exports; nros-node re-exports it for the shims as
+`nros_node::executor::ffi::ParameterServerOps`. The type stays public
+(`Executor::params()`, a standalone caller-owned store). Callers that import
+the trait: nros-node, `nros`'s declarative node, both shims, and
+`heap-free-poc-mps2` (which now depends on `nros-params` directly, since it
+exercises a standalone store without alloc).
 
 ### X — cross-language
 

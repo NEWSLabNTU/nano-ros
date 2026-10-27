@@ -27,6 +27,11 @@ use super::{
 };
 use crate::{session, timer::TimerDuration};
 
+/// phase-515 R10 stage 2 -- `ParameterServer`'s operations, for the shims
+/// that reach the store through this crate rather than `nros-params`.
+#[cfg(feature = "param-store")]
+pub use nros_params::ParameterServerOps;
+
 mod sealed {
     pub trait Sealed {}
 }

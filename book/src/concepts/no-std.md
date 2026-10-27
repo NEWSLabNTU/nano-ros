@@ -115,7 +115,11 @@ Both layers share the same session; mix per entity.
 - `Clock` with atomic counter fallback (no wall-clock time)
 
 **Parameters (local only):**
-- `ParameterServer` -- store and retrieve parameters
+- `Node::declare_parameter` / `get_parameter` / `set_parameter` -- the
+  node's parameters, in the executor's one store
+- `ParameterServer` -- the store itself; its operations are behind
+  `nros_params::ParameterServerOps`, for a caller that holds a standalone
+  store
 - `ParameterValue` enum with heapless collections
 - `ParameterDescriptor`, `ParameterType`, `Parameter`
 - `ParameterBuilder` for declaring parameters with constraints
@@ -148,7 +152,8 @@ backing whenever the build knows the image builds a store
 bringup; capacity `NROS_MAX_PARAMETERS`). Without `alloc`, a build that carves
 no store is refused at compile time and the message names `NROS_PARAM_STORE`.
 With `alloc`, such a build falls back to the heap as before.
-The core `ParameterServer` API works without alloc.
+The core `ParameterServer` API works without alloc (its operations are
+reached through `nros_params::ParameterServerOps` since phase-515 R10).
 
 ### Requires `std`
 

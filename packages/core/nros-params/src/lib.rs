@@ -8,9 +8,11 @@
 //! # Example
 //!
 //! ```
+//! // phase-515 R10: the store's operations are behind `ParameterServerOps`;
+//! // a `nros` user reaches parameters through its `Node` instead.
 //! use nros_params::{
-//!     NodeKey, ParameterDescriptor, ParameterServer, ParameterStorage, ParameterType,
-//!     ParameterValue,
+//!     NodeKey, ParameterDescriptor, ParameterServer, ParameterServerOps as _, ParameterStorage,
+//!     ParameterType, ParameterValue,
 //! };
 //!
 //! // phase-382 W2' — storage is CALLER-OWNED: place it (a `static`, a struct
@@ -61,12 +63,14 @@ pub(crate) mod config;
 // phase-446 W6 -- what each node's contract declares, looked up when the code
 // declares a parameter.
 pub mod declared;
+pub mod ops;
 pub mod server;
 pub mod typed;
 pub mod types;
 
 // Re-export main types
 pub use declared::{DeclaredParamMismatch, DeclaredParams};
+pub use ops::ParameterServerOps;
 pub use server::{
     DeclarationError, LegacyParameterBuilder, MAX_ON_SET_CALLBACKS, OnSetContext, OnSetParameterFn,
     OnSetParameterHandle, PARAMETER_EVENT_LOG_LEN, ParameterEventKind, ParameterServer,

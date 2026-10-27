@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(feature = "param-store")]
+use nros_params::ParameterServerOps as _; // phase-515 R10 stage 2
 
 /// An executor over `session` with a HOST clock installed.
 ///
