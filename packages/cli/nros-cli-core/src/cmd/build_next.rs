@@ -742,9 +742,9 @@ mod tests {
     #[test]
     fn a_cargo_runner_board_prints_its_runner_with_the_store_qemu() {
         let cat = catalog();
-        let d = descriptor(&cat, "qemu-mps2-an385");
+        let d = descriptor(&cat, "mps2-an385-baremetal");
         let p = plan(
-            "qemu-mps2-an385",
+            "mps2-an385-baremetal",
             Driver::Cargo,
             BuildOutput::Cargo {
                 target_dir: "/ws/build/bare-metal/demo_entry/target".into(),
@@ -1005,7 +1005,7 @@ mod tests {
         [
             ("b:linux", "linux"),
             ("b:freertos", "mps2-an385-freertos"),
-            ("b:bare", "qemu-mps2-an385"),
+            ("b:bare", "baremetal"),
             ("b:rtic", "rtic-mps2-an385"),
             ("b:zephyr", "zephyr"),
         ]
@@ -1074,7 +1074,7 @@ mod tests {
         std::fs::write(
             leaf.join("system.toml"),
             "[system]\nname = \"demo\"\n\n[image.host]\nboard = \"linux\"\n\n\
-             [image.qemu]\nboard = \"qemu-mps2-an385\"\n",
+             [image.qemu]\nboard = \"baremetal\"\n",
         )
         .unwrap();
         let root = repo_root();

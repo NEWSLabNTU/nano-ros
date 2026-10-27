@@ -14,7 +14,7 @@ name = "action_client"
 # Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
 # compiled-in `Config::default()` through `Config::from_image()`.
 [image.mps2-an385-baremetal]
-board = "qemu-mps2-an385"
+board = "mps2-an385-baremetal"
 # The C/C++ runtime brings the panic handler (`nros-c`'s `panic-platform`,
 # RFC-0077), so the generated selection package must not link the board's
 # own provider beside it (issue 1305).

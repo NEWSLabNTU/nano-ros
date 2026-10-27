@@ -21,9 +21,9 @@
       first — `check-provider-announcements.py` compares them, because two
       spellings of one fact drift.
     -->
+    <nano_ros_provides kind="board" name="mps2-an385-baremetal"/>
     <nano_ros_provides kind="board" name="baremetal"/>
     <nano_ros_provides kind="board" name="bare-metal"/>
-    <nano_ros_provides kind="board" name="qemu-mps2-an385"/>
     <nano_ros_provides kind="board" name="rtic-mps2-an385"/>
   </export>
 </package>

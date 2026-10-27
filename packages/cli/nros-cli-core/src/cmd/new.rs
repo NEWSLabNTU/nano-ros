@@ -188,24 +188,35 @@ fn language_arg(flag: Option<&str>, default: nros_lang::Language) -> Result<nros
     }
 }
 
+/// The `--platform` choices offered (and listed by `--help`).
+const OFFERED_PLATFORMS: [&str; 6] = [
+    "linux",
+    "freertos",
+    "nuttx",
+    "threadx",
+    "zephyr",
+    "baremetal",
+];
+
+/// The rows of [`nros_entry_lower::RETIRED_BOARD_KEYS`] that retired a
+/// `--platform` word: those whose replacement is itself an offered platform.
+fn retired_platform_keys()
+-> impl Iterator<Item = &'static (&'static str, &'static str, &'static str)> {
+    nros_entry_lower::RETIRED_BOARD_KEYS
+        .iter()
+        .filter(|(_, now, _)| OFFERED_PLATFORMS.contains(now))
+}
+
 /// The `--platform` values: the offered set, plus the retired host aliases
 /// (`nros_entry_lower::RETIRED_BOARD_KEYS`) HIDDEN, so they reach
 /// [`refuse_retired_platform`] rather than a generic clap rejection.
 fn platform_values() -> clap::builder::PossibleValuesParser {
     use clap::builder::PossibleValue;
-    let offered = [
-        "linux",
-        "freertos",
-        "nuttx",
-        "threadx",
-        "zephyr",
-        "baremetal",
-    ]
-    .into_iter()
-    .map(PossibleValue::new);
-    let retired = nros_entry_lower::RETIRED_BOARD_KEYS
-        .iter()
-        .map(|(old, _, _)| PossibleValue::new(*old).hide(true));
+    let offered = OFFERED_PLATFORMS.into_iter().map(PossibleValue::new);
+    // Only a retired key whose replacement IS a `--platform` choice (the host
+    // aliases -> `linux`); a retired BOARD key such as `qemu-mps2-an385`
+    // (issue 2063) was never a platform word, so clap rejects it plainly.
+    let retired = retired_platform_keys().map(|(old, _, _)| PossibleValue::new(*old).hide(true));
     clap::builder::PossibleValuesParser::new(offered.chain(retired))
 }
 
@@ -215,13 +226,10 @@ fn platform_values() -> clap::builder::PossibleValuesParser {
 /// that silently maps is how a reader learns a word the project retired.
 fn refuse_retired_platform(platform: Option<&str>) -> Result<()> {
     let Some(p) = platform else { return Ok(()) };
-    if let Some((_, now, why)) = nros_entry_lower::RETIRED_BOARD_KEYS
-        .iter()
-        .find(|(old, _, _)| *old == p)
-    {
+    if let Some((_, now, why)) = retired_platform_keys().find(|(old, _, _)| *old == p) {
         bail!(
             "nros new: `--platform {p}` is not a platform choice: write `--platform {now}`. \
-             {why} (phase-500)."
+             {why}."
         );
     }
     Ok(())

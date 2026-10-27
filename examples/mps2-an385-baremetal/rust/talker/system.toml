@@ -21,7 +21,7 @@ dispatch = "deferred"
 # Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
 # compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.
 [image.mps2-an385-baremetal]
-board = "qemu-mps2-an385"
+board = "mps2-an385-baremetal"
 locator = "tcp/10.0.2.2:10500"
 os_config = ["board-net-mps2-an385-baremetal.toml"]
 
@@ -33,7 +33,7 @@ os_config = ["board-net-mps2-an385-baremetal.toml"]
 # network file, its router in the image's `locator`, its TAP in `run.nic`.
 
 [image.docker]
-board = "qemu-mps2-an385"
+board = "mps2-an385-baremetal"
 os_config = ["board-net-docker.toml"]
 locator = "tcp/172.20.0.2:7447"
 

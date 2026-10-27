@@ -162,7 +162,7 @@ through `nros-rmw-cyclonedds-sys`.
 refused by name rather than guessed at. The legal spellings are the
 `names = [...]` arrays of the board descriptors, one per board crate at
 `packages/boards/*/nros-board.toml`; several are aliases for the same board
-(`qemu-mps2-an385` and `rtic-mps2-an385` are two entry shapes on one
+(`mps2-an385-baremetal` and `rtic-mps2-an385` are two entry shapes on one
 descriptor).
 
 The neighbouring refusals, when the image is missing rather than misspelt:

@@ -135,7 +135,7 @@ pub struct PackageMetadataNros {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry: Option<EntryMetadata>,
     /// Phase 212.L.7 / L.8 — per-target deploy tables, keyed by target name
-    /// (`native`, `qemu-mps2-an385`, …). Populates both application pkgs and
+    /// (`native`, `mps2-an385-baremetal`, …). Populates both application pkgs and
     /// self-bringup component pkgs (component pkg w/ `[deploy.*]` and no
     /// sibling bringup eats its own bringup role).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2434,7 +2434,7 @@ name = "listener"
 [host.native]
 launch = "launch/system.launch.xml"
 
-[image.qemu-mps2-an385]
+[image.mps2-an385-baremetal]
 board = "mps2-an385"
 
 [[domain]]
@@ -2457,7 +2457,10 @@ to = "zenoh:default"
         assert_eq!(v1.components[1].name, "listener");
         let native = v1.host.get("native").expect("native host present");
         assert_eq!(native.launch.as_deref(), Some("launch/system.launch.xml"));
-        let qemu = v1.image.get("qemu-mps2-an385").expect("qemu image present");
+        let qemu = v1
+            .image
+            .get("mps2-an385-baremetal")
+            .expect("qemu image present");
         assert_eq!(qemu.board.as_deref(), Some("mps2-an385"));
         assert_eq!(v1.domains.len(), 1);
         assert_eq!(v1.bridges.len(), 1);
@@ -2592,7 +2595,7 @@ board = "linux"
 rmw = "cyclonedds"
 
 [image.qemu]
-board = "qemu-mps2-an385"
+board = "mps2-an385-baremetal"
 "#,
         )
         .unwrap();
@@ -3045,7 +3048,7 @@ rmw = "zenoh"
 domain_id = 7
 locator = "tcp/127.0.0.1:7447"
 
-[deploy.qemu-mps2-an385]
+[deploy.mps2-an385-baremetal]
 board = "mps2-an385"
 rmw = "cyclonedds"
 "#;
@@ -3058,7 +3061,7 @@ rmw = "cyclonedds"
         assert_eq!(native.rmw.as_deref(), Some("zenoh"));
         assert_eq!(native.domain_id, Some(7));
         assert_eq!(native.locator.as_deref(), Some("tcp/127.0.0.1:7447"));
-        let qemu = v.deploy.get("qemu-mps2-an385").expect("qemu present");
+        let qemu = v.deploy.get("mps2-an385-baremetal").expect("qemu present");
         assert_eq!(qemu.board.as_deref(), Some("mps2-an385"));
         assert_eq!(qemu.rmw.as_deref(), Some("cyclonedds"));
         assert!(qemu.domain_id.is_none());
@@ -3289,7 +3292,7 @@ class = "listener_pkg::Listener"
         )
         .unwrap();
         let mut ok = toml::from_str::<SystemToml>(&format!(
-            "{head}[image.a]\nboard = \"qemu-mps2-an385\"\nos_config = [\"lab.toml\"]\n\
+            "{head}[image.a]\nboard = \"mps2-an385-baremetal\"\nos_config = [\"lab.toml\"]\n\
              [image.a.run]\nnic = {{ bridge = \"qemu-br\" }}\n"
         ))
         .expect("an image naming a board network file parses");

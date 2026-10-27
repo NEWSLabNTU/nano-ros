@@ -40,13 +40,16 @@ name across all four, which is the point.
 | `riscv64-qemu` | `rv-virt-threadx` | R1 R2 | The clearest over-promise in the set: it named an ISA and delivered one machine — UART `0x10000000`, CLINT `0x02000000`, virtio-MMIO `0x10001000`, and a write to QEMU's `test-finisher` at `0x100000`, a device no silicon has. |
 | `qemu-esp32-baremetal` | `esp32-c3-baremetal` | R1 R3 | `cmake/board/nano-ros-board-esp32-c3-baremetal.cmake` is *"board overlay for ESP32-C3 (real silicon) + ESP32-C3 QEMU"* — one name, both, because the name is the part. |
 | `esp32-c3` | `esp32-c3-baremetal` | R2 | The part was right; the stack suffix was missing. |
+| `qemu-mps2-an385` | `mps2-an385-baremetal` | R3 | Issue 2063, 2026-10-27. A descriptor alias and `nros::main!` key, not an index key, so phase-437 left it (below). Once phase-517 W3 made image and setup one vocabulary it was only a second spelling of this board, naming the emulator. Refused naming the replacement (`nros_entry_lower::RETIRED_BOARD_KEYS`), never mapped. |
 
 `qemu-esp32-baremetal` was also a live `deploy=` token in two manifests. It
 moved with its board (RFC-0093 §3's one exception): leaving it behind would not
 have preserved a separate vocabulary, only a third spelling of one thing.
 Deploy values that are **not** board keys — `native`, `freertos`, `nuttx`,
 `threadx-linux`, `zephyr`, `qemu-mps2-an385`, `rtic-mps2-an385`,
-`threadx-qemu-riscv64`, `esp32-qemu` — were untouched.
+`threadx-qemu-riscv64`, `esp32-qemu` — were untouched then. Two have since
+retired: `native` (phase-500, now `linux`) and `qemu-mps2-an385` (issue 2063,
+now `mps2-an385-baremetal`; see the table above).
 
 ## Fixture `platform =` coordinates — a different axis
 
@@ -79,7 +82,7 @@ correct:
 * the peripheral-access crate `mps2-an385-pac`;
 * the Zephyr fragments `cmake/zephyr/mps2-an385.conf` and
   `cmake/zephyr/mps2-an385-serial.conf`;
-* the deploy tokens `qemu-mps2-an385` and `rtic-mps2-an385`;
+* the deploy token `rtic-mps2-an385` (`qemu-mps2-an385` retired, issue 2063);
 * the board crate directory `packages/boards/nros-board-mps2-an385/`.
 
 **`esp32-c3`** is the chip, and stays the chip: 34 tracked files use it outside

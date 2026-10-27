@@ -63,7 +63,7 @@ pub struct Args {
     ///
     /// Matches the authored word (any case), any alias of the same board
     /// descriptor, or the `nros setup` index key the board provisions through
-    /// (`nros build --board mps2-an385-baremetal` finds a `qemu-mps2-an385`
+    /// (`nros build --board mps2-an385-baremetal` finds a `baremetal`
     /// image). One match builds exactly that image, as if it were named; several
     /// or none is refused, listing them — the image id stays the unit
     /// (RFC-0065). Not with image arguments or `--all`.

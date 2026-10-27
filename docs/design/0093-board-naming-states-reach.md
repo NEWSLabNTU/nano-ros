@@ -192,6 +192,14 @@ Deploy values that are not board keys — `native`, `freertos`, `nuttx`,
 `threadx-linux`, `zephyr`, `qemu-mps2-an385`, `rtic-mps2-an385`,
 `threadx-qemu-riscv64`, `esp32-qemu` — are untouched.
 
+*Amended 2026-10-27 (issue 2063):* phase-517 W3 joined image and setup into
+one board vocabulary, so a deploy word that is a descriptor alias of an index
+board no longer keeps a separate vocabulary alive. It is only a second
+spelling of that board, and the exception above covers it. `qemu-mps2-an385`
+retired to `mps2-an385-baremetal` and is refused naming it.
+`threadx-qemu-riscv64` and `rtic-mps2-an385` are still to be ruled one at a
+time, not by analogy.
+
 **Not about config axes.** `fvp-aemv8r-smp` folds SMP into the name, and the
 NuttX crate carries `arm`, `arm-smp` and `riscv` defconfigs where the first two
 are one machine in UP and SMP form. SMP is an axis, not a machine. R1 says

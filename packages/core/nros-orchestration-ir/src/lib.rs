@@ -337,11 +337,9 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
         "::nros_board_mps2_an385::RticMps2An385",
         false,
     ),
-    (
-        "qemu-mps2-an385",
-        "::nros_board_mps2_an385::Mps2An385",
-        false,
-    ),
+    // `qemu-mps2-an385` was a key for this ZST until issue 2063: it named the
+    // emulator (RFC-0093 R3), and `nros::main!` refuses it naming
+    // `mps2-an385-baremetal` (`nros_entry_lower::RETIRED_BOARD_KEYS`).
     ("mps2-an385", "::nros_board_mps2_an385::Mps2An385", false),
     // phase-517 W2 — the board's `nros setup` key (its descriptor's
     // `cmake_module`, which the catalog answers to), so an image may author
@@ -1745,7 +1743,7 @@ mod tests {
             "esp32-c3-baremetal",
             "zephyr",
             "rtic-mps2-an385",
-            "qemu-mps2-an385",
+            "mps2-an385-baremetal",
             "mps2-an385",
         ];
         for key in known {

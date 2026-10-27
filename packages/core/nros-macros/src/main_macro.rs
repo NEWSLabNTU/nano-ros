@@ -4401,7 +4401,7 @@ mod image_plan_tests {
 ///   Rust producers now agree.
 ///
 ///   A Rust key with NO RTOS family (`esp32-qemu`, `esp32-c3-baremetal`,
-///   `rtic-mps2-an385`, `qemu-mps2-an385`, `mps2-an385`) gets `NO_RTOS_TIER_KEY`, which selects no sub-table. The
+///   `rtic-mps2-an385`, `mps2-an385-baremetal`, `mps2-an385`) gets `NO_RTOS_TIER_KEY`, which selects no sub-table. The
 ///   substring match gave those keys the host's sub-table. An authored tier on
 ///   such a board is now refused by `resolve_tiers`, and no in-tree leaf
 ///   authors one.
@@ -4444,7 +4444,7 @@ mod target_rtos_tests {
             "esp32-qemu",
             "esp32-c3-baremetal",
             "rtic-mps2-an385",
-            "qemu-mps2-an385",
+            "mps2-an385-baremetal",
             "mps2-an385",
         ] {
             assert_eq!(
@@ -5963,7 +5963,7 @@ mod framework_ssot_tests {
             "esp32-qemu",
             "zephyr",
             "rtic-mps2-an385",
-            "qemu-mps2-an385",
+            "mps2-an385-baremetal",
         ] {
             let fw = nros_orchestration_ir::framework_for_board_key(key).unwrap_or("owned-spin");
             assert!(
@@ -6477,6 +6477,15 @@ mod leaf_axis_tests {
         assert!(err.contains("[package.metadata.nros.board] type"), "{err}");
     }
 
+    /// Issue 2063 — `qemu-mps2-an385` named the emulator; an image that still
+    /// authors it is refused naming the board's one name, never mapped.
+    #[test]
+    fn the_emulator_named_mps2_key_is_refused_naming_the_board() {
+        let err = expand("", "qemu-mps2-an385", "").unwrap_err();
+        assert!(err.contains("write `mps2-an385-baremetal`"), "{err}");
+        assert!(expand("", "mps2-an385-baremetal", "").is_ok());
+    }
+
     /// Issue 1305 / RFC-0098 D6 — a leaf that depends on its selection package
     /// and names no board crate reaches the board, and the bare-metal reset
     /// vector's `entry` / `cortex_m`, THROUGH the selection package.
@@ -6484,7 +6493,7 @@ mod leaf_axis_tests {
     fn a_migrated_leaf_reaches_its_board_through_its_selection_package() {
         let deps = "\n[target.'cfg(target_os = \"none\")'.dependencies]\n\
                     axis_leaf_nros_selection = { path = \"build/nros/selection\" }\n";
-        let out = expand_in("panic = \"own\"", "qemu-mps2-an385", "", deps).unwrap();
+        let out = expand_in("panic = \"own\"", "mps2-an385-baremetal", "", deps).unwrap();
         assert!(
             out.contains("axis_leaf_nros_selection :: nros_board_mps2_an385 :: Mps2An385"),
             "board not re-rooted:\n{out}"
@@ -6512,13 +6521,13 @@ mod leaf_axis_tests {
     fn a_leaf_naming_its_board_crate_keeps_the_direct_path() {
         let deps = "\n[dependencies]\nnros-board-mps2-an385 = \"*\"\n\
                     axis_leaf_nros_selection = { path = \"x\" }\n";
-        let out = expand_in("panic = \"own\"", "qemu-mps2-an385", "", deps).unwrap();
+        let out = expand_in("panic = \"own\"", "mps2-an385-baremetal", "", deps).unwrap();
         assert!(
             out.contains(":: nros_board_mps2_an385 :: Mps2An385"),
             "{out}"
         );
         assert!(!out.contains("axis_leaf_nros_selection"), "{out}");
-        let out = expand_in("panic = \"own\"", "qemu-mps2-an385", "", "").unwrap();
+        let out = expand_in("panic = \"own\"", "mps2-an385-baremetal", "", "").unwrap();
         assert!(!out.contains("axis_leaf_nros_selection"), "{out}");
     }
 

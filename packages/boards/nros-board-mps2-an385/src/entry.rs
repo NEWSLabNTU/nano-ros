@@ -327,7 +327,7 @@ impl BoardEntry for Mps2An385 {
             // here, not as `no RMW backend is registered` from inside
             // `Executor::open`: XRCE on this board rides UART0 only.
             Mps2An385::println(format_args!(
-                "XRCE on qemu-mps2-an385 rides UART0: the image declares rmw = \"xrce\" \
+                "XRCE on mps2-an385-baremetal rides UART0: the image declares rmw = \"xrce\" \
                  but its locator's link is {:?}; set `[image.<id>] locator = \"custom://uart\"`",
                 deploy.transport.map(nros_platform::LinkKind::name)
             ));

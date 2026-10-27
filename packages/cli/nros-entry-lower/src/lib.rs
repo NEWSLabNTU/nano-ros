@@ -594,16 +594,29 @@ impl core::error::Error for UnknownBoard {}
 /// [`retired_board_key_hint`] first, so a retired key gets ONE message — the
 /// replacement — wherever it is written, instead of a list of known keys to
 /// search. This is a REFUSAL table: nothing maps a key through it.
+///
+/// Issue 2063 — `qemu-mps2-an385` named the EMULATOR (RFC-0093 R3) for the
+/// board whose canonical name, index key and cmake module is
+/// `mps2-an385-baremetal`. Refused the same way, never mapped: a silent alias
+/// is how a reader learns a word the project retired. Each `why` carries its
+/// own provenance, since the rows no longer share one.
 pub const RETIRED_BOARD_KEYS: &[(&str, &str, &str)] = &[
     (
         "native",
         "linux",
-        "`native` names every general-purpose host, and the host board builds on Linux only",
+        "`native` names every general-purpose host, and the host board builds on Linux only \
+         (phase-500)",
     ),
     (
         "posix",
         "linux",
-        "`posix` is the platform (`nros-platform-posix`), not a board",
+        "`posix` is the platform (`nros-platform-posix`), not a board (phase-500)",
+    ),
+    (
+        "qemu-mps2-an385",
+        "mps2-an385-baremetal",
+        "`qemu-mps2-an385` names the emulator, not the board: QEMU is how the AN385 image is \
+         RUN, and the board's one name is its index key (RFC-0093 R3, issue 2063)",
     ),
 ];
 
@@ -612,7 +625,7 @@ pub const RETIRED_BOARD_KEYS: &[(&str, &str, &str)] = &[
 pub fn retired_board_key_hint(key: &str) -> Option<alloc::string::String> {
     let (_, now, why) = RETIRED_BOARD_KEYS.iter().find(|(old, _, _)| *old == key)?;
     Some(alloc::format!(
-        "board `{key}` does not name a board: write `{now}`. {why} (phase-500)."
+        "board `{key}` is retired: write `{now}`. {why}."
     ))
 }
 
