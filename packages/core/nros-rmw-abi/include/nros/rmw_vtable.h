@@ -1428,7 +1428,7 @@ typedef struct nros_rmw_vtable_t {
      *  registration on its own `backend_data`, not on the struct's address.
      *
      *  NULL SLOT, or `NROS_RMW_RET_UNSUPPORTED`: the backend cannot name the
-     *  entity whose data arrived (XRCE, uORB, a poll-only bare-metal link).
+     *  entity whose data arrived (uORB, a poll-only bare-metal link).
      *  The runtime then reports the registration as unsupported rather than
      *  OK, and an executor falls back to the session wake. */
     rmw_ret_t (*subscription_set_on_new_message_callback)(

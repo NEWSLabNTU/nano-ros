@@ -120,6 +120,13 @@ static const nros_rmw_vtable_t kVtable = {
      * Leave NULL → runtime emits the `take` loop fallback. */
     .take_sequence = NULL,
 
+    /* Issue 2109 — per-entity new-data callbacks. `set_wake_callback` above
+     * stays NULL (nothing arrives outside `drive_io`), but every arrival
+     * callback names its entity, so these fire from inside `drive_io`. */
+    .subscription_set_on_new_message_callback = xrce_subscription_set_on_new_message_callback,
+    .service_set_on_new_request_callback = xrce_service_set_on_new_request_callback,
+    .client_set_on_new_response_callback = xrce_client_set_on_new_response_callback,
+
     /* Phase 124.E.3 — streamed publish via uxr_prepare_output_stream
      * (writes the payload straight into the reliable output stream,
      * no per-publisher staging buffer). */

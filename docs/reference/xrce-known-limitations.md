@@ -36,16 +36,14 @@ client-side deadline emulation is implementable; the other status events are
 not (the protocol carries no DDS status to the client). Every XRCE NULL slot
 is ruled in `book/src/design/rmw-vs-upstream.md` §9b.
 
-## Async wakers absent
+## No session-level async waker
 
-Subscribers / service clients in the Rust impl carry an
-`AtomicWaker` so executor-driven code can `await` on a poll. The C
-backend's `take_serialized` is purely poll-based — callers spin or
-sleep externally.
-
-**Workaround:** poll from the application's main loop. The bounded
-busy-wait inside `xrce_service_call_raw` (5000 ms total, 50 ms per
-iteration) is the pattern to mirror.
+Nothing arrives outside `drive_io`: micro-XRCE-DDS-Client has no background
+thread, so `set_wake_callback` stays NULL and an executor drains this backend
+on its own deadline-bound wait. The per-entity new-data callbacks ARE filled
+(issue 2109): an arrival inside `drive_io` fires the registered callback for
+the entity it is for, so an executor dispatches exactly that entity rather
+than probing every `has_data`.
 
 ## Fragmented publish path absent
 

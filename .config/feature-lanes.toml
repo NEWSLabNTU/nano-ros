@@ -364,13 +364,14 @@ targets = ["custom_transport_loopback"]
 # phase-436 (RFC-0106 D5) — a guard condition on a POLL-ONLY backend; its own
 # invocation because `xrce-wake-test` registers XRCE and must not share a binary
 # with `trigger-test`'s zenoh, and it needs the XRCE Agent. Issue 1734's
-# `xrce_concurrent_entities` rides along: same feature, same Agent need.
+# `xrce_concurrent_entities` and issue 2109's `xrce_entity_wake` ride along: same
+# feature, same Agent need.
 [[lane]]
 runner = "test-all"
 via = "platform"
 crate = "nros-tests"
 features = ["xrce-wake-test"]
-targets = ["xrce_guard_wake", "xrce_concurrent_entities"]
+targets = ["xrce_guard_wake", "xrce_concurrent_entities", "xrce_entity_wake"]
 
 # Issue 1940 — zenoh through the C vtable (`CffiSession`), incl. a waker woken by
 # real arrivals. `cfg(feature = "platform-posix")`, which `--workspace` never
