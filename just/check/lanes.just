@@ -629,6 +629,23 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/typed_service_client
     ./tmp/typed_service_client
+    # phase-515 C5 -- rcl's error state: a refused argument records its name,
+    # file and line, read back with rcl_get_error_string().
+    echo "  - phase-515 C5: rcl_get_error_string / rcl_get_error_state / rcl_reset_error"
+    test -f packages/api/nros-c/tests/run/rcl_error_state.c || { \
+        echo "ERROR: rcl_error_state.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/rcl_error_state.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/rcl_error_state
+    ./tmp/rcl_error_state
     # phase-515 C4b -- rclc's typed action server: goals into the caller's
     # SendGoal_Request array, feedback and results out of its envelopes.
     echo "  - phase-515 C4b: rclc_executor_add_action_server / rclc_action_send_result /"

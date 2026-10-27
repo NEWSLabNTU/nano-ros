@@ -1,0 +1,10 @@
+{
+  "key": "c:set_error_state",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc/detail/nros_generated.h",
+    "text": "ADOPT-BOUNDED: one process-wide record, where rcl keeps one per thread."
+  },
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 C5): rcl's `rcl_set_error_state(error_string, file, line_number)` (a macro over `rcutils_set_error_state` upstream), and the target of `RCL_SET_ERROR_MSG` / `RCL_CHECK_ARGUMENT_FOR_NULL` in `<rcl/error_handling.h>`. Ours-only to the correlator because upstream spells it as a `#define`. ENVELOPE (stated on the declaration): ONE process-wide record under a lock where rcl keeps one per thread, and 256-byte strings (rcutils: 1024); see `c:error_state_t`. Test: `packages/api/nros-c/tests/run/rcl_error_state.c`."
+}

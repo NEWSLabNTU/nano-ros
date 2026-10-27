@@ -298,6 +298,18 @@ through `rclc_action_send_result(goal_handle, status, &get_result_response)` and
 is no per-thread error slot. A bounded last-error record (one per executor, or
 one global under the platform lock) gives a C user the message instead of only
 the code. Adopt-bounded; the envelope is "last error on this executor".
+**Decided 2026-10-27 (maintainer): global, at rcl's names.** **LANDED
+2026-10-27:** `rcl_error_state_t` / `rcl_error_string_t` with rcutils' members,
+`rcl_set_error_state`, `rcl_error_is_set`, `rcl_get_error_state`,
+`rcl_get_error_string`, `rcl_reset_error`, and `RCL_SET_ERROR_MSG` /
+`RCL_CHECK_FOR_NULL_WITH_MSG` / `RCL_CHECK_ARGUMENT_FOR_NULL` in
+`<rcl/error_handling.h>`. One process-wide record behind `nros_rmw::sync::Mutex`,
+filled by every `validate_not_null!` / `validate_state!` refusal (214 sites;
+the message names the argument) and by the caller. Envelope: process-wide, not
+per thread; `RCUTILS_ERROR_MESSAGE_MAX_LENGTH` 256 (rcutils 1024).
+`RCL_SET_ERROR_MSG_WITH_FORMAT_STRING` is not provided (it needs a formatter
+on every target). Refusals OTHER than those two macros still return a code
+alone. Test `packages/api/nros-c/tests/run/rcl_error_state.c` (`just check c`).
 
 **C6 — `rcl_*_get_options` (publisher, subscription, client, service, action
 client, action server).** Declined because nothing retains the options. Keep a

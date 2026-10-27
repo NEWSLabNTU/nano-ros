@@ -1,6 +1,10 @@
 {
   "key": "c:error_state_t",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "rcl keeps a thread-local error state with a formatted message, file and line, read back with rcl_get_error_string(). nano-ros returns `rcl_ret_t` and nothing else -- there is no nros_error_string() and no per-thread error slot. What a C user loses is real and should be said plainly: a code, never a message. The constraint is thread-local storage plus a formatted-string buffer per thread, on targets where a task stack is measured in kilobytes."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc/detail/nros_generated.h",
+    "text": "ADOPT-BOUNDED: the pointer names the PROCESS-wide record and is valid until"
+  },
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 C5): `rcl_error_state_t` with rcutils' members (`message`, `file`, `line_number`), filled by `rcl_set_error_state` / `RCL_SET_ERROR_MSG` and by the C API itself wherever it refuses an argument or a state (`validate_not_null!` / `validate_state!`, 214 sites: the message names the argument, e.g. `executor argument is null`), read back with `rcl_get_error_state`, `rcl_error_is_set` and `rcl_reset_error` at rcl's names and signatures. ENVELOPE (stated on the declarations): ONE process-wide record under a lock where rcl keeps one per thread, so a failure on another thread overwrites it and the pointer `rcl_get_error_state` returns is valid until the next set or reset on ANY thread; and smaller buffers (message 160, file 69 bytes; rcutils 768 / 229), truncating what does not fit. Decided 2026-10-27: global at rcl's names rather than per executor under ours. Test: `packages/api/nros-c/tests/run/rcl_error_state.c`. PRIOR ROW: rcl keeps a thread-local error state with a formatted message, file and line, read back with rcl_get_error_string(). nano-ros returns `rcl_ret_t` and nothing else -- there is no nros_error_string() and no per-thread error slot. What a C user loses is real and should be said plainly: a code, never a message. The constraint is thread-local storage plus a formatted-string buffer per thread, on targets where a task stack is measured in kilobytes."
 }

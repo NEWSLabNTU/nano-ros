@@ -309,6 +309,9 @@ mod cdr;
 mod clock;
 mod constants;
 mod error;
+// phase-515 C5 — rcl's error state (`rcl_get_error_string`); filled by the
+// `validate_*!` macros, so every build carries it.
+mod error_handling;
 mod log;
 mod opaque_sizes;
 mod parameter;
@@ -341,6 +344,7 @@ pub use allocator::*;
 pub use clock::*;
 pub use constants::*;
 pub use error::*;
+pub use error_handling::*;
 #[doc(hidden)]
 pub use log::ensure_default_sinks as __ensure_default_log_sinks;
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]

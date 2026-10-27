@@ -19,4 +19,28 @@
 #include "rclc/rclc.h"
 #include "rclc/detail/rcl_compat.h"
 
+/*
+ * phase-515 C5 — rcl's error-state macros over `rcl_set_error_state`. The state
+ * itself (`rcl_get_error_string`, `rcl_get_error_state`, `rcl_error_is_set`,
+ * `rcl_reset_error`) is declared in the nano-ros headers this one includes;
+ * its envelope -- ONE process-wide record, and 256-byte strings -- is stated
+ * there. `RCL_SET_ERROR_MSG_WITH_FORMAT_STRING` is not provided: it needs a
+ * formatter on every target, and a caller formats into its own buffer instead.
+ */
+#define RCL_SET_ERROR_MSG(msg)                                                                     \
+    do {                                                                                           \
+        rcl_set_error_state((msg), __FILE__, __LINE__);                                            \
+    } while (0)
+
+#define RCL_CHECK_FOR_NULL_WITH_MSG(value, msg, error_statement)                                   \
+    do {                                                                                           \
+        if (NULL == (value)) {                                                                     \
+            RCL_SET_ERROR_MSG(msg);                                                                \
+            error_statement;                                                                       \
+        }                                                                                          \
+    } while (0)
+
+#define RCL_CHECK_ARGUMENT_FOR_NULL(argument, error_return_type)                                   \
+    RCL_CHECK_FOR_NULL_WITH_MSG(argument, #argument " argument is null", return error_return_type)
+
 #endif /* NROS_UPSTREAM_PATH_RCL_ERROR_HANDLING_H */
