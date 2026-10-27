@@ -1048,6 +1048,27 @@ fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform, cmdli
 // Parametrised E2E tests
 // =============================================================================
 
+/// The line a listener prints once its session is open and its subscription
+/// declared, per (platform, lang).
+fn listener_ready_marker(platform: Platform, lang: Lang) -> &'static str {
+    match (platform, lang) {
+        // #131 / #132 — Rust `*_entry` images print "nros entry ready" from the
+        // board `run_*` after the session opens; only the C examples print
+        // "Waiting for messages". ThreadX-RV64 rust joins the nuttx case.
+        (Platform::Nuttx, Lang::Rust) | (Platform::ThreadxRiscv64, Lang::Rust) => {
+            "nros entry ready"
+        }
+        // issue #181 — the freertos rust `*-entry` images (the runnables since
+        // 212.L made the role crates lib-only) print the entry-runtime banner,
+        // not the C examples' "Waiting for messages". issue #194 — the
+        // threadx-linux rust lane consumes the same `*-entry` image shape.
+        (Platform::Freertos, Lang::Rust) | (Platform::ThreadxLinux, Lang::Rust) => {
+            "Application setup complete"
+        }
+        _ => "Waiting for messages",
+    }
+}
+
 /// End-to-end pub/sub across Rust, C, and C++ on all four RTOS
 /// platforms. First node is the talker; second node is the listener.
 ///
@@ -1122,22 +1143,7 @@ fn test_rtos_pubsub_e2e(
     // lib-only since 212.L.1). Its board `run_entry` prints "nros entry ready"
     // after the session opens; the C examples print "Waiting for messages". Pick
     // the marker per lang so the readiness gate matches the actual image.
-    let ready_marker = match (platform, lang) {
-        // #131 / #132 — Rust `*_entry` images print "nros entry ready" from the
-        // board `run_*` after the session opens; only the C examples print
-        // "Waiting for messages". ThreadX-RV64 rust joins the nuttx case.
-        (Platform::Nuttx, Lang::Rust) | (Platform::ThreadxRiscv64, Lang::Rust) => {
-            "nros entry ready"
-        }
-        // issue #181 — the freertos rust `*-entry` images (the runnables since
-        // 212.L made the role crates lib-only) print the entry-runtime banner,
-        // not the C examples' "Waiting for messages". issue #194 — the
-        // threadx-linux rust lane consumes the same `*-entry` image shape.
-        (Platform::Freertos, Lang::Rust) | (Platform::ThreadxLinux, Lang::Rust) => {
-            "Application setup complete"
-        }
-        _ => "Waiting for messages",
-    };
+    let ready_marker = listener_ready_marker(platform, lang);
     let listener_boot = listener.collect_until(ready_marker, boot_budget(platform));
     ensure_ready(
         &listener_boot,
@@ -1276,6 +1282,87 @@ fn test_rtos_pubsub_e2e(
 /// second is the client. The client should receive at least three
 /// responses (most examples issue four: 5+3, 10+20, 100+200, -5+10) and
 /// the "All service calls completed" marker.
+/// How long a quiet listener must hold ONE session: past the negotiated lease
+/// (60 s, issue 0906), which is when the router expires a client that has sent
+/// it nothing, plus a margin for the router's own 30 s keep-alive cadence.
+const QUIET_LINK_WINDOW: Duration = Duration::from_secs(75);
+
+/// A listener with NO publisher holds its session through a whole lease.
+///
+/// Issue 2094 — every other cell here has traffic, and traffic hides a missing
+/// keep-alive: any frame the client sends sets `_transmitted`, so the
+/// keep-alive future never needs to run and the router never misses it. A
+/// NuttX image whose executor scheduled every wake-up at stack garbage (the
+/// alias TU's `uint64_t` clock against `unix.h`'s `struct timespec`) passed
+/// every pub/sub, service and action cell, and lost a quiet session at the
+/// 60 s lease in 3 of 3 runs. This is the cell that would have seen it:
+/// alone against the router, the client's keep-alive is the only thing that
+/// keeps it alive. One session over the whole window is the invariant; a
+/// second one is the router expiring the first.
+#[rstest]
+fn test_rtos_quiet_link_keeps_its_session(
+    #[values(Platform::Freertos, Platform::Nuttx, Platform::ThreadxLinux)] platform: Platform,
+) {
+    let lang = Lang::Rust;
+    require_cell_runnable(platform, lang, Variant::Pubsub);
+    let (_talker_bin, listener_bin) = build_pair(platform, lang, Variant::Pubsub);
+
+    let zenohd = platform
+        .zenoh_router_start(Variant::Pubsub, lang, Some(ROUTER_SESSION_LOG_FILTER))
+        .expect("Failed to start zenohd");
+    let mut listener = platform
+        .start_process(listener_bin, 1, "quiet-listener", lang)
+        .expect("Failed to start listener");
+
+    let ready_marker = listener_ready_marker(platform, lang);
+    let boot = listener.collect_until(ready_marker, boot_budget(platform));
+    ensure_ready(&boot, ready_marker, platform, &listener.command_line());
+
+    // Nothing to wait FOR — the point is that nothing happens. Collect until a
+    // pattern that never appears, so the window is the whole lease.
+    let quiet = listener.collect_until("\u{0}never printed\u{0}", QUIET_LINK_WINDOW);
+    let listener_cmd = listener.command_line();
+    listener.kill();
+
+    let log_path = nros_tests::fixtures::fixture_log_path(&format!("zenohd-{}", zenohd.port()));
+    let log = std::fs::read_to_string(&log_path).unwrap_or_else(|e| {
+        panic!(
+            "{platform} quiet link: cannot read the router log at {} ({e}); this cell \
+             asserts on it, so an unreadable log is a failure",
+            log_path.display()
+        )
+    });
+    let sessions = count_pattern(&log, ROUTER_SESSION_MARKER);
+    eprintln!(
+        "[{platform}] quiet link: {sessions} router session(s) over {:?}; gaps between opens: {}",
+        QUIET_LINK_WINDOW,
+        session_open_spacing(&log),
+    );
+    assert!(
+        sessions >= 1,
+        "{platform} quiet link: the router log has no `{ROUTER_SESSION_MARKER}` line, yet the \
+         listener reported `{ready_marker}` — the session check measured nothing (see \
+         ROUTER_SESSION_MARKER). Log: {}",
+        log_path.display()
+    );
+    assert_eq!(
+        sessions,
+        1,
+        "{platform} quiet link: a listener with no traffic opened {sessions} sessions in \
+         {:?}. Past the first, each is the router expiring a client that sent it no \
+         keep-alive (issue 2094: an executor whose timed futures never wake).\n\
+         Router:   {} (port {})\n\
+         Listener: {}\n\
+         Listener output:\n{}{}",
+        QUIET_LINK_WINDOW,
+        zenohd.launch_line(),
+        zenohd.port(),
+        listener_cmd,
+        boot,
+        quiet,
+    );
+}
+
 #[rstest]
 fn test_rtos_service_e2e(
     #[values(

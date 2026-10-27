@@ -273,6 +273,18 @@ Consequences and rules:
   transport (boot-time declares crawl at one per recv window, then everything
   wedges). Fork patch in `zenoh-pico/include/zenoh-pico/config.h` (+ the
   `zenoh_generic_config.h` twin); NuttX intentionally keeps 5000.
+- **NuttX's zenoh-pico clock is `nuttx_clock.c`, never the alias TU's**
+  (issue 2094). `ZENOH_NUTTX` makes zenoh-pico's TUs see `unix.h`, where
+  `z_clock_t` is a `struct timespec` returned through a hidden pointer, while
+  `platform_aliases.c` is compiled against the generic `uint64_t` ms clock.
+  So `nros-zpico-build` defines `NROS_PLATFORM_ALIASES_SKIP_CLOCK` for NuttX.
+  Re-enabling the alias clock there is a duplicate-symbol link error,
+  because `nuttx_clock.c` also owns `_z_condvar_wait_until`, which zenoh-pico
+  always references. Before this, every executor wake-up was stack garbage,
+  and a NuttX link with no traffic lost its session at the 60 s lease while
+  every cell with traffic passed. Count nanoseconds in `uint64_t`: 32 bits
+  wraps every 4.29 s. With a 5 s socket timeout, NuttX timers fire up to
+  ~10 s late (keep-alives every 25–30 s), which the 60 s lease absorbs.
 - **Intra-image pub→sub needs `Z_FEATURE_LOCAL_SUBSCRIBER=1`** (set by
   `zephyr/cmake/nros_rmw_zenoh.cmake` on Zephyr; the generated
   `zenoh_generic_config.h` from `nros-zpico-build` sets it for every
