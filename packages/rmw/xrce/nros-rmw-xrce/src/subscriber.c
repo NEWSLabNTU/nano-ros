@@ -60,6 +60,10 @@ void xrce_topic_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
             !xrce_stage_inbound(entry->data, XRCE_SUBSCRIBER_BUFFER_SIZE, ub, len, &entry->len);
         slot->write_idx = (uint16_t)((slot->write_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);
         slot->count++;
+        /* Issue 2108 — a takeable arrival ends the requested-deadline period. */
+        if (slot->deadline.period_ms != 0) {
+            xrce_deadline_touch(&slot->deadline, xrce_now_ms());
+        }
         return;
     }
     /* TODO 115.K.2.x: bump a per-session "unmatched callback" counter
@@ -167,6 +171,11 @@ static rmw_ret_t xrce_subscription_create_locked(const rmw_node_t* node,
     /* Issue 2107 — what the Agent built the DataReader from. */
     ss->sent_qos = xrce_qos;
     ss->avoid_ros = avoid_ros != 0;
+    /* nros-qos-honours: DEADLINE — issue 2108. The profile's deadline is the
+     * period a REQUESTED_DEADLINE_MISSED registration that names none uses;
+     * the miss is counted client-side (`xrce_deadline_check`). */
+    ss->qos_deadline_ms = (qos != NULL) ? qos->deadline_ms : 0u;
+    memset(&slot->deadline, 0, sizeof(slot->deadline));
 
     /* Register slot for callback dispatch. */
     slot->datareader_id = dr_oid.id;
@@ -209,6 +218,7 @@ static rmw_ret_t xrce_subscription_destroy_locked(rmw_subscription_t* subscriber
 
     if (ss->slot != NULL) {
         ss->slot->active = false;
+        memset(&ss->slot->deadline, 0, sizeof(ss->slot->deadline)); /* issue 2108 */
         ss->slot->count = 0;
         ss->slot->write_idx = 0;
         ss->slot->read_idx = 0;

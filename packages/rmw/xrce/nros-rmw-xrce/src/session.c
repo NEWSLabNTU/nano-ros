@@ -404,6 +404,9 @@ void xrce_actual_qos_topic(const uxrQoS_t* sent, bool avoid_ros, rmw_qos_profile
     if (sent->history != UXR_HISTORY_KEEP_ALL && sent->depth != 0) {
         out->depth = sent->depth;
     }
+    /* INFINITE even when a deadline was asked for: issue 2108 emulates the
+     * deadline EVENTS client-side, but the Agent's entity — what a peer
+     * matches against — still holds none (`uxrQoS_t` cannot carry one). */
     out->deadline_ms = NROS_RMW_DURATION_INFINITE_MS;
     out->lifespan_ms = NROS_RMW_DURATION_INFINITE_MS;
     out->liveliness_kind = (uint8_t)NROS_RMW_LIVELINESS_AUTOMATIC;
@@ -438,6 +441,205 @@ void xrce_actual_qos_service(bool writer, bool avoid_ros, rmw_qos_profile_t* out
     out->avoid_ros_namespace_conventions = avoid_ros ? 1u : 0u;
 }
 
+/* ---- Issue 2108: client-side DEADLINE emulation ------------------------
+ *
+ * The Agent's DDS entity has no deadline to report through XRCE (no status
+ * submessage exists, and `uxrQoS_t` cannot even set one), but both DEADLINE
+ * events are local facts: a subscription missed its deadline when a period
+ * ended with no takeable arrival, a publisher when a period ended with no
+ * publish. So they are counted here, from the platform's monotonic clock, as
+ * the Rust backend this one replaced did (phase 115.K.2). Checked at the end of
+ * every `drive_io` — the executor's own thread — and `next_deadline_ms` hands
+ * the executor the earliest expiry so a quiet spin wakes for it.
+ *
+ * What a peer sees is unchanged: the Agent's entity offers / requests an
+ * INFINITE deadline, so a stock subscriber requesting a finite deadline still
+ * does not match an XRCE publisher. The event is this client's view only. */
+
+uint64_t xrce_now_ms(void) {
+    return nros_platform_clock_ns() / 1000000u;
+}
+
+uint32_t xrce_deadline_period(uint32_t requested, uint32_t qos_deadline_ms) {
+    uint32_t p = requested != 0 ? requested : qos_deadline_ms;
+    return p == NROS_RMW_DURATION_INFINITE_MS ? 0u : p;
+}
+
+void xrce_deadline_arm(xrce_deadline* d, uint32_t period_ms, rmw_status_event_callback_t cb,
+                       void* ctx, uint64_t now_ms) {
+    if (d == NULL) {
+        return;
+    }
+    memset(d, 0, sizeof(*d));
+    if (period_ms == 0 || cb == NULL) {
+        return; /* disarmed: nothing can be missed */
+    }
+    d->period_ms = period_ms;
+    d->next_expiry_ms = now_ms + period_ms;
+    d->cb = cb;
+    d->cb_ctx = ctx;
+}
+
+void xrce_deadline_touch(xrce_deadline* d, uint64_t now_ms) {
+    if (d != NULL && d->period_ms != 0) {
+        d->next_expiry_ms = now_ms + d->period_ms;
+    }
+}
+
+void xrce_deadline_check_one(xrce_deadline* d, rmw_event_type_t kind, uint64_t now_ms) {
+    if (d == NULL || d->period_ms == 0 || now_ms < d->next_expiry_ms) {
+        return;
+    }
+    /* Every whole period since the expiry is one more miss — DDS counts each
+     * period without a sample, not each check that noticed. */
+    uint64_t missed = 1u + (now_ms - d->next_expiry_ms) / d->period_ms;
+    d->next_expiry_ms += missed * d->period_ms;
+    uint32_t add = missed > UINT32_MAX ? UINT32_MAX : (uint32_t)missed;
+    d->total = (UINT32_MAX - d->total < add) ? UINT32_MAX : d->total + add;
+    d->change = (UINT32_MAX - d->change < add) ? UINT32_MAX : d->change + add;
+    rmw_event_payload_t payload;
+    memset(&payload, 0, sizeof(payload));
+    payload.count.total_count = d->total;
+    payload.count.total_count_change = d->change;
+    d->change = 0;
+    d->cb(kind, &payload, d->cb_ctx);
+}
+
+void xrce_deadline_check(xrce_session_state_t* st, uint64_t now_ms) {
+    if (st == NULL) {
+        return;
+    }
+    for (size_t i = 0; i < XRCE_MAX_SUBSCRIBERS; ++i) {
+        xrce_subscriber_slot* slot = &st->subscriber_slots[i];
+        if (slot->active) {
+            xrce_deadline_check_one(&slot->deadline, NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED,
+                                    now_ms);
+        }
+    }
+    /* `next` is read before the callback, which may destroy this publisher. */
+    xrce_publisher_state* ps = st->deadline_publishers;
+    while (ps != NULL) {
+        xrce_publisher_state* next = ps->deadline_next;
+        xrce_deadline_check_one(&ps->deadline, NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED, now_ms);
+        ps = next;
+    }
+}
+
+static void deadline_min(const xrce_deadline* d, uint64_t now_ms, bool* any, uint64_t* best) {
+    if (d->period_ms == 0) {
+        return;
+    }
+    uint64_t in = d->next_expiry_ms > now_ms ? d->next_expiry_ms - now_ms : 0u;
+    if (!*any || in < *best) {
+        *best = in;
+        *any = true;
+    }
+}
+
+bool xrce_deadline_next(const xrce_session_state_t* st, uint64_t now_ms, uint32_t* out_ms) {
+    if (st == NULL || out_ms == NULL) {
+        return false;
+    }
+    bool any = false;
+    uint64_t best = 0;
+    for (size_t i = 0; i < XRCE_MAX_SUBSCRIBERS; ++i) {
+        if (st->subscriber_slots[i].active) {
+            deadline_min(&st->subscriber_slots[i].deadline, now_ms, &any, &best);
+        }
+    }
+    for (const xrce_publisher_state* ps = st->deadline_publishers; ps != NULL;
+         ps = ps->deadline_next) {
+        deadline_min(&ps->deadline, now_ms, &any, &best);
+    }
+    if (any) {
+        *out_ms = best > UINT32_MAX ? UINT32_MAX : (uint32_t)best;
+    }
+    return any;
+}
+
+void xrce_deadline_unlist_publisher(xrce_session_state_t* st, xrce_publisher_state* ps) {
+    if (st == NULL || ps == NULL || !ps->deadline_listed) {
+        return;
+    }
+    xrce_publisher_state** link = &st->deadline_publishers;
+    while (*link != NULL && *link != ps) {
+        link = &(*link)->deadline_next;
+    }
+    if (*link == ps) {
+        *link = ps->deadline_next;
+    }
+    ps->deadline_next = NULL;
+    ps->deadline_listed = false;
+}
+
+rmw_ret_t xrce_subscription_event_init(const rmw_subscription_t* subscription,
+                                       rmw_event_type_t kind, uint32_t deadline_ms,
+                                       rmw_status_event_callback_t cb, void* user_context) {
+    if (subscription == NULL || subscription->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    if (kind != NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED) {
+        return NROS_RMW_RET_UNSUPPORTED; /* the protocol carries no other status */
+    }
+    xrce_subscriber_state* ss = (xrce_subscriber_state*)subscription->backend_data;
+    if (ss->slot == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_lock(ss->session_state);
+    xrce_deadline_arm(&ss->slot->deadline, xrce_deadline_period(deadline_ms, ss->qos_deadline_ms),
+                      cb, user_context, xrce_now_ms());
+    xrce_session_unlock(ss->session_state);
+    return NROS_RMW_RET_OK;
+}
+
+rmw_ret_t xrce_publisher_event_init(const rmw_publisher_t* publisher, rmw_event_type_t kind,
+                                    uint32_t deadline_ms, rmw_status_event_callback_t cb,
+                                    void* user_context) {
+    if (publisher == NULL || publisher->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    if (kind != NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED) {
+        return NROS_RMW_RET_UNSUPPORTED;
+    }
+    xrce_publisher_state* ps = (xrce_publisher_state*)publisher->backend_data;
+    xrce_session_state_t* st = ps->session_state;
+    xrce_session_lock(st);
+    xrce_deadline_arm(&ps->deadline, xrce_deadline_period(deadline_ms, ps->qos_deadline_ms), cb,
+                      user_context, xrce_now_ms());
+    if (ps->deadline.period_ms != 0 && !ps->deadline_listed && st != NULL) {
+        ps->deadline_next = st->deadline_publishers;
+        st->deadline_publishers = ps;
+        ps->deadline_listed = true;
+    } else if (ps->deadline.period_ms == 0) {
+        xrce_deadline_unlist_publisher(st, ps);
+    }
+    xrce_session_unlock(st);
+    return NROS_RMW_RET_OK;
+}
+
+rmw_ret_t xrce_next_deadline_ms(const rmw_session_t* session, uint32_t* out_ms,
+                                bool* has_deadline) {
+    if (session == NULL || session->backend_data == NULL || out_ms == NULL ||
+        has_deadline == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_state_t* st = (xrce_session_state_t*)session->backend_data;
+    xrce_session_lock(st);
+    uint32_t ms = 0;
+    bool any = xrce_deadline_next(st, xrce_now_ms(), &ms);
+    xrce_session_unlock(st);
+    *has_deadline = any;
+    if (any) {
+        *out_ms = ms;
+    }
+    return NROS_RMW_RET_OK;
+}
+
+bool xrce_event_type_is_supported(rmw_event_type_t event_type) {
+    return event_type == NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED ||
+           event_type == NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED;
+}
+
 /* issue 1329 — what THIS backend honours.
  *
  * Exactly the fields above plus the topic-name flag: the five `uxrQoS_t`
@@ -464,7 +666,8 @@ rmw_ret_t xrce_supported_qos_policies(const rmw_session_t* session, uint32_t* ou
     }
     *out_mask = NROS_RMW_QOS_POLICY_RELIABILITY | NROS_RMW_QOS_POLICY_DURABILITY_VOLATILE |
                 NROS_RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL | NROS_RMW_QOS_POLICY_HISTORY |
-                NROS_RMW_QOS_POLICY_DEPTH | NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS;
+                NROS_RMW_QOS_POLICY_DEPTH | NROS_RMW_QOS_POLICY_AVOID_ROS_NAMESPACE_CONVENTIONS |
+                NROS_RMW_QOS_POLICY_DEADLINE; /* issue 2108 — emulated client-side */
     return NROS_RMW_RET_OK;
 }
 
@@ -889,6 +1092,7 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
     if (t == 0) {
         xrce_session_lock(st);
         (void)uxr_run_session_time(&st->session, 0);
+        xrce_deadline_check(st, xrce_now_ms()); /* issue 2108 */
         xrce_session_unlock(st);
         return NROS_RMW_RET_OK;
     }
@@ -934,6 +1138,12 @@ rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {
             nros_platform_sleep_ms(1);
         }
     }
+    /* Issue 2108 — the deadline check runs on the executor's thread, after
+     * this drive delivered whatever arrived (each arrival restarted its
+     * subscription's period in `xrce_topic_callback`). */
+    xrce_session_lock(st);
+    xrce_deadline_check(st, xrce_now_ms());
+    xrce_session_unlock(st);
     return NROS_RMW_RET_OK;
 }
 

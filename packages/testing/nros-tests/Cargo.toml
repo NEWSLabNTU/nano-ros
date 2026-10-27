@@ -297,6 +297,13 @@ name = "trigger_conditions"
 path = "tests/trigger_conditions.rs"
 required-features = ["trigger-test"]
 
+# Issue 2108 — XRCE's client-side REQUESTED_DEADLINE_MISSED, through a live
+# Agent.
+[[test]]
+name = "xrce_deadline"
+path = "tests/xrce_deadline.rs"
+required-features = ["xrce-wake-test"]
+
 [[test]]
 name = "xrce_guard_wake"
 path = "tests/xrce_guard_wake.rs"
