@@ -35,6 +35,10 @@ void xrce_topic_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
         return;
     }
     size_t len = (size_t)length;
+    /* Issue 2106 — the `ros_discovery_info` reader is not a subscription slot. */
+    if (xrce_graph_on_topic(st, object_id, ub, len)) {
+        return;
+    }
     for (size_t i = 0; i < XRCE_MAX_SUBSCRIBERS; ++i) {
         xrce_subscriber_slot* slot = &st->subscriber_slots[i];
         if (!slot->active || slot->datareader_id != object_id.id) {

@@ -116,6 +116,16 @@ evidence = "3/3, 4 suite runs. Issue 1495: our Cyclone take now REPORTS a publis
 issue = "1495"
 
 [[verdict]]
+cell = "native-graph-rust-xrce-r2n"
+date = "2026-10-28"
+verdict = "pass"
+tests = ["xrce_a_peer_leaving_fires_the_graph_change_guard", "xrce_enumerates_a_stock_ros2_node"]
+run = "cargo nextest run -p nros-tests --test xrce_ros2_interop"
+where = "ros2 distrobox, Humble, MicroXRCEAgent 2.4.3-nros1, rmw_fastrtps_cpp demo talker, tree with issue 2106"
+evidence = "2 case(s) produced a result in junit-graph.xml"
+issue = "2106"
+
+[[verdict]]
 cell = "native-graph-rust-zenoh-r2n"
 date = "2026-10-03"
 verdict = "pass"

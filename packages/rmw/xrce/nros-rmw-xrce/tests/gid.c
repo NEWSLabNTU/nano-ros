@@ -7,7 +7,7 @@
  * request WRITER, not its reply reader.
  *
  * The live half — a stock `ros2 topic info --verbose` printing the GID our
- * `get_gid()` reports — is `graph_interop::xrce_publisher_gid_is_the_one_a_stock_graph_reports`.
+ * `get_gid()` reports — is `xrce_ros2_interop::test_xrce_publisher_gid_is_the_one_a_stock_graph_reports`.
  */
 
 #include "internal.h"

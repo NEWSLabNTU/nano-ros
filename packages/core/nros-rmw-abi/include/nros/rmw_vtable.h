@@ -1124,7 +1124,8 @@ typedef struct nros_rmw_vtable_t {
      *
      * A 128 KiB target cannot hold a graph cache, and NULL is the expected
      * answer there — the runtime surfaces UNSUPPORTED. XRCE cannot enumerate
-     * participants at all.
+     * participants at all; it answers `get_node_names` alone, from the
+     * `ros_discovery_info` samples it reads through the Agent (issue 2106).
      */
 
     /** Upstream `rmw_get_node_names` AND `rmw_get_node_names_with_enclaves`.
@@ -1208,7 +1209,7 @@ typedef struct nros_rmw_vtable_t {
      *  slot cannot serve as that probe on the Rust road, where the adapter
      *  fills every slot for every backend.
      *
-     *  NULL slot = backend has no graph-change edge (XRCE, uORB, and any
+     *  NULL slot = backend has no graph-change edge (uORB, and any
      *  backend that discovers nothing). The runtime surfaces that as
      *  UNSUPPORTED and declines to create the guard condition: handing back
      *  one nothing will ever trigger is the silent difference RFC-0089 Part I

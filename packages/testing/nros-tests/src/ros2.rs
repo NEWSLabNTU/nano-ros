@@ -1981,6 +1981,19 @@ impl Ros2DdsProcess {
     /// Longer than the 10 s the `topic pub` helpers use: the graph probe polls
     /// to convergence with a budget of its own, and a talker that exits first
     /// turns a real answer into an empty one.
+    pub fn demo_nodes_cpp_talker_fastrtps_with_domain(
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
+        let deadline = crate::process::deadline(40);
+        let cmd = format!("{env_setup} && {deadline} ros2 run demo_nodes_cpp talker");
+        Self::spawn_bash(&cmd, "ros2-fastrtps demo_nodes_cpp talker")
+    }
+
+    /// The stock talker on `rmw_cyclonedds_cpp` — see
+    /// [`demo_nodes_cpp_talker_fastrtps_with_domain`](Self::demo_nodes_cpp_talker_fastrtps_with_domain)
+    /// for the fastrtps twin XRCE's graph cell uses.
     pub fn demo_nodes_cpp_talker_cyclonedds_with_domain(
         distro: &str,
         domain_id: u8,
@@ -2267,6 +2280,16 @@ rclpy.spin(node)
     #[cfg(not(unix))]
     fn wait_for_data(remaining: Duration) {
         std::thread::sleep(remaining.min(Duration::from_millis(50)));
+    }
+
+    /// Issue 2106 — stop the peer the way an operator's Ctrl-C would:
+    /// SIGTERM to its process group, SIGKILL only after a grace period. A
+    /// stock node shutting down cleanly destroys its nodes, which republishes
+    /// its `ros_discovery_info` without them — the only departure signal a
+    /// peer that sees no DDS discovery (XRCE) can receive. `kill` is SIGKILL
+    /// and gives the node no chance to say so.
+    pub fn terminate(&mut self) {
+        crate::process::graceful_kill_process_group(&mut self.handle);
     }
 
     /// Kill the process

@@ -4594,8 +4594,9 @@ pub fn build_graph_probe_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     let cell = match rmw {
         Rmw::Zenoh => &ZENOH_BIN,
         Rmw::Cyclonedds => &CYCLONE_BIN,
-        // Issue 2110 — XRCE reads no graph, but its publisher GID is asked
-        // live through the probe's `GRAPH_PROBE_GID` mode.
+        // Issue 2110 / 2106 — XRCE reads node names (and nothing else) from
+        // `ros_discovery_info`, and its publisher GID is asked live through
+        // the probe's `GRAPH_PROBE_GID` mode.
         Rmw::Xrce => &XRCE_BIN,
     };
     cell.get_or_try_init(|| {

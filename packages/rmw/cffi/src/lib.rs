@@ -3490,8 +3490,8 @@ impl Session for CffiSession {
     /// overstatement issue 0800 measured, one layer above where 0800 found it.
     ///
     /// NULL surfaces `Unsupported` rather than an empty enumeration, which is
-    /// W6's requirement: XRCE has no graph and must say "cannot tell you", not
-    /// "nothing is there".
+    /// W6's requirement: a backend with no graph (uORB) must say "cannot tell
+    /// you", not "nothing is there".
     fn get_node_names(
         &mut self,
         visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
@@ -6977,9 +6977,10 @@ mod tests {
     // both — dropping either turns the gate into a one-way ratchet.
     /// phase-381 W6 — a NULL graph slot must say UNSUPPORTED, not "empty".
     ///
-    /// The distinction is the whole of W6. XRCE has no graph at all: its C
-    /// vtable is a designated initializer, so every graph slot is NULL by
-    /// omission. If a NULL slot produced `Ok(())` with no visits, a caller
+    /// The distinction is the whole of W6. A C vtable is a designated
+    /// initializer, so every graph slot a backend does not fill is NULL by
+    /// omission (XRCE fills only `get_node_names` and the change edge, issue
+    /// 2106). If a NULL slot produced `Ok(())` with no visits, a caller
     /// could not tell "this backend cannot answer" from "the graph is empty",
     /// and would conclude a peer is absent when it simply cannot be seen.
     ///
