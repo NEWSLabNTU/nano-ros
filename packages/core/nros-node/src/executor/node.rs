@@ -177,6 +177,22 @@ impl<'a> NodeHandle<'a> {
         nros_rmw::Session::serialization_format(&*self.session)
     }
 
+    /// The RMW backend behind this node, by name — the counterpart to ROS 2's
+    /// `rmw_get_implementation_identifier()` (rclpy's
+    /// `get_rmw_implementation_identifier()`), asked of the node because an
+    /// `Executor::open_multi` image holds two sessions.
+    ///
+    /// The nano-ros backend name (`"zenoh"`, `"cyclonedds"`, `"xrce"`,
+    /// `"uorb"`), never a stock `rmw_*_cpp` name: a zenoh image speaks
+    /// `rmw_zenoh_cpp`'s wire but is not that implementation, and code that
+    /// branches on the identifier is asking about the implementation. A
+    /// backend reached through the C ABI that states no name answers the name
+    /// it was registered under. `None` = the backend has not said.
+    #[must_use]
+    pub fn rmw_implementation_identifier(&self) -> Option<&'static str> {
+        nros_rmw::Session::implementation_identifier(&*self.session)
+    }
+
     /// Phase 88.12 — return the [`nros_log::Logger`] NAMED FOR THIS NODE.
     ///
     /// Loggers are interned in nros-log's bounded global table

@@ -320,7 +320,6 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_node: None,
     destroy_node: None,
     set_log_severity: None,
-    required_rx_bytes: None,
     supported_qos_policies: None,
     subscription_set_on_new_message_callback: None,
     service_set_on_new_request_callback: None,
@@ -1471,6 +1470,25 @@ pub unsafe extern "C" fn nros_rmw_cffi_registered_names(
     n
 }
 
+/// The name `vtable` was registered under — the first registry slot holding
+/// that table — or NULL when it was never registered. The NULL-slot fallback
+/// for `get_implementation_identifier` (`CffiSession::implementation_identifier_cstr`).
+///
+/// Matched by ADDRESS: the registry stores the caller's `&'static` table, so
+/// a session opened through any registry path holds the same pointer.
+fn registered_name_of(vtable: &'static NrosRmwVtable) -> *const core::ffi::c_char {
+    let want = vtable as *const NrosRmwVtable;
+    let n = registry().len.load(Ordering::Acquire);
+    for i in 0..n {
+        // SAFETY: i < n; the len-Acquire load orders the slot read.
+        let slot = unsafe { registry().slot(i) };
+        if core::ptr::eq(slot.vtable, want) {
+            return slot.name.as_ptr().cast();
+        }
+    }
+    core::ptr::null()
+}
+
 /// Phase 104.A — registry-presence probe. Returns `true` iff at
 /// least one backend is registered. Used by `Executor::open` to
 /// detect "user forgot to register a backend before opening the
@@ -2150,6 +2168,38 @@ impl CffiSession {
         unsafe { core::ffi::CStr::from_ptr(ptr) }.to_str().ok()
     }
 
+    /// The backend's name — `rmw_get_implementation_identifier()`, per session
+    /// — as a NUL-terminated C string with `'static` lifetime, or NULL.
+    ///
+    /// The vtable's `get_implementation_identifier` slot when the backend
+    /// fills it; otherwise the name this session's vtable was REGISTERED under
+    /// (`nros_rmw_cffi_register_named`), which is the slot's documented
+    /// NULL-slot fallback. That fallback is a fact the registry holds, not a
+    /// guess on the backend's behalf — unlike a format, a backend's name is
+    /// exactly what registering it stated. NULL only for a vtable that never
+    /// went through the registry (a test opening one directly).
+    pub fn implementation_identifier_cstr(&self) -> *const core::ffi::c_char {
+        match self.vtable.get_implementation_identifier {
+            // SAFETY: a non-NULL fn pointer a registered backend installed; it
+            // takes no arguments and returns static storage.
+            Some(f) => unsafe { f() },
+            None => registered_name_of(self.vtable),
+        }
+    }
+
+    /// [`implementation_identifier_cstr`](Self::implementation_identifier_cstr)
+    /// as a Rust string. `None` for no answer or a non-UTF-8 one.
+    pub fn implementation_identifier(&self) -> Option<&'static str> {
+        let ptr = self.implementation_identifier_cstr();
+        if ptr.is_null() {
+            return None;
+        }
+        // SAFETY: a static NUL-terminated string — a backend literal or a
+        // registry slot's name, which is never freed or rewritten in place
+        // (a re-registration under the same name keeps the name bytes).
+        unsafe { core::ffi::CStr::from_ptr(ptr) }.to_str().ok()
+    }
+
     fn make_view(&mut self) -> NrosRmwSession {
         NrosRmwSession {
             node_name: self.node_name_buf.as_ptr().cast(),
@@ -2816,6 +2866,12 @@ impl Session for CffiSession {
     /// cannot know its format at compile time was the one that guessed.
     fn serialization_format(&self) -> Option<&'static str> {
         CffiSession::serialization_format(self)
+    }
+
+    /// The vtable's answer, or the registered name — never the trait's `None`
+    /// default, which is right only for a backend known at compile time.
+    fn implementation_identifier(&self) -> Option<&'static str> {
+        CffiSession::implementation_identifier(self)
     }
 
     /// phase-461 W2 / issue 1352 -- this session FORWARDS over a C vtable,

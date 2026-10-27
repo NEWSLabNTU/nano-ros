@@ -29,9 +29,15 @@ namespace {
  * not raise an error: two gids naming the SAME publisher start comparing
  * unequal, silently.
  *
- * One constant is the whole fix. The `get_implementation_identifier` vtable
- * slot stays NULL deliberately — see the note at the vtable's identity slots. */
-constexpr const char *kImplementationIdentifier = "cyclonedds";
+ * One constant is the whole fix, and the `get_implementation_identifier` slot
+ * hands out the same one (it gained a reader — the per-node
+ * `rmw_implementation_identifier` accessors), so the name a caller is told and
+ * the name its gids carry cannot drift either. */
+constexpr const char* kImplementationIdentifier = "cyclonedds";
+
+static const char* cyclone_get_implementation_identifier(void) {
+    return kImplementationIdentifier;
+}
 
 /* RFC-0088 D4 / phase-421 W2 — the wire encoding, as the cross-image identity
  * STRING (the `u8` discriminant beside it is assigned per image and means
@@ -44,7 +50,9 @@ constexpr const char *kImplementationIdentifier = "cyclonedds";
  * Deliberately not folded in with `kImplementationIdentifier`: the backend's
  * name and the backend's encoding are different facts that happen to be
  * one-to-one today. */
-static const char *cyclone_get_serialization_format(void) { return "cdr"; }
+static const char* cyclone_get_serialization_format(void) {
+    return "cdr";
+}
 
 /* issue 0800 — `set_log_severity` had a slot, a runtime dispatcher and stub
  * tests since phase-376 W5, and no backend body: every image answered
@@ -68,8 +76,8 @@ static const char *cyclone_get_serialization_format(void) { return "cdr"; }
  * many. That answers "is anyone subscribed to this topic", which is the
  * question an operator asks when nothing arrives — and until now the runtime
  * could not answer it in any language. */
-static rmw_ret_t cyclone_publisher_count_matched_subscriptions(const rmw_publisher_t *publisher,
-                                                               size_t *subscription_count) {
+static rmw_ret_t cyclone_publisher_count_matched_subscriptions(const rmw_publisher_t* publisher,
+                                                               size_t* subscription_count) {
     if (publisher == nullptr || subscription_count == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -82,8 +90,9 @@ static rmw_ret_t cyclone_publisher_count_matched_subscriptions(const rmw_publish
     return NROS_RMW_RET_OK;
 }
 
-static rmw_ret_t cyclone_subscription_count_matched_publishers(
-    const rmw_subscription_t *subscription, size_t *publisher_count) {
+static rmw_ret_t
+cyclone_subscription_count_matched_publishers(const rmw_subscription_t* subscription,
+                                              size_t* publisher_count) {
     if (subscription == nullptr || publisher_count == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -114,27 +123,26 @@ static rmw_ret_t cyclone_subscription_count_matched_publishers(
  * `enclave` is NULL: `ParticipantEntitiesInfo` carries none, and reporting a
  * value we do not have would be worse than saying we do not — the ABI's NULL is
  * exactly "this backend does not track one". */
-static rmw_ret_t cyclone_get_node_names(const rmw_session_t *session,
-                                        rmw_node_visitor_t visitor) {
+static rmw_ret_t cyclone_get_node_names(const rmw_session_t* session, rmw_node_visitor_t visitor) {
     /* phase-406 W2 — the function and its context arrive together; the body
        below still reads the two names it always did. */
     rmw_node_visit_fn visit = visitor.visit;
-    void *ctx = visitor.ctx;
+    void* ctx = visitor.ctx;
     if (session == nullptr || visit == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    nros_rmw_cyclonedds::GraphState *g =
-        nros_rmw_cyclonedds::session_graph(const_cast<rmw_session_t *>(session));
+    nros_rmw_cyclonedds::GraphState* g =
+        nros_rmw_cyclonedds::session_graph(const_cast<rmw_session_t*>(session));
     if (g == nullptr) {
         return NROS_RMW_RET_UNSUPPORTED;
     }
     struct Ctx {
         rmw_node_visit_fn visit;
-        void *ctx;
+        void* ctx;
     } wrapper{visit, ctx};
     const bool ok = nros_rmw_cyclonedds::graph_visit_nodes(
-        g, &wrapper, [](void *c, const char *name, const char *ns) -> bool {
-            auto *w = static_cast<Ctx *>(c);
+        g, &wrapper, [](void* c, const char* name, const char* ns) -> bool {
+            auto* w = static_cast<Ctx*>(c);
             return w->visit(w->ctx, name, ns, nullptr);
         });
     /* `false` means the graph is INACTIVE — no descriptor, no reader. That is
@@ -143,7 +151,7 @@ static rmw_ret_t cyclone_get_node_names(const rmw_session_t *session,
     return ok ? NROS_RMW_RET_OK : NROS_RMW_RET_UNSUPPORTED;
 }
 
-static rmw_ret_t cyclone_get_gid_for_publisher(const rmw_publisher_t *publisher, rmw_gid_t *gid) {
+static rmw_ret_t cyclone_get_gid_for_publisher(const rmw_publisher_t* publisher, rmw_gid_t* gid) {
     if (publisher == nullptr || gid == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -166,7 +174,7 @@ static rmw_ret_t cyclone_get_gid_for_publisher(const rmw_publisher_t *publisher,
  * writer's GUID, which is what stock `rmw_cyclonedds_cpp` reports and what
  * `writer_request_id64` already keys this client's request ids on. Same body
  * as the publisher's, one entity over. */
-static rmw_ret_t cyclone_get_gid_for_client(const rmw_client_t *client, rmw_gid_t *gid) {
+static rmw_ret_t cyclone_get_gid_for_client(const rmw_client_t* client, rmw_gid_t* gid) {
     if (client == nullptr || gid == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -214,9 +222,9 @@ static bool cyclone_event_type_is_supported(rmw_event_type_t event_type) {
  * adds the one field that belongs to the registration rather than to the
  * sample: which backend produced the gid, so it is compared only against gids
  * from the same one (`rmw_entity.h`). */
-static rmw_ret_t cyclone_take_with_info(const rmw_subscription_t *subscription,
-                                        rmw_mut_byte_span_t *message, bool *taken,
-                                        rmw_message_info_t *message_info) {
+static rmw_ret_t cyclone_take_with_info(const rmw_subscription_t* subscription,
+                                        rmw_mut_byte_span_t* message, bool* taken,
+                                        rmw_message_info_t* message_info) {
     const rmw_ret_t rc = nros_rmw_cyclonedds::subscription_take_with_info(subscription, message,
                                                                           taken, message_info);
     if (rc == NROS_RMW_RET_OK && taken != nullptr && *taken) {
@@ -230,26 +238,26 @@ static rmw_ret_t cyclone_take_with_info(const rmw_subscription_t *subscription,
  * Same `out`-carries-the-request contract as the publisher and subscription
  * forms above. The entity each one names is not symmetric between the two
  * sides; `internal.hpp` spells the mapping out. */
-static rmw_ret_t cyclone_client_request_publisher_get_actual_qos(const rmw_client_t *client,
-                                                                 rmw_qos_profile_t *qos) {
+static rmw_ret_t cyclone_client_request_publisher_get_actual_qos(const rmw_client_t* client,
+                                                                 rmw_qos_profile_t* qos) {
     if (client == nullptr || qos == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    return nros_rmw_cyclonedds::read_entity_qos(
-        nros_rmw_cyclonedds::client_request_writer(client), qos);
+    return nros_rmw_cyclonedds::read_entity_qos(nros_rmw_cyclonedds::client_request_writer(client),
+                                                qos);
 }
 
-static rmw_ret_t cyclone_client_response_subscription_get_actual_qos(const rmw_client_t *client,
-                                                                     rmw_qos_profile_t *qos) {
+static rmw_ret_t cyclone_client_response_subscription_get_actual_qos(const rmw_client_t* client,
+                                                                     rmw_qos_profile_t* qos) {
     if (client == nullptr || qos == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    return nros_rmw_cyclonedds::read_entity_qos(
-        nros_rmw_cyclonedds::client_response_reader(client), qos);
+    return nros_rmw_cyclonedds::read_entity_qos(nros_rmw_cyclonedds::client_response_reader(client),
+                                                qos);
 }
 
-static rmw_ret_t cyclone_service_request_subscription_get_actual_qos(const rmw_service_t *service,
-                                                                     rmw_qos_profile_t *qos) {
+static rmw_ret_t cyclone_service_request_subscription_get_actual_qos(const rmw_service_t* service,
+                                                                     rmw_qos_profile_t* qos) {
     if (service == nullptr || qos == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -257,8 +265,8 @@ static rmw_ret_t cyclone_service_request_subscription_get_actual_qos(const rmw_s
         nros_rmw_cyclonedds::service_request_reader(service), qos);
 }
 
-static rmw_ret_t cyclone_service_response_publisher_get_actual_qos(const rmw_service_t *service,
-                                                                   rmw_qos_profile_t *qos) {
+static rmw_ret_t cyclone_service_response_publisher_get_actual_qos(const rmw_service_t* service,
+                                                                   rmw_qos_profile_t* qos) {
     if (service == nullptr || qos == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -272,17 +280,17 @@ static rmw_ret_t cyclone_service_response_publisher_get_actual_qos(const rmw_ser
  * report stays as requested rather than reading back as zero. The runtime's
  * caller can then compare the two: equality is silence, a difference is the
  * diagnostic. */
-static rmw_ret_t cyclone_publisher_get_actual_qos(const rmw_publisher_t *publisher,
-                                                  rmw_qos_profile_t *qos) {
+static rmw_ret_t cyclone_publisher_get_actual_qos(const rmw_publisher_t* publisher,
+                                                  rmw_qos_profile_t* qos) {
     if (publisher == nullptr || qos == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    return nros_rmw_cyclonedds::read_entity_qos(
-        nros_rmw_cyclonedds::publisher_writer(publisher), qos);
+    return nros_rmw_cyclonedds::read_entity_qos(nros_rmw_cyclonedds::publisher_writer(publisher),
+                                                qos);
 }
 
-static rmw_ret_t cyclone_subscription_get_actual_qos(const rmw_subscription_t *subscription,
-                                                     rmw_qos_profile_t *qos) {
+static rmw_ret_t cyclone_subscription_get_actual_qos(const rmw_subscription_t* subscription,
+                                                     rmw_qos_profile_t* qos) {
     if (subscription == nullptr || qos == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -308,8 +316,8 @@ static rmw_ret_t cyclone_subscription_get_actual_qos(const rmw_subscription_t *s
  *
  * The session is not read: Cyclone's QoS handling is compiled in, not
  * negotiated per session. */
-static rmw_ret_t cyclone_supported_qos_policies(const rmw_session_t * /*session*/,
-                                                uint32_t *out_mask) {
+static rmw_ret_t cyclone_supported_qos_policies(const rmw_session_t* /*session*/,
+                                                uint32_t* out_mask) {
     if (out_mask == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -348,7 +356,6 @@ static rmw_ret_t cyclone_set_log_severity(rmw_log_severity_t severity) {
     return NROS_RMW_RET_OK;
 }
 
-
 using namespace nros_rmw_cyclonedds;
 
 // The `*_event_init` half of the status-event surface is NULL, and STAYS NULL.
@@ -374,45 +381,44 @@ using namespace nros_rmw_cyclonedds;
 // how issue 1231 got filed: manual liveliness is not an event hook, needs no
 // callback context, and none of the argument above applied to it. That slot is
 // wired now — see `publisher_assert_liveliness` in `publisher.cpp`.
-constexpr rmw_ret_t (*kRegisterSubscriptionEvent)(
-    const rmw_subscription_t *, rmw_event_type_t, uint32_t,
-    rmw_status_event_callback_t, void *) = nullptr;
-constexpr rmw_ret_t (*kRegisterPublisherEvent)(
-    const rmw_publisher_t *, rmw_event_type_t, uint32_t,
-    rmw_status_event_callback_t, void *) = nullptr;
+constexpr rmw_ret_t (*kRegisterSubscriptionEvent)(const rmw_subscription_t*, rmw_event_type_t,
+                                                  uint32_t, rmw_status_event_callback_t,
+                                                  void*) = nullptr;
+constexpr rmw_ret_t (*kRegisterPublisherEvent)(const rmw_publisher_t*, rmw_event_type_t, uint32_t,
+                                               rmw_status_event_callback_t, void*) = nullptr;
 
 const nros_rmw_vtable_t kVtable = {
     /* ---- Session lifecycle ---- */
-    /*create_session*/            session_create,
-    /*destroy_session*/           session_destroy,
-    /*drive_io*/                  session_drive_io,
+    /*create_session*/ session_create,
+    /*destroy_session*/ session_destroy,
+    /*drive_io*/ session_drive_io,
 
     /* ---- Publisher ---- */
-    /*create_publisher*/          publisher_create,
-    /*destroy_publisher*/         publisher_destroy,
-    /*publish*/               publisher_publish_raw,
+    /*create_publisher*/ publisher_create,
+    /*destroy_publisher*/ publisher_destroy,
+    /*publish*/ publisher_publish_raw,
 
     /* ---- Subscription ---- */
-    /*create_subscription*/       subscription_create,
-    /*destroy_subscription*/      subscription_destroy,
-    /*take*/                      subscription_take,
-    /*has_data*/                  subscription_has_data,
+    /*create_subscription*/ subscription_create,
+    /*destroy_subscription*/ subscription_destroy,
+    /*take*/ subscription_take,
+    /*has_data*/ subscription_has_data,
 
     /* ---- Service ---- */
-    /*create_service*/            service_create,
-    /*destroy_service*/           service_destroy,
-    /*take_request*/             service_take_request,
-    /*has_request*/               service_has_request,
-    /*send_response*/                service_send_response,
+    /*create_service*/ service_create,
+    /*destroy_service*/ service_destroy,
+    /*take_request*/ service_take_request,
+    /*has_request*/ service_has_request,
+    /*send_response*/ service_send_response,
 
     /* ---- Client ---- */
-    /*create_client*/             client_create,
-    /*destroy_client*/            client_destroy,
+    /*create_client*/ client_create,
+    /*destroy_client*/ client_destroy,
     /* Phase 130.8 — non-blocking send/recv split; phase-301 deleted
      * the deprecated blocking call_raw slot, so this pair is the one
      * request/reply path. */
-    /*send_request*/          service_send_request_raw,
-    /*take_response*/            service_take_response,
+    /*send_request*/ service_send_request_raw,
+    /*take_response*/ service_take_response,
 
     /* ---- Status events: POLLED (see the note above kRegisterSubscriptionEvent) ---- */
     /*subscription_event_init*/ kRegisterSubscriptionEvent,
@@ -424,8 +430,8 @@ const nros_rmw_vtable_t kVtable = {
      * sleep with nowhere to defer to. `*_event_init` stays NULL, and issue 1164
      * gave these two slots the caller they had been missing. */
     /*subscription_take_event*/ subscription_take_event,
-    /*publisher_take_event*/  publisher_take_event,
-    /*publisher_event_init*/  kRegisterPublisherEvent,
+    /*publisher_take_event*/ publisher_take_event,
+    /*publisher_event_init*/ kRegisterPublisherEvent,
     /* Issue 1231 — MANUAL_BY_TOPIC liveliness. This was NULL under the
      * `*_event_init` comment above, which is about a callback context and
      * says nothing about this slot: asserting liveliness needs no callback.
@@ -434,49 +440,49 @@ const nros_rmw_vtable_t kVtable = {
      * halves of that is at the definition in `publisher.cpp`. */
     /*publisher_assert_liveliness*/ publisher_assert_liveliness,
     /* ---- Phase 110.0 + 104.C.6.b hooks (deferred) ---- */
-    /*next_deadline_ms*/          nullptr,
+    /*next_deadline_ms*/ nullptr,
     /* Phase 124.B.1 — Cyclone DDS has its own background threads
      * for sample arrival + matched-entity events; wiring the wake
      * callback into those listeners is a follow-up (lives in the
      * listener-installation path, not this static vtable). nullptr
      * today; runtime drains on deadline-bound cv-wait boundary. */
-    /*set_wake_callback*/         session_set_wake_callback,
+    /*set_wake_callback*/ session_set_wake_callback,
 
     /* Phase 124.A — zero-copy ABI. Cyclone DDS supports loan via
      * dds_loan_sample / dds_return_loan; wire-up is a follow-up
      * (track under 124.A.5). nullptr today → runtime falls back to
      * the arena staging-buffer path on this backend. */
-    /*borrow_loaned_message*/                  nullptr,
-    /*publish_loaned_message*/                nullptr,
-    /*return_loaned_message_from_publisher*/               nullptr,
-    /*take_loaned_message*/       nullptr,
-    /*return_loaned_message_from_subscription*/               nullptr,
+    /*borrow_loaned_message*/ nullptr,
+    /*publish_loaned_message*/ nullptr,
+    /*return_loaned_message_from_publisher*/ nullptr,
+    /*take_loaned_message*/ nullptr,
+    /*return_loaned_message_from_subscription*/ nullptr,
 
     /* phase-428 W13.c — service availability, from the matched-endpoint
      * sets Cyclone keeps on every writer/reader (the DDS discovery cache
      * upstream `rmw_service_server_is_available` reads). Was nullptr since
      * phase 124.C, so `wait_for_service` on this backend spent its whole
      * budget and reported false with a server up (issue 1087). */
-    /*service_server_is_available*/  nros_rmw_cyclonedds::client_server_is_available,
+    /*service_server_is_available*/ nros_rmw_cyclonedds::client_server_is_available,
 
     /* Phase 124.D.3 — native batch take. Cyclone provides
      * `dds_take(reader, buf, info, count, maxs)` as a single-call
      * batch API; we wrap it in subscription_take_sequence with
      * CDR re-serialisation per slot. */
-    /*take_sequence*/             subscription_take_sequence,
+    /*take_sequence*/ subscription_take_sequence,
 
     /* Phase 124.E — continuous serialization. nullptr → runtime
      * staging-buffer fallback. */
-    /*publish_streamed*/          nullptr,
+    /*publish_streamed*/ nullptr,
 
     /* Phase 124.F — connectivity probe. No participant ping on
      * Cyclone; nullptr → runtime surfaces UNSUPPORTED. */
-    /*ping_session*/              nullptr,
+    /*ping_session*/ nullptr,
 
     /* Phase 231 (RFC-0038) — in-place take. Not wired on this
      * backend; nullptr → runtime uses the buffered path. */
     /*subscription_supports_in_place*/ nullptr,
-    /*process_raw_in_place*/      nullptr,
+    /*process_raw_in_place*/ nullptr,
 
     /* issue 0800 — the table now runs to the END of the struct rather than
      * stopping early and leaning on value-initialisation. Positional init
@@ -484,7 +490,7 @@ const nros_rmw_vtable_t kVtable = {
      * slot before it. `check-rmw-vtable-order` verifies these comments against
      * the header's field order, so a slot inserted upstream cannot silently
      * shift the ones below it. */
-    /*get_implementation_identifier*/ nullptr,
+    /*get_implementation_identifier*/ cyclone_get_implementation_identifier,
     /*get_serialization_format*/ cyclone_get_serialization_format,
     /*feature_supported*/ nullptr,
     /*get_gid_for_publisher*/ cyclone_get_gid_for_publisher,
@@ -493,8 +499,10 @@ const nros_rmw_vtable_t kVtable = {
     /*publisher_get_actual_qos*/ cyclone_publisher_get_actual_qos,
     /*subscription_get_actual_qos*/ cyclone_subscription_get_actual_qos,
     /*client_request_publisher_get_actual_qos*/ cyclone_client_request_publisher_get_actual_qos,
-    /*client_response_subscription_get_actual_qos*/ cyclone_client_response_subscription_get_actual_qos,
-    /*service_request_subscription_get_actual_qos*/ cyclone_service_request_subscription_get_actual_qos,
+    /*client_response_subscription_get_actual_qos*/
+    cyclone_client_response_subscription_get_actual_qos,
+    /*service_request_subscription_get_actual_qos*/
+    cyclone_service_request_subscription_get_actual_qos,
     /*service_response_publisher_get_actual_qos*/ cyclone_service_response_publisher_get_actual_qos,
     /*publisher_wait_for_all_acked*/ nullptr,
     /*take_with_info*/ cyclone_take_with_info,
@@ -529,9 +537,6 @@ const nros_rmw_vtable_t kVtable = {
     /*create_node*/ node_create,
     /*destroy_node*/ node_destroy,
     /*set_log_severity*/ cyclone_set_log_severity,
-    /* One receive buffer, so "no opinion" is this backend's true answer and
-     * the slot's own header records that a NULL one means the hint stands. */
-    /*required_rx_bytes*/ nullptr,
     /*supported_qos_policies*/ cyclone_supported_qos_policies,
     /* phase-397 W2.b — per-entity wake (issue 1940's slots). The registration
      * rides a data_available listener on the entity's own READER, which
@@ -575,7 +580,7 @@ LOG_MODULE_REGISTER(cyclonedds, LOG_LEVEL_INF);
 #include <dds/ddsrt/log.h>
 
 namespace {
-void zephyr_log_sink(void *userdata, const dds_log_data_t *data) {
+void zephyr_log_sink(void* userdata, const dds_log_data_t* data) {
     (void)userdata;
     if (data == nullptr || data->message == nullptr) {
         return;
@@ -626,7 +631,7 @@ extern "C" rmw_ret_t nros_rmw_cyclonedds_register(void) {
 // section entry survives stripping.
 extern "C" {
 static void nros_rmw_cyclonedds_section_register(void) {
-    (void) nros_rmw_cyclonedds_register();
+    (void)nros_rmw_cyclonedds_register();
 }
 }
 NROS_RMW_REGISTER_BACKEND(nros_rmw_cyclonedds_section_register)
@@ -649,6 +654,6 @@ NROS_RMW_REGISTER_BACKEND(nros_rmw_cyclonedds_section_register)
 // startup path, and registration is wired explicitly via
 // `nros_cpp_init` / `nros_app_register_backends` instead.
 __attribute__((constructor)) static void nros_rmw_cyclonedds_ctor_register(void) {
-    (void) nros_rmw_cyclonedds_register();
+    (void)nros_rmw_cyclonedds_register();
 }
 #endif

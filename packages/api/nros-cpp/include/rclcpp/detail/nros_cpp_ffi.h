@@ -2213,6 +2213,26 @@ nros_cpp_ret_t nros_cpp_node_get_fully_qualified_name(const struct nros_cpp_node
 const char *nros_cpp_node_get_serialization_format(const struct nros_cpp_node_t *node);
 
 /**
+ * The RMW backend behind THIS node, by name — ROS 2's
+ * `rmw_get_implementation_identifier()`, asked per node.
+ *
+ * Resolved through `Executor::node_session_mut(node_id)`, exactly as
+ * [`nros_cpp_node_get_serialization_format`]: a node created with an explicit
+ * `rmw` sits on its own session, so an image linking two backends gets two
+ * answers. The nano-ros backend name (`"zenoh"`, `"cyclonedds"`, `"xrce"`,
+ * `"uorb"`), never a stock `rmw_*_cpp` name; a backend that states none
+ * answers the name it was registered under.
+ *
+ * Returns a static, null-terminated string the caller must not free, or NULL
+ * if `node` is NULL, its executor handle is not an nros-cpp context, or its
+ * session cannot be resolved.
+ *
+ * # Safety
+ * `node` must be a valid pointer to an initialized `nros_cpp_node_t`, or NULL.
+ */
+const char *nros_cpp_node_get_rmw_implementation_identifier(const struct nros_cpp_node_t *node);
+
+/**
  * Phase 88.12 — return the `nros_log::Logger` keyed on this node's
  * name. Opaque handle on the C++ side; pass to `NROS_LOG_*` macros.
  *

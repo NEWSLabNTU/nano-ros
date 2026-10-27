@@ -1877,6 +1877,29 @@ pub trait Session {
         Some(Self::SERIALIZATION_FORMAT)
     }
 
+    /// The backend's name, as ROS 2's `rmw_get_implementation_identifier()`
+    /// reports it — the nano-ros name (`"zenoh"`, `"cyclonedds"`, `"xrce"`,
+    /// `"uorb"`), never a stock `rmw_*_cpp` name, for the reason the
+    /// `get_implementation_identifier` slot in
+    /// `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h` states.
+    ///
+    /// `None` = the backend has not said. A backend whose name is a
+    /// compile-time fact states it here; it must be the same string it stamps
+    /// into a gid, since gids are comparable only under one identifier.
+    const IMPLEMENTATION_IDENTIFIER: Option<&'static str> = None;
+
+    /// This session's backend name — the per-session form of
+    /// `rmw_get_implementation_identifier()`, for the same reason
+    /// [`serialization_format`](Self::serialization_format) is per session: an
+    /// `Executor::open_multi` image links two backends.
+    ///
+    /// The default answers [`Self::IMPLEMENTATION_IDENTIFIER`]. A session that
+    /// dispatches to a backend chosen at run time (the C-ABI adapter) overrides
+    /// this to ask the backend's vtable.
+    fn implementation_identifier(&self) -> Option<&'static str> {
+        Self::IMPLEMENTATION_IDENTIFIER
+    }
+
     /// Error type for this session
     type Error;
     /// Publisher handle type
