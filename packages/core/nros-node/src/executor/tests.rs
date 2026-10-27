@@ -5611,6 +5611,54 @@ fn test_timer_oneshot_fires_once() {
     assert_eq!(count.load(portable_atomic::Ordering::SeqCst), 1);
 }
 
+private_test_clock!(rclrs_timer_verbs_clock);
+
+/// phase-515 R4 — rclrs's three timer verbs on the node handle: repeating
+/// fires every period, one-shot fires once, inert fires nothing until
+/// `reset_timer` starts it. `core::time::Duration` is accepted as rclrs passes.
+#[test]
+fn node_creates_rclrs_repeating_oneshot_and_inert_timers() {
+    use portable_atomic::{AtomicUsize, Ordering::SeqCst};
+    rclrs_timer_verbs_clock::claim_at_us(1_000_000);
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock_fn(session, rclrs_timer_verbs_clock::now_us);
+    let nid = executor.node_builder("timers").build().unwrap();
+
+    let rep = alloc::sync::Arc::new(AtomicUsize::new(0));
+    let one = alloc::sync::Arc::new(AtomicUsize::new(0));
+    let inert = alloc::sync::Arc::new(AtomicUsize::new(0));
+    let (r, o, i) = (rep.clone(), one.clone(), inert.clone());
+    let mut node = executor.node_mut(nid);
+    node.create_timer_repeating(core::time::Duration::from_millis(50), move || {
+        r.fetch_add(1, SeqCst);
+    })
+    .unwrap();
+    node.create_timer_oneshot(TimerDuration::from_millis(50), move || {
+        o.fetch_add(1, SeqCst);
+    })
+    .unwrap();
+    let inert_id = node
+        .create_timer_inert(core::time::Duration::from_millis(50), move || {
+            i.fetch_add(1, SeqCst);
+        })
+        .unwrap();
+
+    for _ in 0..3 {
+        rclrs_timer_verbs_clock::elapse_then_spin_once(&mut executor, 60);
+    }
+    assert_eq!(rep.load(SeqCst), 3, "repeating fires every period");
+    assert_eq!(one.load(SeqCst), 1, "one-shot fires once");
+    assert_eq!(inert.load(SeqCst), 0, "inert never fires unstarted");
+    assert!(executor.timer_is_canceled(inert_id));
+
+    executor.reset_timer(inert_id).unwrap();
+    for _ in 0..2 {
+        rclrs_timer_verbs_clock::elapse_then_spin_once(&mut executor, 60);
+    }
+    assert_eq!(inert.load(SeqCst), 2, "a started inert timer repeats");
+    assert_eq!(one.load(SeqCst), 1);
+}
+
 private_test_clock!(zero_delta_clock);
 
 #[test]
