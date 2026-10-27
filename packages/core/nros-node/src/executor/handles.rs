@@ -331,7 +331,8 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     ///
     /// * **How many of the 24 bytes mean anything is a BACKEND property.**
     ///   zenoh fills 16 and zero-extends the rest; Cyclone fills a 16-byte
-    ///   DDS writer GUID the same way. The padding has one spelling
+    ///   DDS writer GUID the same way, and XRCE the 16-byte DDS GUID its
+    ///   graph derives for the Agent-side writer (issue 2110). The padding has one spelling
     ///   ([`nros_rmw::pad_publisher_gid`]) so two gids naming one entity
     ///   compare equal.
     /// * **Comparable with a gid from a TAKE** on zenoh and Cyclone. A
@@ -341,7 +342,8 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
     ///   XXH3-128 of the publisher's liveliness keyexpr, Cyclone's writer
     ///   GUID — the same gid `ros2 topic info --verbose` prints.
     /// * **`Err(Unsupported)` is a real answer, and it is not zero.** A
-    ///   backend with no identity for this publisher (XRCE, uORB) says so;
+    ///   backend with no identity for this publisher (uORB; XRCE when its
+    ///   GUID probe went unanswered) says so;
     ///   nothing here ever hands back an all-zero gid, because that is what
     ///   an unwritten buffer holds.
     pub fn get_gid(&self) -> Result<[u8; nros_rmw::PUBLISHER_GID_SIZE], NodeError> {

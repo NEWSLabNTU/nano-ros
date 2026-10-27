@@ -1685,6 +1685,18 @@ rmw = "cyclonedds"
 dir = "packages/testing/nros-tests/bins/graph-probe"
 image = "linux_cyclonedds"
 
+# Issue 2110 — the XRCE build of the graph probe, for its `GRAPH_PROBE_GID`
+# mode only: `get_gid_for_publisher` against the GID a stock
+# `ros2 topic info --verbose` prints for the publisher (issue 1292's rig,
+# `xrce_ros2_interop::test_xrce_publisher_gid_is_the_one_a_stock_graph_reports`).
+[[fixture]]
+id = "graph-probe-xrce"
+platform = "linux"
+lang = "rust"
+rmw = "xrce"
+dir = "packages/testing/nros-tests/bins/graph-probe"
+image = "linux_xrce"
+
 # phase-467 Q4 — the `/rosout` bridge probe (ledger row
 # `c:logging_rosout_enabled`). Logs through `nros_log` and pumps
 # `nros_node::rosout` onto `/rosout`, so `rosout_interop.rs` can ask a STOCK

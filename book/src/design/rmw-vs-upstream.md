@@ -797,7 +797,7 @@ are evidence for what the protocol allows.
 | per-entity new-data callbacks | `subscription_set_on_new_message_callback`, `service_set_on_new_request_callback`, `client_set_on_new_response_callback` | unwritten — [issue 2109](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2109-xrce-per-entity-new-data-callbacks.md) | every arrival callback names its entity (`uxrObjectId`), so it can fire the registered callback from inside `drive_io` | UNSUPPORTED |
 | take with info | `take_with_info` | protocol cannot | `uxrOnTopicFunc` carries no writer GUID and no source timestamp; the only fields left are local stamps, not worth a slot | ignores `message_info` |
 | request info | `take_request_with_info` | **filled** | `uxrOnRequestFunc` DOES carry the request's `SampleIdentity` (issue 2081, measured live in issue 2088) | fills the request id |
-| identity | `get_gid_for_publisher`, `get_gid_for_client` | unwritten — [issue 2110](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2110-xrce-gid-for-publisher-and-client.md) | the protocol hands back no GUID, but `src/graph.c` already derives each tracked endpoint's DDS GID (probe + Fast-DDS entity counter, issue 1292) | copies the XRCE object id into the gid (matches no DDS GID) |
+| identity | `get_gid_for_publisher`, `get_gid_for_client` | **filled** ([issue 2110](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2110-xrce-gid-for-publisher-and-client.md)) | the protocol hands back no GUID, but `src/graph.c` derives each tracked endpoint's DDS GID (probe + Fast-DDS entity counter, issue 1292) and lists it in `ros_discovery_info`; the slots answer that GID (a client's is its request writer, the GUID a server reads in the request id), UNSUPPORTED for an endpoint it could not key. Measured live against `ros2 topic info --verbose` | copies the XRCE object id into the gid (matches no DDS GID) |
 | server availability | `service_server_is_available` | protocol cannot | needs matched-replier state the Agent keeps; a `create_requester` ack says only that the client's own endpoints exist (see `vtable.c`) | UNSUPPORTED |
 | loans | `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`, `take_loaned_message`, `return_loaned_message_from_subscription`, `take_loaned_message_with_info` | protocol cannot (in the loan's shape) | a stream buffer is reused by the next `uxr_run_session_*`, so it cannot back a view that outlives the call; the zero-copy capability ships as `publish_streamed` and `process_raw_in_place` instead | UNSUPPORTED |
 | batch take | `take_sequence` | not needed | one sample per arrival into a single-slot inbox; the runtime's `take` loop is the same work | loops `take_with_info` |
@@ -925,7 +925,8 @@ publisher that sent a message. nano-ros does both, and — since issue
 | --- | --- |
 | zenoh-pico | XXH3-128 of the entity's liveliness keyexpr, 16 bytes zero-extended to 24 — `rmw_zenoh_cpp`'s own derivation, so a stock peer's `ros2 topic info --verbose` prints the same GID |
 | cyclonedds | the DDS writer GUID, 16 bytes zero-extended; the take path reports it through the `take_with_info` slot |
-| XRCE-DDS, uORB | `UNSUPPORTED`; no metadata on a take |
+| XRCE-DDS | `get_gid()`: the DDS GUID graph.c derives for the endpoint (probed participant prefix + the Agent's endpoint counter, issue 1292), 16 bytes zero-extended — the GID `ros_discovery_info` lists and a stock `ros2 topic info --verbose` prints (issue 2110). No metadata on a take: a topic sample carries no writer GUID through the Agent |
+| uORB | `UNSUPPORTED`; no metadata on a take |
 
 The field is **24 bytes**, upstream's `RMW_GID_STORAGE_SIZE`. The 16 is
 zenoh's *wire* width and stays there: `rmw_zenoh_cpp`'s attachment

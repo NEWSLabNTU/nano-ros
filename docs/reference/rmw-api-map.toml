@@ -507,7 +507,7 @@ reason = "issue 1978: a static per-backend answer. zenoh answers from the one ki
 where = "vtable"
 nano = "get_gid_for_client"
 editions = ["jazzy"]
-reason = "issue 1978: the client twin of `get_gid_for_publisher`. zenoh: the gid stamped into every request attachment; Cyclone: the request writer's GUID. XRCE/uORB NULL = UNSUPPORTED."
+reason = "issue 1978: the client twin of `get_gid_for_publisher`. zenoh: the gid stamped into every request attachment; Cyclone: the request writer's GUID; XRCE: the request writer's DDS GID that `ros_discovery_info` lists (issue 2110, UNSUPPORTED for an endpoint graph.c could not key). uORB NULL = UNSUPPORTED."
 
 [rmw_serialization_support_init]
 where = "declined"

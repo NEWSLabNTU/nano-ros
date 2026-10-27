@@ -71,3 +71,11 @@ add_executable(nros_rmw_xrce_graph_sample graph_sample.c)
 target_link_libraries(nros_rmw_xrce_graph_sample PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_graph_sample COMMAND nros_rmw_xrce_graph_sample)
+
+# Issue 2110 — get_gid_for_publisher / get_gid_for_client answer the DDS GID
+# graph.c derives for a tracked endpoint, UNSUPPORTED for an untracked one. No
+# agent; the live half is `graph_interop`'s XRCE gid case.
+add_executable(nros_rmw_xrce_gid gid.c)
+target_link_libraries(nros_rmw_xrce_gid PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_gid COMMAND nros_rmw_xrce_gid)

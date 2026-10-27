@@ -908,6 +908,10 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     // ── xrce_ros2_interop — pubsub, service, and three cases with no cell ─
     co("xrce_ros2_interop", "test_xrce_to_ros2_pubsub",      "native-pubsub-rust-xrce-n2r"),
     co("xrce_ros2_interop", "test_ros2_to_xrce_pubsub",      "native-pubsub-rust-xrce-n2r"),
+    // Issue 2110 — the stock peer reading our PUBLISHER's identity: same cell,
+    // the question moved from "does the sample arrive" to "is it ours".
+    co("xrce_ros2_interop", "test_xrce_publisher_gid_is_the_one_a_stock_graph_reports",
+       "native-pubsub-rust-xrce-n2r"),
     co("xrce_ros2_interop", "test_xrce_service_ros2_client", "native-service-rust-xrce-r2n"),
     co("xrce_ros2_interop", "test_ros2_service_xrce_client", "native-service-rust-xrce-r2n"),
     // issue 2088 — the same cell's server half, asserting the request id the

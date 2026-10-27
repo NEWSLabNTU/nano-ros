@@ -18,6 +18,11 @@ board = "linux"
 [image.linux]
 
 # One image per RMW (RFC-0031): `nros sync --image <id> && nros build <id>`.
-# XRCE has no graph, so it has no image.
 [image.linux_cyclonedds]
 rmw = "cyclonedds"
+
+# Issue 2110 — XRCE answers no graph read slot, but its publishers have a GID
+# (the one `ros_discovery_info` lists), so the probe's `GRAPH_PROBE_GID` mode
+# runs against it.
+[image.linux_xrce]
+rmw = "xrce"
