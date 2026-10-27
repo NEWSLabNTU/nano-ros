@@ -109,6 +109,14 @@ static void gid_of(const xrce_graph* g, uint32_t key, uint8_t kind,
     out[15] = kind;
 }
 
+/* Issue 2106 — the graph-change edge: a local node came or went, or a remote
+ * participant's `ros_discovery_info` sample changed the node table. */
+static void graph_changed(const xrce_graph* g) {
+    if (g->on_change != NULL) {
+        g->on_change(g->on_change_user, 1);
+    }
+}
+
 /* ---- The probe -------------------------------------------------------- */
 
 bool xrce_graph_on_request(xrce_session_state_t* st, uxrObjectId object_id,
@@ -283,6 +291,17 @@ void xrce_graph_release(xrce_session_state_t* st) {
     st->graph.nodes = NULL;
     st->graph.endpoints = NULL;
     st->graph.active = false;
+    xrce_graph_peer* p = st->graph.peers;
+    while (p != NULL) {
+        xrce_graph_peer* next = p->next;
+        nros_xrce_free(p->names);
+        nros_xrce_free(p);
+        p = next;
+    }
+    st->graph.peers = NULL;
+    st->graph.n_peers = 0;
+    st->graph.reader_active = false;
+    st->graph.on_change = NULL;
 }
 
 /* ---- Endpoint keys ---------------------------------------------------- */
@@ -400,6 +419,7 @@ static rmw_ret_t xrce_node_create_locked(rmw_session_t* session, const char* nam
         return NROS_RMW_RET_BAD_ALLOC;
     }
     out->backend_data = rec;
+    graph_changed(&st->graph); /* issue 2106 */
     return NROS_RMW_RET_OK;
 }
 
@@ -431,6 +451,7 @@ static rmw_ret_t xrce_node_destroy_locked(rmw_node_t* node) {
     nros_xrce_free(rec);
     node->backend_data = NULL;
     g->dirty = true;
+    graph_changed(g); /* issue 2106 */
     return NROS_RMW_RET_OK;
 }
 
@@ -585,6 +606,257 @@ void xrce_graph_flush(xrce_session_state_t* st) {
     g->dirty = false;
 }
 
+/* ---- Issue 2106: the read side -------------------------------------------
+ *
+ * Node names travel as DATA on `ros_discovery_info`, an ordinary topic an XRCE
+ * client can subscribe to through the Agent like any other — which is how this
+ * backend answers `get_node_names` although the protocol gives it no read on
+ * the Agent participant's discovery state. Cyclone answers the same slot from
+ * the same samples.
+ *
+ * BOUNDS, each one a property of the source rather than of this code:
+ *
+ *  - Only DDS-RMW participants publish `ros_discovery_info`. A zenoh peer
+ *    bridged onto the domain does not, so the answer is "nodes of DDS
+ *    participants" plus this session's own.
+ *  - A participant that LEAVES without destroying its nodes stays listed: the
+ *    client never sees DDS discovery loss (no dispose / unregister reaches an
+ *    XRCE reader). A graceful exit publishes an empty node list first, and
+ *    that removes it here.
+ *  - The table is capped (`XRCE_GRAPH_MAX_PEERS` participants,
+ *    `XRCE_GRAPH_MAX_PEER_NODES` nodes each). A sample past a cap is refused
+ *    and `get_node_names` then answers ERROR rather than a silently short
+ *    list.
+ *  - The reader is created on FIRST USE (a query or a graph-change
+ *    registration), and transient-local samples arrive on later `drive_io`s:
+ *    the first call legitimately reports this session's nodes alone. Same
+ *    warm-up as every other backend's graph. */
+
+#define XRCE_GRAPH_READER_DEPTH 16u
+
+/* Our own sample comes back to our own reader (same participant). The prefix
+ * is known once a probe has answered; an all-zero prefix means it never did. */
+static bool peer_is_self(const xrce_graph* g, const uint8_t gid[XRCE_GRAPH_GID_LEN]) {
+    static const uint8_t kZero[sizeof(g->prefix)] = {0};
+    return memcmp(g->prefix, kZero, sizeof(g->prefix)) != 0 &&
+           memcmp(gid, g->prefix, sizeof(g->prefix)) == 0;
+}
+
+static xrce_graph_peer** peer_link(xrce_graph* g, const uint8_t gid[XRCE_GRAPH_GID_LEN]) {
+    xrce_graph_peer** link = &g->peers;
+    while (*link != NULL && memcmp((*link)->gid, gid, XRCE_GRAPH_GID_LEN) != 0) {
+        link = &(*link)->next;
+    }
+    return link;
+}
+
+bool xrce_graph_ingest(xrce_graph* g, const uint8_t* buf, size_t len) {
+    if (g == NULL || buf == NULL) {
+        return false;
+    }
+    ucdrBuffer ub;
+    ucdr_init_buffer(&ub, (uint8_t*)(uintptr_t)buf, len);
+    uint8_t gid[XRCE_GRAPH_GID_LEN];
+    uint32_t n_nodes = 0;
+    if (!ucdr_deserialize_array_uint8_t(&ub, gid, sizeof(gid)) ||
+        !ucdr_deserialize_uint32_t(&ub, &n_nodes)) {
+        return false;
+    }
+    if (peer_is_self(g, gid)) {
+        return true; /* our own sample: the local list is the source */
+    }
+    if (n_nodes > XRCE_GRAPH_MAX_PEER_NODES) {
+        g->peers_overflowed = true;
+        return false;
+    }
+    /* Names total at most the sample's size; pack them as ns\0name\0 pairs. */
+    char* names = NULL;
+    size_t used = 0;
+    if (n_nodes > 0) {
+        names = (char*)nros_xrce_calloc(1, len);
+        if (names == NULL) {
+            g->peers_overflowed = true;
+            return false;
+        }
+    }
+    for (uint32_t i = 0; i < n_nodes; ++i) {
+        char tmp[XRCE_GRAPH_NAME_CAP];
+        for (int part = 0; part < 2; ++part) {
+            if (!ucdr_deserialize_string(&ub, tmp, sizeof(tmp))) {
+                nros_xrce_free(names);
+                return false;
+            }
+            size_t l = strlen(tmp) + 1u;
+            if (used + l > len) {
+                nros_xrce_free(names);
+                return false;
+            }
+            memcpy(names + used, tmp, l);
+            used += l;
+        }
+        for (int seq = 0; seq < 2; ++seq) {
+            uint32_t n_gids = 0;
+            if (!ucdr_deserialize_uint32_t(&ub, &n_gids) ||
+                (size_t)n_gids > len / XRCE_GRAPH_GID_LEN) {
+                nros_xrce_free(names);
+                return false;
+            }
+            for (uint32_t k = 0; k < n_gids; ++k) {
+                uint8_t skip[XRCE_GRAPH_GID_LEN];
+                if (!ucdr_deserialize_array_uint8_t(&ub, skip, sizeof(skip))) {
+                    nros_xrce_free(names);
+                    return false;
+                }
+            }
+        }
+    }
+
+    xrce_graph_peer** link = peer_link(g, gid);
+    xrce_graph_peer* cur = *link;
+    if (n_nodes == 0) {
+        /* A participant with no nodes — a graceful exit's last word. */
+        if (cur != NULL) {
+            *link = cur->next;
+            nros_xrce_free(cur->names);
+            nros_xrce_free(cur);
+            g->n_peers--;
+            graph_changed(g);
+        }
+        return true;
+    }
+    if (cur != NULL) {
+        bool same = cur->n_nodes == n_nodes && cur->names_len == used &&
+                    memcmp(cur->names, names, used) == 0;
+        nros_xrce_free(cur->names);
+        cur->names = names;
+        cur->names_len = used;
+        cur->n_nodes = n_nodes;
+        if (!same) {
+            graph_changed(g);
+        }
+        return true;
+    }
+    if (g->n_peers >= XRCE_GRAPH_MAX_PEERS) {
+        nros_xrce_free(names);
+        g->peers_overflowed = true;
+        return false;
+    }
+    xrce_graph_peer* p = (xrce_graph_peer*)nros_xrce_calloc(1, sizeof(xrce_graph_peer));
+    if (p == NULL) {
+        nros_xrce_free(names);
+        g->peers_overflowed = true;
+        return false;
+    }
+    memcpy(p->gid, gid, sizeof(gid));
+    p->names = names;
+    p->names_len = used;
+    p->n_nodes = n_nodes;
+    *link = p; /* appended: discovery order */
+    g->n_peers++;
+    graph_changed(g);
+    return true;
+}
+
+bool xrce_graph_on_topic(xrce_session_state_t* st, uxrObjectId object_id, struct ucdrBuffer* ub,
+                         size_t len) {
+    if (st == NULL || !st->graph.reader_active || object_id.id != st->graph.reader_id ||
+        object_id.type != UXR_DATAREADER_ID) {
+        return false;
+    }
+    /* Copied out first: a fragmented sample's iterator addresses only the first
+     * fragment, and the array read is what walks the chain (`xrce_stage_inbound`). */
+    uint8_t* buf = (uint8_t*)nros_xrce_calloc(1, len);
+    if (buf != NULL && (len == 0 || ucdr_deserialize_array_uint8_t(ub, buf, len))) {
+        (void)xrce_graph_ingest(&st->graph, buf, len);
+    }
+    nros_xrce_free(buf);
+    if (st->graph.peers_overflowed && !st->graph.warned_overflow) {
+        graph_log(XRCE_LOG_ERROR,
+                  "ros_discovery_info: a participant's node list did not fit "
+                  "(XRCE_GRAPH_MAX_PEERS / XRCE_GRAPH_MAX_PEER_NODES); get_node_names answers "
+                  "ERROR rather than a short list (issue 2106).");
+        st->graph.warned_overflow = true;
+    }
+    return true;
+}
+
+/* Create the reader on first use. Endpoint keys: the DataReader is one more
+ * endpoint on this participant, so it takes a key from the count like every
+ * other (issue 1292) — skipping that would shift every later GID by one. */
+static rmw_ret_t graph_ensure_reader(xrce_session_state_t* st) {
+    xrce_graph* g = &st->graph;
+    if (g->reader_active) {
+        return NROS_RMW_RET_OK;
+    }
+    if (xrce_session_is_closed(st)) {
+        return NROS_RMW_RET_ERROR;
+    }
+    xrce_graph_ensure_counter(st);
+    uxrObjectId topic_oid = xrce_alloc_entity_id(st, UXR_TOPIC_ID);
+    uxrObjectId sub_oid = xrce_alloc_entity_id(st, UXR_SUBSCRIBER_ID);
+    uxrObjectId dr_oid = xrce_alloc_entity_id(st, UXR_DATAREADER_ID);
+    /* rmw_dds_common's profile, with room for several participants' latched
+     * samples arriving together. */
+    uxrQoS_t qos = {UXR_DURABILITY_TRANSIENT_LOCAL, UXR_RELIABILITY_RELIABLE, UXR_HISTORY_KEEP_LAST,
+                    XRCE_GRAPH_READER_DEPTH};
+    uint16_t reqs[3];
+    reqs[0] = uxr_buffer_create_topic_bin(&st->session, st->output_reliable, topic_oid,
+                                          st->participant_oid, XRCE_GRAPH_TOPIC, XRCE_GRAPH_TYPE,
+                                          UXR_REPLACE);
+    reqs[1] = uxr_buffer_create_subscriber_bin(&st->session, st->output_reliable, sub_oid,
+                                               st->participant_oid, UXR_REPLACE);
+    reqs[2] = uxr_buffer_create_datareader_bin(&st->session, st->output_reliable, dr_oid, sub_oid,
+                                               topic_oid, qos, UXR_REPLACE);
+    uint8_t statuses[3] = {0, 0, 0};
+    bool ok = xrce_confirm_entities(st, reqs, statuses, 3) == NROS_RMW_RET_OK;
+    uint32_t unused_key = 0;
+    (void)xrce_graph_claim(st, 1, ok, &unused_key);
+    if (!ok) {
+        return NROS_RMW_RET_ERROR;
+    }
+    g->reader_id = dr_oid.id;
+    g->reader_active = true;
+    uxrDeliveryControl delivery = {
+        .max_samples = UXR_MAX_SAMPLES_UNLIMITED,
+        .max_elapsed_time = UXR_MAX_ELAPSED_TIME_UNLIMITED,
+        .max_bytes_per_second = UXR_MAX_BYTES_PER_SECOND_UNLIMITED,
+        .min_pace_period = 0,
+    };
+    (void)uxr_buffer_request_data(&st->session, st->output_reliable, dr_oid, st->input_reliable,
+                                  &delivery);
+    (void)uxr_run_session_time(&st->session, 0);
+    return NROS_RMW_RET_OK;
+}
+
+static rmw_ret_t xrce_get_node_names_locked(xrce_session_state_t* st,
+                                            rmw_node_visitor_t visitor) {
+    rmw_ret_t rc = graph_ensure_reader(st);
+    if (rc != NROS_RMW_RET_OK) {
+        return rc;
+    }
+    const xrce_graph* g = &st->graph;
+    if (g->peers_overflowed) {
+        return NROS_RMW_RET_ERROR;
+    }
+    for (const xrce_graph_node* n = g->nodes; n != NULL; n = n->next) {
+        if (!visitor.visit(visitor.ctx, n->name, wire_ns(n->ns), NULL)) {
+            return NROS_RMW_RET_OK;
+        }
+    }
+    for (const xrce_graph_peer* p = g->peers; p != NULL; p = p->next) {
+        const char* s = p->names;
+        for (uint32_t i = 0; i < p->n_nodes; ++i) {
+            const char* ns = s;
+            const char* name = ns + strlen(ns) + 1u;
+            s = name + strlen(name) + 1u;
+            if (!visitor.visit(visitor.ctx, name, ns, NULL)) {
+                return NROS_RMW_RET_OK;
+            }
+        }
+    }
+    return NROS_RMW_RET_OK;
+}
+
 /* ---- Issue 1734: locked entry points ---------------------------------
  *
  * Each public entry point takes its session's API lock around the body (see
@@ -597,6 +869,41 @@ rmw_ret_t xrce_node_create(rmw_session_t* session, const char* name, const char*
     xrce_session_state_t* st = XRCE_ST_OF_SESSION(session);
     xrce_session_lock(st);
     rmw_ret_t ret = xrce_node_create_locked(session, name, namespace_, out);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+/* Issue 2106 — `get_node_names`: this session's nodes, then every remote DDS
+ * participant's from `ros_discovery_info`. Enclave is not tracked (NULL). */
+rmw_ret_t xrce_get_node_names(const rmw_session_t* session, rmw_node_visitor_t visitor) {
+    if (session == NULL || session->backend_data == NULL || visitor.visit == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_state_t* st = (xrce_session_state_t*)session->backend_data;
+    xrce_session_lock(st);
+    rmw_ret_t ret = xrce_get_node_names_locked(st, visitor);
+    xrce_session_unlock(st);
+    return ret;
+}
+
+/* Issue 2106 — the graph-change edge. A clear (NULL) is also the runtime's
+ * capability probe, so it answers OK without creating the reader. */
+rmw_ret_t xrce_node_get_graph_guard_condition(rmw_session_t* session,
+                                              rmw_event_callback_t callback,
+                                              const void* user_data) {
+    if (session == NULL || session->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_state_t* st = (xrce_session_state_t*)session->backend_data;
+    xrce_session_lock(st);
+    rmw_ret_t ret = NROS_RMW_RET_OK;
+    if (callback != NULL) {
+        ret = graph_ensure_reader(st);
+    }
+    if (ret == NROS_RMW_RET_OK) {
+        st->graph.on_change = callback;
+        st->graph.on_change_user = callback != NULL ? user_data : NULL;
+    }
     xrce_session_unlock(st);
     return ret;
 }

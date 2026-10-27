@@ -47,6 +47,16 @@ client-side deadline emulation is implementable; the other status events are
 not (the protocol carries no DDS status to the client). Every XRCE NULL slot
 is ruled in `book/src/design/rmw-vs-upstream.md` §9b.
 
+## Graph: node names only
+
+`get_node_names` and the graph-change edge read `ros_discovery_info` through
+the Agent (issue 2106). Every other graph read (topic names and types, endpoint
+info, counts, matched counts, service availability) stays UNSUPPORTED: those
+live in the Agent participant's discovery state, which the protocol gives the
+client no read on. Node names come only from DDS-RMW participants, and a
+participant that dies without a clean shutdown stays listed — the client never
+sees DDS discovery loss.
+
 ## No session-level async waker
 
 Nothing arrives outside `drive_io`: micro-XRCE-DDS-Client has no background

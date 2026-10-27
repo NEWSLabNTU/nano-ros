@@ -21,8 +21,9 @@ board = "linux"
 [image.linux_cyclonedds]
 rmw = "cyclonedds"
 
-# Issue 2110 — XRCE answers no graph read slot, but its publishers have a GID
-# (the one `ros_discovery_info` lists), so the probe's `GRAPH_PROBE_GID` mode
-# runs against it.
+# Issue 2110 / 2106 — XRCE answers one graph read slot, `get_node_names` (from
+# `ros_discovery_info` through the Agent), plus the change edge, and its
+# publishers have a GID (the one `ros_discovery_info` lists): the sweep, the
+# change-edge and the `GRAPH_PROBE_GID` modes all run against it.
 [image.linux_xrce]
 rmw = "xrce"

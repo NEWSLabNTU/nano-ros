@@ -718,6 +718,138 @@ fn test_xrce_publisher_gid_is_the_one_a_stock_graph_reports() {
 }
 
 // =============================================================================
+// Issue 2106 — the graph: node names from `ros_discovery_info`, and the edge
+// =============================================================================
+//
+// Here rather than in `graph_interop.rs` because the nano-ros side is an XRCE
+// CLIENT, not a DDS participant: the Agent is what joins the peer's bus and is
+// pinned by `fixtures::xrce_agent` (issue 1009), which is this file's
+// `check-dds-isolation-symmetry` allowlist entry.
+
+/// Issue 2106 — XRCE reads node names from `ros_discovery_info` through the
+/// Agent, and nothing else.
+///
+/// ```text
+/// graph-probe (XRCE) → XRCE Agent (Fast-DDS) ←DDS→ demo_nodes_cpp talker (rmw_fastrtps_cpp)
+/// ```
+///
+/// The talker's participant publishes `ParticipantEntitiesInfo`; the backend's
+/// `ros_discovery_info` reader (created on the probe's first query) receives it
+/// through the Agent, so `get_node_names` lists `/talker`. Every other graph
+/// read slot is a protocol limit (no builtin-topic readers, no participant
+/// enumeration — `rmw-vs-upstream.md` §9b) and must say UNSUPPORTED rather
+/// than answer empty: the probe records those, and this asserts the topic
+/// query is one of them.
+///
+/// Interop cell: `native-graph-rust-xrce-r2n` (`interop::CASE_CELLS`).
+#[test]
+fn xrce_enumerates_a_stock_ros2_node() {
+    nros_tests::fixtures::require_xrce_agent();
+    nros_tests::fixtures::require_ros2_dds();
+    let agent = nros_tests::fixtures::XrceAgent::start_unique().expect("start the XRCE Agent");
+    let domain = nros_tests::unique_ros_domain_id();
+
+    let _talker =
+        Ros2DdsProcess::demo_nodes_cpp_talker_fastrtps_with_domain(DEFAULT_ROS_DISTRO, domain)
+            .expect("start the stock talker on fastrtps");
+
+    use nros_tests::fixtures::RequireFixture;
+    let probe = nros_tests::fixtures::build_graph_probe_rmw(nros_tests::fixtures::Rmw::Xrce)
+        .require("prebuilt XRCE graph-probe");
+    let mut cmd = std::process::Command::new(probe);
+    cmd.env("NROS_LOCATOR", agent.addr())
+        .env("XRCE_AGENT_ADDR", agent.addr())
+        .env("GRAPH_PROBE_EXPECT_NODE", "talker")
+        .env("GRAPH_PROBE_TIMEOUT_MS", "20000")
+        .env("ROS_DOMAIN_ID", domain.to_string());
+    let out = cmd.output().expect("run graph-probe");
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    drop(agent);
+
+    assert!(
+        out.status.success(),
+        "XRCE graph-probe must exit 0 once it sees the talker; got {:?}\n{output}",
+        out.status.code()
+    );
+    assert!(
+        output.contains(nros_tests::output::GRAPH_PROBE_SAW),
+        "XRCE must ENUMERATE the stock talker from ros_discovery_info; probe said:\n{output}"
+    );
+    assert!(
+        output
+            .lines()
+            .any(|l| l.starts_with("GRAPH_PROBE_TOPICS_ERR") && l.contains("Unsupported")),
+        "the topic query must answer UNSUPPORTED on XRCE (a protocol limit), never an empty \
+         list; probe said:\n{output}"
+    );
+}
+
+/// Issue 2106 — XRCE's graph-change edge: the stock talker LEAVING reaches the
+/// guard condition.
+///
+/// XRCE sees no DDS discovery, so the edge is a CHANGED `ros_discovery_info`
+/// sample: a stock participant that shuts down cleanly destroys its node,
+/// which republishes its entities info without it, and that sample is what
+/// fires the edge here. A participant that dies without that last sample stays
+/// listed — the bound `graph.c` documents.
+///
+/// Interop cell: `native-graph-rust-xrce-r2n` (`interop::CASE_CELLS`).
+#[test]
+fn xrce_a_peer_leaving_fires_the_graph_change_guard() {
+    nros_tests::fixtures::require_xrce_agent();
+    nros_tests::fixtures::require_ros2_dds();
+    let agent = nros_tests::fixtures::XrceAgent::start_unique().expect("start the XRCE Agent");
+    let domain = nros_tests::unique_ros_domain_id();
+
+    let mut talker =
+        Ros2DdsProcess::demo_nodes_cpp_talker_fastrtps_with_domain(DEFAULT_ROS_DISTRO, domain)
+            .expect("start the stock talker on fastrtps");
+
+    use nros_tests::fixtures::RequireFixture;
+    let probe = nros_tests::fixtures::build_graph_probe_rmw(nros_tests::fixtures::Rmw::Xrce)
+        .require("prebuilt XRCE graph-probe");
+    let mut cmd = std::process::Command::new(probe);
+    cmd.env("NROS_LOCATOR", agent.addr())
+        .env("XRCE_AGENT_ADDR", agent.addr())
+        .env("GRAPH_PROBE_EXPECT_NODE", "talker")
+        .env("GRAPH_PROBE_WATCH_CHANGE", "1")
+        .env("GRAPH_PROBE_TIMEOUT_MS", "20000")
+        .env("ROS_DOMAIN_ID", domain.to_string());
+    let mut probe = ManagedProcess::spawn_command(cmd, "graph-probe-change-xrce")
+        .expect("spawn the XRCE graph-change probe");
+    let armed = probe
+        .wait_for_output_pattern(
+            nros_tests::output::GRAPH_PROBE_CHANGE_ARMED,
+            Duration::from_secs(45),
+        )
+        .expect("the probe must arm: it needs the talker in its graph first");
+    assert!(
+        !armed.contains(nros_tests::output::GRAPH_PROBE_CHANGE_UNSUPPORTED),
+        "XRCE declined the graph-change slot; issue 2106 fills it:\n{armed}"
+    );
+
+    // SIGTERM, not the SIGKILL `drop` sends: the departure XRCE can see is the
+    // talker's own last `ros_discovery_info` sample, which only a clean
+    // shutdown publishes (measured: SIGINT and SIGTERM both fire the edge,
+    // SIGKILL never does).
+    talker.terminate();
+
+    let rest = probe
+        .wait_for_all_output(Duration::from_secs(45))
+        .expect("the probe must finish after the talker leaves");
+    drop(agent);
+    let out = format!("{armed}{rest}");
+    assert!(
+        out.contains(nros_tests::output::GRAPH_PROBE_CHANGE_FIRED),
+        "the stock talker leaving must reach the XRCE graph-change guard:\n{out}"
+    );
+}
+
+// =============================================================================
 // Phase 183.6 — XRCE ↔ ROS 2: action (both directions) + reverse-direction
 // service. The existing tests cover pub/sub both ways + service
 // (xrce-server / ros2-client). These add the missing cells. DDS interop is
@@ -1083,6 +1215,11 @@ fn cases_bound_to_interop_cells() {
     use nros_tests::matrix::{Lang::*, PlatformId::*, Rmw::*, Workload::*};
     nros_tests::interop::assert_test_bound(
         "xrce_ros2_interop",
-        &[(Linux, Rust, Xrce, Pubsub), (Linux, Rust, Xrce, Service)],
+        // Issue 2106 added the Graph cell (`native-graph-rust-xrce-r2n`).
+        &[
+            (Linux, Rust, Xrce, Pubsub),
+            (Linux, Rust, Xrce, Service),
+            (Linux, Rust, Xrce, Graph),
+        ],
     );
 }

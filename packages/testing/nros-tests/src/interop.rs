@@ -301,6 +301,12 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-graph-rust-cyclone-r2n",
        c(Linux, Rust, Cyclonedds, Graph, Interop, Runtime),
        LinuxFixtures, RosEdition(Cyclonedds), RosToNano, "graph_interop"),
+    // Issue 2106 — XRCE's half: node names read from `ros_discovery_info`
+    // through the Agent, the ONE graph read the protocol allows. Every other
+    // read slot answers UNSUPPORTED, and the case asserts that too.
+    ic("native-graph-rust-xrce-r2n",
+       c(Linux, Rust, Xrce, Graph, Interop, Runtime),
+       LinuxFixtures, XrceAgent, RosToNano, "xrce_ros2_interop"),
 
     // ── phase-467 Q4 — the `/rosout` bridge's live peer ──────────────────
     // tests/rosout_interop.rs, ledger row `c:logging_rosout_enabled`.
@@ -913,6 +919,11 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     co("xrce_ros2_interop", "test_xrce_publisher_gid_is_the_one_a_stock_graph_reports",
        "native-pubsub-rust-xrce-n2r"),
     co("xrce_ros2_interop", "test_xrce_service_ros2_client", "native-service-rust-xrce-r2n"),
+    // Issue 2106 — the graph cell: node names from `ros_discovery_info`, and
+    // the change edge, both against a stock fastrtps talker.
+    co("xrce_ros2_interop", "xrce_enumerates_a_stock_ros2_node", "native-graph-rust-xrce-r2n"),
+    co("xrce_ros2_interop", "xrce_a_peer_leaving_fires_the_graph_change_guard",
+       "native-graph-rust-xrce-r2n"),
     co("xrce_ros2_interop", "test_ros2_service_xrce_client", "native-service-rust-xrce-r2n"),
     // issue 2088 — the same cell's server half, asserting the request id the
     // XRCE backend reports (issue 2081's `take_request_with_info`).

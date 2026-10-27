@@ -144,6 +144,14 @@ static const nros_rmw_vtable_t kVtable = {
     .create_node = xrce_node_create,
     .destroy_node = xrce_node_destroy,
 
+    /* ---- Graph (issue 2106) ----
+     * Node names are DATA on `ros_discovery_info`, which this backend reads
+     * through the Agent like any topic (graph.c). The other graph slots stay
+     * NULL: topic names, types, endpoint info and counts live in the Agent
+     * participant's discovery state, which the protocol gives no read on. */
+    .get_node_names = xrce_get_node_names,
+    .node_get_graph_guard_condition = xrce_node_get_graph_guard_condition,
+
     /* ---- Publisher ---- */
     .create_publisher = xrce_publisher_create,
     .destroy_publisher = xrce_publisher_destroy,

@@ -17,6 +17,7 @@
 #include "nros/rmw_entity.h"
 #include "nros/rmw_event.h"
 #include "nros/rmw_ret.h"
+#include "nros/rmw_vtable.h"
 
 #include <uxr/client/client.h>
 #include <uxr/client/core/session/common_create_entities.h>
@@ -571,6 +572,25 @@ typedef struct xrce_graph_endpoint {
     bool linked;
 } xrce_graph_endpoint;
 
+/* Issue 2106 — what one REMOTE participant's latest `ros_discovery_info`
+ * sample says: its GID and its nodes, packed as `ns\0name\0` pairs in one
+ * allocation. Bounded by `XRCE_GRAPH_MAX_PEERS` / `XRCE_GRAPH_MAX_PEER_NODES`;
+ * a sample past either bound is REFUSED (`peers_overflowed`), never truncated. */
+#ifndef XRCE_GRAPH_MAX_PEERS
+#define XRCE_GRAPH_MAX_PEERS 32u
+#endif
+#ifndef XRCE_GRAPH_MAX_PEER_NODES
+#define XRCE_GRAPH_MAX_PEER_NODES 64u
+#endif
+
+typedef struct xrce_graph_peer {
+    struct xrce_graph_peer* next;
+    uint8_t gid[24];
+    uint32_t n_nodes;
+    size_t names_len;
+    char* names;
+} xrce_graph_peer;
+
 typedef struct xrce_graph {
     /* The probe answered and the `ros_discovery_info` writer exists. */
     bool active;
@@ -591,6 +611,16 @@ typedef struct xrce_graph {
     uint8_t probe_nonce[8];
     bool probe_seen;
     uint32_t probe_key;
+    /* Issue 2106 — the `ros_discovery_info` READER (created on first use), the
+     * remote participants it has heard, and the graph-change edge. */
+    bool reader_active;
+    uint16_t reader_id;
+    xrce_graph_peer* peers;
+    uint32_t n_peers;
+    bool peers_overflowed;
+    bool warned_overflow;
+    rmw_event_callback_t on_change;
+    const void* on_change_user;
 } xrce_graph;
 
 /* ---- Per-session state ---------------------------------------------- */
@@ -991,6 +1021,19 @@ bool xrce_graph_endpoint_gid(const xrce_session_state_t* st, const xrce_graph_en
 /* Publish the sample if anything changed. Called from `drive_io`. */
 void xrce_graph_flush(xrce_session_state_t* st);
 /* The request callback's first stop: true if the request was the probe's. */
+/* Issue 2106 — the `ros_discovery_info` read side (graph.c). */
+/* Consume a topic sample addressed to the graph reader. True = it was ours. */
+bool xrce_graph_on_topic(xrce_session_state_t* st, uxrObjectId object_id, struct ucdrBuffer* ub,
+                         size_t len);
+/* Fold one serialized ParticipantEntitiesInfo (no encapsulation header) into
+ * the peer table. Returns false for a sample that does not parse or does not
+ * fit (the latter also sets `peers_overflowed`). Split out for no-Agent tests. */
+bool xrce_graph_ingest(xrce_graph* g, const uint8_t* buf, size_t len);
+rmw_ret_t xrce_get_node_names(const rmw_session_t* session, rmw_node_visitor_t visitor);
+rmw_ret_t xrce_node_get_graph_guard_condition(rmw_session_t* session,
+                                              rmw_event_callback_t callback,
+                                              const void* user_data);
+
 bool xrce_graph_on_request(xrce_session_state_t* st, uxrObjectId object_id,
                            const SampleIdentity* sample_id, struct ucdrBuffer* ub, size_t len);
 /* Serialize the ParticipantEntitiesInfo body (no encapsulation header) into

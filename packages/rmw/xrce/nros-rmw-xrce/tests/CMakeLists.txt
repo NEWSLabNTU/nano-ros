@@ -80,6 +80,14 @@ target_link_libraries(nros_rmw_xrce_reply_correlation PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_reply_correlation COMMAND nros_rmw_xrce_reply_correlation)
 
+# Issue 2106 — get_node_names and the graph-change edge from the
+# ros_discovery_info samples the read side ingests. No agent: samples come from
+# graph.c's own serializer over a second session state.
+add_executable(nros_rmw_xrce_node_names node_names.c)
+target_link_libraries(nros_rmw_xrce_node_names PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_node_names COMMAND nros_rmw_xrce_node_names)
+
 # Issue 1292 — the `ros_discovery_info` sample, the endpoint-key counting rule,
 # node/endpoint lifetimes and the probe's nonce check. No agent; the live half
 # is `rust_multi_node_per_node_graph`'s XRCE case.
@@ -90,7 +98,7 @@ add_test(NAME nros_rmw_xrce_graph_sample COMMAND nros_rmw_xrce_graph_sample)
 
 # Issue 2110 — get_gid_for_publisher / get_gid_for_client answer the DDS GID
 # graph.c derives for a tracked endpoint, UNSUPPORTED for an untracked one. No
-# agent; the live half is `graph_interop`'s XRCE gid case.
+# agent; the live half is `xrce_ros2_interop`'s XRCE gid case.
 add_executable(nros_rmw_xrce_gid gid.c)
 target_link_libraries(nros_rmw_xrce_gid PRIVATE nros_rmw_xrce)
 
