@@ -1,79 +1,53 @@
-//! Board hardware init for the NuttX QEMU boards (arm virt + rv-virt).
+//! Board network read-back for the NuttX QEMU boards (arm virt + rv-virt).
 //!
-//! NuttX is POSIX-compatible with `std` support, so this is much simpler than
-//! bare-metal board crates. NuttX boots the kernel, initializes hardware
-//! (virtio-net, serial console), and starts the application — no custom
-//! hardware init needed in Rust.
+//! NuttX owns this board's network (RFC-0109 D2, `[board.net] stack = "os"`):
+//! the kernel brings `eth0` (virtio-net) up during boot, before `main`, from
+//! its own `defconfig`'s `CONFIG_NETINIT_*`. nano-ros only READS it.
+//!
+//! Issue 2048 — this module used to WRITE it: `SIOCSIFADDR` /
+//! `SIOCSIFNETMASK` / `SIOCSIFDSTADDR` on `eth0` from `Config::ip()`, plus a
+//! `/dev/urandom` reseed from the same four bytes. Both were dead weight by
+//! the time they were removed (the issue records the measurement):
+//!
+//! * the push wrote the value the kernel had already applied — phase-514 W4
+//!   generates `BOARD_NET_*` from that same `defconfig`, and no image, fixture
+//!   row or entry bake (`NROS_IP`) states another address;
+//! * the reseed fed the IP, which is the SAME `10.0.2.15` in every guest, so
+//!   it gave every guest the same seed; and the zenoh session ZID on NuttX is
+//!   not drawn from `/dev/urandom` at all (`zpico_fill_session_zid`'s generic
+//!   arm: session address, a counter and `CLOCK_REALTIME`).
 
-use crate::config::Config;
-
-/// Initialize hardware for NuttX.
+/// Print the address the kernel gave `eth0`, as read back with `SIOCGIFADDR`.
 ///
-/// On NuttX, the kernel handles most hardware and network initialization
-/// before `main()` runs (NETINIT_IPADDR baked into the kernel
-/// defconfig). This function:
-///   * re-seeds `/dev/urandom` from `Config::ip()` so two QEMU instances
-///     don't collide on Zenoh ZID / DDS GUID prefix;
-///   * pushes `Config::ip()` into the live `eth0` interface via
-///     `SIOCSIFADDR` so each instance overrides the kernel-baked IP
-///     (otherwise both default to 10.0.2.30 from defconfig and DDS
-///     SPDP source-IP collides; Phase 97.4.nuttx).
-pub fn init_hardware(config: &Config) {
-    // Seed /dev/urandom with the IP address to avoid duplicate Zenoh session IDs.
-    // NuttX xorshift128 PRNG starts with a fixed seed → two QEMU instances
-    // generate identical /dev/urandom output → identical ZIDs → zenohd rejects
-    // the second connection (Close with MAX_LINKS reason).
-    // Writing to /dev/urandom re-seeds the xorshift128 state.
-    //
-    // phase-359 W7 — this was `std::fs::OpenOptions` + `Write::write_all`, i.e.
-    // `open(2)` + `write(2)` with a `File` wrapper around them. The wrapper is
-    // what needed std; the syscalls are NuttX's own, and the rest of this file
-    // already reaches them this way (see `apply_ip_config`'s socket/ioctl block).
-    {
-        unsafe extern "C" {
-            fn open(
-                path: *const core::ffi::c_char,
-                flags: core::ffi::c_int,
-                ...
-            ) -> core::ffi::c_int;
-            fn write(fd: core::ffi::c_int, buf: *const core::ffi::c_void, count: usize) -> isize;
-            fn close(fd: core::ffi::c_int) -> core::ffi::c_int;
-        }
-        const O_WRONLY: core::ffi::c_int = 1;
-        let ip = config.ip();
-        // SAFETY: a NUL-terminated literal path and a 4-byte buffer we own. A
-        // failed open yields a negative fd, which the guard below rejects — the
-        // seed is best-effort exactly as the `if let Ok(..)` before it was.
-        unsafe {
-            let fd = open(c"/dev/urandom".as_ptr(), O_WRONLY);
-            if fd >= 0 {
-                let _ = write(fd, ip.as_ptr() as *const core::ffi::c_void, ip.len());
-                close(fd);
-            }
-        }
+/// This is the read half of RFC-0109 D2 and the boot-log evidence a test
+/// asserts on ([`ETH0_REPORT_PREFIX`]): an image whose `defconfig` lost its
+/// `CONFIG_NETINIT_*` prints `0.0.0.0` (or the ioctl's error) here instead of
+/// only dying later in `Executor::open` as an opaque `ConnectionFailed`.
+#[cfg(target_os = "nuttx")]
+pub fn report_kernel_eth0() {
+    match read_eth0_ipv4() {
+        Ok(a) => println!(
+            "{ETH0_REPORT_PREFIX}{}.{}.{}.{} (kernel-owned, RFC-0109 D2)",
+            a[0], a[1], a[2], a[3]
+        ),
+        Err(rc) => println!("{ETH0_REPORT_PREFIX}unreadable (SIOCGIFADDR rc={rc})"),
     }
-
-    // Override the defconfig-baked IP so sibling instances differ.
-    apply_ip_config(config);
 }
 
-/// `SIOCSIFADDR` / `SIOCSIFNETMASK` / `SIOCSIFDSTADDR` (defconfig:
-/// gateway) the configured `eth0` so the kernel routes the right
-/// subnet without hard-coded NETINIT_IPADDR mismatches between
-/// sibling QEMU guests.
-fn apply_ip_config(config: &Config) {
+/// The boot-log line [`report_kernel_eth0`] prints, up to the address.
+/// `nros_tests::output::NUTTX_ETH0_REPORT` mirrors it.
+pub const ETH0_REPORT_PREFIX: &str = "nros: eth0 ";
+
+/// `eth0`'s IPv4 address in network order, or the failing call's return code.
+#[cfg(target_os = "nuttx")]
+fn read_eth0_ipv4() -> Result<[u8; 4], core::ffi::c_int> {
     // phase-359 W7 — `RawFd` is an alias for `c_int`; the alias was the only
     // thing std supplied here.
     type RawFd = core::ffi::c_int;
 
-    // ioctl numbers — NuttX defines these as `_SIOC(N) = 0x0700 | N`,
-    // *not* the Linux 0x89xx range (see
-    // `nuttx/include/nuttx/net/ioctl.h`). Mismatching numbers fail
-    // silently because the kernel returns ENOTTY and Rust ignores
-    // the ioctl rc, so each guest keeps the defconfig 10.0.2.30 IP.
-    const SIOCSIFADDR: core::ffi::c_ulong = 0x0700 | 0x0002;
-    const SIOCSIFNETMASK: core::ffi::c_ulong = 0x0700 | 0x0008;
-    const SIOCSIFDSTADDR: core::ffi::c_ulong = 0x0700 | 0x0004;
+    // NuttX defines this as `_SIOC(N) = 0x0700 | N`, *not* the Linux 0x89xx
+    // range (`nuttx/include/nuttx/net/ioctl.h`: `SIOCGIFADDR _SIOC(0x0001)`).
+    const SIOCGIFADDR: core::ffi::c_ulong = 0x0700 | 0x0001;
 
     #[repr(C)]
     struct sockaddr_in {
@@ -96,58 +70,32 @@ fn apply_ip_config(config: &Config) {
     const AF_INET: core::ffi::c_int = 2;
     const SOCK_DGRAM: core::ffi::c_int = 2;
 
+    // SAFETY: plain libc calls; `req` is a properly laid-out `ifreq` we own,
+    // and the fd is closed on every path after a successful `socket`.
     let fd = unsafe { socket(AF_INET, SOCK_DGRAM, 0) };
     if fd < 0 {
-        return;
+        return Err(fd);
     }
-
-    let pack = |a: [u8; 4]| -> u32 {
-        // Network byte order: a[0] in low byte.
-        (a[0] as u32) | ((a[1] as u32) << 8) | ((a[2] as u32) << 16) | ((a[3] as u32) << 24)
-    };
-
     let mut name = [0u8; 16];
-    for (i, b) in b"eth0".iter().enumerate() {
-        name[i] = *b;
-    }
-
+    name[..4].copy_from_slice(b"eth0");
     let mut req = ifreq {
         ifr_name: name,
         ifr_addr: sockaddr_in {
             sin_family: AF_INET as u16,
             sin_port: 0,
-            sin_addr: pack(config.ip()),
+            sin_addr: 0,
             sin_zero: [0; 8],
         },
     };
-    unsafe {
-        ioctl(fd, SIOCSIFADDR, &mut req);
-    }
-
-    let mask = {
-        let bits = config.prefix().min(32);
-        if bits == 0 {
-            0
-        } else if bits == 32 {
-            !0u32
-        } else {
-            let host = !0u32 >> bits;
-            (!0u32 ^ host).to_be()
-        }
-    };
-    req.ifr_addr.sin_addr = mask;
-    unsafe {
-        ioctl(fd, SIOCSIFNETMASK, &mut req);
-    }
-
-    req.ifr_addr.sin_addr = pack(config.gateway());
-    unsafe {
-        ioctl(fd, SIOCSIFDSTADDR, &mut req);
-    }
-
+    let rc = unsafe { ioctl(fd, SIOCGIFADDR, &mut req) };
     unsafe {
         close(fd);
     }
+    if rc < 0 {
+        return Err(rc);
+    }
+    // Network byte order in memory: the first octet is the lowest byte.
+    Ok(req.ifr_addr.sin_addr.to_ne_bytes())
 }
 
 // Phase 313 W-nuttx (#0243) — the legacy free `run(Config, closure)` (a session

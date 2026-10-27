@@ -5,25 +5,26 @@
 //! owns no MAC (the virtio-net device takes its address from QEMU), so the
 //! board reads every other field off the shared type and ignores `mac`.
 //!
-//! The board thinks in CIDR (`prefix`), because `SIOCSIFNETMASK` is fed from a
-//! prefix in [`crate::node`]; `BaseConfig` stores the netmask because that is
-//! what `DeployOverlay` carries. `prefix()` / `with_prefix()` bridge the two,
-//! which is exactly the conversion the shared type exists to own.
+//! The address fields are the KERNEL's (RFC-0109 D2): generated from the
+//! `defconfig` NuttX brings `eth0` up from, and never written back into the
+//! interface (issue 2048 retired the `SIOCSIFADDR` push). Setting them on a
+//! `Config` changes nothing on the wire; an image that wants another address
+//! changes the kernel's `CONFIG_NETINIT_*`.
 
 use nros_board_common::BaseConfig;
 
 /// Network and node configuration for the QEMU NuttX boards.
 ///
-/// # Default Configuration (Talker)
+/// # Default configuration
 ///
 /// The kernel `defconfig`'s `CONFIG_NETINIT_*` (RFC-0109 D2 — NuttX owns this
 /// board's network): QEMU's own SLIRP network — IP `10.0.2.15/24`, gateway and
 /// router `10.0.2.2` (`tcp/10.0.2.2:7447`).
 ///
-/// # Listener / server / client
-///
-/// The default with the last IP octet advanced by 1 / 2 / 3, derived so the
-/// presets cannot drift from it.
+/// Issue 2048 — there are no per-role presets (`listener()` / `server()` /
+/// `client()` used to advance the last octet by 1 / 2 / 3). They existed to
+/// give the retired `SIOCSIFADDR` push distinct addresses; with the kernel
+/// owning `eth0` they would name an address no guest has.
 #[derive(Clone, Copy, Debug)]
 pub struct Config {
     /// The shared network/node core (RFC-0064 / phase-337 W1.b).
@@ -62,16 +63,6 @@ impl Default for Config {
     }
 }
 
-/// The default IP with its last octet advanced by `n` — the role presets.
-const fn ip_plus(n: u8) -> [u8; 4] {
-    [
-        BOARD_NET_IP[0],
-        BOARD_NET_IP[1],
-        BOARD_NET_IP[2],
-        BOARD_NET_IP[3].wrapping_add(n),
-    ]
-}
-
 impl Config {
     /// IP address.
     pub const fn ip(&self) -> [u8; 4] {
@@ -96,26 +87,6 @@ impl Config {
     /// ROS 2 domain ID.
     pub const fn domain_id(&self) -> u32 {
         self.base.domain_id
-    }
-
-    /// Configuration preset for a listener/subscriber node.
-    pub fn listener() -> Self {
-        Self::default().with_ip(ip_plus(1))
-    }
-
-    /// Alias for `Config::default()`.
-    pub fn talker() -> Self {
-        Self::default()
-    }
-
-    /// Configuration preset for a service/action server node.
-    pub fn server() -> Self {
-        Self::default().with_ip(ip_plus(2))
-    }
-
-    /// Configuration preset for a service/action client node.
-    pub fn client() -> Self {
-        Self::default().with_ip(ip_plus(3))
     }
 
     /// Builder: set IP address.
@@ -322,27 +293,13 @@ mod tests {
         assert_eq!(c.domain_id(), 0);
     }
 
-    /// The prefix↔netmask bridge is the whole reason this board composes on
-    /// `BaseConfig` rather than keeping its own `prefix: u8` field: the board
-    /// feeds `SIOCSIFNETMASK` from a prefix while `DeployOverlay` carries a
-    /// netmask, and exactly one conversion should exist.
+    /// The prefix↔netmask bridge: the board reports in CIDR while
+    /// `DeployOverlay` carries a netmask, and exactly one conversion should
+    /// exist.
     #[test]
     fn prefix_round_trips_through_the_shared_netmask() {
         for p in [0u8, 8, 16, 24, 30, 32] {
             assert_eq!(Config::default().with_prefix(p).prefix(), p);
-        }
-    }
-
-    #[test]
-    fn role_presets_differ_only_in_the_host_octet() {
-        for (c, last) in [
-            (Config::talker(), 10u8),
-            (Config::listener(), 11),
-            (Config::server(), 12),
-            (Config::client(), 13),
-        ] {
-            assert_eq!(c.ip(), [192, 0, 3, last]);
-            assert_eq!(c.gateway(), Config::default().gateway());
         }
     }
 

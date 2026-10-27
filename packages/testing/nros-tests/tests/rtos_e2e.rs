@@ -1013,8 +1013,28 @@ fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Du
     );
 }
 
+/// Issue 2048 — a NuttX guest's `eth0` address is the KERNEL's (RFC-0109 D2):
+/// nothing in the image writes it any more, so the `defconfig`'s
+/// `CONFIG_NETINIT_*` is the only thing that puts it on QEMU's SLIRP subnet
+/// (`10.0.2.0/24`, which this harness chose with `-netdev user`). A ready
+/// image that reports another address — or none — reached its router by
+/// accident, or through something that is not supposed to exist.
+fn assert_nuttx_eth0_on_slirp(output: &str, cmdline: &str) {
+    let addr = nros_tests::output::parse_nuttx_eth0(output);
+    assert!(
+        matches!(addr, Some([10, 0, 2, h]) if !matches!(h, 0 | 2 | 3 | 255)),
+        "NuttX guest's kernel-owned eth0 is not a SLIRP host address: {addr:?} \
+         (want 10.0.2.x from the board defconfig's CONFIG_NETINIT_IPADDR).\n\
+         Started with:\n  {cmdline}\nOutput so far (truncated):\n{}",
+        &output[..output.len().min(2048)]
+    );
+}
+
 fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform, cmdline: &str) {
     if output.contains(readiness_pattern) {
+        if platform == Platform::Nuttx {
+            assert_nuttx_eth0_on_slirp(output, cmdline);
+        }
         return;
     }
     // issue 0891 — say WHICH of the two happened. `collect_until` renders a

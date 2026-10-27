@@ -230,6 +230,28 @@ pub fn int32_talker_line(n: impl std::fmt::Display) -> String {
     format!("{INT32_TALKER_LOG_PREFIX} {n}")
 }
 
+/// The boot line a NuttX QEMU image prints with the address the KERNEL gave
+/// `eth0` (`nros-board-nuttx-qemu`'s `ETH0_REPORT_PREFIX`, read back with
+/// `SIOCGIFADDR`). NuttX owns that interface (RFC-0109 D2); issue 2048 retired
+/// the board's `SIOCSIFADDR` push, so this line is what proves the kernel's
+/// own `defconfig` address is the one the session dials from.
+pub const NUTTX_ETH0_REPORT: &str = "nros: eth0 ";
+
+/// The IPv4 address on a [`NUTTX_ETH0_REPORT`] line, if `output` has one.
+pub fn parse_nuttx_eth0(output: &str) -> Option<[u8; 4]> {
+    let line = output.lines().find_map(|l| {
+        l.find(NUTTX_ETH0_REPORT)
+            .map(|i| &l[i + NUTTX_ETH0_REPORT.len()..])
+    })?;
+    let dotted = line.split_whitespace().next()?;
+    let mut out = [0u8; 4];
+    let mut parts = dotted.split('.');
+    for b in &mut out {
+        *b = parts.next()?.parse().ok()?;
+    }
+    parts.next().is_none().then_some(out)
+}
+
 /// Readiness marker of the `int32-sink` fixture bin: it prints
 /// `"Waiting for Int32 messages on <topic>..."` once its subscription is
 /// live (its boot banner also contains `"Listener"`, but this line is the
@@ -1592,6 +1614,17 @@ fn extract_after<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_nuttx_eth0_reads_the_board_report_line() {
+        let boot = "NuttShell (NSH)\r\nnros: eth0 10.0.2.15 (kernel-owned, RFC-0109 D2)\r\n";
+        assert_eq!(parse_nuttx_eth0(boot), Some([10, 0, 2, 15]));
+        assert_eq!(
+            parse_nuttx_eth0("nros: eth0 unreadable (SIOCGIFADDR rc=-1)"),
+            None
+        );
+        assert_eq!(parse_nuttx_eth0("nros entry ready"), None);
+    }
 
     #[test]
     fn test_talker_line_and_listener_line() {
