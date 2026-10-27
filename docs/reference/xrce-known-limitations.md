@@ -29,8 +29,12 @@ backend has no deadline tracking; `register_subscriber_event` /
 `register_publisher_event` aren't even implemented (the vtable
 entries stay `NULL`).
 
-**Workaround:** implement deadline checks at the application layer
-or use the `nros-rmw-xrce` Rust backend for deadline events.
+**Workaround:** implement deadline checks at the application layer.
+
+**Tracked:** [issue 2108](../issues/2108-xrce-deadline-event-emulation.md) —
+client-side deadline emulation is implementable; the other status events are
+not (the protocol carries no DDS status to the client). Every XRCE NULL slot
+is ruled in `book/src/design/rmw-vs-upstream.md` §9b.
 
 ## Async wakers absent
 
