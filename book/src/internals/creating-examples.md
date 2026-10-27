@@ -127,7 +127,7 @@ class = "my_talker::Talker"
 name  = "talker"
 
 [image.mps2]                 # an embedded image also carries its identity
-board   = "qemu-mps2-an385"
+board   = "mps2-an385-baremetal"
 locator = "tcp/10.0.2.2:10500"
 net     = { eth0 = { network = "qemu", host = 10 } }
 ```

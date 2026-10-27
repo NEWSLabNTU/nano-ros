@@ -7,7 +7,13 @@
 # project their board block. Both are THIS board: the separate
 # `nros-board-rtic-mps2-an385` crate was folded into it (see its Cargo.toml),
 # so RTIC is a feature of this board, not another one.
-names = ["baremetal", "bare-metal", "qemu-mps2-an385", "rtic-mps2-an385"]
+#
+# issue 2063 — `qemu-mps2-an385` is no longer a name: it named the emulator
+# (RFC-0093 R3). The board's canonical name is its `cmake_module` and index
+# key, listed FIRST here (`check-provider-announcements`: canonical first) so
+# every reader of `names` sees the word images author; the old word is refused
+# naming it (`nros_entry_lower::RETIRED_BOARD_KEYS`).
+names = ["mps2-an385-baremetal", "baremetal", "bare-metal", "rtic-mps2-an385"]
 cmake_module = "mps2-an385-baremetal"
 platform = "bare-metal"
 toolchain = "stable"

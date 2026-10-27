@@ -1518,7 +1518,7 @@ pub enum DeployResolution<'a> {
 /// phase-517 W3 — what `nros setup` provisions for a board word.
 ///
 /// An image names its board by any of the descriptor's `names` aliases
-/// (`qemu-mps2-an385`, `freertos`, `nuttx`, …); `nros setup` provisions by the
+/// (`baremetal`, `freertos`, `nuttx`, …); `nros setup` provisions by the
 /// index's `[board.*]` keys (`mps2-an385-baremetal`, …). Those were two
 /// vocabularies with nothing joining them, so `nros setup --workspace` printed
 /// "not an index board key" for most images and the user had to find the key by
@@ -1872,10 +1872,10 @@ mod tests {
         let index = real_index();
         let is_key = |k: &str| index.board.contains_key(k);
         let key = |w: &str| cat.setup_board(w, &is_key).map(|b| b.key().to_string());
-        assert_eq!(
-            key("qemu-mps2-an385").as_deref(),
-            Ok("mps2-an385-baremetal")
-        );
+        assert_eq!(key("baremetal").as_deref(), Ok("mps2-an385-baremetal"));
+        // issue 2063 — the emulator-named alias is refused, naming the board.
+        let e = key("qemu-mps2-an385").expect_err("retired alias");
+        assert!(e.contains("write `mps2-an385-baremetal`"), "{e}");
         assert_eq!(
             key("rtic-mps2-an385").as_deref(),
             Ok("mps2-an385-baremetal")

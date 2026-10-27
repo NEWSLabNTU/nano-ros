@@ -2128,7 +2128,7 @@ mod board_crate_tests {
     #[test]
     fn a_migrated_leaf_naming_a_board_crate_is_refused() {
         let tmp = tempfile::tempdir().unwrap();
-        let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
+        let leaf = migrated_leaf(tmp.path(), "mps2-an385-baremetal", "");
         let m = read(&leaf.join("Cargo.toml")) + "nros-board-mps2-an385 = { version = \"*\" }\n";
         std::fs::write(leaf.join("Cargo.toml"), m).unwrap();
         let img = resolve(&leaf, &repo()).unwrap().unwrap();
@@ -2147,7 +2147,7 @@ mod board_crate_tests {
     #[test]
     fn a_dependency_enabling_an_edition_feature_is_refused() {
         let tmp = tempfile::tempdir().unwrap();
-        let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
+        let leaf = migrated_leaf(tmp.path(), "mps2-an385-baremetal", "");
         let m = read(&leaf.join("Cargo.toml"))
             + "nros = { version = \"*\", features = [\"alloc\", \"ros-humble\"] }\n";
         std::fs::write(leaf.join("Cargo.toml"), m).unwrap();
@@ -2167,7 +2167,7 @@ mod board_crate_tests {
     #[test]
     fn an_edition_feature_defined_as_a_forward_is_accepted() {
         let tmp = tempfile::tempdir().unwrap();
-        let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
+        let leaf = migrated_leaf(tmp.path(), "mps2-an385-baremetal", "");
         let m = read(&leaf.join("Cargo.toml"))
             + "nros = { version = \"*\", features = [\"alloc\", \"ros-rolling-ish\"] }\n\n\
                [features]\nros-jazzy = [\"nros/ros-jazzy\"]\n";
@@ -2293,7 +2293,7 @@ mod board_crate_tests {
     #[test]
     fn a_migrated_leaf_gets_the_image_dependencies_generated() {
         let tmp = tempfile::tempdir().unwrap();
-        let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
+        let leaf = migrated_leaf(tmp.path(), "mps2-an385-baremetal", "");
         let sel = write_selection(&leaf, &repo(), None)
             .unwrap()
             .expect("a migrated leaf gets a selection");
@@ -2394,13 +2394,13 @@ mod board_crate_tests {
     #[test]
     fn switching_board_rewrites_the_selection_and_nothing_else() {
         let tmp = tempfile::tempdir().unwrap();
-        let leaf = migrated_leaf(tmp.path(), "qemu-mps2-an385", "");
+        let leaf = migrated_leaf(tmp.path(), "mps2-an385-baremetal", "");
         let manifest = read(&leaf.join("Cargo.toml"));
         write_selection(&leaf, &repo(), None).unwrap().unwrap();
         let again = write_selection(&leaf, &repo(), None).unwrap().unwrap();
         assert!(!again.changed, "an unchanged image rewrote its selection");
 
-        let sys = read(&leaf.join("system.toml")).replace("qemu-mps2-an385", "freertos");
+        let sys = read(&leaf.join("system.toml")).replace("mps2-an385-baremetal", "freertos");
         std::fs::write(leaf.join("system.toml"), sys).unwrap();
         let sel = write_selection(&leaf, &repo(), None).unwrap().unwrap();
         assert!(sel.changed);

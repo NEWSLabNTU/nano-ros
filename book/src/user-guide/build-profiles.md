@@ -14,7 +14,7 @@ profile = "nros-relwithdebinfo"   # the base every image folds over
 board = "linux"
 
 [image.mps2]
-board   = "qemu-mps2-an385"
+board   = "mps2-an385-baremetal"
 profile = "nros-minsizerel"       # this one is going on a board
 ```
 

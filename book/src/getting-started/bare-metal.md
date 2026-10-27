@@ -75,7 +75,7 @@ matching Cargo feature — never a different board crate:
 
 | Entry shape | `[image.<id>] board =` | board dep |
 |---|---|---|
-| direct-exec (inline spin loop) | `"qemu-mps2-an385"` | `nros-board-mps2-an385 = { version = "*", features = ["board-entry"] }` |
+| direct-exec (inline spin loop) | `"mps2-an385-baremetal"` | `nros-board-mps2-an385 = { version = "*", features = ["board-entry"] }` |
 | RTIC (framework-owned `#[rtic::app]`, deferred dispatch) | `"rtic-mps2-an385"` | `nros-board-mps2-an385 = { version = "*", features = ["rtic"] }` |
 
 The in-tree RTIC peers (`listener-rtic/`, `service-client-rtic/`,
@@ -123,7 +123,7 @@ name = "talker"
 dispatch = "deferred"
 
 [image.mps2-an385-baremetal]
-board = "qemu-mps2-an385"
+board = "mps2-an385-baremetal"
 locator = "tcp/10.0.2.2:10500"
 os_config = ["board-net.toml"]
 ```

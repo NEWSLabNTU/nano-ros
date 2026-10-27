@@ -2244,7 +2244,7 @@ lang = "rust"
 dir = "packages/testing/nros-tests/bins/rtic-run-plan-e2e"
 
 # Phase 244.D1 bare-metal `nros::main!()` BoardEntry E2E fixture (deploy =
-# qemu-mps2-an385). Consumed by `baremetal_run_plan_runtime` (boots MPS2-AN385,
+# mps2-an385-baremetal). Consumed by `baremetal_run_plan_runtime` (boots MPS2-AN385,
 # asserts reset → BoardEntry::run → Executor::open). Was referenced by the test
 # but never staged by any lane (no manifest entry) → the test skipped→FAILed;
 # wired here so `just qemu build-fixtures` stages it. Exercises the canonical

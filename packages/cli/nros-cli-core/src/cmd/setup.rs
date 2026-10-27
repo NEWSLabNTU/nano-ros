@@ -2133,7 +2133,7 @@ fn describe(action: &InstallAction, version: &str, host: &str) -> String {
 /// the rule reachable, and only running the binary proves that.
 /// phase-517 W3 — the index key a board word provisions, through the one join
 /// ([`BoardCatalog::setup_board`]): an index key answers itself, a descriptor
-/// alias (`qemu-mps2-an385`) resolves to its key (`mps2-an385-baremetal`) and
+/// alias (`baremetal`) resolves to its key (`mps2-an385-baremetal`) and
 /// says so. With no catalog to read (an index outside any SDK root) the word is
 /// returned unchanged, so the index lookup that follows refuses it as before.
 pub fn canonical_setup_board(

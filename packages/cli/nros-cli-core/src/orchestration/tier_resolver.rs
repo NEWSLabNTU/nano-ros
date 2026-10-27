@@ -438,7 +438,7 @@ mod tests {
                 ("rv-virt-nuttx", "nuttx"),
                 ("nuttx-riscv", "nuttx"),
                 ("rtic-mps2-an385", ""),
-                ("qemu-mps2-an385", ""),
+                ("mps2-an385-baremetal", ""),
                 ("esp32-c3-baremetal", ""),
                 ("esp32c3", ""),
             ] {

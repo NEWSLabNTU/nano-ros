@@ -81,7 +81,7 @@ name     = "talker"
 dispatch = "deferred"          # optional: callbacks hand off to a ring
 
 [image.mps2-an385-baremetal]
-board   = "qemu-mps2-an385"
+board   = "mps2-an385-baremetal"
 locator = "tcp/10.0.2.2:10500"
 net     = { eth0 = { network = "qemu", host = 10 } }
 ```
@@ -105,7 +105,7 @@ board package, through a small **board network file** the image names with
 
 ```toml
 [image.talker]
-board = "qemu-mps2-an385"
+board = "mps2-an385-baremetal"
 os_config = ["board-net.toml"]
 ```
 
@@ -135,7 +135,7 @@ gateway = "192.168.50.1"
 
 ```toml
 [image.sensor]
-board = "qemu-mps2-an385"
+board = "mps2-an385-baremetal"
 os_config = ["board-net-sensor.toml"]
 locator = "tcp/192.168.50.1:7447"
 ```

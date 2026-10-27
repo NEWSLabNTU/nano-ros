@@ -1,11 +1,12 @@
 ---
 id: 2063
 title: "Board alias `qemu-mps2-an385` names the emulator, not the board"
-status: open
+status: resolved
 type: tech-debt
 area: [boards, naming]
 severity: low
 found: 2026-10-26
+resolved: 2026-10-27
 related: [RFC-0093, phase-437, phase-517]
 ---
 
@@ -60,3 +61,50 @@ list, so the whole descriptor is out of scope and the alias is never asked
 Fixing the reach — attributing a descriptor to its overlay through the index
 key it provisions through, not through name equality — will put this alias in
 the baseline before the rename takes it out.
+
+## Resolution
+
+**Gate reach first.** `check-board-name-reach` now attributes a descriptor to
+its overlay through the index key it provisions through. That is the same
+derivation as `BoardDescriptor::setup_key`: `cmake_module`, then a name, then
+the platform. Name equality stays as the fallback. The bare-metal mps2-an385
+descriptor came into scope, and `alias:qemu-mps2-an385` entered the ratchet
+baseline. It was the only new entry (3 → 4 known violations).
+
+**Rename.** `qemu-mps2-an385` became `mps2-an385-baremetal` everywhere it is
+authored: every `examples/mps2-an385-baremetal/{c,cpp,rust}/*/system.toml`, the
+Rust leaves' doc comments, the test bins and bench leaf, the freertos workspace
+fixture's bringup, `examples/fixtures.toml`, the book, the board crate's
+`package.xml` provides, and the CLI/macro unit tests. Where a test's point was
+"an alias resolves", it now uses the alias `baremetal`. In the descriptor's
+`names` (and the `package.xml` provides), the word is replaced by the
+canonical `mps2-an385-baremetal`, listed first. `check-provider-announcements`
+wants the canonical name first, and `check-deploy-board-resolves` and
+`check-image-panic-policy` read `names`, not `cmake_module`. The
+`BOARD_PATHS` row is gone, because `mps2-an385-baremetal` already had one.
+
+**Refusal, not a map.** `qemu-mps2-an385` is a row in
+`nros_entry_lower::RETIRED_BOARD_KEYS`, the table phase-500 W5 built for
+`native`/`posix`. Every front door that asks `retired_board_key_hint` refuses
+the word with ``write `mps2-an385-baremetal` ``: `nros::main!`, `nros setup`,
+the catalog's `resolve_deploy`, image validation and entry codegen. The rows now
+carry their own provenance in `why`. `nros new --platform` hides only the rows
+whose replacement is itself a platform choice, so this board word does not
+become a hidden `--platform` value. With the rename done the baseline line is
+deleted again (back to 3).
+
+Archived issues, archived phases, the phase-517 measurements and changelog
+fragments keep the old spelling: they are dated records.
+`docs/reference/retired-board-names.md` and the book's `retired-names.md` list
+the word. RFC-0093 §3 carries an amendment.
+
+## Siblings — left open, for the maintainer to rule
+
+Not renamed. Per this issue's own rule, each one is ruled separately. No
+follow-up issue was filed: the rule asks for a ruling, not new work.
+
+- `threadx-qemu-riscv64`: an alias of `rv-virt-threadx` (`cmake_module`), and
+  already an `alias:` line in the reach baseline.
+- `rtic-mps2-an385`: it selects a DIFFERENT entry type
+  (`::nros_board_mps2_an385::RticMps2An385`) on the same descriptor, so it is
+  an entry-framework selector, not a second spelling of the board.

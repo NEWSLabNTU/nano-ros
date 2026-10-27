@@ -19,7 +19,7 @@ dispatch = "deferred"
 # Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
 # compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.
 [image.mps2-an385-baremetal]
-board = "qemu-mps2-an385"
+board = "mps2-an385-baremetal"
 locator = "custom://uart"
 # Serial-only firmware (phase-132 / phase-204.7). The `custom://` locator IS the
 # link, kind `custom` (RFC-0109 D6 derives it): XRCE framed over UART0, which
@@ -40,7 +40,7 @@ locator = "custom://uart"
 # IMAGE that needs them tight. Phase 207.6 shrank `xrce_session_state_t` from
 # ~390 KB at the defaults to ~12 KB at these, so the calloc fits a small heap.
 #
-# Not a board fact: the other twelve `qemu-mps2-an385` images want the
+# Not a board fact: the other twelve `mps2-an385-baremetal` images want the
 # defaults. Not derivable either — the XRCE pools take no part in the entity
 # derivation the zenoh ones do (RFC-0098 D7 covers `ZPICO_*`).
 #

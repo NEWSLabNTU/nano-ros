@@ -127,7 +127,7 @@ ros-jazzy = ["nros-rmw-zenoh?/ros-jazzy"]
 # safety-e2e (CRC attach/validate); `?` keeps it inert without rmw-zenoh.
 safety-e2e = ["nros-rmw-zenoh?/safety-e2e"]
 # Phase 244.D1 enabler — opt into the `nros_platform::BoardEntry` impl so
-# `nros::main!(deploy = "qemu-mps2-an385")` can drive this board. Pulls the
+# `nros::main!(deploy = "mps2-an385-baremetal")` can drive this board. Pulls the
 # `nros` umbrella (executor + node-runtime). Off by default: legacy
 # `run(Config, closure)` examples don't need it.
 board-entry = ["dep:nros"]

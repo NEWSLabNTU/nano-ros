@@ -4,7 +4,7 @@
 //! `freertos_run_plan_runtime::freertos_board_run_executes_run_plan` and the
 //! posix `entry_poc_boots_through_board_entry_run`. Proves the Phase 244.D1
 //! enabler: an Entry pkg with `[package.metadata.nros.entry] deploy =
-//! "qemu-mps2-an385"` + a bare `nros::main!()` boots under QEMU MPS2-AN385
+//! "mps2-an385-baremetal"` + a bare `nros::main!()` boots under QEMU MPS2-AN385
 //! through the macro-emitted `#[cortex_m_rt::entry]` reset → the board's
 //! `nros_platform::BoardEntry::run_with_deploy` → `init_hardware` → network →
 //! `Executor::open`.

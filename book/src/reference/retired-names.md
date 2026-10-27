@@ -28,15 +28,18 @@ old spelling where you set it.
 The host board is `linux`. Two other words used to name it and are now
 refused wherever a board is named — `nros setup <board>`, `nros new
 --platform`, `nros new --image … --board`, an `[image.<id>] board` row —
-with an error that names `linux` (phase-500):
+with an error that names `linux` (phase-500). One more word named the
+bare-metal MPS2-AN385 board by its emulator and is refused the same way,
+naming the board's one name (issue 2063):
 
 | Retired | Use instead | Why |
 |---|---|---|
 | `native` | `linux` | `native` names every general-purpose host, and the host board builds on Linux only |
 | `posix` | `linux` | `posix` is the platform (`nros-platform-posix`), not a board |
+| `qemu-mps2-an385` | `mps2-an385-baremetal` | names the emulator, not the board: QEMU is how the AN385 image is run (RFC-0093 R3) |
 
 `posix` stays correct as a PLATFORM name and in `[tiers.*.posix]`. This
-page is the only place in the book that spells either word as a board;
+page is the only place in the book that spells any of these words as a board;
 `just check book-board-names` holds the rest of the book to the index's
 `[board.*]` keys and the board descriptors' `names`.
 

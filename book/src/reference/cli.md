@@ -335,7 +335,7 @@ nros build linux -- --release   # arguments after `--` go to the native tool
 `--board <board>` builds the image whose `[image.*] board` is that board —
 the authored word in any case, another alias of the same board, or the
 `nros setup` key it provisions through (`--board mps2-an385-baremetal` finds a
-`qemu-mps2-an385` image). One match is the same as naming the image; several
+`mps2-an385-baremetal` image). One match is the same as naming the image; several
 or none is refused with the image ids listed, so name one. It cannot be
 combined with image arguments or `--all`.
 

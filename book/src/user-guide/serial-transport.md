@@ -106,7 +106,7 @@ leaf's `system.toml` rather than passed to the build:
 
 ```toml
 [image.baremetal]
-board   = "qemu-mps2-an385"
+board   = "mps2-an385-baremetal"
 locator = "serial/UART_0#baudrate=115200"
 ```
 

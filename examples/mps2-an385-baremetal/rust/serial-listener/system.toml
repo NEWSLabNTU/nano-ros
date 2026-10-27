@@ -19,7 +19,7 @@ dispatch = "deferred"
 # Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
 # compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.
 [image.mps2-an385-baremetal]
-board = "qemu-mps2-an385"
+board = "mps2-an385-baremetal"
 locator = "serial/UART_0#baudrate=115200"
 # Serial-only firmware (phase-132 / phase-204.7): the `serial/` locator is the
 # link (RFC-0109 D6) — see `serial-talker/system.toml` for what `nros sync`
