@@ -74,7 +74,7 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
      first_missing_vtable_slot's require!() list. Do not hand-edit:
      `just check rmw-slot-table` fails on drift (issue 0826). -->
 
-77 slots, 17 of them required.
+76 slots, 17 of them required.
 
 | # | slot | group | required |
 |---|------|-------|----------|
@@ -145,16 +145,15 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
 | 65 | `create_node` | Phase 376 W4 — graph node lifecycle (optional) | optional |
 | 66 | `destroy_node` | Phase 376 W4 — graph node lifecycle (optional) | optional |
 | 67 | `set_log_severity` | Phase 376 W4 — graph node lifecycle (optional) | optional |
-| 68 | `required_rx_bytes` | Phase 403 W1 — receive-buffer sizing (optional) | optional |
-| 69 | `supported_qos_policies` | issue 1329 — which QoS policies THIS backend honours | optional |
-| 70 | `subscription_set_on_new_message_callback` | Per-entity new-data callbacks (issue 1940, phase-397 W1) | optional |
-| 71 | `service_set_on_new_request_callback` | Per-entity new-data callbacks (issue 1940, phase-397 W1) | optional |
-| 72 | `client_set_on_new_response_callback` | Per-entity new-data callbacks (issue 1940, phase-397 W1) | optional |
-| 73 | `count_clients` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
-| 74 | `count_services` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
-| 75 | `get_gid_for_client` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
-| 76 | `event_type_is_supported` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
-| 77 | `take_request_with_info` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
+| 68 | `supported_qos_policies` | issue 1329 — which QoS policies THIS backend honours | optional |
+| 69 | `subscription_set_on_new_message_callback` | Per-entity new-data callbacks (issue 1940, phase-397 W1) | optional |
+| 70 | `service_set_on_new_request_callback` | Per-entity new-data callbacks (issue 1940, phase-397 W1) | optional |
+| 71 | `client_set_on_new_response_callback` | Per-entity new-data callbacks (issue 1940, phase-397 W1) | optional |
+| 72 | `count_clients` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
+| 73 | `count_services` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
+| 74 | `get_gid_for_client` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
+| 75 | `event_type_is_supported` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
+| 76 | `take_request_with_info` | Issue 1978 — the Jazzy contract's four ADOPT additions | optional |
 
 <!-- END GENERATED SLOT TABLE -->
 

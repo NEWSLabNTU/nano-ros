@@ -813,8 +813,9 @@ typedef struct rmw_subscription_options_t {
      *    backend must not size a fixed structure from it in a way that makes a
      *    larger sample undeliverable WITHOUT a diagnostic.
      *
-     *  The vtable's OPTIONAL `required_rx_bytes` is the other direction: how a
-     *  backend says what it would rather the take buffer were. */
+     *  There is no reverse channel: the vtable's `required_rx_bytes` query
+     *  (a backend saying what it would rather the take buffer were) was
+     *  deleted unread — see the note where it stood in `rmw_vtable.h`. */
     uint32_t rx_buffer_hint;
     uint8_t  _reserved[4];    /**< Reserved; must be zero. */
 } rmw_subscription_options_t;

@@ -595,6 +595,22 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/service_request_id
     ./tmp/service_request_id
+    echo "  - rclc_node_get_rmw_implementation_identifier reads the backend's"
+    echo "    get_implementation_identifier slot, per session, NULL slot = registered name"
+    test -f packages/api/nros-c/tests/run/rmw_implementation_identifier.c || { \
+        echo "ERROR: rmw_implementation_identifier.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/rmw_implementation_identifier.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/rmw_implementation_identifier
+    ./tmp/rmw_implementation_identifier
     # phase-515 C3 -- rclc's typed service/client registrations deserialise
     # through the entity's descriptor into the caller's own messages.
     echo "  - phase-515 C3: rclc_executor_add_service[_with_request_id|_with_context]"

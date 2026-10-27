@@ -70,6 +70,19 @@ int main(int argc, char** argv) {
 }
 ```
 
+**Asking which backend you are on.** Upstream answers
+`rmw_get_implementation_identifier()` once per process. Here the answer
+is per node, because an image may register several backends:
+`Node::rmw_implementation_identifier()` (Rust),
+`rclc_node_get_rmw_implementation_identifier(node)` (C) and
+`rclcpp::Node::rmw_implementation_identifier()` (C++) read the
+backend's `get_implementation_identifier` slot, or the name the vtable
+was registered under when the slot is NULL. The answer is the nano-ros
+backend name — `"zenoh"`, `"cyclonedds"`, `"xrce"`, `"uorb"` — never a
+stock `rmw_zenoh_cpp`-style name: upstream's identifier is a
+process-local tag that never crosses the wire, so a stock name would buy
+no interop and would mislead code that branches on it.
+
 **Why.** Most embedded targets have no dynamic loader. Even where
 `dlopen` exists, a 32 KB Flash budget can't afford to link every
 backend's C client and pick at runtime. Compile-time selection cuts

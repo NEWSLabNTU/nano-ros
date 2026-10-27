@@ -149,7 +149,7 @@ where = "vtable"
 nano = "feature_supported"
 status = "re-mapped"
 answers = ["per-capability slots, answered by nullity or a dedicated probe"]
-reason = "feature_supported — a NULL slot is still the structural probe; this answers the named `rmw_feature_t` values"
+reason = "slot kept, INERT by decision (nothing reads it; no backend fills it). Upstream's `rmw_feature_t` values both ask whether message-info sequence numbers are populated, and this ABI already answers that PER SAMPLE: `rmw_message_info_t` carries a sentinel for an unpopulated sequence number, which `MessageInfo` surfaces, so a caller never needs to ask ahead of the take. No client library here exposes the probe either (rclcpp's own use is internal). Earns a dispatch site when a caller must know before taking."
 
 [rmw_fini_publisher_allocation]
 where = "declined"
@@ -173,9 +173,7 @@ nano = "get_gid_for_publisher"
 [rmw_get_implementation_identifier]
 where = "vtable"
 nano = "get_implementation_identifier"
-status = "re-mapped"
-answers = ["runtime: the registry name"]
-reason = "get_implementation_identifier — also in `nros_rmw_descriptor_t` (check-rmw-descriptors)"
+reason = "same name and signature. READ per session by `CffiSession::implementation_identifier_cstr`, which the per-node accessors reach in every language (`Node::rmw_implementation_identifier`, `rclc_node_get_rmw_implementation_identifier`, `rclcpp::Node::rmw_implementation_identifier`); a NULL slot answers the name the vtable was registered under. Every in-tree backend answers its nano-ros name (`zenoh`, `cyclonedds`, `xrce`, `uorb`) and NOT a stock `rmw_*_cpp` name: upstream's identifier is a process-local type tag that never crosses the wire, so a stock name buys no interop and tells code that branches on it that it runs on an implementation it does not. (This row used to cite an `nros_rmw_descriptor_t` and a `check-rmw-descriptors` gate; neither exists.)"
 
 [rmw_get_node_names]
 where = "vtable"
@@ -312,6 +310,7 @@ reason = "DECLINED, phase-407: reporting the transport's 5-tuples is diagnostics
 where = "vtable"
 nano = "publisher_wait_for_all_acked"
 status = "not-supported"
+reason = "slot kept at upstream's position and shape, INERT by decision: the user surfaces that would read it are declined (`c:publisher_wait_for_all_acked`, `cpp:Publisher::wait_for_all_acked` in the api-parity ledger). It is a wait INSIDE one backend, while this ABI's waiting is decomposed (`has_data` / `drive_io` / `next_deadline_ms`) so one executor can drive several backends; and only cyclonedds could answer (`dds_wait_for_acks`) — zenoh-pico and XRCE have no per-sample acknowledgement to wait on. Reopened only with a caller that can tolerate a backend that answers UNSUPPORTED."
 
 [rmw_qos_profile_check_compatible]
 where = "global"
@@ -420,6 +419,7 @@ where = "vtable"
 nano = "take_loaned_message_with_info"
 status = "re-mapped"
 answers = ["take_loaned_message", "the attachment on the message already taken"]
+reason = "slot kept, INERT by decision: no backend loans on the receive path (its sibling `take_loaned_message` is NULL everywhere and its consumer degrades to a copy), so there is nothing to attach metadata to. Kept as the pair's metadata form — upstream-named, and the only shape that hands a caller-outliving view plus its `rmw_message_info_t`. Earns a dispatch site in the same change that gives a backend a receive-side loan."
 
 [rmw_take_request]
 where = "vtable"

@@ -840,6 +840,56 @@ pub unsafe extern "C" fn rclc_node_get_serialization_format(
     }
 }
 
+/// The RMW backend behind THIS node, by name — ROS 2's
+/// `rmw_get_implementation_identifier()`, asked per node.
+///
+/// Resolved through the node's own session, like
+/// [`rclc_node_get_serialization_format`]: an image linking two backends has
+/// two answers. The string is the nano-ros backend name (`"zenoh"`,
+/// `"cyclonedds"`, `"xrce"`, `"uorb"`), never a stock `rmw_*_cpp` name — see
+/// the `get_implementation_identifier` slot in `<nros/rmw_vtable.h>`. A backend
+/// that states no name answers the name it was registered under.
+///
+/// # Parameters
+/// * `node` - Pointer to an initialized node
+///
+/// # Returns
+/// * Pointer to a static, null-terminated name; the caller must not free it
+///   and it stays valid for the life of the image.
+/// * NULL if `node` is NULL / uninitialised, or if its session cannot be
+///   resolved.
+///
+/// # Safety
+/// * `node` must be a valid pointer
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_node_get_rmw_implementation_identifier(
+    node: *const rcl_node_t,
+) -> *const c_char {
+    if node.is_null() {
+        return ptr::null();
+    }
+
+    let _node = &*node;
+    if _node.state != rclc_node_state_t::RCLC_NODE_STATE_INITIALIZED {
+        return ptr::null();
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        // The resolver every entity-creation path uses, so the name is that
+        // of the session a publisher created on this node is built against.
+        match resolve_session_and_domain(_node) {
+            Some((session, _domain)) => session.implementation_identifier_cstr(),
+            None => ptr::null(),
+        }
+    }
+
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        ptr::null()
+    }
+}
+
 /// Phase 88.12 — return the `nros::Logger` keyed on this node's name.
 ///
 /// The returned handle is opaque from the C side; pass it to

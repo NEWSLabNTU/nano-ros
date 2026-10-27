@@ -1753,6 +1753,23 @@ class Node {
         return nros_cpp_node_get_serialization_format(&handle_);
     }
 
+    /// The RMW backend behind this node, by name — the per-node form of
+    /// ROS 2's `rmw_get_implementation_identifier()`.
+    ///
+    /// The nano-ros backend name (`"zenoh"`, `"cyclonedds"`, `"xrce"`,
+    /// `"uorb"`), never a stock `rmw_*_cpp` name: code that branches on the
+    /// identifier is asking which implementation it runs on, and a zenoh image
+    /// speaks `rmw_zenoh_cpp`'s wire without being that implementation. Per
+    /// SESSION, as for `serialization_format()`. A backend that states no name
+    /// answers the name it was registered under.
+    ///
+    /// `const char*`, static storage owned by the backend or the registry;
+    /// callers must NOT free it. `nullptr` on an uninitialized node.
+    const char* rmw_implementation_identifier() const {
+        if (!initialized_) return nullptr;
+        return nros_cpp_node_get_rmw_implementation_identifier(&handle_);
+    }
+
     /// `rclcpp::Node::get_logger()` — the logger NAMED FOR THIS NODE.
     ///
     /// phase-427 W5. The two spellings used to collide on an identical

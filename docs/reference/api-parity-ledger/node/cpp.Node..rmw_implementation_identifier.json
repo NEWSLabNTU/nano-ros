@@ -1,0 +1,5 @@
+{
+  "key": "cpp:Node::rmw_implementation_identifier",
+  "verdict": "extension",
+  "why": "The C++ face of `c:node_get_rmw_implementation_identifier`: `rclcpp::Node::rmw_implementation_identifier() const -> const char*`, forwarding to `nros_cpp_node_get_rmw_implementation_identifier`. rclcpp has no member of this name — ported code calls `rmw_get_implementation_identifier()` directly — so it is an extension, placed beside `Node::serialization_format()` for the same per-session reason. `const char*`, not `std::string`, because the header must compile against Zephyr's minimal libcpp. Answers the nano-ros backend name, never a stock `rmw_*_cpp` name; see the C row for why."
+}

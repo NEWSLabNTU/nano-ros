@@ -88,13 +88,13 @@ So the contract is **empirical** — the 88 `rmw_*` symbols that
 implementations with identical symbol sets is a better definition of "what an
 rmw must provide" than any reading of the headers.
 
-| | vtable | global | executor | platform | build time | serdes | runtime | none | **total** |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| same | 15 | 1 |  |  |  |  |  |  | **16** |
-| re-shaped | 33 | 1 |  |  |  |  |  |  | **34** |
-| re-mapped | 17 |  | 4 | 1 | 3 | 3 | 1 |  | **29** |
-| not supported — *by decision* |  |  |  |  |  |  |  | 9 | **9** |
-| **total** | **65** | **2** | **4** | **1** | **3** | **3** | **1** | **9** | **88** |
+| | vtable | global | executor | platform | build time | serdes | none | **total** |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| same | 16 | 1 |  |  |  |  |  | **17** |
+| re-shaped | 33 | 1 |  |  |  |  |  | **34** |
+| re-mapped | 17 |  | 4 | 1 | 3 | 3 |  | **28** |
+| not supported — *by decision* |  |  |  |  |  |  | 9 | **9** |
+| **total** | **66** | **2** | **4** | **1** | **3** | **3** | **9** | **88** |
 
 Read a row for what we did, a column for where it lives. Only
 **not implemented** should shrink over time; **not supported** is the one
@@ -547,12 +547,12 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class=pu>)</span></pre></td>
 <td class=why><div class='st s-same'>● same</div></td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>const char *</span>
 <span class='fn'>rmw_get_implementation_identifier</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>const char *</span>
 <span class=pu>(*</span><span class='fn'>get_implementation_identifier</span><span class=pu>)</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped · runtime</div><div class=answers><div class=ans>runtime: the registry name</div></div><b>inert</b> — declared and READ BY NOTHING, and filled by nothing.</td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>

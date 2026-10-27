@@ -30,7 +30,17 @@ using namespace nros_rmw_uorb;
  * The string, not the discriminant, is what crosses an image boundary
  * (RFC-0088 D2): the `u8` is assigned per image and two independently built
  * images would disagree about what a number means. */
-static const char *uorb_get_serialization_format(void) { return "uorb"; }
+static const char* uorb_get_serialization_format(void) {
+    return "uorb";
+}
+
+/* The backend's name — the registry name below, one constant for both, so the
+ * name `rmw_implementation_identifier()` reports and the name the bridge binds
+ * with `rmw("uorb")` cannot disagree. */
+static constexpr const char* kImplementationIdentifier = "uorb";
+static const char* uorb_get_implementation_identifier(void) {
+    return kImplementationIdentifier;
+}
 
 // Positional initialization through `get_serialization_format`, in
 // `nros_rmw_vtable_t` field order with NO gaps — every slot after it is left to
@@ -98,7 +108,7 @@ const nros_rmw_vtable_t kVtable = {
     /*ping_session*/ nullptr,
     /*subscription_supports_in_place*/ nullptr,
     /*process_raw_in_place*/ nullptr,
-    /*get_implementation_identifier*/ nullptr,
+    /*get_implementation_identifier*/ uorb_get_implementation_identifier,
 
     /* RFC-0088 D4 — the one slot uORB answers differently from every other
      * backend, and the reason the slot stopped being decoration. */
@@ -112,10 +122,10 @@ const nros_rmw_vtable_t kVtable = {
      * against the header's field order, so a slot inserted upstream cannot
      * silently shift the ones below it.
      *
-     * This is the cost the `required_rx_bytes` header block predicted for
-     * "slot 75 on a backend with a C++14 positional initialiser", and it is
-     * paid here rather than dodged, because a NULL `supported_qos_policies`
-     * DECLARES that the backend honours nothing — which would refuse every
+     * This is the cost of a late slot on a backend with a C++14 positional
+     * initialiser (the deleted `required_rx_bytes` header block predicted it
+     * as "slot 75"), and it is paid here rather than dodged, because a NULL
+     * `supported_qos_policies` DECLARES that the backend honours nothing — which would refuse every
      * PX4 entity that states a profile. */
     /*feature_supported*/ nullptr,
     /*get_gid_for_publisher*/ nullptr,
@@ -148,7 +158,6 @@ const nros_rmw_vtable_t kVtable = {
     /*create_node*/ nullptr,
     /*destroy_node*/ nullptr,
     /*set_log_severity*/ nullptr,
-    /*required_rx_bytes*/ nullptr,
     /*supported_qos_policies*/ supported_qos_policies,
     /* Issue 1940 — uORB names no entity on arrival, so no per-entity wake. */
     /*subscription_set_on_new_message_callback*/ nullptr,
@@ -179,5 +188,5 @@ extern "C" rmw_ret_t nros_rmw_uorb_register(void) {
     //
     // Single-backend images are unaffected: with one entry the resolver returns it
     // regardless of name (`resolve_backend` → `n == 1` → `Single`).
-    return nros_rmw_cffi_register_named("uorb", &kVtable);
+    return nros_rmw_cffi_register_named(kImplementationIdentifier, &kVtable);
 }
