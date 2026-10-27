@@ -17,6 +17,8 @@ set -euo pipefail
 
 NROS="${NROS:-nros}"
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../lib/grep-q.sh
+. "$REPO/scripts/lib/grep-q.sh"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 
@@ -91,7 +93,9 @@ fi
 # `nros sync` generates, so check that dep and the package sync wrote.
 # `cargo tree` below proves the whole graph resolves.
 sel="${name}_nros_selection"
-if ! grep -q "^${sel} = " "$proj/Cargo.toml" || [ ! -s "$proj/build/nros/selection/Cargo.toml" ]; then
+sel_rc=0
+nros_grep_q "^${sel} = " "$proj/Cargo.toml" || sel_rc=$?
+if [ "$sel_rc" -ne 0 ] || [ ! -s "$proj/build/nros/selection/Cargo.toml" ]; then
     echo "FAIL: '${sel}' is not a dependency, or sync wrote no build/nros/selection/Cargo.toml" >&2
     grep -n "nros_selection" "$proj/Cargo.toml" >&2 || echo "      no selection dep in Cargo.toml" >&2
     ls -la "$proj/build/nros/selection" >&2 2>/dev/null || echo "      no build/nros/selection/ dir" >&2
