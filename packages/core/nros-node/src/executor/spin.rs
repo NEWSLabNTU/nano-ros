@@ -10956,6 +10956,7 @@ impl<'s> Executor<'s> {
             qos,
             callback,
             context,
+            None,
         )
     }
 
@@ -10981,6 +10982,43 @@ impl<'s> Executor<'s> {
             qos,
             callback,
             context,
+            None,
+        )
+    }
+
+    /// phase-515 C3 — a raw service client whose response callback reads a
+    /// CAPTURE the arena holds, the client twin of
+    /// [`register_service_raw_capturing`](Self::register_service_raw_capturing).
+    ///
+    /// rclc's typed `rclc_executor_add_client(executor, client, response_msg,
+    /// callback)` needs three words at dispatch — the caller's response
+    /// storage, the type's deserialiser and the callback — and the raw entry
+    /// has one context word. The capture is copied to the end of the entry's
+    /// own region and `callback` is handed a pointer to that copy, so the C
+    /// side keeps nothing and releasing the client releases the capture.
+    /// `rclc_client_call` swaps its own one-shot pair in and out of the entry
+    /// and restores this one, so a typed client can still be called
+    /// synchronously.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn register_service_client_raw_capturing<const REPLY_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        qos: QoSProfile,
+        callback: Option<RawResponseCallback>,
+        capture: Option<&[u8]>,
+    ) -> Result<HandleId, NodeError> {
+        self.register_service_client_raw_sized_inner::<REPLY_BUF>(
+            node_id,
+            service_name,
+            service_type,
+            service_hash,
+            qos,
+            callback,
+            core::ptr::null_mut(),
+            capture,
         )
     }
 
@@ -10994,6 +11032,7 @@ impl<'s> Executor<'s> {
         qos: QoSProfile,
         callback: Option<RawResponseCallback>,
         context: *mut core::ffi::c_void,
+        capture: Option<&[u8]>,
     ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
@@ -11029,7 +11068,20 @@ impl<'s> Executor<'s> {
                 .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?
         };
 
-        let offset = self.arena_alloc::<ServiceClientRawArenaEntry<REPLY_BUF>>()?;
+        // phase-515 C3 — a capture rides at the end of the entry's own region,
+        // as a service's does (phase-488). No capture keeps `arena_alloc`, so a
+        // client registered without one uses exactly the arena it always did.
+        let capture_len = Self::capture_trailing_len(capture);
+        let (offset, context) = if capture_len == 0 {
+            (
+                self.arena_alloc::<ServiceClientRawArenaEntry<REPLY_BUF>>()?,
+                context,
+            )
+        } else {
+            let (offset, capture_at) = self
+                .arena_alloc_with_trailing::<ServiceClientRawArenaEntry<REPLY_BUF>>(capture_len)?;
+            (offset, self.place_capture(capture_at, capture, context))
+        };
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
             let entry_ptr = arena_ptr.add(offset) as *mut ServiceClientRawArenaEntry<REPLY_BUF>;

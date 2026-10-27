@@ -195,6 +195,12 @@ pub struct rcl_service_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: crate::node::rclc_node_ref_t,
+    /// phase-515 C3 — the descriptor this service was created with, kept so
+    /// `rclc_executor_add_service` (de)serialises through its codec with
+    /// rclc's arguments, as a subscription keeps its own (phase-492 W8).
+    /// Descriptors are generated `static const`s, so the pointer outlives the
+    /// service.
+    pub type_support: *const rclc_service_type_t,
     /// Phase 193.4 — service QoS (applied to both request + reply endpoints).
     /// Defaults to the services profile (RELIABLE+VOLATILE+KEEP_LAST(10));
     /// set via `rclc_service_init_with_qos`.
@@ -221,6 +227,7 @@ impl Default for rcl_service_t {
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
             node: crate::node::rclc_node_ref_t::none(),
+            type_support: core::ptr::null(),
             qos: crate::qos::rclc_qos_t::default(),
             sched_context_id: 0,
             _internal: ServiceServerInternal::new(),
@@ -353,6 +360,7 @@ pub unsafe extern "C" fn rclc_service_init_with_qos(
         crate::util::copy_cstr_into(type_info.type_hash, &mut service.type_hash);
 
     service.node = unsafe { crate::node::node_ref_of(node) };
+    service.type_support = type_info;
     // Phase 193.4 — default to the services profile; a non-NULL `qos`
     // overrides. (`register_service` reads this at registration time.)
     service.qos = if qos.is_null() {
@@ -1177,6 +1185,12 @@ pub struct rcl_client_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: crate::node::rclc_node_ref_t,
+    /// phase-515 C3 — the descriptor this client was created with, kept so
+    /// `rclc_executor_add_client` (de)serialises through its codec with
+    /// rclc's arguments, as a subscription keeps its own (phase-492 W8).
+    /// Descriptors are generated `static const`s, so the pointer outlives the
+    /// client.
+    pub type_support: *const rclc_service_type_t,
     /// Phase 193.4b — service-client QoS (applied to both request + reply
     /// endpoints). Defaults to the services profile
     /// (RELIABLE+VOLATILE+KEEP_LAST(10)); set via `rclc_client_init_with_qos`.
@@ -1203,6 +1217,7 @@ impl Default for rcl_client_t {
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
             node: crate::node::rclc_node_ref_t::none(),
+            type_support: core::ptr::null(),
             qos: crate::qos::rclc_qos_t::default(),
             sched_context_id: 0,
             _internal: ServiceClientInternal::new(),
@@ -1323,6 +1338,7 @@ pub unsafe extern "C" fn rclc_client_init_default(
     client.type_hash_len = crate::util::copy_cstr_into(type_info.type_hash, &mut client.type_hash);
 
     client.node = unsafe { crate::node::node_ref_of(node) };
+    client.type_support = type_info;
 
     // Phase 193.4b — default to the services profile; rclc_client_init_with_qos
     // overrides. (`rclc_executor_attach_client` reads this at registration.)

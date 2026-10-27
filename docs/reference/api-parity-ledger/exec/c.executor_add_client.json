@@ -1,5 +1,10 @@
 {
   "key": "c:executor_add_client",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc/detail/nros_generated.h",
+    "text": "ADOPT-BOUNDED: a reply that does not deserialise"
+  },
   "verdict": "divergence",
-  "why": "rclc's `rclc_executor_add_client(executor, client, response_msg, callback)` takes the response storage and callback at registration. Ours takes them from the client (RFC-0041: the callback belongs to the entity; the response arrives as CDR into the client's own storage, no allocator), so ours is `rclc_executor_attach_client(executor, client)`. phase-492 W1.b moved ours off this name."
+  "why": "ADOPTED 2026-10-27 (phase-515 C3): `rclc_executor_add_client(executor, client, response_msg, rclc_client_callback_t)`, rclc's four arguments: it registers the client (what `rclc_executor_attach_client` does) with a fixed trampoline whose arena-owned CAPTURE holds the caller's `response_msg`, the descriptor's response deserialiser and the callback, so each reply is deserialised into `response_msg` and the callback gets it. That needed a capture on the CLIENT entry, which only services and subscriptions had: `register_service_client_raw_capturing` (nros-node, on `ExecutorFfi`). `rclc_client_call` swaps its one-shot pair in and out of the entry and restores this one, and `rclc_client_set_response_callback` replaces it with a raw callback. ENVELOPE (stated on the declaration): a reply that does not deserialise is dropped without a callback; a descriptor with no response deserialiser is `RCL_RET_UNSUPPORTED`. Test: `packages/api/nros-c/tests/run/typed_service_client.c`. PRIOR ROW: rclc's `rclc_executor_add_client(executor, client, response_msg, callback)` takes the response storage and callback at registration. Ours takes them from the client (RFC-0041: the callback belongs to the entity; the response arrives as CDR into the client's own storage, no allocator), so ours is `rclc_executor_attach_client(executor, client)`. phase-492 W1.b moved ours off this name."
 }

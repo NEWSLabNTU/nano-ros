@@ -2570,6 +2570,42 @@ typedef struct rcl_timer_t {
 } rcl_timer_t;
 
 /**
+ * Service type descriptor: what `ROSIDL_GET_SRV_TYPE_SUPPORT(pkg, srv, Name)`
+ * yields (phase-492 W8).
+ *
+ * Generated as `<pkg>__srv__<Name>__nros_type`. The four codec slots are the
+ * request and response parts' serialisers, with the
+ * [`rclc_message_serialize_fn_t`] / [`rclc_message_deserialize_fn_t`]
+ * contracts; NULL where the descriptor was built from names alone.
+ */
+typedef struct rclc_service_type_t {
+  /**
+   * Type name (e.g., "example_interfaces::srv::dds_::AddTwoInts_")
+   */
+  const char *type_name;
+  /**
+   * Type hash (RIHS format)
+   */
+  const char *type_hash;
+  /**
+   * The request part's serialiser.
+   */
+  rclc_message_serialize_fn_t request_serialize;
+  /**
+   * The request part's deserialiser.
+   */
+  rclc_message_deserialize_fn_t request_deserialize;
+  /**
+   * The response part's serialiser.
+   */
+  rclc_message_serialize_fn_t response_serialize;
+  /**
+   * The response part's deserialiser.
+   */
+  rclc_message_deserialize_fn_t response_deserialize;
+} rclc_service_type_t;
+
+/**
  * Internal state for the service server (Phase 82.7).
  *
  * Lightweight — stores only the arena entry index and the executor
@@ -2632,6 +2668,14 @@ typedef struct rcl_service_t {
    * Pointer to parent node
    */
   struct rclc_node_ref_t node;
+  /**
+   * phase-515 C3 — the descriptor this service was created with, kept so
+   * `rclc_executor_add_service` (de)serialises through its codec with
+   * rclc's arguments, as a subscription keeps its own (phase-492 W8).
+   * Descriptors are generated `static const`s, so the pointer outlives the
+   * service.
+   */
+  const struct rclc_service_type_t *type_support;
   /**
    * Phase 193.4 — service QoS (applied to both request + reply endpoints).
    * Defaults to the services profile (RELIABLE+VOLATILE+KEEP_LAST(10));
@@ -2703,6 +2747,26 @@ typedef bool (*rclc_service_raw_callback_with_request_id_t)(const uint8_t *reque
                                                             void *context);
 
 /**
+ * rclc's `rclc_service_callback_t`: the request and response in the
+ * caller's own message storage (phase-515 C3).
+ */
+typedef void (*rclc_service_callback_t)(const void *request, void *response);
+
+/**
+ * rclc's `rclc_service_callback_with_request_id_t` (phase-515 C3).
+ */
+typedef void (*rclc_service_callback_with_request_id_t)(const void *request,
+                                                        rmw_request_id_t *request_id,
+                                                        void *response);
+
+/**
+ * rclc's `rclc_service_callback_with_context_t` (phase-515 C3).
+ */
+typedef void (*rclc_service_callback_with_context_t)(const void *request,
+                                                     void *response,
+                                                     void *context);
+
+/**
  * Internal state for the service client (Phase 82).
  *
  * Lightweight — stores only the arena entry index and the executor
@@ -2771,6 +2835,14 @@ typedef struct rcl_client_t {
    */
   struct rclc_node_ref_t node;
   /**
+   * phase-515 C3 — the descriptor this client was created with, kept so
+   * `rclc_executor_add_client` (de)serialises through its codec with
+   * rclc's arguments, as a subscription keeps its own (phase-492 W8).
+   * Descriptors are generated `static const`s, so the pointer outlives the
+   * client.
+   */
+  const struct rclc_service_type_t *type_support;
+  /**
    * Phase 193.4b — service-client QoS (applied to both request + reply
    * endpoints). Defaults to the services profile
    * (RELIABLE+VOLATILE+KEEP_LAST(10)); set via `rclc_client_init_with_qos`.
@@ -2790,6 +2862,12 @@ typedef struct rcl_client_t {
    */
   struct ServiceClientInternal _internal;
 } rcl_client_t;
+
+/**
+ * rclc's `rclc_client_callback_t`: the response in the caller's own message
+ * storage (phase-515 C3).
+ */
+typedef void (*rclc_client_callback_t)(const void *response);
 
 /**
  * Scheduling-context descriptor passed to
@@ -2988,42 +3066,6 @@ typedef struct rclc_polling_service_t {
    */
   uint64_t _opaque[SERVICE_SERVER_OPAQUE_U64S];
 } rclc_polling_service_t;
-
-/**
- * Service type descriptor: what `ROSIDL_GET_SRV_TYPE_SUPPORT(pkg, srv, Name)`
- * yields (phase-492 W8).
- *
- * Generated as `<pkg>__srv__<Name>__nros_type`. The four codec slots are the
- * request and response parts' serialisers, with the
- * [`rclc_message_serialize_fn_t`] / [`rclc_message_deserialize_fn_t`]
- * contracts; NULL where the descriptor was built from names alone.
- */
-typedef struct rclc_service_type_t {
-  /**
-   * Type name (e.g., "example_interfaces::srv::dds_::AddTwoInts_")
-   */
-  const char *type_name;
-  /**
-   * Type hash (RIHS format)
-   */
-  const char *type_hash;
-  /**
-   * The request part's serialiser.
-   */
-  rclc_message_serialize_fn_t request_serialize;
-  /**
-   * The request part's deserialiser.
-   */
-  rclc_message_deserialize_fn_t request_deserialize;
-  /**
-   * The response part's serialiser.
-   */
-  rclc_message_serialize_fn_t response_serialize;
-  /**
-   * The response part's deserialiser.
-   */
-  rclc_message_deserialize_fn_t response_deserialize;
-} rclc_service_type_t;
 
 /**
  * Phase 189.M3.3.a — rclc-style named service options.
@@ -6083,6 +6125,102 @@ rcl_ret_t rclc_executor_add_service_raw_with_request_id(struct rclc_executor_t *
                                                         struct rcl_service_t *service,
                                                         rclc_service_raw_callback_with_request_id_t callback,
                                                         void *context);
+
+/**
+ * rclc's `rclc_executor_add_service(executor, service, request_msg,
+ * response_msg, callback)` — phase-515 C3.
+ *
+ * On each request the executor deserialises it into `request_msg` through
+ * the service's descriptor, calls `callback(request_msg, response_msg)`, and
+ * sends `response_msg` serialised back, as rclc does. Both messages are the
+ * caller's and must outlive the registration. The raw CDR form is
+ * [`rclc_executor_add_service_raw`].
+ *
+ * ADOPT-BOUNDED: a request that does not deserialise is dropped with no
+ * reply, and a response larger than the image's message buffer is not sent —
+ * where rclc's allocator-backed messages would grow.
+ *
+ * # Returns
+ * * `RCL_RET_OK` on success
+ * * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or callback
+ * * `RCL_RET_UNSUPPORTED` — the service's descriptor carries no codec (one
+ *   built from type names alone); use [`rclc_executor_add_service_raw`]
+ * * otherwise as [`rclc_executor_add_service_raw`]
+ *
+ * # Safety
+ * `executor` and `service` must be initialised; `request_msg` and
+ * `response_msg` must be the service type's request and response storage.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_service(struct rclc_executor_t *executor,
+                                    struct rcl_service_t *service,
+                                    void *request_msg,
+                                    void *response_msg,
+                                    rclc_service_callback_t callback);
+
+/**
+ * rclc's `rclc_executor_add_service_with_request_id` — phase-515 C3.
+ * [`rclc_executor_add_service`] whose callback also receives the request's
+ * `rmw_request_id_t`, as [`rclc_executor_add_service_raw_with_request_id`]
+ * reports it.
+ *
+ * # Safety
+ * As [`rclc_executor_add_service`].
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_service_with_request_id(struct rclc_executor_t *executor,
+                                                    struct rcl_service_t *service,
+                                                    void *request_msg,
+                                                    void *response_msg,
+                                                    rclc_service_callback_with_request_id_t callback);
+
+/**
+ * rclc's `rclc_executor_add_service_with_context` — phase-515 C3.
+ * [`rclc_executor_add_service`] whose callback also receives `context`,
+ * passed through untouched.
+ *
+ * # Safety
+ * As [`rclc_executor_add_service`]; `context` may be NULL.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_service_with_context(struct rclc_executor_t *executor,
+                                                 struct rcl_service_t *service,
+                                                 void *request_msg,
+                                                 void *response_msg,
+                                                 rclc_service_callback_with_context_t callback,
+                                                 void *context);
+
+/**
+ * rclc's `rclc_executor_add_client(executor, client, response_msg,
+ * callback)` — phase-515 C3.
+ *
+ * Registers the client (what [`rclc_executor_attach_client`] does) with a
+ * response callback: each reply is deserialised into `response_msg` through
+ * the client's descriptor and `callback(response_msg)` runs, as rclc's does.
+ * `response_msg` is the caller's and must outlive the registration. Requests
+ * go out with `rclc_client_send_request` as before;
+ * `rclc_client_set_response_callback` replaces the typed callback with a raw
+ * one.
+ *
+ * ADOPT-BOUNDED: a reply that does not deserialise is dropped without a
+ * callback.
+ *
+ * # Returns
+ * * `RCL_RET_OK` on success
+ * * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or callback
+ * * `RCL_RET_UNSUPPORTED` — the client's descriptor carries no response
+ *   deserialiser; use [`rclc_executor_attach_client`] and a raw callback
+ * * otherwise as [`rclc_executor_attach_client`]
+ *
+ * # Safety
+ * `executor` and `client` must be initialised; `response_msg` must be the
+ * service type's response storage.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_client(struct rclc_executor_t *executor,
+                                   struct rcl_client_t *client,
+                                   void *response_msg,
+                                   rclc_client_callback_t callback);
 
 /**
  * Add a service client to the executor (Phase 82).
