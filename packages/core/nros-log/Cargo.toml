@@ -153,6 +153,12 @@ nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-featu
 name = "log_bridge_keeps_the_target"
 required-features = ["log-compat"]
 
+# phase-515 R3 -- `.throttle(d)` reads the platform clock; the test supplies
+# `nros_platform_clock_ns`. Run by `just check required-features-tests`.
+[[test]]
+name = "log_params_throttle"
+required-features = ["platform-clock"]
+
 [lints]
 workspace = true
 

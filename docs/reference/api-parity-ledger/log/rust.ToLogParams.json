@@ -1,6 +1,10 @@
 {
   "key": "rust:ToLogParams",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "the blanket-impl trait letting rclrs write `log!(node, ...)`, `log!(\"name\", ...)` or `log!(&logger, ...)` and chain `.once()` / `.throttle(d)` / `.only_if(b)` / `.severity(s)` on any of them. Same call as `rust:IntoNodeOptions` in the node stage: an ergonomic overload trait over what is one concrete caller shape here -- our macros and methods take a `&Logger`. What a user loses: the fluent modifier chain, and passing a node or a bare `&str` where a logger is expected. The modifiers themselves survive as method names -- see `rust:Logger::*_once`, `rust:Logger::*_skip_first`, `rust:Logger::*_throttle` -- and `only_if` survives as an `if`."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-log/src/log_params.rs",
+    "text": "is implemented for `&Logger` and [`LogParams`] only. rclrs"
+  },
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 R3), was `declined`/`absent` as an ergonomic overload trait -- a preference, not a platform constraint. `nros_log::ToLogParams<'a>` (re-exported at the crate root) carries rclrs's `to_log_params`, `once`, `skip_first`, `occurs`, `throttle`, `throttle_clock`, `only_if`, `debug`..`fatal` and `severity`, and the five level macros, `log!` and `nros_trace!` take it as their first argument, so `log_info!(logger.once(), ..)` reads as rclrs. ENVELOPE: implemented for `&Logger` (and a reference to one) and `LogParams` only -- not for a node or a logger name (`node.logger()` / `get_logger(name)` give the `&Logger`); `throttle` / `throttle_clock` exist only with the platform clock (see `rust:ToLogParams::throttle`). PRIOR ROW: the blanket-impl trait letting rclrs write `log!(node, ...)`, `log!(\"name\", ...)` or `log!(&logger, ...)` and chain `.once()` / `.throttle(d)` / `.only_if(b)` / `.severity(s)` on any of them. Same call as `rust:IntoNodeOptions` in the node stage: an ergonomic overload trait over what is one concrete caller shape here -- our macros and methods take a `&Logger`. What a user loses: the fluent modifier chain, and passing a node or a bare `&str` where a logger is expected. The modifiers themselves survive as method names -- see `rust:Logger::*_once`, `rust:Logger::*_skip_first`, `rust:Logger::*_throttle` -- and `only_if` survives as an `if`."
 }

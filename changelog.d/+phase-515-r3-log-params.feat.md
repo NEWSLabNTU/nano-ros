@@ -1,0 +1,1 @@
+Rust: the log macros take rclrs's `ToLogParams`, so rclrs's modifiers work: `log_info!(logger.once(), ..)`, `.skip_first()`, `.only_if(b)`, `.severity(s)` and, on an image with the platform clock, `.throttle(Duration)`. `LogParams`, `LogOccurrence` and `ThrottleClock` (`SteadyTime` only) are new in `nros_log`. A plain `log_info!(logger, ..)` is unchanged (phase-515 R3).

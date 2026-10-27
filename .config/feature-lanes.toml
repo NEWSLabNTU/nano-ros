@@ -119,6 +119,10 @@ reason = "zpico-alloc's statistics counters its replay test reads"
 class = "harness"
 reason = "the `log` crate bridge nros-log's bridge test exercises"
 
+[feature.platform-clock]
+class = "harness"
+reason = "gives nros-log the platform clock, without which `ToLogParams::throttle` does not exist; its throttle test supplies the clock symbol itself"
+
 [feature.rmw-cffi]
 class = "harness"
 reason = "the cffi RMW the crate's tests drive"
@@ -232,6 +236,14 @@ crate = "nros-log"
 features = ["log-compat"]
 lib = true
 targets = ["log_bridge_keeps_the_target"]
+
+# phase-515 R3 -- `ToLogParams::throttle` exists only with the platform clock.
+# The lib is NOT run here: its own tests link no `nros_platform_clock_ns`.
+[[lane]]
+runner = "required-features-tests"
+crate = "nros-log"
+features = ["platform-clock"]
+targets = ["log_params_throttle"]
 
 # Issue 0779 — each file's cfg is a CONJUNCTION, so the feature named in the
 # issue is not enough:

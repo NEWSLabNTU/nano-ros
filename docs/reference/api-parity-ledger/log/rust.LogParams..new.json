@@ -1,0 +1,10 @@
+{
+  "key": "rust:LogParams::new",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-log/src/log_params.rs",
+    "text": "ADOPT-BOUNDED: it borrows the [`Logger`] (`LogParams<'a>`) where rclrs's"
+  },
+  "verdict": "divergence",
+  "why": "phase-515 R3. rclrs's `new(logger_name)`, at `Info` with every record, no throttle and no filter; ours takes the `&'a Logger` itself, because `LogParams` borrows it (`rust:LogParams`). A logger name becomes one through `get_logger(name)`."
+}

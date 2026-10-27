@@ -39,13 +39,15 @@
 //!
 //! * [`nros_trace!`](crate::nros_trace) — rclrs stops at `debug`. TRACE is ours (ledger
 //!   `rust:nros_trace`, verdict `extension`), so it keeps a name that says so.
-//! * the `nros_*_throttle!` / `nros_*_throttle_at!` family — rclrs expresses
-//!   throttling as a modifier on ONE macro
-//!   (`log_info!(logger.throttle(Duration::from_millis(500)), "…")` via
-//!   `LogParams` / `ToLogParams`), not as a macro per severity. Ours is a
-//!   different DECOMPOSITION of the same capability, already ledgered as
-//!   `divergence`; see that family's own note for what adopting rclrs's shape
-//!   would cost.
+//! * the `nros_*_throttle!` / `nros_*_throttle_at!` family — a macro per
+//!   severity, which predates the modifier form below. rclrs has no such
+//!   names.
+//!
+//! **The first argument is rclrs's [`ToLogParams`](crate::ToLogParams)**
+//! (phase-515 R3), so rclrs's modifiers chain off the logger:
+//! `log_info!(logger.once(), …)`, `.skip_first()`, `.only_if(b)`, and — with
+//! the platform clock — `.throttle(d)`. A plain `&Logger` is still the common
+//! case. See [`crate::log_params`] for the bounds.
 
 /// Internal macro emitting one log record at `$severity`.
 ///
@@ -76,6 +78,56 @@ macro_rules! __nros_log_emit {
                 timestamp_ns: $crate::__timestamp_ns(),
             };
             __logger.dispatch(&__record);
+        }
+    }};
+}
+
+/// Internal macro emitting one record described by a
+/// [`LogParams`](crate::LogParams) — the five level macros, [`log!`] and
+/// [`nros_trace!`](crate::nros_trace) all expand to this (phase-515 R3).
+///
+/// The occurrence and throttle state live HERE, as statics at the call site,
+/// which is rclrs's arrangement too: a params value has no call-site identity
+/// to hang them off. A site whose params need neither — a plain
+/// `log_info!(logger, …)` — leaves both branches dead once the params are
+/// constant-folded, and the statics go with them.
+///
+/// Order, the same as the `nros_*_throttle!` family's and for the same reason:
+/// filter and severity first, so a record the level drops consumes neither
+/// the `once` flag nor the throttle window; then occurrence; then the window.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __nros_log_params_emit {
+    ($params:expr, $($arg:tt)+) => {{
+        let __p: $crate::LogParams<'_> = $params;
+        let __logger: &$crate::Logger = __p.logger();
+        let __sev = __p.get_severity();
+        if __p.get_user_filter() && __logger.is_enabled(__sev) {
+            static __NROS_LOG_OCCURS: $crate::log_params::OccurrenceState =
+                $crate::log_params::OccurrenceState::new();
+            static __NROS_LOG_THROTTLE: $crate::ThrottleState = $crate::ThrottleState::new();
+            let __now = $crate::__timestamp_ns();
+            let __throttle = __p.get_throttle();
+            if __NROS_LOG_OCCURS.admit(__p.get_occurence())
+                && (__throttle.is_zero()
+                    || __NROS_LOG_THROTTLE
+                        .should_log(__now, $crate::log_params::__duration_ns(__throttle)))
+            {
+                use ::core::fmt::Write as _;
+                let mut __buf = $crate::FormatBuffer::new();
+                let _ = ::core::write!(__buf, $($arg)+);
+                let __record = $crate::Record {
+                    severity:     __sev,
+                    logger_name:  __logger.name(),
+                    message:      __buf.as_str(),
+                    file:         ::core::file!(),
+                    line:         ::core::line!(),
+                    // The reading the window was decided against — see
+                    // `__nros_log_emit_throttled!`.
+                    timestamp_ns: __now,
+                };
+                __logger.dispatch(&__record);
+            }
         }
     }};
 }
@@ -116,17 +168,18 @@ macro_rules! __nros_log_emit {
 /// names the level macro; this one keeps the `write!` in the binary and
 /// decides per call.
 ///
-/// A THROTTLED severity-taking form is deliberately absent: our throttling is
-/// a macro per severity (`nros_*_throttle!`), a DECOMPOSITION already ledgered
-/// as `divergence` against rclrs's `logger.throttle(…)` modifier, and adding a
-/// severity-taking member to that family would commit to the modifier shape in
-/// one place only.
+/// The first argument is a [`ToLogParams`](crate::ToLogParams), like the
+/// level macros', so `log!(logger.throttle(d), severity, …)` throttles; the
+/// severity argument wins over one set in the chain.
 #[macro_export]
 macro_rules! log {
     ($logger:expr, $severity:expr, $($arg:tt)+) => {{
         let __sev = $severity;
         if $crate::severity_enabled_at_compile_time(__sev) {
-            $crate::__nros_log_emit!($logger, __sev, $($arg)+);
+            $crate::__nros_log_params_emit!(
+                $crate::ToLogParams::severity($logger, __sev),
+                $($arg)+
+            );
         }
     }};
 }
@@ -139,7 +192,10 @@ macro_rules! log {
 macro_rules! nros_trace {
     ($logger:expr, $($arg:tt)+) => {
         if $crate::severity_enabled_at_compile_time($crate::Severity::Trace) {
-            $crate::__nros_log_emit!($logger, $crate::Severity::Trace, $($arg)+);
+            $crate::__nros_log_params_emit!(
+                $crate::ToLogParams::severity($logger, $crate::Severity::Trace),
+                $($arg)+
+            );
         }
     };
 }
@@ -153,7 +209,7 @@ macro_rules! nros_trace {
 macro_rules! log_debug {
     ($logger:expr, $($arg:tt)+) => {
         if $crate::severity_enabled_at_compile_time($crate::Severity::Debug) {
-            $crate::__nros_log_emit!($logger, $crate::Severity::Debug, $($arg)+);
+            $crate::__nros_log_params_emit!($crate::ToLogParams::debug($logger), $($arg)+);
         }
     };
 }
@@ -167,7 +223,7 @@ macro_rules! log_debug {
 macro_rules! log_info {
     ($logger:expr, $($arg:tt)+) => {
         if $crate::severity_enabled_at_compile_time($crate::Severity::Info) {
-            $crate::__nros_log_emit!($logger, $crate::Severity::Info, $($arg)+);
+            $crate::__nros_log_params_emit!($crate::ToLogParams::info($logger), $($arg)+);
         }
     };
 }
@@ -181,7 +237,7 @@ macro_rules! log_info {
 macro_rules! log_warn {
     ($logger:expr, $($arg:tt)+) => {
         if $crate::severity_enabled_at_compile_time($crate::Severity::Warn) {
-            $crate::__nros_log_emit!($logger, $crate::Severity::Warn, $($arg)+);
+            $crate::__nros_log_params_emit!($crate::ToLogParams::warn($logger), $($arg)+);
         }
     };
 }
@@ -195,7 +251,7 @@ macro_rules! log_warn {
 macro_rules! log_error {
     ($logger:expr, $($arg:tt)+) => {
         if $crate::severity_enabled_at_compile_time($crate::Severity::Error) {
-            $crate::__nros_log_emit!($logger, $crate::Severity::Error, $($arg)+);
+            $crate::__nros_log_params_emit!($crate::ToLogParams::error($logger), $($arg)+);
         }
     };
 }
@@ -209,7 +265,7 @@ macro_rules! log_error {
 macro_rules! log_fatal {
     ($logger:expr, $($arg:tt)+) => {
         if $crate::severity_enabled_at_compile_time($crate::Severity::Fatal) {
-            $crate::__nros_log_emit!($logger, $crate::Severity::Fatal, $($arg)+);
+            $crate::__nros_log_params_emit!($crate::ToLogParams::fatal($logger), $($arg)+);
         }
     };
 }
@@ -239,33 +295,23 @@ macro_rules! log_fatal {
 // while reading at the call site exactly like a working throttle. RFC-0089:
 // never compile and differ.
 //
-// WHY THIS FAMILY KEEPS THE `nros_` PREFIX WHILE THE FIVE SEVERITY MACROS TOOK
-// rclrs's (phase-417, 2026-09-04). rclrs has no `log_info_throttle!` to follow.
-// Its throttle is a MODIFIER on the one macro — `log_info!(logger.throttle(
-// Duration::from_millis(500)), "…")`, where the first argument is anything
-// implementing `ToLogParams` — so adopting "rclrs's spelling" here means
-// adopting `ToLogParams` and `LogParams`, not renaming a macro. That is a
-// SHAPE change, and three ledger rows have already decided against the pieces
-// it needs, each on a platform ground:
+// WHY THIS FAMILY KEEPS THE `nros_` PREFIX. rclrs has no `log_info_throttle!`
+// to follow: its throttle is a MODIFIER on the one macro, and since phase-515
+// R3 ours is too — `log_info!(logger.throttle(d), …)` through `ToLogParams`
+// (`crate::log_params`). That reversed the three ledger rows this note used to
+// cite against it (`rust:ToLogParams`, `rust:LogOccurrence`,
+// `rust:ThrottleClock`); their objections each had an answer:
 //
-//   * `rust:ToLogParams` — `declined`, an ergonomic overload trait over what
-//     is one concrete caller shape here (`&Logger`).
-//   * `rust:LogOccurrence` — `divergence`; `once` / `skip_first` take a
-//     CALLER-SUPPLIED `&OnceFlag` because riscv32imc has no CAS, so the
-//     occurrence state cannot live inside a params value.
-//   * `rust:ThrottleClock` — `divergence`; rclrs's `LogParams` names the clock
-//     a window is measured against and we have none to name.
+//   * the occurrence and throttle state live in statics the LEVEL MACRO
+//     declares at the call site, as rclrs's do, not in the params value;
+//   * `ThrottleClock` is bounded to `SteadyTime`, the one clock we can read;
+//   * the clockless refusal survives: `ToLogParams::throttle` exists only
+//     under `cfg(nros_log_clock)`, so a clockless `.throttle(d)` is a compile
+//     error rather than a runtime field that silently admits everything.
 //
-// A `LogParams` missing those members is not rclrs's `LogParams`; it is a new
-// divergence wearing an upstream name, which is the "compiles and differs"
-// RFC-0089 exists to forbid. There is also a live cost: in the modifier form
-// whether a throttle was requested is a RUNTIME field, so the `platform-clock`
-// refusal above stops being expressible at the call site — the exact
-// silently-admits-everything failure the `compile_error!` was added to prevent.
-//
-// So: ours is KEPT, and it keeps the `nros_` prefix that says it is ours. The
-// ledger already records it as a `divergence` with a `provides` arrow at
-// `rust:nros_debug_throttle`; that verdict stands unchanged.
+// This family stays as our own spelling of the same capability, and the
+// `_at` half stays the ONLY throttle on a clockless target, which the
+// modifier form cannot express.
 // -----------------------------------------------------------------------------
 
 /// Resolves the timestamp the `nros_*_throttle!` family measures against.

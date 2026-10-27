@@ -1,6 +1,10 @@
 {
   "key": "rust:LogParams::get_throttle_clock",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "rclrs's throttled logging reads a clock to decide whether enough time has passed. See the log stage -- our throttle macros degrade to plain logs (RFC-0036)."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-log/src/log_params.rs",
+    "text": "ADOPT-BOUNDED: `SteadyTime` only — the platform's monotonic clock is the"
+  },
+  "verdict": "divergence",
+  "why": "phase-515 R3, was `declined`/`absent`. rclrs's getter, returning the `ThrottleClock`, which is `SteadyTime` -- the only variant ours has (`rust:ThrottleClock`)."
 }

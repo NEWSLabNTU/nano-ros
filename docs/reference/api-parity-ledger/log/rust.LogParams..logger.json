@@ -1,0 +1,5 @@
+{
+  "key": "rust:LogParams::logger",
+  "verdict": "extension",
+  "why": "phase-515 R3. Ours BORROWS the `&Logger` a record goes to (see `rust:LogParams`), where rclrs's owns a logger name; `logger()` hands it back, and is what the level macros dispatch through. `get_logger_name` is still rclrs's."
+}
