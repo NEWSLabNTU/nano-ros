@@ -1,0 +1,5 @@
+{
+  "key": "cpp:GenericPublisher::GenericPublisher",
+  "verdict": "divergence",
+  "why": "phase-515 P4. Upstream's constructor takes a node base, a typesupport library and a topic type and is called by `create_generic_publisher`; ours is default- and move-constructible, holds the publisher in place (`Publisher<M>`'s storage), and is filled by `Node::create_generic_publisher(topic, type, type_hash, qos)` -- no typesupport library exists to pass (`cpp:GenericPublisher`)."
+}

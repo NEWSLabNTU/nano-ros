@@ -328,6 +328,18 @@ template <typename T> struct refuse {
     "created it, and arena registration is one-way (RFC-0002), so a node cannot leave it. Keep "   \
     "the node on its executor, or stop spinning that executor."
 
+// phase-515 P4 — rclcpp's name-only `create_generic_publisher` /
+// `create_generic_subscription`.
+#define NROS_RCLCPP_REFUSE_GENERIC_BY_NAME                                                         \
+    "create_generic_publisher / create_generic_subscription by type NAME is REFUSED by nano-ros "  \
+    "(phase-515 P4). rclcpp resolves the name to a typesupport library at runtime; nano-ros "      \
+    "links "                                                                                       \
+    "its types at build time, and the wire key needs the type's RIHS01 HASH, which nothing can "   \
+    "derive from a name here. Pass the hash yourself: "                                            \
+    "create_generic_publisher(topic, type, type_hash, qos) / "                                     \
+    "create_generic_subscription(topic, type, type_hash, qos, callback), where a generated type "  \
+    "states both as M::TYPE_NAME and M::TYPE_HASH. Or use create_publisher<M>() with the type."
+
 // phase-515 P2 — `Executor::add_node` on a node another executor created.
 #define NROS_RCLCPP_REFUSE_FOREIGN_NODE                                                            \
     "add_node REFUSED: this node was created on another executor, and its entities live in "       \

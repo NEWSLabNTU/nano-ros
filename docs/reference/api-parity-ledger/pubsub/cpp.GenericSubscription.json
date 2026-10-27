@@ -1,6 +1,10 @@
 {
   "key": "cpp:GenericSubscription",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/generic.hpp",
+    "text": "Bytes in, bytes out: the payload is CDR, never deserialised. That is what a"
+  },
+  "verdict": "divergence",
+  "why": "ADOPTED-BOUNDED 2026-10-27 (phase-515 P4), was `declined`/`absent`. `rclcpp::GenericSubscription` names a generic subscription registered by the hash-taking `Node::create_generic_subscription(topic, type, type_hash, qos, callback)`. ENVELOPE: the subscription lives in the executor's arena like every callback-style subscription, so the class is a TAG and `GenericSubscription::SharedPtr` is a `SubscriptionHandle` (`reset()` unregisters); the callback is `void(const uint8_t* data, size_t len)` with the CDR bytes lent for the call, not upstream's `std::shared_ptr<rclcpp::SerializedMessage>`; no `rx_buffer_hint` is stated, because the type is not linked, so the runtime's default receive buffer bounds a message. Upstream's members (`handle_message`, `create_serialized_message`, the dynamic-message family, ...) are the executor's side of a subscription and have no counterpart. PRIOR ROW: generic pub/sub loads typesupport by name at RUNTIME so a tool (rosbag, ros2 topic) can handle a type it was not compiled against. That needs a dynamic loader and a heap; an image links the types it uses."
 }

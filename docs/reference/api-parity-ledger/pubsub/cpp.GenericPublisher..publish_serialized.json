@@ -1,0 +1,5 @@
+{
+  "key": "cpp:GenericPublisher::publish_serialized",
+  "verdict": "extension",
+  "why": "phase-515 P4. The generic publisher's verb, `Publisher<M>::publish_serialized`'s twin: a `(data, len)` pair of CDR bytes where upstream's `publish` takes an `rclcpp::SerializedMessage`, which owns a growable buffer through an allocator this API does not have (`cpp:Publisher::publish_serialized`)."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GenericPublisher::publish_as_loaned_msg",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-515 P4. A loaned-message publish of a serialized buffer needs the middleware's loan of a TYPED message, which a type-erased publisher cannot request; `Publisher<M>::loan` is the loan path."
+}

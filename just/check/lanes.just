@@ -1753,6 +1753,28 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/clock_sleep_runtime
+    # phase-515 P4 -- generic pub/sub keyed by a type name AND hash: both
+    # entities reach the backend under the given type, the publisher puts the
+    # caller's bytes on the wire, the subscription hands a staged sample's bytes
+    # to its callback, and a released one receives nothing.
+    test -f packages/api/nros-cpp/tests/compile/generic_pubsub_runtime.cpp || { \
+        echo "ERROR: generic_pubsub_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - rclcpp generic publisher / subscription by name + hash (runtime, phase-515 P4)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/generic_pubsub_runtime \
+        packages/api/nros-cpp/tests/compile/generic_pubsub_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/generic_pubsub_runtime
     # W4.d — two nodes in one image under DISTINCT logger names, independent
     # thresholds through `rclcpp::Logger::set_level`, and ONE resolve-or-create
     # helper behind both the node accessor and the named lookup. The C twin is
@@ -3450,7 +3472,7 @@ cpp: cpp-fmt
     for probe in node_options system_defaults_qos log_throttle service_callback \
                  unbounded_spin unbounded_wait unbounded_wait_dispatch \
                  unbounded_wait_handle unbounded_action_wait multi_threaded_executor \
-                 subscription_callback remove_node; do \
+                 subscription_callback remove_node generic_by_name; do \
         f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
         test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
         if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \

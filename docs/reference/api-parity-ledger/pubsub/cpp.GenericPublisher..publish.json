@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GenericPublisher::publish",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-515 P4. Upstream's `publish(const rclcpp::SerializedMessage&)`; ours is `publish_serialized(data, len)` (`cpp:GenericPublisher::publish_serialized`) because there is no `SerializedMessage` type here."
+}

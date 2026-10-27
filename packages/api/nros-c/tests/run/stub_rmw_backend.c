@@ -54,6 +54,29 @@ static void record_entity_name(const char* name) {
     s_last_entity_name[n] = '\0';
 }
 
+/* phase-515 P4 — the type name and hash the last publisher / subscription was
+ * created with, so a probe can tell a generic entity reached the backend under
+ * the type it named. */
+static char s_last_type_name[256] = {0};
+static char s_last_type_hash[256] = {0};
+
+static void copy_bounded(char* dst, size_t cap, const char* src) {
+    size_t n = src == NULL ? 0 : strlen(src);
+    if (n >= cap) n = cap - 1;
+    if (n) memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
+static void record_entity_type(const rmw_message_type_support_t* ts) {
+    copy_bounded(s_last_type_name, sizeof(s_last_type_name), ts ? ts->type_name : NULL);
+    copy_bounded(s_last_type_hash, sizeof(s_last_type_hash), ts ? ts->type_hash : NULL);
+}
+
+const char* nros_stub_rmw_last_entity_type(const char** type_hash) {
+    if (type_hash != NULL) *type_hash = s_last_type_hash;
+    return s_last_type_name;
+}
+
 const char* nros_stub_rmw_last_entity_name(void) {
     return s_last_entity_name;
 }
@@ -152,8 +175,8 @@ stub_create_publisher(const rmw_node_t* node, const rmw_message_type_support_t* 
                       const rmw_publisher_options_t* options, rmw_publisher_t* out) {
     record_entity_name(topic_name);
     record_entity_session(node);
+    record_entity_type(type_support);
     (void)node;
-    (void)type_support;
     (void)domain_id;
     (void)options;
     (void)out;
@@ -402,8 +425,8 @@ stub_create_subscription(const rmw_node_t* node, const rmw_message_type_support_
                          const rmw_subscription_options_t* options, rmw_subscription_t* out) {
     record_entity_name(topic_name);
     record_entity_session(node);
+    record_entity_type(type_support);
     (void)node;
-    (void)type_support;
     (void)domain_id;
     (void)qos;
     (void)options;

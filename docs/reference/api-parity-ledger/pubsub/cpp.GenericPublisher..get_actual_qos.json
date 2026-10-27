@@ -1,0 +1,5 @@
+{
+  "key": "cpp:GenericPublisher::get_actual_qos",
+  "verdict": "extension",
+  "why": "phase-515 P4. Upstream's is `PublisherBase::get_actual_qos`, inherited, which the extractor does not record on the class; ours is declared on `GenericPublisher` directly, as on `Publisher<M>`."
+}

@@ -1,0 +1,6 @@
+{
+  "key": "cpp:GenericPublisher::make_unique",
+  "disposition": "absent",
+  "verdict": "declined",
+  "why": "phase-515 P4. No allocator; see `cpp:Publisher::make_shared`. `GenericPublisher::SharedPtr` is a value type, so there is nothing refcounted for a factory to make."
+}
