@@ -21,6 +21,38 @@
 //! second rung is `$DOTCONFIG`.
 use std::{env, path::Path};
 
+/// Issue 2051 -- write `<out_dir>/baked_session_properties.rs`: the
+/// `SESSION_PROPERTIES` table `zephyr_component_main!` installs.
+///
+/// A Zephyr Rust west application's lane names the table `nros build` rendered
+/// (`NROS_SESSION_PROPERTIES_RS`, a path --
+/// `nros_orchestration_ir::session_properties::{WEST_FILE_ENV, rust_table}`,
+/// spelled here because this crate's build takes no dependency for one copy);
+/// every other build gets an empty table. `nros::main!` bakes its own.
+fn bake_session_properties(out_dir: &str) {
+    const WEST_FILE_ENV: &str = "NROS_SESSION_PROPERTIES_RS";
+    // Issue 1623's rule: the VARIABLE is an input (a first run without it must
+    // re-run when a later build sets it), and the FILE's content is the other.
+    println!("cargo:rerun-if-env-changed={WEST_FILE_ENV}");
+    let body = match env::var_os(WEST_FILE_ENV).filter(|v| !v.is_empty()) {
+        Some(path) => {
+            println!("cargo:rerun-if-changed={}", Path::new(&path).display());
+            std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!(
+                    "{WEST_FILE_ENV} names `{}`, which cannot be read: {e}",
+                    Path::new(&path).display()
+                )
+            })
+        }
+        None => {
+            "pub static SESSION_PROPERTIES: [crate::__macro_support::SessionProperty; 0] = [];\n"
+                .to_string()
+        }
+    };
+    std::fs::write(Path::new(out_dir).join("baked_session_properties.rs"), body)
+        .expect("write baked_session_properties.rs");
+}
+
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
@@ -38,6 +70,10 @@ fn main() {
     // a process-environment bake (the FreeRTOS / ThreadX fixture lanes export
     // `NROS_DOMAIN_ID`) re-compile this crate rather than reuse a stale object.
     nros_zephyr_build::bake_nros_config();
+
+    // Issue 2051 -- the session properties a bringup's RMW file lowers to
+    // (RFC-0109 D8), as the static table `zephyr_component_main!` installs.
+    bake_session_properties(&out_dir);
 
     // phase-400 W6 — the `[knobs.runtime]` platform/board rungs, resolved once.
     // `None` when no lane named a platform, and the builtins below then stand.
