@@ -2,5 +2,8 @@
   "key": "c:node_init_default",
   "disposition": "adopt",
   "verdict": "declined",
-  "why": "rcl's convenience wrapper for `rcl_node_init` with default options. Ours takes no options at all, so `nros_node_init` already IS the default form."
+  "retired_names": [
+    "nros_node_init"
+  ],
+  "why": "rcl's convenience wrapper for `rcl_node_init` with default options. Ours takes no options at all, so `rclc_node_init_default` IS the default form (CORRECTED 2026-10-27, phase-515 W0.b: this named `nros_node_init`, retired at phase-417 stage 6)."
 }

@@ -2,5 +2,8 @@
   "key": "c:guard_condition_init",
   "disposition": "absent",
   "verdict": "declined",
+  "retired_names": [
+    "nros_executor_add_guard_condition"
+  ],
   "why": "rcl's `rcl_guard_condition_init(gc, context, options)`, and ours is RETIRED as of phase-417 W4.e (2026-09-18) rather than renamed: a guard condition is created on the NODE, in one call, with its callback bound at creation. The reasoning and the measurement are at `c:guard_condition_set_callback`; the short version is that ours initialised nothing an executor could see, so the object between `init` and `nros_executor_add_guard_condition` was inert and said `RCL_RET_OK`. A ported rcl node writes `rclc_node_create_guard_condition(&node, &gc, cb, ctx)` -- one call where rcl needs `init` plus a wait-set registration, because we have no wait set (`cpp:WaitSet`). `rcl_get_zero_initialized_guard_condition` is kept, so the zero-init idiom a ported file opens with still compiles."
 }

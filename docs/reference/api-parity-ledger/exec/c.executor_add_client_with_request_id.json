@@ -2,5 +2,5 @@
   "key": "c:executor_add_client_with_request_id",
   "disposition": "absent",
   "verdict": "declined",
-  "why": "rclc ships a second registration entry point whose callback also receives the `rmw_request_id_t`. Ours has one registration verb: the correlation token is an `int64_t` sequence number that `nros_client_send_request` returns and `nros_service_send_response_raw` takes back (see the service stage's `cpp:Client::create_request_header`), and it belongs to the ENTITY, not to a second `add_*` overload. A registration entry point per callback shape is the `executor-owns-no-entity-storage` rule seen from the executor's side."
+  "why": "rclc ships a second registration entry point whose callback also receives the `rmw_request_id_t`. Ours has one registration verb: the correlation token is an `int64_t` sequence number that `rclc_polling_client_send_request_raw` returns and `rclc_polling_service_send_response_raw` takes back (see the service stage's `cpp:Client::create_request_header`), and it belongs to the ENTITY, not to a second `add_*` overload. A registration entry point per callback shape is the `executor-owns-no-entity-storage` rule seen from the executor's side."
 }

@@ -1,5 +1,9 @@
 {
   "key": "c:view_str_t",
   "verdict": "extension",
+  "retired_names": [
+    "nros_borrowed_bytes_t",
+    "nros_borrowed_str_t"
+  ],
   "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `rclc_view_str_t` / `rclc_view_bytes_t` for strings and byte arrays (`packages/api/nros-c/include/rclc/detail/view.h:39,45`), and the `rclc_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put. CORRECTED 2026-09-04 (phase-417): this shared sentence named `nros_borrowed_str_t` / `nros_borrowed_bytes_t`, which exist nowhere in the tree; the types are `rclc_view_str_t` / `rclc_view_bytes_t`. Fixed in all 28 rows that carried the boilerplate, not just the one it was noticed on."
 }

@@ -7,5 +7,9 @@
   },
   "unextracted": "a macro; the extractor records declarations, not macros",
   "verdict": "rename",
+  "retired_names": [
+    "nros_debug",
+    "nros_info"
+  ],
   "why": "RE-READ 2026-10-27 (phase-515 R8): this row's `blocked-needs-decision` was stale. The decision it waited on was taken and executed by phase-417: each language follows ITS OWN upstream (`nros-log/src/macros.rs`'s module doc), so Rust ships rclrs's `log_debug!`, and the `nros_debug!` forwarder was removed in phase-417 W-B5 once every in-tree call site had moved. The row recorded the rename backwards (`from: rclrs::log_debug`, `to: nros::nros_debug`); it now records where our name went. PRIOR ROW: phase-417 W4.d — rclrs spells this `rclrs::log_debug`; we spell it `nros_debug`. Same capability, different name, so this is a RENAME and not the `extension` it was first filed as. rclrs's logging macros were overlooked because the correlator pairs on NAME and `log_info` never matched `nros_info`.\n\nNot yet executed. RFC-0089's end state is that we carry ROS 2's names, and the rename lands LAST -- after the shapes match -- because renaming first relabels a gap without closing one. The decision it is blocked on: rclrs says `log_info!`, rclcpp says `RCLCPP_INFO`, and C already ships `RCLC_LOG_INFO`. Following each language's own upstream is defensible; one spelling for all three is not obviously right."
 }

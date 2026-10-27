@@ -2,5 +2,8 @@
   "key": "c:get_zero_initialized_guard_condition",
   "disposition": "adopt",
   "verdict": "declined",
-  "why": "rcl's free-function zero-init spelling; ours is `nros_guard_condition_get_zero_initialized`. See `c:get_zero_initialized_publisher`."
+  "retired_names": [
+    "nros_guard_condition_get_zero_initialized"
+  ],
+  "why": "ADOPTED: rcl's spelling ships, `rcl_get_zero_initialized_guard_condition()` (CORRECTED 2026-10-27, phase-515 W0.b: the text below describes the method-style `nros_guard_condition_get_zero_initialized` it replaced, which no longer exists).\n\nrcl's free-function zero-init spelling; ours is `nros_guard_condition_get_zero_initialized`. See `c:get_zero_initialized_publisher`."
 }

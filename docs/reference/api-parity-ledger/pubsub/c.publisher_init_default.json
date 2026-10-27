@@ -2,5 +2,5 @@
   "key": "c:publisher_init_default",
   "disposition": "adopt",
   "verdict": "declined",
-  "why": "rclc's convenience wrapper: publisher with the default QoS. `nros_publisher_init` takes no QoS and IS the default form; `rclc_publisher_init_with_qos` is the explicit one.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. The `adopt` above is the DECISION, not a description of today: this entry point reaches the same body as `rclc_publisher_init_with_qos`, which applies neither namespace expansion nor remap where upstream applies both. See `c:publisher_init` for the seam, the eight callers that do reach it, and how a porting user discovers the difference."
+  "why": "rclc's convenience wrapper: publisher with the default QoS. `rclc_publisher_init_default` takes no QoS and IS the default form; `rclc_publisher_init_with_qos` is the explicit one.\n\nphase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. The `adopt` above is the DECISION, not a description of today: this entry point reaches the same body as `rclc_publisher_init_with_qos`, which applies neither namespace expansion nor remap where upstream applies both. See `c:publisher_init` for the seam, the eight callers that do reach it, and how a porting user discovers the difference."
 }

@@ -2,5 +2,8 @@
   "key": "c:node_init",
   "disposition": "absent",
   "verdict": "declined",
+  "retired_names": [
+    "nros_node_init"
+  ],
   "why": "phase-428 Q1 (2026-09-06) -- `rcl_node_init(node, name, namespace_, context, options)`. No symbol answers to this key: `rcl_node_init` was never exported, and the old `nros_node_init(node, support, name, namespace_)` forwarder was RETIRED at phase-417 stage 6 step B (`packages/api/nros-c/src/node.rs:362-384` records why -- its parameter order was a pure permutation of rclc's, and in C a swapped pointer argument is a WARNING, so the identifier had to go for a stale call to fail at all).\n\nWHAT A PORTING USER WRITES INSTEAD: an rclc file never calls `rcl_node_init` directly; it calls `rclc_node_init_default(node, name, namespace_, support)`, which is `c:node_init_default` (adopt, `packages/api/nros-c/src/node.rs:405`). The options-bearing form is `rclc_node_init_ex(node, support, name, options)` (`c:node_init_ex`, `packages/api/nros-c/include/rclc/detail/nros_generated.h:5601`). The `context` argument has no counterpart because `rclc_support_t` IS the context (`c:support_*`), and the options LIFECYCLE (init/copy/fini) collapses into an inline struct -- `c:node_options_*` has the constraint.\n\nABSENT rather than adopt-bounded, stated because the obvious label is the other one: adopt-bounded promises the NAME exists with a weaker contract, and `rcl_node_init` does not exist here. A ported call gets `implicit declaration` and the rclc spelling one line away."
 }

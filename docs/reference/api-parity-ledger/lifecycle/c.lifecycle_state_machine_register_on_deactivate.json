@@ -2,5 +2,5 @@
   "key": "c:lifecycle_state_machine_register_on_deactivate",
   "bucket": "ours-only",
   "verdict": "extension",
-  "why": "phase-492 W1 (RFC-0089 amended 2026-10-12): the state-machine form of rclc's lifecycle verb. rclc's `rclc_lifecycle_change_state` / `rclc_lifecycle_register_on_*` take an `rclc_lifecycle_node_t*` and a context-less `int (*)(void)` callback; ours drive a `rclc_lifecycle_state_machine_t` with a context-carrying callback. Taking rclc's spelling would compile a ported call against a different contract, so the C API names it distinctly (`docs/reference/c-api-rename-map.tsv`, reviewed override). The rclc-shaped row is `c:lifecycle_register_on_deactivate`."
+  "why": "phase-492 W1 (RFC-0089 amended 2026-10-12): the state-machine form of rclc's lifecycle verb. rclc's `rclc_lifecycle_change_state` / `rclc_lifecycle_register_on_*` take an `rclc_lifecycle_node_t*` and a context-less `int (*)(void)` callback; ours drive a `rcl_lifecycle_state_machine_t` with a context-carrying callback. Taking rclc's spelling would compile a ported call against a different contract, so the C API names it distinctly (`docs/reference/c-api-rename-map.tsv`, reviewed override). The rclc-shaped row is `c:lifecycle_register_on_deactivate`."
 }

@@ -2,5 +2,5 @@
   "key": "rust:SpinOptions::clone_partial",
   "disposition": "absent",
   "verdict": "declined",
-  "why": "an rclrs internal that copies a `SpinOptions` while dropping its non-`Clone` fields, so the runtime can re-enter a spin. There is no re-entrant spin to feed -- `nros_executor_spin_some` is documented not reentrant."
+  "why": "an rclrs internal that copies a `SpinOptions` while dropping its non-`Clone` fields, so the runtime can re-enter a spin. There is no re-entrant spin to feed -- `rclc_executor_spin_some` is documented not reentrant."
 }

@@ -2,5 +2,5 @@
   "key": "c:shutdown",
   "disposition": "absent",
   "verdict": "declined",
-  "why": "as `rcl_init`: the rcl-layer counterpart. `nros_support_fini` is the rclc-shaped teardown."
+  "why": "as `rcl_init`: the rcl-layer counterpart. `rclc_support_fini` is the rclc-shaped teardown."
 }

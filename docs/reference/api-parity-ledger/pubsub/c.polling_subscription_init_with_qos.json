@@ -1,5 +1,8 @@
 {
   "key": "c:polling_subscription_init_with_qos",
   "verdict": "extension",
+  "retired_names": [
+    "nros_subscription_init_polling_with_qos"
+  ],
   "why": "RFC-0022's polling tier: an entity a task drains itself instead of receiving a callback, for code that owns its own loop and cannot accept an inversion of control. rclcpp has no counterpart because its executor always owns dispatch. Renamed from `nros_subscription_init_polling_with_qos` by phase-487 W1, when the polled subscription became its own type, `rclc_polling_subscription_t`: a subscription the executor dispatches keeps its subscriber in the executor arena, a polled one keeps it in the struct, and one type holding both meant every dispatched subscription carried storage only the polled road fills."
 }

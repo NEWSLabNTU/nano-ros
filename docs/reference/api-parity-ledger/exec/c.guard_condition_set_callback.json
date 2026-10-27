@@ -3,5 +3,10 @@
   "disposition": "absent",
   "retired": "retired by phase-417 W4.e with no forwarder; the row records why",
   "verdict": "declined",
+  "retired_names": [
+    "nros_executor_add_guard_condition",
+    "nros_guard_condition_init",
+    "nros_guard_condition_set_callback"
+  ],
   "why": "RETIRED 2026-09-18 (phase-417 W4.e), with no forwarder. It used to be a `divergence` recording that our three languages created a guard condition three ways from three owners with three callback bindings, and the ledger said the choice was open (\"Nothing about no_std picks between these\"). phase-417 W4.e (2026-09-18) settled it: the NODE is the owner, ONE call, callback bound at creation, in all three languages. C's spelling is `rclc_node_create_guard_condition(node, out, callback, context)`; `nros_guard_condition_set_callback` and `nros_guard_condition_init` are gone and so is `nros_executor_add_guard_condition`. Three reasons, and the arena constraint is NOT one of them -- it is satisfied through the node's executor either way. (1) Binding a callback after the fact is the shape we already REFUSE in C++ at `cpp:GuardCondition::set_on_trigger_callback`, so one constraint was enforced in two languages and contradicted in the third. (2) A porting user has a node in hand, not an executor. (3) MEASURED: the first two calls produced an INERT object -- `nros_guard_condition_init` only zeroed fields, nothing reached the arena until the third call, `handle_id` stayed `SIZE_MAX`, and a trigger landed on a local byte no executor watches. The one in-tree C caller (`examples/linux/c/custom-platform`) made the first two and never the third, so its SIGINT handler had been signalling nothing for four phases while every call returned `RCL_RET_OK`. rclc's counterpart stays what it was: `rclc_executor_add_guard_condition` takes the callback, we bind it to the ENTITY (RFC-0041). Blast radius of the retirement: four C references, two of them that one example. Behavioural proof: `packages/api/nros-c/tests/run/node_guard_condition.c` on `just check c`."
 }

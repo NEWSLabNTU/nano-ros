@@ -1,5 +1,8 @@
 {
   "key": "c:executor_add_subscription_raw",
   "verdict": "divergence",
+  "retired_names": [
+    "rclc_executor_add_subscription_typed"
+  ],
   "why": "phase-417 stage 6 — the callback moved OFF `*_init` and onto registration, so `rclc_{subscription,service}_init_default` now matches rclc's four-argument shape and the callback arrives here, exactly as rclc supplies it at `rclc_executor_add_subscription`.\n\nIt keeps the `nros_` prefix DELIBERATELY, and that is the whole content of this row. rclc's same-named calls deliver a DESERIALISED message into caller-owned storage; these deliver CDR BYTES. Taking rclc's spelling for a byte-oriented entry point would be a name whose contract differs -- the `PollingSubscription::take()` failure, which had rclcpp's name, rclcpp's signature and the opposite contract, and cost a spinning loop with no compile error.\n\nThe faithful rclc-shaped entry point exists beside it and DOES take rclc's name: `rclc_executor_add_subscription_with_context(exec, sub, &msg, cb, ctx, invocation)`, rclc's six arguments in rclc's order. CORRECTED 2026-10-25 (phase-515 W0): this sentence named `rclc_executor_add_subscription_typed` and a per-message `<Msg>_executor_add_subscription` macro; phase-492 W8 put the codec in the descriptor and deleted both. So the two shapes are distinguished by NAME rather than by a reader noticing which one deserialises, which is what RFC-0089 asks for."
 }

@@ -2,5 +2,8 @@
   "key": "c:executor_get_zero_initialized_executor",
   "disposition": "adopt",
   "verdict": "declined",
-  "why": "rclc's stuttering spelling -- the type name appears twice. Ours is `nros_executor_get_zero_initialized`, the method-style name on the type. See `c:get_zero_initialized_publisher`."
+  "retired_names": [
+    "nros_executor_get_zero_initialized"
+  ],
+  "why": "ADOPTED: rclc's spelling ships, `rclc_executor_get_zero_initialized_executor()` (CORRECTED 2026-10-27, phase-515 W0.b: the text below describes the method-style `nros_executor_get_zero_initialized` it replaced, which no longer exists).\n\nrclc's stuttering spelling -- the type name appears twice. Ours is `nros_executor_get_zero_initialized`, the method-style name on the type. See `c:get_zero_initialized_publisher`."
 }

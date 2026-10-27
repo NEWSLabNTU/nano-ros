@@ -1,5 +1,5 @@
 {
   "key": "cpp:create_service_client_raw",
   "verdict": "extension",
-  "why": "creates a raw, poll-style service client into caller-owned `cpp:ServiceClientStorage`; the caller then drives it with `nros_cpp_service_client_send_request` / `nros_cpp_service_client_try_recv_reply`. USER-FACING: the C++ and mixed workspaces' `AddClient` components and the Zephyr `service-client` example call it directly. It is the POLL tier -- RFC-0021's answer to rclcpp's `async_send_request` returning a `std::shared_future`, which needs a runtime to await (`cpp:Client::async_send_request`). rclcpp has no counterpart."
+  "why": "creates a raw, poll-style service client into caller-owned `cpp:ServiceClientStorage`; the caller then drives it with `nros_cpp_service_client_send_request` / `nros_cpp_service_client_take_response`. USER-FACING: the C++ and mixed workspaces' `AddClient` components and the Zephyr `service-client` example call it directly. It is the POLL tier -- RFC-0021's answer to rclcpp's `async_send_request` returning a `std::shared_future`, which needs a runtime to await (`cpp:Client::async_send_request`). rclcpp has no counterpart."
 }

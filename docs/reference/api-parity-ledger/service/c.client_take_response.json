@@ -1,5 +1,8 @@
 {
   "key": "c:client_take_response",
   "verdict": "extension",
+  "retired_names": [
+    "nros_client_try_recv_response"
+  ],
   "why": "the ours-only half of `c:take_response`: poll for the reply to the most recent `rclc_client_send_request_async`. Renamed from `nros_client_try_recv_response` by phase-379 W6 decision 1 (2026-09-03)."
 }

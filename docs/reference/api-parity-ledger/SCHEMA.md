@@ -179,6 +179,27 @@ verdict is one of:
               cannot outlive its prose. Not a place for a live quote that is
               wrong: fix the prose.
 
+`retired_names` -- C-prefixed names in `why` that no longer exist, named on
+              purpose as HISTORY (phase-515 W0.b). `--check` reads every
+              backticked span starting `rclc_`, `rcl_` or `nros_` and requires
+              the name to exist: in either side's extraction, or as a code
+              identifier (comments stripped) in a tracked source under
+              `packages/` or the upstream surfaces. A span ending in `*`, `{`
+              or `_` is a PREFIX and must begin some live name. W0.a's arity
+              check could not see these, because it judges only names the
+              extraction knows -- so a row describing a deleted function as
+              live passed it.
+
+              "Renamed from `nros_client_init_polling` by phase-487 W2" is
+              legitimate, and a heuristic cannot read tense, so the row
+              states it:
+
+                "retired_names": ["nros_client_init_polling"]
+
+              A listed name the `why` no longer contains is red, and so is a
+              listed name that EXISTS -- a live name is not history. Not a
+              place for a current-tense claim that is wrong: fix the prose.
+
 `envelope` -- where an `adopt-bounded` row's envelope is WRITTEN (issue 1637).
 
               RFC-0089's `adopt-bounded` says "same name and contract, weaker

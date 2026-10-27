@@ -2,5 +2,8 @@
   "key": "c:init_options_*",
   "bucket": "theirs-only",
   "verdict": "divergence",
+  "retired_names": [
+    "nros_init_options_t"
+  ],
   "why": "the options half of the same collapse. `rcl_init_options_t` is built, mutated (set_domain_id), copied and finalised before rcl_init consumes it; ours are not arguments at all: `rclc_support_init(&support, argc, argv, &allocator)` has rclc's signature since phase-492 W1.b, and the two values rcl's options would carry (locator, domain) come from the build and, on a hosted target, the environment (`NROS_LOCATOR`, `ROS_DOMAIN_ID`). `rclc_support_init_with_locator` takes them explicitly. There is no `nros_init_options_t`. CORRECTED 2026-09-04 (phase-417): the sweeping form of this claim -- \"there is no runtime options object\" -- is false one stage over. Seven ENTITY options structs ship and correlate `same` (see `c:node_options_*`); INIT is a stage that genuinely has none."
 }

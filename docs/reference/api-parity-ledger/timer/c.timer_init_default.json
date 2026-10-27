@@ -6,5 +6,8 @@
     "text": "**`support` may be NULL**"
   },
   "verdict": "divergence",
+  "retired_names": [
+    "rclc_timer_init_with_context"
+  ],
   "why": "phase-515 C1 (decision D2) -- ADOPTED with rclc's signature and rclc's callback contract, `rcl_timer_callback_t`. Until then this name was refused because our callback received a `void *context` where rclc's receives the time since its last call; D2 removed ours (`rclc_timer_init_with_context`) and moved all 34 in-tree callers, which reach their state through the timer with `RCLC_CONTAINER_OF` (the executor hands the callback the caller's own timer). ADOPT-BOUNDED, the envelope at the definition: `support` may be NULL, which rclc refuses -- it is never read, and a C component the generated entry hosts has none. Every call rclc accepts behaves as rclc's; `last_call_time`'s resolution is `c:timer_callback_t`'s."
 }
