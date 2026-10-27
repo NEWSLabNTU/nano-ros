@@ -18,7 +18,7 @@ name = "remap_talker"
 [dependencies]
 # Single platform/RMW-agnostic `nros` dep (phase-248 C6a): the concrete RMW
 # backend + platform flow from the board crate the sibling Entry pkg deps.
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
+nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed

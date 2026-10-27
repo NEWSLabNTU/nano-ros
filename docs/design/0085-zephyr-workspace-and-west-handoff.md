@@ -771,7 +771,23 @@ include climbs six levels into the checkout. Both are correct where they were
 written and meaningless one directory elsewhere.
 
 A real user's workspace has neither: it names `nros` by version and lets
-`nros sync` write the patch. So the check now **scaffolds** with the same verbs
+`nros sync` write the patch.
+
+> **Amended 2026-10-27 (issue 2085): in-tree workspaces ARE copy-out.** "Not
+> portable by construction" described how the 24 in-tree workspace packages
+> happened to be written, not something a workspace has to be. The ruling left
+> the tree's richest examples teaching the one shape that breaks when copied,
+> while every single-package example already used the portable one. Measured:
+> a copy of `examples/workspaces/launch` outside the checkout failed `nros
+> sync` with `no matching package named 'nros' found` as written, and synced
+> and built (`linux_entry`) with its two `nros = { path = … }` rows changed to
+> `version = "*"`, with no other edit. All 24 now name `nros` by version;
+> `check-example-path-deps` (fast line) refuses any tracked example manifest
+> whose `path` leaves `examples/`; and RFC-0026's copy-out contract covers
+> workspaces. The two-tree check below still scaffolds its workspace: that
+> tests the `nros new` road, which is worth testing in its own right.
+
+So the check now **scaffolds** with the same verbs
 a user runs — `nros new system`, `nros new entry`, `nros sync`, `nros build` —
 and the tree never lived in the checkout:
 

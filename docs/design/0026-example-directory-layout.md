@@ -3,7 +3,7 @@ rfc: 0026
 title: "Example directory layout"
 status: Stable
 since: 2026-02
-last-reviewed: 2026-07
+last-reviewed: 2026-10
 implements-tracked-by: []
 supersedes: []
 superseded-by: null
@@ -70,6 +70,15 @@ checkout; C/C++ CMakeLists resolve the nano-ros root through one guard —
 in-repo relative walk-up. Copying a directory out of the repo and building it
 against a checkout is part of the CI-checked surface
 (`just zephyr check-copy-out`, W6 smokes).
+
+**Workspaces are copy-out too** (issue 2085, 2026-10-27). A workspace under
+`examples/workspaces/` is copied as a whole, and its packages name nano-ros
+crates by version exactly as a single-package example does; `nros sync`
+writes the patch for each member. A path dependency is fine while it stays
+inside `examples/` (a sibling member, a `generated/` message crate) and refused
+the moment it leaves: `check-example-path-deps` is the fast-line gate. Until
+then the 24 workspace packages reached `nros` by five `..`, and RFC-0085 had
+ruled that acceptable; it is amended to match.
 
 > **The C/C++ CMakeLists shape is being reshaped by [RFC-0048](0048-cmake-ament-consumption.md)**
 > (phase-287, #171 D5): the `-DNANO_ROS_ROOT` guard (name since retired) becomes source-backed
@@ -217,6 +226,11 @@ under `packages/testing/{nros-tests/bins,nros-bench,nros-smoke}/`, not `examples
 
 ## Changelog
 
+- 2026-10-27 — The copy-out contract covers `examples/workspaces/` (issue
+  2085). The 24 workspace packages that path-depended on `nros` through the
+  repository layout name it by version; `check-example-path-deps` refuses a
+  tracked example manifest whose `path` leaves `examples/`. RFC-0085's "not
+  portable by construction" ruling is amended.
 - 2026-10-03 — `examples/bridges/` deleted (phase-477). Its two
   leaves, `rust/tt-zenoh-to-{xrce,cyclonedds}`, had no `fixtures.toml` row and
   no `system.toml`, so no lane built them — and the category carve-outs in

@@ -13,7 +13,7 @@ class = "service_client_pkg::AddClient"
 name = "add_client"
 
 [dependencies]
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
+nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
 example_interfaces = { path = "../../generated/example_interfaces", default-features = false }  # nros-managed

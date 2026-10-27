@@ -146,6 +146,14 @@ cargo-config-tracked:
 example-cargo-dirs:
     @python3 scripts/check-example-cargo-dirs.py
 
+# Issue 2085 (RFC-0085 amended) — every example is copy-out, workspaces too, so
+# no tracked example manifest reaches a crate by a `path` that leaves
+# `examples/`. It names the crate (`version = "*"`) and `nros sync` writes the
+# patch. The script runs its own negative control first, every time; the 24
+# workspace manifests main carried before this gate each tripped it.
+example-path-deps:
+    @python3 scripts/check-example-path-deps.py
+
 # phase-517 W8 (RFC-0098 amendment, accepted 2026-10-26) — a message `<depend>`
 # is one edit for Rust too: `nros sync` writes the `# nros-managed` path row, so
 # no tracked manifest hand-writes an untagged path row into `generated/`.
