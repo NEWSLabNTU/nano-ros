@@ -1,6 +1,10 @@
 {
   "key": "c:error_string_t",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "the 1024-byte formatted buffer rcl_get_error_string() returns BY VALUE. Same decision as error_state_t; listed separately because it is the half a caller actually touches."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc/detail/nros_generated.h",
+    "text": "ADOPT-BOUNDED: `RCUTILS_ERROR_MESSAGE_MAX_LENGTH` bytes, 256 here (1024"
+  },
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 C5): `rcl_get_error_string()` returns `rcl_error_string_t` BY VALUE, `.str` formatted as rcutils does (`\"<message>, at <file>:<line>\"`, or `\"error not set\"`). ENVELOPE (stated on the declaration): `RCUTILS_ERROR_MESSAGE_MAX_LENGTH` is 256 here (1024 upstream), so the by-value return costs a task stack 256 bytes, not a kilobyte; and the record is process-wide (see `c:error_state_t`). Test: `packages/api/nros-c/tests/run/rcl_error_state.c`. PRIOR ROW: the 1024-byte formatted buffer rcl_get_error_string() returns BY VALUE. Same decision as error_state_t; listed separately because it is the half a caller actually touches."
 }

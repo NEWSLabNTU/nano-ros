@@ -5,7 +5,8 @@
 
 /// Validate that none of the given pointers are null.
 ///
-/// Returns `RCL_RET_INVALID_ARGUMENT` if any pointer is null.
+/// Returns `RCL_RET_INVALID_ARGUMENT` if any pointer is null, naming the first
+/// null one in the error state `rcl_get_error_string` reads (phase-515 C5).
 ///
 /// # Example
 ///
@@ -15,9 +16,17 @@
 #[allow(unused_macros)] // Used in RMW-gated modules; appears unused in no-feature builds
 macro_rules! validate_not_null {
     ($($ptr:expr),+ $(,)?) => {
-        if $($ptr.is_null())||+ {
-            return RCL_RET_INVALID_ARGUMENT;
-        }
+        $(
+            if $ptr.is_null() {
+                // phase-515 C5 — the message `rcl_get_error_string` reads back.
+                $crate::error_handling::set_static(
+                    concat!(stringify!($ptr), " argument is null"),
+                    file!(),
+                    line!(),
+                );
+                return RCL_RET_INVALID_ARGUMENT;
+            }
+        )+
     };
 }
 
@@ -36,11 +45,21 @@ macro_rules! validate_not_null {
 macro_rules! validate_state {
     ($obj:expr, $expected:expr) => {
         if $obj.state != $expected {
+            $crate::error_handling::set_static(
+                concat!(stringify!($obj), " is not initialized"),
+                file!(),
+                line!(),
+            );
             return RCL_RET_NOT_INIT;
         }
     };
     ($obj:expr, $expected:expr, $err:expr) => {
         if $obj.state != $expected {
+            $crate::error_handling::set_static(
+                concat!(stringify!($obj), " is not in the state this call requires"),
+                file!(),
+                line!(),
+            );
             return $err;
         }
     };

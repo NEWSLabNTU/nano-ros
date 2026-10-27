@@ -124,6 +124,33 @@ struct rclc_goal_uuid_t;
 #define NROS_SERIALIZATION_FORMAT_ID 1
 
 /**
+ * rcutils' `RCUTILS_ERROR_STATE_MESSAGE_MAX_LENGTH` (768 upstream).
+ */
+#define RCUTILS_ERROR_STATE_MESSAGE_MAX_LENGTH 160
+
+/**
+ * rcutils' `RCUTILS_ERROR_STATE_FILE_MAX_LENGTH` (229 upstream).
+ */
+#define RCUTILS_ERROR_STATE_FILE_MAX_LENGTH 69
+
+/**
+ * rcutils' `RCUTILS_ERROR_STATE_LINE_NUMBER_STR_MAX_LENGTH`.
+ */
+#define RCUTILS_ERROR_STATE_LINE_NUMBER_STR_MAX_LENGTH 20
+
+/**
+ * rcutils' `RCUTILS_ERROR_FORMATTING_CHARACTERS` (`", at "` + `":"`).
+ */
+#define RCUTILS_ERROR_FORMATTING_CHARACTERS 6
+
+/**
+ * rcutils' `RCUTILS_ERROR_MESSAGE_MAX_LENGTH` (1024 upstream): the formatted
+ * `"<message>, at <file>:<line>"` with its NUL, which is what the four
+ * lengths above add up to, as upstream's do.
+ */
+#define RCUTILS_ERROR_MESSAGE_MAX_LENGTH ((((RCUTILS_ERROR_STATE_MESSAGE_MAX_LENGTH + RCUTILS_ERROR_STATE_FILE_MAX_LENGTH) + RCUTILS_ERROR_STATE_LINE_NUMBER_STR_MAX_LENGTH) + RCUTILS_ERROR_FORMATTING_CHARACTERS) + 1)
+
+/**
  * Issue 2014 — byte of a get_result reply where the result fields start
  * (`[encap 4][status i8][pad → 8][fields]`), for a C caller decoding what
  * `rclc_polling_action_client_try_recv_result_raw` returns. C ABI mirror of
@@ -976,6 +1003,36 @@ typedef struct rcl_duration_t {
    */
   uint32_t nanosec;
 } rcl_duration_t;
+
+/**
+ * rcl's `rcl_error_state_t` (rcutils' `rcutils_error_state_t`): the message,
+ * the file and the line of the last error set.
+ */
+typedef struct rcl_error_state_t {
+  /**
+   * NUL-terminated message, truncated to fit.
+   */
+  char message[RCUTILS_ERROR_STATE_MESSAGE_MAX_LENGTH];
+  /**
+   * NUL-terminated file name, truncated to fit.
+   */
+  char file[RCUTILS_ERROR_STATE_FILE_MAX_LENGTH];
+  /**
+   * Line number in `file`.
+   */
+  uint64_t line_number;
+} rcl_error_state_t;
+
+/**
+ * rcl's `rcl_error_string_t` (rcutils' `rcutils_error_string_t`):
+ * `"<message>, at <file>:<line>"`, returned by value.
+ */
+typedef struct rcl_error_string_t {
+  /**
+   * NUL-terminated formatted error.
+   */
+  char str[RCUTILS_ERROR_MESSAGE_MAX_LENGTH];
+} rcl_error_string_t;
 
 /**
  * Phase 115.C — C-side mirror of
@@ -4136,6 +4193,53 @@ struct rclc_time_t rclc_time_sub(struct rclc_time_t time,
  * Compare two times.
  */
 NROS_PUBLIC int rclc_time_compare(struct rclc_time_t a, struct rclc_time_t b);
+
+/**
+ * rcl's `rcl_set_error_state(error_string, file, line_number)`: record an
+ * error, replacing any previous one. A NULL string or file records an empty
+ * one.
+ *
+ * # Safety
+ * `error_string` and `file` must each be NULL or NUL-terminated.
+ *
+ * ADOPT-BOUNDED: one process-wide record, where rcl keeps one per thread.
+ */
+NROS_PUBLIC
+void rcl_set_error_state(const char *error_string,
+                         const char *file,
+                         size_t line_number);
+
+/**
+ * rcl's `rcl_error_is_set()`: true once an error is recorded and not reset.
+ *
+ * ADOPT-BOUNDED: one process-wide record, where rcl keeps one per thread.
+ */
+NROS_PUBLIC bool rcl_error_is_set(void);
+
+/**
+ * rcl's `rcl_get_error_state()`: the recorded error, or NULL when none is set.
+ *
+ * ADOPT-BOUNDED: the pointer names the PROCESS-wide record and is valid until
+ * the next `rcl_set_error_state` / `rcl_reset_error` on any thread (rcl's is
+ * per thread).
+ */
+NROS_PUBLIC const struct rcl_error_state_t *rcl_get_error_state(void);
+
+/**
+ * rcl's `rcl_get_error_string()`: `"<message>, at <file>:<line>"`, or
+ * `"error not set"` when none is (rcutils' text), by value.
+ *
+ * ADOPT-BOUNDED: `RCUTILS_ERROR_MESSAGE_MAX_LENGTH` bytes, 256 here (1024
+ * upstream), and the process-wide record (rcl's is per thread).
+ */
+NROS_PUBLIC struct rcl_error_string_t rcl_get_error_string(void);
+
+/**
+ * rcl's `rcl_reset_error()`: forget the recorded error.
+ *
+ * ADOPT-BOUNDED: one process-wide record, where rcl keeps one per thread.
+ */
+NROS_PUBLIC void rcl_reset_error(void);
 
 /**
  * Monotonic nanoseconds since a platform-defined epoch (RFC-0073).
