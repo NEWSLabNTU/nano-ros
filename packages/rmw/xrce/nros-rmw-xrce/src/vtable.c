@@ -33,6 +33,49 @@ static const char* xrce_get_implementation_identifier(void) {
     return kXrceImplementationIdentifier;
 }
 
+/* Issue 2110 — `get_gid_for_publisher` / `get_gid_for_client`.
+ *
+ * The XRCE protocol hands the client no GUID for an entity the Agent creates,
+ * but graph.c derives each tracked endpoint's DDS GID (issue 1292: the probed
+ * participant prefix plus the Agent's per-participant endpoint counter) and
+ * publishes it on `ros_discovery_info`. That is the identity a stock peer
+ * prints in `ros2 topic info --verbose`, so it is the one answered here — not
+ * stock `rmw_microxrcedds`'s copy of the client-local XRCE object id, which
+ * matches no DDS GID. A client's identity is its REQUEST writer: the GUID a
+ * server reads in the request id (`take_request_with_info`).
+ *
+ * UNSUPPORTED exactly when the endpoint is not tracked, never a guessed
+ * prefix. The identifier is the one `get_implementation_identifier` returns,
+ * so two gids naming one endpoint compare equal (`rmw_compare_gids_equal`
+ * checks the string first). */
+static rmw_ret_t xrce_fill_gid(xrce_session_state_t* st, const xrce_graph_endpoint* ep,
+                               rmw_gid_t* gid) {
+    xrce_session_lock(st);
+    bool known = xrce_graph_endpoint_gid(st, ep, gid->data);
+    xrce_session_unlock(st);
+    if (!known) {
+        return NROS_RMW_RET_UNSUPPORTED;
+    }
+    gid->implementation_identifier = kXrceImplementationIdentifier;
+    return NROS_RMW_RET_OK;
+}
+
+static rmw_ret_t xrce_get_gid_for_publisher(const rmw_publisher_t* publisher, rmw_gid_t* gid) {
+    if (publisher == NULL || publisher->backend_data == NULL || gid == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    const xrce_publisher_state* ps = (const xrce_publisher_state*)publisher->backend_data;
+    return xrce_fill_gid(ps->session_state, &ps->graph_writer, gid);
+}
+
+static rmw_ret_t xrce_get_gid_for_client(const rmw_client_t* client, rmw_gid_t* gid) {
+    if (client == NULL || client->backend_data == NULL || gid == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    const xrce_service_client_state* cs = (const xrce_service_client_state*)client->backend_data;
+    return xrce_fill_gid(cs->session_state, &cs->graph_writer, gid);
+}
+
 /* Phase 108 event hooks left NULL until a follow-up phase wires
  * micro-XRCE-DDS-Client status callbacks through to the runtime's
  * status-event surface. */
@@ -141,6 +184,10 @@ static const nros_rmw_vtable_t kVtable = {
     /* issue 1329 — this backend answers for ITSELF instead of the cffi
      * route answering a union on every C backend's behalf. */
     .supported_qos_policies = xrce_supported_qos_policies,
+
+    /* Issue 2110 — the DDS GID graph.c derives (see `xrce_fill_gid`). */
+    .get_gid_for_publisher = xrce_get_gid_for_publisher,
+    .get_gid_for_client = xrce_get_gid_for_client,
 };
 
 rmw_ret_t nros_rmw_xrce_register(void) {

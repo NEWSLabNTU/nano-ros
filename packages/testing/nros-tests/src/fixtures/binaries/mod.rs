@@ -4590,14 +4590,13 @@ pub fn build_graph_probe() -> TestResult<&'static Path> {
 pub fn build_graph_probe_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_BIN: OnceCell<PathBuf> = OnceCell::new();
     static CYCLONE_BIN: OnceCell<PathBuf> = OnceCell::new();
-    static XRCE_ABSENT: OnceCell<PathBuf> = OnceCell::new();
+    static XRCE_BIN: OnceCell<PathBuf> = OnceCell::new();
     let cell = match rmw {
         Rmw::Zenoh => &ZENOH_BIN,
         Rmw::Cyclonedds => &CYCLONE_BIN,
-        // XRCE has no graph, so it has no `[[fixture]]` row and no static
-        // slot. `select_row` below reports the missing row precisely; W6 makes
-        // "no graph" an `UNSUPPORTED` ANSWER at runtime rather than a fixture.
-        Rmw::Xrce => &XRCE_ABSENT,
+        // Issue 2110 — XRCE reads no graph, but its publisher GID is asked
+        // live through the probe's `GRAPH_PROBE_GID` mode.
+        Rmw::Xrce => &XRCE_BIN,
     };
     cell.get_or_try_init(|| {
         let row = crate::fixtures::groups::select_rmw_row(

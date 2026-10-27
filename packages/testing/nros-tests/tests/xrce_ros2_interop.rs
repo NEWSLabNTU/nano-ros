@@ -583,6 +583,140 @@ fn test_xrce_service_reports_the_stock_clients_request_id(
     );
 }
 
+/// The 24 bytes a `GRAPH_PROBE_PUB_GID <48 hex>` line carries.
+fn probe_gid(out: &str) -> Option<Vec<u8>> {
+    let hex = out
+        .lines()
+        .find_map(|l| {
+            l.trim()
+                .strip_prefix(nros_tests::output::GRAPH_PROBE_PUB_GID)
+        })?
+        .trim();
+    if hex.len() != 48 {
+        return None;
+    }
+    (0..24)
+        .map(|i| u8::from_str_radix(hex.get(2 * i..2 * i + 2)?, 16).ok())
+        .collect()
+}
+
+fn hex(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// Issue 2110 — the XRCE backend's `get_gid_for_publisher` against what a
+/// STOCK graph prints for the same publisher.
+///
+/// ```text
+/// graph-probe (XRCE, GRAPH_PROBE_GID) → XRCE Agent → DDS ← ros2 topic info --verbose (rmw_fastrtps_cpp)
+/// ```
+///
+/// The XRCE protocol hands the client no GUID; the backend derives each
+/// endpoint's (probed participant prefix + the Agent's endpoint counter, issue
+/// 1292) and lists it in `ros_discovery_info`, which is how the stock peer
+/// attributes the publisher to `graph_probe` at all. Asserted: the peer
+/// attributes our publisher to our node, and the GID it prints for it is the
+/// 16 bytes our `get_gid()` reports, the last 8 of the 24 zero. Stock
+/// `rmw_microxrcedds` would print a client-local object id here, which matches
+/// nothing a peer sees.
+///
+/// The probe's take half reports `GRAPH_PROBE_TAKE_ABSENT` on XRCE — a topic
+/// sample carries no writer GUID through the Agent (`rmw-vs-upstream.md` §9b) —
+/// and is not asserted.
+#[rstest]
+fn test_xrce_publisher_gid_is_the_one_a_stock_graph_reports() {
+    use std::process::Command;
+
+    require_xrce_agent();
+    require_ros2_dds();
+
+    use nros_tests::fixtures::RequireFixture;
+    let probe_bin = nros_tests::fixtures::build_graph_probe_rmw(nros_tests::fixtures::Rmw::Xrce)
+        .require("prebuilt XRCE graph-probe");
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
+    const TOPIC: &str = "/nros_xrce_gid_out";
+
+    let mut cmd = Command::new(probe_bin);
+    cmd.env("NROS_LOCATOR", &addr)
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string())
+        .env("GRAPH_PROBE_GID", "1")
+        .env("GRAPH_PROBE_GID_PUB_TOPIC", TOPIC)
+        .env("GRAPH_PROBE_GID_SUB_TOPIC", "/nros_xrce_gid_in")
+        .env("GRAPH_PROBE_TIMEOUT_MS", "40000");
+    let mut probe =
+        ManagedProcess::spawn_command(cmd, "graph-probe-gid-xrce").expect("spawn the gid probe");
+    let ready = probe
+        .wait_for_output_pattern(
+            nros_tests::output::GRAPH_PROBE_GID_READY,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| format!("<probe never reported ready: {e}>"));
+    let ours = probe_gid(&ready);
+
+    // Poll: the peer learns the publisher from SPDP/SEDP and the node from a
+    // `ros_discovery_info` sample, in either order (issues 0705, 0761).
+    let env_setup = nros_tests::ros2::ros2_env_setup_dds_with_domain(DEFAULT_ROS_DISTRO, domain_id);
+    let query =
+        nros_tests::ros2::ros2_query_cmd(&env_setup, 15, &format!("topic info --verbose {TOPIC}"));
+    let deadline = std::time::Instant::now() + Duration::from_secs(25);
+    let report = loop {
+        let out = Command::new("bash")
+            .args(["-c", &query])
+            .output()
+            .expect("run ros2 topic info");
+        let report = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let attributed =
+            !nros_tests::ros2::topic_endpoints_for_node(&report, "PUBLISHER", "graph_probe")
+                .is_empty();
+        if attributed || std::time::Instant::now() >= deadline {
+            break report;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    };
+    probe.kill();
+    drop(agent);
+
+    let context = format!("--- probe ---\n{ready}\n--- ros2 topic info --verbose ---\n{report}");
+    let ours = ours.unwrap_or_else(|| {
+        panic!(
+            "the probe printed no 24-byte `{}` line — get_gid_for_publisher answered \
+             UNSUPPORTED or an error (issue 2110)\n{context}",
+            nros_tests::output::GRAPH_PROBE_PUB_GID.trim()
+        )
+    });
+    assert!(
+        ours[..16].iter().any(|b| *b != 0) && ours[16..].iter().all(|b| *b == 0),
+        "our gid must be a 16-byte DDS GUID zero-extended to 24: {}\n{context}",
+        hex(&ours)
+    );
+    let eps = nros_tests::ros2::topic_endpoints_for_node(&report, "PUBLISHER", "graph_probe");
+    let [ep] = eps.as_slice() else {
+        panic!(
+            "the stock graph did not attribute exactly one publisher on {TOPIC} to `graph_probe` \
+             (found {}) — ros_discovery_info did not name it (issue 1292)\n{context}",
+            eps.len()
+        );
+    };
+    let theirs = nros_tests::ros2::endpoint_gid_bytes(&ep.block)
+        .unwrap_or_else(|| panic!("no GID line for our publisher\n{context}"));
+    assert_eq!(
+        hex(&theirs[..16]),
+        hex(&ours[..16]),
+        "get_gid_for_publisher is not the GID a stock peer knows our publisher by\n{context}"
+    );
+    eprintln!(
+        "[PASS] XRCE publisher gid {} = the stock graph's",
+        hex(&ours[..16])
+    );
+}
+
 // =============================================================================
 // Phase 183.6 — XRCE ↔ ROS 2: action (both directions) + reverse-direction
 // service. The existing tests cover pub/sub both ways + service

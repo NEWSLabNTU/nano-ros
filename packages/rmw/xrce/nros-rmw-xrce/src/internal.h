@@ -934,6 +934,10 @@ bool xrce_graph_claim(xrce_session_state_t* st, unsigned count, bool created, ui
 void xrce_graph_track(xrce_session_state_t* st, xrce_graph_endpoint* ep, const rmw_node_t* node,
                       uint32_t key, uint8_t kind);
 void xrce_graph_untrack(xrce_session_state_t* st, xrce_graph_endpoint* ep);
+/* Issue 2110 — `ep`'s DDS GID (24 bytes, the last 8 zero), the one
+ * `ros_discovery_info` lists. False when `ep` is not tracked: no GID is known. */
+bool xrce_graph_endpoint_gid(const xrce_session_state_t* st, const xrce_graph_endpoint* ep,
+                             uint8_t out[24]);
 /* Publish the sample if anything changed. Called from `drive_io`. */
 void xrce_graph_flush(xrce_session_state_t* st);
 /* The request callback's first stop: true if the request was the probe's. */

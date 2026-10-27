@@ -466,6 +466,23 @@ void xrce_graph_untrack(xrce_session_state_t* st, xrce_graph_endpoint* ep) {
     st->graph.dirty = true;
 }
 
+/* Issue 2110 — the GID a stock peer knows this endpoint by: the bytes
+ * `ros_discovery_info` lists for it, so the gid a caller is told and the gid a
+ * peer sees cannot disagree (the issue-1495 rule). 16 bytes (prefix, key,
+ * kind), zero-extended to the 24 `rmw_gid_t` carries — the shape Cyclone's
+ * DDS GUID has, and the bytes `take_request_with_info` reports for a request
+ * this endpoint wrote. An endpoint that was never TRACKED has no known GID —
+ * attribution off after an unanswered probe, or a key withheld after a failed
+ * create — and answers false rather than a fabricated prefix. */
+bool xrce_graph_endpoint_gid(const xrce_session_state_t* st, const xrce_graph_endpoint* ep,
+                             uint8_t out[XRCE_GRAPH_GID_LEN]) {
+    if (st == NULL || ep == NULL || out == NULL || !ep->linked) {
+        return false;
+    }
+    gid_of(&st->graph, ep->key, ep->kind, out);
+    return true;
+}
+
 /* ---- The sample ------------------------------------------------------- */
 
 static size_t graph_sample_bound(const xrce_graph* g) {

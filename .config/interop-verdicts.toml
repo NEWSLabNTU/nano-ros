@@ -250,12 +250,13 @@ evidence = "2 case(s) produced a result in interop_e2e.xml"
 
 [[verdict]]
 cell = "native-pubsub-rust-xrce-n2r"
-date = "2026-09-07"
+date = "2026-10-27"
 verdict = "pass"
-tests = ["test_ros2_to_xrce_pubsub", "test_xrce_to_ros2_pubsub"]
+tests = ["test_ros2_to_xrce_pubsub", "test_xrce_publisher_gid_is_the_one_a_stock_graph_reports", "test_xrce_to_ros2_pubsub"]
 run = "cargo nextest run -p nros-tests --test xrce_ros2_interop"
-where = "ros2 distrobox, Humble, tree with #684 + #692"
-evidence = "2 case(s) produced a result in xrce_ros2_interop.xml"
+where = "ros2 distrobox, Humble, MicroXRCEAgent 2.4.3-nros1, tree with issue 2110 (graph-probe-xrce)"
+evidence = "3 case(s) produced a result in junit-pubsub.xml"
+issue = "2110"
 
 [[verdict]]
 cell = "native-pubsub-rust-zenoh-n2r"

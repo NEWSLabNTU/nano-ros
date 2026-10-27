@@ -3394,7 +3394,9 @@ pub trait Publisher {
     /// [`PUBLISHER_GID_SIZE`](nros_core::PUBLISHER_GID_SIZE) wide, nothing
     /// truncated, no mapping — and since issue 1495 they are one VALUE on
     /// zenoh and Cyclone: a take reports the gid this publisher's own
-    /// `get_gid` reports, so the two compare. (XRCE and uORB answer neither.)
+    /// `get_gid` reports, so the two compare. (XRCE answers `get_gid` — the
+    /// DDS GID its graph derives, issue 2110 — but reports no take-side gid;
+    /// uORB answers neither.)
     ///
     /// **How many of the 24 bytes MEAN anything is a backend property.** A
     /// backend whose identity is narrower zero-extends through
