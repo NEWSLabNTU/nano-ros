@@ -12393,6 +12393,65 @@ fn publish_takes_the_message_borrowed_or_owned() {
     );
 }
 
+/// phase-515 R1 — the node's create sites take rclrs's
+/// `impl IntoPrimitiveOptions`: a bare name keeps the entity kind's default
+/// profile, and chained steps reach the backend's create call.
+#[test]
+fn create_sites_take_rclrs_primitive_options() {
+    use crate::IntoPrimitiveOptions;
+    use nros_rmw::{QoSDurabilityPolicy, QoSReliabilityPolicy};
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    {
+        let mut node = executor.create_node("opts").expect("node");
+        let _p = node
+            .create_publisher::<TestMsg>("/opts_pub".keep_last(3).best_effort().transient_local())
+            .expect("publisher");
+        let _plain = node
+            .create_publisher::<TestMsg>("/opts_plain")
+            .expect("bare name");
+        let name = alloc::string::String::from("/opts_sub");
+        node.create_subscription::<TestMsg, _>(&name, |_m: &TestMsg| {})
+            .expect("a borrowed String names an entity");
+        node.create_service::<TestService, _>("/opts_srv".keep_last(5), |_r| TestServiceReply {
+            sum: 0,
+        })
+        .expect("service");
+        let _c = node
+            .create_client::<TestService>("/opts_cli".best_effort())
+            .expect("client");
+    }
+    let session = executor.session();
+    let qos = |n: &str| {
+        session
+            .created_qos(n)
+            .unwrap_or_else(|| panic!("{n} created"))
+    };
+
+    let p = qos("/opts_pub");
+    assert_eq!(
+        (p.depth, p.reliability),
+        (3, QoSReliabilityPolicy::BestEffort)
+    );
+    assert_eq!(p.durability, QoSDurabilityPolicy::TransientLocal);
+    assert_eq!(
+        qos("/opts_plain"),
+        QoSProfile::default(),
+        "a bare name keeps the default"
+    );
+    assert_eq!(qos("/opts_sub"), QoSProfile::default());
+
+    let srv = qos("/opts_srv");
+    let services = QoSProfile::services_default();
+    assert_eq!(srv.depth, 5);
+    assert_eq!(
+        srv.reliability, services.reliability,
+        "unnamed policies keep the services profile"
+    );
+    let cli = qos("/opts_cli");
+    assert_eq!(cli.reliability, QoSReliabilityPolicy::BestEffort);
+    assert_eq!(cli.depth, services.depth);
+}
+
 /// phase-444 — the matched-count pair reaches ITS OWN graph counter.
 ///
 /// `MockSession::with_graph` answers `count_publishers` and `count_subscribers`

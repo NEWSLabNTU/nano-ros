@@ -1,6 +1,6 @@
 {
   "key": "rust:IntoPrimitiveOptions::liveliness",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 R1): `liveliness` on `IntoPrimitiveOptions`, rclrs's name and arguments; see `rust:IntoPrimitiveOptions`. PRIOR ROW: see `rust:IntoPrimitiveOptions`."
 }

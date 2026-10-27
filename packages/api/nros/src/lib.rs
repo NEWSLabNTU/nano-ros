@@ -334,6 +334,9 @@ pub mod logging {
 // Re-export heapless for generated message types and examples
 pub use nros_core::heapless;
 
+// phase-515 R1 — rclrs's per-entity options, beside R2's node options.
+pub use nros_node::{IntoPrimitiveOptions, PrimitiveOptions};
+
 // Phase 212.M.5.a.2 — executor-backed runtime entry points.
 // (`component_register_symbol` retired in the Phase 212.N.7 closing
 // sweep — the helper had no live callers after the BSP baker + macro
@@ -1596,6 +1599,8 @@ pub mod prelude {
 
     // phase-515 R2 -- `executor.create_node("talker".namespace("/ns"))`.
     pub use crate::{IntoNodeOptions, NodeOptions};
+    // phase-515 R1 -- `node.create_publisher::<M>("chatter".keep_last(10))`.
+    pub use crate::{IntoPrimitiveOptions, PrimitiveOptions};
 
     // Re-export lifecycle types
     pub use crate::{

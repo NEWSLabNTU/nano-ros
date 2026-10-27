@@ -111,6 +111,7 @@ pub mod limits;
 pub mod names;
 mod node;
 mod node_options;
+mod primitive_options;
 mod publisher;
 pub mod ros_args;
 #[cfg(any(has_rmw, test))]
@@ -262,6 +263,8 @@ pub use node::{PublisherOptions, SubscriptionOptions};
 
 /// phase-515 R2 -- rclrs's node options and `IntoNodeOptions`.
 pub use node_options::{IntoNodeOptions, NodeOptions};
+/// phase-515 R1 -- rclrs's per-entity options and `IntoPrimitiveOptions`.
+pub use primitive_options::{IntoPrimitiveOptions, PrimitiveOptions};
 
 // Re-export session mode (used by ExecutorConfig)
 pub use nros_rmw::SessionMode;

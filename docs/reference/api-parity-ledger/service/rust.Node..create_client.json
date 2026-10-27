@@ -1,5 +1,10 @@
 {
   "key": "rust:Node::create_client",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-node/src/executor/node.rs",
+    "text": "ADOPT-BOUNDED (client)"
+  },
   "verdict": "divergence",
-  "why": "entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`. Ours is `DeclaredNode::create_service_client_for_name`."
+  "why": "ADOPTED 2026-10-27 (phase-515 R1): `Node::create_client<Svc>(impl IntoPrimitiveOptions)`, rclrs's argument: a bare name keeps the entity kind's default profile and chained steps (`\"x\".keep_last(10).reliable()`) override the policies they name. ENVELOPE (stated on the method): the returned handle is the executor-table one, not rclrs's owned/reference-counted object. Test: `create_sites_take_rclrs_primitive_options`. PRIOR ROW: entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`. Ours is `DeclaredNode::create_service_client_for_name`."
 }
