@@ -83,6 +83,21 @@ fn main() {
 
     #[cfg(feature = "posix-c-port")]
     {
+        // The port anchor, whole-archived AHEAD of the port (link order is
+        // the order of these `compile` calls). It is what lets the crates this
+        // one depends on, which link AFTER the port (`nros-log`'s clock,
+        // `nros-platform-api`'s task calls), resolve their port symbols.
+        // Why, in `c/port_anchor.c`.
+        println!("cargo:rerun-if-changed=c/port_anchor.c");
+        nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
+            &mut cc::Build::new(),
+        ))
+        .file("c/port_anchor.c")
+        .include("../nros-platform-api/include")
+        .warnings(true)
+        .extra_warnings(true)
+        .link_lib_modifier("+whole-archive")
+        .compile("nros_platform_cffi_port_anchor");
         // issue 0383 — implicit-function-declaration / int-conversion as errors.
         nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
             &mut cc::Build::new(),
@@ -99,6 +114,11 @@ fn main() {
         .extra_warnings(true)
         .flag_if_supported("-Wpedantic")
         .define("_POSIX_C_SOURCE", "200809L")
+        // `-bundle` gives the port its own `-l` on the final link, right after
+        // the anchor above. Bundled, it sat INSIDE this crate's rlib, AHEAD of
+        // the whole-archived anchor, so the anchor's reference came too late
+        // for it as well.
+        .link_lib_modifier("-bundle")
         .compile("nros_platform_posix");
         // issue 1580 — declare every file the compiler OPENED (the `-MMD`
         // depfiles), not only the files this script can name by hand.
