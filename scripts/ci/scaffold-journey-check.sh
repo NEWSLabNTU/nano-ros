@@ -79,14 +79,24 @@ if [ ! -s "$proj/metadata/${name}.json" ] || [ -e "$proj/metadata/${name}.json.u
 fi
 echo "  [ok] nros sync probed the scaffolded node (metadata/${name}.json)"
 
-# The managed patch block must redirect both `nros` and the board crate to paths.
-for crate in "nros = {" "nros-board"; do
-    if ! grep -q "$crate" "$proj/Cargo.toml"; then
-        echo "FAIL: '$crate' not patched into the [patch.crates-io] block after sync" >&2
-        sed -n '/BEGIN nros-managed/,/END nros-managed/p' "$proj/Cargo.toml" >&2
-        exit 1
-    fi
-done
+# The managed patch block must redirect `nros` to a path.
+if ! grep -q "nros = {" "$proj/Cargo.toml"; then
+    echo "FAIL: 'nros = {' not patched into the [patch.crates-io] block after sync" >&2
+    sed -n '/BEGIN nros-managed/,/END nros-managed/p' "$proj/Cargo.toml" >&2
+    exit 1
+fi
+
+# Issue 2079: the scaffold names no board crate. It reaches the board,
+# backend and edition through the `<pkg>_nros_selection` path dep, which
+# `nros sync` generates, so check that dep and the package sync wrote.
+# `cargo tree` below proves the whole graph resolves.
+sel="${name}_nros_selection"
+if ! grep -q "^${sel} = " "$proj/Cargo.toml" || [ ! -s "$proj/build/nros/selection/Cargo.toml" ]; then
+    echo "FAIL: '${sel}' is not a dependency, or sync wrote no build/nros/selection/Cargo.toml" >&2
+    grep -n "nros_selection" "$proj/Cargo.toml" >&2 || echo "      no selection dep in Cargo.toml" >&2
+    ls -la "$proj/build/nros/selection" >&2 2>/dev/null || echo "      no build/nros/selection/ dir" >&2
+    exit 1
+fi
 
 echo "::group::cargo tree (resolution)"
 if ( cd "$proj" && cargo tree -e no-dev >/dev/null 2>&1 ); then
