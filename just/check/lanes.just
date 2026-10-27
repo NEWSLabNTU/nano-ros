@@ -1732,6 +1732,27 @@ cpp: cpp-fmt
         "$gen/nros-cpp-tests"/stub_rmw_backend.o \
         "$nros_cpp_lib" -lpthread -ldl -lm
     "$gen/nros-cpp-tests"/executor_node_members_runtime
+    # phase-515 P5 -- rclcpp::Clock::sleep_until / sleep_for drive the executor
+    # (callbacks run during the wait), hold a LOWER bound on a steady sleep, and
+    # wake a ROS-time clock when SIMULATED time arrives.
+    test -f packages/api/nros-cpp/tests/compile/clock_sleep_runtime.cpp || { \
+        echo "ERROR: clock_sleep_runtime.cpp is MISSING -- this check would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - rclcpp::Clock::sleep_until / sleep_for (runtime, phase-515 P5)"
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -I"$cppgen" \
+        -I"$cgen" \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        -o "$gen/nros-cpp-tests"/clock_sleep_runtime \
+        packages/api/nros-cpp/tests/compile/clock_sleep_runtime.cpp \
+        "$gen/nros-cpp-tests"/stub_rmw_backend.o \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    "$gen/nros-cpp-tests"/clock_sleep_runtime
     # W4.d — two nodes in one image under DISTINCT logger names, independent
     # thresholds through `rclcpp::Logger::set_level`, and ONE resolve-or-create
     # helper behind both the node accessor and the named lookup. The C twin is

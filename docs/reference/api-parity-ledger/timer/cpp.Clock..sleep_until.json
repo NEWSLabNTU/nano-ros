@@ -1,6 +1,10 @@
 {
   "key": "cpp:Clock::sleep_until",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "rclcpp's `Rate` blocks the calling thread in a sleep loop to hold a fixed frequency. RFC-0021 forbids a blocking helper that does not drive the executor -- a `Rate::sleep` on a single-threaded executor stops the transport for the whole period. The periodic work shape here is a timer, which the executor drives."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/clock.hpp",
+    "text": "ADOPT-BOUNDED (RFC-0021): the wait DRIVES the context's executor — its"
+  },
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 P5; maintainer decision the same day: spin while sleeping): `sleep_until(Time until, Context context)` and the one-argument form on the global default context. The refusal below was about a sleep that BLOCKS; this one does not -- the wait is one call into `nros_cpp_spin_until_clock`, which spins the context's executor (callbacks run during it) until THIS clock reaches the deadline, so a ROS-time clock driven by `/clock` wakes when simulated time arrives. The loop lives Rust-side, as `Rate::sleep`'s does in `nros_cpp_spin_for`, because a wrapper looping over `spin_once` is RFC-0020 class 2. ENVELOPE (stated on the declaration): callbacks run during the sleep, where upstream's sleep runs nothing; `false` without sleeping before `rclcpp::init`, for a deadline on another clock type (upstream throws), from inside a callback (not reentrant), or on a termination signal. Test: `packages/api/nros-cpp/tests/compile/clock_sleep_runtime.cpp`. PRIOR ROW: rclcpp's `Rate` blocks the calling thread in a sleep loop to hold a fixed frequency. RFC-0021 forbids a blocking helper that does not drive the executor -- a `Rate::sleep` on a single-threaded executor stops the transport for the whole period. The periodic work shape here is a timer, which the executor drives."
 }
