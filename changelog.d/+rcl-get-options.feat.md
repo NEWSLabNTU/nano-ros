@@ -1,0 +1,1 @@
+C: `rcl_publisher_get_options`, `rcl_subscription_get_options`, `rcl_service_get_options`, `rcl_client_get_options`, `rcl_action_client_get_options` and `rcl_action_server_get_options` return the options a handle was initialised with. The options carry nano-ros's fields (the scheduling context, and the subscription's message-info flag), not rcl's `qos` or `allocator`.

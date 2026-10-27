@@ -314,6 +314,29 @@ alone. Test `packages/api/nros-c/tests/run/rcl_error_state.c` (`just check c`).
 **C6 — `rcl_*_get_options` (publisher, subscription, client, service, action
 client, action server).** Declined because nothing retains the options. Keep a
 copy on the handle; price the bytes per entity before deciding.
+**Decided 2026-10-28 (maintainer): adopt, all six.** **LANDED 2026-10-28:**
+each handle holds the options it was initialised with, and
+`rcl_{publisher,subscription,service,client,action_client,action_server}_get_options`
+returns a pointer to that copy: all zero after an init without options, NULL for
+a NULL or unusable handle. Where the handle already copied `sched_context_id`,
+the options struct REPLACES that field, and the executor reads
+`options.sched_context`. Envelope: our options carry the scheduling context
+(and the subscription's message-info flag; the publisher's carries reserved
+bytes only), not rcl's `qos` / `allocator`, so a ported `->qos` does not
+compile. Handle size and the padding the options leave, measured with
+`sizeof`/`offsetof` (x86_64 / cortex-m3); the options struct replaces a
+`sched_context_id` the handle already held, so padding is the growth:
+
+| entity | handle | padding |
+| --- | --- | --- |
+| subscription | 752 / 704 | 7 / 3 after the options |
+| service | 744 / 704 | 3 / 3 |
+| client | 752 / 708 | 3 / 3 |
+| action client | 784 / 716 | 7 / 3 |
+| publisher | 1336 / 1320 | 4 / 3 after `topic_name` (new field) |
+| action server | 1144 / 992 | -- |
+
+Test `packages/api/nros-c/tests/run/entity_get_options.c` (`just check c`).
 
 **C7 — issue 2030.** The C callback tier has no cancel-reply slot, so the fifth
 `rclc_action_cancel_goal` is refused. Medium severity; it is a correctness gap,

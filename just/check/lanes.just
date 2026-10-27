@@ -477,6 +477,22 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/entity_remove_cycles
     ./tmp/entity_remove_cycles
+    echo "  - phase-515 C6: rcl_*_get_options answers what each of the six entity"
+    echo "    kinds was initialised with (zero without options, NULL when unusable)"
+    test -f packages/api/nros-c/tests/run/entity_get_options.c || { \
+        echo "ERROR: entity_get_options.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/entity_get_options.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/entity_get_options
+    ./tmp/entity_get_options
     echo "  - issue 1376: a subscription's slot is sized from its type's bound, through"
     echo "    every rclc entry point that takes an rcl_subscription_t"
     # One bounded and one unbounded registration per entry point, arena delta

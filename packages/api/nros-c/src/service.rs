@@ -210,7 +210,7 @@ pub struct rcl_service_t {
     /// explicit bind); set via `rclc_service_init_with_options`. When non-zero,
     /// `rclc_executor_add_service_raw` binds the freshly-created handle to
     /// this SC after registration.
-    pub sched_context_id: crate::executor::rclc_sched_context_id_t,
+    pub options: rcl_service_options_t,
     /// Internal state (arena entry index + executor pointer). Phase 87.5:
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ServiceServerInternal,
@@ -229,7 +229,7 @@ impl Default for rcl_service_t {
             node: crate::node::rclc_node_ref_t::none(),
             type_support: core::ptr::null(),
             qos: crate::qos::rclc_qos_t::default(),
-            sched_context_id: 0,
+            options: rcl_service_options_t::zeroed(),
             _internal: ServiceServerInternal::new(),
         }
     }
@@ -412,7 +412,7 @@ pub unsafe extern "C" fn rclc_service_init_default(
 /// to stack-allocate, memcpy, and pass across the FFI. Zero-init selects the
 /// default behaviour, identical to `rclc_service_init_with_qos`.
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct rcl_service_options_t {
     /// Scheduling-context slot to bind the service's executor handle to.
     /// `0` = inherit the executor / Node default (no explicit bind). A non-zero
@@ -422,6 +422,41 @@ pub struct rcl_service_options_t {
     pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads the struct for ABI stability.
     pub _reserved: [u8; 3],
+}
+
+impl rcl_service_options_t {
+    /// Every field zero, as `Default` gives -- `const`, for the handles'
+    /// zero-initialisers (phase-515 C6).
+    pub(crate) const fn zeroed() -> Self {
+        Self {
+            sched_context: 0,
+            _reserved: [0; 3],
+        }
+    }
+}
+
+/// rcl's `rcl_service_get_options(service)`: the options the service was
+/// initialised with -- all zero when it was initialised without any -- or
+/// NULL for a NULL or unusable handle (phase-515 C6).
+///
+/// ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
+/// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+/// the handle's QoS is the one it was created with.
+///
+/// # Safety
+/// `service` must be NULL or point to a valid `rcl_service_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_service_get_options(
+    service: *const rcl_service_t,
+) -> *const rcl_service_options_t {
+    if service.is_null() {
+        return core::ptr::null();
+    }
+    let service = &*service;
+    if !service.is_usable() {
+        return core::ptr::null();
+    }
+    &service.options
 }
 
 /// Get a zero-initialised [`rcl_service_options_t`] (`sched_context = 0`).
@@ -454,7 +489,7 @@ pub unsafe extern "C" fn rclc_service_init_with_options(
         return ret;
     }
     if !options.is_null() {
-        (*service).sched_context_id = (*options).sched_context;
+        (*service).options = *options;
     }
     RCL_RET_OK
 }
@@ -1200,7 +1235,7 @@ pub struct rcl_client_t {
     /// `rclc_client_init_with_options`. When non-zero,
     /// `rclc_executor_attach_client` binds the freshly-created handle to this
     /// SC after registration.
-    pub sched_context_id: crate::executor::rclc_sched_context_id_t,
+    pub options: rcl_client_options_t,
     /// Internal state (arena entry index + executor pointer + timeout).
     /// Typed C-ABI handle field.
     pub _internal: ServiceClientInternal,
@@ -1219,7 +1254,7 @@ impl Default for rcl_client_t {
             node: crate::node::rclc_node_ref_t::none(),
             type_support: core::ptr::null(),
             qos: crate::qos::rclc_qos_t::default(),
-            sched_context_id: 0,
+            options: rcl_client_options_t::zeroed(),
             _internal: ServiceClientInternal::new(),
         }
     }
@@ -1377,7 +1412,7 @@ pub unsafe extern "C" fn rclc_client_init_with_qos(
 /// `rcl_service_options_t`). QoS is passed separately; this carries the
 /// non-QoS axes. Zero-init selects the default behaviour.
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct rcl_client_options_t {
     /// Scheduling-context slot to bind the client's executor handle to.
     /// `0` = inherit the executor / Node default. A non-zero value must be an id
@@ -1386,6 +1421,41 @@ pub struct rcl_client_options_t {
     pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads for ABI stability.
     pub _reserved: [u8; 3],
+}
+
+impl rcl_client_options_t {
+    /// Every field zero, as `Default` gives -- `const`, for the handles'
+    /// zero-initialisers (phase-515 C6).
+    pub(crate) const fn zeroed() -> Self {
+        Self {
+            sched_context: 0,
+            _reserved: [0; 3],
+        }
+    }
+}
+
+/// rcl's `rcl_client_get_options(client)`: the options the client was
+/// initialised with -- all zero when it was initialised without any -- or
+/// NULL for a NULL or unusable handle (phase-515 C6).
+///
+/// ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
+/// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+/// the handle's QoS is the one it was created with.
+///
+/// # Safety
+/// `client` must be NULL or point to a valid `rcl_client_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_client_get_options(
+    client: *const rcl_client_t,
+) -> *const rcl_client_options_t {
+    if client.is_null() {
+        return core::ptr::null();
+    }
+    let client = &*client;
+    if !client.is_usable() {
+        return core::ptr::null();
+    }
+    &client.options
 }
 
 /// Get a zero-initialised [`rcl_client_options_t`] (`sched_context = 0`).
@@ -1416,7 +1486,7 @@ pub unsafe extern "C" fn rclc_client_init_with_options(
         return ret;
     }
     if !options.is_null() {
-        (*client).sched_context_id = (*options).sched_context;
+        (*client).options = *options;
     }
     RCL_RET_OK
 }
@@ -2675,7 +2745,7 @@ mod verification {
             )
         };
         assert_eq!(ret, RCL_RET_OK);
-        assert_eq!(svc.sched_context_id, requested);
+        assert_eq!(svc.options.sched_context, requested);
 
         // NULL options ⇒ default (inherit).
         let mut svc2 = rcl_get_zero_initialized_service();
@@ -2690,7 +2760,7 @@ mod verification {
             )
         };
         assert_eq!(ret2, RCL_RET_OK);
-        assert_eq!(svc2.sched_context_id, 0);
+        assert_eq!(svc2.options.sched_context, 0);
     }
 
     #[kani::proof]
@@ -2840,7 +2910,7 @@ mod verification {
             )
         };
         assert_eq!(ret, RCL_RET_OK);
-        assert_eq!(client.sched_context_id, 5);
+        assert_eq!(client.options.sched_context, 5);
     }
 
     #[kani::proof]

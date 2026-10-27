@@ -2197,7 +2197,7 @@ unsafe fn register_subscription_entry(
     // `rclc_executor_create_sched_context`; an unknown id fails the
     // registration so the caller learns the binding was rejected rather than
     // silently dropped.
-    let requested_sc = sub_mut.sched_context_id;
+    let requested_sc = sub_mut.options.sched_context;
     if requested_sc != 0 {
         let sc_id = nros_node::executor::sched_context::SchedContextId(requested_sc);
         if rust_exec
@@ -3489,7 +3489,7 @@ unsafe fn add_service_raw(
         let svc_qos = service_ref.get_qos_settings();
         // Phase 189.M3.3.a — capture the requested sched-context slot before the
         // `&mut *service` reborrow in the Ok arm (avoids an aliasing borrow).
-        let requested_sc = service_ref.sched_context_id;
+        let requested_sc = service_ref.options.sched_context;
         let result = match (callback, node_id) {
             (ServiceRawCallback::Plain(callback), Some(node_id)) => rust_exec
                 .register_service_raw_sized_on::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
@@ -3661,7 +3661,7 @@ unsafe fn attach_client_with(
         let client_qos = client_ref.get_qos_settings();
         // Phase 189.M3.3.a — capture the requested sched-context slot before the
         // `&mut *client` reborrow in the Ok arm (avoids an aliasing borrow).
-        let requested_sc = client_ref.sched_context_id;
+        let requested_sc = client_ref.options.sched_context;
         let result = rust_exec.register_service_client_raw_capturing::<MESSAGE_BUFFER_SIZE>(
             node_id,
             service_name,
@@ -3808,7 +3808,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_server(
         let server_qos = server_ref.get_qos_settings();
         // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
         // Ok arm using the action server's goal-service handle).
-        let requested_sc = server_ref.sched_context_id;
+        let requested_sc = server_ref.options.sched_context;
         let node_id = registration_node_id(server_ref.node);
         let result = rust_exec
             .register_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
@@ -3946,7 +3946,7 @@ pub unsafe extern "C" fn rclc_executor_attach_action_client(
         let node_id = registration_node_id(client_ref.node);
         // Phase 189.M3.3.b — requested sched-context slot (bind applied at the
         // Ok arm; the client handle's entry_index is its callback slot).
-        let requested_sc = client_ref.sched_context_id;
+        let requested_sc = client_ref.options.sched_context;
 
         // Create a NEW ActionClientCore in the arena via register_action_client_raw.
         // The async send functions will use this core (not the client's original).

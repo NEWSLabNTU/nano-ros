@@ -122,6 +122,10 @@ pub struct rcl_publisher_t {
     pub state: rclc_publisher_state_t,
     /// Topic name storage
     pub topic_name: [u8; MAX_TOPIC_LEN],
+    /// The options it was initialised with (all zero without any), which
+    /// `rcl_publisher_get_options` returns (phase-515 C6). Placed in the
+    /// alignment padding after `topic_name`.
+    pub options: rcl_publisher_options_t,
     /// Topic name length
     pub topic_name_len: usize,
     /// Type name storage
@@ -148,6 +152,7 @@ impl Default for rcl_publisher_t {
         Self {
             state: rclc_publisher_state_t::RCLC_PUBLISHER_STATE_UNINITIALIZED,
             topic_name: [0u8; MAX_TOPIC_LEN],
+            options: rcl_publisher_options_t::zeroed(),
             topic_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
             type_name_len: 0,
@@ -177,12 +182,44 @@ impl Default for rcl_publisher_t {
 /// (all fields 0) selects the default behaviour, identical to
 /// `rclc_publisher_init_with_qos`.
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct rcl_publisher_options_t {
     /// Reserved for future use; must be zero. Pads the struct to a
     /// non-empty layout and reserves room for later publisher-only axes
     /// (e.g. a future loan-pool hint) without an ABI break.
     pub _reserved: [u8; 4],
+}
+
+impl rcl_publisher_options_t {
+    /// Every field zero, as `Default` gives -- `const`, for the handles'
+    /// zero-initialisers (phase-515 C6).
+    pub(crate) const fn zeroed() -> Self {
+        Self { _reserved: [0; 4] }
+    }
+}
+
+/// rcl's `rcl_publisher_get_options(publisher)`: the options the publisher was
+/// initialised with -- all zero when it was initialised without any -- or
+/// NULL for a NULL or unusable handle (phase-515 C6).
+///
+/// ADOPT-BOUNDED: nano-ros's options carry reserved bytes only, not rcl's `qos`,
+/// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+/// the handle's QoS is the one it was created with.
+///
+/// # Safety
+/// `publisher` must be NULL or point to a valid `rcl_publisher_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_publisher_get_options(
+    publisher: *const rcl_publisher_t,
+) -> *const rcl_publisher_options_t {
+    if publisher.is_null() {
+        return core::ptr::null();
+    }
+    let publisher = &*publisher;
+    if !publisher.is_usable() {
+        return core::ptr::null();
+    }
+    &publisher.options
 }
 
 /// Get a zero-initialised [`rcl_publisher_options_t`].
@@ -444,14 +481,16 @@ pub unsafe extern "C" fn rclc_publisher_init_with_options(
     qos: *const rclc_qos_t,
     options: *const rcl_publisher_options_t,
 ) -> rcl_ret_t {
-    // `options` carries no wired axis today (reserved). Validate it if
-    // non-NULL so a future field gain doesn't silently accept garbage,
-    // then delegate to the QoS path.
-    if !options.is_null() {
-        let _opts = &*options;
-        // No-op: every field is currently reserved.
+    // `options` carries no wired axis today (reserved); it is kept on the
+    // handle for `rcl_publisher_get_options` (phase-515 C6).
+    let ret = rclc_publisher_init_with_qos(publisher, node, type_info, topic_name, qos);
+    if ret != RCL_RET_OK {
+        return ret;
     }
-    rclc_publisher_init_with_qos(publisher, node, type_info, topic_name, qos)
+    if !options.is_null() {
+        (*publisher).options = *options;
+    }
+    RCL_RET_OK
 }
 
 /// Publish CDR-serialized data — rcl's `rcl_publish_serialized_message`.
