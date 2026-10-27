@@ -935,10 +935,12 @@ def _mutation_self_test(files: dict[str, str], verbose: bool) -> int:
     m = dict(files)
     m[xrce_session] = m[xrce_session].replace(
         "*out_mask = NROS_RMW_QOS_POLICY_RELIABILITY",
-        "*out_mask = NROS_RMW_QOS_POLICY_DEADLINE | NROS_RMW_QOS_POLICY_RELIABILITY",
+        "*out_mask = NROS_RMW_QOS_POLICY_LIFESPAN | NROS_RMW_QOS_POLICY_RELIABILITY",
         1,
     )
-    red("xrce advertises a deadline it cannot serve", m, "advertises ['DEADLINE'] with no")
+    # LIFESPAN, not DEADLINE: issue 2108 gave xrce a real deadline (emulated
+    # client-side), so DEADLINE is now honoured and its claim is evidenced.
+    red("xrce advertises a lifespan it cannot serve", m, "advertises ['LIFESPAN'] with no")
 
     # 8. The slot DISAGREES with the claims the other way: a policy the
     #    backend implements and the mask forgets, so the runtime refuses it.

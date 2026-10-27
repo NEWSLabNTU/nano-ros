@@ -501,7 +501,7 @@ reason = "issue 1978: as rmw_count_clients, counting servers (`SS` tokens; reade
 where = "vtable"
 nano = "event_type_is_supported"
 editions = ["jazzy"]
-reason = "issue 1978: a static per-backend answer. zenoh answers from the one kind table its entities' `supports_event` read (`shim::events`); Cyclone answers every known kind (its `*_take_event` bodies serve all five); XRCE/uORB NULL = false. The runtime reads it through one helper, cffi's `backend_event_type_is_supported`."
+reason = "issue 1978: a static per-backend answer. zenoh answers from the one kind table its entities' `supports_event` read (`shim::events`); Cyclone answers every known kind (its `*_take_event` bodies serve all five); XRCE answers true for the two DEADLINE kinds only (emulated client-side, issue 2108); uORB NULL = false. The runtime reads it through one helper, cffi's `backend_event_type_is_supported`."
 
 [rmw_get_gid_for_client]
 where = "vtable"

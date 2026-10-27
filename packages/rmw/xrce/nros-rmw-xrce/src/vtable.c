@@ -178,10 +178,17 @@ static const nros_rmw_vtable_t kVtable = {
     .take_response = xrce_service_take_response,
 
     /* ---- Phase 108 / 110.0 / 104.C.6.b hooks (deferred) ---- */
-    .subscription_event_init = NULL,
-    .publisher_event_init = NULL,
+    /* Issue 2108 — the two DEADLINE kinds, emulated client-side (session.c);
+     * every other kind answers UNSUPPORTED: DDS status lives on the Agent's
+     * entities and no XRCE submessage carries it. Delivered through the
+     * callback from `drive_io` (the executor's thread), so the `*_take_event`
+     * poll pair stays NULL. Manual liveliness stays NULL — the Agent's writer
+     * asserts its own. */
+    .subscription_event_init = xrce_subscription_event_init,
+    .publisher_event_init = xrce_publisher_event_init,
     .publisher_assert_liveliness = NULL,
-    .next_deadline_ms = NULL,
+    .next_deadline_ms = xrce_next_deadline_ms,
+    .event_type_is_supported = xrce_event_type_is_supported,
     /* Phase 124.B.1 — XRCE has no asynchronous notify path
      * (XRCE-DDS-Client is poll-driven via xrce_session_drive_io).
      * NULL = runtime drains this backend on its deadline-bound

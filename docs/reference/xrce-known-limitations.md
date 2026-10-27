@@ -32,20 +32,16 @@ profile; nothing refuses a different request yet.
 
 **Tracked:** [issue 2120](../issues/2120-xrce-service-qos-silently-ignored.md).
 
-## Deadline events absent
+## Deadline events are client-side only
 
-The Rust impl emulates `OfferedDeadlineMissed` and
-`RequestedDeadlineMissed` via a shim-side platform clock. The C
-backend has no deadline tracking; `register_subscriber_event` /
-`register_publisher_event` aren't even implemented (the vtable
-entries stay `NULL`).
-
-**Workaround:** implement deadline checks at the application layer.
-
-**Tracked:** [issue 2108](../issues/2108-xrce-deadline-event-emulation.md) —
-client-side deadline emulation is implementable; the other status events are
-not (the protocol carries no DDS status to the client). Every XRCE NULL slot
-is ruled in `book/src/design/rmw-vs-upstream.md` §9b.
+`RequestedDeadlineMissed` / `OfferedDeadlineMissed` are counted by the client
+from its monotonic clock — time since the last takeable arrival / the last
+publish — and fired from `drive_io` (issue 2108). The Agent's DDS entity keeps
+an INFINITE deadline, because `uxrQoS_t` has no field to send one: a stock
+subscriber requesting a finite deadline does not match an XRCE publisher, and
+an XRCE subscription's deadline is invisible to its peers. The other status
+events (liveliness, message lost, matched, incompatible type) stay
+unsupported: the protocol carries no DDS status to the client.
 
 ## No session-level async waker
 

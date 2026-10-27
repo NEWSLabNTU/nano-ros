@@ -109,6 +109,10 @@ static rmw_ret_t xrce_publisher_create_locked(const rmw_node_t* node,
     ps->datawriter_oid = dw_oid;
     ps->sent_qos = xrce_qos;
     ps->avoid_ros = avoid_ros != 0;
+    /* nros-qos-honours: DEADLINE — issue 2108. The profile's deadline is the
+     * period an OFFERED_DEADLINE_MISSED registration that names none uses; the
+     * miss is counted client-side (`xrce_deadline_check`). */
+    ps->qos_deadline_ms = (qos != NULL) ? qos->deadline_ms : 0u;
     if (keyed) {
         xrce_graph_track(st, &ps->graph_writer, node, graph_key, XRCE_GRAPH_WRITER);
     }
@@ -151,6 +155,7 @@ static rmw_ret_t xrce_publisher_destroy_locked(rmw_publisher_t *publisher) {
     }
 
     xrce_graph_untrack(st, &ps->graph_writer);
+    xrce_deadline_unlist_publisher(st, ps); /* issue 2108 */
     nros_xrce_free(ps);
     publisher->backend_data = NULL;
     /* LAST — this may free `st`. Nothing may touch it afterwards. */
@@ -193,6 +198,7 @@ static rmw_ret_t xrce_publisher_publish_raw_locked(const rmw_publisher_t *publis
         /* Flush so the bytes reach the agent without waiting for the
          * next drive_io tick. Mirrors the Rust impl. */
         (void)uxr_run_session_time(&st->session, 0);
+        xrce_deadline_touch(&ps->deadline, xrce_now_ms()); /* issue 2108 */
         return NROS_RMW_RET_OK;
     }
 
@@ -342,6 +348,7 @@ static rmw_ret_t xrce_publisher_publish_streamed_locked(
     ub.iterator += body_len;
 
     (void)uxr_run_session_time(&st->session, 0);
+    xrce_deadline_touch(&ps->deadline, xrce_now_ms()); /* issue 2108 */
     return NROS_RMW_RET_OK;
 }
 

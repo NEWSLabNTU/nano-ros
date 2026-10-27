@@ -1492,7 +1492,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  NULL slot: the backend states nothing per kind, and the runtime falls
      *  back to slot granularity — a kind is supported iff its side has an
-     *  event path. A backend with neither (XRCE, uORB) therefore answers
+     *  event path. A backend with neither (uORB) therefore answers
      *  `false` for every kind. The runtime reads this slot through ONE helper
      *  (cffi's `backend_event_type_is_supported`), never a per-layer guess. */
     bool (*event_type_is_supported)(rmw_event_type_t event_type);

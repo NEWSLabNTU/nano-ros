@@ -65,6 +65,14 @@ target_link_libraries(nros_rmw_xrce_service_refused_len PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_service_refused_len COMMAND nros_rmw_xrce_service_refused_len)
 
+# Issue 2108 — client-side DEADLINE emulation: misses counted per whole period,
+# an arrival / publish restarts it, next_deadline_ms names the expiry. No agent;
+# time is driven through `xrce_deadline_check`.
+add_executable(nros_rmw_xrce_deadline deadline.c)
+target_link_libraries(nros_rmw_xrce_deadline PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_deadline COMMAND nros_rmw_xrce_deadline)
+
 # Issue 1808 — the service-server families: which names are builtin, and that
 # a claimed slot is bound to its family's request bytes. No agent.
 add_executable(nros_rmw_xrce_service_families service_families.c)
