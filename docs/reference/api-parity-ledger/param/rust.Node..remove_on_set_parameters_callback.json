@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::remove_on_set_parameters_callback",
+  "verdict": "extension",
+  "why": "phase-515 R10 (maintainer decision 2026-10-27: the node is the parameter receiver, as rclrs's is). `Node::remove_on_set_parameters_callback` forwards to `Executor::remove_on_set_parameters_callback(handle)` (the handle names its node); the store is still the executor's one table (phase-426 W1), and the executor's bare primary-node form is deprecated. rclrs's `Node` has no `remove_on_set_parameters_callback` -- the counterpart is rclcpp's `Node::remove_on_set_parameters_callback` -- so this extends the rclrs surface with a verb the ROS 2 parameter model has. Test: `packages/core/nros-node/src/executor/tests.rs` (`the_node_is_the_parameter_receiver`)."
+}

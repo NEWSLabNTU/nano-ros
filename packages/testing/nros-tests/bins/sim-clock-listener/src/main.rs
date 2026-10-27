@@ -54,15 +54,18 @@ fn main() {
     // parameter is the whole request, exactly as in ROS 2 — the runtime
     // reconciles it on the next spin, once a node exists to hang the
     // subscription on.
-    assert!(
-        executor.declare_parameter("use_sim_time", nros::ParameterValue::Bool(true)),
-        "use_sim_time declaration refused"
-    );
-
-    let _nid = executor
+    let nid = executor
         .node_builder("sim_listener")
         .build()
         .expect("Failed to build node");
+    // phase-515 R10 -- declared on the node, as rclrs does.
+    executor
+        .node_mut(nid)
+        .declare_parameter::<bool>("use_sim_time")
+        .expect("parameter store registered")
+        .default(true)
+        .mandatory()
+        .expect("use_sim_time declaration refused");
 
     let ros_ticks = Arc::new(AtomicU64::new(0));
     let wall_ticks = Arc::new(AtomicU64::new(0));

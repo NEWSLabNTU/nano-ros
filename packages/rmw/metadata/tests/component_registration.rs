@@ -115,8 +115,11 @@ impl Component for TalkerComponent {
             CallbackId::new("on_tick"),
             TimerDuration::from_millis(10),
         )?;
-        let _parameter =
-            node.declare_parameter(EntityId::new("param_gain"), "gain", ParameterType::Double)?;
+        let _parameter = node.declare_parameter_with_id(
+            EntityId::new("param_gain"),
+            "gain",
+            ParameterType::Double,
+        )?;
         node.callback(CallbackId::new("on_tick"))
             .publishes(EntityId::new("pub_chatter"))?
             .writes(EntityId::new("param_gain"))?;

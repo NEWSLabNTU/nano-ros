@@ -4226,6 +4226,80 @@ fn executor_set_parameter_enforces_the_wire_rules() {
     );
 }
 
+/// phase-515 R10 -- the NODE is the parameter receiver: rclrs's
+/// `declare_parameter::<T>(name)` builder on a `Node` needs no prior store
+/// registration, each node's verbs reach its own parameters, and the rest of
+/// the per-node surface forwards to the same store the executor forms used.
+#[cfg(feature = "param-store")]
+#[test]
+fn the_node_is_the_parameter_receiver() {
+    use super::node_record::NodeId;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let talker = NodeId::PRIMARY;
+    let listener = NodeId::from_raw(1);
+
+    {
+        let mut node = executor.node_mut(talker);
+        let rate = node
+            .declare_parameter::<i64>("rate")
+            .expect("the store comes into being on first use")
+            .default(10)
+            .mandatory()
+            .expect("declared");
+        assert_eq!(rate.get(), 10);
+    }
+    {
+        let mut node = executor.node_mut(listener);
+        let _ = node
+            .declare_parameter::<i64>("rate")
+            .expect("store")
+            .default(20)
+            .mandatory()
+            .expect("a sibling's identical name is a different parameter");
+        assert_eq!(
+            node.get_parameter("rate").and_then(|v| v.as_integer()),
+            Some(20)
+        );
+        assert_eq!(
+            node.set_parameter("rate", nros_params::ParameterValue::Integer(21)),
+            Ok(())
+        );
+        assert_eq!(
+            node.get_parameter_type("rate"),
+            Some(nros_params::ParameterType::Integer)
+        );
+        assert_eq!(node.list_parameters("").filter(|n| *n == "rate").count(), 1);
+        assert!(node.set_parameter_read_only("rate", true));
+        assert_eq!(
+            node.set_parameter("rate", nros_params::ParameterValue::Integer(22)),
+            Err(nros_params::ParameterError::ReadOnly)
+        );
+        assert_eq!(
+            node.set_parameter("absent", nros_params::ParameterValue::Integer(1)),
+            Err(nros_params::ParameterError::Undeclared)
+        );
+        node.allow_undeclared_parameters(true);
+        assert_eq!(
+            node.set_parameter("absent", nros_params::ParameterValue::Integer(1)),
+            Ok(())
+        );
+        assert!(node.undeclare_parameter("absent"));
+    }
+    assert_eq!(
+        executor
+            .node_mut(talker)
+            .get_parameter("rate")
+            .and_then(|v| v.as_integer()),
+        Some(10),
+        "a set on one node moved its sibling's value"
+    );
+    assert!(
+        executor.node_mut(talker).get_parameter("absent").is_none(),
+        "allow_undeclared on one node leaked to its sibling"
+    );
+}
+
 /// phase-426 W1 -- two nodes on one executor keep their parameters apart, and
 /// one node's `allow_undeclared` does not reach its sibling.
 #[cfg(feature = "param-store")]
