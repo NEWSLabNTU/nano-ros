@@ -613,6 +613,24 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/typed_service_client
     ./tmp/typed_service_client
+    # phase-515 C4b -- rclc's typed action server: goals into the caller's
+    # SendGoal_Request array, feedback and results out of its envelopes.
+    echo "  - phase-515 C4b: rclc_executor_add_action_server / rclc_action_send_result /"
+    echo "    rclc_action_publish_feedback over goal handles"
+    test -f packages/api/nros-c/tests/run/rclc_action_server.c || { \
+        echo "ERROR: rclc_action_server.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -I"$cgen" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Ipackages/api/nros-c/tests/run \
+        packages/api/nros-c/tests/run/rclc_action_server.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/rclc_action_server
+    ./tmp/rclc_action_server
     # phase-515 C2 -- rclc's context-less rclc_executor_add_subscription: a
     # staged sample reaches its own callback once, deserialised into the
     # caller's msg, through the arena entry's context slot.

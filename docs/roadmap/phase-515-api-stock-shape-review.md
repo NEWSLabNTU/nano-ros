@@ -252,8 +252,20 @@ through `rclc_action_send_result(goal_handle, status, &get_result_response)` and
 - **C4b — the runtime.** `rclc_action_server_t` / `rclc_action_goal_handle_t`,
   `rclc_action_server_init_default`, the eight-argument
   `rclc_executor_add_action_server`, `rclc_action_send_result`,
-  `rclc_action_publish_feedback`, over the existing raw registration: the goal
-  handle pool rides as an arena capture, as C3's typed service does.
+  `rclc_action_publish_feedback`, over the existing raw registration.
+  **LANDED 2026-10-27**, with one change of plan: the goal-handle pool lives
+  INLINE in `rcl_action_server_t` (`_rclc`, `NROS_MAX_CONCURRENT_GOALS` handles),
+  not as an arena capture -- `rclc_action_send_result` and
+  `rclc_action_publish_feedback` take a goal handle alone, so the handle must
+  reach its server and the server its pool without the executor. Two trampolines
+  installed as the server's goal/cancel callbacks run rclc's bookkeeping. Bounds
+  (stated on the declarations, ledger rows adopt-bounded): a goal with every
+  handle held is rejected (rclc queues it); an accepted goal is EXECUTING at once,
+  so a result may be sent before the client asks for it. New return codes
+  `RCL_RET_ACTION_GOAL_ACCEPTED`/`_REJECTED` and
+  `RCLC_RET_ACTION_WAIT_RESULT_REQUEST`, plus `rcl_action_goal_state_t` and the
+  `GOAL_STATE_*` constants. Test `packages/api/nros-c/tests/run/rclc_action_server.c`
+  (`just check c`).
 - **C4c — migration.** The C action examples move to rclc's shape; the
   init-bound `rclc_action_server_init_with_callbacks` stays one release.
 

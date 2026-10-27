@@ -579,6 +579,25 @@ C_PROTO = re.compile(
     r"(?:^|[;}])\s*((?:[A-Za-z_][A-Za-z0-9_]*[\s*]+)+?)([A-Za-z_][A-Za-z0-9_]*)\s*\(", re.M)
 
 
+FN_POINTER_TYPEDEF = re.compile(r"\(\s*\*\s*[A-Za-z_][A-Za-z0-9_]*\s*\)\s*\(")
+
+
+def typedef_declares(decl):
+    """The name a `typedef ...;` declares: the declarator of a function-pointer
+    typedef, else its last identifier."""
+    fp = re.search(r"\(\s*\*\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)", decl)
+    if fp:
+        return fp.group(1)
+    names = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", decl)
+    return names[-1] if names else ""
+
+
+def is_fn_pointer_declarator(text, after_paren):
+    """True when the `(` C_PROTO stopped at opens `(*name)`, so the identifier
+    before it is a return type, not a function name."""
+    return text[after_paren:after_paren + 8].lstrip().startswith("*")
+
+
 def c_surface(wanted, prefixes):
     out = {}
     for path in c_files(C_RUNTIME, (".h",)):
@@ -611,6 +630,12 @@ def c_surface(wanted, prefixes):
                 i += 1
             decl = text[start:i + 1]
             names = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", decl)
+            if m.group(1) == "typedef" and FN_POINTER_TYPEDEF.search(decl):
+                # A function-pointer typedef is surface for the name it
+                # DECLARES, never for the return type it mentions: keyed by the
+                # first wanted name, a callback returning `rcl_ret_t` overwrote
+                # the entry for `rcl_ret_t` itself (phase-515 C4b).
+                names = [typedef_declares(decl)]
             hits = [n for n in names
                     if n in wanted or any(n.startswith(p) for p in prefixes)]
             if hits:
@@ -620,6 +645,8 @@ def c_surface(wanted, prefixes):
             name = m.group(2)
             if name in ("if", "for", "while", "switch", "return", "sizeof", "defined"):
                 continue
+            if is_fn_pointer_declarator(text, m.end()):
+                continue  # `rcl_ret_t (*cb)(...)`: the name is a RETURN type
             if not (name in wanted or any(name.startswith(p) for p in prefixes)):
                 continue
             j, depth = m.end() - 1, 0
@@ -997,6 +1024,19 @@ def self_test(quiet=False):
     assert m1 and m2 and norm(m1.group(1) + (m1.group(2) or "")) == \
         norm(m2.group(1) + (m2.group(2) or "")), "a macro's value must not be surface"
     del one
+
+    # phase-515 C4b — a function-pointer typedef names its RETURN type before
+    # the `(`; it is surface for the typedef's own name, never for that type.
+    _fp = "typedef rcl_ret_t (*my_cb_t)(void *ctx);"
+    assert typedef_declares(_fp) == "my_cb_t", typedef_declares(_fp)
+    assert typedef_declares("typedef int32_t rcl_ret_t;") == "rcl_ret_t"
+    assert typedef_declares("typedef struct X { int a; } X;") == "X"
+    _pm = [mm.group(2) for mm in C_PROTO.finditer(_fp)
+           if not is_fn_pointer_declarator(_fp, mm.end())]
+    assert "rcl_ret_t" not in _pm, f"a return type read as a function: {_pm}"
+    _pm = [mm.group(2) for mm in C_PROTO.finditer("rcl_ret_t rclc_f(int a);")
+           if not is_fn_pointer_declarator("rcl_ret_t rclc_f(int a);", mm.end())]
+    assert _pm == ["rclc_f"], _pm
 
     # Literal contents are values, not signatures.
     assert sanitize('const X: &str = "abc";', rust=True) == \
