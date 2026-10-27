@@ -35,6 +35,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCargoProfile.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardFacts.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosDiagnostics.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCli.cmake")  # nros_codegen_tool_reconfigure (issue 1018)
 
 # Map PLATFORM -> (nros-cpp platform feature ; std|alloc tier).
 #
@@ -61,6 +63,47 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 #   BACKEND       — zenoh|xrce|cyclone (selects the backend force-link anchor).
 #   NODE_DIRS     — list of workspace Rust node pkg dirs (each with a Cargo.toml).
 #   CPP_FEATURES  — the nros-cpp feature list baked into the umbrella's dep line.
+# Issue 2085 — the central `[patch.crates-io]` table, for a generated root
+# whose members name nano-ros crates by version (`nros = { version = "*" }`,
+# every example since 2085). This umbrella is its own workspace root, built in
+# a build dir that no `nros sync`-written `.cargo/config.toml` covers, so
+# without the table cargo looks the member's `nros` up on crates.io and fails
+# "no matching package named `nros` found". The table comes from the ONE
+# writer `nros sync` uses (`nros ws central-patch`), never restated here, so the
+# two cannot resolve against different crates.
+function(_nros_central_patch_table out)
+    set(_file "${NROS_REPO_DIR}/nros-patch.toml")
+    if(_NANO_ROS_CODEGEN_TOOL)
+        # Issue 1018 — a configure-time emitter carries its tool as a configure
+        # dependency, so rebuilding `nros` re-runs this.
+        nros_codegen_tool_reconfigure("${_NANO_ROS_CODEGEN_TOOL}")
+        execute_process(
+            COMMAND "${_NANO_ROS_CODEGEN_TOOL}" ws central-patch
+                    --nano-ros-path "${NROS_REPO_DIR}"
+            RESULT_VARIABLE _rc
+            OUTPUT_QUIET
+            ERROR_VARIABLE _err)
+        if(NOT _rc EQUAL 0)
+            message(FATAL_ERROR
+                "nano-ros: `nros ws central-patch` failed (${_rc}); the runtime "
+                "umbrella needs its [patch.crates-io] table (issue 2085).\n${_err}")
+        endif()
+    endif()
+    if(EXISTS "${_file}")
+        file(READ "${_file}" _table)
+        set(${out} "${_table}" PARENT_SCOPE)
+    else()
+        message(STATUS
+            "nano-ros: no ${_file} and no `nros` to write it — the runtime umbrella "
+            "carries no [patch.crates-io]. Run `nros sync`.")
+        nros_message_detail(
+            "nano-ros: a workspace member that names a nano-ros crate by version "
+            "(`nros = { version = \"*\" }`) resolves only through that table, so "
+            "without it cargo looks the crate up on crates.io (issue 2085).")
+        set(${out} "" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(nros_write_runtime_umbrella_crate)
     cmake_parse_arguments(_W "" "OUT_DIR;BACKEND" "NODE_DIRS;CPP_FEATURES" ${ARGN})
 
@@ -118,6 +161,7 @@ function(nros_write_runtime_umbrella_crate)
     # `--profile release` build got cargo's `panic = "unwind"` (issue 1953).
     # Copied from the root manifest, not restated.
     nros_root_cargo_profiles(_profiles REPO "${NROS_REPO_DIR}")
+    _nros_central_patch_table(_patch)
     set(_feat_toml "")
     foreach(_f IN LISTS _cpp_feats)
         if(NOT _f MATCHES "/")
@@ -142,7 +186,8 @@ crate-type = [\"staticlib\"]
 nros-cpp = { path = \"${NROS_REPO_DIR}/packages/api/nros-cpp\", default-features = false, features = [${_feat_toml}] }
 ${_backend_dep_line}${_dep_lines}
 [workspace]
-${_profiles}")
+${_profiles}
+${_patch}")
 
     # phase-263 C2c — the umbrella crate itself must be no_std (else IT pulls `std`, and
     # libstd's `panic_impl` meets nros-c's `panic-platform` handler as E0152). The anchor

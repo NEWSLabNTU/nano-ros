@@ -190,7 +190,11 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
         // (`_nros_entry_require_fresh_census` in `cmake/NanoRosEntry.cmake`),
         // and a cross build directory is exactly the case that sits under
         // another checkout.
-        cmd::ws::Sub::Providers(_)
+        // Issue 2085 added `CentralPatch`: the CMake runtime umbrella
+        // (`cmake/NanoRosRuntimeCrate.cmake`) asks it at configure time for the
+        // `[patch.crates-io]` table its members' `version = "*"` deps need.
+        cmd::ws::Sub::CentralPatch(_)
+        | cmd::ws::Sub::Providers(_)
         | cmd::ws::Sub::Order(_)
         | cmd::ws::Sub::BoardFacts(_)
         | cmd::ws::Sub::EntityInventory(_)
