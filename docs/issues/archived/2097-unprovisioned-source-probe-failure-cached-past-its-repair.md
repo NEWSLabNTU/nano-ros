@@ -7,7 +7,7 @@ area: [build, cli, memory]
 severity: medium
 found: 2026-10-27
 resolved: 2026-10-27
-resolved_in: "PR pending"
+resolved_in: "PR #2743 (2026-10-27)"
 related: [phase-478, 0288, 0390, 0641, 1469, 1578, 1593, 2070]
 ---
 
