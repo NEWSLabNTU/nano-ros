@@ -503,9 +503,10 @@ fn set_on_node(
     ctx: &mut crate::CppContext,
     id: nros_node::executor::NodeId,
     name: &str,
-    value: ParameterValue,
+    value: &ParameterValue,
 ) -> nros_cpp_ret_t {
-    let r = set_result_to_ret(ctx.executor.set_parameter_on(id, name, value));
+    // Issue 2104 -- borrowed down to the slot, as `declare_on_node` is.
+    let r = set_result_to_ret(ctx.executor.set_parameter_on_ref(id, name, value));
     flush_events(ctx);
     r
 }
@@ -923,7 +924,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_bool(
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        set_on_node(&mut ctx, id, name, ParameterValue::from_bool(value))
+        set_on_node(&mut ctx, id, name, &ParameterValue::from_bool(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
@@ -946,7 +947,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_integer(
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        set_on_node(&mut ctx, id, name, ParameterValue::from_integer(value))
+        set_on_node(&mut ctx, id, name, &ParameterValue::from_integer(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
@@ -969,7 +970,7 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_double(
     #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
     {
         let (mut ctx, id, name) = node_param_prologue!(node, name);
-        set_on_node(&mut ctx, id, name, ParameterValue::from_double(value))
+        set_on_node(&mut ctx, id, name, &ParameterValue::from_double(value))
     }
     #[cfg(not(all(feature = "param-store", feature = "rmw-cffi")))]
     {
@@ -995,7 +996,10 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_string(
         let Some(value) = (unsafe { cstr_to_str(value) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         };
-        let Some(pv) = ParameterValue::from_string(value) else {
+        // Issue 2104 -- bound once and lent: `let Some(pv) = f() else` moves
+        // the value out of its `Option`, a second ~8 KiB copy in this frame.
+        let pv = ParameterValue::from_string(value);
+        let Some(pv) = &pv else {
             return NROS_CPP_RET_FULL;
         };
         set_on_node(&mut ctx, id, name, pv)
@@ -1318,7 +1322,10 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_double_array(
         let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         };
-        let Some(pv) = ParameterValue::from_double_array(slice) else {
+        // Issue 2104 -- bound once and lent: `let Some(pv) = f() else` moves
+        // the value out of its `Option`, a second ~8 KiB copy in this frame.
+        let pv = ParameterValue::from_double_array(slice);
+        let Some(pv) = &pv else {
             return NROS_CPP_RET_FULL;
         };
         set_on_node(&mut ctx, id, name, pv)
@@ -1348,7 +1355,10 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_integer_array(
         let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         };
-        let Some(pv) = ParameterValue::from_integer_array(slice) else {
+        // Issue 2104 -- bound once and lent: `let Some(pv) = f() else` moves
+        // the value out of its `Option`, a second ~8 KiB copy in this frame.
+        let pv = ParameterValue::from_integer_array(slice);
+        let Some(pv) = &pv else {
             return NROS_CPP_RET_FULL;
         };
         set_on_node(&mut ctx, id, name, pv)
@@ -1378,7 +1388,10 @@ pub unsafe extern "C" fn nros_cpp_node_set_param_bool_array(
         let Some(slice) = (unsafe { slice_or_empty(data, len) }) else {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         };
-        let Some(pv) = ParameterValue::from_bool_array(slice) else {
+        // Issue 2104 -- bound once and lent: `let Some(pv) = f() else` moves
+        // the value out of its `Option`, a second ~8 KiB copy in this frame.
+        let pv = ParameterValue::from_bool_array(slice);
+        let Some(pv) = &pv else {
             return NROS_CPP_RET_FULL;
         };
         set_on_node(&mut ctx, id, name, pv)
@@ -2038,15 +2051,17 @@ pub unsafe extern "C" fn nros_cpp_node_list_param_overrides(
             return NROS_CPP_RET_INVALID_ARGUMENT;
         };
         let ctx: &crate::CppContext = &ctx_ref;
-        let mut total = 0usize;
         #[cfg(feature = "alloc")]
-        for (name, value) in ctx.executor.argv_param_overrides_on(id) {
-            if let Some(cb) = callback {
-                // SAFETY: the caller promised a valid function pointer.
-                let _ = with_param_write(name, &value, |w| unsafe { cb(w, context) });
-            }
-            total += 1;
-        }
+        let total = ctx
+            .executor
+            .for_each_argv_param_override_on(id, |name, value| {
+                if let Some(cb) = callback {
+                    // SAFETY: the caller promised a valid function pointer.
+                    let _ = with_param_write(name, value, |w| unsafe { cb(w, context) });
+                }
+            });
+        #[cfg(not(feature = "alloc"))]
+        let total = 0usize;
         #[cfg(not(feature = "alloc"))]
         let _ = (ctx, id, callback, context);
         if !out_count.is_null() {
@@ -2292,34 +2307,40 @@ pub unsafe extern "C" fn nros_cpp_node_set_params_atomically(
         {
             return NROS_CPP_RET_INVALID_ARGUMENT;
         }
-        let verdict = ctx.executor.set_parameters_atomically_on(
-            id,
-            items.iter().map(|w| {
+        // Issue 2104 -- each element is written IN PLACE into the store's one
+        // scratch value. Built here and handed out through an iterator, each
+        // was a ~8 KiB value in the closure's frame and again in this one
+        // (25 KiB on Cortex-M3).
+        let verdict = ctx
+            .executor
+            .set_parameters_atomically_with_on(id, count, |i, slot| {
+                let w = &items[i];
                 let name = unsafe { cstr_to_str(w.name) }?;
-                let value = match w.param_type {
-                    1 => nros_node::ParameterValue::from_bool(w.bool_value),
-                    2 => nros_node::ParameterValue::from_integer(w.integer_value),
-                    3 => nros_node::ParameterValue::from_double(w.double_value),
-                    4 => nros_node::ParameterValue::from_string(unsafe {
-                        cstr_to_str(w.string_value)?
-                    })?,
-                    5 => nros_node::ParameterValue::from_byte_array(unsafe {
-                        array_arg(w.byte_array, w.array_len)?
-                    })?,
-                    6 => nros_node::ParameterValue::from_bool_array(unsafe {
-                        array_arg(w.bool_array, w.array_len)?
-                    })?,
-                    7 => nros_node::ParameterValue::from_integer_array(unsafe {
-                        array_arg(w.integer_array, w.array_len)?
-                    })?,
-                    8 => nros_node::ParameterValue::from_double_array(unsafe {
-                        array_arg(w.double_array, w.array_len)?
-                    })?,
-                    _ => return None,
+                let filled = match w.param_type {
+                    1 => {
+                        *slot = nros_node::ParameterValue::Bool(w.bool_value);
+                        true
+                    }
+                    2 => {
+                        *slot = nros_node::ParameterValue::Integer(w.integer_value);
+                        true
+                    }
+                    3 => {
+                        *slot = nros_node::ParameterValue::Double(w.double_value);
+                        true
+                    }
+                    4 => slot.assign_string(unsafe { cstr_to_str(w.string_value)? }),
+                    5 => slot.assign_byte_array(unsafe { array_arg(w.byte_array, w.array_len)? }),
+                    6 => slot.assign_bool_array(unsafe { array_arg(w.bool_array, w.array_len)? }),
+                    7 => slot
+                        .assign_integer_array(unsafe { array_arg(w.integer_array, w.array_len)? }),
+                    8 => {
+                        slot.assign_double_array(unsafe { array_arg(w.double_array, w.array_len)? })
+                    }
+                    _ => false,
                 };
-                Some((name, value))
-            }),
-        );
+                filled.then_some(name)
+            });
         let r = set_result_to_ret(verdict);
         flush_events(ctx);
         r

@@ -353,7 +353,68 @@ impl ParameterValue {
     pub fn from_byte_array(values: &[u8]) -> Option<Self> {
         Some(Self::ByteArray(Vec::from_slice(values).ok()?))
     }
+
+    /// Issue 2104 -- set `self` to a string, IN PLACE: the `from_*`
+    /// constructors' in-place twins, for a caller filling a slot it already
+    /// holds. `from_string(v)` returns an `Option<Self>`, and binding it puts
+    /// one or two ~8 KiB values on the caller's stack; this writes into
+    /// `self`. `false`, with `self` left as an empty value of the variant, when
+    /// `value` exceeds [`MAX_STRING_VALUE_LEN`].
+    pub fn assign_string(&mut self, value: &str) -> bool {
+        if !matches!(self, Self::String(_)) {
+            *self = Self::String(String::new());
+        }
+        match self {
+            Self::String(s) => {
+                s.clear();
+                s.push_str(value).is_ok()
+            }
+            _ => false,
+        }
+    }
+
+    /// Set `self` to a bool array in place; `false` past [`MAX_ARRAY_LEN`].
+    /// See [`assign_string`](Self::assign_string).
+    pub fn assign_bool_array(&mut self, values: &[bool]) -> bool {
+        assign_slice!(self, BoolArray, values)
+    }
+
+    /// Set `self` to an integer array in place; `false` past
+    /// [`MAX_ARRAY_LEN`]. See [`assign_string`](Self::assign_string).
+    pub fn assign_integer_array(&mut self, values: &[i64]) -> bool {
+        assign_slice!(self, IntegerArray, values)
+    }
+
+    /// Set `self` to a double array in place; `false` past
+    /// [`MAX_ARRAY_LEN`]. See [`assign_string`](Self::assign_string).
+    pub fn assign_double_array(&mut self, values: &[f64]) -> bool {
+        assign_slice!(self, DoubleArray, values)
+    }
+
+    /// Set `self` to a byte array in place; `false` past
+    /// [`MAX_BYTE_ARRAY_LEN`]. See [`assign_string`](Self::assign_string).
+    pub fn assign_byte_array(&mut self, values: &[u8]) -> bool {
+        assign_slice!(self, ByteArray, values)
+    }
 }
+
+/// The body of the `assign_*_array` family: switch `$v` to `$variant` with an
+/// empty payload when it is another variant, then copy `$values` in.
+macro_rules! assign_slice {
+    ($v:expr, $variant:ident, $values:expr) => {{
+        if !matches!($v, Self::$variant(_)) {
+            *$v = Self::$variant(Vec::new());
+        }
+        match $v {
+            Self::$variant(d) => {
+                d.clear();
+                d.extend_from_slice($values).is_ok()
+            }
+            _ => false,
+        }
+    }};
+}
+use assign_slice;
 
 /// Floating point range constraints for parameters
 #[derive(Debug, Clone, Copy, Default)]

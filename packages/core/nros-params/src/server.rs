@@ -990,10 +990,24 @@ impl<'s> ParameterServer<'s> {
         name: &str,
         value: ParameterValue,
     ) -> Result<(), ParameterError> {
+        self.apply_ref(node, name, &value)
+    }
+
+    /// [`apply`](Self::apply), borrowing the value -- issue 2104, and THE
+    /// apply the by-value spelling forwards to. The value is copied once, into
+    /// its slot (`ParameterValue::assign_from`); moved in, a ~8 KiB value is a
+    /// copy in every frame it passes, which is what put a C++ array set at
+    /// 16.6 KiB of Cortex-M3 stack.
+    pub fn apply_ref(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: &ParameterValue,
+    ) -> Result<(), ParameterError> {
         if matches!(value, ParameterValue::NotSet) && self.delete_on_not_set.get(node) {
             return self.apply_delete(node, name);
         }
-        let verdict = self.check_apply(node, name, &value);
+        let verdict = self.check_apply(node, name, value);
         if !verdict.is_ok() {
             return verdict;
         }
@@ -1004,12 +1018,12 @@ impl<'s> ParameterServer<'s> {
         // one seam every writer funnels through (the six services, the C and
         // C++ facades, `Executor::set_parameter`), so hooking it here is what
         // makes one registration reach all of them.
-        if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(&value)) {
+        if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(value)) {
             return Err(ParameterError::Rejected);
         }
         if self.find_index(node, name).is_some() {
-            self.set(node, name, value)
-        } else if self.declare(node, name, value) {
+            self.set_ref(node, name, value)
+        } else if self.declare_ref(node, name, value) {
             Ok(())
         } else {
             Err(ParameterError::StorageFull)
@@ -1325,13 +1339,11 @@ impl<'s> ParameterServer<'s> {
         };
         // The stored value has to satisfy the range BEFORE it is attached, and
         // reading it needs the entry, so the check happens here rather than
-        // inside `descriptor_mut`.
-        let value = match self.table.entries[idx].as_ref() {
-            Some(entry) => entry.param.value.clone(),
-            None => return false,
-        };
-        if !range.contains(&value) {
-            return false;
+        // inside `descriptor_mut`. Borrowed, not cloned (issue 2104): the clone
+        // was a 16.9 KiB frame on Cortex-M3 for a range check.
+        match self.table.entries[idx].as_ref() {
+            Some(entry) if range.contains(&entry.param.value) => {}
+            _ => return false,
         }
         match self.descriptor_mut(node, name) {
             Some(desc) => {
@@ -1371,11 +1383,45 @@ impl<'s> ParameterServer<'s> {
     where
         I: Iterator<Item = Option<(&'x str, ParameterValue)>> + Clone,
     {
-        for item in items.clone() {
-            let Some((name, value)) = item else {
+        // Issue 2104 -- ONE implementation of the two passes, in
+        // `apply_atomically_with`; this adapts an iterator to its fill
+        // callback, restarting the iterator at each pass's first element.
+        let count = items.clone().count();
+        let mut it = items.clone();
+        self.apply_atomically_with(node, count, |i, slot| {
+            if i == 0 {
+                it = items.clone();
+            }
+            let (name, value) = it.next()??;
+            slot.assign_from(&value);
+            Some(name)
+        })
+    }
+
+    /// [`apply_atomically`](Self::apply_atomically), with element `i` FILLED
+    /// into one scratch value by `fill(i, slot)` -- issue 2104.
+    ///
+    /// `fill` returns the element's name, or `None` for an element that could
+    /// not be turned into a value (which refuses the batch, as a `None` item
+    /// does). It is called for `0..count` in order, once per pass, so it must
+    /// fill the same value for the same `i` both times.
+    ///
+    /// The iterator form hands each ~8 KiB value out by value, so a C++
+    /// `set_parameters_atomically` held one in its closure's frame and more in
+    /// its own (25 KiB on Cortex-M3). Here the only value is `slot`, which a
+    /// caller fills in place (`ParameterValue::assign_string`, …).
+    pub fn apply_atomically_with<'x>(
+        &mut self,
+        node: NodeKey,
+        count: usize,
+        mut fill: impl FnMut(usize, &mut ParameterValue) -> Option<&'x str>,
+    ) -> Result<(), ParameterError> {
+        let mut slot = ParameterValue::NotSet;
+        for i in 0..count {
+            let Some(name) = fill(i, &mut slot) else {
                 return Err(ParameterError::TypeMismatch);
             };
-            let verdict = self.check_apply(node, name, &value);
+            let verdict = self.check_apply(node, name, &slot);
             if !verdict.is_ok() {
                 return verdict;
             }
@@ -1384,15 +1430,15 @@ impl<'s> ParameterServer<'s> {
             // written. `apply` will consult it again on the write pass; a hook
             // that answers differently to the same value twice is the caller's
             // own inconsistency, and the second answer is the one that stands.
-            if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(&value)) {
+            if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(&slot)) {
                 return Err(ParameterError::Rejected);
             }
         }
-        for item in items {
-            let Some((name, value)) = item else {
+        for i in 0..count {
+            let Some(name) = fill(i, &mut slot) else {
                 continue;
             };
-            let _ = self.apply(node, name, value);
+            let _ = self.apply_ref(node, name, &slot);
         }
         Ok(())
     }
@@ -1421,11 +1467,17 @@ impl<'s> ParameterServer<'s> {
     /// Set a parameter value
     ///
     /// Returns the result of the set operation.
-    pub fn set(
+    pub fn set(&mut self, node: NodeKey, name: &str, value: ParameterValue) -> Result<(), ParameterError> {
+        self.set_ref(node, name, &value)
+    }
+
+    /// [`set`](Self::set), borrowing the value (issue 2104): it is copied
+    /// once, into the stored value.
+    pub fn set_ref(
         &mut self,
         node: NodeKey,
         name: &str,
-        value: ParameterValue,
+        value: &ParameterValue,
     ) -> Result<(), ParameterError> {
         let idx = match self.find_index(node, name) {
             Some(idx) => idx,
@@ -1439,12 +1491,12 @@ impl<'s> ParameterServer<'s> {
 
         // Read-only, type, range (min/max/step) — one predicate, shared with
         // the atomic pre-check.
-        let verdict = Self::check_set_existing(entry, &value);
+        let verdict = Self::check_set_existing(entry, value);
         if !verdict.is_ok() {
             return verdict;
         }
 
-        entry.param.value = value;
+        entry.param.value.assign_from(value);
         self.note_event(node, ParameterEventKind::Changed, name);
         Ok(())
     }
