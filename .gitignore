@@ -111,6 +111,8 @@ nros-sdk.lock
 /target-nros-c-no-alloc/
 /target-nros-c-test-default/
 /target-param-heap-free-store-only/
+# Issue 2115 -- nros-cpp heap-free (no alloc, carved store), in `just check compile-smoke`.
+/target-nros-cpp-heap-free/
 
 # Issue 1472 — `just check test-targets` runs the tests of workspace-excluded
 # crates in its own target dir. Issue 1491: this line was the one scoped dir

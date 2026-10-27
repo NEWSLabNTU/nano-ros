@@ -1347,6 +1347,19 @@ compile-smoke:
     # Its own target dir, for issue 1382's reason above.
     CARGO_TARGET_DIR="$(nros_scoped_target_dir param-store)" \
         cargo check -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}},param-store" --quiet
+    # Issue 2115 -- and nros-cpp HEAP-FREE: no `alloc`, the parameter store
+    # carved from the executor backing (`NROS_PARAM_STORE=1`, issue 1812's
+    # knob). Every nros-cpp row above has `alloc` (it is in
+    # `C_API_SHIPPED_FEATURES`), so this shape compiled in no lane, and it rotted
+    # on two sides at once: `nros`'s capability helpers went dead
+    # (`-D warnings`), and nros-cpp itself reached `alloc`-only nros-node API
+    # (`apply_ros_args_with_params`, `BandWaiter::platform`) and named a
+    # `TransportError` variant that only exists with `nros-rmw/alloc`.
+    # `panic-halt` because the staticlib needs a `#[panic_handler]` and
+    # `panic-platform` is in the default this drops. Its own target dir
+    # (issue 1382).
+    CARGO_TARGET_DIR="$(nros_scoped_target_dir nros-cpp-heap-free)" NROS_PARAM_STORE=1 \
+        cargo check -p nros-cpp --no-default-features --features "panic-halt,rmw-cffi,platform-posix,param-store" --quiet
     # Issue 1468 -- and `nros-node` with each MODULE-GATING feature ALONE.
     # The workspace check above unifies features, so it builds that crate with
     # `param-services` AND `lifecycle-services` on and can never see a module
@@ -1380,7 +1393,7 @@ compile-smoke:
     echo "compile smoke: workspace + all targets check clean (no lints; see check-build);"
     echo "  nros-c + nros-cpp check clean in the shipped shape ({{C_API_SHIPPED_FEATURES}}),"
     echo "  with param-services (issue 1260), nros-cpp with param-store alone"
-    echo "  (issue 1529), nros-node per module-gating"
+    echo "  (issue 1529), nros-cpp heap-free with a carved store (issue 2115), nros-node per module-gating"
     echo "  feature alone (issue 1468), nros-node param-services heap-free (issue 1812),"
     echo "  and nros-c with no std or alloc plus its default-feature test target (issue 1177)."
 
