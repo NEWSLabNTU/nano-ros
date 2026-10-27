@@ -149,12 +149,16 @@ NuttX QEMU instances use the same IP scheme as other QEMU board crates:
 
 ### Board Crate
 
-The `nros-board-nuttx-qemu` board crate follows the standard `Config` / `run()` pattern documented in the [Custom Board Package](../porting/custom-board.md) guide. It provides network and node configuration presets (`talker()`, `listener()`, `server()`, `client()`).
+The `nros-board-nuttx-qemu` board crate follows the standard `Config` / `run()` pattern documented in the [Custom Board Package](../porting/custom-board.md) guide.
 
 Unlike bare-metal and FreeRTOS board crates, there is no custom hardware
 initialization, no network stack setup, and no task creation. NuttX's kernel
 boots the hardware, initializes virtio-net, and starts the application
-before `main()` runs. Because NuttX supports Rust `std`, examples use standard
+before `main()` runs. NuttX owns the network (RFC-0109 D2): `eth0` takes the
+address the defconfig's `CONFIG_NETINIT_*` states, and the board only reads it
+back — every image prints `nros: eth0 <addr> (kernel-owned, RFC-0109 D2)` at
+boot. An image that needs a different address changes the kernel
+configuration; nothing in nano-ros writes the interface. Because NuttX supports Rust `std`, examples use standard
 `fn main()` entry points.
 
 ### NuttX Defconfig

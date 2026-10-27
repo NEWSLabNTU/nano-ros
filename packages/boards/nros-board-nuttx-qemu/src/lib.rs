@@ -45,7 +45,7 @@
 
 // phase-359 W7 — `no_std`, like the base board crate it overlays. Its `std`
 // uses were the console (`println!`), `process::exit` and one `/dev/urandom`
-// write; all three are libc calls this NuttX image already links, reached
+// write (retired by issue 2048); all were libc calls this NuttX image already links, reached
 // directly instead of through a standard library compiled from source.
 #![no_std]
 
@@ -83,11 +83,10 @@ pub type QemuArmVirt = NuttxQemu;
 /// selects trait impls, and those never differed between the two boards.
 pub type QemuRvVirt = NuttxQemu;
 
-pub use node::init_hardware;
-
-// Issue #130 — the shared public eth0-config entry point + slirp defaults, so
-// the C `nros-nuttx-ffi` entry can push the guest IP into `eth0` before
-// `app_main()` exactly as the Rust `BoardEntry` path does (no drift, one impl).
+// Issue 2048 — the C `nros-nuttx-ffi` entry reports the kernel's `eth0`
+// address before `app_main()` exactly as the Rust `BoardEntry` path does. It
+// used to push one in (`configure_entry_eth0`, issue #130); NuttX owns that
+// interface (RFC-0109 D2), so nothing here writes it any more.
+pub use node::ETH0_REPORT_PREFIX;
 #[cfg(target_os = "nuttx")]
-pub use entry_212n::configure_entry_eth0;
-pub use entry_212n::{SLIRP_DEFAULT_GATEWAY, SLIRP_DEFAULT_IP, SLIRP_DEFAULT_PREFIX};
+pub use node::report_kernel_eth0;
