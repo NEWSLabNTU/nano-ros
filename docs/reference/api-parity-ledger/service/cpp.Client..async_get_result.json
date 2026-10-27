@@ -1,6 +1,0 @@
-{
-  "key": "cpp:Client::async_get_result",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "see `cpp:Client::async_cancel_all_goals`."
-}

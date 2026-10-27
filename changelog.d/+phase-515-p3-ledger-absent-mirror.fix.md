@@ -1,0 +1,1 @@
+API parity: `just check api-parity` refuses an `absent` ledger row whose name nano-ros now declares (the mirror of the refuse-loud check). Eleven such rows were re-verdicted from the code; `rclcpp::ParameterCallbackHandle`'s name clash is issue 2114 (phase-515 P3).

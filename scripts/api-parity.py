@@ -241,6 +241,11 @@ UPSTREAM_TOKENS = ("rcl", "rclcpp", "rclrs", "rclc", "rcl_interfaces",
 #                             and never ledgered, because a refusing name
 #                             correlates `same` and `--check` stops asking.
 #                             ~23 live sites had no row for a phase.
+#   `misdeclared_absences`    an `absent` row on a key OUR side declares
+#                             (phase-515 P3). The mirror of the first: the
+#                             name now compiles, so the row's reason is
+#                             about an API that has since changed. 11 rows
+#                             when added, 10 of them correlating `same`.
 DISPOSITIONS = ("adopt", "adopt-bounded", "refuse-loud", "absent")
 
 BUCKETS = ("systematic", "arity-only", "differs", "ours-only", "theirs-only")
@@ -1140,6 +1145,33 @@ def misdeclared_refusals(ledger, lang, rows):
         if entry is None or entry.get("disposition") != "refuse-loud":
             continue
         out.add(ledger_key(lang, r["key"]))
+    return sorted(out)
+
+
+def misdeclared_absences(ledger, lang, rows):
+    """`absent` rows whose subject our side DOES declare.
+
+    phase-515 P3, the mirror of `misdeclared_refusals`. `absent` tells a
+    porting user the name does not exist, so the compiler says "no member
+    named ...". When the key correlates in a bucket where OUR side declares
+    it, that is false: the name compiles, and the row's reason -- written when
+    it did not -- now describes a different API. Found on
+    `cpp:Parameter::get_value` and `cpp:Parameter::get_parameter_value`, both
+    `declined`/`absent` ("C++ does not have ParameterValue") while issue 2056
+    had shipped both, correlating `same`; `--check` was green because a row
+    exists and nothing asked whether its disposition was still true.
+
+    Only a row's OWN entry counts. An inherited one is the TYPE's verdict and
+    is checked on the type's own key.
+    """
+    out = set()
+    for r in rows:
+        if r.get("bucket") not in DECLARED_BUCKETS:
+            continue
+        own = ledger.get(ledger_key(lang, r["key"]))
+        if own is None or own.get("disposition") != "absent":
+            continue
+        out.add("%s  (%s)" % (ledger_key(lang, r["key"]), r["bucket"]))
     return sorted(out)
 
 
@@ -2053,6 +2085,7 @@ def _report_one(langs, show, check, suggest, include_internal, grep=None, topic=
     misfiled = []
     same_shaped = []
     misdeclared = []
+    false_absences = []
     per_lang_rows = []
     known_by_lang = {}
     ours_by_lang = {}
@@ -2086,6 +2119,7 @@ def _report_one(langs, show, check, suggest, include_internal, grep=None, topic=
             # phase-428 Q1: a refusal is a declaration, so a refuse-loud
             # subject must be on OUR side of the correlation.
             misdeclared.extend(misdeclared_refusals(ledger, lang, rows))
+            false_absences.extend(misdeclared_absences(ledger, lang, rows))
             contradictions.extend(contradictory_verdicts(ledger, lang, rows))
             # phase-444 / issue 1463: a `gap` on a subject we declare is closed
             # unless it names the witness that proves it open.
@@ -2364,6 +2398,22 @@ def _report_one(langs, show, check, suggest, include_internal, grep=None, topic=
                     print("  " + key, file=sys.stderr)
                 if len(bad_refusals) > 40:
                     print("  ... and %d more" % (len(bad_refusals) - 40), file=sys.stderr)
+                return 1
+            absences = sorted(set(false_absences))
+            if absences:
+                print(
+                    "\n%d `absent` ledger row(s) name a symbol our side DOES declare (the "
+                    "key correlates in a declaring bucket). `absent` tells a porting user "
+                    "the name does not exist; it does, so the row's reason describes an "
+                    "API that has since changed (phase-515 P3). Re-verdict the row from "
+                    "the code, or delete it if the name now matches upstream:"
+                    % len(absences),
+                    file=sys.stderr,
+                )
+                for key in absences[:40]:
+                    print("  " + key, file=sys.stderr)
+                if len(absences) > 40:
+                    print("  ... and %d more" % (len(absences) - 40), file=sys.stderr)
                 return 1
             uncited = unreferenced_refusals(ledger, refusal_macros())
             if uncited:
@@ -3255,6 +3305,28 @@ def self_test():
               "cpp", [{"key": "V", "bucket": "theirs-only"},
                       {"key": "V::m", "bucket": "theirs-only"}]),
           ["cpp:V", "cpp:V::m"])
+
+    # phase-515 P3 -- the mirror: an `absent` row on a key OUR side declares
+    # tells the user "no member named" about a name that compiles.
+    #   X  absent + same        -> MUST be reported (with its bucket)
+    #   Y  absent + systematic  -> MUST be reported
+    #   A  absent + theirs-only -> must NOT be (the honest label)
+    #   D  divergence, no disposition + same -> must NOT be (not an absence)
+    #   M  member of an `absent` TYPE, member `same`, no own row -> must NOT be
+    #      (an inherited verdict is checked on the type's own key)
+    aled = {
+        "cpp:X": {"verdict": "declined", "why": "x", "disposition": "absent"},
+        "cpp:Y": {"verdict": "declined", "why": "x", "disposition": "absent"},
+        "cpp:A": {"verdict": "declined", "why": "x", "disposition": "absent"},
+        "cpp:D": {"verdict": "divergence", "why": "x"},
+        "cpp:T": {"verdict": "declined", "why": "x", "disposition": "absent"},
+    }
+    arows = [{"key": "X", "bucket": "same"}, {"key": "Y", "bucket": "systematic"},
+             {"key": "A", "bucket": "theirs-only"}, {"key": "D", "bucket": "same"},
+             {"key": "T", "bucket": "theirs-only"}, {"key": "T::m", "bucket": "same"}]
+    check("an absent row on a declared key is caught, bucket named",
+          misdeclared_absences(aled, "cpp", arows),
+          ["cpp:X  (same)", "cpp:Y  (systematic)"])
 
     # phase-444 / issue 1463: a `gap` on a subject OUR side declares is a
     # closed gap unless its `owed` witness is still in the tree. The

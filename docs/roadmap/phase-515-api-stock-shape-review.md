@@ -375,6 +375,20 @@ zero refused as upstream throws for it. `remove_node` is REFUSE-LOUD
 bounded inline record (C has typed get/set on `rclc_parameter_server_t` and no
 record type). A bounded `rclcpp::Parameter` works freestanding. *D1: freestanding only* --
 adopt the bounded record; the vector forms stay declined.
+**LANDED 2026-10-27.** The bounded record is issue 2056's
+`rclcpp::Parameter` / `ParameterValue` (scalars on every target), so P3's
+remaining work was the LEDGER: `cpp:Parameter::get_value` and
+`get_parameter_value` still read `declined`/`absent` ("C++ does not have
+ParameterValue") while both shipped and correlated `same`, and `--check` was
+green. New check `misdeclared_absences` (the mirror of
+`misdeclared_refusals`: an `absent` row on a key our side declares) found 11
+such rows. 8 deleted or re-verdicted to their measured shape
+(`QoS::get_rmw_qos_profile` and `rclcpp_action::Client::async_send_goal` are
+`same:ret`, adopt-bounded); `Parameter::get_value` is adopt-bounded (a
+wrong-type read answers zero); `Server::execute` is a named collision; and
+`ParameterCallbackHandle` is a `gap` -- the name is our on-set token, not
+upstream's event-handler handle (issue 2114). The vector-taking
+`get_parameters` / `set_parameters` stay declined (D1).
 
 **P4 — `GenericPublisher` / `GenericSubscription`.** Declined as runtime-typed.
 They move serialized bytes plus a type NAME, and our raw entities move bytes.
