@@ -1467,7 +1467,12 @@ impl<'s> ParameterServer<'s> {
     /// Set a parameter value
     ///
     /// Returns the result of the set operation.
-    pub fn set(&mut self, node: NodeKey, name: &str, value: ParameterValue) -> Result<(), ParameterError> {
+    pub fn set(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: ParameterValue,
+    ) -> Result<(), ParameterError> {
         self.set_ref(node, name, &value)
     }
 
