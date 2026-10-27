@@ -752,6 +752,50 @@ the lending surface to first-class makes it visible at compile time
 the runtime pre-arrange arena slots once instead of probing on every
 publish.
 
+## 9b. XRCE-DDS: what each NULL slot means
+
+The XRCE backend fills fewer than half of the vtable slots (`just check rmw-slot-producers` prints the count).
+A NULL slot answers `NROS_RMW_RET_UNSUPPORTED` (or its documented fallback), so
+every gap below is a declared "cannot tell you", never a wrong answer. They
+fall into two kinds, and the difference decides whether a gap is permanent:
+
+* **Protocol cannot** — micro-XRCE-DDS-Client cannot learn the answer. The
+  Agent owns the DDS participant and every entity on it; the client gets back
+  per-request status codes (`uxrOnStatusFunc`) and the payloads it asked for
+  (`uxrOnTopicFunc`, `uxrOnRequestFunc`, `uxrOnReplyFunc`), and nothing else —
+  no discovery state, no builtin topics, no DDS status, no `SampleInfo` on a
+  topic sample.
+* **Unwritten** — the client has, or can get, what the slot asks for, and
+  nobody has written the body. Each has an issue.
+
+What stock [`rmw_microxrcedds`](https://github.com/micro-ROS/rmw_microxrcedds)
+(Humble) does is in the last column; it is the same protocol, so its choices
+are evidence for what the protocol allows.
+
+| family | slots | ruling | why | stock `rmw_microxrcedds` |
+| --- | --- | --- | --- | --- |
+| graph: names, types, endpoint info, counts | `get_topic_names_and_types`, `get_service_names_and_types`, the four `*_names_and_types_by_node`, `get_{publishers,subscriptions}_info_by_topic`, `count_{publishers,subscribers,clients,services}` | protocol cannot | discovery lives on the Agent's participant; the client has no builtin-topic readers and no enumeration request | UNSUPPORTED unless built with `RMW_UXRCE_GRAPH`, which reads the micro-ROS Agent's own `ros_to_microros_graph` topic — not published by the stock Micro XRCE-DDS Agent nano-ros uses |
+| graph: node names + change edge | `get_node_names`, `node_get_graph_guard_condition` | unwritten — [issue 2106](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2106-xrce-node-enumeration-from-ros-discovery-info.md) | node names are DATA on `ros_discovery_info`, an ordinary topic the client can subscribe to through the Agent (this backend already publishes it, issue 1292); DDS peers only | as above |
+| matched counts | `publisher_count_matched_subscriptions`, `subscription_count_matched_publishers` | protocol cannot | matching happens between the Agent's entities and remote ones; nothing reports it to the client | `RMW_UXRCE_GRAPH` only, from the graph topic |
+| granted QoS | the six `*_get_actual_qos` | unwritten — [issue 2107](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2107-xrce-get-actual-qos.md) | no read-back exists, but every honoured policy is sent explicitly at create and an unhonoured one is refused, so the created profile (with `*_UNKNOWN` where unsure) is an honest partial answer | returns the stored creation profile |
+| status events: liveliness, incompatible QoS, matched; manual liveliness | `subscription_event_init`, `publisher_event_init`, `subscription_take_event`, `publisher_take_event`, `publisher_assert_liveliness` | protocol cannot | DDS status is on the Agent's entities; no XRCE submessage carries it; the Agent's writer asserts its own liveliness | `rmw_*_event_init` UNSUPPORTED |
+| status events: deadline | the same slots for the two DEADLINE kinds, plus `next_deadline_ms`, `event_type_is_supported` | unwritten — [issue 2108](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2108-xrce-deadline-event-emulation.md) | both deadlines are local facts (time since last arrival / last publish); emulating them is also what would earn the DEADLINE QoS bit XRCE refuses today | UNSUPPORTED |
+| session wake | `set_wake_callback` | protocol cannot | the client has no background thread; nothing arrives outside `drive_io`, which the executor itself calls | no equivalent |
+| per-entity new-data callbacks | `subscription_set_on_new_message_callback`, `service_set_on_new_request_callback`, `client_set_on_new_response_callback` | unwritten — [issue 2109](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2109-xrce-per-entity-new-data-callbacks.md) | every arrival callback names its entity (`uxrObjectId`), so it can fire the registered callback from inside `drive_io` | UNSUPPORTED |
+| take with info | `take_with_info` | protocol cannot | `uxrOnTopicFunc` carries no writer GUID and no source timestamp; the only fields left are local stamps, not worth a slot | ignores `message_info` |
+| request info | `take_request_with_info` | **filled** | `uxrOnRequestFunc` DOES carry the request's `SampleIdentity` (issue 2081, measured live in issue 2088) | fills the request id |
+| identity | `get_gid_for_publisher`, `get_gid_for_client` | unwritten — [issue 2110](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2110-xrce-gid-for-publisher-and-client.md) | the protocol hands back no GUID, but `src/graph.c` already derives each tracked endpoint's DDS GID (probe + Fast-DDS entity counter, issue 1292) | copies the XRCE object id into the gid (matches no DDS GID) |
+| server availability | `service_server_is_available` | protocol cannot | needs matched-replier state the Agent keeps; a `create_requester` ack says only that the client's own endpoints exist (see `vtable.c`) | UNSUPPORTED |
+| loans | `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`, `take_loaned_message`, `return_loaned_message_from_subscription`, `take_loaned_message_with_info` | protocol cannot (in the loan's shape) | a stream buffer is reused by the next `uxr_run_session_*`, so it cannot back a view that outlives the call; the zero-copy capability ships as `publish_streamed` and `process_raw_in_place` instead | UNSUPPORTED |
+| batch take | `take_sequence` | not needed | one sample per arrival into a single-slot inbox; the runtime's `take` loop is the same work | loops `take_with_info` |
+| acks | `publisher_wait_for_all_acked` | protocol cannot | reliable-stream acks are client↔Agent only (`uxr_run_session_until_confirm_delivery`), not from DDS readers; also inert ABI-wide | UNSUPPORTED |
+| log level | `set_log_severity` | protocol cannot | the client library has no runtime log control | UNSUPPORTED |
+| capability probe | `feature_supported` | n/a | inert ABI-wide (no reader); XRCE would answer false for both features, as upstream does | false for both |
+
+Nothing on this list was trivial enough to land with the rulings: the closest,
+`*_get_actual_qos`, needs a measurement first (whether an Agent-side profile
+can override a BIN-created entity's QoS), which is in issue 2107.
+
 ## 10. Error returns
 
 **Upstream.** Single error type for everything:
