@@ -815,9 +815,9 @@ Two return-shape conventions, picked by call shape:
 **Why same style.** Named constants make `switch` statements
 possible at call sites; bare negative ints don't.
 
-## Publisher GID & message-info: functional-parity, different shape (issue 0242)
+## Publisher GID, message-info & service info: functional-parity, different shape (issue 0242)
 
-Two upstream `rmw.h` capabilities exist in nano-ros in a **different
+Three upstream `rmw.h` capabilities exist in nano-ros in a **different
 shape** — the functionality is present, but the upstream-exact C entry
 points are deliberately not mirrored. Recorded here so the divergence
 reads as a decision, and updated (2026-07-27) to describe what nano-ros
@@ -879,6 +879,73 @@ peer: a Humble `rmw_cyclonedds_cpp` subscriber puts the 8-byte
 publication *handle* in `message_info.publisher_gid`, not the writer
 GUID it reports everywhere else, so its take-side gid matches no gid
 query. Ours reports the GUID.
+
+### Service request info: a sibling slot, server side only (issue 2081)
+
+Upstream's `rmw_take_request` fills an `rmw_service_info_t` beside the
+request: the client's `request_id` (writer GUID + the sequence number that
+client assigned) and the `source_timestamp` / `received_timestamp` pair.
+
+nano-ros splits that take across two vtable slots:
+
+- **`take_request`** returns the payload bytes and `int64_t *seq_out`, the
+  backend's reply-correlation token that `send_response` takes back. That is
+  everything a server needs to answer, and it is all this slot returns.
+- **`take_request_with_info`** (optional, appended) is the same take plus a
+  caller-owned `rmw_service_info_t *`, declared in `<nros/rmw_entity.h>`
+  field for field as upstream's. `seq_out` stays beside the struct instead
+  of becoming its `request_id.sequence_number`: a backend's token (a
+  reply-slot index on Cyclone, XRCE and zenoh) is not the client's sequence
+  number, and the runtime needs both. When a backend fills this slot the
+  runtime takes every request through it; when it does not, the runtime
+  falls back to `take_request`, and only a Rust backend's side table can
+  then report anything.
+
+A field the backend cannot report is **zero** (all-zero `writer_guid` = no
+request id, timestamp 0 = not stamped), and the runtime turns each zero into
+`None`, never into a value:
+
+| backend | channel | `request_id` | `source_timestamp` | `received_timestamp` |
+| --- | --- | --- | --- | --- |
+| zenoh-pico | Rust adapter side table (issue 1942) | from the query attachment (`rmw_zenoh_cpp` layout) | from the attachment | not reported |
+| Cyclone DDS | `take_request_with_info` | request-header GUID + publication handle, header sequence (stock `rmw_cyclonedds_cpp` layout) | the DDS sample's source timestamp | not reported |
+| XRCE-DDS | `take_request_with_info` | the Agent's `SampleIdentity` (client request-writer GUID + sequence), as `rmw_microxrcedds` fills it | not reported — no timestamp reaches the client library | not reported |
+| uORB | — | uORB has no services | — | — |
+
+**No backend reports `received_timestamp`.** The field exists for upstream
+parity and is always zero here.
+
+What an application sees:
+
+- **Rust.** `create_service_with_info` (or the builder's
+  `.service_info()`) hands the callback a `nros::ServiceInfo` — rclrs's
+  shape, except every field is an `Option`:
+  ```rust
+  executor.node_mut(nid).create_service_with_info::<AddTwoInts, _>(
+      "/add_two_ints",
+      |req: &AddTwoIntsRequest, info: &nros::ServiceInfo| {
+          if let Some(id) = info.request_id {
+              log::info!("request #{} from {:?}", id.sequence_number, id.writer_guid);
+          }
+          AddTwoIntsResponse { sum: req.a + req.b }
+      },
+  )?;
+  ```
+- **C.** `rclc_executor_add_service_with_request_id` (typed) and
+  `rclc_executor_add_service_raw_with_request_id` (CDR bytes) pass the
+  callback an `rmw_request_id_t *`, rclc's shape. The timestamps are not
+  surfaced in C.
+- **C++.** An rclcpp service handler taking three arguments —
+  `(std::shared_ptr<rmw_request_id_t>, request, response)` — receives the
+  request header; the two-argument handler does not. As in C, the
+  timestamps are not surfaced.
+
+**The client side gets none of this.** `take_response` returns the reply
+bytes and the `sequence_id` that `send_request` handed out, which is what the
+runtime matches a reply against (issue 0778). There is no
+`take_response_with_info` slot, no backend reports the reply's timestamps or
+the server's identity, and no client API surfaces them — upstream
+`rmw_take_response`'s `request_header` has no counterpart.
 
 ## See also
 
