@@ -43,6 +43,33 @@ public surface a user application needs.
 > `set_{goal_response,cancel_response,result,feedback}_wake_callback`
 > on the client). See the Doxygen for signatures.
 
+## Action server
+
+`<rclc/action_server.h>` follows rclc's model (phase-515 C4):
+
+```c
+example_interfaces__action__Fibonacci_SendGoal_Request goal_requests[2];
+
+rclc_action_server_init_default(&server, &node, &support,
+    ROSIDL_GET_ACTION_TYPE_SUPPORT(example_interfaces, action, Fibonacci), "/fibonacci");
+rclc_executor_add_action_server(&executor, &server, 2, goal_requests,
+    sizeof(goal_requests[0]), goal_callback, cancel_callback, &ctx);
+```
+
+Each incoming goal takes one of the `handles_number` goal handles
+(`rclc_action_goal_handle_t`, at most `NROS_MAX_CONCURRENT_GOALS`); its
+request is deserialised into the matching element of the array, and
+`goal_callback` returns `RCL_RET_ACTION_GOAL_ACCEPTED` or
+`RCL_RET_ACTION_GOAL_REJECTED`. Do the work OUTSIDE the callback — between
+`rclc_executor_spin_some()` calls, or from a timer in a C component — and
+answer with `rclc_action_publish_feedback(handle, &feedback_message)` and
+`rclc_action_send_result(handle, GOAL_STATE_SUCCEEDED, &get_result_response)`.
+Two bounds differ from rclc: a goal arriving with every handle in use is
+rejected (rclc queues it), and an accepted goal executes at once, so a result
+may be sent before the client asks for it. A component, which has no
+`rclc_support_t`, passes `NULL` for `support`. See
+`examples/linux/c/action-server`.
+
 ## Async action client
 
 `<rclc/action.h>` exposes two parallel entry-point families for sending

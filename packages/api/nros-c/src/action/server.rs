@@ -1292,10 +1292,16 @@ unsafe extern "C" fn rclc_cancel_trampoline(
 /// rclc passes its clock to `rcl_action_server_init`; here the executor's
 /// clock times the server, and no entity exists until registration.
 ///
+/// **`support` may be NULL**, which rclc refuses — as for
+/// `rclc_timer_init_default`: a C component the generated entry hosts has no
+/// support to pass (`<rclc/detail/rcl_compat.h>` §4). Accepting NULL widens
+/// rclc's domain without changing any call rclc accepts.
+///
 /// # Returns
 /// * `RCL_RET_OK` on success
-/// * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or an empty name
-/// * `RCL_RET_NOT_INIT` — `support` or `node` is not initialised
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL argument (other than `support`) or an
+///   empty name
+/// * `RCL_RET_NOT_INIT` — a non-NULL `support`, or `node`, is not initialised
 /// * `RCLC_RET_BAD_SEQUENCE` — `action_server` is already initialised
 ///
 /// # Safety
@@ -1308,9 +1314,10 @@ pub unsafe extern "C" fn rclc_action_server_init_default(
     type_support: *const rclc_action_type_t,
     action_name: *const core::ffi::c_char,
 ) -> rcl_ret_t {
-    validate_not_null!(action_server, node, support, type_support, action_name);
-    if unsafe { (*support).state }
-        != crate::support::rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED
+    validate_not_null!(action_server, node, type_support, action_name);
+    if !support.is_null()
+        && unsafe { (*support).state }
+            != crate::support::rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED
     {
         return RCL_RET_NOT_INIT;
     }

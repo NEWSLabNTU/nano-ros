@@ -19,9 +19,15 @@
 
 #include "example_interfaces.h"
 
+// rclc's model: each goal takes one of GOAL_HANDLES handles, its request
+// deserialised into the matching `goal_requests` element; the goal callback
+// only decides, and the main loop runs accepted goals between spins.
+#define GOAL_HANDLES 2
+
 typedef struct {
     uint32_t goal_count;
-    int32_t accepted_order;
+    rclc_action_goal_handle_t* pending[GOAL_HANDLES];
+    size_t pending_count;
 } server_context_t;
 
 // All nros state — and the feedback/result staging, which is the largest thing
@@ -29,16 +35,15 @@ typedef struct {
 static struct {
     rclc_support_t support;
     rcl_node_t node;
-    rcl_action_server_t action_server;
+    rclc_action_server_t action_server;
     rclc_executor_t executor;
     server_context_t ctx;
-    example_interfaces__action__Fibonacci_Feedback fb;
-    example_interfaces__action__Fibonacci_Result result;
-    // The bytes behind `fb.sequence` / `result.sequence` (phase-492 W7).
+    example_interfaces__action__Fibonacci_SendGoal_Request goal_requests[GOAL_HANDLES];
+    example_interfaces__action__Fibonacci_FeedbackMessage feedback;
+    example_interfaces__action__Fibonacci_GetResult_Response response;
+    // The bytes behind the feedback and result sequences (phase-492 W7).
     example_interfaces__action__Fibonacci_Feedback__Storage fb_storage;
     example_interfaces__action__Fibonacci_Result__Storage result_storage;
-    uint8_t fb_buf[512];
-    uint8_t result_buf[512];
 } app;
 
 static rclc_logger_t g_logger;
@@ -89,58 +94,44 @@ static void emit_num(rcl_log_severity_t severity, const char* text, int64_t valu
     emit(severity, buf, file, line);
 }
 
-static rclc_goal_response_t goal_callback(rcl_action_server_t* server,
-                                          const rclc_goal_handle_t* goal,
-                                          const uint8_t* goal_request, size_t goal_len,
-                                          void* context) {
-    (void)server;
-    (void)goal;
-    example_interfaces__action__Fibonacci_Goal goal_msg;
-    if (example_interfaces__action__Fibonacci_Goal__deserialize(&goal_msg, goal_request,
-                                                                goal_len) != 0) {
-        emit(RCLC_LOG_SEVERITY_ERROR, "Failed to deserialize goal", __FILE__, __LINE__);
-        return RCLC_GOAL_REJECT;
-    }
-    emit_num(RCLC_LOG_SEVERITY_INFO, "Received goal request with order ", goal_msg.order, __FILE__,
+static rcl_ret_t goal_callback(rclc_action_goal_handle_t* goal_handle, void* context) {
+    server_context_t* ctx = (server_context_t*)context;
+    const example_interfaces__action__Fibonacci_SendGoal_Request* req =
+        (const example_interfaces__action__Fibonacci_SendGoal_Request*)
+            goal_handle->ros_goal_request;
+    emit_num(RCLC_LOG_SEVERITY_INFO, "Received goal request with order ", req->goal.order, __FILE__,
              __LINE__);
     // The sequence holds 64 terms; anything that would overrun it is refused.
-    if (goal_msg.order < 0 || goal_msg.order >= 64) {
+    if (req->goal.order < 0 || req->goal.order >= 64) {
         emit(RCLC_LOG_SEVERITY_WARN, "Goal rejected: order out of range", __FILE__, __LINE__);
-        return RCLC_GOAL_REJECT;
+        return RCL_RET_ACTION_GOAL_REJECTED;
     }
-    server_context_t* ctx = (server_context_t*)context;
-    if (ctx != NULL) {
-        ctx->accepted_order = goal_msg.order;
+    if (ctx->pending_count >= GOAL_HANDLES) {
+        return RCL_RET_ACTION_GOAL_REJECTED;
     }
-    return RCLC_GOAL_ACCEPT_AND_EXECUTE;
+    ctx->pending[ctx->pending_count++] = goal_handle;
+    return RCL_RET_ACTION_GOAL_ACCEPTED;
 }
 
-static rclc_cancel_response_t cancel_callback(rcl_action_server_t* server,
-                                              const rclc_goal_handle_t* goal, void* context) {
-    (void)server;
-    (void)goal;
+static bool cancel_callback(rclc_action_goal_handle_t* goal_handle, void* context) {
+    (void)goal_handle;
     (void)context;
     emit(RCLC_LOG_SEVERITY_INFO, "Cancel request for goal", __FILE__, __LINE__);
-    return RCLC_CANCEL_ACCEPT;
+    return true;
 }
 
-static void accepted_callback(rcl_action_server_t* server, const rclc_goal_handle_t* goal,
-                              void* context) {
-    server_context_t* ctx = (server_context_t*)context;
+static void execute_goal(server_context_t* ctx, rclc_action_goal_handle_t* goal_handle) {
+    const example_interfaces__action__Fibonacci_SendGoal_Request* req =
+        (const example_interfaces__action__Fibonacci_SendGoal_Request*)
+            goal_handle->ros_goal_request;
+    int32_t order = req->goal.order;
     ctx->goal_count++;
     emit(RCLC_LOG_SEVERITY_INFO, "Executing goal", __FILE__, __LINE__);
 
-    int32_t order = ctx->accepted_order;
-    rcl_ret_t ret = rclc_action_execute(server, goal);
-    if (ret != RCL_RET_OK) {
-        emit_num(RCLC_LOG_SEVERITY_ERROR, "Failed to set executing state: ", ret, __FILE__,
-                 __LINE__);
-        return;
-    }
-
-    example_interfaces__action__Fibonacci_Feedback* fb = &app.fb;
+    example_interfaces__action__Fibonacci_Feedback* fb = &app.feedback.feedback;
     example_interfaces__action__Fibonacci_Feedback__init_in(fb, &app.fb_storage);
-    for (int32_t i = 0; i <= order; i++) {
+    rcl_ret_t ret;
+    for (int32_t i = 0; i <= order && !goal_handle->goal_cancelled; i++) {
         int32_t val;
         if (i == 0) {
             val = 0;
@@ -152,33 +143,30 @@ static void accepted_callback(rcl_action_server_t* server, const rclc_goal_handl
         fb->sequence.data[i] = val;
         fb->sequence.size = (uint32_t)(i + 1);
 
-        size_t fb_len = 0;
-        if (example_interfaces__action__Fibonacci_Feedback__serialize(
-                fb, app.fb_buf, sizeof(app.fb_buf), &fb_len) == 0) {
-            ret = rclc_action_publish_feedback_raw(server, goal, app.fb_buf, fb_len);
-            if (ret != RCL_RET_OK) {
-                emit_num(RCLC_LOG_SEVERITY_ERROR, "Failed to publish feedback: ", ret, __FILE__,
-                         __LINE__);
-            } else {
-                emit(RCLC_LOG_SEVERITY_INFO, "Publish feedback", __FILE__, __LINE__);
-            }
+        // rclc_action_publish_feedback writes the goal id into the message.
+        ret = rclc_action_publish_feedback(goal_handle, &app.feedback);
+        if (ret != RCL_RET_OK) {
+            emit_num(RCLC_LOG_SEVERITY_ERROR, "Failed to publish feedback: ", ret, __FILE__,
+                     __LINE__);
+        } else {
+            emit(RCLC_LOG_SEVERITY_INFO, "Publish feedback", __FILE__, __LINE__);
         }
     }
 
-    example_interfaces__action__Fibonacci_Result* result = &app.result;
+    example_interfaces__action__Fibonacci_Result* result = &app.response.result;
     example_interfaces__action__Fibonacci_Result__init_in(result, &app.result_storage);
     result->sequence.size = fb->sequence.size;
     memcpy(result->sequence.data, fb->sequence.data, fb->sequence.size * sizeof(int32_t));
 
-    size_t result_len = 0;
-    if (example_interfaces__action__Fibonacci_Result__serialize(
-            result, app.result_buf, sizeof(app.result_buf), &result_len) == 0) {
-        ret = rclc_action_succeed(server, goal, app.result_buf, result_len);
-        if (ret != RCL_RET_OK) {
-            emit_num(RCLC_LOG_SEVERITY_ERROR, "Failed to send result: ", ret, __FILE__, __LINE__);
-        } else {
-            emit(RCLC_LOG_SEVERITY_INFO, "Goal succeeded", __FILE__, __LINE__);
-        }
+    rcl_action_goal_state_t status =
+        goal_handle->goal_cancelled ? GOAL_STATE_CANCELED : GOAL_STATE_SUCCEEDED;
+    ret = rclc_action_send_result(goal_handle, status, &app.response);
+    if (ret != RCL_RET_OK) {
+        emit_num(RCLC_LOG_SEVERITY_ERROR, "Failed to send result: ", ret, __FILE__, __LINE__);
+    } else if (status == GOAL_STATE_SUCCEEDED) {
+        emit(RCLC_LOG_SEVERITY_INFO, "Goal succeeded", __FILE__, __LINE__);
+    } else {
+        emit(RCLC_LOG_SEVERITY_INFO, "Goal canceled", __FILE__, __LINE__);
     }
 }
 
@@ -195,25 +183,36 @@ int main(int argc, char** argv) {
                    1);
     g_logger = rclc_node_get_logger(&app.node);
 
-    RCLC_CHECK_RET(rclc_action_server_init_with_callbacks(
-                       &app.action_server, &app.node, "/fibonacci",
+    RCLC_CHECK_RET(rclc_action_server_init_default(
+                       &app.action_server, &app.node, &app.support,
                        ROSIDL_GET_ACTION_TYPE_SUPPORT(example_interfaces, action, Fibonacci),
-                       goal_callback, cancel_callback, accepted_callback, &app.ctx),
+                       "/fibonacci"),
                    1);
     RCLC_CHECK_RET(rclc_executor_init(&app.executor, &app.support.context, 8, NULL), 1);
-    RCLC_CHECK_RET(rclc_executor_attach_action_server(&app.executor, &app.action_server), 1);
+    RCLC_CHECK_RET(rclc_executor_add_action_server(&app.executor, &app.action_server, GOAL_HANDLES,
+                                                   app.goal_requests, sizeof(app.goal_requests[0]),
+                                                   goal_callback, cancel_callback, &app.ctx),
+                   1);
 
     // The readiness marker the harness waits on (`expect_ready`, phase-342 W7).
     emit(RCLC_LOG_SEVERITY_INFO, "Waiting for action goals", __FILE__, __LINE__);
 
-    // Spin forever: `app_main` returning is the end of the image.
-    rcl_ret_t ret = rclc_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != RCL_RET_OK) {
-        emit(RCLC_LOG_SEVERITY_ERROR, "executor spin failed", __FILE__, __LINE__);
+    // Spin forever, running whatever goals each spin accepted:
+    // `app_main` returning is the end of the image.
+    for (;;) {
+        rcl_ret_t ret = rclc_executor_spin_some(&app.executor, 100000000ULL);
+        if (ret != RCL_RET_OK && ret != RCL_RET_TIMEOUT) {
+            emit(RCLC_LOG_SEVERITY_ERROR, "executor spin failed", __FILE__, __LINE__);
+            break;
+        }
+        for (size_t i = 0; i < app.ctx.pending_count; i++) {
+            execute_goal(&app.ctx, app.ctx.pending[i]);
+        }
+        app.ctx.pending_count = 0;
     }
 
     rclc_executor_fini(&app.executor);
-    rcl_action_server_fini(&app.action_server, &app.node);
+    rclc_action_server_fini(&app.action_server, &app.node);
     rcl_node_fini(&app.node);
     rclc_support_fini(&app.support);
     return 0;
