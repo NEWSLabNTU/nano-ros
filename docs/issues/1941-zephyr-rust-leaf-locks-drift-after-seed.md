@@ -150,3 +150,38 @@ to realign. That makes it a defect of any persistent tree that predates
 
 What closes this issue is unchanged: a tier-2 nightly on 241 that passes
 `check-lock` with the six leaves checked.
+
+## Fourth sighting: other leaves, on newslab-118 (2026-10-27)
+
+The same gate stopped the tier-2 nightly's fixture build again, after the Fix
+above landed, and this time **no Zephyr leaf is in the list**.
+
+- Run: nightly 40453933125 (schedule, 2026-10-27 05:11 UTC, head `5b93da7e2`).
+- Job: 122022748220, `tier 2 nightly (pairwise cover)`, runner
+  `nano-ros-runner-newslab-118-server`.
+- Step: the fixture build, at the post-build ledger check
+  (`nros-cli-core/src/cmd/ws.rs:786`):
+
+```
+check-lock: 114 lock(s), 28 drift(s)
+Error: 28 dependency drift(s) from the pin set (RFC-0104 D9):
+  examples/mps2-an385-freertos/rust/talker: `libc` 0.2.191, pinned at 0.2.186 — ...
+  packages/testing/nros-tests/bins/contract-monitor: `serde_json` 1.0.154, pinned at 1.0.150 — ...
+error: recipe `build-test-fixtures` failed with exit code 1
+```
+
+The 28 are two crates only, each one patch-level NEWER than its pin: `libc`
+0.2.191 against 0.2.186, in the six `mps2-an385-freertos` and six
+`threadx-linux` Rust examples, `nros-bench/loan-copy-count`,
+`condvar-contract-freertos-mps2`, `declarative-safety-listener` and
+`pool-exhaustion-threadx-linux`; and `serde_json` 1.0.154 against 1.0.150, in
+two `nros-bench` leaves and ten `nros-tests/bins` leaves. None of these locks
+is tracked on main. They are seeded build output, so the drift was resolved on
+the runner, whose fixture tree persists between runs. This is the shape the
+Fix's `realign_or_reseed` was meant to absorb, so either these leaves do not
+reach `seed-lock`, or the reseed resolves past the pins for them.
+
+The previous nights' tier-2 nightly builds failed earlier, at issue 2025's
+Zephyr link inside the same fixture build, so they may never have reached this
+post-build check. Whether this drift is new, or was hidden behind 2025, is NOT
+established.
