@@ -1,0 +1,1 @@
+C services and clients take rclc's typed registrations: `rclc_executor_add_service` (plus `_with_request_id` and `_with_context`) and `rclc_executor_add_client` deserialise each request or reply into the caller's own message and serialise the response back, so a ported rclc file needs no CDR handling (phase-515 C3).

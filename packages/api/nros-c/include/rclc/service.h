@@ -73,10 +73,10 @@ static inline struct rclc_qos_t rclc_qos_services_best_effort(void) {
  * `c:service_init_best_effort` filed a `divergence` on "ours takes a QoS
  * value" — true, and not a reason for the name rclc ships to be missing.
  *
- * Takes no callback, at rclc's arity: the handler is supplied at registration
- * by rclc_executor_add_service_raw(), where rclc supplies it
- * (`rclc_executor_add_service`). Same split `rclc_service_init_default`
- * already makes.
+ * Takes no callback, at rclc's arity: the handler is supplied at registration,
+ * where rclc supplies it — rclc_executor_add_service() (typed, rclc's own
+ * signature; phase-515 C3) or rclc_executor_add_service_raw() (CDR bytes).
+ * Same split `rclc_service_init_default` already makes.
  *
  * `static inline`: no symbol, no writable data.
  *

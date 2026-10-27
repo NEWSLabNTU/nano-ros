@@ -3079,12 +3079,358 @@ pub unsafe extern "C" fn rclc_executor_add_service_raw_with_request_id(
     unsafe { add_service_raw(executor, service, callback, context) }
 }
 
+/// rclc's `rclc_service_callback_t`: the request and response in the
+/// caller's own message storage (phase-515 C3).
+pub type rclc_service_callback_t = Option<
+    unsafe extern "C" fn(request: *const core::ffi::c_void, response: *mut core::ffi::c_void),
+>;
+
+/// rclc's `rclc_service_callback_with_request_id_t` (phase-515 C3).
+pub type rclc_service_callback_with_request_id_t = Option<
+    unsafe extern "C" fn(
+        request: *const core::ffi::c_void,
+        request_id: *mut crate::service::rmw_request_id_t,
+        response: *mut core::ffi::c_void,
+    ),
+>;
+
+/// rclc's `rclc_service_callback_with_context_t` (phase-515 C3).
+pub type rclc_service_callback_with_context_t = Option<
+    unsafe extern "C" fn(
+        request: *const core::ffi::c_void,
+        response: *mut core::ffi::c_void,
+        context: *mut core::ffi::c_void,
+    ),
+>;
+
+/// rclc's `rclc_client_callback_t`: the response in the caller's own message
+/// storage (phase-515 C3).
+pub type rclc_client_callback_t = Option<unsafe extern "C" fn(response: *const core::ffi::c_void)>;
+
+/// The user callback a typed service dispatches to — one of rclc's three.
+#[derive(Clone, Copy)]
+enum TypedServiceCallback {
+    Plain(unsafe extern "C" fn(*const core::ffi::c_void, *mut core::ffi::c_void)),
+    WithRequestId(
+        unsafe extern "C" fn(
+            *const core::ffi::c_void,
+            *mut crate::service::rmw_request_id_t,
+            *mut core::ffi::c_void,
+        ),
+    ),
+    WithContext(
+        unsafe extern "C" fn(
+            *const core::ffi::c_void,
+            *mut core::ffi::c_void,
+            *mut core::ffi::c_void,
+        ),
+        *mut core::ffi::c_void,
+    ),
+}
+
+/// What a typed service's trampoline needs at dispatch: the caller's two
+/// messages, the descriptor's two codec halves and the callback. Five words
+/// where the raw entry has one context, so it rides as an arena-owned CAPTURE
+/// (copied at registration; released with the entry) and the C struct keeps
+/// nothing (RFC-0096 D9).
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TypedServiceCapture {
+    request: *mut core::ffi::c_void,
+    response: *mut core::ffi::c_void,
+    request_deserialize: unsafe extern "C" fn(*const u8, usize, *mut core::ffi::c_void) -> i32,
+    response_serialize:
+        unsafe extern "C" fn(*const core::ffi::c_void, *mut u8, usize, *mut usize) -> i32,
+    callback: TypedServiceCallback,
+}
+
+impl TypedServiceCapture {
+    fn as_bytes(&self) -> &[u8] {
+        // SAFETY: a `Copy` value of plain pointers, read as its own bytes for
+        // the arena to copy; the copy is read back only as this type.
+        unsafe {
+            core::slice::from_raw_parts(
+                self as *const Self as *const u8,
+                core::mem::size_of::<Self>(),
+            )
+        }
+    }
+}
+
+/// The typed service's dispatch: deserialise the request into the caller's
+/// storage, run rclc's callback, serialise the caller's response. A request
+/// that does not deserialise, or a response that does not serialise into the
+/// reply buffer, sends no reply (`false`), as the raw path's callback can.
+unsafe extern "C" fn typed_service_trampoline(
+    req: *const u8,
+    req_len: usize,
+    request_id: *mut nros_node::RawRequestId,
+    resp: *mut u8,
+    resp_cap: usize,
+    resp_len: *mut usize,
+    context: *mut core::ffi::c_void,
+) -> bool {
+    // SAFETY: `context` is the arena copy of the `TypedServiceCapture` this
+    // entry was registered with.
+    let cap = unsafe { &*(context as *const TypedServiceCapture) };
+    if unsafe { (cap.request_deserialize)(req, req_len, cap.request) } != 0 {
+        return false;
+    }
+    match cap.callback {
+        TypedServiceCallback::Plain(cb) => unsafe { cb(cap.request, cap.response) },
+        TypedServiceCallback::WithRequestId(cb) => unsafe {
+            cb(cap.request, request_id, cap.response)
+        },
+        TypedServiceCallback::WithContext(cb, ctx) => unsafe { cb(cap.request, cap.response, ctx) },
+    }
+    let mut len = 0usize;
+    if unsafe { (cap.response_serialize)(cap.response, resp, resp_cap, &mut len) } != 0
+        || len > resp_cap
+    {
+        return false;
+    }
+    unsafe { *resp_len = len };
+    true
+}
+
+/// The descriptor's codec for a typed service, or the reason there is none.
+unsafe fn typed_service_capture(
+    service: *mut rcl_service_t,
+    request: *mut core::ffi::c_void,
+    response: *mut core::ffi::c_void,
+    callback: TypedServiceCallback,
+) -> Result<TypedServiceCapture, rcl_ret_t> {
+    if service.is_null() || request.is_null() || response.is_null() {
+        return Err(RCL_RET_INVALID_ARGUMENT);
+    }
+    let type_info = unsafe { (*service).type_support.as_ref() }.ok_or(RCL_RET_UNSUPPORTED)?;
+    match (type_info.request_deserialize, type_info.response_serialize) {
+        (Some(request_deserialize), Some(response_serialize)) => Ok(TypedServiceCapture {
+            request,
+            response,
+            request_deserialize,
+            response_serialize,
+            callback,
+        }),
+        _ => Err(RCL_RET_UNSUPPORTED),
+    }
+}
+
+/// rclc's `rclc_executor_add_service(executor, service, request_msg,
+/// response_msg, callback)` — phase-515 C3.
+///
+/// On each request the executor deserialises it into `request_msg` through
+/// the service's descriptor, calls `callback(request_msg, response_msg)`, and
+/// sends `response_msg` serialised back, as rclc does. Both messages are the
+/// caller's and must outlive the registration. The raw CDR form is
+/// [`rclc_executor_add_service_raw`].
+///
+/// ADOPT-BOUNDED: a request that does not deserialise is dropped with no
+/// reply, and a response larger than the image's message buffer is not sent —
+/// where rclc's allocator-backed messages would grow.
+///
+/// # Returns
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or callback
+/// * `RCL_RET_UNSUPPORTED` — the service's descriptor carries no codec (one
+///   built from type names alone); use [`rclc_executor_add_service_raw`]
+/// * otherwise as [`rclc_executor_add_service_raw`]
+///
+/// # Safety
+/// `executor` and `service` must be initialised; `request_msg` and
+/// `response_msg` must be the service type's request and response storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_service(
+    executor: *mut rclc_executor_t,
+    service: *mut rcl_service_t,
+    request_msg: *mut core::ffi::c_void,
+    response_msg: *mut core::ffi::c_void,
+    callback: rclc_service_callback_t,
+) -> rcl_ret_t {
+    let Some(cb) = callback else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    unsafe {
+        add_typed_service(
+            executor,
+            service,
+            request_msg,
+            response_msg,
+            TypedServiceCallback::Plain(cb),
+        )
+    }
+}
+
+/// rclc's `rclc_executor_add_service_with_request_id` — phase-515 C3.
+/// [`rclc_executor_add_service`] whose callback also receives the request's
+/// `rmw_request_id_t`, as [`rclc_executor_add_service_raw_with_request_id`]
+/// reports it.
+///
+/// # Safety
+/// As [`rclc_executor_add_service`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_service_with_request_id(
+    executor: *mut rclc_executor_t,
+    service: *mut rcl_service_t,
+    request_msg: *mut core::ffi::c_void,
+    response_msg: *mut core::ffi::c_void,
+    callback: rclc_service_callback_with_request_id_t,
+) -> rcl_ret_t {
+    let Some(cb) = callback else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    unsafe {
+        add_typed_service(
+            executor,
+            service,
+            request_msg,
+            response_msg,
+            TypedServiceCallback::WithRequestId(cb),
+        )
+    }
+}
+
+/// rclc's `rclc_executor_add_service_with_context` — phase-515 C3.
+/// [`rclc_executor_add_service`] whose callback also receives `context`,
+/// passed through untouched.
+///
+/// # Safety
+/// As [`rclc_executor_add_service`]; `context` may be NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_service_with_context(
+    executor: *mut rclc_executor_t,
+    service: *mut rcl_service_t,
+    request_msg: *mut core::ffi::c_void,
+    response_msg: *mut core::ffi::c_void,
+    callback: rclc_service_callback_with_context_t,
+    context: *mut core::ffi::c_void,
+) -> rcl_ret_t {
+    let Some(cb) = callback else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    unsafe {
+        add_typed_service(
+            executor,
+            service,
+            request_msg,
+            response_msg,
+            TypedServiceCallback::WithContext(cb, context),
+        )
+    }
+}
+
+unsafe fn add_typed_service(
+    executor: *mut rclc_executor_t,
+    service: *mut rcl_service_t,
+    request_msg: *mut core::ffi::c_void,
+    response_msg: *mut core::ffi::c_void,
+    callback: TypedServiceCallback,
+) -> rcl_ret_t {
+    match unsafe { typed_service_capture(service, request_msg, response_msg, callback) } {
+        Ok(capture) => unsafe {
+            add_service_raw(
+                executor,
+                service,
+                ServiceRawCallback::Typed(capture),
+                core::ptr::null_mut(),
+            )
+        },
+        Err(ret) => ret,
+    }
+}
+
+/// What a typed client's trampoline needs: the caller's response storage, the
+/// descriptor's deserialiser and the callback, as an arena-owned capture.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TypedClientCapture {
+    response: *mut core::ffi::c_void,
+    response_deserialize: unsafe extern "C" fn(*const u8, usize, *mut core::ffi::c_void) -> i32,
+    callback: unsafe extern "C" fn(*const core::ffi::c_void),
+}
+
+/// The typed client's dispatch: deserialise the reply into the caller's
+/// storage and hand it to rclc's callback. A reply that does not deserialise
+/// is dropped without a callback.
+unsafe extern "C" fn typed_client_trampoline(
+    data: *const u8,
+    len: usize,
+    context: *mut core::ffi::c_void,
+) {
+    // SAFETY: `context` is the arena copy of this entry's `TypedClientCapture`.
+    let cap = unsafe { &*(context as *const TypedClientCapture) };
+    if unsafe { (cap.response_deserialize)(data, len, cap.response) } == 0 {
+        unsafe { (cap.callback)(cap.response) };
+    }
+}
+
+/// rclc's `rclc_executor_add_client(executor, client, response_msg,
+/// callback)` — phase-515 C3.
+///
+/// Registers the client (what [`rclc_executor_attach_client`] does) with a
+/// response callback: each reply is deserialised into `response_msg` through
+/// the client's descriptor and `callback(response_msg)` runs, as rclc's does.
+/// `response_msg` is the caller's and must outlive the registration. Requests
+/// go out with `rclc_client_send_request` as before;
+/// `rclc_client_set_response_callback` replaces the typed callback with a raw
+/// one.
+///
+/// ADOPT-BOUNDED: a reply that does not deserialise is dropped without a
+/// callback.
+///
+/// # Returns
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or callback
+/// * `RCL_RET_UNSUPPORTED` — the client's descriptor carries no response
+///   deserialiser; use [`rclc_executor_attach_client`] and a raw callback
+/// * otherwise as [`rclc_executor_attach_client`]
+///
+/// # Safety
+/// `executor` and `client` must be initialised; `response_msg` must be the
+/// service type's response storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_add_client(
+    executor: *mut rclc_executor_t,
+    client: *mut rcl_client_t,
+    response_msg: *mut core::ffi::c_void,
+    callback: rclc_client_callback_t,
+) -> rcl_ret_t {
+    let Some(callback) = callback else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    if client.is_null() || response_msg.is_null() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let Some(response_deserialize) =
+        (unsafe { (*client).type_support.as_ref() }).and_then(|t| t.response_deserialize)
+    else {
+        return RCL_RET_UNSUPPORTED;
+    };
+    let capture = TypedClientCapture {
+        response: response_msg,
+        response_deserialize,
+        callback,
+    };
+    // SAFETY: a `Copy` value of plain pointers, read as its own bytes for the
+    // arena to copy; the copy is read back only as this type.
+    let bytes = unsafe {
+        core::slice::from_raw_parts(
+            &capture as *const TypedClientCapture as *const u8,
+            core::mem::size_of::<TypedClientCapture>(),
+        )
+    };
+    unsafe { attach_client_with(executor, client, Some(typed_client_trampoline), Some(bytes)) }
+}
+
 /// Issue 2081 — the two raw service callback shapes one registration body
 /// serves.
 #[derive(Clone, Copy)]
 enum ServiceRawCallback {
     Plain(nros_node::RawServiceCallback),
     WithRequestId(nros_node::RawServiceRequestIdCallback),
+    /// phase-515 C3 — rclc's typed forms: the trampoline below, reading this
+    /// capture from the arena.
+    Typed(TypedServiceCapture),
 }
 
 unsafe fn add_service_raw(
@@ -3164,6 +3510,21 @@ unsafe fn add_service_raw(
                     callback,
                     context,
                 ),
+            (ServiceRawCallback::Typed(capture), node_id) => rust_exec
+                .register_service_raw_with_request_id_sized::<
+                    MESSAGE_BUFFER_SIZE,
+                    MESSAGE_BUFFER_SIZE,
+                >(
+                    node_id,
+                    service_name,
+                    type_str,
+                    type_hash_str,
+                    svc_qos,
+                    typed_service_trampoline,
+                    core::ptr::null_mut(),
+                    Some(capture.as_bytes()),
+                    None,
+                ),
             (ServiceRawCallback::WithRequestId(callback), node_id) => rust_exec
                 .register_service_raw_with_request_id_sized::<
                     MESSAGE_BUFFER_SIZE,
@@ -3237,6 +3598,23 @@ pub unsafe extern "C" fn rclc_executor_attach_client(
     executor: *mut rclc_executor_t,
     client: *mut rcl_client_t,
 ) -> rcl_ret_t {
+    // phase-487 W2 — no callback yet: `rclc_client_set_response_callback`
+    // writes the user's pair into this entry, and `rclc_client_call` swaps a
+    // one-shot capture in and out of it. Until W2 the entry held a trampoline
+    // whose context was the `rcl_client_t` itself, so a late reply read the C
+    // struct (issue 1631's use-after-free).
+    unsafe { attach_client_with(executor, client, None, None) }
+}
+
+/// The one client registration body: [`rclc_executor_attach_client`] with no
+/// callback, and phase-515 C3's typed [`rclc_executor_add_client`] with its
+/// trampoline and the arena-owned capture that trampoline reads.
+unsafe fn attach_client_with(
+    executor: *mut rclc_executor_t,
+    client: *mut rcl_client_t,
+    cb: Option<nros_node::RawResponseCallback>,
+    capture: Option<&[u8]>,
+) -> rcl_ret_t {
     validate_not_null!(executor, client);
 
     let executor = &mut *executor;
@@ -3266,14 +3644,6 @@ pub unsafe extern "C" fn rclc_executor_attach_client(
         let type_hash_str =
             core::str::from_utf8_unchecked(&client_ref.type_hash[..client_ref.type_hash_len]);
 
-        // phase-487 W2 — no callback yet: `rclc_client_set_response_callback`
-        // writes the user's pair into this entry, and `rclc_client_call`
-        // swaps a one-shot capture in and out of it. Until W2 the entry held
-        // a trampoline whose context was the `rcl_client_t` itself, so a
-        // late reply read the C struct (issue 1631's use-after-free).
-        let cb: Option<nros_node::RawResponseCallback> = None;
-        let client_ctx = core::ptr::null_mut();
-
         // Propagate node identity for liveliness key expression.
         set_executor_node_identity(&mut rust_exec, client_ref.node);
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
@@ -3292,26 +3662,15 @@ pub unsafe extern "C" fn rclc_executor_attach_client(
         // Phase 189.M3.3.a — capture the requested sched-context slot before the
         // `&mut *client` reborrow in the Ok arm (avoids an aliasing borrow).
         let requested_sc = client_ref.sched_context_id;
-        let result = if let Some(node_id) = node_id {
-            rust_exec.register_service_client_raw_sized_on::<MESSAGE_BUFFER_SIZE>(
-                node_id,
-                service_name,
-                type_str,
-                type_hash_str,
-                client_qos,
-                cb,
-                client_ctx,
-            )
-        } else {
-            rust_exec.register_service_client_raw_sized::<MESSAGE_BUFFER_SIZE>(
-                service_name,
-                type_str,
-                type_hash_str,
-                client_qos,
-                cb,
-                client_ctx,
-            )
-        };
+        let result = rust_exec.register_service_client_raw_capturing::<MESSAGE_BUFFER_SIZE>(
+            node_id,
+            service_name,
+            type_str,
+            type_hash_str,
+            client_qos,
+            cb,
+            capture,
+        );
 
         match result {
             Ok(handle_id) => {

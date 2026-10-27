@@ -214,6 +214,18 @@ context-less callbacks too, so the same reading applies there.
 Only `rclc_executor_add_service_raw` (CDR bytes) exists. Since phase-492 the
 descriptor carries the codec the typed subscription uses, so the typed forms
 with caller-owned request/response messages are the same pattern. Adopt.
+**LANDED 2026-10-27.** `rclc_executor_add_service`, `_with_request_id` and
+`_with_context`, and `rclc_executor_add_client`, at rclc's signatures with
+rclc's callback typedefs. Each is the raw registration with a fixed
+trampoline; what the trampoline needs (the caller's messages, the
+descriptor's codec halves, the callback) is copied into the arena entry as a
+capture, so the C structs keep nothing but the descriptor pointer
+(`rcl_service_t` / `rcl_client_t` gained `type_support`, as the subscription
+did in phase-492 W8). The client half needed a capture on the client entry,
+which only services and subscriptions had: nros-node's
+`register_service_client_raw_capturing`. Envelope: a request or reply that does
+not deserialise is dropped (no reply, no callback), and a descriptor with no
+codec is `RCL_RET_UNSUPPORTED`. Test: `packages/api/nros-c/tests/run/typed_service_client.c`.
 
 **C4 — `rclc_action_server_init_default` + `rclc_executor_add_action_server`.**
 Refused because our action callbacks are bound at init (`rclc/action.h`:

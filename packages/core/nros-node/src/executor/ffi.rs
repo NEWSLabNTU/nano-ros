@@ -170,6 +170,19 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError>;
 
+    /// The FFI entry point; see `Executor::register_service_client_raw_capturing` in `spin.rs`.
+    #[allow(clippy::too_many_arguments)]
+    fn register_service_client_raw_capturing<const REPLY_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        qos: QoSProfile,
+        callback: Option<RawResponseCallback>,
+        capture: Option<&[u8]>,
+    ) -> Result<HandleId, NodeError>;
+
     /// The FFI entry point; see `Executor::register_service_raw_capturing` in `spin.rs`.
     #[allow(clippy::too_many_arguments)]
     fn register_service_raw_capturing<const REQ_BUF: usize, const REPLY_BUF: usize>(
@@ -726,6 +739,30 @@ impl<'s> ExecutorFfi<'s> for Executor<'s> {
             qos,
             callback,
             context,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[inline]
+    fn register_service_client_raw_capturing<const REPLY_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        qos: QoSProfile,
+        callback: Option<RawResponseCallback>,
+        capture: Option<&[u8]>,
+    ) -> Result<HandleId, NodeError> {
+        Executor::register_service_client_raw_capturing::<REPLY_BUF>(
+            self,
+            node_id,
+            service_name,
+            service_type,
+            service_hash,
+            qos,
+            callback,
+            capture,
         )
     }
 
