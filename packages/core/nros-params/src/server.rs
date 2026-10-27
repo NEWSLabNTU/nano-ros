@@ -3,9 +3,12 @@
 //! Provides a static storage parameter server for embedded systems.
 //! Parameters are stored in a fixed-size array with compile-time capacity.
 
-use crate::types::{
-    FloatingPointRange, IntegerRange, MAX_PARAM_NAME_LEN, NodeFlags, NodeKey, Parameter,
-    ParameterDescriptor, ParameterRange, ParameterType, ParameterValue, SetParameterResult,
+use crate::{
+    ParameterError,
+    types::{
+        FloatingPointRange, IntegerRange, MAX_PARAM_NAME_LEN, NodeFlags, NodeKey, Parameter,
+        ParameterDescriptor, ParameterRange, ParameterType, ParameterValue,
+    },
 };
 use heapless::String;
 
@@ -71,14 +74,14 @@ pub(crate) struct ParameterEntry {
 /// Why a declaration was refused — phase-417 W4.a.
 ///
 /// rclrs separates DECLARE-time failures from set-time ones, and this is that
-/// separation: [`SetParameterResult`] answers "may this WRITE happen", this
+/// separation: a write's `Result<(), ParameterError>` answers "may this WRITE happen", this
 /// answers "may this parameter EXIST". Ours is a subset of rclrs's, and the
 /// difference is structural rather than an omission: rclrs's
 /// `NoValueAvailable`, `OverrideValueTypeMismatch` and `PriorValueTypeMismatch`
 /// are about a launch OVERRIDE arriving before the declaration and disagreeing
 /// with it, and nano-ros seeds overrides through the same
 /// [`ParameterServer::apply`] path a remote set uses — so a disagreeing
-/// override is a `SetParameterResult`, on the write that carried it, and
+/// override is a `ParameterError`, on the write that carried it, and
 /// cannot reach a declaration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeclarationError {
@@ -103,7 +106,7 @@ pub enum DeclarationError {
 }
 
 /// phase-515 R8 -- the typed builder's terminals return [`DeclarationError`]
-/// now, as rclrs's do. This keeps `?` into a [`ParameterError`](crate::ParameterError)-returning
+/// now, as rclrs's do. This keeps `?` into a [`ParameterError`]-returning
 /// caller compiling, and maps each case to the `ParameterError` such a caller
 /// saw before the change.
 impl From<DeclarationError> for crate::ParameterError {
@@ -813,7 +816,7 @@ impl<'s> ParameterServer<'s> {
     /// [`declare`](Self::declare), saying WHY it refused — phase-417 W4.a.
     ///
     /// rclrs separates declare-time failures from set-time ones
-    /// ([`DeclarationError`] against [`SetParameterResult`]); ours returned a
+    /// ([`DeclarationError`] against [`ParameterError`]); ours returned a
     /// bare `bool` for "the name was taken", "the table was full" and "the
     /// default is outside the range" alike, so a caller could not tell a
     /// programming error from a capacity one. The `bool` spellings above
@@ -909,7 +912,7 @@ impl<'s> ParameterServer<'s> {
     /// `bool`, because the remedies differ: `InvalidRange` means fix the
     /// range, `InitialValueOutOfRange` means fix the default. The `bool`
     /// spelling below is kept for the caller that only has a
-    /// [`SetParameterResult`] channel, so there is still one predicate.
+    /// `ParameterError` channel, so there is still one predicate.
     pub(crate) fn declaration_consistency(
         descriptor: Option<&ParameterDescriptor>,
         value: &ParameterValue,
@@ -932,19 +935,22 @@ impl<'s> ParameterServer<'s> {
 
     /// Would `set(name, value)` succeed on an EXISTING entry? Read-only,
     /// then type, then range — the one ordering every set path uses.
-    fn check_set_existing(entry: &ParameterEntry, value: &ParameterValue) -> SetParameterResult {
+    fn check_set_existing(
+        entry: &ParameterEntry,
+        value: &ParameterValue,
+    ) -> Result<(), ParameterError> {
         if let Some(ref desc) = entry.descriptor {
             if desc.read_only {
-                return SetParameterResult::ReadOnly;
+                return Err(ParameterError::ReadOnly);
             }
             if !desc.dynamic_typing && desc.param_type != value.param_type() {
-                return SetParameterResult::TypeMismatch;
+                return Err(ParameterError::TypeMismatch);
             }
             if !desc.validate_range(value) {
-                return SetParameterResult::OutOfRange;
+                return Err(ParameterError::OutOfRange);
             }
         }
-        SetParameterResult::Success
+        Ok(())
     }
 
     /// Dry-run of [`apply`](Self::apply): the verdict a wire-facing set would
@@ -955,16 +961,16 @@ impl<'s> ParameterServer<'s> {
         node: NodeKey,
         name: &str,
         value: &ParameterValue,
-    ) -> SetParameterResult {
+    ) -> Result<(), ParameterError> {
         match self
             .find_index(node, name)
             .and_then(|idx| self.table.entries[idx].as_ref())
         {
             Some(entry) => Self::check_set_existing(entry, value),
-            None if !self.allows_undeclared(node) => SetParameterResult::Undeclared,
-            None if self.is_full() => SetParameterResult::StorageFull,
-            None if name.len() > MAX_PARAM_NAME_LEN => SetParameterResult::StorageFull,
-            None => SetParameterResult::Success,
+            None if !self.allows_undeclared(node) => Err(ParameterError::Undeclared),
+            None if self.is_full() => Err(ParameterError::StorageFull),
+            None if name.len() > MAX_PARAM_NAME_LEN => Err(ParameterError::StorageFull),
+            None => Ok(()),
         }
     }
 
@@ -972,7 +978,7 @@ impl<'s> ParameterServer<'s> {
     /// `SetParametersAtomically` does (issue 1151).
     ///
     /// An existing parameter is set through [`set`](Self::set). An unknown
-    /// name is [`Undeclared`](SetParameterResult::Undeclared) unless
+    /// name is [`Undeclared`](ParameterError::Undeclared) unless
     /// [`set_allow_undeclared`](Self::set_allow_undeclared) was switched on
     /// FOR THAT NODE, in which case it is declared (or `StorageFull`). Every
     /// service handler and every facade writer goes through here so the
@@ -983,12 +989,12 @@ impl<'s> ParameterServer<'s> {
         node: NodeKey,
         name: &str,
         value: ParameterValue,
-    ) -> SetParameterResult {
+    ) -> Result<(), ParameterError> {
         if matches!(value, ParameterValue::NotSet) && self.delete_on_not_set.get(node) {
             return self.apply_delete(node, name);
         }
         let verdict = self.check_apply(node, name, &value);
-        if !verdict.is_success() {
+        if !verdict.is_ok() {
             return verdict;
         }
         // phase-417 W4.a — the accept/reject hook, AFTER the store's own rules
@@ -999,14 +1005,14 @@ impl<'s> ParameterServer<'s> {
         // C++ facades, `Executor::set_parameter`), so hooking it here is what
         // makes one registration reach all of them.
         if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(&value)) {
-            return SetParameterResult::Rejected;
+            return Err(ParameterError::Rejected);
         }
         if self.find_index(node, name).is_some() {
             self.set(node, name, value)
         } else if self.declare(node, name, value) {
-            SetParameterResult::Success
+            Ok(())
         } else {
-            SetParameterResult::StorageFull
+            Err(ParameterError::StorageFull)
         }
     }
 
@@ -1031,31 +1037,31 @@ impl<'s> ParameterServer<'s> {
         node: NodeKey,
         name: &str,
         staged: &mut ParameterValue,
-    ) -> SetParameterResult {
+    ) -> Result<(), ParameterError> {
         if matches!(staged, ParameterValue::NotSet) && self.delete_on_not_set.get(node) {
             return self.apply_delete(node, name);
         }
         let verdict = self.check_apply(node, name, staged);
-        if !verdict.is_success() {
+        if !verdict.is_ok() {
             return verdict;
         }
         if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(staged)) {
-            return SetParameterResult::Rejected;
+            return Err(ParameterError::Rejected);
         }
         let (idx, kind) = match self.find_index(node, name) {
             Some(idx) => (idx, ParameterEventKind::Changed),
             None => match self.declare_placeholder(node, name) {
                 Some(idx) => (idx, ParameterEventKind::New),
-                None => return SetParameterResult::StorageFull,
+                None => return Err(ParameterError::StorageFull),
             },
         };
         match self.table.entries[idx].as_mut() {
             Some(entry) => {
                 core::mem::swap(&mut entry.param.value, staged);
                 self.note_event(node, kind, name);
-                SetParameterResult::Success
+                Ok(())
             }
-            None => SetParameterResult::NotFound,
+            None => Err(ParameterError::NotFound),
         }
     }
 
@@ -1085,21 +1091,21 @@ impl<'s> ParameterServer<'s> {
     /// The delete half of [`apply`](Self::apply) for a node that asked for
     /// [`set_delete_on_not_set`](Self::set_delete_on_not_set): read-only
     /// refuses, the hooks see `(old, None)`, then the parameter is removed.
-    fn apply_delete(&mut self, node: NodeKey, name: &str) -> SetParameterResult {
+    fn apply_delete(&mut self, node: NodeKey, name: &str) -> Result<(), ParameterError> {
         let Some(entry) = self
             .find_index(node, name)
             .and_then(|idx| self.table.entries[idx].as_ref())
         else {
-            return SetParameterResult::NotFound;
+            return Err(ParameterError::NotFound);
         };
         if entry.descriptor.as_ref().is_some_and(|d| d.read_only) {
-            return SetParameterResult::ReadOnly;
+            return Err(ParameterError::ReadOnly);
         }
         if !self.run_on_set_callbacks(node, name, self.get(node, name), None) {
-            return SetParameterResult::Rejected;
+            return Err(ParameterError::Rejected);
         }
         self.remove(node, name);
-        SetParameterResult::Success
+        Ok(())
     }
 
     /// phase-491 W2 (RFC-0105 D6/D7) — rclc's LOCAL typed set,
@@ -1120,25 +1126,25 @@ impl<'s> ParameterServer<'s> {
         node: NodeKey,
         name: &str,
         value: ParameterValue,
-    ) -> SetParameterResult {
+    ) -> Result<(), ParameterError> {
         let Some(idx) = self.find_index(node, name) else {
-            return SetParameterResult::NotFound;
+            return Err(ParameterError::NotFound);
         };
         let Some(entry) = self.table.entries[idx].as_ref() else {
-            return SetParameterResult::NotFound;
+            return Err(ParameterError::NotFound);
         };
         let dynamic = entry.descriptor.as_ref().is_some_and(|d| d.dynamic_typing);
         if !dynamic && entry.param.value.param_type() != value.param_type() {
-            return SetParameterResult::TypeMismatch;
+            return Err(ParameterError::TypeMismatch);
         }
         if !self.run_on_set_callbacks(node, name, Some(&entry.param.value), Some(&value)) {
-            return SetParameterResult::Rejected;
+            return Err(ParameterError::Rejected);
         }
         if let Some(entry) = self.table.entries[idx].as_mut() {
             entry.param.value = value;
         }
         self.note_event(node, ParameterEventKind::Changed, name);
-        SetParameterResult::Success
+        Ok(())
     }
 
     /// Run every registered hook for `node`. `false` from any one of them
@@ -1165,7 +1171,7 @@ impl<'s> ParameterServer<'s> {
     /// The callback runs on every [`apply`](Self::apply): a remote
     /// `ros2 param set`, a C++
     /// `Node::set_parameter`, a Rust `Executor::set_parameter`. Returning
-    /// `false` refuses the write with [`SetParameterResult::Rejected`] and
+    /// `false` refuses the write with [`ParameterError::Rejected`] and
     /// leaves the stored value alone.
     ///
     /// `None` when all [`MAX_ON_SET_CALLBACKS`] slots are taken — a refusal,
@@ -1256,7 +1262,7 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Mark a declared parameter read-only, so every later write is
-    /// [`SetParameterResult::ReadOnly`] — rclc's
+    /// [`ParameterError::ReadOnly`] — rclc's
     /// `rclc_set_parameter_read_only`. `false` if not declared on `node`.
     pub fn set_parameter_read_only(&mut self, node: NodeKey, name: &str, read_only: bool) -> bool {
         match self.descriptor_mut(node, name) {
@@ -1351,7 +1357,7 @@ impl<'s> ParameterServer<'s> {
     ///
     /// It is `Clone` because the two passes walk it twice; a slice iterator is.
     ///
-    /// Returns [`SetParameterResult::Success`], or the FIRST verdict that
+    /// Returns `Ok(())`, or the FIRST verdict that
     /// refused. Nothing is written on a refusal.
     ///
     /// The per-item check is against the state BEFORE the batch, not against
@@ -1361,16 +1367,16 @@ impl<'s> ParameterServer<'s> {
     /// fills what it can. Making the pre-check cumulative would need a
     /// speculative copy of the table, which is the allocation this store does
     /// not have.
-    pub fn apply_atomically<'x, I>(&mut self, node: NodeKey, items: I) -> SetParameterResult
+    pub fn apply_atomically<'x, I>(&mut self, node: NodeKey, items: I) -> Result<(), ParameterError>
     where
         I: Iterator<Item = Option<(&'x str, ParameterValue)>> + Clone,
     {
         for item in items.clone() {
             let Some((name, value)) = item else {
-                return SetParameterResult::TypeMismatch;
+                return Err(ParameterError::TypeMismatch);
             };
             let verdict = self.check_apply(node, name, &value);
-            if !verdict.is_success() {
+            if !verdict.is_ok() {
                 return verdict;
             }
             // The hook is consulted in the CHECK pass, so a callback that
@@ -1379,7 +1385,7 @@ impl<'s> ParameterServer<'s> {
             // that answers differently to the same value twice is the caller's
             // own inconsistency, and the second answer is the one that stands.
             if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(&value)) {
-                return SetParameterResult::Rejected;
+                return Err(ParameterError::Rejected);
             }
         }
         for item in items {
@@ -1388,7 +1394,7 @@ impl<'s> ParameterServer<'s> {
             };
             let _ = self.apply(node, name, value);
         }
-        SetParameterResult::Success
+        Ok(())
     }
 
     /// Get a parameter value by name
@@ -1415,54 +1421,59 @@ impl<'s> ParameterServer<'s> {
     /// Set a parameter value
     ///
     /// Returns the result of the set operation.
-    pub fn set(&mut self, node: NodeKey, name: &str, value: ParameterValue) -> SetParameterResult {
+    pub fn set(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: ParameterValue,
+    ) -> Result<(), ParameterError> {
         let idx = match self.find_index(node, name) {
             Some(idx) => idx,
-            None => return SetParameterResult::NotFound,
+            None => return Err(ParameterError::NotFound),
         };
 
         let entry = match self.table.entries[idx].as_mut() {
             Some(e) => e,
-            None => return SetParameterResult::NotFound,
+            None => return Err(ParameterError::NotFound),
         };
 
         // Read-only, type, range (min/max/step) — one predicate, shared with
         // the atomic pre-check.
         let verdict = Self::check_set_existing(entry, &value);
-        if !verdict.is_success() {
+        if !verdict.is_ok() {
             return verdict;
         }
 
         entry.param.value = value;
         self.note_event(node, ParameterEventKind::Changed, name);
-        SetParameterResult::Success
+        Ok(())
     }
 
     /// Unset an optional parameter (set to NotSet)
     ///
     /// This bypasses the type check to allow optional parameters to be unset.
     /// Returns an error if the parameter is read-only.
-    pub fn unset(&mut self, node: NodeKey, name: &str) -> SetParameterResult {
+    pub fn unset(&mut self, node: NodeKey, name: &str) -> Result<(), ParameterError> {
         let idx = match self.find_index(node, name) {
             Some(idx) => idx,
-            None => return SetParameterResult::NotFound,
+            None => return Err(ParameterError::NotFound),
         };
 
         let entry = match self.table.entries[idx].as_mut() {
             Some(e) => e,
-            None => return SetParameterResult::NotFound,
+            None => return Err(ParameterError::NotFound),
         };
 
         // Check if read-only
         if let Some(ref desc) = entry.descriptor
             && desc.read_only
         {
-            return SetParameterResult::ReadOnly;
+            return Err(ParameterError::ReadOnly);
         }
 
         entry.param.value = ParameterValue::NotSet;
         self.note_event(node, ParameterEventKind::Changed, name);
-        SetParameterResult::Success
+        Ok(())
     }
 
     /// Set or declare a parameter — an EXPLICIT auto-declare for in-image
@@ -1478,13 +1489,13 @@ impl<'s> ParameterServer<'s> {
         node: NodeKey,
         name: &str,
         value: ParameterValue,
-    ) -> SetParameterResult {
+    ) -> Result<(), ParameterError> {
         if self.find_index(node, name).is_some() {
             self.set(node, name, value)
         } else if self.declare(node, name, value) {
-            SetParameterResult::Success
+            Ok(())
         } else {
-            SetParameterResult::StorageFull
+            Err(ParameterError::StorageFull)
         }
     }
 
@@ -1553,25 +1564,45 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Set a bool parameter value
-    pub fn set_bool(&mut self, node: NodeKey, name: &str, value: bool) -> SetParameterResult {
+    pub fn set_bool(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: bool,
+    ) -> Result<(), ParameterError> {
         self.set(node, name, ParameterValue::Bool(value))
     }
 
     /// Set an integer parameter value
-    pub fn set_integer(&mut self, node: NodeKey, name: &str, value: i64) -> SetParameterResult {
+    pub fn set_integer(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: i64,
+    ) -> Result<(), ParameterError> {
         self.set(node, name, ParameterValue::Integer(value))
     }
 
     /// Set a double parameter value
-    pub fn set_double(&mut self, node: NodeKey, name: &str, value: f64) -> SetParameterResult {
+    pub fn set_double(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: f64,
+    ) -> Result<(), ParameterError> {
         self.set(node, name, ParameterValue::Double(value))
     }
 
     /// Set a string parameter value
-    pub fn set_string(&mut self, node: NodeKey, name: &str, value: &str) -> SetParameterResult {
+    pub fn set_string(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: &str,
+    ) -> Result<(), ParameterError> {
         match ParameterValue::from_string(value) {
             Some(v) => self.set(node, name, v),
-            None => SetParameterResult::StorageFull, // String too long
+            None => Err(ParameterError::StorageFull), // String too long
         }
     }
 
@@ -1589,28 +1620,28 @@ impl<'s> ParameterServer<'s> {
         node: NodeKey,
         descriptor: ParameterDescriptor,
         initial_value: Option<&ParameterValue>,
-    ) -> Result<(), SetParameterResult> {
+    ) -> Result<(), ParameterError> {
         let name = descriptor.name.as_str();
 
         // Check if already exists
         if self.find_index(node, name).is_some() {
-            return Err(SetParameterResult::TypeMismatch); // Indicates already declared
+            return Err(ParameterError::TypeMismatch); // Indicates already declared
         }
 
         let param_value = initial_value.cloned().unwrap_or_default();
 
         // Issue 1150 — same declare-time check as `declare_with_descriptor`.
         if !Self::declaration_is_consistent(Some(&descriptor), &param_value) {
-            return Err(SetParameterResult::InvalidRange);
+            return Err(ParameterError::InvalidRange);
         }
 
         // Find an empty slot
         let slot = match self.find_empty_slot() {
             Some(idx) => idx,
-            None => return Err(SetParameterResult::StorageFull),
+            None => return Err(ParameterError::StorageFull),
         };
 
-        let param = Parameter::new(name, param_value).ok_or(SetParameterResult::StorageFull)?; // name too long
+        let param = Parameter::new(name, param_value).ok_or(ParameterError::StorageFull)?; // name too long
 
         self.note_descriptor(Some(&descriptor));
         self.table.entries[slot] = Some(ParameterEntry {
@@ -1632,14 +1663,14 @@ impl<'s> ParameterServer<'s> {
 
     /// Set the value of a parameter.
     ///
-    /// Returns `SetParameterResult::Success` on success, or an error if the parameter
+    /// Returns `Ok(())` on success, or an error if the parameter
     /// is read-only, type mismatches, or is out of range.
     pub fn set_parameter_value(
         &mut self,
         node: NodeKey,
         name: &str,
         value: ParameterValue,
-    ) -> SetParameterResult {
+    ) -> Result<(), ParameterError> {
         self.set(node, name, value)
     }
 }
@@ -1908,7 +1939,7 @@ mod tests {
         // A set on one is invisible to the other.
         assert_eq!(
             server.set(talker, "rate", ParameterValue::Integer(11)),
-            SetParameterResult::Success
+            Ok(())
         );
         assert_eq!(server.get_integer(talker, "rate"), Some(11));
         assert_eq!(server.get_integer(listener, "rate"), Some(20));
@@ -1932,11 +1963,11 @@ mod tests {
         assert!(server.get(b, "gain").is_none());
         assert_eq!(
             server.set(b, "gain", ParameterValue::Double(2.0)),
-            SetParameterResult::NotFound
+            Err(ParameterError::NotFound)
         );
         assert_eq!(
             server.check_apply(b, "gain", &ParameterValue::Double(2.0)),
-            SetParameterResult::Undeclared
+            Err(ParameterError::Undeclared)
         );
         // Untouched.
         assert_eq!(server.get_double(a, "gain"), Some(1.0));
@@ -1958,11 +1989,11 @@ mod tests {
 
         assert_eq!(
             server.apply(permissive, "fresh", ParameterValue::Integer(7)),
-            SetParameterResult::Success
+            Ok(())
         );
         assert_eq!(
             server.apply(strict, "fresh", ParameterValue::Integer(7)),
-            SetParameterResult::Undeclared,
+            Err(ParameterError::Undeclared),
             "the sibling still refuses a name IT never declared"
         );
         assert_eq!(server.get_integer(permissive, "fresh"), Some(7));
@@ -2038,12 +2069,12 @@ mod tests {
 
         assert_eq!(
             server.set(NODE, "rate", ParameterValue::Integer(30)),
-            SetParameterResult::Success
+            Ok(())
         );
         // In range by min/max, off the lattice: the old `contains` said yes.
         assert_eq!(
             server.set(NODE, "rate", ParameterValue::Integer(35)),
-            SetParameterResult::OutOfRange
+            Err(ParameterError::OutOfRange)
         );
         assert_eq!(server.get_integer(NODE, "rate"), Some(30));
     }
@@ -2062,13 +2093,10 @@ mod tests {
             Some(desc)
         ));
 
-        assert_eq!(
-            server.set_double(NODE, "gain", 0.75),
-            SetParameterResult::Success
-        );
+        assert_eq!(server.set_double(NODE, "gain", 0.75), Ok(()));
         assert_eq!(
             server.set_double(NODE, "gain", 0.6),
-            SetParameterResult::OutOfRange
+            Err(ParameterError::OutOfRange)
         );
         assert_eq!(server.get_double(NODE, "gain"), Some(0.75));
     }
@@ -2089,7 +2117,7 @@ mod tests {
         assert!(!server.has(NODE, "bad"));
         assert_eq!(
             server.declare_parameter(NODE, desc, Some(&ParameterValue::Integer(0))),
-            Err(SetParameterResult::InvalidRange)
+            Err(ParameterError::InvalidRange)
         );
         assert!(!server.has(NODE, "bad"));
     }
@@ -2128,11 +2156,11 @@ mod tests {
         // nobody reads.
         assert_eq!(
             server.check_apply(NODE, "max_speeed", &ParameterValue::Double(5.0)),
-            SetParameterResult::Undeclared
+            Err(ParameterError::Undeclared)
         );
         assert_eq!(
             server.apply(NODE, "max_speeed", ParameterValue::Double(5.0)),
-            SetParameterResult::Undeclared
+            Err(ParameterError::Undeclared)
         );
         assert!(!server.has(NODE, "max_speeed"));
         assert_eq!(server.len(NODE), 1);
@@ -2141,7 +2169,7 @@ mod tests {
         // A declared name still sets.
         assert_eq!(
             server.apply(NODE, "max_speed", ParameterValue::Double(5.0)),
-            SetParameterResult::Success
+            Ok(())
         );
         assert_eq!(server.get_double(NODE, "max_speed"), Some(5.0));
     }
@@ -2155,11 +2183,11 @@ mod tests {
 
         assert_eq!(
             server.check_apply(NODE, "fresh", &ParameterValue::Integer(7)),
-            SetParameterResult::Success
+            Ok(())
         );
         assert_eq!(
             server.apply(NODE, "fresh", ParameterValue::Integer(7)),
-            SetParameterResult::Success
+            Ok(())
         );
         assert_eq!(server.get_integer(NODE, "fresh"), Some(7));
     }
@@ -2172,11 +2200,11 @@ mod tests {
         assert!(server.declare(NODE, "only", ParameterValue::Bool(true)));
         assert_eq!(
             server.check_apply(NODE, "second", &ParameterValue::Bool(true)),
-            SetParameterResult::StorageFull
+            Err(ParameterError::StorageFull)
         );
         assert_eq!(
             server.apply(NODE, "second", ParameterValue::Bool(true)),
-            SetParameterResult::StorageFull
+            Err(ParameterError::StorageFull)
         );
     }
 
@@ -2195,15 +2223,15 @@ mod tests {
         ));
         assert_eq!(
             server.check_apply(NODE, "rate", &ParameterValue::Integer(35)),
-            SetParameterResult::OutOfRange
+            Err(ParameterError::OutOfRange)
         );
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Integer(35)),
-            SetParameterResult::OutOfRange
+            Err(ParameterError::OutOfRange)
         );
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Double(30.0)),
-            SetParameterResult::TypeMismatch
+            Err(ParameterError::TypeMismatch)
         );
         assert_eq!(server.get_integer(NODE, "rate"), Some(20));
     }
@@ -2244,13 +2272,10 @@ mod tests {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
         assert!(server.declare(NODE, "count", ParameterValue::Integer(0)));
-        assert_eq!(
-            server.set_integer(NODE, "count", 10),
-            SetParameterResult::Success
-        );
+        assert_eq!(server.set_integer(NODE, "count", 10), Ok(()));
         assert_eq!(server.get_integer(NODE, "count"), Some(10));
 
-        assert_eq!(server.unset(NODE, "count"), SetParameterResult::Success);
+        assert_eq!(server.unset(NODE, "count"), Ok(()));
         assert_eq!(server.get_integer(NODE, "count"), None);
     }
 
@@ -2260,10 +2285,7 @@ mod tests {
         let mut server = ParameterServer::new_in(storage.as_table());
         assert!(server.declare(NODE, "count", ParameterValue::Integer(0)));
 
-        assert_eq!(
-            server.set_integer(NODE, "count", 10),
-            SetParameterResult::Success
-        );
+        assert_eq!(server.set_integer(NODE, "count", 10), Ok(()));
         assert_eq!(server.get_integer(NODE, "count"), Some(10));
     }
 
@@ -2273,7 +2295,7 @@ mod tests {
         let mut server = ParameterServer::new_in(storage.as_table());
         assert_eq!(
             server.set(NODE, "nonexistent", ParameterValue::Integer(1)),
-            SetParameterResult::NotFound
+            Err(ParameterError::NotFound)
         );
     }
 
@@ -2295,7 +2317,7 @@ mod tests {
 
         assert_eq!(
             server.set_string(NODE, "version", "2.0.0"),
-            SetParameterResult::ReadOnly
+            Err(ParameterError::ReadOnly)
         );
         assert_eq!(server.get_string(NODE, "version"), Some("1.0.0"));
     }
@@ -2317,15 +2339,12 @@ mod tests {
         ));
 
         // Valid value
-        assert_eq!(
-            server.set_double(NODE, "speed", 8.0),
-            SetParameterResult::Success
-        );
+        assert_eq!(server.set_double(NODE, "speed", 8.0), Ok(()));
 
         // Out of range
         assert_eq!(
             server.set_double(NODE, "speed", 15.0),
-            SetParameterResult::OutOfRange
+            Err(ParameterError::OutOfRange)
         );
         assert_eq!(server.get_double(NODE, "speed"), Some(8.0)); // Unchanged
     }
@@ -2367,14 +2386,14 @@ mod tests {
         // First call declares
         assert_eq!(
             server.set_or_declare(NODE, "new_param", ParameterValue::Integer(1)),
-            SetParameterResult::Success
+            Ok(())
         );
         assert_eq!(server.get_integer(NODE, "new_param"), Some(1));
 
         // Second call sets
         assert_eq!(
             server.set_or_declare(NODE, "new_param", ParameterValue::Integer(2)),
-            SetParameterResult::Success
+            Ok(())
         );
         assert_eq!(server.get_integer(NODE, "new_param"), Some(2));
     }
@@ -2429,18 +2448,18 @@ mod tests {
         // And the range is ENFORCED by the same predicate every set uses.
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Double(50.0)),
-            SetParameterResult::OutOfRange
+            Err(ParameterError::OutOfRange)
         );
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Double(5.0)),
-            SetParameterResult::Success
+            Ok(())
         );
 
         // read-only is the same shape.
         assert!(server.set_parameter_read_only(NODE, "rate", true));
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Double(6.0)),
-            SetParameterResult::ReadOnly
+            Err(ParameterError::ReadOnly)
         );
 
         // Text that did not fit is REPORTED, never dropped in silence — which
@@ -2539,20 +2558,20 @@ mod tests {
 
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Integer(9)),
-            SetParameterResult::Rejected
+            Err(ParameterError::Rejected)
         );
         assert_eq!(server.get_integer(NODE, "rate"), Some(1));
         // A sibling node's writes are untouched: the registration names a node.
         assert_eq!(
             server.apply(other, "rate", ParameterValue::Integer(9)),
-            SetParameterResult::Success
+            Ok(())
         );
 
         assert!(server.remove_on_set_parameters_callback(h));
         assert!(!server.remove_on_set_parameters_callback(h));
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Integer(9)),
-            SetParameterResult::Success
+            Ok(())
         );
     }
 
@@ -2603,10 +2622,7 @@ mod tests {
         );
         assert!(server.pop_initial_parameter_event().is_none());
         assert!(server.declare(NODE, "a", ParameterValue::Integer(1)));
-        assert_eq!(
-            server.set(NODE, "a", ParameterValue::Integer(2)),
-            SetParameterResult::Success
-        );
+        assert_eq!(server.set(NODE, "a", ParameterValue::Integer(2)), Ok(()));
         assert!(server.remove(NODE, "a"));
         let e = server.pop_parameter_event().expect("one merged entry");
         assert_eq!(
@@ -2692,14 +2708,14 @@ mod tests {
 
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Integer(2)),
-            SetParameterResult::Success
+            Ok(())
         );
         assert_eq!((seen.old, seen.new), (Some(1), Some(2)));
 
         server.set_allow_undeclared(NODE, true);
         assert_eq!(
             server.apply(NODE, "fresh", ParameterValue::Integer(7)),
-            SetParameterResult::Success
+            Ok(())
         );
         assert!(!seen.old_present, "a create has no old value");
         assert_eq!(seen.new, Some(7));
@@ -2722,25 +2738,25 @@ mod tests {
         // The remote path refuses both.
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Integer(50)),
-            SetParameterResult::ReadOnly
+            Err(ParameterError::ReadOnly)
         );
         assert_eq!(seen.calls, 0, "a refused remote write reached the hook");
 
         // The local path does not, and the hook sees (old, new).
         assert_eq!(
             server.set_local(NODE, "rate", ParameterValue::Integer(50)),
-            SetParameterResult::Success
+            Ok(())
         );
         assert_eq!((seen.old, seen.new), (Some(1), Some(50)));
         assert_eq!(server.get_integer(NODE, "rate"), Some(50));
 
         assert_eq!(
             server.set_local(NODE, "rate", ParameterValue::Double(1.0)),
-            SetParameterResult::TypeMismatch
+            Err(ParameterError::TypeMismatch)
         );
         assert_eq!(
             server.set_local(NODE, "nope", ParameterValue::Integer(1)),
-            SetParameterResult::NotFound
+            Err(ParameterError::NotFound)
         );
         assert!(
             server
@@ -2749,7 +2765,7 @@ mod tests {
         );
         assert_eq!(
             server.set_local(NODE, "rate", ParameterValue::Integer(3)),
-            SetParameterResult::Rejected
+            Err(ParameterError::Rejected)
         );
         assert_eq!(server.get_integer(NODE, "rate"), Some(50));
     }
@@ -2769,10 +2785,7 @@ mod tests {
             .add_on_set_parameters_callback(NODE, record, OnSetContext::new(&raw mut seen as usize))
             .expect("a free slot");
 
-        assert_eq!(
-            server.apply(NODE, "rate", ParameterValue::NotSet),
-            SetParameterResult::Success
-        );
+        assert_eq!(server.apply(NODE, "rate", ParameterValue::NotSet), Ok(()));
         assert!(!server.has(NODE, "rate"));
         assert_eq!((seen.old, seen.new_present), (Some(4), false));
 
@@ -2788,7 +2801,7 @@ mod tests {
         assert!(server.set_parameter_read_only(NODE, "ro", true));
         assert_eq!(
             server.apply(NODE, "ro", ParameterValue::NotSet),
-            SetParameterResult::ReadOnly
+            Err(ParameterError::ReadOnly)
         );
         assert!(server.has(NODE, "ro"));
     }
@@ -2881,16 +2894,13 @@ mod tests {
         let mut server = ParameterServer::new_in(storage.as_table());
         server.set_allow_undeclared(NODE, true);
         let mut slot = ParameterValue::Double(2.5);
-        assert_eq!(
-            server.apply_staged(NODE, "fresh", &mut slot),
-            SetParameterResult::Success
-        );
+        assert_eq!(server.apply_staged(NODE, "fresh", &mut slot), Ok(()));
         assert_eq!(server.get_double(NODE, "fresh"), Some(2.5));
         assert_eq!(server.len(NODE), 1);
 
         // A SWAP: the slot comes back holding the value it displaced.
         let mut slot = ParameterValue::Double(4.0);
-        assert!(server.apply_staged(NODE, "fresh", &mut slot).is_success());
+        assert!(server.apply_staged(NODE, "fresh", &mut slot).is_ok());
         assert_eq!(slot.as_double(), Some(2.5));
         assert_eq!(server.get_double(NODE, "fresh"), Some(4.0));
     }
@@ -2927,12 +2937,12 @@ mod tests {
         for i in 0..MAX_ON_SET_CALLBACKS {
             assert_eq!(
                 server.apply(NODE, "rate", ParameterValue::Integer(40 + i as i64)),
-                SetParameterResult::Rejected
+                Err(ParameterError::Rejected)
             );
         }
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Integer(7)),
-            SetParameterResult::Success
+            Ok(())
         );
 
         assert!(server.remove_on_set_parameters_callback(handles[0]));
@@ -2960,7 +2970,7 @@ mod tests {
         // ReadOnly, not Rejected: the callback was never consulted.
         assert_eq!(
             server.apply(NODE, "rate", ParameterValue::Integer(2)),
-            SetParameterResult::ReadOnly
+            Err(ParameterError::ReadOnly)
         );
     }
 
@@ -3204,7 +3214,7 @@ mod verification {
         let val: i64 = kani::any();
         // Set without declare should fail
         let result = server.set(NODE, "test", ParameterValue::Integer(val));
-        assert_eq!(result, SetParameterResult::NotFound);
+        assert_eq!(result, Err(ParameterError::NotFound));
     }
 
     #[kani::proof]

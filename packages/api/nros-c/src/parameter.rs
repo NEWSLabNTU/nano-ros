@@ -25,7 +25,7 @@ pub use imp::*;
 mod imp {
     use core::ffi::{c_char, c_void};
 
-    use nros_node::{ParameterValue, SetParameterResult, executor::NodeId};
+    use nros_node::{ParameterError, ParameterValue, executor::NodeId};
 
     use crate::{
         error::*,
@@ -226,12 +226,12 @@ mod imp {
         };
     }
 
-    fn set_result(r: SetParameterResult) -> rcl_ret_t {
+    fn set_result(r: Result<(), ParameterError>) -> rcl_ret_t {
         match r {
-            SetParameterResult::Success => RCL_RET_OK,
-            SetParameterResult::TypeMismatch => RCLC_PARAMETER_TYPE_MISMATCH,
-            SetParameterResult::Rejected => RCLC_PARAMETER_MODIFICATION_REJECTED,
-            SetParameterResult::NotFound | SetParameterResult::Undeclared => RCL_RET_ERROR,
+            Ok(()) => RCL_RET_OK,
+            Err(ParameterError::TypeMismatch) => RCLC_PARAMETER_TYPE_MISMATCH,
+            Err(ParameterError::Rejected) => RCLC_PARAMETER_MODIFICATION_REJECTED,
+            Err(ParameterError::NotFound) | Err(ParameterError::Undeclared) => RCL_RET_ERROR,
             _ => RCL_RET_INVALID_ARGUMENT,
         }
     }

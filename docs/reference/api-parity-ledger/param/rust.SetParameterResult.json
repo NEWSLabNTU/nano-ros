@@ -1,11 +1,9 @@
 {
   "key": "rust:SetParameterResult",
   "rename": {
-    "actual_change": "REMOVAL — collapses to Result<(), _>, takes is_success() and a From impl with it. Public Rust API break",
-    "category": "C",
-    "status": "not-a-rename",
-    "to": null
+    "to": "ParameterError",
+    "status": "landed"
   },
   "verdict": "rename",
-  "why": "OUR LANGUAGES DISAGREE, inside one language: this enum and `ParameterError` name the same five failures (`ReadOnly`, `TypeMismatch`, `OutOfRange`, `NotFound`, `StorageFull`), differing only in that this one also has a `Success` variant instead of being a `Result`. There is a `From<SetParameterResult> for ParameterError` that `panic!`s on the two cases it does not cover. `ParameterServer`'s inherent setters return this one; the typed `MandatoryParameter`/`OptionalParameter` wrappers return the other. rclrs has one spelling, `Result<(), ParameterValueError>`. Ours should collapse to `Result<(), ParameterError>`. Covers `SetParameterResult::is_success`, which exists only because this is not a `Result`. Phase 379 W3."
+  "why": "LANDED 2026-10-27 (phase-515): collapsed. Every `ParameterServer` write -- `set`, `set_parameter_value`, `set_or_declare`, `declare_parameter`, `apply`, `apply_staged`, `check_apply` and the `Executor`/`Node` forwarders -- returns `Result<(), ParameterError>`, rclrs's one spelling: `Success` is `Ok(())`, each other verdict the `ParameterError` variant of the same name, and `ParameterError` gained `Undeclared` (the wire-facing set on a never-declared name, issue 1151) so no verdict is lost. The typed `MandatoryParameter` / `OptionalParameter` wrappers still report an undeclared name as `NotFound`, as before. The enum stays one release as `#[deprecated]`, with its `is_success` and a `From` into `ParameterError` that now maps `Undeclared` to `Undeclared`. A side effect worth naming: a write whose result was ignored is now a `must_use` warning, which found three tests that discarded a set. PRIOR ROW: OUR LANGUAGES DISAGREE, inside one language: this enum and `ParameterError` name the same five failures (`ReadOnly`, `TypeMismatch`, `OutOfRange`, `NotFound`, `StorageFull`), differing only in that this one also has a `Success` variant instead of being a `Result`. There is a `From<SetParameterResult> for ParameterError` that `panic!`s on the two cases it does not cover. `ParameterServer`'s inherent setters return this one; the typed `MandatoryParameter`/`OptionalParameter` wrappers return the other. rclrs has one spelling, `Result<(), ParameterValueError>`. Ours should collapse to `Result<(), ParameterError>`. Covers `SetParameterResult::is_success`, which exists only because this is not a `Result`. Phase 379 W3."
 }

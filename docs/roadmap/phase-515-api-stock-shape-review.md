@@ -515,10 +515,11 @@ is the `{code, goal_id, stamp}` record, ours `GoalStatusStamped`; the old
 `GoalStatus` alias names the enum until it is removed. **`ParameterBuilder` terminals LANDED 2026-10-27:**
 `mandatory` / `optional` / `read_only` return rclrs's `DeclarationError`
 (new variant `NoValueAvailable`; `From<DeclarationError> for ParameterError`
-keeps `?` callers compiling). **Still open:** `SetParameterResult` collapsing
-into `Result<(), ParameterError>` (rclrs has one spelling) -- not a rename but a
-change to the store's wire-facing verdict type, 204 uses in 12 files
-(measured 2026-10-27), so it is its own item. (`ActionClientCore::is_server_ready` closed
+keeps `?` callers compiling). **`SetParameterResult` collapse LANDED 2026-10-27
+(maintainer go-ahead the same day):** every store write returns
+`Result<(), ParameterError>` (rclrs has one spelling); `ParameterError` gained
+`Undeclared`; the enum is `#[deprecated]` for one release. 204 uses in 12 files
+rewritten; the wire reasons and C/C++ return codes are unchanged per verdict. (`ActionClientCore::is_server_ready` closed
 2026-10-27 by R9 stage 2: it left the Rust surface, so Rust ships the one
 spelling `ActionClient::action_server_is_ready` and its row was deleted.)
 

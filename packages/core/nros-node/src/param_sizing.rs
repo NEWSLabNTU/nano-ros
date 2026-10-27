@@ -28,7 +28,7 @@
 //! reader of any knob; a build script cannot read another crate's consts at
 //! all.
 
-use nros_params::{MAX_STRING_VALUE_LEN, SetParameterResult};
+use nros_params::{MAX_STRING_VALUE_LEN, ParameterError};
 
 // The configured fallback, and what the executor-side assert below prices.
 // Imported privately so `parameter_services`' own `pub use crate::config::
@@ -74,22 +74,25 @@ const _: () = assert!(
 /// The reason string every `SetParametersResult` carries for each outcome —
 /// the ONE table, used by the streaming handlers and `to_rcl_set_result`.
 #[inline]
-pub(crate) const fn set_result_reason(result: SetParameterResult) -> &'static str {
+pub(crate) const fn set_result_reason(result: Result<(), ParameterError>) -> &'static str {
     match result {
-        SetParameterResult::Success => "",
-        SetParameterResult::ReadOnly => "Parameter is read-only",
-        SetParameterResult::TypeMismatch => "Type mismatch",
-        SetParameterResult::OutOfRange => "Value out of range",
-        SetParameterResult::NotFound => "Parameter not found",
-        SetParameterResult::StorageFull => "Parameter storage full",
+        Ok(()) => "",
+        Err(ParameterError::ReadOnly) => "Parameter is read-only",
+        Err(ParameterError::TypeMismatch) => "Type mismatch",
+        Err(ParameterError::OutOfRange) => "Value out of range",
+        Err(ParameterError::NotFound) => "Parameter not found",
+        Err(ParameterError::StorageFull) => "Parameter storage full",
         // Issue 1151 — rclrs's wording, verbatim.
-        SetParameterResult::Undeclared => UNDECLARED_REASON,
-        SetParameterResult::InvalidRange => "Invalid range",
+        Err(ParameterError::Undeclared) => UNDECLARED_REASON,
+        Err(ParameterError::InvalidRange) => "Invalid range",
         // phase-417 W4.a — an on-set-parameters callback refused it. rclcpp
         // lets the callback supply its own reason string; ours cannot, because
         // a `fn` pointer with no allocator has nowhere to put one, so the
         // reason names WHO refused rather than why.
-        SetParameterResult::Rejected => "Rejected by an on-set-parameters callback",
+        Err(ParameterError::Rejected) => "Rejected by an on-set-parameters callback",
+        // The typed API's conversion failure; the store's writes never return
+        // it, but `ParameterError` is the one verdict type now (phase-515).
+        Err(ParameterError::StringConversion) => "String conversion failed",
     }
 }
 
@@ -255,15 +258,16 @@ pub(crate) const UNKNOWN_TYPE_REASON: &str = "Unknown parameter type";
 /// variant stops the build there first -- add it here beside it.
 pub(crate) const LONGEST_SET_REASON: usize = {
     let reasons = [
-        set_result_reason(SetParameterResult::Success),
-        set_result_reason(SetParameterResult::ReadOnly),
-        set_result_reason(SetParameterResult::TypeMismatch),
-        set_result_reason(SetParameterResult::OutOfRange),
-        set_result_reason(SetParameterResult::NotFound),
-        set_result_reason(SetParameterResult::StorageFull),
-        set_result_reason(SetParameterResult::Undeclared),
-        set_result_reason(SetParameterResult::InvalidRange),
-        set_result_reason(SetParameterResult::Rejected),
+        set_result_reason(Ok(())),
+        set_result_reason(Err(ParameterError::ReadOnly)),
+        set_result_reason(Err(ParameterError::TypeMismatch)),
+        set_result_reason(Err(ParameterError::OutOfRange)),
+        set_result_reason(Err(ParameterError::NotFound)),
+        set_result_reason(Err(ParameterError::StorageFull)),
+        set_result_reason(Err(ParameterError::Undeclared)),
+        set_result_reason(Err(ParameterError::InvalidRange)),
+        set_result_reason(Err(ParameterError::Rejected)),
+        set_result_reason(Err(ParameterError::StringConversion)),
         CAPACITY_EXCEEDED_REASON,
         UNKNOWN_TYPE_REASON,
     ];

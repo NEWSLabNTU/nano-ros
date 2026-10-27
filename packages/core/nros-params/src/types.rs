@@ -726,6 +726,15 @@ impl Parameter {
 }
 
 /// Result of setting a parameter
+///
+/// DEPRECATED (phase-515): the store answers `Result<(), ParameterError>`,
+/// rclrs's one spelling -- `Success` is `Ok(())` and each other verdict is the
+/// [`ParameterError`](crate::ParameterError) variant of the same name. Kept one
+/// release so out-of-tree code naming it keeps compiling.
+#[deprecated(
+    since = "0.6.0",
+    note = "the parameter store returns `Result<(), ParameterError>`; `Success` is `Ok(())`"
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetParameterResult {
     /// Parameter was set successfully
@@ -762,6 +771,7 @@ pub enum SetParameterResult {
     Rejected,
 }
 
+#[allow(deprecated)]
 impl SetParameterResult {
     /// Check if the result indicates success
     pub fn is_success(&self) -> bool {
@@ -1006,6 +1016,7 @@ impl ParameterVariant for alloc::vec::Vec<alloc::string::String> {
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // the retired SetParameterResult keeps its own tests one release
 mod tests {
     use super::*;
 

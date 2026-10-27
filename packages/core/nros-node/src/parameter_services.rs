@@ -34,8 +34,8 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 use nros_params::{
-    NodeKey, ParameterDescriptor as InternalDescriptor, ParameterServer,
-    ParameterType as InternalType, ParameterValue as InternalValue, SetParameterResult,
+    NodeKey, ParameterDescriptor as InternalDescriptor, ParameterError, ParameterServer,
+    ParameterType as InternalType, ParameterValue as InternalValue,
 };
 
 pub(crate) use nros_rcl_interfaces::{
@@ -309,7 +309,7 @@ pub fn to_rcl_descriptor(desc: &InternalDescriptor) -> ParameterDescriptor {
     result
 }
 
-/// Convert SetParameterResult to rcl_interfaces SetParametersResult
+/// Convert a parameter-store verdict to rcl_interfaces SetParametersResult
 /// Build the `SetParametersResult` for a value that could not be converted
 /// (issue 0323) — `successful = false` with a reason naming the cause.
 pub fn conversion_failure_result(err: RmwParameterConversionError) -> SetParametersResult {
@@ -321,11 +321,11 @@ pub fn conversion_failure_result(err: RmwParameterConversionError) -> SetParamet
     }
 }
 
-pub fn to_rcl_set_result(result: SetParameterResult) -> SetParametersResult {
+pub fn to_rcl_set_result(result: Result<(), ParameterError>) -> SetParametersResult {
     let mut reason_str = heapless::String::new();
     let _ = reason_str.push_str(set_result_reason(result));
     SetParametersResult {
-        successful: result.is_success(),
+        successful: result.is_ok(),
         reason: reason_str,
     }
 }
@@ -692,7 +692,7 @@ fn apply_one(
     node: NodeKey,
     name: &str,
     value: InternalValue,
-) -> SetParameterResult {
+) -> Result<(), ParameterError> {
     server.apply(node, name, value)
 }
 
@@ -760,7 +760,7 @@ pub(crate) fn stream_set_parameters(
             Err(e) => write_set_result(writer, false, e.reason()),
             Ok(()) => {
                 let result = server.apply_staged(node, name, staged);
-                write_set_result(writer, result.is_success(), set_result_reason(result))
+                write_set_result(writer, result.is_ok(), set_result_reason(result))
             }
         }
         .map_err(ser_failed)?;
@@ -817,7 +817,7 @@ pub(crate) fn stream_set_parameters_atomically(
         // min/max/step, and issue 1151's undeclared refusal — without
         // applying it. One predicate, so the pre-check cannot pass a value the
         // apply would then refuse.
-        if !fits || !server.check_apply(node, name, staged).is_success() {
+        if !fits || !server.check_apply(node, name, staged).is_ok() {
             can_set_all = false;
         }
     }
@@ -1129,7 +1129,7 @@ pub fn handle_set_parameters_atomically(
         }),
     );
 
-    if verdict.is_success() {
+    if verdict.is_ok() {
         response.result.successful = true;
     } else {
         response.result.successful = false;
@@ -2745,7 +2745,7 @@ mod tests {
         // issue-0323 rejections and a name too long for the STORE (which the
         // wire message accepts), so both success and every failure reason
         // reach the comparison.
-        // Every `SetParameterResult` the reply can carry must reach the
+        // Every store verdict (`Result<(), ParameterError>`) the reply can carry must reach the
         // comparison, or a wrong reason string is invisible: `count` is
         // read-only, `speed` carries a 0..10 float range and a Double type, a
         // name longer than the STORE's `MAX_PARAM_NAME_LEN` cannot be
