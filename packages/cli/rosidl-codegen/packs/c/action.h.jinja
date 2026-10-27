@@ -6,8 +6,11 @@
 //
 // rosidl_generator_c's names and member shape for the three user payloads
 // (RFC-0089, phase-492 W7): {{ goal_struct_name }}, {{ result_struct_name }},
-// {{ feedback_struct_name }}. The action's envelopes (`_SendGoal_Request` and
-// the rest) are assembled by the nros action runtime and are not emitted.
+// {{ feedback_struct_name }}; and the three envelopes rclc's action API hands a
+// user (phase-515 C4): {{ action_struct_name }}_SendGoal_Request,
+// {{ action_struct_name }}_GetResult_Response and
+// {{ action_struct_name }}_FeedbackMessage. The wire envelopes the runtime
+// assembles itself (`_SendGoal_Response`, `_GetResult_Request`) are not emitted.
 
 #ifndef {{ guard_name }}
 #define {{ guard_name }}
@@ -20,6 +23,7 @@
 #include <rosidl_runtime_c/primitives_sequence.h>
 #include <rosidl_runtime_c/action_type_support_struct.h>
 #include <rclc/types.h>
+#include <rclc/detail/uuid.h>
 {%- if has_view_goal or has_view_result or has_view_feedback %}
 // Issue 0346 — borrowed views use rclc_view_str_t / the LE slice views.
 #include <rclc/detail/view.h>
@@ -37,6 +41,43 @@ extern "C" {
 {{ c.payload_h(goal_struct_name, action_name ~ " goal", goal_fields, has_goal_fields, goal_constants, has_view_goal) }}
 {{ c.payload_h(result_struct_name, action_name ~ " result", result_fields, has_result_fields, result_constants, has_view_result) }}
 {{ c.payload_h(feedback_struct_name, action_name ~ " feedback", feedback_fields, has_feedback_fields, feedback_constants, has_view_feedback) }}
+
+// ----------------------------------------------------------------------------
+// {{ action_name }} envelopes (phase-515 C4)
+// ----------------------------------------------------------------------------
+
+/// rosidl's `{{ action_name }}_SendGoal_Request`: the goal and the id the
+/// client gave it. rclc's `rclc_executor_add_action_server` takes an array of
+/// these and hands each accepted goal's `ros_goal_request` out of it.
+#ifndef NROS_DEFINED_{{ action_struct_name }}_SendGoal_Request
+#define NROS_DEFINED_{{ action_struct_name }}_SendGoal_Request
+typedef struct {{ action_struct_name }}_SendGoal_Request {
+    unique_identifier_msgs__msg__UUID goal_id;
+    {{ goal_struct_name }} goal;
+} {{ action_struct_name }}_SendGoal_Request;
+#endif
+
+/// rosidl's `{{ action_name }}_GetResult_Response`: the goal's terminal status
+/// and its result. rclc's `rclc_action_send_result` takes one and writes
+/// `status` itself.
+#ifndef NROS_DEFINED_{{ action_struct_name }}_GetResult_Response
+#define NROS_DEFINED_{{ action_struct_name }}_GetResult_Response
+typedef struct {{ action_struct_name }}_GetResult_Response {
+    int8_t status;
+    {{ result_struct_name }} result;
+} {{ action_struct_name }}_GetResult_Response;
+#endif
+
+/// rosidl's `{{ action_name }}_FeedbackMessage`: one feedback sample and the
+/// goal it is for. rclc's `rclc_action_publish_feedback` takes one and writes
+/// `goal_id` itself.
+#ifndef NROS_DEFINED_{{ action_struct_name }}_FeedbackMessage
+#define NROS_DEFINED_{{ action_struct_name }}_FeedbackMessage
+typedef struct {{ action_struct_name }}_FeedbackMessage {
+    unique_identifier_msgs__msg__UUID goal_id;
+    {{ feedback_struct_name }} feedback;
+} {{ action_struct_name }}_FeedbackMessage;
+#endif
 
 // ============================================================================
 // Action Type Support

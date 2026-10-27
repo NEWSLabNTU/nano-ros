@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 20;
+pub const NROS_CODEGEN_VERSION: u32 = 21;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -258,6 +258,15 @@ pub const NROS_CODEGEN_VERSION: u32 = 20;
 /// relies on are declared on the new names. The old names stay as
 /// `#[deprecated]` type aliases of the same types, so a version-19 tree still
 /// compiles and runs; a version-20 tree names types a 19 runtime does not have.
+///
+/// 21 (phase-515 C4a), MIN unchanged: a generated C action header emits rclc's
+/// three user envelopes (`<Action>_SendGoal_Request`, `_GetResult_Response`,
+/// `_FeedbackMessage`) and includes the new `<rclc/detail/uuid.h>` for the
+/// goal id they carry, and every generated C struct is wrapped in a
+/// `NROS_DEFINED_<name>` guard so that header and the generated
+/// `unique_identifier_msgs` one can both define the UUID. A version-20 tree
+/// still compiles: it includes neither the new header nor anything that does.
+/// A version-21 tree includes a header a 20 runtime does not ship.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

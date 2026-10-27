@@ -232,6 +232,30 @@ Refused because our action callbacks are bound at init (`rclc/action.h`:
 "closing this needs the `rclc_executor_add_action_server` binding site").
 Phase-417 stage 6 moved subscription and service callbacks to registration;
 actions were not moved. Move them, then adopt both names.
+**Scoped 2026-10-27 (maintainer): the full rclc model**, not just the binding
+site. rclc's `rclc_executor_add_action_server(executor, server, handles_number,
+ros_goal_request, ros_goal_request_size, goal_cb, cancel_cb, context)` hands each
+goal out as an `rclc_action_goal_handle_t` whose `ros_goal_request` is an
+element of the caller's `<Action>_SendGoal_Request` array, and the user answers
+through `rclc_action_send_result(goal_handle, status, &get_result_response)` and
+`rclc_action_publish_feedback(goal_handle, &feedback_message)`. Three PRs:
+- **C4a — the envelopes.** Codegen emits `<Action>_SendGoal_Request`,
+  `_GetResult_Response` and `_FeedbackMessage`; the goal id is
+  `unique_identifier_msgs__msg__UUID`, defined by `<rclc/detail/uuid.h>` and by
+  the generated header under one `NROS_DEFINED_<name>` guard (every generated C
+  struct now carries one). The descriptor (`rclc_action_type_t`) gains each
+  envelope's `sizeof` and payload `offsetof`, emitted by the compiler that laid
+  the envelope out: `GetResult_Response`'s `result` follows an `int8`, so its
+  offset depends on the Result type's alignment. Codegen version 21.
+  **LANDED 2026-10-27** (test `generated_c_action_envelopes_and_uuid_guard_syntax_check`,
+  both include orders, mutation-checked against an unguarded UUID).
+- **C4b — the runtime.** `rclc_action_server_t` / `rclc_action_goal_handle_t`,
+  `rclc_action_server_init_default`, the eight-argument
+  `rclc_executor_add_action_server`, `rclc_action_send_result`,
+  `rclc_action_publish_feedback`, over the existing raw registration: the goal
+  handle pool rides as an arena capture, as C3's typed service does.
+- **C4c — migration.** The C action examples move to rclc's shape; the
+  init-bound `rclc_action_server_init_with_callbacks` stays one release.
 
 **C5 — `rcl_get_error_string` / `rcl_error_state_t`.** Declined because there
 is no per-thread error slot. A bounded last-error record (one per executor, or

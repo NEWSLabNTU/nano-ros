@@ -23,8 +23,8 @@
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 20. */
-#define NROS_EMITTED_CODEGEN_VERSION 20
+/* RFC-0090 — emitted by nano-ros codegen version 21. */
+#define NROS_EMITTED_CODEGEN_VERSION 21
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -46,10 +46,13 @@ extern "C" {
 
 /// Nested message. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_fingerprint_corpus__msg__Nested
+#define NROS_DEFINED_fingerprint_corpus__msg__Nested
 typedef struct fingerprint_corpus__msg__Nested {
     fingerprint_corpus__msg__Shapes one;
     fingerprint_corpus__msg__Shapes__Sequence many;
 } fingerprint_corpus__msg__Nested;
+#endif
 
 /// A sequence of fingerprint_corpus__msg__Nested, in rosidl's shape.
 typedef struct fingerprint_corpus__msg__Nested__Sequence {

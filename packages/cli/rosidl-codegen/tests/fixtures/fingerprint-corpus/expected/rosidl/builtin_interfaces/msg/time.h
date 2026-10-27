@@ -23,8 +23,8 @@
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 20. */
-#define NROS_EMITTED_CODEGEN_VERSION 20
+/* RFC-0090 — emitted by nano-ros codegen version 21. */
+#define NROS_EMITTED_CODEGEN_VERSION 21
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -45,10 +45,13 @@ extern "C" {
 
 /// Time message. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_builtin_interfaces__msg__Time
+#define NROS_DEFINED_builtin_interfaces__msg__Time
 typedef struct builtin_interfaces__msg__Time {
     int32_t sec;
     uint32_t nanosec;
 } builtin_interfaces__msg__Time;
+#endif
 
 /// A sequence of builtin_interfaces__msg__Time, in rosidl's shape.
 typedef struct builtin_interfaces__msg__Time__Sequence {

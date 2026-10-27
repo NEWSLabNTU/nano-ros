@@ -18,8 +18,8 @@
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 20. */
-#define NROS_EMITTED_CODEGEN_VERSION 20
+/* RFC-0090 — emitted by nano-ros codegen version 21. */
+#define NROS_EMITTED_CODEGEN_VERSION 21
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -40,10 +40,13 @@ extern "C" {
 
 /// Probe request. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_fingerprint_corpus__srv__Probe_Request
+#define NROS_DEFINED_fingerprint_corpus__srv__Probe_Request
 typedef struct fingerprint_corpus__srv__Probe_Request {
     rosidl_runtime_c__int64__Sequence items;
     rosidl_runtime_c__String note;
 } fingerprint_corpus__srv__Probe_Request;
+#endif
 
 /// A sequence of fingerprint_corpus__srv__Probe_Request, in rosidl's shape.
 typedef struct fingerprint_corpus__srv__Probe_Request__Sequence {
@@ -110,11 +113,14 @@ int32_t fingerprint_corpus__srv__Probe_Request__deserialize_inline(fingerprint_c
 
 /// Probe response. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_fingerprint_corpus__srv__Probe_Response
+#define NROS_DEFINED_fingerprint_corpus__srv__Probe_Response
 typedef struct fingerprint_corpus__srv__Probe_Response {
     int64_t sum;
     rosidl_runtime_c__String__Sequence lines;
     rosidl_runtime_c__String summary;
 } fingerprint_corpus__srv__Probe_Response;
+#endif
 
 /// A sequence of fingerprint_corpus__srv__Probe_Response, in rosidl's shape.
 typedef struct fingerprint_corpus__srv__Probe_Response__Sequence {

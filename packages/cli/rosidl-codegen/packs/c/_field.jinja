@@ -217,6 +217,8 @@
 
 /// {{ label }}. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_{{ sname }}
+#define NROS_DEFINED_{{ sname }}
 typedef struct {{ sname }} {
 {%- for field in fields %}
     {{ field | c_type }} {{ field.name }}{{ field | c_array_suffix }};
@@ -225,6 +227,7 @@ typedef struct {{ sname }} {
     uint8_t structure_needs_at_least_one_member;
 {%- endif %}
 } {{ sname }};
+#endif
 
 /// A sequence of {{ sname }}, in rosidl's shape.
 typedef struct {{ sname }}__Sequence {

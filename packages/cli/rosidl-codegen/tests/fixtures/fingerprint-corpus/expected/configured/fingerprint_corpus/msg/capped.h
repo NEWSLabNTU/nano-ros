@@ -23,8 +23,8 @@
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 20. */
-#define NROS_EMITTED_CODEGEN_VERSION 20
+/* RFC-0090 — emitted by nano-ros codegen version 21. */
+#define NROS_EMITTED_CODEGEN_VERSION 21
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -45,11 +45,14 @@ extern "C" {
 
 /// Capped message. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_fingerprint_corpus__msg__Capped
+#define NROS_DEFINED_fingerprint_corpus__msg__Capped
 typedef struct fingerprint_corpus__msg__Capped {
     rosidl_runtime_c__String label;
     rosidl_runtime_c__int64__Sequence samples;
     rosidl_runtime_c__String__Sequence tags;
 } fingerprint_corpus__msg__Capped;
+#endif
 
 /// A sequence of fingerprint_corpus__msg__Capped, in rosidl's shape.
 typedef struct fingerprint_corpus__msg__Capped__Sequence {

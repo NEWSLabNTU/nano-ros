@@ -1,0 +1,1 @@
+Generated C action headers now declare rosidl's `<Action>_SendGoal_Request`, `<Action>_GetResult_Response` and `<Action>_FeedbackMessage`, the structs rclc's action API exchanges, with the goal id as `unique_identifier_msgs__msg__UUID` (new `<rclc/detail/uuid.h>`). Codegen version 21; regenerate with `nros sync` (phase-515 C4a).

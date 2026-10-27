@@ -23,8 +23,8 @@
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 20. */
-#define NROS_EMITTED_CODEGEN_VERSION 20
+/* RFC-0090 — emitted by nano-ros codegen version 21. */
+#define NROS_EMITTED_CODEGEN_VERSION 21
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -45,9 +45,12 @@ extern "C" {
 
 /// String message. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_std_msgs__msg__String
+#define NROS_DEFINED_std_msgs__msg__String
 typedef struct std_msgs__msg__String {
     rosidl_runtime_c__String data;
 } std_msgs__msg__String;
+#endif
 
 /// A sequence of std_msgs__msg__String, in rosidl's shape.
 typedef struct std_msgs__msg__String__Sequence {

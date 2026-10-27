@@ -1681,10 +1681,40 @@ typedef struct rclc_action_type_t {
    */
   rclc_message_deserialize_fn_t feedback_deserialize;
   /**
-   * Issue 1913 — the hash each endpoint is keyed on (LAST, so an older
-   * generator's designated initializer leaves it NULL).
+   * Issue 1913 — the hash each endpoint is keyed on (an older generator's
+   * designated initializer leaves it NULL).
    */
   struct rclc_action_endpoint_hashes_t endpoint_hashes;
+  /**
+   * phase-515 C4a — `sizeof(<Action>_SendGoal_Request)`, the generated
+   * envelope rclc's `rclc_executor_add_action_server` takes an array of.
+   * `0` in a descriptor from an older generator (or built from names
+   * alone): the envelope API refuses it rather than guess a layout.
+   */
+  size_t send_goal_request_size;
+  /**
+   * `offsetof(<Action>_SendGoal_Request, goal)` — where the goal the
+   * executor deserialises lands, after the 16-byte goal id.
+   */
+  size_t send_goal_request_goal_offset;
+  /**
+   * `sizeof(<Action>_GetResult_Response)`.
+   */
+  size_t get_result_response_size;
+  /**
+   * `offsetof(<Action>_GetResult_Response, result)` — after the `int8`
+   * status, at the Result type's own alignment, so only the compiler that
+   * laid the struct out can state it.
+   */
+  size_t get_result_response_result_offset;
+  /**
+   * `sizeof(<Action>_FeedbackMessage)`.
+   */
+  size_t feedback_message_size;
+  /**
+   * `offsetof(<Action>_FeedbackMessage, feedback)`.
+   */
+  size_t feedback_message_feedback_offset;
 } rclc_action_type_t;
 
 /**

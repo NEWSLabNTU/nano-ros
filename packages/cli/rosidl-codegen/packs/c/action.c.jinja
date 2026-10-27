@@ -32,4 +32,12 @@ const struct rclc_action_type_t {{ action_struct_name }}__nros_type = {
         .feedback = "{{ feedback_message_hash }}",
         .status = "{{ status_message_hash }}",
     },
+    // phase-515 C4a — the envelopes' layout, stated by the compiler that laid
+    // them out, so the runtime can place a goal, result or feedback in them.
+    .send_goal_request_size = sizeof({{ action_struct_name }}_SendGoal_Request),
+    .send_goal_request_goal_offset = offsetof({{ action_struct_name }}_SendGoal_Request, goal),
+    .get_result_response_size = sizeof({{ action_struct_name }}_GetResult_Response),
+    .get_result_response_result_offset = offsetof({{ action_struct_name }}_GetResult_Response, result),
+    .feedback_message_size = sizeof({{ action_struct_name }}_FeedbackMessage),
+    .feedback_message_feedback_offset = offsetof({{ action_struct_name }}_FeedbackMessage, feedback),
 };

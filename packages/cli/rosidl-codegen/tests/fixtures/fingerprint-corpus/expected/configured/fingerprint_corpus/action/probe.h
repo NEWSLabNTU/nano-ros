@@ -6,8 +6,11 @@
 //
 // rosidl_generator_c's names and member shape for the three user payloads
 // (RFC-0089, phase-492 W7): fingerprint_corpus__action__Probe_Goal, fingerprint_corpus__action__Probe_Result,
-// fingerprint_corpus__action__Probe_Feedback. The action's envelopes (`_SendGoal_Request` and
-// the rest) are assembled by the nros action runtime and are not emitted.
+// fingerprint_corpus__action__Probe_Feedback; and the three envelopes rclc's action API hands a
+// user (phase-515 C4): fingerprint_corpus__action__Probe_SendGoal_Request,
+// fingerprint_corpus__action__Probe_GetResult_Response and
+// fingerprint_corpus__action__Probe_FeedbackMessage. The wire envelopes the runtime
+// assembles itself (`_SendGoal_Response`, `_GetResult_Request`) are not emitted.
 
 #ifndef FINGERPRINT_CORPUS__ACTION__PROBE_H_
 #define FINGERPRINT_CORPUS__ACTION__PROBE_H_
@@ -20,13 +23,14 @@
 #include <rosidl_runtime_c/primitives_sequence.h>
 #include <rosidl_runtime_c/action_type_support_struct.h>
 #include <rclc/types.h>
+#include <rclc/detail/uuid.h>
 // Issue 0346 — borrowed views use rclc_view_str_t / the LE slice views.
 #include <rclc/detail/view.h>
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 20. */
-#define NROS_EMITTED_CODEGEN_VERSION 20
+/* RFC-0090 — emitted by nano-ros codegen version 21. */
+#define NROS_EMITTED_CODEGEN_VERSION 21
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -47,10 +51,13 @@ extern "C" {
 
 /// Probe goal. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_fingerprint_corpus__action__Probe_Goal
+#define NROS_DEFINED_fingerprint_corpus__action__Probe_Goal
 typedef struct fingerprint_corpus__action__Probe_Goal {
     rosidl_runtime_c__int64__Sequence waypoints;
     rosidl_runtime_c__String name;
 } fingerprint_corpus__action__Probe_Goal;
+#endif
 
 /// A sequence of fingerprint_corpus__action__Probe_Goal, in rosidl's shape.
 typedef struct fingerprint_corpus__action__Probe_Goal__Sequence {
@@ -130,10 +137,13 @@ int32_t fingerprint_corpus__action__Probe_Goal__deserialize_view(fingerprint_cor
 
 /// Probe result. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_fingerprint_corpus__action__Probe_Result
+#define NROS_DEFINED_fingerprint_corpus__action__Probe_Result
 typedef struct fingerprint_corpus__action__Probe_Result {
     int64_t total;
     rosidl_runtime_c__String report;
 } fingerprint_corpus__action__Probe_Result;
+#endif
 
 /// A sequence of fingerprint_corpus__action__Probe_Result, in rosidl's shape.
 typedef struct fingerprint_corpus__action__Probe_Result__Sequence {
@@ -212,10 +222,13 @@ int32_t fingerprint_corpus__action__Probe_Result__deserialize_view(fingerprint_c
 
 /// Probe feedback. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_fingerprint_corpus__action__Probe_Feedback
+#define NROS_DEFINED_fingerprint_corpus__action__Probe_Feedback
 typedef struct fingerprint_corpus__action__Probe_Feedback {
     int64_t done;
     rosidl_runtime_c__String stage;
 } fingerprint_corpus__action__Probe_Feedback;
+#endif
 
 /// A sequence of fingerprint_corpus__action__Probe_Feedback, in rosidl's shape.
 typedef struct fingerprint_corpus__action__Probe_Feedback__Sequence {
@@ -285,6 +298,43 @@ typedef struct fingerprint_corpus__action__Probe_Feedback__View {
 
 /// Deserialize into a borrowed view. Returns 0 on success, -1 on error.
 int32_t fingerprint_corpus__action__Probe_Feedback__deserialize_view(fingerprint_corpus__action__Probe_Feedback__View* out, const uint8_t* buffer, size_t buffer_size);
+
+// ----------------------------------------------------------------------------
+// Probe envelopes (phase-515 C4)
+// ----------------------------------------------------------------------------
+
+/// rosidl's `Probe_SendGoal_Request`: the goal and the id the
+/// client gave it. rclc's `rclc_executor_add_action_server` takes an array of
+/// these and hands each accepted goal's `ros_goal_request` out of it.
+#ifndef NROS_DEFINED_fingerprint_corpus__action__Probe_SendGoal_Request
+#define NROS_DEFINED_fingerprint_corpus__action__Probe_SendGoal_Request
+typedef struct fingerprint_corpus__action__Probe_SendGoal_Request {
+    unique_identifier_msgs__msg__UUID goal_id;
+    fingerprint_corpus__action__Probe_Goal goal;
+} fingerprint_corpus__action__Probe_SendGoal_Request;
+#endif
+
+/// rosidl's `Probe_GetResult_Response`: the goal's terminal status
+/// and its result. rclc's `rclc_action_send_result` takes one and writes
+/// `status` itself.
+#ifndef NROS_DEFINED_fingerprint_corpus__action__Probe_GetResult_Response
+#define NROS_DEFINED_fingerprint_corpus__action__Probe_GetResult_Response
+typedef struct fingerprint_corpus__action__Probe_GetResult_Response {
+    int8_t status;
+    fingerprint_corpus__action__Probe_Result result;
+} fingerprint_corpus__action__Probe_GetResult_Response;
+#endif
+
+/// rosidl's `Probe_FeedbackMessage`: one feedback sample and the
+/// goal it is for. rclc's `rclc_action_publish_feedback` takes one and writes
+/// `goal_id` itself.
+#ifndef NROS_DEFINED_fingerprint_corpus__action__Probe_FeedbackMessage
+#define NROS_DEFINED_fingerprint_corpus__action__Probe_FeedbackMessage
+typedef struct fingerprint_corpus__action__Probe_FeedbackMessage {
+    unique_identifier_msgs__msg__UUID goal_id;
+    fingerprint_corpus__action__Probe_Feedback feedback;
+} fingerprint_corpus__action__Probe_FeedbackMessage;
+#endif
 
 // ============================================================================
 // Action Type Support
