@@ -25,7 +25,11 @@ pub use imp::*;
 mod imp {
     use core::ffi::{c_char, c_void};
 
-    use nros_node::{ParameterError, ParameterValue, executor::NodeId};
+    // phase-515 R10 stage 1b -- the node-id-keyed parameter forms.
+    use nros_node::{
+        ParameterError, ParameterValue,
+        executor::{NodeId, ffi::ExecutorFfi as _},
+    };
 
     use crate::{
         error::*,

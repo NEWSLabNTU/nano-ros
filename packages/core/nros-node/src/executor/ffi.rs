@@ -34,6 +34,223 @@ impl sealed::Sealed for Executor<'_> {}
 
 /// The executor's FFI entry points, for `nros-c` and `nros-cpp`. Sealed.
 pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
+    // phase-515 R10 stage 1b -- the per-node parameter forms. The `Node`
+    // that `node_mut(id)` returns carries the user-facing verbs; these are
+    // the shims' node-id-keyed entry points.
+
+    #[cfg(all(feature = "param-store", feature = "alloc"))]
+    /// The FFI entry point; see `Executor::argv_param_overrides_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn argv_param_overrides_on(
+        &self,
+        node: super::node_record::NodeId,
+    ) -> impl Iterator<Item = (&str, nros_params::ParameterValue)> + '_;
+
+    #[cfg(all(feature = "param-store", feature = "alloc"))]
+    /// The FFI entry point; see `Executor::for_each_argv_param_override_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn for_each_argv_param_override_on(
+        &self,
+        node: super::node_record::NodeId,
+        f: impl FnMut(&str, &nros_params::ParameterValue),
+    ) -> usize;
+
+    /// The FFI entry point; see `Executor::declare_parameter_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn declare_parameter_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> bool;
+
+    /// The FFI entry point; see `Executor::declare_parameter_on_ref` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn declare_parameter_on_ref(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: &nros_params::ParameterValue,
+    ) -> bool;
+
+    /// The FFI entry point; see `Executor::declare_parameter_with_descriptor_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn declare_parameter_with_descriptor_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+        descriptor: nros_params::ParameterDescriptor,
+    ) -> bool;
+
+    /// The FFI entry point; see `Executor::set_parameter_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn set_parameter_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> Result<(), nros_params::ParameterError>;
+
+    /// The FFI entry point; see `Executor::set_parameter_on_ref` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn set_parameter_on_ref(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: &nros_params::ParameterValue,
+    ) -> Result<(), nros_params::ParameterError>;
+
+    /// The FFI entry point; see `Executor::set_parameter_local_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn set_parameter_local_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> Result<(), nros_params::ParameterError>;
+
+    #[cfg(feature = "param-services")]
+    /// The FFI entry point; see `Executor::disable_parameter_events_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn disable_parameter_events_on(&mut self, node: super::node_record::NodeId);
+
+    #[cfg(feature = "param-services")]
+    /// The FFI entry point; see `Executor::enable_parameter_events_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn enable_parameter_events_on(
+        &mut self,
+        node: super::node_record::NodeId,
+    ) -> Result<(), NodeError>;
+
+    /// The FFI entry point; see `Executor::delete_parameters_on_not_set_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn delete_parameters_on_not_set_on(&mut self, node: super::node_record::NodeId, on: bool);
+
+    /// The FFI entry point; see `Executor::allow_undeclared_parameters_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn allow_undeclared_parameters_on(&mut self, node: super::node_record::NodeId, allow: bool);
+
+    /// The FFI entry point; see `Executor::get_parameter_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn get_parameter_on(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> Option<&nros_params::ParameterValue>;
+
+    /// The FFI entry point; see `Executor::parameter_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn parameter_on<'a, T: nros_params::ParameterVariant>(
+        &'a mut self,
+        node: super::node_record::NodeId,
+        name: &'a str,
+    ) -> Result<nros_params::ParameterBuilder<'a, 's, T>, NodeError>;
+
+    /// The FFI entry point; see `Executor::set_parameter_description_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn set_parameter_description_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        description: &str,
+        additional_constraints: &str,
+    ) -> bool;
+
+    /// The FFI entry point; see `Executor::set_parameter_read_only_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn set_parameter_read_only_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        read_only: bool,
+    ) -> bool;
+
+    /// The FFI entry point; see `Executor::set_parameter_integer_range_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn set_parameter_integer_range_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        min: i64,
+        max: i64,
+        step: i64,
+    ) -> bool;
+
+    /// The FFI entry point; see `Executor::set_parameter_float_range_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn set_parameter_float_range_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        min: f64,
+        max: f64,
+        step: f64,
+    ) -> bool;
+
+    /// The FFI entry point; see `Executor::describe_parameter_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn describe_parameter_on(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> Option<&nros_params::ParameterDescriptor>;
+
+    /// The FFI entry point; see `Executor::get_parameter_type_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn get_parameter_type_on(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> Option<nros_params::ParameterType>;
+
+    /// The FFI entry point; see `Executor::list_parameters_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn list_parameters_on<'p>(
+        &'p self,
+        node: super::node_record::NodeId,
+        prefix: &'p str,
+    ) -> impl Iterator<Item = &'p str>;
+
+    /// The FFI entry point; see `Executor::set_parameters_atomically_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn set_parameters_atomically_on<'x, I>(
+        &mut self,
+        node: super::node_record::NodeId,
+        items: I,
+    ) -> Result<(), nros_params::ParameterError>
+    where
+        I: Iterator<Item = Option<(&'x str, nros_params::ParameterValue)>> + Clone;
+
+    /// The FFI entry point; see `Executor::set_parameters_atomically_with_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn set_parameters_atomically_with_on<'x>(
+        &mut self,
+        node: super::node_record::NodeId,
+        count: usize,
+        fill: impl FnMut(usize, &mut nros_params::ParameterValue) -> Option<&'x str>,
+    ) -> Result<(), nros_params::ParameterError>;
+
+    /// The FFI entry point; see `Executor::undeclare_parameter_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn undeclare_parameter_on(&mut self, node: super::node_record::NodeId, name: &str) -> bool;
+
+    /// The FFI entry point; see `Executor::add_on_set_parameters_callback_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn add_on_set_parameters_callback_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        callback: nros_params::OnSetParameterFn,
+        ctx: nros_params::OnSetContext,
+    ) -> Option<nros_params::OnSetParameterHandle>;
+
+    /// The FFI entry point; see `Executor::use_undeclared_parameters_on` in `spin.rs`.
+    #[cfg(feature = "param-store")]
+    fn use_undeclared_parameters_on(
+        &mut self,
+        node: super::node_record::NodeId,
+    ) -> Result<nros_params::Parameters<'_, 's>, NodeError>;
+
     /// The FFI entry point; see `Executor::add_arena_subscription_c_callback` in `spin.rs`.
     #[allow(clippy::too_many_arguments)]
     fn add_arena_subscription_c_callback<const RX_BUF: usize>(
@@ -511,6 +728,278 @@ pub trait ExecutorFfi<'s>: sealed::Sealed + Sized {
 }
 
 impl<'s> ExecutorFfi<'s> for Executor<'s> {
+    #[cfg(all(feature = "param-store", feature = "alloc"))]
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn argv_param_overrides_on(
+        &self,
+        node: super::node_record::NodeId,
+    ) -> impl Iterator<Item = (&str, nros_params::ParameterValue)> + '_ {
+        Executor::argv_param_overrides_on(self, node)
+    }
+
+    #[cfg(all(feature = "param-store", feature = "alloc"))]
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn for_each_argv_param_override_on(
+        &self,
+        node: super::node_record::NodeId,
+        f: impl FnMut(&str, &nros_params::ParameterValue),
+    ) -> usize {
+        Executor::for_each_argv_param_override_on(self, node, f)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn declare_parameter_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> bool {
+        Executor::declare_parameter_on(self, node, name, value)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn declare_parameter_on_ref(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: &nros_params::ParameterValue,
+    ) -> bool {
+        Executor::declare_parameter_on_ref(self, node, name, value)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn declare_parameter_with_descriptor_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+        descriptor: nros_params::ParameterDescriptor,
+    ) -> bool {
+        Executor::declare_parameter_with_descriptor_on(self, node, name, value, descriptor)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn set_parameter_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> Result<(), nros_params::ParameterError> {
+        Executor::set_parameter_on(self, node, name, value)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn set_parameter_on_ref(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: &nros_params::ParameterValue,
+    ) -> Result<(), nros_params::ParameterError> {
+        Executor::set_parameter_on_ref(self, node, name, value)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn set_parameter_local_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> Result<(), nros_params::ParameterError> {
+        Executor::set_parameter_local_on(self, node, name, value)
+    }
+
+    #[cfg(feature = "param-services")]
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn disable_parameter_events_on(&mut self, node: super::node_record::NodeId) {
+        Executor::disable_parameter_events_on(self, node)
+    }
+
+    #[cfg(feature = "param-services")]
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn enable_parameter_events_on(
+        &mut self,
+        node: super::node_record::NodeId,
+    ) -> Result<(), NodeError> {
+        Executor::enable_parameter_events_on(self, node)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn delete_parameters_on_not_set_on(&mut self, node: super::node_record::NodeId, on: bool) {
+        Executor::delete_parameters_on_not_set_on(self, node, on)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn allow_undeclared_parameters_on(&mut self, node: super::node_record::NodeId, allow: bool) {
+        Executor::allow_undeclared_parameters_on(self, node, allow)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn get_parameter_on(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> Option<&nros_params::ParameterValue> {
+        Executor::get_parameter_on(self, node, name)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn parameter_on<'a, T: nros_params::ParameterVariant>(
+        &'a mut self,
+        node: super::node_record::NodeId,
+        name: &'a str,
+    ) -> Result<nros_params::ParameterBuilder<'a, 's, T>, NodeError> {
+        Executor::parameter_on::<T>(self, node, name)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn set_parameter_description_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        description: &str,
+        additional_constraints: &str,
+    ) -> bool {
+        Executor::set_parameter_description_on(
+            self,
+            node,
+            name,
+            description,
+            additional_constraints,
+        )
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn set_parameter_read_only_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        read_only: bool,
+    ) -> bool {
+        Executor::set_parameter_read_only_on(self, node, name, read_only)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn set_parameter_integer_range_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        min: i64,
+        max: i64,
+        step: i64,
+    ) -> bool {
+        Executor::set_parameter_integer_range_on(self, node, name, min, max, step)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn set_parameter_float_range_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        min: f64,
+        max: f64,
+        step: f64,
+    ) -> bool {
+        Executor::set_parameter_float_range_on(self, node, name, min, max, step)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn describe_parameter_on(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> Option<&nros_params::ParameterDescriptor> {
+        Executor::describe_parameter_on(self, node, name)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn get_parameter_type_on(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> Option<nros_params::ParameterType> {
+        Executor::get_parameter_type_on(self, node, name)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn list_parameters_on<'p>(
+        &'p self,
+        node: super::node_record::NodeId,
+        prefix: &'p str,
+    ) -> impl Iterator<Item = &'p str> {
+        Executor::list_parameters_on(self, node, prefix)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn set_parameters_atomically_on<'x, I>(
+        &mut self,
+        node: super::node_record::NodeId,
+        items: I,
+    ) -> Result<(), nros_params::ParameterError>
+    where
+        I: Iterator<Item = Option<(&'x str, nros_params::ParameterValue)>> + Clone,
+    {
+        Executor::set_parameters_atomically_on::<I>(self, node, items)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn set_parameters_atomically_with_on<'x>(
+        &mut self,
+        node: super::node_record::NodeId,
+        count: usize,
+        fill: impl FnMut(usize, &mut nros_params::ParameterValue) -> Option<&'x str>,
+    ) -> Result<(), nros_params::ParameterError> {
+        Executor::set_parameters_atomically_with_on(self, node, count, fill)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn undeclare_parameter_on(&mut self, node: super::node_record::NodeId, name: &str) -> bool {
+        Executor::undeclare_parameter_on(self, node, name)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn add_on_set_parameters_callback_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        callback: nros_params::OnSetParameterFn,
+        ctx: nros_params::OnSetContext,
+    ) -> Option<nros_params::OnSetParameterHandle> {
+        Executor::add_on_set_parameters_callback_on(self, node, callback, ctx)
+    }
+
+    #[inline]
+    #[cfg(feature = "param-store")]
+    fn use_undeclared_parameters_on(
+        &mut self,
+        node: super::node_record::NodeId,
+    ) -> Result<nros_params::Parameters<'_, 's>, NodeError> {
+        Executor::use_undeclared_parameters_on(self, node)
+    }
+
     #[allow(clippy::too_many_arguments)]
     #[inline]
     fn add_arena_subscription_c_callback<const RX_BUF: usize>(

@@ -14705,7 +14705,7 @@ impl<'s> Executor<'s> {
     /// to follow. An override no type accepts (a string past the store's
     /// bound) is left out. Yields in argv order of the winning override.
     #[cfg(all(feature = "param-store", feature = "alloc"))]
-    pub fn argv_param_overrides_on(
+    pub(crate) fn argv_param_overrides_on(
         &self,
         node: super::node_record::NodeId,
     ) -> impl Iterator<Item = (&str, nros_params::ParameterValue)> + '_ {
@@ -14735,7 +14735,7 @@ impl<'s> Executor<'s> {
     /// frame and then into the caller's; here it lives in this frame alone,
     /// which took `nros_cpp_node_list_param_overrides` from 17.3 KiB.
     #[cfg(all(feature = "param-store", feature = "alloc"))]
-    pub fn for_each_argv_param_override_on(
+    pub(crate) fn for_each_argv_param_override_on(
         &self,
         node: super::node_record::NodeId,
         mut f: impl FnMut(&str, &nros_params::ParameterValue),
@@ -14869,7 +14869,7 @@ impl<'s> Executor<'s> {
     /// they were fixed, so the attribute on the wrapper alone guarded nothing
     /// a launch-seed site could still drop.
     #[must_use]
-    pub fn declare_parameter_on(
+    pub(crate) fn declare_parameter_on(
         &mut self,
         node: super::node_record::NodeId,
         name: &str,
@@ -14885,7 +14885,7 @@ impl<'s> Executor<'s> {
     /// `declare_parameter<double>` (aarch64; ~67 KiB on Cortex-M3). Borrowed,
     /// it is copied once, into its slot.
     #[must_use]
-    pub fn declare_parameter_on_ref(
+    pub(crate) fn declare_parameter_on_ref(
         &mut self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15114,7 +15114,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Declare a parameter with a value and descriptor on a named node.
-    pub fn declare_parameter_with_descriptor_on(
+    pub(crate) fn declare_parameter_with_descriptor_on(
         &mut self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15229,7 +15229,7 @@ impl<'s> Executor<'s> {
     }
 
     /// [`set_parameter`](Self::set_parameter) on a named node.
-    pub fn set_parameter_on(
+    pub(crate) fn set_parameter_on(
         &mut self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15241,7 +15241,7 @@ impl<'s> Executor<'s> {
     /// [`set_parameter_on`](Self::set_parameter_on), borrowing the value --
     /// issue 2104, and the one the by-value spelling forwards to. The value is
     /// copied once, into its slot (`ParameterServer::apply_ref`).
-    pub fn set_parameter_on_ref(
+    pub(crate) fn set_parameter_on_ref(
         &mut self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15273,7 +15273,7 @@ impl<'s> Executor<'s> {
     /// range are NOT checked, because rclc's owner of a parameter is not bound
     /// by them; remote writes keep [`set_parameter_on`](Self::set_parameter_on)'s
     /// rules. The reserved-parameter hook runs on success, as on every writer.
-    pub fn set_parameter_local_on(
+    pub(crate) fn set_parameter_local_on(
         &mut self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15316,7 +15316,7 @@ impl<'s> Executor<'s> {
     /// and keeps [`register_parameter_services`](Self::register_parameter_services)
     /// from switching them on. The executor's one publisher stays up if
     /// another node uses it.
-    pub fn disable_parameter_events_on(&mut self, node: super::node_record::NodeId) {
+    pub(crate) fn disable_parameter_events_on(&mut self, node: super::node_record::NodeId) {
         if !self.ensure_parameter_store() {
             return;
         }
@@ -15338,7 +15338,7 @@ impl<'s> Executor<'s> {
     /// reliable DDS writer's history is memory the RMW reserves; depth is not
     /// a matching criterion, so an upstream subscriber still matches.
     /// Idempotent.
-    pub fn enable_parameter_events_on(
+    pub(crate) fn enable_parameter_events_on(
         &mut self,
         node: super::node_record::NodeId,
     ) -> Result<(), NodeError> {
@@ -15492,7 +15492,11 @@ impl<'s> Executor<'s> {
     /// phase-491 W2 — a remote `NOT_SET` on `node` deletes the parameter
     /// (rclc) instead of being refused (rclcpp). See
     /// [`ParameterServer::set_delete_on_not_set`](nros_params::ParameterServer::set_delete_on_not_set).
-    pub fn delete_parameters_on_not_set_on(&mut self, node: super::node_record::NodeId, on: bool) {
+    pub(crate) fn delete_parameters_on_not_set_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        on: bool,
+    ) {
         self.ensure_parameter_store();
         if let Some(params) = &mut self.params {
             params.server.set_delete_on_not_set(node.into(), on);
@@ -15503,7 +15507,7 @@ impl<'s> Executor<'s> {
     /// `allow_undeclared_parameters` node option (issue 1151), per node since
     /// phase-426 W1: switching it on for one node leaves its siblings
     /// refusing.
-    pub fn allow_undeclared_parameters_on(
+    pub(crate) fn allow_undeclared_parameters_on(
         &mut self,
         node: super::node_record::NodeId,
         allow: bool,
@@ -15534,7 +15538,7 @@ impl<'s> Executor<'s> {
     }
 
     /// Get a parameter value by name from a named node.
-    pub fn get_parameter_on(
+    pub(crate) fn get_parameter_on(
         &self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15593,7 +15597,7 @@ impl<'s> Executor<'s> {
     }
 
     /// [`parameter`](Self::parameter) on a named node.
-    pub fn parameter_on<'a, T: nros_params::ParameterVariant>(
+    pub(crate) fn parameter_on<'a, T: nros_params::ParameterVariant>(
         &'a mut self,
         node: super::node_record::NodeId,
         name: &'a str,
@@ -15643,7 +15647,7 @@ impl<'s> Executor<'s> {
 
     /// Attach a description and free-text constraints to a declared parameter
     /// on `node` — rclc's `rclc_add_parameter_description`.
-    pub fn set_parameter_description_on(
+    pub(crate) fn set_parameter_description_on(
         &mut self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15684,7 +15688,7 @@ impl<'s> Executor<'s> {
     /// Mark a declared parameter read-only — rclc's
     /// `rclc_set_parameter_read_only`. Every later write, local or remote, is
     /// refused.
-    pub fn set_parameter_read_only_on(
+    pub(crate) fn set_parameter_read_only_on(
         &mut self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15711,7 +15715,7 @@ impl<'s> Executor<'s> {
     /// Attach an integer range — rclc's
     /// `rclc_add_parameter_constraint_integer`. Refuses an ill-formed range or
     /// one the current value does not satisfy.
-    pub fn set_parameter_integer_range_on(
+    pub(crate) fn set_parameter_integer_range_on(
         &mut self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15753,7 +15757,7 @@ impl<'s> Executor<'s> {
 
     /// Attach a floating-point range — rclc's
     /// `rclc_add_parameter_constraint_double`.
-    pub fn set_parameter_float_range_on(
+    pub(crate) fn set_parameter_float_range_on(
         &mut self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15784,7 +15788,7 @@ impl<'s> Executor<'s> {
     /// The descriptor of a declared parameter — rclcpp's
     /// `describe_parameter`, rclrs's `ParameterBuilder` readback. `None` when
     /// the parameter is not declared on `node`, or was declared without one.
-    pub fn describe_parameter_on(
+    pub(crate) fn describe_parameter_on(
         &self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15807,7 +15811,7 @@ impl<'s> Executor<'s> {
 
     /// The declared TYPE of a parameter — rclcpp's `get_parameter_types`, and
     /// the local answer to the `~/get_parameter_types` service.
-    pub fn get_parameter_type_on(
+    pub(crate) fn get_parameter_type_on(
         &self,
         node: super::node_record::NodeId,
         name: &str,
@@ -15828,7 +15832,7 @@ impl<'s> Executor<'s> {
     /// The names a node has declared, filtered by prefix — rclcpp's
     /// `list_parameters`, and the local answer to `~/list_parameters`. An
     /// empty prefix lists them all.
-    pub fn list_parameters_on<'p>(
+    pub(crate) fn list_parameters_on<'p>(
         &'p self,
         node: super::node_record::NodeId,
         prefix: &'p str,
@@ -15857,7 +15861,7 @@ impl<'s> Executor<'s> {
     ///
     /// `items` yields `None` for an element that could not be turned into a
     /// value at all; that refuses the batch like any failing check.
-    pub fn set_parameters_atomically_on<'x, I>(
+    pub(crate) fn set_parameters_atomically_on<'x, I>(
         &mut self,
         node: super::node_record::NodeId,
         items: I,
@@ -15875,7 +15879,7 @@ impl<'s> Executor<'s> {
     /// with element `i` FILLED into one scratch value by `fill(i, slot)`
     /// (`ParameterServer::apply_atomically_with`, issue 2104). For a caller
     /// that would otherwise build each ~8 KiB value on its own stack.
-    pub fn set_parameters_atomically_with_on<'x>(
+    pub(crate) fn set_parameters_atomically_with_on<'x>(
         &mut self,
         node: super::node_record::NodeId,
         count: usize,
@@ -15907,7 +15911,11 @@ impl<'s> Executor<'s> {
 
     /// Undeclare a parameter — rclcpp's `undeclare_parameter`, rclc's
     /// `rclc_delete_parameter`. The slot is freed for a later declaration.
-    pub fn undeclare_parameter_on(&mut self, node: super::node_record::NodeId, name: &str) -> bool {
+    pub(crate) fn undeclare_parameter_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> bool {
         match &mut self.params {
             Some(params) => params.server.remove(node.into(), name),
             None => false,
@@ -15933,7 +15941,7 @@ impl<'s> Executor<'s> {
     /// registration covers a remote `ros2 param set` and a local one alike.
     ///
     /// `None` when all [`nros_params::MAX_ON_SET_CALLBACKS`] slots are taken.
-    pub fn add_on_set_parameters_callback_on(
+    pub(crate) fn add_on_set_parameters_callback_on(
         &mut self,
         node: super::node_record::NodeId,
         callback: nros_params::OnSetParameterFn,
@@ -15978,7 +15986,7 @@ impl<'s> Executor<'s> {
     /// `apply`: `allow_undeclared_parameters` governs what a REMOTE set may
     /// create, and a caller who reached for this type has opted in by naming
     /// it. That is rclrs's split too.
-    pub fn use_undeclared_parameters_on(
+    pub(crate) fn use_undeclared_parameters_on(
         &mut self,
         node: super::node_record::NodeId,
     ) -> Result<nros_params::Parameters<'_, 's>, NodeError> {

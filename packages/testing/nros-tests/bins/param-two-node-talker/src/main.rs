@@ -79,14 +79,21 @@ fn main() {
 
     // The same NAME on both nodes, with different values. Pre-W1 this was one
     // flat table and the second declaration was a collision.
-    assert!(
-        executor.declare_parameter_on(alpha, "rate", ParameterValue::Integer(10)),
-        "alpha/rate declaration refused"
-    );
-    assert!(
-        executor.declare_parameter_on(beta, "rate", ParameterValue::Integer(20)),
-        "beta/rate declaration refused"
-    );
+    // phase-515 R10 -- declared on each node, as rclrs does.
+    let _ = executor
+        .node_mut(alpha)
+        .declare_parameter::<i64>("rate")
+        .expect("parameter store")
+        .default(10)
+        .mandatory()
+        .expect("alpha/rate declaration refused");
+    let _ = executor
+        .node_mut(beta)
+        .declare_parameter::<i64>("rate")
+        .expect("parameter store")
+        .default(20)
+        .mandatory()
+        .expect("beta/rate declaration refused");
 
     // alpha's alone, and constrained: 0..=100 on a step-5 lattice (issue 1150).
     let stepped = ParameterDescriptor::new("stepped", ParameterType::Integer)
@@ -94,8 +101,7 @@ fn main() {
         .with_description("step-5 lattice; an off-step `ros2 param set` must be refused")
         .with_integer_range(0, 100, 5);
     assert!(
-        executor.declare_parameter_with_descriptor_on(
-            alpha,
+        executor.node_mut(alpha).declare_parameter_with_descriptor(
             "stepped",
             ParameterValue::Integer(10),
             stepped,

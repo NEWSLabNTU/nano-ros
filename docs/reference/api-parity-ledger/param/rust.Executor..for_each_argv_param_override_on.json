@@ -1,6 +1,0 @@
-{
-  "key": "rust:Executor::for_each_argv_param_override_on",
-  "bucket": "ours-only",
-  "verdict": "divergence",
-  "why": "issue 2104 -- the visitor form of `rust:Executor::argv_param_overrides_on`, with the same selection (last override of a name wins, a `node:` override applies only to that node, typed bool, integer, double, then string). It hands each override to a callback by reference instead of collecting them into a `Vec`, because a `ParameterValue` holds inline buffers of about 8 KiB and collecting cost one value per override on the caller's stack; the C++ shim's `get_parameter_overrides()` forwards to it. Upstream returns the overrides as a map from the node's own `NodeParameters`; ours live in the executor's one parameter store, so the node is an ARGUMENT, as for the collecting reader."
-}

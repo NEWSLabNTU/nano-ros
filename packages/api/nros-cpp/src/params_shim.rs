@@ -27,6 +27,9 @@ use crate::NROS_CPP_RET_UNSUPPORTED;
 
 #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 use nros_node::ParameterValue;
+// phase-515 R10 stage 1b -- the node-id-keyed parameter forms.
+#[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
+use nros_node::executor::ffi::ExecutorFfi as _;
 
 #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
 use crate::{
