@@ -167,6 +167,23 @@ and some are stale current-tense claims like the `_typed` pair above, which is
 1012's tense problem again. W0.a's escape field generalises to it (a
 `retired_names` list beside `retired_quotes`), and the sweep is that list plus a
 prose fix for each stale one. Not started; C++ and Rust names are not measured.
+**LANDED 2026-10-27.** `--check` now resolves every backticked `rclc_` / `rcl_` /
+`nros_` span against both extractions plus every CODE identifier (comments
+stripped) in tracked sources under `packages/` and the upstream surfaces; a
+span ending `*`, `{` or `_` is a prefix that must begin a live name. History is
+listed per row in `retired_names` (SCHEMA.md), which is itself checked both
+ways (named in the prose, and not live). Stripping comments mattered: a stale
+`nros_executor_spin_some` survived in one test's doc comment, so a token scan
+of the raw sources passed the very mutation this exists for. The sweep moved
+~190 rows: about 60 stale current-tense claims corrected to the live name
+(mostly the pre-phase-487 `nros_*` polling spellings, the pre-phase-492
+`nros_*_get_zero_initialized` / `nros_node_init` family, and the `nros_executor_*`
+verbs), the rest history listed in `retired_names`. Three upstream names live in
+rcl headers the extraction does not read (`rcl/remap.h`,
+`rcl/logging_rosout.h`, `rcl_lifecycle`) and are allowed by a named set in the
+script. **Still not measured:** C++ and Rust names without a C prefix, and stale
+names in CODE comments (the generated header still documents
+`nros_lifecycle_register_on_*`).
 
 ### C — rclc / rcl
 
@@ -370,7 +387,14 @@ handler.
 
 **P7 — two polling subscription types.** `PollSubscription` (20 members) and
 `PollingSubscription` (7) both ship. Confirm each has a distinct contract, or
-fold one into the other.
+fold one into the other. **Resolved 2026-10-27 — distinct, both stay.**
+`PollSubscription<M>` is CONSUMING: each `take*()` yields a sample once and it
+carries the whole take family (`take`, `take_serialized`, `take_validated`,
+`take_sequence`, `try_borrow`). `PollingSubscription<M>` is RETAINED: it HOLDS a
+`PollSubscription<M>` (`sub_`) plus the newest value, so `take_data()` answers
+repeatably (issue 0278, the analog of `autoware_utils::InterProcessPollingSubscriber`).
+One composes the other, so there is nothing to fold; `polling_subscription.hpp`
+states the choice under "WHICH ONE DO I WANT".
 
 **P8 — open renames (5):** `rclcpp_action::create_server` /
 `create_client` (ours `Node::create_action_server` / `_client`),

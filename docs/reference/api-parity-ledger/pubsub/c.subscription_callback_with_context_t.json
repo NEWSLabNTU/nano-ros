@@ -1,5 +1,8 @@
 {
   "key": "c:subscription_callback_with_context_t",
   "verdict": "extension",
+  "retired_names": [
+    "rclc_typed_subscription_callback_t"
+  ],
   "why": "rclc's own `rclc_subscription_callback_with_context_t` (`void (*)(const void *msg, void *context)`, `rclc/executor_handle.h`), adopted as the DEFINITION in phase-492 W1.b (it was our `rclc_typed_subscription_callback_t` plus an alias). The extractor records rclc's executor_handle aliases on neither side as a pair, so the report sees only ours; the contract is identical."
 }

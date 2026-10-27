@@ -2,5 +2,5 @@
   "key": "cpp:SyncParametersClient",
   "disposition": "absent",
   "verdict": "declined",
-  "why": "the CLIENT side of the parameter services -- a service client speaking `rcl_interfaces/srv/*` on someone else's behalf. Ours registers the SERVER side (`nros_executor_register_parameter_services`) and ships no client: a device sets its own parameters from baked config (RFC-0045) and is the thing a desktop tool queries, not the thing that queries. See the param stage for the server half. The sync form additionally blocks on its own spin, which RFC-0021 forbids."
+  "why": "the CLIENT side of the parameter services -- a service client speaking `rcl_interfaces/srv/*` on someone else's behalf. Ours registers the SERVER side (`rclc_parameter_server_init_default`) and ships no client: a device sets its own parameters from baked config (RFC-0045) and is the thing a desktop tool queries, not the thing that queries. See the param stage for the server half. The sync form additionally blocks on its own spin, which RFC-0021 forbids."
 }

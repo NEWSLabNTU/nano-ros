@@ -2,5 +2,8 @@
   "key": "cpp:GuardCondition::set_on_trigger_callback",
   "disposition": "absent",
   "verdict": "divergence",
+  "retired_names": [
+    "nros_guard_condition_set_callback"
+  ],
   "why": "rclcpp installs the on-trigger hook AFTER construction, so an executor can attach itself to a guard condition somebody else made. Ours is bound at creation (`Node::create_guard_condition(out, callback, context)`) and cannot be swapped -- RFC-0041/0043, the same divergence as the pubsub stage's `c:subscription_set_on_new_message_callback`. CORRECTED 2026-09-18 (phase-417 W4.e): this row used to end \"but see `c:guard_condition_set_callback`: our own C API does install it after the fact, so this constraint is only enforced in two of our three languages\". C's `nros_guard_condition_set_callback` is retired and the constraint now holds in all three."
 }

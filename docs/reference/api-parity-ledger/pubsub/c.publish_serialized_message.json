@@ -8,5 +8,8 @@
     "to": "rclc_publish_serialized / Publisher::publish_serialized / EmbeddedPublisher::publish_serialized + EmbeddedRawPublisher::publish_serialized"
   },
   "verdict": "rename",
+  "retired_names": [
+    "nros_cpp_publisher_publish_raw"
+  ],
   "why": "ROS 2 says SERIALIZED for the pre-CDR byte form; ours is `rclc_publish_raw`. This row became the SOLE owner of that decision on 2026-09-03: the receive half (`c:take_serialized_message`) landed with phase-379 W6 decision 1, which renamed `try_recv_raw` -> `take_serialized`, so publish is the only side still saying RAW. One word, used consistently on both sides, and ours is the one that has to move. (Symbol spelling corrected 2026-08-26 (phase-379 W5): this row said `nros_cpp_publisher_publish_raw`; the C++ FFI symbol is `nros_cpp_publish_raw`.)"
 }

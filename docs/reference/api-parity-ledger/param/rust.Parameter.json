@@ -1,5 +1,8 @@
 {
   "key": "rust:Parameter",
   "verdict": "extension",
-  "why": "the stored record -- name plus `ParameterValue` -- returned by `ParameterServer::iter()` and `get_parameter()`, and what the `~/list_parameters` / `~/describe_parameters` handlers walk. rclrs never materialises one because its store is a map behind the node handle. Ours must, because the handlers iterate the static array without allocating an intermediate collection. C has the same record as `nros_parameter_t` and C++ has none. This row covers `Parameter::new`/`bool`/`integer`/`double`/`string`/`name`/`param_type`, which are constructors and accessors over those two fields."
+  "retired_names": [
+    "nros_parameter_t"
+  ],
+  "why": "the stored record -- name plus `ParameterValue` -- returned by `ParameterServer::iter()` and `get_parameter()`, and what the `~/list_parameters` / `~/describe_parameters` handlers walk. rclrs never materialises one because its store is a map behind the node handle. Ours must, because the handlers iterate the static array without allocating an intermediate collection. C has no record type -- it reads parameters through typed getters (`rclc_parameter_get_*`) -- and C++ has none (CORRECTED 2026-10-27, phase-515 W0.b: this named a C `nros_parameter_t`, which no longer exists). This row covers `Parameter::new`/`bool`/`integer`/`double`/`string`/`name`/`param_type`, which are constructors and accessors over those two fields."
 }

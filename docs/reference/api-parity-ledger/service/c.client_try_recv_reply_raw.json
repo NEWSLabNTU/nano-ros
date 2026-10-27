@@ -2,5 +2,8 @@
   "key": "c:client_try_recv_reply_raw",
   "retired": "a deprecated alias, deleted after its one release; the row records the rename",
   "verdict": "extension",
-  "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_client_take_response_raw` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
+  "retired_names": [
+    "nros_client_take_response_raw"
+  ],
+  "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name was then `nros_client_take_response_raw` (now `rclc_polling_client_take_response_raw`, phase-487 W2) and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
 }

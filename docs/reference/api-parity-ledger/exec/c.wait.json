@@ -2,5 +2,5 @@
   "key": "c:wait",
   "disposition": "absent",
   "verdict": "declined",
-  "why": "`rcl_wait` -- the blocking call at the centre of the protocol. rcl's wait set; the reason is stated in full at `cpp:WaitSet`. Ours is `nros_executor_spin_some(executor, timeout_ns)`, which drives I/O through the RMW vtable and dispatches every ready arena entry in one pass."
+  "why": "`rcl_wait` -- the blocking call at the centre of the protocol. rcl's wait set; the reason is stated in full at `cpp:WaitSet`. Ours is `rclc_executor_spin_some(executor, timeout_ns)`, which drives I/O through the RMW vtable and dispatches every ready arena entry in one pass."
 }

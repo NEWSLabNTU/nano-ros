@@ -127,6 +127,7 @@ import contextlib
 import glob
 import io
 import argparse
+import bisect
 import json
 import os
 import re
@@ -1730,6 +1731,100 @@ def misquoted_signatures(ledger, index):
     return findings
 
 
+# A backticked span that STARTS with one of the C prefixes names a C symbol
+# (or, for `nros_`, a Rust crate path such as `nros_params::Parameter`).
+# A span such as `nros_executor_*` or `nros_client_send_request{,_raw}` is a
+# PREFIX: it must begin some live name.
+QUOTED_C_NAME_RE = re.compile(r"`((?:rclc|rcl|nros)_[A-Za-z0-9_]*)([*{]?)")
+KNOWN_NAME_EXTS = (".h", ".hpp", ".c", ".cpp", ".rs", ".toml", ".cmake", ".json", ".txt")
+
+
+CODE_COMMENT_EXTS = (".h", ".hpp", ".c", ".cpp", ".rs")
+CODE_COMMENT_RE = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+
+
+def known_identifiers(records, roots=("packages", "docs/reference/api-surface",
+                                     "docs/reference/editions")):
+    """Every identifier a ledger row may name as CURRENT: each segment of every
+    extracted record (ours and theirs, all languages, both editions) plus every
+    identifier token in the tracked sources under `roots` -- macros, crate
+    names and internal symbols the extraction does not surface included."""
+    known = set()
+    for rec in records:
+        for qual in [rec.get("qual") or rec.get("name") or ""] + [
+                m.get("name") or "" for m in rec.get("members") or ()]:
+            known.update(qual.split("::"))
+    files = subprocess.run(["git", "-C", ROOT, "ls-files", "--", *roots],
+                           capture_output=True, text=True, check=True).stdout.split()
+    for rel in files:
+        if not rel.endswith(KNOWN_NAME_EXTS):
+            continue
+        try:
+            with open(os.path.join(ROOT, rel), errors="ignore") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        if rel.endswith(CODE_COMMENT_EXTS):
+            # A comment that still says `nros_executor_spin_some` is the same
+            # stale prose this check exists for, not evidence the name ships.
+            text = CODE_COMMENT_RE.sub(" ", text)
+        known.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", text))
+    return known
+
+
+# Upstream symbols a row may name although no extracted surface carries them:
+# the extraction covers rcl's, rclc's and rcl_action's public headers, and these
+# live in rcl headers it does not read (`rcl/remap.h`, `rcl/logging_rosout.h`)
+# or in rcl_lifecycle. Each is an upstream fact, not one of ours.
+UPSTREAM_NAMES_OUTSIDE_SURFACE = frozenset({
+    "rcl_qos_profile_rosout_default",  # rcl/logging_rosout.h
+    "rcl_remap_topic_name",            # rcl/remap.h
+    "rcl_state_t",                     # rcl_lifecycle/data_types.h
+})
+
+
+def unresolved_names(ledger, known):
+    """Rows whose `why` names a C-prefixed symbol (`rclc_`, `rcl_`, `nros_`)
+    that exists nowhere -- neither side's extraction nor any tracked source
+    (phase-515 W0.b).
+
+    W0.a's arity check judges only names the extraction knows, so a quote of a
+    DELETED function passed it: 100 such names in 259 references when this was
+    written, most of them the pre-phase-487 `nros_*` polling spellings still
+    described as live. A name that is history on purpose ("renamed from
+    `nros_client_init_polling`") is listed in the row's `retired_names`, so
+    tense is stated rather than guessed, as for `retired_quotes`. A listed name
+    the prose no longer mentions, or one that exists again, is itself a finding.
+    """
+    findings = []
+    ordered = sorted(known)
+    for key, value in sorted(ledger.items()):
+        why = value.get("why", "")
+        retired = set(value.get("retired_names") or ())
+        for name in sorted(retired):
+            if "`" + name not in why:
+                findings.append((key, "`retired_names` lists `%s`, which the `why` no "
+                                      "longer names; drop it from the list" % name))
+            elif name in known:
+                findings.append((key, "`retired_names` lists `%s`, which EXISTS; a live "
+                                      "name is not history -- drop it from the list" % name))
+        seen = set()
+        for match in QUOTED_C_NAME_RE.finditer(why):
+            name = match.group(1)
+            if (name in seen or name in known or name in retired
+                    or name in UPSTREAM_NAMES_OUTSIDE_SURFACE):
+                continue
+            if match.group(2) or name.endswith("_"):
+                i = bisect.bisect_left(ordered, name)
+                if i < len(ordered) and ordered[i].startswith(name):
+                    continue
+            seen.add(name)
+            findings.append((key, "`%s` exists nowhere in the tree or either upstream "
+                                  "surface; name the live symbol, or list it in "
+                                  "`retired_names` if the prose means its history" % name))
+    return findings
+
+
 # --------------------------------------------------------------------------
 # report
 # --------------------------------------------------------------------------
@@ -2193,6 +2288,18 @@ def _report_one(langs, show, check, suggest, include_internal, grep=None, topic=
                     file=sys.stderr,
                 )
                 for key, reason in misquoted:
+                    print("  %s  %s" % (key, reason), file=sys.stderr)
+                return 1
+            unresolved = unresolved_names(ledger, known_identifiers(records))
+            if unresolved:
+                print(
+                    "\n%d ledger row(s) name a C-prefixed symbol that exists nowhere "
+                    "(phase-515 W0.b). A name in a `why` is a claim that it ships; "
+                    "correct the prose, or state the history in `retired_names`:"
+                    % len(unresolved),
+                    file=sys.stderr,
+                )
+                for key, reason in unresolved:
                     print("  %s  %s" % (key, reason), file=sys.stderr)
                 return 1
         closed = closed_gap_findings(ledger, per_lang_rows)
@@ -3365,6 +3472,33 @@ def self_test():
     check("a retired_quotes entry the prose no longer contains is reported",
           [k for k, _ in misquoted_signatures(
               _sig_row("nothing quoted", retired_quotes=["publish(a, b, c)"]), _sig_index)],
+          ["x:k"])
+    # phase-515 W0.b -- retired NAMES. The mutation: a row still describing the
+    # pre-phase-487 `nros_service_take_request_raw` as the live spelling.
+    _known = {"rclc_polling_service_take_request_raw", "nros_params", "rcl_node_fini"}
+    check("a C-prefixed name that exists nowhere is reported",
+          [k for k, _ in unresolved_names(
+              _sig_row("ours is `nros_service_take_request_raw`"), _known)], ["x:k"])
+    check("a live name, a crate path and an unprefixed name are not reported",
+          unresolved_names(_sig_row("`rclc_polling_service_take_request_raw`, "
+                                    "`nros_params::Parameter`, `rcl_node_fini(n)`, `gone_x`"),
+                           _known), [])
+    check("a wildcard span is a prefix: live if some name begins with it",
+          unresolved_names(_sig_row("the `rclc_polling_service_*` family and "
+                                    "`rcl_node_{init,fini}`"), _known), [])
+    check("a wildcard span no live name begins with is reported",
+          [k for k, _ in unresolved_names(_sig_row("the `nros_service_*` family"), _known)],
+          ["x:k"])
+    check("a name listed in retired_names is history, not a claim",
+          unresolved_names(_sig_row("renamed from `nros_service_take_request_raw`",
+                                    retired_names=["nros_service_take_request_raw"]),
+                           _known), [])
+    check("a retired_names entry the prose no longer names is reported",
+          [k for k, _ in unresolved_names(
+              _sig_row("nothing", retired_names=["nros_gone"]), _known)], ["x:k"])
+    check("a retired_names entry that exists is reported",
+          [k for k, _ in unresolved_names(
+              _sig_row("`rcl_node_fini`", retired_names=["rcl_node_fini"]), _known)],
           ["x:k"])
     check("a cited refusal macro is not reported, whatever the row's disposition",
           unreferenced_refusals(

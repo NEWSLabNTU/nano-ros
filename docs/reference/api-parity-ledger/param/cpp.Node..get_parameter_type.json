@@ -1,5 +1,5 @@
 {
   "key": "cpp:Node::get_parameter_type",
   "verdict": "extension",
-  "why": "The SINGULAR type query. rclcpp has only the vector-taking `get_parameter_types`, which needs an allocator for both its argument and its return; ours ships as `get_parameter_types(names, count, out)` over caller storage (`cpp:Node::get_parameter_types`) and this is the one-name form underneath it. phase-417 W4.a. C and Rust have had the singular form all along (`nros_parameter_get_type`, `ParameterServer::get_type`), so this is the row that stops C++ being the odd one out — which is what stage 4 is."
+  "why": "The SINGULAR type query. rclcpp has only the vector-taking `get_parameter_types`, which needs an allocator for both its argument and its return; ours ships as `get_parameter_types(names, count, out)` over caller storage (`cpp:Node::get_parameter_types`) and this is the one-name form underneath it. phase-417 W4.a. C and Rust have had the singular form all along (`rclc_parameter_get_type`, `ParameterServer::get_type`), so this is the row that stops C++ being the odd one out — which is what stage 4 is."
 }

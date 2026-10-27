@@ -2,5 +2,9 @@
   "key": "c:service_take_request",
   "retired": "a deprecated alias, deleted after its one release; the row records the rename",
   "verdict": "extension",
-  "why": "the ours-only half of `c:take_request`. Two entry points carry it: this one, a permanent `RCL_RET_NOT_INIT` stub from before the polling API existed, and `nros_service_take_request_raw`, the L1 polling drain (renamed from `nros_service_try_recv_request_raw` by phase-379 W6 decision 1, 2026-09-03). Which of the two spellings survives is still open."
+  "retired_names": [
+    "nros_service_take_request_raw",
+    "nros_service_try_recv_request_raw"
+  ],
+  "why": "the ours-only half of `c:take_request`. Two entry points carry it: this one, a permanent `RCL_RET_NOT_INIT` stub from before the polling API existed, and `rclc_polling_service_take_request_raw`, the L1 polling drain (spelled `nros_service_take_request_raw` until phase-487 W2; renamed from `nros_service_try_recv_request_raw` by phase-379 W6 decision 1, 2026-09-03). Which of the two spellings survives is still open."
 }

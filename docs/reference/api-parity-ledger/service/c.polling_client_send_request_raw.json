@@ -1,5 +1,8 @@
 {
   "key": "c:polling_client_send_request_raw",
   "verdict": "extension",
+  "retired_names": [
+    "nros_client_send_request_raw"
+  ],
   "why": "the raw form; see the pubsub stage's `c:publish_raw`. Renamed from `nros_client_send_request_raw` by phase-487 W2, when the polled client became its own type, `rclc_polling_client_t`: a dispatched client's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched client carried storage only the polled road fills."
 }

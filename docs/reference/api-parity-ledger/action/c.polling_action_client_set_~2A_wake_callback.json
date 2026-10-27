@@ -2,5 +2,8 @@
   "key": "c:polling_action_client_set_*_wake_callback",
   "bucket": "ours-only",
   "verdict": "extension",
+  "retired_names": [
+    "nros_action_client_set_"
+  ],
   "why": "the platform wake primitive fired when a reply or feedback lands on one of the client's four channels, so a task blocked on the platform's own primitive is released without the executor polling. rcl's nearest is the `set_*_client_callback` family, which notifies a wait set we do not have. See the pubsub stage's `c:subscription_set_wake_callback`. Renamed from `nros_action_client_set_*_wake_callback` by phase-487 W4, when the polled action client became its own type, `rclc_polling_action_client_t`: a dispatched action's channels and goal table live in the executor arena, a polled one's `ActionServerCore`/`ActionClientCore` in the struct, and one type holding both made every dispatched action carry storage only the polled road fills."
 }

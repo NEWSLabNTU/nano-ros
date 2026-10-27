@@ -1,5 +1,9 @@
 {
   "key": "c:polling_client_take_response_raw",
   "verdict": "extension",
+  "retired_names": [
+    "nros_client_take_response_raw",
+    "nros_client_try_recv_reply_raw"
+  ],
   "why": "the L1 polling-client half of `c:take_response`. `reply` -> `response` moved with the verb. Renamed from `nros_client_try_recv_reply_raw` by phase-379 W6 decision 1 (2026-09-03). Renamed from `nros_client_take_response_raw` by phase-487 W2, when the polled client became its own type, `rclc_polling_client_t`: a dispatched client's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched client carried storage only the polled road fills."
 }

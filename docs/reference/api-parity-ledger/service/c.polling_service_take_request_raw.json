@@ -1,5 +1,9 @@
 {
   "key": "c:polling_service_take_request_raw",
   "verdict": "extension",
+  "retired_names": [
+    "nros_service_take_request_raw",
+    "nros_service_try_recv_request_raw"
+  ],
   "why": "the L1 polling-mode drain, the working half of `c:service_take_request`. Byte-oriented for the reason `c:take` names -- no typesupport dispatch, no allocator. Renamed from `nros_service_try_recv_request_raw` by phase-379 W6 decision 1 (2026-09-03). Renamed from `nros_service_take_request_raw` by phase-487 W2, when the polled service became its own type, `rclc_polling_service_t`: a dispatched service's entity lives in the executor arena, a polled one's in the struct, and one type holding both meant every dispatched service carried storage only the polled road fills."
 }

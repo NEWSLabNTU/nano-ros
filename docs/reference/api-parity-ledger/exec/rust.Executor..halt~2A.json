@@ -2,5 +2,8 @@
   "key": "rust:Executor::halt*",
   "bucket": "ours-only",
   "verdict": "extension",
-  "why": "request the spin loop to stop and hand out the shared halt flag for a signal handler or another task. rclrs's counterpart is `ExecutorCommands::halt_spinning`, reached through the async command channel this stage declines (see `rust:Executor::commands`); ours is an `AtomicBool` plus a wake, so it works from an ISR with no allocation. OUR LANGUAGES DISAGREE: C spells it `nros_executor_stop`, Rust `halt`, and C++ `Executor::cancel` (phase-417 W4.c -- before that C++ could not do it at all). Three spellings, one capability, no language missing it."
+  "retired_names": [
+    "nros_executor_stop"
+  ],
+  "why": "request the spin loop to stop and hand out the shared halt flag for a signal handler or another task. rclrs's counterpart is `ExecutorCommands::halt_spinning`, reached through the async command channel this stage declines (see `rust:Executor::commands`); ours is an `AtomicBool` plus a wake, so it works from an ISR with no allocation. OUR LANGUAGES DISAGREE: C spells it `rclc_executor_cancel` (`nros_executor_stop` until phase-417 W4.c), Rust `halt`, and C++ `Executor::cancel` (phase-417 W4.c -- before that C++ could not do it at all). Three spellings, one capability, no language missing it."
 }

@@ -1,5 +1,8 @@
 {
   "key": "c:polling_subscription_borrow",
   "verdict": "divergence",
+  "retired_names": [
+    "nros_subscription_borrow"
+  ],
   "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`. Renamed from `nros_subscription_borrow` by phase-487 W1, when the polled subscription became its own type, `rclc_polling_subscription_t`: a subscription the executor dispatches keeps its subscriber in the executor arena, a polled one keeps it in the struct, and one type holding both meant every dispatched subscription carried storage only the polled road fills."
 }

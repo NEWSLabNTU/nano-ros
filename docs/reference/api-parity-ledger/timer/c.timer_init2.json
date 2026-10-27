@@ -4,5 +4,8 @@
     "humble"
   ],
   "verdict": "extension",
+  "retired_names": [
+    "rclc_timer_init_on_clock2"
+  ],
   "why": "issue 1974 / phase-515 C1 -- Jazzy's `rcl_timer_init2(timer, clock, context, period, callback, allocator, autostart)`, shipped under Jazzy's name and signature on every edition. Against Humble it is ours-only, hence this row; against Jazzy it correlates `same`. Before phase-515 it was spelled `rclc_timer_init_on_clock2` because the callback contract differed. `autostart == false` creates the timer cancelled; `rclc_executor_add_timer` registers it cancelled and `rcl_timer_reset` starts it, its first period counting from the reset."
 }
