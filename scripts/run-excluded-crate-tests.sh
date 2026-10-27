@@ -58,11 +58,6 @@ exempt_reason() {
             printf 'vendored third-party source; its tests are upstream'"'"'s' ;;
         packages/testing/nros-px4-sitl-test)
             printf 'driven by `just px4`, which owns the SITL it needs' ;;
-        packages/boards/nros-board-nuttx-qemu)
-            # Measured, not assumed: `cargo test --lib` on the host dies with
-            # `error: entry symbol `main` declared multiple times`. A board
-            # crate supplies an entry point; the test harness supplies another.
-            printf 'cannot link for the host — it defines an entry symbol the test harness also defines' ;;
         *) return 1 ;;
     esac
 }
@@ -100,8 +95,7 @@ self_test() {
     # nobody made.
     local p
     for p in packages/cli third-party/px4/px4-rs \
-             packages/testing/nros-px4-sitl-test \
-             packages/boards/nros-board-nuttx-qemu; do
+             packages/testing/nros-px4-sitl-test; do
         if [ -z "$(exempt_reason "$p" 2>/dev/null)" ]; then
             echo "  FAIL $p is exempt with no reason" >&2
             ok=1
@@ -109,9 +103,10 @@ self_test() {
     done
     [ "$ok" -eq 0 ] && echo "  ok  every exemption carries a reason"
     # Discovery must find something. The FAILURE arm was measured against
-    # `nros-board-nuttx-qemu` before it was exempted: `cargo test --lib` there
-    # exits 101 with `error: entry symbol \`main\` declared multiple times`,
-    # and the loop propagated it.
+    # `nros-board-nuttx-qemu` while its entry module was ungated: `cargo test
+    # --lib` there exited 101 with `error: entry symbol \`main\` declared
+    # multiple times`, and the loop propagated it. Issue 2117 gated that module
+    # to NuttX, so the crate is run here now rather than exempted.
     local n
     n=$(excluded_paths | wc -l)
     if [ "$n" -lt 1 ]; then

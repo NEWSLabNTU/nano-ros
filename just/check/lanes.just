@@ -4828,6 +4828,15 @@ zenoh-archive:
 excluded-crate-tests:
     @bash scripts/run-excluded-crate-tests.sh
 
+# Issue 2116 — every transport variant of a dual-transport board crate
+# (`ethernet` + `serial`) builds clippy-clean for the board's own triple. Images
+# and fixtures build the DEFAULT set, which carries `ethernet`, so the `serial`
+# variant was compiled by nothing and `nros-board-esp32-qemu` stopped building
+# with it. Subjects, triples and feature sets are derived; ~37 s cold.
+[private]
+board-transport-variants:
+    @python3 scripts/check/check-board-transport-variants.py
+
 # phase-467 Row 11, C++ half — the `rmw-cffi`-gated unit tests of nros-cpp's
 # FFI edge (`nros_cpp_install_argv_remaps`: the NULL-handle validate path, the
 # reason buffer, a bad argv). `test-unit` builds nros-cpp with its DEFAULT

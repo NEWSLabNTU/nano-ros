@@ -22,6 +22,9 @@ use crate::config::Config;
 // `Result<(), core::fmt::Error>`. A `type Result<T>` alias here would shadow
 // `core::result::Result` and cause "expected 1 generic argument but 2 supplied" errors.
 
+/// The image's network identity folded into the RNG seed, so two QEMU peers
+/// with the same hardware RNG stream do not share a zenoh session id.
+#[cfg(feature = "ethernet")]
 fn network_identity_seed(config: &Config) -> u32 {
     let mut seed = 0x9e37_79b9u32;
     for byte in config.mac_addr.iter().chain(config.ip.iter()) {
@@ -29,6 +32,15 @@ fn network_identity_seed(config: &Config) -> u32 {
         seed = seed.rotate_left(5).wrapping_mul(0x85eb_ca6b);
     }
     seed
+}
+
+/// Issue 2116 — a serial image has no MAC or IP to fold in (`Config` carries
+/// neither without `ethernet`), and one UART is one peer, so the hardware RNG
+/// alone seeds it. This arm reading the ethernet fields is what made every
+/// `serial` build of this crate fail to compile.
+#[cfg(not(feature = "ethernet"))]
+fn network_identity_seed(_config: &Config) -> u32 {
+    0
 }
 
 // ---- Ethernet imports and static storage ----

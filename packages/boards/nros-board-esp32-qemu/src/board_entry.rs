@@ -124,6 +124,9 @@ impl BoardEntry for Esp32QemuEntry {
         if let Some(loc) = deploy.locator {
             config.zenoh_locator = loc;
         }
+        // Issue 2116 — the image's resolved interface is an ETHERNET fact; a
+        // serial `Config` has no address fields to apply it to.
+        #[cfg(feature = "ethernet")]
         if let Some(i) = nros_board_common::image_net::boot_interface(deploy.net) {
             if let Some(ip) = i.ip() {
                 config.ip = ip;

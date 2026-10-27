@@ -120,6 +120,8 @@ nros-sdk.lock
 # untracked at the repo root; `check-scoped-target-dirs-ignored` now derives
 # the required entries from the call sites instead of trusting this list.
 /target-excluded-tests/
+# check-board-transport-variants (issue 2116): one per dual-transport board.
+/target-board-transport-variants-*/
 /target-feature-sweep/
 # Issue 1824 -- `just test-ignored` builds nros-c to place its config header for
 # rosidl-codegen's heap_compile_check.

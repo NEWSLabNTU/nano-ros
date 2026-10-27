@@ -77,6 +77,14 @@ image-runtime = ["nros-board-nuttx/image-runtime"]
 # (both `[[board]]` entries of `nros-board.toml`) advertises this via capability_features.
 safety-e2e = ["nros-board-nuttx/safety-e2e"]
 
+[dev-dependencies]
+# Issue 2117 — the host provider of `nros_platform_*` for this crate's unit
+# tests. On target the NuttX C port supplies them; on the host nothing did, so
+# the test binary failed to link at `nros_platform_alloc`. NuttX is a POSIX
+# kernel, so the POSIX reference port is the honest stand-in. A dev-dependency
+# feature reaches test builds only (resolver 2), never an image.
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+
 [build-dependencies]
 # 194.3c.2 — the NuttX platform-port compile moved to the shared
 # nros-board-common build helper (pulls cc + repo-path resolution via its

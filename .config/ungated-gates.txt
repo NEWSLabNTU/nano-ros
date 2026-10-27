@@ -28,6 +28,14 @@
 # toolchains, SDKs or submodules". CI is the oracle for that.
 sched-dim-arms
 
+# board-transport-variants (issue 2116) builds every transport variant of a
+# dual-transport board crate for its own triple, which compiles zpico-sys.
+# Measured in a pristine worktree (2026-10-28): fails at
+#   zenoh-pico source not provisioned at ".../zpico-sys/zenoh-pico" — #0390
+# It also needs the riscv32imc and thumbv7m targets; whether the PR image
+# carries both is unverified, and a guess there ejects every queue batch.
+board-transport-variants
+
 # excluded-crate-tests COMPILES three workspace-excluded crates and runs their
 # tests — the ones `cargo test --workspace` cannot reach because they are not
 # members (issue 1472; 36 tests, all passing, one crate named nowhere else in
