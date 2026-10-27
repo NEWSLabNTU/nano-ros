@@ -1,5 +1,10 @@
 {
   "key": "c:executor_add_action_server",
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc/detail/nros_generated.h",
+    "text": "ADOPT-BOUNDED: at most `NROS_MAX_CONCURRENT_GOALS` handles (the pool is in"
+  },
   "verdict": "divergence",
-  "why": "rclc's `rclc_executor_add_action_server(executor, server, handles, goal_request, size, goal_cb, cancel_cb, context)` binds the callbacks at registration; ours binds them at `rclc_action_server_init_with_callbacks`, so ours is `rclc_executor_attach_action_server(executor, server)`. Constraint as `c:executor_add_client`. phase-492 W1.b."
+  "why": "ADOPTED 2026-10-27 (phase-515 C4b): `rclc_executor_add_action_server(executor, server, handles_number, ros_goal_request, ros_goal_request_size, goal_callback, cancel_callback, context)`, rclc's eight arguments and callback types. Each goal takes one of `handles_number` `rclc_action_goal_handle_t`s, is deserialised into the caller's `<Action>_SendGoal_Request` array (envelope layout from the codegen-21 descriptor, phase-515 C4a), and the goal callback's `RCL_RET_ACTION_GOAL_ACCEPTED`/`_REJECTED` answers the client. ENVELOPE (stated on the declaration): the handle pool is inline in the server, at most `NROS_MAX_CONCURRENT_GOALS`, where rclc allocates it; a goal arriving with every handle held is REJECTED where rclc leaves it queued; an accepted goal is EXECUTING at once, so `rclc_action_send_result` succeeds before the client's result request (the runtime keeps the result); a descriptor without codecs or layout is `RCL_RET_UNSUPPORTED`. `rclc_executor_attach_action_server` stays for servers built with `rclc_action_server_init_with_callbacks`. Test: `packages/api/nros-c/tests/run/rclc_action_server.c`. PRIOR ROW: rclc's `rclc_executor_add_action_server(executor, server, handles, goal_request, size, goal_cb, cancel_cb, context)` binds the callbacks at registration; ours binds them at `rclc_action_server_init_with_callbacks`, so ours is `rclc_executor_attach_action_server(executor, server)`. Constraint as `c:executor_add_client`. phase-492 W1.b."
 }

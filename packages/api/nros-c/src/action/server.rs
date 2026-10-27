@@ -90,6 +90,129 @@ pub struct rcl_action_server_t {
     /// Internal state — set by `rclc_executor_attach_action_server`.
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
+    /// phase-515 C4b — the descriptor this server was created with, kept so
+    /// rclc's typed API places a goal, result or feedback in its envelope
+    /// through the descriptor's codec and layout. A generated `static const`.
+    pub type_support: *const rclc_action_type_t,
+    /// phase-515 C4b — rclc's typed registration
+    /// (`rclc_executor_add_action_server`): its callbacks and goal handles.
+    /// Unused by a server registered through `rclc_action_server_init_with_callbacks`.
+    pub _rclc: rclc_action_server_rclc_state_t,
+}
+
+/// rclc's `rclc_action_server_t` (phase-515 C4b). One struct serves rcl's
+/// spelling and rclc's: `rclc_action_server_init_default` and
+/// `rclc_executor_add_action_server` take this.
+pub type rclc_action_server_t = rcl_action_server_t;
+
+/// rclc's `rclc_action_server_handle_goal_callback_t`: decide a goal. Return
+/// `RCL_RET_ACTION_GOAL_ACCEPTED` to accept it; anything else rejects it.
+pub type rclc_action_server_handle_goal_callback_t = Option<
+    unsafe extern "C" fn(
+        goal_handle: *mut rclc_action_goal_handle_t,
+        context: *mut c_void,
+    ) -> rcl_ret_t,
+>;
+
+/// rclc's `rclc_action_server_handle_cancel_callback_t`: decide a cancel
+/// request. `true` accepts it (the goal then ends with
+/// `rclc_action_send_result(..., GOAL_STATE_CANCELED, ...)`).
+pub type rclc_action_server_handle_cancel_callback_t = Option<
+    unsafe extern "C" fn(goal_handle: *mut rclc_action_goal_handle_t, context: *mut c_void) -> bool,
+>;
+
+/// rclc's `rclc_action_goal_handle_t` (phase-515 C4b): one goal of an rclc
+/// action server, handed to the goal and cancel callbacks and back to
+/// `rclc_action_send_result` / `rclc_action_publish_feedback`.
+///
+/// ADOPT-BOUNDED: rclc's members a server reads are here with rclc's names and
+/// types (`status`, `goal_id`, `ros_goal_request`, `goal_accepted`,
+/// `goal_cancelled`, `action_server`). `ros_goal_request` is a `void *` (rclc
+/// types it `struct Generic_SendGoal_Request *`; both are cast to the user's
+/// `<Action>_SendGoal_Request *`). rclc's request headers and its
+/// action-client member are not: the runtime answers each request itself, and
+/// rclc's typed action client is not ported. The handles live in the server
+/// (at most `NROS_MAX_CONCURRENT_GOALS`), not in executor-allocated memory.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct rclc_action_goal_handle_t {
+    /// rclc's free/used list link. Always NULL here: the pool is an array.
+    pub next: *mut rclc_action_goal_handle_t,
+    /// The server this goal arrived on.
+    pub action_server: *mut rcl_action_server_t,
+    /// The goal's status. `GOAL_STATE_EXECUTING` once accepted,
+    /// `GOAL_STATE_CANCELING` while a cancel request is being decided or has
+    /// been accepted, terminal once `rclc_action_send_result` sent it.
+    pub status: rcl_action_goal_state_t,
+    /// The goal's id.
+    pub goal_id: unique_identifier_msgs__msg__UUID,
+    /// The caller's `<Action>_SendGoal_Request` this goal was deserialised
+    /// into, an element of the array `rclc_executor_add_action_server` took.
+    pub ros_goal_request: *mut c_void,
+    /// rclc's flag; not set by a server.
+    pub available_goal_response: bool,
+    /// `true` once the goal callback accepted the goal.
+    pub goal_accepted: bool,
+    /// rclc's flag; not set by a server.
+    pub available_feedback: bool,
+    /// rclc's flag; not set by a server.
+    pub available_result_response: bool,
+    /// rclc's flag; not set by a server.
+    pub available_cancel_response: bool,
+    /// `true` once the cancel callback accepted a cancel request for this goal.
+    pub goal_cancelled: bool,
+    /// Ours: the handle holds a live goal.
+    pub _in_use: bool,
+}
+
+impl rclc_action_goal_handle_t {
+    const FREE: Self = Self {
+        next: ptr::null_mut(),
+        action_server: ptr::null_mut(),
+        status: GOAL_STATE_UNKNOWN,
+        goal_id: rclc_goal_uuid_t { uuid: [0; 16] },
+        ros_goal_request: ptr::null_mut(),
+        available_goal_response: false,
+        goal_accepted: false,
+        available_feedback: false,
+        available_result_response: false,
+        available_cancel_response: false,
+        goal_cancelled: false,
+        _in_use: false,
+    };
+}
+
+/// The rclc registration's state, inside the server (phase-515 C4b).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct rclc_action_server_rclc_state_t {
+    /// rclc's goal callback.
+    pub goal_callback: rclc_action_server_handle_goal_callback_t,
+    /// rclc's cancel callback.
+    pub cancel_callback: rclc_action_server_handle_cancel_callback_t,
+    /// The context both receive.
+    pub context: *mut c_void,
+    /// The caller's `<Action>_SendGoal_Request` array.
+    pub goal_requests: *mut u8,
+    /// Its element size.
+    pub goal_request_size: usize,
+    /// How many goal handles the registration asked for.
+    pub handles_number: usize,
+    /// The goal handles.
+    pub goal_handles: [rclc_action_goal_handle_t; crate::constants::NROS_MAX_CONCURRENT_GOALS],
+}
+
+impl rclc_action_server_rclc_state_t {
+    const NONE: Self = Self {
+        goal_callback: None,
+        cancel_callback: None,
+        context: ptr::null_mut(),
+        goal_requests: ptr::null_mut(),
+        goal_request_size: 0,
+        handles_number: 0,
+        goal_handles: [rclc_action_goal_handle_t::FREE;
+            crate::constants::NROS_MAX_CONCURRENT_GOALS],
+    };
 }
 
 /// An action server the CALLER drives, with no executor (phase-487 W4).
@@ -146,6 +269,8 @@ impl Default for rcl_action_server_t {
             qos: crate::qos::rclc_qos_t::default(),
             sched_context_id: 0,
             _internal: ActionServerInternal::invalid_default(),
+            type_support: ptr::null(),
+            _rclc: rclc_action_server_rclc_state_t::NONE,
         }
     }
 }
@@ -347,12 +472,40 @@ pub unsafe extern "C" fn rclc_action_server_init_with_callbacks(
     accepted_callback: rclc_accepted_callback_t,
     context: *mut c_void,
 ) -> rcl_ret_t {
-    validate_not_null!(server, node, action_name, type_info);
-
     if goal_callback.is_none() {
         return RCL_RET_INVALID_ARGUMENT;
     }
+    unsafe {
+        action_server_init_impl(
+            server,
+            node,
+            action_name,
+            type_info,
+            goal_callback,
+            cancel_callback,
+            accepted_callback,
+            context,
+        )
+    }
+}
 
+/// The one init body: [`rclc_action_server_init_with_callbacks`] (callbacks
+/// bound here) and phase-515 C4b's [`rclc_action_server_init_default`] (none
+/// yet; `rclc_executor_add_action_server` binds them).
+#[allow(clippy::too_many_arguments)]
+unsafe fn action_server_init_impl(
+    server: *mut rcl_action_server_t,
+    node: *const rcl_node_t,
+    action_name: *const core::ffi::c_char,
+    type_info: *const rclc_action_type_t,
+    goal_callback: rclc_goal_callback_t,
+    cancel_callback: rclc_cancel_callback_t,
+    accepted_callback: rclc_accepted_callback_t,
+    context: *mut c_void,
+) -> rcl_ret_t {
+    validate_not_null!(server, node, action_name, type_info);
+
+    let type_info_ptr = type_info;
     let server = &mut *server;
     let node_ref = &*node;
     let type_info = &*type_info;
@@ -374,6 +527,8 @@ pub unsafe extern "C" fn rclc_action_server_init_with_callbacks(
     server.type_name_len = crate::util::copy_cstr_into(type_info.type_name, &mut server.type_name);
     server.type_hash_len = crate::util::copy_cstr_into(type_info.type_hash, &mut server.type_hash);
     server.endpoint_hashes = type_info.endpoint_hashes;
+    server.type_support = type_info_ptr;
+    server._rclc = rclc_action_server_rclc_state_t::NONE;
 
     // Store callbacks and context
     server.goal_callback = goal_callback;
@@ -991,10 +1146,451 @@ pub unsafe extern "C" fn rcl_action_server_fini(
     server.cancel_callback = None;
     server.accepted_callback = None;
     server.context = ptr::null_mut();
+    server._rclc = rclc_action_server_rclc_state_t::NONE;
     server.node = crate::node::rclc_node_ref_t::none();
     server.state = rclc_action_server_state_t::RCLC_ACTION_SERVER_STATE_SHUTDOWN;
 
     RCL_RET_OK
+}
+
+// ============================================================================
+// phase-515 C4b — rclc's typed action server
+// ============================================================================
+//
+// rclc's model over the raw registration: `rclc_executor_add_action_server`
+// installs the two trampolines below as the server's goal and cancel callbacks,
+// and they run rclc's goal-handle bookkeeping on the server's pool before
+// calling the user's callbacks. A goal is deserialised into the caller's own
+// `<Action>_SendGoal_Request`; a result and a feedback sample are serialised
+// out of the caller's `<Action>_GetResult_Response` / `<Action>_FeedbackMessage`
+// at the offsets the generated descriptor states (phase-515 C4a).
+
+/// The handle of `goal_id` among `server`'s live rclc goals.
+fn rclc_goal_handle_for<'a>(
+    server: &'a mut rcl_action_server_t,
+    goal_id: &rclc_goal_uuid_t,
+) -> Option<&'a mut rclc_action_goal_handle_t> {
+    let n = server
+        ._rclc
+        .handles_number
+        .min(crate::constants::NROS_MAX_CONCURRENT_GOALS);
+    server._rclc.goal_handles[..n]
+        .iter_mut()
+        .find(|h| h._in_use && h.goal_id.uuid == goal_id.uuid)
+}
+
+/// The goal callback an rclc registration installs: take a free goal handle,
+/// deserialise the goal into its element of the caller's array, ask the
+/// user's callback.
+unsafe extern "C" fn rclc_goal_trampoline(
+    server: *mut rcl_action_server_t,
+    goal: *const rclc_goal_handle_t,
+    goal_request: *const u8,
+    goal_len: usize,
+    _context: *mut c_void,
+) -> rclc_goal_response_t {
+    let reject = rclc_goal_response_t::RCLC_GOAL_REJECT;
+    if server.is_null() || goal.is_null() {
+        return reject;
+    }
+    let srv = unsafe { &mut *server };
+    let (Some(callback), Some(type_info)) = (srv._rclc.goal_callback, unsafe {
+        srv.type_support.as_ref()
+    }) else {
+        return reject;
+    };
+    let Some(deserialize) = type_info.goal_deserialize else {
+        return reject;
+    };
+    let n = srv
+        ._rclc
+        .handles_number
+        .min(crate::constants::NROS_MAX_CONCURRENT_GOALS);
+    // No free handle: rclc leaves the request untaken; there is nowhere to put
+    // it here either, so it is rejected now rather than never answered.
+    let Some(i) = srv._rclc.goal_handles[..n].iter().position(|h| !h._in_use) else {
+        return reject;
+    };
+    let request = unsafe { srv._rclc.goal_requests.add(i * srv._rclc.goal_request_size) };
+    let goal_id = unsafe { (*goal).uuid };
+    // `goal_id` is the envelope's first member; the goal sits at the
+    // descriptor's offset.
+    unsafe { ptr::copy_nonoverlapping(goal_id.uuid.as_ptr(), request, 16) };
+    let goal_at = unsafe { request.add(type_info.send_goal_request_goal_offset) } as *mut c_void;
+    if unsafe { deserialize(goal_request, goal_len, goal_at) } != 0 {
+        return reject;
+    }
+    let context = srv._rclc.context;
+    // Raw from here: the user's callback holds the handle, which lives inside
+    // the server, and may call back into this API with it.
+    let handle: *mut rclc_action_goal_handle_t = &mut srv._rclc.goal_handles[i];
+    unsafe {
+        *handle = rclc_action_goal_handle_t {
+            action_server: server,
+            status: GOAL_STATE_UNKNOWN,
+            goal_id,
+            ros_goal_request: request as *mut c_void,
+            _in_use: true,
+            ..rclc_action_goal_handle_t::FREE
+        };
+        if callback(handle, context) == RCL_RET_ACTION_GOAL_ACCEPTED {
+            (*handle).goal_accepted = true;
+            (*handle).status = GOAL_STATE_EXECUTING;
+            rclc_goal_response_t::RCLC_GOAL_ACCEPT_AND_EXECUTE
+        } else {
+            *handle = rclc_action_goal_handle_t::FREE;
+            reject
+        }
+    }
+}
+
+/// The cancel callback an rclc registration installs: the goal goes
+/// `CANCELING` while the user's callback decides; accepted, it stays there
+/// with `goal_cancelled` set; refused, it is `EXECUTING` again.
+unsafe extern "C" fn rclc_cancel_trampoline(
+    server: *mut rcl_action_server_t,
+    goal: *const rclc_goal_handle_t,
+    _context: *mut c_void,
+) -> rclc_cancel_response_t {
+    let reject = rclc_cancel_response_t::RCLC_CANCEL_REJECT;
+    if server.is_null() || goal.is_null() {
+        return reject;
+    }
+    let srv = unsafe { &mut *server };
+    let Some(callback) = srv._rclc.cancel_callback else {
+        return reject;
+    };
+    let context = srv._rclc.context;
+    let goal_id = unsafe { (*goal).uuid };
+    let Some(handle) = rclc_goal_handle_for(srv, &goal_id) else {
+        return reject;
+    };
+    if handle.status != GOAL_STATE_EXECUTING {
+        return reject;
+    }
+    // Raw from here, as in the goal trampoline.
+    let handle: *mut rclc_action_goal_handle_t = handle;
+    unsafe {
+        (*handle).status = GOAL_STATE_CANCELING;
+        if callback(handle, context) {
+            (*handle).goal_cancelled = true;
+            rclc_cancel_response_t::RCLC_CANCEL_ACCEPT
+        } else {
+            (*handle).status = GOAL_STATE_EXECUTING;
+            reject
+        }
+    }
+}
+
+/// rclc's `rclc_action_server_init_default(action_server, node, support,
+/// type_support, action_name)` — phase-515 C4.
+///
+/// Records the server's name and descriptor; the callbacks arrive at
+/// [`rclc_executor_add_action_server`], as in rclc.
+///
+/// ADOPT-BOUNDED: `support` is checked to be initialised and otherwise unused.
+/// rclc passes its clock to `rcl_action_server_init`; here the executor's
+/// clock times the server, and no entity exists until registration.
+///
+/// # Returns
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or an empty name
+/// * `RCL_RET_NOT_INIT` — `support` or `node` is not initialised
+/// * `RCLC_RET_BAD_SEQUENCE` — `action_server` is already initialised
+///
+/// # Safety
+/// All pointers must be valid; `type_support` must outlive the server.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_action_server_init_default(
+    action_server: *mut rclc_action_server_t,
+    node: *mut rcl_node_t,
+    support: *mut crate::support::rclc_support_t,
+    type_support: *const rclc_action_type_t,
+    action_name: *const core::ffi::c_char,
+) -> rcl_ret_t {
+    validate_not_null!(action_server, node, support, type_support, action_name);
+    if unsafe { (*support).state }
+        != crate::support::rclc_support_state_t::RCLC_SUPPORT_STATE_INITIALIZED
+    {
+        return RCL_RET_NOT_INIT;
+    }
+    unsafe {
+        action_server_init_impl(
+            action_server,
+            node,
+            action_name,
+            type_support,
+            None,
+            None,
+            None,
+            ptr::null_mut(),
+        )
+    }
+}
+
+/// rclc's `rclc_executor_add_action_server(executor, action_server,
+/// handles_number, ros_goal_request, ros_goal_request_size, goal_callback,
+/// cancel_callback, context)` — phase-515 C4.
+///
+/// Registers the server with the executor and binds rclc's callbacks. Each
+/// incoming goal takes one of `handles_number` goal handles; its request is
+/// deserialised into element `i` of `ros_goal_request` (an array of the
+/// action's `<Action>_SendGoal_Request`, `ros_goal_request_size` bytes each)
+/// and `goal_callback` decides it. An accepted goal is answered with
+/// [`rclc_action_send_result`]; [`rclc_action_publish_feedback`] reports
+/// progress; `cancel_callback` decides a cancel request.
+///
+/// ADOPT-BOUNDED: at most `NROS_MAX_CONCURRENT_GOALS` handles (the pool is in
+/// the server; rclc allocates it); a goal arriving with every handle in use is
+/// rejected (rclc leaves it queued); a goal that does not deserialise is
+/// rejected. A goal is `GOAL_STATE_EXECUTING` as soon as it is accepted, so
+/// `rclc_action_send_result` succeeds before the client asks for the result
+/// (the runtime keeps it until then) where rclc returns
+/// `RCLC_RET_ACTION_WAIT_RESULT_REQUEST`.
+///
+/// # Returns
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or callback, `handles_number`
+///   0 or above `NROS_MAX_CONCURRENT_GOALS`, or `ros_goal_request_size`
+///   smaller than the action's `<Action>_SendGoal_Request`
+/// * `RCL_RET_ERROR` — `ros_goal_request_size` is 0 (rclc's answer)
+/// * `RCL_RET_UNSUPPORTED` — the descriptor carries no codec or envelope layout
+///   (built from names alone, or by a generator older than codegen 21)
+/// * `RCLC_RET_BAD_SEQUENCE` — the server already has callbacks bound
+/// * otherwise as `rclc_executor_attach_action_server`
+///
+/// # Safety
+/// `executor` and `action_server` must be initialised; `ros_goal_request` must
+/// hold `handles_number` elements and outlive the registration.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn rclc_executor_add_action_server(
+    executor: *mut crate::executor::rclc_executor_t,
+    action_server: *mut rclc_action_server_t,
+    handles_number: usize,
+    ros_goal_request: *mut c_void,
+    ros_goal_request_size: usize,
+    goal_callback: rclc_action_server_handle_goal_callback_t,
+    cancel_callback: rclc_action_server_handle_cancel_callback_t,
+    context: *mut c_void,
+) -> rcl_ret_t {
+    validate_not_null!(executor, action_server, ros_goal_request);
+    if goal_callback.is_none() || cancel_callback.is_none() {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    if ros_goal_request_size == 0 {
+        return RCL_RET_ERROR;
+    }
+    if handles_number == 0 || handles_number > crate::constants::NROS_MAX_CONCURRENT_GOALS {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let server = unsafe { &mut *action_server };
+    if server.state != rclc_action_server_state_t::RCLC_ACTION_SERVER_STATE_INITIALIZED {
+        return RCL_RET_NOT_INIT;
+    }
+    if server.goal_callback.is_some() {
+        return RCLC_RET_BAD_SEQUENCE;
+    }
+    let Some(type_info) = (unsafe { server.type_support.as_ref() }) else {
+        return RCL_RET_UNSUPPORTED;
+    };
+    if type_info.send_goal_request_size == 0
+        || type_info.goal_deserialize.is_none()
+        || type_info.result_serialize.is_none()
+        || type_info.feedback_serialize.is_none()
+    {
+        return RCL_RET_UNSUPPORTED;
+    }
+    if ros_goal_request_size < type_info.send_goal_request_size {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+
+    server._rclc = rclc_action_server_rclc_state_t {
+        goal_callback,
+        cancel_callback,
+        context,
+        goal_requests: ros_goal_request as *mut u8,
+        goal_request_size: ros_goal_request_size,
+        handles_number,
+        ..rclc_action_server_rclc_state_t::NONE
+    };
+    server.goal_callback = Some(rclc_goal_trampoline);
+    server.cancel_callback = Some(rclc_cancel_trampoline);
+    server.accepted_callback = None;
+    server.context = ptr::null_mut();
+
+    let ret =
+        unsafe { crate::executor::rclc_executor_attach_action_server(executor, action_server) };
+    if ret != RCL_RET_OK {
+        let server = unsafe { &mut *action_server };
+        server.goal_callback = None;
+        server.cancel_callback = None;
+        server._rclc = rclc_action_server_rclc_state_t::NONE;
+    }
+    ret
+}
+
+/// The live rclc goal handle `goal_handle` names, and its server's descriptor
+/// — or `None` for a handle that is not one of its server's live goals. The
+/// handle lives INSIDE the server, so the server is read through its pointer
+/// and never borrowed beside it.
+unsafe fn rclc_live_goal<'a>(
+    goal_handle: *mut rclc_action_goal_handle_t,
+) -> Option<(&'a mut rclc_action_goal_handle_t, &'a rclc_action_type_t)> {
+    let server = unsafe { (*goal_handle).action_server };
+    if server.is_null() {
+        return None;
+    }
+    let pool =
+        unsafe { ptr::addr_of!((*server)._rclc.goal_handles) } as *const rclc_action_goal_handle_t;
+    let at = goal_handle as *const rclc_action_goal_handle_t;
+    let end = unsafe { pool.add(crate::constants::NROS_MAX_CONCURRENT_GOALS) };
+    if at < pool || at >= end {
+        return None;
+    }
+    let type_info = unsafe { (*server).type_support.as_ref() }?;
+    let handle = unsafe { &mut *goal_handle };
+    handle._in_use.then_some((handle, type_info))
+}
+
+/// Serialise the part at `offset` of `envelope` with `serialize` into `buf`.
+unsafe fn rclc_serialize_part(
+    serialize: crate::publisher::rclc_message_serialize_fn_t,
+    envelope: *mut c_void,
+    offset: usize,
+    buf: &mut [u8],
+) -> Option<usize> {
+    let serialize = serialize?;
+    let part = unsafe { (envelope as *const u8).add(offset) } as *const c_void;
+    let mut len = 0usize;
+    let rc = unsafe { serialize(part, buf.as_mut_ptr(), buf.len(), &mut len) };
+    (rc == 0 && len <= buf.len()).then_some(len)
+}
+
+/// rclc's `rclc_action_send_result(goal_handle, status, ros_response)` —
+/// phase-515 C4.
+///
+/// Ends the goal with `status` (`GOAL_STATE_SUCCEEDED`, `_CANCELED` or
+/// `_ABORTED`) and the result in `ros_response`, the action's
+/// `<Action>_GetResult_Response`, whose `status` this writes, as rclc does. The
+/// runtime keeps the result and answers the client's result request with it;
+/// the goal handle is free again on return.
+///
+/// # Returns
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL argument, a non-terminal `status`, or
+///   a handle that is not a live goal
+/// * `RCLC_RET_ACTION_WAIT_RESULT_REQUEST` — the goal is neither executing nor
+///   canceling
+/// * `RCL_RET_ERROR` — the result did not serialise, or the runtime refused it
+///
+/// # Safety
+/// `ros_response` must be the action's `<Action>_GetResult_Response`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_action_send_result(
+    goal_handle: *mut rclc_action_goal_handle_t,
+    status: rcl_action_goal_state_t,
+    ros_response: *mut c_void,
+) -> rcl_ret_t {
+    validate_not_null!(goal_handle, ros_response);
+    if status <= GOAL_STATE_CANCELING || status > GOAL_STATE_ABORTED {
+        return RCL_RET_INVALID_ARGUMENT;
+    }
+    let Some((handle, type_info)) = (unsafe { rclc_live_goal(goal_handle) }) else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    if handle.status != GOAL_STATE_EXECUTING && handle.status != GOAL_STATE_CANCELING {
+        return RCLC_RET_ACTION_WAIT_RESULT_REQUEST;
+    }
+    // `status` is the envelope's first member.
+    unsafe { *(ros_response as *mut i8) = status };
+    let mut buf = [0u8; crate::config::MESSAGE_BUFFER_SIZE];
+    let Some(len) = (unsafe {
+        rclc_serialize_part(
+            type_info.result_serialize,
+            ros_response,
+            type_info.get_result_response_result_offset,
+            &mut buf,
+        )
+    }) else {
+        return RCL_RET_ERROR;
+    };
+    let goal = rclc_goal_handle_t {
+        uuid: handle.goal_id,
+    };
+    let server_ptr = handle.action_server;
+    // The handle lives inside the server the calls below borrow, so it is
+    // written through its pointer afterwards rather than held across them.
+    let ret = unsafe {
+        match status {
+            GOAL_STATE_SUCCEEDED => rclc_action_succeed(server_ptr, &goal, buf.as_ptr(), len),
+            GOAL_STATE_CANCELED => rclc_action_canceled(server_ptr, &goal, buf.as_ptr(), len),
+            _ => rclc_action_abort(server_ptr, &goal, buf.as_ptr(), len),
+        }
+    };
+    if ret == RCL_RET_OK {
+        unsafe {
+            (*goal_handle).status = status;
+            (*goal_handle)._in_use = false;
+        }
+    }
+    ret
+}
+
+/// rclc's `rclc_action_publish_feedback(goal_handle, ros_feedback)` —
+/// phase-515 C4.
+///
+/// Publishes `ros_feedback`, the action's `<Action>_FeedbackMessage`, for the
+/// goal; its `goal_id` is written from the handle first, as rclc does.
+///
+/// # Returns
+/// * `RCL_RET_OK` on success
+/// * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or a handle that is not a
+///   live goal
+/// * `RCL_RET_ERROR` — the feedback did not serialise, or the publish failed
+///
+/// # Safety
+/// `ros_feedback` must be the action's `<Action>_FeedbackMessage`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_action_publish_feedback(
+    goal_handle: *mut rclc_action_goal_handle_t,
+    ros_feedback: *mut c_void,
+) -> rcl_ret_t {
+    validate_not_null!(goal_handle, ros_feedback);
+    let Some((handle, type_info)) = (unsafe { rclc_live_goal(goal_handle) }) else {
+        return RCL_RET_INVALID_ARGUMENT;
+    };
+    // `goal_id` is the envelope's first member.
+    unsafe { ptr::copy_nonoverlapping(handle.goal_id.uuid.as_ptr(), ros_feedback as *mut u8, 16) };
+    let mut buf = [0u8; crate::config::MESSAGE_BUFFER_SIZE];
+    let Some(len) = (unsafe {
+        rclc_serialize_part(
+            type_info.feedback_serialize,
+            ros_feedback,
+            type_info.feedback_message_feedback_offset,
+            &mut buf,
+        )
+    }) else {
+        return RCL_RET_ERROR;
+    };
+    let goal = rclc_goal_handle_t {
+        uuid: handle.goal_id,
+    };
+    let server_ptr = handle.action_server;
+    unsafe { rclc_action_publish_feedback_raw(server_ptr, &goal, buf.as_ptr(), len) }
+}
+
+/// rclc's `rclc_action_server_fini(action_server, node)` — phase-515 C4:
+/// [`rcl_action_server_fini`] under rclc's name.
+///
+/// # Safety
+/// As [`rcl_action_server_fini`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_action_server_fini(
+    action_server: *mut rclc_action_server_t,
+    node: *mut rcl_node_t,
+) -> rcl_ret_t {
+    unsafe { rcl_action_server_fini(action_server, node) }
 }
 
 // ============================================================================

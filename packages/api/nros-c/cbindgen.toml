@@ -23,6 +23,10 @@ header = """/**
 /* issue 2081 — `rmw_request_id_t`, hand-written under the guard the RMW ABI
  * and rclcpp share; excluded from export below. */
 #include "rclc/detail/request_id.h"
+/* phase-515 C4b — `unique_identifier_msgs__msg__UUID`, the goal id of an rclc
+ * goal handle, declared under the guard the generated message shares;
+ * excluded from export below. */
+#include "rclc/detail/uuid.h"
 
 /* Forward declarations for callback typedefs that reference these
  * structs before they appear in source-order output. Without these,
@@ -144,6 +148,9 @@ exclude = [
     # a TU that includes two of them sees one definition. The Rust side names
     # it as an alias of `nros_node::RawRequestId`, same layout.
     "rmw_request_id_t",
+    # phase-515 C4b — declared by `<rclc/detail/uuid.h>` under the guard the
+    # generated `unique_identifier_msgs` header shares.
+    "unique_identifier_msgs__msg__UUID",
 ]
 
 [export.rename]

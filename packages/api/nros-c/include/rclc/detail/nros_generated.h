@@ -20,6 +20,10 @@
 /* issue 2081 — `rmw_request_id_t`, hand-written under the guard the RMW ABI
  * and rclcpp share; excluded from export below. */
 #include "rclc/detail/request_id.h"
+/* phase-515 C4b — `unique_identifier_msgs__msg__UUID`, the goal id of an rclc
+ * goal handle, declared under the guard the generated message shares;
+ * excluded from export below. */
+#include "rclc/detail/uuid.h"
 
 /* Forward declarations for callback typedefs that reference these
  * structs before they appear in source-order output. Without these,
@@ -1908,6 +1912,130 @@ typedef struct ActionServerInternal {
 } ActionServerInternal;
 
 /**
+ * phase-515 C4b — rcl_action's `rcl_action_goal_state_t`: a goal's status
+ * as `action_msgs/msg/GoalStatus` numbers it, the type an rclc goal handle's
+ * `status` and `rclc_action_send_result`'s `status` carry.
+ */
+typedef int8_t rcl_action_goal_state_t;
+
+/**
+ * rclc's `rclc_action_goal_handle_t` (phase-515 C4b): one goal of an rclc
+ * action server, handed to the goal and cancel callbacks and back to
+ * `rclc_action_send_result` / `rclc_action_publish_feedback`.
+ *
+ * ADOPT-BOUNDED: rclc's members a server reads are here with rclc's names and
+ * types (`status`, `goal_id`, `ros_goal_request`, `goal_accepted`,
+ * `goal_cancelled`, `action_server`). `ros_goal_request` is a `void *` (rclc
+ * types it `struct Generic_SendGoal_Request *`; both are cast to the user's
+ * `<Action>_SendGoal_Request *`). rclc's request headers and its
+ * action-client member are not: the runtime answers each request itself, and
+ * rclc's typed action client is not ported. The handles live in the server
+ * (at most `NROS_MAX_CONCURRENT_GOALS`), not in executor-allocated memory.
+ */
+typedef struct rclc_action_goal_handle_t {
+  /**
+   * rclc's free/used list link. Always NULL here: the pool is an array.
+   */
+  struct rclc_action_goal_handle_t *next;
+  /**
+   * The server this goal arrived on.
+   */
+  struct rcl_action_server_t *action_server;
+  /**
+   * The goal's status. `GOAL_STATE_EXECUTING` once accepted,
+   * `GOAL_STATE_CANCELING` while a cancel request is being decided or has
+   * been accepted, terminal once `rclc_action_send_result` sent it.
+   */
+  rcl_action_goal_state_t status;
+  /**
+   * The goal's id.
+   */
+  unique_identifier_msgs__msg__UUID goal_id;
+  /**
+   * The caller's `<Action>_SendGoal_Request` this goal was deserialised
+   * into, an element of the array `rclc_executor_add_action_server` took.
+   */
+  void *ros_goal_request;
+  /**
+   * rclc's flag; not set by a server.
+   */
+  bool available_goal_response;
+  /**
+   * `true` once the goal callback accepted the goal.
+   */
+  bool goal_accepted;
+  /**
+   * rclc's flag; not set by a server.
+   */
+  bool available_feedback;
+  /**
+   * rclc's flag; not set by a server.
+   */
+  bool available_result_response;
+  /**
+   * rclc's flag; not set by a server.
+   */
+  bool available_cancel_response;
+  /**
+   * `true` once the cancel callback accepted a cancel request for this goal.
+   */
+  bool goal_cancelled;
+  /**
+   * Ours: the handle holds a live goal.
+   */
+  bool _in_use;
+} rclc_action_goal_handle_t;
+
+/**
+ * rclc's `rclc_action_server_handle_goal_callback_t`: decide a goal. Return
+ * `RCL_RET_ACTION_GOAL_ACCEPTED` to accept it; anything else rejects it.
+ */
+typedef rcl_ret_t (*rclc_action_server_handle_goal_callback_t)(struct rclc_action_goal_handle_t *goal_handle,
+                                                               void *context);
+
+/**
+ * rclc's `rclc_action_server_handle_cancel_callback_t`: decide a cancel
+ * request. `true` accepts it (the goal then ends with
+ * `rclc_action_send_result(..., GOAL_STATE_CANCELED, ...)`).
+ */
+typedef bool (*rclc_action_server_handle_cancel_callback_t)(struct rclc_action_goal_handle_t *goal_handle,
+                                                            void *context);
+
+/**
+ * The rclc registration's state, inside the server (phase-515 C4b).
+ */
+typedef struct rclc_action_server_rclc_state_t {
+  /**
+   * rclc's goal callback.
+   */
+  rclc_action_server_handle_goal_callback_t goal_callback;
+  /**
+   * rclc's cancel callback.
+   */
+  rclc_action_server_handle_cancel_callback_t cancel_callback;
+  /**
+   * The context both receive.
+   */
+  void *context;
+  /**
+   * The caller's `<Action>_SendGoal_Request` array.
+   */
+  uint8_t *goal_requests;
+  /**
+   * Its element size.
+   */
+  size_t goal_request_size;
+  /**
+   * How many goal handles the registration asked for.
+   */
+  size_t handles_number;
+  /**
+   * The goal handles.
+   */
+  struct rclc_action_goal_handle_t goal_handles[NROS_MAX_CONCURRENT_GOALS];
+} rclc_action_server_rclc_state_t;
+
+/**
  * An action server the executor dispatches.
  *
  * phase-487 W4 (RFC-0096 D9, the C half): the executor arena owns the five
@@ -1995,6 +2123,18 @@ typedef struct rcl_action_server_t {
    * Typed C-ABI handle field (was an opaque blob in earlier versions).
    */
   struct ActionServerInternal _internal;
+  /**
+   * phase-515 C4b — the descriptor this server was created with, kept so
+   * rclc's typed API places a goal, result or feedback in its envelope
+   * through the descriptor's codec and layout. A generated `static const`.
+   */
+  const struct rclc_action_type_t *type_support;
+  /**
+   * phase-515 C4b — rclc's typed registration
+   * (`rclc_executor_add_action_server`): its callbacks and goal handles.
+   * Unused by a server registered through `rclc_action_server_init_with_callbacks`.
+   */
+  struct rclc_action_server_rclc_state_t _rclc;
 } rcl_action_server_t;
 
 /**
@@ -2015,6 +2155,13 @@ typedef struct rcl_action_server_options_t {
    */
   uint8_t _reserved[3];
 } rcl_action_server_options_t;
+
+/**
+ * rclc's `rclc_action_server_t` (phase-515 C4b). One struct serves rcl's
+ * spelling and rclc's: `rclc_action_server_init_default` and
+ * `rclc_executor_add_action_server` take this.
+ */
+typedef struct rcl_action_server_t rclc_action_server_t;
 
 /**
  * Message type descriptor: what `ROSIDL_GET_MSG_TYPE_SUPPORT(pkg, msg, Name)`
@@ -3325,6 +3472,27 @@ typedef struct rclc_integrity_status_t {
 #define RCLC_RET_STALE_NODE -17
 
 /**
+ * phase-515 C4b — rcl_action's `RCL_RET_ACTION_GOAL_ACCEPTED` (rcl: 2100): what
+ * an rclc goal callback (`rclc_action_server_handle_goal_callback_t`) returns
+ * to accept a goal. Negative like every code here; the SPELLING is the
+ * contract (see [`rcl_ret_t`]).
+ */
+#define RCL_RET_ACTION_GOAL_ACCEPTED -18
+
+/**
+ * rcl_action's `RCL_RET_ACTION_GOAL_REJECTED` (rcl: 2101): what an rclc goal
+ * callback returns to reject a goal. Any other return rejects it too, as in
+ * rclc.
+ */
+#define RCL_RET_ACTION_GOAL_REJECTED -19
+
+/**
+ * rclc's `RCLC_RET_ACTION_WAIT_RESULT_REQUEST` (rclc: 2104): from
+ * `rclc_action_send_result` when the goal is not executing or canceling yet.
+ */
+#define RCLC_RET_ACTION_WAIT_RESULT_REQUEST -20
+
+/**
  * Service call failed
  */
 #define RCLC_RET_SERVICE_FAILED -9
@@ -3369,6 +3537,41 @@ typedef struct rclc_integrity_status_t {
  * phase (109+).
  */
 #define RCL_RET_UNSUPPORTED -16
+
+/**
+ * rcl_action's `GOAL_STATE_UNKNOWN`.
+ */
+#define GOAL_STATE_UNKNOWN 0
+
+/**
+ * rcl_action's `GOAL_STATE_ACCEPTED`.
+ */
+#define GOAL_STATE_ACCEPTED 1
+
+/**
+ * rcl_action's `GOAL_STATE_EXECUTING`.
+ */
+#define GOAL_STATE_EXECUTING 2
+
+/**
+ * rcl_action's `GOAL_STATE_CANCELING`.
+ */
+#define GOAL_STATE_CANCELING 3
+
+/**
+ * rcl_action's `GOAL_STATE_SUCCEEDED`.
+ */
+#define GOAL_STATE_SUCCEEDED 4
+
+/**
+ * rcl_action's `GOAL_STATE_CANCELED`.
+ */
+#define GOAL_STATE_CANCELED 5
+
+/**
+ * rcl_action's `GOAL_STATE_ABORTED`.
+ */
+#define GOAL_STATE_ABORTED 6
 
 /**
  * The value no successful registration ever produces.
@@ -4877,6 +5080,136 @@ rcl_ret_t rclc_action_get_goal_status(const struct rcl_action_server_t *server,
 NROS_PUBLIC
 rcl_ret_t rcl_action_server_fini(struct rcl_action_server_t *server,
                                  struct rcl_node_t *node);
+
+/**
+ * rclc's `rclc_action_server_init_default(action_server, node, support,
+ * type_support, action_name)` — phase-515 C4.
+ *
+ * Records the server's name and descriptor; the callbacks arrive at
+ * [`rclc_executor_add_action_server`], as in rclc.
+ *
+ * ADOPT-BOUNDED: `support` is checked to be initialised and otherwise unused.
+ * rclc passes its clock to `rcl_action_server_init`; here the executor's
+ * clock times the server, and no entity exists until registration.
+ *
+ * # Returns
+ * * `RCL_RET_OK` on success
+ * * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or an empty name
+ * * `RCL_RET_NOT_INIT` — `support` or `node` is not initialised
+ * * `RCLC_RET_BAD_SEQUENCE` — `action_server` is already initialised
+ *
+ * # Safety
+ * All pointers must be valid; `type_support` must outlive the server.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_action_server_init_default(rclc_action_server_t *action_server,
+                                          struct rcl_node_t *node,
+                                          struct rclc_support_t *support,
+                                          const struct rclc_action_type_t *type_support,
+                                          const char *action_name);
+
+/**
+ * rclc's `rclc_executor_add_action_server(executor, action_server,
+ * handles_number, ros_goal_request, ros_goal_request_size, goal_callback,
+ * cancel_callback, context)` — phase-515 C4.
+ *
+ * Registers the server with the executor and binds rclc's callbacks. Each
+ * incoming goal takes one of `handles_number` goal handles; its request is
+ * deserialised into element `i` of `ros_goal_request` (an array of the
+ * action's `<Action>_SendGoal_Request`, `ros_goal_request_size` bytes each)
+ * and `goal_callback` decides it. An accepted goal is answered with
+ * [`rclc_action_send_result`]; [`rclc_action_publish_feedback`] reports
+ * progress; `cancel_callback` decides a cancel request.
+ *
+ * ADOPT-BOUNDED: at most `NROS_MAX_CONCURRENT_GOALS` handles (the pool is in
+ * the server; rclc allocates it); a goal arriving with every handle in use is
+ * rejected (rclc leaves it queued); a goal that does not deserialise is
+ * rejected. A goal is `GOAL_STATE_EXECUTING` as soon as it is accepted, so
+ * `rclc_action_send_result` succeeds before the client asks for the result
+ * (the runtime keeps it until then) where rclc returns
+ * `RCLC_RET_ACTION_WAIT_RESULT_REQUEST`.
+ *
+ * # Returns
+ * * `RCL_RET_OK` on success
+ * * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or callback, `handles_number`
+ *   0 or above `NROS_MAX_CONCURRENT_GOALS`, or `ros_goal_request_size`
+ *   smaller than the action's `<Action>_SendGoal_Request`
+ * * `RCL_RET_ERROR` — `ros_goal_request_size` is 0 (rclc's answer)
+ * * `RCL_RET_UNSUPPORTED` — the descriptor carries no codec or envelope layout
+ *   (built from names alone, or by a generator older than codegen 21)
+ * * `RCLC_RET_BAD_SEQUENCE` — the server already has callbacks bound
+ * * otherwise as `rclc_executor_attach_action_server`
+ *
+ * # Safety
+ * `executor` and `action_server` must be initialised; `ros_goal_request` must
+ * hold `handles_number` elements and outlive the registration.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_executor_add_action_server(struct rclc_executor_t *executor,
+                                          rclc_action_server_t *action_server,
+                                          size_t handles_number,
+                                          void *ros_goal_request,
+                                          size_t ros_goal_request_size,
+                                          rclc_action_server_handle_goal_callback_t goal_callback,
+                                          rclc_action_server_handle_cancel_callback_t cancel_callback,
+                                          void *context);
+
+/**
+ * rclc's `rclc_action_send_result(goal_handle, status, ros_response)` —
+ * phase-515 C4.
+ *
+ * Ends the goal with `status` (`GOAL_STATE_SUCCEEDED`, `_CANCELED` or
+ * `_ABORTED`) and the result in `ros_response`, the action's
+ * `<Action>_GetResult_Response`, whose `status` this writes, as rclc does. The
+ * runtime keeps the result and answers the client's result request with it;
+ * the goal handle is free again on return.
+ *
+ * # Returns
+ * * `RCL_RET_OK` on success
+ * * `RCL_RET_INVALID_ARGUMENT` — a NULL argument, a non-terminal `status`, or
+ *   a handle that is not a live goal
+ * * `RCLC_RET_ACTION_WAIT_RESULT_REQUEST` — the goal is neither executing nor
+ *   canceling
+ * * `RCL_RET_ERROR` — the result did not serialise, or the runtime refused it
+ *
+ * # Safety
+ * `ros_response` must be the action's `<Action>_GetResult_Response`.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_action_send_result(struct rclc_action_goal_handle_t *goal_handle,
+                                  rcl_action_goal_state_t status,
+                                  void *ros_response);
+
+/**
+ * rclc's `rclc_action_publish_feedback(goal_handle, ros_feedback)` —
+ * phase-515 C4.
+ *
+ * Publishes `ros_feedback`, the action's `<Action>_FeedbackMessage`, for the
+ * goal; its `goal_id` is written from the handle first, as rclc does.
+ *
+ * # Returns
+ * * `RCL_RET_OK` on success
+ * * `RCL_RET_INVALID_ARGUMENT` — a NULL argument or a handle that is not a
+ *   live goal
+ * * `RCL_RET_ERROR` — the feedback did not serialise, or the publish failed
+ *
+ * # Safety
+ * `ros_feedback` must be the action's `<Action>_FeedbackMessage`.
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_action_publish_feedback(struct rclc_action_goal_handle_t *goal_handle,
+                                       void *ros_feedback);
+
+/**
+ * rclc's `rclc_action_server_fini(action_server, node)` — phase-515 C4:
+ * [`rcl_action_server_fini`] under rclc's name.
+ *
+ * # Safety
+ * As [`rcl_action_server_fini`].
+ */
+NROS_PUBLIC
+rcl_ret_t rclc_action_server_fini(rclc_action_server_t *action_server,
+                                  struct rcl_node_t *node);
 
 /**
  * Phase 122.3.c.6.b — initialize an L1 polling-mode action server.

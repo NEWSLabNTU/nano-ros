@@ -171,6 +171,30 @@ pub struct rclc_action_type_t {
 // Goal UUID
 // ============================================================================
 
+/// phase-515 C4b — rcl_action's `rcl_action_goal_state_t`: a goal's status
+/// as `action_msgs/msg/GoalStatus` numbers it, the type an rclc goal handle's
+/// `status` and `rclc_action_send_result`'s `status` carry.
+pub type rcl_action_goal_state_t = i8;
+/// rcl_action's `GOAL_STATE_UNKNOWN`.
+pub const GOAL_STATE_UNKNOWN: rcl_action_goal_state_t = 0;
+/// rcl_action's `GOAL_STATE_ACCEPTED`.
+pub const GOAL_STATE_ACCEPTED: rcl_action_goal_state_t = 1;
+/// rcl_action's `GOAL_STATE_EXECUTING`.
+pub const GOAL_STATE_EXECUTING: rcl_action_goal_state_t = 2;
+/// rcl_action's `GOAL_STATE_CANCELING`.
+pub const GOAL_STATE_CANCELING: rcl_action_goal_state_t = 3;
+/// rcl_action's `GOAL_STATE_SUCCEEDED`.
+pub const GOAL_STATE_SUCCEEDED: rcl_action_goal_state_t = 4;
+/// rcl_action's `GOAL_STATE_CANCELED`.
+pub const GOAL_STATE_CANCELED: rcl_action_goal_state_t = 5;
+/// rcl_action's `GOAL_STATE_ABORTED`.
+pub const GOAL_STATE_ABORTED: rcl_action_goal_state_t = 6;
+
+/// rosidl's `unique_identifier_msgs__msg__UUID`, declared in C by
+/// `<rclc/detail/uuid.h>` (phase-515 C4a) and excluded from cbindgen's export,
+/// as `rmw_request_id_t` is. Same layout as [`rclc_goal_uuid_t`].
+pub type unique_identifier_msgs__msg__UUID = rclc_goal_uuid_t;
+
 /// Goal UUID structure (16 bytes).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

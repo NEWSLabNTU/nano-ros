@@ -66,6 +66,21 @@ pub const RCLC_RET_BAD_SEQUENCE: rcl_ret_t = -8;
 /// this entity has to be finalised LAST.
 pub const RCLC_RET_STALE_NODE: rcl_ret_t = -17;
 
+/// phase-515 C4b — rcl_action's `RCL_RET_ACTION_GOAL_ACCEPTED` (rcl: 2100): what
+/// an rclc goal callback (`rclc_action_server_handle_goal_callback_t`) returns
+/// to accept a goal. Negative like every code here; the SPELLING is the
+/// contract (see [`rcl_ret_t`]).
+pub const RCL_RET_ACTION_GOAL_ACCEPTED: rcl_ret_t = -18;
+
+/// rcl_action's `RCL_RET_ACTION_GOAL_REJECTED` (rcl: 2101): what an rclc goal
+/// callback returns to reject a goal. Any other return rejects it too, as in
+/// rclc.
+pub const RCL_RET_ACTION_GOAL_REJECTED: rcl_ret_t = -19;
+
+/// rclc's `RCLC_RET_ACTION_WAIT_RESULT_REQUEST` (rclc: 2104): from
+/// `rclc_action_send_result` when the goal is not executing or canceling yet.
+pub const RCLC_RET_ACTION_WAIT_RESULT_REQUEST: rcl_ret_t = -20;
+
 /// Service call failed
 pub const RCLC_RET_SERVICE_FAILED: rcl_ret_t = -9;
 

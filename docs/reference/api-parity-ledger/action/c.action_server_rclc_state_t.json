@@ -1,0 +1,5 @@
+{
+  "key": "c:action_server_rclc_state_t",
+  "verdict": "extension",
+  "why": "the state an rclc-shaped registration (`rclc_executor_add_action_server`, phase-515 C4b) keeps INSIDE `rcl_action_server_t`: the user's goal and cancel callbacks and context, the caller's `<Action>_SendGoal_Request` array, and the goal-handle pool, inline and bounded by `NROS_MAX_CONCURRENT_GOALS`. rclc keeps the same facts in `rclc_action_server_t` members and allocates the pool; with no allocator, the pool lives in the struct, and the struct needs a named type for cbindgen to lay it out. Not for the user to touch -- the member is `_rclc`. Test: `packages/api/nros-c/tests/run/rclc_action_server.c`."
+}
