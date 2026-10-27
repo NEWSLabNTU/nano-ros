@@ -34,6 +34,8 @@
 // unchanged, and so is the type.
 namespace rclcpp {
 
+class Context; // rclcpp.hpp; `sleep_until` / `sleep_for` take one.
+
 /// A time source: system, steady, or ROS time.
 ///
 /// Mirrors upstream's `rclcpp::Clock`. The clock type is fixed at construction and
@@ -129,6 +131,29 @@ class Clock {
     /// valid. (`rclcpp::Clock::wait_until_started` is deliberately absent —
     /// RFC-0021 forbids a blocking helper that does not drive the executor.)
     bool started() const { return rcl_clock_time_started(&clock_); }
+
+    /// `rclcpp::Clock::sleep_until(until, context)` — phase-515 P5.
+    ///
+    /// ADOPT-BOUNDED (RFC-0021): the wait DRIVES the context's executor — its
+    /// callbacks run while this blocks — because a sleep on a single-threaded
+    /// image that did not would starve the transport. Upstream's sleep runs
+    /// nothing. The deadline is on THIS clock, so a ROS-time clock driven by
+    /// `/clock` wakes when simulated time arrives.
+    ///
+    /// @return `true` once the clock reaches `until`; `false` — without
+    ///         sleeping — when `until` is on another clock type (upstream
+    ///         throws), when the context names no executor (before
+    ///         `rclcpp::init`) or is shut down, and when called from inside a
+    ///         callback (the executor is not reentrant), or if a termination
+    ///         signal ends the wait.
+    bool sleep_until(Time until, Context context);
+    /// `sleep_until(until, rclcpp::contexts::get_global_default_context())`.
+    bool sleep_until(Time until);
+    /// `rclcpp::Clock::sleep_for(rel_time, context)` — `sleep_until(now() +
+    /// rel_time, context)`, with that envelope.
+    bool sleep_for(Duration rel_time, Context context);
+    /// `sleep_for(rel_time, rclcpp::contexts::get_global_default_context())`.
+    bool sleep_for(Duration rel_time);
 
   private:
     rcl_clock_t clock_;

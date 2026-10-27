@@ -374,6 +374,15 @@ if no hash source exists, make it REFUSE-LOUD (RFC-0089 already uses
 **P5 — `Duration::to_chrono`, `Clock::sleep_for`, `Clock::sleep_until`.**
 *D1: `to_chrono` stays declined.* `sleep_for` / `sleep_until` take rclcpp's
 `Duration` / `Time` and remain candidates; they must satisfy RFC-0021 (drive the executor, or not block the transport).
+**Decided 2026-10-27 (maintainer): spin while sleeping. LANDED 2026-10-27:**
+`Clock::sleep_until(until[, context])` / `sleep_for(rel_time[, context])` make
+one call into the new `nros_cpp_spin_until_clock`, which spins the context's
+executor until THIS clock reaches the deadline (Rust-side, as `Rate::sleep`'s
+`nros_cpp_spin_for`), so callbacks run during the wait and a ROS-time clock on
+`/clock` wakes on simulated time. `false` without sleeping before init, for a
+deadline on another clock type (upstream throws), from inside a callback, or on
+a termination signal. No `std::chrono` overload (D1). Test
+`packages/api/nros-cpp/tests/compile/clock_sleep_runtime.cpp` (`just check cpp`).
 
 **P6 — `ParameterEventHandler` (11 `gap` rows), issue 2024.** We publish
 `/parameter_events`; nothing subscribes to another node's. A bounded handler

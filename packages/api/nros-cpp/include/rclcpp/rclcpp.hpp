@@ -291,6 +291,29 @@ inline Context get_global_default_context() {
 }
 } // namespace contexts
 
+// --- Clock::sleep_until / sleep_for (phase-515 P5) ---------------------------
+//
+// One call into `nros_cpp_spin_until_clock`, which owns the loop Rust-side, as
+// `Rate::sleep` makes one call into `nros_cpp_spin_for`: a wrapper that looped
+// over `spin_once` here would be RFC-0020 violation class 2.
+inline bool Clock::sleep_until(Time until, Context context) {
+    if (until.get_clock_type() != get_clock_type()) return false;
+    void* executor = context.executor_handle();
+    if (executor == nullptr || !::rclcpp::ok()) return false;
+    const nros_cpp_ret_t ret =
+        nros_cpp_spin_until_clock(executor, &clock_, until.nanoseconds(), 10);
+    return ret == NROS_CPP_RET_OK && now() >= until;
+}
+inline bool Clock::sleep_until(Time until) {
+    return sleep_until(until, contexts::get_global_default_context());
+}
+inline bool Clock::sleep_for(Duration rel_time, Context context) {
+    return sleep_until(now() + rel_time, context);
+}
+inline bool Clock::sleep_for(Duration rel_time) {
+    return sleep_for(rel_time, contexts::get_global_default_context());
+}
+
 namespace node_interfaces {
 template <int Tag> inline Context NodeInterfaceHandle<Tag>::get_context() const {
     return Context(node_ != nullptr ? node_->executor_handle() : nullptr);

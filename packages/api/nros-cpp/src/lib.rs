@@ -4074,6 +4074,63 @@ pub unsafe extern "C" fn nros_cpp_spin_for(
     }
 }
 
+/// Spin until `clock` reads at least `deadline_ns` — the loop behind
+/// `rclcpp::Clock::sleep_until` / `sleep_for` (phase-515 P5).
+///
+/// RFC-0021: a sleep on a single-threaded image must not starve the
+/// transport, so this DRIVES the executor for the whole wait, as
+/// `nros_cpp_spin_for` does for a wall budget (and for the same reason it lives
+/// here, once: a wrapper looping over `spin_once` is RFC-0020 class 2). The
+/// deadline is on `clock` itself, so a ROS-time clock driven by a simulator's
+/// `/clock` wakes when SIMULATED time arrives, which no wall budget can say.
+///
+/// Returns `NROS_CPP_RET_OK` once the clock reaches the deadline (immediately
+/// if it already has), the first non-OK `spin_once` (`REENTRANT` from inside a
+/// callback), or `NROS_CPP_RET_TIMEOUT` when a guarded termination signal ends
+/// the wait early.
+///
+/// # Safety
+/// `handle` must be a valid handle returned by `nros_cpp_init()`; `clock` a
+/// valid, initialised `rcl_clock_t`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_spin_until_clock(
+    handle: *mut c_void,
+    clock: *const c_void,
+    deadline_ns: i64,
+    poll_ms: i32,
+) -> nros_cpp_ret_t {
+    if handle.is_null() || clock.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let clock = clock as *const nros_c::rcl_clock_t;
+    loop {
+        let mut now: i64 = 0;
+        if unsafe { nros_c::rcl_clock_get_now(clock, &mut now) } != nros_c::RCL_RET_OK {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        }
+        if now >= deadline_ns {
+            return NROS_CPP_RET_OK;
+        }
+        // Never wait longer than the time left (rounded UP to a millisecond,
+        // so a sub-millisecond remainder does not busy-spin).
+        let left_ms = (deadline_ns - now + 999_999) / 1_000_000;
+        let wait_ms = if poll_ms <= 0 || left_ms < i64::from(poll_ms) {
+            left_ms.clamp(1, i64::from(i32::MAX)) as i32
+        } else {
+            poll_ms
+        };
+        let last = unsafe { nros_cpp_spin_once(handle, wait_ms) };
+        if last != NROS_CPP_RET_OK {
+            return last;
+        }
+        // Issue 1732 — as `nros_cpp_spin_for`.
+        if nros_platform::termination::requested() {
+            return NROS_CPP_RET_TIMEOUT;
+        }
+    }
+}
+
 /// Spin until cancelled (blocking) — the loop behind `rclcpp::Executor::spin()`.
 ///
 /// phase-417 W4.c. The C++ header used to run this loop itself, on

@@ -2294,6 +2294,31 @@ nros_cpp_ret_t nros_cpp_spin_some(void *handle, uint32_t max_ms);
 nros_cpp_ret_t nros_cpp_spin_for(void *handle, uint32_t duration_ms, int32_t poll_ms);
 
 /**
+ * Spin until `clock` reads at least `deadline_ns` — the loop behind
+ * `rclcpp::Clock::sleep_until` / `sleep_for` (phase-515 P5).
+ *
+ * RFC-0021: a sleep on a single-threaded image must not starve the
+ * transport, so this DRIVES the executor for the whole wait, as
+ * `nros_cpp_spin_for` does for a wall budget (and for the same reason it lives
+ * here, once: a wrapper looping over `spin_once` is RFC-0020 class 2). The
+ * deadline is on `clock` itself, so a ROS-time clock driven by a simulator's
+ * `/clock` wakes when SIMULATED time arrives, which no wall budget can say.
+ *
+ * Returns `NROS_CPP_RET_OK` once the clock reaches the deadline (immediately
+ * if it already has), the first non-OK `spin_once` (`REENTRANT` from inside a
+ * callback), or `NROS_CPP_RET_TIMEOUT` when a guarded termination signal ends
+ * the wait early.
+ *
+ * # Safety
+ * `handle` must be a valid handle returned by `nros_cpp_init()`; `clock` a
+ * valid, initialised `rcl_clock_t`.
+ */
+nros_cpp_ret_t nros_cpp_spin_until_clock(void *handle,
+                                         const void *clock,
+                                         int64_t deadline_ns,
+                                         int32_t poll_ms);
+
+/**
  * Spin until cancelled (blocking) — the loop behind `rclcpp::Executor::spin()`.
  *
  * phase-417 W4.c. The C++ header used to run this loop itself, on
