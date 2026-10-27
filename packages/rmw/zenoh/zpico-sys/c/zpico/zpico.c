@@ -138,6 +138,19 @@ static void _threadx_printk(const char* fmt, ...) {
 #define ZPICO_DRIVE_CALLER 1
 #endif
 
+// Issue 2105 -- THREAD mode's executor checks its timers (lease, keep-alive,
+// query timeout) only when the blocking receive returns, so that receive MUST
+// time out. Zephyr honours `SO_RCVTIMEO` only under CONFIG_NET_CONTEXT_RCVTIMEO,
+// and zenoh-pico's `tcp_zephyr.c` logs the refusal and carries on. Without it
+// the receive blocks until data arrives, and every timed future waits for the
+// router: measured on mps2_an385, the keep-alive went out at +4 s and +64 s
+// and the session reopened. `NROS_RMW_ZENOH` selects the symbol whenever
+// sockets exist; this refuses an image that turned it back off.
+#if defined(ZENOH_ZEPHYR) && defined(ZPICO_DRIVE_THREAD) && defined(CONFIG_NET_SOCKETS) &&       \
+    !defined(CONFIG_NET_CONTEXT_RCVTIMEO)
+#error "zenoh on Zephyr needs CONFIG_NET_CONTEXT_RCVTIMEO=y: without it the executor's receive never times out and the lease and keep-alive never run (issue 2105)"
+#endif
+
 // Internal zenoh-pico headers. `_zp_send_keep_alive` (RFC-0110 D5) is the one
 // keep-alive call every build has: the public `zp_send_keep_alive` is compiled
 // out of multi-thread builds.

@@ -52,6 +52,10 @@ choice NROS_RMW_BACKEND
 
 config NROS_RMW_ZENOH
     bool "zenoh-pico"
+    # Issue 2105 -- zenoh-pico 1.10's executor thread runs the lease and
+    # keep-alive between socket receives, so a receive must time out. Zephyr
+    # implements SO_RCVTIMEO only under this symbol and otherwise ignores it.
+    select NET_CONTEXT_RCVTIMEO if NETWORKING && NET_SOCKETS
     help
       Use zenoh-pico as the RMW transport backend.
       Connects to a zenoh router for ROS 2 interop via rmw_zenoh.

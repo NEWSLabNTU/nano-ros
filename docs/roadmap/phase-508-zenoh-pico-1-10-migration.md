@@ -85,7 +85,7 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       session patches and to `zpico.c`. DONE 2026-10-24: 5 obsolete, 12 port,
       2 redesign (#0899 teardown, the read-task frame budget), 2 depend on how
       single-thread builds poll. Issue 0910's second-pass survey has the table.
-- [ ] Decide how each build drives the executor. Drafted 2026-10-24 as
+- [x] Decide how each build drives the executor. DONE 2026-10-27: RFC-0110 is Stable. Drafted 2026-10-24 as
       [RFC-0110](../design/0110-zenoh-pico-executor-driving.md): THREAD mode
       (POSIX, Zephyr, NuttX, FreeRTOS) runs the one executor thread, which
       replaces the read and lease tasks; CALLER mode (bare metal, ThreadX)
@@ -99,10 +99,13 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       It was FIXED 2026-10-27: NuttX linked the alias TU's `uint64_t` clock
       against `unix.h`'s `struct timespec`, and once the right clock was
       linked it wrapped every 4.29 s. A quiet NuttX link now holds one
-      session, with keep-alives every 25–30 s. Still open:
-      [issue 2105](../issues/2105-zephyr-cortex-m-timed-future-never-rewakes.md),
-      a timed future that never re-woke on a Zephyr Cortex-M image. RFC-0110
-      stays Draft until it is explained.
+      session, with keep-alives every 25–30 s.
+      [Issue 2105](../issues/archived/2105-zephyr-cortex-m-timed-future-never-rewakes.md)
+      was the same failure on Zephyr, FIXED 2026-10-27. Zephyr honours
+      `SO_RCVTIMEO` only under `CONFIG_NET_CONTEXT_RCVTIMEO`, so on a
+      native-IP image the executor's receive never timed out and its timers
+      ran only when the router spoke. `NROS_RMW_ZENOH` now selects the
+      option, and `zpico.c` refuses a build without it.
 - [ ] Rebase the fork's `nano-ros` patch line onto upstream 1.10.1, keeping the
       patches as individual commits (CLAUDE.md, vendored-fork workflow). Drop
       each patch that upstream now carries, and record each drop. Redesign
