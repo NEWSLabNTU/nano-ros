@@ -37,7 +37,8 @@ my_talker/
 ├── generated/          # message bindings `nros sync` writes
 ├── build/              # everything `nros sync` / `nros build` generate
 └── src/
-    └── main.rs         # the talker: a 1 s timer publishing /chatter
+    ├── lib.rs          # the talker node: a 1 s timer publishing /chatter
+    └── main.rs         # one line, `nros::main!(spin = "forever")`
 ```
 
 `system.toml` is the whole deployment statement — the same schema a
@@ -47,11 +48,21 @@ multi-node workspace's bringup package uses (RFC-0098):
 [system]
 name = "my_talker"
 rmw = "zenoh"
+ros_edition = "humble"
 domain_id = 0
+
+[[component]]
+pkg = "my_talker"
+class = "my_talker::Talker"
+name = "my_talker"
 
 [image.linux]
 board = "linux"
 ```
+
+The `[[component]]` is the node `main.rs` boots: `nros::main!()` reads it
+and runs `lib.rs`'s `Talker`. Switching RMW or ROS edition is editing
+`rmw` or `ros_edition` here and re-running `nros sync`.
 
 **You never hand-write a build setting.** No target triple, no linker
 flag, no `[patch.crates-io]` table, no `.cargo/config.toml`: `nros sync`
@@ -73,9 +84,12 @@ walking up the filesystem), and nano-ros crates are declared
 crates.io, so `nros sync` generates the `[patch.crates-io]` block that
 resolves them into the SDK the `nros` on PATH carries, into
 `build/<image>/nros-cargo.toml` — nothing about the build is committed,
-and nothing about it is hand-edited (RFC-0098 D1). The scaffold's RMW
-is a Cargo feature (`default = ["rmw-zenoh"]`), chosen by the
-`--rmw` you passed to `nros new`.
+and nothing about it is hand-edited (RFC-0098 D1). The manifest names no
+board crate, RMW backend or ROS edition either: it depends on
+`my_talker_nros_selection = { path = "build/nros/selection" }`, a package
+`nros sync` generates from `system.toml` that brings all three (RFC-0098 D6),
+so the `--rmw` and `--ros-edition` you passed to `nros new` live in
+`system.toml` and nowhere else.
 
 Message packages are not listed there by hand: `package.xml`'s
 `<depend>std_msgs</depend>` is the one statement, and `nros sync` (or
@@ -87,8 +101,8 @@ The directory names no path into the SDK, so you can move or copy it
 anywhere and re-run `nros sync`; `--nano-ros-path <dir>` names a
 different SDK root on the command line, never in a file.
 
-For a fuller talker to read — a component library plus
-`nros::main!`, one image per RMW and ROS edition — see
+For a fuller talker to read — the same shape, with one image per RMW
+and ROS edition — see
 [`examples/linux/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/linux/rust/talker)
 on GitHub.
 

@@ -1,18 +1,19 @@
 ---
 id: 2079
 title: "`nros new` emits an unmigrated Rust leaf whose edition is a manifest pin, so its `system.toml` cannot choose one"
-status: open
+status: resolved
 type: bug
 area: [cli, scaffold, examples]
 severity: medium
 found: 2026-10-26
+resolved: 2026-10-27
 related: [issue-2045, issue-1305, rfc-0056, rfc-0098, phase-452]
 ---
 
 # The Rust scaffold pins the ROS edition in its manifest
 
-**Home:** [phase-452](../roadmap/phase-452-copy-out-front-door.md) W8. Found by
-[#2045](archived/2045-example-manifests-hand-set-the-ros-edition-feature.md)'s
+**Home:** [phase-452](../../roadmap/phase-452-copy-out-front-door.md) W8. Found by
+[#2045](2045-example-manifests-hand-set-the-ros-edition-feature.md)'s
 own refusal, on its first `just ci gate` run.
 
 ## Problem
@@ -68,3 +69,38 @@ Acceptance: `check-scaffold-builds` builds both Rust variants; a scaffold made
 with `--ros-edition jazzy` resolves jazzy for `nros-node` (`cargo tree -e
 features -i nros-node`) and for its codegen; editing that `system.toml` to
 humble moves both.
+
+## Resolution (2026-10-27)
+
+`packages/cli/cargo-nano-ros/src/scaffold.rs` emits the migrated shape for
+both reachable Rust variants:
+
+- **linux** (hosted) is now `examples/linux/rust/talker`'s shape: `lib.rs` is
+  the node (`talker_node_lib`, shared with the self-bringup), `main.rs` is
+  `nros::main!(spin = "forever")`, and `system.toml` names the
+  `[[component]]` it boots. The manifest depends on
+  `<pkg>_nros_selection = { path = "build/nros/selection" }` and names no
+  board crate, RMW backend, RMW feature table or edition.
+- **baremetal** (mps2-an385 self-bringup) takes the selection package in its
+  target-scoped table instead of the board crate, `nros-rmw-zenoh`,
+  `cortex-m`, `cortex-m-rt` and `panic-semihosting`; the board's panic
+  provider arrives with it, as in `examples/mps2-an385-baremetal/rust/talker`.
+- `system.toml` states `ros_edition` for every language, C/C++ included,
+  which the leaf reader has honoured since #2087.
+
+esp32 keeps its manifest pin: it is dormant (issue 1525, not offered by
+`nros new`), its example is unmigrated too, and the pin is its only carrier.
+For the same reason `check_lowered_edition_features` keeps its migrated-only
+scope — an unmigrated cargo leaf still exists.
+
+Measured on scaffolds made by the rebuilt CLI outside the checkout, each
+`nros sync` + `nros build`:
+
+| scaffold | build | `nros-node` features |
+| --- | --- | --- |
+| `--platform linux --ros-edition jazzy` | OK, `build/linux/target/debug/<pkg>` | `ros-jazzy` |
+| `--platform linux --ros-edition humble` | OK | `ros-humble` |
+| `--platform baremetal --ros-edition jazzy` | OK, `thumbv7m-none-eabi` | `ros-jazzy` |
+| the jazzy linux one, `system.toml` edited to humble, sync + build | OK | `ros-humble` |
+
+`book/src/getting-started/first-node-rust.md` describes the new layout.
