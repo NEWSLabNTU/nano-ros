@@ -1,6 +1,0 @@
-{
-  "key": "cpp:Parameter::get_parameter_value",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "returns an `rclcpp::ParameterValue`, which C++ does not have (`cpp:ParameterValue`, declined: owned storage behind every accessor). The typed `as_*` readers on `rclcpp::Parameter` are the read (issue 2024)."
-}

@@ -1,6 +1,10 @@
 {
   "key": "cpp:Parameter::get_value",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "`get_value<T>()`, a template that throws `ParameterTypeException` on a mismatch. No exceptions here (RFC-0018); the typed `as_*` readers, which return the type's zero value on a mismatch, are the read (issue 2024)."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/parameter_value.hpp",
+    "text": "There are no exceptions here (RFC-0018), so a wrong-type read answers"
+  },
+  "verdict": "divergence",
+  "why": "RE-VERDICTED 2026-10-27 (phase-515 P3), `declined`/`absent` -> `divergence`/`adopt-bounded`: issue 2056 shipped `Parameter::get_value<T>()` (forwarding to `ParameterValue::get<T>()`), so the name correlates `same` and the old row described an API that no longer existed -- found by the new `misdeclared_absences` check. ENVELOPE: upstream throws `ParameterTypeException` on a mismatch; with no exceptions (RFC-0018) a wrong-type read answers the type's zero value, the same answer the `as_*` readers give. Code that asks `get_type()` first, as upstream code is written, sees no difference. PRIOR ROW: `get_value<T>()`, a template that throws `ParameterTypeException` on a mismatch. No exceptions here (RFC-0018); the typed `as_*` readers, which return the type's zero value on a mismatch, are the read (issue 2024)."
 }

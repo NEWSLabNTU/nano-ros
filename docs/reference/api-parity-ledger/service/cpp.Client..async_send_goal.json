@@ -1,6 +1,10 @@
 {
   "key": "cpp:Client::async_send_goal",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "see `cpp:Client::async_cancel_all_goals`."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp_action/client.hpp",
+    "text": "Upstream returns a `std::shared_future<GoalHandle::SharedPtr>`; this"
+  },
+  "verdict": "divergence",
+  "why": "RE-VERDICTED 2026-10-27 (phase-515 P3), was `declined`/`absent` as an rclcpp_action member folded onto `Client`: `rclcpp_action::Client::async_send_goal(goal, options)` ships (hosted), so the row described an API that no longer existed -- found by the new `misdeclared_absences` check. It correlates `same:ret`. ENVELOPE: it returns the goal-keyed `rclcpp::Future<GoalAccept>` rather than a `std::shared_future<GoalHandle::SharedPtr>` (RFC-0021: no blocking future); `auto f = client->async_send_goal(goal, opts);` compiles, the options' callbacks run during spin, and an empty future means the send failed. A freestanding build refuses it (`NROS_RCLCPP_REFUSE_ACTION_GOAL_HANDLE`, issue 2015)."
 }

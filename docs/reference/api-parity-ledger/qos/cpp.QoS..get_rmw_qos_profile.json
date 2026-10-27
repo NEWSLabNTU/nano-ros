@@ -1,6 +1,10 @@
 {
   "key": "cpp:QoS::get_rmw_qos_profile",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "hands out the underlying DDS-shaped `rmw_qos_profile_t` so a caller can bypass the API. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is deliberately not reachable from a user type; see `c:node_get_rmw_handle`. `rclc_qos_t` matches the field set, so the information is not hidden -- the rmw type is."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-cpp/include/rclcpp/qos.hpp",
+    "text": "Returns by VALUE where upstream hands"
+  },
+  "verdict": "divergence",
+  "why": "RE-VERDICTED 2026-10-27 (phase-515 P3), was `declined`/`absent` (\"hands out the underlying DDS-shaped profile so a caller can bypass the API\"): issue 2054 shipped it, so the row described an API that no longer existed -- found by the new `misdeclared_absences` check. It correlates `same:ret`. ENVELOPE: it returns the profile BY VALUE where upstream returns a reference to its stored struct, because `QoS` stores the C ABI's fields, not upstream's; a ported read (`auto p = qos.get_rmw_qos_profile();`) is unchanged, and a write through the result does not compile."
 }
