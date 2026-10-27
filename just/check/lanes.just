@@ -1181,6 +1181,11 @@ launch-resolve-fresh:
 cli-tests:
     #!/usr/bin/env bash
     set -e
+    # Issue 2100 — on a lane that asks, the CLI workspace's debug test target
+    # (18 G measured cold) goes when this gate exits, pass or fail. The release
+    # `nros` every other gate runs is in `target/release`, which stays.
+    source scripts/build/gate-prune.sh
+    trap 'nros_gate_prune packages/cli/target/debug' EXIT
     cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet
     ros_share=""
     if [ -n "${ROS_DISTRO:-}" ] && [ -d "/opt/ros/$ROS_DISTRO/share" ]; then

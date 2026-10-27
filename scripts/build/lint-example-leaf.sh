@@ -89,7 +89,16 @@ fi
 # never the leaf's own `target/` (issue 0624).
 lintdir="$NROS_EXAMPLE_LINT_DIR/$(echo "${dir#examples/}" | tr '/' '-')"
 
+# shellcheck source=scripts/build/gate-prune.sh
+source "$(dirname "${BASH_SOURCE[0]}")/gate-prune.sh"
+
 cd "$dir"
 cargo "+$NIGHTLY" fmt --check -p "$pkg"
+# Issue 2100 — on a lane that asks, the leaf's target dir goes as soon as its
+# verdict is in, pass or fail: 49 of them held 36 G until the gate ended. The
+# verdict is clippy's output, which is already in the log.
+rc=0
 # shellcheck disable=SC2086  # $flags is a word list by design
-"${env_prefix[@]}" cargo clippy --quiet "${cfg[@]}" --target-dir "$lintdir" $flags
+"${env_prefix[@]}" cargo clippy --quiet "${cfg[@]}" --target-dir "$lintdir" $flags || rc=$?
+nros_gate_prune "$lintdir"
+exit "$rc"
