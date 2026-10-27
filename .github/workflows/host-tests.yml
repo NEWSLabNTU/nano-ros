@@ -427,6 +427,12 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           CARGO_BUILD_JOBS: ${{ env.NROS_CI_BUILD_JOBS }}
+          # Issue 2100 — release each gate's build output once its verdict is
+          # in (scripts/build/gate-prune.sh). The 26 gates run at once, and
+          # their output summed to ~110 G against the ~75 G this hosted runner
+          # has after reclaim. linux-check, cli-tests and template-copy-out
+          # held 67 G of it. A cold lane gives up nothing by not keeping it.
+          NROS_CI_PRUNE_GATE_OUTPUTS: "1"
         run: |
           source ./activate.sh
           mkdir -p build/ci-logs

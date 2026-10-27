@@ -103,6 +103,8 @@ cd "$repo_root" || exit 2
 . "$repo_root/scripts/lib/grep-q.sh"
 # shellcheck source=scripts/build/check-skip.sh
 . "$repo_root/scripts/build/check-skip.sh"
+# shellcheck source=scripts/build/gate-prune.sh
+. "$repo_root/scripts/build/gate-prune.sh"
 # shellcheck source=scripts/build/cmake-cache-guard.sh
 . "$repo_root/scripts/build/cmake-cache-guard.sh"
 # shellcheck source=scripts/build/copy-out-cmake.sh
@@ -316,8 +318,30 @@ preflight_self_test() {
 
 # Build one copied-out HOST project with `nros sync` + `nros build`. Returns 0
 # on success, 1 on a build failure, 3 when there is no `nros` to build with.
+# Issue 2100 — where one copy's build cache lives. By default the copies share
+# this checkout's cache, so one warm `corrosion-cargo` group serves them all.
+# Measured cold, that group and the copies' sizes and metadata output left 13 G
+# behind. On a lane that releases its output, a copy's cache lives under its own
+# scratch dir (the directory of its build log), which the caller already
+# deletes, so the cache goes with the copy.
+#
+# The caller declares `local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR`;
+# bash scoping is dynamic, so the assignments land in the caller's locals and
+# reach only that copy's build. Set only when asked, because an exported empty
+# value is a different environment. The sizes-probe dir is re-derived because
+# scripts/build/cargo.sh exported it from the checkout's root when it was
+# sourced; without that, every copy's probe still landed in the checkout.
+copy_cache_vars() {
+    NROS_BUILD_ROOT="$1/build-root"
+    NROS_SIZES_PROBE_TARGET_DIR="$(nros_build_dir "$NROS_KIND_SIZES_PROBE")"
+}
+
 build_copy() {
     local ws="$1" log="$2" nros rc
+    if nros_gate_prune_enabled; then
+        local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
+        copy_cache_vars "$(dirname "$log")"
+    fi
     nros="$(nros_bin)" || return 3
     [ -n "$nros" ] || return 3
     : > "$log"
@@ -337,6 +361,10 @@ build_copy() {
 # NROS_CHECK_SKIP_STRICT=1, where it is a failure.
 build_cross() {
     local proj="$1" board="$2" log="$3" label="$4" nros rc facts err
+    if nros_gate_prune_enabled; then
+        local -x NROS_BUILD_ROOT NROS_SIZES_PROBE_TARGET_DIR
+        copy_cache_vars "$(dirname "$log")"
+    fi
     nros="$(nros_bin)" || return 3
     [ -n "$nros" ] || return 3
     : > "$log"
@@ -521,6 +549,9 @@ run_one() {
     fi
     if [ "$brc" -ne 0 ]; then
         report_build_failure "$label" "$log"
+        # The log is reported above. On a lane that releases its output the
+        # copy's build root goes too: it is the bulk of `$work`.
+        nros_gate_prune_enabled && rm -rf "$work"
         return 1
     fi
     arts="$(built_artifacts "$pdir")"
