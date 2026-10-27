@@ -462,6 +462,11 @@ typedef struct xrce_subscriber_slot {
     bool locked;
     uint16_t datareader_id;
     bool active;
+    /* Issue 2109 — `subscription_set_on_new_message_callback`'s registration,
+     * fired from `xrce_topic_callback` (inside `drive_io`) when a sample becomes
+     * takeable. NULL = none. */
+    rmw_event_callback_t on_new;
+    const void* on_new_user;
 } xrce_subscriber_slot;
 
 /* Phase 237 — seq-keyed reply token. Holds the `SampleIdentity` of a received
@@ -500,6 +505,9 @@ typedef struct xrce_service_server_slot {
     size_t entry_cap;
     /* Phase 237 — outstanding replies keyed by index (the runtime `seq`). */
     xrce_reply_token reply_tokens[XRCE_MAX_PENDING_REPLIES];
+    /* Issue 2109 — `service_set_on_new_request_callback`'s registration. */
+    rmw_event_callback_t on_new;
+    const void* on_new_user;
 } xrce_service_server_slot;
 
 /* Service-client slot — reply inbox. */
@@ -515,6 +523,9 @@ typedef struct xrce_service_client_slot {
      * reported out of `take_response` as the sequence id. */
     uint16_t reply_request_id;
     bool active;
+    /* Issue 2109 — `client_set_on_new_response_callback`'s registration. */
+    rmw_event_callback_t on_new;
+    const void* on_new_user;
 } xrce_service_client_slot;
 
 /* ---- ROS 2 graph (issue 1292, graph.c) -------------------------------
@@ -843,6 +854,26 @@ rmw_ret_t xrce_confirm_entities(xrce_session_state_t* st, const uint16_t* reques
  * `NROS_RMW_RET_MESSAGE_TOO_LARGE`, which is loud. `*out_len` is 0 then. */
 bool xrce_stage_inbound(uint8_t* dst, size_t dst_cap, struct ucdrBuffer* ub, size_t len,
                         size_t* out_len);
+
+/* Issue 2109 — fire a per-entity new-data registration: once per arrival,
+ * with 1 (the slot contract's lower bound; this backend does not count). */
+static inline void xrce_fire_on_new(rmw_event_callback_t cb, const void* user) {
+    if (cb != NULL) {
+        cb(user, 1);
+    }
+}
+
+/* Issue 2109 — the three `set_on_new_*` slots (subscriber.c / service.c). A
+ * second call replaces the registration, NULL clears it, destroy clears it. */
+rmw_ret_t xrce_subscription_set_on_new_message_callback(rmw_subscription_t* subscription,
+                                                        rmw_event_callback_t callback,
+                                                        const void* user_data);
+rmw_ret_t xrce_service_set_on_new_request_callback(rmw_service_t* service,
+                                                   rmw_event_callback_t callback,
+                                                   const void* user_data);
+rmw_ret_t xrce_client_set_on_new_response_callback(rmw_client_t* client,
+                                                   rmw_event_callback_t callback,
+                                                   const void* user_data);
 
 /* Issue 1808 — the service-server families (service.c). Whether `name` is a
  * builtin (parameter / lifecycle) endpoint, and claiming a free slot in

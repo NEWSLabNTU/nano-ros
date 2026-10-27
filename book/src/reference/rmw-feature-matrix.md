@@ -44,7 +44,7 @@ automatically as backends land implementations.
 | Actual-QoS read-back | wired | wired | wired | wired |
 | Wait-for-acked | — | — | — | — |
 | Take-with-info | wired | — | wired | — |
-| Entity new-data callbacks | wired | — | wired | — |
+| Entity new-data callbacks | wired | wired | wired | — |
 | Graph introspection (names/types/counts) | wired | — | wired | — |
 | Service-graph counts (`count_clients` / `count_services`) | wired | — | wired | — |
 | Client GID | wired | wired | wired | — |

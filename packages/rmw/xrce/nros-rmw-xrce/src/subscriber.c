@@ -60,10 +60,35 @@ void xrce_topic_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
             !xrce_stage_inbound(entry->data, XRCE_SUBSCRIBER_BUFFER_SIZE, ub, len, &entry->len);
         slot->write_idx = (uint16_t)((slot->write_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);
         slot->count++;
+        /* Issue 2109 — takeable now (an oversized entry too: its take reports
+         * MESSAGE_TOO_LARGE, which is still something to take). A dropped
+         * arrival above fires nothing — nothing became takeable. */
+        xrce_fire_on_new(slot->on_new, slot->on_new_user);
         return;
     }
     /* TODO 115.K.2.x: bump a per-session "unmatched callback" counter
      * for diagnostics when the slot pool is full. */
+}
+
+/* Issue 2109 — `subscription_set_on_new_message_callback`. micro-XRCE-DDS-Client
+ * has no thread of its own, so the callback runs on the thread driving
+ * `drive_io`, under the session lock; registering under the same lock is what
+ * makes "after this returns the previous pair is never called" true. */
+rmw_ret_t xrce_subscription_set_on_new_message_callback(rmw_subscription_t* subscription,
+                                                        rmw_event_callback_t callback,
+                                                        const void* user_data) {
+    if (subscription == NULL || subscription->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_subscriber_state* ss = (xrce_subscriber_state*)subscription->backend_data;
+    if (ss->slot == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_lock(ss->session_state);
+    ss->slot->on_new = callback;
+    ss->slot->on_new_user = callback != NULL ? user_data : NULL;
+    xrce_session_unlock(ss->session_state);
+    return NROS_RMW_RET_OK;
 }
 
 static rmw_ret_t xrce_subscription_create_locked(const rmw_node_t* node,
@@ -209,6 +234,8 @@ static rmw_ret_t xrce_subscription_destroy_locked(rmw_subscription_t* subscriber
 
     if (ss->slot != NULL) {
         ss->slot->active = false;
+        ss->slot->on_new = NULL; /* issue 2109 — destroy clears it */
+        ss->slot->on_new_user = NULL;
         ss->slot->count = 0;
         ss->slot->write_idx = 0;
         ss->slot->read_idx = 0;

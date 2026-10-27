@@ -302,6 +302,13 @@ name = "xrce_guard_wake"
 path = "tests/xrce_guard_wake.rs"
 required-features = ["xrce-wake-test"]
 
+# Issue 2109 — an XRCE arrival marks its own subscription's ready bit (the
+# per-entity new-data callback), through a live Agent.
+[[test]]
+name = "xrce_entity_wake"
+path = "tests/xrce_entity_wake.rs"
+required-features = ["xrce-wake-test"]
+
 [[test]]
 name = "xrce_concurrent_entities"
 path = "tests/xrce_concurrent_entities.rs"

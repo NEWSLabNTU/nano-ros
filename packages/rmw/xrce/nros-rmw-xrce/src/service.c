@@ -120,6 +120,7 @@ void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t 
         slot->req_write_idx =
             (uint16_t)((slot->req_write_idx + 1) % XRCE_SERVICE_REQUEST_RING_DEPTH);
         slot->req_count++;
+        xrce_fire_on_new(slot->on_new, slot->on_new_user); /* issue 2109 */
         return;
     }
 }
@@ -150,8 +151,45 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
         slot->overflow =
             !xrce_stage_inbound(slot->data, XRCE_SERVICE_REPLY_BUFFER_SIZE, ub, len, &slot->len);
         slot->has_reply = true;
+        xrce_fire_on_new(slot->on_new, slot->on_new_user); /* issue 2109 */
         return;
     }
+}
+
+/* Issue 2109 — the service and client `set_on_new_*` slots; same contract and
+ * same locking as `xrce_subscription_set_on_new_message_callback`. */
+rmw_ret_t xrce_service_set_on_new_request_callback(rmw_service_t* service,
+                                                   rmw_event_callback_t callback,
+                                                   const void* user_data) {
+    if (service == NULL || service->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_service_server_state* ss = (xrce_service_server_state*)service->backend_data;
+    if (ss->slot == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_lock(ss->session_state);
+    ss->slot->on_new = callback;
+    ss->slot->on_new_user = callback != NULL ? user_data : NULL;
+    xrce_session_unlock(ss->session_state);
+    return NROS_RMW_RET_OK;
+}
+
+rmw_ret_t xrce_client_set_on_new_response_callback(rmw_client_t* client,
+                                                   rmw_event_callback_t callback,
+                                                   const void* user_data) {
+    if (client == NULL || client->backend_data == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_service_client_state* cs = (xrce_service_client_state*)client->backend_data;
+    if (cs->slot == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    xrce_session_lock(cs->session_state);
+    cs->slot->on_new = callback;
+    cs->slot->on_new_user = callback != NULL ? user_data : NULL;
+    xrce_session_unlock(cs->session_state);
+    return NROS_RMW_RET_OK;
 }
 
 /* ---- Service server -------------------------------------------------- */
@@ -319,6 +357,8 @@ static rmw_ret_t xrce_service_destroy_locked(rmw_service_t* server) {
     if (ss->slot != NULL) {
         ss->slot->active = false;
         ss->slot->req_count = 0;
+        ss->slot->on_new = NULL; /* issue 2109 — destroy clears it */
+        ss->slot->on_new_user = NULL;
     }
     /* Issue 0847 — a CLOSED session has already deleted the uxr session and shut
      * the transport, so the agent dropped this entity with it. Reading
@@ -813,6 +853,8 @@ static rmw_ret_t xrce_client_destroy_locked(rmw_client_t* client) {
 
     if (cs->slot != NULL) {
         cs->slot->active = false;
+        cs->slot->on_new = NULL; /* issue 2109 — destroy clears it */
+        cs->slot->on_new_user = NULL;
         cs->slot->has_reply = false;
     }
     /* Issue 0847 — a CLOSED session has already deleted the uxr session and shut

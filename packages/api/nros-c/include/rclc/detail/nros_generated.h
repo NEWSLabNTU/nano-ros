@@ -8966,7 +8966,7 @@ NROS_PUBLIC struct rclc_wake_state_t rclc_wake_state_get_zero_initialized(void);
  * when a new request arrives.
  *
  * Returns `RCL_RET_UNSUPPORTED` when the backend cannot name the entity
- * whose data arrived (XRCE, uORB, a poll-only link) — it has no
+ * whose data arrived (uORB, a poll-only link) — it has no
  * per-entity new-data slot, so the callback would never fire (issue 1940).
  *
  * # Safety
@@ -9873,7 +9873,7 @@ rcl_ret_t rclc_polling_subscription_init_with_qos(struct rclc_polling_subscripti
  * arrives.
  *
  * Returns `RCL_RET_UNSUPPORTED` when the backend cannot name the entity
- * whose data arrived (XRCE, uORB, a poll-only link) — it has no
+ * whose data arrived (uORB, a poll-only link) — it has no
  * per-entity new-data slot, so the callback would never fire (issue 1940).
  *
  * # Safety
