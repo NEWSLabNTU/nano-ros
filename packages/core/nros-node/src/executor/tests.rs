@@ -14459,20 +14459,29 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
     static TICKS: AtomicU32 = AtomicU32::new(0);
     const RUN_AT_TICK: u32 = 3;
 
-    // Capture what this thread's executor logs and traces. Thread-local: the
-    // log and trace sinks are process-global and other tests run beside this
-    // one.
+    // What the executor logs, captured PROCESS-wide and filtered to this
+    // test's endpoint (issue 2102). Not thread-local: a record raised while
+    // another thread is delivering is held, and the thread holding the
+    // dispatch guard delivers it (`nros_log`'s `drain_and_release`, issue
+    // 2000). Under a loaded parallel run that was another test's thread, so
+    // the line landed in ITS buffer and this one read `[]`. The endpoint is
+    // unique to this test, so a sibling's record cannot match.
+    static LINES: std::sync::Mutex<alloc::vec::Vec<alloc::string::String>> =
+        std::sync::Mutex::new(alloc::vec::Vec::new());
+    const ENDPOINT: &str = "/t4/handler/status";
+    let lines = || LINES.lock().unwrap().clone();
+    // The trace markers ARE thread-local: the executor calls the trace sink
+    // inline, on the thread that spins it.
     std::thread_local! {
-        static LINES: RefCell<alloc::vec::Vec<alloc::string::String>> =
-            const { RefCell::new(alloc::vec::Vec::new()) };
         static MARKS: RefCell<alloc::vec::Vec<(u32, u32)>> =
             const { RefCell::new(alloc::vec::Vec::new()) };
     }
     struct Capture;
     impl nros_log::LogSink for Capture {
         fn log(&self, r: &nros_log::Record<'_>) {
-            if r.message.starts_with("contract violation") {
-                LINES.with(|l| l.borrow_mut().push(alloc::string::String::from(r.message)));
+            let msg = r.message;
+            if msg.starts_with("contract violation") && msg.contains(ENDPOINT) {
+                LINES.lock().unwrap().push(alloc::string::String::from(msg));
             }
         }
     }
@@ -14480,11 +14489,10 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
     static SINKS: &[&dyn nros_log::LogSink] = &[&CAPTURE];
     nros_log::init(SINKS);
     // Issue 1939 -- the sink stays installed after this test returns, and
-    // libtest REUSES its worker threads, so an earlier test on this thread
-    // (b3's route verdict was the one measured) can have logged into this
-    // thread's buffers through it. Start from empty.
-    LINES.with(|l| l.borrow_mut().clear());
+    // libtest REUSES its worker threads. Start from empty.
+    LINES.lock().unwrap().clear();
     MARKS.with(|m| m.borrow_mut().clear());
+    let lost_at_start = nros_log::early::overflowed();
     #[cfg(feature = "trace-callbacks")]
     let _trace_guard = trace_sink_lock();
     #[cfg(feature = "trace-callbacks")]
@@ -14559,11 +14567,8 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
         0,
         "nothing stored before arming"
     );
-    assert!(
-        LINES.with(|l| l.borrow().is_empty()),
-        "nothing reported: {:?}",
-        LINES.with(|l| l.borrow().clone())
-    );
+    nros_log::flush();
+    assert!(lines().is_empty(), "nothing reported: {:?}", lines());
 
     step(&mut executor, 102);
     assert!(executor.monitors_armed(), "RUN armed the monitors");
@@ -14578,7 +14583,7 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
         executor.violations_total(),
         1,
         "exactly one violation stored after arming: {:?}",
-        LINES.with(|l| l.borrow().clone())
+        lines()
     );
     assert_eq!(executor.violations_dropped(), 0);
     assert_eq!(
@@ -14586,8 +14591,23 @@ fn t4_an_overrun_after_arming_is_the_one_stored_violation() {
         suppressed,
         "nothing more suppressed once armed"
     );
-    let lines = LINES.with(|l| l.borrow().clone());
-    assert_eq!(lines.len(), 1, "the drain hook printed it once: {lines:?}");
+    // A held record is delivered by whichever thread holds the dispatch guard,
+    // so give it a bounded moment to arrive. A record that did not fit the
+    // hold queue is LOST and counted (issue 2000), and no wait brings it
+    // back; say so rather than reporting an empty capture as the hook's fault.
+    let deadline = std::time::Instant::now() + core::time::Duration::from_secs(2);
+    while lines().is_empty() && std::time::Instant::now() < deadline {
+        nros_log::flush();
+        std::thread::yield_now();
+    }
+    let lines = lines();
+    assert_eq!(
+        lines.len(),
+        1,
+        "the drain hook printed it once: {lines:?} ({} record(s) lost to nros-log's hold \
+         queue during this test)",
+        nros_log::early::overflowed() - lost_at_start
+    );
     let line = &lines[0];
     assert!(
         line.starts_with("contract violation #1: max-latency-runtime /t4/handler/status measured="),
@@ -14967,6 +14987,16 @@ fn argv_overrides_are_listed_per_node_last_winning() {
         ["b=String(\"x\")", "a=Double(2.5)"],
         "the listener's own `a` comes last, so it wins over both global ones"
     );
+    // Issue 2104 -- the borrowing walk lists the same overrides, in the same
+    // order, and counts them.
+    for n in [talker, listener] {
+        let mut walked = alloc::vec::Vec::new();
+        let count = executor.for_each_argv_param_override_on(n, |k, v| {
+            walked.push(alloc::format!("{k}={v:?}"));
+        });
+        assert_eq!(walked, list(&executor, n));
+        assert_eq!(count, walked.len());
+    }
 }
 
 /// `--params-file`: `/**` reaches every node, a node key only that node, and
