@@ -1854,6 +1854,9 @@ pub const NON_CELL_TESTS: &[(&str, NonCell)] = &[
     ),
     ("xrce_concurrent_entities", NonCell::FeatureLane),
     ("xrce_guard_wake", NonCell::FeatureLane),
+    // Issue 2108 — XRCE's client-side deadline events, a FeatureLane target of
+    // `xrce-wake-test` beside the two above.
+    ("xrce_deadline", NonCell::FeatureLane),
     ("zenoh_archive_symbols", NonCell::CompileCheck),
     ("zenoh_header_parity", NonCell::CompileCheck),
     ("zephyr_leaf_staleness", NonCell::Static),
