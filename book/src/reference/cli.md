@@ -89,7 +89,7 @@ nros setup zephyr                        # the Zephyr SDK + RMW transport source
 | `--workspace [<path>]` | plan from what the workspace at `<path>` (default `.`) declares — its `package.xml` dependencies, build types and the boards its `[image.*]` rows name; prints the plan, installs nothing |
 | `--role <role>` | narrow `--system` to entries of this role (repeatable) |
 | `--check` | run presence probes instead of installing; exits 1 when anything is missing. With `--system`, the OS packages only; alone, every declared class |
-| `--sudo` | with `--system` (or a `--tool` that declares OS build deps): EXECUTE the composed install command instead of printing it |
+| `--sudo` | EXECUTE the plan's composed OS-package install command instead of printing it — with a `<board>` (its tools' and sources' `system = [..]`, before any download), `--workspace`, `--system`, or a `--tool` that declares OS build deps. Any other selector refuses it, naming these |
 | `--build-sources` | provision the whole build-stage source union the repo's tests need (contributors); with `--check`, verify only |
 | `--full` / `--shallow` | full git history / force `--depth 1` for provisioned sources |
 | `-j, --jobs <n>` | packages installed at once (default: CPU count; `NROS_SETUP_JOBS`) |

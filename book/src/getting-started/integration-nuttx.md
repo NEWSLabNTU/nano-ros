@@ -163,17 +163,15 @@ writes `board = "qemu-armv7a-nuttx"`, the platform's default board — and build
 it:
 
 ```bash probe=30 variant=arm
-nros setup qemu-armv7a-nuttx --rmw zenoh
+nros setup qemu-armv7a-nuttx --rmw zenoh --sudo
 ```
 
-If this host lacks a system package the NuttX kernel build needs, `nros
-setup` names it before fetching anything and prints the command that installs
-it — it never runs `sudo` for you. On a fresh Debian/Ubuntu host that command
-is:
-
-```bash probe=35
-sudo apt-get install -y python3-venv unzip
-```
+The NuttX kernel build needs two host packages a fresh Debian/Ubuntu host may
+lack — the Python venv module and `unzip`. `nros setup` names any that are
+missing before fetching anything; `--sudo` lets it run the one install command
+it composed for your package manager (`sudo apt-get install -y python3-venv
+unzip` here) before the download starts. Leave `--sudo` off and it only prints
+that command, and never runs `sudo` for you.
 
 ```bash probe=40 variant=arm
 nros new my_app --platform nuttx --lang c
@@ -307,7 +305,7 @@ a `qemu-system-riscv32` from your distribution (Debian/Ubuntu:
 `qemu-system-misc`):
 
 ```bash probe=30 variant=riscv
-nros setup rv-virt-nuttx --rmw zenoh
+nros setup rv-virt-nuttx --rmw zenoh --sudo
 sudo apt-get install -y qemu-system-misc
 ```
 

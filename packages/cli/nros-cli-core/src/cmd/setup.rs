@@ -150,12 +150,17 @@ pub struct Args {
     /// `[tool.<name>] system = [..]` build deps installs them instead of
     /// bailing with a line for a human to copy.
     ///
+    /// issue 2099 — and to `<board>` and `--workspace`: the board plan's one
+    /// system ask (its tools' and `[source.*]`s' `system = [..]`) is installed
+    /// before any download, through the same code. Every other arm refuses it
+    /// in `route`, naming these four.
+    ///
     /// NOT `requires = "system"`. It was, and that made the `--tool` half above
     /// UNREACHABLE: the implementation for it has existed since issue 1038 and
     /// the parser rejected every invocation that could reach it, so
     /// `nros setup --tool esp32-qemu --sudo` exited 2 on a clap usage error
-    /// while the doc comment promised it worked. Validated below instead, where
-    /// the message can say which of the two flags is missing.
+    /// while the doc comment promised it worked. Validated in `route` instead,
+    /// where the message can name the lines that take it.
     #[arg(long, conflicts_with = "check")]
     pub sudo: bool,
 
@@ -321,9 +326,15 @@ fn route(args: &Args) -> Result<Route> {
     } else {
         Route::Board
     };
-    // What each arm reads. `--sudo` is validated in `run` (issue 1038's
-    // message names its two targets); `--dry-run`/`--full`/`--shallow`/`-j`
-    // shape HOW an arm runs and never name work of their own.
+    // Issue 2099 — `--sudo` is validated here, from the route, so no arm can
+    // drop it by returning early (`--list --sudo` exited 0 before this).
+    if args.sudo
+        && let Some(refusal) = sudo_refusal(route, args)
+    {
+        bail!("{refusal}");
+    }
+    // What each arm reads. `--dry-run`/`--full`/`--shallow`/`-j` shape HOW an
+    // arm runs and never name work of their own.
     let consumes: &[&str] = match route {
         Route::List => &["--list"],
         Route::Licenses => &["--licenses"],
@@ -357,6 +368,134 @@ fn route(args: &Args) -> Result<Route> {
         );
     }
     Ok(route)
+}
+
+/// Issue 2099 — `--sudo` means "run the plan's OS-package install", and four
+/// arms have such a plan: a board, a workspace, `--system`, and `--tool`. Every
+/// other arm installs nothing from the OS, so `--sudo` there is refused with the
+/// lines that DO take it — never ignored, and never answered with a hint that
+/// names a command which would refuse it again.
+fn sudo_refusal(route: Route, args: &Args) -> Option<String> {
+    let installs = match route {
+        Route::System | Route::Workspace => true,
+        Route::Board => args.board.is_some(),
+        Route::Install => !args.tools.is_empty(),
+        Route::List
+        | Route::Licenses
+        | Route::BuildSources
+        | Route::CheckTools
+        | Route::CheckAll => false,
+    };
+    if installs {
+        return None;
+    }
+    let what = if route == Route::Board {
+        "no <board> was given".to_string()
+    } else {
+        format!("{} installs no OS packages", route.describe())
+    };
+    Some(format!(
+        "nros setup: `--sudo` runs the OS-package install a plan asks for, and {what}.\n  \
+         It applies to:\n    \
+         nros setup <board> --sudo           the board's tools and sources\n    \
+         nros setup --workspace [<path>] --sudo   every image's boards, then the OS closure\n    \
+         nros setup --system --sudo          the [system.*] OS-package closure\n    \
+         nros setup --tool <name> --sudo     that tool's own `[tool.<name>] system = [..]`"
+    ))
+}
+
+/// The `nros setup … --sudo` line that re-runs `argv` with the install
+/// executed — what a printed system ask offers beside its OS command (issue
+/// 2099). Built from the caller's own selectors so the line it names is one
+/// [`route`] accepts.
+fn sudo_rerun_line(argv: &[&str]) -> String {
+    let mut line = String::from("nros setup");
+    for a in argv {
+        line.push(' ');
+        line.push_str(a);
+    }
+    line.push_str(" --sudo");
+    line
+}
+
+/// Run a composed install command through `sh -c` — the production executor
+/// behind [`install_system_ask`].
+fn run_install_command(cmd: &str) -> Result<()> {
+    let status = std::process::Command::new("sh")
+        .args(["-c", cmd])
+        .status()
+        .wrap_err("spawn the native package manager")?;
+    if !status.success() {
+        bail!("system package install failed ({status}): {cmd}");
+    }
+    Ok(())
+}
+
+/// Issue 2099 — the ONE place a plan's OS-package ask is installed: `--system
+/// --sudo`, `--tool <name> --sudo` and `<board> --sudo` all come here, so the
+/// three cannot compose, announce or run the command differently. `exec` runs
+/// the composed command; production passes [`run_install_command`], tests a
+/// recorder (no test runs `sudo`). Returns whether a command ran.
+fn install_system_ask(
+    ask: &session::SystemAsk,
+    prereqs: &std::collections::BTreeMap<String, crate::orchestration::sdk_index::PrereqDep>,
+    manager: Option<&str>,
+    ctx: &crate::orchestration::sdk_index::PrereqContext,
+    who: &str,
+    exec: &mut dyn FnMut(&str) -> Result<()>,
+) -> Result<bool> {
+    if ask.os.is_empty() {
+        return Ok(false);
+    }
+    let Some(mgr) = manager else {
+        bail!(
+            "{who}: system package(s) missing ({}) and no supported package manager detected \
+             (apt/dnf/pacman/brew; map your platform in nros-sdk-index.toml)",
+            ask.os.keys().cloned().collect::<Vec<_>>().join(", ")
+        );
+    };
+    match ask.os_command(prereqs, mgr, ctx) {
+        Some(cmd) => {
+            println!("{who}: running:\n  {cmd}");
+            exec(&cmd)?;
+            Ok(true)
+        }
+        None => {
+            println!("{who}: nothing to compose for {mgr}.");
+            Ok(false)
+        }
+    }
+}
+
+/// Resolve a plan, and under `--sudo` install its OS ask BEFORE anything is
+/// fetched, then resolve again — what the probes answer after the install
+/// decides what is still asked (a store-provided key `--sudo` cannot install
+/// stays). Shared by `--tool` and `<board>` (issue 2099), so both run the ask
+/// through [`install_system_ask`] and neither consults the session ledger under
+/// `--sudo`: "you were told" is not "installed".
+#[allow(clippy::too_many_arguments)]
+fn resolve_installing_system<'i>(
+    resolve: &mut dyn FnMut(&std::collections::BTreeSet<String>) -> Result<SessionPlan<'i>>,
+    ledger: &SessionLedger,
+    run_sudo: bool,
+    dry_run: bool,
+    prereqs: &std::collections::BTreeMap<String, crate::orchestration::sdk_index::PrereqDep>,
+    manager: Option<&str>,
+    who: &str,
+    exec: &mut dyn FnMut(&str) -> Result<()>,
+) -> Result<SessionPlan<'i>> {
+    let asked = if run_sudo {
+        Default::default()
+    } else {
+        ledger.asked()
+    };
+    let plan = resolve(&asked)?;
+    if !run_sudo || dry_run || plan.system.is_empty() {
+        return Ok(plan);
+    }
+    let ctx = crate::orchestration::sdk_index::PrereqContext::from_env();
+    install_system_ask(&plan.system, prereqs, manager, &ctx, who, exec)?;
+    resolve(&asked)
 }
 
 /// The [`Route::Install`] arm: BOTH halves of `--tool`/`--source`, tools
@@ -431,16 +570,6 @@ pub fn run(args: Args) -> Result<()> {
             .clone()
             .unwrap_or_else(|| std::path::PathBuf::from("."));
         return run_workspace_install(&index, &index_path, &ws, &args);
-    }
-    // `--sudo` means "execute the install", and there are exactly two things it
-    // can install: the `[system.*]` closure (`--system`) or a tool's own
-    // `[tool.<name>] system = [..]` build deps (`--tool`). Alone it names no
-    // target. Checked here rather than as `requires = "system"` on the arg,
-    // which is what made the `--tool` form unreachable (issue 1038).
-    if args.sudo && !args.system && args.tools.is_empty() && route != Route::Workspace {
-        bail!(
-            "`--sudo` executes an install and needs to know WHAT to install.\n               --system --sudo   the `[system.*]` OS-package closure\n               --tool <name> --sudo   that tool's own `[tool.<name>] system = [..]` build deps"
-        );
     }
     if route == Route::System {
         // The index lives AT the repo root, so its parent is the base a
@@ -558,12 +687,17 @@ pub fn run(args: Args) -> Result<()> {
         }
     };
     let board = board.as_str();
+    let mut rerun = vec![board];
+    if let Some(rmw) = args.rmw.as_deref() {
+        rerun.extend(["--rmw", rmw]);
+    }
 
     provision_boards(
         &index,
         &index_path,
         &[(board.to_string(), args.rmw.clone())],
         &args,
+        &sudo_rerun_line(&rerun),
     )
 }
 
@@ -576,6 +710,7 @@ fn provision_boards(
     index_path: &Path,
     boards: &[(String, Option<String>)],
     args: &Args,
+    sudo_rerun: &str,
 ) -> Result<()> {
     let mut packages: Vec<&str> = Vec::new();
     for (board, rmw) in boards {
@@ -620,17 +755,26 @@ fn provision_boards(
     // fetched: every `plan_install`, and one system-package ask for the union of
     // what its tools declare. The loop that used to interleave deciding with
     // downloading is `run_pipelined` now, over this plan (E3).
-    let plan = SessionPlan::resolve(
-        index,
-        &packages,
-        &PlanInputs {
-            root: &root,
-            host: &host,
-            prefix_override: None,
-            mode: Mode::Board,
-        },
-        &mut |k| prereq_state(index, &prereqs, k, repo_root.as_deref(), offline),
-        &ledger.asked(),
+    //
+    // Issue 2099 — under `--sudo` that ask is INSTALLED here, before any
+    // download, through the same code `--tool --sudo` and `--system --sudo` use;
+    // the plan is then resolved again over what the probes answer after it.
+    let inputs = PlanInputs {
+        root: &root,
+        host: &host,
+        prefix_override: None,
+        mode: Mode::Board,
+    };
+    let mut state = |k: &str| prereq_state(index, &prereqs, k, repo_root.as_deref(), offline);
+    let plan = resolve_installing_system(
+        &mut |asked| SessionPlan::resolve(index, &packages, &inputs, &mut state, asked),
+        &ledger,
+        args.sudo,
+        args.dry_run,
+        &prereqs,
+        detect_package_manager(),
+        &format!("nros setup {board} --sudo"),
+        &mut run_install_command,
     )?;
     // issue 0374 — announce the source builds together, before the first fetch.
     warn_source_builds(&plan.source_builds(), &host);
@@ -643,6 +787,9 @@ fn provision_boards(
              missing — asked once, before any download (not fatal here: the tools still \
              install, and one that cannot load a library fails its smoke check):"
         ),
+        // Under `--sudo` the install already ran; what is still asked is what
+        // it could not answer, so re-running with it would change nothing.
+        (!args.sudo).then_some(sudo_rerun),
     );
     let unavailable = plan.unavailable();
     if !args.dry_run && !unavailable.is_empty() {
@@ -1151,12 +1298,6 @@ fn install_tools(
     let prereqs = index.prereqs();
     let offline = std::env::var_os("NROS_OFFLINE").is_some();
     let ledger = SessionLedger::from_env();
-    // `--sudo` never consults the ledger: "you were told" is not "installed".
-    let asked = if run_sudo {
-        Default::default()
-    } else {
-        ledger.asked()
-    };
     let inputs = PlanInputs {
         root: &root,
         host: &host,
@@ -1164,39 +1305,26 @@ fn install_tools(
         mode: Mode::Tools,
     };
     let mut state = |k: &str| prereq_state(index, &prereqs, k, None, offline);
-    let mut plan = SessionPlan::resolve(index, names, &inputs, &mut state, &asked)?;
+    let plan = resolve_installing_system(
+        &mut |asked| SessionPlan::resolve(index, names, &inputs, &mut state, asked),
+        &ledger,
+        run_sudo,
+        dry_run,
+        &prereqs,
+        detect_package_manager(),
+        "nros setup --tool --sudo",
+        &mut run_install_command,
+    )?;
     warn_source_builds(&plan.source_builds(), &host);
-
-    if run_sudo && !dry_run && !plan.system.is_empty() {
-        let ctx = crate::orchestration::sdk_index::PrereqContext::from_env();
-        let Some(mgr) = detect_package_manager() else {
-            bail!(
-                "nros setup --tool --sudo: system package(s) missing ({}) and no supported \
-                 package manager detected",
-                plan.system.asked_keys().collect::<Vec<_>>().join(", ")
-            );
-        };
-        if let Some(cmd) = plan.system.os_command(&prereqs, mgr, &ctx) {
-            println!("nros setup --tool --sudo: running:\n  {cmd}");
-            let status = std::process::Command::new("sh")
-                .args(["-c", &cmd])
-                .status()
-                .wrap_err("spawn the native package manager")?;
-            if !status.success() {
-                bail!("system package install for the plan's tools failed ({status})");
-            }
-        }
-        // Re-resolve: what the probes answer NOW decides what is still blocked
-        // — including a store-provided key, which `--sudo` cannot install.
-        plan = SessionPlan::resolve(index, names, &inputs, &mut state, &asked)?;
-    }
+    let rerun: Vec<&str> = names.iter().flat_map(|n| ["--tool", n]).collect();
     announce_system_ask(
         index,
         &plan.system,
         &ledger,
         "nros setup --tool: system package(s) this host is missing — asked once, before any \
          download; a tool that needs them is not installed (declared as [tool.<name>] \
-         system = [..]; re-run with --sudo to install them first):",
+         system = [..]):",
+        Some(&sudo_rerun_line(&rerun)),
     );
 
     let lock_path = project_lock_path();
@@ -1223,9 +1351,16 @@ fn announce_system_ask(
     ask: &session::SystemAsk,
     ledger: &SessionLedger,
     headline: &str,
+    sudo_rerun: Option<&str>,
 ) {
     let ctx = crate::orchestration::sdk_index::PrereqContext::from_env();
-    let text = ask.render(&index.prereqs(), detect_package_manager(), &ctx, headline);
+    let text = ask.render(
+        &index.prereqs(),
+        detect_package_manager(),
+        &ctx,
+        headline,
+        sudo_rerun,
+    );
     if !text.is_empty() {
         eprint!("{text}");
     }
@@ -2778,6 +2913,14 @@ fn run_system(
         );
     }
 
+    // The line that installs exactly this ask (issue 2099) — `--check`
+    // conflicts with `--sudo`, so it is never the line being run here.
+    let mut rerun_argv = vec!["--system"];
+    for r in roles {
+        rerun_argv.extend(["--role", r.as_str()]);
+    }
+    let system_rerun = sudo_rerun_line(&rerun_argv);
+
     let mut prereqs = index.prereqs();
     if !roles.is_empty() {
         // Narrowing is by ROLE, not by name: `just setup linux` wants the host
@@ -2914,7 +3057,8 @@ fn run_system(
         bail!(
             "{} system package(s) missing.\n{}",
             missing.len(),
-            ask.remedy(&prereqs, manager, &ctx).trim_end()
+            ask.remedy(&prereqs, manager, &ctx, Some(&system_rerun))
+                .trim_end()
         );
     }
 
@@ -2958,24 +3102,22 @@ fn run_system(
         "nros setup --system ({mgr}): {} entr(ies) not confirmed present:",
         ask.os.len() + ask.store.len()
     );
-    let text = ask.render(&prereqs, Some(mgr), &ctx, &headline);
+    // Under `--sudo` the command is about to run, so offering to re-run with it
+    // would name the line already being executed.
+    let rerun = (!run_sudo).then_some(system_rerun.as_str());
+    let text = ask.render(&prereqs, Some(mgr), &ctx, &headline, rerun);
     if !text.is_empty() {
         print!("{text}");
     }
     if run_sudo {
-        match ask.os_command(&prereqs, mgr, &ctx) {
-            Some(cmd) => {
-                println!("nros setup --system --sudo: running:\n  {cmd}");
-                let status = std::process::Command::new("sh")
-                    .args(["-c", &cmd])
-                    .status()
-                    .wrap_err("spawn the native package manager")?;
-                if !status.success() {
-                    bail!("system package install failed ({status})");
-                }
-            }
-            None => println!("nros setup --system: nothing to compose for {mgr}."),
-        }
+        install_system_ask(
+            &ask,
+            &prereqs,
+            Some(mgr),
+            &ctx,
+            "nros setup --system --sudo",
+            &mut run_install_command,
+        )?;
     } else {
         ledger.record(ask.asked_keys());
     }
@@ -4657,12 +4799,136 @@ mod tests {
                 Some("apt"),
                 &crate::orchestration::sdk_index::PrereqContext::from_env(),
                 "ask:",
+                None,
             );
             assert!(
                 text.contains("python3-venv") && text.contains("unzip"),
                 "{board}: the apt command names both:\n{text}"
             );
         }
+    }
+
+    /// Issue 2099, against the REAL index: `nros setup <nuttx board> --sudo`
+    /// RUNS the plan's ask — one composed command naming both packages, through
+    /// the same `install_system_ask` `--tool --sudo` uses — before anything is
+    /// fetched, then resolves again over what the probes answer after it. The
+    /// executor is a recorder: no test runs `sudo`.
+    #[test]
+    fn shipped_index_nuttx_board_sudo_installs_the_plans_ask_once() {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../nros-sdk-index.toml");
+        let idx = SdkIndex::load(&path).unwrap();
+        let prereqs = idx.prereqs();
+        let root = crate::test_support::scratch_dir("nuttx-board-sudo");
+        let host = host_key();
+        let ledger = SessionLedger::at(&root.join("asked"));
+        for board in ["qemu-armv7a-nuttx", "rv-virt-nuttx"] {
+            let pkgs = resolve_packages_with_rmw(&idx, board, None).unwrap();
+            let inputs = PlanInputs {
+                root: &root,
+                host: &host,
+                prefix_override: None,
+                mode: Mode::Board,
+            };
+            for (sudo, dry_run, want_runs) in [(true, false, 1), (false, false, 0), (true, true, 0)]
+            {
+                let installed = std::cell::Cell::new(false);
+                let mut ran: Vec<String> = Vec::new();
+                let mut state = |k: &str| {
+                    if ["python3-venv", "unzip"].contains(&k) && !installed.get() {
+                        PrereqState::Missing
+                    } else {
+                        PrereqState::Present
+                    }
+                };
+                let plan = resolve_installing_system(
+                    &mut |asked| SessionPlan::resolve(&idx, &pkgs, &inputs, &mut state, asked),
+                    &ledger,
+                    sudo,
+                    dry_run,
+                    &prereqs,
+                    Some("apt"),
+                    "test",
+                    &mut |cmd| {
+                        ran.push(cmd.to_string());
+                        installed.set(true);
+                        Ok(())
+                    },
+                )
+                .unwrap();
+                let case = format!("{board} sudo={sudo} dry_run={dry_run}");
+                assert_eq!(ran.len(), want_runs, "{case}: ran {ran:?}");
+                if let Some(cmd) = ran.first() {
+                    assert!(cmd.starts_with("sudo apt-get install -y"), "{case}: {cmd}");
+                    assert!(
+                        cmd.contains("python3-venv") && cmd.contains("unzip"),
+                        "{case}: {cmd}"
+                    );
+                    assert!(
+                        plan.system.is_empty(),
+                        "{case}: the plan was not resolved again after the install"
+                    );
+                } else {
+                    assert!(
+                        plan.system.os.contains_key("python3-venv")
+                            && plan.system.os.contains_key("unzip"),
+                        "{case}: without an install the ask stands"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Issue 2099 — the ask's printed hint names a line that accepts `--sudo`,
+    /// or no line at all; never the bare "(or re-run with --sudo)" that was
+    /// printed on paths refusing it.
+    #[test]
+    fn a_printed_ask_offers_the_callers_own_sudo_line_or_none() {
+        let idx = SdkIndex::parse("[prereq.k1]\napt = [\"p1\"]\n").unwrap();
+        let mut state = |_: &str| PrereqState::Missing;
+        let ask = session::SystemAsk::collect(
+            [("k1", "qemu-armv7a-nuttx")],
+            &mut state,
+            &Default::default(),
+            &Default::default(),
+            false,
+        );
+        let ctx = crate::orchestration::sdk_index::PrereqContext::from_env();
+        let line = sudo_rerun_line(&["qemu-armv7a-nuttx"]);
+        let offered = ask.render(&idx.prereqs(), Some("apt"), &ctx, "ask:", Some(&line));
+        assert!(
+            offered.contains("or run `nros setup qemu-armv7a-nuttx --sudo`"),
+            "{offered}"
+        );
+        let plain = ask.render(&idx.prereqs(), Some("apt"), &ctx, "ask:", None);
+        assert!(plain.contains("Install with:\n  sudo apt-get"), "{plain}");
+        for text in [&offered, &plain] {
+            assert!(!text.contains("re-run with --sudo"), "{text}");
+        }
+    }
+
+    /// No package manager: the shared installer refuses naming the keys, and
+    /// runs nothing.
+    #[test]
+    fn install_system_ask_without_a_manager_refuses_and_runs_nothing() {
+        let idx = SdkIndex::parse("[prereq.k1]\napt = [\"p1\"]\n").unwrap();
+        let mut state = |_: &str| PrereqState::Missing;
+        let ask = session::SystemAsk::collect(
+            [("k1", "b")],
+            &mut state,
+            &Default::default(),
+            &Default::default(),
+            false,
+        );
+        let ctx = crate::orchestration::sdk_index::PrereqContext::from_env();
+        let mut ran = 0;
+        let err = install_system_ask(&ask, &idx.prereqs(), None, &ctx, "who", &mut |_| {
+            ran += 1;
+            Ok(())
+        })
+        .unwrap_err();
+        assert_eq!(ran, 0);
+        assert!(format!("{err}").contains("k1"), "{err}");
     }
 
     #[test]
@@ -5478,7 +5744,14 @@ fn run_workspace_install(
             ws.display()
         );
     } else {
-        provision_boards(index, index_path, &boards, args)?;
+        let ws_arg = ws.display().to_string();
+        provision_boards(
+            index,
+            index_path,
+            &boards,
+            args,
+            &sudo_rerun_line(&["--workspace", &ws_arg]),
+        )?;
     }
     if boards
         .iter()
@@ -6254,12 +6527,84 @@ mod workspace_scan_tests {
                 Route::Install,
             ),
             (&["--tool", "qemu", "--sudo"], Route::Install),
+            // Issue 2099 — a board and a workspace install their plan's ask.
+            (&["qemu-armv7a-nuttx", "--sudo"], Route::Board),
+            (&["linux", "--rmw", "zenoh", "--sudo"], Route::Board),
+            (&["--workspace", "--sudo"], Route::Workspace),
             (&["--list"], Route::List),
             (&["--licenses"], Route::Licenses),
             (&["--workspace"], Route::Workspace),
         ];
         for (argv, want) in cases {
             assert_eq!(routed(argv).unwrap(), *want, "{argv:?}");
+        }
+    }
+
+    /// Issue 2099 — `--sudo` on an arm with no OS install to run is REFUSED,
+    /// never dropped, and the refusal names only lines that accept it. Before,
+    /// `--list --sudo` / `--licenses --sudo` exited 0 (those arms returned
+    /// before the check), and the message omitted `<board> --sudo`.
+    #[test]
+    fn sudo_on_an_arm_with_nothing_to_install_is_refused_with_lines_that_take_it() {
+        let cases: &[&[&str]] = &[
+            &["--sudo"],
+            &["--list", "--sudo"],
+            &["--licenses", "--sudo"],
+            &["--build-sources", "--sudo"],
+            &["--source", "nuttx", "--sudo"],
+        ];
+        for argv in cases {
+            let msg = format!(
+                "{:#}",
+                routed(argv).expect_err(&format!("{argv:?} must be refused"))
+            );
+            assert!(msg.contains("`--sudo` runs"), "{argv:?}: {msg}");
+            assert!(!msg.contains("re-run with --sudo"), "{argv:?}: {msg}");
+            // Every line it offers is one `route` accepts, placeholders filled.
+            let offered: Vec<&str> = msg
+                .lines()
+                .filter_map(|l| l.trim_start().strip_prefix("nros setup "))
+                .collect();
+            assert_eq!(offered.len(), 4, "{argv:?}: {msg}");
+            for line in offered {
+                let words: Vec<&str> = line
+                    .split("   ")
+                    .next()
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|w| match w {
+                        "<board>" => "qemu-armv7a-nuttx",
+                        "<name>" => "qemu",
+                        w => w,
+                    })
+                    .filter(|w| *w != "[<path>]")
+                    .collect();
+                assert!(
+                    routed(&words).is_ok(),
+                    "{argv:?}: the refusal offers `nros setup {line}`, which is refused too"
+                );
+            }
+        }
+    }
+
+    /// Issue 2099 — the line a printed ask offers ("or run `…`") is built from
+    /// the caller's own selectors, and every shape a call site builds routes to
+    /// an arm that runs the install.
+    #[test]
+    fn every_sudo_rerun_line_an_ask_offers_is_accepted() {
+        let shapes: &[(&[&str], Route)] = &[
+            (&["qemu-armv7a-nuttx"], Route::Board),
+            (&["rv-virt-nuttx", "--rmw", "zenoh"], Route::Board),
+            (&["--tool", "qemu", "--tool", "ninja"], Route::Install),
+            (&["--system"], Route::System),
+            (&["--system", "--role", "package"], Route::System),
+            (&["--workspace", "some/ws"], Route::Workspace),
+        ];
+        for (argv, want) in shapes {
+            let line = sudo_rerun_line(argv);
+            assert!(line.ends_with(" --sudo"), "{line}");
+            let words: Vec<&str> = line.split_whitespace().skip(2).collect();
+            assert_eq!(routed(&words).unwrap(), *want, "{line}");
         }
     }
 }
