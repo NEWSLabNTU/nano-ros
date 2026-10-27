@@ -115,11 +115,14 @@ pub fn run_platform() {
         &env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts"),
     ));
 
-    // `-bundle` keeps the port a standalone `lib*.a` (cc wrote it to OUT_DIR)
-    // and emits a trailing `-l` at the FINAL binary link — AFTER every rlib,
-    // so the referencers' `nros_platform_*` undefineds resolve. `+whole-archive`
-    // pulls the whole port (platform.c + net.c) regardless of which members are
-    // referenced, making the link order-independent (RFC-0042 D3). cc's auto
+    // `-bundle` keeps the port a standalone `lib*.a` (cc wrote it to OUT_DIR),
+    // which `+whole-archive` needs: a bundled archive cannot be whole-archived.
+    // It does NOT move the port after the referencers. rustc puts a `-bundle`
+    // lib's `-l` right after the crate that declared it, not after every rlib
+    // (measured, issue 2103), and the referencers (`libnros_rmw_zenoh`,
+    // `libzpico_sys`) can still follow it. What resolves them is
+    // `+whole-archive`, which pulls the whole port (platform.c + net.c) at that
+    // point, so the order no longer matters (RFC-0042 D3). cc's auto
     // search-path is suppressed too, so re-emit OUT_DIR as the search dir.
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts");
     println!("cargo:rustc-link-search=native={out_dir}");
@@ -183,9 +186,11 @@ pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
     let mut seam = cc::Build::new();
     // Same rationale as `run_platform`: emit the link directives by hand
     // (`-bundle,+whole-archive`) rather than cc's default `+bundle`, so the seam
-    // object lands as a standalone `lib*.a` pulled whole at the FINAL image link
-    // — after every rlib, so the C++ entry's `nros_board_nuttx_run_tiers`
-    // reference resolves regardless of archive order (issue-0048 / RFC-0042 D3).
+    // object lands as a standalone `lib*.a` pulled WHOLE at the image link. The
+    // whole-archive is what makes the C++ entry's `nros_board_nuttx_run_tiers`
+    // reference resolve regardless of archive order (issue-0048 / RFC-0042 D3);
+    // `-bundle` alone places the `-l` right after this crate, not after every
+    // rlib (issue 2103).
     seam.cargo_metadata(false);
     flat_kernel_code_model(&mut seam);
     seam.compiler(&nuttx_cross);
