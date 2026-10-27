@@ -13,7 +13,7 @@ class = "rust_reading_listener_pkg::ReadingListener"
 name = "reading_listener"
 
 [dependencies]
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
+nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
 custom_msgs = { path = "../../generated/custom_msgs", default-features = false }  # nros-managed

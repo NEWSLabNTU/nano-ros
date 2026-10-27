@@ -1,17 +1,18 @@
 ---
 id: 2085
 title: "24 example workspace packages path-depend on `nros` by five `..`, so no in-tree workspace survives being copied out"
-status: open
+status: resolved
 type: tech-debt
 area: [examples, build, workspace]
 severity: medium
 found: 2026-10-26
+resolved: 2026-10-27
 related: [rfc-0085, rfc-0026, rfc-0067, phase-452, issue-0905, issue-2046]
 ---
 
 # Example workspace packages reach `nros` by repository layout
 
-**Home:** [phase-452](../roadmap/phase-452-copy-out-front-door.md) W8. Needs a
+**Home:** [phase-452](../../roadmap/phase-452-copy-out-front-door.md) W8. Needs a
 maintainer ruling first: it reverses an RFC-0085 finding (below).
 
 ## Problem
@@ -59,7 +60,7 @@ right thing: `nros = { version = "*" }`, with the path supplied by the generated
 
 ## Why it is still this way
 
-[RFC-0085](../design/0085-zephyr-workspace-and-west-handoff.md) (§ "What it found
+[RFC-0085](../../design/0085-zephyr-workspace-and-west-handoff.md) (§ "What it found
 on its first run", line ~765) met exactly this while testing two-tree builds
 (issue 0905) and ruled that copying an in-tree workspace out "was the wrong
 reproducer, not a product bug. Such a workspace is not portable by
@@ -88,3 +89,37 @@ which is the gap.
    cannot be written this way.
 4. Acceptance: the copied `launch` workspace above syncs and builds, and so does
    `rust` (the largest).
+
+## Resolution (2026-10-27)
+
+**Ruling (maintainer, 2026-10-27): option A — in-tree workspaces are copy-out.**
+RFC-0085's "not portable by construction" paragraph carries the amendment;
+RFC-0026's copy-out contract and `examples/README.md` now cover
+`examples/workspaces/` and show the `cp -r … && nros sync && nros build` flow.
+The options weighed were A (name `nros` by version), B (keep the paths,
+document workspaces as in-tree only) and C (an `nros ws export` verb that
+rewrites them); A was the only one that removed the second spelling rather
+than documenting or translating it.
+
+- All 24 manifests: `nros = { path = "../../../../../packages/api/nros", … }`
+  → `nros = { version = "*", … }`, nothing else. They were the only path
+  dependencies out of `examples/` in any tracked example manifest.
+- New fast-line gate `just check example-path-deps`
+  (`scripts/check-example-path-deps.py`): no `path` in any dependency table
+  (`target.*`, `dev-`, `build-`, sub-tables) or `[patch.*]` row of a tracked
+  example manifest may resolve outside `examples/`. It runs its 9-case
+  negative control on every invocation; against main's tree it reports
+  exactly the 24 rows, against this one 0.
+
+Measured on copies made from the tracked file set outside the checkout, each
+`nros sync` + `nros build <image>`:
+
+| workspace | packages changed | result |
+| --- | --- | --- |
+| `launch` | 2 | builds `linux_entry` |
+| `rust` | 6 | `demo_bringup:linux` builds `linux_entry` |
+| `features` | 8 | all 6 Rust linux images build (`params`, `qos`, `lifecycle`, `remap`, `before_boot`, `custom_msg`) |
+
+`nros build --all` on the `features` copy stops at
+`demo_bringup:zephyr_rust_qos` with issue 1419's census/contract refusal —
+a Zephyr image this change does not touch.

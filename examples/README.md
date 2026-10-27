@@ -75,6 +75,14 @@ Each example is a standalone Cargo + CMake package — no walk-up in the manifes
 
   A single-package **Rust** leaf is its own entry, and on a supported board it names no board crate: it depends on `<pkg>_nros_selection = { path = "build/nros/selection" }`, which `nros sync` / `nros build` generate with the image's board crate, RMW backend and runtime crates (RFC-0098 D6), so switching it to another board is the `[image.*] board` line, as it is for a C/C++ leaf and a workspace ([issue 1305](../docs/issues/archived/1305-single-package-board-crate-dep-not-generated.md)).
 
+- **Workspaces** — `examples/workspaces/<ws>/` is copy-out as a whole, by the same rule: its packages name nano-ros crates by version and `nros sync` writes the patch for every member ([issue 2085](../docs/issues/archived/2085-workspace-packages-path-dep-nros-by-repo-layout.md)). A `path` dependency stays inside the copy (a sibling package, a `generated/` message crate); one that leaves `examples/` is refused by `just check example-path-deps`.
+
+  ```bash
+  cp -r examples/workspaces/launch ~/my_robot && cd ~/my_robot
+  source /path/to/nano-ros/activate.sh
+  nros sync && nros build
+  ```
+
 - **C / C++** — every CMakeLists finds nano-ros with `find_package(nano_ros)`, and a copied-out leaf names the checkout with `-Dnano_ros_ROOT=<path>`, the hint that call reads (RFC-0103 D6; `nros build` passes it for you). That hint says where the checkout is and nothing else — the board, the RMW, the domain and the network identity come from the leaf's `system.toml`, not from `-D` flags and not from the retired `package.xml` `<nano_ros deploy= board= rmw=/>` tuple. A single-package C/C++ leaf needs no `nros sync`: its message bindings are a CMake-time output. Copy the directory anywhere, then:
 
   ```bash

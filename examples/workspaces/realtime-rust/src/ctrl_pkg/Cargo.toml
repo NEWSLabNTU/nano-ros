@@ -18,7 +18,7 @@ class = "ctrl_pkg::Control"
 name = "control_node"
 
 [dependencies]
-nros = { path = "../../../../../packages/api/nros", default-features = false, features = [
+nros = { version = "*", default-features = false, features = [
     "alloc",
     "rmw-cffi", "macros"] }
 std_msgs = { path = "../../generated/std_msgs", default-features = false }  # nros-managed
