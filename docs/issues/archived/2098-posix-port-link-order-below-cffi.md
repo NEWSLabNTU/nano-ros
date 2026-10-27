@@ -52,12 +52,21 @@ them.
 
 - compiles `c/port_anchor.c`, one object holding a reference to
   `nros_platform_clock_ns`, and links it `+whole-archive`;
-- links the port `-bundle`, so it gets its own place on the line, right after
-  the anchor. Bundled, it sat inside the rlib, ahead of the anchor.
+- keeps the port BUNDLED, which is what puts it inside a staticlib built from
+  the graph (`libnros_c.a`);
+- links a byte-identical TAIL copy of the port `-bundle`, which rustc places
+  right after the anchor. The bundled copy sits inside cffi's rlib, ahead of
+  the anchor, so it cannot answer the anchor's reference.
 
-The anchor's reference is undefined by the time the port is scanned, so
-`platform.o` is pulled at cffi's position. Every symbol the lower crates call
-is in that member, so the one reference covers the class.
+The anchor's reference is undefined by the time the tail is scanned, so
+`platform.o` is pulled there, still ahead of `nros-log`. Every symbol the lower
+crates call is in that member, so the one reference covers the class. Both
+copies are demand-driven with identical members, so no symbol is defined
+twice. A staticlib does not carry a `-bundle` lib, so it holds the port once.
+
+A first version linked the port `-bundle` only. That dropped it from
+`libnros_c.a`, and `check-staticlib-symbols` and `check-c` failed with every
+`nros_platform_*` undefined. That is why there are two copies.
 
 Not `+whole-archive` on the port, the other half of the NuttX idiom. The port
 must stay demand-driven: `nros-rmw-xrce-cffi` compiles its own copy of the same
