@@ -1741,6 +1741,73 @@ impl<'e, 's> Node<'e, 's> {
     ) -> bool {
         self.executor.remove_on_set_parameters_callback(handle)
     }
+
+    // phase-515 R10 stage 1b -- the rest of the per-node parameter surface,
+    // which only the executor's node-id-keyed forms carried before those moved
+    // behind `ExecutorFfi`.
+
+    /// The `-p` / `--params-file` overrides that apply to this node, one per
+    /// name — rclcpp's `NodeParametersInterface::get_parameter_overrides()`
+    /// (issue 2057).
+    #[cfg(feature = "alloc")]
+    pub fn argv_param_overrides(
+        &self,
+    ) -> impl Iterator<Item = (&str, nros_params::ParameterValue)> + '_ {
+        self.executor.argv_param_overrides_on(self.node_id)
+    }
+
+    /// [`argv_param_overrides`](Self::argv_param_overrides), one call of `f`
+    /// per override with the value borrowed; returns how many there were.
+    #[cfg(feature = "alloc")]
+    pub fn for_each_argv_param_override(
+        &self,
+        f: impl FnMut(&str, &nros_params::ParameterValue),
+    ) -> usize {
+        self.executor
+            .for_each_argv_param_override_on(self.node_id, f)
+    }
+
+    /// rclc's LOCAL typed set: type and on-set hooks are checked, read-only
+    /// and range are not (rclc's owner of a parameter is not bound by them).
+    pub fn set_parameter_local(
+        &mut self,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> Result<(), nros_params::ParameterError> {
+        self.executor
+            .set_parameter_local_on(self.node_id, name, value)
+    }
+
+    /// Publish no `/parameter_events` for this node (rclcpp's
+    /// `start_parameter_event_publisher(false)`).
+    #[cfg(feature = "param-services")]
+    pub fn disable_parameter_events(&mut self) {
+        self.executor.disable_parameter_events_on(self.node_id)
+    }
+
+    /// Publish this node's parameter changes on `/parameter_events`.
+    #[cfg(feature = "param-services")]
+    pub fn enable_parameter_events(&mut self) -> Result<(), NodeError> {
+        self.executor.enable_parameter_events_on(self.node_id)
+    }
+
+    /// A remote `NOT_SET` deletes the parameter (rclc) instead of being
+    /// refused (rclcpp).
+    pub fn delete_parameters_on_not_set(&mut self, on: bool) {
+        self.executor
+            .delete_parameters_on_not_set_on(self.node_id, on)
+    }
+
+    /// [`set_parameters_atomically`](Self::set_parameters_atomically) with
+    /// element `i` filled into one scratch value by `fill(i, slot)`.
+    pub fn set_parameters_atomically_with<'x>(
+        &mut self,
+        count: usize,
+        fill: impl FnMut(usize, &mut nros_params::ParameterValue) -> Option<&'x str>,
+    ) -> Result<(), nros_params::ParameterError> {
+        self.executor
+            .set_parameters_atomically_with_on(self.node_id, count, fill)
+    }
 }
 
 impl<'e, 's> Node<'e, 's> {

@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::delete_parameters_on_not_set",
+  "verdict": "extension",
+  "why": "phase-515 R10 stage 1b (2026-10-27): the executor's node-id-keyed parameter forms left the Rust user surface (behind the sealed `nros_node::executor::ffi::ExecutorFfi`, as R9 stage 1 did for the C-shaped entry points), so the node is the one user-facing parameter receiver, as rclrs's is. `Node::delete_parameters_on_not_set` forwards to `Executor::delete_parameters_on_not_set_on(node_id, ...)`; the store is still the executor's one table (phase-426 W1). phase-491 W2: a remote `NOT_SET` deletes the parameter (rclc) instead of being refused (rclcpp). rclrs has no counterpart. Test: `packages/core/nros-node/src/executor/tests.rs` (`the_node_carries_the_whole_parameter_surface`)."
+}

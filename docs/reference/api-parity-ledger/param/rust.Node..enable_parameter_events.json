@@ -1,0 +1,5 @@
+{
+  "key": "rust:Node::enable_parameter_events",
+  "verdict": "extension",
+  "why": "phase-515 R10 stage 1b (2026-10-27): the executor's node-id-keyed parameter forms left the Rust user surface (behind the sealed `nros_node::executor::ffi::ExecutorFfi`, as R9 stage 1 did for the C-shaped entry points), so the node is the one user-facing parameter receiver, as rclrs's is. `Node::enable_parameter_events` forwards to `Executor::enable_parameter_events_on(node_id, ...)`; the store is still the executor's one table (phase-426 W1). phase-491 W3 (RFC-0105 D8): publish this node's parameter changes on `/parameter_events` (rclc's `notify_changed_over_dds`). rclrs has no counterpart. Test: `packages/core/nros-node/src/executor/tests.rs` (`the_node_carries_the_whole_parameter_surface`)."
+}

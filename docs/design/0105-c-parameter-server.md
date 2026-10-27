@@ -373,7 +373,9 @@ items are tracked in phase-491 § Progress.
   through the same emitter, as the paragraph above anticipated:
   `Executor::register_parameter_services` now enables events on every node its
   reconcile serves, and rclc's `notify_changed_over_dds = false` is an
-  explicit per-node opt-out (`Executor::disable_parameter_events_on`). Enabling
+  explicit per-node opt-out (`Node::disable_parameter_events` in Rust; the
+  executor's node-id-keyed form is the shims', behind `ExecutorFfi` since
+  phase-515 R10). Enabling
   queues a START-UP event: one `New` per parameter the node already holds (one
   empty event when it holds none), so a declaration made before the publisher
   existed is reported, as rclcpp's (whose publisher predates every

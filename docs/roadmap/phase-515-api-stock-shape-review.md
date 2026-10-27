@@ -668,8 +668,16 @@ path now creates the store on first use, as `declare_parameter_on` always did.
 `declare_parameter_with_id`, because an inherent method shadows a trait one.
 Executor-wide verbs (`register_parameter_services`, `params`,
 `install_argv_params`, `flush_parameter_events`) stay on the executor.
-**Still open:** the `_on` forms leave the user surface (behind `ExecutorFfi`,
-as R9 stage 1 did for C-shaped methods), and `ParameterServer`'s 55 rows.
+**Stage 1b LANDED 2026-10-27:** the 26 node-id-keyed parameter forms
+(`declare_parameter_on`, `get_parameter_on`, `parameter_on`, the `_on_ref`
+pair, `argv_param_overrides_on`, ...) are crate-private inherent methods behind
+the sealed `ExecutorFfi`, as R9 stage 1 did; the C and C++ shims import the
+trait. The seven with no `Node` verb yet got one first
+(`argv_param_overrides`, `for_each_argv_param_override`,
+`set_parameter_local`, `enable_parameter_events` / `disable_parameter_events`,
+`delete_parameters_on_not_set`, `set_parameters_atomically_with`), so no Rust
+capability left with them. Test: `the_node_carries_the_whole_parameter_surface`.
+**Still open:** `ParameterServer`'s 55 rows.
 
 ### X — cross-language
 

@@ -4300,6 +4300,82 @@ fn the_node_is_the_parameter_receiver() {
     );
 }
 
+/// phase-515 R10 stage 1b -- the verbs only the executor's node-id-keyed forms
+/// carried before those moved behind `ExecutorFfi` are on the node too.
+#[cfg(feature = "param-store")]
+#[test]
+fn the_node_carries_the_whole_parameter_surface() {
+    use nros_params::{ParameterError, ParameterValue};
+
+    use super::node_record::NodeId;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut node = executor.node_mut(NodeId::PRIMARY);
+
+    // rclc's LOCAL set is not bound by read-only; the remote-rules set is.
+    let _ = node
+        .declare_parameter::<i64>("ro")
+        .expect("store")
+        .default(1)
+        .mandatory()
+        .expect("declared");
+    assert!(node.set_parameter_read_only("ro", true));
+    assert_eq!(
+        node.set_parameter("ro", ParameterValue::Integer(2)),
+        Err(ParameterError::ReadOnly)
+    );
+    assert_eq!(
+        node.set_parameter_local("ro", ParameterValue::Integer(3)),
+        Ok(())
+    );
+    assert_eq!(
+        node.get_parameter("ro").and_then(|v| v.as_integer()),
+        Some(3)
+    );
+
+    // A remote NOT_SET is refused until the node opts into rclc's delete.
+    let _ = node
+        .declare_parameter::<i64>("gone")
+        .expect("store")
+        .default(7)
+        .mandatory()
+        .expect("declared");
+    assert!(node.set_parameter("gone", ParameterValue::NotSet).is_err());
+    assert!(node.get_parameter("gone").is_some());
+    node.delete_parameters_on_not_set(true);
+    assert_eq!(node.set_parameter("gone", ParameterValue::NotSet), Ok(()));
+    assert!(node.get_parameter("gone").is_none(), "NOT_SET deleted it");
+
+    // The fill-in-place atomic set writes every element.
+    for name in ["a", "b"] {
+        let _ = node
+            .declare_parameter::<i64>(name)
+            .expect("store")
+            .default(0)
+            .mandatory()
+            .expect("declared");
+    }
+    assert_eq!(
+        node.set_parameters_atomically_with(2, |i, slot| {
+            *slot = ParameterValue::Integer(10 + i as i64);
+            Some(if i == 0 { "a" } else { "b" })
+        }),
+        Ok(())
+    );
+    assert_eq!(
+        node.get_parameter("a").and_then(|v| v.as_integer()),
+        Some(10)
+    );
+    assert_eq!(
+        node.get_parameter("b").and_then(|v| v.as_integer()),
+        Some(11)
+    );
+
+    // No `-p` on this executor: nothing to list.
+    assert_eq!(node.for_each_argv_param_override(|_, _| {}), 0);
+    assert_eq!(node.argv_param_overrides().count(), 0);
+}
+
 /// phase-426 W1 -- two nodes on one executor keep their parameters apart, and
 /// one node's `allow_undeclared` does not reach its sibling.
 #[cfg(feature = "param-store")]
