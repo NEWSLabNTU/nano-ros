@@ -229,8 +229,10 @@ which sends one keep-alive through the transport's TX path.
 
 ### Results (2026-10-27)
 
-Four of the five are answered. The keep-alive row found a defect
-(issue 2094), so this RFC stays Draft.
+All five are answered. The keep-alive row found a defect (issue 2094,
+fixed). The stack row's Zephyr figure is one sample, because of a timed
+future that never re-woke there (issue 2105). This RFC stays Draft until
+issue 2105 is explained.
 
 - **Executor stack high-water mark.** `zpico_open` spawns a one-shot
   sampler future on the executor. It samples once a second from +4 s and
@@ -250,14 +252,26 @@ Four of the five are answered. The keep-alive row found a defect
   and 130x their peak. Lowering those defaults is a sizing change of its
   own, not made here. The Zephyr figure is a single early sample, because
   the sampler never woke again on that image (issue 2094).
-- **Keep-alive under a blocked receive: FAILED on NuttX** (issue 2094). A
-  NuttX listener alone against `rmw_zenohd` lost its session at the 60 s
-  lease in 3 of 3 runs, then reconnected repeatedly. The client sent at
-  most two keep-alives in the first minute, where it owed one every 20 s.
-  Lowering `Z_CONFIG_SOCKET_TIMEOUT` to 100 ms, as the row above proposed,
-  made it worse: 99 sessions in 150 s. The same soak on FreeRTOS and on
-  Zephyr native_sim kept one session. (The row's "10 s lease" is stale:
-  the negotiated lease is 60 s since issue 0906.)
+- **Keep-alive under a blocked receive: 25–30 s on NuttX, against a 60 s
+  expiry.**
+  - The first measurement FAILED. A quiet NuttX listener lost its session
+    at the lease in 3 of 3 runs.
+  - The cause was not the blocked receive (issue 2094, fixed). NuttX linked
+    the alias TU's `uint64_t` clock against `unix.h`'s `struct timespec`,
+    so every executor wake-up was stack garbage. The correct clock it then
+    linked wrapped every 4.29 s.
+  - Fixed, the residual delay is the one this row asked about. Timers are
+    checked only when the 5 s blocking read returns, and a due timer runs
+    after a ready read. That makes up to ~10 s of lateness: keep-alives
+    every 25–30 s, a lease check ~9 s late.
+  - FreeRTOS (100 ms), ThreadX-Linux and Zephyr native_sim hold a quiet
+    session too. `test_rtos_quiet_link_keeps_its_session` is the
+    regression cell.
+  - The 100 ms run that "made it worse" was on the broken clock, so it is
+    no evidence either way. Whether NuttX can now take 100 ms is
+    unmeasured.
+  - The row's "10 s lease" is stale: the negotiated lease is 60 s since
+    issue 0906.
 - **`Z_RUNTIME_MAX_TASKS` floor: 5.** Measured on the POSIX integration
   suite (`nros-rmw-zenoh --features platform-posix --test
   zenoh_integration`): at 4, 21 of 22 pass, and
@@ -322,5 +336,9 @@ Tracked by phase-508:
   everywhere. The keep-alive soak FAILS on NuttX (issue 2094), so the RFC
   stays Draft. D6's "a failed spawn is already loud" is corrected: it holds
   at open only.
+- 2026-10-27: the keep-alive row answered. Issue 2094 was a clock ABI split
+  on NuttX, now fixed: a quiet link holds one session, with keep-alives
+  every 25–30 s. Draft remains for issue 2105, a timed future that never
+  re-woke on a Zephyr Cortex-M image.
 - 2026-10-26: D4 corrected — ThreadX's sockets come from the platform net ABI
   (`nros-platform-threadx/src/net.c`), not the dead `c/platform/threadx/network.c`.

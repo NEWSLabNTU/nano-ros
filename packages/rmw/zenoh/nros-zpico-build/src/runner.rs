@@ -2365,6 +2365,16 @@ pub fn run() {
         if use_posix {
             alias_build.define("NROS_ZP_ALIAS_PTHREAD_TASK_ID", None);
         }
+        // Issue 2094 — this TU's clock is `uint64_t` ms (the generic header),
+        // and NuttX's zenoh-pico TUs see `unix.h`, where `z_clock_t` is a
+        // `struct timespec`. The two shapes do not even share a calling
+        // convention, so every executor wake-up landed at stack garbage and a
+        // quiet link lost its session at the lease. `nuttx_clock.c` (a
+        // manifest `extra_sources` entry) owns the clock and
+        // `_z_condvar_wait_until` there.
+        if use_nuttx {
+            alias_build.define("NROS_PLATFORM_ALIASES_SKIP_CLOCK", None);
+        }
         // issue 1636 — Zephyr compiles its OWN zenoh-pico system ABI in C
         // (`zephyr/nros_zenoh_zephyr_system.c`, POSIX-shaped types). The
         // generic time/clock/task/mutex/condvar wrappers here were a second

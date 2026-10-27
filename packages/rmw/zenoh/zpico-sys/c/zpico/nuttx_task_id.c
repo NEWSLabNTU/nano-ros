@@ -10,10 +10,10 @@
  * `platform_aliases.c`; NuttX's live here because this TU is compiled against
  * NuttX's headers and the alias TU is not (no `pthread_self` in scope there).
  *
- * A TU of its own, NOT `nuttx_clock.c`: an archive member is linked only when
- * something references it, and nothing references `nuttx_clock.c`'s clock
- * (the alias TU's wins), so a symbol added there pulls that whole object in
- * and every clock symbol becomes a duplicate.
+ * A TU of its own because task identity and the clock are separate concerns.
+ * (It was first split out because `nuttx_clock.c` was never linked and adding
+ * any symbol there duplicated the alias TU's clock. That was the defect, not a
+ * constraint: the alias clock had the wrong ABI for NuttX, issue 2094.)
  */
 
 #include <pthread.h>

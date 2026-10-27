@@ -94,9 +94,15 @@ our shims implement (`_z_mutex_*`, `_z_task_*`) is unchanged.
       measurements are taken and it leaves Draft. MEASURED 2026-10-27: four
       of five hold (the `MAX_TASKS` floor is 5, ThreadX tiers pass, stack
       peaks are under 2.3 KiB, and app threads do not spawn in steady
-      state). The NuttX quiet-link keep-alive FAILS, and that is
-      [issue 2094](../issues/2094-nuttx-quiet-link-keepalive-starves-under-executor.md),
-      so RFC-0110 stays Draft and this item stays open until it is fixed.
+      state). The NuttX quiet-link keep-alive FAILED, which was
+      [issue 2094](../issues/archived/2094-nuttx-quiet-link-keepalive-starves-under-executor.md).
+      It was FIXED 2026-10-27: NuttX linked the alias TU's `uint64_t` clock
+      against `unix.h`'s `struct timespec`, and once the right clock was
+      linked it wrapped every 4.29 s. A quiet NuttX link now holds one
+      session, with keep-alives every 25–30 s. Still open:
+      [issue 2105](../issues/2105-zephyr-cortex-m-timed-future-never-rewakes.md),
+      a timed future that never re-woke on a Zephyr Cortex-M image. RFC-0110
+      stays Draft until it is explained.
 - [ ] Rebase the fork's `nano-ros` patch line onto upstream 1.10.1, keeping the
       patches as individual commits (CLAUDE.md, vendored-fork workflow). Drop
       each patch that upstream now carries, and record each drop. Redesign

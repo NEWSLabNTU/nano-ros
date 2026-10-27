@@ -386,6 +386,17 @@ int8_t _z_condvar_wait(void *cv, void *m) {
 #ifndef NROS_PLATFORM_ALIASES_SKIP_SYSTEM
 #include "zenoh-pico/utils/result.h"
 
+/* Issue 2094 -- everything from here to the end of the clock section takes or
+ * returns a `z_clock_t`, spelt `uint64_t` ms because this TU is compiled
+ * against the GENERIC header. That is only the caller's type when the port's
+ * zenoh-pico TUs see the generic header too. NuttX's do not: `ZENOH_NUTTX`
+ * selects `unix.h`, where `z_clock_t` is a 16-byte `struct timespec` returned
+ * through a hidden pointer, so these definitions read and wrote the wrong
+ * shape and every executor wake-up was scheduled at stack garbage. A port in
+ * that position provides the clock in its own TU (`nuttx_clock.c`) and skips
+ * this one. */
+#ifndef NROS_PLATFORM_ALIASES_SKIP_CLOCK
+
 /* Issue 1906 -- translate the platform's codes into zenoh-pico's.
  *
  * The platform returns 0 when signalled, 1 on timeout and -1 on error
@@ -494,6 +505,7 @@ void z_clock_advance_s(uint64_t *clock, unsigned long duration) {
     if (clock == NULL) return;
     *clock += (uint64_t) duration * 1000ULL;
 }
+#endif /* !NROS_PLATFORM_ALIASES_SKIP_CLOCK */
 #endif /* !NROS_PLATFORM_ALIASES_SKIP_SYSTEM */
 
 /* -------------------------------------------------------------------------
