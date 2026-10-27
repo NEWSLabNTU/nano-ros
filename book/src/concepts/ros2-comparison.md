@@ -271,7 +271,10 @@ surface for embedded use. There is ONE store, and it is in Rust: the
 `rcl_interfaces/srv/*` servers read. C++ reaches it through methods on
 `rclcpp::Node`; C through rclc's own parameter-server API,
 `<rclc_parameter/rclc_parameter.h>` (`rclc_parameter_server_t`, one per node);
-Rust through `Executor::declare_parameter` and `Node::parameter`.
+Rust through the `Node` (`node.declare_parameter::<T>(name)`, rclrs's
+builder, plus `get_parameter` / `set_parameter` and the rest), as rclrs does;
+the executor's own parameter methods are deprecated or internal since
+phase-515 R10.
 
 > **If you have older nano-ros code:** `rclcpp::ParameterServer<Cap>` is gone
 > (phase-426 W4), and so is the caller-storage store it wrapped as a thing to

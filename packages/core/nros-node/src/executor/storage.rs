@@ -988,6 +988,8 @@ unsafe fn region_slice<'s, T>(p: *mut T, n: usize) -> &'s mut [T] {
 
 #[cfg(test)]
 mod tests {
+    use nros_params::ParameterServerOps as _; // phase-515 R10 stage 2
+
     use super::*;
 
     /// Issue 2041 -- the level executor pays the per-executor base once. Three

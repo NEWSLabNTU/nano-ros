@@ -1,6 +1,8 @@
 //! Executor struct and core spin methods.
 
 use core::{marker::PhantomData, mem::MaybeUninit};
+#[cfg(feature = "param-store")]
+use nros_params::ParameterServerOps as _; // phase-515 R10 stage 2
 
 use nros_core::{RosMessage, RosService, ViewableMessage};
 use nros_rmw::{QoSProfile, ServiceInfo, Session, TopicInfo, TransportError};
@@ -15206,7 +15208,7 @@ impl<'s> Executor<'s> {
     /// declared unless that node opted in through
     /// [`allow_undeclared_parameters_on`](Self::allow_undeclared_parameters_on).
     ///
-    /// It routes through [`ParameterServer::apply`](nros_params::ParameterServer::apply),
+    /// It routes through [`ParameterServer::apply`](nros_params::ParameterServerOps::apply),
     /// which is what makes the C and C++ facades, the by-value oracle, the
     /// streaming service path and the atomic pre-check agree — a facade that
     /// wrote the slot directly would be a second answer to "may this set
@@ -15491,7 +15493,7 @@ impl<'s> Executor<'s> {
 
     /// phase-491 W2 — a remote `NOT_SET` on `node` deletes the parameter
     /// (rclc) instead of being refused (rclcpp). See
-    /// [`ParameterServer::set_delete_on_not_set`](nros_params::ParameterServer::set_delete_on_not_set).
+    /// [`ParameterServer::set_delete_on_not_set`](nros_params::ParameterServerOps::set_delete_on_not_set).
     pub(crate) fn delete_parameters_on_not_set_on(
         &mut self,
         node: super::node_record::NodeId,

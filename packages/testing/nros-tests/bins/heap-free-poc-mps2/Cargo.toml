@@ -28,6 +28,9 @@ nros = { path = "../../../../api/nros", default-features = false, features = ["r
 nros-platform-mps2-an385 = { path = "../../../../platform/nros-platform-mps2-an385", default-features = false, features = ["cffi-export"] }
 nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", default-features = false }
 nros-log = { path = "../../../../core/nros-log", default-features = false }
+# phase-515 R10 stage 2 -- the store's operations are behind
+# `nros_params::ParameterServerOps`, which `nros` does not re-export.
+nros-params = { path = "../../../../core/nros-params", default-features = false }
 
 cortex-m-rt = "0.7"
 cortex-m-semihosting = "0.5"

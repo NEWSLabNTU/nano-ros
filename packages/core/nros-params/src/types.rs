@@ -616,10 +616,10 @@ pub struct ParameterDescriptor {
     pub range: ParameterRange,
     /// phase-446 F2 -- the description given was longer than
     /// `NROS_MAX_PARAM_DESCRIPTION_LEN` and `description` holds a prefix of it.
-    /// Read by [`ParameterServer::take_truncated_descriptions`], which reports
+    /// Read by [`ParameterServer::take_truncated_descriptions`](crate::ParameterServerOps::take_truncated_descriptions), which reports
     /// each one once and clears it.
     ///
-    /// [`ParameterServer::take_truncated_descriptions`]: crate::ParameterServer::take_truncated_descriptions
+    /// [`ParameterServer::take_truncated_descriptions`]: crate::ParameterServerOps::take_truncated_descriptions
     description_truncated: bool,
 }
 
@@ -815,7 +815,7 @@ pub enum SetParameterResult {
     ///
     /// Distinct from [`NotFound`](Self::NotFound): that is what a DIRECT
     /// `ParameterServer::set` says about a missing name; this is what the
-    /// wire-facing [`ParameterServer::apply`](crate::ParameterServer::apply)
+    /// wire-facing [`ParameterServer::apply`](crate::ParameterServerOps::apply)
     /// says when the only remaining option — declaring it — is switched off.
     Undeclared,
     /// A declaration whose range is ill-formed (`min > max` or `step < 0`),

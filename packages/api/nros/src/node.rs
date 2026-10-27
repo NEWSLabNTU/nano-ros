@@ -9,6 +9,9 @@
 
 use core::marker::PhantomData;
 
+#[cfg(feature = "param-store")]
+use nros_params::ParameterServerOps as _; // phase-515 R10 stage 2
+
 // issue 0413 — the descriptor-registration bound. `MessageForRmw` is
 // `RosMessage` alone unless a descriptor-needing backend is linked, in which
 // case it also requires `nros_serdes::schema::Message` (the schema the Cyclone
