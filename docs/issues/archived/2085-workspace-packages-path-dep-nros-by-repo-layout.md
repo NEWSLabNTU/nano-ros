@@ -120,6 +120,20 @@ Measured on copies made from the tracked file set outside the checkout, each
 | `rust` | 6 | `demo_bringup:linux` builds `linux_entry` |
 | `features` | 8 | all 6 Rust linux images build (`params`, `qos`, `lifecycle`, `remap`, `before_boot`, `custom_msg`) |
 
+**One in-tree road broke, and is fixed here.** `just linux
+build-workspace-fixtures` failed on `examples/workspaces/mixed` with `no
+matching package named \`nros\` found`, required by `rust_heartbeat_pkg` via
+`nros_ws_runtime`. A CMake workspace's Rust members are bundled into a
+generated runtime umbrella (`cmake/NanoRosRuntimeCrate.cmake`), its own cargo
+root in a build dir, and no sync-written `.cargo/config.toml` covers it (sync
+writes the central-patch `include` only for a cargo-rooted workspace). The
+umbrella's manifest now carries the central `[patch.crates-io]` table, taken
+from `nros ws central-patch`, the writer sync uses. After it, every linux
+workspace fixture builds (`=== WS-FIXTURES OK`), with no unused-patch
+warning. Swept: the CLI's generated roots (`builder/entry.rs`,
+`builder/west_app.rs`) already write their own patch rows, and
+`NanoRosImageCrate.cmake` path-deps only in-repo crates, never a member.
+
 `nros build --all` on the `features` copy stops at
 `demo_bringup:zephyr_rust_qos` with issue 1419's census/contract refusal —
 a Zephyr image this change does not touch.

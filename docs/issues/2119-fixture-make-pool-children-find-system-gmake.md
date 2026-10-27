@@ -6,7 +6,7 @@ type: bug
 area: [build, testing, multi-session]
 severity: medium
 found: 2026-10-28
-related: [issue-1638, issue-1280, issue-1403]
+related: [issue-1638, issue-1280, issue-1403, phase-505]
 ---
 
 # The cargo fixture pool's children find the system gmake
