@@ -78,10 +78,9 @@ Each remaining frame of about 8 KiB holds exactly ONE value. That is the
 floor while a value has inline storage, and moving it to the heap is a
 design change, not a fix.
 
-Two frames still hold two values. `declare_parameter_overridden` holds the
-override and the declared value it falls back to. `list_param_overrides`
-holds the override being reported plus its text buffer. Each is 17 KiB
-measured and called once per declaration or listing, which fits the 64 KiB
-default app stack with room left. Removing the second value would need the
-override to be written into the store slot directly. That is a separate
-change; reopen this issue if a board's stack budget makes it necessary.
+Two frames still held two values, 17 KiB each:
+`declare_parameter_overridden` and `list_param_overrides`. The cause given
+here was wrong. The declared value is borrowed, and the text buffer is 256
+bytes. The second value was the `Option` that `typed_param_override` returned
+plus the caller's binding of it. Issue 2118 fills the override in place and
+takes both frames to one value.
