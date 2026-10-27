@@ -41,6 +41,48 @@ pub struct LinkFeatures {
     pub isotp: bool,
 }
 
+/// Issue 2096 — the zenoh-pico links an image compiles only when its session
+/// can reach one, as `(endpoint scheme, build knob)`. Off by default because
+/// each is a medium a generic build cannot assume (a CAN interface, the
+/// `can-isotp` module). A locator or RMW-file endpoint on the scheme is the
+/// image stating that it needs the link, so the CLI implies the knob from it
+/// ([`link_build_knobs`]) and [`LinkFeatures::from_env`] reads it beside
+/// `zpico-sys`'s `link-can` / `link-isotp` cargo feature -- one table, both
+/// ends.
+///
+/// Deliberately not the image's link KIND (`leaf_system::TRANSPORT_KINDS`):
+/// that is what a BOARD registers a driver for, and neither link has a board
+/// half on a hosted target -- the kernel owns the interface.
+pub const LINK_BUILD_KNOBS: &[(&str, &str)] = &[("can", LINK_CAN_KNOB), ("isotp", LINK_ISOTP_KNOB)];
+
+/// The `can` row of [`LINK_BUILD_KNOBS`], named so a build script's
+/// `rerun-if-env-changed` can name it (`check-path-env-fingerprints` reads a
+/// `const`, never a loop variable).
+pub const LINK_CAN_KNOB: &str = "NROS_LINK_CAN";
+/// The `isotp` row of [`LINK_BUILD_KNOBS`].
+pub const LINK_ISOTP_KNOB: &str = "NROS_LINK_ISOTP";
+
+/// The [`LINK_BUILD_KNOBS`] that `endpoints` need, each once, in table order.
+#[must_use]
+pub fn link_build_knobs<'a>(endpoints: impl IntoIterator<Item = &'a str>) -> Vec<&'static str> {
+    let schemes: Vec<&str> = endpoints
+        .into_iter()
+        .filter_map(|e| e.split('/').next())
+        .collect();
+    LINK_BUILD_KNOBS
+        .iter()
+        .filter(|(scheme, _)| schemes.contains(scheme))
+        .map(|(_, knob)| *knob)
+        .collect()
+}
+
+/// A [`LINK_BUILD_KNOBS`] knob is on: `1`, `true` or `on`. Anything else,
+/// unset included, leaves the link to its cargo feature. The reader's build
+/// script declares `rerun-if-env-changed` for each (`nros-zpico-build`).
+fn knob_on(name: &str) -> bool {
+    matches!(env::var(name).ok().as_deref(), Some("1" | "true" | "on"))
+}
+
 impl LinkFeatures {
     /// Read link features from Cargo environment variables.
     ///
@@ -80,8 +122,14 @@ impl LinkFeatures {
             tls: env::var("CARGO_FEATURE_LINK_TLS").is_ok(),
             ivc: env::var("CARGO_FEATURE_LINK_IVC").is_ok(),
             custom: env::var("CARGO_FEATURE_LINK_CUSTOM").is_ok(),
-            can: env::var("CARGO_FEATURE_LINK_CAN").is_ok(),
-            isotp: env::var("CARGO_FEATURE_LINK_ISOTP").is_ok(),
+            // Issue 2096 — the cargo feature, OR the knob the CLI implies from
+            // an image whose locator or RMW-file endpoints are on the scheme
+            // (`nros_orchestration_ir::leaf_system::LINK_BUILD_KNOBS`). The
+            // knob is what makes an image's own wiring select the link: no
+            // generated manifest names `zpico-sys`, so the feature alone left
+            // a host image no way to compile either link.
+            can: env::var("CARGO_FEATURE_LINK_CAN").is_ok() || knob_on(LINK_CAN_KNOB),
+            isotp: env::var("CARGO_FEATURE_LINK_ISOTP").is_ok() || knob_on(LINK_ISOTP_KNOB),
         }
     }
 
@@ -355,6 +403,35 @@ impl LinkPolicy {
 /// agree about the fact or they pick a socket type and a link policy that
 /// disagree, which is the 0135 class.
 pub const IP_STACK: &str = "ip_stack";
+
+#[cfg(test)]
+mod link_build_knob_tests {
+    use super::*;
+
+    /// Issue 2096 — a CAN or ISO-TP endpoint implies its zenoh-pico link, from
+    /// the locator or any RMW-file endpoint alike; an IP or serial endpoint
+    /// implies none, and a knob is named once however many endpoints need it.
+    #[test]
+    fn a_can_or_isotp_endpoint_implies_its_link_build_knob() {
+        assert_eq!(
+            link_build_knobs(["isotp/vcan0#tx_id=0x200;rx_id=0x201"]),
+            ["NROS_LINK_ISOTP"]
+        );
+        assert_eq!(
+            link_build_knobs([
+                "can/can0#id=0x100",
+                "isotp/can0#tx_id=1;rx_id=2",
+                "can/can1"
+            ]),
+            ["NROS_LINK_CAN", "NROS_LINK_ISOTP"]
+        );
+        assert!(
+            link_build_knobs(["tcp/10.0.2.2:7447", "serial/UART_0", "udp/224.0.0.224:7446"])
+                .is_empty()
+        );
+        assert!(link_build_knobs([]).is_empty());
+    }
+}
 
 #[cfg(test)]
 mod for_board_tests {

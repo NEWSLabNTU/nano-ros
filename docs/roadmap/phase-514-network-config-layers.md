@@ -226,6 +226,12 @@ The cells still have no supported BUILD: nothing derives `zpico-sys`'s
 nodes were built with the feature added by hand to the generated manifests —
 issue 2096.
 
+Resolved the same day: the link is implied from the image's wiring (its
+`locator`, or its RMW file's endpoints) on every road, through one table in
+`nros_board_common::policy` that both the CLI and zenoh-pico's build read; a
+leaf that states no endpoint asks with `NROS_LINK_ISOTP=1`. The six cells
+pass with their nodes built that way.
+
 ### W6 — the runner's NIC
 
 `[image.<id>.run] nic` read by the QEMU launcher and the test harness,

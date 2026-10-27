@@ -1,15 +1,17 @@
 ---
 id: 2096
 title: "A Linux image cannot select the ISO-TP (or multicast CAN) link: nothing maps a link onto zpico-sys's link-isotp / link-can feature, so the ROS ISO-TP cells have no build path"
-status: open
+status: resolved
 type: limitation
 area: [zenoh, can, cli, boards]
 severity: medium
 found: 2026-10-27
+resolved: 2026-10-27
+resolved_in: "the PR that archives this file (fix/2096-link-features)"
 related: [phase-514, 2091, 0083]
 ---
 
-**Home: [phase-514](../roadmap/phase-514-network-config-layers.md)** — the
+**Home: [phase-514](../../roadmap/phase-514-network-config-layers.md)** — the
 layer that states a board's `links` (W1) and an image's locator (W2/W4).
 
 ## Measured
@@ -63,3 +65,34 @@ whose scheme is `can` turns `link-can` on, and a board whose `links` omits the
 kind refuses the locator. Not a per-package passthrough again — that is the
 shape phase-383 removed, and a fact authored per package drifts from the one
 the image states.
+
+## Resolution
+
+The link is implied from the wiring, on every road, through one table
+beside its reader: `nros_board_common::policy::LINK_BUILD_KNOBS` maps an
+endpoint scheme to a build knob (`can` → `NROS_LINK_CAN`, `isotp` →
+`NROS_LINK_ISOTP`), `link_build_knobs` reads an endpoint list against it,
+and `LinkFeatures::from_env` takes the knob beside `zpico-sys`'s cargo
+feature (`nros-zpico-build` reruns when either knob changes). The CLI
+implies each knob — IMPLIES, so `[image.<id>] env` and the calling
+environment still win — from:
+
+* the image's `locator`: `leaf_settings::transport_implications` (the
+  single-package cargo and cmake roads) and `image_block_layers` (both
+  workspace roads);
+* the `connect` / `listen` endpoints of its lowered RMW file, where the
+  file applies: the same leaf function, guarded so it reads a file only when
+  one can apply (no locator beside it, RFC-0109 D9; an `rmw/` directory or an
+  `rmw_config` key) — and next to the two workspace roads' existing
+  `session_text` lowering.
+
+Not a fifth `TRANSPORT_KINDS` entry: that list is what a board registers a
+driver for (`nros_platform::LinkKind`), and on a hosted target the kernel
+owns a CAN interface.
+
+Measured: `examples/linux/rust/service-server` builds without
+`_z_open_isotp` by default, with it under `NROS_LINK_ISOTP=1`, and with it
+when its `[image.linux] locator` is `isotp/vcan0#…` (the settings row
+written). All six ROS ISO-TP cells then PASS with their nodes built by
+`NROS_LINK_ISOTP=1 nros build` — no hand-edited manifest — as both scripts'
+headers now say.

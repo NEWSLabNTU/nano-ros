@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # phase-394 — ROS 2 PARAMETERS on a nano-ros node, over CAN (ISO-TP).
 #
+#   ZENOHC_ISOTP_LIB=<dir with the isotp libzenohc.so> \
+#   NANO_ROS_PARAM_NODE=<built linux_rust_params_entry> \
+#   ./scripts/test/isotp-ros-params.sh
+#
+# The node, with zenoh-pico's ISO-TP link (off by default, issue 2096):
+#   (cd examples/workspaces/features && nros sync && NROS_LINK_ISOTP=1 nros build linux_rust_params)
+#
 # `ros2 param` is SIX services (get / set / list / describe / get_types /
 # set_atomically) plus the /parameter_events topic -- the widest service
 # surface in ROS, and none of it works over a multicast face.

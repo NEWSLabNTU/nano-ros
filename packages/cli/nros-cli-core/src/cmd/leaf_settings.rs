@@ -385,8 +385,73 @@ fn is_path_value(value: &str) -> bool {
 /// so a lane that exports `NROS_LINK_IP=1` still wins (RFC-0086 D2's `imply`
 /// strength, and the reason an image may still name either knob explicitly in
 /// its `[image.<id>] env`, which is applied AFTER this).
-pub(crate) fn transport_implications(decl: &LeafSystem, env: &mut BTreeMap<String, String>) {
+///
+/// Issue 2096 — and which default-off zenoh-pico links its wiring reaches: the
+/// locator, and every endpoint its RMW file's session dials or listens on
+/// ([`link_build_implications`]).
+pub(crate) fn transport_implications(
+    decl: &LeafSystem,
+    env: &mut BTreeMap<String, String>,
+) -> Result<()> {
     transport_implications_of(decl.network.transport.as_deref(), env);
+    link_build_implications(decl.network.locator.as_deref(), env);
+    // The RMW file, only where one can apply: never beside a locator (the two
+    // are one wiring stated twice, refused by RFC-0109 D9), and only when the
+    // leaf holds the conventional `rmw/` directory or names `rmw_config`. That
+    // is also exactly the leaf the RMW-file roads already read as a
+    // `SystemToml`, so a leaf with no file gains no new way to fail.
+    if decl.network.locator.is_none()
+        && let (Some(dir), Some(image)) = (decl.origin_path().parent(), decl.image.as_deref())
+        && may_name_rmw_file(dir)
+    {
+        let text =
+            crate::orchestration::rmw_config::session_text(dir, image).map_err(|e| eyre!("{e}"))?;
+        session_link_build_implications(text.as_deref(), env)?;
+    }
+    Ok(())
+}
+
+/// Whether the bringup at `dir` can carry an RMW file: its conventional `rmw/`
+/// directory exists, or its `system.toml` names one (`rmw_config`).
+fn may_name_rmw_file(dir: &Path) -> bool {
+    dir.join("rmw").is_dir()
+        || std::fs::read_to_string(dir.join("system.toml")).is_ok_and(|t| t.contains("rmw_config"))
+}
+
+/// Issue 2096 — imply the zenoh-pico link build knobs an endpoint needs
+/// (`nros_board_common::policy::LINK_BUILD_KNOBS`: `can/…` → `NROS_LINK_CAN`,
+/// `isotp/…` → `NROS_LINK_ISOTP`), the way [`transport_implications_of`] implies
+/// `NROS_LINK_IP=0` for a serial link.
+///
+/// Neither link is compiled by default, and nothing a host image's generated
+/// manifests name reaches `zpico-sys`'s `link-can` / `link-isotp` features, so
+/// before this an image whose locator was `isotp/vcan0#…` built without the
+/// link it dials and failed at session open. IMPLIES, never forces: a knob the
+/// environment already holds is left alone, and the image's own `[image.<id>]
+/// env` (applied after) still outranks it.
+pub(crate) fn link_build_implications(endpoint: Option<&str>, env: &mut BTreeMap<String, String>) {
+    for knob in nros_board_common::policy::link_build_knobs(endpoint) {
+        env.entry(knob.to_string())
+            .or_insert_with(|| "1".to_string());
+    }
+}
+
+/// [`link_build_implications`] for every `connect` / `listen` endpoint of a
+/// lowered RMW file (`nros_orchestration_ir::session_properties` text), the
+/// other place an image's session states what it dials (RFC-0109 D8).
+pub(crate) fn session_link_build_implications(
+    text: Option<&str>,
+    env: &mut BTreeMap<String, String>,
+) -> Result<()> {
+    let Some(text) = text else { return Ok(()) };
+    let props =
+        nros_orchestration_ir::session_properties::decode(text).map_err(|e| eyre!("{e}"))?;
+    for (key, value) in &props {
+        if key == "connect" || key == "listen" {
+            link_build_implications(Some(value), env);
+        }
+    }
+    Ok(())
 }
 
 /// The rule [`transport_implications`] applies, keyed on the transport alone,
@@ -415,7 +480,7 @@ pub(crate) fn transport_implications_of(
 /// cannot read one `system.toml` two ways.
 pub fn image_layers(decl: &LeafSystem) -> Result<BTreeMap<String, String>> {
     let mut env = BTreeMap::new();
-    transport_implications(decl, &mut env);
+    transport_implications(decl, &mut env)?;
     env.extend(leaf_app_rung(decl)?);
     if let Some(v) = baked_ros_args(decl)? {
         env.insert(BAKED_ROS_ARGS_ENV.to_string(), v);
@@ -638,6 +703,7 @@ pub fn image_block_layers(
 ) -> Result<BTreeMap<String, String>> {
     let mut env = BTreeMap::new();
     transport_implications_of(image.link_kind(), &mut env);
+    link_build_implications(image.locator.as_deref(), &mut env);
     env.extend(app_rung(image_id, &image.knobs.0, &image.env)?);
     Ok(env)
 }
@@ -1067,7 +1133,7 @@ pub fn write_shared(
     board_fact_layer(leaf, nano_ros_root, &img.board, &mut env, &mut path_env)?;
 
     // Layer 3.5 — what the image's declared transport implies.
-    transport_implications(&img.decl, &mut env);
+    transport_implications(&img.decl, &mut env)?;
 
     // phase-454 W4 (RFC-0100 D4) — the sizing descriptor, written HERE because
     // this is the one place that has all three of its inputs at once: the
@@ -1695,7 +1761,7 @@ mod tests {
     #[test]
     fn a_serial_transport_implies_the_two_link_knobs() {
         let mut env = BTreeMap::new();
-        transport_implications(&decl(Some("serial"), &[]), &mut env);
+        transport_implications(&decl(Some("serial"), &[]), &mut env).unwrap();
         assert_eq!(env["ZPICO_NO_SMOLTCP"], "1");
         assert_eq!(env["NROS_LINK_IP"], "0");
     }
@@ -1706,7 +1772,7 @@ mod tests {
     fn an_image_that_states_a_link_knob_overrides_the_implication() {
         let d = decl(Some("serial"), &[("NROS_LINK_IP", "1")]);
         let mut env = BTreeMap::new();
-        transport_implications(&d, &mut env);
+        transport_implications(&d, &mut env).unwrap();
         for (k, v) in &d.env {
             env.insert(k.clone(), v.clone());
         }
@@ -1720,7 +1786,7 @@ mod tests {
     fn a_non_serial_transport_implies_nothing() {
         for t in [None, Some("udp"), Some("tcp")] {
             let mut env = BTreeMap::new();
-            transport_implications(&decl(t, &[]), &mut env);
+            transport_implications(&decl(t, &[]), &mut env).unwrap();
             assert!(env.is_empty(), "{t:?} implied {env:?}");
         }
     }
