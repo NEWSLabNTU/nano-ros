@@ -946,19 +946,39 @@ fn typed_param_override(
         "false" | "False" | "FALSE" => Some(false),
         _ => None,
     };
-    let string = |t: &str| heapless::String::try_from(t).ok().map(V::String);
-    match declared {
-        V::Bool(_) => boolean(text).map(V::Bool),
-        V::Integer(_) => text.parse::<i64>().ok().map(V::Integer),
-        V::Double(_) => text.parse::<f64>().ok().map(V::Double),
-        V::String(_) => string(text),
-        V::NotSet => boolean(text)
-            .map(V::Bool)
-            .or_else(|| text.parse::<i64>().ok().map(V::Integer))
-            .or_else(|| text.parse::<f64>().ok().map(V::Double))
-            .or_else(|| string(text)),
-        _ => None,
+    // Issue 2104 -- the TYPE is decided first and the value built once. A
+    // chain of `Option<ParameterValue>`s (`.map(..).or_else(..)`) is one
+    // ~8 KiB temporary per link, in every caller this inlines into.
+    enum Typed {
+        Bool(bool),
+        Integer(i64),
+        Double(f64),
+        String,
     }
+    let typed = match declared {
+        V::Bool(_) => Typed::Bool(boolean(text)?),
+        V::Integer(_) => Typed::Integer(text.parse::<i64>().ok()?),
+        V::Double(_) => Typed::Double(text.parse::<f64>().ok()?),
+        V::String(_) => Typed::String,
+        V::NotSet => {
+            if let Some(b) = boolean(text) {
+                Typed::Bool(b)
+            } else if let Ok(i) = text.parse::<i64>() {
+                Typed::Integer(i)
+            } else if let Ok(d) = text.parse::<f64>() {
+                Typed::Double(d)
+            } else {
+                Typed::String
+            }
+        }
+        _ => return None,
+    };
+    Some(match typed {
+        Typed::Bool(b) => V::Bool(b),
+        Typed::Integer(i) => V::Integer(i),
+        Typed::Double(d) => V::Double(d),
+        Typed::String => V::String(heapless::String::try_from(text).ok()?),
+    })
 }
 
 #[cfg(test)]
@@ -14678,7 +14698,7 @@ impl<'s> Executor<'s> {
     /// `NodeParametersInterface::get_parameter_overrides()`.
     ///
     /// The selection is the one a declaration makes
-    /// (`apply_argv_param_override`): the LAST override of a name that applies
+    /// (`argv_param_override`): the LAST override of a name that applies
     /// wins, and a `node:` override applies only to the node of that name.
     /// Each text is typed as a declaration with no default types it (bool,
     /// integer, double, then string), because a listing has no declared type
@@ -14709,6 +14729,39 @@ impl<'s> Executor<'s> {
             })
     }
 
+    /// [`argv_param_overrides_on`](Self::argv_param_overrides_on), one call of
+    /// `f` per override with the typed value BORROWED (issue 2104). An
+    /// iterator hands each ~8 KiB value out by value through its `next`
+    /// frame and then into the caller's; here it lives in this frame alone,
+    /// which took `nros_cpp_node_list_param_overrides` from 17.3 KiB.
+    #[cfg(all(feature = "param-store", feature = "alloc"))]
+    pub fn for_each_argv_param_override_on(
+        &self,
+        node: super::node_record::NodeId,
+        mut f: impl FnMut(&str, &nros_params::ParameterValue),
+    ) -> usize {
+        let node_name = self.node(node).map(|r| r.name.as_str()).unwrap_or("");
+        let list: &[crate::param_store::ArgvParamOverride] = self
+            .params
+            .as_deref()
+            .map(|s| s.argv_overrides.as_slice())
+            .unwrap_or(&[]);
+        let applies = |o: &crate::param_store::ArgvParamOverride| {
+            o.node.as_deref().is_none_or(|n| n == node_name)
+        };
+        let mut n = 0;
+        for (i, o) in list.iter().enumerate() {
+            if !applies(o) || list[i + 1..].iter().any(|l| l.name == o.name && applies(l)) {
+                continue;
+            }
+            if let Some(v) = typed_param_override(&o.value, &nros_params::ParameterValue::NotSet) {
+                f(o.name.as_str(), &v);
+                n += 1;
+            }
+        }
+        n
+    }
+
     /// Issue 2070 — does an argv override name this parameter? The cheap
     /// question [`declare_parameter_on_ref`](Self::declare_parameter_on_ref)
     /// asks before it enters the frame that types one.
@@ -14732,61 +14785,58 @@ impl<'s> Executor<'s> {
             .any(|o| o.name == name && o.node.as_deref().is_none_or(|n| n == node_name))
     }
 
-    /// The value a declaration of `name` on `node` should take — the last
-    /// matching argv override, typed by `declared`, or `declared` itself — and
-    /// whether an override was applied.
+    /// The value the last matching argv override gives a declaration of
+    /// `name` on `node`, typed by `declared`, or `None` when no override
+    /// applies and `declared` stands.
     ///
     /// An override whose text does not parse as the declared type is NOT
     /// applied: it is logged at error severity, naming the parameter, the text
     /// and the type, and the declared default stands (RFC-0015 §9.6 — "log +
     /// ignore, never panic"). An array-typed declaration takes no override yet.
+    ///
+    /// Issue 2104 -- `declared` is borrowed and only the override is
+    /// returned. Taking a clone of it and handing back a `(value, bool)` held
+    /// three ~8 KiB values across two frames (25.5 KiB on Cortex-M3).
     #[cfg(not(feature = "alloc"))]
-    fn apply_argv_param_override(
+    fn argv_param_override(
         &self,
         _node: super::node_record::NodeId,
         _name: &str,
-        declared: nros_params::ParameterValue,
-    ) -> (nros_params::ParameterValue, bool) {
+        _declared: &nros_params::ParameterValue,
+    ) -> Option<nros_params::ParameterValue> {
         // Issue 1812 -- argv overrides are a hosted-edge input installed
         // through `install_argv_params`, which is `alloc`-only.
-        (declared, false)
+        None
     }
 
     #[cfg(feature = "alloc")]
-    fn apply_argv_param_override(
+    fn argv_param_override(
         &self,
         node: super::node_record::NodeId,
         name: &str,
-        declared: nros_params::ParameterValue,
-    ) -> (nros_params::ParameterValue, bool) {
-        let Some(state) = self.params.as_deref() else {
-            return (declared, false);
-        };
+        declared: &nros_params::ParameterValue,
+    ) -> Option<nros_params::ParameterValue> {
+        let state = self.params.as_deref()?;
         if state.argv_overrides.is_empty() {
-            return (declared, false);
+            return None;
         }
         let node_name = self.node(node).map(|r| r.name.as_str()).unwrap_or("");
-        let Some(o) = state
+        let o = state
             .argv_overrides
             .iter()
             .rev()
-            .find(|o| o.name == name && o.node.as_deref().is_none_or(|n| n == node_name))
-        else {
-            return (declared, false);
-        };
-        match typed_param_override(&o.value, &declared) {
-            Some(v) => (v, true),
-            None => {
-                nros_log::log_error!(
-                    nros_log::get_logger("nros"),
-                    "parameter override `{}:={}` is not a {:?}; the declared default stands",
-                    name,
-                    o.value,
-                    declared.param_type()
-                );
-                (declared, false)
-            }
+            .find(|o| o.name == name && o.node.as_deref().is_none_or(|n| n == node_name))?;
+        let typed = typed_param_override(&o.value, declared);
+        if typed.is_none() {
+            nros_log::log_error!(
+                nros_log::get_logger("nros"),
+                "parameter override `{}:={}` is not a {:?}; the declared default stands",
+                name,
+                o.value,
+                declared.param_type()
+            );
         }
+        typed
     }
 
     /// Declare a parameter with a value on the executor's PRIMARY node.
@@ -14857,8 +14907,10 @@ impl<'s> Executor<'s> {
         name: &str,
         declared: &nros_params::ParameterValue,
     ) -> bool {
-        let (value, _) = self.apply_argv_param_override(node, name, declared.clone());
-        self.declare_parameter_resolved(node, name, &value)
+        match self.argv_param_override(node, name, declared) {
+            Some(value) => self.declare_parameter_resolved(node, name, &value),
+            None => self.declare_parameter_resolved(node, name, declared),
+        }
     }
 
     /// The store write and the reserved-name hook, for a value whose argv
@@ -15107,18 +15159,23 @@ impl<'s> Executor<'s> {
         declared: &nros_params::ParameterValue,
         descriptor: nros_params::ParameterDescriptor,
     ) -> bool {
-        let (overridden, differs) = self.apply_argv_param_override(node, name, declared.clone());
+        let overridden = self.argv_param_override(node, name, declared);
         let Some(params) = &mut self.params else {
             return false;
         };
         if params
             .server
-            .try_declare_ref(node.into(), name, &overridden, Some(descriptor.clone()))
+            .try_declare_ref(
+                node.into(),
+                name,
+                overridden.as_ref().unwrap_or(declared),
+                Some(descriptor.clone()),
+            )
             .is_ok()
         {
             return true;
         }
-        if !differs {
+        if overridden.is_none() {
             return false;
         }
         nros_log::log_error!(
@@ -15166,6 +15223,18 @@ impl<'s> Executor<'s> {
         name: &str,
         value: nros_params::ParameterValue,
     ) -> Result<(), nros_params::ParameterError> {
+        self.set_parameter_on_ref(node, name, &value)
+    }
+
+    /// [`set_parameter_on`](Self::set_parameter_on), borrowing the value --
+    /// issue 2104, and the one the by-value spelling forwards to. The value is
+    /// copied once, into its slot (`ParameterServer::apply_ref`).
+    pub fn set_parameter_on_ref(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: &nros_params::ParameterValue,
+    ) -> Result<(), nros_params::ParameterError> {
         // Reserved parameters (`use_sim_time`) take effect on a set exactly as
         // they do on a declare — this is the seam every language funnels
         // through, so hooking it once here covers all of them.
@@ -15178,7 +15247,7 @@ impl<'s> Executor<'s> {
         // undeclared-without-the-node-option — so a writer that hooked first
         // would reach that state from four directions instead of one.
         let result = match &mut self.params {
-            Some(params) => params.server.apply(node.into(), name, value),
+            Some(params) => params.server.apply_ref(node.into(), name, value),
             None => Err(nros_params::ParameterError::NotFound),
         };
         if result.is_ok() {
@@ -15741,6 +15810,24 @@ impl<'s> Executor<'s> {
     {
         match &mut self.params {
             Some(params) => params.server.apply_atomically(node.into(), items),
+            None => Err(nros_params::ParameterError::NotFound),
+        }
+    }
+
+    /// [`set_parameters_atomically_on`](Self::set_parameters_atomically_on),
+    /// with element `i` FILLED into one scratch value by `fill(i, slot)`
+    /// (`ParameterServer::apply_atomically_with`, issue 2104). For a caller
+    /// that would otherwise build each ~8 KiB value on its own stack.
+    pub fn set_parameters_atomically_with_on<'x>(
+        &mut self,
+        node: super::node_record::NodeId,
+        count: usize,
+        fill: impl FnMut(usize, &mut nros_params::ParameterValue) -> Option<&'x str>,
+    ) -> Result<(), nros_params::ParameterError> {
+        match &mut self.params {
+            Some(params) => params
+                .server
+                .apply_atomically_with(node.into(), count, fill),
             None => Err(nros_params::ParameterError::NotFound),
         }
     }
