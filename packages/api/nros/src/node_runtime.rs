@@ -3083,7 +3083,16 @@ where
 /// its diagnostic — `NodeRegister("lifecycle")` named the capability and
 /// nothing about the cause — and a `_ =>` here would reintroduce exactly that
 /// for whichever variant is added next. The compile error is the point.
-#[cfg(any(feature = "lifecycle-services", feature = "param-store"))]
+///
+/// Gated on `alloc` as well, because its only callers are
+/// `ExecutorNodeRuntime`'s capability hooks, and that runtime is `alloc`-only.
+/// A heap-free C++ image with a carved parameter store (`param-store`, no
+/// `alloc`) compiled it with nothing calling it, which `-D warnings` refuses
+/// (issue 2115).
+#[cfg(all(
+    feature = "alloc",
+    any(feature = "lifecycle-services", feature = "param-store")
+))]
 fn capability_reason(e: &nros_node::NodeError) -> &'static str {
     use nros_node::NodeError;
     match e {
@@ -3142,14 +3151,17 @@ fn capability_reason(e: &nros_node::NodeError) -> &'static str {
 /// what the RMW refused. `Backend(&'static str)` passes its own diagnostic
 /// straight through — it is already the string the backend wanted to say.
 ///
-/// Unlike `capability_reason` above this one keeps a wildcard, and only because
-/// it must: `TransportError::BackendDynamic` is gated on `nros-rmw/alloc`,
-/// which feature unification can switch on from another crate in the graph
-/// without `nros/alloc` — so no spelling of the arm is correct in both builds
-/// (`nros-c`'s `rcl_ret_t` mapping carries the same wildcard for the same
-/// reason). Every other variant is named, so the wildcard's text is what an
-/// unmapped one looks like.
-#[cfg(any(feature = "lifecycle-services", feature = "param-store"))]
+/// Unlike `capability_reason` above this one keeps a wildcard, for
+/// `TransportError::BackendDynamic`, which is gated on `nros-rmw/alloc`. This
+/// function is compiled only with `nros/alloc`, which turns that on, so the
+/// variant always exists here; the wildcard stands for it rather than naming
+/// it, so its text is what any unmapped variant looks like. (Before issue 2115
+/// this function was compiled without `alloc` too, where the variant does not
+/// exist and the wildcard was an `unreachable_patterns` error.)
+#[cfg(all(
+    feature = "alloc",
+    any(feature = "lifecycle-services", feature = "param-store")
+))]
 fn capability_transport_reason(t: &nros_rmw::TransportError) -> &'static str {
     use nros_rmw::TransportError as T;
     match t {

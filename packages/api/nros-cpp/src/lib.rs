@@ -1647,30 +1647,16 @@ pub(crate) fn transport_error_to_cpp_ret(err: nros_rmw::TransportError) -> nros_
         T::ConnectionFailed | T::Disconnected | T::PublishFailed => NROS_CPP_RET_TRANSPORT_ERROR,
         T::KeepaliveFailed | T::PollFailed | T::JoinFailed => NROS_CPP_RET_TRANSPORT_ERROR,
         T::IncompatibleAbi | T::Backend(_) => NROS_CPP_RET_TRANSPORT_ERROR,
-        // NOT `#[cfg(feature = "alloc")]`, deliberately. The VARIANT is gated on
-        // `nros-rmw/alloc`; this arm used to be gated on `nros-cpp/alloc`, and
-        // that implication only runs one way. Cargo unifies features across the
-        // graph, so anything else enabling `nros-rmw/alloc` made the variant
-        // exist while this arm was compiled out:
-        //
-        //   error[E0004]: non-exhaustive patterns:
-        //     `TransportError::BackendDynamic(_)` not covered
-        //
-        // which took out the whole zephyr fixture family via the cortex-m C++
-        // leaf (thumbv7m-none-eabi) once `nros-cpp`'s `default = []` (phase-361
-        // W3 / issue 0591) made that combination reachable.
-        //
-        // Un-gating is safe because no buildable configuration lacks the
-        // variant: `nros-cpp --no-default-features --features rmw-cffi` fails
-        // to link at all ("no global memory allocator found but one is
-        // required") since `nros-c` pulls the alloc machinery in regardless. If
-        // a genuinely alloc-free build is ever made to work, this line fails to
-        // compile with "no variant named BackendDynamic" — a loud, local error
-        // pointing straight here, which is the right way to find out.
-        //
-        // A `_` arm is NOT the fix: issue 0586's gate states its guarantee as
-        // "the mappers themselves are exhaustive (no `_` arm), so rustc already
-        // refuses a new variant until someone maps it".
+        // The VARIANT is gated on `nros-rmw/alloc`, and this crate's `alloc`
+        // turns that on, so with `alloc` the variant always exists and the arm
+        // names it. Without `alloc` the variant may or may not exist: cargo
+        // unifies features across the graph, so another crate can switch on
+        // `nros-rmw/alloc` alone. That case is the cfg-gated wildcard at the
+        // end of this match, not an un-gated arm here. An un-gated arm was the
+        // fix for that unification once (it took out the cortex-m Zephyr C++
+        // leaf, `error[E0004]: non-exhaustive patterns`), and it made a
+        // heap-free build fail to compile instead (issue 2115).
+        #[cfg(feature = "alloc")]
         T::BackendDynamic(_) => NROS_CPP_RET_TRANSPORT_ERROR,
         // Entity creation — the C++ surface has codes for these.
         T::PublisherCreationFailed => NROS_CPP_RET_PUBLISH_FAILED,
@@ -1797,10 +1783,15 @@ fn transport_error_class(err: &nros_rmw::TransportError) -> u32 {
         T::NoData => 29,
         T::IncompatibleAbi => 30,
         T::Backend(_) => 31,
-        // Un-gated for the reason the arm below in `transport_error_to_cpp_ret`
-        // is: cargo unifies features across the graph, so the variant can exist
-        // while a `#[cfg(feature = "alloc")]` arm here is compiled out.
+        // Gated, and covered without `alloc` by the wildcard below, for the
+        // reason `transport_error_to_cpp_ret` gives (issue 2115).
+        #[cfg(feature = "alloc")]
         T::BackendDynamic(_) => 32,
+        // `BackendDynamic` when another crate turned on `nros-rmw/alloc`
+        // without this crate's `alloc`; dead (and allowed) when neither did.
+        #[cfg(not(feature = "alloc"))]
+        #[allow(unreachable_patterns)]
+        _ => 32,
     }
 }
 
@@ -6721,7 +6712,7 @@ pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
     why_len: usize,
 ) -> nros_cpp_ret_t {
     use nros_node::ros_args::ApplyError;
-    #[cfg(not(feature = "param-store"))]
+    #[cfg(not(all(feature = "param-store", feature = "alloc")))]
     use nros_node::ros_args::apply_ros_args;
 
     // ONE writer for every refusal text, so the two builds below share its
@@ -6768,8 +6759,10 @@ pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
 
     // phase-482 W5 — an image that can hold parameter overrides honours
     // `-p` and `--params-file` too. Without the parameter store the remap-only
-    // parse refuses them by name, as before.
-    #[cfg(feature = "param-store")]
+    // parse refuses them by name, as before. Overrides are held on the heap
+    // (`nros-node`'s `apply_ros_args_with_params` is `alloc`-only), so a
+    // heap-free image with a carved store refuses them by name too (issue 2115).
+    #[cfg(all(feature = "param-store", feature = "alloc"))]
     {
         use nros_node::ros_args::{ApplyParamsError, apply_ros_args_with_params};
         let read_file = |path: &str| -> Result<alloc::string::String, alloc::string::String> {
@@ -6808,7 +6801,7 @@ pub unsafe extern "C" fn nros_cpp_install_argv_remaps(
             }
         }
     }
-    #[cfg(not(feature = "param-store"))]
+    #[cfg(not(all(feature = "param-store", feature = "alloc")))]
     {
         match apply_ros_args(executor, args) {
             Ok(_) => NROS_CPP_RET_OK,
@@ -7747,8 +7740,17 @@ pub unsafe extern "C" fn nros_cpp_level_open(
     }
     let seat = &mut seats[usize::from(level)];
     // The level's wake object: the platform's, leaked with the level (one per
-    // level for the image's life). None: the level polls.
-    seat.waiter = nros_node::executor::BandWaiter::platform();
+    // level for the image's life). None: the level polls. A heap-free image
+    // has no wake object at all (the platform's is sized at run time, so it is
+    // allocated), and its levels poll, as its executor does (issue 2115).
+    #[cfg(feature = "alloc")]
+    {
+        seat.waiter = nros_node::executor::BandWaiter::platform();
+    }
+    #[cfg(not(feature = "alloc"))]
+    {
+        seat.waiter = None;
+    }
     seat.worker = match seat.waiter {
         Some(w) => nros_node::executor::BandWorker::new(level, nros_node::executor::Band::ALL)
             .with_waiter(w),

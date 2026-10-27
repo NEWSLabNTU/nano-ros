@@ -186,7 +186,12 @@ impl Writer<'_> {
 }
 
 fn until_nul(s: &[c_char]) -> impl Iterator<Item = u8> + '_ {
-    s.iter().take_while(|c| **c != 0).map(|c| *c as u8)
+    // `c_char` is `u8` on ARM/aarch64 and `i8` on x86, so `*c as u8` trips
+    // `clippy::unnecessary_cast` on ARM hosts only; the byte round-trip is the
+    // same no-op on both and is never linted (issue 2115).
+    s.iter()
+        .take_while(|c| **c != 0)
+        .map(|c| u8::from_ne_bytes(c.to_ne_bytes()))
 }
 
 /// rcl's `rcl_get_error_string()`: `"<message>, at <file>:<line>"`, or
