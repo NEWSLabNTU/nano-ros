@@ -630,6 +630,46 @@ mod tests {
         }
     }
 
+    /// Issue 2096 -- an image whose wiring reaches a CAN or ISO-TP endpoint
+    /// builds zenoh-pico's link for it: from its locator, or from its RMW
+    /// file's endpoints when the locator says nothing; an IP image implies
+    /// neither, and the image's own `env` row outranks the implication.
+    #[test]
+    fn a_can_or_isotp_endpoint_implies_its_zenoh_pico_link() {
+        let base = "[system]\nname = \"c\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n[image.linux]\nboard = \"linux\"\n";
+        let layers = |body: &str, rmw_file: Option<&str>| {
+            let td = leaf_dir(&format!("{base}{body}"));
+            if let Some(f) = rmw_file {
+                std::fs::create_dir_all(td.path().join("rmw")).unwrap();
+                std::fs::write(td.path().join("rmw/zenoh.json5"), f).unwrap();
+            }
+            let leaf = leaf_system::read(td.path()).unwrap().unwrap();
+            crate::cmd::leaf_settings::image_layers(&leaf).unwrap()
+        };
+
+        let isotp = layers("locator = \"isotp/vcan0#tx_id=0x200;rx_id=0x201\"\n", None);
+        assert_eq!(isotp["NROS_LINK_ISOTP"], "1", "the locator's link");
+        assert!(!isotp.contains_key("NROS_LINK_CAN"));
+
+        let file = layers(
+            "",
+            Some("{ mode: 'peer', listen: { endpoints: ['can/can0#id=0x100'] } }"),
+        );
+        assert_eq!(file["NROS_LINK_CAN"], "1", "an RMW-file endpoint's link");
+
+        let ip = layers("locator = \"tcp/10.0.2.2:7447\"\n", None);
+        assert!(!ip.contains_key("NROS_LINK_CAN") && !ip.contains_key("NROS_LINK_ISOTP"));
+
+        let off = layers(
+            "locator = \"isotp/vcan0#tx_id=0x200;rx_id=0x201\"\nenv = { NROS_LINK_ISOTP = \"0\" }\n",
+            None,
+        );
+        assert_eq!(
+            off["NROS_LINK_ISOTP"], "0",
+            "the image outranks its implication"
+        );
+    }
+
     /// Issue 1712 -- a C leaf's `[image.<id>] env` becomes a cargo config the
     /// cmake road passes as `--config`; transport implications come first and
     /// the image's own row outranks them; values are TOML-escaped.

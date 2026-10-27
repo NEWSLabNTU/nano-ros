@@ -1190,6 +1190,16 @@ fn zenoh_buffer_config_from_env(posix: bool) -> ZenohBufferConfig {
     // Phase 204.7 — `NROS_LINK_IP=0` (a serial-only node) gates the IP link
     // C off; rerun the build script when it changes.
     println!("cargo:rerun-if-env-changed=NROS_LINK_IP");
+    // Issue 2096 — the CAN / ISO-TP knobs `LinkFeatures::from_env` reads
+    // (`nros_board_common::policy::LINK_BUILD_KNOBS`, one row each).
+    println!(
+        "cargo:rerun-if-env-changed={}",
+        nros_board_common::policy::LINK_CAN_KNOB
+    );
+    println!(
+        "cargo:rerun-if-env-changed={}",
+        nros_board_common::policy::LINK_ISOTP_KNOB
+    );
     let link = LinkFeatures::from_env();
     let (default_frag, default_batch_uni, default_batch_multi) = if posix {
         (65535, 65535, 8192)

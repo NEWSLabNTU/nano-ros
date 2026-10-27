@@ -320,6 +320,10 @@ KNOB_CLASS = {
     "NROS_INDEX_URL": ("infra", "where the SDK index is fetched from; a mirror or a file:// copy"),
     "NROS_INDEX_REFRESH": ("infra", "re-fetch even when the cache is warm; a bool, so it has no rung"),
     "NROS_LINK_IP": ("infra", "link toggle"),
+    # Issue 2096 — the default-off zenoh-pico links, implied by the CLI from an
+    # image's CAN / ISO-TP endpoints; a bool, so it has no rung.
+    "NROS_LINK_CAN": ("infra", "link toggle, implied from a can/ endpoint"),
+    "NROS_LINK_ISOTP": ("infra", "link toggle, implied from an isotp/ endpoint"),
     "NROS_PLATFORMS_DIR": ("infra", "the ladder's own search path"),
     "NROS_PLATFORM_NAME": ("infra", "the ladder's own platform rung input"),
     "NROS_PX4_BRIDGE_GEN": ("infra", "codegen toggle"),
@@ -738,6 +742,9 @@ def kconfig_symbols():
 # and a callee in neither is a FAILURE: the same "a new knob forces a decision"
 # rule this file already applies to knobs, applied to the idioms that read them.
 READ_CALLEES = {
+    # Issue 2096. `nros-board-common::policy::knob_on`: is a default-off
+    # zenoh-pico link's build knob (`NROS_LINK_CAN` / `NROS_LINK_ISOTP`) on.
+    "knob_on",
     # phase-403 step 3. Reads the environment like `env_usize`, but returns
     # Option: for an entity COUNT, absence and zero are different answers and
     # a default would erase the difference.

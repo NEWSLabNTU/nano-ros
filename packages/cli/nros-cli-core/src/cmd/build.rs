@@ -885,6 +885,11 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                     crate::orchestration::rmw_config::session_text(&bringup_dir, &image_id)
                         .map_err(|e| eyre::eyre!("{e}"))?
                 {
+                    // Issue 2096 — the zenoh-pico links the file's endpoints need.
+                    crate::cmd::leaf_settings::session_link_build_implications(
+                        Some(&text),
+                        &mut env,
+                    )?;
                     env.insert(
                         nros_orchestration_ir::session_properties::ENV.to_string(),
                         text,
@@ -1306,9 +1311,20 @@ fn plan_for(args: &Args, planning: Planning) -> Result<Vec<ResolvedBuild>> {
                 // Handed to every cargo command the configure spawns by the
                 // issue-1712 carrier (`NanoRosImageEnv.cmake`); removed when the
                 // image states none.
+                let mut image_rows =
+                    crate::cmd::leaf_settings::image_block_layers(Some(&image_id), &image)?;
+                // Issue 2096 — the zenoh-pico links the bringup's RMW file
+                // dials, which this road bakes through `--rmw-config` rather
+                // than the settings text the cargo road carries.
+                crate::cmd::leaf_settings::session_link_build_implications(
+                    crate::orchestration::rmw_config::session_text(&bringup_dir, &image_id)
+                        .map_err(|e| eyre::eyre!("{e}"))?
+                        .as_deref(),
+                    &mut image_rows,
+                )?;
                 let image_env = crate::cmd::leaf_system::write_image_env(
                     &manifest_dir.join(crate::builder::cmake_root::IMAGE_ENV_FILE),
-                    &crate::cmd::leaf_settings::image_block_layers(Some(&image_id), &image)?,
+                    &image_rows,
                 )?
                 .is_some();
                 let spec = crate::builder::cmake_root::CmakeRootSpec {
