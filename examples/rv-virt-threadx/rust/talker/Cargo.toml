@@ -33,7 +33,7 @@ ros-iron   = ["nros/ros-iron", "nros-rmw-zenoh?/ros-iron", "nros-rmw-cyclonedds-
 ros-jazzy  = ["nros/ros-jazzy", "nros-rmw-zenoh?/ros-jazzy", "nros-rmw-cyclonedds-sys?/ros-jazzy"]
 
 # Phase 245 — app-node shape; phase-369 moved the entry to `src/app_main.rs`
-# (`app_main!`). The board it names (`threadx-qemu-riscv64` →
+# (`app_main!`). The board it names (`rv-virt-threadx` →
 # `nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64`), the network identity
 # and the node declaration live in `system.toml` beside this manifest
 # (RFC-0098 D3/D5).

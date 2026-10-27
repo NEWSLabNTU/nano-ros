@@ -16,7 +16,7 @@ RFC-0109 D6 retires `[[transport]]` (RFC-0004 §6). Phase-514 W4 refuses it in
 direct-mode `config.toml` that seven board crates parse with
 `Config::from_toml(include_str!(…))` — `nros-board-common::BaseConfig::apply_toml_field`
 plus each board's `Config::from_toml` (`esp32-qemu`, `freertos`,
-`mps2-an385`, `nuttx-qemu`, `threadx-linux`, `threadx-qemu-riscv64`).
+`mps2-an385`, `nuttx-qemu`, `threadx-linux`, `rv-virt-threadx`).
 
 Tracked users (`git grep -l '^\[\[transport\]\]'`):
 

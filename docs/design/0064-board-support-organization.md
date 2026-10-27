@@ -1317,7 +1317,7 @@ The decisive case is ThreadX, because it is exactly the maintainer's worry
 (host-offloaded sockets versus a real driver): `nros-platform-threadx/src/net.c`
 is **one file with two backings** — on threadx-linux the NetX-Duo BSD calls
 resolve to a shim over host POSIX sockets (`drivers/net/nsos-netx/src/nsos_netx.c:218`),
-on threadx-qemu-riscv64 they are real NetX Duo over virtio-net. The switch is
+on rv-virt-threadx they are real NetX Duo over virtio-net. The switch is
 which archive the board's `build.rs` links. No `#ifdef`, no branch. Adding a
 board on an existing platform edits no `net.c`/`net.rs` anywhere.
 

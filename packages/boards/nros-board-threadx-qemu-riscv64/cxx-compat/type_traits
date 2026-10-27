@@ -1,4 +1,4 @@
-// Freestanding `<type_traits>` shim for the threadx-qemu-riscv64 board.
+// Freestanding `<type_traits>` shim for the rv-virt-threadx board.
 //
 // The system `riscv64-unknown-elf-g++` + picolibc ships no C++ standard
 // library headers, so the freestanding nros-cpp build (`-ffreestanding`,

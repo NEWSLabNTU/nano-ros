@@ -3,14 +3,19 @@
 # when the requested target is riscv64.
 
 [[board]]
-# phase-341 W3 — 12 leaves deploy to `threadx-qemu-riscv64`, which no
-# descriptor named. Note `threadx` alone stays AMBIGUOUS (the threadx-linux
+# phase-341 W3 — 12 leaves deployed to `threadx-qemu-riscv64` (retired, issue
+# 2101), which no descriptor named. Note `threadx` alone stays AMBIGUOUS (the threadx-linux
 # descriptor also claims it); this alias is the unambiguous spelling.
 # phase-445 W3b — `rv-virt-threadx` is this board's RFC-0093 name (phase-437
 # W4: the cmake board, the index key and the example directory all use it), and
 # the C/C++ leaves' `system.toml` names it. Without it here no descriptor
 # answered, so `nros ws leaf-system` could not derive the `threadx` platform.
-names = ["threadx", "threadx-riscv64", "threadx-qemu-riscv64", "rv-virt-threadx"]
+#
+# issue 2101 — `threadx-qemu-riscv64` is no longer a name: it named the
+# emulator (RFC-0093 R3). The canonical name is the `cmake_module` and index
+# key, listed FIRST (`check-provider-announcements`: canonical first); the old
+# word is refused naming it (`nros_entry_lower::RETIRED_BOARD_KEYS`).
+names = ["rv-virt-threadx", "threadx", "threadx-riscv64"]
 cmake_module = "rv-virt-threadx"
 disambiguate_by_target = "riscv64"
 platform = "threadx-riscv64"

@@ -36,7 +36,7 @@
 /// copy, which the test at the bottom of this file keeps equal.
 pub const THREADX_LINUX_DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
 
-/// The same fallback for threadx-qemu-riscv64, whose network is QEMU slirp:
+/// The same fallback for rv-virt-threadx, whose network is QEMU slirp:
 /// `10.0.2.2` is the host as the guest sees it. Issue 1793: the Rust default
 /// dialled port 7447 and both C emitters 7553. 7447 is the stock router's port,
 /// and no in-tree image relies on either — every Rust image states its

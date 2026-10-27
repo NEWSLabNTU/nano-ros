@@ -769,12 +769,7 @@ fn typed_emit_threadx_board_uses_threadxboard_run_components() {
     // Phase 246 — the ThreadX family keys (host sim + bare-metal riscv64) all
     // route the typed entry to the `ThreadxBoard` adapter's `run_components`.
     // Phase 266: uses the 3-arg (locator, session_name, setup) named overload.
-    for key in [
-        "threadx",
-        "threadx-linux",
-        "threadx-qemu-riscv64",
-        "rv-virt-threadx",
-    ] {
+    for key in ["threadx", "threadx-linux", "rv-virt-threadx"] {
         let mut plan = fixture_plan_typed(&[("t_pkg", "t", "t", "t_pkg::T", "t_pkg/T.hpp")]);
         plan.board = key.into();
         let src = emit_typed(&plan).expect("typed emit ok");

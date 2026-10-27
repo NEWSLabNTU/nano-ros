@@ -12,7 +12,7 @@
 // It carries `enable_if`, `is_convertible` and the `integral_constant` base with
 // a version-portable SFINAE `is_convertible` (no GCC `__is_convertible` builtin
 // dependency), plus the set phase-442 W4 added. Mirrors the
-// threadx-qemu-riscv64 board shim, and the mirroring is the point: the two
+// rv-virt-threadx board shim, and the mirroring is the point: the two
 // fallbacks are one implementation under two names, so a trait added to one and
 // not the other is a difference between two boards that nothing measures. The
 // ThreadX copy carries the argument for each addition.

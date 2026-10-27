@@ -286,11 +286,9 @@ pub const BOARD_PATHS: &[(&str, &str, bool)] = &[
         "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64",
         false,
     ),
-    (
-        "threadx-qemu-riscv64",
-        "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64",
-        false,
-    ),
+    // `threadx-qemu-riscv64` was a key for this ZST until issue 2101: it named
+    // the emulator (RFC-0093 R3), and `nros::main!` refuses it naming
+    // `rv-virt-threadx` (`nros_entry_lower::RETIRED_BOARD_KEYS`).
     (
         "rv-virt-threadx",
         "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64",
@@ -1733,7 +1731,6 @@ mod tests {
             "mps2-an385-freertos",
             "threadx-linux",
             "threadx-riscv64",
-            "threadx-qemu-riscv64",
             "rv-virt-threadx",
             "nuttx",
             "qemu-armv7a-nuttx",

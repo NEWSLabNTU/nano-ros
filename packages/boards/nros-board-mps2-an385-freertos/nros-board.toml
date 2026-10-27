@@ -49,7 +49,7 @@ FREERTOS_CONFIG_DIR = { value = "${workspace}/packages/boards/nros-board-mps2-an
 # Issue 0273 — the C startup (`c/board_mps2.c` `Reset_Handler`) jumps to the Rust
 # `main` symbol (`extern int main(void)`); the pre-N.7 `_start` shape was retired
 # (commit d99386173) and left `rust-lld: undefined symbol: main`. Match the C
-# startup + the working fixtures (logging-smoke-freertos-mps2, threadx-qemu-riscv64):
+# startup + the working fixtures (logging-smoke-freertos-mps2, rv-virt-threadx):
 # a `#[no_mangle] extern "C" fn main() -> !` (diverging main links against the C
 # `int main(void)` decl; it never returns — the FreeRTOS scheduler owns the image).
 # phase-484 W4b-2 (RFC-0103 D10) — this board runs under QEMU, so its network

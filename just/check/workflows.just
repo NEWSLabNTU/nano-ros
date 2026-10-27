@@ -243,7 +243,7 @@ one-producer-per-tool:
 # phase-435 W5 — a board alias that is not a deploy FAMILY names one board.
 #
 # A name selects a board implementation, and the implementation decides the
-# toolchain: `threadx-linux` builds for the host while `threadx-qemu-riscv64`
+# toolchain: `threadx-linux` builds for the host while `rv-virt-threadx`
 # needs `riscv-none-elf-gcc` and an emulator. An ambiguous alias would pick
 # whichever descriptor the scan read first.
 #

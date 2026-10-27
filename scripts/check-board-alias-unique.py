@@ -4,14 +4,14 @@
 Every `names = [...]` entry in a `nros-board.toml` descriptor is a spelling an
 entry may `deploy =` to. If two descriptors claim the same spelling, that name
 selects two board implementations, and an implementation is what decides the
-toolchain: `threadx-linux` builds for the host, `threadx-qemu-riscv64` needs
+toolchain: `threadx-linux` builds for the host, `rv-virt-threadx` needs
 `riscv-none-elf-gcc` and an emulator. A name that resolves to both cannot
 resolve to one provisioning row.
 
 WHY THIS IS A GATE BEFORE A BUG RATHER THAN AFTER ONE
 
 `threadx` is claimed by both today, and NO entry uses the bare name — every one
-spells `threadx-linux` or `threadx-qemu-riscv64`. So nothing is broken; what
+spells `threadx-linux` or `rv-virt-threadx`. So nothing is broken; what
 exists is a name that would break the first time somebody reached for the
 obvious short spelling, and would do it by silently picking whichever descriptor
 the scan happened to read first.

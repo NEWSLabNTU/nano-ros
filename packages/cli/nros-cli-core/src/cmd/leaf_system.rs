@@ -769,10 +769,7 @@ mod tests {
         // Both ThreadX boards are one platform FAMILY on the C/C++ axis — the
         // tuple spelled them `deploy="threadx"` with the board beside it.
         assert_eq!(deploy_token(Some(&catalog), "threadx-linux"), "threadx");
-        assert_eq!(
-            deploy_token(Some(&catalog), "threadx-qemu-riscv64"),
-            "threadx"
-        );
+        assert_eq!(deploy_token(Some(&catalog), "rv-virt-threadx"), "threadx");
         assert_eq!(deploy_token(Some(&catalog), "qemu-armv7a-nuttx"), "nuttx");
         assert_eq!(deploy_token(Some(&catalog), "zephyr"), "zephyr");
         // No C/C++ platform module for esp32: passed through, not invented.

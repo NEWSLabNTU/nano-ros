@@ -43,7 +43,7 @@ nros-board-common = { path = "../nros-board-common", features = ["deploy-overlay
 # Entry pkg `main.rs`.
 # `global-allocator` UNCONDITIONALLY, as every sibling bare-metal board does
 # (mps2-an385, mps2-an385-freertos, mps3-an536-freertos, s32z270-freertos,
-# threadx-qemu-riscv64). NuttX was the one board that did not, and reached the
+# rv-virt-threadx). NuttX was the one board that did not, and reached the
 # tree's single `#[global_allocator]` only through `nros-board-nuttx/image-runtime`
 # — a route that runs through the generated selection facade. When the facade is
 # absent the Entry is emitted without it SILENTLY, and the allocator vanishes with

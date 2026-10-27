@@ -36,9 +36,9 @@ indistinguishable from a gate whose probe compiles against anything.
 
 WHY BOTH SHIMS, AND WHY THE ZEPHYR ONE CAN SKIP
 
-`zephyr/cxx-compat` and the threadx-qemu-riscv64 board shim are one
+`zephyr/cxx-compat` and the rv-virt-threadx board shim are one
 implementation under two names — the Zephyr header says so in its own comment,
-"Mirrors the threadx-qemu-riscv64 board shim" — so a facility added to one and
+"Mirrors the rv-virt-threadx board shim" — so a facility added to one and
 not the other is a difference between two boards that nothing measures. The
 Zephyr arm layers over Zephyr's own minimal libcpp, which lives in the west
 workspace; when that workspace is not checked out the arm is reported as a SKIP

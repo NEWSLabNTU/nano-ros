@@ -469,7 +469,7 @@ pub struct BoardDescriptor {
     /// RFC-0064 R5 D6 renamed this from `target_contains`, because it is NOT a
     /// property of the board: it is a rule for telling two ROWS apart when they
     /// claim the same name (`threadx` is claimed by both `threadx-linux` and
-    /// `threadx-qemu-riscv64`, and only the target says which you meant). A
+    /// `rv-virt-threadx`, and only the target says which you meant). A
     /// board that shares no name with another needs none, and a reader who took
     /// it for a board fact would expect it to mean something on its own.
     ///
@@ -1876,6 +1876,10 @@ mod tests {
         // issue 2063 — the emulator-named alias is refused, naming the board.
         let e = key("qemu-mps2-an385").expect_err("retired alias");
         assert!(e.contains("write `mps2-an385-baremetal`"), "{e}");
+        // issue 2101 — likewise for the RISC-V ThreadX board.
+        let e = key("threadx-qemu-riscv64").expect_err("retired alias");
+        assert!(e.contains("write `rv-virt-threadx`"), "{e}");
+        assert_eq!(key("threadx-riscv64").as_deref(), Ok("rv-virt-threadx"));
         assert_eq!(
             key("rtic-mps2-an385").as_deref(),
             Ok("mps2-an385-baremetal")

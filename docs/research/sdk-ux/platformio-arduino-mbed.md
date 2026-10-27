@@ -335,7 +335,7 @@ a user (or vendor) writes one JSON file, drops it under `boards/`, and
 
 nano-ros has 9 board crates under `packages/boards/`: `mps2-an385`,
 `mps2-an385-freertos`, `stm32f4`, `esp32`, `esp32-qemu`, `nuttx-qemu-arm`,
-`threadx-linux`, `threadx-qemu-riscv64`, `orin-spe`. Each is a full Rust
+`threadx-linux`, `rv-virt-threadx`, `orin-spe`. Each is a full Rust
 crate with `build.rs`, `config/` directory (linker scripts, FreeRTOSConfig.h,
 lwipopts.h), `src/lib.rs` with `init_hardware()`, etc.
 

@@ -18,7 +18,7 @@ namespace rclcpp {
 /// WHY THIS EXISTS RATHER THAN `#include <type_traits>`
 ///
 /// A freestanding API cannot assume a standard-library shim's SHAPE, and this
-/// is not a hypothetical: the threadx-qemu-riscv64 board's `<type_traits>` was
+/// is not a hypothetical: the rv-virt-threadx board's `<type_traits>` was
 /// a 58-line stub with `enable_if`, `integral_constant` and `is_convertible`
 /// and nothing else, and its `remove_reference` lived in `<utility>`. A header
 /// that leans on `std::decay` there compiles on every host and fails on one
