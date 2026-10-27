@@ -1,6 +1,10 @@
 {
   "key": "c:action_server_get_options",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "see `c:action_client_get_options`."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/api/nros-c/include/rclc/detail/nros_generated.h",
+    "text": "ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,"
+  },
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-28 (phase-515 C6, maintainer choice \"adopt, all six\"): `rcl_action_server_get_options` returns a pointer to the options the handle was initialised with, held ON the handle -- all zero for an init without options, NULL for a NULL or unusable handle, as rcl returns NULL for an invalid one. ENVELOPE (stated on the declaration): nano-ros's options struct is not rcl's -- the readback carries the scheduling context; rcl's `qos`, `allocator` and rmw-specific options are not members, so a ported `->qos` fails to compile rather than reading a wrong value, and the handle's QoS stays the one it was created with. Cost: the options struct moves onto the handle, replacing the copied `sched_context_id` where there was one (measured in the phase doc's C6 note). Test: `packages/api/nros-c/tests/run/entity_get_options.c` (`just check c`). PRIOR ROW: see `c:action_client_get_options`."
 }

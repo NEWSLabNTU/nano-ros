@@ -1233,6 +1233,25 @@ typedef void (*rclc_cancel_response_callback_t)(const struct rclc_goal_uuid_t *g
 typedef uint8_t rclc_sched_context_id_t;
 
 /**
+ * Phase 189.M3.3.b — rclc-style named action-client options (action clients
+ * carry no QoS field, so this is options-only). Zero-init = default behaviour.
+ */
+typedef struct rcl_action_client_options_t {
+  /**
+   * Scheduling-context slot to bind the action client's executor handle to.
+   * `0` = inherit the executor / Node default. A non-zero value must be an id
+   * from `rclc_executor_create_sched_context`; the bind is applied by
+   * `rclc_executor_attach_action_client` once the handle exists. No effect
+   * on the L1 polling path.
+   */
+  rclc_sched_context_id_t sched_context;
+  /**
+   * Reserved for future use; must be zero. Pads for ABI stability.
+   */
+  uint8_t _reserved[3];
+} rcl_action_client_options_t;
+
+/**
  * Internal state for the action client.
  *
  * Lightweight — stores only the arena entry index and executor pointer.
@@ -1326,7 +1345,7 @@ typedef struct rcl_action_client_t {
    * `rclc_executor_attach_action_client` binds the handle after
    * registration. No effect on the L1 polling path.
    */
-  rclc_sched_context_id_t sched_context_id;
+  struct rcl_action_client_options_t options;
   /**
    * Internal state (arena entry index + executor pointer). Phase 87.5:
    * Typed C-ABI handle field.
@@ -1779,25 +1798,6 @@ typedef struct rclc_action_type_t {
 } rclc_action_type_t;
 
 /**
- * Phase 189.M3.3.b — rclc-style named action-client options (action clients
- * carry no QoS field, so this is options-only). Zero-init = default behaviour.
- */
-typedef struct rcl_action_client_options_t {
-  /**
-   * Scheduling-context slot to bind the action client's executor handle to.
-   * `0` = inherit the executor / Node default. A non-zero value must be an id
-   * from `rclc_executor_create_sched_context`; the bind is applied by
-   * `rclc_executor_attach_action_client` once the handle exists. No effect
-   * on the L1 polling path.
-   */
-  rclc_sched_context_id_t sched_context;
-  /**
-   * Reserved for future use; must be zero. Pads for ABI stability.
-   */
-  uint8_t _reserved[3];
-} rcl_action_client_options_t;
-
-/**
  * Phase 122.3.c.6.e — C-ABI wake-state slot. Caller declares one
  * per (entity, channel) pair next to the entity, passes a pointer
  * to it into the matching `nros_*_set_wake_callback` and keeps it
@@ -1942,6 +1942,25 @@ typedef struct rclc_qos_t {
    */
   uint8_t tx_express;
 } rclc_qos_t;
+
+/**
+ * Phase 189.M3.3.b — rclc-style named action-server options. QoS is passed
+ * separately; this carries the non-QoS axes. Zero-init = default behaviour.
+ */
+typedef struct rcl_action_server_options_t {
+  /**
+   * Scheduling-context slot to bind the action server's executor handle to.
+   * `0` = inherit the executor / Node default. A non-zero value must be an id
+   * from `rclc_executor_create_sched_context`; the bind is applied by
+   * `rclc_executor_attach_action_server` once the handle exists. No effect
+   * on the L1 polling path.
+   */
+  rclc_sched_context_id_t sched_context;
+  /**
+   * Reserved for future use; must be zero. Pads for ABI stability.
+   */
+  uint8_t _reserved[3];
+} rcl_action_server_options_t;
 
 /**
  * The arena handle, filled in by executor registration.
@@ -2174,7 +2193,7 @@ typedef struct rcl_action_server_t {
    * `rclc_executor_attach_action_server` binds the handle after
    * registration. No effect on the L1 polling path.
    */
-  rclc_sched_context_id_t sched_context_id;
+  struct rcl_action_server_options_t options;
   /**
    * Internal state — set by `rclc_executor_attach_action_server`.
    * Typed C-ABI handle field (was an opaque blob in earlier versions).
@@ -2193,25 +2212,6 @@ typedef struct rcl_action_server_t {
    */
   struct rclc_action_server_rclc_state_t _rclc;
 } rcl_action_server_t;
-
-/**
- * Phase 189.M3.3.b — rclc-style named action-server options. QoS is passed
- * separately; this carries the non-QoS axes. Zero-init = default behaviour.
- */
-typedef struct rcl_action_server_options_t {
-  /**
-   * Scheduling-context slot to bind the action server's executor handle to.
-   * `0` = inherit the executor / Node default. A non-zero value must be an id
-   * from `rclc_executor_create_sched_context`; the bind is applied by
-   * `rclc_executor_attach_action_server` once the handle exists. No effect
-   * on the L1 polling path.
-   */
-  rclc_sched_context_id_t sched_context;
-  /**
-   * Reserved for future use; must be zero. Pads for ABI stability.
-   */
-  uint8_t _reserved[3];
-} rcl_action_server_options_t;
 
 /**
  * rclc's `rclc_action_server_t` (phase-515 C4b). One struct serves rcl's
@@ -2260,6 +2260,42 @@ typedef struct rclc_message_type_t {
    */
   rclc_message_deserialize_fn_t deserialize;
 } rclc_message_type_t;
+
+/**
+ * Phase 189.M3 — rclc-style named subscription options.
+ *
+ * Sits ALONGSIDE the QoS profile (rclc convention): QoS is passed
+ * separately, this struct carries the non-QoS subscription-creation
+ * axes. The struct holds only plain scalar fields — no pointers — so it
+ * is safe to stack-allocate, memcpy, and pass across the FFI. Zero-init
+ * (all fields 0) selects the default behaviour, identical to
+ * `rclc_subscription_init_with_qos`.
+ */
+typedef struct rcl_subscription_options_t {
+  /**
+   * Scheduling-context slot to bind the subscription's executor
+   * handle to. `0` = inherit the executor / Node default (no explicit
+   * bind), matching the `rcl_node_options_t::sched_context_id`
+   * convention. A non-zero value must be an id previously returned
+   * from `rclc_executor_create_sched_context`; the bind is applied by
+   * `nros_executor_add_subscription_*` once the handle exists. Has
+   * no effect on the L1 polling path.
+   */
+  rclc_sched_context_id_t sched_context;
+  /**
+   * Reserved — needs a with-info arena path (Phase 189.M3.4), not yet
+   * wired. When a future M3.4 lands this will request the
+   * message-info delivery variant (sample identity + reception
+   * timestamp alongside the payload). Setting it to a non-zero value
+   * today is accepted but ignored. Treat as bool (0 = off).
+   */
+  uint8_t message_info;
+  /**
+   * Reserved for future use; must be zero. Pads the struct for ABI
+   * stability so later axes can be added without a layout break.
+   */
+  uint8_t _reserved[2];
+} rcl_subscription_options_t;
 
 /**
  * A subscription the executor dispatches (rclc's `rcl_subscription_t`).
@@ -2334,7 +2370,7 @@ typedef struct rcl_subscription_t {
    * `nros_executor_add_subscription_*` binds the freshly-created
    * handle to this SC after registration.
    */
-  rclc_sched_context_id_t sched_context_id;
+  struct rcl_subscription_options_t options;
   /**
    * issue 1437 — the `rclc_executor_t` holding this subscription's arena
    * entry, or NULL before registration. Set beside
@@ -2381,6 +2417,30 @@ typedef void (*rclc_event_subscriber_count_cb_t)(struct rcl_subscription_t *sub,
                                                  void *user_context);
 
 /**
+ * Phase 189.M3 — rclc-style named publisher options.
+ *
+ * Sits ALONGSIDE the QoS profile (rclc convention): QoS is passed
+ * separately, this struct carries the non-QoS publisher-creation axes.
+ * Publishers are not executor handles and therefore have no
+ * scheduling-context binding — this struct is intentionally thin and
+ * exists for rclc symmetry with `rcl_subscription_options_t` plus
+ * forward ABI headroom.
+ *
+ * The struct contains only plain scalar fields — no pointers — so it is
+ * safe to stack-allocate, memcpy, and pass across the FFI. Zero-init
+ * (all fields 0) selects the default behaviour, identical to
+ * `rclc_publisher_init_with_qos`.
+ */
+typedef struct rcl_publisher_options_t {
+  /**
+   * Reserved for future use; must be zero. Pads the struct to a
+   * non-empty layout and reserves room for later publisher-only axes
+   * (e.g. a future loan-pool hint) without an ABI break.
+   */
+  uint8_t _reserved[4];
+} rcl_publisher_options_t;
+
+/**
  * Publisher structure.
  */
 typedef struct rcl_publisher_t {
@@ -2392,6 +2452,12 @@ typedef struct rcl_publisher_t {
    * Topic name storage
    */
   uint8_t topic_name[NROS_MAX_TOPIC_LEN];
+  /**
+   * The options it was initialised with (all zero without any), which
+   * `rcl_publisher_get_options` returns (phase-515 C6). Placed in the
+   * alignment padding after `topic_name`.
+   */
+  struct rcl_publisher_options_t options;
   /**
    * Topic name length
    */
@@ -2840,6 +2906,30 @@ typedef struct rclc_service_type_t {
 } rclc_service_type_t;
 
 /**
+ * Phase 189.M3.3.a — rclc-style named service options.
+ *
+ * Sits ALONGSIDE the QoS profile (same convention as
+ * `rcl_subscription_options_t`): QoS is passed separately, this struct
+ * carries the non-QoS service-creation axes. Plain scalar fields only — safe
+ * to stack-allocate, memcpy, and pass across the FFI. Zero-init selects the
+ * default behaviour, identical to `rclc_service_init_with_qos`.
+ */
+typedef struct rcl_service_options_t {
+  /**
+   * Scheduling-context slot to bind the service's executor handle to.
+   * `0` = inherit the executor / Node default (no explicit bind). A non-zero
+   * value must be an id previously returned from
+   * `rclc_executor_create_sched_context`; the bind is applied by
+   * `rclc_executor_add_service_raw` once the handle exists.
+   */
+  rclc_sched_context_id_t sched_context;
+  /**
+   * Reserved for future use; must be zero. Pads the struct for ABI stability.
+   */
+  uint8_t _reserved[3];
+} rcl_service_options_t;
+
+/**
  * Internal state for the service server (Phase 82.7).
  *
  * Lightweight — stores only the arena entry index and the executor
@@ -2923,7 +3013,7 @@ typedef struct rcl_service_t {
    * `rclc_executor_add_service_raw` binds the freshly-created handle to
    * this SC after registration.
    */
-  rclc_sched_context_id_t sched_context_id;
+  struct rcl_service_options_t options;
   /**
    * Internal state (arena entry index + executor pointer). Phase 87.5:
    * Typed C-ABI handle field (was an opaque blob in earlier versions).
@@ -2999,6 +3089,25 @@ typedef void (*rclc_service_callback_with_request_id_t)(const void *request,
 typedef void (*rclc_service_callback_with_context_t)(const void *request,
                                                      void *response,
                                                      void *context);
+
+/**
+ * Phase 189.M3.3.a — rclc-style named service-client options (mirrors
+ * `rcl_service_options_t`). QoS is passed separately; this carries the
+ * non-QoS axes. Zero-init selects the default behaviour.
+ */
+typedef struct rcl_client_options_t {
+  /**
+   * Scheduling-context slot to bind the client's executor handle to.
+   * `0` = inherit the executor / Node default. A non-zero value must be an id
+   * from `rclc_executor_create_sched_context`; the bind is applied by
+   * `rclc_executor_attach_client` once the handle exists.
+   */
+  rclc_sched_context_id_t sched_context;
+  /**
+   * Reserved for future use; must be zero. Pads for ABI stability.
+   */
+  uint8_t _reserved[3];
+} rcl_client_options_t;
 
 /**
  * Internal state for the service client (Phase 82).
@@ -3089,7 +3198,7 @@ typedef struct rcl_client_t {
    * `rclc_executor_attach_client` binds the freshly-created handle to this
    * SC after registration.
    */
-  rclc_sched_context_id_t sched_context_id;
+  struct rcl_client_options_t options;
   /**
    * Internal state (arena entry index + executor pointer + timeout).
    * Typed C-ABI handle field.
@@ -3253,30 +3362,6 @@ typedef struct rcl_lifecycle_state_machine_t {
 typedef uint8_t (*rclc_lifecycle_callback_t)(void *context);
 
 /**
- * Phase 189.M3 — rclc-style named publisher options.
- *
- * Sits ALONGSIDE the QoS profile (rclc convention): QoS is passed
- * separately, this struct carries the non-QoS publisher-creation axes.
- * Publishers are not executor handles and therefore have no
- * scheduling-context binding — this struct is intentionally thin and
- * exists for rclc symmetry with `rcl_subscription_options_t` plus
- * forward ABI headroom.
- *
- * The struct contains only plain scalar fields — no pointers — so it is
- * safe to stack-allocate, memcpy, and pass across the FFI. Zero-init
- * (all fields 0) selects the default behaviour, identical to
- * `rclc_publisher_init_with_qos`.
- */
-typedef struct rcl_publisher_options_t {
-  /**
-   * Reserved for future use; must be zero. Pads the struct to a
-   * non-empty layout and reserves room for later publisher-only axes
-   * (e.g. a future loan-pool hint) without an ABI break.
-   */
-  uint8_t _reserved[4];
-} rcl_publisher_options_t;
-
-/**
  * A service server the CALLER drains, with no executor (phase-487 W2).
  *
  * The C counterpart of C++'s `nros::PollService<S>`. Nothing dispatches it,
@@ -3302,30 +3387,6 @@ typedef struct rclc_polling_service_t {
 } rclc_polling_service_t;
 
 /**
- * Phase 189.M3.3.a — rclc-style named service options.
- *
- * Sits ALONGSIDE the QoS profile (same convention as
- * `rcl_subscription_options_t`): QoS is passed separately, this struct
- * carries the non-QoS service-creation axes. Plain scalar fields only — safe
- * to stack-allocate, memcpy, and pass across the FFI. Zero-init selects the
- * default behaviour, identical to `rclc_service_init_with_qos`.
- */
-typedef struct rcl_service_options_t {
-  /**
-   * Scheduling-context slot to bind the service's executor handle to.
-   * `0` = inherit the executor / Node default (no explicit bind). A non-zero
-   * value must be an id previously returned from
-   * `rclc_executor_create_sched_context`; the bind is applied by
-   * `rclc_executor_add_service_raw` once the handle exists.
-   */
-  rclc_sched_context_id_t sched_context;
-  /**
-   * Reserved for future use; must be zero. Pads the struct for ABI stability.
-   */
-  uint8_t _reserved[3];
-} rcl_service_options_t;
-
-/**
  * A service client the CALLER drives, with no executor (phase-487 W2).
  *
  * The C counterpart of C++'s `nros::PollClient<S>`. `_opaque` holds a
@@ -3348,25 +3409,6 @@ typedef struct rclc_polling_client_t {
    */
   uint64_t _opaque[SERVICE_CLIENT_OPAQUE_U64S];
 } rclc_polling_client_t;
-
-/**
- * Phase 189.M3.3.a — rclc-style named service-client options (mirrors
- * `rcl_service_options_t`). QoS is passed separately; this carries the
- * non-QoS axes. Zero-init selects the default behaviour.
- */
-typedef struct rcl_client_options_t {
-  /**
-   * Scheduling-context slot to bind the client's executor handle to.
-   * `0` = inherit the executor / Node default. A non-zero value must be an id
-   * from `rclc_executor_create_sched_context`; the bind is applied by
-   * `rclc_executor_attach_client` once the handle exists.
-   */
-  rclc_sched_context_id_t sched_context;
-  /**
-   * Reserved for future use; must be zero. Pads for ABI stability.
-   */
-  uint8_t _reserved[3];
-} rcl_client_options_t;
 
 /**
  * Service-client response callback type (Phase 82).
@@ -3412,42 +3454,6 @@ typedef struct rclc_polling_subscription_t {
    */
   uint64_t _opaque[SUBSCRIPTION_OPAQUE_U64S];
 } rclc_polling_subscription_t;
-
-/**
- * Phase 189.M3 — rclc-style named subscription options.
- *
- * Sits ALONGSIDE the QoS profile (rclc convention): QoS is passed
- * separately, this struct carries the non-QoS subscription-creation
- * axes. The struct holds only plain scalar fields — no pointers — so it
- * is safe to stack-allocate, memcpy, and pass across the FFI. Zero-init
- * (all fields 0) selects the default behaviour, identical to
- * `rclc_subscription_init_with_qos`.
- */
-typedef struct rcl_subscription_options_t {
-  /**
-   * Scheduling-context slot to bind the subscription's executor
-   * handle to. `0` = inherit the executor / Node default (no explicit
-   * bind), matching the `rcl_node_options_t::sched_context_id`
-   * convention. A non-zero value must be an id previously returned
-   * from `rclc_executor_create_sched_context`; the bind is applied by
-   * `nros_executor_add_subscription_*` once the handle exists. Has
-   * no effect on the L1 polling path.
-   */
-  rclc_sched_context_id_t sched_context;
-  /**
-   * Reserved — needs a with-info arena path (Phase 189.M3.4), not yet
-   * wired. When a future M3.4 lands this will request the
-   * message-info delivery variant (sample identity + reception
-   * timestamp alongside the payload). Setting it to a non-zero value
-   * today is accepted but ignored. Treat as bool (0 = off).
-   */
-  uint8_t message_info;
-  /**
-   * Reserved for future use; must be zero. Pads the struct for ABI
-   * stability so later axes can be added without a layout break.
-   */
-  uint8_t _reserved[2];
-} rcl_subscription_options_t;
 
 /**
  * Phase 252 / issue 0073 — E2E message-integrity status surfaced to the C/C++
@@ -4454,6 +4460,21 @@ rcl_ret_t rcl_action_client_init(struct rcl_action_client_t *client,
                                  const struct rcl_action_client_options_t *options);
 
 /**
+ * rcl's `rcl_action_client_get_options(client)`: the options the action client was
+ * initialised with -- all zero when it was initialised without any -- or
+ * NULL for a NULL or unusable handle (phase-515 C6).
+ *
+ * ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
+ * `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+ * the handle's QoS is the one it was created with.
+ *
+ * # Safety
+ * `client` must be NULL or point to a valid `rcl_action_client_t`.
+ */
+NROS_PUBLIC
+const struct rcl_action_client_options_t *rcl_action_client_get_options(const struct rcl_action_client_t *client);
+
+/**
  * Get a zero-initialised [`rcl_action_client_options_t`] (`sched_context = 0`).
  */
 NROS_PUBLIC struct rcl_action_client_options_t rcl_action_client_get_default_options(void);
@@ -4934,6 +4955,21 @@ rcl_ret_t rclc_action_server_init_with_qos(struct rcl_action_server_t *server,
                                            rclc_accepted_callback_t accepted_callback,
                                            void *context,
                                            const struct rclc_qos_t *qos);
+
+/**
+ * rcl's `rcl_action_server_get_options(server)`: the options the action server was
+ * initialised with -- all zero when it was initialised without any -- or
+ * NULL for a NULL or unusable handle (phase-515 C6).
+ *
+ * ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
+ * `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+ * the handle's QoS is the one it was created with.
+ *
+ * # Safety
+ * `server` must be NULL or point to a valid `rcl_action_server_t`.
+ */
+NROS_PUBLIC
+const struct rcl_action_server_options_t *rcl_action_server_get_options(const struct rcl_action_server_t *server);
 
 /**
  * Get a zero-initialised [`rcl_action_server_options_t`] (`sched_context = 0`).
@@ -8164,6 +8200,21 @@ rcl_ret_t rclc_node_resolve_name(const struct rcl_node_t *node,
                                  size_t output_size);
 
 /**
+ * rcl's `rcl_publisher_get_options(publisher)`: the options the publisher was
+ * initialised with -- all zero when it was initialised without any -- or
+ * NULL for a NULL or unusable handle (phase-515 C6).
+ *
+ * ADOPT-BOUNDED: nano-ros's options carry reserved bytes only, not rcl's `qos`,
+ * `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+ * the handle's QoS is the one it was created with.
+ *
+ * # Safety
+ * `publisher` must be NULL or point to a valid `rcl_publisher_t`.
+ */
+NROS_PUBLIC
+const struct rcl_publisher_options_t *rcl_publisher_get_options(const struct rcl_publisher_t *publisher);
+
+/**
  * Get a zero-initialised [`rcl_publisher_options_t`].
  *
  * All fields default to "inherit"/"none". Callers populate only the
@@ -8798,6 +8849,21 @@ rcl_ret_t rclc_service_init_default(struct rcl_service_t *service,
                                     const char *service_name);
 
 /**
+ * rcl's `rcl_service_get_options(service)`: the options the service was
+ * initialised with -- all zero when it was initialised without any -- or
+ * NULL for a NULL or unusable handle (phase-515 C6).
+ *
+ * ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
+ * `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+ * the handle's QoS is the one it was created with.
+ *
+ * # Safety
+ * `service` must be NULL or point to a valid `rcl_service_t`.
+ */
+NROS_PUBLIC
+const struct rcl_service_options_t *rcl_service_get_options(const struct rcl_service_t *service);
+
+/**
  * Get a zero-initialised [`rcl_service_options_t`] (`sched_context = 0`).
  */
 NROS_PUBLIC struct rcl_service_options_t rcl_service_get_default_options(void);
@@ -9066,6 +9132,21 @@ rcl_ret_t rclc_client_init_with_qos(struct rcl_client_t *client,
                                     const struct rclc_service_type_t *type_info,
                                     const char *service_name,
                                     const struct rclc_qos_t *qos);
+
+/**
+ * rcl's `rcl_client_get_options(client)`: the options the client was
+ * initialised with -- all zero when it was initialised without any -- or
+ * NULL for a NULL or unusable handle (phase-515 C6).
+ *
+ * ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
+ * `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+ * the handle's QoS is the one it was created with.
+ *
+ * # Safety
+ * `client` must be NULL or point to a valid `rcl_client_t`.
+ */
+NROS_PUBLIC
+const struct rcl_client_options_t *rcl_client_get_options(const struct rcl_client_t *client);
 
 /**
  * Get a zero-initialised [`rcl_client_options_t`] (`sched_context = 0`).
@@ -9592,6 +9673,21 @@ NROS_PUBLIC struct rclc_polling_subscription_t rclc_get_zero_initialized_polling
  * Get a zero-initialized subscription.
  */
 NROS_PUBLIC struct rcl_subscription_t rcl_get_zero_initialized_subscription(void);
+
+/**
+ * rcl's `rcl_subscription_get_options(subscription)`: the options the subscription was
+ * initialised with -- all zero when it was initialised without any -- or
+ * NULL for a NULL or unusable handle (phase-515 C6).
+ *
+ * ADOPT-BOUNDED: nano-ros's options carry the scheduling context and the message-info flag, not rcl's `qos`,
+ * `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+ * the handle's QoS is the one it was created with.
+ *
+ * # Safety
+ * `subscription` must be NULL or point to a valid `rcl_subscription_t`.
+ */
+NROS_PUBLIC
+const struct rcl_subscription_options_t *rcl_subscription_get_options(const struct rcl_subscription_t *subscription);
 
 /**
  * Get a zero-initialised [`rcl_subscription_options_t`].

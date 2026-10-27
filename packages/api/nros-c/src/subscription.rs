@@ -127,7 +127,7 @@ pub struct rcl_subscription_t {
     /// `rcl_node_options_t::sched_context_id` convention. When non-zero,
     /// `nros_executor_add_subscription_*` binds the freshly-created
     /// handle to this SC after registration.
-    pub sched_context_id: crate::executor::rclc_sched_context_id_t,
+    pub options: rcl_subscription_options_t,
     /// issue 1437 — the `rclc_executor_t` holding this subscription's arena
     /// entry, or NULL before registration. Set beside
     /// [`handle_id`](Self::handle_id) by `nros_executor_add_subscription_*`:
@@ -152,7 +152,7 @@ impl Default for rcl_subscription_t {
             type_support: ptr::null(),
             qos: crate::qos::rclc_qos_t::default(),
             handle_id: usize::MAX,
-            sched_context_id: 0,
+            options: rcl_subscription_options_t::zeroed(),
             _executor: ptr::null_mut(),
         }
     }
@@ -233,7 +233,7 @@ pub extern "C" fn rcl_get_zero_initialized_subscription() -> rcl_subscription_t 
 /// (all fields 0) selects the default behaviour, identical to
 /// `rclc_subscription_init_with_qos`.
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct rcl_subscription_options_t {
     /// Scheduling-context slot to bind the subscription's executor
     /// handle to. `0` = inherit the executor / Node default (no explicit
@@ -252,6 +252,42 @@ pub struct rcl_subscription_options_t {
     /// Reserved for future use; must be zero. Pads the struct for ABI
     /// stability so later axes can be added without a layout break.
     pub _reserved: [u8; 2],
+}
+
+impl rcl_subscription_options_t {
+    /// Every field zero, as `Default` gives -- `const`, for the handles'
+    /// zero-initialisers (phase-515 C6).
+    pub(crate) const fn zeroed() -> Self {
+        Self {
+            sched_context: 0,
+            message_info: 0,
+            _reserved: [0; 2],
+        }
+    }
+}
+
+/// rcl's `rcl_subscription_get_options(subscription)`: the options the subscription was
+/// initialised with -- all zero when it was initialised without any -- or
+/// NULL for a NULL or unusable handle (phase-515 C6).
+///
+/// ADOPT-BOUNDED: nano-ros's options carry the scheduling context and the message-info flag, not rcl's `qos`,
+/// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+/// the handle's QoS is the one it was created with.
+///
+/// # Safety
+/// `subscription` must be NULL or point to a valid `rcl_subscription_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_subscription_get_options(
+    subscription: *const rcl_subscription_t,
+) -> *const rcl_subscription_options_t {
+    if subscription.is_null() {
+        return core::ptr::null();
+    }
+    let subscription = &*subscription;
+    if !subscription.is_usable() {
+        return core::ptr::null();
+    }
+    &subscription.options
 }
 
 /// Get a zero-initialised [`rcl_subscription_options_t`].
@@ -447,7 +483,7 @@ pub unsafe extern "C" fn rclc_subscription_init_with_options(
         let opts = &*options;
         // SAFETY: `subscription` was validated non-NULL by the
         // `_with_qos` call above (it returned OK).
-        (*subscription).sched_context_id = opts.sched_context;
+        (*subscription).options = *opts;
     }
 
     RCL_RET_OK

@@ -86,7 +86,7 @@ pub struct rcl_action_server_t {
     /// `rclc_action_server_init_with_options`. When non-zero,
     /// `rclc_executor_attach_action_server` binds the handle after
     /// registration. No effect on the L1 polling path.
-    pub sched_context_id: crate::executor::rclc_sched_context_id_t,
+    pub options: rcl_action_server_options_t,
     /// Internal state — set by `rclc_executor_attach_action_server`.
     /// Typed C-ABI handle field (was an opaque blob in earlier versions).
     pub _internal: ActionServerInternal,
@@ -267,7 +267,7 @@ impl Default for rcl_action_server_t {
             context: ptr::null_mut(),
             node: crate::node::rclc_node_ref_t::none(),
             qos: crate::qos::rclc_qos_t::default(),
-            sched_context_id: 0,
+            options: rcl_action_server_options_t::zeroed(),
             _internal: ActionServerInternal::invalid_default(),
             type_support: ptr::null(),
             _rclc: rclc_action_server_rclc_state_t::NONE,
@@ -589,7 +589,7 @@ pub unsafe extern "C" fn rclc_action_server_init_with_qos(
 /// Phase 189.M3.3.b — rclc-style named action-server options. QoS is passed
 /// separately; this carries the non-QoS axes. Zero-init = default behaviour.
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct rcl_action_server_options_t {
     /// Scheduling-context slot to bind the action server's executor handle to.
     /// `0` = inherit the executor / Node default. A non-zero value must be an id
@@ -599,6 +599,44 @@ pub struct rcl_action_server_options_t {
     pub sched_context: crate::executor::rclc_sched_context_id_t,
     /// Reserved for future use; must be zero. Pads for ABI stability.
     pub _reserved: [u8; 3],
+}
+
+impl rcl_action_server_options_t {
+    /// Every field zero, as `Default` gives -- `const`, for the handles'
+    /// zero-initialisers (phase-515 C6).
+    pub(crate) const fn zeroed() -> Self {
+        Self {
+            sched_context: 0,
+            _reserved: [0; 3],
+        }
+    }
+}
+
+/// rcl's `rcl_action_server_get_options(server)`: the options the action server was
+/// initialised with -- all zero when it was initialised without any -- or
+/// NULL for a NULL or unusable handle (phase-515 C6).
+///
+/// ADOPT-BOUNDED: nano-ros's options carry the scheduling context, not rcl's `qos`,
+/// `allocator` or rmw-specific options, so a ported `->qos` does not compile;
+/// the handle's QoS is the one it was created with.
+///
+/// # Safety
+/// `server` must be NULL or point to a valid `rcl_action_server_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_action_server_get_options(
+    server: *const rcl_action_server_t,
+) -> *const rcl_action_server_options_t {
+    if server.is_null() {
+        return core::ptr::null();
+    }
+    let server = &*server;
+    if !matches!(
+        server.state,
+        rclc_action_server_state_t::RCLC_ACTION_SERVER_STATE_INITIALIZED
+    ) {
+        return core::ptr::null();
+    }
+    &server.options
 }
 
 /// Get a zero-initialised [`rcl_action_server_options_t`] (`sched_context = 0`).
@@ -644,7 +682,7 @@ pub unsafe extern "C" fn rclc_action_server_init_with_options(
         return ret;
     }
     if !options.is_null() {
-        (*server).sched_context_id = (*options).sched_context;
+        (*server).options = *options;
     }
     RCL_RET_OK
 }
