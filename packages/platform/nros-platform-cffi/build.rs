@@ -83,11 +83,11 @@ fn main() {
 
     #[cfg(feature = "posix-c-port")]
     {
-        // The port anchor, whole-archived AHEAD of the port (link order is
-        // the order of these `compile` calls). It is what lets the crates this
-        // one depends on, which link AFTER the port (`nros-log`'s clock,
-        // `nros-platform-api`'s task calls), resolve their port symbols.
-        // Why, in `c/port_anchor.c`.
+        // The port anchor, whole-archived AHEAD of the port's tail copy (link
+        // order is the order of the link lines printed below). It is what lets
+        // the crates this one depends on, which link AFTER the port
+        // (`nros-log`'s clock, `nros-platform-api`'s task calls), resolve their
+        // port symbols. Why, in `c/port_anchor.c`.
         println!("cargo:rerun-if-changed=c/port_anchor.c");
         nros_cc_flags::header_deps::track_header_deps(nros_cc_flags::strict_decls(
             &mut cc::Build::new(),
@@ -114,12 +114,26 @@ fn main() {
         .extra_warnings(true)
         .flag_if_supported("-Wpedantic")
         .define("_POSIX_C_SOURCE", "200809L")
-        // `-bundle` gives the port its own `-l` on the final link, right after
-        // the anchor above. Bundled, it sat INSIDE this crate's rlib, AHEAD of
-        // the whole-archived anchor, so the anchor's reference came too late
-        // for it as well.
-        .link_lib_modifier("-bundle")
+        // Bundled, as cc emits it: that is what puts the port inside a
+        // STATICLIB built from this graph (`libnros_c.a`), where the C linker
+        // rescans one archive's members and order does not matter.
         .compile("nros_platform_posix");
+        // ...and a byte-identical TAIL copy, `-bundle`, for a Rust final link.
+        // The bundled port sits INSIDE this crate's rlib, AHEAD of the
+        // whole-archived anchor, so the anchor's reference arrives too late for
+        // it. The tail gets its own `-l` right after the anchor, in the order
+        // these lines are printed, and is pulled only for what is still
+        // undefined there. Two demand-driven copies of identical members never
+        // define one symbol twice, which is the same reason
+        // `nros-rmw-xrce-cffi`'s copy coexists with this one (issue 1779). A
+        // staticlib does not carry a `-bundle` lib, so it holds the port once.
+        let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR"));
+        std::fs::copy(
+            out_dir.join("libnros_platform_posix.a"),
+            out_dir.join("libnros_platform_posix_tail.a"),
+        )
+        .expect("copy the POSIX port archive for the tail link");
+        println!("cargo:rustc-link-lib=static:-bundle=nros_platform_posix_tail");
         // issue 1580 — declare every file the compiler OPENED (the `-MMD`
         // depfiles), not only the files this script can name by hand.
         nros_cc_flags::header_deps::emit_header_deps(std::path::Path::new(

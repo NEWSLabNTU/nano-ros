@@ -17,10 +17,11 @@
  * other image linked only because some caller above this crate happened to
  * pull the member first.
  *
- * This object is linked `+whole-archive`, AHEAD of the port, which the build
- * script links `-bundle` so it gets its own place on the line. Every symbol
- * those crates call lives in `platform.c`, so one reference here pulls that
- * member at this crate's position, and with it every definition they need.
+ * This object is linked `+whole-archive`, AHEAD of a `-bundle` tail copy of
+ * the port, which the build script puts right after it on the line. Every
+ * symbol those crates call lives in `platform.c`, so one reference here pulls
+ * that member from the tail, and with it every definition they need. The
+ * port is also still bundled, the copy a staticlib (`libnros_c.a`) carries.
  *
  * The port itself stays demand-driven. That is what lets
  * `nros-rmw-xrce-cffi`'s copy of the same sources coexist with this one
