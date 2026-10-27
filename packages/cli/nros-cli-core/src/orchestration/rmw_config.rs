@@ -644,8 +644,8 @@ mod tests {
     }
 
     /// U9/U11 — an image overrides one domain's file; another image keeps the
-    /// domain's own. Refused at sync until a bridge config is per image
-    /// (issue 2062).
+    /// domain's own. Checked and delivered: `nros sync` plans each overriding
+    /// image's own bridge configuration (issue 2062).
     #[test]
     fn an_image_overrides_one_domains_file() {
         let d = dir(
@@ -667,12 +667,8 @@ mod tests {
             ],
         );
         let s = sys(&d);
-        let e = s.check_rmw_files(&d).unwrap_err();
-        assert!(
-            e.contains("not delivered yet") && e.contains("issue 2062"),
-            "checked, then refused while nothing carries it: {e}"
-        );
-        // The resolver itself already answers per image, for when it is.
+        s.check_rmw_files(&d)
+            .expect("a per-image domain file is delivered (issue 2062)");
         let ep = |img: Option<&str>| {
             s.domain_file(&d, "main", img).unwrap().unwrap().properties[0]
                 .1

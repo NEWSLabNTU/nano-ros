@@ -135,9 +135,12 @@ roads (issue 2051, resolved).
   `declarative_zenoh_to_cyclonedds_bridge_to_nano_listener` drives the zenoh side with
   `ZENOH_SESSION_CONFIG_URI` and the Cyclone side opens with the domain's XML.
 
-Not done, stated: an image's `rmw_config = { <domain> = … }` is checked and
-then refused, because the bridge configuration is per bringup (issue 2062);
-a C++ `NrosCppSessionSpec` carries no properties (a C/C++
+An image's `rmw_config = { <domain> = … }` reaches its bridge sessions
+through a per-image `<bringup>/nros-bridge.<image>.toml`, written beside the
+bringup's own only for an image that overrides a bridged domain, and picked
+by `nros::main!` from `NROS_IMAGE` (issue 2062, resolved).
+
+Not done, stated: a C++ `NrosCppSessionSpec` carries no properties (a C/C++
 multi-session image has no per-domain file), and a lone `[[domain]]` is not
 yet an image's default session (spelled `[system] rmw_config` meanwhile).
 

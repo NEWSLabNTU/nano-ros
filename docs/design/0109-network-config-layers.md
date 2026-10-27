@@ -326,8 +326,9 @@ interfaces, and wiring uses those names.
      a `[[domain]] config` that no bridge opens is refused, because nothing
      would read it. A named domain has no conventional file (the convention
      is the default session's). `rmw_config = { <domain> = "<file>" }`
-     overrides one domain's file and must name a declared domain — and is
-     refused at sync until it has a carrier (issue 2062, see 4).
+     overrides one domain's file and must name a declared domain; it travels
+     in that image's own bridge configuration, `nros-bridge.<image>.toml`,
+     written only for an image that overrides (issue 2062, see 4).
   3. **A domain's file travels as its session's properties**, so one image
      can open two domains with two files: a `session-json5` file lowered, a
      `verbatim-xml` one as its whole text under the one neutral key
