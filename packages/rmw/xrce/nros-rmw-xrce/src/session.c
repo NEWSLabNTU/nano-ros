@@ -367,6 +367,77 @@ uxrQoS_t xrce_map_qos(const rmw_qos_profile_t* qos) {
     return out;
 }
 
+/* Issue 2107 — the QoS the Agent-side entity holds, read back from what this
+ * backend sent. The XRCE protocol has no read-back request, so this is derived
+ * from the create, and that is only honest because of what was MEASURED
+ * against the pinned Agent (2.4.3, Fast-DDS 2.14.6) with a stock
+ * `rmw_fastrtps_cpp` peer reading each endpoint's discovered QoS
+ * (`get_*_info_by_topic`), issue 2107 "Resolution":
+ *
+ *  - A DataWriter / DataReader created from BIN holds EXACTLY the four
+ *    `uxrQoS_t` fields sent, and Fast-DDS library defaults for the rest
+ *    (deadline and lifespan infinite, liveliness AUTOMATIC with an infinite
+ *    lease). The Agent copies `DATAWRITER_QOS_DEFAULT` into a LOCAL before
+ *    applying the BIN flags (`FastDDSDataWriter::create_by_bin`), and Fast-DDS
+ *    substitutes the XML default profile only for the sentinel's ADDRESS — so
+ *    an Agent run with an XML default `data_writer` / `data_reader` profile
+ *    (BEST_EFFORT, TRANSIENT_LOCAL, deadline 3 s, MANUAL_BY_TOPIC) changed none
+ *    of them, while the same file did reach a stock `ros2 topic pub` (positive
+ *    control). So these are GRANTED, not merely requested.
+ *  - Depth is not on the wire (SEDP carries none). When this backend sent one
+ *    it is what the Agent applied; when it sent 0 the field was absent from
+ *    the CREATE and the Agent's own default stands, which is left UNKNOWN.
+ *  - `avoid_ros_namespace_conventions` is client-side: it chose the DDS topic
+ *    names (`xrce_dds_topic_name`), so it is reported as created. */
+void xrce_actual_qos_topic(const uxrQoS_t* sent, bool avoid_ros, rmw_qos_profile_t* out) {
+    if (sent == NULL || out == NULL) {
+        return;
+    }
+    out->reliability = (sent->reliability == UXR_RELIABILITY_BEST_EFFORT)
+                           ? NROS_RMW_RELIABILITY_BEST_EFFORT
+                           : NROS_RMW_RELIABILITY_RELIABLE;
+    out->durability = (sent->durability == UXR_DURABILITY_TRANSIENT_LOCAL)
+                          ? NROS_RMW_DURABILITY_TRANSIENT_LOCAL
+                          : NROS_RMW_DURABILITY_VOLATILE;
+    out->history = (sent->history == UXR_HISTORY_KEEP_ALL) ? NROS_RMW_HISTORY_KEEP_ALL
+                                                           : NROS_RMW_HISTORY_KEEP_LAST;
+    if (sent->history != UXR_HISTORY_KEEP_ALL && sent->depth != 0) {
+        out->depth = sent->depth;
+    }
+    out->deadline_ms = NROS_RMW_DURATION_INFINITE_MS;
+    out->lifespan_ms = NROS_RMW_DURATION_INFINITE_MS;
+    out->liveliness_kind = (uint8_t)NROS_RMW_LIVELINESS_AUTOMATIC;
+    out->liveliness_lease_ms = NROS_RMW_DURATION_INFINITE_MS;
+    out->avoid_ros_namespace_conventions = avoid_ros ? 1u : 0u;
+}
+
+/* Issue 2107 — a requester's / replier's two endpoints do NOT hold the profile
+ * the caller asked for. micro-XRCE-DDS-Client 3.0.1 discards it
+ * (`uxr_buffer_create_{requester,replier}_bin`: `(void) qos;`), and the Agent
+ * builds both endpoints from fixed attributes
+ * (`FastDDSMiddleware::create_{requester,replier}_by_bin`): the writer from a
+ * default `PublisherAttributes`, the reader from a default
+ * `SubscriberAttributes` with reliability forced RELIABLE. Measured on the
+ * pinned Agent, for a service created with the services-default profile
+ * (RELIABLE, VOLATILE): request/reply WRITERS RELIABLE + TRANSIENT_LOCAL,
+ * request/reply READERS RELIABLE + VOLATILE, deadline/lifespan infinite,
+ * liveliness AUTOMATIC with an infinite lease — and the same under the XML
+ * override above. History and depth reach no peer and were never sent, so
+ * they stay UNKNOWN. */
+void xrce_actual_qos_service(bool writer, bool avoid_ros, rmw_qos_profile_t* out) {
+    if (out == NULL) {
+        return;
+    }
+    out->reliability = NROS_RMW_RELIABILITY_RELIABLE;
+    out->durability =
+        writer ? NROS_RMW_DURABILITY_TRANSIENT_LOCAL : NROS_RMW_DURABILITY_VOLATILE;
+    out->deadline_ms = NROS_RMW_DURATION_INFINITE_MS;
+    out->lifespan_ms = NROS_RMW_DURATION_INFINITE_MS;
+    out->liveliness_kind = (uint8_t)NROS_RMW_LIVELINESS_AUTOMATIC;
+    out->liveliness_lease_ms = NROS_RMW_DURATION_INFINITE_MS;
+    out->avoid_ros_namespace_conventions = avoid_ros ? 1u : 0u;
+}
+
 /* issue 1329 — what THIS backend honours.
  *
  * Exactly the fields above plus the topic-name flag: the five `uxrQoS_t`

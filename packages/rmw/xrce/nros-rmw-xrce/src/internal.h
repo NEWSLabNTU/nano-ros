@@ -708,6 +708,11 @@ typedef struct xrce_publisher_state {
     xrce_session_state_t* session_state;
     uxrObjectId datawriter_oid;
     xrce_graph_endpoint graph_writer;
+    /* Issue 2107 — what the BIN create SENT (`xrce_map_qos`) and the topic-name
+     * flag, so `publisher_get_actual_qos` reports the profile the Agent built
+     * the DataWriter from. */
+    uxrQoS_t sent_qos;
+    bool avoid_ros;
 } xrce_publisher_state;
 
 /* Per-subscriber state — the slot lives inside the session state. */
@@ -716,6 +721,9 @@ typedef struct xrce_subscriber_state {
     xrce_subscriber_slot* slot;
     uxrObjectId datareader_oid;
     xrce_graph_endpoint graph_reader;
+    /* Issue 2107 — as `xrce_publisher_state::sent_qos`. */
+    uxrQoS_t sent_qos;
+    bool avoid_ros;
 } xrce_subscriber_state;
 
 /* Per-service-server state. The Agent builds a replier as a reply DataWriter
@@ -726,6 +734,9 @@ typedef struct xrce_service_server_state {
     uxrObjectId replier_oid;
     xrce_graph_endpoint graph_writer;
     xrce_graph_endpoint graph_reader;
+    /* Issue 2107 — the one requested field a requester/replier honours (it
+     * shapes the DDS topic names client-side); see `xrce_actual_qos_service`. */
+    bool avoid_ros;
 } xrce_service_server_state;
 
 /* Per-service-client state. A requester is a request DataWriter then a reply
@@ -736,6 +747,8 @@ typedef struct xrce_service_client_state {
     uxrObjectId requester_oid;
     xrce_graph_endpoint graph_writer;
     xrce_graph_endpoint graph_reader;
+    /* Issue 2107 — as `xrce_service_server_state::avoid_ros`. */
+    bool avoid_ros;
 } xrce_service_client_state;
 
 /* ---- Helpers -------------------------------------------------------- */
@@ -854,6 +867,12 @@ uxrQoS_t xrce_map_qos(const rmw_qos_profile_t* qos);
 
 /* issue 1329 — the `NROS_RMW_QOS_POLICY_*` bits this backend honours. */
 rmw_ret_t xrce_supported_qos_policies(const rmw_session_t* session, uint32_t* out_mask);
+
+/* Issue 2107 — the QoS the Agent-side DDS entity holds, for the six
+ * `*_get_actual_qos` slots. Writes only what is known and leaves the rest of
+ * `out` as the caller pre-loaded it (`NROS_RMW_QOS_PROFILE_UNKNOWN`). */
+void xrce_actual_qos_topic(const uxrQoS_t* sent, bool avoid_ros, rmw_qos_profile_t* out);
+void xrce_actual_qos_service(bool writer, bool avoid_ros, rmw_qos_profile_t* out);
 
 /* ---- Capacity diagnostics (issue 1033) ------------------------------- */
 

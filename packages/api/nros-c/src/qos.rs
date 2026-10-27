@@ -15,7 +15,7 @@
 //!   `RMW_QOS_POLICY_*_UNKNOWN`, and what `rmw_publisher_get_actual_qos`
 //!   requires for a policy an implementation cannot determine. An ABSENCE,
 //!   not a value. A profile that is unknown in EVERY field is the honest
-//!   answer from a backend with no read-back at all (XRCE has none).
+//!   answer from a backend with no read-back at all (a NULL slot).
 //! * `*_SYSTEM_DEFAULT` — **nobody stated this policy, so the middleware
 //!   chose.** Upstream's `RMW_QOS_POLICY_*_SYSTEM_DEFAULT`; discriminant 0 in
 //!   the RMW ABI, which is why a backend can report it without meaning to.

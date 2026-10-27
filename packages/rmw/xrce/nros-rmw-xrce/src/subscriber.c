@@ -164,6 +164,10 @@ static rmw_ret_t xrce_subscription_create_locked(const rmw_node_t* node,
         xrce_graph_track(st, &ss->graph_reader, node, graph_key, XRCE_GRAPH_READER);
     }
 
+    /* Issue 2107 — what the Agent built the DataReader from. */
+    ss->sent_qos = xrce_qos;
+    ss->avoid_ros = avoid_ros != 0;
+
     /* Register slot for callback dispatch. */
     slot->datareader_id = dr_oid.id;
     slot->write_idx = 0;

@@ -41,7 +41,7 @@ automatically as backends land implementations.
 | Identity / feature probe | — | — | — | — |
 | Publisher GID | wired | wired | wired | — |
 | Matched-endpoint counts | — | — | wired | — |
-| Actual-QoS read-back | wired | — | wired | wired |
+| Actual-QoS read-back | wired | wired | wired | wired |
 | Wait-for-acked | — | — | — | — |
 | Take-with-info | wired | — | wired | — |
 | Entity new-data callbacks | wired | — | wired | — |

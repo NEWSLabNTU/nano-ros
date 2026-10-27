@@ -278,6 +278,8 @@ static rmw_ret_t xrce_service_create_locked(const rmw_node_t* node,
         xrce_graph_track(st, &ss->graph_reader, node, graph_key + 1u, XRCE_GRAPH_READER);
     }
 
+    ss->avoid_ros = avoid_ros != 0; /* issue 2107 */
+
     /* Activate the slot — empty request ring. */
     slot->replier_id = replier_oid.id;
     slot->req_write_idx = 0;
@@ -775,6 +777,8 @@ static rmw_ret_t xrce_client_create_locked(const rmw_node_t* node,
         xrce_graph_track(st, &cs->graph_writer, node, graph_key, XRCE_GRAPH_WRITER);
         xrce_graph_track(st, &cs->graph_reader, node, graph_key + 1u, XRCE_GRAPH_READER);
     }
+
+    cs->avoid_ros = avoid_ros != 0; /* issue 2107 */
 
     slot->requester_id = requester_oid.id;
     slot->has_reply = false;
