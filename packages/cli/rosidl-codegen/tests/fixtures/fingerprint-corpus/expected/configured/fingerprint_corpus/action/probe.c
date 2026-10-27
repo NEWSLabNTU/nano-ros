@@ -336,4 +336,12 @@ const struct rclc_action_type_t fingerprint_corpus__action__Probe__nros_type = {
         .feedback = "h",
         .status = "h",
     },
+    // phase-515 C4a — the envelopes' layout, stated by the compiler that laid
+    // them out, so the runtime can place a goal, result or feedback in them.
+    .send_goal_request_size = sizeof(fingerprint_corpus__action__Probe_SendGoal_Request),
+    .send_goal_request_goal_offset = offsetof(fingerprint_corpus__action__Probe_SendGoal_Request, goal),
+    .get_result_response_size = sizeof(fingerprint_corpus__action__Probe_GetResult_Response),
+    .get_result_response_result_offset = offsetof(fingerprint_corpus__action__Probe_GetResult_Response, result),
+    .feedback_message_size = sizeof(fingerprint_corpus__action__Probe_FeedbackMessage),
+    .feedback_message_feedback_offset = offsetof(fingerprint_corpus__action__Probe_FeedbackMessage, feedback),
 };

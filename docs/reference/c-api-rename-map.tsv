@@ -255,6 +255,7 @@ NROS_QOS_RELIABILITY_SYSTEM_DEFAULT	RCLC_QOS_RELIABILITY_SYSTEM_DEFAULT	ours	API
 NROS_QOS_RELIABILITY_UNKNOWN	RCLC_QOS_RELIABILITY_UNKNOWN	ours	API constant with no upstream spelling
 NROS_QOS_SENSOR_DATA	RCLC_QOS_SENSOR_DATA	ours	API constant with no upstream spelling
 NROS_QOS_SERVICES	RCLC_QOS_SERVICES	ours	API constant with no upstream spelling
+NROS_RCLC_DETAIL_UUID_H	NROS_RCLC_DETAIL_UUID_H	build	build or configuration fact
 NROS_RCLC_REQUEST_ID_H	NROS_RCLC_REQUEST_ID_H	build	build or configuration fact
 NROS_RCL_COMPAT_H	NROS_RCL_COMPAT_H	build	build or configuration fact
 NROS_RET_ALREADY_EXISTS	RCLC_RET_ALREADY_EXISTS	ret	no rcl code of this name

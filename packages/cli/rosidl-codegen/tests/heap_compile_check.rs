@@ -380,3 +380,94 @@ fn generated_c_action_with_dheader_wrap_syntax_checks() {
         pkg.source
     );
 }
+
+/// phase-515 C4a — the generated action ENVELOPES compile, and the goal id they
+/// embed is defined once whichever of `<rclc/detail/uuid.h>` and the generated
+/// `unique_identifier_msgs/msg/UUID` header a translation unit sees first: both
+/// define `unique_identifier_msgs__msg__UUID` under one
+/// `NROS_DEFINED_<name>` guard, and a second unguarded definition is a
+/// redefinition error.
+#[test]
+#[ignore = "spawns cc -fsyntax-only against generated C"]
+fn generated_c_action_envelopes_and_uuid_guard_syntax_check() {
+    use rosidl_codegen::{generate_c_action_package, generate_c_message_package};
+    use rosidl_parser::parse_action;
+
+    let action =
+        parse_action("int32 order\n---\nint32[] sequence\n---\nint32[] partial\n").unwrap();
+    let act = generate_c_action_package(
+        "my_acts",
+        "Fibonacci",
+        &action,
+        &rosidl_codegen::rihs::ActionTypeHashes::uniform(RosEdition::Humble.type_hash()),
+        &CapacityResolver::empty(),
+    )
+    .expect("generate C action");
+    let uuid = generate_c_message_package(
+        "unique_identifier_msgs",
+        "UUID",
+        &parse_message("uint8[16] uuid\n").unwrap(),
+        RosEdition::Humble.type_hash(),
+        &CapacityResolver::empty(),
+    )
+    .expect("generate C UUID");
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .unwrap()
+        .to_path_buf();
+    let inc = repo_root.join("packages/api/nros-c/include");
+    let plat = repo_root.join("packages/platform/nros-platform-api/include");
+    let gen_dir = c_config_include();
+    let tmp = tempfile::tempdir().unwrap();
+    let act_hdr = tmp.path().join("act.h");
+    let uuid_hdr = tmp.path().join("uuid_msg.h");
+    fs::write(&act_hdr, &act.header).unwrap();
+    fs::write(&uuid_hdr, &uuid.header).unwrap();
+
+    let body = "\n\
+        static int use_envelopes(void) {\n\
+            my_acts__action__Fibonacci_SendGoal_Request req[2];\n\
+            my_acts__action__Fibonacci_GetResult_Response res;\n\
+            my_acts__action__Fibonacci_FeedbackMessage fb;\n\
+            unique_identifier_msgs__msg__UUID id = req[0].goal_id;\n\
+            req[1].goal.order = 7;\n\
+            res.status = 4;\n\
+            fb.goal_id = id;\n\
+            return req[1].goal.order + res.status + fb.goal_id.uuid[0];\n\
+        }\n\
+        int main(void) { return use_envelopes(); }\n";
+    for (name, first, second) in [
+        ("generated_uuid_first.c", &uuid_hdr, &act_hdr),
+        ("action_header_first.c", &act_hdr, &uuid_hdr),
+    ] {
+        let src = tmp.path().join(name);
+        fs::write(
+            &src,
+            format!(
+                "#include \"{}\"\n#include \"{}\"\n{body}",
+                first.display(),
+                second.display()
+            ),
+        )
+        .unwrap();
+        let out = cc_output(&[
+            "-fsyntax-only",
+            "-Wall",
+            "-Werror",
+            "-I",
+            gen_dir.to_str().unwrap(),
+            "-I",
+            inc.to_str().unwrap(),
+            "-I",
+            plat.to_str().unwrap(),
+            src.to_str().unwrap(),
+        ]);
+        assert!(
+            out.status.success(),
+            "{name}: generated envelopes failed -fsyntax-only:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}

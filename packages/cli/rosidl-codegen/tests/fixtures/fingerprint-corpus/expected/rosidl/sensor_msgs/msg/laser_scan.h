@@ -23,8 +23,8 @@
 
 #include <rclc/detail/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 20. */
-#define NROS_EMITTED_CODEGEN_VERSION 20
+/* RFC-0090 — emitted by nano-ros codegen version 21. */
+#define NROS_EMITTED_CODEGEN_VERSION 21
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -46,6 +46,8 @@ extern "C" {
 
 /// LaserScan message. rosidl's member shape: every string and sequence is
 /// `{data, size, capacity}` over memory the caller owns.
+#ifndef NROS_DEFINED_sensor_msgs__msg__LaserScan
+#define NROS_DEFINED_sensor_msgs__msg__LaserScan
 typedef struct sensor_msgs__msg__LaserScan {
     std_msgs__msg__Header header;
     float angle_min;
@@ -58,6 +60,7 @@ typedef struct sensor_msgs__msg__LaserScan {
     rosidl_runtime_c__float__Sequence ranges;
     rosidl_runtime_c__float__Sequence intensities;
 } sensor_msgs__msg__LaserScan;
+#endif
 
 /// A sequence of sensor_msgs__msg__LaserScan, in rosidl's shape.
 typedef struct sensor_msgs__msg__LaserScan__Sequence {

@@ -1807,6 +1807,12 @@ mod verification {
             feedback_serialize: None,
             feedback_deserialize: None,
             endpoint_hashes: crate::action::common::rclc_action_endpoint_hashes_t::NULL,
+            send_goal_request_size: 0,
+            send_goal_request_goal_offset: 0,
+            get_result_response_size: 0,
+            get_result_response_result_offset: 0,
+            feedback_message_size: 0,
+            feedback_message_feedback_offset: 0,
         }
     }
 

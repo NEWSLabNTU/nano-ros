@@ -144,9 +144,27 @@ pub struct rclc_action_type_t {
     pub feedback_serialize: crate::publisher::rclc_message_serialize_fn_t,
     /// The feedback part's deserialiser.
     pub feedback_deserialize: crate::publisher::rclc_message_deserialize_fn_t,
-    /// Issue 1913 — the hash each endpoint is keyed on (LAST, so an older
-    /// generator's designated initializer leaves it NULL).
+    /// Issue 1913 — the hash each endpoint is keyed on (an older generator's
+    /// designated initializer leaves it NULL).
     pub endpoint_hashes: rclc_action_endpoint_hashes_t,
+    /// phase-515 C4a — `sizeof(<Action>_SendGoal_Request)`, the generated
+    /// envelope rclc's `rclc_executor_add_action_server` takes an array of.
+    /// `0` in a descriptor from an older generator (or built from names
+    /// alone): the envelope API refuses it rather than guess a layout.
+    pub send_goal_request_size: usize,
+    /// `offsetof(<Action>_SendGoal_Request, goal)` — where the goal the
+    /// executor deserialises lands, after the 16-byte goal id.
+    pub send_goal_request_goal_offset: usize,
+    /// `sizeof(<Action>_GetResult_Response)`.
+    pub get_result_response_size: usize,
+    /// `offsetof(<Action>_GetResult_Response, result)` — after the `int8`
+    /// status, at the Result type's own alignment, so only the compiler that
+    /// laid the struct out can state it.
+    pub get_result_response_result_offset: usize,
+    /// `sizeof(<Action>_FeedbackMessage)`.
+    pub feedback_message_size: usize,
+    /// `offsetof(<Action>_FeedbackMessage, feedback)`.
+    pub feedback_message_feedback_offset: usize,
 }
 
 // ============================================================================
