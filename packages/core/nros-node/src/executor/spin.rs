@@ -15149,13 +15149,13 @@ impl<'s> Executor<'s> {
     /// that genuinely wants declare-on-write names
     /// `params_mut()`/`set_or_declare` and has opted in by naming it.
     ///
-    /// Returns [`SetParameterResult::NotFound`] when the store does not exist
+    /// Returns `Err(ParameterError::NotFound)` when the store does not exist
     /// yet (no parameter has been declared and no services registered).
     pub fn set_parameter(
         &mut self,
         name: &str,
         value: nros_params::ParameterValue,
-    ) -> nros_params::SetParameterResult {
+    ) -> Result<(), nros_params::ParameterError> {
         self.set_parameter_on(super::node_record::NodeId::PRIMARY, name, value)
     }
 
@@ -15165,7 +15165,7 @@ impl<'s> Executor<'s> {
         node: super::node_record::NodeId,
         name: &str,
         value: nros_params::ParameterValue,
-    ) -> nros_params::SetParameterResult {
+    ) -> Result<(), nros_params::ParameterError> {
         // Reserved parameters (`use_sim_time`) take effect on a set exactly as
         // they do on a declare — this is the seam every language funnels
         // through, so hooking it once here covers all of them.
@@ -15179,9 +15179,9 @@ impl<'s> Executor<'s> {
         // would reach that state from four directions instead of one.
         let result = match &mut self.params {
             Some(params) => params.server.apply(node.into(), name, value),
-            None => nros_params::SetParameterResult::NotFound,
+            None => Err(nros_params::ParameterError::NotFound),
         };
-        if result == nros_params::SetParameterResult::Success {
+        if result.is_ok() {
             self.note_reserved_parameter(name);
         }
         result
@@ -15197,12 +15197,12 @@ impl<'s> Executor<'s> {
         node: super::node_record::NodeId,
         name: &str,
         value: nros_params::ParameterValue,
-    ) -> nros_params::SetParameterResult {
+    ) -> Result<(), nros_params::ParameterError> {
         let result = match &mut self.params {
             Some(params) => params.server.set_local(node.into(), name, value),
-            None => nros_params::SetParameterResult::NotFound,
+            None => Err(nros_params::ParameterError::NotFound),
         };
-        if result == nros_params::SetParameterResult::Success {
+        if result.is_ok() {
             self.note_reserved_parameter(name);
         }
         result
@@ -15735,19 +15735,22 @@ impl<'s> Executor<'s> {
         &mut self,
         node: super::node_record::NodeId,
         items: I,
-    ) -> nros_params::SetParameterResult
+    ) -> Result<(), nros_params::ParameterError>
     where
         I: Iterator<Item = Option<(&'x str, nros_params::ParameterValue)>> + Clone,
     {
         match &mut self.params {
             Some(params) => params.server.apply_atomically(node.into(), items),
-            None => nros_params::SetParameterResult::NotFound,
+            None => Err(nros_params::ParameterError::NotFound),
         }
     }
 
     /// [`set_parameters_atomically_on`](Self::set_parameters_atomically_on) for
     /// the primary node.
-    pub fn set_parameters_atomically<'x, I>(&mut self, items: I) -> nros_params::SetParameterResult
+    pub fn set_parameters_atomically<'x, I>(
+        &mut self,
+        items: I,
+    ) -> Result<(), nros_params::ParameterError>
     where
         I: Iterator<Item = Option<(&'x str, nros_params::ParameterValue)>> + Clone,
     {

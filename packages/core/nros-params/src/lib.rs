@@ -78,10 +78,12 @@ pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, Parameters,
     RangeConvertible, ReadOnlyParameter,
 };
+/// Deprecated (phase-515): the store answers `Result<(), ParameterError>`.
+#[allow(deprecated)]
+pub use types::SetParameterResult;
 pub use types::{
     FloatingPointRange, IMPLIED_STORE_SLOTS, IntegerRange, MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN,
     MAX_PARAM_CONSTRAINTS_LEN, MAX_PARAM_DESCRIPTION_LEN, MAX_PARAM_NAME_LEN, MAX_PARAMETERS,
     MAX_STRING_VALUE_LEN, NodeFlags, NodeKey, PARAM_EVENTS_DEPTH, Parameter, ParameterDescriptor,
-    ParameterRange, ParameterType, ParameterValue, ParameterVariant, SetParameterResult,
-    fit_description,
+    ParameterRange, ParameterType, ParameterValue, ParameterVariant, fit_description,
 };

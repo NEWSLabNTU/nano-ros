@@ -3930,7 +3930,7 @@ fn use_sim_time_attaches_and_detaches_the_clock_source() {
                 "use_sim_time",
                 nros_params::ParameterValue::Bool(false),
             )
-            .is_success(),
+            .is_ok(),
         "an existing bool parameter set to a bool is an ordinary accepted set"
     );
     executor.refresh_use_sim_time_from_store();
@@ -4017,7 +4017,7 @@ fn use_sim_time_follows_the_store_verdict_not_the_caller() {
                 "use_sim_time",
                 nros_params::ParameterValue::Bool(false),
             )
-            .is_success()
+            .is_ok()
     );
     executor.refresh_use_sim_time_from_store();
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
@@ -4036,7 +4036,7 @@ fn use_sim_time_follows_the_store_verdict_not_the_caller() {
                 "use_sim_time",
                 nros_params::ParameterValue::Bool(true),
             )
-            .is_success()
+            .is_ok()
     );
     executor.refresh_use_sim_time_from_store();
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
@@ -4194,7 +4194,7 @@ fn executor_set_parameter_enforces_the_wire_rules() {
     // In range and on the step lattice.
     assert_eq!(
         executor.set_parameter("speed", nros_params::ParameterValue::Double(2.5)),
-        nros_params::SetParameterResult::Success
+        Ok(())
     );
     assert_eq!(
         executor.get_parameter("speed").and_then(|v| v.as_double()),
@@ -4204,7 +4204,7 @@ fn executor_set_parameter_enforces_the_wire_rules() {
     // Off the step: refused, and the stored value does not move.
     assert_eq!(
         executor.set_parameter("speed", nros_params::ParameterValue::Double(4.2)),
-        nros_params::SetParameterResult::OutOfRange
+        Err(nros_params::ParameterError::OutOfRange)
     );
     assert_eq!(
         executor.get_parameter("speed").and_then(|v| v.as_double()),
@@ -4214,7 +4214,7 @@ fn executor_set_parameter_enforces_the_wire_rules() {
     // Undeclared: refused with issue 1151's verdict, and NOT created.
     assert_eq!(
         executor.set_parameter("speeed", nros_params::ParameterValue::Double(1.0)),
-        nros_params::SetParameterResult::Undeclared
+        Err(nros_params::ParameterError::Undeclared)
     );
     assert!(executor.get_parameter("speeed").is_none());
 
@@ -4222,7 +4222,7 @@ fn executor_set_parameter_enforces_the_wire_rules() {
     executor.allow_undeclared_parameters(true);
     assert_eq!(
         executor.set_parameter("speeed", nros_params::ParameterValue::Double(1.0)),
-        nros_params::SetParameterResult::Success
+        Ok(())
     );
 }
 
@@ -4262,7 +4262,7 @@ fn two_nodes_on_one_executor_keep_their_parameters_apart() {
 
     assert_eq!(
         executor.set_parameter_on(talker, "rate", nros_params::ParameterValue::Integer(11)),
-        nros_params::SetParameterResult::Success
+        Ok(())
     );
     assert_eq!(
         executor
@@ -4276,11 +4276,11 @@ fn two_nodes_on_one_executor_keep_their_parameters_apart() {
     executor.allow_undeclared_parameters_on(talker, true);
     assert_eq!(
         executor.set_parameter_on(talker, "fresh", nros_params::ParameterValue::Bool(true)),
-        nros_params::SetParameterResult::Success
+        Ok(())
     );
     assert_eq!(
         executor.set_parameter_on(listener, "fresh", nros_params::ParameterValue::Bool(true)),
-        nros_params::SetParameterResult::Undeclared,
+        Err(nros_params::ParameterError::Undeclared),
         "allow_undeclared leaked from one node to its sibling"
     );
 }
@@ -4472,7 +4472,7 @@ fn use_sim_time_with_no_clock_sample_is_reported_exactly_once() {
                 "use_sim_time",
                 nros_params::ParameterValue::Bool(false),
             )
-            .is_success()
+            .is_ok()
     );
     executor.refresh_use_sim_time_from_store();
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
@@ -4485,7 +4485,7 @@ fn use_sim_time_with_no_clock_sample_is_reported_exactly_once() {
                 "use_sim_time",
                 nros_params::ParameterValue::Bool(true),
             )
-            .is_success()
+            .is_ok()
     );
     executor.refresh_use_sim_time_from_store();
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
@@ -4567,7 +4567,7 @@ fn use_sim_time_is_declared_on_a_node_that_never_named_it() {
                 "use_sim_time",
                 nros_params::ParameterValue::Bool(true),
             )
-            .is_success(),
+            .is_ok(),
         "the set must reach a declared parameter; an undeclared one is refused"
     );
     executor.refresh_use_sim_time_from_store();
@@ -15453,7 +15453,7 @@ fn parameter_events_publish_each_change_in_its_slot() {
 
     assert_eq!(
         executor.set_parameter_local_on(NodeId::PRIMARY, "rate", ParameterValue::Integer(6)),
-        nros_params::SetParameterResult::Success
+        Ok(())
     );
     executor.flush_parameter_events();
     let (bytes, len) = publisher(&executor).last_published().unwrap();
@@ -15545,7 +15545,7 @@ fn registering_parameter_services_publishes_parameter_events_for_every_node() {
     publisher(&executor).clear_published();
     assert_eq!(
         executor.set_parameter_local_on(beta, "gain", ParameterValue::Integer(4)),
-        nros_params::SetParameterResult::Success
+        Ok(())
     );
     let _ = executor.set_parameter_local_on(gamma, "quiet", ParameterValue::Integer(1));
     let _ = executor.spin_once(core::time::Duration::from_millis(0));

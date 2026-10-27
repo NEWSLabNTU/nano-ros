@@ -195,11 +195,15 @@ pub(crate) fn tx_writer(buf: &mut [u8]) -> Result<nros_core::CdrWriter<'_>, nros
 // list for the reason the list exists: `nros-c` and `nros-cpp` depend on
 // `nros-node` and not on `nros-params`, so a type they cannot name here is a
 // capability their surface cannot expose, whatever the store does.
+/// Deprecated (phase-515): the store answers `Result<(), ParameterError>`.
+#[cfg(feature = "param-store")]
+#[allow(deprecated)]
+pub use nros_params::SetParameterResult;
 #[cfg(feature = "param-store")]
 pub use nros_params::{
     NodeKey as ParameterNodeKey, OnSetContext, OnSetParameterFn, OnSetParameterHandle,
-    ParameterDescriptor, ParameterRange, ParameterServer, ParameterType, ParameterValue,
-    SetParameterResult,
+    ParameterDescriptor, ParameterError, ParameterRange, ParameterServer, ParameterType,
+    ParameterValue,
 };
 // phase-491 — the bounds a C caller's buffers are sized against (RFC-0105 D10).
 #[cfg(feature = "param-store")]

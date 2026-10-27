@@ -7,7 +7,6 @@
 use crate::ParameterStorage;
 use crate::{
     DeclarationError, NodeKey, ParameterDescriptor, ParameterRange, ParameterServer, ParameterType,
-    SetParameterResult,
 };
 use heapless::String;
 
@@ -33,24 +32,33 @@ pub enum ParameterError {
     InvalidRange,
     /// An on-set-parameters callback refused the write (phase-417 W4.a).
     Rejected,
+    /// A set on a name that was never declared, and the server does not
+    /// allow undeclared parameters (issue 1151; rclrs `parameter.rs`).
+    ///
+    /// Distinct from [`NotFound`](Self::NotFound): that is what a DIRECT
+    /// `ParameterServer::set` says about a missing name; this is what the
+    /// wire-facing [`ParameterServer::apply`](crate::ParameterServer::apply)
+    /// says when the only remaining option — declaring it — is switched off.
+    /// Moved here from the retired `SetParameterResult` (phase-515).
+    Undeclared,
 }
 
-impl From<SetParameterResult> for ParameterError {
-    fn from(result: SetParameterResult) -> Self {
+#[allow(deprecated)]
+impl From<crate::SetParameterResult> for ParameterError {
+    /// The retired verdict enum's error half, kept for one release beside the
+    /// deprecated type (phase-515).
+    fn from(result: crate::SetParameterResult) -> Self {
+        use crate::SetParameterResult as R;
         match result {
-            SetParameterResult::TypeMismatch => ParameterError::TypeMismatch,
-            SetParameterResult::OutOfRange => ParameterError::OutOfRange,
-            SetParameterResult::ReadOnly => ParameterError::ReadOnly,
-            SetParameterResult::NotFound => ParameterError::NotFound,
-            SetParameterResult::StorageFull => ParameterError::StorageFull,
-            SetParameterResult::InvalidRange => ParameterError::InvalidRange,
-            SetParameterResult::Rejected => ParameterError::Rejected,
-            // The typed API never auto-declares, so an unknown name is
-            // simply not there.
-            SetParameterResult::Undeclared => ParameterError::NotFound,
-            SetParameterResult::Success => {
-                panic!("SetParameterResult::Success is not an error")
-            }
+            R::TypeMismatch => ParameterError::TypeMismatch,
+            R::OutOfRange => ParameterError::OutOfRange,
+            R::ReadOnly => ParameterError::ReadOnly,
+            R::NotFound => ParameterError::NotFound,
+            R::StorageFull => ParameterError::StorageFull,
+            R::InvalidRange => ParameterError::InvalidRange,
+            R::Rejected => ParameterError::Rejected,
+            R::Undeclared => ParameterError::Undeclared,
+            R::Success => panic!("SetParameterResult::Success is not an error"),
         }
     }
 }
@@ -289,7 +297,7 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
 
 /// The typed terminals' declaration, reporting rclrs's [`DeclarationError`].
 ///
-/// `ParameterServer::declare_parameter` answers in `SetParameterResult`, where
+/// `ParameterServer::declare_parameter` answers in `ParameterError`, where
 /// `TypeMismatch` means "already declared" and `InvalidRange` covers both an
 /// ill-formed range and a default outside it; this names each case. It keeps
 /// that call (rather than `try_declare_with_descriptor`) because the typed
@@ -308,8 +316,8 @@ fn declare(
     server
         .declare_parameter(node, descriptor, value)
         .map_err(|result| match result {
-            SetParameterResult::TypeMismatch => DeclarationError::AlreadyDeclared,
-            SetParameterResult::InvalidRange => {
+            ParameterError::TypeMismatch => DeclarationError::AlreadyDeclared,
+            ParameterError::InvalidRange => {
                 consistency.err().unwrap_or(DeclarationError::InvalidRange)
             }
             _ => DeclarationError::StorageFull,
@@ -356,11 +364,12 @@ impl<'a, 's, T: ParameterVariant> MandatoryParameter<'a, 's, T> {
         let result = self
             .server
             .set_parameter_value(self.node, self.name.as_str(), converted);
-        if result == SetParameterResult::Success {
-            Ok(())
-        } else {
-            Err(ParameterError::from(result))
-        }
+        // The typed API never auto-declares, so an undeclared name is simply
+        // not there.
+        result.map_err(|e| match e {
+            ParameterError::Undeclared => ParameterError::NotFound,
+            e => e,
+        })
     }
 }
 
@@ -400,11 +409,12 @@ impl<'a, 's, T: ParameterVariant> OptionalParameter<'a, 's, T> {
             self.name.as_str(),
             param_value.unwrap_or_default(),
         );
-        if result == SetParameterResult::Success {
-            Ok(())
-        } else {
-            Err(ParameterError::from(result))
-        }
+        // The typed API never auto-declares, so an undeclared name is simply
+        // not there.
+        result.map_err(|e| match e {
+            ParameterError::Undeclared => ParameterError::NotFound,
+            e => e,
+        })
     }
 }
 
@@ -546,10 +556,12 @@ impl<'a, 's> Parameters<'a, 's> {
         name: &str,
         value: crate::ParameterValue,
     ) -> Result<(), ParameterError> {
-        match self.server.set_or_declare(self.node, name, value) {
-            SetParameterResult::Success => Ok(()),
-            other => Err(other.into()),
-        }
+        self.server
+            .set_or_declare(self.node, name, value)
+            .map_err(|e| match e {
+                ParameterError::Undeclared => ParameterError::NotFound,
+                e => e,
+            })
     }
 }
 
@@ -828,9 +840,15 @@ mod tests {
         let mut server = ParameterServer::new_in(storage.as_table());
 
         // Set some values using set_or_declare (simulating external parameter loading)
-        server.set_or_declare(NODE, "flag", ParameterValue::Bool(true));
-        server.set_or_declare(NODE, "count", ParameterValue::Integer(42));
-        server.set_or_declare(NODE, "ratio", ParameterValue::Double(0.5));
+        server
+            .set_or_declare(NODE, "flag", ParameterValue::Bool(true))
+            .unwrap();
+        server
+            .set_or_declare(NODE, "count", ParameterValue::Integer(42))
+            .unwrap();
+        server
+            .set_or_declare(NODE, "ratio", ParameterValue::Double(0.5))
+            .unwrap();
 
         let undeclared = Parameters::new(&mut server, NODE);
 

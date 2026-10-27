@@ -537,18 +537,20 @@ fn declare_on_node(
 ///
 /// [`ParameterServer::apply`]: nros_node::ParameterServer::apply
 #[cfg(all(feature = "param-store", feature = "rmw-cffi"))]
-fn set_result_to_ret(result: nros_node::SetParameterResult) -> nros_cpp_ret_t {
-    use nros_node::SetParameterResult as R;
+fn set_result_to_ret(result: Result<(), nros_node::ParameterError>) -> nros_cpp_ret_t {
+    use nros_node::ParameterError as E;
     match result {
-        R::Success => NROS_CPP_RET_OK,
-        R::NotFound | R::Undeclared => NROS_CPP_RET_NOT_FOUND,
-        R::ReadOnly => NROS_CPP_RET_NOT_ALLOWED,
-        R::TypeMismatch | R::OutOfRange | R::InvalidRange => NROS_CPP_RET_INVALID_ARGUMENT,
-        R::StorageFull => NROS_CPP_RET_FULL,
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(E::NotFound | E::Undeclared) => NROS_CPP_RET_NOT_FOUND,
+        Err(E::ReadOnly) => NROS_CPP_RET_NOT_ALLOWED,
+        Err(E::TypeMismatch | E::OutOfRange | E::InvalidRange | E::StringConversion) => {
+            NROS_CPP_RET_INVALID_ARGUMENT
+        }
+        Err(E::StorageFull) => NROS_CPP_RET_FULL,
         // phase-417 W4.a — an on-set-parameters callback refused it.
         // `NOT_ALLOWED`, beside `ReadOnly`, because that is what it means to a
         // caller: the value was fine and the node said no.
-        R::Rejected => NROS_CPP_RET_NOT_ALLOWED,
+        Err(E::Rejected) => NROS_CPP_RET_NOT_ALLOWED,
     }
 }
 
@@ -2516,27 +2518,33 @@ mod tests {
     /// `ErrorCode::Unsupported` by number (issue #229's one numbering).
     #[test]
     fn set_verdicts_map_to_actionable_codes() {
-        use nros_node::SetParameterResult as R;
-        assert_eq!(set_result_to_ret(R::Success), NROS_CPP_RET_OK);
+        use nros_node::ParameterError as E;
+        assert_eq!(set_result_to_ret(Ok(())), NROS_CPP_RET_OK);
         // "you cannot write that" is not "it is not there": a read-only
         // parameter EXISTS, and a facade that reported NOT_FOUND for it would
         // send a porting user looking for a missing declaration.
-        assert_eq!(set_result_to_ret(R::ReadOnly), NROS_CPP_RET_NOT_ALLOWED);
-        assert_eq!(set_result_to_ret(R::NotFound), NROS_CPP_RET_NOT_FOUND);
-        assert_eq!(set_result_to_ret(R::Undeclared), NROS_CPP_RET_NOT_FOUND);
         assert_eq!(
-            set_result_to_ret(R::TypeMismatch),
+            set_result_to_ret(Err(E::ReadOnly)),
+            NROS_CPP_RET_NOT_ALLOWED
+        );
+        assert_eq!(set_result_to_ret(Err(E::NotFound)), NROS_CPP_RET_NOT_FOUND);
+        assert_eq!(
+            set_result_to_ret(Err(E::Undeclared)),
+            NROS_CPP_RET_NOT_FOUND
+        );
+        assert_eq!(
+            set_result_to_ret(Err(E::TypeMismatch)),
             NROS_CPP_RET_INVALID_ARGUMENT
         );
         assert_eq!(
-            set_result_to_ret(R::OutOfRange),
+            set_result_to_ret(Err(E::OutOfRange)),
             NROS_CPP_RET_INVALID_ARGUMENT
         );
         assert_eq!(
-            set_result_to_ret(R::InvalidRange),
+            set_result_to_ret(Err(E::InvalidRange)),
             NROS_CPP_RET_INVALID_ARGUMENT
         );
-        assert_eq!(set_result_to_ret(R::StorageFull), NROS_CPP_RET_FULL);
+        assert_eq!(set_result_to_ret(Err(E::StorageFull)), NROS_CPP_RET_FULL);
     }
 
     /// An empty `std::vector` may hand us `nullptr` with length 0, which

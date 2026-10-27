@@ -1472,6 +1472,9 @@ pub use nros_bridge::run_from_config;
 // list stopped at ten names, so a user of the facade could build a range
 // through the builder's scalar arguments and never NAME the type it produced.
 // An unexported type is a capability a user cannot write down.
+/// Deprecated (phase-515): the store answers `Result<(), ParameterError>`.
+#[allow(deprecated)]
+pub use nros_params::SetParameterResult;
 #[allow(deprecated)]
 pub use nros_params::UndeclaredParameters;
 pub use nros_params::{
@@ -1479,7 +1482,7 @@ pub use nros_params::{
     NodeKey, OnSetContext, OnSetParameterFn, OnSetParameterHandle, OptionalParameter, Parameter,
     ParameterBuilder, ParameterDescriptor, ParameterError, ParameterRange, ParameterServer,
     ParameterStorage, ParameterTable, ParameterType, ParameterValue, ParameterVariant, Parameters,
-    ReadOnlyParameter, SetParameterResult,
+    ReadOnlyParameter,
 };
 // The wire-side half: why an `rcl_interfaces` parameter value could not be
 // turned into a native one. The `~/set_parameters` handler already puts
