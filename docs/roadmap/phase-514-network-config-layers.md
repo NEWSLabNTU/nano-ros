@@ -167,9 +167,10 @@ Taken while implementing (RFC-0109 D6 amended 2026-10-25): `[image]` /
   (`board_net::from_kconfig`), its `[board.net]` reduced to `stack`, and the
   arm defconfigs moved `10.0.2.30` → `10.0.2.15` so the generated value is
   the address the board already applied. Done. Two things deliberately left,
-  each an issue: the direct-mode `config.toml` `[[transport]]` that seven
+  each an issue: the direct-mode `config.toml` `[[transport]]` that six
   board crates' `Config::from_toml` read (a board API for apps with no
-  `system.toml`, issue 2047), and the NuttX board's run-time `SIOCSIFADDR`
+  `system.toml`; since resolved — that file is now the D4 shape, read by one
+  shared `nros_board_common::parse_direct_toml`, issue 2047), and the NuttX board's run-time `SIOCSIFADDR`
   push that overrides the kernel it now reads (issue 2048).
 
 **Done when** no tracked file uses a retired key and each refusal has a test.

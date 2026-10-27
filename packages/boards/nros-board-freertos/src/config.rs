@@ -9,7 +9,7 @@
 //! parser.
 
 use nros_board_common::{
-    BaseConfig, FreertosScheduling, base_config::netmask_from_prefix, freertos_config,
+    BaseConfig, FreertosScheduling, base_config::parse_u32, freertos_config, parse_direct_toml,
 };
 
 /// Network and node configuration for a FreeRTOS + lwIP board.
@@ -184,7 +184,8 @@ impl Config {
         nros_board_common::freertos_config::to_freertos_priority(normalized)
     }
 
-    /// Parse configuration from a TOML string.
+    /// Parse a direct-mode board file (RFC-0109 D4,
+    /// [`nros_board_common::parse_direct_toml`]).
     ///
     /// Missing fields use board-specific defaults. This is designed to work
     /// with `include_str!("../config.toml")` for compile-time embedding.
@@ -192,164 +193,103 @@ impl Config {
     /// # Supported fields
     ///
     /// ```toml
-    /// [[transport]]
-    /// ip = "192.0.3.10/24"
-    /// mac = "02:00:00:00:00:00"
-    /// gateway = "192.0.3.1"
-    /// locator = "tcp/192.0.3.1:7447"
-    ///
     /// [node]
     /// domain_id = 0
+    /// locator = "tcp/10.0.2.2:7447"
+    ///
+    /// [eth0]
+    /// network = "qemu"
+    /// host = 10
+    /// mac = "02:00:00:00:00:00"
+    ///
+    /// [node.rt.freertos]   # this board's own: raw FreeRTOS priorities
+    /// app_priority = 3
     /// ```
     pub fn from_toml(toml: &'static str) -> Self {
         let mut config = Self::default();
-        let mut section = "";
-
-        for line in toml.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            // Phase 172.K — `[[transport]]` array-of-tables + dotted `[node.rt]`.
-            if line.starts_with('[') {
-                if line.starts_with("[[") {
-                    if let Some(end) = line.find("]]") {
-                        section = line[2..end].trim();
-                    }
-                } else if let Some(end) = line.find(']') {
-                    section = line[1..end].trim();
-                }
-                continue;
-            }
-            if let Some(eq_pos) = line.find('=') {
-                let key = line[..eq_pos].trim();
-                let value = line[eq_pos + 1..].trim();
-                let value = if (value.starts_with('"') && value.ends_with('"'))
-                    || (value.starts_with('\'') && value.ends_with('\''))
-                {
-                    &value[1..value.len() - 1]
-                } else {
-                    value
-                };
-
-                match (section, key) {
-                    // Phase 172.K — direct-mode nros.toml only; legacy
-                    // `[network]`/`[zenoh]`/`[scheduling]` arms dropped in K.6.
-
-                    // direct-mode nros.toml: `[[transport]]`
-                    // (ip CIDR → ip + netmask) + `[node]` + `[node.rt]`.
-                    ("transport", "ip") => {
-                        let (addr, pfx) = value.split_once('/').unwrap_or((value, ""));
-                        if let Some(ip) = parse_ipv4(addr) {
-                            config.base.ip = ip;
-                        }
-                        if let Some(p) = parse_u32(pfx) {
-                            config.base.netmask = netmask_from_prefix(p as u8);
-                        }
-                    }
-                    ("transport", "mac") => {
-                        if let Some(mac) = parse_mac(value) {
-                            config.base.mac = mac;
-                        }
-                    }
-                    ("transport", "gateway") => {
-                        if let Some(gw) = parse_ipv4(value) {
-                            config.base.gateway = gw;
-                        }
-                    }
-                    ("transport", "locator") => {
-                        config.base.zenoh_locator = value;
-                    }
-                    ("node", "domain_id") => {
-                        if let Some(d) = parse_u32(value) {
-                            config.base.domain_id = d;
-                        }
-                    }
-                    // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
-                    // spelling and is converted on read, so configs written
-                    // before the units were unified keep their schedule.
-                    ("node.rt", "app_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.app_priority = Self::to_freertos_priority(v.min(31) as u8) as u8;
-                        }
-                    }
-                    // ...and `[node.rt.freertos]` is RAW, mirroring
-                    // `[tiers.<name>.freertos] priority`. One vocabulary for
-                    // the two numbers that meet in one scheduler.
-                    ("node.rt.freertos", "app_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.app_priority = v as u8;
-                        }
-                    }
-                    ("node.rt", "app_stack_bytes") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.app_stack_bytes = v;
-                        }
-                    }
-                    // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
-                    // spelling and is converted on read, so configs written
-                    // before the units were unified keep their schedule.
-                    ("node.rt", "zenoh_read_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.zenoh_read_priority =
-                                Self::to_freertos_priority(v.min(31) as u8) as u8;
-                        }
-                    }
-                    // ...and `[node.rt.freertos]` is RAW, mirroring
-                    // `[tiers.<name>.freertos] priority`. One vocabulary for
-                    // the two numbers that meet in one scheduler.
-                    ("node.rt.freertos", "zenoh_read_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.zenoh_read_priority = v as u8;
-                        }
-                    }
-                    ("node.rt", "zenoh_read_stack_bytes") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.zenoh_read_stack_bytes = v;
-                        }
-                    }
-                    // RFC-0110 D2 — zenoh-pico 1.10 has no lease task: the
-                    // lease and keep-alive run on the read task (its executor
-                    // thread). A config that still states one is REFUSED, never
-                    // ignored — a knob that keeps its name and loses its effect
-                    // is a silent wrong answer.
-                    (
-                        "node.rt" | "node.rt.freertos",
-                        "zenoh_lease_priority" | "zenoh_lease_stack_bytes",
-                    ) => {
-                        panic!(
-                            "nros-board-freertos: `[{section}] {key}` is retired — zenoh-pico 1.10 \
-                             runs the lease on its executor (read) task, so there is no lease task \
-                             (RFC-0110 D2). Remove it; `zenoh_read_priority` / \
-                             `zenoh_read_stack_bytes` configure that task."
-                        );
-                    }
-                    // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
-                    // spelling and is converted on read, so configs written
-                    // before the units were unified keep their schedule.
-                    ("node.rt", "poll_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.poll_priority =
-                                Self::to_freertos_priority(v.min(31) as u8) as u8;
-                        }
-                    }
-                    // ...and `[node.rt.freertos]` is RAW, mirroring
-                    // `[tiers.<name>.freertos] priority`. One vocabulary for
-                    // the two numbers that meet in one scheduler.
-                    ("node.rt.freertos", "poll_priority") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.poll_priority = v as u8;
-                        }
-                    }
-                    ("node.rt", "poll_interval_ms") => {
-                        if let Some(v) = parse_u32(value) {
-                            config.poll_interval_ms = v;
-                        }
-                    }
-                    _ => {}
+        let d = parse_direct_toml(toml, |section, key, value| match (section, key) {
+            // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
+            // spelling and is converted on read, so configs written
+            // before the units were unified keep their schedule.
+            ("node.rt", "app_priority") => {
+                if let Some(v) = parse_u32(value) {
+                    config.app_priority = Self::to_freertos_priority(v.min(31) as u8) as u8;
                 }
             }
-        }
+            // ...and `[node.rt.freertos]` is RAW, mirroring
+            // `[tiers.<name>.freertos] priority`. One vocabulary for
+            // the two numbers that meet in one scheduler.
+            ("node.rt.freertos", "app_priority") => {
+                if let Some(v) = parse_u32(value) {
+                    config.app_priority = v as u8;
+                }
+            }
+            ("node.rt", "app_stack_bytes") => {
+                if let Some(v) = parse_u32(value) {
+                    config.app_stack_bytes = v;
+                }
+            }
+            // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
+            // spelling and is converted on read, so configs written
+            // before the units were unified keep their schedule.
+            ("node.rt", "zenoh_read_priority") => {
+                if let Some(v) = parse_u32(value) {
+                    config.zenoh_read_priority = Self::to_freertos_priority(v.min(31) as u8) as u8;
+                }
+            }
+            // ...and `[node.rt.freertos]` is RAW, mirroring
+            // `[tiers.<name>.freertos] priority`. One vocabulary for
+            // the two numbers that meet in one scheduler.
+            ("node.rt.freertos", "zenoh_read_priority") => {
+                if let Some(v) = parse_u32(value) {
+                    config.zenoh_read_priority = v as u8;
+                }
+            }
+            ("node.rt", "zenoh_read_stack_bytes") => {
+                if let Some(v) = parse_u32(value) {
+                    config.zenoh_read_stack_bytes = v;
+                }
+            }
+            // RFC-0110 D2 — zenoh-pico 1.10 has no lease task: the
+            // lease and keep-alive run on the read task (its executor
+            // thread). A config that still states one is REFUSED, never
+            // ignored — a knob that keeps its name and loses its effect
+            // is a silent wrong answer.
+            (
+                "node.rt" | "node.rt.freertos",
+                "zenoh_lease_priority" | "zenoh_lease_stack_bytes",
+            ) => {
+                panic!(
+                    "nros-board-freertos: `[{section}] {key}` is retired — zenoh-pico 1.10 \
+                     runs the lease on its executor (read) task, so there is no lease task \
+                     (RFC-0110 D2). Remove it; `zenoh_read_priority` / \
+                     `zenoh_read_stack_bytes` configure that task."
+                );
+            }
+            // Issue 0623 — `[node.rt]` is the LEGACY normalized 0-31
+            // spelling and is converted on read, so configs written
+            // before the units were unified keep their schedule.
+            ("node.rt", "poll_priority") => {
+                if let Some(v) = parse_u32(value) {
+                    config.poll_priority = Self::to_freertos_priority(v.min(31) as u8) as u8;
+                }
+            }
+            // ...and `[node.rt.freertos]` is RAW, mirroring
+            // `[tiers.<name>.freertos] priority`. One vocabulary for
+            // the two numbers that meet in one scheduler.
+            ("node.rt.freertos", "poll_priority") => {
+                if let Some(v) = parse_u32(value) {
+                    config.poll_priority = v as u8;
+                }
+            }
+            ("node.rt", "poll_interval_ms") => {
+                if let Some(v) = parse_u32(value) {
+                    config.poll_interval_ms = v;
+                }
+            }
+            _ => {}
+        });
+        config.base.apply_direct(&d);
 
         // Phase 177.38 — build-time ROS-domain override for per-fixture
         // isolation. `NROS_DOMAIN_ID` set at build time bakes a distinct domain
@@ -365,98 +305,7 @@ impl Config {
     }
 }
 
-// ── Minimal no_std parsers ──────────────────────────────────────────────
-
-/// Parse an IPv4 address string ("192.0.3.10") into [u8; 4].
-fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
-    let mut result = [0u8; 4];
-    let mut octet_idx = 0;
-    let mut current: u16 = 0;
-    let mut has_digit = false;
-
-    for b in s.as_bytes() {
-        match b {
-            b'0'..=b'9' => {
-                current = current * 10 + (*b - b'0') as u16;
-                if current > 255 {
-                    return None;
-                }
-                has_digit = true;
-            }
-            b'.' => {
-                if !has_digit || octet_idx >= 3 {
-                    return None;
-                }
-                result[octet_idx] = current as u8;
-                octet_idx += 1;
-                current = 0;
-                has_digit = false;
-            }
-            _ => return None,
-        }
-    }
-
-    if has_digit && octet_idx == 3 {
-        result[3] = current as u8;
-        Some(result)
-    } else {
-        None
-    }
-}
-
-/// Parse a MAC address string ("02:00:00:00:00:00") into [u8; 6].
-fn parse_mac(s: &str) -> Option<[u8; 6]> {
-    let mut result = [0u8; 6];
-    let mut byte_idx = 0;
-
-    for part in s.split(':') {
-        if byte_idx >= 6 || part.len() != 2 {
-            return None;
-        }
-        result[byte_idx] = parse_hex_byte(part)?;
-        byte_idx += 1;
-    }
-
-    if byte_idx == 6 { Some(result) } else { None }
-}
-
-/// Parse a two-character hex string ("0a") into a u8.
-fn parse_hex_byte(s: &str) -> Option<u8> {
-    let bytes = s.as_bytes();
-    if bytes.len() != 2 {
-        return None;
-    }
-    let hi = hex_digit(bytes[0])?;
-    let lo = hex_digit(bytes[1])?;
-    Some(hi * 16 + lo)
-}
-
-fn hex_digit(b: u8) -> Option<u8> {
-    match b {
-        b'0'..=b'9' => Some(b - b'0'),
-        b'a'..=b'f' => Some(b - b'a' + 10),
-        b'A'..=b'F' => Some(b - b'A' + 10),
-        _ => None,
-    }
-}
-
-/// Parse a decimal integer string.
-fn parse_u32(s: &str) -> Option<u32> {
-    let mut result: u32 = 0;
-    let mut has_digit = false;
-    for b in s.as_bytes() {
-        match b {
-            b'0'..=b'9' => {
-                result = result.checked_mul(10)?.checked_add((*b - b'0') as u32)?;
-                has_digit = true;
-            }
-            _ => return None,
-        }
-    }
-    if has_digit { Some(result) } else { None }
-}
-
-// Phase 173.5 — nros.toml `[[transport]]` IP into the board `Config`
+// Phase 173.5 — the direct-mode file's interface address into the board `Config`
 // (NanoRosOwned: this board owns the bundled lwIP stack). lwIP stores a
 // dotted netmask, so the prefix is expanded; no UART field ⇒ baudrate
 // keeps the trait's no-op default.

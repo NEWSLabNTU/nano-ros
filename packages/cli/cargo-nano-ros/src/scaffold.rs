@@ -1763,22 +1763,22 @@ fn needs_scaffolded_nros_toml(platform: &str) -> bool {
 }
 
 fn write_default_config_toml(dir: &Path) -> Result<()> {
-    // Phase 172.K — scaffold the direct-mode nros.toml shape (one node + one
-    // ethernet transport), not the retired config.toml.
-    let nros_toml = r#"# nano-ros config (direct mode). See
-# docs/design/0004-configuration-and-transports.md.
+    // Issue 2047 — the direct-mode board network file (RFC-0109 D4): the node,
+    // and one interface on a network. RFC-0004's `[[transport]]` is retired.
+    let nros_toml = r#"# nano-ros config (direct mode): the board package's network file.
+# See docs/design/0109-network-config-layers.md (D4).
 
+# CONFIGURE ME: these defaults target QEMU user-mode networking (the built-in
+# `qemu` network: 10.0.2.0/24, gateway and router at 10.0.2.2). For your own
+# network add `[network.<name>]` with `subnet` and `gateway`, and name it.
 [node]
 domain_id = 0
-
-# CONFIGURE ME: these defaults target QEMU slirp (10.0.2.0/24, gateway/router
-# at 10.0.2.2). Set ip/gateway/locator to your board's network + zenoh router.
-[[transport]]
-kind    = "ethernet"
-ip      = "10.0.2.20/24"
-mac     = "02:00:00:00:00:00"
-gateway = "10.0.2.2"
 locator = "tcp/10.0.2.2:7447"
+
+[eth0]
+network = "qemu"
+host = 20
+mac = "02:00:00:00:00:00"
 "#;
     fs::write(dir.join("nros.toml"), nros_toml)?;
     Ok(())

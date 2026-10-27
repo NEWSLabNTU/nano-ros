@@ -272,54 +272,235 @@ pub fn parse_u32(s: &str) -> Option<u32> {
     if has_digit { Some(result) } else { None }
 }
 
+// ── RFC-0109 D4 — the direct-mode board network file ────────────────────
+//
+// Issue 2047 — a direct-mode app (no `system.toml`, no `nros::main!`) bakes its
+// board file with `Config::from_toml(include_str!("../config.toml"))`. That
+// file carried RFC-0004's `[[transport]]` after RFC-0109 D6 retired it
+// everywhere else. It now reads the same D4 shape an image's `os_config` file
+// has (`nros_orchestration_ir::system_net::read_board_net_file`), plus the
+// `[node]` table a direct-mode app has in place of a `[[domain]]`:
+//
+//     [node]
+//     domain_id = 0
+//     locator = "tcp/10.0.2.2:7447"
+//
+//     [eth0]
+//     network = "qemu"      # built in: 10.0.2.0/24, gateway 10.0.2.2
+//     host = 15             # or: address = "10.0.2.15"
+//     mac = "02:00:00:00:00:15"
+//
+//     [network.lab]         # any network other than `qemu`
+//     subnet = "192.168.50.0/24"
+//     gateway = "192.168.50.1"
+//
+// Two parsers of one format, by necessity: this one is `no_std` with no
+// allocator and reads a `&'static str` in firmware; the host one is serde.
+
+/// The networks one direct-mode file may define besides the built-in `qemu`.
+const MAX_DIRECT_NETWORKS: usize = 4;
+
+/// What a direct-mode board file states. `None` keeps the board's default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DirectConfig {
+    /// The interface's address.
+    pub ip: Option<[u8; 4]>,
+    /// The netmask of the network the interface sits on.
+    pub netmask: Option<[u8; 4]>,
+    /// That network's default route.
+    pub gateway: Option<[u8; 4]>,
+    /// The interface's MAC.
+    pub mac: Option<[u8; 6]>,
+    /// `[node] locator`: the endpoint the firmware dials.
+    pub locator: Option<&'static str>,
+    /// `[node] domain_id`.
+    pub domain_id: Option<u32>,
+}
+
+impl DirectConfig {
+    /// The netmask as a CIDR prefix, for the boards that store a prefix.
+    pub fn prefix(&self) -> Option<u8> {
+        self.netmask.map(prefix_from_netmask)
+    }
+}
+
 impl BaseConfig {
-    /// Apply one direct-mode `nros.toml` field, returning whether it was
-    /// consumed.
-    ///
-    /// `false` means "not one of mine" — the board then tries its own arms
-    /// (`interface`, `uart_base`, …). Unrecognised fields are silently ignored
-    /// by the caller, matching the pre-phase-337 behaviour: a firmware image
-    /// has nowhere to report a warning to.
-    pub fn apply_toml_field(&mut self, section: &str, key: &str, value: &'static str) -> bool {
-        match (section, key) {
-            ("transport", "ip") => {
-                let (addr, pfx) = match value.split_once('/') {
-                    Some(p) => p,
-                    None => (value, ""),
-                };
-                if let Some(ip) = parse_ipv4(addr) {
-                    self.ip = ip;
-                }
-                if let Some(p) = parse_u32(pfx) {
-                    self.netmask = netmask_from_prefix(p as u8);
-                }
-                true
-            }
-            ("transport", "mac") => {
-                if let Some(mac) = parse_mac(value) {
-                    self.mac = mac;
-                }
-                true
-            }
-            ("transport", "gateway") => {
-                if let Some(gw) = parse_ipv4(value) {
-                    self.gateway = gw;
-                }
-                true
-            }
-            ("transport", "locator") => {
-                self.zenoh_locator = value;
-                true
-            }
-            ("node", "domain_id") => {
-                if let Some(d) = parse_u32(value) {
-                    self.domain_id = d;
-                }
-                true
-            }
-            _ => false,
+    /// Apply what a direct-mode file states: each `Some` replaces the field.
+    pub fn apply_direct(&mut self, d: &DirectConfig) {
+        if let Some(ip) = d.ip {
+            self.ip = ip;
+        }
+        if let Some(m) = d.netmask {
+            self.netmask = m;
+        }
+        if let Some(g) = d.gateway {
+            self.gateway = g;
+        }
+        if let Some(mac) = d.mac {
+            self.mac = mac;
+        }
+        if let Some(l) = d.locator {
+            self.zenoh_locator = l;
+        }
+        if let Some(id) = d.domain_id {
+            self.domain_id = id;
         }
     }
+}
+
+/// Whether `section` is an interface table (`[eth0]`, `[uart0]`, …) rather
+/// than `[node]`, a `[node.*]` table or a `[network.<name>]`. A board's own
+/// interface keys (`baud`, `device`) are read where this holds.
+pub fn is_interface_section(section: &str) -> bool {
+    !section.is_empty()
+        && section != "node"
+        && !section.starts_with("node.")
+        && !section.starts_with("network.")
+}
+
+#[derive(Clone, Copy)]
+struct DirectNetwork {
+    name: &'static str,
+    subnet: Option<([u8; 4], u8)>,
+    gateway: Option<[u8; 4]>,
+}
+
+/// Parse a direct-mode board file (RFC-0109 D4, see the section note above).
+///
+/// `board` receives every field the shared format does not own — a board's
+/// `[node.rt]` tunings, a serial interface's `baud`, ThreadX Linux's
+/// `device` — as `(section, key, value)`.
+///
+/// A malformed VALUE keeps the board default, as it always has: firmware has
+/// nowhere to report it. A wrong SHAPE panics at boot, naming the fix, because
+/// it would otherwise boot on defaults the author believes they replaced:
+/// RFC-0004's `[[transport]]`, a second addressed interface, `host` with no
+/// `network`, a network the file does not define, a `host` outside its
+/// network, and `address = "dhcp"` (no direct-mode board takes a lease).
+pub fn parse_direct_toml(
+    toml: &'static str,
+    mut board: impl FnMut(&'static str, &'static str, &'static str),
+) -> DirectConfig {
+    let mut out = DirectConfig::default();
+    let mut iface: Option<&'static str> = None;
+    let mut network: Option<&'static str> = None;
+    let mut host: Option<u32> = None;
+    let mut networks = [DirectNetwork {
+        name: "",
+        subnet: None,
+        gateway: None,
+    }; MAX_DIRECT_NETWORKS];
+    let mut n_networks = 0;
+
+    for_each_toml_field(toml, |section, key, value| {
+        if section == "transport" {
+            panic!(
+                "config.toml: `[[transport]]` is retired (RFC-0109 D6); write the interface \
+                 as `[eth0]` with `network`, `host` or `address`, and `mac`, and the router \
+                 as `[node] locator` (RFC-0109 D4, issue 2047)"
+            );
+        }
+        if let Some(name) = section.strip_prefix("network.") {
+            let at = match networks[..n_networks].iter().position(|n| n.name == name) {
+                Some(i) => i,
+                None => {
+                    assert!(
+                        n_networks < MAX_DIRECT_NETWORKS,
+                        "config.toml: more than {MAX_DIRECT_NETWORKS} `[network.<name>]` tables"
+                    );
+                    networks[n_networks].name = name;
+                    n_networks += 1;
+                    n_networks - 1
+                }
+            };
+            match key {
+                "subnet" => {
+                    if let Some((addr, pfx)) = value.split_once('/') {
+                        if let (Some(a), Some(p)) = (parse_ipv4(addr), parse_u32(pfx)) {
+                            networks[at].subnet = Some((a, p.min(32) as u8));
+                        }
+                    }
+                }
+                "gateway" => networks[at].gateway = parse_ipv4(value),
+                _ => board(section, key, value),
+            }
+            return;
+        }
+        if section == "node" {
+            match key {
+                "locator" => out.locator = Some(value),
+                "domain_id" => out.domain_id = parse_u32(value).or(out.domain_id),
+                _ => board(section, key, value),
+            }
+            return;
+        }
+        if is_interface_section(section) && matches!(key, "network" | "host" | "address" | "mac") {
+            match iface {
+                Some(prev) if prev != section => panic!(
+                    "config.toml: `[{prev}]` and `[{section}]` both address an interface; a \
+                     direct-mode board brings up one (RFC-0109 D4, issue 2047)"
+                ),
+                _ => iface = Some(section),
+            }
+            match key {
+                "network" => network = Some(value),
+                "host" => host = parse_u32(value).or(host),
+                "address" => {
+                    assert!(
+                        value != "dhcp",
+                        "config.toml: `[{section}] address = \"dhcp\"` — no direct-mode \
+                         board takes a lease; state the address or `host`"
+                    );
+                    out.ip = parse_ipv4(value).or(out.ip);
+                }
+                _ => out.mac = parse_mac(value).or(out.mac),
+            }
+            return;
+        }
+        board(section, key, value);
+    });
+
+    let net = network.map(|name| {
+        if name == "qemu" {
+            // RFC-0103 D10: QEMU's own SLIRP plan.
+            (([10, 0, 2, 0], 24), Some([10, 0, 2, 2]))
+        } else {
+            let n = networks[..n_networks]
+                .iter()
+                .find(|n| n.name == name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "config.toml: the interface names network `{name}`, which is neither \
+                         `qemu` nor a `[network.{name}]` of this file"
+                    )
+                });
+            let subnet = n.subnet.unwrap_or_else(|| {
+                panic!("config.toml: `[network.{name}]` states no `subnet = \"a.b.c.d/nn\"`")
+            });
+            (subnet, n.gateway)
+        }
+    });
+    if let Some(((base, prefix), gateway)) = net {
+        let mask = u32::from_be_bytes(netmask_from_prefix(prefix));
+        out.netmask = Some(netmask_from_prefix(prefix));
+        if gateway.is_some() {
+            out.gateway = gateway;
+        }
+        if let Some(h) = host {
+            assert!(
+                h & mask == 0 && h != 0,
+                "config.toml: `host = {h}` is not a host of a /{prefix} network"
+            );
+            out.ip = Some(((u32::from_be_bytes(base) & mask) | h).to_be_bytes());
+        }
+    } else {
+        assert!(
+            host.is_none(),
+            "config.toml: `host` is an offset into a network; name it with `network = \"qemu\"` \
+             or a `[network.<name>]`, or state `address`"
+        );
+    }
+    out
 }
 
 /// A CIDR prefix length as a dotted-quad netmask. Saturates at `/32`.
@@ -369,72 +550,105 @@ mod tests {
         assert_eq!(cfg.prefix(), 8);
     }
 
-    // phase-337 W4 — the scanner + field dispatch these tests cover replaced
-    // one hand-copied ~90-line parser per board. They assert the behaviour the
-    // ThreadX copies had, so "behaviour-neutral" is checked rather than
-    // asserted.
-
     const SAMPLE: &str = "\
 # a comment
-[[transport]]
-ip = \"10.0.2.40/16\"
-mac = \"52:54:00:12:34:57\"
-gateway = \"10.0.2.2\"
-locator = \"tcp/10.0.2.2:7553\"
-interface = \"veth-tx1\"
-
 [node]
 domain_id = 7
+locator = \"tcp/10.0.2.2:7553\"
+
+[eth0]
+network = \"qemu\"
+host = 40
+mac = \"52:54:00:12:34:57\"
+device = \"veth-tx1\"
 ";
 
     #[test]
-    fn a_direct_mode_toml_lands_on_the_shared_core() {
+    fn a_direct_mode_file_lands_on_the_shared_core() {
         let mut cfg = BaseConfig::default();
-        for_each_toml_field(SAMPLE, |s, k, v| {
-            cfg.apply_toml_field(s, k, v);
-        });
-        assert_eq!(cfg.ip, [10, 0, 2, 40]);
-        assert_eq!(cfg.prefix(), 16, "the /nn suffix sets the netmask");
-        assert_eq!(cfg.mac, [0x52, 0x54, 0x00, 0x12, 0x34, 0x57]);
+        let d = parse_direct_toml(SAMPLE, |_, _, _| {});
+        cfg.apply_direct(&d);
+        assert_eq!(
+            cfg.ip,
+            [10, 0, 2, 40],
+            "host 40 on the built-in qemu network"
+        );
+        assert_eq!(cfg.prefix(), 24);
         assert_eq!(cfg.gateway, [10, 0, 2, 2]);
+        assert_eq!(cfg.mac, [0x52, 0x54, 0x00, 0x12, 0x34, 0x57]);
         assert_eq!(cfg.zenoh_locator, "tcp/10.0.2.2:7553");
         assert_eq!(cfg.domain_id, 7);
     }
 
     #[test]
     fn a_board_specific_key_is_left_for_the_board() {
-        // `interface` is threadx-linux's, not the shared core's: the dispatch
-        // must decline it so the board's own arm can claim it.
-        let mut cfg = BaseConfig::default();
-        let mut seen_interface = None;
-        for_each_toml_field(SAMPLE, |s, k, v| {
-            if !cfg.apply_toml_field(s, k, v) && (s, k) == ("transport", "interface") {
-                seen_interface = Some(v);
+        let mut seen = None;
+        parse_direct_toml(SAMPLE, |s, k, v| {
+            if is_interface_section(s) && k == "device" {
+                seen = Some(v);
             }
         });
-        assert_eq!(seen_interface, Some("veth-tx1"));
+        assert_eq!(seen, Some("veth-tx1"));
     }
 
     #[test]
-    fn a_field_outside_a_known_section_is_ignored_not_misapplied() {
-        // The scanner yields section-qualified keys, so `[other] ip = …` must
-        // not overwrite the transport IP.
-        let mut cfg = BaseConfig::default();
-        let before = cfg.ip;
-        for_each_toml_field("[other]\nip = \"1.2.3.4\"\n", |s, k, v| {
-            assert!(!cfg.apply_toml_field(s, k, v));
-        });
-        assert_eq!(cfg.ip, before);
+    fn a_named_network_supplies_mask_gateway_and_host_base() {
+        let d = parse_direct_toml(
+            "[eth0]\nnetwork = \"lab\"\nhost = 7\n\
+             [network.lab]\nsubnet = \"192.168.0.0/16\"\ngateway = \"192.168.0.1\"\n",
+            |_, _, _| {},
+        );
+        assert_eq!(d.ip, Some([192, 168, 0, 7]));
+        assert_eq!(d.prefix(), Some(16));
+        assert_eq!(d.gateway, Some([192, 168, 0, 1]));
+    }
+
+    #[test]
+    fn an_address_alone_keeps_the_boards_mask_and_route() {
+        let d = parse_direct_toml("[eth0]\naddress = \"10.1.2.3\"\n", |_, _, _| {});
+        assert_eq!(d.ip, Some([10, 1, 2, 3]));
+        assert_eq!((d.netmask, d.gateway), (None, None));
+    }
+
+    #[test]
+    #[should_panic(expected = "`[[transport]]` is retired")]
+    fn rfc_0004s_transport_table_is_refused() {
+        parse_direct_toml("[[transport]]\nip = \"10.0.2.40/24\"\n", |_, _, _| {});
+    }
+
+    #[test]
+    #[should_panic(expected = "neither `qemu` nor")]
+    fn an_undefined_network_is_refused() {
+        parse_direct_toml("[eth0]\nnetwork = \"lab\"\nhost = 7\n", |_, _, _| {});
+    }
+
+    #[test]
+    #[should_panic(expected = "`host` is an offset")]
+    fn a_host_with_no_network_is_refused() {
+        parse_direct_toml("[eth0]\nhost = 7\n", |_, _, _| {});
+    }
+
+    #[test]
+    #[should_panic(expected = "is not a host of a /24")]
+    fn a_host_outside_its_network_is_refused() {
+        parse_direct_toml("[eth0]\nnetwork = \"qemu\"\nhost = 300\n", |_, _, _| {});
+    }
+
+    #[test]
+    #[should_panic(expected = "both address an interface")]
+    fn a_second_addressed_interface_is_refused() {
+        parse_direct_toml(
+            "[eth0]\naddress = \"10.0.0.1\"\n[eth1]\naddress = \"10.0.1.1\"\n",
+            |_, _, _| {},
+        );
     }
 
     #[test]
     fn a_malformed_value_keeps_the_board_default() {
-        // Firmware has nowhere to report a parse error to, so the pre-existing
-        // behaviour is "ignore and keep the default" — not "zero the field".
-        let mut cfg = BaseConfig::default();
-        let before = cfg.ip;
-        assert!(cfg.apply_toml_field("transport", "ip", "not-an-address"));
-        assert_eq!(cfg.ip, before);
+        // Firmware has nowhere to report a parse error to, so a bad VALUE is
+        // "keep the default" — not "zero the field".
+        let d = parse_direct_toml("[eth0]\naddress = \"not-an-address\"\n", |_, _, _| {});
+        assert_eq!(d.ip, None);
         assert_eq!(parse_ipv4("1.2.3"), None);
         assert_eq!(parse_ipv4("1.2.3.256"), None);
         assert_eq!(parse_mac("52:54:00:12:34"), None);

@@ -308,7 +308,8 @@ impl Config {
         self.ip[0] == 169 && self.ip[1] == 254
     }
 
-    /// Parse configuration from a TOML string.
+    /// Parse a direct-mode board file (RFC-0109 D4,
+    /// [`nros_board_common::parse_direct_toml`]).
     ///
     /// Missing fields use board-specific defaults. This is designed to work
     /// with `include_str!("../config.toml")` for compile-time embedding.
@@ -316,98 +317,53 @@ impl Config {
     /// # Supported fields
     ///
     /// ```toml
-    /// [network]
-    /// ip = "192.0.3.10"
-    /// mac = "02:00:00:00:00:00"
-    /// gateway = "192.0.3.1"
-    /// prefix = 24
-    ///
-    /// [zenoh]
-    /// locator = "tcp/192.0.3.1:7447"
+    /// [node]
     /// domain_id = 0
+    /// locator = "tcp/10.0.2.2:7447"
+    ///
+    /// [eth0]               # `ethernet`
+    /// network = "qemu"     # built in: 10.0.2.0/24, gateway 10.0.2.2
+    /// host = 15            # or: address = "10.0.2.15"
+    /// mac = "02:00:00:00:00:00"
+    ///
+    /// [uart0]              # `serial`
+    /// baud = 115200
     /// ```
     pub fn from_toml(toml: &'static str) -> Self {
         let mut config = Self::default();
-        let mut section = "";
-
-        for line in toml.lines() {
-            let line = line.trim();
-            // Skip empty lines and comments
-            if line.is_empty() || line.starts_with('#') {
-                continue;
+        #[cfg(feature = "serial")]
+        let mut baud = None;
+        let d = nros_board_common::parse_direct_toml(toml, |_section, _key, _value| {
+            // The serial link's own fact, on its interface table (`[uart0] baud`).
+            #[cfg(feature = "serial")]
+            if nros_board_common::is_interface_section(_section) && _key == "baud" {
+                baud = parse_u32(_value);
             }
-            // Section header. Handles `[section]`, dotted `[node.rt]`, and the
-            // array-of-tables `[[transport]]` (Phase 172.K — direct-mode
-            // nros.toml). Direct mode owns one net stack, so a single
-            // `[[transport]]` maps to the flat Config fields; the section name
-            // normalises to `transport` either way.
-            if line.starts_with('[') {
-                if line.starts_with("[[") {
-                    if let Some(end) = line.find("]]") {
-                        section = line[2..end].trim();
-                    }
-                } else if let Some(end) = line.find(']') {
-                    section = line[1..end].trim();
-                }
-                continue;
+        });
+        #[cfg(feature = "serial")]
+        if let Some(b) = baud {
+            config.baudrate = b;
+        }
+        #[cfg(feature = "ethernet")]
+        {
+            if let Some(ip) = d.ip {
+                config.ip = ip;
             }
-            // Key = value
-            if let Some(eq_pos) = line.find('=') {
-                let key = line[..eq_pos].trim();
-                let value = line[eq_pos + 1..].trim();
-                // Strip quotes from string values
-                let value = if (value.starts_with('"') && value.ends_with('"'))
-                    || (value.starts_with('\'') && value.ends_with('\''))
-                {
-                    &value[1..value.len() - 1]
-                } else {
-                    value
-                };
-
-                match (section, key) {
-                    // Phase 172.K — direct-mode nros.toml only (`[[transport]]`
-                    // ip as CIDR carries the prefix, + `[node]`). The legacy
-                    // `[network]`/`[zenoh]`/`[serial]` arms were dropped in K.6.
-                    #[cfg(feature = "ethernet")]
-                    ("transport", "ip") => {
-                        let (addr, pfx) = value.split_once('/').unwrap_or((value, ""));
-                        if let Some(ip) = parse_ipv4(addr) {
-                            config.ip = ip;
-                        }
-                        if let Some(p) = parse_u32(pfx) {
-                            config.prefix = p as u8;
-                        }
-                    }
-                    #[cfg(feature = "ethernet")]
-                    ("transport", "mac") => {
-                        if let Some(mac) = parse_mac(value) {
-                            config.mac = mac;
-                        }
-                    }
-                    #[cfg(feature = "ethernet")]
-                    ("transport", "gateway") => {
-                        if let Some(gw) = parse_ipv4(value) {
-                            config.gateway = gw;
-                        }
-                    }
-                    #[cfg(feature = "serial")]
-                    ("transport", "baudrate") => {
-                        if let Some(b) = parse_u32(value) {
-                            config.baudrate = b;
-                        }
-                    }
-                    ("transport", "locator") => {
-                        config.zenoh_locator = value;
-                    }
-                    ("node", "domain_id") => {
-                        if let Some(d) = parse_u32(value) {
-                            config.domain_id = d;
-                        }
-                    }
-
-                    _ => {} // Ignore unknown fields
-                }
+            if let Some(p) = d.prefix() {
+                config.prefix = p;
             }
+            if let Some(gw) = d.gateway {
+                config.gateway = gw;
+            }
+            if let Some(mac) = d.mac {
+                config.mac = mac;
+            }
+        }
+        if let Some(l) = d.locator {
+            config.zenoh_locator = l;
+        }
+        if let Some(id) = d.domain_id {
+            config.domain_id = id;
         }
 
         // Phase 177.38 — build-time ROS-domain override for per-fixture
@@ -424,106 +380,7 @@ impl Config {
     }
 }
 
-// ── Minimal no_std parsers ──────────────────────────────────────────────
-//
-// The TOML parser only invokes these when the matching `ethernet` cfg
-// arm fires (see `match (section, key)` above). Gate the helpers
-// themselves on the same feature so serial-only builds (which strip
-// every `("network", _)` arm) don't emit `function never used`
-// warnings.
-
-/// Parse an IPv4 address string ("192.0.3.10") into [u8; 4].
-#[cfg(feature = "ethernet")]
-fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
-    let mut result = [0u8; 4];
-    let mut octet_idx = 0;
-    let mut current: u16 = 0;
-    let mut has_digit = false;
-
-    for b in s.as_bytes() {
-        match b {
-            b'0'..=b'9' => {
-                current = current * 10 + (*b - b'0') as u16;
-                if current > 255 {
-                    return None;
-                }
-                has_digit = true;
-            }
-            b'.' => {
-                if !has_digit || octet_idx >= 3 {
-                    return None;
-                }
-                result[octet_idx] = current as u8;
-                octet_idx += 1;
-                current = 0;
-                has_digit = false;
-            }
-            _ => return None,
-        }
-    }
-
-    if has_digit && octet_idx == 3 {
-        result[3] = current as u8;
-        Some(result)
-    } else {
-        None
-    }
-}
-
-/// Parse a MAC address string ("02:00:00:00:00:00") into [u8; 6].
-#[cfg(feature = "ethernet")]
-fn parse_mac(s: &str) -> Option<[u8; 6]> {
-    let mut result = [0u8; 6];
-    let mut byte_idx = 0;
-
-    for part in s.split(':') {
-        if byte_idx >= 6 || part.len() != 2 {
-            return None;
-        }
-        result[byte_idx] = parse_hex_byte(part)?;
-        byte_idx += 1;
-    }
-
-    if byte_idx == 6 { Some(result) } else { None }
-}
-
-/// Parse a two-character hex string ("0a") into a u8.
-#[cfg(feature = "ethernet")]
-fn parse_hex_byte(s: &str) -> Option<u8> {
-    let bytes = s.as_bytes();
-    if bytes.len() != 2 {
-        return None;
-    }
-    let hi = hex_digit(bytes[0])?;
-    let lo = hex_digit(bytes[1])?;
-    Some(hi * 16 + lo)
-}
-
-#[cfg(feature = "ethernet")]
-fn hex_digit(b: u8) -> Option<u8> {
-    match b {
-        b'0'..=b'9' => Some(b - b'0'),
-        b'a'..=b'f' => Some(b - b'a' + 10),
-        b'A'..=b'F' => Some(b - b'A' + 10),
-        _ => None,
-    }
-}
-
-/// Parse a decimal integer string.
-fn parse_u32(s: &str) -> Option<u32> {
-    let mut result: u32 = 0;
-    let mut has_digit = false;
-    for b in s.as_bytes() {
-        match b {
-            b'0'..=b'9' => {
-                result = result.checked_mul(10)?.checked_add((*b - b'0') as u32)?;
-                has_digit = true;
-            }
-            _ => return None,
-        }
-    }
-    if has_digit { Some(result) } else { None }
-}
+use nros_board_common::base_config::parse_u32;
 
 impl Config {
     /// The board default overlaid with the IMAGE's declared network identity —
@@ -587,8 +444,8 @@ impl nros_platform::BoardConfig for Config {
     }
 }
 
-// Phase 173.5 — the orchestration generator writes nros.toml
-// `[[transport]]` IP / baud into these (NanoRosOwned: this board owns
+// Phase 173.5 — the orchestration generator writes an interface's
+// address / baud into these (NanoRosOwned: this board owns
 // the smoltcp stack). Field writes are cfg-gated to the transport
 // that owns them; args are `_`-prefixed so the inactive-feature build
 // doesn't warn.

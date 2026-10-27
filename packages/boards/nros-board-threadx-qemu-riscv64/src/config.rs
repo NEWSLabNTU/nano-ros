@@ -16,10 +16,7 @@
 //! `Config` is a newtype whose job is to carry the board's DEFAULTS and the
 //! trait impls the family driver dispatches on.
 
-use nros_board_common::{
-    BaseConfig,
-    base_config::{for_each_toml_field, parse_u32},
-};
+use nros_board_common::{BaseConfig, base_config::parse_u32, parse_direct_toml};
 
 /// Network and node configuration for ThreadX QEMU RISC-V.
 ///
@@ -127,28 +124,28 @@ impl Config {
         self
     }
 
-    /// Parse configuration from a direct-mode `nros.toml` string.
+    /// Parse a direct-mode board file (RFC-0109 D4,
+    /// [`nros_board_common::parse_direct_toml`]).
     ///
     /// Missing fields keep this board's defaults. Designed for
-    /// `include_str!("../nros.toml")` compile-time embedding.
+    /// `include_str!("../config.toml")` compile-time embedding.
     ///
     /// ```toml
-    /// [[transport]]
-    /// ip = "10.0.2.40/24"
-    /// mac = "52:54:00:12:34:56"
-    /// gateway = "10.0.2.2"
-    /// locator = "tcp/10.0.2.2:7447"
-    ///
     /// [node]
     /// domain_id = 0
+    /// locator = "tcp/10.0.2.2:7447"
+    ///
+    /// [eth0]
+    /// network = "qemu"
+    /// host = 40
+    /// mac = "52:54:00:12:34:56"
     /// ```
     pub fn from_toml(toml: &'static str) -> Self {
         let mut config = Self::default();
-        // This board has no board-specific keys, so every field the scanner
-        // yields is either a `BaseConfig` one or ignored.
-        for_each_toml_field(toml, |section, key, value| {
-            config.base.apply_toml_field(section, key, value);
-        });
+        // This board has no board-specific keys.
+        config
+            .base
+            .apply_direct(&parse_direct_toml(toml, |_, _, _| {}));
 
         // Phase 177.38 — build-time ROS-domain override for per-fixture
         // isolation. `NROS_DOMAIN_ID` set at build time bakes a distinct domain
@@ -164,6 +161,6 @@ impl Config {
     }
 }
 
-// Phase 173.5 — nros.toml `[[transport]]` IP into the board `Config`
+// Phase 173.5 — the direct-mode file's interface address into the board `Config`
 // (NanoRosOwned: this board owns the NetX Duo stack). No UART field ⇒
 // baudrate keeps the trait's no-op default.
