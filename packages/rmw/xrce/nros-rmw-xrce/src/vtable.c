@@ -13,6 +13,59 @@
 
 #include "internal.h"
 
+/* Issue 2107 — the six `*_get_actual_qos` slots: one helper per entity kind
+ * (session.c), six thunks. See `xrce_actual_qos_topic` /
+ * `xrce_actual_qos_service` for what is known and why — and for what was
+ * measured: a pub/sub entity holds what the create sent, a requester/replier
+ * holds the Agent's fixed profile whatever was asked. */
+#define XRCE_ACTUAL_QOS_BODY(state_type, entity, expr)                                            \
+    do {                                                                                           \
+        if ((entity) == NULL || (entity)->backend_data == NULL || qos == NULL) {                   \
+            return NROS_RMW_RET_INVALID_ARGUMENT;                                                  \
+        }                                                                                          \
+        const state_type* s = (const state_type*)(entity)->backend_data;                           \
+        xrce_session_lock(s->session_state);                                                       \
+        expr;                                                                                      \
+        xrce_session_unlock(s->session_state);                                                     \
+        return NROS_RMW_RET_OK;                                                                    \
+    } while (0)
+
+static rmw_ret_t xrce_publisher_get_actual_qos(const rmw_publisher_t* publisher,
+                                               rmw_qos_profile_t* qos) {
+    XRCE_ACTUAL_QOS_BODY(xrce_publisher_state, publisher,
+                         xrce_actual_qos_topic(&s->sent_qos, s->avoid_ros, qos));
+}
+
+static rmw_ret_t xrce_subscription_get_actual_qos(const rmw_subscription_t* subscription,
+                                                  rmw_qos_profile_t* qos) {
+    XRCE_ACTUAL_QOS_BODY(xrce_subscriber_state, subscription,
+                         xrce_actual_qos_topic(&s->sent_qos, s->avoid_ros, qos));
+}
+
+static rmw_ret_t xrce_client_request_publisher_get_actual_qos(const rmw_client_t* client,
+                                                              rmw_qos_profile_t* qos) {
+    XRCE_ACTUAL_QOS_BODY(xrce_service_client_state, client,
+                         xrce_actual_qos_service(true, s->avoid_ros, qos));
+}
+
+static rmw_ret_t xrce_client_response_subscription_get_actual_qos(const rmw_client_t* client,
+                                                                  rmw_qos_profile_t* qos) {
+    XRCE_ACTUAL_QOS_BODY(xrce_service_client_state, client,
+                         xrce_actual_qos_service(false, s->avoid_ros, qos));
+}
+
+static rmw_ret_t xrce_service_request_subscription_get_actual_qos(const rmw_service_t* service,
+                                                                  rmw_qos_profile_t* qos) {
+    XRCE_ACTUAL_QOS_BODY(xrce_service_server_state, service,
+                         xrce_actual_qos_service(false, s->avoid_ros, qos));
+}
+
+static rmw_ret_t xrce_service_response_publisher_get_actual_qos(const rmw_service_t* service,
+                                                                rmw_qos_profile_t* qos) {
+    XRCE_ACTUAL_QOS_BODY(xrce_service_server_state, service,
+                         xrce_actual_qos_service(true, s->avoid_ros, qos));
+}
+
 /* RFC-0088 D4 / phase-421 W2 — the wire encoding, as the cross-image identity
  * STRING (the `u8` discriminant beside it is image-local and never crosses).
  *
@@ -127,6 +180,16 @@ static const nros_rmw_vtable_t kVtable = {
 
     /* Phase 124.F.2 — connectivity probe via uxr_ping_agent_session. */
     .ping_session = xrce_session_ping,
+
+    /* Issue 2107 — QoS read-back (see `XRCE_ACTUAL_QOS_BODY`). */
+    .publisher_get_actual_qos = xrce_publisher_get_actual_qos,
+    .subscription_get_actual_qos = xrce_subscription_get_actual_qos,
+    .client_request_publisher_get_actual_qos = xrce_client_request_publisher_get_actual_qos,
+    .client_response_subscription_get_actual_qos =
+        xrce_client_response_subscription_get_actual_qos,
+    .service_request_subscription_get_actual_qos =
+        xrce_service_request_subscription_get_actual_qos,
+    .service_response_publisher_get_actual_qos = xrce_service_response_publisher_get_actual_qos,
 
     /* Phase 231 (RFC-0038) — zero-copy in-place take over the XRCE static
      * ring (the staged `entry->data`), so the executor's in-place dispatch

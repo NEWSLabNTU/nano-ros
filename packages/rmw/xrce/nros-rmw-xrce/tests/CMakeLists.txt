@@ -16,6 +16,14 @@ target_link_libraries(nros_rmw_xrce_c_smoke PRIVATE nros_rmw_xrce)
 
 add_test(NAME nros_rmw_xrce_c_smoke COMMAND nros_rmw_xrce_c_smoke)
 
+# Issue 2107 — the six *_get_actual_qos slots: a pub/sub entity reports what its
+# BIN create sent, a requester/replier the Agent's fixed profile (both measured
+# against the pinned Agent). No agent: the per-entity state holds the profile.
+add_executable(nros_rmw_xrce_actual_qos actual_qos.c)
+target_link_libraries(nros_rmw_xrce_actual_qos PRIVATE nros_rmw_xrce)
+
+add_test(NAME nros_rmw_xrce_actual_qos COMMAND nros_rmw_xrce_actual_qos)
+
 # Issue 0847 — an entity handle outliving its session must not fault.
 #
 # Needs `internal.h` (the session/entity states are private to the backend), and

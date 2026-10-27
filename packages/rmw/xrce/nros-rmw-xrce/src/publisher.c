@@ -107,6 +107,8 @@ static rmw_ret_t xrce_publisher_create_locked(const rmw_node_t* node,
     }
 
     ps->datawriter_oid = dw_oid;
+    ps->sent_qos = xrce_qos;
+    ps->avoid_ros = avoid_ros != 0;
     if (keyed) {
         xrce_graph_track(st, &ps->graph_writer, node, graph_key, XRCE_GRAPH_WRITER);
     }

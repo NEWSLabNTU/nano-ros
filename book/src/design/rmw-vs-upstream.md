@@ -580,7 +580,7 @@ The mask actually advertised by each backend's
 | Backend | Reliability + Durability + History/Depth | Deadline | Lifespan | Liveliness Automatic | Liveliness Manual | Liveliness Lease | `avoid_ros_namespace_conventions` |
 |---------|-------------------------------------------|----------|----------|----------------------|--------------------|------------------|-----------------------------------|
 | Cyclone DDS | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ Native | ✅ honoured |
-| XRCE-DDS | ✅ Native (binary `uxrQoS_t`) | ✅ Shim-side clock check (sub: `RequestedDeadlineMissed`; pub: `OfferedDeadlineMissed`) + agent-side via FastDDS XML profile | ✅ Agent-side via FastDDS XML profile | ✅ Native | ✅ Configured via XML | ✅ Configured via XML | ✅ honoured |
+| XRCE-DDS | ✅ Native (binary `uxrQoS_t`) on pub/sub; a requester/replier ignores them (the client drops its QoS; the Agent's fixed profile applies) | ❌ Refused at create (`uxrQoS_t` has no field) | ❌ Refused at create | ✅ Fast-DDS default on the Agent's entity | ❌ Refused at create | ❌ Refused at create | ✅ honoured |
 | zenoh-pico | ✅ Shim-emulated | ✅ Clock-based check (sub + pub) | ✅ Subscriber-side filter using attachment timestamp | ✅ Trivial via session keepalive | ✅ Shim-side keepalive timer at pub publish path | ✅ Honoured | n/a (no `/rt/` prefix) |
 | uORB | ✅ CORE only (intra-process, no wire) | ❌ No rate concept | ❌ No expiry concept | ❌ No wire-level liveliness | ❌ | ❌ | n/a |
 
@@ -588,10 +588,11 @@ The mask actually advertised by each backend's
 
 - The default QoS profile (RELIABLE + VOLATILE + KEEP_LAST(10) + AUTOMATIC) works on every backend.
 - Apps that need extended QoS but want to stay backend-portable: check `supported_qos_policies()` at startup and degrade gracefully.
-- For full DDS QoS: Cyclone DDS is the native DDS path; XRCE-DDS
-  auto-routes through FastDDS XML profile when extended policies are
-  set. Zenoh-pico fills the gap with shim-side emulation. uORB is
-  intra-process only.
+- For full DDS QoS: Cyclone DDS is the native DDS path. XRCE-DDS creates
+  every entity from a binary profile, and an Agent-side XML profile does NOT
+  reach it (measured, issue 2107), so extended policies are refused at create.
+  Zenoh-pico fills the gap with shim-side emulation. uORB is intra-process
+  only.
 
 See [Status events](../concepts/status-events.md) for how the
 deadline / liveliness / message-lost policies translate into
@@ -790,7 +791,7 @@ are evidence for what the protocol allows.
 | graph: names, types, endpoint info, counts | `get_topic_names_and_types`, `get_service_names_and_types`, the four `*_names_and_types_by_node`, `get_{publishers,subscriptions}_info_by_topic`, `count_{publishers,subscribers,clients,services}` | protocol cannot | discovery lives on the Agent's participant; the client has no builtin-topic readers and no enumeration request | UNSUPPORTED unless built with `RMW_UXRCE_GRAPH`, which reads the micro-ROS Agent's own `ros_to_microros_graph` topic — not published by the stock Micro XRCE-DDS Agent nano-ros uses |
 | graph: node names + change edge | `get_node_names`, `node_get_graph_guard_condition` | unwritten — [issue 2106](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2106-xrce-node-enumeration-from-ros-discovery-info.md) | node names are DATA on `ros_discovery_info`, an ordinary topic the client can subscribe to through the Agent (this backend already publishes it, issue 1292); DDS peers only | as above |
 | matched counts | `publisher_count_matched_subscriptions`, `subscription_count_matched_publishers` | protocol cannot | matching happens between the Agent's entities and remote ones; nothing reports it to the client | `RMW_UXRCE_GRAPH` only, from the graph topic |
-| granted QoS | the six `*_get_actual_qos` | unwritten — [issue 2107](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2107-xrce-get-actual-qos.md) | no read-back exists, but every honoured policy is sent explicitly at create and an unhonoured one is refused, so the created profile (with `*_UNKNOWN` where unsure) is an honest partial answer | returns the stored creation profile |
+| granted QoS | the six `*_get_actual_qos` | **filled** ([issue 2107](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/2107-xrce-get-actual-qos.md)) | no read-back request exists, so the answer is derived — and MEASURED against the pinned Agent with a stock peer reading each endpoint's discovered QoS. A BIN-created DataWriter/DataReader holds exactly the four `uxrQoS_t` fields sent plus Fast-DDS defaults (deadline/lifespan infinite, liveliness AUTOMATIC); an Agent-side XML default profile does not reach it (the Agent copies `DATAWRITER_QOS_DEFAULT` into a local, and Fast-DDS substitutes the profile only for the sentinel's address). A requester/replier does NOT hold what was asked: the client library drops its QoS and the Agent builds both endpoints from fixed attributes (writers RELIABLE + TRANSIENT_LOCAL, readers RELIABLE + VOLATILE), which is what those four slots report. Depth reaches no peer: reported only when sent, else UNKNOWN | returns the stored creation profile — for a service, not what the Agent built |
 | status events: liveliness, incompatible QoS, matched; manual liveliness | `subscription_event_init`, `publisher_event_init`, `subscription_take_event`, `publisher_take_event`, `publisher_assert_liveliness` | protocol cannot | DDS status is on the Agent's entities; no XRCE submessage carries it; the Agent's writer asserts its own liveliness | `rmw_*_event_init` UNSUPPORTED |
 | status events: deadline | the same slots for the two DEADLINE kinds, plus `next_deadline_ms`, `event_type_is_supported` | unwritten — [issue 2108](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/2108-xrce-deadline-event-emulation.md) | both deadlines are local facts (time since last arrival / last publish); emulating them is also what would earn the DEADLINE QoS bit XRCE refuses today | UNSUPPORTED |
 | session wake | `set_wake_callback` | protocol cannot | the client has no background thread; nothing arrives outside `drive_io`, which the executor itself calls | no equivalent |
@@ -806,8 +807,9 @@ are evidence for what the protocol allows.
 | capability probe | `feature_supported` | n/a | inert ABI-wide (no reader); XRCE would answer false for both features, as upstream does | false for both |
 
 Nothing on this list was trivial enough to land with the rulings: the closest,
-`*_get_actual_qos`, needs a measurement first (whether an Agent-side profile
-can override a BIN-created entity's QoS), which is in issue 2107.
+`*_get_actual_qos`, needed a measurement first (whether an Agent-side profile
+can override a BIN-created entity's QoS). Issue 2107 made it — it cannot — and
+found that a requester/replier ignores its requested QoS altogether.
 
 ## 10. Error returns
 

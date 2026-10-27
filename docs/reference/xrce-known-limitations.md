@@ -21,6 +21,17 @@ depth.
 **Tracked:** TODO 115.K.2.x in `src/publisher.c` /
 `src/subscriber.c` / `src/service.c` (search for `uxr_buffer_create_topic_bin`).
 
+## Service / client QoS is not applied
+
+A requester or replier is created with the Agent's FIXED profile whatever QoS
+the caller passed: micro-XRCE-DDS-Client drops it (`(void) qos;` in
+`uxr_buffer_create_{requester,replier}_bin`) and the Agent builds both endpoints
+from default attributes — writers RELIABLE + TRANSIENT_LOCAL, readers RELIABLE +
+VOLATILE (measured, issue 2107). The `*_get_actual_qos` slots report that
+profile; nothing refuses a different request yet.
+
+**Tracked:** [issue 2120](../issues/2120-xrce-service-qos-silently-ignored.md).
+
 ## Deadline events absent
 
 The Rust impl emulates `OfferedDeadlineMissed` and
