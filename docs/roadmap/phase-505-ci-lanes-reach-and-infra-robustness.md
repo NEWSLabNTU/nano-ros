@@ -1,7 +1,10 @@
 # Phase 505 — every gate runs somewhere, and a red names the code
 
 **Status (2026-10-27). #2052 is resolved: `8b95e90dd6` had already fixed it
-when it was homed here, without citing it.**
+when it was homed here, without citing it. #2069 is resolved: the out-of-lane
+gate classifies a timeout or a plain failure as "ran under the scope and
+failed", separately from a scope-order violation, and a timeout fails only
+when no other merge-gating lane runs that test.**
 
 **Status (2026-10-26). Three issues with no active phase were homed here on
 2026-10-26: #2066 and #2067 under W1, and #2052 under W2. W2 also has #2069,
@@ -96,9 +99,13 @@ phase's. Build speed is phase-489's.
       parallel probe gates provision a submodule once.
 - [x] [#1621](../issues/archived/1621-sdk-store-submodule-provision-breaks-worktree-git.md):
       a failed submodule provision leaves the worktree's git usable.
-- [ ] [#2069](../issues/2069-out-of-lane-gate-reports-a-timeout-as-a-scope-violation.md):
+- [x] [#2069](../issues/archived/2069-out-of-lane-gate-reports-a-timeout-as-a-scope-violation.md):
       `check-out-of-lane-deselected` reports a host-only test that timed out
       under load as a scope-order violation, and names the scope remedy.
+      Resolved: a nextest timeout (`<failure type="test timeout"/>`, measured)
+      or a failure with no skip marker is its own class with its own remedy;
+      a timeout fails only when `test-lane-contracts` does not also run the
+      test.
 - [x] [#2052](../issues/archived/2052-pristine-ament-surface-stale-home-cli.md):
       `check::pristine-checkout`'s `cmake-ament-surface` uses the checkout's
       own CLI, or reports NOT VERIFIED, and never reaches a stale
@@ -151,7 +158,7 @@ ejection from a cause listed here.
 | [#1964](../issues/1964-pre-push-fast-red-unreproduced.md) | The pre-push `check fast` went red once and green on an immediate retry, and which gate it was cannot be recovered. The hook now keeps its full output outside the checkout. |
 | [#1984](../issues/archived/1984-run-matrix-coordinate-truth-nm-sweep-timeout.md) | The `nm` audit of every workspace row timed out on a slow runner with no row named. Each pass and the sweep are now bounded and timed. |
 | [#1985](../issues/archived/1985-identity-budget-counts-retired-cargo-root.md) | `artifact-identity-budget` counted a cargo root the image no longer builds, so the persistent fixture tree failed it after phase-506 W4a. |
-| [#2069](../issues/2069-out-of-lane-gate-reports-a-timeout-as-a-scope-violation.md) | Filed 2026-10-26. A merge-group gate step turns a load timeout into a scope-order verdict, so a batch is ejected for a cause that is not in the code and the ejection names the wrong fix. |
+| [#2069](../issues/archived/2069-out-of-lane-gate-reports-a-timeout-as-a-scope-violation.md) | Filed 2026-10-26. A merge-group gate step turns a load timeout into a scope-order verdict, so a batch is ejected for a cause that is not in the code and the ejection names the wrong fix. Resolved 2026-10-27: the gate classifies by what happened, and a timeout fails only when no other merge-gating lane runs the test. |
 | [#2052](../issues/archived/2052-pristine-ament-surface-stale-home-cli.md) | Resolved 2026-10-26 by `8b95e90dd6`, which landed before it was homed. `ci gate`'s pristine-checkout step reaches a stale `~/.nros/bin/nros` through `cmake-ament-surface`, so the gate's verdict depends on the host rather than the code. |
 | [#2066](../issues/archived/2066-linux-sched-deadline-throttle-unverified.md) | Homed 2026-10-26 from archived phase-509. The `SCHED_DEADLINE` throttle needs `CAP_SYS_NICE`, which no lane has, so that half of the level budget is run by nothing. Resolved 2026-10-27 by a recorded manual run with `CAP_SYS_NICE` (docker): it found the C/C++ level runner losing its reservation to the spawner's `SCHED_FIFO` write (fixed) and throttle checks tighter than a tick-enforced kernel (loosened), archived. No lane claims `rt-sched` yet. |
 | [#2067](../issues/archived/2067-freertos-level-kernel-slicing-off-not-booted.md) | Homed 2026-10-26 from archived phase-509. No lane boots a FreeRTOS level image and reads its time-slicing line, so the kernel setting is built and never checked. Resolved 2026-10-27: `realtime_tiers_e2e` asserts the line OFF on the C, C++ and Rust level rows, archived. |

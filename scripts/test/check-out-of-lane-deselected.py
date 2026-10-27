@@ -50,9 +50,33 @@ VERDICT, per selected test:
   resolver's in-lane "fixture MISSING" verdict, because this job builds no
   fixture. Listed by name, not failed: that is the scope answering yes, and
   fixture coverage is `test-all`'s question, not this one's;
-* anything else — `[UNMET PRECONDITION]`, a bare or other-class `[SKIPPED]`,
-  an ordinary failure — is a test that read the host before its scope, and
-  fails this check.
+* PROBED — `[UNMET PRECONDITION]`, or a bare or other-class `[SKIPPED]`: a
+  test that read the host before its scope. This is the check's subject, and
+  it fails it;
+* RAN AND FAILED — the test RAN under the scope and failed with no skip
+  marker at all: an ordinary assertion, or nextest terminating it for time
+  (issue 2069). That is not evidence about scope order, so it is reported as
+  its own class with its own remedy — never as "read the host first", which
+  sends the reader to fix an order that is already right. Whether it FAILS
+  this check depends on whether another merge-gating lane answers for the
+  same test:
+  - an ordinary failure always fails. Most of these host-only tests run in no
+    other lane (`test-unit` excludes `nros-tests`; `test-lane-contracts` runs
+    only what `.config/lane-admission/gate.txt` admits — 6 of the 18 measured
+    on 2026-10-27), and with the emulators hidden here a probe that panics
+    WITHOUT a marker (an `.expect()` on a resolver) only shows up in this run;
+  - a timeout fails unless the test is admitted to `test-lane-contracts`,
+    which runs it under the default profile in the same `ci gate` and the same
+    merge-queue batch. There this run's timeout only repeats — under a heavier
+    parallel load — a verdict the other lane already gave, and failing on it
+    ejects a whole batch over load (issue 2069: `example_shape
+    zephyr_leaf_buildrs_uses_shared_bake`, 0.589 s in the other lane, 60.019 s
+    TIMEOUT here). It is printed, loudly, and does not fail.
+
+How a timeout is recognised is MEASURED, not guessed: nextest 0.9.140 writes
+`<failure type="test timeout"/>` — no `message` attribute and no panic text,
+which is why issue 2069's verdict read `(no message)`. An ordinary panic is
+`type="test failure with exit code 101"` with a `message`.
 
 What it cannot see: a test that resolves a fixture no manifest row attributes
 (a `[[compile_check_fixture]]`, built module-level) with no scope check before
@@ -97,14 +121,47 @@ PROFILE = "out-of-lane"
 ADMITTED_PREFIX = "Test fixture binary MISSING for an in-lane coordinate"
 
 
-def classify(junit_path):
-    """`(passed, deselected, admitted, offenders)` for one junit file.
+# nextest's junit for a test it terminated for time (measured on 0.9.140 with
+# `slow-timeout = { period = "1s", terminate-after = 2 }`): an EMPTY
+# `<failure type="test timeout"/>`.
+TIMEOUT_TYPE = "test timeout"
 
-    `admitted` and `offenders` are `[(name, first line of its verdict)]`. The
-    ONE predicate — the self-test goes through it too.
+# `nros_tests::unmet!` (`packages/testing/nros-tests/src/lib.rs`).
+UNMET_PREFIX = "[UNMET PRECONDITION]"
+
+ADMISSION = os.path.join(ROOT, ".config", "lane-admission", "gate.txt")
+
+
+def lane_contracts_admission(path=ADMISSION):
+    """What `test-lane-contracts` runs, parsed as its recipe parses it: a bare
+    target admits it whole, `<target>::<test>` admits one test."""
+    rows = set()
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = "".join(line.split("#", 1)[0].split())
+            if line:
+                rows.add(line)
+    return rows
+
+
+def covered_elsewhere(name, admission):
+    """True when `test-lane-contracts` runs this `nros-tests::<target> <test>`."""
+    classname, _, test = name.partition(" ")
+    target = classname.split("::", 1)[1] if "::" in classname else "lib"
+    return target in admission or f"{target}::{test}" in admission
+
+
+def classify(junit_path, admission=frozenset()):
+    """`(passed, deselected, admitted, probed, failed, timed_out)` for one junit
+    file.
+
+    Every list is `[(name, first line of its verdict)]`; a `timed_out` row
+    carries a third field, whether `test-lane-contracts` also runs the test
+    (per `admission`). The ONE predicate — the self-test goes through it too.
     """
     tree = ET.parse(junit_path)
-    passed, deselected, admitted, offenders = 0, 0, [], []
+    passed, deselected = 0, 0
+    admitted, probed, failed, timed_out = [], [], [], []
     for case in tree.iter("testcase"):
         name = f"{case.get('classname', '')} {case.get('name', '')}".strip()
         bad = [n for n in case if n.tag in ("failure", "error")]
@@ -126,12 +183,16 @@ def classify(junit_path):
             if text:
                 first = text.splitlines()[0]
                 break
-        first = first or "(no message)"
-        if first.startswith(ADMITTED_PREFIX):
+        if cls is not None or first.startswith(UNMET_PREFIX):
+            probed.append((name, first))
+        elif node.get("type") == TIMEOUT_TYPE:
+            timed_out.append((name, first or "(terminated for time)",
+                              covered_elsewhere(name, admission)))
+        elif first.startswith(ADMITTED_PREFIX):
             admitted.append((name, first))
         else:
-            offenders.append((name, first))
-    return passed, deselected, admitted, offenders
+            failed.append((name, first or "(no message)"))
+    return passed, deselected, admitted, probed, failed, timed_out
 
 
 def self_test(tmp_dir):
@@ -139,34 +200,67 @@ def self_test(tmp_dir):
         body = "".join(cases)
         return f"<testsuites><testsuite name='nros-tests::t'>{body}</testsuite></testsuites>"
 
-    def case(name, err=None):
+    def case(name, err=None, target="t"):
         if err is None:
-            return f"<testcase classname='nros-tests::t' name='{name}'/>"
+            return f"<testcase classname='nros-tests::{target}' name='{name}'/>"
         return (
-            f"<testcase classname='nros-tests::t' name='{name}'><failure/>"
+            f"<testcase classname='nros-tests::{target}' name='{name}'>"
+            "<failure type='test failure with exit code 101'/>"
             f"<system-err>thread 't' panicked at t.rs:1:5:\n{err}\nnote: run</system-err>"
             "</testcase>"
         )
 
+    def timeout(name, target="t"):
+        # Exactly what nextest 0.9.140 wrote for a terminated test.
+        return (
+            f"<testcase classname='nros-tests::{target}' name='{name}'>"
+            f"<failure type='{TIMEOUT_TYPE}'/>"
+            "<system-out>\nrunning 1 test\n</system-out><system-err></system-err>"
+            "</testcase>"
+        )
+
     path = os.path.join(tmp_dir, "self-test-junit.xml")
+    admission = {"covered", "partial::the_one"}
     rows = [
         (case("host_only"), "pass"),
         (case("lane_first", "[SKIPPED:lane] out of lane: QemuBaremetal"), "lane"),
-        (case("probe_first", "[UNMET PRECONDITION] qemu-system-arm not found"), "bad"),
-        (case("bare_skip", "[SKIPPED] NuttX source tree not found"), "bad"),
-        (case("other_class", "[SKIPPED:capability] no west"), "bad"),
-        (case("real_red", "assertion failed: x"), "bad"),
+        (case("probe_first", UNMET_PREFIX + " qemu-system-arm not found"), "probed"),
+        (case("bare_skip", "[SKIPPED] NuttX source tree not found"), "probed"),
+        (case("other_class", "[SKIPPED:capability] no west"), "probed"),
+        # Issue 2069 — a test that RAN and failed is not a scope violation,
+        # whether or not another lane runs it…
+        (case("real_red", "assertion failed: x"), "failed"),
+        (case("covered_red", "assertion failed: y", target="covered"), "failed"),
+        # …and `[UNMET PRECONDITION]` quoted later in an assertion is not the
+        # marker: it must START the panic message.
+        (case("quoted_unmet", "assertion failed: saw " + UNMET_PREFIX), "failed"),
         (case("in_lane_missing", ADMITTED_PREFIX + ": build/x/y"), "admitted"),
         # The prefix must START the panic message: quoting it later in an
         # assertion is not the resolver's verdict.
-        (case("quoted", "assertion failed: saw " + ADMITTED_PREFIX), "bad"),
+        (case("quoted", "assertion failed: saw " + ADMITTED_PREFIX), "failed"),
+        # A timeout is its own class, never a probe — and whether it fails is
+        # whether another lane runs the test (a whole target, or one test of it).
+        (timeout("slow"), "timeout-fails"),
+        (timeout("slow", target="covered"), "timeout-covered"),
+        (timeout("the_one", target="partial"), "timeout-covered"),
+        (timeout("a_sibling", target="partial"), "timeout-fails"),
     ]
     for c, want in rows:
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(junit([c]))
-        p, d, a, o = classify(path)
-        got = "pass" if p else "lane" if d else "admitted" if a else "bad" if o else "none"
-        assert got == want, f"self-test: {c[:60]}… classified {got}, want {want}"
+        p, d, a, pr, f, t = classify(path, admission)
+        got = (
+            "pass" if p else "lane" if d else "admitted" if a else "probed" if pr
+            else "failed" if f
+            else ("timeout-covered" if t[0][2] else "timeout-fails") if t else "none"
+        )
+        assert got == want, f"self-test: {c[:70]}… classified {got}, want {want}"
+    # The admission parse is the recipe's: the real file must admit the test
+    # issue 2069 timed out, or the tolerance above can never apply to it.
+    real = lane_contracts_admission()
+    assert covered_elsewhere(
+        "nros-tests::example_shape zephyr_leaf_buildrs_uses_shared_bake", real
+    ), "self-test: gate.txt no longer admits example_shape — re-read issue 2069"
     os.remove(path)
 
 
@@ -226,20 +320,60 @@ def run(out_dir):
     if rc not in (0, 100) or not os.path.isfile(junit):
         sys.exit(f"check-out-of-lane-deselected: nextest exited {rc} with no junit — "
                  "the selection did not run")
-    passed, deselected, admitted, offenders = classify(junit)
+    passed, deselected, admitted, probed, failed, timed_out = classify(
+        junit, lane_contracts_admission())
     if admitted:
         print(f"check-out-of-lane-deselected: {len(admitted)} test(s) the linux scope ADMITS "
               "stopped on a fixture this job does not build (not this check's subject):")
         for name, _why in admitted:
             print(f"  {name}")
-    if passed + deselected + len(admitted) + len(offenders) == 0:
+    total = passed + deselected + len(admitted) + len(probed) + len(failed) + len(timed_out)
+    if total == 0:
         sys.exit("check-out-of-lane-deselected: the selection reached no test")
-    if offenders:
+    covered_timeouts = [(n, w) for n, w, cov in timed_out if cov]
+    own_timeouts = [(n, w) for n, w, cov in timed_out if not cov]
+    if covered_timeouts:
+        # Loud, and not a failure: see the module doc, "RAN AND FAILED".
         sys.stderr.write(
-            f"check-out-of-lane-deselected: FAILED — {len(offenders)} test(s) of a platform "
+            f"check-out-of-lane-deselected: WARNING — {len(covered_timeouts)} test(s) RAN "
+            "under the scope and were TERMINATED FOR TIME (not a scope-order defect, and "
+            "not failed here):\n"
+        )
+        for name, _why in covered_timeouts:
+            sys.stderr.write(f"  {name}\n")
+        sys.stderr.write(
+            "  `test-lane-contracts` runs each of these under the default profile in the\n"
+            "  same lane, and its verdict is the one that stands; a timeout only here is\n"
+            "  this run's parallel load (issue 2069). If one recurs, time it solo:\n"
+            "      cargo nextest run -p nros-tests --test <target> -E 'test(<name>)'\n"
+        )
+    red = False
+    if failed or own_timeouts:
+        red = True
+        sys.stderr.write(
+            f"check-out-of-lane-deselected: FAILED — {len(failed) + len(own_timeouts)} "
+            "test(s) RAN under the `linux` scope and failed. Not a scope-order defect\n"
+            "  (no skip marker: nothing probed ahead of the scope), but no other\n"
+            "  merge-gating lane answers for these, so the verdict stands here:\n"
+        )
+        for name, why in failed:
+            sys.stderr.write(f"  {name}\n      {why}\n")
+        for name, _why in own_timeouts:
+            sys.stderr.write(f"  {name}\n      TIMEOUT (nextest terminated it for time)\n")
+        sys.stderr.write(
+            "\n  Debug it as an ordinary red: re-run it SOLO in this environment\n"
+            "  (`just check out-of-lane-deselected` hides the emulators and RTOS trees —\n"
+            "  an `.expect()` on a resolver fails here and passes on a host that has the\n"
+            "  tool; that is a missing `nros_tests::unmet!`, issue 1758). A timeout that\n"
+            "  passes solo is load, not a hang (issue 2069).\n"
+        )
+    if probed:
+        red = True
+        sys.stderr.write(
+            f"check-out-of-lane-deselected: FAILED — {len(probed)} test(s) of a platform "
             "the `linux` scope does not select read the host before the scope:\n"
         )
-        for name, why in offenders:
+        for name, why in probed:
             sys.stderr.write(f"  {name}\n      {why}\n")
         sys.stderr.write(
             "\n  Under a scope that does not select its platform, a test must reach\n"
@@ -248,10 +382,13 @@ def run(out_dir):
             "  at the head of the test or of the helper it calls first — and turn any\n"
             "  hand-written `[SKIPPED]` into `nros_tests::unmet!` after it (issue 1900).\n"
         )
+    if red:
         return 1
     print(
         f"check-out-of-lane-deselected: OK ({deselected} deselected as lane, "
-        f"{passed} host-only pass(es), {len(admitted)} admitted, 0 probed the host first)"
+        f"{passed} host-only pass(es), {len(admitted)} admitted, "
+        f"{len(covered_timeouts)} timeout(s) another lane answers for, "
+        "0 probed the host first, 0 ran and failed)"
     )
     return 0
 
