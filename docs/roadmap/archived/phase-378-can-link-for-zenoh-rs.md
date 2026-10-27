@@ -284,6 +284,19 @@ image that is meant to speak CAN must set `BATCH_MULTICAST_SIZE` to the CAN
 MTU**, and that belongs in the island's build configuration rather than in a
 README somewhere.
 
+**Derived since 2026-10-27** (zenoh-pico fork `nano-ros-1.10.1` `f90e7388`).
+A link now states whether its MTU is a hard frame ceiling
+(`_cap._mtu_is_frame_ceiling`, set by the CAN link), and a multicast JOIN
+advertises — and requires of a peer — `min(Z_BATCH_MULTICAST_SIZE, link MTU)`
+on such a link: 63 on CAN FD, exactly what zenoh-rs advertises. Measured with a
+DEFAULT pico build, no `BATCH_MULTICAST_SIZE`: pico ↔ zenoh-rs 8/8 each way
+(was 0/0), pico ↔ pico 8/8. Every other link is unchanged on purpose — UDP's
+1450-byte MTU is a size zenoh-pico chose, not a ceiling, and a pico built with
+8192 to meet zenoh-rs over UDP must keep advertising 8192 (UDP new↔old
+measured 6/6 both ways). The one cost: on CAN, a pico from before that commit
+built with the default 2048 and one from after refuse each other (0/8); one
+built at `=63`, the rule above, still meets the new one 8/8.
+
 Note also the follow-on error, `Invalid zid length received`, which appears once
 after the rejection. It is a consequence of the dropped association, not a
 second fault; chasing it first would have wasted the afternoon.
