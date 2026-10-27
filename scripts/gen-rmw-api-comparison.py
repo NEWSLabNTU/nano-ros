@@ -303,19 +303,27 @@ def arg_rules():
         return tomllib.load(fh).get("arg_rule", [])
 
 
-def explain_args(up_params, our_params, rules):
+def explain_args(up_params, our_params, rules, sym=None):
     """([(title, why)], [unexplained]) for the arguments upstream has and we do not.
 
     Only upstream-side parameters are attributed: an argument we ADD is our
     shape and is described by the slot's own row, while one we DROP is a
     decision that needs a stated cause. An unexplained drop fails `--check`,
     because "the lists differ" is not a reason.
+
+    A rule with `symbols = [...]` applies to those upstream symbols only, and
+    is tried before the general rules: one parameter TYPE can be answered
+    differently per symbol (`rmw_service_info_t *` is reported by a sibling
+    slot on the server side and not at all on the client side), and one shared
+    sentence covering both would be accurate about neither.
     """
+    scoped = [r for r in rules if sym is not None and sym in r.get("symbols", ())]
+    general = [r for r in rules if not r.get("symbols")]
     seen, unexplained = [], []
     for p in up_params:
         if p in our_params:
             continue
-        hit = next((r for r in rules if r["match"] in p), None)
+        hit = next((r for r in scoped + general if r["match"] in p), None)
         if hit is None:
             unexplained.append(p)
         elif (hit["title"], hit["why"]) not in seen:
@@ -453,7 +461,7 @@ def build():
             dropped = [p for p in up_params if p not in our_params]
             added = [p for p in our_params if p not in up_params]
             if not identical:
-                causes, missing = explain_args(up_params, our_params, rules)
+                causes, missing = explain_args(up_params, our_params, rules, sym)
                 if missing:
                     unexplained[sym] = missing
             our_html = fmt_sig(
@@ -733,6 +741,16 @@ def self_test():
         return False
     if missing != ["struct wat_t *"]:
         print("selftest: unknown parameter was not reported", file=sys.stderr)
+        return False
+
+    # A symbol-scoped rule wins for its symbol and is invisible to every other.
+    scoped = rules + [{"match": "rcutils_allocator_t", "title": "s", "why": "w",
+                       "symbols": ["rmw_x"]}]
+    if [t for t, _ in explain_args(["rcutils_allocator_t *"], [], scoped, "rmw_x")[0]] != ["s"]:
+        print("selftest: a symbol-scoped rule did not win for its symbol", file=sys.stderr)
+        return False
+    if [t for t, _ in explain_args(["rcutils_allocator_t *"], [], scoped, "rmw_y")[0]] != ["t"]:
+        print("selftest: a symbol-scoped rule leaked to another symbol", file=sys.stderr)
         return False
 
     # An argument present on both sides is neither dropped nor added.

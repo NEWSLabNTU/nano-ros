@@ -91,8 +91,8 @@ rmw must provide" than any reading of the headers.
 | | vtable | global | executor | platform | build time | serdes | runtime | none | **total** |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | same | 15 | 1 |  |  |  |  |  |  | **16** |
-| re-shaped | 34 | 1 |  |  |  |  |  |  | **35** |
-| re-mapped | 16 |  | 4 | 1 | 3 | 3 | 1 |  | **28** |
+| re-shaped | 33 | 1 |  |  |  |  |  |  | **34** |
+| re-mapped | 17 |  | 4 | 1 | 3 | 3 | 1 |  | **29** |
 | not supported — *by decision* |  |  |  |  |  |  |  | 9 | **9** |
 | **total** | **65** | **2** | **4** | **1** | **3** | **3** | **1** | **9** | **88** |
 
@@ -985,7 +985,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty add'>int64_t seq</span><span class=pu>,</span>
   <span class='ty add'>rmw_byte_span_t response</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>visitor, not an owning out-param</b> — As `rmw_service_info_t` — the sequence number and writer GUID travel in the borrowed view rather than a separate out-param.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>reply against the backend&#x27;s token</b> — Upstream&#x27;s `send_response` names the request by the client&#x27;s `rmw_request_id_t`. Ours takes back `int64_t seq`, the reply-correlation token `take_request` returned — a reply-slot index on Cyclone, XRCE and zenoh — and the backend maps it to the requester itself. The client&#x27;s own request id is reported separately, by `take_request_with_info`.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1236,7 +1236,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty add'>int64_t *seq_out</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>visitor, not an owning out-param</b> — The request/response metadata upstream writes into a caller-owned struct arrives here through the same borrowed-view discipline as the graph family.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><div class=answers><div class=ans>take_request</div><div class=ans>take_request_with_info</div></div><b>the reply token beside, the metadata in a sibling slot</b> — `take_request` returns only `int64_t *seq_out`, the backend&#x27;s reply-correlation token that `send_response` takes back — all a server needs to answer. The rest of upstream&#x27;s `rmw_service_info_t` (the requesting client&#x27;s `request_id` and the two timestamps) is carried by the sibling slot `take_request_with_info` (issue 2081), which takes a caller-owned `rmw_service_info_t *` field for field, exactly upstream&#x27;s shape. The runtime dispatches through it whenever a backend fills it: Cyclone DDS reports `request_id` and `source_timestamp`, XRCE-DDS `request_id`; the zenoh backend reports `request_id` and `source_timestamp` through the Rust adapter&#x27;s side table instead (issue 1942). No backend reports `received_timestamp`. A field not reported is zero.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1253,7 +1253,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty add'>int64_t *seq_out</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>visitor, not an owning out-param</b> — The request/response metadata upstream writes into a caller-owned struct arrives here through the same borrowed-view discipline as the graph family.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the sequence number only — no service info on the client side</b> — `take_response` returns only `int64_t *seq_out`, the `sequence_id` `send_request` handed out, which is what the runtime matches a reply against (issue 0778). Nothing else from upstream&#x27;s `rmw_service_info_t` crosses on the client side: there is no `take_response_with_info` slot, no backend reports the reply&#x27;s timestamps or the server&#x27;s identity, and no client API surfaces them.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
