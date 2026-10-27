@@ -1375,6 +1375,12 @@ const ZENOH_SYSTEM_DEFAULTS: nros_rmw::QoSSystemDefaults = nros_rmw::QoSSystemDe
 };
 
 impl Session for ZenohSession {
+    /// The name this backend registers under (`nros_rmw_zenoh_register`),
+    /// NOT `rmw_zenoh_cpp`: this is zenoh-pico speaking `rmw_zenoh_cpp`'s wire,
+    /// and the identifier names the implementation, not the wire it speaks
+    /// (`rmw_vtable.h`, `get_implementation_identifier`).
+    const IMPLEMENTATION_IDENTIFIER: Option<&'static str> = Some("zenoh");
+
     type Error = TransportError;
     type PublisherHandle = ZenohPublisher;
     type SubscriptionHandle = ZenohSubscriber;

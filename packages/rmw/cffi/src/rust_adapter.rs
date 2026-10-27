@@ -491,7 +491,7 @@ const fn format_name_cstr(name: &str) -> [u8; FORMAT_NAME_CAP] {
     let bytes = name.as_bytes();
     assert!(
         bytes.len() < FORMAT_NAME_CAP,
-        "serialization format name does not fit the vtable slot's buffer"
+        "backend name (format or identifier) does not fit the vtable slot's buffer"
     );
     let mut out = [0u8; FORMAT_NAME_CAP];
     let mut i = 0;
@@ -513,6 +513,15 @@ const fn format_name_cstr(name: &str) -> [u8; FORMAT_NAME_CAP] {
 /// against one vtable.
 unsafe extern "C" fn get_serialization_format_trampoline<R: RustBackend>() -> *const c_char {
     RustBackendAdapter::<R>::SERIALIZATION_FORMAT_CSTR
+        .as_ptr()
+        .cast()
+}
+
+/// `get_implementation_identifier` — the backend's name from its own
+/// `Session::IMPLEMENTATION_IDENTIFIER`, installed only when that const is
+/// `Some` (see `VTABLE`). Static storage, as for the format slot.
+unsafe extern "C" fn get_implementation_identifier_trampoline<R: RustBackend>() -> *const c_char {
+    RustBackendAdapter::<R>::IMPLEMENTATION_IDENTIFIER_CSTR
         .as_ptr()
         .cast()
 }
@@ -557,6 +566,15 @@ impl<R: RustBackend> RustBackendAdapter<R> {
     /// hoped for.
     const SERIALIZATION_FORMAT_CSTR: &'static [u8; FORMAT_NAME_CAP] =
         &format_name_cstr(<R::Session as Session>::SERIALIZATION_FORMAT);
+
+    /// `R`'s implementation identifier, NUL-terminated, in per-`R` static
+    /// storage. Empty when `R` states none — the slot is then NOT installed
+    /// (see `VTABLE`), so this buffer is never handed out in that case.
+    const IMPLEMENTATION_IDENTIFIER_CSTR: &'static [u8; FORMAT_NAME_CAP] =
+        &format_name_cstr(match <R::Session as Session>::IMPLEMENTATION_IDENTIFIER {
+            Some(name) => name,
+            None => "",
+        });
 
     /// Monomorphised vtable for backend `R`. The `const` is promoted
     /// to per-type static storage, so `&Self::VTABLE` has `'static`
@@ -640,6 +658,17 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         // default is `"cdr"`; a backend that speaks something else overrides
         // it and this slot reports the override with no work here.
         get_serialization_format: Some(get_serialization_format_trampoline::<R>),
+        // The backend's name, when `R` states one. Conditional, unlike the
+        // format slot: the identifier has no honest default, and a NULL slot
+        // makes the runtime answer with the name the vtable was REGISTERED
+        // under, which is a fact rather than a guess (`rmw_vtable.h`).
+        get_implementation_identifier: if <R::Session as Session>::IMPLEMENTATION_IDENTIFIER
+            .is_some()
+        {
+            Some(get_implementation_identifier_trampoline::<R>)
+        } else {
+            None
+        },
         // issue 1329 — `R`'s own mask, so the C route stops answering a union
         // on its behalf. Unconditional for every `R: RustBackend`: the trait
         // default is `QoSPolicyMask::NONE`, which is the same answer a NULL

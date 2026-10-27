@@ -139,17 +139,14 @@ Family = collections.namedtuple("Family", "members reason defer")
 Family.__new__.__defaults__ = (None,)
 
 INERT_FAMILIES = {
-    "identity": Family(
-        ("get_implementation_identifier",),
-        "the identity that is load-bearing is the one a backend stamps into "
-        "`rmw_gid_t`, which `rmw_compare_gids_equal` reads before the bytes — so "
-        "what matters is that a backend has ONE spelling of its name, not that it "
-        "can be asked for it. Reserved for the day a caller needs to ask which of "
-        "several linked backends it is on. NOTE its former family-mate "
-        "`get_serialization_format` left in phase-421 W2: the reason above was "
-        "written for both, and it stopped being true for the format the moment "
-        "uORB answered `\"uorb\"` where the others answer `\"cdr\"`",
-    ),
+    # The `identity` family stood here and is DELETED: the per-node
+    # `rmw_implementation_identifier` accessors (Rust / C / C++) read
+    # `get_implementation_identifier` through
+    # `CffiSession::implementation_identifier_cstr`, falling back to the
+    # registered name for a NULL slot, so the slot classifies `produced`. Its
+    # reason — "reserved for the day a caller needs to ask which of several
+    # linked backends it is on" — argued itself out exactly as
+    # `get_serialization_format`'s did in phase-421 W2.
     "capability-probe": Family(
         ("feature_supported",),
         "a generic probe with no caller. The capabilities the runtime actually "
@@ -186,14 +183,12 @@ INERT_FAMILIES = {
     # `get_subscription_count` / `get_publisher_count` ask the slot first
     # (through `CffiPublisher::count_matched_subscriptions`) and fall back to
     # the graph only on `Unsupported` — so both classify `produced`.
-    "rx-sizing": Family(
-        ("required_rx_bytes",),
-        "zenoh-pico fills it (phase-403 W4) and no dispatch site exists: the "
-        "slot's own header block says so and names phase-403 W3/W5 as the owner "
-        "of that site, which is still open work. Reserved deliberately — the "
-        "header also records the 2026-08-31 ruling that the slot stays OPTIONAL "
-        "permanently, so a NULL one is an answer and not a gap",
-    ),
+    # The `rx-sizing` family stood here and is DELETED with its slot:
+    # `required_rx_bytes` had a body (zenoh-pico) and no reader for its whole
+    # life, phase-403 W3/W5 closed by sizing buffers from the type's bound
+    # instead (phase-498 W3), and zenoh's answer equalled the hint it was given
+    # for every bounded type. Removed from the ABI rather than kept as a body
+    # nothing can reach.
 }
 
 

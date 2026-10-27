@@ -914,24 +914,34 @@ typedef struct nros_rmw_vtable_t {
      *  comparable with another carrying the same identifier, which matters here
      *  because `nros_rmw_cffi_register_named` admits several backends at once.
      *
-     *  RESERVED, and NULL in every backend. **There is no runtime fallback**:
-     *  this doc said the runtime answered with the registry name, and no such
-     *  code was ever written — nothing in the tree calls this slot, so a NULL
-     *  one is not "answered elsewhere", it is unanswerable. Corrected 2026-08-29
-     *  (phase-393 W2) after grepping for the promised fallback and finding only
-     *  this sentence.
+     *  RETURN THE STRING THE BACKEND STAMPS INTO `rmw_gid_t`. That is the
+     *  identity that is load-bearing: `rmw_compare_gids_equal` compares it
+     *  before the bytes, so a backend has ONE spelling of its name and this
+     *  slot hands it out. Cyclone's `kImplementationIdentifier` is that shape.
      *
-     *  Filling it is NOT what makes the identity correct. The identity that is
-     *  load-bearing today is the one a backend stamps into `rmw_gid_t`, because
-     *  `rmw_compare_gids_equal` compares that string before the bytes — so what
-     *  matters is that a backend has ONE spelling of its name, not that it can
-     *  be asked for it. Cyclone's `kImplementationIdentifier` is that shape.
+     *  THE NANO-ROS NAME, NOT A STOCK `rmw_*_cpp` NAME. In-tree answers are the
+     *  registry names: `"zenoh"`, `"cyclonedds"`, `"xrce"`, `"uorb"`. Upstream's
+     *  identifier is a process-local type tag — each rmw checks a handle's
+     *  `implementation_identifier` against its own, and the string never
+     *  crosses the wire — so answering `"rmw_zenoh_cpp"` would buy no interop
+     *  (wire compatibility is the serialization format and the gid derivation,
+     *  which are answered elsewhere) and would tell a tool or ported code that
+     *  branches on the name that it runs on an implementation it does not.
      *
-     *  Do not fill this slot to move a counter: `check-rmw-slot-producers`
-     *  classifies any slot with a producer as `produced` whether or not
-     *  anything reads it, which is exactly the overstatement issue 0800 exists
-     *  to catch. It earns a body when a CALLER exists — a bridge image asking
-     *  which of two linked backends it is on. */
+     *  READ by `CffiSession::implementation_identifier_cstr`, which the
+     *  per-node accessors in every language reach
+     *  (`Node::rmw_implementation_identifier`,
+     *  `rclc_node_get_rmw_implementation_identifier`,
+     *  `rclcpp::Node::rmw_implementation_identifier`) — per SESSION, because
+     *  an image linking two backends has two answers.
+     *
+     *  NULL slot: FALLBACK class — the runtime answers with the name the vtable
+     *  was registered under (`nros_rmw_cffi_register_named`; the first such
+     *  name if one vtable is registered twice). That name is a real fact about
+     *  the backend, not a guess; it is what a foreign vtable that predates the
+     *  slot is known by. (Until 2026-10-27 this slot had no reader and this doc
+     *  had once promised that fallback with no code behind it — corrected
+     *  phase-393 W2, implemented with the reader.) */
     const char *(*get_implementation_identifier)(void);
 
     /** Upstream `rmw_get_serialization_format`.
@@ -1313,104 +1323,17 @@ typedef struct nros_rmw_vtable_t {
      *  surfaces `UNSUPPORTED`. */
     rmw_ret_t (*set_log_severity)(rmw_log_severity_t severity);
 
-    /* ---- Phase 403 W1 — receive-buffer sizing (optional) ---- */
-
-    /** How many bytes of TAKE buffer this type actually needs, so the runtime
-     *  can stop sizing `take`'s `buf` from one global constant.
-     *
-     *  RTOS addition; upstream has no counterpart. Upstream's nearest thing is
-     *  `rmw_get_serialized_message_size`, which is about a MESSAGE and which
-     *  all three reference implementations leave unimplemented; this is about
-     *  the buffer the CALLER must present, and the answer is the backend's
-     *  because only the backend knows what its framing, size classes and
-     *  attachment handling add on top of the payload.
-     *
-     *  `type_name` and `type_hash` name the type (both BORROWED for the call;
-     *  `type_hash` may be NULL exactly as in `create_subscription`). `hint` is
-     *  the same number the runtime would put in
-     *  `rmw_subscription_options_t.rx_buffer_hint`, and carries the same
-     *  meaning, including that `0` says the CALLER stated nothing rather than
-     *  that the type is unbounded — every message type has a derived bound or
-     *  the build fails. On `NROS_RMW_RET_OK`, `*out_bytes` is the MINIMUM
-     *  take-buffer length that is sufficient for this type at this hint: a
-     *  `take` given that many bytes must not fail for want of room, and no
-     *  smaller number has that property. It may exceed `hint` — a backend that
-     *  frames or pads says so here rather than discovering it at `take` time —
-     *  and it may be smaller.
-     *
-     *  MINIMUM, tightened in phase-403 W4, and the word carries the whole
-     *  value of the slot. A backend that keeps size CLASSES may not answer with
-     *  the class it would round this type up to. Doing so is arithmetically
-     *  safe and useless: a 68-byte type and a 1000-byte type sharing a class
-     *  come back with one number, which is the global-constant answer the
-     *  runtime already had without asking, and the runtime would spend the
-     *  difference on every subscription in the image. Report what the type
-     *  needs; the rounding is the backend's own business and stays there.
-     *  If a backend genuinely cannot separate the two — its framing really
-     *  does make the class size the floor — then the class size IS the
-     *  minimum and answering it is correct; what is forbidden is reporting a
-     *  rounding as though it were a requirement.
-     *
-     *  This is a QUERY about a type, not about an entity: it is answerable
-     *  before any subscription exists, which is the point — the runtime has to
-     *  size the buffer in order to create one.
-     *
-     *  NULL slot: FALLBACK class (RFC-0035's NULL-slot contract) — THE HINT IS
-     *  THE ANSWER, never `UNSUPPORTED` to the caller. The runtime uses `hint`,
-     *  and since a type without a derived bound is a build error, that is a
-     *  real number rather than a fallback to a configured default. A backend
-     *  that cannot answer for a PARTICULAR type returns
-     *  `NROS_RMW_RET_UNSUPPORTED` and leaves `*out_bytes` untouched; the
-     *  runtime falls back to the hint exactly as for a NULL slot.
-     *
-     *  OPTIONAL on the merits, not for compatibility. nano-ros is unreleased
-     *  and this ABI may be broken, so "a mandatory slot breaks every
-     *  out-of-tree backend" is not the reason and must not be cited as one.
-     *  Three reasons that survive without it:
-     *
-     *  - A SLOT CANNOT BE REQUIRED BEFORE SOMETHING DISPATCHES IT. Required
-     *    here means `first_missing_vtable_slot` REFUSES to register a backend
-     *    that leaves it NULL, and `check-rmw-required-slots.sh` holds that set
-     *    equal to the set the runtime `.expect()`s. Nothing calls this yet —
-     *    phase-403 W3/W5 own the dispatch site — so requiring it now would
-     *    refuse working backends over a function no caller reaches. That is
-     *    issue 0349 exactly, and it cost three backends their registration
-     *    once. (W4 filled the slot for zenoh-pico, which makes the slot
-     *    PRODUCED; it is the CONSUMER that decides whether required is
-     *    reachable, and there is still none.)
-     *  - "NO OPINION" IS A REAL ANSWER, and mandatory does not delete it, only
-     *    relocates it: five in-tree backends would each carry the same
-     *    `*out_bytes = hint; return OK;` body, and the Rust ones would get it
-     *    from a defaulted `RustBackend` trait method — the same special case,
-     *    one layer up and less visible.
-     *  - IT IS SLOT 75, AND TWO BACKENDS INITIALISE POSITIONALLY. uORB's
-     *    C++14 initialiser stops at slot 17 and positional initialisation
-     *    cannot skip, so reaching a mandatory slot 75 means writing 58
-     *    meaningless entries to get there.
-     *
-     *  Promotion stays cheap and stays open: making this required later is a
-     *  change to the registration check, not to the struct.
-     *
-     *  DECIDED 2026-08-31: this slot stays OPTIONAL permanently. Phase-403 W4
-     *  recommended it after filling the slot for zenoh-pico, and that is now a
-     *  ruling rather than a recommendation, so promotion is off the table
-     *  unless the reason below stops being true.
-     *  The first argument above dissolves once a dispatch site exists, but the
-     *  other two do not, and they are the load-bearing ones: cyclonedds and
-     *  XRCE keep ONE receive buffer, so "no opinion" is their true answer and
-     *  requiring the slot only relocates it into identical bodies; and slot 75
-     *  is out of reach of uORB's positional C++14 initialiser whatever the
-     *  registration check says. A slot that most backends must fill with a
-     *  restatement of the default is worse than a NULL whose meaning the
-     *  header pins down, which this one does.
-     *
-     *  It does not weaken `take`'s obligation. The runtime may pass a `buf_len`
-     *  smaller than what this returned — it has its own memory to answer to —
-     *  and a sample that does not fit is still a reported failure rather than
-     *  a truncated success. Answering here is how a backend avoids that
-     *  outcome, not how it licenses one. */
-    rmw_ret_t (*required_rx_bytes)(const char *type_name,
-        const char *type_hash, size_t hint, size_t *out_bytes);
+    /* `required_rx_bytes` (phase-403 W1, slot "how many take-buffer bytes does
+     * this type need") is DELETED, not reserved. Nothing ever dispatched it:
+     * phase-403 W3/W5 owned the dispatch site and closed by sizing every
+     * receive buffer from the message type's own bound instead (phase-498 W3,
+     * `RosMessage`), so the runtime never needed to ask. Its one body —
+     * zenoh-pico's — answered the hint itself for every bounded type, and
+     * refused only a hint no size class could hold, which
+     * `create_subscription` already refuses. A query whose answer equals its
+     * own argument, with no caller, is not parity shape (upstream has no such
+     * symbol); it is a body nobody can reach. `rx_buffer_hint` in
+     * `rmw_subscription_options_t` remains the one carrier of the size. */
 
     /* ---- issue 1329 — which QoS policies THIS backend honours ---- */
 

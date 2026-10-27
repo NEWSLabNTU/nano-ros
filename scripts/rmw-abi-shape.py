@@ -369,22 +369,6 @@ ADDED = {
             "answer the Rust trait's default gives, and loud rather than silent"
         ),
     ),
-    "required_rx_bytes": Added(
-        ret="rmw_ret_t",
-        args=("const char *", "const char *", "size_t", "size_t *"),
-        why=(
-            "how many bytes of TAKE buffer a type needs, asked BEFORE the "
-            "subscription exists. Upstream never asks: `rmw_take` there fills a "
-            "typed `void *ros_message` the caller allocated from a heap, so the "
-            "size question is answered by the typesupport above rmw. Here the "
-            "payload is bytes into a caller buffer that is a `.bss` array or an "
-            "arena slot, sized once at build time from a global constant, and the "
-            "backend is the only party that knows what its framing and size "
-            "classes add. Upstream's nearest name, "
-            "`rmw_get_serialized_message_size`, is about a MESSAGE and is "
-            "unimplemented in all three reference implementations (phase-403 W1)"
-        ),
-    ),
     "process_raw_in_place": Added(
         ret="rmw_ret_t",
         args=(

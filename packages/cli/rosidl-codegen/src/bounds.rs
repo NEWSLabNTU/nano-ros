@@ -304,9 +304,8 @@ impl BoundState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeBoundEntry {
     /// ROS fully-qualified name, `pkg/msg/Name` -- the spelling
-    /// `rmw_subscription_options_t`'s `type_name` and the vtable's
-    /// `required_rx_bytes` already use, so a consumer can key on it without a
-    /// second naming convention.
+    /// `rmw_subscription_options_t`'s `type_name` already uses, so a consumer
+    /// can key on it without a second naming convention.
     pub type_name: String,
     pub bound: BoundState,
     /// phase-403 W7b (issue 0961) — the NESTED repeated chains this type's

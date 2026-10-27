@@ -535,132 +535,24 @@ config — so a backend must not treat the hint as a promise about incoming samp
 size, and must not size a fixed structure from it in a way that makes a larger
 sample undeliverable without a diagnostic.
 
-**Saying what you need (phase-403 W1, IN the ABI since 2026-08-31).** The flow
-used to be one-directional: the runtime stated a hint and could not learn what
-the backend settled on, so it sized the take buffer from a global constant
-rather than from what the type needs. The answer is an OPTIONAL, NULLable vtable
-slot, the last one in `nros_rmw_vtable_t`:
-
-```c
-rmw_ret_t (*required_rx_bytes)(const char *type_name,
-    const char *type_hash, size_t hint, size_t *out_bytes);
-```
-
-`NULL` means "the hint is the answer", and so does `NROS_RMW_RET_UNSUPPORTED`
-for a type a backend cannot size. `NULL` is what cyclonedds, XRCE, uORB, cffi
-and metadata say — correctly, since each has one receive buffer and no class to
-report. zenoh-pico fills it (phase-403 W4, below).
-The shape is the header's own convention rather than the plain `size_t` return
-the plan named: every slot returns `rmw_ret_t` and every answer is an
-out-parameter, so no caller can test a status by its sign
-(`scripts/check-rmw-ret-sign.py`). It is a query about a TYPE, not an entity,
-because the runtime has to size the buffer in order to create the subscription
-that would carry it.
-
-**Why OPTIONAL, now that "it would break out-of-tree backends" is not a
-reason.** nano-ros is unreleased and this ABI may be broken, so that argument is
-retired and the decision stands on three others:
-
-* **A slot cannot be REQUIRED before something dispatches it.** Required means
-  `first_missing_vtable_slot` refuses to register a backend that leaves it NULL,
-  and `check-rmw-required-slots.sh` holds that set equal to the set the runtime
-  `.expect()`s. W1 lands the ABI ahead of its consumer on purpose, so requiring
-  it now would refuse working backends over a function nothing calls — issue
-  0349, which once cost three backends their registration.
-* **Mandatory does not delete the "no opinion" case, it relocates it.** Five
-  in-tree backends would each carry the same `*out_bytes = hint; return OK;`
-  body, and the Rust ones would inherit it from a defaulted `RustBackend`
-  method: the same special case, one layer up and harder to see.
-* **It is slot 75 and two backends initialise positionally.** uORB's C++14
-  initialiser stops at slot 17 and positional initialisation cannot skip, so a
-  mandatory slot 75 means 58 meaningless entries written to reach it.
-
-Promotion is cheap and stays open: requiring it is a change to the registration
-check, not to the struct.
-
-**W4's answer: do not promote it, and it is not W4's to promote anyway.**
-Requiring a slot means the runtime `.expect()`s it, and the dispatch site lives
-in the executor and `nros`'s node API, which W3/W5 own — W4 filled the slot for
-one backend and added no caller, so there was nothing to require against. On the
-merits, the first bullet above dissolves once a consumer exists and the other
-two do not. cyclonedds and XRCE keep one receive buffer, so `*out_bytes = hint`
-is genuinely all they have to say, and making them say it moves the special case
-from a documented NULL into five identical function bodies; slot 75 stays out of
-reach of a positional C++14 initialiser however the registration check is
-written. The recommendation is therefore that it stays OPTIONAL permanently, and
-that W3/W5 dispatch it through the NULL-slot fallback the header already pins
-down.
-
-**Answer the MINIMUM, never the class you rounded to (phase-403 W4).** A
-size-classing backend has two numbers for a type: what the type needs and what
-its class provides. Reporting the class is arithmetically safe and destroys the
-slot's value — a 68-byte type and a 1000-byte type in one class come back
-identical, which is the global constant the runtime already had, and the
-difference is spent on every subscription in the image. So `*out_bytes` is the
-minimum sufficient length. Where a backend's framing genuinely makes the class
-size the floor, the class size IS the minimum and is the right answer; what is
-forbidden is reporting a rounding as a requirement.
-
-**zenoh-pico's answer (phase-403 W4).** Three cases, in
-`nros_rmw_zenoh::shim::required_rx_bytes`:
-
-| `hint` | answer | why |
-| --- | --- | --- |
-| `0` | the small class stride | The caller stated nothing and a type is a STRING across this ABI, so there is no schema to consult. What zenoh-pico CAN say exactly is about the subscription it would create: hint `0` routes to the small class, and that stride is the most `take` will ever hand back. A ceiling, not a guess. |
-| `0 < hint <=` the largest class | `hint` | Nothing is added on top of the payload: `take_serialized` copies `ring_len[slot]` bytes and the attachment rides a parallel ring. The class the hint routes to is guaranteed to hold it (issue 0841), and the rounding stays inside the backend. |
-| `hint >` the largest class | `NROS_RMW_RET_UNSUPPORTED` | No class in this image can hold a sample that big, so no take-buffer length makes the subscription work. `alloc_payload_block` refuses the same hint, which makes this the create-time failure asked in advance. |
-
-The third row is the answer to "is `NROS_RMW_RET_UNSUPPORTED` dead weight now
-that every type is bounded?" — no. Bounded says a NUMBER exists, not that this
-backend can serve it, and per-type inability is exactly what NULLing the whole
-slot cannot express.
-
-`type_name` and `type_hash` go unread by zenoh-pico, which is a fact about the
-ABI rather than an omission: a backend is handed a type as a string with no
-schema descriptor, so the only sizing input it has is the `hint` the runtime
-already derived from the type's own bound. A backend carrying a type registry
-would use them.
-
-**The hint's `0` under a bounded-types regime.** Every message type has a
-derived upper bound — bounded in the `.msg` or capped in `nros-codegen.toml`,
-with an unbounded type a build error rather than a fall-back to a configured
-default — so the runtime always has a number for `rx_buffer_hint`. `0` therefore
-means "this caller stated nothing" (`options == NULL`, or a zero-filled struct
-from a hand-rolled C caller), never "this type is unbounded", and a backend must
-not read it as the latter.
-
-W1 landed the ABI and W4 gave it one producer. Nothing CALLS the slot yet — the
-runtime's take buffer is still `NROS_SUBSCRIPTION_BUFFER_SIZE`, because that
-buffer is a const generic and the C path cannot monomorphise on a type it only
-knows by name (phase-403 W3). So a backend author should still assume the global
-constant, and answering here changes nothing until W3/W5 consume it. The
-dispatch site W3/W5 need is `Executor::create_subscription_raw`'s sizing
-decision: look the active backend's vtable up, call `required_rx_bytes` with the
-type name, type hash and the hint the caller supplied, and use `*out_bytes` on
-`NROS_RMW_RET_OK` — treating `NULL` and `NROS_RMW_RET_UNSUPPORTED` identically,
-as the hint, falling back to the configured default only when the hint is `0`.
-
-### `required_rx_bytes` is permanently optional (decided 2026-08-31)
-
-A NULL slot means "the hint is the answer", and that is a CORRECT answer rather
-than a degraded one. cyclonedds and XRCE keep a single receive buffer, so the
-hint is precisely what they would return; requiring the slot would not delete
-that case, only relocate it into five identical `*out_bytes = hint` bodies one
-layer down, where it is less visible than a NULL whose meaning this document
-pins down.
-
-A backend should answer only when it can say something the caller did not
-already know. zenoh-pico can, because it keeps size classes and frames payloads,
-so a type's requirement and the backend's own rounding genuinely differ. Most
-backends cannot.
-
-**The concept generalises to every backend; a useful ANSWER does not.** That
-asymmetry is the reason, and unlike the sequencing argument -- which dissolves
-the moment a dispatch site exists -- it does not expire.
-
-Promotion remains cheap if that ever stops being true: it is a change to the
-registration check, not to the struct. The honest trigger would be "every
-backend can answer something better than the hint", which is false today.
+**Saying what you need — tried, and deleted (2026-10-27).** Phase-403 W1 added
+an optional vtable query, `required_rx_bytes(type_name, type_hash, hint,
+*out_bytes)`, so a backend could tell the runtime how many take-buffer bytes a
+type needs before the subscription existed; W4 gave it one body (zenoh-pico).
+Nothing ever called it. The dispatch site was phase-403 W3/W5's, and that work
+closed another way: every generated type carries its own bound on `RosMessage`
+(phase-498 W3), so the runtime sizes each receive buffer from the type and has
+no question to ask. zenoh-pico's body answered the hint itself for every
+bounded type (it adds nothing to the payload the caller holds) and refused only
+a hint no size class could hold — which `create_subscription` refuses anyway.
+A query whose answer equals its argument, with no caller and no upstream
+counterpart, is not parity shape but a body nobody can reach, so the slot was
+removed from the ABI rather than kept reserved (`check-rmw-slot-producers`'s
+`rx-sizing` family went with it). The direction stays one-way: the runtime
+states `rx_buffer_hint`, and a sample a backend cannot fit is a reported
+`NROS_RMW_RET_BUFFER_TOO_SMALL`, never a truncation. If a backend ever needs to
+report framing on top of the payload, that is a new slot with a caller in the
+same change.
 
 ## Reference Documents
 
