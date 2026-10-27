@@ -151,7 +151,7 @@ TierSpec per tier i:                    run_tiers(tiers):
 ## Non-goals / open questions
 
 - **SMP core affinity.** The ThreadX boards here (`threadx-linux`,
-  `threadx-qemu-riscv64`) are single-core (`todo smp`), so `core` placement is
+  `rv-virt-threadx`) are single-core (`todo smp`), so `core` placement is
   N/A for now even though ThreadX-SMP supports `tx_thread_smp_core_exclude`.
   `SchedCaps.affinity=true` reflects the *kernel*; a board-vs-kernel cap
   refinement is future work.

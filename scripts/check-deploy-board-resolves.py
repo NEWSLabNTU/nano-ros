@@ -211,7 +211,7 @@ def selftest():
     known = {
         "zephyr": {"zephyr"},
         "native_sim/native/64": {"zephyr"},
-        "threadx": {"threadx-linux", "threadx-qemu-riscv64"},
+        "threadx": {"threadx-linux", "rv-virt-threadx"},
         "lonely_fw": {"lonely"},
     }
     framework = {"native_sim/native/64": "zephyr", "lonely_fw": None}

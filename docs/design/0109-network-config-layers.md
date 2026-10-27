@@ -154,7 +154,7 @@ package's own parser.
 - The image names it with `os_config` (D6), exactly as a Zephyr image names
   its `prj.conf`.
 - The in-tree reference boards (mps2-an385, mps2-an385-freertos,
-  mps3-an536-freertos, esp32-qemu, threadx-qemu-riscv64, s32z270-freertos)
+  mps3-an536-freertos, esp32-qemu, rv-virt-threadx, s32z270-freertos)
   share ONE format. *As built (phase-514 W2)* it is one table per interface
   carrying the fields the retired inline `net` entry had, read by
   `nros_orchestration_ir::system_net::read_board_net_file`:
@@ -175,7 +175,7 @@ package's own parser.
   file (`system_net::fold_board_net_files`, on the leaf and workspace roads
   both) and render the result
   into the ONE carrier phase-497 built, `NROS_IMAGE_NET` (RFC-0103 D10f), on
-  all three roads. So the C-startup board (`threadx-qemu-riscv64`, which bakes
+  all three roads. So the C-startup board (`rv-virt-threadx`, which bakes
   its address from that carrier), the QEMU launcher (which must pin the same
   virtio MAC the firmware uses) and the Rust board crates keep reading one
   resolved answer, and no road gains a new carrier (issue 0460/0491's class).
@@ -464,7 +464,7 @@ sets before running the entry (D5).
 **ThreadX + NetX Duo, in-tree reference (RISC-V QEMU).**
 ```toml
 [image.node]
-board = "threadx-qemu-riscv64"
+board = "rv-virt-threadx"
 os_config = ["board-net.toml"]               # → NROS_IMAGE_NET → the board's nx_ip_create()
 ```
 

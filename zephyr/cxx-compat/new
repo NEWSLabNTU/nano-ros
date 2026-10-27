@@ -12,7 +12,7 @@
 //
 // [new.delete.placement] puts those in the FREESTANDING subset of `<new>`, so
 // code targeting freestanding is entitled to assume them, and a Zephyr C++
-// build could not do placement new at all. Same gap as the threadx-qemu-riscv64
+// build could not do placement new at all. Same gap as the rv-virt-threadx
 // board shim had (phase-442 W4); both are fixed together, because one fixed and
 // one not is a difference between two boards that nothing measures.
 //

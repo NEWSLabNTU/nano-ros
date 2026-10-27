@@ -31,7 +31,7 @@ MIGRATED = {
         "packages/boards/nros-board-threadx-linux/build.rs",
         "cmake/board/nano-ros-board-threadx-linux.cmake",
     ],
-    "threadx-qemu-riscv64": [
+    "rv-virt-threadx": [
         "packages/boards/nros-board-threadx-qemu-riscv64/src/config.rs",
         "packages/boards/nros-board-common/src/threadx_qemu_riscv64_build.rs",
         "cmake/board/nano-ros-board-rv-virt-threadx.cmake",

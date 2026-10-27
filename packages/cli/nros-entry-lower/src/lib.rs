@@ -540,7 +540,6 @@ pub const BOARD_KEYS: &[(&str, BoardFamily)] = &[
     // Issue 1902 — `threadx-riscv64` is the qemu-riscv64 descriptor's own name;
     // the catalog accepted it and the typed entry refused it.
     ("threadx-riscv64", BoardFamily::Threadx),
-    ("threadx-qemu-riscv64", BoardFamily::Threadx),
     ("rv-virt-threadx", BoardFamily::Threadx),
 ];
 
@@ -600,6 +599,9 @@ impl core::error::Error for UnknownBoard {}
 /// `mps2-an385-baremetal`. Refused the same way, never mapped: a silent alias
 /// is how a reader learns a word the project retired. Each `why` carries its
 /// own provenance, since the rows no longer share one.
+///
+/// Issue 2101 — `threadx-qemu-riscv64` named the emulator the same way for the
+/// board whose RFC-0093 §4 name is `rv-virt-threadx`.
 pub const RETIRED_BOARD_KEYS: &[(&str, &str, &str)] = &[
     (
         "native",
@@ -617,6 +619,13 @@ pub const RETIRED_BOARD_KEYS: &[(&str, &str, &str)] = &[
         "mps2-an385-baremetal",
         "`qemu-mps2-an385` names the emulator, not the board: QEMU is how the AN385 image is \
          RUN, and the board's one name is its index key (RFC-0093 R3, issue 2063)",
+    ),
+    (
+        "threadx-qemu-riscv64",
+        "rv-virt-threadx",
+        "`threadx-qemu-riscv64` names the emulator, not the board: QEMU is how the RISC-V \
+         `virt` image is RUN, and the board's one name is its index key (RFC-0093 R3, \
+         issue 2101)",
     ),
 ];
 
@@ -733,12 +742,25 @@ mod tests {
         // one name is `linux`). Issue 1902: plus the three descriptor names it
         // lacked (`threadx-riscv64`, `mps2-an385-zephyr`, `qemu-cortex-a53`),
         // minus the two keys no descriptor names (`armfvp`,
-        // `freertos-qemu-mps2-an385`).
+        // `freertos-qemu-mps2-an385`). Issue 2101: minus `threadx-qemu-riscv64`,
+        // which named the emulator (refused, naming `rv-virt-threadx`).
         assert_eq!(
             BOARD_KEYS.len(),
-            21,
+            20,
             "a key was added or removed without a row"
         );
+    }
+
+    /// Issue 2101 — the emulator-named RISC-V ThreadX key is refused naming
+    /// the board's one name, and that name lands in the ThreadX family.
+    #[test]
+    fn the_emulator_named_threadx_riscv_key_is_refused_naming_the_board() {
+        let err = board_family("threadx-qemu-riscv64").unwrap_err();
+        assert!(
+            alloc::format!("{err}").contains("write `rv-virt-threadx`"),
+            "{err}"
+        );
+        assert_eq!(board_family("rv-virt-threadx"), Ok(BoardFamily::Threadx));
     }
 
     #[test]

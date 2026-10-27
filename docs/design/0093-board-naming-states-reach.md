@@ -200,6 +200,12 @@ retired to `mps2-an385-baremetal` and is refused naming it.
 `threadx-qemu-riscv64` and `rtic-mps2-an385` are still to be ruled one at a
 time, not by analogy.
 
+*Amended 2026-10-27 (issue 2101):* `threadx-qemu-riscv64` ruled on its own
+facts: it names the emulator (R3), it was never an index key, and §4 already
+selects `rv-virt-threadx`, which every in-tree leaf authors. It retired to
+`rv-virt-threadx` and is refused naming it. `rtic-mps2-an385` is still open:
+it names a framework, not an emulator, so R3 does not decide it.
+
 **Not about config axes.** `fvp-aemv8r-smp` folds SMP into the name, and the
 NuttX crate carries `arm`, `arm-smp` and `riscv` defconfigs where the first two
 are one machine in UP and SMP form. SMP is an axis, not a machine. R1 says

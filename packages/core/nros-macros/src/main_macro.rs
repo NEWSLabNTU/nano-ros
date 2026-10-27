@@ -4471,7 +4471,6 @@ mod target_rtos_tests {
             ("qemu-armv7a-nuttx", "nuttx"),
             ("threadx-linux", "threadx"),
             ("threadx-riscv64", "threadx"),
-            ("threadx-qemu-riscv64", "threadx"),
             ("rv-virt-threadx", "threadx"),
         ] {
             assert_eq!(derive_target_rtos(Some(key)), rtos, "`{key}`");
@@ -5959,7 +5958,7 @@ mod framework_ssot_tests {
             "linux",
             "freertos",
             "threadx-linux",
-            "threadx-qemu-riscv64",
+            "rv-virt-threadx",
             "nuttx",
             "nuttx-riscv",
             "esp32-qemu",
@@ -6486,6 +6485,15 @@ mod leaf_axis_tests {
         let err = expand("", "qemu-mps2-an385", "").unwrap_err();
         assert!(err.contains("write `mps2-an385-baremetal`"), "{err}");
         assert!(expand("", "mps2-an385-baremetal", "").is_ok());
+    }
+
+    /// Issue 2101 — `threadx-qemu-riscv64` named the emulator; an image that
+    /// still authors it is refused naming the board's one name, never mapped.
+    #[test]
+    fn the_emulator_named_threadx_riscv_key_is_refused_naming_the_board() {
+        let err = expand("", "threadx-qemu-riscv64", "").unwrap_err();
+        assert!(err.contains("write `rv-virt-threadx`"), "{err}");
+        assert!(expand("", "rv-virt-threadx", "").is_ok());
     }
 
     /// Issue 1305 / RFC-0098 D6 — a leaf that depends on its selection package

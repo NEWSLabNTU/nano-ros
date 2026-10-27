@@ -21,10 +21,9 @@
       first — `check-provider-announcements.py` compares them, because two
       spellings of one fact drift.
     -->
+    <!-- issue 2101: the RFC-0093 name is canonical; `threadx-qemu-riscv64` retired. -->
+    <nano_ros_provides kind="board" name="rv-virt-threadx"/>
     <nano_ros_provides kind="board" name="threadx"/>
     <nano_ros_provides kind="board" name="threadx-riscv64"/>
-    <nano_ros_provides kind="board" name="threadx-qemu-riscv64"/>
-    <!-- phase-445 W3b: the RFC-0093 name, which the descriptor's `names` gained. -->
-    <nano_ros_provides kind="board" name="rv-virt-threadx"/>
   </export>
 </package>
