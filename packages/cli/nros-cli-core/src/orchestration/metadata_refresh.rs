@@ -1065,6 +1065,18 @@ fn mark_unprobeable_with_reason(
     let Some(root) = compile_root else {
         return;
     };
+    // Issue 2097 -- a failure that names an unprovisioned source is the HOST's,
+    // not the inputs': its repair (`nros setup --source <name>`) changes
+    // nothing the key covers, so a marker would outlive it and every later
+    // sync would skip a probe that now passes. The image is then sized
+    // without the sidecar (the safety island's DTCM overflowed by 2,548 B on
+    // that bake) while the build's own warning says "run `nros sync`", which
+    // could not help. No marker: the next sync retries, and fails fast and
+    // loud again until the source is provisioned.
+    if why.and_then(unprovisioned_source).is_some() {
+        clear_unprobeable(sidecar);
+        return;
+    }
     let mut body = format!("{digest}\n{MARKER_ROOT}{}\n", root.display());
     if let Some(line) = why.map(first_error_line).filter(|l| !l.is_empty()) {
         body.push_str(&line);
@@ -1110,6 +1122,25 @@ fn first_error_line(why: &str) -> String {
     })
     .unwrap_or_default();
     elide_keeping_cause(&pick, CAP)
+}
+
+/// Issue 2097 -- the source a probe failure says to provision, `None` when it
+/// names none.
+///
+/// Every "not provisioned" refusal in the tree names its remedy the same way:
+/// the zenoh-pico and mbedTLS build scripts (`Run: nros setup --source
+/// zenoh-pico`), `nros sdk-path`, and the Rust probe's own index-driven remedy
+/// (#0390). So the remedy text is the test, not a per-source path list. A
+/// false match costs one re-probe per sync, never a wrong sidecar.
+fn unprovisioned_source(why: &str) -> Option<&str> {
+    const REMEDY: &str = "nros setup --source ";
+    let at = why.find(REMEDY)? + REMEDY.len();
+    let rest = why[at..].trim_start();
+    let end = rest
+        .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')))
+        .unwrap_or(rest.len());
+    let name = rest[..end].trim_end_matches('.');
+    (!name.is_empty()).then_some(name)
 }
 
 /// Drop the negative marker — the package probed successfully (or its sidecar
@@ -1682,6 +1713,50 @@ mod tests {
             !unprobeable_marker(&sidecar).exists(),
             "rootless marker written"
         );
+    }
+
+    /// Issue 2097 -- a probe that failed because a source was not provisioned
+    /// leaves no marker, so the sync after `nros setup --source` probes again.
+    /// The text is the island's real failure (zpico-sys's build script, inside
+    /// the C/C++ batch's cmake log). A compile error beside it still records.
+    #[test]
+    fn an_unprovisioned_source_failure_leaves_no_marker() {
+        let dir = tmp("negcache-unprovisioned");
+        let sidecar = dir.join("metadata").join("comp.json");
+        std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
+
+        let log = "metadata probe build failed for `autoware_mrm_handler::mrm_handler` (exit 2):\n\
+                   error: failed to run custom build command for `zpico-sys v0.6.0 (/ws/packages/rmw/zenoh/zpico-sys)`\n\
+                   \x20 thread 'main' panicked at /ws/packages/rmw/zenoh/nros-zpico-build/src/runner.rs:1731:9:\n\
+                   \x20 zenoh-pico source not provisioned at \"/ws/packages/rmw/zenoh/zpico-sys/zenoh-pico\". \
+                   Run: nros setup --source zenoh-pico (or git submodule update --init \
+                   packages/rmw/zenoh/zpico-sys/zenoh-pico). -- #0390\n";
+        assert_eq!(unprovisioned_source(log), Some("zenoh-pico"));
+        assert_eq!(
+            unprovisioned_source(
+                "harness failed\n  -> a vendored source it resolves is not provisioned -- \
+                 run: nros setup --source nuttx-libc"
+            ),
+            Some("nuttx-libc")
+        );
+        assert_eq!(unprovisioned_source("error[E0428]: defined twice"), None);
+        assert_eq!(unprovisioned_source("nros setup --source "), None);
+
+        // A marker from an earlier genuine failure at the same key must not
+        // survive either: the probe that just ran says nothing about it.
+        mark_unprobeable_with_reason(&sidecar, "k", Some(&dir), Some("error: real"));
+        assert!(is_known_unprobeable(&sidecar, "k", Some(&dir)));
+        mark_unprobeable_with_reason(&sidecar, "k", Some(&dir), Some(log));
+        assert!(
+            !is_known_unprobeable(&sidecar, "k", Some(&dir)),
+            "an unprovisioned source is the host's state, outside the key: \
+             a marker would skip the probe after `nros setup --source`"
+        );
+        assert!(!unprobeable_marker(&sidecar).exists());
+
+        // The negative control: a compile error still records.
+        mark_unprobeable_with_reason(&sidecar, "k", Some(&dir), Some("error: real"));
+        assert!(is_known_unprobeable(&sidecar, "k", Some(&dir)));
     }
 
     /// The pick is the ERROR line, and a failure with no error line still
