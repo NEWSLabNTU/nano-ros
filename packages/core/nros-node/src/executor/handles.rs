@@ -166,8 +166,15 @@ impl<M> Drop for EmbeddedPublisher<M> {
 
 impl<M: RosMessage> EmbeddedPublisher<M> {
     /// Publish a message using the default buffer size.
-    pub fn publish(&self, msg: &M) -> Result<(), NodeError> {
-        self.publish_with_buffer::<DEFAULT_TX_BUF>(msg)
+    ///
+    /// phase-515 R5 — takes the message borrowed (`publish(&msg)`) or owned
+    /// (`publish(msg)`), as rclrs's `publish(impl MessageCow)` does. Both
+    /// serialise immediately into the stack buffer, so owning buys no deferred
+    /// path; it only lets an rclrs call site that hands its message over
+    /// compile unchanged. `core::borrow::Borrow` is the one trait, so no
+    /// `MessageCow` type is added.
+    pub fn publish(&self, msg: impl core::borrow::Borrow<M>) -> Result<(), NodeError> {
+        self.publish_with_buffer::<DEFAULT_TX_BUF>(msg.borrow())
     }
 
     /// Publish a message with a custom buffer size.

@@ -2,5 +2,5 @@
   "key": "rust:MessageCow",
   "disposition": "absent",
   "verdict": "declined",
-  "why": "rclrs's borrow-or-own wrapper so `publish` accepts either a reference or an owned message. Ours takes `&M` and serialises immediately -- there is no deferred path for an owned message to be worth keeping."
+  "why": "LANDED 2026-10-27 (phase-515 R5): no `MessageCow` type is added: `core::borrow::Borrow<M>` already accepts `&M` and `M`, which is all rclrs uses the wrapper for at a call site (`EmbeddedPublisher::publish`). The trait name and its `into_cow` stay absent. PRIOR: rclrs's borrow-or-own wrapper so `publish` accepts either a reference or an owned message. Ours takes `&M` and serialises immediately -- there is no deferred path for an owned message to be worth keeping."
 }

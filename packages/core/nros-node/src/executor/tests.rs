@@ -12370,6 +12370,29 @@ fn every_entity_handle_reads_back_its_own_name() {
     assert_eq!(raw_client.service_name(), "/raw_client");
 }
 
+/// phase-515 R5 — `publish` takes the message borrowed or owned, as rclrs's
+/// `publish(impl MessageCow)` does, and both put the same bytes on the wire.
+#[test]
+fn publish_takes_the_message_borrowed_or_owned() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let mut node = executor.create_node("cow").expect("node");
+    let publisher = node.create_publisher::<TestMsg>("/cow").expect("publisher");
+
+    let msg = TestMsg { data: 42 };
+    publisher.publish(&msg).expect("borrowed publish");
+    let borrowed = publisher.handle.last_published().expect("one sample");
+    publisher.publish(msg).expect("owned publish");
+    let owned = publisher.handle.last_published().expect("two samples");
+
+    assert_eq!(publisher.handle.publish_count(), 2);
+    assert_eq!(borrowed.1, owned.1, "same length either way");
+    assert_eq!(
+        &borrowed.0[..borrowed.1],
+        &owned.0[..owned.1],
+        "same bytes either way"
+    );
+}
+
 /// phase-444 — the matched-count pair reaches ITS OWN graph counter.
 ///
 /// `MockSession::with_graph` answers `count_publishers` and `count_subscribers`
