@@ -1,6 +1,6 @@
 {
   "key": "rust:PrimitiveOptions::apply_to",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "folds the built options into a `QoSProfile`. The equivalent fold exists here and is BAKED rather than per-call: `QoSProfile::apply_overrides`. See `rust:IntoPrimitiveOptions`."
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 R1): `apply_to` on `IntoPrimitiveOptions`, rclrs's name and arguments; see `rust:IntoPrimitiveOptions`. PRIOR ROW: folds the built options into a `QoSProfile`. The equivalent fold exists here and is BAKED rather than per-call: `QoSProfile::apply_overrides`. See `rust:IntoPrimitiveOptions`."
 }

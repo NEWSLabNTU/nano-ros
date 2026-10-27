@@ -1,0 +1,1 @@
+Rust create sites take rclrs's per-entity options: `node.create_publisher::<M>("chatter".keep_last(10).reliable())`, and likewise `create_subscription`, `create_service` and `create_client`. A bare name (or a borrowed `String`) still works and keeps the default profile (phase-515 R1).

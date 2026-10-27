@@ -1685,11 +1685,16 @@ impl<'e, 's> Node<'e, 's> {
     }
 
     /// Convenient typed publisher (the `fork` tier — rclcpp/rclrs shape).
-    pub fn create_publisher<M: MessageForRmw>(
+    ///
+    /// phase-515 R1 — takes rclrs's `impl IntoPrimitiveOptions`: a bare
+    /// topic name (default QoS) or one with QoS steps chained on,
+    /// `"chatter".keep_last(10).reliable()`.
+    pub fn create_publisher<'o, M: MessageForRmw>(
         &mut self,
-        topic: &str,
+        options: impl crate::IntoPrimitiveOptions<'o>,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
-        self.create_publisher_with_qos::<M>(topic, QoSProfile::default())
+        let options = options.into_primitive_options();
+        self.create_publisher_with_qos::<M>(options.name, options.resolve(QoSProfile::default()))
     }
 
     /// Convenient generic (type-erased) publisher — rclcpp `create_generic_*`.
@@ -1720,20 +1725,26 @@ impl<'e, 's> Node<'e, 's> {
 
     /// Convenient typed subscription (the `fork` tier — rclcpp/rclrs shape).
     /// Sugar over the builder with default QoS + buffer.
-    pub fn create_subscription<M, F>(
+    ///
+    /// phase-515 R1 — `options` is rclrs's `impl IntoPrimitiveOptions`, as on
+    /// [`create_publisher`](Self::create_publisher). ADOPT-BOUNDED (subscription):
+    /// returns the entity's `HandleId`, not an owned rclrs `Subscription` — the
+    /// entity lives in the executor's table, and the id is what cancels it.
+    pub fn create_subscription<'o, M, F>(
         &mut self,
-        topic: &str,
+        options: impl crate::IntoPrimitiveOptions<'o>,
         callback: F,
     ) -> Result<super::types::HandleId, NodeError>
     where
         M: MessageForRmw + 'static,
         F: FnMut(&M) + 'static,
     {
+        let options = options.into_primitive_options();
         self.executor
             .register_subscription_buffered_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
                 self.node_id,
-                topic,
-                QoSProfile::default(),
+                options.name,
+                options.resolve(QoSProfile::default()),
                 callback,
                 None, // no group — node default
                 None, // phase-403 W2: the configured default, unchanged
@@ -2355,9 +2366,14 @@ impl<'e, 's> Node<'e, 's> {
 
     /// Convenient service server (the `fork` tier — rclrs/rclcpp shape), default
     /// services QoS. Mirror of `create_subscription`.
-    pub fn create_service<Svc, F>(
+    ///
+    /// phase-515 R1 — `options` is rclrs's `impl IntoPrimitiveOptions`; a bare
+    /// name keeps the services profile. ADOPT-BOUNDED (service): returns the
+    /// entity's `HandleId`, not an owned rclrs `Service` — the entity lives in
+    /// the executor's table.
+    pub fn create_service<'o, Svc, F>(
         &mut self,
-        name: &str,
+        options: impl crate::IntoPrimitiveOptions<'o>,
         callback: F,
     ) -> Result<super::types::HandleId, NodeError>
     where
@@ -2366,12 +2382,18 @@ impl<'e, 's> Node<'e, 's> {
         Svc::Reply: crate::rmw_type_registry::MessageForRmw,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
     {
+        let options = options.into_primitive_options();
         self.executor.register_service_sized_on::<
             Svc,
             F,
             { crate::config::DEFAULT_RX_BUF_SIZE },
             { crate::config::DEFAULT_RX_BUF_SIZE },
-        >(self.node_id, name, QoSProfile::services_default(), callback)
+        >(
+            self.node_id,
+            options.name,
+            options.resolve(QoSProfile::services_default()),
+            callback,
+        )
     }
 
     /// [`create_service`](Self::create_service) whose callback also receives
@@ -2798,16 +2820,24 @@ impl<'e, 's> Node<'e, 's> {
     }
 
     /// [`NodeHandle::create_client`] on this node (phase-483 W2).
-    pub fn create_client<Svc: RosService>(
+    ///
+    /// phase-515 R1 — `options` is rclrs's `impl IntoPrimitiveOptions`; a bare
+    /// name keeps the services profile. ADOPT-BOUNDED (client): returns an
+    /// `EmbeddedServiceClient`, the executor-table handle, where rclrs returns
+    /// a reference-counted `Client`.
+    pub fn create_client<'o, Svc: RosService>(
         &mut self,
-        service_name: &str,
+        options: impl crate::IntoPrimitiveOptions<'o>,
     ) -> Result<EmbeddedServiceClient<Svc>, NodeError>
     where
         Svc::Request: MessageForRmw,
         Svc::Reply: MessageForRmw,
     {
-        self.executor
-            .with_node_try(self.node_id, |h| h.create_client::<Svc>(service_name))
+        let options = options.into_primitive_options();
+        let qos = options.resolve(QoSProfile::services_default());
+        self.executor.with_node_try(self.node_id, |h| {
+            h.create_client_with_qos::<Svc>(options.name, qos)
+        })
     }
 
     /// [`NodeHandle::create_client_with_qos`] on this node (phase-483 W2).

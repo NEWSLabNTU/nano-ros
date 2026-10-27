@@ -1,0 +1,5 @@
+{
+  "key": "rust:PrimitiveOptions::resolve",
+  "verdict": "extension",
+  "why": "phase-515 R1: `resolve(default) -> QoSProfile`, `apply_to` on a copy of the entity kind's default profile. The create sites call it (a publisher resolves over the topics default, a service over the services default); rclrs does the same fold inside its create calls without naming it."
+}

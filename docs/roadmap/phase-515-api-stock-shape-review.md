@@ -343,6 +343,17 @@ and the member factories `Node::create_action_{server,client}` are
 Declined because QoS is compile-time and the builder "buys nothing with one
 caller shape". That is a preference. The builder produces a plain value, works
 in `no_std`, and is the usual rclrs create-site spelling. Adopt.
+**LANDED 2026-10-27.** `nros_node::{PrimitiveOptions, IntoPrimitiveOptions}`
+(re-exported from `nros` and its prelude) with all 25 of rclrs's builder
+steps, implemented for any borrowed string (rclrs's own `&T: Borrow<str>`
+blanket, so `&String` still names an entity) and for `PrimitiveOptions`.
+`Node::create_publisher` / `create_subscription` / `create_service` /
+`create_client` take `impl IntoPrimitiveOptions`; a bare name keeps the kind's
+default profile and a step overrides only the policy it names. Envelope: the
+duration steps take `core::time::Duration` (the record is whole milliseconds,
+`0` = infinite) where rclrs takes `QoSDuration`. The mock session now records
+the profile each entity was requested with (`MockSession::created_qos`). Tests:
+`primitive_options::tests`, `create_sites_take_rclrs_primitive_options`.
 
 **R2 — `IntoNodeOptions`: `create_node("name")` (9 rows).** `NodeOptions` is
 already `Copy` with three fields; `From<&str>` plus an `impl Into` parameter
@@ -367,7 +378,7 @@ reverse; reverse them. Adopt.
 records that rclrs 0.7.0 converged on our three timer modes; ours are
 `create_timer_in_group` / `_on_clock` / `_with_info` plus a mode set on the
 entity. Match rclrs's verbs.
-**LANDED 2026-10-27.** `NodeHandle::create_timer_repeating` / `_oneshot` /
+**LANDED 2026-10-27.** `Node::create_timer_repeating` / `_oneshot` /
 `_inert(period, callback)`, `period` a `TimerDuration` or a
 `core::time::Duration` (new `From` impl). Each returns the timer's `HandleId`
 (the timer is in the executor's static table, so `cancel_timer` /

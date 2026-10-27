@@ -610,10 +610,13 @@ pub struct MockSession {
     /// the BACKEND, so a test picks it when it picks the session rather than
     /// reaching into a subscriber the executor owns.
     subscribers_dispatch_in_place: bool,
-    /// Issue 1913 — `(name, type_hash)` of every entity this session created,
-    /// in order, so a test can assert which hash each endpoint was keyed on.
-    /// Always recorded; the first 16 are kept.
-    pub(crate) created: RefCell<heapless::Vec<(heapless::String<96>, heapless::String<80>), 16>>,
+    /// Issue 1913 — `(name, type_hash, qos)` of every entity this session
+    /// created, in order, so a test can assert which hash each endpoint was
+    /// keyed on and (phase-515 R1) which profile it was asked for. Always
+    /// recorded; the first 16 are kept.
+    #[allow(clippy::type_complexity)]
+    pub(crate) created:
+        RefCell<heapless::Vec<(heapless::String<96>, heapless::String<80>, QoSProfile), 16>>,
     /// Issue 1944 — the timeout the most recent `drive_io` was ASKED for, so a
     /// test asserts what the executor requested of the transport instead of
     /// timing how long a no-op took on a host that may be loaded.
@@ -622,12 +625,12 @@ pub struct MockSession {
 
 impl MockSession {
     /// Issue 1913 — record one created entity (see the `created` field).
-    fn record_created(&self, name: &str, type_hash: &str) {
+    fn record_created(&self, name: &str, type_hash: &str, qos: QoSProfile) {
         let mut n = heapless::String::new();
         let mut h = heapless::String::new();
         let _ = n.push_str(name);
         let _ = h.push_str(type_hash);
-        let _ = self.created.borrow_mut().push((n, h));
+        let _ = self.created.borrow_mut().push((n, h, qos));
     }
 
     /// The type hash the entity named `name` was created with, if one was.
@@ -635,8 +638,18 @@ impl MockSession {
         self.created
             .borrow()
             .iter()
-            .find(|(n, _)| n.as_str() == name)
-            .map(|(_, h)| h.clone())
+            .find(|(n, _, _)| n.as_str() == name)
+            .map(|(_, h, _)| h.clone())
+    }
+
+    /// phase-515 R1 — the QoS the entity named `name` was REQUESTED with
+    /// (what the executor handed the backend), if one was created.
+    pub fn created_qos(&self, name: &str) -> Option<QoSProfile> {
+        self.created
+            .borrow()
+            .iter()
+            .find(|(n, _, _)| n.as_str() == name)
+            .map(|(_, _, q)| *q)
     }
 
     pub fn new() -> Self {
@@ -788,18 +801,18 @@ impl Session for MockSession {
     fn create_publisher(
         &mut self,
         topic: &TopicInfo,
-        _qos: QoSProfile,
+        qos: QoSProfile,
     ) -> Result<MockPublisher, TransportError> {
-        self.record_created(topic.name, topic.type_hash);
+        self.record_created(topic.name, topic.type_hash, qos);
         Ok(MockPublisher::new_named(topic.name))
     }
 
     fn create_subscription(
         &mut self,
         topic: &TopicInfo,
-        _qos: QoSProfile,
+        qos: QoSProfile,
     ) -> Result<MockSubscriber, TransportError> {
-        self.record_created(topic.name, topic.type_hash);
+        self.record_created(topic.name, topic.type_hash, qos);
         let sub = MockSubscriber::new_named(topic.name);
         sub.set_in_place(self.subscribers_dispatch_in_place);
         Ok(sub)
@@ -808,7 +821,7 @@ impl Session for MockSession {
     fn create_service(
         &mut self,
         service: &ServiceInfo,
-        _qos: QoSProfile,
+        qos: QoSProfile,
     ) -> Result<MockServiceServer, TransportError> {
         if let Some(attempts) = self.service_create_attempts {
             attempts.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
@@ -816,16 +829,16 @@ impl Session for MockSession {
         if let Some(e) = self.service_create_error.as_ref() {
             return Err(e.clone());
         }
-        self.record_created(service.name, service.type_hash);
+        self.record_created(service.name, service.type_hash, qos);
         Ok(MockServiceServer::new_named(service.name))
     }
 
     fn create_client(
         &mut self,
         service: &ServiceInfo,
-        _qos: QoSProfile,
+        qos: QoSProfile,
     ) -> Result<MockServiceClient, TransportError> {
-        self.record_created(service.name, service.type_hash);
+        self.record_created(service.name, service.type_hash, qos);
         Ok(MockServiceClient::new_named(service.name))
     }
 

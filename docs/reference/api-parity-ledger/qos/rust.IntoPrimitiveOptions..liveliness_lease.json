@@ -1,6 +1,10 @@
 {
   "key": "rust:IntoPrimitiveOptions::liveliness_lease",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
+  "disposition": "adopt-bounded",
+  "envelope": {
+    "file": "packages/core/nros-node/src/primitive_options.rs",
+    "text": "ADOPT-BOUNDED against rclrs: the duration-valued policies hold whole"
+  },
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 R1): rclrs's `IntoPrimitiveOptions` / `PrimitiveOptions` in `nros_node::primitive_options` (re-exported from `nros` and its prelude), implemented for any borrowed string (`&T: Borrow<str>`, rclrs's own blanket) and for `PrimitiveOptions`. ENVELOPE (stated on the type): the duration-valued policies hold whole milliseconds, the unit `QoSProfile` records, so `deadline` / `lifespan` / `liveliness_lease` take a `core::time::Duration` where rclrs takes its `QoSDuration` enum, and the infinite case is `no_deadline` / `infinite_lifespan`; history and depth are two fields because `QoSProfile` keeps them apart. `Node::create_publisher` / `create_subscription` / `create_service` / `create_client` take it. Tests: `primitive_options::tests`, `create_sites_take_rclrs_primitive_options`. PRIOR ROW: see `rust:IntoPrimitiveOptions`."
 }

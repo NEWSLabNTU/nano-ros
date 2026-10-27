@@ -1,6 +1,6 @@
 {
   "key": "rust:IntoPrimitiveOptions::services_qos",
-  "disposition": "absent",
-  "verdict": "declined",
-  "why": "rclrs's builder shorthand for applying the services QoS preset to any entity options. Ours is a named constructor on `QoSProfile`; the trait needs a blanket impl that buys nothing with one caller shape."
+  "disposition": "adopt",
+  "verdict": "divergence",
+  "why": "ADOPTED 2026-10-27 (phase-515 R1): `services_qos` on `IntoPrimitiveOptions`, rclrs's name and arguments; see `rust:IntoPrimitiveOptions`. PRIOR ROW: rclrs's builder shorthand for applying the services QoS preset to any entity options. Ours is a named constructor on `QoSProfile`; the trait needs a blanket impl that buys nothing with one caller shape."
 }
