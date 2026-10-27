@@ -71,3 +71,26 @@ Bisect `60c7c7388..bca02e9ee` with the single cell
 corrupts the PRESENTATION parameter, and show the cell green in a live-peer run.
 If it does not reproduce on a rebuilt fixture, record that the fixture was
 stale (check the artifact's mtime against the blamed commit first).
+
+## Second sighting: tier 2, the an536 Cyclone C++ entry (2026-10-27)
+
+`run-matrix` run 40461297569 (main `99d5e1df0`), job 122046305909, one of its
+two real failures:
+
+```
+nros-tests::freertos_qemu an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default
+panicked at packages/testing/nros-tests/tests/freertos_qemu.rs:157:9:
+no `nros: heap peak` line within 120 s.
+  ... mps3-an536 ... -kernel .../freertos-cyclonedds-mps3-an536-freertos-.../mps3_an536_entry
+  Network ready
+  Published: 0
+  [INFO] nros: cpp_talker logging seq=0
+  Received: 0
+```
+
+The same board and the same Cyclone C++ talker, this time paired with our own
+listener: it publishes, and nothing is received. That fits a broken SEDP
+announcement, since our Cyclone listener would refuse the same malformed
+PRESENTATION as the ROS 2 peer did. It is unconfirmed until the bisect. This was
+the first tier-2 run in days to reach its cells (issue 2025 stopped the earlier
+ones), so it says nothing about when this began.
