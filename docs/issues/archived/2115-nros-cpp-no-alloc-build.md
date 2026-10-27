@@ -8,7 +8,7 @@ severity: medium
 found: 2026-10-27
 related: [1812, 1529, 1177, 0586, 0816]
 resolved: 2026-10-27
-resolved_in: "the PR that archives this file"
+resolved_in: "#2784"
 ---
 
 ## What
