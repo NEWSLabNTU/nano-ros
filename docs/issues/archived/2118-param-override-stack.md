@@ -8,7 +8,7 @@ severity: low
 found: 2026-10-28
 related: [2104, 2070, 2057]
 resolved: 2026-10-28
-resolved_in: "the PR that archives this file"
+resolved_in: "#2786"
 ---
 
 ## What
