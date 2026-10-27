@@ -83,6 +83,7 @@ ALLOWED = {
     "just/check/lanes.just": "skip text naming the submodule",
     "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs": "error text naming the submodule",
     "packages/cli/nros-cli-core/src/orchestration/metadata_build.rs": "test fixture: a build-script panic text",
+    "packages/cli/nros-cli-core/src/orchestration/metadata_refresh.rs": "test fixture: a build-script panic text (issue 2097)",
     "scripts/check-c-array-guard-probe.py": "skip text naming the submodule",
     "scripts/check-zenoh-feature-off-compile.py": "skip text naming the submodule",
     "packages/testing/nros-tests/src/process.rs": "diagnostic version label, `unknown` when absent",
