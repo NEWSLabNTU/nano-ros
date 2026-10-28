@@ -201,3 +201,24 @@ Row 13 is red BY CONSTRUCTION on this lane. On QEMU the guest refuses to measure
 - or give the dead-counter verdict a lane-scoped spelling.
 
 Item 2 is therefore answered for every row except 13, which needs that decision.
+
+### Row 13, decided (2026-10-29)
+
+Neither remedy above. The QEMU run now asserts the refusal itself, because
+that is a contract issue 0403 set and nothing else checked:
+
+- `emulator qemu_wcet_bench_refuses_without_a_cycle_counter` replaces
+  `test_qemu_wcet_benchmark`. It requires the dead-counter line and `[FAIL]`,
+  and forbids any `NROS_WCET_V1` measurement line, the completion line and
+  `[PASS]`. It passes on QEMU, and a bench that starts printing a table of
+  zeros there turns it red.
+- The completion assertion moves to
+  `wcet_bench_completes_with_a_counting_cycle_counter`, `#[ignore]`d with a
+  reason naming issue 0403: it needs a DWT counter that counts, which QEMU
+  lacks and no lane provides. It boots the same image, so it is also the test
+  to enable if QEMU gains DWT counting; the refusal test's failure text says
+  so.
+
+Deselecting the test would have left it running nowhere, and a skip would
+have reported the refusal without checking it. Row 13 is closed by this;
+item 2 stays open only for whatever the next nightly shows.
