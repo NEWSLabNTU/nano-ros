@@ -1448,11 +1448,9 @@ fn generate_config_header(
 ) {
     let config_dir = out_dir.join("zenoh-config");
     std::fs::create_dir_all(&config_dir).unwrap();
-    let target = std::env::var("TARGET").unwrap_or_default();
     let header = crate::config_header(
         link,
         buf,
-        &target,
         env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok(),
         tx_batch,
         tx_split_lock,

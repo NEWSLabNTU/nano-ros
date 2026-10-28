@@ -125,8 +125,9 @@ and its variants, read the macro instead.
     which `NROS_RMW_ZENOH` selects; `zpico.c` `#error`s without it (issue
     2105).
   - The timeout bounds how late a timer runs: up to two receives, because a
-    ready read runs before a due timer. Measured on NuttX's 5000 ms that
-    gives keep-alives every 25–30 s against a 60 s lease (issue 2094).
+    ready read runs before a due timer. Every port now uses 100 ms, so a
+    timer runs at most ~200 ms late. NuttX's 5000 ms gave keep-alives every
+    25–30 s against a 60 s lease (issue 2094) and was retired on 2026-10-29.
 
 ### D3 — CALLER, single-thread: a bounded `zp_spin_once` loop
 
@@ -266,8 +267,8 @@ the executor's timers never ran, so the lease and keep-alive never ran.
   own, not made here. The Zephyr figure was a single early sample until
   issue 2105 was fixed: the sampler is a timed future, and on that image
   timed futures never ran.
-- **Keep-alive under a blocked receive: 25–30 s on NuttX, against a 60 s
-  expiry.**
+- **Keep-alive under a blocked receive: 25–30 s on NuttX at 5000 ms,
+  against a 60 s expiry. NuttX now takes 100 ms like every other port.**
   - The first measurement FAILED. A quiet NuttX listener lost its session
     at the lease in 3 of 3 runs.
   - The cause was not the blocked receive (issue 2094, fixed). NuttX linked
@@ -281,9 +282,13 @@ the executor's timers never ran, so the lease and keep-alive never ran.
   - FreeRTOS (100 ms), ThreadX-Linux and Zephyr native_sim hold a quiet
     session too. `test_rtos_quiet_link_keeps_its_session` is the
     regression cell.
-  - The 100 ms run that "made it worse" was on the broken clock, so it is
-    no evidence either way. Whether NuttX can now take 100 ms is
-    unmeasured.
+  - The 100 ms run that "made it worse" was on the broken clock, so it was
+    no evidence either way. Measured on the fixed clock (2026-10-29): with
+    100 ms, all ten NuttX `rtos_e2e` cells pass, the quiet link holds one
+    session, and the cells run 2–16x faster (the C++ service cell 19.4 s to
+    1.2 s), because a request no longer waits out a 5 s receive. So
+    `nros-zpico-build` emits 100 for every target, and the NuttX manifest
+    define is gone.
   - The row's "10 s lease" is stale: the negotiated lease is 60 s since
     issue 0906.
 - **`Z_RUNTIME_MAX_TASKS` floor: 5.** Measured on the POSIX integration
@@ -356,6 +361,9 @@ Tracked by phase-508:
   lease and keep-alive ran only then. `NROS_RMW_ZENOH` now selects the
   option, and `zpico.c` refuses a THREAD build that lacks it. D2 gains the
   rule: a THREAD platform's receive must time out.
+- 2026-10-29: NuttX's `Z_CONFIG_SOCKET_TIMEOUT` lowered from 5000 to 100 ms,
+  measured on the fixed clock. Every port now bounds timer lateness at
+  ~200 ms.
 - 2026-10-27: the keep-alive row answered. Issue 2094 was a clock ABI split
   on NuttX, now fixed: a quiet link holds one session, with keep-alives
   every 25–30 s. Draft remains for issue 2105, a timed future that never

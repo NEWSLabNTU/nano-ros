@@ -319,7 +319,6 @@ impl RxTaskBudget {
 pub fn config_header(
     link: &LinkFeatures,
     buf: &ZenohBufferConfig,
-    target: &str,
     unstable_api: bool,
     tx_batch: bool,
     tx_split_lock: bool,
@@ -359,8 +358,20 @@ pub fn config_header(
     )
     .unwrap();
 
-    const GENERIC_SOCKET_TIMEOUT_MS: u32 = 100;
-    const NUTTX_SOCKET_TIMEOUT_MS: u32 = 5000;
+    // How long the executor's socket receive waits for a frame. RFC-0110 D2: the
+    // executor thread runs the lease, keep-alive and query timeouts only between
+    // receives, so this bounds how late each of them runs (up to two receives).
+    //
+    // One value for every port. NuttX had 5000 from its 2026-03 bring-up
+    // ("100 ms is too short for QEMU slirp roundtrips", while TCP connect itself
+    // still deadlocked on the net lock), and nothing measured it again. Measured
+    // 2026-10-29, after issue 2094's clock fix: at 100 ms every NuttX rtos_e2e
+    // cell and the quiet-link cell pass, and request/response gets 2-16x faster
+    // (the C++ service cell went 19.4 s -> 1.2 s), because each reply no longer
+    // waits out a 5 s receive. The 99-session storm once blamed on 100 ms was
+    // the broken clock, not the timeout. FreeRTOS and Zephyr already ran 100 ms
+    // over the same slirp.
+    const SOCKET_TIMEOUT_MS: u32 = 100;
     // issue 0906 — this MUST NOT be shorter than the peer's keep-alive cadence,
     // and the peer here is the router ROS ships (RFC-0075).
     //
@@ -386,12 +397,12 @@ pub fn config_header(
     // Do not lower this without re-reading the router config: the number is a
     // property of the peer, not a taste.
     const Z_TRANSPORT_LEASE_MS: u32 = 60_000;
-    let socket_timeout = if target.contains("nuttx") {
-        NUTTX_SOCKET_TIMEOUT_MS
-    } else {
-        GENERIC_SOCKET_TIMEOUT_MS
-    };
-    writeln!(header, "#define Z_CONFIG_SOCKET_TIMEOUT {}", socket_timeout).unwrap();
+    writeln!(
+        header,
+        "#define Z_CONFIG_SOCKET_TIMEOUT {}",
+        SOCKET_TIMEOUT_MS
+    )
+    .unwrap();
     writeln!(header, "#define Z_TRANSPORT_LEASE {}", Z_TRANSPORT_LEASE_MS).unwrap();
     // RFC-0074 / phase-462 W6a — written ONLY when stated: zenoh-pico reads
     // "undefined" as an unbounded read task, which is what an image that
@@ -1455,10 +1466,11 @@ int32_t zpico_init(void);\n";
             rx_task_budget: None,
         };
 
-        let header = config_header(&link, &buf, "armv7a-nuttx-eabihf", true, false, false);
+        let header = config_header(&link, &buf, true, false, false);
 
         assert!(header.contains("#define Z_FRAG_MAX_SIZE 4096"));
-        assert!(header.contains("#define Z_CONFIG_SOCKET_TIMEOUT 5000"));
+        // NuttX takes the same receive timeout as every other port (issue 2094).
+        assert!(header.contains("#define Z_CONFIG_SOCKET_TIMEOUT 100"));
         assert!(header.contains("#define Z_FEATURE_LINK_TCP 1"));
         assert!(header.contains("#define Z_FEATURE_LINK_UDP_UNICAST 0"));
         assert!(header.contains("#define Z_FEATURE_LINK_TLS 1"));
@@ -1507,7 +1519,7 @@ int32_t zpico_init(void);\n";
             rx_task_budget: None,
         };
 
-        let header = config_header(&link, &buf, "x86_64-unknown-linux-gnu", false, false, false);
+        let header = config_header(&link, &buf, false, false, false);
 
         assert!(header.contains("#define Z_FEATURE_LOCAL_SUBSCRIBER 1"));
         assert!(header.contains("#define Z_FEATURE_LOCAL_QUERYABLE 1"));
@@ -1535,11 +1547,11 @@ int32_t zpico_init(void);\n";
             batch_multicast_size: 1024,
             rx_task_budget: None,
         };
-        let unstated = config_header(&link, &buf, "thumbv7m-none-eabi", false, false, false);
+        let unstated = config_header(&link, &buf, false, false, false);
         assert!(!unstated.contains("Z_RX_TASK_BUDGET"), "{unstated}");
 
         buf.rx_task_budget = RxTaskBudget::from_knobs(Some(8), 1000).unwrap();
-        let stated = config_header(&link, &buf, "thumbv7m-none-eabi", false, false, false);
+        let stated = config_header(&link, &buf, false, false, false);
         assert!(
             stated.contains("#define Z_RX_TASK_BUDGET_FRAMES 8"),
             "{stated}"

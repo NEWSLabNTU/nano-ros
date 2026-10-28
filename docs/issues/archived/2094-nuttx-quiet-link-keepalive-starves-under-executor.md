@@ -98,8 +98,10 @@ sessions in 75 s, because defect 2 was still in place. After both fixes:
   still a 2x margin.
 - **The 100 ms experiment is NOT evidence that NuttX needs 5000 ms.** That
   run (99 sessions in 150 s) was on the broken clock, so it says nothing
-  about the timeout. Whether NuttX can now take Zephyr's 100 ms, and
-  tighten the timers, is unmeasured.
+  about the timeout. Measured afterwards on the fixed clock (2026-10-29):
+  NuttX takes 100 ms, the quiet link holds one session, every NuttX
+  `rtos_e2e` cell passes 2–16x faster, and the 5000 ms special case is
+  gone from `nros-zpico-build` and the NuttX manifest.
 - **Attribution.** zenoh-pico 1.8's lease task slept on the same clock, so
   the ABI split probably predates RFC-0110. A dedicated lease thread
   tolerated it; the executor's sleeping-futures queue did not.
