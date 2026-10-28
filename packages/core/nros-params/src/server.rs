@@ -186,7 +186,7 @@ impl OnSetContext {
 /// [`ParameterServer::add_on_set_parameters_callback`](crate::ParameterServerOps::add_on_set_parameters_callback) and consumed by
 /// [`ParameterServer::remove_on_set_parameters_callback`](crate::ParameterServerOps::remove_on_set_parameters_callback).
 ///
-/// rclcpp hands back an owning `ParameterCallbackHandle` shared_ptr whose
+/// rclcpp hands back an owning `OnSetParametersCallbackHandle` shared_ptr whose
 /// destruction unregisters. With no allocator there is nothing to own, so this
 /// is a plain index token and unregistering is explicit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -2,5 +2,5 @@
   "key": "rust:OnSetParameterHandle*",
   "bucket": "ours-only",
   "verdict": "divergence",
-  "why": "The token `remove_on_set_parameters_callback` takes. rclcpp returns an owning `ParameterCallbackHandle` shared_ptr whose destruction unregisters; with no allocator there is nothing to own, so this is an opaque `u16` index into the bounded registry and unregistering is explicit. `raw` / `from_raw` exist for the FFI that must hand it to C. phase-417 W4.a."
+  "why": "The token `remove_on_set_parameters_callback` takes. rclcpp returns an owning `OnSetParametersCallbackHandle` shared_ptr whose destruction unregisters; with no allocator there is nothing to own, so this is an opaque `u16` index into the bounded registry and unregistering is explicit. `raw` / `from_raw` exist for the FFI that must hand it to C. phase-417 W4.a."
 }

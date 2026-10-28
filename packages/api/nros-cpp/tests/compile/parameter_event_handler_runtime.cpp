@@ -8,7 +8,9 @@
 //   * `add_parameter_event_callback(cb)` gets every event, decoded into the
 //     type the callback takes (here a test-local stand-in for the generated
 //     `rcl_interfaces::msg::ParameterEvent`);
-//   * dropping a handle unregisters it, and so does destroying the handler.
+//   * dropping a handle unregisters it, and so does destroying the handler;
+//   * the handle is `rclcpp::ParameterCallbackHandle`, upstream's name (issue
+//     2114), and the handler's nested name is the same type.
 //
 // A RUN on the stub backend, which delivers the frames this test stages on the
 // `/parameter_events` subscription the handler created
@@ -16,6 +18,14 @@
 // writes it: little-endian CDR of `rcl_interfaces/msg/ParameterEvent`.
 
 #include "rclcpp/rclcpp.hpp"
+
+#include <type_traits>
+
+static_assert(std::is_same<rclcpp::ParameterEventHandler::ParameterCallbackHandle,
+                           rclcpp::ParameterCallbackHandle>::value,
+              "issue 2114: the nested name aliases upstream's top-level handle");
+static_assert(!std::is_integral<rclcpp::ParameterCallbackHandle>::value,
+              "issue 2114: rclcpp::ParameterCallbackHandle is not the on-set token");
 
 extern "C" {
 #include "stub_rmw_backend.h"
@@ -125,8 +135,8 @@ struct FakeParameterEvent {
         uint32_t n = 0;
         std::memcpy(&n, data + 12, 4);
         if (n == 0 || 16 + n > len) return -1;
-        static_cast<FakeParameterEvent*>(out)->node.assign(
-            reinterpret_cast<const char*>(data + 16), n - 1);
+        static_cast<FakeParameterEvent*>(out)->node.assign(reinterpret_cast<const char*>(data + 16),
+                                                           n - 1);
         return 0;
     }
 };
@@ -170,7 +180,9 @@ int main() {
         },
         "talker"); // relative: resolves to /ns/talker
     std::vector<double> weights;
-    auto abs = handler->add_parameter_callback(
+    // Issue 2114 -- upstream's spelling of the handle type, as a ported file
+    // writes it; it names the same type as the handler's nested one.
+    rclcpp::ParameterCallbackHandle::SharedPtr abs = handler->add_parameter_callback(
         "weights", [&](const rclcpp::Parameter& p) { weights = p.as_double_array(); }, "/mpc");
     std::vector<std::string> events;
     auto every = handler->add_parameter_event_callback(

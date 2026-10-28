@@ -139,6 +139,33 @@ struct ParameterEventCallbackHandle : private detail::ParameterEventHandleNoCopy
     void (*free_)(void*) = nullptr;
 };
 
+/// `rclcpp::ParameterCallbackHandle` — issue 2114: the owning handle
+/// `ParameterEventHandler::add_parameter_callback` returns, as a `SharedPtr`
+/// on a hosted build, for one parameter of one node. Dropping every copy
+/// unregisters the callback (the handler keeps a weak reference).
+/// Upstream's `parameter_name` / `node_name` / `callback` members are held
+/// behind a pointer, like `ParameterEventCallbackHandle`'s callback, so the
+/// type has one layout everywhere; they are not public members here.
+struct ParameterCallbackHandle : private detail::ParameterEventHandleNoCopy {
+#ifdef NROS_CPP_HAS_SHARED_PTR // hosted-family: shared-ptr-interop
+    using SharedPtr = ::std::shared_ptr<ParameterCallbackHandle>;
+    using WeakPtr = ::std::weak_ptr<ParameterCallbackHandle>;
+#endif
+#ifdef NROS_CPP_STD // hosted-family: container-interop
+    using ParameterCallbackType = ::std::function<void(const ::rclcpp::Parameter&)>;
+#endif
+    // Non-copyable through its base (it owns `state_`); no constructor of its
+    // own, as upstream's has none.
+    ~ParameterCallbackHandle() {
+        if (free_ != nullptr) free_(state_);
+    }
+
+  private:
+    friend struct detail::ParameterEventHandlerAccess;
+    void* state_ = nullptr; ///< a heap `detail::ParameterCallbackState`
+    void (*free_)(void*) = nullptr;
+};
+
 #ifdef NROS_CPP_STD // hosted-family: container-interop
 namespace detail {
 
@@ -344,8 +371,24 @@ template <typename ParameterMsgT>::rclcpp::Parameter parameter_from_msg(const Pa
     return ::rclcpp::Parameter(param_msg_string(msg.name), v);
 }
 
-/// What reaches a `ParameterEventCallbackHandle`'s private storage.
+/// What a `ParameterCallbackHandle` holds behind its pointer: upstream's
+/// three members.
+struct ParameterCallbackState {
+    ::std::string parameter_name;
+    ::std::string node_name;
+    ParameterCallbackHandle::ParameterCallbackType callback;
+};
+
+/// What reaches a `ParameterEventCallbackHandle`'s and a
+/// `ParameterCallbackHandle`'s private storage.
 struct ParameterEventHandlerAccess {
+    static void set(ParameterCallbackHandle& h, ParameterCallbackState st) {
+        h.state_ = new ParameterCallbackState(static_cast<ParameterCallbackState&&>(st));
+        h.free_ = [](void* q) { delete static_cast<ParameterCallbackState*>(q); };
+    }
+    static const ParameterCallbackState& get(const ParameterCallbackHandle& h) {
+        return *static_cast<const ParameterCallbackState*>(h.state_);
+    }
     static void set(ParameterEventCallbackHandle& h, ParameterEventFn fn) {
         h.fn_ = new ParameterEventFn(static_cast<ParameterEventFn&&>(fn));
         h.free_ = [](void* q) { delete static_cast<ParameterEventFn*>(q); };
@@ -366,11 +409,6 @@ struct ParameterEventHandlerAccess {
 /// spin of that node's executor. Destroying the handler stops every callback.
 ///
 /// Differences from upstream, each a compile error or written here:
-///   - the per-parameter handle is `ParameterEventHandler::ParameterCallbackHandle`,
-///     not `rclcpp::ParameterCallbackHandle` — that name is the on-set
-///     callback token here (`uint16_t`, `cpp:ParameterCallbackHandle`);
-///     `auto` and `ParameterEventHandler::ParameterCallbackHandle::SharedPtr`
-///     both compile;
 ///   - an event callback takes the caller's GENERATED
 ///     `rcl_interfaces::msg::ParameterEvent` (deduced from the callback), so
 ///     that message must be generated for the image;
@@ -385,15 +423,9 @@ class ParameterEventHandler {
 #ifdef NROS_CPP_STD // hosted-family: container-interop
     using SharedPtr = ::std::shared_ptr<ParameterEventHandler>;
 
-    /// Upstream's `rclcpp::ParameterCallbackHandle`: one parameter of one node.
-    struct ParameterCallbackHandle {
-        using SharedPtr = ::std::shared_ptr<ParameterCallbackHandle>;
-        using WeakPtr = ::std::weak_ptr<ParameterCallbackHandle>;
-        using ParameterCallbackType = ::std::function<void(const ::rclcpp::Parameter&)>;
-        ::std::string parameter_name;
-        ::std::string node_name;
-        ParameterCallbackType callback;
-    };
+    /// `rclcpp::ParameterCallbackHandle`, also reachable through the handler
+    /// (the name nano-ros nested it under before issue 2114).
+    using ParameterCallbackHandle = ::rclcpp::ParameterCallbackHandle;
     using ParameterCallbackType = ParameterCallbackHandle::ParameterCallbackType;
 
     /// Subscribe on `node` (a `shared_ptr` to a `Node` or a type derived from
@@ -433,9 +465,12 @@ class ParameterEventHandler {
                                                               ParameterCallbackType callback,
                                                               const ::std::string& node_name = "") {
         ParameterCallbackHandle::SharedPtr h = ::std::make_shared<ParameterCallbackHandle>();
-        h->parameter_name = parameter_name;
-        h->node_name = resolve(node_name);
-        h->callback = static_cast<ParameterCallbackType&&>(callback);
+        detail::ParameterCallbackState st;
+        st.parameter_name = parameter_name;
+        st.node_name = resolve(node_name);
+        st.callback = static_cast<ParameterCallbackType&&>(callback);
+        detail::ParameterEventHandlerAccess::set(*h,
+                                                 static_cast<detail::ParameterCallbackState&&>(st));
         state().parameter_callbacks.push_front(h);
         return h;
     }
@@ -577,9 +612,11 @@ class ParameterEventHandler {
                 for (const ParameterCallbackHandle::WeakPtr& w : parameter_callbacks)
                     if (ParameterCallbackHandle::SharedPtr s = w.lock()) live.push_back(s);
                 for (const ParameterCallbackHandle::SharedPtr& h : live) {
-                    if (h->node_name != node) continue;
+                    const detail::ParameterCallbackState& c =
+                        detail::ParameterEventHandlerAccess::get(*h);
+                    if (c.node_name != node) continue;
                     for (const ::rclcpp::Parameter& prm : set)
-                        if (prm.get_name() == h->parameter_name && h->callback) h->callback(prm);
+                        if (prm.get_name() == c.parameter_name && c.callback) c.callback(prm);
                 }
             }
             ::std::vector<ParameterEventCallbackHandle::SharedPtr> events;

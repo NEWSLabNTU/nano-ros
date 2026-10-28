@@ -846,15 +846,16 @@ class LifecycleEngine {
                                 : node_->set_parameters_atomically(writes, count);
     }
     /// `add_on_set_parameters_callback(callback, context, out_handle)`.
-    ::rclcpp::Result add_on_set_parameters_callback(::rclcpp::OnSetParametersCallbackType callback,
-                                                    void* context,
-                                                    ::rclcpp::ParameterCallbackHandle& out_handle) {
+    ::rclcpp::Result
+    add_on_set_parameters_callback(::rclcpp::OnSetParametersCallbackType callback, void* context,
+                                   ::rclcpp::OnSetParametersCallbackToken& out_handle) {
         return node_ == nullptr
                    ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                    : node_->add_on_set_parameters_callback(callback, context, out_handle);
     }
     /// `remove_on_set_parameters_callback(handle)`.
-    ::rclcpp::Result remove_on_set_parameters_callback(::rclcpp::ParameterCallbackHandle handle) {
+    ::rclcpp::Result
+    remove_on_set_parameters_callback(::rclcpp::OnSetParametersCallbackToken handle) {
         return node_ == nullptr ? ::rclcpp::Result(::rclcpp::ErrorCode::InvalidArgument)
                                 : node_->remove_on_set_parameters_callback(handle);
     }

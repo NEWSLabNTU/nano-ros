@@ -5,10 +5,11 @@ homed issue is closed.** W0.a and W0.b landed; C1–C8, P1–P8, R1–R5 and R7�
 and X1 landed or were re-verdicted with a reason. **R6 stays declined**:
 `Context::ok` is added only once `Context` has a shutdown state to report, and
 it has none. `api-parity --by-topic` reports 0 open decisions in every stage
-and language. One ledger `gap` remains: `cpp:ParameterCallbackHandle`,
-[issue 2114](../../issues/2114-cpp-parameter-callback-handle-name-taken.md)
-(low; our name is the on-set token, upstream's is the event-handler handle).
-It was found by P3's re-verdict and is left open without a phase. Still not
+and language. The one ledger `gap` P3's re-verdict found,
+`cpp:ParameterCallbackHandle`, was closed after the archive by
+[issue 2114](../../issues/archived/2114-cpp-parameter-callback-handle-name-taken.md)
+(2026-10-29): the name is upstream's event-handler handle again, and the
+on-set token is `rclcpp::OnSetParametersCallbackToken`. Still not
 measured (W0.b): C++ and Rust names without a C prefix, and stale names in
 code comments.
 

@@ -1,0 +1,5 @@
+{
+  "key": "cpp:OnSetParametersCallbackToken",
+  "verdict": "extension",
+  "why": "issue 2114 (2026-10-29): the `uint16_t` slot id the freestanding token form of `Node::add_on_set_parameters_callback(f, ctx, out)` writes and `remove_on_set_parameters_callback(token)` takes. rclcpp has no token: its on-set registration returns an owning `OnSetParametersCallbackHandle` shared_ptr, which the hosted overload here also returns (`node_interfaces::OnSetParametersCallbackHandle`). The token form exists because a freestanding build has no allocator to own one. It was spelled `rclcpp::ParameterCallbackHandle` until issue 2114 gave that name back to upstream's `ParameterEventHandler` handle; no alias is kept, because the name now means that type."
+}

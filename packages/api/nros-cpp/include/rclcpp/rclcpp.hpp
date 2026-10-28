@@ -2012,12 +2012,12 @@ inline Result Node::set_parameters_atomically(const ParameterWrite* writes, ::si
 
 inline Result Node::add_on_set_parameters_callback(OnSetParametersCallbackType callback,
                                                    void* context,
-                                                   ParameterCallbackHandle& out_handle) {
+                                                   OnSetParametersCallbackToken& out_handle) {
     return ::rclcpp::detail::node_param_add_on_set_callback(this->ffi_handle(), callback, context,
                                                             &out_handle);
 }
 
-inline Result Node::remove_on_set_parameters_callback(ParameterCallbackHandle handle) {
+inline Result Node::remove_on_set_parameters_callback(OnSetParametersCallbackToken handle) {
     return ::rclcpp::detail::node_param_remove_on_set_callback(this->ffi_handle(), handle);
 }
 
