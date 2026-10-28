@@ -124,13 +124,12 @@ cd zephyr-workspace
 # drives the same leaf, so without sync the build fails while PARSING the
 # manifest, with an error that never names sync (issue 0694).
 #
-# `--no-metadata` because the source-metadata probe builds a host binary that
-# path-deps this leaf, dragging in the `zephyr` crate — whose build.rs needs a
-# DOTCONFIG from a Zephyr cmake configure that has not run yet, and cannot,
-# since this sync is its prerequisite (issue 0318). Without the flag the sync
-# still succeeds but prints a "no producer" error the reader cannot act on.
-# Codegen and the patch table — the reason to run it — are unaffected.
-nros sync --no-metadata ../examples/zephyr/rust/talker
+# The sync also runs the source-metadata probe over the leaf's `node/`
+# package, a host build of the component. That writes `node/metadata/*.json`,
+# which the configure composes into the image's pool sizes (issue 1662).
+# Without it the pools fall back to crate defaults, and the XRCE talker's
+# session no longer fits its heap (issue 2133). Do not pass `--no-metadata`.
+nros sync ../examples/zephyr/rust/talker
 
 # Build Zephyr talker (Rust + zenoh, default backend).
 #
