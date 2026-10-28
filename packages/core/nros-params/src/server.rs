@@ -1020,9 +1020,7 @@ impl<'s> ParameterServer<'s> {
             return self.apply_delete(node, name);
         }
         let verdict = self.check_apply(node, name, value);
-        if !verdict.is_ok() {
-            return verdict;
-        }
+        verdict?;
         // phase-417 W4.a — the accept/reject hook, AFTER the store's own rules
         // and BEFORE the write, which is rclcpp's ordering: a callback never
         // sees a write the type, range or read-only rules already refused, and
@@ -1068,9 +1066,7 @@ impl<'s> ParameterServer<'s> {
             return self.apply_delete(node, name);
         }
         let verdict = self.check_apply(node, name, staged);
-        if !verdict.is_ok() {
-            return verdict;
-        }
+        verdict?;
         if !self.run_on_set_callbacks(node, name, self.get(node, name), Some(staged)) {
             return Err(ParameterError::Rejected);
         }
@@ -1446,9 +1442,7 @@ impl<'s> ParameterServer<'s> {
                 return Err(ParameterError::TypeMismatch);
             };
             let verdict = self.check_apply(node, name, &slot);
-            if !verdict.is_ok() {
-                return verdict;
-            }
+            verdict?;
             // The hook is consulted in the CHECK pass, so a callback that
             // refuses one element refuses the batch before anything is
             // written. `apply` will consult it again on the write pass; a hook
@@ -1521,9 +1515,7 @@ impl<'s> ParameterServer<'s> {
         // Read-only, type, range (min/max/step) — one predicate, shared with
         // the atomic pre-check.
         let verdict = Self::check_set_existing(entry, value);
-        if !verdict.is_ok() {
-            return verdict;
-        }
+        verdict?;
 
         entry.param.value.assign_from(value);
         self.note_event(node, ParameterEventKind::Changed, name);
