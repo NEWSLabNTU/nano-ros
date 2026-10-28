@@ -16,6 +16,13 @@ superseded-by: null
 image chooses RTIC (or any other entry framework) once the board word
 `rtic-mps2-an385` stops carrying that choice. No phase yet.
 
+**Narrowed by [RFC-0112](0112-framework-support-tiers.md) (2026-10-29).** The
+`framework` field takes Tier 1 values only (frameworks with `nros::main!`
+codegen, admitted under RFC-0112 D3). `zephyr` and `esp32` are platform entry
+shapes that the board derives, so the field refuses them. Every other framework
+integrates through RFC-0112's host-driven contract and never appears here. D1,
+D2 and the open questions below are amended to match.
+
 ## Summary
 
 `rtic-mps2-an385` is not a second spelling of the MPS2-AN385 bare-metal
@@ -73,9 +80,10 @@ What that costs, all measured on main on 2026-10-27:
 
 ### D1 — `framework` is a field of the image
 
-`[image.<id>] framework = "<name>"`, with a value from
-`nros_orchestration_ir::FRAMEWORKS` (`owned-spin`, `rtic`, `embassy`,
-`zephyr`, `esp32`). It is optional; D2 says what an absent field means.
+`[image.<id>] framework = "<name>"`, with a value from the Tier 1 list
+(RFC-0112 D5): `owned-spin`, `rtic`, and `embassy` until issue 2134 is ruled.
+`zephyr` and `esp32` are refused with a message saying the board decides them.
+The field is optional; D2 says what an absent field means.
 
 It sits on the image, not on a component or the system:
 
@@ -103,10 +111,14 @@ frameworks = ["owned-spin", "rtic"]   # first = default
 - **Absent field:** the image gets the first entry, so every existing
   single-framework board keeps its behaviour and its images need no edit.
 - **Value outside the list:** a refusal that names the list.
-- **Descriptor with no `frameworks` key:** it means `["owned-spin"]`, except
-  where `framework_for_board_key` answers today (`zephyr`, `esp32-*`). Those
-  rows move into their descriptors in the same change, so the table and the
-  descriptors never both answer.
+- **Descriptor with no `frameworks` key:** it means `["owned-spin"]`.
+  `framework_for_board_key`'s `zephyr` and `esp32-*` rows are not frameworks
+  (RFC-0112 D5). They move into their descriptors as a separate
+  `entry_shape`, which the macro reads from the board and the image field
+  cannot set. They move in the same change, so the table and the descriptors
+  never both answer.
+- **`frameworks` lists Tier 1 names only.** A Tier 0 recipe (tokio, GLib,
+  Arduino and the like) is user code and never appears in a descriptor.
 
 An out-of-tree board keeps its route. `[package.metadata.nros.board]
 framework` on its crate is read as a one-entry `frameworks` list, through
@@ -217,8 +229,9 @@ The work, for a phase to pick up:
 
 ## Open questions
 
-- **Default for a multi-framework board.** D2 makes the first list entry the
-  default, so a plain `board = "mps2-an385-baremetal"` stays direct-exec, as it
+- **Default for a multi-framework board.** With `zephyr` and `esp32` out of
+  the vocabulary (RFC-0112 D5), this concerns exactly one board today,
+  `mps2-an385-baremetal`. D2 makes the first list entry the default, so a plain `board = "mps2-an385-baremetal"` stays direct-exec, as it
   is today. The alternative is to refuse an absent `framework` on any board
   that lists more than one. That is more explicit, and it breaks every
   existing direct-exec mps2 image until each says `owned-spin`. This RFC picks
