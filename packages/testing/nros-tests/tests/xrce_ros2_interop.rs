@@ -583,6 +583,129 @@ fn test_xrce_service_reports_the_stock_clients_request_id(
     );
 }
 
+/// What a stock graph reads for each endpoint of an XRCE SERVICE, one line
+/// per endpoint: `QOS <writer|reader> <RELIABILITY> <DURABILITY>`.
+///
+/// rclpy's `get_*_info_by_topic(..., no_mangle=True)` on the two DDS topics a
+/// replier owns. Polls until both endpoints are discovered, then prints.
+const SERVICE_QOS_PROBE: &str = r#"
+import sys, time
+import rclpy
+from rclpy.node import Node
+rclpy.init()
+n = Node('nros_service_qos_probe')
+w, r = [], []
+end = time.time() + 25
+while time.time() < end:
+    w = n.get_publishers_info_by_topic('rr/add_two_intsReply', no_mangle=True)
+    r = n.get_subscriptions_info_by_topic('rq/add_two_intsRequest', no_mangle=True)
+    if w and r:
+        break
+    time.sleep(0.5)
+for kind, lst in (('writer', w), ('reader', r)):
+    for e in lst:
+        q = e.qos_profile
+        print(f'QOS {kind} {q.reliability.name} {q.durability.name}', flush=True)
+print('QOS_PROBE_DONE', flush=True)
+"#;
+
+/// Issue 2120 — an XRCE service's two endpoints hold the QoS it was CREATED
+/// with, as a stock peer discovers them.
+///
+/// Before 2120 the replier was created from BIN, whose QoS the client library
+/// drops and the Agent replaces with fixed attributes: the reply WRITER came
+/// out TRANSIENT_LOCAL whatever was asked, and the request READER was forced
+/// RELIABLE. Both cases here distinguish that: `default` asks the services
+/// default (RELIABLE + VOLATILE), so the writer must read VOLATILE;
+/// `best_effort` asks BEST_EFFORT, so the reader must read BEST_EFFORT.
+#[rstest]
+#[case::services_default("default", "RELIABLE")]
+#[case::best_effort("best_effort", "BEST_EFFORT")]
+fn test_xrce_service_endpoints_hold_the_requested_qos(
+    xrce_service_info_server_binary: PathBuf,
+    #[case] qos: &str,
+    #[case] want_reliability: &str,
+) {
+    use std::process::Command;
+
+    require_xrce_agent();
+    require_ros2_dds();
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+    let domain_id = unique_ros_domain_id();
+
+    let mut server_cmd = Command::new(&xrce_service_info_server_binary);
+    server_cmd
+        .env("NROS_LOCATOR", &addr)
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("ROS_DOMAIN_ID", domain_id.to_string())
+        .env("XRCE_TIMEOUT", "30")
+        .env(nros_tests::output::SERVICE_INFO_SERVER_QOS_ENV, qos)
+        .env("RUST_LOG", "info");
+    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-service-info-server")
+        .expect("Failed to start service-info-server");
+    let server_startup = server
+        .wait_for_output_pattern(
+            nros_tests::output::SERVICE_SERVER_READY_MARKER,
+            Duration::from_secs(20),
+        )
+        .unwrap_or_else(|e| format!("<server never reported ready: {e}>"));
+
+    let env_setup = nros_tests::ros2::ros2_env_setup_dds_with_domain(DEFAULT_ROS_DISTRO, domain_id);
+    let deadline = nros_tests::process::deadline(40);
+    let probe = Command::new("bash")
+        .arg("-c")
+        .arg(format!(
+            "{env_setup} && {deadline} python3 -u - 2>&1 <<'NROS_PYEOF'\n{SERVICE_QOS_PROBE}\nNROS_PYEOF"
+        ))
+        .output();
+    server.kill();
+    drop(agent);
+    let probe_out = match probe {
+        Ok(o) => format!(
+            "{}{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        ),
+        Err(e) => nros_tests::unmet!("the rclpy QoS probe could not start: {e}"),
+    };
+    let context = format!(
+        "--- server startup ---\n{server_startup}\n--- probe ---\n{probe_out}\n{env}",
+        env = nros_tests::ros2::interop_environment_fingerprint()
+    );
+    assert!(
+        probe_out.contains("QOS_PROBE_DONE"),
+        "the rclpy QoS probe did not finish\n{context}"
+    );
+    let endpoints: Vec<(&str, &str, &str)> = probe_out
+        .lines()
+        .filter_map(|l| {
+            let mut it = l.trim().strip_prefix("QOS ")?.split_whitespace();
+            Some((it.next()?, it.next()?, it.next()?))
+        })
+        .collect();
+    let writers: Vec<_> = endpoints.iter().filter(|e| e.0 == "writer").collect();
+    let readers: Vec<_> = endpoints.iter().filter(|e| e.0 == "reader").collect();
+    assert!(
+        writers.len() == 1 && readers.len() == 1,
+        "expected exactly the server's reply writer and request reader on domain \
+         {domain_id}, found {} writer(s) and {} reader(s)\n{context}",
+        writers.len(),
+        readers.len()
+    );
+    for (kind, rel, dur) in [writers[0], readers[0]] {
+        assert_eq!(
+            (*rel, *dur),
+            (want_reliability, "VOLATILE"),
+            "the service's {kind} does not hold the QoS it was created with ({qos}: \
+             {want_reliability} + VOLATILE) — the requester/replier profile is not reaching \
+             the Agent (issue 2120)\n{context}"
+        );
+    }
+    eprintln!("[PASS] XRCE service endpoints hold {want_reliability} + VOLATILE ({qos})");
+}
+
 /// The 24 bytes a `GRAPH_PROBE_PUB_GID <48 hex>` line carries.
 fn probe_gid(out: &str) -> Option<Vec<u8>> {
     let hex = out

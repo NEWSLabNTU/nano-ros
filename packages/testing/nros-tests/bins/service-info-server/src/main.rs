@@ -27,6 +27,10 @@
 //! reported no request id prints `REQUEST_ID ABSENT …` at error level instead,
 //! never a zero GUID standing in for "unknown" — a zero is what a broken fill
 //! looks like, so it must not also be what "not reported" looks like.
+//!
+//! `SERVICE_INFO_SERVER_QOS` (`default` | `best_effort`) picks the service
+//! QoS, so a stock peer can read back the profile both endpoints were created
+//! with (issue 2120).
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 use log::{error, info};
@@ -50,10 +54,21 @@ fn main() {
         .build()
         .expect("Failed to build node");
 
+    // Issue 2120 — the service QoS, so a stock peer can read back what the
+    // endpoints were created with. `default` (or unset) is the services
+    // default; `best_effort` changes reliability only.
+    let qos = match std::env::var("SERVICE_INFO_SERVER_QOS").as_deref() {
+        Ok("best_effort") => QoSProfile::services_default().best_effort(),
+        Ok("default") | Err(_) => QoSProfile::services_default(),
+        Ok(other) => panic!("SERVICE_INFO_SERVER_QOS={other}: expected `default` or `best_effort`"),
+    };
+
     executor
         .node_mut(nid)
-        .create_service_with_info::<AddTwoInts, _>(
-            "/add_two_ints",
+        .service("/add_two_ints")
+        .service_info()
+        .qos(qos)
+        .build::<AddTwoInts, _>(
             |req: &AddTwoIntsRequest, info: &nros::ServiceInfo| {
                 match info.request_id {
                     Some(id) => {

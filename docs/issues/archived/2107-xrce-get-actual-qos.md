@@ -107,7 +107,8 @@ infinite lease.
 - Stock `rmw_microxrcedds` reports the stored creation profile here, which
   for a service is not what the Agent built.
 - That a different request is admitted and silently not applied is filed as
-  issue 2120.
+  issue 2120, since resolved: requesters and repliers are now created from
+  XML, which carries the QoS.
 
 ### Tests
 

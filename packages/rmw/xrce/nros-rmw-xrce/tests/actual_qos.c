@@ -7,9 +7,11 @@
  *   - pub/sub: the four `uxrQoS_t` fields sent, Fast-DDS defaults for the rest
  *     (deadline/lifespan infinite, liveliness AUTOMATIC, infinite lease); depth
  *     only when one was sent, else left as pre-loaded (UNKNOWN);
- *   - service/client: the Agent's FIXED requester/replier profile whatever was
- *     asked — writers RELIABLE + TRANSIENT_LOCAL, readers RELIABLE + VOLATILE,
- *     history and depth left UNKNOWN.
+ *   - service/client created from XML (issue 2120, the normal path): what the
+ *     XML carried, reported like a pub/sub entity, on both endpoints;
+ *   - service/client that fell back to BIN: the Agent's FIXED requester/replier
+ *     profile whatever was asked — writers RELIABLE + TRANSIENT_LOCAL, readers
+ *     RELIABLE + VOLATILE, history and depth left UNKNOWN.
  *
  * The caller pre-loads `NROS_RMW_QOS_PROFILE_UNKNOWN`; a field a slot does not
  * know must come back as that pre-load.
@@ -123,7 +125,8 @@ int main(void) {
     CHECK(q.history == NROS_RMW_HISTORY_KEEP_ALL && q.depth == pre.depth,
           "KEEP_ALL: history reported, no depth");
 
-    /* Service and client: the Agent's fixed profile, whatever was asked. */
+    /* Service and client created from BIN (the XML did not fit the output
+     * stream): the Agent's fixed profile, whatever was asked. */
     xrce_service_server_state srv;
     memset(&srv, 0, sizeof(srv));
     rmw_service_t service;
@@ -161,6 +164,81 @@ int main(void) {
               q.reliability == NROS_RMW_RELIABILITY_RELIABLE &&
               q.durability == NROS_RMW_DURABILITY_VOLATILE && q.depth == pre.depth,
           "client reply reader: RELIABLE + VOLATILE, depth UNKNOWN");
+
+    /* Issue 2120 — created from XML: what the XML carried, on BOTH endpoints.
+     * BEST_EFFORT + VOLATILE + KEEP_LAST(3) on the server: the writer is no
+     * longer the Agent's TRANSIENT_LOCAL and the reader no longer forced
+     * RELIABLE. */
+    rmw_qos_profile_t svc_req = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
+    svc_req.reliability = NROS_RMW_RELIABILITY_BEST_EFFORT;
+    svc_req.depth = 3;
+    srv.sent_qos = xrce_map_qos(&svc_req);
+    srv.qos_applied = true;
+    q = unknown();
+    CHECK(g_vtable->service_response_publisher_get_actual_qos(&service, &q) == NROS_RMW_RET_OK &&
+              q.reliability == NROS_RMW_RELIABILITY_BEST_EFFORT &&
+              q.durability == NROS_RMW_DURABILITY_VOLATILE &&
+              q.history == NROS_RMW_HISTORY_KEEP_LAST && q.depth == 3 && infinite_defaults(&q),
+          "XML service reply writer: BEST_EFFORT + VOLATILE + KEEP_LAST(3), as carried");
+    q = unknown();
+    CHECK(g_vtable->service_request_subscription_get_actual_qos(&service, &q) ==
+                  NROS_RMW_RET_OK &&
+              q.reliability == NROS_RMW_RELIABILITY_BEST_EFFORT &&
+              q.durability == NROS_RMW_DURABILITY_VOLATILE && q.depth == 3,
+          "XML service request reader: BEST_EFFORT (not forced RELIABLE), depth 3");
+    rmw_qos_profile_t cli_req = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
+    cli_req.durability = NROS_RMW_DURABILITY_TRANSIENT_LOCAL;
+    cli.sent_qos = xrce_map_qos(&cli_req);
+    cli.qos_applied = true;
+    q = unknown();
+    CHECK(g_vtable->client_response_subscription_get_actual_qos(&client, &q) ==
+                  NROS_RMW_RET_OK &&
+              q.reliability == NROS_RMW_RELIABILITY_RELIABLE &&
+              q.durability == NROS_RMW_DURABILITY_TRANSIENT_LOCAL && q.depth == 10 &&
+              q.avoid_ros_namespace_conventions == 1,
+          "XML client reply reader: TRANSIENT_LOCAL as carried, avoid-ROS as created");
+
+    /* The XML itself: every honoured field is written (a default
+     * PublisherAttributes is TRANSIENT_LOCAL), with the BIN path's memory
+     * policy, and refused rather than truncated when it does not fit. */
+    char xml[XRCE_SERVICE_XML_BUF_SIZE];
+    uxrQoS_t xq = xrce_map_qos(&svc_req);
+    size_t n = xrce_service_qos_xml(xml, sizeof(xml), true, "add_two_ints",
+                                    "example_interfaces::srv::dds_::AddTwoInts_Request_",
+                                    "example_interfaces::srv::dds_::AddTwoInts_Response_",
+                                    "rq/add_two_intsRequest", "rr/add_two_intsReply", &xq);
+    CHECK(n == strlen(xml) && n > 0, "xml: written, length returned");
+    CHECK(strncmp(xml, "<dds><replier ", 14) == 0 &&
+              strstr(xml, "service_name=\"add_two_ints\"") != NULL &&
+              strstr(xml, "<request_topic_name>rq/add_two_intsRequest</request_topic_name>") !=
+                  NULL &&
+              strstr(xml, "<reply_topic_name>rr/add_two_intsReply</reply_topic_name>") != NULL,
+          "xml: a replier with the ROS topic names");
+    const char* endpoint =
+        "<historyMemoryPolicy>PREALLOCATED_WITH_REALLOC</historyMemoryPolicy>"
+        "<qos><reliability><kind>BEST_EFFORT</kind></reliability>"
+        "<durability><kind>VOLATILE</kind></durability></qos>"
+        "<topic><historyQos><kind>KEEP_LAST</kind><depth>3</depth></historyQos></topic>";
+    const char* xpub = strstr(xml, "<publisher>");
+    const char* xsub = strstr(xml, "<subscriber>");
+    CHECK(xpub != NULL && xsub != NULL && strncmp(xpub + 11, endpoint, strlen(endpoint)) == 0 &&
+              strncmp(xsub + 12, endpoint, strlen(endpoint)) == 0,
+          "xml: both endpoints carry reliability, durability, history, depth");
+    uxrQoS_t keep_all = xq;
+    keep_all.history = UXR_HISTORY_KEEP_ALL;
+    keep_all.durability = UXR_DURABILITY_TRANSIENT_LOCAL;
+    keep_all.reliability = UXR_RELIABILITY_RELIABLE;
+    n = xrce_service_qos_xml(xml, sizeof(xml), false, "s", "a", "b", "rq/sRequest",
+                             "rr/sReply", &keep_all);
+    CHECK(n > 0 && strncmp(xml, "<dds><requester ", 16) == 0 &&
+              strstr(xml, "<kind>KEEP_ALL</kind></historyQos>") != NULL &&
+              strstr(xml, "<depth>") == NULL &&
+              strstr(xml, "<kind>TRANSIENT_LOCAL</kind>") != NULL &&
+              strstr(xml, "<kind>RELIABLE</kind>") != NULL,
+          "xml: a requester; KEEP_ALL carries no depth");
+    CHECK(xrce_service_qos_xml(xml, 64, true, "add_two_ints", "a", "b", "rq/x", "rr/x", &xq) ==
+              0,
+          "xml: too small a buffer is refused (0), never truncated");
 
     q = unknown();
     CHECK(g_vtable->publisher_get_actual_qos(NULL, &q) == NROS_RMW_RET_INVALID_ARGUMENT &&

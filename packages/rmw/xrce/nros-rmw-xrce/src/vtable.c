@@ -16,7 +16,8 @@
 /* Issue 2107 — the six `*_get_actual_qos` slots: one helper per entity kind
  * (session.c), six thunks. See `xrce_actual_qos_topic` /
  * `xrce_actual_qos_service` for what is known and why — and for what was
- * measured: a pub/sub entity holds what the create sent, a requester/replier
+ * measured: a pub/sub entity holds what the create sent, and so does a
+ * requester/replier created from XML (issue 2120); one that fell back to BIN
  * holds the Agent's fixed profile whatever was asked. */
 #define XRCE_ACTUAL_QOS_BODY(state_type, entity, expr)                                            \
     do {                                                                                           \
@@ -45,25 +46,25 @@ static rmw_ret_t xrce_subscription_get_actual_qos(const rmw_subscription_t* subs
 static rmw_ret_t xrce_client_request_publisher_get_actual_qos(const rmw_client_t* client,
                                                               rmw_qos_profile_t* qos) {
     XRCE_ACTUAL_QOS_BODY(xrce_service_client_state, client,
-                         xrce_actual_qos_service(true, s->avoid_ros, qos));
+                         xrce_actual_qos_service(true, s->avoid_ros, s->qos_applied ? &s->sent_qos : NULL, qos));
 }
 
 static rmw_ret_t xrce_client_response_subscription_get_actual_qos(const rmw_client_t* client,
                                                                   rmw_qos_profile_t* qos) {
     XRCE_ACTUAL_QOS_BODY(xrce_service_client_state, client,
-                         xrce_actual_qos_service(false, s->avoid_ros, qos));
+                         xrce_actual_qos_service(false, s->avoid_ros, s->qos_applied ? &s->sent_qos : NULL, qos));
 }
 
 static rmw_ret_t xrce_service_request_subscription_get_actual_qos(const rmw_service_t* service,
                                                                   rmw_qos_profile_t* qos) {
     XRCE_ACTUAL_QOS_BODY(xrce_service_server_state, service,
-                         xrce_actual_qos_service(false, s->avoid_ros, qos));
+                         xrce_actual_qos_service(false, s->avoid_ros, s->qos_applied ? &s->sent_qos : NULL, qos));
 }
 
 static rmw_ret_t xrce_service_response_publisher_get_actual_qos(const rmw_service_t* service,
                                                                 rmw_qos_profile_t* qos) {
     XRCE_ACTUAL_QOS_BODY(xrce_service_server_state, service,
-                         xrce_actual_qos_service(true, s->avoid_ros, qos));
+                         xrce_actual_qos_service(true, s->avoid_ros, s->qos_applied ? &s->sent_qos : NULL, qos));
 }
 
 /* RFC-0088 D4 / phase-421 W2 — the wire encoding, as the cross-image identity

@@ -414,21 +414,32 @@ void xrce_actual_qos_topic(const uxrQoS_t* sent, bool avoid_ros, rmw_qos_profile
     out->avoid_ros_namespace_conventions = avoid_ros ? 1u : 0u;
 }
 
-/* Issue 2107 — a requester's / replier's two endpoints do NOT hold the profile
- * the caller asked for. micro-XRCE-DDS-Client 3.0.1 discards it
- * (`uxr_buffer_create_{requester,replier}_bin`: `(void) qos;`), and the Agent
- * builds both endpoints from fixed attributes
+/* Issue 2107 / 2120 — what a requester's / replier's two endpoints hold.
+ *
+ * Created from XML (`xrce_service_qos_xml`, the normal path since issue 2120),
+ * both endpoints hold the profile the XML carried, exactly as a BIN-created
+ * DataWriter / DataReader holds its `uxrQoS_t` — so `applied` is reported the
+ * way `xrce_actual_qos_topic` reports a topic entity. Measured, issue 2120
+ * "Resolution".
+ *
+ * Created from BIN (`applied == NULL`, only when the XML did not fit the output
+ * stream), the profile is FIXED whatever was asked. micro-XRCE-DDS-Client 3.0.1
+ * discards the QoS (`uxr_buffer_create_{requester,replier}_bin`: `(void) qos;`),
+ * and the Agent builds both endpoints from fixed attributes
  * (`FastDDSMiddleware::create_{requester,replier}_by_bin`): the writer from a
  * default `PublisherAttributes`, the reader from a default
  * `SubscriberAttributes` with reliability forced RELIABLE. Measured on the
- * pinned Agent, for a service created with the services-default profile
- * (RELIABLE, VOLATILE): request/reply WRITERS RELIABLE + TRANSIENT_LOCAL,
+ * pinned Agent (issue 2107): request/reply WRITERS RELIABLE + TRANSIENT_LOCAL,
  * request/reply READERS RELIABLE + VOLATILE, deadline/lifespan infinite,
- * liveliness AUTOMATIC with an infinite lease — and the same under the XML
- * override above. History and depth reach no peer and were never sent, so
- * they stay UNKNOWN. */
-void xrce_actual_qos_service(bool writer, bool avoid_ros, rmw_qos_profile_t* out) {
+ * liveliness AUTOMATIC with an infinite lease. History and depth reach no peer
+ * and were never sent, so they stay UNKNOWN. */
+void xrce_actual_qos_service(bool writer, bool avoid_ros, const uxrQoS_t* applied,
+                             rmw_qos_profile_t* out) {
     if (out == NULL) {
+        return;
+    }
+    if (applied != NULL) {
+        xrce_actual_qos_topic(applied, avoid_ros, out);
         return;
     }
     out->reliability = NROS_RMW_RELIABILITY_RELIABLE;
@@ -439,6 +450,65 @@ void xrce_actual_qos_service(bool writer, bool avoid_ros, rmw_qos_profile_t* out
     out->liveliness_kind = (uint8_t)NROS_RMW_LIVELINESS_AUTOMATIC;
     out->liveliness_lease_ms = NROS_RMW_DURATION_INFINITE_MS;
     out->avoid_ros_namespace_conventions = avoid_ros ? 1u : 0u;
+}
+
+/* Issue 2120 — a requester's / replier's QoS, carried as Fast-DDS XML.
+ *
+ * `uxr_buffer_create_{requester,replier}_bin` drops the QoS on the floor
+ * (micro-XRCE-DDS-Client 3.0.1: `(void) qos;`), and the Agent's BIN path builds
+ * both endpoints from fixed attributes. Its XML path does not: Agent 2.4.3
+ * `FastDDSMiddleware::create_{requester,replier}_by_xml` parses the string with
+ * Fast-DDS's own `XMLParser` (`fillDataNode(RequesterAttributes|
+ * ReplierAttributes)`) and `FastDDS{Requester,Replier}::create_by_attributes`
+ * copies the `<publisher>` / `<subscriber>` reliability, durability and
+ * history into the DataWriterQos / DataReaderQos it creates. Measured live,
+ * issue 2120 "Resolution".
+ *
+ * Every element is written, never left to a default: a default-constructed
+ * `PublisherAttributes` is TRANSIENT_LOCAL, which is exactly the writer the BIN
+ * path produced. `historyMemoryPolicy` keeps the BIN path's
+ * PREALLOCATED_WITH_REALLOC, so a reply larger than the preallocated sample
+ * still goes out. Depth is omitted when 0, as `uxrQoS_t` omits it.
+ *
+ * The names are ROS names and DDS type names, which hold no XML
+ * metacharacter. Returns the string length, or 0 when it did not fit. */
+size_t xrce_service_qos_xml(char* out, size_t cap, bool replier, const char* service,
+                            const char* req_type, const char* reply_type,
+                            const char* req_topic, const char* reply_topic,
+                            const uxrQoS_t* qos) {
+    if (out == NULL || cap == 0 || qos == NULL) {
+        return 0;
+    }
+    const char* rel = (qos->reliability == UXR_RELIABILITY_BEST_EFFORT) ? "BEST_EFFORT" : "RELIABLE";
+    const char* dur =
+        (qos->durability == UXR_DURABILITY_TRANSIENT_LOCAL) ? "TRANSIENT_LOCAL" : "VOLATILE";
+    const char* hist = (qos->history == UXR_HISTORY_KEEP_ALL) ? "KEEP_ALL" : "KEEP_LAST";
+    char depth[40] = "";
+    if (qos->history != UXR_HISTORY_KEEP_ALL && qos->depth != 0) {
+        (void)snprintf(depth, sizeof(depth), "<depth>%u</depth>", (unsigned)qos->depth);
+    }
+    char endpoint[400];
+    int e = snprintf(endpoint, sizeof(endpoint),
+                     "<historyMemoryPolicy>PREALLOCATED_WITH_REALLOC</historyMemoryPolicy>"
+                     "<qos><reliability><kind>%s</kind></reliability>"
+                     "<durability><kind>%s</kind></durability></qos>"
+                     "<topic><historyQos><kind>%s</kind>%s</historyQos></topic>",
+                     rel, dur, hist, depth);
+    if (e < 0 || (size_t)e >= sizeof(endpoint)) {
+        return 0;
+    }
+    const char* tag = replier ? "replier" : "requester";
+    int n = snprintf(out, cap,
+                     "<dds><%s profile_name=\"nros\" service_name=\"%s\" request_type=\"%s\" "
+                     "reply_type=\"%s\"><request_topic_name>%s</request_topic_name>"
+                     "<reply_topic_name>%s</reply_topic_name><publisher>%s</publisher>"
+                     "<subscriber>%s</subscriber></%s></dds>",
+                     tag, service, req_type, reply_type, req_topic, reply_topic, endpoint,
+                     endpoint, tag);
+    if (n < 0 || (size_t)n >= cap) {
+        return 0;
+    }
+    return (size_t)n;
 }
 
 /* ---- Issue 2108: client-side DEADLINE emulation ------------------------

@@ -929,6 +929,14 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     // XRCE backend reports (issue 2081's `take_request_with_info`).
     co("xrce_ros2_interop", "test_xrce_service_reports_the_stock_clients_request_id",
        "native-service-rust-xrce-r2n"),
+    // issue 2120 — the same server, asserting the QoS a stock peer discovers on
+    // both of its endpoints.
+    co("xrce_ros2_interop",
+       "test_xrce_service_endpoints_hold_the_requested_qos::case_1_services_default",
+       "native-service-rust-xrce-r2n"),
+    co("xrce_ros2_interop",
+       "test_xrce_service_endpoints_hold_the_requested_qos::case_2_best_effort",
+       "native-service-rust-xrce-r2n"),
     // The file runs three ACTION cases and `interop::CELLS` declares no
     // Xrce/Action cell — `cases_bound_to_interop_cells` names Pubsub and
     // Service only, and a coordinate set cannot show what has no row. They ran
