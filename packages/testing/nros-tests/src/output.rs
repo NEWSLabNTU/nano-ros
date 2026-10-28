@@ -745,6 +745,11 @@ pub const WCET_DEAD_COUNTER_MARKER: &str = "the DWT cycle counter is not countin
 /// The WCET bench's completion line, printed only after real measurements.
 pub const WCET_COMPLETE_MARKER: &str = "Benchmark complete";
 
+/// The prefix of every machine-readable line the WCET bench emits
+/// (`scripts/bench/wcet-log-to-json.py` reads them). A refusing bench must
+/// print none: one such line under a dead counter is a measurement of zero.
+pub const WCET_MEASUREMENT_MARKER: &str = "NROS_WCET_V1";
+
 /// Action server log line when goal execution starts (`"Executing goal"`).
 pub const ACTION_EXECUTING_MARKER: &str = "Executing goal";
 

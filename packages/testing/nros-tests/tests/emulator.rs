@@ -208,8 +208,8 @@ fn test_qemu_output_format(qemu_binary: PathBuf) {
 // QEMU WCET Benchmark
 // =============================================================================
 
-#[test]
-fn test_qemu_wcet_benchmark() {
+/// Boot the WCET bench on the emulated Cortex-M3 and return its console.
+fn run_qemu_wcet_bench() -> String {
     require_qemu();
     require_arm_toolchain();
 
@@ -217,33 +217,56 @@ fn test_qemu_wcet_benchmark() {
 
     let mut qemu = QemuProcess::start_cortex_m3(binary).expect("Failed to start QEMU");
 
-    let output = qemu
-        .wait_for_output(Duration::from_secs(60))
-        .expect("QEMU timed out");
+    qemu.wait_for_output(Duration::from_secs(60))
+        .expect("QEMU timed out")
+}
 
-    // A dead cycle counter is an unmet CAPABILITY here, not a regression.
-    //
-    // Issue 0403 decided that a bench which cannot measure must emit NO
-    // measurements and fail, rather than report zeros — a zero reads as "this
-    // operation is free", the most optimistic WCET there is, and consuming it
-    // always errs toward "schedulable". QEMU does not implement DWT cycle
-    // counting, so on this emulator the guest now refuses BY DESIGN and never
-    // prints its completion line.
-    //
-    // This test asserted that completion line anyway, so it has been red since
-    // 0403 landed — asserting that a benchmark completes on a platform where
-    // the benchmark itself declares it cannot run. Skip on the guest's own
-    // verdict, and keep the assertions live for every other outcome: real
-    // hardware still has to complete, and any OTHER failure still fails.
-    if output.contains(nros_tests::output::WCET_DEAD_COUNTER_MARKER) {
-        nros_tests::unmet!(
-            "the WCET bench refused to measure: {} — QEMU has no DWT cycle \
-             counter, so there is nothing to measure here (issue 0403). Run \
-             this on real hardware.",
-            nros_tests::output::WCET_DEAD_COUNTER_MARKER
-        );
-    }
+/// What the bench MUST do where it cannot measure: refuse, with no numbers.
+///
+/// Issue 0403 decided that a bench whose cycle counter does not count emits
+/// NO measurements and fails, rather than reporting zeros — a zero reads as
+/// "this operation is free", the most optimistic WCET there is, and consuming
+/// it always errs toward "schedulable". QEMU does not implement DWT cycle
+/// counting, so on this emulator the refusal is the contract under test.
+///
+/// This used to be one test that asserted the completion line and turned the
+/// refusal into `unmet!`, so every QEMU lane counted the bench working as
+/// designed as a real failure (issue 1991, row 13). Now the refusal is
+/// asserted: a bench that starts printing a table of zeros here goes red.
+#[test]
+fn qemu_wcet_bench_refuses_without_a_cycle_counter() {
+    let output = run_qemu_wcet_bench();
 
+    assert!(
+        output.contains(nros_tests::output::WCET_DEAD_COUNTER_MARKER),
+        "the WCET bench did not report a dead cycle counter on QEMU. Either it \
+         measured (QEMU now counts DWT cycles, so this test's premise has moved: \
+         enable `wcet_bench_completes_with_a_counting_cycle_counter`) or it \
+         failed some other way. Output:\n{output}"
+    );
+    assert_output_excludes(
+        &output,
+        &[
+            nros_tests::output::WCET_MEASUREMENT_MARKER,
+            nros_tests::output::WCET_COMPLETE_MARKER,
+            "[PASS]",
+        ],
+    );
+    assert_output_contains(&output, &["[FAIL]"]);
+}
+
+/// What the bench must do where it CAN measure: complete, with no failure.
+///
+/// Needs a core whose DWT cycle counter counts, which QEMU's is not, and no
+/// lane runs the bench anywhere else yet — so this is off until one does
+/// (issue 0403). It boots the same QEMU image as the refusal test, so it is
+/// also the test to enable if QEMU ever gains DWT counting.
+#[test]
+#[ignore = "needs a DWT cycle counter that counts; QEMU has none and no hardware lane exists (issue 0403, issue 1991)"]
+fn wcet_bench_completes_with_a_counting_cycle_counter() {
+    let output = run_qemu_wcet_bench();
+
+    assert_output_excludes(&output, &[nros_tests::output::WCET_DEAD_COUNTER_MARKER]);
     // Note: [PASS] is printed after the completion marker but wait_for_output
     // kills the process on that marker, so we may not capture [PASS].
     assert_output_contains(&output, &[nros_tests::output::WCET_COMPLETE_MARKER]);
