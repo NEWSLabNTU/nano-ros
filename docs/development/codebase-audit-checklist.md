@@ -173,7 +173,7 @@ verdict).**
   (the C user surface is rclc-only since phase-501; `nros/*.h` is internal),
   `nros`/`nros-node` pub API vs rclrs, `cmake/NanoRosVerbs.cmake` vs ament verbs.
   The recorded differences have their own review in
-  [phase-515](../roadmap/phase-515-api-stock-shape-review.md); start there.
+  [phase-515](../roadmap/archived/phase-515-api-stock-shape-review.md); start there.
 - **C7 RMW vtable API mirrors rmw.h.** `nros-rmw` / `nros-rmw-cffi`'s vtable
   is our analogue of the official `rmw.h` entry-point set — same concept
   coverage, naming derivable from the rmw counterpart, same ownership/

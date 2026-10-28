@@ -11,7 +11,7 @@ resolved_in: phase-515 R7
 related: [issue-1789, phase-515, issue-2081]
 ---
 
-**Home: [phase-515](../../roadmap/phase-515-api-stock-shape-review.md)** — homed 2026-10-24; listed in that phase's table of open API issues.
+**Home: [phase-515](../../roadmap/archived/phase-515-api-stock-shape-review.md)** — homed 2026-10-24; listed in that phase's table of open API issues.
 
 **Found by** phase-506 W1 ([archived](../../roadmap/archived/phase-506-api-crates-carry-only-the-api.md)). Unhomed since that phase closed, like the other API-parity gaps (#1972–#1978); it is a feature to add, not part of the cleanup that phase did.
 

@@ -10,7 +10,7 @@ resolved: 2026-10-26
 related: [issue-2024, phase-515, phase-488]
 ---
 
-**Home: [phase-515](../../roadmap/phase-515-api-stock-shape-review.md)** (item P6) — the residue issue 2024 left open when it shipped the hosted `rclcpp::ParameterEventHandler`.
+**Home: [phase-515](../../roadmap/archived/phase-515-api-stock-shape-review.md)** (item P6) — the residue issue 2024 left open when it shipped the hosted `rclcpp::ParameterEventHandler`.
 
 ## What is missing
 

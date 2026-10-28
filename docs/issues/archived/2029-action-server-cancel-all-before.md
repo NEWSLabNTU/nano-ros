@@ -10,7 +10,7 @@ resolved: 2026-10-24
 related: [2027, phase-515]
 ---
 
-**Home: [phase-515](../../roadmap/phase-515-api-stock-shape-review.md)** — homed 2026-10-24; listed in that phase's table of open API issues.
+**Home: [phase-515](../../roadmap/archived/phase-515-api-stock-shape-review.md)** — homed 2026-10-24; listed in that phase's table of open API issues.
 
 ## What
 

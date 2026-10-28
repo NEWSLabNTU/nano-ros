@@ -10,7 +10,7 @@ resolved: 2026-10-26
 related: [issue-1942, phase-515, rfc-0054, issue-2088, issue-2089]
 ---
 
-**Home: [phase-515](../../roadmap/phase-515-api-stock-shape-review.md)** (item R7) — the residue of issue 1942.
+**Home: [phase-515](../../roadmap/archived/phase-515-api-stock-shape-review.md)** (item R7) — the residue of issue 1942.
 
 ## What
 
