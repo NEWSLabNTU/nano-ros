@@ -304,6 +304,20 @@ jobs:
           # Issue 1846 — free space after every build, so a disk-full run says
           # which build ate it instead of only where it finally died.
           avail() { echo "  disk: $(df -h --output=avail / | tail -n 1 | tr -d ' ') free"; }
+          # Issue 2130 — the builds below took 106 G free under 49 G and the
+          # job died of disk during the cells. After each build, release the
+          # COMPILE intermediates it left (crate libraries, objects, rustc's
+          # incremental cache) and keep every binary and dep-info file the
+          # cells and their freshness probes read. Roots are `build/` and the
+          # ignored build dirs under `examples/`, asked of git rather than
+          # walked. Never `target/`: the cell step compiles the test binaries
+          # there, and a released rlib would be rebuilt.
+          release() {
+              # shellcheck disable=SC2046  # one dir per word, no spaces in them
+              scripts/ci/release-fixture-intermediates.sh build \
+                  $(git ls-files -o -i --exclude-standard --directory -- examples \
+                      | grep -E '/(build|target)[^/]*/$')
+          }
           avail
           if ! wss="$(python3 scripts/check-interop-verdicts.py --list-passing --runner host --host-workspace-fixtures)"; then
               echo "::error::could not derive the host cells' workspace fixtures"
@@ -319,6 +333,10 @@ jobs:
                   bash scripts/build/workspace-fixtures-build.sh linux --id "$id"
                   avail
               done <<< "$wss"
+              # Once, after every row: the rows share one cargo target per
+              # workspace, so a release between them rebuilds its deps per row.
+              release
+              avail
           fi
           # DERIVED, not written: one `fixtures-build.sh linux <lang> <rmw>` per
           # pair the host cells with a recorded PASS run on. The two builds this
@@ -332,6 +350,7 @@ jobs:
               echo "=== fixtures-build.sh $b ==="
               # `$b` is `linux <lang> <rmw>`: unquoted on purpose, three args.
               bash scripts/build/fixtures-build.sh $b
+              release
               avail
           done <<< "$builds"
           # The `[[compile_check_fixture]]` rows the host cells' tests resolve,
@@ -349,6 +368,7 @@ jobs:
               [ -n "$id" ] || continue
               echo "=== compile-check-fixtures.sh (NROS_FIXTURE_ID=$id) ==="
               NROS_FIXTURE_ID="$id" bash scripts/build/compile-check-fixtures.sh
+              release
               avail
           done <<< "$ccs"
 

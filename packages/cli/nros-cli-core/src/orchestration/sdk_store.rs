@@ -2292,6 +2292,9 @@ fn sh_with_toolchain(args: &[&str], cwd: Option<&Path>, toolchain: Option<&str>)
     if let Some(tc) = toolchain {
         c.env("RUSTUP_TOOLCHAIN", tc);
     }
+    if is_network_fetch(args) {
+        return run_fetch(args, c);
+    }
     // Routed through the step's sink when a session is executing this step
     // (phase-447 E3), so a concurrent install's `tar`/`git`/`make` output
     // lands in plan order instead of interleaving; inherited stdio otherwise.
@@ -2300,6 +2303,104 @@ fn sh_with_toolchain(args: &[&str], cwd: Option<&Path>, toolchain: Option<&str>)
         bail!("`{}` failed ({status})", args.join(" "));
     }
     Ok(())
+}
+
+/// How many times a network fetch runs before its failure stands (issue 2129).
+const FETCH_ATTEMPTS: u32 = 3;
+
+/// The wait before the first retry; it doubles after each. Not measured
+/// against anything: it is long enough for a resolver blip to clear and short
+/// enough that three attempts cost under a minute.
+const FETCH_BACKOFF: std::time::Duration = if cfg!(test) {
+    std::time::Duration::from_millis(10)
+} else {
+    std::time::Duration::from_secs(5)
+};
+
+/// Whether `args` reaches the network: a `git fetch`/`clone`/`ls-remote`, a
+/// `git submodule update` (which fetches), or `curl`. Decided here, inside the
+/// one command runner, so every fetch the store issues gets the retry without a
+/// second spelling at its call site (issue 2129 found eight).
+fn is_network_fetch(args: &[&str]) -> bool {
+    match args.split_first() {
+        Some((&"curl", _)) => true,
+        Some((&"git", rest)) => {
+            // Skip `-C <dir>` and `-c <k=v>` to reach the subcommand.
+            let mut words = rest.iter();
+            while let Some(w) = words.next() {
+                match *w {
+                    "-C" | "-c" => {
+                        words.next();
+                    }
+                    "fetch" | "clone" | "ls-remote" => return true,
+                    "submodule" => return words.any(|w| *w == "update"),
+                    _ => return false,
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+/// Whether a failed fetch's output says the NETWORK failed rather than the
+/// request. A missing tag or commit (`couldn't find remote ref`, `not our
+/// ref`, an HTTP 404) matches none of these and fails at once: retrying it
+/// only delays the real error.
+fn is_transient_network_failure(output: &str) -> bool {
+    const MARKS: &[&str] = &[
+        "Could not resolve host",
+        "Could not resolve proxy",
+        "Temporary failure in name resolution",
+        "Failed to connect to",
+        "Connection timed out",
+        "Operation timed out",
+        "Connection reset by peer",
+        "Connection refused",
+        "The remote end hung up unexpectedly",
+        "early EOF",
+        "RPC failed",
+        "gnutls_handshake() failed",
+        "SSL_ERROR_SYSCALL",
+        "returned error: 408",
+        "returned error: 429",
+        "returned error: 500",
+        "returned error: 502",
+        "returned error: 503",
+        "returned error: 504",
+    ];
+    MARKS.iter().any(|m| output.contains(m))
+}
+
+/// Run a network fetch, retrying it while it fails on the network (issue
+/// 2129). One DNS failure while fetching Corrosion's source stopped a whole
+/// hosted-runner job that had passed on the seven nights before.
+fn run_fetch(args: &[&str], mut c: std::process::Command) -> Result<()> {
+    let line = args.join(" ");
+    let mut wait = FETCH_BACKOFF;
+    for attempt in 1..=FETCH_ATTEMPTS {
+        if attempt > 1 {
+            record_command(args);
+        }
+        let (status, output) = super::step_log::status_keeping_output(&mut c)
+            .wrap_err_with(|| format!("spawn {}", args[0]))?;
+        if status.success() {
+            return Ok(());
+        }
+        if attempt == FETCH_ATTEMPTS || !is_transient_network_failure(&output) {
+            if attempt > 1 {
+                bail!("`{line}` failed ({status}) after {attempt} attempts");
+            }
+            bail!("`{line}` failed ({status})");
+        }
+        super::step_log::say(format!(
+            "nros setup: `{line}` failed on a network error (attempt {attempt}/{FETCH_ATTEMPTS}); retrying in {}s",
+            wait.as_secs_f32()
+        ));
+        std::thread::sleep(wait);
+        wait *= 2;
+    }
+    unreachable!("the last attempt returns")
 }
 
 /// Download `url` to `dest` — the ONE spelling of a store fetch (a prebuilt
@@ -2617,6 +2718,76 @@ mod phase365_tool_dir_tests {
     #[test]
     fn an_unpinned_tool_resolves_to_nothing() {
         assert!(tool_dir(&repo_index(), "no-such-tool-in-the-index").is_none());
+    }
+}
+
+#[cfg(test)]
+mod fetch_retry_tests {
+    //! Issue 2129 — a network fetch retries a network failure, and only that.
+    use super::*;
+
+    /// Run `script` under `run_fetch` and return (result, attempts).
+    fn fetch(script: &str) -> (Result<()>, usize) {
+        let args = ["sh", "-c", script];
+        let mut c = store_command("sh");
+        c.args(&args[1..]);
+        let _ = take_command_log();
+        let r = run_fetch(&args, c);
+        // The first attempt is recorded by `sh_with_toolchain`, not here.
+        (r, take_command_log().len() + 1)
+    }
+
+    #[test]
+    fn a_dns_failure_is_retried_until_the_attempts_run_out() {
+        let (r, attempts) = fetch(
+            "echo \"fatal: unable to access 'https://github.com/x/': Could not resolve host: github.com\" >&2; exit 128",
+        );
+        let err = format!("{:#}", r.unwrap_err());
+        assert_eq!(attempts, FETCH_ATTEMPTS as usize);
+        assert!(err.contains("after 3 attempts"), "{err}");
+    }
+
+    #[test]
+    fn a_missing_ref_fails_at_once() {
+        let (r, attempts) =
+            fetch("echo 'fatal: couldn'\\''t find remote ref v9.9.9' >&2; exit 128");
+        assert!(r.is_err());
+        assert_eq!(attempts, 1);
+    }
+
+    #[test]
+    fn a_fetch_that_recovers_succeeds() {
+        let dir = crate::test_support::scratch_path("fetch_retry_recovers");
+        std::fs::create_dir_all(&dir).unwrap();
+        let mark = dir.join("tried");
+        let _ = std::fs::remove_file(&mark);
+        let script = format!(
+            "if [ -e '{m}' ]; then exit 0; fi; touch '{m}'; echo 'curl: (6) Could not resolve host: x' >&2; exit 6",
+            m = mark.display()
+        );
+        let (r, attempts) = fetch(&script);
+        r.unwrap();
+        assert_eq!(attempts, 2);
+    }
+
+    #[test]
+    fn only_commands_that_reach_the_network_are_fetches() {
+        for yes in [
+            &["curl", "-L", "-o", "f", "u"][..],
+            &["git", "-C", "d", "fetch", "-q", "origin", "v1"],
+            &["git", "clone", "u", "d"],
+            &["git", "-C", "d", "submodule", "update", "--init"],
+        ] {
+            assert!(is_network_fetch(yes), "{yes:?}");
+        }
+        for no in [
+            &["git", "-C", "d", "checkout", "-q", "FETCH_HEAD"][..],
+            &["git", "-C", "d", "submodule", "status"],
+            &["git", "init", "-q", "d"],
+            &["tar", "-xf", "a"],
+        ] {
+            assert!(!is_network_fetch(no), "{no:?}");
+        }
     }
 }
 

@@ -44,13 +44,51 @@ Issue 2100 pruned `host-tests`' gates. This job runs none of those gates. Its
 disk goes to fixtures that the cells still need afterwards, so they cannot
 just be released after a verdict.
 
+## Fix: release compile intermediates after each build
+
+`scripts/ci/release-fixture-intermediates.sh` deletes what was only ever an
+input to a link: `deps/*.rlib` and `*.rmeta`, `incremental/`, and the `*.o`
+files under `CMakeFiles/`. It keeps every binary, `.a`, `.so`, dep-info file
+(`.d`, `.o.d`), build-script `output` and `.ninja_deps`, which is all the
+cells and their freshness probes read. `live-peer.yml` runs it on `build/`
+and the ignored build dirs under `examples/`:
+
+- once after all the workspace rows, which share one cargo target, so a
+  release between them would rebuild their deps for every row;
+- after each `fixtures-build.sh linux <lang> <rmw>`;
+- after each compile-check row.
+
+It never touches `target/`, where the cell step compiles the test binaries.
+
+Measured on this host (2026-10-29), as what a `--dry-run` would release:
+
+| dir | size | intermediates |
+| --- | --- | --- |
+| `build/corrosion-cargo/native` | 81 G | 46.8 G |
+| `build/cargo-fixtures` | 129 G | 59.2 G |
+| `build/cmake-fixtures` | 22 G | 6.8 G |
+
+So roughly half of each cargo tree is crate libraries. The cmake leaves hold
+almost no objects: their bulk is the Rust image under `corrosion-cargo`.
+
+Checked end to end: `linux c zenoh` built fresh, and
+`an_rclc_c_application_writes_a_census_without_a_router` passed. Its leaf and
+its cargo group were then released (6.3 G), and the test still resolved the
+fixture fresh and passed. The freshness probe reads dep-info only, and a
+dep-info path that no longer exists is not an edit event.
+
+Cost: a later build that shares a released target dir recompiles the crates
+it needs. That costs time and changes no artifact.
+
 ## What would close it
 
 A `live-peer` run whose host job reaches its cells' verdict with space left.
-Two levers to measure first:
+The `release` lines in the fixture step print what each release freed.
 
-- narrow `fixtures-build.sh` to the rows the cells resolve, the way the
-  workspace rows already are (`--host-workspace-fixtures`). The script
-  already takes `--id <row>`;
-- release each build's intermediate output (cargo `deps`, cmake objects)
-  once its binaries are placed, keeping only what the cells run.
+The other lever, still unused:
+
+- narrow `fixtures-build.sh` to the rows the cells resolve. Not done, because
+  it cannot be derived the way the workspace rows are: the cells' tests name
+  only 4 `[[fixture]]` row ids as literals. They reach the rest through
+  resolver helpers keyed on a path and an RMW, and most of those rows have
+  no `id`.
