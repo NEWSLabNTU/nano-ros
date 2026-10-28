@@ -53,6 +53,15 @@ const BINS_ALLOWLIST: &[(&str, &str)] = &[
          fixture. Issue 1493.",
     ),
     (
+        "heap-free-cpp-poc-mps2",
+        "issue 2131, the C++ twin of `heap-free-poc-mps2`: built by `just ci \
+         l3` right after it, by the same `cargo build` in the bins dir, and \
+         interrogated by `scripts/check-no-alloc-image.py --tier heap-free`. \
+         Not a `fixtures.toml` row for the same reason: a cross-linked \
+         thumbv7m ELF with no runtime coordinate, consumed by a symbol-table \
+         checker inside the lane that builds it.",
+    ),
+    (
         "in-place-subscriptions",
         "issue 1340 measurement witness: a TRACKED image whose eight \
          in-place subscriptions clear the executor arena's 8 KiB floor, so \

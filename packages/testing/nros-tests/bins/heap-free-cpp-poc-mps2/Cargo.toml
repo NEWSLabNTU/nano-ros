@@ -1,0 +1,46 @@
+[workspace]
+
+[package]
+name = "heap-free-cpp-poc-mps2"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Issue 2131 -- the C++ heap-free-tier image: the whole nros-c + nros-cpp ABI, a C++ program that opens the executor and uses node parameters, linked with NO allocation symbol at all"
+
+[[bin]]
+name = "heap-free-cpp-poc-mps2"
+test = false
+bench = false
+
+[dependencies]
+# The point of this image: `nros-cpp` WITHOUT `alloc`, with the parameter
+# store carved from the executor backing (`.cargo/config.toml`'s
+# `NROS_PARAM_STORE`). `panic-halt` because the C/C++ runtime brings the panic
+# handler and `--no-default-features` drops `panic-platform`.
+#
+# NOT `platform-mps2-an385`: on `nros-c` that feature also turns on
+# `global-allocator`, which defines `__rust_alloc` and fails the gate by
+# construction. The platform comes in below, as `heap-free-poc-mps2` takes it.
+nros-cpp = { path = "../../../../api/nros-cpp", default-features = false, features = [
+    "rmw-cffi",
+    "param-store",
+    "panic-halt",
+] }
+# A DIRECT dependency so its `links = "nros_c"` keys (the C headers, the
+# per-build config header) reach build.rs.
+nros-c = { path = "../../../../api/nros-c", default-features = false }
+# Platform primitives WITHOUT the heap libc shims: `libc-heap` defines
+# `malloc`/`free`, and a DEFINED `malloc` counts as an allocation surface for
+# the gate whether or not anything calls it. `cffi-export` provides the
+# `nros_platform_*` C ABI the runtime calls.
+nros-platform-mps2-an385 = { path = "../../../../platform/nros-platform-mps2-an385", default-features = false, features = ["cffi-export"] }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", default-features = false }
+
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.5"
+
+[build-dependencies]
+cc = "1"
+nros-cc-flags = { path = "../../../../tooling/nros-cc-flags" }
+nros-build-paths = { path = "../../../../tooling/nros-build-paths" }

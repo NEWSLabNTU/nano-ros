@@ -16,6 +16,7 @@ cargo-nano-ros                       1   0     0       0      0
 cmsdk-uart                           4   0     0       0      0
 condvar-contract-threadx-linux       1   0     0       1      0
 contract-monitor                     1   0     0       1      0
+heap-free-cpp-poc-mps2               1   0     0       1      0
 heap-free-poc-mps2                   4   0     0       0      0
 lan9118-smoltcp                      5   4     0       0      0
 loan-copy-count                      4   0     0       5      0

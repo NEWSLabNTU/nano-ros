@@ -1,0 +1,15 @@
+[build]
+target = "thumbv7m-none-eabi"
+
+[target.thumbv7m-none-eabi]
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+rustflags = [
+    "-C", "link-arg=-Tlink.x",
+    "-C", "link-arg=--nmagic",
+]
+
+# Issue 1812's knob: this image builds a parameter store and has no heap, so
+# the store is carved from the executor backing. Without it `nros-node`
+# refuses `param-store` without `alloc` at compile time, by name.
+[env]
+NROS_PARAM_STORE = "1"
