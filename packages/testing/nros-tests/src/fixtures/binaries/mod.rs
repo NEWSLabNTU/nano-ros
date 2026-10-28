@@ -5442,7 +5442,7 @@ pub fn build_zephyr_cortex_m_c_boot_report() -> TestResult<PathBuf> {
 /// relative to the talker as the row states it: the board tail is listed by the
 /// row so the serial delta can merge after it.
 pub const ZEPHYR_CORTEX_M_SERIAL_CONF: &str = "prj.conf;prj-zenoh.conf;\
-     ../../../../cmake/zephyr/mps2-an385.conf;../../../../cmake/zephyr/mps2-an385-serial.conf";
+     ../../../../packages/boards/nros-board-mps2-an385-zephyr/prj.conf;../../../../cmake/zephyr/mps2-an385-serial.conf";
 
 /// Issue 2078 -- the `examples/zephyr/rust/talker` image for `mps2_an385` with
 /// NO IP stack (zenoh over a UART). A link witness: the test reads its ELF.

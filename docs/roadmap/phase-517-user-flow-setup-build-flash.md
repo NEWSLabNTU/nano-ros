@@ -897,7 +897,7 @@ CLI is the side to fix):
   "Flash a real board" is the generic `west flash -d` flow for a board
   package of the reader's own.
 * The `mps2-an385-zephyr` image's network (address, locator) is not supplied
-  by its board package the way the fixture lanes' `cmake/zephyr/mps2-an385.conf`
+  by its board package the way the fixture lanes' `packages/boards/nros-board-mps2-an385-zephyr/prj.conf`
   supplies it; the chapter tells the reader to state it, unmeasured.
 * The two `next_steps` disagreements above (rv-virt QEMU, chapter paths) are CLI fixes.
 

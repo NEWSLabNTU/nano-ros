@@ -448,7 +448,7 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         # explicitly means the next new board gets nothing rather than something
         # wrong — a default that assumes is how this cost an afternoon.
         case "$board" in
-            mps2_an385) conf_tail="$nros_root/cmake/zephyr/mps2-an385.conf" ;;
+            mps2_an385) conf_tail="$nros_root/packages/boards/nros-board-mps2-an385-zephyr/prj.conf" ;;
             native_sim*) conf_tail="$native_sim_nsos_conf" ;;
             *) conf_tail="" ;;
         esac

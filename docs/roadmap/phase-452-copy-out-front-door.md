@@ -18,8 +18,9 @@ repository layout.
 Re-checked against the tree on 2026-10-24: the design still holds. A surface a
 user copies is built by a lane: `check-template-copy-out` runs on
 `merge_group`, and the scaffold gate on the build lane. Of the homed issues,
-1520 is resolved, 1511 is resolved by W6, and 1782 needs a Zephyr workspace to verify its fix
-(none is provisioned on the host that checked).
+1520 is resolved, 1511 is resolved by W6, and 1782 is resolved (2026-10-29: a
+copy of `cpp-port-minimal-publisher` builds `zephyr.elf` with `nros build` in
+`zephyr/`, and `check-template-copy-out` builds it where Zephyr is installed).
 
 The steps AROUND what a user copies (one `nros setup`, `nros build` for a
 board, the platform's own run and flash commands, and a probe per platform
@@ -414,7 +415,7 @@ Homed when every open issue was given a phase. Each issue has a `**Home:**` line
 
 | issue | why it belongs here |
 | --- | --- |
-| [#1782](../issues/1782-port-template-zephyr-leaf-board-not-in-data.md) | A copy-out template names the generic `zephyr` board, so `check-template-copy-out` cannot derive its build. |
+| [#1782](../issues/archived/1782-port-template-zephyr-leaf-board-not-in-data.md) | A copy-out template names the generic `zephyr` board, so `check-template-copy-out` cannot derive its build. **Resolved 2026-10-29**: the templates name `mps2-an385-zephyr`, whose package now owns the QEMU Kconfig tail, and the gate builds the copy with `nros build`. |
 
 ## Issues homed here (2026-10-25)
 

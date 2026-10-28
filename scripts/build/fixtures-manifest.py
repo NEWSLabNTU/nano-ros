@@ -1341,7 +1341,7 @@ def west_leaf_image(entry):
     here and appended to the row's `conf_files`, so the west `CONF_FILE` keeps
     exactly the merge order it had -- `prj.conf`, the image's fragments, then
     the board tail the leaves script adds -- and a board tail still overrides
-    them (measured: mps2-an385.conf and prj-zenoh.conf disagree on six
+    them (measured: the mps2 board's prj.conf and prj-zenoh.conf disagree on six
     symbols). The nano-ros module adds the same fragments itself for a plain
     `west build -- -DNROS_IMAGE=<id>`, skipping any the build already names.
 

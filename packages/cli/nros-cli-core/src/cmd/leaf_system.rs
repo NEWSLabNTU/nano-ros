@@ -324,6 +324,60 @@ pub fn leaf_conf_paths(leaf: &LeafSystem) -> Result<Vec<PathBuf>, String> {
         .collect()
 }
 
+/// Issue 1782 -- the Kconfig fragments the leaf's BOARD PACKAGE carries
+/// (`prj.conf`, `boards/<flat>.conf` beside its `nros-board.toml`), as
+/// absolute paths. They lead `NROS_LEAF_CONF`, ahead of the image's own
+/// fragments: the order `nros build` gives a generated application (issue
+/// 1288), so an image fragment still overrides its board.
+///
+/// Before this, a single-package Zephyr leaf got nothing from its board: the
+/// rule (`board_projection::board_files`) reached a generated workspace
+/// application and a `nano_ros_use_board()` caller, never a leaf. So a board
+/// whose network and entropy Kconfig is the whole of its board support
+/// (`mps2-an385-zephyr`) had to be spelled by every build of every leaf, by
+/// hand, in a path a copied-out leaf does not carry.
+///
+/// Answers nothing for a workspace BRINGUP (`nros build` passes the board's
+/// files there itself), for a board with no `[board.zephyr]` block, for a
+/// board this checkout's catalog does not resolve, and for an application
+/// that calls `nano_ros_use_board()` itself (it already merges them).
+pub fn board_conf_paths(
+    leaf: &LeafSystem,
+    catalog: Option<&BoardCatalog>,
+    root: Option<&std::path::Path>,
+    board: &str,
+) -> Vec<PathBuf> {
+    let leaf_system::Origin::SystemToml(path) = &leaf.origin else {
+        return Vec::new();
+    };
+    let (Some(catalog), Some(root)) = (catalog, root) else {
+        return Vec::new();
+    };
+    let Some(descriptor) = crate::cmd::board_facts::resolve_board(catalog, board) else {
+        return Vec::new();
+    };
+    if descriptor.zephyr.is_none() {
+        return Vec::new();
+    }
+    let calls_use_board = path
+        .parent()
+        .and_then(|d| std::fs::read_to_string(d.join("CMakeLists.txt")).ok())
+        .is_some_and(|cmake| {
+            cmake
+                .lines()
+                .map(|l| l.split('#').next().unwrap_or(""))
+                .any(|l| l.contains("nano_ros_use_board("))
+        });
+    if calls_use_board {
+        return Vec::new();
+    }
+    let Some(dir) = crate::orchestration::board_projection::descriptor_dir(descriptor, root) else {
+        return Vec::new();
+    };
+    crate::orchestration::board_projection::board_files(&descriptor.west_build_board(board), &dir)
+        .conf_files()
+}
+
 /// `nros ws qemu-nic`.
 #[derive(Debug, clap::Args)]
 pub struct QemuNicArgs {
@@ -498,7 +552,15 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
         Some(out) => write_image_env(out, &env_rows)?,
         None => None,
     };
-    let conf = leaf_conf_paths(&leaf).map_err(|e| eyre!(e))?;
+    // Issue 1782 -- the board package's fragments first, then the image's.
+    // Not under `--board`: that answers for ANOTHER board (the host census),
+    // whose build is not a Zephyr one.
+    let mut conf = if args.board.is_none() {
+        board_conf_paths(&leaf, catalog.as_ref(), root.as_deref(), &board)
+    } else {
+        Vec::new()
+    };
+    conf.extend(leaf_conf_paths(&leaf).map_err(|e| eyre!(e))?);
     // Issue 2043 -- `--board` answers for ANOTHER board than the image's (the
     // host census build of an RTOS leaf), and the image's board network files
     // are its own board's: the host owns the host's network. Resolving them
@@ -793,6 +855,68 @@ mod tests {
 
     /// The deploy token comes from the board catalog, so the in-tree boards
     /// map to the platform module axis the C/C++ leaves have always named.
+    /// Issue 1782 -- a leaf naming a Zephyr board PACKAGE gets that package's
+    /// own Kconfig; the generic `zephyr` board carries none; a bringup and an
+    /// application that calls `nano_ros_use_board()` itself get nothing added.
+    #[test]
+    fn a_zephyr_leaf_gets_its_board_packages_conf() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let catalog = BoardCatalog::load(&root).expect("in-tree board catalog");
+        let td = leaf_dir(
+            "[system]\nname = \"t\"\nrmw = \"zenoh\"\n\n\
+             [image.zephyr]\nboard = \"mps2-an385-zephyr\"\n",
+        );
+        let leaf = leaf_system::read(td.path()).unwrap().unwrap();
+        let got = board_conf_paths(&leaf, Some(&catalog), Some(&root), "mps2-an385-zephyr");
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert!(
+            got[0].ends_with("nros-board-mps2-an385-zephyr/prj.conf"),
+            "{got:?}"
+        );
+        let text = std::fs::read_to_string(&got[0]).unwrap();
+        assert!(
+            text.contains("CONFIG_TEST_RANDOM_GENERATOR=y"),
+            "the board's tail"
+        );
+
+        assert!(
+            board_conf_paths(&leaf, Some(&catalog), Some(&root), "zephyr").is_empty(),
+            "the generic board package carries no Kconfig"
+        );
+        assert!(
+            board_conf_paths(&leaf, Some(&catalog), Some(&root), "mps2-an385-freertos").is_empty(),
+            "a board with no [board.zephyr] block answers nothing"
+        );
+
+        std::fs::write(
+            td.path().join("CMakeLists.txt"),
+            "nano_ros_use_board(mps2-an385-zephyr)\nfind_package(Zephyr)\n",
+        )
+        .unwrap();
+        assert!(
+            board_conf_paths(&leaf, Some(&catalog), Some(&root), "mps2-an385-zephyr").is_empty(),
+            "nano_ros_use_board() already merges them"
+        );
+
+        let bringup = tempfile::tempdir().unwrap();
+        std::fs::write(
+            bringup.path().join("system.toml"),
+            "[image.z]\nboard = \"mps2-an385-zephyr\"\n",
+        )
+        .unwrap();
+        let b = leaf_system::read_image(bringup.path(), "z")
+            .unwrap()
+            .unwrap();
+        assert!(
+            board_conf_paths(&b, Some(&catalog), Some(&root), "mps2-an385-zephyr").is_empty(),
+            "nros build owns a bringup's board files"
+        );
+    }
+
     #[test]
     fn the_deploy_token_is_the_boards_platform() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

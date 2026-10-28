@@ -672,7 +672,7 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   manifest; `cp -al` (git never writes in place) gives real dirs at no disk cost.
 - **Zephyr merges Kconfig fragments LAST-WINS, so a leaf value a later fragment
   also sets is DEAD** (issue 0876). `CONFIG_HEAP_MEM_POOL_SIZE=0` in the c/talker
-  conf was measured on mps2/an385 — where `cmake/zephyr/mps2-an385.conf` merges
+  conf was measured on mps2/an385 — where `packages/boards/nros-board-mps2-an385-zephyr/prj.conf` merges
   after it and sets `131072`, so it changed nothing there — and its only live
   effect was making every native_sim talker image fail to COMPILE
   (`nsos_sockets.c` asserts `> 0`; Zephyr's own offloaded-socket driver

@@ -311,8 +311,11 @@ What a workspace image still has to state:
   Zephyr, `[image.<id>.knobs.zephyr] heap_size`. A Zephyr heap that runs out
   while a subscription is created reports `ConnectionFailed`, not an
   out-of-memory.
-- **The Zephyr board's QEMU network fragment,** which a copy names in
-  `os_config` ([issue 1782](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1782-port-template-zephyr-leaf-board-not-in-data.md)).
+- **The Zephyr board.** Name the board package, `board = "mps2-an385-zephyr"`,
+  not the generic `zephyr` (which lowers to `native_sim`). The package carries
+  the board's QEMU network, sizing and entropy Kconfig, so the leaf names only
+  its own `os_config` fragments
+  ([issue 1782](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/archived/1782-port-template-zephyr-leaf-board-not-in-data.md)).
 
 ## What "just works" without source edits
 

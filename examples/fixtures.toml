@@ -5559,7 +5559,7 @@ board = "mps2_an385"
 west_role = "talker-serial"
 west_build_name = "build-cortex-m-rust-talker-serial-zenoh"
 west_zenoh_locator = "serial/uart@40005000#baudrate=115200"
-conf_files = ["prj.conf", "prj-zenoh.conf", "../../../../cmake/zephyr/mps2-an385.conf", "../../../../cmake/zephyr/mps2-an385-serial.conf"]
+conf_files = ["prj.conf", "prj-zenoh.conf", "../../../../packages/boards/nros-board-mps2-an385-zephyr/prj.conf", "../../../../cmake/zephyr/mps2-an385-serial.conf"]
 
 # Issue 2084 -- CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM must move the tier stack pool
 # (`nros_tier_stacks`) as well as the task stacks. The image spawns one level

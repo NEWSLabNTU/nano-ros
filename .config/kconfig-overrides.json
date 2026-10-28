@@ -2,7 +2,7 @@
   "_comment": "Kconfig assignments a LATER fragment in the same CONF_FILE overrides \u2014 see scripts/check-kconfig-overridden-values.py. Each entry is a line that does NOTHING for the listed rows. Regenerate with --update, and say in the commit why the override is correct.",
   "overrides": [
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/c/talker/prj-zenoh.conf",
       "dead_value": "65536",
       "live_value": "131072",
@@ -13,7 +13,7 @@
       "symbol": "CONFIG_HEAP_MEM_POOL_SIZE"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/c/talker/prj-zenoh.conf",
       "dead_value": "16384",
       "live_value": "131072",
@@ -24,7 +24,7 @@
       "symbol": "CONFIG_MAIN_STACK_SIZE"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/c/talker/prj-zenoh.conf",
       "dead_value": "64",
       "live_value": "32",
@@ -35,7 +35,7 @@
       "symbol": "CONFIG_NET_BUF_RX_COUNT"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/c/talker/prj-zenoh.conf",
       "dead_value": "64",
       "live_value": "32",
@@ -46,7 +46,7 @@
       "symbol": "CONFIG_NET_BUF_TX_COUNT"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/c/talker/prj-zenoh.conf",
       "dead_value": "32",
       "live_value": "16",
@@ -57,7 +57,7 @@
       "symbol": "CONFIG_NET_PKT_RX_COUNT"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/c/talker/prj-zenoh.conf",
       "dead_value": "32",
       "live_value": "16",
@@ -98,7 +98,7 @@
       "symbol": "CONFIG_NET_LOG"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/cpp/talker/prj-zenoh.conf",
       "dead_value": "65536",
       "live_value": "131072",
@@ -108,7 +108,7 @@
       "symbol": "CONFIG_HEAP_MEM_POOL_SIZE"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/cpp/talker/prj-zenoh.conf",
       "dead_value": "16384",
       "live_value": "131072",
@@ -118,7 +118,7 @@
       "symbol": "CONFIG_MAIN_STACK_SIZE"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/cpp/talker/prj-zenoh.conf",
       "dead_value": "64",
       "live_value": "32",
@@ -128,7 +128,7 @@
       "symbol": "CONFIG_NET_BUF_RX_COUNT"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/cpp/talker/prj-zenoh.conf",
       "dead_value": "64",
       "live_value": "32",
@@ -138,7 +138,7 @@
       "symbol": "CONFIG_NET_BUF_TX_COUNT"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/cpp/talker/prj-zenoh.conf",
       "dead_value": "32",
       "live_value": "16",
@@ -148,7 +148,7 @@
       "symbol": "CONFIG_NET_PKT_RX_COUNT"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/cpp/talker/prj-zenoh.conf",
       "dead_value": "32",
       "live_value": "16",
@@ -158,7 +158,7 @@
       "symbol": "CONFIG_NET_PKT_TX_COUNT"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/rust/talker/prj-zenoh.conf",
       "dead_value": "16384",
       "live_value": "131072",
@@ -169,7 +169,7 @@
       "symbol": "CONFIG_MAIN_STACK_SIZE"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/rust/talker/prj-zenoh.conf",
       "dead_value": "64",
       "live_value": "32",
@@ -180,7 +180,7 @@
       "symbol": "CONFIG_NET_BUF_RX_COUNT"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/rust/talker/prj-zenoh.conf",
       "dead_value": "64",
       "live_value": "32",
@@ -191,7 +191,7 @@
       "symbol": "CONFIG_NET_BUF_TX_COUNT"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/rust/talker/prj-zenoh.conf",
       "dead_value": "32",
       "live_value": "16",
@@ -202,7 +202,7 @@
       "symbol": "CONFIG_NET_PKT_RX_COUNT"
     },
     {
-      "beaten_by": "cmake/zephyr/mps2-an385.conf",
+      "beaten_by": "packages/boards/nros-board-mps2-an385-zephyr/prj.conf",
       "dead_in": "examples/zephyr/rust/talker/prj-zenoh.conf",
       "dead_value": "32",
       "live_value": "16",

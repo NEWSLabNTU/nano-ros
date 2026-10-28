@@ -208,8 +208,10 @@ notes = "phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` fea
 # re-keyed this registry by (crate, matrix_platform): one crate, two witnesses,
 # two different promises. The tier-1 row above is native_sim; this one is a real
 # 32-bit Cortex-M3 running Zephyr's OWN IP stack over `eth_smsc911x`. There is NO
-# board crate — the board is `cmake/zephyr/mps2-an385.conf`, which is RFC-0064's
-# whole thesis working as intended.
+# board crate — the board is a conf bundle, `nros-board-mps2-an385-zephyr`'s
+# `prj.conf` (a descriptor + Kconfig, no Rust; it was `cmake/zephyr/
+# mps2-an385.conf` until issue 1782), which is RFC-0064's whole thesis working
+# as intended.
 [[board]]
 crate = "nros-board-zephyr"
 matrix_platform = "ZephyrQemuCortexM"

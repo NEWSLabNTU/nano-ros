@@ -73,10 +73,17 @@ for a microcontroller (phase-482 W3). Each one is the whole port for its
 platform: a `CMakeLists.txt`, the package's `package.xml`, a `system.toml`
 naming the board, and on Zephyr the Kconfig fragments.
 
+On Zephyr, `system.toml` names the board package `mps2-an385-zephyr`, which
+lowers to `west build -b mps2_an385` and carries the board's own Kconfig (the
+in-kernel IP stack on QEMU's lan9118, the Slirp address, sizing and entropy).
+The image's `os_config` adds `prj-zenoh.conf`. So a copy of this template
+names nothing outside itself; `nros build` in `zephyr/` is the whole build
+(issue 1782).
+
 | directory | target | run with |
 | --- | --- | --- |
 | `mps2-an385-freertos/` | FreeRTOS on MPS2-AN385 (Cortex-M3), QEMU | `qemu-system-arm -M mps2-an385 -kernel build/minimal_publisher -nic user,model=lan9118,net=192.0.3.0/24,host=192.0.3.1` |
-| `zephyr/` | Zephyr on `mps2/an385` (Cortex-M3), QEMU | `west build -b mps2/an385 zephyr -- -DCONF_FILE="prj.conf;prj-zenoh.conf;<nano-ros>/cmake/zephyr/mps2-an385.conf"` |
+| `zephyr/` | Zephyr on `mps2/an385` (Cortex-M3), QEMU | `nros build` in `zephyr/`, then the `west build -d … -t run` line it prints (QEMU) |
 
 The line that makes it work is
 

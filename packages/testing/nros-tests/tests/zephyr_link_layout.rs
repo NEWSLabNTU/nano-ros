@@ -213,7 +213,7 @@ fn serial_only_rust_image_links_without_ip_stack() {
             elf.defined(stack).is_none(),
             "{}: defines `{stack}` -- the image has an IP stack, so it no longer \
              witnesses a serial-only link (check the row's conf order: \
-             mps2-an385-serial.conf must merge after mps2-an385.conf)",
+             mps2-an385-serial.conf must merge after the board's prj.conf)",
             elf_path.display()
         );
     }

@@ -72,7 +72,7 @@ const BOOT_BUDGET: Duration = Duration::from_secs(90);
 const PUBLISH_BUDGET: Duration = Duration::from_secs(15);
 
 /// Zephyr's `net_config` announcing the static address from
-/// `cmake/zephyr/mps2-an385.conf`. This is the platform's distinguishing
+/// `packages/boards/nros-board-mps2-an385-zephyr/prj.conf`. This is the platform's distinguishing
 /// evidence: it can only be printed by the in-kernel IP stack driving a real
 /// ethernet controller, which is precisely what `native_sim`'s offloaded
 /// sockets never do.
