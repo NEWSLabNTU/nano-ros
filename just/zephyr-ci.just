@@ -200,25 +200,40 @@ build-fixtures:
         if [ "${NROS_ZEPHYR_GENERATE_RUST_FORCE:-0}" = "1" ] || ! nros_pkg_sync_stamp_fresh "$pkg" "$stamp" || [ ! -d "$dir/generated" ]; then
             echo "    sync: $dir"
             mkdir -p "$dir/build"
-            # issue 0318 — `--no-metadata`, same reason as the `build-one`
-            # rust/* branch in zephyr-dev.just, which is where that fix landed.
-            # This second call site was missed, so the fixture lane still hit
-            # it: the source-metadata refresh compiles a host probe that
-            # path-deps the example, dragging in the `zephyr` crate, whose
-            # build.rs needs `DOTCONFIG` from a Zephyr cmake configure that has
-            # not run and cannot (this sync is its prerequisite). The probe is
-            # INAPPLICABLE to a Zephyr leaf, not merely slow. Codegen — the
-            # reason this preflight exists — is unaffected.
-            "$nros_cli" sync --no-metadata "$dir"
+            # Issue 2133 -- WITH the source-metadata probe. Issue 0318 passed
+            # `--no-metadata` here because the probe then compiled the leaf
+            # itself and dragged in the `zephyr` crate. Issue 1603 moved each
+            # component into a host-buildable `<leaf>/node/` package, and a
+            # zephyr entry's own component is skipped as deploy-bound (the
+            # `build-one` branch in zephyr-dev.just dropped the flag for that
+            # reason). The flag outlived its cause and cost the probe
+            # sidecars `nros ws west-leaf-sizing` composes from, so every leaf
+            # this lane built sized its pools from crate defaults -- the XRCE
+            # talker's session allocation then exceeded the heap at boot.
+            "$nros_cli" sync "$dir"
             NROS_REPO_DIR="$(pwd)" nros_codegen_stamp_write "$dir"
             # Record the CONTENT the sync was run against, so an identical
             # package.xml reads as fresh however its mtime moved.
             nros_pkg_sync_stamp_current "$pkg" > "$stamp"
+        else
+            # Issue 2133 -- the stamp covers the package.xml only, so a node
+            # SOURCE edit would leave the probe sidecars describing old code.
+            # The probe keeps its own freshness ("N already current", ~0.1 s,
+            # no file rewritten), so asking it every time is cheap and is the
+            # only reader that knows the source moved.
+            "$nros_cli" sync "$dir" >/dev/null
         fi
     # `git ls-files`, not `find` — a package.xml is tracked, so this is an index
     # lookup. See scripts/regenerate-bindings.sh for the measurement that motivated
     # the rule (a pruned scan of examples/ cost 7m36s for what git returns in 0.8s).
-    done < <(git ls-files 'examples/zephyr/rust/*/package.xml' | sort)
+    # Issue 2133 -- `:(glob)` so `*` stops at a `/`: LEAVES only. A plain
+    # pathspec `*` crosses directories and also matched each leaf's
+    # `node/package.xml`, and a sync run IN the node rewrites its tracked
+    # `Cargo.toml` (`../generated/<pkg>` -> `generated/<pkg>`) until the leaf's
+    # own sync, sorted after it, writes it back. The leaf's sync already
+    # covers the node: it codegens the `generated/` the node path-deps and
+    # writes the node's probe sidecar.
+    done < <(git ls-files ':(glob)examples/zephyr/rust/*/package.xml' | sort)
     # Phase 140 — Zephyr C/C++ DDS examples call nros_generate_interfaces()
     # which needs nros-codegen on the host. Cross builds (every Zephyr
     # board target) can't build it with the cross toolchain, so build
