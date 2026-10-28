@@ -1,15 +1,17 @@
 ---
 id: 2095
 title: "Every Zephyr native_sim C++ image fails to link: two Rust staticlibs each carry compiler-builtins' `__popcountdi2`, and the second is whole-archived"
-status: open
+status: resolved
 type: bug
 area: [zephyr, build, cmake, link]
 severity: high
 found: 2026-10-27
 related: [phase-466, 2032, 1645, 1664]
+resolved: 2026-10-29
+resolved_in: "duplicate of 2092 (44eab11c22)"
 ---
 
-**Home: [phase-466](../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-27. It stops the
+**Home: [phase-466](../../roadmap/phase-466-scheduled-lanes-produce-verdicts.md)**, since 2026-10-27. It stops the
 Zephyr family of `run-matrix` and the tier-2 nightly. It was hidden behind
 [issue 2032](2032-zephyr-kernel-arm-lacks-lock-storage-probes.md) until that
 issue's second route was fixed.
@@ -102,3 +104,19 @@ A tier-2 nightly and a scheduled `run-matrix` in which the Zephyr
 issues 1645 and 1664 removed it from the tree. The likelier shapes are one
 Rust runtime archive per image, or an order in which the whole-archived FFI
 staticlib is the one that defines compiler-builtins.
+
+## Closed (2026-10-29): duplicate of issue 2092
+
+Issue 2092 was filed for the same defect (an independent sighting) and
+fixed it in `44eab11c22`. `nros_second_staticlib_weaken_command()` weakens
+every global of the per-image message-FFI staticlib except its own
+`nros_cpp_*` surface, so `libnros_cpp.a` is the one definition of
+compiler-builtins' intrinsics.
+
+Verified on main `e0f81b4ac`:
+- Locally, all six native_sim C++ zenoh leaves and all six C++ xrce leaves
+  link with no `multiple definition`, and their nine e2e cells pass.
+- In CI, tier-2 nightly 40648207713 built and PASSED the three Zephyr C++
+  xrce cells. That image class failed on this exact symbol after issue
+  2032's fix. The nightly's lane did not select the zenoh C++ coordinates,
+  so they have no CI result here; the local run covers them.

@@ -36,9 +36,11 @@ feature (`NanoRosRuntimeCrate.cmake`). The Zephyr lane now does the same.
 **Done when** a tier-2 nightly builds `build-ws-mixed-entry-zenoh` and the
 Zephyr mixed cell of `entry_e2e` runs.
 
-### R2 — Zephyr's kernel arm defines the whole lock ABI
+### R2 — Zephyr's kernel arm defines the whole lock ABI — DONE 2026-10-29
 
-[Issue 2032](../issues/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md).
+[Issue 2032](../issues/archived/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md),
+resolved: tier-2 nightly 40648207713 on `e0f81b4ac` built the C++ xrce
+leaves and passed their cells.
 
 The Zephyr port's non-`CONFIG_POSIX_API` arm left eight `<nros/platform.h>`
 functions undefined. The native level runner (phase-509 P10) calls one of
@@ -140,7 +142,7 @@ stood before #2579, the gate reports the umbrella line issue 2010 was about.
 | Issue | Item | Severity |
 | --- | --- | --- |
 | [2010](../issues/2010-zephyr-mixed-entry-nros-c-has-no-panic-handler.md) | R1 | medium |
-| [2032](../issues/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md) | R2 | medium |
+| [2032](../issues/archived/2032-zephyr-kernel-arm-lacks-lock-storage-probes.md) | R2 | medium |
 | [1941](../issues/1941-zephyr-rust-leaf-locks-drift-after-seed.md) | R3 | medium |
 | [1991](../issues/1991-tier2-nightly-keeps-no-junit-eleven-reds-unread.md) | R4 | medium |
 | [1976](../issues/1976-zenoh-reconnect-resume-exceeds-75s-in-queue.md) | R5 | medium |
