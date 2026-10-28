@@ -343,6 +343,13 @@ mod readiness_tests {
     /// returning `Ok` proves nothing unless it can also return `Err`.
     #[test]
     fn a_process_that_never_binds_times_out() {
+        // Lease FIRST (issue 2132): the lease can take seconds on a loaded
+        // host, and a stand-in spawned before it can exit during the wait,
+        // which turns this never-bound case into the exited case. Leased, so
+        // no concurrent fixture can bind the port under us and make this pass
+        // for the wrong reason.
+        let lease = crate::port_lease::lease_port(crate::port_lease::Transport::Udp)
+            .expect("lease a udp port");
         let mut cmd = std::process::Command::new("sleep");
         // Its own process group, so the Drop below reaps it immediately instead
         // of waiting the child out — a 30-second unit test was the first
@@ -355,10 +362,8 @@ mod readiness_tests {
             .stderr(Stdio::null())
             .spawn()
             .expect("spawn the stand-in child");
-        // A leased port so no concurrent fixture can bind it under us and make
-        // this pass for the wrong reason.
-        let lease = crate::port_lease::lease_port(crate::port_lease::Transport::Udp)
-            .expect("lease a udp port");
+        // Nothing slow may sit between the spawn and the probe: the stand-in
+        // lives 5 s and the probe gives up after 300 ms.
         let mut agent = XrceAgent {
             handle,
             port: lease.port(),

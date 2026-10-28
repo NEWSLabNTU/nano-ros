@@ -1,12 +1,13 @@
 ---
 id: 2132
 title: "The XRCE Agent readiness unit test spawns its `sleep 5` stand-in before leasing a port, so a slow lease turns the never-bound case into the exited case"
-status: open
+status: resolved
 type: bug
 area: [testing, xrce]
 severity: low
 found: 2026-10-29
 related: [1932]
+resolved: 2026-10-29
 ---
 
 ## What
@@ -38,3 +39,20 @@ the timeout must say the port was never bound, got: Other(ProcessFailed("XRCE Ag
 Lease the port BEFORE spawning the stand-in. A longer `sleep` would also work
 (the process-group Drop reaps it at once), but it only moves the race. The
 ordering fix removes it.
+
+## Resolution
+
+The test now leases the port before it spawns the stand-in, and nothing
+slow sits between the spawn and the probe. The lease's duration no longer
+eats into the stand-in's 5 s life.
+
+Measured (`cargo nextest run --lib readiness_tests`, nros-tests):
+
+- Negative control: a 6 s `thread::sleep` placed where a slow lease lands.
+  With the old order (spawn, lease, probe) the test fails with the exact
+  message above (`XRCE Agent exited before binding udp4 port … (exit
+  status: 0)`). With the new order (lease, spawn, probe) it passes in 6.3 s.
+- Solo: 3/3 runs pass, 0.32 s.
+- Under load (2x nproc `yes` burners): 10/10 runs of all three readiness
+  tests pass. CPU load alone did not slow the lease on this host, so the
+  slow-lease control above is the real evidence.
