@@ -51,7 +51,9 @@ int main(int argc, char** argv) {
     if (!node.create_wall_timer(timer, 100, on_tick, &ticks).ok()) {
         return 6;
     }
-    rclcpp::spin_once(10);
+    if (!rclcpp::spin_once(10).ok()) {
+        return 8;
+    }
     rclcpp::shutdown();
     return rate == 42 ? 2 : 7;
 }
