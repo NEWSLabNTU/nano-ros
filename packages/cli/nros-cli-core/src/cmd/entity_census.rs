@@ -581,6 +581,47 @@ fn take_census(args: TakeArgs) -> Result<()> {
     })
 }
 
+/// Issue 2137 -- `nros build`'s own `take`, for a CROSS image, before its
+/// plan generates anything.
+///
+/// The same verb a person would type (`take --image <qual>`), so it does
+/// nothing when there is nothing to do: a model with no contract, or a census
+/// that is already fresh. It never fails the build itself. The CHECK that
+/// follows (stage 4, or the cmake configure) is what decides, under the
+/// bringup's `[census]` policy -- so a take that could not run (no host
+/// sibling, a host build that failed) leaves the census missing and the check
+/// refuses or warns exactly as it did before this ran, with this take's reason
+/// printed above it.
+pub(crate) fn take_for_build(root: &Path, qualified: &str, offline: bool) {
+    let args = TakeArgs {
+        image: Some(qualified.to_string()),
+        leaf: None,
+        workspace: Some(root.to_path_buf()),
+        offline,
+        plan: false,
+        timeout_secs: 60,
+    };
+    if let Err(e) = take_census(args) {
+        eprintln!(
+            "nros build:   `{qualified}`: could not take its census ({e:#}); the census \
+             check decides under the bringup's `[census]` policy"
+        );
+    }
+}
+
+/// Issue 2137 -- [`take_for_build`] for a STANDALONE C/C++ leaf whose
+/// components take their entities from its census (`take --leaf`). Same
+/// contract: a take that cannot run is reported, and the leaf's configure
+/// decides.
+pub(crate) fn take_leaf_for_build(leaf: &Path) {
+    if let Err(e) = take_leaf_census(leaf, 60) {
+        eprintln!(
+            "nros build:   {}: could not take its census ({e:#}); its configure decides",
+            leaf.display()
+        );
+    }
+}
+
 /// Issue 1419 -- the cargo road's census check, called from `nros build`
 /// stage 4 for a CROSS cargo image.
 ///

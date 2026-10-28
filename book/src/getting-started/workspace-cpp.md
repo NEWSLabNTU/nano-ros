@@ -219,12 +219,12 @@ and the contract omits refuses as `missing-in-contract` (not waivable: it is
 the short pool); one the contract declares and the code never creates refuses
 as `phantom` (waivable per row under `[census.waive]`).
 
-The configure never builds the native image itself, so a cross build takes the
-census first:
+The configure never builds the native image itself. `nros build` does: before
+it plans a cross image, it takes that image's census (issue 2137). A build
+driven some other way (a hand-run `west build` or `cmake`) takes it first:
 
 ```console
 $ nros ws entity-census take --image demo_bringup:zephyr
-$ nros build zephyr
 ```
 
 `take` does nothing when there is nothing to do — a model with no contract, or a
