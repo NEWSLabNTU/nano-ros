@@ -178,6 +178,62 @@ pub fn lease_port(transport: Transport) -> io::Result<PortLease> {
     }))
 }
 
+/// Issue 2125 — wait for a port the CALLER names, rather than lease a fresh one.
+///
+/// A QEMU or host-sim image bakes its router's port at build time, so two
+/// tests that run the same image need the same port. Before this, the second
+/// router start found the first one listening, read it as an orphan and killed
+/// it (`zenohd_router::kill_listeners_on_port`), so whichever test started
+/// first lost its router mid-run. Both failed: one with a node that could not
+/// declare its entities, the other with a router log the newcomer had
+/// truncated. A live holder is not an orphan, and the lock says which it is:
+/// a dead process holds no `flock`.
+///
+/// Waits up to `budget` for the holder to let go. `Ok(None)` means this
+/// PROCESS already holds the port (a `start_unique` that leased it and then
+/// started on it, or one test starting a second router on its own port) —
+/// the caller proceeds as it did before, without a second lease.
+pub fn wait_for_port(
+    transport: Transport,
+    port: u16,
+    budget: std::time::Duration,
+) -> io::Result<Option<PortLease>> {
+    let dir = lease_dir();
+    std::fs::create_dir_all(&dir)?;
+    let lock = dir.join(format!("{}-{port}.lock", transport.tag()));
+    let started = std::time::Instant::now();
+    let mut announced = false;
+    loop {
+        if let Some(held) = claim(&lock)? {
+            return Ok(Some(PortLease {
+                port,
+                lock,
+                _held: held,
+            }));
+        }
+        let holder = std::fs::read_to_string(&lock).unwrap_or_default();
+        let holder = holder.trim();
+        if holder == std::process::id().to_string() {
+            return Ok(None);
+        }
+        if started.elapsed() >= budget {
+            return Err(io::Error::other(format!(
+                "{} port {port} is still held by pid {holder} after {budget:?} — another \
+                 test runs an image baked with this port; put the two in one test-group \
+                 or give one of them its own port",
+                transport.tag()
+            )));
+        }
+        if !announced {
+            eprintln!(
+                "port {port}: held by pid {holder} (another test on the same baked port) — waiting up to {budget:?}"
+            );
+            announced = true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
 /// Try to take `lock`. `Some(file)` means the caller now owns it for as long as
 /// it keeps `file` open; `None` means someone else holds it.
 #[cfg(unix)]
@@ -299,6 +355,56 @@ mod tests {
         );
         drop(holder);
         let _ = std::fs::remove_file(&lock);
+    }
+
+    /// Issue 2125 — a named port held by another live owner is waited for,
+    /// and handed over once the holder lets go; one this process already
+    /// holds is not waited for at all.
+    #[cfg(unix)]
+    #[test]
+    fn a_named_port_waits_for_its_holder_and_is_handed_over() {
+        let port = Transport::Tcp.suggest().expect("suggest");
+        let lock = lease_dir().join(format!("tcp-{port}.lock"));
+        // Another process's claim, as far as the pid check can tell.
+        let holder = claim(&lock).expect("claim").expect("first claim wins");
+        std::fs::write(&lock, "1").expect("name a foreign holder");
+        let released = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            let _ = std::fs::remove_file(&lock);
+            drop(holder);
+        });
+        let t0 = std::time::Instant::now();
+        let got = wait_for_port(Transport::Tcp, port, std::time::Duration::from_secs(10))
+            .expect("wait")
+            .expect("handed over once the holder let go");
+        assert!(
+            t0.elapsed() >= std::time::Duration::from_millis(300),
+            "took a port its holder still had"
+        );
+        released.join().expect("thread");
+        // Held by THIS process now: no wait, and no second lease.
+        assert!(
+            wait_for_port(Transport::Tcp, port, std::time::Duration::ZERO)
+                .expect("own port")
+                .is_none()
+        );
+        drop(got);
+    }
+
+    /// A holder that never lets go is a failure that names it, not a hang.
+    #[cfg(unix)]
+    #[test]
+    fn a_named_port_held_past_the_budget_fails_naming_the_holder() {
+        let port = Transport::Tcp.suggest().expect("suggest");
+        let lock = lease_dir().join(format!("tcp-{port}.lock"));
+        let _ = std::fs::create_dir_all(lease_dir());
+        let holder = claim(&lock).expect("claim").expect("first claim wins");
+        std::fs::write(&lock, "1").expect("name a foreign holder");
+        let err = wait_for_port(Transport::Tcp, port, std::time::Duration::from_millis(300))
+            .expect_err("held past its budget");
+        assert!(err.to_string().contains("held by pid 1"), "{err}");
+        let _ = std::fs::remove_file(&lock);
+        drop(holder);
     }
 
     /// Dropping a lease frees the port for the next caller, or a long sweep
