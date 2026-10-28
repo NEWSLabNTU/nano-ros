@@ -101,3 +101,36 @@ ones), so it says nothing about when this began.
 - Job: 122062645403, `tier 2 nightly (pairwise cover)`.
 
 The failing test was the same one as the second sighting, `freertos_qemu an536_cyclonedds_cpp_entry_delivers_within_the_dds_heap_default`. It panicked at `freertos_qemu.rs:157` on all three tries (TRY 3 at 120.3 s). It was one of the job's three real failures.
+
+## The tier-2 sightings are a different defect, now fixed (2026-10-29)
+
+Sightings 2 and 3 are not this issue. Both panicked at `freertos_qemu.rs:157`,
+which is the `no nros: heap peak line` panic. The delivery assertion above it
+passed. And `Received: 0` is the in-image listener's FIRST sample, whose counter
+starts at 0; it does not mean that nothing arrived.
+
+Reproduced 3 of 3 on a fixture rebuilt from `e0f81b4ac5` (2026-10-29): over 100
+`Received:` lines per run, then the 120 s timeout. gdb on QEMU's gdbstub showed
+the cause:
+
+- The boot reporter `stkpeak` (`freertos_c_entry.c`) was created at priority 0,
+  where it shares time slices with the idle task.
+- The idle hook is a WFI. Under `-icount shift=auto` that left the reporter so
+  few instructions per tick that one `uxTaskGetStackHighWaterMark` call, over
+  13,461 free words, ran from tick 7180 to tick 36330: ~29 s of guest time per
+  sample.
+- The task was READY the whole time (priority-0 ready list intact, scheduler not
+  suspended, time slicing compiled on), so nothing was hung. It was starved.
+
+Fixed by creating it at priority 1, still below the app (3) and the transport
+band (4), as the POSIX entry already did (`tskIDLE_PRIORITY + 1`). The Rust
+entry's `heappeak` reporter had the same priority 0 and moved with it. After the
+fix, the cell passes 3 of 3 in 28 s.
+
+## Status of the PRESENTATION rejection
+
+It is not reproduced since the first sighting. The next live-peer run, 40631028259
+on main `e0f81b4ac5` (2026-10-28), passed
+`nros_freertos_an536_cyclone_publisher_stays_reachable_from_ros2`. No commit in
+`bca02e9ee..e0f81b4ac5` names it. It stays open until two more live-peer nights
+are green, or it reappears and can be bisected.

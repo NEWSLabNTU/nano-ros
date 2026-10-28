@@ -497,8 +497,16 @@ static void app_task_entry(void* arg) {
                               clamp_prio(NROS_APP_CONFIG.scheduling.poll_priority));
 
     /* Issue 1146 part 2 / issue 1197 — the one-shot app-task stack + heap peak
-     * reporter. Priority 0 so it cannot preempt anything; it deletes itself
-     * after its two lines, so both costs are paid once at boot.
+     * reporter. It deletes itself after its two lines, so both costs are paid
+     * once at boot.
+     *
+     * Priority 1: one above the idle task, still below the app (3) and the
+     * transport band (4). At priority 0 it shares time slices with IDLE, whose
+     * hook is a WFI, and under QEMU `-icount shift=auto` that left it so few
+     * instructions per tick that one `uxTaskGetStackHighWaterMark` scan took
+     * ~29 s of guest time on the mps3-an536 Cyclone entry; the lines never
+     * arrived within the test's 120 s (issue 2111). The POSIX entry already
+     * runs its reporter at `tskIDLE_PRIORITY + 1`.
      *
      * 1024 words, not 512. `snprintf` with `%lu` conversions on newlib is not
      * cheap and the margin at 512 was thin enough that ADDING the second line
@@ -507,7 +515,7 @@ static void app_task_entry(void* arg) {
      * role examples at the same 512 did not. A reporter that faults the image
      * it is measuring is worse than no reporter, and this one is charged once
      * against a heap with megabytes spare. */
-    nros_freertos_create_task(stack_peak_task_entry, "stkpeak", 1024, 0, 0);
+    nros_freertos_create_task(stack_peak_task_entry, "stkpeak", 1024, 0, 1);
 
     /* Initialise semihosting stdio so printf() routes to QEMU stdout.
      * Disable buffering so output is visible immediately (important for
