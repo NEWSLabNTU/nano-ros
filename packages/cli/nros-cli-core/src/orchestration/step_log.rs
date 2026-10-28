@@ -28,7 +28,7 @@ use std::{
     io::{BufRead as _, BufReader, Read},
     path::Path,
     process::{Command, ExitStatus, Stdio},
-    sync::{Arc, mpsc},
+    sync::{Arc, Mutex, mpsc},
     time::{Duration, Instant},
 };
 
@@ -134,6 +134,32 @@ pub fn status(cmd: &mut Command) -> std::io::Result<ExitStatus> {
         }
     }
     Ok(status)
+}
+
+/// [`status`], also returning everything the child printed, so a caller can
+/// decide from the text why it failed (issue 2129: a DNS failure is worth a
+/// retry, a missing tag is not, and git exits 128 for both).
+///
+/// The lines still reach the step's sink, or stderr when there is none, as the
+/// child prints them. Without a sink the child's stdout is captured too, so it
+/// lands on stderr rather than stdout; the commands that ask for this
+/// (`git fetch`, `curl -o`) write nothing to stdout.
+pub fn status_keeping_output(cmd: &mut Command) -> std::io::Result<(ExitStatus, String)> {
+    let outer = current_sink();
+    let kept = Arc::new(Mutex::new(String::new()));
+    let tap: StepSink = {
+        let kept = Arc::clone(&kept);
+        Arc::new(move |line: String| {
+            if let Ok(mut k) = kept.lock() {
+                k.push_str(&line);
+                k.push('\n');
+            }
+            say_via(outer.as_ref(), line);
+        })
+    };
+    let status = with_step_sink(tap, || status(cmd))?;
+    let text = kept.lock().map(|k| k.clone()).unwrap_or_default();
+    Ok((status, text))
 }
 
 /// How long [`status`] keeps reading a child's pipes after it exited. Not a
