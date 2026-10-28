@@ -2,8 +2,9 @@
  *
  * Mirrors the Rust impl's `XrceSession::create_service_server` /
  * `XrceServiceServer::send_response` / `XrceServiceClient::send_request_raw`
- * shape. Bin profile only — no QoS XML; service requests/replies
- * use the services-default QoS (reliable / volatile / keep-last(10)).
+ * shape. The requester / replier is created from XML so its QoS reaches
+ * both endpoints (issue 2120; BIN drops it); with no QoS given, the
+ * services-default profile (reliable / volatile / keep-last(10)).
  *
  * Single-slot inbox per server / client (overflow flags + drops).
  * Request/reply correlation goes through micro-XRCE-DDS-Client's
@@ -297,9 +298,25 @@ static rmw_ret_t xrce_service_create_locked(const rmw_node_t* node,
     xrce_dds_request_topic(service_name, avoid_ros, req_topic_buf, sizeof(req_topic_buf));
     xrce_dds_reply_topic(service_name, avoid_ros, reply_topic_buf, sizeof(reply_topic_buf));
 
-    uint16_t req = uxr_buffer_create_replier_bin(
-        &st->session, st->output_reliable, replier_oid, st->participant_oid, service_buf,
-        req_type_buf, reply_type_buf, req_topic_buf, reply_topic_buf, xrce_qos, UXR_REPLACE);
+    /* Issue 2120 — XML, because the BIN create's QoS reaches no endpoint (see
+     * `xrce_actual_qos_service`). BIN only when the XML does not fit the output
+     * stream (a small MTU x history), and then the Agent's fixed profile is what
+     * `*_get_actual_qos` reports. */
+    char xml[XRCE_SERVICE_XML_BUF_SIZE];
+    uint16_t req = UXR_INVALID_REQUEST_ID;
+    if (xrce_service_qos_xml(xml, sizeof(xml), true, service_buf, req_type_buf,
+                             reply_type_buf, req_topic_buf, reply_topic_buf, &xrce_qos) != 0) {
+        req = uxr_buffer_create_replier_xml(&st->session, st->output_reliable, replier_oid,
+                                            st->participant_oid, xml, UXR_REPLACE);
+    }
+    ss->qos_applied = req != UXR_INVALID_REQUEST_ID;
+    ss->sent_qos = xrce_qos;
+    if (req == UXR_INVALID_REQUEST_ID) {
+        req = uxr_buffer_create_replier_bin(&st->session, st->output_reliable, replier_oid,
+                                          st->participant_oid, service_buf, req_type_buf,
+                                          reply_type_buf, req_topic_buf, reply_topic_buf, xrce_qos,
+                                          UXR_REPLACE);
+    }
 
     uint16_t requests[1] = {req};
     uint8_t statuses[1] = {0};
@@ -799,9 +816,25 @@ static rmw_ret_t xrce_client_create_locked(const rmw_node_t* node,
     xrce_dds_request_topic(service_name, avoid_ros, req_topic_buf, sizeof(req_topic_buf));
     xrce_dds_reply_topic(service_name, avoid_ros, reply_topic_buf, sizeof(reply_topic_buf));
 
-    uint16_t req = uxr_buffer_create_requester_bin(
-        &st->session, st->output_reliable, requester_oid, st->participant_oid, service_buf,
-        req_type_buf, reply_type_buf, req_topic_buf, reply_topic_buf, xrce_qos, UXR_REPLACE);
+    /* Issue 2120 — XML, because the BIN create's QoS reaches no endpoint (see
+     * `xrce_actual_qos_service`). BIN only when the XML does not fit the output
+     * stream (a small MTU x history), and then the Agent's fixed profile is what
+     * `*_get_actual_qos` reports. */
+    char xml[XRCE_SERVICE_XML_BUF_SIZE];
+    uint16_t req = UXR_INVALID_REQUEST_ID;
+    if (xrce_service_qos_xml(xml, sizeof(xml), false, service_buf, req_type_buf,
+                             reply_type_buf, req_topic_buf, reply_topic_buf, &xrce_qos) != 0) {
+        req = uxr_buffer_create_requester_xml(&st->session, st->output_reliable, requester_oid,
+                                            st->participant_oid, xml, UXR_REPLACE);
+    }
+    cs->qos_applied = req != UXR_INVALID_REQUEST_ID;
+    cs->sent_qos = xrce_qos;
+    if (req == UXR_INVALID_REQUEST_ID) {
+        req = uxr_buffer_create_requester_bin(&st->session, st->output_reliable, requester_oid,
+                                          st->participant_oid, service_buf, req_type_buf,
+                                          reply_type_buf, req_topic_buf, reply_topic_buf, xrce_qos,
+                                          UXR_REPLACE);
+    }
 
     uint16_t requests[1] = {req};
     uint8_t statuses[1] = {0};

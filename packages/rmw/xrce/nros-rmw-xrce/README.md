@@ -60,9 +60,10 @@ a static library + a single public header carrying the
 Each gap is annotated `TODO 115.K.2.x` in source. The K.2 series
 intentionally ships a smaller surface than the Rust impl:
 
-- No QoS XML profile (`uxr_buffer_create_*_xml`). Bin profile only —
-  reliability + durability + history + depth. Phase 108.C.xrce.3's
-  full FastDDS XML is not ported.
+- Pub/sub uses the BIN create only: reliability + durability + history +
+  depth. Requesters and repliers use `uxr_buffer_create_*_xml`, because the
+  BIN create drops their QoS (issue 2120); the XML carries the same four
+  fields. Phase 108.C.xrce.3's full FastDDS XML is not ported.
 - No deadline tracking, no `OfferedDeadlineMissed` /
   `RequestedDeadlineMissed` event surface.
 - No async wakers — `take_serialized` is purely poll-based.

@@ -21,16 +21,21 @@ depth.
 **Tracked:** TODO 115.K.2.x in `src/publisher.c` /
 `src/subscriber.c` / `src/service.c` (search for `uxr_buffer_create_topic_bin`).
 
-## Service / client QoS is not applied
+## Service / client QoS reaches the Agent only through XML
 
-A requester or replier is created with the Agent's FIXED profile whatever QoS
-the caller passed: micro-XRCE-DDS-Client drops it (`(void) qos;` in
-`uxr_buffer_create_{requester,replier}_bin`) and the Agent builds both endpoints
-from default attributes — writers RELIABLE + TRANSIENT_LOCAL, readers RELIABLE +
-VOLATILE (measured, issue 2107). The `*_get_actual_qos` slots report that
-profile; nothing refuses a different request yet.
+A requester or replier is created from a Fast-DDS XML string that carries
+reliability, durability, history and depth for both of its endpoints
+(issue 2120). The BIN create cannot do this: micro-XRCE-DDS-Client drops its
+QoS (`(void) qos;` in `uxr_buffer_create_{requester,replier}_bin`) and the
+Agent builds both endpoints from default attributes — writers RELIABLE +
+TRANSIENT_LOCAL, readers RELIABLE + VOLATILE (measured, issue 2107).
 
-**Tracked:** [issue 2120](../issues/2120-xrce-service-qos-silently-ignored.md).
+The XML is about 1 KB. When it does not fit the reliable output stream
+(`NROS_XRCE_TRANSPORT_MTU` x `NROS_XRCE_STREAM_HISTORY`, minus headers), the
+backend falls back to the BIN create, and the `*_get_actual_qos` slots then
+report the fixed profile above instead of the requested one.
+
+**Resolved:** [issue 2120](../issues/archived/2120-xrce-service-qos-silently-ignored.md).
 
 ## Deadline events are client-side only
 

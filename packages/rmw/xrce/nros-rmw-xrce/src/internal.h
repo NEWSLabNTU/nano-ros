@@ -314,6 +314,10 @@ static inline void nros_xrce_free(void* ptr) {
 #endif
 #define XRCE_CDR_HEADER_LEN 4
 #define XRCE_DDS_NAME_BUF_SIZE 128
+/* Issue 2120 — the requester/replier XML: five names of at most
+ * XRCE_DDS_NAME_BUF_SIZE - 1 bytes, two endpoint QoS blocks of under 300 bytes
+ * each, and the fixed markup. */
+#define XRCE_SERVICE_XML_BUF_SIZE 1536
 #define XRCE_PARTICIPANT_NAME_BUF_SIZE 64
 #define XRCE_ENTITY_CREATION_TIMEOUT_MS 1000
 #define XRCE_SESSION_FLUSH_TIMEOUT_MS 100
@@ -808,9 +812,15 @@ typedef struct xrce_service_server_state {
     uxrObjectId replier_oid;
     xrce_graph_endpoint graph_writer;
     xrce_graph_endpoint graph_reader;
-    /* Issue 2107 — the one requested field a requester/replier honours (it
-     * shapes the DDS topic names client-side); see `xrce_actual_qos_service`. */
+    /* Issue 2107 — the topic-name flag (client-side naming); see
+     * `xrce_actual_qos_service`. */
     bool avoid_ros;
+    /* Issue 2120 — the profile the XML create carried (`xrce_map_qos`), and
+     * whether the XML create was the one sent. When the XML did not fit the
+     * output stream the BIN create was sent instead, and the Agent's fixed
+     * profile is what both endpoints hold. */
+    uxrQoS_t sent_qos;
+    bool qos_applied;
 } xrce_service_server_state;
 
 /* Per-service-client state. A requester is a request DataWriter then a reply
@@ -821,8 +831,10 @@ typedef struct xrce_service_client_state {
     uxrObjectId requester_oid;
     xrce_graph_endpoint graph_writer;
     xrce_graph_endpoint graph_reader;
-    /* Issue 2107 — as `xrce_service_server_state::avoid_ros`. */
+    /* Issue 2107 / 2120 — as `xrce_service_server_state`. */
     bool avoid_ros;
+    uxrQoS_t sent_qos;
+    bool qos_applied;
 } xrce_service_client_state;
 
 /* ---- Helpers -------------------------------------------------------- */
@@ -966,7 +978,14 @@ rmw_ret_t xrce_supported_qos_policies(const rmw_session_t* session, uint32_t* ou
  * `*_get_actual_qos` slots. Writes only what is known and leaves the rest of
  * `out` as the caller pre-loaded it (`NROS_RMW_QOS_PROFILE_UNKNOWN`). */
 void xrce_actual_qos_topic(const uxrQoS_t* sent, bool avoid_ros, rmw_qos_profile_t* out);
-void xrce_actual_qos_service(bool writer, bool avoid_ros, rmw_qos_profile_t* out);
+void xrce_actual_qos_service(bool writer, bool avoid_ros, const uxrQoS_t* applied,
+                             rmw_qos_profile_t* out);
+/* Issue 2120 — a requester's / replier's QoS as the Fast-DDS XML the Agent's
+ * `create_{requester,replier}_by_xml` applies. Returns the string length, or 0
+ * when it does not fit `cap`. */
+size_t xrce_service_qos_xml(char* out, size_t cap, bool replier, const char* service,
+                            const char* req_type, const char* reply_type, const char* req_topic,
+                            const char* reply_topic, const uxrQoS_t* qos);
 
 /* ---- Issue 2108: client-side DEADLINE emulation (session.c) ----------------
  *

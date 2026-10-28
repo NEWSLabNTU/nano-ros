@@ -148,6 +148,11 @@ pub const MESSAGE_INFO_LOG_PREFIX: &str = "seq=";
 /// the backend reported no request id, which this prefix does not match.
 pub const SERVICE_INFO_LOG_PREFIX: &str = "REQUEST_ID guid=";
 
+/// issue 2120 — the env var that picks the `service-info-server` bin's
+/// service QoS (`default` | `best_effort`), so a stock peer can read back
+/// what both endpoints were created with.
+pub const SERVICE_INFO_SERVER_QOS_ENV: &str = "SERVICE_INFO_SERVER_QOS";
+
 /// issues 0459 / 0460 — tell "produced output that LACKS marker X" apart from
 /// "produced nothing at all", and say which.
 ///
