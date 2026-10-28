@@ -1,8 +1,8 @@
-# What this workspace image deploys to (RFC-0098 D3/D5). The board is
-# Zephyr's: the concrete target (`mps2/an385`) is the `west build -b` argument.
-# `native_sim` cannot run a ported node (the porting guide says why). The QEMU
-# network Kconfig is `<nano-ros>/cmake/zephyr/mps2-an385.conf`, which the
-# fixture build appends and a copy of this template must name in `os_config`
+# What this workspace image deploys to (RFC-0098 D3/D5). The board is the
+# Zephyr `mps2/an385` (Cortex-M3, QEMU) board package, `mps2-an385-zephyr`:
+# `native_sim` cannot run a ported node (the porting guide says why). The board
+# package carries the QEMU network Kconfig, which the nano-ros module merges
+# ahead of `os_config`, so a copy of this template names nothing outside itself
 # (issue 1782).
 [system]
 name = "ament_workspace_port"
@@ -10,6 +10,6 @@ rmw = "zenoh"
 domain_id = 0
 
 [image.zephyr]
-board = "zephyr"
+board = "mps2-an385-zephyr"
 rmw = "zenoh"
 os_config = ["prj-zenoh.conf"]

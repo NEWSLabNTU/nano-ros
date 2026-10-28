@@ -21,7 +21,7 @@
 //! ## Two assertions, and both are load-bearing
 //!
 //! 1. `IPv4 address: 10.0.2.15` — Zephyr's own `net_config` announcing the
-//!    static address from `cmake/zephyr/mps2-an385.conf`. Only the in-kernel
+//!    static address from `packages/boards/nros-board-mps2-an385-zephyr/prj.conf`. Only the in-kernel
 //!    stack driving a real ethernet controller can print it, so it is the
 //!    evidence that this coordinate is a second witness rather than a second
 //!    spelling of native_sim. Its sibling `zephyr_cortex_m_qemu` asserts the

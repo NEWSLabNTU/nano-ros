@@ -1557,6 +1557,14 @@ platform = "zephyr"
 # it, and RFC-0099 D10 asks only for the first.
 packages = ["zephyr-sdk"]
 
+# Issue 1782 — the Zephyr QEMU Cortex-M board package (`mps2_an385`), which
+# the port templates' `zephyr/` leaves name. The same Zephyr toolchain as
+# `[board.zephyr]`, plus the QEMU that runs it.
+[board.mps2-an385-zephyr]
+arch = "cortex-m3"
+platform = "zephyr"
+packages = ["zephyr-sdk", "qemu"]
+
 
 # --- the Zephyr MODULE set, as index data (phase-447 F1, issue 1275) --------
 #

@@ -759,7 +759,7 @@ a non-native_sim Zephyr could surface.
 
 **Row 2 is the RFC's thesis, demonstrated.** One `nros-board-zephyr` now serves
 THREE witnesses at three tiers, and the two non-native_sim ones own no crate at
-all: `mps2_an385` is `cmake/zephyr/mps2-an385.conf`, the FVP is
+all: `mps2_an385` is `packages/boards/nros-board-mps2-an385-zephyr/prj.conf`, the FVP is
 `nros-board-zephyr/boards/fvp-aemv8r-smp/`. Adding a Zephyr architecture really
 did become adding a conf bundle.
 

@@ -8,7 +8,7 @@ so. Someone then edits that line, measures the board where it is dead, and
 reports a saving the fixture set never had.
 
 Concretely: phase-391 W3 changed `CONFIG_HEAP_MEM_POOL_SIZE` in the C talker's
-conf and measured the result on mps2_an385. `cmake/zephyr/mps2-an385.conf`
+conf and measured the result on mps2_an385. `packages/boards/nros-board-mps2-an385-zephyr/prj.conf`
 merges after it and sets the same symbol, so the edit changed nothing there. Its
 only live effect was on native_sim, where it broke the build.
 

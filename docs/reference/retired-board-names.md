@@ -82,7 +82,7 @@ correct:
 * the linker scripts `packages/boards/nros-board-mps2-an385/mps2-an385.x` and
   `packages/testing/qemu-smoltcp-bridge/mps2-an385.x`;
 * the peripheral-access crate `mps2-an385-pac`;
-* the Zephyr fragments `cmake/zephyr/mps2-an385.conf` and
+* the Zephyr fragments `packages/boards/nros-board-mps2-an385-zephyr/prj.conf` and
   `cmake/zephyr/mps2-an385-serial.conf`;
 * the deploy token `rtic-mps2-an385` (`qemu-mps2-an385` retired, issue 2063);
 * the board crate directory `packages/boards/nros-board-mps2-an385/`.

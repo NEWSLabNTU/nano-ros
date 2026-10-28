@@ -496,8 +496,9 @@ def main():
     #
     # Everything so far is keyed on board DIRECTORIES, which silently assumes a
     # board is a crate. RFC-0064's whole direction is that it is not: the Zephyr
-    # Cortex-M witness is `cmake/zephyr/mps2-an385.conf` and owns no directory
-    # under packages/boards/, so it could carry Runtime cells — a tier-1-or-2
+    # Cortex-M witness is a conf bundle (`nros-board-mps2-an385-zephyr/prj.conf`,
+    # a descriptor + Kconfig with no crate and no registry row of its own), so
+    # it could carry Runtime cells — a tier-1-or-2
     # promise — while being enumerated nowhere, which is the exact failure this
     # gate was written to catch. As boards keep becoming conf bundles (W9), the
     # directory check covers less and less of the rule it is enforcing.

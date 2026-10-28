@@ -64,9 +64,12 @@
 #   own `CMakeLists.txt`, configured with that toolchain — the C/C++ road the
 #   getting-started pages document. (`nros build` in a single-package CMake leaf
 #   is issues 1296/1308, so it is not the road here.)
-# * A Zephyr leaf has NO road this gate can derive: its west board and Kconfig
-#   fragments are not in its data (issue 1782), so it is reported NOT VERIFIED
-#   with that reason even where Zephyr is installed.
+# * A descriptor with `[board.zephyr] west_board` is a Zephyr leaf: `nros build`
+#   in the leaf, against the west workspace `scripts/lib/zephyr-workspace.sh`
+#   resolves. The board package carries the board's Kconfig and the image's
+#   `os_config` the rest, so the leaf's data is its whole west build (issue
+#   1782, which until then made this arm a NOT VERIFIED even with Zephyr
+#   installed).
 # * Any other board is a FAIL naming it, so a new kind of sub-project forces a
 #   decision here instead of being skipped by default.
 #
@@ -447,13 +450,14 @@ build_cross() {
             nros_check_unverified "$gate" "$label ($board): Zephyr not provisioned — no west workspace resolves (just zephyr setup)" || return 5
             return 4
         fi
-        # Issue 1782: the leaf's data does not carry its whole west build — the
-        # generic `zephyr` board lowers to `$west_board`, where the port
-        # measured a compile failure, and the board it targets plus its Kconfig
-        # fragments are stated only in its README and its fixture row. So even
-        # here there is no road to derive, and saying so is the honest verdict.
-        nros_check_unverified "$gate" "$label ($board): no copy-out road derivable for a Zephyr leaf (west board '${west_board:-?}' and Kconfig fragments are not in its data — issue 1782)" || return 5
-        return 4
+        # Issue 1782: the leaf names its board package (`mps2-an385-zephyr`),
+        # which lowers to the west board AND carries the board's Kconfig, and
+        # its image's `os_config` names the rest. So the road is the one a user
+        # runs: `nros build` in the leaf, against the resolved west workspace.
+        rc=0
+        (cd "$proj" && "$nros" build --zephyr-workspace "$zws") >> "$log" 2>&1 || rc=$?
+        [ "$rc" -eq 0 ] || return 1
+        return 0
     fi
 
     echo "board '$board' ($board_toml) declares neither [board.cmake] toolchain_file nor [board.zephyr] west_board," >> "$log"
