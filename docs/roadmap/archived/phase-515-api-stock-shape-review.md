@@ -1,20 +1,32 @@
 # Phase 515 — Re-audit the recorded API differences against stock ROS 2 shape
 
-**Status (2026-10-27). Open; W0.a landed (#2627), D1–D4 decided, C1 landed, R9 landed (stage 1 `Executor`, stage 2 the action cores).** Opened from a review of the
+**Status (2026-10-29). Archived: every item is landed or re-verdicted, and every
+homed issue is closed.** W0.a and W0.b landed; C1–C8, P1–P8, R1–R5 and R7–R10,
+and X1 landed or were re-verdicted with a reason. **R6 stays declined**:
+`Context::ok` is added only once `Context` has a shutdown state to report, and
+it has none. `api-parity --by-topic` reports 0 open decisions in every stage
+and language. One ledger `gap` remains: `cpp:ParameterCallbackHandle`,
+[issue 2114](../../issues/2114-cpp-parameter-callback-handle-name-taken.md)
+(low; our name is the on-set token, upstream's is the event-handler handle).
+It was found by P3's re-verdict and is left open without a phase. Still not
+measured (W0.b): C++ and Rust names without a C prefix, and stale names in
+code comments.
+
+Opened from a review of the
 `api-parity` report on main `1a30bcbb22`. The work items below are candidates:
 each starts by confirming its reason against the code, because W0 found that
 the ledger's prose has drifted. The four decisions (D1–D4) are taken;
 see Decisions.
 
-**Prior:** [phase-379](archived/phase-379-api-parity-with-ros2-client-libraries.md)
+**Prior:** [phase-379](phase-379-api-parity-with-ros2-client-libraries.md)
 (the measurement and the ledger),
-[phase-417](archived/phase-417-ros2-api-adoption.md) (RFC-0089 adoption),
-[phase-482](archived/phase-482-rclcpp-drop-in-residue.md),
-[phase-483](archived/phase-483-rclcpp-rclrs-shape-only.md) (`rclcpp::` and
-rclrs shape only), [phase-492](archived/phase-492-c-api-rcl-names.md) (C on rcl
+[phase-417](phase-417-ros2-api-adoption.md) (RFC-0089 adoption),
+[phase-482](phase-482-rclcpp-drop-in-residue.md),
+[phase-483](phase-483-rclcpp-rclrs-shape-only.md) (`rclcpp::` and
+rclrs shape only), [phase-492](phase-492-c-api-rcl-names.md) (C on rcl
 names, descriptors gain a codec),
-[phase-506](archived/phase-506-api-crates-carry-only-the-api.md).
-**Implements:** [RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md):
+[phase-506](phase-506-api-crates-carry-only-the-api.md).
+**Implements:** [RFC-0089](../../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md):
 our constraints first, then upstream's name and shape, invention only where
 upstream has nothing.
 
@@ -56,12 +68,12 @@ Each was left without a phase when its finding phase closed.
 
 | issue | severity | item |
 | --- | --- | --- |
-| [2030](../issues/archived/2030-c-callback-tier-cancel-reply-slot.md) — the C callback tier never takes a cancel reply (resolved 2026-10-24) | medium | C7 |
-| [2024](../issues/archived/2024-parameter-event-handler.md) — no `ParameterEventHandler` (**resolved 2026-10-25**, hosted C++) | low | P6 |
-| [1942](../issues/archived/1942-rclrs-service-info-no-counterpart.md) — no `ServiceInfo` for a service callback (**resolved 2026-10-26**) | low | R7 |
-| [2080](../issues/archived/2080-cpp-parameter-event-from-event-helpers.md) — `ParameterEventHandler::get_parameter(s)_from_event` (P6's residue; **resolved 2026-10-26**) | low | P6 |
-| [2081](../issues/archived/2081-c-abi-service-request-info.md) — C-ABI backends report no `ServiceInfo` (R7's residue; **resolved 2026-10-26**) | low | R7 |
-| [2029](../issues/archived/2029-action-server-cancel-all-before.md) — cancel-all / cancel-before answer `UNKNOWN_GOAL_ID` (resolved 2026-10-24) | low | X1 |
+| [2030](../../issues/archived/2030-c-callback-tier-cancel-reply-slot.md) — the C callback tier never takes a cancel reply (resolved 2026-10-24) | medium | C7 |
+| [2024](../../issues/archived/2024-parameter-event-handler.md) — no `ParameterEventHandler` (**resolved 2026-10-25**, hosted C++) | low | P6 |
+| [1942](../../issues/archived/1942-rclrs-service-info-no-counterpart.md) — no `ServiceInfo` for a service callback (**resolved 2026-10-26**) | low | R7 |
+| [2080](../../issues/archived/2080-cpp-parameter-event-from-event-helpers.md) — `ParameterEventHandler::get_parameter(s)_from_event` (P6's residue; **resolved 2026-10-26**) | low | P6 |
+| [2081](../../issues/archived/2081-c-abi-service-request-info.md) — C-ABI backends report no `ServiceInfo` (R7's residue; **resolved 2026-10-26**) | low | R7 |
+| [2029](../../issues/archived/2029-action-server-cancel-all-before.md) — cancel-all / cancel-before answer `UNKNOWN_GOAL_ID` (resolved 2026-10-24) | low | X1 |
 
 ## Decisions
 
@@ -452,7 +464,7 @@ table over a typed `rcl_interfaces/msg/ParameterEvent` subscription.
 **Resolved 2026-10-25 (hosted C++):** `rclcpp::ParameterEventHandler` and a
 hosted `rclcpp::Parameter`; freestanding refuses the handler (issue 2024's
 Still open). The two static `get_parameter(s)_from_event` helpers followed in
-[issue 2080](../issues/archived/2080-cpp-parameter-event-from-event-helpers.md)
+[issue 2080](../../issues/archived/2080-cpp-parameter-event-from-event-helpers.md)
 (2026-10-26): templates over the caller's generated event, hosted like the
 handler.
 
@@ -560,7 +572,7 @@ never shares a name with the seam's service descriptor again. zenoh reports
 `request_id` + `source_timestamp` from the query attachment.
 `rust:ServiceInfo` is `divergence` / `adopt-bounded`. **Residue resolved
 2026-10-26
-([issue 2081](../issues/archived/2081-c-abi-service-request-info.md)):** the
+([issue 2081](../../issues/archived/2081-c-abi-service-request-info.md)):** the
 vtable's appended `take_request_with_info` slot carries an
 `rmw_service_info_t`; Cyclone DDS reports `request_id` + `source_timestamp`
 (stock `rmw_cyclonedds_cpp`'s layout), XRCE-DDS reports `request_id` (the
@@ -568,9 +580,9 @@ Agent's `SampleIdentity`). The C and C++ callbacks get the id too:
 `rclc_executor_add_service_raw_with_request_id` and rclcpp's three-argument
 handler's request header. Residue: XRCE's slot was measured against a live
 Agent and a stock `rmw_fastrtps_cpp` client on 2026-10-27 ([issue
-2088](../issues/archived/2088-xrce-service-request-id-unmeasured.md)), and the typed C service path's request-id flavour
+2088](../../issues/archived/2088-xrce-service-request-id-unmeasured.md)), and the typed C service path's request-id flavour
 landed with C3 as rclc's `rclc_executor_add_service_with_request_id` ([issue
-2089](../issues/archived/2089-c-typed-service-request-id.md), resolved
+2089](../../issues/archived/2089-c-typed-service-request-id.md), resolved
 2026-10-27).
 
 **R8 — open renames (33).** `UndeclaredParameters` → `Parameters`,
