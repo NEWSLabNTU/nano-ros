@@ -22,7 +22,7 @@ Their junit (`tier2-nightly-junit`) names them as follows.
 1. **`test_rtos_quiet_link_keeps_its_session::platform_3_Platform__ThreadxLinux`**
    ```
    assertion `left == right` failed: threadx_linux quiet link: a listener with no traffic opened 3 sessions in 75s.
-   Router: ZENOH_CONFIG_OVERRIDE='…listen/endpoints=["tcp/0.0.0.0:9000"]' /opt/ros/humble/lib/rmw_zenoh_cpp/rmw_zenohd (port 9000)
+   Router: ZENOH_CONFIG_OVERRIDE='…listen/endpoints=["tcp/0.0.0.0:9000"]' rmw_zenohd (port 9000; absolute path elided)
    ```
 2. **`test_rtos_quiet_link_keeps_its_session::platform_1_Platform__Freertos`**
    ```
