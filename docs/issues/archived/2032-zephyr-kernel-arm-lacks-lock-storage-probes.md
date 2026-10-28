@@ -1,15 +1,17 @@
 ---
 id: 2032
 title: "Zephyr's non-POSIX platform arm defines no lock storage probes, so the native level runner drags the POSIX port into every Zephyr XRCE C++ image"
-status: open
+status: resolved
 type: bug
 area: [zephyr, platform, build, ci]
 severity: medium
 found: 2026-10-24
 related: [phase-513, phase-466, phase-509, 1776, 1779, 0566, 2025]
+resolved: 2026-10-29
+resolved_in: "f1e6bdc006"
 ---
 
-**Home: [phase-513](../roadmap/phase-513-nightly-reds-with-no-home.md)** — R2.
+**Home: [phase-513](../../roadmap/phase-513-nightly-reds-with-no-home.md)** — R2.
 
 ## Measured
 
@@ -128,3 +130,22 @@ and `build-c-talker-xrce`. What is left is the scheduled run that shows it.
 A tier-2 nightly in which the six `build-cpp-*-xrce` Zephyr leaves link, and a
 scheduled `run-matrix` in which the `build-c-*-xrce` leaves of tier 1 and
 tier 2 link.
+
+## Closed (2026-10-29)
+
+The closing condition was "a tier-2 nightly in which the six
+`build-cpp-*-xrce` Zephyr leaves link, and a scheduled `run-matrix` in which
+the `build-c-*-xrce` leaves link". Both are met on main `e0f81b4ac`, which
+carries `f1e6bdc006` (this fix) and `44eab11c22` (issue 2092's
+`__popcountdi2` fix, which this image class also needed):
+
+- Tier-2 nightly 40648207713 (2026-10-28 07:08 UTC) built its fixtures and
+  reached its tests. The three Zephyr C++ xrce cells PASSED there:
+  `case_21_xrce_cpp_pubsub_e2e`, `case_24_xrce_cpp_service_e2e` and
+  `case_27_xrce_cpp_action_e2e`.
+- `run-matrix` 40643270547 (2026-10-28 06:20 UTC) passed every build stage
+  and reached its cells ("cells ran and FAILED", on unrelated cells).
+- Locally on the same commit, every native_sim xrce leaf (C, C++ and Rust,
+  all six roles) built with no `multiple definition`. The C and C++ xrce
+  e2e cells all pass. The Rust pub/sub cell does not, for an unrelated
+  reason, filed as issue 2133.
