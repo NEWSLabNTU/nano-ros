@@ -68,6 +68,14 @@ Same image, rebuilt:
 | `nros_cpp_node_list_param_overrides` | 17,280 |
 | `typed_param_override` (now its own frame) | 8,576 |
 
+Correction (2026-10-29): the atomic-set row measured the shim's OWN frame.
+The one scratch value lives in `ParameterServer::apply_atomically_with`, which
+was then a separate frame and is now inlined into the shim, where the frame
+reads 8,320. Its callees are small (the fill closure 12 bytes, `apply_ref`
+412), so the call chain peaks at about 8.8 KiB either way: one value, the
+floor. The before figure, 25 + 17 KiB, was a chain total, so the saving
+stands.
+
 On QEMU the node reports `app task stack peak 16800 of 65536 bytes`, then
 activates and publishes. `just check cpp` passes, including the
 `parameter_value_runtime` atomic-set and override cases.

@@ -263,7 +263,19 @@ l3:
         && cargo build $(nros_cargo_profile_arg_string))
     python3 scripts/check-no-alloc-image.py --tier heap-free \
         "packages/testing/nros-tests/bins/heap-free-poc-mps2/target/thumbv7m-none-eabi/$(nros_cargo_target_profile_dir)/heap-free-poc-mps2"
-    echo "L3 passed — $checked cross ELF(s) checked without booting anything, and the heap-free image links clean."
+    # Issue 2131 — and its C++ twin. `heap-free-cpp-poc-mps2` builds nros-cpp
+    # and nros-c WITHOUT `alloc` (parameter store carved, `NROS_PARAM_STORE`),
+    # pulls their whole `#[no_mangle]` ABI in through `FORCE_LINK_ANCHOR`, and
+    # links a C++ program that opens the executor, creates a node, declares,
+    # sets and reads a parameter, makes a timer and spins. ~2,600 symbols.
+    # Its C++ is compiled by `arm-none-eabi-g++`, from the same toolchain the
+    # FreeRTOS link check above already needs.
+    echo "== L3 — heap-free tier: link gate on the no-alloc C++ image =="
+    (cd packages/testing/nros-tests/bins/heap-free-cpp-poc-mps2 \
+        && cargo build $(nros_cargo_profile_arg_string))
+    python3 scripts/check-no-alloc-image.py --tier heap-free \
+        "packages/testing/nros-tests/bins/heap-free-cpp-poc-mps2/target/thumbv7m-none-eabi/$(nros_cargo_target_profile_dir)/heap-free-cpp-poc-mps2"
+    echo "L3 passed — $checked cross ELF(s) checked without booting anything, and both heap-free images (Rust, C++) link clean."
 
 # Tier 2 — phase-318 W4.d. Gate exactly the fixture COORDINATES the lane selected.
 #
